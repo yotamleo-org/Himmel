@@ -37,7 +37,7 @@ the page.
 | Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
 | What is broken · Every item checked | two tabs: feed rows with health `fail` or `warn`, worst first, plus firing alerts, each with ONE fix action (below); and all rows grouped by bundle with a result each, a bundle with a problem open | feed still running |
 | Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Usage | (the worker list moved to Fleet; Usage links to it) | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `workers.sh` (newest `*.fleet.json` under the handover root, status from `worker_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
+| Usage | the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; the worker list moved to Fleet and Usage links to it | no ledger row with usage numbers |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
 **Project picker and Shared (HIMMEL-8044).** The rail carries a picker: the project this UI runs in

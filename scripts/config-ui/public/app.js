@@ -98,10 +98,10 @@ function renderPages() {
 function projectPicker() {
   if (!projects) return "";
   const esc = (x) => String(x).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const sel = healthView.mode === "all" ? "all" : healthView.project || projects.current;
+  const sel = healthView.mode === "all" ? "*" : healthView.project || projects.current; // "*" cannot be a registered name
   const word = (p) => (p.checkedAt ? projectVerdict(p.counts.project).word : "not checked");
   const opts = projects.projects.map((p) => `<option value="${esc(p.name)}"${sel === p.name ? " selected" : ""}>${esc(p.name)} · ${word(p)}</option>`).join("");
-  return `<label class="picker"><span>Project</span><select id="proj" aria-label="Project"><option value="all"${sel === "all" ? " selected" : ""}>All my projects</option>${opts}</select></label>`;
+  return `<label class="picker"><span>Project</span><select id="proj" aria-label="Project"><option value="*"${sel === "*" ? " selected" : ""}>All my projects</option>${opts}</select></label>`;
 }
 
 // Health for the project in the picker: this UI's own feed, another project's cached one, or the all-projects view.
@@ -110,7 +110,7 @@ function healthPage(f) {
   const other = healthView.project && cur && healthView.project !== cur;
   const fleetLink = navLinks({ here: "console", token, current: "health", sources }).find((l) => l.id === "fleet");
   const shown = other ? (otherFeed && otherFeed !== "none" ? otherFeed : null) : f;
-  const view = { ...healthView, projects, project: healthView.project || cur, fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none" };
+  const view = { ...healthView, projects, project: healthView.project || cur, foreign: Boolean(other), fleetHref: fleetLink && fleetLink.href, unchecked: Boolean(other) && otherFeed === "none" };
   // the filterable Inventory stays below the v2 page until its e2e is ported to the Every item checked tab; Triage is the broken tab now.
   const legacy = shown && !other && healthView.mode !== "all" ? renderInventory(shown, state) : "";
   return renderHealth(shown, health, view) + legacy + (!shown && !other && healthView.mode !== "all" ? probeStatus() : "");
@@ -456,7 +456,7 @@ document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
   if (e.target.id === "proj") { // the rail picker: it routes, the route reads the project
     const v = e.target.value;
-    location.hash = v === "all" ? "#/health?view=all" : projects && v === projects.current ? "#/health" : "#/health?project=" + encodeURIComponent(v);
+    location.hash = v === "*" ?"#/health?view=all" : projects && v === projects.current ? "#/health" : "#/health?project=" + encodeURIComponent(v);
     return;
   }
   if (e.target.dataset.rmThemeKey) return void writeRoadmap({ key: "HIMMEL-" + e.target.dataset.rmThemeKey, theme: e.target.value === "" ? null : e.target.value });

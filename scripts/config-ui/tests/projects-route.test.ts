@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
+import { readProjects } from "../projects";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const TOKEN = "t".repeat(64);
@@ -31,7 +32,7 @@ function boot() {
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, HIMMEL_PROMETHEUS_URL: "http://127.0.0.1:1", HIMMEL_FLOW_EXPORTER_PORT: "1" },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
-  return s;
+  return Object.assign(s, { feeds });
 }
 const get = (port: number, path: string, headers: Record<string, string> = { "X-Himmel-Token": TOKEN }) => fetch(`http://127.0.0.1:${port}${path}`, { headers });
 
@@ -57,6 +58,27 @@ test("a project nobody ran a check in is not checked, never guessed", async () =
   const salus = (await (await get(port, "/api/projects")).json()).projects.find((p: { name: string }) => p.name === "salus");
   expect(salus.checkedAt).toBeNull();
   expect(salus.counts.project).toEqual({ fail: 0, warn: 0 });
+});
+
+test("a malformed cache marks that project not checked and never fails the list", async () => {
+  const { port, feeds } = boot();
+  writeFileSync(join(feeds, "luna.json"), JSON.stringify({ rows: {} }));
+  writeFileSync(join(feeds, "salus.json"), JSON.stringify({ rows: [null, 3, row("ok", "warn", "project")] }));
+  const res = await get(port, "/api/projects");
+  expect(res.status).toBe(200);
+  const by = Object.fromEntries((await res.json()).projects.map((p: { name: string }) => [p.name, p]));
+  expect(by.luna.checkedAt).toBeNull();
+  expect(by.salus.counts.project).toEqual({ fail: 0, warn: 1 });
+});
+
+test("an unregistered checkout named like a registered project gets its own name and cache", () => {
+  const dir = mkdtempSync(join(tmpdir(), "projects-name-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const reg = join(dir, "registry.json");
+  writeFileSync(reg, JSON.stringify({ repos: { himmel: { path: "/elsewhere/himmel" } } }));
+  const { current, list } = readProjects({ HANDOVER_REGISTRY: reg }, "/work/himmel");
+  expect(current).toBe("himmel.here");
+  expect(list.map((p) => p.name).sort()).toEqual(["himmel", "himmel.here"]);
 });
 
 test("/api/feed?project= answers another project from its cache, else not-checked; names never reach the filesystem unchecked", async () => {

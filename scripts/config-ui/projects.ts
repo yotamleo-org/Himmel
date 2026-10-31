@@ -3,7 +3,7 @@
 // from its own last good doctor feed, cached under ~/.himmel/state/config-ui/feeds/<name>.json by the UI that ran in it.
 // Nothing here runs a doctor: a project nobody opened yet is "not checked", never guessed.
 // ponytail: another project's rows are only as fresh as its own last UI run, a cross-project probe is a later step.
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -32,7 +32,8 @@ export function readProjects(env: Env, currentPath: string): { current: string; 
   } catch { /* no registry: only this project */ }
   const at = list.find((p) => p.path === currentPath);
   if (at) return { current: at.name, list };
-  const name = NAME.test(basename(currentPath)) ? basename(currentPath) : "this-project";
+  let name = NAME.test(basename(currentPath)) ? basename(currentPath) : "this-project";
+  while (list.some((p) => p.name === name)) name += ".here"; // never share a registered project's name or cache
   list.unshift({ name, path: currentPath });
   return { current: name, list };
 }
@@ -40,7 +41,12 @@ export function readProjects(env: Env, currentPath: string): { current: string; 
 const cacheFile = (env: Env, name: string) => join(feedsDir(env), `${name}.json`);
 export function saveFeed(env: Env, name: string, body: string): void {
   if (!NAME.test(name)) return;
-  try { mkdirSync(feedsDir(env), { recursive: true }); writeFileSync(cacheFile(env, name), body); } catch { /* the cache is best effort */ }
+  try {
+    mkdirSync(feedsDir(env), { recursive: true });
+    const tmp = `${cacheFile(env, name)}.${process.pid}.tmp`; // a reader in another UI never sees a half-written feed
+    writeFileSync(tmp, body);
+    renameSync(tmp, cacheFile(env, name));
+  } catch { /* the cache is best effort */ }
 }
 export function loadFeed(env: Env, list: Project[], name: string): { body: string; at: string } | null {
   if (!list.some((p) => p.name === name)) return null; // only a registered name reaches the filesystem
@@ -51,9 +57,14 @@ const count = (rows: Slim[]) => ({ fail: rows.filter((r) => r.health === "fail")
 export function summarize(p: Project, current: boolean, cached: { body: string; at: string } | null): Summary {
   const zero = { fail: 0, warn: 0 };
   const base = { name: p.name, path: p.path, current };
-  let rows: Slim[] = [];
-  try { rows = (JSON.parse(cached?.body ?? "{}").rows ?? []) as Slim[]; } catch { return { ...base, checkedAt: null, counts: { project: zero, shared: zero }, broken: [] }; }
-  if (!cached) return { ...base, checkedAt: null, counts: { project: zero, shared: zero }, broken: [] };
+  const unchecked: Summary = { ...base, checkedAt: null, counts: { project: zero, shared: zero }, broken: [] };
+  if (!cached) return unchecked;
+  let rows: Slim[];
+  try {
+    const parsed = JSON.parse(cached.body).rows;
+    if (!Array.isArray(parsed)) return unchecked;
+    rows = parsed.filter((r) => r && typeof r === "object") as Slim[];
+  } catch { return unchecked; }
   const bad = rows.filter((r) => r.health === "fail" || r.health === "warn");
   const mine = bad.filter((r) => r.scope !== "shared"), shared = bad.filter((r) => r.scope === "shared");
   const slim = (r: Slim): Slim => ({ id: r.id, health: r.health, scope: r.scope, installed: { detail: r.installed?.detail ?? "" }, fix: { by: r.fix?.by, tile: r.fix?.tile, remedy: r.fix?.remedy } });

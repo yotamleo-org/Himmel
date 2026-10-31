@@ -115,6 +115,26 @@ test("every failing row has exactly one fix action, first match winning", () => 
   expect(html).toContain('href="#/config?tile=secrets"');
 });
 
+test("another project's rows never offer this UI's Configure, nor its mode and alerts", () => {
+  expect(fixAction(own("a", "fail", { by: "configure", tile: "tracker" }), true)).toEqual({ kind: "elsewhere", tile: "tracker" });
+  const f = feed(own("a", "fail", { by: "configure", tile: "tracker" }));
+  const health = { bank: { state: "absent" }, mode: { state: "ok", tracker: "jira", forge: "github", idRequired: "1" }, monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: "HostDown", severity: "page" }] }, exporter: { state: "ok" } } };
+  const html = renderHealth(f, health, { project: "luna", foreign: true });
+  expect(html).not.toContain("Open in Configure");
+  expect(html).not.toContain("tracker=jira");
+  expect(html).not.toContain("HostDown");
+  expect(renderHealth(f, health, { project: "himmel" })).toContain("HostDown");
+});
+
+test("the all-projects view opens the who-fixes-it box and does not call a pending feed healthy", () => {
+  const projects = { current: "himmel", projects: [{ name: "luna", current: false, checkedAt: "2026-10-30T01:00:00Z", counts: { project: { fail: 1, warn: 0 }, shared: { fail: 0, warn: 0 } }, broken: [own("lunabad", "fail", { by: "configure", tile: "tracker" })] }] };
+  const html = renderHealth(feed(shared("s", "fail")), null, { mode: "all", projects, row: "lunabad" });
+  expect([...html.matchAll(/class="who"/g)].length).toBe(1);
+  expect(html).not.toContain("Open in Configure");
+  const pending = renderHealth(null, null, { mode: "all", projects });
+  expect(pending).not.toContain("Nothing shared is broken");
+});
+
 test("the who-fixes-it box opens on the chosen row only", () => {
   const f = feed(own("a", "fail"), own("b", "fail"));
   expect([...renderHealth(f, null, { row: "a" }).matchAll(/class="who"/g)].length).toBe(1);

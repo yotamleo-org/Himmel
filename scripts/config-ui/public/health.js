@@ -42,14 +42,16 @@ export function parseView(query) {
 const TILE_NAME = { secrets: "Secrets", review: "Review", tracker: "Tracker", scope: "Project scope" };
 // Q1: one action per row, first match winning. A Configure tile writes it → open that tile; only the operator
 // can run it → the command to copy; anything else → the chief session is on it, no button.
-export function fixAction(r) {
+// foreign = the row belongs to another project: this UI's Configure writes this project's settings, so no button there.
+export function fixAction(r, foreign = false) {
   const fix = r.fix || {};
-  if (fix.by === "configure" && TILE_NAME[fix.tile]) return { kind: "configure", tile: fix.tile };
+  if (fix.by === "configure" && TILE_NAME[fix.tile]) return foreign ? { kind: "elsewhere", tile: fix.tile } : { kind: "configure", tile: fix.tile };
   if (fix.by === "operator" && fix.remedy) return { kind: "copy", cmd: fix.remedy };
   return { kind: "chief" };
 }
 const actionHtml = (a) => a.kind === "configure" ? `<a class="btn primary" href="#/config?tile=${esc(a.tile)}">Open in Configure</a>`
   : a.kind === "copy" ? `<button class="btn" data-act="copy" data-cmd="${esc(a.cmd)}">Copy command</button>`
+  : a.kind === "elsewhere" ? `<span class="chief">set in that project's own UI</span>`
   : `<span class="chief">chief is on it</span>`;
 
 const nodata = (what) => `<div class="nodata">No data: ${esc(what)}</div>`;
@@ -85,12 +87,13 @@ function modeHtml(health) {
 }
 
 const whoText = (a, r) => a.kind === "configure" ? `You, in Configure → ${TILE_NAME[a.tile]}. The setting is written there.`
+  : a.kind === "elsewhere" ? `You, in Configure → ${TILE_NAME[a.tile]}, in the UI that runs in that project. This UI's Configure writes its own project.`
   : a.kind === "copy" ? "You, in your terminal. Only the operator can run this; the chief session cannot."
   : "The chief session. Nothing for you to do; it shows here until the check passes.";
 
 // one broken row: pill, id, scope tag, what it found, its single fix action, and a "Who fixes it" box that opens on the row.
-function brokenRow(r, open) {
-  const a = fixAction(r), id = r.id;
+function brokenRow(r, open, foreign = false) {
+  const a = fixAction(r, foreign), id = r.id;
   const who = open ? `<div class="who"><b>Who fixes it</b><p>${esc(whoText(a, r))}</p>${a.kind === "copy" ? `<code class="remedy">${esc(a.cmd)}</code>` : ""}</div>` : "";
   return `<div class="hrow br" data-id="${esc(id)}"><span class="st ${esc(r.health)}">${esc(r.health)}</span><span class="id">${esc(id)}</span>
     ${r.scope === "shared" ? `<span class="scope">shared</span>` : ""}<span class="det">${esc(r.installed && r.installed.detail)}</span>
@@ -101,7 +104,7 @@ function brokenHtml(feed, health, view) {
   if (!feed) return nodata("the doctor feed is still running");
   const rows = (feed.rows || []).filter(isTriage).sort((a, b) => (a.health === "fail" ? 0 : 1) - (b.health === "fail" ? 0 : 1));
   const alerts = alertsOf(health) || [];
-  const rowsHtml = rows.map((r) => brokenRow(r, view.row === r.id)).join("");
+  const rowsHtml = rows.map((r) => brokenRow(r, view.row === r.id, view.foreign)).join("");
   const alertsHtml = alerts.map((a) => `<div class="alert"><span class="st ${a.severity === "page" ? "fail" : "warn"}">${esc(a.severity || "alert")}</span><b>${esc(a.alertname)}</b> <span class="det">${esc(a.summary)}</span></div>`).join("");
   return rowsHtml + alertsHtml || `<div class="empty">Nothing broken.</div>`;
 }
@@ -143,16 +146,17 @@ function tilesHtml(feed, health) {
 }
 
 // All my projects: the shared rows once, then each project worst first with its own broken rows.
-function sharedPanel(feed) {
+function sharedPanel(feed, view) {
+  if (!feed) return section("shared", "Shared", "Problems with the machine or himmel itself. Shown once here, never counted against a project.", nodata("the doctor feed is still running"));
   const rows = sharedOf(feed).filter(isTriage);
   const mini = GROUPS.map(([g, name]) => { const l = rows.filter((r) => groupOf(r) === g); return `<div class="mini"><b>${name}</b><span class="ro">${l.length ? `${l.length} to look at` : "ok"}</span></div>`; }).join("");
   return `<section id="shared" class="box" aria-labelledby="h-shared"><h2 id="h-shared">Shared</h2><p class="sub">Problems with the machine or himmel itself. Shown once here, never counted against a project.</p>
-    <div class="minis">${mini}</div>${rows.length ? rows.map((r) => brokenRow(r, false)).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
+    <div class="minis">${mini}</div>${rows.length ? rows.map((r) => brokenRow(r, view.row === r.id)).join("") : `<div class="empty">Nothing shared is broken.</div>`}</section>`;
 }
-function projectLine(p) {
+function projectLine(p, view) {
   const c = (p.counts && p.counts.project) || { fail: 0, warn: 0 }, v = projectVerdict(c);
   const head = p.checkedAt ? `<span class="pill ${v.cls}">${esc(v.word)}</span>` : `<span class="pill off">not checked</span>`;
-  const broken = (p.broken || []).map((r) => brokenRow(r, false)).join("");
+  const broken = (p.broken || []).map((r) => brokenRow(r, view.row === r.id, !p.current)).join("");
   return `<div class="box prj" data-project="${esc(p.name)}"><div class="phead"><b>${esc(p.name)}</b>${p.current ? `<span class="scope">this UI</span>` : ""}${head}
     <span class="ro">${p.checkedAt ? `${c.fail} fail · ${c.warn} warn · checked ${esc(String(p.checkedAt).slice(0, 16).replace("T", " "))}` : "no cached check yet: open Health in that project once"}</span>
     <a class="btn" href="#/health?project=${encodeURIComponent(p.name)}">open ▸</a></div>${broken}</div>`;
@@ -161,7 +165,7 @@ const rank = (p) => (p.checkedAt ? ((p.counts && p.counts.project && p.counts.pr
 function allProjectsHtml(feed, view) {
   const ps = [...((view.projects && view.projects.projects) || [])].sort((a, b) => rank(b) - rank(a) || String(a.name).localeCompare(String(b.name)));
   return `<header class="ph"><h1>Health · all my projects</h1><p>Shared problems once, then every registered project, worst first.</p></header>
-    ${sharedPanel(feed)}${ps.map(projectLine).join("") || `<div class="empty">No projects are registered.</div>`}`;
+    ${sharedPanel(feed, view)}${ps.map((p) => projectLine(p, view)).join("") || `<div class="empty">No projects are registered.</div>`}`;
 }
 
 function jobsHtml(feed) {
@@ -265,10 +269,13 @@ export function renderHealth(feed, health, view = {}) {
   if (view.mode === "all") return allProjectsHtml(feed, view);
   const name = view.project || (feed && feed.target && feed.target.project) || "this project";
   if (view.unchecked) return `<header class="ph"><h1>Health · ${esc(name)}</h1></header>${nodata(`${name} has not been checked yet; open Health in that project once`)}`;
+  // The mode and the firing alerts belong to the project this UI runs in, so another project's page shows neither.
+  const own = view.foreign ? health && { ...health, monitoring: null } : health;
+  const modeCard = view.foreign ? `<div class="card" id="mode"><h3>Project mode</h3>${nodata("read in that project's own UI")}</div>` : modeHtml(health);
   return [
     `<header class="ph"><h1>Health · ${esc(name)}</h1><p>Is himmel healthy here, what is broken and who fixes it, from the doctor feed and the monitoring tier.</p></header>`,
-    section("verdict", "Is himmel healthy?", "One word, from the doctor feed and any firing alerts.", verdictHtml(feed, health) + tilesHtml(feed, health) + modeHtml(health)),
-    section("broken", "What is broken, and what do I do", "Worst first. Each row has one fix action; shared rows are the machine's, not this project's.", tabsHtml(feed, health, view)),
+    section("verdict", "Is himmel healthy?", "One word, from the doctor feed and any firing alerts.", verdictHtml(feed, own) + tilesHtml(feed, health) + modeCard),
+    section("broken", "What is broken, and what do I do", "Worst first. Each row has one fix action; shared rows are the machine's, not this project's.", tabsHtml(feed, own, view)),
     section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", jobsHtml(feed)),
     section("usage", "Usage", "Read-only: the newest bank-preflight ledger row and the subscription usage budget windows.", bankHtml(health) + quotaHtml(health) + fleetLink(view)),
     section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health)),
