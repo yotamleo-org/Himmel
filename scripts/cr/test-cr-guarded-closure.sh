@@ -110,12 +110,14 @@ edges() {
 # into a config or hook for later, or only named in a message, not run. Each is pinned exactly and must
 # still be an edge (checked below), so the list cannot rot silently.
 # dependabot-go.sh runs judge-call.sh only under --sweep, which the chief tick runs.
+# block-fork-sync-pr.sh names resync-fork.sh in its deny message, as the command to run instead.
 NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
 scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
 scripts/lib/usage-preflight.sh -> scripts/lanes/codex-usage-probe.ts
 scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts
 scripts/cr/live-gate-e2e.sh -> scripts/handover/chief-kit/ready-check.sh
-scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh"
+scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh
+scripts/hooks/block-fork-sync-pr.sh -> scripts/upstreams/resync-fork.sh"
 
 # Parents allowed to name scripts/jira/dist, pinned as <file>::<regex>. The regex
 # must match the file, proving the dist path there is anchored on the PRIMARY

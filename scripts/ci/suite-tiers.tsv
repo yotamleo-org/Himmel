@@ -613,6 +613,7 @@ scripts/hooks/test-block-destructive-commands-d.sh	pr	guard
 scripts/hooks/test-block-docker-privesc.sh	pr	guard
 scripts/hooks/test-block-edit-live-settings.sh	pr	guard
 scripts/hooks/test-block-edit-on-main.sh	pr	guard
+scripts/hooks/test-block-fork-sync-pr.sh	pr	guard
 scripts/hooks/test-block-git-stash.sh	pr	guard
 scripts/hooks/test-block-worker-bypass-scope.sh	pr	guard
 scripts/hooks/test-block-worker-write-fence.sh	pr	guard

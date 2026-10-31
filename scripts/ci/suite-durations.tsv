@@ -608,6 +608,7 @@ scripts/hooks/test-block-destructive-commands-d.sh	84
 scripts/hooks/test-block-docker-privesc.sh	19
 scripts/hooks/test-block-edit-live-settings.sh	153
 scripts/hooks/test-block-edit-on-main.sh	4
+scripts/hooks/test-block-fork-sync-pr.sh	1
 scripts/hooks/test-block-git-stash.sh	13
 scripts/hooks/test-block-worker-bypass-scope.sh	3
 scripts/hooks/test-block-worker-write-fence.sh	26
