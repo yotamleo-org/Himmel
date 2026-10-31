@@ -149,11 +149,13 @@ export function costField(file, since, until) {
   const s = ms(since), u = ms(until);
   const micro = {};
   const tokens = { input: 0, cache_creation: 0, cache_read: 0 };
-  let runs = 0, unpriced = 0;
+  let runs = 0, unpriced = 0, unreadable = 0;
   for (const line of readFileSync(file, 'utf8').split('\n')) {
+    if (line.trim() === '') continue;
     let r;
-    try { r = JSON.parse(line); } catch { continue; }
+    try { r = JSON.parse(line); } catch { unreadable++; continue; }
     const t = ms(r?.ts);
+    if (!Number.isFinite(t)) { unreadable++; continue; }
     if (!(t >= s && t < u)) continue;
     for (const [k, v] of [['input', r.input_tokens], ['cache_creation', r.cache_creation_tokens], ['cache_read', r.cache_read_tokens]]) {
       if (Number.isInteger(v) && v >= 0) tokens[k] += v;
@@ -168,9 +170,11 @@ export function costField(file, since, until) {
   if (runs === 0 && unpriced > 0) return na('api_cost', 'the launches inside the shift carry no cost', { unpriced_runs: unpriced });
   const per_account = Object.fromEntries(Object.keys(micro).sort().map((a) => [a, dollars(micro[a])]));
   const total = Object.values(micro).reduce((a, b) => a + b, 0n);
-  // A run that left no cost is missing from the sum: the figure is then a floor, and says so.
-  return ok('api_cost', { per_account, value: dollars(total), runs, unpriced_runs: unpriced, tokens,
-    ...(unpriced > 0 ? { partial: true, note: `at least this much: ${unpriced} run(s) in the shift carry no cost and are not in the sum` } : {}) });
+  // A run that left no cost, or a line that cannot be read (it may be a run of this shift), is missing from the sum:
+  // the figure is then a floor, and says so.
+  const left = unpriced + unreadable;
+  return ok('api_cost', { per_account, value: dollars(total), runs, unpriced_runs: unpriced, unreadable_lines: unreadable, tokens,
+    ...(left > 0 ? { partial: true, note: `at least this much: ${unpriced} run(s) in the shift carry no cost and ${unreadable} log line(s) are unreadable, so they are not in the sum` } : {}) });
 }
 
 // An error carries the reason only: never the response body, the request or the original error text.

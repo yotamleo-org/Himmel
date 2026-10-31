@@ -182,7 +182,6 @@ test('api cost: launch records inside [since, until) are summed per account in m
     launch('2026-10-31T01:00:00Z', 'B', '0.100000', [3, 10, 20]),
     launch('2026-10-31T03:00:00Z', 'A', '0.396643', [2, 77141, 649]),
     launch('2026-10-31T06:00:00Z', 'A', '9.000000'),
-    'not json',
   ].join('\n'));
   const f = costField(file, SINCE, UNTIL);
   assert.equal(f.status, 'ok');
@@ -209,6 +208,14 @@ test('api cost: a run with no cost is counted apart, never as zero; no launch lo
   writeFileSync(file, `${launch('2026-10-31T02:00:00Z', 'A', '', [null, null, null], { outcome: 'unknown' })}\n`);
   assert.equal(costField(file, SINCE, UNTIL).status, 'not available');
   assert.equal(costField(join(T, 'gone-launches.jsonl'), SINCE, UNTIL).status, 'not available');
+  // a truncated or unreadable line may belong to the shift: the total is a floor, never an unqualified measurement
+  writeFileSync(file, `${launch('2026-10-31T01:00:00Z', 'A', '0.250000')}\n{"ts":"2026-10-31T02:00:00Z","cost_us\n`);
+  const torn = costField(file, SINCE, UNTIL);
+  assert.equal(torn.status, 'ok');
+  assert.equal(torn.partial, true);
+  assert.equal(torn.unreadable_lines, 1);
+  writeFileSync(file, `${launch('2026-10-31T01:00:00Z', 'A', '0.250000')}\n\n`);
+  assert.equal(costField(file, SINCE, UNTIL).partial, undefined, 'blank lines are not unreadable');
   // a log that exists but holds no run in the shift is a measured zero
   writeFileSync(file, `${launch('2026-09-01T02:00:00Z', 'A', '5.000000')}\n`);
   const none = costField(file, SINCE, UNTIL);
