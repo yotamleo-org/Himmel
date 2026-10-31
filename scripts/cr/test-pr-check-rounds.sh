@@ -106,6 +106,17 @@ cat > "$tmp/bin/gh" <<'STUB'
 # review-round.sh resolves the branch's PR by --head to bind a
 # judge record (`--json number`; clear-cr-marker asks for number,headRefOid).
 if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${3:-}" = --head ]; then
+    # GH_PR_JSON is the open-PR list itself: the caller's own -q filter runs on
+    # it, as gh would, so "two open PRs" is answered by the real query.
+    if [ -n "${GH_PR_JSON:-}" ]; then
+        q=""
+        while [ $# -gt 0 ]; do
+            [ "$1" = -q ] && q="$2"
+            shift
+        done
+        printf '%s' "$GH_PR_JSON" | jq -r "$q"
+        exit $?
+    fi
     for arg in "$@"; do
         if [ "$arg" = number ]; then
             [ "${GH_PR_RC:-0}" = 0 ] || exit "$GH_PR_RC"
@@ -367,21 +378,183 @@ early_run 2 'docs/guide/x.md' "$early_sug$early_crit" GH_X=1
 assert_eq "$early_rc" 4 "7345 a round-2 non-trust PR with an open Critical does not close early ($early_out)"
 assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 an open Critical at round 2 defers nothing"
 assert_eq "$(early_marker)" kept "7345 an open Critical at round 2 keeps the marker"
+# 8425: with no open PR the local trust mode answers; this repo has no main
+# branch to read the list from, so the check refuses and the cap holds.
 early_run 2 'docs/guide/x.md' "$early_sug" GH_PR_NONE=1
-assert_eq "$early_rc" 2 "7345 a round-2 branch with no open PR does not close early"
-assert_has "$early_out" 'one open PR' "7345 the no-PR refusal says it needs an open PR"
-assert_eq "$(early_marker)" kept "7345 a round-2 branch with no open PR keeps the marker"
+assert_eq "$early_rc" 2 "8425 a no-PR branch whose default branch has no trust list does not close early"
+assert_has "$early_out" 'a trust-path answer of none for branch recovery, and the check said: refused list cannot read branch main' "8425 the no-PR refusal comes from the local trust check ($early_out)"
+assert_eq "$(early_marker)" kept "8425 a no-PR branch the local check refuses keeps the marker"
 early_run 2 'docs/guide/x.md' "$early_sug" GH_PR_HEAD=0000000000000000000000000000000000000000
 assert_eq "$early_rc" 2 "7345 a PR whose head is not the reviewed head does not close early"
 assert_eq "$(early_marker)" kept "7345 a PR whose head moved keeps the marker"
 early_run 1 'docs/guide/x.md' "$early_sug" GH_X=1
-assert_eq "$early_rc" 2 "7345 round 1 never closes early"
-assert_eq "$(early_marker)" kept "7345 round 1 keeps the marker"
+assert_eq "$early_rc" 0 "8425 a non-trust PR at round 1 with only Suggestions closes the loop ($early_out)"
+assert_eq "$(early_marker)" cleared "8425 the round-1 early close on a PR clears the marker"
+early_run 0 'docs/guide/x.md' "$early_sug" GH_X=1
+assert_eq "$early_rc" 2 "8425 a branch with no counted round never closes early"
+assert_eq "$(early_marker)" kept "8425 a branch with no counted round keeps the marker"
 early_ref="$(cat "$HERE/pr-check-ref/50-step5-decision.md")"
 assert_has "$early_ref" 'Fix the whole round in ONE commit and ONE push' "7345 the pr-check decision step says one commit and one push per round"
 assert_has "$(cat "$HERE/../../docs/handover/worker-preface.md")" 'One push per review round' "7345 the worker preface says one push per review round"
-assert_has "$early_ref" 'Suggestions-only round 2 or later' "7345 the pr-check decision step states the Suggestions-only early close"
+for early_ref_file in 40-step4-crosscheck.md 48-step4.8-threads.md 50-step5-decision.md; do
+    assert_has "$(cat "$HERE/pr-check-ref/$early_ref_file")" 'closes at round 1' "8425 ref $early_ref_file says a Suggestions-only round closes at round 1"
+    assert_lacks "$(cat "$HERE/pr-check-ref/$early_ref_file")" 'round 2 or later' "8425 ref $early_ref_file no longer says round 2 or later"
+done
 assert_has "$early_ref" 'ci-trust-paths.txt' "7345 the early close names the trust-path exclusion"
+
+# A Suggestion-only first round closes early. Any gh answer
+# but exactly one open PR takes trust_path_check's local-git mode, which reads
+# the trust list from the default branch (main), never from the branch.
+rl1_repo="$tmp/rl1-repo"
+mkdir -p "$rl1_repo"
+(
+    fixture_enter_git_init_dir "$rl1_repo" || exit 1
+    git -c init.defaultBranch=main init -q
+    git config user.email t@t.test
+    git config user.name tester
+    git config commit.gpgsign false
+    mkdir -p scripts/ci scripts/cr docs/guide
+    cp "$HERE/../ci/ci-trust-paths.txt" scripts/ci/ci-trust-paths.txt
+    printf 'base\n' > docs/guide/x.md
+    printf 'base\n' > scripts/cr/review-round.sh
+    git add -A
+    git commit -q -m 'chore: [HIMMEL-1] base'
+    git checkout -q -b feat/rl1
+    printf 'one\n' >> docs/guide/x.md
+    git commit -q -am 'feat: [HIMMEL-700] first change'
+    printf 'two\n' >> docs/guide/x.md
+    git commit -q -am 'fix: [HIMMEL-800] second change'
+    git checkout -q -b feat/rl1-onekey main
+    printf 'one\n' >> docs/guide/x.md
+    git commit -q -am 'feat: [HIMMEL-900] the only key'
+    git checkout -q -b feat/rl1-nokey main
+    printf 'one\n' >> docs/guide/x.md
+    git commit -q -am 'chore: no ticket key'
+    git checkout -q -b feat/rl1-trust main
+    printf 'one\n' >> scripts/cr/review-round.sh
+    git commit -q -am 'feat: [HIMMEL-700] trust change'
+    git checkout -q -b feat/rl1-exempt feat/rl1-trust
+    grep -v -e '^\^scripts/ci/$' -e '^\^scripts/cr/(write-verdicts' scripts/ci/ci-trust-paths.txt > list.tmp
+    mv list.tmp scripts/ci/ci-trust-paths.txt
+    git commit -q -am 'feat: [HIMMEL-700] drop my own trust patterns'
+) || { printf 'FAIL - rl1 fixture setup\n' >&2; exit 1; }
+rl1_git="$rl1_repo/.git"
+rl1_log="$tmp/rl1-jira.log"
+: > "$rl1_log"
+rl1_sug='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-1","severity":"sug","class":"reader-allowlist"}
+{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-2","severity":"nit"}
+'
+rl1_crit='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-3","severity":"crit","class":"reader-allowlist"}
+'
+rl1_run() { # rl1_run <branch> <round> <ledger rows> [<env assignment>...]
+    rl1_branch="$1"
+    git -C "$rl1_repo" checkout -q "$rl1_branch"
+    rl1_head="$(git -C "$rl1_repo" rev-parse HEAD)"
+    mkdir -p "$rl1_git/cr-review-rounds/feat" "$rl1_git/cr-pending/feat"
+    printf '%s\n' "$2" > "$rl1_git/cr-review-rounds/$rl1_branch.round"
+    printf '%s' "$3" | sed "s#@HEAD@#$rl1_head#g; s#@BR@#$rl1_branch#g" > "$rl1_git/cr-critic-scores.jsonl"
+    printf 'pending\n' > "$rl1_git/cr-pending/$rl1_branch"
+    shift 3
+    rl1_rc=0
+    rl1_out="$(cd "$rl1_repo" && env RECOVERY_JIRA_LOG="$rl1_log" GH_PR_NONE=1 "$@" \
+        bash "$fx/scripts/cr/review-round.sh" defer --branch "$rl1_branch" --head "$rl1_head" 2>&1 </dev/null)" || rl1_rc=$?
+    rl1_ledger="$(cat "$rl1_git/cr-critic-scores.jsonl")"
+}
+rl1_marker() { if [ -e "$rl1_git/cr-pending/$rl1_branch" ]; then printf kept; else printf cleared; fi; }
+rl1_creates() { grep -c '"create"' "$rl1_log" | tr -d ' '; }
+rl1_key() { cat "$rl1_git/cr-review-rounds/$rl1_branch.deferred-to" 2>/dev/null; }
+
+rl1_run feat/rl1 1 "$rl1_sug"
+assert_eq "$rl1_rc" 0 "8425 a round-1 Suggestion-only close with no open PR succeeds ($rl1_out)"
+assert_has "$rl1_ledger" '"verdict":"deferred"' "8425 the round-1 close writes a deferred row"
+assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8425 the round-1 close defers to the batch residual"
+assert_has "$rl1_ledger" "\"reason\":\"$early_reason\"" "8425 the round-1 close keeps the early-close reason byte-identical"
+assert_eq "$(rl1_marker)" cleared "8425 the round-1 close clears the marker"
+assert_eq "$(rl1_creates)" 1 "8425 one batch residual is filed for the round's two findings"
+rl1_args="$(cat "$rl1_log")"
+assert_has "$rl1_args" '"--title","Review follow-ups for feat/rl1"' "8425 the batch residual is titled for the branch"
+assert_has "$rl1_args" '"--residual-of","HIMMEL-700"' "8425 with no PR and two keys the parent is the first commit's key"
+assert_has "$rl1_args" '"--fu-class","polish"' "8425 the batch carries its most severe class"
+assert_has "$(cat "$rl1_log.body")" '1. critic-1 (class: reader-allowlist)' "8425 the batch body lists the first finding with its class"
+assert_has "$(cat "$rl1_log.body")" '2. critic-2 (class: unclassified)' "8425 the batch body lists a classless finding as unclassified"
+assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the batch key is remembered in .deferred-to"
+
+rl1_run feat/rl1 2 "$(printf '%s' "$rl1_sug" | sed 's/critic-1/critic-4/; s/critic-2/critic-5/')"$'\n'
+assert_eq "$rl1_rc" 0 "8425 a second early close on the branch succeeds ($rl1_out)"
+assert_eq "$(rl1_creates)" 1 "8425 two closes on one branch file one ticket"
+assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8425 the second close reuses the remembered key"
+
+for rl1_gh in 'GH_PR_JSON=[{"number":1},{"number":2}]' GH_PR_RC=1; do
+    rl1_run feat/rl1 1 "$rl1_sug" "$rl1_gh"
+    assert_eq "$rl1_rc" 0 "8425 $rl1_gh takes the local trust mode and closes ($rl1_out)"
+    assert_has "$rl1_ledger" '"verdict":"deferred"' "8425 $rl1_gh close writes a deferred row"
+done
+
+rl1_run feat/rl1 1 "$rl1_sug$rl1_crit"
+assert_eq "$rl1_rc" 4 "8425 an open Critical at round 1 still blocks ($rl1_out)"
+assert_has "$rl1_out" 'remain blocking at round 1' "8425 the round-1 Critical refusal says it remains blocking"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 an open Critical at round 1 writes no deferred row"
+assert_eq "$(rl1_marker)" kept "8425 an open Critical at round 1 keeps the marker"
+
+# S5: a reset moves the key aside, so the next early close files a new batch.
+cat > "$tmp/bin/rl1-reset-gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' '{"headRefName":"feat/rl1","isCrossRepository":false,"state":"OPEN"}'
+STUB
+chmod +x "$tmp/bin/rl1-reset-gh"
+rl1_reset_out="$(env -u CLAUDECODE CR_RESET_PRIMARY="$rl1_repo" CR_RESET_GH="$tmp/bin/rl1-reset-gh" \
+    CR_RESET_LOCK_LIB="$HERE/../lib/shared-branch-lock.sh" bash "$HERE/cr-reset.sh" 7 2>&1)" || fail "8425 cr-reset runs ($rl1_reset_out)"
+assert_has "$rl1_reset_out" '.deferred-to' "8425 cr-reset moves .deferred-to aside"
+assert_eq "$(rl1_key)" "" "8425 after cr-reset the branch has no remembered key"
+rl1_run feat/rl1 1 "$rl1_sug"
+assert_eq "$rl1_rc" 0 "8425 the first early close after a reset succeeds ($rl1_out)"
+assert_eq "$(rl1_creates)" 2 "8425 after a reset the next early close files a new batch residual"
+
+# S5: a round-1 start removes the key.
+assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the post-reset close remembers its new key"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.round"
+(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" start --branch feat/rl1 --head "$rl1_head" >/dev/null 2>&1) \
+    || fail "8425 a round-1 start runs"
+assert_eq "$(rl1_key)" "" "8425 a round-1 start removes .deferred-to"
+
+rl1_run feat/rl1-onekey 1 "$rl1_sug"
+assert_eq "$rl1_rc" 0 "8425 a one-key branch closes at round 1 ($rl1_out)"
+assert_has "$(tail -n 1 "$rl1_log")" '"--residual-of","HIMMEL-900"' "8425 one key in the commit subjects gives that parent"
+: > "$rl1_log"
+rl1_run feat/rl1-nokey 1 "$rl1_sug"
+assert_eq "$rl1_rc" 6 "8425 no key in the PR title or the commit subjects falls back to the per-finding refusal ($rl1_out)"
+assert_has "$rl1_out" 'no parent ticket' "8425 the no-key refusal says it found no parent ticket"
+assert_eq "$(rl1_creates)" 0 "8425 the no-key branch files nothing"
+assert_eq "$(rl1_marker)" kept "8425 the no-key branch keeps the marker"
+
+# I5: a trust-path branch never closes early, even when it drops its own
+# patterns from its copy of the list, and whatever gh says about its PRs. The
+# fixture anchor is at its origin's HEAD so the check reaches the hit.
+git -C "$fx" -c init.defaultBranch=main init -q
+git -C "$fx" -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q --allow-empty -m anchor
+git -c init.defaultBranch=main init -q --bare "$tmp/fx-origin.git"
+git -C "$fx" remote add origin "$tmp/fx-origin.git"
+git -C "$fx" push -q origin main
+: > "$rl1_log"
+while read -r rl1_b rl1_r rl1_env; do
+    rl1_run "$rl1_b" "$rl1_r" "$rl1_sug" "$rl1_env"
+    rl1_spec="$rl1_b round $rl1_r $rl1_env"
+    assert_eq "$rl1_rc" 2 "8425 trust branch $rl1_spec does not close early ($rl1_out)"
+    assert_has "$rl1_out" 'touches trust path scripts/' "8425 trust branch $rl1_spec is refused on a trust-path hit"
+    assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 trust branch $rl1_spec writes no deferral"
+    assert_eq "$(rl1_marker)" kept "8425 trust branch $rl1_spec keeps the marker"
+done <<'ROWS'
+feat/rl1-trust 1 GH_X=1
+feat/rl1-trust 2 GH_X=1
+feat/rl1-trust 3 GH_X=1
+feat/rl1-exempt 1 GH_X=1
+feat/rl1-exempt 2 GH_X=1
+feat/rl1-exempt 3 GH_X=1
+feat/rl1-trust 1 GH_PR_JSON=[{"number":1},{"number":2}]
+feat/rl1-trust 1 GH_PR_RC=1
+ROWS
+assert_eq "$(rl1_creates)" 0 "8425 a trust branch files no residual"
+rm -rf "$fx/.git" "$tmp/fx-origin.git"
 if [ "${1:-}" = --residual-recovery-only ]; then
     printf 'residual recovery: %s failure(s)\n' "$fails"
     [ "$fails" -eq 0 ]
