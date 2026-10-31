@@ -315,17 +315,18 @@ cp "$HERE/../../cr/critics.json" "$RR/scripts/cr/critics.json"
 printf '#!/bin/sh\n' > "$RR/scripts/cr/critic-x.sh"
 cat > "$RR/scripts/cr/critic-panel.sh" <<'EOF'
 #!/usr/bin/env bash
-cat >/dev/null
+cmp -s - diff.patch || exit 9
 [ -z "${STUB_DIRTY:-}" ] || printf '# mid-sweep\n' >> "$(dirname "$0")/critic-x.sh"
 printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
 EOF
 printf '__pycache__/\n' > "$RR/.gitignore"
 rr() { git -C "$RR" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
 git init -q "$RR" && rr add -A && rr commit -q -m base
-REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr1" --no-ledger >/dev/null 2>&1; rc=$?
+REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr1" --no-ledger >/dev/null 2>&1; rc=$?
 eq "run: a sweep of a clean tree through its own panel exits 0" "$rc" "0"
+eq "run: every panel call read its case's diff on stdin and exited 0" "$(cat "$TMP/run-rr1/"case-*.rc | sort -u | tr '\n' ' ')" "0 "
 eq "run: a sweep of a clean tree through its own panel is stamped clean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr1/swept.json" 2>&1)" "True"
-STUB_DIRTY=1 REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger >/dev/null 2>&1
+STUB_DIRTY=1 REVIEW_PANEL_CMD='' REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger >/dev/null 2>&1
 eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
 # --- the merge gate: cbs.txt, cbs-hash, export-row, verify-row, gate -------------------------
