@@ -1307,6 +1307,7 @@ pkg="${last#https://registry.npmjs.org/}"; pkg="${pkg%/latest}"
 case "$last" in https://pypi.org/pypi/*) pkg="${last#https://pypi.org/pypi/}"; pkg="${pkg%/json}"
   ver=$(grep -E "^${pkg}=" "$PINSTATE/pypi" 2>/dev/null | head -1 | cut -d= -f2); [ -n "$ver" ] || exit 22
   printf '{"info":{"version":"%s"}}\n' "$ver"; exit 0 ;; esac
+case "$last" in https://nodejs.org/dist/index.json) [ -n "${NODE_INDEX:-}" ] || exit 22; printf '%s\n' "$NODE_INDEX"; exit 0 ;; esac
 ver=$(grep -E "^${pkg}=" "$PINSTATE/npm" 2>/dev/null | head -1 | cut -d= -f2)
 [ -n "$ver" ] || ver="${PINSTATE_DEFAULT:-}"
 [ -n "$ver" ] || exit 22
@@ -1467,6 +1468,24 @@ done
 nvmrc="$(head -1 "$ROOT/.nvmrc")"
 grepq "$cov_out" -E "^  node:node $nvmrc \([^)]*\.nvmrc" || lit_missing="$lit_missing .nvmrc"
 if [ -z "$lit_missing" ]; then ok "pin-scan discovers every installer, runner and tool version literal"; else bad "pin-scan missed literals:$lit_missing"; fi
+# Literal rows: node compares to the newest LTS (never a Current-only major),
+# a tag_prefix is stripped, and a missing literal is UNCHECKED, never CURRENT.
+mkdir -p "$W12/lit/scripts/upstreams"
+printf '24\n' > "$W12/lit/.nvmrc"
+printf '#!/usr/bin/env bash\n  export BUN_VERSION="1.4.4"\n' > "$W12/lit/x.sh"
+cat > "$W12/lit/scripts/upstreams/literal-pins.json" <<'JSON'
+{"pins":[
+  {"file":".nvmrc","var":null,"eco":"node","key":"node"},
+  {"file":"x.sh","var":"BUN_VERSION","eco":"gh","key":"oven-sh/bun","tag_prefix":"bun-v"},
+  {"file":"x.sh","var":"GONE_VERSION","eco":"gh","key":"owner/gone"}
+]}
+JSON
+printf 'oven-sh/bun=bun-v1.5.0\n' >> "$W12/state/rel"
+lit_out="$(PINSTATE="$W12/state" PATH="$W12/bin:$PATH" NODE_INDEX='[{"version":"v27.0.0","lts":false},{"version":"v26.13.0","lts":"Krypton"}]' \
+  python3 "$ROOT/scripts/upstreams/pin-scan.py" "$W12/lit" "" 2>&1)"
+if grepq "$lit_out" -F 'node:node 24 (.nvmrc): BEHIND   (latest v26.13.0'; then ok "pin-scan: node literal compares to the newest LTS"; else bad "node literal not compared to LTS; $lit_out"; fi
+if grepq "$lit_out" -F 'gh:oven-sh/bun 1.4.4 (x.sh): BEHIND   (latest 1.5.0'; then ok "pin-scan: tag_prefix stripped before comparing"; else bad "bun tag prefix not stripped; $lit_out"; fi
+if grepq "$lit_out" -F 'gh:owner/gone ? (x.sh): ? no resolvable current version'; then ok "pin-scan: missing literal reads UNCHECKED"; else bad "missing literal not UNCHECKED; $lit_out"; fi
 rm -rf "$W12" "$PIN_EMPTY"
 
 # 13. Non-semver tag streams + git-subdir sources. Hermetic: a
