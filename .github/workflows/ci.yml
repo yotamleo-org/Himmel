@@ -1245,11 +1245,11 @@ jobs:
       # or a documented flag the CLI refuses, and exits 0 so no PR fails yet.
       # Drop --warn from both steps (and run the base copy of the scripts, as the
       # gates above do) once the v1.1.3 rename batches have merged.
+      # The checkout is the PR merge ref, so HEAD^1 is the current base tip; the event
+      # base.sha can lag it and would count lines main gained as this PR's.
       - name: rename diff gate (PR range, report mode)
         if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: bash scripts/ci/check-rename-diff.sh --warn "$BASE_SHA"
+        run: bash scripts/ci/check-rename-diff.sh --warn HEAD^1
       - name: doc literals check (report mode)
         run: bash scripts/ci/check-doc-literals.sh --warn
       - name: platform-dropped lint (PR range)

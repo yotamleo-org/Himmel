@@ -98,6 +98,7 @@ run_case "unrelated added line next to an old name" 0 base.sh 'another plain lin
 git -C "$repo" checkout -q -B case "$base"
 grep -v 'ZZOLD_ONE' "$repo/base.sh" > "$tmp/base.new" && cp "$tmp/base.new" "$repo/base.sh"
 git -C "$repo" add -A && git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "delete the old name"
+if [ "$(git -C "$repo" rev-parse HEAD)" = "$base" ]; then fail "deletion fixture: the commit did not move HEAD past base"; fi
 out=$(cd "$repo" && bash "$GATE" --registry "$reg" "$base" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "deleting an old name is clean (rc=0)"; else fail "deleting an old name: rc=$rc $out"; fi
 

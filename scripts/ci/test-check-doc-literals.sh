@@ -93,8 +93,17 @@ git -C "$repo" rm -rfq --ignore-unmatch . >/dev/null 2>&1
 mkdir -p "$repo/docs"
 printf 'tick.sh --doc d\n' > "$repo/docs/a.md"
 git -C "$repo" add -A
+if [ "$(git -C "$repo" ls-files docs/a.md)" != "docs/a.md" ]; then fail "broken-scan fixture: docs/a.md is not tracked"; fi
 out=$(PATH="$tmp/badbin:$PATH" bash "$GATE" --root "$repo" --warn 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "failing awk exits 2 even with --warn (rc=2)"; else fail "failing awk: want rc=2 got rc=$rc: $out"; fi
+
+echo "== a tracked file missing from the work tree is skipped, not a failed scan =="
+printf 'plain\n' > "$repo/docs/z.md"
+git -C "$repo" add -A
+rm -f "$repo/docs/z.md"
+if [ "$(git -C "$repo" ls-files docs/z.md)" != "docs/z.md" ]; then fail "missing-file fixture: docs/z.md is not tracked"; fi
+out=$(bash "$GATE" --root "$repo" --warn 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "a missing last file does not fail the scan (rc=0)"; else fail "a missing last file: want rc=0 got rc=$rc: $out"; fi
 
 echo "== declared accept lists match each CLI's own source =="
 sorted() { tr ' ' '\n' | grep -E '^--' | sort | uniq | tr '\n' ' '; }

@@ -75,7 +75,7 @@ table="$(accept_table)"
 out=$(git -C "$root" -c core.quotePath=false ls-files -z -- 'docs/*.md' ':(glob)marketplace/**/SKILL.md' '.claude/commands/*.md' \
     | { while IFS= read -r -d '' f; do
             case "$f" in docs/migration/*|docs/release/*) continue ;; esac
-            [ -f "$root/$f" ] && printf '%s\0' "$f"
+            if [ -f "$root/$f" ]; then printf '%s\0' "$f"; fi
         done; } \
     | (cd "$root" && ACCEPT_TABLE="$table" xargs -0 awk '
 BEGIN {
