@@ -3196,7 +3196,7 @@ check "94c a malformed manifest writes no history file" "$([ -e "$root/tester/tr
 
 # 94d: a malformed span of an open worker is kept (the tick reads MALFORMED), a closed worker's is dropped.
 # shellcheck disable=SC2016  # literal fixture text
-seed94 trim94d 'legs: `N1:n-one:lock-one:11` `N2:n-two:lock-two` `C1:nonce-closed-1:lock-closed-1:1` (prose)' "$man94"
+seed94 trim94d 'legs: `N1:n-one:lock-one:11` `N2:n-two:lock-two` `C1:nonce-closed-1:lock-closed-1:1` (prose) `procs:2`' "$man94"
 doc94dB="$root/tester/trim94ddst/DEMO-nextleg-${today}B-chief.md"
 # shellcheck disable=SC2016  # literal fixture text
 check "94d the malformed span of an open worker is kept" "$(grep -cF '`N2:n-two:lock-two`' "$doc94dB" 2>/dev/null)" "1"

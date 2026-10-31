@@ -1838,7 +1838,7 @@ open_legs_block() {
         [ -n "$span" ] || continue
         label="${span#\`}"; label="${label%%:*}"
         case "$NL$names$NL" in *"$NL$label$NL"*) spans="$spans$span "; seen=1 ;; esac
-        [[ "$span" =~ $entry_re ]] && seen=1
+        if [[ "$span" =~ $entry_re ]]; then seen=1; fi
     done < <(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`')
     [ "$seen" -eq 1 ] || { printf '%s\n' "$block"; return 0; }  # no worker span (a placeholder or `none`): nothing to trim
     pools="$(printf '%s\n' "$block" | grep '^pool-disposition:')" || pools=""  # swallow-ok: no pool-disposition line is the common case
