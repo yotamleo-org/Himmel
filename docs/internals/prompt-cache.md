@@ -229,7 +229,8 @@ claude-api shim) read 3 % over 442 runs on one organization (19.5 M tokens writt
   alike is not promoted to the system role), goes once as a `system` block with
   `cache_control` `{type: ephemeral, ttl: 1h}`
   and each chunk goes alone as the user message. A batch runs long, and the 1 h
-  write (2× input) pays back once the items share it (read 0.1×). The `custom_id`
+  write (2× input) pays back once the items share it (read 0.1×, or 0.05× on
+  Sonnet 5.5 and Opus 5.5). The `custom_id`
   and the hash check still cover the whole recorded text; prefix plus chunk
   rebuilds it byte for byte. It fails closed to the unsplit prompt for a lone
   prompt, no instruction boundary in the shared head, a prefix under 4000

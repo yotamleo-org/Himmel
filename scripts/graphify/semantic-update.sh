@@ -442,7 +442,7 @@ if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= 
   echo "claude-api shim: WARN: run spend $spent is past the planned cap $GRAPHIFY_SEMANTIC_RUN_CAP USD; the call goes on" >&2
 fi
 in="$here/lane-in.$$"
-cat > "$in"
+cat > "$in" || { rm -f "$in"; echo "claude-api shim: could not capture the prompt; not dispatching this chunk" >&2; exit 1; }
 # The addendum is fixed text, so it goes ahead of the chunk, right after graphify's instructions, where every call
 # shares it; when graphify's "Now extract" line is not found it is appended at the end as before.
 mark="$(grep -n -m1 '^Now extract the knowledge graph from the following source file' "$in" | cut -d: -f1)"

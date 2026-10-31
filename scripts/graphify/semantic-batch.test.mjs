@@ -172,7 +172,7 @@ test('no shared prefix: a lone prompt, or prompts that share too little, go unsp
   assert.ok(seen.posts[0].requests.every((r) => r.params.system === undefined), 'a prefix below the cache minimum is not worth a system block');
 });
 
-test('cost: an hour-tier cache write bills at 2 x input, a read at 0.1 x', async () => {
+test('cost: an hour-tier cache write bills at 2 x input, a read at 0.05 x on Sonnet 5.5', async () => {
   reset();
   stub.usage = { input_tokens: 100, output_tokens: 500, cache_creation_input_tokens: 1000, cache_read_input_tokens: 2000,
     cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1000 } };
@@ -181,8 +181,8 @@ test('cost: an hour-tier cache write bills at 2 x input, a read at 0.1 x', async
   stub.status = 'ended';
   assert.equal((await f.client('poll', '--dir', f.batch)).code, 0);
   const r = await f.client('results', '--dir', f.batch, '--out', join(f.dir, 'res'));
-  // (100 + 2 x 1000 + 0.1 x 2000) x $1/M + 500 x $5/M = $0.0048 per request, two requests succeed
-  assert.equal(JSON.parse(r.stdout).cost_usd, '0.009600');
+  // (100 + 2 x 1000 + 0.05 x 2000) x $1/M + 500 x $5/M = $0.0047 per request, two requests succeed
+  assert.equal(JSON.parse(r.stdout).cost_usd, '0.009400');
 });
 
 // fixtures/batch-result-line.json is the first line the live Batches API returned for a 5-request sample batch

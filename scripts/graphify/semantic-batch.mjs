@@ -27,13 +27,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API = 'https://api.anthropic.com';
 const ID = /^[a-f0-9]{64}$/;
-// Batch price, USD per million tokens (input, output): half the list price. Cache reads bill at 0.1 x input,
-// 5-minute cache writes at 1.25 x input, 1h cache writes at 2 x input.
+// Batch price, USD per million tokens (input, output, cache-read multiplier of input): half the list price. Cache reads
+// bill at 0.1 x input (0.05 x on Sonnet 5.5 and Opus 5.5), 5-minute cache writes at 1.25 x input, 1h cache writes at 2 x.
 // ponytail: a hand-kept table of the models graphify extraction uses, from the docs 2026-10-23; an unlisted model is
 // refused rather than priced by guess. Upgrade path: read the price from the provider's cost report.
 const PRICE = {
-  'claude-sonnet-5-5': [1, 5], 'claude-sonnet-5': [1, 5], 'claude-sonnet-4-6': [1.5, 7.5],
-  'claude-haiku-5-5': [0.05, 0.25], 'claude-opus-5-5': [2, 10],
+  'claude-sonnet-5-5': [1, 5, 0.05], 'claude-sonnet-5': [1, 5], 'claude-sonnet-4-6': [1.5, 7.5],
+  'claude-haiku-5-5': [0.05, 0.25], 'claude-opus-5-5': [2, 10, 0.05],
 };
 const ALIAS = { sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5', opus: 'claude-opus-5-5' };
 const EFFORT = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -45,7 +45,7 @@ const refuse = (m, code = 2) => { throw new Refusal(code, m); };
 
 // Every chunk prompt opens with graphify's fixed extraction instructions, so the prompts of one batch share a long
 // prefix. It goes once as a cached system block and each chunk alone as the user message. A batch runs
-// long, so the block asks for the 1h tier (write 2 x input, read 0.1 x), which pays once items share it.
+// long, so the block asks for the 1h tier (write 2 x input, read a tenth or less), which pays once items share it.
 // The system block ends where graphify's instructions end (its "Now extract ..." paragraph), never later: source text
 // that happens to open every chunk alike stays in the user message and is not promoted to the system role.
 // Fails closed to the unsplit prompt, which is still correct: a lone prompt, no instruction boundary in the shared
@@ -179,12 +179,12 @@ async function poll(o) {
 }
 
 function cost(model, u) {
-  const [pin, pout] = PRICE[model];
+  const [pin, pout, readMult = 0.1] = PRICE[model];
   // a cache write bills 1.25 x input at the 5-minute tier and 2 x at the 1h tier; the split is in usage.cache_creation
   const write = u.cache_creation
     ? 1.25 * (u.cache_creation.ephemeral_5m_input_tokens ?? 0) + 2 * (u.cache_creation.ephemeral_1h_input_tokens ?? 0)
     : 1.25 * (u.cache_creation_input_tokens ?? 0);
-  const inTok = (u.input_tokens ?? 0) + write + 0.1 * (u.cache_read_input_tokens ?? 0);
+  const inTok = (u.input_tokens ?? 0) + write + readMult * (u.cache_read_input_tokens ?? 0);
   return (inTok * pin + (u.output_tokens ?? 0) * pout) / 1e6;
 }
 

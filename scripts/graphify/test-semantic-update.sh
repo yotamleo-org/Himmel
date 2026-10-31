@@ -491,9 +491,11 @@ out=$(GRAPHIFY_STUB_PROMPT='SCHEMA TEXT\n\n---\nNow extract the knowledge graph 
 lane=$(grep '^lane ' "$WS/calls.log" | head -1)
 [ "$rc" -eq 0 ] && pass "T37b exit 0" || fail "T37b exit 0 (got $rc): $out"
 grep -qx 'lane-kind=graphify' "$WS/calls.log" && pass "T37b lane kind is graphify" || fail "T37b kind: $(grep lane-kind "$WS/calls.log")"
+ADD37B="$(sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d' | tr '\n' ' ')"
+[ "${#ADD37B}" -gt 200 ] && pass "T37b positive control: the addendum text was read from the script" || fail "T37b addendum text not read from the script (${#ADD37B} chars)"
 case "$lane" in
-  *"stdin=SCHEMA TEXT "*"ADDITIONAL REQUIREMENTS"*"Now extract the knowledge graph"*"CHUNK BODY"*) pass "T37b addendum precedes the chunk" ;;
-  *) fail "T37b prompt order: $lane" ;;
+  *"stdin=SCHEMA TEXT "*"$ADD37B"*"Now extract the knowledge graph"*"CHUNK BODY"*) pass "T37b the whole addendum sits between the instructions and the chunk" ;;
+  *) fail "T37b prompt order or addendum text: $lane" ;;
 esac
 
 echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or lane call)"
