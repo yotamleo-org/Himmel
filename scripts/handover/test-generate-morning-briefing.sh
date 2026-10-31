@@ -793,7 +793,7 @@ SH_OUT1="$SH_DIR/r-10-28.md"; SH_OUT2="$SH_DIR/r-10-29.md"
 SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-28 run_script --since "$MARKER" --out "$SH_OUT1" >/dev/null
 printf '%s\n' "$ROW_DAY" >> "$SH_FILE"
 SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_OUT2" >/dev/null
-r1=$(cat "$SH_OUT1"); r2=$(cat "$SH_OUT2")
+r1=$(cat "$SH_OUT1"); r2=$(cat "$SH_OUT2") # read-sink-ok: both files are this suite's own outputs under its temp dir
 assert_contains "shifts: the late-closed night shift is in the first report" "2026-10-27T20:00:00+01:00" "$r1"
 if grepq "$r2" -F -- "2026-10-27T20:00:00+01:00"; then fail "shifts: the night shift is not counted again in the next report"; else pass "shifts: the night shift is not counted again in the next report"; fi
 assert_contains "shifts: the day shift written later is in the next report" "2026-10-28T08:00:00+01:00" "$r2"
@@ -801,7 +801,7 @@ if grepq "$r1" -F -- "2026-10-28T08:00:00+01:00"; then fail "shifts: the day shi
 SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-28 run_script --since "$MARKER" --out "$SH_OUT1" >/dev/null
 if grepq "$(cat "$SH_OUT1")" -F -- "2026-10-28T08:00:00+01:00"; then fail "shifts: re-running an older day does not take a later shift"; else pass "shifts: re-running an older day does not take a later shift"; fi
 SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_OUT2" >/dev/null
-assert_contains "shifts: re-running the same day keeps its shift" "2026-10-28T08:00:00+01:00" "$(cat "$SH_OUT2")"
+assert_contains "shifts: re-running the same day keeps its shift" "2026-10-28T08:00:00+01:00" "$(cat "$SH_OUT2")" # read-sink-ok: this suite's own output under its temp dir
 printf '%s\n' "$ROW_EVE" >> "$SH_FILE"
 SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-29 run_script --dry-run --since "$MARKER" >/dev/null
 SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-30 run_script --since "$MARKER" --out "$SH_DIR/r-10-30.md" >/dev/null

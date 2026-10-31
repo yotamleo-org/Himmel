@@ -97,6 +97,7 @@ This is the full set, each mapped to the code that handles it:
 | Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
+| Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
 | Kanban move, card theme | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` |
 
 ```bash
