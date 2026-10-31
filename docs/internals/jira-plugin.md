@@ -30,7 +30,7 @@ For Jira ops in this repo, default to the local CLI at
 |-------------|-----------------------------------------------------------------------------|------------------------------------------------------------------|
 | Get         | `node scripts/jira/dist/index.js get HIMMEL-N` (default includes description body, a `Labels:` line when the issue has any, and a `Fix versions:` line when it has any; add `--short` for header-only) | `getJiraIssue`                                                   |
 | List/search | `... list --jql "..."`; `... list --label <l>` filters by label (composed into the built JQL, `--jql` still wins); `... list --labels` appends each issue's labels as a trailing comma-separated column (off by default — on by default would break fixed-column consumers of the TSV output) | `searchJiraIssuesUsingJql`                                       |
-| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0] [--affects-version v1.0.0\|current]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it needs a placement: `--backlog`, `--gate critical\|regression` or `--priority Highest` (see "Bug placement" below); `--affects-version` is validated the same way and `current` resolves to the earliest unreleased version at call time) | `createJiraIssue`                                                |
+| Create      | `... create --type Story --title ... --desc ... [--labels a,b] [--fix-version v1.0.0] [--affects-version v1.0.0\|current]` (project auto-loaded from `.env`; pass `--project FOO` only to override per-call; `--labels` comma-separated; `--fix-version` validated against the project's versions — a Bug without it needs a placement: `--proposed-version <v>`, `--backlog --proposed-version backlog --why <why>`, `--gate critical\|regression` or `--priority Highest` (see "Bug placement" below); `--affects-version` is validated the same way and `current` resolves to the earliest unreleased version at call time) | `createJiraIssue`                                                |
 | Edit        | `... edit HIMMEL-N --title ... --desc ... [--labels a,b]` (`--labels` is FULL-REPLACE: the set becomes the complete label list — no MCP `editJiraIssue` fallback needed for labels) or `... edit HIMMEL-N --add-labels a,b` (APPENDS without reading/replacing the existing set, via Jira's atomic `update` operation; mutually exclusive with `--labels`); `... edit HIMMEL-N --fix-version v1.0.0` (FULL-REPLACE) or `--add-fix-version v1.0.0` (APPENDS via the same atomic `update` operation; mutually exclusive with `--fix-version`) — both validated against the project's versions, failing non-zero and naming the project on an unknown version name; into a frozen version either needs `--gate critical\|regression\|must:<ref>\|receipt` (or `--chief-override "<reason>"`) and appends the admissions ledger row (see Intake gate); `... edit HIMMEL-N --affects-version v1.0.0\|current` sets affectsVersion (FULL-REPLACE, same validation, read back after the PUT) | `editJiraIssue`                                                  |
 | Comment     | `... comment HIMMEL-N "text"` / `... comment HIMMEL-N --edit <commentId> "text"` (replace a comment's body, PUT) | `addCommentToJiraIssue` / `addOrEditJiraIssueComment`            |
 | Comments    | `... comments HIMMEL-N [--last N]` (read path; author/created/body oldest-first, ADF rendered to plain text) | (none — MCP has no comment read) |
@@ -299,8 +299,20 @@ stays claimed) and the judge HOLDs a sectorless request. A missing config.json o
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 
 **Bug placement (HIMMEL-6776).** `create --type Bug` without `--fix-version` is
-placed at filing, never defaulted silently. `--backlog` files it with the
-`backlog` label and no fixVersion. `--priority Highest` or a valid `--gate`
+placed at filing, never defaulted silently. `--proposed-version <v>` files it with a
+`proposed-<v>` label and no fixVersion and queues its INTAKE request toward `<v>` in the
+same call (HIMMEL-8170); `--backlog` alone is refused: it needs `--proposed-version backlog`
+and a one-line `--why`, and then files the `backlog` label with no fixVersion.
+`--proposed-version` cannot be combined with `--fix-version` or `--gate`, applies to a Bug, Task or
+Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
+is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) keeps its own routing.
+An unversioned create is refused before the POST when no release can take the INTAKE (no release declared, several
+declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
+says `Created <KEY> but INTAKE not queued` and exits 1.
+`next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<earliest version>`
+and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
+`# intake <m> for <version>: <keys>` line; the waiter's WAKE text names them and the INTAKE command.
+`--priority Highest` or a valid `--gate`
 (see the intake gate below) sets the earliest unreleased, unarchived version from the
 project's versions and prints one stderr line saying so (no readable unreleased
 version: filed with no fixVersion and a warning). With none of those the create

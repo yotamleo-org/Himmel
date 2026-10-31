@@ -30,7 +30,9 @@
 # lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth);
 # the RESUME rows need a worker source (--owners or --workers-from, plus the cloud-sessions.tsv
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
-# `,LOW` when the pool printed fewer rows than --top (the free-slot count); an empty
+# `,LOW` when the pool printed fewer rows than --top (the free-slot count); open tickets with no fixVersion
+# that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or proposed-<earliest version> (a ticket proposed to any other version or the backlog has its INTAKE queued and is excluded), or held by a worker or
+# open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line; an empty
 # pool prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
 # order, unclassified, collision-checked against held files), never dispatched from here.
 #
@@ -559,6 +561,13 @@ def load_platform_re():
     print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
 
 platform_re = load_platform_re()
+# a removal ticket names the dropped platform only to take it out: the windows-removal label, or a title that opens with a
+# removal verb (after an optional `prefix:`), says removal, or says `stop <gerund>` ("stop citing"); a removal verb elsewhere
+# ("<name> stops unexpectedly") is a bug report on the dropped platform and stays dropped
+REMOVAL_RE = re.compile(r'^(?:[^:]{0,40}:\s*)?(?:(?:remove|drop|delete|retire|strip|purge)\b|removal\b)|\bstops?\s+(?:citing|referencing|mentioning|supporting|using|shipping|handling|probing|detecting|testing)\b', re.I)
+
+def platform_dropped(i):
+    return bool(platform_re.search(i['title'])) and 'windows-removal' not in i['labels'] and not REMOVAL_RE.search(i['title'])
 # worker records: a To Do ticket whose worker wrapped with a resume brief is resumed, not redispatched
 workers = os.environ.get('ND_WORKERS', '')
 briefs = {}
@@ -647,7 +656,7 @@ def reaches_blocker_check(i):
     # the same gates the candidate loop applies before it looks at blockers, without its side effects
     return (i['status'] == 'To Do' and i['key'] not in briefs and i['type'] not in ('Epic', 'Sub-task') and i['key'] not in done_pending
             and not (i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I))
-            and not (platform_re.search(i['title']) and 'windows-removal' not in i['labels']))
+            and not platform_dropped(i))
 
 # every hard blocker of a candidate is read live, whatever the mirror says; so is every blocker of an in-work ticket (RESUME rows)
 live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
@@ -668,7 +677,7 @@ for i in issues.values():
     if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
         drop(i, 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))
         continue
-    if platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
+    if platform_dropped(i):
         skipped_platform.append(i['key'])
         drop(i, 'platform (windows/wsl title)')
         continue
@@ -823,7 +832,7 @@ for i in issues.values():
         continue
     if i['labels'] & excl or any('parked' in l for l in i['labels']):
         continue
-    if pool_only and platform_re.search(i['title']) and 'windows-removal' not in i['labels']:
+    if pool_only and platform_dropped(i):
         continue
     if pool_only and residual_out(i):
         continue
@@ -1048,7 +1057,18 @@ if pool_only:
         if not resume_only:
             emit_free([i for i in free if tier_of(i) == t])
     if not resume_only:
-        print('# pool=%d/%d%s' % (n, top, ',LOW' if n < top else ''))
+        # versionless operator work is the pool's blind spot: it is INTAKE, so the pool is never a bare LOW while it is open
+        intake = sorted((i['key'] for i in issues.values()
+                         if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
+                         and not any(l.startswith('residual-depth-') for l in i['labels'])
+                         and not any(l.startswith('proposed-') and l != 'proposed-' + str(first_ver) for l in i['labels'])
+                         and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
+                              or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner
+                              or (first_ver is not None and 'proposed-' + first_ver in i['labels']))),
+                        key=lambda k: int(k.split('-')[1]))
+        print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
+        if intake:
+            print('# intake %d for %s: %s' % (len(intake), first_ver or 'no open version', ' '.join(intake)))
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
