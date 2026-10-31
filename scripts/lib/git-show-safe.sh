@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-# scripts/lib/git-show-safe.sh — MSYS-safe `git show <ref>:<path>`.
+# scripts/lib/git-show-safe.sh — a loud `git show <ref>:<path>`.
 #
-# On Git Bash, `ref:path` gets MSYS path-converted into `ref;path` (or a
-# mangled Windows path) unless MSYS_NO_PATHCONV=1 is set — git then fails
-# with an unrelated "fatal: Path ... does not exist" on stderr, and a
-# downstream `grep -c` on the resulting empty stdout silently counts 0,
-# indistinguishable from a genuine miss (the judge/chief
+# When `git show` fails, a downstream `grep -c` on the resulting empty stdout
+# silently counts 0, indistinguishable from a genuine miss (the judge/chief
 # incident). Sourced, not run.
 #
 # git_show_safe <ref> <path> — prints the blob to stdout on success. On
@@ -25,7 +22,7 @@ git_show_safe() {
     # caller's `set -e`, a bare `out=$(git show ...)` would abort the
     # caller right here on a nonzero rc — before rc is captured, stderr is
     # reported, or errfile is cleaned up. A checked condition is exempt.
-    if out=$(MSYS_NO_PATHCONV=1 git show "${ref}:${path}" 2>"$errfile"); then
+    if out=$(git show "${ref}:${path}" 2>"$errfile"); then
         rc=0
     else
         rc=$?
