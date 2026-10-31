@@ -56,6 +56,8 @@ run_case "unknown board flag in a fence" 1 docs/a.md 'node scripts/handover/chie
 run_case "refused launcher flag" 1 docs/a.md 'headed-arm-worker.sh --console me' # old-term-ok: the refused flag
 run_case "bus send with an unknown flag" 1 docs/a.md 'bus send chief body.md --urgent'
 run_case "--role=value form is checked too" 1 docs/a.md 'bus register x --role=chief'
+run_case "flag on a backslash-continued line" 1 docs/a.md $'bash scripts/handover/chief-kit/tick.sh --doc d \\\n    --nope x'
+case "$LAST_OUT" in *docs/a.md:1:*--nope*) pass "continued finding is reported at the first line" ;; *) fail "continued finding line: $LAST_OUT" ;; esac
 run_case "flag in a SKILL.md" 1 marketplace/plugins/x/skills/y/SKILL.md 'run chief.sh --nope'
 run_case "flag in a slash command" 1 .claude/commands/z.md 'run gen-briefs --nope'
 run_case "flag on append-results.sh" 1 docs/handover/worker-preface.md 'bash scripts/handover/chief-kit/append-results.sh --force doc text'
@@ -69,6 +71,9 @@ run_case "flag after a closing backtick is prose" 0 docs/a.md 'see `tick.sh` and
 run_case "--flag=value form" 0 docs/a.md 'chief.sh next --model=opus --bucket himmel'
 run_case "role placeholder is skipped" 0 docs/a.md 'bus register x --role <role>'
 run_case "--role=value form, accepted value" 0 docs/a.md 'bus register x --role=judge'
+run_case "quoted role value, accepted" 0 docs/a.md 'bus register x --role "worker"'
+run_case "continued invocation with only accepted flags" 0 docs/a.md $'bash scripts/handover/chief-kit/tick.sh --doc d \\\n    --verbose'
+run_case "another executable sharing the name prefix" 0 docs/a.md 'tick.sh-wrapper --nope'
 run_case "a closing backtick ends the bus invocation" 0 docs/a.md 'run `bus status` and read the --nope notes'
 run_case "a closing backtick ends the gen-briefs invocation" 0 docs/a.md 'run `gen-briefs` and read the --nope notes'
 run_case "another tool named like a suffix" 0 docs/a.md 'bash test-tick.sh --nope'

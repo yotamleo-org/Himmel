@@ -44,12 +44,12 @@ accept_table() {
     local cmd_bus="(((^|[^A-Za-z0-9_-])bus )(register|bind|rebind|adopt|succeed|status|peers|send|wait|unread|gc)|$bt(register|bind|rebind|succeed|unread))([^A-Za-z0-9_.-]|\$)"
     # name | source | command ERE | accepted flags | accepted roles | refused flags
     printf '%s\n' "bus${t}marketplace/plugins/himmel-bus/bin/bus${t}${cmd_bus}${t}--role --console --pair --predecessor --re --summary --doc --for --timeout --unacked${t}worker console judge consult${t}-" # old-term-ok: the bus parser's current vocabulary
-    printf '%s\n' "tick.sh${t}scripts/handover/chief-kit/tick.sh${t}(^|[^A-Za-z0-9_-])tick\\.sh${t}--burn --doc --emit-fp --handover-dir --help --pool-dispositions --pool-stale --ready-dir --ready-mismatch --repo --token --verbose --workers --workers-from${t}-${t}-"
-    printf '%s\n' "board.mjs${t}scripts/handover/chief-kit/board.mjs${t}(^|[^A-Za-z0-9_-])board\\.mjs${t}--changed --doc --json --out --repo --view --workers${t}-${t}-"
-    printf '%s\n' "chief.sh${t}scripts/handover/chief/chief.sh${t}(^|[^A-Za-z0-9_-])chief\\.sh${t}--arm --bucket --context --date --deadline-min --doc --dry-run --help --model --name --no-relay-on-live --prefix --project --relay-on-live${t}-${t}-"
-    printf '%s\n' "headed-arm-worker.sh${t}scripts/handover/chief-kit/headed-arm-worker.sh${t}(^|[^A-Za-z0-9_-])headed-arm-worker\\.sh${t}--chief --consult --context-guard --dry-run --fleet --headless --ignore-denials --judge --lane --no-prior-art-check --no-profile --profile --relay --rm-release${t}-${t}--console" # old-term-ok: the launcher refuses this retired flag
+    printf '%s\n' "tick.sh${t}scripts/handover/chief-kit/tick.sh${t}(^|[^A-Za-z0-9_-])tick\\.sh([^A-Za-z0-9_-]|\$)${t}--burn --doc --emit-fp --handover-dir --help --pool-dispositions --pool-stale --ready-dir --ready-mismatch --repo --token --verbose --workers --workers-from${t}-${t}-"
+    printf '%s\n' "board.mjs${t}scripts/handover/chief-kit/board.mjs${t}(^|[^A-Za-z0-9_-])board\\.mjs([^A-Za-z0-9_-]|\$)${t}--changed --doc --json --out --repo --view --workers${t}-${t}-"
+    printf '%s\n' "chief.sh${t}scripts/handover/chief/chief.sh${t}(^|[^A-Za-z0-9_-])chief\\.sh([^A-Za-z0-9_-]|\$)${t}--arm --bucket --context --date --deadline-min --doc --dry-run --help --model --name --no-relay-on-live --prefix --project --relay-on-live${t}-${t}-"
+    printf '%s\n' "headed-arm-worker.sh${t}scripts/handover/chief-kit/headed-arm-worker.sh${t}(^|[^A-Za-z0-9_-])headed-arm-worker\\.sh([^A-Za-z0-9_-]|\$)${t}--chief --consult --context-guard --dry-run --fleet --headless --ignore-denials --judge --lane --no-prior-art-check --no-profile --profile --relay --rm-release${t}-${t}--console" # old-term-ok: the launcher refuses this retired flag
     printf '%s\n' "gen-briefs${t}scripts/handover/chief-kit/gen-briefs.py${t}(^|[^A-Za-z0-9_-])gen-briefs(\\.py)?([^A-Za-z0-9_-]|\$)${t}--also-live --base --bucket --chief --date --deadline --handover-root --help --letter --manifest --no-worktree --repo --work-dir${t}-${t}-"
-    printf '%s\n' "append-results.sh${t}scripts/handover/chief-kit/append-results.sh${t}(^|[^A-Za-z0-9_-])append-results\\.sh${t}-${t}-${t}-"
+    printf '%s\n' "append-results.sh${t}scripts/handover/chief-kit/append-results.sh${t}(^|[^A-Za-z0-9_-])append-results\\.sh([^A-Za-z0-9_-]|\$)${t}-${t}-${t}-"
 }
 
 root=""
@@ -92,9 +92,22 @@ BEGIN {
     }
     ncli = k
 }
-index($0, "old-term-ok") > 0 { next }
+# A line ending in a backslash continues on the next: the pieces are checked as one
+# invocation and reported at the first line.
+function flushpend() { if (pend != "") { check(pendfile, pendln, pend); pend = "" } }
+FNR == 1 { flushpend() }
 {
-    line = $0
+    if (pend == "") { pendfile = FILENAME; pendln = FNR }
+    if ($0 ~ /\\$/) { pend = pend substr($0, 1, length($0) - 1) " "; next }
+    pend = pend $0
+    check(pendfile, pendln, pend)
+    pend = ""
+}
+END { flushpend() }
+function check(file, ln, text,   line, c, rest, after, seg) {
+    if (index(text, "old-term-ok") > 0) return
+    curfile = file; curln = ln
+    line = text
     gsub(/\\\|/, "\001", line)
     for (c = 1; c <= ncli; c++) {
         rest = line
@@ -116,21 +129,20 @@ function scan(c, seg,   t, flag, val, vals, nv, v, pre) {
         flag = substr(t, RSTART + 1, RLENGTH - 1)
         t = substr(t, RSTART + RLENGTH)
         if (!((c, flag) in okflag)) {
-            printf "%s:%d: %s does not accept %s%s\n", FILENAME, FNR, name[c], flag, (((c, flag) in refused) ? " (refused on purpose)" : "")
-            bad++
+            printf "%s:%d: %s does not accept %s%s\n", curfile, curln, name[c], flag, (((c, flag) in refused) ? " (refused on purpose)" : "")
             continue
         }
         if (flag == "--role" && hasroles[c] && match(t, /^(=|[ ]+)[^ ]+/)) {
             val = substr(t, RSTART, RLENGTH); sub(/^(=|[ ]+)/, "", val)
             gsub(/\001/, "|", val)
+            gsub(/["\047]/, "", val)
             sub(/[]`,.)].*$/, "", val)
             if (val ~ /^</ || val == "") continue
             nv = split(val, vals, "|")
             for (v = 1; v <= nv; v++) {
                 if (vals[v] == "") continue
                 if (!((c, vals[v]) in okrole)) {
-                    printf "%s:%d: %s does not accept role '"'"'%s'"'"' for --role\n", FILENAME, FNR, name[c], vals[v]
-                    bad++
+                    printf "%s:%d: %s does not accept role '"'"'%s'"'"' for --role\n", curfile, curln, name[c], vals[v]
                 }
             }
         }

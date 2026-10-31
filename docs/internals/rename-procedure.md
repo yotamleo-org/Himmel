@@ -90,6 +90,9 @@ row from the parser's option table.
   when the PR edits that line. Add the marker, or finish the rename on that
   line. (`ponytail:` net the added hits against the removed lines of the same
   file.)
+- The diff gate reads one line at a time: a multi-word prose row split by a
+  line break is not seen. The doc-literal check joins backslash-continued
+  lines and reports them at the first line.
 - A prose row matches whole words, case-insensitive, with an optional plural
   `s`; a word followed by `.name` is code and is skipped. Words with other
   senses are decided by the registry rows, not by the gate.
