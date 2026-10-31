@@ -397,4 +397,32 @@ check "a run for another successor leaves the marker armed" "yes" "$([ -f "$ROL"
 rm -f "$ROL"
 check "a run with no marker still succeeds" "0" "$(bash "$RB" "$DOC" --successor DEMO-nextleg-2026-10-08B-chief >/dev/null 2>&1; echo $?)"
 
+# M1a: `workers:` / `.workers` first, the pre-rename `legs:` / `.legs` still read,
+# `workers:` wins when both lines exist, HIMMEL_LEGACY_NAMES=0 drops the old spelling.
+mk8204() { # <doc> <Live state line key> <manifest array key>
+    # shellcheck disable=SC2016
+    printf '# chief\n\n## Live state\n\n%s: `N7:tok-seven:lock7:11` `N8:tok-eight:lock8:22`\nqueue: none\nlast GO: none\n\n## Results\n' "$2" > "$1"
+    printf '{"schema":1,"%s":[{"doc":"%s","label":"N7","added":"x","lane":"native"},{"doc":"%s","label":"N8","added":"x","lane":"claudex"}]}\n' "$3" "$LEG1" "$LEG2" > "${1%.md}.fleet.json"
+}
+rb8204() { : > "$WORK/send.log"; : > "$WORK/bus.log"; : > "$WORK/bus.body"; HIMMEL_LEGACY_NAMES="$2" bash "$RB" "$1" --successor DEMO-nextleg-2026-10-08B-chief --claudex N8 2>&1 | sed -E 's/2026-10-08[NOPQR]-chief/2026-10-08X-chief/g'; }
+D_NEW="$WORK/DEMO-nextleg-2026-10-08N-chief.md"; mk8204 "$D_NEW" workers workers
+D_OLD="$WORK/DEMO-nextleg-2026-10-08O-chief.md"; mk8204 "$D_OLD" legs legs
+D_MIX1="$WORK/DEMO-nextleg-2026-10-08P-chief.md"; mk8204 "$D_MIX1" legs workers
+D_MIX2="$WORK/DEMO-nextleg-2026-10-08Q-chief.md"; mk8204 "$D_MIX2" workers legs
+new8204="$(rb8204 "$D_NEW" 1)"
+check "a workers: doc over a workers manifest relays both workers" "1" "$(printf '%s\n' "$new8204" | grep -c '^RELAYED 2 of 2$')"
+check "an old legs: doc over a legs manifest prints the same as its workers twin" "$new8204" "$(rb8204 "$D_OLD" 1)"
+check "an old legs: doc over a workers manifest prints the same" "$new8204" "$(rb8204 "$D_MIX1" 1)"
+check "a workers: doc over an old legs manifest prints the same" "$new8204" "$(rb8204 "$D_MIX2" 1)"
+D_BOTH="$WORK/DEMO-nextleg-2026-10-08R-chief.md"; mk8204 "$D_BOTH" workers workers
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\n\nlegs: `N99:tok-old:lock9:1`\nworkers: `N7:tok-seven:lock7:11` `N8:tok-eight:lock8:22`\n\n## Results\n' > "$D_BOTH"
+check "a doc with both lines relays the workers: ones (it wins)" "$new8204" "$(rb8204 "$D_BOTH" 1)"
+check "with HIMMEL_LEGACY_NAMES=0 a workers: doc over a workers manifest still relays" "$new8204" "$(rb8204 "$D_NEW" 0)"
+off_old="$(rb8204 "$D_OLD" 0)"
+check "with HIMMEL_LEGACY_NAMES=0 an old legs: doc names no workers" "1" "$(printf '%s\n' "$off_old" | grep -c 'no worker entries')"
+check "with HIMMEL_LEGACY_NAMES=0 an old legs: doc relays nobody" "0" "$(printf '%s\n' "$off_old" | grep -c '^SENDMESSAGE\|^SENT-INBOX\|^BUS-RELAY ')"
+off_mix2="$(rb8204 "$D_MIX2" 0)"
+check "with HIMMEL_LEGACY_NAMES=0 an old legs manifest sends nothing (the claudex set cannot be checked)" "1" "$(printf '%s\n' "$off_mix2" | grep -c "disagrees with the fleet manifest.*nothing sent")"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

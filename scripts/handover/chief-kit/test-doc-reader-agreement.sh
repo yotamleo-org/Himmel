@@ -307,5 +307,72 @@ case "$summary" in
 *) fail "readers disagree with the reference parser: ${summary:-no comparison output}" ;;
 esac
 
+# ---- M1a: `workers:` / `.workers` first, the pre-rename `legs:` / `.legs` still read ----
+# An old chief doc (a `legs:` line) and an old fleet manifest (a `legs` array) must read exactly as
+# their `workers` twin does, and with HIMMEL_LEGACY_NAMES=0 the old spelling is ignored or refused.
+# The generated `legs:` docs above are the frozen fixture; the twins are derived from them here.
+M1A="$W/m1a"; mkdir -p "$M1A/bin" "$M1A/mirror"
+m1a_read() { env HIMMEL_LEGACY_NAMES="$3" bash "$0" --one "$1"$'\t'"$2" 2>/dev/null | cut -f3 | tr '\n' '|'; }
+m1a_docs="$(awk -F'\t' '$1 == "console" && $3 != "" { print $2 }' "$EXPECT" | head -4)"
+m1a_n=0
+for f in $m1a_docs; do
+    m1a_n=$((m1a_n + 1))
+    cp "$B/$f" "$M1A/l$m1a_n.md"
+    sed 's/^legs:/workers:/' "$B/$f" > "$M1A/w$m1a_n.md"
+done
+if [ "$m1a_n" -ge 1 ]; then pass "m1a: $m1a_n generated chief docs with workers have an old and a workers twin"; else fail "m1a: no generated chief doc carries workers"; fi
+for kind in tick-chief board-chief fleet-chief; do
+    same=1; nonempty=0; offdiff=1; twinoff=1
+    i=1
+    while [ "$i" -le "$m1a_n" ]; do
+        old="$(m1a_read "$kind" "$M1A/l$i.md" 1)"
+        new="$(m1a_read "$kind" "$M1A/w$i.md" 1)"
+        off="$(m1a_read "$kind" "$M1A/l$i.md" 0)"
+        twin="$(m1a_read "$kind" "$M1A/w$i.md" 0)"
+        [ "$old" = "$new" ] || same=0
+        [ -n "$(printf '%s' "$new" | tr -d '|')" ] && nonempty=1
+        [ "$off" != "$new" ] || offdiff=0
+        [ "$twin" = "$new" ] || twinoff=0
+        i=$((i + 1))
+    done
+    # shellcheck disable=SC2015
+    [ "$nonempty" -eq 1 ] && [ "$same" -eq 1 ] && pass "m1a: $kind reads an old legs: doc as its workers: twin" || fail "m1a: $kind legs: doc and workers: twin disagree (same=$same nonempty=$nonempty)"
+    # shellcheck disable=SC2015
+    [ "$offdiff" -eq 1 ] && pass "m1a: $kind ignores the legs: line with HIMMEL_LEGACY_NAMES=0" || fail "m1a: $kind still reads legs: with HIMMEL_LEGACY_NAMES=0"
+    # shellcheck disable=SC2015
+    [ "$twinoff" -eq 1 ] && pass "m1a: $kind reads the workers: twin with HIMMEL_LEGACY_NAMES=0" || fail "m1a: $kind stops reading workers: with HIMMEL_LEGACY_NAMES=0"
+done
+
+# the manifest readers: handoff-facts.sh, close-wrapped-worker.sh, pr-stall.sh, version-status-audit.sh
+m1a_w1="$M1A/HIMMEL-901-N901-a-2026-10-31.md"; m1a_w2="$M1A/HIMMEL-902-N902-b-2026-10-31.md"
+printf '# w1\n\n## Results\n- 10:00 LIVE — branch feat/m1a-a\n' > "$m1a_w1"
+printf '# w2\n\n## Results\n- 10:00 LIVE — x\n- 10:05 WRAPPED — done\n' > "$m1a_w2"
+for form in legs workers; do
+    printf '# chief\n\n## Live state\n\nworkers: none\n\n## Results\n' > "$M1A/chief-$form.md"
+    printf '{"schema":1,"%s":[{"doc":"%s","label":"N901","added":"2026-10-31T00:00:00Z","lane":"native"},{"doc":"%s","label":"N902","added":"2026-10-31T00:00:00Z","lane":"native"}]}\n' "$form" "$m1a_w1" "$m1a_w2" > "$M1A/chief-$form.fleet.json"
+done
+printf '[{"number":7,"headRefName":"feat/m1a-a","headRefOid":"abc","mergeable":"CONFLICTING","mergeStateStatus":"DIRTY","statusCheckRollup":[],"updatedAt":"2026-10-31T00:00:00Z","createdAt":"2026-10-31T00:00:00Z"}]\n' > "$M1A/prs.json"
+printf '#!/usr/bin/env bash\ncase "$*" in *"pr list"*) cat "%s/prs.json" ;; *"run list"*) echo "[]" ;; *) exit 1 ;; esac\n' "$M1A" > "$M1A/bin/gh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$M1A/bin/gh-empty"
+chmod +x "$M1A/bin/gh" "$M1A/bin/gh-empty"
+printf -- '---\nkey: HIMMEL-901\ntype: Task\nstatus: In Progress\nstatusCategory: In Progress\nfixVersions: ["v9.0.2"]\nlabels: []\n---\n' > "$M1A/mirror/HIMMEL-901.md"
+printf 'v9.0.1\tfalse\t-\tfalse\nv9.0.2\tfalse\t-\tfalse\n' > "$M1A/mirror.versions.tsv"
+
+m1a_hf()   { env HIMMEL_LEGACY_NAMES="$2" bash "$CK/handoff-facts.sh" workers "$M1A/chief-$1.md" --repo "$READERS" 2>&1; }
+m1a_cw()   { env HIMMEL_LEGACY_NAMES="$2" bash "$CK/close-wrapped-worker.sh" --check --sweep --fleet "$M1A/chief-$1.fleet.json" 2>&1; }
+m1a_ps()   { env PATH="$M1A/bin:$PATH" HIMMEL_LEGACY_NAMES="$2" PR_STALL_NOW=2026-10-31T12:00:00Z bash "$CK/pr-stall.sh" --repo x/y --manifest "$M1A/chief-$1.fleet.json" 2>&1; }
+m1a_vsa()  { env VSA_GH_CMD="$M1A/bin/gh-empty" HIMMEL_LEGACY_NAMES="$2" bash "$CK/version-status-audit.sh" --mirror "$M1A/mirror" --workers-from "$M1A/chief-$1.fleet.json" 2>&1; }
+m1a_row() { # <name> <function> <legs-output-grep> <switch-off legs grep>: old = new, the workers form survives the switch, the old form is refused
+    local name="$1" fn="$2" want="$3" refused="$4" old new off twin
+    old="$("$fn" legs 1)"; new="$("$fn" workers 1)"; off="$("$fn" legs 0)"; twin="$("$fn" workers 0)"
+    if [ "$old" = "$new" ] && printf '%s\n' "$new" | grep -Eq -- "$want"; then pass "m1a: $name reads an old legs manifest as its workers twin"; else fail "m1a: $name old=[$old] new=[$new] want /$want/"; fi
+    if [ "$twin" = "$new" ]; then pass "m1a: $name reads the workers manifest with HIMMEL_LEGACY_NAMES=0"; else fail "m1a: $name workers manifest changes with the switch off: [$twin] vs [$new]"; fi
+    if printf '%s\n' "$off" | grep -Eq -- "$refused" && [ "$off" != "$new" ]; then pass "m1a: $name refuses the old legs manifest with HIMMEL_LEGACY_NAMES=0"; else fail "m1a: $name still reads legs with the switch off: [$off] want /$refused/"; fi
+}
+m1a_row handoff-facts m1a_hf '^- N901: LIVE' 'unavailable'
+m1a_row close-wrapped-worker m1a_cw '^sweep: closed=1 refused=0 skipped=1$' '^sweep: closed=0 refused=0 skipped=0$'
+m1a_row pr-stall m1a_ps '^STALL 7 conflict N901 ' '^STALL 7 conflict - '
+m1a_row version-status-audit m1a_vsa 'HIMMEL-901.*OWNED' 'UNKNOWN'
+
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails"; exit 1; fi
 echo "all ok"

@@ -40,6 +40,10 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from html import escape as esc
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+from env_alias import legacy_names_on
 
 MIRROR = os.path.expanduser('~/.himmel/state/jira-mirror/HIMMEL')
 LUNA = os.path.expanduser('~/Documents/luna')
@@ -139,6 +143,16 @@ def leg_marker(path):
     return (ms[-1] if ms else 'LIVE'), pr
 
 
+def manifest_workers(m):
+    """The manifest's worker array: `workers`, else the pre-rename `legs` while legacy names are on."""
+    w = m.get('workers')
+    if w is None and 'legs' in m and not legacy_names_on():
+        raise ValueError('fleet manifest carries the pre-rename legs array and legacy names are off')
+    if w is None:
+        w = m.get('legs')
+    return w or []
+
+
 def manifest_docs():
     """Leg docs listed in the console fleet manifests (<console doc>.fleet.json) next to the bucket's docs.
 
@@ -146,7 +160,7 @@ def manifest_docs():
     out = []
     for m in glob.glob(os.path.join(HANDOVERS, '*.fleet.json')):
         try:
-            legs = json.load(open(m, encoding='utf-8')).get('legs') or []
+            legs = manifest_workers(json.load(open(m, encoding='utf-8')))
         except (OSError, ValueError, AttributeError):
             continue
         if not isinstance(legs, list):

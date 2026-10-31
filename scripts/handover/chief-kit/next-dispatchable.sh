@@ -165,6 +165,20 @@ import datetime, json, os, re, subprocess, sys, tempfile, time
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
+sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
+from env_alias import legacy_names_on
+
+
+def manifest_workers(m):
+    """The manifest's worker array: `workers`, else the pre-rename `legs` while legacy names are on.
+    A legs-only manifest with legacy names off is unreadable (ValueError), never an empty fleet."""
+    w = m.get('workers')
+    if w is None and 'legs' in m and not legacy_names_on():
+        raise ValueError('fleet manifest carries the pre-rename legs array and legacy names are off')
+    if w is None:
+        w = m.get('legs')
+    return w or []
+
 excl = set(filter(None, os.environ.get('NEXT_DISPATCH_EXCLUDE_LABELS',
     'operator-decision,operator,operator-present,operator-gated,blocked,decision,windows-parked,design-deferred,placeholder,held').split(',')))
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
@@ -710,7 +724,7 @@ if workers_from and not os.path.isfile(workers_from):
     workers_unknown = True
 if workers_from and os.path.isfile(workers_from):
     try:
-        for worker in json.load(open(workers_from)).get('legs', []):
+        for worker in manifest_workers(json.load(open(workers_from))):
             doc = worker.get('doc', '')
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()

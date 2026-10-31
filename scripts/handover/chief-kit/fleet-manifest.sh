@@ -50,6 +50,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../lib/prim.sh" || exit 2
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+# the worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 usage() {
     cat <<'USAGE'
@@ -64,8 +68,8 @@ USAGE
 # fleet it judges. Run with `jq -s`: the file must hold exactly one top-level
 # value — jq reads a stream, so two concatenated objects would
 # otherwise pass per value and list/add would act on a multi-object file.
-VALID='length == 1 and (.[0] | type == "object" and .schema == 1 and (.legs | type == "array")
-    and all(.legs[]; type == "object" and (.doc | type == "string" and test("^/[^[:space:]*?\\[]+$"))))'
+VALID="$JQ_W"'length == 1 and (.[0] | type == "object" and .schema == 1 and (W | type == "array")
+    and all(W[]; type == "object" and (.doc | type == "string" and test("^/[^[:space:]*?\\[]+$"))))'
 
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2
@@ -77,7 +81,7 @@ case "$verb" in
             echo "fleet-manifest: not a schema-1 fleet manifest: $manifest" >&2
             exit 1
         fi
-        jq -r '.legs[].doc' "$manifest"
+        jq -r "$JQ_W"'W[].doc' "$manifest"
         exit $?
         ;;
     add|remove) [ "$#" -ge 1 ] || { usage >&2; exit 2; } ;;

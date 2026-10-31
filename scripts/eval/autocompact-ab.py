@@ -32,6 +32,9 @@
 import argparse, glob, json, os, re, subprocess, sys
 from datetime import datetime
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from env_alias import legacy_names_on
+
 W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", "0.1"))
 W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", "1.25"))
 W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", "1"))
@@ -322,7 +325,14 @@ def main():
     legs = []
     for mf in a.manifest:
         try:
-            for leg in json.load(open(mf)).get("legs", []):
+            mdata = json.load(open(mf))
+            # the worker array is `workers`; the pre-rename `legs` is read only while legacy names are on
+            mworkers = mdata.get("workers")
+            if mworkers is None and "legs" in mdata and not legacy_names_on():
+                raise ValueError("manifest carries the pre-rename legs array and legacy names are off")
+            if mworkers is None:
+                mworkers = mdata.get("legs")
+            for leg in mworkers or []:
                 legs.append((leg.get("doc"), leg.get("arm")))
         except (OSError, ValueError) as e:
             print("autocompact-ab: unreadable manifest %s: %s" % (mf, e), file=sys.stderr)
