@@ -897,6 +897,7 @@ scripts/lib/test-shared-branch-lock.sh	pr	trust-path
 scripts/lib/test-status-marker.sh	pr	trust-path
 scripts/lib/test-suite-semaphore.sh	pr	trust-path
 scripts/lib/test-telemetry.sh	pr	trust-path
+scripts/lib/test-ticket-status.sh	pr	trust-path
 scripts/lib/test-timeout-bin.sh	pr	trust-path
 scripts/lib/test-tracker-contract.sh	pr	trust-path
 scripts/lib/test-unchecked-mktemp.sh	pr	trust-path

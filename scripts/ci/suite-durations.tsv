@@ -887,6 +887,7 @@ scripts/lib/test-sha256-bin.sh	0
 scripts/lib/test-shared-branch-lock.sh	1
 scripts/lib/test-suite-semaphore.sh	10
 scripts/lib/test-telemetry.sh	1
+scripts/lib/test-ticket-status.sh	0
 scripts/lib/test-timeout-bin.sh	12
 scripts/lib/test-tracker-contract.sh	6
 scripts/lib/test-unchecked-mktemp.sh	4

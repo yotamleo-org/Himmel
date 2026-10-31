@@ -623,6 +623,9 @@ check "3b: a miss on a ticket that is Done now is not MISSED (re-derived)" "$(dc
 reset "In Progress"; owned "$K" WRAPPED '{"state":"live"}'; jl "$K" "In Progress"
 drift
 contains "3b: a live record whose doc is WRAPPED is WORKER-STALE" "$(drows WORKER-STALE)" "WORKER-STALE $K"
+reset "In Progress"; owned "$K" WRAPPED '{"state":"parked"}'; jl "$K" "In Progress"
+drift
+contains "3b: a parked record whose doc is WRAPPED is WORKER-STALE" "$(drows WORKER-STALE)" "WORKER-STALE $K"
 reset "In Progress"; owned "$K" LIVE '{"state":"idle"}'; jl "$K" "In Progress"; printf '0\n' > "$FX/lock.rc"
 drift
 contains "3b: an idle record whose lock is released is WORKER-STALE" "$(drows WORKER-STALE)" "WORKER-STALE $K"
@@ -644,6 +647,9 @@ reset "In Progress"; wipe_docs; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In 
 mkdoc "$tmp/docs/$K-N2-other-2026-10-21.md" LIVE
 drift
 contains "3b: two live docs for one key are TWO-OWNERS" "$(drows TWO-OWNERS)" "TWO-OWNERS $K"
+wipe_docs; mkdoc "$tmp/docs/$K-N2-other-2026-10-21.md" PARKED-USAGE
+drift
+contains "3b: a parked second doc with a held lock is TWO-OWNERS" "$(drows TWO-OWNERS)" "TWO-OWNERS $K"
 wipe_docs; mkdoc "$tmp/docs/$K-N2-other-2026-10-21.md" WRAPPED
 drift
 check "3b: a wrapped second doc is not an owner" "$(dcount TWO-OWNERS)" 0
