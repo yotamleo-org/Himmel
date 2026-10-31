@@ -1092,6 +1092,18 @@ rc=0; out="$(run)" || rc=$?
 check "disposition: a signed row of another PR does not count: exit 1" "$rc" "1"
 
 reset_stubs
+STUB_BODY="$BODY50"
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-50 "$SHA"; seed_disp fix-here "$SHA" "$SEED_BRANCH" "$REVHEAD" 78
+rc=0; out="$(run)" || rc=$?
+check "disposition: a later signed row of another PR does not supersede this PR's row: exit 0" "$rc" "0"
+
+reset_stubs
+STUB_BODY="$BODY50"
+seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-50 "$SHA"; seed_disp fix-here "$DEADHEAD"
+rc=0; out="$(run)" || rc=$?
+check "disposition: a later signed row at another head does not supersede the row at the PR head: exit 0" "$rc" "0"
+
+reset_stubs
 STUB_BODY="$BODY201"
 seed_imp_deferral HIMMEL-50 "$REVHEAD"; seed_disp follow-up:HIMMEL-50 "$SHA"; seed_disp follow-up:HIMMEL-201 "${SHA:0:12}" "$SEED_BRANCH" "$REVHEAD" 77 no
 rc=0; out="$(run)" || rc=$?
