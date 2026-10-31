@@ -405,6 +405,13 @@ itself). A bare `--bucket himmel` resolves to `<handover-root>/<user>/himmel`;
 Before dispatching a chain of PRs, `python3 scripts/handover/chief-kit/chain-graph.py --prs <n>,<n>,...`
 prints the pairwise hard and soft edges between them (read-only; `--json` for scripts, `--head PR=SHA`
 to pin a PR to an older head).
+Every `focus-refresh.sh` run regenerates `<doc dir>/focus-chains.json` from the chain registry
+(`<handover root>/<user>/himmel/chains.json`; no registry, no stage): never hand-edit that file. The
+file ends with the drain row, `<version> drain: open <n> · in-chain <n> · standalone <n> · unchained <k> <keys> ·
+dispatchable <d> · dropped {<reason> <n>, ...}`, which the FOCUS page prints under its title (unique keys;
+`open = in-chain + standalone + unchained`). A registry, graph or render failure ends the refresh
+`focus=WARN:chains <registry|graph|render>` and keeps the last good file byte for byte; `drain-unchained=<k>` in
+`focus-state` is a WARN while `k` is above 0, and a set `focus-plan:` prints `WARN priority-source plan-differs`.
 `python3 scripts/handover/chief-kit/series-ledger.py` is the one reader/writer of a series ledger under flock; `read|create|set|add-item|pass`.
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.

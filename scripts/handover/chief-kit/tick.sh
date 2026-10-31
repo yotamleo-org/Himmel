@@ -379,7 +379,9 @@ when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (6000)
 `ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
 DECISIONS_BUDGET_BYTES (4000). Each names the bucket's
 specs/decisions/chief-decisions-<date>.md the superseded rulings move to verbatim
-(chief-sections/live-state.md).
+(chief-sections/live-state.md). `ACTION livestate-over-budget=<bytes>/<limit>` flags
+the whole `## Live state` section over LIVESTATE_BUDGET_BYTES (12000): keep only the
+open workers and the last GO there, shift history goes to specs/history/.
 
 --burn adds a per-worker context-burn field (first-turn/avg-ctx, via
 scripts/lanes/worker-burn.sh) for every doc in --workers. OPT-IN because it scans
@@ -2216,14 +2218,19 @@ fi
 # Shown only as ACTION lines after the TICK line; not in chief-wait's wake key.
 handoff_bytes=0
 decisions_bytes=0
+livestate_bytes=0
 handoff_budget="${HANDOFF_BUDGET_BYTES:-6000}"
 decisions_budget="${DECISIONS_BUDGET_BYTES:-4000}"
+livestate_budget="${LIVESTATE_BUDGET_BYTES:-12000}"
 case "$handoff_budget" in ''|*[!0-9]*) handoff_budget=6000 ;; esac
 case "$decisions_budget" in ''|*[!0-9]*) decisions_budget=4000 ;; esac
+case "$livestate_budget" in ''|*[!0-9]*) livestate_budget=12000 ;; esac
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     handoff_file="${console_doc%.md}-HANDOFF.md"
     [ ! -f "$handoff_file" ] || handoff_bytes="$(wc -c < "$handoff_file" | tr -d '[:space:]')"
     decisions_bytes="$(printf '%s\n' "$live_state_body" | grep -m1 '^decisions:' | tr -d '\n' | wc -c | tr -d '[:space:]')"
+    # counted from the doc, heading and trailing blank lines included: $live_state_body came through a command substitution, which drops them
+    livestate_bytes="$(LC_ALL=C awk '$0 == "## Live state" { f = 1; n = length($0) + 1; next } f && /^## / { exit } f { n += length($0) + 1 } END { print n + 0 }' "$console_doc")"
 fi
 
 # the luna vault's commit health. vault-status.sh owns the derivation
@@ -3273,6 +3280,9 @@ else
     fi
     if [ "$decisions_bytes" -gt "$decisions_budget" ]; then
         printf 'ACTION decisions-over-budget=%s/%s: move superseded rulings verbatim to %q and keep the active ones plus that path on the line (chief-sections/live-state.md)\n' "$decisions_bytes" "$decisions_budget" "$decisions_file"
+    fi
+    if [ "$livestate_bytes" -gt "$livestate_budget" ]; then
+        printf 'ACTION livestate-over-budget=%s/%s: keep only the open workers and the last GO in the Live state; move shift history verbatim to %q (chief-sections/live-state.md)\n' "$livestate_bytes" "$livestate_budget" "${console_doc%/*}/specs/history/chief-live-state-${console_doc##*/}"
     fi
 fi
 if [ "$emit_fp" -eq 1 ]; then

@@ -1344,7 +1344,7 @@ OPERATOR_LABELS = ('operator-decision', 'operator', 'operator-present', 'operato
 WAITING_CHAIN_RE = re.compile(r'waiting on you', re.I)
 
 
-def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None):
+def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None, drain=''):
     """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
     Columns are the Jira status names of the version's open tickets, moved by an open PR's CI (`ci_column`) and each
@@ -1493,6 +1493,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     upd = max((m['upd'] for m in mir.values()), key=lambda u: utc_dt(u) or datetime.min.replace(tzinfo=timezone.utc), default='')
     fp = json.dumps({
         'v': version,
+        'drain': drain,
         'done': done,
         'merged': merged,
         'tickets': [[k, opn[k]['sn'], ecol[k], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
@@ -1513,6 +1514,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     html = VERSION_TEMPLATE.format(
         v=esc(version), n=len(opn), d=done, h=merged, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
         age=esc(age), waiting=waithtml,
+        drain='<div class="drain">%s</div>\n' % esc(drain) if drain else '',
         prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
         chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
         legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml), vfp=vfp)
@@ -1558,11 +1560,11 @@ a{{color:var(--acc);text-decoration:none}}
 .st-merged b{{background:#16a34a;color:#fff}}.st-work b{{background:#7c3aed;color:#fff}}.st-next b{{background:#ca8a04;color:#fff}}.st-held b{{background:var(--line);color:var(--fg)}}
 .st-unknown b{{background:#dc2626;color:#fff}}
 .st-merged{{color:var(--muted)}}.own{{font-size:11px;color:var(--muted)}}.wk{{color:var(--muted);font-size:11px}}
-.ft{{color:#fff;background:#7c3aed;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}.isft{{outline:2px solid #7c3aed}}
+.drain{{font-size:12px;font-weight:600;margin:2px 0}}.ft{{color:#fff;background:#7c3aed;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}.isft{{outline:2px solid #7c3aed}}
 .b0{{--c:var(--p0)}}.b1{{--c:var(--p1)}}.b2{{--c:var(--p2)}}.b3{{--c:var(--p3)}}.b4{{--c:var(--p4)}}.b5{{--c:var(--p5)}}.b6{{--c:var(--p6)}}.b7{{--c:var(--p7)}}
 </style></head><body>
 <h1>{v} tracker</h1>
-<div class="sub">{n} open · {d} Done · {h} merged chain steps hidden. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, except that a card with an open PR follows
+{drain}<div class="sub">{n} open · {d} Done · {h} merged chain steps hidden. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, except that a card with an open PR follows
 that PR's CI (red In Progress, running or green IN CI, except that green keeps a card Jira holds In Review) and says so; each column is split into the
 approved plan's priority blocks; each column header carries its parity against a live JQL count. A card shows its open PR and that PR's CI
 state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}{age}</div>
@@ -1649,11 +1651,14 @@ def main():
             chains_mtime = os.path.getmtime(a.chains_file) if a.chains_file else None
         except (OSError, ValueError):
             raise SystemExit('tracker: --chains-file %s is unreadable' % a.chains_file)
+        # the drain line is the file's trailing {"drain": "..."} row, not a chain
+        drain = ' '.join(c['drain'] for c in chains if isinstance(c, dict) and isinstance(c.get('drain'), str) and 'steps' not in c)
+        chains = [c for c in chains if not (isinstance(c, dict) and 'drain' in c and 'steps' not in c)]
         repo = a.repo or origin_repo()
         if not repo:
             raise SystemExit('tracker: no GitHub origin found for this checkout; pass --repo owner/name')
         html, par, vfp = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, repo), chains, a.jira_base_url, repo,
-                                      read_workers(a.workers_dir), chains_mtime)
+                                      read_workers(a.workers_dir), chains_mtime, drain)
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         open(OUT, 'w', encoding='utf-8').write(html)
         open(OUT + '.vfp', 'w', encoding='utf-8').write(vfp + '\n')

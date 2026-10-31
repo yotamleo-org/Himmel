@@ -1000,11 +1000,10 @@ ddu_n="$(printf '%s\n' "$ddu_out" | grep -c '^# disposition ')"
 dd_plain="$(rundd)"
 lacks "dispositions: a plain run prints none" "$dd_plain" "# disposition "
 
-# --- chain_soft_edges: both flag states on a local git fixture -----------------
-# OFF is today's collision drop; ON keeps a ticket whose files overlap an open PR when the
-# trial merge of that PR against main is clean, the overlap is at most 2 files and no trust
-# path is involved, and says so with a `# SOFT` row.
-export HIMMEL_CONFIG_DIR="$WORK/no-conf"   # no real ~/.himmel layer reaches the flag
+# --- soft edges on a local git fixture (no flag) ---------------------------------
+# A ticket whose files overlap an open PR is kept when the trial merge of that PR against main
+# is clean, the overlap is at most 2 files and no trust path is involved, and says so with a
+# `# SOFT` row.
 G="$WORK/soft-git"; mkdir -p "$G"
 g() { git -C "$G" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
 g init -q -b main
@@ -1050,46 +1049,29 @@ mk HIMMEL-3107 "To Do" Medium '[]' '["v1.0.1"]' '[]' "overlaps nothing" "Edit sc
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m31/HIMMEL.versions.tsv"
 run31() { NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh31" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" NEXT_DISPATCH_GIT_DIR="$G" NEXT_DISPATCH_MAIN_REF="${SOFT_MAIN_REF:-main}" bash "$SUT" --top 20 --workers-from "$WORK/fleet.json" "$@" 2>/dev/null; }
-soft_dflt="$(run31)"
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_off="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=0; run31 )"
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_on="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1; run31 )"
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_why="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1; run31 --why )"
+soft_on="$(run31)"
+soft_why="$(run31 --why)"
 
-# OFF: today's output, exactly
-[ "$soft_off" = "$soft_dflt" ] && pass "soft OFF: the registry default is off, identical to the explicit 0" || fail "soft OFF: default and =0 differ"
-soft_off_rows="$(printf '%s\n' "$soft_off" | grep -v '^#' | cut -f1,2)"
-[ "$soft_off_rows" = "LOCAL	HIMMEL-3107" ] && pass "soft OFF: only the ticket that overlaps nothing is listed" || fail "soft OFF: rows are '$soft_off_rows'"
-lacks "soft OFF: no SOFT row" "$soft_off" "SOFT"
-has "soft OFF: the clean-PR overlap is dropped as a collision" "$soft_off" "# next-dispatchable: 7 To Do candidate(s), 1 collision-free"
+# the clean small overlaps stay dispatchable and are named
+has "soft: a ticket overlapping a clean PR is listed" "$soft_on" "HIMMEL-3101	"
+has "soft: it says SOFT, naming the holder and the file" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
+has "soft: a two-file overlap of one clean PR is listed" "$soft_on" "HIMMEL-3106	"
+has "soft: the two-file SOFT row names both files" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-a.sh,scripts/lanes/soft-two.sh for HIMMEL-3106"
+has "soft: a ticket that overlaps nothing is still listed" "$soft_on" "HIMMEL-3107	"
+lacks "soft: a ticket that overlaps nothing has no SOFT row" "$soft_on" "for HIMMEL-3107"
+lacks "soft: a PR whose trial merge conflicts still holds its file" "$soft_on" "HIMMEL-3102	"
+lacks "soft: a trust path is never soft" "$soft_on" "HIMMEL-3103	"
+lacks "soft: more than 2 overlapping files is never soft" "$soft_on" "HIMMEL-3104	"
+lacks "soft: a live worker's file holds even beside a soft overlap" "$soft_on" "HIMMEL-3105	"
+has "soft --why: a conflicting trial merge is still a collision drop" "$soft_why" "# drop HIMMEL-3102 collision scripts/lanes/soft-conf.sh held by open PR 7002"
+has "soft --why: a trust path is still a collision drop" "$soft_why" "# drop HIMMEL-3103 collision scripts/lib/soft-trust.sh held by open PR 7003"
+has "soft --why: a wide overlap is still a collision drop" "$soft_why" "# drop HIMMEL-3104 collision "
+has "soft --why: the live-worker overlap names the first holder it finds" "$soft_why" "# drop HIMMEL-3105 collision "
 
-# ON: the clean small overlaps stay dispatchable and are named
-has "soft ON: a ticket overlapping a clean PR is listed" "$soft_on" "HIMMEL-3101	"
-has "soft ON: it says SOFT, naming the holder and the file" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
-has "soft ON: a two-file overlap of one clean PR is listed" "$soft_on" "HIMMEL-3106	"
-has "soft ON: the two-file SOFT row names both files" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-a.sh,scripts/lanes/soft-two.sh for HIMMEL-3106"
-has "soft ON: a ticket that overlaps nothing is still listed" "$soft_on" "HIMMEL-3107	"
-lacks "soft ON: a ticket that overlaps nothing has no SOFT row" "$soft_on" "for HIMMEL-3107"
-lacks "soft ON: a PR whose trial merge conflicts still holds its file" "$soft_on" "HIMMEL-3102	"
-lacks "soft ON: a trust path is never soft" "$soft_on" "HIMMEL-3103	"
-lacks "soft ON: more than 2 overlapping files is never soft" "$soft_on" "HIMMEL-3104	"
-lacks "soft ON: a live worker's file holds even beside a soft overlap" "$soft_on" "HIMMEL-3105	"
-has "soft ON --why: a conflicting trial merge is still a collision drop" "$soft_why" "# drop HIMMEL-3102 collision scripts/lanes/soft-conf.sh held by open PR 7002"
-has "soft ON --why: a trust path is still a collision drop" "$soft_why" "# drop HIMMEL-3103 collision scripts/lib/soft-trust.sh held by open PR 7003"
-has "soft ON --why: a wide overlap is still a collision drop" "$soft_why" "# drop HIMMEL-3104 collision "
-has "soft ON --why: the live-worker overlap names the first holder it finds" "$soft_why" "# drop HIMMEL-3105 collision "
-
-# ON fails closed to today's drop when the trial cannot run
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_nohead="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1 SOFT_MAIN_REF=no-such-ref; run31 )"
-lacks "soft ON: an unresolvable main ref falls back to the collision drop" "$soft_nohead" "HIMMEL-3101	"
-lacks "soft ON: and prints no SOFT row" "$soft_nohead" "SOFT"
-# a conf-file value turns the flag on the same way as the environment
-mkdir -p "$WORK/conf-on"; printf 'HIMMEL_FLAG_CHAIN_SOFT_EDGES=1\n' > "$WORK/conf-on/himmel.conf"
-soft_conf="$( export HIMMEL_CONFIG_DIR="$WORK/conf-on"; run31 )"
-has "soft: himmel.conf turns it on" "$soft_conf" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
+# an unresolvable main ref fails closed to the collision drop
+soft_nohead="$( export SOFT_MAIN_REF=no-such-ref; run31 )"
+lacks "soft: an unresolvable main ref falls back to the collision drop" "$soft_nohead" "HIMMEL-3101	"
+lacks "soft: and prints no SOFT row" "$soft_nohead" "SOFT"
 
 # --- a ticket with no DoD or no Proof is refused at dispatch. The
 # checker is marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh; the

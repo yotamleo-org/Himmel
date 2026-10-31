@@ -13,8 +13,7 @@
 # candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
 # merge row in status-events.jsonl (merged to Done, the mirror lags), carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
-# blocked_by link (focus-chains-links.sh writes the chief's chain order as
-# those links). Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
+# blocked_by link. Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
 # natural order; none last), then priority, then key.
 #
 # Tiers (the first that applies; tier_of() in the script): 1 the operator pool
@@ -80,12 +79,10 @@
 # unread PR could own it). When the PR list itself fails the list is printed with an
 # `open PRs unknown` header rather than silently trusting an empty set.
 #
-# Soft edges: behind the `chain_soft_edges` flag (scripts/lib/flags.sh; off by default) a
-# candidate held only by open PRs is not dropped for the file collision when the overlap is
+# Soft edges: a candidate held only by open PRs is not dropped for the file collision when the overlap is
 # small and merges clean: every holder is an open PR, the overlap is at most 2 files, none is
 # a ci-trust path, and each holder's head merges into main with `git merge-tree` without a
 # conflict. Such a ticket is listed, preceded by a `# SOFT <holders> <files> for <KEY>` line.
-# With the flag off the output is unchanged.
 #
 # Drops: every To Do ticket of the earliest unreleased version that is not listed
 # is counted by reason on a `# dropped from <version>:` line (owned, collision,
@@ -156,13 +153,7 @@ if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
     root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
 fi
 
-# chain_soft_edges (scripts/lib/flags.tsv): off keeps the collision drop below exactly; on keeps a
-# ticket whose files overlap an open PR when the trial merge is clean.
-soft=0
-# shellcheck source=scripts/lib/flags.sh
-# shellcheck disable=SC1091
-if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag chain_soft_edges 2>/dev/null; then soft=1; fi  # swallow-ok: an unreadable registry or a bad value is flag off, today's behaviour
-export ND_SOFT="$soft" ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
+export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
 import datetime, json, os, re, subprocess, sys, tempfile, time
@@ -298,16 +289,14 @@ def held_hits(i):
     # every (file, holder) of held that holds one of the ticket's files
     return [(f, who) for f in i['files'] for h, who, tree in held if blocks(f, h, tree)]
 
-soft_edges = os.environ.get('ND_SOFT') == '1'
 soft_rows = {}  # key -> the `# SOFT` text of a listed ticket whose file overlap is soft
 trust_res = []
-if soft_edges:
-    for tf in ('scripts/ci/ci-trust-paths.txt', 'scripts/ci/ci-trust-paths-core.txt'):
-        try:
-            trust_res += [re.compile(l.strip()) for l in open(os.path.join(repo, tf), encoding='utf-8') if l.strip() and not l.lstrip().startswith('#')]
-        except (OSError, re.error):
-            trust_res = None  # swallow-ok: an unreadable or invalid trust list makes every overlap hard
-            break
+for tf in ('scripts/ci/ci-trust-paths.txt', 'scripts/ci/ci-trust-paths-core.txt'):
+    try:
+        trust_res += [re.compile(l.strip()) for l in open(os.path.join(repo, tf), encoding='utf-8') if l.strip() and not l.lstrip().startswith('#')]
+    except (OSError, re.error):
+        trust_res = None  # swallow-ok: an unreadable or invalid trust list makes every overlap hard
+        break
 head_cache = {}
 
 def trial_clean(num):
@@ -332,7 +321,7 @@ def trial_clean(num):
 def soft_overlap(i, hits):
     # the `# SOFT` text when every overlap is with an open PR, there are at most 2 files, none is a trust
     # path and each holder's trial merge is clean; else None and the collision drop stands
-    if not soft_edges or trust_res is None or not trust_res or not hits:
+    if trust_res is None or not trust_res or not hits:
         return None
     files = sorted({f for f, _ in hits})
     holders = sorted({who for _, who in hits})

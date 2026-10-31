@@ -400,7 +400,6 @@ scripts/handover/chief-kit/test-cut-tag.sh	2
 scripts/handover/chief-kit/test-delta-class.sh	3
 scripts/handover/chief-kit/test-fleet-manifest.sh	1
 scripts/handover/chief-kit/test-fleet.sh	14
-scripts/handover/chief-kit/test-focus-chains-links.sh	0
 scripts/handover/chief-kit/test-gen-briefs.sh	33
 scripts/handover/chief-kit/test-gen-judge-brief.sh	2
 scripts/handover/chief-kit/test-gh-read.sh	1
@@ -1205,3 +1204,4 @@ scripts/test-worktree-orphans.sh	22
 scripts/eval/routing/test-score.sh	9
 scripts/test-himmel-doctor-mcp-sources.sh	1
 scripts/handover/test-windows-arms-dropped.sh	1
+scripts/handover/chief-kit/test-focus-refresh-chains.sh	2

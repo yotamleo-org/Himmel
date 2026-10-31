@@ -1019,6 +1019,20 @@ contains 'the card key links to Jira (HIMMEL-6769)' "$(card 400)" 'href="https:/
 contains 'a chain step renders its ticket title (HIMMEL-6769, 7621)' "$vhtml" '<li class="st-next"><b>next</b> <a href="https://jira.example.test/browse/HIMMEL-400">HIMMEL-400</a> vp todo in group'
 not_contains 'a chain step whose ticket is Done is not listed (HIMMEL-6769, 7353)' "$vhtml" 'browse/HIMMEL-405'
 contains 'a chain card carries its FAST-TRACK badge (HIMMEL-6769)' "$(card 400)" 'FAST-TRACK · 0 — wave one · step 1'
+not_contains 'a page with no drain row has no drain line (HIMMEL-7711)' "$vhtml" 'class="drain"'
+# the drain row is the last element of focus-chains.json; the chain rows around it render as before
+python3 -I -c 'import json, sys
+rows = json.load(open(sys.argv[1]))
+rows.append({"drain": "v1.1.3 drain: open 7 · in-chain 3 · standalone 1 · unchained 3 HIMMEL-1 HIMMEL-2 HIMMEL-3"})
+json.dump(rows, open(sys.argv[2], "w"))' "$W/vp-chains.json" "$W/vp-chains-drain.json"
+vdrain="$W/vp-drain.html"
+TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" --priority-file "$W/vp-plan.md" \
+    --prs-file "$W/vp-prs.json" --chains-file "$W/vp-chains-drain.json" --jira-base-url https://jira.example.test --out "$vdrain" >/dev/null 2>&1
+vdhtml="$(cat "$vdrain" 2>/dev/null)"
+contains 'the drain line prints under the title (HIMMEL-7711)' "$vdhtml" '<h1>v1.1.3 tracker</h1>
+<div class="drain">v1.1.3 drain: open 7 · in-chain 3 · standalone 1 · unchained 3 HIMMEL-1 HIMMEL-2 HIMMEL-3</div>'
+contains 'a drain row leaves the chain steps as they were (HIMMEL-7711)' "$vdhtml" 'FAST-TRACK · 0 — wave one · step 1'
+if [ "$(cat "$vdrain.vfp")" != "$(cat "$vout.vfp")" ]; then pass 'the drain line moves the focus fingerprint (HIMMEL-7711)'; else fail 'the drain line left the focus fingerprint unchanged'; fi
 if [ ! -e "$vout.fp" ]; then pass 'a --version page without --plan-dir writes no .fp (HIMMEL-6769)'; else fail 'a --version page without --plan-dir wrote a .fp'; fi
 # a column that differs from Jira reads DRIFT and names the key.
 printf 'HIMMEL-400\tTask\tTo Do\tx\nHIMMEL-401\tTask\tIn Progress\tx\nHIMMEL-402\tTask\tIn Progress\tx\nHIMMEL-403\tTask\tIN CI\tx\nHIMMEL-407\tTask\tTo Do\tx\nHIMMEL-409\tTask\tTo Do\tx\nHIMMEL-410\tTask\tTo Do\tx\nHIMMEL-411\tTask\tBlocked\tx\n' > "$W/vp-jira.tsv"
