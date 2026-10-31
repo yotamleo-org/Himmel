@@ -31,11 +31,13 @@ gen worker-impl >"$TMP/impl.json"; rc=$?
 # T1 fixture: refused command heads copied from the station's
 # ~/.himmel/state/classifier-denials.jsonl (the 2026-10-27..31 census rows),
 # with the station checkout path written as ANCHOR and the handover root as
-# HANDOVER. Columns: classifier tag | command head | the himmel tool the trust
-# text must name for that shape (ANCHOR = this tree's primary checkout).
+# HANDOVER. Columns: classifier tag | command head | the text the trust entries
+# must hold for that shape (ANCHOR = this tree's primary checkout). The
+# quiet-run row runs worktree bytes, so its expected text is the carve-out that
+# leaves the wrapped command to the classifier, not a grant.
 cat >"$TMP/refused.tsv" <<'E'
 Instruction Poisoning	bash ANCHOR/scripts/handover/chief-kit/append-results.sh HANDOVER	ANCHOR/scripts/handover/chief-kit/append-results.sh
-Code from External	bash scripts/quiet-run.sh suite -- bash marketplace/plugins/	ANCHOR/scripts/quiet-run.sh
+Code from External	bash scripts/quiet-run.sh suite -- bash marketplace/plugins/	the quiet-run.sh argv after --
 Code from External	/usr/bin/git push origin fix/himmel-8288-	npm ci --ignore-scripts
 Interfere With Workloads	python ANCHOR/scripts/lib/vm	ANCHOR/scripts/lib/vmsdk.py
 E
@@ -56,7 +58,7 @@ jq -e '.autoMode.allow[0] == "$defaults" and .autoMode.environment[0] == "$defau
 # anchor-absolute scripts (a tree, a relative path or an added script fails).
 WANT=$(jq -c '.profiles["worker-impl"].denyTools' "$HERE/plugin-profiles.json")
 GOT=$(jq -c '.permissions.deny' "$TMP/impl.json")
-[ -n "$WANT" ] && [ "$WANT" = "$GOT" ] && ok "T2 permissions.deny is the registry's worker-impl list" || bad "T2 deny drifted: want $WANT got $GOT"
+jq -e 'type == "array" and length > 0' <<<"$WANT" >/dev/null 2>&1 && [ "$WANT" = "$GOT" ] && ok "T2 permissions.deny is the registry's worker-impl list" || bad "T2 deny drifted: want $WANT got $GOT"
 jq -e '(.autoMode | type == "object") and ((.autoMode | has("hard_deny") or has("soft_deny")) | not) and (((.permissions // {}) | has("defaultMode")) | not) and (has("defaultMode") | not)' "$TMP/impl.json" >/dev/null 2>&1 \
     && ok "T2 no hard_deny / soft_deny / permission-mode key" || bad "T2 the settings set hard_deny, soft_deny or a permission mode, or could not be read"
 grep -Eiq 'bypass|any command|all commands|all scripts|all of scripts|everything|reviewed' <<<"$TEXT"; rc=$?
@@ -73,6 +75,19 @@ jq -e '[.autoMode.environment[] | select(startswith("Trusted repo tooling:"))] |
     || bad "T2 the tooling entry's Not covered clause misses a required exclusion"
 jq -e '[.autoMode.environment[] | select(. != "$defaults" and (startswith("Source control:") | not))] | length > 0 and all(contains("Not covered:"))' "$TMP/impl.json" >/dev/null 2>&1 \
     && ok "T2 every tooling entry states what is not covered" || bad "T2 a tooling entry has no Not covered clause"
+# A trusted wrapper's payload is never covered: quiet-run's argv after --, an
+# env-named script, an env prefix. Nor are a vmsdk.py clone (it reads the
+# token), a non-handover vmsdk.py push, or a bus send claiming a GO or token.
+jq -e '([.autoMode.environment[] | select(startswith("Trusted repo tooling:"))] | length == 1 and all(test("Not covered:.*secrets reader.*bus send that claims a GO.*quiet-run.sh argv after --, which is judged on its own.*TICKET_STATUS_FUNNEL, HIMMEL_VMSDK or BASH_ENV, and any call with an environment variable prefix")))
+    and ([.autoMode.environment[] | select(startswith("Test VMs:"))] | length == 1 and all(test("Not covered:.*push of a host file other than a handover doc")))
+    and ([.autoMode.allow[] | select(startswith("Running one of the exact scripts"))] | length == 1 and all(test("with no environment variable prefix, is not Code from External.*does not cover the command that script runs.*quiet-run.sh argv after --.*TICKET_STATUS_FUNNEL, HIMMEL_VMSDK or BASH_ENV.*judged on its own")))' "$TMP/impl.json" >/dev/null 2>&1 \
+    && ok "T2 the exact-scripts exception leaves a wrapper's payload, env-named scripts and env prefixes to the classifier" \
+    || bad "T2 the exact-scripts exception or a Not covered clause misses the payload, env-prefix, secrets-reader, push or bus-claim carve-out"
+# Pin the whole tooling text (anchor written as ANCHOR): a widening in prose
+# with no path in it changes the digest. A deliberate wording change re-pins here.
+PIN=$(jq -r --arg a "$ANCHOR" '((.autoMode.environment // []) + (.autoMode.allow // []))[] | select(startswith("Source control:") | not) | split($a) | join("ANCHOR")' "$TMP/impl.json" 2>/dev/null | git hash-object --stdin)
+[ "$PIN" = "cff8f43714d2ce1ca6a6322fce9fd5653301dcdf" ] && ok "T2 the tooling trust text matches its pinned digest" \
+    || bad "T2 the tooling trust text changed (digest $PIN): re-read it for a widening, then re-pin"
 
 # T3: a composed profile list carries the allow entries once.
 gen worker-impl,code-ui >"$TMP/composed.json"; rc=$?
