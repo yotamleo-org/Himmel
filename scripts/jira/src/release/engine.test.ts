@@ -1361,7 +1361,8 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     writeFileSync(join(m, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-21T09:00:00.000Z' }));
     writeFileSync(join(m, 'K-2.md'), ['---', 'key: "K-2"', 'type: "Subtask"', 'parent: "K-1"', '---', ''].join('\n'));
     writeFileSync(join(m, 'K-3.md'), ['---', 'key: "K-3"', 'type: "Subtask"', 'parent: "K-2"', '---', ''].join('\n'));
-    expect(check(['K-2', 'K-3'], m)).toEqual([`SPEC ok K-2 ${p} ${r.id}`, 'NO-SPEC K-3']);
+    writeFileSync(join(m, 'K-4.md'), ['---', 'key: "K-4"', 'type: "Task"', 'parent: "K-1"', '---', ''].join('\n'));
+    expect(check(['K-2', 'K-3', 'K-4'], m)).toEqual([`SPEC ok K-2 ${p} ${r.id}`, 'NO-SPEC K-3', 'NO-SPEC K-4']);
     expect(check(['K-2'])).toEqual(['NO-SPEC K-2']);
   });
 

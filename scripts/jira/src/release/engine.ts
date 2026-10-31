@@ -433,7 +433,7 @@ export function signSpec(ctx: Ctx, o: {
 }
 
 // Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the file's sha256
-// matches, else `SPEC-STALE`; a key with no record reads its mirror parent's, one hop; else `NO-SPEC`.
+// matches, else `SPEC-STALE`; a sub-task with no record reads its mirror parent's, one hop; else `NO-SPEC`.
 export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null): { lines: string[]; ok: boolean } {
   const records = readOperatorRecords('spec', env);
   const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
@@ -442,7 +442,8 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
   const newest = (k: string) => live.filter((r) => r.keys?.includes(k)).at(-1);
   const issues = mirrorRoot ? readMirror(mirrorRoot).issues : null;
   const lines = keys.map((k) => {
-    const parent = issues?.get(k)?.parent;
+    const snap = issues?.get(k);
+    const parent = snap && /^sub-?task$/i.test(snap.type) ? snap.parent : null;
     const r = newest(k) ?? (parent ? newest(parent) : undefined);
     if (!r?.spec_path) return `NO-SPEC ${k}`;
     const fresh = existsSync(r.spec_path) && fileSha(r.spec_path) === r.spec_sha256;
