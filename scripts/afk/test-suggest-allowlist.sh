@@ -40,18 +40,23 @@ run_row() { # <id> <run_as> <exit> <argv-json> [ts] [kind]
         "$4" "$3" "$1" "${6:-run}" "$2" "${5:-$now_ts}"
 }
 {
-    run_row c0000001 root 0 '["/usr/bin/crontab", "-l"]'
-    run_row c0000002 root 0 '["/usr/bin/crontab", "-l"]'
-    run_row c0000003 root 1 '["/usr/bin/crontab", "-l"]'
-    run_row p0000001 root 0 '["/usr/bin/pacman", "-Syu"]'
+    run_row c0000001 root 0 '["/opt/fixture/bin/crontab", "-l"]'
+    run_row c0000002 root 0 '["/opt/fixture/bin/crontab", "-l"]'
+    run_row c0000003 root 1 '["/opt/fixture/bin/crontab", "-l"]'
+    run_row p0000001 root 0 '["/opt/fixture/bin/pacman", "-Syu"]'
     # folds into one group: the int and the $HOME path vary
     run_row t0000001 op 0 "[\"/opt/fixture/bin/tailx\", \"-n\", \"20\", \"$FAKE_HOME/a.log\"]"
     run_row t0000002 op 0 "[\"/opt/fixture/bin/tailx\", \"-n\", \"50\", \"$FAKE_HOME/b.log\"]"
+    # same argv under two run_as values: two groups, two distinct class names
+    run_row u0000001 root 0 '["/opt/fixture/bin/uptimex"]'
+    run_row u0000002 root 0 '["/opt/fixture/bin/uptimex"]'
+    run_row u0000003 op 0 '["/opt/fixture/bin/uptimex"]'
+    run_row u0000004 op 0 '["/opt/fixture/bin/uptimex"]'
     # ignored: older than --since, a refused run, a sudo-kind run, a bare request row
-    run_row o0000001 root 0 '["/usr/bin/crontab", "-l"]' 2020-01-01T00:00:00Z
+    run_row o0000001 root 0 '["/opt/fixture/bin/crontab", "-l"]' 2020-01-01T00:00:00Z
     printf '{"event": "run", "id": "n0000001", "kind": "run", "result": "never-remote", "rule": "disk-wipe", "run_as": "root", "ts": "%s", "argv": ["/usr/bin/wipefs", "-a", "/dev/sda"]}\n' "$now_ts"
     run_row s0000001 root 0 '["/usr/bin/systemctl", "restart", "x.service"]' "$now_ts" sudo
-    printf '{"event": "request", "id": "q0000001", "kind": "run", "result": "pending", "run_as": "root", "ts": "%s", "argv": ["/usr/bin/crontab", "-l"]}\n' "$now_ts"
+    printf '{"event": "request", "id": "q0000001", "kind": "run", "result": "pending", "run_as": "root", "ts": "%s", "argv": ["/opt/fixture/bin/crontab", "-l"]}\n' "$now_ts"
 } > "$LEDGER"
 
 snapshot() { find "$TMP_ROOT" -type f -print0 | sort -z | xargs -0 sha256sum; }
@@ -60,15 +65,17 @@ echo "TEST: fixture ledger suggests crontab once with count 3, pacman seen once"
 before=$(snapshot)
 out=$(HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since 30d)
 assert_contains "crontab is a suggested class with its count" '"count": 3' "$out"
-assert_contains "the suggested class names the argv" '"/usr/bin/crontab", "-l"' "$out"
+assert_contains "the suggested class names the argv" '"/opt/fixture/bin/crontab", "-l"' "$out"
 assert_contains "the suggested class carries run_as" '"run_as": "root"' "$out"
 assert_contains "exit codes are reported" '"exits": [0, 1]' "$out"
 assert_contains "pacman is listed seen once, not suggested" "seen once, not suggested" "$out"
 suggested=$(sed -n '/^suggested/,/^seen once/p' <<< "$out")
-assert_contains "pacman sits under the seen-once heading" "/usr/bin/pacman -Syu" "$(sed -n '/^seen once/,$p' <<< "$out")"
+assert_contains "pacman sits under the seen-once heading" "/opt/fixture/bin/pacman -Syu" "$(sed -n '/^seen once/,$p' <<< "$out")"
 assert_not_contains "pacman is not among the suggestions" "pacman" "$suggested"
 # shellcheck disable=SC2016  # the $HOME is literal ledger text
 assert_contains "a varying int and \$HOME path fold into typed slots" '"/opt/fixture/bin/tailx", "-n", "<int>", "<path under $HOME>"' "$out"
+assert_contains "the first group keeps the plain class name" '"class": "uptimex"' "$out"
+assert_contains "a second group with the same argv gets a distinct class name" '"class": "uptimex-2"' "$out"
 assert_not_contains "a run older than --since is not counted" '"count": 4' "$out"
 assert_not_contains "a refused run is not suggested" "wipefs" "$out"
 assert_not_contains "a sudo-kind run is not suggested" "systemctl" "$out"

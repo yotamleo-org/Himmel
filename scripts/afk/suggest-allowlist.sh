@@ -98,9 +98,14 @@ print()
 print("suggested (seen 2+ times; paste what you want into classes in /etc/himmel/afk-sudo.json with sudoedit, then set mode back to allowlist):")
 if not many:
     print("(none)")
+used = set()
 for (run_as, shaped), g in many:
     words = [w for w in shaped if not w.startswith("<")]
-    name = re.sub(r"[^a-z0-9]+", "-", " ".join([os.path.basename(shaped[0])] + words[1:3]).lower()).strip("-")
+    base = re.sub(r"[^a-z0-9]+", "-", " ".join([os.path.basename(shaped[0])] + words[1:3]).lower()).strip("-") or "run"
+    name, k = base, 2
+    while name in used:  # two groups must never share a class name: pasted together, one would replace the other
+        name, k = "%s-%d" % (base, k), k + 1
+    used.add(name)
     print(json.dumps({"class": name, "def": {"argv": list(shaped), "run_as": run_as}, "count": g["count"],
                       "last": g["last"], "exits": sorted(g["exits"])}))
 print()
