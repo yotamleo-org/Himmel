@@ -399,9 +399,9 @@ function checkPlacementFlags(o: PlacementOptions): string | undefined {
       throw new Error('--proposed-version cannot be combined with --gate or --fix-version (they already place the ticket in a version)');
     }
   }
-  if (o.backlog) {
-    if (o.proposedVersion !== 'backlog') {
-      throw new Error('--backlog alone is not a placement: pass --proposed-version backlog and a one-line --why, or --proposed-version <v> to propose a version');
+  if (o.backlog || o.proposedVersion === 'backlog') {
+    if (!o.backlog || o.proposedVersion !== 'backlog') {
+      throw new Error('the backlog is filed with --backlog --proposed-version backlog and a one-line --why (--backlog alone is not a placement; pass --proposed-version <v> to propose a version instead)');
     }
     if (!o.why?.trim()) throw new Error('--backlog --proposed-version backlog needs --why <one line: why this waits in the backlog>');
   }

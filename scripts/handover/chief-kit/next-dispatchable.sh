@@ -561,8 +561,10 @@ def load_platform_re():
     print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
 
 platform_re = load_platform_re()
-# a removal ticket names the dropped platform only to take it out: the windows-removal label or a removal verb in the title
-REMOVAL_RE = re.compile(r'\b(?:stop|stops|drop|drops|remove|removes|removal|delete|deletes|retire|retires|strip|strips|purge|purges)\b', re.I)
+# a removal ticket names the dropped platform only to take it out: the windows-removal label, or a title that opens with a
+# removal verb (after an optional `prefix:`), says removal, or says `stop <gerund>` ("stop citing"); a removal verb elsewhere
+# ("Windows service stops unexpectedly") is a bug report on the dropped platform and stays dropped
+REMOVAL_RE = re.compile(r'^(?:[^:]{0,40}:\s*)?(?:remove|drop|delete|retire|strip|purge)\b|\bremoval\b|\bstops?\s+(?:citing|referencing|mentioning|supporting|using|shipping|handling|probing|detecting|testing)\b', re.I)
 
 def platform_dropped(i):
     return bool(platform_re.search(i['title'])) and 'windows-removal' not in i['labels'] and not REMOVAL_RE.search(i['title'])

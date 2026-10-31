@@ -1705,6 +1705,12 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     expect(posted()).toBe(false);
   });
 
+  it('refuses --proposed-version backlog without --backlog, with or without --why', async () => {
+    await expect(file('Task', '--proposed-version', 'backlog')).rejects.toThrow(/--backlog/);
+    await expect(file('Task', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass')).rejects.toThrow(/--backlog/);
+    expect(posted()).toBe(false);
+  });
+
   it('files --backlog --proposed-version backlog --why with the backlog and proposed-backlog labels', async () => {
     await file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'waits for the next planning pass');
     expect(labelsPosted()).toEqual(expect.arrayContaining(['backlog', 'proposed-backlog']));
