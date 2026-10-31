@@ -53,6 +53,12 @@
 # for another RESUME row; the last in the full pass only), so no in-work ticket vanishes unnamed.
 # A DISPOSITION ... BLOCKED-BY comment hides nothing here: stuck-scan.sh re-checks it.
 #
+# Chain workers: with --workers-from naming a `<prefix>-nextleg-<date><letter>-<name>.fleet.json`,
+# the other manifests of that chain in the same directory (same prefix and name, any letter) also own their live
+# workers' tickets, so a worker the other chief armed after `chief.sh next` copied the manifest is not offered
+# again. Ownership of the ticket only: a doc that is missing, WRAPPED, or untouched for
+# NEXT_DISPATCH_SIBLING_MAX_AGE_MIN (default 1440) holds nothing, and an unreadable sibling never marks the fleet unknown.
+#
 # Wrapped tickets: a To Do ticket whose worker record (--workers-dir, default
 # $TICKET_STATUS_STATE_DIR/workers or ~/.himmel/state/workers) is in state wrapped
 # with a resume_brief is a RESUME row carrying `brief=<path>`, filtered like the
@@ -762,6 +768,38 @@ if workers_from and os.path.isfile(workers_from):
                 print('next-dispatchable: live worker %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (worker.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
     except (OSError, ValueError):
         workers_unknown = True
+# `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
+# in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
+# letter) for ownership of a ticket only: a doc that is gone, WRAPPED, or untouched for a day holds nothing, and
+# an unreadable sibling never marks the fleet unknown (it is not this chief's fleet).
+chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
+if chain_m:
+    sib_dir = os.path.dirname(os.path.abspath(workers_from))
+    sib_age_s = int(os.environ.get('NEXT_DISPATCH_SIBLING_MAX_AGE_MIN', '1440')) * 60
+    try:
+        siblings = sorted(os.listdir(sib_dir))
+    except OSError:
+        siblings = []
+    for sib in siblings:
+        sm = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', sib)
+        if not sm or sm.groups() != chain_m.groups() or os.path.join(sib_dir, sib) == os.path.abspath(workers_from):
+            continue
+        try:
+            for worker in manifest_workers(json.load(open(os.path.join(sib_dir, sib)))):
+                sdoc = worker.get('doc', '')
+                try:
+                    if time.time() - os.path.getmtime(sdoc) > sib_age_s:
+                        continue
+                    slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
+                except OSError:
+                    continue
+                smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
+                if smarks and smarks[-1] == 'WRAPPED':
+                    continue
+                for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)):
+                    worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
+        except (OSError, ValueError):
+            continue  # swallow-ok: a sibling chief's unreadable manifest names no worker; this chief's own fleet is still known
 if pool_only and not workers_from and not worker_keys:
     workers_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
