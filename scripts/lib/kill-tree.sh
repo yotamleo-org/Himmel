@@ -135,10 +135,6 @@ kill_tree() {
   KILL_TREE_MAX_DEPTH="$(_kill_tree_validate_uint "KILL_TREE_MAX_DEPTH" "$KILL_TREE_MAX_DEPTH" 4096 32 0)"
   KILL_TREE_SWEEPS="$(_kill_tree_validate_uint "KILL_TREE_SWEEPS" "$KILL_TREE_SWEEPS" 16 2 1)"
 
-  if command -v taskkill.exe >/dev/null 2>&1; then
-    taskkill.exe //PID "$root" //T //F >/dev/null 2>&1 || true
-  fi
-
   sweep=0
   while [ "$sweep" -lt "$KILL_TREE_SWEEPS" ]; do
     snapshot="$(ps -eo pid=,ppid= 2>/dev/null)"

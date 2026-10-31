@@ -220,7 +220,7 @@ else
 fi
 html="$(cat "$board" 2>/dev/null)"
 # a healthy lookup warns of nothing (the failure cases are pinned below).
-lacks 'a healthy label lookup prints no stderr warning (HIMMEL-3369)' "$(cat "$W/stderr.log")" 'leg labels unavailable'
+lacks 'a healthy label lookup prints no stderr warning (HIMMEL-3369)' "$(cat "$W/stderr.log")" 'worker labels unavailable'
 lacks 'a healthy label lookup renders no unavailable banner (HIMMEL-3369)' "$html" 'labels-unavailable'
 
 # Current-version pool counts come from the tick, not a second Jira census.
@@ -418,7 +418,7 @@ BOARD_LEGID="$W/legid-fail.sh" run --out "$W/fail-board.html" >/dev/null; rc=$?
 failhtml="$(cat "$W/fail-board.html" 2>/dev/null)"
 failerr="$(cat "$W/stderr.log")"
 contains 'a failing label lookup still renders the board (rc 0)' "rc=$rc" 'rc=0'
-contains 'a failing label lookup warns on stderr' "$failerr" 'leg labels unavailable'
+contains 'a failing label lookup warns on stderr' "$failerr" 'worker labels unavailable'
 contains 'a failing label lookup names why' "$failerr" 'the lookup failed'
 contains 'a failing label lookup renders the unavailable banner' "$failhtml" 'data-banner="labels-unavailable"'
 TICK_STUB_FAIL=1 BOARD_LEGID="$W/legid-fail.sh" run --out "$W/fail-empty-board.html" >/dev/null
@@ -851,18 +851,18 @@ contains 'failure rate uses the aligned-day Bash denominator' "$(cat "$M/board.h
 : > "$HIMMEL_EVAL_RUNS_LEDGER"
 : > "$FL"
 QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null
-contains 'failures panel: no rows this shift reads the empty line' "$(cat "$M/board.html")" '<p class="none">no leg failures this shift</p>'
+contains 'failures panel: no rows this shift reads the empty line' "$(cat "$M/board.html")" '<p class="none">no worker failures this shift</p>'
 mrun >/dev/null; rc=$?
 same 'failures panel: no lock start, rc 0' "$rc" "0"
-contains 'failures panel: no lock start reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
+contains 'failures panel: no lock start reads unavailable' "$(cat "$M/board.html")" 'worker failures unavailable'
 mkdir -p "$W/fl-dir"
 QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$?
 same 'failures panel: unreadable ledger, rc 0' "$rc" "0"
-contains 'failures panel: unreadable ledger reads unavailable' "$(cat "$M/board.html")" 'leg failures unavailable'
+contains 'failures panel: unreadable ledger reads unavailable' "$(cat "$M/board.html")" 'worker failures unavailable'
 rm -f "$M/board.html"
 QL_STUB_STARTED=2026-10-07T03:00:00Z HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/fl-dir" mrun >/dev/null; rc=$?
 same 'failures panel: worker-session unreadable ledger, rc 0' "$rc" "0"
-contains 'failures panel: HIMMEL_WORKER_SESSION_FAILURES_LEDGER sets the ledger path' "$(cat "$M/board.html")" 'leg failures unavailable'
+contains 'failures panel: HIMMEL_WORKER_SESSION_FAILURES_LEDGER sets the ledger path' "$(cat "$M/board.html")" 'worker failures unavailable'
 for i in $(seq 1 12); do frow 2026-10-07T03:10:00Z "N$i" "c/k$(printf '%02d' "$i")" 1 false; done > "$FL"
 QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null
 same 'failures panel: the live page shows the top 5 rows' "$(grep -o '<tr data-class=' "$M/board.html" | wc -l | tr -d ' ')" "5"
@@ -1038,6 +1038,19 @@ lacks 'archive: carries no fingerprint meta (it is never the tick board)' "$ahtm
 lbytes="$(printf '%s' "$lhtml" | wc -c)"
 if [ "$lbytes" -lt 15000 ]; then pass "live page stays under 15 KB ($lbytes bytes)"; else fail "live page is $lbytes bytes, want under 15000"; fi
 
+# --- the text a chief reads and copies says worker; the wire keys (leg:, legs:)
+# keep their names and are pinned by the --json rows and the legs: fixture above.
+usage_txt="$(node "$SUT" --help 2>&1)"; rc=$?
+same 'the usage line exits 2 (a usage error)' "rc=$rc" 'rc=2'
+contains 'usage line names the <worker doc> placeholder (HIMMEL-8309)' "$usage_txt" '--workers "<worker doc> ..."'
+lacks 'usage line carries no leg (HIMMEL-8309)' "$usage_txt" 'leg'
+contains 'fleet counter reads workers live (HIMMEL-8309)' "$lhtml" '<small>/15 workers live</small>'
+lacks 'fleet counter never reads legs live (HIMMEL-8309)' "$lhtml" 'legs live'
+contains 'archive heading reads Done workers (HIMMEL-8309)' "$ahtml" '<h2>Done workers</h2>'
+lacks 'archive heading never reads Done legs (HIMMEL-8309)' "$ahtml" 'Done legs'
+contains 'live page counts done workers (HIMMEL-8309)' "$lhtml" ' done workers and the merged PRs are in '
+lacks 'live page never counts done legs (HIMMEL-8309)' "$lhtml" 'done leg'
+
 # --- a finished judge doc (last marker VERDICT or WRAPPED) goes to the archive like a
 # WRAPPED worker. Its label is the doc stem, which tick.sh's tails= never carries, so the
 # board reads the doc's own last marker. The size gate is a real-sized fleet: 25 live
@@ -1103,6 +1116,14 @@ jcheck '--json: finished legs are counted, not listed' 'M.console.archive_legs >
 for secret in aaaa1111 pid111111 pid777777 cafe1919 x8664; do
     lacks "--json: no nonce/lock-token text: $secret" "$jtxt" "$secret"
 done
+
+# --- the need actions and the health line say worker; the leg: key stays.
+BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" run --out "$W/n5-json-board.html" --json "$W/n5-board.json" >/dev/null; rc=$?
+same '--json: the worker-wording render exits 0' "rc=$rc" 'rc=0'
+jtxt="$(cat "$W/n5-board.json" 2>/dev/null)"
+jcheck '--json: a BLOCKED worker need reads clear the BLOCKED worker, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N7" && n.action === "clear the BLOCKED worker")'
+jcheck '--json: a still-open WRAPPED worker need reads close the worker window, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N5" && n.action === "close the worker window")'
+jcheck '--json: the health line counts workers, never legs (HIMMEL-8309)' '/workers? need you/.test(M.cards.health.recommendation) && !/\bleg/.test(M.cards.health.recommendation)'
 
 # --- chief cost and the succession eval come from session transcripts: line 1 names
 # the session (custom-title = chief doc stem), assistant lines carry message.usage,
@@ -1345,7 +1366,7 @@ lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/
 # --- the operator board is byte-identical: golden of the base render on the main fixture
 # (html + archive, the minute stamp normalised, a hermetic env: no operator ledger, HOME or
 # handover root). A deliberate operator-board change updates GOLDEN_OPERATOR_SHA.
-GOLDEN_OPERATOR_SHA='7f18b45bb435aa3e86be23191f05292ab6c7a0206bc7a0e7a9eb158893e05c39'  # current-version pool availability and fingerprint
+GOLDEN_OPERATOR_SHA='693e760f5d4518c0fcbb7ac6900538ce7478eae3c36e0abe51cfe76407fa2341'  # current-version pool availability and fingerprint
 mkdir -p "$W/home"
 ( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
 golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"

@@ -8,8 +8,6 @@
 # Load-bearing P0 findings this wrapper encodes (see
 # scripts/probes/claude-p/RESULTS.md on feat/claude-p-probes, and the plan at
 # handovers/yotamleo/himmel/specs/plan/claude-p-dispatch-substrate.md):
-#   - Git Bash mangles a leading-slash prompt arg into a Windows path before
-#     claude.exe sees it -> MSYS_NO_PATHCONV=1 around the invocation, always.
 #   - A denied tool call can still exit 0 (rc reflects --max-turns exhaustion,
 #     not the denial) -> permission_denials is parsed as a diagnostic, never
 #     rc. The verdict on whether the dispatch "worked" comes from the
@@ -71,13 +69,6 @@ Env:
   HIMMEL_REGISTRY_DIR             registry root (default: $HOME/.himmel/registry)
   HIMMEL_DISPATCH_MAX_CONCURRENT  concurrency cap (default: 3)
   CADENCE_USAGE_*                 forwarded to scripts/lib/usage-preflight.sh
-
-On Windows/Git Bash: --worktree/--cwd/--artifact are checked with bash's own
-file tests, which tolerate a POSIX-style /tmp/... path fine. But if your
-PROMPT tells the model to write to that same path, use a Windows-form path
-(cygpath -m) there — native claude.exe's Write tool was observed to resolve
-a bare /tmp/... path unreliably (intermittently reports success without
-writing), while the identical prompt with a Windows-form path did not.
 USAGE
 }
 
@@ -605,7 +596,7 @@ BANK_VERDICT="$(CADENCE_USAGE_WORKER="${CADENCE_USAGE_WORKER:-claude-headless:$R
 # because something was already sitting at that path). ---
 # whole-second mtimes (`%s`) miss a pre-existing artifact
 # rewritten within the SAME second — a real case for a fast dispatch. `%s.%N`
-# (GNU date, which Git Bash ships) gives nanosecond resolution instead.
+# (GNU date) gives nanosecond resolution instead.
 # For a pre-existing DIRECTORY, a file's own mtime is what
 # advances when its content changes — the directory's own mtime does NOT
 # (on NTFS and most filesystems, a directory's mtime only tracks entries
@@ -692,21 +683,9 @@ fi
 CMD=("${CLAUDE_LANE_CMD[@]}" -p --output-format json --permission-mode "$PERMISSION_MODE" --max-turns "$MAX_TURNS")
 CMD+=(--model "$MODEL")
 [ -z "$ALLOWED_TOOLS" ] || CMD+=(--allowedTools "$ALLOWED_TOOLS")
-if [ -n "$SETTINGS" ]; then
-  # codex-4: MSYS_NO_PATHCONV=1 (below) disables Git Bash's automatic
-  # POSIX->Windows path rewrite for EVERY argv element, not just the prompt —
-  # so an ordinary Git-Bash path (e.g. /c/Users/...) reaches claude.exe (a
-  # native Windows binary) unconverted and it cannot find the file. Convert
-  # explicitly (same idiom dispatch-lane.sh's normalize_path uses).
-  if command -v cygpath >/dev/null 2>&1; then SETTINGS="$(cygpath -m "$SETTINGS")"; fi
-  CMD+=(--settings "$SETTINGS")
-fi
+[ -z "$SETTINGS" ] || CMD+=(--settings "$SETTINGS")
 [ -z "$JSON_SCHEMA" ] || CMD+=(--json-schema "$JSON_SCHEMA")
-if [ -n "$SYSTEM_PROMPT_FILE" ]; then
-  # Same codex-4 Git-Bash path conversion as --settings above.
-  if command -v cygpath >/dev/null 2>&1; then SYSTEM_PROMPT_FILE="$(cygpath -m "$SYSTEM_PROMPT_FILE")"; fi
-  CMD+=(--system-prompt-file "$SYSTEM_PROMPT_FILE")
-fi
+[ -z "$SYSTEM_PROMPT_FILE" ] || CMD+=(--system-prompt-file "$SYSTEM_PROMPT_FILE")
 [ -z "$TOOLS" ] || CMD+=(--tools "$TOOLS")
 [ "$ISOLATED" = "0" ] || CMD+=(--safe-mode --strict-mcp-config --no-session-persistence)
 
@@ -764,7 +743,7 @@ fi
       _l=$_k${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}; }
   fi
   [[ -z $_l ]] && \
-  PATH="$DEDUPED_PATH" MSYS_NO_PATHCONV=1 "${CMD[@]}" < "$PROMPT_FILE" \
+  PATH="$DEDUPED_PATH" "${CMD[@]}" < "$PROMPT_FILE" \
   >"$STDOUT_FILE" 2>"$STDERR_FILE"; } ) &
 # deliberately NOT named CLAUDE_PID — an interactive Claude Code
 # session exports its OWN pid into every subprocess under that exact name, so

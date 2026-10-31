@@ -2,28 +2,13 @@
 # worktree-inuse.sh — shared predicate: is a live process holding a directory
 # inside this worktree, and did a failed `git worktree remove` leave it whole?
 #
-# A plain `git worktree remove` is NOT atomic on Windows:
-# git-for-Windows deletes with POSIX semantics, so an open handle does not
-# stop the delete. MEASURED, in a throwaway repo:
-#
-#   holder kind                 rename probe    remove   dir    .git       entries  adminrows
-#   control (nothing holding)   OK              OK       no     GONE       0        0
-#   bash holding cwd at root    OK              OK       no     GONE       0        0
-#   pwsh holding cwd at root    BLOCKED         FAIL     yes    GONE       0        0
-#   pwsh holding cwd in subdir  BLOCKED         FAIL     yes    GONE       2        0
-#
-# With a NATIVE Windows process (pwsh/node) holding a directory inside the
-# tree, `git worktree remove` deletes the CONTENTS, removes the `.git` file,
-# removes the `git worktree list` admin row, and only THEN fails the final
-# rmdir. Two consequences:
-#   * A non-zero rc does NOT mean "refused up front, tree unchanged". It
-#     usually means the tree is GUTTED and already deregistered.
-#   * An MSYS bash holder does NOT trip this. It takes a native Windows
-#     child. That is why a pure-bash caller never sees it and a full
-#     test-suite run does.
-# An atomic rename probe (`mv <wt> <wt>.probe`, rename straight back)
-# predicted the outcome 4/4 and is strictly MORE conservative than git's
-# rmdir.
+# A plain `git worktree remove` is NOT atomic: it deletes the CONTENTS,
+# removes the `.git` file, removes the `git worktree list` admin row, and only
+# THEN does the final rmdir. So a non-zero rc does NOT mean "refused up front,
+# tree unchanged": whatever blocked the rmdir left the tree GUTTED and already
+# deregistered.
+# An atomic rename probe (`mv <wt> <wt>.probe`, rename straight back) is
+# strictly MORE conservative than git's rmdir.
 #
 # Provides two functions for any caller about to attempt (or that just
 # attempted) a `git worktree remove`:
@@ -36,10 +21,9 @@
 # shellcheck disable=SC2034  # WORKTREE_INUSE_RESULT and WORKTREE_INUSE_DETAIL are output contract globals, read by sourcing scripts
 
 # Is a live process holding a directory inside this worktree?
-# A `git worktree remove` is NOT atomic on Windows (see the repro table
-# above): a held directory does not stop the delete, it only stops the FINAL
-# rmdir, after the contents and the `worktree list` admin entry are already
-# gone. This probe runs BEFORE the remove and predicts its outcome: renaming
+# A `git worktree remove` is NOT atomic (see above): a blocked FINAL rmdir
+# fails only after the contents and the `worktree list` admin entry are
+# already gone. This probe runs BEFORE the remove and predicts its outcome: renaming
 # the worktree directory needs exactly the same precondition (nothing has it
 # open) that the final rmdir needs, the rename is atomic, and it mutates
 # nothing when it fails. Deliberately CONSERVATIVE, not a lock system:
@@ -48,10 +32,10 @@
 # Best-effort by design: on POSIX a process's cwd blocks neither the rename
 # nor the rmdir, so the probe is a no-op there and the ordinary remove path
 # decides — which is fine, because on POSIX the remove itself succeeds
-# cleanly (see the repro table above).
+# cleanly.
 #
 # This is still probe-then-act, not a lock: a successful round-trip proves
-# only that nothing held the tree AT THAT MOMENT. A native process that opens
+# only that nothing held the tree AT THAT MOMENT. A process that opens
 # a handle in the window between the probe returning and the caller's
 # `git worktree remove` reproduces the exact failure this probe exists to
 # predict. Closing that window needs a lock held across probe+remove, which
@@ -129,21 +113,10 @@ worktree_in_use() {
     # the auto-prune. T10 and 11k14 pin that case; T9 covers the
     # trivial hop-0 self case.
     #
-    # Gate on Linux AND /proc/self, not /proc/self alone.
-    # A bare `[ -d /proc/self ]` does not establish Linux: MSYS2/Cygwin (Git
-    # Bash for Windows) also expose a /proc, so that test alone could let this
-    # branch run on Windows. This scan's /proc/<pid>/cwd walk is written
-    # against Linux's procfs specifically -- on MSYS/Cygwin there is no
-    # guarantee the per-pid cwd symlinks resolve the way it expects, and if
-    # they silently don't, every pid fails to resolve, inuse_found_cwd stays
-    # 0, and the fail-closed arm below ("in-use-scan-failed") refuses EVERY
-    # prune on Windows -- exactly the "blanket-refusing every removal on
-    # every non-Linux station" outcome the comment further below says must
-    # not happen, because Windows must keep the rename probe, which is the
-    # only MEASURED detector there (see the repro table at the top of this
-    # file). Requiring `uname -s` = Linux closes that gap while the /proc/self
-    # test still guards a Linux kernel with no procfs mounted -- that host
-    # still falls through to the rename probe rather than crashing.
+    # Gate on Linux AND /proc/self, not /proc/self alone: this scan's
+    # /proc/<pid>/cwd walk is written against Linux's procfs specifically, and
+    # the /proc/self test still guards a Linux kernel with no procfs mounted --
+    # that host falls through to the rename probe rather than crashing.
     if [ "$(uname -s 2>/dev/null)" = "Linux" ] && [ -d /proc/self ]; then
         # Resolve to the PHYSICAL path with `pwd -P`, not plain `cd`+`pwd` and
         # not a raw string compare -- because a fixture path under /tmp can
@@ -236,10 +209,8 @@ worktree_in_use() {
         fi
     fi
     # Not Linux, or no procfs: fall through to the rename probe below
-    # UNCHANGED. Do not fail closed here -- on Windows the rename probe is a
-    # real, MEASURED detector (see the repro table at the top of this file), so
-    # blanket-refusing every removal on every non-Linux station would disable
-    # pruning everywhere for no safety gain. A POSIX host without /proc
+    # UNCHANGED. Do not fail closed here -- blanket-refusing every removal on
+    # every non-Linux station would disable pruning there. A POSIX host without /proc
     # (macOS) keeps today's pre-existing weak behaviour -- a known gap, not
     # one this change closes.
     #
@@ -247,9 +218,7 @@ worktree_in_use() {
     # and (like Linux) POSIX rename does not care about open handles or a
     # process's cwd either -- so the rename probe below is just as weak there
     # as it always was, and a macOS operator pruning would otherwise get a
-    # silent skip-the-check rather than a real detector. Windows/MSYS is
-    # explicitly NOT warned: there the rename probe IS a real, measured
-    # detector (the 4/4 table above), so there is nothing to warn about.
+    # silent skip-the-check rather than a real detector.
     # lsof/fuser as an actual Darwin detector is the tracked follow-up on
     # not implemented here.
     if [ -z "$WORKTREE_INUSE_DARWIN_WARNED" ] && [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
@@ -320,8 +289,8 @@ worktree_in_use() {
 # must not claim more than that.
 #
 # Paths are normalised (cd + pwd) before comparing, because that porcelain
-# listing can print a different-but-equivalent spelling of the same path
-# (drive-letter case, slashes) on Windows; if the path no longer resolves,
+# listing can print a different-but-equivalent spelling of the same path; if
+# the path no longer resolves,
 # fall back to a plain string compare.
 worktree_intact() {
     local primary="$1" path="$2"

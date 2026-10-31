@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # scripts/lib/proc-tree.sh -- terminate a background job AND everything it
-# spawned, on POSIX and on Git Bash / MSYS.
+# spawned.
 #
 # WHY: signalling a bare pid reaches the wrapper and nothing else. A shell
-# suite that leaves a wedged descendant behind is exactly how OVERLORD8
-# accumulated 202 live bash.exe on 2026-07-28 -- the caps fired, the
-# grandchildren survived, and the churn slowed every other run on the box.
+# suite that leaves a wedged descendant behind accumulates live processes --
+# the caps fire, the grandchildren survive, and the churn slows every other
+# run on the box.
 #
 # THE PRIMITIVE: a process GROUP signal (`kill -TERM -<pgid>`). It only works
 # if the job HAS its own group, which is why callers MUST spawn under `set -m`
@@ -13,14 +13,9 @@
 # same thing by default; its --foreground flag is documented as the opt-out
 # ("in this mode, children of COMMAND will not be timed out").
 #
-# MEASURED, not assumed (Git Bash 2.x / Windows 11 26200 probe):
-# a three-deep chain bash -> bash -> sleep spawned under `set -m` was fully
-# reaped by ONE `kill -TERM -<pgid>`; `ps` confirmed all three shared the
-# leader's PGID. The concern carried into this ticket -- that on Git Bash the
-# group signal returns 0 while killing nothing (an earlier review finding) -- did NOT reproduce for a job spawned this way. It
-# is still not TRUSTED: this helper VERIFIES the outcome instead of believing
-# the return code, and falls back to Windows `taskkill` for anything that
-# survived. An rc of 0 is not evidence; an empty group is.
+# The group signal's return code is not TRUSTED: this helper VERIFIES the
+# outcome instead of believing it. An rc of 0 is not evidence; an empty group
+# is.
 #
 # USAGE (source it, then call):
 #   . scripts/lib/proc-tree.sh
@@ -50,39 +45,16 @@
 # here may BEGIN with the linter's name either: it parses that as a directive
 # and fails the file with SC1073.
 
-# proc_tree_is_windows -- 0 when this is an MSYS/Cygwin bash, where /proc
-# exposes the Windows pid of a process and `taskkill` exists as a last resort.
+# proc_tree_is_windows -- kept for the callers in scripts/ci/run-shell-tests.sh.
 proc_tree_is_windows() {
     [ -r "/proc/$$/winpid" ]
 }
 
-# proc_tree_winpid <msys-pid> -- print the Windows pid, or nothing.
-proc_tree_winpid() {
-    cat "/proc/$1/winpid" 2>/dev/null
-}
-
 # proc_tree_process_identity <pid> -- print a stable start-time identity for a
-# live process. POSIX uses start time + command; Git Bash maps its pid to the
-# native Windows pid and reads the full-resolution Get-Process StartTime.
+# live process: start time + command.
 proc_tree_process_identity() {
-    local pid="$1" value="" winpid="" pwsh_bin="" candidate
+    local pid="$1" value=""
     [ -n "$pid" ] || return 1
-
-    if proc_tree_is_windows; then
-        winpid=$(proc_tree_winpid "$pid")
-        case "$winpid" in ''|*[!0-9]*) return 1 ;; esac
-        for candidate in pwsh pwsh.exe powershell.exe powershell; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-                pwsh_bin=$candidate
-                break
-            fi
-        done
-        [ -n "$pwsh_bin" ] || return 1
-        value=$("$pwsh_bin" -NoProfile -NonInteractive -Command "try { (Get-Process -Id $winpid -ErrorAction Stop).StartTime.ToUniversalTime().Ticks } catch { exit 1 }" 2>/dev/null) || value=""
-        [ -n "$value" ] || return 1
-        printf 'win:%s:%s\n' "$winpid" "$value"
-        return 0
-    fi
 
     # Pin TZ/LC_ALL and disable ps's terminal-width truncation (-ww) so the
     # identity string is the same whoever/wherever it is read: lstart is
@@ -95,18 +67,10 @@ proc_tree_process_identity() {
     printf 'posix:%s\n' "$value"
 }
 
-# _PROC_TREE_PROC_ROOT -- the /proc mount this file probes on Windows/MSYS.
-# Overridable so a test can point it at an unreadable/absent directory to
-# exercise the "probe unavailable" arm without needing a genuinely-unreadable
-# real /proc.
-_PROC_TREE_PROC_ROOT="${_PROC_TREE_PROC_ROOT:-/proc}"
-
 # proc_tree_process_alive <pid> -- 0 when the numeric pid currently names a
-# live process, 1 when the process is CONFIRMED absent (POSIX: kill -0 failed
-# with ESRCH; Windows/MSYS: the proc root is readable but this pid's entry is
-# genuinely missing from it), and 2 when the probe itself could not answer
-# (POSIX: kill -0 failed with EPERM or anything else; Windows/MSYS: the proc
-# root itself is unreadable/absent, so a missing pid entry proves nothing).
+# live process, 1 when the process is CONFIRMED absent (kill -0 failed with
+# ESRCH), and 2 when the probe itself could not answer (kill -0 failed with
+# EPERM or anything else).
 # This is deliberately identity-free so callers can distinguish a confirmed
 # exit from a live process whose identity no longer matches. Callers MUST
 # treat 2 as unknown, never as confirmed absence -- see
@@ -114,23 +78,6 @@ _PROC_TREE_PROC_ROOT="${_PROC_TREE_PROC_ROOT:-/proc}"
 proc_tree_process_alive() {
     local pid="$1" err=""
     [ -n "$pid" ] || return 1
-    if proc_tree_is_windows; then
-        [ -d "$_PROC_TREE_PROC_ROOT/$pid" ] && return 0
-        # The pid entry is missing. That is confirmed absence ONLY if the
-        # proc root itself is readable -- otherwise the probe cannot tell an
-        # exited process from an unreadable mount, and the honest answer is
-        # "unknown", not "gone".
-        # -r alone is NOT enough: on POSIX the SEARCH (execute) bit is what
-        # permits traversing into the directory to stat "$root/$pid". Without
-        # it the probe above fails for a pid that is genuinely THERE, so
-        # treating a readable-but-unsearchable root as confirmed absence is
-        # the same false-confirmation this function exists to remove.
-        [ -d "$_PROC_TREE_PROC_ROOT" ] &&
-            [ -r "$_PROC_TREE_PROC_ROOT" ] &&
-            [ -x "$_PROC_TREE_PROC_ROOT" ] &&
-            return 1
-        return 2
-    fi
     kill -0 "$pid" 2>/dev/null && return 0
     # kill -0's exit status collapses ESRCH (confirmed gone) and EPERM (probe
     # refused, e.g. a foreign-owned pid) into the same nonzero rc. Re-run under
@@ -192,8 +139,8 @@ proc_tree_liveness_matches() {
 # NOT `ps -g <pgid>`: POSIX defines -g as select-by-SESSION-leader, and procps
 # overloads it with effective-group-name, so it is the wrong axis on Linux and
 # ambiguous everywhere. Selecting every process and filtering on an explicit
-# pgid= column is unambiguous on Linux and macOS; Git Bash has no -o at all,
-# and its bare table (PID PPID PGID WINPID ...) is parsed positionally.
+# pgid= column is unambiguous on Linux and macOS; a ps with no -o falls back
+# to its bare table, parsed positionally.
 #
 # The working form is resolved ONCE. Probing both on every call meant three
 # forks per liveness check, and this runs in a grace loop on a box whose
@@ -201,11 +148,10 @@ proc_tree_liveness_matches() {
 # ZOMBIES ARE NOT SURVIVORS. A killed child stays in the process table as a
 # defunct entry until its parent waits on it, and our caller waits AFTER this
 # helper returns -- so counting a zombie as alive would report a successful
-# termination as a failure and send us down the taskkill path for a process
-# that is already dead. The posix form therefore selects `stat=` too and drops
-# anything in state Z. The Git Bash table form has no state column and cannot
-# filter; the cost there is a spurious warning, never a missed kill, and MSYS
-# reaps quickly enough that it has not been observed.
+# termination as a failure for a process that is already dead. The posix form
+# therefore selects `stat=` too and drops anything in state Z. The table form
+# has no state column and cannot filter; the cost there is a spurious warning,
+# never a missed kill.
 _PROC_TREE_PS_MODE=""
 proc_tree_group_members() {
     local pgid="$1" table=""
@@ -240,13 +186,11 @@ proc_tree_group_alive() {
 # group, wait out the grace period, KILL the group, and only THEN check whether
 # anything is left. When expected-identity is supplied, the leader identity is
 # revalidated immediately before every group signal, and a failed group signal
-# never falls back to the bare pid. Windows fallback targets only survivors
-# whose current identity can be captured and immediately revalidated. The
-# initial guard splits a CONFIRMED exit/recycle (rc 3, no signal sent) from a
+# never falls back to the bare pid. The initial guard splits a CONFIRMED exit/recycle (rc 3, no signal sent) from a
 # probe that could not confirm anything either way (rc 2) -- callers must not
 # treat them the same.
 proc_tree_terminate() {
-    local pid="$1" grace="${2:-3}" expected_identity="${3:-}" survivor survivor_identity w guarded=0 identity_unverified=0
+    local pid="$1" grace="${2:-3}" expected_identity="${3:-}" guarded=0
     local member member_identity i leader_identity_rc survivor_verified=0 identity_rc=0
     local -a member_pids=() member_identities=()
     [ -n "$pid" ] || return 0
@@ -282,9 +226,9 @@ proc_tree_terminate() {
     fi
 
     # Sleep the grace out flat rather than polling it away. Reading the
-    # process table costs seconds on a loaded Windows box -- the state this
-    # helper exists to clean up -- so polling to maybe save 3s reliably spent
-    # 15 or more. The grace is a courtesy window for the suite's own cleanup;
+    # process table costs seconds on a loaded box -- the state this helper
+    # exists to clean up -- so polling to maybe save 3s can spend more. The
+    # grace is a courtesy window for the suite's own cleanup;
     # nothing downstream needs to know precisely when it stopped needing it.
     sleep "$grace"
 
@@ -324,34 +268,13 @@ proc_tree_terminate() {
     # ONE table read, after the only signal that cannot be ignored. Anything
     # here is a delivery failure, not a stubborn process.
     proc_tree_group_alive "$pid" || return 0
-
-    if proc_tree_is_windows; then
-        for survivor in $(proc_tree_group_members "$pid"); do
-            if [ "$guarded" -eq 1 ]; then
-                survivor_identity=$(proc_tree_process_identity "$survivor") || survivor_identity=''
-                if [ -z "$survivor_identity" ] || ! proc_tree_process_identity_matches "$survivor" "$survivor_identity"; then
-                    identity_unverified=1
-                    continue
-                fi
-            fi
-            w=$(proc_tree_winpid "$survivor")
-            [ -n "$w" ] || continue
-            # MSYS_NO_PATHCONV: without it MSYS rewrites the /PID and /F
-            # switches into Windows paths and taskkill rejects them.
-            MSYS_NO_PATHCONV=1 taskkill /PID "$w" /T /F >/dev/null 2>&1
-        done
-        sleep 1
-        proc_tree_group_alive "$pid" || return 0
-    fi
-
-    [ "$identity_unverified" -eq 0 ] || return 2
     return 1
 }
 
 # proc_tree_group_terminate <pgid> [grace-seconds] -- clean descendants after
 # their leader exits. snapshot each observed member with
 # its identity, then revalidate that member immediately before every PID signal.
-# Never signal the unowned numeric group id or use a blind Windows tree-kill.
+# Never signal the unowned numeric group id.
 proc_tree_group_terminate() {
     local pid="$1" grace="${2:-3}" member member_identity i identity_unverified=0
     local -a member_pids=() member_identities=()

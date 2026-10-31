@@ -463,7 +463,7 @@ done
 # and this file's own samples. An entry whose
 # file no longer carries a call fails, so the list only shrinks.
 PWSH_CALL=$'(^|[^A-Za-z0-9_.-])["\']?(pwsh|powershell)(\\.exe)?["\']?[[:space:]]+(-[A-Za-z]+([[:space:]]|$)|[^[:space:]]*\\.ps1)|(spawn|spawnSync|exec|execSync|execFile|execFileSync)\\([[:space:]]*.(pwsh|powershell)(\\.exe)?.[,)]'
-# The last three entries are Windows-only test branches kept until the win32
+# The last two entries are Windows-only test branches kept until the win32
 # branch sweep removes them.
 PWSH_ALLOW='scripts/cr/test-cr-guarded-closure.sh
 scripts/docs/test-docs-dropped-terms.sh
@@ -472,7 +472,6 @@ scripts/hooks/test-block-bare-qmd-query.sh
 scripts/hooks/test-block-destructive-commands-a.sh
 scripts/hooks/test-block-edit-live-settings.sh
 scripts/handover/test-merge-on-green.sh
-scripts/lib/test-worktree-inuse.sh
 scripts/test-clean-garden-accounting.sh'
 
 # pwsh_calls ROOT: reads relative paths on stdin, prints path:line:text per call;

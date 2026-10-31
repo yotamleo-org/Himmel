@@ -5,10 +5,6 @@
 # loudly instead of failing it (or, worse, passing it vacuously).
 #
 # The hosts that cannot:
-#   Git Bash / NTFS   chmod is a no-op on the ACL (`chmod 600` reads back 644,
-#                     `chmod 000` leaves a file readable, `mkdir -m 700` on an
-#                     existing dir is "Permission denied"); MSYS `ln -s` COPIES
-#                     unless the runner has the symlink privilege
 #   root (CI, docker) file-mode read/write denial is not enforced against uid 0
 #   macOS             BSD stat has no `-c` (the mode readback needs `-f %Lp`)
 #
@@ -22,19 +18,14 @@
 #   host_can_deny_read        chmod 000 makes a file unreadable to this user
 #   host_can_deny_write       chmod 555 makes a dir refuse a new file
 #   host_symlinks_real        `ln -s` makes a real link (`-L`), not a copy
-#   host_newline_paths        a directory name may hold a literal newline (NTFS: no)
+#   host_newline_paths        a directory name may hold a literal newline
 #   host_isolated_bash_boots  a bash linked (else copied) into an otherwise EMPTY
-#                             dir starts (MSYS: a copied bash.exe cannot load
-#                             msys-2.0.dll from there -- rc 127)
+#                             dir starts
 #   host_skip <reason...>     print the one stdout line `SKIP <reason>`
 #
 # This file sets no shell options and leaves no globals, so it is safe to source
 # under `set -u` / `set -e`. A probe that cannot even make its scratch dir
 # reports "not capable" (the conservative answer: the caller SKIPs, loudly).
-#
-# ponytail: the NTFS/MSYS behaviour cannot run on Linux/macOS - it is covered by
-# PATH stubs (`chmod` no-op, `ln` copying) in test-host-caps.sh, not by a real
-# Git Bash run; the extended-tier nightly is the real proof.
 
 host_mode_of() {
     [ -n "${1-}" ] || return 1
@@ -57,7 +48,7 @@ host_modes_stick() {
     done
     chmod 700 "$d/f" 2>/dev/null || :
     # The directory half: `mkdir -m 700 -p` twice (create, then re-secure the
-    # existing dir) -- on NTFS the second call is "Permission denied".
+    # existing dir).
     # shellcheck disable=SC2174 # "$d/dir" is the deepest (only) component
     mkdir -m 700 -p "$d/dir" 2>/dev/null && mkdir -m 700 -p "$d/dir" 2>/dev/null \
         && [ "$(host_mode_of "$d/dir")" = 700 ] || rc=1
