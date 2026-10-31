@@ -3174,12 +3174,13 @@ not_contains 'with no versionless operator ticket the tick prints no INTAKE= (HI
 not_contains 'with no focus-chains.json the tick prints no chains= (HIMMEL-8336)' "$(ic_tick)" ' chains='
 sed -e 's/^labels: \[\]/labels: ["operator-directed"]/' -e 's/904/905/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-905.md"
 sed -e 's/^statusCategory: "x"/statusCategory: "Done"/' -e 's/904/906/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-906.md"
+sed -e 's/^body$/statusCategory: "Done"/' -e 's/904/907/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-907.md"  # open ticket whose description quotes a Done line
 rm -rf "$W/ic-state"
 contains 'a versionless operator-directed ticket shows as INTAKE=<n> beside pool= (HIMMEL-8336)' "$(ic_tick)" ' INTAKE=1 '
-printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-906"},{"key":"HIMMEL-904"}]},{"drain":"x"}]\n' > "$W/ic-dir/focus-chains.json"
-contains 'a focus-chains.json that lists a Done step shows chains=STALE:<done>/<steps> (HIMMEL-8336)' "$(ic_tick)" ' chains=STALE:1/3'
-printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-904"}]}]\n' > "$W/ic-dir/focus-chains.json"
-not_contains 'a focus-chains.json with no Done step prints no chains= (HIMMEL-8336)' "$(ic_tick)" ' chains='
+printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-906"},{"key":"HIMMEL-904"},{"key":"HIMMEL-907"}]},{"drain":"x"}]\n' > "$W/ic-dir/focus-chains.json"
+contains 'a focus-chains.json that lists a Done step shows chains=STALE:<done>/<steps>; a Done line in a description is not a Done step (HIMMEL-8336)' "$(ic_tick)" ' chains=STALE:1/4'
+printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-904"},{"key":"HIMMEL-907"}]}]\n' > "$W/ic-dir/focus-chains.json"
+not_contains 'a focus-chains.json with no Done step prints no chains=, whatever its descriptions quote (HIMMEL-8336)' "$(ic_tick)" ' chains='
 
 # The pool snapshot classifies every version ticket (140 s on a 23-worker fleet),
 # so a slow one never holds the tick: it reads ? until the detached snapshot lands, then counts.

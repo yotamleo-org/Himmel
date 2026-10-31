@@ -805,7 +805,7 @@ underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fa
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
     intake_ver="$(printf '%s\n' "$pool_out" | sed -n 's/^# intake [0-9][0-9]* for \([^:]*\):.*/\1/p' | head -n 1)"  # the line's candidates already printed with the pool; this names the way to file them
     [ "$intake_ver" != "no open version" ] || intake_ver=""  # an older dispatcher's line for no open version: nothing to file into
-    [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to ${intake_ver} --why <why>\`, then run the rm-run once for the batch"
+    [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to $(printf '%q' "$intake_ver") --why <why>\`, then run the rm-run once for the batch"
     [ -z "$extra" ] || printf '# version backlog (second pass without --priority-pool-only; rows already in the pool omitted):\n%s\n' "$extra"
 }
 # pool_watch_wake: even a full fleet, or a failed tick sample, may have silently dropped

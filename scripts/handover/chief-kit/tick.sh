@@ -468,7 +468,7 @@ except (OSError, ValueError, TypeError, AttributeError):
 done = 0
 for k in keys:
     try:
-        done += bool(re.search(r'^statusCategory: "Done"$', open("%s/%s.md" % (sys.argv[2], k)).read(), re.M))
+        done += bool(re.search(r'^statusCategory: "Done"$', open("%s/%s.md" % (sys.argv[2], k)).read().split("\n---", 1)[0], re.M))
     except OSError:
         pass
 print("STALE:%d/%d" % (done, len(keys)) if done else "ok")

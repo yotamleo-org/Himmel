@@ -519,7 +519,7 @@ printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
 printf '%s\n' '# intake 2 for v1.2 beta: HIMMEL-901 HIMMEL-902' > "$STUB/pool.intake"
 I="$(new_inbox spacever)"
 arm "$I" "$WORK/spacever.out" 8
-check "(8336) a version name with a space still gets the INTAKE command with that --to value" "1" "$(grep -c -e '^# INTAKE: .*--to v1.2 beta ' "$WORK/spacever.out")"
+check "(8336) a version name with a space still gets the INTAKE command, shell-quoted as one --to argument" "1" "$(grep -c -F -e '--to v1.2\ beta ' "$WORK/spacever.out")"
 rm -f "$STUB/pool.intake" "$STUB/pool.rows"
 
 printf '\n%d failure(s)\n' "$fails"
