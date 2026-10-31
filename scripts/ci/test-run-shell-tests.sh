@@ -3284,7 +3284,7 @@ SHEOF
 chmod +x "$sb32/scripts/test-stuck32.sh"
 real32='\[TIME\] [^ ]*test-stuck32\.sh — exceeded 2s; suite and its descendants terminated'
 
-out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT=3 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
+out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT=3 SUITE_RUN_BUDGET=7200 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
 runs32=$(wc -l < "$sb32/stuck.runs" 2>/dev/null | tr -d ' ')
 if [ "$rc32" -eq 1 ] && [ "$runs32" = 1 ] && grepq "$out32" -E "$real32" \
    && grepq "$out32" '\[NO-RETRY\] [^ ]*test-stuck32\.sh' && ! grepq "$out32" '\[RETRY\]' && grepq "$out32" 'TIMED OUT: 1'; then

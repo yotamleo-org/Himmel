@@ -4551,7 +4551,7 @@ LIVEMSGS
   # A cap overrun is retried too: on a loaded runner it is as likely slowness as
   # a defect, and one rerun in the same job costs less than a red main.
   if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
-    if [ "$capped" -eq 1 ] && [ $(( SECONDS - run_start + suite_timeout )) -gt "$retry_budget" ]; then
+    if [ "$capped" -eq 1 ] && [ $(( SECONDS - run_start + suite_timeout )) -ge "$retry_budget" ]; then
       printf '[NO-RETRY] %s exceeded its %ss cap; a rerun cannot finish inside the run'\''s %ss budget (%ss left)\n' \
         "$suite" "$suite_timeout" "$retry_budget" "$(( retry_budget - (SECONDS - run_start) ))"
       break
