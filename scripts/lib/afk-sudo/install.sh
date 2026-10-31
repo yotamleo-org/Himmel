@@ -15,7 +15,8 @@
 # facts and nonce through; no request is filed while it is empty).
 # The station config /etc/himmel/afk-sudo.json ships disabled with an empty
 # allowlist, mode allowlist and the run kind off (run.enabled false; the compiled
-# switch RUN_KIND_SHIPPED is on since slice 1b); enabling it is a separate `sudoedit` by the operator.
+# switch RUN_KIND_SHIPPED is on since slice 1b) and the grant kind off (grant.enabled false);
+# enabling either is a separate `sudoedit` by the operator.
 # A session talks to the installed helper through scripts/lib/afk-run (run kind) or
 # scripts/lib/afk-sudo-request (sudo kind); neither is installed here.
 # --uninstall removes the helper and the sudoers rule and keeps the config, the
@@ -92,6 +93,8 @@ case "$user" in *[!A-Za-z0-9._-]*) echo "install.sh: unexpected characters in us
 
 install -d -o root -g root -m 0755 "$LIBEXEC" /etc/himmel /var/log/himmel /var/lib/himmel || die "cannot create the directories"
 install -d -o root -g root -m 0700 /etc/himmel/afk-sudo /var/lib/himmel/afk-sudo || die "cannot create the private directories"
+# The grant kind's hash-only markers: readable by the PreToolUse check, written by root alone.
+install -d -o root -g root -m 0755 /var/lib/himmel/afk-grants || die "cannot create the grant marker directory"
 install -o root -g root -m 0644 "$src/approval_broker.py" "$LIBEXEC/approval_broker.py" || die "cannot install approval_broker.py"
 install -o root -g root -m 0644 "$src/never_remote.py" "$LIBEXEC/never_remote.py" || die "cannot install never_remote.py"
 install -o root -g root -m 0755 "$src/afk_sudo.py" "$LIBEXEC/afk-sudo" || die "cannot install the helper"
@@ -101,7 +104,7 @@ tmp=$(mktemp "${TMPDIR:-/tmp}/afk-sudo.XXXXXX") || die "mktemp failed"
 trap 'rm -f "$tmp"' EXIT
 
 if [ ! -e "$CONFIG" ]; then
-    printf '{\n  "enabled": false,\n  "operator_id": 0,\n  "window_s": 120,\n  "mode": "allowlist",\n  "operator_user": "",\n  "max_per_hour": 6,\n  "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},\n  "never_remote_extra": [],\n  "classes": {}\n}\n' > "$tmp" || die "cannot write the config"
+    printf '{\n  "enabled": false,\n  "operator_id": 0,\n  "window_s": 120,\n  "mode": "allowlist",\n  "operator_user": "",\n  "max_per_hour": 6,\n  "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},\n  "grant": {"enabled": false, "ttl_s": 900},\n  "never_remote_extra": [],\n  "classes": {}\n}\n' > "$tmp" || die "cannot write the config"
     install -o root -g root -m 0644 "$tmp" "$CONFIG" || die "cannot install the config"
 fi
 

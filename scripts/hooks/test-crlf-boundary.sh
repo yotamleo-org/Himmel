@@ -869,6 +869,15 @@ check permission-allow-gate-shapes Bash 0 "$A_OK" "pass through outside a worker
 printf '\nThread-resolve allow hook\n'
 check allow-thread-resolve Bash 0 "$A_OK" "no decision on a plain command"
 
+# The grant hooks never deny: the check gives an allow only for a spent grant and
+# the request tap always exits 0. A CR changes the hashed bytes, so a CR-carrying
+# retry matches no grant; the rc must stay 0 either way.
+printf '\nGrant hooks\n'
+CRLF_GD="$(mktemp -d -t crlf-grant.XXXXXX)" || exit 1
+check approval-grant-check   Bash 0 "$A_OK" "no decision without a grant" "AFK_GRANT_DIR=$CRLF_GD"
+check approval-grant-request Bash 0 "$A_OK" "tap exits 0"                 "AFK_GRANT_DIR=$CRLF_GD"
+rmdir "$CRLF_GD"
+
 # ── Completeness guard ──────────────────────────────────────────────────────
 # The audit's real deliverable. Enumerate the command-text hooks FROM THE
 # SOURCE — this directory's listing, never a list typed from memory — and
