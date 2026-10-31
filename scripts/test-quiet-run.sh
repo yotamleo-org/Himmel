@@ -597,6 +597,14 @@ OUT=$(cd "$REPO_ROOT" && PATH="$UVSTUB:$PATH" bash "$QUIET_RUN" suite -- uv run 
 RC=$?
 assert_rc "suite refuses an --opt=../outside path" 2 "$RC"
 assert_contains "the --opt=../ refusal names the direct form" "run it directly: uv run --directory=../himmel-8282-graphify-4576-wt" "$OUT"
+OUT=$(cd "$REPO_ROOT" && PATH="$UVSTUB:$PATH" bash "$QUIET_RUN" suite -- git -C /tmp/himmel-8282-graphify-4576-wt status 2>&1)
+RC=$?
+assert_rc "suite refuses -C /outside" 2 "$RC"
+# A positional outside path is data (the suite-semaphore holder passes its
+# scratch pid file that way), not a checkout.
+OUT=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH" bash "$QUIET_RUN" suite -- sh -c 'exit 0' "$SCRATCH/positional" 2>&1)
+RC=$?
+assert_rc "suite still runs a command given a positional outside path" 0 "$RC"
 # Negative controls: another label keeps quiet-run's generic shape, and a
 # repo suite under "suite" still runs (cases 6 and 12 cover relative and
 # absolute in-worktree paths).
