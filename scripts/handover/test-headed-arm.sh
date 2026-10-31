@@ -2367,7 +2367,7 @@ for _m43f in headed headless; do
   d43f="$tmp/c43f-$_m43f"; mk_stub "$d43f" 1 alive
   _hl43f=0; [ "$_m43f" = headless ] && _hl43f=1
   rc43f=0
-  out43f=$(HIMMEL_PROFILE_SETTINGS_DIR="$d43f/profiles" HEADED_ARM_HEADLESS="$_hl43f" HEADED_ARM_CLAUDE_CLI=true \
+  out43f=$(HIMMEL_PROFILE_SETTINGS_DIR="$d43f/profiles" HEADED_ARM_HEADLESS="$_hl43f" WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
     KONSOLE_CMD="$d43f/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43f/locks" HEADED_ARM_PROC="$d43f/proc" \
     bash "$SCRIPT" --dry-run --role chief "HIMMEL-lean43f" "doc43f.md" "$d43f/signal-never" "$PAST" "$d43f/log" 2>&1) || rc43f=$?
   check "43f $_m43f chief --dry-run: exit 0" "$rc43f" "0"
