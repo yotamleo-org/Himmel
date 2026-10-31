@@ -286,6 +286,7 @@
     "left_out": [
       { "id": "drift-fix", "why": "A maintainer job that bumps himmel's own pinned upstreams; the installer hides it on a starter install." },
       { "id": "upstream-watch", "why": "A maintainer job that watches himmel's own upstream pull requests and issues; the installer hides it on a starter install." },
+      { "id": "security-audit", "why": "An optional repository security-findings report, not a second-brain vault job; configure its existing scanner sources separately." },
       { "id": "pull-cadence", "why": "A personal health-data connector, offered only when its own token is set; not part of the trail." }
     ]
   },

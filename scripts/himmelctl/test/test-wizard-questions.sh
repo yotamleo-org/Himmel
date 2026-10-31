@@ -212,7 +212,7 @@ grepq "$outOp" -F '? handover [inline|external] (default: external)' \
   || fail "case2(operator): should seed handover default=external (got: $outOp)"
 grepq "$outOp" -F '(default: yes)' \
   || fail "case2(operator): should seed alwaysOn default=yes (got: $outOp)"
-grepq "$outOp" -F '? cadences — recurring scheduled jobs to arm now [pipeline,qmd,graphmap,drift-fix,upstream-watch,doctor,vault-stall|none] (default: pipeline,qmd,graphmap)' \
+grepq "$outOp" -F '? cadences — recurring scheduled jobs to arm now [pipeline,qmd,graphmap,drift-fix,upstream-watch,security-audit,doctor,vault-stall|none] (default: pipeline,qmd,graphmap)' \
   || fail "case2(operator): should seed cadences default=pipeline,qmd,graphmap, offering the HIMMEL-3068 requires:'none' rows too (got: $outOp)"
 grepq "$outOp" -F '? configure the telegram bridge (voice/text ingestion)? [off|on] (default: on)' \
   || fail "case2(operator): should seed bridge default=on (got: $outOp)"
