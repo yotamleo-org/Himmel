@@ -4,18 +4,20 @@
 // that cannot be read reads "not available", never zero.
 //
 // Usage: node shift-spend.mjs --since <iso Z> --until <iso Z> [--codex-sessions <dir>]
-//          [--cadence-ledger <file>] [--cost-report-file <A|B>=<file>]... [--openrouter-key-file <file>] [--live]
-// Without --live and without a response file the two API fields read "not available" and nothing
-// is fetched. --live reads ANTHROPIC_ORG_<A|B>_KEY and OPENROUTER_API_KEY; a key is used only as
-// a request header and never printed.
+//          [--cadence-ledger <file>] [--api-launches <file>] [--openrouter-key-file <file>] [--live]
+// The API lane dollars come from our own launch records (launches.jsonl), not the Admin API cost report:
+// an individual Console org has no Admin key, so that report answers http-403. The record carries no output-token
+// count, so the dollars are the launcher's settled cost_usd (the CLI prices the call's own usage locally at the
+// published per-model price, cache_read at x0.1), not a re-pricing here. Without --live and without a response
+// file the OpenRouter field reads "not available" and nothing is fetched. --live reads OPENROUTER_API_KEY; a key
+// is used only as a request header and never printed; a missing key marks the column unavailable(no key).
 //
-// ponytail: the API parsers are pinned to the vendor docs' response shapes and have not met a live
-// response, upgrade path: the one operator-approved live read (--live) compared with each service's own figure.
+// ponytail: the OpenRouter parser is pinned to the vendor docs' response shape and has not met a live
+// response (no key on this station), upgrade path: one operator-approved live read (--live) compared with the service's own figure.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { adminKey, centsToMicro } from '../lib/api-credit-state.mjs';
 
 const NA = 'not available';
 const DAY = 86400000;
@@ -23,7 +25,7 @@ const FIELDS = {
   codex_tokens: { unit: 'tokens', source: 'codex rollouts: event_msg token_count, total_token_usage grown over the window, summed across sessions' },
   codex_bank: { unit: 'percentage points of the weekly window', source: 'codex rollouts: event_msg token_count, rate_limits primary or secondary used_percent, whichever carries the 10080-minute weekly window' },
   claude_bank: { unit: 'percent of the subscription window', source: 'cadence ledger: five_hour and seven_day utilization read at each launch' },
-  api_cost: { unit: 'USD', source: 'Anthropic Admin API GET /v1/organizations/cost_report, daily buckets' },
+  api_cost: { unit: 'USD', source: 'local-priced: api lane launch records (launches.jsonl), cost_usd settled from each call\'s own usage at the published per-model price' },
   openrouter: { unit: 'USD', source: 'OpenRouter GET /api/v1/key, usage' },
 };
 const na = (name, reason, extra = {}) => ({ status: NA, source: FIELDS[name].source, unit: FIELDS[name].unit, reason, ...extra });
@@ -116,86 +118,59 @@ export function claudeBankField(file, since, until) {
   const inside = rows.filter((r) => r.t >= s && r.t < u);
   if (inside.length === 0) return na('claude_bank', 'no ledger reading inside the shift');
   const start = rows.filter((r) => r.t < s).at(-1) ?? inside[0];
-  // The ledger carries no reset time, so any fall between two consecutive readings is read as a reset (or
-  // an account change) inside the shift: the readings stay, the change is not stated.
+  // The ledger carries no reset time, so any fall between two consecutive readings is read as a reset (or an
+  // account change) inside the shift. The burn is the sum of the rises, and the first reading after a reset
+  // counts in full (the window restarted from zero): one weekly reset must not blank a whole shift's figure.
   const span = (k) => {
     const series = [start, ...inside].map((r) => r[k]);
-    const end = series.at(-1);
-    const reset = series.some((v, i) => i > 0 && v < series[i - 1]);
-    return { start: series[0], end, peak: Math.max(...series),
-      delta: reset ? null : Math.round((end - series[0]) * 1e6) / 1e6, ...(reset ? { reset_in_window: true } : {}) };
+    let burn = 0, resets = 0;
+    for (let i = 1; i < series.length; i++) {
+      if (series[i] >= series[i - 1]) burn += series[i] - series[i - 1];
+      else { burn += series[i]; resets++; }
+    }
+    return { start: series[0], end: series.at(-1), peak: Math.max(...series),
+      delta: Math.round(burn * 1e6) / 1e6, ...(resets ? { resets } : {}) };
   };
   const seven_day = span('seven_day');
   return ok('claude_bank', { five_hour: span('five_hour'), seven_day, samples: inside.length, value: seven_day.delta,
-    note: 'readings exist only where a launch preflighted the bank; a five-hour window can reset inside a shift' });
+    note: 'readings exist only where a launch preflighted the bank; a fall between two readings is read as a window reset (or an account change), and the reading after it counts in full' });
 }
 
-// ---- Admin API cost report --------------------------------------------------------------------
+// ---- API lane dollars (our own launch records) ------------------------------------------------
 const MICRO = 1000000n;
 const dollars = (micro) => `${micro / MICRO}.${String(micro % MICRO).padStart(6, '0')}`;
-function costMicro(bodies, from, to) {
-  let total = 0n, complete = false;
-  const spans = [];
-  for (const body of bodies) {
-    if (body === null || typeof body !== 'object' || !Array.isArray(body.data) || typeof body.has_more !== 'boolean') throw new Error('invalid-cost-report');
-    for (const bucket of body.data) {
-      if (bucket === null || typeof bucket !== 'object' || !Array.isArray(bucket.results)) throw new Error('invalid-cost-report');
-      // A response for another window must not read as this shift's spend.
-      if (!(ms(bucket.starting_at) >= ms(from) && ms(bucket.ending_at) <= ms(to))) throw new Error('cost-report-outside-window');
-      spans.push([ms(bucket.starting_at), ms(bucket.ending_at)]);
-      for (const r of bucket.results) {
-        if (r === null || typeof r !== 'object' || r.currency !== 'USD') throw new Error('invalid-cost-report');
-        total += centsToMicro(r.amount);
-      }
+// cost_usd is written as a decimal string with at most six places; anything else is an unpriced run, never a zero.
+const toMicro = (s) => {
+  const m = /^(\d{1,12})(?:\.(\d{1,6}))?$/.exec(typeof s === 'string' ? s : '');
+  return m ? BigInt(m[1]) * MICRO + BigInt((m[2] ?? '').padEnd(6, '0')) : null;
+};
+export function costField(file, since, until) {
+  if (!file || !existsSync(file)) return na('api_cost', 'api lane launch log not found');
+  const s = ms(since), u = ms(until);
+  const micro = {};
+  const tokens = { input: 0, cache_creation: 0, cache_read: 0 };
+  let runs = 0, unpriced = 0;
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    let r;
+    try { r = JSON.parse(line); } catch { continue; }
+    const t = ms(r?.ts);
+    if (!(t >= s && t < u)) continue;
+    for (const [k, v] of [['input', r.input_tokens], ['cache_creation', r.cache_creation_tokens], ['cache_read', r.cache_read_tokens]]) {
+      if (Number.isInteger(v) && v >= 0) tokens[k] += v;
     }
-    complete = !body.has_more;
+    const cost = toMicro(r.cost_usd);
+    if (cost === null) { unpriced++; continue; }
+    const account = typeof r.account === 'string' && r.account ? r.account : '?';
+    micro[account] = (micro[account] ?? 0n) + cost;
+    runs++;
   }
-  if (!complete) throw new Error('incomplete-cost-report');
-  // The buckets (empty days included) must tile the whole requested span: a missing first page is not a smaller total.
-  spans.sort((a, b) => a[0] - b[0]);
-  if (spans.length === 0 || spans[0][0] !== ms(from) || spans.at(-1)[1] !== ms(to) || spans.some((s, i) => i > 0 && s[0] !== spans[i - 1][1])) {
-    throw new Error('cost-report-does-not-cover-window');
-  }
-  return total;
+  // Runs that left no cost say nothing about the spend: that is not a measured zero.
+  if (runs === 0 && unpriced > 0) return na('api_cost', 'the launches inside the shift carry no cost', { unpriced_runs: unpriced });
+  const per_account = Object.fromEntries(Object.keys(micro).sort().map((a) => [a, dollars(micro[a])]));
+  const total = Object.values(micro).reduce((a, b) => a + b, 0n);
+  return ok('api_cost', { per_account, value: dollars(total), runs, unpriced_runs: unpriced, tokens });
 }
-const floorDay = (iso) => new Date(Math.floor(ms(iso) / DAY) * DAY).toISOString().replace('.000Z', 'Z');
-const ceilDay = (iso) => new Date(Math.ceil(ms(iso) / DAY) * DAY).toISOString().replace('.000Z', 'Z');
-export function costField(perAccount, since, until) {
-  const accounts = Object.entries(perAccount ?? {});
-  if (accounts.length === 0) return na('api_cost', 'no cost report source given');
-  const per_account = {};
-  let total = 0n, failed = false;
-  const reasons = [];
-  for (const [account, src] of accounts) {
-    try {
-      if (src.error) throw new Error(src.error);
-      const micro = costMicro(src.bodies, floorDay(since), ceilDay(until));
-      per_account[account] = dollars(micro);
-      total += micro;
-    } catch (e) { per_account[account] = NA; failed = true; reasons.push(`${account}: ${e.message}`); }
-  }
-  const covered = { granularity: '1d', note: 'the report cannot split a UTC day: the whole days overlapping the shift', from: floorDay(since), to: ceilDay(until) };
-  if (failed) return na('api_cost', reasons.join('; '), { per_account, covered });
-  return ok('api_cost', { per_account, value: dollars(total), covered });
-}
-export async function fetchCostPages(key, since, until, fetchImpl = globalThis.fetch) {
-  const bodies = [];
-  let page = null;
-  for (let i = 0; i < 20; i++) {
-    const url = new URL('https://api.anthropic.com/v1/organizations/cost_report');
-    url.searchParams.set('starting_at', floorDay(since));
-    url.searchParams.set('ending_at', ceilDay(until));
-    url.searchParams.set('bucket_width', '1d');
-    url.searchParams.set('limit', '31');
-    if (page) url.searchParams.set('page', page);
-    const body = await getJson(fetchImpl, url, { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, 'cost-report-unavailable');
-    bodies.push(body);
-    if (!body.has_more) return bodies;
-    if (typeof body.next_page !== 'string' || !body.next_page) throw new Error('invalid-cost-report');
-    page = body.next_page;
-  }
-  throw new Error('cost-report-too-long');
-}
+
 // An error carries the reason only: never the response body, the request or the original error text.
 async function getJson(fetchImpl, url, headers, label) {
   let res;
@@ -209,7 +184,8 @@ export async function fetchOpenRouterKey(key, fetchImpl = globalThis.fetch) {
   return getJson(fetchImpl, 'https://openrouter.ai/api/v1/key', { Authorization: `Bearer ${key}` }, 'openrouter-key-unavailable');
 }
 export function openrouterField(src) {
-  if (src?.error) return na('openrouter', src.error);
+  // No key is its own mark: the column is unavailable, not zero and not a failed read.
+  if (src?.error) return na('openrouter', src.error, src.error === 'openrouter-key-missing' ? { source: 'unavailable(no key)' } : {});
   const d = src?.body?.data;
   if (d === null || typeof d !== 'object' || !num(d.usage) || !num(d.usage_daily)) return na('openrouter', 'invalid-key-response');
   const maybe = (v) => (num(v) ? v : null);
@@ -219,7 +195,7 @@ export function openrouterField(src) {
 }
 
 // ---- the record -------------------------------------------------------------------------------
-export function buildRecord({ since, until, codexDir, ledgerFile, cost, openrouter }) {
+export function buildRecord({ since, until, codexDir, ledgerFile, launchesFile, openrouter }) {
   const field = (name, read) => { try { return read(); } catch (e) { return na(name, e.message || 'unreadable'); } };
   let scanned = null;
   const scan = () => { if (!existsSync(codexDir)) return null; scanned ??= scanCodex(codexDir, since); return scanned; };
@@ -229,7 +205,7 @@ export function buildRecord({ since, until, codexDir, ledgerFile, cost, openrout
       codex_tokens: field('codex_tokens', () => codexField(codexDir, since, until, 'tokens', scan())),
       codex_bank: field('codex_bank', () => codexField(codexDir, since, until, 'bank', scan())),
       claude_bank: field('claude_bank', () => claudeBankField(ledgerFile, since, until)),
-      api_cost: field('api_cost', () => costField(cost, since, until)),
+      api_cost: field('api_cost', () => costField(launchesFile, since, until)),
       openrouter: field('openrouter', () => openrouterField(openrouter)),
     },
   };
@@ -240,7 +216,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 function usageExit(msg) { console.error(`shift-spend: ${msg}`); process.exit(2); }
 function readJson(file) { return JSON.parse(readFileSync(file, 'utf8')); }
 async function main(argv, env) {
-  const opt = { costFiles: {}, live: false };
+  const opt = { live: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--live') { opt.live = true; continue; }
@@ -251,11 +227,8 @@ async function main(argv, env) {
     else if (a === '--codex-sessions') opt.codex = v;
     else if (a === '--cadence-ledger') opt.ledger = v;
     else if (a === '--openrouter-key-file') opt.orFile = v;
-    else if (a === '--cost-report-file') {
-      const m = /^([AB])=(.+)$/.exec(v);
-      if (!m) usageExit('--cost-report-file wants A=<file> or B=<file>');
-      (opt.costFiles[m[1]] ??= []).push(m[2]);
-    } else usageExit(`unknown argument: ${a}`);
+    else if (a === '--api-launches') opt.launches = v;
+    else usageExit(`unknown argument: ${a}`);
   }
   // V8 rolls 2026-02-30 and T24:00:00Z over to the next day: only a stamp that round-trips is a real instant.
   const real = (s) => ISO.test(s ?? '') && Number.isFinite(ms(s)) && new Date(ms(s)).toISOString().slice(0, 19) === s.slice(0, 19);
@@ -263,21 +236,7 @@ async function main(argv, env) {
   if (!(ms(opt.since) < ms(opt.until))) usageExit('--until must be later than --since');
 
   const home = env.HOME || homedir();
-  let cost = null, openrouter = { error: 'no OpenRouter source given' };
-  if (Object.keys(opt.costFiles).length) {
-    cost = {};
-    for (const [account, files] of Object.entries(opt.costFiles)) {
-      try { cost[account] = { bodies: files.map(readJson) }; } catch { cost[account] = { error: 'cost report file unreadable' }; }
-    }
-  } else if (opt.live) {
-    // Both accounts are asked for: one without a key stays in the record as unavailable, never dropped.
-    cost = {};
-    for (const account of ['A', 'B']) {
-      const key = adminKey(env, account);
-      if (!key) { cost[account] = { error: 'admin-key-missing' }; continue; }
-      try { cost[account] = { bodies: await fetchCostPages(key, opt.since, opt.until) }; } catch (e) { cost[account] = { error: e.message }; }
-    }
-  }
+  let openrouter = { error: 'no OpenRouter source given' };
   if (opt.orFile) {
     try { openrouter = { body: readJson(opt.orFile) }; } catch { openrouter = { error: 'key response file unreadable' }; }
   } else if (opt.live) {
@@ -288,7 +247,8 @@ async function main(argv, env) {
     since: opt.since, until: opt.until,
     codexDir: opt.codex || join(env.CODEX_HOME || join(home, '.codex'), 'sessions'),
     ledgerFile: opt.ledger || env.CADENCE_USAGE_LEDGER || join(home, '.himmel', 'cadence-ledger.jsonl'),
-    cost, openrouter,
+    launchesFile: opt.launches || join(home, '.himmel', 'state', 'api-credit', 'launches.jsonl'),
+    openrouter,
   });
   console.log(JSON.stringify(record, null, 2));
 }

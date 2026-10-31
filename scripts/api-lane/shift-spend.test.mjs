@@ -1,5 +1,5 @@
-// Shift spend record fixtures. Synthetic codex rollouts and ledgers, plus API
-// response bodies pinned to the vendor docs' documented shapes (unverified live):
+// Shift spend record fixtures. Synthetic codex rollouts, ledgers and API launch records, plus an
+// OpenRouter body pinned to the vendor docs' documented shape (unverified live):
 // no provider call, no real credential.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  buildRecord, claudeBankField, codexField, costField, fetchCostPages, fetchOpenRouterKey, openrouterField,
+  buildRecord, claudeBankField, codexField, costField, fetchOpenRouterKey, openrouterField,
 } from './shift-spend.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -18,7 +18,6 @@ const CLI = join(HERE, 'shift-spend.mjs');
 const T = mkdtempSync(join(tmpdir(), 'shift-spend-'));
 process.on('exit', () => rmSync(T, { recursive: true, force: true }));
 const json = (name) => JSON.parse(readFileSync(join(FIX, name), 'utf8'));
-const DUMMY = 'sk-ant-admin-dummy-not-a-real-key-0000';
 
 const SINCE = '2026-10-30T22:00:00Z';
 const UNTIL = '2026-10-31T06:00:00Z';
@@ -136,79 +135,82 @@ test('claude bank: start, end and peak of both windows from the cadence ledger, 
   assert.equal(f.status, 'ok');
   assert.equal(f.unit, 'percent of the subscription window');
   assert.deepEqual(f.seven_day, { start: 50, end: 55, peak: 55, delta: 5 });
-  // 60 then 30 is a five-hour reset inside the shift: readings stay, the change is not stated
-  assert.deepEqual(f.five_hour, { start: 10, end: 30, peak: 60, delta: null, reset_in_window: true });
+  // 60 then 30 is a five-hour reset inside the shift: the burn is 10 + 40 up to the reset, then the 30 read after it
+  assert.deepEqual(f.five_hour, { start: 10, end: 30, peak: 60, delta: 80, resets: 1 });
   assert.equal(f.samples, 3);
-  // a reset followed by recovery above the start is still a reset, not a +delta
+  // a reset followed by recovery above the start still burns: 40 to 5 is a reset (the 5 read after it was used), then 5 to 45
   writeFileSync(join(T, 'recover.jsonl'), [ledgerRow('2026-10-30T21:00:00Z', '1.0', '40.0'), ledgerRow('2026-10-31T01:00:00Z', '1.0', '5.0'), ledgerRow('2026-10-31T03:00:00Z', '1.0', '45.0')].join('\n'));
   const recover = claudeBankField(join(T, 'recover.jsonl'), SINCE, UNTIL);
-  assert.equal(recover.seven_day.delta, null);
-  assert.equal(recover.seven_day.reset_in_window, true);
-  assert.equal(recover.value, null);
+  assert.deepEqual(recover.seven_day, { start: 40, end: 45, peak: 45, delta: 45, resets: 1 });
+  assert.equal(recover.value, 45);
   // a null or empty utilization is a missing reading, never a measured zero
   writeFileSync(join(T, 'nulls.jsonl'), [ledgerRow('2026-10-31T01:00:00Z', null, '5.0'), ledgerRow('2026-10-31T02:00:00Z', '', '6.0')].join('\n'));
   assert.equal(claudeBankField(join(T, 'nulls.jsonl'), SINCE, UNTIL).status, 'not available');
-  // a fall inside the shift is a reset or an account change: readings stay, the change is not stated
+  // one weekly reset in a shift with hundreds of readings must not null the whole value
+  const many = [ledgerRow('2026-10-30T21:00:00Z', '10.0', '90.0')];
+  const minute = (i) => new Date(Date.parse('2026-10-30T22:00:00Z') + i * 60000).toISOString().replace('.000Z', 'Z');
+  for (let i = 0; i < 100; i++) many.push(ledgerRow(minute(i), '11.0', '95.0'));
+  for (let i = 100; i < 299; i++) many.push(ledgerRow(minute(i), '12.0', '2.0'));
+  many.push(ledgerRow(minute(299), '13.0', '7.0'));
+  writeFileSync(join(T, 'many.jsonl'), many.join('\n'));
+  const big = claudeBankField(join(T, 'many.jsonl'), SINCE, UNTIL);
+  assert.equal(big.samples, 300);
+  assert.equal(big.seven_day.resets, 1);
+  assert.equal(big.value, 5 + 2 + 5);
+  // a fall inside the shift is read as a reset (the ledger has no account or reset time): the burn counts the reading after it
   writeFileSync(join(T, 'reset.jsonl'), [ledgerRow('2026-10-30T21:00:00Z', '40.0', '99.0'), ledgerRow('2026-10-31T01:00:00Z', '10.0', '13.0')].join('\n'));
   const reset = claudeBankField(join(T, 'reset.jsonl'), SINCE, UNTIL);
-  assert.equal(reset.seven_day.delta, null);
-  assert.equal(reset.seven_day.reset_in_window, true);
-  assert.equal(reset.value, null);
+  assert.equal(reset.seven_day.delta, 13);
+  assert.equal(reset.seven_day.resets, 1);
+  assert.equal(reset.value, 13);
   assert.equal(claudeBankField(join(T, 'no-ledger.jsonl'), SINCE, UNTIL).status, 'not available');
   writeFileSync(join(T, 'sparse.jsonl'), `${ledgerRow('2026-10-29T00:00:00Z', '1.0', '2.0')}\n`);
   assert.equal(claudeBankField(join(T, 'sparse.jsonl'), SINCE, UNTIL).status, 'not available');
 });
 
-test('cost report: pages summed in micro-dollars, rounded up, USD only, pinned to the documented shape', () => {
-  const pages = [json('cost-report-page1.json'), json('cost-report-page2.json')];
-  const f = costField({ A: { bodies: pages } }, SINCE, UNTIL);
+// API lane dollars come from our own launch records (an individual org has no Admin key for the cost report).
+const launch = (ts, account, cost, tokens = [2, 1000, 500], extra = {}) => JSON.stringify({
+  ts, job_id: `api-${ts}`, account, model: 'opus', outcome: 'settled', cost_usd: cost, rc: 0, kind: 'judge',
+  input_tokens: tokens[0], cache_creation_tokens: tokens[1], cache_read_tokens: tokens[2], ...extra,
+});
+
+test('api cost: launch records inside [since, until) are summed per account in micro-dollars, marked local-priced', () => {
+  const file = join(T, 'launches-a.jsonl');
+  writeFileSync(file, [
+    launch('2026-10-30T21:59:59Z', 'A', '9.000000'),
+    launch('2026-10-30T22:00:00Z', 'A', '0.531823', [2, 79733, 649]),
+    launch('2026-10-31T01:00:00Z', 'B', '0.100000', [3, 10, 20]),
+    launch('2026-10-31T03:00:00Z', 'A', '0.396643', [2, 77141, 649]),
+    launch('2026-10-31T06:00:00Z', 'A', '9.000000'),
+    'not json',
+  ].join('\n'));
+  const f = costField(file, SINCE, UNTIL);
   assert.equal(f.status, 'ok');
   assert.equal(f.unit, 'USD');
-  assert.equal(f.per_account.A, '1.352892');
-  assert.equal(f.value, '1.352892');
-  const eur = structuredClone(pages);
-  eur[1].data[0].results[0].currency = 'EUR';
-  assert.equal(costField({ A: { bodies: eur } }, SINCE, UNTIL).status, 'not available');
-  const broken = structuredClone(pages);
-  delete broken[0].has_more;
-  assert.equal(costField({ A: { bodies: broken } }, SINCE, UNTIL).status, 'not available');
-  // a missing first page is not a smaller total
-  const tail = costField({ A: { bodies: [pages[1]] } }, SINCE, UNTIL);
-  assert.equal(tail.status, 'not available');
-  assert.match(tail.reason, /does-not-cover/);
-  // a response for another window is not this shift's spend
-  const other = costField({ A: { bodies: pages } }, '2026-09-01T00:00:00Z', '2026-09-02T00:00:00Z');
-  assert.equal(other.status, 'not available');
-  assert.match(other.reason, /outside-window/);
+  assert.match(f.source, /^local-priced/);
+  assert.deepEqual(f.per_account, { A: '0.928466', B: '0.100000' });
+  assert.equal(f.value, '1.028466');
+  assert.equal(f.runs, 3);
+  assert.deepEqual(f.tokens, { input: 7, cache_creation: 156884, cache_read: 1318 });
 });
 
-test('cost report: one account unreadable keeps the other visible and the total unstated', () => {
-  const pages = [json('cost-report-page1.json'), json('cost-report-page2.json')];
-  const f = costField({ A: { bodies: pages }, B: { error: 'admin-key-missing' } }, SINCE, UNTIL);
-  assert.equal(f.status, 'not available');
-  assert.equal(f.per_account.A, '1.352892');
-  assert.equal(f.per_account.B, 'not available');
-  assert.equal(f.value, undefined);
-});
-
-test('cost report fetch: day-snapped window, x-api-key header, paging, and the key never reaches an error', async () => {
-  const calls = [];
-  const bodies = [json('cost-report-page1.json'), json('cost-report-page2.json')];
-  const fetchImpl = async (url, init) => {
-    calls.push({ url: new URL(url), headers: init.headers });
-    return { ok: true, status: 200, json: async () => bodies[calls.length - 1] };
-  };
-  const got = await fetchCostPages(DUMMY, SINCE, UNTIL, fetchImpl);
-  assert.equal(got.length, 2);
-  assert.equal(calls[0].url.searchParams.get('starting_at'), '2026-10-30T00:00:00Z');
-  assert.equal(calls[0].url.searchParams.get('ending_at'), '2026-11-01T00:00:00Z');
-  assert.equal(calls[0].url.searchParams.get('bucket_width'), '1d');
-  assert.equal(calls[1].url.searchParams.get('page'), 'page_MjAyNS0wNS0xNFQwMDowMDowMFo=');
-  assert.equal(calls[0].headers['x-api-key'], DUMMY);
-  const failing = async () => ({ ok: false, status: 403, json: async () => ({ error: DUMMY }) });
-  await assert.rejects(fetchCostPages(DUMMY, SINCE, UNTIL, failing), (e) => /http-403/.test(e.message) && !e.message.includes(DUMMY));
-  const throwing = async () => { throw new Error(`connect failed for ${DUMMY}`); };
-  await assert.rejects(fetchCostPages(DUMMY, SINCE, UNTIL, throwing), (e) => !e.message.includes(DUMMY));
+test('api cost: a run with no cost is counted apart, never as zero; no launch log reads not available', () => {
+  const file = join(T, 'launches-b.jsonl');
+  writeFileSync(file, [launch('2026-10-31T01:00:00Z', 'A', '0.250000'), launch('2026-10-31T02:00:00Z', 'A', '', [null, null, null], { outcome: 'unknown' })].join('\n'));
+  const f = costField(file, SINCE, UNTIL);
+  assert.equal(f.status, 'ok');
+  assert.equal(f.value, '0.250000');
+  assert.equal(f.unpriced_runs, 1);
+  assert.deepEqual(f.tokens, { input: 2, cache_creation: 1000, cache_read: 500 });
+  writeFileSync(file, `${launch('2026-10-31T02:00:00Z', 'A', '', [null, null, null], { outcome: 'unknown' })}\n`);
+  assert.equal(costField(file, SINCE, UNTIL).status, 'not available');
+  assert.equal(costField(join(T, 'gone-launches.jsonl'), SINCE, UNTIL).status, 'not available');
+  // a log that exists but holds no run in the shift is a measured zero
+  writeFileSync(file, `${launch('2026-09-01T02:00:00Z', 'A', '5.000000')}\n`);
+  const none = costField(file, SINCE, UNTIL);
+  assert.equal(none.status, 'ok');
+  assert.equal(none.value, '0.000000');
+  assert.equal(none.runs, 0);
 });
 
 test('openrouter key: usage figures parsed from the documented shape, a malformed body reads not available', async () => {
@@ -222,7 +224,12 @@ test('openrouter key: usage figures parsed from the documented shape, a malforme
   assert.equal(f.limit_remaining, 74.5);
   assert.equal(f.value, 3.25);
   assert.equal(openrouterField({ body: { data: { usage: 'a lot' } } }).status, 'not available');
-  assert.equal(openrouterField({ error: 'openrouter-key-missing' }).status, 'not available');
+  // no key: the column says so in its source mark and carries no figure, never a zero
+  const nokey = openrouterField({ error: 'openrouter-key-missing' });
+  assert.equal(nokey.status, 'not available');
+  assert.equal(nokey.source, 'unavailable(no key)');
+  assert.equal(nokey.value, undefined);
+  assert.notEqual(openrouterField({ error: 'openrouter-key-unavailable: http-401' }).source, 'unavailable(no key)');
   let seen;
   const fetchImpl = async (url, init) => { seen = { url: String(url), headers: init.headers }; return { ok: true, status: 200, json: async () => json('openrouter-key.json') }; };
   await fetchOpenRouterKey('sk-or-dummy', fetchImpl);
@@ -236,9 +243,10 @@ function fullInputs(overrides = {}) {
   });
   const ledger = join(T, 'rec-ledger.jsonl');
   writeFileSync(ledger, [ledgerRow('2026-10-30T23:00:00Z', '20.0', '51.0'), ledgerRow('2026-10-31T05:00:00Z', '30.0', '55.0')].join('\n'));
+  const launches = join(T, 'rec-launches.jsonl');
+  writeFileSync(launches, [launch('2026-10-31T01:00:00Z', 'A', '1.352892')].join('\n'));
   return {
-    since: SINCE, until: UNTIL, codexDir: codex, ledgerFile: ledger,
-    cost: { A: { bodies: [json('cost-report-page1.json'), json('cost-report-page2.json')] } },
+    since: SINCE, until: UNTIL, codexDir: codex, ledgerFile: ledger, launchesFile: launches,
     openrouter: { body: json('openrouter-key.json') },
     ...overrides,
   };
@@ -263,7 +271,7 @@ test('record: five source-marked fields, none equal to a sum of the others', () 
 });
 
 test('record: with one source missing that field reads not available and the others still show', () => {
-  const r = buildRecord(fullInputs({ cost: { A: { error: 'admin-key-missing' } }, ledgerFile: join(T, 'gone.jsonl') }));
+  const r = buildRecord(fullInputs({ launchesFile: join(T, 'gone-launches.jsonl'), ledgerFile: join(T, 'gone.jsonl') }));
   assert.equal(r.fields.api_cost.status, 'not available');
   assert.equal(r.fields.claude_bank.status, 'not available');
   for (const n of ['api_cost', 'claude_bank']) assert.ok(r.fields[n].source, `${n} keeps its source mark`);
@@ -274,7 +282,7 @@ test('record: with one source missing that field reads not available and the oth
 });
 
 test('record: a reader that throws is caught per field, not for the record', () => {
-  const r = buildRecord(fullInputs({ openrouter: { body: { data: null } }, cost: null }));
+  const r = buildRecord(fullInputs({ openrouter: { body: { data: null } }, launchesFile: null }));
   assert.equal(r.fields.openrouter.status, 'not available');
   assert.equal(r.fields.api_cost.status, 'not available');
   assert.equal(r.fields.codex_tokens.status, 'ok');
@@ -282,37 +290,47 @@ test('record: a reader that throws is caught per field, not for the record', () 
 
 test('cli: file sources produce the record on stdout and the key is never printed', () => {
   const inputs = fullInputs();
-  const env = { PATH: process.env.PATH, HOME: join(T, 'home'), HIMMEL_DOTENV_FILE: join(T, 'no-dotenv'), ANTHROPIC_ORG_A_KEY: DUMMY, OPENROUTER_API_KEY: 'sk-or-dummy' };
+  const env = { PATH: process.env.PATH, HOME: join(T, 'home'), HIMMEL_DOTENV_FILE: join(T, 'no-dotenv'), OPENROUTER_API_KEY: 'sk-or-dummy' };
   const r = spawnSync(process.execPath, [CLI, '--since', SINCE, '--until', UNTIL,
-    '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile,
-    '--cost-report-file', `A=${join(FIX, 'cost-report-page1.json')}`, '--cost-report-file', `A=${join(FIX, 'cost-report-page2.json')}`,
+    '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile, '--api-launches', inputs.launchesFile,
     '--openrouter-key-file', join(FIX, 'openrouter-key.json')], { encoding: 'utf8', env });
   assert.equal(r.status, 0, r.stderr);
   const rec = JSON.parse(r.stdout);
   assert.equal(rec.fields.api_cost.value, '1.352892');
   assert.equal(rec.fields.openrouter.usage_total, 25.5);
-  assert.ok(!r.stdout.includes(DUMMY) && !r.stderr.includes(DUMMY) && !r.stdout.includes('sk-or-dummy'));
+  assert.ok(!r.stdout.includes('sk-or-dummy') && !r.stderr.includes('sk-or-dummy'));
 });
 
-test('cli: with no source given and no --live, the API fields read not available and nothing is fetched', () => {
+test('cli: with no OpenRouter source and no --live, openrouter reads not available and nothing is fetched', () => {
   const inputs = fullInputs();
   const r = spawnSync(process.execPath, [CLI, '--since', SINCE, '--until', UNTIL,
-    '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: join(T, 'home') } });
+    '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile, '--api-launches', inputs.launchesFile], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: join(T, 'home') } });
   assert.equal(r.status, 0, r.stderr);
   const rec = JSON.parse(r.stdout);
-  assert.equal(rec.fields.api_cost.status, 'not available');
+  assert.equal(rec.fields.api_cost.status, 'ok');
   assert.equal(rec.fields.openrouter.status, 'not available');
   assert.equal(rec.fields.codex_tokens.status, 'ok');
 });
 
-test('cli: --live with no keys keeps both accounts in the record as unavailable and fetches nothing', () => {
+test('cli: --live with no OpenRouter key marks that column unavailable(no key) and fetches nothing; the API dollars need no key', () => {
   const inputs = fullInputs();
   const env = { PATH: process.env.PATH, HOME: join(T, 'home'), HIMMEL_DOTENV_FILE: join(T, 'no-dotenv') };
-  const r = spawnSync(process.execPath, [CLI, '--since', SINCE, '--until', UNTIL, '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile, '--live'], { encoding: 'utf8', env });
+  const r = spawnSync(process.execPath, [CLI, '--since', SINCE, '--until', UNTIL, '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile, '--api-launches', inputs.launchesFile, '--live'], { encoding: 'utf8', env });
   assert.equal(r.status, 0, r.stderr);
   const rec = JSON.parse(r.stdout);
-  assert.deepEqual(rec.fields.api_cost.per_account, { A: 'not available', B: 'not available' });
   assert.equal(rec.fields.openrouter.status, 'not available');
+  assert.equal(rec.fields.openrouter.source, 'unavailable(no key)');
+  assert.equal(rec.fields.api_cost.value, '1.352892');
+});
+
+test('cli: the launch log defaults to the api-credit state dir under HOME', () => {
+  const inputs = fullInputs();
+  const home = join(T, 'home-with-launches');
+  mkdirSync(join(home, '.himmel', 'state', 'api-credit'), { recursive: true });
+  writeFileSync(join(home, '.himmel', 'state', 'api-credit', 'launches.jsonl'), `${launch('2026-10-31T02:00:00Z', 'B', '0.420000')}\n`);
+  const r = spawnSync(process.execPath, [CLI, '--since', SINCE, '--until', UNTIL, '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: home } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).fields.api_cost.per_account.B, '0.420000');
 });
 
 test('cli: a bad window is refused', () => {
