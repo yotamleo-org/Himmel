@@ -244,7 +244,8 @@ check    "usage errors write no audit row" "$(audit_rows)" "0"
 # --- 2. a worker or a relay never reaches the checks ---------------------------------------
 HIMMEL_CONSOLE_RELAY=1 run --dry-run 77 "$SHA"
 check "relay: exit 3" "$RC" "3"
-HIMMEL_CONSOLE_LEG=1 run --dry-run 77 "$SHA"
+# no seam is set on this row: with no claude ancestor (CI) the seam guard denies a marker plus a seam with exit 96 before the worker check
+OUT=$(HIMMEL_CONSOLE_LEG=1 env -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSUS -u GH_CMD -u JIRA_CMD -u HIMMEL_LEGACY_NAMES bash "$SCRIPT" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
 check "chief-spawned worker: exit 3" "$RC" "3"
 check "exit 3 writes no audit row" "$(audit_rows)" "0"
 nogo  "exit 3"
