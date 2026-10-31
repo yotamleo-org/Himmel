@@ -1,0 +1,977 @@
+diff --git a/docs/himmel-bus.md b/docs/himmel-bus.md
+index 785f431c9..4043fed58 100644
+--- a/docs/himmel-bus.md
++++ b/docs/himmel-bus.md
+@@ -42,7 +42,7 @@ Run `node marketplace/plugins/himmel-bus/bin/bus <verb>`.
+
+ | Verb | Purpose |
+ |---|---|
+-| `register <name> --role worker\|console\|judge\|consult [--console <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |
++| `register <name> --role worker\|chief\|judge\|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |
+ | `bind <name> <pid>` | Bind a registered name to a live pid, once |
+ | `rebind <name> <pid>` | Rebind, only when the bound pid is gone |
+ | `adopt <new-chief>` | Run as the worker: adopt a successor chief, only when the old one is gone or its own record names the new one |
+diff --git a/marketplace/plugins/himmel-bus/README.md b/marketplace/plugins/himmel-bus/README.md
+index 436741ddf..79fb66ff6 100644
+--- a/marketplace/plugins/himmel-bus/README.md
++++ b/marketplace/plugins/himmel-bus/README.md
+@@ -65,11 +65,12 @@ first use (`npm ci`) and then execs `server/index.mjs`.
+ `(name, pid, start time)`, written by the launcher under `peers/<name>.json`;
+ `lib/identity.mjs` stamps a caller by its **nearest** claude ancestor whose bound
+ `{pid, start}` matches (comm `claude`, `/proc` root injectable). A nested or
+-pid-reused claude is `identity unbound`. Names are single-use once bound (re-registering a never-bound name with the same role, console, pair and predecessor is adopted, so a re-armed launch is not burned); `bind` is once;
+-`rebind` only when the bound pid is gone; `adopt <new console>` (run as the worker)
++pid-reused claude is `identity unbound`. Names are single-use once bound (re-registering a never-bound name with the same role, chief, pair and predecessor is adopted, so a re-armed launch is not burned); `bind` is once;
++`rebind` only when the bound pid is gone; `adopt <new chief>` (run as the worker)
+ only when the old chief stamped the new one as its successor (`succeed`, below), is `gone`, or its own record names the new one;
+-`succeed <new chief>` (run as the outgoing chief, which `chief.sh next --arm` does right after registering the successor; a pasted launch registers only at paste time, so the outgoing chief runs it by hand there) writes `successor` into the caller's peer record, only when the caller has the `console` role and `<new chief>` is a registered `console` whose predecessor is the caller; stamped once, the same stamp again is a no-op, a different one is refused. It prints `stamped: <chief> successor <new>`;
+-`adopt` prints `adopted: <worker> console <old> -> <new>` (a worker with no bus binding gets `identity unbound`, expected: only headed workers launched with a chief on a bus-enabled profile are registered); `unread <name>` prints `1` when a record is undelivered, else `0`, without consuming it or touching the cursor (a presence flag, not a count; a halted log is `0`; the idle waker `bus-idle-waker.sh` under `scripts/handover/` uses it and types one fixed, digit-free `You have unread himmel messages: read them now.` line into an idle headed worker's konsole, never message content, only while its screen shows the idle input box and only into a konsole session whose claude was launched as `-n <name>`); `status <name>` prints `live|gone|unbound`; `peers` prints the caller's own edges.
++`succeed <new chief>` (run as the outgoing chief, which `chief.sh next --arm` does right after registering the successor; a pasted launch registers only at paste time, so the outgoing chief runs it by hand there) writes `successor` into the caller's peer record, only when the caller has the `chief` role and `<new chief>` is a registered `chief` whose predecessor is the caller; stamped once, the same stamp again is a no-op, a different one is refused. It prints `stamped: <chief> successor <new>`;
++`adopt` prints `adopted: <worker> chief <old> -> <new>` (a worker with no bus binding gets `identity unbound`, expected: only headed workers launched with a chief on a bus-enabled profile are registered); `unread <name>` prints `1` when a record is undelivered, else `0`, without consuming it or touching the cursor (a presence flag, not a count; a halted log is `0`; the idle waker `bus-idle-waker.sh` under `scripts/handover/` uses it and types one fixed, digit-free `You have unread himmel messages: read them now.` line into an idle headed worker's konsole, never message content, only while its screen shows the idle input box and only into a konsole session whose claude was launched as `-n <name>`); `status <name>` prints `live|gone|unbound`; `peers` prints the caller's own edges.
++`register <name> --role worker|chief|judge|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]`: a stored record with the pre-rename role `console` reads back as `chief`, and `--role console` and `--console <c>` are accepted aliases of `--role chief` and `--chief <c>` while `HIMMEL_LEGACY_NAMES` is on (off: refused). The chief a session belongs to is still stored under the `console` field of its peer record.
+ `peers` prints a live edge bare and any other suffixed ` (gone)` or ` (unbound)`. `adopt` onto the chief already held is a no-op; a worker that missed a succession adopts the newest chief in one step when every chief on its predecessor chain stamped its successor (live or not), or is gone, or sent the worker a record naming its successor, and no unstamped chief but the target is live. The stamp is per succession, not per worker, so a worker that missed an adopt no longer strands the next one. The send edge rule is unchanged: a stamp lets a worker adopt, it grants no edge by itself (threat model: `docs/internals/retask-channel.md`).
+ `lib/edges.mjs` is the single edge table the server and CLI share.
+
+diff --git a/marketplace/plugins/himmel-bus/bin/bus b/marketplace/plugins/himmel-bus/bin/bus
+index e02842d24..f5e9de209 100755
+--- a/marketplace/plugins/himmel-bus/bin/bus
++++ b/marketplace/plugins/himmel-bus/bin/bus
+@@ -13,13 +13,12 @@ import * as store from '../lib/store.mjs';
+ import * as identity from '../lib/identity.mjs';
+ import * as edges from '../lib/edges.mjs';
+ import { formatRecord } from '../lib/deliver.mjs';
+-
+-const USAGE = `usage: bus register <name> --role worker|console|judge|consult [--console <c>] [--pair <worker>] [--predecessor <old>]
+-       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | succeed <new-console> | status <name> | peers
++const USAGE = `usage: bus register <name> --role worker|chief|judge|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]
++       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-chief> | succeed <new-chief> | status <name> | peers
+        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
+        bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
+        bus unread <name>   (count of undelivered records; read-only, for the idle waker)
+-       bus status [--unacked] [--for <console>] | gc`;
++       bus status [--unacked] [--for <chief>] | gc`;
+
+ // Same limits as the MCP server's `send` (spec §4).
+ const MAX_BODY = 64 * 1024, INLINE_CAP = 1500, MAX_SUMMARY = 300;
+@@ -115,7 +114,7 @@ async function wait(root, timeoutArg) {
+   if (!Number.isSafeInteger(seconds) || seconds > WAIT_MAX_S) throw new Error(`--timeout must be at most ${WAIT_MAX_S} seconds`);
+   const me = await caller(root);
+   const peers = await identity.loadPeers(root);
+-  const owner = peers[me]?.role === 'console' ? undefined : peers[me]?.console;
++  const owner = peers[me]?.role === 'chief' ? undefined : peers[me]?.console;
+   const deadline = Date.now() + seconds * 1000;
+   for (;;) {
+     if (await store.pending(root, me)) {
+@@ -191,7 +190,7 @@ async function main() {
+   const { values, positionals } = parseArgs({
+     allowPositionals: true,
+     options: {
+-      role: { type: 'string' }, console: { type: 'string' }, pair: { type: 'string' }, predecessor: { type: 'string' },
++      role: { type: 'string' }, chief: { type: 'string' }, console: { type: 'string' }, pair: { type: 'string' }, predecessor: { type: 'string' },
+       re: { type: 'string' }, summary: { type: 'string' }, doc: { type: 'string' },
+       unacked: { type: 'boolean' }, for: { type: 'string' }, timeout: { type: 'string' },
+     },
+@@ -236,7 +235,7 @@ async function main() {
+       }
+       const before = (await identity.loadPeers(root))[me.name]?.console;
+       await identity.adopt(root, me.name, need(name));
+-      console.log(`adopted: ${me.name} console ${before} -> ${name}`);
++      console.log(`adopted: ${me.name} chief ${before} -> ${name}`);
+       return;
+     }
+     default: throw new Error(USAGE);
+diff --git a/marketplace/plugins/himmel-bus/lib/a2a.mjs b/marketplace/plugins/himmel-bus/lib/a2a.mjs
+index e3d41f767..f0f343332 100644
+--- a/marketplace/plugins/himmel-bus/lib/a2a.mjs
++++ b/marketplace/plugins/himmel-bus/lib/a2a.mjs
+@@ -29,7 +29,7 @@ export function toA2AMessage(rec) {
+ // No supportedInterfaces: an AgentInterface requires a url and no listener exists.
+ // pid and start time are local proof of identity and never leave the peer file.
+ export function agentCard(peer) {
+-  const owner = peer.console ? ` of console ${peer.console}` : '';
++  const owner = peer.console ? ` of chief ${peer.console}` : '';
+   return {
+     name: peer.n,
+     description: `himmel ${peer.role} session ${peer.n}${owner}`,
+diff --git a/marketplace/plugins/himmel-bus/lib/deliver.mjs b/marketplace/plugins/himmel-bus/lib/deliver.mjs
+index e5cb3e8a2..1571ea40c 100644
+--- a/marketplace/plugins/himmel-bus/lib/deliver.mjs
++++ b/marketplace/plugins/himmel-bus/lib/deliver.mjs
+@@ -58,7 +58,7 @@ export async function main(input, { name = process.env.HIMMEL_BUS_NAME } = {}) {
+   const me = await resolveIdentity(root);
+   if (me.name !== name) return;
+   const peers = await loadPeers(root);
+-  const owner = peers[name]?.role === 'console' ? undefined : peers[name]?.console;
++  const owner = peers[name]?.role === 'chief' ? undefined : peers[name]?.console;
+   const event = input.hook_event_name === 'SessionStart' ? 'SessionStart' : 'PostToolUse';
+   // writeSync may write less than asked; loop so a short write is never committed past.
+   const emit = text => {
+diff --git a/marketplace/plugins/himmel-bus/lib/edges.mjs b/marketplace/plugins/himmel-bus/lib/edges.mjs
+index a99e97222..fc79b3f09 100644
+--- a/marketplace/plugins/himmel-bus/lib/edges.mjs
++++ b/marketplace/plugins/himmel-bus/lib/edges.mjs
+@@ -2,15 +2,16 @@ import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
+
+ // The one edge table (spec §3), shared by the server and the CLI. `peers` maps
+ // name -> registration {role, console?, pair?, predecessor?}. An edge is
+-// symmetric: (a) worker/judge/consult <-> its console, (c) worker <-> its pair,
+-// (d) console <-> its predecessor/successor console. A pair never involves a
+-// console, and a worker is always one end of it. Nothing else is allowed,
++// symmetric: (a) worker/judge/consult <-> its chief, (c) worker <-> its pair,
++// (d) chief <-> its predecessor/successor chief. A pair never involves a
++// chief, and a worker is always one end of it. Nothing else is allowed,
+ // so a declaration only counts when both endpoints hold the role it requires.
+
+-// A stored record from before the rename carries the old role name: it reads as
+-// `worker` while the legacy-names switch is on, and as an unknown role (no pair
+-// edge) when it is off.
+-export const canonRole = value => (value === 'leg' && legacyNamesOn() ? 'worker' : value);
++// A stored record from before the rename carries the old role name: `leg` reads
++// as `worker` and `console` as `chief` while the legacy-names switch is on, and as
++// an unknown role (no edge) when it is off.
++const RENAMED = { leg: 'worker', console: 'chief' };
++export const canonRole = value => (Object.hasOwn(RENAMED, value) && legacyNamesOn() ? RENAMED[value] : value);
+ const role = (peers, name) => canonRole(peers[name]?.role);
+ const PAIRED = ['worker', 'judge', 'consult'];
+
+@@ -18,10 +19,10 @@ function declared(peers, name) {
+   const me = peers[name];
+   const mine = role(peers, name);
+   const out = [];
+-  if (me.console && PAIRED.includes(mine) && role(peers, me.console) === 'console') out.push(me.console);
++  if (me.console && PAIRED.includes(mine) && role(peers, me.console) === 'chief') out.push(me.console);
+   const mate = role(peers, me.pair);
+   if (me.pair && PAIRED.includes(mine) && PAIRED.includes(mate) && (mine === 'worker' || mate === 'worker')) out.push(me.pair);
+-  if (me.predecessor && mine === 'console' && role(peers, me.predecessor) === 'console') out.push(me.predecessor);
++  if (me.predecessor && mine === 'chief' && role(peers, me.predecessor) === 'chief') out.push(me.predecessor);
+   return out.filter(other => other !== name);
+ }
+
+diff --git a/marketplace/plugins/himmel-bus/lib/identity.mjs b/marketplace/plugins/himmel-bus/lib/identity.mjs
+index b529c6a82..a49d4ae72 100644
+--- a/marketplace/plugins/himmel-bus/lib/identity.mjs
++++ b/marketplace/plugins/himmel-bus/lib/identity.mjs
+@@ -5,12 +5,14 @@ import { randomBytes } from 'node:crypto';
+ import { openChainFile, withChainLock } from '../../../../scripts/telegram/bus.ts';
+ import * as store from './store.mjs';
+ import { canonRole } from './edges.mjs';
++import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
+
+ const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+-const ROLES = ['worker', 'console', 'judge', 'consult'];
++const ROLES = ['worker', 'chief', 'judge', 'consult'];
+
+ // A role as stored or typed -> its current name, or a refusal. The pre-rename
+-// spelling maps to `worker` while the legacy-names switch is on.
++// spellings (`leg`, `console`) map to `worker` and `chief` while the legacy-names
++// switch is on.
+ function roleOf(value) {
+   const role = canonRole(value);
+   if (!ROLES.includes(role)) throw new Error(`invalid role: ${value} (one of ${ROLES.join('|')})`);
+@@ -100,10 +102,15 @@ export async function loadPeers(root) {
+ // an entry that was registered but never bound, with the same
+ // role, console, pair and predecessor, is adopted instead of refused - it has
+ // no pid, so nothing can resolve to it and re-registering grants nothing new.
+-export async function register(root, name, { role: given, console: owner, pair, predecessor } = {}) {
++// The chief a session belongs to is stored under `console` (the stored field is not renamed here).
++// `console` is the pre-rename spelling of `chief`: read while the legacy-names switch is on.
++export async function register(root, name, { role: given, chief, console: old, pair, predecessor } = {}) {
+   checkName(name);
++  if (old !== undefined && !legacyNamesOn()) throw new Error('--console was renamed to --chief');
++  if (old !== undefined && chief !== undefined && chief !== old) throw new Error('--console and --chief name different chiefs');
++  const owner = chief ?? old;
+   const role = roleOf(given);
+-  if (role !== 'console' && !owner) throw new Error(`role ${role} needs --console`);
++  if (role !== 'chief' && !owner) throw new Error(`role ${role} needs --chief`);
+   for (const other of [owner, pair, predecessor]) if (other !== undefined) checkName(other);
+   const peer = { n: name, role, launched: new Date().toISOString() };
+   if (owner) peer.console = owner;
+@@ -156,7 +163,7 @@ export async function bind(root, name, pid, { proc = '/proc' } = {}) {
+ export async function rebind(root, name, pid, { proc = '/proc' } = {}) {
+   const begun = await start(proc, pid);
+   return update(root, name, async peer => {
+-    if (peer.role === 'console') throw new Error(`a console name cannot be rebound: ${name}`);
++    if (peer.role === 'chief') throw new Error(`a chief name cannot be rebound: ${name}`);
+     if (peer.pid === undefined) throw new Error(`not bound yet (use bind): ${name}`);
+     if (await status(root, name, { proc }) === 'live') throw new Error(`bound pid is still live: ${name}`);
+     await unclaimed(root, name, pid, begun);
+@@ -173,9 +180,9 @@ export async function succeed(root, name, next) {
+   checkName(next);
+   const target = await readPeer(root, next);
+   if (!target) throw new Error(`unknown session: ${next}`);
+-  if (target.role !== 'console') throw new Error(`${next} is not a console`);
++  if (target.role !== 'chief') throw new Error(`${next} is not a chief`);
+   return update(root, name, peer => {
+-    if (peer.role !== 'console') throw new Error(`${name} is not a console`);
++    if (peer.role !== 'chief') throw new Error(`${name} is not a chief`);
+     if (target.predecessor !== name) throw new Error(`${next} does not succeed ${name}`);
+     if (peer.successor === next) return peer;
+     if (peer.successor) throw new Error(`${name} already stamped ${peer.successor}`);
+@@ -197,7 +204,7 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
+     if (old === next) return peer;
+     const target = await readPeer(root, next);
+     if (!target) throw new Error(`unknown session: ${next}`);
+-    if (target.role !== 'console') throw new Error(`${next} is not a console`);
++    if (target.role !== 'chief') throw new Error(`${next} is not a chief`);
+     const hops = [];
+     for (let to = next, at = target; ; ) {
+       const from = at.predecessor;
+@@ -205,7 +212,7 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
+       hops.unshift({ from, to });
+       if (from === old) break;
+       at = await readPeer(root, from);
+-      if (at?.role !== 'console') throw new Error(`${next} does not succeed ${old}`);
++      if (at?.role !== 'chief') throw new Error(`${next} does not succeed ${old}`);
+       to = from;
+     }
+     const records = await store.scan(root, name);
+@@ -216,8 +223,8 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
+     for (const { from, to } of hops) {
+       if ((await readPeer(root, from))?.successor === to) continue;
+       const state = await status(root, from, { proc });
+-      if (hops.length > 1 && state === 'live') throw new Error(`console ${from} on the chain to ${next} is still live`);
+-      if (state !== 'gone' && !relayed(from, to)) throw new Error(`${from === old ? 'old ' : ''}console ${from} is not gone and sent no relay naming ${to}`);
++      if (hops.length > 1 && state === 'live') throw new Error(`chief ${from} on the chain to ${next} is still live`);
++      if (state !== 'gone' && !relayed(from, to)) throw new Error(`${from === old ? 'old ' : ''}chief ${from} is not gone and sent no relay naming ${to}`);
+     }
+     return { ...peer, console: next };
+   });
+diff --git a/marketplace/plugins/himmel-bus/tests/test-cli.sh b/marketplace/plugins/himmel-bus/tests/test-cli.sh
+index b7c61e623..fd6101094 100755
+--- a/marketplace/plugins/himmel-bus/tests/test-cli.sh
++++ b/marketplace/plugins/himmel-bus/tests/test-cli.sh
+@@ -73,11 +73,11 @@ skip_section() { printf '  SKIP  %s: %s\n' "$1" "$2"; }
+ # ago <days>: a touch -t stamp <days> back (GNU or BSD date).
+ ago() { local s=$(( $(date +%s) - $1 * 86400 )); date -d "@$s" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$s" +%Y%m%d%H%M.%S; }
+
+-"$BUS" register con --role console
+-"$BUS" register legA --role worker --console con
+-"$BUS" register legB --role worker --console con
+-"$BUS" register other --role console
+-"$BUS" register otherLeg --role worker --console other
++"$BUS" register con --role chief
++"$BUS" register legA --role worker --chief con
++"$BUS" register legB --role worker --chief con
++"$BUS" register other --role chief
++"$BUS" register otherLeg --role worker --chief other
+ printf 'rule one\n' > "$tmp/body"
+
+ echo "== send: identity and stamping =="
+@@ -192,7 +192,7 @@ out=$("$BUS" status legA 2>&1)
+ case "$out" in live|gone) pass "bus status <name> keeps its live/gone meaning" ;; *) fail "status name: $out" ;; esac
+
+ echo "== wait (HIMMEL-4831) =="
+-"$BUS" register waiter --role worker --console con >/dev/null 2>&1
++"$BUS" register waiter --role worker --chief con >/dev/null 2>&1
+ t0=$(date +%s)
+ out=$(as waiter wait --timeout 1 2>&1); rc=$?
+ t1=$(date +%s)
+@@ -217,18 +217,18 @@ out=$(as waiter wait --timeout 99999999999999999999999999 2>&1); rc=$?
+ if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ] && grep -q 'at most 86400 seconds' <<< "$out"; then pass "wait refuses a --timeout beyond the cap"; else fail "huge timeout (rc=$rc): $out"; fi
+
+ echo "== succession adopt + unread (HIMMEL-6127) =="
+-"$BUS" register con2 --role console --predecessor con >/dev/null 2>&1
++"$BUS" register con2 --role chief --predecessor con >/dev/null 2>&1
+ printf 'your console is now con2\n' > "$tmp/relay"
+ as con send legA "$tmp/relay" >/dev/null 2>&1
+ out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
+ if [ "$rc" -ne 0 ] && grep -q 'no edge to legA' <<< "$out"; then pass "without adopt the successor has no edge to the worker"; else fail "pre-adopt send (rc=$rc): $out"; fi
+ out=$(as legA adopt con2 2>&1); rc=$?
+-if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA console con -> con2" ]; then pass "adopt after a relay prints what it did"; else fail "adopt (rc=$rc): $out"; fi
++if [ "$rc" -eq 0 ] && [ "$out" = "adopted: legA chief con -> con2" ]; then pass "adopt after a relay prints what it did"; else fail "adopt (rc=$rc): $out"; fi
+ out=$(as con2 send legA "$tmp/body" 2>&1); rc=$?
+ if [ "$rc" -eq 0 ]; then pass "after adopt the successor can send to the worker"; else fail "post-adopt send (rc=$rc): $out"; fi
+-"$BUS" register con3 --role console --predecessor con2 >/dev/null 2>&1
++"$BUS" register con3 --role chief --predecessor con2 >/dev/null 2>&1
+ out=$(as legA succeed con3 2>&1); rc=$?
+-if [ "$rc" -ne 0 ] && grep -q 'legA is not a console' <<< "$out"; then pass "succeed from a worker is refused (HIMMEL-7262)"; else fail "worker succeed (rc=$rc): $out"; fi
++if [ "$rc" -ne 0 ] && grep -q 'legA is not a chief' <<< "$out"; then pass "succeed from a worker is refused (HIMMEL-7262)"; else fail "worker succeed (rc=$rc): $out"; fi
+ out=$(as con succeed con3 2>&1); rc=$?
+ if [ "$rc" -ne 0 ] && grep -q 'con3 does not succeed con' <<< "$out"; then pass "succeed names only the caller's own successor"; else fail "wrong-predecessor succeed (rc=$rc): $out"; fi
+ out=$(as con2 succeed con3 2>&1); rc=$?
+@@ -236,17 +236,17 @@ if [ "$rc" -eq 0 ] && [ "$out" = "stamped: con2 successor con3" ]; then pass "a
+ out=$(as legA peers 2>&1)
+ if grep -q '^con2\b' <<< "$out" && ! grep -q '^con\b' <<< "$out"; then pass "the worker's peers lists the successor, not the predecessor"; else fail "peers: $out"; fi
+ if grep -qx 'con2 (gone)' <<< "$out"; then pass "peers marks a peer whose process is gone"; else fail "gone peer not marked: $out"; fi
+-"$BUS" register legL --role worker --console con2 >/dev/null 2>&1
++"$BUS" register legL --role worker --chief con2 >/dev/null 2>&1
+ sleep 60 & live_pid=$!
+ node "$tmp/repoint.mjs" legL "$live_pid" "$(cut -d' ' -f22 "/proc/$live_pid/stat")"
+ out=$(as con2 peers 2>&1)
+ kill "$live_pid" 2>/dev/null; wait "$live_pid" 2>/dev/null
+ if grep -qx 'legA (gone)' <<< "$out"; then pass "the successor's peers lists the worker"; else fail "successor peers: $out"; fi
+ if grep -qx legL <<< "$out"; then pass "peers prints a live peer bare"; else fail "live peer: $out"; fi
+-"$BUS" register legU --role worker --console con2 >/dev/null 2>&1
++"$BUS" register legU --role worker --chief con2 >/dev/null 2>&1
+ if grep -qx 'legU (unbound)' <<< "$(as con2 peers 2>&1)"; then pass "peers marks a registered, never-bound peer"; else fail "unbound peer not marked"; fi
+ else skip_section "status --unacked, wait, succession adopt" "$NOPROC_WHY"; fi
+-"$BUS" register idler --role worker --console con >/dev/null 2>&1
++"$BUS" register idler --role worker --chief con >/dev/null 2>&1
+ if [ "$HAVE_PROC" = 1 ]; then
+ as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
+ if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread flags undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi
+diff --git a/marketplace/plugins/himmel-bus/tests/test-identity.mjs b/marketplace/plugins/himmel-bus/tests/test-identity.mjs
+index dca7133ee..38b6b8922 100644
+--- a/marketplace/plugins/himmel-bus/tests/test-identity.mjs
++++ b/marketplace/plugins/himmel-bus/tests/test-identity.mjs
+@@ -36,8 +36,8 @@ const chain = [P(1, 0, 'init', 1), P(100, 1, 'claude', 1000), P(101, 100, 'bash'
+   P(200, 102, 'claude', 2000), P(300, 200, 'node', 3000)];
+
+ async function bound(root, proc) {
+-  await identity.register(root, 'con', { role: 'console' });
+-  await identity.register(root, 'worker', { role: 'worker', console: 'con' });
++  await identity.register(root, 'con', { role: 'chief' });
++  await identity.register(root, 'worker', { role: 'worker', chief: 'con' });
+   await identity.bind(root, 'con', 100, { proc });
+   await identity.bind(root, 'worker', 200, { proc });
+ }
+@@ -62,21 +62,21 @@ test('T1.3 second bind and re-register are refused', async t => {
+   const proc = await fakeProc(t, chain);
+   await bound(root, proc);
+   await assert.rejects(identity.bind(root, 'worker', 100, { proc }), /already bound/);
+-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', console: 'con' }), /already registered/);
++  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con' }), /already registered/);
+   assert.deepEqual(await identity.resolveIdentity(root, { proc, pid: 300 }), { name: 'worker' });
+ });
+
+ test('T1.3b re-arm of a registered-but-unbound name is adopted, a changed or bound one is refused (HIMMEL-5207)', async t => {
+   const { root } = await fixture(t);
+   const proc = await fakeProc(t, chain);
+-  await identity.register(root, 'con', { role: 'console' });
+-  const first = await identity.register(root, 'worker', { role: 'worker', console: 'con' });
+-  const again = await identity.register(root, 'worker', { role: 'worker', console: 'con' });
++  await identity.register(root, 'con', { role: 'chief' });
++  const first = await identity.register(root, 'worker', { role: 'worker', chief: 'con' });
++  const again = await identity.register(root, 'worker', { role: 'worker', chief: 'con' });
+   assert.deepEqual(again, first);
+-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', console: 'other' }), /already registered/);
+-  await assert.rejects(identity.register(root, 'worker', { role: 'judge', console: 'con' }), /already registered/);
++  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'other' }), /already registered/);
++  await assert.rejects(identity.register(root, 'worker', { role: 'judge', chief: 'con' }), /already registered/);
+   await identity.bind(root, 'worker', 200, { proc });
+-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', console: 'con' }), /already registered/);
++  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con' }), /already registered/);
+ });
+
+ test('T1.4 pid reuse (same pid, different start time) is unbound', async t => {
+@@ -91,11 +91,11 @@ test('T1.4 pid reuse (same pid, different start time) is unbound', async t => {
+
+ test('T5.2 refused send lists only the caller own edges, never another console', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'conA', { role: 'console' });
+-  await identity.register(root, 'conB', { role: 'console' });
+-  await identity.register(root, 'legA', { role: 'worker', console: 'conA' });
+-  await identity.register(root, 'judgeA', { role: 'judge', console: 'conA', pair: 'legA' });
+-  await identity.register(root, 'legB', { role: 'worker', console: 'conB' });
++  await identity.register(root, 'conA', { role: 'chief' });
++  await identity.register(root, 'conB', { role: 'chief' });
++  await identity.register(root, 'legA', { role: 'worker', chief: 'conA' });
++  await identity.register(root, 'judgeA', { role: 'judge', chief: 'conA', pair: 'legA' });
++  await identity.register(root, 'legB', { role: 'worker', chief: 'conB' });
+   const peers = await identity.loadPeers(root);
+   assert.deepEqual(edges.edgeList(peers, 'legA'), ['conA', 'judgeA']);
+   const refusal = edges.check(peers, 'legA', 'nobody');
+@@ -107,11 +107,11 @@ test('T5.2 refused send lists only the caller own edges, never another console',
+
+ test('edges: worker to sibling refused, worker to console allowed, console to other console worker refused', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'conA', { role: 'console' });
+-  await identity.register(root, 'conB', { role: 'console' });
+-  await identity.register(root, 'leg1', { role: 'worker', console: 'conA' });
+-  await identity.register(root, 'leg2', { role: 'worker', console: 'conA' });
+-  await identity.register(root, 'legB', { role: 'worker', console: 'conB' });
++  await identity.register(root, 'conA', { role: 'chief' });
++  await identity.register(root, 'conB', { role: 'chief' });
++  await identity.register(root, 'leg1', { role: 'worker', chief: 'conA' });
++  await identity.register(root, 'leg2', { role: 'worker', chief: 'conA' });
++  await identity.register(root, 'legB', { role: 'worker', chief: 'conB' });
+   const peers = await identity.loadPeers(root);
+   assert.equal(edges.check(peers, 'leg1', 'leg2').ok, false);
+   assert.equal(edges.check(peers, 'leg1', 'conA').ok, true);
+@@ -124,8 +124,8 @@ test('edges: worker to sibling refused, worker to console allowed, console to ot
+
+ test('edges: predecessor link creates console to console edge both ways', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'old', { role: 'console' });
+-  await identity.register(root, 'next', { role: 'console', predecessor: 'old' });
++  await identity.register(root, 'old', { role: 'chief' });
++  await identity.register(root, 'next', { role: 'chief', predecessor: 'old' });
+   const peers = await identity.loadPeers(root);
+   assert.equal(edges.check(peers, 'old', 'next').ok, true);
+   assert.equal(edges.check(peers, 'next', 'old').ok, true);
+@@ -133,11 +133,11 @@ test('edges: predecessor link creates console to console edge both ways', async
+
+ test('edges: a declaration only counts when both endpoints hold the required role', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'con', { role: 'console' });
+-  await identity.register(root, 'a', { role: 'worker', console: 'con' });
+-  await identity.register(root, 'b', { role: 'worker', console: 'a' });
+-  await identity.register(root, 'c', { role: 'worker', console: 'con', predecessor: 'a' });
+-  await identity.register(root, 'j', { role: 'judge', console: 'con', pair: 'con' });
++  await identity.register(root, 'con', { role: 'chief' });
++  await identity.register(root, 'a', { role: 'worker', chief: 'con' });
++  await identity.register(root, 'b', { role: 'worker', chief: 'a' });
++  await identity.register(root, 'c', { role: 'worker', chief: 'con', predecessor: 'a' });
++  await identity.register(root, 'j', { role: 'judge', chief: 'con', pair: 'con' });
+   const peers = await identity.loadPeers(root);
+   assert.equal(edges.check(peers, 'b', 'a').ok, false);
+   assert.equal(edges.check(peers, 'a', 'b').ok, false);
+@@ -150,7 +150,7 @@ test('one process identity cannot be bound to two names', async t => {
+   const { root } = await fixture(t);
+   const proc = await fakeProc(t, chain);
+   await bound(root, proc);
+-  await identity.register(root, 'twin', { role: 'worker', console: 'con' });
++  await identity.register(root, 'twin', { role: 'worker', chief: 'con' });
+   await assert.rejects(identity.bind(root, 'twin', 200, { proc }), /already bound to worker/);
+   assert.deepEqual(await identity.resolveIdentity(root, { proc, pid: 300 }), { name: 'worker' });
+ });
+@@ -169,7 +169,7 @@ test('adopt needs the old console gone or a relay record from it naming the new
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
+   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'handing over to new' });
+   await identity.adopt(root, 'worker', 'new', { proc: live });
+@@ -180,7 +180,7 @@ test('adopt succeeds when the old console is gone', async t => {
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
+   await identity.adopt(root, 'worker', 'new', { proc: gone });
+   assert.equal((await identity.loadPeers(root)).worker.console, 'new');
+@@ -190,7 +190,7 @@ test('adopt refuses a record from someone else naming the new console', async t
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+   await store.append(root, 'worker', { i: 'x', t: 1, f: 'rogue', r: 'worker', c: 1, b: 'adopt new' });
+   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
+ });
+@@ -199,7 +199,7 @@ test('adopt: a relay must name the new console as a whole word', async t => {
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'a newer console is coming' });
+   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
+ });
+@@ -208,7 +208,7 @@ test('adopt finds a relay the hook already delivered and committed', async t =>
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'handing over to new' });
+   const delivered = await store.read(root, 'worker');
+   assert.equal(delivered.records.length, 1);
+@@ -221,7 +221,7 @@ test('adopt refuses a console that does not succeed the old one', async t => {
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'other', { role: 'console' });
++  await identity.register(root, 'other', { role: 'chief' });
+   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
+   await assert.rejects(identity.adopt(root, 'worker', 'other', { proc: gone }), /does not succeed con/);
+   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
+@@ -231,8 +231,8 @@ test('adopt refuses a console that does not succeed the old one', async t => {
+ async function chained(t, root) {
+   const all = await fakeProc(t, [...chain, P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+   await bound(root, all);
+-  await identity.register(root, 'mid', { role: 'console', predecessor: 'con' });
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'mid' });
++  await identity.register(root, 'mid', { role: 'chief', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'mid' });
+   await identity.bind(root, 'new', 160, { proc: all });
+ }
+
+@@ -250,7 +250,7 @@ test('adopt refuses a chain with an unproven hop', async t => {
+   const { root } = await fixture(t);
+   await chained(t, root);
+   const after = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000), P(160, 1, 'claude', 1600)]);
+-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: after }), /console mid is not gone and sent no relay naming new/);
++  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: after }), /chief mid is not gone and sent no relay naming new/);
+   await store.append(root, 'worker', { i: 'x', t: 1, f: 'mid', r: 'worker', c: 1, b: 'your console is now new' });
+   await identity.adopt(root, 'worker', 'new', { proc: after });
+   assert.equal((await identity.loadPeers(root)).worker.console, 'new');
+@@ -264,7 +264,7 @@ test('adopt refuses a chain whose intermediate console is still live, relay or n
+   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'your console is now mid' });
+   await store.append(root, 'worker', { i: 'y', t: 2, f: 'mid', r: 'worker', c: 1, b: 'your console is now new' });
+   const midLive = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000), P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
+-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: midLive }), /console mid on the chain to new is still live/);
++  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: midLive }), /chief mid on the chain to new is still live/);
+   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
+ });
+
+@@ -290,17 +290,17 @@ test('adopt still refuses a live intermediate console that never stamped', async
+   const { root } = await fixture(t);
+   const live = await allLive(t, root);
+   await identity.succeed(root, 'con', 'mid');
+-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /console mid on the chain to new is still live/);
++  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /chief mid on the chain to new is still live/);
+   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
+ });
+
+ test('adopt refuses a stamp that names a different successor', async t => {
+   const { root } = await fixture(t);
+   const live = await allLive(t, root);
+-  await identity.register(root, 'other', { role: 'console', predecessor: 'mid' });
++  await identity.register(root, 'other', { role: 'chief', predecessor: 'mid' });
+   await identity.succeed(root, 'con', 'mid');
+   await identity.succeed(root, 'mid', 'other');
+-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /console mid on the chain to new is still live/);
++  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /chief mid on the chain to new is still live/);
+   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
+ });
+
+@@ -308,7 +308,7 @@ test('adopt passes a single live-old-console hop on its stamp alone', async t =>
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
+   await identity.succeed(root, 'con', 'new');
+   await identity.adopt(root, 'worker', 'new', { proc: live });
+@@ -319,13 +319,13 @@ test('succeed: only a console naming its own registered successor, once', async
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+-  await identity.register(root, 'stranger', { role: 'console' });
+-  await identity.register(root, 'rival', { role: 'console', predecessor: 'con' });
+-  await assert.rejects(identity.succeed(root, 'worker', 'new'), /not a console/);
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
++  await identity.register(root, 'stranger', { role: 'chief' });
++  await identity.register(root, 'rival', { role: 'chief', predecessor: 'con' });
++  await assert.rejects(identity.succeed(root, 'worker', 'new'), /not a chief/);
+   await assert.rejects(identity.succeed(root, 'con', 'stranger'), /does not succeed con/);
+   await assert.rejects(identity.succeed(root, 'con', 'ghost'), /unknown session: ghost/);
+-  await assert.rejects(identity.succeed(root, 'con', 'worker'), /not a console/);
++  await assert.rejects(identity.succeed(root, 'con', 'worker'), /not a chief/);
+   await identity.succeed(root, 'con', 'new');
+   await identity.succeed(root, 'con', 'new');
+   await assert.rejects(identity.succeed(root, 'con', 'rival'), /already stamped new/);
+@@ -336,7 +336,7 @@ test('adopt onto the console already held is a no-op', async t => {
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
++  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
+   await identity.adopt(root, 'worker', 'new', { proc: gone });
+   await identity.adopt(root, 'worker', 'new', { proc: gone });
+@@ -348,16 +348,16 @@ test('rebind refuses a console name', async t => {
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+   const after = await fakeProc(t, [P(1, 0, 'init', 1), P(201, 1, 'claude', 2500)]);
+-  await assert.rejects(identity.rebind(root, 'con', 201, { proc: after }), /console/);
++  await assert.rejects(identity.rebind(root, 'con', 201, { proc: after }), /a chief name cannot be rebound/);
+ });
+
+ test('adopt refuses a destination that is not a console', async t => {
+   const { root } = await fixture(t);
+   const live = await fakeProc(t, chain);
+   await bound(root, live);
+-  await identity.register(root, 'other', { role: 'worker', console: 'con' });
++  await identity.register(root, 'other', { role: 'worker', chief: 'con' });
+   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
+-  await assert.rejects(identity.adopt(root, 'worker', 'other', { proc: gone }), /not a console/);
++  await assert.rejects(identity.adopt(root, 'worker', 'other', { proc: gone }), /not a chief/);
+   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
+ });
+
+@@ -366,15 +366,15 @@ test('CLI: register, bind, status, peers, rebind against real processes', async
+   t.after(() => rm(state, { recursive: true, force: true }));
+   const env = { ...process.env, XDG_STATE_HOME: state };
+   const run = (...args) => spawnSync(process.execPath, [cli, ...args], { env, encoding: 'utf8' });
+-  assert.equal(run('register', 'con', '--role', 'console').status, 0);
+-  assert.equal(run('register', 'worker', '--role', 'worker', '--console', 'con').status, 0);
+-  assert.equal(run('register', 'worker', '--role', 'worker', '--console', 'con').status, 0);
+-  assert.notEqual(run('register', 'worker', '--role', 'worker', '--console', 'other').status, 0);
++  assert.equal(run('register', 'con', '--role', 'chief').status, 0);
++  assert.equal(run('register', 'worker', '--role', 'worker', '--chief', 'con').status, 0);
++  assert.equal(run('register', 'worker', '--role', 'worker', '--chief', 'con').status, 0);
++  assert.notEqual(run('register', 'worker', '--role', 'worker', '--chief', 'other').status, 0);
+   assert.notEqual(run('register', 'bad', '--role', 'wizard').status, 0);
+   const child = spawn('sleep', ['30']);
+   t.after(() => child.kill());
+   assert.equal(run('bind', 'worker', String(child.pid)).status, 0);
+-  assert.notEqual(run('register', 'worker', '--role', 'worker', '--console', 'con').status, 0);
++  assert.notEqual(run('register', 'worker', '--role', 'worker', '--chief', 'con').status, 0);
+   assert.notEqual(run('bind', 'worker', String(child.pid)).status, 0);
+   assert.equal(run('status', 'worker').stdout.trim(), 'live');
+   assert.notEqual(run('rebind', 'worker', String(process.pid)).status, 0);
+@@ -409,45 +409,45 @@ async function oldRecord(root, name, extra = {}) {
+
+ test('M2: role worker registers and is stored as worker', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'con', { role: 'console' });
+-  const peer = await identity.register(root, 'w1', { role: 'worker', console: 'con' });
++  await identity.register(root, 'con', { role: 'chief' });
++  const peer = await identity.register(root, 'w1', { role: 'worker', chief: 'con' });
+   assert.equal(peer.role, 'worker');
+   assert.equal(JSON.parse(await readFile(join(root, 'peers/w1.json'), 'utf8')).role, 'worker');
+ });
+
+ test('M2: --role leg is an alias under the switch and is stored as worker', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'con', { role: 'console' });
+-  const peer = await withSwitch(undefined, () => identity.register(root, 'w2', { role: 'leg', console: 'con' }));
++  await identity.register(root, 'con', { role: 'chief' });
++  const peer = await withSwitch(undefined, () => identity.register(root, 'w2', { role: 'leg', chief: 'con' }));
+   assert.equal(peer.role, 'worker');
+   assert.equal(JSON.parse(await readFile(join(root, 'peers/w2.json'), 'utf8')).role, 'worker');
+ });
+
+ test('M2: a stored role leg record still reads as worker and keeps its edges', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'con', { role: 'console' });
++  await identity.register(root, 'con', { role: 'chief' });
+   await oldRecord(root, 'old1');
+   await withSwitch(undefined, async () => {
+     const peers = await identity.loadPeers(root);
+     assert.equal(peers.old1.role, 'worker');
+     assert.equal(edges.check(peers, 'old1', 'con').ok, true);
+     assert.equal(await identity.status(root, 'old1'), 'unbound');
+-    await identity.register(root, 'j', { role: 'judge', console: 'con', pair: 'old1' });
++    await identity.register(root, 'j', { role: 'judge', chief: 'con', pair: 'old1' });
+     assert.equal(edges.check(await identity.loadPeers(root), 'j', 'old1').ok, true);
+   });
+ });
+
+ test('M2: a re-arm of a stored role leg record is adopted as the same registration', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'con', { role: 'console' });
++  await identity.register(root, 'con', { role: 'chief' });
+   await oldRecord(root, 'old2');
+-  const again = await withSwitch(undefined, () => identity.register(root, 'old2', { role: 'worker', console: 'con' }));
++  const again = await withSwitch(undefined, () => identity.register(root, 'old2', { role: 'worker', chief: 'con' }));
+   assert.equal(again.role, 'worker');
+ });
+
+ test('M2: edges.check treats a raw role leg peer as worker under the switch only', async () => {
+   const peers = {
+-    con: { n: 'con', role: 'console' },
++    con: { n: 'con', role: 'chief' },
+     a: { n: 'a', role: 'leg', console: 'con' },
+     j: { n: 'j', role: 'judge', console: 'con', pair: 'a' },
+   };
+@@ -457,7 +457,7 @@ test('M2: edges.check treats a raw role leg peer as worker under the switch only
+
+ test('M2: with the switch off, a worker gets no pair edge to a raw role leg peer', async () => {
+   const peers = {
+-    con: { n: 'con', role: 'console' },
++    con: { n: 'con', role: 'chief' },
+     a: { n: 'a', role: 'leg', console: 'con' },
+     w: { n: 'w', role: 'worker', console: 'con', pair: 'a' },
+   };
+@@ -473,8 +473,8 @@ test('M2: with the switch off, a worker gets no pair edge to a raw role leg peer
+
+ test('M2: a console that names a pair draws no pair edge (only worker, judge and consult pair)', async () => {
+   const peers = {
+-    con: { n: 'con', role: 'console', pair: 'w2' },
+-    con2: { n: 'con2', role: 'console' },
++    con: { n: 'con', role: 'chief', pair: 'w2' },
++    con2: { n: 'con2', role: 'chief' },
+     w2: { n: 'w2', role: 'worker', console: 'con2' },
+   };
+   await withSwitch(undefined, () => {
+@@ -485,11 +485,11 @@ test('M2: a console that names a pair draws no pair edge (only worker, judge and
+
+ test('M2: with the switch off, --role leg is refused and a stored leg record is not read', async t => {
+   const { root } = await fixture(t);
+-  await identity.register(root, 'con', { role: 'console' });
+-  await identity.register(root, 'ok', { role: 'worker', console: 'con' });
++  await identity.register(root, 'con', { role: 'chief' });
++  await identity.register(root, 'ok', { role: 'worker', chief: 'con' });
+   await oldRecord(root, 'old3');
+   await withSwitch('0', async () => {
+-    await assert.rejects(identity.register(root, 'w3', { role: 'leg', console: 'con' }), /invalid role: leg/);
++    await assert.rejects(identity.register(root, 'w3', { role: 'leg', chief: 'con' }), /invalid role: leg/);
+     await assert.rejects(identity.status(root, 'old3'), /invalid role: leg/);
+     const peers = await identity.loadPeers(root);
+     assert.equal(peers.old3, undefined);
+@@ -502,11 +502,86 @@ test('M2: CLI accepts --role leg under the switch and refuses it with the switch
+   t.after(() => rm(state, { recursive: true, force: true }));
+   const run = (switchValue, ...args) => spawnSync(process.execPath, [cli, ...args],
+     { env: { ...process.env, XDG_STATE_HOME: state, HIMMEL_LEGACY_NAMES: switchValue }, encoding: 'utf8' });
+-  assert.equal(run('1', 'register', 'con', '--role', 'console').status, 0);
+-  assert.equal(run('1', 'register', 'w1', '--role', 'leg', '--console', 'con').status, 0);
++  assert.equal(run('1', 'register', 'con', '--role', 'chief').status, 0);
++  assert.equal(run('1', 'register', 'w1', '--role', 'leg', '--chief', 'con').status, 0);
+   assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/w1.json'), 'utf8')).role, 'worker');
+-  const off = run('0', 'register', 'w2', '--role', 'leg', '--console', 'con');
++  const off = run('0', 'register', 'w2', '--role', 'leg', '--chief', 'con');
+   assert.notEqual(off.status, 0);
+   assert.match(off.stderr, /invalid role: leg/);
+-  assert.equal(run('0', 'register', 'w3', '--role', 'worker', '--console', 'con').status, 0);
++  assert.equal(run('0', 'register', 'w3', '--role', 'worker', '--chief', 'con').status, 0);
++});
++
++// The chief half of the rename: `chief` / `--chief` are canonical, `console` /
++// `--console` read as aliases while the legacy-names switch is on.
++async function cliState(t) {
++  const state = await mkdtemp(join(tmpdir(), 'bus-cli-'));
++  t.after(() => rm(state, { recursive: true, force: true }));
++  const run = (switchValue, ...args) => spawnSync(process.execPath, [cli, ...args],
++    { env: { ...process.env, XDG_STATE_HOME: state, HIMMEL_LEGACY_NAMES: switchValue }, encoding: 'utf8' });
++  return { state, run };
++}
++
++test('M3: CLI registers role chief, --chief and --pair <worker>, the documented command', async t => {
++  const { state, run } = await cliState(t);
++  assert.equal(run('0', 'register', 'con', '--role', 'chief').status, 0);
++  assert.equal(run('0', 'register', 'w1', '--role', 'worker', '--chief', 'con').status, 0);
++  const judge = run('0', 'register', 'j1', '--role', 'judge', '--chief', 'con', '--pair', 'w1');
++  assert.equal(judge.status, 0, judge.stderr);
++  assert.equal(run('0', 'register', 'con2', '--role', 'chief', '--predecessor', 'con').status, 0);
++  assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/con.json'), 'utf8')).role, 'chief');
++  const root = await store.busRoot({ stateHome: state });
++  const peers = await identity.loadPeers(root);
++  assert.equal(edges.check(peers, 'w1', 'con').ok, true);
++  assert.equal(edges.check(peers, 'j1', 'w1').ok, true);
++  assert.equal(edges.check(peers, 'con2', 'con').ok, true);
++  const missing = run('0', 'register', 'w2', '--role', 'worker');
++  assert.notEqual(missing.status, 0);
++  assert.match(missing.stderr, /needs --chief/);
++});
++
++test('M3: a stored role console record reads back as chief under the switch only', async t => {
++  const { root } = await fixture(t);
++  await identity.register(root, 'new', { role: 'chief' });
++  await writeFile(join(root, 'peers', 'oldcon.json'),
++    JSON.stringify({ n: 'oldcon', role: 'console', launched: '2026-10-19T00:00:00.000Z' }) + '\n', { mode: 0o600 });
++  await oldRecord(root, 'oldw', { role: 'worker', console: 'oldcon' });
++  await withSwitch(undefined, async () => {
++    const peers = await identity.loadPeers(root);
++    assert.equal(peers.oldcon.role, 'chief');
++    assert.equal(edges.check(peers, 'oldw', 'oldcon').ok, true);
++    await identity.register(root, 'succ', { role: 'chief', predecessor: 'oldcon' });
++    assert.equal((await identity.succeed(root, 'oldcon', 'succ')).successor, 'succ');
++  });
++  await writeFile(join(root, 'peers', 'oldcon2.json'),
++    JSON.stringify({ n: 'oldcon2', role: 'console', launched: '2026-10-19T00:00:00.000Z' }) + '\n', { mode: 0o600 });
++  await withSwitch('0', async () => {
++    assert.equal(edges.check({ c: { n: 'c', role: 'console' }, w: { n: 'w', role: 'worker', console: 'c' } }, 'w', 'c').ok, false);
++    await assert.rejects(identity.status(root, 'oldcon2'), /invalid role: console/);
++    await assert.rejects(identity.register(root, 'again', { role: 'console' }), /invalid role: console/);
++  });
++});
++
++test('M3: register reads the console option as the chief under the switch only', async t => {
++  const { root } = await fixture(t);
++  await identity.register(root, 'con', { role: 'chief' });
++  const peer = await withSwitch(undefined, () => identity.register(root, 'w1', { role: 'worker', console: 'con' }));
++  assert.equal(edges.check(await identity.loadPeers(root), 'w1', 'con').ok, true);
++  assert.equal(peer.console, 'con');
++  await withSwitch('0', () => assert.rejects(identity.register(root, 'w2', { role: 'worker', console: 'con' }), /--console was renamed to --chief/));
++});
++
++test('M3: CLI accepts --role console and --console under the switch and refuses them with it off', async t => {
++  const { state, run } = await cliState(t);
++  assert.equal(run('1', 'register', 'con', '--role', 'console').status, 0);
++  assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/con.json'), 'utf8')).role, 'chief');
++  assert.equal(run('1', 'register', 'w1', '--role', 'worker', '--console', 'con').status, 0);
++  const root = await store.busRoot({ stateHome: state });
++  assert.equal(edges.check(await identity.loadPeers(root), 'w1', 'con').ok, true);
++  assert.notEqual(run('1', 'register', 'w2', '--role', 'worker', '--console', 'con', '--chief', 'other').status, 0);
++  const off = run('0', 'register', 'w3', '--role', 'worker', '--console', 'con');
++  assert.notEqual(off.status, 0);
++  assert.match(off.stderr, /--console was renamed to --chief/);
++  const offRole = run('0', 'register', 'con3', '--role', 'console');
++  assert.notEqual(offRole.status, 0);
++  assert.match(offRole.stderr, /invalid role: console/);
+ });
+diff --git a/scripts/ci/check-doc-literals.sh b/scripts/ci/check-doc-literals.sh
+index 332f72f00..5682db653 100755
+--- a/scripts/ci/check-doc-literals.sh
++++ b/scripts/ci/check-doc-literals.sh
+@@ -43,7 +43,7 @@ accept_table() {
+     # `bus <verb>`, or a table cell opening with a verb only the bus has (adopt, status, send ... also name other tools' verbs)
+     local cmd_bus="(((^|[^A-Za-z0-9_-])bus )(register|bind|rebind|adopt|succeed|status|peers|send|wait|unread|gc)|$bt(register|bind|rebind|succeed|unread))([^A-Za-z0-9_.-]|\$)"
+     # name | source | command ERE | accepted flags | accepted roles | refused flags
+-    printf '%s\n' "bus${t}marketplace/plugins/himmel-bus/bin/bus${t}${cmd_bus}${t}--role --console --pair --predecessor --re --summary --doc --for --timeout --unacked${t}worker console judge consult${t}-" # old-term-ok: the bus parser's current vocabulary
++    printf '%s\n' "bus${t}marketplace/plugins/himmel-bus/bin/bus${t}${cmd_bus}${t}--role --chief --console --pair --predecessor --re --summary --doc --for --timeout --unacked${t}worker chief judge consult${t}-" # old-term-ok: --console is the parser's read alias under HIMMEL_LEGACY_NAMES
+     printf '%s\n' "tick.sh${t}scripts/handover/chief-kit/tick.sh${t}(^|[^A-Za-z0-9_-])tick\\.sh([^A-Za-z0-9_-]|\$)${t}--burn --doc --emit-fp --handover-dir --help --pool-dispositions --pool-stale --ready-dir --ready-mismatch --repo --token --verbose --workers --workers-from${t}-${t}-"
+     printf '%s\n' "board.mjs${t}scripts/handover/chief-kit/board.mjs${t}(^|[^A-Za-z0-9_-])board\\.mjs([^A-Za-z0-9_-]|\$)${t}--changed --doc --json --out --repo --view --workers${t}-${t}-"
+     printf '%s\n' "chief.sh${t}scripts/handover/chief/chief.sh${t}(^|[^A-Za-z0-9_-])chief\\.sh([^A-Za-z0-9_-]|\$)${t}--arm --bucket --context --date --deadline-min --doc --dry-run --help --model --name --no-relay-on-live --prefix --project --relay-on-live${t}-${t}-"
+diff --git a/scripts/ci/test-check-doc-literals.sh b/scripts/ci/test-check-doc-literals.sh
+index 76ab537dd..57e79a71f 100755
+--- a/scripts/ci/test-check-doc-literals.sh
++++ b/scripts/ci/test-check-doc-literals.sh
+@@ -43,20 +43,19 @@ run_case() {
+     LAST_OUT="$out"
+ }
+
+-# The register row of docs/himmel-bus.md as PR 4288 left it (the (c)1 case).
++# The register row of docs/himmel-bus.md, in the words the parser accepts.
+ BUS_DOC_ROW='| `register <name> --role worker\|chief\|judge\|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |'
+-# The same row in the spellings the parser accepts today.
+-BUS_OK_ROW='| `register <name> --role worker\|console\|judge\|consult [--console <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |' # old-term-ok: the parser spelling
++# The same row with the retired role value: the parser accepts it only as a read alias, so a doc may not show it.
++BUS_OLD_ROW='| `register <name> --role worker\|console\|judge\|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |' # old-term-ok: the retired role value
+
+ echo "== RED: a doc literal the CLI refuses =="
+-run_case "bus register row from docs/himmel-bus.md" 1 docs/himmel-bus.md "$BUS_DOC_ROW"
+-case "$LAST_OUT" in *docs/himmel-bus.md:1:*--chief*) pass "finding names the file, line and --chief" ;; *) fail "finding names --chief: $LAST_OUT" ;; esac
+-case "$LAST_OUT" in *"role 'chief'"*) pass "finding names the role value" ;; *) fail "finding names the role value: $LAST_OUT" ;; esac
++run_case "bus register row with the retired role value" 1 docs/himmel-bus.md "$BUS_OLD_ROW"
++case "$LAST_OUT" in *docs/himmel-bus.md:1:*"role 'console'"*) pass "finding names the file, line and the role value" ;; *) fail "finding names the role value: $LAST_OUT" ;; esac
+ run_case "retired tick flag" 1 docs/a.md 'run `bash scripts/handover/chief-kit/tick.sh --legs "a b"` first' # old-term-ok: the retired flag
+ run_case "unknown board flag in a fence" 1 docs/a.md 'node scripts/handover/chief-kit/board.mjs --doc d.md --nope x'
+ run_case "refused launcher flag" 1 docs/a.md 'headed-arm-worker.sh --console me' # old-term-ok: the refused flag
+ run_case "bus send with an unknown flag" 1 docs/a.md 'bus send chief body.md --urgent'
+-run_case "--role=value form is checked too" 1 docs/a.md 'bus register x --role=chief'
++run_case "--role=value form is checked too" 1 docs/a.md 'bus register x --role=wizard'
+ run_case "flag on a backslash-continued line" 1 docs/a.md $'bash scripts/handover/chief-kit/tick.sh --doc d \\\n    --nope x'
+ case "$LAST_OUT" in *docs/a.md:1:*--nope*) pass "continued finding is reported at the first line" ;; *) fail "continued finding line: $LAST_OUT" ;; esac
+ run_case "flag in a SKILL.md" 1 marketplace/plugins/x/skills/y/SKILL.md 'run chief.sh --nope'
+@@ -64,7 +63,7 @@ run_case "flag in a slash command" 1 .claude/commands/z.md 'run gen-briefs --nop
+ run_case "flag on append-results.sh" 1 docs/handover/worker-preface.md 'bash scripts/handover/chief-kit/append-results.sh --force doc text'
+
+ echo "== GREEN: the doc and the CLI agree =="
+-run_case "bus register row in the parser spellings" 0 docs/himmel-bus.md "$BUS_OK_ROW"
++run_case "bus register row from docs/himmel-bus.md" 0 docs/himmel-bus.md "$BUS_DOC_ROW"
+ run_case "tick flags" 0 docs/a.md 'bash scripts/handover/chief-kit/tick.sh --doc d --workers "a b" --verbose'
+ run_case "flag after a pipe belongs to the next command" 0 docs/a.md 'tick.sh --doc d | grep --color x'
+ run_case "flag after && belongs to the next command" 0 docs/a.md 'tick.sh --doc d && git log --oneline'
+diff --git a/scripts/handover/chief-kit/headed-arm-worker.sh b/scripts/handover/chief-kit/headed-arm-worker.sh
+index acfdc7bbb..f343eb299 100755
+--- a/scripts/handover/chief-kit/headed-arm-worker.sh
++++ b/scripts/handover/chief-kit/headed-arm-worker.sh
+@@ -2672,7 +2672,7 @@ case "${MCP_NAMES_JSON:-}" in
+             BUS_ROLE=worker
+             [ "$JUDGE" -eq 1 ] && BUS_ROLE=judge
+             [ "$CONSULT" -eq 1 ] && BUS_ROLE=consult
+-            BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --console "$BUS_CHIEF")
++            BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --chief "$BUS_CHIEF")
+             # WORKER_SESSION_BUS_PAIR: the worker a judge or consult was launched for (spec 3c).
+             [ "$BUS_ROLE" != worker ] && [ -n "${WORKER_SESSION_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$WORKER_SESSION_BUS_PAIR")
+             if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then
+diff --git a/scripts/handover/chief/chief-bus-exec.sh b/scripts/handover/chief/chief-bus-exec.sh
+index 2efa96d65..945c77808 100755
+--- a/scripts/handover/chief/chief-bus-exec.sh
++++ b/scripts/handover/chief/chief-bus-exec.sh
+@@ -60,7 +60,7 @@ bus_bounded() {
+     return "$rc"
+ }
+
+-bus_args=(register "$session" --role console)
++bus_args=(register "$session" --role chief)
+ [ -n "$predecessor" ] && bus_args+=(--predecessor "$predecessor")
+ if bus_bounded "${bus_args[@]}" && bus_bounded bind "$session" "$$"; then
+     export HIMMEL_BUS_NAME="$session"
+diff --git a/scripts/handover/chief/chief.sh b/scripts/handover/chief/chief.sh
+index 7598a793b..cdcd5dc5e 100755
+--- a/scripts/handover/chief/chief.sh
++++ b/scripts/handover/chief/chief.sh
+@@ -373,7 +373,7 @@ do_arm() {
+     if [ "$bus_opt" -eq 2 ]; then
+         bus_warn "$log" "bus profile probe failed for $session - launching unbound: $bus_probe_out"
+     elif [ "$bus_opt" -eq 0 ]; then
+-        bus_args=(register "$session" --role console)
++        bus_args=(register "$session" --role chief)
+         [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
+         if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
+             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
+@@ -386,7 +386,7 @@ do_arm() {
+                     bus_warn "$log" "bus succeed failed for $session - workers adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out"
+                 fi
+             fi
+-            bus_note "$log" "registered $session as console$bus_stamp"
++            bus_note "$log" "registered $session as chief$bus_stamp"
+         else
+             bus_warn "$log" "bus register failed for $session - launching unbound: $bus_out"
+         fi
+diff --git a/scripts/handover/chief/test-chief.sh b/scripts/handover/chief/test-chief.sh
+index db962671c..7365c160d 100755
+--- a/scripts/handover/chief/test-chief.sh
++++ b/scripts/handover/chief/test-chief.sh
+@@ -2365,18 +2365,18 @@ run79() { # <variant> <cmd> <bucket> [extra env...]
+ }
+ out79a="$(run79 in new bus79in)"
+ session79a="DEMO-nextleg-${today}A-bus79-chief"
+-check "79 opted-in new: register --role chief, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role console"
++check "79 opted-in new: register --role chief, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role chief"
+ check "79 opted-in new: armed env carries only the registered name + the bind flag" \
+     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
+ check "79 opted-in new: the launch log records the registration" \
+-    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as console\$")" "1"
++    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as chief\$")" "1"
+ rm -f "$bus79/calls"
+ out79b="$(run79 in next bus79in)"
+ session79b="DEMO-nextleg-${today}B-bus79-chief"
+-check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a
++check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role chief --predecessor $session79a
+ succeed $session79b"
+ check "79 opted-in next: the launch log records the registration and the stamp" \
+-    "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as console, stamped successor of $session79a\$")" "1"
++    "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as chief, stamped successor of $session79a\$")" "1"
+ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79b.md" "$(token_of "$out79b")" >/dev/null 2>&1
+ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79a.md" "$(token_of "$out79a")" >/dev/null 2>&1
+ rm -f "$bus79/calls"
+@@ -2899,7 +2899,7 @@ s88a="DEMO-nextleg-${today}A-bus88-chief"
+ out88a="$(print88 in new bus88in)"
+ paste88 "$out88a"
+ check "88 opted-in new: the pasted line registers the chief, then binds the pid claude runs as" \
+-    "$(cat "$b88/calls" 2>/dev/null)" "register $s88a --role console
++    "$(cat "$b88/calls" 2>/dev/null)" "register $s88a --role chief
+ bind $s88a $(pid88)"
+ check "88 opted-in new: claude gets HIMMEL_BUS_NAME and no other HIMMEL_BUS_*" \
+     "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=$s88a extra=<unset>"
+@@ -2907,7 +2907,7 @@ s88b="DEMO-nextleg-${today}B-bus88-chief"
+ out88b="$(print88 in next bus88in)"
+ paste88 "$out88b"
+ check "88 opted-in next: register carries --predecessor <outgoing session>" \
+-    "$(sed -n 1p "$b88/calls" 2>/dev/null)" "register $s88b --role console --predecessor $s88a"
++    "$(sed -n 1p "$b88/calls" 2>/dev/null)" "register $s88b --role chief --predecessor $s88a"
+ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88b.md" "$(token_of "$out88b")" >/dev/null 2>&1
+ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88in/$s88a.md" "$(token_of "$out88a")" >/dev/null 2>&1
+ out88c="$(print88 out new bus88out)"
+@@ -2918,7 +2918,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88out/$s88a.md" "$(toke
+ out88d="$(print88 in new bus88fail)"
+ paste88 "$out88d" BUS88_FAIL=1
+ check "88 failed register: no bind, claude starts unbound" \
+-    "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role console|bus_name=<unset> extra=<unset>"
++    "$(cat "$b88/calls" 2>/dev/null)|$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "register $s88a --role chief|bus_name=<unset> extra=<unset>"
+ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(token_of "$out88d")" >/dev/null 2>&1
+ # a broken profile probe is not an opt-out: the printed line runs claude unbound and chief.sh says so
+ out88e="$(print88 broken new bus88probe)"
+diff --git a/scripts/hooks/test-guard-bus-store.sh b/scripts/hooks/test-guard-bus-store.sh
+index c955cc968..48da6c325 100755
+--- a/scripts/hooks/test-guard-bus-store.sh
++++ b/scripts/hooks/test-guard-bus-store.sh
+@@ -54,7 +54,7 @@ allow() { # allow <label> <json> [ENV=val ...]  — allow must be rc 0 AND silen
+ [ -f "$HOOK" ] || { bad "hook not found: $HOOK"; echo "Summary: $pass passed, $fail failed"; exit 1; }
+
+ echo "== T3: registration verbs and env =="
+-deny "bus register x --role console" "$(bash_json 'bus register x --role console')"
++deny "bus register x --role chief" "$(bash_json 'bus register x --role chief')"
+ deny "bus bind x 1" "$(bash_json 'bus bind x 1')"
+ deny "bus rebind x 1" "$(bash_json 'bus rebind x 1')"
+ deny "path-qualified bin/bus register" "$(bash_json 'node marketplace/plugins/himmel-bus/bin/bus register x --role worker')"
+@@ -128,7 +128,7 @@ allow "bus/ token under an ordinary cwd" "$(cwd_json 'cat bus/readme.txt' '/tmp'
+
+ echo "== trust-judge j2355b: continuations, bare bus token, in-command cd, XDG =="
+ deny "backslash-newline continuation splits bus from the verb" \
+-    "$(bash_json $'node marketplace/plugins/himmel-bus/bin/bus \\\n--role console \\\nregister legX')"
++    "$(bash_json $'node marketplace/plugins/himmel-bus/bin/bus \\\n--role chief \\\nregister legX')"
+ deny "a verb word split across a continuation (bash joins it with no space)" \
+     "$(bash_json $'bus reg\\\nister legX')"
+ deny "bus split across a continuation: no literal bus in the raw JSON (verb)" \
+@@ -356,7 +356,7 @@ deny  "a process substitution between bus and the verb" "$(bash_json 'bus <(:) r
+ deny  "an open substitution with a body between bus and the verb" "$(bash_json 'bus $(echo a b) register x')"
+ deny  "a quoted open substitution with a body between bus and the verb" "$(bash_json 'bus "$(cat f)" register x')"
+ deny  "a bus word inside a closed body still pairs with a verb after it (a pop never lowers seen)" "$(bash_json 'echo $(bus status) register')"
+-deny  "a quoted paren in a subshell does not hide the verb" "$(bash_json "( bus --summary ')' register legX --role console )")"
+-deny  "a quoted paren in a command substitution does not hide the verb" "$(bash_json 'echo "$(bus --summary '"')'"' register legX --role console)"')"
++deny  "a quoted paren in a subshell does not hide the verb" "$(bash_json "( bus --summary ')' register legX --role chief )")"
++deny  "a quoted paren in a command substitution does not hide the verb" "$(bash_json 'echo "$(bus --summary '"')'"' register legX --role chief)"')"
+ deny  "an escaped paren in a backtick body does not hide the verb" "$(bash_json 'echo `bus --summary \) bind x 1`')"
+ deny  "a nested substitution between bus and the verb" "$(bash_json 'bus $(echo $(date) x) register y')"
