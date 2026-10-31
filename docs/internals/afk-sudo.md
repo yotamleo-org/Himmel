@@ -108,8 +108,22 @@ broker's pending payload, not next to the record.
   changed in place compares equal. The slice 1b notice must not present a directory argument
   as bound.
 - The run is of the file in place, not of the copy, and a file a command loads itself (a
-  script it sources, an interpreter's imports, a config it reads) is not bound. The instant
-  between the exec-time check and the exec is an accepted residual (HIMMEL-8250).
+  script it sources, an interpreter's imports, a config it reads) is not bound. The executor
+  opens argv[0] once (`open_regular`), compares the open file's `st_dev` and `st_ino` with the
+  frozen record, hashes that open file, and starts the program from the same descriptor,
+  named `/proc/self/fd/N` and passed through `pass_fds`: a name swapped between the check
+  and the start (a rename over it, a link retargeted) cannot change what runs, which is the
+  file the operator saw. The same is done for the script an interpreter runs: when argv[0]
+  is a known interpreter (`sh`, `bash`, `python3`, `perl`, `ruby`, `node`, `php`, `lua`
+  and kin), no option before the first operand supplies the program (`-c`, `-m`, `-e`, any
+  `--` option) and that operand is a bound file, it is replaced by its held descriptor.
+  Other file arguments are hashed from an open file and compared by identity, but still
+  opened by path by the command. What is left: a file edited **in place** (same inode)
+  between the hash and the start, which the session can do when it can write the file; an
+  interpreter outside the name list, or one given its script after `-e`-style options,
+  re-opens the script by path; and the program sees `/proc/self/fd/N` as its argv[0], so a
+  multi-call binary that picks its applet from argv[0] does not find it. A same-bytes file
+  with a new inode now reports `changed`.
 - Files up to 64 KiB are copied to `STATE/files/<id>/` so the floor scans their text; a
   larger file is hashed only (`shown: false`). A file the operator could not read
   themselves (not world-readable, not theirs) is hashed and never copied. File bodies
@@ -123,7 +137,8 @@ broker's pending payload, not next to the record.
 ## What runs after the code is accepted
 
 The executor re-checks, in this order, and writes a ledger row on the first mismatch:
-record hash (`hash-mismatch`); argv[0] sha256, each file sha256, the cwd identity and that
+record hash (`hash-mismatch`); argv[0] and each file by sha256 and `st_dev`/`st_ino`, taken
+from one open file each (see above), the cwd identity and that
 every argv element resolves to the same file, directory or not-yet-existing path as at request
 (`changed`, also when one is gone or no longer a regular file); `run-not-shipped`;
 `run-disabled`; that the run-as user and `operator_user` both resolve (`bad-user`; a missing
