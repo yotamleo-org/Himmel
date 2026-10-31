@@ -487,6 +487,11 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     }
     if (o.op.kind === 'none' && o.supersedes.length) throw new Error('release rule: a ruling that changes nothing supersedes nothing');
     const ops = new Map(l.operator.verified.map((x) => [x.id, x]));
+    const touched = [o.op.from_v, o.op.to_v].filter((v) => v !== null);
+    // The newest operator decision naming the key on a version this op touches governs it.
+    const governing = l.operator.verified.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(req.key)
+      && [x.from_v, x.to_v].some((v) => v != null && touched.includes(v)))
+      .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
     let authority = o.authority;
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
@@ -497,18 +502,21 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (rec?.ruling && !o.supersedes.includes(rec.ruling)) throw new Error(`release rule: supersedes must name ${rec.ruling} (in effect for ${req.key}@${v})`);
       const prior = rec?.ruling ? applied.get(rec.ruling) : undefined;
       if (prior?.authority.kind !== 'operator') continue;
-      // Only an operator decision newer than the ruling supersedes it; the RM rules under the newest that covers the op.
+      // Only an operator decision newer than the ruling supersedes it, and only the governing one.
       const since = Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
       const cited = authority.kind === 'operator' && authority.ref ? ops.get(authority.ref) : undefined;
       if (cited?.kind === 'decision' && Date.parse(cited.ts) <= since) {
         throw new Error(`release rule: ${cited.id} predates ${prior.id}; an older operator record never supersedes a newer ruling`);
       }
+      const conflict = (g: OperatorRow) => new Error(`release rule: CONFLICT ${req.key}: ${g.id} (newer) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} governs ${req.key}; rule under it`);
+      if (cited?.kind === 'decision') {
+        if (governing && governing.id !== cited.id) throw conflict(governing);
+        continue;
+      }
       if (authority.kind === 'operator') continue;
-      const newer = l.operator.verified.filter((x) => x.kind === 'decision' && Date.parse(x.ts) > since
-        && scopeOk({ authority: { kind: 'operator', ref: x.id }, key: req.key, op: o.op }, ops, l.decl.current))
-        .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
-      if (!newer) throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
-      authority = { kind: 'operator', ref: newer.id };
+      if (!governing || Date.parse(governing.ts) <= since) throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
+      if (!scopeOk({ authority: { kind: 'operator', ref: governing.id }, key: req.key, op: o.op }, ops, l.decl.current)) throw conflict(governing);
+      authority = { kind: 'operator', ref: governing.id };
     }
     if (authority.kind === 'operator') {
       if (!scopeOk({ authority, key: req.key, op: o.op }, ops, l.decl.current)) throw new Error(`release rule: ${authority.ref ?? '(no ref)'} does not cover ${req.key} ${o.op.kind} ${o.op.from_v}→${o.op.to_v}`);
