@@ -50,6 +50,9 @@ cw --date 2026-10-19 >"$TMP/b.out" 2>&1
 check "without --exclude both consoles count (B adds a wake)" 'grep -qx "consoles=2 A,B" "$TMP/b.out" && grep -q "^CLASS ALL wakes=6 " "$TMP/b.out"'
 cw --date 2026-10-20 >"$TMP/c.out" 2>"$TMP/c.err"; rc=$?
 check "no console on the date exits 2 with a message" '[ "$rc" = 2 ] && grep -q "no consoles" "$TMP/c.err"'
+mkdir "$TMP/empty" && printf '%s\n' '{"type":"custom-title","customTitle":"HIMMEL-nextleg-2026-10-19Z-roadmap-console"}' >"$TMP/empty/z.jsonl"
+python3 "$CW" --dir "$TMP/empty" --date 2026-10-19 >"$TMP/e.out" 2>"$TMP/e.err"; rc=$?
+check "a console with no wakes prints zero rows, not a ZeroDivisionError" '[ "$rc" = 0 ] && grep -qx "CLASS ALL wakes=0 pct_wakes=0.0 reqs=0 eq=0 pct_eq=0.0" "$TMP/e.out"'
 python3 "$CW" --dir "$TMP/nope" --date 2026-10-19 >"$TMP/d.out" 2>"$TMP/d.err"; rc=$?
 check "an unreadable dir exits 2" '[ "$rc" = 2 ]'
 

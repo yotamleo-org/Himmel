@@ -185,7 +185,7 @@ def main(argv=None):
     for k in ("operator", "machine-relay-only", "machine-escalate", "esc-judgement-or-think", "esc-mechanical", "ALL"):
         t = tot[k]
         print("CLASS %s wakes=%d pct_wakes=%.1f reqs=%d eq=%d pct_eq=%.1f" % (
-            k, t[0], 100 * t[0] / A[0], t[1], round(t[2]), 100 * t[2] / A[2] if A[2] else 0.0))
+            k, t[0], 100 * t[0] / A[0] if A[0] else 0.0, t[1], round(t[2]), 100 * t[2] / A[2] if A[2] else 0.0))
     for k, v in sorted(kinds.items(), key=lambda kv: (-kv[1][2], kv[0])):
         print("KIND %s wakes=%d reqs=%d eq=%d escalate=%d relay_eq=%d mech_eq=%d" % (
             k, v[0], v[1], round(v[2]), v[3], round(v[4]), round(mech[k])))
