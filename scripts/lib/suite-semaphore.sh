@@ -70,14 +70,10 @@ _suite_sem_uint() {
     esac
 }
 
-# _suite_sem_ppid <pid> -- the parent pid, or nothing. MSYS exposes
-# /proc/<pid>/ppid, Linux the PPid: line of /proc/<pid>/status, macOS neither.
+# _suite_sem_ppid <pid> -- the parent pid, or nothing. Linux exposes the PPid:
+# line of /proc/<pid>/status, macOS falls back to ps.
 _suite_sem_ppid() {
     local pid="$1" line
-    if [ -r "/proc/$pid/ppid" ]; then
-        cat "/proc/$pid/ppid" 2>/dev/null
-        return 0
-    fi
     if [ -r "/proc/$pid/status" ]; then
         while IFS= read -r line; do
             case "$line" in

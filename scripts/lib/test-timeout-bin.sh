@@ -7,7 +7,7 @@
 #   T2  neither timeout nor gtimeout -> empty + ONE stderr note; the
 #       `${_TIMEOUT_BIN:+...}` idiom then runs the child unbounded
 #   T3  only gtimeout (the macOS+brew shape) -> gtimeout is resolved
-#   T4  a non-GNU `timeout` (Windows timeout.exe shape: --version fails) is
+#   T4  a non-GNU `timeout` (--version fails) is
 #       rejected, and does not shadow a working gtimeout behind it
 #   T5  sourcing under `set -u` with an empty PATH does not error
 #   T6  a relative PATH dir is stored ABSOLUTE (survives a cd); a shell function
@@ -92,7 +92,7 @@ echo "[test-timeout-bin] T4 a non-GNU timeout is rejected, gtimeout behind it wi
 d4="$(stub_dir t4)"; fake_gnu "$d4" gtimeout
 printf '#!/bin/sh\nexit 1\n' > "$d4/timeout"; chmod +x "$d4/timeout"
 got="$(resolve "$d4")"
-eq "T4 resolved gtimeout, not the fake timeout.exe" "${got%%|*}" "$d4/gtimeout"
+eq "T4 resolved gtimeout, not the fake non-GNU timeout" "${got%%|*}" "$d4/gtimeout"
 d4b="$(stub_dir t4b)"; printf '#!/bin/sh\nexit 1\n' > "$d4b/timeout"; chmod +x "$d4b/timeout"
 got="$(resolve "$d4b")"
 eq "T4 a lone non-GNU timeout resolves to nothing" "${got%%|*}" ""

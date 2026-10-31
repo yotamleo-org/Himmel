@@ -377,42 +377,6 @@ for SIG13 in TERM INT; do
   rm -rf "$LIVE_DIR/.admission.lock" "$LIVE_DIR/.admission.lock.reclaim" 2>/dev/null || true
 done
 
-# --- 14:--settings must reach the claude invocation in Windows-form, not
-# the bare POSIX path a caller naturally builds from $W (RETASK gV2t9-4478 /
-# same MSYS_NO_PATHCONV=1-affects-every-argv-element class as the --settings
-# fix above). A fake bin that dumps its own argv lets us assert on what the
-# wrapper actually handed it, independent of whether the fake bin itself
-# (an MSYS shell script) would have been affected by real path mangling.
-if command -v cygpath >/dev/null 2>&1; then
-  FAKE_ARGV_DUMP="$W/fake-claude-argv-dump.sh"
-  cat > "$FAKE_ARGV_DUMP" <<'EOF'
-#!/usr/bin/env bash
-cat > /dev/null
-printf '%s\n' "$@" > "$FAKE_ARGV_OUT"
-echo "OK" > "$FAKE_ARTIFACT"
-echo '{"is_error":false,"result":"done","session_id":"fake-argv","permission_denials":[],"num_turns":2}'
-EOF
-  chmod +x "$FAKE_ARGV_DUMP"
-  SETTINGS_FILE="$W/settings15.json"
-  echo '{}' > "$SETTINGS_FILE"
-  ART15="$W/artifact15.txt"
-  ARGV_OUT="$W/argv-dump15.txt"
-  FAKE_ARGV_OUT="$ARGV_OUT" FAKE_ARTIFACT="$ART15" HIMMEL_CLAUDE_BIN="$FAKE_ARGV_DUMP" bash "$SUT" \
-    --role test-role --model test-model --ticket HIMMEL-2178 --worktree "$WORKTREE" --cwd "$WORKTREE" \
-    --artifact "$ART15" --permission-mode default --prompt-file "$PROMPT_FILE" \
-    --settings "$SETTINGS_FILE" >/dev/null 2>&1
-  RC15=$?
-  RECEIVED_SETTINGS="$(grep -A1 '^--settings$' "$ARGV_OUT" 2>/dev/null | tail -1)"
-  FORM="posix"
-  case "$RECEIVED_SETTINGS" in /*) : ;; *) FORM="converted" ;; esac
-  check "settings path conversion: run succeeds" "0" "$RC15"
-  check "settings path conversion: received --settings is not a bare POSIX path" "converted" "$FORM"
-  rm -f "$LIVE_DIR"/*.json
-else
-  echo "SKIP - settings path conversion: SKIPPED (no cygpath on this host)"
-  SKIP=$((SKIP+1))
-fi
-
 # --- 16: --system-prompt-file / --tools / --isolated reach the
 # claude argv (the context-free CR floor reviewer depends on all three), and
 # are ABSENT when not asked for.

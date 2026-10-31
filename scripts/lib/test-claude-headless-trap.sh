@@ -57,9 +57,7 @@ check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "ok - $1";
 
 # A killed CHILD of this script lingers as an unreaped zombie, and `kill -0`
 # answers 0 for a zombie — which would mask exactly the bug this suite is
-# here to catch. Treat state Z as dead. (MSYS `ps` has no -o stat=; there a
-# terminated process is simply gone, so the empty-output fallthrough is
-# correct there too.)
+# here to catch. Treat state Z as dead.
 sleeper_alive() {
   local pid="$1" stat
   kill -0 "$pid" 2>/dev/null || return 1
@@ -218,7 +216,7 @@ rm -f "$LIVE_DIR"/*.json
 
 if [ ! -r "$KILL_TREE_LIB" ]; then
   # kill-tree.sh is a COMMITTED sibling of this suite, not an optional host
-  # capability (unlike, say, cygpath) — its absence means a broken checkout,
+  # capability — its absence means a broken checkout,
   # not a platform gap. Section B silently SKIPping here would let this
   # entire suite report green while the kill_tree implementation under test
   # was never executed once (confirmed with a positive control: delete
