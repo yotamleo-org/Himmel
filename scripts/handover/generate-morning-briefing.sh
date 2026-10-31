@@ -366,7 +366,7 @@ if command -v jq >/dev/null 2>&1; then
             # swallow-ok: an unparseable record leaves the row empty, so spend_ok stays 0 and the line reads not available
             spend_row=$(printf '%s' "$spend_json" | jq -r '
                 [ (.fields.claude_bank | select(.status == "ok") | ((.seven_day.delta * 10 | round) / 10)) // "",
-                  (.fields.claude_bank | select(.status == "ok") | .seven_day.resets) // "",
+                  (.fields.claude_bank | select(.status == "ok") | .seven_day.resets | select(. > 0)) // "",
                   (.fields.api_cost | select(.status == "ok") | .value) // "",
                   (.fields.api_cost | select(.status == "ok" and .partial == true) | "yes") // ""
                 ] | map(tostring) | join("|")' 2>/dev/null) || spend_row=""
@@ -392,29 +392,32 @@ if [ -n "$waiting_dir" ] && [ -d "$waiting_dir" ]; then
             BLOCKED|FINDING)  q_count=$((q_count+1));  if [ -z "$q_oldest" ] || [[ "$_hhmm" < "$q_oldest" ]]; then q_oldest="$_hhmm"; fi ;;
         esac
     done < <(find "$waiting_dir" -maxdepth 4 -type f -name '*.md' ! -name 'morning-report-*' -mtime -3 2>/dev/null | while IFS= read -r _doc; do # gnu-ok: BSD find has -maxdepth and -mtime
-        awk '/^- [0-9][0-9]:[0-9][0-9] (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)/ { m = $3; sub(/[^A-Z-].*/, "", m); t = $2 }
-             END { if (m != "") printf "%s\t%s\n", m, t }' "$_doc" 2>/dev/null
+        # The bullet carries a time of day only; the doc's last-modified day dates it (the newest bullet is the last write).
+        _day=$(date -r "$_doc" +%F) || continue
+        awk -v day="$_day" '/^- [0-9][0-9]:[0-9][0-9] (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)/ { m = $3; sub(/[^A-Z-].*/, "", m); t = $2 }
+             END { if (m != "") printf "%s\t%s %s\n", m, day, t }' "$_doc" 2>/dev/null
     done)
 fi
 
 # Waiting on you, CI and review state of the open PRs (github only).
-ci_ok=0; ci_approved=0; ci_changes=0; ci_failing=0; ci_oldest=""
+ci_ok=0; ci_approved=0; ci_changes=0; ci_failing=0; ci_seen=0; ci_oldest=""; ci_cap=100
 if [ "$briefing_forge" = "github" ] && command -v "${GH_CMD%% *}" >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     # swallow-ok: a failed gh read leaves ci_ok 0, so the line reads not available
-    if open_json=$($GH_CMD pr list --state open --limit 100 --json number,reviewDecision,statusCheckRollup,createdAt 2>/dev/null) &&
+    if open_json=$($GH_CMD pr list --state open --limit "$ci_cap" --json number,reviewDecision,statusCheckRollup,createdAt 2>/dev/null) &&
         ci_row=$(printf '%s' "$open_json" | jq -r '
             def failing: any(.statusCheckRollup[]?; ((.conclusion // .state // "") | IN("FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE")));
             [ ([.[] | select(.reviewDecision == "APPROVED")] | length),
               ([.[] | select(.reviewDecision == "CHANGES_REQUESTED")] | length),
               ([.[] | select(failing)] | length),
+              length,
               (if length > 0 then (map(.createdAt) | min | .[0:10]) else "" end) ] | @tsv' 2>/dev/null); then
-        IFS=$'\t' read -r ci_approved ci_changes ci_failing ci_oldest <<<"$ci_row"
+        IFS=$'\t' read -r ci_approved ci_changes ci_failing ci_seen ci_oldest <<<"$ci_row"
         ci_ok=1
     fi
 fi
 
 # Release progress: done/total per unreleased version (the first three), from the tracker's fixVersion.
-release_parts=""
+release_parts=""; rel_cap=1000
 # swallow-ok: a failed versions read leaves release_parts empty, so the line reads not available
 if [ -n "$JIRA_CMD" ] && [ "$jira_ok" -eq 1 ] && vers_raw=$("${JIRA_ARGV[@]}" versions 2>/dev/null); then
     rel_versions=$(printf '%s\n' "$vers_raw" | awk -F'\t' '$2 == "false" && $4 == "false" && $1 ~ /^v[0-9][0-9A-Za-z.+-]*$/ && n < 3 { print $1; n++ }')
@@ -423,10 +426,11 @@ if [ -n "$JIRA_CMD" ] && [ "$jira_ok" -eq 1 ] && vers_raw=$("${JIRA_ARGV[@]}" ve
         _jql="fixVersion = \"$_ver\""
         [ -n "${JIRA_PROJECT_KEY:-}" ] && _jql="project = $JIRA_PROJECT_KEY AND $_jql"
         # swallow-ok: a failed read skips this version, and no version left reads not available
-        _rows=$("${JIRA_ARGV[@]}" list --jql "$_jql" --limit 1000 2>/dev/null) || continue
+        _rows=$("${JIRA_ARGV[@]}" list --jql "$_jql" --limit "$rel_cap" 2>/dev/null) || continue
         _counts=$(printf '%s\n' "$_rows" | awk -F'\t' 'NF >= 3 { t++; if ($3 == "Done" || $3 == "Closed") d++ } END { print d + 0, t + 0 }')
         _done=${_counts% *}; _total=${_counts#* }
         [ "$_total" -gt 0 ] || continue
+        [ "$_total" -ge "$rel_cap" ] && _total="$_total+"
         release_parts="${release_parts:+$release_parts · }$_ver **$_done**/$_total done"
     done <<EOF_VER
 $rel_versions
@@ -573,8 +577,9 @@ EOF
             printf -- '- Worker questions and GOs: not available (no worker handover doc found)\n'
         fi
         if [ "$ci_ok" -eq 1 ]; then
-            printf -- '- CI and review state: **%s** approved, **%s** changes requested, **%s** with failing checks%s\n' \
-                "$ci_approved" "$ci_changes" "$ci_failing" "${ci_oldest:+ (oldest open PR since $ci_oldest)}"
+            printf -- '- CI and review state: **%s** approved, **%s** changes requested, **%s** with failing checks%s%s\n' \
+                "$ci_approved" "$ci_changes" "$ci_failing" "${ci_oldest:+ (oldest open PR since $ci_oldest)}" \
+                "$([ "$ci_seen" -ge "$ci_cap" ] && printf ' (first %s open PRs only)' "$ci_cap")"
         else
             printf -- '- CI and review state: not available (gh open-PR state unavailable)\n'
         fi

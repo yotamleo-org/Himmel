@@ -607,6 +607,14 @@ lead=$(lead_of "$(cat "$OUT_SP")")
 assert_contains "spend: weekly bank burn shown"  "weekly bank **+48** points" "$lead"
 assert_contains "spend: API lane dollars shown, a floor marked" "API lane **at least \$13.04**" "$lead"
 if grepq "$lead" -F -- "Claude usage of the shift: not available"; then fail "spend: computed line replaces the gap"; else pass "spend: computed line replaces the gap"; fi
+assert_contains "spend: a reset inside the shift marks the bank figure an estimate" "weekly bank **+48** points (a reset inside the shift: an estimate)" "$lead"
+FAKE_SPEND_Z="$TMP_ROOT/shift-spend-noreset.sh"
+sed 's/"resets":1/"resets":0/' "$FAKE_SPEND" > "$FAKE_SPEND_Z"
+chmod +x "$FAKE_SPEND_Z"
+MORNING_SHIFT_SPEND_CMD="$FAKE_SPEND_Z" run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
+lead=$(lead_of "$(cat "$OUT_SP")")
+assert_contains "spend: zero resets still shows the bank figure" "weekly bank **+48** points" "$lead"
+if grepq "$lead" -F -- "a reset inside the shift"; then fail "spend: zero resets is not called a reset"; else pass "spend: zero resets is not called a reset"; fi
 MORNING_SHIFT_SPEND_CMD="$FAKE_SPEND_NA" run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
 assert_contains "spend: every field unavailable reads not available" "Claude usage of the shift: not available" "$(lead_of "$(cat "$OUT_SP")")"
 MORNING_SHIFT_SPEND_CMD="false" run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
@@ -618,20 +626,29 @@ mkdir -p "$WAITD/u/repo"
 printf '## Results\n- 13:00 LIVE — x\n- 14:05 READY 77 abc GREEN\n' > "$WAITD/u/repo/a.md"
 printf '## Results\n- 08:00 LIVE — y\n- 09:30 BLOCKED — push refused\n' > "$WAITD/u/repo/b.md"
 printf '## Results\n- 08:00 FINDING — z\n- 09:00 RESOLVED — z\n- 10:00 WRAPPED — done\n' > "$WAITD/u/repo/c.md"
+# A second GO from today at an EARLIER time of day than yesterday's: only the date tells which waits longer.
+printf '## Results\n- 09:10 LIVE — w\n- 09:15 READY 78 def GREEN\n' > "$WAITD/u/repo/d.md"
+TODAY_D=$(date +%F)
+YDAY_STAMP=$(date -d '1 day ago' +%Y%m%d%H%M 2>/dev/null || date -v-1d +%Y%m%d%H%M)
+YDAY_D=$(date -d '1 day ago' +%F 2>/dev/null || date -v-1d +%F)
+touch -t "$YDAY_STAMP" "$WAITD/u/repo/a.md"
 OPEN_JSON='[{"number":1,"reviewDecision":"APPROVED","createdAt":"2026-10-29T10:00:00Z","statusCheckRollup":[{"conclusion":"SUCCESS"}]},{"number":2,"reviewDecision":"CHANGES_REQUESTED","createdAt":"2026-10-30T10:00:00Z","statusCheckRollup":[{"conclusion":"FAILURE"}]},{"number":3,"reviewDecision":"","createdAt":"2026-10-31T10:00:00Z","statusCheckRollup":[{"state":"ERROR"}]}]'
 OUT_WT="$TMP_ROOT/waiting.md"
 run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
 assert_contains "waiting: absent input still says not available" "Approvals, CI and review state, worker questions: not available" "$(lead_of "$(cat "$OUT_WT")")"
 MORNING_WAITING_DIR="$WAITD" FAKE_GH_PR_OPEN="$OPEN_JSON" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
 lead=$(lead_of "$(cat "$OUT_WT")")
-assert_contains "waiting: GOs counted with the oldest time"  "**1** worker(s) awaiting your GO (oldest bullet 14:05)" "$lead"
-assert_contains "waiting: questions counted with the oldest time" "**1** worker question(s) (oldest bullet 09:30)" "$lead"
+assert_contains "waiting: GOs counted, the oldest picked by date before time" "**2** worker(s) awaiting your GO (oldest bullet $YDAY_D 14:05)" "$lead"
+assert_contains "waiting: questions counted with the oldest date and time" "**1** worker question(s) (oldest bullet $TODAY_D 09:30)" "$lead"
 assert_contains "waiting: review state counted"  "**1** approved, **1** changes requested" "$lead"
 assert_contains "waiting: failing checks counted with the oldest PR date" "**2** with failing checks (oldest open PR since 2026-10-29)" "$lead"
 if grepq "$lead" -F -- "Approvals, CI and review state, worker questions: not available"; then fail "waiting: computed lines replace the gap"; else pass "waiting: computed lines replace the gap"; fi
+MANY_OPEN=$(jq -n -c '[range(100) | {number: ., reviewDecision: "", createdAt: "2026-10-29T10:00:00Z", statusCheckRollup: []}]')
+MORNING_WAITING_DIR="$WAITD" FAKE_GH_PR_OPEN="$MANY_OPEN" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+assert_contains "waiting: a capped open-PR read says it saw only the first 100" "(first 100 open PRs only)" "$(lead_of "$(cat "$OUT_WT")")"
 MORNING_WAITING_DIR="$WAITD" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
 lead=$(lead_of "$(cat "$OUT_WT")")
-assert_contains "waiting: workers read while CI state is unavailable" "**1** worker(s) awaiting your GO" "$lead"
+assert_contains "waiting: workers read while CI state is unavailable" "**2** worker(s) awaiting your GO" "$lead"
 assert_contains "waiting: CI state says not available on its own" "CI and review state: not available" "$lead"
 mkdir -p "$TMP_ROOT/emptydocs"
 MORNING_WAITING_DIR="$TMP_ROOT/emptydocs" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
@@ -648,6 +665,10 @@ lead=$(lead_of "$(cat "$OUT_REL")")
 assert_contains "release: done/total shown for the unreleased version" "Release progress: v1.1.3 **2**/3 done" "$lead"
 if grepq "$lead" -F -- "v1.0.0"; then fail "release: a released version is left out"; else pass "release: a released version is left out"; fi
 if grepq "$lead" -F -- "v9.9.9"; then fail "release: an archived version is left out"; else pass "release: an archived version is left out"; fi
+FAKE_JIRA_VERSIONS=$'v1.1.3\tfalse\t\tfalse' \
+    FAKE_JIRA_JQL_OUT="$(awk 'BEGIN { for (i = 1; i <= 1000; i++) printf "K-%d\tTask\tDone\tx\n", i }')" \
+    run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
+assert_contains "release: a read capped at 1000 rows says so" "Release progress: v1.1.3 **1000**/1000+ done" "$(lead_of "$(cat "$OUT_REL")")"
 FAKE_JIRA_VERSIONS=$'v1.1.3\tfalse\t\tfalse' FAKE_JIRA_JQL_OUT="" \
     run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
 assert_contains "release: a version with no rows reads not available, not 0/0" "Release progress: not available" "$(lead_of "$(cat "$OUT_REL")")"
