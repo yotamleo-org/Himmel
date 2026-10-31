@@ -6,3 +6,4 @@
 # A flag is read only through scripts/lib/flags.sh, flags.py or flags.mjs, and never under
 # scripts/hooks/, in a gate script or on a ci-trust-paths.txt path (docs/internals/config-layers.md).
 stacked_series	off	feature	HIMMEL-8349	HIMMEL-8349	2026-11-14	next-dispatchable.sh lists To Do tickets of one version that share files as one SERIES row, and marks a candidate colliding only with a live series worker STACKABLE; off keeps today's output
+auto_go	off	feature	HIMMEL-8349	HIMMEL-8404	2026-11-14	chief-wait.sh hands every new READY bullet of a manifest worker to worker-event.sh once, which runs auto-go.sh --dry-run; off keeps ESCALATE marker-READY

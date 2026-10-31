@@ -142,6 +142,7 @@ while IFS="$(printf '\t')" read -r name file; do
 done < "$READS"
 
 # one level down: a file a gate sources or execs by a literal path is checked as that gate.
+# A settings.json permission row (`"Bash(bash scripts/x.sh:*)"`) names a script without running it, so it is no reach.
 # The path is read after `.`, source, bash, sh, exec or python3 (options skipped): a bare relative path
 # resolves against the gate's directory, `scripts/...` against the root, and `"$VAR/x"` against both.
 # ponytail: one level and literal paths only (a computed path or a helper's own helper is not followed);
@@ -157,7 +158,9 @@ norm_path() {
 while IFS= read -r gate; do
   [ -r "$ROOT/$gate" ] || continue
   gdir="$(dirname "$gate")"
-  grep -oE '(^|[;&|({[:space:]])((\.|source|bash|sh|exec|python3)([[:space:]]+-[A-Za-z]+)*[[:space:]]+)+"?(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)?[A-Za-z0-9_./-]+' "$ROOT/$gate" 2>/dev/null \
+  # a settings.json `"Bash(...)"` permission row (one per line) names a script without running it
+  grep -vE '^[[:space:]]*"Bash\(' "$ROOT/$gate" 2>/dev/null \
+    | grep -oE '(^|[;&|({[:space:]])((\.|source|bash|sh|exec|python3)([[:space:]]+-[A-Za-z]+)*[[:space:]]+)+"?(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?/)?[A-Za-z0-9_./-]+' \
     | sed -E 's/.*[[:space:]]"?//' | sort -u | while IFS= read -r ref; do
     case "$ref" in
       '$'*) cands="$(norm_path "$gdir/${ref#*/}") $(norm_path "${ref#*/}")" ;;
