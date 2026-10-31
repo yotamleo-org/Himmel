@@ -16,10 +16,11 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, rmRun, rule, standing, state, takeover, withdraw,
+  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, rmRun, rule, signSpec, specCheck, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
+import { coreMatch, loadCorePatterns, sizeGuard } from '../core.js';
 import { releaseDir, releaseKeyPath } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
 import type { Authority, Op, Verb } from '../release/types.js';
@@ -360,6 +361,36 @@ export function registerRelease(program: Command): void {
       if (o.comment) await commentLeaks(liveJira, leaks, version, frozen.date);
     });
 
+  rel.command('spec-check <keys...>')
+    .description('Per key: SPEC ok, SPEC-STALE or NO-SPEC from the signed spec records of every declared release; exit 1 unless all are SPEC ok')
+    .option('--mirror <dir>', 'Jira mirror directory, for a sub-task\'s parent (default: the JIRA_PROJECT_KEY mirror)')
+    .action((keys: string[], o: { mirror?: string }) => {
+      const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
+      const r = specCheck(process.env, keys, mirror);
+      for (const l of r.lines) console.log(l);
+      if (!r.ok) process.exitCode = 1;
+    });
+
+  rel.command('core-check')
+    .description('Per key: CORE, REVIEW or NOT-CORE from scripts/ci/core-paths.txt (a rename or bulk change touching core is REVIEW)')
+    .requiredOption('--paths <paths>', 'Comma-separated paths the change touches; for a rename pass both the old and the new path')
+    .requiredOption('--key <keys...>', 'Ticket key(s) of the worker')
+    .option('--change-class <class>', 'rename or bulk: a mechanical change, ruled case by case')
+    .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')
+    .option('--widen-reason <why>', 'Let a core list matching more than 2 % of tracked files proceed, with this reason on the record')
+    .action((o: { paths: string; key: string[]; changeClass?: string; corePaths?: string; widenReason?: string }) => {
+      if (o.changeClass !== undefined && o.changeClass !== 'rename' && o.changeClass !== 'bulk') {
+        throw new Error('release core-check: --change-class is rename or bulk');
+      }
+      const patterns = loadCorePatterns(o.corePaths ?? join(repoRoot, 'scripts', 'ci', 'core-paths.txt'));
+      const tracked = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+        .split('\n').filter(Boolean);
+      const guard = sizeGuard(patterns, tracked, o.widenReason);
+      if (guard.line) console.log(guard.line);
+      const paths = o.paths.split(',').map((p) => p.trim()).filter(Boolean);
+      for (const l of coreMatch(paths, o.key, { patterns, changeClass: o.changeClass })) console.log(l);
+    });
+
   rel.command('request <release>')
     .description('Queue a placement request for the release manager (the chief writes these)')
     .requiredOption('--verb <verb>', 'INTAKE | REVERSION | DISCHARGE')
@@ -550,6 +581,21 @@ export function registerRelease(program: Command): void {
       if (o.kind !== 'blocker-pull') throw new Error('release operator standing: --kind is blocker-pull');
       const r = standing(ctxFor(release), { kind: o.kind, decision: o.decision, verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim() });
       console.log(`${r.id} recorded; \`jira release pull ${release}\` files the INTAKE requests it covers`);
+    });
+  operator.command('spec <release>')
+    .description('Sign a minerva spec for its keys after the operator approves it')
+    .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
+    .requiredOption('--spec <path>', 'The spec file (by convention under the state repo specs/designs/ bucket; any path signs)')
+    .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
+    .requiredOption('--decision <n>', 'Operator decision number')
+    .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
+    .option('--supersedes <O-id>', 'The spec record this re-sign replaces')
+    .action((release: string, o: { keys: string; spec: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
+      const r = signSpec(ctxFor(release), {
+        keys: list(o.keys), spec: o.spec, verdicts: o.verdict, decision: o.decision,
+        verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
+      });
+      console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);
     });
   operator.command('takeover <release>')
     .requiredOption('--epoch <n>', 'The epoch being taken over')

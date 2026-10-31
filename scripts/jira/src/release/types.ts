@@ -61,7 +61,7 @@ export interface RulingRow {
   mac?: string;
 }
 
-export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull';
+export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec';
 
 export interface OperatorRow {
   id: string;
@@ -77,6 +77,12 @@ export interface OperatorRow {
   sha?: string;
   epoch?: number;
   doc?: string;
+  // kind 'spec': the signed minerva spec, its critics' verdict files, and the record it replaces.
+  spec_path?: string;
+  spec_sha256?: string;
+  verdicts?: Array<{ path: string; sha256: string }>;
+  supersedes?: string | null;
+  residuals?: number;
   prev?: string;
   mac?: string;
 }
@@ -136,4 +142,5 @@ export interface IssueSnap {
   sector?: string | null;
   // The keys the mirror lists under links.blocked_by.
   blockedBy?: string[];
+  parent?: string | null;
 }

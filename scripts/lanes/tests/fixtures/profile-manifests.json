@@ -241,8 +241,6 @@
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
-      "lean-skills@himmel",
-      "i-have-adhd@himmel",
       "qmd@himmel"
     ],
     "contextBudget": 50000

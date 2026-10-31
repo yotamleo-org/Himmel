@@ -1,0 +1,3 @@
+ARMED      HIMMEL-SecurityAudit (cron: 00 09 * * 1)
+  run log    ~/runner/last-run.log (last write: 2026-10-31 02:26)
+             last line: [exit rc=0]

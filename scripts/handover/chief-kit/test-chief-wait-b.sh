@@ -311,7 +311,7 @@ wait_hb "$I" || fail "(u4959) no baseline heartbeat"
 under_line "UNDERFILLED:12"
 wait_exit "$WPID"
 check "(u4959) a sustained UNDERFILLED capacity wakes the console (rc 0)" "0" "$rc"
-check "(u4959) the wake names the slack" "WAKE underfilled capacity=UNDERFILLED:12" "$(head -n1 "$WORK/u4959.out")"
+check "(u4959) the wake names the slack" "WAKE underfilled capacity=UNDERFILLED:12 pool=?" "$(head -n1 "$WORK/u4959.out")"
 check "(u4959) the wake carries the dispatchable list" "yes" "$(grep -q '^LOCAL HIMMEL-9001' "$WORK/u4959.out" && echo yes)"
 timeout 4 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(u4959) the re-arm in the same streak does not wake again" "" "$(cat "$WORK/u4959b.out")"
@@ -321,7 +321,7 @@ timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/u4959c.out" 2>/dev/null  
 under_line "UNDERFILLED:5"
 start "$I" "$WORK/u4959d.out" --workers "N1.md"
 wait_exit "$WPID"
-check "(u4959) a new streak after capacity returned to ok wakes again" "WAKE underfilled capacity=UNDERFILLED:5" "$(head -n1 "$WORK/u4959d.out")"
+check "(u4959) a new streak after capacity returned to ok wakes again" "WAKE underfilled capacity=UNDERFILLED:5 pool=?" "$(head -n1 "$WORK/u4959d.out")"
 reset_stub
 I="$(new_inbox u4959u)"
 under_line "unknown"
@@ -336,7 +336,7 @@ start "$I" "$WORK/u4959m.out" --workers-from "$WORK/u4959-fleet.json"
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (manifest)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives the slack as --top, then --workers-from" "ARGS --priority-pool-only --top 7 --workers-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
+check "(u4959) the dispatch command receives the slack as --top, then --workers-from" "ARGS --priority-pool-only --dispositions --top 7 --workers-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959m.out")"
 reset_stub
 I="$(new_inbox u4959d)"
 printf '# console\n' > "$WORK/u4959-chief.md"
@@ -344,7 +344,7 @@ start "$I" "$WORK/u4959n.out" --doc "$WORK/u4959-chief.md" --workers-from "$WORK
 wait_hb "$I" || fail "(u4959) no baseline heartbeat (doc)"
 under_line "UNDERFILLED:7"
 wait_exit "$WPID"
-check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --top 7 --doc $WORK/u4959-chief.md --workers-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
+check "(u4959) the dispatch command receives the console doc for the priority line" "ARGS --priority-pool-only --dispositions --top 7 --doc $WORK/u4959-chief.md --workers-from $WORK/u4959-fleet.json" "$(grep '^ARGS' "$WORK/u4959n.out")"
 
 # --- (6478) an empty priority pool falls through to the version backlog: a second pass without --priority-pool-only
 cat > "$STUB/dispatch.sh" <<'EOF2'

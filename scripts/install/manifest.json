@@ -500,6 +500,16 @@
       "offboard": "advise"
     },
     {
+      "id": "cadence-runs-security-audit",
+      "kind": "scheduler",
+      "scopes": ["user"],
+      "profiles": ["core", "all"],
+      "deps": [],
+      "probe": {"type": "cadence-runs", "script": "scripts/security/security-audit-cadence.sh", "tasks": [{"task": "HIMMEL-SecurityAudit", "intervalHours": 168}]},
+      "removable": "full-offboard-only",
+      "offboard": "advise"
+    },
+    {
       "id": "cadence-runs-doctor",
       "kind": "scheduler",
       "scopes": ["user"],

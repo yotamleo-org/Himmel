@@ -468,9 +468,12 @@
       "autocompact": 200000
     },
     "chief": {
-      "_comment": "HIMMEL-4013: a chief session (chief.sh new/next arm, and a resume of a chief doc). Floor (handover, himmel-ops, qmd) plus base's lean-skills. gateAllow stays false: the worker-shaped gateAllow rules are for workers, and a chief runs under the operator's own permission config. Not a worker profile, so it is not in plugin-profiles.mjs WORKER_SESSION_PROFILES.",
+      "_comment": "HIMMEL-4013: a chief session (chief.sh new/next arm, and a resume of a chief doc). Floor (handover, himmel-ops, qmd) only. gateAllow stays false: the worker-shaped gateAllow rules are for workers, and a chief runs under the operator's own permission config. Not a worker profile, so it is not in plugin-profiles.mjs WORKER_SESSION_PROFILES.",
+      "_comment_lean": "HIMMEL-8201 (operator ruling 10-31 LE): the chief launches lean. lean-skills is dropped (0 chief invocations in 231 sessions) and i-have-adhd is dropped for himmel's own 1 KB docs/handover/chief-adhd-brief.md, which headed-arm.sh and chief.sh append with --append-system-prompt-file. denyTools removes the schemas a chief never calls; Artifact is opt-in, and the board stays local. AskUserQuestion and Cron* stay: the chief never calls AskUserQuestion (chief-template.md), and it waits on Cron. Design: specs/design/2026-10-31-HIMMEL-8201-chief-lean-profile-design.md.",
       "enable": [],
-      "drop": [],
+      "drop": ["lean-skills@himmel", "i-have-adhd@himmel"],
+      "denyTools": ["Artifact", "ScheduleWakeup", "ReportFindings", "SendFeedback", "NotebookEdit", "DesignSync", "RemoteTrigger"],
+      "disableWorkflows": true,
       "_comment_mcpServers": "HIMMEL-5241: himmel-bus here is what makes chief.sh register the chief on the bus (role chief) and headed-arm.sh bind its claude pid; without it the edge table (worker to chief) has no chief end and every worker send fails with 'no edge'. A chief launches through headed-arm.sh (and chief.sh's printed line), which passes --mcp-config built from this list plus --strict-mcp-config (HIMMEL-5310), so only these servers load; an unresolvable entry refuses the launch.",
       "mcpServers": ["qmd", "himmel-bus"],
       "contextBudget": 50000,
