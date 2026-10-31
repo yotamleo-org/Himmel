@@ -222,12 +222,10 @@ export function composeBashShapeWarning(outbox: string): string {
 // so it reads as a CLI-level safety boundary around dot-directories outside
 // the working tree, not a rule-authoring mistake. The worker's OWN
 // discovery-by-trial-and-error cost it real wall-clock time (~30s of retries
-// + reasoning) and, once, a broken fallback (an MSYS "/c/..." path handed to
-// Node's fs, which rejects it) — so hand it the WORKING shape directly rather
-// than let it rediscover this each dispatch.
+// + reasoning).
 export function composeOutboxWriteHint(outbox: string): string {
   const posix = outbox.replace(/\\/g, "/");
-  return `OUTBOX WRITE (HIMMEL-1378): the Write/Edit tool is OFTEN DENIED for ${outbox} (a Claude Code safety boundary on dot-directory paths outside your worktree — no permission rule can override it). If Write/Edit there is denied, use this literal Bash command instead (a forward-slash path, exactly as shown — NEVER an MSYS "/c/..." form, which Node's fs rejects): node -e "require('fs').appendFileSync('${posix}', JSON.stringify({text:'<note>'})+'\\n')"`;
+  return `OUTBOX WRITE (HIMMEL-1378): the Write/Edit tool is OFTEN DENIED for ${outbox} (a Claude Code safety boundary on dot-directory paths outside your worktree — no permission rule can override it). If Write/Edit there is denied, use this literal Bash command instead (a forward-slash path, exactly as shown): node -e "require('fs').appendFileSync('${posix}', JSON.stringify({text:'<note>'})+'\\n')"`;
 }
 
 // ── permission hardening (prevention, not just detection) ─────

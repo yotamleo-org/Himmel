@@ -372,6 +372,7 @@ function featureGroup(feature) {
 // consumer reads it (the manifest's `storage` text, mirrored here), never by a
 // blanket read of the repo-root .env: that file carries a DIFFERENT bot's
 // TELEGRAM_BOT_TOKEN, and the process-env-only keys are never read from it.
+//   config       process env, station config/local/profile, legacy repo .env
 //   repo-env     key set in the repo-root .env (the tool loads it itself)
 //   process-env  key set in the environment
 //   bridge-env   key set in the Telegram bridge's own file (TELEGRAM_ENV, else
@@ -390,9 +391,9 @@ const PRESENCE_SOURCES = {
   PERPLEXITY_API_KEY: { kind: 'process-env' },
   XAI_API_KEY: { kind: 'process-env' },
   JIRA_API_TOKEN: { kind: 'repo-env' },
-  JIRA_BASE_URL: { kind: 'repo-env' },
-  JIRA_EMAIL: { kind: 'repo-env' },
-  JIRA_PROJECT_KEY: { kind: 'repo-env' },
+  JIRA_BASE_URL: { kind: 'config' },
+  JIRA_EMAIL: { kind: 'config' },
+  JIRA_PROJECT_KEY: { kind: 'config' },
   TELEGRAM_BOT_TOKEN: { kind: 'bridge-env' },
   WHISPER_MODEL: { kind: 'file', home: '.himmel/whisper/ggml-small.bin', override: 'WHISPER_MODEL', dirVar: 'WHISPER_DIR', name: 'ggml-small.bin' },
 };
@@ -418,6 +419,7 @@ function secretPresent(name) {
   const src = PRESENCE_SOURCES[name];
   if (!src) return false;
   const env = process.env;
+  if (src.kind === 'config') return Boolean(env[name] || behaviourConfigLib.readConfigVar(name, path.join(repoRoot(), '.env')).value);
   if (src.kind === 'repo-env') return envFileHasKey(path.join(repoRoot(), '.env'), name);
   if (src.kind === 'process-env') return Boolean(env[name]);
   if (src.kind === 'bridge-env') {

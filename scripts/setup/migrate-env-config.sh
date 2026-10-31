@@ -120,7 +120,7 @@ names=$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
 config_keys=() policy_keys=()
 for key in $names; do
     case "$(_himmel_key_class "$key")" in
-        # An env-only key stays in .env; himmel.conf never serves it.
+        # Only the remaining env-only keys stay; JIRA_BASE_URL now migrates.
         config) _himmel_env_only_key "$key" || config_keys[${#config_keys[@]}]="$key" ;;
         policy) policy_keys[${#policy_keys[@]}]="$key" ;;
     esac

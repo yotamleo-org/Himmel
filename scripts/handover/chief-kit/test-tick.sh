@@ -260,6 +260,122 @@ mkdir -p "$W/chief-work/chain"
 # still-armed waits. Keep the transcript root private even in the full suite.
 export TICK_PROJECTS_DIR="$W/projects"
 mkdir -p "$TICK_PROJECTS_DIR/p"
+# A fresh heartbeat is not proof of worker activity. These rows catch removing
+# the idle override, treating an unfinished foreground suite as idle, or making
+# its label age-dependent (which would repeatedly wake the real waiter).
+idle_held_cases() (
+    local stamp out fresh idle1 idle2 idle3 rc wakes
+    export WORKERS=HIMMEL-111-legN61
+    export STUB_FLEET_LINE='bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/1'
+    export HIMMEL_CLASSIFIER_DENIALS_LOG="$W/idle-denials.jsonl"
+    mk_pgrep_x "$W/bin" 101
+    stamp="$(date -u -d '1 minute ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"custom-title","customTitle":"HIMMEL-111-legN61"}\n{"type":"user","timestamp":"%s","message":{"content":[]}}\n' "$stamp" > "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    fresh="$(bash "$SUT")"
+    contains 'recent activity keeps a held lock FRESH' "$fresh" 'workers=N61:FRESH'
+    stamp="$(date -u -d '46 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"user","timestamp":"%s","message":{"content":[]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    idle1="$(bash "$SUT")"
+    contains 'held lock with no activity past 45 minutes reports IDLE-HELD' "$idle1" 'workers=N61:IDLE-HELD'
+    # shellcheck disable=SC2016  # backticks delimit literal Live-state entries
+    printf '%s\n' '# chief' '## Live state' 'legs: `N61:TEST-N61-ab:lock:101`' > "$W/handover/idle-chief.md"
+    out="$(DOC="$W/handover/idle-chief.md" bash "$SUT")"
+    contains 'IDLE-HELD still counts as held in the chief live state' "$out" 'livestate=ok'
+    contains 'IDLE-HELD still counts its live worker process' "$out" 'procs=1'
+    rm -f "$W/handover/idle-chief.md"
+    printf 'idle proof: %s\n' "$idle1"
+    out="$(TICK_IDLE_MIN=60 bash "$SUT")"
+    contains 'idle threshold override preserves a younger worker' "$out" 'workers=N61:FRESH'
+    out="$(TICK_IDLE_MIN=invalid bash "$SUT")"
+    contains 'invalid idle threshold uses the default' "$out" 'workers=N61:IDLE-HELD'
+    printf '{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","id":"suite-1","name":"Bash","input":{"command":"bash scripts/quiet-run.sh suite -- bash test-long.sh"}}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'a long foreground suite keeps its held lock FRESH' "$out" 'workers=N61:FRESH'
+    printf 'foreground proof: %s\n' "$out"
+    printf '{"type":"user","timestamp":"%s","message":{"content":[{"type":"tool_result","tool_use_id":"suite-1","content":"exit 0"}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    idle2="$(bash "$SUT")"
+    contains 'a completed suite no longer hides an idle held worker' "$idle2" 'workers=N61:IDLE-HELD'
+    stamp="$(date -u -d '49 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"user","timestamp":"%s","message":{"content":[]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    idle3="$(bash "$SUT")"
+    contains 'growing inactivity keeps the same IDLE-HELD state' "$idle3" 'workers=N61:IDLE-HELD'
+    printf '{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","id":"agent-1","name":"Agent","input":{"prompt":"run independent work"}}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'an unfinished foreground Agent keeps its held lock FRESH' "$out" 'workers=N61:FRESH'
+    printf '{"type":"user","timestamp":"%s","message":{"content":[{"type":"tool_result","tool_use_id":"agent-1","content":"done"}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'a completed Agent no longer hides an idle held worker' "$out" 'workers=N61:IDLE-HELD'
+    printf '{"type":"user","timestamp":"%s","toolUseResult":{"taskId":"monitor-1"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'an armed Monitor keeps a held worker FRESH' "$out" 'workers=N61:FRESH'
+    printf '{"type":"user","timestamp":"%s","toolUseResult":{"task_id":"monitor-1"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'a stopped Monitor no longer hides an idle worker' "$out" 'workers=N61:IDLE-HELD'
+    stamp="$(date -u -d '55 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"type":"assistant","timestamp":"%s","message":{"content":[{"type":"tool_use","id":"suite-2","name":"Bash","input":{"command":"bash test-long.sh"}}]}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'an old foreground suite preserves the existing cachettl advisory' "$out" ' cachettl=N61'
+    contains 'an old foreground suite still keeps its held lock FRESH' "$out" 'workers=N61:FRESH'
+    {
+        printf '{"type":"user","timestamp":"%s","message":{"content":[{"type":"tool_result","tool_use_id":"suite-2","content":"exit 0"}]}}\n' "$stamp"
+        printf '%s\n' '{malformed activity row'
+        printf '{"type":"user","timestamp":"%s","message":{"content":[]}}\n' "$stamp"
+    } >> "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'malformed middle activity evidence leaves a held lock FRESH' "$out" 'workers=N61:FRESH'
+    contains 'malformed middle rows preserve the existing cachettl advisory' "$out" ' cachettl=N61'
+    printf '{"type":"custom-title","customTitle":"HIMMEL-111-legN61"}\n{"type":"assistant","timestamp":"%s","message":{"content":["text",null,7,{"type":"text","text":"done"}]}}\n{"type":"user","timestamp":"%s","message":{"content":["text",null,7]}}\n' "$stamp" "$stamp" > "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'non-object content elements do not hide an idle held worker' "$out" 'workers=N61:IDLE-HELD'
+    contains 'non-object content elements preserve the existing cachettl advisory' "$out" ' cachettl=N61'
+    rm -f "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    out="$(bash "$SUT")"
+    contains 'missing session activity evidence leaves a held lock FRESH' "$out" 'workers=N61:FRESH'
+
+    # Replay a healthy baseline and the three real idle ticks through the real
+    # waiter, including its debounce and persisted re-arm key. All other probes
+    # are off; neither a live chief nor an external service is touched.
+    mkdir -p "$W/idle-wake/consoles"
+    printf '%s\n' "$fresh" "$idle1" "$idle2" "$idle3" > "$W/idle-wake/samples"
+    printf '0\n' > "$W/idle-wake/count"
+    cat > "$W/idle-wake/tick.sh" <<'STUB'
+#!/usr/bin/env bash
+n="$(cat "$IDLE_WAKE/count")"
+[ "$n" -lt 4 ] || exit 1
+n=$((n + 1))
+printf '%s\n' "$n" > "$IDLE_WAKE/count"
+sed -n "${n}p" "$IDLE_WAKE/samples"
+STUB
+    printf '#!/bin/sh\nprintf "PROCEED\\n"\n' > "$W/idle-wake/bank.sh"
+    printf '#!/bin/sh\nexit 0\n' > "$W/idle-wake/off.sh"
+    export IDLE_WAKE="$W/idle-wake"
+    export CHIEF_WAIT_TICK="$IDLE_WAKE/tick.sh" CHIEF_WAIT_USAGE="$IDLE_WAKE/bank.sh"
+    export CHIEF_WAIT_INTERVAL=0 CHIEF_WAIT_POLL_SEC=0.1 CHIEF_WAIT_FAIL_WAKE=1000
+    export CHIEF_WAIT_DISPATCH="$IDLE_WAKE/missing" CHIEF_WAIT_BUDGET="$IDLE_WAKE/off.sh"
+    export WAIT_SWEEP_CMD="$IDLE_WAKE/off.sh" WAIT_FOCUS_CMD="$IDLE_WAKE/off.sh"
+    export HOUSEKEEPING_DIGEST_SECS=0
+    timeout -k 1 10 bash "$HERE/chief-wait.sh" "$IDLE_WAKE/consoles/chief.md" --workers N61.md > "$IDLE_WAKE/wake" 2> "$IDLE_WAKE/err"
+    rc=$?
+    [ "$rc" -eq 0 ] && pass 'idle transition wakes the waiter' || fail "idle transition did not wake the waiter (rc $rc)"
+    contains 'the wake names the worker state change' "$(cat "$IDLE_WAKE/wake")" 'WAKE tick changed=workers usage=PROCEED'
+    timeout -k 1 2 bash "$HERE/chief-wait.sh" "$IDLE_WAKE/consoles/chief.md" --workers N61.md >> "$IDLE_WAKE/wake" 2>> "$IDLE_WAKE/err"
+    rc=$?
+    [ "$rc" -eq 124 ] && pass 'unchanged idle state keeps the re-armed waiter silent' || fail "idle re-arm unexpectedly exited (rc $rc)"
+    wakes="$(grep -c '^WAKE ' "$IDLE_WAKE/wake")"
+    [ "$wakes" = 1 ] && [ "$(cat "$IDLE_WAKE/count")" = 4 ] && pass 'one wake over three idle ticks' || fail "expected one wake over three idle ticks, got $wakes wakes"
+    rm -f "$TICK_PROJECTS_DIR/p/idle.jsonl"
+    mk_pgrep_x "$W/bin" 101 102 103
+    [ "$fails" -eq 0 ]
+)
+if [ "${1:-}" = --idle-held-only ]; then
+    if ! idle_held_cases; then fails=$((fails + 1)); fi
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
+if [ "${1:-}" != --ciq-sampled ] && [ "${1:-}" != --cachettl-only ]; then
+    if ! idle_held_cases; then fails=$((fails + 1)); fi
+fi
+
 cachettl_cases() (
     local stamp out verbose_out
     stamp="$(date -u -d '55 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"

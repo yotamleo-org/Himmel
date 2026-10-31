@@ -26,8 +26,8 @@
 # resolved toward claiming less.
 #
 # DEFAULT IS READ-ONLY. `--reap` exists for the operator; it is not usable from
-# a Claude session (the destructive-command hook denies taskkill / Stop-Process
-# / kill from an agent, by design). Run it yourself in a terminal, after
+# a Claude session (the destructive-command hook denies kill from an agent,
+# by design). Run it yourself in a terminal, after
 # reading the census.
 #
 # TEST SEAM. ORPHAN_CENSUS_INPUT=<file> substitutes a canned process table for
@@ -101,10 +101,6 @@ MIN_AGE=$(( MIN_AGE_MIN * 60 ))
 HIM_ROOT=$(cd "$(dirname "$0")/../.." && pwd -P) \
     || { echo "orphan-census: cannot resolve the himmel checkout root" >&2; exit 2; }
 HIM_ROOT="${HIM_ROOT%/.claude/worktrees/*}"
-# Win32_Process spells the tree `C:\Users\...`, Git-Bash `/c/Users/...` — the
-# same directory, two spellings, so both are offered to the classifier (the awk
-# pass folds backslashes to `/` before matching).
-HIM_ROOT_WIN=$(printf '%s' "$HIM_ROOT" | sed -E 's#^/([a-zA-Z])/#\1:/#')
 
 # shellcheck source=../lib/prim.sh
 . "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "orphan-census: cannot load scripts/lib/prim.sh" >&2; exit 2; }
@@ -115,22 +111,6 @@ TABLE="$WORK/procs"
 if [ -n "${ORPHAN_CENSUS_INPUT:-}" ]; then
     [ -r "$ORPHAN_CENSUS_INPUT" ] || { echo "orphan-census: cannot read ORPHAN_CENSUS_INPUT=$ORPHAN_CENSUS_INPUT" >&2; exit 2; }
     cp "$ORPHAN_CENSUS_INPUT" "$TABLE"
-elif command -v powershell.exe >/dev/null 2>&1 || command -v powershell >/dev/null 2>&1; then
-    # Win32_Process is the only enumeration on Windows that carries the full
-    # command line AND the parent PID; tasklist has neither together. The `|`
-    # separator is safe because CommandLine is last on the line.
-    PS_BIN=$(command -v powershell.exe 2>/dev/null || command -v powershell)
-    # shellcheck disable=SC2016  # single quotes are required: $_ is PowerShell's
-    "$PS_BIN" -NoProfile -NonInteractive -Command \
-        'Get-CimInstance Win32_Process | ForEach-Object {
-           $age = 0
-           $born = "-"
-           if ($_.CreationDate) {
-             $age = [int]((Get-Date) - $_.CreationDate).TotalSeconds
-             $born = $_.CreationDate.ToString("yyyyMMddHHmmss")
-           }
-           "{0}|{1}|{2}|{3}|{4}" -f $_.ProcessId, $_.ParentProcessId, $age, $born, ($_.CommandLine -replace "[\r\n]+"," ")
-         }' 2>/dev/null | tr -d '\r' > "$TABLE"
 elif command -v ps >/dev/null 2>&1; then
     # etime, not etimes: procps has both, BSD/macOS ps only has etime.
     # Format is [[dd-]hh:]mm:ss — normalised to seconds here so the classifier
@@ -152,7 +132,7 @@ elif command -v ps >/dev/null 2>&1; then
         printf "%s|%s|%s|%s|%s\n", $1, $2, s, born, cmd
       }' > "$TABLE"
 else
-    echo "orphan-census: no powershell and no ps on this host — cannot enumerate processes" >&2
+    echo "orphan-census: no ps on this host — cannot enumerate processes" >&2
     exit 2
 fi
 
@@ -162,27 +142,16 @@ fi
 # deliberately narrow — a generic "bash" match would sweep in the operator's
 # own shells, and this list is read by someone about to kill things.
 #
-# Case folding is a WINDOWS accommodation, not a default (panel r1 codex-2):
-# NTFS is case-insensitive and Win32_Process may report any casing of the drive
-# letter or of a path component, but on a case-sensitive POSIX filesystem
-# `/srv/Himmel` and `/srv/himmel` are two different checkouts and folding them
-# together would let --reap signal a process from the wrong one. `PS_BIN` set is
-# this script's own "the table came from Windows" signal.
-FOLD_CASE=0
-[ -z "${PS_BIN:-}" ] || FOLD_CASE=1
-
 # The roots are passed WITHOUT a trailing slash: `cd <root> && bash scripts/…`
 # from the primary checkout has whitespace after the root, not a slash, and a
 # slash-terminated root could never match it (panel r4 codex-1). claimed()
 # checks the boundary character itself.
-awk -F'|' -v min_age="$MIN_AGE" -v root1="$HIM_ROOT" -v root2="$HIM_ROOT_WIN" \
-    -v fold="$FOLD_CASE" '
+awk -F'|' -v min_age="$MIN_AGE" -v root1="$HIM_ROOT" '
   # runctx(b) — true when the text `b` preceding a rooted script path is an
   # interpreter INVOKING it, rather than one that merely mentions it. Either
-  # `b` is the whole interpreter prefix (argv[0] plus flags — the quoted
-  # Windows form included, which a last-space split cannot handle because the
-  # path contains a space), or the interpreter token is preceded by a command
-  # separator rather than by a bare word. Without this,
+  # `b` is the whole interpreter prefix (argv[0] plus flags, with quotes
+  # allowed for a path containing spaces), or the interpreter token follows
+  # a command separator rather than a bare word. Without this,
   # `bash -c "echo bash <root>/scripts/ci/test-x.sh; sleep 1000"` was a suite
   # (panel r10 codex-1) — the same hole the glue rule already closed on the
   # relative branch.
@@ -303,15 +272,14 @@ awk -F'|' -v min_age="$MIN_AGE" -v root1="$HIM_ROOT" -v root2="$HIM_ROOT_WIN" \
     #     it, `vim <root>/scripts/ci/test-x.sh` or a scanner reading the same
     #     file is a suite process (panel r6 codex-1), and --reap would take the
     #     editor. Optional short flags cover `bash -x <script>`; the optional
-    #     quotes cover the Windows shape `"C:/Program Files/Git/bin/bash.exe"
-    #     "<root>/scripts/…"` (panel r7 codex-2), whose interpreter path
-    #     contains a space and whose arguments are quoted; `before == ""` covers
+    #     quotes cover an interpreter path containing a space and quoted
+    #     arguments; `before == ""` covers
     #     a shebang script that IS the command.
     #     The flag part takes long options and flags that carry a value
     #     (`bash --noprofile …`, `bash -o pipefail …`) — accepting only repeated
     #     short flags dropped both from the census (panel r8 codex-2). A value
     #     word cannot swallow the script path: it may not begin with `/`.
-    interp = "(bash|sh|dash|zsh|ksh)(\\.exe)?[\"]?( +-[^ \"]*( +[A-Za-z][A-Za-z0-9_-]*)?)* +[\"]?"
+    interp = "(bash|sh|dash|zsh|ksh)[\"]?( +-[^ \"]*( +[A-Za-z][A-Za-z0-9_-]*)?)* +[\"]?"
     runpfx = "(^|[^A-Za-z0-9_-])" interp "$"
     #     relcwd is anchored at the START of what follows the root: an optional
     #     continuation of the cd target, then SHELL GLUE only (`&& `, `; `,
@@ -328,16 +296,16 @@ awk -F'|' -v min_age="$MIN_AGE" -v root1="$HIM_ROOT" -v root2="$HIM_ROOT_WIN" \
     # argv[0] has to BE an interpreter. Without this, a supervisor or launcher
     # whose ARGUMENT string happens to read `bash <root>/scripts/…` is
     # indistinguishable from the invocation it describes (panel r7 codex-1) —
-    # and the description is what would be reaped. Both process enumerators
-    # start the line with argv[0], so the first token settles it. Two shapes,
+    # and the description is what would be reaped. The process enumerator
+    # starts the line with argv[0], so the first token settles it. Two shapes,
     # because only a quoted argv[0] may contain a space.
-    argv0 = "^\"([^\"]*/)?(bash|sh|dash|zsh|ksh)(\\.exe)?\"( |$)|^([^ \"]*/)?(bash|sh|dash|zsh|ksh)(\\.exe)?( |$)"
+    argv0 = "^\"([^\"]*/)?(bash|sh|dash|zsh|ksh)\"( |$)|^([^ \"]*/)?(bash|sh|dash|zsh|ksh)( |$)"
     # The same two shapes plus flags, anchored to cover a WHOLE prefix: true
     # when everything before the script is the interpreter invocation and
     # nothing else. This is what tells `bash <root>/scripts/…` (an execution)
     # from `bash -c "echo bash <root>/scripts/…"` (a string that mentions one,
     # panel r10 codex-1). See runctx().
-    argv0only = "^(\"([^\"]*/)?(bash|sh|dash|zsh|ksh)(\\.exe)?\"|([^ \"]*/)?(bash|sh|dash|zsh|ksh)(\\.exe)?)( +-[^ \"]*( +[A-Za-z][A-Za-z0-9_-]*)?)* +[\"]?$"
+    argv0only = "^(\"([^\"]*/)?(bash|sh|dash|zsh|ksh)\"|([^ \"]*/)?(bash|sh|dash|zsh|ksh))( +-[^ \"]*( +[A-Za-z][A-Za-z0-9_-]*)?)* +[\"]?$"
     # A single-dash flag bundle containing `c`, i.e. `-c` or `-xc`. Long options
     # are excluded on purpose: no bash long option takes a command string.
     minusc = "(^|[^A-Za-z0-9_-])-[A-Za-z]*c[A-Za-z]*( |$)"
@@ -353,19 +321,14 @@ awk -F'|' -v min_age="$MIN_AGE" -v root1="$HIM_ROOT" -v root2="$HIM_ROOT_WIN" \
     #     (panel r9 codex-1). Checked on the part of the path that follows the
     #     root, in both branches.
     dotdot = "(^|/)\\.\\.(/|$)"
-    if (fold + 0 == 1) { root1 = tolower(root1); root2 = tolower(root2) }
     for (i = 1; i <= NR; i++) {
       n = split(rec[i], f, "|")
       p = f[1]; pp = f[2]; age = f[3]; born = f[4]
       cmd = f[5]
       for (j = 6; j <= n; j++) cmd = cmd "|" f[j]
-      # Windows reports its own scripts with backslashes; the patterns below
-      # are written with `/` because that is how every other platform (and
-      # Git-Bash itself) spells them. Normalise once, match once.
-      gsub(/\\/, "/", cmd)
       # The root is compared with index(), not a regex: a checkout path can
       # contain `+` (worktree directories do) and other regex metacharacters.
-      key = (fold + 0 == 1) ? tolower(cmd) : cmd
+      key = cmd
       # A shebang script run directly is its own argv[0]; anything else has to
       # be launched by a shell for the paths below to mean execution. The root
       # comparison is substr(), not a regex, for the same reason as in
@@ -373,25 +336,17 @@ awk -F'|' -v min_age="$MIN_AGE" -v root1="$HIM_ROOT" -v root2="$HIM_ROOT_WIN" \
       head = key
       if (substr(head, 1, 1) == "\"") head = substr(head, 2)
       if (key !~ argv0 \
-          && substr(head, 1, length(root1)) != root1 \
-          && substr(head, 1, length(root2)) != root2) continue
+          && substr(head, 1, length(root1)) != root1) continue
       hit = ""
-      if (!claimed(key, root1) && !claimed(key, root2)) continue
-      # Dead parent. Two shapes, because the platforms differ: on Windows the
-      # ppid simply dangles (nothing reparents), while POSIX reparents an
-      # orphan onto init/launchd — so a live ppid of 1 (or 0) is exactly the
-      # orphaned case there, not a live parent. Without this the POSIX branch
-      # would never report the processes it exists to find. A himmel suite
-      # script legitimately parented to init does not happen; the command-line
-      # filter above already excludes real daemons.
+      if (!claimed(key, root1)) continue
+      # A missing parent or reparenting onto init/launchd (ppid 1 or 0) marks
+      # an orphan. A himmel suite legitimately parented to init does not
+      # happen; the command-line filter above already excludes real daemons.
       if ((pp in pid) && pp + 0 > 1) continue
       if (age + 0 < min_age) { young++; continue }
       # `hit` — the script reference claimed() actually matched — not the whole
       # command line: a suite whose ARGUMENTS merely mention `/check-ci.sh` was
       # labelled WATCHER and quietly excluded from reaping (panel r8 codex-3).
-      # `hit` also carries the case folding the claim used, so a watcher spelled
-      # `.../scripts/Check-CI.sh` on Windows cannot be claimed and then miss
-      # this test (panel r2 codex-2).
       if (hit ~ watcher) { kind = "WATCHER"; watchers++ }
       else { kind = "ORPHAN"; orphans++ }
       tail = cmd
@@ -425,8 +380,8 @@ if [ "$REAP" -ne 1 ]; then
 fi
 
 while IFS='|' read -r p born; do
-    # The PID reaches this line from a process table — an external input — and
-    # is about to be interpolated into a -Command string. Digits only.
+    # The PID reaches this line from a process table — an external input.
+    # Accept digits only.
     case "$p" in ''|*[!0-9]*) continue ;; esac
 
     # Re-read THIS pid's creation time immediately before signalling it. The
@@ -437,12 +392,7 @@ while IFS='|' read -r p born; do
     # narrowed to the microseconds between this read and the signal below, not
     # eliminated. Anything else (changed, or gone) is a skip, loudly, because a
     # silent skip reads as a successful reap.
-    if [ -n "${PS_BIN:-}" ]; then
-        now=$("$PS_BIN" -NoProfile -NonInteractive -Command               "(Get-CimInstance Win32_Process -Filter \"ProcessId=$p\").CreationDate.ToString('yyyyMMddHHmmss')"               2>/dev/null | tr -d '
-' | tr -d '[:space:]')
-    else
-        now=$(ps -o lstart= -p "$p" 2>/dev/null | tr -s '[:space:]' '_' | sed 's/^_//; s/_$//')
-    fi
+    now=$(ps -o lstart= -p "$p" 2>/dev/null | tr -s '[:space:]' '_' | sed 's/^_//; s/_$//')
     if [ -z "$now" ]; then
         echo "orphan-census: WARN $p is gone — not signalling" >&2
         continue
@@ -452,11 +402,7 @@ while IFS='|' read -r p born; do
         continue
     fi
 
-    if [ -n "${PS_BIN:-}" ]; then
-        "$PS_BIN" -NoProfile -NonInteractive -Command "Stop-Process -Id $p -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1
-    else
-        kill -TERM "$p" 2>/dev/null
-    fi
+    kill -TERM "$p" 2>/dev/null
     echo "orphan-census: signalled $p"
 done < "$WORK/reapable"
 exit 0

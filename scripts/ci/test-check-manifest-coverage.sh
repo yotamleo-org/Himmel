@@ -71,6 +71,15 @@ lv=$LIVE
 expect "live tree is covered and buffered" 0 "$lv"
 says "summary line is printed" "0 violation(s)"
 
+echo "== pinned statechart vendor =="
+expect "pinned statechart manifest is owned by re-vendor" 0 "$lv"
+live adjacentvendor || { echo "live copy failed"; exit 1; }
+m=$LIVE
+mkdir -p "$m/marketplace/plugins/pstack/skills/statechart/scripts-local"
+printf '{}\n' > "$m/marketplace/plugins/pstack/skills/statechart/scripts-local/package.json"
+expect "an adjacent own-package still requires coverage" 1 "$m"
+says "the adjacent package is named" "marketplace/plugins/pstack/skills/statechart/scripts-local/package.json: no npm entry"
+
 echo "== mutations =="
 live nobun || { echo "live copy failed"; exit 1; }
 m=$LIVE

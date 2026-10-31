@@ -216,19 +216,20 @@ lacks "HANDOVER_DIR moves without USER_SLUG" "HANDOVER_DIR=" "$envnow"
 has "a move without USER_SLUG still checks the handover root" "verified: load_dotenv, load_policy, jira config reader, jira handover root, lanes resolve" "$out"
 has "a line with no key name stays in .env" "=orphan-line" "$envnow"
 
-# An env-only key (no himmel.conf reader) stays in .env and the migration still
-# exits 0: it is not a key the copy moves, so verify has nothing to compare.
+# The Jira URL moves and verifies through every reader; the remaining env-only
+# settings stay in .env.
 rm -rf "$HOME/.himmel" "$HOME/.config"
 printf 'HANDOVER_DIR=%s\nJIRA_BASE_URL=https://canary.example.net\nFIRECRAWL_BASE_URL=https://fc.example.net\nWHISPER_MODEL=/models/ggml-canary.bin\n' "$TMP/handovers" > "$TMP/st/.env"
 chmod 600 "$TMP/st/.env"
 apply_tty y
-if [ "$rc" = 0 ]; then pass "an env-only key in .env does not fail the migration"; else fail "an env-only key in .env exited $rc: $out"; fi
+if [ "$rc" = 0 ]; then pass "the Jira URL migrates without a reader mismatch"; else fail "the Jira URL migration exited $rc: $out"; fi
 envnow=$(cat "$TMP/st/.env")
-has "JIRA_BASE_URL stays in .env" "JIRA_BASE_URL=https://canary.example.net" "$envnow"
+lacks "JIRA_BASE_URL leaves .env after verification" "JIRA_BASE_URL=" "$envnow"
+has "JIRA_BASE_URL reaches himmel.conf" "JIRA_BASE_URL=https://canary.example.net" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
 has "FIRECRAWL_BASE_URL stays in .env" "FIRECRAWL_BASE_URL=https://fc.example.net" "$envnow"
 has "WHISPER_MODEL stays in .env" "WHISPER_MODEL=/models/ggml-canary.bin" "$envnow"
-has "the report says an env-only key stays" "  JIRA_BASE_URL stays (env-only: no himmel.conf reader)" "$out"
-lacks "an env-only key is not copied to himmel.conf" "JIRA_BASE_URL" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+has "the report says a remaining env-only key stays" "  FIRECRAWL_BASE_URL stays (env-only: no himmel.conf reader)" "$out"
+lacks "a remaining env-only key is not copied to himmel.conf" "FIRECRAWL_BASE_URL" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
 
 # The chat ids are config keys himmel.conf serves: the move succeeds and the .env lines go.
 rm -rf "$HOME/.himmel" "$HOME/.config"

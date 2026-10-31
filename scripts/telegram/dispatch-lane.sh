@@ -74,7 +74,6 @@ LOCK_BRANCH=""
 TMP_ROOT=""
 kill_tree() {
   local root="$1"
-  if command -v taskkill.exe >/dev/null 2>&1; then taskkill.exe //PID "$root" //T //F >/dev/null 2>&1 || true; fi
   ps -eo pid=,ppid= 2>/dev/null | while read -r child parent; do
     if [ "$parent" = "$root" ]; then kill_tree "$child"; kill -TERM "$child" 2>/dev/null || true; fi
   done

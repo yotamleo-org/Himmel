@@ -1,6 +1,8 @@
 #!/usr/bin/python3 -I
 """afk-sudo — run one privileged command after a Telegram TOTP approval.
 
+Linux only: requires O_PATH and /proc/self/fd for safe opened-object validation.
+
 Installed root-owned to /usr/local/libexec/himmel/afk-sudo by install.sh and
 reached through one sudoers NOPASSWD rule that names that copy, never this repo
 file (a repo file is agent-writable). Off by default: the station config ships
@@ -32,6 +34,7 @@ instead of root and a run keeps the caller's uid. Outside the seam a non-root ru
 """
 import argparse
 import base64
+import ctypes
 import errno
 import hashlib
 import hmac
@@ -163,11 +166,31 @@ def open_regular(path):
     non-regular file are refused: root reading one could hang or flood the helper."""
     if os.path.realpath(path).startswith(PSEUDO):
         raise OSError(errno.EINVAL, "pseudo-file", path)
-    f = os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY), "rb")
-    if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
-        f.close()
-        raise OSError(errno.EINVAL, "not a regular file", path)
-    return f
+    fd = os.open(path, os.O_PATH | os.O_CLOEXEC)
+    read_fd = None
+    try:
+        fd_path = f"/proc/self/fd/{fd}"
+        if os.readlink(fd_path).startswith(PSEUDO):
+            raise OSError(errno.EINVAL, "pseudo-file", path)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(errno.EINVAL, "not a regular file", path)
+        # Linux struct statfs starts with f_type and fits in 32 machine words.
+        # Check the fd: another namespace can expose procfs outside /proc.
+        fs = (ctypes.c_long * 32)()
+        libc = ctypes.CDLL(None, use_errno=True)
+        if libc.fstatfs(fd, ctypes.byref(fs)) != 0:
+            err = ctypes.get_errno()
+            raise OSError(err, os.strerror(err), path)
+        if fs[0] in (0x9FA0, 0x62656572):  # PROC_SUPER_MAGIC, SYSFS_MAGIC
+            raise OSError(errno.EINVAL, "pseudo-filesystem", path)
+        read_fd = os.open(fd_path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOCTTY)
+        return os.fdopen(read_fd, "rb")
+    except OSError:
+        if read_fd is not None:
+            os.close(read_fd)
+        raise
+    finally:
+        os.close(fd)
 
 
 def sha256_file(path):

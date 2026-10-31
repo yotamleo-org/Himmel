@@ -692,6 +692,9 @@ got=$( cd "$PREPO" && unset HANDOVER_DIR && HIMMEL_CONFIG_DIR="$TMP/p-config" lo
 assert_eq "P7 a project HANDOVER_DIR cannot beat himmel.conf" "/p7/from-user" "$got"
 got=$( cd "$PREPO" && unset LUNA_VAULT_PATH && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv LUNA_VAULT_PATH 2>/dev/null; printf '%s' "${LUNA_VAULT_PATH:-<unset>}" )
 assert_eq "P7 a station key absent from himmel.conf is not served from the project file" "<unset>" "$got"
+printf 'JIRA_BASE_URL=https://project.example.invalid\n' >>"$PCONF"
+got=$( cd "$PREPO" && unset JIRA_BASE_URL HIMMEL_PROFILE && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv JIRA_BASE_URL 2>/dev/null; printf '%s' "${JIRA_BASE_URL:-<unset>}" )
+assert_eq "P7 a project file cannot choose the Jira credential destination" "<unset>" "$got"
 
 # P8: when the project file cannot be parsed (a directory, or awk failing),
 # the gate reader fails closed instead of dropping the tightening.

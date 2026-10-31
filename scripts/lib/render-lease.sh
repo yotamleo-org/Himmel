@@ -17,24 +17,20 @@
 #   <registry>/.registry.lock/              cross-writer mutex (mkdir = lock)
 #   <registry>/kill-ledger.jsonl            append-only sweep evidence ledger
 #                                           (written/consumed by the orphan sweep)
-# lease.record keys: branch, worktree (native/mixed path form), acquired_by
-# (wrapper msys pid), started_at (ISO UTC), leader_pid (msys), leader_winpid
-# (native, Windows only), leader_identity (proc_tree_process_identity string),
+# lease.record keys: branch, worktree, acquired_by (wrapper pid),
+# started_at (ISO UTC), leader_pid, leader_identity (proc_tree_process_identity string),
 # status (launching|running), claim_nonce (this acquisition's identity - see
 # release below).
 #
 # THE LOCK: mkdir is the only acquisition primitive -- never scan-then-create.
 # Lease acquisition itself is one mkdir of the lease dir; the registry-level
 # .registry.lock only serializes claim/reclaim against the sweep's
-# read-before-kill pass. Lock owner is tagged with its pid SPACE
-# ("msys:<pid>" here, "win:<pid>" from PowerShell) because the two runtimes
-# cannot verify each other's pids. Stale-break disposition:
-# a same-space owner probed ALIVE is NEVER broken -- not even by age (a slow
-# sweep or mid-claim launcher legitimately holds the lock; contenders wait
-# out their retries and refuse); a same-space owner probed DEAD is broken
-# immediately; only a cross-space or unverifiable owner falls back to the
-# AGE break (RENDER_LEASE_LOCK_STALE_SECS), and each break says which
-# disposition fired.
+# read-before-kill pass. Lock owner is tagged "pid:<pid>".
+# An owner probed ALIVE is NEVER broken -- not even by age (a slow sweep or
+# mid-claim launcher legitimately holds the lock; contenders wait out their
+# retries and refuse); an owner probed DEAD is broken immediately. Only an
+# unknown or unverifiable owner falls back to the AGE break
+# (RENDER_LEASE_LOCK_STALE_SECS), and each break says which disposition fired.
 #
 # FAIL-CLOSED POSTURE (every rc documented on its function):
 #   * only a CONFIRMED-dead holder is reclaimed; an unverifiable holder refuses;
@@ -137,9 +133,9 @@ _render_lease_pid_alive() {
 
 # render_lease_lock_acquire -- rc 0 acquired, 1 contended (held by a live or
 # unverifiable owner through every retry), 2 registry unusable.
-# Stale-break disposition (r4): verified-live same-space owner -> NEVER
-# broken (age included); confirmed-dead same-space owner -> broken
-# immediately; cross-space/unverifiable owner -> age break only.
+# Stale-break disposition (r4): verified-live owner -> NEVER broken (age
+# included); confirmed-dead owner -> broken immediately;
+# unknown/unverifiable owner -> age break only.
 render_lease_lock_acquire() {
     local registry lock attempt owner opid stale owner_live alive_rc mtime now stale_secs
     registry=$(render_lease_registry_dir)
@@ -164,15 +160,15 @@ render_lease_lock_acquire() {
     while [ "$attempt" -lt "$max_attempts" ]; do
         # prim-ok: bounded retry loop (RENDER_LEASE_LOCK_ATTEMPTS/DELAY) with dead-owner and age-based stale breaking; with_lock fails closed on a dead owner.
         if mkdir "$lock" 2>/dev/null; then
-            printf 'msys:%s\n' "$$" > "$lock/owner.pid" 2>/dev/null || true
+            printf 'pid:%s\n' "$$" > "$lock/owner.pid" 2>/dev/null || true
             return 0
         fi
         stale=0
         owner_live=0
         owner=$(cat "$lock/owner.pid" 2>/dev/null)
         case "$owner" in
-            msys:*)
-                opid=${owner#msys:}
+            pid:*|msys:*) # Read legacy tags for one release.
+                opid=${owner#*:}
                 case "$opid" in
                     ''|*[!0-9]*) ;;
                     *)
@@ -189,7 +185,7 @@ render_lease_lock_acquire() {
         if [ "$stale" -eq 1 ]; then
             echo "render-lease: breaking registry lock held by confirmed-dead owner ($owner): $lock" >&2
         elif [ "$owner_live" -eq 0 ]; then
-            # Cross-space or unverifiable owner: age is the only safe judge.
+            # Unknown or unverifiable owner: age is the only safe judge.
             # A verified-live owner never reaches this branch.
             mtime=$(_render_lease_mtime "$lock")
             case "$mtime" in
@@ -198,7 +194,7 @@ render_lease_lock_acquire() {
                     now=$(date +%s)
                     if [ $((now - mtime)) -gt "$stale_secs" ]; then
                         stale=1
-                        echo "render-lease: age-breaking registry lock with cross-space/unverifiable owner ('$owner', older than ${stale_secs}s): $lock" >&2
+                        echo "render-lease: age-breaking registry lock with unknown/unverifiable owner ('$owner', older than ${stale_secs}s): $lock" >&2
                     fi
                     ;;
             esac
@@ -220,11 +216,11 @@ render_lease_lock_release() {
     lock="$(render_lease_registry_dir)/.registry.lock"
     [ -e "$lock" ] || return 0
     owner=$(tr -d '[:space:]' < "$lock/owner.pid" 2>/dev/null)
-    if [ "$owner" = "msys:$$" ]; then
+    if [ "$owner" = "pid:$$" ] || [ "$owner" = "msys:$$" ]; then # Legacy reader.
         rm -rf "$lock" 2>/dev/null || true
         return 0
     fi
-    echo "render-lease: NOT releasing registry lock: owner record '${owner:-<unreadable>}' is not this process (msys:$$) - it was re-acquired after a break; leaving it to its owner: $lock" >&2
+    echo "render-lease: NOT releasing registry lock: owner record '${owner:-<unreadable>}' is not this process (pid:$$) - it was re-acquired after a break; leaving it to its owner: $lock" >&2
     return 0
 }
 
@@ -264,8 +260,8 @@ _render_lease_write_record() {
 
 # render_lease_heartbeat_fresh <lease_dir> <ttl_secs> -- rc 0 when the lease
 # still shows recent life. Uses the heartbeat file's mtime, falling back to
-# lease.record's own mtime (a POSIX render never starts the ps1 heartbeat; its
-# freshly-written record must still read as live). An unreadable mtime reads
+# lease.record's own mtime (a freshly-written record must still read as live
+# before the first heartbeat). An unreadable mtime reads
 # as FRESH: the caller is deciding whether it may steal the lease, and a lost
 # probe must never become a reason to reclaim more eagerly.
 render_lease_heartbeat_fresh() {

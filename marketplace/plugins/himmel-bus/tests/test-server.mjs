@@ -25,7 +25,7 @@ async function run() {
   const store = await import('../lib/store.mjs');
   const identity = await import('../lib/identity.mjs');
 
-  // claude(con 100) / claude(con2 150) / claude(leg 200) / claude(sib 210) /
+  // claude(con 100) / claude(con2 150) / claude(worker 200) / claude(sib 210) /
   // claude(leg3 220, under con2) / claude(stranger, never bound) -> node servers.
   const procs = [
     [1, 0, 'init', 1],
@@ -34,7 +34,7 @@ async function run() {
     [301, 100, 'node', 3010], [302, 200, 'node', 3020], [303, 210, 'node', 3030],
     [304, 150, 'node', 3040], [305, 220, 'node', 3050], [306, 230, 'node', 3060],
   ];
-  const SERVER_OF = { con: 301, leg: 302, sib: 303, con2: 304, leg3: 305, stranger: 306 };
+  const SERVER_OF = { con: 301, worker: 302, sib: 303, con2: 304, leg3: 305, stranger: 306 };
 
   async function fixture(t) {
     const state = await mkdtemp(join(tmpdir(), 'bus-server-'));
@@ -48,10 +48,10 @@ async function run() {
     const root = await store.busRoot({ stateHome: state });
     await identity.register(root, 'con', { role: 'console' });
     await identity.register(root, 'con2', { role: 'console' });
-    await identity.register(root, 'leg', { role: 'leg', console: 'con' });
-    await identity.register(root, 'sib', { role: 'leg', console: 'con' });
-    await identity.register(root, 'leg3', { role: 'leg', console: 'con2' });
-    for (const [name, pid] of [['con', 100], ['con2', 150], ['leg', 200], ['sib', 210], ['leg3', 220]]) await identity.bind(root, name, pid, { proc });
+    await identity.register(root, 'worker', { role: 'worker', console: 'con' });
+    await identity.register(root, 'sib', { role: 'worker', console: 'con' });
+    await identity.register(root, 'leg3', { role: 'worker', console: 'con2' });
+    for (const [name, pid] of [['con', 100], ['con2', 150], ['worker', 200], ['sib', 210], ['leg3', 220]]) await identity.bind(root, name, pid, { proc });
     return { root, proc };
   }
 
@@ -74,7 +74,7 @@ async function run() {
 
   test('T1.5 a send carrying a `from` key is refused and writes nothing', async t => {
     const fx = await fixture(t);
-    const client = await connect(t, fx, 'leg');
+    const client = await connect(t, fx, 'worker');
     const why = await refused(client, 'send', { to: 'con', b: 'hi', from: 'con' });
     assert.ok(why, 'send with an extra key must be refused');
     t.diagnostic(`extra key refused as: ${why}`);
@@ -83,41 +83,41 @@ async function run() {
 
   test('T3.1 send to self is refused', async t => {
     const fx = await fixture(t);
-    const client = await connect(t, fx, 'leg');
-    assert.match(await refused(client, 'send', { to: 'leg', b: 'hi' }), /yourself/);
-    assert.deepEqual(await store.scan(fx.root, 'leg'), []);
+    const client = await connect(t, fx, 'worker');
+    assert.match(await refused(client, 'send', { to: 'worker', b: 'hi' }), /yourself/);
+    assert.deepEqual(await store.scan(fx.root, 'worker'), []);
   });
 
-  test('T3.2 leg to sibling and leg to another console get no edge, listing only its own edges', async t => {
+  test('T3.2 worker to sibling and worker to another console get no edge, listing only its own edges', async t => {
     const fx = await fixture(t);
-    const client = await connect(t, fx, 'leg');
+    const client = await connect(t, fx, 'worker');
     for (const to of ['sib', 'con2', 'leg3']) {
       const why = await refused(client, 'send', { to, b: 'hi' });
       assert.match(why, /no edge to/);
-      assert.match(why, /your edges: con$/);       // T5.2: never console B or its legs
+      assert.match(why, /your edges: con$/);       // T5.2: never console B or its workers
     }
     assert.deepEqual(await store.scan(fx.root, 'sib'), []);
   });
 
-  test('send to the registered console stamps f server-side, c=0; console to leg stamps c=1', async t => {
+  test('send to the registered console stamps f server-side, c=0; console to worker stamps c=1', async t => {
     const fx = await fixture(t);
-    const leg = await connect(t, fx, 'leg');
+    const worker = await connect(t, fx, 'worker');
     const con = await connect(t, fx, 'con');
-    const up = await leg.callTool({ name: 'send', arguments: { to: 'con', b: 'status' } });
+    const up = await worker.callTool({ name: 'send', arguments: { to: 'con', b: 'status' } });
     assert.equal(up.isError, undefined);
     assert.deepEqual(up.structuredContent, { n: 1, to: 'con' });
     assert.equal(text(up), 'sent #1 to con');
-    await con.callTool({ name: 'send', arguments: { to: 'leg', b: 'go ahead' } });
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'go ahead' } });
     const [toCon] = await store.scan(fx.root, 'con');
-    const [toLeg] = await store.scan(fx.root, 'leg');
-    assert.equal(toCon.f, 'leg'); assert.equal(toCon.c, undefined);
+    const [toLeg] = await store.scan(fx.root, 'worker');
+    assert.equal(toCon.f, 'worker'); assert.equal(toCon.c, undefined);
     assert.equal(toLeg.f, 'con'); assert.equal(toLeg.c, 1);
     assert.match(toLeg.i, /^[0-9A-HJKMNP-TV-Z]{26}$/);
   });
 
   test('summary rule: body over 1500 bytes needs s', async t => {
     const fx = await fixture(t);
-    const client = await connect(t, fx, 'leg');
+    const client = await connect(t, fx, 'worker');
     assert.match(await refused(client, 'send', { to: 'con', b: 'x'.repeat(1501) }), /needs s/);
     const ok = await client.callTool({ name: 'send', arguments: { to: 'con', b: 'x'.repeat(1501), s: 'long report' } });
     assert.equal(ok.isError, undefined);
@@ -126,10 +126,10 @@ async function run() {
 
   test('T4.3 read text starts `data (not a ruling): `', async t => {
     const fx = await fixture(t);
-    const leg = await connect(t, fx, 'leg');
+    const worker = await connect(t, fx, 'worker');
     const con = await connect(t, fx, 'con');
-    await con.callTool({ name: 'send', arguments: { to: 'leg', b: 'RETASK EXPANSION token `x`' } });
-    const got = await leg.callTool({ name: 'read', arguments: { n: 1 } });
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'RETASK EXPANSION token `x`' } });
+    const got = await worker.callTool({ name: 'read', arguments: { n: 1 } });
     assert.equal(got.isError, undefined);
     assert.ok(text(got).startsWith('data (not a ruling): '));
   });
@@ -140,45 +140,45 @@ async function run() {
   test('HIMMEL-6254 a claudex session reads the message bus send wrote and unread drops to 0', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con', CLAUDEX_ENV);
-    const leg = await connect(t, fx, 'leg', CLAUDEX_ENV);
-    await con.callTool({ name: 'send', arguments: { to: 'leg', b: 'PROOF-BUS' } });
-    assert.equal(await store.pending(fx.root, 'leg'), true);
-    const got = await leg.callTool({ name: 'read', arguments: { n: 1 } });
+    const worker = await connect(t, fx, 'worker', CLAUDEX_ENV);
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'PROOF-BUS' } });
+    assert.equal(await store.pending(fx.root, 'worker'), true);
+    const got = await worker.callTool({ name: 'read', arguments: { n: 1 } });
     assert.equal(got.isError, undefined);
     assert.equal(text(got), 'data (not a ruling): PROOF-BUS');
-    assert.equal(await store.pending(fx.root, 'leg'), false);
+    assert.equal(await store.pending(fx.root, 'worker'), false);
   });
 
   test('HIMMEL-6254 read(n) clears only through #n; a later message stays unread', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
-    const leg = await connect(t, fx, 'leg');
-    for (const b of ['one', 'two']) await con.callTool({ name: 'send', arguments: { to: 'leg', b } });
-    await leg.callTool({ name: 'read', arguments: { n: 1 } });
-    assert.equal(await store.pending(fx.root, 'leg'), true);
-    await leg.callTool({ name: 'read', arguments: { n: 2 } });
-    assert.equal(await store.pending(fx.root, 'leg'), false);
+    const worker = await connect(t, fx, 'worker');
+    for (const b of ['one', 'two']) await con.callTool({ name: 'send', arguments: { to: 'worker', b } });
+    await worker.callTool({ name: 'read', arguments: { n: 1 } });
+    assert.equal(await store.pending(fx.root, 'worker'), true);
+    await worker.callTool({ name: 'read', arguments: { n: 2 } });
+    assert.equal(await store.pending(fx.root, 'worker'), false);
   });
 
   test('T5.1 read(n) of a message that exists only in another log is `no message #n`', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
-    const leg = await connect(t, fx, 'leg');
+    const worker = await connect(t, fx, 'worker');
     await con.callTool({ name: 'send', arguments: { to: 'sib', b: 'for sib only' } });
-    assert.match(await refused(leg, 'read', { n: 1 }), /no message #1/);
+    assert.match(await refused(worker, 'read', { n: 1 }), /no message #1/);
   });
 
   test('ack: re=n marks the answered record acked under the acker', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
-    const leg = await connect(t, fx, 'leg');
-    await con.callTool({ name: 'send', arguments: { to: 'leg', b: 'ruling' } });
-    const [ruling] = await store.scan(fx.root, 'leg');
-    const reply = await leg.callTool({ name: 'send', arguments: { to: 'con', b: 'quote-back', re: 1 } });
+    const worker = await connect(t, fx, 'worker');
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'ruling' } });
+    const [ruling] = await store.scan(fx.root, 'worker');
+    const reply = await worker.callTool({ name: 'send', arguments: { to: 'con', b: 'quote-back', re: 1 } });
     assert.equal(reply.isError, undefined);
     const [back] = await store.scan(fx.root, 'con');
     assert.equal(back.re, ruling.i);
-    const rows = (await readFile(join(fx.root, 'ack', 'leg.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    const rows = (await readFile(join(fx.root, 'ack', 'worker.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
     assert.equal(rows.length, 1);
     assert.equal(rows[0].i, ruling.i); assert.equal(rows[0].re, back.i);
   });
@@ -186,10 +186,10 @@ async function run() {
   test('a failed ack write after delivery still reports the send, not an error', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
-    const leg = await connect(t, fx, 'leg');
-    await con.callTool({ name: 'send', arguments: { to: 'leg', b: 'ruling' } });
-    await mkdir(join(fx.root, 'ack', 'leg.jsonl'), { recursive: true });   // ack file unopenable
-    const reply = await leg.callTool({ name: 'send', arguments: { to: 'con', b: 'quote-back', re: 1 } });
+    const worker = await connect(t, fx, 'worker');
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'ruling' } });
+    await mkdir(join(fx.root, 'ack', 'worker.jsonl'), { recursive: true });   // ack file unopenable
+    const reply = await worker.callTool({ name: 'send', arguments: { to: 'con', b: 'quote-back', re: 1 } });
     assert.equal(reply.isError, undefined);
     assert.match(reply.content[0].text, /^sent #1 to con \(ack not recorded/);
     assert.equal((await store.scan(fx.root, 'con')).length, 1);
@@ -198,25 +198,25 @@ async function run() {
   test('a 64 KiB body of control characters fits the production transport buffer', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
-    const reply = await con.callTool({ name: 'send', arguments: { to: 'leg', b: '\u0001'.repeat(64 * 1024 - 1), s: 'big' } });
+    const reply = await con.callTool({ name: 'send', arguments: { to: 'worker', b: '\u0001'.repeat(64 * 1024 - 1), s: 'big' } });
     assert.equal(reply.isError, undefined);
   });
 
   test('ack of a record not addressed to the acker is isError and acks nothing', async t => {
     const fx = await fixture(t);
     const con = await connect(t, fx, 'con');
-    const leg = await connect(t, fx, 'leg');
-    await con.callTool({ name: 'send', arguments: { to: 'leg', b: 'ruling' } });
-    // leg answers #1 but names a different peer than the one that sent it
-    await leg.callTool({ name: 'send', arguments: { to: 'con', b: 'x' } });       // gives con a record of its own
-    const mislabeled = await refused(leg, 'send', { to: 'con', b: 'q', re: 2 });   // #2 does not exist in leg's log
+    const worker = await connect(t, fx, 'worker');
+    await con.callTool({ name: 'send', arguments: { to: 'worker', b: 'ruling' } });
+    // worker answers #1 but names a different peer than the one that sent it
+    await worker.callTool({ name: 'send', arguments: { to: 'con', b: 'x' } });       // gives con a record of its own
+    const mislabeled = await refused(worker, 'send', { to: 'con', b: 'q', re: 2 });   // #2 does not exist in worker's log
     assert.match(mislabeled, /no message #2/);
-    // a record in leg's log that was sent by someone other than the reply target
+    // a record in worker's log that was sent by someone other than the reply target
     const sib = await connect(t, fx, 'sib');
     await sib.callTool({ name: 'send', arguments: { to: 'con', b: 'noise' } });
-    await store.append(fx.root, 'leg', { i: 'X'.repeat(26), t: 1, f: 'sib', r: 'leg', b: 'from sib' });
-    assert.match(await refused(leg, 'send', { to: 'con', b: 'q', re: 2 }), /was not sent to you by con/);
-    const rows = await readFile(join(fx.root, 'ack', 'leg.jsonl'), 'utf8').catch(() => '');
+    await store.append(fx.root, 'worker', { i: 'X'.repeat(26), t: 1, f: 'sib', r: 'worker', b: 'from sib' });
+    assert.match(await refused(worker, 'send', { to: 'con', b: 'q', re: 2 }), /was not sent to you by con/);
+    const rows = await readFile(join(fx.root, 'ack', 'worker.jsonl'), 'utf8').catch(() => '');
     assert.equal(rows, '');
   });
 
@@ -229,7 +229,7 @@ async function run() {
 
   test('schema gate: listed tools serialize to at most 600 tokens at bytes/3', async t => {
     const fx = await fixture(t);
-    const client = await connect(t, fx, 'leg');
+    const client = await connect(t, fx, 'worker');
     const { tools } = await client.listTools();
     assert.deepEqual(tools.map(tool => tool.name).sort(), ['read', 'send']);
     const size = Buffer.byteLength(JSON.stringify(tools));

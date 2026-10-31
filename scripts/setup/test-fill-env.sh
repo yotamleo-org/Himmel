@@ -170,8 +170,15 @@ HOME="$fh" _fe_save USER_SLUG "$fe" newer-slug
 check "save: answer updates the local override" "$(dotenv_get "$fh/.himmel/himmel.conf.local" USER_SLUG)" "newer-slug"
 check "save: himmel.conf keeps its own value" "$(dotenv_get "$fh/.himmel/himmel.conf" USER_SLUG)" "new-slug"
 
+# The Jira URL follows behaviour config; the API token above stays secret.
+check "store: Jira URL -> himmel.conf" "$(HOME="$fh" _fe_store JIRA_BASE_URL "$fe")" "$fh/.himmel/himmel.conf"
+HOME="$fh" _fe_save JIRA_BASE_URL "$fe" https://fixture.example.invalid
+check "save: Jira URL lands in config" "$(dotenv_get "$fh/.himmel/himmel.conf" JIRA_BASE_URL)" "https://fixture.example.invalid"
+check "save: Jira URL does not reach .env" "$(dotenv_get "$fe" JIRA_BASE_URL)" ""
+check "current: Jira URL reads config" "$(HOME="$fh" _fe_current JIRA_BASE_URL "$fe")" "https://fixture.example.invalid"
+
 # An env-only key (no himmel.conf reader) is asked for and kept in the env file.
-for k in JIRA_BASE_URL FIRECRAWL_BASE_URL WHISPER_MODEL; do
+for k in FIRECRAWL_BASE_URL WHISPER_MODEL; do
   check "store: env-only $k -> env file" "$(HOME="$fh" _fe_store "$k" "$fe")" "$fe"
   HOME="$fh" _fe_save "$k" "$fe" "val-$k"
   check "save: env-only $k lands in the env file" "$(dotenv_get "$fe" "$k")" "val-$k"

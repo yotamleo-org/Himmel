@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile } from './client.js';
@@ -235,6 +236,8 @@ describe('loadEnvFile', () => {
     dir = mkdtempSync(join(tmpdir(), 'jira-dotenv-'));
     file = join(dir, '.env');
     vi.stubEnv('HOME', dir);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', '');
+    vi.stubEnv('HIMMEL_PROFILE', '');
     mkdirSync(join(dir, '.himmel'));
     writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
   });
@@ -252,7 +255,7 @@ describe('loadEnvFile', () => {
     writeFileSync(join(dir, '.himmel', 'himmel.conf'),
       'JIRA_BASE_URL=https://from-config.example\nJIRA_EMAIL=dummy@example.invalid\nJIRA_PROJECT_KEY=DUMMY\n');
     loadEnvFile(file);
-    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.example');
+    expect(process.env.JIRA_BASE_URL).toBe('https://from-config.example');
     expect(process.env.JIRA_EMAIL).toBe('dummy@example.invalid');
     expect(process.env.JIRA_PROJECT_KEY).toBe('DUMMY');
   });
@@ -324,14 +327,83 @@ describe('loadEnvFile', () => {
     expect(process.env.JIRA_PROJECT_KEY).toBe('CONFIG');
   });
 
-  it('never redirects credential destinations through either config layer', () => {
+  it('resolves the Jira site URL from himmel.conf alone (HIMMEL-8244)', () => {
     vi.stubEnv('JIRA_BASE_URL', '');
     rmSync(file);
-    for (const name of ['himmel.conf.local', 'himmel.conf']) {
-      writeFileSync(join(dir, '.himmel', name), 'JIRA_BASE_URL=https://planted.example\n');
-    }
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://from-config.example\n');
     loadEnvFile(file);
-    expect(process.env.JIRA_BASE_URL).toBe('');
+    expect(baseUrl()).toBe('https://from-config.example');
+  });
+
+  it('honours HIMMEL_CONFIG_DIR instead of the default HOME config directory', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    const conf = join(dir, 'custom-conf');
+    mkdirSync(conf);
+    vi.stubEnv('HIMMEL_CONFIG_DIR', conf);
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://wrong-default.example\n');
+    writeFileSync(join(conf, 'himmel.conf'), 'JIRA_BASE_URL=https://custom.example\n');
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://custom.example');
+  });
+
+  it('ignores a planted cwd project URL while still reading its project key', () => {
+    const project = join(dir, 'project');
+    mkdirSync(project);
+    execFileSync('git', ['init', '--quiet', project]);
+    writeFileSync(join(project, '.env'), 'JIRA_BASE_URL=https://planted.example.invalid\nJIRA_PROJECT_KEY=PROJECT\n');
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    const cwd = process.cwd();
+    try {
+      process.chdir(project);
+      loadEnvFile(file);
+      expect(baseUrl()).toBe('https://from-dotenv.example');
+      expect(process.env.JIRA_PROJECT_KEY).toBe('PROJECT');
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+
+  it('prefers the local Jira site URL to default config and preserves the process value', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_BASE_URL=https://default.example\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'JIRA_BASE_URL=https://local.example\n');
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://local.example');
+    process.env.JIRA_BASE_URL = 'https://process.example';
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://process.example');
+  });
+
+  it.each(['environment', 'local config'])('resolves a profile Jira site URL selected by %s before DEFAULT', (selection) => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('HIMMEL_PROFILE', selection === 'environment' ? 'work' : '');
+    const vault = join(dir, 'vault', '.himmel');
+    mkdirSync(join(vault, 'profiles'), { recursive: true });
+    writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://default.example\n');
+    symlinkSync('../vault/.himmel/himmel.conf', join(dir, '.himmel', 'himmel.conf'));
+    writeFileSync(join(vault, 'profiles', 'work.conf'), 'JIRA_BASE_URL=https://profile.example\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'),
+      selection === 'local config' ? 'HIMMEL_PROFILE=work\n' : '');
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://profile.example');
+    process.env.JIRA_BASE_URL = '';
+    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'),
+      'HIMMEL_PROFILE=work\nJIRA_BASE_URL=https://local.example\n');
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://local.example');
+  });
+
+  it('ignores a profile name that traverses out of the profiles directory', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('HIMMEL_PROFILE', '../outside');
+    const vault = join(dir, 'vault', '.himmel');
+    mkdirSync(join(vault, 'profiles'), { recursive: true });
+    writeFileSync(join(vault, 'himmel.conf'), 'JIRA_BASE_URL=https://default.example\n');
+    writeFileSync(join(vault, 'outside.conf'), 'JIRA_BASE_URL=https://outside.example\n');
+    symlinkSync('../vault/.himmel/himmel.conf', join(dir, '.himmel', 'himmel.conf'));
+    loadEnvFile(file);
+    expect(baseUrl()).toBe('https://default.example');
   });
 
   it('fills a key that is exported but EMPTY (an empty value is not a usable one)', () => {

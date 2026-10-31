@@ -4,31 +4,21 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRequire } from "node:module";
 import { formatPidfile } from "./supervisor";
-// BASH_BIN, never a bare "bash": on Windows the spawning process resolves it
-// through PATH and can land on the WSL shim. Asserted by the
-// bare-bash lint in scripts/hooks/run-hook-with-bash.test.mjs.
 import { BASH_BIN } from "./run";
 import {
   lockPathForToken, checkBridgeArmed, refusalMessage, STOP_COMMAND_POSIX,
   generateNonce, matchesNonce, extractIdentity, collectOffers, formatOffer,
-  redactToken, safeGetUpdates, run, resolveTimeoutSec, resolvePowershellBin,
+  redactToken, safeGetUpdates, run, resolveTimeoutSec,
 } from "./onboard";
 
-// never hand a spawn the bare name `bash` — on Windows PATH
-// resolves it to the System32 WSL launcher, which cannot read the Windows-form
-// scriptPath these cross-checks pass it. Reuse the hook launcher's resolver,
-// the one place that policy is tested (same shape as
-// scripts/lanes/tests/lib/resolve-bash.mjs). Falling back to the bare name on
-// a null resolution is correct off Windows, where the WSL-alias trap does not
-// exist — but NOT on win32, where that fallback is the very System32 WSL
-// launcher this resolution avoids (CR [codex-1]). There it stays empty and the
-// two cross-checks below SKIP, the same shape they already use for a missing
-// restart-bridge.sh: a host with no Git Bash cannot run these checks at all,
-// and saying so beats a confusing WSL failure.
-const BASH_BIN: string = createRequire(import.meta.url)("../hooks/run-hook-with-bash.js").resolveBash()
-  || (process.platform === "win32" ? "" : "bash");
+import { composeOutboxWriteHint } from "./spawn-common";
+
+test("outbox prompt offers the literal append command without obsolete platform warnings", () => {
+  const hint = composeOutboxWriteHint("/tmp/bridge/outbox.jsonl");
+  expect(hint).toContain("require('fs').appendFileSync('/tmp/bridge/outbox.jsonl'");
+  expect(hint).not.toMatch(/MSYS|\/c\/\.\.\./i);
+});
 
 const NONCE = "onboard-test1234";
 
@@ -177,7 +167,6 @@ test("V4: refusalMessage names the stop command", () => {
   const msg = refusalMessage("the bridge supervisor is running");
   expect(msg).toContain(STOP_COMMAND_POSIX);
   expect(msg).toContain("restart-bridge.sh stop");
-  expect(msg).toContain("supervisor.ts --kill");   // the platform-neutral stop lever
 });
 
 test("V4 end-to-end: run() refuses with a real live pid in a sandboxed BRIDGE_ROOT supervisor.pid, exits non-zero, names the stop command", async () => {
@@ -375,12 +364,7 @@ test("--help prints usage and exits 0 WITHOUT ever calling loadToken", async () 
 // If it hasn't landed yet, SKIP loudly (never a silent or
 // fake pass) — the parent re-runs this suite once it does.
 
-// main run 34739779833 went red with `Expected "<path>" Received
-// ""` — restart-bridge.sh had not actually printed a path mismatch, the spawn
-// had timed out (Bun's default) on a slow Windows runner. Give it real
-// headroom and, if it still doesn't finish, say so instead of reporting a
-// blank string as if it were a real answer.
-const PRINT_LOCK_PATH_TIMEOUT_MS = process.platform === "win32" ? 20_000 : 10_000;
+const PRINT_LOCK_PATH_TIMEOUT_MS = 10_000;
 
 function spawnPrintLockPath(scriptPath: string, env: Record<string, string | undefined>): string {
   const startedAt = Date.now();
@@ -407,19 +391,11 @@ test("lock-path cross-check: restart-bridge.sh --print-lock-path agrees with loc
     console.warn("[onboard.test] SKIP lock-path cross-check: scripts/telegram/restart-bridge.sh does not exist yet (sibling HIMMEL-2176 Task 9 not landed) — re-run this suite once it lands.");
     return;
   }
-  if (!BASH_BIN) {
-    console.warn("[onboard.test] SKIP lock-path cross-check: no usable Git Bash on this Windows host (a bare `bash` here is the System32 WSL launcher, which cannot read the Windows-form scriptPath) — install Git for Windows to run this check.");
-    return;
-  }
   const lockDir = mkdtempSync(join(tmpdir(), "onboard-lockdir-"));
   const token = "CROSSCHECK_TOKEN_ABC123";
   try {
     const printed = spawnPrintLockPath(scriptPath, { ...process.env, TELEGRAM_BOT_TOKEN: token, BRIDGE_LOCK_DIR: lockDir });
     withEnv({ BRIDGE_LOCK_DIR: lockDir, BRIDGE_ROOT: undefined }, () => {
-      // restart-bridge.sh is bash (POSIX forward slashes even under git-bash on
-      // Windows); node:path's join() on win32 emits backslashes. Same path,
-      // different separator convention — normalize both sides for comparison
-      // (matches the other lockPathForToken tests above).
       expect(printed.replace(/\\/g, "/")).toBe(lockPathForToken(token).replace(/\\/g, "/"));
     });
   } finally {
@@ -433,10 +409,6 @@ test("lock-path cross-check: an empty BRIDGE_LOCK_DIR agrees with the shell's ${
     console.warn("[onboard.test] SKIP empty-value lock-path cross-check: scripts/telegram/restart-bridge.sh does not exist yet (sibling HIMMEL-2176 Task 9 not landed) — re-run this suite once it lands.");
     return;
   }
-  if (!BASH_BIN) {
-    console.warn("[onboard.test] SKIP empty-value lock-path cross-check: no usable Git Bash on this Windows host (see the sibling cross-check above).");
-    return;
-  }
   const bridgeRootDir = mkdtempSync(join(tmpdir(), "onboard-lockdir-empty-"));
   const token = "CROSSCHECK_EMPTY_TOKEN";
   try {
@@ -447,19 +419,6 @@ test("lock-path cross-check: an empty BRIDGE_LOCK_DIR agrees with the shell's ${
   } finally {
     rmSync(bridgeRootDir, { recursive: true, force: true });
   }
-});
-
-// --- PowerShell resolution: the win32 armed-check must
-// prefer pwsh over powershell, same order as
-// scripts/himmelctl/lib/helpers.js's resolvePowershell() — a
-// host with ONLY pwsh installed must not silently fail-open the check. ---
-
-test("resolvePowershellBin: prefers pwsh when only pwsh resolves on PATH", () => {
-  expect(resolvePowershellBin((bin) => bin === "pwsh")).toBe("pwsh");
-});
-
-test("resolvePowershellBin: falls back to powershell when pwsh does not resolve", () => {
-  expect(resolvePowershellBin(() => false)).toBe("powershell");
 });
 
 // --- Error backoff: a persistently failing getUpdates

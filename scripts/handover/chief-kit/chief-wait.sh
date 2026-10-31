@@ -67,14 +67,15 @@
 #                               (default 3) in a row, then it wakes (the streak shows
 #                               in the heartbeat as pred_hangs=<n>); any other
 #                               refusal wakes once (CHIEF_WAIT_CLOSE = seam).
-#   WAKE worker-event <line> out=<file>  with --doc and --workers-from (the script relay,
+#   WAKE worker-event <line> rc=<n> out=<file>  with --doc and --workers-from (the script relay,
 #                               R0): a worker whose tails= is WRAPPED or acts= MERGED is
-#                               wrapped by `timeout 90 worker-event.sh --doc --fleet` on
+#                               wrapped by `timeout -k 5 240 worker-event.sh --doc --fleet` on
 #                               a line built from its newest such bullet; HANDLED is a
 #                               digest line, no wake; a lock-held / not-yet-WRAPPED /
 #                               subtree-alive refusal retries next sample; any other
 #                               ESCALATE or rc wakes once per bullet, <line> being
-#                               worker-event's first output line, the tick line after it
+#                               worker-event's first non-blank output line (a silent failure
+#                               gets an ESCALATE reason with its rc), the tick line after it
 #                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
 #                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` when
 #                               the relay absorbed anything, and the digest clears.
@@ -96,7 +97,7 @@
 #                               (default 15) paces the tally; CHIEF_WAIT_TRACKER
 #                               replaces the tracker (tests).
 #   WAKE handover-budget [repeat] <line>  with --doc <chief doc>: chief-budget.sh --title
-#                               <the doc's basename> says HANDOVER (150 turns, 30M
+#                               <the doc's basename> says HANDOVER (110 turns, 30M
 #                               cache-read or 45 % context fill); the marker clears on OK
 #                               and, while HANDOVER holds, the wake repeats (marked
 #                               `repeat`) every CHIEF_WAIT_BUDGET_REPEAT_MIN minutes
@@ -212,10 +213,10 @@
 #                      A sample (a predecessor close, a tick, then bank) can take up to
 #                      CHIEF_WAIT_CLOSE_TIMEOUT once, then twice
 #                      CHIEF_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
-#                      Telegram line waits for it. A heartbeat older than that
-#                      plus a few polls, still
-#                      waiting or sampling, is a waiter that died without
-#                      trapping (SIGKILL).
+#                      Telegram line waits for it. The relay adds at most one
+#                      wrap attempt (240 s +5 s kill grace), refreshing the heartbeat
+#                      before its call. Older than those bounds plus a few polls,
+#                      waiting or sampling, means it died without trapping (SIGKILL).
 #   <inbox>.wait.state   the saved action key (line 1: tick-args hash, line 2: key;
 #                        line 3 `failwoke` once a failure streak has woken).
 #                        Written atomically: temp file in the same dir, then
@@ -231,7 +232,8 @@
 #                        skips tick/bank/page sampling and wakes only on Telegram.
 #                        That mutes classifier-denial pages for up to that long;
 #                        `rm <inbox>.handover` ends the mode early.
-#   <inbox>.relay-on-live  (`chief.sh next --relay-on-live`; needs --doc) line 1 the
+#   <inbox>.relay-on-live  (`chief.sh next` defaults to relay-on-live unless
+#                        --no-relay-on-live; needs --doc) line 1 the
 #                        successor session, line 2 its doc. When that doc's queue lock
 #                        is held fresh the waiter prints one `WAKE relay-on-live
 #                        successor=<s>` block (relay-batch.sh's output, ending with
@@ -1095,24 +1097,36 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # marker (labelled with N<k>, else the doc stem; a WRAPPED is preferred, its residual
 # check runs). HANDLED appends `<label> <what> <pr|->` to the digest and sets
 # r0_handled; rc 10 with a `-failed rc=3/4/6/7` that is not `step pr-state` (lock held,
-# tail not WRAPPED, subtree or subagent alive) is retried next sample; anything else
-# prints `WAKE worker-event <first line> out=<file>` and returns 0. HANDLED and WAKE record
+# tail not WRAPPED, subtree or subagent alive) stays retryable; anything else
+# prints `WAKE worker-event <first line> rc=<n> out=<file>` and returns 0. After one
+# call the relay yields to the inbox; the next sample starts after a retryable worker
+# so its standing refusal cannot starve later workers. HANDLED and WAKE record
 # `<label> <marker> <cksum>` in $r0_file, so one bullet is never run or woken twice.
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
 r0_file="$inbox.wait.r0"
+r0_retry=""
+if [ -r "$inbox.wait.r0-next" ]; then
+    IFS= read -r r0_retry 2>/dev/null < "$inbox.wait.r0-next" || r0_retry=""  # swallow-ok: an unreadable cursor falls back to plain candidate order
+fi
 leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr seen=" "
+    local cands label marker ldoc bullet sum line stem out rc outf what pr
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
+    # Prefer WRAPPED once per label, then start after the last retryable worker.
     cands="$( { field tails "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):WRAPPED$/\1 WRAPPED/p'
-                field acts "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):MERGED#[0-9]*$/\1 MERGED/p'; } )"
+                field acts "$tick_line" | tr ',' '\n' | sed -n 's/^\(.*\):MERGED#[0-9]*$/\1 MERGED/p'; } |
+        awk -v last="$r0_retry" '
+            !NF || seen[$1]++ { next }
+            past { print; next }
+            { before = before $0 "\n" }
+            $1 == last { past = 1 }
+            END { printf "%s", before }
+        ' )"
     while read -r label marker; do
         [ -n "$label" ] || continue
-        case "$seen" in *" $label "*) continue ;; esac
-        seen="$seen$label "
         ldoc="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
         [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
         bullet="$(grep -E "^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?$marker([^A-Za-z]|$)" "$ldoc" | tail -n 1)"
@@ -1127,15 +1141,23 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         outf="$inbox.wait.le-$label"
         heartbeat sampling
-        out="$(printf '%s\n' "$line" | timeout -k 5 90 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        # Allow a slow close and refresh, but stay below heartbeat consumers' 300s
+        # floor. Capture the rc: an empty result alone does not prove a timeout.
+        out="$(printf '%s\n' "$line" | timeout -k 5 240 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         out="$(printf '%s\n' "$out" | r0_scrub)"
+        if [ "$rc" -ne 0 ] && ! [[ $out =~ [^[:space:]] ]]; then
+            case "$rc" in
+                124|137) out="ESCALATE relay-timeout $label rc=$rc limit=240s" ;;
+                *) out="ESCALATE relay-failed $label rc=$rc no-output" ;;
+            esac
+        fi
         printf '%s\n' "$out" > "$outf" 2>/dev/null
         if [ "$rc" -eq 0 ]; then
             printf '%s\n' "$sum" >> "$r0_file"
             r0_handled=1
             r0_fold="$r0_fold $label"
             what="$(printf '%s\n' "$out" | sed -n 's/^HANDLED \([a-z-]*\).*/\1/p' | head -n 1)"
-            [ "$what" = noop ] && continue
+            [ "$what" = noop ] && break
             pr=""
             if [ "$what" != close-wrapped ]; then
                 pr="$(printf '%s\n' "$line" | grep -oE 'MERGED #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)"
@@ -1143,14 +1165,17 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
             fi
             [ -z "$pr" ] || r0_fold="$r0_fold #$pr"
             printf '%s %s %s\n' "$label" "${what:-handled}" "${pr:--}" >> "$digest_file"
-            continue
+            break  # service the inbox before another slow wrap, next sample
         fi
         case "$rc:$out" in
             *"step pr-state"*) ;;
-            10:*-failed\ rc=[3467]\ *) continue ;;
+            10:*-failed\ rc=[3467]\ *)
+                r0_retry="$label"
+                printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
+                break ;;
         esac
         printf '%s\n' "$sum" >> "$r0_file"
-        printf 'WAKE worker-event %s out=%s\n' "$(printf '%s\n' "$out" | head -n 1)" "$outf"
+        printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
         return 0
     done <<EOF
 $cands
@@ -1282,7 +1307,8 @@ while :; do
                 fi ;;
         esac
     fi
-    # <inbox>.relay-on-live (written by `chief.sh next --relay-on-live`; line 1 the
+    # <inbox>.relay-on-live (`chief.sh next` defaults to relay-on-live unless
+    # --no-relay-on-live; needs --doc; line 1 the
     # successor session, line 2 its doc): once the successor's queue lock is held
     # fresh it is live, so wake this chief ONCE with relay-batch.sh's lines. The
     # waiter sends no SendMessage (relay-batch writes a claudex worker's inbox itself, as it

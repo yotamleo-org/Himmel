@@ -426,14 +426,14 @@ On a new machine, put behaviour and policy settings in `~/.himmel`, not
 
 - **`~/.himmel/himmel.conf`** holds the behaviour keys: `USER_SLUG`,
   `HANDOVER_DIR`, `LUNA_VAULT_PATH`, `CR_PROFILE`, the `HIMMEL_INITIATIVE`
-  family and the non-secret Jira identifiers `JIRA_EMAIL`, `JIRA_PROJECT_KEY`,
-  `JIRA_PROJECTS` and `JIRA_CLOUD_ID`. Copy
+  family, the Jira site URL `JIRA_BASE_URL`, and the non-secret Jira identifiers
+  `JIRA_EMAIL`, `JIRA_PROJECT_KEY`, `JIRA_PROJECTS` and `JIRA_CLOUD_ID`. Copy
   [`himmel.conf.example`](himmel.conf.example) to start. `--fill-env` writes
   its answers for these keys there, even though the table below lists them.
 - **`~/.himmel/config.json` `.policy`** holds the gate policy:
   `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`
   ([template](himmel-config.example.json)).
-- **`.env`** keeps the secrets (`JIRA_BASE_URL`, `JIRA_API_TOKEN`, provider
+- **`.env`** keeps the secrets (`JIRA_API_TOKEN`, provider
   keys, Telegram keys) and any key not yet classified as config, until the
   keyring work (HIMMEL-7147, HIMMEL-7576) is complete. Never empty it.
 
@@ -479,7 +479,7 @@ documented at the top of [`.env.example`](../../.env.example):
 | Variable | What it is | Where to get it |
 |---|---|---|
 | `USER_SLUG` | Operator slug — names handover bucket paths + `registry.json`. Falls back to your git `user.name` slugified if unset. Also bridged into the live env. | Pick a short kebab-case handle. |
-| `JIRA_BASE_URL` | Your Atlassian site URL. | `https://<your-site>.atlassian.net` |
+| `JIRA_BASE_URL` | Your Atlassian site URL. Set in `~/.himmel/himmel.conf`, an active station profile, or `.local`; a non-empty shell value wins. `.env` is a fallback for one release. Only use trusted URLs: this is where the CLI sends credentials. | `https://<your-site>.atlassian.net` |
 | `JIRA_EMAIL` | Atlassian account email. | The address you sign into Jira with. |
 | `JIRA_API_TOKEN` | Jira / Confluence CLI auth token. | id.atlassian.com/manage-profile/security/api-tokens |
 | `JIRA_PROJECT_KEY` | Default project for `jira` ops. | Your Jira project key (e.g. `ACME`). |

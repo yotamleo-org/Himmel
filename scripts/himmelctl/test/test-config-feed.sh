@@ -277,6 +277,17 @@ node_missing=$("$node_bin" -e 'const f=require(process.argv[1]);const m=require(
 [ -z "$node_missing" ] || fail "g4 manifest secrets with no presence source: $node_missing"
 pass "g secret presence per consumer source, no values emitted, manifest fully covered"
 
+# Jira settings are behaviour config, not .env-only presence. The report must
+# agree with a config-only CLI and must never emit a destination or credential.
+mkdir -p "$homeDir/.himmel/profiles"
+printf 'JIRA_BASE_URL=https://config-presence.example.invalid\nJIRA_EMAIL=fixture@example.invalid\nJIRA_PROJECT_KEY=DUMMY\n' > "$homeDir/.himmel/himmel.conf"
+JIRA_BASE_URL='' JIRA_EMAIL='' JIRA_PROJECT_KEY='' HIMMEL_PROFILE='' HIMMEL_CONFIG_DIR='' run_report --items secret:JIRA_BASE_URL,secret:JIRA_EMAIL,secret:JIRA_PROJECT_KEY > "$work/g-jira.json" 2>/dev/null || fail "g Jira config report failed"
+for n in JIRA_BASE_URL JIRA_EMAIL JIRA_PROJECT_KEY; do
+  [ "$(sec "$n" "$work/g-jira.json")" = present ] || fail "g $n missing from config-only presence"
+done
+if grep -q 'config-presence.example.invalid\|fixture@example.invalid' "$work/g-jira.json"; then fail "g Jira config value leaked into report"; fi
+pass "g Jira config-only presence agrees with CLI without emitting values"
+
 # ── h. redactor hardening ─────────────────────────────────────
 redact_js="$repo_root/scripts/himmelctl/lib/redact.js"
 probes_js="$repo_root/scripts/himmelctl/lib/probes.js"

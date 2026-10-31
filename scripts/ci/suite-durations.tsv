@@ -38,6 +38,7 @@ scripts/security/test-security-audit-cadence.sh	2
 #     | sed -nE 's/.*\[(PASS|FAIL)\] ([^ ]+) \(([0-9]+)s\).*/\2\t\3/p' \
 #     | sort -u
 # then replace the rows below and update the source line above.
+marketplace/plugins/pstack/test-vendor.sh	1
 marketplace/plugins/handover/scripts/test-migrate-v1-to-v2.sh	0
 marketplace/plugins/handover/scripts/test-skill-e2e.sh	0
 marketplace/plugins/himmel-bus/tests/test-cli.sh	21
@@ -432,6 +433,7 @@ scripts/handover/chief-kit/test-run-suite.sh	1
 scripts/handover/chief-kit/test-shepherd.sh	3
 scripts/handover/chief-kit/test-station-sync.sh	3
 scripts/handover/chief-kit/test-status-drift.sh	57
+scripts/handover/chief-kit/test-model-check-report.sh	3
 scripts/handover/chief-kit/test-succession-tracker.sh	1
 scripts/handover/chief-kit/test-tick-deadwin.sh	8
 scripts/handover/chief-kit/test-tick-holds.sh	3
@@ -886,6 +888,7 @@ scripts/lib/test-sha256-bin.sh	0
 scripts/lib/test-shared-branch-lock.sh	1
 scripts/lib/test-suite-semaphore.sh	10
 scripts/lib/test-telemetry.sh	1
+scripts/lib/test-ticket-status.sh	0
 scripts/lib/test-timeout-bin.sh	12
 scripts/lib/test-tracker-contract.sh	6
 scripts/lib/test-unchecked-mktemp.sh	4
@@ -1015,6 +1018,7 @@ scripts/telegram/test-break-glass.sh	4
 scripts/telegram/test-dispatch-lane.sh	44
 scripts/telegram/test-phi-egress-guard-parity.sh	0
 scripts/telegram/test-restart-bridge.sh	65
+scripts/trust/test-trust-status-no-exec.sh	1
 # Merge-gate estimate: focused install row measured 41s; hook behavior pending VM timing.
 scripts/test-adopt-features.sh	599
 scripts/test-adopt-merge-gate.sh	145

@@ -163,7 +163,13 @@ for key in $identifiers; do
         fail "migration did not copy an active $key assignment"
     fi
 done
-for key in JIRA_API_TOKEN JIRA_BASE_URL FIRECRAWL_BASE_URL WHISPER_MODEL; do
+has "dry run includes JIRA_BASE_URL" "would move  JIRA_BASE_URL" "$preview"
+if grep -qxF 'JIRA_BASE_URL=https://dummy.example' "$HOME/.himmel/himmel.conf"; then
+    pass "migration copies the Jira site URL assignment"
+else
+    fail "migration did not copy the Jira site URL assignment"
+fi
+for key in JIRA_API_TOKEN FIRECRAWL_BASE_URL WHISPER_MODEL; do
     lacks "dry run excludes $key" "$key" "$preview"
     lacks "identifier migration leaves $key behind" "$key" "$conf"
 done

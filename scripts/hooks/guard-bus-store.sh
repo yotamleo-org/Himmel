@@ -41,7 +41,7 @@
 #   process ancestry, so no role check is needed here) and everything else —
 #   silently, with no output.
 #
-# FAIL MODE: an advisory speed bump, fail-closed only for its one subject. A payload it cannot
+# FAIL MODE: an advisory soft block, fail-closed only for its one subject. A payload it cannot
 # parse (missing jq, bad JSON, a non-string command) is scanned as raw text and
 # DENIED when it names the bus root; with no mention of the root it is allowed.
 # Failing closed on every unparseable call would lock the session out of every
@@ -121,7 +121,7 @@ esac
 ROOT_RE='(^|[^A-Za-z0-9_-])himmel\\?/bus($|[^A-Za-z0-9_.-])'
 # The identity verbs are matched word by word (verb_after_bus below), not by a
 # regex: a `bus` word, then later in the SAME segment a word that is exactly
-# register|bind|rebind. Options may sit between (`bus --role leg register x`),
+# register|bind|rebind. Options may sit between (`bus --role worker register x`),
 # quotes are dropped (`bus 'register' x`, `b''us register x`), and a path such as
 # /tmp/register.txt is not a verb.
 ENV_RE='(^|[^A-Za-z0-9_])HIMMEL_BUS_[A-Za-z0-9_]*\+?='
@@ -382,7 +382,7 @@ env_assign_word() {
 
 deny() {
     local msg reason
-    msg="bus store-deny: $1. himmel-bus keeps its store off-limits to a session's own tool calls (a soft block, a speed bump). Allowed: bus status|peers|wait|send|adopt. Registration is the launcher's. Bypass: BUS_STORE_GUARD_OK=1 in the launching shell."
+    msg="bus store-deny: $1. himmel-bus keeps its store off-limits to a session's own tool calls (a soft block). Allowed: bus status|peers|wait|send|adopt. Registration is the launcher's. Bypass: BUS_STORE_GUARD_OK=1 in the launching shell."
     reason=$(printf '%s' "$msg" | jq -Rs . 2>/dev/null) || reason='"bus store-deny: denied"'
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
     printf '%s\n' "$msg" >&2

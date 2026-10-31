@@ -13,7 +13,7 @@ const PART_KEYS = ['text', 'raw', 'url', 'data', 'metadata', 'filename', 'mediaT
 const CARD_KEYS = ['name', 'description', 'supportedInterfaces', 'provider', 'version', 'documentationUrl', 'capabilities', 'securitySchemes', 'securityRequirements', 'defaultInputModes', 'defaultOutputModes', 'skills', 'signatures', 'iconUrl'];
 const SKILL_KEYS = ['id', 'name', 'description', 'tags', 'examples', 'inputModes', 'outputModes', 'securityRequirements'];
 
-const rec = (o = {}) => ({ n: 3, i: '01ARZ3NDEKTSV4RRFFQ69G5FAV', t: 1760000000000, f: 'console', r: 'leg', c: 0, b: 'hello', h: 'ab'.repeat(32), ...o });
+const rec = (o = {}) => ({ n: 3, i: '01ARZ3NDEKTSV4RRFFQ69G5FAV', t: 1760000000000, f: 'console', r: 'worker', c: 0, b: 'hello', h: 'ab'.repeat(32), ...o });
 
 function assertMessage(m) {
   assert.deepEqual(Object.keys(m).filter(k => !MESSAGE_KEYS.includes(k)), []);
@@ -37,10 +37,10 @@ test('record renders as a shape-valid A2A Message', () => {
 });
 
 test('contextId is one thread for both directions between two peers', () => {
-  const a = a2a.toA2AMessage(rec({ f: 'console', r: 'leg' }));
-  const b = a2a.toA2AMessage(rec({ f: 'leg', r: 'console', i: 'OTHERID' }));
+  const a = a2a.toA2AMessage(rec({ f: 'console', r: 'worker' }));
+  const b = a2a.toA2AMessage(rec({ f: 'worker', r: 'console', i: 'OTHERID' }));
   assert.equal(a.contextId, b.contextId);
-  assert.notEqual(a.contextId, a2a.toA2AMessage(rec({ r: 'other-leg' })).contextId);
+  assert.notEqual(a.contextId, a2a.toA2AMessage(rec({ r: 'other-worker' })).contextId);
 });
 
 test('a c=1 record carries the flag only in metadata, never as an authority field', () => {
@@ -86,10 +86,10 @@ async function peersFixture(t, files) {
 }
 
 test('AgentCard is shape-valid and names no endpoint', () => {
-  const card = a2a.agentCard({ n: 'leg-1', role: 'leg', console: 'con', launched: '2026-10-13T00:00:00.000Z', pid: 4242, start: 99 });
+  const card = a2a.agentCard({ n: 'worker-1', role: 'worker', console: 'con', launched: '2026-10-13T00:00:00.000Z', pid: 4242, start: 99 });
   assert.deepEqual(Object.keys(card).filter(k => !CARD_KEYS.includes(k)), []);
   for (const k of ['name', 'description', 'supportedInterfaces', 'version', 'capabilities', 'defaultInputModes', 'defaultOutputModes', 'skills']) assert.ok(card[k] !== undefined, k);
-  assert.equal(card.name, 'leg-1');
+  assert.equal(card.name, 'worker-1');
   assert.deepEqual(card.supportedInterfaces, []);
   assert.equal(card.capabilities.streaming, false);
   assert.equal(card.capabilities.pushNotifications, false);
@@ -104,8 +104,8 @@ test('AgentCard is shape-valid and names no endpoint', () => {
 
 test('cards are generated for bound peers only', async t => {
   const dir = await peersFixture(t, {
-    bound: { n: 'bound', role: 'leg', console: 'con', launched: 'x', pid: 10, start: 5 },
-    unbound: { n: 'unbound', role: 'leg', console: 'con', launched: 'x' },
+    bound: { n: 'bound', role: 'worker', console: 'con', launched: 'x', pid: 10, start: 5 },
+    unbound: { n: 'unbound', role: 'worker', console: 'con', launched: 'x' },
     con: { n: 'con', role: 'console', launched: 'x', pid: 11, start: 6 },
   });
   const cards = await a2a.agentCards(dir);

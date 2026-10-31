@@ -1128,5 +1128,27 @@ else
     fail "32 does not make the blast-radius pass default-on for guard/gate diffs with a CR_CLAUDE_AGENTS=blast-radius-off opt-out"
 fi
 
+# Neither guarded list may retain a retired launcher path;
+# both must still guard the live PR opener and its burn calculator.
+for list in cr_guarded cr_pathspecs; do
+    if [ "$list" = cr_guarded ]; then
+        guarded_list=$(sed -n '/^cr_guarded="/,/"$/p' "$ROOT/scripts/cr/pr-check-context.sh")
+    else
+        guarded_list=$(sed -n '/^cr_pathspecs=(/,/^[[:space:]]*.*)$/p' "$ROOT/scripts/cr/pr-check-context.sh")
+    fi
+    if [ -n "$guarded_list" ] && ! grep -qE 'scripts/lanes/leg-(pr-open|burn)\.sh|scripts/handover/chief-kit/console-wait\.sh' <<< "$guarded_list"; then
+        pass "$list: no retired launcher paths (HIMMEL-8306)"
+    else
+        fail "$list: missing list or retired launcher path remains (HIMMEL-8306)"
+    fi
+    for path in scripts/lanes/worker-pr-open.sh scripts/lanes/worker-burn.sh; do
+        if grep -qF "$path" <<< "$guarded_list"; then
+            pass "$list: still guards $path (HIMMEL-8306)"
+        else
+            fail "$list: no longer guards $path (HIMMEL-8306)"
+        fi
+    done
+done
+
 echo "test-pr-check-pair: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

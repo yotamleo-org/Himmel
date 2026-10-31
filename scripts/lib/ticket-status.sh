@@ -16,7 +16,7 @@
 #     TS_STAGE     for a miss: the input that could not be read
 #     TS_J_STATUS  the Jira status the derive saw; TS_HEADS the "<pr>:<head>" list
 #     TS_PR_STATE  "<pr>\t<head>\t<class>\t<red latch>" per open PR
-#     TS_WORKER_STATE  live | idle | IDLE-HELD | wrapped | unknown | none
+#     TS_WORKER_STATE  live | idle | IDLE-HELD | parked | wrapped | unknown | none
 #     TS_OWNER_DOC the doc of another recorded worker that holds its lock while the
 #                  recorded owner has ended; "" otherwise
 #   status_event <k=v>...           one JSON row in status-events.jsonl
@@ -62,6 +62,9 @@ _TS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/prim.sh
 # shellcheck disable=SC1091
 . "$_TS_LIB_DIR/prim.sh"
+# shellcheck source=scripts/lib/status-marker.sh
+# shellcheck disable=SC1091
+. "$_TS_LIB_DIR/status-marker.sh"
 
 ts_state_dir() { printf '%s' "${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"; }
 
@@ -262,16 +265,25 @@ ts_record_write() {
 
 # ts_marker_newest <doc> — the newest Results marker in a worker doc.
 ts_marker_newest() {
+    local line newest=""
+    local succession_re='^- [0-9]{1,2}:[0-9]{2} SUCCESSION([^A-Za-z0-9-]|$)'
     [ -r "$1" ] || return 0
-    grep -oE '^- [0-9]{1,2}:[0-9]{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED|SUCCESSION)([^A-Za-z0-9-]|$)' "$1" 2>/dev/null \
-        | tail -n 1 | awk '{ print $3 }'
+    while IFS= read -r line || [ -n "$line" ]; do
+        if status_marker_parse "$line" >/dev/null; then
+            newest=${BASH_REMATCH[3]}
+            if status_marker_is_parked "$newest"; then newest=PARKED-USAGE; fi
+        elif [[ "$line" =~ $succession_re ]]; then
+            newest=SUCCESSION
+        fi
+    done < <(grep '^-' "$1" 2>/dev/null)
+    printf '%s\n' "$newest"
 }
 
 _ts_epoch_of_iso() {
     date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null
 }
 
-# ts_worker_state <doc> — live | idle | IDLE-HELD | wrapped | unknown, from the
+# ts_worker_state <doc> — live | idle | IDLE-HELD | parked | wrapped | unknown, from the
 # doc's newest marker and its queue lock. Only an end marker is positive end
 # evidence: a free lock with no end marker (a hand-off, a cloud or
 # other-station worker) is unknown, which still counts as an owner.
@@ -295,9 +307,11 @@ _ts_worker_state() {
     fi
     case "$rc" in
         11|12) TS_LOCK_HELD=yes ;;
-        0) TS_LOCK_HELD=no; TS_WORKER_STATE=unknown; return 0 ;;
+        0) TS_LOCK_HELD=no ;;
         *) TS_WORKER_STATE=unknown; return 0 ;;
     esac
+    if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
+    if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
     if [ -n "$hb" ] && hb_epoch=$(_ts_epoch_of_iso "$hb"); then
         age=$(( $(date -u +%s) - hb_epoch ))

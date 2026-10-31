@@ -1003,9 +1003,8 @@ describe('the capability handshake (HIMMEL-1560)', () => {
     const original = fs.readFileSync(f, 'utf8');
     const r = run(['--check'], f);
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /did not prove it can record every verb/);
-    assert.match(r.stdout, /heartbeat/);
-    assert.match(r.stdout, /trust on.*REFUSE/);
+    assert.match(r.stdout, /recorder compatibility UNVERIFIED/);
+    assert.doesNotMatch(r.stdout, /Missing:|trust on.*REFUSE/);
     assert.equal(fs.readFileSync(f, 'utf8'), original, '--check writes nothing');
   });
 });
