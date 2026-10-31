@@ -130,7 +130,13 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   `HANDOVER_DIR` in the shell that runs `install`. The board on the Fleet page is read from
   `<chief doc>.board.json`, which every `board.mjs` render rewrites beside the doc, and
   reaches the page within about 5 s; with no such file the server builds it as before.
-- **Pages** (the left rail): `#/config` (Configure: four group tiles, Secrets, Review,
+- **Pages** (the left rail): `#/shift` (the Shift page, first in the rail, with a badge counting
+  the rows that wait on you: a shift is the whole fleet between cuts, never one chief's run. It
+  shows the chiefs with their span and PR credit, Waiting on you (links out; nothing here acts),
+  Running now and Shipped; a closed shift adds Carried to the next shift and a pager. A shift
+  closes at the last queue-lock release once nothing was held for 60 minutes, or at the 08:00 and
+  20:00 clock cuts once it is at least 4 hours old, and is recorded in `shifts.jsonl` under
+  `$HANDOVER_DIR`. Details: `scripts/config-ui/README.md`), `#/config` (Configure: four group tiles, Secrets, Review,
   Tracker and Project scope, one open at a time, each row with its command, when it takes
   effect and a Learn more link to the docs site, and the Check this install strip under the
   tiles. Secrets: first the Account step, which creates the UI login once on a fresh install;
