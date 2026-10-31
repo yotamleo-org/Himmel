@@ -3149,13 +3149,15 @@ chief next --bucket trim94dst --doc "$doc94A" >/dev/null 2>&1 || rc94=$?
 live94="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc94B" 2>/dev/null)"
 check "94 next succeeds with 20 closed workers on the legs line" "$rc94" "0"
 check "94 the successor Live state carries 0 closed workers" "$(printf '%s\n' "$live94" | grep -c 'C[0-9]*:nonce-closed')" "0"
-check "94 the successor Live state keeps both open workers" "$(printf '%s\n' "$live94" | grep -c -e 'N1:n-one:lock-one:11' -e 'N2:n-two:lock-two:22')" "1"
+check "94 the successor Live state keeps open worker N1" "$(printf '%s\n' "$live94" | grep -cF 'N1:n-one:lock-one:11')" "1"
+check "94 the successor Live state keeps open worker N2" "$(printf '%s\n' "$live94" | grep -cF 'N2:n-two:lock-two:22')" "1"
 check "94 the shift prose is not carried" "$(printf '%s\n' "$live94" | grep -c 'SHIFT-NOTE-94')" "0"
 check "94 the pool-disposition: line is still carried" "$(printf '%s\n' "$live94" | grep -c '^pool-disposition: DEMO-94 question POOL-LINE-94$')" "1"
 # shellcheck disable=SC2016  # literal fixture text
 check "94 the successor keeps the last GO" "$(printf '%s\n' "$live94" | grep -c '^last GO: `94:aaaa1111` (ordinary)$')" "1"
 check "94 the prior-GO chain is not carried" "$(printf '%s\n' "$live94" | grep -c 'PRIOR-GO-94')" "0"
-check "94 the history file holds a closed span, the shift prose and the prior GOs verbatim" "$(grep -c -e 'C20:nonce-closed-20:lock-closed-20:20' -e 'PRIOR-GO-94' "$hist94" 2>/dev/null)" "2"
+check "94 the history file holds a closed span and the shift prose verbatim" "$(grep -F 'C20:nonce-closed-20:lock-closed-20:20' "$hist94" 2>/dev/null | grep -cF 'SHIFT-NOTE-94')" "1"
+check "94 the history file holds the prior GOs verbatim" "$(grep -cF "$go94" "$hist94" 2>/dev/null)" "1"
 check "94 the HANDOFF names the history file" "$(grep -cF "specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md" "$handoff94A" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc94A" "$token94" >/dev/null 2>&1
 
