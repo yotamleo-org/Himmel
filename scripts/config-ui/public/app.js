@@ -601,7 +601,7 @@ document.addEventListener("click", (e) => {
     return void saveSecret(b.dataset.name, "remove", null);
   }
   if (b.dataset.act === "setup-verify") return void runVerify();
-  if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(true); } // the verdict reads the doctor feed too
+  if (b.dataset.act === "refresh-health") { loadHealth(); loadFleet(); return void loadFeed(true); } // the verdict reads the doctor feed too; a chief row reads the Fleet census
   if (b.dataset.act === "open-config") return void (location.hash = "#/health?row=" + encodeURIComponent(b.dataset.id)); // a check's finding opens its row on Health
   if (b.dataset.act === "health-tab" || b.dataset.act === "health-row" || b.dataset.act === "health-tile") {
     // one tile panel open at a time; the open tile closes it again (tile=none keeps a self-opened Checks shut on reload)

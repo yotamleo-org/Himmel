@@ -255,6 +255,14 @@ test("health: refresh re-probes the doctor feed inside the server's 30 s cache a
   await expect(verdictWord(page)).toHaveText("Act now");
 });
 
+test("health: refresh re-reads the Fleet census, so a chief row follows a chief starting or stopping (HIMMEL-8031)", async ({ page }) => {
+  await openHealth(page, { clean: true });
+  let reads = 0; // the page's own Fleet read was sent before this listener; only a read the refresh sends counts
+  page.on("request", (r) => { if (new URL(r.url()).pathname === "/api/agui/fleet") reads++; });
+  await page.locator('[data-act="refresh-health"]').click();
+  await expect.poll(() => reads).toBeGreaterThan(0);
+});
+
 test("health: with the feed pending the verdict is No data and the bank still renders (D2)", async ({ page }) => {
   h = await boot({}, { ledger: LEDGER, handover: { bullet: "- 03:00 LIVE — x" }, feedDelayMs: 5000 });
   await page.goto(h.url);
