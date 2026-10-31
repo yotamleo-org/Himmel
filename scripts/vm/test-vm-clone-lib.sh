@@ -186,6 +186,66 @@ if [ "$rc" -eq 1 ] && grep -q 'STAGE FAILED (tar)' <<< "$out"; then
     pass "T4g tar path: a failed guest-side .env.example write fails the stage"
 else fail_case "T4g rc=$rc: $out"; fi
 
+# --- T5: vm_clone_ensure <snapshot> [port]. vbox_py, the claimed-port
+# enumeration and the allocator are stubbed; the registry lock is real, in a throwaway dir.
+# $1 = body run after sourcing; stubs read the T5_* env: CLAIMED (claimed ports), EXISTS (1 = clone exists),
+# FWD (the existing clone's ssh forward).
+t5() {
+    local body="$1"
+    : > "$WORK/vbox-py.log"
+    HIMMEL_VM_LOCK_DIR="$WORK/t5-locks" HIMMEL_VM_LOCK_WAIT=0 VBOXMANAGE_PATH="$BIN/VBoxManage" FAKE_VBOX_CALLS="$calls" \
+        T5_LOG="$WORK/vbox-py.log" \
+        bash -c '
+            . "$1/scripts/vm/port-alloc.sh"; . "$1/scripts/vm/vm-lock.sh"; . "$1/scripts/vm/lib/vm-clone.sh"
+            vm_ar_claimed_ports() { printf "%s\n" ${CLAIMED:-}; }
+            vm_ar_next_ports() { echo 2299; }
+            vm_ar_vm_exists() { [ "${EXISTS:-0}" = 1 ]; }
+            vbox_py() {
+                echo "vbox_py $*" >> "$T5_LOG"
+                case "$1" in *get_forwards*) echo "${FWD:-}" ;; esac
+            }
+            SOURCE_VM=ubuntu_new CLONE_NAME=himmel-claudex VBOXMANAGE="$VBOXMANAGE_PATH"
+            '"$body"'
+        ' _ "$REPO_ROOT" 2>&1
+}
+: > "$calls"
+out=$(CLAIMED="2222 2229" t5 'vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
+if [ "$rc" -ne 0 ] && grep -q '2229' <<< "$out" && ! grep -q reached <<< "$out" \
+   && ! grep -q 'clonevm' "$calls" && ! grep -q ensure_persistent_forward "$WORK/vbox-py.log"; then
+    pass "T5a (R6) a port already on a registered forward refuses before clonevm"
+else fail_case "T5a rc=$rc: $out; calls: $(cat "$calls")"; fi
+
+: > "$calls"
+out=$(CLAIMED="2222 2231" t5 'vm_clone_ensure suite-ready-v4 2229; echo "port=$PORT"'); rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'port=2229' <<< "$out" && grep -q 'clonevm ubuntu_new --snapshot suite-ready-v4 --options link --name himmel-claudex' "$calls" \
+   && grep -qE 'ensure_persistent_forward.* himmel-claudex 2229$' "$WORK/vbox-py.log"; then
+    pass "T5b (R6) a free fixed port is passed to the persistent forward"
+else fail_case "T5b rc=$rc: $out; calls: $(cat "$calls"); py: $(cat "$WORK/vbox-py.log")"; fi
+
+: > "$calls"
+out=$(EXISTS=1 FWD=2231 t5 'vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
+if [ "$rc" -ne 0 ] && grep -q '2231' <<< "$out" && grep -q '2229' <<< "$out" && ! grep -q reached <<< "$out"; then
+    pass "T5c (R6b) an existing clone with another forward refuses naming both ports"
+else fail_case "T5c rc=$rc: $out"; fi
+
+: > "$calls"
+out=$(EXISTS=1 FWD=2229 t5 'vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
+if [ "$rc" -eq 0 ] && grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
+    pass "T5d an existing clone already on the port returns 0 and touches nothing"
+else fail_case "T5d rc=$rc: $out"; fi
+
+: > "$calls"
+out=$(CLAIMED="2222" t5 'vm_clone_ensure suite-ready-v4; echo "port=$PORT"'); rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'port=2299' <<< "$out" && grep -qE 'ensure_persistent_forward.* himmel-claudex 2299$' "$WORK/vbox-py.log"; then
+    pass "T5e (R6c) no port argument takes vm_ar_next_ports as before"
+else fail_case "T5e rc=$rc: $out; py: $(cat "$WORK/vbox-py.log")"; fi
+
+: > "$calls"
+out=$(t5 'vm_clone_ensure suite-ready-v4 22x9; echo "reached"'); rc=$?
+if [ "$rc" -ne 0 ] && ! grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
+    pass "T5f a non-numeric port argument is refused"
+else fail_case "T5f rc=$rc: $out"; fi
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "RESULT: all passed"; exit 0; fi
 echo "RESULT: $FAILED failure(s)"; exit 1

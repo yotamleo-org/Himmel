@@ -1215,3 +1215,4 @@ scripts/eval/routing/test-score.sh	15
 scripts/test-himmel-doctor-mcp-sources.sh	1
 scripts/handover/test-windows-arms-dropped.sh	0
 scripts/handover/chief-kit/test-intake-backfill.sh	1
+scripts/vm/test-claudex-guest.sh	2
