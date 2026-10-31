@@ -144,4 +144,7 @@ appended: no `>`, no `2>&1`, no `; echo`, no `sleep N;` prefix, no `| tail`.
 RED-first run included) Read the log path it prints. The label is always the literal
 `suite`, the only one the allow list pre-approves; any other
 label, or a suite outside the enumerated directories, goes to the classifier
-by design.
+by design. A third-party tool (`uv run … pyright`, `npx`, a checkout under
+`/tmp`) runs directly, never under quiet-run: the wrapper gets it no allow rule
+(HIMMEL-8315). `suite` refuses a directory option aimed outside the worktree
+(`--directory /tmp/x`, `--cwd=/x`, `-C /x`) and prints the direct form; redirect a noisy direct run to a scratch file.

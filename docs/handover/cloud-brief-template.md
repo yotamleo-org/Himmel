@@ -73,7 +73,8 @@ at the marketplace versions at HEAD).
   inside it. This settles the open question in
   the state-repo proposal `specs/proposals/cloud-hooks-proposal.md`.
   `require-quiet-run` also refuses a bare suite run: wrap it as
-  `bash scripts/quiet-run.sh suite -- <cmd>`.
+  `bash scripts/quiet-run.sh suite -- bash <tracked test-*.sh>`. A
+  third-party tool runs directly, never under quiet-run (HIMMEL-8315).
 - **Consequence.** In a plugin-profile environment the three guard-value plugin
   hooks (`block-docker-privesc`, `block-merged-pr-commit`,
   `block-unresolved-cr-merge`) are live, so option (b) of
