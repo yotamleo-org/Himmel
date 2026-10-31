@@ -373,7 +373,7 @@ do_arm() {
     if [ "$bus_opt" -eq 2 ]; then
         bus_warn "$log" "bus profile probe failed for $session - launching unbound: $bus_probe_out"
     elif [ "$bus_opt" -eq 0 ]; then
-        bus_args=(register "$session" --role console)
+        bus_args=(register "$session" --role chief)
         [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
         if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
@@ -386,7 +386,7 @@ do_arm() {
                     bus_warn "$log" "bus succeed failed for $session - workers adopt only once $CHIEF_BUS_PREDECESSOR is gone: $bus_out"
                 fi
             fi
-            bus_note "$log" "registered $session as console$bus_stamp"
+            bus_note "$log" "registered $session as chief$bus_stamp"
         else
             bus_warn "$log" "bus register failed for $session - launching unbound: $bus_out"
         fi

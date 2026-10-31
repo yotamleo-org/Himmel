@@ -36,8 +36,8 @@ const chain = [P(1, 0, 'init', 1), P(100, 1, 'claude', 1000), P(101, 100, 'bash'
   P(200, 102, 'claude', 2000), P(300, 200, 'node', 3000)];
 
 async function bound(root, proc) {
-  await identity.register(root, 'con', { role: 'console' });
-  await identity.register(root, 'worker', { role: 'worker', console: 'con' });
+  await identity.register(root, 'con', { role: 'chief' });
+  await identity.register(root, 'worker', { role: 'worker', chief: 'con' });
   await identity.bind(root, 'con', 100, { proc });
   await identity.bind(root, 'worker', 200, { proc });
 }
@@ -62,21 +62,21 @@ test('T1.3 second bind and re-register are refused', async t => {
   const proc = await fakeProc(t, chain);
   await bound(root, proc);
   await assert.rejects(identity.bind(root, 'worker', 100, { proc }), /already bound/);
-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', console: 'con' }), /already registered/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con' }), /already registered/);
   assert.deepEqual(await identity.resolveIdentity(root, { proc, pid: 300 }), { name: 'worker' });
 });
 
 test('T1.3b re-arm of a registered-but-unbound name is adopted, a changed or bound one is refused (HIMMEL-5207)', async t => {
   const { root } = await fixture(t);
   const proc = await fakeProc(t, chain);
-  await identity.register(root, 'con', { role: 'console' });
-  const first = await identity.register(root, 'worker', { role: 'worker', console: 'con' });
-  const again = await identity.register(root, 'worker', { role: 'worker', console: 'con' });
+  await identity.register(root, 'con', { role: 'chief' });
+  const first = await identity.register(root, 'worker', { role: 'worker', chief: 'con' });
+  const again = await identity.register(root, 'worker', { role: 'worker', chief: 'con' });
   assert.deepEqual(again, first);
-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', console: 'other' }), /already registered/);
-  await assert.rejects(identity.register(root, 'worker', { role: 'judge', console: 'con' }), /already registered/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'other' }), /already registered/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'judge', chief: 'con' }), /already registered/);
   await identity.bind(root, 'worker', 200, { proc });
-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', console: 'con' }), /already registered/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con' }), /already registered/);
 });
 
 test('T1.4 pid reuse (same pid, different start time) is unbound', async t => {
@@ -91,11 +91,11 @@ test('T1.4 pid reuse (same pid, different start time) is unbound', async t => {
 
 test('T5.2 refused send lists only the caller own edges, never another console', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'conA', { role: 'console' });
-  await identity.register(root, 'conB', { role: 'console' });
-  await identity.register(root, 'legA', { role: 'worker', console: 'conA' });
-  await identity.register(root, 'judgeA', { role: 'judge', console: 'conA', pair: 'legA' });
-  await identity.register(root, 'legB', { role: 'worker', console: 'conB' });
+  await identity.register(root, 'conA', { role: 'chief' });
+  await identity.register(root, 'conB', { role: 'chief' });
+  await identity.register(root, 'legA', { role: 'worker', chief: 'conA' });
+  await identity.register(root, 'judgeA', { role: 'judge', chief: 'conA', pair: 'legA' });
+  await identity.register(root, 'legB', { role: 'worker', chief: 'conB' });
   const peers = await identity.loadPeers(root);
   assert.deepEqual(edges.edgeList(peers, 'legA'), ['conA', 'judgeA']);
   const refusal = edges.check(peers, 'legA', 'nobody');
@@ -107,11 +107,11 @@ test('T5.2 refused send lists only the caller own edges, never another console',
 
 test('edges: worker to sibling refused, worker to console allowed, console to other console worker refused', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'conA', { role: 'console' });
-  await identity.register(root, 'conB', { role: 'console' });
-  await identity.register(root, 'leg1', { role: 'worker', console: 'conA' });
-  await identity.register(root, 'leg2', { role: 'worker', console: 'conA' });
-  await identity.register(root, 'legB', { role: 'worker', console: 'conB' });
+  await identity.register(root, 'conA', { role: 'chief' });
+  await identity.register(root, 'conB', { role: 'chief' });
+  await identity.register(root, 'leg1', { role: 'worker', chief: 'conA' });
+  await identity.register(root, 'leg2', { role: 'worker', chief: 'conA' });
+  await identity.register(root, 'legB', { role: 'worker', chief: 'conB' });
   const peers = await identity.loadPeers(root);
   assert.equal(edges.check(peers, 'leg1', 'leg2').ok, false);
   assert.equal(edges.check(peers, 'leg1', 'conA').ok, true);
@@ -124,8 +124,8 @@ test('edges: worker to sibling refused, worker to console allowed, console to ot
 
 test('edges: predecessor link creates console to console edge both ways', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'old', { role: 'console' });
-  await identity.register(root, 'next', { role: 'console', predecessor: 'old' });
+  await identity.register(root, 'old', { role: 'chief' });
+  await identity.register(root, 'next', { role: 'chief', predecessor: 'old' });
   const peers = await identity.loadPeers(root);
   assert.equal(edges.check(peers, 'old', 'next').ok, true);
   assert.equal(edges.check(peers, 'next', 'old').ok, true);
@@ -133,11 +133,11 @@ test('edges: predecessor link creates console to console edge both ways', async 
 
 test('edges: a declaration only counts when both endpoints hold the required role', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'con', { role: 'console' });
-  await identity.register(root, 'a', { role: 'worker', console: 'con' });
-  await identity.register(root, 'b', { role: 'worker', console: 'a' });
-  await identity.register(root, 'c', { role: 'worker', console: 'con', predecessor: 'a' });
-  await identity.register(root, 'j', { role: 'judge', console: 'con', pair: 'con' });
+  await identity.register(root, 'con', { role: 'chief' });
+  await identity.register(root, 'a', { role: 'worker', chief: 'con' });
+  await identity.register(root, 'b', { role: 'worker', chief: 'a' });
+  await identity.register(root, 'c', { role: 'worker', chief: 'con', predecessor: 'a' });
+  await identity.register(root, 'j', { role: 'judge', chief: 'con', pair: 'con' });
   const peers = await identity.loadPeers(root);
   assert.equal(edges.check(peers, 'b', 'a').ok, false);
   assert.equal(edges.check(peers, 'a', 'b').ok, false);
@@ -150,7 +150,7 @@ test('one process identity cannot be bound to two names', async t => {
   const { root } = await fixture(t);
   const proc = await fakeProc(t, chain);
   await bound(root, proc);
-  await identity.register(root, 'twin', { role: 'worker', console: 'con' });
+  await identity.register(root, 'twin', { role: 'worker', chief: 'con' });
   await assert.rejects(identity.bind(root, 'twin', 200, { proc }), /already bound to worker/);
   assert.deepEqual(await identity.resolveIdentity(root, { proc, pid: 300 }), { name: 'worker' });
 });
@@ -169,7 +169,7 @@ test('adopt needs the old console gone or a relay record from it naming the new 
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'handing over to new' });
   await identity.adopt(root, 'worker', 'new', { proc: live });
@@ -180,7 +180,7 @@ test('adopt succeeds when the old console is gone', async t => {
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
   await identity.adopt(root, 'worker', 'new', { proc: gone });
   assert.equal((await identity.loadPeers(root)).worker.console, 'new');
@@ -190,7 +190,7 @@ test('adopt refuses a record from someone else naming the new console', async t 
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
   await store.append(root, 'worker', { i: 'x', t: 1, f: 'rogue', r: 'worker', c: 1, b: 'adopt new' });
   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
 });
@@ -199,7 +199,7 @@ test('adopt: a relay must name the new console as a whole word', async t => {
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'a newer console is coming' });
   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
 });
@@ -208,7 +208,7 @@ test('adopt finds a relay the hook already delivered and committed', async t => 
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'handing over to new' });
   const delivered = await store.read(root, 'worker');
   assert.equal(delivered.records.length, 1);
@@ -221,7 +221,7 @@ test('adopt refuses a console that does not succeed the old one', async t => {
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'other', { role: 'console' });
+  await identity.register(root, 'other', { role: 'chief' });
   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
   await assert.rejects(identity.adopt(root, 'worker', 'other', { proc: gone }), /does not succeed con/);
   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
@@ -231,8 +231,8 @@ test('adopt refuses a console that does not succeed the old one', async t => {
 async function chained(t, root) {
   const all = await fakeProc(t, [...chain, P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
   await bound(root, all);
-  await identity.register(root, 'mid', { role: 'console', predecessor: 'con' });
-  await identity.register(root, 'new', { role: 'console', predecessor: 'mid' });
+  await identity.register(root, 'mid', { role: 'chief', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'mid' });
   await identity.bind(root, 'new', 160, { proc: all });
 }
 
@@ -250,7 +250,7 @@ test('adopt refuses a chain with an unproven hop', async t => {
   const { root } = await fixture(t);
   await chained(t, root);
   const after = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000), P(160, 1, 'claude', 1600)]);
-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: after }), /console mid is not gone and sent no relay naming new/);
+  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: after }), /chief mid is not gone and sent no relay naming new/);
   await store.append(root, 'worker', { i: 'x', t: 1, f: 'mid', r: 'worker', c: 1, b: 'your console is now new' });
   await identity.adopt(root, 'worker', 'new', { proc: after });
   assert.equal((await identity.loadPeers(root)).worker.console, 'new');
@@ -264,7 +264,7 @@ test('adopt refuses a chain whose intermediate console is still live, relay or n
   await store.append(root, 'worker', { i: 'x', t: 1, f: 'con', r: 'worker', c: 1, b: 'your console is now mid' });
   await store.append(root, 'worker', { i: 'y', t: 2, f: 'mid', r: 'worker', c: 1, b: 'your console is now new' });
   const midLive = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000), P(150, 1, 'claude', 1500), P(160, 1, 'claude', 1600)]);
-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: midLive }), /console mid on the chain to new is still live/);
+  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: midLive }), /chief mid on the chain to new is still live/);
   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
 });
 
@@ -290,17 +290,17 @@ test('adopt still refuses a live intermediate console that never stamped', async
   const { root } = await fixture(t);
   const live = await allLive(t, root);
   await identity.succeed(root, 'con', 'mid');
-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /console mid on the chain to new is still live/);
+  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /chief mid on the chain to new is still live/);
   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
 });
 
 test('adopt refuses a stamp that names a different successor', async t => {
   const { root } = await fixture(t);
   const live = await allLive(t, root);
-  await identity.register(root, 'other', { role: 'console', predecessor: 'mid' });
+  await identity.register(root, 'other', { role: 'chief', predecessor: 'mid' });
   await identity.succeed(root, 'con', 'mid');
   await identity.succeed(root, 'mid', 'other');
-  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /console mid on the chain to new is still live/);
+  await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /chief mid on the chain to new is still live/);
   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
 });
 
@@ -308,7 +308,7 @@ test('adopt passes a single live-old-console hop on its stamp alone', async t =>
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
   await assert.rejects(identity.adopt(root, 'worker', 'new', { proc: live }), /not gone/);
   await identity.succeed(root, 'con', 'new');
   await identity.adopt(root, 'worker', 'new', { proc: live });
@@ -319,13 +319,13 @@ test('succeed: only a console naming its own registered successor, once', async 
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
-  await identity.register(root, 'stranger', { role: 'console' });
-  await identity.register(root, 'rival', { role: 'console', predecessor: 'con' });
-  await assert.rejects(identity.succeed(root, 'worker', 'new'), /not a console/);
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
+  await identity.register(root, 'stranger', { role: 'chief' });
+  await identity.register(root, 'rival', { role: 'chief', predecessor: 'con' });
+  await assert.rejects(identity.succeed(root, 'worker', 'new'), /not a chief/);
   await assert.rejects(identity.succeed(root, 'con', 'stranger'), /does not succeed con/);
   await assert.rejects(identity.succeed(root, 'con', 'ghost'), /unknown session: ghost/);
-  await assert.rejects(identity.succeed(root, 'con', 'worker'), /not a console/);
+  await assert.rejects(identity.succeed(root, 'con', 'worker'), /not a chief/);
   await identity.succeed(root, 'con', 'new');
   await identity.succeed(root, 'con', 'new');
   await assert.rejects(identity.succeed(root, 'con', 'rival'), /already stamped new/);
@@ -336,7 +336,7 @@ test('adopt onto the console already held is a no-op', async t => {
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'new', { role: 'console', predecessor: 'con' });
+  await identity.register(root, 'new', { role: 'chief', predecessor: 'con' });
   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
   await identity.adopt(root, 'worker', 'new', { proc: gone });
   await identity.adopt(root, 'worker', 'new', { proc: gone });
@@ -348,16 +348,16 @@ test('rebind refuses a console name', async t => {
   const live = await fakeProc(t, chain);
   await bound(root, live);
   const after = await fakeProc(t, [P(1, 0, 'init', 1), P(201, 1, 'claude', 2500)]);
-  await assert.rejects(identity.rebind(root, 'con', 201, { proc: after }), /console/);
+  await assert.rejects(identity.rebind(root, 'con', 201, { proc: after }), /a chief name cannot be rebound/);
 });
 
 test('adopt refuses a destination that is not a console', async t => {
   const { root } = await fixture(t);
   const live = await fakeProc(t, chain);
   await bound(root, live);
-  await identity.register(root, 'other', { role: 'worker', console: 'con' });
+  await identity.register(root, 'other', { role: 'worker', chief: 'con' });
   const gone = await fakeProc(t, [P(1, 0, 'init', 1), P(200, 1, 'claude', 2000)]);
-  await assert.rejects(identity.adopt(root, 'worker', 'other', { proc: gone }), /not a console/);
+  await assert.rejects(identity.adopt(root, 'worker', 'other', { proc: gone }), /not a chief/);
   assert.equal((await identity.loadPeers(root)).worker.console, 'con');
 });
 
@@ -366,15 +366,15 @@ test('CLI: register, bind, status, peers, rebind against real processes', async 
   t.after(() => rm(state, { recursive: true, force: true }));
   const env = { ...process.env, XDG_STATE_HOME: state };
   const run = (...args) => spawnSync(process.execPath, [cli, ...args], { env, encoding: 'utf8' });
-  assert.equal(run('register', 'con', '--role', 'console').status, 0);
-  assert.equal(run('register', 'worker', '--role', 'worker', '--console', 'con').status, 0);
-  assert.equal(run('register', 'worker', '--role', 'worker', '--console', 'con').status, 0);
-  assert.notEqual(run('register', 'worker', '--role', 'worker', '--console', 'other').status, 0);
+  assert.equal(run('register', 'con', '--role', 'chief').status, 0);
+  assert.equal(run('register', 'worker', '--role', 'worker', '--chief', 'con').status, 0);
+  assert.equal(run('register', 'worker', '--role', 'worker', '--chief', 'con').status, 0);
+  assert.notEqual(run('register', 'worker', '--role', 'worker', '--chief', 'other').status, 0);
   assert.notEqual(run('register', 'bad', '--role', 'wizard').status, 0);
   const child = spawn('sleep', ['30']);
   t.after(() => child.kill());
   assert.equal(run('bind', 'worker', String(child.pid)).status, 0);
-  assert.notEqual(run('register', 'worker', '--role', 'worker', '--console', 'con').status, 0);
+  assert.notEqual(run('register', 'worker', '--role', 'worker', '--chief', 'con').status, 0);
   assert.notEqual(run('bind', 'worker', String(child.pid)).status, 0);
   assert.equal(run('status', 'worker').stdout.trim(), 'live');
   assert.notEqual(run('rebind', 'worker', String(process.pid)).status, 0);
@@ -409,45 +409,45 @@ async function oldRecord(root, name, extra = {}) {
 
 test('M2: role worker registers and is stored as worker', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'con', { role: 'console' });
-  const peer = await identity.register(root, 'w1', { role: 'worker', console: 'con' });
+  await identity.register(root, 'con', { role: 'chief' });
+  const peer = await identity.register(root, 'w1', { role: 'worker', chief: 'con' });
   assert.equal(peer.role, 'worker');
   assert.equal(JSON.parse(await readFile(join(root, 'peers/w1.json'), 'utf8')).role, 'worker');
 });
 
 test('M2: --role leg is an alias under the switch and is stored as worker', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'con', { role: 'console' });
-  const peer = await withSwitch(undefined, () => identity.register(root, 'w2', { role: 'leg', console: 'con' }));
+  await identity.register(root, 'con', { role: 'chief' });
+  const peer = await withSwitch(undefined, () => identity.register(root, 'w2', { role: 'leg', chief: 'con' }));
   assert.equal(peer.role, 'worker');
   assert.equal(JSON.parse(await readFile(join(root, 'peers/w2.json'), 'utf8')).role, 'worker');
 });
 
 test('M2: a stored role leg record still reads as worker and keeps its edges', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'con', { role: 'console' });
+  await identity.register(root, 'con', { role: 'chief' });
   await oldRecord(root, 'old1');
   await withSwitch(undefined, async () => {
     const peers = await identity.loadPeers(root);
     assert.equal(peers.old1.role, 'worker');
     assert.equal(edges.check(peers, 'old1', 'con').ok, true);
     assert.equal(await identity.status(root, 'old1'), 'unbound');
-    await identity.register(root, 'j', { role: 'judge', console: 'con', pair: 'old1' });
+    await identity.register(root, 'j', { role: 'judge', chief: 'con', pair: 'old1' });
     assert.equal(edges.check(await identity.loadPeers(root), 'j', 'old1').ok, true);
   });
 });
 
 test('M2: a re-arm of a stored role leg record is adopted as the same registration', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'con', { role: 'console' });
+  await identity.register(root, 'con', { role: 'chief' });
   await oldRecord(root, 'old2');
-  const again = await withSwitch(undefined, () => identity.register(root, 'old2', { role: 'worker', console: 'con' }));
+  const again = await withSwitch(undefined, () => identity.register(root, 'old2', { role: 'worker', chief: 'con' }));
   assert.equal(again.role, 'worker');
 });
 
 test('M2: edges.check treats a raw role leg peer as worker under the switch only', async () => {
   const peers = {
-    con: { n: 'con', role: 'console' },
+    con: { n: 'con', role: 'chief' },
     a: { n: 'a', role: 'leg', console: 'con' },
     j: { n: 'j', role: 'judge', console: 'con', pair: 'a' },
   };
@@ -457,7 +457,7 @@ test('M2: edges.check treats a raw role leg peer as worker under the switch only
 
 test('M2: with the switch off, a worker gets no pair edge to a raw role leg peer', async () => {
   const peers = {
-    con: { n: 'con', role: 'console' },
+    con: { n: 'con', role: 'chief' },
     a: { n: 'a', role: 'leg', console: 'con' },
     w: { n: 'w', role: 'worker', console: 'con', pair: 'a' },
   };
@@ -473,8 +473,8 @@ test('M2: with the switch off, a worker gets no pair edge to a raw role leg peer
 
 test('M2: a console that names a pair draws no pair edge (only worker, judge and consult pair)', async () => {
   const peers = {
-    con: { n: 'con', role: 'console', pair: 'w2' },
-    con2: { n: 'con2', role: 'console' },
+    con: { n: 'con', role: 'chief', pair: 'w2' },
+    con2: { n: 'con2', role: 'chief' },
     w2: { n: 'w2', role: 'worker', console: 'con2' },
   };
   await withSwitch(undefined, () => {
@@ -485,11 +485,11 @@ test('M2: a console that names a pair draws no pair edge (only worker, judge and
 
 test('M2: with the switch off, --role leg is refused and a stored leg record is not read', async t => {
   const { root } = await fixture(t);
-  await identity.register(root, 'con', { role: 'console' });
-  await identity.register(root, 'ok', { role: 'worker', console: 'con' });
+  await identity.register(root, 'con', { role: 'chief' });
+  await identity.register(root, 'ok', { role: 'worker', chief: 'con' });
   await oldRecord(root, 'old3');
   await withSwitch('0', async () => {
-    await assert.rejects(identity.register(root, 'w3', { role: 'leg', console: 'con' }), /invalid role: leg/);
+    await assert.rejects(identity.register(root, 'w3', { role: 'leg', chief: 'con' }), /invalid role: leg/);
     await assert.rejects(identity.status(root, 'old3'), /invalid role: leg/);
     const peers = await identity.loadPeers(root);
     assert.equal(peers.old3, undefined);
@@ -502,11 +502,77 @@ test('M2: CLI accepts --role leg under the switch and refuses it with the switch
   t.after(() => rm(state, { recursive: true, force: true }));
   const run = (switchValue, ...args) => spawnSync(process.execPath, [cli, ...args],
     { env: { ...process.env, XDG_STATE_HOME: state, HIMMEL_LEGACY_NAMES: switchValue }, encoding: 'utf8' });
-  assert.equal(run('1', 'register', 'con', '--role', 'console').status, 0);
-  assert.equal(run('1', 'register', 'w1', '--role', 'leg', '--console', 'con').status, 0);
+  assert.equal(run('1', 'register', 'con', '--role', 'chief').status, 0);
+  assert.equal(run('1', 'register', 'w1', '--role', 'leg', '--chief', 'con').status, 0);
   assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/w1.json'), 'utf8')).role, 'worker');
-  const off = run('0', 'register', 'w2', '--role', 'leg', '--console', 'con');
+  const off = run('0', 'register', 'w2', '--role', 'leg', '--chief', 'con');
   assert.notEqual(off.status, 0);
   assert.match(off.stderr, /invalid role: leg/);
-  assert.equal(run('0', 'register', 'w3', '--role', 'worker', '--console', 'con').status, 0);
+  assert.equal(run('0', 'register', 'w3', '--role', 'worker', '--chief', 'con').status, 0);
+});
+
+// The chief half of the rename: `chief` / `--chief` are canonical, `console` /
+// `--console` read as aliases while the legacy-names switch is on.
+async function cliState(t) {
+  const state = await mkdtemp(join(tmpdir(), 'bus-cli-'));
+  t.after(() => rm(state, { recursive: true, force: true }));
+  const run = (switchValue, ...args) => spawnSync(process.execPath, [cli, ...args],
+    { env: { ...process.env, XDG_STATE_HOME: state, HIMMEL_LEGACY_NAMES: switchValue }, encoding: 'utf8' });
+  return { state, run };
+}
+
+test('M3: CLI registers role chief, --chief and --pair <worker>, the documented command', async t => {
+  const { state, run } = await cliState(t);
+  assert.equal(run('0', 'register', 'con', '--role', 'chief').status, 0);
+  assert.equal(run('0', 'register', 'w1', '--role', 'worker', '--chief', 'con').status, 0);
+  const judge = run('0', 'register', 'j1', '--role', 'judge', '--chief', 'con', '--pair', 'w1');
+  assert.equal(judge.status, 0, judge.stderr);
+  assert.equal(run('0', 'register', 'con2', '--role', 'chief', '--predecessor', 'con').status, 0);
+  assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/con.json'), 'utf8')).role, 'chief');
+  const root = await store.busRoot({ stateHome: state });
+  const peers = await identity.loadPeers(root);
+  assert.equal(edges.check(peers, 'w1', 'con').ok, true);
+  assert.equal(edges.check(peers, 'j1', 'w1').ok, true);
+  assert.equal(edges.check(peers, 'con2', 'con').ok, true);
+  const missing = run('0', 'register', 'w2', '--role', 'worker');
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /needs --chief/);
+});
+
+test('M3: a stored role console record reads back as chief under the switch only', async t => {
+  const { root } = await fixture(t);
+  await identity.register(root, 'new', { role: 'chief' });
+  await writeFile(join(root, 'peers', 'oldcon.json'),
+    JSON.stringify({ n: 'oldcon', role: 'console', launched: '2026-10-19T00:00:00.000Z' }) + '\n', { mode: 0o600 });
+  await oldRecord(root, 'oldw', { role: 'worker', console: 'oldcon' });
+  await withSwitch(undefined, async () => {
+    const peers = await identity.loadPeers(root);
+    assert.equal(peers.oldcon.role, 'chief');
+    assert.equal(edges.check(peers, 'oldw', 'oldcon').ok, true);
+    await identity.register(root, 'succ', { role: 'chief', predecessor: 'oldcon' });
+    assert.equal((await identity.succeed(root, 'oldcon', 'succ')).successor, 'succ');
+  });
+  await writeFile(join(root, 'peers', 'oldcon2.json'),
+    JSON.stringify({ n: 'oldcon2', role: 'console', launched: '2026-10-19T00:00:00.000Z' }) + '\n', { mode: 0o600 });
+  await withSwitch('0', async () => {
+    assert.equal(edges.check({ c: { n: 'c', role: 'console' }, w: { n: 'w', role: 'worker', console: 'c' } }, 'w', 'c').ok, false);
+    await assert.rejects(identity.status(root, 'oldcon2'), /invalid role: console/);
+    await assert.rejects(identity.register(root, 'again', { role: 'console' }), /invalid role: console/);
+  });
+});
+
+test('M3: CLI accepts --role console and --console under the switch and refuses them with it off', async t => {
+  const { state, run } = await cliState(t);
+  assert.equal(run('1', 'register', 'con', '--role', 'console').status, 0);
+  assert.equal(JSON.parse(await readFile(join(state, 'himmel/bus/peers/con.json'), 'utf8')).role, 'chief');
+  assert.equal(run('1', 'register', 'w1', '--role', 'worker', '--console', 'con').status, 0);
+  const root = await store.busRoot({ stateHome: state });
+  assert.equal(edges.check(await identity.loadPeers(root), 'w1', 'con').ok, true);
+  assert.notEqual(run('1', 'register', 'w2', '--role', 'worker', '--console', 'con', '--chief', 'other').status, 0);
+  const off = run('0', 'register', 'w3', '--role', 'worker', '--console', 'con');
+  assert.notEqual(off.status, 0);
+  assert.match(off.stderr, /--console was renamed to --chief/);
+  const offRole = run('0', 'register', 'con3', '--role', 'console');
+  assert.notEqual(offRole.status, 0);
+  assert.match(offRole.stderr, /invalid role: console/);
 });

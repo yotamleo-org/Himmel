@@ -60,7 +60,7 @@ bus_bounded() {
     return "$rc"
 }
 
-bus_args=(register "$session" --role console)
+bus_args=(register "$session" --role chief)
 [ -n "$predecessor" ] && bus_args+=(--predecessor "$predecessor")
 if bus_bounded "${bus_args[@]}" && bus_bounded bind "$session" "$$"; then
     export HIMMEL_BUS_NAME="$session"

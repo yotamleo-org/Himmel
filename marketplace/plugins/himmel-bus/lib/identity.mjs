@@ -7,10 +7,11 @@ import * as store from './store.mjs';
 import { canonRole } from './edges.mjs';
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const ROLES = ['worker', 'console', 'judge', 'consult'];
+const ROLES = ['worker', 'chief', 'judge', 'consult'];
 
 // A role as stored or typed -> its current name, or a refusal. The pre-rename
-// spelling maps to `worker` while the legacy-names switch is on.
+// spellings (`leg`, `console`) map to `worker` and `chief` while the legacy-names
+// switch is on.
 function roleOf(value) {
   const role = canonRole(value);
   if (!ROLES.includes(role)) throw new Error(`invalid role: ${value} (one of ${ROLES.join('|')})`);
@@ -100,10 +101,11 @@ export async function loadPeers(root) {
 // an entry that was registered but never bound, with the same
 // role, console, pair and predecessor, is adopted instead of refused - it has
 // no pid, so nothing can resolve to it and re-registering grants nothing new.
-export async function register(root, name, { role: given, console: owner, pair, predecessor } = {}) {
+// The chief a session belongs to is stored under `console` (the stored field is not renamed here).
+export async function register(root, name, { role: given, chief: owner, pair, predecessor } = {}) {
   checkName(name);
   const role = roleOf(given);
-  if (role !== 'console' && !owner) throw new Error(`role ${role} needs --console`);
+  if (role !== 'chief' && !owner) throw new Error(`role ${role} needs --chief`);
   for (const other of [owner, pair, predecessor]) if (other !== undefined) checkName(other);
   const peer = { n: name, role, launched: new Date().toISOString() };
   if (owner) peer.console = owner;
@@ -156,7 +158,7 @@ export async function bind(root, name, pid, { proc = '/proc' } = {}) {
 export async function rebind(root, name, pid, { proc = '/proc' } = {}) {
   const begun = await start(proc, pid);
   return update(root, name, async peer => {
-    if (peer.role === 'console') throw new Error(`a console name cannot be rebound: ${name}`);
+    if (peer.role === 'chief') throw new Error(`a chief name cannot be rebound: ${name}`);
     if (peer.pid === undefined) throw new Error(`not bound yet (use bind): ${name}`);
     if (await status(root, name, { proc }) === 'live') throw new Error(`bound pid is still live: ${name}`);
     await unclaimed(root, name, pid, begun);
@@ -173,9 +175,9 @@ export async function succeed(root, name, next) {
   checkName(next);
   const target = await readPeer(root, next);
   if (!target) throw new Error(`unknown session: ${next}`);
-  if (target.role !== 'console') throw new Error(`${next} is not a console`);
+  if (target.role !== 'chief') throw new Error(`${next} is not a chief`);
   return update(root, name, peer => {
-    if (peer.role !== 'console') throw new Error(`${name} is not a console`);
+    if (peer.role !== 'chief') throw new Error(`${name} is not a chief`);
     if (target.predecessor !== name) throw new Error(`${next} does not succeed ${name}`);
     if (peer.successor === next) return peer;
     if (peer.successor) throw new Error(`${name} already stamped ${peer.successor}`);
@@ -197,7 +199,7 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
     if (old === next) return peer;
     const target = await readPeer(root, next);
     if (!target) throw new Error(`unknown session: ${next}`);
-    if (target.role !== 'console') throw new Error(`${next} is not a console`);
+    if (target.role !== 'chief') throw new Error(`${next} is not a chief`);
     const hops = [];
     for (let to = next, at = target; ; ) {
       const from = at.predecessor;
@@ -205,7 +207,7 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
       hops.unshift({ from, to });
       if (from === old) break;
       at = await readPeer(root, from);
-      if (at?.role !== 'console') throw new Error(`${next} does not succeed ${old}`);
+      if (at?.role !== 'chief') throw new Error(`${next} does not succeed ${old}`);
       to = from;
     }
     const records = await store.scan(root, name);
@@ -216,8 +218,8 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
     for (const { from, to } of hops) {
       if ((await readPeer(root, from))?.successor === to) continue;
       const state = await status(root, from, { proc });
-      if (hops.length > 1 && state === 'live') throw new Error(`console ${from} on the chain to ${next} is still live`);
-      if (state !== 'gone' && !relayed(from, to)) throw new Error(`${from === old ? 'old ' : ''}console ${from} is not gone and sent no relay naming ${to}`);
+      if (hops.length > 1 && state === 'live') throw new Error(`chief ${from} on the chain to ${next} is still live`);
+      if (state !== 'gone' && !relayed(from, to)) throw new Error(`${from === old ? 'old ' : ''}chief ${from} is not gone and sent no relay naming ${to}`);
     }
     return { ...peer, console: next };
   });

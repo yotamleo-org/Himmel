@@ -13,13 +13,14 @@ import * as store from '../lib/store.mjs';
 import * as identity from '../lib/identity.mjs';
 import * as edges from '../lib/edges.mjs';
 import { formatRecord } from '../lib/deliver.mjs';
+import { legacyNamesOn } from '../../../../scripts/lib/env-alias.mjs';
 
-const USAGE = `usage: bus register <name> --role worker|console|judge|consult [--console <c>] [--pair <worker>] [--predecessor <old>]
-       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-console> | succeed <new-console> | status <name> | peers
+const USAGE = `usage: bus register <name> --role worker|chief|judge|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]
+       bus bind <name> <pid> | rebind <name> <pid> | adopt <new-chief> | succeed <new-chief> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
        bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
        bus unread <name>   (count of undelivered records; read-only, for the idle waker)
-       bus status [--unacked] [--for <console>] | gc`;
+       bus status [--unacked] [--for <chief>] | gc`;
 
 // Same limits as the MCP server's `send` (spec §4).
 const MAX_BODY = 64 * 1024, INLINE_CAP = 1500, MAX_SUMMARY = 300;
@@ -115,7 +116,7 @@ async function wait(root, timeoutArg) {
   if (!Number.isSafeInteger(seconds) || seconds > WAIT_MAX_S) throw new Error(`--timeout must be at most ${WAIT_MAX_S} seconds`);
   const me = await caller(root);
   const peers = await identity.loadPeers(root);
-  const owner = peers[me]?.role === 'console' ? undefined : peers[me]?.console;
+  const owner = peers[me]?.role === 'chief' ? undefined : peers[me]?.console;
   const deadline = Date.now() + seconds * 1000;
   for (;;) {
     if (await store.pending(root, me)) {
@@ -187,11 +188,19 @@ async function rulings(root, { unacked, from }) {
   console.log(lines.join('\n'));
 }
 
+// --chief is canonical; --console is its pre-rename alias while the legacy-names switch is on.
+function chiefOf({ chief, console: old }) {
+  if (old === undefined) return chief;
+  if (!legacyNamesOn()) throw new Error('--console was renamed to --chief');
+  if (chief !== undefined && chief !== old) throw new Error('--console and --chief name different chiefs');
+  return old;
+}
+
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
-      role: { type: 'string' }, console: { type: 'string' }, pair: { type: 'string' }, predecessor: { type: 'string' },
+      role: { type: 'string' }, chief: { type: 'string' }, console: { type: 'string' }, pair: { type: 'string' }, predecessor: { type: 'string' },
       re: { type: 'string' }, summary: { type: 'string' }, doc: { type: 'string' },
       unacked: { type: 'boolean' }, for: { type: 'string' }, timeout: { type: 'string' },
     },
@@ -201,7 +210,7 @@ async function main() {
   const pid = () => { if (!/^\d+$/.test(extra ?? '')) throw new Error(USAGE); return Number(extra); };
   const need = value => { if (!value) throw new Error(USAGE); return value; };
   switch (verb) {
-    case 'register': await identity.register(root, need(name), values); return;
+    case 'register': await identity.register(root, need(name), { ...values, chief: chiefOf(values) }); return;
     case 'bind': await identity.bind(root, need(name), pid()); return;
     case 'rebind': await identity.rebind(root, need(name), pid()); return;
     case 'status':
@@ -236,7 +245,7 @@ async function main() {
       }
       const before = (await identity.loadPeers(root))[me.name]?.console;
       await identity.adopt(root, me.name, need(name));
-      console.log(`adopted: ${me.name} console ${before} -> ${name}`);
+      console.log(`adopted: ${me.name} chief ${before} -> ${name}`);
       return;
     }
     default: throw new Error(USAGE);

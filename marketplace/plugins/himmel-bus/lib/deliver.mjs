@@ -58,7 +58,7 @@ export async function main(input, { name = process.env.HIMMEL_BUS_NAME } = {}) {
   const me = await resolveIdentity(root);
   if (me.name !== name) return;
   const peers = await loadPeers(root);
-  const owner = peers[name]?.role === 'console' ? undefined : peers[name]?.console;
+  const owner = peers[name]?.role === 'chief' ? undefined : peers[name]?.console;
   const event = input.hook_event_name === 'SessionStart' ? 'SessionStart' : 'PostToolUse';
   // writeSync may write less than asked; loop so a short write is never committed past.
   const emit = text => {
