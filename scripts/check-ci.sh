@@ -972,10 +972,9 @@ watch_round() {
     gh_pid_file="$err_file.ghpid"
     watch_start=$SECONDS
     # `kill -0 "$wpid"` is NOT a valid liveness probe for a
-    # backgrounded child under MSYS/Git-Bash — once gh exits it becomes a
+    # backgrounded child — once gh exits it becomes a
     # zombie until something `wait`s on it, and `kill -0` on a zombie
-    # SUCCEEDS. The loop below never observed gh actually finishing (reproduced
-    # 4x via `tasklist` showing no live gh.exe while the probe stayed true), so
+    # SUCCEEDS. The loop below never observed gh actually finishing, so
     # every round ran out the --max-wait cap and silently discarded gh's real
     # rc/stderr. `wait` itself is fine (it's the reaping call, not the broken
     # part) — the fix is to poll a child-written rc sentinel file for
@@ -986,7 +985,7 @@ watch_round() {
     # running detached. Both sidecars are written tmp-then-`mv -f` (same
     # directory, so the mv is atomic) so the poll loop below never observes a
     # half-written file.
-    # This fallback replaces an earlier kill-0-based one, which a wrapper wedged into a zombie by the exact MSYS
+    # This fallback replaces an earlier kill-0-based one, which a wrapper wedged into a zombie by the exact
     # behavior this ticket exists to route around would ALSO answer kill -0
     # as "alive" forever, so that fallback could not actually fire in the
     # case it was written for. Fixed the right way instead — write-side, not

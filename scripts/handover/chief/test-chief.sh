@@ -2248,7 +2248,7 @@ check "74 nothing falls back to himmel's bucket" "$(printf '%s\n' "$out74" | gre
 
 # 75: the user slug resolves from chief.sh's OWN checkout, never the
 # caller's cwd -- the same pinning load_dotenv gets. The plugin
-# /himmel-ops:supervisor-session runs chief.sh from any directory; from a non-git one
+# /himmel-ops:chief runs chief.sh from any directory; from a non-git one
 # forge_detect found no origin, so the slug fell back to the cwd's slugified
 # git user.name and the chain forked into a second user dir.
 tmp75="$tmp/t75"

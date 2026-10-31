@@ -36,7 +36,7 @@ if (!fs.existsSync(dir)) {
 for (const name of fs.readdirSync(dir)) {
   const f = path.join(dir, name);
   // Refuse a group/world-readable secret file rather than trust it.
-  if (process.platform !== "win32" && (fs.statSync(f).mode & 0o077) !== 0) {
+  if ((fs.statSync(f).mode & 0o077) !== 0) {
     console.error(`secret-launch: ${f} is not mode 0600 — refusing to read it`);
     process.exit(1);
   }

@@ -1753,10 +1753,8 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             # any adopter clone whose .gitignore lacks the entry — a husk's own
             # contents then read back as "forgotten <path>" and the sweep
             # refused them forever. Settle "is this a worktree at all" FIRST;
-            # only a real one is worth classifying. MSYS TRAP: `-e
-            # "$stray_dir/.git"` can resolve `.git.exe` and other surprises
-            # under Git-Bash; `find -maxdepth 1 -name .git` is the reliable
-            # presence check.
+            # only a real one is worth classifying; `find -maxdepth 1 -name
+            # .git` is the presence check.
             #
             # this presence check must distinguish find FAILING
             # (permissions, a transient I/O error, an exotic path) from find
@@ -1766,7 +1764,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             # failure we cannot prove this ISN'T a worktree, so route to the
             # existing "scanfail" verdict (below), which already refuses to
             # sweep rather than guess.
-            if stray_git_marker=$(find "$stray_dir" -maxdepth 1 -name .git 2>/dev/null); then  # gnu-ok: Git-Bash can resolve a Bash `-e "$stray_dir/.git"` test to .git.exe (see comment above); -maxdepth is also POSIX-supported by BSD find
+            if stray_git_marker=$(find "$stray_dir" -maxdepth 1 -name .git 2>/dev/null); then  # gnu-ok: -maxdepth is also POSIX-supported by BSD find
                 if [ -z "$stray_git_marker" ]; then
                     verdict="nonworktree"
                 else

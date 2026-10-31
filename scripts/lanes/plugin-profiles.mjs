@@ -566,7 +566,7 @@ export function resolveProfile(registry, name, opts = {}) {
       }
     }
     for (const rule of mcpAllow) if (!allow.includes(rule)) allow.push(rule);
-    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...forkTrustSettings(opts.forkNwos), ...listingSettings(registry, [name], enabledPlugins, opts) };
+    return { enabledPlugins, permissions: { allow, ...denyOf(spec) }, ...disableOf(spec), ...autoModeTrustSettings(opts.forkNwos, opts.anchor),...listingSettings(registry, [name], enabledPlugins, opts) };
   }
   const permissions = { ...(mcpAllow.length ? { allow: mcpAllow } : {}), ...denyOf(spec) };
   return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...disableOf(spec), ...listingSettings(registry, [name], enabledPlugins, opts) };
@@ -621,7 +621,9 @@ function composeProfiles(registry, list, opts) {
   const deny = (resolved[0].permissions?.deny ?? []).filter((t) => resolved.every((r) => r.permissions?.deny?.includes(t)));
   const permissions = { ...(allow.length ? { allow } : {}), ...(deny.length ? { deny } : {}) };
   const environment = [...new Set(resolved.flatMap((r) => r.autoMode?.environment ?? []))];
-  return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...(resolved.every((r) => r.disableWorkflows) ? { disableWorkflows: true } : {}), ...(environment.length ? { autoMode: { environment } } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
+  const autoAllow = [...new Set(resolved.flatMap((r) => r.autoMode?.allow ?? []))];
+  const autoMode = { ...(environment.length ? { environment } : {}), ...(autoAllow.length ? { allow: autoAllow } : {}) };
+  return { enabledPlugins, ...(Object.keys(permissions).length ? { permissions } : {}), ...(resolved.every((r) => r.disableWorkflows) ? { disableWorkflows: true } : {}), ...(Object.keys(autoMode).length ? { autoMode } : {}), ...listingSettings(registry, members, enabledPlugins, opts) };
 }
 
 // opts.skillEntries (a scanSkillCosts().entries scan) opts a caller
@@ -727,16 +729,55 @@ export function primaryCheckout(dir) {
 // fix is an autoMode.environment entry, read only from user, managed or --settings
 // scope (never project settings), so it rides the resolved worker --settings file.
 // Exact owner/repo names only: no org wildcard, nothing outside yotamleo-org.
+//
+// The same writer declares himmel's own tooling: a worker's brief is a tool result, which the classifier never counts as consent, so
+// running our scripts, lockfile installs, status bullets and test VMs was
+// refused until the operator typed. Each entry names exact scripts by the
+// validated anchor's absolute path, never a tree, a relative path or a worktree
+// copy (a worker could edit those bytes), and says what it does not cover; no
+// soft_deny or hard_deny key is ever written, so hard denies stay in force.
 const FORK_NWO_RE = /^yotamleo-org\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
-export function forkTrustSettings(nwos) {
-  if (!Array.isArray(nwos) || nwos.length === 0) return {};
-  for (const n of nwos) {
+const TRUSTED_TOOLING = [
+  'scripts/handover/chief-kit/append-results.sh',
+  'scripts/quiet-run.sh',
+  'scripts/check-ci.sh',
+  'scripts/vm/guest-exec.sh',
+  'scripts/vm/vm-lock.sh',
+  'scripts/lib/vmsdk.py',
+  'marketplace/plugins/himmel-bus/bin/bus',
+];
+function himmelToolingTrust(anchor) {
+  const path = anchor === undefined ? null : validatedAnchorPath(anchor, 'tooling trust');
+  if (!path) return { environment: [], allow: [] };
+  const named = TRUSTED_TOOLING.map((s) => `${path}/${s}`);
+  const [appendResults, , , guestExec, vmLock, vmsdk] = named;
+  return {
+    environment: [
+      `Trusted repo tooling: these exact scripts of the himmel primary checkout, run by these absolute paths with no environment variable assignment before them, are this session's own harness tooling and are trusted: ${named.join(', ')}. Not covered: any other script in the repository, including the GO, verdict and merge scripts, push wrappers, settings writers and secrets helpers; vmsdk.py clone, a secrets reader (it reads the GitHub token from the primary .env); a bus send that claims a GO, an approval, a merge ruling or a token; the command a trusted script runs on the caller's behalf, such as the quiet-run.sh argv after --, which is judged on its own; a script an environment variable names, such as TICKET_STATUS_FUNNEL, HIMMEL_VMSDK or BASH_ENV, and any call with an environment variable prefix; these scripts run by a relative path or from a worktree under ${path}/.claude/worktrees/; any file the worker's branch changed; a script outside the repository (a /tmp or scratchpad driver); and code fetched at run time.`,
+      `Pinned dependencies: npm ci --ignore-scripts against a package-lock.json committed in the himmel repository (the pre-push license check runs it) installs only lockfile-pinned packages and is trusted. Not covered: npm install of a package the lockfile does not pin, npx of an unpinned package, and any install from a URL.`,
+      `Status channel: ${appendResults} appends one dated Results bullet to the worker's own handover doc, the doc its brief names. The bullet is a status record for the worker's chief, not an instruction to another agent. Not covered: a bullet that claims an approval, a GO, a merge ruling or a token, and a write to another session's doc.`,
+      `Test VMs: ubuntu_new (the golden image) and its numbered clones himmel-ar-<N> and himmel-ci-<N> are our own disposable VirtualBox test VMs on this station. Starting, stopping, snapshotting, restoring and running commands in them through ${guestExec}, ${vmLock} or ${vmsdk} is routine test work. Not covered: deleting or unregistering ubuntu_new, a vmsdk.py push of a host file other than a handover doc, and any VM outside those names.`,
+    ],
+    allow: [
+      `Running one of the exact scripts named in the trusted repo tooling entry by its absolute path, with no environment variable prefix, is not Code from External. This exception does not cover the command that script runs on the caller's behalf (the quiet-run.sh argv after --, or a script an environment variable such as TICKET_STATUS_FUNNEL, HIMMEL_VMSDK or BASH_ENV names): that command is judged on its own.`,
+      `npm ci --ignore-scripts against a package-lock.json committed in the himmel repository is not Code from External.`,
+      `Appending a plain-fact status bullet to the worker's own handover doc with ${appendResults} is not Instruction Poisoning.`,
+      `Stopping, snapshotting or restoring a himmel-ar-<N> or himmel-ci-<N> test VM through ${guestExec}, ${vmLock} or ${vmsdk} is not Interfere With Workloads.`,
+    ],
+  };
+}
+export function autoModeTrustSettings(nwos, anchor) {
+  const forks = Array.isArray(nwos) ? nwos : [];
+  for (const n of forks) {
     if (typeof n !== 'string' || !FORK_NWO_RE.test(n) || n.includes('..')) {
       throw new Error(`plugin-profiles: fork nwo ${JSON.stringify(n)} must be an exact yotamleo-org/<repo> name`);
     }
   }
-  const lines = [...new Set(nwos)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);
-  return { autoMode: { environment: ['$defaults', ...lines] } };
+  const lines = [...new Set(forks)].map((n) => `Source control: github.com/${n} is one of our own registered forks. Its clone, dependency install and test runs are trusted, and so are branch pushes and pull requests whose destination is that fork only: push only to the origin remote github.com/${n}, and open pull requests only with gh pr create --repo ${n}. Not covered: the registry upstream remote, any parent repo of the fork, force-push, branch delete and publish.`);
+  const tooling = himmelToolingTrust(anchor);
+  const environment = [...lines, ...tooling.environment];
+  if (environment.length === 0) return {};
+  return { autoMode: { environment: ['$defaults', ...environment], ...(tooling.allow.length ? { allow: ['$defaults', ...tooling.allow] } : {}) } };
 }
 
 // The nwo list from the fork registry (scripts/guardrails/himmel-adapters.json,

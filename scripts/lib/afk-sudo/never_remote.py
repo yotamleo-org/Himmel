@@ -55,7 +55,7 @@ DISK_DEVS = ("/dev/sd*", "/dev/hd*", "/dev/vd*", "/dev/xvd*", "/dev/nvme*", "/de
              "/dev/mapper/*", "/dev/disk/*")
 SECRETS = ("/etc/shadow", "/etc/gshadow", "*/.ssh/id_*", "*/.gnupg", "*/.gnupg/*", "*/.claude/.credentials.json",
            "*/.claude/channels/*/.env", ".env", "totp.seed")
-FORCE = ("-f", "--force*", "--delete", "+*", ":*")
+FORCE = ("--force*", "--delete", "+*", ":*")
 PROTECTED = ("main", "master", "*/main", "*/master", "*:main", "*:master", "refs/heads/main", "refs/heads/master")
 HIMMEL_DIRS = ("/etc/himmel", "/usr/local/libexec/himmel", "/var/lib/himmel", "/var/log/himmel")
 GUARD_FILES = ("*/.claude/settings*.json", "*/scripts/hooks", "*/scripts/hooks/*")
@@ -95,7 +95,9 @@ def _forms(w, pathy, cwd, home):
             if len(seen) > MAX_FORMS:
                 return None
             out.add(v)
-            if "=" in v[1:]:
+            if v[0] == "=":  # a leading = run derives the word after it once, not one form per =
+                todo.append((v.lstrip("="), False))
+            elif "=" in v:
                 todo.append((v.split("=", 1)[1], False))
             if v[0] in "+:" and len(v) > 1:  # a refspec: +main forces main, :main deletes it
                 todo.append((v[1:], False))
@@ -155,8 +157,14 @@ def _secret_read(ws, home):
             or {"himmel-secrets", "get"} <= ws)
 
 
+def _short_force(w):
+    """-f, -d and a short-flag cluster carrying one (-fu, -df). No regex: a backtracking one is quadratic on a 64 KiB word."""
+    return w[:1] == "-" and w[1:].isascii() and w[1:].isalnum() and ("f" in w or "d" in w)
+
+
 def _main_history(ws, home):
-    if "push" in ws and _any(ws, FORCE) and _any(ws, PROTECTED):
+    force = _any(ws, FORCE) or any(_short_force(w) for w in ws)
+    if "push" in ws and force and _any(ws, PROTECTED):
         return True
     if "gh" in ws and "DELETE" in ws and any("refs/heads/main" in w for w in ws):
         return True

@@ -184,9 +184,8 @@ read_session_cache_stats() {
     # silently reopen the unbounded-parse hole this seam exists to close.
     [ "$sess_timeout" -gt 0 ] || sess_timeout=2
     local sess_to=""
-    # CR #1474: validate with --version so a PATH that resolves `timeout` to
-    # Windows' native timeout.exe (no GNU semantics; errors on this shape) is
-    # never used as the seam — GNU coreutils passes, timeout.exe fails and we
+    # CR #1474: validate with --version so a non-GNU `timeout` on PATH is
+    # never used as the seam — GNU coreutils passes, anything else fails and we
     # fall through to gtimeout/unbounded exactly like a missing binary.
     if command -v timeout >/dev/null 2>&1 && timeout --version >/dev/null 2>&1; then sess_to="timeout $sess_timeout"
     elif command -v gtimeout >/dev/null 2>&1; then sess_to="gtimeout $sess_timeout"; fi
