@@ -21,7 +21,7 @@ const NA = 'not available';
 const DAY = 86400000;
 const FIELDS = {
   codex_tokens: { unit: 'tokens', source: 'codex rollouts: event_msg token_count, total_token_usage grown over the window, summed across sessions' },
-  codex_bank: { unit: 'percentage points of the weekly window', source: 'codex rollouts: event_msg token_count, rate_limits.primary.used_percent (weekly window)' },
+  codex_bank: { unit: 'percentage points of the weekly window', source: 'codex rollouts: event_msg token_count, rate_limits primary or secondary used_percent, whichever carries the 10080-minute weekly window' },
   claude_bank: { unit: 'percent of the subscription window', source: 'cadence ledger: five_hour and seven_day utilization read at each launch' },
   api_cost: { unit: 'USD', source: 'Anthropic Admin API GET /v1/organizations/cost_report, daily buckets' },
   openrouter: { unit: 'USD', source: 'OpenRouter GET /api/v1/key, usage' },
@@ -32,7 +32,6 @@ const ms = (iso) => Date.parse(iso);
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // ---- codex rollouts -------------------------------------------------------------------------
-const scans = new Map();
 function rolloutFiles(dir, floorMs, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
@@ -41,9 +40,7 @@ function rolloutFiles(dir, floorMs, out = []) {
   }
   return out;
 }
-function scanCodex(dir, since) {
-  const key = `${dir}\0${since}`;
-  if (scans.has(key)) return scans.get(key);
+export function scanCodex(dir, since) {
   // A session idle since before the shift can hold the last pre-shift weekly reading: look back one weekly window.
   const sessions = rolloutFiles(dir, ms(since) - 7 * DAY).map((file) => {
     const events = [];
@@ -59,7 +56,6 @@ function scanCodex(dir, since) {
     }
     return events;
   });
-  scans.set(key, sessions);
   return sessions;
 }
 const TOKEN_KEYS = ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens'];
@@ -85,14 +81,16 @@ function codexBank(sessions, s, u) {
   return { start: start.pct, end: end.pct, value: Math.round((end.pct - start.pct) * 1e6) / 1e6, samples: inside.length,
     start_from: before ? 'last reading before the shift' : 'first reading inside the shift' };
 }
-export function codexField(dir, since, until, mode = 'tokens') {
+export function codexField(dir, since, until, mode = 'tokens', scanned = null) {
   const name = mode === 'bank' ? 'codex_bank' : 'codex_tokens';
   if (!existsSync(dir)) return na(name, 'codex sessions directory not found');
-  const sessions = scanCodex(dir, since);
+  const sessions = scanned ?? scanCodex(dir, since);
   if (mode === 'bank') {
     const r = codexBank(sessions, ms(since), ms(until));
     return r.reason ? na(name, r.reason) : ok(name, r);
   }
+  // Sessions that never reported a token total say nothing: that is not a measured zero.
+  if (!sessions.some((events) => events.some((e) => e.usage))) return na(name, 'no codex token total found in the scanned sessions');
   const t = codexTokens(sessions, ms(since), ms(until));
   return ok(name, { ...t, value: t.total_tokens });
 }
@@ -214,11 +212,13 @@ export function openrouterField(src) {
 // ---- the record -------------------------------------------------------------------------------
 export function buildRecord({ since, until, codexDir, ledgerFile, cost, openrouter }) {
   const field = (name, read) => { try { return read(); } catch (e) { return na(name, e.message || 'unreadable'); } };
+  let scanned = null;
+  const scan = () => { if (!existsSync(codexDir)) return null; scanned ??= scanCodex(codexDir, since); return scanned; };
   return {
     window: { since, until },
     fields: {
-      codex_tokens: field('codex_tokens', () => codexField(codexDir, since, until)),
-      codex_bank: field('codex_bank', () => codexField(codexDir, since, until, 'bank')),
+      codex_tokens: field('codex_tokens', () => codexField(codexDir, since, until, 'tokens', scan())),
+      codex_bank: field('codex_bank', () => codexField(codexDir, since, until, 'bank', scan())),
       claude_bank: field('claude_bank', () => claudeBankField(ledgerFile, since, until)),
       api_cost: field('api_cost', () => costField(cost, since, until)),
       openrouter: field('openrouter', () => openrouterField(openrouter)),

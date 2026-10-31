@@ -105,6 +105,15 @@ test('codex: a missing sessions dir, and a shift with no codex event, read not a
   assert.equal(codexField(quiet, SINCE, UNTIL).total_tokens, 0);
 });
 
+test('codex tokens: sessions that never reported a total read not available, and a grown file is re-read', () => {
+  const blank = codexRoot('codex-f', { one: [JSON.stringify({ timestamp: '2026-10-31T01:00:00Z', type: 'event_msg', payload: { type: 'token_count', info: null, rate_limits: null } })] });
+  assert.equal(codexField(blank, SINCE, UNTIL).status, 'not available');
+  const grow = codexRoot('codex-g', { one: [tokenEvent('2026-10-31T01:00:00Z', 1000, 40)] });
+  assert.equal(codexField(grow, SINCE, UNTIL).input_tokens, 1000);
+  rollout(grow, 'one', [tokenEvent('2026-10-31T01:00:00Z', 1000, 40), tokenEvent('2026-10-31T02:00:00Z', 3000, 41)]);
+  assert.equal(codexField(grow, SINCE, UNTIL).input_tokens, 3000);
+});
+
 test('claude bank: start, end and peak of both windows from the cadence ledger, degraded rows ignored', () => {
   const ledger = join(T, 'ledger.jsonl');
   writeFileSync(ledger, [
