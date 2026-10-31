@@ -1107,6 +1107,18 @@ describe('a blocker of a current-version ticket is pulled into the current versi
     expect(pull(ctx(), { max: 1 }).filed.map((r) => r.key)).toEqual(['K-3']);
   });
 
+  it('the lock-held filing check stops a pull request already asked for, even after it was closed', () => {
+    declared();
+    scene();
+    const first = pull(ctx()).filed[0];
+    withdraw(ctx(), { req: first.req, reason: 'settled elsewhere' });
+    const raced = request(ctx(), {
+      verb: 'INTAKE', key: 'K-2', from_v: 'v2', to_v: 'v1', why: 'blocks K-1 in v1', evidence: { blocks: ['K-1'], rule: 'blocker-pull' }, from: 'blocker-pull',
+    });
+    expect(raced.req).toBe(first.req);
+    expect(request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: 'v2', to_v: 'v1', why: 'the chief asks again', evidence: {}, from: 'console' }).req).not.toBe(first.req);
+  });
+
   it('a dry run lists the rows and files nothing', () => {
     declared();
     scene();

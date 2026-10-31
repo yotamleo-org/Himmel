@@ -389,7 +389,9 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
   return locked(ctx, (l) => {
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
-    const dup = [...latest.values()].find((r) => pending(r) && r.key === o.key && r.verb === o.verb
+    // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
+    const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
+    const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
       && r.from_v === o.from_v && r.to_v === o.to_v);
     if (dup) return dup;
     const req = seq(`Q-${ctx.release}`, latest.keys());
