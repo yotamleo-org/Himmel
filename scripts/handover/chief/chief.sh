@@ -1826,7 +1826,7 @@ seeded_live_field() {
 # block whole: the open set is then unknown.
 # Args: legs block (as seeded_live_field prints it), manifest.
 open_legs_block() {
-    local block="$1" manifest="$2" names spans="" span label pools seen=0
+    local block="$1" manifest="$2" names spans="" span label pools seen=0 NL=$'\n'
     [ -f "$manifest" ] || { printf '%s\n' "$block"; return 0; }
     names="$(jq -r '.legs[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; ""))' "$manifest" 2>/dev/null)" \
         || { printf '%s\n' "$block"; return 0; }
@@ -1835,7 +1835,7 @@ open_legs_block() {
         [ -n "$span" ] || continue
         seen=1
         label="${span#\`}"; label="${label%%:*}"
-        if printf '%s\n' "$names" | grep -Fxq -- "$label"; then spans="$spans$span "; fi
+        case "$NL$names$NL" in *"$NL$label$NL"*) spans="$spans$span " ;; esac
     done < <(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`')
     [ "$seen" -eq 1 ] || { printf '%s\n' "$block"; return 0; }  # no worker span (a placeholder or `none`): nothing to trim
     pools="$(printf '%s\n' "$block" | grep '^pool-disposition:')" || pools=""  # swallow-ok: no pool-disposition line is the common case
