@@ -92,6 +92,18 @@ session 1005 claude --model claude-sonnet-5-5 -n HIMMEL-5-other "load /h/x.md; -
 reset; run --relaunch HIMMEL-6-w /s 99999999999 /l
 check "h: only an exact -n element matches" "3" "$rc"
 
+# --- (i) the pid is recycled between the scan and the kill: nothing is signalled ----
+session 1006 claude --model claude-sonnet-5-5 -n HIMMEL-7-w "load /h/HIMMEL-7-w.md and continue"
+record HIMMEL-7-w worker-impl native
+# shellcheck disable=SC2016 # the $1/$2 belong to the stub script, not this one
+printf '%s\n' '#!/usr/bin/env bash' 'printf "unrelated\0--version\0" > "$2/$1/cmdline"' > "$WORK/recycle-stub"
+chmod 755 "$WORK/recycle-stub"
+reset; rc=0
+out="$(ENABLE_RC_BEFORE_KILL="$WORK/recycle-stub" ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" \
+    bash "$ERC" --relaunch HIMMEL-7-w /s 99999999999 /l 2>&1)" || rc=$?
+check "i: a recycled pid exits 6" "6" "$rc"
+check "i: nothing killed or launched" "" "$(cat "$KILLED" "$LAUNCHED" 2>/dev/null)"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-enable-remote-control.sh"; exit 0; fi
 echo "FAIL - test-enable-remote-control.sh ($fails failure(s))"; exit 1

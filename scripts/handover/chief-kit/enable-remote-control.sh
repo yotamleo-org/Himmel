@@ -24,12 +24,15 @@
 # arguments the launch needs, supplied by the chief as for any launch.
 #
 # Seams (suites): ENABLE_RC_PROC (default /proc), ENABLE_RC_KILL_CMD (default kill),
-# ENABLE_RC_LAUNCHER (default headed-arm-worker.sh beside this script).
+# ENABLE_RC_LAUNCHER (default headed-arm-worker.sh beside this script),
+# ENABLE_RC_BEFORE_KILL (a command run with the pid and proc dir between the scan and
+# the pid re-check; a suite uses it to recycle the pid).
 #
 # Exit codes: 0 enabled/relaunched/already on; 2 usage; 3 no live session by that
 # name; 4 ineligible (claudex, unprofiled, no launch record, or the session's doc
 # and model unreadable from its argv); 5 relaunch needed,
-# --relaunch not given; 6 the old session did not exit.
+# --relaunch not given; 6 the pid no longer names the session (recycled or gone, nothing
+# killed) or the old session did not exit.
 #
 # ponytail: relaunch loses the old session's context window (the doc carries state), upgrade path: a native toggle once claude exposes one over its session file.
 # Platform: Linux only (reads /proc), as the rest of the chief kit.
@@ -104,6 +107,13 @@ if [ "$RELAUNCH" -ne 1 ]; then
     exit 5
 fi
 
+[ -z "${ENABLE_RC_BEFORE_KILL:-}" ] || "$ENABLE_RC_BEFORE_KILL" "$pid" "$PROC"
+# The pid was matched above; confirm it still names this session right before the
+# kill, so a pid recycled by an unrelated process in between is never signalled.
+if ! tr '\0' '\n' < "$PROC/$pid/cmdline" 2>/dev/null | awk -v n="$NAME" 'p == "-n" && $0 == n { f = 1 } { p = $0 } END { exit !f }'; then  # swallow-ok: an unreadable cmdline means the pid is gone or reused; not killing is the safe answer
+    echo "enable-remote-control: pid $pid no longer names session $NAME; not killing" >&2
+    exit 6
+fi
 "$KILL_CMD" "$pid" || true
 n=0
 while [ "$n" -lt 30 ] && [ -d "$PROC/$pid" ] && [ "$PROC" = "/proc" ]; do sleep 1; n=$((n + 1)); done
