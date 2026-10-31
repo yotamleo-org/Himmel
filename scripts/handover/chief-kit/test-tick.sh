@@ -3169,7 +3169,7 @@ contains 'a real tick uses the shared pool interpretation with PR ownership and 
 PDI="$W/pdi-mirror/HIMMEL"; mkdir -p "$PDI" "$W/ic-dir"
 cp "$PD"/*.md "$PDI"/; cp "$W/pd-mirror/HIMMEL.versions.tsv" "$W/pdi-mirror/HIMMEL.versions.tsv"
 ic_doc="$W/ic-dir/HIMMEL-8336-chief.md"; cp "$pd_doc" "$ic_doc"
-ic_tick() { NEXT_DISPATCH_MIRROR="$PDI" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_STATE_DIR="$W/ic-state" TOKEN='' bash "$SUT" --doc "$ic_doc" 2>/dev/null; }
+ic_tick() { NEXT_DISPATCH_MIRROR="$PDI" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_STATE_DIR="$W/ic-state" TOKEN='' bash "$SUT" "$@" --doc "$ic_doc" 2>/dev/null; }
 not_contains 'with no versionless operator ticket the tick prints no INTAKE= (HIMMEL-8336)' "$(ic_tick)" ' INTAKE='
 not_contains 'with no focus-chains.json the tick prints no chains= (HIMMEL-8336)' "$(ic_tick)" ' chains='
 sed -e 's/^labels: \[\]/labels: ["operator-directed"]/' -e 's/904/905/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-905.md"
@@ -3181,6 +3181,10 @@ printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-906"},{"key":"
 contains 'a focus-chains.json that lists a Done step shows chains=STALE:<done>/<steps>; a Done line in a description is not a Done step (HIMMEL-8336)' "$(ic_tick)" ' chains=STALE:1/4'
 printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-904"},{"key":"HIMMEL-907"}]}]\n' > "$W/ic-dir/focus-chains.json"
 not_contains 'a focus-chains.json with no Done step prints no chains=, whatever its descriptions quote (HIMMEL-8336)' "$(ic_tick)" ' chains='
+printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-904"},{"key":"HIMMEL-999"}]}]\n' > "$W/ic-dir/focus-chains.json"
+contains 'a chain step with no readable mirror file reads chains: skip, not ok (HIMMEL-8336)' "$(ic_tick --verbose)" 'chains: skip'
+printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-904"}]}]\n' > "$W/ic-dir/focus-chains.json"
+contains 'a chain whose steps all read and none is Done reads chains: ok (HIMMEL-8336)' "$(ic_tick --verbose)" 'chains: ok'
 
 # The pool snapshot classifies every version ticket (140 s on a 23-worker fleet),
 # so a slow one never holds the tick: it reads ? until the detached snapshot lands, then counts.

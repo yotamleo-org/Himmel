@@ -44,8 +44,13 @@ mirror = os.environ['IB_MIRROR'].rstrip('/')
 open_versions = []
 try:
     for line in open(mirror + '.versions.tsv'):
+        if not line.strip():
+            continue
         f = line.rstrip('\n').split('\t')
-        if len(f) >= 2 and f[0] and not f[0].startswith('zz-') and f[1] != 'true' and (len(f) < 4 or f[3] != 'true'):
+        # a row that is not name, released, date, archived with true/false flags must not read as an open version
+        if len(f) < 2 or not f[0] or f[1] not in ('true', 'false') or (len(f) >= 4 and f[3] not in ('true', 'false')):
+            sys.exit('intake-backfill: malformed row in %s.versions.tsv: %r' % (mirror, line.rstrip('\n')))
+        if not f[0].startswith('zz-') and f[1] != 'true' and (len(f) < 4 or f[3] != 'true'):
             open_versions.append(f[0])
 except OSError as e:
     # without the versions there is no current version, and every ticket would be proposed to the backlog

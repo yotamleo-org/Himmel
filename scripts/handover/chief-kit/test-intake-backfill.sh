@@ -37,7 +37,8 @@ mk 711 Sub-task "To Do" Medium '["operator-directed"]' '[]' "Ship loop"
 mk 712 Task "To Do" Medium '["operator-directed"]' '["v1.2.0"]' "Ship loop"
 mk 713 Task "To Do" Medium '["operator-directed","scope-v0.9"]' '[]' "Ship loop"
 mk 714 Task "To Do" Medium '["scope-v1.3.0"]' '[]' "Quiet sector"
-before="$(cat "$M"/*.md | md5sum)"
+before="$(cat "$M"/*.md | cksum)"  # cksum is POSIX; md5sum is absent on stock macOS
+[ -n "$before" ] || fail "the mirror digest could not be taken"
 
 out="$(bash "$SUT" --mirror "$M" 2>&1)"; rc=$?
 check "the dry run exits 0" "0" "$rc"
@@ -59,9 +60,10 @@ has "the total and the skipped proposals are counted" "$out" "# counts total=10 
 has "the counts by proposed version" "$out" "# counts by proposed: backlog=4 v1.0.1=5 v1.2.0=1"
 has "the counts by basis" "$out" "# counts by basis: high-bug=1 in-progress=1 low-label=1 no-signal=3 operator-directed=2 scope-label=1 sector-active=1"
 lacks "without --commands no command is printed" "$out" "jira release request"
-check "the dry run writes nothing to the mirror" "$before" "$(cat "$M"/*.md | md5sum)"
+check "the dry run writes nothing to the mirror" "$before" "$(cat "$M"/*.md | cksum)"
 
-cmds="$(bash "$SUT" --mirror "$M" --commands 2>&1)"
+rc=0; cmds="$(bash "$SUT" --mirror "$M" --commands 2>&1)" || rc=$?
+check "--commands exits 0" "0" "$rc"
 has "--commands prints the label command" "$cmds" "jira edit HIMMEL-701 --add-labels proposed-v1.0.1"
 has "--commands prints the INTAKE request for the proposed version" "$cmds" 'jira release request v1.0.1 --verb INTAKE --key HIMMEL-703 --to v1.2.0 --why "backfill: scope-label"'
 has "--commands prints a backlog proposal too" "$cmds" "jira edit HIMMEL-708 --add-labels proposed-backlog"
@@ -106,6 +108,19 @@ rc=0; novout="$(bash "$SUT" --mirror "$nov" --commands 2>&1)" || rc=$?
 check "--commands with no open version exits 1" "1" "$rc"
 lacks "and prints no <release> placeholder command" "$novout" "<release>"
 check "the plan alone still works with no open version" "0" "$(bash "$SUT" --mirror "$nov" >/dev/null 2>&1; echo $?)"
+
+# a versions row with a missing or non-boolean released/archived column fails the run instead of reading as open
+bad="$WORK/bad/HIMMEL"; mkdir -p "$bad"; cp "$sp"/*.md "$bad"/
+printf 'v1.0.1\tgarbage\t\tfalse\n' > "$WORK/bad/HIMMEL.versions.tsv"
+rc=0; badout="$(bash "$SUT" --mirror "$bad" --commands 2>&1)" || rc=$?
+check "a versions row with a non-boolean released column exits 1" "1" "$rc"
+has "and names the malformed row" "$badout" "malformed"
+printf 'v1.0.1\tfalse\t\tmaybe\n' > "$WORK/bad/HIMMEL.versions.tsv"
+rc=0; bash "$SUT" --mirror "$bad" >/dev/null 2>&1 || rc=$?
+check "a versions row with a non-boolean archived column exits 1" "1" "$rc"
+printf 'v1.0.1\n' > "$WORK/bad/HIMMEL.versions.tsv"
+rc=0; bash "$SUT" --mirror "$bad" >/dev/null 2>&1 || rc=$?
+check "a versions row with too few columns exits 1" "1" "$rc"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

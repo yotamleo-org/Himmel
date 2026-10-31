@@ -455,7 +455,8 @@ PY
 
 # chains=<ok|STALE:<n>/<m>>: <n> of the <m> steps in a focus-chains.json that the Jira mirror reads
 # Done; the file regenerates from the chain registry (focus-refresh.sh), so a Done step
-# means the order a HANDOFF quotes is out of date. skip on an unreadable file; no Jira call.
+# means the order a HANDOFF quotes is out of date. skip on an unreadable file, or on a step with no
+# readable mirror file when no Done step was found (the scan is incomplete); no Jira call.
 chains_stale() { # <focus-chains.json> <mirror dir>
     python3 -I - "$1" "$2" <<'PY'
 import json, re, sys
@@ -465,13 +466,13 @@ try:
 except (OSError, ValueError, TypeError, AttributeError):
     print("skip")
     sys.exit(0)
-done = 0
+done = unread = 0
 for k in keys:
     try:
         done += bool(re.search(r'^statusCategory: "Done"$', open("%s/%s.md" % (sys.argv[2], k)).read().split("\n---", 1)[0], re.M))
     except OSError:
-        pass
-print("STALE:%d/%d" % (done, len(keys)) if done else "ok")
+        unread += 1
+print("STALE:%d/%d" % (done, len(keys)) if done else "skip" if unread else "ok")
 PY
 }
 
