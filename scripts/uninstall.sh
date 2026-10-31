@@ -3738,7 +3738,7 @@ for _ix in "$_ix_conf" "$_ix_conf_local" "$_ix_conf_json"; do
     if guarded run rm -f -- "$_cf"; then
       if [ "$DRY_RUN" -eq 0 ]; then
         echo "  removed: $_cf"
-        bash "$SCRIPT_DIR/lib/config-audit.sh" post "$_ca_id" "$_cf" rm --script uninstall.sh --pid "$$" 2>/dev/null \
+        bash "$SCRIPT_DIR/lib/config-audit.sh" post "$_ca_id" "$_cf" remove --script uninstall.sh --pid "$$" 2>/dev/null \
           || echo "  WARN: no config audit row for $_cf" >&2
       fi
     else
