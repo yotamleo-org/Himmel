@@ -44,7 +44,8 @@ function rolloutFiles(dir, floorMs, out = []) {
 function scanCodex(dir, since) {
   const key = `${dir}\0${since}`;
   if (scans.has(key)) return scans.get(key);
-  const sessions = rolloutFiles(dir, ms(since)).map((file) => {
+  // A session idle since before the shift can hold the last pre-shift weekly reading: look back one weekly window.
+  const sessions = rolloutFiles(dir, ms(since) - 7 * DAY).map((file) => {
     const events = [];
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       if (!line.includes('"token_count"')) continue;
@@ -52,7 +53,7 @@ function scanCodex(dir, since) {
       try { row = JSON.parse(line); } catch { continue; }
       const p = row?.payload;
       if (row?.type !== 'event_msg' || p?.type !== 'token_count' || !Number.isFinite(ms(row.timestamp))) continue;
-      const weekly = p.rate_limits?.primary?.window_minutes === 10080 ? p.rate_limits.primary : null;
+      const weekly = [p.rate_limits?.primary, p.rate_limits?.secondary].find((w) => w?.window_minutes === 10080) ?? null;
       events.push({ t: ms(row.timestamp), usage: p.info?.total_token_usage ?? null,
         pct: num(weekly?.used_percent) ? weekly.used_percent : null, resets: weekly?.resets_at ?? null });
     }
@@ -104,7 +105,9 @@ export function claudeBankField(file, since, until) {
     if (!line) continue;
     let r;
     try { r = JSON.parse(line); } catch { continue; }
-    const five = Number(r.five_hour), seven = Number(r.seven_day);
+    // Number(null) and Number('') are 0: a missing reading must not become a measured zero.
+    const pct = (v) => ((typeof v === 'string' && v.trim() !== '') || num(v) ? Number(v) : NaN);
+    const five = pct(r.five_hour), seven = pct(r.seven_day);
     if (r.degraded === true || !Number.isFinite(ms(r.ts)) || !Number.isFinite(five) || !Number.isFinite(seven)) continue;
     rows.push({ t: ms(r.ts), five_hour: five, seven_day: seven });
   }
@@ -113,12 +116,14 @@ export function claudeBankField(file, since, until) {
   const inside = rows.filter((r) => r.t >= s && r.t < u);
   if (inside.length === 0) return na('claude_bank', 'no ledger reading inside the shift');
   const start = rows.filter((r) => r.t < s).at(-1) ?? inside[0];
-  // The ledger carries no reset time, so a fall is read as a reset (or an account change) inside the
-  // shift: the readings stay, the change is not stated.
+  // The ledger carries no reset time, so any fall between two consecutive readings is read as a reset (or
+  // an account change) inside the shift: the readings stay, the change is not stated.
   const span = (k) => {
-    const end = inside.at(-1)[k];
-    return { start: start[k], end, peak: Math.max(start[k], ...inside.map((r) => r[k])),
-      delta: end < start[k] ? null : Math.round((end - start[k]) * 1e6) / 1e6, ...(end < start[k] ? { reset_in_window: true } : {}) };
+    const series = [start, ...inside].map((r) => r[k]);
+    const end = series.at(-1);
+    const reset = series.some((v, i) => i > 0 && v < series[i - 1]);
+    return { start: series[0], end, peak: Math.max(...series),
+      delta: reset ? null : Math.round((end - series[0]) * 1e6) / 1e6, ...(reset ? { reset_in_window: true } : {}) };
   };
   const seven_day = span('seven_day');
   return ok('claude_bank', { five_hour: span('five_hour'), seven_day, samples: inside.length, value: seven_day.delta,
@@ -128,12 +133,14 @@ export function claudeBankField(file, since, until) {
 // ---- Admin API cost report --------------------------------------------------------------------
 const MICRO = 1000000n;
 const dollars = (micro) => `${micro / MICRO}.${String(micro % MICRO).padStart(6, '0')}`;
-function costMicro(bodies) {
+function costMicro(bodies, from, to) {
   let total = 0n, complete = false;
   for (const body of bodies) {
     if (body === null || typeof body !== 'object' || !Array.isArray(body.data) || typeof body.has_more !== 'boolean') throw new Error('invalid-cost-report');
     for (const bucket of body.data) {
       if (bucket === null || typeof bucket !== 'object' || !Array.isArray(bucket.results)) throw new Error('invalid-cost-report');
+      // A response for another window must not read as this shift's spend.
+      if (!(ms(bucket.starting_at) >= ms(from) && ms(bucket.ending_at) <= ms(to))) throw new Error('cost-report-outside-window');
       for (const r of bucket.results) {
         if (r === null || typeof r !== 'object' || r.currency !== 'USD') throw new Error('invalid-cost-report');
         total += centsToMicro(r.amount);
@@ -155,7 +162,7 @@ export function costField(perAccount, since, until) {
   for (const [account, src] of accounts) {
     try {
       if (src.error) throw new Error(src.error);
-      const micro = costMicro(src.bodies);
+      const micro = costMicro(src.bodies, floorDay(since), ceilDay(until));
       per_account[account] = dollars(micro);
       total += micro;
     } catch (e) { per_account[account] = NA; failed = true; reasons.push(`${account}: ${e.message}`); }

@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,6 +84,19 @@ test('codex bank: a weekly reset inside the shift is not a change, it reads not 
   assert.match(f.reason, /reset/);
 });
 
+test('codex bank: the weekly window is read from secondary too, and an idle older session supplies the pre-shift reading', () => {
+  const root = codexRoot('codex-e', { old: [tokenEvent('2026-10-29T12:00:00Z', 1000, 30)], now: [] });
+  rollout(root, 'now', [JSON.stringify({ timestamp: '2026-10-31T01:00:00Z', type: 'event_msg', payload: { type: 'token_count', info: null,
+    rate_limits: { primary: { used_percent: 5, window_minutes: 300, resets_at: 1 }, secondary: { used_percent: 33, window_minutes: 10080, resets_at: 1793774616 } } } })]);
+  const idleSince = new Date('2026-10-29T13:00:00Z');
+  utimesSync(join(root, '2026', '10', '31', 'rollout-old.jsonl'), idleSince, idleSince);
+  const f = codexField(root, SINCE, UNTIL, 'bank');
+  assert.equal(f.status, 'ok');
+  assert.equal(f.start, 30);
+  assert.equal(f.end, 33);
+  assert.equal(f.start_from, 'last reading before the shift');
+});
+
 test('codex: a missing sessions dir, and a shift with no codex event, read not available for the bank and zero-free for tokens', () => {
   assert.equal(codexField(join(T, 'no-such-dir'), SINCE, UNTIL).status, 'not available');
   assert.equal(codexField(join(T, 'no-such-dir'), SINCE, UNTIL, 'bank').status, 'not available');
@@ -106,8 +119,18 @@ test('claude bank: start, end and peak of both windows from the cadence ledger, 
   assert.equal(f.status, 'ok');
   assert.equal(f.unit, 'percent of the subscription window');
   assert.deepEqual(f.seven_day, { start: 50, end: 55, peak: 55, delta: 5 });
-  assert.deepEqual(f.five_hour, { start: 10, end: 30, peak: 60, delta: 20 });
+  // 60 then 30 is a five-hour reset inside the shift: readings stay, the change is not stated
+  assert.deepEqual(f.five_hour, { start: 10, end: 30, peak: 60, delta: null, reset_in_window: true });
   assert.equal(f.samples, 3);
+  // a reset followed by recovery above the start is still a reset, not a +delta
+  writeFileSync(join(T, 'recover.jsonl'), [ledgerRow('2026-10-30T21:00:00Z', '1.0', '40.0'), ledgerRow('2026-10-31T01:00:00Z', '1.0', '5.0'), ledgerRow('2026-10-31T03:00:00Z', '1.0', '45.0')].join('\n'));
+  const recover = claudeBankField(join(T, 'recover.jsonl'), SINCE, UNTIL);
+  assert.equal(recover.seven_day.delta, null);
+  assert.equal(recover.seven_day.reset_in_window, true);
+  assert.equal(recover.value, null);
+  // a null or empty utilization is a missing reading, never a measured zero
+  writeFileSync(join(T, 'nulls.jsonl'), [ledgerRow('2026-10-31T01:00:00Z', null, '5.0'), ledgerRow('2026-10-31T02:00:00Z', '', '6.0')].join('\n'));
+  assert.equal(claudeBankField(join(T, 'nulls.jsonl'), SINCE, UNTIL).status, 'not available');
   // a fall inside the shift is a reset or an account change: readings stay, the change is not stated
   writeFileSync(join(T, 'reset.jsonl'), [ledgerRow('2026-10-30T21:00:00Z', '40.0', '99.0'), ledgerRow('2026-10-31T01:00:00Z', '10.0', '13.0')].join('\n'));
   const reset = claudeBankField(join(T, 'reset.jsonl'), SINCE, UNTIL);
@@ -132,6 +155,10 @@ test('cost report: pages summed in micro-dollars, rounded up, USD only, pinned t
   const broken = structuredClone(pages);
   delete broken[0].has_more;
   assert.equal(costField({ A: { bodies: broken } }, SINCE, UNTIL).status, 'not available');
+  // a response for another window is not this shift's spend
+  const other = costField({ A: { bodies: pages } }, '2026-09-01T00:00:00Z', '2026-09-02T00:00:00Z');
+  assert.equal(other.status, 'not available');
+  assert.match(other.reason, /outside-window/);
 });
 
 test('cost report: one account unreadable keeps the other visible and the total unstated', () => {
