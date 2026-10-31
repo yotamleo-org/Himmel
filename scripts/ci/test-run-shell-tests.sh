@@ -3313,7 +3313,8 @@ fi
 rm -rf "$sb32"
 fi
 
-if shard_step26 "$ci_yml26" | grep -qE '^          HOME_CANARY_TIMEOUT: "[0-9]+"$'; then
+step32=$(shard_step26 "$ci_yml26")
+if grepq "$step32" -E '^          HOME_CANARY_TIMEOUT: "[0-9]+"$'; then
   pass "32d: ci.yml's shard run step sets the HOME_CANARY_TIMEOUT the runner budgets its reruns against"
 else
   fail "32d: ci.yml's shard run step no longer sets HOME_CANARY_TIMEOUT"
