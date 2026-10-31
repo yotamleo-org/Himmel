@@ -501,7 +501,7 @@ export function refreshSnapshot(env, account, { remaining, grant, starts, expire
 // credit; the write goes through refreshSnapshot so the watermark and lock are shared.
 // The key is read here only (env, then a dotenv file), never printed or put on argv.
 const COST_REPORT = 'https://api.anthropic.com/v1/organizations/cost_report';
-function adminKey(env, account) {
+export function adminKey(env, account) {
   const name = `ANTHROPIC_ORG_${account}_KEY`;
   if (env[name]) return env[name];
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -525,7 +525,7 @@ function adminKey(env, account) {
   }
   return '';
 }
-function centsToMicro(amount) {
+export function centsToMicro(amount) {
   if (typeof amount !== 'string' || !/^[0-9]{1,15}(\.[0-9]{1,12})?$/.test(amount)) refuse('invalid-cost-report');
   const [whole, fraction = ''] = amount.split('.');
   const padded = fraction.padEnd(4, '0');
