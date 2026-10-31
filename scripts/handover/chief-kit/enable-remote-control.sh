@@ -160,7 +160,7 @@ esac
 # The old session's own environment (/proc/<pid>/environ): the owning chief and the effort
 # are carried onto the relaunch; any other launch-shaping input it was started with is not
 # reproducible, so its presence refuses.
-chief=""; effort=""; env_profile=""
+chief=""; effort=""; effort_level=""; env_profile=""
 # An environment that cannot be read cannot be checked for the refusals below or for the
 # chief and effort to carry, so it fails closed rather than relaunching on a guess.
 if [ ! -r "$PROC/$pid/environ" ]; then
@@ -171,6 +171,7 @@ while IFS= read -r -d '' kv; do
     case "$kv" in
         HIMMEL_CONSOLE_NAME=*) chief="${kv#*=}" ;;
         WORKER_SESSION_EFFORT=*) effort="${kv#*=}" ;;
+        CLAUDE_CODE_EFFORT_LEVEL=*) effort_level="${kv#*=}" ;;
         HIMMEL_WORKER_SESSION_PROFILE=*) env_profile="${kv#*=}" ;;
         WORKER_SESSION_AUTOCOMPACT_AB=?*|HIMMEL_WORKER_SESSION_CONTEXT_MODE=?*)
             echo "enable-remote-control: $NAME was launched with ${kv%%=*}, which a relaunch cannot restore" >&2
@@ -199,6 +200,11 @@ launch+=("$NAME" "$doc" "$SIGNAL" "$DEADLINE" "$LOG" "$model")
 # The relaunch gets the OLD session's effort or none: an ambient value in the caller's
 # shell must not stand in for it.
 if [ -n "$effort" ]; then export WORKER_SESSION_EFFORT="$effort"; else unset -v WORKER_SESSION_EFFORT; fi
+if [ -n "$effort_level" ]; then export CLAUDE_CODE_EFFORT_LEVEL="$effort_level"; else unset -v CLAUDE_CODE_EFFORT_LEVEL; fi
+# The caller's other launch-shaping inputs (a headless replacement, a context window, an A/B
+# arm, a context guard) must not stand in for the old session's, which carried none of them
+# (the refusals above) or is restored from its own record.
+unset -v WORKER_SESSION_HEADLESS WORKER_SESSION_CONTEXT WORKER_SESSION_AUTOCOMPACT_AB HIMMEL_WORKER_SESSION_CONTEXT_MODE
 if ! "$LAUNCHER" --dry-run "${launch[@]}" >/dev/null 2>&1; then  # swallow-ok: the failure is reported on the next line and nothing is killed
     echo "enable-remote-control: the relaunch dry-run failed; $NAME was NOT ended (run the launcher with --dry-run by hand to see why)" >&2
     exit 7

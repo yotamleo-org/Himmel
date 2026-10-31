@@ -25,9 +25,11 @@ LAUNCHED="$WORK/launched"
 printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" >> "'"$KILLED"'"' > "$WORK/kill-stub"
 DRYRUN="$WORK/dryrun"
 EFFORT="$WORK/effort"
+AMBIENT="$WORK/ambient"
 FAILDRY="$WORK/faildry"
 cat > "$WORK/launcher-stub" <<STUB_EOF
 #!/usr/bin/env bash
+echo "h=\${WORKER_SESSION_HEADLESS-unset} c=\${WORKER_SESSION_CONTEXT-unset} ab=\${WORKER_SESSION_AUTOCOMPACT_AB-unset} cm=\${HIMMEL_WORKER_SESSION_CONTEXT_MODE-unset} el=\${CLAUDE_CODE_EFFORT_LEVEL-unset}" >> "$AMBIENT"
 if [ "\${1:-}" = "--dry-run" ]; then
     shift
     printf "[%s]" "\$@" >> "$DRYRUN"; echo >> "$DRYRUN"
@@ -54,7 +56,7 @@ run() { # <args...> -> sets out, rc
     out="$(ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" ENABLE_RC_PREFLIGHT="$WORK/preflight-stub" \
         bash "$ERC" "$@" 2>&1)" || rc=$?
 }
-reset() { rm -f "$KILLED" "$LAUNCHED" "$DRYRUN" "$EFFORT" "$FAILDRY" "$VERDICT"; }
+reset() { rm -f "$KILLED" "$LAUNCHED" "$DRYRUN" "$EFFORT" "$AMBIENT" "$FAILDRY" "$VERDICT"; }
 
 DOC="/h/HIMMEL-1-w.md"
 # --- (a) usage ---------------------------------------------------------------
@@ -267,6 +269,22 @@ done
 reset; printf '%s\n' PROCEED > "$VERDICT"; run --relaunch HIMMEL-25-w /s 99999999999 /l
 check "r: PROCEED relaunches (exit 0)" "0" "$rc"
 check "r: PROCEED: the old pid was killed" "1035" "$(cat "$KILLED" 2>/dev/null)"
+
+# --- (s) the caller's launch-shaping variables never stand in for the old session's ------
+session 1036 claude --session-id sid-1036 --model claude-sonnet-5-5 -n HIMMEL-26-w "load /h/HIMMEL-26-w.md and continue"
+record HIMMEL-26-w worker-impl native worker sid-1036
+reset; rc=0
+out="$(WORKER_SESSION_HEADLESS=1 WORKER_SESSION_CONTEXT=1m WORKER_SESSION_AUTOCOMPACT_AB=200000 HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact CLAUDE_CODE_EFFORT_LEVEL=ambient-leak \
+    ENABLE_RC_BEFORE_KILL='' ENABLE_RC_PROC="$PROC" HIMMELCTL_CACHE_DIR="$CACHE" ENABLE_RC_KILL_CMD="$WORK/kill-stub" ENABLE_RC_LAUNCHER="$WORK/launcher-stub" ENABLE_RC_PREFLIGHT="$WORK/preflight-stub" \
+    bash "$ERC" --relaunch HIMMEL-26-w /s 99999999999 /l 2>&1)" || rc=$?
+check "s: relaunch exits 0" "0" "$rc"
+check "s: no caller launch-shaping variable reaches the dry-run or the launch" \
+    "h=unset c=unset ab=unset cm=unset el=unset" "$(sort -u "$AMBIENT" 2>/dev/null)"
+session 1037 claude --session-id sid-1037 --model claude-sonnet-5-5 -n HIMMEL-27-w "load /h/HIMMEL-27-w.md and continue"
+record HIMMEL-27-w worker-impl native worker sid-1037
+environ 1037 PATH=/usr/bin HIMMEL_WORKER_SESSION_PROFILE=worker-impl CLAUDE_CODE_EFFORT_LEVEL=high
+reset; run --relaunch HIMMEL-27-w /s 99999999999 /l
+check "s: the old session's CLAUDE_CODE_EFFORT_LEVEL is carried" "h=unset c=unset ab=unset cm=unset el=high" "$(sort -u "$AMBIENT" 2>/dev/null)"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-enable-remote-control.sh"; exit 0; fi
