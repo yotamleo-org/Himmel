@@ -162,6 +162,32 @@ esac
 assert_rc "T3c sibling repo on main blocks (launch dir ignored)" 2 \
     "$(rc_of "$SANDBOX/mainrepo/src/foo.js" CLAUDE_PROJECT_DIR="$SANDBOX/featrepo")"
 
+# T3d: a standalone clone inside the session scratchpad
+# (<tmp>/claude-<uid>/<project>/<session>/scratchpad/...) is not a protected
+# checkout, on a feature branch, on main, and for the .single-writer marker.
+# TMPDIR=$SANDBOX pins the temp root to the fixture. The refuse rows use the
+# same TMPDIR: a clone outside the scratch layout and a symlink into a primary.
+SCR="$SANDBOX/claude-$(id -u)/proj/sess/scratchpad"
+mkrepo "$SCR/gfork/feat" feat/z
+mkrepo "$SCR/gfork/onmain" main
+mkrepo "$SCR/gfork/himmelish" feat/h
+: > "$SCR/gfork/himmelish/.himmel-dev"
+ln -sfn "$SANDBOX/featrepo" "$SCR/linkprim"
+assert_rc "T3d scratchpad clone on a feature branch allows (HIMMEL-8443)" 0 \
+    "$(rc_of "$SCR/gfork/feat/src/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3d scratchpad clone .single-writer marker allows (HIMMEL-8443)" 0 \
+    "$(rc_of "$SCR/gfork/feat/.single-writer" TMPDIR="$SANDBOX")"
+assert_rc "T3d scratchpad clone on main allows (HIMMEL-8443)" 0 \
+    "$(rc_of "$SCR/gfork/onmain/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3d clone outside the scratch roots still blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SANDBOX/featrepo/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3d scratchpad clone with .himmel-dev still blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SCR/gfork/himmelish/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3d scratchpad symlink into a primary still blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SCR/linkprim/foo.js" TMPDIR="$SANDBOX")"
+assert_rc "T3d scratchpad .. path into a primary still blocks (HIMMEL-8443)" 2 \
+    "$(rc_of "$SCR/gfork/../../../../../featrepo/foo.js" TMPDIR="$SANDBOX")"
+
 # T4: file not inside any git repo → ALLOW
 if [ "$SANDBOX_IN_REPO" -eq 0 ]; then
     assert_rc "T4 outside any repo allows" 0 "$(rc_of "$SANDBOX/plain/foo.js")"

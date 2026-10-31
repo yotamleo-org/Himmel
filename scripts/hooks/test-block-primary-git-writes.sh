@@ -1005,6 +1005,25 @@ for s in "$DIRECT" "$FENCE"; do
     if [ "$got" = block ]; then ok "primary write, HOME=mktemp -d [${s##*/}]"; else bad "primary write, HOME=mktemp -d [${s##*/}] — expected block got $got"; fi
 done
 
+echo "== HIMMEL-8443: a standalone clone in the session scratchpad is not a protected checkout =="
+# <tmp>/claude-<uid>/<project>/<session>/scratchpad/<clone>; TMPDIR pins <tmp> to the fixture.
+export TMPDIR="$FIX"
+SCR="$FIX/claude-$(id -u)/proj/sess/scratchpad"
+mkrepo "$SCR/gfork/feat" feat/z
+mkrepo "$SCR/gfork/onmain" main
+mkrepo "$SCR/gfork/himmelish" feat/h
+: > "$SCR/gfork/himmelish/.himmel-dev"
+mkrepo "$FIX/featprim" feat/y
+ln -sfn "$P" "$SCR/linkprim"
+allow "scratch clone on a feature branch: git -C <clone> remote add" "$W" "git -C $SCR/gfork/feat remote add upstream https://example.invalid/r.git"
+allow "scratch clone on a feature branch: remote add from its cwd"   "$SCR/gfork/feat" "git remote add upstream https://example.invalid/r.git"
+allow "scratch clone on main: git -C <clone> remote add"             "$W" "git -C $SCR/gfork/onmain remote add upstream https://example.invalid/r.git"
+deny "feature-branch primary outside the scratch roots: remote add"  "$W" "git -C $FIX/featprim remote add upstream https://example.invalid/r.git"
+deny "himmel primary: remote add (TMPDIR set)"                       "$W" "git -C $P remote add upstream https://example.invalid/r.git"
+deny "scratch clone carrying .himmel-dev: remote add"                "$W" "git -C $SCR/gfork/himmelish remote add upstream https://example.invalid/r.git"
+deny "scratch symlink into the primary: remote add"                  "$W" "git -C $SCR/linkprim remote add upstream https://example.invalid/r.git"
+unset TMPDIR
+
 echo "== DENY: unparseable input fails CLOSED in direct-exec mode (adversarial review S6) =="
 for raw in '' 'not json' '[]' '{}' '{"tool_name":"Bash"}' '{"tool_name":"Bash","tool_input":{}}' \
            '{"tool_input":{"command":"git status"}}'; do

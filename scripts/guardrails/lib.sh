@@ -1094,6 +1094,50 @@ main_checkout_verdict() {
 # memo survives between targets; a `$(main_checkout_verdict ...)` forks first
 # and drops it.
 _MCV_ROOT=""
+
+# _scratch_clone_exempt REPO — true when REPO (canonical, no
+# trailing slash) is a standalone clone inside a session scratchpad, i.e. it sits
+# at <tmp>/claude-<uid>/<project>/<session>/scratchpad/<something> under
+# $TMPDIR or /tmp, and is NOT himmel's own checkout. A worker doing fork upkeep
+# clones the fork there; that clone is not a protected checkout. Everything else
+# is refused as before: a repo outside that layout, a linked worktree (its `.git`
+# is a file), the CLAUDE_PROJECT_DIR checkout, a `.himmel-dev` checkout, and a
+# registered adopter primary. Callers pass an already-canonical path, so a symlink
+# or `..` that leads into a primary checkout never reaches this layout match.
+_scratch_clone_exempt() {
+    local repo="$1" uid base rest seg proj_dir proj_primary
+    uid=$(id -u 2>/dev/null) || return 1
+    [ -d "$repo/.git" ] || return 1
+    for base in "${TMPDIR:-}" /tmp; do
+        base="${base%/}"
+        [ -n "$base" ] || continue
+        base=$(cd -P -- "$base" 2>/dev/null && pwd -P) || continue
+        case "$repo" in
+            "$base/claude-$uid/"*) ;;
+            *) continue ;;
+        esac
+        rest="${repo#"$base/claude-$uid/"}"
+        # <project>/<session>/scratchpad/<clone> — exactly those leading segments
+        seg="${rest%%/*}"; [ -n "$seg" ] || continue; rest="${rest#*/}"
+        seg="${rest%%/*}"; [ -n "$seg" ] && [ "$seg" != "$rest" ] || continue; rest="${rest#*/}"
+        [ "${rest%%/*}" = scratchpad ] && [ "${rest#*/}" != "$rest" ] && [ -n "${rest#*/}" ] || continue
+        [ ! -e "$repo/.himmel-dev" ] || return 1
+        if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+            proj_dir=$(cd -P -- "$CLAUDE_PROJECT_DIR" 2>/dev/null && pwd -P) || proj_dir=""
+            proj_primary=""
+            [ -z "$proj_dir" ] || proj_primary=$(primary_checkout_root "$proj_dir" 2>/dev/null) || proj_primary=""
+            { [ "$repo" = "$proj_dir" ] || [ "$repo" = "$proj_primary" ]; } && return 1
+        fi
+        local ap
+        ap="$(cd -P -- "$(dirname "${BASH_SOURCE[0]}")/../handover/chief-kit" 2>/dev/null && pwd -P)/adopted-primary.sh"
+        if [ -f "$ap" ] && bash "$ap" "$repo" >/dev/null 2>&1; then
+            return 1
+        fi
+        return 0
+    done
+    return 1
+}
+
 main_checkout_verdict_set() {
     local file_real="${1:-}"
     local repo_real=""
@@ -1108,6 +1152,11 @@ main_checkout_verdict_set() {
             return 0
             ;;
     esac
+
+    if _scratch_clone_exempt "$repo_real"; then
+        _MCV_ROOT="$repo_real"
+        return 0
+    fi
 
     local branch_rc=0
     is_on_main "$repo_real" || branch_rc=$?

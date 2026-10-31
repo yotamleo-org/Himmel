@@ -868,6 +868,64 @@ if [ "$rc" -eq 0 ] && [ "$out" = "$MV_SW_C" ]; then pass "main_checkout_verdict:
 out=$(main_checkout_verdict "$HOME/nowhere/file.txt"); rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass "main_checkout_verdict: path in no repo -> rc=0, no output"; else fail "main_checkout_verdict: no repo -> expected rc=0+empty got rc=$rc out=[$out]"; fi
 
+# A standalone clone inside the session scratchpad
+# (<tmp>/claude-<uid>/<project>/<session>/scratchpad/...) is not a protected
+# checkout. TMPDIR=$FIX pins the temp root to the fixture so the layout is built
+# here, never under the real /tmp.
+MV_SCR="$FIX/claude-$(id -u)/proj/sess/scratchpad"
+mkdir -p "$MV_SCR"
+MV_SCR_FEAT="$MV_SCR/gfork/feat"
+mkdir -p "$MV_SCR_FEAT"
+git -C "$MV_SCR_FEAT" init -q -b main
+GITID -C "$MV_SCR_FEAT" commit -q --allow-empty -m init
+git -C "$MV_SCR_FEAT" checkout -q -b feat/z
+MV_SCR_FEAT_C=$(cd "$MV_SCR_FEAT" && pwd -P)
+MV_SCR_MAIN="$MV_SCR/gfork/onmain"
+mkdir -p "$MV_SCR_MAIN"
+git -C "$MV_SCR_MAIN" init -q -b main
+GITID -C "$MV_SCR_MAIN" commit -q --allow-empty -m init
+MV_SCR_MAIN_C=$(cd "$MV_SCR_MAIN" && pwd -P)
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on a feature branch -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone on feature -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/.single-writer"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: .single-writer in a scratchpad clone -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone .single-writer -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_MAIN_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on main -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone on main -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+# Refuse rows: these stay denied with the same TMPDIR.
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_PRIMFEAT_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: clone outside the scratch roots, TMPDIR set -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: non-scratch primary-feature with TMPDIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_MAIN_C/a.txt"); rc=$?
+if [ "$rc" -eq 1 ]; then pass "main_checkout_verdict: on-main clone outside the scratch roots, TMPDIR set -> rc=1 (HIMMEL-8443)"; else fail "main_checkout_verdict: non-scratch main with TMPDIR -> expected rc=1 got rc=$rc out=[$out]"; fi
+
+MV_SCR_HD="$MV_SCR/gfork/himmelish"
+mkdir -p "$MV_SCR_HD"
+git -C "$MV_SCR_HD" init -q -b main
+GITID -C "$MV_SCR_HD" commit -q --allow-empty -m init
+git -C "$MV_SCR_HD" checkout -q -b feat/h
+: > "$MV_SCR_HD/.himmel-dev"
+MV_SCR_HD_C=$(cd "$MV_SCR_HD" && pwd -P)
+out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_HD_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone carrying the .himmel-dev marker stays denied -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch himmel-dev clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+out=$(TMPDIR="$FIX" CLAUDE_PROJECT_DIR="$MV_SCR_FEAT_C" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: the session's own project checkout stays denied even under the scratchpad -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone == CLAUDE_PROJECT_DIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+# A symlink or `..` inside the scratchpad that resolves into a primary checkout
+# is canonicalised by the caller first, so the verdict sees the real repo.
+ln -sfn "$MV_PRIMFEAT_C" "$MV_SCR/linkprim"
+canon=$(guard_canon_path "$MV_SCR/linkprim/newfile.txt")
+out=$(TMPDIR="$FIX" main_checkout_verdict "$canon"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad symlink into a primary checkout -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch symlink into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
+
+canon=$(guard_canon_path "$MV_SCR/gfork/../../../../../mv-primfeat/newfile.txt")
+out=$(TMPDIR="$FIX" main_checkout_verdict "$canon"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad .. path into a primary checkout -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch .. into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
+
 git -C "$MV_MAIN" worktree remove --force "$MV_WT" 2>/dev/null || true
 git -C "$PC_PRIMARY" worktree remove --force "$PC_WT" 2>/dev/null || true
 rm -rf "$FIX"
