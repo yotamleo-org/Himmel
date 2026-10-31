@@ -1122,6 +1122,7 @@ scripts/vm/test-adopted-features-stage.sh	25
 scripts/vm/test-after-report.sh	27
 scripts/vm/test-assert-provenance.sh	15
 scripts/vm/test-ci-runner.sh	15
+scripts/vm/test-claudex-guest.sh	1
 scripts/vm/test-dry-run-restore.sh	10
 scripts/vm/test-egress-refresh.sh	0
 scripts/vm/test-guest-exec.sh	0

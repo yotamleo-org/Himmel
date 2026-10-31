@@ -487,6 +487,52 @@ inside this guest**: restore the `clean` snapshot first, never on a station.
 
 ---
 
+## claudex guest (a test VM with the Codex lane)
+
+A claudex proof (Claude Code on the Codex lane through cli-proxy) needs a guest that
+holds a Codex login and the proxy. The guest is the after-report clone `himmel-ar-2`;
+the golden `ubuntu_new` is never used for it. `scripts/vm/claudex-guest.sh <verb>
+himmel-ar-<N>` drives it (any other name exits 2); every guest command goes through
+`scripts/vm/guest-exec.sh`. Set `VBOXMANAGE_PATH` or `HIMMEL_VM_AR_LIVE=1` in the
+launching shell, as for any clone script.
+
+1. **Bring it up**: `bash scripts/vm/claudex-guest.sh up himmel-ar-2` restores
+   `suite-ready-v4`, boots and waits for ssh. The vm-lock is held only inside that call.
+2. **Provision**: `bash scripts/vm/claudex-guest.sh provision himmel-ar-2` moves the
+   guest's `~/himmel` to `main`, pushes `scripts/vm/claudex-guest-provision.sh` and runs
+   it there. It installs the pinned CLIProxyAPI (`cli-proxy-lane.sh --install` and
+   `--register`, loopback only), writes a random guest-local proxy key to
+   `~/.config/himmel/cliproxy.key` (mode 0600, kept on a re-run) and installs
+   `/usr/local/bin/claude-codex`, a wrapper that reads that key and runs the guest's
+   `scripts/claude-codex`. The guest holds no `.env` and no station credential.
+3. **Check**: `bash scripts/vm/claudex-guest.sh status himmel-ar-2` runs
+   `claude-codex --version` in the guest (before provisioning: `command not found`, rc 127).
+4. **Operator login (once)**: at the operator's own terminal, not through a worker, since
+   the device code appears only while the command runs:
+   `ssh -t -p <port> -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.himmel/vm/known_hosts/himmel-ar-2" himmel@127.0.0.1 'bash -lc "cd ~/himmel && bash scripts/setup/cli-proxy-lane.sh --login"'`
+   with `<port>` the clone's loopback forward (`VBoxManage showvminfo himmel-ar-2
+   --machinereadable`, `Forwarding(0)`; 2233 today). Authorize the printed code in a
+   browser. No station `codex-*.json` is ever copied in: a copied token is a second live
+   holder of the credential.
+5. **Snapshot**: `bash scripts/vm/claudex-guest.sh snapshot himmel-ar-2 claudex-login-<date>`
+   (vmsdk scans the guest for `.env` files first).
+6. **Session**: run an auto-mode session in the guest through guest-exec, e.g.
+   `bash scripts/vm/guest-exec.sh himmel-ar-2 --timeout 600 -- 'cd ~/himmel && claude-codex --classifier-model gateway -p --permission-mode auto --debug-file ~/proof.log --output-format json "<prompt>"'`,
+   then read the classifier lines from the debug file. A quota or 429 error means stop,
+   never retry.
+
+**A claudex proof restores `claudex-login-<date>`, NOT `suite-ready-v4`**:
+`bash scripts/vm/claudex-guest.sh up himmel-ar-2 claudex-login-<date>`, then `status`. A
+plain `suite-ready-v4` restore (after-report does one on every run) drops the login, and
+a restored guest whose Codex token rotated needs step 4 again. The logged-in snapshot
+holds live OAuth tokens: never export or clone it. Power the guest off when done:
+`bash scripts/vm/claudex-guest.sh down himmel-ar-2`.
+
+Follow-up (not built): a dedicated `himmel-claudex` clone with its own `vms.json` row and
+fixed port, so after-report cannot take the slot.
+
+---
+
 ## Quick Reference
 
 | Guest | Port | User | Pass var | Key |

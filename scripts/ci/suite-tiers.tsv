@@ -1142,6 +1142,7 @@ scripts/vm/test-adopted-features-stage.sh	local	behaviour suite, new (HIMMEL-686
 scripts/vm/test-after-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-assert-provenance.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-ci-runner.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/vm/test-claudex-guest.sh	local	behaviour suite, new (HIMMEL-8326)
 scripts/vm/test-dry-run-restore.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/vm/test-egress-refresh.sh	pr	guard
 scripts/vm/test-guest-exec.sh	local	behaviour suite, 0 catches in the 400-PR audit window
