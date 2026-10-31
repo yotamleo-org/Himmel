@@ -2522,5 +2522,19 @@ check "8436e HEADED_ARM_ALLOW_TICKET_DUP=1 lets a second worker on the ticket la
 td4="$tmp/td4"; mk_tdup "$td4" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8437-N4333-other-ticket-2026-10-31"
 run_headed_arm "$td4" "$REPO" "HIMMEL-8437-N4333-other-ticket-2026-10-31" "doc8437.md" "$td4/signal-never" "$PAST" >/dev/null 2>&1; tdrc4=$?
 check "8436f a worker on a different ticket launches" "$tdrc4" "0"
+not_contains "8436g the refusal hands over no recipe for the override" "$tdout" "HEADED_ARM_ALLOW_TICKET_DUP"
+# the override is read once and cleared: a konsole that records its own env must not see it
+td5="$tmp/td5"; mk_tdup "$td5" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
+cat > "$td5/konsole" <<KONSOLE_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$td5/record"
+printf '%s\n' "\${HEADED_ARM_ALLOW_TICKET_DUP-unset}" > "$td5/dupenv"
+: > "$td5/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$td5/konsole"
+HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td5" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td5/signal-never" "$PAST" >/dev/null 2>&1; tdrc5=$?
+check "8436h the override launches the second worker" "$tdrc5" "0"
+check "8436i the override does not ride into the launched worker's env" "$(cat "$td5/dupenv" 2>/dev/null)" "unset"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

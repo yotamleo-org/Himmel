@@ -1543,6 +1543,17 @@ has "(8436) a worker of a different chain does not hold its ticket here" "$b8o" 
 touch -d '2 days ago' "$W53"
 b8s="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 --resume-only)"
 has "(8436) a worker doc untouched for over a day no longer holds its ticket" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
+# malformed sibling manifests never break the read: a list, entries that are not objects, a null or numeric doc, a doc-less entry
+touch "$W53"
+printf '[]\n' > "$C8/HIMMEL-nextleg-2026-10-31MC-roadmap-chief.fleet.json"
+printf '{"schema":1,"workers":["N1",{"doc":null,"label":"N2"},{"doc":5,"label":"N3"},{"label":"N4"}]}\n' > "$C8/HIMMEL-nextleg-2026-10-31MD-roadmap-chief.fleet.json"
+printf '{"schema":1,"workers":{"doc":"x"}}\n' > "$C8/HIMMEL-nextleg-2026-10-31ME-roadmap-chief.fleet.json"
+b8m="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
+has "(8436) malformed sibling manifests do not stop the list" "$b8m" "${TAB}HIMMEL-57${TAB}"
+lacks "(8436) a good sibling still holds its ticket beside malformed ones" "$b8m" "RESUME${TAB}HIMMEL-53${TAB}"
+b8a="$(NEXT_DISPATCH_SIBLING_MAX_AGE_MIN=abc run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
+has "(8436) a non-integer sibling age window does not stop the list" "$b8a" "${TAB}HIMMEL-57${TAB}"
+lacks "(8436) a non-integer sibling age window reads as the default" "$b8a" "RESUME${TAB}HIMMEL-53${TAB}"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

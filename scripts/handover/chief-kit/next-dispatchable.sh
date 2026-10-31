@@ -775,7 +775,10 @@ if workers_from and os.path.isfile(workers_from):
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
-    sib_age_s = int(os.environ.get('NEXT_DISPATCH_SIBLING_MAX_AGE_MIN', '1440')) * 60
+    try:
+        sib_age_s = int(os.environ.get('NEXT_DISPATCH_SIBLING_MAX_AGE_MIN', '1440')) * 60
+    except ValueError:
+        sib_age_s = 1440 * 60  # a non-integer window reads as the default, never a crash
     try:
         siblings = sorted(os.listdir(sib_dir))
     except OSError:
@@ -785,8 +788,12 @@ if chain_m:
         if not sm or sm.groups() != chain_m.groups() or os.path.join(sib_dir, sib) == os.path.abspath(workers_from):
             continue
         try:
-            for worker in manifest_workers(json.load(open(os.path.join(sib_dir, sib)))):
-                sdoc = worker.get('doc', '')
+            sib_manifest = json.load(open(os.path.join(sib_dir, sib)))
+            sib_workers = manifest_workers(sib_manifest) if isinstance(sib_manifest, dict) else []
+            for worker in sib_workers if isinstance(sib_workers, list) else []:
+                sdoc = worker.get('doc') if isinstance(worker, dict) else None
+                if not isinstance(sdoc, str) or not sdoc:
+                    continue  # an entry that names no doc owns nothing
                 try:
                     if time.time() - os.path.getmtime(sdoc) > sib_age_s:
                         continue
@@ -798,8 +805,8 @@ if chain_m:
                     continue
                 for k in re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)):
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
-        except (OSError, ValueError):
-            continue  # swallow-ok: a sibling chief's unreadable manifest names no worker; this chief's own fleet is still known
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue  # swallow-ok: a sibling chief's unreadable or malformed manifest names no worker; this chief's own fleet is still known
 if pool_only and not workers_from and not worker_keys:
     workers_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)

@@ -544,6 +544,10 @@ WAKER="${HEADED_ARM_WAKER:-}"
 unset HEADED_ARM_WAKER
 QDBUS="${HEADED_ARM_QDBUS:-qdbus6}"
 unset HEADED_ARM_QDBUS
+# The operator's launching-shell switch that allows a second worker on one ticket. Read once and
+# cleared, so it never rides into the launched worker, whose own arms would inherit it.
+ALLOW_TICKET_DUP="${HEADED_ARM_ALLOW_TICKET_DUP:-0}"
+unset HEADED_ARM_ALLOW_TICKET_DUP
 SESSION_PID=""
 # A chief session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
@@ -977,7 +981,7 @@ fi
 # digits (legs b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
 # allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
 # ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
-if [ "${HEADED_ARM_ALLOW_TICKET_DUP:-0}" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
+if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
     TICKET_KEY="${BASH_REMATCH[1]}"; TICKET_N="${BASH_REMATCH[2]}"
     TICKET_RIVAL=""
     rival_pids="$("$PGREP" -f "[c]laude .*-n $(ere_escape "$TICKET_KEY")-N" 2>/dev/null)" || rival_pids=""  # swallow-ok: no match or a failed scan both leave no rival named; the guard fails open
@@ -997,7 +1001,7 @@ if [ "${HEADED_ARM_ALLOW_TICKET_DUP:-0}" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$
         fi
     done
     if [ -n "$TICKET_RIVAL" ]; then
-        echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket; a deliberate second worker needs HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell" >&2
+        echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket. Only the operator, from the shell that launches the chief, can allow a second worker on it" >&2
         echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
         exit 16
     fi
