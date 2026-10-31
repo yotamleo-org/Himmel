@@ -129,11 +129,14 @@ gate "a diff over HIMMEL-8426's own paths passes" 0 "no protected critic path ch
 fixture trust
 trust_re="$(grep -vE '^[[:space:]]*(#|$)' "$ROOT/scripts/ci/ci-trust-paths.txt")"
 cbs="$(python3 "$SCORE" cbs-paths HEAD --repo "$R")"
-own="$( (cd "$ROOT" && git ls-files --cached --others --exclude-standard -- scripts/eval/review-panel scripts/eval/lib/eval_feedback.py) )"
+# score.py puts scripts/eval/lib first on sys.path, so every module there (eval_runs.py, wilson.py, a new
+# file that shadows a stdlib import) is gate code.
+own="$( (cd "$ROOT" && git ls-files --cached --others --exclude-standard -- scripts/eval/review-panel scripts/eval/lib) )"
+case "$own" in *scripts/eval/lib/eval_runs.py*) ;; *) fail "the I3 row lists scripts/eval/lib/eval_runs.py" ;; esac
 untrusted="$(printf '%s\n%s\n' "$cbs" "$own" | grep -v '^$' | grep -vE -e "$trust_re")"
 [ "$(printf '%s\n' "$cbs" | grep -c .)" -ge 7 ] && pass "the real cbs.txt expands to the critic files" \
     || fail "the real cbs.txt expands to the critic files (got: $(printf '%s' "$cbs" | tr '\n' ' '))"
-[ -z "$untrusted" ] && pass "every cbs path, review-panel file and eval_feedback.py is a trust path" \
+[ -z "$untrusted" ] && pass "every cbs path, review-panel file and scripts/eval/lib module is a trust path" \
     || fail "paths outside ci-trust-paths.txt: $(printf '%s' "$untrusted" | tr '\n' ' ')"
 
 echo

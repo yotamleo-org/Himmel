@@ -304,6 +304,29 @@ STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_S
   bash "$RUN" --out "$TMP/run4" --no-ledger --critics codex --only "case-01,case-99" >/dev/null 2>&1; rc=$?
 eq "run: an --only id the key lacks refuses the sweep" "$rc" "2"
 eq "run: no panel call for a mixed valid/unknown --only" "$(cat "$TMP/stublog/tiers")" ""
+# A full sweep from a committed copy of this eval, whose own critic-panel.sh is the stub, stamps clean;
+# the same sweep whose panel edits a CBS file mid-run is caught by run.sh's re-stamp after the loop.
+RR="$TMP/run-repo"
+mkdir -p "$RR/scripts/eval/review-panel/key" "$RR/scripts/eval/lib" "$RR/scripts/cr"
+cp "$RUN" "$SCORE" "$HERE/cbs.txt" "$RR/scripts/eval/review-panel/"
+cp -r "$FIX" "$RR/scripts/eval/review-panel/fixtures"; cp "$KEY" "$RR/scripts/eval/review-panel/key/seeds.json"
+cp "$HERE/../lib/"*.py "$RR/scripts/eval/lib/"; cp "$HERE/../feedback-rules.json" "$RR/scripts/eval/"
+cp "$HERE/../../cr/critics.json" "$RR/scripts/cr/critics.json"
+printf '#!/bin/sh\n' > "$RR/scripts/cr/critic-x.sh"
+cat > "$RR/scripts/cr/critic-panel.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+[ -z "${STUB_DIRTY:-}" ] || printf '# mid-sweep\n' >> "$(dirname "$0")/critic-x.sh"
+printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
+EOF
+printf '__pycache__/\n' > "$RR/.gitignore"
+rr() { git -C "$RR" -c user.name=t -c user.email=t@example.invalid -c core.hooksPath=/dev/null -c commit.gpgsign=false "$@"; }
+git init -q "$RR" && rr add -A && rr commit -q -m base
+REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr1" --no-ledger >/dev/null 2>&1; rc=$?
+eq "run: a sweep of a clean tree through its own panel exits 0" "$rc" "0"
+eq "run: a sweep of a clean tree through its own panel is stamped clean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr1/swept.json" 2>&1)" "True"
+STUB_DIRTY=1 REVIEW_PANEL_SCRATCH="$TMP/scratch-rr" bash "$RR/scripts/eval/review-panel/run.sh" --out "$TMP/run-rr2" --no-ledger >/dev/null 2>&1
+eq "run: a CBS file edited during the sweep leaves the stamp unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run-rr2/swept.json" 2>&1)" "False"
 
 # --- the merge gate: cbs.txt, cbs-hash, export-row, verify-row, gate -------------------------
 G="$TMP/gate-repo"
@@ -358,6 +381,8 @@ gg checkout -q -- scripts/cr/critic-x.sh
 has "stamp --recheck: an unclean stamp stays unclean on a clean tree" "$(gstamp "$O" --recheck)" "export-row will refuse"
 gstamp "$O" >/dev/null
 eq "stamp --recheck: an unchanged clean tree stays clean" "$(gstamp "$O" --recheck)" ""
+printf 'n\n' > "$G/notes.txt"; gg add notes.txt; gg commit -qm moved
+has "stamp --recheck: a HEAD moved during the sweep warns" "$(gstamp "$O" --recheck)" "export-row will refuse"
 gstamp "$O" >/dev/null; gstamp "$O5" >/dev/null
 python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
 eq "export-row: exit 0" "$rc" "0"

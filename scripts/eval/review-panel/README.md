@@ -176,5 +176,5 @@ change lost nothing.
 
 The hashes are of the merge ref: a later critic change on main changes the head
 `cbs_hash`, so the rows no longer count and the PR is swept again. Every CBS
-path, this directory and `scripts/eval/lib/eval_feedback.py` are trust paths
+path, this directory and `scripts/eval/lib/` (every module `score.py` can import) are trust paths
 (`scripts/ci/ci-trust-paths.txt`), so a PR cannot weaken its own gate.
