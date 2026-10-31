@@ -1822,21 +1822,24 @@ seeded_live_field() {
 # The `legs:` block `next` seeds: the worker spans whose label or doc stem the
 # successor's fleet manifest still lists (a wrapped worker is off it), plus each
 # `pool-disposition:` line, which the tick reads. The shift prose and the spans of
-# wrapped workers are left out. A manifest that is absent or unreadable leaves the
-# block whole: the open set is then unknown.
+# wrapped workers are left out. A span of an open worker is kept even when it is
+# malformed, so the tick reads MALFORMED rather than DRIFT. A manifest that is
+# absent or unreadable leaves the block whole: the open set is then unknown.
 # Args: legs block (as seeded_live_field prints it), manifest.
 open_legs_block() {
     local block="$1" manifest="$2" names spans="" span label pools seen=0 NL=$'\n'
+    # shellcheck disable=SC2016  # the backticks in the span patterns are literal
+    local entry_re='^`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`$'
     [ -f "$manifest" ] || { printf '%s\n' "$block"; return 0; }
     names="$(jq -r '.legs[] | .label, ((.doc // "") | split("/") | last | sub("\\.md$"; ""))' "$manifest" 2>/dev/null)" \
         || { printf '%s\n' "$block"; return 0; }
-    # shellcheck disable=SC2016  # the backticks in the span pattern are literal
+    # shellcheck disable=SC2016
     while IFS= read -r span; do
         [ -n "$span" ] || continue
-        seen=1
         label="${span#\`}"; label="${label%%:*}"
-        case "$NL$names$NL" in *"$NL$label$NL"*) spans="$spans$span " ;; esac
-    done < <(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`')
+        case "$NL$names$NL" in *"$NL$label$NL"*) spans="$spans$span "; seen=1 ;; esac
+        [[ "$span" =~ $entry_re ]] && seen=1
+    done < <(printf '%s\n' "$block" | grep -oE '`[A-Za-z0-9_.-]+:[^`[:space:]]*`')
     [ "$seen" -eq 1 ] || { printf '%s\n' "$block"; return 0; }  # no worker span (a placeholder or `none`): nothing to trim
     pools="$(printf '%s\n' "$block" | grep '^pool-disposition:')" || pools=""  # swallow-ok: no pool-disposition line is the common case
     printf '%s\n' "${spans:-none }" | sed 's/ $//'
@@ -1855,11 +1858,13 @@ latest_go_only() {
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
 # placeholder. Two exceptions: `legs:` seeds only the open workers
 # (open_legs_block) and `last GO:` only the last GO (latest_go_only). What they
-# leave out is written byte for byte to <doc dir>/specs/history/chief-live-state-<stem>.md,
-# named in LS_HISTORY_REF for the HANDOFF; a failed write seeds both whole.
+# leave out is appended byte for byte, under a header naming this run, to
+# <doc dir>/specs/history/chief-live-state-<stem>.md (the file the tick tells a chief
+# to move shift history to, so earlier content survives), named in LS_HISTORY_REF
+# for the HANDOFF; a failed write seeds both whole.
 LS_HISTORY_REF=""
 seed_live_fields() {
-    local doc="$1" live="$2" stem="$3" legs go new_legs new_go hdir hfile
+    local doc="$1" live="$2" stem="$3" legs go new_legs new_go hdir hfile sep=""
     legs="$(seeded_live_field "$live" legs)"
     go="$(seeded_live_field "$live" "last GO")"
     new_legs="$(open_legs_block "$legs" "${doc%.md}.fleet.json")"
@@ -1867,7 +1872,8 @@ seed_live_fields() {
     if [ "$new_legs" != "$legs" ] || [ "$new_go" != "$go" ]; then
         hdir="$(dirname "$doc")/specs/history"
         hfile="$hdir/chief-live-state-$stem.md"
-        if mkdir -p "$hdir" && { printf '# Live state trimmed by chief.sh next from %s\n\nlegs: %s\nlast GO: %s\n' "$stem" "$legs" "$go" > "$hfile"; } 2>/dev/null; then
+        [ ! -s "$hfile" ] || sep=$'\n'
+        if mkdir -p "$hdir" && { printf '%s# Live state trimmed by chief.sh next from %s at %s\n\nlegs: %s\nlast GO: %s\n' "$sep" "$stem" "$(date -u +%Y-%m-%dT%H:%MZ)" "$legs" "$go" >> "$hfile"; } 2>/dev/null; then
             LS_HISTORY_REF="$hfile"
         else
             err "warning: could not write the Live state history to $hfile; seeded the legs: and last GO: lines whole"
@@ -1932,8 +1938,9 @@ cmd_next() {
         exit 1
     fi
     # The predecessor's `## Live state` (nonces, lock
-    # tokens, held queue, last GO) is seeded verbatim into the successor's own
-    # Live state below, its one on-disk copy: the HANDOFF only points at it, so
+    # tokens, held queue, last GO) is seeded into the successor's own Live state
+    # below (open workers and the last GO only; the rest goes to the history
+    # file, see seed_live_fields), its one on-disk copy: the HANDOFF only points at it, so
     # the successor never re-copies authority-bearing state by hand and
     # `action-zero.sh --render-workers` finds every nonce it keeps. Absent section
     # -> empty string -> each field falls back to its template placeholder.

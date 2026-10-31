@@ -3173,4 +3173,40 @@ check "94b with no manifest every worker span is seeded" "$(grep -c 'C20:nonce-c
 check "94b with no manifest no history file is written" "$([ -e "$root/tester/trim94bdst/specs/history" ] && echo yes || echo no)" "no"
 HANDOVER_DIR="$root" bash "$QL" release "$doc94bA" "$token94b" >/dev/null 2>&1
 
+# 94c-94e: seed94 <bucket> <legs line> <manifest json, or - for none> [<existing history text>] runs next on a fresh chief doc.
+seed94() {
+    local b="$1" legs="$2" man="$3" pre="${4:-}" out tok A h
+    out="$(chief new --bucket "$b")"; tok="$(token_of "$out")"
+    A="$root/tester/$b/DEMO-nextleg-${today}A-chief.md"
+    h="$root/tester/${b}dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
+    awk -v legs="$legs" '/^legs:/ { print legs; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
+    if [ "$man" = - ]; then rm -f "${A%.md}.fleet.json"; else printf '%s\n' "$man" > "${A%.md}.fleet.json"; fi
+    if [ -n "$pre" ]; then mkdir -p "${h%/*}"; printf '%s\n' "$pre" > "$h"; fi
+    chief next --bucket "${b}dst" --doc "$A" >/dev/null 2>&1
+    HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
+}
+man94="{\"legs\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
+
+# 94c: a manifest jq cannot read leaves the block whole and spills nothing.
+seed94 trim94c "$legs94" '{not json'
+doc94cB="$root/tester/trim94cdst/DEMO-nextleg-${today}B-chief.md"
+check "94c a malformed manifest seeds every worker span" "$(grep -c 'C20:nonce-closed-20' "$doc94cB" 2>/dev/null)" "1"
+check "94c a malformed manifest seeds the open worker span too" "$(grep -cF 'N1:n-one:lock-one:11' "$doc94cB" 2>/dev/null)" "1"
+check "94c a malformed manifest writes no history file" "$([ -e "$root/tester/trim94cdst/specs/history" ] && echo yes || echo no)" "no"
+
+# 94d: a malformed span of an open worker is kept (the tick reads MALFORMED), a closed worker's is dropped.
+# shellcheck disable=SC2016  # literal fixture text
+seed94 trim94d 'legs: `N1:n-one:lock-one:11` `N2:n-two:lock-two` `C1:nonce-closed-1:lock-closed-1:1` (prose)' "$man94"
+doc94dB="$root/tester/trim94ddst/DEMO-nextleg-${today}B-chief.md"
+# shellcheck disable=SC2016  # literal fixture text
+check "94d the malformed span of an open worker is kept" "$(grep -cF '`N2:n-two:lock-two`' "$doc94dB" 2>/dev/null)" "1"
+check "94d the well-formed open span is kept" "$(grep -cF 'N1:n-one:lock-one:11' "$doc94dB" 2>/dev/null)" "1"
+check "94d the closed worker's span is dropped" "$(grep -c 'C1:nonce-closed-1' "$doc94dB" 2>/dev/null)" "0"
+
+# 94e: a history file that already exists (the tick tells a chief to move shift history there) survives next.
+seed94 trim94e "$legs94" "$man94" 'EARLIER-HISTORY-94'
+hist94e="$root/tester/trim94edst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
+check "94e the earlier history survives next" "$(grep -c '^EARLIER-HISTORY-94$' "$hist94e" 2>/dev/null)" "1"
+check "94e next appends the trimmed Live state after it" "$(grep -cF 'C20:nonce-closed-20:lock-closed-20:20' "$hist94e" 2>/dev/null)" "1"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

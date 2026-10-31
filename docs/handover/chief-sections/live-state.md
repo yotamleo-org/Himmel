@@ -15,10 +15,11 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `action-zero.sh --render-workers` keeps the seeded nonces. **Only the open workers
 > and the last GO are seeded:** a `legs:` span whose label is no longer in the fleet
 > manifest (`fleet-manifest.sh remove` at the wrap), the shift prose on that line
-> and the `prior …` chain after the first GO stay behind. `next` writes them
-> byte for byte to `specs/history/chief-live-state-<your doc stem>.md` in the
-> successor's bucket and the HANDOFF names it; with no manifest the block is seeded
-> whole. A `pool-disposition:` line inside the block is kept. Keep your own Live
+> and the `prior …` chain after the first GO stay behind. `next` appends them
+> byte for byte, under a dated header, to `specs/history/chief-live-state-<your doc stem>.md`
+> in the successor's bucket (earlier content in that file stays) and the HANDOFF names
+> it; with no readable manifest the block is seeded whole. A malformed span of an open
+> worker is kept, so the tick reads MALFORMED. A `pool-disposition:` line inside the block is kept. Keep your own Live
 > state that lean: the tick prints `ACTION livestate-over-budget=<bytes>/<limit>`
 > past `LIVESTATE_BUDGET_BYTES` (default 12000). A per-worker detail line
 > past the `legs:` block is not seeded: put what the successor needs in the
