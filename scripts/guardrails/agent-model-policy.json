@@ -9,12 +9,16 @@
   ],
   "semantics": {
     "blocked_model_patterns": "case-insensitive (input is lowercased) regexes, tested against the Agent call's `model`. A match is denied unless the prompt has an acceptable ESCALATION line. Remove an entry to unblock that model; an empty list blocks nothing.",
+    "warn_model_patterns": "case-insensitive regexes tested against the `model` of a general-purpose (or untyped) Agent dispatch. A match WARNS (additionalContext, exit 0, never a deny) unless the prompt has a `TIER: <reason>` line that passes the same min_reason_chars / placeholder_reasons test as ESCALATION (HIMMEL-7638: chief Opus helpers cost $41-eq/day). A policy without the key warns on nothing.",
     "min_reason_chars": "an ESCALATION reason shorter than this (after trimming) is treated as no reason.",
     "placeholder_reasons": "reasons rejected outright. The reason is lowercased, every run of non-alphanumerics becomes one space, then compared, so `N/A.` matches `n a`.",
     "not_covered": "a judge dispatch (old ids console-judge*) whose model is not opus stays denied by the hook itself (its frontmatter tier, not a model name); the same ESCALATION rule applies."
   },
   "blocked_model_patterns": [
     "^(claude-)?fable([^a-z0-9]|$)"
+  ],
+  "warn_model_patterns": [
+    "^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$"
   ],
   "min_reason_chars": 10,
   "placeholder_reasons": [

@@ -43,11 +43,11 @@ check() {
     if [ "$got" = "$expect" ]; then ok "$label"; else bad "$label - expected $expect got $got"; fi
 }
 
-# silent <label> <json> — the allow path must add zero stdout AND stderr.
+# silent <label> <json> — the allow path must exit 0 and add zero stdout AND stderr.
 silent() {
-    local out
-    out="$(printf '%s' "$2" | bash "$HOOK" 2>&1)"
-    if [ -z "$out" ]; then ok "$1"; else bad "$1 - expected no output, got: $out"; fi
+    local out rc
+    out="$(printf '%s' "$2" | bash "$HOOK" 2>&1)"; rc=$?
+    if [ "$rc" = 0 ] && [ -z "$out" ]; then ok "$1"; else bad "$1 - expected exit 0 and no output, got rc=$rc: $out"; fi
 }
 
 MARK=$'do the review\nESCALATION: one hard call, needs taste'
@@ -84,6 +84,34 @@ check "model haiku -> allow" allow "$(agent general-purpose haiku 'x')"
 check "no model -> allow" allow "$(agent general-purpose '' 'x')"
 silent "model sonnet -> no output" "$(agent general-purpose sonnet 'x')"
 silent "no model -> no output" "$(agent general-purpose '' 'x')"
+
+echo "== general-purpose Opus dispatch with no TIER line -> warn only (exit 0 + additionalContext) =="
+# warn <label> <json>: exit 0, additionalContext names the TIER line, and NO permissionDecision.
+warn() {
+    local o rc ctx pd
+    o="$(printf '%s' "$2" | bash "$HOOK" 2>/dev/null)"; rc=$?
+    ctx="$(printf '%s' "$o" | jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null)"
+    pd="$(printf '%s' "$o" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)"
+    if [ "$rc" = 0 ] && [ -z "$pd" ] && case "$ctx" in *"TIER: <reason>"*) true ;; *) false ;; esac; then
+        ok "$1"
+    else
+        bad "$1 - rc=$rc permissionDecision='$pd' ctx='$ctx'"
+    fi
+}
+TIERMARK=$'do the audit\nTIER: one verdict-grade call, needs Opus'
+warn "general-purpose + opus, no TIER line -> warn" "$(agent general-purpose opus 'x')"
+warn "general-purpose + claude-opus-5-5 -> warn" "$(agent general-purpose claude-opus-5-5 'x')"
+warn "general-purpose + opus[1m] (suffixed alias) -> warn" "$(agent general-purpose 'opus[1m]' 'x')"
+warn "untyped dispatch + opus -> warn (defaults to general-purpose)" "$(agent '' opus 'x')"
+warn "general-purpose + opus + placeholder TIER reason -> warn" "$(agent general-purpose opus $'x\nTIER: n/a')"
+warn "general-purpose + opus + ESCALATION only (not a TIER line) -> warn" "$(agent general-purpose opus "$MARK")"
+silent "general-purpose + opus + TIER reason -> no output" "$(agent general-purpose opus "$TIERMARK")"
+silent "general-purpose + sonnet -> no output" "$(agent general-purpose sonnet 'x')"
+silent "general-purpose + haiku -> no output" "$(agent general-purpose haiku 'x')"
+silent "Explore + opus -> no output (not general-purpose)" "$(agent Explore opus 'x')"
+silent "general-purpose + opus-sonnet (opus-prefixed, not Opus) -> no output" "$(agent general-purpose opus-sonnet 'x')"
+silent "general-purpose + opusfake -> no output" "$(agent general-purpose opusfake 'x')"
+check "general-purpose + fable, no marker -> still denied" block "$(agent general-purpose fable 'x')"
 
 echo "== judge override off its frontmatter tier (opus) =="
 if grep -q '^model: opus$' "$JUDGE"; then
@@ -160,7 +188,7 @@ case "$aud" in
     "agent-model-escalation: "*"one hard call, needs taste"*) ok "marked fable override echoes its reason on stderr" ;;
     *) bad "no audit line for a marked override - got: $aud" ;;
 esac
-silent "marker with nothing to override (opus) -> no output" "$(agent general-purpose opus "$MARK")"
+silent "marker with nothing to override (opus, typed agent) -> no output" "$(agent Explore opus "$MARK")"
 silent "marker with no model -> no output" "$(agent general-purpose '' "$MARK")"
 
 echo "== the blocked-model list is DATA (agent-model-policy.json) =="
@@ -194,6 +222,15 @@ polset "{\"blocked_model_patterns\":[\"$FABLE_RE\"],\"min_reason_chars\":4,\"pla
 check "policy min_reason_chars is honoured (4)" allow "$(agent general-purpose fable $'x\nESCALATION: real')"
 polset '{"blocked_model_patterns":["("],"min_reason_chars":10,"placeholder_reasons":[]}'
 check "invalid regex in policy -> allow (fail-open)" allow "$(agent general-purpose fable 'x')"
+polset '{"blocked_model_patterns":[],"min_reason_chars":10,"placeholder_reasons":[]}'
+silent "policy without warn_model_patterns -> opus general-purpose is silent" "$(agent general-purpose opus 'x')"
+polset '{"blocked_model_patterns":[],"warn_model_patterns":["^sonnet$"],"min_reason_chars":10,"placeholder_reasons":[]}'
+warn "warn_model_patterns is DATA: listed sonnet -> warn" "$(agent general-purpose sonnet 'x')"
+silent "warn_model_patterns is DATA: unlisted opus -> no output" "$(agent general-purpose opus 'x')"
+polset "{\"blocked_model_patterns\":[\"$FABLE_RE\"],\"warn_model_patterns\":[\"(\"],\"min_reason_chars\":10,\"placeholder_reasons\":[]}"
+check "invalid warn regex: a blocked model is still denied (blocked is evaluated first)" block "$(agent general-purpose fable 'x')"
+check "invalid warn regex: opus general-purpose -> allow (fail-open)" allow "$(agent general-purpose opus 'x')"
+silent "invalid warn regex: opus general-purpose -> no output" "$(agent general-purpose opus 'x')"
 polset '{not json'
 check "malformed policy -> allow (fail-open)" allow "$(agent general-purpose fable 'x')"
 polset '[]'

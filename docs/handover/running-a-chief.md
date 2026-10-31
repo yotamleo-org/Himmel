@@ -289,6 +289,11 @@ helper kind.
 | A specified edit list ending in a machine check | `haiku`, effort medium |
 | The one hard call | `fable` |
 
+A general-purpose helper dispatched on an Opus model with no `TIER: <reason>`
+line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
+a deny; the reason must pass the same length and placeholder test as
+`ESCALATION:`). Opus is for the one hard call: put the reason on that line.
+
 A native worker launched with no model runs `claude-opus-5-5`, so
 `headed-arm-worker.sh` holds it to the same Tier line as a named Opus launch.
 
