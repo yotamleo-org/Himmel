@@ -145,6 +145,12 @@ if [ -e "$manifest" ]; then
         echo "fleet-manifest: refusing to rewrite an invalid manifest: $manifest" >&2
         exit 1
     fi
+    # the writer maintains `legs` only: on a manifest holding a `workers` array the readers would
+    # ignore its edit (workers wins) or the jq below would fail on null
+    if jq -e -s '.[0] | has("workers")' "$manifest" >/dev/null 2>&1; then
+        echo "fleet-manifest: refusing to rewrite a manifest that holds a workers array (the writer still maintains legs): $manifest" >&2
+        exit 1
+    fi
     cur="$(cat "$manifest")" || exit 1
 else
     cur='{"schema":1,"legs":[]}'
