@@ -3257,7 +3257,7 @@ check_c56_qmd_orphans() {
 # complete one, silent with no state (qmd unused, or the last run died earlier).
 # Test seam: HIMMEL_DOCTOR_QMD_REINDEX_STATE (default: beside HIMMEL_DOCTOR_QMD_INDEX).
 check_c83_qmd_embed_backlog() {
-    local idx="${HIMMEL_DOCTOR_QMD_INDEX:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}"
+    local idx="${HIMMEL_DOCTOR_QMD_INDEX:-${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}}"
     local f="${HIMMEL_DOCTOR_QMD_REINDEX_STATE:-$(dirname "$idx")/reindex-state}"
     local rc remaining err ts
     [ -f "$f" ] || return 0

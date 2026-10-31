@@ -88,6 +88,7 @@ mkdir -p "$STATE"
 #                 next reports the all-clear: a backlog larger than one session
 #   provider-503  every `qmd embed` logs failed attempts with HTTP 503 and
 #                 embeds nothing
+#   busy-slow-once the first `qmd embed` sleeps 3s, then reports the embed lock held
 #   fail-recount  a `qmd update` after the first embed prints a hash count, then exits 1
 #   slow-recount  a `qmd update` after the first embed sleeps 60s (the rc 5 recount)
 #   slow-embed    every `qmd embed` prints a progress line, then sleeps 60s
@@ -161,6 +162,11 @@ case "${1:-}" in
         fi
         if [ -e "$STATE/backlog" ] && [ "$n" -le "$(cat "$STATE/backlog")" ]; then
             echo "Embedded 100 chunks from 20 documents in 5s"
+            exit 0
+        fi
+        if [ -e "$STATE/busy-slow-once" ] && [ "$n" -eq 1 ]; then
+            sleep 3
+            echo "Another embed process is already running" >&2
             exit 0
         fi
         if [ -e "$STATE/slow-embed" ]; then
@@ -851,6 +857,20 @@ touch "$STATE/slow-embed"
 rc=0; out=$(QMD_REINDEX_EMBED_MAX_SECS=2 QMD_TIMEOUT_SECS=2 QMD_KILL_GRACE_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "budget equal to the timeout rc 5" 5 "$rc"
 assert_contains "budget equal to the timeout names the time budget" "cause: embed time budget reached" "$out"
+
+echo "TEST: the BUSY retry gets only the embed budget the first attempt left"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+touch "$STATE/busy-slow-once" "$STATE/slow-embed"
+t0=$SECONDS
+rc=0; out=$(QMD_REINDEX_EMBED_MAX_SECS=4 QMD_KILL_GRACE_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+elapsed=$((SECONDS - t0))
+assert_rc "busy retry past the budget rc 5" 5 "$rc"
+if [ "$elapsed" -le 6 ]; then
+    pass "the retry was cut at the remaining budget (${elapsed}s for a 4s budget; an uncapped retry would take about 8s)"
+else
+    fail "busy retry bounded by the remaining budget" "took ${elapsed}s for a 4s budget"
+fi
 
 echo "TEST: a recount that fails is discarded, so the remaining count reads as unknown"
 reset_state

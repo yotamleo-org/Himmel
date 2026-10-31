@@ -24,10 +24,13 @@ printf 'ts=2026-10-31T01:05:00Z\nrc=5\nremaining=370\nlast_error=embed: request 
 
 # fail <worker> <reason> [<cause>]: the message the sender was handed
 alert() {
+    local arc=0
     rm -f "$TMP/sent.msg"; rm -rf "$TMP/sent"
-    CADENCE_ALERT_FILE="$TMP/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/sent" CADENCE_ALERT_SEND_CMD="$TMP/sender.sh" \
+    CADENCE_ALERT_FILE="$TMP/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/sent" CADENCE_ALERT_SEND_CMD="${SENDER:-$TMP/sender.sh}" \
         CADENCE_ALERT_SEND_FAILED_MARK="$TMP/send-failed" CADENCE_ALERT_QMD_STATE="$TMP/${STATE_FILE:-reindex-state}" \
-        bash "$SINK" fail "$@" >/dev/null 2>&1
+        CADENCE_ALERT_EXIT_ON_SEND_FAIL=1 bash "$SINK" fail "$@" >/dev/null 2>&1 || arc=$?
+    # A sink that did not deliver must fail the assertions below, not hide behind a written message.
+    [ "$arc" -eq 0 ] || printf 'ALERT-EXIT-%s ' "$arc"
     cat "$TMP/sent.msg" 2>/dev/null || true
 }
 
@@ -51,6 +54,15 @@ assert_has "A6 a clean run's state is not quoted for an rc-5 alert" "Cause: unkn
 
 msg=$(alert qmd-reindex rc-5)
 assert_has "A7 rc-5 with no log argument still quotes the state under nounset" "Cause: 370 unique hashes still need vectors" "$msg"
+
+cat >"$TMP/bad-sender.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$1" >"$TMP/sent.msg"
+exit 1
+EOF
+chmod +x "$TMP/bad-sender.sh"
+msg=$(SENDER="$TMP/bad-sender.sh" alert qmd-reindex rc-5 /tmp/q.log)
+assert_has "A8 a sender that writes the message then fails is reported as a failed alert" "ALERT-EXIT-1" "$msg"
 
 msg=$(STATE_FILE=absent alert qmd-reindex rc-5 /tmp/q.log)
 assert_has "A5 no state file keeps the default cause" "Cause: unknown, see log" "$msg"

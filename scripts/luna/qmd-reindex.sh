@@ -250,6 +250,13 @@ run_embed() {
     local out rc attempt
     for attempt in 1 2; do
         rc=0
+        # The BUSY retry gets only the budget the first attempt left unspent.
+        if [ "$attempt" -eq 2 ] && [ -n "${EMBED_CAP_SECS:-}" ]; then
+            EMBED_CAP_SECS=$((EMBED_MAX_SECS - (SECONDS - EMBED_T0)))
+            [ "$EMBED_CAP_SECS" -ge 1 ] || return 124
+            EMBED_BUDGET_CUT=0
+            if [ "$(qmd_timeout_secs)" -eq 0 ] || [ "$EMBED_CAP_SECS" -le "$(qmd_timeout_secs)" ]; then EMBED_BUDGET_CUT=1; fi
+        fi
         out=$(run_qmd embed 2>&1) || rc=$?
         if grep -qF -- 'Another embed process is already running' <<<"$out"; then
             if [ "$attempt" -eq 1 ]; then

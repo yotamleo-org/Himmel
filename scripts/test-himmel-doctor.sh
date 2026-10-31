@@ -6117,6 +6117,15 @@ echo "== C83-qmd-embed-backlog: complete run -> OK; no state file -> silent =="
 printf 'rc=0\nremaining=0\nlast_error=none\n' > "$c83_t/reindex-state"
 out="$(c83_run)"
 if grepq "$out" 'OK   C83-qmd-embed-backlog'; then pass "C83 complete -> OK"; else fail "C83 complete -> $(printf '%s' "$out" | grep -A1 C83)"; fi
+echo "== C83-qmd-embed-backlog: QMD_INDEX_PATH alone locates the state, as the writer does =="
+mkdir -p "$c83_t/idx"
+printf 'rc=5\nremaining=7\nlast_error=none\n' > "$c83_t/idx/reindex-state"
+out="$(PATH="$FAKEBIN:$PATH" QMD_INDEX_PATH="$c83_t/idx/index.sqlite" CLAUDE_DIR="$c83_t/claude" HOME="$c83_t/home" bash "$DOC" --only C83 --no-color 2>&1)"
+if grepq "$out" 'WARN C83-qmd-embed-backlog' && grepq "$out" -F '7 unique hashes still lack vectors'; then
+    pass "C83 QMD_INDEX_PATH -> state found"
+else
+    fail "C83 QMD_INDEX_PATH -> $(printf '%s' "$out" | grep -A1 C83)"
+fi
 rm -f "$c83_t/reindex-state"
 out="$(c83_run)"
 if grepq "$out" 'C83-qmd-embed-backlog'; then fail "C83 no state -> $(printf '%s' "$out" | grep -A1 C83)"; else pass "C83 no state -> silent"; fi
