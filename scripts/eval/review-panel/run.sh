@@ -142,6 +142,8 @@ for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch; do
     echo "$?" > "$out/$cid.rc"
 done
 
+python3 "$HERE/score.py" stamp "$out" --recheck --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" || exit 2
+
 python3 "$HERE/score.py" score --outputs "$out" --fixtures "$fixtures" --key "$key" \
     --critics "$critics" ${only:+--only "$only"} ${model:+--model "$model"} --meta-json "$meta" \
     --json "$out/scores.json" ${ledger_args[@]+"${ledger_args[@]}"}

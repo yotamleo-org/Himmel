@@ -156,9 +156,11 @@ change lost nothing.
    working tree that differed from its HEAD on a gate input (a CBS path,
    `critics.json`, or any file here but `results.jsonl`), through a
    `REVIEW_PANEL_CMD` other than the tree's `critic-panel.sh`, or with
-   `--tiers` other than `paid`, or over an `--only` subset. An `inconclusive`
-   sweep is refused, and the gate ignores any row whose status is not `ok` or
-   `partial`.
+   `--tiers` other than `paid`, or over an `--only` subset. `run.sh` re-stamps
+   after the panel loop (`stamp --recheck`), so a gate input edited during the
+   sweep, or a moved HEAD, also leaves it unclean. An `inconclusive` sweep is
+   refused, and the gate ignores any row whose status is not `ok`: a `partial`
+   sweep scores fewer cases, so its rates are not comparable.
 2. `score.py verify-row '<row-json>' <outputs-dir>` re-derives a row from its
    outputs (exit 1 on any mismatch), so a committed row can be checked against
    the bundle it claims.

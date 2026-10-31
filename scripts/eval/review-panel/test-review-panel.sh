@@ -352,6 +352,12 @@ rm -f "$G/scripts/eval/review-panel/run.sh"
 printf '{}\n' > "$G/scripts/eval/review-panel/results.jsonl"
 eq "stamp: an exported results.jsonl does not dirty the next sweep" "$(gstamp "$O")" ""
 rm -f "$G/scripts/eval/review-panel/results.jsonl"
+gstamp "$O" >/dev/null; printf '# mid-sweep\n' >> "$G/scripts/cr/critic-x.sh"
+has "stamp --recheck: a critic file dirtied during the sweep warns" "$(gstamp "$O" --recheck)" "export-row will refuse"
+gg checkout -q -- scripts/cr/critic-x.sh
+has "stamp --recheck: an unclean stamp stays unclean on a clean tree" "$(gstamp "$O" --recheck)" "export-row will refuse"
+gstamp "$O" >/dev/null
+eq "stamp --recheck: an unchanged clean tree stays clean" "$(gstamp "$O" --recheck)" ""
 gstamp "$O" >/dev/null; gstamp "$O5" >/dev/null
 python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
 eq "export-row: exit 0" "$rc" "0"
@@ -400,6 +406,8 @@ grows b1:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; ggate
 eq "gate: one baseline row exits 1" "$rc" "1"; has "gate: unmeasured" "$out" "gate: unmeasured"
 grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.55:0.1:0.5 h2:0.5:0.1:0.5:inconclusive; ggate
 eq "gate: an inconclusive head row does not count" "$rc" "1"; has "gate: inconclusive is unmeasured" "$out" "gate: unmeasured"
+grows b1:0.5:0.1:0.5 b2:0.6:0.1:0.5 h1:0.55:0.1:0.5 h2:0.5:0.1:0.5:partial; ggate
+eq "gate: a partial head row does not count" "$rc" "1"; has "gate: partial is unmeasured" "$out" "gate: unmeasured"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic
 eq "gate: a target class above the baseline max is keep" "$rc" "0"; has "gate: keep" "$out" "gate: keep"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.8 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic

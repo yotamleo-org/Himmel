@@ -174,7 +174,7 @@ def keep_rule(c, series, base, new, after):
 
 GATE_RECALL, GATE_FP = "panel.recall_gating", "panel.fp_rate"
 GATE_EPS = 1e-9  # float slack: two equal means must compare equal
-GATE_STATUS = ("ok", "partial")  # the sweep statuses export-row writes; an inconclusive row never counts
+GATE_STATUS = ("ok",)  # a partial sweep scores fewer cases, so like an inconclusive one it never counts
 
 
 def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):

@@ -566,12 +566,13 @@ def outputs_sha256(outputs):
 STAMP = "swept.json"
 
 
-def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only=""):
+def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only="", recheck=False):
     """Write <outputs>/swept.json: the hashes of the tree run.sh sweeps (HEAD). `clean` is false when the
     working tree differs from HEAD on any gate input (a CBS path, critics.json, or any file of this eval but
     results.jsonl, which export-row writes between sweeps), or the sweep reads other fixtures or another key, runs
     another panel command than the tree's critic-panel.sh, another tier set than the gate's roster, or a
-    subset of the cases."""
+    subset of the cases. recheck (run.sh, after the panel loop) keeps `clean` only when the earlier stamp was
+    clean and HEAD and both hashes are unchanged, so a tree edited during the sweep is caught."""
     inputs = cbs_paths(repo, "HEAD") + [REL, CRITICS_REL, ":(exclude)" + RESULTS]
     dirty = _git(repo, "status", "--porcelain", "--", *inputs).strip()
     def same(path, rel):
@@ -580,6 +581,14 @@ def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only=""):
            and (panel is None or same(panel, PANEL_REL)))
     rec = {"tree": _git(repo, "rev-parse", "HEAD").decode().strip(), "cbs_hash": cbs_hash(repo, "HEAD"),
            "confighash": confighash(repo, "HEAD"), "clean": not dirty and own}
+    if recheck:
+        try:
+            with open(os.path.join(outputs, STAMP), encoding="utf-8") as fh:
+                prev = json.load(fh)
+        except (OSError, ValueError):
+            prev = {}
+        rec["clean"] = (rec["clean"] and isinstance(prev, dict) and prev.get("clean") is True
+                        and all(prev.get(f) == rec[f] for f in ("tree", "cbs_hash", "confighash")))
     os.makedirs(outputs, exist_ok=True)
     with open(os.path.join(outputs, STAMP), "w", encoding="utf-8") as fh:
         json.dump(rec, fh, sort_keys=True)
@@ -678,6 +687,7 @@ def main(argv=None):
     pst.add_argument("--panel", default=None)
     pst.add_argument("--tiers", default=ROSTER_TIER)
     pst.add_argument("--only", default="")
+    pst.add_argument("--recheck", action="store_true")
     pe = sub.add_parser("export-row")
     pe.add_argument("outputs")
     pe.add_argument("--results", default=os.path.join(HERE, "results.jsonl"))
@@ -763,7 +773,7 @@ def tree_main(a):
     elif a.cmd == "confighash":
         print(confighash(repo, a.rev))
     elif a.cmd == "stamp":
-        rec = stamp(repo, a.outputs, a.fixtures, a.key, a.panel, a.tiers, a.only)
+        rec = stamp(repo, a.outputs, a.fixtures, a.key, a.panel, a.tiers, a.only, a.recheck)
         if not rec["clean"]:
             print("score.py stamp: the working tree differs from HEAD on a gate input, or the sweep reads other "
                   "fixtures, panel or tiers, or a subset: export-row will refuse this sweep", file=sys.stderr)
