@@ -185,8 +185,14 @@ rgit checkout -q -
 rgit checkout -q -b docs2 "$NDOC"
 printf 'again\n' >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm docs2
 NDOC2=$(rgit rev-parse HEAD)
+# a run of further docs-only pushes after NDOC2 (CH[0] is the third push): the heads of a chain of no-op records
+CH=()
+for chi in 3 4 5 6 7 8 9 10; do
+    printf 'c%s\n' "$chi" >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm "docs$chi"
+    CH+=("$(rgit rev-parse HEAD)")
+done
 rgit checkout -q -
-ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2"
+ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2" "${CH[@]}"
 cp "$LEDGER" "$tmp/ledger.base"
 
 CHIEF="$tmp/chief.md"
@@ -547,6 +553,33 @@ contains "A1b a carry that can start from a no-op record: the refusal names the 
 rm -f "$VDIR/qj/judge-qj.md"; rm -f "$AUDIT"
 STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO at the judged head refuses a carry whose only record is the no-op" 5
 contains "A1b a carry whose only record is the no-op: the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+# a chain of no-op records: a record's judged head may itself rest on a no-op record, and the NO-GO check follows the chain to the root
+# (write-verdict.sh refuses to chain: delta-class.sh reads a judged head with only a no-op record as trust. The rows write signed
+# records by hand, since go_trust_verdict itself would accept one.)
+noop() { # <head> <judged head>: a signed no-op record in write-verdict.sh's layout
+    local nvf="$VDIR/qj/delta-noop-$1.md" nmac
+    mkdir -p "$VDIR/qj"
+    # shellcheck disable=SC2016  # the backticks are literal text in the verdict file
+    printf '# VERDICT qj - delta-noop-%s\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 77\nmodel: auto-go\neffort: script\ndelta: no-op\ndelta-judged: %s\ndelta-class: none\n\nevidence\n' "$1" "$1" "$2" > "$nvf"
+    # shellcheck disable=SC2094  # the mac is computed from $nvf's body before it is appended to
+    # read-sink-ok: $nvf is a verdict file this test just wrote under its own temp dir
+    nmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" qj "delta-noop-$1" < "$nvf")" || return 1
+    printf 'mac: %s\n' "$nmac" >> "$nvf"
+}
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."
+noop "$NDOC" "$JUDGED"; noop "$NDOC2" "$NDOC"
+check    "A1b chain: the two no-op records exist" "$(set -- "$VDIR"/qj/delta-noop-*; echo $#)" "2"
+verdict qn "**NO-GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a no-op chain of two: a NO-GO at the root refuses (head with the record)" 5
+contains "A1b a no-op chain of two (head with the record): the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=${CH[0]} READY_STUB_HEAD=${CH[0]} run 77 "${CH[0]}";  esc "A1b a no-op chain of two: a NO-GO at the root refuses (carry loop)" 5
+# a chain past the hop cap (8) refuses
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."
+noop "$NDOC" "$JUDGED"; noop "$NDOC2" "$NDOC"; noop "${CH[0]}" "$NDOC2"; noop "${CH[1]}" "${CH[0]}"; noop "${CH[2]}" "${CH[1]}"
+noop "${CH[3]}" "${CH[2]}"; noop "${CH[4]}" "${CH[3]}"; noop "${CH[5]}" "${CH[4]}"; noop "${CH[6]}" "${CH[5]}"
+check    "A1b chain: nine no-op records exist" "$(set -- "$VDIR"/qj/delta-noop-*; echo $#)" "9"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=${CH[6]} READY_STUB_HEAD=${CH[6]} run 77 "${CH[6]}";  esc "A1b a no-op chain past the hop cap refuses" 5
+contains "A1b a no-op chain past the hop cap: the refusal says so" "$OUT" "hops"
 # an unreadable verdict file of another qid refuses (a directory named like a verdict stands in; it fails for root too)
 gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**GO** for head \`$JUDGED\`."; mkdir -p "$VDIR/qn/bad.md"
 STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC";  esc "A1b an unreadable verdict file refuses the carry" 5

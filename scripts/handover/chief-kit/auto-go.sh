@@ -363,10 +363,17 @@ else
     # unsigned or unparsed record, another PR) refuses outright
     # no GO carries while ANY qid holds a NO-GO for this PR at the judged head of the GO or at a head
     # after it (an unresolvable head counts as after: a read that fails refuses)
-    judged_root() { # <qid> <head>: the judged head a delta no-op record of <head> rests on, else <head> itself
-        local jr
-        jr=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$VERDICTS/$1/delta-noop-$2.md" 2>/dev/null | head -n 1)  # swallow-ok: no such record means <head> is itself the judged head
-        printf '%s' "${jr:-$2}"
+    judged_root() { # <qid> <head>: sets JR to the judged head a chain of delta no-op records of <head> rests on, else <head>; a chain past 8 hops or a cycle refuses
+        local jh="$2" jn jhops=0 jseen=" $2 "
+        while :; do
+            jn=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$VERDICTS/$1/delta-noop-$jh.md" 2>/dev/null | head -n 1)  # swallow-ok: no such record (or no delta-judged line) means <jh> is itself the judged head
+            [ -n "$jn" ] || break
+            jhops=$((jhops + 1))
+            [ "$jhops" -le 8 ] || fail 5 "the delta no-op records of $1 under ${2:0:8} chain past 8 hops: a chain that long needs a judge"
+            case "$jseen" in *" $jn "*) fail 5 "the delta no-op records of $1 under ${2:0:8} form a cycle at ${jn:0:8}" ;; esac
+            jseen="$jseen$jn "; jh="$jn"
+        done
+        JR="$jh"
     }
     nogo_after() { # <judged head>: refuses (fail 5) on a NO-GO for this PR at it or at a descendant of it; a read that fails refuses
         local nq nf nh nrc nfiles nheads
@@ -393,8 +400,8 @@ else
         case "$q" in *[!A-Za-z0-9._-]*) fail 5 "the verdict directory '$q' is not a usable judge qid" ;; esac
         if VOUT=$(go_trust_verdict "$ROOT" "$q" "$SHA" "$ANCHOR" "$PR"); then
             # a GO at the head that is a delta no-op record (a failed attempt left it) is a carried GO too
-            NOOPJ=$(judged_root "$q" "$SHA")
-            if [ "$NOOPJ" != "$SHA" ]; then nogo_after "$NOOPJ"; A_DELTA=none; fi
+            judged_root "$q" "$SHA"
+            if [ "$JR" != "$SHA" ]; then nogo_after "$JR"; A_DELTA=none; fi
             GOQIDS="$GOQIDS$q"$'\n'
         else
             case "$VOUT" in
@@ -413,7 +420,8 @@ else
             while IFS= read -r jh; do
                 [ -n "$jh" ] && [ "$jh" != "$SHA" ] || continue
                 go_trust_verdict "$ROOT" "$q" "$jh" "$ANCHOR" "$PR" >/dev/null || continue
-                nogo_after "$(judged_root "$q" "$jh")"
+                judged_root "$q" "$jh"
+                nogo_after "$JR"
                 DC=$(bash "$HERE/delta-class.sh" --qid "$q" "$jh" "$SHA" 2>/dev/null) || DC=trust  # swallow-ok: a failed classifier reads trust, which refuses, below
                 LAST_DC="$DC"
                 if [ "$DC" = none ]; then GO_QID="$q"; CARRY_FROM="$jh"; break 2; fi
