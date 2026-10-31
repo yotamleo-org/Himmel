@@ -151,8 +151,8 @@ verdict() {
     mkdir -p "$VDIR/$1"
     printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n' "$1" "$2" "${3:-77}" > "$vf"
     [ "${5:-1}" = 1 ] || return 0
-    # read-sink-ok: $vf is a verdict file this test just wrote under its own temp dir
     # shellcheck disable=SC2094  # the mac is computed from $vf's body before it is appended to
+    # read-sink-ok: $vf is a verdict file this test just wrote under its own temp dir
     vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$1" "$(basename "$vf" .md)" < "$vf")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
     printf 'mac: %s\n' "$vmac" >> "$vf"
 }
