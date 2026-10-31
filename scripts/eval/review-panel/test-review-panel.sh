@@ -346,6 +346,12 @@ eq "stamp: other fixtures are unclean" "$(python3 -c 'import json,sys; print(jso
 has "stamp: another tier set warns" "$(gstamp "$O" --tiers free)" "export-row will refuse"
 has "stamp: another panel command warns" "$(gstamp "$O" --panel "$TMP/stub-panel.sh")" "export-row will refuse"
 has "stamp: a subset sweep warns" "$(gstamp "$O" --only case-01)" "export-row will refuse"
+printf '# local edit\n' > "$G/scripts/eval/review-panel/run.sh"
+has "stamp: an uncommitted eval script warns" "$(gstamp "$O")" "export-row will refuse"
+rm -f "$G/scripts/eval/review-panel/run.sh"
+printf '{}\n' > "$G/scripts/eval/review-panel/results.jsonl"
+eq "stamp: an exported results.jsonl does not dirty the next sweep" "$(gstamp "$O")" ""
+rm -f "$G/scripts/eval/review-panel/results.jsonl"
 gstamp "$O" >/dev/null; gstamp "$O5" >/dev/null
 python3 "$SCORE" export-row "$O" --repo "$G" --results "$TMP/results.jsonl" >/dev/null 2>&1; rc=$?
 eq "export-row: exit 0" "$rc" "0"
@@ -371,6 +377,8 @@ python3 "$SCORE" verify-row "$(doctor 'r["metrics"]["panel.recall_gating"]=0.9')
 eq "verify-row: a doctored metric exits 1" "$rc" "1"
 python3 "$SCORE" verify-row "$(doctor 'r["outputs_sha256"]="0"*64')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
 eq "verify-row: a doctored outputs_sha256 exits 1" "$rc" "1"
+python3 "$SCORE" verify-row "$(doctor 'r["status"]="inconclusive"')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: a doctored status exits 1" "$rc" "1"
 
 # gate over GB..HEAD of the gate repo; grows <rid:recall:fp:logic[:status]>... writes rows at B (b*) or H (h*).
 B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")

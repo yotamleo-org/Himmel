@@ -568,10 +568,11 @@ STAMP = "swept.json"
 
 def stamp(repo, outputs, fixtures, key, panel=None, tiers=ROSTER_TIER, only=""):
     """Write <outputs>/swept.json: the hashes of the tree run.sh sweeps (HEAD). `clean` is false when the
-    working tree differs from HEAD on any gate input, or the sweep reads other fixtures or another key, runs
+    working tree differs from HEAD on any gate input (a CBS path, critics.json, or any file of this eval but
+    results.jsonl, which export-row writes between sweeps), or the sweep reads other fixtures or another key, runs
     another panel command than the tree's critic-panel.sh, another tier set than the gate's roster, or a
     subset of the cases."""
-    inputs = cbs_paths(repo, "HEAD") + [CBS_LIST, FIXTURES_REL, KEY_REL, CRITICS_REL]
+    inputs = cbs_paths(repo, "HEAD") + [REL, CRITICS_REL, ":(exclude)" + RESULTS]
     dirty = _git(repo, "status", "--porcelain", "--", *inputs).strip()
     def same(path, rel):
         return os.path.realpath(path) == os.path.realpath(os.path.join(repo, rel))
@@ -750,7 +751,7 @@ def main(argv=None):
     return 0
 
 
-ROW_FIELDS = ("metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256")
+ROW_FIELDS = ("status", "metrics", "class_recall", "cbs_hash", "confighash", "outputs_sha256")
 
 
 def tree_main(a):
