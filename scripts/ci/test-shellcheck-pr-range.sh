@@ -269,7 +269,7 @@ verdict a1_rev FILES scripts/zzj/zzcfg.env scripts/zzenv.sh
 # a2_var: a source line naming no *.sh/*.bash (here a bare variable, copied from
 # scripts/lib/test-afk-sudo.sh:1049) adds no edge; the static source beside it still does
 reset; w scripts/zza.sh '#!/usr/bin/env bash
-out=$( ( PATH="$STUBS/linux"; export EDITOR=nano; unset SUDO_EDITOR VISUAL; source "$INSTALL" && enable_cmd ) )
+out=$( ( PATH="$STUBS/linux"; export EDITOR=nano; unset SUDO_EDITOR VISUAL; source "$INSTALL" && enable_cmd ) ) # read-sink-ok: fixture text, never executed
 . scripts/zzj/zzjlib.sh
 '; commit_case a2_var
 verdict a2_var FILES scripts/zza.sh scripts/zzj/zzjlib.sh
@@ -282,7 +282,7 @@ echo tool
 '; commit_case a2_ext
 verdict a2_ext ALL
 reset; w scripts/zza.sh '#!/usr/bin/env bash
-. "$ZZ_LIB"
+. "$ZZ_LIB" # read-sink-ok: fixture text, never executed
 . "${ZZ_DIR}zzjlib.sh"
 '; commit_case a2_glued
 verdict a2_glued ALL
