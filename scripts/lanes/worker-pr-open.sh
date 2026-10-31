@@ -292,12 +292,30 @@ if [ -z "$existing_pr" ]; then
         echo "ERR worker-pr-open: /pr-check is still pending for branch '$branch' (cr-pending marker present) — finish /pr-check until it clears the marker, then open the PR" >&2
         exit 1
     fi
+    harness_common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || harness_common="" # swallow-ok: unresolvable harness root leaves the record check in force
+    # A sync of a registered fork is never a PR. The PR is created below
+    # through the forge seam, which block-fork-sync-pr.sh (a Bash hook) never
+    # sees, so the same check runs here on the `gh pr create` the seam issues.
+    toplevel=$(git rev-parse --show-toplevel)
+    # A ref name holds no whitespace or control character, so a JSON string is
+    # also a valid double-quoted shell word for the hook's shlex parse.
+    # shellcheck disable=SC2016 # JS template literal, not a shell expansion
+    fork_payload=$(WT_BASE="$BASE" WT_HEAD="$branch" WT_CWD="$toplevel" node -e '
+        const e = process.env, q = JSON.stringify;
+        process.stdout.write(q({ tool_name: "Bash", cwd: e.WT_CWD,
+            tool_input: { command: `gh pr create --base ${q(e.WT_BASE)} --head ${q(e.WT_HEAD)}` } }));')
+    fork_rc=0
+    printf '%s' "$fork_payload" | HIMMEL_REPO="${harness_common:+$harness_common/..}" \
+        bash "$HERE/../hooks/block-fork-sync-pr.sh" || fork_rc=$?
+    if [ "$fork_rc" -eq 2 ]; then
+        echo "ERR worker-pr-open: refused — a sync of a registered fork is never a PR (see above)" >&2
+        exit 1
+    fi
     # A PR on a registered adopter repo (origin nwo in himmel-adapters.json, read from this
     # harness's primary checkout) has no CR ledger here: the repo's CI, the chief's judge and
     # the signed GO stand in for the record. The pending-marker hold above still applies.
     adopter_repo=0
     origin_url=$(git remote get-url origin 2>/dev/null) || origin_url="" # swallow-ok: no origin means not an adopter, the record check below applies
-    harness_common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || harness_common="" # swallow-ok: unresolvable harness root leaves the record check in force
     if [ -n "$harness_common" ] && [ -r "$harness_common/../scripts/guardrails/himmel-adapters.json" ] \
         && WT_URL="$origin_url" WT_REG="$harness_common/../scripts/guardrails/himmel-adapters.json" node -e '
             const m = /^(?:https:\/\/(?:[^\/@]+@)?|ssh:\/\/git@|git@)github\.com[:\/]([^\/]+\/[^\/]+?)(?:\.git)?\/?$/.exec(process.env.WT_URL || "");

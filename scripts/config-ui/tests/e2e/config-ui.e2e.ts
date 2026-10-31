@@ -159,7 +159,7 @@ const LEDGER = [
   { ts: "2026-10-05T02:30:00Z", worker: "claudex", verdict: "PROCEED", five_hour: "", seven_day: "", age: "", degraded: false },
 ];
 const PAGE_ALERT = { labels: { alertname: "E2EPageAlert", severity: "page" }, annotations: { summary: "e2e-page-alert-summary" } };
-const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Worker sessions and the subscription usage budget", "Trends", "How good are our reviewers?", "Search and graph freshness"];
+const SECTIONS = ["Is himmel healthy?", "What is broken, and what do I do", "Scheduled jobs", "Usage", "Trends", "How good are our reviewers?", "Search and graph freshness"];
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await open(page, v, o);
@@ -188,25 +188,28 @@ test("health: reloading at #/health starts loadHealth without a page error", asy
   await page.reload();
   await page.locator("#verdict .word").waitFor();
   expect(errors).toEqual([]);
-  await expect(page.locator("#bank, #workers").first()).not.toContainText("loading");
+  await expect(page.locator("#bank")).not.toContainText("loading");
 });
 
 test("health: the seven sections appear in spec order", async ({ page }) => {
   await openHealth(page);
-  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Triage", "Inventory"]); // Health ends with the Triage and Inventory sections
+  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Inventory"]); // Health ends with the legacy Inventory section
 });
 
-test("health: fail first with remedy; the open-row button filters Health's inventory to the row", async ({ page }) => {
+test("health: fail first with one fix action; the who-fixes-it button opens the row's box", async ({ page }) => {
   await openHealth(page, { failDetail: "e2e-fail-detail" });
-  const rows = page.locator("#broken .hrow");
+  const rows = page.locator("#broken .hrow.br");
   expect(await rows.locator(".id").allTextContents()).toEqual(["guard-fail", "guard-warn"]);
   await expect(rows.first()).toContainText("e2e-fail-detail");
-  await expect(rows.first()).toContainText("fix-guard-cmd");
-  await expect(rows.first().locator('[data-act="copy"]')).toBeVisible();
-  await rows.first().locator('[data-act="open-config"]').click();
-  await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
-  await expect(page.locator("#q")).toHaveValue("guard-fail");
-  await expect(page.locator("#inventory .row-head", { hasText: "guard-fail" })).toBeVisible();
+  await rows.first().locator('[data-act="health-row"]').click();
+  await expect(rows.first().locator(".who")).toBeVisible();
+});
+
+test("health: Every item checked lists the rows and the project picker is in the rail", async ({ page }) => {
+  await openHealth(page);
+  await page.locator('[data-act="health-tab"][data-tab="all"]').click();
+  await expect(page.locator("#tab-all")).toContainText("guard-fail");
+  await expect(page.locator("#proj")).toBeVisible();
 });
 
 test("health: the verdict names its inputs; cadence jobs and search rows come from the feed", async ({ page }) => {
@@ -235,16 +238,6 @@ test("health: bank card shows the newest row with bank numbers; I2 the ledger is
   expect(h.ledgerLines()).toBe(1);
 });
 
-test("health: workers card shows the worker doc and its marker from the real parsers (BLOCKED flips it)", async ({ page }) => {
-  await openHealth(page, {}, { handover: { bullet: "- 03:00 LIVE — x" } });
-  const workers = page.locator("#workers");
-  await expect(workers).toContainText("HIMMEL-9999-N1-e2e-worker-RESUME.md");
-  await expect(workers.locator(".worker .mk")).toHaveText("LIVE");
-  h.setBullet("- 03:05 BLOCKED — y");
-  await page.locator('[data-act="refresh-health"]').click();
-  await expect(workers.locator(".worker .mk")).toHaveText("BLOCKED");
-});
-
 test("health: refresh re-probes the doctor feed inside the server's 30 s cache and the verdict follows (HIMMEL-7350)", async ({ page }) => {
   await openHealth(page, { clean: true });
   await expect(verdictWord(page)).toHaveText("All clear");
@@ -253,13 +246,12 @@ test("health: refresh re-probes the doctor feed inside the server's 30 s cache a
   await expect(verdictWord(page)).toHaveText("Act now");
 });
 
-test("health: with the feed pending the verdict is No data and bank and workers still render (D2)", async ({ page }) => {
+test("health: with the feed pending the verdict is No data and the bank still renders (D2)", async ({ page }) => {
   h = await boot({}, { ledger: LEDGER, handover: { bullet: "- 03:00 LIVE — x" }, feedDelayMs: 5000 });
   await page.goto(h.url);
   await page.evaluate(() => { location.hash = "#/health"; });
   await expect(verdictWord(page)).toHaveText("No data");
   await expect(page.locator("#bank")).toContainText("86.0");
-  await expect(page.locator("#workers")).toContainText("LIVE");
   await expect(verdictWord(page)).toHaveText("Act now", { timeout: 20_000 }); // the feed lands, the verdict follows
 });
 
@@ -326,9 +318,9 @@ test("health: every source absent leaves No data cards that name the source; ver
   await expect(verdictWord(page)).toHaveText("All clear");
   await expect(page.locator("#verdict")).toContainText("alerts not checked");
   await expect(page.locator("#bank .nodata")).toContainText("bank-preflight ledger");
-  await expect(page.locator("#workers .nodata")).toContainText("fleet manifest");
+  await expect(page.locator("#usage")).toContainText("open Fleet");
   await expect(page.locator("#verdict .nodata")).toContainText("monitoring tier not running");
-  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Triage", "Inventory"]); // Health ends with the Triage and Inventory sections
+  expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Inventory"]); // Health ends with the legacy Inventory section
 });
 
 test("health: at 390 px the page does not scroll horizontally", async ({ page }) => {

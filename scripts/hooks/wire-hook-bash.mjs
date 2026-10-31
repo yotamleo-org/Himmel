@@ -49,6 +49,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'guard-identical-denied-retry.sh',
   'auto-approve-safe-bash.sh',
   'check-cr-marker-on-pr-create.sh',
+  'block-fork-sync-pr.sh',
   'block-jira-compound-write.sh',
   'block-tail-pipe-on-gates.sh',
   'block-read-secrets.sh',

@@ -126,6 +126,11 @@ async function main() {
     const source = read(path.join(root, 'scripts/lib/load-dotenv.sh')).split('_himmel_key_class() {')[1].split('\n}')[0];
     const classified = [...source.matchAll(/\b[A-Z][A-Z0-9_]+\b/g)].map(m => m[0]);
     assert.deepEqual(rows.map(r => r.name).sort(), [...new Set(classified)].sort());
+    const loader = path.join(root, 'scripts/lib/load-dotenv.sh');
+    const probe = spawnSync('bash', ['-c', '. "$1"; shift; for k in "$@"; do printf "%s %s " "$k" "$(_himmel_key_class "$k")"; _himmel_env_only_key "$k" && echo 1 || echo 0; done', 'probe', loader, ...rows.map(r => r.name)], { encoding: 'utf8' });
+    assert.equal(probe.status, 0, probe.stderr);
+    assert.deepEqual(probe.stdout.trim().split('\n').sort(),
+      rows.map(r => `${r.name} ${r.class} ${r.envOnly ? 1 : 0}`).sort());
     const manifest = require(path.join(root, 'scripts/himmelctl/lib/secrets-manifest.json'));
     assert.deepEqual(manifest.secrets.filter(s => rows.some(r => r.name === s.name)).map(s => s.name).sort(),
       ['FIRECRAWL_BASE_URL', 'JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY', 'WHISPER_MODEL']);

@@ -35,6 +35,8 @@ export interface Baseline {
 export interface Authority {
   kind: 'rm' | 'operator' | 'import';
   ref: string | null;
+  // The current-version tickets a blocker pull unblocks; required by O-<R>-blocker-pull.
+  blocks?: string[];
 }
 
 export interface RulingRow {
@@ -59,7 +61,7 @@ export interface RulingRow {
   mac?: string;
 }
 
-export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency';
+export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull';
 
 export interface OperatorRow {
   id: string;
@@ -132,4 +134,6 @@ export interface IssueSnap {
   fixVersions: string[];
   resolution: string | null;
   sector?: string | null;
+  // The keys the mirror lists under links.blocked_by.
+  blockedBy?: string[];
 }

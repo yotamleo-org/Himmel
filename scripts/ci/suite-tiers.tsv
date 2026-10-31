@@ -271,6 +271,7 @@ scripts/docs/test-docs-dropped-terms.sh	pr	static-gate
 scripts/docs/test-footprint-page.sh	pr	static-gate
 scripts/docs/test-generate-credits.sh	pr	static-gate
 scripts/docs/test-how-a-change-ships.sh	pr	static-gate
+scripts/docs/test-workflow-page-drift.sh	pr	static-gate
 scripts/docs/test-install-profiles-page.sh	pr	static-gate
 scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -368,6 +369,7 @@ scripts/guardrails/test-settings-qmd-allow.sh	pr	guard
 scripts/handover/chief-kit/test-ack-denial.sh	pr	trust-path
 scripts/handover/chief-kit/test-action-zero.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/chief-kit/test-auto-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-graph.sh	pr	trust-path
@@ -427,6 +429,7 @@ scripts/handover/chief-kit/test-ready-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-relay-batch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-run-suite.sh	pr	trust-path
+scripts/handover/chief-kit/test-series-ledger.sh	local	behaviour suite, new for HIMMEL-8349 (series ledger L0)
 scripts/handover/chief-kit/test-shepherd.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-station-sync.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-status-drift.sh	pr	trust-path
@@ -611,6 +614,7 @@ scripts/hooks/test-block-destructive-commands-d.sh	pr	guard
 scripts/hooks/test-block-docker-privesc.sh	pr	guard
 scripts/hooks/test-block-edit-live-settings.sh	pr	guard
 scripts/hooks/test-block-edit-on-main.sh	pr	guard
+scripts/hooks/test-block-fork-sync-pr.sh	pr	guard
 scripts/hooks/test-block-git-stash.sh	pr	guard
 scripts/hooks/test-block-worker-bypass-scope.sh	pr	guard
 scripts/hooks/test-block-worker-write-fence.sh	pr	guard

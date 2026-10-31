@@ -489,6 +489,32 @@ contains "lookalike host: says no /pr-check record" "$err_ad5" "no /pr-check rec
 git -C "$REPO" remote set-url origin "$orig_url"
 not_contains "no PR is created for a refused open" "$(cat "$ARGV_LOG")" "pr create"
 
+echo "TEST: a sync PR on a registered fork is refused in-script (the Bash hook never sees the seam's gh call)"
+# The fork check calls `gh api` from PATH: 100 commits in the PR, ITS_OURS of
+# them ours (ahead of upstream v8 at the head, none at the merge-base mb0).
+mkdir -p "$TMP_ROOT/hookbin"
+cat > "$TMP_ROOT/hookbin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+  "api repos/Graphify-Labs/graphify --jq .default_branch") echo v8 ;;
+  "api repos/yotamleo-org/graphify/compare/Graphify-Labs:v8...mb0 "*) echo 0 ;;
+  "api repos/yotamleo-org/graphify/compare/Graphify-Labs:v8..."*) echo "$ITS_OURS" ;;
+  "api repos/yotamleo-org/graphify/compare/"*) printf '100\tmb0\n' ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$TMP_ROOT/hookbin/gh"
+git -C "$REPO" remote set-url origin https://github.com/yotamleo-org/graphify.git
+: > "$ARGV_LOG"
+err_fs=$(PATH="$TMP_ROOT/hookbin:$PATH" ITS_OURS=1 REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_fs=$?
+assert_eq "fork sync PR: refused (rc=1)" "1" "$rc_fs"
+contains "fork sync PR: names the resync replacement" "$err_fs" "resync-fork.sh --sync yotamleo-org/graphify"
+not_contains "fork sync PR: no PR is created" "$(cat "$ARGV_LOG")" "pr create"
+PATH="$TMP_ROOT/hookbin:$PATH" ITS_OURS=60 REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_fo=$?
+assert_eq "fork PR of our own delta: opens (rc=0)" "0" "$rc_fo"
+contains "fork PR of our own delta: pr create ran" "$(cat "$ARGV_LOG")" "pr create"
+git -C "$REPO" remote set-url origin "$orig_url"
+
 # ── PR size bands: warn past the soft max, refuse past CodeRabbit's 300-file cap ──
 size_branch() {  # <name> <file-count> <lines-per-file>: a pushed branch cut from origin/main
     git -C "$REPO" checkout -q -b "$1" origin/main

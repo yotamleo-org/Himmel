@@ -41,5 +41,22 @@ is left out of the third-party credits page.
 
 ## Sync rule
 
-A fork is synced with its upstream (`/fork-resync`) whenever a worker handles it,
-before any work on it. A fork behind its upstream is resynced first.
+Syncing a fork with its upstream is upkeep, never a PR (HIMMEL-8334):
+
+- **No carried commits** → keep no fork: point pins and installs at the
+  upstream. The nightly drift issue says `use-upstream <upstream>` for it.
+- **Carried commits** → `bash scripts/upstreams/resync-fork.sh --sync <fork>`:
+  `gh repo sync` of the fork's default branch, then our commits rebased onto the
+  upstream default branch and pushed to the himmel branch (the old tip kept as
+  `himmel-presync/<branch>-<sha12>`). A conflict stops, names the paths and
+  pushes nothing; nobody opens a PR to finish it.
+- `block-fork-sync-pr.sh` refuses a `gh pr create` whose base is a fork and
+  whose head is an upstream branch, or a branch of ours that is mostly upstream
+  commits. It runs on the Claude and Codex Bash chains, and
+  `scripts/lanes/worker-pr-open.sh` runs it on the PR it opens itself.
+- The judge, the signed GO and CodeRabbit cover only our carried changes. A PR
+  to a fork carries only our own authored delta, and the critic panel diffs a
+  fork PR from its merge-base with the upstream default branch, so
+  upstream-authored commits are never reviewed. The panel reads that branch
+  from `refs/remotes/<upstream>/HEAD` (`git remote set-head upstream -a`);
+  without it the whole PR is reviewed.
