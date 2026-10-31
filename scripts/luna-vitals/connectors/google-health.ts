@@ -4,6 +4,8 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { keyringUnlocked, putSecret, resolveSecrets } from '../../lib/resolve-secrets.mjs';
 import { MAPPINGS } from './map/table';
 import { extractRows, pointDate } from './map/shape';
 import { aggregateRows, deriveRestingHeartRate, deriveSleep, type SleepWarning } from './map/derive';
@@ -186,6 +188,40 @@ function updateEnvFile(envPath: string, refreshToken: string): void {
   writeFileSync(envPath, content, 'utf-8');
 }
 
+const SECRET_NAMES = ['GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN'];
+
+/**
+ * Put each name the one resolver serves (environment, credentials directory, keyring) into
+ * process.env. This reader has no .env of its own: the caller's loaded environment is the last layer.
+ */
+export function loadSecretsIntoEnv(root: string, names: string[]): void {
+  for (const [name, value] of Object.entries(resolveSecrets(root, names))) process.env[name] = value;
+}
+
+/**
+ * Save the refreshed token: in the keyring when it is unlocked (put --stdin, adding no .env line),
+ * else in the .env file. A token line already in the .env is kept in step, because a caller that
+ * loads that file into its environment would otherwise keep using the stale token (the environment
+ * is read first). Returns where it went, or undefined when there was nowhere to put it.
+ * `shadowed` is true when an unlocked keyring refused the token: the keyring outranks .env, so an
+ * older token it holds keeps winning until the caller stores the new one there.
+ */
+export function storeRefreshToken(
+  root: string, token: string, envPath: string | undefined,
+): { where: string; shadowed: boolean } | undefined {
+  const target = envPath ?? findEnvFile(process.cwd());
+  const unlocked = keyringUnlocked(root);
+  if (unlocked && putSecret(root, 'GOOGLE_HEALTH_REFRESH_TOKEN', token)) {
+    if (target && existsSync(target) && /^GOOGLE_HEALTH_REFRESH_TOKEN=/m.test(readFileSync(target, 'utf-8'))) {
+      updateEnvFile(target, token);
+    }
+    return { where: 'the keyring', shadowed: false };
+  }
+  if (!target) return undefined;
+  updateEnvFile(target, token);
+  return { where: target, shadowed: unlocked };
+}
+
 // ── argv helpers ──────────────────────────────────────────────────────────────
 
 /** Same flag() helper as cli.ts: last occurrence wins. */
@@ -217,6 +253,9 @@ function requireEnvCfg(): { clientId: string; clientSecret: string; refreshToken
 
 async function main(): Promise<void> {
   const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd === 'pull' || cmd === 'auth-url' || cmd === 'auth-exchange') {
+    loadSecretsIntoEnv(fileURLToPath(new URL('../../..', import.meta.url)), SECRET_NAMES);
+  }
 
   if (cmd === 'pull') {
     const from = flag(rest, 'from');
@@ -276,17 +315,23 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     const { refreshToken, scope } = await exchangeCode({ clientId, clientSecret, code });
-    const resolvedEnvPath = envPath ?? findEnvFile(process.cwd());
-    if (!resolvedEnvPath) {
+    const stored = storeRefreshToken(fileURLToPath(new URL('../../..', import.meta.url)), refreshToken, envPath);
+    if (!stored) {
       console.error(
         '[google-health] error: could not find .env file (walked up from cwd); pass --env-path',
       );
       process.exit(1);
     }
-    updateEnvFile(resolvedEnvPath, refreshToken);
-    // NEVER print the token; print confirmation (with resolved path) + granted scope.
-    console.error(`OK: refresh token written to ${resolvedEnvPath}`);
+    // NEVER print the token; print confirmation (with where it went) + granted scope.
+    console.error(`OK: refresh token written to ${stored.where}`);
     console.error(`Granted scope: ${scope}`);
+    if (stored.shadowed) {
+      console.error(
+        '[google-health] error: the keyring refused the new token, so an older keyring token still outranks .env; ' +
+          'store it there with: himmel-secrets put --stdin GOOGLE_HEALTH_REFRESH_TOKEN',
+      );
+      process.exit(1);
+    }
   } else {
     console.error(
       `unknown command: ${cmd ?? '(none)'} — use pull|auth-url|auth-exchange`,
