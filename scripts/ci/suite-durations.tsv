@@ -1209,3 +1209,4 @@ scripts/test-worktree-orphans.sh	21
 scripts/eval/routing/test-score.sh	15
 scripts/test-himmel-doctor-mcp-sources.sh	1
 scripts/handover/test-windows-arms-dropped.sh	0
+scripts/handover/chief-kit/test-intake-backfill.sh	1

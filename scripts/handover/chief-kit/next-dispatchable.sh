@@ -31,7 +31,7 @@
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); open tickets with no fixVersion
 # that are operator-directed, a Bug of High or above, labelled scope-<earliest version> or proposed-<earliest version> (a ticket proposed to any other version or the backlog has its INTAKE queued and is excluded), or held by a worker or
-# open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line; an empty
+# open PR make it `,INTAKE:<m>` instead (never a bare LOW) plus a `# intake <m> for <version>: <keys>` line (`# intake <m>: <keys>` with no open version; --dispositions prints it too, for the tick's INTAKE=); an empty
 # pool prints `POOL-EMPTY` and then the tier-5 To Do rows as `NEXT-TIER` rows (rank
 # order, unclassified, collision-checked against held files), never dispatched from here.
 #
@@ -901,6 +901,22 @@ def picked_hit(i):
 emitted = []
 lane_of = {}  # key -> how a listed ticket was listed
 
+def intake_keys():
+    # versionless operator work is the pool's blind spot: it is INTAKE, so the pool is never a bare LOW while it is open
+    return sorted((i['key'] for i in issues.values()
+                   if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
+                   and not any(l.startswith('residual-depth-') for l in i['labels'])
+                   and not any(l.startswith('proposed-') and l != 'proposed-' + str(first_ver) for l in i['labels'])
+                   and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
+                        or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner
+                        or (first_ver is not None and 'proposed-' + first_ver in i['labels']))),
+                  key=lambda k: int(k.split('-')[1]))
+
+def print_intake(intake):
+    # no open version: the line names no version, so a reader has no --to value to take from it
+    if intake:
+        print('# intake %d%s: %s' % (len(intake), (' for ' + first_ver) if first_ver else '', ' '.join(intake)))
+
 def drop_summary():
     # every To Do ticket of the active version that is not listed, by reason (--why: one line each)
     if first_ver is None:
@@ -1046,18 +1062,9 @@ if pool_only:
         if not resume_only:
             emit_free([i for i in free if tier_of(i) == t])
     if not resume_only:
-        # versionless operator work is the pool's blind spot: it is INTAKE, so the pool is never a bare LOW while it is open
-        intake = sorted((i['key'] for i in issues.values()
-                         if not i['ver'] and i['type'] not in ('Epic', 'Sub-task') and not done_key(i['key']) and not platform_dropped(i)
-                         and not any(l.startswith('residual-depth-') for l in i['labels'])
-                         and not any(l.startswith('proposed-') and l != 'proposed-' + str(first_ver) for l in i['labels'])
-                         and ('operator-directed' in i['labels'] or (i['type'] == 'Bug' and PRIO.get(i['prio'], 5) <= 1)
-                              or (first_ver is not None and 'scope-' + first_ver in i['labels']) or i['key'] in owner
-                              or (first_ver is not None and 'proposed-' + first_ver in i['labels']))),
-                        key=lambda k: int(k.split('-')[1]))
+        intake = intake_keys()
         print('# pool=%d/%d%s' % (n, top, (',INTAKE:%d' % len(intake)) if intake else (',LOW' if n < top else '')))
-        if intake:
-            print('# intake %d for %s: %s' % (len(intake), first_ver or 'no open version', ' '.join(intake)))
+        print_intake(intake)
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
         # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
@@ -1074,4 +1081,6 @@ if resume_only:
 emit_free(free)
 warn_missing()
 drop_summary()
+if os.environ.get('ND_DISPO') == '1':
+    print_intake(intake_keys())  # the tick counts INTAKE= from the snapshot (HIMMEL-8336)
 PY

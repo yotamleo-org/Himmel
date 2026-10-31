@@ -361,6 +361,13 @@ residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --d
 read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
 on the compact line. --pool-stale --doc <doc> prints just these two fields.
 
+INTAKE=<n> (HIMMEL-8336) is the count of next-dispatchable.sh's `# intake` line in that same snapshot:
+open versionless tickets the pool cannot list (operator-directed, a High+ Bug, scope- or proposed- the current
+version, or worker-held). Shown only when non-zero; hidden at 0 or with no fresh snapshot.
+chains=STALE:<n>/<m> (HIMMEL-8336) counts the steps of the focus-chains.json beside --doc that the Jira mirror
+reads Done: n of its m steps (focus-refresh.sh regenerates the file from the chain registry, so a stale value
+means a hand-kept or unrefreshed file). Hidden when nothing is stale, there is no file, or no mirror.
+
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
 non-zero. `priority-prune.sh --doc <doc>` prints the line without them; the console runs
@@ -443,6 +450,28 @@ for cls, key, reason in sorted(unresolved):
 for key, reason in sorted(invalid.items()):
     if key not in rows:
         print("# pool-unresolved invalid %s %s" % (key, reason))
+PY
+}
+
+# chains=<ok|STALE:<n>/<m>>: <n> of the <m> steps in a focus-chains.json that the Jira mirror reads
+# Done; the file regenerates from the chain registry (focus-refresh.sh), so a Done step
+# means the order a HANDOFF quotes is out of date. skip on an unreadable file; no Jira call.
+chains_stale() { # <focus-chains.json> <mirror dir>
+    python3 -I - "$1" "$2" <<'PY'
+import json, re, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+    keys = [s["key"] for r in rows if isinstance(r, dict) for s in r.get("steps", []) if re.fullmatch(r"[A-Z]+-\d+", str(s.get("key", "")))]
+except (OSError, ValueError, TypeError, AttributeError):
+    print("skip")
+    sys.exit(0)
+done = 0
+for k in keys:
+    try:
+        done += bool(re.search(r'^statusCategory: "Done"$', open("%s/%s.md" % (sys.argv[2], k)).read().split("\n---", 1)[0], re.M))
+    except OSError:
+        pass
+print("STALE:%d/%d" % (done, len(keys)) if done else "ok")
 PY
 }
 
@@ -2103,6 +2132,7 @@ fi
 # for it; the counts come from the newest snapshot younger than TICK_POOL_TTL (default 1800),
 # else ?. The chief's current pool-disposition lines are read on every tick.
 pool_summary=skip
+intake_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_summary='?'
     pd_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
@@ -2130,6 +2160,9 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
+        # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
+        intake_summary="$(sed -n 's/^# intake \([0-9][0-9]*\)[ :].*/\1/p' "$pd_base.rows" | head -n 1)"  # swallow-ok: no line reads 0
+        [ -n "$intake_summary" ] || intake_summary=0
     fi
 fi
 
@@ -2148,6 +2181,12 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     ps_out="$(timeout -k 2 40 bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
     pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
     residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
+fi
+
+# chains=<ok|STALE:<n>/<m>|skip>: Done steps still listed in the focus-chains.json beside the chief doc.
+chains_summary=skip
+if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-chains.json" ] && [ -d "$nd_mirror" ]; then
+    chains_summary="$(chains_stale "${console_doc%/*}/focus-chains.json" "$nd_mirror")" || chains_summary=skip  # swallow-ok: a failed read reads skip
 fi
 
 # The tick already owns the worktree census: reuse the existing reclaiming
@@ -3168,7 +3207,9 @@ if [ "$verbose" -eq 1 ]; then
     printf 'orphans-wip: %s\n' "$orphans_wip"
     printf 'pool: %s\n' "$pool_summary"
     printf 'pool-closed: %s\n' "$pool_closed"
+    printf 'intake: %s\n' "$intake_summary"
     printf 'pool-stale: %s\n' "$pool_stale"
+    printf 'chains: %s\n' "$chains_summary"
     printf 'residual-unversioned: %s\n' "$residual_unversioned"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
     [ -z "$doctor_tail" ] || printf 'doctor: %s\n' "${doctor_tail# doctor=}"
@@ -3187,7 +3228,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|pool-stale=skip|residual-unversioned=skip|residual-unversioned=0|\
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
             focus=ok|sdrift=0:*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
@@ -3230,7 +3271,9 @@ else
     compact_field orphans-wip "$orphans_wip"
     compact_field pool "$pool_summary"
     compact_field pool-closed "$pool_closed"
+    compact_field INTAKE "$intake_summary"
     compact_field pool-stale "$pool_stale"
+    compact_field chains "$chains_summary"
     compact_field residual-unversioned "$residual_unversioned"
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
