@@ -73,6 +73,7 @@ From `gh repo list yotamleo-org --fork`; the HIMMEL-5900 registry
 | Fork | Default | Language | Own hooks | Own lint | CI |
 |---|---|---|---|---|---|
 | qmd | main | TypeScript | none | oxlint | yes |
+| obsidian-second-brain | main | Python | none | `pyproject.toml` | yes |
 | core (home-assistant) | dev | Python | `.pre-commit-config.yaml` | prettier | yes |
 | claude-hud | main | JavaScript | none | `.editorconfig` | yes |
 | graphify | v8 | Python | `.pre-commit-config.yaml` | `pyproject.toml` | yes |
