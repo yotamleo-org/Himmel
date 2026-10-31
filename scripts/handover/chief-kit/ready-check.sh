@@ -67,12 +67,12 @@
 #      keys must also equal the CR ledger's deferred_to rows for the PR head
 #      (or for the reviewed head a same-branch trivial-descendant row names).
 #      A Jira error reads UNKNOWN and fails — never a PASS.
-#   9. Plugin versions change only in a release cut (a PR that changes the
-#      root VERSION file; same rule as check-plugin-drift.sh --bump-required).
-#      Any other PR must leave every plugin version it touches as it is at the
-#      merge-base with origin/main. A release cut must version every plugin it
-#      touches strictly above CURRENT origin/main's manifest (two cuts raising
-#      to the same version merge CLEAN). Fetches origin/main and the PR
+#   9. A PR that changes a plugin bumps that plugin's version (same
+#      rule as check-plugin-drift.sh --bump-required): the manifest version must
+#      be strictly above CURRENT origin/main's (two PRs raising to the same
+#      version merge CLEAN). A bump with no other file change in that plugin is
+#      refused. A release cut (a PR that changes the root VERSION file) must
+#      version every plugin it touches above main, bump-only included. Fetches origin/main and the PR
 #      head (refs/pull/<n>/head) into the caller's repo; a PR touching no
 #      plugin never reaches git. Any fetch/read failure FAILs.
 #  10. Workflow dispatch: every .github/workflows/*.yml the PR
@@ -716,14 +716,14 @@ EOF
 fi
 
 if [ "$ONLY7" -eq 0 ]; then
-# ── 9. plugin versions change only in a release cut ─────────────
-# The --bump-required rule of scripts/check-plugin-drift.sh. A PR that does not
-# change the root VERSION file must leave each touched plugin's version as it is
-# at the merge-base, so a version main moved since never forces a merge of main.
-# A release cut is checked against main as it is NOW: two cuts can raise the
-# same plugin to the same version with different content, which merges cleanly
-# (check 1 stays CLEAN) and leaves stale installs, so every plugin it touches
-# must carry a version strictly above origin/main's. Inline rather than
+# ── 9. a plugin change bumps that plugin's version ──────────────
+# The --bump-required rule of scripts/check-plugin-drift.sh. A PR
+# that changes a plugin's files must carry a version strictly above origin/main's
+# as it is NOW: two PRs can raise one plugin to the same version with different
+# content, which merges cleanly (check 1 stays CLEAN) and leaves stale installs.
+# A bump with no other change in that plugin (a manifest edit beyond "version"
+# counts as a change) is refused. A release cut (a PR that changes the root
+# VERSION file) raises every plugin it touches above main. Inline rather than
 # calling check-plugin-drift.sh, which hardwires HEAD and the caller's checkout.
 # A PR touching no plugin never reaches git. Fetch or read failure = FAIL.
 plug_files=$(printf '%s\n' "$files_json" | grep -E '^marketplace/plugins/[^/]+/' || true)
@@ -743,6 +743,39 @@ else
         [ -z "$left" ] || return 1
         listed=$(git show "$1:marketplace/.claude-plugin/marketplace.json" 2>/dev/null | jq -r --arg n "$2" '[.plugins[] | select(.name == $n or ((.source // "") | tostring | rtrimstr("/") | endswith("/" + $n)))] | length' 2>/dev/null)  # swallow-ok: unreadable counts as listed
         [ "$listed" = "0" ]
+    }
+    plug_manifest_rest() {  # <ref> <plugin> — the manifest without "version", canonical; "!" when jq fails
+        local r
+        r=$(git show "$1:marketplace/plugins/$2/.claude-plugin/plugin.json" 2>/dev/null | jq -S -c 'del(.version)' 2>/dev/null) || r="!"  # swallow-ok: an unreadable manifest compares as "!"
+        printf '%s' "$r"
+    }
+    plug_above_main() {  # <plugin> — appends to bump_err unless the PR's version is strictly above origin/main's
+        local p="$1" mpath="marketplace/plugins/$1/.claude-plugin/plugin.json" m_ls p_ls m_ver p_ver
+        # absent on main = new plugin, nothing to collide with; a failed tree read or an
+        # unreadable manifest = FAIL
+        if ! m_ls=$(git ls-tree --name-only refs/remotes/origin/main -- "$mpath" 2>/dev/null); then
+            bump_err="$bump_err; $p cannot read origin/main's tree"
+            return 0
+        fi
+        [ -n "$m_ls" ] || return 0
+        if ! p_ls=$(git ls-tree --name-only "$SHA" -- "$mpath" 2>/dev/null); then
+            bump_err="$bump_err; $p cannot read the PR tree"
+            return 0
+        fi
+        if [ -z "$p_ls" ] && plug_removed "$SHA" "$p"; then return 0; fi  # removed whole — nothing to bump
+        m_ver=$(plug_manifest_ver refs/remotes/origin/main "$p")
+        p_ver=$(plug_manifest_ver "$SHA" "$p")
+        if ! grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' <<<"$m_ver" \
+            || ! grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' <<<"$p_ver"; then
+            bump_err="$bump_err; $p version not plain x.y.z (main '${m_ver:-none}', PR '${p_ver:-none}')"
+            return 0
+        fi
+        if ! jq -n -e --arg a "$m_ver" --arg b "$p_ver" '
+            def k: split(".") | map(tonumber);
+            ($b | k) > ($a | k)' >/dev/null 2>&1; then
+            bump_err="$bump_err; $p is $p_ver in the PR but origin/main is already $m_ver — bump above main"
+        fi
+        return 0
     }
     if ! git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null; then
         bump_err="cannot fetch origin/main"
@@ -766,46 +799,33 @@ else
                 bump_err="$bump_err; $plug cannot read the PR tree"
                 continue
             fi
-            [ -n "$mb_ls" ] || continue
+            if [ -z "$mb_ls" ]; then plug_above_main "$plug"; continue; fi  # new at the merge-base: still judged against main, which may ship it now
             if [ -z "$pr_ls" ] && plug_removed "$SHA" "$plug"; then continue; fi
-            mb_ver=$(plug_manifest_ver "$plug_mb" "$plug")
-            pr_ver=$(plug_manifest_ver "$SHA" "$plug")
-            if [ "$mb_ver" != "$pr_ver" ]; then
-                bump_err="$bump_err; $plug went ${mb_ver:-none} to ${pr_ver:-none} outside a release cut — plugin versions change only in the PR that changes VERSION; leave it as it is"
+            # A change = any PR file of the plugin but the manifest, or a manifest edit beyond "version".
+            plug_other=$(printf '%s\n' "$plug_files" | grep -F "marketplace/plugins/$plug/" | grep -vxF "$main_path" || true)  # swallow-ok: grep exits 1 when the plugin has no file but its manifest
+            plug_changed=0
+            [ -z "$plug_other" ] || plug_changed=1
+            if [ "$plug_changed" -eq 0 ] && [ "$(plug_manifest_rest "$plug_mb" "$plug")" != "$(plug_manifest_rest "$SHA" "$plug")" ]; then
+                plug_changed=1
             fi
+            if [ "$plug_changed" -eq 0 ]; then
+                mb_ver=$(plug_manifest_ver "$plug_mb" "$plug")
+                pr_ver=$(plug_manifest_ver "$SHA" "$plug")
+                if [ "$mb_ver" != "$pr_ver" ]; then
+                    bump_err="$bump_err; $plug went ${mb_ver:-none} to ${pr_ver:-none} but no other file of $plug changed — a bump needs a change to the plugin; leave it as it is"
+                fi
+                continue
+            fi
+            plug_above_main "$plug"
         done
     else
         for plug in $(printf '%s\n' "$plug_files" | sed -n 's#^marketplace/plugins/\([^/]*\)/.*#\1#p' | sort -u); do
-            main_path="marketplace/plugins/$plug/.claude-plugin/plugin.json"
-            # absent on main = new plugin, nothing to collide with; a failed tree read or an
-            # unreadable manifest = FAIL
-            if ! main_ls=$(git ls-tree --name-only refs/remotes/origin/main -- "$main_path" 2>/dev/null); then
-                bump_err="$bump_err; $plug cannot read origin/main's tree"
-                continue
-            fi
-            [ -n "$main_ls" ] || continue
-            if ! pr_ls=$(git ls-tree --name-only "$SHA" -- "$main_path" 2>/dev/null); then
-                bump_err="$bump_err; $plug cannot read the PR tree"
-                continue
-            fi
-            if [ -z "$pr_ls" ] && plug_removed "$SHA" "$plug"; then continue; fi  # removed whole — nothing to bump
-            main_ver=$(plug_manifest_ver refs/remotes/origin/main "$plug")
-            pr_ver=$(plug_manifest_ver "$SHA" "$plug")
-            if ! printf '%s\n' "$main_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+' \
-                || ! printf '%s\n' "$pr_ver" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+'; then
-                bump_err="$bump_err; $plug version not plain x.y.z (main '${main_ver:-none}', PR '${pr_ver:-none}')"
-                continue
-            fi
-            if ! jq -n -e --arg a "$main_ver" --arg b "$pr_ver" '
-                def k: split(".") | map(tonumber);
-                ($b | k) > ($a | k)' >/dev/null 2>&1; then
-                bump_err="$bump_err; $plug is $pr_ver in the PR but origin/main is already $main_ver — bump above main"
-            fi
+            plug_above_main "$plug"
         done
     fi
     if [ -z "$bump_err" ]; then
         if [ -z "$plug_rel" ]; then
-            echo "[PASS] 9. no plugin version changed outside a release cut"
+            echo "[PASS] 9. every plugin the PR changes is bumped above current origin/main"
         else
             echo "[PASS] 9. release cut: every plugin the PR touches is versioned above current origin/main"
         fi

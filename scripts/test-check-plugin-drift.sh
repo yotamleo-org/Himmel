@@ -303,11 +303,11 @@ if [ "$null_rc" -ne 0 ]; then ok "--manifest-only: RED — non-object manifest (
 if grepq "$null_out" "Traceback"; then bad "--manifest-only: non-object manifest crashed instead of failing cleanly: $null_out"; else ok "--manifest-only: non-object manifest fails cleanly, no traceback"; fi
 rm -rf -- "$W_NULL"
 
-# 3i. --bump-required: plugin versions change only at the release cut, a
-#     change to the root VERSION file. An unbumped plugin edit passes, a
-#     version change outside a release cut fails, and a release cut must go
-#     above the base — in staged mode (pre-commit shape) and range mode (CI
-#     shape). Throwaway git repo fixtures — this check is inherently
+# 3i. --bump-required: a plugin change must bump that plugin's
+#     version above the base; a bump with no other plugin change fails; a
+#     release cut (a change to the root VERSION file) must go above the base
+#     for every plugin it touches — in staged mode (pre-commit shape) and range
+#     mode (CI shape). Throwaway git repo fixtures — this check is inherently
 #     diff-based, unlike the directory-only --manifest-only checks above.
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 W_BUMP="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-bump.XXXXXX")" || { bad "--bump-required fixture: mktemp -d failed"; exit 1; }
@@ -327,15 +327,14 @@ W_BUMP="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-bump.XXXXXX")" || { bad "--bump-requ
   git commit -q -m 'chore: seed plugin-a'
 )
 if git -C "$W_BUMP" ls-files --error-unmatch marketplace/plugins/plugin-a/.claude-plugin/plugin.json >/dev/null 2>&1; then ok "--bump-required fixture: seed tracks plugin-a manifest"; else bad "--bump-required fixture: seed did not track plugin-a manifest"; fi
-# Staged: a plugin edit that leaves the version alone passes.
+# Staged: a plugin edit that leaves the version alone is refused, naming the plugin.
 (cd "$W_BUMP" && printf '# skill v2\n' > marketplace/plugins/plugin-a/skills/one.md && git add -A)
 staged_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_rc=$?
-if [ "$staged_rc" -eq 0 ] && grepq "$staged_out" "no plugin version changed outside a release cut"; then ok "--bump-required (staged): a plugin edit with no version change passes"; else bad "--bump-required (staged): unbumped edit failed (rc=$staged_rc): $staged_out"; fi
-# RED (staged): the same edit plus a version bump, outside a release cut.
+if [ "$staged_rc" -ne 0 ] && grepq "$staged_out" "plugin-a changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a plugin edit with no version change is refused"; else bad "--bump-required (staged): unbumped edit passed (rc=$staged_rc): $staged_out"; fi
+# The same edit plus a version bump passes.
 (cd "$W_BUMP" && printf '{"name": "plugin-a", "version": "0.1.1"}\n' > marketplace/plugins/plugin-a/.claude-plugin/plugin.json && git add -A)
 staged_red_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_red_rc=$?
-if [ "$staged_red_rc" -ne 0 ] && grepq "$staged_red_out" "outside a release cut"; then ok "--bump-required (staged): RED — a version change outside a release cut exits non-zero"; else bad "--bump-required (staged): RED did not fail (rc=$staged_red_rc): $staged_red_out"; fi
-if grepq "$staged_red_out" "plugin-a"; then ok "--bump-required (staged): RED names the offending plugin"; else bad "--bump-required (staged): RED output did not name plugin-a: $staged_red_out"; fi
+if [ "$staged_red_rc" -eq 0 ] && grepq "$staged_red_out" "every changed plugin carries a version bump above the base"; then ok "--bump-required (staged): an edit plus a version bump passes"; else bad "--bump-required (staged): bumped edit refused (rc=$staged_red_rc): $staged_red_out"; fi
 # Release cut (staged): the same bump with VERSION changed passes.
 (cd "$W_BUMP" && printf '1.1.0\n' > VERSION && git add -A)
 staged_rel_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; staged_rel_rc=$?
@@ -355,11 +354,11 @@ if [ "$staged_same_rc" -ne 0 ] && grepq "$staged_same_out" "plugin-a's plugin.js
 base_sha="$(cd "$W_BUMP" && git rev-parse HEAD)"
 (cd "$W_BUMP" && printf '# skill v3\n' > marketplace/plugins/plugin-a/skills/one.md && git add -A && git commit -q -m 'fix: tweak plugin-a skill, no bump')
 range_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required "$base_sha" 2>&1)"; range_rc=$?
-if [ "$range_rc" -eq 0 ]; then ok "--bump-required (range): a plugin edit with no version change passes"; else bad "--bump-required (range): unbumped range change failed (rc=$range_rc): $range_out"; fi
-# RED (range): a bump commit on top, with no VERSION change.
+if [ "$range_rc" -ne 0 ] && grepq "$range_out" "plugin-a changed but its plugin.json version 0.1.1 is not above 0.1.1"; then ok "--bump-required (range): a plugin edit with no version change is refused"; else bad "--bump-required (range): unbumped range change passed (rc=$range_rc): $range_out"; fi
+# A bump commit on top makes the range pass.
 (cd "$W_BUMP" && printf '{"name": "plugin-a", "version": "0.1.2"}\n' > marketplace/plugins/plugin-a/.claude-plugin/plugin.json && git add -A && git commit -q -m 'chore: bump plugin-a again')
 range_red_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required "$base_sha" 2>&1)"; range_red_rc=$?
-if [ "$range_red_rc" -ne 0 ] && grepq "$range_red_out" "outside a release cut"; then ok "--bump-required (range): RED — a version change outside a release cut exits non-zero"; else bad "--bump-required (range): RED did not fail (rc=$range_red_rc): $range_red_out"; fi
+if [ "$range_red_rc" -eq 0 ] && grepq "$range_red_out" "every changed plugin carries a version bump above the base"; then ok "--bump-required (range): an edit plus a later bump passes"; else bad "--bump-required (range): bumped range refused (rc=$range_red_rc): $range_red_out"; fi
 # A new plugin's first commit carries its first version — nothing to compare.
 (cd "$W_BUMP" && mkdir -p marketplace/plugins/plugin-b/.claude-plugin && printf '{"name": "plugin-b", "version": "0.1.0"}\n' > marketplace/plugins/plugin-b/.claude-plugin/plugin.json && printf '{"plugins": [{"name": "plugin-a", "source": "./plugins/plugin-a"}, {"name": "plugin-b", "source": "./plugins/plugin-b"}]}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
 new_plugin_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; new_plugin_rc=$?
@@ -379,16 +378,16 @@ if grepq "$del_out" "Traceback"; then bad "--bump-required (staged): deletion le
 # entry UNDER the dir, but the path is still tracked, so its version is gone.
 (cd "$W_BUMP" && git restore --source=HEAD --staged --worktree -- marketplace && mkdir -p elsewhere/.claude-plugin && printf '{"name": "plugin-b", "version": "0.1.0"}\n' > elsewhere/.claude-plugin/plugin.json && printf '# edited\n' > elsewhere/extra.md && git rm -rq marketplace/plugins/plugin-b && ln -s ../../elsewhere marketplace/plugins/plugin-b && git add -A)
 sym_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; sym_rc=$?
-if [ "$sym_rc" -ne 0 ] && grepq "$sym_out" "outside a release cut"; then ok "--bump-required (staged): plugin dir swapped for a symlink is not a removal"; else bad "--bump-required (staged): symlink swap passed: $sym_out"; fi
+if [ "$sym_rc" -ne 0 ] && grepq "$sym_out" "is not above 0.1.0"; then ok "--bump-required (staged): plugin dir swapped for a symlink is not a removal"; else bad "--bump-required (staged): symlink swap passed: $sym_out"; fi
 # Bypass (b): the plugin moved out of marketplace/plugins/ with marketplace.json
 # repointed is still listed, so it is not a removal either.
 (cd "$W_BUMP" && git rm -q --cached marketplace/plugins/plugin-b elsewhere -r -f && rm -f marketplace/plugins/plugin-b && git restore --source=HEAD --staged --worktree -- marketplace && git mv marketplace/plugins/plugin-b moved-b && printf '{"plugins": [{"name": "plugin-a", "source": "./plugins/plugin-a"}, {"name": "plugin-b", "source": "../moved-b"}]}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
 mv_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; mv_rc=$?
-if [ "$mv_rc" -ne 0 ] && grepq "$mv_out" "outside a release cut"; then ok "--bump-required (staged): plugin moved out with marketplace.json repointed is not a removal"; else bad "--bump-required (staged): move-out passed: $mv_out"; fi
+if [ "$mv_rc" -ne 0 ] && grepq "$mv_out" "is not above 0.1.0"; then ok "--bump-required (staged): plugin moved out with marketplace.json repointed is not a removal"; else bad "--bump-required (staged): move-out passed: $mv_out"; fi
 # Control: deleting only the manifest while other plugin files remain drops its version.
 (cd "$W_BUMP" && git rm -q -r -f --cached moved-b elsewhere && git restore --source=HEAD --staged --worktree -- marketplace && git rm -q marketplace/plugins/plugin-a/.claude-plugin/plugin.json)
 del_part_out="$(cd "$W_BUMP" && bash "$SCRIPT" --bump-required 2>&1)"; del_part_rc=$?
-if [ "$del_part_rc" -ne 0 ] && grepq "$del_part_out" "outside a release cut"; then ok "--bump-required (staged): manifest-only deletion still fails"; else bad "--bump-required (staged): manifest-only deletion passed: $del_part_out"; fi
+if [ "$del_part_rc" -ne 0 ] && grepq "$del_part_out" "is not above 0.1.2"; then ok "--bump-required (staged): manifest-only deletion still fails"; else bad "--bump-required (staged): manifest-only deletion passed: $del_part_out"; fi
 rm -rf -- "$W_BUMP"
 
 # 3i-2. --bump-required: renamed, swapped and non-ASCII-named plugins must hit
@@ -422,44 +421,44 @@ P="marketplace/plugins"
 bump_fixture "$W_REN/a" foo
 (cd "$W_REN/a" && git mv "$P/foo" "$P/bar" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/bar/skill.md" && git add -A)
 bump_run "$W_REN/a"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "outside a release cut"; then ok "--bump-required (staged):RED — rename foo to bar with an edit drops foo's version and fails"; else bad "--bump-required (staged): rename with edit passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "is not above 0.1.0"; then ok "--bump-required (staged):RED — rename foo to bar with an edit drops foo's version and fails"; else bad "--bump-required (staged): rename with edit passed: $br_out"; fi
 
 # (b) case-only rename foo -> Foo with an edit (two-step mv: portable to case-insensitive fs).
 bump_fixture "$W_REN/b" foo
 (cd "$W_REN/b" && git mv "$P/foo" "$P/foo-tmp" && git mv "$P/foo-tmp" "$P/Foo" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/Foo/skill.md" && git add -A)
 bump_run "$W_REN/b"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "outside a release cut"; then ok "--bump-required (staged):RED — case-only rename with an edit drops the version and fails"; else bad "--bump-required (staged): case-only rename passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "is not above 0.1.0"; then ok "--bump-required (staged):RED — case-only rename with an edit drops the version and fails"; else bad "--bump-required (staged): case-only rename passed: $br_out"; fi
 
 # (c) foo replaced by a symlink to an edited copy at foo-copy.
 bump_fixture "$W_REN/c" foo
 (cd "$W_REN/c" && mkdir "$P/foo-copy" && cp -R "$P/foo/." "$P/foo-copy/" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/foo-copy/skill.md" && git rm -rq "$P/foo" && ln -s foo-copy "$P/foo" && git add -A)
 bump_run "$W_REN/c"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "outside a release cut"; then ok "--bump-required (staged):RED — foo swapped for a symlink to an edited copy fails"; else bad "--bump-required (staged): symlink-to-copy swap passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "is not above 0.1.0"; then ok "--bump-required (staged):RED — foo swapped for a symlink to an edited copy fails"; else bad "--bump-required (staged): symlink-to-copy swap passed: $br_out"; fi
 
-# (d) non-ASCII plugin directory: a version change must fail and name the
+# (d) non-ASCII plugin directory: an edit without a bump must fail and name the
 # plugin (git quotes the path by default).
-bump_fixture "$W_REN/d" "plügin"
-(cd "$W_REN/d" && printf '# edited\n' > "$P/plügin/skill.md" && printf '{"name": "plügin", "version": "0.1.1"}\n' > "$P/plügin/.claude-plugin/plugin.json" && git add -A)
-bump_run "$W_REN/d"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "plügin's plugin.json version went 0.1.0 -> 0.1.1"; then ok "--bump-required (staged):RED — a version change to a non-ASCII-named plugin fails"; else bad "--bump-required (staged): non-ASCII plugin version change passed: $br_out"; fi
-
-# Control: the same edit without a version change passes, so the quote fix stays pinned.
 bump_fixture "$W_REN/dc" "plügin"
 (cd "$W_REN/dc" && printf '# edited\n' > "$P/plügin/skill.md" && git add -A)
 bump_run "$W_REN/dc"
-if [ "$br_rc" -eq 0 ]; then ok "--bump-required (staged): control — unbumped edit to a non-ASCII-named plugin passes"; else bad "--bump-required (staged): unbumped non-ASCII plugin edit failed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "plügin changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged):RED — an unbumped edit to a non-ASCII-named plugin fails and names it"; else bad "--bump-required (staged): unbumped non-ASCII plugin edit passed: $br_out"; fi
+
+# Control: the same edit with a bump passes, so the quote fix stays pinned.
+bump_fixture "$W_REN/d" "plügin"
+(cd "$W_REN/d" && printf '# edited\n' > "$P/plügin/skill.md" && printf '{"name": "plügin", "version": "0.1.1"}\n' > "$P/plügin/.claude-plugin/plugin.json" && git add -A)
+bump_run "$W_REN/d"
+if [ "$br_rc" -eq 0 ]; then ok "--bump-required (staged): control — a bumped edit to a non-ASCII-named plugin passes"; else bad "--bump-required (staged): bumped non-ASCII plugin edit failed: $br_out"; fi
 
 # (e) symlink swap with the marketplace entry removed is still not a removal.
 bump_fixture "$W_REN/e" foo
 (cd "$W_REN/e" && mkdir elsewhere && cp -R "$P/foo/." elsewhere/ && printf '# edited\n' > elsewhere/skill.md && git rm -rq "$P/foo" && ln -s ../../elsewhere "$P/foo" && printf '{"plugins": []}\n' > marketplace/.claude-plugin/marketplace.json && git add -A)
 bump_run "$W_REN/e"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "outside a release cut"; then ok "--bump-required (staged):symlink swap with the marketplace entry removed is not a removal"; else bad "--bump-required (staged): symlink swap with entry removed passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "is not above 0.1.0"; then ok "--bump-required (staged):symlink swap with the marketplace entry removed is not a removal"; else bad "--bump-required (staged): symlink swap with entry removed passed: $br_out"; fi
 
 # (f) marketplace.json missing during a whole-plugin deletion fails closed.
 bump_fixture "$W_REN/f" foo
 (cd "$W_REN/f" && git rm -rq "$P/foo" marketplace/.claude-plugin/marketplace.json)
 bump_run "$W_REN/f"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "outside a release cut"; then ok "--bump-required (staged):whole-plugin deletion with marketplace.json missing fails closed"; else bad "--bump-required (staged): deletion with no marketplace.json passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "is not above 0.1.0"; then ok "--bump-required (staged):whole-plugin deletion with marketplace.json missing fails closed"; else bad "--bump-required (staged): deletion with no marketplace.json passed: $br_out"; fi
 
 # Controls: a genuine whole-plugin deletion and a properly bumped rename pass.
 bump_fixture "$W_REN/g" foo
@@ -486,17 +485,17 @@ bump_range_run() { # <dir> -> sets br_out / br_rc
 bump_fixture "$W_REN/ra" foo
 (cd "$W_REN/ra" && git mv "$P/foo" "$P/bar" && printf '# skill body line one\n# skill body line two\n# skill body line 3\n' > "$P/bar/skill.md" && git add -A)
 bump_range_run "$W_REN/ra"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "outside a release cut"; then ok "--bump-required (range):RED — rename foo to bar with an edit drops foo's version and fails"; else bad "--bump-required (range): rename with edit passed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "is not above 0.1.0"; then ok "--bump-required (range):RED — rename foo to bar with an edit drops foo's version and fails"; else bad "--bump-required (range): rename with edit passed: $br_out"; fi
 
 bump_fixture "$W_REN/rd" "plügin"
 (cd "$W_REN/rd" && printf '# edited\n' > "$P/plügin/skill.md" && printf '{"name": "plügin", "version": "0.1.1"}\n' > "$P/plügin/.claude-plugin/plugin.json" && git add -A)
 bump_range_run "$W_REN/rd"
-if [ "$br_rc" -ne 0 ] && grepq "$br_out" "plügin's plugin.json version went 0.1.0 -> 0.1.1"; then ok "--bump-required (range):RED — a version change to a non-ASCII-named plugin fails"; else bad "--bump-required (range): non-ASCII plugin version change passed: $br_out"; fi
+if [ "$br_rc" -eq 0 ]; then ok "--bump-required (range): control — a bumped edit to a non-ASCII-named plugin passes"; else bad "--bump-required (range): bumped non-ASCII plugin edit failed: $br_out"; fi
 
 bump_fixture "$W_REN/rdc" "plügin"
 (cd "$W_REN/rdc" && printf '# edited\n' > "$P/plügin/skill.md" && git add -A)
 bump_range_run "$W_REN/rdc"
-if [ "$br_rc" -eq 0 ]; then ok "--bump-required (range): control — unbumped edit to a non-ASCII-named plugin passes"; else bad "--bump-required (range): unbumped non-ASCII plugin edit failed: $br_out"; fi
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "plügin changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (range):RED — an unbumped edit to a non-ASCII-named plugin fails and names it"; else bad "--bump-required (range): unbumped non-ASCII plugin edit passed: $br_out"; fi
 
 # (i) a changed path git still C-quotes (a double quote in the name) cannot be
 # attributed to a plugin, so the gate fails closed in both modes. The version
@@ -524,6 +523,100 @@ if [ "$big_bytes" -gt 4194304 ]; then ok "--bump-required: big changed-path fixt
 bump_run "$W_REN/big"
 if [ "$br_rc" -ne 0 ] && grepq "$br_out" "quoted by git"; then ok "--bump-required (staged):RED — a quoted path ahead of a changed list over 4 MiB still fails closed"; else bad "--bump-required (staged): quoted path in a big list passed: $br_out"; fi
 rm -rf -- "$W_REN"
+
+# 3i-3. A PR that changes a plugin bumps that plugin's version
+#       (operator 10-31: otherwise the station does not update). The three DoD
+#       fixtures, in both modes: changed + bumped passes; changed without a bump
+#       is refused naming the plugin; a bump with no other plugin file change is
+#       refused. Plus the base-moved case and the untouched-plugin control.
+W_DOD="$(mktemp -d "${TMPDIR:-/tmp}/pdrift-dod.XXXXXX")" || { bad "bump-per-PR fixtures: mktemp -d failed"; exit 1; }
+P="marketplace/plugins"
+bumped_line="check-plugin-drift --bump-required: every changed plugin carries a version bump above the base"
+bump_edit() { printf '# edited\n' > "$1/$P/foo/skill.md"; }
+bump_ver() { printf '{"name": "foo", "version": "%s"}\n' "$2" > "$1/$P/foo/.claude-plugin/plugin.json"; }
+
+# (1) DoD: a plugin file changed AND the version bumped passes.
+bump_fixture "$W_DOD/s1" foo
+(bump_edit "$W_DOD/s1" && bump_ver "$W_DOD/s1" 0.1.1 && cd "$W_DOD/s1" && git add -A)
+bump_run "$W_DOD/s1"
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a plugin edit with a version bump passes (HIMMEL-8368)"; else bad "--bump-required (staged): bumped plugin edit refused (rc=$br_rc): $br_out"; fi
+bump_fixture "$W_DOD/r1" foo
+(bump_edit "$W_DOD/r1" && bump_ver "$W_DOD/r1" 0.1.1 && cd "$W_DOD/r1" && git add -A)
+bump_range_run "$W_DOD/r1"
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (range): a plugin edit with a version bump passes (HIMMEL-8368)"; else bad "--bump-required (range): bumped plugin edit refused (rc=$br_rc): $br_out"; fi
+
+# (2) DoD: a plugin file changed without a bump is refused, naming the plugin.
+bump_fixture "$W_DOD/s2" foo
+(bump_edit "$W_DOD/s2" && cd "$W_DOD/s2" && git add -A)
+bump_run "$W_DOD/s2"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a plugin edit with no bump is refused and names the plugin (HIMMEL-8368)"; else bad "--bump-required (staged): unbumped plugin edit passed or lacks the plugin name (rc=$br_rc): $br_out"; fi
+bump_fixture "$W_DOD/r2" foo
+(bump_edit "$W_DOD/r2" && cd "$W_DOD/r2" && git add -A)
+bump_range_run "$W_DOD/r2"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (range): a plugin edit with no bump is refused and names the plugin (HIMMEL-8368)"; else bad "--bump-required (range): unbumped plugin edit passed or lacks the plugin name (rc=$br_rc): $br_out"; fi
+
+# (3) DoD: a bump with no other change in that plugin is refused.
+bump_fixture "$W_DOD/s3" foo
+(bump_ver "$W_DOD/s3" 0.1.1 && cd "$W_DOD/s3" && git add -A)
+bump_run "$W_DOD/s3"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo's plugin.json version went 0.1.0 -> 0.1.1 but no other file of foo changed"; then ok "--bump-required (staged): a bump with no plugin file change is refused (HIMMEL-8368)"; else bad "--bump-required (staged): bump-only change passed or has the wrong message (rc=$br_rc): $br_out"; fi
+bump_fixture "$W_DOD/r3" foo
+(bump_ver "$W_DOD/r3" 0.1.1 && cd "$W_DOD/r3" && git add -A)
+bump_range_run "$W_DOD/r3"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo's plugin.json version went 0.1.0 -> 0.1.1 but no other file of foo changed"; then ok "--bump-required (range): a bump with no plugin file change is refused (HIMMEL-8368)"; else bad "--bump-required (range): bump-only change passed or has the wrong message (rc=$br_rc): $br_out"; fi
+
+# A manifest edit besides the version (a description) is a plugin change that
+# needs a bump; the same edit WITH a bump passes, so a manifest is never stuck.
+bump_fixture "$W_DOD/m1" foo
+(cd "$W_DOD/m1" && printf '{"name": "foo", "version": "0.1.0", "description": "new"}\n' > "$P/foo/.claude-plugin/plugin.json" && git add -A)
+bump_run "$W_DOD/m1"
+if [ "$br_rc" -ne 0 ] && grepq "$br_out" "foo changed but its plugin.json version 0.1.0 is not above 0.1.0"; then ok "--bump-required (staged): a manifest description edit with no bump is refused (HIMMEL-8368)"; else bad "--bump-required (staged): unbumped manifest edit passed (rc=$br_rc): $br_out"; fi
+bump_fixture "$W_DOD/m2" foo
+(cd "$W_DOD/m2" && printf '{"name": "foo", "version": "0.1.1", "description": "new"}\n' > "$P/foo/.claude-plugin/plugin.json" && git add -A)
+bump_run "$W_DOD/m2"
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a manifest description edit with a bump passes (HIMMEL-8368)"; else bad "--bump-required (staged): bumped manifest edit refused (rc=$br_rc): $br_out"; fi
+
+# A commit after the bump (same branch) needs no second bump: the version is
+# compared with the branch's base, not the previous commit.
+bump_fixture "$W_DOD/c1" foo
+git -C "$W_DOD/c1" branch -m main
+(cd "$W_DOD/c1" && git checkout -q -b feat && bump_edit "$W_DOD/c1" && bump_ver "$W_DOD/c1" 0.1.1 && git add -A && git commit -q -m 'fix: edit and bump' && printf '# edited again\n' > "$P/foo/skill.md" && git add -A)
+bump_run "$W_DOD/c1"
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a second commit after the bump needs no second bump (HIMMEL-8368)"; else bad "--bump-required (staged): second commit demanded another bump (rc=$br_rc): $br_out"; fi
+
+# Base moved: a sibling already shipped the version this PR bumps to, so the PR
+# must merge main and bump above it (two contents never share a version).
+bump_fixture "$W_DOD/b1" foo
+git -C "$W_DOD/b1" branch -m main
+(cd "$W_DOD/b1" && git checkout -q -b feat && bump_edit "$W_DOD/b1" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: pr edit and bump' \
+  && git checkout -q main && printf '# sibling\n' > "$P/foo/sibling.md" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: sibling edit and bump' && git checkout -q feat)
+base_moved_out="$(cd "$W_DOD/b1" && bash "$SCRIPT" --bump-required main 2>&1)"; base_moved_rc=$?
+if [ "$base_moved_rc" -ne 0 ] && grepq "$base_moved_out" "foo changed but its plugin.json version 0.1.1 is not above 0.1.1 on the base"; then ok "--bump-required (range): a bump the base already shipped is refused (HIMMEL-8368)"; else bad "--bump-required (range): duplicate of the base's version passed (rc=$base_moved_rc): $base_moved_out"; fi
+
+# A version-only commit after an earlier plugin edit (a correction above a
+# sibling's version) is part of the same PR: judged against the branch base, not HEAD.
+bump_fixture "$W_DOD/c2" foo
+git -C "$W_DOD/c2" branch -m main
+(cd "$W_DOD/c2" && git checkout -q -b feat && bump_edit "$W_DOD/c2" && bump_ver "$W_DOD/c2" 0.1.1 && git add -A && git commit -q -m 'fix: edit and bump' && bump_ver "$W_DOD/c2" 0.1.2 && git add -A)
+bump_run "$W_DOD/c2"
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a version-only follow-up commit on a branch with a plugin edit passes"; else bad "--bump-required (staged): version-only follow-up refused (rc=$br_rc): $br_out"; fi
+
+# A plugin both the PR and a sibling introduce under one version: the base already
+# ships it, so the PR's new plugin is not exempt from the live-base check.
+bump_fixture "$W_DOD/p1" foo
+git -C "$W_DOD/p1" branch -m main
+(cd "$W_DOD/p1" && git checkout -q -b feat \
+  && mkdir -p "$P/bar/.claude-plugin" && printf '{"name": "bar", "version": "0.1.0"}\n' > "$P/bar/.claude-plugin/plugin.json" && printf 'a\n' > "$P/bar/a.md" && git add -A && git commit -q -m 'feat: pr adds bar' \
+  && git checkout -q main && mkdir -p "$P/bar/.claude-plugin" && printf '{"name": "bar", "version": "0.1.0"}\n' > "$P/bar/.claude-plugin/plugin.json" && printf 'b\n' > "$P/bar/b.md" && git add -A && git commit -q -m 'feat: sibling adds bar' && git checkout -q feat)
+twice_new_out="$(cd "$W_DOD/p1" && bash "$SCRIPT" --bump-required main 2>&1)"; twice_new_rc=$?
+if [ "$twice_new_rc" -ne 0 ] && grepq "$twice_new_out" "bar changed but its plugin.json version 0.1.0 is not above 0.1.0 on the base"; then ok "--bump-required (range): a new plugin the base already ships under that version is refused"; else bad "--bump-required (range): duplicate new plugin passed (rc=$twice_new_rc): $twice_new_out"; fi
+
+# A PR that touches no plugin is not asked for a bump.
+bump_fixture "$W_DOD/n1" foo
+(cd "$W_DOD/n1" && printf 'x\n' > README.md && git add -A)
+bump_run "$W_DOD/n1"
+if [ "$br_rc" -eq 0 ] && grepq "$br_out" "no plugin files changed"; then ok "--bump-required (staged): a change outside marketplace/plugins needs no bump (HIMMEL-8368)"; else bad "--bump-required (staged): non-plugin change refused (rc=$br_rc): $br_out"; fi
+rm -rf -- "$W_DOD"
 
 # Two PRs edit himmel-ops from the same base, as #2331/#2334 did (and #3670,
 # #3673 and #3691 on 10-24, which each merged main in only to re-bump).
@@ -568,6 +661,8 @@ JSON
   git branch stored-base
   git checkout -q -b current-base
   printf '# merged sibling change\n' > marketplace/plugins/himmel-ops/sibling.md
+  sed 's/0.4.60/0.4.61/' marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp
+  mv manifest.tmp marketplace/plugins/himmel-ops/.claude-plugin/plugin.json
   mkdir -p marketplace/plugins/base-only/.claude-plugin
   printf '{"name":"base-only","version":"1.0.0"}\n' > marketplace/plugins/base-only/.claude-plugin/plugin.json
   git add -A
@@ -594,28 +689,39 @@ PY
 run_current_job() {
   (cd "$W_CURRENT" && RUNNER_TEMP="$W_CURRENT/.runner-temp" BASE_BRANCH="${1:-current-base}" bash -e -c "$current_job")
 }
-nochange_line='no plugin version changed outside a release cut'
+nochange_line='every changed plugin carries a version bump above the base'
 release_line='release cut: every changed plugin version is above the base'
-# The sibling's CI ran against stored-base; the competing PR's runs after the
-# sibling merged, still branched from stored-base and without a merge of main.
+# The sibling (edit + bump to 0.4.61) ran its CI against stored-base; the competing
+# PR's runs after the sibling merged, still branched from stored-base.
 git -C "$W_CURRENT" checkout -q current-base
 sibling_out="$(run_current_job stored-base 2>&1)"; sibling_rc=$?
 git -C "$W_CURRENT" checkout -q competing-pr
-if [ "$sibling_rc" -eq 0 ] && grepq "$sibling_out" "$nochange_line"; then ok "same-base replay: the first PR's himmel-ops edit passes CI"; else bad "same-base replay: first PR failed (rc=$sibling_rc): $sibling_out"; fi
+if [ "$sibling_rc" -eq 0 ] && grepq "$sibling_out" "$nochange_line"; then ok "same-base replay: the first PR's himmel-ops edit with its bump passes CI (HIMMEL-8368)"; else bad "same-base replay: first PR failed (rc=$sibling_rc): $sibling_out"; fi
 if git -C "$W_CURRENT" merge-base --is-ancestor current-base competing-pr; then bad "same-base replay fixture: the competing PR already contains the moved base"; fi
+# The competing PR edits himmel-ops and does not bump: refused.
 current_out="$(run_current_job 2>&1)"; current_rc=$?
-if [ "$current_rc" -eq 0 ] && grepq "$current_out" "$nochange_line"; then ok "same-base replay: the second PR passes CI against the moved base with no merge of main"; else bad "same-base replay: second PR needs a merge of main (rc=$current_rc): $current_out"; fi
-# RED: the old habit, a feature PR bumping 0.4.60 to 0.4.61, now fails.
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.60 is not above 0.4.61 on the base'; then ok "same-base replay: an unbumped second PR is refused against the moved base (HIMMEL-8368)"; else bad "same-base replay: unbumped second PR passed (rc=$current_rc): $current_out"; fi
+# It bumps to the version the sibling already shipped (0.4.61): two contents under one version, refused.
 (
   cd "$W_CURRENT" || exit 1
   git checkout -q -b bumping-pr competing-pr
   sed 's/0.4.60/0.4.61/' marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp
   mv manifest.tmp marketplace/plugins/himmel-ops/.claude-plugin/plugin.json
   git add marketplace
-  git commit -q -m 'fix: bump himmel-ops in a feature PR'
+  git commit -q -m 'fix: bump himmel-ops to the version the sibling shipped'
 )
 current_out="$(run_current_job 2>&1)"; current_rc=$?
-if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'went 0.4.60 -> 0.4.61 outside a release cut'; then ok "current-base job rejects a feature PR that changes a plugin version"; else bad "current-base job accepted a feature-PR bump (rc=$current_rc): $current_out"; fi
+if [ "$current_rc" -ne 0 ] && grepq "$current_out" 'himmel-ops changed but its plugin.json version 0.4.61 is not above 0.4.61 on the base'; then ok "same-base replay: a second PR bumping to the base's version is refused (HIMMEL-8368)"; else bad "same-base replay: duplicate bump passed (rc=$current_rc): $current_out"; fi
+# After the PR merges main and bumps above it, it passes.
+(
+  cd "$W_CURRENT" || exit 1
+  sed 's/0.4.61/0.4.62/' marketplace/plugins/himmel-ops/.claude-plugin/plugin.json > manifest.tmp
+  mv manifest.tmp marketplace/plugins/himmel-ops/.claude-plugin/plugin.json
+  git add marketplace
+  git commit -q -m 'fix: bump himmel-ops above the sibling'
+)
+current_out="$(run_current_job 2>&1)"; current_rc=$?
+if [ "$current_rc" -eq 0 ] && grepq "$current_out" "$nochange_line"; then ok "same-base replay: a second PR bumped above the base passes (HIMMEL-8368)"; else bad "same-base replay: bump above the base refused (rc=$current_rc): $current_out"; fi
 # Two release cuts from the same base both raise himmel-ops to 0.4.61 with
 # different content: once the first lands, the second must go above it, so
 # two release cuts never ship two contents under one version.
@@ -1628,18 +1734,18 @@ out16="$(mf_run feat-clean)"; rc16=$?
 if [ "$rc16" -eq 0 ] && grepq "$out16" 'no plugin files changed'; then ok "merge-forward of a base-only plugin change passes (GH #2205)"; else bad "merge-forward false red (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 out16="$(mf_run feat-edit edit)"; rc16=$?
-if [ "$rc16" -eq 0 ] && grepq "$out16" 'no plugin version changed outside a release cut'; then ok "merge-forward passes a branch plugin edit that leaves the version alone (GH #2205)"; else bad "merge-forward rejected an unbumped branch edit (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 1 ] && grepq "$out16" 'p changed but its plugin.json version 1.0.0 is not above 1.0.0'; then ok "merge-forward still rejects a branch plugin edit that leaves the version alone (GH #2205, HIMMEL-8368)"; else bad "merge-forward let an unbumped branch edit through (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 out16="$(mf_run feat-bump bump)"; rc16=$?
-if [ "$rc16" -eq 1 ] && grepq "$out16" 'went 1.0.0 -> 1.0.1 outside a release cut'; then ok "merge-forward still rejects the branch's own version change (GH #2205)"; else bad "merge-forward let a branch version change through (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge-forward passes the branch's own edit plus bump (GH #2205, HIMMEL-8368)"; else bad "merge-forward rejected a bumped branch edit (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 # Merging a feature branch INTO main must still see its version change.
 out16="$( cd "$W16" && git checkout -q main && git merge -q --no-commit --no-ff feat-bump >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
-if [ "$rc16" -eq 1 ] && grepq "$out16" 'outside a release cut'; then ok "merge of a version-changing feature branch into main is still rejected (GH #2205)"; else bad "merge into main let a version change through (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge of a bumped feature branch into main passes (GH #2205, HIMMEL-8368)"; else bad "merge into main refused a bumped feature branch (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 # ...and the same for a feature branch merged into another feature branch.
 out16="$( cd "$W16" && git checkout -q -B feat-x "$(git rev-list --max-parents=0 main)" && git merge -q --no-commit --no-ff feat-bump >/dev/null 2>&1; bash "$SCRIPT" --bump-required 2>&1 )"; rc16=$?
-if [ "$rc16" -eq 1 ] && grepq "$out16" 'outside a release cut'; then ok "merge of a version-changing feature branch into another feature branch is still rejected (GH #2205)"; else bad "feature-into-feature merge let a version change through (rc=$rc16): $out16"; fi
+if [ "$rc16" -eq 0 ] && grepq "$out16" 'every changed plugin carries a version bump above the base'; then ok "merge of a bumped feature branch into another feature branch passes (GH #2205, HIMMEL-8368)"; else bad "feature-into-feature merge refused a bumped branch (rc=$rc16): $out16"; fi
 ( cd "$W16" && git merge --abort >/dev/null 2>&1 )
 rm -rf "$W16"
 
