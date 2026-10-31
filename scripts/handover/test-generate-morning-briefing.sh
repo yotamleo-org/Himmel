@@ -29,6 +29,10 @@ export MORNING_REPORT_LLM=0
 unset FORGE 2>/dev/null || true
 # Hermetic: running the suite inside Codex would trip the --llm no-fork guard.
 unset CODEX_THREAD_ID 2>/dev/null || true
+# Hermetic: the shift-spend reader and the worker-doc scan read the operator's real ledgers and
+# handover root; empty means "no such input" unless a test names one.
+export MORNING_SHIFT_SPEND_CMD=""
+export MORNING_WAITING_DIR=""
 
 PASS=0
 FAIL=0
@@ -59,6 +63,12 @@ export HIMMEL_FAILURE_REVIEW_DIR="$TMP_ROOT/failure-review"
 FAKE_GH="$TMP_ROOT/gh-fake.sh"
 cat >"$FAKE_GH" <<'FAKE'
 #!/usr/bin/env bash
+# The open-PR CI and review query (reviewDecision): FAKE_GH_PR_OPEN, else the call fails.
+case " $* " in
+    *reviewDecision*)
+        [ -n "${FAKE_GH_PR_OPEN:-}" ] || exit 1
+        printf '%s\n' "$FAKE_GH_PR_OPEN"; exit 0 ;;
+esac
 case "$1 $2" in
     "pr list")
         # --search present => merged date query; else the all-state PR map.
@@ -77,9 +87,11 @@ FAKE_JIRA="$TMP_ROOT/jira-fake.sh"
 cat >"$FAKE_JIRA" <<'FAKE'
 #!/usr/bin/env bash
 case "$1" in
+    versions) printf '%s\n' "${FAKE_JIRA_VERSIONS:-}";;
     list)
-        status=""; prev=""
-        for a in "$@"; do [ "$prev" = "--status" ] && status="$a"; prev="$a"; done
+        status=""; prev=""; jql=0
+        for a in "$@"; do [ "$prev" = "--status" ] && status="$a"; [ "$a" = "--jql" ] && jql=1; prev="$a"; done
+        [ "$jql" -eq 1 ] && { printf '%s\n' "${FAKE_JIRA_JQL_OUT:-}"; exit 0; }
         case "$status" in
             "To Do")        printf '%s\n' "${FAKE_JIRA_TODO:-}";;
             "In Progress")  printf '%s\n' "${FAKE_JIRA_INPROG:-}";;
@@ -565,6 +577,136 @@ assert_contains "f16: waits counts open PRs"   "**2** open PR(s)"             "$
 assert_contains "f16: spent gap is explicit"   "Claude usage of the shift: not available" "$lead"
 assert_contains "f16: next counts in flight"   "**1** In-Progress"            "$lead"
 assert_contains "f16: releases gap is explicit" "Release progress: not available" "$lead"
+
+# The three inputs the lead lines read: shift spend, what waits on you, release progress.
+# Each computes from its input and falls back to the "not available" line without it.
+echo "TEST: shift spend line shows the shift's computed spend, and reads not available without it"
+FAKE_SPEND="$TMP_ROOT/shift-spend-fake.sh"
+cat >"$FAKE_SPEND" <<'FAKE'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"window":{"since":"s","until":"u"},"fields":{
+ "claude_bank":{"status":"ok","unit":"percent","value":48,"seven_day":{"start":92,"end":40,"peak":100,"delta":48,"resets":1}},
+ "api_cost":{"status":"ok","unit":"USD","value":"13.035507","runs":31,"partial":true},
+ "codex_tokens":{"status":"not available"},"openrouter":{"status":"not available"}}}
+JSON
+FAKE
+chmod +x "$FAKE_SPEND"
+FAKE_SPEND_NA="$TMP_ROOT/shift-spend-na.sh"
+cat >"$FAKE_SPEND_NA" <<'FAKE'
+#!/usr/bin/env bash
+echo '{"fields":{"claude_bank":{"status":"not available"},"api_cost":{"status":"not available"}}}'
+FAKE
+chmod +x "$FAKE_SPEND_NA"
+OUT_SP="$TMP_ROOT/spend.md"
+run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
+lead=$(lead_of "$(cat "$OUT_SP")")
+assert_contains "spend: absent input still says not available" "Claude usage of the shift: not available" "$lead"
+MORNING_SHIFT_SPEND_CMD="$FAKE_SPEND" run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
+lead=$(lead_of "$(cat "$OUT_SP")")
+assert_contains "spend: weekly bank burn shown"  "weekly bank **+48** points" "$lead"
+assert_contains "spend: API lane dollars shown, a floor marked" "API lane **at least \$13.04**" "$lead"
+if grepq "$lead" -F -- "Claude usage of the shift: not available"; then fail "spend: computed line replaces the gap"; else pass "spend: computed line replaces the gap"; fi
+assert_contains "spend: a reset inside the shift marks the bank figure an estimate" "weekly bank **+48** points (a reset inside the shift: an estimate)" "$lead"
+FAKE_SPEND_Z="$TMP_ROOT/shift-spend-noreset.sh"
+sed 's/"resets":1/"resets":0/' "$FAKE_SPEND" > "$FAKE_SPEND_Z"
+chmod +x "$FAKE_SPEND_Z"
+MORNING_SHIFT_SPEND_CMD="$FAKE_SPEND_Z" run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
+lead=$(lead_of "$(cat "$OUT_SP")")
+assert_contains "spend: zero resets still shows the bank figure" "weekly bank **+48** points" "$lead"
+if grepq "$lead" -F -- "a reset inside the shift"; then fail "spend: zero resets is not called a reset"; else pass "spend: zero resets is not called a reset"; fi
+MORNING_SHIFT_SPEND_CMD="$FAKE_SPEND_NA" run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
+assert_contains "spend: every field unavailable reads not available" "Claude usage of the shift: not available" "$(lead_of "$(cat "$OUT_SP")")"
+MORNING_SHIFT_SPEND_CMD="false" run_script --since "$MARKER" --out "$OUT_SP" >/dev/null
+assert_contains "spend: a failing reader reads not available" "Claude usage of the shift: not available" "$(lead_of "$(cat "$OUT_SP")")"
+
+echo "TEST: waiting-on-you lines count GOs, worker questions and CI/review state, and read not available without input"
+WAITD="$TMP_ROOT/waitdocs"
+mkdir -p "$WAITD/u/repo"
+printf '## Results\n- 13:00 LIVE — x\n- 14:05 READY 77 abc GREEN\n' > "$WAITD/u/repo/a.md"
+printf '## Results\n- 08:00 LIVE — y\n- 09:30 BLOCKED — push refused\n' > "$WAITD/u/repo/b.md"
+printf '## Results\n- 08:00 FINDING — z\n- 09:00 RESOLVED — z\n- 10:00 WRAPPED — done\n' > "$WAITD/u/repo/c.md"
+# A second GO from today at an EARLIER time of day than yesterday's: only the date tells which waits longer.
+printf '## Results\n- 09:10 LIVE — w\n- 09:15 READY 78 def GREEN\n' > "$WAITD/u/repo/d.md"
+TODAY_D=$(date +%F)
+YDAY_STAMP=$(date -d '1 day ago' +%Y%m%d%H%M 2>/dev/null || date -v-1d +%Y%m%d%H%M) # gnu-ok: paired with the BSD date -v form
+YDAY_D=$(date -d '1 day ago' +%F 2>/dev/null || date -v-1d +%F) # gnu-ok: paired with the BSD date -v form
+touch -t "$YDAY_STAMP" "$WAITD/u/repo/a.md"
+OPEN_JSON='[{"number":1,"reviewDecision":"APPROVED","createdAt":"2026-10-29T10:00:00Z","statusCheckRollup":[{"conclusion":"SUCCESS"}]},{"number":2,"reviewDecision":"CHANGES_REQUESTED","createdAt":"2026-10-30T10:00:00Z","statusCheckRollup":[{"conclusion":"FAILURE"}]},{"number":3,"reviewDecision":"","createdAt":"2026-10-31T10:00:00Z","statusCheckRollup":[{"state":"ERROR"}]}]'
+OUT_WT="$TMP_ROOT/waiting.md"
+run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+assert_contains "waiting: absent input still says not available" "Approvals, CI and review state, worker questions: not available" "$(lead_of "$(cat "$OUT_WT")")"
+MORNING_WAITING_DIR="$WAITD" FAKE_GH_PR_OPEN="$OPEN_JSON" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+lead=$(lead_of "$(cat "$OUT_WT")")
+assert_contains "waiting: GOs counted, the oldest picked by date before time" "**2** worker(s) awaiting your GO (oldest bullet 14:05, doc last written $YDAY_D)" "$lead"
+assert_contains "waiting: questions counted with the oldest time and the doc's day" "**1** worker question(s) (oldest bullet 09:30, doc last written $TODAY_D)" "$lead"
+assert_contains "waiting: review state counted"  "**1** approved, **1** changes requested" "$lead"
+assert_contains "waiting: failing checks counted with the oldest PR date" "**2** with failing checks (oldest open PR since 2026-10-29)" "$lead"
+if grepq "$lead" -F -- "Approvals, CI and review state, worker questions: not available"; then fail "waiting: computed lines replace the gap"; else pass "waiting: computed lines replace the gap"; fi
+# BSD userland (macOS): `date -r` takes epoch seconds, not a file, `date -d` and `stat -c` do not exist, `stat -f %m` does.
+# The shim stands in for BSD on a GNU host (it delegates to the real GNU tools); a real BSD host runs the fallback natively above.
+if date -d @0 +%F >/dev/null 2>&1; then # gnu-ok: this probe decides whether the host is GNU
+BSD_SHIM="$TMP_ROOT/bsd-shim"
+mkdir -p "$BSD_SHIM"
+REAL_DATE=$(command -v date)
+REAL_STAT=$(command -v stat)
+cat >"$BSD_SHIM/date" <<FAKE
+#!/usr/bin/env bash
+case "\$1" in
+    -d) exit 1 ;;
+    -r) case "\$2" in ''|*[!0-9]*) exit 1 ;; esac; epoch="\$2"; shift 2; exec "$REAL_DATE" -d "@\$epoch" "\$@" ;;
+esac
+exec "$REAL_DATE" "\$@"
+FAKE
+cat >"$BSD_SHIM/stat" <<FAKE
+#!/usr/bin/env bash
+case "\$1" in
+    -c) exit 1 ;;
+    -f) exec "$REAL_STAT" -c %Y "\$3" ;;
+esac
+exec "$REAL_STAT" "\$@"
+FAKE
+chmod +x "$BSD_SHIM/date" "$BSD_SHIM/stat"
+PATH="$BSD_SHIM:$PATH" MORNING_WAITING_DIR="$WAITD" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+assert_contains "waiting: a BSD date and stat still read the worker docs" "worker(s) awaiting your GO (oldest bullet 14:05, doc last written $YDAY_D)" "$(lead_of "$(cat "$OUT_WT")")"
+else
+    pass "waiting: a BSD date and stat still read the worker docs (native BSD host: the rows above already ran the fallback)"
+fi
+MANY_OPEN=$(jq -n -c '[range(100) | {number: ., reviewDecision: "", createdAt: "2026-10-29T10:00:00Z", statusCheckRollup: []}]')
+MORNING_WAITING_DIR="$WAITD" FAKE_GH_PR_OPEN="$MANY_OPEN" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+assert_contains "waiting: a capped open-PR read says it saw only the first 100" "(first 100 open PRs only)" "$(lead_of "$(cat "$OUT_WT")")"
+MORNING_WAITING_DIR="$WAITD" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+lead=$(lead_of "$(cat "$OUT_WT")")
+assert_contains "waiting: workers read while CI state is unavailable" "**2** worker(s) awaiting your GO" "$lead"
+assert_contains "waiting: CI state says not available on its own" "CI and review state: not available" "$lead"
+mkdir -p "$TMP_ROOT/emptydocs"
+MORNING_WAITING_DIR="$TMP_ROOT/emptydocs" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+assert_contains "waiting: a root with no worker docs reads not available, not zero" "Approvals, CI and review state, worker questions: not available" "$(lead_of "$(cat "$OUT_WT")")"
+
+echo "TEST: release progress line shows done/total per unreleased version, and reads not available without input"
+OUT_REL="$TMP_ROOT/release.md"
+run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
+assert_contains "release: absent input still says not available" "Release progress: not available" "$(lead_of "$(cat "$OUT_REL")")"
+FAKE_JIRA_VERSIONS=$'v1.0.0\ttrue\t2026-09-09\tfalse\nv1.1.3\tfalse\t\tfalse\nv9.9.9\tfalse\t\ttrue' \
+    FAKE_JIRA_JQL_OUT=$'KEY\tTYPE\tSTATUS\tSUMMARY\nHIMMEL-1\tTask\tDone\ta\nHIMMEL-2\tBug\tDone\tb\nHIMMEL-3\tTask\tTo Do\tc' \
+    run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
+lead=$(lead_of "$(cat "$OUT_REL")")
+assert_contains "release: done/total shown for the unreleased version" "Release progress: v1.1.3 **2**/3 done" "$lead"
+if grepq "$lead" -F -- "v1.0.0"; then fail "release: a released version is left out"; else pass "release: a released version is left out"; fi
+if grepq "$lead" -F -- "v9.9.9"; then fail "release: an archived version is left out"; else pass "release: an archived version is left out"; fi
+FAKE_JIRA_VERSIONS=$'2026 Q4\tfalse\t\tfalse\nbad"name\tfalse\t\tfalse' \
+    FAKE_JIRA_JQL_OUT=$'HIMMEL-1\tTask\tDone\ta\nHIMMEL-3\tTask\tTo Do\tc' \
+    run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
+lead=$(lead_of "$(cat "$OUT_REL")")
+assert_contains "release: a version not named vX.Y.Z is read too" "Release progress: 2026 Q4 **1**/2 done" "$lead"
+if grepq "$lead" -F -- 'bad"name'; then fail "release: a name with a quote is never put into a query"; else pass "release: a name with a quote is never put into a query"; fi
+FAKE_JIRA_VERSIONS=$'v1.1.3\tfalse\t\tfalse' \
+    FAKE_JIRA_JQL_OUT="$(awk 'BEGIN { for (i = 1; i <= 1000; i++) printf "K-%d\tTask\tDone\tx\n", i }')" \
+    run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
+assert_contains "release: a read capped at 1000 rows says so" "Release progress: v1.1.3 **1000**/1000+ done" "$(lead_of "$(cat "$OUT_REL")")"
+FAKE_JIRA_VERSIONS=$'v1.1.3\tfalse\t\tfalse' FAKE_JIRA_JQL_OUT="" \
+    run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
+assert_contains "release: a version with no rows reads not available, not 0/0" "Release progress: not available" "$(lead_of "$(cat "$OUT_REL")")"
 
 # An adopted project: only adopt.sh's portable set plus the report's own files,
 # in a repo that is not himmel, with a GitHub origin and no tracker.

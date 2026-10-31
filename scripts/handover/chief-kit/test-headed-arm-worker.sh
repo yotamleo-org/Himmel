@@ -245,7 +245,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_REMOTE_CONTROL|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -5079,6 +5079,108 @@ for lane47 in native claudex; do
   check "47e $lane47 real shim reads profile artifacts from worktree cwd" "$rc" "0"
 done
 some_doc="$some_doc_47"
+
+# 48. A native worker is reachable by Remote Control. The shim turns
+# WORKER_SESSION_REMOTE_CONTROL=<name> into `--remote-control <name>` PREPENDED
+# (unset or empty = byte-identical argv); headed-arm-worker.sh sets it to the
+# session name on a native, non-consult, non-headless profiled launch only.
+rm -f "$tmp/shim-argv"
+WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL=HIMMEL-9999-leg \
+  bash "$SHIM" --model claude-sonnet-5 -n HIMMEL-9999-leg "load doc" || true
+check "48a shim: WORKER_SESSION_REMOTE_CONTROL prepends --remote-control <name>, rest of argv in order" \
+  "$(cat "$tmp/shim-argv" 2>/dev/null || true)" \
+  "[--remote-control][HIMMEL-9999-leg][--model][claude-sonnet-5][-n][HIMMEL-9999-leg][load doc]"
+rm -f "$tmp/shim-argv"
+WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL='' \
+  bash "$SHIM" --model claude-sonnet-5 "load doc" || true
+check "48b shim: WORKER_SESSION_REMOTE_CONTROL empty -> argv byte-identical" \
+  "$(cat "$tmp/shim-argv" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc]"
+rm -f "$tmp/shim-argv"
+(unset WORKER_SESSION_REMOTE_CONTROL; WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
+  bash "$SHIM" --model claude-sonnet-5 "load doc") || true
+check "48c shim: WORKER_SESSION_REMOTE_CONTROL unset -> argv byte-identical" \
+  "$(cat "$tmp/shim-argv" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc]"
+
+d48="$tmp/c48"; mk_launch_stubs "$d48" "HIMMEL-8320-leg"; mkdir -p "$tmp/repo48"
+rc=0
+IMPL_GUARD_OK='' WORKER_SESSION_REMOTE_CONTROL='' \
+HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+KONSOLE_CMD="$d48/konsole" PGREP_CMD="$d48/pgrep" \
+WORKER_SESSION_REPO="$tmp/repo48" HEADED_ARM_LOCK_DIR="$d48/locks" HEADED_ARM_PROC="$d48/proc" \
+  bash "$SCRIPT" --profile worker-impl "HIMMEL-8320-leg" "$some_doc" "$d48/signal-never" "$PAST" "$d48/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d48" || true
+check "48d full native --profile launch: exit 0" "$rc" "0"
+contains "48e full native --profile launch: the session name reaches the launched env as WORKER_SESSION_REMOTE_CONTROL" \
+  "$(cat "$d48/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL=HIMMEL-8320-leg"
+not_contains "48f full --lane claudex launch carries no Remote Control" "$(cat "$d16/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL"
+
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-8320-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+contains "48g dry-run native --profile: reports remote-control=<session name>" "$out" "remote-control=HIMMEL-8320-leg"
+rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --profile worker-impl HIMMEL-8320-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+not_contains "48h dry-run --lane claudex --profile: no Remote Control" "$out" "remote-control="
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-8320-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+not_contains "48i dry-run --no-profile: no Remote Control (no shim carries it)" "$out" "remote-control="
+
+# 48j-48k. An ambient WORKER_SESSION_REMOTE_CONTROL, plain or inside a preset
+# HEADED_ARM_LAUNCHER_ENV token, never reaches a launch that is not a profiled native
+# worker: the global sibling-arming scrub drops it before any branch, so a --no-profile
+# launch (on either lane) carries neither the env var nor the token.
+for lane48 in claudex native; do
+  m48=""; [ "$lane48" = native ] && m48="claude-sonnet-5"
+  d48x="$tmp/c48x-$lane48"; mk_launch_stubs "$d48x" "HIMMEL-8320-$lane48"; mkdir -p "$tmp/repo48x-$lane48"
+  rc=0
+  IMPL_GUARD_OK='' WORKER_SESSION_REMOTE_CONTROL=leaked-ambient \
+  HEADED_ARM_LAUNCHER_ENV='WORKER_SESSION_REMOTE_CONTROL=leaked-token KEEP_ME=1' \
+  HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+  HEADED_ARM_WORKER_CLAUDEX_BIN="$claudex_stub" \
+  KONSOLE_CMD="$d48x/konsole" PGREP_CMD="$d48x/pgrep" \
+  WORKER_SESSION_REPO="$tmp/repo48x-$lane48" HEADED_ARM_LOCK_DIR="$d48x/locks" HEADED_ARM_PROC="$d48x/proc" \
+    bash "$SCRIPT" --lane "$lane48" --no-profile "HIMMEL-8320-$lane48" "$some_doc" "$d48x/signal-never" "$PAST" "$d48x/log" $m48 >/dev/null 2>&1 || rc=$?
+  wait_record "$d48x" || true
+  check "48j $lane48 --no-profile launch with an ambient Remote Control name: exit 0" "$rc" "0"
+  not_contains "48j $lane48 --no-profile: the env var is absent from the launched env" "$(cat "$d48x/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL"
+  not_contains "48k $lane48 --no-profile: neither var nor token is on the launched argv" "$(cat "$d48x/record" 2>/dev/null || true)" "leaked-"
+done
+
+# 48l. The shim refuses the flag on a non-native lane (the lane binary is a
+# claude-codex / claude-openrouter / claude-deepseek launcher): nothing is exec'd.
+for bin48 in claude-codex claude-openrouter claude-deepseek; do
+  mkdir -p "$tmp/lanebin48"
+  printf '%s\n' '#!/usr/bin/env bash' 'printf "[%s]" "$@" > "'"$tmp"'/lane48-argv"' > "$tmp/lanebin48/$bin48"
+  chmod 755 "$tmp/lanebin48/$bin48"
+  rm -f "$tmp/lane48-argv"
+  rc=0
+  WORKER_SESSION_CLAUDE_BIN="$tmp/lanebin48/$bin48" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL=HIMMEL-8320-leg \
+    bash "$SHIM" --model m "load doc" >/dev/null 2>&1 || rc=$?
+  check "48l shim: Remote Control on a $bin48 lane is refused (exit 2)" "$rc" "2"
+  check "48l shim: $bin48 is never exec'd with the flag" "$([ -e "$tmp/lane48-argv" ] && echo ran || echo none)" "none"
+  # without the variable the same lane binary launches as before
+  rc=0
+  (unset WORKER_SESSION_REMOTE_CONTROL; WORKER_SESSION_CLAUDE_BIN="$tmp/lanebin48/$bin48" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
+    bash "$SHIM" --model m "load doc") >/dev/null 2>&1 || rc=$?
+  check "48l shim: $bin48 without Remote Control still launches (exit 0)" "$rc" "0"
+done
+
+# 48m-48r. Only a plain worker is reachable: a judge, relay, release manager, consult and a
+# headless session never carry the flag, and no dry-run report names remote-control=.
+rc=0; out="$(env -u IMPL_GUARD_OK -u INLINE_IMPL_OK bash "$SCRIPT" --dry-run --judge HIMMEL-8320-j "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "48m dry-run --judge: exit 0" "$rc" "0"
+not_contains "48m dry-run --judge: no Remote Control" "$out" "remote-control="
+rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-8320-r some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "48n dry-run --relay: exit 0" "$rc" "0"
+not_contains "48n dry-run --relay: no Remote Control" "$out" "remote-control="
+rc=0; out="$(env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIMMEL_RM_EFFORT bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-8320-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "48o dry-run --profile release-manager: exit 0" "$rc" "0"
+not_contains "48o dry-run --profile release-manager: no Remote Control" "$out" "remote-control="
+mkdir -p "$tmp/repo48c"
+rc=0; out="$(WORKER_SESSION_REPO="$tmp/repo48c" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-8320-c "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+check "48p dry-run --consult: exit 0" "$rc" "0"
+not_contains "48p dry-run --consult: no Remote Control" "$out" "remote-control="
+rc=0; out="$(bash "$SCRIPT" --dry-run --headless --profile worker-impl HIMMEL-8320-h some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+check "48q dry-run --headless --profile: exit 0" "$rc" "0"
+not_contains "48q dry-run --headless --profile: no Remote Control" "$out" "remote-control="
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
