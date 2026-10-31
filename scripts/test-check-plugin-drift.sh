@@ -211,9 +211,10 @@ for name in ('humanizer', 'i-have-adhd'):
     e = entries[name]
     assert e['kind'] == 'commit_head' and e['mode'] == 'pin', name
     assert e['tracked_repo'] in vend and e['pinned_commit'] in vend, name
-# The Home Assistant forks belong to the voice add-on: held by operator ruling, never drift.
+# The Home Assistant forks belong to the voice add-on, not a himmel version: excluded from the drift inventory.
+excluded = {f['fork_repo'] for f in reg.get('forks', []) if f.get('exclude') is True}
 for ha in ('yotamleo-org/core', 'yotamleo-org/home-assistant.io'):
-    assert 'HIMMEL-8333' in holds.get(ha, ''), ha + ' needs a HIMMEL-8333 hold'
+    assert ha in excluded, ha + ' needs an exclude row in upstreams.json forks'
 
 plugin_root = root / 'templates/luna-second-brain/.obsidian/plugins'
 community = json.load(open(root / 'templates/luna-second-brain/.obsidian/community-plugins.json', encoding='utf-8'))
@@ -1874,7 +1875,7 @@ if [ "$fork_rc" -eq 3 ] && grepq "$fork_out" 'fork inventory: .*UNCHECKED'; then
 fork_out="$(FORK_LIST_FAIL=1 DRIFT_ADAPTERS="$W17/absent.json" fork_run)"; fork_rc=$?
 if [ "$fork_rc" -eq 3 ] && grepq "$fork_out" 'adapter registry .*not found.*UNCHECKED'; then ok "fork-behind: a missing adapter registry is incomplete, not skipped"; else bad "fork-behind: missing adapter registry exit $fork_rc, expected 3 UNCHECKED; $fork_out"; fi
 # The nightly workflow rebuilds the registry before the guard runs, and the
-# Home Assistant holds must survive that rebuild. Fixture: the workflow's own jq
+# Home Assistant exclusion must survive that rebuild. Fixture: the workflow's own jq
 # expression over the real registry, and the real adapter row. Entries are
 # emptied after the rebuild: only the fork step is under test here.
 FORK_OWNER="$(python3 - "$ROOT/.github/workflows/fork-drift.yml" "$ROOT/scripts/upstreams.json" "$ROOT/scripts/guardrails/himmel-adapters.json" "$W17" <<'PY'
@@ -1891,7 +1892,7 @@ PY
 )"
 export FORK_OWNER
 fork_out="$(FORK_NAME=home-assistant.io DRIFT_ADAPTERS="$W17/ha-adapters.json" fork_run)"; fork_rc=$?
-if grepq "$fork_out" "$FORK_OWNER/home-assistant.io@current: HELD" && ! grepq "$fork_out" "$FORK_OWNER/home-assistant.io@current: BEHIND"; then ok "fork-behind: CI-rebuilt registry keeps the Home Assistant hold"; else bad "fork-behind: CI-rebuilt registry dropped the Home Assistant hold; $fork_out"; fi
+if grepq "$fork_out" "home-assistant.io"; then bad "fork-behind: a Home Assistant fork is still listed (adapter row and discovery); $fork_out"; else ok "fork-behind: CI-rebuilt registry lists no Home Assistant fork"; fi
 unset FORK_OWNER
 rm -rf "$W17"
 

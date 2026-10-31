@@ -1001,6 +1001,7 @@ from urllib.parse import quote
 
 status = 0
 metadata = {}
+excluded = set()
 
 def gh(*args):
     result = subprocess.run(['gh', *args], check=True, stdout=subprocess.PIPE,
@@ -1046,7 +1047,11 @@ try:
             continue
         with open(path) as f:
             doc = json.load(f)
-        configs.extend(doc.get('forks', []))
+        for row in doc.get('forks', []):
+            if row.get('exclude') is True:
+                excluded.add(repo_name(row['fork_repo']))
+            else:
+                configs.append(row)
         entries = doc.get('entries', []) if path == sys.argv[1] else doc.values()
         for entry in entries:
             if isinstance(entry, dict) and entry.get('fork'):
@@ -1054,6 +1059,8 @@ try:
     targets = {}
     for config in configs:
         repo = repo_name(config['fork_repo'])
+        if repo in excluded:
+            continue
         branch = config.get('branch') or info(repo)['default_branch']
         if not isinstance(branch, str) or re.search(r'[\s|()]', branch):
             raise ValueError('invalid fork branch')
@@ -1074,6 +1081,8 @@ for fork_owner in owners:
             raise ValueError('invalid fork inventory')
         for fork in forks:
             repo = repo_name(fork['nameWithOwner'])
+            if repo in excluded:
+                continue
             try:
                 targets.setdefault((repo, info(repo)['default_branch']), '')
             except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
