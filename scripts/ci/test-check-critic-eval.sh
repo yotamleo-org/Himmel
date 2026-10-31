@@ -6,6 +6,7 @@
 # CHECK_CRITIC_EVAL overrides the script under test. No model call, no network.
 #
 # Run: bash scripts/ci/test-check-critic-eval.sh
+# selector: tree-scan
 # shellcheck disable=SC2015  # A && pass || fail reporting idiom (pass never fails)
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
