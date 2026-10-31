@@ -363,19 +363,27 @@ else
     # unsigned or unparsed record, another PR) refuses outright
     # no GO carries while ANY qid holds a NO-GO for this PR at the judged head of the GO or at a head
     # after it (an unresolvable head counts as after: a read that fails refuses)
-    nogo_after() { # <judged head>: refuses (fail 5) on a NO-GO for this PR at it or at a descendant of it
-        local nq nf nh nrc
+    judged_root() { # <qid> <head>: the judged head a delta no-op record of <head> rests on, else <head> itself
+        local jr
+        jr=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$VERDICTS/$1/delta-noop-$2.md" 2>/dev/null | head -n 1)  # swallow-ok: no such record means <head> is itself the judged head
+        printf '%s' "${jr:-$2}"
+    }
+    nogo_after() { # <judged head>: refuses (fail 5) on a NO-GO for this PR at it or at a descendant of it; a read that fails refuses
+        local nq nf nh nrc nfiles nheads
         while IFS= read -r nq; do
             [ -n "$nq" ] || continue
+            nrc=0; nfiles=$(grep -lx -e "pr: ${PR}" "$VERDICTS/$nq"/*.md 2>/dev/null) || nrc=$?  # swallow-ok: rc 1 is no file for this PR; any other rc refuses on the next line
+            [ "$nrc" -le 1 ] || fail 5 "cannot read the verdicts of $nq (grep exit $nrc), so a NO-GO there cannot be ruled out"
             while IFS= read -r nf; do
                 [ -n "$nf" ] || continue
                 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+                nheads=$(sed -nE 's/^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/\1/p' "$nf" 2>/dev/null) || fail 5 "cannot read the verdict $nf, so a NO-GO in it cannot be ruled out"  # swallow-ok: a failed read refuses right here (ESCALATE 5)
                 while IFS= read -r nh; do
                     [ -n "$nh" ] || continue
                     if [ "$nh" = "$1" ]; then nrc=0; else nrc=0; git merge-base --is-ancestor "$1" "$nh" 2>/dev/null || nrc=$?; fi  # swallow-ok: rc 1 is not-after; any other rc refuses below
                     case "$nrc" in 1) ;; *) fail 5 "verdict $nq holds a NO-GO for head ${nh:0:8} of PR $PR, at or after the judged head ${1:0:8}: a GO does not carry past it" ;; esac
-                done < <(sed -nE 's/^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/\1/p' "$nf" 2>/dev/null)
-            done < <(grep -lx -e "pr: ${PR}" "$VERDICTS/$nq"/*.md 2>/dev/null)
+                done <<< "$nheads"
+            done <<< "$nfiles"
         done <<< "$QIDS"
     }
     GOQIDS=""
@@ -385,8 +393,8 @@ else
         case "$q" in *[!A-Za-z0-9._-]*) fail 5 "the verdict directory '$q' is not a usable judge qid" ;; esac
         if VOUT=$(go_trust_verdict "$ROOT" "$q" "$SHA" "$ANCHOR" "$PR"); then
             # a GO at the head that is a delta no-op record (a failed attempt left it) is a carried GO too
-            NOOPJ=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$VERDICTS/$q/delta-noop-$SHA.md" 2>/dev/null | head -n 1)  # swallow-ok: no such record means a plain GO at the head
-            [ -z "$NOOPJ" ] || nogo_after "$NOOPJ"
+            NOOPJ=$(judged_root "$q" "$SHA")
+            if [ "$NOOPJ" != "$SHA" ]; then nogo_after "$NOOPJ"; A_DELTA=none; fi
             GOQIDS="$GOQIDS$q"$'\n'
         else
             case "$VOUT" in
@@ -405,7 +413,7 @@ else
             while IFS= read -r jh; do
                 [ -n "$jh" ] && [ "$jh" != "$SHA" ] || continue
                 go_trust_verdict "$ROOT" "$q" "$jh" "$ANCHOR" "$PR" >/dev/null || continue
-                nogo_after "$jh"
+                nogo_after "$(judged_root "$q" "$jh")"
                 DC=$(bash "$HERE/delta-class.sh" --qid "$q" "$jh" "$SHA" 2>/dev/null) || DC=trust  # swallow-ok: a failed classifier reads trust, which refuses, below
                 LAST_DC="$DC"
                 if [ "$DC" = none ]; then GO_QID="$q"; CARRY_FROM="$jh"; break 2; fi

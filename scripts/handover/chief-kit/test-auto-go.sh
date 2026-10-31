@@ -536,6 +536,20 @@ check    "A1b a NO-GO at an intermediate head: no no-op record" "$([ -e "$VDIR/q
 gofresh; verdict qj "**GO** for head \`$JUDGED\`."; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"
 STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2"
 contains "A1b go.sh refuses after a carry: the answer names the no-op record it left" "$OUT" "delta no-op record for qj"
+# a carry that starts from a delta no-op record resolves it to the judged head it rests on (a NO-GO at that head still refuses)
+# the no-op record for NDOC beside the judge's own GO at JUDGED, then a NO-GO at JUDGED, then a later docs-only head NDOC2
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC"   # go.sh fails after the carry and leaves the no-op record for NDOC
+rm -rf "$HANDOVER_DIR/.locks"; verdict qn "**NO-GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO at the judged head refuses a carry that can start from a no-op record" 5
+contains "A1b a carry that can start from a no-op record: the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+# the same with only the no-op record left (the judge's own GO file gone): no hex-order luck decides the result
+rm -f "$VDIR/qj/judge-qj.md"; rm -f "$AUDIT"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO at the judged head refuses a carry whose only record is the no-op" 5
+contains "A1b a carry whose only record is the no-op: the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+# an unreadable verdict file of another qid refuses (a directory named like a verdict stands in; it fails for root too)
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**GO** for head \`$JUDGED\`."; mkdir -p "$VDIR/qn/bad.md"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC";  esc "A1b an unreadable verdict file refuses the carry" 5
 # a retry that finds the no-op record the failed attempt left still honours a NO-GO recorded since
 rm -rf "$HANDOVER_DIR/.locks"
 verdict qn "**NO-GO** for head \`$NDOC\`."
@@ -560,6 +574,22 @@ gofresh; printf '# chief\n\n## Live state\n\nqueue: none\n\n## Results\n' > "$CH
 check    "A1b no token in Live state: exit 11" "$RC" "11"
 contains "A1b no token in Live state: says so" "$OUT" "no token"
 check    "A1b no token in Live state: nothing sent" "$(bust)" "none"
+
+# 8g2. go.sh exits 0 but its last line is not the GO path: ESCALATE 9, naming the path a GO file may stand at, and the audit row records it
+# a symlinked copy of the tree whose go.sh runs the real one and then prints one more line
+FK="$tmp/fk"; mkdir -p "$FK/scripts/handover/chief-kit"
+for fkd in "$HERE/../.."/*; do [ "$(basename "$fkd")" = handover ] || ln -s "$fkd" "$FK/scripts/$(basename "$fkd")"; done
+for fkf in "$HERE/.."/*; do [ "$(basename "$fkf")" = chief-kit ] || ln -s "$fkf" "$FK/scripts/handover/$(basename "$fkf")"; done
+for fkf in "$HERE"/*; do [ "$(basename "$fkf")" = go.sh ] || ln -s "$fkf" "$FK/scripts/handover/chief-kit/$(basename "$fkf")"; done
+# shellcheck disable=SC2016  # the stub's own $@ and $? must stay literal
+printf '#!/usr/bin/env bash\nbash "%s/go.sh" "$@"; rc=$?; echo "go: trailing note"; exit $rc\n' "$HERE" > "$FK/scripts/handover/chief-kit/go.sh"
+gofresh
+OUT=$(bash "$FK/scripts/handover/chief-kit/auto-go.sh" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
+check    "A1b go.sh exit 0, GO path not last: exit 10" "$RC" "10"
+contains "A1b go.sh exit 0, GO path not last: ESCALATE auto-go 9" "$OUT" "ESCALATE auto-go 9 "
+contains "A1b go.sh exit 0, GO path not last: names where a GO file may stand" "$OUT" ".locks/go/77.$SHA"
+check    "A1b go.sh exit 0, GO path not last: the GO file stands" "$(gofile)" "yes"
+contains "A1b go.sh exit 0, GO path not last: the audit row records the path" "$(q '.go_file')" ".locks/go/77.$SHA"
 
 # 8h. LK-j4368-1 item 2: the audit append never follows a symlink, or writes a non-regular file
 gofresh; mkdir -p "$(dirname "$AUDIT")"; printf 'keep\n' > "$tmp/victim.jsonl"; ln -s "$tmp/victim.jsonl" "$AUDIT"
