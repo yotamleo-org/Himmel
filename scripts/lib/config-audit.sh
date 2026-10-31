@@ -361,7 +361,7 @@ try {
     ts: now(), pid: Number(opt("--pid", "")) || null, session: E.CLAUDE_SESSION_ID || E.CLAUDE_CODE_SESSION_ID || "",
     script: opt("--script", ""), file: real(argv[0]), action: argv[1], denied: true });
   else if (verb === "accept") { saveWatch(snapshot()); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
-  else if (verb === "check") { for (const p of watch(true)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",")}\t${p.backup || "-"}\t${p.path}`); } }
+  else if (verb === "check") { for (const p of watch(true)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",") || "-"}\t${p.backup || "-"}\t${p.path}`); } }
   else process.exit(2);
 } catch (e) {
   console.error(`config-audit: ${verb} failed: ${e && e.code ? e.code : "error"} ${e && e.message ? e.message.replace(/\n.*/s, "") : ""}`);
@@ -434,17 +434,21 @@ EOF
 # A restored .env that still holds behaviour or gate keys came from before the
 # split: map them forward. migrate-env.sh asks for consent and verifies itself.
 _ca_map_forward() {
-    local envf key moved=""
+    local envf conf key moved="" clash=""
     envf="$(_ca_env_file)"
+    conf="$(_himmel_config_dir)/himmel.conf"
     [ -f "$envf" ] || return 0
     # shellcheck disable=SC2013 # the sed prints identifiers, one name per word
     for key in $(sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*=.*/\2/p' "$envf"); do
-        case "$(_himmel_key_class "$key")" in config|policy) moved="$moved $key" ;; esac
+        case "$(_himmel_key_class "$key")" in config|policy) moved="$moved $key" ;; *) continue ;; esac
+        grep -q "^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}${key}[[:space:]]*=" "$conf" 2>/dev/null && clash="$clash $key"
     done
     [ -n "$moved" ] || return 0
     echo "restore: the restored .env predates the split (${moved# }); mapping forward through migrate-env.sh"
     if bash "$_CA_DIR/../setup/migrate-env.sh" --env "$envf" </dev/null >/dev/null 2>&1; then
         echo "restore: migrate-env.sh moved them"
+    elif [ -n "$clash" ]; then
+        echo "restore: migrate-env.sh left them in .env, and the live himmel.conf still sets ${clash# }, which wins over .env; the operator resolves each at a prompt"
     else
         echo "restore: migrate-env.sh left them in .env (they still work, with a DEPRECATED notice); the operator runs it at a prompt"
     fi

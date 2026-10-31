@@ -349,6 +349,7 @@ if [[ "$lc" =~ (^|[^a-z0-9_.-])(rm|mv|unlink)([[:space:]]|$) ]]; then
     set -f
     for _w in $(printf '%s' "$cmd" | tr -d "\"'"); do
         names_guarded_file "$_w" || continue
+        _w="${_w%%[;&|<>)]*}" # an attached separator is not part of the path
         case "$_w" in \~/*) _w="$HOME/${_w#\~/}" ;; /*) ;; *) _w="$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)/$_w" ;; esac # swallow-ok: the audit row's path only; the deny below never reads it
         ATTEMPT_FILE="$_w"; break
     done

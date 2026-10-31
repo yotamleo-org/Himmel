@@ -60,6 +60,8 @@ case "$id" in [0-9]*T[0-9]*Z-*) pass "1 pre prints a backup id" ;; *) fail "1 pr
 for f in .env himmel.conf config.json manifest.json; do
     if [ -f "$STATE/backups/$id/$f" ]; then pass "1 the backup holds $f"; else fail "1 the backup lacks $f"; fi
 done
+if cmp -s "$TMP/clone/.env" "$STATE/backups/$id/.env"; then pass "1 the backup .env matches the live .env"; else fail "1 the backup .env differs from the live .env"; fi
+if cmp -s "$HIMMEL_CONFIG_DIR/config.json" "$STATE/backups/$id/config.json"; then pass "1 the backup config.json matches the live file"; else fail "1 the backup config.json differs from the live file"; fi
 eq "1 a backup file is mode 600" 600 "$(stat -c %a "$STATE/backups/$id/.env" 2>/dev/null || stat -f %Lp "$STATE/backups/$id/.env")"
 printf '{"version":1,"policy":{"HIMMEL_FLEET_CAP":"40","ARMAUTOMERGE":"%s"}}\n' "$CANARY" > "$HIMMEL_CONFIG_DIR/config.json"
 bash "$CA" post "$id" "$HIMMEL_CONFIG_DIR/config.json" write --script test >/dev/null
@@ -153,6 +155,22 @@ saved_env=$(cat "$TMP/clone/.env")
 bash "$CA" accept >/dev/null
 out=$(bash "$CA" check); rc=$?
 eq "4 an unchanged empty .env is healthy" 0 "$rc"
+# A deleted empty file has no lost key: its row prints - so a tab read keeps the fields.
+rm -f "$TMP/clone/.env"
+out=$(bash "$CA" check)
+eq "4 an empty lost-key list prints -" "-" "$(printf '%s\n' "$out" | awk -F'\t' '$2 == ".env" { print $4 }')"
+printf '%s\n' "$saved_env" > "$TMP/clone/.env"
+bash "$CA" accept >/dev/null
+# A restored legacy .env key that the live himmel.conf also sets is named as a conflict.
+conf_saved=$(cat "$HIMMEL_CONFIG_DIR/himmel.conf")
+printf 'HANDOVER_DIR=%s\nHIMMEL_INITIATIVE=execute\n' "$TMP/h" > "$HIMMEL_CONFIG_DIR/himmel.conf"
+printf '%s\nHIMMEL_INITIATIVE=off\n' "$saved_env" > "$TMP/clone/.env"
+lid=$(bash "$CA" pre "$HIMMEL_CONFIG_DIR/config.json" --script test)
+printf '%s\n' "$saved_env" > "$TMP/clone/.env"
+out=$(bash "$CA" restore "$lid" --script test-restore 2>&1)
+has "4 a legacy key the live himmel.conf sets is named as a conflict" "himmel.conf still sets HIMMEL_INITIATIVE" "$out"
+lacks "4 a conflicting key is not said to still work" "they still work" "$out"
+printf '%s\n' "$conf_saved" > "$HIMMEL_CONFIG_DIR/himmel.conf"
 printf '%s\n' "$saved_env" > "$TMP/clone/.env"
 bash "$CA" accept >/dev/null
 

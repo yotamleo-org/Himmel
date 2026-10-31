@@ -180,8 +180,10 @@ leave the cross-model requirement off, the floor fallback off, and automerge
 off, which are today's defaults.
 
 On an installed station (`~/.claude/himmel/install-profile.json` exists), a
-missing `config.json` is a C74 FAIL, not a notice: every gate has fallen back to
-its default. The row C74-config-keys warns for each file that lost keys since the
+missing `config.json` that existed before is a C74 FAIL, not a notice: every gate
+has fallen back to its default. It existed before when a backup holds a copy or
+the last healthy snapshot recorded it. A no-op install never creates the file, so
+without either sign the row stays INFO. The row C74-config-keys warns for each file that lost keys since the
 last healthy snapshot.
 
 ### The config audit log, backups and restore

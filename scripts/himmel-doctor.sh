@@ -3393,9 +3393,17 @@ check_c74_config_split() {
         fi
     fi
 
+    # config.json existed once when a backup holds it or the last snapshot saw it.
+    # A no-op install never creates it, so an install alone is no sign of a loss.
+    local had_pol="" st="${HIMMEL_CONFIG_AUDIT_DIR:-$dir/state/config-audit}" b
+    for b in "$st"/backups/*/config.json; do [ -f "$b" ] && had_pol=1 && break; done
+    if [ -z "$had_pol" ] && [ -f "$st/watch.json" ] && command -v node >/dev/null 2>&1 \
+        && node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.exit(s["config.json"] && s["config.json"].present ? 0 : 1)' "$st/watch.json" 2>/dev/null; then
+        had_pol=1
+    fi
     if [ ! -e "$pol" ]; then
-        # An installed station always has one: its loss silently resets every gate.
-        if [ -f "${HIMMELCTL_CACHE_DIR:-${HOME:-}/.claude/himmel}/install-profile.json" ]; then
+        # Its loss on an installed station silently resets every gate.
+        if [ -n "$had_pol" ] && [ -f "${HIMMELCTL_CACHE_DIR:-${HOME:-}/.claude/himmel}/install-profile.json" ]; then
             emit FAIL C74-policy "$pol is missing on an installed station; every gate fell back to its default" \
                 "list the backups: bash $REPO_ROOT/scripts/lib/config-audit.sh list, then the operator restores one at their own prompt (or /config restore from Telegram)"
         elif [ -n "$envbad" ]; then
@@ -3443,6 +3451,7 @@ $key="*) ;; *) miss="$miss $key" ;; esac
     elif [ "$rc" -eq 3 ]; then
         while IFS=$'\t' read -r line f kind keys bk _; do
             [ "$line" = LOSS ] || continue
+            [ "$keys" != - ] || keys=""
             lost=$((lost+1))
             emit WARN C74-config-keys "$f: $kind${keys:+ ($keys)}; newest good backup: $bk" \
                 "bash $ca list, then the operator restores at their own prompt; a deliberate edit: bash $ca accept"

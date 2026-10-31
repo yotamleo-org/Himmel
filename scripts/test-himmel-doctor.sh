@@ -7257,9 +7257,14 @@ echo "== C74-config-split: config.json gone on an installed station -> FAIL (HIM
 c74_reset
 mkdir -p "$c74_t/home/.claude/himmel"
 printf '{}\n' > "$c74_t/home/.claude/himmel/install-profile.json"
+# A no-op install never creates config.json: with no sign it ever existed, INFO.
+out="$(c74_run)"
+if grepq "$out" -F 'INFO C74-policy' && ! grepq "$out" -F 'FAIL C74-policy'; then pass "C74 installed station that never had config.json -> INFO"; else fail "C74 installed never-had policy -> $(printf '%s' "$out" | head -6)"; fi
+mkdir -p "$c74_t/home/.himmel/state/config-audit/backups/20261031T120000Z-ab12"
+printf '{}\n' > "$c74_t/home/.himmel/state/config-audit/backups/20261031T120000Z-ab12/config.json"
 out="$(c74_run)"
 if grepq "$out" -F 'FAIL C74-policy' && grepq "$out" -F 'installed station' && grepq "$out" -F 'config-audit.sh list'; then pass "C74 installed station without config.json -> FAIL naming the restore"; else fail "C74 installed no policy -> $(printf '%s' "$out" | head -6)"; fi
-rm -rf "$c74_t/home/.claude/himmel"
+rm -rf "$c74_t/home/.claude/himmel" "$c74_t/home/.himmel/state"
 echo "== C74-config-keys: a key lost since the snapshot -> WARN naming the key, never the value (HIMMEL-8401) =="
 c74_reset
 printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
@@ -7271,6 +7276,13 @@ HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$c74_t/env
 printf 'HANDOVER_DIR=/planted-74\n' > "$c74_conf"
 out="$(c74_run)"
 if grepq "$out" -F 'WARN C74-config-keys' && grepq "$out" -F 'JIRA_EMAIL' && ! grepq "$out" -F 'planted-'; then pass "C74-config-keys lost JIRA_EMAIL -> WARN naming the key only"; else fail "C74-config-keys lost key -> $(printf '%s' "$out" | head -8)"; fi
+echo "== C74-config-keys: a deleted empty file keeps its row's fields in place (HIMMEL-8401) =="
+printf 'JIRA_EMAIL=planted-dummy-value-74\nHANDOVER_DIR=/planted-74\n' > "$c74_conf"
+: > "$c74_conf.local"
+HOME="$c74_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_CONFIG_AUDIT_ENV_FILE="$c74_t/env" bash "$REPO_ROOT/scripts/lib/config-audit.sh" accept >/dev/null 2>&1
+rm -f "$c74_conf.local"
+out="$(c74_run)"
+if grepq "$out" -F 'himmel.conf.local: deleted; newest good backup:' && ! grepq "$out" -F "backup: $c74_conf.local"; then pass "C74-config-keys deleted empty file -> WARN with its fields in place"; else fail "C74-config-keys empty loss -> $(printf '%s' "$out" | head -8)"; fi
 rm -rf "$c74_t"
 
 # --- C75-keyring: keyring state and the layer serving each manifest secret ---

@@ -406,6 +406,13 @@ else
 fi
 if grep -q 'rm /' "$AUDIT" 2>/dev/null; then bad "audit row carries the command text"; else ok "audit row carries no command text"; fi
 if [ -f "$CFG" ]; then ok "config still present after the refused rm"; else bad "config gone after the refused rm"; fi
+rm -f "$AUDIT"
+bash_case "rm of the config with a chained command -> block" block "rm $CFG; echo done"
+if jq -e --arg f "$cfg_real" 'select(.action=="denied-rm" and .file==$f)' "$AUDIT" >/dev/null 2>&1; then
+    ok "a chained rm records the config path without the separator"
+else
+    bad "a chained rm recorded the wrong path ($(cat "$AUDIT" 2>/dev/null))"
+fi
 # himmel.conf is a symlink here (set up above); the row names its realpath.
 bash_case "mv of himmel.conf -> block" block "mv $HOME/.himmel/himmel.conf $T/x"
 conf_real=$(cd "$HOME/.himmel" && readlink himmel.conf 2>/dev/null || echo "$HOME/.himmel/himmel.conf")
