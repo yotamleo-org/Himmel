@@ -123,8 +123,7 @@ fi
 # label `suite` runs this worktree's suites only.
 # A directory option aimed outside the worktree (`--directory /tmp/fork`,
 # `--cwd=/x`, `-C /x`; the names below) is a tool run on another checkout: wrapping it buys no
-# allow rule and only hides the command from the auto-mode classifier, so
-# refuse and name the direct form. `bash <test-*.sh>` was vetted above and a
+# allow rule, so refuse and name the direct form. `bash <test-*.sh>` was vetted above and a
 # positional path is data, so neither is checked here.
 if [ "$LABEL" = "suite" ] && [ "${1:-}" != "bash" ] && QR_TOP=$(git rev-parse --show-toplevel 2>/dev/null); then
     QR_REAL_TOP=$(cd "$QR_TOP" 2>/dev/null && pwd -P) || QR_REAL_TOP="$QR_TOP"

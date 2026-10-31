@@ -15,8 +15,7 @@ exit status, duration, and log path (`/tmp/quiet-run-<label>-<ts>-<pid>.log`).
 Grep the log if more detail is needed. See `.claude/commands/quiet-run.md`.
 
 Run a third-party tool (`uv run … pyright`, `npx`, a checkout under `/tmp`)
-directly, not under quiet-run: wrapping gets it no allow rule and hides it from
-the auto-mode classifier. Label `suite` refuses a directory option aimed
+directly, not under quiet-run: wrapping gets it no allow rule. Label `suite` refuses a directory option aimed
 outside the worktree and prints the direct form (HIMMEL-8315).
 
 A background quiet-run is a live child of your session: count it (and any `tail -f`
