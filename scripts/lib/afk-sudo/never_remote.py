@@ -55,8 +55,9 @@ def landing(p):
 def _under_file(p):
     """The landing of an absolute p whose walk meets a non-directory: the strict landing of the longest prefix that
     resolves, a file, then the names after it, which the kernel never reaches and so stay lexical. None when a `..`
-    follows the file (a plain realpath pops it lexically; once the file becomes a directory the kernel walks it) or
-    when the walk fails inside a link target, so a link to such a path is refused too."""
+    follows the file (a plain realpath pops it lexically; once the file becomes a directory the kernel walks it),
+    when only `/` or `.` follows it (`f/` normalises to the file, which the kernel never opens) or when the walk
+    fails inside a link target, so a link to such a path is refused too."""
     parts = p.split("/")
     lo, hi = 1, len(parts)  # parts[:lo] resolves (the root), parts[:hi] does not; a walk that resolves stays resolved
     try:
@@ -68,7 +69,7 @@ def _under_file(p):
             except OSError:
                 hi = mid
         base = os.path.realpath("/".join(parts[:lo]) or "/", strict=True)
-        if os.path.isdir(base) or ".." in parts[lo:]:
+        if os.path.isdir(base) or ".." in parts[lo:] or set(parts[lo:]) <= {"", "."}:
             return None
     except OSError:
         return None

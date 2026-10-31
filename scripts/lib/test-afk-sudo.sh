@@ -649,6 +649,7 @@ printf 'x\n' > "$R/f"
 assert_eq "a .. after a non-directory is refused, not keyed lexically where the kernel gives ENOTDIR" "BadFile" "$(bt f/x/../../L/x/lnk/../../../../out)"
 ln -s f/x/../../L/x/lnk/../../../../out "$R/fl"
 assert_eq "a link whose target holds a .. after a non-directory is refused too" "BadFile" "$(bt fl)"
+assert_eq "a non-directory followed only by a slash or dot is refused, not bound as the file the kernel never opens" "BadFile BadFile" "$(bt f/) $(bt f/.)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
@@ -697,7 +698,11 @@ class Os:
         return getattr(os, k)
 a.os = n.os = Os()
 sys.exit(a.main(sys.argv[2:]))'
-assert_contains "without ALLOW_MISSING a run request is refused, so a dangling link whose target holds missing/../.. is never keyed" "result=no-allow-missing" "$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I -c "$NOALLOW" "$LIB" run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier --cwd "$R" -- tee dl </dev/null 2>&1)"
+led0=$(ledger)
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$T0 AFK_SUDO_RUN=1 python3 -I -c "$NOALLOW" "$LIB" run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier --cwd "$R" -- tee dl </dev/null 2>&1)
+rc=$?
+assert_contains "without ALLOW_MISSING a run request is refused, so a dangling link whose target holds missing/../.. is never keyed" "result=no-allow-missing" "$out"
+assert_eq "the no-allow-missing refusal exits 5 and writes no ledger row" "5 same" "$rc $([ "$(ledger)" = "$led0" ] && echo same || echo changed)"
 new_root tgtlongname; cfg "$ALL" true
 name=$(python3 -I -c 'print("a" * 300)')
 assert_eq "a name over 255 bytes is refused, not keyed none" "BadFile" "$(bt "$name")"

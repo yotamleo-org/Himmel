@@ -78,7 +78,8 @@ broker's pending payload, not next to the record.
   even through private-mount aliases.
   "Cannot walk" is a strict `realpath` that fails for any reason but a missing name or a
   non-directory in the way, plus a `..` after a non-directory (the kernel gives `ENOTDIR`;
-  plain `realpath` pops it lexically) and a link whose target meets a non-directory: a walk past PATH_MAX in bytes, a name past 255 bytes
+  plain `realpath` pops it lexically), a non-directory followed only by `/` or `.` (`f/` is not
+  the file `f`) and a link whose target meets a non-directory: a walk past PATH_MAX in bytes, a name past 255 bytes
   that the walk reaches, a loop, a directory that cannot be searched. So a `python -c` program
   with a slash-bearing run that long is refused when every name before the run exists, and the
   same word in a file argument or stdin takes the same path, so moving it into a file does not
