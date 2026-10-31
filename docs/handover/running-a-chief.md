@@ -220,7 +220,7 @@ It also opens a **Telegram inbox**: it creates
 `chief-kit/chief-wait.sh`, run with Bash `run_in_background` (no `Monitor` re-arm loop, so an idle chief takes no turns; a persisted read
 cursor means a line appended while no waiter ran is delivered on the next
 start; at-least-once, so a waiter killed mid-emit can repeat one line), so
-the operator's `/chief <session> <text>` (or the older alias `/console`) from
+the operator's `/chief <session> <text>` from
 Telegram reaches the running chief with the operator's authority (rulings,
 halts, new work) but never a permission or settings change and never a
 skipped GO verification. The chief replies with
