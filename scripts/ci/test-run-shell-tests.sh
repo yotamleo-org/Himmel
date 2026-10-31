@@ -3195,6 +3195,11 @@ if [ "$rc29b" -eq 1 ] && [ "$runs29b" = 2 ]; then
 else
   fail "29b: rc=$rc29b runs=$runs29b (want rc 1 and exactly 2 runs) output: $out29b"
 fi
+if grepq "$out29b" -E '\[CAP EXCEEDED\] [^ ]*test-capstuck\.sh \(ran [0-9]+s, cap 2s\).*the cap applies per attempt'; then
+  pass "29b-note: a capped rerun's [CAP EXCEEDED] line says ran is the sum of attempts and the cap is per attempt"
+else
+  fail "29b-note: no per-attempt wording on the rerun's [CAP EXCEEDED] line: $out29b"
+fi
 if grepq "$out29b" -E "$real29"; then
   pass "29c: the final CAP EXCEEDED line keeps the shape CI printed for test-adopt.sh"
 else
