@@ -797,12 +797,13 @@ SHASUM
 chmod +x "$W5C/bin/gh" "$W5C/bin/shasum"
 printf '{"plugins":[]}' >"$W5C/empty_mjson.json"
 printf '{}' >"$W5C/empty_ups.json"
+printf '[]' >"$W5C/no_adapters.json"
 if PATH="$W5C/bin:$W5C/nosha" command -v sha256sum >/dev/null 2>&1; then
   bad "sha256sum-mask setup failed - sha256sum still resolvable"
 else
   ok "sha256sum-mask: sha256sum unresolvable"
 fi
-hash_out="$(PATH="$W5C/bin:$W5C/nosha" DRIFT_MJSON="$W5C/empty_mjson.json" DRIFT_UPSTREAMS="$W5C/empty_ups.json" DRIFT_REGISTRY=/dev/null DRIFT_KNOWN_MARKETPLACES=/dev/null bash "$W5C/scripts/check-plugin-drift.sh" 2>&1)"; hash_rc=$?
+hash_out="$(PATH="$W5C/bin:$W5C/nosha" DRIFT_MJSON="$W5C/empty_mjson.json" DRIFT_UPSTREAMS="$W5C/empty_ups.json" DRIFT_REGISTRY=/dev/null DRIFT_KNOWN_MARKETPLACES=/dev/null DRIFT_ADAPTERS="$W5C/no_adapters.json" bash "$W5C/scripts/check-plugin-drift.sh" 2>&1)"; hash_rc=$?
 if grepq "$hash_out" '^  hash-pin: CURRENT'; then ok "sha256sum absent -> shasum fallback verifies vendored fork CURRENT"; else bad "sha256sum fallback did not verify CURRENT; $(printf '%s' "$hash_out" | grep hash-pin)"; fi
 if grepq "$(printf '%s' "$hash_out" | grep 'hash-pin')" 'DRIFT'; then bad "sha256sum absent was reported as DRIFT"; else ok "sha256sum absent never reported as DRIFT"; fi
 if [ "$hash_rc" -eq 0 ]; then ok "sha256sum fallback-only run exits 0"; else bad "sha256sum fallback run rc=$hash_rc; expected 0"; fi
@@ -1655,13 +1656,15 @@ case "$*" in
     [ "${FORK_LIST_FAIL:-0}" = 1 ] && exit 1
     printf '[{"nameWithOwner":"yotamleo/fast"},{"nameWithOwner":"yotamleo/carried"},{"nameWithOwner":"yotamleo/held"},{"nameWithOwner":"yotamleo/current"},{"nameWithOwner":"yotamleo/renamed"}]\n' ;;
   "repo list ${FORK_OWNER:-none} --fork "*)
-    printf '[{"nameWithOwner":"%s/disc"}]\n' "$FORK_OWNER" ;;
+    printf '[{"nameWithOwner":"%s/%s"}]\n' "$FORK_OWNER" "${FORK_NAME:-disc}" ;;
   'api repos/yotamleo/'*)
     printf '{"default_branch":"main","parent":{"full_name":"upstream/%s"}}\n' "${2##*/}" ;;
   "api repos/${FORK_OWNER:-none}/claude-video")
     printf '{"default_branch":"main","parent":{"full_name":"bradautomates/claude-video"}}\n' ;;
   "api repos/${FORK_OWNER:-none}/gone")
     printf '{"default_branch":"main","archived":true,"parent":{"full_name":"upstream/gone"}}\n' ;;
+  "api repos/${FORK_OWNER:-none}/home-assistant.io")
+    printf '{"default_branch":"current","parent":{"full_name":"upstream/home-assistant.io"}}\n' ;;
   "api repos/${FORK_OWNER:-none}/"*)
     printf '{"default_branch":"main","parent":{"full_name":"upstream/%s"}}\n' "${2##*/}" ;;
   "api repos/bradautomates/claude-video/compare/main...${FORK_OWNER:-none}:himmel-main")
@@ -1670,6 +1673,8 @@ case "$*" in
     printf '{"default_branch":"main"}\n' ;;
   "api repos/upstream/disc/compare/trunk...${FORK_OWNER:-none}:main")
     printf '{"behind_by":2,"ahead_by":0}\n' ;;
+  'api repos/upstream/home-assistant.io/compare/'*)
+    printf '{"behind_by":170,"ahead_by":0}\n' ;;
   'api repos/upstream/'*/compare/*)
     case "$2" in
       repos/upstream/fast/compare/main...yotamleo:main)
@@ -1708,9 +1713,11 @@ cat > "$W17/reg.json" <<'JSON'
   {"fork_repo":"yotamleo/held","hold-reason":"reviewed compatibility hold"}
 ]}
 JSON
+printf '[]' > "$W17/no-adapters.json"
 fork_run() {
   PATH="$W17/bin:$PATH" DRIFT_MJSON="$W17/m.json" DRIFT_UPSTREAMS="$W17/u.json" \
     DRIFT_REGISTRY="$W17/reg.json" DRIFT_KNOWN_MARKETPLACES=/dev/null \
+    DRIFT_ADAPTERS="${DRIFT_ADAPTERS:-$W17/no-adapters.json}" \
     bash "$W17/scripts/check-plugin-drift.sh" 2>&1
 }
 fork_out="$(fork_run)"; fork_rc=$?
@@ -1755,6 +1762,28 @@ printf '{"entries":[]}' > "$W17/reg.json"
 printf '{}' > "$W17/u.json"
 fork_out="$(FORK_LIST_FAIL=1 fork_run)"; fork_rc=$?
 if [ "$fork_rc" -eq 3 ] && grepq "$fork_out" 'fork inventory: .*UNCHECKED'; then ok "fork-behind: failed inventory alone is incomplete, not current"; else bad "fork-behind: failed inventory exit $fork_rc, expected 3"; fi
+fork_out="$(FORK_LIST_FAIL=1 DRIFT_ADAPTERS="$W17/absent.json" fork_run)"; fork_rc=$?
+if [ "$fork_rc" -eq 3 ] && grepq "$fork_out" 'adapter registry .*not found.*UNCHECKED'; then ok "fork-behind: a missing adapter registry is incomplete, not skipped"; else bad "fork-behind: missing adapter registry exit $fork_rc, expected 3 UNCHECKED; $fork_out"; fi
+# The nightly workflow rebuilds the registry before the guard runs, and the
+# Home Assistant holds must survive that rebuild. Fixture: the workflow's own jq
+# expression over the real registry, and the real adapter row. Entries are
+# emptied after the rebuild: only the fork step is under test here.
+FORK_OWNER="$(python3 - "$ROOT/.github/workflows/fork-drift.yml" "$ROOT/scripts/upstreams.json" "$ROOT/scripts/guardrails/himmel-adapters.json" "$W17" <<'PY'
+import json, re, subprocess, sys
+wf, reg, adapters, w = sys.argv[1:5]
+expr = re.search(r"jq '([^']*)'\s*\\\s*\n\s*scripts/upstreams\.json", open(wf).read()).group(1)
+ci = json.loads(subprocess.run(['jq', expr, reg], capture_output=True, text=True, check=True).stdout)
+ci['entries'] = []
+json.dump(ci, open(w + '/reg.json', 'w'))
+rows = [r for r in json.load(open(adapters)) if r['nwo'].endswith('/home-assistant.io')]
+json.dump(rows, open(w + '/ha-adapters.json', 'w'))
+print(rows[0]['nwo'].split('/')[0])
+PY
+)"
+export FORK_OWNER
+fork_out="$(FORK_NAME=home-assistant.io DRIFT_ADAPTERS="$W17/ha-adapters.json" fork_run)"; fork_rc=$?
+if grepq "$fork_out" "$FORK_OWNER/home-assistant.io@current: HELD" && ! grepq "$fork_out" "$FORK_OWNER/home-assistant.io@current: BEHIND"; then ok "fork-behind: CI-rebuilt registry keeps the Home Assistant hold"; else bad "fork-behind: CI-rebuilt registry dropped the Home Assistant hold; $fork_out"; fi
+unset FORK_OWNER
 rm -rf "$W17"
 
 echo ""

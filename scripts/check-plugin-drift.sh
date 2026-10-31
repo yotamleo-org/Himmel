@@ -980,6 +980,8 @@ try:
                     owners.append(owner)
                 if row.get('upstream'):
                     configs.append({'fork_repo': row['nwo'], 'branch': row.get('himmel_branch')})
+    else:
+        unchecked('fork inventory', f'adapter registry {adapters_path} not found')
     for path in sys.argv[1:3]:
         if not os.path.exists(path) or os.path.getsize(path) == 0:
             continue
