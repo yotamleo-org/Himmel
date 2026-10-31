@@ -284,8 +284,8 @@ EOF
 check "scripts/lib/chief-context.sh exists" "yes" "$([ -f "$ROOT/scripts/lib/chief-context.sh" ] && echo yes || echo no)"
 check "scripts/lib/console-context.sh is gone" "no" "$([ -e "$ROOT/scripts/lib/console-context.sh" ] && echo yes || echo no)"
 check "the registry has no console-context.sh row" "0" "$(printf '%s\n' "$ROWS" | awk -F'\t' '$2 == "console-context.sh"' | wc -l | tr -d ' ')"
-check "the permanent /supervisor-session alias exists" yes "$([ -f "$ROOT/.claude/commands/supervisor-session.md" ] && echo yes || echo no)"
-check "the permanent /console alias exists" yes "$([ -f "$ROOT/.claude/commands/console.md" ] && echo yes || echo no)"
+check "the supervisor-session command alias is gone" no "$([ -e "$ROOT/.claude/commands/supervisor-session.md" ] && echo yes || echo no)"
+check "the console command alias is gone" no "$([ -e "$ROOT/.claude/commands/console.md" ] && echo yes || echo no)"
 
 # --- slice V4b: the worker scripts, each old name a registry row ---
 V4B_ROWS='close-wrapped-leg.sh|close-wrapped-worker.sh|identifier|old-to-new|V4b|X
@@ -324,12 +324,10 @@ for gone in scripts/handover/chief-kit/close-wrapped-legs.sh scripts/handover/ch
   docs/handover/leg-brief-template.md docs/handover/leg-preface.md; do
   check "$gone is gone" "no" "$([ -e "$ROOT/$gone" ] && echo yes || echo no)"
 done
-check "the permanent /himmel-ops:supervisor-session alias exists" yes "$([ -f "$ROOT/marketplace/plugins/himmel-ops/commands/supervisor-session.md" ] && echo yes || echo no)"
-check "the permanent /himmel-ops:console alias exists" yes "$([ -f "$ROOT/marketplace/plugins/himmel-ops/commands/console.md" ] && echo yes || echo no)"
-for a in supervisor-session console; do
-  check ".claude/commands/$a.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/chief/chief.sh \$ARGUMENTS" "$ROOT/.claude/commands/$a.md" && [ -f "$ROOT/scripts/handover/chief/chief.sh" ] && echo yes || echo no)"
-  check "himmel-ops $a.md runs /himmel-ops:chief" "yes" "$(grep -qF -- "\`/himmel-ops:chief \$ARGUMENTS\`" "$ROOT/marketplace/plugins/himmel-ops/commands/$a.md" && echo yes || echo no)"
-done
+check "the plugin supervisor-session command alias is gone" no "$([ -e "$ROOT/marketplace/plugins/himmel-ops/commands/supervisor-session.md" ] && echo yes || echo no)"
+check "the plugin console command alias is gone" no "$([ -e "$ROOT/marketplace/plugins/himmel-ops/commands/console.md" ] && echo yes || echo no)"
+check ".claude/commands/chief.md runs chief.sh" "yes" "$(grep -qxF -- "bash scripts/handover/chief/chief.sh \$ARGUMENTS" "$ROOT/.claude/commands/chief.md" && [ -f "$ROOT/scripts/handover/chief/chief.sh" ] && echo yes || echo no)"
+check "himmel-ops chief command exists" "yes" "$([ -f "$ROOT/marketplace/plugins/himmel-ops/commands/chief.md" ] && echo yes || echo no)"
 
 # --- slice V5b-1: the chief launcher, waiter and budget env names, each old name still read ---
 V5B1_ROWS='CONSOLE_ARM_FOREGROUND|CHIEF_ARM_FOREGROUND|identifier|old-to-new|V5|X
