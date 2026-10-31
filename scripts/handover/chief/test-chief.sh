@@ -1642,11 +1642,16 @@ doc60bC="$root/tester/boarddst2/DEMO-nextleg-${today}B-chief.md"
 url60b='https://claude.ai/artifact/fixture-3361-board'
 check "60b a fresh chief's Live state starts the board: line at none yet" \
     "$(grep -c '^board: none yet' "$doc60bA" 2>/dev/null)" "1"
+# The chief cannot publish (Artifact denied), so neither fallback says to.
+check "60b a fresh chief's board: fallback says render locally, never publish" \
+    "$(grep -c '^board: none yet — render it locally' "$doc60bA" 2>/dev/null)" "1"
 rc60b=0
 chief next --bucket boarddst2 --doc "$doc60bA" >/dev/null 2>&1 || rc60b=$?
 check "60b next from a doc with no URL succeeds" "$rc60b" "0"
 check "60b no-URL predecessor yields none yet on the successor, never empty" \
     "$(grep -c '^board: none yet' "$doc60bC" 2>/dev/null)" "1"
+check "60b the successor's board: fallback says render locally, never publish" \
+    "$(grep -c '^board: none yet — render it locally' "$doc60bC" 2>/dev/null)" "1"
 awk -v url="$url60b" '/^board: none yet/ { print "board: " url; next } { print }' "$doc60bA" > "$doc60bA.new" && mv "$doc60bA.new" "$doc60bA"
 rc60b=0
 chief next --bucket boarddst --doc "$doc60bA" >/dev/null 2>&1 || rc60b=$?

@@ -59,7 +59,7 @@ or a second chief starts on the same document.
 ## Where the shift board is
 
 The chief renders its board, one static page, from its own state and
-republishes it as it changes: the fleet against its cap, each worker's stage,
+re-renders it locally as it changes: the fleet against its cap, each worker's stage,
 and what needs a decision. The same board shows on the Fleet page of
 `himmelctl ui` when you start it with `HANDOVER_DIR` set. Both are in
 [The local dashboard](../ui.md#the-chiefs-board-and-roadmap-tracker).

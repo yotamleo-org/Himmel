@@ -1497,7 +1497,7 @@ cmd_new() {
         FILL_SIGNAL "$fill_signal" \
         FILL_PERCENT "$fill_percent" \
         RELEASE_TOKEN "$release_token" \
-        BOARD_URL "none yet — publish it at ACTION ZERO step 12" \
+        BOARD_URL "none yet — render it locally at ACTION ZERO step 12" \
         TRACKER_URL "none" \
         CARRIED_LIVE_STATE "epics: none
 decisions: none" \
@@ -1963,12 +1963,12 @@ cmd_next() {
     # successor's block starts as the predecessor's (a stale one is not detected).
     local predecessor_direction
     predecessor_direction="$(direction_block "$predecessor_doc" | sed '/./,$!d')"
-    # The chief board's artifact URL rides on the `board:` line
+    # The chief board's local path rides on the `board:` line
     # of that Live state; the successor's own Live state starts from it, so it
-    # updates the same artifact instead of minting a new one.
+    # re-renders the same file.
     predecessor_board="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^board:[[:space:]]*//p' | head -n 1)"
     case "$predecessor_board" in
-        ""|"none yet"*) predecessor_board="none yet — publish it at ACTION ZERO step 12" ;;
+        ""|"none yet"*) predecessor_board="none yet — render it locally at ACTION ZERO step 12" ;;
     esac
     # The roadmap tracker's URL rides on `tracker:` the same way.
     predecessor_tracker="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^tracker:[[:space:]]*//p' | head -n 1)"
