@@ -68,6 +68,20 @@ has_base_snapshot() {
 GUEST_ENV='export PATH="$HOME/.local/bin:$PATH"; export CLIPROXY_API_KEY="$(cat "$HOME/.config/himmel/cliproxy.key")"; cd "$HOME/himmel"'
 LANE_ENV="$GUEST_ENV && bash scripts/setup/cli-proxy-lane.sh"
 
+# lane_status: run `cli-proxy-lane.sh --status` on the guest; sets LANE_OUT (its output, verbatim).
+# The script exits 0 (lane up) or 1 (not ready, e.g. before the login), so those are both fine; a
+# missing end marker (ssh drop, timeout) or any other exit code (not executable, killed) is a failure.
+lane_status() {
+    local raw code
+    raw=$(gl 120 "$LANE_ENV --status; echo \"lane-status-exit: \$?\"" 2>&1)
+    code=$(sed -n 's/^lane-status-exit: //p' <<< "$raw" | tail -n 1)
+    case "$code" in
+        0|1) ;;
+        *) fail "cli-proxy-lane --status did not run to a normal end on $VM (exit '${code:-none}'): $raw" ;;
+    esac
+    LANE_OUT=$(grep -v '^lane-status-exit: ' <<< "$raw")
+}
+
 cmd_create() {
     vm_env_init
     vm_lock_acquire_waiting "$VM"
@@ -131,11 +145,9 @@ cmd_provision() {
     settings_cmd='export PATH="$HOME/.local/bin:$PATH"; cd "$HOME/himmel" && mkdir -p "$HOME/.config/himmel" && node scripts/lanes/plugin-profiles.mjs worker-impl > "$HOME/.config/himmel/worker-settings.json.tmp" && mv "$HOME/.config/himmel/worker-settings.json.tmp" "$HOME/.config/himmel/worker-settings.json"'
     out=$(gl 120 "$settings_cmd" 2>&1) || fail "worker-impl settings file: $out"
 
-    # (8) --status exits non-zero until the operator has logged in, so its exit code proves
-    # nothing; the echoed marker proves the command ran to the end (no ssh failure or timeout),
-    # and only the 401 line is a provisioning failure
-    out=$(gl 120 "$LANE_ENV --status; echo \"lane-status-exit: \$?\"" 2>&1)
-    grep -q '^lane-status-exit: ' <<< "$out" || fail "cli-proxy-lane --status did not run to the end on $VM: $out"
+    # (8) only the 401 line is a provisioning failure (--status exits 1 until the operator has logged in)
+    lane_status
+    out="$LANE_OUT"
     if grep -q 'HTTP 401' <<< "$out"; then
         fail "cli-proxy key mismatch: the proxy answers HTTP 401 to the guest key (see $VM ~/.cli-proxy-api/config.yaml api-keys vs ~/.config/himmel/cliproxy.key)"
     fi
@@ -149,7 +161,8 @@ cmd_status() {
     version=$(sed -n 2p <<< "$out" | cut -d' ' -f1)
     echo "claude: ${claude_path:-none} ${version:-none}"
     echo "--- cli-proxy-lane.sh --status ---"
-    gl 120 "$LANE_ENV --status" 2>&1
+    lane_status
+    printf '%s\n' "$LANE_OUT"
     # liveness only: the exit code, never the probe's output
     pf=$(gl 120 "$GUEST_ENV && { bash scripts/claude-codex --preflight-only >/dev/null 2>&1; echo \"preflight-exit: \$?\"; }" 2>&1)
     tail -n 1 <<< "$pf"

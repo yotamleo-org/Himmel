@@ -144,7 +144,9 @@ new_world() { # fresh fake guest + station VirtualBox state; claudex-base presen
 #!/usr/bin/env bash
 echo "cli-proxy-lane $* key-len=${#CLIPROXY_API_KEY}" >> "$GUEST_TOOL_LOG"
 [ "$1" = --status ] && [ -e "$GUEST_STATUS_FILE.kill" ] && kill -9 "$PPID"
+[ "$1" = --status ] && [ -e "$GUEST_STATUS_FILE.exit2" ] && exit 2
 [ "$1" = --status ] && cat "$GUEST_STATUS_FILE"
+[ "$1" = --status ] && [ -e "$GUEST_STATUS_FILE.exit1" ] && exit 1
 exit 0
 EOS
     cat > "$GH/himmel/scripts/claude-codex" <<'EOS'
@@ -281,8 +283,29 @@ new_world
 touch "$GUEST_STATUS_FILE.kill"
 run_cg provision himmel-claudex
 check "provision fails when --status does not run to the end" rc_nonzero
-check "that failure says --status did not finish" out_has "did not run to the end"
+check "that failure says --status did not finish" out_has "did not run to a normal end"
 rm -f "$GUEST_STATUS_FILE.kill"
+new_world
+touch "$GUEST_STATUS_FILE.exit2"
+run_cg provision himmel-claudex
+check "provision fails when --status exits 2 (a crash, not 'not ready')" rc_nonzero
+rm -f "$GUEST_STATUS_FILE.exit2"
+new_world
+touch "$GUEST_STATUS_FILE.exit1"
+run_cg provision himmel-claudex
+check "provision accepts --status exit 1 (not logged in yet)" rc_is 0
+
+# the same two failures fail the status verb too
+new_world
+run_cg provision himmel-claudex >/dev/null 2>&1
+touch "$GUEST_STATUS_FILE.kill"
+run_cg status himmel-claudex
+check "status fails when --status does not run to the end" rc_nonzero
+rm -f "$GUEST_STATUS_FILE.kill"
+touch "$GUEST_STATUS_FILE.exit2"
+run_cg status himmel-claudex
+check "status fails when --status exits 2" rc_nonzero
+rm -f "$GUEST_STATUS_FILE.exit2"
 
 # --- R5d: ~/Documents/github/himmel already a directory is refused and left alone ---
 new_world
