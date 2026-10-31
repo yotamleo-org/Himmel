@@ -40,15 +40,19 @@
 # A round whose panel aborted after start reviewed nothing and spends nothing:
 # `abort` puts .head back on the last critic-reviewed head and uncounts it.
 # defer exits 6 when automatic residual filing cannot resolve the parent from
-# the open PR title or cannot create a ticket; supply --defer-to to recover
+# the open PR title (or, before round four, the branch's commit subjects) or
+# cannot create a ticket; supply --defer-to to recover
 # against the recorded findings without rerunning the panel. A hardening
 # finding with no recorded fu_why also exits 6 until --fu-why <code> names one
 # of unseen-failure|no-check|vacuous-check|no-recovery|silent-rot.
 # A Suggestions-only round below the cap closes early on a change that touches
 # no CI trust path. It files ONE batch residual per branch and keeps its key in
 # <branch>.deferred-to, which every later early close reuses; the start of a
-# new loop's first round removes it and cr-reset.sh moves it aside. With no PR title key the
-# batch's parent is the first [KEY-n] in the branch's commit subjects.
+# new loop's first round removes it and cr-reset.sh moves it aside. With no PR
+# title key the batch's parent is the first [KEY-n] in the branch's commit
+# subjects. A .deferred-to that cannot be removed or written exits 5, like
+# every other state-file error; a write failure names the filed key for
+# --defer-to.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
