@@ -265,6 +265,10 @@ check "check 4 merge-hold: none passes" "$RC" "0"
 reset; printf 'merge-hold: all\n' >> "$CHIEF"; run --dry-run 77 "$SHA"
 check "check 4 a merge-hold line outside ## Live state is not read" "$RC" "0"
 reset; write_fixtures native "" '> **Merge:** chief'; run --dry-run 77 "$SHA";  esc "check 4 brief says Merge: chief" 4
+# a brief that is readable by test -r but that grep cannot read (a directory) is a read error, not "no hold"
+reset; mkdir -p "$tmp/briefdir"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"native","added":"2026-10-31T00:00:00Z"}]}\n' "$tmp/briefdir" > "$FLEET"
+run --dry-run 77 "$SHA";  esc "check 4 a brief that grep cannot read" 4
 reset
 
 # --- 4/5. check 5 is slice A1b; a trust-path hit already escalates here -----------------------------------

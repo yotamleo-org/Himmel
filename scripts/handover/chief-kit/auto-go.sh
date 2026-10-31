@@ -230,9 +230,13 @@ for tok in $(printf '%s\n' "$HOLDS" | tr -d '`' | tr ',;' '  '); do
     done
 done
 [ -r "$WORKER_DOC" ] || fail 4 "cannot read the worker's brief $WORKER_DOC"
-if grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WORKER_DOC"; then
-    fail 4 "the worker's brief says Merge: chief (the chief GOes this dispatch by hand)"
-fi
+BRIEF_RC=0
+grep -qE '^> \*\*Merge:\*\* chief([^A-Za-z0-9_-]|$)' "$WORKER_DOC" || BRIEF_RC=$?
+case "$BRIEF_RC" in
+    0) fail 4 "the worker's brief says Merge: chief (the chief GOes this dispatch by hand)" ;;
+    1) ;;
+    *) fail 4 "cannot read the worker's brief $WORKER_DOC (grep exit $BRIEF_RC)" ;;
+esac
 add_check 4 pass
 
 # --- 5. the judge requirement is slice A1b; a trust-path hit is not a predicted GO ---------------------------
@@ -262,6 +266,7 @@ else
         add_check 7 not-in-plan
     else
         GC_OUT=$(bash "$HERE/chain-plan-core.sh" --go-check "$PR" --graph "$GRAPH" 2>&1) || fail 7 "chain-plan-core.sh --go-check refused: $GC_OUT"
+        grep -q '^GO-CHECK OK ' <<< "$GC_OUT" || fail 7 "chain-plan-core.sh --go-check exited 0 but printed no GO-CHECK OK line"
         add_check 7 pass
     fi
 fi
