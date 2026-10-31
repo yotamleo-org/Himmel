@@ -49,6 +49,9 @@ printf 'ts=2026-10-31T01:05:00Z\nrc=0\nremaining=0\nlast_error=none\nsummary=0 u
 msg=$(STATE_FILE=clean-state alert qmd-reindex rc-5 /tmp/q.log)
 assert_has "A6 a clean run's state is not quoted for an rc-5 alert" "Cause: unknown, see log" "$msg"
 
+msg=$(alert qmd-reindex rc-5)
+assert_has "A7 rc-5 with no log argument still quotes the state under nounset" "Cause: 370 unique hashes still need vectors" "$msg"
+
 msg=$(STATE_FILE=absent alert qmd-reindex rc-5 /tmp/q.log)
 assert_has "A5 no state file keeps the default cause" "Cause: unknown, see log" "$msg"
 

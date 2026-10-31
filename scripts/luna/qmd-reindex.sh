@@ -707,7 +707,7 @@ while :; do
     EMBED_CAP_SECS=$((EMBED_MAX_SECS - (SECONDS - EMBED_T0)))
     [ "$EMBED_CAP_SECS" -ge 1 ] || EMBED_CAP_SECS=1
     EMBED_BUDGET_CUT=0
-    if [ "$(qmd_timeout_secs)" -eq 0 ] || [ "$EMBED_CAP_SECS" -lt "$(qmd_timeout_secs)" ]; then EMBED_BUDGET_CUT=1; fi
+    if [ "$(qmd_timeout_secs)" -eq 0 ] || [ "$EMBED_CAP_SECS" -le "$(qmd_timeout_secs)" ]; then EMBED_BUDGET_CUT=1; fi
     SESSION_RC=0
     SESSION_OUT=$(run_embed 2>&1) || SESSION_RC=$?
     if [ "$SESSION_RC" -eq 9 ]; then

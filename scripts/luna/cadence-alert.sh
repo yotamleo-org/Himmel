@@ -77,7 +77,7 @@ case "${1:-}" in
             # state after a clean run (or a failed named-index run) is not it.
             [ "$(sed -n 's/^rc=//p' "$qmd_state" 2>/dev/null | head -1)" = 5 ] || qmd_sum=""
             if [ -n "$qmd_sum" ]; then
-                set -- "$1" "$2" "$3" "$4" "$qmd_sum" "${6:-bash scripts/luna/qmd-reindex.sh}"
+                set -- "$1" "$2" "$3" "${4:-}" "$qmd_sum" "${6:-bash scripts/luna/qmd-reindex.sh}"
             fi
         fi
         cause="${5:-unknown, see log}" todo="${6:-read the log}"

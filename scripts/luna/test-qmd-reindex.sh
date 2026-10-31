@@ -844,6 +844,14 @@ else
     fail "session bounded by the embed budget" "took ${elapsed}s for a 2s budget"
 fi
 
+echo "TEST: a session cut when the budget equals the command timeout is still the resumable rc 5"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+touch "$STATE/slow-embed"
+rc=0; out=$(QMD_REINDEX_EMBED_MAX_SECS=2 QMD_TIMEOUT_SECS=2 QMD_KILL_GRACE_SECS=1 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "budget equal to the timeout rc 5" 5 "$rc"
+assert_contains "budget equal to the timeout names the time budget" "cause: embed time budget reached" "$out"
+
 echo "TEST: a recount that fails is discarded, so the remaining count reads as unknown"
 reset_state
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
