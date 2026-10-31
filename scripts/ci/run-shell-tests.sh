@@ -1075,7 +1075,9 @@ is_skipped() {
   while IFS= read -r _line; do
     [ -n "$_line" ] || continue
     _path=${_line%%#*}
-    _path=$(printf '%s' "$_path" | tr -d '[:space:]')
+    # Strip in-shell: a `printf | tr` here forks twice per skip-list line per
+    # suite, tens of thousands of forks for one listing.
+    _path=${_path//[[:space:]]/}
     [ -n "$_path" ] || continue
     if suite_entry_matches "$_path" "$needle"; then
       printf '%s' "${_line#*# }"
