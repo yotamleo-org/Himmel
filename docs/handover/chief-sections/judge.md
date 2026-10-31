@@ -71,6 +71,8 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   dispute that triggers a convening mints work on the scarcest usage budget. A finding class of
   `guard-no-fire` or `invariant-regression` skips the ladder and the budget:
   `judge-ladder.sh breakglass <class>` routes it to the operator at once.
+- **A per-page docs review is a helper, not a judge**: it goes to `sonnet` per the
+  helper table in [`running-a-chief.md`](../running-a-chief.md#dispatching-workers).
 - **A later push needs a judge only when its delta does** (HIMMEL-7637): after a judge's GO,
   `bash scripts/handover/chief-kit/delta-class.sh --qid <qid> <judged head> <new head>`,
   run in the checkout holding both commits, prints one word and always exits 0:
