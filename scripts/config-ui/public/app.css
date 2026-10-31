@@ -218,3 +218,23 @@ details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);p
 @media (max-width:900px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:minmax(0,1fr)}}
 @media (max-width:440px){.tiles{grid-template-columns:minmax(0,1fr)}.cpanel{padding:var(--s3)}}
 @media (max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}
+/* Health page v2 (HIMMEL-8044): group tiles reuse the Configure tile; rows, tabs, Shared panel, project lines and the rail picker. Tokens only. */
+.g-chk{--gc:var(--accent)}.g-use{--gc:var(--road)}.g-job{--gc:var(--camp)}.g-srch{--gc:var(--alpha)}
+.htiles .tile{grid-template-columns:minmax(0,1fr)}
+.vhead .pills{display:flex;gap:var(--s1)}
+.pill.off{background:var(--surface-2);color:var(--muted)}.pill.scope,.scope{background:var(--note-soft);color:var(--note)}
+.scope{font:700 10.5px var(--font-mono);padding:0 6px;border-radius:999px;white-space:nowrap}
+.hrow.br{align-items:center}
+.chief{color:var(--muted);font:italic 12px var(--font-ui)}
+.who{flex:1 1 100%;border:1px solid var(--rule);border-left:4px solid var(--accent);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3)}
+.who p{margin:2px 0 var(--s1);font-size:var(--fs-xs);color:var(--muted)}
+.tabs{display:flex;gap:var(--s1);border-bottom:1px solid var(--rule);margin:0 0 var(--s2)}
+.tab{all:unset;cursor:pointer;padding:6px 12px;font:600 var(--fs-sm) var(--font-ui);color:var(--muted);border-bottom:3px solid transparent}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}.tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+details.bundle>summary{cursor:pointer;padding:6px 0}
+.minis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s2);margin:0 0 var(--s2)}
+.mini{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3);display:grid;gap:2px}
+.prj .phead{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);margin:0 0 var(--s1)}.prj .phead .ro{flex:1 1 200px}
+.picker{display:grid;gap:4px;margin:var(--s3) 0 0;font:600 10.5px var(--font-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.picker select{font:var(--fs-sm) var(--font-ui);text-transform:none;letter-spacing:0;color:var(--ink);background:var(--surface);border:1px solid var(--rule-strong);border-radius:6px;padding:6px 8px;min-width:0;width:100%}
+@media (max-width:900px){.minis{grid-template-columns:repeat(2,minmax(0,1fr))}}

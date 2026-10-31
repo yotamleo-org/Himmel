@@ -48,6 +48,12 @@ test("readConfLayers returns only the behaviour keys, as load_dotenv does", () =
   expect(readConfLayers({ HOME: s.home })).toEqual({ TRACKER: "local" });
 });
 
+test("readConfLayers returns every config key of the shared key list, and no env-only key", () => {
+  const s = scratch();
+  writeFileSync(s.conf, "JIRA_EMAIL=ops@example.invalid\nSNYK_ORG_ID=org-1\nFIRECRAWL_BASE_URL=https://fc.example.invalid\n");
+  expect(readConfLayers({ HOME: s.home })).toEqual({ JIRA_EMAIL: "ops@example.invalid", SNYK_ORG_ID: "org-1" });
+});
+
 test("trackerSources lists github when TRACKER=github is set only in himmel.conf", async () => {
   const s = scratch();
   const gh = join(s.dir, "gh");
