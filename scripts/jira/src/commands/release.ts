@@ -564,7 +564,7 @@ export function registerRelease(program: Command): void {
   operator.command('spec <release>')
     .description('Sign a minerva spec for its keys after the operator approves it')
     .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
-    .requiredOption('--spec <path>', 'The spec file, under the state repo specs/ bucket')
+    .requiredOption('--spec <path>', 'The spec file (by convention under the state repo specs/designs/ bucket; any path signs)')
     .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
     .requiredOption('--decision <n>', 'Operator decision number')
     .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')

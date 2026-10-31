@@ -9,6 +9,18 @@ import {
 } from './engine.js';
 import { execFileSync } from 'node:child_process';
 import { Command } from 'commander';
+
+// A hook that runs after a minerva script returns, to edit the spec mid-sign.
+const afterMinerva = vi.hoisted(() => ({ fn: null as null | (() => void) }));
+vi.mock('node:child_process', async (orig) => {
+  const m = await orig<typeof import('node:child_process')>();
+  const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
+    const r = m.execFileSync(...a);
+    if (String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('minerva-trace-lint.sh')) afterMinerva.fn?.();
+    return r;
+  }) as typeof m.execFileSync;
+  return { ...m, execFileSync };
+});
 import type { IssueSnap, OperatorRow, RulingRow } from './types.js';
 import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
 
@@ -1290,6 +1302,18 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
       log.mockRestore();
     }
     expect(out.at(-1)).toBe(`SPEC ok K-1 ${p} O-R1-0002`);
+  });
+
+  it('a spec edited while the minerva checks run refuses to sign', () => {
+    declared();
+    const p = spec();
+    afterMinerva.fn = () => writeFileSync(p, readFileSync(p, 'utf8').replace('fixture', 'fixturE'));
+    try {
+      expect(() => sign(sctx(), ['K-1'], p)).toThrow(/changed while it was checked/);
+    } finally {
+      afterMinerva.fn = null;
+    }
+    expect(check(['K-1'])).toEqual(['NO-SPEC K-1']);
   });
 
   it('one changed byte of the signed spec gives SPEC-STALE', () => {

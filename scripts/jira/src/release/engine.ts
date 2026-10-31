@@ -375,12 +375,13 @@ function readVerdicts(paths: string[]): { verdicts: Array<{ path: string; sha256
   const verdicts = paths.map((raw) => {
     const path = resolve(raw);
     if (!existsSync(path)) throw new Error(`release operator spec: verdict file not found: ${path}`);
-    const last = readFileSync(path, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
+    const bytes = readFileSync(path);
+    const last = bytes.toString('utf8').split('\n').map((l) => l.trim()).filter(Boolean).at(-1) ?? '';
     const m = VERDICT.exec(last);
     if (!m) throw new Error(`release operator spec: ${path} last line is '${last}', not SPEC|PLAN CLEAN or SPEC|PLAN FINDINGS <n>`);
     seen.add(m[1]);
     residuals += Number(m[3] ?? 0);
-    return { path, sha256: fileSha(path) };
+    return { path, sha256: createHash('sha256').update(bytes).digest('hex') };
   });
   if (paths.length !== 2 || seen.size !== 2) {
     throw new Error('release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
@@ -413,14 +414,20 @@ export function signSpec(ctx: Ctx, o: {
   const spec = resolve(o.spec);
   if (!existsSync(spec)) throw new Error(`release operator spec: spec not found: ${spec}`);
   const { verdicts, residuals } = readVerdicts(o.verdicts);
-  checkResiduals(readFileSync(spec, 'utf8'), residuals);
+  const bytes = readFileSync(spec);
+  const specSha = createHash('sha256').update(bytes).digest('hex');
+  checkResiduals(bytes.toString('utf8'), residuals);
   runMinerva('minerva-spec-gate.sh', [spec], dirname(spec));
   runMinerva('minerva-trace-lint.sh', [spec, spec], dirname(spec));
+  // The record signs the bytes the checks read: a spec or verdict edited meanwhile refuses.
+  if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)) {
+    throw new Error('release operator spec: the spec or a verdict file changed while it was checked; sign again');
+  }
   if (o.supersedes && !readOperatorRecords('spec', ctx.env).some((r) => r.id === o.supersedes)) {
     throw new Error(`release operator spec: ${o.supersedes} is no verified spec record in a declared release`);
   }
   return locked(ctx, (l) => appendOperator(ctx, l.k, {
-    kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: fileSha(spec), verdicts,
+    kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, verdicts,
     supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
   }));
 }
