@@ -263,15 +263,18 @@ reset; w PKGBUILD 'pkgname=zz
 . scripts/zzj/zzjlib.sh
 '; commit_case a1_name
 verdict a1_name FILES PKGBUILD scripts/zzj/zzjlib.sh
+absent a1_name scripts/zzj-revc.sh
 # a1_kshrc: ...and so does any other no-shebang dotfile the hook may lint (.kshrc, .bash_logout, ...):
 # only known non-shell types lose their forward edges
 reset; w scripts/.kshrc '. scripts/zzj/zzjlib.sh
 '; commit_case a1_kshrc
 verdict a1_kshrc FILES scripts/.kshrc scripts/zzj/zzjlib.sh
+absent a1_kshrc scripts/zzj-revc.sh
 # a1_ash: ...and so does a no-shebang *.ash file
 reset; w scripts/zzx.ash '. scripts/zzj/zzjlib.sh
 '; commit_case a1_ash
 verdict a1_ash FILES scripts/zzx.ash scripts/zzj/zzjlib.sh
+absent a1_ash scripts/zzj-revc.sh
 # a1_ext: ...and a shell file with no extension is scanned by its shebang, so its dynamic line counts
 reset; w scripts/zztool '#!/usr/bin/env bash
 . "${ZZ_DIR}zzjlib.sh"
