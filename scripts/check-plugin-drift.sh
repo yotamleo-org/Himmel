@@ -315,8 +315,17 @@ except Exception:
     fi
     local old_ver new_ver tip_ver
     if [ -z "$release" ]; then
-      if ! git cat-file -e "$old_ref:$manifest" 2>/dev/null; then
-        continue  # plugin.json newly introduced — nothing to compare against
+      # A staged commit is judged as the branch so far (index against the branch base),
+      # so a version-only follow-up commit is not a bare bump; range mode already is.
+      local cmp_ref="$old_ref" cchanged="$changed"
+      if [ -z "$base_ref" ] && [ "$vref" != "$old_ref" ]; then
+        cmp_ref="$vref"
+        cchanged="$(git -c core.quotePath=false diff --cached --no-renames --name-only --diff-filter=ACMRD "$vref" -- "$rel/$name")" || cchanged="$changed"
+      fi
+      # Newly introduced (absent at the base of the comparison AND on the live base): nothing to compare.
+      if ! git cat-file -e "$cmp_ref:$manifest" 2>/dev/null \
+         && { [ -z "$base_ref" ] || ! git cat-file -e "$base_ref:$manifest" 2>/dev/null; }; then
+        continue
       fi
       # A change = any changed file but the manifest, or a manifest edit beyond "version".
       local substantive=0 f
@@ -324,12 +333,12 @@ except Exception:
         case "$f" in
           "$rel/$name/"*) [ "$f" = "$manifest" ] || substantive=1 ;;
         esac
-      done <<<"$changed"
-      if [ "$substantive" -eq 0 ] && grep -qxF -e "$manifest" <<<"$changed" \
-         && [ "$(manifest_rest "$old_ref:$manifest")" != "$(manifest_rest "$new_spec")" ]; then
+      done <<<"$cchanged"
+      if [ "$substantive" -eq 0 ] && grep -qxF -e "$manifest" <<<"$cchanged" \
+         && [ "$(manifest_rest "$cmp_ref:$manifest")" != "$(manifest_rest "$new_spec")" ]; then
         substantive=1
       fi
-      old_ver="$(manifest_version "$old_ref:$manifest")"
+      old_ver="$(manifest_version "$cmp_ref:$manifest")"
       new_ver="$(manifest_version "$new_spec")"
       if [ "$substantive" -eq 0 ]; then
         if [ "$old_ver" != "$new_ver" ]; then

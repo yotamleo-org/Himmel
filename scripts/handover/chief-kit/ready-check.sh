@@ -799,7 +799,7 @@ else
                 bump_err="$bump_err; $plug cannot read the PR tree"
                 continue
             fi
-            [ -n "$mb_ls" ] || continue
+            if [ -z "$mb_ls" ]; then plug_above_main "$plug"; continue; fi  # new at the merge-base: still judged against main, which may ship it now
             if [ -z "$pr_ls" ] && plug_removed "$SHA" "$plug"; then continue; fi
             # A change = any PR file of the plugin but the manifest, or a manifest edit beyond "version".
             plug_other=$(printf '%s\n' "$plug_files" | grep -F "marketplace/plugins/$plug/" | grep -vxF "$main_path" || true)  # swallow-ok: grep exits 1 when the plugin has no file but its manifest

@@ -1570,6 +1570,13 @@ printf '{"name":"bad","version":"1.0.0"}\n' > "$WORK/$BADP/.claude-plugin/plugin
 git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "fix: pr touches bad"
 PR_BAD=$(git -C "$WORK" rev-parse HEAD)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
+mkdir -p "$WORK/$BADP/.claude-plugin"
+printf '{"name":"bad","version":"1.0.0"}\n' > "$WORK/$BADP/.claude-plugin/plugin.json"
+printf 'x\n' > "$WORK/$BADP/body.txt"
+git -C "$WORK" add -A
+git -C "$WORK" commit -q -m "fix: pr introduces bad (not a release)"
+PR_BAD_NEW=$(git -C "$WORK" rev-parse HEAD)
 git -C "$WORK" checkout -q main
 write_plugin 0.4.71 from-main "feat: main shipped 0.4.71"
 mkdir -p "$WORK/$BADP/.claude-plugin"
@@ -1607,6 +1614,12 @@ contains "plugin edit bumped to main's version: says why" "$out" "bump above mai
 run_bump "$PR_NEW_BUMP" "$PLUG/body.txt"
 contains "plugin edit bumped above main: check 9 passes" "$out" "[PASS] 9. every plugin the PR changes is bumped above current origin/main"
 notcontains "plugin edit bumped above main: no check fails" "$out" "[FAIL]"
+
+# A plugin the PR introduces but main now ships is judged against main too (here
+# main's manifest carries no readable version, so the check fails closed).
+run_bump "$PR_BAD_NEW" "$BADP/.claude-plugin/plugin.json"
+check "new plugin main already ships: exit 1" "$rc" "1"
+contains "new plugin main already ships: check 9 fails" "$out" "[FAIL] 9."
 
 # DoD: a bump with no other file change in the plugin is refused.
 run_bump "$PR_BUMP_ONLY" "$PLUG/.claude-plugin/plugin.json"
