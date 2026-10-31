@@ -34,7 +34,8 @@ function header(v) {
 function tiles(v) {
   const t = (label, n) => `<div class="card sh-tile"><b>${n}</b><span>${esc(label)}</span></div>`;
   const closed = v.shift.closed !== null;
-  return `<div class="sh-tiles">${closed ? t("Chiefs", v.chiefs.length) + t("Shipped", v.shipped.length) + t("Carried", v.carried.length) : t("Waiting on you", v.waiting.length) + t("Running now", v.running.length) + t("Shipped", v.shipped.length)}</div>`;
+  const shipped = t("Shipped", v.mergedUnread ? "?" : v.shipped.length);
+  return `<div class="sh-tiles">${closed ? t("Chiefs", v.chiefs.length) + shipped + t("Carried", v.carried.length) : t("Waiting on you", v.waiting.length) + t("Running now", v.running.length) + shipped}</div>`;
 }
 
 function chiefsHtml(v) {
@@ -59,6 +60,7 @@ function runningHtml(v, ui) {
 
 const SHOWN = 20; // the longest list shows its newest rows; "show all" opens the rest
 function shippedHtml(v, ui) {
+  if (v.mergedUnread) return none("The merged PRs could not be read from GitHub. Refresh to try again.");
   if (!v.shipped.length) return none("Nothing merged in this shift.");
   const all = ui && ui.all;
   const rows = all ? v.shipped : v.shipped.slice(0, SHOWN);

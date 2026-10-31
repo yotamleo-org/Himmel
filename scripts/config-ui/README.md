@@ -128,8 +128,10 @@ says so and names the last one.
   the close instant belongs to the next shift. The id is the opened stamp. A clock cut opens the next shift only if something
   was held at the cut; an idle fleet leaves none open until a chief goes live.
 - **Merged PRs.** `gh pr list --search merged:<opened>..<closed> --limit 200` (the board's 60 was too few: 49 PRs merged in one
-  real night). `GH_CMD` overrides `gh`. A failed `gh` read closes nothing: the close waits for the next poll that can read it,
-  so a shift is never written without its PR credit. A poll older than the last one applied is ignored.
+  real night). `GH_CMD` overrides `gh`. A page that comes back full is split by time until every PR is read. A failed `gh` read
+  closes nothing: the close waits for the next poll that can read it, so a shift is never written without its PR credit, and the
+  page says the list could not be read instead of showing an empty Shipped. A poll older than the last one applied is ignored.
+  A chief counts as live only while its own doc holds a queue lock.
 - **Attribution.** A PR is credited to the chief whose span holds its merge; a merge in a hand-over gap is named for both and
   counted once. A chief's span is its first LIVE to its last WRAPPED or HALTED stamp.
 - **The release record is derived.** `queue-lock` keeps no release record, so the last release is the newest lock heartbeat or

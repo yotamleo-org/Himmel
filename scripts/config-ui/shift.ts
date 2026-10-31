@@ -21,7 +21,7 @@ export type Opts = { idleMin: number; cuts: string[]; minHours: number };
 // the three numbers live on Configure (the Morning report build); these are the mockup's defaults
 export const DEFAULTS: Opts = { idleMin: 60, cuts: ["08:00", "20:00"], minHours: 4 };
 
-export type Lock = { bucket: string; role: "chief" | "worker"; at: number };
+export type Lock = { bucket: string; role: "chief" | "worker"; doc: string; at: number };
 export type Obs = { now: number; locks: Lock[]; lastEnd: number | null; chiefLiveAt: number | null };
 export type Open = { opened: number; lastHeld: number; buckets: string[]; offsetMin: number };
 export type State = { open: Open | null; closedAt: number | null; at?: number }; // at: the time of the poll last applied
@@ -176,11 +176,14 @@ export function readLocks(root: string): Lock[] {
       const parts = relative(root, doc).split(sep);
       const bucket = parts.length >= 3 && parts[0] !== ".." ? parts[1] : basename(dirname(doc));
       const at = Date.parse(o.heartbeat ?? o.started);
-      out.push({ bucket, role: /-chief\.md$/.test(doc) ? "chief" : "worker", at: Number.isFinite(at) ? at : 0 });
+      out.push({ bucket, role: /-chief\.md$/.test(doc) ? "chief" : "worker", doc: basename(doc).replace(/\.md$/, ""), at: Number.isFinite(at) ? at : 0 });
     } catch { /* a lock being acquired or released */ }
   }
   return out;
 }
+
+// a chief is live when ITS doc holds a queue lock: a bucket can hold older docs that were never wrapped
+export const liveChiefs = (spans: Span[], locks: Lock[]): Span[] => spans.filter((s) => s.end === null && locks.some((l) => l.role === "chief" && l.doc === s.name));
 
 // every chief doc (…-chief.md) of every bucket under <root>/<user>/, newer than `since`
 export function readChiefDocs(root: string, since: number): Doc[] {
@@ -247,8 +250,7 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
   const locks = readLocks(t.root);
   const state0 = readState(t.file);
   const spans = chiefSpans(readChiefDocs(t.root, t.now - 3 * DAY), state0.open?.offsetMin ?? offsetMin);
-  const chiefBuckets = new Set(locks.filter((l) => l.role === "chief").map((l) => l.bucket));
-  const live = spans.filter((s) => s.end === null && chiefBuckets.has(s.bucket)).map((s) => s.start);
+  const live = liveChiefs(spans, locks).map((s) => s.start);
   const ends = spans.map((s) => s.end).filter((e): e is number => e !== null);
   const obs: Obs = { now: t.now, locks, lastEnd: ends.length ? Math.max(...ends) : null, chiefLiveAt: live.length ? Math.min(...live) : null };
   const prs = await t.merged(state0.open?.opened ?? t.now - 3 * DAY, t.now + MIN);
@@ -282,13 +284,24 @@ export const shiftsFile = (env: Record<string, string | undefined>) => env.SHIFT
 export const MERGED_LIMIT = 200;
 // The bounds go out in UTC (Z is an offset, and a "+" in a search qualifier would need encoding); the half-open [opened, closed) is applied after.
 const utc = (ms: number) => new Date(Math.floor(ms / MIN) * MIN).toISOString().replace(".000Z", "Z");
-export function readMerged(env: Record<string, string | undefined>, cwd: string, from: number, to: number): Promise<Pr[] | null> {
+const readPage = (env: Record<string, string | undefined>, cwd: string, from: number, to: number): Promise<Pr[] | null> => {
   return new Promise((done) => {
     execFile(env.GH_CMD || "gh", ["pr", "list", "--state", "merged", "--search", `merged:${utc(from)}..${utc(to)}`, "--limit", String(MERGED_LIMIT), "--json", "number,title,mergedAt,headRefName"],
       { cwd, env: env as NodeJS.ProcessEnv, timeout: 20_000, maxBuffer: 16 * 1024 * 1024 }, (err, out) => {
         try { const j = err ? null : JSON.parse(String(out)); done(Array.isArray(j) ? j.filter((p) => p && typeof p.number === "number" && typeof p.mergedAt === "string") : null); } catch { done(null); }
       });
   });
+};
+
+// A page that came back full may have been cut off: the window is split in two until every half fits, so no PR is dropped.
+// A full page inside one two-minute window cannot be split, and that reads as unread rather than short.
+export async function readMerged(env: Record<string, string | undefined>, cwd: string, from: number, to: number): Promise<Pr[] | null> {
+  const page = await readPage(env, cwd, from, to);
+  if (page === null || page.length < MERGED_LIMIT) return page;
+  if (to - from <= 2 * MIN) return null;
+  const mid = from + Math.floor((to - from) / 2);
+  const lo = await readMerged(env, cwd, from, mid), hi = await readMerged(env, cwd, mid, to);
+  return lo === null || hi === null ? null : [...new Map([...lo, ...hi].map((p) => [p.number, p])).values()];
 }
 
 // ---- what the page reads ----
@@ -302,6 +315,7 @@ export type View = {
   state: "open" | "idle" | "none";
   shift: { id: string; name: string; opened: string; closed: string | null; why: string | null; zone: string; nextCut: string | null; minutes: number } | null;
   chiefs: Chief[]; buckets: string[];
+  mergedUnread: boolean; // the merged-PR list could not be read: Shipped is unknown, not empty
   waiting: Waiting[]; running: Running[]; shipped: { number: number; title: string; mergedAt: string; chief: string | null }[]; carried: Carried[]; gap: Gap[];
   pager: { prev: string | null; next: string | null };
   last: { id: string; name: string; opened: string; closed: string; chiefs: number; shipped: number | null } | null;
@@ -336,9 +350,10 @@ export function rowsOf(boards: Board[]): { waiting: Waiting[]; running: Running[
 }
 
 // The page's whole read. id selects a closed shift (its row), none selects the current one.
-export function viewOf(o: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[]; boards: Board[]; opts?: Opts }): View {
+export function viewOf(o0: { now: number; rows: Row[]; snap: Snapshot; id: string | null; merged: Pr[] | null; boards: Board[]; opts?: Opts }): View {
+  const o = { ...o0, merged: o0.merged ?? [] };
   const opts = o.opts ?? DEFAULTS;
-  const empty: View = { state: "none", shift: null, chiefs: [], buckets: [], waiting: [], running: [], shipped: [], carried: [], gap: [], pager: { prev: null, next: null }, last: null };
+  const empty: View = { state: "none", shift: null, chiefs: [], buckets: [], mergedUnread: o0.merged === null, waiting: [], running: [], shipped: [], carried: [], gap: [], pager: { prev: null, next: null }, last: null };
   const closedRows = o.rows; // oldest first
   const open = o.snap.state.open;
   const pager = (id: string | null) => {
@@ -371,10 +386,8 @@ export function viewOf(o: { now: number; rows: Row[]; snap: Snapshot; id: string
 
 // the boards of the chiefs that hold a queue lock now, one per live chief doc, by NAME under the handover root
 export async function liveBoards(root: string, locks: Lock[], spans: Span[]): Promise<Board[]> {
-  const chiefBuckets = new Set(locks.filter((l) => l.role === "chief").map((l) => l.bucket));
   const out: Board[] = [];
-  for (const s of spans) {
-    if (s.end !== null || !chiefBuckets.has(s.bucket)) continue;
+  for (const s of liveChiefs(spans, locks)) {
     const doc = await findDoc(root, s.name);
     const b = doc ? await readBoardFile(doc) : null;
     if (b) out.push(b.body as Board);

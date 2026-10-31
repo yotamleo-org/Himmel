@@ -3,7 +3,7 @@ import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULTS, appendShift, attribute, chiefSpans, iso, mergedIn, nameOf, readLocks, readShifts, rowsOf, step, tick, viewOf, type Row, type State, type View } from "../shift";
+import { DEFAULTS, appendShift, attribute, chiefSpans, iso, liveChiefs, mergedIn, nameOf, readLocks, readMerged, readShifts, rowsOf, step, tick, viewOf, type Row, type State, type View } from "../shift";
 import { renderShift } from "../public/shift.js";
 import { startServer } from "../server";
 
@@ -45,7 +45,7 @@ test("a voice-bucket chief opens a shift and holds off the idle close", () => {
   mkdirSync(lock, { recursive: true });
   writeFileSync(join(lock, "owner.json"), JSON.stringify({ session: "s", handover: join(dir, "yotamleo", "himmel-voice", "HIMMEL-nextleg-2026-10-27A-voice-chief.md"), heartbeat: "2026-10-27T10:00:00Z" }));
   const locks = readLocks(dir);
-  expect(locks).toEqual([{ bucket: "himmel-voice", role: "chief", at: T("2026-10-27T10:00:00Z") }]);
+  expect(locks).toEqual([{ bucket: "himmel-voice", role: "chief", doc: "HIMMEL-nextleg-2026-10-27A-voice-chief", at: T("2026-10-27T10:00:00Z") }]);
   let r = step({ open: null, closedAt: null }, { now: T("2026-10-27T10:05:00Z"), locks, lastEnd: null, chiefLiveAt: T("2026-10-27T10:00:00Z") }, DEFAULTS, OFF);
   expect(r.state.open?.buckets).toEqual(["himmel-voice"]);
   expect(r.state.open?.opened).toBe(T("2026-10-27T10:00:00Z"));
@@ -237,7 +237,7 @@ test("a closed shift draws the pager and Carried to the next shift", () => {
 const TOKEN = "t".repeat(64);
 const MIN_MS = 60_000;
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
-function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[] }) {
+function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[]; ghFails?: boolean }) {
   const dir = tmp();
   const root = join(dir, "root"), home = join(dir, "home");
   mkdirSync(home); mkdirSync(root);
@@ -255,7 +255,7 @@ function boot(opts: { rows?: Row[]; chief?: boolean; prs?: unknown[] }) {
   }
   writeFileSync(join(dir, "prs.json"), JSON.stringify(opts.prs ?? []));
   const gh = join(dir, "gh.sh");
-  writeFileSync(gh, "#!/bin/sh\ncat " + join(dir, "prs.json") + "\n", { mode: 0o755 });
+  writeFileSync(gh, opts.ghFails ? "#!/bin/sh\nexit 1\n" : "#!/bin/sh\ncat " + join(dir, "prs.json") + "\n", { mode: 0o755 });
   const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, SHIFTS_FILE: file, GH_CMD: gh } });
   cleanups.push(() => s.stop());
   return { s, file };
@@ -343,4 +343,44 @@ test("a closed shift's continuing chief ends at the close, not at now", () => {
   const html = renderShift(v, {});
   expect(html).not.toContain("to now");
   expect(html).toContain("to 20:00");
+});
+
+// ---- who is live, a full gh page, an unreadable PR list ----
+test("only the chief doc that holds a lock is live: an older unwrapped doc in the same bucket is not", () => {
+  const span = (name: string) => ({ name, bucket: "himmel", start: T("2026-10-27T08:00Z"), end: null, approx: false });
+  const locks = [{ bucket: "himmel", role: "chief" as const, doc: "B-chief", at: T("2026-10-27T10:00Z") }];
+  expect(liveChiefs([span("A-chief"), span("B-chief")], locks).map((s) => s.name)).toEqual(["B-chief"]);
+  expect(liveChiefs([span("B-chief")], [{ ...locks[0], role: "worker" as const }])).toEqual([]);
+});
+
+test("a full gh page is split until every PR is read, so a busy shift is never recorded short", async () => {
+  const dir = tmp();
+  const base = T("2026-10-27T08:00:00Z"), N = 250;
+  writeFileSync(join(dir, "prs.json"), JSON.stringify(Array.from({ length: N }, (_, i) => ({ number: i + 1, title: "t", mergedAt: new Date(base + i * MIN_MS).toISOString() }))));
+  const gh = join(dir, "gh.js");
+  writeFileSync(gh, `#!/usr/bin/env bun
+import { readFileSync } from "node:fs";
+const a = process.argv, m = /merged:(\\S+)\\.\\.(\\S+)/.exec(a[a.indexOf("--search") + 1]);
+const lo = Date.parse(m[1]), hi = Date.parse(m[2]);
+const all = JSON.parse(readFileSync(process.env.GH_PRS, "utf8"));
+console.log(JSON.stringify(all.filter((p) => { const t = Date.parse(p.mergedAt); return t >= lo && t <= hi; }).slice(0, Number(a[a.indexOf("--limit") + 1]))));
+`, { mode: 0o755 });
+  const prs = await readMerged({ PATH: process.env.PATH, GH_CMD: gh, GH_PRS: join(dir, "prs.json") }, dir, base, base + N * MIN_MS);
+  expect(prs?.map((p) => p.number).sort((x, y) => x - y)).toEqual(Array.from({ length: N }, (_, i) => i + 1));
+});
+
+test("a merged-PR list that could not be read is said so on the page, never shown as an empty shift", () => {
+  const v = viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: null, boards: [board] });
+  expect(v.mergedUnread).toBe(true);
+  const html = renderShift(v, {});
+  expect(html).toContain("could not be read");
+  expect(html).not.toContain("Nothing merged in this shift");
+  expect(viewOf({ now: NOW, rows: [], snap: snap(open), id: null, merged: [], boards: [board] }).mergedUnread).toBe(false);
+});
+
+test("GET /api/shift: a gh failure comes back as an unread PR list, not an empty one", async () => {
+  const { s } = boot({ chief: true, ghFails: true });
+  const v = await (await getShift(s.port)).json();
+  expect(v.state).toBe("open");
+  expect(v.mergedUnread).toBe(true);
 });
