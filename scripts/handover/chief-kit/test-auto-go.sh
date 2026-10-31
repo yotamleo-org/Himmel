@@ -28,13 +28,13 @@ export HOME="$tmp/home"; mkdir -p "$HOME"
 export HANDOVER_DIR="$tmp/root"; mkdir -p "$HANDOVER_DIR"
 export USER_SLUG=u
 
-fails=0
-check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
-contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
+fails=0; failrows=""
+check()   { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); failrows="$failrows$1 | "; }; }
+contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); failrows="$failrows$1 | "; }; }
 lacks()    { printf '%s' "$2" | grep -qF -e "$3"; case $? in
                 1) echo "ok - $1" ;;
-                0) echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)) ;;
-                *) echo "FAIL - $1: grep errored"; fails=$((fails+1)) ;;
+                0) echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)); failrows="$failrows$1 | " ;;
+                *) echo "FAIL - $1: grep errored"; fails=$((fails+1)); failrows="$failrows$1 | " ;;
             esac; }
 
 # shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
@@ -578,5 +578,5 @@ check    "A1b auto-go.sh hands a relative entry off to the anchor" "$(grep -cE '
 check    "A1b the registry names every seam auto-go.sh reads" "$(jq -r '."scripts/handover/chief-kit/auto-go.sh".seam_env_vars // [] | sort | join(",")' "$HERE/../../chokepoints.json")" "AUTO_GO_ANCHOR,AUTO_GO_BUS,AUTO_GO_CENSUS,GH_CMD,HIMMEL_LEGACY_NAMES,JIRA_CMD"
 
 if [ "$fails" -eq 0 ]; then echo "test-auto-go.sh: all rows passed"; exit 0; fi
-echo "test-auto-go.sh: $fails row(s) failed" >&2
+echo "test-auto-go.sh: $fails row(s) failed: $failrows" >&2
 exit 1
