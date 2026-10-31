@@ -133,7 +133,7 @@ cmd_provision() {
     vmsdk "$VM" clone >/dev/null || fail "vmsdk clone on $VM failed"
 
     # (3) claude pinned to $PIN_VERSION, autoupdate off
-    install_cmd='export PATH="$HOME/.local/bin:$PATH"; if [ "$("$HOME/.local/bin/claude" --version 2>/dev/null | cut -d" " -f1)" != '"$PIN_VERSION"' ]; then claude install '"$PIN_VERSION"' || exit 1; fi; grep -qxF "export DISABLE_AUTOUPDATER=1" "$HOME/.profile" 2>/dev/null || echo "export DISABLE_AUTOUPDATER=1" >> "$HOME/.profile"'
+    install_cmd='export PATH="$HOME/.local/bin:$PATH"; if [ "$("$HOME/.local/bin/claude" --version 2>/dev/null | cut -d" " -f1)" != '"$PIN_VERSION"' ]; then claude install '"$PIN_VERSION"' || exit 1; fi; [ "$("$HOME/.local/bin/claude" --version 2>/dev/null | cut -d" " -f1)" = '"$PIN_VERSION"' ] || { echo "installed claude version is not '"$PIN_VERSION"'" >&2; exit 1; }; grep -qxF "export DISABLE_AUTOUPDATER=1" "$HOME/.profile" 2>/dev/null || echo "export DISABLE_AUTOUPDATER=1" >> "$HOME/.profile"'
     out=$(gl 900 "$install_cmd" 2>&1) || fail "claude install $PIN_VERSION: $out"
 
     # (4) the guest-local cli-proxy key, created once (generated in the guest, never on a host command line)
