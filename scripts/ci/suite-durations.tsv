@@ -286,6 +286,7 @@ scripts/docs/test-docs-dropped-terms.sh	2
 scripts/docs/test-footprint-page.sh	0
 scripts/docs/test-generate-credits.sh	1
 scripts/docs/test-how-a-change-ships.sh	0
+scripts/docs/test-workflow-page-drift.sh	1
 scripts/docs/test-install-profiles-page.sh	1
 scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
@@ -431,6 +432,7 @@ scripts/handover/chief-kit/test-ready-check.sh	207
 scripts/handover/chief-kit/test-ready-go.sh	15
 scripts/handover/chief-kit/test-relay-batch.sh	20
 scripts/handover/chief-kit/test-run-suite.sh	1
+scripts/handover/chief-kit/test-series-ledger.sh	3
 scripts/handover/chief-kit/test-shepherd.sh	3
 scripts/handover/chief-kit/test-station-sync.sh	3
 scripts/handover/chief-kit/test-status-drift.sh	57

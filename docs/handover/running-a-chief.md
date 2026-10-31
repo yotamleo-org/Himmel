@@ -412,6 +412,7 @@ dispatchable <d> · dropped {<reason> <n>, ...}`, which the FOCUS page prints un
 `open = in-chain + standalone + unchained`). A registry, graph or render failure ends the refresh
 `focus=WARN:chains <registry|graph|render>` and keeps the last good file byte for byte; `drain-unchained=<k>` in
 `focus-state` is a WARN while `k` is above 0, and a set `focus-plan:` prints `WARN priority-source plan-differs`.
+`python3 scripts/handover/chief-kit/series-ledger.py` is the one reader/writer of a series ledger under flock; `read|create|set|add-item|pass`.
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.
 
