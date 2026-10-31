@@ -228,13 +228,14 @@ function hermesInstalled(env) {
   return false;
 }
 
-// the himmel.conf keys this resolver reads: a subset of what scripts/lib/load-dotenv.sh serves (_himmel_key_class "config"), not the full list.
-const CONF_KEYS = new Set([
-  'HANDOVER_DIR', 'USER_SLUG', 'LUNA_VAULT_PATH', 'HIMMEL_DOC_FRESHNESS', 'HIMMEL_INITIATIVE', 'HIMMEL_INITIATIVE_AFK',
-  'HIMMEL_AFK', 'HIMMEL_WHERE_ARE_WE', 'HIMMEL_WHERE_ARE_WE_STALE_HOURS',
-  'HIMMEL_WORKTREE_NUDGE', 'HIMMEL_UPDATE_AUTOSTASH', 'CR_PROFILE', 'CR_CLAUDE_AGENTS', 'TICKET_ID_REQUIRED',
-  'TICKET_ID_PATTERN', 'TICKET_ID_EXEMPT_AUTHORS', 'TRACKER', 'TELEGRAM_CHAT_ID', 'TELEGRAM_GROUP_CHAT_ID', 'JIRA_BASE_URL',
-]);
+// the himmel.conf keys scripts/lib/load-dotenv.sh serves (_himmel_key_class "config", minus the env-only ones), from the one key list the wizard pins to it.
+// A copy of this file run without the key list beside it (a suite's fixture checkout) reads no conf key.
+const CONF_KEYS = (() => {
+  try {
+    return new Set(createRequire(import.meta.url)('../himmelctl/lib/config-keys.json').keys
+      .filter((e) => e.class === 'config' && !e.envOnly).map((e) => e.name));
+  } catch { return new Set(); }
+})();
 
 export function buildCtx(repoRoot, procEnv) {
   // .env precedence: main-checkout .env (base) < worktree .env < process env (wins).

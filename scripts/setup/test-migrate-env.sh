@@ -13,6 +13,11 @@ pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 has() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1 — missing '$2'" ;; esac; }
 lacks() { case "$3" in *"$2"*) fail "$1 — found '$2'" ;; *) pass "$1" ;; esac; }
+# A fixture write that fails fails the suite: a missing fixture would let the absence rows pass vacuously.
+# shellcheck disable=SC2059 # the format is the caller's
+fxput() { local f=$1 fmt=$2; shift 2; printf -- "$fmt" "$@" > "$f" || fail "fixture write to $f failed"; }
+# shellcheck disable=SC2059 # the format is the caller's
+fxadd() { local f=$1 fmt=$2; shift 2; printf -- "$fmt" "$@" >> "$f" || fail "fixture append to $f failed"; }
 mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 no_canary() {  # <label> <text>: no fixture value reaches the text
     case "$2" in *CANARY-*) fail "$1 — a value was printed" ;; *) pass "$1" ;; esac
@@ -37,7 +42,7 @@ canary() { printf 'CANARY-%s-%s' "$1" "$(od -An -N4 -tx1 /dev/urandom | tr -d ' 
 mkdir -p "$TMP/real"
 names=$(sed -n 's/^#\{0,1\}[[:space:]]*\([A-Z][A-Z0-9_]*\)=.*/\1/p' "$REPO/.env.example" | awk '!seen[$0]++')
 { for k in $names; do printf '%s=%s\n' "$k" "$(canary "$k")"; done
-  printf 'NOT_READ_BY_HIMMEL_ZZQ=%s\n' "$(canary unread)"; } > "$TMP/real/.env"
+  printf 'NOT_READ_BY_HIMMEL_ZZQ=%s\n' "$(canary unread)"; } > "$TMP/real/.env" || fail "fixture write to $TMP/real/.env failed"
 cp "$TMP/real/.env" "$TMP/real.orig"
 out=$(bash "$REPO/scripts/setup/migrate-env.sh" --dry-run --env "$TMP/real/.env" 2>&1)
 rc=$?
@@ -68,7 +73,9 @@ cp "$REPO/scripts/lib/load-dotenv.sh" "$REPO/scripts/lib/prim.sh" "$REPO/scripts
 cp "$REPO"/scripts/lanes/resolve.mjs "$REPO"/scripts/lanes/probe.mjs "$REPO"/scripts/lanes/bank-status-core.mjs \
     "$REPO"/scripts/lanes/profile-managed.cjs "$FX/scripts/lanes/"
 cp "$REPO/docs/setup/himmel-config.example.json" "$FX/docs/setup/"
-printf '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\n' > "$FX/.env.example"
+mkdir -p "$FX/scripts/himmelctl/lib"
+cp "$REPO/scripts/himmelctl/lib/config-keys.json" "$FX/scripts/himmelctl/lib/"
+fxput "$FX/.env.example" '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\n'
 # The Jira CLI readers, from their real source with the types stripped.
 strip_ts() {
     node -e 'const m = require("node:module"); const fs = require("node:fs");
@@ -100,9 +107,9 @@ if ! strip_ts "$REPO/scripts/jira/src/handover-root.ts" "$FX/scripts/jira/dist/h
     echo "test-migrate-env: $((FAILED + 1)) FAILED"
     exit 1
 fi
-printf '{"type":"module"}\n' > "$FX/scripts/jira/dist/package.json"
+fxput "$FX/scripts/jira/dist/package.json" '{"type":"module"}\n'
 # shellcheck disable=SC2016 # the fixture reader names the variable literally
-printf 'printf %%s "$READ_SECRET"\n' >"$FX/scripts/reads-secret.sh"
+fxput "$FX/scripts/reads-secret.sh" 'printf %%s "$READ_SECRET"\n'
 # The git dir is not named .git: a fixture that is its own primary checkout is an
 # anchor to the seam guard, which refuses the CLAUDECODE rows on CI (no claude ancestor).
 if ! { git init -q --separate-git-dir "$FX/.fxgit" "$FX" && mkdir -p "$FX/.fxgit/info" && printf '.fxgit/\n' >> "$FX/.fxgit/info/exclude" && git -C "$FX" add -A; }; then
@@ -125,11 +132,11 @@ fixture_env() {  # a fresh station-shaped .env, mode 600, and no config files
       echo "READ_SECRET=$(canary read)"
       echo "UNREAD_SECRET=$(canary unread)"
       echo "KEEP_ME=$(canary keep)"
-      echo "OTHER_TOOL_TOKEN=$(canary other)"; } > "$TMP/st/.env"
+      echo "OTHER_TOOL_TOKEN=$(canary other)"; } > "$TMP/st/.env" || fail "fixture write to $TMP/st/.env failed"
     chmod 600 "$TMP/st/.env"
     cp -p "$TMP/st/.env" "$TMP/st.orig"
     mkdir -p "$HOME/.himmel"
-    printf '# station-ops reads this one\nKEEP_ME\n' > "$HOME/.himmel/env-keep.txt"
+    fxput "$HOME/.himmel/env-keep.txt" '# station-ops reads this one\nKEEP_ME\n'
 }
 
 # --- 2a. The apply moves nothing without a yes typed at a terminal ---
@@ -208,7 +215,7 @@ if [ "$n" = 1 ]; then pass "a second run takes no backup"; else fail "a second r
 
 # A line with no key name is never removed, even when a key class moves nothing.
 rm -rf "$HOME/.himmel" "$HOME/.config"
-printf 'HANDOVER_DIR=%s\n=orphan-line\n' "$TMP/handovers" > "$TMP/st/.env"
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\n=orphan-line\n' "$TMP/handovers"
 chmod 600 "$TMP/st/.env"
 apply_tty y
 envnow=$(cat "$TMP/st/.env")
@@ -219,7 +226,7 @@ has "a line with no key name stays in .env" "=orphan-line" "$envnow"
 # The Jira URL moves and verifies through every reader; the remaining env-only
 # settings stay in .env.
 rm -rf "$HOME/.himmel" "$HOME/.config"
-printf 'HANDOVER_DIR=%s\nJIRA_BASE_URL=https://canary.example.net\nFIRECRAWL_BASE_URL=https://fc.example.net\nWHISPER_MODEL=/models/ggml-canary.bin\n' "$TMP/handovers" > "$TMP/st/.env"
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nJIRA_BASE_URL=https://canary.example.net\nFIRECRAWL_BASE_URL=https://fc.example.net\nWHISPER_MODEL=/models/ggml-canary.bin\n' "$TMP/handovers"
 chmod 600 "$TMP/st/.env"
 apply_tty y
 if [ "$rc" = 0 ]; then pass "the Jira URL migrates without a reader mismatch"; else fail "the Jira URL migration exited $rc: $out"; fi
@@ -233,7 +240,7 @@ lacks "a remaining env-only key is not copied to himmel.conf" "FIRECRAWL_BASE_UR
 
 # The chat ids are config keys himmel.conf serves: the move succeeds and the .env lines go.
 rm -rf "$HOME/.himmel" "$HOME/.config"
-printf 'HANDOVER_DIR=%s\nTELEGRAM_CHAT_ID=1234567\nTELEGRAM_GROUP_CHAT_ID=-100987654\n' "$TMP/handovers" > "$TMP/st/.env"
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nTELEGRAM_CHAT_ID=1234567\nTELEGRAM_GROUP_CHAT_ID=-100987654\n' "$TMP/handovers"
 chmod 600 "$TMP/st/.env"
 apply_tty y
 if [ "$rc" = 0 ]; then pass "the chat ids move without a lanes mismatch"; else fail "the chat ids exited $rc: $out"; fi
@@ -241,20 +248,31 @@ envnow=$(cat "$TMP/st/.env")
 lacks "TELEGRAM_CHAT_ID leaves .env" "TELEGRAM_CHAT_ID=" "$envnow"
 lacks "TELEGRAM_GROUP_CHAT_ID leaves .env" "TELEGRAM_GROUP_CHAT_ID=" "$envnow"
 
-# Known gap, unchanged here: a config key the lanes resolver does not read (JIRA_EMAIL)
-# fails the verify step and the migration stops. This row pins that, so the fix flips it.
+# Every config key moves, whether or not the lanes resolver once kept it on a short list of its own.
 rm -rf "$HOME/.himmel" "$HOME/.config"
-printf 'HANDOVER_DIR=%s\nJIRA_EMAIL=ops@example.net\n' "$TMP/handovers" > "$TMP/st/.env"
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nJIRA_EMAIL=ops@example.net\nSNYK_ORG_ID=canary-org\n' "$TMP/handovers"
 chmod 600 "$TMP/st/.env"
 apply_tty y
-if [ "$rc" = 1 ]; then pass "JIRA_EMAIL still fails the lanes verify (known gap)"; else fail "JIRA_EMAIL exited $rc: $out"; fi
-has "JIRA_EMAIL is the reported mismatch" "MISMATCH JIRA_EMAIL (lanes resolve)" "$out"
+if [ "$rc" = 0 ]; then pass "JIRA_EMAIL migrates without a lanes mismatch"; else fail "JIRA_EMAIL exited $rc: $out"; fi
+lacks "JIRA_EMAIL raises no mismatch" "MISMATCH" "$out"
+envnow=$(cat "$TMP/st/.env")
+lacks "JIRA_EMAIL leaves .env" "JIRA_EMAIL=" "$envnow"
+lacks "SNYK_ORG_ID leaves .env" "SNYK_ORG_ID=" "$envnow"
+has "JIRA_EMAIL reaches himmel.conf" "JIRA_EMAIL=ops@example.net" "$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)"
+
+# A chat id with a trailing comment migrates too.
+rm -rf "$HOME/.himmel" "$HOME/.config"
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nTELEGRAM_CHAT_ID=1234567 # note\n' "$TMP/handovers"
+chmod 600 "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "a chat id with a trailing comment migrates"; else fail "a chat id with a trailing comment exited $rc: $out"; fi
+lacks "a chat id with a trailing comment leaves .env" "TELEGRAM_CHAT_ID=" "$(cat "$TMP/st/.env")"
 
 # The keep-list holds secrets only: a behaviour key on it still moves.
 rm -rf "$HOME/.himmel" "$HOME/.config"
 mkdir -p "$HOME/.himmel"
-printf 'HANDOVER_DIR\n' > "$HOME/.himmel/env-keep.txt"
-printf 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/handovers" "$(canary slug)" > "$TMP/st/.env"
+fxput "$HOME/.himmel/env-keep.txt" 'HANDOVER_DIR\n'
+fxput "$TMP/st/.env" 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/handovers" "$(canary slug)"
 chmod 600 "$TMP/st/.env"
 apply_tty y
 envnow=$(cat "$TMP/st/.env")
@@ -263,7 +281,7 @@ lacks "the keep-list does not split the behaviour keys" "MISMATCH" "$out"
 
 # A symlinked .env stays a link, and the rewrite leaves no temporary file.
 rm -rf "$HOME/.himmel" "$HOME/.config"
-printf 'HANDOVER_DIR=%s\nKEEP_LINE=1\n' "$TMP/handovers" > "$TMP/st/env.target"
+fxput "$TMP/st/env.target" 'HANDOVER_DIR=%s\nKEEP_LINE=1\n' "$TMP/handovers"
 chmod 600 "$TMP/st/env.target"
 rm -f "$TMP/st/.env"
 ln -s "$TMP/st/env.target" "$TMP/st/.env"
@@ -295,6 +313,11 @@ has "the failing reader and key are named" "MISMATCH HANDOVER_DIR (jira handover
 has "the user is told no line was removed" "no lines were removed from .env" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "the failed verify leaves .env untouched"; else fail "the failed verify changed .env"; fi
 no_canary "the failed verify prints no value" "$out"
+# Once the reader is fixed, the same .env migrates on the next run.
+cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "a run after a failed verify ends 0 once the reader is fixed"; else fail "the run after a failed verify exited $rc: $out"; fi
+lacks "the run after a failed verify moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$TMP/st/.env")"
 # A reader that throws both times proves nothing and aborts too.
 fixture_env
 printf '%s\n' 'export function behaviourKey() { throw new Error("broken"); }' \
@@ -313,7 +336,7 @@ cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
 
 # --- 4. A policy value that would change aborts ---
 fixture_env
-printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
+fxput "$HOME/.himmel/config.json" '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n'
 apply_tty y
 if [ "$rc" != 0 ]; then pass "a policy value that would change aborts"; else fail "a policy change from 1 to 0 passed"; fi
 has "the changed policy key is named" "MISMATCH CR_REQUIRE_CROSS_MODEL (load_policy)" "$out"
@@ -372,7 +395,7 @@ no_canary "the update step prints no value" "$out"
 consent_fixture() {  # <policy json>: the update-step fixture plus a policy file
     fixture_env
     cp -p "$TMP/st/.env" "$FX/.env"
-    printf '%s\n' "$1" > "$HOME/.himmel/config.json"
+    fxput "$HOME/.himmel/config.json" '%s\n' "$1"
 }
 consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
 out=$(CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
@@ -387,14 +410,14 @@ has "(a) the report names the policy key that stays" "these stay in .env: CR_REQ
 
 # An agent that plants a gate-policy key in .env cannot have the consent write it.
 consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
-printf 'ARMAUTOMERGE=1\n' >> "$FX/.env"
+fxadd "$FX/.env" 'ARMAUTOMERGE=1\n'
 out=$(CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
 lacks "a planted policy key never reaches config.json under consent" "ARMAUTOMERGE" "$(cat "$HOME/.himmel/config.json")"
 has "a planted policy key stays in .env" "ARMAUTOMERGE=1" "$(cat "$FX/.env")"
 
 # Nor can it point the consent at a .env of its own making.
 consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
-printf 'ARMAUTOMERGE=1\nCR_FLOOR_FALLBACK=claude-only\nUSER_SLUG=%s\n' "$(canary agent)" > "$TMP/agent.env"
+fxput "$TMP/agent.env" 'ARMAUTOMERGE=1\nCR_FLOOR_FALLBACK=claude-only\nUSER_SLUG=%s\n' "$(canary agent)"
 cp -p "$TMP/agent.env" "$TMP/agent.orig"
 cp -p "$HOME/.himmel/config.json" "$TMP/consent.orig"
 out=$(CLAUDECODE=1 bash "$SCRIPT" --env "$TMP/agent.env" < /dev/null 2>&1); rc=$?
@@ -421,7 +444,7 @@ fi
 # A mismatch stops under consent, and a piped answer cannot settle it.
 consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
 hconf=$(canary hconf)
-printf 'USER_SLUG=%s\n' "$hconf" > "$HOME/.himmel/himmel.conf"
+fxput "$HOME/.himmel/himmel.conf" 'USER_SLUG=%s\n' "$hconf"
 out=$(printf 'e\n' | CLAUDECODE=1 bash "$TMP/update-step.sh" apply 2>&1)
 has "a mismatch still stops under consent" "rc=1 status=failed" "$out"
 has "the consented mismatch names the key" "MISMATCH USER_SLUG (load_dotenv)" "$out"
@@ -437,7 +460,7 @@ if cmp -s "$FX/.env" "$TMP/st.orig"; then pass "the consented mismatch leaves .e
 no_canary "the consented mismatch prints no value" "$out"
 
 consent_fixture '{"version":1,"policy":{}}'
-printf 'ENV_MIGRATION_CONSENT=1\n' >> "$FX/.env"
+fxadd "$FX/.env" 'ENV_MIGRATION_CONSENT=1\n'
 cp -p "$FX/.env" "$TMP/fx.orig"
 out=$(ENV_MIGRATION_CONSENT=1 CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
 has "(b) consent only in the env and .env applies nothing" "rc=0 status=pending" "$out"
@@ -459,7 +482,7 @@ env_val() { sed -n "s/^$1=//p" "$TMP/st.orig"; }   # the fixture .env's value of
 conf_fixture() {  # a himmel.conf that disagrees with .env on USER_SLUG
     fixture_env
     hconf=$(canary hconf)
-    printf 'USER_SLUG=%s\n' "$hconf" > "$HOME/.himmel/himmel.conf"
+    fxput "$HOME/.himmel/himmel.conf" 'USER_SLUG=%s\n' "$hconf"
 }
 slug_read() {  # the value the shell reader returns for USER_SLUG with .env no longer holding it
     ( unset USER_SLUG; cd "$FX" && . "$FX/scripts/lib/load-dotenv.sh" && load_dotenv --root "$TMP/st" USER_SLUG; printf '%s' "${USER_SLUG-}" ) 2>/dev/null
@@ -492,19 +515,19 @@ done
 # A gate-policy key resolves the same way, in config.json.
 policy_val() { node -e 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).policy || {}; process.stdout.write(String(p.CR_REQUIRE_CROSS_MODEL))' "$HOME/.himmel/config.json" 2>/dev/null; }
 fixture_env
-printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
+fxput "$HOME/.himmel/config.json" '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n'
 apply_tty $'y\ne'
 if [ "$rc" = 0 ] && [ "$(policy_val)" = 1 ]; then pass "keep .env: the policy value becomes the .env value"; else fail "keep .env on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
 # shellcheck disable=SC2088 # the report prints the tilde as written
 has "a policy mismatch names the config.json side" "~/.himmel/config.json" "$out"
 fixture_env
-printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
+fxput "$HOME/.himmel/config.json" '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n'
 apply_tty $'y\nh'
 if [ "$rc" = 0 ] && [ "$(policy_val)" = 0 ]; then pass "keep ~/.himmel: the policy value stays"; else fail "keep ~/.himmel on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
 lacks "keep ~/.himmel: the policy line left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
 # A kept policy value with a space and a hash survives the dotenv copy it is checked through.
 fixture_env
-printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"a # b"}}\n' > "$HOME/.himmel/config.json"
+fxput "$HOME/.himmel/config.json" '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"a # b"}}\n'
 apply_tty $'y\nh'
 if [ "$rc" = 0 ] && [ "$(policy_val)" = "a # b" ]; then pass "keep ~/.himmel: a policy value with a hash is kept whole"; else fail "keep ~/.himmel on a policy value with a hash: rc $rc, policy '$(policy_val)'"; fi
 lacks "keep ~/.himmel: a policy value with a hash left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
@@ -520,7 +543,7 @@ fi
 for answer in e h; do
     fixture_env
     # The release-state reader follows the handover root, so USER_SLUG is held too.
-    printf 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/other" "$(canary slug)" > "$HOME/.himmel/himmel.conf"
+    fxput "$HOME/.himmel/himmel.conf" 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/other" "$(canary slug)"
     cp "$TMP/handover-root.envonly.js" "$FX/scripts/jira/dist/handover-root.js"
     apply_tty "y"$'\n'"$answer"$'\n'"$answer"
     if [ "$rc" != 0 ]; then pass "keep $answer with a faulty reader does not apply"; else fail "keep $answer with a faulty reader exited 0"; fi

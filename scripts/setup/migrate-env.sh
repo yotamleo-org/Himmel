@@ -392,7 +392,16 @@ verify_all() {  # sets bad and verified
             || bad="${bad}verify: load_policy failed reading .env before the move"$'\n'
     fi
     if [ "${#config_keys[@]}" -gt 0 ]; then
-        if ! nodeout=$(node "$HERE/migrate-env-verify.mjs" "$work/repo" "$verify_env" "$work/home" "$HOME" "$ROOT" "${config_keys[@]}" 2>&1); then
+        # The node readers keep a trailing comment that load_dotenv drops, so they get the
+        # loader's value of each key: the move is judged against what the loader reads.
+        cp "$verify_env" "$work/env.node"
+        for key in "${config_keys[@]}"; do
+            line=$(_load_dotenv_extract "$verify_env" "$key")
+            [ -n "$line" ] || continue
+            set_line "$work/env.node" "$key" "$line" "$work/env.node.new" && mv -f "$work/env.node.new" "$work/env.node" \
+                || bad="${bad}verify: could not build the .env the node readers compare against"$'\n'
+        done
+        if ! nodeout=$(node "$HERE/migrate-env-verify.mjs" "$work/repo" "$work/env.node" "$work/home" "$HOME" "$ROOT" "${config_keys[@]}" 2>&1); then
             bad="$bad$(printf '%s\n' "$nodeout" | grep -E '^(MISMATCH|verify:) ')"$'\n'
             [ -n "$(printf '%s' "$bad" | tr -d '\n')" ] || bad="${bad}verify: the node readers failed to run"$'\n'
         fi
