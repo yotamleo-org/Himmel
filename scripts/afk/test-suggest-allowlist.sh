@@ -59,11 +59,14 @@ run_row() { # <id> <run_as> <exit> <argv-json> [ts] [kind]
     printf '{"event": "request", "id": "q0000001", "kind": "run", "result": "pending", "run_as": "root", "ts": "%s", "argv": ["/opt/fixture/bin/crontab", "-l"]}\n' "$now_ts"
 } > "$LEDGER"
 
-snapshot() { tar -cf - -C "$TMP_ROOT" . | sha256sum; }
+hash256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi; }
+snapshot() { tar -cf - -C "$TMP_ROOT" . | hash256; }
+# expect_ok <rc> <name>: a CLI call must exit 0 before its output is judged
+expect_ok() { if [ "$1" -eq 0 ]; then pass "$2 exits 0"; else fail "$2 exits 0" "rc=$1"; fi; }
 
 echo "TEST: fixture ledger suggests crontab once with count 3, pacman seen once"
-before=$(snapshot)
-out=$(HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since 30d)
+before=$(snapshot) && [ -n "$before" ] || { echo "ERR snapshot failed before the run"; exit 1; }
+out=$(HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since 30d); expect_ok $? "the 30d run"
 assert_contains "crontab is a suggested class with its count" '"count": 3' "$out"
 assert_contains "the suggested class names the argv" '"/opt/fixture/bin/crontab", "-l"' "$out"
 assert_contains "the suggested class carries run_as" '"run_as": "root"' "$out"
@@ -81,21 +84,21 @@ assert_not_contains "a refused run is not suggested" "wipefs" "$out"
 assert_not_contains "a sudo-kind run is not suggested" "systemctl" "$out"
 
 echo "TEST: the script writes nothing"
-after=$(snapshot)
+after=$(snapshot) && [ -n "$after" ] || { echo "ERR snapshot failed after the run"; exit 1; }
 if [ "$before" = "$after" ]; then pass "no file under the fixture root changed"; else fail "no file under the fixture root changed" "$(diff <(echo "$before") <(echo "$after") || true)"; fi
 
 echo "TEST: --since narrows the window"
-out=$(HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since 1d)
+out=$(HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since 1d); expect_ok $? "the 1d run"
 assert_contains "the 1-day window still counts three crontab runs" '"count": 3' "$out"
-out=$(HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since 36500d)
+out=$(HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since 36500d); expect_ok $? "the 36500d run"
 assert_contains "a huge window also counts the old crontab run" '"count": 4' "$out"
 if HOME="$FAKE_HOME" AFK_SUDO_LEDGER="$LEDGER" bash "$SCRIPT" --since nope >/dev/null 2>&1; then fail "a bad --since is refused"; else pass "a bad --since is refused"; fi
 
 echo "TEST: an absent or empty ledger"
-out=$(AFK_SUDO_LEDGER="$TMP_ROOT/none.jsonl" bash "$SCRIPT")
+out=$(AFK_SUDO_LEDGER="$TMP_ROOT/none.jsonl" bash "$SCRIPT"); expect_ok $? "the absent-ledger run"
 assert_contains "an absent ledger says so" "no ledger" "$out"
 : > "$TMP_ROOT/empty.jsonl"
-out=$(AFK_SUDO_LEDGER="$TMP_ROOT/empty.jsonl" bash "$SCRIPT")
+out=$(AFK_SUDO_LEDGER="$TMP_ROOT/empty.jsonl" bash "$SCRIPT"); expect_ok $? "the empty-ledger run"
 assert_contains "an empty ledger suggests nothing" "no run in the window" "$out"
 
 echo

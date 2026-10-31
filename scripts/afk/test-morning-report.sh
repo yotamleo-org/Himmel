@@ -726,7 +726,7 @@ report=$(HANDOVER_DIR="$hroot" AFK_SUDO_LEDGER="$AS_LEDGER" bash "$SCRIPT" --row
 assert_contains "the AFK approvals section has its heading" "## AFK approvals" "$report"
 assert_contains "requests inside 24 h are counted once each, older ones are not" "**3 requests** in the last 24 h: approved 1, expired 1, wrong-code 1." "$report"
 # shellcheck disable=SC2016  # the backticks are literal report text
-assert_contains "a run line carries its argv and exit status" '`aaaaaaaa` /usr/bin/systemctl restart x.service, exit 0 (session S1, ticket HIMMEL-1)' "$report"
+assert_contains "a sudo run line defaults to root and carries its argv and exit status" '`aaaaaaaa` /usr/bin/systemctl restart x.service, exit 0, as root (session S1, ticket HIMMEL-1)' "$report"
 # shellcheck disable=SC2016  # the backticks are literal report text
 assert_contains "an argument with a space keeps its boundary" "\`eeeeeeee\` /usr/bin/echo 'a b', exit 0" "$report"
 runlines=$(printf '%s\n' "$report" | grep -c '^- .* exit ')
