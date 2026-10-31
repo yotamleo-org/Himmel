@@ -76,7 +76,12 @@ case "$1 $2" in
     "pr list")
         # --search present => merged date query; else the all-state PR map.
         if printf '%s ' "$@" | grep -q -- '--search'; then
-            printf '%s\n' "${FAKE_GH_PR_JSON:-[]}"
+            # FAKE_GH_SEARCH_FROM set => only the search for exactly that day finds the PRs.
+            if [ -n "${FAKE_GH_SEARCH_FROM:-}" ] && ! printf '%s\n' "$@" | grep -qxF -- "merged:>=$FAKE_GH_SEARCH_FROM"; then
+                printf '[]\n'
+            else
+                printf '%s\n' "${FAKE_GH_PR_JSON:-[]}"
+            fi
         else
             printf '%s\n' "${FAKE_GH_PR_ALL:-[]}"
         fi
@@ -815,7 +820,7 @@ echo "TEST: PRs merged per shift is counted over [opened, closed); a PR merged a
 SH_FILE2="$SH_DIR/shifts2.jsonl"
 printf '%s\n%s\n' "$ROW_DAY" "$ROW_EVE" > "$SH_FILE2"
 PRS='[{"number":11,"title":"feat: A-1 early","mergedAt":"2026-10-28T06:59:59Z"},{"number":12,"title":"feat: A-2 inside day","mergedAt":"2026-10-28T10:00:00Z"},{"number":13,"title":"feat: A-3 at the close","mergedAt":"2026-10-28T19:00:00Z"},{"number":14,"title":"feat: A-4 inside night","mergedAt":"2026-10-29T03:00:00Z"}]'
-FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs.md" --since-date 2026-10-28 >/dev/null
+FAKE_GH_SEARCH_FROM=2026-10-27 FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs.md" --since-date 2026-10-28 >/dev/null
 prs=$(cat "$SH_DIR/prs.md")
 cell() { awk -F'|' -v id="$1" -v col="$2" 'index($2, id) { gsub(/^ +| +$/, "", $col); print $col; exit }' <<< "$3"; }
 shift_row() { grep -E "^\| (day|night) $1 \|" <<< "$2" | head -1; }
@@ -828,11 +833,16 @@ assert_contains "prs: the report window is named" "The tiles, Completed and Chie
 echo "TEST: shift times stored to the minute (no seconds, the real shift.ts form) still name the shift and count its PRs"
 SH_FILE2M="$SH_DIR/shifts2m.jsonl"
 { jq -c 'walk(if type == "string" then sub(":00\\+01:00$"; "+01:00") else . end)' <<< "$ROW_DAY"; jq -c 'walk(if type == "string" then sub(":00\\+01:00$"; "+01:00") else . end)' <<< "$ROW_EVE"; } > "$SH_FILE2M"
-FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2M" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs-min.md" --since-date 2026-10-28 >/dev/null
+FAKE_GH_SEARCH_FROM=2026-10-27 FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2M" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs-min.md" --since-date 2026-10-28 >/dev/null
 prsm=$(cat "$SH_DIR/prs-min.md")
 day_prs_m=$(cell "2026-10-28T08:00+01:00" 4 "$prsm"); night_prs_m=$(cell "2026-10-28T20:00+01:00" 4 "$prsm")
 if [ "$day_prs_m" = "1" ]; then pass "prs: a minute-form day shift counts only the PR merged inside it"; else fail "prs: a minute-form day shift counts only the PR merged inside it" "got '$day_prs_m'"; fi
 if [ "$night_prs_m" = "2" ]; then pass "prs: a minute-form night shift counts the PR merged at the day's close"; else fail "prs: a minute-form night shift counts the PR merged at the day's close" "got '$night_prs_m'"; fi
+
+echo "TEST: the per-shift PR query searches from the day before the earliest shift opened (a stub that accepts any date cannot catch a wrong one)"
+FAKE_GH_SEARCH_FROM=2099-01-01 FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs-wrong-date.md" --since-date 2026-10-28 >/dev/null
+day_prs_w=$(cell "2026-10-28T08:00:00+01:00" 4 "$(cat "$SH_DIR/prs-wrong-date.md")") # read-sink-ok: this suite's own output under its temp dir
+if [ "$day_prs_w" = "0" ]; then pass "prs: a search from the wrong day finds no PRs, so the right-day rows above are a real check"; else fail "prs: a search from the wrong day finds no PRs, so the right-day rows above are a real check" "got '$day_prs_w'"; fi
 
 echo "TEST: spend per shift shows a source mark per column, sums no column, and reads not available for a missing source"
 FAKE_SPEND_SH="$TMP_ROOT/shift-spend-per-shift.sh"
