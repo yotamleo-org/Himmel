@@ -4418,11 +4418,13 @@ _suite_attempts() {
   _attempt=1
   first_rc=""
   first_log=""
+  _prior_secs=0
   while :; do
   log=$(mktemp)
   # Derived, not a second mktemp: same directory, same lifetime, one less fork.
   rcfile="$log.rc"
-  start=$SECONDS
+  # A retry starts the clock back by the seconds attempt 1 spent, so dur is the sum of every attempt.
+  start=$((SECONDS - _prior_secs))
 
   # Run the suite as a background job in its OWN process group (`set -m`), and
   # arm a watchdog beside it. `timeout` did the timing before, and it group-
@@ -4567,6 +4569,7 @@ LIVEMSGS
     tail -n 40 "$log" | sed 's/^/    /'
     echo '--------------------------'
     first_rc=$rc
+    _prior_secs=$((SECONDS - start))
     first_capped=$capped
     first_log="$log"
     _attempt=2
