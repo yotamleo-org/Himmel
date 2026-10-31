@@ -9,7 +9,11 @@
 #                          --base-sha <sha> --main-base-sha <sha> --latest-sha <sha>
 #                          --pr-sha <sha> --main-base-conclusion <conclusion>
 #                          [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha>
-#                           --base-cover-conclusion <conclusion>]
+#                           --base-cover-conclusion <conclusion>] [--no-fetch]
+#
+# --no-fetch: skip `git fetch` (the claudex developer lane forbids it) and read the local
+# origin/main as it stands. It REFUSEs (exit 1) unless that origin/main already contains --latest-sha.
+# The default path still runs `git fetch --quiet origin main`.
 #
 # Each job file is one run's job list, one `<job name><TAB><conclusion>` per line
 # (e.g. from `gh run view <id> --json jobs`):
@@ -217,7 +221,7 @@ chain_s2() {
   exit 0
 }
 [ "${1:-}" = "--chain-s2" ] && chain_s2 "$@"
-pr=""; base=""; latest=""; prc=""; bc=""; bsha=""; msha=""; lsha=""; psha=""; cover=""; csha=""; cfrom=""; bconc=""; cconc=""; lc=""; lc_set=0; cover_used=0; local_jobs=""; bad=0
+nofetch=0; pr=""; base=""; latest=""; prc=""; bc=""; bsha=""; msha=""; lsha=""; psha=""; cover=""; csha=""; cfrom=""; bconc=""; cconc=""; lc=""; lc_set=0; cover_used=0; local_jobs=""; bad=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --pr) [ $# -ge 2 ] || { bad=1; break; }; pr="$2"; shift 2 ;;
@@ -233,6 +237,7 @@ while [ $# -gt 0 ]; do
     --base-cover-sha) [ $# -ge 2 ] || { bad=1; break; }; csha="$2"; shift 2 ;;
     --base-cover-from) [ $# -ge 2 ] || { bad=1; break; }; cfrom="$2"; shift 2 ;;
     --base-cases-local) [ $# -ge 2 ] || { bad=1; break; }; lc="$2"; lc_set=1; shift 2 ;;
+    --no-fetch) nofetch=1; shift ;;
     --main-base-conclusion) [ $# -ge 2 ] || { bad=1; break; }; bconc="$2"; shift 2 ;;
     --base-cover-conclusion) [ $# -ge 2 ] || { bad=1; break; }; cconc="$2"; shift 2 ;;
     *) bad=1; break ;;
@@ -241,11 +246,11 @@ done
 if [ "$bad" -eq 1 ] || [ ! -f "$pr" ] || [ ! -r "$pr" ] || [ ! -f "$base" ] || [ ! -r "$base" ] || [ ! -f "$latest" ] || [ ! -r "$latest" ] \
    || [ ! -r "$prc" ] || [ ! -r "$bc" ] || [ -z "$bsha" ] || [ -z "$msha" ] || [ -z "$lsha" ] || [ -z "$psha" ] || [ -z "$bconc" ] \
    || ! [[ "$lsha" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] [--base-cases-local <file>] (all but the --base-cover group required, shas non-empty, --latest-sha a full 40-hex sha)" >&2
+  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] [--base-cases-local <file>] [--no-fetch] (all but the --base-cover group required, shas non-empty, --latest-sha a full 40-hex sha)" >&2
   exit 2
 fi
 if [ -n "$cover$csha$cfrom$cconc" ] && { [ ! -f "$cover" ] || [ ! -r "$cover" ] || [ -z "$csha" ] || [ -z "$cfrom" ] || [ -z "$cconc" ]; }; then
-  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] [--base-cases-local <file>] (all but the --base-cover group required, shas non-empty; the group is all-or-none)" >&2
+  echo "usage: merge-forward-check.sh --pr <file> --main-base <file> --main-latest <file> --pr-cases <file> --base-cases <file> --base-sha <sha> --main-base-sha <sha> --latest-sha <sha> --pr-sha <sha> --main-base-conclusion <conclusion> [--base-cover <file> --base-cover-sha <sha> --base-cover-from <sha> --base-cover-conclusion <conclusion>] [--base-cases-local <file>] [--no-fetch] (all but the --base-cover group required, shas non-empty; the group is all-or-none)" >&2
   exit 2
 fi
 if [ "$lc_set" -eq 1 ] && { [ -z "$lc" ] || [ ! -f "$lc" ] || [ ! -r "$lc" ]; }; then
@@ -323,7 +328,18 @@ if ! reds="$(awk -F'\t' '($2=="failure"||$2=="timed_out"||$2=="startup_failure")
 fi
 [ -n "$reds" ] || { echo "nothing red on the PR — no merge-forward needed"; exit 3; }
 
-if ! git fetch --quiet origin main 2>/dev/null || ! tip="$(git rev-parse --verify --quiet origin/main)"; then
+if [ "$nofetch" -eq 1 ]; then
+  # --no-fetch: the claudex developer lane forbids git fetch. Run no fetch and trust only the local origin/main,
+  # which must already contain the --latest-sha run, else it may be older than the run the verdict rests on.
+  if ! tip="$(git rev-parse --verify --quiet origin/main)"; then
+    echo "usage: no local origin/main in $(pwd): --no-fetch needs the worker's own repo with a fetched origin/main" >&2
+    exit 2
+  fi
+  if ! rlsha="$(git rev-parse --verify --quiet "$lsha^{commit}")" || ! git merge-base --is-ancestor "$rlsha" "$tip" 2>/dev/null; then
+    echo "REFUSE — --no-fetch: the local origin/main ($tip) does not contain the --main-latest run at $lsha, so it may be stale. Have a lane that may fetch refresh origin/main, or run without --no-fetch; do not merge forward."
+    exit 1
+  fi
+elif ! git fetch --quiet origin main 2>/dev/null || ! tip="$(git rev-parse --verify --quiet origin/main)"; then
   echo "usage: cannot fetch origin main from $(pwd): the --latest-sha check needs the worker's own repo" >&2
   exit 2
 fi

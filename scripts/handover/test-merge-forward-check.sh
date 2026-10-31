@@ -106,6 +106,26 @@ run "latest run is behind origin/main but descends from the merge-base: ALLOW, n
 out=$(cd "$tmp" && bash "$MF" --pr "$tmp/pr" --main-base "$tmp/base" --main-latest "$tmp/latest" --pr-cases "$tmp/pr-cases" --base-cases "$tmp/base-cases" --base-sha a --main-base-sha a --latest-sha "$TIP" --pr-sha p --main-base-conclusion failure 2>&1); rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'cannot fetch origin main' <<< "$out"; then ok "outside a repo with origin/main: repo check fails, usage, never ALLOW"; else bad "outside a repo exits 2 on the fetch check (rc=$rc)" "$out"; fi
 
+# --no-fetch (the claudex lane forbids fetch) skips git fetch and trusts only the local origin/main,
+# which must already contain the --latest-sha run. A PATH git stub logs every git call and delegates to the real git.
+REAL_GIT="$(command -v git)"
+mkdir -p "$tmp/nfbin"
+# shellcheck disable=SC2016  # the stub body is literal text, expanded when the stub runs
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$NF_LOG"\nexec "%s" "$@"\n' "$REAL_GIT" > "$tmp/nfbin/git"
+chmod +x "$tmp/nfbin/git"
+nflog() { : > "$tmp/nf.log"; PATH="$tmp/nfbin:$PATH" NF_LOG="$tmp/nf.log" "$@"; }
+set3 'a\tfailure\n' 'a\tfailure\n' 'a\tsuccess\n'
+git -C "$tmp/other" -c user.name=t -c user.email=t@t commit -q --allow-empty -m four
+git -C "$tmp/other" push -q origin main 2>/dev/null
+TIP4="$(git -C "$tmp/other" rev-parse HEAD)"
+# the work clone's origin/main is $TIP3: $TIP4 (pushed since) is not in its object store, and no fetch may bring it
+nflog run "--no-fetch with origin/main behind the --main-latest sha: REFUSE, exit 1" 1 'REFUSE.*--no-fetch.*does not contain' --no-fetch --latest-sha "$TIP4"
+if ! grep -q 'fetch' "$tmp/nf.log"; then ok "--no-fetch REFUSE ran no git fetch"; else bad "--no-fetch REFUSE ran a git fetch" "$(cat "$tmp/nf.log")"; fi
+nflog run "--no-fetch with a fresh origin/main: passes the fetch step, ALLOW" 0 "ALLOW.*git merge $TIP3" --no-fetch
+if [ -s "$tmp/nf.log" ] && ! grep -q 'fetch' "$tmp/nf.log"; then ok "--no-fetch ALLOW ran no git fetch (git was called, none of it a fetch)"; else bad "--no-fetch ALLOW ran a git fetch or never ran git" "$(cat "$tmp/nf.log")"; fi
+nflog run "default invocation (no --no-fetch) with a stale local origin/main: fetches and ALLOWs the newer latest run" 0 "ALLOW.*git merge $TIP4" --latest-sha "$TIP4"
+if grep -q '^fetch --quiet origin main$' "$tmp/nf.log"; then ok "the default path still runs git fetch --quiet origin main"; else bad "the default path ran no git fetch" "$(cat "$tmp/nf.log")"; fi
+
 # F2: a shard that fails the base's case AND one of its own is the PR's own red
 set3 'shard-3\tfailure\n' 'shard-3\tfailure\n' 'shard-3\tsuccess\n'
 printf 'shard-3\tX\nshard-3\tY\n' > "$tmp/pr-cases"; printf 'shard-3\tX\n' > "$tmp/base-cases"

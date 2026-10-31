@@ -875,6 +875,12 @@
       "# model actually reached for (Bash vs PowerShell vs Write) — measured"
     ]
   },
+  "scripts/security/security-audit-cadence.sh": {
+    "reason": "Audited HIMMEL-8281: cron-only Windows refusal, matching the existing Snyk cadence; keep unsupported scheduling explicit",
+    "lines": [
+      "    case \"$(uname -s)\" in MINGW*|MSYS*|CYGWIN*) echo 'ERR security-audit: cron only' >&2; return 2 ;; esac"
+    ]
+  },
   "scripts/security/snyk-scan-cadence.sh": {
     "reason": "uname branch that refuses Windows (\"Windows is parked\"/not supported)",
     "lines": [
