@@ -37,7 +37,9 @@ def landing(p):
     the tarfile CVE-2025-4517 fix was backported) cannot do that: it refuses a `..` after a missing name, and
     run_request refuses there outright, as a dangling link whose target holds missing/../.. would still be skipped."""
     try:
-        return os.path.realpath(p, strict=True)
+        real = os.path.realpath(p, strict=True)
+        os.lstat(p)  # before 3.13 a strict realpath skips `f/`, `f/.` and `f/..` after a file; the kernel does not
+        return real
     except FileNotFoundError:
         allow = getattr(os.path, "ALLOW_MISSING", None)
         if allow is not None:
