@@ -18,7 +18,9 @@
 # Every non-blank line is audited, whatever its shape or field order: a
 # shape match let a forged bullet with from= before the token pass.
 # The sha256 of the line (no trailing newline) must equal the
-# 4th whitespace-separated field of some ledger line. Prints "AUDIT ok" and
+# 4th whitespace-separated field of some ledger line whose 5th field is the
+# inbox's session (the file name without .md): a record vouches for its
+# recipient only, so a line copied from another inbox is named. Prints "AUDIT ok" and
 # exits 0 when every line is matched; otherwise prints one
 # "AUDIT UNMATCHED <line>" per miss and exits 1. A missing inbox file or
 # sent-log dir, an inbox that cannot be read (e.g. a permission change), or a
@@ -46,7 +48,10 @@ sent_dir="$2"
 # this sent_dir holds — directly at its root, or one level down under a
 # per-sender subdirectory. A dir with no ledgers yet yields an empty pool,
 # so every token bullet in the inbox correctly comes up unmatched.
-ledger_shas="$(cat "$sent_dir"/inbox-sent.log "$sent_dir"/*/inbox-sent.log 2>/dev/null | awk '{ print $4 }')"
+to="${inbox##*/}"
+to="${to%.md}"
+ledger_shas="$(cat "$sent_dir"/inbox-sent.log "$sent_dir"/*/inbox-sent.log 2>/dev/null \
+    | INBOX_LEDGER_TO="$to" awk '$5 == ENVIRON["INBOX_LEDGER_TO"] { print $4 }')"
 
 unmatched=0
 read_failed=0

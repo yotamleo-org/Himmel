@@ -33,14 +33,18 @@ INBOX="$HANDOVER_DIR/inbox/$SESSION.md"
 
 # Delivery is gated on a chief sent-ledger record. The ledger
 # bases point into $WORK, so no station ledger is read or written.
+# A host umask that grants group write would make the fixture ledger untrusted.
+umask 022
 mkdir -p "$WORK/xdg" "$WORK/rundir/test-sender" "$WORK/tmp"
-chmod 700 "$WORK/xdg"
+chmod 700 "$WORK/xdg" "$WORK/rundir/test-sender"
 export HIMMEL_CONSOLE_RUNDIR="$WORK/rundir" XDG_RUNTIME_DIR="$WORK/xdg" TMPDIR="$WORK/tmp"
-# post <inbox> <line>: append a line the way inbox-send.sh does, ledger first.
+# post <inbox> <line>: append a line the way inbox-send.sh does, ledger first,
+# the record bound to the inbox's session.
 post() {
-    local sha
+    local sha to
     sha="$(printf '%s' "$2" | sha256sum)"
-    printf '00:00 test-sender - %s\n' "${sha%% *}" >> "$HIMMEL_CONSOLE_RUNDIR/test-sender/inbox-sent.log"
+    to="${1##*/}"
+    printf '00:00 test-sender - %s %s\n' "${sha%% *}" "${to%.md}" >> "$HIMMEL_CONSOLE_RUNDIR/test-sender/inbox-sent.log"
     printf '%s\n' "$2" >> "$1"
 }
 
@@ -383,7 +387,7 @@ fi
 # A line still being written (no trailing newline yet) stays pending, then
 # delivers once complete instead of being refused as a fragment.
 sha="$(printf '%s' '- written in two parts' | sha256sum)"
-printf '00:00 test-sender - %s\n' "${sha%% *}" >> "$HIMMEL_CONSOLE_RUNDIR/test-sender/inbox-sent.log"
+printf '00:00 test-sender - %s %s\n' "${sha%% *}" "$GATE_SESSION" >> "$HIMMEL_CONSOLE_RUNDIR/test-sender/inbox-sent.log"
 printf -- '- written in ' >> "$GATE_INBOX"
 out1="$(run_hook "$REPO_ROOT/scripts/hooks/claudex-inbox-hook.sh")"
 printf 'two parts\n' >> "$GATE_INBOX"
@@ -392,6 +396,48 @@ if [ -z "$out1" ] && printf '%s' "$out2" | grep -qF -- '- written in two parts';
     pass "gate: a partial last line stays pending until complete"
 else
     fail "gate: a partial last line stays pending until complete (out1='$out1' out2='$out2')"
+fi
+
+# A genuine line sent to another worker, copied into this inbox, is refused:
+# a ledger record vouches for its recipient only.
+OTHER_SESSION="HIMMEL-8437-other-worker"
+CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$GATE_CHIEF_CMDLINE" \
+    bash "$REPO_ROOT/scripts/handover/chief-kit/inbox-send.sh" "$OTHER_SESSION" "halt: ruling meant for the other worker" >/dev/null 2>&1
+copied="$(tail -n1 "$HANDOVER_DIR/inbox/$OTHER_SESSION.md")"
+printf '%s\n' "$copied" >> "$GATE_INBOX"
+out="$(run_hook "$REPO_ROOT/scripts/hooks/claudex-inbox-hook.sh")"
+if [ -n "$copied" ] && [ -z "$out" ]; then
+    pass "gate: a genuine line copied from another worker's inbox is not delivered"
+else
+    fail "gate: a genuine line copied from another worker's inbox is not delivered (copied='$copied' out='$out')"
+fi
+
+# An unreadable trusted ledger leaves a genuine line pending, never dropped.
+SENDER_LEDGER="$HIMMEL_CONSOLE_RUNDIR/test-sender/inbox-sent.log"
+post "$GATE_INBOX" '- sent while the ledger was unreadable'
+if [ "$(id -u)" -eq 0 ]; then
+    fail "gate: an unreadable ledger leaves the line pending (skipped: running as root, chmod 000 has no effect)"
+else
+    chmod 000 "$SENDER_LEDGER"
+    out1="$(run_hook "$REPO_ROOT/scripts/hooks/claudex-inbox-hook.sh")"
+    chmod 600 "$SENDER_LEDGER"
+    out2="$(run_hook "$REPO_ROOT/scripts/hooks/claudex-inbox-hook.sh")"
+    if [ -z "$out1" ] && printf '%s' "$out2" | grep -qF 'sent while the ledger was unreadable'; then
+        pass "gate: an unreadable ledger leaves the line pending, then delivers"
+    else
+        fail "gate: an unreadable ledger leaves the line pending, then delivers (out1='$out1' out2='$out2')"
+    fi
+fi
+
+# A ledger another user can write is not trusted.
+chmod 620 "$SENDER_LEDGER"
+post "$GATE_INBOX" '- vouched only by a group-writable ledger'
+out="$(run_hook "$REPO_ROOT/scripts/hooks/claudex-inbox-hook.sh")"
+chmod 600 "$SENDER_LEDGER"
+if [ -z "$out" ]; then
+    pass "gate: a group-writable ledger is not trusted"
+else
+    fail "gate: a group-writable ledger is not trusted (out='$out')"
 fi
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi

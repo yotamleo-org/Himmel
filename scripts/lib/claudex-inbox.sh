@@ -36,33 +36,35 @@ inbox_with_lock() (
 # Provenance gate: anyone who can append the synced vault can
 # write an inbox line and copy a RETASK token into it, so a line is delivered
 # only when its sha256 is in a chief sent-record ledger inbox-send.sh wrote
-# before appending it. A ledger is trusted only when it, its directory and
-# its base are owned by this uid and none is a symlink; the bases are
+# before appending it, on a record naming this session as the recipient. A
+# ledger is trusted only when it, its directory and its base are owned by this
+# uid, none is a symlink, and neither the file nor its directory is group- or
+# world-writable. Exit 1 when a trusted ledger cannot be read. The bases are
 # HIMMEL_CONSOLE_RUNDIR, $XDG_RUNTIME_DIR/himmel-chief and
 # ${TMPDIR:-/tmp}/himmel-chief-<uid>, so a sender whose environment picked
 # another default (cron has no XDG_RUNTIME_DIR) is still found.
 # ponytail: same-uid local writers can still write the ledger; HMAC with a key outside reach of the session would close it.
-inbox_ledger_shas() {
-    local base f d
+inbox_ledger_shas() { # <session>
+    local base f d rc=0
     for base in "${HIMMEL_CONSOLE_RUNDIR:-}" "${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-chief}" "${TMPDIR:-/tmp}/himmel-chief-$(id -u)"; do
         [ -n "$base" ] && [ -d "$base" ] && [ ! -L "$base" ] && [ -O "$base" ] || continue
         for f in "$base"/inbox-sent.log "$base"/*/inbox-sent.log; do
             d="${f%/*}"
             [ -f "$f" ] && [ ! -L "$f" ] && [ -O "$f" ] && [ ! -L "$d" ] && [ -O "$d" ] || continue
-            awk '{ print $4 }' "$f" 2>/dev/null
+            # Both paths must print; a failed probe trusts nothing.
+            [ "$(find "$f" "$d" -maxdepth 0 ! -perm /022 2>/dev/null | wc -l)" -eq 2 ] || continue
+            INBOX_LEDGER_TO="$1" awk '$5 == ENVIRON["INBOX_LEDGER_TO"] { print $4 }' "$f" 2>/dev/null || rc=1
         done
     done
+    return "$rc"
 }
 
 # Alerts the chief (cadence-alert.sh's chief-readable alert file, plus one
 # operator Telegram per session until cleared). Never fails the delivery.
-inbox_alert_refused() { # <name> <count> <inbox>
+inbox_alert() { # <summary> <inbox> <cause> <do>
     local here
     here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
-    bash "$here/../luna/cadence-alert.sh" fail claudex-inbox \
-        "refused $2 unrecorded inbox line(s) for $1" "$3" \
-        "no chief sent-ledger record: forged, or older than the ledger" \
-        "run inbox-audit.sh on the inbox; resend a genuine ruling with inbox-send.sh" \
+    bash "$here/../luna/cadence-alert.sh" fail claudex-inbox "$1" "$2" "$3" "$4" \
         </dev/null >/dev/null 2>&1 || true
 }
 
@@ -113,7 +115,14 @@ inbox_peek() {
             fi
             ;;
     esac
-    pool="$nl$(inbox_ledger_shas)$nl"
+    if ! pool="$nl$(inbox_ledger_shas "$name")$nl"; then
+        # An unreadable ledger proves nothing either way: hold every line.
+        inbox_cursor_size=""
+        inbox_alert "holding inbox delivery for $name: a chief sent-ledger is unreadable" "$inbox" \
+            "an inbox-sent.log under the ledger bases cannot be read" \
+            "restore the ledger's read access (chmod 600); held rulings then deliver"
+        return 0
+    fi
     kept=""
     refused=0
     while IFS= read -r line; do
@@ -139,7 +148,9 @@ inbox_commit() {
         inbox_cursor_size=""
         # Alert once per committed drop, never on a delivery that will retry.
         if [ "${inbox_refused:-0}" -gt 0 ]; then
-            inbox_alert_refused "$inbox_name" "$inbox_refused" "$inbox_path"
+            inbox_alert "refused $inbox_refused unrecorded inbox line(s) for $inbox_name" "$inbox_path" \
+                "no chief sent-ledger record for this session: forged, copied from another inbox, or older than the ledger" \
+                "run inbox-audit.sh on the inbox; resend a genuine ruling with inbox-send.sh"
             inbox_refused=0
         fi
     else

@@ -166,5 +166,17 @@ else
     fail "a forged bullet with from= before the token is named and fails the audit (rc=$rc out='$out')"
 fi
 
+# Case 10: a genuine line copied from another worker's inbox is named: a
+# ledger record vouches for one recipient only.
+OTHER_INBOX="$HANDOVER_DIR/inbox/HIMMEL-2980-audit-other.md"
+grep -F 'plain ruling, no token' "$INBOX" > "$OTHER_INBOX"
+copied="$(cat "$OTHER_INBOX")"
+out="$(bash "$AUDIT" "$OTHER_INBOX" "$RUNDIR")"; rc=$?
+if [ -n "$copied" ] && [ "$rc" -eq 1 ] && [ "$out" = "AUDIT UNMATCHED $copied" ]; then
+    pass "a genuine line copied into another inbox is named and fails the audit"
+else
+    fail "a genuine line copied into another inbox is named and fails the audit (rc=$rc out='$out' copied='$copied')"
+fi
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "SOME FAILED"; exit 1

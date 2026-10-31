@@ -189,7 +189,9 @@ fi
 # inbox hook delivers only lines with a record here, and inbox-audit.sh names
 # any inbox line without one: anyone who can append the synced vault can copy
 # a token, but cannot write this uid-owned ledger. The ledger
-# keeps a digest of the token, never the token itself.
+# keeps a digest of the token, never the token itself, and names the
+# recipient session, so a line copied into another inbox has no record there.
+# The file is kept 0600: the reader distrusts a ledger others can write.
 ledger_base="${HIMMEL_CONSOLE_RUNDIR:-}"
 if [ -z "$ledger_base" ]; then
     # Same per-uid convention as chief.sh (scripts/handover/chief/
@@ -223,7 +225,8 @@ sha="$(printf '%s' "$bullet" | sha256sum)" || {
     exit 4
 }
 sha="${sha%% *}"
-if ! printf '%s %s %s %s\n' "$stamp" "${author:-unknown}" "$tok_field" "$sha" >> "$ledger_dir/inbox-sent.log"; then
+if ! { printf '%s %s %s %s %s\n' "$stamp" "${author:-unknown}" "$tok_field" "$sha" "$session" >> "$ledger_dir/inbox-sent.log" \
+    && chmod 600 "$ledger_dir/inbox-sent.log"; }; then
     printf 'inbox-send: NOT sent — cannot write ledger %s\n' "$ledger_dir/inbox-sent.log" >&2
     exit 4
 fi

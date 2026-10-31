@@ -316,10 +316,15 @@ send_rc15=0
 CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_NEVER" bash "$SCRIPT" "$SESSION28" untoked-new-sender >/dev/null 2>&1 || send_rc15=$?
 # shellcheck disable=SC2119 # sha256_hex reads stdin here, by design
 expected_sha="$(tail -n1 "$INBOX28" 2>/dev/null | tr -d '\n' | sha256_hex)"
-if [ "$send_rc15" -eq 0 ] && [ "$(tail -n1 "$NEVER_LEDGER" 2>/dev/null | awk '{print $3, $4}')" = "- $expected_sha" ]; then
-    pass "a no-token send writes one ledger line with no token digest"
+if [ "$send_rc15" -eq 0 ] && [ "$(tail -n1 "$NEVER_LEDGER" 2>/dev/null | awk '{print $3, $4, $5}')" = "- $expected_sha $SESSION28" ]; then
+    pass "a no-token send writes one ledger line with no token digest, bound to its recipient"
 else
-    fail "a no-token send writes one ledger line with no token digest (rc=$send_rc15 ledger='$(cat "$NEVER_LEDGER" 2>/dev/null)')"
+    fail "a no-token send writes one ledger line with no token digest, bound to its recipient (rc=$send_rc15 ledger='$(cat "$NEVER_LEDGER" 2>/dev/null)')"
+fi
+if [ -n "$(find "$NEVER_LEDGER" -maxdepth 0 ! -perm /077 2>/dev/null)" ]; then
+    pass "the ledger file is private to its owner"
+else
+    fail "the ledger file is private to its owner (mode='$(stat -c %a "$NEVER_LEDGER" 2>/dev/null)')"
 fi
 
 # Case 15b: a ledger failure sends nothing — the inbox is untouched.
