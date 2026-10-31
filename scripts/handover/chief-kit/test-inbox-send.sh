@@ -339,6 +339,25 @@ else
     fail "a ledger failure exits 4 and appends nothing (rc=$send_rc15b before=$before_inbox after=$after_inbox)"
 fi
 
+# Case 15c: a ledger the reader would distrust (symlinked base or file) is
+# refused at send time, never written and then dropped at delivery.
+mkdir -p "$WORK/real-base"
+ln -s "$WORK/real-base" "$WORK/link-base"
+send_rc15c=0
+CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_NEVER" HIMMEL_CONSOLE_RUNDIR="$WORK/link-base" \
+    bash "$SCRIPT" "$SESSION28" via-link-base >/dev/null 2>&1 || send_rc15c=$?
+mkdir -p "$WORK/file-base/HIMMEL-2980-never-toked-sender"
+: > "$WORK/real-ledger"
+ln -s "$WORK/real-ledger" "$WORK/file-base/HIMMEL-2980-never-toked-sender/inbox-sent.log"
+send_rc15d=0
+CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_NEVER" HIMMEL_CONSOLE_RUNDIR="$WORK/file-base" \
+    bash "$SCRIPT" "$SESSION28" via-link-file >/dev/null 2>&1 || send_rc15d=$?
+if [ "$send_rc15c" -eq 4 ] && [ "$send_rc15d" -eq 4 ] && ! grep -qF 'via-link' "$INBOX28"; then
+    pass "a symlinked ledger base or file exits 4 and appends nothing"
+else
+    fail "a symlinked ledger base or file exits 4 and appends nothing (base_rc=$send_rc15c file_rc=$send_rc15d)"
+fi
+
 # Case 16: a relay-refused --token send (rc 3) writes no ledger line.
 before_lines="$(wc -l < "$LEDGER" 2>/dev/null | tr -d '[:space:]')"
 out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" "$SESSION28" relay-toked --token lt2 2>&1)"; rc=$?

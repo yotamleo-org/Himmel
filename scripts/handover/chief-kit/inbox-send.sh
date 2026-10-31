@@ -208,7 +208,10 @@ ledger_dir="$ledger_base/${author:-unknown}"
 # mkdir -m at creation only sets the mode once, so a pre-existing or
 # symlinked directory is checked and re-chmod'd explicitly every time.
 # shellcheck disable=SC2174 # Only the final, per-sender directory is ours.
-if ! mkdir -m 700 -p "$ledger_dir" || [ -L "$ledger_dir" ] || [ ! -O "$ledger_dir" ] || ! chmod 700 "$ledger_dir"; then
+# The base gets the reader's checks too: a ledger the reader distrusts would
+# record a send whose line is then dropped at delivery.
+if ! mkdir -m 700 -p "$ledger_dir" || [ -L "$ledger_base" ] || [ ! -O "$ledger_base" ] \
+    || [ -L "$ledger_dir" ] || [ ! -O "$ledger_dir" ] || ! chmod 700 "$ledger_dir"; then
     printf 'inbox-send: NOT sent — cannot secure ledger directory %s\n' "$ledger_dir" >&2
     exit 4
 fi
@@ -225,7 +228,7 @@ sha="$(printf '%s' "$bullet" | sha256sum)" || {
     exit 4
 }
 sha="${sha%% *}"
-if ! { printf '%s %s %s %s %s\n' "$stamp" "${author:-unknown}" "$tok_field" "$sha" "$session" >> "$ledger_dir/inbox-sent.log" \
+if [ -L "$ledger_dir/inbox-sent.log" ] || ! { printf '%s %s %s %s %s\n' "$stamp" "${author:-unknown}" "$tok_field" "$sha" "$session" >> "$ledger_dir/inbox-sent.log" \
     && chmod 600 "$ledger_dir/inbox-sent.log"; }; then
     printf 'inbox-send: NOT sent — cannot write ledger %s\n' "$ledger_dir/inbox-sent.log" >&2
     exit 4
