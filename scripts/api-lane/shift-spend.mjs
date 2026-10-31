@@ -77,7 +77,9 @@ function codexBank(sessions, s, u) {
   const before = all.filter((e) => e.t < s).at(-1);
   const start = before ?? inside[0];
   const end = inside.at(-1);
-  if (start.resets !== end.resets) return { reason: 'the weekly window reset during the shift, so the change is not comparable' };
+  if (start.resets === null || end.resets === null || start.resets !== end.resets || end.pct < start.pct) {
+    return { reason: 'the weekly window reset during the shift, or its reset time is unknown, so the change is not comparable' };
+  }
   return { start: start.pct, end: end.pct, value: Math.round((end.pct - start.pct) * 1e6) / 1e6, samples: inside.length,
     start_from: before ? 'last reading before the shift' : 'first reading inside the shift' };
 }
@@ -133,12 +135,14 @@ const MICRO = 1000000n;
 const dollars = (micro) => `${micro / MICRO}.${String(micro % MICRO).padStart(6, '0')}`;
 function costMicro(bodies, from, to) {
   let total = 0n, complete = false;
+  const spans = [];
   for (const body of bodies) {
     if (body === null || typeof body !== 'object' || !Array.isArray(body.data) || typeof body.has_more !== 'boolean') throw new Error('invalid-cost-report');
     for (const bucket of body.data) {
       if (bucket === null || typeof bucket !== 'object' || !Array.isArray(bucket.results)) throw new Error('invalid-cost-report');
       // A response for another window must not read as this shift's spend.
       if (!(ms(bucket.starting_at) >= ms(from) && ms(bucket.ending_at) <= ms(to))) throw new Error('cost-report-outside-window');
+      spans.push([ms(bucket.starting_at), ms(bucket.ending_at)]);
       for (const r of bucket.results) {
         if (r === null || typeof r !== 'object' || r.currency !== 'USD') throw new Error('invalid-cost-report');
         total += centsToMicro(r.amount);
@@ -147,6 +151,11 @@ function costMicro(bodies, from, to) {
     complete = !body.has_more;
   }
   if (!complete) throw new Error('incomplete-cost-report');
+  // The buckets (empty days included) must tile the whole requested span: a missing first page is not a smaller total.
+  spans.sort((a, b) => a[0] - b[0]);
+  if (spans.length === 0 || spans[0][0] !== ms(from) || spans.at(-1)[1] !== ms(to) || spans.some((s, i) => i > 0 && s[0] !== spans[i - 1][1])) {
+    throw new Error('cost-report-does-not-cover-window');
+  }
   return total;
 }
 const floorDay = (iso) => new Date(Math.floor(ms(iso) / DAY) * DAY).toISOString().replace('.000Z', 'Z');
@@ -259,12 +268,13 @@ async function main(argv, env) {
       try { cost[account] = { bodies: files.map(readJson) }; } catch { cost[account] = { error: 'cost report file unreadable' }; }
     }
   } else if (opt.live) {
-    const keys = ['A', 'B'].map((account) => [account, adminKey(env, account)]).filter(([, k]) => k);
+    // Both accounts are asked for: one without a key stays in the record as unavailable, never dropped.
     cost = {};
-    for (const [account, key] of keys) {
+    for (const account of ['A', 'B']) {
+      const key = adminKey(env, account);
+      if (!key) { cost[account] = { error: 'admin-key-missing' }; continue; }
       try { cost[account] = { bodies: await fetchCostPages(key, opt.since, opt.until) }; } catch (e) { cost[account] = { error: e.message }; }
     }
-    if (keys.length === 0) cost = { A: { error: 'admin-key-missing' } };
   }
   if (opt.orFile) {
     try { openrouter = { body: readJson(opt.orFile) }; } catch { openrouter = { error: 'key response file unreadable' }; }

@@ -97,6 +97,14 @@ test('codex bank: the weekly window is read from secondary too, and an idle olde
   assert.equal(f.start_from, 'last reading before the shift');
 });
 
+test('codex bank: an unknown reset time or a falling reading is not a comparable change', () => {
+  const noReset = (ts, pct) => JSON.stringify({ timestamp: ts, type: 'event_msg', payload: { type: 'token_count', info: null, rate_limits: { primary: { used_percent: pct, window_minutes: 10080 } } } });
+  const unknown = codexRoot('codex-h', { one: [noReset('2026-10-30T21:00:00Z', 40), noReset('2026-10-31T01:00:00Z', 41)] });
+  assert.equal(codexField(unknown, SINCE, UNTIL, 'bank').status, 'not available');
+  const falling = codexRoot('codex-i', { one: [tokenEvent('2026-10-30T21:00:00Z', 1000, 40), tokenEvent('2026-10-31T01:00:00Z', 1100, 35)] });
+  assert.equal(codexField(falling, SINCE, UNTIL, 'bank').status, 'not available');
+});
+
 test('codex: a missing sessions dir, and a shift with no codex event, read not available for the bank and zero-free for tokens', () => {
   assert.equal(codexField(join(T, 'no-such-dir'), SINCE, UNTIL).status, 'not available');
   assert.equal(codexField(join(T, 'no-such-dir'), SINCE, UNTIL, 'bank').status, 'not available');
@@ -164,6 +172,10 @@ test('cost report: pages summed in micro-dollars, rounded up, USD only, pinned t
   const broken = structuredClone(pages);
   delete broken[0].has_more;
   assert.equal(costField({ A: { bodies: broken } }, SINCE, UNTIL).status, 'not available');
+  // a missing first page is not a smaller total
+  const tail = costField({ A: { bodies: [pages[1]] } }, SINCE, UNTIL);
+  assert.equal(tail.status, 'not available');
+  assert.match(tail.reason, /does-not-cover/);
   // a response for another window is not this shift's spend
   const other = costField({ A: { bodies: pages } }, '2026-09-01T00:00:00Z', '2026-09-02T00:00:00Z');
   assert.equal(other.status, 'not available');
@@ -291,6 +303,16 @@ test('cli: with no source given and no --live, the API fields read not available
   assert.equal(rec.fields.api_cost.status, 'not available');
   assert.equal(rec.fields.openrouter.status, 'not available');
   assert.equal(rec.fields.codex_tokens.status, 'ok');
+});
+
+test('cli: --live with no keys keeps both accounts in the record as unavailable and fetches nothing', () => {
+  const inputs = fullInputs();
+  const env = { PATH: process.env.PATH, HOME: join(T, 'home'), HIMMEL_DOTENV_FILE: join(T, 'no-dotenv') };
+  const r = spawnSync(process.execPath, [CLI, '--since', SINCE, '--until', UNTIL, '--codex-sessions', inputs.codexDir, '--cadence-ledger', inputs.ledgerFile, '--live'], { encoding: 'utf8', env });
+  assert.equal(r.status, 0, r.stderr);
+  const rec = JSON.parse(r.stdout);
+  assert.deepEqual(rec.fields.api_cost.per_account, { A: 'not available', B: 'not available' });
+  assert.equal(rec.fields.openrouter.status, 'not available');
 });
 
 test('cli: a bad window is refused', () => {
