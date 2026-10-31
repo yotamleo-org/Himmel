@@ -35,7 +35,7 @@ export function alternativesOf(line: string): string[] {
 }
 
 // Test suites and fixtures are never core, even under a whole-directory core line.
-const TEST_PATH = /(^|\/)(test-[^/]*|[^/]*\.test\.[a-z]+|tests?\/.*|fixtures?\/.*)$/;
+const TEST_PATH = /(^|\/)(test-[^/]*|[^/]*\.(test|spec)\.[a-z]+|tests?\/.*|fixtures?\/.*)$/;
 
 const matchesAny =(res: RegExp[], p: string): boolean => res.some((re) => re.test(p));
 

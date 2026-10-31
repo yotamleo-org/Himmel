@@ -373,7 +373,7 @@ export function registerRelease(program: Command): void {
 
   rel.command('core-check')
     .description('Per key: CORE, REVIEW or NOT-CORE from scripts/ci/core-paths.txt (a rename or bulk change touching core is REVIEW)')
-    .requiredOption('--paths <paths>', 'Comma-separated paths the change writes')
+    .requiredOption('--paths <paths>', 'Comma-separated paths the change touches; for a rename pass both the old and the new path')
     .requiredOption('--key <keys...>', 'Ticket key(s) of the worker')
     .option('--change-class <class>', 'rename or bulk: a mechanical change, ruled case by case')
     .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')

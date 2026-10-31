@@ -60,6 +60,11 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
       .toEqual(['CORE K-1 marketplace/plugins/himmel-ops/skills/minerva/SKILL.md']);
   });
 
+  it('gives REVIEW for a rename when the old core path is passed with the new one', () => {
+    expect(coreMatch(['scripts/handover/queue-lock.sh', 'scripts/handover/queue-lock-v2.sh'], ['K-1'], { patterns, changeClass: 'rename' }))
+      .toEqual(['REVIEW K-1 scripts/handover/queue-lock.sh rename']);
+  });
+
   it('gives REVIEW, never CORE or NOT-CORE, for a rename or bulk change that touches a core path', () => {
     expect(coreMatch(['scripts/handover/merge-on-green.sh'], ['K-1'], { patterns, changeClass: 'rename' }))
       .toEqual(['REVIEW K-1 scripts/handover/merge-on-green.sh rename']);
@@ -86,6 +91,7 @@ describe('coreMatch (HIMMEL-8353 C1b)', () => {
     for (const p of [
       'marketplace/plugins/himmel-bus/tests/test-store.mjs',
       'scripts/jira/src/release/engine.test.ts',
+      'scripts/jira/src/release/engine.spec.ts',
       'marketplace/plugins/himmel-bus/fixtures/a.json',
     ]) expect(coreMatch([p], ['K-1'], { patterns })).toEqual(['NOT-CORE K-1']);
     expect(coreMatch(['marketplace/plugins/himmel-bus/src/store.mjs'], ['K-1'], { patterns }))
