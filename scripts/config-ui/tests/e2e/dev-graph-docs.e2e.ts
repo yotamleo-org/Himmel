@@ -152,12 +152,15 @@ test.describe("phone autoplay", () => {
       window.scrollTo(0, document.documentElement.scrollHeight);
     });
     await page.mouse.move(5, 5);
-    const y = await page.evaluate(() => window.scrollY);
-    expect(y).toBeGreaterThan(0);
+    // the caption changes height from step to step, and the browser keeps what the reader sees in place by
+    // moving scrollY with it, so what must hold still is where the conditions list sits in the viewport
+    const seen = () => page.evaluate(() => document.querySelector(".dg-conditions summary")!.getBoundingClientRect().top);
+    const before = await seen();
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     expect(await page.evaluate(() => document.querySelector(".dg-stage")!.getBoundingClientRect().bottom)).toBeLessThan(0);
     await page.waitForTimeout(5500);
     expect(await stepOf(page)).toBeGreaterThanOrEqual(2);
-    expect(await page.evaluate(() => window.scrollY)).toBe(y);
+    expect(Math.abs((await seen()) - before)).toBeLessThan(2);
   });
 });
 

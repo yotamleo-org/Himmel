@@ -6,7 +6,7 @@ import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
-import type { IssueSnap } from './types.js';
+import type { IssueSnap, OperatorRow } from './types.js';
 import { breakStaleLock, withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
@@ -318,6 +318,68 @@ describe('release engine (HIMMEL-6796)', () => {
     const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
     claim(ctx(rmEnv));
     expect(() => admit(q.req, { authority: { kind: 'operator', ref: o.id } })).toThrow(/does not cover K-2/);
+  });
+
+  describe('a newer operator record supersedes an older operator-authority ruling (HIMMEL-8348)', () => {
+    const at = (iso: string): Ctx => ({ ...ctx(), now: () => new Date(iso) });
+    const decide = (iso: string, op: string, from_v: string | null, to_v: string | null) =>
+      operatorDecision(at(iso), { decision: '383', keys: ['K-2'], op, from_v, to_v, verbatim: 'pull it in' });
+    const pull = { outcome: 'ADMIT', op: { kind: 'move' as const, from_v: 'v2', to_v: 'v1' } };
+
+    // K-2 sits in v2 under an operator ruling made at 10:00; the pull request into v1 is claimed.
+    async function placedInV2(decisions: () => void = () => {}) {
+      await setup();
+      const o = decide('2026-10-21T09:00:00.000Z', 'add', null, 'v2');
+      const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req, { op: { kind: 'add', from_v: null, to_v: 'v2' }, authority: { kind: 'operator', ref: o.id } });
+      await apply(ctx(rmEnv), r.id);
+      decisions();
+      const q2 = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: 'v2', to_v: 'v1', why: 'operator pulls it', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      return { prior: r.id, req: q2.req };
+    }
+
+    it('an INTAKE an RM ruling makes is admitted under the newer operator move, and Jira moves', async () => {
+      const { prior, req } = await placedInV2();
+      const o = decide('2026-10-21T11:00:00.000Z', 'move', 'v2', 'v1');
+      const r = admit(req, { ...pull, supersedes: [prior] });
+      expect(r.authority).toEqual({ kind: 'operator', ref: o.id });
+      await apply(ctx(rmEnv), r.id);
+      expect(jira.fv.get('K-2')).toEqual(['v1']);
+    });
+
+    it('with no newer operator record the RM ruling is still refused', async () => {
+      const { prior, req } = await placedInV2();
+      expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(/carries operator authority; only an operator record supersedes it/);
+    });
+
+    it('an older operator record never supersedes a newer ruling, cited or not', async () => {
+      const { prior, req } = await placedInV2();
+      const old = decide('2026-10-21T08:00:00.000Z', 'move', 'v2', 'v1');
+      expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(/carries operator authority/);
+      expect(() => admit(req, { ...pull, supersedes: [prior], authority: { kind: 'operator', ref: old.id } }))
+        .toThrow(new RegExp(`${old.id} predates ${prior}`));
+    });
+
+    it('of two newer operator moves the newest by timestamp governs, whatever order they were written in', async () => {
+      const { prior, req } = await placedInV2();
+      const late = decide('2026-10-21T12:00:00.000Z', 'move', 'v2', 'v1');
+      decide('2026-10-21T11:00:00.000Z', 'move', 'v2', 'v1');
+      expect(admit(req, { ...pull, supersedes: [prior] }).authority).toEqual({ kind: 'operator', ref: late.id });
+    });
+
+    it('a newer operator decision that keeps the key wins over an older move, cited or not (CONFLICT)', async () => {
+      let move!: OperatorRow;
+      let keep!: OperatorRow;
+      const { prior, req } = await placedInV2(() => {
+        move = decide('2026-10-21T11:00:00.000Z', 'move', 'v2', 'v1');
+        keep = decide('2026-10-21T12:00:00.000Z', 'keep', 'v2', 'v2');
+      });
+      const conflict = new RegExp(`CONFLICT K-2: ${keep.id} \\(newer\\) keep v2→v2`);
+      expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(conflict);
+      expect(() => admit(req, { ...pull, supersedes: [prior], authority: { kind: 'operator', ref: move.id } })).toThrow(conflict);
+    });
   });
 
   it('keeps operator acts and requests out of the RM and of chief-spawned workers', () => {
@@ -669,7 +731,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(readMirror(mirror).issues?.get('K-9')?.sector).toBe('Ship loop');
   });
 
-  it('a decision the engine refuses is reported and its request stays claimed', async () => {
+  it('a decision the engine refuses is reported, its request is closed, and a re-file opens a new qid (HIMMEL-8348)', async () => {
     vi.stubEnv('JIRA_SECTOR_FIELD', 'customfield_10500');
     declared();
     ask('K-2');
@@ -677,6 +739,14 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
       req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: '', ground: 'regression', reason: 'x',
     })));
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(ask('K-2').req).toBe('Q-R1-0002');
+  });
+
+  it('a request the judge leaves out is reported and stays claimed for the next run', async () => {
+    declared();
+    ask('K-2');
+    expect(await rmRun(ctx(), async () => [])).toEqual(['REFUSED Q-R1-0001: the judge returned no decision']);
     expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
   });
 
@@ -688,7 +758,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
       req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'none', ground: 'regression', reason: 'x',
     })));
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
-    expect(state(ctx()).requests.claimed).toEqual(['Q-R1-0001']);
+    expect(state(ctx()).requests.claimed).toEqual([]);
   });
 
   it('with no Sector field configured a ruling without a sector carries sector=none and applies', async () => {

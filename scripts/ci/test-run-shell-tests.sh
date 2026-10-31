@@ -3264,4 +3264,60 @@ fi
 rm -rf "$sb31"
 fi
 
+# --------------------------------------------------------------------------
+# Case 32 — a cap overrun is not rerun when the rerun cannot fit the run's
+# outer budget. Real run 41154955844 (shell-unit-shard 1, 2026-10-31) printed:
+#   [TIME] scripts/ci/test-run-shell-tests.sh — exceeded 1500s; suite and its descendants terminated
+#   [RETRY] scripts/ci/test-run-shell-tests.sh exceeded its 1500s cap; re-running it once
+#   home-canary: FAIL runner timed out after 3300s (rc=124)
+# so the rerun of one overrun spent the shard's 3300s and no summary printed.
+# --------------------------------------------------------------------------
+echo "== Case 32 (HIMMEL-8341): a cap overrun is not rerun past the outer budget =="
+sb32=$(mktemp -d "${TMPDIR:-/tmp}/rst-case32.XXXXXX") || { fail "32: mktemp failed"; sb32=""; }
+if [ -n "$sb32" ]; then
+mkdir -p "$sb32/scripts"
+cat > "$sb32/scripts/test-stuck32.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP32_DIR/stuck.runs"
+sleep 30
+SHEOF
+chmod +x "$sb32/scripts/test-stuck32.sh"
+real32='\[TIME\] [^ ]*test-stuck32\.sh — exceeded 2s; suite and its descendants terminated'
+
+out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT=3 SUITE_RUN_BUDGET=7200 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
+runs32=$(wc -l < "$sb32/stuck.runs" 2>/dev/null | tr -d ' ')
+if [ "$rc32" -eq 1 ] && [ "$runs32" = 1 ] && grepq "$out32" -E "$real32" \
+   && grepq "$out32" '\[NO-RETRY\] [^ ]*test-stuck32\.sh' && ! grepq "$out32" '\[RETRY\]' && grepq "$out32" 'TIMED OUT: 1'; then
+  pass "32a: an overrun whose rerun cannot fit HOME_CANARY_TIMEOUT runs once, is named [NO-RETRY] and TIMED OUT, rc 1"
+else
+  fail "32a: rc=$rc32 runs=$runs32 (want rc 1, 1 run, [TIME] and [NO-RETRY] lines, no [RETRY], TIMED OUT: 1) output: $out32"
+fi
+
+rm -f "$sb32/stuck.runs"
+out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT='' SUITE_RUN_BUDGET=3 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
+runs32=$(wc -l < "$sb32/stuck.runs" 2>/dev/null | tr -d ' ')
+if [ "$rc32" -eq 1 ] && [ "$runs32" = 1 ] && grepq "$out32" '\[NO-RETRY\] [^ ]*test-stuck32\.sh'; then
+  pass "32b: SUITE_RUN_BUDGET bounds the rerun the same way"
+else
+  fail "32b: rc=$rc32 runs=$runs32 (want rc 1, 1 run, a [NO-RETRY] line) output: $out32"
+fi
+
+rm -f "$sb32/stuck.runs"
+out32=$(CAP32_DIR="$sb32" HOME_CANARY_TIMEOUT=60 SUITE_RUN_BUDGET=7200 SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb32/scripts" 2>&1); rc32=$?
+runs32=$(wc -l < "$sb32/stuck.runs" 2>/dev/null | tr -d ' ')
+if [ "$rc32" -eq 1 ] && [ "$runs32" = 2 ] && ! grepq "$out32" '\[NO-RETRY\]'; then
+  pass "32c: control — a rerun that fits the budget still happens"
+else
+  fail "32c: rc=$rc32 runs=$runs32 (want rc 1, 2 runs, no [NO-RETRY]) output: $out32"
+fi
+rm -rf "$sb32"
+fi
+
+step32=$(shard_step26 "$ci_yml26")
+if grepq "$step32" -E '^          HOME_CANARY_TIMEOUT: "[0-9]+"$'; then
+  pass "32d: ci.yml's shard run step sets the HOME_CANARY_TIMEOUT the runner budgets its reruns against"
+else
+  fail "32d: ci.yml's shard run step no longer sets HOME_CANARY_TIMEOUT"
+fi
+
 rst_tally
