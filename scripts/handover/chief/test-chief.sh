@@ -229,6 +229,9 @@ check "5b default launch line carries no --autocompact 200000" \
 # The chief launch line applies the chief plugin profile.
 check "5b launch line carries --settings <chief profile>" \
     "$(printf '%s\n' "$out5b" | grep -c -- 'claude --settings [^ ]*/console.json --model ')" "1"
+# The lean chief carries its own 1 KB reply-style brief, not the i-have-adhd plugin.
+check "5b launch line carries --append-system-prompt-file <chief-adhd-brief.md>" \
+    "$(printf '%s\n' "$out5b" | grep -c -- '--append-system-prompt-file [^ ]*/docs/handover/chief-adhd-brief.md --autocompact ')" "1"
 # The chief loads only its profile's MCP servers (no graphify).
 check "5b launch line carries --mcp-config <console.mcp.json> --strict-mcp-config" \
     "$(printf '%s\n' "$out5b" | grep -c -- '--mcp-config [^ ]*/console.mcp.json --strict-mcp-config ')" "1"

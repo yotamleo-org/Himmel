@@ -2360,6 +2360,32 @@ contains "43d unresolvable MCP allowlist: names the MCP allowlist refusal" "$out
 [ ! -e "$d43d/record" ] && echo "ok - 43d konsole never invoked" \
   || { echo "FAIL - 43d konsole was invoked despite the refusal"; fails=$((fails+1)); }
 
+# --- 43f: the chief launches on the lean profile, headed and
+# headless: the --settings file denies the tools a chief never calls and drops
+# lean-skills and i-have-adhd, and the argv appends himmel's 1 KB chief brief.
+for _m43f in headed headless; do
+  d43f="$tmp/c43f-$_m43f"; mk_stub "$d43f" 1 alive
+  _hl43f=0; [ "$_m43f" = headless ] && _hl43f=1
+  rc43f=0
+  out43f=$(HIMMEL_PROFILE_SETTINGS_DIR="$d43f/profiles" HEADED_ARM_HEADLESS="$_hl43f" HEADED_ARM_CLAUDE_CLI=true \
+    KONSOLE_CMD="$d43f/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43f/locks" HEADED_ARM_PROC="$d43f/proc" \
+    bash "$SCRIPT" --dry-run --role chief "HIMMEL-lean43f" "doc43f.md" "$d43f/signal-never" "$PAST" "$d43f/log" 2>&1) || rc43f=$?
+  check "43f $_m43f chief --dry-run: exit 0" "$rc43f" "0"
+  contains "43f $_m43f chief: argv appends the chief brief" "$out43f" "--append-system-prompt-file $(cd "$HERE/../.." && pwd)/docs/handover/chief-adhd-brief.md"
+  set43f=$(printf '%s\n' "$out43f" | sed -n 's/.*--settings \([^ ]*chief\.json\).*/\1/p' | head -n 1)
+  lean43f=$(node -e '
+    const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const deny = s.permissions?.deny ?? [];
+    const want = ["Artifact", "ScheduleWakeup", "ReportFindings", "SendFeedback"];
+    const keep = ["AskUserQuestion", "CronCreate", "SendMessage", "Agent"];
+    const on = (id) => s.enabledPlugins?.[id] === true;
+    const ok = want.every((t) => deny.includes(t)) && keep.every((t) => !deny.includes(t))
+      && s.disableWorkflows === true && !on("lean-skills@himmel") && !on("i-have-adhd@himmel") && on("himmel-ops@himmel");
+    process.stdout.write(ok ? "lean" : "full: " + JSON.stringify({ deny, dw: s.disableWorkflows }));
+  ' "$set43f" 2>&1)
+  check "43f $_m43f chief: the --settings profile is the lean one" "$lean43f" "lean"
+done
+
 # --- bb: HEADED_ARM_BUS=1 makes the confirmed claude pid bound to
 # the session name via `bus bind <name> <pid>`. The bus CLI is a recording stub
 # (HEADED_ARM_BUS_CLI); the flag is consumed, never leaked into the session.

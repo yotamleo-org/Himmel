@@ -1048,9 +1048,13 @@ launch_cmd() {
     console_mcp=$(bash "$HERE/../../lanes/profile-settings.sh" console --mcp-config) \
         || { err "the console MCP allowlist did not resolve; refusing to print a console launch with every user-level MCP server"; exit 2; }
     [ -z "$console_mcp" ] || mcp_flags="$(printf -- '--mcp-config %q --strict-mcp-config ' "$console_mcp")"
+    # himmel's 1 KB chief brief replaces the dropped i-have-adhd plugin.
+    local chief_brief
+    chief_brief="$(cd "$HERE/../../.." && pwd)/docs/handover/chief-adhd-brief.md"
+    [ -f "$chief_brief" ] || { err "the chief brief $chief_brief is missing; refusing to print a chief launch without it"; exit 2; }
     local claude_cmd
-    claude_cmd="$(printf '%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"' \
-        "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2")"
+    claude_cmd="$(printf '%s claude --settings %q --model %q %s--append-system-prompt-file %q --autocompact %s -n %s "load %s and continue"' \
+        "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$chief_brief" "$console_autocompact" "$1" "$2")"
     # No launcher binds a pasted chief on the bus, so the line runs claude
     # through chief-bus-exec.sh, which registers and binds it first; a line
     # pasted after that file is gone runs claude directly.

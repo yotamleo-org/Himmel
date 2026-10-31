@@ -2,40 +2,28 @@
 
 Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step 7. Moved verbatim from the template.
 
-12. **Render and publish the chief board**. The board is a
+12. **Render the chief board (local only)**. The board is a
     generated HTML page — fleet N/cap with idle slots, every worker's phase
     (LIVE → READY-TO-OPEN → PR open → READY → MERGED → WRAPPED, plus its own
     `WRAPPED, window still open` when a WRAPPED worker's claude window is still
     alive — derived from an independent process census, since tick.sh's `procs=`
     only counts HELD workers), what needs you, epic merged/total, the operator's
     open decisions — so the operator sees progress and convergence without
-    asking. The published page shows live work only: WRAPPED and MERGED workers
+    asking. The page shows live work only: WRAPPED and MERGED workers
     and the merged PRs are written to `chief-board-archive.html` beside it
     (local, never published, one item per line — `grep` it for a ticket key,
-    PR or last bullet), so a successor republishes a small page. Render it with `node "<kit>/board.mjs" --doc "<this file>" --changed`: `--changed` re-renders and prints `CHANGED <path>` or
+    PR or last bullet), so a successor re-renders a small page. Render it with `node "<kit>/board.mjs" --doc "<this file>" --changed`: `--changed` re-renders and prints `CHANGED <path>` or
     `UNCHANGED <path>` instead of the bare path, so you know from one line
     whether the render moved after a dispatch, verdict, GO, MERGED or WRAPPED
     (nonces and lock tokens are redacted from the file either way). Rendering
-    never publishes — on `CHANGED`, publish that file with the `Artifact` tool
-    yourself and record the artifact URL on the `board:` line of `## Live
-    state` — `chief.sh next` carries it to your successor, who updates the
-    same artifact instead of minting a new one. **A successor's FIRST publish
-    to a carried `board:` URL goes to a haiku subagent, never your own
-    context.** The tool refuses a publish to an artifact this session has not
-    viewed and the refusal returns the whole live page (about 23k tokens for a
-    46 KB page, paid on every later call), and `Artifact read` costs the same.
-    Dispatch `Agent` with `model: haiku`, effort medium: "`Artifact` `read` `<url>`
-    (no `path`), then `Artifact` `publish` `<url>` from `<local file>`; reply with
-    one line: `PUBLISHED <url>`, or the first 200 characters of the error. Never
-    paste page content." It returns one line, not the page; if a later publish
-    of your own is refused, send that to the subagent too and never read the URL
-    yourself. A `path` read or `overwrite_unread` does not count as viewing.
-    <!-- measured: a haiku-delegated publish adds about 1.4k-2.7k tokens (median 1.9k) to the parent context, under the 5k limit; the live page never reaches it -->
+    never publishes, and the board stays LOCAL (operator ruling 10-29): the
+    chief profile denies the `Artifact` tool (HIMMEL-8201). Record the local
+    file's path on the `board:` line of `## Live state`; `chief.sh next`
+    carries it to your successor, who re-renders the same file.
     The tick's `board=` field is your reminder:
     `board=MISSING` (never rendered) or `board=STALE:<age>` (the state moved
-    since the last render) means re-run it now. `board=ok` proves only that the
-    LOCAL file matches the current state; republishing the artifact stays your
-    step.
+    since the last render) means re-run it now; `board=ok` means the LOCAL
+    file matches the current state.
 
     The live page stays under 15 KB at 25 live workers: one line per worker card,
     finished judges (last bullet `WRAPPED` or `VERDICT`) go to the archive with
@@ -86,12 +74,8 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     the paths the tick reads, because with `--plan-dir` the render also writes
     `<out>.fp`, the value `--emit-fp` prints, so the tick then reports `tracker=ok`).
     Render a later version the same way to its own file, without `--plan-dir`.
-    Republish each file to its URL with the `Artifact` tool. A
-    successor's FIRST publish to a carried tracker URL goes to the same haiku
-    subagent as for `board:` (FOCUS and tracker pages are the 46 KB ones);
-    update each URL in place, never a new URL. After each publish of the current page, `touch <handover bucket>/roadmap-tracker.html.published`:
-    a page newer than that stamp reads `tracker=REPUBLISH:<age>` (rendered, not yet
-    republished); without the stamp file the tick keeps reading plain `ok`.
+    The tracker stays local like the board: open each rendered file, never
+    publish it. Without a `<out>.published` stamp file the tick reads plain `ok`.
 
     **What a version page shows.** Columns are the Jira statuses of the
     version's open tickets (To Do, In Progress, In Review, IN CI), except that a
@@ -144,8 +128,8 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     replace `roadmap-tracker.html` (and only when the page fingerprint moved); `focus-state`
     records every run, `FAILED:<stage>` included. The wrap prints
     `focus=ok|busy|FAILED:<stage>|skip` and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
-    (`chief-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). Republish the page
-    with the `Artifact` tool as above. Each card also shows its worker (owner, PR, state).
+    (`chief-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). The page stays
+    local, as above. Each card also shows its worker (owner, PR, state).
     `status-drift.sh` is the report-only drift check (last line `sdrift=<n>:<sig8>`); its
     `VERSION-DRIFT` row lists a Done or started ticket held only in a later unreleased version than
     the current one, with the INTAKE request that folds it in (the wrap prints it as `drift:`);

@@ -218,12 +218,12 @@ function checkNoDuplicates(errors, ids, message) {
 }
 
 // denyTools (bare names) and disableWorkflows shrink the prompt of a worker-shaped
-// profile; every other profile keeps the full tool set.
+// profile and of the chief; every other profile keeps the full tool set.
 function validateToolTrim(errors, name, spec) {
   if (spec.denyTools === undefined && spec.disableWorkflows === undefined) return;
-  if (name !== 'bare' && !WORKER_SESSION_PROFILES.has(name)) {
-    if (spec.denyTools !== undefined) errors.push(`profile "${name}" denyTools is restricted to worker-shaped profiles`);
-    if (spec.disableWorkflows !== undefined) errors.push(`profile "${name}" disableWorkflows is restricted to worker-shaped profiles`);
+  if (name !== 'bare' && name !== 'chief' && !WORKER_SESSION_PROFILES.has(name)) {
+    if (spec.denyTools !== undefined) errors.push(`profile "${name}" denyTools is restricted to worker-shaped profiles and chief`);
+    if (spec.disableWorkflows !== undefined) errors.push(`profile "${name}" disableWorkflows is restricted to worker-shaped profiles and chief`);
   }
   if (spec.denyTools !== undefined) {
     if (!Array.isArray(spec.denyTools) || !spec.denyTools.every((t) => typeof t === 'string' && BARE_TOOL_RE.test(t))) {
@@ -637,7 +637,7 @@ function listingSettings(registry, names, enabledPlugins, opts) {
   const enabledIds = Object.entries(enabledPlugins).filter(([, on]) => on).map(([id]) => id);
   if (!listingLib) throw new Error('plugin-profiles: opts.skillEntries needs `await loadListingLib()` first');
   const window = names.some((n) => registry.profiles[n]?.contextMode === '1m') ? 1_000_000 : undefined;
-  return listingLib.skillListingSettings({ entries: opts.skillEntries, window, configDir: opts.configDir, cwd: opts.cwd, enabledIds, requiredIds: [...new Set(names.flatMap((n) => listingLib.requiredIdsFor(n)))] });
+  return listingLib.skillListingSettings({ entries: opts.skillEntries, window, configDir: opts.configDir, cwd: opts.cwd, enabledIds, requiredIds: [...new Set(names.flatMap((n) => listingLib.requiredIdsFor(n)))], hiddenSkills: [...new Set(names.flatMap((n) => listingLib.hiddenSkillsFor(n)))] });
 }
 
 // The permission matcher compares literal command

@@ -1691,13 +1691,13 @@ test('HIMMEL-4017: the code kit does not hand a worker its dropped base plugins 
 // Operator decision 52: the reading-style ruleset is for the operator's windows. A lane worker
 // is read by a chief, not the operator, so lane-impl, lane-review and lane-content drop it
 // (measured 2430 first-turn tokens each); telegram's output is read by the operator and keeps it.
-test('lane-impl, lane-review and lane-content drop i-have-adhd; telegram and console keep it (HIMMEL-4017)', () => {
+test('lane-impl, lane-review and lane-content drop i-have-adhd; telegram keeps it; the chief carries its own brief instead (HIMMEL-4017, HIMMEL-8201)', () => {
   for (const name of ['lane-impl', 'lane-review', 'lane-content']) {
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     assert.equal(p['i-have-adhd@himmel'], false, `${name}: i-have-adhd dropped`);
     for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
   }
-  for (const name of ['telegram', 'console']) {
+  for (const name of ['telegram']) {
     assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, `${name} keeps i-have-adhd`);
   }
 });
@@ -2051,8 +2051,10 @@ test('worker family drops i-have-adhd, keeps the floor and lean-skills (HIMMEL-4
     for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
     assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills workers call`);
   }
-  // The operator reads the chief window, so the reading-style ruleset stays there.
-  assert.equal(resolveProfile(REG, 'console', { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, 'chief keeps i-have-adhd');
+  // The chief swaps the plugin for its own 1 KB brief (docs/handover/chief-adhd-brief.md).
+  const chief = resolveProfile(REG, 'console', { installed: [] }).enabledPlugins;
+  for (const id of ['i-have-adhd@himmel', 'lean-skills@himmel']) assert.equal(chief[id], false, `chief drops ${id}`);
+  for (const id of REG.floor) assert.equal(chief[id], true, `chief keeps the floor: ${id}`);
 });
 
 // graphify's skill was a user-scope copy written by himmel-update into
@@ -2129,16 +2131,23 @@ for (const name of BUS_PROFILES) {
 test('HIMMEL-4983: no shipped profile denies a tool a worker needs, and non-worker profiles carry no trim', () => {
   for (const [name, spec] of Object.entries(REG.profiles)) {
     for (const t of spec?.denyTools ?? []) assert.ok(!TRIM_NEVER.includes(t), `${name} denies ${t}`);
-    if (!BUS_PROFILES.includes(name)) {
+    if (!BUS_PROFILES.includes(name) && name !== 'chief') {
       assert.equal(spec?.denyTools, undefined, `${name} must not carry denyTools`);
       assert.equal(spec?.disableWorkflows, undefined, `${name} must not carry disableWorkflows`);
     }
   }
-  for (const name of ['console', 'chief-relay', 'console-judge', 'release-manager', 'lane-impl']) {
+  for (const name of ['chief-relay', 'console-judge', 'release-manager', 'lane-impl']) {
     const settings = resolveProfile(REG, name, { installed: [] });
     assert.ok(!settings.permissions?.deny, `${name} must not emit permissions.deny`);
     assert.ok(!Object.hasOwn(settings, 'disableWorkflows'), `${name} must keep Workflow`);
   }
+});
+
+test('HIMMEL-8201: the chief denies Artifact and the unused tools, keeps AskUserQuestion, Cron* and the bus', () => {
+  const settings = resolveProfile(REG, 'chief', { installed: [] });
+  for (const t of ['Artifact', 'ScheduleWakeup', 'ReportFindings', 'SendFeedback']) assert.ok(settings.permissions.deny.includes(t), `chief denies ${t}`);
+  for (const t of ['AskUserQuestion', 'CronCreate', 'CronDelete', 'CronList', ...TRIM_NEVER]) assert.ok(!settings.permissions.deny.includes(t), `chief keeps ${t}`);
+  assert.equal(settings.disableWorkflows, true);
 });
 
 test('HIMMEL-4983: validateRegistry holds the denyTools / disableWorkflows contract', () => {
@@ -2153,7 +2162,8 @@ test('HIMMEL-4983: validateRegistry holds the denyTools / disableWorkflows contr
   for (const t of TRIM_NEVER) assert.ok(errs({ denyTools: [t] }).some((e) => new RegExp(`denyTools .*${t}`).test(e)), `${t} must be refused`);
   assert.ok(errs({ disableWorkflows: 'yes' }).some((e) => /disableWorkflows must be a boolean/.test(e)));
   assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'user').some((e) => /"user" denyTools is restricted to worker-shaped profiles/.test(e)));
-  assert.ok(errs({ disableWorkflows: true }, 'chief').some((e) => /"chief" disableWorkflows is restricted to worker-shaped profiles/.test(e)));
+  assert.ok(errs({ disableWorkflows: true }, 'release-manager').some((e) => /"release-manager" disableWorkflows is restricted to worker-shaped profiles/.test(e)));
+  assert.deepEqual(errs({ denyTools: ['Artifact'], disableWorkflows: true }, 'chief'), [], 'HIMMEL-8201: the chief may trim its tools');
   assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'bare').some((e) => /"bare" must not declare denyTools/.test(e)));
   for (const v of [true, false]) assert.ok(errs({ disableWorkflows: v }, 'bare').some((e) => /"bare" must not declare disableWorkflows/.test(e)), `bare refuses disableWorkflows: ${v}`);
 });
