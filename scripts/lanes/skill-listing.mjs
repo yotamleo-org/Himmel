@@ -70,9 +70,9 @@ export function skillListingSettings({ entries, enabledIds, requiredIds, hiddenS
   for (const e of entries) {
     if (e.scope !== 'plugin-skills') skillOverrides[e.name] = 'name-only';
   }
-  for (const name of Object.keys(skillOverrides)) tokens += nameOnlyTokens(name);
-  // A hidden skill leaves the listing; the operator can still type `/name`.
+  // A hidden skill leaves the listing (and the budget); the operator can still type `/name`.
   for (const name of hiddenSkills) skillOverrides[name] = 'user-invocable-only';
+  for (const [name, v] of Object.entries(skillOverrides)) if (v === 'name-only') tokens += nameOnlyTokens(name);
   // several cached versions of one plugin can match: count each plugin skill once, largest wins
   const best = new Map();
   for (const id of enabledIds) {
