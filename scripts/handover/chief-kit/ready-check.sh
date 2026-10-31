@@ -725,10 +725,20 @@ if [ "$ONLY7" -eq 0 ]; then
 # counts as a change) is refused. A release cut (a PR that changes the root
 # VERSION file) raises every plugin it touches above main. Inline rather than
 # calling check-plugin-drift.sh, which hardwires HEAD and the caller's checkout.
-# A PR touching no plugin never reaches git. Fetch or read failure = FAIL.
-plug_files=$(printf '%s\n' "$files_json" | grep -E '^marketplace/plugins/[^/]+/' || true)
+# A file moved out of a plugin lists only its destination as filename, so the
+# plugin path comes from previous_filename. A PR touching no plugin never
+# reaches git. Fetch or read failure = FAIL.
+plug_prev=""
+plug_prev_ok=1
+if [ -n "$files_json" ]; then
+    plug_prev=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | .previous_filename // empty' 2>/dev/null) || plug_prev_ok=0  # swallow-ok: rc checked, an unreadable rename list FAILs check 9
+fi
+plug_files=$(printf '%s\n%s\n' "$files_json" "$plug_prev" | grep -E '^marketplace/plugins/[^/]+/' || true)
 if [ -z "$files_json" ]; then
     echo "[FAIL] 9. cannot read PR files — plugin version bump not checked"
+    mark_fail
+elif [ "$plug_prev_ok" -eq 0 ]; then
+    echo "[FAIL] 9. cannot read the paths the PR renames from — plugin version bump not checked"
     mark_fail
 elif [ -z "$plug_files" ]; then
     echo "[PASS] 9. no plugin files touched — version bump not applicable"

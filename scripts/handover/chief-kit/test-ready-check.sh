@@ -1555,6 +1555,15 @@ git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "fix: pr removes the plugin"
 PR_DEL=$(git -C "$WORK" rev-parse HEAD)
 git -C "$WORK" checkout -q -B pr "$BASE_OID"
+mkdir -p "$WORK/docs"
+git -C "$WORK" mv "$PLUG/body.txt" docs/body.txt
+git -C "$WORK" commit -q -m "fix: pr moves a plugin file out, no bump"
+PR_MOVE=$(git -C "$WORK" rev-parse HEAD)
+printf '{"name":"demo","version":"0.4.72"}\n' > "$WORK/$PLUG/.claude-plugin/plugin.json"
+git -C "$WORK" add -A
+git -C "$WORK" commit -q -m "fix: pr moves a plugin file out and bumps"
+PR_MOVE_BUMP=$(git -C "$WORK" rev-parse HEAD)
+git -C "$WORK" checkout -q -B pr "$BASE_OID"
 git -C "$WORK" rm -q "$PLUG/.claude-plugin/plugin.json"
 git -C "$WORK" commit -q -m "fix: pr drops only the manifest"
 PR_MANIFEST_DEL=$(git -C "$WORK" rev-parse HEAD)
@@ -1585,12 +1594,14 @@ git -C "$WORK" add -A
 git -C "$WORK" commit -q -m "feat: main bad manifest"
 git -C "$WORK" push -q origin main
 
-run_bump() {  # <pr head> <files> -> sets rc/out
+run_bump() {  # <pr head> <files> [renames "new old" lines] [renames-unreadable flag] -> sets rc/out
     git -C "$WORK" push -q -f origin "$1:refs/pull/$PR/head"
     local keep_sha="$SHA" keep_repo="$REPO" keep_ledger="$LEDGER"
     SHA="$1"; REPO="$CLONE"; LEDGER="$CLONE/.git/cr-critic-scores.jsonl"
     reset_stubs
     STUB_FILES="$2"
+    STUB_RENAMES="${3:-}"
+    STUB_RENAMES_FAIL="${4:-}"
     rc=0; out="$(run)" || rc=$?
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
@@ -1620,6 +1631,19 @@ notcontains "plugin edit bumped above main: no check fails" "$out" "[FAIL]"
 run_bump "$PR_BAD_NEW" "$BADP/.claude-plugin/plugin.json"
 check "new plugin main already ships: exit 1" "$rc" "1"
 contains "new plugin main already ships: check 9 fails" "$out" "[FAIL] 9."
+
+# A file moved out of the plugin is a change to the plugin: the PR file list names
+# only the destination, the plugin path is its previous_filename.
+run_bump "$PR_MOVE" "docs/body.txt" "docs/body.txt $PLUG/body.txt"
+check "plugin file moved out, no bump: exit 1" "$rc" "1"
+contains "plugin file moved out, no bump: check 9 fails" "$out" "[FAIL] 9."
+contains "plugin file moved out, no bump: names the plugin" "$out" "demo"
+run_bump "$PR_MOVE_BUMP" "docs/body.txt
+$PLUG/.claude-plugin/plugin.json" "docs/body.txt $PLUG/body.txt"
+contains "plugin file moved out and bumped: check 9 passes" "$out" "[PASS] 9. every plugin the PR changes is bumped above current origin/main"
+run_bump "$PR_MOVE" "docs/body.txt" "docs/body.txt $PLUG/body.txt" 1
+check "renamed-from paths unreadable: exit 1" "$rc" "1"
+contains "renamed-from paths unreadable: check 9 fails closed" "$out" "[FAIL] 9."
 
 # DoD: a bump with no other file change in the plugin is refused.
 run_bump "$PR_BUMP_ONLY" "$PLUG/.claude-plugin/plugin.json"

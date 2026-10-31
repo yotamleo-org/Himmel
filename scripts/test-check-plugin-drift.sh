@@ -579,35 +579,35 @@ if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-require
 # A commit after the bump (same branch) needs no second bump: the version is
 # compared with the branch's base, not the previous commit.
 bump_fixture "$W_DOD/c1" foo
-git -C "$W_DOD/c1" branch -m main
-(cd "$W_DOD/c1" && git checkout -q -b feat && bump_edit "$W_DOD/c1" && bump_ver "$W_DOD/c1" 0.1.1 && git add -A && git commit -q -m 'fix: edit and bump' && printf '# edited again\n' > "$P/foo/skill.md" && git add -A)
+git -C "$W_DOD/c1" branch -m main || bad "c1 fixture: branch rename failed"
+(cd "$W_DOD/c1" && git checkout -q -b feat && bump_edit "$W_DOD/c1" && bump_ver "$W_DOD/c1" 0.1.1 && git add -A && git commit -q -m 'fix: edit and bump' && printf '# edited again\n' > "$P/foo/skill.md" && git add -A) || bad "c1 fixture: history setup failed"
 bump_run "$W_DOD/c1"
 if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a second commit after the bump needs no second bump (HIMMEL-8368)"; else bad "--bump-required (staged): second commit demanded another bump (rc=$br_rc): $br_out"; fi
 
 # Base moved: a sibling already shipped the version this PR bumps to, so the PR
 # must merge main and bump above it (two contents never share a version).
 bump_fixture "$W_DOD/b1" foo
-git -C "$W_DOD/b1" branch -m main
+git -C "$W_DOD/b1" branch -m main || bad "b1 fixture: branch rename failed"
 (cd "$W_DOD/b1" && git checkout -q -b feat && bump_edit "$W_DOD/b1" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: pr edit and bump' \
-  && git checkout -q main && printf '# sibling\n' > "$P/foo/sibling.md" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: sibling edit and bump' && git checkout -q feat)
+  && git checkout -q main && printf '# sibling\n' > "$P/foo/sibling.md" && bump_ver "$W_DOD/b1" 0.1.1 && git add -A && git commit -q -m 'fix: sibling edit and bump' && git checkout -q feat) || bad "b1 fixture: history setup failed"
 base_moved_out="$(cd "$W_DOD/b1" && bash "$SCRIPT" --bump-required main 2>&1)"; base_moved_rc=$?
 if [ "$base_moved_rc" -ne 0 ] && grepq "$base_moved_out" "foo changed but its plugin.json version 0.1.1 is not above 0.1.1 on the base"; then ok "--bump-required (range): a bump the base already shipped is refused (HIMMEL-8368)"; else bad "--bump-required (range): duplicate of the base's version passed (rc=$base_moved_rc): $base_moved_out"; fi
 
 # A version-only commit after an earlier plugin edit (a correction above a
 # sibling's version) is part of the same PR: judged against the branch base, not HEAD.
 bump_fixture "$W_DOD/c2" foo
-git -C "$W_DOD/c2" branch -m main
-(cd "$W_DOD/c2" && git checkout -q -b feat && bump_edit "$W_DOD/c2" && bump_ver "$W_DOD/c2" 0.1.1 && git add -A && git commit -q -m 'fix: edit and bump' && bump_ver "$W_DOD/c2" 0.1.2 && git add -A)
+git -C "$W_DOD/c2" branch -m main || bad "c2 fixture: branch rename failed"
+(cd "$W_DOD/c2" && git checkout -q -b feat && bump_edit "$W_DOD/c2" && bump_ver "$W_DOD/c2" 0.1.1 && git add -A && git commit -q -m 'fix: edit and bump' && bump_ver "$W_DOD/c2" 0.1.2 && git add -A) || bad "c2 fixture: history setup failed"
 bump_run "$W_DOD/c2"
 if [ "$br_rc" -eq 0 ] && grepq "$br_out" "$bumped_line"; then ok "--bump-required (staged): a version-only follow-up commit on a branch with a plugin edit passes"; else bad "--bump-required (staged): version-only follow-up refused (rc=$br_rc): $br_out"; fi
 
 # A plugin both the PR and a sibling introduce under one version: the base already
 # ships it, so the PR's new plugin is not exempt from the live-base check.
 bump_fixture "$W_DOD/p1" foo
-git -C "$W_DOD/p1" branch -m main
+git -C "$W_DOD/p1" branch -m main || bad "p1 fixture: branch rename failed"
 (cd "$W_DOD/p1" && git checkout -q -b feat \
   && mkdir -p "$P/bar/.claude-plugin" && printf '{"name": "bar", "version": "0.1.0"}\n' > "$P/bar/.claude-plugin/plugin.json" && printf 'a\n' > "$P/bar/a.md" && git add -A && git commit -q -m 'feat: pr adds bar' \
-  && git checkout -q main && mkdir -p "$P/bar/.claude-plugin" && printf '{"name": "bar", "version": "0.1.0"}\n' > "$P/bar/.claude-plugin/plugin.json" && printf 'b\n' > "$P/bar/b.md" && git add -A && git commit -q -m 'feat: sibling adds bar' && git checkout -q feat)
+  && git checkout -q main && mkdir -p "$P/bar/.claude-plugin" && printf '{"name": "bar", "version": "0.1.0"}\n' > "$P/bar/.claude-plugin/plugin.json" && printf 'b\n' > "$P/bar/b.md" && git add -A && git commit -q -m 'feat: sibling adds bar' && git checkout -q feat) || bad "p1 fixture: history setup failed"
 twice_new_out="$(cd "$W_DOD/p1" && bash "$SCRIPT" --bump-required main 2>&1)"; twice_new_rc=$?
 if [ "$twice_new_rc" -ne 0 ] && grepq "$twice_new_out" "bar changed but its plugin.json version 0.1.0 is not above 0.1.0 on the base"; then ok "--bump-required (range): a new plugin the base already ships under that version is refused"; else bad "--bump-required (range): duplicate new plugin passed (rc=$twice_new_rc): $twice_new_out"; fi
 
