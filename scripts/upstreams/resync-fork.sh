@@ -222,16 +222,18 @@ sync_fork() {
   if [ "$DRY_RUN" = 1 ]; then
     echo "resync-fork: --dry-run — no gh repo sync, nothing pushed"; return 0
   fi
+  moved="nothing moved"
   if [ "$def" != "$branch" ]; then
     if git -C "$dir" rev-parse -q --verify "refs/remotes/upstream/$def" >/dev/null; then
       gh repo sync "$nwo" --branch "$def" || { echo "resync-fork: gh repo sync $nwo --branch $def failed" >&2; return 2; }
+      moved="$nwo@$def was already synced, $branch unchanged"
     else
       echo "resync-fork: $nwo@$def has no upstream counterpart in $upstream; left as is"
     fi
   fi
   git -C "$dir" push -q --atomic --force-with-lease="refs/heads/$branch:$old" fork \
     "HEAD:refs/heads/$branch" "$old:refs/tags/himmel-presync/$branch-${old:0:12}" \
-    || { echo "resync-fork: push to $nwo@$branch failed; nothing moved" >&2; return 2; }
+    || { echo "resync-fork: push to $nwo@$branch failed; $moved" >&2; return 2; }
   echo "resync-fork: pushed $nwo@$branch; old tip kept as himmel-presync/$branch-${old:0:12}"
 }
 

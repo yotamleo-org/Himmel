@@ -576,6 +576,18 @@ assert_contains "$(cat "$root/gh.log")" "repo sync yotamleo-org/fake --branch ma
 case "$(cat "$root/gh.log")" in *"pr create"*) fail "--sync opened a PR" ;; *) pass "--sync never opens a PR" ;; esac
 rm -rf "$root"
 
+# gh repo sync moved the fork default, then the push is rejected: the error
+# must not claim nothing moved.
+root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
+sync_fixture "$root" ours.txt
+printf '#!/bin/sh\nexit 1\n' > "$root/git/yotamleo-org/fake.git/hooks/pre-receive"
+chmod +x "$root/git/yotamleo-org/fake.git/hooks/pre-receive"
+out=$(run_sync "$root" yotamleo-org/fake 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "--sync push rejected after gh repo sync (rc=2)"; else fail "--sync push rejected: rc=$rc; $out"; fi
+assert_contains "$out" "yotamleo-org/fake@main was already synced, himmel-main unchanged" "--sync push failure says the default branch already moved"
+case "$out" in *"nothing moved"*) fail "--sync push failure after gh repo sync says nothing moved" ;; *) pass "--sync push failure does not claim nothing moved" ;; esac
+rm -rf "$root"
+
 # The fork's default branch (main) has no upstream counterpart (upstream
 # default v8): gh repo sync would fail, so it is skipped and the push happens.
 root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1

@@ -52,7 +52,8 @@ Syncing a fork with its upstream is upkeep, never a PR (HIMMEL-8334):
   pushes nothing; nobody opens a PR to finish it.
 - `block-fork-sync-pr.sh` refuses a `gh pr create` whose base is a fork and
   whose head is an upstream branch, or a branch of ours that is mostly upstream
-  commits.
+  commits. It runs on the Claude and Codex Bash chains, and
+  `scripts/lanes/worker-pr-open.sh` runs it on the PR it opens itself.
 - The judge, the signed GO and CodeRabbit cover only our carried changes. A PR
   to a fork carries only our own authored delta, and the critic panel diffs a
   fork PR from its merge-base with the upstream default branch, so

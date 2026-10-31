@@ -89,6 +89,23 @@ run_hook "GH_REPO prefix names the base repo" 2 "GH_REPO=yotamleo-org/core gh pr
 run_hook "exported GH_REPO names the base repo" 2 "export GH_REPO=yotamleo-org/core && gh pr create --head home-assistant:dev -t x -b y"
 GH_REPO=yotamleo-org/core run_hook "GH_REPO in the session env names the base repo" 2 "gh pr create --head home-assistant:dev -t x -b y"
 
+# 3b. gh's other repo spellings: HOST/OWNER/REPO, a URL, an attached -R.
+run_hook "--repo github.com/owner/name is refused" 2 "gh pr create --repo github.com/yotamleo-org/core --head home-assistant:dev -t x -b y"
+run_hook "--repo https URL is refused" 2 "gh pr create --repo https://github.com/yotamleo-org/core --head home-assistant:dev -t x -b y"
+run_hook "attached -Rowner/name is refused" 2 "gh pr create -Ryotamleo-org/core -Hhome-assistant:dev -t x -b y"
+
+# 3c. No --repo in a clone whose `gh repo set-default` remote is our fork:
+#     gh resolves that remote, not origin.
+SETDEF="$SANDBOX/setdefault-clone"
+git init -q "$SETDEF"
+git -C "$SETDEF" remote add origin https://github.com/someone/core.git
+git -C "$SETDEF" remote add ours https://github.com/yotamleo-org/core.git
+git -C "$SETDEF" config remote.ours.gh-resolved base
+run_hook "gh repo set-default remote (base) is the base repo" 2 "gh pr create --head home-assistant:dev -t x -b y" "$SETDEF"
+git -C "$SETDEF" config --unset remote.ours.gh-resolved
+git -C "$SETDEF" config remote.origin.gh-resolved yotamleo-org/core
+run_hook "gh repo set-default naming owner/repo is the base repo" 2 "gh pr create --head home-assistant:dev -t x -b y" "$SETDEF"
+
 # 4. Our own carried branch is allowed (3 of 3 PR commits are ours).
 GH_OURS=3 GH_TOTAL=3 run_hook "our carried branch into our fork is allowed" 0 "gh pr create --repo yotamleo-org/graphify --base himmel-main --head himmel/fix-x -t x -b y"
 
@@ -118,9 +135,18 @@ run_hook "a plain command is untouched" 0 "ls -la"
 # 8. Bypass.
 FORK_SYNC_PR_OK=1 run_hook "FORK_SYNC_PR_OK=1 bypasses" 0 "$CORE3"
 
+# 8b. The Codex lane runs the guard too: its Bash chain names it, and the
+#     Codex wrapper turns the core#3 refusal into a deny.
+REPO_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
+if jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[].command | test("[ +]block-fork-sync-pr\\.sh(\\+|$)")' \
+    "$REPO_ROOT/.codex/hooks.json" > /dev/null; then pass "Codex Bash chain runs the guard"; else fail "Codex Bash chain must name block-fork-sync-pr.sh"; fi
+jq -n --arg c "$CORE3" --arg d "$SANDBOX" \
+    '{hook_event_name:"PreToolUse", tool_name:"Bash", tool_input:{command:$c}, cwd:$d}' > "$SANDBOX/payload.json"
+codex_out="$(bash "$REPO_ROOT/.codex/run-hook.sh" --sandbox block-fork-sync-pr.sh < "$SANDBOX/payload.json" 2>/dev/null)"
+if grepq "$codex_out" -F '"permissionDecision":"deny"'; then pass "Codex wrapper denies the core#3 replay"; else fail "Codex wrapper must deny core#3: $codex_out"; fi
+
 # 9. Grep row: no doc or skill tells anyone to open a sync PR or to review
 #    upstream code. A line that says never/refuse/not is the rule, not the ask.
-REPO_ROOT="$(cd "$HOOK_DIR/../.." && pwd)"
 SYNC_PR_RE='open (a|the) (re-?)?sync PR|one PR per fork|sync upstream first|re-?sync is captured in a (reviewable )?PR|synced with its upstream .{0,40}whenever a worker|review (the )?upstream(-authored)? (code|commits)'
 hits="$(git -C "$REPO_ROOT" grep -n -i -E "$SYNC_PR_RE" -- \
     'docs/*.md' '.claude/commands/*.md' '.claude/skills/*.md' 'marketplace/plugins/*/skills/*.md' \

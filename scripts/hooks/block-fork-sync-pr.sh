@@ -17,8 +17,10 @@
 # ALLOWED: a PR of our own carried delta, any repo that is not a registered
 # fork (himmel itself, first-party repos), every other command.
 #
-# The base repo is `--repo`/`-R`, else `GH_REPO`, else the `origin` of the
-# clone the command runs in (after any `cd`). R2 counts the PR's commits
+# The base repo is `--repo`/`-R` (OWNER/REPO, HOST/OWNER/REPO or a URL), else
+# `GH_REPO`, else the clone the command runs in (after any `cd`): its
+# `gh repo set-default` remote, else `origin`. scripts/lanes/worker-pr-open.sh,
+# which calls gh itself, runs this hook in-script. R2 counts the PR's commits
 # against `--base`, else the fork's default branch, with the GitHub compare
 # API (`gh api`); a deny names the replacement,
 # `bash scripts/upstreams/resync-fork.sh --sync <fork>`.
@@ -61,7 +63,7 @@ REGISTRY="${HIMMEL_REPO:-$HOOK_DIR/../..}/scripts/guardrails/himmel-adapters.jso
 [ -r "$REGISTRY" ] || exit 0
 
 python3 -I - "$REGISTRY" "$input" <<'PY'
-import json, os, re, shlex, subprocess, sys
+import json, os, re, shlex, subprocess, sys, time
 
 registry_path, raw = sys.argv[1], sys.argv[2]
 
@@ -118,6 +120,9 @@ def flags(args):
         elif a in names and i + 1 < len(args):
             key, val = names[a], args[i + 1]
             i += 1
+        elif a[:2] in ("-R", "-H", "-B") and len(a) > 2:
+            # Attached short flag: -Rowner/name (pflag also takes -R=owner/name).
+            key, val = names[a[:2]], a[3:] if a[2] == "=" else a[2:]
         if key:
             out[key] = val
         i += 1
@@ -134,30 +139,49 @@ def nwo_of_url(url):
     m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?/?$", url)
     return m.group(1) if m else ""
 
-# At most five gh calls per PR; 5 x 8 s stays inside the Bash chain's 61 s.
-GH_TIMEOUT = 8
+def repo_arg(v):
+    """owner/name from gh's repo forms: OWNER/REPO, github.com/OWNER/REPO, a URL."""
+    v = v.strip()
+    if v.count("/") == 1 and ":" not in v:
+        return v
+    return nwo_of_url(v)
+
+def default_remote_repo():
+    """The repo gh resolves with no --repo: a `gh repo set-default` remote
+    (remote.<r>.gh-resolved) wins over origin."""
+    for line in git("config", "--get-regexp", r"^remote\..*\.gh-resolved$").splitlines():
+        key, _, val = line.partition(" ")
+        remote = key[len("remote."):-len(".gh-resolved")]
+        if val.strip() == "base":
+            return nwo_of_url(git("remote", "get-url", remote))
+        return repo_arg(val)
+    return nwo_of_url(git("remote", "get-url", "origin"))
+
+# Up to five gh calls share one 12 s budget, inside the 15 s each chain
+# member gets (run-hook-with-bash.js DEFAULT_MEMBER_TIMEOUT_MS).
+DEADLINE = time.monotonic() + 12
+
+def gh(*a):
+    left = DEADLINE - time.monotonic()
+    if left <= 0:
+        return None
+    try:
+        return subprocess.run(["gh", *a], capture_output=True, text=True,
+                              timeout=left)
+    except Exception:
+        return None
 
 def gh_compare(repo, spec, jq=".ahead_by"):
-    try:
-        p = subprocess.run(["gh", "api", f"repos/{repo}/compare/{spec}",
-                            "--jq", jq], capture_output=True,
-                           text=True, timeout=GH_TIMEOUT)
-        return p.stdout.split() if p.returncode == 0 else []
-    except Exception:
-        return []
+    p = gh("api", f"repos/{repo}/compare/{spec}", "--jq", jq)
+    return p.stdout.split() if p and p.returncode == 0 else []
 
 def gh_ahead(repo, spec):
     out = gh_compare(repo, spec)
     return int(out[0]) if len(out) == 1 and out[0].isdigit() else None
 
 def gh_default(repo):
-    try:
-        p = subprocess.run(["gh", "api", f"repos/{repo}", "--jq",
-                            ".default_branch"], capture_output=True,
-                           text=True, timeout=GH_TIMEOUT)
-        return p.stdout.strip() if p.returncode == 0 else ""
-    except Exception:
-        return ""
+    p = gh("api", f"repos/{repo}", "--jq", ".default_branch")
+    return p.stdout.strip() if p and p.returncode == 0 else ""
 
 def deny(fork, why):
     sys.stderr.write(
@@ -189,7 +213,8 @@ for words in segs:
     if args is None:
         continue
     f = flags(args)
-    base = f.get("repo") or gh_repo or nwo_of_url(git("remote", "get-url", "origin"))
+    named = f.get("repo") or gh_repo
+    base = repo_arg(named) if named else default_remote_repo()
     fork = forks.get(base.lower())
     if not fork:
         continue
