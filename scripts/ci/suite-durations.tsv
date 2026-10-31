@@ -36,7 +36,7 @@
 #
 # REFRESH — replay one shell-unit-shard matrix run's logs (all shards at once):
 #   gh run view <run-id> --log \
-#     | sed -nE 's/.*\[(PASS|FAIL)\] ([^ ]+) \(([0-9]+)s\).*/\2\t\3/p;s/.*\[QUARANTINE\] ([^ ]+) \(rc=[0-9]+, ([0-9]+)s\).*/\1\t\2/p' \
+#     | sed -nE 's/.*\[(PASS|FAIL)\] ([^ ]+) \(([0-9]+)s\).*/\2\t\3/p;s/.*\[QUARANTINE\] ([^ ]+) \(rc=[0-9]+, ([0-9]+)s\).*/\1\t\2/p;s/.*\[FLAKE\] ([^ ]+) \(first run rc=[0-9]+, passed on retry, ([0-9]+)s\).*/\1\t\2/p' \
 #     | sort -u
 # then replace the rows below and update the source line above.
 marketplace/plugins/pstack/test-vendor.sh	1

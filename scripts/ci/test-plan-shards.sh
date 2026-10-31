@@ -351,12 +351,14 @@ job="shell-unit-shard (ubuntu-latest, 12)${T}Run bash scripts/ci/home-canary.sh 
   printf '%s%s2026-10-31T05:07:48.7255992Z [PASS] scripts/handover/chief-kit/test-chief-wait-pool.sh (125s)\n' "$job" "$T"
   printf '%s%s2026-10-31T05:07:48.7256553Z [RETRY] scripts/handover/chief-kit/test-chief-wait-b.sh failed (rc=1); re-running it once\n' "$job" "$T"
   printf '%s%s2026-10-31T05:07:48.7271309Z [QUARANTINE] scripts/handover/chief-kit/test-chief-wait-b.sh (rc=1, 499s) — tier quarantine, not failing the run\n' "$job" "$T"
+  # no [FLAKE] line was in these runs: this one is run-shell-tests.sh's own printf format
+  printf '%s%s2026-10-31T05:07:48.7271999Z [FLAKE] scripts/flaky-fixture/test-retry.sh (first run rc=1, passed on retry, 90s)\n' "$job" "$T"
 } > "$PS/shard12.log"
 recipe=$(grep -m1 "^#     | sed -nE '" "$SRC_ROOT/scripts/ci/suite-durations.tsv")
 recipe=${recipe#"#     | sed -nE '"}
 recipe=${recipe%"' \\"}
 got=$(sed -nE "$recipe" "$PS/shard12.log" | sort -u)
-want=$(printf 'scripts/guardrails/test-lesson-write-fence.sh\t84\nscripts/handover/chief-kit/test-chief-wait-b.sh\t499\nscripts/handover/chief-kit/test-chief-wait-pool.sh\t125')
-if [ -n "$recipe" ] && [ "$got" = "$want" ]; then pass "PS26 the REFRESH recipe harvests a quarantined suite's seconds"; else fail "PS26 recipe [$recipe]: got [$got]"; fi
+want=$(printf 'scripts/flaky-fixture/test-retry.sh\t90\nscripts/guardrails/test-lesson-write-fence.sh\t84\nscripts/handover/chief-kit/test-chief-wait-b.sh\t499\nscripts/handover/chief-kit/test-chief-wait-pool.sh\t125')
+if [ -n "$recipe" ] && [ "$got" = "$want" ]; then pass "PS26 the REFRESH recipe harvests a quarantined suite's and a retried suite's seconds"; else fail "PS26 recipe [$recipe]: got [$got]"; fi
 
 rst_tally
