@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # inject-minerva-critic.sh — PreToolUse(Skill) hook.
 #
-# Closes the no-/minerva bypass: when superpowers:brainstorming,
-# superpowers:writing-plans, or grilling (one front door for
+# Closes the no-/minerva bypass: when lean-skills:brainstorming,
+# lean-skills:writing-plans, or grilling (one front door for
 # grill/stress-test/brainstorm — vendored as lean-skills:grilling as of
 # formerly mattpocock-skills:grilling) is invoked by ANY path
 # (auto-trigger, direct /skill, or a sub-skill handoff) WITHOUT /minerva, inject a

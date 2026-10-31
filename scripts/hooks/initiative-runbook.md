@@ -35,7 +35,7 @@ Steps run in this canonical order; only the tokens on the pointer's
 - **plan** — reserved vocabulary token. No behavior yet.
 
 - **execute** — when a critic-hardened plan exists, hand it to execution:
-  invoke `superpowers:subagent-driven-development` (recommended) to implement it
+  invoke `lean-skills:subagent-driven-development` (recommended) to implement it
   task-by-task. Advisory — it does not relax any rail.
 
 - **prcheck** — run `/pr-check` and loop: fix every finding, re-run, until CR is
