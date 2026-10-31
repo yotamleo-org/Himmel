@@ -305,10 +305,10 @@ Reuse an open ticket for this exact bump if one exists; otherwise file one
 heredoc/`$( )` shape gets refused by `block-jira-compound-write.sh`):
 
 ```bash
-node <repo-root>/scripts/jira/dist/index.js create --type Task --title "Bump <name> pin <old> -> <new> (fork-drift)" --sector "Deployment" --labels standalone --desc-file <path>
+node <repo-root>/scripts/jira/dist/index.js create --type Task --title "Bump <name> pin <old> -> <new> (fork-drift)" --sector "Deployment" --labels standalone --proposed-version <current version> --desc-file <path>
 ```
 
-`create` also refuses a Task, Story or Bug with no `--sector` or with neither `--parent <EPIC>` nor `--labels standalone` (HIMMEL-6223); the line above carries both.
+`create` also refuses a Task, Story or Bug with no `--sector` or with neither `--parent <EPIC>` nor `--labels standalone` (HIMMEL-6223), and one with no placement: `--proposed-version <v>` files it with a `proposed-<v>` label and no fixVersion, and queues its INTAKE request toward `<v>` (refused when no release is declared), while `--fix-version <v>` places it in that version (HIMMEL-8170). The line above carries all three.
 
 `create` refuses a body without the six sections `## Impact` / `## What` /
 `## Why` / `## Plan` / `## DoD` / `## Agent detail`, where Plan and DoD each hold

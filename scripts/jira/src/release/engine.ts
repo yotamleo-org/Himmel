@@ -131,6 +131,18 @@ function frontmatter(text: string): Record<string, unknown> {
   return out;
 }
 
+// links.blocked_by is a nested YAML block, which frontmatter() does not read.
+function blockedByOf(text: string): string[] {
+  const head = text.split('\n---')[0];
+  const m = /^[ \t]+blocked_by: (\[.*\])[ \t]*$/m.exec(head);
+  try {
+    const got: unknown = m ? JSON.parse(m[1]) : [];
+    return Array.isArray(got) ? got.filter((k): k is string => typeof k === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
   if (!root || !existsSync(join(root, '.cursor.json'))) return { issues: null, sync: null };
   let sync: string;
@@ -143,9 +155,11 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
   const issues = new Map<string, IssueSnap>();
   for (const name of readdirSync(root)) {
     if (!name.endsWith('.md')) continue;
-    const fm = frontmatter(readFileSync(join(root, name), 'utf8'));
+    const text = readFileSync(join(root, name), 'utf8');
+    const fm = frontmatter(text);
     if (typeof fm.key !== 'string') continue;
     issues.set(fm.key, {
+      blockedBy: blockedByOf(text),
       key: fm.key, status: String(fm.status ?? ''), statusCategory: typeof fm.statusCategory === 'string' ? fm.statusCategory : null,
       type: String(fm.type ?? ''), priority: String(fm.priority ?? ''),
       fixVersions: Array.isArray(fm.fixVersions) ? fm.fixVersions.map(String) : [],
@@ -207,7 +221,23 @@ export function declare(ctx: Ctx, o: { project: string; versions: string[]; deci
       id: `O-${ctx.release}-emergency`, kind: 'emergency', decision: '109',
       verbatim: 'standing record: an evidenced emergency (Highest or Blocker, a red main run, or a regression of a merged PR) is placed in the current version',
     });
+    appendOperator(ctx, k, { id: `O-${ctx.release}-blocker-pull`, kind: 'blocker-pull', decision: BLOCKER_PULL_DECISION, verbatim: BLOCKER_PULL_VERBATIM });
     return decl;
+  });
+}
+
+// Decision 385: a blocker of a current-version ticket is fixed in the current version as its related item.
+const BLOCKER_PULL_DECISION = '385';
+const BLOCKER_PULL_VERBATIM = 'standing record: a blocker of a ticket in the current version is placed in the current version as its related item';
+
+// The standing records a release declared before they existed take their row from the chief here.
+export function standing(ctx: Ctx, o: { kind: 'blocker-pull'; decision: string; verbatim: string }): OperatorRow {
+  operatorFence(ctx);
+  if (o.kind !== 'blocker-pull') throw new Error('release operator standing: --kind is blocker-pull');
+  return locked(ctx, (l) => {
+    const id = `O-${ctx.release}-blocker-pull`;
+    if (l.operator.verified.some((x) => x.id === id)) throw new Error(`release operator standing: ${id} is already recorded`);
+    return appendOperator(ctx, l.k, { id, kind: 'blocker-pull', decision: o.decision, verbatim: o.verbatim });
   });
 }
 
@@ -359,12 +389,87 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
   if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
   return locked(ctx, (l) => {
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
-    const dup = [...latest.values()].find((r) => pending(r) && r.key === o.key && r.verb === o.verb
+    // A blocker pull is asked for once, in any state, so two racing pull runs cannot file it twice.
+    const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
+    const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
       && r.from_v === o.from_v && r.to_v === o.to_v);
     if (dup) return dup;
     const req = seq(`Q-${ctx.release}`, latest.keys());
     return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
   });
+}
+
+// --- the blocker pull ------------------------------------------------------------
+
+// Each pull files at most this many requests, so one deep tree cannot flood the RM queue.
+export const PULL_MAX = 5;
+
+export interface PullRow {
+  key: string;
+  blocks: string[];
+  from_v: string | null;
+  to_v: string;
+}
+
+export interface PullOut {
+  current: string;
+  rows: PullRow[];
+  filed: RequestRow[];
+  deferred: PullRow[];
+  /** Epic blockers: an Epic is not worked, so the chief decides. */
+  skipped: string[];
+  /** Blockers the mirror does not hold. */
+  unknown: string[];
+}
+
+const isPullRequest = (q: RequestRow): boolean => (q.evidence as { rule?: unknown } | null)?.rule === 'blocker-pull';
+
+// Every open ticket of the current version that waits on an open ticket outside it files one INTAKE for that
+// blocker, naming everything it unblocks. A blocker is asked for once: a request in any state stops a second one
+// unless the blocker's own version changed.
+export function pull(ctx: Ctx, o: { max?: number; dryRun?: boolean } = {}): PullOut {
+  const l = loadOrThrow(ctx);
+  const standingId = `O-${ctx.release}-blocker-pull`;
+  if (!l.operator.verified.some((x) => x.id === standingId && x.kind === 'blocker-pull')) {
+    throw new Error(`release pull: ${ctx.release} has no standing blocker-pull record; the chief records it with release operator standing`);
+  }
+  const { issues } = readMirror(ctx.mirrorRoot);
+  if (!issues) throw new Error('release pull: the Jira mirror is missing or unreadable, so no pull');
+  const current = l.decl.current;
+  const waiting = new Map<string, Set<string>>();
+  for (const i of issues.values()) {
+    if (!i.fixVersions.includes(current) || terminalOf(i) !== null || i.type === 'Epic' || i.type === 'Sub-task') continue;
+    for (const b of i.blockedBy ?? []) waiting.set(b, (waiting.get(b) ?? new Set()).add(i.key));
+  }
+  const asked = [...latestRequests(l.requests).values()].filter((r) => isPullRequest(r));
+  const out: PullOut = { current, rows: [], filed: [], deferred: [], skipped: [], unknown: [] };
+  for (const key of [...waiting.keys()].sort()) {
+    const snap = issues.get(key);
+    if (!snap) {
+      out.unknown.push(key);
+      continue;
+    }
+    if (terminalOf(snap) !== null || snap.fixVersions.includes(current)) continue;
+    if (snap.type === 'Epic') {
+      out.skipped.push(key);
+      continue;
+    }
+    const from_v = l.decl.versions.find((v) => snap.fixVersions.includes(v)) ?? null;
+    if (asked.some((r) => r.key === key && r.from_v === from_v && r.to_v === current)) continue;
+    out.rows.push({ key, blocks: [...(waiting.get(key) ?? [])].sort(), from_v, to_v: current });
+  }
+  const max = o.max ?? PULL_MAX;
+  const todo = out.rows.slice(0, max);
+  out.deferred = out.rows.slice(max);
+  if (o.dryRun) return out;
+  for (const r of todo) {
+    out.filed.push(request(ctx, {
+      verb: 'INTAKE', key: r.key, from_v: r.from_v, to_v: r.to_v, from: 'blocker-pull',
+      why: `blocks ${r.blocks.join(', ')} in ${current}; standing rule ${standingId} (decision ${BLOCKER_PULL_DECISION})`,
+      evidence: { blocks: r.blocks, rule: 'blocker-pull' },
+    }));
+  }
+  return out;
 }
 
 // --- the lease (§5.8) ------------------------------------------------------------
@@ -461,6 +566,31 @@ export interface RuleOptions {
   authority: Authority;
 }
 
+// The standing pull is mechanical: every ticket it unblocks must still wait on the key, and a newer explicit
+// operator record naming the key wins. True when the authority is that standing record.
+function checkBlockerPull(ctx: Ctx, p: {
+  decl: Declaration; ops: Map<string, OperatorRow>; governing: OperatorRow | undefined; key: string; op: Op; authority: Authority;
+}): boolean {
+  const standingRow = p.authority.kind === 'operator' && p.authority.ref ? p.ops.get(p.authority.ref) : undefined;
+  if (standingRow?.kind !== 'blocker-pull') return false;
+  if (!scopeOk({ authority: p.authority, key: p.key, op: p.op }, p.ops, p.decl.current)) {
+    throw new Error(`release rule: ${p.authority.ref} does not cover ${p.key} ${p.op.kind} ${p.op.from_v}→${p.op.to_v}`);
+  }
+  const blocks = p.authority.blocks ?? [];
+  const { issues } = readMirror(ctx.mirrorRoot);
+  for (const b of blocks) {
+    const snap = issues?.get(b);
+    if (!snap || terminalOf(snap) !== null || !snap.fixVersions.includes(p.decl.current) || !snap.blockedBy?.includes(p.key)) {
+      throw new Error(`release rule: blocker-pull: ${b} is no longer an open ${p.decl.current} ticket blocked by ${p.key}`);
+    }
+  }
+  const g = p.governing;
+  if (g && Date.parse(g.ts) > Date.parse(standingRow.ts)) {
+    throw new Error(`release rule: CONFLICT ${p.key}: ${g.id} (newer) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} governs ${p.key}; ${blocks.join(', ')} blocked by it`);
+  }
+  return true;
+}
+
 export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
   return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
@@ -493,6 +623,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       && [x.from_v, x.to_v].some((v) => v != null && touched.includes(v)))
       .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
     let authority = o.authority;
+    const pulling = checkBlockerPull(ctx, { decl: l.decl, ops, governing, key: req.key, op: o.op, authority });
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
       const rec = recordOf(s, req.key, v);
@@ -502,6 +633,8 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (rec?.ruling && !o.supersedes.includes(rec.ruling)) throw new Error(`release rule: supersedes must name ${rec.ruling} (in effect for ${req.key}@${v})`);
       const prior = rec?.ruling ? applied.get(rec.ruling) : undefined;
       if (prior?.authority.kind !== 'operator') continue;
+      // The pull passed the newer-record check above, so it supersedes the operator ruling it finds.
+      if (pulling) continue;
       // Only an operator decision newer than the ruling supersedes it, and only the governing one.
       const since = Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
       const cited = authority.kind === 'operator' && authority.ref ? ops.get(authority.ref) : undefined;
@@ -731,9 +864,31 @@ export interface RuledDecision {
   supersedes?: string[];
   authority?: Authority['kind'];
   ref?: string | null;
+  blocks?: string[];
 }
 
 export type Decision = HoldDecision | RuledDecision;
+
+// The ruling of a standing blocker pull: ADMIT under O-<R>-blocker-pull, with no model call. The shape is
+// mechanical; rule() checks the mirror and a newer operator record.
+function pullDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q: RequestRow): RuledDecision | { noop: string } {
+  const release = now.decl.release;
+  const id = `O-${release}-blocker-pull`;
+  if (!now.operator.verified.some((x) => x.id === id && x.kind === 'blocker-pull')) throw new Error(`blocker-pull: ${id} is not recorded`);
+  const given = (q.evidence as { blocks?: unknown } | null)?.blocks;
+  const blocks = Array.isArray(given) ? given.filter((k): k is string => typeof k === 'string') : [];
+  if (!blocks.length || q.to_v !== now.decl.current) throw new Error(`blocker-pull: ${q.req} does not name the tickets it unblocks in ${now.decl.current}`);
+  const snap = mirror.issues?.get(q.key);
+  if (snap?.fixVersions.includes(q.to_v)) return { noop: `${q.key} is already in ${q.to_v}; nothing to pull` };
+  const op: Op = { kind: q.from_v ? 'move' : 'add', from_v: q.from_v, to_v: q.to_v };
+  const s = reduceLoaded(now, mirror);
+  const supersedes = [...new Set(now.decl.versions.filter((v) => effectOn(op, v)).flatMap((v) => recordOf(s, q.key, v)?.ruling ?? []))];
+  return {
+    req: q.req, outcome: 'ADMIT', op: op.kind, from: q.from_v, to: q.to_v, sector: snap?.sector ?? null, ground: 'blocker-pull',
+    reason: `blocks ${blocks.join(', ')} in ${now.decl.current}; standing rule ${id} (decision ${BLOCKER_PULL_DECISION})`,
+    supersedes, authority: 'operator', ref: id, blocks,
+  };
+}
 
 const isHold = (d: Decision): d is HoldDecision => d.outcome === 'HOLD';
 
@@ -862,13 +1017,15 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
     const claimed = claim(rctx);
     if (claimed.length) {
       const now = loadOrThrow(ctx);
-      const keys = new Set(claimed.map((r) => r.key));
+      // A standing blocker pull is ruled mechanically; only the other requests go to the judge.
+      const asked = claimed.filter((q) => !isPullRequest(q));
+      const keys = new Set(asked.map((r) => r.key));
       const mirror = readMirror(ctx.mirrorRoot);
       const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
       let decisions: Decision[];
       try {
-        decisions = await judge({
-          release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: claimed,
+        decisions = !asked.length ? [] : await judge({
+          release: ctx.release, current: now.decl.current, versions: now.decl.versions, requests: asked,
           records: reduceLoaded(now, mirror).records.filter((r) => keys.has(r.key)),
           operator: now.operator.verified,
           rulings: [...new Set([...receipted.filter((r) => keys.has(r.key)), ...receipted.slice(-40)])],
@@ -883,8 +1040,18 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       }
       for (const q of claimed) {
         let id: string;
-        const d = decisions.find((x) => x?.req === q.req);
+        let d = decisions.find((x) => x?.req === q.req);
+        const pulled = isPullRequest(q);
         try {
+          if (pulled) {
+            const got = pullDecision(now, mirror, q);
+            if ('noop' in got) {
+              lines.push(`NOOP ${q.req}: ${got.noop}`);
+              refuse(rctx, q.req, got.noop);
+              continue;
+            }
+            d = got;
+          }
           if (!d) throw new Error('the judge returned no decision');
           if (isHold(d)) {
             lines.push(`HELD ${q.req}: ${d.reason}`);
@@ -898,12 +1065,12 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           id = rule(rctx, {
             req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
             ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
-            authority: { kind: d.authority ?? 'rm', ref: d.ref ?? null },
+            authority: { kind: d.authority ?? 'rm', ref: d.ref ?? null, ...(d.blocks ? { blocks: d.blocks } : {}) },
           }).id;
         } catch (e) {
           lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);
           // A request the judge never answered stays claimed for the next run.
-          if (d) refuse(rctx, q.req, (e as Error).message);
+          if (d || pulled) refuse(rctx, q.req, (e as Error).message);
           continue;
         }
         try {

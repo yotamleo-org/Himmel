@@ -96,7 +96,7 @@ assert_dir_exists "$TMP/handovers/$SLUG/epics/HIMMEL-15-rename-himmel-and-jira"
 assert_dir_absent "$TMP/handovers/$SLUG/epics/#15-rename-himmel-and-jira"
 
 # Case 4: jira create sends the Impact/What/Why/Plan/DoD/Agent detail shape
-TMP4="$(mktemp -d)" || exit 1
+TMP4="$(mktemp -d "${TMPDIR:-/tmp}/migrate-test4.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP" "$TMP4"' EXIT
 fixture_setup "$TMP4/root"
 mkdir -p "$TMP4/root/handovers/$SLUG/epics/#15-rename-himmel-and-jira/tasks/#16-unkeyed-task" "$TMP4/bin" "$TMP4/bodies"
@@ -139,8 +139,28 @@ done
 # Both call sites ran (parented task, unparented standalone) and left no temp body behind.
 if grep -q -e '--parent HIMMEL-15' "$TMP4"/bodies/*.args; then pass=$((pass+1)); else echo "FAIL: no parented create"; fail=$((fail+1)); fi
 for a in "$TMP4"/bodies/*.args; do
-  if grep -q -e '--backlog' "$a"; then pass=$((pass+1)); else echo "FAIL: create not placed in the backlog: $a"; fail=$((fail+1)); fi
+  if grep -q -e '--backlog --proposed-version backlog --why [^ ]' "$a"; then pass=$((pass+1)); else echo "FAIL: create not placed with --backlog --proposed-version backlog --why: $a"; fail=$((fail+1)); fi
 done
+
+# Case 5: jira create exits non-zero AFTER creating the issue (its INTAKE could not be queued):
+# the migration keeps the created key, renames the item to it, and still reports failure, so a rerun cannot file a duplicate.
+TMP5="$(mktemp -d "${TMPDIR:-/tmp}/migrate-test5.XXXXXX")" || exit 1
+trap 'rm -rf "$TMP" "$TMP4" "$TMP5"' EXIT
+fixture_setup "$TMP5/root"
+mkdir -p "$TMP5/bin"
+cat > "$TMP5/bin/jira" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "create" ] || exit 0
+echo "Created HIMMEL-950"
+echo "Created HIMMEL-950 but INTAKE not queued: no release is declared" >&2
+exit 1
+EOF
+chmod +x "$TMP5/bin/jira"
+PATH="$TMP5/bin:$PATH" "$MIGRATE" --root "$TMP5/root" --quiet >/dev/null 2>&1
+rc5=$?
+if [ "$rc5" -ne 0 ]; then pass=$((pass+1)); else echo "FAIL: a create that failed after the POST must still fail the migration"; fail=$((fail+1)); fi
+assert_dir_exists "$TMP5/root/handovers/$SLUG/standalones/HIMMEL-950-legacy-item"
+assert_dir_absent "$TMP5/root/handovers/$SLUG/standalones/#3-legacy-item"
 
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

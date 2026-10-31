@@ -77,8 +77,8 @@ got="$(export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$CONF"; node
 # unknown-name stderr is loud and names the flag
 ( rd sh nope >/dev/null ); grep -q "unknown flag 'nope'" "$WORK/err" && pass "unknown name: stderr names the flag" || fail "unknown name: stderr was '$(cat "$WORK/err")'"
 
-# the shipped registry parses and the first flag is registered, default off
+# the shipped registry reads, and a removed flag (the chain_* flags are gone) is unknown (rc 2), not off
 reg_rc="$(HIMMEL_CONFIG_DIR="$CONF" bash "$LIB/flags.sh" chain_soft_edges 2>/dev/null; echo $?)"
-[ "$reg_rc" = 1 ] && pass "shipped registry: chain_soft_edges is registered and off" || fail "shipped registry: chain_soft_edges rc=$reg_rc"
+[ "$reg_rc" = 2 ] && pass "shipped registry: a removed flag (chain_soft_edges) is unknown" || fail "shipped registry: chain_soft_edges rc=$reg_rc"
 
 [ "$fails" = 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

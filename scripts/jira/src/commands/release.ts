@@ -16,7 +16,7 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, readMirror, reopen, request as releaseRequest, rmRun, rule, state, takeover, withdraw,
+  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, rmRun, rule, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -380,6 +380,23 @@ export function registerRelease(program: Command): void {
       console.log(`REQ ${r.req}`);
     });
 
+  rel.command('pull <release>')
+    .description('Queue one INTAKE per open blocker of a current-version ticket that sits outside it, under the standing blocker-pull record (the chief; a re-run queues none)')
+    .option('--max <n>', 'Requests to file in one run', String(PULL_MAX))
+    .option('--dry-run', 'List the rows and file nothing')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { max: string; dryRun?: boolean; mirrorRoot?: string }) => {
+      if (!/^[1-9]\d*$/.test(o.max)) throw new Error('release pull: --max needs a positive whole number');
+      const out = pull(ctxFor(release, o.mirrorRoot), { max: Number(o.max), dryRun: o.dryRun });
+      const filed = new Map(out.filed.map((r) => [r.key, r.req]));
+      for (const r of out.rows) {
+        const line = `PULL ${r.key} for ${r.blocks.join(',')} from ${r.from_v ?? 'backlog'} to ${r.to_v}`;
+        console.log(filed.has(r.key) ? `${line} REQ ${filed.get(r.key)}` : out.deferred.includes(r) ? `${line} DEFERRED` : line);
+      }
+      for (const k of out.skipped) console.log(`PULL-SKIP ${k} epic`);
+      for (const k of out.unknown) console.log(`PULL-UNKNOWN ${k}`);
+    });
+
   rel.command('withdraw <release>')
     .description('Retire an open or claimed request with a reason (the chief, never a worker)')
     .requiredOption('--req <id>', 'Request id (Q-<R>-NNNN)')
@@ -523,6 +540,16 @@ export function registerRelease(program: Command): void {
         verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(),
       });
       console.log(`${r.id} recorded; cite it as --authority operator --ref ${r.id}`);
+    });
+  operator.command('standing <release>')
+    .description('Record a standing operator rule on a release declared before it existed (new releases get it at declare)')
+    .requiredOption('--kind <kind>', 'blocker-pull')
+    .requiredOption('--decision <n>', 'Operator decision number')
+    .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
+    .action((release: string, o: { kind: string; decision: string; verbatimFile: string }) => {
+      if (o.kind !== 'blocker-pull') throw new Error('release operator standing: --kind is blocker-pull');
+      const r = standing(ctxFor(release), { kind: o.kind, decision: o.decision, verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim() });
+      console.log(`${r.id} recorded; \`jira release pull ${release}\` files the INTAKE requests it covers`);
     });
   operator.command('takeover <release>')
     .requiredOption('--epoch <n>', 'The epoch being taken over')

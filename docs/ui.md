@@ -43,7 +43,7 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 Configure is one page with four group tiles: Secrets, Review, Tracker and Project scope. One tile is open at a time and
 the open one rides the address (`#/config?tile=tracker`). Under the tile row, a Check this install strip runs the doctor
 (see below); it hides while a tile is open and shows again when the tile closes. The old Settings and Setup pages are gone: `#/setup` lands here with the Secrets
-tile open, and the install hand-off link below still works. Triage and the inventory moved to the Health page.
+tile open, and the install hand-off link below still works. Triage and the inventory moved to the Health page (What is broken, Every item checked).
 Tracker holds the Jira connection (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`) next to the
 commit rules, with one shared dry-run box; Secrets holds the other file-stored secrets and lists the terminal-only
 ones read-only.
@@ -141,8 +141,9 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   handover root and luna vault path, each with a dry-run before it changes. Roadmap and Kanban only
   appear when the UI can read a tracker; the old `#/setup` route lands on `#/config`), `#/health` (one verdict:
   All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
-  cards from the weekly roll-up, see below; then triage of failing items and the inventory of install
-  items, doctor checks, scheduled jobs, lanes, flags and secrets by presence), `#/toolhealth` (tool-call failure and
+  cards from the weekly roll-up, see below; then What is broken and Every item checked as two tabs, the checks grouped by bundle; the rail's project picker
+  switches to another registered project or to **All my projects**, where the Shared problems (the machine, not a
+  project) show once above each project worst first; a legacy Inventory stays below until its tests move), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
   librarian, live from the Jira mirror; click a version for its kanban at
   `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done

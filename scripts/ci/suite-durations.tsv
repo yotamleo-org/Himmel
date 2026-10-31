@@ -286,6 +286,7 @@ scripts/docs/test-docs-dropped-terms.sh	2
 scripts/docs/test-footprint-page.sh	0
 scripts/docs/test-generate-credits.sh	1
 scripts/docs/test-how-a-change-ships.sh	0
+scripts/docs/test-workflow-page-drift.sh	1
 scripts/docs/test-install-profiles-page.sh	1
 scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
@@ -379,6 +380,7 @@ scripts/guardrails/test-settings-qmd-allow.sh	0
 scripts/handover/chief-kit/test-ack-denial.sh	1
 scripts/handover/chief-kit/test-action-zero.sh	7
 scripts/handover/chief-kit/test-append-results.sh	30
+scripts/handover/chief-kit/test-auto-go.sh	25
 scripts/handover/chief-kit/test-board.sh	42
 scripts/handover/chief-kit/test-brief-lint.sh	14
 scripts/handover/chief-kit/test-chain-graph.sh	4
@@ -398,7 +400,6 @@ scripts/handover/chief-kit/test-cut-tag.sh	2
 scripts/handover/chief-kit/test-delta-class.sh	3
 scripts/handover/chief-kit/test-fleet-manifest.sh	1
 scripts/handover/chief-kit/test-fleet.sh	14
-scripts/handover/chief-kit/test-focus-chains-links.sh	0
 scripts/handover/chief-kit/test-gen-briefs.sh	33
 scripts/handover/chief-kit/test-gen-judge-brief.sh	2
 scripts/handover/chief-kit/test-gh-read.sh	1
@@ -432,6 +433,7 @@ scripts/handover/chief-kit/test-ready-check.sh	207
 scripts/handover/chief-kit/test-ready-go.sh	15
 scripts/handover/chief-kit/test-relay-batch.sh	20
 scripts/handover/chief-kit/test-run-suite.sh	1
+scripts/handover/chief-kit/test-series-ledger.sh	3
 scripts/handover/chief-kit/test-shepherd.sh	3
 scripts/handover/chief-kit/test-station-sync.sh	3
 scripts/handover/chief-kit/test-status-drift.sh	57
@@ -606,6 +608,7 @@ scripts/hooks/test-block-destructive-commands-d.sh	84
 scripts/hooks/test-block-docker-privesc.sh	19
 scripts/hooks/test-block-edit-live-settings.sh	153
 scripts/hooks/test-block-edit-on-main.sh	4
+scripts/hooks/test-block-fork-sync-pr.sh	1
 scripts/hooks/test-block-git-stash.sh	13
 scripts/hooks/test-block-worker-bypass-scope.sh	3
 scripts/hooks/test-block-worker-write-fence.sh	26
@@ -1202,3 +1205,4 @@ scripts/eval/routing/test-score.sh	9
 scripts/test-himmel-doctor-mcp-sources.sh	1
 scripts/handover/test-windows-arms-dropped.sh	1
 scripts/luna/test-cadence-alert.sh	1
+scripts/handover/chief-kit/test-focus-refresh-chains.sh	2

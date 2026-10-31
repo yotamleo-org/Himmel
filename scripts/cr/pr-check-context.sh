@@ -783,6 +783,9 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # (guarded) reads it to resolve the bare profile hermes-critic.sh applies, so a
 # branch could rewrite the profile its own review runs under - guarded like
 # egress-matrix.json above.
+# worker-pr-open.sh runs hooks/block-fork-sync-pr.sh in-script on the gh pr create
+# it issues, so that hook is guarded too (its only other script, resync-fork.sh,
+# is named in a deny message, never run: pinned NOT_RUN in the closure test).
 # worker-pr-open.sh runs chief-kit/worker-jira-status.sh to
 # move the ticket to In Review, so it is guarded. The Jira CLI it then runs is the
 # PRIMARY checkout's untracked scripts/jira/dist build, never branch bytes: the
@@ -795,14 +798,14 @@ cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/guardrails/lib.sh sc
 scripts/handover/resolve-active-item-report.sh
 scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh
 scripts/handover/merge-on-green.sh scripts/handover/queue-lock.sh
-scripts/hooks/check-commit-msg.sh
+scripts/hooks/check-commit-msg.sh scripts/hooks/block-fork-sync-pr.sh
 scripts/clean-garden.sh scripts/worktree.sh scripts/clean.sh scripts/_new-worktree.sh scripts/unlanded-work.sh
 scripts/observability/session-run-hook.ts scripts/observability/session-run-ledger.ts
 scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh
 scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json
 scripts/statusline/usage-cache-producer.sh
 scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/openrouter-cost.sh
-scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs
+scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs scripts/himmelctl/lib/config-keys.json
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
 scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
@@ -823,7 +826,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/handover/resolve-active-item-report.sh'
     ':(top)scripts/handover/append-cr-findings.sh' ':(top)scripts/handover/append-cr-bugs.sh' ':(top)scripts/handover/bug.sh'
     ':(top)scripts/handover/merge-on-green.sh' ':(top)scripts/handover/queue-lock.sh'
-    ':(top)scripts/hooks/check-commit-msg.sh'
+    ':(top)scripts/hooks/check-commit-msg.sh' ':(top)scripts/hooks/block-fork-sync-pr.sh'
     ':(top)scripts/clean-garden.sh' ':(top)scripts/worktree.sh' ':(top)scripts/clean.sh' ':(top)scripts/_new-worktree.sh' ':(top)scripts/unlanded-work.sh'
     ':(top)scripts/observability/session-run-hook.ts' ':(top)scripts/observability/session-run-ledger.ts'
     ':(top)scripts/hermes/invoke.sh' ':(top)scripts/hermes/egress-gate.sh'
@@ -831,7 +834,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/statusline/usage-cache-producer.sh'
     ':(top)scripts/lanes/usage-status.ts' ':(top)scripts/lanes/bank-status-core.mjs' ':(top)scripts/lanes/funded-max-pct.mjs' ':(top)scripts/lanes/openrouter-cost.sh'
     ':(top)scripts/lanes/resolve.mjs' ':(top)scripts/lanes/check.mjs' ':(top)scripts/lanes/probe.mjs'
-    ':(top)scripts/lanes/set-lane-override.mjs' ':(top)scripts/lanes/profile-managed.cjs'
+    ':(top)scripts/lanes/set-lane-override.mjs' ':(top)scripts/lanes/profile-managed.cjs' ':(top)scripts/himmelctl/lib/config-keys.json'
     ':(top)scripts/observability/quota-sources.ts'
     ':(top)scripts/telegram/alibaba-probe-once.ts' ':(top)scripts/telegram/quota-gauge.ts'
     ':(top)scripts/telegram/quota-gauge-alibaba.ts'

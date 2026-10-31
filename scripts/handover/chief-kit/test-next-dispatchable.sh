@@ -1000,11 +1000,10 @@ ddu_n="$(printf '%s\n' "$ddu_out" | grep -c '^# disposition ')"
 dd_plain="$(rundd)"
 lacks "dispositions: a plain run prints none" "$dd_plain" "# disposition "
 
-# --- chain_soft_edges: both flag states on a local git fixture -----------------
-# OFF is today's collision drop; ON keeps a ticket whose files overlap an open PR when the
-# trial merge of that PR against main is clean, the overlap is at most 2 files and no trust
-# path is involved, and says so with a `# SOFT` row.
-export HIMMEL_CONFIG_DIR="$WORK/no-conf"   # no real ~/.himmel layer reaches the flag
+# --- soft edges on a local git fixture (no flag) ---------------------------------
+# A ticket whose files overlap an open PR is kept when the trial merge of that PR against main
+# is clean, the overlap is at most 2 files and no trust path is involved, and says so with a
+# `# SOFT` row.
 G="$WORK/soft-git"; mkdir -p "$G"
 g() { git -C "$G" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
 g init -q -b main
@@ -1050,46 +1049,29 @@ mk HIMMEL-3107 "To Do" Medium '[]' '["v1.0.1"]' '[]' "overlaps nothing" "Edit sc
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m31/HIMMEL.versions.tsv"
 run31() { NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh31" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" NEXT_DISPATCH_GIT_DIR="$G" NEXT_DISPATCH_MAIN_REF="${SOFT_MAIN_REF:-main}" bash "$SUT" --top 20 --workers-from "$WORK/fleet.json" "$@" 2>/dev/null; }
-soft_dflt="$(run31)"
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_off="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=0; run31 )"
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_on="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1; run31 )"
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_why="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1; run31 --why )"
+soft_on="$(run31)"
+soft_why="$(run31 --why)"
 
-# OFF: today's output, exactly
-[ "$soft_off" = "$soft_dflt" ] && pass "soft OFF: the registry default is off, identical to the explicit 0" || fail "soft OFF: default and =0 differ"
-soft_off_rows="$(printf '%s\n' "$soft_off" | grep -v '^#' | cut -f1,2)"
-[ "$soft_off_rows" = "LOCAL	HIMMEL-3107" ] && pass "soft OFF: only the ticket that overlaps nothing is listed" || fail "soft OFF: rows are '$soft_off_rows'"
-lacks "soft OFF: no SOFT row" "$soft_off" "SOFT"
-has "soft OFF: the clean-PR overlap is dropped as a collision" "$soft_off" "# next-dispatchable: 7 To Do candidate(s), 1 collision-free"
+# the clean small overlaps stay dispatchable and are named
+has "soft: a ticket overlapping a clean PR is listed" "$soft_on" "HIMMEL-3101	"
+has "soft: it says SOFT, naming the holder and the file" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
+has "soft: a two-file overlap of one clean PR is listed" "$soft_on" "HIMMEL-3106	"
+has "soft: the two-file SOFT row names both files" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-a.sh,scripts/lanes/soft-two.sh for HIMMEL-3106"
+has "soft: a ticket that overlaps nothing is still listed" "$soft_on" "HIMMEL-3107	"
+lacks "soft: a ticket that overlaps nothing has no SOFT row" "$soft_on" "for HIMMEL-3107"
+lacks "soft: a PR whose trial merge conflicts still holds its file" "$soft_on" "HIMMEL-3102	"
+lacks "soft: a trust path is never soft" "$soft_on" "HIMMEL-3103	"
+lacks "soft: more than 2 overlapping files is never soft" "$soft_on" "HIMMEL-3104	"
+lacks "soft: a live worker's file holds even beside a soft overlap" "$soft_on" "HIMMEL-3105	"
+has "soft --why: a conflicting trial merge is still a collision drop" "$soft_why" "# drop HIMMEL-3102 collision scripts/lanes/soft-conf.sh held by open PR 7002"
+has "soft --why: a trust path is still a collision drop" "$soft_why" "# drop HIMMEL-3103 collision scripts/lib/soft-trust.sh held by open PR 7003"
+has "soft --why: a wide overlap is still a collision drop" "$soft_why" "# drop HIMMEL-3104 collision "
+has "soft --why: the live-worker overlap names the first holder it finds" "$soft_why" "# drop HIMMEL-3105 collision "
 
-# ON: the clean small overlaps stay dispatchable and are named
-has "soft ON: a ticket overlapping a clean PR is listed" "$soft_on" "HIMMEL-3101	"
-has "soft ON: it says SOFT, naming the holder and the file" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
-has "soft ON: a two-file overlap of one clean PR is listed" "$soft_on" "HIMMEL-3106	"
-has "soft ON: the two-file SOFT row names both files" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-a.sh,scripts/lanes/soft-two.sh for HIMMEL-3106"
-has "soft ON: a ticket that overlaps nothing is still listed" "$soft_on" "HIMMEL-3107	"
-lacks "soft ON: a ticket that overlaps nothing has no SOFT row" "$soft_on" "for HIMMEL-3107"
-lacks "soft ON: a PR whose trial merge conflicts still holds its file" "$soft_on" "HIMMEL-3102	"
-lacks "soft ON: a trust path is never soft" "$soft_on" "HIMMEL-3103	"
-lacks "soft ON: more than 2 overlapping files is never soft" "$soft_on" "HIMMEL-3104	"
-lacks "soft ON: a live worker's file holds even beside a soft overlap" "$soft_on" "HIMMEL-3105	"
-has "soft ON --why: a conflicting trial merge is still a collision drop" "$soft_why" "# drop HIMMEL-3102 collision scripts/lanes/soft-conf.sh held by open PR 7002"
-has "soft ON --why: a trust path is still a collision drop" "$soft_why" "# drop HIMMEL-3103 collision scripts/lib/soft-trust.sh held by open PR 7003"
-has "soft ON --why: a wide overlap is still a collision drop" "$soft_why" "# drop HIMMEL-3104 collision "
-has "soft ON --why: the live-worker overlap names the first holder it finds" "$soft_why" "# drop HIMMEL-3105 collision "
-
-# ON fails closed to today's drop when the trial cannot run
-# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
-soft_nohead="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1 SOFT_MAIN_REF=no-such-ref; run31 )"
-lacks "soft ON: an unresolvable main ref falls back to the collision drop" "$soft_nohead" "HIMMEL-3101	"
-lacks "soft ON: and prints no SOFT row" "$soft_nohead" "SOFT"
-# a conf-file value turns the flag on the same way as the environment
-mkdir -p "$WORK/conf-on"; printf 'HIMMEL_FLAG_CHAIN_SOFT_EDGES=1\n' > "$WORK/conf-on/himmel.conf"
-soft_conf="$( export HIMMEL_CONFIG_DIR="$WORK/conf-on"; run31 )"
-has "soft: himmel.conf turns it on" "$soft_conf" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
+# an unresolvable main ref fails closed to the collision drop
+soft_nohead="$( export SOFT_MAIN_REF=no-such-ref; run31 )"
+lacks "soft: an unresolvable main ref falls back to the collision drop" "$soft_nohead" "HIMMEL-3101	"
+lacks "soft: and prints no SOFT row" "$soft_nohead" "SOFT"
 
 # --- a ticket with no DoD or no Proof is refused at dispatch. The
 # checker is marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh; the
@@ -1271,6 +1253,53 @@ has "the free RESUME row is still offered (HIMMEL-6604)" "$rh_full" "RESUME	HIMM
 rh_only="$(rh --resume-only)"; rh_only_rc=$?
 check "--resume-only exits 0 (HIMMEL-6604)" "0" "$rh_only_rc"
 has "--resume-only names the worker-held RESUME row too (HIMMEL-6604)" "$rh_only" "RESUME-HELD HIMMEL-80 by live worker N8"
+
+# --- (8170) versionless operator work is INTAKE, never a bare LOW: open tickets with no fixVersion that are
+# operator-directed, a Bug of High or above, labelled scope-<current version> or held by a live worker count;
+# a residual-depth backlog ticket or a plain versionless one does not ---
+MI="$WORK/jira-mirror-intake/HIMMEL"; mkdir -p "$MI"
+M_SAVE="$M"; M="$MI"
+mk HIMMEL-901 "To Do" Medium '["operator-directed","backlog"]' '[]' '[]' "operator asked for this, no version" "Edit scripts/lib/in1.sh only."
+mk HIMMEL-902 "To Do" High '["backlog"]' '[]' '[]' "a high bug, no version" "Edit scripts/lib/in2.sh only."
+retype "$MI/HIMMEL-902.md" Bug
+mk HIMMEL-903 "To Do" Medium '["backlog","residual-depth-1"]' '[]' '[]' "a residual-depth-1 backlog ticket" "Edit scripts/lib/in3.sh only."
+mk HIMMEL-904 "To Do" Medium '["backlog"]' '[]' '[]' "a plain backlog ticket" "Edit scripts/lib/in4.sh only."
+mk HIMMEL-905 "To Do" Low '["scope-v1.0.1"]' '[]' '[]' "scoped to the current version, no fixVersion" "Edit scripts/lib/in5.sh only."
+mk HIMMEL-906 "To Do" Medium '["operator-directed"]' '["v1.0.1"]' '[]' "operator work already in the version" "Edit scripts/lib/in6.sh only."
+mk HIMMEL-907 "Done" Medium '["operator-directed"]' '[]' '[]' "operator work, closed" "Edit scripts/lib/in7.sh only."
+mk HIMMEL-8173 "To Do" Medium '[]' '["v1.0.1"]' '[]' "hook comments stop citing Windows jq.exe, MSYS and Defender rationale" "Edit scripts/lib/in8.sh only."
+mk HIMMEL-909 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows service stops unexpectedly" "Edit scripts/lib/in9.sh only."
+mk HIMMEL-910 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Remove the WSL station triage" "Edit scripts/lib/in10.sh only."
+mk HIMMEL-911 "To Do" High '["backlog"]' '[]' '[]' "Windows installer crashes on start" "Edit scripts/lib/in11.sh only."
+retype "$MI/HIMMEL-911.md" Bug
+mk HIMMEL-912 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows service crashes after device removal" "Edit scripts/lib/in12.sh only."
+mk HIMMEL-913 "To Do" Medium '["backlog","proposed-v1.0.1"]' '[]' '[]' "filed with a proposed version, INTAKE queued" "Edit scripts/lib/in13.sh only."
+mk HIMMEL-914 "To Do" Medium '["backlog","proposed-backlog"]' '[]' '[]' "filed to the backlog with INTAKE queued" "Edit scripts/lib/in14.sh only."
+mk HIMMEL-915 "To Do" Medium '[]' '["v1.0.1"]' '[]' "Windows installer fails after removal of a device" "Edit scripts/lib/in15.sh only."
+mk HIMMEL-916 "To Do" Medium '["backlog","proposed-v1.2.0"]' '[]' '[]' "proposed to a later version, INTAKE queued toward it" "Edit scripts/lib/in16.sh only."
+mk HIMMEL-917 "To Do" Medium '["operator-directed","backlog","proposed-v1.2.0"]' '[]' '[]' "operator work already proposed to a later version" "Edit scripts/lib/in17.sh only."
+M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-intake/HIMMEL.versions.tsv"
+runi() { NEXT_DISPATCH_MIRROR="$MI" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" "$@" 2>/dev/null; }
+oi="$(runi --priority-pool-only --top 7)"; oi_rc=$?
+check "(8170) the intake dispatch exits 0" "0" "$oi_rc"
+has "(8170) a pool short of the slots with versionless operator work reads INTAKE:<m>" "$oi" "# pool=3/7,INTAKE:4"
+lacks "(8170) the pool line is not a bare LOW while INTAKE is non-zero" "$(printf '%s\n' "$oi" | grep '^# pool=')" "LOW"
+lacks "(8170) a windows title with a removal verb elsewhere in it is still dropped" "$oi" "LOCAL	HIMMEL-909"
+lacks "(8170) a windows title that only mentions removal is still dropped" "$oi" "LOCAL	HIMMEL-912"
+lacks "(8170) a bug that reports a failure after the removal of a device is still dropped" "$oi" "LOCAL	HIMMEL-915"
+lacks "(8170) a versionless High bug on the dropped platform is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-911"
+has "(8170) a title that opens with a removal verb is kept" "$oi" "LOCAL	HIMMEL-910"
+has "(8170) the intake line names operator-directed, High+ Bug, scope-label and proposed-version tickets with the version" "$oi" "# intake 4 for v1.0.1: HIMMEL-901 HIMMEL-902 HIMMEL-905 HIMMEL-913"
+lacks "(8170) a residual-depth-1 backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-903"
+lacks "(8170) a plain versionless backlog ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-904"
+lacks "(8170) a ticket proposed to the backlog is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-914"
+lacks "(8170) a ticket proposed to a version other than the earliest open one is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-916"
+lacks "(8170) an operator-directed ticket proposed to another version is not an intake candidate either" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-917"
+lacks "(8170) an operator-directed ticket already in a version is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-906"
+lacks "(8170) a closed versionless ticket is not an intake candidate" "$(printf '%s\n' "$oi" | grep '^# intake')" "HIMMEL-907"
+has "(8170) a removal ticket with a windows title (HIMMEL-8173) is not dropped by the platform filter" "$oi" "LOCAL	HIMMEL-8173"
+lacks "(8170) a mirror with no intake candidate prints no intake field" "$(run30 --doc "$WORK/chief-doc30.md" --priority-pool-only --top 7)" "INTAKE"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

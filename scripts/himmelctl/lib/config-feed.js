@@ -133,12 +133,38 @@ function fallbackRemedy(o) {
   }
 }
 
+// Whether a row belongs to this machine or account ('shared', counted once across projects)
+// or to the open project, and who fixes it: 'configure' (a Configure tile writes the setting, fix.tile names
+// it), 'operator' (only the operator can run the command: a login) or 'chief' (the default).
+// ponytail: the shared and operator doctor checks are a hand list, upgrade: each probe declares its own scope and owner.
+const SHARED_DOCTOR = /^(C12|C19|C20|C40|C49|C50|C56|C69)-/;
+const OPERATOR_DOCTOR = /^C12-/;
+const PROJECT_SECRETS = new Set(['JIRA_PROJECT_KEY']);
+const SHARED_ITEM_KINDS = new Set(['dep', 'scheduler', 'lane', 'vault', 'plugin', 'mcp']);
+const CONFIGURE_TILE = { initiative: 'scope', plugin: 'scope', cadence: 'scope', lane: 'review' };
+
+function classifyRow(o) {
+  const bare = String(o.id || '').replace(/^(doctor|probe-disagree|secret):/, '');
+  let scope = 'project';
+  if (o.source === 'cadence' || o.source === 'plugin' || o.source === 'lane' || o.source === 'flag') scope = 'shared';
+  else if (o.source === 'secret') scope = PROJECT_SECRETS.has(bare) ? 'project' : 'shared';
+  else if (o.source === 'doctor') scope = SHARED_DOCTOR.test(bare) ? 'shared' : 'project';
+  else if (o.source === 'item') scope = SHARED_ITEM_KINDS.has(o.kind) ? 'shared' : 'project';
+  const remedy = String((o.fix && o.fix.remedy) || '').trim();
+  if (o.source === 'secret') return { scope, by: 'configure', tile: /^JIRA_/.test(bare) ? 'tracker' : 'secrets' };
+  if (CONFIGURE_TILE[o.source] && !(o.control && o.control.class === 'display-only')) return { scope, by: 'configure', tile: CONFIGURE_TILE[o.source] };
+  if (o.source === 'doctor' && OPERATOR_DOCTOR.test(bare) && remedy) return { scope, by: 'operator' };
+  return { scope, by: 'chief' };
+}
+
 function mkRow(o) {
   const fix = o.fix || { remedy: '', owner: 'user' };
   if ((o.health === 'fail' || o.health === 'warn') && !String(fix.remedy || '').trim()) {
     return mkRow({ ...o, fix: { ...fix, remedy: fallbackRemedy(o) } });
   }
+  const { scope, by, tile } = classifyRow({ ...o, fix });
   return {
+    scope,
     id: o.id,
     source: o.source,
     group: o.group,
@@ -147,7 +173,7 @@ function mkRow(o) {
     installed: o.installed,
     fires: o.fires || { state: 'unverified', evidence: null, at: null },
     health: o.health,
-    fix,
+    fix: tile ? { ...fix, by, tile } : { ...fix, by },
     probedAt: o.probedAt,
     control: o.control || { class: 'display-only' },
     sensitive: o.sensitive === true,
@@ -187,6 +213,7 @@ function itemRows(ctx) {
     return mkRow({
       id: r.id,
       source: 'item',
+      kind: r.kind,
       group: itemGroup({ kind: r.kind, id: r.id }),
       declared: { where: `scripts/install/manifest.json#${r.id}`, desired: r.desired === true ? 'wanted' : 'not wanted', profile: (m.profiles || []).join(',') },
       installed: { state: SEVERITY_INSTALLED[r.severity] || 'n/a', detail: r.detail || '' },
@@ -584,4 +611,4 @@ function composeFeed({ manifest, scope, targetPath, answers, items, served, deep
   return out;
 }
 
-module.exports = { buildFeed, SCHEMA, REPROBE_BUDGET_MS, CADENCES, INITIATIVE_WORKERS, DOCTOR_OWNER, PRESENCE_SOURCES, envFileHasKey, remedyFromDetail };
+module.exports = { buildFeed, classifyRow, SCHEMA, REPROBE_BUDGET_MS, CADENCES, INITIATIVE_WORKERS, DOCTOR_OWNER, PRESENCE_SOURCES, envFileHasKey, remedyFromDetail };
