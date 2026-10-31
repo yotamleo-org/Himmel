@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 16,
+  PreToolUse: 17,
   SessionStart: 5,
   SessionEnd: 3,
   Notification: 1,
@@ -49,6 +49,9 @@ const EXPECTED_HOOKS = Object.freeze([
   // plugin-shipped so its release-state file fence fires in every session,
   // checkout or not.
   { event: 'PreToolUse', script: 'guard-rm-writes.sh', source: 'plugin' },
+  // plugin-shipped so an adopter repo gets the sleepless busy-loop deny too;
+  // it names no repo script.
+  { event: 'PreToolUse', script: 'block-busy-loop.sh', source: 'plugin' },
   { event: 'SessionStart', script: 'inject-where-are-we.sh' },
   { event: 'SessionStart', script: 'inject-doc-freshness.sh' },
   { event: 'SessionStart', script: 'inject-worktree-nudge.sh' },
