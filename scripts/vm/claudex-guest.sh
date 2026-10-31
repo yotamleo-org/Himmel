@@ -65,7 +65,7 @@ has_base_snapshot() {
 }
 
 # The lane scripts need claude on PATH and the guest-local key in the environment.
-GUEST_ENV='export PATH="$HOME/.local/bin:$PATH"; export CLIPROXY_API_KEY="$(cat "$HOME/.config/himmel/cliproxy.key")"; cd "$HOME/himmel"'
+GUEST_ENV='export PATH="$HOME/.local/bin:$PATH"; export CLIPROXY_API_KEY="$(cat "$HOME/.config/himmel/cliproxy.key")"; cd "$HOME/himmel" || exit 97'
 LANE_ENV="$GUEST_ENV && bash scripts/setup/cli-proxy-lane.sh"
 
 # lane_status: run `cli-proxy-lane.sh --status` on the guest; sets LANE_OUT (its output, verbatim).
