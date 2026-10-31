@@ -643,6 +643,30 @@ assert_contains "waiting: questions counted with the oldest date and time" "**1*
 assert_contains "waiting: review state counted"  "**1** approved, **1** changes requested" "$lead"
 assert_contains "waiting: failing checks counted with the oldest PR date" "**2** with failing checks (oldest open PR since 2026-10-29)" "$lead"
 if grepq "$lead" -F -- "Approvals, CI and review state, worker questions: not available"; then fail "waiting: computed lines replace the gap"; else pass "waiting: computed lines replace the gap"; fi
+# BSD userland (macOS): `date -r` takes epoch seconds, not a file, `date -d` and `stat -c` do not exist, `stat -f %m` does.
+BSD_SHIM="$TMP_ROOT/bsd-shim"
+mkdir -p "$BSD_SHIM"
+REAL_DATE=$(command -v date)
+REAL_STAT=$(command -v stat)
+cat >"$BSD_SHIM/date" <<FAKE
+#!/usr/bin/env bash
+case "\$1" in
+    -d) exit 1 ;;
+    -r) case "\$2" in ''|*[!0-9]*) exit 1 ;; esac; epoch="\$2"; shift 2; exec "$REAL_DATE" -d "@\$epoch" "\$@" ;;
+esac
+exec "$REAL_DATE" "\$@"
+FAKE
+cat >"$BSD_SHIM/stat" <<FAKE
+#!/usr/bin/env bash
+case "\$1" in
+    -c) exit 1 ;;
+    -f) exec "$REAL_STAT" -c %Y "\$3" ;;
+esac
+exec "$REAL_STAT" "\$@"
+FAKE
+chmod +x "$BSD_SHIM/date" "$BSD_SHIM/stat"
+PATH="$BSD_SHIM:$PATH" MORNING_WAITING_DIR="$WAITD" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
+assert_contains "waiting: a BSD date and stat still read the worker docs" "worker(s) awaiting your GO (oldest bullet $YDAY_D 14:05)" "$(lead_of "$(cat "$OUT_WT")")"
 MANY_OPEN=$(jq -n -c '[range(100) | {number: ., reviewDecision: "", createdAt: "2026-10-29T10:00:00Z", statusCheckRollup: []}]')
 MORNING_WAITING_DIR="$WAITD" FAKE_GH_PR_OPEN="$MANY_OPEN" run_script --since "$MARKER" --out "$OUT_WT" >/dev/null
 assert_contains "waiting: a capped open-PR read says it saw only the first 100" "(first 100 open PRs only)" "$(lead_of "$(cat "$OUT_WT")")"
@@ -659,12 +683,18 @@ OUT_REL="$TMP_ROOT/release.md"
 run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
 assert_contains "release: absent input still says not available" "Release progress: not available" "$(lead_of "$(cat "$OUT_REL")")"
 FAKE_JIRA_VERSIONS=$'v1.0.0\ttrue\t2026-09-09\tfalse\nv1.1.3\tfalse\t\tfalse\nv9.9.9\tfalse\t\ttrue' \
-    FAKE_JIRA_JQL_OUT=$'HIMMEL-1\tTask\tDone\ta\nHIMMEL-2\tBug\tDone\tb\nHIMMEL-3\tTask\tTo Do\tc' \
+    FAKE_JIRA_JQL_OUT=$'KEY\tTYPE\tSTATUS\tSUMMARY\nHIMMEL-1\tTask\tDone\ta\nHIMMEL-2\tBug\tDone\tb\nHIMMEL-3\tTask\tTo Do\tc' \
     run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
 lead=$(lead_of "$(cat "$OUT_REL")")
 assert_contains "release: done/total shown for the unreleased version" "Release progress: v1.1.3 **2**/3 done" "$lead"
 if grepq "$lead" -F -- "v1.0.0"; then fail "release: a released version is left out"; else pass "release: a released version is left out"; fi
 if grepq "$lead" -F -- "v9.9.9"; then fail "release: an archived version is left out"; else pass "release: an archived version is left out"; fi
+FAKE_JIRA_VERSIONS=$'2026 Q4\tfalse\t\tfalse\nbad"name\tfalse\t\tfalse' \
+    FAKE_JIRA_JQL_OUT=$'HIMMEL-1\tTask\tDone\ta\nHIMMEL-3\tTask\tTo Do\tc' \
+    run_script --since "$MARKER" --out "$OUT_REL" >/dev/null
+lead=$(lead_of "$(cat "$OUT_REL")")
+assert_contains "release: a version not named vX.Y.Z is read too" "Release progress: 2026 Q4 **1**/2 done" "$lead"
+if grepq "$lead" -F -- 'bad"name'; then fail "release: a name with a quote is never put into a query"; else pass "release: a name with a quote is never put into a query"; fi
 FAKE_JIRA_VERSIONS=$'v1.1.3\tfalse\t\tfalse' \
     FAKE_JIRA_JQL_OUT="$(awk 'BEGIN { for (i = 1; i <= 1000; i++) printf "K-%d\tTask\tDone\tx\n", i }')" \
     run_script --since "$MARKER" --out "$OUT_REL" >/dev/null

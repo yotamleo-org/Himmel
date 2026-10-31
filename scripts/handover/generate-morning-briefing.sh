@@ -393,7 +393,10 @@ if [ -n "$waiting_dir" ] && [ -d "$waiting_dir" ]; then
         esac
     done < <(find "$waiting_dir" -maxdepth 4 -type f -name '*.md' ! -name 'morning-report-*' -mtime -3 2>/dev/null | while IFS= read -r _doc; do # gnu-ok: BSD find has -maxdepth and -mtime
         # The bullet carries a time of day only; the doc's last-modified day dates it (the newest bullet is the last write).
-        _day=$(date -r "$_doc" +%F) || continue
+        # swallow-ok: a doc whose mtime cannot be read is skipped, so workers_ok stays 0 unless another doc reads
+        _epoch=$(stat -c %Y "$_doc" 2>/dev/null || stat -f %m "$_doc" 2>/dev/null) || continue # gnu-ok: BSD stat -f is the fallback
+        # swallow-ok: a doc whose day cannot be formed is skipped, as above
+        _day=$(date -d "@$_epoch" +%F 2>/dev/null || date -r "$_epoch" +%F 2>/dev/null) || continue # gnu-ok: BSD date -r is the fallback
         awk -v day="$_day" '/^- [0-9][0-9]:[0-9][0-9] (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED)/ { m = $3; sub(/[^A-Z-].*/, "", m); t = $2 }
              END { if (m != "") printf "%s\t%s %s\n", m, day, t }' "$_doc" 2>/dev/null
     done)
@@ -420,14 +423,14 @@ fi
 release_parts=""; rel_cap=1000
 # swallow-ok: a failed versions read leaves release_parts empty, so the line reads not available
 if [ -n "$JIRA_CMD" ] && [ "$jira_ok" -eq 1 ] && vers_raw=$("${JIRA_ARGV[@]}" versions 2>/dev/null); then
-    rel_versions=$(printf '%s\n' "$vers_raw" | awk -F'\t' '$2 == "false" && $4 == "false" && $1 ~ /^v[0-9][0-9A-Za-z.+-]*$/ && n < 3 { print $1; n++ }')
+    rel_versions=$(printf '%s\n' "$vers_raw" | awk -F'\t' '$2 == "false" && $4 == "false" && $1 != "" && $1 !~ /["\\]/ && n < 3 { print $1; n++ }')
     while IFS= read -r _ver; do
         [ -n "$_ver" ] || continue
         _jql="fixVersion = \"$_ver\""
         [ -n "${JIRA_PROJECT_KEY:-}" ] && _jql="project = $JIRA_PROJECT_KEY AND $_jql"
         # swallow-ok: a failed read skips this version, and no version left reads not available
         _rows=$("${JIRA_ARGV[@]}" list --jql "$_jql" --limit "$rel_cap" 2>/dev/null) || continue
-        _counts=$(printf '%s\n' "$_rows" | awk -F'\t' 'NF >= 3 { t++; if ($3 == "Done" || $3 == "Closed") d++ } END { print d + 0, t + 0 }')
+        _counts=$(printf '%s\n' "$_rows" | awk -F'\t' 'NF >= 3 && $1 != "KEY" { t++; if ($3 == "Done" || $3 == "Closed") d++ } END { print d + 0, t + 0 }')
         _done=${_counts% *}; _total=${_counts#* }
         [ "$_total" -gt 0 ] || continue
         [ "$_total" -ge "$rel_cap" ] && _total="$_total+"
