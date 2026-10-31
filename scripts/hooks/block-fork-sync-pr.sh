@@ -26,10 +26,15 @@
 # `bash scripts/upstreams/resync-fork.sh --sync <fork>`.
 #
 # A workflow guard, not a security fence: it fails OPEN on its own
-# infrastructure errors (no python3, unparseable input, gh unreachable) and
+# infrastructure errors (no python3, unparseable hook JSON, gh unreachable) and
 # denies only on a positive match (scripts/hooks/CLAUDE.md, failure direction).
+# A command that names `gh pr create` and cannot be parsed is the exception:
+# it is refused, since its base repo cannot be read. `bash -c`, `sh -c` and
+# `eval` scripts are unwrapped (three levels); heredoc bodies are skipped as data.
 # ponytail: sees `gh pr create` only; a raw `gh api .../pulls` POST is not
 # parsed, upgrade path = parse gh api POST bodies if one is ever seen.
+# ponytail: one unwrap round; xargs, `$(...)` substitution and `python -c` are
+# not unwrapped, upgrade path = unwrap that wrapper if one is ever seen.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 - allow
@@ -100,6 +105,51 @@ def segments(text):
             seg.append(tok)
     if seg:
         yield seg
+
+HEREDOC = re.compile(r"(?<!<)<<(-?)\s*(['\"]?)([A-Za-z_]\w*)\2")
+
+def strip_heredocs(text):
+    """Drop heredoc bodies (data, not shell): keep each opener line and the
+    commands after its terminator. A `<<` with no terminator is not a heredoc,
+    so the text is returned whole."""
+    out, pending = [], []
+    for line in text.split("\n"):
+        if pending:
+            tabs, delim = pending[0]
+            if (line.lstrip("\t") if tabs else line) == delim:
+                pending.pop(0)
+            continue
+        out.append(line)
+        pending = [(m.group(1) == "-", m.group(3)) for m in HEREDOC.finditer(line)]
+    return text if pending else "\n".join(out)
+
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+
+def wrapped_scripts(words):
+    """Script texts a wrapper runs as one word: `bash -c '<s>'`, `sh -c`,
+    `eval '<s>'`, after any VAR=value prefix."""
+    i = 0
+    while i < len(words) and re.fullmatch(r"\w+=.*", words[i]):
+        i += 1
+    rest = words[i:]
+    if not rest:
+        return
+    name = rest[0].rsplit("/", 1)[-1]
+    if name == "eval" and len(rest) == 2:
+        yield rest[1]
+    elif name in SHELLS:
+        for j in range(1, len(rest) - 1):
+            if re.fullmatch(r"-[a-z]*c[a-z]*", rest[j]):
+                yield rest[j + 1]
+                break
+
+def commands(text, depth=0):
+    """Each simple command in text, then those inside any shell wrapper."""
+    for words in segments(text):
+        yield words
+        if depth < 3:
+            for script in wrapped_scripts(words):
+                yield from commands(script, depth + 1)
 
 def pr_create_args(words):
     for i in range(len(words) - 2):
@@ -195,9 +245,18 @@ def deny(fork, why):
     sys.exit(2)
 
 try:
-    segs = list(segments(cmd))
+    segs = list(commands(strip_heredocs(cmd)))
 except ValueError:
-    allow()
+    # Cannot be parsed: a command that names gh pr create cannot be checked,
+    # so it is refused; anything else is none of this guard's business.
+    if not re.search(r"gh\s+pr\s+create", cmd):
+        allow()
+    sys.stderr.write(
+        "block-fork-sync-pr: refused — the command names `gh pr create` but cannot be "
+        "parsed, so its base repo cannot be checked against the fork registry.\n"
+        "Rewrite it as one plain command (a long body goes in --body-file, not a "
+        "quoted argument). Bypass: FORK_SYNC_PR_OK=1 in the launching shell.\n")
+    sys.exit(2)
 
 gh_repo = os.environ.get("GH_REPO", "")
 for words in segs:

@@ -102,7 +102,8 @@
 # as refs/tags/himmel-presync/<branch>-<sha12> so SHA pins stay reachable. A
 # conflict stops, names the paths and pushes nothing (rc 4). Already on
 # upstream → rc 1. Unregistered repo, or a default branch or himmel branch
-# that does not resolve, or a clone, fetch, gh repo sync or push failure → rc 2.
+# that does not resolve, or a clone, fetch, gh repo sync, push or non-conflict
+# rebase failure → rc 2.
 # Synced (or --dry-run audited) → rc 0.
 # Seams: RESYNC_GIT_BASE (default https://github.com), RESYNC_WORK_DIR
 # (default $HOME/.himmel/fork-resync).
@@ -133,7 +134,7 @@ usage() {
   echo "  --push     push the rebased branch to fork_repo when clean + additive" >&2
   echo "  exit: 0 clean+additive | 1 already on target | 2 usage/registry/refs" >&2
   echo "        | 3 SKIP no fork block | 4 conflicted/non-additive or pin-literal (PIN_FILE_MISSING/PIN_NOT_FOUND/PIN_AMBIGUOUS)" >&2
-  echo "  --sync exit: 0 synced | 1 already contains upstream | 2 usage/unregistered/refs/clone/fetch/gh/push | 3 use-upstream | 4 conflicted" >&2
+  echo "  --sync exit: 0 synced | 1 already contains upstream | 2 usage/unregistered/refs/clone/fetch/gh/push/rebase failure | 3 use-upstream | 4 conflicted" >&2
 }
 
 NAME=""
@@ -174,7 +175,7 @@ fi
 # sync_fork <owner/repo> — the --sync mode documented in the header.
 sync_fork() {
   local nwo="$1" reg="$REPO_ROOT/scripts/guardrails/himmel-adapters.json"
-  local row upstream branch base dir def updef ahead behind old conflicted
+  local row upstream branch base dir def updef ahead behind old conflicted rebase_out
   if ! [[ "$nwo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || [[ "$nwo" == *..* ]]; then
     echo "resync-fork: --sync needs <owner/repo>, got '$nwo'" >&2; return 2
   fi
@@ -211,9 +212,12 @@ sync_fork() {
     git -C "$dir" config user.email "himmel-resync@users.noreply.github.com"
     git -C "$dir" config user.name "himmel resync"
   fi
-  if ! git -C "$dir" rebase -q "upstream/$updef" >/dev/null 2>&1; then
+  if ! rebase_out=$(git -C "$dir" rebase -q "upstream/$updef" 2>&1); then
     conflicted=$(git -C "$dir" diff --name-only --diff-filter=U | tr '\n' ' ')
     git -C "$dir" rebase --abort >/dev/null 2>&1
+    if [ -z "$conflicted" ]; then
+      echo "resync-fork: --sync $nwo rebase failed without conflicts: $rebase_out" >&2; return 2
+    fi
     echo "resync-fork: --sync $nwo CONFLICTED rebasing $ahead carried commit(s) onto $upstream@$updef; paths: ${conflicted:-?}"
     echo "resync-fork: nothing pushed, no PR — resolve the carried commits by hand"
     return 4

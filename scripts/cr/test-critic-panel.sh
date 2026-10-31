@@ -1061,6 +1061,20 @@ HIMMEL_REPO="$FK_HIMMEL" CR_LEDGER="$tmp/fork-ledger.jsonl" CRITIC_LEDGER_APPEND
 check "FORK2: fork review with an extra upstream branch runs" "$?" "0"
 check_contains "FORK2: our carried file still reaches the critics" "$(cat "$FK_CAPTURE")" "our-carried.txt"
 
+# FORK3: a branch holding only upstream commits narrows to an empty diff; the
+# refusal names the range that was diffed, not main...HEAD.
+git -C "$FK_REPO" checkout -q -b onlyup refs/remotes/upstream/v8
+HIMMEL_REPO="$FK_HIMMEL" CR_LEDGER="$tmp/fork-ledger.jsonl" CRITIC_LEDGER_APPEND="$LEDGER_NOOP" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$FK_STUB" \
+    bash "$PANEL" --worktree "$FK_REPO" > "$tmp/fork3-out" 2> "$tmp/fork3-err"
+check "FORK3: an upstream-only fork branch refuses the empty diff" "$?" "4"
+if grepq "$(cat "$tmp/fork3-err")" -F "...HEAD"; then
+    echo "FAIL - FORK3: the refusal names main...HEAD, not the narrowed range: $(cat "$tmp/fork3-err")"; fails=$((fails + 1))
+else
+    echo "ok - FORK3: the refusal names the narrowed range"
+fi
+git -C "$FK_REPO" checkout -q feature
+
 # ── --head pins the review inputs to the caller's captured SHA ──
 # /pr-check captures branch+HEAD up front and stamps every ledger row with that
 # SHA, but the panel resolved its own head (and its --worktree diff) from LIVE

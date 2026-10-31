@@ -78,6 +78,40 @@ run_hook "home-assistant.io#1 shape (= and short flags) is refused" 2 "gh pr cre
 run_hook "owner/repo:branch head spelling is refused" 2 "gh pr create --repo=yotamleo-org/core --head home-assistant/core:dev -t x -b y"
 run_hook "a later segment of a compound command is checked" 2 "cd /tmp && gh pr create --repo yotamleo-org/core --head home-assistant:dev -t x -b y"
 
+# 2b. A shell wrapper carries the script as ONE word: bash -c, sh -c, eval.
+WRAPPED="gh pr create --repo yotamleo-org/core --head home-assistant:dev -t x -b y"
+run_hook "bash -c wrapper is refused" 2 "bash -c \"$WRAPPED\""
+run_hook "sh -c wrapper is refused" 2 "sh -c '$WRAPPED'"
+run_hook "eval of one script word is refused" 2 "eval \"$WRAPPED\""
+run_hook "wrapper after an env prefix is refused" 2 "FOO=1 /bin/bash -lc \"$WRAPPED\""
+run_hook "wrapper after a cd is refused" 2 "cd /tmp && bash -c \"$WRAPPED\""
+run_hook "a commit message that quotes gh pr create is untouched" 0 "git commit -m \"docs: $WRAPPED\""
+run_hook "bash -c of an unrelated script is untouched" 0 "bash -c 'echo hi'"
+
+# 2c. Heredoc bodies are data. An apostrophe in one must not blind the guard,
+#     and text in one that looks like gh pr create is not a command.
+run_hook "apostrophe heredoc body: the command is still checked" 2 "gh pr create --repo yotamleo-org/core --head home-assistant:dev -t x -F - <<'EOF'
+It's a sync
+EOF"
+run_hook "heredoc body in a command substitution: still checked" 2 "gh pr create --repo yotamleo-org/core --head home-assistant:dev -t x -b \"\$(cat <<'EOF'
+It's a sync
+EOF
+)\""
+run_hook "gh pr create text inside a heredoc body is data" 0 "cat <<'EOF'
+It's what gh pr create --repo yotamleo-org/core --head home-assistant:dev does
+EOF"
+run_hook "a command after a heredoc terminator is still checked" 2 "cat <<'EOF'
+It's a note
+EOF
+$WRAPPED"
+run_hook "an unterminated << is not a heredoc: the later command is checked" 2 "echo \"a << b\"; $WRAPPED"
+
+# 2d. Fail closed: a command that names gh pr create and cannot be parsed.
+run_hook "unparseable command naming gh pr create is refused" 2 "gh pr create --repo yotamleo-org/core --head home-assistant:dev -t \"it's"
+if grepq "$LAST_ERR" -F "FORK_SYNC_PR_OK=1"; then pass "unparseable deny names the bypass"; else fail "unparseable deny must name the bypass: $LAST_ERR"; fi
+run_hook "unparseable wrapper script naming gh pr create is refused" 2 "bash -c \"gh pr create --repo yotamleo-org/core -t 'x\""
+FORK_SYNC_PR_OK=1 run_hook "FORK_SYNC_PR_OK=1 bypasses an unparseable command" 0 "gh pr create --repo yotamleo-org/core -t \"it's"
+
 # 3. No --repo: the base is the cwd's origin.
 FORKCLONE="$SANDBOX/core-clone"
 git init -q "$FORKCLONE"

@@ -620,6 +620,26 @@ fi
 case "$(cat "$root/gh.log")" in *"pr create"*) fail "--sync conflict opened a PR" ;; *) pass "--sync conflict never opens a PR" ;; esac
 rm -rf "$root"
 
+# A rebase that fails with no unmerged paths (here: a pre-rebase hook in the
+# caller's git config refuses it) is not a conflict: rc=2 with git's output.
+root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
+sync_fixture "$root" ours.txt
+mkdir -p "$root/hooks"
+printf '#!/bin/sh\necho pre-rebase refused >&2\nexit 1\n' > "$root/hooks/pre-rebase"
+chmod +x "$root/hooks/pre-rebase"
+old_tip=$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0="$root/hooks" \
+  run_sync "$root" yotamleo-org/fake 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "--sync rebase failure without conflicts (rc=2)"; else fail "--sync non-conflict rebase failure: rc=$rc; $out"; fi
+assert_contains "$out" "rebase failed without conflicts" "--sync names a non-conflict rebase failure"
+case "$out" in *CONFLICTED*) fail "--sync reported a non-conflict rebase failure as CONFLICTED" ;; *) pass "--sync does not call it CONFLICTED" ;; esac
+if [ "$(git -C "$root/git/yotamleo-org/fake.git" rev-parse himmel-main)" = "$old_tip" ]; then
+  pass "--sync non-conflict rebase failure pushes nothing"
+else
+  fail "--sync non-conflict rebase failure moved himmel-main"
+fi
+rm -rf "$root"
+
 root=$(mktemp -d "${TMPDIR:-/tmp}/resync-sync.XXXXXX") || exit 1
 sync_fixture "$root" ours.txt
 out=$(run_sync "$root" yotamleo-org/bare 2>&1); rc=$?

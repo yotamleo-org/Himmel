@@ -31,7 +31,8 @@ is why this is a runbook and not a shell script.
 carried commits → `gh repo sync` of the fork's default branch plus a rebase of
 our commits onto upstream, pushed straight to the himmel branch. A conflict
 stops and names the paths. No sync PR, no judge, no CodeRabbit on upstream
-code; `block-fork-sync-pr.sh` refuses a `gh pr create` that tries. The steps
+code; `block-fork-sync-pr.sh` refuses a `gh pr create` that tries. Run `--sync`
+by hand only: the scheduled cadence must not invoke it. The steps
 below audit the pin of an `upstreams.json` `fork` block; the PR in step 7 is the
 himmel pin move, never a PR into the fork.
 

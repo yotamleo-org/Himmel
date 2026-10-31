@@ -736,15 +736,19 @@ if [ -n "$WORKTREE" ]; then
     # $_base — the operator-visible intent.
     _range="${BASE_PIN:-$_base}...$_head"
     _fork_mb="$(_fork_upstream_base "$REVIEW_ROOT" "${BASE_PIN:-$_base}" "$_head")"
-    [ -n "$_fork_mb" ] && _range="$_fork_mb..$_head"
+    _range_label="$_base...HEAD"
+    if [ -n "$_fork_mb" ]; then
+        _range="$_fork_mb..$_head"
+        _range_label="$_range"
+    fi
     diff_in="$(git -C "$REVIEW_ROOT" diff "$_range")"
     _diff_rc=$?
     if [ "$_diff_rc" -ne 0 ]; then
-        echo "critic-panel.sh: git diff $_base...HEAD failed in $REVIEW_ROOT (rc=$_diff_rc)" >&2
+        echo "critic-panel.sh: git diff $_range_label failed in $REVIEW_ROOT (rc=$_diff_rc)" >&2
         exit 5
     fi
     if [ -z "$diff_in" ]; then
-        echo "critic-panel.sh: REFUSING empty --worktree diff (git -C $REVIEW_ROOT diff $_base...HEAD produced no output)" >&2
+        echo "critic-panel.sh: REFUSING empty --worktree diff (git -C $REVIEW_ROOT diff $_range_label produced no output)" >&2
         exit 4
     fi
 else
