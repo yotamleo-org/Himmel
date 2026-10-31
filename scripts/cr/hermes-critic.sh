@@ -241,6 +241,20 @@ fi
 # what the code IS, not how the orchestrator got there), truncated to the
 # byte budget. Default 200KB of pack
 # stays comfortably inside it alongside the diff.
+# Both routes run the reviewer from a scratch dir under TMPDIR and cd there, so
+# TMPDIR must be absolute and outside the reviewed checkout.
+if ! tmp_root="$(cd "${TMPDIR:-/tmp}" && pwd -P)"; then
+    echo "hermes-critic.sh: TMPDIR is not a usable directory: ${TMPDIR:-/tmp}" >&2
+    exit 2
+fi
+if ! checkout_root="$(git rev-parse --show-toplevel)" || ! checkout_root="$(cd "$checkout_root" && pwd -P)"; then
+    echo "hermes-critic.sh: cannot resolve the reviewed checkout root" >&2
+    exit 2
+fi
+case "$tmp_root/" in
+    "$checkout_root"/*) echo "hermes-critic.sh: TMPDIR $tmp_root is inside the reviewed checkout — refusing" >&2; exit 2 ;;
+esac
+export TMPDIR="$tmp_root"
 pack_file="$(mktemp "${TMPDIR:-/tmp}/hermes-critic-pack.XXXXXX")"
 trap 'rm -f "$pack_file"' EXIT
 

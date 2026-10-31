@@ -340,6 +340,8 @@ RTEOF
     printf 'import os\nopen(os.environ["PLANT_MARKER"], "a").write("hermes_bootstrap\\n")\n' > "$reviewed/hermes_bootstrap.py"
     printf 'import os\nopen(os.environ["PLANT_MARKER"], "a").write("hermes_constants\\n")\ndef get_default_hermes_root():\n    return "/nonexistent"\n' > "$reviewed/hermes_constants.py"
     printf 'import os\ndef main():\n    open(os.environ["PLANT_MARKER"], "a").write("hermes_cli.main\\n")\n    print("PLANTED-MAIN")\n' > "$reviewed/hermes_cli/main.py"
+    [ -s "$reviewed/hermes_bootstrap.py" ] && [ -s "$reviewed/hermes_constants.py" ] && [ -s "$reviewed/hermes_cli/main.py" ] \
+        || fail "planted: fixture modules were not written"
     out="$(cd "$reviewed" && PLANT_MARKER="$plant_marker" HERMES_PY="" HERMES_HOME="$pm" bash "$INVOKE" "ping" 2>"$stub_dir/plant-pm.err")" \
         || fail "planted (PM): non-zero exit ($(cat "$stub_dir/plant-pm.err"))"
     [ ! -e "$plant_marker" ] || fail "planted (PM): reviewed-cwd modules ran: $(tr '\n' ' ' < "$plant_marker")"

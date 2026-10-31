@@ -558,5 +558,37 @@ esac
 [ ! -d "$reviewer_cwd" ] || fail "reviewer cwd: scratch dir left behind ($reviewer_cwd)"
 echo "  ok" >&2
 
+# 17. A TMPDIR inside the reviewed checkout would put the reviewer's scratch
+#     cwd back inside it: refused before any reviewer runs.
+echo "test: a TMPDIR inside the reviewed checkout is refused" >&2
+mkdir -p "$repo/tmp-in-checkout"
+rm -f "$work/cwd-capture17"
+TMPDIR="$repo/tmp-in-checkout" STUB_CWD_CAPTURE="$work/cwd-capture17" \
+    run_critic '{"passed": true, "security_concerns": [], "logic_errors": [], "architectural_mismatches": [], "suggestions": [], "summary": "ok"}' >/dev/null 2>"$work/err17"
+rc=$?
+rm -rf "$repo/tmp-in-checkout"
+[ "$rc" -eq 2 ] || fail "TMPDIR in checkout: expected exit 2, got $rc"
+grep -q 'inside the reviewed checkout' "$work/err17" \
+    || fail "TMPDIR in checkout: stderr does not name the refusal: $(cat "$work/err17")"
+[ ! -e "$work/cwd-capture17" ] || fail "TMPDIR in checkout: the reviewer ran from $(cat "$work/cwd-capture17")"
+echo "  ok" >&2
+
+# 18. A relative TMPDIR still reaches the reviewer's prompt after the route
+#     changes to its scratch cwd, and the scratch dir is still removed.
+echo "test: a relative TMPDIR outside the checkout still reviews" >&2
+mkdir -p "$work/reltmp"
+TMPDIR="../reltmp" STUB_CWD_CAPTURE="$work/cwd-capture18" STUB_PROMPT_CAPTURE="$work/prompt-capture18" \
+    run_critic '{"passed": true, "security_concerns": [], "logic_errors": [], "architectural_mismatches": [], "suggestions": [], "summary": "ok"}' >/dev/null 2>"$work/err18"
+rc=$?
+[ "$rc" -eq 0 ] || fail "relative TMPDIR: expected exit 0, got $rc: $(cat "$work/err18")"
+[ -s "$work/prompt-capture18" ] || fail "relative TMPDIR: the reviewer got no prompt"
+reviewer_cwd="$(cat "$work/cwd-capture18" 2>/dev/null)"
+case "$reviewer_cwd/" in
+    "$(cd "$work/reltmp" && pwd -P)"/*) ;;
+    *) fail "relative TMPDIR: reviewer cwd not under the resolved TMPDIR ($reviewer_cwd)" ;;
+esac
+[ ! -d "$reviewer_cwd" ] || fail "relative TMPDIR: scratch dir left behind ($reviewer_cwd)"
+echo "  ok" >&2
+
 echo "PASS: all hermes-critic.sh tests passed." >&2
 exit 0

@@ -1800,9 +1800,10 @@ if [ -n "$probe_py3" ] && "$probe_py3" -m venv --without-pip "$probe_dir/venv" >
   printf 'raise SystemExit(0)\n' > "$probe_dir/planted/mcp.py"
   printf '#!%s/venv/bin/python\n' "$probe_dir" > "$probe_dir/graphify-mcp"
   chmod +x "$probe_dir/graphify-mcp"
+  assert "planted mcp.py fixture exists" test -f "$probe_dir/planted/mcp.py"
   rc=0
   HOME="$probe_home" GRAPHIFY_PLUGIN_DIR="$probe_home/gplug" PATH="$probe_dir:$utils_bin:$base_path" \
-    bash -c 'cd "$2" && . "$1/graphify-bin.sh" && _graphify_mcp_import_ok' _ "$SCRIPT_DIR" "$probe_dir/planted" || rc=$?
+    bash -c 'cd "$2" || exit 125; . "$1/graphify-bin.sh" || exit 126; _graphify_mcp_import_ok' _ "$SCRIPT_DIR" "$probe_dir/planted" || rc=$?
   assert "probe rc 1 when only the caller cwd carries an mcp module" test "$rc" -eq 1
   rm -f "$probe_dir/graphify-mcp"
 else
