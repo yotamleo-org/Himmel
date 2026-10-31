@@ -334,7 +334,7 @@
         210,
         52
       ],
-      "what": "Before Claude Code runs any tool, himmel's hooks check it. Each hook checks the tools it is registered for; any one that says no stops the call before anything happens. Git gates do the same for commits and pushes.",
+      "what": "Before Claude Code runs any tool, himmel's hooks check it. Each hook that matches the tool sees the call; any one that says no stops it before anything happens. Git gates do the same for commits and pushes.",
       "loop": [
         "Claude asks to run a tool",
         "The hooks for that tool check the call",
@@ -727,7 +727,7 @@
                 "kind": "ask",
                 "text": "Ask"
               },
-              "next": "One diff-only round may follow, and it blocks only on critical or escape-class findings. A judge NO-GO, every finding of that round fixed, or a red CI run buys one more bounded diff-only round. A fourth full round is refused.",
+              "next": "One diff-only round may follow, and it blocks only on critical findings or ones that show a flow broken today. A judge NO-GO, every finding of that round fixed, or a red CI run buys one more bounded diff-only round. A fourth full round is refused.",
               "source": {
                 "file": "scripts/cr/review-round.sh",
                 "line": 1134,
