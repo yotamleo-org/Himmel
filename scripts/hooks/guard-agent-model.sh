@@ -28,8 +28,16 @@
 # carries no role, and a worker's Opus helper is the same spend.
 # ponytail: any-session scope, chief-only needs a role probe like guard-chief-dispatch.sh.
 #
+# EFFORT WARN (never a deny): any Agent dispatch whose `effort` is
+# high, xhigh or max and whose prompt has no `EFFORT: <reason>` line (same
+# reason-quality test) gets one additionalContext line; it joins the TIER warn
+# when both fire. A dispatch a deny or an ESCALATION rescue already handles gets
+# no effort warn. A missing or non-string `effort` warns on nothing, and so does
+# an effort equal to the named agent's own `effort:` frontmatter (judge at high).
+# ponytail: the warned levels are hardcoded here, upgrade path a warn_effort_levels key in agent-model-policy.json.
+#
 # Allow prints NOTHING (no stdout, no stderr) unless a marker just rescued a
-# deny or the WARN above fired: zero context cost. A missing `model` is always allowed (the agent's own
+# deny or a WARN above fired: zero context cost. A missing `model` is always allowed (the agent's own
 # frontmatter/default applies). The judge tier is hardcoded to opus;
 # test-guard-agent-model.sh asserts the frontmatter still says so, so a tier
 # change there fails the suite here.
@@ -66,10 +74,24 @@ policy="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/../guardrails/agent-model-pol
 
 input=$(cat)
 
-# One line: kind <TAB> status <TAB> model <TAB> reason. status: none = no
+# The named agent's own `effort:` frontmatter (.claude/agents/<name>.md beside
+# this hook): a dispatch passing that same effort is not an override, so no
+# EFFORT warn. Only a plain [a-z0-9-] name is looked up (no path, no plugin ns).
+agent_effort=""
+agent_name=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type | strings' 2>/dev/null || true)  # swallow-ok: a failed read means no frontmatter lookup, so the warn still fires
+case "$agent_name" in
+    ''|*[!a-z0-9-]*) ;;
+    *) agent_md="$(dirname "$0")/../../.claude/agents/$agent_name.md"
+       [ -f "$agent_md" ] && [ -r "$agent_md" ] \
+           && agent_effort=$(awk 'NR == 1 { if ($0 != "---") exit; next } /^---$/ { exit } /^effort:/ { sub(/^effort:[ \t]*/, ""); v = $0 } END { print v }' "$agent_md") ;;
+esac
+
+# One line: kind <TAB> eflag <TAB> status <TAB> model <TAB> effort <TAB> reason.
+# eflag: effort = the EFFORT warn applies, - = it does not. status: none = no
 # ESCALATION line, weak = only unusable reasons, ok = a usable reason. Fields
-# before the last are never empty when kind != allow (read collapses empty tabs).
-verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" '
+# before the last are never empty (an empty model/effort is "-"; read collapses
+# empty tabs). A plain allow is the single word "allow".
+verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agent_effort" '
     def s: if type == "string" then . else "" end;
     def clean: gsub("[\\p{Cc}]"; " ") | gsub("^ +| +$"; "");
     def norm: ascii_downcase | gsub("[^a-z0-9]+"; " ") | gsub("^ +| +$"; "");
@@ -88,21 +110,31 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" '
     | (if $status == "ok" then $good[0] else ($rs[0] // "") end) as $reason
     | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*TIER:[ \\t]*(?<r>.*)$")? | .r | clean
        | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $tgood
+    | ($ti.effort | s | ascii_downcase | clean) as $e
+    | [$ti.prompt | s | split("\n")[] | capture("^[ \\t]*EFFORT:[ \\t]*(?<r>.*)$")? | .r | clean
+       | select(length >= $min and norm != "" and (norm as $n | $ph | any(. == $n) | not))] as $egood
+    | ($tool == "Agent" and ($e | test("^(high|xhigh|max)$")) and ($egood | length) == 0
+       and $e != ($fe | ascii_downcase | clean)) as $ewarn
     | (if $tool != "Agent" or $m == "" then "allow"
        elif ($pats | any(. as $r | $m | test($r))) then "blocked"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
        elif ($t == "" or $t == "general-purpose") and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then "warn"
        else "allow" end) as $kind
-    | if $kind == "allow" then "allow" else [$kind, $status, $m, $reason] | join("\t") end' 2>/dev/null) || exit 0
+    | if $kind == "allow" and ($ewarn | not) then "allow"
+      else [$kind, (if $ewarn then "effort" else "-" end), $status,
+            (if $m == "" then "-" else $m end), (if $e == "" then "-" else $e end), $reason] | join("\t") end' 2>/dev/null) || exit 0
 
-IFS=$'\t' read -r kind status model reason <<EOF
+IFS=$'\t' read -r kind eflag status model effort reason <<EOF
 $verdict
 EOF
 
-if [ "$kind" = "warn" ]; then
+if [ "$kind" = "warn" ] || [ "$kind" = "allow" ]; then
     # Warn only: additionalContext, NO permissionDecision (that would also skip a
     # permission prompt), exit 0. Allow stays silent for every other dispatch.
-    warn_msg="agent-model-warn: a general-purpose helper on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for legs.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
+    warn_msg=""
+    [ "$kind" = "warn" ] && warn_msg="agent-model-warn: a general-purpose helper on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for legs.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
+    [ "$eflag" = "effort" ] && warn_msg="${warn_msg:+$warn_msg }agent-model-effort-warn: a dispatch at effort '${effort}' with no EFFORT: line. Each helper kind has a default effort (docs/handover/running-a-chief.md, helper table): drop the effort override, or add a prompt line 'EFFORT: <reason>' with a real reason."
+    [ -n "$warn_msg" ] || exit 0
     jq -nc --arg ctx "$warn_msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}' 2>/dev/null
     exit 0
 fi

@@ -3,6 +3,7 @@ name: judge-ro
 description: Read-only judge for a chief; use it, not Explore.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: high
 ---
 
 You are a judge **call**: an in-process child dispatched for exactly one
