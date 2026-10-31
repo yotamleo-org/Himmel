@@ -647,6 +647,8 @@ assert_eq "a .. after a link realpath could not lstat is refused, not popped as 
 assert_contains "a floor target reached by that .. fails closed" "rule=oversize" "$(rr 0 --cwd "$R" -- cat L/x/lnk/../../../../sh)"
 printf 'x\n' > "$R/f"
 assert_eq "a .. after a non-directory is refused, not keyed lexically where the kernel gives ENOTDIR" "BadFile" "$(bt f/x/../../L/x/lnk/../../../../out)"
+ln -s f/x/../../L/x/lnk/../../../../out "$R/fl"
+assert_eq "a link whose target holds a .. after a non-directory is refused too" "BadFile" "$(bt fl)"
 new_root tgtlongargv0; cfg "$ALL" true
 long_tree
 assert_contains "an argv[0] reached by that .. is refused, not hashed as the decoy at the string realpath returned" "rule=oversize" "$(rr 0 --cwd "$R" -- L/x/lnk/../../../../prog)"
