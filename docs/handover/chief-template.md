@@ -155,6 +155,9 @@ bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
    pastes the preface). The launcher exports
    `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) to route alerts here.
 5. Record the launch log path (window pid).
+6. **File every follow-up with `jira create --follow-up-of <KEY>`** (the ticket it
+   follows): the residual cap gate counts it, and the tick line's `cap=` field
+   shows when a version runs past it.
 
 ## Rulings — the RETASK channel
 
