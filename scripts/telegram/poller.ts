@@ -1076,8 +1076,8 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
           try { out = JSON.parse(ln); } catch {}
           if (out && typeof out.document_path === "string") {
             if (typeof out.text === "string" && out.text) await send(meta.chat_id, out.text, out.reply_to_message_id, out.markup);
-            // A group session never sends a file: its outbox is not trusted with the poller's read access.
-            const ok = !s.startsWith("group_") && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
+            // A group chat never receives a file, whatever the session is called (a ticket session can run in a group).
+            const ok = !s.startsWith("group_") && meta.chat_id > 0 && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
             if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, sent from a group, or refused by Telegram.`);
           } else if (out) {
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
@@ -1635,7 +1635,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       // Not a content-filter block and no agent ran: code 0 settles the session
       // back to idle with its pending lines uncommitted.
       if (lockdownEnabled(root)) { lockedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "locked, reset at the station" }); }
-      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, extraEnv, mcpConfig), deadlineMs);
+      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, extraEnv, mcpConfig), deadlineMs);
     }, undefined, retryAt);
     // run.log: persist the run's output tail — before this, a dead
     // run's stdout/stderr vanished and failures were undebuggable
@@ -2226,8 +2226,8 @@ export async function sendFileViaOutbox(root: string, chat_id: number, document_
 // hook, so it ships only what sits under <bridge root>/outgoing (where send-file copies
 // its files): the real path must be inside that directory's real path, the path itself
 // must not be a symlink, and the file must be regular and within the Bot API's 50 MB.
-export const makeSendDoc = (token: string, root: string, upload: typeof sendDocument = sendDocument): SendDocFn => async (chat, path, caption) => {
-  if (!isAbsolute(path)) return false;
+export const makeSendDoc = (token: string, root: string, operatorChat: number | null, upload: typeof sendDocument = sendDocument, beforeOpen?: () => Promise<void>): SendDocFn => async (chat, path, caption) => {
+  if (!isAbsolute(path) || operatorChat === null || chat !== operatorChat) return false;   // a file goes to the operator's own chat only
   let bytes: Buffer;
   let name: string;
   try {
@@ -2238,6 +2238,7 @@ export const makeSendDoc = (token: string, root: string, upload: typeof sendDocu
     // /proc/self/fd/<n>, which a swapped parent directory cannot change. Elsewhere the path is
     // resolved again and must land inside outgoing on the very inode we hold (a swap that survives
     // that needs a hard link into outgoing). The bytes sent are the descriptor's, never a re-open.
+    await beforeOpen?.();   // test seam: lets a test swap a parent directory between the check and the open
     const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const st = await fh.stat();
@@ -2508,7 +2509,7 @@ export async function main(): Promise<void> {
   // its keep. The flush path touches only outbox files; the run path touches only
   // inbox/meta/pending — disjoint, so the timer adds no shared-file race.
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
-  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root))), FLUSH_MS);
+  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root, operatorChat))), FLUSH_MS);
   if (typeof flushTimer.unref === "function") flushTimer.unref();
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past

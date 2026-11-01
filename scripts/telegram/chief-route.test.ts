@@ -1,5 +1,5 @@
 import { expect, test, spyOn } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { classify } from "./router";
@@ -936,8 +936,10 @@ test("the poller's document sender uploads only a regular file inside <bridge ro
   const ok = join(out, "a.txt"); writeFileSync(ok, "a");
   const big = join(out, "big.bin"); writeFileSync(big, ""); truncateSync(big, 50 * 1024 * 1024 + 1);
   const uploads: any[] = [];
-  const send = makeSendDoc("123:FAKE", r, (async (...a: any[]) => { uploads.push(a); return true; }) as any);
+  const send = makeSendDoc("123:FAKE", r, 7, (async (...a: any[]) => { uploads.push(a); return true; }) as any);
   expect(await send(7, ok, "cap")).toBe(true);
+  expect(await send(8, ok, "cap")).toBe(false);   // not the operator's chat
+  expect(await makeSendDoc("123:FAKE", r, null, (async () => true) as any)(7, ok)).toBe(false);   // no operator chat known
   expect(uploads.length).toBe(1);
   expect(uploads[0].slice(0, 2)).toEqual(["123:FAKE", 7]);
   expect(uploads[0][3]).toBe("cap");
@@ -953,7 +955,7 @@ test("the poller's document sender refuses a path outside the root and a symlink
   const dirLink = join(out, "dir"); symlinkSync(r, dirLink);
   const sibling = join(r, "outgoing-evil"); mkdirSync(sibling); writeFileSync(join(sibling, "a.txt"), "a");
   const uploads: any[] = [];
-  const send = makeSendDoc("123:FAKE", r, (async (...a: any[]) => { uploads.push(a); return true; }) as any);
+  const send = makeSendDoc("123:FAKE", r, 7, (async (...a: any[]) => { uploads.push(a); return true; }) as any);
   for (const bad of [secret, link, join(dirLink, "secret.env"), join(sibling, "a.txt"), join(out, "..", "secret.env")]) expect(await send(7, bad)).toBe(false);
   expect(uploads).toEqual([]);
 });
@@ -964,13 +966,35 @@ test("the poller's document sender uploads the bytes it validated, even if the p
   const f = join(out, "a.txt"); writeFileSync(f, "validated");
   const secret = join(r, "secret.env"); writeFileSync(secret, "TOKEN=x");
   let got = "";
-  const send = makeSendDoc("123:FAKE", r, (async (_t: string, _c: number, src: any) => {
+  const send = makeSendDoc("123:FAKE", r, 7, (async (_t: string, _c: number, src: any) => {
     unlinkSync(f); symlinkSync(secret, f);   // the swap lands after the checks, before the upload reads anything
     got = typeof src === "string" ? readFileSync(src, "utf8") : Buffer.from(src.bytes).toString("utf8");
     return true;
   }) as any);
   expect(await send(7, f)).toBe(true);
   expect(got).toBe("validated");
+});
+
+test("a parent directory swapped for a symlink between the check and the open uploads nothing", async () => {
+  const { makeSendDoc } = await import("./poller");
+  const r = root(); const out = join(r, "outgoing"); mkdirSync(join(out, "sub"), { recursive: true });
+  writeFileSync(join(out, "sub", "a.txt"), "inside");
+  const elsewhere = join(r, "elsewhere"); mkdirSync(elsewhere); writeFileSync(join(elsewhere, "a.txt"), "OUTSIDE");
+  const uploads: any[] = [];
+  const swap = async () => { renameSync(join(out, "sub"), join(out, "sub.moved")); symlinkSync(elsewhere, join(out, "sub")); };
+  const send = makeSendDoc("123:FAKE", r, 7, (async (...a: any[]) => { uploads.push(a); return true; }) as any, swap);
+  expect(await send(7, join(out, "sub", "a.txt"))).toBe(false);
+  expect(uploads).toEqual([]);
+});
+
+test("a ticket session running in a group chat (negative chat id, ordinary name) never sends a file", async () => {
+  const r = root(); await ensureSession(r, "HIMMEL-5");
+  await writeMeta(r, "HIMMEL-5", { chat_id: -50, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
+  await appendLine(join(sessionDir(r, "HIMMEL-5"), "outbox.jsonl"), JSON.stringify({ document_path: join(r, "outgoing", "a.txt") }));
+  const texts: string[] = []; let docs = 0;
+  await flushOutboxes(r, async (_c, text) => { texts.push(text); }, async () => { docs++; return true; });
+  expect(docs).toBe(0);
+  expect(texts.length).toBe(1);
 });
 
 test("a document line in a group session is refused and never reaches the document sender", async () => {
@@ -997,6 +1021,8 @@ test("the bridge prompt offers the document channel to a private chat and not to
   const paths = { inbox: "/b/sessions/s/in.jsonl", outbox: "/b/sessions/s/outbox.jsonl", context: "c", cwd: "/r" };
   expect(buildPrompt("__chat__", paths)).toContain("/b/outgoing");
   expect(buildPrompt("group_-50", paths)).not.toContain("outgoing");
+  expect(buildPrompt("HIMMEL-5", paths, null, false, -50)).not.toContain("outgoing");   // a ticket session in a group
+  expect(buildPrompt("HIMMEL-5", paths, null, false, 5)).toContain("outgoing");
 });
 
 test("send-file copies a plain file into <bridge root>/outgoing and queues the copy", async () => {

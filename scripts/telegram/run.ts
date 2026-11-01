@@ -130,7 +130,7 @@ export function sessionEnv(extraEnv?: Record<string, string>): Record<string, st
 // a code repo has no _CLAUDE.md filing conventions. The flag wins over `vault`
 // so an inherited defaultVault cannot re-attach the filing clause.
 export type BusPaths = { inbox: string; outbox: string; context: string; cwd: string; sessionCwd?: string };
-export function buildPrompt(session: string, p: BusPaths, vault?: string | null, cwdRouted = false): string {
+export function buildPrompt(session: string, p: BusPaths, vault?: string | null, cwdRouted = false, chatId?: number): string {
   const isTicket = isTicketKey(session);
   // A group session's inbox mixes every member of an allow-listed group, so its
   // text is third-party input: no operator framing, no Jira sanction.
@@ -160,7 +160,7 @@ export function buildPrompt(session: string, p: BusPaths, vault?: string | null,
     // it as in-scope lifts the veto. Non-destructive only: there is no delete op, and
     // move (closes the source ticket) / project-create (admin) are excluded.
     ...(isGroup ? [] : [`Acting on Jira tickets for the operator is part of your job: when a "operator":true line asks, run the change yourself rather than offering a command to paste. Use the Jira CLI by its absolute path: \`node ${p.cwd}/scripts/jira/dist/index.js <op>\` (JIRA_PROJECT_KEY comes from the repo .env; --help lists the ops). Creating, editing, commenting, transitioning, assigning, changing priority/labels, attaching, linking and reading tickets is sanctioned, non-destructive work. You may NOT delete tickets (there is no delete op), and do not use \`move\` (it closes the source ticket) or \`project-create\` (admin) unless the operator explicitly asks.`]),
-    `Reply to the operator by APPENDING one JSON line {"text":"<your reply>"} per message to ${p.outbox}. That is the only way to reach the operator.${isGroup ? "" : ` To send the operator a file (up to 50 MB; a spec or plan goes as .html, not .md), put it in ${join(dirname(dirname(dirname(p.outbox))), "outgoing")} and append {"document_path":"<absolute path of that file>","caption":"<optional>"} to the outbox; a path outside that folder is refused.`}`,
+    `Reply to the operator by APPENDING one JSON line {"text":"<your reply>"} per message to ${p.outbox}. That is the only way to reach the operator.${isGroup || (typeof chatId === "number" && chatId < 0) ? "" : ` To send the operator a file (up to 50 MB; a spec or plan goes as .html, not .md), put it in ${join(dirname(dirname(dirname(p.outbox))), "outgoing")} and append {"document_path":"<absolute path of that file>","caption":"<optional>"} to the outbox; a path outside that folder is refused.`}`,
     `Do NOT poll Telegram yourself and do NOT open a --channels session.`,
     `As your FINAL action, append a one-line progress note to ${p.context} (so the next run has context). Then stop — you are done.`,
   ].join("\n");
