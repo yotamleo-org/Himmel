@@ -814,12 +814,12 @@ EOF
         out="$(cd "$tmp" && env -u CLAUDE_PLUGIN_ROOT -u RUN_NODE_EXTRA_PATH_DIRS PATH="$UTILS_DIR" RESOLVE_NODE_PROBE_DIRS="$node_link_dir" NVM_SYMLINK="" RESOLVE_NODE_NVM4W_DIR="" RESOLVE_NODE_NVM_ROOT="$tmp/none" FNM_DIR="$tmp/none" HOME="$fake_home" CLAUDE_PROJECT_DIR="$REPO_ROOT" /bin/sh "$copy" "$REPO_ROOT/scripts/hooks/run-hook-with-bash.js" "$tmp/path-hook.sh" 2>"$tmp/err.txt")"
         rc=$?
         err="$(cat "$tmp/err.txt")"
-        case ":$out:" in
-            *":$fake_home/.bun/bin:"*) pass "default PATH widen includes \$HOME/.bun/bin ($rel)" ;;
+        case "$rc|:$out:" in
+            "0|"*":$fake_home/.bun/bin:"*) pass "default PATH widen includes \$HOME/.bun/bin ($rel)" ;;
             *) fail "default PATH widen lacks \$HOME/.bun/bin ($rel): rc=$rc out='$out' err='$err'" ;;
         esac
-        case "$out" in
-            *":$fake_home/.local/bin:$fake_home/.bun/bin") pass "\$HOME/.bun/bin is appended last, after .local/bin ($rel)" ;;
+        case "$rc|$out" in
+            "0|"*":$fake_home/.local/bin:$fake_home/.bun/bin") pass "\$HOME/.bun/bin is appended last, after .local/bin ($rel)" ;;
             *) fail "\$HOME/.bun/bin is not the last PATH entry ($rel): out='$out'" ;;
         esac
         rm -rf "$tmp"

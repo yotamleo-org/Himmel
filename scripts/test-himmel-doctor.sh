@@ -2824,7 +2824,7 @@ PS
 chmod +x "$t/ps"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/no-such-proc" HIMMEL_DOCTOR_PS="$t/ps" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C29-child-session: 1 Mac app' && grepq "$out" 'pid 100 (Raycast)' \
-    && ! grepq "$out" 'pid 110' && ! grepq "$out" 'iTerm' && ! grepq "$out" 'pid 130' && ! grepq "$out" 'running claude session'; then
+    && grepq "$out" 'saves no transcript: Raycast ' && ! grepq "$out" 'pid 110' && ! grepq "$out" 'iTerm' && ! grepq "$out" 'pid 130' && ! grepq "$out" 'running claude session'; then
     pass "C29 -> WARN names the Mac app carrying a dead claude's marker, once per app"
 else
     fail "C29 ps-carrier -> $(printf '%s' "$out" | grep -A6 C29)"

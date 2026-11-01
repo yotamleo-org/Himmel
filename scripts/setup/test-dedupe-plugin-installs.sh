@@ -34,7 +34,7 @@ EOF
 cat > "$T/claude" <<'EOF'
 #!/usr/bin/env bash
 case "$1 $2" in
-    "plugin list") cat "$STUB_LIST" ;;
+    "plugin list") [ "$3" = "--json" ] || exit 2; cat "$STUB_LIST" ;;
     "plugin uninstall") printf '%s|%s\n' "$PWD" "$*" >> "$STUB_LOG" ;;
 esac
 EOF
@@ -83,7 +83,7 @@ if [ ! -e "$T/gone" ]; then _pass "$NAME"; else _fail "$NAME" "$T/gone still exi
 cat > "$T/claude-fail" <<'EOF2'
 #!/usr/bin/env bash
 case "$1 $2" in
-    "plugin list") cat "$STUB_LIST" ;;
+    "plugin list") [ "$3" = "--json" ] || exit 2; cat "$STUB_LIST" ;;
     "plugin uninstall") exit 1 ;;
 esac
 EOF2

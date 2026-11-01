@@ -2045,7 +2045,7 @@ check_c29() {
     # tool keeps CLAUDE_CODE_CHILD_SESSION=1 and that claude's CLAUDE_PID for its
     # whole life; once that claude is gone, every claude started from the app
     # saves no transcript. Name each such app bundle once (lowest pid).
-    local app_n=0 app_rows="" app_pids="" app_seen="" app_pid app_bundle app_env app_cpid
+    local app_n=0 app_rows="" app_pids="" app_seen="" app_names="" app_pid app_bundle app_env app_cpid
     if [ "$src" = ps ]; then
         app_pids=" $(_c29_table ps | awk '{ print $1 }' | tr '\n' ' ')"
         while IFS=$'\t' read -r app_pid app_bundle; do
@@ -2059,6 +2059,7 @@ check_c29() {
             case "$app_pids" in *" $app_cpid "*) [ -n "$app_cpid" ] && continue ;; esac
             app_seen="$app_seen|$app_bundle|"
             app_n=$((app_n+1))
+            app_names="${app_names:+$app_names, }$app_bundle"
             app_rows="$app_rows$(printf '       · pid %s (%s)' "$app_pid" "$app_bundle")
 "
         done < <(_c29_table ps | awk '{ c = $0; sub(/^[ \t]*[0-9]+[ \t]+[0-9]+[ \t]+/, "", c)
@@ -2078,7 +2079,7 @@ check_c29() {
     fi
     if [ "$app_n" -gt 0 ]; then
         emit WARN C29-child-session \
-            "$app_n Mac app(s) still carry a closed claude's session marker; every claude started from them saves no transcript (SCRUM-2)" \
+            "$app_n Mac app(s) still carry a closed claude's session marker; every claude started from them saves no transcript: $app_names (SCRUM-2)" \
             "quit the app and reopen it from the Dock"
         printf '%s' "$app_rows"
     fi
