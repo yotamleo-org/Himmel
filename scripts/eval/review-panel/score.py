@@ -208,8 +208,9 @@ def delta_apply_problem(round1, delta):
             with open(os.path.join(tmp, name), "w", encoding="utf-8") as fh:
                 fh.write(body)
         for name in ("round1.patch", "delta.patch"):
-            r = subprocess.run(["git", "apply", "--unsafe-paths", "--directory", os.path.join(tmp, "tree"),
-                                os.path.join(tmp, name)], capture_output=True, text=True, errors="replace", cwd=tmp)
+            # No --unsafe-paths: git refuses a path that leaves the working area (the cwd, outside a checkout).
+            r = subprocess.run(["git", "apply", "--directory", "tree", name],
+                               capture_output=True, text=True, errors="replace", cwd=tmp)
             if r.returncode != 0:
                 return "%s: %s" % (name, (r.stderr.strip().splitlines() or ["rc %d" % r.returncode])[-1])
         return None
