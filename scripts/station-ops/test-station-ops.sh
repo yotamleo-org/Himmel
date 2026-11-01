@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Tests for the OPS-1 station ops (cron-entry, cron-system, system-update) and the
-# afk-sudo `op-request` verb that runs them. Usage: bash scripts/station-ops/test-station-ops.sh
+# Tests for the station ops (OPS-1: cron-entry, cron-system, system-update; OPS-2: autologin.sh,
+# reboot-recover.sh with its recover.sh, chief-restart.sh) and the afk-sudo `op-request` verb that runs them.
+# Usage: bash scripts/station-ops/test-station-ops.sh
 # Hermetic: every case builds a sandbox root through the helper's AFK_SUDO_ROOT / AFK_SUDO_NOW seams
 # (honoured only when euid != 0), a fake crontab / apt-get on HIMMEL_OPS_BIN and a fake notice-bot curl.
 # Nothing privileged runs on the host.
