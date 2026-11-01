@@ -3258,6 +3258,33 @@ contains '--verbose labels pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc"
 printf '%s\n' '## Live state' 'priority: 904 901' > "$pc_doc"
 not_contains 'a priority line with no closed key hides pool-closed (HIMMEL-6602)' "$(pc_tick --doc "$pc_doc")" 'pool-closed'
 not_contains 'no --doc hides pool-closed (HIMMEL-6602)' "$(pc_tick)" 'pool-closed'
+# --- prio=<open>/<total> and prio-stale=WARN:<...>: the priority line gone dead or off-version.
+mk_prio() { # <num> <statusCategory> <fixVersions json>
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "x"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-%s: t\n' \
+        "$1" "$2" "$3" "$1" > "$OW/HIMMEL-$1.md"
+}
+absent() { # <name> <needle> <tick args...>: the tick must print a TICK line, and that line lacks <needle>
+    local n="$1" s="$2" o; shift 2; o="$(pc_tick "$@")"
+    case "$o" in *"TICK "*) not_contains "$n" "$o" "$s" ;; *) fail "$n (the tick printed no TICK line)" ;; esac
+}
+pr_keys=""
+for n in $(seq 8101 8180); do mk_prio "$n" Done '["v1.1.3"]'; pr_keys="$pr_keys $n"; done
+mk_prio 8190 "To Do" '["v1.1.5"]'
+mk_prio 8191 "To Do" '["v1.1.3"]'
+pr_doc="$W/handover/HIMMEL-8072-chief.md"
+printf '%s\n' '# chief' '' '## Live state' "priority:$pr_keys 8191" 'focus-version: v1.1.3' '' '## Results' > "$pr_doc"
+contains 'a line with 1 open key of 81 shows prio=1/81 (HIMMEL-8072)' "$(pc_tick --doc "$pr_doc")" ' prio=1/81 '
+contains 'a line with 1 open key of 81 gives WARN prio-stale (HIMMEL-8072)' "$(pc_tick --doc "$pr_doc")" ' prio-stale=WARN:low'
+contains '--verbose labels prio and the prio-stale WARN (HIMMEL-8072)' "$(pc_tick --doc "$pr_doc" --verbose)" 'prio-stale: WARN:low'
+printf '%s\n' '## Live state' 'priority: 8101 8190 8191' 'focus-version: v1.1.3' > "$pr_doc"
+contains 'an open v1.1.5 key with focus-version v1.1.3 makes the WARN name the key (HIMMEL-8072)' "$(pc_tick --doc "$pr_doc")" ' prio-stale=WARN:HIMMEL-8190@v1.1.5'
+absent 'the off-version WARN is quiet when the key matches (HIMMEL-8072)' 'HIMMEL-8191@' --doc "$pr_doc"
+printf '%s\n' '## Live state' 'priority: 8191 904' 'focus-version: v1.1.3' > "$pr_doc"
+contains 'a live line shows prio=<open>/<total> (HIMMEL-8072)' "$(pc_tick --doc "$pr_doc")" ' prio=2/2 '
+absent 'a live on-version line has no prio-stale (HIMMEL-8072)' 'prio-stale' --doc "$pr_doc"
+printf '%s\n' '## Live state' 'legs: none' > "$pr_doc"
+absent 'no priority: line hides prio (HIMMEL-8072)' ' prio' --doc "$pr_doc"
+DOC='' absent 'no --doc and no exported DOC hides prio (HIMMEL-8072)' ' prio='
 # pool-stale=<n>:<KEY>,...: a pool-disposition: line whose named blocker is Done. The
 # detailed rows live in test-tick-pool-stale.sh; this pins the tick line and --verbose.
 printf '%s\n' '# chief' '' '## Live state' 'pool-disposition: HIMMEL-7120 slice HIMMEL-911 then the rest' '' '## Results' > "$pc_doc"
