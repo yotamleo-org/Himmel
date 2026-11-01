@@ -253,5 +253,15 @@ assert_contains "a failed simulation is a failure, not nothing to upgrade (--che
 out=$(op system-update)
 assert_contains "a failed simulation is a failure, not nothing to upgrade (run)" "result=failed" "$out"
 
+echo "== system-update on Arch: pacman -Qu status =="
+new_root arch
+mkdir -p "$R/etc"
+printf 'ID=arch\n' > "$R/etc/os-release"
+printf '#!/bin/sh\necho "error: failed to initialize alpm library" >&2\nexit 1\n' > "$R/bin/pacman"
+chmod +x "$R/bin/pacman"
+assert_contains "RED: a pacman error is a failure, not nothing to upgrade" "result=failed" "$(op system-update --check)"
+printf '#!/bin/sh\nexit 1\n' > "$R/bin/pacman"
+assert_contains "pacman exit 1 with no output is nothing to upgrade" "result=unchanged" "$(op system-update --check)"
+
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

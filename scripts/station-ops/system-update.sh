@@ -62,7 +62,10 @@ if [ $check -eq 1 ]; then
         sim=$(apt-get -s -o Debug::NoLocking=1 upgrade 2>/dev/null) || die "apt-get could not simulate the upgrade"
         names=$(printf '%s\n' "$sim" | sed -n 's/^Inst \([^ ]*\) .*/\1/p')
     else
-        names=$(pacman -Qu 2>/dev/null | awk '{print $1}')
+        pq=$(pacman -Qu 2>&1)
+        pqrc=$?
+        if [ "$pqrc" -ne 0 ] && [ -n "$pq" ]; then die "pacman -Qu failed: ${pq%%$'\n'*}"; fi
+        names=$(printf '%s\n' "$pq" | awk '{print $1}')
     fi
     n=$(printf '%s' "$names" | grep -c .)
     if [ "$n" -eq 0 ]; then say unchanged "nothing to upgrade by the last index sync"; exit 0; fi
