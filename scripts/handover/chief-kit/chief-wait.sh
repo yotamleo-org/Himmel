@@ -49,12 +49,6 @@
 #                               dispatchable=<n>, the count of dispatchable To Do
 #                               rows (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
-#   WAKE orphan-pr <n,...>      at an underfilled sample, with --doc: an open PR whose ticket's worker
-#   UNMAPPED <n> <branch>       record reads wrapped or none (or has none), and that the doc's
-#   <tick line>                 `queue:` line does not name (orphan-pr-check.sh). Sampled at most every
-#                               CHIEF_WAIT_ORPHAN_SAMPLE_MIN (default 5); re-wakes on a PR new to
-#                               the marker `<inbox>.wait.orphan` or every CHIEF_WAIT_ORPHAN_REWAKE_MIN
-#                               (default 60); a clean read clears it (CHIEF_WAIT_ORPHAN = seam).
 #   WAKE pool-unresolved capacity=<value> pool=<open>/<in-flight>/<dispositioned>/<undispositioned>
 #                               --dispositions still has unresolved tickets: list their keys
 #                               by class, even at full capacity; re-wake on the bounded
@@ -953,7 +947,8 @@ unwatched_wake() {
 # then its UNMAPPED lines). The check runs gh, so it samples at most every
 # CHIEF_WAIT_ORPHAN_SAMPLE_MIN (default 5) minutes; the wake follows the unowned-prs marker
 # logic (first sight, a PR new to the marker, CHIEF_WAIT_ORPHAN_REWAKE_MIN, default 60). A clean
-# read clears the marker; a failed or timed-out read leaves it (not an all-clear).
+# read clears the marker `<inbox>.wait.orphan`; a failed or timed-out read leaves it (not an
+# all-clear). CHIEF_WAIT_ORPHAN replaces the check command (tests).
 orphan_file="$inbox.wait.orphan"
 orphan_at_file="$inbox.wait.orphan.at"
 orphan_cmd="${CHIEF_WAIT_ORPHAN:-$HERE/orphan-pr-check.sh}"
