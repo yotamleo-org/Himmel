@@ -2,11 +2,11 @@
  "version": 1,
  "run_as": "root",
  "timeout_s": 30,
- "effect": "PERSISTENT: adds, replaces or removes /etc/cron.d/himmel-<tag>, a system cron job that runs on the schedule as root or the operator user, with no arguments; the command is one executable that root owns and nobody else can write (as root only under /usr/bin or /usr/sbin); prefer cron-entry",
+ "effect": "PERSISTENT: adds, replaces or removes /etc/cron.d/himmel-<tag>, a system cron job that runs on the schedule as root, with no arguments; the command is one executable under /usr/bin or /usr/sbin that root owns, reached through no symlink, with no group or other write on it or any directory above it; an operator-user job goes through cron-entry",
  "params": {
   "action": {"enum": ["set", "remove"]},
   "tag": {"re": "^[A-Za-z0-9-]{1,40}$"},
   "schedule": {"re": "^[0-9*/,-]+( [0-9*/,-]+){4}$", "when": "action=set"},
-  "user": {"re": "^[a-z_][a-z0-9_-]{0,31}$", "when": "action=set"},
+  "user": {"enum": ["root"], "when": "action=set"},
   "command": {"re": "^/[A-Za-z0-9._/-]{1,250}$", "when": "action=set"}
  }}

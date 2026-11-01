@@ -403,8 +403,9 @@ helper ledgers it as `op`, `version`, `op_result`, `detail` on the `run` row (th
 run rows are the broker's). `cron-entry` `command` is one absolute path with no arguments under
 `/usr/local/bin/`, an executable that is root-owned and not group/other-writable, checked at `--check` and
 at run (`ponytail`: any such executable passes, not only a message-session opener; pin it to the installed
-opener once one ships). `cron-system` `user` is root or the operator user, and its `command` is likewise one
-path with no arguments, an executable and a directory that root owns and group/other cannot write. The never-remote floor reads the op name and its parameters, not the installed
+opener once one ships). `cron-system` is root only (an operator-user job goes through `cron-entry`), and its `command` is one
+path with no arguments under `/usr/bin` or `/usr/sbin`, reached through no symlink, an executable whose
+directories all the way up are root-owned and not group/other-writable. The never-remote floor reads the op name and its parameters, not the installed
 script's own path, so a parameter that names `/usr/local/libexec/himmel` is refused (`cron-system` root jobs
 are therefore limited to `/usr/bin` and `/usr/sbin`). `ops.enabled` is off by default; `lockdown` denies a
 pending op request like any other.
