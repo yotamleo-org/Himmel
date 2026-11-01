@@ -2232,18 +2232,20 @@ export const makeSendDoc = (token: string, root: string, upload: typeof sendDocu
   let name: string;
   try {
     const base = await realpath(join(root, "outgoing"));
-    const real = await realpath(path);
-    if (!real.startsWith(base + sep)) return false;
-    // Open once (a final-component symlink is refused), validate THAT descriptor, and upload its
-    // bytes: a file or parent directory swapped after this point cannot change what is sent.
-    const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (!(await realpath(path)).startsWith(base + sep)) return false;   // cheap refusal before anything is opened
+    // Open once (a final-component symlink is refused; O_NONBLOCK so a FIFO cannot hang the poller),
+    // then resolve the path AGAIN and require it to land inside outgoing on the very inode we hold.
+    // That covers a parent directory swapped for a symlink too: the bytes we read belong to a file
+    // that sits in outgoing at that moment, and a swap after this point cannot change what is sent.
+    const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const st = await fh.stat();
+      const real = await realpath(path);
       const at = await stat(real);
-      if (!st.isFile() || st.size > MAX_DOC_BYTES || st.dev !== at.dev || st.ino !== at.ino) return false;
+      if (!real.startsWith(base + sep) || !st.isFile() || st.size > MAX_DOC_BYTES || st.dev !== at.dev || st.ino !== at.ino) return false;
       bytes = await fh.readFile();
+      name = basename(real);
     } finally { await fh.close(); }
-    name = basename(real);
   } catch { return false; }
   if (bytes.length > MAX_DOC_BYTES) return false;
   return upload(token, chat, { name, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer }, caption);
