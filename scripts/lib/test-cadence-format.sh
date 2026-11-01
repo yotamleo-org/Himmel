@@ -291,7 +291,7 @@ assert_eq "variable already set: not overwritten" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/tok" CLAUDE_CODE_OAUTH_TOKEN=already-set)" "<already-set>"
 assert_eq "variable empty: loaded from the file" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/tok" CLAUDE_CODE_OAUTH_TOKEN=)" "<fake-token-123>"
-mkdir "$_tok_tmp/dir"
+mkdir "$_tok_tmp/dir" || { echo "FAIL: cannot create the directory fixture" >&2; exit 1; }
 assert_eq "a directory is not a token file" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/dir")" "<UNSET>"
 printf 'no-newline-token' > "$_tok_tmp/tok2"
