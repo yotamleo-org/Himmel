@@ -1,6 +1,7 @@
 {
   "ubuntu_new":        { "os": "ubuntu",  "ssh_port": 2222, "user": "himmel", "user_env": "ubuntu_vm_user",  "pass_env": "ubuntu_vm_pass" },
   "himmel-claudex":    { "os": "ubuntu",  "ssh_port": 2229, "user": "himmel", "user_env": "ubuntu_vm_user",  "pass_env": "ubuntu_vm_pass" },
+  "himmel-gui-1":      { "os": "ubuntu",  "ssh_port": 2230, "user": "himmel", "user_env": "ubuntu_vm_user",  "pass_env": "ubuntu_vm_pass" },
   "win11_base_himmel": { "os": "windows", "ssh_port": 2223, "user_env": "windows_vm_user", "pass_env": "windows_vm_pass" },
   "win2":              { "os": "windows", "kind": "station", "host": "win2", "auth": "key", "repo_path": "~/Documents/github/himmel" }
 }
