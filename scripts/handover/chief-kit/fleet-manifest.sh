@@ -149,7 +149,7 @@ if [ -e "$manifest" ]; then
         echo "fleet-manifest: refusing to rewrite an invalid manifest: $manifest" >&2
         exit 1
     fi
-    # every write says `workers` and drops `legs`: an old manifest keeps its entries and order
+    # every write says `workers` and drops `workers`: an old manifest keeps its entries and order
     # (`workers` wins when a manifest holds both, as it does for the readers)
     cur="$(jq 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end' "$manifest")" || exit 1
 else

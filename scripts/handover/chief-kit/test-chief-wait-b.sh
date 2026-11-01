@@ -210,7 +210,7 @@ wait_hb "$I" || fail "(pk2) no baseline heartbeat"
 tick_line "N1:FRESH" "ok"
 parked_line N1:6m
 wait_exit "$WPID"
-check "(pk2) a leg joining the parked set ends the wait" "0" "$rc"
+check "(pk2) a worker joining the parked set ends the wait" "0" "$rc"
 check "(pk2) the wake names parked" "WAKE tick changed=parked usage=PROCEED" "$(head -n1 "$WORK/pk2.out")"
 
 # the same workers parked in a different order is not a membership change
@@ -234,7 +234,7 @@ wait_hb "$I" || fail "(pk3) no baseline heartbeat"
 tick_line "N1:FRESH" "ok"
 sed 's# parked=[^ ]*##' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
-check "(pk3) a leg leaving the parked set ends the wait" "0" "$rc"
+check "(pk3) a worker leaving the parked set ends the wait" "0" "$rc"
 check "(pk3) the wake names parked" "WAKE tick changed=parked usage=PROCEED" "$(head -n1 "$WORK/pk3.out")"
 
 # --- (m3748) a worker-set change made through --workers-from is a silent baseline --
@@ -269,8 +269,8 @@ check "(m3748) a reorder through the manifest does not wake the console" "runnin
 check "(m3748) and still prints nothing" "" "$(cat "$WORK/m3748.out")"
 tick_line "N2:FREE,N1:FRESH" "ok"
 wait_exit "$WPID"
-check "(m3748) a real change on the new leg set still wakes (rc 0)" "0" "$rc"
-check "(m3748) naming legs" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/m3748.out")"
+check "(m3748) a real change on the new worker set still wakes (rc 0)" "0" "$rc"
+check "(m3748) naming workers" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/m3748.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (m1a) the same manifest dispatch with a `workers` array reads like the old `legs` one;
@@ -326,7 +326,7 @@ sed 's/ acts=N1:READY#1/ acts=N1:BLOCKED#2/' "$STUB/tick.line" > "$STUB/tick.lin
 wait_exit "$WPID"
 check "(a6292) a new actionable bullet wakes the console (rc 0)" "0" "$rc"
 check "(a6292) the wake names acts" "WAKE tick changed=acts usage=PROCEED" "$(head -n1 "$WORK/a6292.out")"
-check "(a6292) and the tick line names the leg and marker" "1" "$(grep -c 'acts=N1:BLOCKED#2' "$WORK/a6292.out")"
+check "(a6292) and the tick line names the worker and marker" "1" "$(grep -c 'acts=N1:BLOCKED#2' "$WORK/a6292.out")"
 
 # --- (u4959) a sustained capacity=UNDERFILLED wakes, once per streak
 # tick.sh already folds TICK_UNDERFILL_MIN into capacity=; the waiter wakes on the
@@ -636,7 +636,7 @@ timeout 3 bash "$WAIT" "$I" --doc "$WORK/pc5/AT.md" --workers "N1.md" > "$WORK/p
 check "(pc5) a console with no predecessor doc closes nothing" "0" "$(wc -l < "$STUB/close.calls" | tr -d ' ')"
 reset_stub
 CD="$(pc_console pc6 5)"; I="$(new_inbox pc6)"
-echo "close-wrapped-worker: refusing - 10 live session(s) matched leg names [x] (need exactly 1)" > "$STUB/close.msg"
+echo "close-wrapped-worker: refusing - 10 live session(s) matched worker names [x] (need exactly 1)" > "$STUB/close.msg"
 start "$I" "$WORK/pc6.out" --doc "$CD" --workers "N1.md"
 wait_exit "$WPID"
 rm -f "$STUB/close.msg"
@@ -673,7 +673,7 @@ printf 'N1 quoted-back\nN2 quoted-back\nCOMPLETE 2/2\nbash append-results.sh doc
 I="$(new_inbox su1)"
 start "$I" "$WORK/su1.out" --doc "$SUCD" --succession S2 --workers "N1.md"
 wait_exit "$WPID"
-check "(su1) every leg quoted back wakes once, rc 0" "0" "$rc"
+check "(su1) every worker quoted back wakes once, rc 0" "0" "$rc"
 check "(su1) the wake names the tally" "WAKE succession complete 2/2" "$(head -n1 "$WORK/su1.out")"
 check "(su1) the block carries the printed LIVE command" "yes" "$(grep -q '^bash append-results.sh' "$WORK/su1.out" && echo yes)"
 check "(su1) the exit reason is logged" "yes" "$(grep -q 'exit=wake-succession' "$I.wait" && echo yes)"
@@ -689,7 +689,7 @@ start "$I" "$WORK/su3.out" --doc "$SUCD" --succession S2 --silent-min 0 --worker
 wait_exit "$WPID"
 check "(su3) a tally silent past --silent-min wakes once, rc 0" "0" "$rc"
 check "(su3) the partial wake names k/n and the window" "WAKE succession partial 1/2 silent 0 min" "$(head -n1 "$WORK/su3.out")"
-check "(su3) the block names the leg still out" "yes" "$(grep -q 'waiting on: N2' "$WORK/su3.out" && echo yes)"
+check "(su3) the block names the worker still out" "yes" "$(grep -q 'waiting on: N2' "$WORK/su3.out" && echo yes)"
 
 printf 'tracker blew up\n' > "$STUB/su.out"
 I="$(new_inbox su3b)"

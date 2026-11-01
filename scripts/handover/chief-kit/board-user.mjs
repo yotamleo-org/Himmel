@@ -9,7 +9,7 @@ const esc = (s) => String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
-// A worker's prose may name its own leg: that id is operator-side, so it reads "a worker".
+// A worker's prose may name its own worker: that id is operator-side, so it reads "a worker".
 // A home directory path names the operator's machine, so it reads "[path]".
 const plain = (s, n) => esc(clip(redact(String(s)).replace(/\bN\d+[a-z]*\b/g, 'a worker').replace(/(?:\/(?:home|Users)\/|[A-Za-z]:\\Users\\)\S*/g, '[path]'), n));
 

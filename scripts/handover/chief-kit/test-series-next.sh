@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-series-ledger.sh
 # scripts/handover/chief-kit/test-series-next.sh - suite for series-next.sh, the driver of a stacked series
 # (design section 5.2, failure rows F1 F2 F5 F7 F10 F13, invariants I3 I4 I5):
-#   1. F5/F7  start       -> only the ledger's writer starts; one start per leg; item worktree on series/<sid>/<key>, locked
+#   1. F5/F7  start       -> only the ledger's writer starts; one start per worker; item worktree on series/<sid>/<key>, locked
 #   2. F1     pass        -> refuses a dirty authoring tree (names the key) and a HEAD past the ledger wip (SERIES-DRIFT)
 #   3. commit/pass        -> commit records wip + committed; pass moves the writer; every other verb leaves it alone
 #   4. F5     after pass  -> the old writer is refused, the new one starts the next item cut from the previous wip
@@ -275,7 +275,7 @@ check "8: an item with no fields starts rc 0" "$rc" 0
 lacks "8: and prints no ITEM-SCOPE block" "$out" "ITEM-SCOPE"
 lacks "8: and no DO-NOT or COMMIT-TEXT line" "$out" "DO-NOT"
 
-# --- 8b. the one start per leg is claimed before any change ----------------------------------------------------------------
+# --- 8b. the one start per worker is claimed before any change ----------------------------------------------------------------
 L6="$tmp/ledgers/s6.json"; mk "$L6" "$A" K1 K2 || exit 1
 sl set --ledger "$L6" --key K1 state=committed wip="$MAIN" >/dev/null
 for n in 1 2; do

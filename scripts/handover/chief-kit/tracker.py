@@ -92,7 +92,7 @@ PR_RE = re.compile(r'\b(?:PR|READY|GO)\s+#?(\d{3,5})\b')
 def held_docs():
     """Realpaths of handover docs whose queue lock is held and fresh (heartbeat within queue-lock.sh's TTL).
 
-    The lock dir is <handover root>/.locks/queue, found walking up from the bucket; none = no legs (read-only, no network)."""
+    The lock dir is <handover root>/.locks/queue, found walking up from the bucket; none = no workers (read-only, no network)."""
     d, q = HANDOVERS, None
     for _ in range(4):
         if os.path.isdir(os.path.join(d, '.locks', 'queue')):
@@ -118,7 +118,7 @@ def held_docs():
 
 
 def leg_marker(path):
-    """(marker, pr) from a leg doc's Results bullets: worker-tail-status.sh's rule, and the newest PR a marker bullet names."""
+    """(marker, pr) from a worker doc's Results bullets: worker-tail-status.sh's rule, and the newest PR a marker bullet names."""
     try:
         ls = [l.rstrip('\n') for l in open(path, encoding='utf-8', errors='replace')]
     except OSError:
@@ -154,18 +154,18 @@ def manifest_workers(m):
 
 
 def manifest_docs():
-    """Leg docs listed in the console fleet manifests (<console doc>.fleet.json) next to the bucket's docs.
+    """Worker docs listed in the console fleet manifests (<console doc>.fleet.json) next to the bucket's docs.
 
-    A manifest lists the legs a console dispatched, so its legs are live without a queue lock of their own."""
+    A manifest lists the workers a console dispatched, so its workers are live without a queue lock of their own."""
     out = []
     for m in glob.glob(os.path.join(HANDOVERS, '*.fleet.json')):
         try:
-            legs = manifest_workers(json.load(open(m, encoding='utf-8')))
+            workers = manifest_workers(json.load(open(m, encoding='utf-8')))
         except (OSError, ValueError, AttributeError):
             continue
-        if not isinstance(legs, list):
+        if not isinstance(workers, list):
             continue
-        for lg in legs:
+        for lg in workers:
             d = lg.get('doc') if isinstance(lg, dict) else None
             if isinstance(d, str) and WORKER_SESSION_RE.match(os.path.basename(d)) and os.path.isfile(d):
                 out.append(d)
@@ -173,7 +173,7 @@ def manifest_docs():
 
 
 def live_legs():
-    """{ticket number: [leg label, marker, pr or None]} for live legs; the newest doc wins per ticket."""
+    """{ticket number: [worker label, marker, pr or None]} for live workers; the newest doc wins per ticket."""
     held, out = held_docs(), {}
     docs = [p for p in glob.glob(os.path.join(HANDOVERS, 'HIMMEL-*-N*-*.md')) if WORKER_SESSION_RE.match(os.path.basename(p))]
     for p in sorted(docs, key=lambda x: (os.path.getmtime(x), x)):
@@ -195,8 +195,8 @@ IDLE_MIN = 180
 ACT_NEWEST = 0.0  # newest mtime among the wrapped-worker docs actuals() last read (HIMMEL-4930)
 # ponytail: no cost column (token spend per worker is not in the mirror or the worker doc); upgrade: mirror each PR's worker-burn
 # line and add cost beside wall and active.
-SOURCE = ('wall = first Results bullet to WRAPPED, dated from the leg doc\'s name (station clock, shown in UTC); '
-          'active = the gaps between bullets of 3 h or less; dated = legs whose wall could be dated. '
+SOURCE = ('wall = first Results bullet to WRAPPED, dated from the worker doc\'s name (station clock, shown in UTC); '
+          'active = the gaps between bullets of 3 h or less; dated = workers whose wall could be dated. '
           'cost: not measured (it needs the PR\'s worker-burn line in the mirror).')
 
 
@@ -205,7 +205,7 @@ def leg_docs():
 
 
 def leg_span(p, text):
-    """(wall min or None, active min, start epoch or None, end epoch or None) of one leg doc's Results bullets (HIMMEL-5453).
+    """(wall min or None, active min, start epoch or None, end epoch or None) of one worker doc's Results bullets (HIMMEL-5453).
 
     Bullets carry only the station's local HH:MM: the doc name's date dates the first one and each backwards step of the
     clock is the next day. A doc name with no date gives no wall, only active minutes.
@@ -232,7 +232,7 @@ def leg_span(p, text):
 
 
 def actuals():
-    """{ticket number: [wrapped legs, wall min, active min, dated legs, first start epoch, last end epoch]} (HIMMEL-5453):
+    """{ticket number: [wrapped workers, wall min, active min, dated workers, first start epoch, last end epoch]} (HIMMEL-5453):
     what the done work actually took, to measure the estimates against. leg_span() says how each number is measured."""
     global ACT_NEWEST
     out = {}
@@ -273,8 +273,8 @@ def filed_keys(line):
 
 
 def filings():
-    """({spawned ticket number: filing leg's ticket number}, {operator-directed ticket numbers}) from the handover docs."""
-    leg, op = {}, set()
+    """({spawned ticket number: filing worker's ticket number}, {operator-directed ticket numbers}) from the handover docs."""
+    worker, op = {}, set()
     for p in leg_docs():
         m = WORKER_SESSION_RE.match(os.path.basename(p))
         if not m:
@@ -288,7 +288,7 @@ def filings():
             if l.startswith('- '):
                 for k in filed_keys(l):
                     if k > n:  # an origin is always the older ticket
-                        leg.setdefault(k, n)
+                        worker.setdefault(k, n)
     for p in sorted({p for d in (HANDOVERS, os.path.join(HANDOVERS, 'logs')) for w in ('console', 'chief')
                      for p in glob.glob(os.path.join(d, '*%s*.md' % w))}):
         try:
@@ -298,7 +298,7 @@ def filings():
         for l in ls:
             if OPER_RE.match(l):
                 op.update(filed_keys(l))
-    return leg, op
+    return worker, op
 
 
 # A description or title naming the ticket this one came from. The first hit by position wins; it must be older.
@@ -319,7 +319,7 @@ def bundles(mir, planned, op, leg_filed):
     """{ticket number: anchor} for every unplanned ticket that reaches one (HIMMEL-5453): a planned ticket number, or 'op'.
 
     A ticket's origin is, first hit wins: its mirror parent (never an Epic) or a relates link, a description or title
-    reference, the leg doc that filed it. Origins are strictly older, so the walk up a chain always ends; it stops at
+    reference, the worker doc that filed it. Origins are strictly older, so the walk up a chain always ends; it stops at
     the first planned or operator-directed ticket. Operator-directed tickets are anchors of their own bundle."""
     org = {}
     for k, m in mir.items():
@@ -350,8 +350,8 @@ def bundles(mir, planned, op, leg_filed):
 
 
 def fingerprint():
-    """16 hex over the mirror's newest `updated:`, the plan + stage1/stage2 files' bytes, the versions file, the live legs
-    and the wrapped legs' actuals and the handover docs' filings (what the page shows)."""
+    """16 hex over the mirror's newest `updated:`, the plan + stage1/stage2 files' bytes, the versions file, the live workers
+    and the wrapped workers' actuals and the handover docs' filings (what the page shows)."""
     upd = ''
     for p in glob.glob(os.path.join(MIRROR, 'HIMMEL-*.md')):
         for l in open(p, encoding='utf-8', errors='replace'):
@@ -655,7 +655,7 @@ def jira_parity(tk, vers, cur):
     return 'parity: %s %s page %s jira %s%s: %s' % (v, 'lag' if lag else 'DRIFT', page, jira, tail, names)
 
 
-def jira_view(mir, legs, vers, prows, vnames, target=None):
+def jira_view(mir, workers, vers, prows, vnames, target=None):
     """The version-first page data: JT tickets, JC working-on, JN up-next, JA released-but-open alerts.
 
     prows are the plan's placed rows (user impact is col 9, plan version col 3), vnames the plan's version names.
@@ -672,7 +672,7 @@ def jira_view(mir, legs, vers, prows, vnames, target=None):
             if b == 'wont':
                 wont[vi[v]] = wont.get(vi[v], 0) + 1
                 continue
-            lg = legs.get(num(k))
+            lg = workers.get(num(k))
             tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
                            ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
                            leg=lg if b not in ('done', 'wont') else None, live=bool(lg and b == 'todo')))
@@ -815,7 +815,7 @@ def kanban(tk, vers, cur, base, wont=(), flight=()):
     """HIMMEL-5381: one <details> per release with tickets, holding a 5-column board (To Do, In Progress, In Review, IN CI, Done).
 
     A card links to <base>/browse/<key> (plain text when no base URL is configured) with the summary and the ticket's
-    one-line user-facing description. closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live leg works reads
+    one-line user-facing description. closed-without-shipping tickets are not on the board (wont[i] is their count); a To Do ticket a live worker works reads
     In Progress, as the main board does. The release being worked on (cur) opens expanded."""
     base = base.strip().rstrip('/')
     if not re.match(r'^https?://', base):
@@ -1087,7 +1087,7 @@ def bench(mir, rows, n_plan, act, seqm, erange):
         return sum(sz) / len(sz) if sz and None not in sz else None
 
     def stat(ns):
-        s = dict(n=len(ns), open=0, done=0, legs=0, dated=0, wall=0, active=0, first=None, end=None)
+        s = dict(n=len(ns), open=0, done=0, workers=0, dated=0, wall=0, active=0, first=None, end=None)
         for n in ns:
             m = mir.get('HIMMEL-%d' % n)
             if m and bucket(m) == 'wont':
@@ -1096,7 +1096,7 @@ def bench(mir, rows, n_plan, act, seqm, erange):
             s['done' if m and m['st'] == 2 else 'open'] += 1
             a = act.get(n)
             if a:
-                s['legs'] += a[0]
+                s['workers'] += a[0]
                 s['wall'] += a[1]
                 s['active'] += a[2]
                 s['dated'] += a[3]
@@ -1109,14 +1109,14 @@ def bench(mir, rows, n_plan, act, seqm, erange):
         tw = (own['wall'] if own else 0) + b['wall']
         # the workers the ratio divides: the operator bundle counts only its estimated members. An undated worker adds no
         # wall, so a ratio over any undated worker would understate the actual: it is left blank.
-        legs, dated, rw = (rs['legs'], rs['dated'], rs['wall']) if rs else \
-            ((own['legs'] if own else 0) + b['legs'], (own['dated'] if own else 0) + b['dated'], tw)
-        mps = round(rw / est, 1) if est and rw and done and legs == dated else None
+        workers, dated, rw = (rs['workers'], rs['dated'], rs['wall']) if rs else \
+            ((own['workers'] if own else 0) + b['workers'], (own['dated'] if own else 0) + b['dated'], tw)
+        mps = round(rw / est, 1) if est and rw and done and workers == dated else None
         fs = [x for x in ((own or {}).get('first'), b['first']) if x is not None]
         es = [x for x in ((own or {}).get('end'), b['end']) if x is not None]
         return [key, title, size, round(est, 2) if est else None] + \
-            ([own['legs'], own['dated'], own['wall'], own['active']] if own else [None] * 4) + \
-            [b['n'], b['open'], b['done'], b['legs'], b['dated'], b['wall'], b['active'],
+            ([own['workers'], own['dated'], own['wall'], own['active']] if own else [None] * 4) + \
+            [b['n'], b['open'], b['done'], b['workers'], b['dated'], b['wall'], b['active'],
              tw, (own['active'] if own else 0) + b['active'], mps, None,
              ez(min(fs)) if fs else '', ez(max(es)) if es else '', members]
 
@@ -1284,7 +1284,7 @@ def open_worker_prs(rec):
 
 
 def worker_line(rec):
-    """`worker <leg> · <state>[ · #<pr> @<head7> · CI <ci>...][ · <age>]` for one worker record."""
+    """`worker <worker> · <state>[ · #<pr> @<head7> · CI <ci>...][ · <age>]` for one worker record."""
     parts = ['worker %s' % (rec.get('leg') or '?'), str(rec.get('state') or 'unknown')]
     for n, h in open_worker_prs(rec):
         ci = rec['prs'][str(n)].get('ci') or 'none'
@@ -1624,7 +1624,7 @@ def main():
                     help="a `jira versions` snapshot: name<TAB>released<TAB>releaseDate (default <mirror-dir>.versions.tsv)")
     ap.add_argument('--luna-root', default=LUNA)
     ap.add_argument('--handovers', default=os.environ.get('TRACKER_HANDOVERS_DIR', ''),
-                    help='handover tree to grep for notes and live legs (default $TRACKER_HANDOVERS_DIR, '
+                    help='handover tree to grep for notes and live workers (default $TRACKER_HANDOVERS_DIR, '
                          'else <luna-root>/handovers/yotamleo/himmel)')
     ap.add_argument('--drift-log', default=None,
                     help='append-only drift/unplanned/unthemed counts per render (default <handovers>/roadmap-drift.tsv)')
@@ -1696,8 +1696,8 @@ def main():
     S =os.path.join(ROOT, 'stage3')
     meta = json.load(open(os.path.join(S, 'meta.json'), encoding='utf-8'))
     mir = read_mirror()
-    legs = live_legs()
-    for n in legs:  # HIMMEL-3990: a live leg puts its ticket in progress, whatever Jira says (Done stays done)
+    workers = live_legs()
+    for n in workers:  # HIMMEL-3990: a live worker puts its ticket in progress, whatever Jira says (Done stays done)
         m = mir.get('HIMMEL-%d' % n)
         if m and m['st'] != 2:
             m['st'] = 1
@@ -1810,7 +1810,7 @@ def main():
     dt = drift_log(a.drift_log, sum(1 for r in rows if r[7] == 1), sum(1 for r in rows if r[7] == 2 and r[2] != 2), nothm)
     if dt:
         lg.append('Drift over time (drift / unplanned / unthemed): ' + ' → '.join('%d/%d/%d' % tuple(x[1:]) for x in dt[-6:]) + '.')
-    jt, jc, jn, ja, jw, jf = jira_view(mir, legs, jv, rows[:n_plan], vers, tix)
+    jt, jc, jn, ja, jw, jf = jira_view(mir, workers, jv, rows[:n_plan], vers, tix)
     par = jira_parity(jt, jv, jc)
     pages = [dict(kind='all', path=OUT, P=rows, N=notes, DR=dirs, JT=jt, JC=jc, JN=jn, JA=ja, JW=jw, JF=jf, U=unpl, x={})]
     if split:
@@ -1829,7 +1829,7 @@ def main():
     data = dict(gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=utc_stamp(upd),
                 sha=meta.get('main_sha_at_build', '')[:9], V=vers, VL=vload, VC=version_caps(rules, vers, {x['n'] for x in jv if x['rel']}), DT=dt,
                 ATS=datetime.fromtimestamp(ACT_NEWEST, timezone.utc).strftime('%Y-%m-%d %H:%M UTC') if ACT_NEWEST else '',
-                WORKER={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes,
+                WORKER={str(n): v for n, v in sorted(workers.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes,
                 CUR=cur, JV=jv, RU=ru, PAR=par,
                 CAP=dict(total=rules['total'], layers=[(rules['layers'] or {}).get(l) for l in LAYERS],
                          text=capacity_text(rules, [v for v in vers if not TRAIN_RE.match(v)],
@@ -2180,12 +2180,12 @@ function model(D){
  function inV(i,rem){return P.filter(function(p){return p[3]==i}).filter(keep(rem))}
  function inT(t,rem){return P.filter(function(p){return p[5]==t&&train(p[3])}).filter(keep(rem))}
  function inTrain(rem){return P.filter(function(p){return train(p[3])}).filter(keep(rem))}
- function leg(p){return p[2]!=2&&WORKER[String(p[0])]||null}
+ function worker(p){return p[2]!=2&&WORKER[String(p[0])]||null}
  function tally(a){var r={n:a.length,done:0,prog:0,todo:0,live:0};
-  a.forEach(function(p){if(p[2]==2)r.done++;else if(p[2]==1)r.prog++;else r.todo++;if(leg(p))r.live++});r.left=r.n-r.done;return r}
+  a.forEach(function(p){if(p[2]==2)r.done++;else if(p[2]==1)r.prog++;else r.todo++;if(worker(p))r.live++});r.left=r.n-r.done;return r}
  function r4(x){return Math.round(x*10000)/10000}
  function ld(p){return p[7]==2?0:(p[15]||0)}
- function rank(p){return p[2]==2?3:leg(p)?0:p[2]==1?1:2}
+ function rank(p){return p[2]==2?3:worker(p)?0:p[2]==1?1:2}
  function order(a){return a.slice().sort(function(x,y){return rank(x)-rank(y)||(y[12]||0)-(x[12]||0)||x[0]-y[0]})}
  // load(i): the version's budget by kind of work, each kind with its tickets (heaviest first); caps are the version's own (VC).
  function load(i,rem){
@@ -2221,7 +2221,7 @@ function model(D){
  function drill(kind,scope,rem){
   var a=scope.v!=null?inV(scope.v,rem):scope.t!=null?inT(scope.t,rem):inTrain(rem);
   var f={all:function(){return true},done:function(p){return p[2]==2},left:function(p){return p[2]!=2},
-   live:function(p){return !!leg(p)},prog:function(p){return p[2]==1&&!leg(p)},doing:function(p){return p[2]==1},todo:function(p){return p[2]==0}}[kind];
+   live:function(p){return !!worker(p)},prog:function(p){return p[2]==1&&!worker(p)},doing:function(p){return p[2]==1},todo:function(p){return p[2]==0}}[kind];
   return order(a.filter(f))}
  function current(rem){for(var i=0;i<V.length;i++)if(train(i)&&inV(i).some(function(p){return p[2]!=2}))return i;return null}
  // Steering (the release desk). The page cannot act: it computes what a lever would change and words the instruction.
@@ -2251,7 +2251,7 @@ function model(D){
  // peel(i, {keep, unpin}): take the open, worker-free, unpinned tickets by lowest return (impact per size) until every cap holds;
  // each step takes the first candidate that eases a cap still broken. keep: tickets the viewer pins here; unpin: plan pins released.
  function peel(i,o){o=o||{};var keep=o.keep||[],un=o.unpin||[],a=inV(i).filter(planned),cur=a.slice(),out=[];
-  var cand=a.filter(function(p){return p[2]!=2&&!leg(p)&&keep.indexOf(p[0])<0&&(!pinned(p)||un.indexOf(p[0])>=0)})
+  var cand=a.filter(function(p){return p[2]!=2&&!worker(p)&&keep.indexOf(p[0])<0&&(!pinned(p)||un.indexOf(p[0])>=0)})
    .sort(function(x,y){return roi(x)-roi(y)||(y[6]||0)-(x[6]||0)||x[0]-y[0]});
   for(;;){var b=breaches(i,stats(i,cur));if(!b.length)break;
    var w=b.map(function(x){return x.what}),j=-1;
@@ -2267,18 +2267,18 @@ function model(D){
  // fold(i): the trail's open tickets, best return first, that its parent can take back without breaking a cap.
  function fold(i){var pr=parent(i);if(pr<0)return [];var cur=inV(pr).slice(),out=[];
   if(breaches(pr,stats(pr,cur)).length)return [];
-  inV(i).filter(function(p){return p[2]!=2&&planned(p)&&!leg(p)}).sort(function(x,y){return roi(y)-roi(x)||x[0]-y[0]}).forEach(function(p){
+  inV(i).filter(function(p){return p[2]!=2&&planned(p)&&!worker(p)}).sort(function(x,y){return roi(y)-roi(x)||x[0]-y[0]}).forEach(function(p){
    if(!breaches(pr,stats(pr,cur.concat([p]))).length){cur.push(p);out.push(p)}});return out}
  // decisions(): what needs input, ordered. Band 0 stops now (a BLOCKED or FINDING worker); band 1 blocks the release (the running
  // version and the next: caps, drift); band 2 queue health (later caps, drift, the unplaced, a trail its parent can take back).
  function decisions(){var cur=D.CUR,nx=cur!=null&&cur+1<V.length&&train(cur+1)?cur+1:-1,out=[];
   function near(i){return i==cur||i==nx}
-  P.forEach(function(p){var lg=leg(p);if(lg&&(lg[1]=="BLOCKED"||lg[1]=="FINDING"))out.push({band:0,type:"leg",i:p[3],p:p,s:lg[1]=="BLOCKED"?0:1})});
+  P.forEach(function(p){var lg=worker(p);if(lg&&(lg[1]=="BLOCKED"||lg[1]=="FINDING"))out.push({band:0,type:"worker",i:p[3],p:p,s:lg[1]=="BLOCKED"?0:1})});
   V.forEach(function(_,i){var b=breaches(i,stats(i,inV(i)));if(b.length)out.push({band:near(i)?1:2,type:"cap",i:i,b:b})});
   P.forEach(function(p){if(p[7]==1&&p[2]!=2&&train(p[3]))out.push({band:near(p[3])?1:2,type:"drift",i:p[3],p:p})});
   V.forEach(function(_,i){var f=fold(i);if(f.length)out.push({band:2,type:"fold",i:i,f:f})});
   var u=(D.U||[]).filter(function(x){return x[2]!=2});if(u.length)out.push({band:2,type:"unplaced",i:u.length,u:u,last:1});
-  var TR={leg:0,cap:1,drift:2,fold:3,unplaced:4};
+  var TR={worker:0,cap:1,drift:2,fold:3,unplaced:4};
   return out.sort(function(x,y){return x.band-y.band||(x.last||0)-(y.last||0)||x.i-y.i||TR[x.type]-TR[y.type]||(x.s||0)-(y.s||0)||(x.p?x.p[0]:0)-(y.p?y.p[0]:0)})}
  // gains(): done work per train version, newest first: what users got.
  function gains(){var g=[];for(var i=V.length-1;i>=0;i--){if(!train(i))continue;var d=order(inV(i).filter(function(p){return p[2]==2}));
@@ -2290,10 +2290,10 @@ function model(D){
  function med(a){var s=a.slice().sort(function(x,y){return x-y}),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null}
  // accuracy(): measured done tickets grouped by their size estimate, smallest first, each with its median wall minutes and
  // workers; a ticket with no dated worker doc has no wall time and is left out.
- function accuracy(){var g={};P.forEach(function(p){var a=act(p);if(a&&a[3]!==0&&p[10])(g[p[10]]=g[p[10]]||[]).push({p:p,legs:a[0],min:a[1]})});
+ function accuracy(){var g={};P.forEach(function(p){var a=act(p);if(a&&a[3]!==0&&p[10])(g[p[10]]=g[p[10]]||[]).push({p:p,workers:a[0],min:a[1]})});
   return Object.keys(g).sort(function(x,y){return szk(x)-szk(y)}).map(function(k){var r=g[k].sort(function(x,y){return x.min-y.min||x.p[0]-y.p[0]});
-   return {size:k,n:r.length,rows:r,med:med(r.map(function(x){return x.min})),legs:med(r.map(function(x){return x.legs}))}})}
- return {KIND:KIND,READY:READY,train:train,vname:vname,inV:inV,inT:inT,inTrain:inTrain,leg:leg,tally:tally,load:load,summary:summary,
+   return {size:k,n:r.length,rows:r,med:med(r.map(function(x){return x.min})),workers:med(r.map(function(x){return x.workers}))}})}
+ return {KIND:KIND,READY:READY,train:train,vname:vname,inV:inV,inT:inT,inTrain:inTrain,worker:worker,tally:tally,load:load,summary:summary,
   drill:drill,order:order,isUser:isUser,current:current,ld:ld,pinned:pinned,roi:roi,trail:trail,parent:parent,stats:stats,breaches:breaches,
   peel:peel,whatIf:whatIf,fold:fold,decisions:decisions,gains:gains,act:act,accuracy:accuracy,med:med}}
 /*END MODEL*/
@@ -2310,14 +2310,14 @@ function nb(label,kind,scope,title){var b=el("button","n",label);b.type="button"
 function keyOf(p){return "HIMMEL-"+p[0]}
 function dots(n){var d=el("span","dots");d.setAttribute("role","img");d.setAttribute("aria-label","impact "+n+" of 5");d.title="impact "+n+" of 5";
  for(var i=1;i<=5;i++)d.appendChild(el("i",i<=n?"f":null));return d}
-function chip(lg){var t=lg[0]+" · "+(lg[1]=="LIVE"&&lg[2]?"PR #"+lg[2]:lg[1]);var c=el("span","chip "+lg[1],t);c.title="leg "+lg[0]+", last marker "+lg[1]+(lg[2]?", PR "+lg[2]:"");return c}
-function mark(p){var lg=M.leg(p),c=p[2]==2?"done":lg?"live":p[2]==1?"started":"todo",
- w={done:"done",live:"a leg is on it",started:"started in Jira, no leg",todo:"to do"}[c];var m=el("span","mk "+c);m.setAttribute("role","img");m.setAttribute("aria-label",w);m.title=w;return m}
+function chip(lg){var t=lg[0]+" · "+(lg[1]=="LIVE"&&lg[2]?"PR #"+lg[2]:lg[1]);var c=el("span","chip "+lg[1],t);c.title="worker "+lg[0]+", last marker "+lg[1]+(lg[2]?", PR "+lg[2]:"");return c}
+function mark(p){var lg=M.worker(p),c=p[2]==2?"done":lg?"live":p[2]==1?"started":"todo",
+ w={done:"done",live:"a worker is on it",started:"started in Jira, no worker",todo:"to do"}[c];var m=el("span","mk "+c);m.setAttribute("role","img");m.setAttribute("aria-label",w);m.title=w;return m}
 function impactText(p,host){
  if(!p[9]){host.textContent=p[1];return host}
  var m=/^internal:\s*/i.exec(p[9]);if(m){add(host,el("span","int","Internal")," "+p[9].slice(m[0].length))}else host.textContent=p[9];return host}
 function ticket(p){
- var d=el("details","tk"),s=el("summary"),tx=el("span","tx"),sub=el("span","sub"),tg=el("span","tg"),lg=M.leg(p);
+ var d=el("details","tk"),s=el("summary"),tx=el("span","tx"),sub=el("span","sub"),tg=el("span","tg"),lg=M.worker(p);
  add(sub,el("code",null,keyOf(p)),p[9]?" · "+p[1]:null);sub.title=p[1];
  add(tx,impactText(p,el("span","ui")),sub);
  if(lg)tg.appendChild(chip(lg));if(p[10])add(tg,el("span","sz",p[10]));if(p[12]!=null)tg.appendChild(dots(p[12]));
@@ -2331,14 +2331,14 @@ function more(p){
  u.appendChild(el("li",null,"Sector: "+T[p[5]]+" · kind: "+M.KIND[p[4]]+" · "+V[p[3]]+"."));
  if(p[7]==1)u.appendChild(el("li",null,"Jira names a different version than the plan."));
  if(p[7]==2)u.appendChild(el("li",null,"Not in the plan: Jira puts it in "+V[p[3]]+"."));
- var lg=M.leg(p);if(lg)u.appendChild(el("li",null,"Leg "+lg[0]+" is on it; its last marker is "+lg[1]+(lg[2]?", PR "+lg[2]:"")+"."));
+ var lg=M.worker(p);if(lg)u.appendChild(el("li",null,"Worker "+lg[0]+" is on it; its last marker is "+lg[1]+(lg[2]?", PR "+lg[2]:"")+"."));
  m.appendChild(u);
  if(p[8]&&p[8].length){var n=el("ul");p[8].forEach(function(i){var x=D.N[i],pa=D.DR[x[0]]+"/"+x[1],a=el("a",null,x[2]);
   a.href="obsidian://open?vault=luna&file="+encodeURIComponent(pa.replace(/\.md$/,""));a.title=pa;n.appendChild(add(el("li"),a))});
   add(m,el("p",null,"Vault notes that mention it:"),n)}
  return m}
 function strip(t){var s=el("div","strip");s.setAttribute("role","img");
- s.setAttribute("aria-label",t.done+" done, "+t.live+" with a leg, "+(t.prog-t.live)+" started, "+t.todo+" to do");
+ s.setAttribute("aria-label",t.done+" done, "+t.live+" with a worker, "+(t.prog-t.live)+" started, "+t.todo+" to do");
  [["d",REM?0:t.done],["l",t.live],["s",t.prog-t.live]].forEach(function(x){if(x[1]>0){var i=el("i",x[0]);i.style.width=(100*x[1]/(t.n||1))+"%";s.appendChild(i)}});return s}
 function capBar(ld){var c=el("div","cap");c.setAttribute("role","img");
  if(ld.deferred||ld.cap==null){c.className="cap none";c.setAttribute("aria-label","no cap");return c}
@@ -2358,7 +2358,7 @@ function headline(i,t){var h=el("h2","head");add(h,el("span","v",V[i])," — ");
  if(!t.left&&t.n){add(h,"shipped, ",nb(pl(t.n,"ticket","tickets"),"all",{v:i},V[i]+": every ticket"),".");return h}
  if(REM)add(h,nb(t.left+" left","left",{v:i},V[i]+": what is left"));
  else add(h,nb(t.left+" of "+t.n,"left",{v:i},V[i]+": what is left")," left");
- if(t.live)add(h,", ",nb(pl(t.live,"leg","legs"),"live",{v:i},V[i]+": legs on it now")," on it now");
+ if(t.live)add(h,", ",nb(pl(t.live,"worker","workers"),"live",{v:i},V[i]+": workers on it now")," on it now");
  return add(h,".")}
 // sumPara: the lead sentence, then each top group's best ticket quoted verbatim under its group's name.
 function sumPara(sm,by){var f=document.createDocumentFragment(),u=el("ul","quotes");f.appendChild(el("p","sum",sm.lead));
@@ -2366,8 +2366,8 @@ function sumPara(sm,by){var f=document.createDocumentFragment(),u=el("ul","quote
  if(u.firstChild)f.appendChild(u);return f}
 function counts(i,t){var l=el("div","cap-line");
  if(!REM&&t.done)l.appendChild(nb(t.done+" done ("+pct(t.done,t.n)+" %)","done",{v:i},V[i]+": done"));
- if(t.live)l.appendChild(nb(pl(t.live,"leg","legs")+" working","live",{v:i},V[i]+": legs on it now"));
- if(t.prog-t.live)l.appendChild(nb((t.prog-t.live)+" started, no leg","prog",{v:i},V[i]+": in progress"));
+ if(t.live)l.appendChild(nb(pl(t.live,"worker","workers")+" working","live",{v:i},V[i]+": workers on it now"));
+ if(t.prog-t.live)l.appendChild(nb((t.prog-t.live)+" started, no worker","prog",{v:i},V[i]+": in progress"));
  l.appendChild(nb(t.todo+" to do","todo",{v:i},V[i]+": to do"));return l}
 function ticketList(host,a,groupCol,groupName,cmp){
  var open=M.order(a.filter(function(p){return p[2]!=2})),done=M.order(a.filter(function(p){return p[2]==2})),g={},ks=[];
@@ -2380,9 +2380,9 @@ function versionBody(i,host){
  var a=M.inV(i,REM),t=M.tally(a),ld=M.load(i,REM);
  host.appendChild(sumPara(M.summary(a,"theme"),"theme"));
  var b=el("div","bars");add(b,strip(t),counts(i,t),capBar(ld),capLine(i,ld));host.appendChild(b);
- var w=a.filter(function(p){return M.leg(p)});
- if(w.length){host.appendChild(add(el("h3","grp"),"Working now",el("span",null,pl(w.length,"leg","legs"))));
-  var ul=el("ul","work");w.forEach(function(p){ul.appendChild(add(el("li"),chip(M.leg(p)),impactText(p,el("span"))))});host.appendChild(ul)}
+ var w=a.filter(function(p){return M.worker(p)});
+ if(w.length){host.appendChild(add(el("h3","grp"),"Working now",el("span",null,pl(w.length,"worker","workers"))));
+  var ul=el("ul","work");w.forEach(function(p){ul.appendChild(add(el("li"),chip(M.worker(p)),impactText(p,el("span"))))});host.appendChild(ul)}
  ticketList(host,a,5,function(k){return T[k]})}
 function num(x){return x==null?"–":x===Math.round(x)?String(x):f2(x)}
 function bw(b){return b.what+" "+num(b.used)+" of "+num(b.cap)}
@@ -2398,18 +2398,18 @@ function renderBench(h){var rows=(D.BN||[]).concat(D.BOP?[D.BOP]:[],D.BUN?[D.BUN
    x[8]+" ("+x[9]+"/"+x[10]+")",fmtMin(x[13])+" / "+fmtMin(x[14])+" ("+x[12]+"/"+x[11]+")",fmtMin(x[15]),
    x[17]==null?"–":x[17].toFixed(1),x[18]==null?"–":x[18].toFixed(2)].forEach(function(c){tr.appendChild(el("td",null,c))});
   tr.title=x[21].length?x[21].map(function(k){return "HIMMEL-"+k}).join(", "):"no bundle";tb.appendChild(tr)});
- h.appendChild(el("p","fact","Estimate against actual. A bundle is the unplanned work a planned item spawned (Jira link, then a description reference, then the leg that filed it); ratio = minutes per S-equivalent over the median of the finished items (1.00 = typical), blank while any of its legs is undated. Hover a row for its bundle."));
+ h.appendChild(el("p","fact","Estimate against actual. A bundle is the unplanned work a planned item spawned (Jira link, then a description reference, then the worker that filed it); ratio = minutes per S-equivalent over the median of the finished items (1.00 = typical), blank while any of its workers is undated. Hover a row for its bundle."));
  h.appendChild(add(el("div","tw"),tb));h.appendChild(el("p","fact",D.SRC))}
 function renderAcc(){var h=$("accb"),ac=M.accuracy(),mx=1;h.textContent="";
  h.appendChild(el("p","fact","Re-read from the Jira mirror and the wrapped-worker docs on every render. Jira "+D.mir+" · newest wrapped-worker doc "+(D.ATS||"none")+"."));
  renderBench(h);
- if(!ac.length){h.appendChild(el("p","fact","No done ticket has both a size estimate and a wrapped leg yet."));return}
+ if(!ac.length){h.appendChild(el("p","fact","No done ticket has both a size estimate and a wrapped worker yet."));return}
  ac.forEach(function(x){x.rows.forEach(function(r){mx=Math.max(mx,r.min)})});
  ac.forEach(function(x){var r=el("div","ar"),tr=el("div","atr"),m=el("b");tr.setAttribute("role","img");
   tr.setAttribute("aria-label",x.size+": "+pl(x.n,"ticket","tickets")+", median "+fmtMin(x.med));
-  x.rows.forEach(function(q){var d=el("i");d.style.left=(100*q.min/mx)+"%";d.title=keyOf(q.p)+": "+fmtMin(q.min)+", "+pl(q.legs,"leg","legs");tr.appendChild(d)});
+  x.rows.forEach(function(q){var d=el("i");d.style.left=(100*q.min/mx)+"%";d.title=keyOf(q.p)+": "+fmtMin(q.min)+", "+pl(q.workers,"worker","workers");tr.appendChild(d)});
   m.style.left=(100*x.med/mx)+"%";tr.appendChild(m);
-  add(r,add(el("span","as"),el("span","sz",x.size),el("span","fact","×"+x.n)),tr,el("span","am",fmtMin(x.med)+" · "+pl(x.legs,"leg","legs")));h.appendChild(r)});
+  add(r,add(el("span","as"),el("span","sz",x.size),el("span","fact","×"+x.n)),tr,el("span","am",fmtMin(x.med)+" · "+pl(x.workers,"worker","workers")));h.appendChild(r)});
  h.appendChild(add(el("div","aax"),el("span",null,"0"),el("span",null,fmtMin(mx))))}
 function renderSectors(){var i=D.CUR!=null?D.CUR:0,h=$("themb"),a=M.inV(i,REM),g={};h.textContent="";$("themh").textContent="Sectors in "+D.V[i];
  a.forEach(function(p){var k=p[5];g[k]=g[k]||{k:k,d:0,n:0};g[k].n++;if(p[2]==2)g[k].d++});
@@ -2433,8 +2433,8 @@ function jnum(label,title,list,cls){var b=el("button",cls||"jn",String(label));b
  b.addEventListener("click",function(e){e.stopPropagation();openDrill("jt",{list:list},title,b)});return b}
 function jlist(db,list){db.appendChild(el("p","note",pl(list.length,"ticket","tickets")+"."));
  list.slice().sort(function(a,c){return a.k-c.k}).forEach(function(t,j){var r=el("div","jrow enter"),m=el("div","jm");r.style.animationDelay=Math.min(j,12)*18+"ms";
-  add(r,el("div","jkey","HIMMEL-"+t.k),el("div","jtl",t.t));add(m,jdot(jb(t),t.live?"a leg is on it":t.s));
-  if(t.leg)add(m," · leg "+t.leg[0]+" "+t.leg[1]+(t.live?" (Jira still To Do)":""));
+  add(r,el("div","jkey","HIMMEL-"+t.k),el("div","jtl",t.t));add(m,jdot(jb(t),t.live?"a worker is on it":t.s));
+  if(t.worker)add(m," · worker "+t.worker[0]+" "+t.worker[1]+(t.live?" (Jira still To Do)":""));
   if(t.pv&&t.pv!==JV[t.v].n)add(m," · ","the plan places it in "+t.pv);
   r.appendChild(m);if(t.ui)r.appendChild(el("div","jui",t.ui));db.appendChild(r)})}
 // jbar(t): segments start at width 0 and grow on the next frame, so a fill animates on load and on every re-render.
@@ -2459,7 +2459,7 @@ function jalerts(cur){var al=$("alerts"),to=cur<0?"an unreleased version":JV[cur
  D.JA.forEach(function(x){var rv=JV[x[0]],o=x[1].map(function(k){return JT.filter(function(t2){return t2.k===k})[0]});
   var a=el("div","jalert");add(a,el("div","jw","● "+rv.n+" was released on "+rv.date+" but still holds "+o.length+" open ticket"+(o.length==1?"":"s")),
    "Move "+(o.length==1?"it":"them")+" to "+to+" or close "+(o.length==1?"it":"them")+".");var ul=el("ul");
-  o.forEach(function(t2){var li=el("li");add(li,jnum("HIMMEL-"+t2.k,"HIMMEL-"+t2.k,[t2])," — "+t2.t+" ",jdot(jb(t2),t2.live?"a leg is on it":t2.s));ul.appendChild(li)});a.appendChild(ul);al.appendChild(a)})}
+  o.forEach(function(t2){var li=el("li");add(li,jnum("HIMMEL-"+t2.k,"HIMMEL-"+t2.k,[t2])," — "+t2.t+" ",jdot(jb(t2),t2.live?"a worker is on it":t2.s));ul.appendChild(li)});a.appendChild(ul);al.appendChild(a)})}
 function jboard(){var b=$("board"),f=$("donefold");b.textContent="";f.textContent="";
  if(JSEL<0){$("bh").textContent="No versions";$("bsub").textContent="";return}
  var v=JV[JSEL],a=jin(JSEL),t=jtally(a);
@@ -2472,7 +2472,7 @@ function jboard(){var b=$("board"),f=$("donefold");b.textContent="";f.textConten
   t[s[0]].slice(0,6).forEach(function(x,j){var k=el("button","jcard enter");k.type="button";k.style.animationDelay=(ci*40+j*25)+"ms";
    add(k,el("div","jkey","HIMMEL-"+x.k),el("div","jtl",x.t));
    if(x.ui)k.appendChild(el("div","jui",x.ui.length>120?x.ui.slice(0,118)+"…":x.ui));
-   if(x.leg)k.appendChild(el("span","jchip",x.leg[0]+" · "+x.leg[1]+(x.leg[2]?" · PR "+x.leg[2]:"")));
+   if(x.worker)k.appendChild(el("span","jchip",x.worker[0]+" · "+x.worker[1]+(x.worker[2]?" · PR "+x.worker[2]:"")));
    k.addEventListener("click",function(){openDrill("jt",{list:[x]},"HIMMEL-"+x.k,k)});c.appendChild(k)});
   if(t[s[0]].length>6)c.appendChild(jnum("+"+(t[s[0]].length-6)+" more",v.n+": "+s[1],t[s[0]]));
   if(!t[s[0]].length)c.appendChild(el("div","jnone","None."));b.appendChild(c)});
@@ -2533,10 +2533,10 @@ var TK="hrt-theme";function applyTheme(m){if(m)document.documentElement.setAttri
 try{applyTheme(localStorage.getItem(TK))}catch(e){}
 $("theme").addEventListener("click",function(){var dk=getComputedStyle(document.documentElement).colorScheme=="dark",m=dk?"light":"dark";applyTheme(m);try{localStorage.setItem(TK,m)}catch(e){}});
 $("stamp").textContent="Rendered "+D.gen+" · Jira "+D.mir+" · plan @"+D.sha;
-$("prov").textContent="Versions and statuses are read from Jira (fixVersion and status name); a leg with a held queue lock shows its To Do ticket as In Progress. Impact text, sizes, readiness and budgets come from the roadmap plan.";
+$("prov").textContent="Versions and statuses are read from Jira (fixVersion and status name); a worker with a held queue lock shows its To Do ticket as In Progress. Impact text, sizes, readiness and budgets come from the roadmap plan.";
 (function(){var t=$("terms"),mk=function(c){return el("span","mk "+c)};
- [["Status",[mk("done"),"done · ",mk("live"),"a leg is on it · ",mk("started"),"started in Jira, no leg · ",mk("todo"),"to do"]],
-  ["Leg chip",["N123 · LIVE: the leg's label and its last marker (or its PR number while it is live)."]],
+ [["Status",[mk("done"),"done · ",mk("live"),"a worker is on it · ",mk("started"),"started in Jira, no worker · ",mk("todo"),"to do"]],
+  ["Worker chip",["N123 · LIVE: the worker's label and its last marker (or its PR number while it is live)."]],
   ["Size",["The plan's T-shirt estimate, low–high. In S-equivalents: "+D.EQ+"."]],
   ["Impact",[dots(4)," how much it hurts today, 1 cosmetic to 5 blocks a release. A secondary tag: the sentence is the impact."]],
   ["Ready to build",["0 no plan yet · 1 problem stated · 2 fix named, not yet checked · 3 plan audited · 4 spec ready. Below 3 a version schedules only a planning slice."]],

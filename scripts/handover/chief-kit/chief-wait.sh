@@ -811,7 +811,7 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     [ -r "$dispatch_cmd" ] || return 0
     case "${cap_val#UNDERFILLED:}" in ''|*[!0-9]*) ;; *) pool_lf+=(--top "${cap_val#UNDERFILLED:}") ;; esac  # the slack is the slot count pool=<n>/<slots> reads against
     [ -z "$console_doc" ] || pool_lf+=(--doc "$console_doc")  # its Live state `priority:` line ranks tier 1
-    [ -z "$legs_from" ] || pool_lf+=(--workers-from "$legs_from")  # live legs' files must reach the collision check
+    [ -z "$legs_from" ] || pool_lf+=(--workers-from "$legs_from")  # live workers' files must reach the collision check
     pool_out="$(timeout -k 2 "$budget" bash "$dispatch_cmd" --priority-pool-only --dispositions "${pool_lf[@]}" </dev/null 2>/dev/null 9>&-)" || pool_out=""  # gnu-ok: Linux-only kit; swallow-ok: a failed or timed-out dispatch drops its partial rows, the wake block still prints
     pool_sig="$(printf '%s\n' "$pool_out" | awk '$1 != "NEXT-TIER" && $1 != "RESUME-HELD" && $2 ~ /^[A-Z]+-[0-9]+$/ { print $2 }' | sort -u | paste -sd, -)"
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear

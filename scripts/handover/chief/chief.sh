@@ -1838,24 +1838,24 @@ carried_residual_must() {
 }
 
 # One per-shift Live-state field of the predecessor, without its `<field>:`
-# prefix: for `legs:`, the whole block tick.sh reads (the wrapped lines up to
+# prefix: for `workers:`, the whole block tick.sh reads (the wrapped lines up to
 # a blank, `word:`, list-marker, `>` or `#` line). Absent field -> empty.
 seeded_live_field() {
-    printf '%s\n' "$1" | awk -v k="$2:" -v block="$({ [ "$2" = legs ] || [ "$2" = workers ]; } && echo 1)" '
+    printf '%s\n' "$1" | awk -v k="$2:" -v block="$({ [ "$2" = workers ] || [ "$2" = workers ]; } && echo 1)" '
         !f && index($0, k) == 1 { f = 1; sub(/^[^:]*:[[:space:]]*/, ""); print; if (!block) exit; next }
         f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { exit }
         f { print }
     '
 }
 
-# The `legs:` block `next` seeds: the worker spans whose label or doc stem the
+# The `workers:` block `next` seeds: the worker spans whose label or doc stem the
 # successor's fleet manifest still lists (a wrapped worker is off it), plus each
 # `pool-disposition:` line, which the tick reads. The shift prose and the spans of
 # wrapped workers are left out. A span of an open worker is kept even when it is
 # malformed, so the tick reads MALFORMED rather than DRIFT. A manifest that is
 # absent, unreadable or holds a row with no label leaves the block whole: the open
 # set is then unknown.
-# Args: legs block (as seeded_live_field prints it), manifest.
+# Args: workers block (as seeded_live_field prints it), manifest.
 open_legs_block() {
     local block="$1" manifest="$2" names spans="" span label pools seen=0 NL=$'\n'
     # shellcheck disable=SC2016  # the backticks in the span patterns are literal
@@ -1887,7 +1887,7 @@ latest_go_only() {
 # seed_live_fields <doc> <predecessor live state> <predecessor stem>: replace each
 # `<field>: <...>` placeholder line in the doc's `## Live state` with the
 # predecessor's value, verbatim; a field the predecessor lacks keeps its
-# placeholder. Two exceptions: `legs:` seeds only the open workers
+# placeholder. Two exceptions: `workers:` seeds only the open workers
 # (open_legs_block) and `last GO:` only the last GO (latest_go_only). What they
 # leave out is appended byte for byte, under a header naming this run, to
 # <doc dir>/specs/history/chief-live-state-<stem>.md (the file the tick tells a chief
@@ -1895,24 +1895,24 @@ latest_go_only() {
 # for the HANDOFF; a failed write seeds both whole.
 LS_HISTORY_REF=""
 seed_live_fields() {
-    local doc="$1" live="$2" stem="$3" legs go new_legs new_go hdir hfile sep="" wkey=workers
+    local doc="$1" live="$2" stem="$3" workers go new_legs new_go hdir hfile sep="" wkey=workers
     # the predecessor's worker line is `workers:`; the pre-rename `legs:` is read only while legacy
     # names are on, and `workers:` wins when it has both. The successor's own line keeps the
     # name its template ships.
     if ! printf '%s\n' "$live" | awk '/^workers:/ { f = 1 } END { exit !f }' && legacy_names_on; then wkey=legs; fi
-    legs="$(seeded_live_field "$live" "$wkey")"
+    workers="$(seeded_live_field "$live" "$wkey")"
     go="$(seeded_live_field "$live" "last GO")"
-    new_legs="$(open_legs_block "$legs" "${doc%.md}.fleet.json")"
+    new_legs="$(open_legs_block "$workers" "${doc%.md}.fleet.json")"
     new_go="$(latest_go_only "$go")"
-    if [ "$new_legs" != "$legs" ] || [ "$new_go" != "$go" ]; then
+    if [ "$new_legs" != "$workers" ] || [ "$new_go" != "$go" ]; then
         hdir="$(dirname "$doc")/specs/history"
         hfile="$hdir/chief-live-state-$stem.md"
         [ ! -s "$hfile" ] || sep=$'\n'
-        if mkdir -p "$hdir" && { printf '%s# Live state trimmed by chief.sh next from %s at %s\n\n%s: %s\nlast GO: %s\n' "$sep" "$stem" "$(date -u +%Y-%m-%dT%H:%MZ)" "$wkey" "$legs" "$go" >> "$hfile"; } 2>/dev/null; then
+        if mkdir -p "$hdir" && { printf '%s# Live state trimmed by chief.sh next from %s at %s\n\n%s: %s\nlast GO: %s\n' "$sep" "$stem" "$(date -u +%Y-%m-%dT%H:%MZ)" "$wkey" "$workers" "$go" >> "$hfile"; } 2>/dev/null; then
             LS_HISTORY_REF="$hfile"
         else
-            err "warning: could not write the Live state history to $hfile; seeded the legs: and last GO: lines whole"
-            new_legs="$legs"; new_go="$go"
+            err "warning: could not write the Live state history to $hfile; seeded the workers: and last GO: lines whole"
+            new_legs="$workers"; new_go="$go"
         fi
     fi
     SL_workers="$new_legs" SL_queue="$(seeded_live_field "$live" queue)" \
@@ -1920,7 +1920,7 @@ seed_live_fields() {
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { f = 0 }
         f && /^(workers|legs|queue|last GO|acked): </ {
-            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : (name == "legs" ? "workers" : name))]
+            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : (name == "workers" ? "workers" : name))]
             if (v != "") { print name ": " v; next }
         }
         { print }' "$doc" > "$doc.seed" || { rm -f "$doc.seed"; err "could not seed the Live state into $doc"; exit 1; }
@@ -2180,7 +2180,7 @@ cmd_next() {
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../chief-kit/handoff-facts.sh"
         local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-6000}"
-        hf_legs="$(bash "$facts" legs "$predecessor_doc" --repo "$repo")"
+        hf_legs="$(bash "$facts" workers "$predecessor_doc" --repo "$repo")"
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
@@ -2216,7 +2216,7 @@ cmd_next() {
             # pointers; the rulings stay inline.
             [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes )) -gt "$hf_budget" ] || break
             hf_pass=2
-            hf_legs="over the HANDOFF size budget — run: bash $facts legs $predecessor_doc --repo $repo"
+            hf_legs="over the HANDOFF size budget — run: bash $facts workers $predecessor_doc --repo $repo"
             hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')" || hf_slug=""  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
             hf_prs="over the HANDOFF size budget — run: gh pr list -R ${hf_slug:-<owner/repo>} --state open"
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"

@@ -2513,9 +2513,9 @@ tdout="$(run_headed_arm "$td1" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-
 check "8436a a second worker on a ticket with a live worker is refused (exit 16)" "$tdrc" "16"
 contains "8436b the refusal names the ticket and the live session" "$tdout" "HIMMEL-8436-N4000-first-worker-2026-10-31"
 check "8436c the refused arm launched no konsole" "$([ -e "$td1/record" ] && echo launched || echo none)" "none"
-td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-leg-2026-10-31" "HIMMEL-8436-N4332b-second-leg-2026-10-31"
-run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-leg-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
-check "8436d a second leg of the same worker lineage (same N) still launches" "$tdrc2" "0"
+td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-worker-2026-10-31" "HIMMEL-8436-N4332b-second-worker-2026-10-31"
+run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-worker-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
+check "8436d a second worker of the same worker lineage (same N) still launches" "$tdrc2" "0"
 td3="$tmp/td3"; mk_tdup "$td3" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
 HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td3" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td3/signal-never" "$PAST" >/dev/null 2>&1; tdrc3=$?
 check "8436e HEADED_ARM_ALLOW_TICKET_DUP=1 lets a second worker on the ticket launch" "$tdrc3" "0"

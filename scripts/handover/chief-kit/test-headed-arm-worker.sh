@@ -427,7 +427,7 @@ fi
 # operator's own WORKER_SESSION_CONTEXT/WORKER_SESSION_REPO from the launching shell - explicitly
 # clear both (empty is equivalent to unset for this wrapper's own checks)
 # rather than relying on ambient env happening to be clean.
-rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run default: exit 0" "$rc" "0"
 ends_with "dry-run default: context=standard, no WORKER_SESSION_CONTEXT" "$out" "standard"
 not_contains "dry-run default: no [1m] suffix in the would-exec line" "$out" "[1m]"
@@ -443,23 +443,23 @@ contains "dry-run default: no chief-name source -> HIMMEL_CONSOLE_NAME absent" "
 # guard is OFF by default - no mode reaches the worker unless the caller asks.
 contains "dry-run default: no context mode (the guard is off)" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
 contains "dry-run default: the guard's ceiling is the 200000 pin" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
-rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard compact HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard compact HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --context-guard compact: exit 0" "$rc" "0"
 contains "dry-run --context-guard compact: propagated" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact"
-rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard handoff HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard handoff HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run --context-guard handoff: propagated" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
-rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard none HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard none HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --context-guard none over an env mode: exit 0" "$rc" "0"
 contains "dry-run --context-guard none: the flag wins, no mode reaches the worker" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
-rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard bogus HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard bogus HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --context-guard bogus: refused" "$rc" "2"
 rc=0; out="$(WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --context-guard 2>&1)" || rc=$?
 check "dry-run --context-guard with no value: refused" "$rc" "2"
 contains "usage names --context-guard and its reference doc" "$out" "docs/internals/worker-context-guard.md"
-rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff: exit 0" "$rc" "0"
 contains "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff: propagated" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
-rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus: refused" "$rc" "2"
 contains "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus: names the allowed modes" "$out" "compact or handoff"
 
@@ -472,7 +472,7 @@ contains "dry-run HIMMEL_WORKER_SESSION_CONTEXT_MODE=bogus: names the allowed mo
 # below. Enumerates the expected scrub set explicitly (not merely "non-empty")
 # so a future chief-only knob added without a matching scrub here fails
 # this exact assertion, not a vaguer one.
-rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(CHIEF_CONTEXT=1m WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient CHIEF_CONTEXT=1m: exit 0 (a worker is unaffected by it)" "$rc" "0"
 contains "dry-run, ambient CHIEF_CONTEXT=1m: scrubbed to <unset> in the wrapper's own env" "$out" "scrub=CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE CHIEF_CONTEXT=<unset> "
 not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$out" "CHIEF_CONTEXT=1m"
@@ -482,17 +482,17 @@ not_contains "dry-run, ambient CHIEF_CONTEXT=1m: never reported as still set" "$
 # session-name.sh), charset refusal, and precedence. -------------------------
 
 # Source 1: --chief flag.
-rc=0; out="$(bash "$SCRIPT" --dry-run --chief opsdesk --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --chief opsdesk --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --chief opsdesk: exit 0" "$rc" "0"
 contains "dry-run --chief opsdesk: reports HIMMEL_CONSOLE_NAME=opsdesk" "$out" "HIMMEL_CONSOLE_NAME=opsdesk"
 
 # Source 2: the launching shell's own HIMMEL_CONSOLE_NAME, no --chief.
-rc=0; out="$(HIMMEL_CONSOLE_NAME=ambient-chief bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_CONSOLE_NAME=ambient-chief bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient HIMMEL_CONSOLE_NAME: exit 0" "$rc" "0"
 contains "dry-run, ambient HIMMEL_CONSOLE_NAME: reports it" "$out" "HIMMEL_CONSOLE_NAME=ambient-chief"
 
 # --chief wins over an ambient HIMMEL_CONSOLE_NAME (source 1 before source 2).
-rc=0; out="$(HIMMEL_CONSOLE_NAME=ambient-chief bash "$SCRIPT" --dry-run --chief flag-chief --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_CONSOLE_NAME=ambient-chief bash "$SCRIPT" --dry-run --chief flag-chief --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, --chief + ambient HIMMEL_CONSOLE_NAME: exit 0" "$rc" "0"
 contains "dry-run, --chief + ambient HIMMEL_CONSOLE_NAME: flag wins" "$out" "HIMMEL_CONSOLE_NAME=flag-chief"
 not_contains "dry-run, --chief + ambient HIMMEL_CONSOLE_NAME: ambient value dropped" "$out" "HIMMEL_CONSOLE_NAME=ambient-chief"
@@ -502,18 +502,18 @@ not_contains "dry-run, --chief + ambient HIMMEL_CONSOLE_NAME: ambient value drop
 # neither --chief nor the launching shell's HIMMEL_CONSOLE_NAME yielded one.
 csn_fixture="$tmp/session-name-cmdline"
 printf 'claude\0--model\0x\0-n\0detected-chief\0load doc and continue\0' > "$csn_fixture"
-rc=0; out="$(CLAUDE_PID=4242 SESSION_NAME_CMDLINE_FILE="$csn_fixture" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_PID=4242 SESSION_NAME_CMDLINE_FILE="$csn_fixture" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, own session name via CLAUDE_PID/cmdline: exit 0" "$rc" "0"
 contains "dry-run, own session name via CLAUDE_PID/cmdline: reports it" "$out" "HIMMEL_CONSOLE_NAME=detected-chief"
 
 # --chief still wins over the auto-detected session name.
-rc=0; out="$(CLAUDE_PID=4242 SESSION_NAME_CMDLINE_FILE="$csn_fixture" bash "$SCRIPT" --dry-run --chief flag-chief --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_PID=4242 SESSION_NAME_CMDLINE_FILE="$csn_fixture" bash "$SCRIPT" --dry-run --chief flag-chief --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run, --chief + own session name: flag wins" "$out" "HIMMEL_CONSOLE_NAME=flag-chief"
 not_contains "dry-run, --chief + own session name: auto-detected value dropped" "$out" "HIMMEL_CONSOLE_NAME=detected-chief"
 
 # --chief: a bad charset REFUSES the launch outright (explicit user input,
 # same stance as --lane/--profile) - unlike sources 2/3 below.
-rc=0; out="$(bash "$SCRIPT" --dry-run --chief 'bad name' --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --chief 'bad name' --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "--chief with a bad charset: exit 2" "$rc" "2"
 contains "--chief with a bad charset: usage text" "$out" "usage:"
 contains "--chief with a bad charset: names the bad value" "$out" "bad name"
@@ -521,7 +521,7 @@ contains "--chief with a bad charset: names the bad value" "$out" "bad name"
 # Ambient HIMMEL_CONSOLE_NAME with a bad charset: NOT a hard refusal - treated
 # as if that source yielded nothing (best-effort routing, not load-bearing),
 # so the launch still succeeds and HIMMEL_CONSOLE_NAME is absent.
-rc=0; out="$(HIMMEL_CONSOLE_NAME='bad/name' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_CONSOLE_NAME='bad/name' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, ambient HIMMEL_CONSOLE_NAME with a bad charset: exit 0 (not refused)" "$rc" "0"
 contains "dry-run, ambient HIMMEL_CONSOLE_NAME with a bad charset: treated as no source" "$out" "HIMMEL_CONSOLE_NAME=<unset>"
 
@@ -531,7 +531,7 @@ contains "dry-run, ambient HIMMEL_CONSOLE_NAME with a bad charset: treated as no
 # fall through to "no source" rather than exporting an unsafe value.
 csn_fixture_colon="$tmp/session-name-cmdline-colon"
 printf 'claude\0--model\0x\0-n\0bad:name\0load doc and continue\0' > "$csn_fixture_colon"
-rc=0; out="$(CLAUDE_PID=4242 SESSION_NAME_CMDLINE_FILE="$csn_fixture_colon" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_PID=4242 SESSION_NAME_CMDLINE_FILE="$csn_fixture_colon" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run, own session name with a bad charset: exit 0 (not refused)" "$rc" "0"
 contains "dry-run, own session name with a bad charset: treated as no source" "$out" "HIMMEL_CONSOLE_NAME=<unset>"
 
@@ -540,10 +540,10 @@ contains "dry-run, own session name with a bad charset: treated as no source" "$
 # validation sites refuse them, each with its own stance (flag = exit 2,
 # ambient = no source).
 for dots in . ..; do
-  rc=0; out="$(bash "$SCRIPT" --dry-run --chief "$dots" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+  rc=0; out="$(bash "$SCRIPT" --dry-run --chief "$dots" --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
   check "--chief [$dots]: exit 2" "$rc" "2"
   contains "--chief [$dots]: names the bad value" "$out" "got: $dots"
-  rc=0; out="$(HIMMEL_CONSOLE_NAME="$dots" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+  rc=0; out="$(HIMMEL_CONSOLE_NAME="$dots" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
   check "dry-run, ambient HIMMEL_CONSOLE_NAME=[$dots]: exit 0 (not refused)" "$rc" "0"
   contains "dry-run, ambient HIMMEL_CONSOLE_NAME=[$dots]: treated as no source" "$out" "HIMMEL_CONSOLE_NAME=<unset>"
 done
@@ -553,7 +553,7 @@ done
 # on every lane - so a scrubbed var carried there would come back past the
 # `unset`. The scrub strips it from the token list too; siblings survive.
 for lane in native claudex; do
-  out="$(HEADED_ARM_LAUNCHER_ENV="CHIEF_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+  out="$(HEADED_ARM_LAUNCHER_ENV="CHIEF_CONTEXT=1m KEEP_ME=1" bash "$SCRIPT" --dry-run --lane "$lane" --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
   lenv="$(printf '%s\n' "$out" | grep '^headed-arm-worker: lane=')"
   contains "--lane $lane, caller-preset launcher-env: dry-run reached the lane line" "$lenv" "launcher-env="
   not_contains "--lane $lane, caller-preset launcher-env: scrubbed CHIEF_CONTEXT stripped" "$lenv" "CHIEF_CONTEXT="
@@ -565,12 +565,12 @@ done
 # token win on a name clash, so a preset HIMMEL_CONSOLE_NAME=.. used to reach
 # the worker unvalidated - past a valid --chief, or with no source at all. The
 # launcher drops the preset token and propagates only the name it resolved.
-out="$(HEADED_ARM_LAUNCHER_ENV="HIMMEL_CONSOLE_NAME=.. KEEP_ME=1" bash "$SCRIPT" --dry-run --chief good-chief --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+out="$(HEADED_ARM_LAUNCHER_ENV="HIMMEL_CONSOLE_NAME=.. KEEP_ME=1" bash "$SCRIPT" --dry-run --chief good-chief --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
 lenv="$(printf '%s\n' "$out" | grep '^headed-arm-worker: lane=')"
 contains "preset HIMMEL_CONSOLE_NAME token + --chief: the validated name propagates" "$lenv" "HIMMEL_CONSOLE_NAME=good-chief"
 not_contains "preset HIMMEL_CONSOLE_NAME token + --chief: the preset token is dropped" "$lenv" "HIMMEL_CONSOLE_NAME=.."
 contains "preset HIMMEL_CONSOLE_NAME token + --chief: sibling token kept" "$lenv" "KEEP_ME=1"
-out="$(HEADED_ARM_LAUNCHER_ENV="HIMMEL_CONSOLE_NAME=.. KEEP_ME=1" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+out="$(HEADED_ARM_LAUNCHER_ENV="HIMMEL_CONSOLE_NAME=.. KEEP_ME=1" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
 lenv="$(printf '%s\n' "$out" | grep '^headed-arm-worker: lane=')"
 not_contains "preset HIMMEL_CONSOLE_NAME token, no source: nothing propagates" "$lenv" "HIMMEL_CONSOLE_NAME="
 contains "preset HIMMEL_CONSOLE_NAME token, no source: sibling token kept" "$lenv" "KEEP_ME=1"
@@ -582,12 +582,12 @@ contains "preset HIMMEL_CONSOLE_NAME token, no source: sibling token kept" "$len
 nc_probe=$( grep() { return 2; }; not_contains "probe" "x" "y" )
 check "not_contains reports a grep error as a failure, not as absence" "$nc_probe" "FAIL - probe: grep itself failed (rc 2)"
 
-rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run WORKER_SESSION_CONTEXT=1m: refused with exit 2" "$rc" "2"
 contains "dry-run WORKER_SESSION_CONTEXT=1m: refusal names the required ceiling" "$out" "--autocompact 200000"
 contains "dry-run WORKER_SESSION_CONTEXT=1m: refusal points to the standard worker setting" "$out" "unset WORKER_SESSION_CONTEXT"
 
-rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
 check "dry-run WORKER_SESSION_CONTEXT=1m, Fable model: refused with exit 2" "$rc" "2"
 contains "dry-run WORKER_SESSION_CONTEXT=1m, Fable model: still checks autocompact, not the model suffix" "$out" "--autocompact 200000"
 
@@ -614,12 +614,12 @@ doc_context_ok="$tmp/context-doc-ok.md"
 fx_brief '# fixture brief' '> **Context:** 1m — operator-ruling: HIMMEL-3581 sanctioned 1m worker test' > "$doc_context_ok"
 
 for d in "$doc_context_none" "$doc_context_empty" "$doc_context_bad_dash" "$doc_context_bad_mode" "$doc_context_no_marker"; do
-    rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+    rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$d" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
     check "dry-run WORKER_SESSION_CONTEXT=1m, $(basename "$d"): still refused with exit 2" "$rc" "2"
     contains "dry-run WORKER_SESSION_CONTEXT=1m, $(basename "$d"): refusal names the required ceiling" "$out" "--autocompact 200000"
 done
 
-rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_context_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run WORKER_SESSION_CONTEXT=1m, sanctioned Context line: accepted (exit 0)" "$rc" "0"
 contains "dry-run WORKER_SESSION_CONTEXT=1m, sanctioned Context line: reports context=1m (operator-ruling)" "$out" "context=1m (operator-ruling)"
 contains "dry-run WORKER_SESSION_CONTEXT=1m, sanctioned Context line: reports the reason" "$out" "HIMMEL-3581 sanctioned 1m worker test"
@@ -636,29 +636,29 @@ doc_ab_ok="$tmp/ab-doc-ok.md"
 fx_brief '# fixture brief' '> **Context:** ab-400k — operator-ruling: HIMMEL-5193' > "$doc_ab_ok"
 
 for d in "$doc_ab_none" "$doc_ab_empty"; do
-    rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$d" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+    rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$d" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
     check "ab arm 400000, $(basename "$d"): refused with exit 2" "$rc" "2"
     not_contains "ab arm 400000, $(basename "$d"): no 400000 arm reported" "$out" "ab-arm=400k"
 done
-rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=300000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=300000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 300000 (not 200000/400000): refused with exit 2" "$rc" "2"
-rc=0; out="$(WORKER_SESSION_CONTEXT=1m WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 400000 with WORKER_SESSION_CONTEXT=1m: refused with exit 2" "$rc" "2"
-rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 400000, ruling line: accepted (exit 0)" "$rc" "0"
 contains "ab arm 400000, ruling line: reports ab-arm=400k autocompact=400000" "$out" "ab-arm=400k autocompact=400000"
 contains "ab arm 400000, ruling line: exports HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000"
-rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_none" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_ab_none" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 200000 (control), no ruling line: accepted (exit 0)" "$rc" "0"
 contains "ab arm 200000 (control): reports ab-arm=200k autocompact=200000" "$out" "ab-arm=200k autocompact=200000"
-rc=0; out="$(WORKER_SESSION_CONTEXT=1m WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_none" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_ab_none" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "ab arm 200000 (control) with WORKER_SESSION_CONTEXT=1m: refused with exit 2" "$rc" "2"
 not_contains "ab arm 200000 with WORKER_SESSION_CONTEXT=1m: no control arm recorded" "$out" "ab-arm=200k"
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "no WORKER_SESSION_AUTOCOMPACT_AB, ruling line present: default unchanged (exit 0)" "$rc" "0"
 not_contains "no WORKER_SESSION_AUTOCOMPACT_AB: no ab arm reported" "$out" "ab-arm="
 not_contains "no WORKER_SESSION_AUTOCOMPACT_AB: no 400000 ceiling" "$out" "autocompact=400000"
-rc=0; out="$(HEADED_ARM_AB_AUTOCOMPACT=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_AB_AUTOCOMPACT=400000 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker "$doc_ab_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 not_contains "ambient HEADED_ARM_AB_AUTOCOMPACT is not honoured" "$out" "ab-arm=400k"
 
 # Proves the ACCEPTED argv (not just this wrapper's own dry-run report) really
@@ -675,27 +675,27 @@ cat > "$d_sanctioned/konsole" <<'KONSOLE_STUB_EOF'
 exit 0
 KONSOLE_STUB_EOF
 chmod 755 "$d_sanctioned/konsole"
-rc=0; out="$(CHIEF_CONTEXT=1m KONSOLE_CMD="$d_sanctioned/konsole" bash "$HEADED_ARM" --dry-run HIMMEL-9999-leg "$doc_context_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-4-6 1m 2>&1)" || rc=$?
+rc=0; out="$(CHIEF_CONTEXT=1m KONSOLE_CMD="$d_sanctioned/konsole" bash "$HEADED_ARM" --dry-run HIMMEL-9999-worker "$doc_context_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-4-6 1m 2>&1)" || rc=$?
 check "headed-arm.sh --dry-run, sanctioned pair (CHIEF_CONTEXT=1m, context=1m): exit 0" "$rc" "0"
 contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries --autocompact auto" "$out" "--autocompact auto"
 contains "headed-arm.sh --dry-run, sanctioned pair: accepted argv carries the [1m] model suffix" "$out" "claude-sonnet-4-6[1m]"
 
 for off in "standard" "yes" "true" "1M" ""; do
-  rc=0; out="$(WORKER_SESSION_CONTEXT="$off" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+  rc=0; out="$(WORKER_SESSION_CONTEXT="$off" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
   ends_with "dry-run WORKER_SESSION_CONTEXT=[$off]: stays on standard (fail toward the cheaper default)" "$out" "standard"
 done
 
 # --- only `--profile design` resolves the 1m context with no
 # env var or brief line; every other profile keeps the 200000 ceiling.
-rc=0; out="$(WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile design HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile design HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --profile design: exit 0" "$rc" "0"
 contains "dry-run --profile design: names the profile source" "$out" "context=1m (profile design contextMode 1m)"
 ends_with "dry-run --profile design: context=1m" "$out" "1m"
-rc=0; out="$(WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --profile worker-impl: exit 0" "$rc" "0"
 ends_with "dry-run --profile worker-impl: stays standard" "$out" "standard"
 not_contains "dry-run --profile worker-impl: no operator-ruling context" "$out" "operator-ruling"
-rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_CONTEXT=1m bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --profile worker-impl + WORKER_SESSION_CONTEXT=1m: still refused" "$rc" "2"
 
 # --- role-to-profile rule: a brief `profile:` line selects the
@@ -703,15 +703,15 @@ check "dry-run --profile worker-impl + WORKER_SESSION_CONTEXT=1m: still refused"
 # brief with no field still hits the unprofiled-launch refusal.
 rule_doc="$tmp/rule-brief-design.md"
 fx_brief '# fixture brief' '> profile: design' > "$rule_doc"
-rc=0; out="$(WORKER_SESSION_PROFILE='' WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_PROFILE='' WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run HIMMEL-9999-worker "$rule_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "brief profile: design line selects design: exit 0" "$rc" "0"
 contains "brief profile: design line names the profile source" "$out" "context=1m (profile design contextMode 1m)"
-rc=0; out="$(WORKER_SESSION_PROFILE='' WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$rule_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_PROFILE='' WORKER_SESSION_CONTEXT='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$rule_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "explicit --profile overrides the brief line: exit 0" "$rc" "0"
 not_contains "explicit --profile worker-impl overrides the brief's design" "$out" "context=1m"
 rule_doc2="$tmp/rule-brief-none.md"
 fx_brief '# fixture brief' 'no profile field here' > "$rule_doc2"
-rc=0; out="$(WORKER_SESSION_PROFILE='' bash "$SCRIPT" --dry-run HIMMEL-9999-leg "$rule_doc2" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_PROFILE='' bash "$SCRIPT" --dry-run HIMMEL-9999-worker "$rule_doc2" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "brief with no profile field still refused" "$rc" "2"
 contains "brief with no profile field: refusal text" "$out" "refusing an unprofiled launch"
 
@@ -720,18 +720,18 @@ contains "brief with no profile field: refusal text" "$out" "refusing an unprofi
 # write-deny hook key off. No value; defaults MODEL to claude-sonnet-5-5 when
 # omitted; an explicit --profile (flag or WORKER_SESSION_PROFILE) other than
 # chief-relay conflicts and refuses.
-rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --relay: exit 0" "$rc" "0"
 contains "dry-run --relay: reports HIMMEL_CONSOLE_RELAY=1" "$out" "HIMMEL_CONSOLE_RELAY=1"
 contains "dry-run --relay: reports HIMMEL_CONSOLE_LEG=1" "$out" "HIMMEL_CONSOLE_LEG=1"
 contains "dry-run --relay: forces profile=chief-relay" "$out" "profile=chief-relay"
 contains "dry-run --relay: defaults the model to claude-sonnet-5-5" "$out" "/tmp/worker.log claude-sonnet-5-5 standard"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --relay --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --relay --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --relay --profile worker-impl: refused with exit 2" "$rc" "2"
 contains "dry-run --relay --profile worker-impl: refusal names chief-relay" "$out" "chief-relay"
 
-rc=0; out="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run --relay HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --relay, WORKER_SESSION_PROFILE=worker-impl: refused with exit 2" "$rc" "2"
 contains "dry-run --relay, WORKER_SESSION_PROFILE=worker-impl: refusal names chief-relay" "$out" "chief-relay"
 
@@ -739,7 +739,7 @@ contains "dry-run --relay, WORKER_SESSION_PROFILE=worker-impl: refusal names chi
 # existing Opus tier gate then applies exactly as today; some/doc.md carries
 # no Tier line, so this refuses with exit 2 - proving the model reached the
 # tier gate unchanged rather than being silently downgraded to sonnet first.
-rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "dry-run --relay, explicit opus model: tier gate still applies (exit 2)" "$rc" "2"
 contains "dry-run --relay, explicit opus model: refusal is the tier gate" "$out" "Tier"
 
@@ -758,7 +758,7 @@ contains "dry-run --relay, explicit opus model: refusal is the tier gate" "$out"
 doc_tier_judge="$tmp/tier-doc-judge.md"
 fx_brief '# fixture brief' '> **Tier:** opus — design: judge adjudication' > "$doc_tier_judge"
 
-rc=0; out="$(env -u IMPL_GUARD_OK -u INLINE_IMPL_OK bash "$SCRIPT" --dry-run --judge HIMMEL-9999-leg "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(env -u IMPL_GUARD_OK -u INLINE_IMPL_OK bash "$SCRIPT" --dry-run --judge HIMMEL-9999-worker "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --judge: exit 0" "$rc" "0"
 contains "dry-run --judge: reports HIMMEL_CONSOLE_LEG=1" "$out" "HIMMEL_CONSOLE_LEG=1"
 contains "dry-run --judge: forces profile=console-judge" "$out" "profile=console-judge"
@@ -779,7 +779,7 @@ contains "dry-run --judge: preface source is judge-preface.md" "$out" "docs/hand
 rc=0; out="$(IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HEADED_ARM_LAUNCHER=/tmp/stale-launcher \
   WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-bin HIMMEL_LEAN_WORKER_SESSION=1 CLAUDEX_LANE_OK=1 \
   HEADED_ARM_LAUNCHER_ENV='IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 CLAUDEX_LANE_OK=1 HEADED_ARM_LAUNCHER=/tmp/stale-launcher WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-bin' \
-  bash "$SCRIPT" --dry-run --judge HIMMEL-9999-leg "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+  bash "$SCRIPT" --dry-run --judge HIMMEL-9999-worker "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --judge, ambient worker-only env: exit 0" "$rc" "0"
 contains "dry-run --judge, ambient worker-only env: still withholds IMPL_GUARD_OK" "$out" "IMPL_GUARD_OK=<unset>"
 contains "dry-run --judge, ambient worker-only env: still withholds INLINE_IMPL_OK" "$out" "INLINE_IMPL_OK=<unset>"
@@ -793,7 +793,7 @@ not_contains "dry-run --judge, ambient worker-only env: launcher-env drops the s
 # how MODEL got set, so a --judge launch with NO Tier line in its doc must
 # still be refused even though no explicit model was named. some/doc.md
 # carries no Tier line.
-rc=0; out="$(bash "$SCRIPT" --dry-run --judge HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --judge HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --judge, no Tier line: refused with exit 2" "$rc" "2"
 contains "dry-run --judge, no Tier line: refusal is the opus tier gate" "$out" "refusing opus launch"
 
@@ -803,7 +803,7 @@ contains "dry-run --judge, no Tier line: refusal is the opus tier gate" "$out" "
 # some/doc.md carries no Tier line, so this proves the gate still fires for
 # an explicit Fable judge instead of letting the named model coast in under
 # the new default's cost story.
-rc=0; out="$(bash "$SCRIPT" --dry-run --judge HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --judge HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
 check "dry-run --judge, explicit fable model: still hits the tier gate (exit 2)" "$rc" "2"
 contains "dry-run --judge, explicit fable model: refusal is the fable tier gate" "$out" "refusing fable launch"
 
@@ -812,21 +812,21 @@ contains "dry-run --judge, explicit fable model: refusal is the fable tier gate"
 # claudex out of scope) - claudex keeps its own gpt-6.1-sol/xhigh-effort
 # default untouched, and some/doc.md (no Tier line) proves that default never
 # reached the Opus/Fable tier gate.
-rc=0; out="$(bash "$SCRIPT" --dry-run --judge --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --judge --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --judge --lane claudex: exit 0" "$rc" "0"
 not_contains "dry-run --judge --lane claudex: does not force claude-opus-5-5" "$out" "claude-opus-5-5"
 not_contains "dry-run --judge --lane claudex: does not force high effort" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 contains "dry-run --judge --lane claudex: still forces profile=console-judge" "$out" "profile=console-judge"
 
 # --judge conflicts with an explicit non-matching --profile, same shape as --relay.
-rc=0; out="$(bash "$SCRIPT" --dry-run --judge --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --judge --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --judge --profile worker-impl: refused with exit 2" "$rc" "2"
 contains "dry-run --judge --profile worker-impl: refusal names console-judge" "$out" "console-judge"
 
 # --judge --relay together: each flag's own conflict check refuses in turn
 # (RELAY forces chief-relay first; JUDGE then sees a mismatched non-empty
 # PROFILE and refuses) - no dedicated mutual-exclusion guard needed.
-rc=0; out="$(bash "$SCRIPT" --dry-run --judge --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --judge --relay HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --judge --relay: refused with exit 2" "$rc" "2"
 contains "dry-run --judge --relay: refusal names console-judge" "$out" "console-judge"
 
@@ -860,7 +860,7 @@ check "dry-run release-manager, HIMMEL_RM_EFFORT=max: exit 0" "$rc" "0"
 contains "dry-run release-manager, HIMMEL_RM_EFFORT=max: overrides the effort" "$out" "CLAUDE_CODE_EFFORT_LEVEL=max"
 
 # An ambient marker from a launching shell is never inherited by an ordinary worker.
-rc=0; out="$(HIMMEL_RELEASE_MANAGER=1 HIMMEL_RM_RELEASE=v1.1.3 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_RELEASE_MANAGER=1 HIMMEL_RM_RELEASE=v1.1.3 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run ordinary worker, ambient RM marker: exit 0" "$rc" "0"
 not_contains "dry-run ordinary worker, ambient RM marker: never reaches the worker" "$out" "HIMMEL_RELEASE_MANAGER=1"
 
@@ -880,37 +880,37 @@ rm_refuses "--rm-release with a slash" "--rm-release" --profile release-manager 
 rm_refuses "--rm-release on another profile" "--rm-release" --profile worker-impl --rm-release v1.1.3
 
 # --- 7. WORKER_SESSION_REPO folded into HEADED_ARM_REPO --------------------------------
-rc=0; out="$(WORKER_SESSION_REPO=/some/other/repo bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_REPO=/some/other/repo bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run: WORKER_SESSION_REPO folded into HEADED_ARM_REPO" "$out" "HEADED_ARM_REPO=/some/other/repo"
 
 # --- 7b. WORKER_SESSION_SUPPRESS_CR_TRIGGER folded into CR_TRIGGER_SUPPRESS
-rc=0; out="$(WORKER_SESSION_SUPPRESS_CR_TRIGGER=1 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_SUPPRESS_CR_TRIGGER=1 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run: WORKER_SESSION_SUPPRESS_CR_TRIGGER folded into CR_TRIGGER_SUPPRESS" "$out" "CR_TRIGGER_SUPPRESS=1"
 
 # --- 7c. unset WORKER_SESSION_SUPPRESS_CR_TRIGGER -> stays <unset> (default ON)
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run: unset WORKER_SESSION_SUPPRESS_CR_TRIGGER leaves CR_TRIGGER_SUPPRESS unset (default ON)" "$out" "CR_TRIGGER_SUPPRESS=<unset>"
 
 # --- 7d. WORKER_SESSION_API_LANE=on carries HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=auto; otherwise neither
-rc=0; out="$(WORKER_SESSION_API_LANE=on bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_API_LANE=on bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run: WORKER_SESSION_API_LANE=on exits 0" "$rc" "0"
 contains "dry-run: WORKER_SESSION_API_LANE=on carries both API-lane vars" "$out" "HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto"
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run: unset WORKER_SESSION_API_LANE exits 0" "$rc" "0"
 contains "dry-run: no WORKER_SESSION_API_LANE leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
-rc=0; out="$(WORKER_SESSION_API_LANE=off bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_API_LANE=off bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run: WORKER_SESSION_API_LANE=off exits 0" "$rc" "0"
 contains "dry-run: WORKER_SESSION_API_LANE=off leaves both API-lane vars unset" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
-rc=0; out="$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=B bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run: ambient API-lane vars exit 0" "$rc" "0"
 contains "dry-run: ambient API-lane vars without WORKER_SESSION_API_LANE are scrubbed" "$out" "HIMMEL_API_LANE=<unset> HIMMEL_API_ACCOUNT=<unset>"
 
 # --- 8-9, 11. full (non-dry) launch: proves the non-dry path builds the SAME
 # argv --dry-run predicted, via the real headed-arm.sh and its own KONSOLE_CMD
 # seam. ----------------------------------------------------------------------
-d8="$tmp/c8"; mk_launch_stubs "$d8" "HIMMEL-9999-leg"; mkdir -p "$tmp/repo8"
+d8="$tmp/c8"; mk_launch_stubs "$d8" "HIMMEL-9999-worker"; mkdir -p "$tmp/repo8"
 rc=0
-WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS=--no-profile run_worker "$d8" "$tmp/repo8" "HIMMEL-9999-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS=--no-profile run_worker "$d8" "$tmp/repo8" "HIMMEL-9999-worker" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d8" || true
 rec8="$(cat "$d8/record" 2>/dev/null || true)"
 check "full launch, default context: exit 0" "$rc" "0"
@@ -1024,16 +1024,16 @@ done
 # WORKER_SESSION_CONTEXT=1m drops the profile's guard together with its ceiling.
 sa_doc_1m="$tmp/sa-1m-doc.md"
 fx_brief '# fixture brief' '> **Context:** 1m — operator-ruling: fixture' > "$sa_doc_1m"
-rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT=1m WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$sa_doc_1m" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT=1m WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$sa_doc_1m" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "sonnet ceiling: 1m override on worker-impl: exit 0" "$rc" "0"
 contains "sonnet ceiling: 1m override drops the profile's hand-off guard" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=<unset>"
 # The audited A/B arm needs the plain 200000 ceiling: a Sonnet impl launch is refused
 # with the real reason, a docs launch (no Sonnet ceiling) takes the control arm.
-rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "A/B arm on a Sonnet worker-impl launch: refused" "$rc" "2"
 contains "A/B arm on a Sonnet worker-impl launch: names the profile's Sonnet ceiling" "$out" "profile's Sonnet ceiling"
 not_contains "A/B arm on a Sonnet worker-impl launch: does not blame 1m" "$out" "never combines with a 1m opt-in"
-rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-docs HIMMEL-9999-leg "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$sonnet_reg" WORKER_SESSION_CONTEXT='' WORKER_SESSION_REPO='' WORKER_SESSION_AUTOCOMPACT_AB=200000 bash "$SCRIPT" --dry-run --profile worker-docs HIMMEL-9999-worker "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
 check "A/B arm control on a Sonnet worker-docs launch: exit 0" "$rc" "0"
 
 # a caller passing an ALREADY-SUFFIXED model
@@ -1121,12 +1121,12 @@ cp "$HERE/../../lib/chief-context.sh" "$mutantdir/scripts/lib/chief-context.sh"
 cp "$HERE/../../lib/claude-version.sh" "$mutantdir/scripts/lib/claude-version.sh"
 cp "$HERE/../../lib/prim.sh" "$mutantdir/scripts/lib/prim.sh"
 chmod 755 "$mutant"
-d12="$tmp/c12"; mk_launch_stubs "$d12" "HIMMEL-4444-leg"; mkdir -p "$tmp/repo12"
+d12="$tmp/c12"; mk_launch_stubs "$d12" "HIMMEL-4444-worker"; mkdir -p "$tmp/repo12"
 mrc=0
 mout="$(IMPL_GUARD_OK='' HEADED_ARM_WORKER_TARGET="$mutant" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d12/konsole" PGREP_CMD="$d12/pgrep" WORKER_SESSION_REPO="$tmp/repo12" \
   HEADED_ARM_LOCK_DIR="$d12/locks" HEADED_ARM_PROC="$d12/proc" \
-  bash "$SCRIPT" --no-profile "HIMMEL-4444-leg" "some/doc.md" "$d12/signal-never" "$PAST" "$d12/log" "claude-sonnet-5" 2>&1)" || mrc=$?
+  bash "$SCRIPT" --no-profile "HIMMEL-4444-worker" "some/doc.md" "$d12/signal-never" "$PAST" "$d12/log" "claude-sonnet-5" 2>&1)" || mrc=$?
 check "RED control: renderer without --autocompact is refused on full launch path" "$mrc" "2"
 contains "RED control: refusal names the missing resolved argv pair" "$mout" "resolved argv lacks --autocompact 200000"
 check "RED control: konsole was never invoked" "$(cat "$d12/record" 2>/dev/null || true)" ""
@@ -1190,7 +1190,7 @@ check "unknown lane via WORKER_SESSION_LANE: exit 2" "$rc" "2"
 
 # --- 15. --dry-run --lane claudex: resolved launcher + env,
 # default model gpt-6.1-sol, --lane wins over WORKER_SESSION_LANE. -----------------------
-rc=0; out="$(WORKER_SESSION_LANE=native WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_LANE=native WORKER_SESSION_REPO='' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: exit 0 (flag wins over WORKER_SESSION_LANE=native)" "$rc" "0"
 contains "dry-run --lane claudex: reports lane=claudex" "$out" "lane=claudex"
 contains "dry-run --lane claudex: resolved launcher names claude-codex" "$out" "claude-codex"
@@ -1200,54 +1200,54 @@ contains "dry-run --lane claudex: bank lane is claudex" "$out" "CADENCE_USAGE_LA
 contains "dry-run --lane claudex: env carries CLAUDE_CODE_EFFORT_LEVEL=xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
 contains "dry-run --lane claudex: MODEL defaults to gpt-6.1-sol" "$out" "gpt-6.1-sol"
 
-rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='WORKER_SESSION_LANE=native CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='WORKER_SESSION_LANE=native CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "claudex: stale caller lane tokens do not refuse launch" "$rc" "0"
 contains "claudex: resolved lane replaces stale launcher token" "$out" "WORKER_SESSION_LANE=claudex"
 contains "claudex: resolved bank replaces stale launcher token" "$out" "CADENCE_USAGE_LANE=claudex"
 not_contains "claudex: stale lane token is absent" "$out" "WORKER_SESSION_LANE=native"
 not_contains "claudex: stale bank token is absent" "$out" "CADENCE_USAGE_LANE=native"
-rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(CADENCE_USAGE_LANE=native HEADED_ARM_LAUNCHER_ENV='CADENCE_USAGE_LANE=native' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "claudex: a stale CADENCE_USAGE_LANE token does not refuse launch" "$rc" "0"
 contains "claudex: the resolved bank lane is propagated" "$out" "CADENCE_USAGE_LANE=claudex"
 not_contains "claudex: the stale usage lane token is dropped" "$out" "CADENCE_USAGE_LANE=native"
 
-rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: WORKER_SESSION_EFFORT overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL overrides the xhigh default" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 not_contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL is not replaced by xhigh" "$out" "CLAUDE_CODE_EFFORT_LEVEL=xhigh"
-rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(CLAUDE_CODE_EFFORT_LEVEL=medium WORKER_SESSION_EFFORT=high bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL with WORKER_SESSION_EFFORT exits 0" "$rc" "0"
 contains "dry-run --lane claudex: an explicit CLAUDE_CODE_EFFORT_LEVEL wins over WORKER_SESSION_EFFORT" "$out" "CLAUDE_CODE_EFFORT_LEVEL=medium"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run --lane claudex: an explicit model is NOT overridden" "$out" "claude-sonnet-5"
 not_contains "dry-run --lane claudex: an explicit model is NOT overridden" "$out" "gpt-6.1-sol"
 
 # scripts/claude-codex reads only CODEX_MODEL, so the model the chief names
 # has to reach the launcher as CODEX_MODEL.
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log gpt-6-astra 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log gpt-6-astra 2>&1)" || rc=$?
 contains "dry-run --lane claudex: a named model reaches the launcher as CODEX_MODEL" "$out" "CODEX_MODEL=gpt-6-astra"
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 contains "dry-run --lane claudex: no model names the default as CODEX_MODEL" "$out" "CODEX_MODEL=gpt-6.1-sol"
-rc=0; out="$(HEADED_ARM_LAUNCHER_ENV='CODEX_MODEL=preset-model' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log gpt-6-astra 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_LAUNCHER_ENV='CODEX_MODEL=preset-model' bash "$SCRIPT" --dry-run --no-profile --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log gpt-6-astra 2>&1)" || rc=$?
 contains "dry-run --lane claudex: an inherited CODEX_MODEL token is scrubbed, the named model wins" "$out" "CODEX_MODEL=gpt-6-astra"
 not_contains "dry-run --lane claudex: an inherited CODEX_MODEL token does not survive" "$out" "CODEX_MODEL=preset-model"
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 not_contains "dry-run, native lane: CODEX_MODEL is never set" "$out" "CODEX_MODEL"
 
 # A claudex worker-impl worker gets the native worker's knowledge access: the same profile
 # settings, MCP allowlist (qmd), lean switch and handover root.
 _access_env() { printf '%s\n' "$1" | tr ' ' '\n' | grep -E '^(WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_MCP_CONFIG|HIMMEL_LEAN_WORKER_SESSION|HANDOVER_DIR)=' | sort; }
-rc=0; out_n="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
-rc_x=0; out_x="$(bash "$SCRIPT" --dry-run --profile worker-impl --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc_x=$?
+rc=0; out_n="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+rc_x=0; out_x="$(bash "$SCRIPT" --dry-run --profile worker-impl --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc_x=$?
 check "dry-run --profile worker-impl: native and claudex both exit 0" "$rc/$rc_x" "0/0"
 contains "dry-run --profile worker-impl --lane claudex: carries the qmd and himmel-bus MCP allowlist" "$out_x" 'mcp=["qmd","himmel-bus"] mcp-config=/tmp/HIMMEL-9999-leg.leg-mcp.json'
 check "dry-run --profile worker-impl: claudex access env equals native" "$(_access_env "$out_x")" "$(_access_env "$out_n")"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 contains "dry-run, no --lane: reports lane=native" "$out" "lane=native"
 not_contains "dry-run, no --lane: no claude-codex launcher" "$out" "claude-codex"
 not_contains "dry-run, native: no added lane env" "$out" "WORKER_SESSION_LANE="
@@ -1481,11 +1481,11 @@ chmod 755 "$shim_rec"
 : > "$tmp/preface.md"
 rc=0
 WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS="$tmp/settings.json" WORKER_SESSION_PROFILE_PREFACE="$tmp/preface.md" \
-  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
+  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker "load doc" || rc=$?
 shimout="$(cat "$tmp/shim-record" 2>/dev/null || true)"
 check "shim: exit 0" "$rc" "0"
 check "shim: prepends both flags and preserves the rest of argv in order" "$shimout" \
-  "--settings $tmp/settings.json --append-system-prompt-file $tmp/preface.md --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg load doc"
+  "--settings $tmp/settings.json --append-system-prompt-file $tmp/preface.md --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker load doc"
 
 # The transparency control: with no profile env set the shim must be a
 # pass-through, byte for byte. A shim that reordered or dropped --model or
@@ -1494,10 +1494,10 @@ check "shim: prepends both flags and preserves the rest of argv in order" "$shim
 rm -f "$tmp/shim-record"
 rc=0
 WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' \
-  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
+  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker "load doc" || rc=$?
 check "shim: no profile env -> argv byte-identical (transparent exec)" \
   "$(cat "$tmp/shim-record" 2>/dev/null || true)" \
-  "--model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg load doc"
+  "--model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker load doc"
 
 # Fail closed: a settings path that does not exist must refuse, not launch a
 # worker with the full plugin roster while the log says it was profiled.
@@ -1510,14 +1510,14 @@ contains "shim: refusal names the missing file" "$out" "$tmp/no-such-settings.js
 # renders as the launcher, the resolved settings JSON is written next to the
 # launch log, and HIMMEL_LEAN_WORKER_SESSION=1 reaches the launched process's own
 # environment (that is what silences the advisory SessionStart hooks).
-d17="$tmp/c17"; mk_launch_stubs "$d17" "HIMMEL-3333-leg"; mkdir -p "$tmp/repo17"
+d17="$tmp/c17"; mk_launch_stubs "$d17" "HIMMEL-3333-worker"; mkdir -p "$tmp/repo17"
 rc=0
 IMPL_GUARD_OK='' HIMMEL_LEAN_WORKER_SESSION='' \
 HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
 HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17/konsole" PGREP_CMD="$d17/pgrep" \
 WORKER_SESSION_REPO="$tmp/repo17" HEADED_ARM_LOCK_DIR="$d17/locks" HEADED_ARM_PROC="$d17/proc" \
-  bash "$SCRIPT" --profile worker-impl "HIMMEL-3333-leg" "$some_doc" "$d17/signal-never" "$PAST" "$d17/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+  bash "$SCRIPT" --profile worker-impl "HIMMEL-3333-worker" "$some_doc" "$d17/signal-never" "$PAST" "$d17/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d17" || true
 rec17="$(cat "$d17/record" 2>/dev/null || true)"
 env17="$(cat "$d17/env-record" 2>/dev/null || true)"
@@ -1820,13 +1820,13 @@ env8b="$(cat "$d8/env-record" 2>/dev/null || true)"
 not_contains "no --profile: launcher is unchanged (no shim)" "$rec8" "worker-claude-launcher.sh"
 not_contains "no --profile: no HIMMEL_LEAN_WORKER_SESSION in the launched environment" "$env8b" "HIMMEL_LEAN_WORKER_SESSION=1"
 
-noprof="$(WORKER_SESSION_PROFILE='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+noprof="$(WORKER_SESSION_PROFILE='' bash "$SCRIPT" --dry-run --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
 noprof_lines="$(printf '%s\n' "$noprof" | wc -l | tr -d '[:space:]')"
 check "no --profile: dry-run report is still exactly four lines (effort line + three)" "$noprof_lines" "4"
 not_contains "no --profile: dry-run report has no profile line" "$noprof" "profile="
 not_contains "--no-profile: no profile name is propagated" "$noprof" "HIMMEL_WORKER_SESSION_PROFILE="
 
-prof="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
+prof="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
 prof_lines="$(printf '%s\n' "$prof" | wc -l | tr -d '[:space:]')"
 check "--profile: dry-run report adds exactly one line" "$prof_lines" "5"
 contains "--profile: dry-run names the profile, the settings path and the lean flag" "$prof" \
@@ -1849,7 +1849,7 @@ fi
 # survive at all on the native lane.
 rc=0; out="$(IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 CLAUDEX_LANE_OK=1 \
   HEADED_ARM_LAUNCHER_ENV='IMPL_GUARD_OK=99 INLINE_IMPL_OK=99 CLAUDEX_LANE_OK=1' \
-  bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)" || rc=$?
+  bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run --profile worker-impl, ambient worker-only env: exit 0" "$rc" "0"
 contains "dry-run --profile worker-impl, ambient worker-only env: reports the wrapper's own IMPL_GUARD_OK=1, not the inherited 99" "$out" "IMPL_GUARD_OK=1"
 contains "dry-run --profile worker-impl, ambient worker-only env: reports the wrapper's own INLINE_IMPL_OK=1, not the inherited 99" "$out" "INLINE_IMPL_OK=1"
@@ -2124,10 +2124,10 @@ check "full launch --relay: settings deny nothing" \
   "$(jq -c '.permissions.deny // "none"' "$d17r/HIMMEL-9999-relay.leg-settings.json" 2>/dev/null)" '"none"'
 
 rc=0
-node "$HERE/../../lanes/plugin-profiles.mjs" worker-impl > "$tmp/resolved-leg.json" || rc=$?
+node "$HERE/../../lanes/plugin-profiles.mjs" worker-impl > "$tmp/resolved-worker.json" || rc=$?
 check "--dry-run worker-impl: resolver succeeds" "$rc" "0"
 rc=0
-node -e 'const j=require(process.argv[1]); if (!j.permissions?.allow.includes("Bash(bash scripts/cr/ledger-append.sh:*)")) process.exit(1)' "$tmp/resolved-leg.json" || rc=$?
+node -e 'const j=require(process.argv[1]); if (!j.permissions?.allow.includes("Bash(bash scripts/cr/ledger-append.sh:*)")) process.exit(1)' "$tmp/resolved-worker.json" || rc=$?
 check "--dry-run worker-impl: resolved settings carry permissions.allow" "$rc" "0"
 
 rc=0
@@ -2143,10 +2143,10 @@ node -e 'const j=require(process.argv[1]); if (Object.hasOwn(j,"permissions")) p
 check "--dry-run bare: resolved settings have no permissions" "$rc" "0"
 
 # WORKER_SESSION_PROFILE is the env equivalent, and the flag wins over it.
-envprof="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
+envprof="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
 contains "WORKER_SESSION_PROFILE=worker-impl is honoured like the flag" "$envprof" "profile=worker-impl"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile no-such-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile no-such-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)" || rc=$?
 check "an unknown profile name is refused with exit 2" "$rc" "2"
 
 if [ -n "$_TIMEOUT_BIN" ]; then
@@ -2159,11 +2159,11 @@ fi
 # 17d. composition must carry the profile through the claudex
 # backend, not silently select one launcher. Execute the real wrapper + shim
 # against recording endpoints (never launch Claude or a terminal).
-rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --profile worker-impl HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --profile worker-impl HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "--profile with --lane claudex: exit 0" "$rc" "0"
 contains "composed dry-run: profile settings reported" "$out" "profile=worker-impl settings="
 contains "composed dry-run: claudex lane retained" "$out" "lane=claudex"
-rc=0; out="$(WORKER_SESSION_LANE=claudex WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(WORKER_SESSION_LANE=claudex WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "composition via the env equivalents: exit 0" "$rc" "0"
 
 composed="$tmp/composed-launch"; mkdir -p "$composed"
@@ -2262,19 +2262,19 @@ printf '{"mcpServers":{"qmd":{"type":"http","url":"http://localhost:8181/mcp"}}}
 rm -f "$tmp/shim-record"
 rc=0
 WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG="$mcpfile" \
-  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
+  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker "load doc" || rc=$?
 check "shim: mcp-config exit 0" "$rc" "0"
 check "shim: prepends --mcp-config + --strict-mcp-config, rest of argv preserved" \
   "$(cat "$tmp/shim-record" 2>/dev/null || true)" \
-  "--mcp-config $mcpfile --strict-mcp-config --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg load doc"
+  "--mcp-config $mcpfile --strict-mcp-config --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker load doc"
 
 rm -f "$tmp/shim-record"
 rc=0
 WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' \
-  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg "load doc" || rc=$?
+  bash "$SHIM" --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker "load doc" || rc=$?
 check "shim: no WORKER_SESSION_PROFILE_MCP_CONFIG -> argv byte-identical (no mcp flags)" \
   "$(cat "$tmp/shim-record" 2>/dev/null || true)" \
-  "--model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-leg load doc"
+  "--model claude-sonnet-5 --autocompact 200000 -n HIMMEL-9999-worker load doc"
 
 rc=0
 out="$(WORKER_SESSION_CLAUDE_BIN="$shim_rec" WORKER_SESSION_PROFILE_MCP_CONFIG="$tmp/no-such-mcp.json" bash "$SHIM" --model x 2>&1)" || rc=$?
@@ -2292,11 +2292,11 @@ chmod 755 "$shim_argv"
 rm -f "$tmp/shim-argv"
 rc=0
 WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS="$tmp/settings.json" WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 \
-  bash "$SHIM" --model claude-sonnet-5 -n HIMMEL-9999-leg "load doc" || rc=$?
+  bash "$SHIM" --model claude-sonnet-5 -n HIMMEL-9999-worker "load doc" || rc=$?
 check "shim: no-setting-sources exit 0" "$rc" "0"
 check "shim: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 prepends --setting-sources with an EMPTY value" \
   "$(cat "$tmp/shim-argv" 2>/dev/null || true)" \
-  "[--settings][$tmp/settings.json][--setting-sources][][--model][claude-sonnet-5][-n][HIMMEL-9999-leg][load doc]"
+  "[--settings][$tmp/settings.json][--setting-sources][][--model][claude-sonnet-5][-n][HIMMEL-9999-worker][load doc]"
 for nss in '' 0 yes; do
   rm -f "$tmp/shim-argv"
   WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="$nss" \
@@ -2387,7 +2387,7 @@ full_launch_mcp() {
 
 # (a) mcpServers: [] -> the written file is exactly {"mcpServers":{}} - "strip
 # everything" is a real, distinct allowlist value from "field absent".
-full_launch_mcp a "HIMMEL-4441-leg" mcp-empty
+full_launch_mcp a "HIMMEL-4441-worker" mcp-empty
 check "mcpServers=[]: full launch exit 0" "$rc" "0"
 check "mcpServers=[]: mcp config file is exactly {\"mcpServers\":{}}" \
   "$(cat "$tmp/c18a/HIMMEL-4441-leg.leg-mcp.json" 2>/dev/null || true)" '{"mcpServers":{}}'
@@ -2398,7 +2398,7 @@ contains "mcpServers=[]: WORKER_SESSION_PROFILE_MCP_CONFIG reaches the launched 
 # context7 -> the written file holds ONLY qmd's definition, byte-copied
 # (deny-by-default: graphify/context7 never appear despite being right there
 # in the source file).
-full_launch_mcp b "HIMMEL-4442-leg" mcp-qmd "$mcphome"
+full_launch_mcp b "HIMMEL-4442-worker" mcp-qmd "$mcphome"
 check "mcpServers=[qmd]: full launch exit 0" "$rc" "0"
 mcpout_b="$(cat "$tmp/c18b/HIMMEL-4442-leg.leg-mcp.json" 2>/dev/null || true)"
 contains "mcpServers=[qmd]: file carries qmd's definition byte-copied" "$mcpout_b" '"qmd":{"type":"http","url":"http://localhost:8181/mcp"}'
@@ -2407,7 +2407,7 @@ not_contains "mcpServers=[qmd]: context7 is NOT copied despite being in the sour
 
 # (c) an allowlisted name absent from every source -> exit 2, no file
 # written at all (not an empty one - the refusal must precede the write).
-full_launch_mcp c "HIMMEL-4443-leg" mcp-missing "$mcphome"
+full_launch_mcp c "HIMMEL-4443-worker" mcp-missing "$mcphome"
 check "mcpServers=[no-such-server]: refused with exit 2" "$rc" "2"
 if [ -e "$tmp/c18c/HIMMEL-4443-leg.leg-mcp.json" ]; then
   echo "FAIL - mcpServers=[no-such-server]: a config file must not exist"; fails=$((fails+1))
@@ -2417,7 +2417,7 @@ fi
 
 # (d) no mcpServers field -> byte-identical to the earlier behaviour: no file, no
 # WORKER_SESSION_PROFILE_MCP_CONFIG in the launched environment.
-full_launch_mcp d "HIMMEL-4444-leg" mcp-none
+full_launch_mcp d "HIMMEL-4444-worker" mcp-none
 check "no mcpServers field: full launch exit 0" "$rc" "0"
 if [ -e "$tmp/c18d/HIMMEL-4444-leg.leg-mcp.json" ]; then
   echo "FAIL - no mcpServers field: a config file must not exist"; fails=$((fails+1))
@@ -2430,13 +2430,13 @@ not_contains "no mcpServers field: no WORKER_SESSION_PROFILE_MCP_CONFIG in the l
 # dry-run mirrors the same four shapes without writing anything, and an
 # unresolvable name is refused the same way under --dry-run too (typo'd
 # names must fail identically whether or not the launch is real).
-rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$mcpreg" HOME="$mcphome" bash "$SCRIPT" --dry-run --profile mcp-missing HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$mcpreg" HOME="$mcphome" bash "$SCRIPT" --dry-run --profile mcp-missing HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "dry-run: an unresolvable mcpServers name is refused with exit 2" "$rc" "2"
 
-dryempty="$(PLUGIN_PROFILES_REGISTRY="$mcpreg" HOME="$mcphome" bash "$SCRIPT" --dry-run --profile mcp-empty HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
+dryempty="$(PLUGIN_PROFILES_REGISTRY="$mcpreg" HOME="$mcphome" bash "$SCRIPT" --dry-run --profile mcp-empty HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
 contains "dry-run mcpServers=[]: reports mcp=[] and the would-be mcp-config path" "$dryempty" "mcp=[] mcp-config=$tmp/HIMMEL-9999-leg.leg-mcp.json"
 
-drynone="$(PLUGIN_PROFILES_REGISTRY="$mcpreg" bash "$SCRIPT" --dry-run --profile mcp-none HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
+drynone="$(PLUGIN_PROFILES_REGISTRY="$mcpreg" bash "$SCRIPT" --dry-run --profile mcp-none HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 "$tmp/worker.log" claude-sonnet-5 2>&1)"
 contains "dry-run: no mcpServers field reports mcp=null mcp-config=<none>" "$drynone" "mcp=null mcp-config=<none>"
 
 # --- 19-23 + Opus/Fable workers need a named Tier
@@ -2454,7 +2454,7 @@ fx_brief '# fixture brief' '> **Tier:** opus — design: multi-step design' > "$
 doc_tier_fable="$tmp/tier-doc-fable.md"
 fx_brief '# fixture brief' '> **Tier:** fable — tier-return: a Sonnet worker returned the work as above its tier' > "$doc_tier_fable"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate: opus without a Tier line is refused with exit 2" "$rc" "2"
 contains "tier gate: refusal names the CLAUDE.md sentence" "$out" "raise effort before tier"
 contains "tier gate: refusal names reason 1 (multi-step design)" "$out" "multi-step design"
@@ -2462,29 +2462,29 @@ contains "tier gate: refusal names reason 2 (unverifiable FINDING)" "$out" "a FI
 contains "tier gate: refusal names reason 3 (above-tier return)" "$out" "a Sonnet worker returned the work as above its tier"
 contains "tier gate: refusal names the three category tags" "$out" "design|unverified-finding|tier-return"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log "claude-opus-5[1m]" 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log "claude-opus-5[1m]" 2>&1)" || rc=$?
 check "tier gate: a [1m] suffix does not dodge the opus match" "$rc" "2"
 contains "tier gate: [1m]-suffixed refusal still names the sentence" "$out" "raise effort before tier"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
 check "tier gate: fable without a Tier line is refused with exit 2" "$rc" "2"
 contains "tier gate: fable refusal names the CLAUDE.md sentence" "$out" "raise effort before tier"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate: opus with a design: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate: dry-run report carries tier-category=design for opus" "$out" "tier-category=design"
 contains "tier gate: dry-run report carries tier-reason= for opus" "$out" "tier-reason=multi-step design"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_fable" /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_fable" /tmp/nosig 99999999999 /tmp/worker.log claude-fable-5-1 2>&1)" || rc=$?
 check "tier gate: fable with a tier-return: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate: dry-run report carries tier-category=tier-return for fable" "$out" "tier-category=tier-return"
 contains "tier gate: dry-run report carries tier-reason= for fable" "$out" "tier-reason=a Sonnet worker returned the work as above its tier"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "tier gate: sonnet without a Tier line is unaffected (dry-run exit 0)" "$rc" "0"
 not_contains "tier gate: sonnet dry-run report carries no tier-reason=" "$out" "tier-reason="
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl --lane claudex HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl --lane claudex HIMMEL-9999-worker "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "tier gate: --lane claudex is unaffected (dry-run exit 0)" "$rc" "0"
 
 # a Tier line whose reason is whitespace-only
@@ -2494,38 +2494,38 @@ check "tier gate: --lane claudex is unaffected (dry-run exit 0)" "$rc" "0"
 doc_tier_opus_blank="$tmp/tier-doc-opus-blank.md"
 fx_brief '# fixture brief' '> **Tier:** opus —    ' > "$doc_tier_opus_blank"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_blank" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_blank" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate: a whitespace-only Tier reason is refused with exit 2" "$rc" "2"
 contains "tier gate: whitespace-only refusal names the CLAUDE.md sentence" "$out" "raise effort before tier"
 
 # --- (a)-(f): the reason must open with a closed category tag --
 doc_tier_opus_bare="$tmp/tier-doc-opus-bare.md"
 fx_brief '# fixture brief' '> **Tier:** opus — because I prefer it' > "$doc_tier_opus_bare"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_bare" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_bare" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (a): bare free text with no category tag is refused with exit 2" "$rc" "2"
 contains "tier gate (a): refusal names the three category tags" "$out" "design|unverified-finding|tier-return"
 
 doc_tier_opus_finding="$tmp/tier-doc-opus-finding.md"
 fx_brief '# fixture brief' '> **Tier:** opus — unverified-finding: a memory leak the chief could not repro at Sonnet' > "$doc_tier_opus_finding"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_finding" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_finding" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (c): unverified-finding: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate (c): dry-run report carries tier-category=unverified-finding" "$out" "tier-category=unverified-finding"
 
 doc_tier_opus_return="$tmp/tier-doc-opus-return.md"
 fx_brief '# fixture brief' '> **Tier:** opus — tier-return: a Sonnet worker returned the work as above its tier' > "$doc_tier_opus_return"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_return" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_return" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (d): tier-return: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate (d): dry-run report carries tier-category=tier-return" "$out" "tier-category=tier-return"
 
 doc_tier_opus_wrongcase="$tmp/tier-doc-opus-wrongcase.md"
 fx_brief '# fixture brief' '> **Tier:** opus — Design: multi-step design' > "$doc_tier_opus_wrongcase"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_wrongcase" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_wrongcase" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (e): wrong-case category tag (Design:) is refused with exit 2" "$rc" "2"
 contains "tier gate (e): refusal names the three category tags" "$out" "design|unverified-finding|tier-return"
 
 doc_tier_opus_emptytext="$tmp/tier-doc-opus-emptytext.md"
 fx_brief '# fixture brief' '> **Tier:** opus — design:' > "$doc_tier_opus_emptytext"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_emptytext" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_emptytext" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (f): a category tag with empty free text is refused with exit 2" "$rc" "2"
 contains "tier gate (f): refusal names the empty-text problem" "$out" "no free text after"
 
@@ -2534,7 +2534,7 @@ contains "tier gate (f): refusal names the empty-text problem" "$out" "no free t
 # literal colon present, so this must be refused explicitly.
 doc_tier_opus_notag_colon="$tmp/tier-doc-opus-notag-colon.md"
 fx_brief '# fixture brief' '> **Tier:** opus — design' > "$doc_tier_opus_notag_colon"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_notag_colon" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_notag_colon" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5 2>&1)" || rc=$?
 check "tier gate (g): a bare sanctioned tag with no colon is refused with exit 2" "$rc" "2"
 contains "tier gate (g): refusal names the three category tags" "$out" "design|unverified-finding|tier-return"
 
@@ -2543,34 +2543,34 @@ contains "tier gate (g): refusal names the three category tags" "$out" "design|u
 # 5.5). Same shape as the other three: exact lowercase, non-blank free text.
 doc_tier_opus_ruling="$tmp/tier-doc-opus-ruling.md"
 fx_brief '# fixture brief' '> **Tier:** opus — operator-ruling: run only Opus 5.5 (operator 2026-09-22, chief A)' > "$doc_tier_opus_ruling"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_ruling" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_ruling" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
 check "tier gate (h): operator-ruling: Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate (h): dry-run report carries tier-category=operator-ruling" "$out" "tier-category=operator-ruling"
 contains "tier gate (h): dry-run report carries the ruling as tier-reason=" "$out" "tier-reason=run only Opus 5.5 (operator 2026-09-22, chief A)"
 
 doc_tier_opus_ruling_blank="$tmp/tier-doc-opus-ruling-blank.md"
 fx_brief '# fixture brief' '> **Tier:** opus — operator-ruling:   ' > "$doc_tier_opus_ruling_blank"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_ruling_blank" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_ruling_blank" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
 check "tier gate (i): operator-ruling: with blank free text is refused with exit 2" "$rc" "2"
 contains "tier gate (i): refusal names the empty-text problem" "$out" "no free text after"
 
 doc_tier_opus_ruling_case="$tmp/tier-doc-opus-ruling-case.md"
 fx_brief '# fixture brief' '> **Tier:** opus — Operator-ruling: run only Opus 5.5' > "$doc_tier_opus_ruling_case"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus_ruling_case" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus_ruling_case" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
 check "tier gate (j): wrong-case Operator-ruling: is refused with exit 2" "$rc" "2"
 contains "tier gate (j): refusal lists the four category tags" "$out" "design|unverified-finding|tier-return|operator-ruling"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log claude-opus-5-5 2>&1)" || rc=$?
 check "tier gate (k): opus-5-5 without a Tier line is still refused with exit 2" "$rc" "2"
 contains "tier gate (k): missing-line refusal lists the four category tags" "$out" "design|unverified-finding|tier-return|operator-ruling"
 contains "tier gate (k): missing-line refusal names the operator-ruling reason" "$out" "a standing operator ruling on model choice"
 
 # A native launch that names no model runs the claude-opus-5-5
 # default, so the gate must see the resolved model, not the empty argument.
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_no_tier" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "tier gate (l): a native launch with no model and no Tier line is refused with exit 2" "$rc" "2"
 contains "tier gate (l): no-model refusal names the CLAUDE.md sentence" "$out" "raise effort before tier"
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$doc_tier_opus" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$doc_tier_opus" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "tier gate (l): a native launch with no model and an opus Tier line proceeds (dry-run exit 0)" "$rc" "0"
 contains "tier gate (l): no-model dry-run report carries tier-category=design" "$out" "tier-category=design"
 
@@ -2783,16 +2783,16 @@ check "HANDOVER_DIR e2e: go_gate resolved from a linked worktree (HANDOVER_DIR o
 # exercise the decision itself, and the real-path case proves nothing reaches
 # konsole. Every shape that supplies a profile (flag, WORKER_SESSION_PROFILE, --relay,
 # --judge) or opts out (--no-profile) must still launch.
-args27=(HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5)
+args27=(HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5)
 rc=0; out="$(bash "$SCRIPT" --dry-run "${args27[@]}" 2>&1)" || rc=$?
 check "27a no profile, no opt-out (dry-run): refused with exit 2" "$rc" "2"
 contains "27a refusal names --profile" "$out" "--profile"
 contains "27a refusal names the --no-profile opt-out" "$out" "--no-profile"
 not_contains "27a nothing would exec" "$out" "would exec"
 
-d27="$tmp/c27"; mk_launch_stubs "$d27" "HIMMEL-2727-leg"; mkdir -p "$tmp/repo27"
+d27="$tmp/c27"; mk_launch_stubs "$d27" "HIMMEL-2727-worker"; mkdir -p "$tmp/repo27"
 rc=0
-RUN_WORKER_ARGS='' run_worker "$d27" "$tmp/repo27" "HIMMEL-2727-leg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+RUN_WORKER_ARGS='' run_worker "$d27" "$tmp/repo27" "HIMMEL-2727-worker" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 check "27b no profile, no opt-out (real launch): refused with exit 2" "$rc" "2"
 sleep 0.3
 check "27b refused launch never reached konsole" "$([ -e "$d27/record" ] && echo launched || echo none)" "none"
@@ -2818,9 +2818,9 @@ check "27e --no-profile with --profile: refused with exit 2" "$rc" "2"
 # shellcheck disable=SC2086
 rc=0; out="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run --no-profile "${args27[@]}" 2>&1)" || rc=$?
 check "27e --no-profile with WORKER_SESSION_PROFILE: refused with exit 2" "$rc" "2"
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --relay HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "27e --no-profile with --relay: refused with exit 2" "$rc" "2"
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --judge HIMMEL-9999-leg "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile --judge HIMMEL-9999-worker "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "27e --no-profile with --judge: refused with exit 2" "$rc" "2"
 contains "27e --no-profile with --judge: the refusal names --no-profile (not the Tier gate)" "$out" "--no-profile"
 
@@ -2835,10 +2835,10 @@ contains "27f WORKER_SESSION_PROFILE=worker-impl: profile applied" "$out" "profi
 # shellcheck disable=SC2086
 rc=0; out="$(WORKER_SESSION_PROFILE=worker-impl bash "$SCRIPT" --dry-run --profile bare "${args27[@]}" 2>&1)" || rc=$?
 contains "27f flag wins over WORKER_SESSION_PROFILE" "$out" "profile=bare"
-rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --relay HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "27f --relay alone (forces chief-relay): launches" "$rc" "0"
 contains "27f --relay: forced profile applied" "$out" "profile=chief-relay"
-rc=0; out="$(bash "$SCRIPT" --dry-run --judge HIMMEL-9999-leg "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --judge HIMMEL-9999-worker "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "27f --judge alone (forces console-judge): launches" "$rc" "0"
 contains "27f --judge: forced profile applied" "$out" "profile=console-judge"
 
@@ -2851,9 +2851,9 @@ rc=0; out="$(bash "$SCRIPT" --dry-run --profile '' "${args27[@]}" 2>&1)" || rc=$
 check "27g --profile '' is not a profile: refused with exit 2" "$rc" "2"
 
 # claudex lane: the coordination preface alone is not the standing preface.
-rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "27h --lane claudex, no profile, no opt-out: refused with exit 2" "$rc" "2"
-rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --no-profile HIMMEL-9999-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --no-profile HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 check "27h --lane claudex --no-profile: launches" "$rc" "0"
 
 # --- 28. the launch record ---------------------------------------
@@ -3041,13 +3041,13 @@ check "28f --judge launch does not gain the handover-doc Edit allow (judge never
 # and must gain it on its own, distinct doc file.
 d17b_doc="$tmp/sibling-doc.md"
 fx_brief '# sibling fixture doc' > "$d17b_doc"
-d17b="$tmp/c17b"; mk_launch_stubs "$d17b" "HIMMEL-3334-leg"; mkdir -p "$tmp/repo17b"
+d17b="$tmp/c17b"; mk_launch_stubs "$d17b" "HIMMEL-3334-worker"; mkdir -p "$tmp/repo17b"
 IMPL_GUARD_OK='' HIMMEL_LEAN_WORKER_SESSION='' \
 HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
 HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d17b/konsole" PGREP_CMD="$d17b/pgrep" \
 WORKER_SESSION_REPO="$tmp/repo17b" HEADED_ARM_LOCK_DIR="$d17b/locks" HEADED_ARM_PROC="$d17b/proc" \
-  bash "$SCRIPT" --profile worker-impl "HIMMEL-3334-leg" "$d17b_doc" "$d17b/signal-never" "$PAST" "$d17b/log" "claude-sonnet-5" >/dev/null 2>&1 || true
+  bash "$SCRIPT" --profile worker-impl "HIMMEL-3334-worker" "$d17b_doc" "$d17b/signal-never" "$PAST" "$d17b/log" "claude-sonnet-5" >/dev/null 2>&1 || true
 wait_record "$d17b" || true
 d17b_doc_canon="$(cd -P "$(dirname "$d17b_doc")" && pwd -P)/$(basename "$d17b_doc")"
 check "HIMMEL-3698: a worker's settings grant Edit on its OWN doc" \
@@ -3373,10 +3373,10 @@ contains "29-once: launch log carries the real short id from the confirming cens
 # WORKER_SESSION_PROFILE_PREFACE, and WORKER_SESSION_PROFILE_MCP_CONFIG since worker-impl declares
 # mcpServers) plus the always-on worker markers (HIMMEL_CONSOLE_LEG,
 # IMPL_GUARD_OK, INLINE_IMPL_OK, HIMMEL_LEAN_WORKER_SESSION).
-out31a="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg-31a some/doc.md /tmp/nosig 99999999999 "$tmp/leg31a.log" claude-sonnet-5 2>&1)"
+out31a="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-31a some/doc.md /tmp/nosig 99999999999 "$tmp/leg31a.log" claude-sonnet-5 2>&1)"
 lenv29a="$(printf '%s\n' "$out31a" | grep '^headed-arm-worker: lane=')"
 contains "31a launcher-env carries WORKER_SESSION_PROFILE_SETTINGS=" "$lenv29a" "WORKER_SESSION_PROFILE_SETTINGS=$tmp/HIMMEL-9999-leg-31a.leg-settings.json"
-contains "31a launcher-env carries WORKER_SESSION_PROFILE_PREFACE=" "$lenv29a" "WORKER_SESSION_PROFILE_PREFACE=$tmp/HIMMEL-9999-leg-31a.worker-preface.md"
+contains "31a launcher-env carries WORKER_SESSION_PROFILE_PREFACE=" "$lenv29a" "WORKER_SESSION_PROFILE_PREFACE=$tmp/HIMMEL-9999-worker-31a.worker-preface.md"
 contains "31a launcher-env carries WORKER_SESSION_PROFILE_MCP_CONFIG=" "$lenv29a" "WORKER_SESSION_PROFILE_MCP_CONFIG=$tmp/HIMMEL-9999-leg-31a.leg-mcp.json"
 contains "31a launcher-env carries HIMMEL_CONSOLE_LEG=1" "$lenv29a" "HIMMEL_CONSOLE_LEG=1"
 contains "31a launcher-env carries IMPL_GUARD_OK=1" "$lenv29a" "IMPL_GUARD_OK=1"
@@ -3723,9 +3723,9 @@ check "34o RED control: the reverted launcher refuses instead of running at medi
 # that drops the export (see PR description for the scratch RED run).
 primary35="$tmp/primary35"
 mkdir -p "$primary35/handovers" && git -C "$primary35" init -q
-d35="$tmp/c35"; mk_launch_stubs "$d35" "HIMMEL-3545-leg"; mkdir -p "$tmp/repo35"
+d35="$tmp/c35"; mk_launch_stubs "$d35" "HIMMEL-3545-worker"; mkdir -p "$tmp/repo35"
 doc35_dir="$tmp/legdoc35"; mkdir -p "$doc35_dir"
-doc35="$doc35_dir/HIMMEL-3545-leg.md"
+doc35="$doc35_dir/HIMMEL-3545-worker.md"
 fx_brief '# fixture doc outside the self-resolved root' > "$doc35"
 rc=0
 ( cd "$primary35" && \
@@ -3733,7 +3733,7 @@ rc=0
   HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d35/konsole" PGREP_CMD="$d35/pgrep" \
   WORKER_SESSION_REPO="$tmp/repo35" HEADED_ARM_LOCK_DIR="$d35/locks" HEADED_ARM_PROC="$d35/proc" \
-    bash "$SCRIPT" --profile worker-impl "HIMMEL-3545-leg" "$doc35" "$d35/signal-never" "$PAST" "$d35/log" "claude-sonnet-5" \
+    bash "$SCRIPT" --profile worker-impl "HIMMEL-3545-worker" "$doc35" "$d35/signal-never" "$PAST" "$d35/log" "claude-sonnet-5" \
 ) >/dev/null 2>&1 || rc=$?
 wait_record "$d35" || true
 settings35="$d35/HIMMEL-3545-leg.leg-settings.json"
@@ -3752,23 +3752,23 @@ check "self-resolved root, doc outside it: grant is never the repo root" \
 # is correct for a generic passthrough knob, but wrong for the per-worker
 # settings/preface/MCP triplet: this wrapper's own process may itself BE a
 # worker that is now arming a SIBLING worker (chief.sh's do_arm() comment: "this
-# process itself may BE a worker"), so leg-1's own WORKER_SESSION_PROFILE_SETTINGS/
+# process itself may BE a worker"), so worker-1's own WORKER_SESSION_PROFILE_SETTINGS/
 # WORKER_SESSION_PROFILE_PREFACE/WORKER_SESSION_PROFILE_MCP_CONFIG - both the plain env var and the
-# HEADED_ARM_LAUNCHER_ENV token leg-1's own launch added - are still live in
+# HEADED_ARM_LAUNCHER_ENV token worker-1's own launch added - are still live in
 # that shell when it arms worker-2. Before the fix, worker-2's launcher-env kept
-# leg-1's stale triplet forever, since a real worker never collides with its OWN
+# worker-1's stale triplet forever, since a real worker never collides with its OWN
 # by-NAME path (only a sibling can). Same bug class already fixed
 # for HIMMEL_CONSOLE_NAME (see the "preset token" cases above), same fix
 # (worker_env_drop_token) now applied to the triplet.
 leg1_settings37="$tmp/leg-1.leg-settings.json"
-leg1_preface37="$tmp/leg-1.worker-preface.md"
+leg1_preface37="$tmp/worker-1.worker-preface.md"
 leg1_mcp37="$tmp/leg-1.leg-mcp.json"
 leg2_settings37="$tmp/HIMMEL-9999-leg-2.leg-settings.json"
-leg2_preface37="$tmp/HIMMEL-9999-leg-2.worker-preface.md"
+leg2_preface37="$tmp/HIMMEL-9999-worker-2.worker-preface.md"
 leg2_mcp37="$tmp/HIMMEL-9999-leg-2.leg-mcp.json"
 out37="$(WORKER_SESSION_PROFILE_SETTINGS="$leg1_settings37" WORKER_SESSION_PROFILE_PREFACE="$leg1_preface37" WORKER_SESSION_PROFILE_MCP_CONFIG="$leg1_mcp37" \
   HEADED_ARM_LAUNCHER_ENV="WORKER_SESSION_PROFILE_SETTINGS=$leg1_settings37 WORKER_SESSION_PROFILE_PREFACE=$leg1_preface37 WORKER_SESSION_PROFILE_MCP_CONFIG=$leg1_mcp37 KEEP_ME=1" \
-  bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg-2 some/doc.md /tmp/nosig 99999999999 "$tmp/HIMMEL-9999-leg-2.log" claude-sonnet-5 2>&1)"
+  bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker-2 some/doc.md /tmp/nosig 99999999999 "$tmp/HIMMEL-9999-worker-2.log" claude-sonnet-5 2>&1)"
 lenv37="$(printf '%s\n' "$out37" | grep '^headed-arm-worker: lane=')"
 contains "37 worker 2's launcher-env names its OWN settings file" "$lenv37" "WORKER_SESSION_PROFILE_SETTINGS=$leg2_settings37"
 not_contains "37 worker 2's launcher-env does not keep worker 1's stale settings file" "$lenv37" "WORKER_SESSION_PROFILE_SETTINGS=$leg1_settings37"
@@ -3783,7 +3783,7 @@ contains "37 an unrelated sibling launcher-env token still survives" "$lenv37" "
 # name this run - here, "mcp-none" (registered above, case 18d's own fixture:
 # no mcpServers field) - never calls worker_propagate_env WORKER_SESSION_PROFILE_MCP_CONFIG
 # at all, so a per-site worker_env_drop_token alone (only reachable INSIDE the
-# `mcpServers != null` branch) would leave leg-1's stale plain var AND token
+# `mcpServers != null` branch) would leave worker-1's stale plain var AND token
 # live. Worse than a stale value: the real-launch write-if-set block further
 # down reads the stale plain WORKER_SESSION_PROFILE_MCP_CONFIG as "this worker has an mcp
 # config" and then references $MCP_CONFIG_JSON, which THIS worker's run never
@@ -4660,8 +4660,8 @@ printf -- '---\ntemplate_version: 3\n---\n> **Prior art:** none found (qmd -c ji
 mkdir -p "$tmp/repo43"
 body43="$(sed '1,/^---$/d' "$doc43" | sed '1,/^---$/d')"
 for i in 1 2; do
-  d43="$tmp/c43-$i"; mk_launch_stubs "$d43" "HIMMEL-43-leg$i"
-  some_doc="$doc43" run_worker "$d43" "$tmp/repo43" "HIMMEL-43-leg$i" "claude-sonnet-5" >/dev/null 2>&1 || true
+  d43="$tmp/c43-$i"; mk_launch_stubs "$d43" "HIMMEL-43-worker$i"
+  some_doc="$doc43" run_worker "$d43" "$tmp/repo43" "HIMMEL-43-worker$i" "claude-sonnet-5" >/dev/null 2>&1 || true
   wait_record "$d43" || true
 done
 sids43="$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$doc43" | sed -n 's/^session_ids: *//p')"
@@ -4875,13 +4875,13 @@ vm_ok="$tmp/vm-brief-ok.md"; fx_brief '# fixture brief' 'Live proof on ubuntu_ne
 vm_station="$tmp/vm-brief-station.md"; fx_brief '# fixture brief' 'Run it on win2.' > "$vm_station"
 vm_sub="$tmp/vm-brief-sub.md"; fx_brief '# fixture brief' 'Run it on my_ubuntu_new_x.' > "$vm_sub"
 for pair in "none:$vm_novm" "station:$vm_station" "substring:$vm_sub"; do
-  rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile worker-vm HIMMEL-9999-leg "${pair#*:}" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+  rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile worker-vm HIMMEL-9999-worker "${pair#*:}" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
   check "worker-vm brief naming ${pair%%:*} test VM: refused" "$rc" "2"
   contains "worker-vm brief naming ${pair%%:*} test VM: refusal text" "$out" "names no registered test VM"
 done
-rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile worker-vm HIMMEL-9999-leg "$vm_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile worker-vm HIMMEL-9999-worker "$vm_ok" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "worker-vm brief naming ubuntu_new: accepted" "$rc" "0"
-rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-leg "$vm_novm" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(HEADED_ARM_WORKER_VMS_JSON="$vm_json" bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-9999-worker "$vm_novm" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "worker-impl is not subject to the VM-name check" "$rc" "0"
 
 # --- 46. one bus-idle-waker per headed worker, with that worker's --name, --service
@@ -5085,11 +5085,11 @@ some_doc="$some_doc_47"
 # (unset or empty = byte-identical argv); headed-arm-worker.sh sets it to the
 # session name on a native, non-consult, non-headless profiled launch only.
 rm -f "$tmp/shim-argv"
-WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL=HIMMEL-9999-leg \
-  bash "$SHIM" --model claude-sonnet-5 -n HIMMEL-9999-leg "load doc" || true
+WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL=HIMMEL-9999-worker \
+  bash "$SHIM" --model claude-sonnet-5 -n HIMMEL-9999-worker "load doc" || true
 check "48a shim: WORKER_SESSION_REMOTE_CONTROL prepends --remote-control <name>, rest of argv in order" \
   "$(cat "$tmp/shim-argv" 2>/dev/null || true)" \
-  "[--remote-control][HIMMEL-9999-leg][--model][claude-sonnet-5][-n][HIMMEL-9999-leg][load doc]"
+  "[--remote-control][HIMMEL-9999-worker][--model][claude-sonnet-5][-n][HIMMEL-9999-worker][load doc]"
 rm -f "$tmp/shim-argv"
 WORKER_SESSION_CLAUDE_BIN="$shim_argv" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL='' \
   bash "$SHIM" --model claude-sonnet-5 "load doc" || true
@@ -5101,25 +5101,25 @@ rm -f "$tmp/shim-argv"
 check "48c shim: WORKER_SESSION_REMOTE_CONTROL unset -> argv byte-identical" \
   "$(cat "$tmp/shim-argv" 2>/dev/null || true)" "[--model][claude-sonnet-5][load doc]"
 
-d48="$tmp/c48"; mk_launch_stubs "$d48" "HIMMEL-8320-leg"; mkdir -p "$tmp/repo48"
+d48="$tmp/c48"; mk_launch_stubs "$d48" "HIMMEL-8320-worker"; mkdir -p "$tmp/repo48"
 rc=0
 IMPL_GUARD_OK='' WORKER_SESSION_REMOTE_CONTROL='' \
 HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
 HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
 KONSOLE_CMD="$d48/konsole" PGREP_CMD="$d48/pgrep" \
 WORKER_SESSION_REPO="$tmp/repo48" HEADED_ARM_LOCK_DIR="$d48/locks" HEADED_ARM_PROC="$d48/proc" \
-  bash "$SCRIPT" --profile worker-impl "HIMMEL-8320-leg" "$some_doc" "$d48/signal-never" "$PAST" "$d48/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+  bash "$SCRIPT" --profile worker-impl "HIMMEL-8320-worker" "$some_doc" "$d48/signal-never" "$PAST" "$d48/log" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d48" || true
 check "48d full native --profile launch: exit 0" "$rc" "0"
 contains "48e full native --profile launch: the session name reaches the launched env as WORKER_SESSION_REMOTE_CONTROL" \
-  "$(cat "$d48/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL=HIMMEL-8320-leg"
+  "$(cat "$d48/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL=HIMMEL-8320-worker"
 not_contains "48f full --lane claudex launch carries no Remote Control" "$(cat "$d16/env-record" 2>/dev/null || true)" "WORKER_SESSION_REMOTE_CONTROL"
 
-rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-8320-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
-contains "48g dry-run native --profile: reports remote-control=<session name>" "$out" "remote-control=HIMMEL-8320-leg"
-rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --profile worker-impl HIMMEL-8320-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --profile worker-impl HIMMEL-8320-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+contains "48g dry-run native --profile: reports remote-control=<session name>" "$out" "remote-control=HIMMEL-8320-worker"
+rc=0; out="$(bash "$SCRIPT" --dry-run --lane claudex --profile worker-impl HIMMEL-8320-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
 not_contains "48h dry-run --lane claudex --profile: no Remote Control" "$out" "remote-control="
-rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-8320-leg some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+rc=0; out="$(bash "$SCRIPT" --dry-run --no-profile HIMMEL-8320-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 not_contains "48i dry-run --no-profile: no Remote Control (no shim carries it)" "$out" "remote-control="
 
 # 48j-48k. An ambient WORKER_SESSION_REMOTE_CONTROL, plain or inside a preset
@@ -5152,7 +5152,7 @@ for bin48 in claude-codex claude-openrouter claude-deepseek; do
   chmod 755 "$tmp/lanebin48/$bin48"
   rm -f "$tmp/lane48-argv"
   rc=0
-  WORKER_SESSION_CLAUDE_BIN="$tmp/lanebin48/$bin48" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL=HIMMEL-8320-leg \
+  WORKER_SESSION_CLAUDE_BIN="$tmp/lanebin48/$bin48" WORKER_SESSION_PROFILE_SETTINGS='' WORKER_SESSION_PROFILE_PREFACE='' WORKER_SESSION_PROFILE_MCP_CONFIG='' WORKER_SESSION_REMOTE_CONTROL=HIMMEL-8320-worker \
     bash "$SHIM" --model m "load doc" >/dev/null 2>&1 || rc=$?
   check "48l shim: Remote Control on a $bin48 lane is refused (exit 2)" "$rc" "2"
   check "48l shim: $bin48 is never exec'd with the flag" "$([ -e "$tmp/lane48-argv" ] && echo ran || echo none)" "none"

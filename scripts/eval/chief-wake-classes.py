@@ -10,7 +10,7 @@ ones by letter. A wake is a user record that is not all tool_result; its episode
 wake. Cost (eq) per request, de-duplicated by message id, is the handover-cost.py price (no second table).
 A wake is `escalate` when any of its tools carries a judgement marker (an Agent dispatch; go.sh, verdict-go.sh,
 write-verdict.sh, headed-arm-leg.sh; a Jira create/comment/transition/edit/link; a SendMessage with a RETASK
-token or a ruling word; a Write/Edit to a brief, leg, RESUME, evidence or verdict path), else `relay-only`.
+token or a ruling word; a Write/Edit to a brief, worker, RESUME, evidence or verdict path), else `relay-only`.
 Operator-facing wakes (operator text, session-load, local commands, WAKE telegram) are not machine wakes.
 
 ponytail: the judgement regex is broad, so relay-only is a lower bound; upgrade path = hand-label a sample.
@@ -50,8 +50,8 @@ JUDGE_BASH = re.compile(r"\bgo\.sh\b|verdict-go\.sh|write-verdict\.sh|headed-arm
                         r"jira/dist/index\.js\s+(create|comment|transition|edit|link)")
 RULING = re.compile(r"\b(GO|HOLD|NO-GO|ruling|concur|approved|defer|narrow|halt)\b", re.I)
 TOKEN = re.compile(r"\b[A-Z]{1,3}-N\d+-[0-9a-f]{6,}")
-JUDGE_PATH = re.compile(r"brief|RESUME|evidence|verdict|-leg|/N\d+", re.I)
-SCRIPT = re.compile(r"(console-wait\.sh|chief-wait\.sh|leg-event\.sh|close-wrapped-leg\.sh|wrap-merged\.sh|"
+JUDGE_PATH = re.compile(r"brief|RESUME|evidence|verdict|-worker|/N\d+", re.I)
+SCRIPT = re.compile(r"(console-wait\.sh|chief-wait\.sh|worker-event\.sh|close-wrapped-leg\.sh|wrap-merged\.sh|"
                     r"ready-check\.sh|check-ci\.sh|verdict-go\.sh|board\.mjs|action-zero\.sh|headed-arm-leg\.sh|"
                     r"gen-briefs\.py|merge-on-green\.sh|relay-batch\.sh|tick\.sh|ops-run\.sh|run-suite\.sh|"
                     r"console\.sh|chief\.sh)")

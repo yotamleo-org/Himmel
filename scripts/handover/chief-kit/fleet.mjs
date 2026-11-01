@@ -12,7 +12,7 @@
 //
 // READ-ONLY. The server binds 127.0.0.1 (there is no flag to change that), answers
 // GET/HEAD only, and has no route that runs anything or writes anywhere. Sources:
-// the chief doc's `## Live state` legs: block, each worker doc's `## Results`, the
+// the chief doc's `## Live state` workers: block, each worker doc's `## Results`, the
 // queue-lock sweep, /proc, usage-preflight.sh, gh, and the launch logs. Nonces, lock
 // tokens and token spans are redacted from every string BEFORE it is put in the
 // snapshot (so the JSON endpoint is as clean as the page); the page renders with
@@ -22,7 +22,7 @@
 // konsole launch logs). Node ESM, no dependencies.
 //
 // ponytail: board.mjs exports nothing and runs on import, so its parsers (the
-// legs: block, the PR-bullet grammar, the redaction patterns, ciOf) are re-stated
+// workers: block, the PR-bullet grammar, the redaction patterns, ciOf) are re-stated
 // here, not imported; a change to one wants the same change in the other.
 // ponytail: uptime assumes CLK_TCK=100 (every Linux the kit runs on); a worker's
 // status age is the bullet's own HH:MM against today's clock, so a bullet from
@@ -179,7 +179,7 @@ const ticketOf = (name) => (/^([A-Z][A-Z0-9]*-\d+)/.exec(name) || [])[1] || '';
 const LABEL_RE = /^N\d+[a-z]*$/;
 
 // ---------------------------------------------------------------- chief doc
-// The legs: block, read by tick.sh's grammar (mirrored in board.mjs): an entry is a
+// The workers: block, read by tick.sh's grammar (mirrored in board.mjs): an entry is a
 // backtick span of exactly four non-empty colon fields <label>:<nonce>:<lock>:<pid>.
 // Only the label and the pid are kept; the nonce picks the doc, and is never rendered.
 const WORKER_SESSION_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
@@ -482,7 +482,7 @@ const buildSnapshot = async () => {
         const launch = (() => { const f = findLaunchLog(logs, names.length ? names : [stem]); return f ? parseLaunch(f) : null; })();
         const lockPid = lk ? Number((/pid(\d+)$/.exec(lk.session || '') || [])[1]) || null : null;
         // The daemon's row for this session (by name) is authoritative for a background
-        // leg: its pid is the real session, not the launcher's wrapper.
+        // worker: its pid is the real session, not the launcher's wrapper.
         const ag = agents ? (names.length ? names : [stem]).map((n) => agents.get(n)).find(Boolean) || null : null;
         const agBg = !!ag && ag.kind === 'background';
         // A finished bg row says nothing about a live process (its pid may be reused or
@@ -557,7 +557,7 @@ const buildSnapshot = async () => {
         fleet: bankInfo ? bankInfo.fleet : null,
         bank: bankInfo ? bankInfo.bank : null,
         warnings,
-        legs: workers,
+        workers: workers,
     });
 };
 
@@ -645,7 +645,7 @@ ul { list-style:none; margin:0; padding:0; }
 <section aria-labelledby="h-workers">
 <h2 id="h-workers">Workers</h2>
 <div class="hdr" aria-hidden="true"><span>Worker</span><span>Runtime</span><span>Process</span><span>Lock</span><span>Latest status</span><span>PR · CI</span><span>Session log</span></div>
-<ul id="legs" class="rows"></ul>
+<ul id="workers" class="rows"></ul>
 </section>
 </main>
 <script type="application/json" id="snap">${embed(snap)}</script>
@@ -680,7 +680,7 @@ function render(s, note) {
   document.getElementById('s-fleet').textContent = s.fleet ? s.fleet.live + '/' + s.fleet.cap : '?';
   document.getElementById('s-5h').textContent = s.bank && s.bank.fiveHour !== null ? s.bank.fiveHour + '%' : '?';
   document.getElementById('s-7d').textContent = s.bank && s.bank.sevenDay !== null ? s.bank.sevenDay + '%' : '?';
-  const need = s.legs.filter((l) => l.attention.length);
+  const need = s.workers.filter((l) => l.attention.length);
   document.getElementById('s-attn').textContent = String(need.length);
   document.getElementById('s-when').textContent = clock(s.generatedAt);
   document.title = (need.length ? '(' + need.length + ') ' : '') + 'Fleet status';
@@ -693,10 +693,10 @@ function render(s, note) {
     for (const l of need) for (const a of l.attention) { const li = el('li'); li.append(el('b', null, l.label), document.createTextNode(' ' + a.text), el('div', 'sub', l.status ? l.status.text : '')); ul.append(li); }
     attn.append(ul);
   }
-  const workers = document.getElementById('legs');
+  const workers = document.getElementById('workers');
   workers.replaceChildren();
-  if (!s.legs.length) workers.append(el('li', 'none', 'No workers found in the console doc\'s Live state.'));
-  for (const l of s.legs) workers.append(row(l));
+  if (!s.workers.length) workers.append(el('li', 'none', 'No workers found in the console doc\'s Live state.'));
+  for (const l of s.workers) workers.append(row(l));
   const b = document.getElementById('banner');
   const msgs = [note].concat(s.warnings).filter(Boolean);
   b.hidden = !msgs.length;

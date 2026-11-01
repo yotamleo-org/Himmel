@@ -461,7 +461,7 @@ def main():
 
     comps = list(comps.values())
     summary = summarize(comps, workers, N)
-    out = {"window": N, "legs": len(workers), "transcripts": sum(l["transcripts"] for l in workers.values()),
+    out = {"window": N, "workers": len(workers), "transcripts": sum(l["transcripts"] for l in workers.values()),
            "compactions": comps, "summary": summary}
     if a.simulate:
         posts = [c["cost"]["post_ctx"] for c in comps if c["cost"]["post_ctx"]]
@@ -476,7 +476,7 @@ def main():
                     per.append({"leg": s["leg"], "profile": s["profile"], "model": s["model"], "turns": s["turns"],
                                 "actual": s["actual"], "actual_compactions": s["actual_compactions"],
                                 "b": r["b"], "c": r["c"]})
-            out["simulate"].append({"ceiling": C, "post_ctx_median": post_med, "legs": per,
+            out["simulate"].append({"ceiling": C, "post_ctx_median": post_med, "workers": per,
                                     "by_profile": sim_rollup(per)})
     if a.json:
         print(json.dumps(out, indent=2))
@@ -518,9 +518,9 @@ def sim_rollup(per):
     out = {}
     for p in per:
         for g in ("all", "profile:" + p["profile"]):
-            r = out.setdefault(g, {"legs": 0, "actual": 0, "b": 0, "c": 0, "b_events": 0, "c_events": 0,
+            r = out.setdefault(g, {"workers": 0, "actual": 0, "b": 0, "c": 0, "b_events": 0, "c_events": 0,
                                    "a_compactions": 0, "legs_with_hop_b": 0})
-            r["legs"] += 1
+            r["workers"] += 1
             r["actual"] += p["actual"]
             r["b"] += p["b"]["cost_eq"]
             r["c"] += p["c"]["cost_eq"]
@@ -533,8 +533,8 @@ def sim_rollup(per):
 
 def print_text(out):
     N = out["window"]
-    print("legs %d, transcripts %d, compactions %d, window %d turns" % (
-        out["legs"], out["transcripts"], len(out["compactions"]), N))
+    print("workers %d, transcripts %d, compactions %d, window %d turns" % (
+        out["workers"], out["transcripts"], len(out["compactions"]), N))
     print("\nper 100 turns, post window / control window, over the paired compactions")
     print("%-22s %5s %6s %7s  %s" % ("group", "comp", "paired", "any-def", "  ".join(
         "%s post/ctl" % k for k in CLASSES)))
@@ -560,7 +560,7 @@ def print_text(out):
                                                      "a-comp", "b-hops", "c-comp"))
         for g, r in sorted(s["by_profile"].items()):
             print("%-14s %7d %11s %11s %11s %7d %7d %7d" % (
-                g, r["legs"], ab.fmt_tok(r["actual"]), ab.fmt_tok(r["b"]), ab.fmt_tok(r["c"]),
+                g, r["workers"], ab.fmt_tok(r["actual"]), ab.fmt_tok(r["b"]), ab.fmt_tok(r["c"]),
                 r["a_compactions"], r["b_events"], r["c_events"]))
 
 

@@ -85,7 +85,7 @@ bash "$SCRIPT" list "$tmp/v2.fleet.json" >/dev/null 2>&1; rc=$?
 check '6. an unknown schema version is refused' 1 "$rc"
 for bad in '{"doc":""}' '{"doc":"rel/x.md"}' '{"doc":7}' '{}' '{"doc":"/a b.md"}' '{"doc":"/a*.md"}'; do
     printf '{"schema":1,"legs":[%s]}\n' "$bad" > "$tmp/leg.fleet.json"
-    bash "$SCRIPT" list "$tmp/leg.fleet.json" >/dev/null 2>&1; rc=$?
+    bash "$SCRIPT" list "$tmp/worker.fleet.json" >/dev/null 2>&1; rc=$?
     check "6. a worker entry $bad is refused (tick would read it as a smaller fleet)" 1 "$rc"
 done
 

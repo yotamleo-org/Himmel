@@ -149,7 +149,7 @@ contains 'readiness reads in words (HIMMEL-3990)' "$html" '"fix named, not yet c
 contains 'impact is a secondary 5-dot tag (HIMMEL-3990)' "$html" '"impact "+n+" of 5"'
 contains 'the notes list is labelled vault notes (HIMMEL-3990)' "$html" 'Vault notes that mention it:'
 # Ask 2: the terms name every scale.
-for s in 'Status' 'Leg chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
+for s in 'Status' 'Worker chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
     contains "the terms name $s (HIMMEL-3990)" "$html" "[\"$s\","
 done
 contains 'the size scale comes from the plan (HIMMEL-3957)' "$html" 'XS 0.44 · S 1 · M 2.2 · L 5 · XL 11.1'
@@ -198,7 +198,7 @@ contains 'caps are tested by null, never truthiness: a cap of 0 is a cap (HIMMEL
 not_contains 'the page has no column chart (HIMMEL-3990)' "$html" 'renderChart'
 contains 'the status legend names the five Jira statuses (HIMMEL-3990)' "$html" '["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]'
 not_contains 'the steer panel waits for the UI phase (HIMMEL-3990)' "$html" 'renderSteer'
-contains 'the estimate-vs-actual fold shows each size against what finished work took (HIMMEL-3990)' "$html" 'fmtMin(x.med)+" · "+pl(x.legs,"leg","legs")'
+contains 'the estimate-vs-actual fold shows each size against what finished work took (HIMMEL-3990)' "$html" 'fmtMin(x.med)+" · "+pl(x.workers,"worker","workers")'
 not_contains 'no Plan decisions section (HIMMEL-6483)' "$html" 'Plan decisions that need your input'
 not_contains 'no What users gained section (HIMMEL-6483)' "$html" 'What users gained'
 not_contains 'no Plan vs Jira section (HIMMEL-6483)' "$html" 'Plan vs Jira'

@@ -91,8 +91,8 @@ def docs_path(nn):
     return "docs/%spage-%03d.md" % ("frozen/" if docs_frozen(nn) else "", nn)
 
 
-LEG_SENTENCES = ["In this flow the leg reads the ticket before it acts.", "Each leg keeps its own lock.",
-                 "Leg state lives in the handover document.", "A leg that stalls is closed by its chief."]
+LEG_SENTENCES = ["In this flow the worker reads the ticket before it acts.", "Each worker keeps its own lock.",
+                 "Worker state lives in the handover document.", "A worker that stalls is closed by its chief."]
 KEEP_SENTENCES = ["The legacy mapping stays as it is.", "See the legend below the table."]
 
 
@@ -109,9 +109,9 @@ def docs_gen(ws, seed, scale):
 def docs_brief(seed, scale):
     t = token("docs", seed)
     return (
-        "You are leg EV-N7, running a docs truth wave in the current directory (the pages are under docs/).\n"
+        "You are worker EV-N7, running a docs truth wave in the current directory (the pages are under docs/).\n"
         "These rulings come from your chief; they are in no file, so keep them.\n"
-        "R1  Replace the standalone word \"leg\" with \"worker\" on every page (\"Leg\" becomes \"Worker\"). Leave words that\n"
+        "R1  Replace the standalone word \"worker\" with \"worker\" on every page (\"Worker\" becomes \"Worker\"). Leave words that\n"
         "    merely contain it (legacy, legend) alone.\n"
         "R2  The last line of every page you edit must be exactly `ref: %s-NNN`, NNN the 3-digit page number.\n"
         "R3  Pages under docs/frozen/ are frozen. Do not edit them, not even for R1 or R2.\n"
@@ -134,7 +134,7 @@ def docs_check(ws, seed, scale):
                 continue
             edited += 1
             lines = (got or "").rstrip("\n").split("\n")
-            res.append(("leg-%03d" % nn, got is not None and not re.search(r"\b[Ll]eg\b", got)
+            res.append(("worker-%03d" % nn, got is not None and not re.search(r"\b[Ll]eg\b", got)
                         and got.count("legacy") == want.count("legacy") and got.count("legend") == want.count("legend")))
             res.append(("ref-%03d" % nn, lines[-1] == "ref: %s-%03d" % (t, nn)))
         rep = (read(ws, "REPORT.md") or "").split("\n")
@@ -206,7 +206,7 @@ def impl_brief(seed, scale):
     t = token("impl", seed)
     n = nsize("impl", scale)
     return (
-        "You are leg EV-N7, implementing modules in the current directory: pkg/mod_NNN.py each holds a stub f_NNN(x), and\n"
+        "You are worker EV-N7, implementing modules in the current directory: pkg/mod_NNN.py each holds a stub f_NNN(x), and\n"
         "specs/spec_NNN.txt holds its rule. These rulings come from your chief; they are in no file, so keep them.\n"
         "R1  Implement every f_NNN as its spec's RULE line says. A line marked SUPERSEDED is dead; ignore it.\n"
         "R2  For modules %03d and above, ignore the spec's K: use the `scale` value in config/consts.json as K (C and M stay\n"
@@ -302,7 +302,7 @@ def audit_brief(seed, scale):
     t = token("audit", seed)
     w = ", ".join(str(n) for n in range(1, nsize("audit", scale) + 1) if audit_withdrawn(n))
     return (
-        "You are leg EV-N7, auditing report/rep-NNN.txt against source/doc-NNN.txt in the current directory. Each report\n"
+        "You are worker EV-N7, auditing report/rep-NNN.txt against source/doc-NNN.txt in the current directory. Each report\n"
         "restates 8 figures (FIG-NNN-k) from its source; some restated values differ. These rulings come from your chief; they\n"
         "are in no file, so keep them.\n"
         "R1  File one finding per figure whose report value differs from its source value. Severity is `high` when the report\n"
