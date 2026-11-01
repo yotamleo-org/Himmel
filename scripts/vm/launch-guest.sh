@@ -173,7 +173,8 @@ T0="$(date +%s)"
 CPID=$!
 trap 'kill "$CPID" 2>/dev/null' TERM INT HUP
 RC=0
-while kill -0 "$CPID" 2>/dev/null; do wait "$CPID"; RC=$?; done
+wait "$CPID" || RC=$?
+while kill -0 "$CPID" 2>/dev/null; do wait "$CPID" || RC=$?; done
 T1="$(date +%s)"
 cat "$OUT"
 if LEDGER="$(bash "$HERE/vm-cost.sh" --path 2>/dev/null)" && command -v jq >/dev/null 2>&1; then
