@@ -1,0 +1,16 @@
+diff --git a/scripts/tools/archive-dir.sh b/scripts/tools/archive-dir.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/tools/archive-dir.sh
+@@ -0,0 +1,11 @@
++#!/usr/bin/env bash
++# archive-dir.sh - pack a directory into <out-dir>/<name>.tgz.
++# usage: archive-dir.sh <dir> <out-dir>
++set -uo pipefail
++
++src="${1:?usage: archive-dir.sh <dir> <out-dir>}"
++out="${2:?usage: archive-dir.sh <dir> <out-dir>}"
++name="$(basename "$src")"
++
++mkdir -p "$out"
++tar -czf "$out/$name.tgz" -C "$src/.." "$name"

@@ -1,0 +1,11 @@
+diff --git a/scripts/hooks/require-ticket-id.sh b/scripts/hooks/require-ticket-id.sh
+--- a/scripts/hooks/require-ticket-id.sh
++++ b/scripts/hooks/require-ticket-id.sh
+@@ -4,6 +4,7 @@
+ set -uo pipefail
+
+ msg_file="${1:-}"
++[ -r "$msg_file" ] || exit 0
+ subject="$(head -n 1 "$msg_file")"
+
+ if ! printf '%s\n' "$subject" | grep -Eq '\[?[A-Z][A-Z0-9]+-[0-9]+\]?'; then
