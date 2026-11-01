@@ -213,5 +213,40 @@ check "the saved digest marker carries the stamped profile too" 'jq -e "all(.too
 lrec --digest "$TMP/lp-$LP.json" --launch-name ../../etc/passwd >/dev/null 2>&1; rcp=$?
 check "a launch name with a path separator is refused" '[ "$rcp" != 0 ]'
 
+echo "12. the daily tool-health record: validated row, one per day, and the eval feedback step"
+THR="$HERE/tool_health_record.py"; FB="$HERE/../lib/eval_feedback.py"; RULES="$HERE/../feedback-rules.json"
+TL="$TMP/th-eval.jsonl"
+thbody() { jq -n --arg day "$1" --arg st "$2" '{day: $day, status: $st, n: 10, config: {count_definition_version: 1, day_window: "utc-day", population: "all-production-sessions", wiring: "w1"}, metrics: {calls: 10, "guard.g.deny_rate": 0.3}, cases: {"guard:g": {denials: 3, eligible_calls: 10}}, meta: {audit: {missing_sources: []}}}'; }
+thw() { thbody "$1" "$2" >"$TMP/th-body.json"; python3 "$THR" write --body "$TMP/th-body.json" --ledger "$TL"; }
+newest_ok_day() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import eval_runs; print([r for r in eval_runs.read_rows(sys.argv[2]) if r["eval"] == "tool-health" and r["status"] == "ok"][-1]["meta"]["day"])' "$HERE/../lib" "$TL" 2>/dev/null; }
+printf '%s\n' '{"v": 1, "rules": [{"eval": "tool-health", "metric": "guard.*.deny_rate", "threshold": 0.1, "better": "lower", "absent": null, "change": "learning", "target": "x.md"}]}' >"$TMP/th-rules.json"
+fbrun() { python3 "$FB" run --ledger "$TL" --changes "$1" --rules "$2"; }
+thw 2026-10-27 ok >"$TMP/th1.out" 2>&1 || bad "the first day writes: $(head -c 300 "$TMP/th1.out")"
+check "one validated tool-health row" '[ "$(lines "$TL")" = 1 ] && python3 "$EVR" validate "$TL" >/dev/null'
+check "the envelope: eval, ok, n, no interval, one rep, the day in meta" 'jq -e ".eval == \"tool-health\" and .status == \"ok\" and .n == 10 and .reps == 1 and .ci == {} and .ci_level == null and .ci_method == null and .meta.day == \"2026-10-27\" and .cases.\"guard:g\".denials == 3" "$TL" >/dev/null'
+thw 2026-10-27 ok >"$TMP/th2.out" 2>&1
+check "the same day twice appends nothing" '[ "$(lines "$TL")" = 1 ] && grep -q "already\|exists" "$TMP/th2.out"'
+thw 2026-10-28 ok >/dev/null 2>&1
+check "a second day is a second row of the same series (same confighash)" '[ "$(lines "$TL")" = 2 ] && [ "$(jq -s "map(.confighash) | unique | length" "$TL")" = 1 ]'
+check "the config carries neither the date nor a count" '! jq -c .config "$TL" | grep -q "2026-\|\"n\"\|denials"'
+thw 2026-10-20 ok >/dev/null 2>&1
+check "a late backfill is stored partial with its revision, never ok" 'jq -e "select(.meta.day == \"2026-10-20\") | .status == \"partial\" and .meta.revision == \"backfill\"" "$TL" >/dev/null'
+check "the newest ok row is still the newest day, though the backfill was written last" '[ "$(newest_ok_day)" = 2026-10-28 ]'
+thw 2026-10-20 ok >/dev/null 2>&1
+check "the backfilled day twice appends nothing" '[ "$(lines "$TL")" = 3 ]'
+fbrun "$TMP/th-ch0.jsonl" "$RULES" >"$TMP/fb0.out" 2>&1
+check "no rule in feedback-rules.json names tool-health, so the feedback step writes nothing" '[ ! -s "$TMP/th-ch0.jsonl" ] && ! grep -q "tool-health" "$TMP/fb0.out"'
+fbrun "$TMP/th-ch1.jsonl" "$TMP/th-rules.json" >"$TMP/fb1.out" 2>&1
+check "given a rule, feedback picks the newest ok day as its baseline, not the late backfill" '[ "$(lines "$TMP/th-ch1.jsonl")" = 1 ] && jq -e ".baseline_run_id | contains(\"2026-10-28\")" "$TMP/th-ch1.jsonl" >/dev/null'
+thw 2026-10-29 partial >/dev/null 2>&1; thw 2026-10-29 partial >/dev/null 2>&1
+check "a partial day twice appends one row" '[ "$(jq -s "map(select(.meta.day == \"2026-10-29\")) | length" "$TL")" = 1 ]'
+check "a partial row is never the newest ok row" '[ "$(newest_ok_day)" = 2026-10-28 ]'
+thw 2026-10-29 ok >/dev/null 2>&1
+check "an ok body over that partial day is the finalized revision" '[ "$(jq -s "map(select(.meta.day == \"2026-10-29\")) | map(.status) | join(\",\")" "$TL" | tr -d \")" = "partial,ok" ] && [ "$(newest_ok_day)" = 2026-10-29 ]'
+check "every run_id is unique" '[ "$(jq -s "map(.run_id) | length - (unique | length)" "$TL")" = 0 ]'
+printf '%s\n' '{"day": "2026-10-30", "status": "ok", "extra": 1, "config": {}, "metrics": {"a": 1}}' >"$TMP/th-bad.json"
+python3 "$THR" write --body "$TMP/th-bad.json" --ledger "$TL" >/dev/null 2>&1; rcb=$?
+check "an unknown body key is refused (exit 2) and nothing is appended" '[ "$rcb" = 2 ] && [ "$(jq -s "map(select(.meta.day == \"2026-10-30\")) | length" "$TL")" = 0 ]'
+
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
