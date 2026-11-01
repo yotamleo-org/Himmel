@@ -29,7 +29,7 @@ wf() { jq -nc --arg u "$1" '{session_id:"s-walled",tool_name:"WebFetch",tool_inp
 run_case() {
     rm -f "$LOG"
     ERR="$TMP/err"
-    OUT=$(cd "$2" && printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" \
+    OUT=$(cd "$2" && printf '%s' "$1" | env -u WALLED_TOOLING_DIR CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" \
         CLAUDE_PROJECT_DIR="$2" WEBFETCH_WALLED_LOG="$LOG" HIMMEL_WEBFETCH_WALLED_OK=0 ${3:+"$3"} \
         sh -c "${plugin_cmd:-exit 0}" 2>"$ERR")
     RC=$?
