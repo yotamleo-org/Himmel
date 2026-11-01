@@ -572,6 +572,24 @@ rl1_run feat/rl1 4 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
 assert_eq "$rl1_rc" 4 "8429 the field defers nothing at round 4 ($rl1_out)"
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 rounds 1 and 4 write no deferral for a pre_existing Important"
 
+# A batch that holds a hardening finding is filed with that class and its reason,
+# not as polish. One with no valid reason files nothing and keeps the marker.
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+assert_eq "$rl1_rc" 0 "8429 a new batch holding a hardening Important is filed ($rl1_out)"
+rl1_args="$(tail -n 1 "$rl1_log")"
+assert_has "$rl1_args" '"--title","Review follow-ups for feat/rl1"' "8429 the batch with a hardening Important is the branch's batch residual"
+assert_has "$rl1_args" '"--fu-class","hardening"' "8429 a batch holding a hardening Important is filed as hardening, not polish"
+assert_has "$rl1_args" '"--fu-why","no-check"' "8429 the hardening batch carries the finding's fu_why"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_creates_before="$(rl1_creates)"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening)"
+assert_eq "$rl1_rc" 6 "8429 a hardening Important with no fu_why fails closed ($rl1_out)"
+assert_has "$rl1_out" '--fu-why <' "8429 the refusal names the --fu-why recovery"
+assert_eq "$(rl1_creates)" "$rl1_creates_before" "8429 a hardening batch with no fu_why files no ticket"
+assert_eq "$(rl1_marker)" kept "8429 a hardening batch with no fu_why keeps the marker"
+printf 'HIMMEL-9500\n' > "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+
 # `from` reads the round and its start point
 # under the counter lock, so it never reads a round start has half written.
 # Hold the lock as another process would: from waits, then refuses (exit 5)
@@ -605,7 +623,7 @@ assert_has "$rl1_reset_out" '.deferred-to' "8425 cr-reset moves .deferred-to asi
 assert_eq "$(rl1_key)" "" "8425 after cr-reset the branch has no remembered key"
 rl1_run feat/rl1 1 "$rl1_sug"
 assert_eq "$rl1_rc" 0 "8425 the first early close after a reset succeeds ($rl1_out)"
-assert_eq "$(rl1_creates)" 2 "8425 after a reset the next early close files a new batch residual"
+assert_eq "$(rl1_creates)" 3 "8425 after a reset the next early close files a new batch residual"
 
 # S5: a round-1 start removes the key.
 assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the post-reset close remembers its new key"

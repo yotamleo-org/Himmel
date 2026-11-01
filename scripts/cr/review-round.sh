@@ -2251,14 +2251,36 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
         rm -f "$batch_body"
         exit 5
     fi
-    # ponytail: only Suggestions and nits reach an early close, and the
-    # analysis classes each one polish, so polish is the batch's most severe
-    # class. Upgrade: when a batch can hold other classes, pass the most
-    # severe of them (escape over hardening over polish).
+    # The batch takes the most severe class it holds. Suggestions and nits are
+    # polish; a pre-existing Important may be hardening (escape never reaches a
+    # deferral), and a hardening batch needs a valid reason, taken from its first
+    # hardening finding or from --fu-why.
+    if ! batch_why="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).pending.filter(f=>f.fu_class==="hardening");const ok=h.map(f=>f.fu_why).find(w=>/^(unseen-failure|no-check|vacuous-check|no-recovery|silent-rot)$/.test(w));process.stdout.write(h.length?(ok||"invalid"):"")})')"; then
+        rm -f "$batch_body"
+        exit 5
+    fi
+    batch_class=polish
+    batch_why_args=()
+    if [ -n "$batch_why" ]; then
+        batch_class=hardening
+        if [ "$batch_why" = invalid ]; then batch_why="$fu_why_arg"; fi
+        case "$batch_why" in
+            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) batch_why_args=(--fu-why "$batch_why") ;;
+            *)
+                rm -f "$batch_body"
+                echo "review-round: the batch holds a hardening finding but none has a valid fu_why; marker remains pending" >&2
+                echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2
+                exit 6
+                ;;
+        esac
+    fi
+    # ponytail: a batch that already exists keeps the class it was filed with
+    # and only gains a comment. Upgrade: read that ticket's class and file a
+    # hardening finding on its own when the batch is polish.
     create_rc=0
     created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
         --type Task --title "Review follow-ups for $branch" --sector 'Ship loop' --labels standalone \
-        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class polish)" || create_rc=$?
+        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class "$batch_class" ${batch_why_args[@]+"${batch_why_args[@]}"})" || create_rc=$?
     rm -f "$batch_body"
     defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
     if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then

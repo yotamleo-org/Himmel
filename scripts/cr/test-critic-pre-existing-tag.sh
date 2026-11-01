@@ -43,6 +43,7 @@ mkdir -p "$repo"
     git config user.email t@t.test
     git config user.name tester
     git config commit.gpgsign false
+    git config diff.context 3
     printf 'base1\nbase2\nbase3\nbase4\nbase5\nbase6\nbase7\nbase8\nbase9\nbase10\n' > a.txt
     printf 'b1\nb2\nb3\nb4\nb5\nb6\nb7\nb8\nb9\nb10\n' > b.txt
     git add a.txt b.txt
@@ -132,7 +133,7 @@ assert_has "$out" "- [codex-11]: imp on a context line beside a deletion-only hu
 # With diff.context=10 the delta hunk of a.txt shows lines 1..11, so base line 8 was shown.
 git -C "$repo" config diff.context 10
 run_tag 2 --from "$p1"
-git -C "$repo" config --unset diff.context
+git -C "$repo" config diff.context 3
 assert_has "$out" "- [codex-2]: imp on base code far from the change [a.txt:8]" "T2b a line shown through the repository's diff.context is NOT tagged"
 assert_eq "$amends" "" "T2b a line shown through diff.context earns no amend"
 
