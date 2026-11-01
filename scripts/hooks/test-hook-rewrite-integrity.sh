@@ -2238,5 +2238,30 @@ source "$D/../lib/armor.sh"
 E
 }
 
+# Row 65: a hook source file under marketplace/plugins/himmel-ops/hooks/ is
+# pinned like a scripts/hooks one. The himmel project-lane shim for the
+# walled-host redirect runs that plugin file, and the static source walk does
+# not follow a `bash <file>` exec, so an unpinned plugin file would run
+# unchecked. An edit after the SessionStart pin must be denied.
+P65="$T/row65"
+mkdir -p "$P65/marketplace/plugins/himmel-ops/hooks"
+H65="$P65/marketplace/plugins/himmel-ops/hooks/fake-plugin-hook.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$H65"
+chmod +x "$H65"
+git -C "$P65" init -q
+git -C "$P65" -c user.email=t@t -c user.name=t add -A
+git -C "$P65" -c user.email=t@t -c user.name=t commit -q -m plugin-hook
+OUT65="$T/row65-out"
+printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$P65" HIMMEL_HOOK_INTEGRITY_DIR="$OUT65" bash "$RECORDER" >/dev/null
+printf '#!/usr/bin/env bash\nexit 0\n# tampered\n' > "$H65"
+printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$P65" HIMMEL_HOOK_INTEGRITY_DIR="$OUT65" \
+  node "$LAUNCHER" --optional "$H65" >"$T/row65.out" 2>"$T/row65.err"
+rc65=$?
+if [ "$rc65" -eq 2 ] && grep -qi 'DENY' "$T/row65.err"; then
+  ok "row 65: an edited marketplace/plugins/himmel-ops/hooks file is denied at the launcher"
+else
+  bad "row 65: expected rc=2 with a DENY message, got rc=$rc65 err=$(cat "$T/row65.err")"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

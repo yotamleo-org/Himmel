@@ -18,7 +18,7 @@ marketplace/plugins/himmel-guard/test-himmel-guard.sh	local	behaviour suite, 0 c
 marketplace/plugins/himmel-ops/hooks/test-block-agent-native-egress.sh	pr	guard
 marketplace/plugins/himmel-ops/hooks/test-block-busy-loop.sh	pr	guard
 marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-marketplace/plugins/himmel-ops/hooks/test-redirect-webfetch-walled-hosts.sh	pr	guard
+marketplace/plugins/himmel-ops/hooks/test-redirect-webfetch-walled-hosts.sh	pr	trust-path
 marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-chief-cmd-resolution.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-docs-reviewer-fit.sh	local	behaviour suite, 0 catches in the 400-PR audit window

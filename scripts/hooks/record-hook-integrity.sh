@@ -136,7 +136,7 @@ trap mark_done EXIT
 # Comments stay OUT of the $( ) below: bash 3.2 (macOS /bin/bash) reads an
 # apostrophe in a comment there as an open quote and the recorder dies.
 pins_fresh="$(
-  for dir in scripts/hooks scripts/guardrails scripts/lib scripts/handover marketplace/plugins/himmel-bus/lib; do
+  for dir in scripts/hooks scripts/guardrails scripts/lib scripts/handover marketplace/plugins/himmel-ops/hooks marketplace/plugins/himmel-bus/lib; do
     [ -d "$CLAUDE_PROJECT_DIR/$dir" ] || continue
     git -C "$CLAUDE_PROJECT_DIR" ls-tree -r HEAD -- "$dir" 2>/dev/null
   done | jq -Rn '[inputs | select(test("\\.sh$") or test("\\tmarketplace/plugins/himmel-bus/lib/[^/]+\\.mjs$")) | split("\t") | select(length >= 2)
