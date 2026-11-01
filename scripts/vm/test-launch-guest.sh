@@ -111,6 +111,8 @@ chmod +x "$tmp/bin/ssh"
 # the bank stub logs the lane it was asked about and answers per lane
 printf '#!/bin/sh\necho "lane=${CADENCE_USAGE_LANE:-none}" >> "$BANK_LOG"\nif [ "${CADENCE_USAGE_LANE:-}" = claudex ]; then echo "${CODEX_V:-PROCEED}"; else echo "${CLAUDE_V:-PROCEED}"; fi\n' > "$tmp/pre-lane.sh"
 export SSH_LOG="$tmp/ssh.log" BANK_LOG="$tmp/bank.log"
+# the stubs read these; an operator's environment must not steer them
+unset GUEST_PF_RC CODEX_V CLAUDE_V CADENCE_USAGE_LANE WORKER_SESSION_LANE
 fresh() { rm -f "$SSH_LOG" "$BANK_LOG"; }
 runv() { PATH="$tmp/bin:$PATH" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-lane.sh" run "$@"; }
 # shellcheck disable=SC2088  # the guest shell expands the tilde

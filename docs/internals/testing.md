@@ -698,9 +698,10 @@ armed-crontab checks.
 ## claudex lane on a test VM
 
 `himmel-claudex` is the one guest that carries the claudex lane (Claude Code on
-the Codex / cli-proxy path), so a lane proof runs off-station. Everything goes
-through the VM queue lock and `scripts/vm/guest-exec.sh`; a worker never types
-`ssh`. In order:
+the Codex / cli-proxy path), so a lane proof runs off-station. Guest commands go
+through the VM queue lock and `scripts/vm/guest-exec.sh`, and a worker never
+types `ssh`; the one exception is `launch-guest.sh`, which runs the session and
+its guest preflight over its own known_hosts-pinned ssh. In order:
 
 1. `bash scripts/vm/claudex-guest.sh create himmel-claudex`, then `provision himmel-claudex`.
 2. `bash scripts/vm/claudex-guest.sh status himmel-claudex`: the guest
