@@ -159,8 +159,9 @@ const LEDGER = [
   { ts: "2026-10-05T02:30:00Z", worker: "claudex", verdict: "PROCEED", five_hour: "", seven_day: "", age: "", degraded: false },
 ];
 const PAGE_ALERT = { labels: { alertname: "E2EPageAlert", severity: "page" }, annotations: { summary: "e2e-page-alert-summary" } };
-// the strip, the one open tile panel, then trends and reviewers; Checks opens by itself only when something is wrong (Q5).
-const SECTIONS = ["Is this project working right now?", "Checks", "Trends", "How good are our reviewers?"];
+// the strip, the one open tile panel, then trends; Checks opens by itself only when something is wrong (Q5).
+// The reviewers panel lives on Tool health's Reviewers tab, not here.
+const SECTIONS = ["Is this project working right now?", "Checks", "Trends"];
 const SECTIONS_CALM = SECTIONS.filter((s) => s !== "Checks");
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
@@ -196,7 +197,7 @@ test("health: reloading at #/health starts loadHealth without a page error", asy
   await expect(page.locator("#bank")).not.toContainText("loading");
 });
 
-test("health: the strip, the open Checks panel, then trends and reviewers, in spec order", async ({ page }) => {
+test("health: the strip, the open Checks panel, then trends, in spec order", async ({ page }) => {
   await openHealth(page);
   expect(await page.locator("main h2").allTextContents()).toEqual([...SECTIONS, "Inventory"]); // Health ends with the legacy Inventory section
 });

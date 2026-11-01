@@ -53,7 +53,7 @@ test("Health's project view: strip and tiles straight in the grid, the open tile
   expect(html).not.toMatch(/<section[^>]*class="box/);
   expect(html).toMatch(/<section id="verdict" class="sec"[\s\S]*?class="vhead strip v-fail"/);
   expect(html).toMatch(/<section id="broken" class="p g-chk"/);
-  for (const id of ["trends", "reviewers"]) expect(html).toMatch(new RegExp(`<section id="${id}" class="sec"`));
+  for (const id of ["trends"]) expect(html).toMatch(new RegExp(`<section id="${id}" class="sec"`));
   expect(html).toMatch(/<button type="button" class="tile g-chk"[^>]*><span class="ic"[^>]*>/);
 });
 

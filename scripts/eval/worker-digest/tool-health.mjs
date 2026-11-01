@@ -22,13 +22,22 @@ function readListing(path) {
 }
 // estimateListing: price each profile's Skill listing from the installed plugins (unbilled scan, cached in memory);
 // callers that only want failure rates (the chief board) leave it off and skip the scan.
-export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false } = {}) {
+// rtk: (ids) => {state, byId: Map<id, {path: 'rtk'|'bash', deny}>, duplicates}, the rtk history.db join; absent = not read.
+export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false, rtk } = {}) {
   const home = env.HOME || homedir();
   const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
     : estimateListing ? estimateProfileListing({ configDir: env.CLAUDE_CONFIG_DIR || join(home, '.claude') }) : {};
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing);
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing, { rtk });
 }
+
+// Launch profile → v9 role (spec 0.4 a). An unmapped or absent profile is "other", never guessed.
+const ROLE_OF = { chief: 'chief', 'chief-relay': 'chief-relay', 'worker-impl': 'worker', 'worker-bus': 'worker', 'worker-vm': 'worker',
+  'worker-e2e': 'worker', design: 'worker', 'lane-impl': 'worker', code: 'worker', 'code-ui': 'worker', 'lane-content': 'worker',
+  'console-judge': 'judge', 'release-manager': 'release-manager', 'lane-review': 'critic', user: 'interactive' };
+export const TEAMS = ['chief', 'chief-relay', 'worker', 'judge', 'release-manager', 'critic', 'interactive', 'other'];
+export const teamOf = (profile) => Object.hasOwn(ROLE_OF, profile) ? ROLE_OF[profile] : /^design-[a-z0-9-]+$/.test(profile) ? 'worker' : 'other';
+const CAUSES = ['command', 'rtk_hook', 'guard', 'classifier', 'other'];
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
 // A row recorded before the rename carries the old profile id; it rolls up under the renamed one.
@@ -38,7 +47,7 @@ const profileOf = (...candidates) => {
 };
 
 // listing: {profile: {tool: listing tokens}} from profile-listing.mjs; absent = no drop candidates.
-export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}) {
+export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}, { rtk } = {}) {
   const days = query.get('days') === '30' ? 30 : 7;
   const since = query.get('since');
   const lastDay = dayOf(now), firstDay = since ? dayOf(Date.parse(since)) : dayOf(Date.parse(lastDay) - (days - 1) * 86400000);
@@ -46,8 +55,9 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const windowDays = firstDay && firstDay <= lastDay ? (Date.parse(lastDay) - Date.parse(firstDay)) / 86400000 + 1 : days;
   // The per-day trend never spans more than a year, so an old since cannot size the arrays.
   const trendDays = Math.min(windowDays, 366), trendFirst = windowDays > trendDays ? dayOf(Date.parse(lastDay) - (trendDays - 1) * 86400000) : firstDay;
-  const selected = { model: query.get('model') || '', lane: query.get('lane') || '', role: query.get('role') || '', profile: query.get('profile') || '', days };
-  const matches = (r, withLane = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!selected.profile || r.profile === selected.profile) && (!withLane || !selected.lane || r.lane === selected.lane);
+  const team = query.get('team') || '';
+  const selected = { model: query.get('model') || '', lane: query.get('lane') || '', role: query.get('role') || '', profile: query.get('profile') || '', team: TEAMS.includes(team) ? team : '', days };
+  const matches = (r, withLane = true, withTeam = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!selected.profile || r.profile === selected.profile) && (!withLane || !selected.lane || r.lane === selected.lane) && (!withTeam || !selected.team || r.team === selected.team);
   const sessions = new Map();
   for (const r of evals) {
     if (r.eval !== 'leg-trajectory' || typeof r.run_id !== 'string' || !['ok', 'partial', 'inconclusive'].includes(r.status)) continue;
@@ -66,7 +76,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;
       const key = `${session}\0${agent}\0${cohort}`;
       if (!slots.has(key)) {
-        const slot = { session, agent, day: cohort, lane, role, profile, model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
+        const slot = { session, agent, day: cohort, lane, role, profile, team: teamOf(profile), model: model || 'unknown', known: Array.isArray(r.meta?.tool_health), incomplete: r.status !== 'ok' || (!!since && cohort === firstDay && Date.parse(since) !== Date.parse(firstDay)), tools: new Map(), failures: [] };
         slots.set(key, slot);
         const agentKey = `${session}\0${agent}`, cohorts = byAgent.get(agentKey) || [];
         cohorts.push(slot); byAgent.set(agentKey, cohorts);
@@ -210,5 +220,50 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   });
   const drop_candidates = byProfile.flatMap((p) => p.tools.filter((t) => t.verdict === 'drop-candidate')
     .map((t) => ({ profile: p.profile, tool: t.tool, listing_tokens: t.listing_tokens, calls: t.calls, window_days: windowDays, sessions: p.sessions })));
-  return { state: slots.size ? 'ok' : 'absent', ...result, window_days: windowDays, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort() }, selected };
+  // Per role, over every other filter but the role itself, so the role totals add up to that fleet.
+  const teamSlots = [...slots.values()].filter((s) => matches(s, true, false));
+  const teams = TEAMS.filter((t) => teamSlots.some((s) => s.team === t)).map((t) => {
+    const list = teamSlots.filter((s) => s.team === t), a = aggregate(list);
+    return { team: t, sessions: new Set(list.map((s) => s.session)).size, calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0) };
+  });
+  return { state: slots.size ? 'ok' : 'absent', ...result, window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
+}
+
+// Bash by command head and cause (spec 0.4 d) from the digest's bash_calls, joined to rtk's history.db by call id.
+// "fleet" (rtk vs bash) is computed over every window slot, unfiltered: v9 labels it "whole fleet".
+function bashRollup(filtered, every, rtk) {
+  const callsOf = (list) => list.flatMap((s) => { const b = s.tools.get('Bash'); return b && Array.isArray(b.bash_calls) ? b.bash_calls.filter((c) => Array.isArray(c) && typeof c[0] === 'string' && typeof c[1] === 'string') : []; });
+  const bashTotal = (list) => list.reduce((n, s) => { const b = s.tools.get('Bash'); return n === null || !s.known || s.incomplete ? null : n + (b && num(b.calls) ? b.calls : 0); }, 0);
+  const mine = callsOf(filtered), fleet = callsOf(every);
+  let join = null;
+  if (typeof rtk === 'function') {
+    try { join = rtk([...new Set(fleet.map((c) => c[0]))]); } catch { join = { state: 'error' }; }
+  }
+  const ok = join?.state === 'ok';
+  const pathOf = (id) => ok ? join.byId.get(id)?.path ?? null : null;
+  const causeOf = (c) => {
+    const cause = CAUSES.includes(c[2]) ? c[2] : c[2] === null ? null : 'other';
+    // An rtk hook refusal reaches the journal as a denied call; history.db says it was rtk's.
+    return (cause === 'guard' || cause === 'other') && ok && join.byId.get(c[0])?.deny ? 'rtk_hook' : cause;
+  };
+  const commands = new Map();
+  for (const c of mine) {
+    const r = commands.get(c[1]) || { head: c[1], calls: 0, failures: 0, cause: Object.fromEntries(CAUSES.map((k) => [k, 0])), rtk: ok ? 0 : null, bash: ok ? 0 : null };
+    r.calls++;
+    const cause = causeOf(c);
+    if (cause) { r.failures++; r.cause[cause]++; }
+    if (ok && pathOf(c[0]) === 'rtk') r.rtk++;
+    if (ok && pathOf(c[0]) === 'bash') r.bash++;
+    commands.set(c[1], r);
+  }
+  const total = bashTotal(filtered);
+  const paths = { rtk: { calls: 0, failures: 0 }, bash: { calls: 0, failures: 0 }, unmatched: { calls: 0, failures: 0 } };
+  for (const c of fleet) { const p = paths[pathOf(c[0]) ?? 'unmatched']; p.calls++; if (causeOf(c)) p.failures++; }
+  return {
+    commands: [...commands.values()].sort((a, b) => b.calls - a.calls || a.head.localeCompare(b.head)),
+    recorded: mine.length, unrecorded: total === null ? null : Math.max(0, total - mine.length),
+    rtk: ok ? { state: 'ok', matched: fleet.filter((c) => join.byId.has(c[0])).length, unmatched: fleet.filter((c) => !join.byId.has(c[0])).length, duplicates: num(join.duplicates) ? join.duplicates : 0 }
+      : { state: join ? (join.state === 'absent' ? 'absent' : 'error') : 'not-read', matched: null, unmatched: null, duplicates: null },
+    fleet: ok ? paths : null,
+  };
 }

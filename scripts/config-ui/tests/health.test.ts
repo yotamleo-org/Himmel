@@ -46,7 +46,7 @@ test("renderHealth escapes every feed, ledger and alert string", () => {
 // Frame 9: with no feed yet the strip says No data and every tile names the source it waits for; no panel opens.
 test("renderHealth with no feed and no health still renders the strip, the tiles and the trends", () => {
   const html = renderHealth(null, null);
-  expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(["Is this project working right now?", "Trends", "How good are our reviewers?"]);
+  expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(["Is this project working right now?", "Trends"]);
   expect([...html.matchAll(/data-act="health-tile"/g)].length).toBe(4);
   expect(html).toContain("waiting for the doctor feed");
   expect(html).not.toContain('id="workers"'); // the worker list lives on Fleet (Q2)
@@ -139,9 +139,9 @@ test("a firing alert carries one who-fixes-it answer, the chief's", () => {
 test("one tile panel is open at a time, and Checks opens by itself only on a problem", () => {
   const h2s = (html: string) => [...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1]);
   const bad = feed(own("a", "fail"), r("cadence:qmd", "ok", { source: "cadence", scope: "shared" }), r("qmd-index", "ok", { bundle: "search", scope: "shared" }));
-  expect(h2s(renderHealth(bad, null))).toEqual(["Is this project working right now?", "Checks", "Trends", "How good are our reviewers?"]);
+  expect(h2s(renderHealth(bad, null))).toEqual(["Is this project working right now?", "Checks", "Trends"]);
   const calm = feed(own("a", "ok"));
-  expect(h2s(renderHealth(calm, null))).toEqual(["Is this project working right now?", "Trends", "How good are our reviewers?"]);
+  expect(h2s(renderHealth(calm, null))).toEqual(["Is this project working right now?", "Trends"]);
   expect(renderHealth(calm, null)).toContain("nothing broken");
   expect(h2s(renderHealth(bad, null, { tile: "jobs" }))).toContain("Scheduled jobs");
   expect(h2s(renderHealth(bad, null, { tile: "jobs" }))).not.toContain("Checks");

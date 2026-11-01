@@ -31,7 +31,7 @@ function seed() {
     expect(r.exitCode).toBe(0);
   }
   const config = join(dir, "claude-config"); mkdirSync(config);
-  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
+  return { HOME: dir, HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
 }
 const read = (env: object, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, Date.parse("2026-10-07T23:59:00Z"));
 
@@ -131,7 +131,7 @@ test("a very old since keeps the trend to a year and the window honest", () => {
 
 test("the trend heading names the since window, not the days switch", async () => {
   const { renderToolHealth } = await import("../public/tool-health.js");
-  const html = renderToolHealth(read(seed(), new URLSearchParams({ since: "2026-09-27T00:00:00Z" })), "t");
+  const html = renderToolHealth({ data: read(seed(), new URLSearchParams({ since: "2026-09-27T00:00:00Z" })) }, "t", { tool: "Bash" });
   expect(html).toContain("11-day trend");
   expect(html).not.toContain("7-day trend");
 });
@@ -183,15 +183,14 @@ test("authenticated read-only route renders the seeded rates and session drilldo
     expect((await fetch(url, { method: "POST", headers: { "X-Himmel-Token": token } })).status).toBe(405);
     const { renderToolHealth } = await import("../public/tool-health.js");
     const data = await res.json();
-    const html = renderToolHealth(data, token);
-    expect(html).toContain("16.0 %");
-    expect(html).toContain("10.0 %");
-    expect(html).toContain("48160000-0000-4000-8000-000000000000");
-    expect(html).toContain("page=toolhealth");
-    expect(renderToolHealth(null, token)).toContain("No data");
-    expect(renderToolHealth({ state: "absent", selected: { days: 7 } }, token)).toContain('value="30"');
+    const html = renderToolHealth({ data }, token);
+    expect(html).toContain("16.0%");
+    expect(html).toContain("10.0%");
+    expect(renderToolHealth({ data }, token, { tool: "Bash" })).toContain("48160000-0000-4000-8000-000000000000");
+    expect(renderToolHealth(null, token)).toContain("No recorded tool observations in this window");
+    expect(renderToolHealth({ data: { state: "absent", selected: { days: 7 } } }, token)).toContain('value="30"');
     data.tools[0].tool = '<img src=x onerror=alert(1)>';
-    const escaped = renderToolHealth(data, token);
+    const escaped = renderToolHealth({ data }, token);
     expect(escaped).not.toContain('<img');
     expect(escaped).toContain('&lt;img');
   } finally { s.stop(); }
@@ -259,7 +258,7 @@ test("a same-named plugin from another marketplace does not inflate the profile'
 
 test("the page shows the per-profile table in plain words and labels the unknown bucket", async () => {
   const { renderToolHealth } = await import("../public/tool-health.js");
-  const html = renderToolHealth(read(seedProfiles()), "t");
+  const html = renderToolHealth({ data: read(seedProfiles()) }, "t");
   expect(html).toContain("Tools by launch profile");
   expect(html).toContain("worker-impl");
   expect(html).toContain("judge");
@@ -267,14 +266,14 @@ test("the page shows the per-profile table in plain words and labels the unknown
   expect(html).toContain("mcp__qmd__query");
   expect(html).toContain("Move to on-demand (drop from default)");
   expect(html).toContain("Keep");
-  const noCost = renderToolHealth(read(seed()), "t");
+  const noCost = renderToolHealth({ data: read(seed()) }, "t");
   expect(noCost).toContain("not measured");
   expect(noCost).not.toContain("Move to on-demand");
-  const empty = renderToolHealth({ ...read(seed()), profiles: [] }, "t");
+  const empty = renderToolHealth({ data: { ...read(seed()), profiles: [] } }, "t");
   expect(empty).toContain("No per-profile data");
   const evil = read(seedProfiles());
   evil.profiles[0].profile = "<b>x</b>";
-  expect(renderToolHealth(evil, "t")).not.toContain("<b>x</b>");
+  expect(renderToolHealth({ data: evil }, "t")).not.toContain("<b>x</b>");
 });
 
 test("Tool health navigation carries tokens only in fragments", () => {
@@ -282,4 +281,334 @@ test("Tool health navigation carries tokens only in fragments", () => {
   const link = navLinks({ here: "agui", token, current: "fleet" }).find((r: any) => r.id === "toolhealth");
   expect(link?.href).toBe(`/#t=${token}&page=toolhealth`);
   expect(parseLanding(`#t=${token}&page=toolhealth`)?.page).toBe("toolhealth");
+});
+
+// Spec 0.4 a/d: profile to role, and Bash by command and cause joined to rtk history.
+function seedSplit() {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  const profiles = ["worker-impl", "console-judge", undefined];
+  const calls = [[["toolu_a", "git", null], ["toolu_b", "git", "command"], ["toolu_c", "cat", "guard"]], [["toolu_d", "gh", "classifier"]], [["toolu_e", "other", "other"]]];
+  rows.forEach((r: any, i: number) => { for (const h of r.meta.tool_health) { if (profiles[i]) h.profile = profiles[i]; if (h.tool === "Bash") h.bash_calls = calls[i]; } });
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  return env;
+}
+const readRtk = (env: object, rtk: any, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, Date.parse("2026-10-07T23:59:00Z"), { rtk });
+
+test("roles map from the launch profile, sum to the fleet, and an unmapped profile is other", async () => {
+  const { teamOf } = await import("../../eval/worker-digest/tool-health.mjs");
+  expect([teamOf("worker-impl"), teamOf("design-ui"), teamOf("console-judge"), teamOf("unknown"), teamOf("made-up")]).toEqual(["worker", "worker", "judge", "other", "other"]);
+  const data = read(seedSplit());
+  expect(data.teams).toEqual([
+    { team: "worker", sessions: 1, calls: 20, failures: 3 },
+    { team: "judge", sessions: 1, calls: 40, failures: 4 },
+    { team: "other", sessions: 1, calls: 10, failures: 1 },
+  ]);
+  expect(data.teams.reduce((n: number, t: any) => n + t.calls, 0)).toBe(data.totalCalls);
+  const one = read(seedSplit(), new URLSearchParams({ team: "judge" }));
+  expect(one.tools.find((r: any) => r.tool === "Bash").calls).toBe(30);
+  expect(one.teams).toHaveLength(3);
+  expect(read(seedSplit(), new URLSearchParams({ team: "nonsense" })).selected.team).toBe("");
+});
+
+test("Bash rolls up by command head and cause; rtk joins by call id and a missing history stays unread", async () => {
+  const env = seedSplit();
+  const byId = new Map([["toolu_a", { path: "rtk", deny: false }], ["toolu_c", { path: "bash", deny: true }], ["toolu_d", { path: "bash", deny: false }]]);
+  const data = readRtk(env, () => ({ state: "ok", byId, duplicates: 1 }));
+  expect(data.bash.commands).toEqual([
+    { head: "git", calls: 2, failures: 1, cause: { command: 1, rtk_hook: 0, guard: 0, classifier: 0, other: 0 }, rtk: 1, bash: 0 },
+    { head: "cat", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 1, guard: 0, classifier: 0, other: 0 }, rtk: 0, bash: 1 },
+    { head: "gh", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 1, other: 0 }, rtk: 0, bash: 1 },
+    { head: "other", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 0, other: 1 }, rtk: 0, bash: 0 },
+  ]);
+  expect(data.bash).toMatchObject({ recorded: 5, unrecorded: 45, rtk: { state: "ok", matched: 3, unmatched: 2, duplicates: 1 },
+    fleet: { rtk: { calls: 1, failures: 0 }, bash: { calls: 2, failures: 2 }, unmatched: { calls: 2, failures: 2 } } });
+  const native = readRtk(env, () => ({ state: "ok", byId, duplicates: 0 }), new URLSearchParams({ lane: "native" }));
+  expect(native.bash.commands.map((c: any) => c.head)).toEqual(["git", "cat", "other"]);
+  expect(native.bash.fleet.bash.calls).toBe(2);
+  expect(read(env).bash.rtk.state).toBe("absent"); // the page's default join, over a HOME with no history.db
+  const { readToolHealth: rollupOnly } = await import("../../eval/worker-digest/tool-health.mjs");
+  const unread = rollupOnly(env, new URLSearchParams(), Date.parse("2026-10-07T23:59:00Z"));
+  expect(unread.bash.rtk).toEqual({ state: "not-read", matched: null, unmatched: null, duplicates: null });
+  expect(unread.bash.fleet).toBeNull();
+  expect(unread.bash.commands[0].rtk).toBeNull();
+  expect(unread.bash.commands[0].bash).toBeNull();
+  expect(readRtk(env, () => ({ state: "absent" })).bash.rtk.state).toBe("absent");
+  expect(readRtk(env, () => { throw new Error("locked"); }).bash.rtk.state).toBe("error");
+});
+
+// Build spec section 4 fixture P (P1-P3 on 26-28 Oct) and the v9 page proofs P-A1 to P-A19.
+const P_NOW = Date.parse("2026-10-28T23:59:00Z");
+function seedP(drop?: (rows: any[]) => void) {
+  const env = seed();
+  const days = ["2026-10-26", "2026-10-27", "2026-10-28"], profiles = ["worker-impl", "judge", "worker-impl"];
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  rows.forEach((r: any, i: number) => { r.meta.started_ts = Date.parse(`${days[i]}T12:00:00Z`); for (const h of r.meta.tool_health) { h.day = days[i]; h.profile = profiles[i]; } });
+  drop?.(rows);
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  const listing = join(dirs[dirs.length - 1], "listing.json");
+  writeFileSync(listing, JSON.stringify({ "worker-impl": { mcp__qmd__query: 900 }, judge: { Read: 0 } }));
+  return { ...env, HIMMEL_PROFILE_LISTING: listing };
+}
+const readP = (env: object, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, P_NOW, { rtk: () => ({ state: "absent" }) });
+const LOADED = Date.parse("2026-10-28T23:59:30Z");
+async function page(data: any, ui: any = {}, extra: any = {}) {
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  return renderToolHealth({ data, loadedAt: LOADED, ...extra }, "t", ui) as string;
+}
+const kpi = (html: string, id: string) => (new RegExp(`data-kpi="${id}"[^>]*>[\\s\\S]*?<b class="kv">([^<]*)</b>`).exec(html) || [])[1];
+const kpiSub = (html: string, id: string) => (new RegExp(`data-kpi="${id}"[^>]*>[\\s\\S]*?<span class="ks">([^<]*)</span>`).exec(html) || [])[1];
+const cells = (html: string, attr: string) => [...html.matchAll(new RegExp(`<tr ${attr}="([^"]*)"[^>]*>([\\s\\S]*?)</tr>`, "g"))].map((m) => [m[1], [...m[2].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1].replace(/<[^>]*>/g, ""))]);
+
+test("overview-call-total-is-the-tool-attempt-sum", async () => {
+  const data = readP(seedP());
+  expect(data.totalCalls).toBe(70);
+  expect(data.tools.reduce((n: number, t: any) => n + t.calls, 0)).toBe(70);
+  expect(kpi(await page(data), "calls")).toBe("70");
+  const u = readP(seedP((rows) => { delete rows[0].meta.tool_health; }));
+  expect(u.totalCalls).toBeNull();
+  expect(kpi(await page(u), "calls")).toBe("—");
+});
+
+test("overview-failure-rate-is-weighted", async () => {
+  const html = await page(readP(seedP()));
+  expect(kpi(html, "failed")).toBe("8");
+  expect(kpiSub(html, "failed")).toContain("3 errors · 5 denied");
+  expect(kpi(html, "rate")).toBe("11.4%");
+  expect(kpiSub(html, "rate")).toContain("8 of 70 calls");
+});
+
+test("denied-attempts-are-not-hooks-plus-tools", async () => {
+  const data = readP(seedP());
+  expect(kpi(await page(data), "denied")).toBe("5");
+  data.tools.find((t: any) => t.tool === "Bash").denials = 60;
+  const bad = await page(data);
+  expect(bad).toContain("Count check failed");
+  expect(kpi(bad, "rate")).toBe("—");
+  expect(cells(bad, "data-tool-row").find(([k]) => k === "Bash")?.[1]).not.toContain("16.0%");
+});
+
+test("overview-recovery-keeps-unknown-class-outcomes-out", async () => {
+  const data = readP(seedP());
+  const html = await page(data);
+  expect(kpi(html, "recovery")).toBe("25.0%");
+  expect(kpiSub(html, "recovery")).toContain("1 of 4 known · 4 unclassified");
+  for (const t of data.tools) { t.known = 0; t.recovered = 0; }
+  expect(kpi(await page(data), "recovery")).toBe("—");
+});
+
+test("overview-daily-failures-reconcile", async () => {
+  const rows = cells(await page(readP(seedP())), "data-day");
+  expect(rows.map(([d]) => d)).toEqual(["2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28"]);
+  for (const [, c] of rows.slice(0, 4)) expect(c.slice(1)).toEqual(["—", "—", "—"]);
+  expect(rows.slice(4).map(([, c]) => c[2])).toEqual(["3", "4", "1"]);
+});
+
+test("daily-rate-sums-cohorts-before-dividing", async () => {
+  const rows = cells(await page(readP(seedP())), "data-day").slice(4);
+  expect(rows.map(([, c]) => c[3])).toEqual(["15.0%", "10.0%", "10.0%"]);
+  expect(rows[1][1].join(" ")).not.toContain("6.7%");
+});
+
+test("tool-ranking-counts-not-percentages", async () => {
+  const data = readP(seedP());
+  const extra = (tool: string) => ({ ...data.tools.find((t: any) => t.tool === "Read"), tool, calls: 1, failures: 0 });
+  data.tools.push(extra("<b>z</b>"), extra("a&b"));
+  const html = await page(data);
+  expect(cells(html, "data-tool-row").map(([k]) => k)).toEqual(["Bash", "&lt;b&gt;z&lt;/b&gt;", "Read", "a&amp;b"]);
+  expect(html).not.toContain("<b>z</b>");
+  expect(cells(html, "data-tool-row")[0][1]).toEqual(expect.arrayContaining(["50", "8", "3", "5", "16.0%"]));
+});
+
+test("tool-drill-retains-population-and-counts", async () => {
+  const env = seedP();
+  const stats = (html: string) => ["calls", "failed", "errors", "denied"].map((k) => (new RegExp(`data-stat="${k}"[^>]*>([^<]*)<`).exec(html) || [])[1]);
+  expect(stats(await page(readP(env), { tool: "Bash" }))).toEqual(["50", "8", "3", "5"]);
+  const native = await page(readP(env, new URLSearchParams({ lane: "native" })), { tool: "Read", filters: { days: "7", lane: "native" } });
+  expect(stats(native)).toEqual(["10", "0", "0", "0"]);
+  expect(stats(await page(readP(env, new URLSearchParams({ lane: "native" })), { tool: "Bash" }))).toEqual(["20", "4", "2", "2"]);
+  const none = await page(readP(env), { tool: "Nope", filters: { days: "7", lane: "native" } });
+  expect(none).toContain("No matching tool");
+  expect(none).toMatch(/href="#\/toolhealth\?[^"]*lane=native[^"]*"[^>]*>Back to overview/);
+});
+
+test("full-trend-uses-rate-not-spark-height", async () => {
+  const rows = cells(await page(readP(seedP()), { tool: "Bash" }), "data-trend-day").slice(4);
+  expect(rows.map(([, c]) => c[3])).toEqual(["30.0%", "13.3%", "10.0%"]);
+});
+
+test("tool-class-rate-uses-own-denominator", async () => {
+  const rows = Object.fromEntries(cells(await page(readP(seedP()), { tool: "Bash" }), "data-class").map(([k, c]) => [k, c.slice(1)]));
+  expect(rows["denied/read-clamp"]).toEqual(["5", "10.0%"]);
+  expect(rows["error/Bash"]).toEqual(["3", "6.0%"]);
+});
+
+test("evidence-is-sampled-and-session-ids-are-validated", async () => {
+  const data = readP(seedP());
+  data.tools.find((t: any) => t.tool === "Bash").sessions.push("not-a-uuid", data.tools[0].sessions[0]);
+  const html = await page(data, { tool: "Bash" });
+  expect(html.match(/href="\/agui\/#t=t&amp;run=48160000-[^"]*"/g)).toHaveLength(3);
+  expect(html).not.toContain("run=not-a-uuid");
+  expect(html).toContain("not-a-uuid");
+  expect(html).not.toMatch(/\?t=/);
+  expect(html).toContain("Sampled call ids");
+  expect(html).toContain("3 sessions with observations");
+});
+
+test("every-guard-rate-names-the-legacy-denominator", async () => {
+  const data = readP(seedP());
+  data.hooks.push({ ...data.hooks[0], class: "denied/classifier:shell", failures: 1, rate: 0.02 });
+  const html = await page(data);
+  const guards = cells(html, "data-guard-row");
+  expect(guards.map(([k]) => k)).toEqual(["denied/read-clamp"]);
+  expect(guards[0][1]).toEqual(expect.arrayContaining(["5", "10.0%", "÷50 Bash calls (legacy)"]));
+  const cls = cells(html, "data-classifier-row");
+  expect(cls.map(([k]) => k)).toEqual(["denied/classifier:shell"]);
+  expect(cls[0][1].join(" ")).toContain("category");
+  expect(html).toContain("reason unverified");
+});
+
+test("guard-daily-chart-reconciles-with-guard-total", async () => {
+  const html = await page(readP(seedP()), { guard: "denied/read-clamp" });
+  const rows = cells(html, "data-guard-day").filter(([, c]) => c[1] !== "—");
+  expect(rows.map(([, c]) => c[1])).toEqual(["1", "3", "1"]);
+  expect(html).toMatch(/data-stat="refused"[^>]*>5</);
+  expect(await page(readP(seedP()), { guard: "denied/nope" })).toContain("No matching guard");
+});
+
+test("lane-deltas-have-explicit-units", async () => {
+  const rows = Object.fromEntries(cells(await page(readP(seedP())), "data-lane-metric").map(([k, c]) => [k, c]));
+  expect(rows.calls_per_100).toEqual(expect.arrayContaining(["66.7", "75.0", "+8.3 calls/100"]));
+  expect(rows.error_rate).toEqual(expect.arrayContaining(["10.0%", "3.3%", "−6.7 pp"]));
+});
+
+test("profile-drill-sessions-are-distinct", async () => {
+  const data = readP(seedP());
+  data.profiles.push({ profile: "unknown", sessions: 1, tools: [] });
+  const html = await page(data);
+  const rows = cells(html, "data-profile-tool").map(([k, c]) => [k, c.slice(1, 3)]);
+  expect(rows).toEqual(expect.arrayContaining([["worker-impl Bash", ["2", "20"]], ["worker-impl Read", ["2", "10"]], ["judge Bash", ["1", "30"]], ["judge Read", ["1", "10"]]]));
+  expect(html).toContain("unknown (launch profile not recorded)");
+});
+
+test("candidate-cost-is-per-listing-not-savings", async () => {
+  const html = await page(readP(seedP()));
+  const rows = cells(html, "data-candidate");
+  expect(rows).toEqual([["worker-impl mcp__qmd__query", ["worker-impl", "mcp__qmd__query", "0 calls", "900 tokens per listing"]]]);
+  expect(html).not.toMatch(/sav(e|ing)/i);
+});
+
+test("filters-use-api-enums-and-calendar-window", async () => {
+  const data = readP(seedP());
+  expect(data.window_days).toBe(7);
+  const html = await page(data);
+  expect(html).toContain("22–28 Oct 2026");
+  expect(html).toContain('<option value="7" selected>7 UTC days</option>');
+  const opts = (name: string) => [...((new RegExp(`data-tool-filter="${name}"[^>]*>([\\s\\S]*?)</select>`).exec(html) || [])[1] || "").matchAll(/value="([^"]*)"[^>]*>([^<]*)</g)].map((m) => `${m[1]}=${m[2]}`);
+  expect(opts("team")).toEqual(["=All", "worker=workers", "other=other"]);
+  expect(opts("profile")).toEqual(["=All", "judge=judge", "worker-impl=worker-impl"]);
+  expect(opts("lane")[0]).toBe("=All");
+});
+
+test("latest-fetch-wins-with-stale-response-label", async () => {
+  const { toolHealthLoader } = await import("../public/tool-health.js");
+  const data = readP(seedP());
+  const later: Record<string, (v: any) => void> = {};
+  let clock = Date.parse("2026-10-28T09:12:00Z"), paints = 0;
+  const loader = toolHealthLoader({ get: (q: string) => new Promise((ok, no) => { later[q] = (v) => v instanceof Error ? no(v) : ok(v); }), now: () => clock, onChange: () => { paints++; } });
+  const a = loader.load("A"), b = loader.load("B");
+  expect(loader.state.loading).toBe(true);
+  later.B({ ...data, tag: "B" }); await b;
+  later.A({ ...data, tag: "A" }); await a;
+  expect(loader.state.data.tag).toBe("B");
+  expect(loader.state.loadedAt).toBe(Date.parse("2026-10-28T09:12:00Z"));
+  clock += 3600_000;
+  const c = loader.load("C"); later.C(new Error("down")); await c;
+  expect(loader.state.data.tag).toBe("B");
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  const html = renderToolHealth(loader.state, "t", {});
+  expect(html).toContain("Tool health could not load. Retry.");
+  expect(html).toContain("stale since 09:12 UTC");
+  expect(html).toContain("Loaded at 2026-10-28 09:12 UTC");
+  expect(html).not.toMatch(/as of/i);
+  expect(paints).toBeGreaterThan(0);
+  expect(renderToolHealth({ loading: true }, "t", {})).toContain("Loading recorded observations…");
+  expect(renderToolHealth({ data, loading: true, loadedAt: LOADED }, "t", {})).toContain("Refreshing; showing previous response");
+});
+
+const INVENTORY = {
+  state: "ok", scanned_at: "2026-10-28T23:00:00.000Z",
+  sources: [{ id: "plugins", reads: "~/.claude/plugins/installed_plugins.json", state: "ok", found: { on: 1, installed: 2 } }, { id: "core", reads: "a recorded session", state: "absent", reason: "needs a session record", found: null }],
+  tools: [{ kind: "skill", source: "alpha@himmel", name: "alpha:one" }, { kind: "agent", source: "project", name: "judge" }, { kind: "mcp", source: "mcp-config", name: "qmd", configured_in: ["mcp-profiles"], loads_in_chief: true }],
+  hooks: [{ kind: "hook", source: "project", name: "read-clamp.sh", wired: [["PreToolUse", "Bash"]], runs_twice: false }],
+  clis: [{ name: "rtk", path: "~/bin/rtk", version: "9.9.9", state: "ok" }, { name: "qmd", path: null, version: null, state: "absent" }],
+};
+
+test("every tool row and map tile's tool opens a drill-in; none is a dead click", async () => {
+  const data = readP(seedP());
+  const overview = await page(data, { all: true }, { inventory: INVENTORY });
+  const rows = cells(overview, "data-tool-row");
+  expect(rows.map(([k]) => k).sort()).toEqual(["Agent:judge", "Bash", "Read", "Skill:alpha:one", "mcp__qmd"].sort());
+  for (const [key] of rows) {
+    const link = new RegExp(`<a [^>]*data-tool="${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*href="#/toolhealth\\?[^"]*tool=`);
+    expect(overview).toMatch(link);
+    const drill = await page(data, { tool: key.replace(/&amp;/g, "&") }, { inventory: INVENTORY });
+    expect(drill).not.toContain("No matching tool");
+    expect(drill).toContain("Back to overview");
+  }
+  expect(await page(data, { tool: "Skill:alpha:one" }, { inventory: INVENTORY })).toContain("No recorded calls in this window");
+  const map = await page(data, { tab: "map" }, { inventory: INVENTORY });
+  const tiles = [...map.matchAll(/data-act="th-pick" data-src="([^"]*)" data-kind="([^"]*)"/g)].map((m) => [m[1], m[2]]);
+  expect(tiles.length).toBeGreaterThan(0);
+  for (const [src, kind] of tiles) {
+    const picked = await page(data, { tab: "map", src, kind }, { inventory: INVENTORY });
+    const listed = cells(picked, "data-tool-row");
+    expect(listed.length).toBeGreaterThan(0);
+    for (const [key] of listed) expect(picked).toContain(`data-tool="${key}"`);
+  }
+});
+
+test("the page paints under the server CSP: widths ride data attributes, never an inline style", async () => {
+  const data = readP(seedP());
+  const html = (await page(data, {}, { inventory: INVENTORY })) + (await page(data, { tab: "map" }, { inventory: INVENTORY }));
+  expect(html).not.toMatch(/\sstyle=/);
+  expect(html).toMatch(/class="thbar" data-w="[0-9.]+"/);
+  expect(html).toMatch(/class="thmap" data-cols="[0-9]+"/);
+  const app = readFileSync(resolve(import.meta.dir, "../public/app.js"), "utf8");
+  expect(app).toContain('setProperty("--w"');
+  expect(app).toContain('setProperty("--cols"');
+});
+
+test("a failed rescan or reviewers refresh keeps the last answer and says it is stale", async () => {
+  const data = readP(seedP());
+  expect(await page(data, { tab: "station" }, { inventory: { ...INVENTORY, stale: "down" } })).toContain("Rescan failed (down); showing the scan from");
+  const text = "# Reviewers\n\nCaught 8 of 10.\n";
+  expect(await page(data, { tab: "reviewers" }, { reviewers: { state: "ok", writtenAt: "2026-10-26T03:00:00Z", text, stale: "down" } })).toContain("Refresh failed (down); showing the page read earlier");
+  expect(await page(data, { tab: "reviewers" }, { reviewers: { state: "ok", writtenAt: "2026-10-26T03:00:00Z", text } })).not.toContain("Refresh failed");
+  const app = readFileSync(resolve(import.meta.dir, "../public/app.js"), "utf8");
+  expect(app).toContain("stale: inv.error");
+  expect(app).toContain("stale: rv.error");
+});
+
+test("Reset filters clears the page-memory filters and repaints, also when its link is the current hash", () => {
+  const app = readFileSync(resolve(import.meta.dir, "../public/app.js"), "utf8");
+  const src = app.match(/function toolHealthClick\(b\) \{[\s\S]*?\n\}/)![0];
+  const thUi: any = { kind: "mcp", src: "project", q: "git", group: "g", all: true, before: true, sorts: {} };
+  let painted = 0;
+  const click = new Function("thUi", "paint", "thLoaders", `${src}; return toolHealthClick;`)(thUi, () => { painted++; }, () => ({}));
+  click({ dataset: { act: "th-reset" } });
+  expect(thUi).toMatchObject({ kind: null, src: null, q: "", group: null, all: false, before: false });
+  expect(painted).toBe(1);
+});
+
+test("a hook on a non-tool event has no derived runs, and a command's bash count leaves out unmatched calls", async () => {
+  const data = readP(seedP());
+  const bashCalls = data.tools.find((t: any) => t.tool === "Bash").calls;
+  const inventory = { ...INVENTORY, hooks: [...INVENTORY.hooks, { kind: "hook", source: "alpha@himmel", name: "start.sh", wired: [["SessionStart", "*"]], runs_twice: false }] };
+  const hooks = Object.fromEntries(cells(await page(data, { kind: "hook" }, { inventory }), "data-tool-row"));
+  expect(hooks["hook:alpha@himmel:start.sh"][2]).toBe("— runs derived");
+  expect(hooks["hook:project:read-clamp.sh"][2]).toBe(`${bashCalls} runs derived`);
+  const bash = { ...data.bash, rtk: { state: "ok", matched: 2, unmatched: 1, duplicates: 0 }, commands: [{ head: "git", calls: 3, failures: 0, cause: {}, rtk: 1, bash: 1 }] };
+  const cmds = Object.fromEntries(cells(await page({ ...data, bash }, { tool: "Bash" }), "data-command"));
+  expect(cmds.git).toEqual(["git", "3", "1", "1", "0"]);
 });
