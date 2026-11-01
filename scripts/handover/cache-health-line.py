@@ -26,12 +26,15 @@ Usage: cache-health-line.py [--state-dir D] [--now EPOCH]
 import argparse, json, math, os, statistics, sys, time
 from collections import defaultdict
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from env_alias import legacy_names_on
+
 STALE_S = 26 * 3600
 DAY = 86400
 BASELINE_DAYS = 14
 BASELINE_MIN_DAYS = 7
 FLAG_DAYS = 3
-KINDS = ["console", "leg", "subagent", "bridge", "other"]
+KINDS = ["console", "worker", "subagent", "bridge", "other"]
 
 
 def load_json(path):
@@ -67,8 +70,11 @@ def series_values(r):
         out["overall"] = r["overall"]
     roles = r.get("roles") if isinstance(r.get("roles"), dict) else {}
     for k in KINDS:
-        if num(roles.get(k)) is not None:
-            out[k] = roles[k]
+        v = roles.get(k)
+        if num(v) is None and k == "worker" and legacy_names_on():
+            v = roles.get("leg")  # history rows written before the rename
+        if num(v) is not None:
+            out[k] = v
     return out
 
 

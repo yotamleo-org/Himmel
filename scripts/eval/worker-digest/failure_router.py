@@ -63,6 +63,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import worker_ledger  # noqa: E402
 
+sys.path.insert(0, os.path.join(HERE, "..", "..", "lib"))
+from env_alias import legacy_names_on  # noqa: E402
+
 TABLE = os.path.join(HERE, "failure-routes.table.json")
 PLAYBOOK = os.path.join(HERE, "..", "..", "..", "docs", "internals", "stuck-playbook.md")
 LOG_ENV, STATE_ENV, INBOX_ENV = "HIMMEL_FAILURE_ROUTES_LOG", "HIMMEL_FAILURE_ROUTES_STATE", "HIMMEL_FAILURE_INBOX"
@@ -193,7 +196,7 @@ def check_body(text, table=None):
             continue
         m = re.match(r"^- ([A-Za-z ()0-9]+): (.*)$", line)
         label, val = (m.group(1), m.group(2)) if m else (None, None)
-        good = {"class": lambda v: CLASS.match(v), "legs": lambda v: WORKERS.match(v),
+        good = {"class": lambda v: CLASS.match(v), "workers": lambda v: WORKERS.match(v),
                 "tickets": lambda v: KEYS.match(v), "PRs": lambda v: PRS.match(v),
                 "not listed": lambda v: re.match(r"^\d+ more tickets or PRs, see the digest$", v),
                 "route": lambda v: v in rows, "playbook entry names the hook": lambda v: v in ("yes", "no")}
@@ -217,7 +220,7 @@ def build_body(table, t, cls, workers, counted, update):
         out += [HEADS[0], ""]
     out += ["- class: %s" % cls,
            "- distinct workers (%d d): %d" % (table["window_days"], len(workers)),
-           "- legs: %s" % ", ".join(workers[:MAX_BODY_WORKERS])]
+           "- workers: %s" % ", ".join(workers[:MAX_BODY_WORKERS])]
     if not update:
         cut = max(len(tickets) - MAX_BODY_REFS, 0) + max(len(prs) - MAX_BODY_REFS, 0)
         tickets, prs = tickets[:MAX_BODY_REFS], prs[:MAX_BODY_REFS]
@@ -463,6 +466,10 @@ def route(a):
             t, workers, counted = fires[cls]
             n = len(workers)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}
+            if "last_legs" in c:  # a state file written before the rename
+                old = c.pop("last_legs")
+                if legacy_names_on():
+                    c.setdefault("last_workers", old)
             if set(workers) <= set(c.get("acted", [])):
                 continue
             inbox = a.inbox if t.get("inbox") and state_ok and not c.get("inbox") else None
@@ -477,7 +484,7 @@ def route(a):
                 try:
                     worker_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(),
                                                 "source": SOURCE, "kind": "route-intent", "class": cls,
-                                                "legs": n, "intent": kind}])
+                                                "workers": n, "intent": kind}])
                     return True
                 except OSError as e:
                     print("failure-router: cannot log the intent, nothing sent: %s" % e, file=sys.stderr)
@@ -486,19 +493,19 @@ def route(a):
             dec, ticket = decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent,
                                  len(slugs[slug(cls)]) > 1)
             if a.dry_run:
-                print(json.dumps({"class": cls, "legs": n, "decision": dec, "ticket": ticket,
+                print(json.dumps({"class": cls, "workers": n, "decision": dec, "ticket": ticket,
                                   "inbox": bool(inbox)}, separators=(",", ":")))
                 continue
-            if (dec, workers) == (c.get("last_decision"), c.get("last_legs")):
+            if (dec, workers) == (c.get("last_decision"), c.get("last_workers")):
                 if state_ok:
                     save_state(a.state, state)
                 continue
             # Log before saving the state: a failed log write must leave the class unacted, not a silent send.
             worker_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(), "source": SOURCE,
-                                        "kind": "route-decision", "class": cls, "legs": n, "decision": dec,
+                                        "kind": "route-decision", "class": cls, "workers": n, "decision": dec,
                                         "ticket": ticket}])
             if state_ok:
-                c["last_decision"], c["last_legs"] = dec, workers
+                c["last_decision"], c["last_workers"] = dec, workers
                 save_state(a.state, state)
             decisions += 1
             print("failure-router: %s workers=%d %s%s" % (cls, n, dec, " " + ticket if ticket else ""))

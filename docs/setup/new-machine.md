@@ -80,6 +80,10 @@ value that isn't backed by one of these links.
 | `bun` | `brew tap oven-sh/bun && brew install oven-sh/bun/bun` — bun is NOT in homebrew-core; the tap is still required (verified 2026-09 against github.com/oven-sh/homebrew-bun). `scripts/machine-setup/macos.sh` installs both `uv` and `bun` this way; it previously installed neither. |
 | Stale claude marker guard | Add `[ -f "<himmel>/scripts/lib/clear-stale-claude-marker.sh" ] && . "<himmel>/scripts/lib/clear-stale-claude-marker.sh"` to `~/.zshrc` (and to `~/.bashrc` if you use bash; bash does not read `~/.zshrc`), replacing `<himmel>` with your himmel checkout path (keep the quotes; the path may contain spaces). `open -a` hands the caller's whole environment to an app it starts, so an app first opened from a claude Bash tool (iTerm, Raycast, Obsidian) keeps `CLAUDE_CODE_CHILD_SESSION=1` for life and every claude started from it saves no transcript ("Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker"). The guard drops the marker when the claude that set it is not an ancestor of the shell. To clean an app that already carries it, quit it and reopen it from the Dock. |
 
+**macOS scheduled claude runs need a token.** Cron cannot read the login Keychain, so a cadence run says "Not logged in". Run `claude setup-token`, then
+`mkdir -p ~/.himmel/secrets`, write the token to `~/.himmel/secrets/claude-oauth-token` and `chmod 600` it (himmel's read guard already fences that folder against agent reads). Re-arm each claude cadence
+with `arm --force` (`pipeline-cadence.sh`, `graphmap-cadence.sh`, `drift-fix-cadence.sh`) so its runner loads the file.
+
 #### Fleet CLIs — auxiliary post-install items
 
 Installing the CLI fleet on a new station (`claude`, `codex`, `hermes`,

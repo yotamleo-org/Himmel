@@ -530,6 +530,20 @@ himmel_sh_plain=${himmel_sh//\\/}
 FMT="$CADENCE_RUNNER_FORMAT_VERSION"
 assert_contains "luna runner stamps the format version (HIMMEL-588)"   "# himmel-cadence-runner-format: $FMT" "$luna_sh"
 assert_contains "himmel runner stamps the format version (HIMMEL-588)" "# himmel-cadence-runner-format: $FMT" "$himmel_sh"
+# SCRUM-4: the semantic pair shells the claude CLI (claude-cli backend), which
+# cannot read the macOS Keychain under cron, so it loads the OAuth token from a
+# file when unset; the AST runners never launch claude (asserted further down).
+if [ "$FMT" -ge 24 ]; then pass "runner format is at least v24 (token-file load)"; else fail "runner format is $FMT, want >= 24"; fi
+assert_contains "luna runner has the token-file load"   "CLAUDE_CODE_OAUTH_TOKEN" "$luna_sh"
+assert_contains "himmel runner has the token-file load" "CLAUDE_CODE_OAUTH_TOKEN" "$himmel_sh"
+assert_contains "luna runner names the default token path" "/.himmel/secrets/claude-oauth-token" "$luna_sh_plain"
+assert_contains "luna runner honours HIMMEL_CLAUDE_TOKEN_FILE" "HIMMEL_CLAUDE_TOKEN_FILE" "$luna_sh"
+tok_snippet="$TMP_ROOT/token-snippet.sh"
+awk '/^if \[ -z "\$\{CLAUDE_CODE_OAUTH_TOKEN/{p=1} p{print} p&&/^fi$/{exit}' "$CRON_DIR/graphmap-luna.sh" > "$tok_snippet"
+printf 'fake-token-123\n' > "$TMP_ROOT/fake-token"
+# shellcheck disable=SC2016  # the inner sh expands the variables, not this shell
+tok_got=$(env -i PATH=/usr/bin:/bin HIMMEL_CLAUDE_TOKEN_FILE="$TMP_ROOT/fake-token" /bin/sh -c '. "$1"; exec /bin/sh -c '\''printf "<%s>" "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"'\''' _ "$tok_snippet")
+assert_rc "luna runner snippet exports the token file's first line" "<fake-token-123>" "$tok_got"
 assert_contains "luna runner fires refresh-graph-map.sh"   "refresh-graph-map.sh" "$luna_sh_plain"
 assert_contains "luna runner names the luna corpus"        "--name luna"          "$luna_sh"
 assert_contains "luna runner sets the luna slug"           "--slug graphify-luna-map" "$luna_sh"
@@ -613,6 +627,8 @@ ast_luna_sh_plain=${ast_luna_sh//\\/}
 ast_himmel_sh_plain=${ast_himmel_sh//\\/}
 assert_contains "ast-luna runner stamps the format version"   "# himmel-cadence-runner-format: $FMT" "$ast_luna_sh"
 assert_contains "ast-himmel runner stamps the format version" "# himmel-cadence-runner-format: $FMT" "$ast_himmel_sh"
+assert_not_contains "ast-luna runner has no token-file load (never launches claude)"   "CLAUDE_CODE_OAUTH_TOKEN" "$ast_luna_sh"
+assert_not_contains "ast-himmel runner has no token-file load (never launches claude)" "CLAUDE_CODE_OAUTH_TOKEN" "$ast_himmel_sh"
 assert_contains "ast-luna runner fires ast-update.sh by absolute path"   "$AST_UPDATE_SCRIPT_EXP" "$ast_luna_sh_plain"
 assert_contains "ast-himmel runner fires ast-update.sh by absolute path" "$AST_UPDATE_SCRIPT_EXP" "$ast_himmel_sh_plain"
 assert_not_contains "ast-luna runner has no bare --force on the cadence line (it's inside the wrapper)"   "--force" "$ast_luna_sh_plain"

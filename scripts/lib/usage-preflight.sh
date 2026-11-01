@@ -89,7 +89,7 @@ emit() {
   _fh_json="${fh:-}"; is_num "$_fh_json" || _fh_json=""
   _sd_json="${sd:-}"; is_num "$_sd_json" || _sd_json=""
   _age_json="${age:-}"; is_int "${_age_json#-}" || _age_json=""
-  printf '{"ts":"%s","leg":"%s","verdict":"%s","five_hour":"%s","seven_day":"%s","age":"%s","degraded":%s,"lift":%s}\n' \
+  printf '{"ts":"%s","worker":"%s","verdict":"%s","five_hour":"%s","seven_day":"%s","age":"%s","degraded":%s,"lift":%s}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_worker_json" "$1" "$_fh_json" "$_sd_json" "$_age_json" "$degraded" "${lift:-false}" \
     >> "$LEDGER" 2>/dev/null
   printf '%s\n' "$1"
