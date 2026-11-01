@@ -105,6 +105,31 @@ mkvault r
 tabf="$(printf 'a\tb.md')"; echo t > "$W/r/$tabf"; git -C "$W/r" "${GA[@]}" add -- "$tabf"; git -C "$W/r" "${GA[@]}" commit -q -m t; echo t2 >> "$W/r/$tabf"; touch -d '50 minutes ago' "$W/r/$tabf"  # gnu-ok
 check 'a tab in a path is counted with its real mtime' 'STALL:50m,1' "$(vs r)"
 
+# STALL:<age>,<n>,<reason>: the reason vault-autosync.sh recorded in the git dir
+mkvault s
+echo s > "$W/s/s.md"; git -C "$W/s" add s.md; touch -d '50 minutes ago' "$W/s/s.md"  # gnu-ok
+check 'no recorded reason keeps the two-field STALL token' 'STALL:50m,1' "$(vs s)"
+printf 'fake-gitleaks:handovers/n/leak-note.md\n' > "$W/s/.git/vault-autosync-reason"
+check 'a recorded reason is the third field' 'STALL:50m,1,fake-gitleaks:handovers/n/leak-note.md' "$(vs s)"
+printf 'hook one:dir/a b,c.md\n' > "$W/s/.git/vault-autosync-reason"
+check 'the reason stays one comma-free token' 'STALL:50m,1,hook_one:dir/a_b_c.md' "$(vs s)"
+rm -f "$W/s/.git/vault-autosync-reason"
+git -C "$W/s" "${GA[@]}" commit -q -m s
+printf 'stale:reason\n' > "$W/s/.git/vault-autosync-reason"
+check 'a reason is shown only while stalled' 'PUSH-LAG:0m' "$(TICK_VAULT_PUSHLAG_MIN=0 TICK_VAULT_DIR="$W/s" bash "$VS")"
+
+# static guard: no tracked helper points a browser profile under the handover root
+REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null)" || REPO_ROOT=""
+if [ -n "$REPO_ROOT" ]; then
+    udd="$(git -C "$REPO_ROOT" grep -h -e '--user-data-dir' -- scripts templates marketplace ':!scripts/handover/chief-kit/test-vault-status.sh' 2>/dev/null)"
+    if [ -n "$udd" ]; then pass 'the guard sees the tracked --user-data-dir helpers (not vacuous)'; else fail 'the guard sees no --user-data-dir helper (vacuous)'; fi
+    if printf '%s\n' "$udd" | grep -E -q 'HANDOVER|handover_root|handovers/|/specs/|luna'; then
+        fail "a tracked script points --user-data-dir under the handover root: $(printf '%s\n' "$udd" | grep -E 'HANDOVER|handover_root|handovers/|/specs/|luna' | head -n1)"
+    else
+        pass 'no tracked script points --user-data-dir under the handover root'
+    fi
+fi
+
 # a failed upstream read is unknown, a missing upstream is ok
 git init -q -b main "$W/nu"; echo x > "$W/nu/x.md"; git -C "$W/nu" add x.md; git -C "$W/nu" "${GA[@]}" commit -q -m x
 check 'a vault with no upstream reads ok' 'ok' "$(vs nu)"

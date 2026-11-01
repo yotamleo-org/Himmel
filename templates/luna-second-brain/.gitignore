@@ -80,5 +80,17 @@ graphify-out/
 .obsidian/graph.json
 chats/*/_assets/
 
+# Browser-profile / tool state a leg can leave under a handover bucket.
+# A Chrome user-data dir holds tokens in Default/Preferences, so the secret scan
+# refused every commit while one sat in the tree. Anchored on Chrome's own layout
+# so an ordinary note (Preferences.md, notes/Cache.md) is never hidden.
+**/Default/Preferences
+**/Default/Secure Preferences
+**/Local State
+**/Default/Cache/
+**/Default/Code Cache/
+**/Default/GPUCache/
+**/*-journal
+
 # Judge/leg scratch dirs (probe scripts, extracted repo trees) — never vault content.
 handovers/**/verdicts/*/scratch/
