@@ -25,8 +25,9 @@
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
-#        alert says so. A malformed request, or a call whose prompt came on stdin, never falls back. The fallback
-#        writes its own launch record row (lane sub-fallback).
+#        alert says so. A malformed request, or a call whose prompt came on stdin, never falls back. A call granted
+#        Edit, Write or Bash falls back only from a refusal or a rejected account (exit 2 or 6), never from a failed
+#        run, which may have half-done its edits. The fallback writes its own launch record row (lane sub-fallback).
 # Exit: the call's own code; 2 a refusal before any request; 6 the provider answered "Credit balance is too low" or
 #       "Invalid API key" (the account is marked, and a looping caller stops instead of retrying it).
 #       When the fallback ran, its own exit code replaces any of these.
@@ -190,6 +191,9 @@ fail_over() {
     decision="not run: $NO_FB"
   elif [ "$class" != refused ] && [ "$HAS_PROMPT" != 1 ]; then
     decision="not run: the prompt came on stdin and the call spent it"
+  elif [ "$class" = call-failed ] && [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]]; then
+    # a run that failed after it started may have half-done its edits; only a refusal or rejection precedes execution
+    decision="not run: the call could change files ($ALLOWED_TOOLS), so a failed run is never replayed"
   else
     token="$(sub_preflight)"
     case "$token" in
