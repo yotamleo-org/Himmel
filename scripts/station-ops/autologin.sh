@@ -132,10 +132,12 @@ case $kind in
 esac
 others=${others# }
 keyring="$keyring; other-autologin=${others:-none}"
+still=''
+[ "$action" = disable ] && [ -n "$others" ] && still="; auto-login is still enabled by $others (edit it by hand)"
 
 where="$dm via $file"
 if [ $same -eq 1 ]; then
-    say unchanged "auto-login for $user is already ${action}d in $where; keyring=$keyring"
+    say unchanged "auto-login for $user is already ${action}d in $where; keyring=$keyring$still"
     exit 0
 fi
 if [ $check -eq 1 ]; then say would-change "will $action auto-login for $user in $where; keyring=$keyring"; exit 0; fi
@@ -146,4 +148,4 @@ elif [ "$action" = enable ]; then
 else
     rm -f "$file" || die "cannot remove $file"
 fi
-say changed "${action}d auto-login for $user in $where; takes effect at the next boot or display manager restart; keyring=$keyring"
+say changed "${action}d auto-login for $user in $where; takes effect at the next boot or display manager restart; keyring=$keyring$still"

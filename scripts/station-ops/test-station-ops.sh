@@ -327,6 +327,9 @@ printf '[Autologin]\nUser=someone\n' > "$R/etc/sddm.conf"
 printf '[Autologin]\nUser=someone\n' > "$R/etc/sddm.conf.d/10-other.conf"
 assert_contains "RED: SDDM auto-login set in another file is reported on enable" "other-autologin=$R/etc/sddm.conf" "$(op autologin --check --action enable --session xfce)"
 assert_contains "RED: and in a conf.d drop-in" "10-other.conf" "$(op autologin --check --action disable)"
+op autologin --action enable --session xfce >/dev/null
+assert_contains "RED: disable says auto-login is still enabled by another file" "still enabled by $R/etc/sddm.conf" "$(op autologin --action disable)"
+assert_contains "RED: and an unchanged disable says so too" "still enabled by" "$(op autologin --action disable)"
 rm -f "$R/etc/sddm.conf" "$R/etc/sddm.conf.d/10-other.conf"
 dm lightdm
 assert_contains "LightDM enable changes the config" "result=changed" "$(op autologin --action enable --session xfce)"
