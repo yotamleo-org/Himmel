@@ -41,7 +41,9 @@ bash scripts/handover/chief-kit/series-next.sh abandon --ledger <p> --doc <doc> 
 - `status` is read-only and takes no `--doc`. One `ITEM` row per item: key, state, the
   ledger's `wip`, commits ahead of `cut_from`, and the PR from gh (looked up by
   `publish_branch`; the ledger keeps no PR copy). It adds `SERIES-DRIFT <key> wip` when
-  a worktree HEAD is not what the ledger recorded, `PARENT-ABANDONED <key>` for the item
+  an unpublished item's worktree HEAD is not the recorded `wip`, `SERIES-DRIFT <key> worktree`
+  when that worktree is missing, `SERIES-DRIFT <key> published_head` when a published
+  item's worktree HEAD is not the recorded `published_head`, `PARENT-ABANDONED <key>` for the item
   after an abandoned one, and `GO-FILE <pr> <path>` when a published item's PR already
   has a GO file under `.locks/go/`.
 - `start` takes the `planned` item `<KEY>`, creates its worktree on
@@ -81,7 +83,8 @@ guard frees a RESUME write past its threshold but not a later call:
 
 1. Write the RESUME doc FIRST. It carries pointers only: the ledger path, the series id
    and the new writer. Branches, shas and states come from `status`.
-2. Run `series-next.sh commit` for any item you are still authoring.
+2. Run `series-next.sh commit` for any item you are still authoring, and again for a
+   `committed` item that has new commits (a review fix): `pass` refuses until `wip` is refreshed.
 3. Run `series-next.sh pass --ledger <p> --doc <doc> <resume doc>`. If it refuses,
    fix what it names (commit the work, or find out why a HEAD moved) and run it again.
 4. Append `WRAPPED` to your doc.

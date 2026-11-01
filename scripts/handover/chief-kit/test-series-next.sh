@@ -171,7 +171,8 @@ check "4: F7 holds for the new writer too" "$rc" 2
 # --- 5. F13: worktree.sh prune keeps the locked item worktree -------------------------------------------------------
 # prune matches a merged PR row by branch name and exact tip. The row below says the PR for K2's branch merged at the very
 # sha K2 starts on (K1's head); the twin is an UNLOCKED worktree on the same sha with the same row.
-git -C "$REPO" worktree add -q -b series/s1/TWIN "$(wtp s1 TWIN)" "$K1WIP" 2>/dev/null
+git -C "$REPO" worktree add -q -b series/s1/TWIN "$(wtp s1 TWIN)" "$K1WIP" 2>/dev/null; twin_rc=$?
+check "5: F13 the unlocked twin was created (else the prune control is vacuous)" "$twin_rc $([ -e "$(wtp s1 TWIN)" ] && echo exists || echo missing)" "0 exists"
 printf 'owner/repo\tseries/s1/K2\tmerged\t%s\nowner/repo\tseries/s1/TWIN\tmerged\t%s\n' "$K1WIP" "$K1WIP" > "$GH_PULLS"
 prune_out="$( cd "$REPO" && bash "$SCRIPTS/worktree.sh" prune 2>&1 )"; prune_rc=$?
 [ "$prune_rc" = 0 ] || printf '%s\n' "$prune_out"
@@ -308,6 +309,13 @@ check "8b: commit on a committed item refreshes wip rc 0" "$rc" 0
 check "8b: and wip is the new HEAD" "$(jget "$L4" 'd["items"][0]["wip"]')" "$(git -C "$W4" rev-parse HEAD)"
 sn pass --ledger "$L4" --doc "$A" "$B"
 check "8b: pass then succeeds" "$rc" 0
+# pass accepts the writer doc under another spelling (a symlink) and a relative resume doc, and records the real writer and an absolute one
+L11="$tmp/ledgers/s11.json"; mk "$L11" "$A" K1 || exit 1
+ln -s "$A" "$tmp/handovers/doc-A-link.md"
+sn pass --ledger "$L11" --doc "$tmp/handovers/doc-A-link.md" rel-resume.md
+check "8b: pass by the writer under another spelling, to a relative resume doc, rc 0" "$rc" 0
+check "8b: and the ledger records the resume doc as an absolute path" "$(jget "$L11" 'd["writer"]')" "$REPO/rel-resume.md"
+check "8b: and the pass row names the recorded writer" "$(jget "$L11" 'd["passes"][0]["from"]')" "$A"
 sl set --ledger "$L2" --key K2 state=published >/dev/null
 sn commit --ledger "$L2" --doc "$A" K2
 check "8b: a published item cannot commit" "$rc" 2

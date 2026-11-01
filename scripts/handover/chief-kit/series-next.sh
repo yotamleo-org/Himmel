@@ -235,7 +235,7 @@ cmd_commit() {
 
 # --- pass ------------------------------------------------------------------------------------------------------------
 cmd_pass() {
-    local k st wt bad="" drift
+    local k st wt bad="" drift to
     need_writer
     while IFS= read -r k; do
         st="$(field "$k" state)"; wt="$(field "$k" worktree)"
@@ -249,7 +249,10 @@ cmd_pass() {
         [ -z "$drift" ] || printf '%s\n' "$drift"
         refuse "pass refused: unrecorded work in an unpublished item; nothing moved"
     fi
-    python3 -I "$LEDGER_PY" pass --ledger "$LEDGER" --from "$DOC" --to "$ARG" || fail "series-ledger.py pass failed"
+    # need_writer compared realpaths, so the ledger gets the recorded writer (its raw string compare then matches) and an
+    # absolute resume doc (a relative one would resolve against the next leg's cwd)
+    case "$ARG" in /*) to="$ARG" ;; *) to="$PWD/$ARG" ;; esac
+    python3 -I "$LEDGER_PY" pass --ledger "$LEDGER" --from "$(top writer)" --to "$to" || fail "series-ledger.py pass failed"
     echo "PASSED $DOC to $ARG"
 }
 
