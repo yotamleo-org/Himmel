@@ -19,12 +19,12 @@
 #   LOCK    this document's lock state; with --acquire and state `free`, acquires
 #           it, prints the release token and writes it over the doc's
 #           `none yet — acquire your own` line. `held` is never taken over.
-#   WORKERS    only with --render-workers: rewrites the doc's `## Live state` legs: line
+#   WORKERS    only with --render-workers: rewrites the doc's `## Live state` workers: line
 #           from the fleet manifest through live-state.sh (lock tokens from the
 #           held locks, nonces kept) instead of a hand edit, bounded by
 #           ACTION_ZERO_WORKERS_TIMEOUT (default 60s); `unavailable` and exit 1 when
 #           it cannot render (no manifest next to the doc, a failure or a timeout) and
-#           when this document's lock is held (by this or another session): the legs: line is not
+#           when this document's lock is held (by this or another session): the workers: line is not
 #           rewritten. A chief already holding its lock re-renders with live-state.sh.
 #
 # --lock-only runs the LOCK section alone: the successor's one call once
@@ -125,9 +125,9 @@ if [ "$lockonly" -eq 0 ]; then
         echo "== WORKERS"
         pre_state="$(env HANDOVER_DIR="$root" bash "$ql" status "$doc" 2>&1)"; pre_rc=$?
         if [ "$pre_rc" -ne 0 ] || [ "$pre_state" != free ]; then
-            render_rc=1; echo "unavailable (this document's lock is not free: held by this or another session, legs: left unchanged)"
+            render_rc=1; echo "unavailable (this document's lock is not free: held by this or another session, workers: left unchanged)"
         elif [ -f "${doc%.md}.fleet.json" ]; then
-            if bounded workers "$workers_t" env HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc"; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
+            if bounded workers "$workers_t" env HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc"; then echo "workers: line rendered"; else render_rc=1; echo "unavailable"; fi
         else
             render_rc=1; echo "unavailable (no fleet manifest next to the doc)"
         fi

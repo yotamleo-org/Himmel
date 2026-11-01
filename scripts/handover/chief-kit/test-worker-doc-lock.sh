@@ -132,9 +132,9 @@ rm -f "$tmp/held" "$tmp/release"; hold "$d5"; hp=$!
 wait_held
 bash "$HERE/live-state.sh" "$d5" >/dev/null 2>&1 & lp=$!
 sleep 0.5
-check "5c live-state.sh waits while the lock is held" "$(grep -c '^legs: none old$' "$d5")" "0"
+check "5c live-state.sh waits while the lock is held" "$(grep -c '^workers: none old$' "$d5")" "0"
 : > "$tmp/release"; wait "$hp"; wait "$lp"
-check "5d live-state.sh rewrites once it is released" "$(grep -c '^legs: none old$' "$d5")" "1"
+check "5d live-state.sh rewrites once it is released" "$(grep -c '^workers: none old$' "$d5")" "1"
 # inbox-send.sh --doc mirrors the ruling into the doc's Chief Rulings section.
 d6="$tmp/d6.md"; mkdoc "$d6"
 mkdir -p "$tmp/root"

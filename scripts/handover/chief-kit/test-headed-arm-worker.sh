@@ -337,8 +337,8 @@ fleet_launch() {
 if command -v flock >/dev/null 2>&1; then
   rc=0; out="$(fleet_launch 2>&1)" || rc=$?
   check 'fleet: successful handoff returns zero' 0 "$rc"
-  check 'fleet: successful handoff adds exactly the worker doc' "$fleet_doc" "$(jq -r '.legs[].doc' "$fleet_manifest" 2>/dev/null)"
-  check 'fleet: the added row records the launch lane (HIMMEL-5074 N1)' native "$(jq -r '.legs[0].lane' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet: successful handoff adds exactly the worker doc' "$fleet_doc" "$(jq -r '.workers[].doc' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet: the added row records the launch lane (HIMMEL-5074 N1)' native "$(jq -r '.workers[0].lane' "$fleet_manifest" 2>/dev/null)"
 else
   echo "SKIP - fleet: successful-handoff rows (fleet-manifest.sh needs util-linux flock, absent here)"
 fi
@@ -938,7 +938,7 @@ PLUGIN_PROFILES_REGISTRY="$ceiling_reg" WORKER_SESSION_CONTEXT='' RUN_WORKER_ARG
   run_worker "$d8profile" "$tmp/repo8profile" "HIMMEL-4021-ceiling" "claude-sonnet-4-6" \
   "$PROCEED_PREFLIGHT" "$tmp/profile fleet/manifest.json" >/dev/null 2>&1 || rc=$?
 if command -v flock >/dev/null 2>&1; then
-  check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$some_doc" "$(jq -r '.legs[].doc' "$tmp/profile fleet/manifest.json" 2>/dev/null)"
+  check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$some_doc" "$(jq -r '.workers[].doc' "$tmp/profile fleet/manifest.json" 2>/dev/null)"
 else
   echo "SKIP - fleet: real renderer spaced-manifest row (fleet-manifest.sh needs util-linux flock, absent here)"
 fi

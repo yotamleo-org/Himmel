@@ -13,7 +13,10 @@
 #
 # Schema 1:
 #   {"schema": 1,
-#    "legs": [{"doc": "<absolute worker doc>", "label": "N<k>", "added": "<ISO-8601>"}]}
+#    "workers": [{"doc": "<absolute worker doc>", "label": "N<k>", "added": "<ISO-8601>"}]}
+# Every write emits `workers` and drops the pre-rename `legs` array, so an old manifest is
+# rewritten on its next add/remove with the same entries in the same order. The readers still
+# take `legs` while legacy names are on (scripts/lib/legacy-names.sh).
 # add also stores `lane` (native|claudex|deepseek|api|...; a missing
 # --lane is stored `unknown`, never guessed) and, with --lockless, `lockless: true`
 # (an eval/pilot row that holds no queue lock: tick reports NOLOCK and judges it by
@@ -140,17 +143,16 @@ if ! exec 9>>"$manifest.lock" || ! flock -x -w 30 9; then  # gnu-ok: Linux-only 
     exit 1
 fi
 
-wk=legs; legacy_names_on || wk=workers
+wk=workers
 if [ -e "$manifest" ]; then
     if ! jq -e -s "$VALID" "$manifest" >/dev/null 2>&1; then
         echo "fleet-manifest: refusing to rewrite an invalid manifest: $manifest" >&2
         exit 1
     fi
-    # the writer edits the array the readers read: `workers` when the manifest holds one (it wins)
-    if jq -e -s '.[0] | has("workers")' "$manifest" >/dev/null 2>&1; then wk=workers; fi
-    cur="$(cat "$manifest")" || exit 1
+    # every write says `workers` and drops `legs`: an old manifest keeps its entries and order
+    # (`workers` wins when a manifest holds both, as it does for the readers)
+    cur="$(jq 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end' "$manifest")" || exit 1
 else
-    # a new manifest says `legs` while legacy names are on, so a reader on an older checkout still reads it
     cur="{\"schema\":1,\"$wk\":[]}"
 fi
 

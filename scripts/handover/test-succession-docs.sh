@@ -238,13 +238,13 @@ if [ -z "$stale" ]; then pass 'no succession doc still names nonces=STRANDED'; e
 contains 'chief-template Live state: names the RELAYED and UNCONFIRMED reads' "$live" 'nonces=RELAYED'
 contains 'running-a-chief: an unrotated relay that the worker accepted reads RELAYED, not an incident' "$running" 'RELAYED'
 contains 'retask-channel.md: the tick reads the worker own bullet, never asserts strandedness' "$retask" 'never asserts'
-# the template states whether prose is allowed on the legs: line and
+# the template states whether prose is allowed on the workers: line and
 # what a malformed entry reads as, so the doc and tick.sh's parser agree.
-contains 'chief-template Live state: prose on the legs: line is permitted and read as prose' "$live" "Prose is permitted on the \`legs:\` line"
+contains 'chief-template Live state: prose on the workers: line is permitted and read as prose' "$live" "Prose is permitted on the \`workers:\` line"
 contains 'chief-template Live state: a malformed entry reads livestate=MALFORMED, never dropped' "$live" 'livestate=MALFORMED:<label>'
-# the template states that the legs: block may wrap and where it
+# the template states that the workers: block may wrap and where it
 # ends, in the words tick.sh's awk enforces (first blank line or next field: line).
-contains 'chief-template Live state: the legs: block may wrap' "$live" "The \`legs:\` block may wrap"
+contains 'chief-template Live state: the workers: block may wrap' "$live" "The \`workers:\` block may wrap"
 contains 'chief-template Live state: the block ends at the first blank line or the next field: line' "$live" "up to the first blank line or the next \`field:\` line"
 contains 'chief-template Live state: a list-marker line also ends the block' "$live" 'or the first list-marker'
 contains 'chief-template Live state: the blank line before the detail is load-bearing' "$live" 'the blank line before the per-worker detail is load-bearing'
