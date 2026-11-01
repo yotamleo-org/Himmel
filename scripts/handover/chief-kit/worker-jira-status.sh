@@ -79,7 +79,11 @@ command -v jq >/dev/null 2>&1 || warn "jq not found; $KEY not synced"
 . "$HERE/../../lib/ticket-status.sh"
 
 row() {
-    status_event event="$EVENT" key="$KEY" ${PR:+"pr=$PR"} ${HEAD:+"head=$HEAD"} "$@"
+    # event=merge is merge-on-green.sh's own contract row; the funnel's derive row for that event is
+    # written as derive, so no reader of the last merge row sees a row without a contract.
+    local ev="$EVENT"
+    [ "$ev" != merge ] || ev=derive
+    status_event event="$ev" key="$KEY" ${PR:+"pr=$PR"} ${HEAD:+"head=$HEAD"} "$@"
 }
 
 if [ "${WORKER_SESSION_JIRA_STATUS:-1}" = 0 ]; then

@@ -609,17 +609,45 @@ for name in names:
         continue
     if isinstance(rec, dict) and rec.get('state') == 'wrapped' and rec.get('resume_brief'):
         briefs[name[:-5].upper()] = str(rec['resume_brief'])
-done_pending = set()
+done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
+partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
+status_unreadable = False
 try:
     for line in open(os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl')):
         try:
             r = json.loads(line)
         except ValueError:
             continue
-        if isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') == 'yes':
-            done_pending.add(str(r.get('key', '')).upper())
-except OSError:
+        if not (isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') in ('yes', 'no')):
+            continue
+        mkey = str(r.get('key', '')).upper()
+        if r['contract'] == 'yes':
+            done_pending.add(mkey)
+            partials.pop(mkey, None)  # the completing merge closes every earlier partial slice
+        else:
+            done_pending.discard(mkey)  # a newer partial merge reopens a key an older contract=yes row closed
+            if str(r.get('pr', '')).isdigit():
+                prs_of = partials.setdefault(mkey, [])
+                if str(r['pr']) not in prs_of:
+                    prs_of.append(str(r['pr']))
+except FileNotFoundError:
     pass
+except OSError as e:
+    status_unreadable = True
+    print('# warn: %s is unreadable (%s): merged contract rows are unknown: a To Do ticket with a merge on main is withheld, but a done-pending or partially merged In Progress ticket may still be listed as RESUME' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
+
+def merged_on_main(key):
+    # True when the main ref carries a commit citing [KEY]; a git read that fails counts as merged (unknown fails closed)
+    try:
+        r = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', os.environ['ND_MAIN_REF'], '--fixed-strings', '--grep=[%s]' % key, '-1', '--format=%h'],
+                           capture_output=True, text=True, timeout=60, check=True)
+        return bool(r.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return True
+
+def partial_resume(key):
+    # a ticket with a merged partial slice is in work: it is a RESUME row naming that slice, never a fresh To Do row
+    return key in partials and key not in done_pending
 
 # The mirror lags both ways, so a candidate's blockers are all read live once, bounded (20 s a key,
 # 8 in parallel, every key read: no cap), through NEXT_DISPATCH_JIRA_CMD (`<cmd> get KEY` prints a tab line KEY, type, status, title) or the real
@@ -689,9 +717,10 @@ live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['b
               for b in i['blocked_by']])
 print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
+withheld_unreadable = []
 cands = []
 for i in issues.values():
-    if i['status'] != 'To Do' or i['key'] in briefs:
+    if i['status'] != 'To Do' or i['key'] in briefs or (partial_resume(i['key']) and i['type'] not in ('Epic', 'Sub-task')):
         continue
     if i['type'] in ('Epic', 'Sub-task'):
         drop(i, 'type ' + i['type'])
@@ -718,7 +747,13 @@ for i in issues.values():
     if residual_out(i):
         drop(i, 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
         continue
+    if status_unreadable and merged_on_main(i['key']):
+        withheld_unreadable.append(i['key'])
+        drop(i, 'status-events.jsonl unreadable and the key has a merge on main')
+        continue
     cands.append(i)
+if withheld_unreadable:
+    print('# WARN: status-events.jsonl is unreadable: withheld %s (a merge on main)' % ', '.join(withheld_unreadable))
 cands.sort(key=ranked)
 pool_only = os.environ.get('ND_POOL_ONLY') == '1'
 next_tier = [i for i in cands if tier_of(i) > 4]
@@ -955,13 +990,28 @@ if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
     except (OSError, subprocess.SubprocessError):
         merged_unknown = True
 
+# The `Remaining:` text of a merged partial PR's body (the line merge-on-green.sh reads); '' when the body has none.
+# A body gh cannot read is recorded in unread_prs and also returns '', so the ticket is never dispatched blind.
+remaining_cache = {}
+unread_prs = set()
+def remaining_of(pr):
+    if pr not in remaining_cache:
+        try:
+            body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
+        except (OSError, subprocess.SubprocessError):
+            body = ''
+            unread_prs.add(pr)
+        remaining_cache[pr] = ' '.join(m.strip() for m in re.findall(r'(?im)^[ \t]*remaining:[ \t]*(.*\S)', body))
+    return remaining_cache[pr]
+
 # In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
+needs_note = []  # (key, partial PR numbers with no Remaining: text) of in-work tickets that need a chief note first
 resume = []
 resume_held = []  # (key, holder) of in-work tickets a collision keeps off the list
 for i in issues.values():
     if pool_only and (tier_of(i) > 4 or i['key'] in prio_cloud):
         continue
-    wrapped = i['status'] == 'To Do' and i['key'] in briefs
+    wrapped = i['status'] == 'To Do' and (i['key'] in briefs or partial_resume(i['key']))
     if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
         continue
     if i['status'] == 'IN CI' and merged_unknown:  # an unread merged-PR set could hide the ticket's merge
@@ -987,6 +1037,10 @@ for i in issues.values():
     hit = held_hit(i)
     if hit:
         resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
+        continue
+    i['partial'] = [(pr, remaining_of(pr)) for pr in partials.get(i['key'], [])] if partial_resume(i['key']) else []
+    if any(not text for _, text in i['partial']):  # a merged slice whose PR body names no remaining work: not dispatched blind
+        needs_note.append((i['key'], [pr for pr, text in i['partial'] if not text]))
         continue
     resume.append(i)
 resume.sort(key=ranked if pool_only else rank)
@@ -1055,6 +1109,9 @@ def classify(batch):
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
+for k, prs in needs_note:
+    print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched' % (k, ', '.join('#' + p for p in prs),
+          'body could not be read (gh failed)' if any(p in unread_prs for p in prs) else 'has no Remaining: line'))
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, wdoc))
 if skipped_platform:
@@ -1165,6 +1222,8 @@ def drop_summary():
         if r is None:
             if i['key'] in briefs:
                 r = 'resume-brief (a wrapped worker resumes it: RESUME row)'
+            elif partial_resume(i['key']):
+                r = 'partial-merge (a merged contract=no PR: RESUME row, or needs a chief note)'
             elif pool_only and tier_of(i) > 4:
                 r = 'tier 5 (outside the priority pool)'
             else:
@@ -1221,7 +1280,8 @@ def emit_resume(rows):
         picked.extend((f, i['key']) for f in i['files'])
         emitted.append(i)
         lane_of[i['key']] = 'RESUME'
-        say('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])))
+        say('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])
+                       + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]))
         n += 1
 
 classified = os.environ.get('ND_CLASSIFY') == '1'

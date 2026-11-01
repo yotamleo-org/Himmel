@@ -126,6 +126,9 @@ check "E29: and its dependent still waits on it" "$(tk HIMMEL-7381 .state)" "wai
 issue HIMMEL-7379 Done parent=HIMMEL-8004 resolved=2026-11-02T16:00:00.000+0000
 cs
 check "E29: closed by hand afterwards, the check reads that merge" "$(tk HIMMEL-7379 .check.merge.pr)" "103"
+ev '{"ts":"2026-11-02T14:00:05Z","event":"merge","key":"HIMMEL-7379","pr":"999","result":"noop","rule":"D3"}'
+cs
+check "E29 (HIMMEL-8522): a contract-less derive row under event merge is not read as the merge" "$(tk HIMMEL-7379 .check.merge.pr)" "103"
 
 # --- E30: a chain changes ----------------------------------------------------
 reset
