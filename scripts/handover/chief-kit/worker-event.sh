@@ -16,12 +16,17 @@
 #                        close-wrapped-worker.sh --fleet <manifest> <worker doc> closes it, which
 #                        itself refuses unless the worker's queue lock is free and its tail is WRAPPED.
 #   READY <pr> <head> -> with the auto_go flag on: auto-go.sh --doc <doc> --fleet <manifest>
-#                        --worker <label> --dry-run <pr> <head>, its answer passed on. Until the
-#                        scripted GO writes a file (a later auto-go.sh slice) a WOULD-GO answer
-#                        prints `WOULD-GO <pr> <head> dry-run, no GO written` and exits 10, so
-#                        the chief still gives the GO; ESCALATE auto-go <n> <reason> is passed
-#                        on as is. Any other auto-go exit is `ESCALATE auto-go-error rc=<n> ...`.
-#                        Flag off: ESCALATE marker-READY, as before.
+#                        --worker <label> <pr> <head>, live: every check passing writes and sends
+#                        the GO. Each answer leaves a bullet in the chief doc (append-results.sh):
+#                          GO-SENT (exit 0)     -> `AUTO-GO #<pr> <head8> qid=<q|none> to <label>`,
+#                                                  prints `HANDLED auto-go <label>`, rc 0
+#                          GO-WRITTEN (exit 11) -> the same bullet ending ` bus-failed`; auto-go's
+#                                                  lines (the SENDMESSAGE the chief sends) passed on, rc 11
+#                          ESCALATE auto-go <n> <reason> (exit 10) -> `AUTO-GO-REFUSED #<pr> <n>`,
+#                                                  the line passed on as is, rc 10
+#                        A bullet that cannot be written appends ` doc-bullet=failed <why>` (its own
+#                        line after a GO-WRITTEN). Any other auto-go answer is
+#                        `ESCALATE auto-go-error rc=<n> ...`. Flag off: ESCALATE marker-READY, as before.
 #   anything else     -> ESCALATE (READY with the flag off, and FINDING, need a judge or the chief)
 #
 #   after a MERGED with a PR, station-sync.sh --pr <n> runs detached to bring the
@@ -33,11 +38,15 @@
 # live-state.sh <doc>, which rewrites the `## Live state` legs: line; its failure
 # is appended as ` live-state=failed <why>` (the wrap is done, so rc stays 0).
 #
-# Output: one line. `HANDLED wrap-merged|close-wrapped <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0),
+# Output: one line (a READY's GO-WRITTEN passes on auto-go's lines, see above).
+# `HANDLED wrap-merged|close-wrapped <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0),
+# `HANDLED auto-go <label>[ doc-bullet=failed <why>]` (rc 0) for a READY whose GO auto-go.sh sent,
 # `HANDLED noop <label>` (rc 0) when the worker is out of the manifest and the chief doc
 # already records `<label> WRAPPED, window closed.` (a re-run on a closed worker), or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
-# marker-<X>, unfiled-residual: <line>, or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it.
+# marker-<X>, unfiled-residual: <line>, auto-go <n> <why> (auto-go.sh refused), auto-go-error rc=<n>,
+# or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it, or
+# auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
 # Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO.
@@ -131,12 +140,30 @@ fi
 if [ "$marker" = READY ]; then
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || escalate "ready-unparsed"
     rpr="${BASH_REMATCH[1]}"; rhead="${BASH_REMATCH[2]}"
-    aout="$("${AUTOGO[@]}" --doc "$DOC" --fleet "$FLEET" --worker "$label" --dry-run "$rpr" "$rhead" 2>&1)"; arc=$?
-    afirst="$(printf '%s\n' "$aout" | grep -m1 '[^[:space:]]')" || afirst=""
-    case "$arc:$afirst" in
-        0:"WOULD-GO $rpr $rhead") echo "WOULD-GO $rpr $rhead dry-run, no GO written"; exit 10 ;;
-        10:"ESCALATE auto-go "*) echo "$afirst"; exit 10 ;;
-    esac
+    aout="$("${AUTOGO[@]}" --doc "$DOC" --fleet "$FLEET" --worker "$label" "$rpr" "$rhead" 2>&1)"; arc=$?
+    # the answer is auto-go's first answer line: a stderr warning printed before it must not hide it
+    afirst="$(printf '%s\n' "$aout" | grep -m1 -E '^(GO-SENT|GO-WRITTEN|ESCALATE|WOULD-GO) ')" || afirst=""
+    # bullet <text>: the chief doc's record of the scripted answer; a failed append is reported, never fatal
+    bullet() { local e; e="$(bash "$HERE/append-results.sh" "$DOC" "$1" 2>&1)" || echo " doc-bullet=failed $(printf '%s' "$e" | tr '\n' ' ')"; }
+    go_re="^GO-SENT $rpr $rhead to [^ ]+ bus=#[0-9]+ qid=([A-Za-z0-9._-]+)\$"
+    gw_re="^GO-WRITTEN $rpr $rhead qid=([A-Za-z0-9._-]+) bus-failed: "
+    if [ "$arc" -eq 0 ] && [[ $afirst =~ $go_re ]]; then
+        echo "HANDLED auto-go $label$(bullet "AUTO-GO #$rpr ${rhead:0:8} qid=${BASH_REMATCH[1]} to $label")"
+        exit 0
+    fi
+    if [ "$arc" -eq 11 ] && [[ $afirst =~ $gw_re ]]; then
+        # the SENDMESSAGE line stays whole: a failed append is reported on a line of its own
+        bres="$(bullet "AUTO-GO #$rpr ${rhead:0:8} qid=${BASH_REMATCH[1]} to $label bus-failed")"
+        # the answer lines first (the relay wakes on the first line), any warning after them
+        printf '%s\n' "$aout" | grep -E '^(GO-WRITTEN|SENDMESSAGE) '
+        printf '%s\n' "$aout" | grep -vE '^(GO-WRITTEN|SENDMESSAGE) |^[[:space:]]*$'
+        [ -z "$bres" ] || printf '%s\n' "${bres# }"
+        exit 11
+    fi
+    if [ "$arc" -eq 10 ] && [[ $afirst =~ ^ESCALATE\ auto-go\ ([0-9]+)\  ]]; then
+        echo "$afirst$(bullet "AUTO-GO-REFUSED #$rpr ${BASH_REMATCH[1]}")"
+        exit 10
+    fi
     escalate "auto-go-error rc=$arc $(printf '%s' "$aout" | tr '\n' ' ')"
 fi
 

@@ -16,7 +16,8 @@
 #   none     neither. The chief may record a `delta: no-op` verdict
 #            (write-verdict.sh --delta-noop) instead of dispatching a judge.
 # It FAILS CLOSED: any read error (unreadable trust list, verdict or ledger, an
-# unknown sha, a bad regex, no verdict given) prints trust, never none. A trust
+# unknown sha, a bad regex, no verdict given) prints trust, never none; so does a
+# new head that does not descend from the judged head. A trust
 # hit wins over a finding hit.
 #
 # Findings come from two places, both at the judged head's line numbers:
@@ -115,6 +116,8 @@ done < "$work/names.z"
 cp "$work/names.txt" "$work/trust-names.txt" || trust
 anc=0
 if git merge-base --is-ancestor "$J" "$N" 2>/dev/null; then anc=1; else [ "$?" -eq 1 ] || trust; fi
+# a new head that does not descend from the judged head (a rewritten history) is no delta of it
+[ "$anc" -eq 1 ] || trust
 if [ "$anc" -eq 1 ]; then
     git rev-list --merges "$J..$N" > "$work/merges.txt" 2>/dev/null || trust
     if [ -s "$work/merges.txt" ]; then

@@ -179,7 +179,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     limit=240s` to both the wake and the out file; another silent failure names
     `relay-failed`, its label and rc. Read the out file and finish that wrap by hand
     (`wrapping.md`). Every WAKE block
-    ends with `absorbed since last wake: wraps=<n> (<labels>) merged=<n> (#<pr>,…)`
+    ends with `absorbed since last wake: wraps=<n> (<labels>) merged=<n> (#<pr>,…)`, plus ` auto-go=<n> (#<pr>,…)` for scripted GOs,
     when the relay absorbed anything (labels and PR numbers only), and the
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
