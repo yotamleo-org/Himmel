@@ -320,5 +320,22 @@ bash "$SCRIPT" "$wk" --nonce N61=n22 --pid N61=22 >/dev/null 2>&1; rc=$?
 check '22. an old legs: doc over an old legs manifest renders (rc 0)' 0 "$rc"
 check '22. and writes workers:, not legs:' 'workers: `N61:n22:tok-one:22`|0' "$(grep '^workers:' "$wk")|$(grep -c '^legs:' "$wk")"
 
+# 23. A render that picked `legs:` before another render replaced it with `workers:` re-reads the
+#     key under the doc lock and still writes (and keeps the `lockless:` line).
+# shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
+. "$HERE/worker-doc-lock.sh"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","added":"x"},{"doc":"%s","label":"N70","lane":"eval","lockless":true,"added":"x"}]}\n' "$d1" "$d2" > "$wm"
+printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:tok-one:111` first\nqueue: none\n\n## Results\n' > "$wk"
+doc_lock "$wk" test-live-state || true
+bash "$SCRIPT" "$wk" 9>&- >/dev/null 2>&1 &
+race_pid=$!
+sleep 2
+printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:tok-one:111` first\nlockless: N70 (eval) %s\nqueue: none\n\n## Results\n' "$d2" > "$wk"
+doc_unlock
+wait "$race_pid"; rc=$?
+check '23. the render that lost the legs: to workers: race exits 0' 0 "$rc"
+check '23. it keeps the lockless: line' 1 "$(grep -c '^lockless:' "$wk")"
+check '23. it keeps exactly one workers: line and no legs: line' '1 0' "$(grep -c '^workers:' "$wk") $(grep -c '^legs:' "$wk")"
+
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }

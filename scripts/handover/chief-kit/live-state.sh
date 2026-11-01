@@ -52,6 +52,7 @@ usage() {
 }
 
 [ "$#" -ge 1 ] || { usage; exit 2; }
+orig_args=("$@")
 doc="$1"; shift
 print_only=0; digest=0
 nonces=""
@@ -83,8 +84,10 @@ if [ "$digest" -eq 1 ] && { [ "$print_only" -ne 0 ] || [ -n "$nonces$pids" ]; };
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
-live_key=workers
-if ! awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && /^workers:/ { f = 1 } END { exit !f }' "$doc" && legacy_names_on; then live_key=legs; fi
+pick_live_key() {
+    if ! awk '$0 == "## Live state" { s = 1; next } s && /^## / { exit } s && /^workers:/ { f = 1 } END { exit !f }' "$doc" && legacy_names_on; then echo legs; else echo workers; fi
+}
+live_key="$(pick_live_key)"
 
 # Rendering and digest share tick.sh's section and wrapped-workers boundaries.
 block_awk='
@@ -200,6 +203,11 @@ fi
 # shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
 . "$HERE/worker-doc-lock.sh"
 doc_lock "$doc" live-state || true
+# Another render may have replaced the legs: block with workers: while this one waited: start over on the new key.
+if [ "$(pick_live_key)" != "$live_key" ]; then
+    doc_unlock
+    exec bash "$HERE/live-state.sh" "${orig_args[@]}"
+fi
 tmp="$(mktemp "$doc.XXXXXX")" || { echo "live-state: cannot create a temp file next to $doc" >&2; exit 1; }
 chmod --reference="$doc" "$tmp" 2>/dev/null  # gnu-ok: Linux-only kit; the rewrite keeps the doc mode
 if ! NL="$new_line" awk -v k="$live_key" '
