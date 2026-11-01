@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, realpath, mkdtemp, copyFile, rm, open } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, realpath, readlink, mkdtemp, copyFile, rm, open } from "node:fs/promises";
 import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -2234,15 +2234,17 @@ export const makeSendDoc = (token: string, root: string, upload: typeof sendDocu
     const base = await realpath(join(root, "outgoing"));
     if (!(await realpath(path)).startsWith(base + sep)) return false;   // cheap refusal before anything is opened
     // Open once (a final-component symlink is refused; O_NONBLOCK so a FIFO cannot hang the poller),
-    // then resolve the path AGAIN and require it to land inside outgoing on the very inode we hold.
-    // That covers a parent directory swapped for a symlink too: the bytes we read belong to a file
-    // that sits in outgoing at that moment, and a swap after this point cannot change what is sent.
+    // then ask where the HELD descriptor lives, not where the name resolves now: on Linux that is
+    // /proc/self/fd/<n>, which a swapped parent directory cannot change. Elsewhere the path is
+    // resolved again and must land inside outgoing on the very inode we hold (a swap that survives
+    // that needs a hard link into outgoing). The bytes sent are the descriptor's, never a re-open.
     const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const st = await fh.stat();
-      const real = await realpath(path);
-      const at = await stat(real);
-      if (!real.startsWith(base + sep) || !st.isFile() || st.size > MAX_DOC_BYTES || st.dev !== at.dev || st.ino !== at.ino) return false;
+      const held = await readlink(`/proc/self/fd/${fh.fd}`).catch(() => null);
+      const real = held ?? await realpath(path);
+      if (!real.startsWith(base + sep) || !st.isFile() || st.size > MAX_DOC_BYTES) return false;
+      if (held === null) { const at = await stat(real); if (st.dev !== at.dev || st.ino !== at.ino) return false; }
       bytes = await fh.readFile();
       name = basename(real);
     } finally { await fh.close(); }
