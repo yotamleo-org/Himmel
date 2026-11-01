@@ -59,7 +59,8 @@ reboot_for() { # package names on stdin; yes if a reboot-class package is among 
 
 if [ $check -eq 1 ]; then
     if [ "$family" = debian ]; then
-        names=$(apt-get -s -o Debug::NoLocking=1 upgrade 2>/dev/null | sed -n 's/^Inst \([^ ]*\) .*/\1/p')
+        sim=$(apt-get -s -o Debug::NoLocking=1 upgrade 2>/dev/null) || die "apt-get could not simulate the upgrade"
+        names=$(printf '%s\n' "$sim" | sed -n 's/^Inst \([^ ]*\) .*/\1/p')
     else
         names=$(pacman -Qu 2>/dev/null | awk '{print $1}')
     fi
@@ -78,7 +79,8 @@ printf 'system-update %s family=%s start=%s\n' "$id" "$family" "$(date -u +%FT%T
 if [ "$family" = debian ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update >> "$log" 2>&1 || die "apt-get update failed, see $log"
-    names=$(apt-get -s -o Debug::NoLocking=1 upgrade 2>>"$log" | sed -n 's/^Inst \([^ ]*\) .*/\1/p')
+    sim=$(apt-get -s -o Debug::NoLocking=1 upgrade 2>>"$log") || die "apt-get could not simulate the upgrade, see $log"
+    names=$(printf '%s\n' "$sim" | sed -n 's/^Inst \([^ ]*\) .*/\1/p')
     n=$(printf '%s' "$names" | grep -c .)
     if [ "$n" -eq 0 ]; then say unchanged "nothing to upgrade"; exit 0; fi
     apt-get -y upgrade >> "$log" 2>&1 || die "apt-get upgrade failed, see $log"

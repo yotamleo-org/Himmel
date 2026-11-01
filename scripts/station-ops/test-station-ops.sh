@@ -231,7 +231,8 @@ cat > "$R/bin/apt-get" <<'FAKEAPT'
 #!/bin/sh
 case "$*" in
     *update*) exit 0 ;;
-    *-s*) while read -r p; do echo "Inst $p [1] (2 Ubuntu)"; done < "$HIMMEL_OPS_ROOT/pending"; exit 0 ;;
+    *-s*) [ -e "$HIMMEL_OPS_ROOT/sim-fail" ] && exit 100
+        while read -r p; do echo "Inst $p [1] (2 Ubuntu)"; done < "$HIMMEL_OPS_ROOT/pending"; exit 0 ;;
     *upgrade*) : > "$HIMMEL_OPS_ROOT/pending"; exit 0 ;;
 esac
 FAKEAPT
@@ -244,6 +245,11 @@ assert_contains "system-update upgrades" "result=changed" "$out"
 assert_contains "a kernel upgrade recommends a reboot" "reboot_recommended=yes" "$out"
 assert_contains "the second run is unchanged" "result=unchanged" "$(op system-update)"
 assert_eq "the log is under var/log/himmel/ops" "yes" "$([ -s "$R/var/log/himmel/ops/testid00.log" ] && echo yes || echo no)"
+: > "$R/sim-fail"
+out=$(op system-update --check)
+assert_contains "a failed simulation is a failure, not nothing to upgrade (--check)" "result=failed" "$out"
+out=$(op system-update)
+assert_contains "a failed simulation is a failure, not nothing to upgrade (run)" "result=failed" "$out"
 
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

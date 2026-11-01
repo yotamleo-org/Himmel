@@ -2,7 +2,7 @@
  "version": 1,
  "run_as": "root",
  "timeout_s": 30,
- "effect": "adds, replaces or removes one line tagged '# HIMMEL-<tag>' in the operator's crontab; the line may only run the installed message-session opener",
+ "effect": "adds, replaces or removes one line tagged '# HIMMEL-<tag>' in the operator's crontab; the line runs one root-owned executable under /usr/local/bin, with no arguments",
  "params": {
   "action": {"enum": ["set", "remove"]},
   "tag": {"re": "^[A-Za-z0-9-]{1,40}$"},
