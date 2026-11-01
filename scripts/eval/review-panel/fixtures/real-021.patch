@@ -1,0 +1,135 @@
+diff --git a/scripts/hooks/block-edit-live-settings.sh b/scripts/hooks/block-edit-live-settings.sh
+index aa9966bed..1c9d261e0 100755
+--- a/scripts/hooks/block-edit-live-settings.sh
++++ b/scripts/hooks/block-edit-live-settings.sh
+@@ -4089,8 +4089,41 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
+     # tokenizer could not vouch for (heredoc, ANSI-C word) fall back to the
+     # whitespace split, same documented ceiling every other TOK=0 fallback
+     # in this file already accepts.
++    # Whether KEY is an entry of the newline-delimited LIST, matched
++    # case-sensitively even when the launch environment imported
++    # `nocasematch` through BASHOPTS: a word that differs only in case from
++    # one already judged must still be judged (it can name another file).
++    _seen_in() {
++        local nc=0 hit=1
++        shopt -q nocasematch && nc=1
++        shopt -u nocasematch
++        case "$1" in *$'\n'"$2"$'\n'*) hit=0 ;; esac
++        if [ "$nc" = 1 ]; then shopt -s nocasematch; fi
++        return "$hit"
++    }
++    _COO_SEEN=$'\n'
++    # The forking check of one operand word. A word judged once is judged the
++    # same every time (the verdict reads only the word, $cwd and
++    # $nested_wt_primary, all fixed for the run, and the flag it sets only
++    # ever goes to 1), so a long body that repeats `settings.json` forks once,
++    # not once per line. Only words that reach this fork are listed, which
++    # keeps the list short however many plain words the command carries. A
++    # word holding a newline would match across two entries of the list, so
++    # it is always judged.
++    _coo_fork_check() {
++        local w="$1" result
++        case "$w" in
++            *$'\n'*) ;;
++            *)
++                ! _seen_in "$_COO_SEEN" "$w" || return 0
++                _COO_SEEN=$_COO_SEEN$w$'\n'
++                ;;
++        esac
++        result=$(check_claude_dir_target "$w")
++        case "$result" in deny\ *) symlink_dest=1 ;; esac
++    }
+     _check_one_operand() {
+-        local w="$1" resolved wabs wparent wleaf result
++        local w="$1" resolved wabs wparent wleaf
+         [ -n "$w" ] || return 0
+         if [ -n "$nested_wt_primary" ]; then
+             case "$w" in
+@@ -4113,8 +4146,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
+         # is a second stat-family builtin, no subprocess, and catches the
+         # symlink itself so canon() still resolves where it points.
+         if [ -e "$wabs" ] || [ -L "$wabs" ]; then
+-            result=$(check_claude_dir_target "$w")
+-            case "$result" in deny\ *) symlink_dest=1 ;; esac
++            _coo_fork_check "$w"
+             return
+         fi
+         # HIMMEL-178 round-2 codex-2: a destination that does not exist YET
+@@ -4148,8 +4180,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
+         wparent="${wabs%/*}"
+         [ -n "$wparent" ] || wparent="/"
+         if [ -e "$wparent" ]; then
+-            result=$(check_claude_dir_target "$w")
+-            case "$result" in deny\ *) symlink_dest=1 ;; esac
++            _coo_fork_check "$w"
+         fi
+     }
+     # HIMMEL-3700 (J1329O I2, I4): a word can carry its path glued to an
+@@ -4278,7 +4309,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
+         case "$w" in
+             *$'\n'*) ;;
+             *)
+-                case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) return 0 ;; esac
++                ! _seen_in "$_CV_SEEN" "$w|$glob|$rd" || return 0
+                 _CV_SEEN="$_CV_SEEN$w|$glob|$rd"$'\n'
+                 ;;
+         esac
+diff --git a/scripts/hooks/test-block-edit-live-settings.sh b/scripts/hooks/test-block-edit-live-settings.sh
+index b302791e7..ca4ee8e52 100755
+--- a/scripts/hooks/test-block-edit-live-settings.sh
++++ b/scripts/hooks/test-block-edit-live-settings.sh
+@@ -1323,6 +1323,54 @@ else
+     echo "SKIP 186-190 (node not installed)"
+ fi
+
++# 7912a-c: a long heredoc body that repeats a settings-named
++# word (`settings.json` in a file list, a grep, a path) forked the operand
++# checks once per repeat, ~18 ms a line: a 400-line script cost 7+ s and, next
++# to the other members of the chain, ran past the 15 s budget (doctor C22,
++# ETIMEDOUT in the chain-skips log). A word judged once is not judged again. 7912a is
++# the allowed shape (a worktree cwd, nothing written to a live file) and must
++# finish inside its own, tighter bound; 7912b/c keep the denies a long body
++# must not lose.
++if command -v node >/dev/null 2>&1; then
++    LONG_BODY=''
++    _i=1
++    while [ "$_i" -le 400 ]; do
++        LONG_BODY=$LONG_BODY"line $_i: cp settings.json /tmp/o$_i; grep settings.json a$_i | sed 's/a/b/' > /tmp/p$_i"$'\n'
++        _i=$((_i + 1))
++    done
++    LONG_BUDGET_MS=4000
++    [ "$(uname -s)" = Darwin ] && LONG_BUDGET_MS=8000 # prim-ok: Darwin timing budget
++    LONG_ALLOW="python3 - <<'EOF'
++import re
++${LONG_BODY}EOF"
++    t0=$(now_ms)
++    rc=$(bash_rc_of "$WT2" "$LONG_ALLOW" HOME="$FAKEHOME")
++    ms=$(( $(now_ms) - t0 ))
++    echo "  7912a timing: ${#LONG_ALLOW} bytes, ${ms} ms"
++    assert_rc "7912a long heredoc repeating settings.json in a worktree allows" 0 "$rc"
++    if [ "$ms" -lt "$LONG_BUDGET_MS" ]; then
++        echo "PASS 7912a within ${LONG_BUDGET_MS} ms"
++    else
++        echo "FAIL 7912a took ${ms} ms (budget ${LONG_BUDGET_MS} ms)"
++        FAILED=$((FAILED + 1))
++    fi
++    assert_rc "7912b long heredoc then a cp into the live settings.json denies" 2 \
++        "$(bash_rc_of "$WT2" "$LONG_ALLOW"$'\n'"cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
++    assert_rc "7912c a live-settings word repeated before and after still denies" 2 \
++        "$(bash_rc_of "$WT2" "cp /tmp/evil ~/.claude/settings.json; echo ok; cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
++    # 7912d/e: a deny that comes from a symlink operand alone (the command
++    # never names a settings file) survives the same word repeating, and a
++    # word differing only in case is still judged when the launch
++    # environment imported nocasematch.
++    ln -s "$PRIMARY/.claude/settings.json" "$WT2/coo-link"
++    assert_rc "7912d a symlink operand repeated still denies" 2 \
++        "$(bash_rc_of "$WT2" "cp /tmp/x coo-link; echo ok; cp /tmp/x coo-link" HOME="$FAKEHOME")"
++    assert_rc "7912e a case-variant of a judged word is judged under nocasematch" 2 \
++        "$(bash_rc_of "$WT2" "cp /tmp/x COO-Link coo-link" HOME="$FAKEHOME" BASHOPTS=nocasematch)"
++else
++    echo "SKIP 7912a-e (node not installed)"
++fi
++
+ # 191-196 (HIMMEL-3675): a literal `..` inside a benign `<base>..<head>` git
+ # SHA range must not be treated as directory traversal. Real-world trigger:
+ # /pr-check step 3.6's canonical `impacted-suites.sh --check <base>..<head>`
