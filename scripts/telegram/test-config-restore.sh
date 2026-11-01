@@ -58,7 +58,8 @@ export QR_ARGC="$T/qr.argc" QR_ARGV="$T/qr.argv" QR_URI="$T/qr.uri"
 out="$(PATH="$T/qrbin:$PATH" HIMMEL_CONFIG_DIR="$T/qr1" cr enroll)"
 [ -e "$QR_URI" ] && pass "enroll calls qrencode" || fail "qrencode was never called" "$out"
 has "enroll shows what qrencode drew" "QR-DRAWN" "$out"
-case "$(cat "$QR_URI" 2>/dev/null)" in otpauth://totp/*"&issuer=himmel") pass "qrencode gets the URI with no trailing newline" ;; *) fail "qrencode URI" "$(od -c "$QR_URI" 2>/dev/null | tail -3)" ;; esac
+uri_got="$(cat "$QR_URI" 2>/dev/null; printf x)" # the sentinel keeps a trailing newline from being stripped
+case "$uri_got" in otpauth://totp/*"&issuer=himmel"x) pass "qrencode gets the URI with no trailing newline" ;; *) fail "qrencode URI" "$(od -c "$QR_URI" 2>/dev/null | tail -3)" ;; esac
 [ "$(cat "$QR_ARGC" 2>/dev/null)" = 3 ] && has "qrencode is called as -t ansiutf8 URI" "-t ansiutf8 otpauth://" "$(cat "$QR_ARGV")" || fail "qrencode argc" "$(cat "$QR_ARGC" 2>/dev/null)"
 out="$(PATH="$T/pyonly" HIMMEL_CONFIG_DIR="$T/qr2" cr enroll)"
 has "without qrencode enroll still prints the URI" "otpauth://totp/" "$out"
