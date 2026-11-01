@@ -16,6 +16,8 @@
 #   12. a WRAPPED message that mentions deferred / follow-up / residual with no key -> ESCALATE
 #   13. a WRAPPED worker whose doc has no PR: close-wrapped-worker.sh runs, HANDLED close-wrapped; a refused close -> ESCALATE
 #   14. a label already closed (wrap-merged's `<label> WRAPPED, window closed.` bullet in the chief doc) -> HANDLED noop
+#   15. READY with the auto_go flag on: auto-go.sh runs live; a sent GO -> HANDLED auto-go and an AUTO-GO bullet,
+#       an auto-go refusal -> passed on and an AUTO-GO-REFUSED bullet, GO written but not sent -> rc 11
 #
 # Platform guard: Linux bash 3.2+.
 set -uo pipefail
@@ -274,7 +276,7 @@ run "WRAPPED N999"
 contains "14 a label that is only a prefix of the closed one still escalates" "$out" "ESCALATE not-in-manifest N999"
 : > "$W/doc"
 
-# 15. READY: with the auto_go flag on it goes to auto-go.sh (a stub through LE_AUTOGO) as a dry run
+# 15. READY: with the auto_go flag on it goes to auto-go.sh (a stub through LE_AUTOGO), live; the chief doc gets an AUTO-GO bullet
 H40=0780b95dcad44fe293c7798066626cd52bb2dce0
 cat > "$W/autogo" <<'EOF3'
 #!/usr/bin/env bash
@@ -293,21 +295,43 @@ check "15a flag off: ESCALATE marker-READY, as before" "$out" "ESCALATE marker-R
 check "15a flag off: auto-go not run" "$calls" ""
 
 export HIMMEL_FLAG_AUTO_GO=1
-LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"
-check "15b WOULD-GO still goes to the chief: rc" "$rc" 10
-check "15b WOULD-GO line" "$out" "WOULD-GO 2553 $H40 dry-run, no GO written"
-check "15b auto-go got the dry run for the worker" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N2088 --dry-run 2553 $H40"
+printf '# chief\n\n## Results\n' > "$W/doc"
+lastb() { tail -n 1 "$W/doc" | sed 's/^- [0-9][0-9]:[0-9][0-9] //'; }
+LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N2088 bus=#7 qid=q1" run "READY 2553 $H40 GREEN N2088"
+check "15b a sent GO is handled: rc" "$rc" 0
+check "15b a sent GO is handled" "$out" "HANDLED auto-go N2088"
+check "15b auto-go runs live (no --dry-run) for the worker" "$calls" "autogo --doc $W/doc --fleet $W/fleet.json --worker N2088 2553 $H40"
+check "15b the chief doc carries the AUTO-GO bullet" "$(lastb)" "AUTO-GO #2553 0780b95d qid=q1 to N2088"
 
 LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 3 ready-go did not print READY-GO PASS" run "READY 2553 $H40 GREEN N2088"
 check "15c an auto-go escalation is passed on: rc" "$rc" 10
 check "15c an auto-go escalation is passed on" "$out" "ESCALATE auto-go 3 ready-go did not print READY-GO PASS"
+check "15c the chief doc carries the AUTO-GO-REFUSED bullet" "$(lastb)" "AUTO-GO-REFUSED #2553 3"
 
 LE_AUTOGO_RC=3 LE_AUTOGO_OUT="auto-go: refusing - chief relay" run "READY 2553 $H40 GREEN N2088"
 check "15d another auto-go exit: rc" "$rc" 10
 contains "15d another auto-go exit is an error, never a retryable -failed" "$out" "ESCALATE auto-go-error rc=3 auto-go: refusing"
 
-LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "N2088 READY 2553 $H40 GREEN"
-check "15e a label-first READY routes the same" "$out" "WOULD-GO 2553 $H40 dry-run, no GO written"
+LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N2088 bus=#7 qid=none" run "N2088 READY 2553 $H40 GREEN"
+check "15e a label-first READY routes the same" "$out" "HANDLED auto-go N2088"
+check "15e qid none in the bullet" "$(lastb)" "AUTO-GO #2553 0780b95d qid=none to N2088"
+
+LE_AUTOGO_RC=11 LE_AUTOGO_OUT="GO-WRITTEN 2553 $H40 qid=q1 bus-failed: no live session
+SENDMESSAGE to=HIMMEL-2-N2088-bar-2026-10-14 :: GO 2553 $H40 - merge with: bash m.sh --go f" run "READY 2553 $H40 GREEN N2088"
+check "15g GO written, bus not delivered: rc 11" "$rc" 11
+contains "15g the message for the chief to send is passed on" "$out" "SENDMESSAGE to=HIMMEL-2-N2088-bar-2026-10-14 :: GO 2553"
+check "15g the chief doc carries the AUTO-GO bullet, bus failed" "$(lastb)" "AUTO-GO #2553 0780b95d qid=q1 to N2088 bus-failed"
+
+LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"
+contains "15h a WOULD-GO from a live run is an error" "$out" "ESCALATE auto-go-error rc=0 WOULD-GO"
+LE_AUTOGO_OUT="GO-SENT 2554 $H40 to N2088 bus=#7 qid=q1" run "READY 2553 $H40 GREEN N2088"
+contains "15h a GO-SENT for another PR is an error" "$out" "ESCALATE auto-go-error rc=0 GO-SENT 2554"
+
+printf '# chief\n' > "$W/doc"
+LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N2088 bus=#7 qid=q1" run "READY 2553 $H40 GREEN N2088"
+check "15i a bullet that cannot be written leaves the GO handled: rc" "$rc" 0
+contains "15i a bullet that cannot be written is reported" "$out" "HANDLED auto-go N2088 doc-bullet=failed"
+: > "$W/doc"
 
 run "READY 2553 abc N2088"
 contains "15f a READY with no full head" "$out" "ESCALATE ready-unparsed"

@@ -367,6 +367,9 @@ check "(r0s2) the second READY follows" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbb
 check "(r0s2) a handled READY is a digest line, no wake" "N1 auto-go 2566
 N1 auto-go 2567" "$(cat "$I.wait.digest" 2>/dev/null)"
 check "(r0s2) no chief wake" "" "$(cat "$WORK/r0s2.out")"
+printf -- '- 03:45 [telegram from=1 chat=2] hello\n' >> "$I"
+wait_exit "$WPID"
+check "(r0s2) the next wake counts the scripted GOs apart from the wraps" "absorbed since last wake: wraps=0 () merged=0 () auto-go=2 (#2566,#2567)" "$(tail -n 1 "$WORK/r0s2.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # on: a worker doc shorter than its cursor was replaced; the cursor starts over after its existing READY

@@ -10,6 +10,7 @@
 #   5. fail closed: unreadable trust list / verdict / ledger, unknown sha -> trust
 #   6. a NO-GO verdict with no `finding:` line -> finding, never none
 #   7. always exit 0 and print exactly one word
+#  10. a new head that does not descend from the judged head -> trust
 #
 # Hermetic: temp git repo and files only.
 # Platform guard: POSIX bash 3.2+.
@@ -274,6 +275,17 @@ check "8i: an octopus merge-forward -> trust" "$(cls "$N")" trust
 git update-ref -d refs/remotes/origin/main
 J=$J8
 git checkout -q "$base_branch"
+mkv GO 'finding: src/a.txt:3-4'
+
+# 10: a new head that does not descend from the judged head (a rewritten history) is no delta of it
+J10=$J
+printf 'judged\n' >> docs/c.md; Jr=$(step rewritten-judged)
+back
+printf 'rewritten\n' >> docs/c.md; Nr=$(step rewritten-new)
+back
+J=$Jr; mkv GO
+check "10: a docs-only head that does not descend from the judged head -> trust" "$(cls "$Nr")" trust
+J=$J10
 mkv GO 'finding: src/a.txt:3-4'
 
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
