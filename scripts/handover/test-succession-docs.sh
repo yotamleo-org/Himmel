@@ -485,7 +485,8 @@ contains 'preface: LIVE, RESOLVED, CHECKPOINT, WRAPPED and READY are bullets onl
 contains 'preface: a merge is no message either' "$(tr '\n' ' ' < "$PREFACE" | tr -s ' ')" 'a merge is no message either'
 # shellcheck disable=SC2016  # literal backticks in the regex, nothing to expand
 absent 'preface: no step sends WRAPPED' "$(cat "$PREFACE")" 'send `WRAPPED`|`WRAPPED` messages'
-contains 'claudex preface: bus markers are bullets only' "$(tr '\n' ' ' < "$CLAUDEX" | tr -s ' ')" 'are bullets only, never a bus message'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'claudex preface: bus markers are bullets only' "$(tr '\n' ' ' < "$CLAUDEX" | tr -s ' ')" '`LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and `READY` are bullets only, never a bus message'
 absent 'claudex preface: no milestone goes by bus as before' "$(cat "$CLAUDEX")" 'report each milestone there as before'
 contains 'chief template: the wake digest line' "$(cat "$CHIEF")" 'absorbed since last wake'
 # shellcheck disable=SC2016  # literal backticks in the regex, nothing to expand

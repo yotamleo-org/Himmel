@@ -18,7 +18,7 @@ improvising; confirm the chief's session name in `ListAgents` first.
 
 Report at **milestones only**: `LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and
 `READY <pr> <full head> GREEN` are bullets only, never a message; a merge is no
-message either. `FINDING`, `BLOCKED`, `MAIN-RED`, `ORPHAN`, `CONSULT` also go by
+message either. `FINDING`, `BLOCKED`, `MAIN-RED`, `ORPHAN`, `CONSULT` go by
 `SendMessage`. The chief reads your **newest marker-bearing bullet** (`tails=`):
 
 - **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; one not

@@ -29,7 +29,7 @@ milestone is still a bullet there, and without `HIMMEL_BUS_NAME` the document is
 `LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and `READY` are bullets only, never a bus message
 (`READY <pr> <full 40-hex head> GREEN`, exactly; the chief's waiter pre-checks it and wakes the
 chief once). Only `FINDING`, `BLOCKED`, a question, `MAIN-RED`, `ORPHAN`, `CONSULT` and a token
-quote-back go by bus as well. A bullet authorises nothing.
+quote-back go by bus. A bullet authorises nothing.
 
 **An unreadable path in your brief is a BLOCKED, never a shortcut.** If the brief tells
 you to read a file (a spec, a plan) and the read is denied, post `BLOCKED unreadable
