@@ -3551,6 +3551,57 @@ ev77_head="$(git -C "$repo" rev-parse ev77)"
 ev77_out="$(cd "$repo" && bash "$RR" evidence --branch ev77 --head "$ev77_head" 2>&1)"; ev77_rc=$?
 assert_eq "$ev77_rc" "0" "7753 (e) evidence scopes from the reviewed head after an aborted round ($ev77_out)"
 
+# .from is the reviewed head a new second or third round starts from; `from`
+# prints it in those rounds only; abort, a first-round start and cr-reset
+# remove it.
+fr_b=feat/fr84
+fr_state="$git_dir/cr-review-rounds/$fr_b"
+fr_from() { (cd "$repo" && bash "$RR" from --branch "$fr_b" 2>&1); }
+git -C "$repo" checkout -q -b "$fr_b" main
+printf 'fr84\n' > "$repo/fr84.txt"; git -C "$repo" add fr84.txt; git -C "$repo" commit -q -m fr84
+fr_h1="$(git -C "$repo" rev-parse "$fr_b")"
+start_round "$fr_h1" clean "$fr_b" >/dev/null || fail "8428 fixture round 1"
+assert_eq "$(fr_from)" "" "8428 at round 1 from prints nothing"
+printf 'h2\n' >> "$repo/fr84.txt"; git -C "$repo" commit -q -am "fr84 h2"
+fr_h2="$(git -C "$repo" rev-parse "$fr_b")"
+fr_out="$(start_round "$fr_h2" pin-abort "$fr_b")"; fr_rc=$?
+assert_eq "$fr_rc" "7" "8428 a round-2 start that aborts exits 7"
+assert_eq "$(cat "$fr_state.round")" "1" "8428 the aborted round 2 is given back ($fr_out)"
+assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 abort of a round-2 start removes .from"
+assert_eq "$(fr_from)" "" "8428 after a round-2 start and abort from prints nothing"
+start_round "$fr_h2" clean "$fr_b" >/dev/null || fail "8428 fixture round 2"
+assert_eq "$(cat "$fr_state.from")" "$fr_h1" "8428 a new round 2 writes .from = the last reviewed head"
+assert_eq "$(fr_from)" "$fr_h1" "8428 at round 2 from prints the start point"
+(cd "$repo" && bash "$RR" start --branch "$fr_b" --head "$fr_h2" >/dev/null 2>&1) || fail "8428 same-head start"
+assert_eq "$(fr_from)" "$fr_h1" "8428 a same-head reuse keeps .from (H1)"
+printf 'h3\n' >> "$repo/fr84.txt"; git -C "$repo" commit -q -am "fr84 h3"
+fr_h3="$(git -C "$repo" rev-parse "$fr_b")"
+fr_out="$(start_round "$fr_h3" pin-abort "$fr_b")"; fr_rc=$?
+assert_eq "$fr_rc" "7" "8428 a round-3 start at H3 that aborts exits 7"
+assert_eq "$(cat "$fr_state.round")" "2" "8428 the aborted round 3 is given back ($fr_out)"
+assert_eq "$(cat "$fr_state.head")" "$fr_h2" "8428 the give-back restores .head to H2"
+(cd "$repo" && bash "$RR" start --branch "$fr_b" --head "$fr_h2" >/dev/null 2>&1) || fail "8428 same-head re-entry at H2"
+assert_eq "$(fr_from)" "" "8428 round-3 abort then a same-head start at H2: from prints nothing, never H2"
+start_round "$fr_h3" clean "$fr_b" >/dev/null || fail "8428 fixture round 3"
+assert_eq "$(fr_from)" "$fr_h2" "8428 a new round 3 writes .from = H2"
+printf '4\n' > "$fr_state.round"
+assert_eq "$(fr_from)" "" "8428 at round 4 from prints nothing"
+printf '3\n' > "$fr_state.round"
+cat > "$tmp/bin/fr84-reset-gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' '{"headRefName":"feat/fr84","isCrossRepository":false,"state":"OPEN"}'
+STUB
+chmod +x "$tmp/bin/fr84-reset-gh"
+fr_reset_out="$(env -u CLAUDECODE CR_RESET_PRIMARY="$repo" CR_RESET_GH="$tmp/bin/fr84-reset-gh" \
+    CR_RESET_LOCK_LIB="$HERE/../lib/shared-branch-lock.sh" bash "$HERE/cr-reset.sh" 8 2>&1)" || fail "8428 cr-reset runs ($fr_reset_out)"
+assert_has "$fr_reset_out" '.from' "8428 cr-reset moves .from aside"
+assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 after cr-reset no .from is left"
+assert_eq "$(fr_from)" "" "8428 after cr-reset from prints nothing"
+printf '%s\n' "$fr_h1" > "$fr_state.from"
+start_round "$fr_h3" clean "$fr_b" >/dev/null || fail "8428 fixture round 1 after reset"
+assert_eq "$(cat "$fr_state.round")" "1" "8428 the first start after a reset is round 1"
+assert_eq "$([ -e "$fr_state.from" ] && echo present || echo absent)" "absent" "8428 a round-1 start removes a stale .from"
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2
     exit 1
