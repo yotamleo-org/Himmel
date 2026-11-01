@@ -1,9 +1,9 @@
 import { expect, test, spyOn } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { classify } from "./router";
-import { BASH_BIN } from "./run";
+import { BASH_BIN, buildPrompt } from "./run";
 import { sendMessage } from "./telegram-api";
 import { appendLine, ensureSession, writeMeta, sessionDir } from "./bus";
 import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn } from "./poller";
@@ -930,23 +930,70 @@ test("a document the sender could not deliver tells the chat instead of vanishin
   expect(texts[0]).toContain("spec.html");
 });
 
-test("the poller's document sender uploads only an absolute regular file within 50 MB", async () => {
+test("the poller's document sender uploads only a regular file inside <bridge root>/outgoing within 50 MB", async () => {
   const { makeSendDoc } = await import("./poller");
-  const r = root(); const ok = join(r, "a.txt"); writeFileSync(ok, "a");
-  const big = join(r, "big.bin"); writeFileSync(big, ""); truncateSync(big, 50 * 1024 * 1024 + 1);
+  const r = root(); const out = join(r, "outgoing"); mkdirSync(out);
+  const ok = join(out, "a.txt"); writeFileSync(ok, "a");
+  const big = join(out, "big.bin"); writeFileSync(big, ""); truncateSync(big, 50 * 1024 * 1024 + 1);
   const uploads: any[] = [];
-  const send = makeSendDoc("123:FAKE", (async (...a: any[]) => { uploads.push(a); return true; }) as any);
+  const send = makeSendDoc("123:FAKE", r, (async (...a: any[]) => { uploads.push(a); return true; }) as any);
   expect(await send(7, ok, "cap")).toBe(true);
-  expect(uploads).toEqual([["123:FAKE", 7, ok, "cap"]]);
-  for (const bad of ["relative/a.txt", r, big, join(r, "gone.txt")]) expect(await send(7, bad)).toBe(false);
+  expect(uploads.length).toBe(1);
+  expect(uploads[0].slice(0, 2)).toEqual(["123:FAKE", 7]);
+  expect(uploads[0][3]).toBe("cap");
+  for (const bad of ["relative/a.txt", out, big, join(out, "gone.txt")]) expect(await send(7, bad)).toBe(false);
   expect(uploads.length).toBe(1);
 });
 
-test("send-file queues one document line for the chat's outbox", async () => {
+test("the poller's document sender refuses a path outside the root and a symlink that points out of it", async () => {
+  const { makeSendDoc } = await import("./poller");
+  const r = root(); const out = join(r, "outgoing"); mkdirSync(out);
+  const secret = join(r, "secret.env"); writeFileSync(secret, "TOKEN=x");
+  const link = join(out, "link.txt"); symlinkSync(secret, link);
+  const dirLink = join(out, "dir"); symlinkSync(r, dirLink);
+  const sibling = join(r, "outgoing-evil"); mkdirSync(sibling); writeFileSync(join(sibling, "a.txt"), "a");
+  const uploads: any[] = [];
+  const send = makeSendDoc("123:FAKE", r, (async (...a: any[]) => { uploads.push(a); return true; }) as any);
+  for (const bad of [secret, link, join(dirLink, "secret.env"), join(sibling, "a.txt"), join(out, "..", "secret.env")]) expect(await send(7, bad)).toBe(false);
+  expect(uploads).toEqual([]);
+});
+
+test("a document line in a group session is refused and never reaches the document sender", async () => {
+  const r = root(); await ensureSession(r, "group_-50");
+  await writeMeta(r, "group_-50", { chat_id: -50, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
+  await appendLine(join(sessionDir(r, "group_-50"), "outbox.jsonl"), JSON.stringify({ document_path: join(r, "outgoing", "a.txt") }));
+  const texts: string[] = []; let docs = 0;
+  await flushOutboxes(r, async (_c, text) => { texts.push(text); }, async () => { docs++; return true; });
+  expect(docs).toBe(0);
+  expect(texts.length).toBe(1);
+});
+
+test("a line carrying both text and document_path sends the text and the document", async () => {
+  const r = root(); await ensureSession(r, "__chat__");
+  await writeMeta(r, "__chat__", { chat_id: 5, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
+  await appendLine(join(sessionDir(r, "__chat__"), "outbox.jsonl"), JSON.stringify({ text: "here it is", document_path: "/x/spec.html" }));
+  const texts: string[] = []; const docs: string[] = [];
+  await flushOutboxes(r, async (_c, text) => { texts.push(text); }, async (_c, path) => { docs.push(path); return true; });
+  expect(texts).toEqual(["here it is"]);
+  expect(docs).toEqual(["/x/spec.html"]);
+});
+
+test("the bridge prompt offers the document channel to a private chat and not to a group", () => {
+  const paths = { inbox: "/b/sessions/s/in.jsonl", outbox: "/b/sessions/s/outbox.jsonl", context: "c", cwd: "/r" };
+  expect(buildPrompt("__chat__", paths)).toContain("/b/outgoing");
+  expect(buildPrompt("group_-50", paths)).not.toContain("outgoing");
+});
+
+test("send-file copies a plain file into <bridge root>/outgoing and queues the copy", async () => {
   const r = root(); const f = join(r, "notes.txt"); writeFileSync(f, "n");
   const res = await sendFile(r, "1", f, "see", "this");
   expect(res.code).toBe(0);
-  expect(res.lines).toEqual([{ document_path: f, caption: "see this" }]);
+  expect(res.lines.length).toBe(1);
+  const queued = res.lines[0].document_path as string;
+  expect(res.lines[0].caption).toBe("see this");
+  expect(queued.startsWith(join(r, "outgoing") + "/")).toBe(true);
+  expect(basename(queued)).toBe("notes.txt");
+  expect(readFileSync(queued, "utf8")).toBe("n");
 });
 
 test("send-file renders a markdown spec to a standalone HTML file and queues that", async () => {

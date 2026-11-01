@@ -1,6 +1,6 @@
 import { join, dirname, basename, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, stat, mkdir, open, unlink } from "node:fs/promises";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -375,7 +375,7 @@ export async function speakOnSatellite(satellite: string, text: string, env: Rec
 // a clear error and a non-zero exit, nothing queued), renders a markdown spec or plan
 // to a standalone phone-readable HTML file first, then queues one `document_path`
 // outbox line that the poller uploads with sendDocument. The chief never holds the
-// bot token. Rendered files live in <bridge root>/outgoing/ (not git, not pruned).
+// bot token. The queued copy lives in <bridge root>/outgoing/<id>/ (not git, not pruned); the poller ships only from there.
 export const MAX_SEND_BYTES = 50 * 1024 * 1024;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -394,19 +394,20 @@ ${body}</body></html>
 
 export async function queueFile(root: string, chat: number, path: string, caption?: string): Promise<string> {
   const abs = resolve(path);
+  const tooBig = (size: number) => new Error(`file is ${(size / 1048576).toFixed(1)} MB, over the Telegram 50 MB upload limit: ${path}`);
   const st = await stat(abs).catch(() => null);
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
-  if (st.size > MAX_SEND_BYTES) throw new Error(`file is ${(st.size / 1048576).toFixed(1)} MB, over the Telegram 50 MB upload limit: ${path}`);
-  let send = abs;
-  if (/\.(md|markdown)$/i.test(abs)) {
-    const dir = join(root, "outgoing");
-    await mkdir(dir, { recursive: true });
-    send = join(dir, `${basename(abs).replace(/\.(md|markdown)$/i, "")}-${randomUUID()}.html`);
-    await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs)));
-  }
+  if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
+  // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
+  const dir = join(root, "outgoing", randomUUID());
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const isMd = /\.(md|markdown)$/i.test(abs);
+  const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
+  if (isMd) await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs)));
+  else await copyFile(abs, send);
   const size = (await stat(send)).size;
-  if (size > MAX_SEND_BYTES) throw new Error(`file is ${(size / 1048576).toFixed(1)} MB, over the Telegram 50 MB upload limit: ${path}`);
+  if (size > MAX_SEND_BYTES) { await rm(dir, { recursive: true, force: true }); throw tooBig(size); }
   const { sendFileViaOutbox } = await import("./poller");
   await sendFileViaOutbox(root, chat, send, caption);
   return send;

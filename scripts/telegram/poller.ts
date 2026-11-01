@@ -1,6 +1,6 @@
-import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, mkdtemp, copyFile, rm, open } from "node:fs/promises";
+import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, lstat, realpath, mkdtemp, copyFile, rm, open } from "node:fs/promises";
 import { existsSync, readFileSync, lstatSync } from "node:fs";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
@@ -1075,8 +1075,10 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
           let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string } | null = null;
           try { out = JSON.parse(ln); } catch {}
           if (out && typeof out.document_path === "string") {
-            const ok = sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
-            if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be missing, over 50 MB, or refused by Telegram.`);
+            if (typeof out.text === "string" && out.text) await send(meta.chat_id, out.text, out.reply_to_message_id, out.markup);
+            // A group session never sends a file: its outbox is not trusted with the poller's read access.
+            const ok = !s.startsWith("group_") && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
+            if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, sent from a group, or refused by Telegram.`);
           } else if (out) {
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
@@ -2220,15 +2222,22 @@ export async function sendFileViaOutbox(root: string, chat_id: number, document_
   await appendOutboxLine(root, chat_id, { document_path, ...(caption ? { caption } : {}) });
 }
 
-// The poller-side document sender: refuses (false) a path that is not an absolute
-// regular file within the Bot API's 50 MB cap, then uploads it.
-export const makeSendDoc = (token: string, upload: typeof sendDocument = sendDocument): SendDocFn => async (chat, path, caption) => {
+// The poller-side document sender. The poller reads files outside any tool-permission
+// hook, so it ships only what sits under <bridge root>/outgoing (where send-file copies
+// its files): the real path must be inside that directory's real path, the path itself
+// must not be a symlink, and the file must be regular and within the Bot API's 50 MB.
+export const makeSendDoc = (token: string, root: string, upload: typeof sendDocument = sendDocument): SendDocFn => async (chat, path, caption) => {
   if (!isAbsolute(path)) return false;
+  let real: string;
   try {
-    const st = await stat(path);
+    const base = await realpath(join(root, "outgoing"));
+    real = await realpath(path);
+    if (!real.startsWith(base + sep)) return false;
+    if ((await lstat(path)).isSymbolicLink()) return false;
+    const st = await stat(real);
     if (!st.isFile() || st.size > MAX_DOC_BYTES) return false;
   } catch { return false; }
-  return upload(token, chat, path, caption);
+  return upload(token, chat, real, caption);
 };
 
 // --- getUpdates outage handling ---
@@ -2486,7 +2495,7 @@ export async function main(): Promise<void> {
   // its keep. The flush path touches only outbox files; the run path touches only
   // inbox/meta/pending — disjoint, so the timer adds no shared-file race.
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
-  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token))), FLUSH_MS);
+  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root))), FLUSH_MS);
   if (typeof flushTimer.unref === "function") flushTimer.unref();
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
