@@ -921,6 +921,18 @@ test("a document the sender could not deliver tells the chat instead of vanishin
   expect(texts[0]).toContain("spec.html");
 });
 
+test("the poller's document sender uploads only an absolute regular file within 50 MB", async () => {
+  const { makeSendDoc } = await import("./poller");
+  const r = root(); const ok = join(r, "a.txt"); writeFileSync(ok, "a");
+  const big = join(r, "big.bin"); writeFileSync(big, ""); truncateSync(big, 50 * 1024 * 1024 + 1);
+  const uploads: any[] = [];
+  const send = makeSendDoc("123:FAKE", (async (...a: any[]) => { uploads.push(a); return true; }) as any);
+  expect(await send(7, ok, "cap")).toBe(true);
+  expect(uploads).toEqual([["123:FAKE", 7, ok, "cap"]]);
+  for (const bad of ["relative/a.txt", r, big, join(r, "gone.txt")]) expect(await send(7, bad)).toBe(false);
+  expect(uploads.length).toBe(1);
+});
+
 test("send-file queues one document line for the chat's outbox", async () => {
   const r = root(); const f = join(r, "notes.txt"); writeFileSync(f, "n");
   const res = await sendFile(r, "1", f, "see", "this");
