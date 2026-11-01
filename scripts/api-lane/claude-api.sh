@@ -85,7 +85,6 @@ send_alert() {
     echo "claude-api: alert: one already sent for $KIND_SAFE $class within the hour" >&2
     return 0
   fi
-  touch "$stamp" 2>/dev/null
   case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) account="$HIMMEL_API_ACCOUNT" ;; *) account="?" ;; esac
   msg="kind $KIND_SAFE, account $account, $class (exit $rc): $(redact "$reason"); fallback: $(redact "$decision")"
   # the caller's repo names the message, so a salus caller gets the sender's content-free line
@@ -107,7 +106,7 @@ send_alert() {
     command -v bun >/dev/null 2>&1 || exit 0
     if command -v timeout >/dev/null 2>&1; then exec timeout 30 bun run "$REPO/scripts/telegram/session-status.ts" notification; fi
     exec bun run "$REPO/scripts/telegram/session-status.ts" notification
-  ) </dev/null >/dev/null 2>&1
+  ) </dev/null >/dev/null 2>&1 && touch "$stamp" 2>/dev/null
   return 0
 }
 
@@ -285,6 +284,14 @@ EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config)
 # only the auto route below may relax the credit-reading requirement; a caller's value never does
 unset HIMMEL_API_SNAPSHOT_OPTIONAL
 
+# a malformed request is the caller's bug: never re-run on the subscription, whichever refusal comes first;
+# each is still refused in its own place below
+BAD_REQ="$PARSE_ERR$GRANT_ERR"
+case "${HIMMEL_API_KIND:-other}" in *[!A-Za-z0-9._-]*) BAD_REQ=1 ;; esac
+case "${HIMMEL_API_CACHE_TTL:-5m}" in 5m|1h) ;; *) BAD_REQ=1 ;; esac
+case "${HIMMEL_API_JOB_ID:-x}" in *[!A-Za-z0-9._:-]*) BAD_REQ=1 ;; esac
+[ -z "$BAD_REQ" ] || NO_FB="the request itself was refused"
+
 # --- lane opt-in and credentials (presence checks only) ---
 [ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
 case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) refuse "HIMMEL_API_ACCOUNT must be A or B (or auto)" ;; esac
@@ -298,15 +305,14 @@ done
 [ -z "${ANTHROPIC_AUTH_TOKEN:-}" ] || refuse "conflicting provider ANTHROPIC_AUTH_TOKEN"
 case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMMEL_CLAUDE_LANE=$HIMMEL_CLAUDE_LANE" ;; esac
 
-# a malformed request is the caller's bug: refused, and never re-run on the subscription
-[ -z "$PARSE_ERR" ] || { NO_FB="the request itself was refused"; refuse "$PARSE_ERR"; }
+[ -z "$PARSE_ERR" ] || refuse "$PARSE_ERR"
 
 # the run kind labels the launch record (cache-report.mjs groups by it); the TTL is the main-conversation
 # cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
 KIND="${HIMMEL_API_KIND:-other}"
-case "$KIND" in ""|*[!A-Za-z0-9._-]*) NO_FB="the request itself was refused"; refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
+case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
-case "$CACHE_TTL" in 5m|1h) ;; *) NO_FB="the request itself was refused"; refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
+case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
 
 # --- auto = the grant that expires first among accounts with room for the whole budget ---
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
@@ -356,7 +362,7 @@ fi
 
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
-case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) NO_FB="the request itself was refused"; refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
+case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
 JOB_SAFE="$JOB_ID"
 WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_WORKER: it could escape the api cap
 # the reservation is owned by THIS shell, which waits on claude below, so it
@@ -369,7 +375,7 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC
   bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
 [ "$BANK_VERDICT" = "PROCEED" ] || refuse "api bank gate said $BANK_VERDICT"
 
-[ -z "$GRANT_ERR" ] || { NO_FB="the request itself was refused"; refuse "$GRANT_ERR"; }
+[ -z "$GRANT_ERR" ] || refuse "$GRANT_ERR"
 
 # the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session

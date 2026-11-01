@@ -51,8 +51,9 @@ marked), or the call's own non-zero exit. Then the launcher:
    - The reason is one line of at most 200 characters. The key, any key the caller
      holds and anything shaped like `sk-ant-…` become `[key]`. The call's result
      text is never included.
-   - At most one alert per run kind and class per hour. The stamp files live in
-     `~/.himmel/state/api-lane-alerts/`.
+   - At most one alert per run kind and class per hour. The stamp is written only
+     after the sender exits 0, so a failed send does not mute the next failure.
+     The stamp files live in `~/.himmel/state/api-lane-alerts/`.
    - The sender runs with every `ANTHROPIC_*`, `LQ_API_*` and
      `CLAUDE_CODE_OAUTH_TOKEN` variable removed. An explicitly empty
      `TELEGRAM_GROUP_CHAT_ID` suppresses it. Without a chat id or `bun`, nothing
@@ -106,7 +107,7 @@ The API call's own row and its reservation are settled as before.
 ## Known limits
 
 - ponytail: a caller that sends its prompt on stdin (`jira release rm-run`) gets the fallback only after a refusal, which happens before stdin is read, such as an account already marked empty; a call that ran and failed has spent stdin, so the alert says the fallback did not run, upgrade path: buffer a stdin prompt to a mode-600 scratch file so the fallback can replay it.
-- ponytail: two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
+- ponytail: two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
 - ponytail: the fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
 - ponytail: a looping caller (bulk) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem.
 - ponytail: fallback rows carry no API cost, so the shift-spend report does not price them, upgrade path: price `sub_cost_usd` in the subscription spend view.

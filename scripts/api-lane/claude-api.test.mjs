@@ -72,7 +72,7 @@ function fixture() {
   save();
   writeFileSync(paths.stub, STUB, { mode: 0o700 });
   // the alert sender is always this stub: no fixture can reach the real Telegram sender
-  writeFileSync(paths.alert, `#!/bin/bash\n{ echo "type=$TG_NOTIFICATION_TYPE"; echo "msg=$TG_MESSAGE"; echo "repo=$TG_REPO_NAME"; echo "args=$*"; } >> '${paths.alertLog}'\nenv >> '${paths.alertLog}.env'\n`, { mode: 0o700 });
+  writeFileSync(paths.alert, `#!/bin/bash\n{ echo "type=$TG_NOTIFICATION_TYPE"; echo "msg=$TG_MESSAGE"; echo "repo=$TG_REPO_NAME"; echo "args=$*"; } >> '${paths.alertLog}'\nenv >> '${paths.alertLog}.env'\nexit "\${ALERT_RC:-0}"\n`, { mode: 0o700 });
   writeFileSync(paths.ps, '#!/bin/bash\nexit 0\n', { mode: 0o700 });
   const ok = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.012345, result: 'hi' });
   const env = { PATH: process.env.PATH, HOME: dir, TMPDIR: dir,
@@ -271,6 +271,13 @@ test('one alert per kind and class per hour; a new class or an hour later alerts
   assert.equal(alerts(f).length, 3);
 });
 
+test('a failed alert send writes no stamp, so the next failure inside the hour alerts again', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '', ALERT_RC: '1' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' }).status, 0);
+  assert.equal(alerts(f).length, 2, 'a failed send muted the next alert');
+});
+
 test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed request or a spent stdin prompt never falls back', () => {
   const f = fixture();
   const r = f.run(f.good, { HIMMEL_API_LANE: '' });
@@ -282,6 +289,15 @@ test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed req
   assert.equal(g.run([...g.good, '--bogus'], FB_ON).status, 2);
   assert.equal(fbCalls(g), 0);
   assert.equal(alerts(g).length, 1);
+  // the lane-off refusal comes first, yet a malformed request still never reaches the subscription
+  const noPrint = ['--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10', 'hi'];
+  for (const [args, env] of [[noPrint, {}], [null, { HIMMEL_API_KIND: 'bad kind' }], [null, { HIMMEL_API_CACHE_TTL: '9h' }],
+    [null, { HIMMEL_API_JOB_ID: 'bad id' }], [null, { HIMMEL_API_TOOLS: 'Bash(*)' }]]) {
+    const m = fixture();
+    assert.equal(m.run(args ?? m.good, { ...FB_ON, HIMMEL_API_LANE: '', ...env }).status, 2);
+    assert.equal(fbCalls(m), 0, JSON.stringify(env));
+    assert.match(alertText(m), /fallback: not run: the request itself was refused/);
+  }
   const h = fixture();
   const stdinOnly = ['-p', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
   assert.equal(h.run(stdinOnly, { ...FB_ON, STUB_OUT: CALL_FAIL, STUB_RC: '1' }).status, 1);
