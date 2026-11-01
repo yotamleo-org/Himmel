@@ -386,11 +386,11 @@ done
 # 9b-3 (regression-only: guards the stderr redirect against a naive version of it, passes on
 # main): a hook log that cannot be opened for append must not stop the crystallizer.
 lane_sandbox
-mkdir -p "$(dirname "$LOGF")"; : > "$LOGF"; chmod 444 "$LOGF"
+mkdir -p "$LOGF"  # a directory cannot be appended to, and the hook's own log_msg chmod cannot make it writable
 lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_CLAUDE_BIN="$STUB"
 i=0; while [ ! -s "$MARK" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
 if [ -s "$MARK" ]; then pass "lane-env: an unwritable hook log does not stop the crystallizer"; else fail "lane-env: an unwritable hook log stopped the crystallizer"; fi
-chmod 644 "$LOGF" 2>/dev/null
+chmod 755 "$LOGF" 2>/dev/null
 rm -rf "$SB"
 
 # --- Case 10: BSD/macOS `date +%s%3N` must not crash the REST-success path (GH#202)
