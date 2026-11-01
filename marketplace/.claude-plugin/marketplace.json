@@ -358,9 +358,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "24423fafbeaec92615f857751f68903aec444642"
+        "sha": "3af8f101a5f4c33dec95621b80d8f1f0b93cf96a"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 24423fafbeaec92615f857751f68903aec444642 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 3af8f101a5f4c33dec95621b80d8f1f0b93cf96a per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
       "strict": false,
       "skills": [
         "./"
