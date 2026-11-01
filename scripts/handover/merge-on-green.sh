@@ -2220,10 +2220,15 @@ worktree_has_live_suite_run() {
 
 PRUNE_RESULT="not-attempted"
 PRUNE_BRANCH="kept"
+# The one keep hint for an own-cwd-deferred worktree. Set by
+# prune_merged_worktree, printed by the two MERGED paths as the last line of
+# the run (stderr, like every other post-merge note).
+PRUNE_KEEP_HINT=""
 prune_merged_worktree() {
     local branch="$1" merged_sha="$2"
     PRUNE_RESULT="not-found"
     PRUNE_BRANCH="kept"
+    PRUNE_KEEP_HINT=""
     [ -n "$branch" ] || { PRUNE_RESULT="no-head-branch"; return 0; }
 
     local common primary
@@ -2275,7 +2280,7 @@ prune_merged_worktree() {
     [ -n "$here" ] && here=$(cd "$here" 2>/dev/null && pwd)
     if [ -n "$here" ] && [ "$here" = "$path_norm" ]; then
         PRUNE_RESULT="own-cwd-deferred"
-        echo "merge-on-green: this run's cwd IS the merged worktree — not removing it out from under the caller. Prune it from the primary checkout with: git -C '$primary' worktree remove '$path_norm' && git -C '$primary' branch -D '$branch'   (or just run: bash '$primary/scripts/clean.sh')"
+        PRUNE_KEEP_HINT="merge-on-green: KEPT worktree '$path_norm' — this merge ran from inside it, so it was not removed out from under the caller. Prune it from the primary checkout with: git -C '$primary' worktree remove '$path_norm' && git -C '$primary' branch -D '$branch'   (or just run: bash '$primary/scripts/clean.sh')"
         return 0
     fi
 
@@ -2852,6 +2857,7 @@ if [ "$merge_rc" -ne 0 ]; then
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
+        [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
         exit 0
     fi
     if [ "$post_state" = "OPEN" ]; then
@@ -2929,6 +2935,7 @@ if [ "$merge_rc" -eq 0 ]; then
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
+        [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
         exit 0
     fi
     echo "merge-on-green: gh accepted the merge but PR #$pr_num is '${final_state:-<unreadable>}' (not MERGED) after polling — refusing to report an unconfirmed merge. Check the PR; do NOT retry via a different command path." >&2
