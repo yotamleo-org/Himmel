@@ -1386,15 +1386,16 @@ def run_op(argv, schema, as_pw=None):
     no capabilities; a fixed environment with that user's HOME); any other runs as the helper's own user, root."""
     timeout = cfg_int(schema, "timeout_s", 60, 1, 1800)
     env = op_env()
+    not_run = (127, None, {k: (b"", 0, hashlib.sha256().hexdigest()) for k in ("stdout", "stderr")}, 0)
     if schema.get("run_as") == "operator-user":
         if as_pw is None:
-            return 127, {"stdout": (b"", 0, hashlib.sha256().hexdigest()), "stderr": (b"", 0, hashlib.sha256().hexdigest())}, 0
+            return not_run
         env.update({"HOME": as_pw.pw_dir, "USER": as_pw.pw_name, "LOGNAME": as_pw.pw_name,
                     "XDG_RUNTIME_DIR": f"/run/user/{as_pw.pw_uid}"})
         if not SEAM:
             sp = setpriv_path()
             if not sp:
-                return 127, {"stdout": (b"", 0, hashlib.sha256().hexdigest()), "stderr": (b"no setpriv", 10, hashlib.sha256().hexdigest())}, 0
+                return not_run
             argv = [sp, f"--reuid={as_pw.pw_uid}", f"--regid={as_pw.pw_gid}", "--init-groups", "--no-new-privs", "--inh-caps=-all"] + argv
     rc, streams, ms = capture(argv, env, "/", None, timeout)
     lines = streams["stdout"][0].decode("utf-8", "replace").splitlines()

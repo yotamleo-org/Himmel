@@ -322,10 +322,19 @@ assert_contains "enable with another session changes the file" "result=changed" 
 assert_contains "disable removes the SDDM file" "result=changed" "$(op autologin --action disable)"
 assert_eq "the SDDM file is gone" "no" "$([ -e "$R/etc/sddm.conf.d/himmel-autologin.conf" ] && echo yes || echo no)"
 assert_contains "disable again is unchanged" "result=unchanged" "$(op autologin --action disable)"
+assert_contains "no other auto-login config reads none" "other-autologin=none" "$(op autologin --check --action disable)"
+printf '[Autologin]\nUser=someone\n' > "$R/etc/sddm.conf"
+printf '[Autologin]\nUser=someone\n' > "$R/etc/sddm.conf.d/10-other.conf"
+assert_contains "RED: SDDM auto-login set in another file is reported on enable" "other-autologin=$R/etc/sddm.conf" "$(op autologin --check --action enable --session xfce)"
+assert_contains "RED: and in a conf.d drop-in" "10-other.conf" "$(op autologin --check --action disable)"
+rm -f "$R/etc/sddm.conf" "$R/etc/sddm.conf.d/10-other.conf"
 dm lightdm
 assert_contains "LightDM enable changes the config" "result=changed" "$(op autologin --action enable --session xfce)"
 assert_contains "the LightDM file names the operator user" "autologin-user=$U" "$(cat "$R/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf" 2>/dev/null)"
 assert_contains "RED: the LightDM file names the session (lightdm defaults to one that may not be installed)" "autologin-session=xfce" "$(cat "$R/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf" 2>/dev/null)"
+mkdir -p "$R/etc/lightdm/lightdm.conf.d"; printf '[Seat:*]\nautologin-user=bob\n' > "$R/etc/lightdm/lightdm.conf.d/10-other.conf"
+assert_contains "RED: LightDM auto-login set in another file is reported" "other-autologin=$R/etc/lightdm/lightdm.conf.d/10-other.conf" "$(op autologin --check --action disable)"
+rm -f "$R/etc/lightdm/lightdm.conf.d/10-other.conf"
 assert_contains "LightDM enable again is unchanged" "result=unchanged" "$(op autologin --action enable --session xfce)"
 dm gdm3
 mkdir -p "$R/etc/gdm3"
@@ -358,7 +367,9 @@ cdoc="$R/chief-doc.md"; echo "# doc" > "$cdoc"
 # shellcheck disable=SC2016
 printf '#!/bin/sh\necho "$1 $2" >> "$HIMMEL_OPS_ROOT/rearm.calls"\n' > "$R/bin/rearm"; chmod +x "$R/bin/rearm"
 export HIMMEL_OPS_REARM_CMD="$R/bin/rearm"
-stub() { bash -c 'trap "exit 0" TERM; while :; do sleep 0.2; done' stub -n "$1" & STUBPID=$!; STUBS="${STUBS:-} $STUBPID"; sleep 0.4; }
+printf '#!/bin/bash\ntrap "exit 0" TERM; while :; do sleep 0.2; done\n' > "$R/bin/claude"; chmod +x "$R/bin/claude"
+stub() { "$R/bin/claude" -n "$1" & STUBPID=$!; STUBS="${STUBS:-} $STUBPID"; sleep 0.4; }
+decoy() { bash -c 'trap "exit 0" TERM; while :; do sleep 0.2; done' decoy -n "$1" & DECOYPID=$!; STUBS="${STUBS:-} $DECOYPID"; sleep 0.4; }
 running() { local st; st=$(sed -n 's/^[0-9]* (.*) \(.\) .*/\1/p' "/proc/$1/stat" 2>/dev/null); [ -n "$st" ] && [ "$st" != Z ]; }
 gone() { local _; for _ in 1 2 3 4 5 6 7 8 9 10; do running "$1" || return 0; sleep 0.2; done; return 1; }
 out=$(op chief-restart --session chief-x1 --chief chief-x1 --doc "$cdoc" --repo "$R")
@@ -379,6 +390,10 @@ assert_contains "a chief that is not running is just re-armed" "stopped 0 sessio
 assert_contains "a bad chief name is bad-param" "result=bad-param name=chief" "$(op chief-restart --session other --chief 'a b' --doc "$cdoc" --repo "$R")"
 assert_contains "a doc that is not a .md is bad-param" "result=bad-param name=doc" "$(op chief-restart --session other --chief chief-x4 --doc /etc/passwd --repo "$R")"
 assert_contains "a missing doc fails" "no handover doc" "$(op chief-restart --session other --chief chief-x4 --doc "$R/none.md" --repo "$R")"
+decoy chief-x9
+out=$(op chief-restart --session other --chief chief-x9 --doc "$cdoc" --repo "$R")
+assert_contains "RED: a process that is not named claude is not a chief" "stopped 0 session" "$out"
+assert_eq "the decoy with -n NAME is left running" "yes" "$(running $DECOYPID && echo yes || echo no)"
 
 echo "== chief-restart through the helper: operator-user ops, the session, self-restart =="
 out=$(oreq 0 chief-x5 chief-restart chief=chief-x5 "doc=$cdoc" "repo=$R")
@@ -405,6 +420,8 @@ python3 -I "$OPS/build-manifest.py" "$R/usr/local/libexec/himmel/ops" >/dev/null
 assert_contains "RED: an unknown run_as is unknown-op" "result=unknown-op" "$(oreq 50 other weird chief=chief-x8 "doc=$cdoc" "repo=$R")"
 assert_contains "a root op (cron-entry) is still accepted" "result=pending" "$(oreq 51 other cron-entry action=remove tag=ping)"
 unset HIMMEL_OPS_REARM_CMD
+out=$(AFK_SUDO_ROOT="$R" python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import afk_sudo as a; r = a.run_op(["/bin/true"], {"run_as": "operator-user"}, None); print(len(r), r[0], r[1])' "$LIB" 2>&1)
+assert_eq "RED: an operator-user op with no user to drop to returns the same four values, not a crash" "4 127 None" "$out"
 
 echo "== reboot-recover: arm and disarm the root marker and the user unit =="
 new_root rr
@@ -423,6 +440,7 @@ assert_contains "RED: arm writes the marker" "result=changed" "$out"
 assert_contains "the marker names the user" "\"user\": \"$(id -un)\"" "$(cat "$M" 2>/dev/null)"
 assert_contains "the marker names the handover doc" "\"doc\": \"$rdoc\"" "$(cat "$M" 2>/dev/null)"
 assert_contains "the unit runs recover.sh from the repo" "ExecStart=/usr/bin/bash $R/repo/scripts/station-ops/recover.sh" "$(cat "$R/etc/systemd/user/himmel-recover.service" 2>/dev/null)"
+assert_contains "RED: the unit starts for the operator user only" "ConditionUser=$(id -un)" "$(cat "$R/etc/systemd/user/himmel-recover.service" 2>/dev/null)"
 assert_contains "the unit needs the marker" "ConditionPathExists=/var/lib/himmel/reboot-recover.json" "$(cat "$R/etc/systemd/user/himmel-recover.service" 2>/dev/null)"
 assert_eq "the unit is enabled for every user session" "../himmel-recover.service" "$(readlink "$R/etc/systemd/user/default.target.wants/himmel-recover.service")"
 armed_at=$(sed 's/.*"armed_at": \([0-9]*\)}/\1/' "$M")
@@ -481,6 +499,21 @@ python3 -I -c 'import json, sys
 p = sys.argv[1]
 m = json.load(open(p)); m["user"] = "someone-else"; json.dump(m, open(p, "w"))' "$M"
 assert_contains "a marker for another user is ignored" "the marker is for someone-else" "$(rec)"
+python3 -I -c 'import json, sys
+p = sys.argv[1]
+m = json.load(open(p)); m["user"] = sys.argv[2]; m["armed_at"] += 5; json.dump(m, open(p, "w"))' "$M" "$(id -un)"
+mkdir -p "$R/state"
+before=$(wc -l < "$R/arm.log" | tr -d ' ')
+( flock 9; sleep 4 ) 9> "$R/state/recover.lock" &
+LOCKPID=$!; STUBS="${STUBS:-} $LOCKPID"; sleep 0.5
+assert_contains "RED: a second recover run while one holds the lock does nothing" "already running" "$(rec)"
+assert_eq "the locked-out run re-armed nothing" "$before" "$(wc -l < "$R/arm.log" | tr -d ' ')"
+wait $LOCKPID 2>/dev/null
+mkdir -p "$R/ro"; chmod 0555 "$R/ro"
+out=$(HIMMEL_RECOVER_STATE="$R/ro/state" PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?")
+assert_contains "RED: a completion stamp that cannot be written is a failure" "cannot record" "$out"
+assert_contains "the failed stamp makes recover exit 1" "rc=1" "$out"
+chmod 0755 "$R/ro"
 
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

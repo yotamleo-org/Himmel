@@ -7,8 +7,8 @@
 #
 # arm: writes the root-owned marker /var/lib/himmel/reboot-recover.json ({user, doc, repo, armed_at}; the operator can
 # read it but not write it) and the user unit /etc/systemd/user/himmel-recover.service, enabled for every user session
-# through default.target.wants. The unit has ConditionPathExists on the marker, so without the marker it does not
-# start. It runs <repo>/scripts/station-ops/recover.sh as the user, which acts once per arming. disarm: removes the
+# through default.target.wants. The unit has ConditionPathExists on the marker and ConditionUser on the operator, so
+# without the marker, or for any other user, it does not start. It runs <repo>/scripts/station-ops/recover.sh as the user, which acts once per arming. disarm: removes the
 # marker (the unit stays; with no marker it does nothing).
 # Idempotent: arming the same user, doc and repo again keeps the marker and reports result=unchanged.
 # Last stdout line: op=reboot-recover id=ID result=changed|unchanged|would-change|bad-param|failed [name=P] detail=...
@@ -71,6 +71,7 @@ case "$repo/" in *"/../"* | *"/./"* | *"//"*) bad repo "no .. . or // segments" 
 want_unit="[Unit]
 Description=himmel reboot recovery (acts only when root armed a marker)
 ConditionPathExists=/var/lib/himmel/reboot-recover.json
+ConditionUser=$user
 After=network-online.target
 Wants=network-online.target
 

@@ -6,7 +6,7 @@
 #   chief-restart.sh [--check] --id ID --operator-user U --session S --chief NAME --doc DOC --repo REPO
 #
 # A chief cannot restart itself: when --session equals --chief the op fails with "self-restart" and touches nothing
-# (the helper refuses it first; this is the second guard). The running chief is the process of this user whose argv
+# (the helper refuses it first; this is the second guard). The running chief is the process of this user named claude whose argv
 # holds -n NAME or --name NAME; it gets SIGTERM, and SIGKILL after 15 s. Its queue lock is then stale (owner dead), so
 # the re-armed session takes it over when it acquires the lock. The re-arm is
 # `bash REPO/scripts/handover/arm-resume.sh --handover DOC --force --time <now+2 min>`.
@@ -58,13 +58,15 @@ if [ -z "${HIMMEL_OPS_ROOT:-}" ]; then
     [ -f "$repo/scripts/handover/arm-resume.sh" ] || die "no arm-resume.sh under $repo"
 fi
 
-# pids of this user's processes whose argv holds -n NAME or --name NAME (never this script or its parents)
+# pids of this user's processes named claude (comm, as the census reads it) whose argv holds -n NAME or --name NAME
+# (never this script or its parents): a coincidental -n NAME on another program is not a chief
 find_pids() {
     local d pid prev arg
     for d in /proc/[0-9]*; do
         pid=${d#/proc/}
         [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] && continue
         [ -O "$d" ] || continue
+        [ "$(cat "$d/comm" 2>/dev/null)" = claude ] || continue
         prev=''
         while IFS= read -r -d '' arg; do
             if { [ "$prev" = -n ] || [ "$prev" = --name ]; } && [ "$arg" = "$chief" ]; then echo "$pid"; break; fi

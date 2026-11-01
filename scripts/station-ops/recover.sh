@@ -17,6 +17,9 @@ state_dir=${HIMMEL_RECOVER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/himmel}
 done_file="$state_dir/recover-done"
 
 if [ ! -f "$marker" ]; then echo "recover: no marker, nothing to do"; exit 0; fi
+mkdir -p "$state_dir" 2>/dev/null && [ -w "$state_dir" ] || { echo "recover: cannot record completion in $state_dir; not recovering" >&2; exit 1; }
+exec 9> "$state_dir/recover.lock"
+flock -n 9 || { echo "recover: already running; nothing to do"; exit 0; } # gnu-ok: Linux only # prim-ok: a user-side Linux unit, sources no libs
 fields=$(python3 -I -c 'import json, sys
 m = json.load(open(sys.argv[1]))
 print("\n".join(str(m[k]) for k in ("user", "doc", "repo", "armed_at")))' "$marker" 2>/dev/null) || { echo "recover: the marker $marker is unreadable" >&2; exit 1; }
@@ -39,13 +42,13 @@ done
 if bash "$m_repo/scripts/telegram/restart-bridge.sh" status --repo "$m_repo" >/dev/null 2>&1; then bridge=up
 else bridge=DOWN; rc=1; fi
 
-when=$(date -d '+2 minutes' +%H:%M) # gnu-ok: Linux only
+when=$(date -d '+2 minutes' +%H:%M) # gnu-ok: Linux only # prim-ok: a user-side Linux unit, sources no libs
 if [ -f "$m_doc" ] && out=$(bash "$m_repo/scripts/handover/arm-resume.sh" --handover "$m_doc" --force --time "$when" 2>&1); then
     chief="re-armed from $(basename "$m_doc") at $when"
 else
     chief="NOT re-armed from $(basename "$m_doc"): ${out:-no such doc}"; chief=${chief//$'\n'/ }; chief=${chief:0:200}; rc=1
 fi
-mkdir -p "$state_dir" && printf '%s\n' "$m_armed" > "$done_file"
+printf '%s\n' "$m_armed" > "$done_file" || { echo "recover: cannot record completion in $done_file" >&2; rc=1; }
 
 status="reboot recovery on $(hostname -s): services$svc_report; bridge $bridge; chief $chief"
 echo "recover: $status"

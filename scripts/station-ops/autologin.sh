@@ -113,6 +113,26 @@ else
     new=$want
 fi
 
+# Other files may configure auto-login too (our drop-in is not the only place); report them, never edit them.
+auto_in() { # file section key: succeeds when the file sets key to a non-empty value (in [section] when one is given)
+    awk -v sec="$2" -v key="$3" '
+        BEGIN { in_s = (sec == "") }
+        /^[ \t]*\[/ { in_s = (sec == "" || index($0, "[" sec "]") > 0); next }
+        in_s && $0 ~ ("^[ \t]*" key "[ \t]*=[ \t]*[^ \t]") { found = 1 }
+        END { exit(found ? 0 : 1) }' "$1" 2>/dev/null
+}
+others=''
+case $kind in
+    sddm) for f in "$ROOT/etc/sddm.conf" "$ROOT"/etc/sddm.conf.d/*.conf; do
+            [ -f "$f" ] && [ "$f" != "$file" ] && auto_in "$f" Autologin User && others="$others $f"
+        done ;;
+    lightdm) for f in "$ROOT/etc/lightdm/lightdm.conf" "$ROOT"/etc/lightdm/lightdm.conf.d/*.conf; do
+            [ -f "$f" ] && [ "$f" != "$file" ] && auto_in "$f" '' autologin-user && others="$others $f"
+        done ;;
+esac
+others=${others# }
+keyring="$keyring; other-autologin=${others:-none}"
+
 where="$dm via $file"
 if [ $same -eq 1 ]; then
     say unchanged "auto-login for $user is already ${action}d in $where; keyring=$keyring"
