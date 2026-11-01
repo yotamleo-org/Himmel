@@ -31,6 +31,9 @@ cat > "$tmp/vms.json" <<'J'
 }
 J
 P="$tmp/repo/prompt.txt"
+# no launch in this suite may write the operator's real cost ledger
+export LAUNCH_GUEST_COST_LEDGER="$tmp/default-ledger.jsonl"
+unset LAUNCH_GUEST_TICKET LAUNCH_GUEST_ACCOUNT
 run() { (cd "$tmp/repo" && LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" bash "$SCRIPT" "$@" 2>&1); }
 
 rc=0; out="$(run)" || rc=$?
@@ -179,6 +182,69 @@ for pair in "x; --dangerously-skip-permissions|~/d.log" "gateway|~/a b" "gateway
     check "R13 rejects [$pair]" "$rc" "2"
 done
 check "R13 none of those reached ssh" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
+
+# --- one cost ledger row per launched run, summed by vm-cost.sh ---
+# the ssh stub now answers like a guest claude -p --output-format json
+COST="$HERE/vm-cost.sh"
+LEDGER="$tmp/vm-cost.jsonl"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\necho "{\\"type\\":\\"result\\",\\"total_cost_usd\\":1.25}"\n' > "$tmp/bin/ssh"
+chmod +x "$tmp/bin/ssh"
+runc() { LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 runv "$@"; }
+rows() { if [ -f "$LEDGER" ]; then wc -l < "$LEDGER" | tr -d ' '; else echo 0; fi; }
+
+fresh; rm -f "$LEDGER"
+rc=0; out="$(runc ubuntu_new "$P")" || rc=$?
+check "C1 stubbed run: exit 0" "$rc" "0"
+contains "C1 stubbed run: the guest result still reaches stdout" "$out" '"total_cost_usd":1.25'
+check "C1 stubbed run writes exactly one row" "$(rows)" "1"
+row="$(cat "$LEDGER" 2>/dev/null)"
+check "C1 row: ticket" "$(printf '%s' "$row" | jq -r .ticket 2>/dev/null)" "HIMMEL-1"
+check "C1 row: vm" "$(printf '%s' "$row" | jq -r .vm 2>/dev/null)" "ubuntu_new"
+check "C1 row: account label defaults to the vm" "$(printf '%s' "$row" | jq -r .account 2>/dev/null)" "ubuntu_new"
+check "C1 row: usd from the guest result" "$(printf '%s' "$row" | jq -r .usd 2>/dev/null)" "1.25"
+check "C1 row: seconds is a whole number" "$(printf '%s' "$row" | jq -r '.seconds | type' 2>/dev/null)" "number"
+check "C1 row: utc stamp" "$(printf '%s' "$row" | jq -r '.ts | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$")' 2>/dev/null)" "true"
+
+fresh; rm -f "$LEDGER"
+rc=0; out="$(runc --dry-run ubuntu_new "$P")" || rc=$?
+check "C2 dry-run writes no row" "$(rows)" "0"
+rc=0; out="$(runc nosuchvm "$P")" || rc=$?
+check "C2 refused vm writes no row" "$(rows)" "0"
+rc=0; out="$(PATH="$tmp/bin:$PATH" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-skip.sh" run ubuntu_new "$P")" || rc=$?
+check "C2 exhausted bank writes no row" "$(rows)" "0"
+
+# a guest answer that is not json still records the run, with a null usd and its source
+printf '#!/bin/sh\necho NOT-JSON\nexit 7\n' > "$tmp/bin/ssh"
+rm -f "$LEDGER"
+rc=0; out="$(runc ubuntu_new "$P")" || rc=$?
+check "C3 failing guest: rc passes through" "$rc" "7"
+row="$(cat "$LEDGER" 2>/dev/null)"
+check "C3 non-json answer: one row" "$(rows)" "1"
+check "C3 non-json answer: usd null" "$(printf '%s' "$row" | jq -r '.usd' 2>/dev/null)" "null"
+check "C3 non-json answer: usd_source unknown" "$(printf '%s' "$row" | jq -r '.usd_source' 2>/dev/null)" "unknown"
+
+# the account label is a label: a token-shaped value is refused before any ssh
+fresh; rm -f "$LEDGER"
+rc=0; out="$(LAUNCH_GUEST_ACCOUNT='sk-ant x;id' runc ubuntu_new "$P")" || rc=$?
+check "C4 bad account label: exit 2" "$rc" "2"
+check "C4 bad account label: no row" "$(rows)" "0"
+
+# vm-cost.sh: a two-row fixture prints the sum per ticket and per account
+cat > "$tmp/two.jsonl" <<'J'
+{"ticket":"HIMMEL-1","vm":"ubuntu_new","account":"acct-a","seconds":100,"usd":1.5,"usd_source":"guest-json","ts":"2026-11-01T10:00:00Z"}
+{"ticket":"HIMMEL-1","vm":"ubuntu_new","account":"acct-b","seconds":200,"usd":2.25,"usd_source":"guest-json","ts":"2026-11-01T11:00:00Z"}
+{"ticket":"HIMMEL-2","vm":"ubuntu_new","account":"acct-a","seconds":50,"usd":null,"usd_source":"unknown","ts":"2026-11-01T12:00:00Z"}
+J
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" 2>&1)" || rc=$?
+check "C5 vm-cost: exit 0" "$rc" "0"
+contains "C5 vm-cost: ticket HIMMEL-1 total" "$out" "$(printf 'ticket\tHIMMEL-1\t2\t300\t3.75\t0')"
+contains "C5 vm-cost: ticket HIMMEL-2 has an unknown usd" "$out" "$(printf 'ticket\tHIMMEL-2\t1\t50\t0\t1')"
+contains "C5 vm-cost: account acct-a total" "$out" "$(printf 'account\tacct-a\t2\t150\t1.5\t1')"
+contains "C5 vm-cost: account acct-b total" "$out" "$(printf 'account\tacct-b\t1\t200\t2.25\t0')"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/none.jsonl" bash "$COST" 2>&1)" || rc=$?
+check "C5 vm-cost: no ledger: exit 1" "$rc" "1"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --bogus 2>&1)" || rc=$?
+check "C5 vm-cost: bad flag: exit 2" "$rc" "2"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
