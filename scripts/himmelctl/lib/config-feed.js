@@ -442,12 +442,19 @@ function nonEmptyFile(p) {
   try { const st = fs.statSync(p); return st.isFile() && st.size > 0; } catch { return false; }
 }
 
+// True when the one secrets resolver serves the name (the keyring holds what the migration took out of
+// .env). Presence only, never the value. The resolver is an ES module loaded synchronously (Node 20.19 /
+// 22.12+); an older Node cannot load it, and the .env read stays the only source.
+function keyringHas(name) {
+  try { return Boolean(require('../../lib/resolve-secrets.mjs').resolveSecrets(repoRoot(), [name])[name]); } catch { return false; }
+}
+
 function secretPresent(name) {
   const src = PRESENCE_SOURCES[name];
   if (!src) return false;
   const env = process.env;
   if (src.kind === 'config') return Boolean(env[name] || behaviourConfigLib.readConfigVar(name, path.join(repoRoot(), '.env')).value);
-  if (src.kind === 'repo-env') return envFileHasKey(path.join(repoRoot(), '.env'), name);
+  if (src.kind === 'repo-env') return envFileHasKey(path.join(repoRoot(), '.env'), name) || keyringHas(name);
   if (src.kind === 'process-env') return Boolean(env[name]);
   if (src.kind === 'bridge-env') {
     const file = env.TELEGRAM_ENV ? expandHome(env.TELEGRAM_ENV) : path.join(homeDir(), '.claude', 'channels', 'telegram', '.env');

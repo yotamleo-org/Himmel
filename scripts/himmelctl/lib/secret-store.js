@@ -104,6 +104,24 @@ function readEnvKey(file, key) {
 }
 const usable = (v) => typeof v === 'string' && v !== '' && !PLACEHOLDER.test(v);
 
+// The one secrets resolver (scripts/lib/resolve-secrets.mjs), an ES module loaded synchronously
+// (Node 20.19 / 22.12+). An older Node cannot load it: the keyring is then not consulted and .env stays the store.
+function keyringLib() {
+  try { return require('../../lib/resolve-secrets.mjs'); } catch { return null; }
+}
+function resolveSecrets(root, names) {
+  const lib = keyringLib();
+  return lib ? lib.resolveSecrets(root, names) : {};
+}
+// The secrets the keyring takes: tokens of the repo .env stores. Config values and the
+// Telegram bridge file (its own readers, named exception E1) stay where they are.
+const keyringStored = (e) => Boolean(e) && e.store === 'himmel-env' && e.validate === 'token-nonempty';
+// Store the value through `himmel-secrets put --stdin` when the keyring is unlocked; false = use .env.
+function putKeyring(name, value, ctx) {
+  const lib = keyringLib();
+  return Boolean(lib) && lib.keyringUnlocked(ctx.himmelRoot) && lib.putSecret(ctx.himmelRoot, name, value);
+}
+
 function mcpHas(name, ctx) {
   let servers;
   try { servers = fs.readdirSync(mcpDir(ctx)); } catch { return false; }
@@ -118,11 +136,14 @@ function fileDetect(name, ctx) {
   if (usable(live)) return { status: 'set', source: 'live-env' };
   const e = entryOf(name);
   const file = e && storeFile(e.store, ctx);
+  let v = '';
   if (file) {
-    const v = configNames.has(name) ? behaviourConfig.readConfigVar(name, file, ctx).value : readEnvKey(file, name);
+    v = configNames.has(name) ? behaviourConfig.readConfigVar(name, file, ctx).value : readEnvKey(file, name);
     if (usable(v)) return { status: 'set', source: 'store' };
-    if (v !== '') return { status: 'placeholder', source: 'store' };
   }
+  // The keyring (through the one resolver) holds a token the migration took out of .env.
+  if (keyringStored(e) && usable(resolveSecrets(ctx.himmelRoot, [name])[name])) return { status: 'set', source: 'keyring' };
+  if (file && v !== '') return { status: 'placeholder', source: 'store' };
   if (mcpHas(name, ctx)) return { status: 'set', source: 'mcp-store' };
   return { status: 'not-set', source: null };
 }
@@ -168,6 +189,7 @@ function fileWrite(name, value, ctx) {
   const e = entryOf(name);
   const file = e && storeFile(e.store, ctx);
   if (!file) refuse('secret has no writable file store (card entry)');
+  if (value !== null && keyringStored(e) && putKeyring(name, value, ctx)) return { ok: true, path: 'the OS keyring (himmel-secrets)', tightened: false };
   if (name === 'JIRA_BASE_URL') {
     const target = behaviourConfig.readConfigVar(name, undefined, ctx).file;
     const files = value === null ? behaviourConfig.layersSetting(name, file, ctx) : [target];

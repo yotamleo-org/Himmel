@@ -772,4 +772,70 @@ grepq "$outZ2" 'enabledPlugins.*plugins-z2.*obsidian-second-brain@himmel.*false.
   || fail "case z2: a CLAUDE_CONFIG_DIR write must be logged with its writer (got: $outZ2)"
 echo "ok: case z2 — the enabledPlugins watch follows CLAUDE_CONFIG_DIR"
 
+# ── cases s0-a..s0-d: resolveSudoPassword asks the one secrets
+# resolver (environment, credentials directory, keyring) before the repo .env.
+# The real scripts/lib/himmel-secrets runs over a stub keyring (secret-tool and
+# busctl first on PATH); no case reaches a real keyring. All values are dummies.
+kbin="$work/kbin"; mkdir -p "$kbin"
+export KSTUB_STORE="$work/keyring.tsv" KSTUB_LOG="$work/keyring.log"
+cat >"$kbin/secret-tool" <<'STUB'
+#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >>"$KSTUB_LOG"
+verb="$1"; shift
+[ "${1:-}" = --all ] && shift
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+[ "$verb" = lookup ] || exit 1
+[ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    [ "$m" = 1 ] && { printf '%s' "$val"; exit 0; }
+done <"$KSTUB_STORE"
+exit 1
+STUB
+cat >"$kbin/busctl" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in *" Locked") echo "b false" ;; esac
+STUB
+chmod +x "$kbin/secret-tool" "$kbin/busctl"
+# Suite guard: abort unless the stubs are what resolve.
+for _bin in secret-tool busctl; do
+  case "$(PATH="$kbin:$PATH" command -v "$_bin")" in
+    "$kbin"/*) ;;
+    *) fail "case s0: $_bin does not resolve to the stub keyring; aborting before any real keyring call" ;;
+  esac
+done
+s0_run() { # s0_run <repoRoot> [VAR=val ...] -> prints "match" / "nomatch" / "null" for the resolved password
+  local root="$1"; shift
+  env -u HIMMEL_SECRETS_KEYRING -u CREDENTIALS_DIRECTORY -u HIMMELCTL_SUDO_PASSWORD \
+    PATH="$kbin:$PATH" DBUS_SESSION_BUS_ADDRESS="unix:path=$work/stub-bus" S0_ROOT="$root" "$@" \
+    "$node_bin" -e "
+const pw = require(process.env.INSTALL_ENGINE_LIB).resolveSudoPassword(process.env.S0_ROOT);
+console.log(pw === null ? 'null' : (pw === process.env.S0_WANT ? 'match' : 'nomatch'));
+"
+}
+s0Root="$work/s0repo"; mkdir -p "$s0Root"
+: >"$KSTUB_LOG"
+printf 'service=himmel key=HIMMELCTL_SUDO_PASSWORD scope=user\tdummy-keyring-pw\n' >"$KSTUB_STORE"
+[ "$(s0_run "$s0Root" S0_WANT=dummy-keyring-pw)" = match ] \
+  || fail "case s0-a: a password held only in the keyring must resolve (S0-R7)"
+grep -q 'secret-tool lookup .*HIMMELCTL_SUDO_PASSWORD' "$KSTUB_LOG" \
+  || fail "case s0-a: the stub log must show a lookup argv (got: $(cat "$KSTUB_LOG"))"
+! grep -q 'dummy-keyring-pw' "$KSTUB_LOG" || fail "case s0-a: the stub log must carry no value"
+echo "ok: case s0-a — HIMMELCTL_SUDO_PASSWORD held only in the keyring resolves; the stub log has a lookup argv and no value"
+
+printf 'HIMMELCTL_SUDO_PASSWORD=dummy-dotenv-pw\n' >"$s0Root/.env"
+[ "$(s0_run "$s0Root" S0_WANT=dummy-keyring-pw)" = match ] \
+  || fail "case s0-b: a password in both the keyring and .env must resolve to the keyring value (S0-R2)"
+echo "ok: case s0-b — keyring and .env both hold it: the keyring value wins"
+
+[ "$(s0_run "$s0Root" S0_WANT=dummy-dotenv-pw KSTUB_LOOKUP_FAIL=1)" = match ] \
+  || fail "case s0-c: a failing keyring lookup must fall back to the .env value"
+echo "ok: case s0-c — a failing keyring lookup falls back to .env"
+
+[ "$(s0_run "$s0Root" S0_WANT=dummy-env-pw HIMMELCTL_SUDO_PASSWORD=dummy-env-pw)" = match ] \
+  || fail "case s0-d: the live environment must win over the keyring"
+echo "ok: case s0-d — the live environment wins"
+
 echo "PASS"
