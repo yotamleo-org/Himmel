@@ -321,21 +321,48 @@ check '22. an old legs: doc over an old legs manifest renders (rc 0)' 0 "$rc"
 check '22. and writes workers:, not legs:' 'workers: `N61:n22:tok-one:22`|0' "$(grep '^workers:' "$wk")|$(grep -c '^legs:' "$wk")"
 
 # 23. A render that picked `legs:` before another render replaced it with `workers:` re-reads the
-#     key under the doc lock and still writes (and keeps the `lockless:` line).
+#     key under the doc lock and still writes. The parent holds the doc lock, starts the render,
+#     waits until it is blocked in flock (a bounded poll, so its key was picked), then writes the
+#     first renderer's doc with a STALE token and a STALE lockless value: only the second render
+#     can correct them, so a render that does nothing fails the exact assertions below.
 # shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
 . "$HERE/worker-doc-lock.sh"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","added":"x"},{"doc":"%s","label":"N70","lane":"eval","lockless":true,"added":"x"}]}\n' "$d1" "$d2" > "$wm"
-printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:tok-one:111` first\nqueue: none\n\n## Results\n' > "$wk"
-doc_lock "$wk" test-live-state || true
+want_workers='workers: `N61:nonce-61:tok-one:111` first'
+want_lockless="lockless: N70 (eval) $d2"
+printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:stale-tok:111` first\nqueue: none\n\n## Results\n' > "$wk"
+lock_rc=0; doc_lock "$wk" test-live-state || lock_rc=$?
+check '23. setup: the test holds the doc lock' 0 "$lock_rc"
 bash "$SCRIPT" "$wk" 9>&- >/dev/null 2>&1 &
 race_pid=$!
-sleep 2
-printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:tok-one:111` first\nlockless: N70 (eval) %s\nqueue: none\n\n## Results\n' "$d2" > "$wk"
+ready=no
+for _ in $(seq 1 100); do
+    if pgrep -P "$race_pid" -x flock >/dev/null 2>&1; then ready=yes; break; fi
+    kill -0 "$race_pid" 2>/dev/null || break
+    sleep 0.1
+done
+check '23. setup: the render is blocked on the doc lock before the doc changes' yes "$ready"
+printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:stale-tok:111` first\nlockless: N70 (eval) stale-doc\nqueue: none\n\n## Results\n' > "$wk"
 doc_unlock
 wait "$race_pid"; rc=$?
 check '23. the render that lost the legs: to workers: race exits 0' 0 "$rc"
-check '23. it keeps the lockless: line' 1 "$(grep -c '^lockless:' "$wk")"
-check '23. it keeps exactly one workers: line and no legs: line' '1 0' "$(grep -c '^workers:' "$wk") $(grep -c '^legs:' "$wk")"
+check '23. it corrects the stale token on the workers: line' "$want_workers" "$(grep '^workers:' "$wk")"
+check '23. it corrects the stale lockless: line' "$want_lockless" "$(grep '^lockless:' "$wk")"
+check '23. it leaves no legs: line' 0 "$(grep -c '^legs:' "$wk")"
+
+# 24. The key can also flip between the pick and the read of the block (a stub jq flips the doc on
+#     the manifest read, which runs between the two): the render restarts instead of refusing an
+#     empty block.
+mkdir -p "$tmp/flipbin"
+printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:stale-tok:111` first\nqueue: none\n\n## Results\n' > "$tmp/flip-src.md"
+printf '#!/usr/bin/env bash\nif [ -f %q ]; then cp %q %q; rm -f %q; fi\nexec %q "$@"\n' "$tmp/flip-src.md" "$tmp/flip-src.md" "$wk" "$tmp/flip-src.md" "$(command -v jq)" > "$tmp/flipbin/jq"
+chmod +x "$tmp/flipbin/jq"
+printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:stale-tok:111` first\nqueue: none\n\n## Results\n' > "$wk"
+PATH="$tmp/flipbin:$PATH" bash "$SCRIPT" "$wk" >/dev/null 2>"$tmp/flip-err"; rc=$?
+check '24. a key that flips before the block is read does not refuse (rc 0)' 0 "$rc"
+check '24. it renders the corrected workers: line' "$want_workers" "$(grep '^workers:' "$wk")"
+check '24. it renders the lockless: line' "$want_lockless" "$(grep '^lockless:' "$wk")"
+check '24. it leaves no legs: line and no refusal text' '0 0' "$(grep -c '^legs:' "$wk") $(grep -c 'no workers: line' "$tmp/flip-err")"
 
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }

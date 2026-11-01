@@ -138,7 +138,12 @@ manifest="${doc%.md}.fleet.json"
 rows="$(jq -r "$JQ_W"'W[] | [.label, .doc, ((.lane // "") | if . == "" then "unknown" else . end), ((.lockless == true) | tostring)] | @tsv' "$manifest" 2>/dev/null)" \
     || { echo "live-state: unreadable fleet manifest: $manifest" >&2; exit 1; }
 old_block="$(awk -v k="$live_key" "$block_awk" "$doc")"
-[ -n "$old_block" ] || { echo "live-state: no workers: line under '## Live state' in $doc" >&2; exit 1; }
+if [ -z "$old_block" ]; then
+    # Another render may have replaced legs: with workers: since the key was picked: start over before refusing.
+    [ "$(pick_live_key)" = "$live_key" ] || exec bash "$HERE/live-state.sh" "${orig_args[@]}"
+    echo "live-state: no workers: line under '## Live state' in $doc" >&2
+    exit 1
+fi
 
 entry_re='`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`'
 old_entries="$(printf '%s\n' "$old_block" | grep -oE "$entry_re" | tr -d '`')"
