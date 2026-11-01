@@ -31,7 +31,7 @@ function seed() {
     expect(r.exitCode).toBe(0);
   }
   const config = join(dir, "claude-config"); mkdirSync(config);
-  return { HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
+  return { HOME: dir, HIMMEL_EVAL_RUNS_LEDGER: evals, HIMMEL_WORKER_SESSION_FAILURES_LEDGER: failures, CLAUDE_CONFIG_DIR: config };
 }
 const read = (env: object, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, Date.parse("2026-10-07T23:59:00Z"));
 
@@ -282,4 +282,57 @@ test("Tool health navigation carries tokens only in fragments", () => {
   const link = navLinks({ here: "agui", token, current: "fleet" }).find((r: any) => r.id === "toolhealth");
   expect(link?.href).toBe(`/#t=${token}&page=toolhealth`);
   expect(parseLanding(`#t=${token}&page=toolhealth`)?.page).toBe("toolhealth");
+});
+
+// Spec 0.4 a/d: profile to role, and Bash by command and cause joined to rtk history.
+function seedSplit() {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  const profiles = ["worker-impl", "console-judge", undefined];
+  const calls = [[["toolu_a", "git", null], ["toolu_b", "git", "command"], ["toolu_c", "cat", "guard"]], [["toolu_d", "gh", "classifier"]], [["toolu_e", "other", "other"]]];
+  rows.forEach((r: any, i: number) => { for (const h of r.meta.tool_health) { if (profiles[i]) h.profile = profiles[i]; if (h.tool === "Bash") h.bash_calls = calls[i]; } });
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  return env;
+}
+const readRtk = (env: object, rtk: any, query = new URLSearchParams()) => (sources as any).readToolHealth(env, query, Date.parse("2026-10-07T23:59:00Z"), { rtk });
+
+test("roles map from the launch profile, sum to the fleet, and an unmapped profile is other", async () => {
+  const { teamOf } = await import("../../eval/worker-digest/tool-health.mjs");
+  expect([teamOf("worker-impl"), teamOf("design-ui"), teamOf("console-judge"), teamOf("unknown"), teamOf("made-up")]).toEqual(["worker", "worker", "judge", "other", "other"]);
+  const data = read(seedSplit());
+  expect(data.teams).toEqual([
+    { team: "worker", sessions: 1, calls: 20, failures: 3 },
+    { team: "judge", sessions: 1, calls: 40, failures: 4 },
+    { team: "other", sessions: 1, calls: 10, failures: 1 },
+  ]);
+  expect(data.teams.reduce((n: number, t: any) => n + t.calls, 0)).toBe(data.totalCalls);
+  const one = read(seedSplit(), new URLSearchParams({ team: "judge" }));
+  expect(one.tools.find((r: any) => r.tool === "Bash").calls).toBe(30);
+  expect(one.teams).toHaveLength(3);
+  expect(read(seedSplit(), new URLSearchParams({ team: "nonsense" })).selected.team).toBe("");
+});
+
+test("Bash rolls up by command head and cause; rtk joins by call id and a missing history stays unread", async () => {
+  const env = seedSplit();
+  const byId = new Map([["toolu_a", { path: "rtk", deny: false }], ["toolu_c", { path: "bash", deny: true }], ["toolu_d", { path: "bash", deny: false }]]);
+  const data = readRtk(env, () => ({ state: "ok", byId, duplicates: 1 }));
+  expect(data.bash.commands).toEqual([
+    { head: "git", calls: 2, failures: 1, cause: { command: 1, rtk_hook: 0, guard: 0, classifier: 0, other: 0 }, rtk: 1 },
+    { head: "cat", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 1, guard: 0, classifier: 0, other: 0 }, rtk: 0 },
+    { head: "gh", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 1, other: 0 }, rtk: 0 },
+    { head: "other", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 0, other: 1 }, rtk: 0 },
+  ]);
+  expect(data.bash).toMatchObject({ recorded: 5, unrecorded: 45, rtk: { state: "ok", matched: 3, unmatched: 2, duplicates: 1 },
+    fleet: { rtk: { calls: 1, failures: 0 }, bash: { calls: 2, failures: 2 }, unmatched: { calls: 2, failures: 2 } } });
+  const native = readRtk(env, () => ({ state: "ok", byId, duplicates: 0 }), new URLSearchParams({ lane: "native" }));
+  expect(native.bash.commands.map((c: any) => c.head)).toEqual(["git", "cat", "other"]);
+  expect(native.bash.fleet.bash.calls).toBe(2);
+  expect(read(env).bash.rtk.state).toBe("absent"); // the page's default join, over a HOME with no history.db
+  const { readToolHealth: rollupOnly } = await import("../../eval/worker-digest/tool-health.mjs");
+  const unread = rollupOnly(env, new URLSearchParams(), Date.parse("2026-10-07T23:59:00Z"));
+  expect(unread.bash.rtk).toEqual({ state: "not-read", matched: null, unmatched: null, duplicates: null });
+  expect(unread.bash.fleet).toBeNull();
+  expect(unread.bash.commands[0].rtk).toBeNull();
+  expect(readRtk(env, () => ({ state: "absent" })).bash.rtk.state).toBe("absent");
+  expect(readRtk(env, () => { throw new Error("locked"); }).bash.rtk.state).toBe("error");
 });

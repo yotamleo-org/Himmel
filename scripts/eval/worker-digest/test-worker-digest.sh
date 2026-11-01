@@ -242,5 +242,19 @@ check "with since set, window_days is the days from since through today (2026-10
 check "with since set, the per-day trend has one entry per day of that range" '[ "$(jq -c "[.tools[].trend | length] | unique" "$TMP/prof-s.json")" = "[11]" ]'
 check "without since, window_days and the trend stay at the days switch (7)" '[ "$(jq -c "[.drop_candidates[].window_days] | unique" "$TMP/prof.json")" = "[7]" ] && [ "$(jq -c "[.tools[].trend | length] | unique" "$TMP/prof.json")" = "[7]" ]'
 
+echo "14. split tool keys and Bash command heads (HIMMEL-8509)"
+# fixtures/split-keys.jsonl: 3 Skill, 2 Agent + 1 Task, 3 MCP and 5 Bash calls; one failure in each collapsed group but Bash (3).
+S14=8509c1a5-0000-4000-8000-000000000001
+cp "$FX/split-keys.jsonl" "$TMP/$S14.jsonl"
+digest "$TMP/$S14.jsonl" >"$TMP/sk.json" 2>"$TMP/sk.err" || bad "digest of split-keys.jsonl exits 0: $(head -c 300 "$TMP/sk.err")"
+skt() { jq -c --arg t "$1" '[.tool_health[] | select(.tool == $t)] | [(map(.calls) | add), (map(.failures) | add)]' "$TMP/sk.json"; }
+check "Skill splits by its plugin:skill input, a bad name stays Skill" '[ "$(skt Skill:himmel-ops:pr-check)" = "[1,1]" ] && [ "$(skt Skill:handover)" = "[1,0]" ] && [ "$(skt Skill)" = "[1,0]" ]'
+check "Agent and Task split by subagent_type, general-purpose when absent" '[ "$(skt Agent:Explore)" = "[1,0]" ] && [ "$(skt Agent:general-purpose)" = "[1,0]" ] && [ "$(skt Agent:judge)" = "[1,1]" ]'
+check "an MCP server with a hyphen keeps its key, a capital or an over-long one folds to mcp" '[ "$(skt mcp__claude-in-chrome__navigate)" = "[1,1]" ] && [ "$(skt mcp)" = "[2,0]" ]'
+check "the split rows add up to the old collapsed rows: Skill 3/1, Agent+Task 3/1, mcp 3/1, Bash 5/3" '[ "$(jq -c "[.tool_health[] | {k: (.tool | if test(\"^Skill(:|$)\") then \"Skill\" elif test(\"^(Agent|Task)(:|$)\") then \"Agent\" elif test(\"^mcp(__|$)\") then \"mcp\" else . end), calls, failures}] | group_by(.k) | map([.[0].k, (map(.calls) | add), (map(.failures) | add)])" "$TMP/sk.json")" = "[[\"Agent\",3,1],[\"Bash\",5,3],[\"Skill\",3,1],[\"mcp\",3,1]]" ]'
+check "the per-tool metrics use the split key and still sum to tool_calls" 'jq -e ".metrics.tool_calls_by_tool[\"Skill:himmel-ops:pr-check\"] == 1 and .metrics.tool_failures_by_tool[\"Agent:judge\"] == 1 and ([.metrics.tool_calls_by_tool[]] | add) == .metrics.tool_calls" "$TMP/sk.json" >/dev/null'
+check "Bash rows carry [id, head, cause] per call: the first command word past env and rtk, else other" '[ "$(jq -c "[.tool_health[] | select(.tool == \"Bash\") | .bash_calls[]]" "$TMP/sk.json")" = "[[\"toolu_b1\",\"git\",null],[\"toolu_b2\",\"git\",null],[\"toolu_b3\",\"bun\",\"command\"],[\"toolu_b4\",\"other\",\"command\"],[\"toolu_b5\",\"cat\",\"guard\"]]" ]'
+check "no argument, prompt or command text reaches the digest" 'absent -E "SECRET|rm -rf|example.invalid|run build" "$TMP/sk.json"'
+
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -7,8 +7,11 @@ import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readToolHealth as readToolHealthRollup } from "../eval/worker-digest/tool-health.mjs";
+import { rtkHistory } from "./rtk-history";
 // The page prices each profile's Skill listing from the installed plugins (an unbilled scan, never a claude run).
-export const readToolHealth = (env?: Env, query?: URLSearchParams, now?: number) => readToolHealthRollup(env, query, now, { estimateListing: true });
+// The Bash drill-in joins rtk's history.db by call id (read-only); a test passes its own join.
+export const readToolHealth = (env: Env = process.env, query?: URLSearchParams, now?: number, { rtk }: { rtk?: unknown } = {}) =>
+  readToolHealthRollup(env, query, now, { estimateListing: true, rtk: rtk ?? rtkHistory(env) });
 // The one owner of tracker/forge; read here, never re-derived.
 // @ts-ignore plain ES module, no types
 import { projectModeTracker, projectModeForge, projectModeIdRequired } from "../lib/project-mode.mjs";
