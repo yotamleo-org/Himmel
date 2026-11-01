@@ -2053,6 +2053,8 @@ check_c29() {
             case "$app_seen" in *"|$app_bundle|"*) continue ;; esac
             app_env="$(_c29_environ ps "$app_pid")" || continue
             grep -q '^CLAUDE_CODE_CHILD_SESSION=1$' <<< "$app_env" || continue
+            # a non-empty persistence override means its claudes DO save transcripts
+            grep -q '^CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=.' <<< "$app_env" && continue
             app_cpid="$(grep -m1 '^CLAUDE_PID=' <<< "$app_env")"
             app_cpid="${app_cpid#CLAUDE_PID=}"
             # a live claude owns the marker legitimately; empty/absent = dead

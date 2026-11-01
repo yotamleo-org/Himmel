@@ -318,6 +318,7 @@ mk_env_stub() { # mk_env_stub <bindir> <name> <env-log> - records its env, runs 
 #!/usr/bin/env bash
 env | grep -E '^(CLAUDE_CODE_CHILD_SESSION|CLAUDE_PID|CLAUDECODE|CLAUDE_CODE_SESSION_ID|CLAUDE_CODE_MESSAGING_TOKEN|CLAUDE_CODE_MESSAGING_SOCKET)=' >> "$3"
 [ "\$?" -le 1 ] || exit 3
+case "$2" in open) [ "\$1" = "-a" ] || exit 4 ;; osascript) [ "\$1" = "-" ] || exit 4 ;; esac
 echo seen >> "$3"
 for a in "\$@"; do case "\$a" in *.command) env -i "\$a" >/dev/null 2>&1 & ;; esac; done; exit 0
 STUB

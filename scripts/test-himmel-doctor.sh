@@ -2791,6 +2791,7 @@ echo "== C29 (macOS route): a Mac app still carrying a DEAD claude's marker is n
 #   110 Raycast helper, same marker                   -> folded into Raycast
 #   120 iTerm2, marker of live claude 300             -> skipped (a running claude's child)
 #   130 zsh, marker of dead claude                    -> skipped (not an app)
+#   140 Obsidian, dead marker + persistence override  -> skipped (its claudes save transcripts)
 #   300 claude, unmarked                              -> no session WARN
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 ps-carrier: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
@@ -2801,12 +2802,14 @@ cat > "$fix/table" <<'TABLE'
   110   100 /Applications/Raycast.app/Contents/Frameworks/Raycast Helper (GPU)
   120     1 /Applications/iTerm.app/Contents/MacOS/iTerm2
   130   120 -zsh
+  140     1 /Applications/Obsidian.app/Contents/MacOS/Obsidian
   300   130 claude
 TABLE
 printf '/Applications/Raycast.app/Contents/MacOS/Raycast' > "$fix/100.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/100.env"
 printf 'helper' > "$fix/110.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/110.env"
 printf 'iTerm2' > "$fix/120.args"; printf 'CLAUDE_PID=300 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/120.env"
 printf -- '-zsh' > "$fix/130.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/130.env"
+printf 'Obsidian' > "$fix/140.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1' > "$fix/140.env"
 printf 'claude' > "$fix/300.args"; printf 'HOME=/x' > "$fix/300.env"
 cat > "$t/ps" <<PS
 #!/usr/bin/env bash
@@ -2824,7 +2827,7 @@ PS
 chmod +x "$t/ps"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/no-such-proc" HIMMEL_DOCTOR_PS="$t/ps" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C29-child-session: 1 Mac app' && grepq "$out" 'pid 100 (Raycast)' \
-    && grepq "$out" 'saves no transcript: Raycast ' && ! grepq "$out" 'pid 110' && ! grepq "$out" 'iTerm' && ! grepq "$out" 'pid 130' && ! grepq "$out" 'running claude session'; then
+    && grepq "$out" 'saves no transcript: Raycast ' && ! grepq "$out" 'pid 110' && ! grepq "$out" 'iTerm' && ! grepq "$out" 'pid 130' && ! grepq "$out" 'Obsidian' && ! grepq "$out" 'running claude session'; then
     pass "C29 -> WARN names the Mac app carrying a dead claude's marker, once per app"
 else
     fail "C29 ps-carrier -> $(printf '%s' "$out" | grep -A6 C29)"

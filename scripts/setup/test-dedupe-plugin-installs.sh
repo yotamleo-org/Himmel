@@ -42,9 +42,9 @@ chmod +x "$T/claude"
 export HIMMEL_CLAUDE_BIN="$T/claude" STUB_LIST="$T/list.json" STUB_LOG="$T/log"
 : > "$T/log"
 
-out="$(bash "$DEDUPE" 2>&1)"
+out="$(bash "$DEDUPE" 2>&1)"; rc=$?
 NAME="dry-run counts the 3 local/project installs of 4 total and removes nothing"
-if [[ "$out" == *"dry-run: 3 local/project install(s) of $ATL of 4 total"* ]] && [ ! -s "$T/log" ]; then _pass "$NAME"; else _fail "$NAME" "out=[$out] log=[$(cat "$T/log")]"; fi
+if [ "$rc" -eq 0 ] && [[ "$out" == *"dry-run: 3 local/project install(s) of $ATL of 4 total"* ]] && [ ! -s "$T/log" ]; then _pass "$NAME"; else _fail "$NAME" "out=[$out] log=[$(cat "$T/log")]"; fi
 
 NAME="dry-run lists every install path"
 if [[ "$out" == *"$T/wt-a"* && "$out" == *"$T/wt-b"* && "$out" == *"$T/gone/a/b"* ]]; then _pass "$NAME"; else _fail "$NAME" "out=[$out]"; fi
