@@ -265,7 +265,8 @@ rm -rf "$_worker_tmp"
 # a probe that prints what a child process would inherit.
 echo "[test-cadence-format] cadence_oauth_token_lines — token file load"
 _tok_tmp=$(mktemp -d "${TMPDIR:-/tmp}/cadence-token.XXXXXX") || { echo "FAIL: mktemp" >&2; exit 1; }
-HOME="$_tok_tmp/home" cadence_oauth_token_lines > "$_tok_tmp/snippet.sh"
+_tok_die() { echo "FAIL: cannot create a token fixture" >&2; exit 1; }
+HOME="$_tok_tmp/home" cadence_oauth_token_lines > "$_tok_tmp/snippet.sh" || _tok_die
 _tok_text=$(cat "$_tok_tmp/snippet.sh")
 case "$_tok_text" in
   *CLAUDE_CODE_OAUTH_TOKEN*"$_tok_tmp/home/.himmel/secrets/claude-oauth-token"*) pass=$((pass + 1)); echo "  ok: the snippet bakes the home-relative default token path" ;;
@@ -275,14 +276,14 @@ case "$_tok_text" in
   *"set -x"*|*echo*|*printf*) fail=$((fail + 1)); echo "  FAIL: the snippet must never echo, print or trace the token" ;;
   *) pass=$((pass + 1)); echo "  ok: the snippet never echoes, prints or traces" ;;
 esac
-cat > "$_tok_tmp/probe.sh" <<'PROBE'
+cat > "$_tok_tmp/probe.sh" <<'PROBE' || _tok_die
 # read-sink-ok: test probe sources the snippet under test, a fixture file under the test's own mktemp dir
 . "$1"
 exec /bin/sh -c 'printf "<%s>" "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"'
 PROBE
 # run_token_snippet [VAR=value ...] — the snippet alone, minimal env.
 run_token_snippet() { env -i PATH=/usr/bin:/bin "$@" /bin/sh "$_tok_tmp/probe.sh" "$_tok_tmp/snippet.sh"; }
-printf 'fake-token-123\r\nsecond-line\n' > "$_tok_tmp/tok"
+printf 'fake-token-123\r\nsecond-line\n' > "$_tok_tmp/tok" || _tok_die
 assert_eq "token file: first line is exported, CR/LF stripped, nothing printed" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/tok")" "<fake-token-123>"
 assert_eq "file absent: nothing exported, nothing printed" \
@@ -291,31 +292,31 @@ assert_eq "variable already set: not overwritten" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/tok" CLAUDE_CODE_OAUTH_TOKEN=already-set)" "<already-set>"
 assert_eq "variable empty: loaded from the file" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/tok" CLAUDE_CODE_OAUTH_TOKEN=)" "<fake-token-123>"
-mkdir "$_tok_tmp/dir" || { echo "FAIL: cannot create the directory fixture" >&2; exit 1; }
+mkdir "$_tok_tmp/dir" || _tok_die
 assert_eq "a directory is not a token file" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/dir")" "<UNSET>"
-printf 'no-newline-token' > "$_tok_tmp/tok2"
+printf 'no-newline-token' > "$_tok_tmp/tok2" || _tok_die
 assert_eq "token file without a trailing newline loads" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/tok2")" "<no-newline-token>"
-: > "$_tok_tmp/empty"
+: > "$_tok_tmp/empty" || _tok_die
 assert_eq "an empty token file exports nothing" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/empty")" "<UNSET>"
-printf '  \t \n\n' > "$_tok_tmp/blank"
+printf '  \t \n\n' > "$_tok_tmp/blank" || _tok_die
 assert_eq "a whitespace-only token file exports nothing" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/blank")" "<UNSET>"
-printf 'unreadable-token\n' > "$_tok_tmp/noread"
-chmod 000 "$_tok_tmp/noread"
+printf 'unreadable-token\n' > "$_tok_tmp/noread" || _tok_die
+chmod 000 "$_tok_tmp/noread" || _tok_die
 if [ "$(id -u)" = 0 ]; then
   echo "  skip: an unreadable token file (root reads any file)"
 else
   assert_eq "an unreadable token file exports nothing" \
     "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/noread")" "<UNSET>"
 fi
-printf 'dash-token\n' > "$_tok_tmp/-dash"
+printf 'dash-token\n' > "$_tok_tmp/-dash" || _tok_die
 assert_eq "an override path starting with a dash is a path, not a head option" \
   "$(cd "$_tok_tmp" && run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE=-dash)" "<dash-token>"
-mkdir -p "$_tok_tmp/home/.himmel/secrets"
-printf 'fake-token-123\n' > "$_tok_tmp/home/.himmel/secrets/claude-oauth-token"
+mkdir -p "$_tok_tmp/home/.himmel/secrets" || _tok_die
+printf 'fake-token-123\n' > "$_tok_tmp/home/.himmel/secrets/claude-oauth-token" || _tok_die
 assert_eq "default path is used when HIMMEL_CLAUDE_TOKEN_FILE is unset" \
   "$(run_token_snippet)" "<fake-token-123>"
 
