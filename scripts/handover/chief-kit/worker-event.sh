@@ -204,7 +204,9 @@ if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     # sibling successor): any doc of the same worker base naming a PR keeps the merge verification
     # a listing or read that fails keeps the verified path: the direct close is the one that kills
     wk_base="$(worker_base "$worker")"
-    if ! sibs="$(find "$(dirname "$worker")" -maxdepth 1 -type f \( -name "*-${wk_base}-*.md" -o -name "*-${wk_base}[a-z]-*.md" \))"; then
+    # every doc in the directory is listed: the worker_base filter below decides who is a sibling, so a
+    # legacy -legN<k>-/-leg<k>- original or a multi-letter successor is never missed by a name glob
+    if ! sibs="$(find "$(dirname "$worker")" -maxdepth 1 -type f -name '*.md')"; then
         close_only=""
     else
         while IFS= read -r sib; do

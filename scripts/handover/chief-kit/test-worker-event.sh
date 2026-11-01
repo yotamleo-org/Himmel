@@ -335,6 +335,17 @@ lacks "13b successor with a PR-marked original is not closed directly" "$calls" 
 LE_LIST="$W/list13b" run "WRAPPED N5002."
 contains "13b successor and original both without a PR: direct close" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-7-N5002b-plain-2026-10-14-RESUME.md"
 lacks "13b no PR anywhere: wrap-merged not run" "$calls" "wrap --doc"
+# a legacy-named original (-leg<k>-) and a multi-letter successor (N5004bc) are still siblings of one worker
+printf '%s\n' '## Results' '- 10:00 READY 2554 abc' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-8-legN5004-orig-2026-10-14.md"
+printf '%s\n' '## Results' '- 11:00 WRAPPED done' > "$W/HIMMEL-8-N5004bc-orig-2026-10-14-RESUME.md"
+cat > "$W/list13c" <<EOF3
+#!/usr/bin/env bash
+printf '%s\n' $W/HIMMEL-8-N5004bc-orig-2026-10-14-RESUME.md
+EOF3
+chmod +x "$W/list13c"
+LE_LIST="$W/list13c" run "WRAPPED N5004."
+contains "13b legacy-named original with a PR goes to wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/fleet.json $W/HIMMEL-8-N5004bc-orig-2026-10-14-RESUME.md"
+lacks "13b legacy-named original with a PR is not closed directly" "$calls" "close"
 
 LE_LIST="$W/list13" run "MERGED #2566 N3001"
 contains "13 MERGED never takes the close path" "$calls" "wrap --doc"

@@ -268,7 +268,7 @@ resume_evidence() {
     local stem
     stem=$(basename "$2" .md)
     awk -v stem="$stem" '
-        /^## / { inres = ($0 ~ /^## Results/); next }
+        /^## / { inres = ($0 ~ /^## Results( |$)/); next }
         !inres || !/^- / { next }
         {
             mk = ""; tok = ""
@@ -282,6 +282,8 @@ resume_evidence() {
             if (named && !hand && mk == "WRAPPED") { hand = 1; next }
             if (!hand) { if (tok != "") pred = tok; next }
             if (!live && tok != "" && tok != pred) { live = 1; next }
+            # defence in depth: the worker_tail_status check on the original (last marker is WRAPPED) already
+            # refuses a WRAPPED that is not the tail, so a WRAPPED-after-LIVE gate cannot be pinned by a row
             if (live && mk == "WRAPPED") wrapped = 1
         }
         END { exit !wrapped }' "$1"

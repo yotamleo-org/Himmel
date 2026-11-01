@@ -1653,6 +1653,26 @@ for d in "$RESL" "$ORIGL"; do
     check "8424: successor LIVE reusing the predecessor's token, $(basename "$d") -> rc 4" "$rc" "4"
     check "8424: reused token, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
 done
+# negative: a booting successor behind an earlier unrelated WRAPPED. The predecessor wrapped once, was relocked
+# under a new token (pid150), and only then handed off (the BLOCKED bullet names the stem, the WRAPPED after it
+# is the hand-off). Without the named anchor the first WRAPPED is taken as the hand-off, pid150 reads as a
+# successor LIVE and the later WRAPPED as its close: a TERM would kill the booting successor.
+TK3="\`cwl-host-pid150\`"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 09:30 WRAPPED - first wrap\n- 09:45 LIVE - relocked, release-token %s\n- 10:00 BLOCKED - waiting on %s\n- 10:30 WRAPPED - hand-off\n' "$TK1" "$TK3" "$(basename "$RESL" .md)" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: an earlier WRAPPED before the hand-off anchor, $(basename "$d") -> rc 4" "$rc" "4"
+    check "8424: earlier WRAPPED before the anchor, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
+done
+# negative: a new-token LIVE and a WRAPPED that sit only in a later section (## Notes), never in ## Results
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n\n## Notes\n\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n' "$TK1" "$(basename "$RESL")" "$TK2" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: new-token LIVE + WRAPPED only under ## Notes, $(basename "$d") -> rc 4" "$rc" "4"
+    check "8424: ## Notes evidence, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
+done
 # negative: a successor LIVE with a new token but no WRAPPED after it (still going)
 printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n' "$TK1" "$(basename "$RESL")" "$TK2" > "$ORIGL"
 reset_calls
