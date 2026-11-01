@@ -30,13 +30,16 @@
 #   - `queue-lock.sh status <worker-doc>` reports free (rc=0);
 #   - the doc's last `## Results` marker-bullet (one of LIVE/FINDING/
 #     RESOLVED/READY/BLOCKED/HALTED/WRAPPED, leading token of the newest
-#     such bullet) is WRAPPED;
+#     such bullet) is WRAPPED; a doc with no marker-bullet of its own reads its sibling
+#     doc's (a resumed worker's WRAPPED lands on the original doc), and the sibling's
+#     queue lock must be free too;
 #   - exactly one live `claude` session's real argv (via
 #     scripts/lanes/lib/claude-sessions.sh's claude_sessions, /proc-argv
 #     based, never a flattened pgrep -af scan) carries a `-n <name>` naming
 #     the worker (names derived by scripts/lib/worker-identity.sh's worker_identity -
-#     the doc stem, its undated form, and any legacy-family derived name; a
-#     relaunched worker's trailing -r<N> on the session name is accepted).
+#     the doc stem, its undated form, and any legacy-family derived name, each also
+#     with -RESUME, plus the sibling doc's names; a relaunched worker's trailing -r<N>
+#     on the session name is accepted).
 # ponytail: name-only window match, upgrade path HIMMEL-5928: the launch record
 # (launch-logs/<name>.log) holds no pid and a finished worker's lock is free, so
 # there is no recorded pid to resolve by. Upgrade path: have headed-arm-worker.sh
@@ -85,8 +88,10 @@
 #      Not for --chief: a predecessor chief with 0 sessions still exits 5.
 #   1  gh/git/queue-lock plumbing failure, or the TERM signal itself failed
 #   2  usage (missing/unreadable doc)
-#   3  refused - the queue lock is not free
-#   4  refused - the doc's last marker-bullet is not WRAPPED
+#   3  refused - the queue lock is not free: on the doc, or on its sibling doc (the
+#      <stem>-RESUME.md of an original doc, the original of a -RESUME doc) when one exists
+#   4  refused - the last marker-bullet is not WRAPPED: the doc's own, or the sibling doc's
+#      when the doc itself has no marker-bullet
 #   5  refused - >1 live sessions matched the worker's names (0 for a --chief)
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
