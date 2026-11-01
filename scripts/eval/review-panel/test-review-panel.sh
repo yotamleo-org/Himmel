@@ -371,8 +371,14 @@ eq "run: no panel call for a mixed valid/unknown --only" "$(cat "$TMP/stublog/ti
 cat > "$TMP/stub-delta-panel.sh" <<'EOF'
 #!/usr/bin/env bash
 ctx=""
-while [ $# -gt 0 ]; do case "$1" in --context-file) ctx="$2"; shift 2 ;; *) shift ;; esac; done
 id="$(basename "$(pwd)")"
+# Like the real panel, refuse an option it does not know; the suite counts the refusals.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --context-file) ctx="$2"; shift 2 ;;
+    *) echo "stub panel: unknown option $1" >&2; echo "$1" >> "$STUB_LOG_DIR/$id.argerr"; exit 2 ;;
+  esac
+done
 cat > "$STUB_LOG_DIR/$id.stdin"
 [ -z "$ctx" ] || cp "$ctx" "$STUB_LOG_DIR/$id.ctx"
 printf '%s\n' "$(ls -A | tr '\n' ' ')" > "$STUB_LOG_DIR/$id.cwd"
@@ -389,6 +395,7 @@ eq "run --delta: the context is the round-1 diff then the delta" \
   "$(cat "$FIXD/delta-07.patch" "$FIXD/delta-07.delta.patch" | cmp -s - "$DL/delta-07.ctx" && echo same)" "same"
 eq "run --delta: the critic's directory holds the diff and the context only" "$(cat "$DL/delta-07.cwd")" "context.patch diff.patch "
 eq "run --delta: a clean delta twin is fed the same way" "$(cmp -s "$DL/delta-02.stdin" "$FIXD/delta-02.delta.patch" && echo same)" "same"
+eq "run --delta: run.sh passes the panel no option it does not know" "$(find "$DL" -name '*.argerr' | wc -l | tr -d ' ')" "0"
 eq "run --delta: the sweep is stamped a subset" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/rund/swept.json" 2>&1)" "False"
 # The bundle hash covers a delta transcript: editing one output changes it.
 h_before="$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; print(score.outputs_sha256(sys.argv[2]))' "$HERE" "$TMP/rund")"
@@ -404,6 +411,7 @@ eq "run (full): one output per case, delta cases included" "$(find "$TMP/runf" -
 eq "run (full): a delta case is still fed its delta" "$(cmp -s "$DL/delta-07.stdin" "$FIXD/delta-07.delta.patch" && echo same)" "same"
 eq "run (full): a plain case is fed its diff with no context" \
   "$(cmp -s "$DL/case-01.stdin" "$FIXD/case-01.patch" && echo same):$([ -e "$DL/case-01.ctx" ] && echo ctx || echo none)" "same:none"
+eq "run (full): run.sh passes the panel no option it does not know" "$(find "$DL" -name '*.argerr' | wc -l | tr -d ' ')" "0"
 # --delta refuses before any panel call when it cannot name delta cases.
 rm -rf "$DL"; mkdir -p "$DL"
 STUB_LOG_DIR="$DL" REVIEW_PANEL_CMD="$TMP/stub-delta-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch-d" \
