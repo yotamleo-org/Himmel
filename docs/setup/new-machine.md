@@ -1354,7 +1354,6 @@ Plugins live at `~/.claude/plugins/`. Different install methods per plugin: read
 
 | Plugin | Source | Install method | Why |
 |--------|--------|----------------|-----|
-| `obsidian-second-brain` | himmel marketplace (sources `eugeniughelbur/obsidian-second-brain`, tag-pinned) | `claude plugin install obsidian-second-brain@himmel` after adding himmel marketplace. Never clone it into `~/.claude/skills/`: a user-scope copy ignores `enabledPlugins` and loads into every session | Daily notes, kanban, ADRs, vault operating manual. Opt-in: no named profile enables it; `/profile enable` does |
 | `handover` | himmel marketplace | `/plugin install` after adding himmel marketplace | Handover doc workflows for cross-session continuity |
 | `obsidian-triage` (LUNA-3) | himmel marketplace | `/plugin install` after adding himmel marketplace | Autonomous triage of Web Clipper output: `/triage-clips` + `/synthesize-clips`. Required only if you set up the Web Clipper templates in §5a |
 | `obsidian` (Steph Ango's skills) | himmel marketplace (sources `kepano/obsidian-skills`, SHA-pinned) | `/plugin install` after adding himmel marketplace | `obsidian-markdown`, `obsidian-bases`, `json-canvas`, `obsidian-cli`, `defuddle`. `obsidian-triage` can use `obsidian-markdown` for proper OFM when editing clipped notes (recommended, not required — fallback documented in the command body) |
@@ -1436,7 +1435,7 @@ or verified, or a bulk `lean`/`full` had any write refused (floor) or failed;
 | `context7@claude-plugins-official` | `/find-docs` and the context7-mcp skill — live library/API documentation lookups | `plugin-profile.sh enable context7` |
 | `typescript-lsp@claude-plugins-official` | TypeScript/JS work in this checkout (`scripts/jira`, `marketplace/plugins/claude-hud`) — go-to-definition and diagnostics | `plugin-profile.sh enable typescript-lsp` |
 | `playwright@claude-plugins-official` | Browser-driven e2e work; the `/run` skill's browser-driven fallback | `plugin-profile.sh enable playwright` |
-| `claude-obsidian@himmel` | The `obsidian-vault` MCP used by the obsidian-second-brain skill and `/obsidian-health` — disabling the plugin is what disables that MCP | `plugin-profile.sh enable claude-obsidian` |
+| `claude-obsidian@himmel` | The `obsidian-vault` MCP used by `/obsidian-health` — disabling the plugin is what disables that MCP | `plugin-profile.sh enable claude-obsidian` |
 | `luna-correlate@himmel` | Cross-vault correlation over luna (`HIMMEL_MCP_LUNA_CORRELATE` workflows) | `plugin-profile.sh enable luna-correlate` |
 | `obsidian-triage@himmel` | `/luna-ingest` and the luna clip pipeline. The pipeline itself does NOT need it enabled here — see the cadence exception below | `plugin-profile.sh enable obsidian-triage` |
 | `telegram-himmel@himmel` | The `telegram` MCP behind `/telegram-clip` and the Telegram connector parts — disabling the plugin is what disables that MCP | `plugin-profile.sh enable telegram-himmel` |
@@ -1567,16 +1566,10 @@ you ever want the per-turn review back.
 ### Install sequence
 
 ```bash
-# himmel marketplace (carries handover + obsidian-triage + claude-obsidian
-# + obsidian-second-brain)
+# himmel marketplace (carries handover + obsidian-triage + claude-obsidian)
 # inside Claude Code:
 #   /plugin marketplace add yotamleo/himmel
 #   /plugin install handover
-#
-#   # Optional — obsidian-second-brain, tag-pinned. Install it as
-#   # a plugin, never as a clone under ~/.claude/skills/: a user-scope copy
-#   # ignores enabledPlugins and loads into every session, bare included.
-#   /plugin install obsidian-second-brain   # = claude plugin install obsidian-second-brain@himmel
 #
 #   # Optional — Web Clipper triage stack (skip if §5a was skipped)
 #   /plugin install obsidian-triage
@@ -1587,7 +1580,6 @@ you ever want the per-turn review back.
 
 After restoring plugins, verify skills load:
 ```
-/obsidian-daily            # from obsidian-second-brain, once installed and enabled
 /triage-clips --dry-run    # from obsidian-triage; should exit 0 with "no Clippings/" or per-clip preview
 ```
 

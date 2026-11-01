@@ -612,23 +612,17 @@ test('design profile enables the full design pack (HIMMEL-4012)', () => {
   }
 });
 
-// obsidian-second-brain was a user-scope skill that loaded in every
-// session. As a plugin it is catalogued (so every other profile resolves it
-// false) and enabled only where the vault is worked: vault-writing
-// `lane-content` workers and the `telegram` bridge (run.ts files attachments with
-// it). The `user` profile, lean workers and the chief never load it; it can be
-// enabled on demand.
-const OSB_PROFILES = ['lane-content', 'telegram'];
-test('obsidian-second-brain@himmel is enabled exactly in the vault profiles (HIMMEL-4018)', () => {
+// obsidian-second-brain was removed from the registry: 0 skill calls in 457
+// bridge runs / 30 days and lane-content never launched, yet it cost ~2.4k-3.5k
+// tokens per spawn. Its one used piece, validate-ai-first.sh, now lives in
+// obsidian-triage.
+test('no profile and no catalog entry names obsidian-second-brain (HIMMEL-8416)', () => {
   const id = 'obsidian-second-brain@himmel';
-  assert.ok(REG.catalog.includes(id));
+  assert.ok(!REG.catalog.includes(id), `${id} must not be in the catalog`);
   for (const [name, def] of Object.entries(REG.profiles)) {
     if (def === null) continue; // operator: everything installed
-    const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
-    assert.equal(p[id], OSB_PROFILES.includes(name), `${name}: ${id} enabled must be ${OSB_PROFILES.includes(name)}`);
-  }
-  for (const name of ['bare', 'worker-impl', 'console']) {
-    assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins[id], false, `${name} must not enable ${id}`);
+    assert.ok(!JSON.stringify(def).includes('obsidian-second-brain'), `${name} must not name obsidian-second-brain`);
+    assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins[id], undefined, `${name} must not resolve ${id}`);
   }
 });
 

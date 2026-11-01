@@ -56,7 +56,7 @@ When a document (e.g. a PDF) **or an image** is sent to a chat that has a vault
 configured, `buildPrompt` appends a clause telling the run to FILE the
 attachment's content into that Obsidian vault (not just read it), following the
 vault's `_CLAUDE.md` conventions — using the vault's own filing skill (e.g. a
-`medic` skill) if it has one, else the `obsidian-second-brain` skill — and to
+`medic` skill) if it has one, else the `obsidian-triage` plugin's commands — and to
 confirm in its reply. (Pre-HIMMEL-578 only documents filed; images were read but
 never filed.)
 

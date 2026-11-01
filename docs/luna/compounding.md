@@ -175,16 +175,17 @@ quietly compounds and one with silent gaps.
 
 **Manual capture — what you must invoke explicitly:**
 
-- **A conversation's findings/decisions** → the vault's obsidian-second-brain
-  capture skills: `/obsidian-save` (everything worth keeping from the chat),
-  `/obsidian-log` (a dev/work session), `/obsidian-capture` (a quick idea). This
-  is the path the "automatic" summary does **not** cover.
+- **A conversation's findings/decisions** → file them by the vault's own
+  `_CLAUDE.md` conventions. The obsidian-second-brain capture skills
+  (`/obsidian-save`, `/obsidian-log`, `/obsidian-capture`) were removed with that
+  plugin (HIMMEL-8416). This is the path the "automatic" summary does **not**
+  cover.
 - **A repo / issue / PR URL** → `/luna-ingest <url>` (obsidian-triage) fetches,
   classifies, and files a structured note under `30-Resources/Tech/`.
 - **A Telegram message / URL / forward** → `/telegram-clip` files it into
   `Clippings/` for the harvest pipeline to pick up.
 - **Grounded research** → `/notebooklm` (open-web `/research`/`/research-deep`
-  from the obsidian-second-brain research toolkit are **not adopted**
+  from the removed obsidian-second-brain research toolkit were **not adopted**
   (2026-07-29, no active Perplexity subscription; see `docs/tooling-catalog.md`)).
 - **Historical Claude Code sessions** (pre-vault) → `/luna-backfill`.
 - **Claude Code's own auto-memory** → the distil pass in

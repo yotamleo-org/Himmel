@@ -2575,7 +2575,7 @@ EOF
 # (chain item 2), so a separate `plugin update` there is redundant — unless
 # its plugin.json version moved past the installed one. A
 # url/git-subdir-sourced @himmel plugin (marketplace `source` is an object,
-# e.g. obsidian-second-brain) is NOT the checkout and is updated like any
+# e.g. find-docs) is NOT the checkout and is updated like any
 # other remote plugin.
 # Advisory + failure-isolated, same as sync_marketplaces: one plugin failing
 # to update must never abort the others or the update. MUST run before
