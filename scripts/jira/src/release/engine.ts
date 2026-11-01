@@ -115,6 +115,13 @@ function locked<T>(ctx: Ctx, fn: (l: Loaded) => T): T {
   return withLock(ctx.dir, () => fn(loadOrThrow(ctx)));
 }
 
+// A writer whose check reads every declared release holds the release root's lock as well,
+// so two writers cannot both pass a check that only one of them may pass.
+function lockedAcross<T>(ctx: Ctx, fn: (l: Loaded) => T): T {
+  loadOrThrow(ctx);
+  return withLock(releaseRoot(ctx.env), () => locked(ctx, fn));
+}
+
 function lockedAsync<T>(ctx: Ctx, fn: (l: Loaded) => Promise<T>): Promise<T> {
   loadOrThrow(ctx);
   return withLockAsync(ctx.dir, () => fn(loadOrThrow(ctx)));
@@ -424,24 +431,26 @@ export function signSpec(ctx: Ctx, o: {
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)) {
     throw new Error('release operator spec: the spec or a verdict file changed while it was checked; sign again');
   }
-  const records = readOperatorRecords('spec', ctx.env);
-  if (o.supersedes) {
-    const old = records.find((r) => r.id === o.supersedes);
-    if (!old) throw new Error(`release operator spec: ${o.supersedes} is no verified spec record in a declared release`);
-    const dropped = (old.keys ?? []).filter((k) => !o.keys.includes(k));
-    if (dropped.length) throw new Error(`release operator spec: --keys must keep every key of ${o.supersedes}; missing ${dropped.join(', ')}`);
-  }
-  // A key already signed is re-signed only by superseding its record (spec §2).
-  const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
-  const held = records.find((r) => !superseded.has(r.id) && r.id !== o.supersedes && r.keys?.some((k) => o.keys.includes(k)));
-  if (held) {
-    const k = held.keys?.find((x) => o.keys.includes(x));
-    throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
-  }
-  return locked(ctx, (l) => appendOperator(ctx, l.k, {
-    kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, verdicts,
-    supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
-  }));
+  return lockedAcross(ctx, (l) => {
+    const records = readOperatorRecords('spec', ctx.env);
+    if (o.supersedes) {
+      const old = records.find((r) => r.id === o.supersedes);
+      if (!old) throw new Error(`release operator spec: ${o.supersedes} is no verified spec record in a declared release`);
+      const dropped = (old.keys ?? []).filter((k) => !o.keys.includes(k));
+      if (dropped.length) throw new Error(`release operator spec: --keys must keep every key of ${o.supersedes}; missing ${dropped.join(', ')}`);
+    }
+    // A key already signed is re-signed only by superseding its record (spec §2).
+    const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
+    const held = records.find((r) => !superseded.has(r.id) && r.id !== o.supersedes && r.keys?.some((k) => o.keys.includes(k)));
+    if (held) {
+      const k = held.keys?.find((x) => o.keys.includes(x));
+      throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
+    }
+    return appendOperator(ctx, l.k, {
+      kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, verdicts,
+      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
+    });
+  });
 }
 
 // Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the spec and every
@@ -486,9 +495,11 @@ export function coreBypass(ctx: Ctx, o: { keys: string[]; decision: string; verb
 export function coreSnapshot(ctx: Ctx, o: { keys: string[] }): OperatorRow {
   operatorFence(ctx);
   const keys = coreKeys('core-snapshot', o.keys);
-  const prior = readOperatorRecords('core-snapshot', ctx.env)[0];
-  if (prior) throw new Error(`release operator core-snapshot: ${prior.id} is already recorded; the snapshot is written once, at flag-on`);
-  return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'core-snapshot', decision: null, keys }));
+  return lockedAcross(ctx, (l) => {
+    const prior = readOperatorRecords('core-snapshot', ctx.env)[0];
+    if (prior) throw new Error(`release operator core-snapshot: ${prior.id} is already recorded; the snapshot is written once, at flag-on`);
+    return appendOperator(ctx, l.k, { kind: 'core-snapshot', decision: null, keys });
+  });
 }
 
 // --- fold: a finished ticket recorded as delivered in a version (the chief) ---------
