@@ -53,6 +53,10 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 usage() {
     printf 'usage: pr-stall.sh [--repo owner/name] [--manifest fleet.json] [--conflict-min N] [--noci-min N] [--slow-min M] [--idle-h H] [--notify]\n' >&2
@@ -98,7 +102,7 @@ worker_for() {
     [ -n "$manifest" ] && [ -r "$manifest" ] || return 0
     local doc label rows
     # swallow-ok: an unreadable manifest leaves the PR unmapped (worker -), never mapped wrongly
-    rows="$(jq -r '.legs[]? | [.doc, (.label // "-")] | @tsv' "$manifest" 2>/dev/null)"
+    rows="$(jq -r "$JQ_W"'W[]? | [.doc, (.label // "-")] | @tsv' "$manifest" 2>/dev/null)"
     while IFS="$TAB" read -r doc label; do
         [ -r "$doc" ] || continue
         # whole branch token only: feat/foo must not match a doc naming feat/foo-extra

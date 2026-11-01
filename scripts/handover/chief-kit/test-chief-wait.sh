@@ -589,6 +589,22 @@ check "(p5b) a denial expiring out is neither wake nor page" "0" "$(pages_n)"
 denials_rise p5c 'N1:1' 'N1:1,N2:1:SHIP-STEP'
 check "(p5c) a second worker's SHIP-STEP pages under its own label" "DENIAL-PAGE N2 SHIP-STEP x1 - a classifier denial parked this worker. Review it, then: ack-denial.sh N2" "$(head -n1 "$STUB/pages" 2>/dev/null)"
 
+# A refused native worker with Remote Control on is named by its
+# session, so the operator knows which session to open in the Claude app. The
+# worker is found by cwd (the page label is the worktree slug) in a fake proc tree;
+# a worker without --remote-control keeps the exact text asserted above.
+RCPROC="$WORK/rc-proc"; rm -rf "$RCPROC"; mkdir -p "$RCPROC/7001" "$RCPROC/7002" "$WORK/rc-wt/worktrees/N1" "$WORK/rc-wt/worktrees/N2"
+ln -s "$WORK/rc-wt/worktrees/N1" "$RCPROC/7001/cwd"
+printf 'claude\0--remote-control\0HIMMEL-8320-n1-session\0--model\0x\0-n\0HIMMEL-8320-n1-session\0load doc and continue\0' > "$RCPROC/7001/cmdline"
+ln -s "$WORK/rc-wt/worktrees/N2" "$RCPROC/7002/cwd"
+printf 'claude\0--model\0x\0-n\0HIMMEL-8320-n2-session\0load doc and continue\0' > "$RCPROC/7002/cmdline"
+export CHIEF_WAIT_PROC="$RCPROC"
+denials_rise p5e none 'N1:1:SHIP-STEP'
+check "(p5e) a native worker with Remote Control: the page names its session" "DENIAL-PAGE N1 SHIP-STEP x1 - a classifier denial parked this worker. Open the Remote Control session HIMMEL-8320-n1-session in the Claude app and answer there, or review it and: ack-denial.sh N1" "$(head -n1 "$STUB/pages" 2>/dev/null)"
+denials_rise p5f none 'N2:1:SHIP-STEP'
+check "(p5f) a worker without Remote Control keeps the plain page" "DENIAL-PAGE N2 SHIP-STEP x1 - a classifier denial parked this worker. Review it, then: ack-denial.sh N2" "$(head -n1 "$STUB/pages" 2>/dev/null)"
+unset CHIEF_WAIT_PROC
+
 # A re-arm after the wake must not page the same rise again.
 denials_rise p5d none 'N1:1:SHIP-STEP'
 timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/p5d2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set

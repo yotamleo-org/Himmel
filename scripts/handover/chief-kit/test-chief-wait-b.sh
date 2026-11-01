@@ -270,6 +270,37 @@ check "(m3748) a real change on the new leg set still wakes (rc 0)" "0" "$rc"
 check "(m3748) naming legs" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/m3748.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (m1a) the same manifest dispatch with a `workers` array reads like the old `legs` one;
+# with HIMMEL_LEGACY_NAMES=0 an old `legs` manifest yields no worker list, so the dispatch wakes.
+reset_stub
+I="$(new_inbox m1aw)"
+M="$WORK/m1aw/console.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+start "$I" "$WORK/m1aw.out" --workers-from "$M"
+wait_hb "$I" || fail "(m1a) no baseline heartbeat on a workers manifest"
+tick_line "N1:FRESH,N2:FRESH" "ok"
+printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
+sleep 2
+wait_exit "$WPID"
+check "(m1a) a dispatch through a workers manifest does not wake the console" "running" "$rc"
+check "(m1a) a workers manifest dispatch prints nothing" "" "$(cat "$WORK/m1aw.out")"
+tick_line "N2:FREE,N1:FRESH" "ok"
+wait_exit "$WPID"
+check "(m1a) a real change on a workers manifest still wakes (rc 0)" "0" "$rc"
+check "(m1a) and names workers" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/m1aw.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+reset_stub
+I="$(new_inbox m1aoff)"
+M="$WORK/m1aoff/console.fleet.json"
+printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+HIMMEL_LEGACY_NAMES=0 start "$I" "$WORK/m1aoff.out" --workers-from "$M"
+wait_hb "$I" || fail "(m1a) no baseline heartbeat with the switch off"
+tick_line "N1:FRESH,N2:FRESH" "ok"
+printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
+wait_exit "$WPID"
+check "(m1a) with HIMMEL_LEGACY_NAMES=0 an old legs manifest is not read, so the dispatch wakes (rc 0)" "0" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # --- (l4568) a READY tail turning READY!stale (30 min, no GO file) is a wake
 reset_stub
 sed 's/ tails=N1:LIVE/ tails=N1:READY/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"

@@ -148,6 +148,38 @@ bash "$SCRIPT" add "$m6" --lane native "$l2" >/dev/null 2>&1; rc=$?
 check '7c. an old manifest still takes an add' 0 "$rc"
 check '7c. the old row keeps no lane key' null "$(jq -r '.legs[0].lane // "null"' "$m6")"
 
+# 8. M1a: `list` and the schema check take a `workers` array first, the pre-rename `legs` array
+#    still reads, and HIMMEL_LEGACY_NAMES=0 refuses the old one. (The writer still writes `legs`; M1b flips it.)
+m8="$tmp/workers.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N70","added":"x"}]}\n' "$l1" > "$m8"
+check '8. a manifest with a workers array lists' "$l1" "$(bash "$SCRIPT" list "$m8" 2>/dev/null)"
+check '8. an old legs manifest lists the same docs' "$l1" "$(bash "$SCRIPT" list "$m6" 2>/dev/null | head -n 1)"
+m8b="$tmp/both.fleet.json"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}],"workers":[{"doc":"%s","label":"N70"}]}\n' "$l2" "$l1" > "$m8b"
+check '8. with both arrays the workers one wins' "$l1" "$(bash "$SCRIPT" list "$m8b" 2>/dev/null)"
+printf '{"schema":1,"workers":[{"doc":"relative.md"}]}\n' > "$tmp/badw.fleet.json"
+bash "$SCRIPT" list "$tmp/badw.fleet.json" >/dev/null 2>&1; rc=$?
+check '8. a workers array is held to the same absolute-doc rule (rc 1)' 1 "$rc"
+HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" list "$m6" >/dev/null 2>&1; rc=$?
+check '8. with HIMMEL_LEGACY_NAMES=0 an old legs manifest is not a schema-1 manifest (rc 1)' 1 "$rc"
+check '8. with HIMMEL_LEGACY_NAMES=0 a workers manifest still lists' "$l1" "$(HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" list "$m8" 2>/dev/null)"
+# the writer edits the array the readers read: `workers` when the manifest holds one, and a new manifest
+# says `workers` only with legacy names off
+bash "$SCRIPT" add "$m8b" "$l3" >/dev/null 2>&1; rc=$?
+check '8. add to a manifest holding both arrays succeeds (rc 0)' 0 "$rc"
+check '8. the add lands in the workers array the readers read' 2 "$(jq '.workers | length' "$m8b")"
+check '8. the add leaves the legs array alone' 1 "$(jq '.legs | length' "$m8b")"
+bash "$SCRIPT" remove "$m8" "$l1" >/dev/null 2>&1; rc=$?
+check '8. remove from a workers-only manifest succeeds (rc 0)' 0 "$rc"
+check '8. the remove empties the workers array and adds no legs key' "0 false" "$(jq -r '"\(.workers | length) \(has("legs"))"' "$m8")"
+m8n="$tmp/new-off.fleet.json"
+HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" add "$m8n" "$l1" >/dev/null 2>&1; rc=$?
+check '8. with HIMMEL_LEGACY_NAMES=0 a new manifest is created (rc 0)' 0 "$rc"
+check '8. that new manifest says workers and no legs' "true false" "$(jq -r '"\(has("workers")) \(has("legs"))"' "$m8n")"
+check '8. and it lists with HIMMEL_LEGACY_NAMES=0' "$l1" "$(HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" list "$m8n" 2>/dev/null)"
+HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" add "$m6" "$l3" >/dev/null 2>&1; rc=$?
+check '8. with HIMMEL_LEGACY_NAMES=0 an add to an old legs manifest is refused (rc 1)' 1 "$rc"
+
 m7="$tmp/m7.json"
 bash "$SCRIPT" add "$m7" $'/a/x.md\n/b/y.md' >/dev/null 2>&1; rc=$?
 check '7c. a doc argument holding a newline is refused (rc 2), not split into two rows' 2 "$rc"

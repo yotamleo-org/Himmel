@@ -57,6 +57,13 @@
 ^scripts/handover/(console|chief)-kit/(verdict-go|write-verdict|delta-class|ready-check|ready-go|judge-ladder|himmel-gate|grant-round|leg-pretrust|worker-pretrust|headed-arm-leg|headed-arm-worker|close-wrapped-leg|close-wrapped-worker|wrap-merged|bucket-gitleaks|leg-doc-lock|worker-doc-lock|leg-jira-status|worker-jira-status|run-suite|launch-cloud|succession-tracker|compacted-check|consult-relay|brief-lint|ack-denial|denial-ack-lib|cr-disposition)\.
 # The review gate's verdict writers and deciders.
 ^scripts/cr/(write-verdicts|ledger-append|d1-verdict|triviality-gate|known-findings|residue-scan|orphan-check|review-round|base-resolver|install-cr-gate|cr-pending-audit|cr-reset|pr-check-|emit-gate-fail|failure-classify|lane-classify|handover-bridge|claude-floor|critics\.json|file-deferred-issues|live-gate-e2e)
+# The critic behaviour set and the reviewer eval that grades it (HIMMEL-8426, I3): every path
+# scripts/eval/review-panel/cbs.txt expands to, the eval's fixtures, key, rows and gate, and the eval libraries score.py imports.
+^scripts/cr/(critic-|panel-first-pass\.sh$|perspectives/)
+^scripts/lib/critics-config\.sh$
+^scripts/hermes/invoke\.sh$
+^scripts/eval/review-panel/
+^scripts/eval/lib/
 # The writer of the Dependabot review row the merge gate reads.
 ^scripts/cr/dependabot-go\.sh$
 # The CodeRabbit thread recorder merge-on-green.sh runs after a merge.

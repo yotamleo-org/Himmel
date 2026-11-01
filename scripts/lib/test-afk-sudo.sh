@@ -1326,6 +1326,130 @@ for f in "${fx[@]}"; do
     assert_eq "redact port agrees with the hook: ${f:0:12}" "$hook" "$port"
 done
 
+echo "== HIMMEL-7686: one approval lets one exact command skip the classifier once =="
+# cfg_grant <enabled>: the all-mode config (run kind off) plus a grant block.
+cfg_grant() { cfg "$ALL" false ", \"grant\": {\"enabled\": $1, \"ttl_s\": 900}"; }
+GW="$tmp/grant-work"; mkdir -p "$GW"; printf 'echo hi\n' > "$GW/s.sh"
+GCMD='npx --yes cowsay@1.6.0 N4198-probe'
+gsha() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
+# greq <now-offset> <command>: the PermissionDenied step files the command bytes on stdin.
+greq() { printf '%s' "$2" | AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 -I "$HELPER" grant-request --session=S1 --ticket=HIMMEL-7686 --cwd="$GW" --why='[Code from External]' 2>&1; }
+# gspend <now-offset> <command>: the PreToolUse check spends a grant for those bytes (GS / GC override session / cwd).
+gspend() { h "$1" grant-spend --session="${GS:-S1}" --sha256="$(gsha "$2")" --cwd="${GC:-$GW}" </dev/null; }
+marks() { find "$R/var/lib/himmel/afk-grants" -type f 2>/dev/null | wc -l | tr -d ' '; }
+grant_ok() { local out id; out=$(greq "$1" "$2"); id=$(rid "$out"); approve "$(($1 + 3))" "$id" "$(code $(($1 + 3)))" >/dev/null; printf '%s' "$id"; }
+
+new_root gabsent; cfg "$ALL" false
+assert_contains "a config with no grant block refuses a grant request" "result=grant-disabled" "$(greq 0 "$GCMD")"
+new_root goff; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+id=$(grant_ok 0 "$GCMD")
+assert_eq "an approved grant leaves one marker" "1" "$(marks)"
+cfg_grant false
+out=$(gspend 10 "$GCMD")
+assert_contains "RED HIMMEL-7686: with grant.enabled false a live grant and its marker give no allow" "result=grant-disabled" "$out"
+assert_absent "RED HIMMEL-7686: the disabled check never prints granted" "result=granted" "$out"
+
+new_root gok; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+out=$(greq 0 "$GCMD"); id=$(rid "$out")
+assert_contains "a classifier-refused command files a grant request" "result=pending id=" "$out"
+text=$(tg notice sendMessage text)
+assert_contains "the notice shows the full command" "$GCMD" "$text"
+assert_contains "the notice shows the classifier's reason as a claim" "Refused by (claim): [Code from External]" "$text"
+assert_contains "the notice carries the nonce" "nonce <b>$(state_nonce "$id")</b>" "$text"
+assert_contains "the notice says guards still run" "Guards still run" "$text"
+assert_absent "the ledger never holds the command text" "cowsay" "$(ledger)"
+assert_contains "the ledger holds the command hash" "$(gsha "$GCMD")" "$(ledger)"
+assert_eq "no marker before the code" "0" "$(marks)"
+out=$(approve 3 "$id" "$(code 3)")
+assert_contains "a valid code grants" "result=granted id=$id" "$out"
+assert_contains "root tells the operator the grant is live" "grant $id live" "$(tg notice sendMessage text)"
+assert_contains "the broker reports the id as granted" "result=granted id=$id" "$(h 4 status "$id")"
+assert_eq "the marker is named by the command hash" "1" "$(find "$R/var/lib/himmel/afk-grants" -name "$(gsha "$GCMD").$id" | wc -l | tr -d ' ')"
+assert_contains "a wrong-hash call finds no grant" "result=no-grant" "$(gspend 10 "$GCMD ")"
+assert_contains "another session finds no grant" "result=no-grant" "$(GS=S2 gspend 10 "$GCMD")"
+assert_contains "another cwd finds no grant" "result=no-grant" "$(GC=/ gspend 10 "$GCMD")"
+assert_contains "the exact command in its session and cwd spends the grant" "result=granted id=$id" "$(gspend 11 "$GCMD")"
+assert_eq "the spent grant's marker is gone" "0" "$(marks)"
+assert_contains "a reused grant is refused" "result=no-grant" "$(gspend 12 "$GCMD")"
+assert_contains "the spend is ledgered" '"event": "grant-spend"' "$(ledger)"
+
+new_root gexp; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+id=$(grant_ok 0 "$GCMD")
+assert_contains "an expired grant is refused" "result=no-grant" "$(gspend 904 "$GCMD")"
+assert_eq "an expired grant's marker is pruned" "0" "$(marks)"
+
+new_root gfile; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+out=$(greq 0 "sh s.sh"); id=$(rid "$out")
+assert_contains "the notice lists the bound file" "$GW/s.sh" "$(tg notice sendMessage text)"
+approve 3 "$id" "$(code 3)" >/dev/null
+printf 'echo changed\n' > "$GW/s.sh"
+assert_contains "a bound file changed after the code refuses the grant" "result=changed" "$(gspend 10 "sh s.sh")"
+assert_contains "a refused grant is spent all the same" "result=no-grant" "$(gspend 11 "sh s.sh")"
+printf 'echo hi\n' > "$GW/s.sh"
+new_root gops; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+out=$(greq 0 "sh s.sh; true"); id=$(rid "$out")
+assert_contains "RED HIMMEL-7686: a file next to a shell operator is bound" "$GW/s.sh" "$(tg notice sendMessage text)"
+approve 3 "$id" "$(code 3)" >/dev/null
+printf 'echo changed\n' > "$GW/s.sh"
+assert_contains "RED HIMMEL-7686: that file changed after the code refuses the grant" "result=changed" "$(gspend 10 "sh s.sh; true")"
+printf 'echo hi\n' > "$GW/s.sh"
+
+new_root gperm; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+id=$(grant_ok 0 "$GCMD")
+chmod 0644 "$R/var/lib/himmel/afk-sudo/grants/$id.json"
+out=$(gspend 10 "$GCMD")
+assert_contains "a grant file others can read is refused (non-root grant)" "result=unsafe-perms" "$out"
+assert_absent "a non-root grant never prints granted" "result=granted" "$out"
+new_root gforge; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+: > "$R/var/lib/himmel/afk-grants/$(gsha "$GCMD").zzzzzzzz"
+assert_contains "a marker with no root grant behind it grants nothing" "result=no-grant" "$(gspend 10 "$GCMD")"
+
+new_root gfloor; cfg_grant true
+out=$(greq 0 'cat ~/.ssh/id_rsa')
+assert_contains "the floor refuses a secret read before any notice" "result=never-remote rule=secret-read" "$out"
+assert_eq "no notice was sent for it" "" "$(tg notice sendMessage text)"
+
+echo "== HIMMEL-7686: the two hooks reach the helper through sudo -n, end to end =="
+# A fake sudo on PATH takes the hooks' exact `sudo -n <installed helper> ...` and runs the repo helper in the sandbox.
+mkdir -p "$tmp/fakesudo"
+# shellcheck disable=SC2016 # the fake's own $1 / $2 / $@, not this shell's
+printf '#!/bin/sh\n[ "$1" = -n ] || exit 1\n[ "$2" = /usr/local/libexec/himmel/afk-sudo ] || exit 1\nshift 2\nexec python3 -I "%s" "$@"\n' "$HELPER" > "$tmp/fakesudo/sudo"
+chmod 0755 "$tmp/fakesudo/sudo"
+# ghook <now-offset> <hook> <command>: feed the hook a Bash payload from a file (GS / GC override session / cwd).
+ghook() {
+    jq -n --arg c "$3" --arg s "${GS:-S1}" --arg d "${GC:-$GW}" \
+        '{hook_event_name:"x",tool_name:"Bash",tool_input:{command:$c},session_id:$s,cwd:$d,reason:"[Code from External] fetches a package"}' > "$tmp/gpay.json"
+    PATH="$tmp/fakesudo:$PATH" AFK_GRANT_DIR="$R/var/lib/himmel/afk-grants" AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) \
+        bash "$REPO_ROOT/scripts/hooks/$2" < "$tmp/gpay.json" 2>&1
+}
+pending_id() { python3 -I -c 'import json, sys; print((json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json"))["pending"] or {}).get("id", ""))' "$R" 2>/dev/null; }
+ALLOW='"permissionDecision":"allow"'
+
+new_root ghooks; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+assert_eq "the PermissionDenied hook prints nothing" "" "$(ghook 0 approval-grant-request.sh "$GCMD")"
+id=$(pending_id)
+assert_contains "the PermissionDenied hook filed the command with root" "$GCMD" "$(tg notice sendMessage text)"
+assert_contains "the hook passed the classifier's reason as the claim" "Refused by (claim): [Code from External]" "$(tg notice sendMessage text)"
+assert_eq "RED HIMMEL-7686: before the code the check gives no allow" "" "$(ghook 2 approval-grant-check.sh "$GCMD")"
+approve 3 "$id" "$(code 3)" >/dev/null
+assert_eq "RED HIMMEL-7686: a granted hash does not allow other bytes" "" "$(ghook 5 approval-grant-check.sh "$GCMD ")"
+assert_eq "RED HIMMEL-7686: another session's call gets no allow" "" "$(GS=S2 ghook 5 approval-grant-check.sh "$GCMD")"
+assert_contains "the exact retry gets one allow" "$ALLOW" "$(ghook 6 approval-grant-check.sh "$GCMD")"
+assert_eq "RED HIMMEL-7686: the reused grant gives no allow" "" "$(ghook 7 approval-grant-check.sh "$GCMD")"
+
+new_root ghoff; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+id=$(grant_ok 0 "$GCMD"); cfg_grant false
+assert_eq "RED HIMMEL-7686: with grant.enabled false the check gives no allow with a live marker" "" "$(ghook 10 approval-grant-check.sh "$GCMD")"
+assert_eq "with grant.enabled false the request hook files nothing" "" "$(ghook 11 approval-grant-request.sh "ls /nowhere"; pending_id)"
+
+new_root ghexp; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+id=$(grant_ok 0 "$GCMD")
+assert_eq "RED HIMMEL-7686: an expired grant gives no allow" "" "$(ghook 904 approval-grant-check.sh "$GCMD")"
+
+new_root ghperm; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
+id=$(grant_ok 0 "$GCMD"); chmod 0644 "$R/var/lib/himmel/afk-sudo/grants/$id.json"
+assert_eq "RED HIMMEL-7686: a grant file not root-only gives no allow" "" "$(ghook 10 approval-grant-check.sh "$GCMD")"
+
 open_regular_tests
 
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
@@ -1336,6 +1460,8 @@ assert_contains "install.sh installs never_remote.py" 'never_remote.py" "$LIBEXE
 assert_contains "install.sh removes never_remote.py on uninstall" 'rm -f "$SUDOERS" "$LIBEXEC/afk-sudo" "$LIBEXEC/approval_broker.py" "$LIBEXEC/never_remote.py"' "$(cat "$INSTALL")"
 assert_contains "the default config ships mode allowlist" '"mode": "allowlist"' "$(cat "$INSTALL")"
 assert_contains "the default config ships the run block off" '"run": {"enabled": false' "$(cat "$INSTALL")"
+assert_contains "HIMMEL-7686: the default config ships the grant block off" '"grant": {"enabled": false' "$(cat "$INSTALL")"
+assert_contains "HIMMEL-7686: install.sh creates the root-owned grant marker directory" '-m 0755 /var/lib/himmel/afk-grants' "$(cat "$INSTALL")"
 # shellcheck disable=SC2016 # matched literally, as above
 assert_contains "slice 1b: install.sh creates an empty root 0600 notice-bot.env" 'install -m 0600 -o root -g "$ROOT_GROUP" /dev/null "$NOTICE_ENV"' "$(cat "$INSTALL")"
 assert_contains "slice 1b: install.sh says runs stay refused while notice-bot.env is empty" "run requests are refused while it is empty" "$(cat "$INSTALL")"

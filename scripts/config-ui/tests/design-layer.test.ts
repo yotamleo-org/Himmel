@@ -162,9 +162,9 @@ test("Health Triage and Inventory use boxed sections, UI-font rows and status pi
 });
 
 // The pages moved onto the layer draw with it, not with a page-local look.
-test("Health and Tool health render the page header and boxed sections", () => {
-  const health = renderHealth(null, null);
-  for (const cls of ['class="ph"', 'class="box"', "strip v-"]) expect(health, `health ${cls}`).toContain(cls);
+test("Health and Tool health render the page header and their sections on the layer", () => {
+  const health = renderHealth(null, null); // Health v2: unboxed blocks in the main-column grid
+  for (const cls of ['class="pg"', 'class="ph"', 'class="sec"', "strip v-"]) expect(health, `health ${cls}`).toContain(cls);
   const tools = renderToolHealth(null);
   for (const cls of ['class="ph"', 'class="box"', 'class="fields"']) expect(tools, `tool health ${cls}`).toContain(cls);
 });

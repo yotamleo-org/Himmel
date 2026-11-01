@@ -2198,7 +2198,7 @@
         "RESOLVED": "retires a FINDING: bookkeeping",
         "BLOCKED": "worker status: escalation to the chief, no graph decision",
         "HALTED": "worker status: stop, no graph decision",
-        "PARKED-BANK": "worker status: bank park, no graph decision",
+        "PARKED-USAGE": "worker status: usage park, no graph decision",
         "RESUMED": "worker status: resume, no graph decision"
       }
     },

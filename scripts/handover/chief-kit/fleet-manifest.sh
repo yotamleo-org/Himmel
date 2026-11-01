@@ -50,6 +50,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../lib/prim.sh" || exit 2
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+# the worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 usage() {
     cat <<'USAGE'
@@ -64,8 +68,8 @@ USAGE
 # fleet it judges. Run with `jq -s`: the file must hold exactly one top-level
 # value — jq reads a stream, so two concatenated objects would
 # otherwise pass per value and list/add would act on a multi-object file.
-VALID='length == 1 and (.[0] | type == "object" and .schema == 1 and (.legs | type == "array")
-    and all(.legs[]; type == "object" and (.doc | type == "string" and test("^/[^[:space:]*?\\[]+$"))))'
+VALID="$JQ_W"'length == 1 and (.[0] | type == "object" and .schema == 1 and (W | type == "array")
+    and all(W[]; type == "object" and (.doc | type == "string" and test("^/[^[:space:]*?\\[]+$"))))'
 
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2
@@ -77,7 +81,7 @@ case "$verb" in
             echo "fleet-manifest: not a schema-1 fleet manifest: $manifest" >&2
             exit 1
         fi
-        jq -r '.legs[].doc' "$manifest"
+        jq -r "$JQ_W"'W[].doc' "$manifest"
         exit $?
         ;;
     add|remove) [ "$#" -ge 1 ] || { usage >&2; exit 2; } ;;
@@ -136,14 +140,18 @@ if ! exec 9>>"$manifest.lock" || ! flock -x -w 30 9; then  # gnu-ok: Linux-only 
     exit 1
 fi
 
+wk=legs; legacy_names_on || wk=workers
 if [ -e "$manifest" ]; then
     if ! jq -e -s "$VALID" "$manifest" >/dev/null 2>&1; then
         echo "fleet-manifest: refusing to rewrite an invalid manifest: $manifest" >&2
         exit 1
     fi
+    # the writer edits the array the readers read: `workers` when the manifest holds one (it wins)
+    if jq -e -s '.[0] | has("workers")' "$manifest" >/dev/null 2>&1; then wk=workers; fi
     cur="$(cat "$manifest")" || exit 1
 else
-    cur='{"schema":1,"legs":[]}'
+    # a new manifest says `legs` while legacy names are on, so a reader on an older checkout still reads it
+    cur="{\"schema\":1,\"$wk\":[]}"
 fi
 
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -152,17 +160,17 @@ for arg in "$@"; do
         label="$(worker_label "$arg")"
         # Re-adding a listed doc never rewrites its row: flags that would change the
         # stored lane or lockless are refused, not silently ignored.
-        conflict="$(printf '%s\n' "$cur" | jq -r --arg d "$arg" --arg ln "$lane" --argjson lg "$lane_given" --argjson ll "$lockless" --arg ar "$arm" \
-            '[.legs[] | select(.doc == $d) | select(($lg and ((.lane // "unknown") != $ln)) or ($ll and (.lockless != true)) or ($ar != "" and ((.arm // "") != $ar)))] | length')" || exit 1
+        conflict="$(printf '%s\n' "$cur" | jq -r --arg wk "$wk" --arg d "$arg" --arg ln "$lane" --argjson lg "$lane_given" --argjson ll "$lockless" --arg ar "$arm" \
+            '[.[$wk][] | select(.doc == $d) | select(($lg and ((.lane // "unknown") != $ln)) or ($ll and (.lockless != true)) or ($ar != "" and ((.arm // "") != $ar)))] | length')" || exit 1
         if [ "$conflict" -gt 0 ]; then
             echo "fleet-manifest: $arg is already listed with a different lane/lockless/arm; remove it first, then add it again: $arg" >&2
             exit 1
         fi
-        cur="$(printf '%s\n' "$cur" | jq --arg d "$arg" --arg l "$label" --arg t "$now" --arg ln "$lane" --argjson ll "$lockless" --arg ar "$arm" \
-            'if any(.legs[]; .doc == $d) then . else .legs += [{doc: $d, label: $l, added: $t, lane: $ln} + (if $ll then {lockless: true} else {} end) + (if $ar != "" then {arm: $ar} else {} end)] end')" || exit 1
+        cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg d "$arg" --arg l "$label" --arg t "$now" --arg ln "$lane" --argjson ll "$lockless" --arg ar "$arm" \
+            'if any(.[$wk][]; .doc == $d) then . else .[$wk] += [{doc: $d, label: $l, added: $t, lane: $ln} + (if $ll then {lockless: true} else {} end) + (if $ar != "" then {arm: $ar} else {} end)] end')" || exit 1
     else
-        cur="$(printf '%s\n' "$cur" | jq --arg a "$arg" \
-            '.legs |= map(select(.doc != $a and .label != $a))')" || exit 1
+        cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg a "$arg" \
+            '.[$wk] |= map(select(.doc != $a and .label != $a))')" || exit 1
     fi
 done
 

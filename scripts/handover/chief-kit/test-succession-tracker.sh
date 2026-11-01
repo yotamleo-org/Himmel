@@ -215,6 +215,37 @@ bash "$SUT" >/dev/null 2>&1; rc=$?
 eq "no arguments is a usage error (rc 2)" "$rc" 2
 bash "$SUT" "$WORK/absent.md" --successor X >/dev/null 2>&1; rc=$?
 eq "a missing chief doc is a usage error (rc 2)" "$rc" 2
+
+# M1a: `workers:` / `.workers` first, the pre-rename `legs:` / `.legs` still read,
+# `workers:` wins when both lines exist, HIMMEL_LEGACY_NAMES=0 drops the old spelling.
+twin() { # <live line key> <manifest array key>: a chief holding N1 and N8, both quoted back
+    # shellcheck disable=SC2016
+    printf '# chief\n\n## Live state\n%s: `N1:Y-N1-aa:lockA:11` `N8:Y-N8-bb:lockB:12`\n\n## Results\n' "$1" > "$CDOC"
+    printf '{"schema": 1, "%s": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}, {"doc": "%s/N8.md", "label": "N8", "lane": "native"}]}\n' "$2" "$WORK" "$WORK" > "$MAN"
+}
+twin legs legs; old_out="$(run)"; old_rc=$?
+twin workers workers; new_out="$(run)"; new_rc=$?
+eq "an old legs: doc over a legs manifest reads complete (rc 0)" "$old_rc" 0
+eq "a workers: doc over a workers manifest reads complete (rc 0)" "$new_rc" 0
+has "the workers twin reads both workers" "$new_out" "COMPLETE 2/2"
+eq "the old doc and its workers twin print the same" "$old_out" "$new_out"
+twin legs workers; out="$(run)"
+eq "an old legs: doc over a workers manifest prints the same" "$out" "$new_out"
+twin workers legs; out="$(run)"
+eq "a workers: doc over an old legs manifest prints the same" "$out" "$new_out"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nlegs: `N2:Y-N2-aa:lockA:11`\nworkers: `N1:Y-N1-aa:lockA:11` `N8:Y-N8-bb:lockB:12`\n\n## Results\n' > "$CDOC"
+out="$(run)"
+has "a doc with both lines reads the workers: one (it wins)" "$out" "COMPLETE 2/2"
+lacks "and never the legs: one" "$out" "N2"
+twin legs legs; out="$(HIMMEL_LEGACY_NAMES=0 run)"; rc=$?
+eq "with HIMMEL_LEGACY_NAMES=0 an old legs: doc is not read as complete (rc 1)" "$rc" 1
+lacks "and prints no LIVE line for it" "$out" "append-results.sh"
+twin workers workers; out="$(HIMMEL_LEGACY_NAMES=0 run)"; rc=$?
+eq "with HIMMEL_LEGACY_NAMES=0 a workers: doc still reads complete (rc 0)" "$rc" 0
+twin workers legs; out="$(HIMMEL_LEGACY_NAMES=0 run)"; rc=$?
+eq "with HIMMEL_LEGACY_NAMES=0 an old legs manifest cannot be cross-checked (rc 1)" "$rc" 1
+has "and says the manifest is unreadable" "$out" "unreadable"
 : "$before"
 
 printf '\n%d failure(s)\n' "$fails"

@@ -59,7 +59,7 @@ the plain name, and say the old name once, the first time, in brackets.
 | Plain name | Old name (alias) | Notes |
 |---|---|---|
 | **auto-ship step** | leg (initiative sense) | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
-| **usage** | bank | `PARKED-BANK` and the `CADENCE_BANK_*` variables were renamed by HIMMEL-5689 slice V1; HIMMEL-6647 removed the old names. |
+| **usage** | bank | Slice V1 of HIMMEL-5689 renamed `PARKED-BANK` to `PARKED-USAGE` and the `CADENCE_BANK_*` variables to `CADENCE_USAGE_*`. HIMMEL-6647 removed the old variable names. The marker readers still accept `PARKED-BANK`, because handover docs written before the rename carry it; write `PARKED-USAGE`. |
 | **weekly limit override** | bank lift | Renamed by slice V1; HIMMEL-6647 removed the old names. |
 | **review-owed marker** | CR marker | |
 | **finding status** | verdict (of a CR finding) | A judge verdict stays "judge verdict". |
@@ -395,7 +395,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Waiter** | `scripts/handover/chief-kit/chief-wait.sh`: the chief's one background command, silent until the first real event, then it exits. | monitor loop |
 | **Board** | The chief's board: a generated HTML page of fleet state and worker phases (HIMMEL-3361). | dashboard |
 | **Tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none` ([configuration](configuration.md); HIMMEL-4759). | — |
-| **Status marker** | The leading word of a worker's Results bullet (`LIVE`, `FINDING`, `RESOLVED`, `READY`, `BLOCKED`, `HALTED`, `WRAPPED`, `PARKED-BANK`, `RESUMED`), written by `scripts/handover/chief-kit/append-results.sh`. | state |
+| **Status marker** | The leading word of a worker's Results bullet (`LIVE`, `FINDING`, `RESOLVED`, `READY`, `BLOCKED`, `HALTED`, `WRAPPED`, `PARKED-USAGE`, `RESUMED`), written by `scripts/handover/chief-kit/append-results.sh`. | state |
 | **Ponytail comment** | A `ponytail: <ceiling>, <upgrade path>` code comment for a deliberate simplification ([`internals/ponytail-convention.md`](internals/ponytail-convention.md)). | TODO |
 | **Backend tier** | The CLI-over-MCP routing registry `scripts/backends.json`, enforced by `block-backend-tier.sh`. | — |
 

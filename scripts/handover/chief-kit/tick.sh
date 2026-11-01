@@ -37,6 +37,10 @@ if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR
 . "$HERE/../../lib/handover-path.sh"
 # shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 usage() {
     cat <<'USAGE'
@@ -887,7 +891,7 @@ launch_dir_default() {
 leg_start_epoch() {
     local doc="$1" cands="$2" t="" ts line armed
     if [ -n "$WORKERS_FROM" ] && [ -r "$WORKERS_FROM" ]; then
-        ts="$(jq -r --arg d "$doc" '[.legs[] | select(.doc == $d) | .added][0] // empty' "$WORKERS_FROM" 2>/dev/null)" || ts=""
+        ts="$(jq -r --arg d "$doc" "$JQ_W"'[W[] | select(.doc == $d) | .added][0] // empty' "$WORKERS_FROM" 2>/dev/null)" || ts=""
         [ -z "$ts" ] || t="$(date -d "$ts" +%s 2>/dev/null)" || t=""  # gnu-ok: Linux-only kit
     fi
     if [ -z "$t" ]; then
@@ -1038,7 +1042,7 @@ for leg in $WORKERS_SPLIT; do
         # queue lock) reads NOLOCK, not FREE, and is judged by its tail marker alone.
         row_lockless=0
         if [ -n "$WORKERS_FROM" ] && [ -r "$WORKERS_FROM" ] \
-            && jq -e --arg d "$leg_doc" 'any(.legs[]; .doc == $d and .lockless == true)' "$WORKERS_FROM" >/dev/null 2>&1; then
+            && jq -e --arg d "$leg_doc" "$JQ_W"'any(W[]; .doc == $d and .lockless == true)' "$WORKERS_FROM" >/dev/null 2>&1; then
             row_lockless=1
         fi
         if [ "$row_lockless" -eq 1 ]; then
@@ -1266,8 +1270,12 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     # ponytail: the block ENDS at a blank, `word:` or list-marker line, so a worker
     # span past any of them (a per-worker detail bullet, another field) is not an entry; a held
     # worker named only there reads DRIFT, which is true -- the block never named it.
-    legs_line="$(printf '%s\n' "$live_state_body" | awk '
-        /^legs:/ { f = 1; print; next }
+    # The worker line is `workers:`; the pre-rename `legs:` line is read only while legacy
+    # names are on, and `workers:` wins when a doc carries both.
+    live_key=workers
+    if ! printf '%s\n' "$live_state_body" | awk '/^workers:/ { f = 1 } END { exit !f }' && legacy_names_on; then live_key=legs; fi
+    legs_line="$(printf '%s\n' "$live_state_body" | awk -v k="$live_key" '
+        index($0, k ":") == 1 { f = 1; print; next }
         f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
         f { print }
     ')"

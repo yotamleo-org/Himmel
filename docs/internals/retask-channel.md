@@ -185,7 +185,7 @@ consumption, and never advances the hook's authoritative delivery cursor.
 - **Cursor locking:** a session-keyed `flock` beside the cursor serializes peek/deliver/commit; missing `flock` retains unlocked, fail-open delivery.
 - **Delivery confirmation:** PostToolUse, SessionStart, and direct stdout callers commit only after successful serialization/output; failures leave rulings pending (this confirms the local write, not downstream consumption).
 - **Document mirroring:** `--doc` writers serialize on a canonical-path hash lock in a private user directory under `${TMPDIR:-/tmp}`; other doc writers must use the same lock to participate, and missing/failed `flock` aborts before mirroring or inbox append.
-- **Sent-record + audit:** every `--token` send records a `sha256` of the delivered bullet in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<chief.sh convention>}/<sender>/inbox-sent.log`); `scripts/handover/chief-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names any token-quoting bullet in an inbox with no matching ledger line — a forged bullet, or one lost to an `inbox-send.sh` exit-4 ledger-write failure.
+- **Sent-record, delivery gate + audit (HIMMEL-8437):** every `inbox-send.sh` send, with or without a token, first records a `sha256` of the bullet, a digest of the token (never the token itself) and the recipient session in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<chief.sh convention>}/<sender>/inbox-sent.log`, mode 0600), and only then writes the doc mirror and the inbox; exit 4 means the ledger write failed and nothing was sent. `scripts/lib/claudex-inbox.sh` delivers only inbox lines whose `sha256` is recorded for this session in a trusted ledger (the file, its directory and its base all owned by this uid, none a symlink, neither the file nor its directory group- or world-writable; bases `HIMMEL_CONSOLE_RUNDIR`, `$XDG_RUNTIME_DIR/himmel-chief` and `${TMPDIR:-/tmp}/himmel-chief-<uid>`); any other line is dropped and alerted through `cadence-alert.sh`, so neither a copied token nor a genuine line copied from another inbox carries a forged ruling. An unreadable trusted ledger holds delivery, with an alert, rather than dropping genuine lines. `scripts/handover/chief-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names every inbox line, whatever its field order, with no ledger line recorded for that inbox's session.
 
 ## 3a. Chief succession
 
@@ -380,7 +380,7 @@ direct store writes are another matter.
   undelivered tail records leaves a valid chain and is not detected. A same-uid
   process that recomputes the chain is undetected; only a dedicated uid
   (phase 2) closes it.
-- **The store guard is a soft block (speed bump), not a fence.**
+- **The store guard is a soft block, not a fence.**
   `scripts/hooks/guard-bus-store.sh` is wired as a PreToolUse hook on the Bash
   chain and on the file-edit tools (HIMMEL-4818 T6). It denies a Bash command
   that names the bus root, calls `bus register|bind|rebind`, or assigns a

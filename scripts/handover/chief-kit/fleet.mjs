@@ -33,6 +33,7 @@ import http from 'node:http';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { legacyNamesOn } from '../../lib/env-alias.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const run = promisify(execFile);
@@ -185,9 +186,12 @@ const WORKER_SESSION_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
 const parseLive = (text) => {
     const live = sectionOf(text.split('\n'), '## Live state', true);
     const entries = [];
+    // The line is `workers:`; the pre-rename `legs:` line is read only while legacy names are on,
+    // and `workers:` wins when a doc carries both.
+    const lineRe = live.some((l) => /^workers:/.test(l)) || !legacyNamesOn() ? /^workers:/ : /^legs:/;
     let inBlock = false;
     for (const l of live) {
-        if (/^legs:/.test(l)) inBlock = true;
+        if (lineRe.test(l)) inBlock = true;
         else if (inBlock && (/^\s*$/.test(l) || /^[A-Za-z][A-Za-z ]*:/.test(l) || /^\s*([-*+]|\d+[.)])\s/.test(l) || /^\s*[>#]/.test(l))) inBlock = false;
         if (!inBlock) continue;
         for (const m of l.matchAll(/`([^`]*)`/g)) {

@@ -21,6 +21,16 @@ out="$tmp/out.json"
 python3 -I "$SUT" --manifest "$tmp/m.json" --projects "$FX/projects" --json > "$out" 2>"$tmp/err"; rc=$?
 check "exit 0" 0 "$rc"
 check "unwrapped leg is left out (2 legs)" 2 "$(jq '.legs | length' "$out")"
+# the manifest array is `workers` first; the pre-rename `legs` array still reads while legacy names are on
+sed 's/"legs"/"workers"/' "$tmp/m.json" > "$tmp/mw.json"
+python3 -I "$SUT" --manifest "$tmp/mw.json" --projects "$FX/projects" --json > "$tmp/outw.json" 2>"$tmp/errw"; rcw=$?
+check "a workers-array manifest exits 0" 0 "$rcw"
+check "a workers-array manifest reads the same rows as the legs one" "$(jq -c '.legs' "$out")" "$(jq -c '.legs' "$tmp/outw.json")"
+HIMMEL_LEGACY_NAMES=0 python3 -I "$SUT" --manifest "$tmp/mw.json" --projects "$FX/projects" --json > "$tmp/outwo.json" 2>"$tmp/errwo"; rcwo=$?
+check "a workers-array manifest still reads with HIMMEL_LEGACY_NAMES=0" 0 "$rcwo"
+HIMMEL_LEGACY_NAMES=0 python3 -I "$SUT" --manifest "$tmp/m.json" --projects "$FX/projects" --json > "$tmp/outlo.json" 2>"$tmp/errlo"; rclo=$?
+check "a legs-array manifest is refused with HIMMEL_LEGACY_NAMES=0 (rc 1)" 1 "$rclo"
+check "and says the manifest is unreadable" 1 "$(grep -c 'unreadable manifest' "$tmp/errlo")"
 c='.legs[] | select(.leg | startswith("HIMMEL-9001"))'
 t='.legs[] | select(.leg | startswith("HIMMEL-9002"))'
 check "ctl arm from the manifest" 200k "$(jq -r "$c | .arm" "$out")"

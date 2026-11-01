@@ -710,7 +710,7 @@ Displays: model, context %, git branch, rate-limit bars (current/weekly/extra), 
 
 Kits are plugin profiles that stack on base and compose per task with
 `--profile a,b`, e.g. `--profile worker-impl,code`. No other
-profile enables a kit member. Both kit profiles drop `i-have-adhd` from base, so composing with the leg family (`leg-impl,code`)
+profile enables a kit member. Both kit profiles drop `i-have-adhd` from base, so composing with the worker family (`worker-impl,code`)
 does not hand back what that family dropped. A kit used alone therefore lacks
 it; a composed list ORs its members, so `user,code` still carries it. Keyed items are tracked separately. This is the
 code kit; the content/research and ops kits follow separately.

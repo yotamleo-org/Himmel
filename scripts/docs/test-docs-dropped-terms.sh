@@ -509,5 +509,33 @@ while IFS= read -r f; do
   [ -n "$(printf '%s\n' "$f" | pwsh_calls "$ROOT")" ] || bad "PWSH_ALLOW names $f, which carries no pwsh call: remove it"
 done <<< "$PWSH_ALLOW"
 
+# The docs agents copy name current markers and files. The scan above exempts
+# the rename table as history, but its kept-names section is a live list:
+# every command (`/name`) or himmel-ops skill id it names must exist.
+RENAMED="$ROOT/docs/migration/renamed-identifiers.md"
+kept=$(awk '/^## Kept names/ { on = 1; next } /^## / { on = 0 } on' "$RENAMED")
+[ -n "$kept" ] || bad "renamed-identifiers.md has no Kept names section"
+kept_missing=""
+# The backticks in the pattern are literal page text.
+# shellcheck disable=SC2016
+for tok in $(grep -o -E '`(/|himmel-ops:)[a-z][a-z0-9-]*`' <<< "$kept" | tr -d '`' | sort -u); do
+  name=${tok#/}; name=${name#himmel-ops:}
+  found=""
+  for p in "$ROOT/.claude/commands/$name.md" "$ROOT/.claude/skills/$name" "$ROOT"/marketplace/plugins/*/commands/"$name.md" "$ROOT"/marketplace/plugins/*/skills/"$name"; do
+    [ -e "$p" ] && found=1
+  done
+  [ -n "$found" ] || kept_missing="$kept_missing $tok"
+done
+if [ -n "$kept_missing" ]; then bad "the kept-names table names commands or skills with no file:$kept_missing"
+else ok "every command and skill the kept-names table names exists"; fi
+if grep -q 'check-old-terms' "$RENAMED"; then bad "renamed-identifiers.md names the deleted check-old-terms lint"
+else ok "renamed-identifiers.md names no deleted lint"; fi
+if grep -q 'PARKED-BANK' "$ROOT/docs/handover/worker-preface.md"; then bad "the worker preface teaches the old PARKED-BANK marker"
+else ok "the worker preface teaches PARKED-USAGE"; fi
+if grep 'PARKED-BANK' "$ROOT/docs/glossary.md" | grep -q 'HIMMEL-6647 removed the old names'; then bad "the glossary says HIMMEL-6647 removed PARKED-BANK, which the readers still accept"
+else ok "the glossary says the readers still accept PARKED-BANK"; fi
+if grep '^| \*\*Status marker\*\*' "$ROOT/docs/glossary.md" | grep -q 'PARKED-BANK'; then bad "the glossary Status marker row lists PARKED-BANK"
+else ok "the glossary Status marker row lists PARKED-USAGE"; fi
+
 echo "# pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

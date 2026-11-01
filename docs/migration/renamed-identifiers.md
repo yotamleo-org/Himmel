@@ -64,10 +64,10 @@ A name the registry marks pending-N2892 has no ruled new name yet.
 | N20 | F8 | T | `leg-preface*.md` | `worker-preface*.md` | file name | HIMMEL-6644 | new name live 0/5 | 180 / 48 | `leg-preface[a-z-]*(?:\.md)?` |  |
 | N21 | F8 | T | `console-template.md` | `chief-template.md` | file name | HIMMEL-6644 | new name live 0/1 | 79 / 39 | `(?<![a-z-])console-template\.md` | console-handoff-template.md has no ruled name (unruled file names) |
 | N22 | F8 | T | `leg-brief-template.md` | `worker-brief-template.md` | file name | HIMMEL-6644 | new name live 0/1 | 28 / 23 | `leg-brief-template\.md` |  |
-| N23 | F9 | V5 | `/console` | `/chief` | command | HIMMEL-6647 (V5 HIMMEL-6641 Done) | new name live 1/1 | 132 / 34 | `(?<![A-Za-z0-9_/.-])/console(?![A-Za-z0-9_/-])` | /supervisor-session stays a permanent alias of /chief (OD-6) |
+| N23 | F9 | V5 | `/console` | `/chief` | command | HIMMEL-6647 (V5 HIMMEL-6641 Done) | new name live 1/1 | 132 / 34 | `(?<![A-Za-z0-9_/.-])/console(?![A-Za-z0-9_/-])` | /supervisor-session was deleted with the /console command alias by HIMMEL-8314 (R0-5) |
 | N24 | F9 | V5 | `console.sh` | `chief.sh` | script/file name | HIMMEL-6647 (V5 HIMMEL-6641 Done) | new name live 1/1 | 152 / 63 | `(?<![A-Za-z0-9_-])console\.sh` |  |
 | N25 | F9 | V5 | `console-context.sh` | `chief-context.sh` | script/file name | HIMMEL-6647 (V5 HIMMEL-6641 Done) | new name live 1/1 | 8 / 3 | `console-context\.sh` |  |
-| N26 | F9 | V5 | `skill himmel-ops:console` | `himmel-ops:chief` | skill id | HIMMEL-6647 (V5 HIMMEL-6641 Done) | new name live 0/1 | 1 / 1 | `himmel-ops:console(?![A-Za-z0-9_-])` | himmel-ops:supervisor-session stays, like /supervisor-session (OD-6) |
+| N26 | F9 | V5 | `skill himmel-ops:console` | `himmel-ops:chief` | skill id | HIMMEL-6647 (V5 HIMMEL-6641 Done) | new name live 0/1 | 1 / 1 | `himmel-ops:console(?![A-Za-z0-9_-])` | himmel-ops:supervisor-session was deleted by HIMMEL-8314 (R0-5), like /supervisor-session |
 | N27 | F9 | V5 | `agents console-judge, console-judge-ro` | `judge, judge-ro` | id (agent) | HIMMEL-6647 (V5 HIMMEL-6641 Done) | new name live 2/2 | 81 / 36 | `console-judge(-ro)?` | never chief-judge* | <!-- old-term-ok: this page inventories the old names -->
 | N28 | F10 | V3 | `overnight-shift` | `afk-shift` | command, directory | HIMMEL-6647 (V3 HIMMEL-6638 Done) | new name live 1/1 | 9 / 7 | `overnight-shift` |  |
 | N29 | F10 | V3 | `overnight-mode.md` | `afk-mode.md` | file name | HIMMEL-6647 (V3 HIMMEL-6638 Done) | new name live 1/1 | 5 / 4 | `overnight-mode\.md` |  |
@@ -113,7 +113,7 @@ as a paste.
 | 4 | templates, prefaces and tick fields (T) | N20, N21, N22, N34 | HIMMEL-6644 | `scripts/handover/console-kit/test-tick.sh` (83); `scripts/testing/documented-commands.tsv` (42); `scripts/handover/test-succession-docs.sh` (30); `scripts/handover/console-kit/test-headed-arm-leg.sh` (23); `scripts/handover/console-kit/tick.sh` (17); `scripts/handover/console-kit/test-console-wait.sh` (17) |
 | 5 | docs prose and message text (D) | N33 | HIMMEL-6645 | `scripts/handover/test-retask-doc-bus.sh` (2); `scripts/hooks/guard-bus-store.sh` (2); `scripts/hooks/test-guard-bus-store.sh` (2); `docs/internals/egress-matrix.md` (1); `docs/internals/enforcement.md` (1); `docs/internals/retask-channel.md` (1) |
 | 6 | directory moves (M) | N19, N40, N41 | HIMMEL-6646 | `scripts/ci/suite-tiers.tsv` (84); `scripts/ci/suite-durations.tsv` (74); `scripts/hooks/test-block-chokepoint-env-prefix.sh` (65); `scripts/hooks/test-guard-pr-check-literal.sh` (56); `scripts/lint/swallowed-errors-baseline.txt` (49); `docs/guide/dev-graph/graph.json` (44) |
-| 7 | removal (X) | none | HIMMEL-6647 | `scripts/lib/env-alias.sh`, `scripts/lib/env_alias.py` and their tests; `scripts/lib/rename-aliases.tsv`, `scripts/lib/test-rename-aliases.sh`; the registry lookup in `scripts/docs/check-old-terms.sh`; this page |
+| 7 | removal (X) | none | HIMMEL-6647 | `scripts/lib/env-alias.sh`, `scripts/lib/env_alias.py` and their tests; `scripts/lib/rename-aliases.tsv`, `scripts/lib/test-rename-aliases.sh`; this page (HIMMEL-7649 deleted the old-term lint) |
 
 Notes on the order:
 1. The Done families' leftovers go first (1a to 1d, HIMMEL-6647). Their new names already work, so
@@ -143,8 +143,8 @@ Notes on the order:
 |---|---|
 | `HIMMEL_CONSOLE_*` identity markers (F1, F1b) | Kept by OD-1 (2026-10-20); the glossary lists them under Do not rename. If the breaking-change ruling reverses OD-1, they are a new family (V5-ID) and need this inventory re-run. |
 | `HIMMEL_WORKER` | Live security marker; a worker does not carry it. |
-| `CONSOLE_KIT_FIXTURE`, `CONSOLE_ROLE`, `CONSOLE_VERB`, `GIT_SEQUENCE_EDITOR` | The registry marks them keep: another sense (a fixture switch, a retired test variable, the Telegram `/consoles` verb, git's own variable). |
-| `/supervisor-session`, `himmel-ops:supervisor-session` | Permanent aliases of `/chief` (OD-6). |
+| The bus role `console`, the `--console` flag and the peer record's `console` field | The bus parses `--role chief` and `--chief` (HIMMEL-8304, R0-3), and a stored `console` record reads back as `chief`. Writers still store role `console` and the `console` field until the fleet turns over (HIMMEL-8406). `--role console` still registers; `--console` registers only under `HIMMEL_LEGACY_NAMES`. |
+| `CONSOLE_KIT_FIXTURE`, `CONSOLE_ROLE`, `CONSOLE_VERB`, `GIT_SEQUENCE_EDITOR` | The registry marks them keep: another sense (a fixture switch, a retired test variable, the regex for the Telegram bridge's `/chief` verb, git's own variable). |
 | The initiative chain: the plugin's `scripts/legs.sh` wrapper, `resolve_legs` and their tests | The auto-ship step sense of leg, not the fleet sense (the glossary's Do not rename list). <!-- old-term-ok: this page inventories the old names --> |
 | The `<git-dir>/cr-pending/` dir | Kept by OD-3. |
 | F15 (`chain`, `wave`, `ticket sequence`, `batch`) | Glossary and prose only; no fleet-sense identifier exists (`WAVE` and `FIRST_WAVE` are a lint word and a comment). |
@@ -201,7 +201,6 @@ Distinct matched strings (60): `CONSOLE_ARM_FOREGROUND` to `CHIEF_ARM_FOREGROUND
 | `docs/internals/lane-calibration.md` | docs | 601, 635, 755, 790, 792 |
 | `docs/setup/new-machine.md` | docs | 608 |
 | `marketplace/plugins/himmel-ops/commands/chief.md` | docs | 94 |
-| `scripts/docs/test-check-old-terms.sh` | test | 56 |
 | `scripts/handover/arm-resume.sh` | code | 579, 580, 581 |
 | `scripts/handover/console-kit/console-budget.sh` | code | 6, 35, 36 |
 | `scripts/handover/console-kit/console-wait.sh` | code | 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253 |
@@ -324,7 +323,6 @@ Distinct matched strings (94): `LEG_ALLOW` to `WORKER_SESSION_ALLOW` (live), `LE
 | `scripts/claude-openrouter` | code | 328, 331, 419, 458 |
 | `scripts/config-ui/agui/lane.ts` | code | 3, 13, 21, 22 |
 | `scripts/config-ui/tests/agui-lane.test.ts` | test | 16, 17, 18, 19, 20 |
-| `scripts/docs/test-check-old-terms.sh` | test | 51, 52, 86, 107, 110, 122, 135, 149, 158, 193, 196, 201, 203 |
 | `scripts/eval/autocompact-ab.py` | code | 35, 36, 37, 38 |
 | `scripts/eval/context-replay.py` | code | 19, 20, 21, 22 |
 | `scripts/eval/handover-cost.py` | code | 50, 51, 52, 53 |
@@ -387,7 +385,6 @@ Distinct matched strings (17): `HEADED_ARM_LEG` to `HEADED_ARM_WORKER`, `HEADED_
 | File | Class | Lines |
 |---|---|---|
 | `scripts/chokepoints.json` | config | 30 |
-| `scripts/docs/test-check-old-terms.sh` | test | 55 |
 | `scripts/eval/lane-quality/pilot-4869/sandbox.sh` | code | 216 |
 | `scripts/handover/console-kit/headed-arm-leg.sh` | code | 549, 550, 553, 554, 561, 649, 652, 655, 799, 902, 1080, 1287, 1288, 1290, 1292, 1627, 1745, 1746, 1756, 1767, 1769, 1771, 1773, 2199, 2238, 2385, 2425, 2627 |
 | `scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh` | test | 20, 31, 32, 113 |
@@ -1970,7 +1967,7 @@ Distinct matched strings (1): `leg-brief-template.md` to `worker-brief-template.
 
 ### N23 `/console` to `/chief`
 
-Family F9, slice V5; command; owner HIMMEL-6647 (V5 HIMMEL-6641 Done); 132 lines in 34 files; new name live 1/1. /supervisor-session stays a permanent alias of /chief (OD-6).
+Family F9, slice V5; command; owner HIMMEL-6647 (V5 HIMMEL-6641 Done); 132 lines in 34 files; new name live 1/1. /supervisor-session was deleted with the /console command alias by HIMMEL-8314 (R0-5).
 
 Distinct matched strings (1): `/console` to `/chief` (live)
 
@@ -2097,7 +2094,7 @@ Distinct matched strings (1): `console-context.sh` to `chief-context.sh` (live)
 
 ### N26 `skill himmel-ops:console` to `himmel-ops:chief`
 
-Family F9, slice V5; skill id; owner HIMMEL-6647 (V5 HIMMEL-6641 Done); 1 lines in 1 files; new name live 0/1. himmel-ops:supervisor-session stays, like /supervisor-session (OD-6).
+Family F9, slice V5; skill id; owner HIMMEL-6647 (V5 HIMMEL-6641 Done); 1 lines in 1 files; new name live 0/1. himmel-ops:supervisor-session was deleted by HIMMEL-8314 (R0-5), like /supervisor-session.
 
 Distinct matched strings (1): `himmel-ops:console` to `himmel-ops:chief`
 
@@ -2196,8 +2193,6 @@ Distinct matched strings (13): `HIMMEL_INITIATIVE_OVERNIGHT` to `HIMMEL_INITIATI
 | `marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh` | test | 8, 17, 18, 19, 20, 21 |
 | `marketplace/plugins/himmel-ops/scripts/test-legs.sh` | test | 21 |
 | `scripts/codex/hook-smoke-demo.sh` | code | 195, 204, 205 |
-| `scripts/docs/check-old-terms.sh` | code | 24, 150 |
-| `scripts/docs/test-check-old-terms.sh` | test | 54 |
 | `scripts/hooks/initiative-runbook.md` | docs | 3, 103 |
 | `scripts/hooks/inject-initiative.sh` | code | 20, 23, 24, 100 |
 | `scripts/hooks/jira-nudge-on-end.sh` | code | 130 |
@@ -2478,8 +2473,6 @@ Distinct matched strings (46): `ACTION_ZERO_BANK` (no ruled name), `ACTION_ZERO_
 | `scripts/config-ui/tests/agui-lane.test.ts` | test | 48, 49 |
 | `scripts/cr/hermes-critic.sh` | code | 310 |
 | `scripts/cr/test-hermes-critic.sh` | test | 158, 161 |
-| `scripts/docs/check-old-terms.sh` | code | 24, 150 |
-| `scripts/docs/test-check-old-terms.sh` | test | 53 |
 | `scripts/eval/graphify-ab/run.sh` | code | 24, 120 |
 | `scripts/eval/graphify-ab/test-graphify-ab.sh` | test | 51, 67, 72, 78 |
 | `scripts/eval/lane-quality/run.sh` | code | 153 |
@@ -2680,7 +2673,6 @@ Distinct matched strings (3): `scripts/console/` to `scripts/chief/`, `scripts/h
 | `.claude/commands/console.md` | docs | 10 |
 | `.claude/commands/morning-report.md` | docs | 27 |
 | `.claude/commands/stop.md` | docs | 17, 19, 27, 28, 48, 59, 65 |
-| `.claude/commands/supervisor-session.md` | docs | 10 |
 | `.claude/settings.json` | config | 68, 69 |
 | `docs/configuration.md` | docs | 738, 739 |
 | `docs/guide/dev-graph/graph.json` | docs | 66, 742, 1383, 1400 |
@@ -2933,7 +2925,6 @@ Distinct matched strings (47): `console-2026-10-01.md` (no ruled name), `console
 | `scripts/cr/test-cr-guarded-closure.sh` | test | 283, 286 |
 | `scripts/cr/test-pr-check-context.sh` | test | 383, 2020, 2021, 2022, 2365 |
 | `scripts/cr/test-pr-check-pair.sh` | test | 169, 170, 171, 237, 260, 930 |
-| `scripts/docs/test-check-old-terms.sh` | test | 92 |
 | `scripts/docs/test-dev-graph.sh` | test | 16, 351 |
 | `scripts/eval/console-load-inventory.py` | code | 2, 9, 37 |
 | `scripts/eval/fixtures/handover-cost/console-s.jsonl` | fixture | 5 |

@@ -171,6 +171,22 @@ lg="$(run --workers-from "$WORK/fleet-gone.json")"
 has "an unreadable worker doc is reported in the header" "$lg" "live workers unknown"
 lacks "a readable manifest is not reported unknown" "$out" "live workers unknown"
 
+# a workers-array manifest reads like the pre-rename legs one; workers wins when both exist; the switch drops the old name
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORKER" > "$WORK/fleet-w.json"
+ow="$(run --workers-from "$WORK/fleet-w.json")"
+has "a workers manifest still lists a free ticket" "$ow" "HIMMEL-1	"
+lacks "a workers manifest excludes a ticket colliding with a live worker's scope" "$ow" "HIMMEL-4	"
+lacks "a workers manifest is not reported unknown" "$ow" "live workers unknown"
+printf '{"schema":1,"legs":[{"doc":"%s/gone.md","label":"N2"}],"workers":[{"doc":"%s","label":"N1"}]}\n' "$WORK" "$WORKER" > "$WORK/fleet-both.json"
+ob="$(run --workers-from "$WORK/fleet-both.json")"
+lacks "a manifest with both arrays reads the workers one (HIMMEL-4 excluded)" "$ob" "HIMMEL-4	"
+lacks "a manifest with both arrays is not reported unknown" "$ob" "live workers unknown"
+off="$(HIMMEL_LEGACY_NAMES=0 run --workers-from "$WORK/fleet.json")"
+has "with HIMMEL_LEGACY_NAMES=0 a legs-only manifest is reported unknown" "$off" "live workers unknown"
+offw="$(HIMMEL_LEGACY_NAMES=0 run --workers-from "$WORK/fleet-w.json")"
+lacks "with HIMMEL_LEGACY_NAMES=0 a workers manifest still excludes HIMMEL-4" "$offw" "HIMMEL-4	"
+lacks "with HIMMEL_LEGACY_NAMES=0 a workers manifest is not reported unknown" "$offw" "live workers unknown"
+
 # root files and plugins/ take part in the collision check
 M4="$WORK/m4/HIMMEL"; mkdir -p "$M4"
 M_SAVE="$M"; M="$M4"
@@ -331,7 +347,8 @@ pw0="$(run --workers-from "$WORK/fleet.json")"; pw0_rc=$?
 lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
-NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit"
+NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit" "$NF/scripts/lib"
+cp "$(dirname "$SUT")/../../lib/env_alias.py" "$NF/scripts/lib/env_alias.py"
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
 NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
 [ "$nf_rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$nf_rc"
@@ -1485,6 +1502,58 @@ mkdoc "$WORK/HIMMEL-793-N8-two.md" 0 ""
 mkfleet "$WORK/fleet-two.json" "N5:$WORK/HIMMEL-790-N5-series.md" "N8:$WORK/HIMMEL-793-N8-two.md"
 s2="$(runs "$SM" 1 --workers-from "$WORK/fleet-two.json" --why)"
 lacks "(8349) a collision with a series worker and another worker is not STACKABLE" "$s2" "STACKABLE"
+
+# (8436) two chiefs on one chain: B's dispatcher sees the workers chief A armed after `next` copied the manifest
+M8="$WORK/m8436/HIMMEL"; mkdir -p "$M8" "$WORK/chain8436" "$WORK/other8436"
+M_SAVE="$M"; M="$M8"
+mk HIMMEL-53 "In Progress" High '[]' '["v1.0.1"]' '[]' "started by chief A's worker" "Edit scripts/lib/r4.sh only."
+mk HIMMEL-56 "To Do" Highest '[]' '["v1.0.1"]' '[]' "armed by chief A, not started" "Edit scripts/lib/r7.sh only."
+mk HIMMEL-57 "To Do" High '[]' '["v1.0.1"]' '[]' "free of any worker" "Edit scripts/lib/r8.sh only."
+M="$M_SAVE"
+C8="$WORK/chain8436"
+W53="$C8/HIMMEL-53-N9-started-2026-10-31.md"; W56="$C8/HIMMEL-56-N10-armed-2026-10-31.md"
+printf '# live\n> **Writes:** scripts/lib/r4.sh\n- 10:00 LIVE - started\n' > "$W53"
+printf '# live\n> **Writes:** scripts/lib/r7.sh\n' > "$W56"
+mkfleet "$C8/HIMMEL-nextleg-2026-10-31MA-roadmap-chief.fleet.json" "N9:$W53" "N10:$W56"
+mkfleet "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json"
+run8() { # <manifest> args...: next-dispatchable on the (8436) mirror, unclassified
+    local man="$1"; shift
+    NEXT_DISPATCH_MIRROR="$M8" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --workers-from "$man" "$@" 2>/dev/null
+}
+a8r="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MA-roadmap-chief.fleet.json" --resume-only)"
+b8r="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --resume-only)"
+a8f="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MA-roadmap-chief.fleet.json" --top 20)"
+b8f="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
+lacks "(8436) the arming chief is not offered its own worker's In Progress ticket" "$a8r" "RESUME${TAB}HIMMEL-53${TAB}"
+lacks "(8436) the other chief on the chain is not offered RESUME for a ticket a chief-A worker holds" "$b8r" "RESUME${TAB}HIMMEL-53${TAB}"
+lacks "(8436) the arming chief is not offered the To Do ticket it armed" "$a8f" "${TAB}HIMMEL-56${TAB}"
+lacks "(8436) the other chief on the chain is not offered a To Do ticket a chief-A worker holds" "$b8f" "${TAB}HIMMEL-56${TAB}"
+has "(8436) the other chief is still offered a ticket no worker holds" "$b8f" "${TAB}HIMMEL-57${TAB}"
+# a wrapped worker of the other chief frees its ticket
+printf '# live\n> **Writes:** scripts/lib/r7.sh\n- 10:30 WRAPPED - done\n' > "$W56"
+b8w="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
+has "(8436) a WRAPPED worker of the other chief no longer holds its ticket" "$b8w" "${TAB}HIMMEL-56${TAB}"
+lacks "(8436) a still-live worker of the other chief keeps holding its ticket" "$b8w" "${TAB}HIMMEL-53${TAB}"
+# a manifest of another chain in the same bucket owns nothing here
+mkfleet "$C8/HIMMEL-nextleg-2026-10-31MA-other-chief.fleet.json" "N11:$C8/HIMMEL-57-N11-elsewhere-2026-10-31.md"
+printf '# live\n' > "$C8/HIMMEL-57-N11-elsewhere-2026-10-31.md"
+b8o="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
+has "(8436) a worker of a different chain does not hold its ticket here" "$b8o" "${TAB}HIMMEL-57${TAB}"
+# a stale worker doc of the other chief (no write for a day) holds nothing
+touch -d '2 days ago' "$W53"
+b8s="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 --resume-only)"
+has "(8436) a worker doc untouched for over a day no longer holds its ticket" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
+# malformed sibling manifests never break the read: a list, entries that are not objects, a null or numeric doc, a doc-less entry
+touch "$W53"
+printf '[]\n' > "$C8/HIMMEL-nextleg-2026-10-31MC-roadmap-chief.fleet.json"
+printf '{"schema":1,"workers":["N1",{"doc":null,"label":"N2"},{"doc":5,"label":"N3"},{"label":"N4"}]}\n' > "$C8/HIMMEL-nextleg-2026-10-31MD-roadmap-chief.fleet.json"
+printf '{"schema":1,"workers":{"doc":"x"}}\n' > "$C8/HIMMEL-nextleg-2026-10-31ME-roadmap-chief.fleet.json"
+b8m="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
+has "(8436) malformed sibling manifests do not stop the list" "$b8m" "${TAB}HIMMEL-57${TAB}"
+lacks "(8436) a good sibling still holds its ticket beside malformed ones" "$b8m" "RESUME${TAB}HIMMEL-53${TAB}"
+b8a="$(NEXT_DISPATCH_SIBLING_MAX_AGE_MIN=abc run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
+has "(8436) a non-integer sibling age window does not stop the list" "$b8a" "${TAB}HIMMEL-57${TAB}"
+lacks "(8436) a non-integer sibling age window reads as the default" "$b8a" "RESUME${TAB}HIMMEL-53${TAB}"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -56,7 +56,8 @@
 #
 # Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
-# macOS konsole shim, a distinct failure from 3 above; 4 no pgrep on
+# macOS konsole shim, a distinct failure from 3 above; 16 another live worker
+# session already holds the same ticket (dedup layer 1b); 4 no pgrep on
 # PATH (see the pgrep availability check below); 5 the claim-lock root could
 # not be created (an environment fault, never a dedup hit); 6 the claim
 # retry budget was exhausted without ever confirming a running session (an
@@ -543,6 +544,10 @@ WAKER="${HEADED_ARM_WAKER:-}"
 unset HEADED_ARM_WAKER
 QDBUS="${HEADED_ARM_QDBUS:-qdbus6}"
 unset HEADED_ARM_QDBUS
+# The operator's launching-shell switch that allows a second worker on one ticket. Read once and
+# cleared, so it never rides into the launched worker, whose own arms would inherit it.
+ALLOW_TICKET_DUP="${HEADED_ARM_ALLOW_TICKET_DUP:-0}"
+unset HEADED_ARM_ALLOW_TICKET_DUP
 SESSION_PID=""
 # A chief session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
@@ -968,6 +973,38 @@ elif [ "$sc_rc" -eq 2 ]; then
     echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
     exit 9
+fi
+
+# Dedup layer 1b: one worker per TICKET, across chiefs. Layer 1 dedups by session name only, so two
+# chiefs on one chain could each arm a worker (different N numbers) on the same ticket. A worker name is
+# <KEY>-N<digits>[letter]-...: refuse while another live claude session carries the same <KEY>-N prefix with different
+# digits (legs b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
+# allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
+# ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
+if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
+    TICKET_KEY="${BASH_REMATCH[1]}"; TICKET_N="${BASH_REMATCH[2]}"
+    TICKET_RIVAL=""
+    rival_pids="$("$PGREP" -f "[c]laude .*-n $(ere_escape "$TICKET_KEY")-N" 2>/dev/null)" || rival_pids=""  # swallow-ok: no match or a failed scan both leave no rival named; the guard fails open
+    for rival_pid in $rival_pids; do
+        if [ -d "$PROC" ]; then
+            rival_comm="$(cat "$PROC/$rival_pid/comm" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
+            [ "$rival_comm" = claude ] || continue
+            rival_name="$(tr '\0' '\n' < "$PROC/$rival_pid/cmdline" 2>/dev/null | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
+        else
+            rival_comm="$(ps -o comm= -p "$rival_pid" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
+            [ "${rival_comm##*/}" = claude ] || continue
+            rival_name="$(ps -ww -o args= -p "$rival_pid" 2>/dev/null | tr -s ' ' '\n' | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
+        fi
+        [ "$rival_name" != "$NAME" ] || continue
+        if [[ "$rival_name" =~ ^${TICKET_KEY}-N([0-9]+) ]] && [ "${BASH_REMATCH[1]}" != "$TICKET_N" ]; then
+            TICKET_RIVAL="$rival_name"; break
+        fi
+    done
+    if [ -n "$TICKET_RIVAL" ]; then
+        echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket. Only the operator, from the shell that launches the chief, can allow a second worker on it" >&2
+        echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
+        exit 16
+    fi
 fi
 
 # Dedup layer 2: the check above is a non-atomic check-then-launch

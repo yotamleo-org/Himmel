@@ -252,7 +252,7 @@ Granting it is an operator call. Defense in depth around it:
 - **Symlink refusal.** The fence ignores the opt-in (treats it as not granted)
   when `$HOME/.himmel` or `$HOME/.himmel/config.json` is a symlink — a link to
   a file elsewhere that holds `true` is not an operator grant.
-- **Write guard (soft block (speed bump)).** `scripts/hooks/block-himmel-config-writes.sh`
+- **Write guard (a soft block).** `scripts/hooks/block-himmel-config-writes.sh`
   denies tool-driven writes to that file (file tools, and Bash commands that
   name it other than plain reads). It is text matching, not a sandbox; its
   header lists what it cannot see. **It is not wired yet** — wiring it into

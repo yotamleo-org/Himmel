@@ -1,0 +1,15 @@
+# cbs.txt - the critic behaviour set (HIMMEL-8426): every tracked file whose bytes can change what the
+# review panel reports. A PR that changes one is graded by the reviewer eval before merge
+# (scripts/ci/check-critic-eval.sh); score.py cbs-hash fingerprints them.
+# One path per line: a `dir/` prefix or an fnmatch glob (matching within its own directory depth),
+# expanded over the tracked files of the tree. Blank lines and # comments are ignored.
+# Every path this expands to must match scripts/ci/ci-trust-paths.txt (I3).
+scripts/cr/critic-first-pass.sh
+scripts/cr/panel-first-pass.sh
+scripts/cr/critic-panel.sh
+scripts/cr/critic-*.sh
+scripts/cr/critic-*.py
+scripts/cr/perspectives/
+scripts/cr/critics.json
+scripts/lib/critics-config.sh
+scripts/hermes/invoke.sh

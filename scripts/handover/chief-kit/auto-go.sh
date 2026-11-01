@@ -67,6 +67,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../lib/git-clean.sh" 2>/dev/null || { echo "auto-go: cannot load scripts/lib/git-clean.sh - refusing (the git environment must be scrubbed first)" >&2; exit 1; }
 declare -F git_env_scrub >/dev/null 2>&1 || { echo "auto-go: scripts/lib/git-clean.sh defines no git_env_scrub - refusing" >&2; exit 1; }
 git_env_scrub || { echo "auto-go: cannot scrub the git environment - refusing" >&2; exit 1; }
+# the fleet manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename
+# `legs`, read only while legacy names are on (off: that manifest is unreadable, check 1 escalates)
+# shellcheck source=../../lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh" 2>/dev/null || { echo "auto-go: cannot load scripts/lib/legacy-names.sh - refusing" >&2; exit 1; }
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 ANCHOR="${AUTO_GO_ANCHOR:-$(cd "$HERE/../../.." && pwd)}"
 GH_BIN="${GH_CMD:-gh}"
 
@@ -164,7 +169,7 @@ jira_get() { # <key>: the CLI's `get` output, as ready-go.sh reads it
 }
 
 # --- 1. a lane the chief does not merge for ------------------------------------------------------
-LEG=$(jq -r --arg w "$WORKER" '[.legs[]? | select(.label == $w)] | if length == 1 then "\(.[0].lane // "unknown")\t\(.[0].doc)" else "missing" end' "$FLEET" 2>/dev/null) || fail 1 "cannot read the fleet manifest $FLEET"  # swallow-ok: an unreadable manifest escalates at check 1
+LEG=$(jq -r --arg w "$WORKER" "$JQ_W"'[W[]? | select(.label == $w)] | if length == 1 then "\(.[0].lane // "unknown")\t\(.[0].doc)" else "missing" end' "$FLEET" 2>/dev/null) || fail 1 "cannot read the fleet manifest $FLEET"  # swallow-ok: an unreadable manifest escalates at check 1
 [ -n "$LEG" ] || fail 1 "cannot read the fleet manifest $FLEET"
 [ "$LEG" != missing ] || fail 1 "worker $WORKER is not exactly once in the fleet manifest"
 LANE="${LEG%%$'\t'*}"; WORKER_DOC="${LEG#*$'\t'}"

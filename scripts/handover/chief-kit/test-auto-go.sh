@@ -246,6 +246,23 @@ mkdir -p "$tmp/briefdir"
 reset; rawrun --doc "$CHIEF" --fleet "$tmp/briefdir" --worker N1 --dry-run 77 "$SHA";  esc "check 1 a fleet manifest that is a directory" 1
 reset
 
+# --- 4/1b. M1a: the manifest array is `workers`; the pre-rename `legs` array still reads ---
+# (write_fixtures still writes the old `legs` array: the first row is an old manifest resolving a worker)
+run --dry-run 77 "$SHA"
+check    "check 1 an old legs manifest still resolves the worker (exit 0)" "$RC" "0"
+contains "check 1 an old legs manifest: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"native","added":"2026-10-31T00:00:00Z"}]}\n' "$WORKER" > "$FLEET"
+run --dry-run 77 "$SHA"
+check    "check 1 a workers manifest resolves the worker (exit 0)" "$RC" "0"
+contains "check 1 a workers manifest: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+HIMMEL_LEGACY_NAMES=0 run --dry-run 77 "$SHA"
+check    "check 1 a workers manifest with HIMMEL_LEGACY_NAMES=0 still resolves (exit 0)" "$RC" "0"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"claudex","added":"2026-10-31T00:00:00Z"}],"workers":[{"doc":"%s","label":"N1","lane":"native","added":"2026-10-31T00:00:00Z"}]}\n' "$WORKER" "$WORKER" > "$FLEET"
+run --dry-run 77 "$SHA"
+check    "check 1 with both arrays the workers one wins (native passes, exit 0)" "$RC" "0"
+reset; HIMMEL_LEGACY_NAMES=0 run --dry-run 77 "$SHA";  esc "check 1 an old legs manifest with HIMMEL_LEGACY_NAMES=0 is refused" 1
+reset
+
 # --- 4/2. check 2: the live head ---------------------------------------------------------------
 STUB_PR_STATE=CLOSED run --dry-run 77 "$SHA";  esc "check 2 PR not open" 2
 reset; STUB_PR_HEAD=$SHA2 run --dry-run 77 "$SHA";  esc "check 2 head moved" 2

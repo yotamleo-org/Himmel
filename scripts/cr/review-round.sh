@@ -40,10 +40,21 @@
 # A round whose panel aborted after start reviewed nothing and spends nothing:
 # `abort` puts .head back on the last critic-reviewed head and uncounts it.
 # defer exits 6 when automatic residual filing cannot resolve the parent from
-# the open PR title or cannot create a ticket; supply --defer-to to recover
+# the open PR title (or, before round four, the branch's commit subjects) or
+# cannot create a ticket; supply --defer-to to recover
 # against the recorded findings without rerunning the panel. A hardening
 # finding with no recorded fu_why also exits 6 until --fu-why <code> names one
 # of unseen-failure|no-check|vacuous-check|no-recovery|silent-rot.
+# A Suggestions-only round below the cap closes early on a change that touches
+# no CI trust path. It files ONE batch residual per branch and keeps its key in
+# <branch>.deferred-to, which every later early close reuses, adding its
+# findings to that ticket as a comment (a failed comment exits 6; rerun to
+# retry it); the start of a
+# new loop's first round removes it and cr-reset.sh moves it aside. With no PR
+# title key the batch's parent is the first [KEY-n] in the branch's commit
+# subjects. A .deferred-to that cannot be removed or written exits 5, like
+# every other state-file error; a write failure names the filed key for
+# --defer-to.
 # Bash 3.2-safe.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
@@ -311,6 +322,9 @@ head_state="$git_dir/cr-review-rounds/$branch.head"
 prev_state="$git_dir/cr-review-rounds/$branch.head.prev"
 # "<from> <to> <failing check names>" once the CI-red unlock was used.
 cired_state="$git_dir/cr-review-rounds/$branch.cired"
+# One line: the key of the branch's batch residual, filed by the first early
+# close and reused by every later one. It lives as long as the round count.
+deferred_to_state="$git_dir/cr-review-rounds/$branch.deferred-to"
 # Clean and version-only merge-forwards are admitted free of the delta round
 # only below this round count.
 free_round_cap=8
@@ -1573,6 +1587,14 @@ if [ "$verb" = "start" ]; then
     fi
     # A reused pending delta round keeps the counter it already took.
     [ "${delta_reuse:-0}" -eq 1 ] || round=$((round + 1))
+    # The first round opens a new loop, which never reuses the last loop's
+    # batch residual.
+    if [ "$round" -eq 1 ] && ! rm -f "$deferred_to_state"; then
+        SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+            bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+        echo "review-round: cannot remove $deferred_to_state for a new round 1" >&2
+        exit 5
+    fi
     tmp_state="$state.tmp.$$"
     current_owner=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
@@ -1876,8 +1898,8 @@ fi
 
 read_round || exit $?
 
-if [ "$round" -lt 2 ]; then
-    echo "review-round: $branch is at round $round; automatic deferral starts at round 2 on a PR that touches no CI trust path, round 4 otherwise" >&2
+if [ "$round" -lt 1 ]; then
+    echo "review-round: $branch is at round $round; automatic deferral starts at round 1 on a change that touches no CI trust path, round 4 otherwise" >&2
     exit 2
 fi
 if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
@@ -1889,10 +1911,13 @@ if [ ! -f "$ledger" ]; then
     echo "review-round: CR ledger is missing at $ledger" >&2
     exit 5
 fi
-# Rounds 2 and 3 close early only on the branch's one open PR, headed at
-# --head, whose diff matches no pattern in the default branch's
-# ci-trust-paths.txt (trust_path_check, the question merge-on-green asks).
-# Any other answer, a refusal included, leaves the round-4 cap in force.
+# Rounds 1 to 3 close early only when the change at --head matches no pattern
+# in the default branch's ci-trust-paths.txt (trust_path_check, the question
+# merge-on-green asks). The change is the branch's one open PR, headed at
+# --head; any other gh answer (no PR, several, or a gh failure) asks the
+# local-git mode about br-<branch> instead, whose <default>...<head> diff holds
+# every file a PR diff would. Any answer but none, a refusal included, leaves
+# the round-4 cap in force.
 if [ "$round" -lt 4 ]; then
     early_refuse() {
         echo "review-round: $branch is at round $round; an early close needs $1 - automatic deferral starts at round 4" >&2
@@ -1904,7 +1929,7 @@ if [ "$round" -lt 4 ]; then
     early_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
         --json number -q 'if length == 1 then .[0].number else "" end' 2>/dev/null)" || early_pr=""
     case "$early_pr" in
-        ''|*[!0-9]*) early_refuse "the branch's one open PR, and none was found" ;;
+        ''|*[!0-9]*) early_pr="" ;;
     esac
     early_repo="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh repo view --json owner,name,defaultBranchRef \
         --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)" || early_repo=""
@@ -1922,11 +1947,21 @@ if [ "$round" -lt 4 ]; then
     if ! . "$HIMMEL_ROOT/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F trust_path_check >/dev/null 2>&1; then
         early_refuse "the trust-path check, and scripts/lib/go-gate.sh could not be loaded"
     fi
-    early_trust="$(trust_path_check "$early_nwo" "$early_pr" "$full_head" "$early_default" "$HIMMEL_ROOT")" || early_trust="refused ${early_trust:-with no reason}"
+    if [ -n "$early_pr" ]; then
+        early_what="PR #$early_pr"
+        early_trust="$(trust_path_check "$early_nwo" "$early_pr" "$full_head" "$early_default" "$HIMMEL_ROOT")" || early_trust="refused ${early_trust:-with no reason}"
+    else
+        early_what="branch $branch"
+        # swallow-ok: an empty common dir is refused on the next line (exit 2)
+        early_common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || early_common=""
+        [ -n "$early_common" ] \
+            || early_refuse "the local trust-path check, and git could not resolve the common directory"
+        early_trust="$(trust_path_check "local:$early_common" "br-$branch" "$full_head" "$early_default" "$HIMMEL_ROOT")" || early_trust="refused ${early_trust:-with no reason}"
+    fi
     case "$early_trust" in
         none) ;;
-        "hit "*) early_refuse "a PR that touches no CI trust path, and PR #$early_pr touches trust path ${early_trust#hit }" ;;
-        *) early_refuse "a trust-path answer of none for PR #$early_pr, and the check said: $early_trust" ;;
+        "hit "*) early_refuse "a PR that touches no CI trust path, and $early_what touches trust path ${early_trust#hit }" ;;
+        *) early_refuse "a trust-path answer of none for $early_what, and the check said: $early_trust" ;;
     esac
 fi
 cap_reason='Suggestion deferred after the three-round /pr-check cap.'
@@ -2012,7 +2047,8 @@ for (const o of findings.values()) {
       perspective: o.perspective || "off",
       fu_class: severity === "imp" ? fuClass : "polish",
       fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
-      class: typeof o.class === "string" ? o.class.trim() : ""
+      class: typeof o.class === "string" ? o.class.trim() : "",
+      text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
     });
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
     else if (!resolved && verdict !== "fixed") blocking.push(id);
@@ -2024,7 +2060,8 @@ for (const o of findings.values()) {
     artifact: o.artifact || "diff",
     perspective: o.perspective || "off",
     fu_class: "polish",
-    class: typeof o.class === "string" ? o.class.trim() : ""
+    class: typeof o.class === "string" ? o.class.trim() : "",
+    text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
   });
   else if ((severity === "sug" || severity === "nit") && trackedDeferred &&
            reason === e.DEFER_REASON) {
@@ -2070,10 +2107,21 @@ fi
 # defer_to is a single small ticket-key string (well under the pipe
 # buffer), so printf's write completes atomically before grep could exit
 # early and SIGPIPE it.
-auto_defer=0
-if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
-    auto_defer=1
-    primary_root="$HIMMEL_ROOT"
+# An early close with no --defer-to reuses the branch's batch residual. An
+# unreadable or malformed key is not reused: a new batch replaces it.
+batch_reused=0
+if [ "$round" -lt 4 ] && ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+    # swallow-ok: an unreadable key is not reused; a new batch residual is filed instead
+    batch_key="$(sed -n '1p' "$deferred_to_state" 2>/dev/null)" || batch_key=""
+    if [[ $batch_key =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+        defer_to="$batch_key"
+        batch_reused=1
+    fi
+fi
+# The numbered finding list of a batch body or a reuse comment.
+pending_list_js='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>JSON.parse(s).pending.forEach((f,i)=>process.stdout.write((i+1)+". "+f.id+" (class: "+(f.class||"unclassified")+")\n"+(f.text?"   "+f.text+"\n":""))))'
+primary_root="$HIMMEL_ROOT"
+if [ "$pending_count" -gt 0 ]; then
     himmel_common="$(git -C "$HIMMEL_ROOT" rev-parse --git-common-dir 2>/dev/null)" || himmel_common=""
     if [ -n "$himmel_common" ]; then
         case "$himmel_common" in
@@ -2083,16 +2131,79 @@ if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-
         resolved_primary="$(cd "$himmel_common/.." 2>/dev/null && pwd)" || resolved_primary=""
         [ -n "$resolved_primary" ] && primary_root="$resolved_primary"
     fi
+fi
+# A reused batch ticket gets this round's findings as a comment, before any
+# ledger row points at it, so a failed comment leaves nothing to undo.
+if [ "$batch_reused" -eq 1 ] && [ "$pending_count" -gt 0 ]; then
+    batch_comment="$(mktemp -t cr-batch-comment.XXXXXX)" || exit 5
+    if ! { printf 'Findings deferred on %s at %s:\n' "$branch" "$full_head" \
+            && printf '%s' "$analysis" | node -e "$pending_list_js"; } > "$batch_comment"; then
+        rm -f "$batch_comment"
+        exit 5
+    fi
+    comment_rc=0
+    comment_out="$(JIRA_PROJECT_KEY=${defer_to%%-*} node "$primary_root/scripts/jira/dist/index.js" comment \
+        "$defer_to" --comment-file "$batch_comment" 2>&1)" || comment_rc=$?
+    rm -f "$batch_comment"
+    if [ "$comment_rc" -ne 0 ]; then
+        echo "review-round: could not add this round's findings to the batch residual $defer_to; marker remains pending. ${comment_out}" >&2
+        echo "review-round: rerun the same command to retry the comment without filing another residual" >&2
+        exit 6
+    fi
+fi
+auto_defer=0
+if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$'; then  # pipefail-ok: bounded small input, see comment above
+    auto_defer=1
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
     pr_title="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
         --json title -q 'if length == 1 then .[0].title else "" end' 2>/dev/null)" || pr_title=""
     residual_parent="$(printf '%s\n' "$pr_title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sed -n '1p')" || residual_parent=""
+    # An early close usually has no PR yet: the conventional-commit hook puts
+    # a [KEY-n] in every subject, and the oldest one names the parent.
+    if [ -z "$residual_parent" ] && [ "$round" -lt 4 ]; then
+        residual_parent="$(git log --reverse --format=%s "refs/heads/$early_default..$full_head" 2>/dev/null \
+            | grep -oE '\[[A-Z][A-Z0-9]*-[0-9]+\]' | sed -n '1{s/^\[//;s/\]$//;p;}')" || residual_parent=""
+    fi
     if [ -z "$residual_parent" ]; then
-        echo "review-round: $round_label cannot file residuals: no parent ticket in the one open PR title; supply --defer-to <ticket> to resume without rerunning the panel" >&2
+        echo "review-round: $round_label cannot file residuals: no parent ticket in the one open PR title (or, before round 4, the branch's commit subjects); supply --defer-to <ticket> to resume without rerunning the panel" >&2
         exit 6
     fi
+fi
+# An early close files ONE batch residual for the whole round and remembers
+# its key, so the loop below amends every finding to it and files nothing more.
+if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
+    batch_body="$(mktemp -t cr-batch-body.XXXXXX)" || exit 5
+    if ! { cat "$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md" \
+            && printf '\nFindings deferred on %s at %s:\n' "$branch" "$full_head" \
+            && printf '%s' "$analysis" | node -e "$pending_list_js"; } > "$batch_body"; then
+        rm -f "$batch_body"
+        exit 5
+    fi
+    # ponytail: only Suggestions and nits reach an early close, and the
+    # analysis classes each one polish, so polish is the batch's most severe
+    # class. Upgrade: when a batch can hold other classes, pass the most
+    # severe of them (escape over hardening over polish).
+    create_rc=0
+    created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
+        --type Task --title "Review follow-ups for $branch" --sector 'Ship loop' --labels standalone \
+        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class polish)" || create_rc=$?
+    rm -f "$batch_body"
+    defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
+    if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+        echo "review-round: could not file the batch residual for $branch; marker remains pending. ${created}" >&2
+        echo "review-round: supply --defer-to <ticket> to recover without rerunning the panel" >&2
+        exit 6
+    fi
+    if ! printf '%s\n' "$defer_to" > "$deferred_to_state.tmp.$$" \
+        || ! mv "$deferred_to_state.tmp.$$" "$deferred_to_state"; then  # prim-ok: tmp-then-mv; fixture copies of this script have no scripts/lib
+        rm -f "$deferred_to_state.tmp.$$"
+        echo "review-round: filed $defer_to but could not record it in $deferred_to_state; marker remains pending" >&2
+        echo "review-round: supply --defer-to $defer_to to recover without filing another residual" >&2
+        exit 5
+    fi
+    auto_defer=0
 fi
 
 ids_tmp="$(mktemp -t cr-round-ids.XXXXXX)" || exit 5
@@ -2137,18 +2248,28 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
             amend_rc=5
             break
         fi
+        if ! finding_text="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).text||""))')"; then
+            amend_rc=5
+            break
+        fi
         class_args=()
         body_file="$HIMMEL_ROOT/scripts/cr/deferred-ticket-body.md"
         body_tmp=""
+        class_line=""
         if [ -n "$finding_class" ]; then
             class_args=(--class "$finding_class")
         else
             echo "review-round: finding $finding_id has no class id; omitting --class" >&2
+            class_line='class: unclassified'
+        fi
+        if [ -n "$class_line" ] || [ -n "$finding_text" ]; then
             if ! body_tmp="$(mktemp -t cr-residual-body.XXXXXX)"; then
                 amend_rc=5
                 break
             fi
-            if ! { cat "$body_file" && printf '\nclass: unclassified\n'; } > "$body_tmp"; then
+            if ! { cat "$body_file" \
+                    && { [ -z "$class_line" ] || printf '\n%s\n' "$class_line"; } \
+                    && { [ -z "$finding_text" ] || printf '\nFinding on %s at %s:\n%s\n' "$branch" "$full_head" "$finding_text"; }; } > "$body_tmp"; then
                 rm -f "$body_tmp"
                 amend_rc=5
                 break

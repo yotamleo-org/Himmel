@@ -283,6 +283,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 # shellcheck source=../../lib/prim.sh
 . "$REPO/scripts/lib/prim.sh" || exit 2
+# the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
+# shellcheck source=../../lib/legacy-names.sh
+. "$REPO/scripts/lib/legacy-names.sh" || exit 2
+if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
 if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     echo "usage: chief-wait.sh <inbox-file> [tick.sh args...]" >&2
@@ -731,12 +735,36 @@ page_send() {  # <text> <deadline epoch>: the timeout is what is left of the bat
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
 page_denials() {
-    local leg cls n end
+    local leg cls n end rc_name
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per leg
     denial_pages "$1" "$2" | while read -r leg cls n; do
         denial_page_write "$leg" "$n" "$cls" || true
-        page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $leg" "$end"
+        # A native worker launched with Remote Control is answered from the
+        # Claude app; name its session. No such session found (claudex, unprofiled): the plain text.
+        rc_name="$(rc_session_for "$leg")"
+        if [ -n "$rc_name" ]; then
+            page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Open the Remote Control session $rc_name in the Claude app and answer there, or review it and: ack-denial.sh $leg" "$end"
+        else
+            page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $leg" "$end"
+        fi
     done
+}
+
+# rc_session_for: <worker label> - prints the Remote Control session name of the live
+# claude whose cwd is in worktree <label> (the page label is the worktree slug), or
+# nothing. Reads /proc only (CHIEF_WAIT_PROC for a suite); the name is session text
+# from a process argv, kept to a safe charset before it goes into a message.
+rc_session_for() {
+    local p cwd name
+    for p in "${CHIEF_WAIT_PROC:-/proc}"/[0-9]*; do
+        cwd="$(readlink "$p/cwd" 2>/dev/null)" || continue  # swallow-ok: a proc entry that exited or is not ours is skipped
+        case "$cwd" in */worktrees/"$1"|*/worktrees/"$1"/*) ;; *) continue ;; esac
+        name="$(tr '\0' '\n' < "$p/cmdline" 2>/dev/null | awk 'prev == "--remote-control" { print; exit } { prev = $0 }')"  # swallow-ok: an unreadable cmdline names no session, the plain page text goes out
+        case "$name" in ''|*[!A-Za-z0-9._#+-]*) continue ;; esac
+        printf '%s' "$name"
+        return 0
+    done
+    return 0
 }
 
 # capacity=UNDERFILLED:<n> (tick.sh already folds TICK_UNDERFILL_MIN
@@ -1155,7 +1183,7 @@ ready_pick() { # sets ready_label/line/bullet to the oldest READY bullet past it
         [ -n "$entry" ] || continue
         ready_label="$label"; ready_line="${entry%%:*}"; ready_bullet="${entry#*:}"
     done <<EOF
-$(jq -r '.legs[]? | [.label, .doc] | @tsv' "$legs_from")
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
     [ -n "$ready_label" ]
 }
@@ -1181,7 +1209,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
     if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     while read -r label marker; do
         [ -n "$label" ] || continue
-        ldoc="$(jq -r --arg l "$label" '.legs[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
+        ldoc="$(jq -r --arg l "$label" "$JQ_W"'W[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
         [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
         if [ "$marker" = READY ]; then
             bullet="$ready_bullet"
@@ -1266,7 +1294,7 @@ resolve_wake() {
         printf 'WAKE resolve %s pr=%s threads=%s\n' "$label" "$pr" "$ids"
         return 0
     done <<EOF
-$(jq -r '.legs[]? | [.label, .doc] | @tsv' "$legs_from")
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
 EOF
     return 1
 }
