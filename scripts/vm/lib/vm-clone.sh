@@ -183,16 +183,35 @@ vm_slot_release() {
     fi
 }
 
+# _vm_registry_lock <what> — take the nested vm-lock on the sentinel "himmel-vm-registry"
+# (see vm_clone_ensure); a refusal names <what>.
+_vm_registry_lock() {
+    local _rc
+    vm_lock_acquire_waiting "himmel-vm-registry"
+    _rc=$?
+    case "$_rc" in
+        0) ;;
+        5) _vm_fail "timed out waiting for the vm-lock on 'himmel-vm-registry' while $1" ;;
+        *) _vm_fail "could not acquire the vm-lock on 'himmel-vm-registry' while $1" ;;
+    esac
+}
+
 # vm_clone_ensure <snapshot> [port] — create $CLONE_NAME from $SOURCE_VM if it does not
 # exist yet. The caller already holds the vm-lock on $CLONE_NAME.
 # With a [port], that fixed port is used instead of the allocator's: it must not be
 # on any registered NAT forward (checked under the registry lock), and an existing
-# clone must already forward it. Without one the behaviour is unchanged.
+# clone must already forward it AND no other registered VM may claim it (same lock;
+# the clone's own forward is not a conflict). Without one the behaviour is unchanged.
 vm_clone_ensure() {
-    local snapshot="$1" want_port="${2:-}" _reg_lock_rc _port_rc _have _claimed
+    local snapshot="$1" want_port="${2:-}" _port_rc _have _claimed
     case "$want_port" in
         *[!0-9]*) _vm_fail "vm_clone_ensure: port argument must be a number, got '$want_port'" ;;
     esac
+    # at most 5 digits (65535), checked before the arithmetic below: a long digit string
+    # would overflow it, and a short VALUE padded with zeros is not a port argument
+    if [ "${#want_port}" -gt 5 ]; then
+        _vm_fail "vm_clone_ensure: port argument must be at most 5 digits, got '$want_port'"
+    fi
     if [ -n "$want_port" ]; then
         want_port=$((10#$want_port))
         if [ "$want_port" -lt 1 ] || [ "$want_port" -gt 65535 ]; then
@@ -208,6 +227,20 @@ sys.exit(1) if not ssh_fwds else print(ssh_fwds[0][3])
 ' "$CLONE_NAME") || _vm_fail "$CLONE_NAME exists but has no loopback ssh (tcp/22) NAT forward, cannot confirm port $want_port"
             [ "$_have" = "$want_port" ] \
                 || _vm_fail "$CLONE_NAME already exists with ssh forward $_have, not the requested $want_port"
+            # The claimed set lists this clone's own forward (it is registered), so a
+            # second entry for the port is another VM's claim.
+            _vm_registry_lock "checking port $want_port of the existing $CLONE_NAME"
+            _claimed=$(vm_ar_claimed_ports)
+            _port_rc=$?
+            if [ "$_port_rc" -ne 0 ]; then
+                vm_lock_release "himmel-vm-registry"
+                _vm_fail "could not enumerate the registered NAT forwards to check port $want_port"
+            fi
+            if [ "$(grep -cx "$want_port" <<< "$_claimed")" -gt 1 ]; then
+                vm_lock_release "himmel-vm-registry"
+                _vm_fail "port $want_port of the existing $CLONE_NAME is also on another registered VM's NAT forward"
+            fi
+            vm_lock_release "himmel-vm-registry"
         fi
         return 0
     fi
@@ -218,15 +251,9 @@ sys.exit(1) if not ssh_fwds else print(ssh_fwds[0][3])
     # CLONE_NAME lock alone does not close this race: two slot-holders
     # creating himmel-ar-1 and himmel-ar-2 for the FIRST time never contend
     # on the SAME lock name, so without this they could both read "port 2231
-    # is free" and both claim it. Held only for the creation span — never
-    # needed again once a clone's own forward is on record.
-    vm_lock_acquire_waiting "himmel-vm-registry"
-    _reg_lock_rc=$?
-    case "$_reg_lock_rc" in
-        0) ;;
-        5) _vm_fail "timed out waiting for the vm-lock on 'himmel-vm-registry' while creating $CLONE_NAME" ;;
-        *) _vm_fail "could not acquire the vm-lock on 'himmel-vm-registry' while creating $CLONE_NAME" ;;
-    esac
+    # is free" and both claim it. Held only for the creation span here, and
+    # for the fixed-port check of an existing clone above.
+    _vm_registry_lock "creating $CLONE_NAME"
     if [ -n "$want_port" ]; then
         _claimed=$(vm_ar_claimed_ports)
         _port_rc=$?
