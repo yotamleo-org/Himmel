@@ -1,83 +1,62 @@
 #!/usr/bin/env bash
-# orphan-pr-check.sh — every open PR must map to a live worker in the fleet
-# manifest or to a named hold on the chief doc's `queue:` line.
+# orphan-pr-check.sh — every open PR must be owned: its ticket's worker record must not read
+# wrapped or none, or the chief doc's `queue:` line must name the PR.
 #
-#   orphan-pr-check.sh --doc <chief doc> [--workers-from <fleet.json>] [--repo <path>]
+#   orphan-pr-check.sh --doc <chief doc> [--repo <path>]
 #
-# Prints `UNMAPPED <n> <head branch>` per open PR that maps to neither, and exits 1.
-# A PR maps when
-#   - a manifest worker whose doc exists and whose newest marker is not WRAPPED carries the
-#     branch's ticket key in its doc name, or names the branch in its text; or
-#   - the chief doc's Live state `queue:` line names the PR (`#<n>` or `<n>`) or that key.
-# A WRAPPED worker is not live: its open PR is exactly the orphan this check exists for.
+# Prints `UNMAPPED <n> <head branch>` per unowned open PR, and exits 1.
+# The open PRs come from `gh pr list` (drafts included), never from a record's open flags:
+# nothing clears those after a merge. Left out: fork PRs, and Dependabot's (an author
+# containing "dependabot", or a dependabot/ branch), which the Dependabot sweep owns.
+# The ticket is the first key in the head branch name; a branch that names none is unowned.
+# The record is <state dir>/workers/<KEY>.json (the one writer is the worker-jira-status funnel).
+# A PR is unowned when its record state is wrapped or none, or the ticket has no record; every
+# other state (live, idle, IDLE-HELD, parked, unknown) still owns it. A PR also counts as held
+# when the doc's Live state `queue:` line names its number (`#<n>` or `<n>`) or its ticket key.
 #
-# The PR set is `gh pr list --state open --json number,headRefName` run in <repo>
-# (default: this checkout). Seam (tests): ORPHAN_PR_CHECK_PRS = a file holding that JSON.
-# An unreadable PR list or manifest is not an orphan and not an all-clear: it prints
-# `orphan-pr-check: unavailable ...` on stderr and exits 3, so a gh outage never blocks a
-# handover (chief.sh refuses only on 1) and never clears a waiter's marker (only 0 does).
+# The PR set is `gh pr list --state open --json number,headRefName,isCrossRepository,author` run in
+# <repo> (default: this checkout). Seams (tests): ORPHAN_PR_CHECK_PRS = a file holding that JSON,
+# TICKET_STATUS_STATE_DIR = the state dir. An unreadable or malformed PR list is neither an orphan
+# nor an all-clear: it prints `orphan-pr-check: unavailable ...` on stderr and exits 3 (chief.sh
+# refuses only on 1; the waiter clears its marker only on 0). A record that does not parse
+# cannot show its PR unowned, so it owns it.
 #
-# Exit: 0 every PR mapped; 1 at least one orphan; 2 usage; 3 unavailable.
+# Exit: 0 every PR owned; 1 at least one orphan; 2 usage; 3 unavailable.
 # PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
-# ponytail: the worker is matched by the ticket key in the branch name (as tick.sh's unowned-prs= does),
-# so a branch with no key maps only through the doc text or a hold on its PR number;
-# upgrade = match the worker's own recorded branch.
+# ponytail: ownership is the ticket key in the branch name (as tick.sh's unowned-prs= does) and the
+# record's derived state; upgrade = a held-label read through ticket-hold.sh once holds are labels.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
-# shellcheck source=../../lib/worker-tail-status.sh
-. "$HERE/../../lib/worker-tail-status.sh"
-# shellcheck source=../../lib/legacy-names.sh
-. "$HERE/../../lib/legacy-names.sh"
-if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
+# shellcheck source=../../lib/ticket-status.sh
+. "$HERE/../../lib/ticket-status.sh"
 
-usage() { echo "usage: orphan-pr-check.sh --doc <chief doc> [--workers-from <fleet.json>] [--repo <path>]" >&2; exit 2; }
-doc=""; manifest=""; repo="$REPO_DEFAULT"
+usage() { echo "usage: orphan-pr-check.sh --doc <chief doc> [--repo <path>]" >&2; exit 2; }
+doc=""; repo="$REPO_DEFAULT"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc) [ "$#" -ge 2 ] || usage; doc="$2"; shift 2 ;;
-        --workers-from) [ "$#" -ge 2 ] || usage; manifest="$2"; shift 2 ;;
         --repo) [ "$#" -ge 2 ] || usage; repo="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
 [ -n "$doc" ] || usage
-[ -n "$manifest" ] || manifest="${doc%.md}.fleet.json"
 
 unavailable() { echo "orphan-pr-check: unavailable ($1)" >&2; exit 3; }
 if [ -n "${ORPHAN_PR_CHECK_PRS:-}" ]; then
     prs_json="$(cat "$ORPHAN_PR_CHECK_PRS" 2>/dev/null)" || prs_json=""  # swallow-ok: an empty read exits as unavailable below, never as an orphan
 else
-    prs_json="$(cd "$repo" 2>/dev/null && timeout -k 2 30 gh pr list --state open --limit 1000 --json number,headRefName 2>/dev/null)" || prs_json=""  # gnu-ok: Linux-only kit; swallow-ok: an empty read exits as unavailable below, never as an orphan
+    prs_json="$(cd "$repo" 2>/dev/null && timeout -k 2 30 gh pr list --state open --limit 1000 --json number,headRefName,isCrossRepository,author 2>/dev/null)" || prs_json=""  # gnu-ok: Linux-only kit; swallow-ok: an empty read exits as unavailable below, never as an orphan
 fi
 [ -n "$prs_json" ] || unavailable "the open-PR list could not be read"
-rows="$(printf '%s\n' "$prs_json" | jq -r '.[] | "\(.number)\t\(.headRefName)"' 2>/dev/null)" || unavailable "the open-PR list is not a JSON array"  # swallow-ok: a parse failure exits as unavailable, never as an orphan
+printf '%s\n' "$prs_json" | jq -e 'type == "array" and all(.[]; type == "object" and (.number | type == "number") and (.headRefName | type == "string"))' >/dev/null 2>&1 \
+    || unavailable "the open-PR list is not an array of PRs"  # swallow-ok: a malformed list exits as unavailable, never as an orphan
+rows="$(printf '%s\n' "$prs_json" | jq -r '.[] | select((.isCrossRepository // false) | not) | select(((.author.login // "") | test("dependabot"; "i") | not) and (.headRefName | startswith("dependabot/") | not)) | "\(.number)\t\(.headRefName)"')"
 [ -n "$rows" ] || exit 0
 
 ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]'; }
-
-# the live workers' docs: in the manifest, present, newest marker not WRAPPED
-live_docs=""
-if [ -f "$manifest" ]; then
-    manifest_docs="$(jq -r "$JQ_W"'W[] | .doc // empty' "$manifest" 2>/dev/null)" || unavailable "the fleet manifest could not be read"  # swallow-ok: an unreadable manifest exits as unavailable, never as an orphan
-    while IFS= read -r wdoc; do
-        [ -f "$wdoc" ] || continue
-        [ "$(worker_tail_status "$wdoc")" != WRAPPED ] || continue
-        live_docs="$live_docs$wdoc"$'\n'
-    done <<EOF_DOCS
-$manifest_docs
-EOF_DOCS
-fi
-live_keys=" "
-while IFS= read -r wdoc; do
-    [ -n "$wdoc" ] || continue
-    k="$(ticket_key "${wdoc##*/}")"
-    [ -z "$k" ] || live_keys="$live_keys$k "
-done <<EOF_KEYS
-$live_docs
-EOF_KEYS
 
 queue_line="$(awk '
     $0 == "## Live state" { s = 1; next }
@@ -85,21 +64,20 @@ queue_line="$(awk '
     s && index($0, "queue:") == 1 { print; exit }
 ' "$doc" 2>/dev/null)"
 
+owned_by_record() { # <KEY> — rc 0 when its worker record reads a state other than wrapped or none
+    local rec_state
+    [ -e "$(ts_record_path "$1")" ] || return 1
+    ts_record_read "$1" || return 0  # an unparsable record cannot show the PR unowned
+    rec_state="$(printf '%s\n' "$TS_REC" | jq -r '.state // "none"' 2>/dev/null)" || return 0  # swallow-ok: an unreadable state cannot show the PR unowned
+    case "$rec_state" in wrapped|none) return 1 ;; esac
+    return 0
+}
+
 orphans=0
 while IFS="$(printf '\t')" read -r n branch; do
     [ -n "$n" ] || continue
     key="$(ticket_key "$branch")"
-    if [ -n "$key" ]; then
-        case "$live_keys" in *" $key "*) continue ;; esac
-    fi
-    mapped=""
-    while IFS= read -r wdoc; do
-        [ -n "$wdoc" ] || continue
-        if grep -qF -- "$branch" "$wdoc" 2>/dev/null; then mapped=1; break; fi
-    done <<EOF_TXT
-$live_docs
-EOF_TXT
-    [ -z "$mapped" ] || continue
+    if [ -n "$key" ] && owned_by_record "$key"; then continue; fi
     if grep -qE "(^|[^0-9A-Za-z-])#?$n([^0-9]|\$)" <<< "$queue_line"; then continue; fi
     if [ -n "$key" ] && grep -qiE "(^|[^A-Za-z0-9])$key([^0-9]|\$)" <<< "$queue_line"; then continue; fi
     printf 'UNMAPPED %s %s\n' "$n" "$branch"

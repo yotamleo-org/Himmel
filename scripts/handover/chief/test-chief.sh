@@ -70,7 +70,7 @@ export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs
 # `next` refuses on an open PR with no live worker or queue hold (orphan-pr-check.sh):
 # an empty PR list for the whole suite keeps every case off the real gh; the orph8501 case sets its own.
 printf '[]\n' > "$tmp/orphan-prs-none.json"
-export ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-none.json"
+export ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-none.json" TICKET_STATUS_STATE_DIR="$tmp/ticket-status-state"
 # `next` pre-computes ACTION ZERO through action-zero.sh. A stub keeps every case
 # fast and keeps the lock sweep's host names out of case 8's leak scan; case 90
 # runs the real script.

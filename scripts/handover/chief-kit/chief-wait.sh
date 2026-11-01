@@ -49,9 +49,9 @@
 #                               dispatchable=<n>, the count of dispatchable To Do
 #                               rows (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
-#   WAKE orphan-pr <n,...>      at an underfilled sample, with --doc: an open PR maps to no live
-#   UNMAPPED <n> <branch>       fleet-manifest worker and to no hold on the doc's `queue:` line
-#   <tick line>                 (orphan-pr-check.sh). Sampled at most every
+#   WAKE orphan-pr <n,...>      at an underfilled sample, with --doc: an open PR whose ticket's worker
+#   UNMAPPED <n> <branch>       record reads wrapped or none (or has none), and that the doc's
+#   <tick line>                 `queue:` line does not name (orphan-pr-check.sh). Sampled at most every
 #                               CHIEF_WAIT_ORPHAN_SAMPLE_MIN (default 5); re-wakes on a PR new to
 #                               the marker `<inbox>.wait.orphan` or every CHIEF_WAIT_ORPHAN_REWAKE_MIN
 #                               (default 60); a clean read clears it (CHIEF_WAIT_ORPHAN = seam).
@@ -948,8 +948,8 @@ unwatched_file="$inbox.wait.unwatched"
 unwatched_wake() {
     set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-60}"
 }
-# orphan_wake: at an underfilled sample, with --doc, an open PR that maps to no
-# live manifest worker and no hold on the doc's `queue:` line wakes (`WAKE orphan-pr <n,...>`
+# orphan_wake: at an underfilled sample, with --doc, an open PR whose ticket's worker record reads
+# wrapped or none (or is absent) and that the doc's `queue:` line does not name wakes (`WAKE orphan-pr <n,...>`
 # then its UNMAPPED lines). The check runs gh, so it samples at most every
 # CHIEF_WAIT_ORPHAN_SAMPLE_MIN (default 5) minutes; the wake follows the unowned-prs marker
 # logic (first sight, a PR new to the marker, CHIEF_WAIT_ORPHAN_REWAKE_MIN, default 60). A clean
@@ -962,7 +962,7 @@ orphan_wake() { # prints the WAKE block and returns 0 on a wake
     [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -r "$orphan_cmd" ] || return 1
     if [ -e "$orphan_at_file" ] && [ -n "$(find "$orphan_at_file" -mmin "-${CHIEF_WAIT_ORPHAN_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the check runs
     : > "$orphan_at_file" 2>/dev/null
-    out="$(timeout -k 2 "${CHIEF_WAIT_ORPHAN_TIMEOUT:-60}" bash "$orphan_cmd" --doc "$console_doc" ${legs_from:+--workers-from "$legs_from"} </dev/null 2>/dev/null 9>&-)" || rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and only 0 or 1 acts, any other rc is no wake and no all-clear
+    out="$(timeout -k 2 "${CHIEF_WAIT_ORPHAN_TIMEOUT:-60}" bash "$orphan_cmd" --doc "$console_doc" </dev/null 2>/dev/null 9>&-)" || rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and only 0 or 1 acts, any other rc is no wake and no all-clear
     case "$rc" in
         0) rm -f "$orphan_file"; return 1 ;;
         1) ;;
