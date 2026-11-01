@@ -57,9 +57,10 @@ def write(body, ledger=None):
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path + ".tool-health.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        series = [r for r in eval_runs.read_rows(path)
-                  if r["eval"] == EVAL_ID and r["host"] == host and r["confighash"] == confighash]
-        if status == "ok" and any(r["status"] == "ok" and r["meta"].get("day", "") > day for r in series):
+        rows = [r for r in eval_runs.read_rows(path) if r["eval"] == EVAL_ID]
+        series = [r for r in rows if r["host"] == host and r["confighash"] == confighash]
+        # eval_feedback takes the newest ok row of the whole eval, so a later day under any host or wiring makes this one a backfill.
+        if status == "ok" and any(r["status"] == "ok" and r["meta"].get("day", "") > day for r in rows):
             status = "partial"
             meta.update(revision="backfill", partial_reason=BACKFILL_NOTE)
         same = [r for r in series if r["meta"].get("day") == day]

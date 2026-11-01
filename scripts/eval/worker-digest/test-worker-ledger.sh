@@ -216,8 +216,8 @@ check "a launch name with a path separator is refused" '[ "$rcp" != 0 ]'
 echo "12. the daily tool-health record: validated row, one per day, and the eval feedback step"
 THR="$HERE/tool_health_record.py"; FB="$HERE/../lib/eval_feedback.py"; RULES="$HERE/../feedback-rules.json"
 TL="$TMP/th-eval.jsonl"
-thbody() { jq -n --arg day "$1" --arg st "$2" '{day: $day, status: $st, n: 10, config: {count_definition_version: 1, day_window: "utc-day", population: "all-production-sessions", wiring: "w1"}, metrics: {calls: 10, "guard.g.deny_rate": 0.3}, cases: {"guard:g": {denials: 3, eligible_calls: 10}}, meta: {audit: {missing_sources: []}}}'; }
-thw() { thbody "$1" "$2" >"$TMP/th-body.json"; python3 "$THR" write --body "$TMP/th-body.json" --ledger "$TL"; }
+thbody() { jq -n --arg day "$1" --arg st "$2" --arg w "${3:-w1}" '{day: $day, status: $st, n: 10, config: {count_definition_version: 1, day_window: "utc-day", population: "all-production-sessions", wiring: $w}, metrics: {calls: 10, "guard.g.deny_rate": 0.3}, cases: {"guard:g": {denials: 3, eligible_calls: 10}}, meta: {audit: {missing_sources: []}}}'; }
+thw() { thbody "$1" "$2" "${3:-w1}" >"$TMP/th-body.json"; python3 "$THR" write --body "$TMP/th-body.json" --ledger "$TL"; }
 newest_ok_day() { python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import eval_runs; print([r for r in eval_runs.read_rows(sys.argv[2]) if r["eval"] == "tool-health" and r["status"] == "ok"][-1]["meta"]["day"])' "$HERE/../lib" "$TL" 2>/dev/null; }
 printf '%s\n' '{"v": 1, "rules": [{"eval": "tool-health", "metric": "guard.*.deny_rate", "threshold": 0.1, "better": "lower", "absent": null, "change": "learning", "target": "x.md"}]}' >"$TMP/th-rules.json"
 fbrun() { python3 "$FB" run --ledger "$TL" --changes "$1" --rules "$2"; }
@@ -248,6 +248,9 @@ check "every run_id is unique" '[ "$(jq -s "map(.run_id) | length - (unique | le
 printf '%s\n' '{"day": "2026-10-30", "status": "ok", "extra": 1, "config": {}, "metrics": {"a": 1}}' >"$TMP/th-bad.json"
 python3 "$THR" write --body "$TMP/th-bad.json" --ledger "$TL" >/dev/null 2>&1; rcb=$?
 check "an unknown body key is refused (exit 2) and nothing is appended" '[ "$rcb" = 2 ] && [ "$(jq -s "map(select(.meta.day == \"2026-10-30\")) | length" "$TL")" = 0 ]'
+
+thw 2026-10-18 ok w2 >/dev/null 2>&1
+check "an older day under another wiring is stored partial too, because feedback picks its newest ok row across every series" 'jq -e "select(.meta.day == \"2026-10-18\") | .status == \"partial\" and .meta.revision == \"backfill\"" "$TL" >/dev/null && [ "$(newest_ok_day)" = 2026-10-29 ]'
 
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
