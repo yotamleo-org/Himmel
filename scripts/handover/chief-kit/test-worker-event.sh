@@ -346,6 +346,32 @@ chmod +x "$W/list13c"
 LE_LIST="$W/list13c" run "WRAPPED N5004."
 contains "13b legacy-named original with a PR goes to wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/fleet.json $W/HIMMEL-8-N5004bc-orig-2026-10-14-RESUME.md"
 lacks "13b legacy-named original with a PR is not closed directly" "$calls" "close"
+# 13d. unrelated docs in the directory cost no worker_base call each (the live handovers dir holds thousands;
+# worker_base forks sed, so a sed shim counts the calls): the count with 40 extra unrelated docs equals the count without
+D13="$W/d13d"; mkdir -p "$D13" "$W/shim"
+cat > "$W/shim/sed" <<EOF5
+#!/usr/bin/env bash
+echo x >> "$W/sedcalls"
+exec $(command -v sed) "\$@"
+EOF5
+chmod +x "$W/shim/sed"
+printf '%s\n' '## Results' '- 10:30 WRAPPED done' > "$D13/HIMMEL-12-N5010-plain-2026-10-14.md"
+cat > "$W/list13d" <<EOF6
+#!/usr/bin/env bash
+printf '%s\n' $D13/HIMMEL-12-N5010-plain-2026-10-14.md
+EOF6
+chmod +x "$W/list13d"
+: > "$W/sedcalls"
+PATH="$W/shim:$PATH" LE_LIST="$W/list13d" run "WRAPPED N5010."
+contains "13d sole doc: direct close" "$calls" "close --fleet $W/fleet.json $D13/HIMMEL-12-N5010-plain-2026-10-14.md"
+# read-sink-ok: sedcalls is the suite's own scratch file under $W
+sed_alone="$(wc -l < "$W/sedcalls" | tr -d ' ')"
+for i in $(seq 1 40); do printf '%s\n' '## Results' '- 10:00 READY 9999 abc' > "$D13/HIMMEL-$((100 + i))-N$((7000 + i))-other-2026-10-14.md"; done
+: > "$W/sedcalls"
+PATH="$W/shim:$PATH" LE_LIST="$W/list13d" run "WRAPPED N5010."
+contains "13d with unrelated PR-naming docs present: still a direct close" "$calls" "close --fleet $W/fleet.json $D13/HIMMEL-12-N5010-plain-2026-10-14.md"
+# read-sink-ok: sedcalls is the suite's own scratch file under $W
+check "13d unrelated docs add no worker_base calls" "$(wc -l < "$W/sedcalls" | tr -d ' ')" "$sed_alone"
 
 LE_LIST="$W/list13" run "MERGED #2566 N3001"
 contains "13 MERGED never takes the close path" "$calls" "wrap --doc"

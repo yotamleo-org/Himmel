@@ -206,11 +206,18 @@ if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     wk_base="$(worker_base "$worker")"
     # every doc in the directory is listed: the worker_base filter below decides who is a sibling, so a
     # legacy -legN<k>-/-leg<k>- original or a multi-letter successor is never missed by a name glob
+    # worker_base forks several processes and the live handovers directory holds thousands of docs, so a
+    # pure-bash prefilter runs first: every doc of an N<digits> base carries those digits in its name (a
+    # canonical N<k>[a-z]*, a legacy -legN<k>- or -leg<k>-), so a name without them is no sibling. Any
+    # other base (a whole-stem fallback label) skips the prefilter.
+    sib_key=""
+    if [[ $wk_base =~ ^N[0-9]+$ ]]; then sib_key="${wk_base#N}"; fi
     if ! sibs="$(find "$(dirname "$worker")" -maxdepth 1 -type f -name '*.md')"; then
         close_only=""
     else
         while IFS= read -r sib; do
             [ -n "$sib" ] && [ "$sib" != "$worker" ] || continue
+            if [ -n "$sib_key" ]; then case "${sib##*/}" in *"$sib_key"*) ;; *) continue ;; esac; fi
             [ "$(worker_base "$sib")" = "$wk_base" ] || continue
             sib_rc=0; grep -qE '^- .*(READY|PR) #?[0-9]+' "$sib" || sib_rc=$?
             if [ "$sib_rc" -ne 1 ]; then close_only=""; break; fi
