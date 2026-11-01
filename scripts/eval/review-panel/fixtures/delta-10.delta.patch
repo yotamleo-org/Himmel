@@ -1,0 +1,15 @@
+diff --git a/scripts/tools/prune-logs.sh b/scripts/tools/prune-logs.sh
+--- a/scripts/tools/prune-logs.sh
++++ b/scripts/tools/prune-logs.sh
+@@ -4,8 +4,9 @@
+ set -uo pipefail
+
+ dir="${1:?usage: prune-logs.sh <log-dir>}"
+-keep="${LOG_KEEP:-7}"
++keep="${LOG_KEEP:-3}"
++dry="${DRY_RUN:-0}"
+
+ ls -1t "$dir"/*.log 2>/dev/null | tail -n +"$((keep + 1))" | while IFS= read -r f; do
+-    rm -f -- "$f"
++    if [ "$dry" = 1 ]; then echo "would delete $f"; else rm -f -- "$f"; fi
+ done

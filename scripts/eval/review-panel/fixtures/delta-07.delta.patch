@@ -1,0 +1,22 @@
+diff --git a/scripts/tools/cache-refresh.sh b/scripts/tools/cache-refresh.sh
+--- a/scripts/tools/cache-refresh.sh
++++ b/scripts/tools/cache-refresh.sh
+@@ -5,11 +5,16 @@ set -uo pipefail
+ cache="${INDEX_CACHE:-$HOME/.cache/himmel/index.json}"
+ max_age=86400
+
++# mtime: file modification time in epoch seconds (GNU stat, then BSD stat).
++mtime() {
++    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1"
++}
++
+ # is_stale: succeeds (0) when the cache is missing or older than max_age.
+ is_stale() {
+     [ -f "$cache" ] || return 0
+-    age=$(( $(date +%s) - $(stat -c %Y "$cache") ))
+-    [ "$age" -gt "$max_age" ]
++    age=$(( $(date +%s) - $(mtime "$cache") ))
++    [ "$age" -le "$max_age" ]
+ }
+
+ if is_stale; then

@@ -1,0 +1,14 @@
+diff --git a/scripts/tools/archive-dir.sh b/scripts/tools/archive-dir.sh
+--- a/scripts/tools/archive-dir.sh
++++ b/scripts/tools/archive-dir.sh
+@@ -7,5 +7,9 @@ src="${1:?usage: archive-dir.sh <dir> <out-dir>}"
+ out="${2:?usage: archive-dir.sh <dir> <out-dir>}"
+ name="$(basename "$src")"
+
++exclude="${ARCHIVE_EXCLUDE:-}"
++exclude_args=""
++[ -z "$exclude" ] || exclude_args="--exclude=$exclude"
++
+ mkdir -p "$out"
+-tar -czf "$out/$name.tgz" -C "$src/.." "$name"
++tar -czf "$out/$name.tgz" $exclude_args -C "$src/.." "$name"
