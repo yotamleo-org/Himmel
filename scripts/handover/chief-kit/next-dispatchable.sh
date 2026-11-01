@@ -623,8 +623,19 @@ for name in names:
 done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
 partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
 status_unreadable = False
+
+
+def effective_rows(path):
+    """The log's lines without a pre-merge row whose PR did not merge; an unreadable log raises OSError."""
+    open(path).close()
+    r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise OSError(r.stderr.strip() or 'merge-rows-effective failed')
+    return r.stdout.splitlines()
+
+
 try:
-    for line in open(os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl')):
+    for line in effective_rows(os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl')):
         try:
             r = json.loads(line)
         except ValueError:

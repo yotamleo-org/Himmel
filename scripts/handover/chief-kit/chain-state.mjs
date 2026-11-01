@@ -33,6 +33,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const SCHEMA = 'himmel.chains/1';
 const IN_FLIGHT = new Set(['In Progress', 'In Review', 'IN CI']);
@@ -117,6 +119,10 @@ function readMirror(dir) {
 function readJsonl(file) {
     let txt = '';
     try { txt = readFileSync(file, 'utf8'); } catch { return []; }
+    return readJsonlText(txt);
+}
+
+function readJsonlText(txt) {
     const rows = [];
     for (const line of txt.split('\n')) {
         if (!line.trim()) continue;
@@ -129,7 +135,13 @@ function readJsonl(file) {
 }
 
 const issues = readMirror(mirrorDir);
-const events = readJsonl(join(stateDir, 'status-events.jsonl'));
+// The merge rows without a pre-merge row whose PR did not merge: scripts/lib/merge-rows-effective.py.
+function readEffectiveEvents(file) {
+    let txt;
+    try { txt = execFileSync('python3', ['-I', fileURLToPath(new URL('../../lib/merge-rows-effective.py', import.meta.url)), file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return readJsonl(file).filter(r => !(r.event === 'merge' && r.stage === 'pre-merge')); } // no filter run: no unproven row counts
+    return readJsonlText(txt);
+}
+const events = readEffectiveEvents(join(stateDir, 'status-events.jsonl'));
 const chainLog = readJsonl(join(stateDir, 'chain-log.jsonl'));
 
 // ---------------------------------------------------------------- merges and completion

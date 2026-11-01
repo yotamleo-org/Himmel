@@ -876,18 +876,24 @@ def partial_merge_prs(keys):
     state = os.environ.get('TICKET_STATUS_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
     prs, seen = [], set()
     try:
-        with open(os.path.join(state, 'status-events.jsonl')) as f:
-            for line in f:
-                try:
-                    r = json.loads(line)
-                except ValueError:
-                    continue
-                if not isinstance(r, dict) or r.get('event') != 'merge' or r.get('contract') != 'no' or r.get('key') not in keys:
-                    continue
-                pr = str(r.get('pr', ''))
-                if pr.isdigit() and pr not in seen:
-                    seen.add(pr)
-                    prs.append(pr)
+        log = os.path.join(state, 'status-events.jsonl')
+        open(log).close()
+        # the log without a pre-merge row whose PR did not merge
+        eff = subprocess.run([sys.executable, '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib', 'merge-rows-effective.py'), log],
+                             capture_output=True, text=True)
+        if eff.returncode != 0:
+            raise OSError(eff.stderr.strip() or 'merge-rows-effective failed')
+        for line in eff.stdout.splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(r, dict) or r.get('event') != 'merge' or r.get('contract') != 'no' or r.get('key') not in keys:
+                continue
+            pr = str(r.get('pr', ''))
+            if pr.isdigit() and pr not in seen:
+                seen.add(pr)
+                prs.append(pr)
     except FileNotFoundError:
         pass
     except OSError as e:

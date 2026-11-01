@@ -57,6 +57,41 @@ for marker in PARKED-USAGE PARKED-BANK; do
     check "$marker second owner is recorded as the lock holder" "$TS_OWNER_DOC" "$tmp/parked.md"
 done
 
+# ts_merge_rows drops a pre-merge row whose PR did not merge; ts_partial_merge and
+# ts_done_pending read through it. The gh seam answers: PR 11 OPEN, PR 12 MERGED at h12, PR 13 never asked.
+cat > "$tmp/mrgh" <<'EOF'
+#!/usr/bin/env bash
+case "$3" in 11) echo "OPEN h11" ;; 12) echo "MERGED h12" ;; 14) echo "MERGED other" ;; *) exit 1 ;; esac
+EOF
+chmod +x "$tmp/mrgh"
+export MERGE_ROWS_GH="$tmp/mrgh"
+log="$tmp/mr.jsonl"
+mrow() { # <key> <pr> <head> <contract> <result> <stage> - one merge row
+    printf '{"ts":"t","event":"merge","key":"%s","pr":"%s","head":"%s","contract":"%s","result":"%s","stage":"%s"}\n' "$@" >> "$log"
+}
+: > "$log"
+mrow HIMMEL-9101 11 h11 yes pending pre-merge
+mrow HIMMEL-9102 12 h12 yes pending pre-merge
+mrow HIMMEL-9103 13 h13 no pending pre-merge
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9103","pr":"13","head":"h13","result":"not-merged","stage":"merge-failed"}\n' >> "$log"
+mrow HIMMEL-9104 14 h14 yes pending pre-merge
+mrow HIMMEL-9105 15 h15 no pending pre-merge
+mrow HIMMEL-9105 15 h15 no noop ""
+printf 'not json\n' >> "$log"
+check "merge-rows: a pre-merge row whose PR is open is dropped" "$(ts_merge_rows "$log" | grep -c '"pr":"11"')" 0
+check "merge-rows: one whose PR GitHub reports MERGED at its head is kept" "$(ts_merge_rows "$log" | grep -c '"pr":"12"')" 1
+check "merge-rows: one followed by a not-merged row is dropped without asking GitHub" "$(ts_merge_rows "$log" | grep -c '"pr":"13"')" 1
+check "merge-rows: one merged at another head than the row's is dropped" "$(ts_merge_rows "$log" | grep -c '"pr":"14"')" 0
+check "merge-rows: one a later merge row of the same PR and head follows is kept with that row" "$(ts_merge_rows "$log" | grep -c '"pr":"15"')" 2
+check "merge-rows: an unparseable line passes through" "$(ts_merge_rows "$log" | grep -c 'not json')" 1
+export TICKET_STATUS_STATE_DIR="$tmp/mrstate"
+mkdir -p "$TICKET_STATUS_STATE_DIR"
+cp "$log" "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+ts_done_pending HIMMEL-9101; check "merge-rows: ts_done_pending ignores an open PR's pre-merge row" "$?" 1
+ts_done_pending HIMMEL-9102; check "merge-rows: ts_done_pending counts a pre-merge row of a merged PR" "$?" 0
+ts_done_pending HIMMEL-9103; check "merge-rows: ts_done_pending ignores a not-merged PR" "$?" 1
+ts_partial_merge HIMMEL-9105; check "merge-rows: ts_partial_merge reads the row that followed the pre-merge row" "$?" 0
+
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
 else

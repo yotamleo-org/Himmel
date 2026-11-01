@@ -130,6 +130,28 @@ ev '{"ts":"2026-11-02T14:00:05Z","event":"merge","key":"HIMMEL-7379","pr":"999",
 cs
 check "E29 (HIMMEL-8522): a contract-less derive row under event merge is not read as the merge" "$(tk HIMMEL-7379 .check.merge.pr)" "103"
 
+# --- E29b: a merge row written before the merge call counts once its PR is proven merged ---
+cat > "$tmp/mrgh" <<'EOF'
+#!/usr/bin/env bash
+# the merge-rows filter gh seam: pr view <n> --json ...
+case "$3" in 105) echo "OPEN h5" ;; 106) echo "MERGED h6" ;; *) exit 1 ;; esac
+EOF
+chmod +x "$tmp/mrgh"
+reset
+reg chain-8004=7379,7381,7382
+issue HIMMEL-8004 "To Do" type=Epic
+issue HIMMEL-7379 Done parent=HIMMEL-8004 resolved=2026-11-02T16:00:00.000+0000
+issue HIMMEL-7381 "To Do" parent=HIMMEL-8004 bb='["HIMMEL-7379"]'
+issue HIMMEL-7382 Done parent=HIMMEL-8004 resolved=2026-11-02T16:00:00.000+0000
+ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7379","pr":"105","head":"h5","contract":"yes","result":"pending","stage":"pre-merge"}'
+ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7382","pr":"106","head":"h6","contract":"yes","result":"pending","stage":"pre-merge"}'
+MERGE_ROWS_GH="$tmp/mrgh" cs
+check "E29b: a pre-merge row whose PR is still open is not read as the merge" "$(tk HIMMEL-7379 .check.merge.pr)" "null"
+check "E29b: a pre-merge row whose PR GitHub reports MERGED is read as the merge" "$(tk HIMMEL-7382 .check.merge.pr)" "106"
+ev '{"ts":"2026-11-02T14:00:01Z","event":"merge","key":"HIMMEL-7382","pr":"106","head":"h6","result":"not-merged","stage":"merge-failed"}'
+MERGE_ROWS_GH="$tmp/mrgh" cs
+check "E29b: a not-merged row after it retires the pre-merge row" "$(tk HIMMEL-7382 .check.merge.pr)" "null"
+
 # --- E30: a chain changes ----------------------------------------------------
 reset
 reg chain-mem=8009,8010,8011
