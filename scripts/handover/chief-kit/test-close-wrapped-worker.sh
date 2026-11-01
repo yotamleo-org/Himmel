@@ -31,6 +31,8 @@
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh).
 set -uo pipefail
+# Every fixture git call targets the repo its -C names, never one inherited from a git hook.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/close-wrapped-worker.sh"
@@ -332,6 +334,7 @@ git -C "$SCR/refclone" config remote.origin.skipFetchAll true
 git -C "$W/scr-remote.git" branch -D topic2 >/dev/null
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad-clone skipFetchAll remote, branch deleted: rc 8" "$rc" "8"
+contains "scratchpad-clone skipFetchAll remote, branch deleted: refused for its unpushed commit, not a failed refresh" "$out" "holds commits on no remote"
 rm -rf "$SCR/refclone"
 git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
 git -C "$SCR/refclone" remote set-url origin "$W/no-such-remote.git"
