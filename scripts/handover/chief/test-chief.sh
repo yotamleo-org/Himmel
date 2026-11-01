@@ -67,6 +67,10 @@ export BRIDGE_ROOT="$tmp/bridge"
 printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$tmp/facts-bank.sh"
 printf '#!/usr/bin/env bash\necho "#5 [DEMO-1] stub pr (feat/x)"\n' > "$tmp/facts-prs.sh"
 export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs.sh"
+# `next` refuses on an open PR with no live worker or queue hold (orphan-pr-check.sh):
+# an empty PR list for the whole suite keeps every case off the real gh; the orph8501 case sets its own.
+printf '[]\n' > "$tmp/orphan-prs-none.json"
+export ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-none.json" TICKET_STATUS_STATE_DIR="$tmp/ticket-status-state"
 # `next` pre-computes ACTION ZERO through action-zero.sh. A stub keeps every case
 # fast and keeps the lock sweep's host names out of case 8's leak scan; case 90
 # runs the real script.
@@ -2718,6 +2722,34 @@ check "83 stderr warns with the byte count" "$(grep -cE 'warning: HANDOFF over b
 check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); wrapped-PR list [0-9]+ bytes' "$handoff83A")" "1"
 check "83 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff83A")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc83A" "$token83" >/dev/null 2>&1
+
+# --- orph8501: `next` refuses (exit 8, naming the PR, no HANDOFF) while an open PR maps to
+# no live worker record and no queue: hold; naming the PR on the queue: line lets it through.
+outo="$(chief new --bucket orph8501)"
+tokeno="$(token_of "$outo")"
+doco="$root/tester/orph8501/DEMO-nextleg-${today}A-chief.md"
+printf '[{"number":4325,"headRefName":"fix/demo-88-orphan"}]\n' > "$tmp/orphan-prs-one.json"
+rco=0
+ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >"$tmp/outo" 2>&1 || rco=$?
+check "orph8501 an unmapped open PR refuses next (exit 8)" "8" "$rco"
+check "orph8501 the refusal names the PR" "1" "$(grep -cF 'UNMAPPED 4325 fix/demo-88-orphan' "$tmp/outo")"
+check "orph8501 the refusal writes no HANDOFF" "no" "$([ -f "$root/tester/orph8501/DEMO-nextleg-${today}A-chief-HANDOFF.md" ] && echo yes || echo no)"
+sed 's/^queue:.*/queue: #4325 (held for the adapter merge)/' "$doco" > "$doco.new" && mv "$doco.new" "$doco" || { echo "FAIL: orph8501 fixture rewrite"; exit 1; }
+rco=0
+ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >/dev/null 2>&1 || rco=$?
+check "orph8501 a PR held on the queue: line passes" "0" "$rco"
+HANDOVER_DIR="$root" bash "$QL" release "$doco" "$tokeno" >/dev/null 2>&1
+# an unreadable PR list is neither an orphan nor a refusal
+outu="$(chief new --bucket orph8501u)"
+tokenu="$(token_of "$outu")"
+docu="$root/tester/orph8501u/DEMO-nextleg-${today}A-chief.md"
+rcu=0
+ORPHAN_PR_CHECK_PRS="$tmp/no-such-orphan-prs.json" chief next --bucket orph8501udst --doc "$docu" >"$tmp/outu" 2>&1 || rcu=$?
+check "orph8501 an unreadable PR list does not refuse next" "0" "$rcu"
+check "orph8501 an unreadable PR list says the handover was not gated" "1" "$(grep -cF 'orphan-pr check unavailable (rc=3): handover not gated' "$tmp/outu")"
+check "orph8501 the check's own stderr is kept" "1" "$(grep -cF 'orphan-pr-check: unavailable (the open-PR list could not be read)' "$tmp/outu")"
+check "orph8501 the HANDOFF carries the not-gated line" "1" "$(grep -cF 'orphan-pr check unavailable (rc=3)' "$root/tester/orph8501u/DEMO-nextleg-${today}A-chief-HANDOFF.md")"
+HANDOVER_DIR="$root" bash "$QL" release "$docu" "$tokenu" >/dev/null 2>&1
 
 # --- 84: a repo with no origin remote must not abort `next` mid-render: the
 # pointer falls back to a placeholder and the wrapped-PR section is still written.

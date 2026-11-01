@@ -424,6 +424,7 @@ scripts/handover/chief-kit/test-live-subagents.sh	local	behaviour suite, 0 catch
 scripts/handover/chief-kit/test-next-dispatchable.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ops-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-orphan-loops.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/chief-kit/test-orphan-pr-check.sh	local	behaviour suite for the open-PR gate; no audit window yet
 scripts/handover/chief-kit/test-parked-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-pr-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-priority-prune.sh	local	behaviour suite, new in HIMMEL-6602

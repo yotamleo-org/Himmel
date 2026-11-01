@@ -50,7 +50,8 @@ export CHIEF_WAIT_UNDERFILL_REPOOL_SEC=1
 export CHIEF_WAIT_REPOOL_TIMEOUT=1
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/off.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$STUB/budget-off.sh"
-export CHIEF_WAIT_PAGE_CMD="$STUB/off.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
+# the underfilled orphan-pr check reads gh; a clean no-op keeps these cases off the real one
+export CHIEF_WAIT_PAGE_CMD="$STUB/off.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh" CHIEF_WAIT_ORPHAN="$STUB/off.sh"
 export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh"
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
