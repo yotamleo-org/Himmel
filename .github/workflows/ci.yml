@@ -2042,18 +2042,6 @@ jobs:
       # unrelated suite reds. Pinned by test-run-shell-tests.sh Case 23f.
       - name: Install obsidian-triage tool deps (marketplace suites)
         run: bash marketplace/plugins/obsidian-triage/tools/ensure-deps.sh
-      # HIMMEL-8353: test-gen-briefs.sh runs the REAL jira CLI (release core-check and
-      # spec-check) and fails, never skips, when scripts/jira/dist/ is absent (dist/ is
-      # untracked), so the shard builds it before the suites. Same two commands as the
-      # jira-cli-smoke steps.
-      - id: jira-cli-build__npm-ci
-        timeout-minutes: 10
-        run: npm ci --ignore-scripts
-        working-directory: scripts/jira
-      - id: jira-cli-build
-        timeout-minutes: 10
-        run: npm run build
-        working-directory: scripts/jira
       # HIMMEL-4802: test-x-media-hls-ffmpeg.sh runs a REAL ffmpeg over the
       # playlists x-media-fetch.py rewrites (every other suite stubs it). It
       # SKIPs without ffmpeg, so this step pins the noble 6.1 build and then

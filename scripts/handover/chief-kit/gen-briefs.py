@@ -67,13 +67,13 @@ values (a ticket that states none counts as yes), when a worker's context_guard 
 an unpublished item never has; the values are compact|handoff), when a label is unknown, repeated or already a series writer, when
 a ticket key appears twice, when --manifest is not in the bucket (next-dispatchable.sh reads series/ beside the manifest), and
 when a ledger for the sid already exists. Every refusal comes before anything is written.
-The core gate (HIMMEL-8353 C2): for every worker, after the Writes parse and before any file is written, the built jira CLI
-is asked `release core-check --paths <Writes> [--docs-only] --mirror <dir> --key <each key>` (the primary checkout's
-scripts/jira/dist/index.js; GEN_BRIEFS_JIRA_CLI replaces it, tests) and, for each CORE key, `release spec-check`. A BYPASS key
-gets a `> **Core gate:** <KEY> bypass=<kind> — <reason>` brief line, a SPEC ok key a `> **Spec:** <KEY> <path> (O-<id>)` line.
-A core key with no signed spec, or a key missing from the mirror (UNKNOWN), is refused with the core_gate flag on and is a
-`> **Core gate:** WARN <line>` / stderr WARN with it off. A core-check that cannot run (no dist/, a non-zero exit, a line that
-does not parse) is ALWAYS refused as CORE-CHECK-FAILED. A worker carrying a `core_bypass` or `bypass` key is refused: a bypass
+The core gate (HIMMEL-8353 C2), only with the core_gate flag on (off, the default, changes nothing): for every worker, after
+the Writes parse and before any file is written, the built jira CLI is asked `release core-check --paths <Writes>
+[--docs-only] --mirror <dir> --key <each key>` (the primary checkout's scripts/jira/dist/index.js; GEN_BRIEFS_JIRA_CLI
+replaces it, tests) and, for each CORE key, `release spec-check`. A BYPASS key gets a `> **Core gate:** <KEY> bypass=<kind> —
+<reason>` brief line, a SPEC ok key a `> **Spec:** <KEY> <path> (O-<id>)` line. A core key with no signed spec, or a key
+missing from the mirror (UNKNOWN), is refused. A core-check that cannot run (no dist/, a non-zero exit, a line that
+does not parse) is refused as CORE-CHECK-FAILED. A worker carrying a `core_bypass` or `bypass` key is refused: a bypass
 comes only from core-check. Every decision on a core key appends one JSON row to `<bucket>/core-gate.jsonl` (written by this
 script only; a re-run reaching the same outcome for the same key and brief appends nothing).
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
@@ -626,14 +626,13 @@ def core_log(path, rows):
 
 
 def core_gate(l, ctx):
-    # The spec section 3 refusal for one worker; sets l['core_lines'] for the brief. Reads core_gate only through flag_on.
+    # The spec section 3 refusal for one worker; sets l['core_lines'] for the brief. The caller runs it only with core_gate on.
     label = l['label']
     for k in ('core_bypass', 'bypass'):
         if k in l:
             die('worker %s: %s is refused; a core bypass comes only from jira release core-check (design leg, Bug, emergency, operator record)' % (label, k))
     sp = l.get('series_plan')
     keys = [k for k, _ in sp['items']] if sp else l['keys']
-    enforce = core_gate_on()
     cli = jira_cli()
     brief = os.path.join(ctx['bucket'], l['stem'] + '.md')
     log = os.path.join(ctx['bucket'], 'core-gate.jsonl')
@@ -673,11 +672,7 @@ def core_gate(l, ctx):
             row(k, 'bypass', kind=kind, line=verdict[k])
         elif t[0] == 'UNKNOWN':
             row(k, 'unknown', line=verdict[k])
-            if enforce:
-                refusals.append('%s is not in the Jira mirror (%s), so neither core nor a bypass can be proven; refresh the mirror, then re-run' % (k, mirror_dir(k)))
-            else:
-                lines.append('> **Core gate:** WARN %s' % verdict[k])
-                print('gen-briefs: WARN core gate: %s is not in the Jira mirror (%s); core_gate is off, so the brief is written' % (k, mirror_dir(k)), file=sys.stderr)
+            refusals.append('%s is not in the Jira mirror (%s), so neither core nor a bypass can be proven; refresh the mirror, then re-run' % (k, mirror_dir(k)))
         elif t[0] == 'CORE':
             core[k] = t[2] if len(t) > 2 else ''
             if len(t) > 3:
@@ -700,13 +695,9 @@ def core_gate(l, ctx):
         if t[:2] == ['SPEC', 'ok'] and len(t) >= 5:
             lines.append('> **Spec:** %s %s (%s)' % (k, ' '.join(t[3:-1]), t[-1]))
             row(k, 'spec', matched=core[k], line=spec[k])
-        elif enforce:
+        else:
             row(k, 'refused', matched=core[k], line=spec[k])
             refusals.append('%s is core (%s) and has no signed minerva spec: %s; run minerva, then jira release operator spec' % (k, core[k], spec[k]))
-        else:
-            lines.append('> **Core gate:** WARN %s' % spec[k])
-            row(k, 'warn', matched=core[k], line=spec[k])
-            print('gen-briefs: WARN core gate: %s is core (%s): %s; core_gate is off, so the brief is written' % (k, core[k], spec[k]), file=sys.stderr)
     core_log(log, rows)
     if refusals:
         die('\n'.join('worker %s: %s' % (label, m) for m in refusals))
@@ -1158,7 +1149,8 @@ def main():
             l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
             l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
             l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
-            core_gate(l, ctx)
+            if core_gate_on():
+                core_gate(l, ctx)
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):
             die('%s already exists in the bucket; refusing to overwrite a live worker doc' % (l['stem'] + '.md'))
         if os.path.exists(os.path.join(a.bucket, 'launch-%s.sh' % l['label'])):

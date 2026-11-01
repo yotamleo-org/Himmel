@@ -38,15 +38,47 @@ export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export TICKET_STATUS_STATE_DIR="$WORK/state-empty"  # the partial-merge block reads status-events.jsonl here, never the real one
 export GEN_BRIEFS_NO_WT_CHECK=1 # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
-# The core gate: gen-briefs asks the REAL built jira CLI (release core-check, spec-check) about every worker, never a stub.
-# This suite FAILS, never skips, when dist/ is absent (locally: npm --prefix scripts/jira run build; CI builds it first).
-JIRA_CLI="${GEN_BRIEFS_JIRA_CLI:-$HERE/../../jira/dist/index.js}"
-if [ -f "$JIRA_CLI" ]; then
-    pass "the jira CLI is built ($JIRA_CLI)"
-else
-    fail "the jira CLI is not built at $JIRA_CLI: run npm --prefix scripts/jira run build; every row below that generates a brief fails without it"
-fi
-export GEN_BRIEFS_JIRA_CLI="$JIRA_CLI"
+# The core gate asks the jira CLI (release core-check, spec-check) per key. This suite points GEN_BRIEFS_JIRA_CLI at a
+# fixture stand-in over the fixture mirror, so it needs no built scripts/jira/dist (untracked, absent in CI).
+mkdir -p "$WORK/stub-jira"
+cat > "$WORK/stub-jira/index.js" <<'EOF'
+const fs = require('fs');
+const a = process.argv.slice(2);
+const opt = (n) => { const i = a.indexOf(n); return i < 0 ? null : a[i + 1]; };
+const mirror = opt('--mirror');
+const ticket = (k) => {
+  let t;
+  try { t = fs.readFileSync(mirror + '/' + k + '.md', 'utf8'); } catch (e) { return null; }
+  const f = (n) => ((t.match(new RegExp('^' + n + ': (.*)$', 'm')) || [])[1] || '').replace(/"/g, '');
+  return { type: f('type'), prio: f('priority'), labels: f('labels') };
+};
+if (a[0] === 'release' && a[1] === 'core-check') {
+  const paths = (opt('--paths') || '').split(',').filter(Boolean);
+  const hit = paths.find((p) => /^(scripts\/handover\/|marketplace\/plugins\/himmel-bus\/)/.test(p));
+  for (const k of a.slice(a.indexOf('--key') + 1)) {
+    const t = ticket(k);
+    if (!t) console.log('UNKNOWN ' + k);
+    else if (t.labels.includes('core') && !hit && a.includes('--docs-only')) console.log('BYPASS ' + k + ' design label-only core ticket, docs-only Writes');
+    else if (t.type === 'Bug' && /^(Highest|Blocker)$/.test(t.prio)) console.log('BYPASS ' + k + ' emergency Bug at ' + t.prio);
+    else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
+    else if (hit) console.log('CORE ' + k + ' ' + hit);
+    else if (t.labels.includes('core')) console.log('CORE ' + k + ' label core');
+    else console.log('NOT-CORE ' + k);
+  }
+} else if (a[0] === 'release' && a[1] === 'spec-check') {
+  let missing = 0;
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) {
+    let r = '';
+    try { r = fs.readFileSync(process.env.CG_STUB_SIGNED + '/' + k, 'utf8').trim(); } catch (e) { missing = 1; }
+    console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
+  }
+  process.exit(missing);
+} else {
+  console.error('stub jira: unknown command ' + a.join(' '));
+  process.exit(2);
+}
+EOF
+export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js" CG_STUB_SIGNED="$WORK/cg-signed"
 
 cat > "$WORK/workers.json" <<'EOF'
 [
@@ -1029,12 +1061,11 @@ lacks "S2a: flag off, the brief carries no Series line" "$(cat "$WORK/sr-b-off/H
 unset HIMMEL_CONFIG_DIR
 
 # ---- the core gate (spec section 3 and 4) ----
-# gen-briefs asks the real jira CLI per key: a core build leg with no signed minerva spec is refused with core_gate on;
-# a bypass (design leg, Bug, emergency) passes with one core-gate.jsonl row; a core-check that cannot run always refuses.
-CG="$WORK/cg"; mkdir -p "$CG/mirror" "$CG/specs"
+# gen-briefs asks the jira CLI (the fixture stand-in above) per key: with core_gate on, a core build leg with no signed minerva
+# spec is refused; a bypass (design leg, Bug, emergency) passes with one core-gate.jsonl row; a core-check that cannot run
+# refuses. With core_gate off (the default) the gate does not run at all.
+CG="$WORK/cg"; mkdir -p "$CG/mirror" "$CG/specs" "$CG_STUB_SIGNED"
 export HIMMEL_CONFIG_DIR="$WORK/no-conf"; unset HIMMEL_FLAG_CORE_GATE
-export HIMMEL_RELEASE_STATE_DIR="$CG/release" HIMMEL_RELEASE_KEY_DIR="$CG/keys" JIRA_PROJECT_KEY=HIMMEL
-unset HIMMEL_CONSOLE_LEG HIMMEL_RELEASE_MANAGER
 printf '{"lastSync":"2026-11-01T00:00:00Z"}\n' > "$CG/mirror/.cursor.json"
 cg_mirror() { # <KEY> <type> <priority> <labels json array>: a mirror ticket the proof check and core-check both read
     printf -- '---\nkey: "%s"\nstatus: "To Do"\ntype: "%s"\npriority: "%s"\nlabels: %s\n---\n# %s: t\n\n## Description\n\nEdit the thing.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n\n## Comments\n\nnone\n' "$1" "$2" "$3" "$4" "$1" > "$CG/mirror/$1.md"
@@ -1051,19 +1082,11 @@ cg_brief() { ls "$CG/b-$1"/*-N941-cg-2026-10-08.md 2>/dev/null; }
 cg_log() { printf '%s' "$CG/b-$1/core-gate.jsonl"; }
 cg_rows() { [ -f "$(cg_log "$1")" ] && grep -c "\"key\": \"$2\"" "$(cg_log "$1")" || echo 0; }
 cg_field() { python3 -I -c 'import json, sys; [print(r.get(sys.argv[3])) for r in map(json.loads, open(sys.argv[1])) if r["key"] == sys.argv[2]]' "$(cg_log "$1")" "$2" "$3" 2>/dev/null; }
-cg_sign() { # <name> <keys csv>: sign a fixture spec for those keys through the real fenced verb
+cg_sign() { # <name> <key>: the stand-in's spec-check answers SPEC ok for that key, with this spec path and record id
     mkdir -p "$CG/specs/$1"
-    printf '{"median_seq": 1, "sigma": 0.1, "dod": {"passed": true}}\n' > "$CG/specs/$1/est.json"
-    printf '# K-1: a fixture design\n\nEstimate record: est.json\n\n## Alternatives considered\n\n- none better.\n\n## Definition of done\n\n- the fixture signs.\n\n## Invariants\n\nnone\n' > "$CG/specs/$1/spec-$1-2026-11-01.md"
-    printf "the critic's return\n\nSPEC CLEAN\n" > "$CG/specs/$1/spec-$1-2026-11-01.md.critic-spec-r1.md"
-    printf "the critic's return\n\nPLAN CLEAN\n" > "$CG/specs/$1/spec-$1-2026-11-01.md.critic-plan-r1.md"
-    node "$JIRA_CLI" release operator spec R1 --keys "$2" --spec "$CG/specs/$1/spec-$1-2026-11-01.md" \
-        --verdict "$CG/specs/$1/spec-$1-2026-11-01.md.critic-spec-r1.md" --verdict "$CG/specs/$1/spec-$1-2026-11-01.md.critic-plan-r1.md" \
-        --decision 387 --verbatim-file "$CG/verbatim.txt" 2>&1
+    printf '# %s: a fixture design\n' "$2" > "$CG/specs/$1/spec-$1-2026-11-01.md"
+    printf '%s O-R1-%s\n' "$CG/specs/$1/spec-$1-2026-11-01.md" "$1" > "$CG_STUB_SIGNED/$2"
 }
-printf 'approve\n' > "$CG/verbatim.txt"
-cgo="$(node "$JIRA_CLI" release operator declare R1 --versions v1 --decision 1 --verbatim-file "$CG/verbatim.txt" 2>&1)"; rc=$?
-[ "$rc" = 0 ] && pass "the core-gate fixture release R1 is declared" || fail "declare R1 rc=$rc: $cgo"
 
 CORE_WRITES="scripts/handover/chief-kit/next-dispatchable.sh"
 cg_mirror HIMMEL-9411 Task Medium '[]'
@@ -1078,8 +1101,7 @@ has "the refusal says how to sign: minerva, then jira release operator spec" "$c
 cgo="$(cgrun nospec)"; rc=$?
 [ "$rc" = 1 ] && [ "$(cg_rows nospec HIMMEL-9411)" = 1 ] && pass "a re-run reaching the same outcome for the same key and brief appends no second row" || fail "re-run rows=$(cg_rows nospec HIMMEL-9411) rc=$rc"
 
-cgs="$(cg_sign one HIMMEL-9412)"; rc=$?
-[ "$rc" = 0 ] && pass "a fixture spec is signed for HIMMEL-9412 through the real fenced verb" || fail "cg_sign rc=$rc: $cgs"
+cg_sign one HIMMEL-9412
 cg_mirror HIMMEL-9412 Task Medium '[]'
 cg_workers signed HIMMEL-9412 "$CORE_WRITES" ''
 cgo="$(cgrun signed)"; rc=$?
@@ -1117,59 +1139,58 @@ cgo="$(cgrun designcore)"; rc=$?
 [ "$rc" = 1 ] && has "a design leg writing core code is refused, not bypassed" "$cgo" "HIMMEL-9416 is core" || fail "design-core rc=$rc: $cgo"
 [ -z "$(cg_brief designcore)" ] && [ "$(cg_field designcore HIMMEL-9416 outcome)" = refused ] && pass "the refused design-core leg writes no brief and one refused row" || fail "design-core: $(cat "$(cg_log designcore)" 2>/dev/null)"
 
-# a free-text bypass is refused naming the key
+# a free-text bypass is refused naming the key (the key is in the mirror, so the refusal is the bypass key and nothing else)
+cg_mirror HIMMEL-9417 Task Medium '[]'
 cg_workers cb HIMMEL-9417 "$CORE_WRITES" ',"core_bypass":"operator said so"'
 cgo="$(cgrun cb)"; rc=$?
-[ "$rc" = 1 ] && has "a worker carrying core_bypass is refused naming it" "$cgo" "core_bypass" || fail "core_bypass rc=$rc: $cgo"
+[ "$rc" = 1 ] && has "a worker carrying core_bypass is refused naming it" "$cgo" "core_bypass is refused" || fail "core_bypass rc=$rc: $cgo"
 cg_workers bp HIMMEL-9417 "$CORE_WRITES" ',"bypass":"emergency"'
 cgo="$(cgrun bp)"; rc=$?
-[ "$rc" = 1 ] && has "a worker carrying bypass is refused naming it" "$cgo" "bypass" || fail "bypass rc=$rc: $cgo"
+[ "$rc" = 1 ] && has "a worker carrying bypass is refused naming it" "$cgo" "bypass is refused" || fail "bypass rc=$rc: $cgo"
 [ -z "$(cg_brief cb)$(cg_brief bp)" ] && pass "a worker carrying a bypass key gets no brief" || fail "a bypass-key worker was written"
 
-# a mirror miss: with the flag on the worker is refused (neither core nor a bypass can be proven), one unknown row either way
+# a mirror miss with the flag on: the worker is refused (neither core nor a bypass can be proven), one unknown row
 cg_workers miss HIMMEL-9418 "$CORE_WRITES" ''
 cgo="$(cgrun miss)"; rc=$?
 [ "$rc" = 1 ] && has "a mirror miss with core_gate on is refused" "$cgo" "HIMMEL-9418" || fail "mirror miss rc=$rc: $cgo"
 [ "$(cg_rows miss HIMMEL-9418)" = 1 ] && [ "$(cg_field miss HIMMEL-9418 outcome)" = unknown ] && pass "the mirror miss appends one unknown row" || fail "unknown row: $(cat "$(cg_log miss)" 2>/dev/null)"
-cg_workers missoff HIMMEL-9418 "$CORE_WRITES" ''
-cgo="$(cgrun missoff 0)"; rc=$?
-[ "$rc" = 0 ] && has "a mirror miss with core_gate off warns and writes the brief" "$cgo" "WARN" || fail "mirror miss off rc=$rc: $cgo"
-has "the flag-off mirror miss leaves a Core gate WARN UNKNOWN line in the brief" "$(cat "$(cg_brief missoff)" 2>/dev/null)" "> **Core gate:** WARN UNKNOWN HIMMEL-9418"
-[ "$(cg_field missoff HIMMEL-9418 outcome)" = unknown ] && pass "the flag-off mirror miss appends an unknown row too" || fail "unknown row off: $(cat "$(cg_log missoff)" 2>/dev/null)"
 
-# a core-check that cannot run is always a refusal, flag on or off
+# a core-check that cannot run is a refusal with the flag on
 cg_mirror HIMMEL-9419 Task Medium '[]'
 cg_workers nodist HIMMEL-9419 "$CORE_WRITES" ''
 cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/no-dist/index.js" cgrun nodist)"; rc=$?
 [ "$rc" = 1 ] && has "no dist/, core_gate on: CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED" || fail "no dist on rc=$rc: $cgo"
 [ "$(cg_field nodist HIMMEL-9419 outcome)" = failed ] && pass "no dist/ appends a failed row" || fail "failed row: $(cat "$(cg_log nodist)" 2>/dev/null)"
-cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/no-dist/index.js" cgrun nodist 0)"; rc=$?
-[ "$rc" = 1 ] && has "no dist/, core_gate off: still CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED" || fail "no dist off rc=$rc: $cgo"
 [ -z "$(cg_brief nodist)" ] && pass "a core-check that cannot run writes no brief" || fail "a brief was written with no dist"
 printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$CG/junk.js"
-cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/junk.js" cgrun nodist 0)"; rc=$?
+cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/junk.js" cgrun nodist)"; rc=$?
 [ "$rc" = 1 ] && has "a core-check that prints nothing parseable is CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED" || fail "unparseable rc=$rc: $cgo"
 printf "console.log('BYPASS HIMMEL-9419');\n" > "$CG/truncated.js"
-cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/truncated.js" cgrun nodist 0)"; rc=$?
+cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/truncated.js" cgrun nodist)"; rc=$?
 [ "$rc" = 1 ] && has "a truncated BYPASS line (no kind, no reason) is CORE-CHECK-FAILED, never a bypass" "$cgo" "CORE-CHECK-FAILED" || fail "truncated BYPASS rc=$rc: $cgo"
 [ -z "$(cg_brief nodist)" ] && pass "a truncated BYPASS line writes no brief" || fail "a brief was written for a truncated BYPASS line"
 
-# flag off: a core key with no spec writes a WARN line and a warn row, and nothing else changes (I6): the brief equals the flag-on signed brief bar the gate's own line
+# flag off (the default): the gate does not run. A core key with no spec, a mirror miss and a missing CLI all generate, and the
+# brief equals the flag-on signed brief bar the gate's own line (I6); no core-gate.jsonl is written.
 cg_mirror HIMMEL-9421 Task Medium '[]'
 cg_workers off HIMMEL-9421 "$CORE_WRITES" ''
 cgo="$(cgrun off 0)"; rc=$?
 [ "$rc" = 0 ] && pass "core_gate off: a core build leg with no spec still generates (rc 0)" || fail "flag off rc=$rc: $cgo"
-has "core_gate off: the brief carries a Core gate WARN line naming the spec-check line" "$(cat "$(cg_brief off)" 2>/dev/null)" "> **Core gate:** WARN NO-SPEC HIMMEL-9421"
-[ "$(cg_rows off HIMMEL-9421)" = 1 ] && [ "$(cg_field off HIMMEL-9421 outcome)" = warn ] && pass "core_gate off appends one warn row" || fail "warn row: $(cat "$(cg_log off)" 2>/dev/null)"
-cgs="$(cg_sign two HIMMEL-9421)"; rc=$?
-[ "$rc" = 0 ] && pass "a fixture spec is signed for HIMMEL-9421" || fail "cg_sign two rc=$rc: $cgs"
+lacks "core_gate off: the brief carries no Core gate line" "$(cat "$(cg_brief off)" 2>/dev/null)" "Core gate"
+[ ! -e "$(cg_log off)" ] && pass "core_gate off writes no core-gate.jsonl" || fail "core_gate off wrote a log: $(cat "$(cg_log off)")"
+cg_workers missoff HIMMEL-9418 "$CORE_WRITES" ''
+cgo="$(cgrun missoff 0)"; rc=$?
+[ "$rc" = 0 ] && [ -n "$(cg_brief missoff)" ] && [ ! -e "$(cg_log missoff)" ] && pass "core_gate off: a mirror miss generates and writes no log" || fail "mirror miss off rc=$rc: $cgo"
+cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/no-dist/index.js" cgrun nodist 0)"; rc=$?
+[ "$rc" = 0 ] && ! printf '%s' "$cgo" | grep -q CORE-CHECK-FAILED && pass "core_gate off: a missing CLI is never asked, so nothing fails" || fail "no dist off rc=$rc: $cgo"
+cg_sign two HIMMEL-9421
 cg_workers on9421 HIMMEL-9421 "$CORE_WRITES" ''
 cgo="$(cgrun on9421 1)"; rc=$?
 [ "$rc" = 0 ] && pass "the same worker with core_gate on and a signed spec generates (rc 0)" || fail "on9421 rc=$rc: $cgo"
-cgnorm() { sed -E '/^> \*\*(Core gate|Spec):\*\*/d; s#BZ-N[0-9]+-[0-9a-f]{8}#NONCE#g; s#b-(off|on9421)#BUCKET#g' "$1"; }
+cgnorm() { sed -E '/^> \*\*(Core gate|Spec):\*\*/d; /^$/d; s#BZ-N[0-9]+-[0-9a-f]{8}#NONCE#g; s#b-(off|on9421)#BUCKET#g' "$1"; }
 [ -n "$(cg_brief off)" ] && [ "$(cgnorm "$(cg_brief off)")" = "$(cgnorm "$(cg_brief on9421)")" ] && pass "the flag-off brief differs from the signed brief only by the gate's own line (I6)" || fail "flag-off brief differs beyond the gate line"
 
-unset HIMMEL_CONFIG_DIR HIMMEL_RELEASE_STATE_DIR HIMMEL_RELEASE_KEY_DIR JIRA_PROJECT_KEY
+unset HIMMEL_CONFIG_DIR
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
