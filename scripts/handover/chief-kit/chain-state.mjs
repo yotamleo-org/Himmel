@@ -138,7 +138,7 @@ const issues = readMirror(mirrorDir);
 // The merge rows without a pre-merge row whose PR did not merge: scripts/lib/merge-rows-effective.py.
 function readEffectiveEvents(file) {
     let txt;
-    try { txt = execFileSync('python3', ['-I', fileURLToPath(new URL('../../lib/merge-rows-effective.py', import.meta.url)), file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return readJsonl(file).filter(r => !(r.event === 'merge' && r.stage === 'pre-merge')); } // no filter run: no unproven row counts
+    try { txt = execFileSync('python3', ['-I', fileURLToPath(new URL('../../lib/merge-rows-effective.py', import.meta.url)), file], { encoding: 'utf8', maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return readJsonl(file).filter(r => !(r.event === 'merge' && r.stage === 'pre-merge')); } // no filter run: no unproven row counts
     return readJsonlText(txt);
 }
 const events = readEffectiveEvents(join(stateDir, 'status-events.jsonl'));

@@ -151,6 +151,15 @@ check "E29b: a pre-merge row whose PR GitHub reports MERGED is read as the merge
 ev '{"ts":"2026-11-02T14:00:01Z","event":"merge","key":"HIMMEL-7382","pr":"106","head":"h6","result":"not-merged","stage":"merge-failed"}'
 MERGE_ROWS_GH="$tmp/mrgh" cs
 check "E29b: a not-merged row after it retires the pre-merge row" "$(tk HIMMEL-7382 .check.merge.pr)" "null"
+reset
+reg chain-8004=7379,7381,7382
+issue HIMMEL-8004 "To Do" type=Epic
+issue HIMMEL-7382 Done parent=HIMMEL-8004 resolved=2026-11-02T16:00:00.000+0000
+ev '{"ts":"2026-11-02T14:00:00Z","event":"merge","key":"HIMMEL-7382","pr":"106","head":"h6","contract":"yes","result":"pending","stage":"pre-merge"}'
+pad='{"ts":"2026-11-02T13:00:00Z","event":"hold-release","key":"HIMMEL-1","result":"moved","note":"padding to push the ledger past 1 MiB..................................................."}'
+for _ in $(seq 1 12000); do printf '%s\n' "$pad"; done >> "$S/status-events.jsonl"
+MERGE_ROWS_GH="$tmp/mrgh" cs
+check "E29b: a ledger past 1 MiB still reads the merged PR's pre-merge row" "$(tk HIMMEL-7382 .check.merge.pr)" "106"
 
 # --- E30: a chain changes ----------------------------------------------------
 reset
