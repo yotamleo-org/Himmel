@@ -129,7 +129,7 @@ function lockdown(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
 // `/op <name> key=value ...`: the operator asks root to run one named, versioned station op. The helper
 // validates the name and every parameter against the installed schema and sends the notice (name, version, params,
 // effect, nonce) through root's notice bot; the approval is the usual `NONCE CODE`. A value with spaces is double-quoted:
-// `/op cron-entry action=set tag=ping schedule="0 5 * * *" command=/usr/local/libexec/himmel/bin/open-session`.
+// `/op cron-entry action=set tag=ping schedule="0 5 * * *" command=/usr/local/bin/open-session`.
 const OPCMD = /^\s*\/op(?:@\w+)?(?=\s|$)(.*)$/is;
 const OP_NAME = /^[a-z][a-z0-9-]{0,30}$/;
 const OP_PAIR = /^[a-z_]{1,20}=[^"]*$/;

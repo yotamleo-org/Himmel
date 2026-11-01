@@ -55,14 +55,16 @@ case $action in set | remove) ;; *) bad action "must be set or remove" ;; esac
 # not offered: the never-remote floor refuses any parameter that names it. Upgrade path for that: offer
 # /usr/local/libexec/himmel once the floor exempts an op's own parameters there.
 opener_ok() {
-    local p=$1 rel owner mode
+    local p=$1 rel real owner mode
     [[ $p =~ ^/[A-Za-z0-9._/-]{1,250}$ ]] || return 1
     case "$p/" in *"/../"* | *"/./"* | *"//"*) return 1 ;; esac
     rel=${p#"$ROOT"}
     [ "$rel" != "$p" ] || [ -z "$ROOT" ] || return 1
     case $rel in /usr/local/bin/*) ;; *) return 1 ;; esac
     [ -f "$p" ] && [ -x "$p" ] || return 1
-    read -r owner mode < <(stat -L -c "%u %a" "$p" 2>/dev/null) || return 1
+    real=$(readlink -f -- "$p") || return 1 # prim-ok: self-contained root-owned op, sources no libs # gnu-ok: Linux only
+    [ "$(dirname -- "$real")" = "$(readlink -f -- "$ROOT/usr/local/bin")" ] || return 1 # prim-ok: self-contained root-owned op # gnu-ok: Linux only
+    read -r owner mode < <(stat -c "%u %a" "$real" 2>/dev/null) || return 1 # gnu-ok: Linux only
     [ "$owner" = "$WANT_UID" ] || return 1
     [ $((8#$mode & 8#022)) -eq 0 ]
 }
