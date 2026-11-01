@@ -29,6 +29,9 @@ export BRIDGE_ROOT="$tmp/bridge"
 printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$tmp/facts-bank.sh"
 printf '#!/usr/bin/env bash\necho "#5 [DEMO-1] stub pr (feat/x)"\n' > "$tmp/facts-prs.sh"
 export HANDOFF_FACTS_BANK="$tmp/facts-bank.sh" HANDOFF_FACTS_PRS="$tmp/facts-prs.sh"
+# `next` refuses on an open PR with no live worker or queue hold: an empty PR list keeps this suite off the real gh
+printf '[]\n' > "$tmp/orphan-prs-none.json"
+export ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-none.json"
 
 fails=0
 check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
