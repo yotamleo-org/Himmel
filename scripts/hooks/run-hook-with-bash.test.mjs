@@ -2684,3 +2684,284 @@ test('every non-lifecycle --chain member wired in settings.json and every plugin
     `unclassified --chain member(s) — add to MUST_RUN_CHAIN_MEMBERS or to ADVISORY_CHAIN_MEMBERS with a reason: ${unclassified.join(', ')}`,
   );
 });
+
+// ---- exact-identity incident rows and the per-chain run log -------------------
+//
+// A skip-log row used to name a member and a session but no call, so a reader
+// could not say WHICH tool call a guard refused or never evaluated. Every row
+// now carries the call id, the tool, a per-invocation id and the member's
+// occurrence; the run log adds one row per chain invocation, including the
+// rule denials the skip log never held.
+
+const CALL_PAYLOAD = (extra = {}) =>
+  JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Read',
+    tool_use_id: 'toolu_01IDENTITYA',
+    session_id: 'sess-identity',
+    tool_input: { file_path: '/tmp/example.txt' },
+    ...extra,
+  });
+
+const jsonlRows = (file) =>
+  existsSync(file)
+    ? readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
+    : [];
+
+function runLogged(dir, names, { input = CALL_PAYLOAD(), env = {} } = {}) {
+  const skipLog = join(dir, 'skips.jsonl');
+  const runLog = join(dir, 'runs.jsonl');
+  const result = spawnSync(process.execPath, [LAUNCHER, '--chain', ...names.map((n) => join(dir, n))], {
+    encoding: 'utf8',
+    input,
+    env: {
+      ...process.env,
+      RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500',
+      RUN_HOOK_CHAIN_SKIP_LOG: skipLog,
+      RUN_HOOK_CHAIN_RUN_LOG: runLog,
+      ...env,
+    },
+  });
+  return { result, skipRows: jsonlRows(skipLog), runRows: jsonlRows(runLog), skipLog, runLog };
+}
+
+test('a starved member skip row names the exact call, tool, invocation, occurrence and origin', () => {
+  withChain((dir) => {
+    const { skipRows } = runLogged(dir, ['hang.sh', 'allow.sh']);
+    assert.equal(skipRows.length, 1);
+    const row = skipRows[0];
+    assert.equal(row.action, 'skip');
+    assert.equal(row.reason, 'ETIMEDOUT');
+    assert.equal(row.callId, 'toolu_01IDENTITYA');
+    assert.equal(row.tool, 'Read');
+    assert.equal(row.event, 'PreToolUse');
+    assert.match(row.invocation, /^[0-9a-f]{12}$/);
+    assert.equal(row.occurrence, 1);
+    assert.equal(row.origin, 'test', 'a row written under a log override is test-origin');
+  });
+});
+
+test('a buffer overflow skip carries the same call identity and is not a timeout', () => {
+  withChain((dir) => {
+    const { skipRows } = runLogged(dir, ['flood.sh', 'allow.sh'], { env: { RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '8000' } });
+    assert.equal(skipRows.length, 1);
+    assert.equal(skipRows[0].reason, 'ENOBUFS');
+    assert.equal(skipRows[0].action, 'skip');
+    assert.equal(skipRows[0].callId, 'toolu_01IDENTITYA');
+  });
+});
+
+test('the run log holds one row per invocation and shares the invocation id with the skip log', () => {
+  withChain((dir) => {
+    const { result, skipRows, runRows } = runLogged(dir, ['hang.sh', 'allow.sh']);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(runRows.length, 1, 'exactly one run row per chain invocation');
+    const row = runRows[0];
+    assert.equal(row.invocation, skipRows[0].invocation);
+    assert.equal(row.callId, 'toolu_01IDENTITYA');
+    assert.equal(row.tool, 'Read');
+    assert.equal(row.session, 'sess-identity');
+    assert.equal(row.event, 'PreToolUse');
+    assert.equal(row.origin, 'test');
+    assert.equal(row.exit, 0);
+    assert.deepEqual(
+      row.members.map((m) => [m.member, m.outcome, m.reason ?? null, m.occurrence]),
+      [
+        ['hang.sh', 'skip', 'ETIMEDOUT', 1],
+        ['allow.sh', 'allow', null, 1],
+      ],
+    );
+    for (const member of row.members) assert.equal(typeof member.elapsed, 'number');
+    assert.equal(row.members[0].budget, 500);
+  });
+});
+
+test('a rule denial is recorded in the run log with its reason, never in the skip log', () => {
+  withChain((dir) => {
+    const { result, skipRows, runRows } = runLogged(dir, ['allow.sh', 'deny-exit2.sh', 'plain-stdout.sh']);
+    assert.equal(result.status, 2);
+    assert.equal(skipRows.length, 0, 'a rule denial is not a starvation row');
+    assert.equal(runRows.length, 1);
+    const row = runRows[0];
+    assert.equal(row.exit, 2);
+    assert.deepEqual(
+      row.members.map((m) => [m.member, m.outcome, m.reason ?? null]),
+      [
+        ['allow.sh', 'allow', null],
+        ['deny-exit2.sh', 'deny', 'RULE'],
+      ],
+      'the member the deny short-circuited past is not listed as run',
+    );
+    assert.equal(row.members[1].denyLine, 'deny reason');
+  });
+});
+
+test('a JSON deny is a rule denial and its first line comes from stderr', () => {
+  withChain((dir) => {
+    const { runRows } = runLogged(dir, ['deny-json.sh']);
+    assert.equal(runRows[0].members[0].reason, 'RULE');
+    assert.equal(runRows[0].members[0].denyLine, 'why');
+  });
+});
+
+test('a must-run timeout deny and an entry-deadline deny carry call identity and a deny line', () => {
+  withChain((dir) => {
+    const timeout = runLogged(dir, ['block-read-secrets.sh', 'allow.sh']);
+    assert.equal(timeout.result.status, 2);
+    assert.equal(timeout.skipRows.length, 1);
+    assert.equal(timeout.skipRows[0].action, 'deny');
+    assert.equal(timeout.skipRows[0].reason, 'ETIMEDOUT');
+    assert.equal(timeout.skipRows[0].callId, 'toolu_01IDENTITYA');
+    assert.match(timeout.skipRows[0].denyLine, /did not evaluate this call/);
+    const entry = timeout.runRows[0].members[0];
+    assert.deepEqual([entry.outcome, entry.reason], ['deny', 'ETIMEDOUT']);
+    assert.equal(entry.denyLine, timeout.skipRows[0].denyLine);
+  });
+  withChain((dir) => {
+    const deadline = runLogged(dir, ['block-read-secrets.sh'], {
+      env: { RUN_HOOK_CHAIN_ENTRY_TIMEOUT_MS: '100', RUN_HOOK_CHAIN_ENTRY_SAFETY_MARGIN_MS: '200' },
+    });
+    assert.equal(deadline.result.status, 2);
+    assert.equal(deadline.skipRows.length, 1);
+    assert.equal(deadline.skipRows[0].reason, 'ENTRY_DEADLINE');
+    assert.equal(deadline.skipRows[0].elapsed, 0);
+    assert.equal(deadline.skipRows[0].callId, 'toolu_01IDENTITYA');
+    assert.match(deadline.skipRows[0].denyLine, /entry deadline/);
+    assert.equal(ran(dir, 'block-read-secrets.sh'), false, 'a deadline deny never starts the member');
+  });
+});
+
+test('a lifecycle skip row carries origin and invocation but no call identity', () => {
+  withChain((dir) => {
+    const skipLog = join(dir, 'skips.jsonl');
+    spawnSync(process.execPath, [LAUNCHER, '--chain', '--lifecycle', join(dir, 'hang.sh')], {
+      encoding: 'utf8',
+      input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'sess-identity' }),
+      env: { ...process.env, RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500', RUN_HOOK_CHAIN_SKIP_LOG: skipLog },
+    });
+    const rows = jsonlRows(skipLog);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].event, 'SessionStart');
+    assert.equal(rows[0].callId, null);
+    assert.match(rows[0].invocation, /^[0-9a-f]{12}$/);
+    assert.equal(rows[0].origin, 'test');
+  });
+});
+
+// The deny line is the only message text the log keeps. The whole message is
+// redacted before anything else, so a secret that straddles the clip boundary
+// cannot survive as an unrecognisable fragment.
+const DENY_LINE_CASES = [
+  {
+    name: 'a secret-shaped run that the clip boundary would split',
+    message: `${'word '.repeat(43)}${'k'.repeat(60)}\n`,
+    expect: (line) => {
+      assert.match(line, /<redacted>/);
+      assert.doesNotMatch(line, /k{10}/);
+    },
+    absent: [/k{10}/],
+  },
+  {
+    name: 'a second line holding a secret',
+    message: 'first line\nAUTH_TOKEN=second-line-secret-value\n',
+    expect: (line) => assert.equal(line, 'first line'),
+    absent: [/second-line-secret-value/],
+  },
+  {
+    name: 'ANSI colour sequences',
+    message: '\u001b[31mred \u001b[1mtext\u001b[0m\n',
+    expect: (line) => assert.equal(line, 'red text'),
+    absent: [/\\u001b/],
+  },
+  {
+    name: 'an ANSI sequence that splits a secret name',
+    message: 'AUTH_TO\u001b[0mKEN=hunter2valuexyz\n',
+    expect: (line) => assert.doesNotMatch(line, /hunter2valuexyz/),
+    absent: [/hunter2valuexyz/],
+  },
+  {
+    name: 'control characters and CRLF',
+    message: 'a\u0000b\u0007c\r\nnext line\n',
+    expect: (line) => assert.equal(line, 'abc'),
+    absent: [],
+  },
+  {
+    name: 'leading blank lines and padding',
+    message: '\n\n  first real line  \nsecond\n',
+    expect: (line) => assert.equal(line, 'first real line'),
+    absent: [],
+  },
+  {
+    name: 'a bearer credential',
+    message: 'Authorization: Bearer shorttoken123\n',
+    expect: (line) => assert.doesNotMatch(line, /shorttoken123/),
+    absent: [/shorttoken123/],
+  },
+  {
+    name: 'markup stays text for the renderer to escape',
+    message: '<img src=x onerror=alert(1)>\n',
+    expect: (line) => assert.equal(line, '<img src=x onerror=alert(1)>'),
+    absent: [],
+  },
+  {
+    name: 'a line longer than 240 code points',
+    message: `${'\u{1F600}'.repeat(300)}\n`,
+    expect: (line) => assert.equal(Array.from(line).length, 240),
+    absent: [],
+  },
+];
+
+for (const c of DENY_LINE_CASES) {
+  test(`deny-line is redacted before the first line and the clip: ${c.name}`, () => {
+    withChain((dir) => {
+      writeFileSync(join(dir, 'msg.txt'), c.message);
+      writeFileSync(join(dir, 'deny-msg.sh'), '#!/usr/bin/env bash\ncat "$(dirname "$0")/msg.txt" >&2\nexit 2\n');
+      chmodSync(join(dir, 'deny-msg.sh'), 0o755);
+      const { runRows, skipRows, runLog, skipLog } = runLogged(dir, ['deny-msg.sh']);
+      const entry = runRows[0].members[0];
+      assert.equal(entry.reason, 'RULE');
+      c.expect(entry.denyLine);
+      const stored = `${readFileSync(runLog, 'utf8')}${existsSync(skipLog) ? readFileSync(skipLog, 'utf8') : ''}`;
+      for (const pattern of c.absent) assert.doesNotMatch(stored, pattern, 'nothing of the unredacted text reaches either log');
+      assert.equal(skipRows.length, 0);
+    });
+  });
+}
+
+test('a rule denial with no message stores a null deny line', () => {
+  withChain((dir) => {
+    writeFileSync(join(dir, 'deny-silent.sh'), '#!/usr/bin/env bash\nexit 2\n');
+    chmodSync(join(dir, 'deny-silent.sh'), 0o755);
+    const { runRows } = runLogged(dir, ['deny-silent.sh']);
+    assert.equal(runRows[0].members[0].reason, 'RULE');
+    assert.equal(runRows[0].members[0].denyLine, null);
+  });
+});
+
+test('run rows never land in the project log from a test-shaped call', () => {
+  withChain((dir) => {
+    const project = makeTmpDir('hook-bash-run-log-project-');
+    try {
+      const base = { ...process.env, CLAUDE_PROJECT_DIR: project };
+      delete base.RUN_HOOK_CHAIN_SKIP_LOG;
+      delete base.RUN_HOOK_CHAIN_RUN_LOG;
+      const runLog = join(project, '.claude', 'logs', 'hook-runs.jsonl');
+      const run = (input, env) =>
+        spawnSync(process.execPath, [LAUNCHER, '--chain', join(dir, 'allow.sh')], { encoding: 'utf8', input, env });
+
+      run(PAYLOAD, base);
+      assert.equal(existsSync(runLog), false, 'a payload with no call id writes no run row');
+
+      run(CALL_PAYLOAD(), { ...base, RUN_HOOK_CHAIN_SKIP_LOG: join(dir, 'skips.jsonl') });
+      assert.equal(existsSync(runLog), false, 'a skip-log override marks a test run, which writes no project run row');
+
+      run(CALL_PAYLOAD(), base);
+      const rows = jsonlRows(runLog);
+      assert.equal(rows.length, 1, 'a call with an id and no override is a production run');
+      assert.equal(rows[0].origin, 'production');
+      assert.equal(rows[0].callId, 'toolu_01IDENTITYA');
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});
