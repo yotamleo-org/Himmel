@@ -768,6 +768,10 @@ RC17=$(run_hook bank-hard "$REG_NONE" "$(payload general-purpose sonnet 'Impleme
 assert_rc "no lane + live HARD bank refuses" 2 "$RC17"
 assert_contains "bank refusal keeps HIMMEL-920 message" "5-hour bank at 85%" "$(cat "$TMP/err-bank-hard")"
 assert_contains "bank refusal names cheaper-lane choices" "native subagents on a cheaper Claude tier" "$(cat "$TMP/err-bank-hard")"
+RC17B=$(run_hook bank-hard-brief-drafter "$REG_NONE" "$(payload brief-drafter sonnet 'Implement the fix' 'Write the code.')" IMPL_GUARD_CACHE_PATH="$CACHE_HARD")
+assert_rc "no lane + live HARD bank refuses a write-capable brief-drafter" 2 "$RC17B"
+RC17E=$(run_hook bank-hard-edit-runner "$REG_NONE" "$(payload_no_model edit-runner 'Implement the fix' 'Write the code.')" IMPL_GUARD_CACHE_PATH="$CACHE_HARD")
+assert_rc "no lane + live HARD bank refuses a write-capable edit-runner with no model" 2 "$RC17E"
 
 CACHE_WARN="$TMP/cache-warn.json"; mkcache "$CACHE_WARN" 70
 RC18=$(run_hook bank-warn "$REG_NONE" "$(payload general-purpose sonnet 'Implement the fix' 'Write the code.')" IMPL_GUARD_CACHE_PATH="$CACHE_WARN")

@@ -116,6 +116,11 @@ rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
+cap=<version>:<n>[,<version>:<n>] (HIMMEL-6762) follows vmismatch= and is ABSENT unless an unreleased version
+holds more than 15 open residual tickets (labelled residual, not Done or Closed, by fixVersion; the count board.mjs
+shows against its soft cap), read from the Jira mirror. In chief-wait's action key whole: a version crossing the
+cap, or its count moving, wakes once; an unchanged value does not.
+
 slotage=<worker>:<range>:<n>suites:<age>m[,...] (HIMMEL-5788) sits just before tmp= and is ABSENT unless a
 live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
 holder did not record reads ?. Read-only, advisory, not in chief-wait's action key. Env seams:
@@ -376,6 +381,14 @@ pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
 non-zero. `priority-prune.sh --doc <doc>` prints the line without them; the console runs
 its --apply only with an operator OK and logs a PRIORITY-PRUNE bullet.
+
+prio=<open>/<total> and prio-stale=WARN:<low|KEY@VER>[,...] (HIMMEL-8072) follow pool-closed=, read by
+`priority-prune.sh --doc <doc> --stale` from the same Live state `priority:` line and the Jira mirror. prio= shows
+whenever the line exists (open = not Done, a key missing from the mirror is open). prio-stale= is ABSENT unless
+the line is dead or off-version: `low` when under 25 % of its keys are open, and each open key whose fixVersion
+is set and not the doc's concrete `focus-version: vN` as KEY@<its fixVersion>. `priority-prune.sh --doc <doc>
+--from-chains <chain-state.json>` prints a replacement line in dependency order and never writes the doc.
+Advisory: not in chief-wait's action key.
 
 wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> (HIMMEL-6584) come from one
 `scripts/worktree.sh prune --orphans` read, cached TICK_WT_ORPHANS_TTL minutes (30):
@@ -2025,6 +2038,53 @@ if [ -n "$leaks_version" ]; then
     fi
 fi
 
+# cap=<version>:<n>[,<version>:<n>]: each unreleased version holding more than 15 open
+# residual tickets (labelled residual, not Done/Resolved/Closed/Won't, by fixVersion), counted from the Jira
+# mirror the way board.mjs counts its CR_SOFT_CAP slots. ABSENT at 15 or fewer, with no mirror or on a failed
+# read. In chief-wait's wake key whole: a version crossing the cap or its count moving wakes once.
+cap_summary=""
+if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
+    cap_summary="$(CAP_MIRROR="$nd_mirror" timeout -k 2 30 python3 -I -c '
+import json, os, re
+d = os.environ["CAP_MIRROR"]
+released = set()
+try:
+    for l in open(d + ".versions.tsv", encoding="utf-8"):
+        f = l.rstrip("\n").split("\t")
+        if len(f) > 1 and f[1] == "true":
+            released.add(f[0])
+except OSError:
+    raise SystemExit
+gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do|wont fix|won\x27t fix)$", re.I)
+slots = {}
+for name in os.listdir(d):
+    if not name.endswith(".md"):
+        continue
+    try:
+        head = open(os.path.join(d, name), encoding="utf-8").read(3000).split("\n---")[0]
+    except OSError:
+        raise SystemExit
+    def val(k):
+        m = re.search("^" + k + ": (.*)$", head, re.M)
+        if not m:
+            return None
+        try:
+            return json.loads(m.group(1))
+        except ValueError:
+            return m.group(1)
+    labels = val("labels") or []
+    if not any(re.search(r"(^|-)residual(-|$)", str(x)) for x in labels):
+        continue
+    if gone.match(str(val("status") or "")) or gone.match(str(val("statusCategory") or "")):
+        continue
+    for v in val("fixVersions") or []:
+        slots[v] = slots.get(v, 0) + 1
+over = [(v, n) for v, n in slots.items() if n > 15 and v not in released]
+over.sort(key=lambda p: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", p[0])])
+print(",".join(re.sub(r"\s", "_", v) + ":" + str(n) for v, n in over))
+' 2>/dev/null)" || cap_summary=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read leaves the field off
+fi
+
 # rm-queue=<n>,<oldest age>m[,run]: open placement requests of the chief doc's `release:` release,
 # from one `jira release state <R> --json` read; the age is the oldest open request's. When the oldest is
 # TICK_RMRUN_MIN minutes old (default 30), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
@@ -2180,6 +2240,21 @@ fi
 pool_closed=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_closed="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
+fi
+
+# prio=<open>/<total> and prio-stale=WARN:<low|KEY@VER>,...: the same line read by priority-prune.sh --stale
+# prio is skip without a doc, mirror or line; prio-stale is empty (absent) when the line is healthy.
+prio_summary=skip
+prio_stale=""
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    prio_out="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --stale 2>/dev/null)" || prio_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
+    if [ -n "$prio_out" ]; then
+        prio_summary="${prio_out%% *}"
+        prio_rest=""
+        case "$prio_out" in *" "*) prio_rest="${prio_out#* }" ;; esac
+        for prio_w in $prio_rest; do prio_stale="${prio_stale:+$prio_stale,}$prio_w"; done
+        [ -z "$prio_stale" ] || prio_stale="WARN:$prio_stale"
+    fi
 fi
 
 # pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
@@ -3199,6 +3274,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vm runner: %s\n' "$vmrun_summary"
     printf 'versionless-done: %s\n' "$vdone_summary"
     printf 'version mismatch: %s\n' "$vmismatch_summary"
+    [ -z "$cap_summary" ] || printf 'cap: %s\n' "$cap_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
     [ -z "$dbot_summary" ] || printf 'dependabot autoland: %s\n' "$dbot_summary"
@@ -3216,6 +3292,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'orphans-wip: %s\n' "$orphans_wip"
     printf 'pool: %s\n' "$pool_summary"
     printf 'pool-closed: %s\n' "$pool_closed"
+    printf 'prio: %s\n' "$prio_summary"
+    [ -z "$prio_stale" ] || printf 'prio-stale: %s\n' "$prio_stale"
     printf 'intake: %s\n' "$intake_summary"
     printf 'pool-stale: %s\n' "$pool_stale"
     printf 'chains: %s\n' "$chains_summary"
@@ -3237,7 +3315,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
             focus=ok|sdrift=0:*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
@@ -3280,6 +3358,8 @@ else
     compact_field orphans-wip "$orphans_wip"
     compact_field pool "$pool_summary"
     compact_field pool-closed "$pool_closed"
+    compact_field prio "$prio_summary"
+    compact_field prio-stale "$prio_stale"
     compact_field INTAKE "$intake_summary"
     compact_field pool-stale "$pool_stale"
     compact_field chains "$chains_summary"
@@ -3294,6 +3374,7 @@ else
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
     compact_field vmismatch "$vmismatch_summary"
+    compact_field cap "$cap_summary"
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
     compact_field dbot "$dbot_summary"

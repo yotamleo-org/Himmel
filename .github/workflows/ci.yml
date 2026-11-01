@@ -568,7 +568,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:8431bf1658c4a6d6c6f98dba5846de6ad718e8c084f521d136c222c02af57dac') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1137,7 +1137,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:8431bf1658c4a6d6c6f98dba5846de6ad718e8c084f521d136c222c02af57dac') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1509,7 +1509,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:8431bf1658c4a6d6c6f98dba5846de6ad718e8c084f521d136c222c02af57dac') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1624,7 +1624,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:8431bf1658c4a6d6c6f98dba5846de6ad718e8c084f521d136c222c02af57dac') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1753,7 +1753,7 @@ jobs:
     # container) and the setup steps gated on !job.container.id install the
     # same tools on the host.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:8431bf1658c4a6d6c6f98dba5846de6ad718e8c084f521d136c222c02af57dac') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -1924,7 +1924,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]' || vars.HIMMEL_VM_RUNNER == 'on' || vars.CI_GCP == 'on') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:8431bf1658c4a6d6c6f98dba5846de6ad718e8c084f521d136c222c02af57dac') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}
@@ -2409,7 +2409,7 @@ jobs:
     # --init: an init as PID 1 reaps orphaned descendants, as on the host.
     # --privileged: bwrap and unshare need user namespaces inside the container.
     container:
-      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
+      image: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository || github.actor == 'dependabot[bot]') && (vars.CI_IMAGE || 'ghcr.io/yotamleo-org/himmel-ci@sha256:8431bf1658c4a6d6c6f98dba5846de6ad718e8c084f521d136c222c02af57dac') || '' }} # env-literal-ok: the CI image's own GHCR path, pinned by digest
       credentials:
         username: ${{ github.actor }}
         password: ${{ github.token }}

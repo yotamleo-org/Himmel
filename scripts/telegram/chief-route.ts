@@ -1,5 +1,6 @@
 import { join, dirname, basename, resolve } from "node:path";
-import { readdir, readFile, stat, mkdir, open, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -369,6 +370,50 @@ export async function speakOnSatellite(satellite: string, text: string, env: Rec
   if (!res.ok) throw new Error(`Home Assistant announce failed: HTTP ${res.status}`);
 }
 
+// `send-file` — hand a local file to the operator's Telegram chat.
+// Validates here (missing / not a file / over the Bot API's 50 MB cap are refused with
+// a clear error and a non-zero exit, nothing queued), renders a markdown spec or plan
+// to a standalone phone-readable HTML file first, then queues one `document_path`
+// outbox line that the poller uploads with sendDocument. The chief never holds the
+// bot token. The queued copy lives in <bridge root>/outgoing/<id>/ (not git, not pruned); the poller ships only from there.
+export const MAX_SEND_BYTES = 50 * 1024 * 1024;
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+export function renderMarkdownHtml(md: string, title: string): string {
+  const body = Bun.markdown.html(md, { noHtmlBlocks: true, noHtmlSpans: true });   // raw HTML in the source is shown as text
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<title>${esc(title)}</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:1rem;overflow-wrap:anywhere}pre{background:#f4f4f4;padding:.75rem;overflow-x:auto}code{font-family:ui-monospace,monospace;font-size:.9em}table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid #bbb;padding:.3rem .5rem}blockquote{border-left:4px solid #bbb;margin-left:0;padding-left:1rem;color:#555}@media(prefers-color-scheme:dark){body{background:#111;color:#ddd}pre{background:#222}th,td{border-color:#555}}</style>
+</head><body>
+${body}</body></html>
+`;
+}
+
+export async function queueFile(root: string, chat: number, path: string, caption?: string): Promise<string> {
+  const abs = resolve(path);
+  const tooBig = (size: number) => new Error(`file is ${(size / 1048576).toFixed(1)} MB, over the Telegram 50 MB upload limit: ${path}`);
+  const st = await stat(abs).catch(() => null);
+  if (!st) throw new Error(`file not found: ${path}`);
+  if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
+  if (st.size > MAX_SEND_BYTES) throw tooBig(st.size);
+  // Every file is COPIED (or rendered) into <bridge root>/outgoing/<id>/: the poller ships only from there.
+  const dir = join(root, "outgoing", randomUUID());
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const isMd = /\.(md|markdown)$/i.test(abs);
+  const send = join(dir, isMd ? `${basename(abs).replace(/\.(md|markdown)$/i, "")}.html` : basename(abs));
+  if (isMd) await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs)));
+  else await copyFile(abs, send);
+  const size = (await stat(send)).size;
+  if (size > MAX_SEND_BYTES) { await rm(dir, { recursive: true, force: true }); throw tooBig(size); }
+  const { sendFileViaOutbox } = await import("./poller");
+  await sendFileViaOutbox(root, chat, send, caption);
+  return send;
+}
+
+// CLI: `bun chief-route.ts send-file <chat_id> <path> [caption...]` queues a file (above).
 // CLI: `bun chief-route.ts reply [--chief <name>] [--satellite <entity_id>] <chat_id> <text...>` — the chief's reply
 // path. Appends to the same per-chat outbox every other bridge reply uses; the
 // running poller flushes it. Dynamic import: poller.ts imports this module, so a
@@ -379,6 +424,9 @@ if (import.meta.main) {
     await registerConsole(args[0], args[1], args[2]);
   } else if (verb === "announce" && args.length === 1) {
     await announceConsole(args[0]);
+  } else if (verb === "send-file" && args.length >= 2 && Number.isSafeInteger(Number(args[0])) && Number(args[0]) !== 0) {
+    try { console.log(`queued ${await queueFile(defaultRoot(), Number(args[0]), args[1], args.slice(2).join(" ") || undefined)}`); }
+    catch (e) { console.error(`[chief-route] send-file refused: ${e instanceof Error ? e.message : e}`); process.exit(1); }
   } else {
     const name = args[0] === "--chief" ? args.splice(0, 2)[1] : verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined;
     const satellite = verb === "reply" && args[0] === "--satellite" ? args.splice(0, 2)[1] : undefined;
@@ -392,7 +440,7 @@ if (import.meta.main) {
         catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
       }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | send-file <chat_id> <path> [caption] | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }

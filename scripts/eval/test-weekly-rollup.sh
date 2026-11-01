@@ -84,6 +84,8 @@ export SELF_REVIEW_SCRIPT="$W/self-review.sh"
 export CACHE_HEALTH_HISTORY="$W/cache.jsonl"
 export SUITE_FLAKE_LEDGER="$W/flake.jsonl" SUITE_FLAKE_REPO_ID=fx
 export WEEKLY_ROLLUP_NOW="2026-09-24T00:00:00Z"
+# Per-ticket usage store fixture (usage-compute.sh records): see the hand sums below.
+export HIMMEL_USAGE_STORE="$DIR/fixtures/weekly-rollup"
 OUT="$W/rollup.jsonl"
 run() { python3 -I "$PY" "$@"; }
 
@@ -124,6 +126,44 @@ check "unsourced series are named" '["failure_rate_pct","denial_rate_pct","ship_
   "$(row 2026-W37 | jq -c .no_source)"
 check "the week holding now is partial" true "$(f 2026-W39 partial)"
 check "a finished week is not partial" false "$(f 2026-W36 partial)"
+
+# Start vs build cost per ticket, from the usage store (weights: input 1, cache-read 0.1,
+# cache-create 1.25, output 5; subagent counters included; last record per ticket wins).
+# Hand sums, W37 (fixture tickets 3 and 4):
+#   ticket 3 start (console) 1000 + 1000 + 500 + 500 + 500 (sub output) = 3500
+#            build (leg 2000+2000+1000+1000 = 6000, judge 1000) = 7000, total 10500
+#   ticket 4 start 0, build 4000 + 1000 = 5000
+#   week: start 3500, build 12000, start share 3500/15500 = 22.58%, median ticket 7750
+# W36 (ticket 1 has a record, ticket 2 none): start 2000, build 6000, share 25, median 8000.
+# The _chief pool (500 + 500 + 500 = 1500) is tied to no ticket; _unattributed is not chief cost.
+check "a chief session for ticket X is counted against X (start cost)" 3500 "$(f 2026-W37 start_cost_eq)"
+check "build cost is separate from start cost" 12000 "$(f 2026-W37 build_cost_eq)"
+check "the record lists start and build per ticket" '[{"ticket":"HIMMEL-3","start":3500,"build":7000},{"ticket":"HIMMEL-4","start":0,"build":5000}]' \
+  "$(row 2026-W37 | jq -c .ticket_costs)"
+check "W37 share spent before the build" 22.58 "$(f 2026-W37 start_share_pct)"
+check "W37 median cost per ticket" 7750 "$(f 2026-W37 cost_per_ticket_median)"
+check "W36 start, build, share and median" "2000 6000 25 8000" \
+  "$(row 2026-W36 | jq -r '[.start_cost_eq, .build_cost_eq, .start_share_pct, .cost_per_ticket_median] | map(tostring) | join(" ")')"
+check "W36 lists only the ticket with a usage record" '[{"ticket":"HIMMEL-1","start":2000,"build":6000}]' \
+  "$(row 2026-W36 | jq -c .ticket_costs)"
+check "chief cost tied to no ticket stays in the pool, listed" 1500 "$(f 2026-W37 chief_pool_cost_eq)"
+check "a week with no usage record has null start cost" null "$(f 2026-W38 start_cost_eq)"
+check "the usage source is named ok" "ok no-match" "$(f 2026-W37 sources.usage) $(f 2026-W38 sources.usage)"
+HIMMEL_USAGE_STORE="$W/no-store" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$W/nostore.jsonl" >/dev/null 2>&1
+check "an absent usage store still exits 0" 0 $?
+check "an absent usage store nulls the start cost and is named" "null null absent" \
+  "$(jq -r 'select(.key=="2026-W37") | [.start_cost_eq, .chief_pool_cost_eq, .sources.usage] | map(tostring) | join(" ")' "$W/nostore.jsonl")"
+# A finished week keeps its per-ticket columns when the store no longer matches its tickets,
+# but the chief pool is a store-wide figure and always follows the store.
+mkdir -p "$W/store2"
+printf '{"schema":1,"ticket":"_chief","totals":{"console":{"input":700}}}\n' >"$W/store2/records.jsonl"
+cp "$OUT" "$W/kept-usage.jsonl"
+HIMMEL_USAGE_STORE="$W/store2" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$W/kept-usage.jsonl" >/dev/null 2>&1
+check "a no-match store rerun exits 0" 0 $?
+check "a finished week keeps its start cost when the store stops matching" "3500 ok" \
+  "$(jq -r 'select(.key=="2026-W37") | [.start_cost_eq, .sources.usage] | map(tostring) | join(" ")' "$W/kept-usage.jsonl")"
+check "the chief pool follows the store on that rerun" 700 \
+  "$(jq -r 'select(.key=="2026-W37") | .chief_pool_cost_eq' "$W/kept-usage.jsonl")"
 
 cp "$OUT" "$W/first.jsonl"
 run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT" >/dev/null 2>&1

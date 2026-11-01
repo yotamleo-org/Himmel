@@ -1,0 +1,154 @@
+diff --git a/scripts/handover/chief-kit/status-drift.sh b/scripts/handover/chief-kit/status-drift.sh
+index d4e10c8fb..8363065d2 100755
+--- a/scripts/handover/chief-kit/status-drift.sh
++++ b/scripts/handover/chief-kit/status-drift.sh
+@@ -23,7 +23,9 @@
+ #   WORKER-STALE      the record says live or idle, but the lock is released or the doc ended
+ #   WORKER-COMMENT    the WORKER comment hash differs from the one the record's class gives
+ #   TWO-OWNERS        two live docs claim one key
+-#   UNOWNED           started, no open PR, no live owner
++#   UNOWNED           started, no open PR, no live owner; not for a `standing`-labelled
++#                     ticket, nor one whose comments name an OPEN PR in another repo (that
++#                     also skips DERIVE-MISMATCH and WORKER-COMMENT for the key)
+ #   HELD-IN-WORK      labelled held, with a live owner or an open PR
+ #   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
+ #                     version than the current one; the fix is an INTAKE request to the current version
+@@ -183,6 +185,23 @@ if [ -z "$DOCS" ]; then DOCS=$(handover_root 2>/dev/null) || DOCS=""; fi # swall
+
+ is_owner_state() { case "$1" in live|idle|IDLE-HELD) return 0 ;; *) return 1 ;; esac; }
+
++# 0 when a comment on the ticket names a PR in another repo that gh reports OPEN. The pr list
++# above only sees this repo, so a ticket whose PR lives elsewhere looks ownerless without this.
++# A closed or merged PR, or a failed gh read, is not a yes: the ticket's rows stay.
++xrepo_open() { # <KEY>
++    local urls u st
++    # swallow-ok: an unreadable comment list means no cross-repo PR is known, so the rows stay
++    urls=$(ts_jira comments "$1" 2>/dev/null | grep -oE 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[0-9]+' | sort -u)
++    while IFS= read -r u; do
++        [ -n "$u" ] || continue
++        case "$u" in "https://github.com/$REPO/pull/"*) continue ;; esac
++        # swallow-ok: a failed gh read is not proof the PR is open, so the rows stay
++        st=$(bounded 20 gh pr view "$u" --json state --jq .state 2>/dev/null) || continue
++        [ "$st" = OPEN ] && return 0
++    done <<<"$urls"
++    return 1
++}
++
+ # The status and type of every active key in a few JQL searches, not one `jira get`
+ # per key. A key the batch lacks (or a failed chunk) is still read by its own get.
+ jbatch=""
+@@ -218,9 +237,18 @@ while IFS= read -r key; do
+     wstate_derive="$TS_WORKER_STATE" pr_state="$TS_PR_STATE"
+     open_prs=$(printf '%s' "$pr_keys" | awk -F'\t' -v k="$key" '$1 == k { printf "%s#%s", (n++ ? "," : ""), $2 }')
+
++    # A started ticket with no PR here is not drift when it is `standing` (started on purpose,
++    # no single PR) or when its PR is open in another repo (that PR is its owner).
++    standing=0 xrepo=0
++    if [ -z "$open_prs" ] && [ "$(ts_rank "$jstatus")" -ge 1 ]; then
++        # swallow-ok: an unreadable ticket is not standing, so its rows stay
++        if jq -e '(.fields.labels // []) | index("standing")' >/dev/null 2>&1 <<<"$(ts_jira get "$key" --json 2>/dev/null)"; then standing=1; fi
++        if xrepo_open "$key"; then xrepo=1; fi
++    fi
++
+     if [ "$derived" = no-write ]; then
+         [ "$result" != miss ] || add HEALTH "$key" "status unknown (stage=${stage:-?}${rule:+ rule=$rule})" "$FUNNEL" "$SWEEP_FIX"
+-    elif [ "$derived" != "$jstatus" ]; then
++    elif [ "$derived" != "$jstatus" ] && [ "$xrepo" = 0 ]; then
+         if [ "$(ts_rank "$derived")" -gt "$(ts_rank "$jstatus")" ]; then dir=forward; else dir=backward; fi
+         add DERIVE-MISMATCH "$key" "jira=$jstatus derived=$derived rule=$rule dir=$dir" "$FUNNEL --event sweep" "$SWEEP_FIX"
+     fi
+@@ -239,7 +267,7 @@ while IFS= read -r key; do
+         add WORKER-STALE "$key" "record=$rstate but the doc/lock says $wstate" "$FUNNEL --event sweep" "$SWEEP_FIX"
+     fi
+
+-    if [ "$derived" != no-write ] && [ -n "$worker$doc" ]; then
++    if [ "$derived" != no-write ] && [ "$xrepo" = 0 ] && [ -n "$worker$doc" ]; then
+         heads=$(printf '%s' "$pr_state" | awk -F'\t' 'NF { printf "%s#%s@%s", (n++ ? "," : ""), $1, substr($2, 1, 9) }')
+         want=$(printf '%s|%s|%s|%s' "$worker" "$wstate_derive" "$heads" "$derived" | cksum | awk '{ print $1 }')
+         have=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
+@@ -258,7 +286,7 @@ while IFS= read -r key; do
+     done <<<"$(printf '%s\n' "$owners" | sort -u)"
+     [ "$nown" -lt 2 ] || add TWO-OWNERS "$key" "$nown live docs claim it" - "wrap or halt all but one worker doc"
+
+-    if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ]; then
++    if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ] && [ "$standing" = 0 ] && [ "$xrepo" = 0 ]; then
+         case "$wstate" in none|wrapped) add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX" ;; esac
+     fi
+
+diff --git a/scripts/handover/chief-kit/test-status-drift.sh b/scripts/handover/chief-kit/test-status-drift.sh
+index 9b465c21d..ba1b44767 100755
+--- a/scripts/handover/chief-kit/test-status-drift.sh
++++ b/scripts/handover/chief-kit/test-status-drift.sh
+@@ -73,6 +73,9 @@ case "$1" in
+         [ -e "$FX/versions.fail" ] && { echo "boom" >&2; exit 1; }
+         cat "$FX/versions.tsv" 2>/dev/null
+         exit 0 ;;
++    comments)
++        cat "$FX/comments.$2" 2>/dev/null
++        exit 0 ;;
+     comment)
+         file=""; edit=""
+         for a in "$@"; do
+@@ -99,6 +102,10 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
+ printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
+ case "$1 $2" in
+     "pr view")
++        case "$3" in http*)
++            [ -e "$FX/xpr.fail" ] && { echo "HTTP 502" >&2; exit 1; }
++            cat "$FX/xpr.state"; exit 0 ;;
++        esac
+         if [ "$5" = headRefOid ]; then
+             if [ -e "$FX/head-$3" ]; then cat "$FX/head-$3"; else jq -r --argjson n "$3" '.[] | select(.number == $n) | .headRefOid' "$FX/pr-list.json"; fi
+         elif [ -e "$FX/view-$3.json" ]; then jq -r .title "$FX/view-$3.json"; else echo "no pull requests found" >&2; exit 1; fi ;;
+@@ -501,7 +508,7 @@ drift() { bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1; }
+ drows() { grep -E "^$1 " "$tmp/dout"; }
+ dcount() { drows "$1" | wc -l | tr -d ' '; }
+ dlast() { tail -n 1 "$tmp/dout"; }
+-nwrites() { grep -cE '^(transition|comment|edit)' "$STUB_LOG" || true; }
++nwrites() { grep -cE '^(transition|comment|edit) ' "$STUB_LOG" || true; }
+ wipe_docs() { rm -rf "$tmp/docs"; mkdir -p "$tmp/docs"; }
+ logrow() { # <event> <key> <result> <pr> [contract] - a row appended to the outcome log
+     mkdir -p "$TICKET_STATUS_STATE_DIR"
+@@ -622,6 +629,42 @@ reset "In Progress"; jl "$K" "In Progress"; pr 7 "[$K] feat" aaa111; checks 7 fa
+ drift
+ check "3b: an open PR means not UNOWNED" "$(dcount UNOWNED)" 0
+
++# a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in
++# another repo is owned by that PR (the open-PR list only sees this repo)
++XPR=https://github.com/yotamleo-org/himmel-voice/pull/13
++xpr() { printf 'PR %s is open and parked\n' "$XPR" > "$FX/comments.$K"; printf '%s\n' "$1" > "$FX/xpr.state"; }
++reset "In Progress"; jl "$K" "In Progress"; printf 'standing\n' > "$FX/labels.$K"
++drift
++check "3b: a standing ticket with no PR and no owner is not UNOWNED" "$(dcount UNOWNED)" 0
++check "3b: and a standing ticket is not drift at all" "$(dlast | cut -d: -f1)" "sdrift=0"
++reset "In Progress"; jl "$K" "In Progress"; printf 'other\n' > "$FX/labels.$K"
++drift
++contains "3b: a ticket with another label is still UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
++
++reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
++drift
++check "3b: an open cross-repo PR means not UNOWNED" "$(dcount UNOWNED)" 0
++check "3b: an open cross-repo PR means not DERIVE-MISMATCH" "$(dcount DERIVE-MISMATCH)" 0
++check "3b: an open cross-repo PR means not WORKER-COMMENT" "$(dcount WORKER-COMMENT)" 0
++check "3b: the cross-repo PR is read by its URL, once" "$(grep -c "^gh pr view $XPR --json state" "$STUB_LOG")" 1
++check "3b: and the cross-repo read writes no Jira field" "$(nwrites)" 0
++reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr CLOSED
++drift
++contains "3b: a closed cross-repo PR does not exempt: UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
++contains "3b: a closed cross-repo PR does not exempt: DERIVE-MISMATCH" "$(drows DERIVE-MISMATCH)" "DERIVE-MISMATCH $K"
++contains "3b: a closed cross-repo PR does not exempt: WORKER-COMMENT" "$(drows WORKER-COMMENT)" "WORKER-COMMENT $K"
++reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr MERGED
++drift
++contains "3b: a merged cross-repo PR does not exempt" "$(drows UNOWNED)" "UNOWNED $K"
++reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN; touch "$FX/xpr.fail"
++drift
++contains "3b: a failed cross-repo read keeps the rows (never a silent green)" "$(drows UNOWNED)" "UNOWNED $K"
++contains "3b: and the failed read still ends in a counted sdrift" "$(dlast)" "sdrift="
++reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"
++printf 'PR https://github.com/yotamleo-org/himmel/pull/13 is open\n' > "$FX/comments.$K"; printf 'OPEN\n' > "$FX/xpr.state"
++bash "$DRIFT" --repo yotamleo-org/himmel --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1
++contains "3b: a PR URL in this repo is not a cross-repo exemption" "$(drows UNOWNED)" "UNOWNED $K"
++
+ reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"; printf 'held\n' > "$FX/labels.$K"
+ drift
+ contains "3b: a held ticket with a live owner is HELD-IN-WORK" "$(drows HELD-IN-WORK)" "HELD-IN-WORK $K"

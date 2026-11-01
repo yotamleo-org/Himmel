@@ -1,10 +1,20 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { stubKeyring } from '../../config-ui/tests/keyring-stub';
+import config from '../vitest.config';
 import { authHeader, normalizeEnv } from './env.js';
+
+// env.ts asks the secrets resolver at import time and this suite imports it in-process, so the suite
+// must run with the real keyring off: the config's setup file sets it, whatever the launching shell
+// exported. The resolver rows below switch it on only through their stub.
+it('keeps the in-process suite off the real keyring', () => {
+  expect(config.test?.setupFiles).toContain('./vitest.setup.ts');
+  expect(process.env.HIMMEL_SECRETS_KEYRING).toBe('off');
+});
 
 it('loads the install .env from an unrelated cwd with no Bitbucket variables exported', () => {
   const root = mkdtempSync(join(tmpdir(), 'bitbucket-own-path-'));
@@ -17,6 +27,10 @@ it('loads the install .env from an unrelated cwd with no Bitbucket variables exp
     mkdirSync(home);
     const modulePath = join(installed, 'env.mjs');
     copyFileSync(new URL('../dist/env.js', import.meta.url), modulePath);
+    // The built env.js imports the shared secrets helper from scripts/lib; the resolver itself is not
+    // installed here, so this fixture never reaches a keyring.
+    mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+    copyFileSync(new URL('../../lib/resolve-secrets.mjs', import.meta.url), join(root, 'scripts', 'lib', 'resolve-secrets.mjs'));
     writeFileSync(join(root, '.env'), 'BITBUCKET_EMAIL=fixture@example.invalid\nBITBUCKET_API_TOKEN=dummy\n');
     writeFileSync(join(cwd, '.env'), 'BITBUCKET_EMAIL=wrong@example.invalid\nBITBUCKET_API_TOKEN=wrong\n');
     const run = spawnSync(process.execPath, ['--input-type=module', '-e',
@@ -79,5 +93,91 @@ describe('authHeader', () => {
     delete process.env.BITBUCKET_EMAIL;
     delete process.env.BITBUCKET_API_TOKEN;
     expect(() => authHeader()).toThrow(/BITBUCKET_EMAIL and BITBUCKET_API_TOKEN/);
+  });
+});
+
+// Rows S0-R2 and S0-R7 of the secrets-resolver slice. The built env.js runs from a fixture install whose
+// scripts/lib holds the real resolver, over a stub keyring (secret-tool and busctl first on PATH).
+// Every value is a dummy; no row reaches the station keyring.
+describe('Bitbucket credentials through the secrets resolver', () => {
+  let dir: string;
+  let stub: ReturnType<typeof stubKeyring>;
+  let log: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'bitbucket-resolver-'));
+    stub = stubKeyring(dir);
+    // Log every secret-tool argv (a value travels on stdin, never argv).
+    const bin = join(dir, 'kbin');
+    renameSync(join(bin, 'secret-tool'), join(bin, 'secret-tool.real'));
+    writeFileSync(join(bin, 'secret-tool'),
+      '#!/usr/bin/env bash\nprintf "secret-tool %s\\n" "$*" >>"$KSTUB_LOG"\nexec "$(dirname "$0")/secret-tool.real" "$@"\n');
+    chmodSync(join(bin, 'secret-tool'), 0o755);
+    log = join(dir, 'keyring.log');
+    writeFileSync(log, '');
+    // Suite guard: the resolver must find the stub, never a real secret-tool or busctl.
+    for (const tool of ['secret-tool', 'busctl']) {
+      const found = spawnSync('bash', ['-c', 'command -v ' + tool], { env: { PATH: stub.env.PATH }, encoding: 'utf8' }).stdout.trim();
+      if (!found.startsWith(bin)) throw new Error(tool + ' resolves to ' + found + ', not the stub dir: aborting before any real keyring call');
+    }
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  // A fixture install: <root>/scripts/bitbucket/dist/env.mjs beside <root>/scripts/lib/{resolver, loader}.
+  function install(dotenv: string | null, withResolver = true): string {
+    const root = join(dir, 'root');
+    const dist = join(root, 'scripts', 'bitbucket', 'dist');
+    const lib = join(root, 'scripts', 'lib');
+    mkdirSync(dist, { recursive: true });
+    mkdirSync(lib, { recursive: true });
+    copyFileSync(new URL('../dist/env.js', import.meta.url), join(dist, 'env.mjs'));
+    const libDir = new URL('../../lib/', import.meta.url);
+    copyFileSync(new URL('resolve-secrets.mjs', libDir), join(lib, 'resolve-secrets.mjs'));
+    if (withResolver) for (const f of ['himmel-secrets', 'load-dotenv.sh']) copyFileSync(new URL(f, libDir), join(lib, f));
+    if (dotenv !== null) writeFileSync(join(root, '.env'), dotenv);
+    return join(dist, 'env.mjs');
+  }
+
+  function header(modulePath: string, extra: Record<string, string> = {}): { status: number | null; stdout: string } {
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e',
+      'import { authHeader } from ' + JSON.stringify(pathToFileURL(modulePath).href) + '; process.stdout.write(authHeader());',
+    ], {
+      cwd: dir,
+      env: { ...stub.env, HOME: dir, KSTUB_LOG: log, KSTUB_LOCKED: 'false', ...extra },
+      encoding: 'utf8', timeout: 30000,
+    });
+    return { status: run.status, stdout: run.stdout };
+  }
+  const basic = (email: string, token: string) => 'Basic ' + Buffer.from(email + ':' + token).toString('base64');
+  const DOTENV = 'BITBUCKET_EMAIL=env@example.invalid\nBITBUCKET_API_TOKEN=dummy-dotenv-token\n';
+
+  // The resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up).
+  it.skipIf(process.platform === 'darwin')('S0-R7 credentials held only in the keyring are served, and the stub log shows a lookup with no value', () => {
+    stub.put('BITBUCKET_EMAIL', 'kr@example.invalid');
+    stub.put('BITBUCKET_API_TOKEN', 'dummy-keyring-token');
+    const run = header(install(null));
+    expect(run.status).toBe(0);
+    expect(run.stdout).toBe(basic('kr@example.invalid', 'dummy-keyring-token'));
+    const calls = readFileSync(log, 'utf8');
+    expect(calls).toMatch(/secret-tool lookup .*key BITBUCKET_API_TOKEN/);
+    expect(calls).not.toContain('dummy-keyring-token');
+  });
+
+  it.skipIf(process.platform === 'darwin')('S0-R2 a key in both the keyring and .env resolves to the keyring value', () => {
+    stub.put('BITBUCKET_API_TOKEN', 'dummy-keyring-token');
+    expect(header(install(DOTENV)).stdout).toBe(basic('env@example.invalid', 'dummy-keyring-token'));
+  });
+
+  it('a name the keyring does not hold still comes from .env', () => {
+    expect(header(install(DOTENV)).stdout).toBe(basic('env@example.invalid', 'dummy-dotenv-token'));
+  });
+
+  it('a missing resolver falls back to .env', () => {
+    expect(header(install(DOTENV, false)).stdout).toBe(basic('env@example.invalid', 'dummy-dotenv-token'));
+  });
+
+  it('a failing keyring lookup falls back to .env', () => {
+    stub.put('BITBUCKET_API_TOKEN', 'dummy-keyring-token');
+    expect(header(install(DOTENV), { KSTUB_LOOKUP_FAIL: '1' }).stdout).toBe(basic('env@example.invalid', 'dummy-dotenv-token'));
   });
 });

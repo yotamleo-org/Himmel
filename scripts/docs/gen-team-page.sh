@@ -46,6 +46,14 @@ PAGE = "docs/team.md"
 NOT_ROLES = {
     ".claude/agents/comment-sicko.md":
         "a tool agent: any session may spawn it to delete comments; it holds no seat in a shift",
+    ".claude/agents/brief-drafter.md":
+        "a chief helper agent: it drafts briefs and legs.json for the chief; it holds no seat in a shift",
+    ".claude/agents/ticket-auditor.md":
+        "a chief helper agent: it audits tickets for the chief; it holds no seat in a shift",
+    ".claude/agents/page-reviewer.md":
+        "a chief helper agent: it reviews one docs page for the chief; it holds no seat in a shift",
+    ".claude/agents/edit-runner.md":
+        "a chief helper agent: it applies an edit list for the chief; it holds no seat in a shift",
     "docs/handover/consult-preface.md":
         "a one-question helper the chief starts when a worker needs a skill its profile lacks; "
         "it answers that worker's question and stops, so it is part of the worker's ask, not a seat",

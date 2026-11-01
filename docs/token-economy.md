@@ -32,7 +32,7 @@ can still draw on extra usage if your plan has it turned on.
   only usage. When it cannot read fresh figures it lets the run go ahead and
   says so.
 - **Before it hands out implementation work.** A session that dispatches a
-  `general-purpose`, `claude` or `Plan` subagent on sonnet, opus or fable, or
+  `general-purpose`, `claude`, `Plan`, `brief-drafter` or `edit-runner` subagent on sonnet, opus or fable, or
   with no model named, is refused at 80 % of the 5-hour window or 85 % of the
   weekly one (`IMPL_GUARD_HARD`, `IMPL_GUARD_WEEKLY_HARD`). Other subagent types
   and haiku are exempt. When it cannot see when the window resets, it only warns.

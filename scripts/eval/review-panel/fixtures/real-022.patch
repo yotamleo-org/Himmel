@@ -1,0 +1,155 @@
+diff --git a/scripts/handover/console-kit/ready-check.sh b/scripts/handover/console-kit/ready-check.sh
+index 4d0e18859..8dbd106b1 100755
+--- a/scripts/handover/console-kit/ready-check.sh
++++ b/scripts/handover/console-kit/ready-check.sh
+@@ -56,7 +56,8 @@
+ #      deferred key that does not exist or is already Done/Closed/Resolved/
+ #      Won't Do, or is neither residual-labelled, older than the PR's own
+ #      ticket, nor linked (either direction, any type) from it. The deferral
+-#      keys must also equal the CR ledger's deferred_to rows for the PR head.
++#      keys must also equal the CR ledger's deferred_to rows for the PR head
++#      (or for the reviewed head a same-branch trivial-descendant row names).
+ #      A Jira error reads UNKNOWN and fails — never a PASS.
+ #   9. Plugin version bump vs CURRENT origin/main: every plugin
+ #      under marketplace/plugins/ the PR touches must be versioned strictly
+@@ -401,7 +402,8 @@ fi  # ONLY7 == 0: checks 1-6
+ # Whether a line's "done" is TRUE stays the console's diff read; this check
+ # makes an unaccounted ask structurally visible and a deferral real: every
+ # deferred key must exist and still be open, and the deferral keys must equal
+-# the CR ledger's deferred_to rows for the PR head. A Jira error reads UNKNOWN and
++# the CR ledger's deferred_to rows for the PR head, or for the reviewed head a
++# same-branch trivial-descendant row names. A Jira error reads UNKNOWN and
+ # fails — never a PASS. JIRA_CMD overrides the CLI (tests), like GH_CMD.
+ jira_run() {
+     if [ -n "${JIRA_CMD:-}" ]; then
+@@ -425,25 +427,30 @@ cov_linked() {
+     printf '%s\n' "$cov_links_out" | awk -F'\t' -v t="$2" '{ for (i = 1; i <= NF; i++) if ($i == "inward=" t || $i == "outward=" t) f = 1 } END { exit !f }'
+ }
+
+-# cov_ledger_keys <ledger> <head>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
++# cov_ledger_keys <ledger> <head> <pr-branch>: the tickets the CR ledger defers findings to at <head>, one upper-case key per line.
++# Findings of a reviewed head count too when a trivial-descendant row of <pr-branch> for <head> names that reviewed head.
+ # A finding is identified by its key and original head, and a later row for the same identity replaces the earlier one.
+ # Its effective row is its own row with every amend written after it against that original head merged over it, in file
+-# order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head). The
++# order (an amend's set.head re-keys the finding, and later amends keep the original head as their target_head); a finding
++# whose own head is not <head> takes only amends of its branch or without a branch. The
+ # finding counts at <head> when its effective head matches, and only an effective verdict of deferred counts.
+ # A head matches when either spelling is a prefix of the other.
+ # A missing ledger is an empty set (check 4 owns that failure); an unreadable one returns 1.
+ cov_ledger_keys() {
+     [ -f "$1" ] || return 0
+-    cov_led_out=$(jq -R -n -r --arg h "$2" '
++    cov_led_out=$(jq -R -n -r --arg h "$2" --arg pb "${3:-}" '
+         def hm($x; $y): ($x | type == "string") and ($y | type == "string") and ($x | length >= 7) and ($y | length >= 7) and (($x | ascii_downcase) as $a | ($y | ascii_downcase) as $b | ($a | startswith($b)) or ($b | startswith($a)));
+         def fk($r): [$r.finding_id // "?", $r.artifact // "diff", $r.perspective // "off"] | join("|");
+         def vd($o): $o | {verdict, deferred_to} | with_entries(select(.value != null));
+         [inputs | fromjson? | select(type == "object")] | to_entries | map(.value + {_ln: .key}) as $rows
+         | def ak($r; $x): fk($r) + "|" + ($x[0:7] | ascii_downcase);
++        [$rows[] | select(.kind == "avail" and $pb != "" and .branch == $pb and (.head | type == "string") and hm(.head; $h) and (.detail | type == "string"))
++            | {branch, rev: (.detail | capture("^trivial-descendant of reviewed head (?<r>[0-9a-fA-F]{7,40}) ").r? // empty)}] as $desc
++        | def at_head($f; $e): hm($e.head; $h) or any($desc[]; .branch == $f.branch and hm($e.head; .rev));
+         (reduce ($rows[] | select(.kind == "amend" and (.set | type == "object") and (.target_head | type == "string") and (.target_head | length >= 7))) as $a ({}; .[ak($a; $a.target_head)] += [$a])) as $amends
+         | reduce ($rows[] | select(.kind == "finding" and (.head | type == "string") and (.head | length >= 7))) as $f ({};
+-            (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head))) as $a ($f; . + $a.set)) as $e
+-            | .[ak($f; $f.head)] = (if hm($e.head; $h) then vd($e) else {} end))
++            (reduce (($amends[ak($f; $f.head)] // [])[] | select(._ln > $f._ln and hm(.target_head; $f.head) and (hm($f.head; $h) or .branch == null or .branch == $f.branch))) as $a ($f; . + $a.set)) as $e
++            | .[ak($f; $f.head)] = (if at_head($f; $e) then vd($e) else {} end))
+         | .[] | select(.verdict == "deferred" and (.deferred_to | type == "string") and (.deferred_to | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))
+         | .deferred_to | ascii_upcase' "$1") || return 1
+     printf '%s\n' "$cov_led_out" | sort -u
+@@ -530,7 +537,12 @@ EOF
+     else
+         cov_common=$(git rev-parse --git-common-dir 2>/dev/null) || cov_common="" # swallow-ok: no repo reads as no ledger, so a body deferral fails below
+         cov_h12=$(printf '%.12s' "$cov_head")
+-        if cov_led_out=$(cov_ledger_keys "$cov_common/cr-critic-scores.jsonl" "$cov_head"); then
++        if [ "$ONLY7" -eq 1 ]; then
++            cov_pr_branch=$("$GH" pr view "$PR" --repo "$nwo" --json headRefName --jq '.headRefName' 2>/dev/null | tr -d '\r') || cov_pr_branch="" # swallow-ok: an unreadable branch follows no trivial-descendant row, so a reviewed-head deferral fails below
++        else
++            cov_pr_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || cov_pr_branch="" # swallow-ok: same fallback as above
++        fi
++        if cov_led_out=$(cov_ledger_keys "$cov_common/cr-critic-scores.jsonl" "$cov_head" "$cov_pr_branch"); then
+             cov_led_keys=$(printf '%s\n' "$cov_led_out" | tr '\n' ' ')
+             for cov_k in $cov_led_keys; do
+                 case " $cov_body_keys " in
+diff --git a/scripts/handover/console-kit/test-ready-check.sh b/scripts/handover/console-kit/test-ready-check.sh
+index edc67dbc8..14c05b0ec 100755
+--- a/scripts/handover/console-kit/test-ready-check.sh
++++ b/scripts/handover/console-kit/test-ready-check.sh
+@@ -174,7 +174,7 @@ seed_ledger_missing() {
+
+ # seed_deferral <KEY> [head]: a CR finding at head (default $SHA) deferred to KEY, the row check 7 matches against the body
+ seed_deferral() {
+-    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"b","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
++    printf '{"kind":"finding","ts":"2026-01-01T00:00:01Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-%s","severity":"sug","verdict":"deferred","deferred_to":"%s","fu_class":"polish","reason":"out of scope","artifact":"diff","perspective":"off"}\n' "${SEED_BRANCH:-b}" "${2:-$SHA}" "$1" "$1" >> "$LEDGER"
+ }
+
+ run() {
+@@ -794,6 +794,67 @@ seed_deferral HIMMEL-50 "${SHA:0:12}"
+ rc=0; out="$(run)" || rc=$?
+ check "ledger: an abbreviated head spelling matches: exit 0" "$rc" "0"
+
++# seed_descendant <reviewed head> [branch]: the avail row clear-review-marker writes for a tip it cleared as a trivial descendant of a reviewed head
++seed_descendant() {
++    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "${2:-${SEED_BRANCH:-b}}" "$SHA" "$1" >> "$LEDGER"
++}
++REVHEAD=cafebabecafebabecafebabecafebabecafebabe
++SEED_BRANCH=feat/himmel-100-thing
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
++seed_deferral HIMMEL-50 "$REVHEAD"; seed_descendant "$REVHEAD"
++rc=0; out="$(run)" || rc=$?
++check "descendant: a deferral at the reviewed head counts at a trivial-descendant PR head: exit 0" "$rc" "0"
++contains "descendant: reviewed-head deferral: check 7 passes" "$out" "[PASS] 7."
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: done\n'
++seed_deferral HIMMEL-50 "$REVHEAD"; seed_descendant "$REVHEAD"
++rc=0; out="$(run)" || rc=$?
++check "descendant: a reviewed-head deferral absent from the body: exit 1" "$rc" "1"
++contains "descendant: absent from body: names the key" "$out" "HIMMEL-50 is deferred in the CR ledger"
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
++seed_deferral HIMMEL-50 "$REVHEAD"; seed_descendant "$REVHEAD" other
++rc=0; out="$(run)" || rc=$?
++check "descendant: a descendant row of another branch does not reach the deferral: exit 1" "$rc" "1"
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
++SEED_BRANCH=b seed_deferral HIMMEL-50 "$REVHEAD"; SEED_BRANCH=b seed_descendant "$REVHEAD"
++rc=0; out="$(run)" || rc=$?
++check "descendant: a descendant row of a branch other than the PR's does not count, though the finding shares it: exit 1" "$rc" "1"
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
++seed_deferral HIMMEL-50 deadbeefdeadbeefdeadbeefdeadbeefdeadbeef; seed_descendant "$REVHEAD"
++rc=0; out="$(run)" || rc=$?
++check "descendant: a deferral at a head the descendant row does not name does not count: exit 1" "$rc" "1"
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
++seed_deferral HIMMEL-50 "$REVHEAD"
++rc=0; out="$(run)" || rc=$?
++check "descendant: no trivial-descendant row, the reviewed-head deferral does not count: exit 1" "$rc" "1"
++contains "descendant: no row: names the key" "$out" "HIMMEL-50 is deferred in the body but has no deferred_to row"
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
++printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"%s","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SEED_BRANCH" "$REVHEAD" "$SEED_BRANCH" "$REVHEAD" >> "$LEDGER"
++seed_descendant "$REVHEAD"
++rc=0; out="$(run)" || rc=$?
++check "descendant: an amend-made deferral at the reviewed head counts: exit 0" "$rc" "0"
++
++reset_stubs
++STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
++printf '{"kind":"finding","ts":"t","branch":"%s","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"other","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SEED_BRANCH" "$REVHEAD" "$REVHEAD" >> "$LEDGER"
++seed_descendant "$REVHEAD"
++rc=0; out="$(run)" || rc=$?
++check "descendant: an amend of another branch does not defer a finding at the reviewed head: exit 1" "$rc" "1"
++unset SEED_BRANCH
++
+ reset_stubs
+ STUB_BODY='## Ticket coverage\n- ask one: done\n'
+ printf '{"kind":"finding","ts":"t","branch":"b","head":"%s","model":"codex","finding_id":"codex-9","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n{"kind":"amend","ts":"t","branch":"b","target_head":"%s","finding_id":"codex-9","artifact":"diff","perspective":"off","set":{"verdict":"deferred","deferred_to":"HIMMEL-50","fu_class":"polish"}}\n' "$SHA" "$SHA" >> "$LEDGER"

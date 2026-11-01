@@ -427,6 +427,19 @@ run_case sh-t13b-ok-real-marker-after-nested-subst PASS scripts/start.sh \
 run_case sh-t13b-ok-real-marker-with-unrelated-escape PASS scripts/start.sh \
     'echo foo\ bar; nohup claude daemon run & # t13b-ok: a real eight char reason'
 
+# The review-panel fixtures are frozen real code kept as data, never shipped
+# source: a daemon word inside one passes. The exemption is that one
+# directory; the same line anywhere else, even a sibling directory, still fails.
+# shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text
+run_case review-panel-fixture-patch PASS scripts/eval/review-panel/fixtures/real-901.patch \
+    ' rc=0; out=$(run env FAKE_DAEMON=1 bash "$SCRIPT" swap --copy "$copy" 2>&1) || rc=$?'
+# shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text
+run_case review-panel-sibling-dir FAIL scripts/eval/review-panel/fixtures-extra/real-901.patch \
+    ' rc=0; out=$(run env FAKE_DAEMON=1 bash "$SCRIPT" swap --copy "$copy" 2>&1) || rc=$?'
+# shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text
+run_case review-panel-non-fixture FAIL scripts/eval/review-panel/run.sh \
+    ' rc=0; out=$(run env FAKE_DAEMON=1 bash "$SCRIPT" swap --copy "$copy" 2>&1) || rc=$?'
+
 if [ "$failures" -ne 0 ]; then
     echo "FAIL: $failures of $cases case(s) failed"
     exit 1
