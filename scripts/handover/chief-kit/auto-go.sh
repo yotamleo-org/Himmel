@@ -29,7 +29,13 @@
 #      no trust path and no prior finding line was touched, not that the change is trivial), and no
 #      qid may hold a NO-GO for this PR at that judged head or at a head after it. Every
 #      qid that names this PR or head is read; a NO-GO at the head, or a verdict that is unsigned,
-#      unparsed or names another PR, refuses. Anything else needs no verdict (an ordinary GO)
+#      unparsed or names another PR, refuses. A real (judged) GO at the head wins outright. A GO
+#      that rests on delta no-op records (a carry, or one a failed attempt left at the head) follows
+#      the records' delta-judged: chain (at most 8 hops, no cycle) to its root, which must hold a
+#      real, signed GO of that qid, and no NO-GO may stand at or after ANY head of the chain. A
+#      judged head that may not carry is skipped, so another judged head may still carry. The
+#      NO-GO order and delta-class.sh read the anchor checkout's git (AUTO_GO_ANCHOR), not the cwd.
+#      Anything else needs no verdict (an ordinary GO)
 #   6. cr-disposition.sh check is clean
 #   7. the chain plan: with --graph that lists the PR, chain-plan-core.sh --go-check <pr> must print
 #      GO-CHECK OK; no --graph records `no-graph` and a graph without the PR records `not-in-plan`,
@@ -51,18 +57,20 @@
 #
 # Output, one line on stdout (the bus-failed form is two):
 #   WOULD-GO <pr> <head>                              exit 0  (--dry-run, every check passed)
-#   GO-SENT <pr> <head> to <label> bus=<#n>           exit 0  (the GO file is written and sent)
-#   GO-WRITTEN <pr> <head> bus-failed: <why>          exit 11 (the GO file stands; the bus send
+#   GO-SENT <pr> <head> to <label> bus=<#n> qid=<q>   exit 0  (the GO file is written and sent)
+#   GO-WRITTEN <pr> <head> qid=<q> bus-failed: <why>  exit 11 (the GO file stands; the bus send
 #   SENDMESSAGE to=<session> :: <message>                      failed or had no live session or
 #                                                              token: the chief sends the message)
 #   ESCALATE auto-go <check#> <reason>                exit 10 (check 9 = the GO act refused)
+# <q> is the judge qid the GO rests on, `none` for an ordinary GO.
 # Exit: 0 would-go or sent; 1 a shared library cannot be loaded (git-clean.sh, go-gate.sh,
-# handover-path.sh, the seam guard) or the git environment cannot be scrubbed, the audit trail
+# handover-path.sh) or the git environment cannot be scrubbed, the audit trail
 # cannot be resolved at the start or is not a regular file, or the WOULD-GO row cannot be written
 # (no answer is given, nothing is acted on); 2 usage; 3 a chief-spawned worker
 # (HIMMEL_CONSOLE_LEG) or a relay (HIMMEL_CONSOLE_RELAY) - checked first, before anything is read;
-# 10 escalate; 11 GO written, bus not delivered; 96 a chokepoint seam differs from the session's
-# launch environment. An ESCALATE whose audit row cannot be written is still answered (a refusal
+# 10 escalate; 11 GO written, bus not delivered; 96 the seam guard cannot be loaded, or a chokepoint
+# seam differs from the session's launch environment. anchor-handoff.sh failing to load exits 2,
+# before anything else (shared with the usage exit). An ESCALATE whose audit row cannot be written is still answered (a refusal
 # is safe): exit 10, with a warning on stderr.
 #
 # Audit trail: <handover root>/<user>/<bucket>/auto-go.jsonl, append-only, one row per run:
@@ -87,8 +95,10 @@
 # stack, published at merge) means no PR is stacked, so no wait-parent answer exists.
 # ponytail: the audit target is checked just before the append, not held open, so a symlink planted
 # in that gap is still followed once; upgrade path is an O_NOFOLLOW append (a node or python writer).
-# ponytail: the chief doc's `AUTO-GO` / `AUTO-GO-REFUSED` bullet and the digest line of design 2.5
-# are not written here; they belong to the worker-event caller (slice A2).
+# The chief doc's `AUTO-GO` / `AUTO-GO-REFUSED` bullet (design 2.5) is written by the caller,
+# worker-event.sh, from this script's answer line.
+# ponytail: go.sh re-runs delta-class.sh for a no-op GO from the cwd, not the anchor, so a carry to a
+# head only the anchor holds escalates at check 9; upgrade path is go.sh reading the anchor's git.
 #
 # Platform guard: POSIX bash 3.2+, jq, gh, GNU date.
 set -u
@@ -142,7 +152,7 @@ case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | t
     *) echo "auto-go: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); only the chief decides a GO." >&2; exit 3 ;;
 esac
 
-usage() { echo "usage: auto-go.sh --doc <chief doc> --fleet <manifest> --worker <label> [--graph <file>] --dry-run <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
+usage() { echo "usage: auto-go.sh --doc <chief doc> --fleet <manifest> --worker <label> [--graph <file>] [--dry-run] <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
 
 DOC=""; FLEET=""; WORKER=""; GRAPH=""; GRAPH_SET=0; DRY=0
 while [ "$#" -gt 0 ]; do
@@ -360,22 +370,30 @@ else
         QIDS=$(printf '%s' "$QIDS" | sort -u)
     fi
     # a GO at the head: any qid failing for another reason than "no GO at this head" (a NO-GO, an
-    # unsigned or unparsed record, another PR) refuses outright
-    # no GO carries while ANY qid holds a NO-GO for this PR at the judged head of the GO or at a head
-    # after it (an unresolvable head counts as after: a read that fails refuses)
-    judged_root() { # <qid> <head>: sets JR to the judged head a chain of delta no-op records of <head> rests on, else <head>; a chain past 8 hops or a cycle refuses
-        local jh="$2" jn jhops=0 jseen=" $2 "
+    # unsigned or unparsed record, another PR) refuses outright. A real (judged) GO at the head wins;
+    # a GO that rests on a delta no-op record carries only as a chain that may carry (may_carry)
+    # judged_root <qid> <head>: JR = the judged head the chain of delta no-op records of <head> rests on
+    # (else <head>), JCHAIN = every head of the chain, <head> first; past 8 hops, a cycle or a record
+    # that cannot be read refuses (fail 5)
+    judged_root() {
+        local jh="$2" jn jf jhops=0 jseen=" $2 "
+        JCHAIN="$2"
         while :; do
-            jn=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$VERDICTS/$1/delta-noop-$jh.md" 2>/dev/null | head -n 1)  # swallow-ok: no such record (or no delta-judged line) means <jh> is itself the judged head
+            jf="$VERDICTS/$1/delta-noop-$jh.md"
+            [ -e "$jf" ] || break
+            jn=$(sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p' "$jf" 2>/dev/null) || fail 5 "cannot read the delta no-op record $jf, so the judged head it rests on is unknown"  # swallow-ok: a failed read refuses right here (ESCALATE 5)
+            jn="${jn%%$'\n'*}"
             [ -n "$jn" ] || break
             jhops=$((jhops + 1))
             [ "$jhops" -le 8 ] || fail 5 "the delta no-op records of $1 under ${2:0:8} chain past 8 hops: a chain that long needs a judge"
             case "$jseen" in *" $jn "*) fail 5 "the delta no-op records of $1 under ${2:0:8} form a cycle at ${jn:0:8}" ;; esac
-            jseen="$jseen$jn "; jh="$jn"
+            jseen="$jseen$jn "; jh="$jn"; JCHAIN="$JCHAIN $jn"
         done
         JR="$jh"
     }
-    nogo_after() { # <judged head>: refuses (fail 5) on a NO-GO for this PR at it or at a descendant of it; a read that fails refuses
+    # nogo_after <head>: rc 1 (reason in NOGO_WHY) when any qid holds a NO-GO for this PR at <head> or at a
+    # descendant of it, read in the anchor checkout; a read that fails refuses (fail 5)
+    nogo_after() {
         local nq nf nh nrc nfiles nheads
         while IFS= read -r nq; do
             [ -n "$nq" ] || continue
@@ -387,22 +405,58 @@ else
                 nheads=$(sed -nE 's/^\*\*NO-GO\*\* for head `([0-9a-f]{40})`\.?$/\1/p' "$nf" 2>/dev/null) || fail 5 "cannot read the verdict $nf, so a NO-GO in it cannot be ruled out"  # swallow-ok: a failed read refuses right here (ESCALATE 5)
                 while IFS= read -r nh; do
                     [ -n "$nh" ] || continue
-                    if [ "$nh" = "$1" ]; then nrc=0; else nrc=0; git merge-base --is-ancestor "$1" "$nh" 2>/dev/null || nrc=$?; fi  # swallow-ok: rc 1 is not-after; any other rc refuses below
-                    case "$nrc" in 1) ;; *) fail 5 "verdict $nq holds a NO-GO for head ${nh:0:8} of PR $PR, at or after the judged head ${1:0:8}: a GO does not carry past it" ;; esac
+                    if [ "$nh" = "$1" ]; then nrc=0; else nrc=0; git -C "$ANCHOR" merge-base --is-ancestor "$1" "$nh" 2>/dev/null || nrc=$?; fi  # swallow-ok: rc 1 is not-after; any other rc refuses below
+                    case "$nrc" in
+                        0) NOGO_WHY="verdict $nq holds a NO-GO for head ${nh:0:8} of PR $PR, at or after the judged head ${1:0:8}: a GO does not carry past it"; return 1 ;;
+                        1) ;;
+                        *) fail 5 "cannot tell whether the NO-GO of $nq for head ${nh:0:8} comes after ${1:0:8} (git exit $nrc in $ANCHOR)" ;;
+                    esac
                 done <<< "$nheads"
             done <<< "$nfiles"
         done <<< "$QIDS"
     }
-    GOQIDS=""
+    # real_go <qid> <head>: rc 0 when a verdict of <qid> that is not a delta no-op record rules GO for
+    # <head> (its first line under ## Verdict); a read that fails refuses (fail 5)
+    real_go() {
+        local rf rl rrc
+        for rf in "$VERDICTS/$1"/*.md; do
+            [ -e "$rf" ] || continue
+            rl=$(awk '{ sub(/\r$/, "") } /^## Verdict[[:space:]]*$/ { p = 1; next } p && NF { print; exit }' "$rf" 2>/dev/null) || fail 5 "cannot read the verdict $rf"  # swallow-ok: a failed read refuses right here (ESCALATE 5)
+            # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+            case "$rl" in '**GO** for head `'"$2"'`'|'**GO** for head `'"$2"'`.') ;; *) continue ;; esac
+            rrc=0; grep -qx 'delta: no-op' "$rf" 2>/dev/null || rrc=$?
+            case "$rrc" in 0) ;; 1) return 0 ;; *) fail 5 "cannot read the verdict $rf" ;; esac
+        done
+        return 1
+    }
+    # may_carry <qid> <head>: rc 0 when the GO of <qid> at <head> may carry: the chain of no-op records it
+    # rests on ends at a head where <qid> holds a real, signed GO, and no qid holds a NO-GO at or after
+    # any head of the chain; else rc 1, the reason in NOGO_WHY
+    may_carry() {
+        local mh
+        judged_root "$1" "$2"
+        for mh in $JCHAIN; do nogo_after "$mh" || return 1; done
+        if ! real_go "$1" "$JR"; then
+            NOGO_WHY="the GO of $1 at ${2:0:8} rests on ${JR:0:8}, where $1 holds no real (judged, not no-op) GO"; return 1
+        fi
+        if ! go_trust_verdict "$ROOT" "$1" "$JR" "$ANCHOR" "$PR" >/dev/null; then
+            NOGO_WHY="the GO of $1 at ${2:0:8} rests on ${JR:0:8}, where the verdicts of $1 do not hold a valid GO"; return 1
+        fi
+    }
+    REALQ=""; NOOPQ=""; LAST_WHY=""
     while IFS= read -r q; do
         [ -n "$q" ] || continue
         case "$q" in [A-Za-z0-9]*) ;; *) fail 5 "the verdict directory '$q' is not a usable judge qid" ;; esac
         case "$q" in *[!A-Za-z0-9._-]*) fail 5 "the verdict directory '$q' is not a usable judge qid" ;; esac
         if VOUT=$(go_trust_verdict "$ROOT" "$q" "$SHA" "$ANCHOR" "$PR"); then
-            # a GO at the head that is a delta no-op record (a failed attempt left it) is a carried GO too
-            judged_root "$q" "$SHA"
-            if [ "$JR" != "$SHA" ]; then nogo_after "$JR"; A_DELTA=none; fi
-            GOQIDS="$GOQIDS$q"$'\n'
+            if real_go "$q" "$SHA"; then
+                REALQ="$REALQ$q"$'\n'
+            # a GO at the head that is only a delta no-op record (a failed attempt left it) is a carried GO
+            elif may_carry "$q" "$SHA"; then
+                NOOPQ="$NOOPQ$q"$'\n'
+            else
+                LAST_WHY="$NOGO_WHY"
+            fi
         else
             case "$VOUT" in
                 "no verdict under "*) ;;
@@ -410,8 +464,13 @@ else
             esac
         fi
     done <<< "$QIDS"
-    GO_QID=$(printf '%s' "$GOQIDS" | head -n 1)
-    # no GO at the head: a GO at an earlier head of this PR carries when the delta classifies none
+    GO_QID=$(printf '%s' "$REALQ" | head -n 1)
+    if [ -z "$GO_QID" ]; then
+        GO_QID=$(printf '%s' "$NOOPQ" | head -n 1)
+        [ -z "$GO_QID" ] || A_DELTA=none
+    fi
+    # no GO at the head: a GO at an earlier head of this PR carries when the delta classifies none.
+    # A judged head that may not carry is skipped, never fatal: another may
     if [ -z "$GO_QID" ]; then
         while IFS= read -r q; do
             [ -n "$q" ] || continue
@@ -420,15 +479,14 @@ else
             while IFS= read -r jh; do
                 [ -n "$jh" ] && [ "$jh" != "$SHA" ] || continue
                 go_trust_verdict "$ROOT" "$q" "$jh" "$ANCHOR" "$PR" >/dev/null || continue
-                judged_root "$q" "$jh"
-                nogo_after "$JR"
-                DC=$(bash "$HERE/delta-class.sh" --qid "$q" "$jh" "$SHA" 2>/dev/null) || DC=trust  # swallow-ok: a failed classifier reads trust, which refuses, below
+                may_carry "$q" "$jh" || { LAST_WHY="$NOGO_WHY"; continue; }
+                DC=$(cd "$ANCHOR" && bash "$HERE/delta-class.sh" --qid "$q" "$jh" "$SHA" 2>/dev/null) || DC=trust  # swallow-ok: a failed classifier reads trust, which refuses, below
                 LAST_DC="$DC"
                 if [ "$DC" = none ]; then GO_QID="$q"; CARRY_FROM="$jh"; break 2; fi
             done <<< "$JHEADS"
         done <<< "$QIDS"
     fi
-    [ -n "$GO_QID" ] || fail 5 "$NEED: no judge verdict rules GO for head $SHA of PR $PR${LAST_DC:+ (an earlier GO exists but the delta classifies $LAST_DC, not none)}"
+    [ -n "$GO_QID" ] || fail 5 "$NEED: no judge verdict rules GO for head $SHA of PR $PR${LAST_DC:+ (an earlier GO exists but the delta classifies $LAST_DC, not none)}${LAST_WHY:+; $LAST_WHY}"
     A_QID="$GO_QID"
     if [ -n "$CARRY_FROM" ]; then
         A_DELTA=none
@@ -582,11 +640,11 @@ if [ -z "$BUS_ERR" ]; then
     A_BUS="$BUS_REF"
     add_check 9 pass
     write_audit go || echo "auto-go: warning - the GO is written and sent but the audit row could not be written to $AUDIT" >&2
-    printf 'GO-SENT %s %s to %s bus=%s\n' "$PR" "$SHA" "$WORKER" "$BUS_REF"
+    printf 'GO-SENT %s %s to %s bus=%s qid=%s\n' "$PR" "$SHA" "$WORKER" "$BUS_REF" "${A_QID:-none}"
     exit 0
 fi
 add_check 9 pass "GO written; bus: $(printf '%s' "$BUS_ERR" | tr '\r\n\t' '   ' | cut -c1-200)"
 write_audit go || echo "auto-go: warning - the GO is written but the audit row could not be written to $AUDIT" >&2
-printf 'GO-WRITTEN %s %s bus-failed: %s\n' "$PR" "$SHA" "$(printf '%s' "$BUS_ERR" | tr '\r\n\t' '   ')"
+printf 'GO-WRITTEN %s %s qid=%s bus-failed: %s\n' "$PR" "$SHA" "${A_QID:-none}" "$(printf '%s' "$BUS_ERR" | tr '\r\n\t' '   ')"
 printf 'SENDMESSAGE to=%s :: %s\n' "${SESSION:-$(basename "$WORKER_DOC" .md)}" "$(printf '%s' "$MSG" | tr '\n' ' ')"
 exit 11

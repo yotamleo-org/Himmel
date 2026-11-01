@@ -192,7 +192,32 @@ for chi in 3 4 5 6 7 8 9 10; do
     CH+=("$(rgit rev-parse HEAD)")
 done
 rgit checkout -q -
-ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2" "${CH[@]}"
+RB=$(rgit symbolic-ref --short HEAD)
+# PSIB: a docs push on JUDGED beside NDOC, PX a docs push on it (a no-op chain hop off the line)
+rgit checkout -q -b psib "$JUDGED"
+printf 's\n' >> "$READY_REPO/docs/s.md"; rgit add -A && rgit commit -qm psib; PSIB=$(rgit rev-parse HEAD)
+printf 'x\n' >> "$READY_REPO/docs/s.md"; rgit add -A && rgit commit -qm px; PX=$(rgit rev-parse HEAD)
+# J3: a docs push after NDOC whose sha sorts after JUDGED's (so the carry meets JUDGED first), J3C a docs push on it
+j3n=0
+while :; do
+    rgit checkout -q -B jh3 "$NDOC"
+    printf 'j3 %s\n' "$j3n" > "$READY_REPO/docs/j3.md"; rgit add -A && rgit commit -qm "j3 $j3n"; J3=$(rgit rev-parse HEAD)
+    [[ "$J3" > "$JUDGED" ]] && break
+    j3n=$((j3n + 1))
+done
+printf 'c\n' >> "$READY_REPO/docs/j3.md"; rgit add -A && rgit commit -qm j3c; J3C=$(rgit rev-parse HEAD)
+rgit checkout -q "$RB"
+# ASIB (on NDOC) and ASIDE (on NDOC2): docs pushes only the anchor checkout holds, never the cwd
+SIDE="$tmp/side"
+git clone -q "$READY_REPO" "$SIDE"
+sgit() { git -C "$SIDE" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+sgit checkout -q -b asib "$NDOC"; printf 'a\n' > "$SIDE/docs/a.md"; sgit add -A && sgit commit -qm asib; ASIB=$(sgit rev-parse HEAD)
+sgit checkout -q -b aside "$NDOC2"; printf 'b\n' > "$SIDE/docs/b.md"; sgit add -A && sgit commit -qm aside; ASIDE=$(sgit rev-parse HEAD)
+git -C "$ANCHOR" fetch -q "$READY_REPO" '+refs/heads/*:refs/ready/*'
+git -C "$ANCHOR" fetch -q "$SIDE" '+refs/heads/*:refs/side/*'
+git -C "$ANCHOR" update-ref refs/remotes/origin/main "$JUDGED"
+ln -s "$LEDGER" "$(git -C "$ANCHOR" rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
+ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2" "${CH[@]}" "$PSIB" "$PX" "$J3" "$J3C" "$ASIB" "$ASIDE"
 cp "$LEDGER" "$tmp/ledger.base"
 
 CHIEF="$tmp/chief.md"
@@ -451,7 +476,7 @@ dry_nothing() { # <label>: nothing was written, sent or recorded as a GO
 # 8a. an ordinary PR (no trust hit, no judge brief, not docs): no verdict needed, the GO is written and sent
 gofresh; run 77 "$SHA"
 check    "A1b ordinary: exit 0" "$RC" "0"
-check    "A1b ordinary: GO-SENT <pr> <head> to <label> bus=<#n>" "$OUT" "GO-SENT 77 $SHA to N1 bus=#7"
+check    "A1b ordinary: GO-SENT <pr> <head> to <label> bus=<#n> qid=none" "$OUT" "GO-SENT 77 $SHA to N1 bus=#7 qid=none"
 check    "A1b ordinary: the GO file exists" "$(gofile)" "yes"
 contains "A1b ordinary: the GO file binds the head" "$(cat "$GOF" 2>/dev/null)" "head=$SHA"
 contains "A1b ordinary: the GO file is signed" "$(cat "$GOF" 2>/dev/null)" "mac="
@@ -482,7 +507,7 @@ dry_nothing "A1b dry-run"
 gofresh; verdict q1 "**GO** for head \`$SHA\`."
 STUB_FILE=scripts/ci/x.sh run 77 "$SHA"
 check    "A1b trust hit + judge GO: exit 0" "$RC" "0"
-check    "A1b trust hit + judge GO: GO-SENT" "$OUT" "GO-SENT 77 $SHA to N1 bus=#7"
+check    "A1b trust hit + judge GO: GO-SENT names the qid" "$OUT" "GO-SENT 77 $SHA to N1 bus=#7 qid=q1"
 contains "A1b trust hit + judge GO: the GO file is trust-reviewed by the judge's qid" "$(cat "$GOF" 2>/dev/null)" "trust-reviewed=q1"
 check    "A1b trust hit + judge GO: audit qid" "$(q .qid)" "q1"
 check    "A1b trust hit + judge GO: audit delta stays null (a GO at the head itself)" "$(q .delta)" "null"
@@ -588,6 +613,71 @@ rm -rf "$HANDOVER_DIR/.locks"
 verdict qn "**NO-GO** for head \`$NDOC\`."
 STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2"
 contains "A1b retry over a left no-op record: ESCALATE auto-go 5" "$OUT" "ESCALATE auto-go 5 "
+# check 5: anchor-bound git, fail-closed reads and the no-op chain
+# hrun <head>: a trust-hit run at <head> (the judge requirement applies)
+hrun() { STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$1 READY_STUB_HEAD=$1 run 77 "$1"; }
+sent() { # <label> <head> <qid>
+    check "$1: exit 0" "$RC" "0"
+    check "$1: GO-SENT" "$OUT" "GO-SENT 77 $2 to N1 bus=#7 qid=$3"
+}
+# the dry run, for rows go.sh would refuse on grounds of its own (it reads a no-op's delta from the cwd and
+# refuses a no-op whose judged head holds only a no-op): check 5 is what these rows prove
+drun() { STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$1 READY_STUB_HEAD=$1 run --dry-run 77 "$1"; }
+would() { # <label> <head>
+    check "$1: exit 0" "$RC" "0"
+    check "$1: WOULD-GO" "$OUT" "WOULD-GO 77 $2"
+}
+# delta-class.sh and the NO-GO order check read the anchor checkout's git, not the cwd's
+gofresh; verdict qj "**GO** for head \`$NDOC2\`."
+drun "$ASIDE"; would "8478 the delta is classified in the anchor checkout (a head only it holds)" "$ASIDE"
+gofresh; verdict qj "**GO** for head \`$NDOC2\`."; verdict qn "**NO-GO** for head \`$ASIB\`."
+drun "$ASIDE"; would "8478 the NO-GO order is read in the anchor checkout (a NO-GO beside the judged head)" "$ASIDE"
+# a git error ordering a NO-GO head refuses, naming the git exit
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`dead00000000000000000000000000000000beef\`."
+hrun "$NDOC"; esc "8478 git rc 128 ordering a NO-GO head" 5
+contains "8478 git rc 128: the refusal names the git exit" "$OUT" "git exit 128"
+# a NO-GO at an ancestor of the judged head does not stop the carry
+gofresh; verdict qj "**GO** for head \`$NDOC\`."; verdict qn "**NO-GO** for head \`$JUDGED\`."
+hrun "$NDOC2"; sent "8478 a NO-GO at an ancestor of the judged head" "$NDOC2" qj
+# a retry that finds the no-op record at the head: audit delta none
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; noop "$NDOC" "$JUDGED"
+hrun "$NDOC"; sent "8478 a GO at the head resting on a no-op record" "$NDOC" qj
+check    "8478 a GO at the head resting on a no-op record: audit delta none" "$(q .delta)" "none"
+# a chain of exactly 8 hops passes
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."
+noop "$NDOC" "$JUDGED"; noop "$NDOC2" "$NDOC"; noop "${CH[0]}" "$NDOC2"; noop "${CH[1]}" "${CH[0]}"; noop "${CH[2]}" "${CH[1]}"
+noop "${CH[3]}" "${CH[2]}"; noop "${CH[4]}" "${CH[3]}"; noop "${CH[5]}" "${CH[4]}"
+drun "${CH[5]}"; would "8478 a no-op chain of exactly 8 hops" "${CH[5]}"
+# a cycle in the delta-judged: records refuses
+gofresh; noop "$NDOC" "$NDOC2"; noop "$NDOC2" "$NDOC"
+hrun "$NDOC2"; esc "8478 a cycle of no-op records" 5
+contains "8478 a cycle of no-op records: the refusal says so" "$OUT" "cycle"
+# an unreadable no-op record on the chain refuses, naming it (not the later NO-GO scan)
+# (the judge's file sorts before the record, so the GO line is read before sed meets the directory)
+gofresh; verdict qj "**GO** for head \`$JUDGED\`." 77 a-judge-qj; mkdir -p "$VDIR/qj/delta-noop-$JUDGED.md"
+hrun "$NDOC"; esc "8478 an unreadable no-op record" 5
+contains "8478 an unreadable no-op record: the refusal names it" "$OUT" "cannot read the delta no-op record"
+# a NO-GO for one judged head does not refuse a carry another judged head allows
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qj "**GO** for head \`$J3\`." 77 judge-qj-j3; verdict qn "**NO-GO** for head \`$NDOC\`."
+hrun "$J3C"; sent "8478 a NO-GO after one judged head, another judged head carries" "$J3C" qj
+# a NO-GO at or after any hop of the chain refuses, not only at the root
+gofresh; verdict qj "**GO** for head \`$NDOC\`."; noop "$PSIB" "$NDOC"; noop "$PX" "$PSIB"; verdict qn "**NO-GO** for head \`$PSIB\`."
+hrun "$PX"; esc "8478 a NO-GO at a middle hop of the chain" 5
+contains "8478 a NO-GO at a middle hop: the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+# a real GO at the head is not vetoed through a stale no-op record
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; noop "$NDOC" "$JUDGED"; verdict qn "**NO-GO** for head \`$JUDGED\`."
+verdict qj "**GO** for head \`$NDOC\`." 77 judge-qj-ndoc
+hrun "$NDOC"; sent "8478 a real GO at the head beside a stale no-op record" "$NDOC" qj
+check    "8478 a real GO at the head: audit delta null" "$(q .delta)" "null"
+# the root of a no-op chain must hold a real, signed GO of that qid
+gofresh; noop "$NDOC" "$JUDGED"; noop "$JUDGED" ""
+hrun "$NDOC"; esc "8478 a no-op chain whose root holds only a no-op record" 5
+contains "8478 a root with no real GO: the refusal says so" "$OUT" "no real"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`." 77 judge-qj 0; noop "$NDOC" "$JUDGED"
+hrun "$NDOC"; esc "8478 a no-op chain whose root GO is unsigned" 5
+# usage names --dry-run as optional
+rawrun; contains "8478 usage shows [--dry-run]" "$OUT" "[--dry-run] <pr-number>"
+
 gofresh; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"; run 77 "$SHA"
 check    "A1b go.sh refuses: exit 10" "$RC" "10"
 contains "A1b go.sh refuses: ESCALATE auto-go 9" "$OUT" "ESCALATE auto-go 9 "
@@ -595,7 +685,7 @@ check    "A1b go.sh refuses: audit names check 9" "$(q '[.checks[] | select(.res
 check    "A1b go.sh refuses: nothing sent" "$(bust)" "none"
 gofresh; STUB_BUS_FAIL=1 run 77 "$SHA"
 check    "A1b bus fails: exit 11, the GO stands" "$RC" "11"
-contains "A1b bus fails: GO-WRITTEN" "$OUT" "GO-WRITTEN 77 $SHA"
+contains "A1b bus fails: GO-WRITTEN names the qid" "$OUT" "GO-WRITTEN 77 $SHA qid=none bus-failed: "
 contains "A1b bus fails: the message for the chief to send" "$OUT" "SENDMESSAGE to=HIMMEL-1-N1-feature-2026-10-31 :: GO 77 $SHA - merge with: bash "
 check    "A1b bus fails: the GO file stands" "$(gofile)" "yes"
 check    "A1b bus fails: audit outcome go, no bus record" "$(q '[.outcome, .bus] | map(tostring) | join(",")')" "go,null"

@@ -6,8 +6,9 @@
 # operator resets it by hand. This is that reset as one checked-in step: it maps
 # the PR to its head branch with gh, refuses a fork and a branch with no
 # review-round state, takes the review-counter lock (the same namespace
-# review-round.sh start uses), and MOVES <branch>.head/.round/.delta and the
-# batch residual key .deferred-to to <file>.bak-<timestamp> — a
+# review-round.sh start uses), and MOVES <branch>.head/.round/.delta, the
+# batch residual key .deferred-to and the round start point .from to
+# <file>.bak-<timestamp> — a
 # backup and a reset in one rename each.
 #
 # Reached from the trusted bridge (auto-action.sh, behind the operator's
@@ -80,7 +81,7 @@ esac
 ts="$(date +%Y%m%dT%H%M%S)-$$"
 rc=0
 moved=""
-for f in head round delta deferred-to; do
+for f in head round delta deferred-to from; do
     [ -f "$dir/$branch.$f" ] || continue
     if mv "$dir/$branch.$f" "$dir/$branch.$f.bak-$ts"; then
         moved="$moved .$f"

@@ -80,8 +80,8 @@
 #                               worker-event's first non-blank output line (a silent failure
 #                               gets an ESCALATE reason with its rc), the tick line after it
 #                               (its key is saved) (CHIEF_WAIT_WORKER_EVENT = seam). Every WAKE block ends with `absorbed since last
-#                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` when
-#                               the relay absorbed anything, and the digest clears.
+#                               wake: wraps=<n> (<labels>) merged=<n> (#<pr>,...)` [+ ` auto-go=<n> (#<pr>,...)`
+#                               for scripted GOs] when the relay absorbed anything, and the digest clears.
 #                               With the auto_go flag on, the relay also hands every new
 #                               READY bullet of a manifest worker to worker-event once, after
 #                               any wrap, even when a LIVE bullet follows it inside one
@@ -378,8 +378,10 @@ digest_file="$inbox.wait.digest"
 digest_flush() {
     case "$exit_reason" in wake-*) ;; *) return 0 ;; esac
     [ -s "$digest_file" ] || return 0
-    awk '{ n++; l = l (n > 1 ? "," : "") $1; if ($3 != "-") { m++; p = p (m > 1 ? "," : "") "#" $3 } }
-         END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)\n", n, l, m, p }' "$digest_file"
+    # a scripted GO (`<label> auto-go <pr>`) is counted on its own, never as a wrap
+    awk '$2 == "auto-go" { g++; a = a (g > 1 ? "," : "") "#" $3; next }
+         { n++; l = l (n > 1 ? "," : "") $1; if ($3 != "-") { m++; p = p (m > 1 ? "," : "") "#" $3 } }
+         END { printf "absorbed since last wake: wraps=%d (%s) merged=%d (%s)%s\n", n, l, m, p, (g ? sprintf(" auto-go=%d (%s)", g, a) : "") }' "$digest_file"
     : > "$digest_file"
 }
 # Housekeeping has its own persisted buffer: an urgent wake must not discard

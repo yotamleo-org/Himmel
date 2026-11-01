@@ -74,6 +74,7 @@ usage() {
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
     echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
+    echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     exit 2
 }
@@ -245,6 +246,7 @@ case "$verb" in
     judge-go) [ -n "$head_sha" ] || usage ;;
     evidence) [ -n "$head_sha" ] || usage ;;
     abort) [ -n "$head_sha" ] || usage ;;
+    from) [ -z "$head_sha" ] && [ -z "$base_sha" ] || usage ;;
     *) usage ;;
 esac
 
@@ -325,6 +327,9 @@ cired_state="$git_dir/cr-review-rounds/$branch.cired"
 # One line: the key of the branch's batch residual, filed by the first early
 # close and reused by every later one. It lives as long as the round count.
 deferred_to_state="$git_dir/cr-review-rounds/$branch.deferred-to"
+# The reviewed head a new second or third round starts from (.head.prev as
+# start left it, or empty), read by `from` in those two rounds only.
+from_state="$git_dir/cr-review-rounds/$branch.from"
 # Clean and version-only merge-forwards are admitted free of the delta round
 # only below this round count.
 free_round_cap=8
@@ -1428,6 +1433,19 @@ if [ "$verb" = "evidence" ]; then
     exit 0
 fi
 
+# from: print the reviewed head the current round started from (.from), only
+# when .round holds 2 or 3 at call time; in the first round and the delta
+# round (which has its own .delta) it prints nothing. Read-only. Exit 0, or 5 on an
+# unreadable counter.
+if [ "$verb" = "from" ]; then
+    read_round || exit 5
+    if [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; then
+        # swallow-ok: an empty, missing or invalid .from prints nothing
+        state_sha "$from_state" || true
+    fi
+    exit 0
+fi
+
 # abort: a round whose panel aborted after start (panel-first-pass exit 7, or
 # a delta diff it could not read) reviewed nothing, so it spends nothing. When
 # --head is the head on .head and no avail or finding row of any model sits
@@ -1478,11 +1496,15 @@ if [ "$verb" = "abort" ]; then
         fi
         ab_round="$round"
         [ "$ab_to" = "$ab_head" ] || [ "$round" -eq 0 ] || ab_round=$((round - 1))
-        # .head first: a failed counter write after it leaves the round spent,
+        # .from first (S4): a round given back must not keep a start point, or
+        # a same-head re-entry would read .from = the head itself.
+        # .head next: a failed counter write after it leaves the round spent,
         # never a free one.
         tmp_head="$head_state.tmp.$$"
         tmp_state="$state.tmp.$$"
-        if [ -n "$ab_back" ]; then
+        if ! rm -f "$from_state"; then
+            ab_rc=5
+        elif [ -n "$ab_back" ]; then
             { printf '%s\n' "$ab_back" > "$tmp_head" && mv "$tmp_head" "$head_state"; } || ab_rc=5  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
         else
             rm -f "$head_state" || ab_rc=5
@@ -1589,10 +1611,10 @@ if [ "$verb" = "start" ]; then
     [ "${delta_reuse:-0}" -eq 1 ] || round=$((round + 1))
     # The first round opens a new loop, which never reuses the last loop's
     # batch residual.
-    if [ "$round" -eq 1 ] && ! rm -f "$deferred_to_state"; then
+    if [ "$round" -eq 1 ] && ! rm -f "$deferred_to_state" "$from_state"; then
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
-        echo "review-round: cannot remove $deferred_to_state for a new round 1" >&2
+        echo "review-round: cannot remove $deferred_to_state or $from_state for a new round 1" >&2
         exit 5
     fi
     tmp_state="$state.tmp.$$"
@@ -1627,6 +1649,14 @@ if [ "$verb" = "start" ]; then
         || ! printf '%s\n' "$round_head" > "$tmp_head" \
         || ! mv "$tmp_head" "$head_state"; then  # prim-ok: tmp-then-mv under the counter lock; fixture copies of this script have no scripts/lib
         rm -f "$tmp_head" "$head_state" "$prev_state"
+    fi
+    # A new second or third round records its start point: what .head.prev now holds
+    # (empty when no reviewed head precedes it). A failed write leaves no
+    # .from, which reads as empty: the round falls back to the full diff.
+    if [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; then
+        from_sha="$(state_sha "$prev_state")" || from_sha=""
+        tmp_from="$from_state.tmp.$$"
+        { printf '%s\n' "$from_sha" > "$tmp_from" && mv "$tmp_from" "$from_state"; } || rm -f "$tmp_from" "$from_state"  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
     fi
     # Written under the counter lock, so the pid checks in delta_check and
     # abort and this claim cannot interleave between two starts.

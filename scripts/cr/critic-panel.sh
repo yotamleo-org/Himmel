@@ -113,6 +113,8 @@ usage: critic-panel.sh [--worktree <path>] [--head <sha>] [--branch <name>] [--b
                            to it, so a base branch that moved between capture and
                            review cannot change the reviewed diff
   --check [--all-tiers]    probe registry health without reviewing a diff
+  --context-file <f>       code beyond the diff, forwarded to every member's
+                           critic-first-pass.sh --context-file ("" = none)
 exit 2: usage error, or mktemp temp-file failure - check free space in TMPDIR
 exit 3: --worktree path is not a git worktree
 exit 4: --worktree <base>...HEAD diff is empty, or stdin mode got no piped diff (review refused)
@@ -387,6 +389,7 @@ fi
 CHECK_MODE="0"
 CHECK_ALL_TIERS="0"
 WORKTREE=""
+CTX_ARGS=()
 HEAD_PIN=""
 BRANCH_PIN=""
 BASE_PIN=""
@@ -477,6 +480,23 @@ while [ $# -gt 0 ]; do
                 exit 2
             fi
             WORKTREE="$2"
+            shift 2
+            ;;
+        --context-file)
+            # Empty = no context (panel-first-pass.sh forwards it always). A
+            # given file reaches every member as an absolute path.
+            if [ $# -lt 2 ]; then
+                echo "critic-panel.sh: --context-file requires a file" >&2
+                usage
+                exit 2
+            fi
+            if [ -n "$2" ]; then
+                if [ ! -f "$2" ] || [ ! -r "$2" ]; then
+                    echo "critic-panel.sh: --context-file '$2' is not a readable file" >&2
+                    exit 2
+                fi
+                CTX_ARGS=(--context-file "$(cd "$(dirname "$2")" && pwd)/$(basename "$2")")
+            fi
             shift 2
             ;;
         *)
@@ -1326,23 +1346,23 @@ _run_cfp_member() {
         if [ -n "$_TIMEOUT_BIN" ]; then
             "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$_rm_to" bash "$CFP" \
                 --model "$_rm_model" --provider "$_rm_provider" --slug "$_rm_slug" \
-                --perspective-file "$SCRIPT_DIR/$_rm_persp" \
+                --perspective-file "$SCRIPT_DIR/$_rm_persp" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} \
                 < "$tmp" > "$_rm_out" 2>"$_rm_err"
             _rm_rc=$?
         else
             bash "$CFP" --model "$_rm_model" --provider "$_rm_provider" --slug "$_rm_slug" \
-                --perspective-file "$SCRIPT_DIR/$_rm_persp" \
+                --perspective-file "$SCRIPT_DIR/$_rm_persp" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} \
                 < "$tmp" > "$_rm_out" 2>"$_rm_err"
             _rm_rc=$?
         fi
     else
         if [ -n "$_TIMEOUT_BIN" ]; then
             "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$_rm_to" bash "$CFP" \
-                --model "$_rm_model" --provider "$_rm_provider" --slug "$_rm_slug" \
+                --model "$_rm_model" --provider "$_rm_provider" --slug "$_rm_slug" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} \
                 < "$tmp" > "$_rm_out" 2>"$_rm_err"
             _rm_rc=$?
         else
-            bash "$CFP" --model "$_rm_model" --provider "$_rm_provider" --slug "$_rm_slug" \
+            bash "$CFP" --model "$_rm_model" --provider "$_rm_provider" --slug "$_rm_slug" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} \
                 < "$tmp" > "$_rm_out" 2>"$_rm_err"
             _rm_rc=$?
         fi
@@ -1921,18 +1941,18 @@ if [ "$CRITIC_PARALLEL" = "0" ]; then
         _seq_start="$(date +%s)"
         if [ -n "$perspective" ]; then
             if [ -n "$_TIMEOUT_BIN" ]; then
-                "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" < "$tmp" > "$_seq_out" 2>"$_seq_err"
+                "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$_seq_out" 2>"$_seq_err"
                 rc=$?
             else
-                bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" < "$tmp" > "$_seq_out" 2>"$_seq_err"
+                bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$_seq_out" 2>"$_seq_err"
                 rc=$?
             fi
         else
             if [ -n "$_TIMEOUT_BIN" ]; then
-                "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" < "$tmp" > "$_seq_out" 2>"$_seq_err"
+                "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$_seq_out" 2>"$_seq_err"
                 rc=$?
             else
-                bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" < "$tmp" > "$_seq_out" 2>"$_seq_err"
+                bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$_seq_out" 2>"$_seq_err"
                 rc=$?
             fi
         fi
@@ -2011,18 +2031,18 @@ else
         (
             if [ -n "$perspective" ]; then
                 if [ -n "$_TIMEOUT_BIN" ]; then
-                    "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
+                    "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
                     echo $? > "$outdir/$i.rc"
                 else
-                    bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
+                    bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" --perspective-file "$SCRIPT_DIR/$perspective" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
                     echo $? > "$outdir/$i.rc"
                 fi
             else
                 if [ -n "$_TIMEOUT_BIN" ]; then
-                    "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
+                    "$_TIMEOUT_BIN" -k "$CRITIC_KILL_GRACE_SECS" "$member_timeout" bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
                     echo $? > "$outdir/$i.rc"
                 else
-                    bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
+                    bash "$CFP" --model "$model" --provider "$row_provider" --slug "$slug" ${CTX_ARGS[@]+"${CTX_ARGS[@]}"} < "$tmp" > "$outdir/$i.out" 2>"$outdir/$i.err"
                     echo $? > "$outdir/$i.rc"
                 fi
             fi
