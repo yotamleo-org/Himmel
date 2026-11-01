@@ -405,10 +405,11 @@ for (const tool of ['secret-tool', 'busctl']) {
 }
 // Run fn with the stub keyring switched on (locked or not), then restore the environment.
 function withKeyring(opts, fn) {
-  const names = ['PATH', 'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY', 'DBUS_SESSION_BUS_ADDRESS', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'KSTUB_STORE_FAIL', 'KSTUB_LOOKUP_FAIL'];
+  const names = ['PATH', 'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY', 'DBUS_SESSION_BUS_ADDRESS', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'KSTUB_STORE_FAIL', 'KSTUB_LOOKUP_FAIL', 'JIRA_API_TOKEN', 'BITBUCKET_API_TOKEN'];
   const saved = Object.fromEntries(names.map((n) => [n, process.env[n]]));
   fs.writeFileSync(kstore, opts.items || ''); fs.writeFileSync(klog, '');
-  delete process.env.HIMMEL_SECRETS_KEYRING; delete process.env.CREDENTIALS_DIRECTORY;
+  // An exported token would be served by the resolver before the keyring stub is asked.
+  for (const k of ['HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY', 'JIRA_API_TOKEN', 'BITBUCKET_API_TOKEN']) delete process.env[k];
   Object.assign(process.env, { PATH: kbin + ':' + process.env.PATH, DBUS_SESSION_BUS_ADDRESS: 'unix:path=' + path.join(kdir, 'bus'), KSTUB_STORE: kstore, KSTUB_LOG: klog, KSTUB_LOCKED: opts.locked ? 'true' : 'false' });
   for (const k of ['KSTUB_STORE_FAIL', 'KSTUB_LOOKUP_FAIL']) { if (opts[k]) process.env[k] = '1'; else delete process.env[k]; }
   try { return fn(); } finally { for (const n of names) { if (saved[n] === undefined) delete process.env[n]; else process.env[n] = saved[n]; } }
