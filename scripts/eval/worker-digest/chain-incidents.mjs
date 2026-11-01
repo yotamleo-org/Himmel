@@ -159,6 +159,7 @@ export function rollupChain(chain, { firstDay = null, lastDay = null, refused = 
   audit.total = sources.skip.malformed + sources.run.malformed; audit.malformed = audit.total;
   const events = new Map(), members = new Map(), seen = new Set();
   let invocations = 0, joined = 0, runStart = null;
+  const hookMs = new Map(); // tool -> the chain time of each verified run row, for the hook time shown beside time to result
   const member = (name) => { if (!members.has(name)) members.set(name, blankMember(name)); return members.get(name); };
   const addEvent = (ts, base, entry) => {
     const ev = makeEvent(ts, base, entry), key = `${base.callId}\0${base.invocation}\0${base.member}\0${base.occurrence}`, prev = events.get(key);
@@ -191,6 +192,7 @@ export function rollupChain(chain, { firstDay = null, lastDay = null, refused = 
         continue;
       }
       invocations++;
+      if (nonNegative(r.elapsed) && TOOL.test(r.tool ?? '')) { if (!hookMs.has(r.tool)) hookMs.set(r.tool, []); hookMs.get(r.tool).push(r.elapsed); }
       for (const m of r.members) {
         const stats = member(m.member);
         if (!NEVER_STARTED.has(m.reason)) {
@@ -250,8 +252,11 @@ export function rollupChain(chain, { firstDay = null, lastDay = null, refused = 
         unmatched_chain: denies.filter((ev) => !used.has(ev.call_id)).length, run_log_start: runLogStart };
     }
   }
+  // Nearest-rank percentile of the kept times; the run row's elapsed is the whole chain for that call, not one guard.
+  const nearest = (xs, p) => xs.slice().sort((a, b) => a - b)[Math.ceil(p * xs.length) - 1];
+  const hookByTool = ruleKnown ? Object.fromEntries([...hookMs].map(([tool, xs]) => [tool, { n: xs.length, p50_ms: nearest(xs, 0.5), p95_ms: nearest(xs, 0.95) }])) : null;
   return {
-    state, gaps, run_log_start: runLogStart,
+    state, gaps, run_log_start: runLogStart, hook_ms_by_tool: hookByTool,
     sources: Object.fromEntries(Object.entries(sources).map(([k, s]) => [k, { state: s.state, files: s.files, malformed: s.malformed, truncated: s.truncated }])),
     audit, joined, rule_known: ruleKnown, infra_known: infraKnown, worktrees_unreadable: worktreesUnreadable,
     by_reason: reasonView(byReason), by_action: ruleKnown ? byAction : { deny: null, skip: null },

@@ -427,12 +427,26 @@ function toolChain(data, key, token) {
   const c = data && data.chain, tool = /^(Skill|Agent):/.test(key) ? null : key, known = chainKnown(c) && tool !== null;
   const mine = known ? (c.events || []).filter((e) => e.tool === tool) : [];
   const capped = known && isNum(c.events_total) && c.events_total > (c.events || []).length;
-  const timeouts = known ? `${capped ? "at least " : ""}${mine.filter((e) => e.kind === "timeout").length}` : "—";
+  // A skill or subagent has no exact incident ids: the chain rows name the tool, so its count needs new data, not 0.
+  const timeouts = tool === null ? "needs new data" : known ? `${capped ? "at least " : ""}${mine.filter((e) => e.kind === "timeout").length}` : "—";
   const shown = mine.slice(0, 20);
-  const notes = `${noteP(tool === null ? "The chain logs name the tool, not the skill or subagent, so its timeouts are unverified." : chainNote(c))}${chainAudit(c)}${noteP(CHAIN_SCOPE)}`;
+  const notes = `${noteP(tool === null ? "Needs new data: the chain logs name the tool, not the skill or subagent, so its timeouts have no exact call ids. The hook runner would have to record which skill or subagent a call named." : chainNote(c))}${chainAudit(c)}${noteP(CHAIN_SCOPE)}`;
   const none = capped ? `None of the newest ${c.events.length} events name this tool; ${c.events_total - c.events.length} older events are not shown` : "No guard refused or skipped a call to this tool in the chain logs";
   const events = known ? `${chainEvents(shown, token, none)}${noteP(shown.length < mine.length ? `Showing the newest ${shown.length} of ${capped ? "at least " : ""}${mine.length}.` : "")}` : "";
   return box("chain", "Timeouts and recent events", "How often did a guard time out on this tool, and what happened last? Guards that refused or skipped a call to it, from the hook-chain logs.", `<dl class="stats">${stat("timeouts", "Timeouts", timeouts)}</dl>${notes}${events}`);
+}
+// Time to result per tool: RESULT time minus START time, so it includes waiting and the hook chain. Calls that shared an API message
+// wait on each other and stay out of the headline; a call with no time is counted apart, never as 0.
+function timeBox(t, c) {
+  const tm = t.timing || {}, ms = (v) => (isNum(v) ? `${v} ms` : "—"), plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const hook = c && c.hook_ms_by_tool && c.hook_ms_by_tool[t.tool];
+  const batched = isNum(tm.batched_n) && tm.batched_n > 0 ? `${ms(tm.batched_p50_ms)} (${plural(tm.batched_n, "batched call")}, kept out of the headline)` : "—";
+  const hookText = hook ? `${ms(hook.p50_ms)} median over ${plural(hook.n, "run")} of the hook chain` : "—";
+  const notes = [isNum(tm.unknown_calls) && tm.unknown_calls > 0 ? `${plural(tm.unknown_calls, "call")} ${tm.unknown_calls === 1 ? "was" : "were"} recorded before time to result was kept.` : "",
+    isNum(tm.missing) && tm.missing > 0 ? `${plural(tm.missing, "call")} had no result or no time recorded; they show as — and are not counted as 0.` : "",
+    tm.capped ? "Some calls were not kept, so the percentiles use the first kept times." : ""].filter(Boolean);
+  const stats = `<dl class="stats">${stat("ttr-p50", "Median (p50)", ms(tm.p50_ms))}${stat("ttr-p95", "p95", ms(tm.p95_ms))}${stat("ttr-n", "Calls timed", num(tm.n))}${stat("ttr-batched", "Batched calls", batched)}${stat("ttr-missing", "Calls with no time", num(tm.missing))}${stat("ttr-hook", "Hook chain time", hookText)}</dl>`;
+  return box("time", "Time to result", "How long until this tool's result came back? The headline is calls issued alone; it is time to result (includes waiting and hooks), not the time the tool itself ran.", `${stats}${notes.map(noteP).join("")}`);
 }
 function evidence(sessions, ids, token) {
   const seen = [...new Set(sessions || [])], ok = seen.filter((s) => UUID.test(s)), bad = seen.filter((s) => !UUID.test(s));
@@ -468,6 +482,7 @@ function toolDrill(data, inv, ui, token) {
   const classes = table(["Class", "Count", "Share of this tool's calls"], (t.classes || []).map((c) => `<tr data-class="${esc(c.class)}">${td(esc(c.class))}${td(num(c.count))}${td(pct(ratio(c.count, t.calls)))}</tr>`), "No failure class recorded");
   return `<section class="box">${head}${sub("Was it this tool, or its callers? The same population as the overview row.")}${stats}</section>
 ${t.tool === "Bash" ? bashSections(data) : ""}
+${timeBox(t, data.chain)}
 ${box("classes", "Failure classes", "Which kinds of failure, each over this tool's own calls.", classes)}
 ${box("trend", `${(t.trend || []).length}-day trend`, "Failure rate per UTC day; a gap is a day with no calls recorded.", trendTable(t.trend, "data-trend-day"))}
 ${box("evidence", "Evidence", "Sessions that recorded this tool, opened in AG-UI.", evidence(t.sessions, t.tool_call_ids, token))}

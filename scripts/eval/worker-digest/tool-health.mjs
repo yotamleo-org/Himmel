@@ -66,6 +66,18 @@ const ROLE_OF = { chief: 'chief', 'chief-relay': 'chief-relay', 'worker-impl': '
   'console-judge': 'judge', 'release-manager': 'release-manager', 'lane-review': 'critic', user: 'interactive' };
 export const TEAMS = ['chief', 'chief-relay', 'worker', 'judge', 'release-manager', 'critic', 'interactive', 'other'];
 export const teamOf = (profile) => Object.hasOwn(ROLE_OF, profile) ? ROLE_OF[profile] : /^design-[a-z0-9-]+$/.test(profile) ? 'worker' : 'other';
+// Time to result (RESULT time minus START time, includes waiting and hooks): kept per call by the digest. A call without a time is
+// missing, and a digest written before the times were kept leaves its calls unknown, never fast. The headline is the calls that
+// were alone in their API message; batched calls wait on each other and are kept apart.
+function addTiming(raw, row) {
+  const t = row.timing;
+  if (!t || !Array.isArray(t.single) || !Array.isArray(t.batched) || !num(t.missing)) { raw.unknown_calls += num(row.calls) ? row.calls : 0; return; }
+  raw.single.push(...t.single.filter(num)); raw.batched.push(...t.batched.filter(num)); raw.missing += t.missing;
+  if (t.capped === true) raw.capped = true;
+}
+const nearest = (xs, p) => xs.length ? xs.slice().sort((a, b) => a - b)[Math.ceil(p * xs.length) - 1] : null;
+const timingOf = (raw) => ({ n: raw.single.length, p50_ms: nearest(raw.single, 0.5), p95_ms: nearest(raw.single, 0.95), batched_n: raw.batched.length, batched_p50_ms: nearest(raw.batched, 0.5),
+  missing: raw.missing, unknown_calls: raw.unknown_calls, capped: raw.capped });
 const CAUSES = ['command', 'rtk_hook', 'guard', 'classifier', 'other'];
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
@@ -161,7 +173,8 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       for (const h of s.tools.values()) {
         totalCalls = sumCalls(totalCalls, h.calls);
         const key = `${s.day}\0${s.model}\0${s.lane}\0${s.role}\0${h.tool}`;
-        const t = tools.get(h.tool) || { ...blank(), tool: h.tool };
+        const t = tools.get(h.tool) || { ...blank(), tool: h.tool, timing_raw: { single: [], batched: [], missing: 0, unknown_calls: 0, capped: false } };
+        addTiming(t.timing_raw, h);
         const d = daily.get(key) || { ...blank(), tool: h.tool, day: s.day, model: s.model, lane: s.lane, role: s.role };
         for (const target of [t, d]) {
           target.calls = sumCalls(target.calls, h.calls); target.failures += h.failures; target.errors += h.errors; target.denials += h.denials; target.sessions.add(s.session);
@@ -206,7 +219,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       return { ...h, by_tool: by, unattributed: h.failures - Object.values(by).reduce((n, v) => n + v, 0), eligible_calls: e ? e.calls : null, eligible_by_tool: e ? e.by : null, outside_eligible: outside, eligible_rate: e && outside === 0 ? rate(h.failures, e.calls) : null };
     };
     const allKnown = !list.some((s) => !s.known || s.incomplete);
-    return { tools: [...tools.values()].map(finish), daily: [...daily.values()].map(finish),
+    return { tools: [...tools.values()].map(finish).map(({ timing_raw, ...t }) => ({ ...t, timing: timingOf(timing_raw) })), daily: [...daily.values()].map(finish),
       hooks: [...hooks.values()].map((h) => finish(withEligible({ ...h, calls: bashCalls }, [...tools.values()], allKnown))),
       daily_hooks: [...dailyHooks.values()].map(({ group, ...h }) => finish(withEligible({ ...h, calls: bashByGroup.get(group) }, [...daily.values()].filter((d) => `${d.day}\0${d.model}\0${d.lane}\0${d.role}` === group), !unknownGroups.has(group)))), totalCalls };
   }

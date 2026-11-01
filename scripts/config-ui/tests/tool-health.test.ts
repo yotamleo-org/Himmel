@@ -923,6 +923,59 @@ test("the reason split is unknown, never zero, when the run log cannot be read",
   expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_established: 6, run_log_start: null });
 });
 
+// ---- time to result per tool (RESULT time minus START time). Hand-built digest rows, no journal.
+const timed = (tool: string, calls: number, timing: any) => ({ ...bTool(tool, calls), timing });
+const timingOf = (d: any, tool: string) => d.tools.find((t: any) => t.tool === tool).timing;
+
+test("time-to-result-headline-comes-from-single-calls-only", () => {
+  const d = roll([bEval(1, [timed("Read", 6, { single: [300, 400, 500], batched: [490, 9000], missing: 1 })])], []);
+  expect(timingOf(d, "Read")).toEqual({ n: 3, p50_ms: 400, p95_ms: 500, batched_n: 2, batched_p50_ms: 490, missing: 1, unknown_calls: 0, capped: false });
+  expect(d.tools.find((t: any) => t.tool === "Read")).not.toHaveProperty("timing_raw");
+  // A digest written before timing was kept leaves its calls unknown, never fast.
+  const mixed = roll([bEval(1, [timed("Read", 1, { single: [100], batched: [], missing: 0 })]), bEval(2, [bTool("Read", 4)])], []);
+  expect(timingOf(mixed, "Read")).toMatchObject({ n: 1, p50_ms: 100, unknown_calls: 4 });
+  expect(timingOf(roll([bEval(1, [bTool("Read", 2)])], []), "Read")).toMatchObject({ n: 0, p50_ms: null, p95_ms: null, batched_p50_ms: null, unknown_calls: 2 });
+  // A call with no result is missing, not a zero that would pull the median down.
+  expect(timingOf(roll([bEval(1, [timed("Grep", 1, { single: [], batched: [], missing: 1 })])], []), "Grep")).toMatchObject({ n: 0, p50_ms: null, missing: 1 });
+});
+
+test("the hook chain time per tool comes from the run log, and is unknown without it", () => {
+  const rows = [20, 40, 60].map((ms, i) => runRow(60 + i, [], { elapsed: ms }));
+  const c = rollChain({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows } });
+  expect(c.hook_ms_by_tool.Read).toEqual({ n: 3, p50_ms: 40, p95_ms: 60 });
+  expect(rollChain({ skip: { state: "ok", rows: [] }, run: { state: "absent" } }).hook_ms_by_tool).toBeNull();
+});
+
+const ttr = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*)<`).exec(html) || [])[1];
+
+test("the tool drill-in shows time to result for a single, a batched and a missing call, labelled as including waiting and hooks", async () => {
+  const run = [20, 40, 60].map((ms, i) => runRow(60 + i, [], { elapsed: ms }));
+  const chain = { skip: { state: "ok", rows: [] }, run: { state: "ok", rows: run } };
+  const data = roll([bEval(1, [timed("Read", 3, { single: [400], batched: [490], missing: 1 }), timed("Grep", 1, { single: [], batched: [], missing: 1 })])], [], { chain });
+  const html = await page(data, { tool: "Read" });
+  expect(html).toContain("time to result (includes waiting and hooks)");
+  expect(html).not.toMatch(/run time/i);
+  expect(ttr(html, "ttr-p50")).toBe("400 ms");
+  expect(ttr(html, "ttr-p95")).toBe("400 ms");
+  expect(ttr(html, "ttr-n")).toBe("1");
+  expect(ttr(html, "ttr-batched")).toBe("490 ms (1 batched call, kept out of the headline)");
+  expect(ttr(html, "ttr-missing")).toBe("1");
+  expect(ttr(html, "ttr-hook")).toBe("40 ms median over 3 runs of the hook chain");
+  // A tool whose only call has no result shows a dash, never 0 ms.
+  const none = await page(data, { tool: "Grep" });
+  expect(ttr(none, "ttr-p50")).toBe("—");
+  expect(ttr(none, "ttr-p95")).toBe("—");
+  expect(ttr(none, "ttr-n")).toBe("0");
+  expect(ttr(none, "ttr-hook")).toBe("—");
+  expect(none).not.toContain("0 ms");
+});
+
+test("a digest written before timing was kept says so, and a tool with no timing reads a dash", async () => {
+  const html = await page(roll([bEval(1, [bTool("Read", 3)])], []), { tool: "Read" });
+  expect(ttr(html, "ttr-p50")).toBe("—");
+  expect(html).toContain("3 calls were recorded before time to result was kept");
+});
+
 test("a call drawer carries the exact call id, the session and what is not recorded", async () => {
   const sid = "48160000-0000-4000-8000-000000000199";
   const chain = { skip: { state: "ok", rows: [skipRow(2, { sessionId: sid, denyLine: WINDOW_LINE })] }, run: { state: "ok", rows: [] } };
@@ -988,8 +1041,10 @@ test("a tool drill-in reads — for timeouts when the chain logs are missing, an
   expect(stat(await chainPage({ skip: { state: "absent" }, run: { state: "absent" } }, { tool: "Read" }), "timeouts")).toBe("—");
   const data = roll([bEval(1, [bTool("Skill:alpha:one", 2)])], [], { chain: chainT() });
   const skill = await page(data, { tool: "Skill:alpha:one" }, { inventory: INVENTORY });
-  expect(stat(skill, "timeouts")).toBe("—");
+  // No exact incident ids name a skill or subagent, so its timeout count is "needs new data" with the blocker named, never 0.
+  expect(stat(skill, "timeouts")).toBe("needs new data");
   expect(skill).toContain("name the tool, not the skill or subagent");
+  expect(skill).toContain("record which skill or subagent a call named");
   // A tool with no incident in complete logs is a real zero.
   const none = roll([bEval(1, [bTool("Grep", 2)])], [], { chain: chainT() });
   expect(stat(await page(none, { tool: "Grep" }), "timeouts")).toBe("0");
