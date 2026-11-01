@@ -31,6 +31,8 @@
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh).
 set -uo pipefail
+# Every fixture git call targets the repo its -C names, never one inherited from a git hook.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/close-wrapped-worker.sh"
@@ -307,6 +309,74 @@ check "scratchpad-clone pushed: no refusal -> rc 0" "$rc" "0"
 mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/gone-clone\`"
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad-clone already gone: no refusal -> rc 0" "$rc" "0"
+# A remote branch deleted on the remote after the clone's last fetch must not
+# hide its commits behind a stale remote-tracking ref; an unreachable remote is refused.
+git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+git -C "$SCR/refclone" checkout -q -b topic
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/refclone" commit -q --allow-empty -m topic-only
+git -C "$SCR/refclone" push -q origin topic 2>/dev/null
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/refclone\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone refreshed remote still has the branch: rc 0" "$rc" "0"
+git -C "$W/scr-remote.git" branch -D topic >/dev/null
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone remote branch deleted since last fetch: rc 8" "$rc" "8"
+contains "scratchpad-clone remote branch deleted since last fetch: names the clone" "$out" "$SCR/refclone"
+contains "scratchpad-clone remote branch deleted since last fetch: refused for its unpushed commit" "$out" "holds commits on no remote"
+rm -rf "$SCR/refclone"
+# a remote that git fetch --all skips is still refreshed
+git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+git -C "$SCR/refclone" checkout -q -b topic2
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/refclone" commit -q --allow-empty -m topic2-only
+git -C "$SCR/refclone" push -q origin topic2 2>/dev/null
+check "skipFetchAll fixture: topic2 was pushed and is tracked" "$(git -C "$SCR/refclone" rev-parse --verify -q refs/remotes/origin/topic2 >/dev/null && echo yes || echo no)" "yes"
+git -C "$SCR/refclone" config remote.origin.skipFetchAll true
+git -C "$W/scr-remote.git" branch -D topic2 >/dev/null
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone skipFetchAll remote, branch deleted: rc 8" "$rc" "8"
+contains "scratchpad-clone skipFetchAll remote, branch deleted: refused for its unpushed commit, not a failed refresh" "$out" "holds commits on no remote"
+rm -rf "$SCR/refclone"
+git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+git -C "$SCR/refclone" remote set-url origin "$W/no-such-remote.git"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone unreachable remote: rc 8" "$rc" "8"
+contains "scratchpad-clone unreachable remote: names the clone" "$out" "$SCR/refclone"
+contains "scratchpad-clone unreachable remote: says the refresh failed" "$out" "cannot refresh"
+rm -rf "$SCR/refclone"
+# a refresh that outlives the bound is refused: the remote's upload-pack stalls, then would succeed
+git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+printf '%s\n' '#!/bin/sh' 'sleep 5' 'exec git upload-pack "$@"' > "$W/slow-upload-pack"
+chmod 755 "$W/slow-upload-pack"
+git -C "$SCR/refclone" config remote.origin.uploadpack "$W/slow-upload-pack"
+export CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT=1
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone refresh outlives the timeout: rc 8" "$rc" "8"
+contains "scratchpad-clone refresh outlives the timeout: says the refresh failed" "$out" "cannot refresh"
+# a timeout that is not a positive integer would disable the bound: refused
+for tv in 0 00 -1 abc; do
+    export CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT="$tv"
+    rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+    check "scratchpad-clone fetch timeout '$tv': rc 8" "$rc" "8"
+    contains "scratchpad-clone fetch timeout '$tv': names the variable" "$out" "CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT"
+done
+unset CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT
+rm -rf "$SCR/refclone"
+# the refresh never runs a hook the clone planted: a reference-transaction hook fires on a
+# fetch that updates a ref (control), but not under the close check
+git clone -q --template= "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+mkdir -p "$SCR/refclone/.git/hooks"
+printf '%s\n' '#!/bin/sh' "touch \"$W/hook-ran\"" > "$SCR/refclone/.git/hooks/reference-transaction"
+chmod 755 "$SCR/refclone/.git/hooks/reference-transaction"
+git -C "$SCR/refclone" config core.hooksPath "$SCR/refclone/.git/hooks"
+git -C "$W/scr-remote.git" branch hookctl main
+git -C "$SCR/refclone" fetch -q origin 2>/dev/null
+check "planted hook control: a plain fetch runs the hook" "$([ -e "$W/hook-ran" ] && echo ran || echo not)" "ran"
+rm -f "$W/hook-ran"
+git -C "$W/scr-remote.git" branch hookreal main
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "planted hook: the close check still passes" "$rc" "0"
+check "planted hook: the refresh did not run it" "$([ -e "$W/hook-ran" ] && echo ran || echo not)" "not"
+rm -rf "$SCR/refclone"
 # a clone one level deeper than scratchpad/<dir>, named by its full path, and by its parent
 mkdir -p "$SCR/gfork"
 git init -q -b main "$SCR/gfork/graphify"

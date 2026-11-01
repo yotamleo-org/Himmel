@@ -8,7 +8,6 @@ argument-hint: "<youtube-url> [--visual]"
 
 On-demand read of one YouTube video. No cookie, no Gemini/Grok/XAI key: you
 (Claude) read the transcript and frames and write the summary yourself.
-Never call `obsidian-second-brain:youtube` for this.
 
 ## Steps
 

@@ -152,7 +152,7 @@ export function buildPrompt(session: string, p: BusPaths, vault?: string | null,
     ...(cwdRouted ? [
       `When a message carries a "document_path" or an "image_path", READ it and summarize its content in your reply. Do NOT file it anywhere — this is a code-repo session, not a vault.`,
     ] : vault ? [
-      `When a message carries a "document_path" OR an "image_path", and only when that line carries "operator":true, FILE that attachment's content into the Obsidian vault at ${vault} (not just read it): read that vault's _CLAUDE.md first and follow its filing conventions — if the vault has a "medic" skill (or another vault-local filing skill) use it, otherwise use the obsidian-second-brain skill. In your reply, confirm what you filed and where.`,
+      `When a message carries a "document_path" OR an "image_path", and only when that line carries "operator":true, FILE that attachment's content into the Obsidian vault at ${vault} (not just read it): read that vault's _CLAUDE.md first and follow its filing conventions — if the vault has a "medic" skill (or another vault-local filing skill) use it, otherwise use the obsidian-triage plugin's commands. In your reply, confirm what you filed and where.`,
     ] : []),
     // Jira sanction: without this, the auto-mode classifier
     // VETOES ticket writes because the bridge session's stated workflow omits Jira —

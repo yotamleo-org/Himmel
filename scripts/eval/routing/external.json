@@ -1,5 +1,5 @@
 {
-  "_comment": "HIMMEL-8088: listing entries a session sees that himmel does not own, frozen 2026-10-29 from a live session listing (Claude Code bundled skills and built-in agents, the anthropic-skills plugin), the qmd MCP server's tools/list (first sentence of each), and obsidian-second-brain 0.18.1 commands (vendored; the commands that collide with obsidian-triage). An empty description is a name-only entry, as the live listing shows it. The climb never edits these.",
+  "_comment": "HIMMEL-8088: listing entries a session sees that himmel does not own, frozen 2026-10-29 from a live session listing (Claude Code bundled skills and built-in agents, the anthropic-skills plugin), the qmd MCP server's tools/list (first sentence of each). An empty description is a name-only entry, as the live listing shows it. The climb never edits these.",
   "skills": [
     {"name": "update-config", "description": ""},
     {"name": "keybindings-help", "description": ""},
@@ -25,13 +25,7 @@
     {"name": "anthropic-skills:pdf", "description": ""},
     {"name": "anthropic-skills:pptx", "description": ""},
     {"name": "anthropic-skills:xlsx", "description": ""},
-    {"name": "anthropic-skills:skill-creator", "description": ""},
-    {"name": "obsidian-second-brain:youtube", "description": "Extract transcript, metadata, and top comments from a YouTube video - summarized via Gemini (free tier) or Grok and saved to vault. Add --visual to also read the video's frames (scene detection)"},
-    {"name": "obsidian-second-brain:obsidian-health", "description": "Run a vault health check - grouped by severity, detects contradictions, concept gaps, stale claims, and structural issues"},
-    {"name": "obsidian-second-brain:obsidian-ingest", "description": "Ingest a source into the vault - the vault rewrites itself around new knowledge. Every ingest updates entities, rewrites stale claims, synthesizes new concepts, and resolves contradictions."},
-    {"name": "obsidian-second-brain:obsidian-save", "description": "Save everything worth keeping from this conversation to the vault"},
-    {"name": "obsidian-second-brain:x-read", "description": "Deep-read an X (Twitter) post via Grok x_search - verbatim post, thread, TL;DR, claims, reply sentiment, voices to watch"},
-    {"name": "obsidian-second-brain:research", "description": "Web research with citations - Perplexity Sonar when an API key is set, free key-less sources otherwise. Deep dossier with summary, facts, timeline, players, contrarian views, open questions"}
+    {"name": "anthropic-skills:skill-creator", "description": ""}
   ],
   "agents": [
     {"name": "general-purpose", "description": "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks."},
