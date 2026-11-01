@@ -67,7 +67,7 @@ values (a ticket that states none counts as yes), when a worker's context_guard 
 an unpublished item never has; the values are compact|handoff), when a label is unknown, repeated or already a series writer, when
 a ticket key appears twice, when --manifest is not in the bucket (next-dispatchable.sh reads series/ beside the manifest), and
 when a ledger for the sid already exists. Every refusal comes before anything is written.
-The core gate (HIMMEL-8353 C2), only with the core_gate flag on (off, the default, changes nothing): for every worker, after
+The core gate (HIMMEL-8353 C2, permanent since C5): for every worker, after
 the Writes parse and before any file is written, the built jira CLI is asked `release core-check --paths <Writes>
 [--docs-only] --mirror <dir> --key <each key>` (the primary checkout's scripts/jira/dist/index.js; GEN_BRIEFS_JIRA_CLI
 replaces it, tests) and, for each CORE key, `release spec-check`. A BYPASS key gets a `> **Core gate:** <KEY> bypass=<kind> —
@@ -564,13 +564,6 @@ CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
 CORE_FIELDS = {'CORE': 3, 'BYPASS': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>
 
 
-def core_gate_on():
-    # The one read of core_gate (gen-briefs is its only reader); the literal name is what check-flags.sh counts as a read.
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-    from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
-    return himmel_flag('core_gate')
-
-
 def jira_cli():
     # The primary checkout's built CLI (dist/ is untracked, so a worktree has none); GEN_BRIEFS_JIRA_CLI is the test seam.
     if os.environ.get('GEN_BRIEFS_JIRA_CLI'):
@@ -625,8 +618,8 @@ def core_log(path, rows):
         die('cannot write the core gate log %s (%s); a decision that cannot be recorded is not made' % (path, e), 2)
 
 
-def core_gate(l, ctx):
-    # The spec section 3 refusal for one worker; sets l['core_lines'] for the brief. The caller runs it only with core_gate on.
+def core_worker_gate(l, ctx):
+    # The spec section 3 refusal for one worker; sets l['core_lines'] for the brief. The caller runs it for every build worker.
     label = l['label']
     for k in ('core_bypass', 'bypass'):
         if k in l:
@@ -1158,8 +1151,7 @@ def main():
             l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
             l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
             l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
-            if core_gate_on():
-                core_gate(l, ctx)
+            core_worker_gate(l, ctx)
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):
             die('%s already exists in the bucket; refusing to overwrite a live worker doc' % (l['stem'] + '.md'))
         if os.path.exists(os.path.join(a.bucket, 'launch-%s.sh' % l['label'])):

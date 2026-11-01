@@ -212,5 +212,49 @@ grep -Fq '> **Writes note:**' <<< "$err" && ok "7g refusal names Writes note as 
 rc=0; out="$(run_worker "$tmp/writes_word.md" --profile worker-impl)" || rc=$?
 { [ "$rc" -ne 0 ] && grep -Fq '> **Writes note:**' <<< "$out"; } && ok "7h launcher refuses prose Writes with the fix hint" || bad "7h launcher accepted prose Writes (rc=$rc): $out"
 
+# 8. The core gate's brief-lint half: a template-shaped build brief whose key is core
+# for its Writes must carry a `> **Spec:** <KEY> ...` or a `> **Core gate:** <KEY> bypass=...` line. The rows run the REAL
+# built jira CLI (core-check) over a fixture mirror; nothing is stubbed. The rule reads no flag.
+PRIMARY="$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")"
+REAL_CLI="$PRIMARY/scripts/jira/dist/index.js"
+mkdir -p "$tmp/cg-mirror" "$tmp/cg-state" "$tmp/cg-keys"
+printf '{"lastSync":"2026-11-01T00:00:00Z"}\n' > "$tmp/cg-mirror/.cursor.json"
+printf -- '---\nkey: "HIMMEL-9411"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-9411: t\n\n## Description\n\nx\n' > "$tmp/cg-mirror/HIMMEL-9411.md"
+export BRIEF_LINT_MIRROR="$tmp/cg-mirror" HIMMEL_RELEASE_STATE_DIR="$tmp/cg-state" HIMMEL_RELEASE_KEY_DIR="$tmp/cg-keys"
+CORE_W='> **Writes:** scripts/handover/chief-kit/next-dispatchable.sh'
+mk core_none '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+mk core_spec '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Spec:** HIMMEL-9411 /state/specs/spec.md (O-R1-9411)' '## Results (newest at the bottom)'
+mk core_bypass_line '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Core gate:** HIMMEL-9411 bypass=design — label-only core ticket' '## Results (newest at the bottom)'
+mk core_other_key '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Spec:** HIMMEL-1 /state/specs/spec.md (O-R1-1)' '## Results (newest at the bottom)'
+mk core_docs '# HIMMEL-9411 — a docs fix' "$PA" '> **Contract:** y' '> **Writes:** docs/internals/x.md' '## Results (newest at the bottom)'
+mk core_ran '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)' '- 10:00 LIVE — started'
+mk core_judge '# HIMMEL-9411 — a core review' "$PA" '> **Completion condition:** z' "$CORE_W" '## Results (newest at the bottom)'
+mk core_unknown '# HIMMEL-9412 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+if [ -f "$REAL_CLI" ]; then
+    export BRIEF_LINT_JIRA_CLI="$REAL_CLI"
+    expect_rc "8a a core build brief with neither a Spec: nor a Core gate: line is refused" 1 "$tmp/core_none.md"
+    err="$(bash "$LINT" "$tmp/core_none.md" 2>&1 >/dev/null)"
+    grep -Fq 'core brief HIMMEL-9411 carries neither a Spec: nor a Core gate: bypass= line' <<< "$err" \
+        && ok "8a2 the refusal names the key and the missing line" || bad "8a2 refusal text: $err"
+    expect_rc "8b a core brief carrying the Spec: line passes" 0 "$tmp/core_spec.md"
+    expect_rc "8c a core brief carrying a Core gate: bypass= line passes" 0 "$tmp/core_bypass_line.md"
+    expect_rc "8d a Spec: line for another key does not satisfy the gate" 1 "$tmp/core_other_key.md"
+    expect_rc "8e a non-core brief (docs-only Writes) passes" 0 "$tmp/core_docs.md"
+    expect_rc "8f a doc that has run (a Results bullet) is not gated" 0 "$tmp/core_ran.md"
+    expect_rc "8g a judge brief (no Contract line) is not gated" 0 "$tmp/core_judge.md"
+    expect_rc "8h a key the mirror lacks is refused, never passed" 1 "$tmp/core_unknown.md"
+else
+    echo "SKIP 8a-8h: no built jira CLI at $REAL_CLI (npm --prefix $PRIMARY/scripts/jira run build)"
+fi
+export BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js"
+expect_rc "8i an absent dist/ is CORE-CHECK-FAILED, not a pass" 1 "$tmp/core_none.md"
+err="$(bash "$LINT" "$tmp/core_none.md" 2>&1 >/dev/null)"
+grep -Fq 'CORE-CHECK-FAILED: build the jira CLI (npm --prefix' <<< "$err" \
+    && ok "8i2 the refusal names the build command" || bad "8i2 refusal text: $err"
+printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$tmp/junk.js"
+BRIEF_LINT_JIRA_CLI="$tmp/junk.js" expect_rc "8j a core-check that prints no verdict line is CORE-CHECK-FAILED" 1 "$tmp/core_none.md"
+BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" expect_rc "8k a brief outside the rule never asks the CLI (a keyless template brief passes)" 0 "$tmp/tmpl_ok.md"
+unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI HIMMEL_RELEASE_STATE_DIR HIMMEL_RELEASE_KEY_DIR
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
