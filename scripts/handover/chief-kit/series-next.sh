@@ -19,8 +19,8 @@
 # Every `status` row is rebuilt from the ledger, git (the shared object store) and gh, never from a transcript (F2).
 # GH_CMD overrides `gh` (tests). HANDOVER_DIR locates <handover root>/.locks/go for GO-FILE rows.
 #
-# ponytail: "one start per leg" is a sidecar file <ledger>.starts (one writer doc per line) because series-ledger.py has no
-#   started_by field; the file is not a .json so next-dispatchable never reads it as a ledger. Upgrade: a started_by item field.
+# ponytail: "one start per leg" is a claim file per writer doc under <ledger>.starts.d/ because series-ledger.py has no
+#   started_by field; nothing there is a .json, so next-dispatchable never reads it as a ledger. Upgrade: a started_by item field.
 # ponytail: an item worktree skips worktree.sh's setup (deps install) because worktree.sh new refuses a series/ branch and cuts
 #   only from origin/<default>; upgrade: a start-point argument and a series type in _new-worktree.sh.
 set -uo pipefail
@@ -167,13 +167,19 @@ if scope or do_not or text:
 }
 
 cmd_start() {
-    local key="$ARG" sid st idx prev cut def wt branch me starts
+    local key="$ARG" sid st idx prev cut def wt branch me
     need_writer
     need_item "$key"
-    me="$(rp "$DOC")"; starts="$LEDGER.starts"
-    if [ -f "$starts" ] && grep -qxF -- "$me" "$starts"; then
+    # The doc's one start is CLAIMED first, atomically (noclobber create), so two starts racing from the same doc cannot both
+    # pass, and a claim that cannot be written refuses the start. Any exit before the ledger records the item releases the claim.
+    me="$(rp "$DOC")"
+    mkdir -p "$LEDGER.starts.d" || fail "cannot create $LEDGER.starts.d"
+    CLAIM="$LEDGER.starts.d/$(python3 -I -c 'import hashlib,sys; print(hashlib.sha1(sys.argv[1].encode()).hexdigest())' "$me")"
+    if ! ( set -o noclobber; printf '%s\n' "$me" > "$CLAIM" ) 2>/dev/null; then   # swallow-ok: a failed claim is the one-item-per-leg refusal below
         refuse "one item per leg: hand off at READY ($DOC has already started an item; run series-next.sh pass)"
     fi
+    KEEP_CLAIM=0
+    trap '[ "$KEEP_CLAIM" = 1 ] || rm -f "$CLAIM"' EXIT
     st="$(field "$key" state)"
     [ "$st" = planned ] || refuse "item $key is $st; only a planned item starts"
     idx="$(grep -nxF -- "$key" <<< "$KEYS")"; idx="${idx%%:*}"
@@ -200,7 +206,7 @@ cmd_start() {
         git -C "$PRIMARY" worktree unlock "$wt"; git -C "$PRIMARY" worktree remove --force "$wt"; git -C "$PRIMARY" branch -D "$branch" >/dev/null 2>&1
         fail "series-ledger.py set failed; the new worktree was removed"
     fi
-    printf '%s\n' "$me" >> "$starts"
+    KEEP_CLAIM=1
     echo "STARTED $key branch=$branch worktree=$wt cut_from=$cut"
     print_scope "$key"
 }

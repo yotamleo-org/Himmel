@@ -261,6 +261,26 @@ check "8: an item with no fields starts rc 0" "$rc" 0
 lacks "8: and prints no ITEM-SCOPE block" "$out" "ITEM-SCOPE"
 lacks "8: and no DO-NOT or COMMIT-TEXT line" "$out" "DO-NOT"
 
+# --- 8b. the one start per leg is claimed before any change ----------------------------------------------------------------
+L6="$tmp/ledgers/s6.json"; mk "$L6" "$A" K1 K2 || exit 1
+sl set --ledger "$L6" --key K1 state=committed wip="$MAIN" >/dev/null
+for n in 1 2; do
+    ( cd "$REPO" && bash "$SCRIPT" start --ledger "$L6" --doc "$A" K2 > "$tmp/race$n.out" 2>&1; echo $? > "$tmp/race$n.rc" ) &
+done
+wait
+check "8b: two racing starts from one doc: exactly one wins" "$(cat "$tmp/race1.rc" "$tmp/race2.rc" | sort | tr '\n' ' ')" "0 2 "
+check "8b: and the ledger holds one authoring K2" "$(jget "$L6" 'd["items"][1]["state"]')" authoring
+L7="$tmp/ledgers/s7.json"; mk "$L7" "$A" K1 K2 || exit 1
+sn start --ledger "$L7" --doc "$A" K2
+check "8b: a start refused for a missing previous wip rc 2" "$rc" 2
+sn start --ledger "$L7" --doc "$A" K1
+check "8b: that refusal released the doc's claim: the next start works" "$rc" 0
+L8="$tmp/ledgers/s8.json"; mk "$L8" "$A" K1 || exit 1
+: > "$L8.starts.d"   # a claim that cannot be written
+sn start --ledger "$L8" --doc "$A" K1
+check "8b: a start whose claim cannot be written fails rc 1" "$rc" 1
+check "8b: and changed nothing" "$(jget "$L8" 'd["items"][0]["state"]') $([ -e "$(wtp s8 K1)" ] && echo wt || echo none)" "planned none"
+
 # --- 9. integration: real gen-briefs -> start + commit -> real next-dispatchable ----------------------------------------
 IB="$tmp/ibucket"; mkdir -p "$tmp/stub-jira" "$tmp/imirror" "$tmp/isigned"
 cat > "$tmp/stub-jira/index.js" <<'JSEOF'
