@@ -43,6 +43,7 @@ updates:
       - "/scripts/jira"
       - "/scripts/bitbucket"
       - "/scripts/himmel-run"
+      - "/scripts/hooks/license-scanner"
       - "/scripts/luna-vitals"
       - "/marketplace/plugins/luna-correlate"
       - "/marketplace/plugins/obsidian-triage/tools"

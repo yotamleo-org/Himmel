@@ -15,8 +15,8 @@ check() { # name actual expected
   if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got '$2' want '$3'"; fi
 }
 
-ROWS="yotamleo-org/caveman yotamleo-org/claude-hud yotamleo-org/claude-obsidian yotamleo-org/claude-squad yotamleo-org/claude-statusline yotamleo-org/claude-video yotamleo-org/codex yotamleo-org/codex-plugin-cc yotamleo-org/core yotamleo-org/effective-html yotamleo-org/graphify yotamleo-org/hermes-agent yotamleo-org/himmel-voice yotamleo-org/home-assistant.io yotamleo-org/obsidian-second-brain yotamleo-org/obsidian-skills yotamleo-org/qmd yotamleo-org/twitter-cli"
-MERGE_TRUE="yotamleo-org/claude-video yotamleo-org/graphify yotamleo-org/himmel-voice yotamleo-org/obsidian-second-brain yotamleo-org/obsidian-skills yotamleo-org/qmd"
+ROWS="yotamleo-org/caveman yotamleo-org/claude-hud yotamleo-org/claude-obsidian yotamleo-org/claude-squad yotamleo-org/claude-statusline yotamleo-org/codex yotamleo-org/codex-plugin-cc yotamleo-org/core yotamleo-org/effective-html yotamleo-org/graphify yotamleo-org/hermes-agent yotamleo-org/himmel-voice yotamleo-org/home-assistant.io yotamleo-org/obsidian-second-brain yotamleo-org/obsidian-skills yotamleo-org/qmd yotamleo-org/twitter-cli"
+MERGE_TRUE="yotamleo-org/graphify yotamleo-org/himmel-voice yotamleo-org/obsidian-second-brain yotamleo-org/obsidian-skills yotamleo-org/qmd"
 # the recorded output of `gh repo list yotamleo-org --fork --json name` (2026-10-19)
 FORK_LIST="$HERE/fixtures/himmel-adapters/yotamleo-org-forks.json"
 # the recorded output of `gh repo list yotamleo-org --source --json name,isFork` for the

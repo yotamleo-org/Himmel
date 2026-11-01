@@ -2540,6 +2540,39 @@ CRITIC_LEDGER_APPEND="$H1505_APPEND" CRITICS_JSON="$H1505_JSON" CRITIC_FIRST_PAS
 check "HIMMEL-1505: stdin-draining ledger helper is called once per spooled avail row" \
     "$(grep -c '^avail$' "$H1505_CALLS" || true)" "2"
 
+# --context-file reaches every member, sequential and
+# parallel, as an absolute path; without it no member sees the flag.
+CTX_STUB="$tmp/stub-ctx.sh"
+CTX_SEEN="$tmp/ctx-seen.txt"
+cat > "$CTX_STUB" <<EOF
+#!/usr/bin/env bash
+args=("\$@")
+slug=""; ctx="none"
+while [ \$# -gt 0 ]; do
+    case "\$1" in
+        --slug) slug="\$2"; shift 2 ;;
+        --context-file) ctx="\$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf '%s %s\n' "\$slug" "\$ctx" >> "$CTX_SEEN"
+exec python3 "$STUB_PY" "\${args[@]}"
+EOF
+chmod +x "$CTX_STUB"
+printf '%s\n' '{"range": ["lib/util.sh", 1, 3]}' '' 'text' > "$tmp/ctx.txt"
+for par in 0 1; do
+    : > "$CTX_SEEN"
+    ( cd "$tmp" && printf '%s' "$DIFF" | CRITIC_PARALLEL="$par" CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$CTX_STUB" bash "$PANEL" --context-file ctx.txt > /dev/null 2>&1 )
+    check "RL4 (parallel=$par): every member receives the context file by absolute path" \
+        "$(sort "$CTX_SEEN" | tr '\n' ' ')" "gptoss $tmp/ctx.txt kimi $tmp/ctx.txt qwen3coder $tmp/ctx.txt "
+done
+: > "$CTX_SEEN"
+printf '%s' "$DIFF" | CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$CTX_STUB" bash "$PANEL" --context-file '' > /dev/null 2>&1
+check "RL4: an empty --context-file passes no flag to any member" \
+    "$(sort "$CTX_SEEN" | tr '\n' ' ')" "gptoss none kimi none qwen3coder none "
+printf '%s' "$DIFF" | CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$CTX_STUB" bash "$PANEL" --context-file "$tmp/no-such-ctx" > /dev/null 2>&1
+check "RL4: an unreadable --context-file is a usage error (exit 2)" "$?" "2"
+
 if [ "$fails" -eq 0 ]; then
     if [ "$_skips" -gt 0 ]; then
         echo "ALL PASS ($_skips skipped)"
