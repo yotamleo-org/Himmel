@@ -232,6 +232,39 @@ EOF
     timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk3.out" 2>/dev/null; digest_rc=$?
     check '(8197) a PR joining the unowned set wakes at once' '0:WAKE unowned-prs #2575:130m,#2600:15m' "$digest_rc:$(head -n 1 "$WORK/unhk3.out")"
     unset CHIEF_WAIT_UNOWNED_REWAKE_MIN
+
+    # The digest signature is the whole wake, not the unresolved lines alone: a capacity move to
+    # UNDERFILLED, or a new dispatchable key, wakes at once even while the unresolved set is unchanged.
+    sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line" > "$STUB/okcap.line"
+    printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
+    I="$(new_inbox poolcap)"
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolcap1.out" 2>/dev/null
+    timeout 5 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolcap2.out" 2>/dev/null; digest_rc=$?
+    check '(8197) setup: the unchanged unresolved set at capacity=ok joins the digest' '124:0' "$digest_rc:$(grep -c '^WAKE ' "$WORK/poolcap2.out")"
+    cp "$STUB/tick.line" "$STUB/okcap.line"
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolcap3.out" 2>/dev/null; digest_rc=$?
+    check '(8197) a move to capacity=UNDERFILLED with an unchanged unresolved set wakes at once' '0:1' "$digest_rc:$(grep -c '^WAKE pool-unresolved capacity=UNDERFILLED:7' "$WORK/poolcap3.out")"
+
+    sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line" > "$STUB/okcap.line"
+    printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+    I="$(new_inbox poolkey)"
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolkey1.out" 2>/dev/null
+    timeout 5 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolkey2.out" 2>/dev/null; digest_rc=$?
+    check '(8197) setup: the unchanged pool and unresolved set join the digest' '124:0' "$digest_rc:$(grep -c '^WAKE ' "$WORK/poolkey2.out")"
+    printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\nLOCAL\tHIMMEL-9002\tMedium\tv1\tsecond\tfiles=b.sh\n' > "$STUB/pool.rows"
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolkey3.out" 2>/dev/null; digest_rc=$?
+    check '(8197) a new dispatchable key with stale unresolved lines wakes at once' '0:1' "$digest_rc:$(grep -c '^WAKE pool-unresolved' "$WORK/poolkey3.out")"
+    rm -f "$STUB/pool.rows"
+
+    I="$(new_inbox poolreturn)"
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolret1.out" 2>/dev/null
+    : > "$STUB/dispositions"
+    timeout 5 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolret2.out" 2>/dev/null; digest_rc=$?
+    check '(8197) a resolved pool clears the digest signature' '124:no' "$digest_rc:$([ -e "$I.wait.poolhk" ] && echo yes || echo no)"
+    printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
+    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolret3.out" 2>/dev/null; digest_rc=$?
+    check '(8197) a returning unresolved set wakes again at once' '0:1' "$digest_rc:$(grep -c '^WAKE pool-unresolved' "$WORK/poolret3.out")"
+    rm -f "$STUB/dispositions"
     [ "$fails" -eq 0 ]
 )
 if ! housekeeping_cases; then fails=$((fails + 1)); fi

@@ -14,10 +14,7 @@
 # housekeeping window ends. HOUSEKEEPING_DIGEST_SECS defaults to 900; 0 keeps
 # the original unbatched output. Board changes, status sweeps and informational
 # LIVE/ACK/WRAPPED/MERGED marker changes share a persisted housekeeping buffer.
-# Telegram, actionable worker events, succession and handover-budget stay urgent. A
-# pool-unresolved or unowned-prs wake joins the digest unless its value changed since the
-# last one (the unresolved lines, or a PR new to the unowned marker): first sight and a
-# change wake at once.
+# Telegram, actionable worker events, succession and handover-budget stay urgent.
 # Exit-on-WAKE and re-arming remain; this does not provide persistent delivery.
 #
 #   WAKE housekeeping kinds=<sorted kinds>  one window of buffered housekeeping,
@@ -289,6 +286,11 @@
 #
 # Worker messages (SendMessage) wake a chief on their own; only the Telegram
 # and tick paths depend on this waiter.
+#
+# A pool-unresolved or unowned-prs wake joins the housekeeping digest unless its value
+# changed since the last one: for pool-unresolved the capacity, the dispatchable keys or the
+# unresolved lines (marker <inbox>.wait.poolhk, cleared when the pool resolves); for unowned-prs
+# a PR new to the marker. First sight and any change wake at once.
 #
 # ponytail: upgrade path HIMMEL-3510. An external SIGKILL of the waiter re-invokes the session (task
 # notification, measured); the harness-internal "low memory" kill
@@ -815,6 +817,8 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
     pool_counts="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-counts //p')"
     pool_unresolved="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-unresolved /p')"
+    # a probe that read the pool and found nothing unresolved ends the streak: a set that returns is a change
+    [ -z "$pool_out" ] || [ -n "$pool_unresolved" ] || rm -f "$pool_sig_file"
 }
 pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '# dispatchable in <version>' heading (the version of its '# dropped from' line), then the rest; a listed row's '# disposition' line is dropped, the row already says it
     awk -F'\t' '
@@ -847,7 +851,7 @@ underfill_wake() {
     local blk sum line
     blk="$(underfill_block)" || return 1
     if [ -n "$pool_unresolved" ] && [ "$housekeeping_secs" -gt 0 ]; then
-        sum="$(printf '%s\n' "$pool_unresolved" | cksum)"
+        sum="$(printf '%s|%s|%s\n' "$cap_val" "$pool_sig" "$pool_unresolved" | cksum)"  # capacity and the dispatchable keys count as a change too: an underfilled fleet with new work wakes at once
         if [ "$sum" = "$(cat "$pool_sig_file" 2>/dev/null)" ]; then  # swallow-ok: no marker reads empty, so the first sight wakes
             line="capacity=$cap_val${pool_counts:+ pool=$pool_counts} $(printf '%s' "$pool_unresolved" | tr '\n' ';')"
             grep -qxF -- "pool-unresolved $line" "$housekeeping_file" 2>/dev/null && return 1  # swallow-ok: no buffer yet reads as not queued; the same line queues once per window
