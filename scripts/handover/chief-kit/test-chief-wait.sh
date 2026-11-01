@@ -128,6 +128,33 @@ if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null;
 timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/wt-ceiling-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(wt-ceiling) an unchanged alarm keeps waiting" "124" "$rc"
 check "(wt-ceiling) an unchanged alarm does not re-wake" "" "$(cat "$WORK/wt-ceiling-rearm.out")"
+# cap=<version>:<n> (a version past the residual soft cap) is in the key whole: it appearing
+# or its value moving wakes once, an unchanged value stays silent on a re-arm, and its going away is no wake.
+reset_stub
+I="$(new_inbox cap-field)"
+start "$I" "$WORK/cap-field.out" --workers "N1.md"
+wait_hb "$I" || fail "(cap) no baseline heartbeat"
+sed -i 's/ denials=none/ cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(cap) a version crossing the soft cap ends the wait" "0" "$rc"
+check "(cap) the wake names the cap field" "WAKE tick changed=cap usage=PROCEED" "$(head -n1 "$WORK/cap-field.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+timeout 3 bash "$WAIT" "$I" --workers "N1.md" > "$WORK/cap-field-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(cap) an unchanged cap keeps waiting" "124" "$rc"
+check "(cap) an unchanged cap does not re-wake" "" "$(cat "$WORK/cap-field-rearm.out")"
+start "$I" "$WORK/cap-field-move.out" --workers "N1.md"
+wait_hb "$I" || fail "(cap) no re-armed heartbeat"
+sed -i 's/ cap=v1.1.3:16/ cap=v1.1.3:17/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(cap) a moved cap count ends the wait" "0" "$rc"
+check "(cap) the moved count wakes as cap" "WAKE tick changed=cap usage=PROCEED" "$(head -n1 "$WORK/cap-field-move.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+start "$I" "$WORK/cap-field-gone.out" --workers "N1.md"
+wait_hb "$I" || fail "(cap) no cleared heartbeat"
+sed -i 's/ cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(cap) a cap that goes away keeps waiting" "running" "$rc"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 # vmismatch= wakes only as a positive count; 0 and ? stay out of the key.
 reset_stub
 I="$(new_inbox vmismatch-quiet)"

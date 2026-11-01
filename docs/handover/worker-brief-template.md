@@ -219,7 +219,9 @@ template_version: 3
 >    `- ask one: done` / `- ask two: deferred → HIMMEL-<n>`. A deferred key
 >    must exist and still be open; `ready-check.sh` item 7 FAILs a missing
 >    section, an unmarked line, or a deferral to a nonexistent or Done/Closed
->    ticket, so file the follow-up before you write the line. The marker is
+>    ticket, so file the follow-up before you write the line. **File every
+>    follow-up with `jira create --follow-up-of <KEY>`** (the ticket it follows
+>    from), never a bare `jira create`. The marker is
 >    LAST with nothing after it; lint it yourself before READY with
 >    `ready-check.sh --only 7 <pr>`. **The moment /pr-check marks a finding
 >    agreed or fixed, write its sweep record**: `SWEEP [<id>@<head>] class=…
