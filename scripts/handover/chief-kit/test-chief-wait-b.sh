@@ -414,7 +414,7 @@ wait_exit "$WPID"
 check "(u5542) a PR with no live owner wakes on first sight" "0" "$rc"
 check "(u5542) the wake names the PR and its age" "WAKE unowned-prs #2575:120m" "$(head -n1 "$WORK/y.out")"
 
-start "$I" "$WORK/y2.out" --workers "N1.md"
+HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/y2.out" --workers "N1.md"  # 8197: with the digest on, a same-set re-wake joins the digest (test-chief-wait-pool.sh)
 wait_hb "$I" || fail "(u5542-2) no baseline heartbeat"
 unowned_line "#2575:121m"
 wait_exit "$WPID"
