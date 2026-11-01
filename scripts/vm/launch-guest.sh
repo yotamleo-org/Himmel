@@ -81,7 +81,7 @@ case "$VM" in ''|*[!A-Za-z0-9_-]*) echo "launch-guest: '$VM' is not a registered
 case "$TIMEOUT" in ''|*[!0-9]*|0*) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds above 0, no leading zero" >&2; exit 2 ;; esac
 # the cost ledger row carries labels only: the account is a label for the guest's login, never a token
 ACCOUNT="${LAUNCH_GUEST_ACCOUNT:-$VM}"
-case "$ACCOUNT" in ''|*[!A-Za-z0-9._-]*) echo "launch-guest: LAUNCH_GUEST_ACCOUNT must match [A-Za-z0-9._-]+ (a label, never a token)" >&2; exit 2 ;; esac
+case "$ACCOUNT" in ''|*[!A-Za-z0-9._-]*|[Ss][Kk]-*) echo "launch-guest: LAUNCH_GUEST_ACCOUNT must match [A-Za-z0-9._-]+ and not start with sk- (a label, never a token)" >&2; exit 2 ;; esac
 TICKET="${LAUNCH_GUEST_TICKET:-}"
 if [ -z "$TICKET" ]; then
     TICKET="$(git rev-parse --abbrev-ref HEAD 2>/dev/null | grep -io 'himmel-[0-9][0-9]*' | head -n 1 | tr '[:lower:]' '[:upper:]')" || TICKET=""
@@ -167,12 +167,13 @@ fi
 OUT="$(mktemp "${TMPDIR:-/tmp}/launch-guest-out.XXXXXX")" || exit 1
 trap 'rm -f "$OUT"' EXIT
 T0="$(date +%s)"
-# the launcher is the ssh's parent now (it was exec), so a signal to it is forwarded to the
-# child and waited out, and the row still records the run that was cut short
+# the launcher is the ssh's parent now (it was exec), so a signal to it ends the child and is
+# waited out, and the row still records the run that was cut short. A background child of a
+# non-interactive bash starts with SIGINT and SIGQUIT ignored and ssh keeps that, so those two
+# are sent on as TERM; HUP is forwarded as itself.
 "${CMD[@]}" < "$PROMPT" > "$OUT" &
 CPID=$!
-trap 'kill -TERM "$CPID" 2>/dev/null' TERM
-trap 'kill -INT "$CPID" 2>/dev/null' INT
+trap 'kill -TERM "$CPID" 2>/dev/null' TERM INT QUIT
 trap 'kill -HUP "$CPID" 2>/dev/null' HUP
 RC=0
 wait "$CPID" || RC=$?

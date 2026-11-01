@@ -228,6 +228,12 @@ fresh; rm -f "$LEDGER"
 rc=0; out="$(LAUNCH_GUEST_ACCOUNT='sk-ant x;id' runc ubuntu_new "$P")" || rc=$?
 check "C4 bad account label: exit 2" "$rc" "2"
 check "C4 bad account label: no row" "$(rows)" "0"
+for lbl in sk-ant-api03-abcDEF123 SK-ANT-abc sk-proj-abc; do
+    fresh; rm -f "$LEDGER"
+    rc=0; out="$(LAUNCH_GUEST_ACCOUNT="$lbl" runc ubuntu_new "$P")" || rc=$?
+    check "C4 token-shaped label $lbl: exit 2" "$rc" "2"
+    check "C4 token-shaped label $lbl: no row and no ssh" "$(rows)$([ -e "$SSH_LOG" ] && echo ran)" "0"
+done
 
 # vm-cost.sh: a two-row fixture prints the sum per ticket and per account
 cat > "$tmp/two.jsonl" <<'J'
@@ -271,6 +277,32 @@ check "C6 SIGTERM to the launcher: the guest ssh is gone" "$(kill -0 "$spid" 2>/
 check "C6 SIGTERM to the launcher: the cut-short run has its row" "$(rows)" "1"
 check "C6 SIGTERM to the launcher: exit is the signalled child's" "$rc" "143"
 kill "$spid" 2>/dev/null
+
+# a terminal Ctrl-C or Ctrl-\ must end the guest run. The launcher starts with the default
+# disposition (perl resets what a background subshell inherited), and a background child of a
+# non-interactive bash starts with SIGINT and SIGQUIT ignored, so a forwarded INT or QUIT would
+# be ignored by the ssh: the launcher has to send TERM.
+printf '#!/bin/sh\necho $$ > "$SLEEP_PID"\nexec sleep 8\n' > "$tmp/bin/ssh"
+for sig in INT QUIT; do
+    rm -f "$LEDGER" "$SLEEP_PID"
+    (cd "$tmp/repo" && exec perl -e '$SIG{INT} = "DEFAULT"; $SIG{QUIT} = "DEFAULT"; exec @ARGV' env PATH="$tmp/bin:$PATH" LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-ok.sh" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 bash "$SCRIPT" ubuntu_new "$P" > /dev/null 2>&1) &
+    lpid=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$SLEEP_PID" ] && break; sleep 0.25; done
+    kill -"$sig" "$lpid" 2>/dev/null
+    sleep 1
+    spid="$(cat "$SLEEP_PID" 2>/dev/null)"
+    check "C7 SIG$sig to the launcher: the guest ssh is gone" "$(kill -0 "$spid" 2>/dev/null && echo alive || echo gone)" "gone"
+    kill "$spid" 2>/dev/null
+    wait "$lpid" 2>/dev/null
+done
+
+# a ledger that cannot be written never changes the run: the answer and the exit code stay the guest's
+printf '#!/bin/sh\necho "{\\"total_cost_usd\\":0.5}"\nexit 3\n' > "$tmp/bin/ssh"
+mkdir -p "$tmp/ledger-is-a-dir"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/ledger-is-a-dir" LAUNCH_GUEST_TICKET=HIMMEL-1 runv ubuntu_new "$P")" || rc=$?
+check "C8 unwritable ledger: the guest's exit code is unchanged" "$rc" "3"
+contains "C8 unwritable ledger: the guest answer still reaches stdout" "$out" '"total_cost_usd":0.5'
+contains "C8 unwritable ledger: says the row was not written" "$out" "could not write the cost ledger row"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
