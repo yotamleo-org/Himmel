@@ -302,3 +302,28 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .rp-list{margin:0;padding-left:var(--s4);display:grid;gap:var(--s1);font-size:var(--fs-sm)}
 .rp-list li{overflow-wrap:anywhere}
 #reports fieldset{border:0;padding:0;margin:0 0 var(--s2)}#reports label{display:block;margin:var(--s1) 0}
+/* Tool health (v9 slice A): KPI tiles, the two daily charts, the tool map, drill-in stats; stacks at about 400px */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s2);margin:var(--s2) 0}
+.kpi{display:grid;gap:2px;padding:var(--s2) var(--s3);border:1px solid var(--rule);border-radius:6px;background:var(--surface)}
+.kpi .k{font:600 11px var(--font-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.kpi .kv{font-size:var(--fs-lg);color:var(--ink)}.kpi .ks{font-size:var(--fs-xs);color:var(--dim)}
+.th-win,.th-at{font:11px var(--font-mono);color:var(--muted);align-self:center}
+.th-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);margin:var(--s2) 0}.th-charts figure{margin:0}
+.thchart{width:100%;height:80px;display:block}.thchart .fb{fill:var(--accent)}.thchart .dot{fill:var(--accent)}
+.thchart .line{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}.thchart .gap{fill:var(--dim);font:10px var(--font-mono)}
+.thchart .shiftband{fill:var(--beta-soft)}
+.th-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
+.th-grp th{text-align:left;color:var(--dim);font:600 11px var(--font-mono);text-transform:uppercase;letter-spacing:.06em}
+.thbar{--w:0%;display:inline-block;height:6px;width:var(--w);min-width:1px;max-width:80px;background:var(--crit);border-radius:3px;vertical-align:middle}
+a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--s2);margin:var(--s2) 0}
+.stats dt{font:600 11px var(--font-mono);color:var(--muted)}.stats dd{margin:0;font:700 var(--fs-lg) var(--font-mono);color:var(--ink)}
+.thmap{--cols:1;display:grid;grid-template-columns:max-content repeat(var(--cols),minmax(84px,1fr));gap:4px;overflow-x:auto;margin:var(--s2) 0}
+.thmap .mh{font:600 11px var(--font-mono);color:var(--muted);align-self:end}.thmap .mr{font:600 11px var(--font-mono);color:var(--muted);align-self:center;padding-right:var(--s2)}
+.mc{all:unset;cursor:pointer;display:grid;gap:2px;min-height:44px;padding:4px 6px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);font:11px var(--font-mono);color:var(--fg)}
+.mc span{color:var(--muted);font-size:10px}.mc.none{cursor:default;border-style:dashed;background:none}
+.mc.bad-t{background:var(--crit-soft);border-color:var(--crit)}.mc.warn-t{background:var(--beta-soft);border-color:var(--beta)}.mc.ok-t{background:var(--ship-soft)}.mc.zero{opacity:.7}
+.mc.sel{outline:2px solid var(--accent)}.mc:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.th-sort{all:unset;cursor:pointer}.th-sort:focus-visible{outline:1px solid var(--accent)}
+@media (max-width:760px){.th-charts,.th-cols{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:560px){.thmap{grid-template-columns:minmax(0,1fr)}.thmap .mh{display:none}.thmap .mr{padding-top:var(--s2)}.mc.none{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}

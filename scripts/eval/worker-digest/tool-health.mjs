@@ -226,7 +226,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const list = teamSlots.filter((s) => s.team === t), a = aggregate(list);
     return { team: t, sessions: new Set(list.map((s) => s.session)).size, calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0) };
   });
-  return { state: slots.size ? 'ok' : 'absent', ...result, window_days: windowDays, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
+  return { state: slots.size ? 'ok' : 'absent', ...result, window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
 }
 
 // Bash by command head and cause (spec 0.4 d) from the digest's bash_calls, joined to rtk's history.db by call id.

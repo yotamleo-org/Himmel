@@ -1,7 +1,7 @@
 // thin DOM glue. All markup comes from render.js.
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
-import { renderToolHealth } from "/tool-health.js";
+import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
 import { renderWorkflow, mountWorkflow } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
@@ -39,11 +39,22 @@ let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls l
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
 let fleetCapLoadGen = 0, fleetCapSaving = false; // likewise for loadFleetCap()
-let toolHealth = null, toolHealthGen = 0;
+// Tool health: three reads, each keeping its last good answer when a newer one fails (tool-health.js toolHealthLoader).
+const thGet = (path) => async (q) => {
+  const r = await fetch(path + (q ? "?" + q : ""), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+  if (!r.ok) throw new Error(`${path} failed (${r.status})`);
+  return r.json();
+};
+const thPaint = () => { if (currentPage.id === "toolhealth") paint(); };
+let th = null; // made on the first visit: { health, inventory, reviewers }
+const thLoaders = () => th || (th = Object.fromEntries([["health", "/api/tool-health"], ["inventory", "/api/tool-inventory"], ["reviewers", "/api/reviewers"]].map(([k, path]) => [k, toolHealthLoader({ get: thGet(path), onChange: thPaint })])));
+// filters, tool and guard ride the route (#/toolhealth[/<tab>]?days=&team=&lane=&profile=&tool=&guard=); the rest is page memory
+const thUi = { tab: "overview", filters: {}, tool: null, guard: null, sort: "failed", kind: null, src: null, q: "", group: null, all: false, before: false, sorts: {} };
+const TH_TABS = ["overview", "station", "map", "hooks", "reviewers"];
+let thQuery = null, thReturn = null; // thReturn: the tool whose drill-in was just left, so focus goes back to its row
 let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
-const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides Roadmap and Kanban
@@ -54,7 +65,7 @@ const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
-  { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
+  { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(), afterPaint: () => mountWorkflow() },
@@ -78,6 +89,14 @@ function route() {
   // the open tile rides the hash (#/config?tile=tracker), so a reload keeps it; any other route leaves none open.
   const asked = old ? OLD_ROUTES[m[1]] : new URLSearchParams(m[3] || "").get("tile");
   state.tile = currentPage.id === "config" && TILE_IDS.includes(asked) ? asked : null; // an unknown ?tile= opens none (nav.js TILES; slow.test.ts runs this file without its imports)
+  if (currentPage.id === "toolhealth") {
+    const q = new URLSearchParams(m[3] || ""), was = thUi.tool;
+    thUi.tab = TH_TABS.includes(m[2]) ? m[2] : "overview";
+    thUi.filters = Object.fromEntries(["days", "team", "lane", "profile"].map((k) => [k, q.get(k) || ""]).filter(([k, v]) => v && (k !== "days" || v === "7" || v === "30")));
+    thUi.tool = q.get("tool");
+    thUi.guard = q.get("guard");
+    thReturn = was && !thUi.tool ? was : null;
+  }
   if (currentPage.id === "health") {
     const was = healthView.project;
     healthView = parseView(m[3]);
@@ -397,18 +416,16 @@ async function loadHealth() {
   const gen = ++healthGen;
   let j;
   try {
-    const [r, qr, rr, vr] = await Promise.all([
+    const [r, qr, rr] = await Promise.all([
       fetch("/api/health", { headers: { "X-Himmel-Token": token } }),
       fetch("/api/bank", { headers: { "X-Himmel-Token": token } }).catch(() => null), // the panel degrades alone
       fetch("/api/rollup", { headers: { "X-Himmel-Token": token } }).catch(() => null),
-      fetch("/api/reviewers", { headers: { "X-Himmel-Token": token } }).catch(() => null),
     ]);
     j = r.ok ? await r.json() : null;
     if (!j) toast(`health sources failed (${r.status})`);
     else {
       if (qr && qr.ok) j.quota = await qr.json().catch(() => undefined); // a bad bank body must not drop the health cards
       if (rr && rr.ok) j.rollup = await rr.json().catch(() => undefined);
-      if (vr && vr.ok) j.reviewers = await vr.json().catch(() => undefined);
     }
   } catch (_) { j = null; toast("health sources: server unreachable"); }
   if (gen !== healthGen) return;
@@ -449,16 +466,27 @@ async function saveSecret(name, op, input) {
   paint();
 }
 
-async function loadToolHealth() {
-  const gen = ++toolHealthGen;
-  let data;
-  try {
-    const r = await fetch("/api/tool-health?" + toolFilters, { headers: { "X-Himmel-Token": token }, cache: "no-store" });
-    data = r.ok ? await r.json() : { state: "error" };
-  } catch (_) { data = { state: "error" }; }
-  if (gen !== toolHealthGen) return;
-  toolHealth = data;
-  if (currentPage.id === "toolhealth") paint();
+// a filter change reads again; a tab or drill-in change reuses the answer already held. force: the Refresh button.
+function loadToolHealth(force = false) {
+  const { health: toolHealth, inventory: toolInventory, reviewers: toolReviewers } = thLoaders();
+  const q = new URLSearchParams(thUi.filters).toString();
+  if (force || q !== thQuery || (!toolHealth.state.data && !toolHealth.state.loading)) { thQuery = q; toolHealth.load(q); }
+  if (force || (!toolInventory.state.data && !toolInventory.state.loading)) toolInventory.load("");
+  if (force || (!toolReviewers.state.data && !toolReviewers.state.loading)) toolReviewers.load("");
+}
+// leaving a drill-in puts focus back on the row that opened it
+function thFocusBack() {
+  const back = thReturn && [...document.querySelectorAll("a[data-tool]")].find((a) => a.dataset.tool === thReturn);
+  if (back) { back.focus(); thReturn = null; }
+}
+function toolHealthPage() {
+  const l = thLoaders(), inv = l.inventory.state, rv = l.reviewers.state;
+  return renderToolHealth({
+    ...l.health.state,
+    inventory: inv.data || (inv.error ? { state: "error", reason: inv.error } : null),
+    reviewers: rv.data || (rv.error ? { state: "error", reason: rv.error } : undefined),
+    shift,
+  }, token, thUi);
 }
 // the open shift, or the closed one named by shiftUi.id; read live, only the newest call may land.
 async function loadShift() {
@@ -562,10 +590,11 @@ document.addEventListener("change", (e) => {
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   const f = e.target.dataset.rmFilter;
   if (f) { roadmapUi[f] = e.target.value === "" ? null : Number(e.target.value); return paint(); }
+  const th = e.target.dataset.th;
+  if (th === "src" || th === "sort") { thUi[th] = e.target.value || (th === "sort" ? "failed" : null); return paint(); }
   const name = e.target.dataset.toolFilter;
   if (!name) return;
-  toolFilters.set(name, e.target.value);
-  loadToolHealth();
+  location.hash = toolHealthHref({ filters: { ...thUi.filters, [name]: e.target.value } }, { tab: thUi.tab, tool: thUi.tool, guard: thUi.guard }); // the route reads again
 });
 
 // Two-step write: the dry-run binds a preview id; only confirm runs it.
@@ -629,7 +658,8 @@ function toggleBundle(h) {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-act],[data-f]");
   if (!b) return;
-  if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth();
+  if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth(true);
+  if (b.dataset.act && b.dataset.act.startsWith("th-")) return void toolHealthClick(b);
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
   if (b.dataset.act === "refresh-shift") return void loadShift();
   if (b.dataset.act === "vm-save") return void saveVm();
@@ -699,6 +729,14 @@ document.addEventListener("input", (e) => {
     return;
   }
   if (e.target.id === "q") { state.filt.q = e.target.value; paint(); return; }
+  if (e.target.id === "th-q") { // the search box survives the repaint it causes, caret and all
+    const at = [e.target.selectionStart, e.target.selectionEnd];
+    thUi.q = e.target.value;
+    paint();
+    const i = $("#th-q");
+    if (i) { i.focus(); i.setSelectionRange(at[0], at[1]); }
+    return;
+  }
   if (e.target.dataset.act === "consent") {
     // No repaint: keep the caret; only flip the confirm button.
     const p = state.plans[e.target.dataset.k];
@@ -737,3 +775,19 @@ document.addEventListener("keydown", (e) => {
     paint();
   } catch (_) { setStatus("Server unreachable (it exits after 30 min idle)."); }
 })();
+
+// Tool health's in-page controls: chips, picks and sorts are page memory and repaint; Rescan and Retry read again.
+function toolHealthClick(b) {
+  const v = b.dataset.v || null, act = b.dataset.act;
+  if (act === "th-kind") thUi.kind = v;
+  else if (act === "th-group") thUi.group = thUi.group === v ? null : v;
+  else if (act === "th-before") thUi.before = !thUi.before;
+  else if (act === "th-all") thUi.all = !thUi.all;
+  else if (act === "th-pick") { const same = thUi.src === b.dataset.src && thUi.kind === b.dataset.kind; thUi.src = same ? null : b.dataset.src; thUi.kind = same ? null : b.dataset.kind; }
+  else if (act === "th-sort") { const t = b.dataset.table, col = Number(b.dataset.col), was = thUi.sorts[t]; thUi.sorts[t] = { col, desc: !!(was && was.col === col && !was.desc) }; }
+  else if (act === "th-rescan") return void thLoaders().inventory.load("rescan=1");
+  else if (act === "th-reviewers") return void thLoaders().reviewers.load("");
+  else if (act === "th-reset") { Object.assign(thUi, { kind: null, src: null, q: "", group: null, all: false, before: false }); return; } // the link itself routes
+  else return;
+  paint();
+}
