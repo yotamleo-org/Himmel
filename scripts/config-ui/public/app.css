@@ -284,3 +284,11 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .sh-list li{padding:var(--s2) 0;border-top:1px solid var(--rule);font-size:var(--fs-sm)}.sh-list li:first-child{border-top:0}
 @media (max-width:520px){.tiles.three{grid-template-columns:minmax(0,1fr)}}
 .sh-badge{margin-left:var(--s1);font:700 10.5px var(--font-mono);padding:0 6px;border-radius:999px;background:var(--beta-soft);color:var(--beta)}
+/* the Morning report page (report.js): the day selector, the window bar and the report tables */
+.rp-days{display:flex;flex-wrap:wrap;gap:var(--s1);align-items:center}
+.rp-days .chip{text-decoration:none}
+.rp-more{display:inline-block}.rp-more summary{cursor:pointer;color:var(--muted);font:11px var(--font-mono)}
+.rp-bar{display:grid;gap:2px;color:var(--muted);font-size:var(--fs-sm)}
+.rp-list{margin:0;padding-left:var(--s4);display:grid;gap:var(--s1);font-size:var(--fs-sm)}
+.rp-list li{overflow-wrap:anywhere}
+#reports fieldset{border:0;padding:0;margin:0 0 var(--s2)}#reports label{display:block;margin:var(--s1) 0}

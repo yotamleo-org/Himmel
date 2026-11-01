@@ -6,6 +6,7 @@ import { renderKanban, renderRoadmap } from "/roadmap.js";
 import { renderWorkflow, mountWorkflow } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
+import { renderReport } from "/report.js";
 import { fleetDot, healthDot, navLinks, parseLanding } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
@@ -31,6 +32,9 @@ let projects = null; // GET /api/projects: { current, projects: [...] }, null un
 let otherFeed = null; // the feed of the project on the page when it is not this one: null while loading, "none" when never checked
 let healthView = { mode: "project", project: null, tab: "broken", row: null, tile: null }; // #/health?view=all | project=<name> & tab= & row= & tile=
 let projectsGen = 0, otherGen = 0; // declared before route() runs: a reload at #/health calls loadProjects() from it
+let reportsLoadGen = 0, reportsSaving = false; // likewise for loadReportSettings(): the Reports and shifts card
+let reportList = null, reportView = null, reportGen = 0; // GET /api/reports and GET /api/report?day=, null until read
+const reportUi = { day: null }; // from the route: #/report?day=YYYY-MM-DD
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
 let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
@@ -48,13 +52,14 @@ const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker
 let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read; shiftAt throttles the rail badge's reads
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
 const PAGES = [
-  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); loadSetup(); } },
+  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(), afterPaint: () => mountWorkflow() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
+  { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
 let unmountPage = null; // what the page's afterPaint returned: undoes its draw before the next paint replaces #main
 let currentPage = PAGES[0];
@@ -84,6 +89,8 @@ function route() {
   roadmapUi.ver = ver;
   shiftUi.id = null;
   shiftUi.all = new URLSearchParams(m[3] || "").get("all") === "1";
+  const asked_day = new URLSearchParams(m[3] || "").get("day");
+  reportUi.day = currentPage.id === "report" && /^\d{4}-\d{2}-\d{2}$/.test(asked_day || "") ? asked_day : null;
   if (currentPage.id === "shift" && m[2]) { try { shiftUi.id = decodeURIComponent(m[2]); } catch (_) { shiftUi.id = m[2]; } }
   if (unmountPage) { unmountPage(); unmountPage = null; } // the branch below can replace #main without a paint
   renderPages();
@@ -308,6 +315,32 @@ async function saveVm() {
   paint();
 }
 
+// the Reports and shifts card. The draft is what the operator is typing; a saved or loaded answer resets it.
+const reportsDraft = (d) => ({ report_day: d.report_day, idle: String(d.shift_idle_min), cut1: d.shift_cuts[0], cut2: d.shift_cuts[1], minrun: String(d.shift_min_run_h) });
+async function loadReportSettings() {
+  const gen = ++reportsLoadGen;
+  state.reports = { data: null, error: null };
+  try {
+    const r = await fetch("/api/report-settings", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = await r.json();
+    if (gen !== reportsLoadGen) return;
+    state.reports = r.ok ? { data: j, error: null, draft: reportsDraft(j) } : { data: null, error: j.error || `report settings failed (${r.status})` };
+  } catch (_) { if (gen !== reportsLoadGen) return; state.reports = { data: null, error: "report settings: server unreachable" }; }
+  if (currentPage.id === "config") paint();
+}
+async function saveReportSettings() {
+  const d = state.reports && state.reports.draft;
+  if (!d || reportsSaving) return;
+  reportsSaving = true;
+  const sent = JSON.stringify(d);
+  let res;
+  try { res = await post("/api/report-settings", { report_day: d.report_day, shift_idle_min: d.idle.trim(), shift_cuts: [d.cut1.trim(), d.cut2.trim()], shift_min_run_h: d.minrun.trim() }); } finally { reportsSaving = false; }
+  const { ok, j } = res;
+  const edited = state.reports.draft && JSON.stringify(state.reports.draft) !== sent;
+  state.reports = ok ? { data: j, error: null, draft: edited ? state.reports.draft : reportsDraft(j), msg: { ok: true, text: "saved; a new day start applies from the next report on" } } : { ...state.reports, msg: { ok: false, text: j.error || "save failed" } };
+  paint();
+}
+
 // the fleet cap card. The draft is the cap as typed; a saved or loaded answer resets it.
 async function loadFleetCap() {
   const gen = ++fleetCapLoadGen;
@@ -441,6 +474,21 @@ async function loadShift() {
   renderPages();
   if (currentPage.id === "shift") paint();
 }
+// the report list, then the chosen day (the one in the route, else the newest); read live, only the newest call may land.
+async function loadReport() {
+  const gen = ++reportGen;
+  const get = async (p) => { const r = await fetch(p, { headers: { "X-Himmel-Token": token }, cache: "no-store" }); if (!r.ok) throw new Error(String(r.status)); return r.json(); };
+  let list, view = null;
+  try {
+    list = await get("/api/reports");
+    const day = reportUi.day || list.newest || list.today;
+    if (day) view = await get("/api/report?day=" + encodeURIComponent(day));
+  } catch (e) { if (gen !== reportGen) return; reportList = { error: `the reports could not be read (${e.message})` }; reportView = null; if (currentPage.id === "report") paint(); return; }
+  if (gen !== reportGen) return;
+  reportList = list;
+  reportView = view;
+  if (currentPage.id === "report") paint();
+}
 // read live on every load; only the newest call may paint.
 async function loadRoadmap() {
   const gen = ++roadmapGen;
@@ -510,6 +558,7 @@ document.addEventListener("change", (e) => {
   }
   if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; }
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
+  if (e.target.dataset.rs === "report_day" && state.reports && state.reports.draft) { state.reports.draft.report_day = e.target.value; state.reports.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   const f = e.target.dataset.rmFilter;
   if (f) { roadmapUi[f] = e.target.value === "" ? null : Number(e.target.value); return paint(); }
@@ -584,6 +633,8 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
   if (b.dataset.act === "refresh-shift") return void loadShift();
   if (b.dataset.act === "vm-save") return void saveVm();
+  if (b.dataset.act === "reports-save") return void saveReportSettings();
+  if (b.dataset.act === "refresh-report") return void loadReport();
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
   if (b.dataset.act === "reveal") {
@@ -638,6 +689,8 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("input", (e) => {
   const vf = e.target.dataset.vm;
+  const rf = e.target.dataset.rs;
+  if (rf && rf !== "report_day" && state.reports && state.reports.draft) { state.reports.draft[rf] = e.target.value; return; } // no repaint: keep the caret
   if (vf && vf !== "mode" && state.vm && state.vm.draft) { state.vm.draft[vf] = e.target.value; return; } // no repaint: keep the caret
   if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; } // typed text survives a repaint before blur
   if (e.target.dataset.rg === "model" && state.reviewGate && state.reviewGate.draft) {
