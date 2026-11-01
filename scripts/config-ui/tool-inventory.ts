@@ -95,11 +95,13 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   source("plugins", "~/.claude/plugins/installed_plugins.json · ~/.claude/settings.json → .enabledPlugins", installed.state, { on: on.length, installed: ids.length });
   const items = { skills: 0, commands: 0, agents: 0, hook_wirings: 0 }, pluginMcp = new Map<string, string>();
   let offMcp = 0;
-  const itemsBad: Bad = { hit: false };
+  const itemsBad: Bad = { hit: false }, mcpBad: Bad = { hit: false };
   for (const id of ids) {
     const dir = pathOf(id);
     if (!dir) continue;
-    const servers = new Set([...mcpKeys(readJson(join(dir, ".mcp.json")).v), ...mcpKeys(readJson(join(dir, ".claude-plugin", "plugin.json")).v)]);
+    const mcpFiles = [readJson(join(dir, ".mcp.json")), readJson(join(dir, ".claude-plugin", "plugin.json"))];
+    if (mcpFiles.some((r) => r.state === "error")) mcpBad.hit = true;
+    const servers = new Set(mcpFiles.flatMap((r) => mcpKeys(r.v)));
     if (!on.includes(id)) { offMcp += servers.size; continue; }
     const plugin = id.split("@")[0];
     const skills = [...ls(join(dir, "skills"), itemsBad).filter((n) => isFile(join(dir, "skills", n, "SKILL.md"), itemsBad)), ...(isFile(join(dir, "SKILL.md"), itemsBad) ? [plugin] : [])];
@@ -107,6 +109,7 @@ export function scanToolInventory(env: Env, now: number): Inventory {
     for (const n of ls(join(dir, "commands"), itemsBad).filter((n) => n.endsWith(".md"))) { tools.push({ kind: "cmd", source: id, name: `${plugin}:${stem(n)}` }); items.commands++; }
     for (const n of ls(join(dir, "agents"), itemsBad).filter((n) => n.endsWith(".md"))) { tools.push({ kind: "agent", source: id, name: `${plugin}:${stem(n)}` }); items.agents++; }
     const hooks = readJson(join(dir, "hooks", "hooks.json")), list = hooks.state === "ok" ? wirings(hooks.v?.hooks) : [];
+    if (hooks.state === "error") itemsBad.hit = true;
     addHooks(id, list); items.hook_wirings += list.length;
     for (const s of servers) if (!pluginMcp.has(s)) pluginMcp.set(s, id);
   }
@@ -154,7 +157,7 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   for (const k of projectServers) note(k, "mcp-project");
   source("mcp-project", "$HIMMEL_REPO/.mcp.json", project.state, { servers: projectServers.length });
   for (const k of pluginMcp.keys()) note(k, "mcp-plugins");
-  source("mcp-plugins", "<installPath>/.mcp.json · .claude-plugin/plugin.json → .mcpServers keys", installed.state, { on: pluginMcp.size, off: offMcp });
+  source("mcp-plugins", "<installPath>/.mcp.json · .claude-plugin/plugin.json → .mcpServers keys", installed.state === "ok" && mcpBad.hit ? "error" : installed.state, { on: pluginMcp.size, off: offMcp });
   for (const [server, from] of [...configured].sort(([a], [b]) => a.localeCompare(b))) {
     const list = ["mcp-user", "mcp-profiles", "mcp-project", "mcp-plugins"].filter((s) => from.has(s));
     tools.push({ kind: "mcp", source: list.some((s) => s !== "mcp-plugins") ? "mcp-config" : pluginMcp.get(server)!, name: server,

@@ -149,3 +149,13 @@ test("an unreadable directory reads error with no count, never a scan of zero", 
     for (const id of ["project-claude", "user-claude", "mcp-profiles"]) expect(src[id]).toMatchObject({ state: "error", found: null });
   } finally { for (const d of dirsOff) chmodSync(d, 0o755); }
 });
+
+test("a malformed plugin MCP or hooks file reads error with no count, never a scan of zero", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const { env, home } = station();
+  const plugins = join(home, "..", "plugins");
+  put(join(plugins, "alpha", ".mcp.json"), "{ not json");
+  put(join(plugins, "alpha", "hooks", "hooks.json"), "{ not json");
+  const src = Object.fromEntries(scanToolInventory(env, 0).sources.map((s: any) => [s.id, s]));
+  for (const id of ["mcp-plugins", "plugin-items"]) expect(src[id]).toMatchObject({ state: "error", found: null });
+});
