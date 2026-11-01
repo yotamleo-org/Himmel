@@ -243,11 +243,13 @@ for args in "" "77" "77 $SHA extra" "x1 $SHA" "077 $SHA" "77 ${SHA%?}" "77 ${SHA
 done
 
 # a usage error names where to run it and the expected arguments
+test_primary="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
+test_primary="${test_primary%/.git}"
 for args in "" "77 ${SHA%?}"; do
   # shellcheck disable=SC2086  # word-splitting the args string IS the point
   uout="$(bash "$SCRIPT" $args 2>&1)" || true
   contains "usage [$args]: names the run location" "$uout" "run it from the primary checkout"
-  contains "usage [$args]: names the script path form" "$uout" "scripts/handover/chief-kit/ready-check.sh <pr-number> <full-40-hex-head-sha>"
+  contains "usage [$args]: cds to the real primary checkout and quotes the script path" "$uout" "cd '$test_primary' && bash '$test_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>"
 done
 
 # --- 0. all-green PR: exit 0, READY-CHECK PASS, all six PASS lines ------

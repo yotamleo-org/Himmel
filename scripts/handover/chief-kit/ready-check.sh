@@ -141,7 +141,7 @@ usage() {
     case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
     echo "usage: ready-check.sh <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
-    echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): bash $rc_primary/scripts/handover/chief-kit/ready-check.sh <pr-number> <full-40-hex-head-sha>" >&2
+    echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 ONLY7=0
