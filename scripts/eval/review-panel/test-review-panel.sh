@@ -128,7 +128,7 @@ eq "delta lint: a delta that does not apply on its round-1 diff is refused" "$rc
 has "delta lint: says so" "$out" "does not apply on the round-1 diff"
 cp "$TMP/dl/d07.keep" "$FIXD/delta-07.delta.patch"
 # A patch naming a path outside its scratch tree is refused, and nothing is written there.
-probe="review-panel-escape-probe"; rm -f "${TMPDIR:-/tmp}/$probe"
+probe="review-panel-escape-probe.$$"; rm -f "${TMPDIR:-/tmp}/$probe"
 cp "$FIXD/delta-07.patch" "$TMP/dl/r07.keep"
 printf 'diff --git a/../../%s b/../../%s\nnew file mode 100644\n--- /dev/null\n+++ b/../../%s\n@@ -0,0 +1 @@\n+x\n' "$probe" "$probe" "$probe" >> "$FIXD/delta-07.patch"
 out=$(dl_lint); rc=$?
