@@ -233,8 +233,46 @@ def _current_snapshot(vm):
     return None
 
 
+_RESOLVER = Path(__file__).resolve().parent / "himmel-secrets"
+
+
+def resolve_secrets(root, names):
+    """The Python door to scripts/lib/himmel-secrets (twin of resolve-secrets.mjs).
+
+    Runs this checkout's resolver (found from this file's own path, never the
+    cwd) as ``get --root <root> --no-dotenv <names...>`` and parses NAME=value at
+    the first "=". The resolver walks environment, CREDENTIALS_DIRECTORY, then
+    the keyring; a caller reads its own .env only for a name this omits. A value
+    is never logged and never put on argv. A name nobody holds is absent.
+    """
+    names = list(names)
+    out = {}
+    if not names or not _RESOLVER.is_file():
+        return out
+    try:
+        r = subprocess.run(
+            ["bash", str(_RESOLVER), "get", "--root", str(root), "--no-dotenv", *names],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return out
+    # exit 1 = nothing served; the stdout of a partial hit is still usable.
+    for line in r.stdout.split("\n"):
+        name, sep, value = line.partition("=")
+        if sep and name in names:
+            out[name] = value
+    return out
+
+
 def _load_dotenv_into_env(keys):
-    """Load only this VM's credential keys, without overriding live values."""
+    """Load only this VM's credential keys, without overriding live values.
+
+    Order: live environment, then the keyring (himmel-secrets), then .env.
+    """
+    keys = list(keys)
+    for key, value in resolve_secrets(_env_path().parent, keys).items():
+        os.environ.setdefault(key, value)
     try:
         from dotenv import dotenv_values
     except ImportError:

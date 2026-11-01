@@ -84,6 +84,13 @@ DOTENV_KEYS = ("ubuntu_vm_user", "ubuntu_vm_pass")
 
 
 def _load_dotenv():
+    # Order: live environment, the keyring (himmel-secrets), then .env.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    import vmsdk
+    for key, value in vmsdk.resolve_secrets(_env_path().parent, DOTENV_KEYS).items():
+        os.environ.setdefault(key, value)
+    if all(key in os.environ for key in DOTENV_KEYS):
+        return
     try:
         from dotenv import dotenv_values
     except ImportError:
