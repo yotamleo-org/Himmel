@@ -93,8 +93,10 @@
 #      Agent-tool child, e.g. a chief's judge call), or live-subagents.sh
 #      could not prove it has none; retry once they finish
 #   8  refused - the doc names a session-scratchpad clone (/tmp/claude-<uid>/
-#      <project>/<session>/scratchpad/<clone>) holding commits on no remote;
-#      that clone dies with the session
+#      <project>/<session>/scratchpad/<clone>) holding commits on no remote
+#      (that clone dies with the session), or the check could not run: the doc
+#      cannot be scanned, the named paths or clones cannot be sorted, a named
+#      directory cannot be scanned for clones, or git cannot inspect a clone
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # konsole workers are Linux/KDE-only, same guard as
