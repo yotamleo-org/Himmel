@@ -270,6 +270,7 @@ printf 'service=himmel key=JIRA_API_TOKEN scope=user\tdummy-old\n' >"$KSTUB_STOR
 got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
 assert_eq "R13 a different value in user scope is held, exit 0" "held JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
 assert_eq "R13 a held key makes no store call" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+# read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
 assert_eq "R13 the held item keeps its value" "service=himmel key=JIRA_API_TOKEN scope=user	dummy-old" "$(cat "$KSTUB_STORE")"
 got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --project "$TMP/r12.env" 2>&1; echo "rc=$?")
 assert_eq "R13 with --project a user-scope item does not count" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
