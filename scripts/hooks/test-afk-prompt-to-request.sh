@@ -9,6 +9,7 @@
 #
 # bash 3.2-safe.
 set -uo pipefail
+unset AFK_PROMPT_TO_REQUEST_OFF
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 HOOK="${HOOK:-$HERE/afk-prompt-to-request.sh}"
@@ -41,6 +42,9 @@ cat > "$T/bin/sudo" <<EOF
 cat "$T/mode"
 EOF
 chmod +x "$T/bin/sudo"
+# A systemctl on PATH on every runner, so the plain-argv row does not depend on the host.
+printf '#!/bin/sh\nexit 0\n' > "$T/bin/systemctl"
+chmod +x "$T/bin/systemctl"
 git init -q -b feat/himmel-8067-x "$T/wt" || exit 1
 mkdir -p "$T/nobranch"
 ON='result=mode mode=afk enabled=true run_enabled=true'
@@ -84,6 +88,12 @@ denies_with "a command with shell syntax runs as bash -c, quoted" \
 denies_with "no ticket in the branch names ticket none" \
     "$RUN --session S-1 --ticket none --blocked-by prompt --cwd $T/nobranch -- id" \
     Bash "id" "$T/nobranch"
+denies_with "a leading assignment runs as bash -c" \
+    "$RUN --session S-1 --ticket HIMMEL-8067 --blocked-by prompt --cwd $T/wt -- bash -c $(printf '%q' 'FOO=bar env')" \
+    Bash "FOO=bar env"
+denies_with "a shell builtin runs as bash -c" \
+    "$RUN --session S-1 --ticket HIMMEL-8067 --blocked-by prompt --cwd $T/wt -- bash -c $(printf '%q' 'cd /work')" \
+    Bash "cd /work"
 out="$(run Bash "id")"
 case "$(msg "$out")" in *AFK_PROMPT_TO_REQUEST_OFF=1*) ok "the deny names its bypass" ;; *) bad "the deny names its bypass (got: $out)" ;; esac
 line="$(msg "$(run Bash "ls /root | head -1")" | sed -n 1p | sed 's/^operator is AFK: file `//; s/`$//')"

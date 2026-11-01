@@ -12,7 +12,8 @@
 #
 # Only Bash calls: another tool has no argv the helper could run. A command the gate-shapes hook
 # (permission-allow-gate-shapes.sh, the other PermissionRequest member) allows is left to it.
-# A plain command (words of [A-Za-z0-9_./:=@%+,-] only) is named as its own argv; anything else
+# A plain command (words of [A-Za-z0-9_./:=@%+,-] only, the first an executable on PATH, not an
+# assignment, builtin, keyword, alias or function) is named as its own argv; anything else
 # runs as `bash -c <the command>`, quoted, so the request is exactly the call that prompted.
 #
 # A workflow redirect, not a fence: fails open (no output) on every error.
@@ -56,7 +57,9 @@ ticket="$(git_clean -C "$cwd" symbolic-ref --short -q HEAD 2>/dev/null | grep -o
 
 lib="$(cd "$here/../lib" 2>/dev/null && pwd)" || exit 0  # swallow-ok: fail-open hook, no decision on error
 line="$(printf '%q ' "$lib/afk-run" --session "$session" --ticket "$ticket" --blocked-by prompt --cwd "$cwd" --)"
-if [[ $cmd =~ ^[A-Za-z0-9_./:=@%+,-]+(\ [A-Za-z0-9_./:=@%+,-]+)*$ ]]; then
+first=${cmd%% *}
+if [[ $cmd =~ ^[A-Za-z0-9_./:=@%+,-]+(\ [A-Za-z0-9_./:=@%+,-]+)*$ ]] && [[ $first != *=* ]] \
+    && [ "$(type -t -- "$first" 2>/dev/null)" = file ]; then  # swallow-ok: an unknown name is not a file, so it runs as bash -c
     line="$line$cmd"
 else
     line="${line}bash -c $(printf '%q' "$cmd")"
