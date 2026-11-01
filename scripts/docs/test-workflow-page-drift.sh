@@ -152,8 +152,8 @@ FACTS = [
       "Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through.",
       "lane bank exhausted (park and retry later", "fleet-size cap reached",
       "claude-opus-*", "claude-fable-*"],
-     ["SKIPPED-BANK", "A stale or unknown bank reading does not stop the launch", "(opus, fable)"],
-     ["does not say PROCEED", "The chief waits for your ruling"]),
+     ["the usage check says the budget is spent", "A stale or unknown bank reading does not stop the launch", "(opus, fable)"],
+     ["does not say PROCEED", "The chief waits for your ruling", "SKIPPED-BANK"]),
     ("an unreadable reviewer holds only in an armed clone", "scripts/lib/review-merge-gate.sh",
      ["- failing open\" >&2; }", "armed clone an unreadable CR ledger holds every hard or required critic"],
      ["where an unreadable review ledger holds every required reviewer and a failed CodeRabbit read holds a required CodeRabbit review"],
@@ -227,7 +227,8 @@ if [ "$copy_ok" -ne 1 ]; then
   bad "5. CONTROL: temp copy" "could not copy the page, data file or cited files into $C"
 else
   cp "$C/$PAGE_REL" "$TMP/page.html"
-  mut "$TMP/page.html" "<code>_new-worktree.sh</code>" "<code>new-worktree-gate.sh</code>"
+  # the page names checks in words, so plant a script name where it shows a branch name
+  mut "$TMP/page.html" "<code>feat/login</code>" "<code>new-worktree-gate.sh</code>"
   r=$(check names "$ROOT" "$TMP/page.html")
   if grep -qF "page names script new-worktree-gate.sh" <<< "$r"; then ok "5a. CONTROL: a script the tree lacks fails case 1"; else bad "5a. CONTROL: a script the tree lacks fails case 1" "got: ${r:-nothing}"; fi
 

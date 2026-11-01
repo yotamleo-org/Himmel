@@ -3,7 +3,7 @@ import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDra
 import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
 import { renderKanban, renderRoadmap } from "/roadmap.js";
-import { renderWorkflow, mountWorkflow } from "/workflow.js";
+import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
 import { renderReport } from "/report.js";
@@ -62,13 +62,15 @@ const noTracker = () => `<div class="nodata">No tracker the UI can read is confi
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read; shiftAt throttles the rail badge's reads
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
+let wfModel = null, wfStats = null, wfGen = 0, wfAt = 0, wfScrolled = null; // the workflow model and GET /api/phase-stats, null until read
+const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; // from the route: #/workflow[/eval]?phase=|step=|walk=&at=
 const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
   { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
-  { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(), afterPaint: () => mountWorkflow() },
+  { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
 ];
@@ -82,6 +84,12 @@ const OLD_ROUTES = { setup: "secrets", configure: null };
 const TILE_IDS = ["secrets", "review", "tracker", "scope"];
 
 function route() {
+  // a step's deep link (#s-<step>) and the docs page's ?phase=<id> land on the Workflow page
+  if (/^#s-/.test(location.hash) || (!location.hash.startsWith("#/") && new URLSearchParams(location.search).has("phase"))) {
+    const u = parseWorkflowRoute(location.hash, location.search);
+    const q = u.step ? "step=" + encodeURIComponent(u.step) : u.phase ? "phase=" + u.phase : "";
+    history.replaceState(null, "", location.pathname + "#/workflow" + (q ? "?" + q : ""));
+  }
   const m = /^#\/(\w+)(?:\/([^/?#]+))?(?:\?([^#]*))?/.exec(location.hash) || [];
   const old = Object.hasOwn(OLD_ROUTES, m[1]);
   const id = old ? "config" : m[1];
@@ -111,6 +119,7 @@ function route() {
   const asked_day = new URLSearchParams(m[3] || "").get("day");
   reportUi.day = currentPage.id === "report" && /^\d{4}-\d{2}-\d{2}$/.test(asked_day || "") ? asked_day : null;
   if (currentPage.id === "shift" && m[2]) { try { shiftUi.id = decodeURIComponent(m[2]); } catch (_) { shiftUi.id = m[2]; } }
+  if (currentPage.id === "workflow") Object.assign(wfUi, parseWorkflowRoute(location.hash, ""));
   if (unmountPage) { unmountPage(); unmountPage = null; } // the branch below can replace #main without a paint
   renderPages();
   loadFleet();
@@ -504,6 +513,27 @@ async function loadShift() {
   shift = data;
   renderPages();
   if (currentPage.id === "shift") paint();
+}
+// the Workflow page: the workflow model (once) and the per-phase numbers; only the newest read may land.
+async function loadWorkflow() {
+  const gen = ++wfGen;
+  wfAt = Date.now();
+  const get = async (path, headers) => {
+    const r = await fetch(path, { headers, cache: "no-store" });
+    if (!r.ok) throw new Error(`the server answered ${r.status}`);
+    return r.json();
+  };
+  const [m, s] = await Promise.allSettled([wfModel && !wfModel.error ? wfModel : get("/dev-graph/graph.json", {}), get("/api/phase-stats", { "X-Himmel-Token": token })]);
+  if (gen !== wfGen) return;
+  wfModel = m.status === "fulfilled" ? m.value : { error: m.reason instanceof Error ? m.reason.message : "server unreachable" };
+  wfStats = s.status === "fulfilled" ? s.value : { error: s.reason instanceof Error ? s.reason.message : "server unreachable" };
+  if (currentPage.id === "workflow") paint();
+}
+// a step link or a walk scrolls its card (or the opened phase) into view, once per route: a later repaint never jumps.
+function wfScroll() {
+  const el = document.querySelector(".wf-step.wf-hl") || (wfUi.phase && document.getElementById("pp-" + wfUi.phase));
+  if (el && wfModel && !wfModel.error && wfScrolled !== location.hash) { wfScrolled = location.hash; el.scrollIntoView({ block: "center" }); }
+  if (!el) wfScrolled = null;
 }
 // the report list, then the chosen day (the one in the route, else the newest); read live, only the newest call may land.
 async function loadReport() {
