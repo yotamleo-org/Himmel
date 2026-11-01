@@ -50,7 +50,7 @@ NTOK="$((7000000000 + RANDOM)):$(python3 -I -c 'import secrets; print(secrets.to
 new_root() {
     R="$tmp/$1"
     mkdir -p "$R/etc/himmel/afk-sudo" "$R/var/lib/himmel/afk-sudo" "$R/var/log/himmel" "$R/etc/cron.d" "$R/bin" \
-        "$R/usr/local/libexec/himmel/ops" "$R/usr/local/libexec/himmel/bin"
+        "$R/usr/local/libexec/himmel/ops" "$R/usr/local/bin" "$R/usr/sbin"
     python3 -I -c 'import base64, secrets; print(base64.b32encode(secrets.token_bytes(20)).decode())' > "$R/etc/himmel/afk-sudo/totp.seed"
     chmod 0600 "$R/etc/himmel/afk-sudo/totp.seed"
     printf '{"enabled": true, "operator_id": %s, "window_s": 120, "operator_user": "%s", "ops": {"enabled": %s}, "classes": {}}\n' \
@@ -64,8 +64,8 @@ new_root() {
     chmod 0755 "$R"/usr/local/libexec/himmel/ops/*.sh 2>/dev/null
     python3 -I "$OPS/build-manifest.py" "$R/usr/local/libexec/himmel/ops" >/dev/null 2>&1
     # the message-session opener stand-in cron lines may name
-    printf '#!/bin/sh\nexit 0\n' > "$R/usr/local/libexec/himmel/bin/open-session"
-    chmod 0755 "$R/usr/local/libexec/himmel/bin/open-session"
+    printf '#!/bin/sh\nexit 0\n' > "$R/usr/local/bin/open-session"
+    chmod 0755 "$R/usr/local/bin/open-session"
     # fake crontab: the table of -u <user> lives in $R/cron.<user>
     cat > "$R/bin/crontab" <<'FAKECRON'
 #!/bin/sh
@@ -95,7 +95,7 @@ table() { cat "$R/cron.$(id -un)" 2>/dev/null; }
 op() { local s="$1"; shift; HIMMEL_OPS_ROOT="$R" HIMMEL_OPS_BIN="$R/bin" bash "$R/usr/local/libexec/himmel/ops/$s.sh" --id testid00 --operator-user "$(id -un)" "$@" 2>&1; }
 # oreq <now-offset> <session> <op> key=value...
 oreq() { local off="$1" sess="$2"; shift 2; h "$off" op-request --session "$sess" --ticket HIMMEL-8203 "$@"; }
-CMD=/usr/local/libexec/himmel/bin/open-session
+CMD=/usr/local/bin/open-session
 
 echo "== RED: an installed copy that differs from the manifest is changed, not run =="
 new_root tamper
@@ -133,7 +133,7 @@ assert_contains "the script itself refuses a command outside the opener dirs" "r
 
 echo "== RED: cron-entry command is one root-owned executable path, no arguments =="
 new_root cmd
-O="$R/usr/local/libexec/himmel/bin"
+O="$R/usr/local/bin"
 chmod 0775 "$O/open-session"
 assert_contains "RED: a group-writable opener is bad-param" "result=bad-param name=command" "$(op cron-entry --check --action set --tag t --schedule "0 5 * * *" --command "$O/open-session")"
 chmod 0755 "$O/open-session"
@@ -195,6 +195,13 @@ out=$(oreq 80 S1 cron-entry action=remove tag=ping); id=$(rid "$out")
 approve 83 "$id" "$(code 83)" >/dev/null
 assert_eq "remove through the chain clears the table" "" "$(table)"
 
+echo "== the never-remote floor reads the parameters, not the installed script's path =="
+new_root floor
+printf '{"enabled": true, "operator_id": %s, "window_s": 120, "operator_user": "%s", "ops": {"enabled": true}, "never_remote_extra": ["*/usr/local/bin/open-session"], "classes": {}}\n' \
+    "$OPERATOR" "$(id -un)" > "$R/etc/himmel/afk-sudo.json"
+assert_contains "a parameter naming a floor pattern is never-remote" "result=never-remote" "$(oreq 0 S1 cron-entry action=set tag=ping "schedule=0 5 * * *" "command=$R$CMD")"
+assert_contains "a request whose parameters are clear passes the floor" "result=pending" "$(oreq 1 S1 cron-entry action=remove tag=ping)"
+
 echo "== lockdown denies a pending op request =="
 new_root lock
 out=$(oreq 0 S1 cron-entry action=remove tag=ping); id=$(rid "$out")
@@ -205,10 +212,11 @@ assert_contains "a locked-down station refuses a new op request" "result=disable
 echo "== cron-system =="
 new_root sys
 f="$R/etc/cron.d/himmel-nightly"
-out=$(op cron-system --action set --tag nightly --schedule "30 2 * * *" --user root --command "$R/usr/local/libexec/himmel/bin/open-session")
+out=$(op cron-system --action set --tag nightly --schedule "30 2 * * *" --user root --command "$R/usr/sbin/himmel-job")
 assert_contains "cron-system set writes the file" "result=changed" "$out"
-assert_contains "the file holds the line" "30 2 * * * root $R/usr/local/libexec/himmel/bin/open-session" "$(cat "$f" 2>/dev/null)"
-assert_contains "set again is unchanged" "result=unchanged" "$(op cron-system --action set --tag nightly --schedule "30 2 * * *" --user root --command "$R/usr/local/libexec/himmel/bin/open-session")"
+assert_contains "the file holds the line" "30 2 * * * root $R/usr/sbin/himmel-job" "$(cat "$f" 2>/dev/null)"
+assert_contains "set again is unchanged" "result=unchanged" "$(op cron-system --action set --tag nightly --schedule "30 2 * * *" --user root --command "$R/usr/sbin/himmel-job")"
+assert_contains "root with a command under /usr/local/bin is refused" "result=bad-param name=command" "$(op cron-system --action set --tag evil --schedule "30 2 * * *" --user root --command "$R/usr/local/bin/open-session")"
 assert_contains "root with a command outside the allowed dirs is refused" "result=bad-param name=command" "$(op cron-system --action set --tag evil --schedule "30 2 * * *" --user root --command /home/x/evil)"
 assert_contains "remove deletes the file" "result=changed" "$(op cron-system --action remove --tag nightly)"
 assert_eq "the cron.d file is gone" "no" "$([ -e "$f" ] && echo yes || echo no)"

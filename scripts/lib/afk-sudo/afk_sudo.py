@@ -1361,6 +1361,12 @@ def op_argv(script, rid, op_user, schema, params):
     return argv
 
 
+def op_floor_argv(name, schema, params):
+    """What the never-remote floor reads for an op: the name and the parameters, never the installed script's own path
+    (under /usr/local/libexec/himmel, which the floor keeps free-form requests out of)."""
+    return [name] + op_argv("", "", "", schema, params)[5:]
+
+
 def run_op(argv, schema):
     """Run the installed script and parse its last status line: (exit code, status match or None, streams, ms)."""
     timeout = cfg_int(schema, "timeout_s", 60, 1, 1800)
@@ -1433,7 +1439,7 @@ def execute_op(payload, config):
             return {"result": "bad-user"}
         argv = op_argv(script, rid, op_pw.pw_name, schema, rec["params"])
         extra = config.get("never_remote_extra")
-        rule = nr.check(argv, [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
+        rule = nr.check(op_floor_argv(rec["name"], schema, rec["params"]), [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
         if rule:
             return {"result": "never-remote", "rule": rule}
         rc, st, streams, ms = run_op(argv, schema)
@@ -1491,7 +1497,7 @@ def op_request(broker, config, args):
         return 5
     argv = op_argv(script, "check", op_pw.pw_name, schema, params)
     extra = config.get("never_remote_extra")
-    rule = nr.check(argv, [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
+    rule = nr.check(op_floor_argv(name, schema, params), [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
     if rule:
         refuse_row(dict(meta, kind="op"), "never-remote", rule=rule)
         print(f"result=never-remote rule={rule}")

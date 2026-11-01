@@ -400,8 +400,12 @@ fixed environment. Each op is idempotent, prints one last line
 `op=<name> id=<id> result=changed|unchanged|would-change|bad-param|failed [name=<p>] detail=…`, and the
 helper ledgers it as `op`, `version`, `op_result`, `detail` on the `run` row (the request, code-check and
 run rows are the broker's). `cron-entry` `command` is one absolute path with no arguments under
-`/usr/local/libexec/himmel/` or `/usr/local/bin/`, root-owned and not group/other-writable, checked at
-`--check` and at run. `ops.enabled` is off by default; `lockdown` denies a pending op request like any other.
+`/usr/local/bin/`, an executable that is root-owned and not group/other-writable, checked at `--check` and
+at run (`ponytail`: any such executable passes, not only a message-session opener; pin it to the installed
+opener once one ships). The never-remote floor reads the op name and its parameters, not the installed
+script's own path, so a parameter that names `/usr/local/libexec/himmel` is refused (`cron-system` root jobs
+are therefore limited to `/usr/bin` and `/usr/sbin`). `ops.enabled` is off by default; `lockdown` denies a
+pending op request like any other.
 
 ## Verbs
 

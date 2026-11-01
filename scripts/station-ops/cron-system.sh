@@ -5,7 +5,8 @@
 #
 #   cron-system.sh [--check] --id ID --action set|remove --tag T [--schedule S --user U --command C]
 #
-# user=root requires the command's path under /usr/bin, /usr/sbin or /usr/local/libexec/himmel.
+# user=root requires the command's path under /usr/bin or /usr/sbin (the never-remote floor refuses a parameter that
+# names /usr/local/libexec/himmel, so that directory is not offered).
 # Idempotent: the same call twice reports result=unchanged. --check reports result=would-change and writes nothing.
 # Last stdout line: op=cron-system id=ID result=changed|unchanged|would-change|bad-param|failed [name=P] detail=...
 # Exit 0 ok, 3 bad-param, 1 failed.
@@ -57,8 +58,8 @@ if [ "$action" = set ]; then
     case "$path/" in *"/../"* | *"/./"* | *"//"*) bad command "no . or .. segments" ;; esac
     if [ "$cuser" = root ]; then
         rel=${path#"$ROOT"}
-        { [ "$rel" != "$path" ] || [ -z "$ROOT" ]; } || bad command "root jobs run only /usr/bin, /usr/sbin or /usr/local/libexec/himmel"
-        case $rel in /usr/bin/* | /usr/sbin/* | /usr/local/libexec/himmel/*) ;; *) bad command "root jobs run only /usr/bin, /usr/sbin or /usr/local/libexec/himmel" ;; esac
+        { [ "$rel" != "$path" ] || [ -z "$ROOT" ]; } || bad command "root jobs run only a command under /usr/bin or /usr/sbin"
+        case $rel in /usr/bin/* | /usr/sbin/*) ;; *) bad command "root jobs run only a command under /usr/bin or /usr/sbin" ;; esac
     fi
     desired="# HIMMEL-$tag managed by himmel station-ops cron-system"$'\n'"$schedule $cuser $command"$'\n'
 else

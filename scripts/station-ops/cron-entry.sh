@@ -50,15 +50,16 @@ re_sched='^[0-9*/,-]+( [0-9*/,-]+){4}$'
 case $action in set | remove) ;; *) bad action "must be set or remove" ;; esac
 [[ $tag =~ $re_tag ]] || bad tag "A-Za-z0-9- and at most 40 characters"
 
-# ponytail: any root-owned executable in these two directories passes, not only the message-session opener
-# (none is installed yet); upgrade path: pin command to the installed opener once one ships.
+# ponytail: any root-owned executable in /usr/local/bin passes, not only the message-session opener (none is
+# installed yet); upgrade path: pin command to the installed opener once one ships. /usr/local/libexec/himmel is
+# not offered: the never-remote floor refuses any parameter that names it.
 opener_ok() {
     local p=$1 rel owner mode
     [[ $p =~ ^/[A-Za-z0-9._/-]{1,250}$ ]] || return 1
     case "$p/" in *"/../"* | *"/./"* | *"//"*) return 1 ;; esac
     rel=${p#"$ROOT"}
     [ "$rel" != "$p" ] || [ -z "$ROOT" ] || return 1
-    case $rel in /usr/local/libexec/himmel/* | /usr/local/bin/*) ;; *) return 1 ;; esac
+    case $rel in /usr/local/bin/*) ;; *) return 1 ;; esac
     [ -f "$p" ] && [ -x "$p" ] || return 1
     read -r owner mode < <(stat -L -c "%u %a" "$p" 2>/dev/null) || return 1
     [ "$owner" = "$WANT_UID" ] || return 1
@@ -68,7 +69,7 @@ opener_ok() {
 desired=''
 if [ "$action" = set ]; then
     [[ $schedule =~ $re_sched ]] || bad schedule "five cron fields of digits and * / , -"
-    opener_ok "$command" || bad command "one root-owned executable path, no arguments, under /usr/local/libexec/himmel or /usr/local/bin"
+    opener_ok "$command" || bad command "one root-owned executable path, no arguments, under /usr/local/bin"
     desired="$schedule $command # HIMMEL-$tag"
 else
     [ -z "$schedule$command" ] || bad "$([ -n "$schedule" ] && echo schedule || echo command)" "not allowed with remove"
