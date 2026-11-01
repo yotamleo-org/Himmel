@@ -85,7 +85,6 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 | yotamleo-org/claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | branch main; no pin site registered | dormant |
 | yotamleo-org/claude-squad | https://github.com/smtg-ai/claude-squad | smtg-ai | AGPL-3.0 | branch main; no pin site registered | dormant |
 | yotamleo-org/claude-statusline | https://github.com/nilbuild/claude-statusline | Kamran Ahmed | MIT | branch main; [pin site](../scripts/statusline/VENDORED.md) | dormant |
-| yotamleo-org/claude-video | https://github.com/bradautomates/claude-video | bradautomates | MIT | branch himmel-main; no pin site registered | runtime-dependency |
 | yotamleo-org/codex | https://github.com/openai/codex | OpenAI | Apache-2.0 | branch main; no pin site registered | dormant |
 | yotamleo-org/codex-plugin-cc | https://github.com/openai/codex-plugin-cc | OpenAI | Apache-2.0 | branch main; no pin site registered | upstream-contribution |
 | yotamleo-org/core | https://github.com/home-assistant/core | Home Assistant contributors | Apache-2.0 | branch dev; no pin site registered | upstream-contribution |

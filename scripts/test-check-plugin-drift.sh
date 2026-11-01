@@ -1768,17 +1768,17 @@ case "$*" in
     printf '[{"nameWithOwner":"%s/%s"}]\n' "$FORK_OWNER" "${FORK_NAME:-disc}" ;;
   'api repos/yotamleo/'*)
     printf '{"default_branch":"main","parent":{"full_name":"upstream/%s"}}\n' "${2##*/}" ;;
-  "api repos/${FORK_OWNER:-none}/claude-video")
-    printf '{"default_branch":"main","parent":{"full_name":"bradautomates/claude-video"}}\n' ;;
+  "api repos/${FORK_OWNER:-none}/obsidian-skills")
+    printf '{"default_branch":"main","parent":{"full_name":"kepano/obsidian-skills"}}\n' ;;
   "api repos/${FORK_OWNER:-none}/gone")
     printf '{"default_branch":"main","archived":true,"parent":{"full_name":"upstream/gone"}}\n' ;;
   "api repos/${FORK_OWNER:-none}/home-assistant.io")
     printf '{"default_branch":"current","parent":{"full_name":"upstream/home-assistant.io"}}\n' ;;
   "api repos/${FORK_OWNER:-none}/"*)
     printf '{"default_branch":"main","parent":{"full_name":"upstream/%s"}}\n' "${2##*/}" ;;
-  "api repos/bradautomates/claude-video/compare/main...${FORK_OWNER:-none}:himmel-main")
+  "api repos/kepano/obsidian-skills/compare/main...${FORK_OWNER:-none}:himmel-main")
     printf '{"behind_by":22,"ahead_by":4}\n' ;;
-  'api repos/bradautomates/claude-video')
+  'api repos/kepano/obsidian-skills')
     printf '{"default_branch":"main"}\n' ;;
   "api repos/upstream/disc/compare/trunk...${FORK_OWNER:-none}:main")
     printf '{"behind_by":2,"ahead_by":0}\n' ;;
@@ -1848,11 +1848,11 @@ if grepq "$fork_out" 'yotamleo/offlist@himmel/pin: BEHIND.*behind=7 ahead=1'; th
 fork_out="$(FORK_BAD_COUNTS=1 fork_run)"; fork_rc=$?
 if grepq "$fork_out" 'yotamleo/fast@himmel/pin: .*UNCHECKED' && ! grepq "$fork_out" 'yotamleo/fast@himmel/pin: BEHIND'; then ok "fork-behind: malformed counts never claim a comparison"; else bad "fork-behind: malformed counts were trusted"; fi
 # The adapter registry names the org forks and their himmel
-# branch. Fixture row copied from the real himmel-adapters.json claude-video row.
+# branch. Fixture row copied from the real himmel-adapters.json obsidian-skills row.
 python3 - "$ROOT/scripts/guardrails/himmel-adapters.json" "$W17/adapters.json" <<'PY'
 import json, sys
 rows = json.load(open(sys.argv[1]))
-row = next(r for r in rows if r['nwo'].endswith('/claude-video'))
+row = next(r for r in rows if r['nwo'].endswith('/obsidian-skills'))
 owner = row['nwo'].split('/')[0]
 rows = [row,
         {'nwo': owner + '/gone', 'upstream': 'upstream/gone', 'himmel_branch': 'main'},
@@ -1863,7 +1863,7 @@ FORK_OWNER="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]
 export FORK_OWNER
 fork_out="$(DRIFT_ADAPTERS="$W17/adapters.json" fork_run)"; fork_rc=$?
 if [ "$fork_rc" -eq 2 ]; then ok "fork-behind: adapter fork drift exits 2"; else bad "fork-behind: adapter fork drift exit $fork_rc, expected 2"; fi
-if grepq "$fork_out" "$FORK_OWNER/claude-video@himmel-main: BEHIND.*behind=22 ahead=4"; then ok "fork-behind: adapter fork checked on its himmel branch"; else bad "fork-behind: adapter fork himmel branch not checked; $fork_out"; fi
+if grepq "$fork_out" "$FORK_OWNER/obsidian-skills@himmel-main: BEHIND.*behind=22 ahead=4"; then ok "fork-behind: adapter fork checked on its himmel branch"; else bad "fork-behind: adapter fork himmel branch not checked; $fork_out"; fi
 if grepq "$fork_out" "$FORK_OWNER/disc@main: BEHIND"; then ok "fork-behind: forks of every adapter owner are discovered"; else bad "fork-behind: adapter owner forks not discovered"; fi
 if grepq "$fork_out" "$FORK_OWNER/gone@main: ARCHIVED" && ! grepq "$fork_out" "$FORK_OWNER/gone@main: BEHIND"; then ok "fork-behind: archived fork reads ARCHIVED, not drift"; else bad "fork-behind: archived fork not reported ARCHIVED"; fi
 if grepq "$fork_out" "$FORK_OWNER/firstparty"; then bad "fork-behind: first-party adapter repo checked as a fork"; else ok "fork-behind: first-party adapter repo skipped"; fi
