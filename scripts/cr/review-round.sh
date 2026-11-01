@@ -2174,6 +2174,21 @@ if [ "$pending_count" -eq 0 ] && [ "$cap_deferred_count" -eq 0 ]; then
     exit 0
 fi
 
+# Every pending hardening finding needs a valid reason of its own or the
+# supplied --fu-why, checked once before anything is commented, filed or
+# amended, so a refused run leaves nothing behind for a retry to repeat.
+hardening_unreasoned="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const ok=/^(unseen-failure|no-check|vacuous-check|no-recovery|silent-rot)$/;process.stdout.write(JSON.parse(s).pending.filter(f=>f.fu_class==="hardening"&&!ok.test(f.fu_why||"")).map(f=>f.id).join(" "))})')" || exit 5
+if [ -n "$hardening_unreasoned" ]; then
+    case "$fu_why_arg" in
+        unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) ;;
+        *)
+            echo "review-round: hardening finding(s) with no valid fu_why: $hardening_unreasoned; marker remains pending" >&2
+            echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2
+            exit 6
+            ;;
+    esac
+fi
+
 # defer_to is a single small ticket-key string (well under the pipe
 # buffer), so printf's write completes atomically before grep could exit
 # early and SIGPIPE it.

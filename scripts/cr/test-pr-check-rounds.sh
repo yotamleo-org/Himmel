@@ -588,6 +588,24 @@ assert_eq "$rl1_rc" 6 "8429 a hardening Important with no fu_why fails closed ($
 assert_has "$rl1_out" '--fu-why <' "8429 the refusal names the --fu-why recovery"
 assert_eq "$(rl1_creates)" "$rl1_creates_before" "8429 a hardening batch with no fu_why files no ticket"
 assert_eq "$(rl1_marker)" kept "8429 a hardening batch with no fu_why keeps the marker"
+# One hardening finding with a valid reason beside one with none: nothing is
+# filed or commented before the second is refused, so a retry repeats nothing.
+rl1_pre_imp10="$(printf '%s' "$rl1_pre_imp" | sed 's/critic-8/critic-10/g')"$'\n'
+rl1_mixed="$rl1_pre_imp$rl1_pre_imp10$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"$'\n'"$(rl1_pre_amend critic-10)$(rl1_class_amend critic-10 hardening)"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_creates_before="$(rl1_creates)"
+rl1_run feat/rl1 2 "$rl1_mixed"
+assert_eq "$rl1_rc" 6 "8429 a mixed hardening batch with one finding lacking a fu_why fails closed ($rl1_out)"
+assert_has "$rl1_out" 'critic-10' "8429 the hardening finding with no fu_why is named"
+assert_eq "$(rl1_creates)" "$rl1_creates_before" "8429 a mixed hardening batch files no ticket before it is refused"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a mixed hardening batch defers none of its findings"
+assert_eq "$(rl1_marker)" kept "8429 a mixed hardening batch keeps the marker"
+printf 'HIMMEL-9500\n' > "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_comments_before="$(grep -c '"comment"' "$rl1_log" | tr -d ' ')"
+rl1_run feat/rl1 2 "$rl1_mixed"
+assert_eq "$rl1_rc" 6 "8429 a mixed hardening batch on a reused ticket fails closed ($rl1_out)"
+assert_eq "$(grep -c '"comment"' "$rl1_log" | tr -d ' ')" "$rl1_comments_before" "8429 a mixed hardening batch adds no comment to the reused ticket before it is refused"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a mixed hardening batch on a reused ticket defers none of its findings"
 printf 'HIMMEL-9500\n' > "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
 
 # `from` reads the round and its start point
