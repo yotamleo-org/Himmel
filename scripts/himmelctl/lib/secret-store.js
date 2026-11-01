@@ -117,9 +117,13 @@ function resolveSecrets(root, names) {
 // Telegram bridge file (its own readers, named exception E1) stay where they are.
 const keyringStored = (e) => Boolean(e) && e.store === 'himmel-env' && e.validate === 'token-nonempty';
 // Store the value through `himmel-secrets put --stdin` when the keyring is unlocked; false = use .env.
+// An unlocked keyring that refuses the store is an error, not a fallback: the keyring wins over .env
+// on every read, so an older keyring value would silently shadow the value saved to .env.
 function putKeyring(name, value, ctx) {
   const lib = keyringLib();
-  return Boolean(lib) && lib.keyringUnlocked(ctx.himmelRoot) && lib.putSecret(ctx.himmelRoot, name, value);
+  if (!lib || !lib.keyringUnlocked(ctx.himmelRoot)) return false;
+  if (lib.putSecret(ctx.himmelRoot, name, value)) return true;
+  return refuse('the keyring is unlocked but refused the store; nothing was written');
 }
 
 function mcpHas(name, ctx) {

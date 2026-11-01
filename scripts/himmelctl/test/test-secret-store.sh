@@ -458,11 +458,14 @@ row('S0-R8 locked: the token is written to .env as today, the keyring untouched'
   ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN=' + v), 'the .env holds it');
 });
 
-row('S0-R8 unlocked but the keyring refuses the store: the token falls back to .env', () => {
+row('S0-R8 unlocked but the keyring refuses the store: the write is refused, no .env line (an older keyring value would shadow it)', () => {
   const ctx = mk(); const v = fake();
   ctx.gitCheckIgnore = () => true;
-  withKeyring({ KSTUB_STORE_FAIL: true }, () => store.write('JIRA_API_TOKEN', v, ctx));
-  ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN=' + v), 'the .env holds it');
+  let msg = '';
+  withKeyring({ KSTUB_STORE_FAIL: true }, () => { try { store.write('JIRA_API_TOKEN', v, ctx); } catch (e) { msg = e.message; } });
+  ok(/refused the store/.test(msg), 'the write names the refusal: ' + msg);
+  ok(!msg.includes(v), 'the error holds no value');
+  ok(!fs.existsSync(envOf(ctx)), 'no .env was written');
 });
 
 row('S0-R8 unlocked: a non-secret name (JIRA_EMAIL) still goes to .env', () => {
