@@ -1,0 +1,11 @@
+{"name": "cron-entry",
+ "version": 1,
+ "run_as": "root",
+ "timeout_s": 30,
+ "effect": "adds, replaces or removes one line tagged '# HIMMEL-<tag>' in the operator's crontab; the line may only run the installed message-session opener",
+ "params": {
+  "action": {"enum": ["set", "remove"]},
+  "tag": {"re": "^[A-Za-z0-9-]{1,40}$"},
+  "schedule": {"re": "^[0-9*/,-]+( [0-9*/,-]+){4}$", "when": "action=set"},
+  "command": {"re": "^/[A-Za-z0-9._/-]{1,250}$", "when": "action=set"}
+ }}

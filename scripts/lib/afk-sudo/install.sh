@@ -15,8 +15,9 @@
 # facts and nonce through; no request is filed while it is empty).
 # The station config /etc/himmel/afk-sudo.json ships disabled with an empty
 # allowlist, mode allowlist and the run kind off (run.enabled false; the compiled
-# switch RUN_KIND_SHIPPED is on since slice 1b) and the grant kind off (grant.enabled false);
-# enabling either is a separate `sudoedit` by the operator.
+# switch RUN_KIND_SHIPPED is on since slice 1b), the grant kind off (grant.enabled false) and the
+# station ops off (ops.enabled false); enabling any is a separate `sudoedit` by the operator.
+# The ops (scripts/station-ops) are copied root-owned to /usr/local/libexec/himmel/ops with a manifest.
 # A session talks to the installed helper through scripts/lib/afk-run (run kind) or
 # scripts/lib/afk-sudo-request (sudo kind); neither is installed here.
 # --uninstall removes the helper and the sudoers rule and keeps the config, the
@@ -82,6 +83,7 @@ src=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd) || die "cannot resolve the sou
 
 case "${1:-}" in
     --uninstall)
+        rm -rf "$LIBEXEC/ops" || die "uninstall failed"
         rm -f "$SUDOERS" "$LIBEXEC/afk-sudo" "$LIBEXEC/approval_broker.py" "$LIBEXEC/never_remote.py" || die "uninstall failed"
         echo "removed the helper and the sudoers rule; kept $CONFIG, $SEED, $NOTICE_ENV, the state and $LEDGER"
         exit 0 ;;
@@ -98,13 +100,24 @@ install -d -o root -g root -m 0755 /var/lib/himmel/afk-grants || die "cannot cre
 install -o root -g root -m 0644 "$src/approval_broker.py" "$LIBEXEC/approval_broker.py" || die "cannot install approval_broker.py"
 install -o root -g root -m 0644 "$src/never_remote.py" "$LIBEXEC/never_remote.py" || die "cannot install never_remote.py"
 install -o root -g root -m 0755 "$src/afk_sudo.py" "$LIBEXEC/afk-sudo" || die "cannot install the helper"
+# The station ops: root-owned copies of scripts/station-ops/<op>.sh + <op>.json and a manifest of their
+# version and sha256. The helper runs only an installed copy that still hashes to the manifest, never the repo file.
+opsrc=$(cd "$src/../../station-ops" 2>/dev/null && pwd) || die "cannot find scripts/station-ops"
+rm -rf "$LIBEXEC/ops" || die "cannot clear $LIBEXEC/ops"
+install -d -o root -g root -m 0755 "$LIBEXEC/ops" || die "cannot create $LIBEXEC/ops"
+for f in "$opsrc"/*.json; do
+    op=$(basename "$f" .json)
+    install -o root -g root -m 0644 "$f" "$LIBEXEC/ops/$op.json" || die "cannot install $op.json"
+    install -o root -g root -m 0755 "$opsrc/$op.sh" "$LIBEXEC/ops/$op.sh" || die "cannot install $op.sh"
+done
+python3 -I "$opsrc/build-manifest.py" "$LIBEXEC/ops" >/dev/null || die "cannot write the ops manifest"
 [ -e "$LEDGER" ] || install -o root -g root -m 0644 /dev/null "$LEDGER" || die "cannot create the ledger"
 
 tmp=$(mktemp "${TMPDIR:-/tmp}/afk-sudo.XXXXXX") || die "mktemp failed"
 trap 'rm -f "$tmp"' EXIT
 
 if [ ! -e "$CONFIG" ]; then
-    printf '{\n  "enabled": false,\n  "operator_id": 0,\n  "window_s": 120,\n  "mode": "allowlist",\n  "operator_user": "",\n  "max_per_hour": 6,\n  "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},\n  "grant": {"enabled": false, "ttl_s": 900},\n  "never_remote_extra": [],\n  "classes": {}\n}\n' > "$tmp" || die "cannot write the config"
+    printf '{\n  "enabled": false,\n  "operator_id": 0,\n  "window_s": 120,\n  "mode": "allowlist",\n  "operator_user": "",\n  "max_per_hour": 6,\n  "run": {"enabled": false, "ttl_s": 900, "timeout_s": 300},\n  "grant": {"enabled": false, "ttl_s": 900},\n  "ops": {"enabled": false, "ttl_s": 900},\n  "never_remote_extra": [],\n  "classes": {}\n}\n' > "$tmp" || die "cannot write the config"
     install -o root -g root -m 0644 "$tmp" "$CONFIG" || die "cannot install the config"
 fi
 
