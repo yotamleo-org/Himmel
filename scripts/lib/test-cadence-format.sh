@@ -276,6 +276,7 @@ case "$_tok_text" in
   *) pass=$((pass + 1)); echo "  ok: the snippet never echoes, prints or traces" ;;
 esac
 cat > "$_tok_tmp/probe.sh" <<'PROBE'
+# read-sink-ok: test probe sources the snippet under test, a fixture file under the test's own mktemp dir
 . "$1"
 exec /bin/sh -c 'printf "<%s>" "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"'
 PROBE

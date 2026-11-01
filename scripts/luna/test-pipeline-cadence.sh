@@ -572,6 +572,7 @@ tok_snippet="$TMP_ROOT/token-snippet.sh"
 awk '/^if \[ -z "\$\{CLAUDE_CODE_OAUTH_TOKEN/{p=1} p{print} p&&/^fi$/{exit}' "$CRON_DIR/pipeline-harvest.sh" > "$tok_snippet"
 tok_probe="$TMP_ROOT/token-probe.sh"
 cat > "$tok_probe" <<'PROBE'
+# read-sink-ok: test probe sources the snippet under test, a fixture file under the test's own TMP_ROOT
 . "$1"
 exec /bin/sh -c 'printf "<%s>" "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"'
 PROBE
