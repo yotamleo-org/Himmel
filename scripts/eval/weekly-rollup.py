@@ -191,8 +191,23 @@ def counters_cost(c):
     return total
 
 
+def valid_totals(totals):
+    """True when each kind is a counter dict whose known counters are numbers (or absent)."""
+    for kind in ("console", "leg", "judge"):
+        c = totals.get(kind) or {}
+        if not isinstance(c, dict):
+            return False
+        for f, _, _ in TOKEN_WEIGHTS:
+            for k in (f, "sub_" + f):
+                v = c.get(k) or 0
+                if isinstance(v, bool) or not isinstance(v, (int, float)):
+                    return False
+    return True
+
+
 def load_usage(path):
-    """Latest record per ticket from the per-ticket usage store (usage-compute.sh)."""
+    """Latest valid record per ticket from the per-ticket usage store (usage-compute.sh).
+    A malformed line is skipped and never replaces an earlier valid record."""
     try:
         lines = Path(path).read_text().splitlines()
     except OSError:
@@ -201,7 +216,7 @@ def load_usage(path):
     for line in lines:
         try:
             r = json.loads(line)
-            if isinstance(r["ticket"], str) and isinstance(r["totals"], dict):
+            if isinstance(r["ticket"], str) and isinstance(r["totals"], dict) and valid_totals(r["totals"]):
                 recs[r["ticket"]] = r
         except (ValueError, KeyError, TypeError):
             continue
@@ -291,6 +306,8 @@ def keep_recorded(old, new):
     for src, cols in KEPT.items():
         if new["sources"].get(src) != "ok" and old.get("sources", {}).get(src) == "ok":
             for c in cols:
+                if src == "usage" and c == "chief_pool_cost_eq" and new["sources"][src] == "no-match":
+                    continue
                 new[c] = old.get(c)
             new["sources"][src] = "ok"
     return new

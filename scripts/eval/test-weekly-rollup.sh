@@ -150,8 +150,20 @@ check "chief cost tied to no ticket stays in the pool, listed" 1500 "$(f 2026-W3
 check "a week with no usage record has null start cost" null "$(f 2026-W38 start_cost_eq)"
 check "the usage source is named ok" "ok no-match" "$(f 2026-W37 sources.usage) $(f 2026-W38 sources.usage)"
 HIMMEL_USAGE_STORE="$W/no-store" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$W/nostore.jsonl" >/dev/null 2>&1
+check "an absent usage store still exits 0" 0 $?
 check "an absent usage store nulls the start cost and is named" "null null absent" \
   "$(jq -r 'select(.key=="2026-W37") | [.start_cost_eq, .chief_pool_cost_eq, .sources.usage] | map(tostring) | join(" ")' "$W/nostore.jsonl")"
+# A finished week keeps its per-ticket columns when the store no longer matches its tickets,
+# but the chief pool is a store-wide figure and always follows the store.
+mkdir -p "$W/store2"
+printf '{"schema":1,"ticket":"_chief","totals":{"console":{"input":700}}}\n' >"$W/store2/records.jsonl"
+cp "$OUT" "$W/kept-usage.jsonl"
+HIMMEL_USAGE_STORE="$W/store2" run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$W/kept-usage.jsonl" >/dev/null 2>&1
+check "a no-match store rerun exits 0" 0 $?
+check "a finished week keeps its start cost when the store stops matching" "3500 ok" \
+  "$(jq -r 'select(.key=="2026-W37") | [.start_cost_eq, .sources.usage] | map(tostring) | join(" ")' "$W/kept-usage.jsonl")"
+check "the chief pool follows the store on that rerun" 700 \
+  "$(jq -r 'select(.key=="2026-W37") | .chief_pool_cost_eq' "$W/kept-usage.jsonl")"
 
 cp "$OUT" "$W/first.jsonl"
 run write --repo "$REPO" --ref main --weeks 4 --end 2026-09-27 --out "$OUT" >/dev/null 2>&1
