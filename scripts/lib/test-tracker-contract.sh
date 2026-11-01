@@ -202,6 +202,25 @@ run_cases() {
         none) eq "$kind C6 empty" '' "$q" ;;
     esac
     tracker_query 'status=bad"quote' 2>/dev/null; eq "$kind C6 unsafe value rc" 2 "$?"
+
+    # C7 sector: local sets the item's Sector line, jira and none have no such thing (rc 4)
+    tracker_sector "$id" "Ship loop"; rc=$?
+    case "$kind" in
+        local)
+            eq "$kind C7 rc" 0 "$rc"
+            eq "$kind C7 get reads it" "Ship loop" "$(tracker_get "$id" | json_field sector)"
+            tracker_sector "$id" 'a "quoted": sector # \ one'; eq "$kind C7 replace rc" 0 "$?"
+            eq "$kind C7 replace round-trips" 'a "quoted": sector # \ one' "$(tracker_get "$id" | json_field sector)"
+            eq "$kind C7 one sector line" 1 "$(grep -c '^sector:' "$TRACKER_STORE/$id.md")"
+            has "$kind C7 links kept" "https://example.invalid/pr/1" "$(cat "$TRACKER_STORE/$id.md")"
+            tracker_sector LOCAL-404 x 2>/dev/null; eq "$kind C7 unknown id rc" 3 "$?"
+            ;;
+        *) eq "$kind C7 rc" 4 "$rc" ;;
+    esac
+    [ "$kind" != jira ] || case "$(cat "$STUB_STATE/log")" in *edit*) bad "jira C7 called the Jira CLI" ;; *) ok ;; esac
+    tracker_sector "$id" "$(printf 'a\nb')" 2>/dev/null; eq "$kind C7 multiline name refused" 2 "$?"
+    tracker_sector "$id" "" 2>/dev/null; eq "$kind C7 empty name refused" 2 "$?"
+    tracker_sector "$id" "-x" 2>/dev/null; eq "$kind C7 option-like name refused" 2 "$?"
 }
 
 for kind in jira local none; do

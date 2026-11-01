@@ -200,6 +200,18 @@ route, `#/workflow&w=<id>&s=<n>`.
   Sector name before any child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
   incremental `jira mirror` so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
   card back and shows the reason above the board.
+- **Local tracker (HIMMEL-5495).** With `TRACKER=local` (or no `TRACKER` and no `JIRA_PROJECT_KEY`, as the resolver
+  `project-mode.mjs` decides), Roadmap and Kanban read the local tracker store through the tracker seam
+  (`local-tracker.ts` runs `scripts/lib/tracker.sh` as an argv child, never a shell string; the store is `TRACKER_STORE`,
+  else `<handover root>/<user>/<repo>/tracker`). Cards keep their generated `LOCAL-<n>` id, `fix_version` is the version
+  (`(no version)` for none) and the item's `sector:` line the Sector; there is no plan, drift or worker sync. A drop posts
+  `{key, backend: "local", status}` and runs `tracker_transition <id> <status> --allow-back`; a Sector select (or its
+  "new sector…" option) posts `{key, backend: "local", sector}` and runs `tracker_sector <id> <name>`. Same token gate,
+  write lock and audit row as a Jira write (`action: tracker-transition|tracker-sector`); no Jira CLI runs. The seam
+  refuses a status off its ladder (400, the reason in `output`), an absent item answers 404, and a move the seam will
+  not make (out of Done) answers 409. An empty store is not a source, so the rail hides both pages.
+- **No tracker.** With `TRACKER=none`, `GET /api/sources` lists `none`: the rail keeps Roadmap and Kanban and both pages
+  say no tracker is configured instead of drawing an empty board.
 - **Sector grouping (HIMMEL-8379).** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
   fallback, then the plan overlay; a ticket with none is under "(no sector)". The wire keys (`themes`, `theme`, `unthemed`)
   keep their names, the page shows Sector.
@@ -498,8 +510,9 @@ imports, so its suite runs in CI without an install.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
   default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
-  The rail lists Roadmap and Kanban only for `jira` and `github`; with `none` a
-  direct landing on Kanban shows the plain-words empty state, and with `github`
+  The rail lists Roadmap and Kanban for `jira`, `github` and `none`, not for an
+  empty `local` store; with `none` a direct landing on Kanban says no tracker is
+  configured, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
 - Morning report e2e (`report.e2e.ts`, same opt-in suite): over a two-day fixture the

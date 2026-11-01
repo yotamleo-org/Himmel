@@ -58,7 +58,7 @@ let verify = null; // the Setup page's Verify step: null, { state: "running" } o
 let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides Roadmap and Kanban
-const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
+const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read the local tracker store (TRACKER=local, once it holds an item), a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read; shiftAt throttles the rail badge's reads
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
@@ -563,13 +563,15 @@ async function loadRoadmap() {
   roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
 }
-// a drop or a Sector select goes to Jira through the server. The board is redrawn from the server's data either way:
-// on a refusal nothing local changed, so the card is back where it was and the reason is shown above the board.
+// a drop or a Sector select goes to Jira, or to the local tracker store for a local card, through the server. The board is
+// redrawn from the server's data either way: on a refusal nothing local changed, so the card is back where it was and the
+// reason is shown above the board.
 let rmWriting = false;
-async function writeRoadmap(body) {
-  if (rmWriting || !roadmap || roadmap.state !== "ok") return;
-  const t = roadmap.tickets.find((x) => x.k === Number(String(body.key).replace("HIMMEL-", "")));
-  if (!t) return;
+const rmTicket = (k) => roadmap && roadmap.state === "ok" ? roadmap.tickets.find((x) => x.k === k) : undefined;
+async function writeRoadmap(t, change) {
+  if (rmWriting || !t) return;
+  const local = t.backend === "local";
+  const body = { key: local ? t.id : "HIMMEL-" + t.k, ...(local ? { backend: "local" } : {}), ...change };
   rmWriting = true; roadmapUi.writeError = null;
   const { ok, j } = await post("/api/roadmap/write", body);
   rmWriting = false;
@@ -581,7 +583,7 @@ async function writeRoadmap(body) {
     t.theme = i;
   }
   paint();
-  if (j.mirror === "refreshed") loadRoadmap();
+  if (j.mirror === "refreshed" || local) loadRoadmap();
 }
 const COLS_BY_ID = { todo: "To Do", prog: "In Progress", rev: "In Review", ci: "IN CI", done: "Done", wont: "wont do" };
 let rmDrag = null;
@@ -589,7 +591,7 @@ document.addEventListener("dragstart", (e) => {
   const c = e.target.closest && e.target.closest("[data-rm-card]");
   if (!c) return;
   rmDrag = Number(c.dataset.rmCard);
-  try { e.dataTransfer.setData("text/plain", "HIMMEL-" + rmDrag); e.dataTransfer.effectAllowed = "move"; } catch (_) { /* no dataTransfer */ }
+  try { e.dataTransfer.setData("text/plain", c.dataset.rmId || "HIMMEL-" + rmDrag); e.dataTransfer.effectAllowed = "move"; } catch (_) { /* no dataTransfer */ }
 });
 document.addEventListener("dragover", (e) => { if (rmDrag !== null && e.target.closest && e.target.closest("[data-rm-drop]")) e.preventDefault(); });
 document.addEventListener("drop", (e) => {
@@ -597,8 +599,8 @@ document.addEventListener("drop", (e) => {
   if (rmDrag === null || !col) return;
   e.preventDefault();
   const k = rmDrag; rmDrag = null;
-  const t = roadmap && roadmap.tickets.find((x) => x.k === k);
-  if (t && t.b !== col.dataset.rmDrop) writeRoadmap({ key: "HIMMEL-" + k, status: col.dataset.rmDrop });
+  const t = rmTicket(k);
+  if (t && t.b !== col.dataset.rmDrop) writeRoadmap(t, { status: col.dataset.rmDrop });
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
@@ -607,7 +609,12 @@ document.addEventListener("change", (e) => {
     location.hash = v === "*" ?"#/health?view=all" : projects && v === projects.current ? "#/health" : "#/health?project=" + encodeURIComponent(v);
     return;
   }
-  if (e.target.dataset.rmThemeKey) return void writeRoadmap({ key: "HIMMEL-" + e.target.dataset.rmThemeKey, sector: e.target.value });
+  if (e.target.dataset.rmThemeKey) {
+    const t = rmTicket(Number(e.target.dataset.rmThemeKey)), opt = e.target.selectedOptions && e.target.selectedOptions[0];
+    // "new sector…" (a local card only): ask for the name; a cancel redraws the card as it was
+    const sector = opt && opt.hasAttribute("data-rm-new") ? (prompt(`New Sector for ${t ? t.id : "this card"}`) || "").trim() : e.target.value;
+    return void (sector ? writeRoadmap(t, { sector }) : paint());
+  }
   const rgf = e.target.dataset.rg, rgd = state.reviewGate && state.reviewGate.draft;
   if (rgf && rgd) {
     const x = rgd.find((y) => y.slug === e.target.dataset.slug);
