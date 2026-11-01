@@ -16,9 +16,13 @@ improvising; confirm the chief's session name in `ListAgents` first.
 - Waiting means **one foreground blocking command** (or `until … done` loop),
   never a background job. [prose]
 
-Report at **milestones only**: `LIVE` / `FINDING` / `RESOLVED` / `BLOCKED` /
-`WRAPPED` messages **and** doc `## Results` bullets; `READY <pr> <full head> GREEN`
-is a bullet, never a message. The chief reads your **newest marker-bearing bullet** (`tails=`):
+Report at **milestones only**, as doc `## Results` bullets. **`LIVE`, `RESOLVED`,
+`CHECKPOINT`, `WRAPPED` and `READY <pr> <full head> GREEN` are bullets only, never
+a message**, and a merge is no message either: it shows as your `WRAPPED` bullet.
+**`FINDING`, `BLOCKED` (including `lane:`), a question, `MAIN-RED`, `ORPHAN` and
+`CONSULT` also go by `SendMessage`**, beside their bullet. A bullet authorises
+nothing: a ruling, `GO` or token reaches you only as the chief's message.
+The chief reads your **newest marker-bearing bullet** (`tails=`):
 
 - **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; one not
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
@@ -159,7 +163,7 @@ number and merge sha on it — moving it yourself only if the PR completes
 it (no Epic) and `--jira-transition` (the chief's `jira-transition=` line) did not (`failed`
 or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the chief. Then release the
-lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
+lock (paste the line), append the `WRAPPED` bullet, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
@@ -168,7 +172,7 @@ chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
 then prove the process subtree is clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
-`CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, never send `WRAPPED`.
+`CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, never append `WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval;
