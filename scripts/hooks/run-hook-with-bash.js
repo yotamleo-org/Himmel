@@ -394,19 +394,30 @@ function redactSecrets(text) {
     .replace(/\b[A-Za-z0-9_-]{40,}\b/g, '<redacted>');
 }
 
+// The secret patterns backtrack badly on a long identifier-like run, and the deny
+// line and the tool-call summary are built for a refused call too, so the patterns
+// only see a window of the text that is wider than the short form they keep.
+// A window that ends inside a word leaves a secret fragment too short for any
+// pattern, and redacting the longer words before it shortens the text enough to
+// bring that fragment into the short form: so a word the window cuts is replaced
+// by the marker, never kept in part. The slice bounds the work on a huge text; a
+// code point takes at most two UTF-16 units, so it still holds one past the window.
+function redactionWindow(text, size) {
+  const points = Array.from(text.slice(0, size * 2 + 2));
+  if (points.length <= size) return points.join('');
+  const cut = points.slice(0, size).join('');
+  return /\S/.test(points[size - 1]) && /\S/.test(points[size]) ? cut.replace(/\S+$/, '<redacted>') : cut;
+}
+
 // A short, greppable stand-in for the tool call a starved guard never saw —
-// capped at 120 chars so one runaway command can't bloat the JSONL row. The
-// secret patterns backtrack badly on a long identifier-like run and this runs
-// for a refused call too, so they only see a window that is wider than the cap:
-// a secret that straddles the cap is still whole inside it and is redacted
-// before the cut.
-const TOOL_CALL_REDACT_WINDOW_CHARS = 1000;
+// capped at 120 chars so one runaway command can't bloat the JSONL row.
+const TOOL_CALL_REDACT_WINDOW_CODE_POINTS = 1000;
 function toolCallSummary(hookInput) {
   if (!hookInput || typeof hookInput !== 'object') return '';
   const name = typeof hookInput.tool_name === 'string' ? hookInput.tool_name : '';
   const ti = hookInput.tool_input && typeof hookInput.tool_input === 'object' ? hookInput.tool_input : {};
   const detail = ti.command || ti.cmd || ti.file_path || '';
-  const summary = redactSecrets(`${name} ${detail}`.trim().slice(0, TOOL_CALL_REDACT_WINDOW_CHARS));
+  const summary = redactSecrets(redactionWindow(`${name} ${detail}`.trim(), TOOL_CALL_REDACT_WINDOW_CODE_POINTS));
   return summary.length > 120 ? `${summary.slice(0, 117)}...` : summary;
 }
 
@@ -456,8 +467,8 @@ function rowIdentity(hookInput, invocation, occurrence) {
 // identifier-like run, and this runs on the refusal path, where a stall would
 // let a hook timeout drop the refusal: the text they see is bounded, first to
 // a prefix of the message, then to a window of the first line that is wider
-// than the clip, so a secret that straddles the clip boundary is still whole
-// inside the window and is redacted before the cut.
+// than the clip (redactionWindow), so a secret that straddles the clip boundary
+// is still whole inside the window and is redacted before the cut.
 // Markup is kept as text: the renderer escapes it.
 // eslint-disable-next-line no-control-regex
 const ANSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
@@ -485,8 +496,7 @@ function denyLine(message) {
     .map((line) => line.trim())
     .find(Boolean);
   if (!first) return null;
-  const window = Array.from(first).slice(0, DENY_REDACT_WINDOW_CODE_POINTS).join('');
-  return Array.from(redactSecrets(window)).slice(0, DENY_LINE_MAX_CODE_POINTS).join('');
+  return Array.from(redactSecrets(redactionWindow(first, DENY_REDACT_WINDOW_CODE_POINTS))).slice(0, DENY_LINE_MAX_CODE_POINTS).join('');
 }
 
 // ----------------------------------------------------------------- run log

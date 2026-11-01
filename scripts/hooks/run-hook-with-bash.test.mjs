@@ -1300,6 +1300,27 @@ test('a huge identifier-like command in a starved call is logged promptly', () =
   }
 });
 
+// A token the redaction window cuts is too short for any pattern once cut, and redacting the long
+// arguments before it shortens the text enough to bring the fragment inside the short form.
+test('a token cut by the redaction window does not reach the starved-call log in part', () => {
+  withChain((dir) => {
+    const logFile = join(dir, 'skips.jsonl');
+    const command = `cat ${`${'A'.repeat(320)} `.repeat(3)}${'Q'.repeat(60)}`;
+    const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } });
+    const result = spawnSync(process.execPath, [LAUNCHER, '--chain', join(dir, 'hang.sh')], {
+      encoding: 'utf8',
+      input,
+      timeout: 10000,
+      env: { ...process.env, RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500', RUN_HOOK_CHAIN_SKIP_LOG: logFile },
+    });
+    assert.equal(result.error, undefined, 'the launcher must finish on its own');
+    const rows = readFileSync(logFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(rows.length, 1);
+    assert.doesNotMatch(rows[0].toolCall, /Q{5}/, 'no part of the cut token reaches the durable log');
+    assert.equal(rows[0].toolCall, 'Bash cat <redacted> <redacted> <redacted> <redacted>');
+  });
+});
+
 // The credential in an "Authorization:
 // Bearer <token>" header sits in a SEPARATE word after the scheme, which the
 // name=value redaction alone does not reach.
@@ -2935,6 +2956,17 @@ const DENY_LINE_CASES = [
     message: 'curl -u\u000cuser:pass https://example.test\n',
     expect: (line) => assert.doesNotMatch(line, /user:pass/),
     absent: [/user:pass/],
+  },
+  {
+    // Three long arguments shrink to the marker, which pulls a fragment of the key the redaction window cut
+    // into the clip: the fragment is too short for any pattern, so the cut word must not survive.
+    name: 'a key cut by the redaction window after earlier arguments shrank to markers',
+    message: `BLOCKED: ${`${'A'.repeat(320)} `.repeat(3)}${'Q'.repeat(60)}\n`,
+    expect: (line) => {
+      assert.doesNotMatch(line, /Q{5}/);
+      assert.match(line, /^BLOCKED: <redacted> <redacted> <redacted> <redacted>$/);
+    },
+    absent: [/Q{5}/],
   },
   {
     name: 'markup stays text for the renderer to escape',
