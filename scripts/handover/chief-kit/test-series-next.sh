@@ -233,6 +233,19 @@ check "7: abandoning an abandoned item refuses rc 2" "$rc" 2
 sn abandon --ledger "$L2" --doc "$A" K9
 check "7: abandoning an unknown key refuses rc 2" "$rc" 2
 
+# --- 7b. an abandoned item that never got a wip does not strand the next one ---------------------------------------------
+L9="$tmp/ledgers/s9.json"; mk "$L9" "$A" K1 K2 || exit 1
+sn abandon --ledger "$L9" --doc "$A" K1
+sn start --ledger "$L9" --doc "$A" K2
+check "7b: the first item abandoned, the second starts rc 0" "$rc" 0
+check "7b: and is cut from origin/main" "$(jget "$L9" 'd["items"][1]["cut_from"]')" "$MAIN"
+L10="$tmp/ledgers/s10.json"; mk "$L10" "$A" K1 K2 K3 || exit 1
+sl set --ledger "$L10" --key K1 state=committed wip="$K1WIP" >/dev/null
+sn abandon --ledger "$L10" --doc "$A" K2
+sn start --ledger "$L10" --doc "$A" K3
+check "7b: a middle item abandoned unstarted, the third starts rc 0" "$rc" 0
+check "7b: and is cut from the nearest earlier wip" "$(jget "$L10" 'd["items"][2]["cut_from"]')" "$K1WIP"
+
 # --- 8. the item's own scope, do-not lines and commit text ----------------------------------------------------------------
 # a test-only fixture edit: series-ledger.py set does not list these item fields yet, so no production path writes them
 cat > "$tmp/addfields.py" <<'PYEOF'

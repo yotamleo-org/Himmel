@@ -46,7 +46,7 @@ bash scripts/handover/chief-kit/series-next.sh abandon --ledger <p> --doc <doc> 
   has a GO file under `.locks/go/`.
 - `start` takes the `planned` item `<KEY>`, creates its worktree on
   `series/<sid>/<KEY>` cut from the previous item's `wip` (the first item: from
-  `origin/main`), locks the worktree so `worktree.sh prune` keeps it, and records the
+  `origin/main`; an abandoned item with no `wip` is skipped over), locks the worktree so `worktree.sh prune` keeps it, and records the
   branch, worktree, `cut_from`, `wip` and state `authoring`.
 - `commit` records the authoring item's worktree HEAD as `wip` and moves it to
   `committed`. The worktree must be clean: git-commit your work first. If you add a fix

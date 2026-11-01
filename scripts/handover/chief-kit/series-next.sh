@@ -183,11 +183,17 @@ cmd_start() {
     st="$(field "$key" state)"
     [ "$st" = planned ] || refuse "item $key is $st; only a planned item starts"
     idx="$(grep -nxF -- "$key" <<< "$KEYS")"; idx="${idx%%:*}"
-    if [ "$idx" -gt 1 ]; then
-        prev="$(sed -n "$((idx - 1))p" <<< "$KEYS")"
+    # cut from the nearest earlier item that has a wip; an abandoned item that never got one is skipped over
+    cut=""; i=$((idx - 1))
+    while [ "$i" -ge 1 ] && [ -z "$cut" ]; do
+        prev="$(sed -n "${i}p" <<< "$KEYS")"
         cut="$(field "$prev" wip)"
-        [ -n "$cut" ] || refuse "the previous item $prev has no wip: start and commit it first"
-    else
+        if [ -z "$cut" ] && [ "$(field "$prev" state)" != abandoned ]; then
+            refuse "the previous item $prev has no wip: start and commit it first"
+        fi
+        i=$((i - 1))
+    done
+    if [ -z "$cut" ]; then
         def="$(git -C "$PRIMARY" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)" || def=""   # swallow-ok: no origin/HEAD falls back to origin/main
         [ -n "$def" ] || def="origin/main"
         git -C "$PRIMARY" fetch --quiet origin "${def#origin/}" 2>/dev/null || echo "series-next: WARN git fetch origin ${def#origin/} failed; cutting from the local $def" >&2
