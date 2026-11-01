@@ -715,7 +715,7 @@ its guest preflight over its own known_hosts-pinned ssh. In order:
    `~/` guest path of `[A-Za-z0-9._/-]`, no `..`). Single-quote a `~/` path, or
    the host shell expands it to the station's home before the launcher sees it. Add `--dry-run` to print the
    command without any preflight.
-5. Read the debug file with guest-exec `grep -n -e classifier_request_started -e denied <file>`.
+5. Read the debug file with `bash scripts/vm/guest-exec.sh himmel-claudex -- 'grep -n -e classifier_request_started -e denied <file>'`.
 6. After any snapshot restore, run `status` first.
 
 The lane launches `scripts/claude-codex ... -p --permission-mode auto` on the
