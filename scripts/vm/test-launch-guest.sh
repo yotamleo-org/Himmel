@@ -193,9 +193,9 @@ runc() { LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 runv "$
 rows() { if [ -f "$LEDGER" ]; then wc -l < "$LEDGER" | tr -d ' '; else echo 0; fi; }
 
 fresh; rm -f "$LEDGER"
-rc=0; out="$(runc ubuntu_new "$P")" || rc=$?
+rc=0; out="$(LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 PATH="$tmp/bin:$PATH" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-lane.sh" bash -c 'cd "$1" && bash "$2" ubuntu_new "$3" 2>/dev/null' _ "$tmp/repo" "$SCRIPT" "$P")" || rc=$?
 check "C1 stubbed run: exit 0" "$rc" "0"
-contains "C1 stubbed run: the guest result still reaches stdout" "$out" '"total_cost_usd":1.25'
+check "C1 stubbed run: stdout is exactly the guest result" "$out" '{"type":"result","total_cost_usd":1.25}'
 check "C1 stubbed run writes exactly one row" "$(rows)" "1"
 row="$(cat "$LEDGER" 2>/dev/null)"
 check "C1 row: ticket" "$(printf '%s' "$row" | jq -r .ticket 2>/dev/null)" "HIMMEL-1"
@@ -243,10 +243,7 @@ cat > "$tmp/two.jsonl" <<'J'
 J
 rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" 2>&1)" || rc=$?
 check "C5 vm-cost: exit 0" "$rc" "0"
-contains "C5 vm-cost: ticket HIMMEL-1 total" "$out" "$(printf 'ticket\tHIMMEL-1\t2\t300\t3.75\t0')"
-contains "C5 vm-cost: ticket HIMMEL-2 has an unknown usd" "$out" "$(printf 'ticket\tHIMMEL-2\t1\t50\t0\t1')"
-contains "C5 vm-cost: account acct-a total" "$out" "$(printf 'account\tacct-a\t2\t150\t1.5\t1')"
-contains "C5 vm-cost: account acct-b total" "$out" "$(printf 'account\tacct-b\t1\t200\t2.25\t0')"
+check "C5 vm-cost: the whole report is exactly the four expected rows" "$out" "$(printf 'ticket\tHIMMEL-1\t2\t300\t3.75\t0\nticket\tHIMMEL-2\t1\t50\t0\t1\naccount\tacct-a\t2\t150\t1.5\t1\naccount\tacct-b\t1\t200\t2.25\t0')"
 rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/none.jsonl" bash "$COST" 2>&1)" || rc=$?
 check "C5 vm-cost: no ledger: exit 1" "$rc" "1"
 rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --bogus 2>&1)" || rc=$?
