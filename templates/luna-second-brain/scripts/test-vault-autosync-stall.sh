@@ -227,7 +227,10 @@ printf 'v1\n' >"$V/x/Default/Preferences"
 git -C "$V" add -A
 git -C "$V" commit -q -m "track a preferences file" --no-verify
 printf 'v2\n' >"$V/x/Default/Preferences"
+head_before="$(git -C "$V" rev-parse HEAD)"
 run_sync
+assert_eq "S12a the hooks refused it: no commit landed" "$head_before" "$(git -C "$V" rev-parse HEAD)"
+assert_eq "S12a2 the stall names the refused file" "fake-gitleaks:x/Default/Preferences" "$(cat "$V/.git/vault-autosync-reason" 2>/dev/null)"
 assert_eq "S12b tracked tool-state file stays in the vault" "yes" "$([ -e "$V/x/Default/Preferences" ] && echo yes || echo no)"
 assert_eq "S12c it stays tracked" "x/Default/Preferences" "$(git -C "$V" ls-files -- x/Default/Preferences)"
 assert_eq "S12d it is not quarantined" "" "$(find "$TMP/quarantine" -path '*x/Default/Preferences')"
@@ -237,7 +240,10 @@ run_sync
 # --- S12e: a refused file named like a journal OUTSIDE a browser profile is not tool state
 mkdir -p "$V/notes"
 printf 'diary\n' >"$V/notes/dev-journal"
+head_before="$(git -C "$V" rev-parse HEAD)"
 run_sync
+assert_eq "S12e0 the hooks refused it: no commit landed" "$head_before" "$(git -C "$V" rev-parse HEAD)"
+assert_eq "S12e1 the stall names the refused file" "fake-gitleaks:notes/dev-journal" "$(cat "$V/.git/vault-autosync-reason" 2>/dev/null)"
 assert_eq "S12e journal-named file outside a profile stays in the vault" "yes" "$([ -e "$V/notes/dev-journal" ] && echo yes || echo no)"
 assert_eq "S12f it is not quarantined" "" "$(find "$TMP/quarantine" -name 'dev-journal')"
 rm -f "$V/notes/dev-journal"

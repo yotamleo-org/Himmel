@@ -8,7 +8,7 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.101] — 2026-11-01
+## [0.4.102] — 2026-11-01
 
 ### Changed
 - `.gitignore` hides browser-profile tool state (Chrome `Default/Preferences`,
