@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Fixture-based tests for scripts/measurements/prose-audit.sh.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -225,14 +224,6 @@ const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
 process.exit(Array.isArray(d.rows) && d.rows.length > 0 ? 0 : 1);
 ' <<< "$json_out"; then ok "rows are non-empty on a real fixture corpus (not a silent empty report)"; else bad "rows were empty against a non-empty fixture corpus"; fi
 
-# A discovery `find` that fails partway through a tree
-# must fail the whole reporter closed, not silently emit a partial-but-clean
-# report. A genuine unreadable-directory fixture isn't reliably reproducible
-# on Windows Git Bash (NTFS/Git-Bash chmod doesn't dependably deny `find`
-# traversal), so this injects the failure directly: a `find` double on PATH
-# that emits a partial file list for the marketplace/plugins tree, then exits
-# non-zero — the exact shape a real permission/I-O failure below a readable
-# top-level directory produces.
 FAKEBIN="$TMP/fakebin"
 mkdir -p "$FAKEBIN"
 REAL_FIND="$(command -v find)"
@@ -258,12 +249,6 @@ else
   bad "discovery failure did not fail closed (rc=$fail_rc): $fail_out"
 fi
 
-# The sort pipeline used to run
-# inside process substitution, so its exit status was never observed — a
-# failing sort could leave `sorted` empty/partial while the script still
-# printed a clean summary and exited 0. Shadow `sort` via PATH with a stub
-# that emits partial output and exits non-zero (same technique the `find`
-# failure test above uses), and assert the reporter fails closed instead.
 SORTBIN="$TMP/sortbin"
 mkdir -p "$SORTBIN"
 cat > "$SORTBIN/sort" <<'EOF'
@@ -281,12 +266,6 @@ else
   bad "sort failure did not fail closed (rc=$sort_fail_rc): $sort_fail_out"
 fi
 
-# An unchecked `mktemp -d`
-# failure would make FIXTURE fall back to `/repo`, and this suite runs
-# without errexit so nothing would stop the subsequent mkdir/cp/redirects
-# from writing there. Shadow `mktemp` via PATH with a stub that always fails
-# and re-invoke this suite as a fresh process; it must abort at the TMP guard
-# before any fixture write, not fall through to `/repo`.
 MKTEMPBIN="$TMP/mktempbin"
 mkdir -p "$MKTEMPBIN"
 cat > "$MKTEMPBIN/mktemp" <<'EOF'
@@ -303,15 +282,6 @@ else
   bad "mktemp -d failure did not abort cleanly (rc=$mktemp_fail_rc): $mktemp_fail_out"
 fi
 
-# The fence-ratio threshold `awk`
-# call used a bash `if awk ...; then ... elif ...` shape that treats ANY
-# non-zero awk exit (a genuine "ratio <= limit", but also a broken/exhausted
-# awk) as the same false branch — a measurement failure was silently recorded
-# as an unflagged file and the reporter still exited 0. Shadow `awk` via PATH
-# with a stub that fails only the threshold-comparison call (matched by its
-# distinctive `-v limit=` argument, so the unrelated fenced-bytes/snippet/
-# ratio awk calls still run for real), same technique as the find/sort
-# failure tests above, and assert the reporter fails closed instead.
 FAKEAWKBIN="$TMP/fakeawkbin"
 mkdir -p "$FAKEAWKBIN"
 REAL_AWK="$(command -v awk)"

@@ -6,8 +6,9 @@ session transcripts (`~/.claude/projects/**/*.jsonl`) with no model call.
 alerts. Cadence arm/disarm: [`docs/cadences.md`](../cadences.md).
 
 `hit = cache_read / (cache_read + cache_creation + input)`, rows deduped by
-message id. Roles: `console`, `leg`, `subagent`, `bridge`, `other` (same
-classifier as the research baseline). Two windows: RECENT (default last 24 h)
+message id. Roles: `console`, `worker`, `subagent`, `bridge`, `other` (same
+classifier as the research baseline; history rows and alert keys written before
+the rename say `leg` and still read as `worker` while legacy names are on). Two windows: RECENT (default last 24 h)
 and BASELINE (the 7 days before it), cut by turn timestamp.
 
 ## Alert rules
@@ -56,7 +57,7 @@ chief's bridge inbox; either channel counts as delivered.
     }
   },
   "top_offenders": [
-    {"session": "<id>", "title": "...", "role": "leg", "tokens": 0,
+    {"session": "<id>", "title": "...", "role": "worker", "tokens": 0,
      "hit_pct": 0.0, "excess": 0, "compactions": 0}
   ],
   "alerts": {"active": ["key"], "new": ["key"], "recovered": ["key"]}

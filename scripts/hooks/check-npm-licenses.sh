@@ -77,6 +77,7 @@ for pkg in "${pkgs[@]}"; do
     if [ -z "$scanner_dir" ]; then
         # prim-ok: fixed external root must not honor an inspected-tree TMPDIR
         scanner_dir=$(mktemp -d /tmp/himmel-license-checker.XXXXXX) || exit 1
+        scanner_dir=$(cd "$scanner_dir" && pwd -P) || exit 1  # physical path: on macOS /tmp is a symlink, and npm 11 rejects a --prefix that differs from its cwd
         # Never let the inspected package's .npmrc or node_modules select the
         # scanner. Its committed lock binds the scanner and transitive versions;
         # installation and execution both use this independent cwd and prefix.

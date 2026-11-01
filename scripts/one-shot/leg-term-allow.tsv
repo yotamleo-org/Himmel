@@ -44,3 +44,29 @@
 ^scripts/hooks/test-guard-bus-store\.sh$	old role spelling	K5 guard test pins that the old role spelling is still refused; leaves with HIMMEL-6647
 ^scripts/handover/test-bus-idle-waker\.sh$	cmdline-leg	K5 fixture file name; leaves with HIMMEL-6647
 ^scripts/config-ui/(agui(-web/src/board-model|/fleet)|tests/e2e/agui-fixtures)\.ts$	legacy wire fallback$	K5 reader fallbacks for the old manifest and board keys and the e2e fixture that feeds them (renamed-identifiers.md N44, N45); leaves with HIMMEL-6647
+^docs/internals/cache-health\.md$	rename say .leg.	K5 documents the pre-rename history and alert-key read; leaves with HIMMEL-6647
+^scripts/eval/cache-health\.py$	leg\[A-Z\]|role name .leg.|== .leg.|role-drop:leg|:leg\$	K5 session-title classifier and the pre-rename role and alert-key reads; leaves with HIMMEL-6647
+^scripts/handover/cache-health-line\.py$	roles\.get\(.leg.\)	K5 reader maps a pre-rename history role to worker; leaves with HIMMEL-6647
+^scripts/eval/test-cache-health\.sh$	role-drop:leg	K5 test pins that a pre-rename alert key still reads; leaves with HIMMEL-6647
+^scripts/handover/test-cache-health-line\.sh$	.leg.:97	K5 test pins that a pre-rename history row still reads; leaves with HIMMEL-6647
+^scripts/lib/test-bank-preflight\.sh$	pre-rename leg key|has\(.leg.\)	K5 test pins that a new ledger row carries no pre-rename key; leaves with HIMMEL-6647
+^scripts/ci/escape-report\.sh$	FOUND_BY=	K5 the found-by:leg label stays accepted on existing issues; leaves with HIMMEL-6647
+^scripts/eval/test-handover-cost\.sh$	legs-after	K5 test pins that the retired --legs-after flag is refused; leaves with HIMMEL-6647
+^scripts/eval/worker-digest/worker_ledger\.py$	headed-arm-\(\?:worker\|leg\)	K5 legacy launch-line read; leaves with HIMMEL-6647
+^docs/glossary\.md$	\| leg \(initiative sense\) \|	K5 glossary old-to-new map row (the old-name column); leaves with HIMMEL-6647
+^scripts/config-ui/(roadmap\.ts|tests/roadmap\.test\.ts)$	leg-blocked|\[leg-sync\]	K5 the old Jira label and bot tag are read on purpose; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/denied-launch-alert\.sh$	headed-arm\(-leg	K5 old forwarder name in a launch-line match; leaves with HIMMEL-6647
+^scripts/cr/test-pr-check-pair\.sh$	scripts/lanes/leg-\(pr-open	K5 matches the old forwarder paths; leaves with HIMMEL-6647
+^marketplace/plugins/himmel-bus/tests/test-lint\.sh$	retired leg-\*|OLD_PROFILE=	K5 test pins that the old leg-* profile ids are refused; leaves with HIMMEL-6647
+^marketplace/plugins/himmel-bus/lib/edges\.mjs$	rename carries	K5 comment on the reader that maps a stored leg role to worker; leaves with HIMMEL-6647
+^marketplace/plugins/himmel-bus/lib/identity\.mjs$	pre-rename .leg. maps	K5 comment on the role reader that maps the pre-rename role; leaves with HIMMEL-6647
+^scripts/graphify/test-anchor-seeds\.sh$	stop-leg\.sh	K5 test pins that an old script name resolves onto no lane-worker file; leaves with HIMMEL-6647
+^scripts/graphify/test-semantic-seeds\.sh$	old vocabulary \(leg|wave of legs	K5 test asks the old-vocabulary question and feeds the old-vocabulary corpus; leaves with HIMMEL-6647
+^scripts/lanes/bench/scorecard/agg-postpin\.sh$	headed-arm-\(worker\|leg\)|worker\|chief\|leg\|console	K5 legacy launch-line and role reads; leaves with HIMMEL-6647
+^scripts/lanes/bench/scorecard/fleet-scorecard\.sh$	\(\?:worker\|leg\)-burn|data\.get\("legs"\)	K5 legacy burn-line and manifest-key reads; leaves with HIMMEL-6647
+^scripts/lanes/plugin-profiles\.mjs$	Old profile ids \(leg-\*	K5 comment on the old profile id map; leaves with HIMMEL-6647
+^scripts/lanes/tests/plugin-profiles\.test\.mjs$	old leg-\* profile ids|leg-[$][{]id	K5 test pins that old profile ids still resolve; leaves with HIMMEL-6647
+^scripts/telegram/break-glass\.sh$	\.legs\)	K5 legacy manifest key read; leaves with HIMMEL-6647
+^scripts/telegram/test-break-glass\.sh$	legs: \.workers	K5 old-format manifest fixture; leaves with HIMMEL-6647
+^scripts/telegram/router\.ts$	\|legs\||"legs"|\(\?:worker\|leg\)	K5 the /legs, /launch-leg and /launch-bypass-leg spellings are accepted on purpose; leaves with HIMMEL-6647
+^scripts/telegram/router\.test\.ts$	"/legs"	K5 test pins that /legs still routes; leaves with HIMMEL-6647

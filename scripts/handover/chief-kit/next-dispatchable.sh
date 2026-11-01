@@ -53,6 +53,13 @@
 # for another RESUME row; the last in the full pass only), so no in-work ticket vanishes unnamed.
 # A DISPOSITION ... BLOCKED-BY comment hides nothing here: stuck-scan.sh re-checks it.
 #
+# DESIGN rows (only with the core_gate flag on; off, the default, runs nothing and changes no line):
+# the built jira CLI (`release core-check`, then `release spec-check` for the core keys; NEXT_DISPATCH_JIRA_CLI replaces
+# its path) says which To Do candidates are core. A core one with no signed minerva spec prints
+# `DESIGN<TAB><KEY><TAB>NO-SPEC|SPEC-STALE<TAB>prio<TAB>version<TAB>title<TAB>files=...` instead of a dispatch row: it takes a
+# --top slot, holds no files, and is the design leg to dispatch first. A key the mirror lacks is withheld
+# (`# drop <KEY> core-unknown`); a check that cannot run lists no To Do row and prints `# WARN CORE-CHECK-FAILED <reason>`.
+#
 # Chain workers: with --workers-from naming a `<prefix>-nextleg-<date><letter>-<name>.fleet.json`,
 # the other manifests of that chain in the same directory (same prefix and name, any letter) also own their live
 # workers' tickets, so a worker the other chief armed after `chief.sh next` copied the manifest is not offered
@@ -171,6 +178,9 @@ stacked=0
 # shellcheck disable=SC1091
 if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag stacked_series 2>/dev/null; then stacked=1; fi  # swallow-ok: an unreadable registry or bad value reads as off, which is today's output
 export ND_STACKED="$stacked"
+core_gate=0
+if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag core_gate 2>/dev/null; then core_gate=1; fi  # swallow-ok: an unreadable registry or bad value reads as off, which is today's output
+export ND_CORE_GATE="$core_gate"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
@@ -769,6 +779,92 @@ next_tier = [i for i in cands if tier_of(i) > 4]
 if pool_only:
     cands = [i for i in cands if tier_of(i) <= 4]
 
+# core_gate, only with the flag on (off, the default, runs nothing and changes no line): the built jira CLI says
+# which To Do candidates are core and whether each has a signed minerva spec. A core ticket with no `SPEC ok` lists as a
+# `DESIGN <KEY> NO-SPEC|SPEC-STALE` row, not a build row. Fail closed: a check that cannot run lists no To Do row, and a key
+# the mirror lacks (UNKNOWN) is withheld.
+design = {}  # KEY -> NO-SPEC | SPEC-STALE
+CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
+CORE_FIELDS = {'CORE': 3, 'BYPASS': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>
+
+def core_run(args, ok_rc, project):
+    # (stdout, '') for a run whose exit code is in ok_rc, else (None, why). A missing CLI, node or a timeout is never an answer.
+    try:
+        cli = os.environ.get('NEXT_DISPATCH_JIRA_CLI')
+        if not cli:
+            common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], cwd=repo, capture_output=True, text=True, timeout=20, check=True).stdout.strip()
+            cli = os.path.join(os.path.dirname(common), 'scripts/jira/dist/index.js')
+        if not os.path.isfile(cli):
+            return None, 'no built jira CLI at %s' % cli
+        # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd
+        r = subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)),
+                           env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY', project)))
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, 'the jira CLI could not run (%s)' % e
+    if r.returncode not in ok_rc:
+        return None, '%s exited %d: %s' % (args[1], r.returncode, (r.stderr or r.stdout).strip()[:200])
+    return r.stdout, ''
+
+def core_lines(out, keys, spec=False):
+    # The one line each key got (gen-briefs.py per_key_lines); a key with no line is absent from the result.
+    got = {}
+    for line in out.splitlines():
+        t = line.split()
+        if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
+            got[t[2]] = line
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+            got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
+    return {k: got[k] for k in keys if k in got}
+
+def core_gate_pass(cs):
+    # the candidates that may still list (a DESIGN one is recorded in `design`); core-check takes ONE --paths per call, so
+    # tickets naming the same files share a call (the calls run in parallel), then spec-check asks once for every CORE key
+    mdir = os.path.abspath(mirror)
+    project = cs[0]['key'].split('-')[0]
+    def fail(why):
+        print('# WARN CORE-CHECK-FAILED %s' % ' '.join(why.split()))
+        for i in cs:
+            drop(i, 'core-check failed (a gate that cannot run lists no To Do row)')
+        return []
+    groups = {}
+    for i in cs:
+        groups.setdefault(tuple(i['files']), []).append(i['key'])
+    items = list(groups.items())
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(8, len(items))) as pool:
+        results = list(pool.map(lambda g: core_run(['release', 'core-check', '--paths', ','.join(g[0]), '--mirror', mdir, '--key'] + g[1], (0,), project), items))
+    verdict = {}
+    for (_, ks), (out, why) in zip(items, results):
+        if out is None:
+            return fail(why)
+        got = core_lines(out, ks)
+        if len(got) != len(ks):
+            return fail('core-check printed no parseable line for %s' % ', '.join(k for k in ks if k not in got))
+        verdict.update(got)
+    keep, core = [], []
+    for i in cs:
+        verb = verdict[i['key']].split()[0]
+        if verb == 'UNKNOWN':
+            drop(i, 'core-unknown (not in the mirror: neither core nor a bypass can be proven)')
+            continue
+        keep.append(i)
+        if verb == 'CORE':
+            core.append(i['key'])
+    if core:
+        out, why = core_run(['release', 'spec-check', '--mirror', mdir] + core, (0, 1), project)
+        if out is None:
+            return fail(why)
+        got = core_lines(out, core, spec=True)
+        if len(got) != len(core):
+            return fail('spec-check printed no parseable line for %s' % ', '.join(k for k in core if k not in got))
+        for k in core:
+            if not got[k].startswith('SPEC ok'):
+                design[k] = got[k].split()[0]
+    return keep
+
+if os.environ.get('ND_CORE_GATE') == '1' and cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
+    cands = core_gate_pass(cands)
+
 # held files: live workers, open PRs, --held
 held = []
 series_workers = {}  # label -> {'doc', 'sid', 'ledger', 'count'} for a live worker whose brief carries a Series line (stacked_series only); count is None until known
@@ -1085,6 +1181,12 @@ for i in cands:
     if i['key'] in worker_keys or i['key'] in pr_keys:  # a live worker or an open PR already owns the ticket
         drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
         continue
+    if i['key'] in design:  # a design leg writes only its spec in the state repo: it holds no files against the rest of the list
+        if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
+            drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
+        else:
+            free.append(i)
+        continue
     hit = held_hit(i)
     if hit:
         stack = stackable_on(i) if stacked else None
@@ -1345,6 +1447,8 @@ if classified and top > len(resume):
     for i in free:
         if len(ok_rows) >= top * 2:
             break
+        if i['key'] in design:  # a DESIGN row is not classified
+            continue
         if not proof_refuse(i):
             ok_rows.append(i)
     halves = [ok_rows[:top], ok_rows[top:]]
@@ -1389,9 +1493,17 @@ def emit_free(rows):
         start += len(batch)
         batch = [i for i in batch if not proof_refuse(i)]
         if classified:
-            classify_new(batch)
+            classify_new([i for i in batch if i['key'] not in design])
         for i in batch:
             seen.add(i['key'])
+            if i['key'] in design:  # the design dispatch: no lane, and it holds no files against the rest of the list
+                emitted.append(i)
+                lane_of[i['key']] = 'DESIGN'
+                say('\t'.join(['DESIGN', i['key'], design[i['key']], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
+                n += 1
+                if n >= top:
+                    break
+                continue
             rc = row_class(i)
             if rc is None:
                 continue
@@ -1411,7 +1523,7 @@ def emit_free(rows):
     while stacked and n >= top:
         # the list is full, but a ticket that joins a listed series takes no slot: still offer it the join. A join widens the
         # series' files, so scan again until a pass joins nobody
-        late = [i for i in rows if i['key'] not in seen and i['key'] not in why and picked_hit(i) and not proof_refuse(i)]
+        late = [i for i in rows if i['key'] not in seen and i['key'] not in why and i['key'] not in design and picked_hit(i) and not proof_refuse(i)]
         if classified:
             classify_new(late)
         joined = False

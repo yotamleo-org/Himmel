@@ -192,8 +192,8 @@ CFG_HOME="$work/homeA"
 # ── Case B: initiative get ──────────────────────────────────────────────────
 run_cfg "$fxA" get initiative
 [ "$CFG_RC" -eq 0 ] || fail "caseB: get initiative should exit 0 (got rc=$CFG_RC): $CFG_OUT"
-grepq "$CFG_OUT" -F 'active legs: pr' \
-  || fail "caseB: expected 'active legs: pr' (got: $CFG_OUT)"
+grepq "$CFG_OUT" -F 'active workers: pr' \
+  || fail "caseB: expected 'active workers: pr' (got: $CFG_OUT)"
 run_cfg "$fxA" get initiative.pr
 grepq "$CFG_OUT" -F 'initiative.pr: on' \
   || fail "caseB: expected 'initiative.pr: on' (got: $CFG_OUT)"

@@ -995,6 +995,9 @@ emit_runner() {
     fi
     if [ -n "$q_claude_dir" ]; then
         printf 'export PATH=%s:$PATH\n' "$q_claude_dir"
+        # The semantic pair shells claude, which cron cannot log in on macOS
+        # without a token (SCRUM-4, runner format v24).
+        cadence_oauth_token_lines
     fi
     # Luna's structural worker only — see emit_bat's identical
     # rationale: satisfies the fence's LLM-free-subcommand backend declaration

@@ -379,7 +379,7 @@ export function registerRelease(program: Command): void {
     .option('--change-class <class>', 'rename or bulk: a mechanical change, ruled case by case')
     .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')
     .option('--widen-reason <why>', 'Let a core list matching more than 2 % of tracked files proceed, with this reason on the record')
-    .option('--docs-only', 'The leg touches docs only: a key core by its label alone is a design leg and BYPASS')
+    .option('--docs-only', 'The worker touches docs only: a key core by its label alone is a design worker and BYPASS')
     .option('--mirror <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror); a key with no mirror file is UNKNOWN')
     .action((o: { paths: string; key: string[]; changeClass?: string; corePaths?: string; widenReason?: string; docsOnly?: boolean; mirror?: string }) => {
       if (o.changeClass !== undefined && o.changeClass !== 'rename' && o.changeClass !== 'bulk') {
