@@ -461,8 +461,12 @@ function rowIdentity(hookInput, invocation, occurrence) {
 // Markup is kept as text: the renderer escapes it.
 // eslint-disable-next-line no-control-regex
 const ANSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
+// Vertical tab and form feed are whitespace to the secret patterns, so they become a
+// space: dropping them would join a scheme or a flag to the credential after it.
 // eslint-disable-next-line no-control-regex
-const CONTROL_CHARACTER = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+const WHITESPACE_CONTROL = /[\u000b\u000c]/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTER = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f]/g;
 const DENY_LINE_MAX_CODE_POINTS = 240;
 const DENY_MESSAGE_SCAN_MAX = 65536;
 const DENY_REDACT_WINDOW_CODE_POINTS = 1000;
@@ -475,6 +479,7 @@ function denyLine(message) {
   const first = message
     .slice(0, DENY_MESSAGE_SCAN_MAX)
     .replace(ANSI_SEQUENCE, '')
+    .replace(WHITESPACE_CONTROL, ' ')
     .replace(CONTROL_CHARACTER, '')
     .split(LINE_BREAK)
     .map((line) => line.trim())

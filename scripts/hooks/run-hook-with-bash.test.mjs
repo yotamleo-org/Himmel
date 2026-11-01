@@ -2924,6 +2924,19 @@ const DENY_LINE_CASES = [
     absent: [/shorttoken123/],
   },
   {
+    // VT and FF count as whitespace to the secret patterns, so dropping them would join the scheme to its token.
+    name: 'a bearer credential separated from its scheme by a vertical tab',
+    message: 'sent Bearer\u000bshorttok123 upstream\n',
+    expect: (line) => assert.doesNotMatch(line, /shorttok123/),
+    absent: [/shorttok123/],
+  },
+  {
+    name: 'a curl user flag separated from its credential by a form feed',
+    message: 'curl -u\u000cuser:pass https://example.test\n',
+    expect: (line) => assert.doesNotMatch(line, /user:pass/),
+    absent: [/user:pass/],
+  },
+  {
     name: 'markup stays text for the renderer to escape',
     message: '<img src=x onerror=alert(1)>\n',
     expect: (line) => assert.equal(line, '<img src=x onerror=alert(1)>'),
