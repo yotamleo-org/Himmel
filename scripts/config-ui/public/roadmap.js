@@ -2,7 +2,7 @@
 // data = GET /api/roadmap (null while loading); ui = { version, theme }, indices into data.versions / data.themes (the Sectors) or null.
 // Everything shown is the server's live read. With ui.writes the Kanban cards are draggable and carry a Sector
 // select, and app.js posts the drop or the select to /api/roadmap/write. The rest of the page proposes only.
-import { esc, pageHeader } from "./render.js";
+import { esc, pageHeader, pg } from "./render.js";
 
 const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], ["ci", "CI"], ["done", "Done"], ["wont", "Won't"]];
 const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
@@ -68,7 +68,8 @@ function versionHtml(d, ui) {
 }
 
 // #/kanban, every version on one board with no version filter. Done can be hidden.
-export function renderKanban(data, ui) {
+export const renderKanban = (data, ui) => pg(kanbanHtml(data, ui));
+function kanbanHtml(data, ui) {
   const page = pageHeader("Kanban", "Tickets across versions, grouped by status.");
   if (!data) return page + `<p class="sub" id="status">loading…</p>`;
   if (data.state !== "ok") return page + `<div class="nodata">${esc(data.reason || "kanban unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;
@@ -113,7 +114,8 @@ function librarianHtml(d, ui) {
     + list("Released but open", l.releasedOpen) + list("Duplicate titles", l.duplicates);
 }
 
-export function renderRoadmap(data, ui) {
+export const renderRoadmap = (data, ui) => pg(roadmapHtml(data, ui));
+function roadmapHtml(data, ui) {
   const page = pageHeader("Roadmap", "Versions, drift and worker proposals.");
   if (!data) return page + `<p class="sub" id="status">loading…</p>`;
   if (data.state !== "ok") return page + `<div class="nodata">${esc(data.reason || "roadmap unavailable")}</div><button class="btn" data-act="refresh-roadmap">refresh</button>`;

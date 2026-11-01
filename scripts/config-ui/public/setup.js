@@ -1,7 +1,7 @@
 // The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, the commit rules, and the Verify step.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
-import { copyCommand, esc, planHtml, renderFleetCap, renderReports, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
+import { copyCommand, esc, pg, planHtml, renderFleetCap, renderReports, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
 import { TILES } from "./nav.js";
 
 const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", probe: "checked in the terminal" };
@@ -251,11 +251,11 @@ export function renderConfigure(feed, config) {
   const tiles = TILES.map((id) => `<button class="tile g-${id}" type="button" data-act="tile" data-tile="${id}" aria-expanded="${c.tile === id}">
       <span class="ic" aria-hidden="true">${TILE_ICON[id]}</span><span class="tname">${TILE_NAME[id]}</span><span class="tval">${esc(tileValue(id, c))}</span>${tileChip(id, c)}</button>`).join("");
   const panel = PANELS[c.tile];
-  return `<h2 id="h-configure">Configure</h2><p class="sub">Change what himmel does, any time.</p>
+  return pg(`<h2 id="h-configure">Configure</h2><p class="sub">Change what himmel does, any time.</p>
     <div class="tiles">${tiles}</div>
     ${panel ? "" : checkStrip(c.verify)}
     ${panel ? `<div class="cpanel" id="tile-${c.tile}" role="region" aria-label="${TILE_NAME[c.tile]}">${panel(c)}</div>` : ""}
-    <p class="not"><b>Not here, on purpose:</b> the safety hooks (<code>EDIT_ON_MAIN_OK=1</code>, <code>READ_SECRETS_OK=1</code>, <code>DESTRUCTIVE_OK=1</code>, <code>.single-writer</code>). Set one in the shell that starts Claude Code. <b>Moved to Health:</b> Triage and Inventory (<a href="#/health">open Health</a>).</p>`;
+    <p class="not"><b>Not here, on purpose:</b> the safety hooks (<code>EDIT_ON_MAIN_OK=1</code>, <code>READ_SECRETS_OK=1</code>, <code>DESTRUCTIVE_OK=1</code>, <code>.single-writer</code>). Set one in the shell that starts Claude Code. <b>Moved to Health:</b> Triage and Inventory (<a href="#/health">open Health</a>).</p>`);
 }
 
 export function renderSetup(setup, plans, msgs, verify = null) {
