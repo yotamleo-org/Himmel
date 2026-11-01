@@ -70,7 +70,7 @@ cat >"$V/refuse-secret.sh" <<'EOF'
 rc=0
 for f in "$@"; do
   case "$f" in
-    Preferences | */Preferences | "Local State" | */"Local State" | leak-*.md | */leak-*.md)
+    Preferences | */Preferences | "Local State" | */"Local State" | leak-*.md | */leak-*.md | *-journal)
       printf 'Finding:     token\nFile:        %s\n\n' "$f"
       rc=1
       ;;
@@ -234,14 +234,23 @@ assert_eq "S12d it is not quarantined" "" "$(find "$TMP/quarantine" -path '*x/De
 git -C "$V" checkout -q -- x/Default/Preferences
 run_sync
 
+# --- S12e: a refused file named like a journal OUTSIDE a browser profile is not tool state
+mkdir -p "$V/notes"
+printf 'diary\n' >"$V/notes/dev-journal"
+run_sync
+assert_eq "S12e journal-named file outside a profile stays in the vault" "yes" "$([ -e "$V/notes/dev-journal" ] && echo yes || echo no)"
+assert_eq "S12f it is not quarantined" "" "$(find "$TMP/quarantine" -name 'dev-journal')"
+rm -f "$V/notes/dev-journal"
+run_sync
+
 # --- S13: the template .gitignore hides tool state, not ordinary notes -------
 G="$TMP/gi"
 git init -q -b main "$G"
 cp "$HERE/../.gitignore" "$G/.gitignore"
-for p in "a/chrome/Default/Preferences" "a/chrome/Local State" "a/chrome/Default/Cache/data_0" "x-journal"; do
+for p in "a/chrome/Default/Preferences" "a/chrome/Local State" "a/chrome/Default/Cache/data_0" "a/chrome/Default/History-journal" "a/chrome/Default/Network/Cookies-journal"; do
   if git -C "$G" check-ignore -q -- "$p"; then pass "S13 ignored: $p"; else fail "S13 ignored: $p" "not ignored"; fi
 done
-for p in "notes/Preferences.md" "Local State.md" "notes/Default.md" "daily-journal.md" "notes/Cache.md" "Default/notes.md"; do
+for p in "notes/Preferences.md" "Local State.md" "notes/Default.md" "daily-journal.md" "daily-journal/note.md" "dev-journal" "notes/Cache.md" "Default/notes.md"; do
   if git -C "$G" check-ignore -q -- "$p"; then fail "S13 note kept: $p" "ignored"; else pass "S13 note kept: $p"; fi
 done
 

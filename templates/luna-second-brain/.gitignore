@@ -90,7 +90,7 @@ chats/*/_assets/
 **/Default/Cache/
 **/Default/Code Cache/
 **/Default/GPUCache/
-**/*-journal
+**/Default/**/*-journal
 
 # Judge/leg scratch dirs (probe scripts, extracted repo trees) — never vault content.
 handovers/**/verdicts/*/scratch/

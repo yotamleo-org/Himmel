@@ -8,11 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.100] — 2026-11-01
+## [0.4.101] — 2026-11-01
 
 ### Changed
 - `.gitignore` hides browser-profile tool state (Chrome `Default/Preferences`,
-  `Local State`, cache dirs, `*-journal`); ordinary notes are not matched.
+  `Local State`, cache dirs, `Default/**/*-journal`); ordinary notes and folders
+  such as `dev-journal/` are not matched.
 - `scripts/vault-autosync.sh` records the failing hook and file of a refused
   commit. When every refused file is new tool state it moves that state to
   `~/.himmel/state/vault-quarantine/<utc-stamp>/` and retries the commit once;

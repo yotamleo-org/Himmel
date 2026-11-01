@@ -60,7 +60,7 @@ _stall_reason() { # <captured output>: record `<hook>:<first file>` for vault-st
 _tool_state() { # <repo-relative path>
   case "/$1" in
     */Default/Preferences | */Default/Secure\ Preferences | */Local\ State | \
-      */Default/Cache/* | */Default/Code\ Cache/* | */Default/GPUCache/* | *-journal) return 0 ;;
+      */Default/Cache/* | */Default/Code\ Cache/* | */Default/GPUCache/* | */Default/*-journal) return 0 ;;
   esac
   return 1
 }

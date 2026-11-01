@@ -123,8 +123,9 @@ REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null)" || REPO_ROOT
 if [ -n "$REPO_ROOT" ]; then
     udd="$(git -C "$REPO_ROOT" grep -h -e '--user-data-dir' -- scripts templates marketplace ':!scripts/handover/chief-kit/test-vault-status.sh' 2>/dev/null)"
     if [ -n "$udd" ]; then pass 'the guard sees the tracked --user-data-dir helpers (not vacuous)'; else fail 'the guard sees no --user-data-dir helper (vacuous)'; fi
-    if printf '%s\n' "$udd" | grep -E -q 'HANDOVER|handover_root|handovers/|/specs/|luna'; then
-        fail "a tracked script points --user-data-dir under the handover root: $(printf '%s\n' "$udd" | grep -E 'HANDOVER|handover_root|handovers/|/specs/|luna' | head -n1)"
+    udd_bad="$(printf '%s\n' "$udd" | grep -E 'HANDOVER|handover_root|handovers/|/specs/|luna' | head -n1)"
+    if [ -n "$udd_bad" ]; then
+        fail "a tracked script points --user-data-dir under the handover root: $udd_bad"
     else
         pass 'no tracked script points --user-data-dir under the handover root'
     fi
