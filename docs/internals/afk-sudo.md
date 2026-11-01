@@ -382,9 +382,10 @@ schema `<op>.json` (name, version, `run_as`, `timeout_s`, `effect`, `params` as 
 optionally `when: "key=value"`). `install.sh` copies them root-owned into
 `/usr/local/libexec/himmel/ops/` and `build-manifest.py` writes `manifest.json` (per op: version and the
 sha256 of the script and of the schema). The helper runs **only the installed copy** that still hashes
-to the manifest; the repo copy is never executed. OPS-1 ships `cron-entry` (the operator's crontab, one
-`# HIMMEL-<tag>` line), `cron-system` (`/etc/cron.d/himmel-<tag>`) and `system-update`
-(`pacman -Syu` on Arch, `apt-get` on Debian; log in `/var/log/himmel/ops/<id>.log`).
+to the manifest; the repo copy is never executed. OPS-1 ships `cron-entry.sh` (the operator's crontab, one
+`# HIMMEL-<tag>` line), `cron-system.sh` (`/etc/cron.d/himmel-<tag>`) and `system-update.sh`
+(`pacman -Syu` on Arch, `apt-get` on Debian; log in `/var/log/himmel/ops/<id>.log`), each with its
+`<op>.json` schema.
 
 ```text
 afk-sudo op-request --session S --ticket T NAME key=value...     (or /op NAME key=value... from the operator's DM)
