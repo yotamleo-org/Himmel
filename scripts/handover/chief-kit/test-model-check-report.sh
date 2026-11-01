@@ -146,7 +146,7 @@ text = sut.read_text()
 text = re.sub(r'^HERE=.*$', 'HERE=' + shlex.quote(str(sut.parent)), text, count=1, flags=re.M)
 text = re.sub(r'^REPO=.*$', 'REPO=' + shlex.quote(str(repo)), text, count=1, flags=re.M)
 text = text.replace('569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13', tree_sha)
-text = text.replace('a13d367b20ca044bdeaac183fee0e06ad1887b513ff9fb76a4246e669239c18b', vendor_sha)
+text = text.replace('61e16ef034ab70f9ab7c35678db5d52cd82817b85d41007b267ea66a0b443587', vendor_sha)
 wrapper = work / 'wrapper.sh'
 wrapper.write_text(text)
 (work / 'bucket').mkdir()
@@ -257,6 +257,35 @@ if r.returncode == 0 and report and f'Statechart tree SHA-256: {vendor_sha}' in 
         fails += 1
 else:
     print(f'FAIL: vendored runner path/digest: {r.returncode} {r.stderr.strip()}')
+    fails += 1
+raise SystemExit(bool(fails))
+PY
+rc=$?
+[ "$rc" -eq 0 ] || fails=$((fails + 1))
+# The vendored compiler tree in this checkout must hash to the pin the wrapper and the doc both name.
+python3 -I - "$SUT" "$HERE/../../../docs/internals/model-check.md" "$HERE/../../../marketplace/plugins/pstack/skills/statechart/scripts" <<'PY'
+import hashlib, pathlib, re, sys
+sut, doc, root = map(pathlib.Path, sys.argv[1:])
+def digest(root):
+    h = hashlib.sha256()
+    for p in sorted(root.rglob('*')):
+        if p.is_dir():
+            continue
+        h.update(p.relative_to(root).as_posix().encode() + b'\0')
+        h.update(hashlib.sha256(p.read_bytes()).digest())
+    return h.hexdigest()
+m = re.search(r'scripts/statechart\)\n\s+approved_tree=([0-9a-f]{64})', sut.read_text())
+actual = digest(root)
+fails = 0
+if m and m.group(1) == actual:
+    print('PASS: the vendored statechart tree digest equals the wrapper pin')
+else:
+    print(f'FAIL: vendored statechart tree digest {actual} != wrapper pin {m.group(1) if m else None}')
+    fails += 1
+if actual in doc.read_text():
+    print('PASS: the vendored statechart tree digest is the one docs/internals/model-check.md names')
+else:
+    print(f'FAIL: docs/internals/model-check.md does not name vendored tree digest {actual}')
     fails += 1
 raise SystemExit(bool(fails))
 PY
