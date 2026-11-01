@@ -1,13 +1,13 @@
-# Worker preface section — a stacked series leg
+# Worker preface section — a stacked series worker
 
 Read on demand: a brief's `> **Series:**` line names this file. A series is several
-tickets that touch the same files, written one after another by a chain of legs, each
-leg one item. The state of the series is on disk, not in your context: the ledger
+tickets that touch the same files, written one after another by a chain of workers, each
+worker one item. The state of the series is on disk, not in your context: the ledger
 (`<sid>.json`), git and gh.
 
 ## The rules
 
-- **One item per leg.** `series-next.sh start` refuses a second start from the same doc
+- **One item per worker.** `series-next.sh start` refuses a second start from the same doc
   with `one item per leg: hand off at READY`. Hand off instead.
 - **Only the ledger's writer writes.** `start`, `commit`, `pass` and `abandon` refuse a
   `--doc` that is not the ledger's `writer` and name the real one. Only `pass` moves the
