@@ -19,7 +19,6 @@
 ^scripts/cr/(pr-check-[a-z0-9]+|review-round)\.
 # The release engine and the core match itself.
 ^scripts/jira/src/release/
-^scripts/jira/src/core\.ts$
 ^scripts/ci/core-paths\.txt$
 # The bus and the handover libraries.
 ^marketplace/plugins/himmel-bus/

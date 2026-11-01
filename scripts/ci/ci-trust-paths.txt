@@ -69,7 +69,7 @@
 # The CodeRabbit thread recorder merge-on-green.sh runs after a merge.
 ^scripts/cr/cr-thread-recorder\.sh$
 # The core match the ticket spec gate asks (HIMMEL-8353); the list it reads is under ^scripts/ci/ above.
-^scripts/jira/src/core\.ts$
+^scripts/jira/src/release/core\.ts$
 # Hook config files outside the audited dirs.
 ^\.codex/hooks\.json$
 ^marketplace/plugins/[^/]+/hooks/hooks\.json$

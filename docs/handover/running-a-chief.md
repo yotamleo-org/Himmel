@@ -298,16 +298,23 @@ effort guidance, including the chief's own wake-up budget, is in
   signature until you re-sign with `--supersedes O-<id>`.
 - **The two checks.** `jira release spec-check <KEY…>` prints `SPEC ok`,
   `SPEC-STALE` (the file changed since signing) or `NO-SPEC` per key. `jira
-  release core-check --paths <p,…> --key <K…> [--change-class rename|bulk]`
-  prints `CORE`, `REVIEW` or `NOT-CORE` per key. core-check stops when the
-  list matches more than 2 % of tracked files. If core really has to grow,
-  re-run it with `--widen-reason <why>`, and the reason is printed with the
-  verdict.
-- **Bypasses.** The gen-briefs core gate, when it lands, will let some
-  tickets pass without a spec: a design leg (core by label only, with
-  docs-only Writes), a Bug, an emergency, a ticket in an operator
-  `core-bypass` record, and a ticket already in flight when the gate turns
-  on. A free-text bypass field will be refused.
+  release core-check --paths <p,…> --key <K…> [--change-class rename|bulk]
+  [--docs-only] [--mirror <dir>]` prints one line per key: `CORE`, `REVIEW`,
+  `BYPASS <K> <kind> <reason>`, `UNKNOWN` (no mirror file for the key) or
+  `NOT-CORE`. A core path makes every key core; the `core` label makes only
+  its own key core. `--paths` takes repository-relative files or directories
+  and refuses a glob, an absolute path or one outside the repository;
+  `--mirror` defaults to the `JIRA_PROJECT_KEY` mirror. core-check stops
+  when the list matches more than 2 % of tracked files. If core really has to grow, re-run it with
+  `--widen-reason <why>`, and the reason is printed with the verdict.
+- **Bypasses.** core-check prints `BYPASS` for a design leg (core by label
+  only, with `--docs-only`), an emergency (a Bug at Highest or Blocker, or a
+  `red-main` or `regression` label), a Bug, a key in an operator
+  `core-bypass` record (`jira release operator core-bypass <R> --keys <K,…>
+  --decision <n> --verbatim-file <f>`), and a key in the in-flight snapshot
+  (`jira release operator core-snapshot <R> --keys-file <f>`, written once,
+  at flag-on). Both records are read from every declared release. There is
+  no free-text bypass.
 - **Nothing enforces this yet.** Until the gen-briefs core gate lands, run
   `jira release core-check` and `spec-check` yourself before you write a core
   brief, and run a minerva leg for each `CORE` key without `SPEC ok`.
