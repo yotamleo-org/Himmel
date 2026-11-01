@@ -1191,6 +1191,8 @@ def main(argv):
         elif cmd == "baseline" and rest:
             print(vm.baseline(rest[0]))
         elif cmd == "clone":
+            # the transient PAT goes onto this guest: prove it is a running himmel test VM first
+            vm._assert_test_vm()
             print(vm.clone_himmel(ref=rest[0] if rest else "main"))
         elif cmd == "provision":
             vm.provision()

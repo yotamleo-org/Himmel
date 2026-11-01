@@ -899,10 +899,45 @@ class TestCLI(unittest.TestCase):
         with mock.patch.dict(os.environ,
                              {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False):
             with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
-                with mock.patch.object(vmsdk.VM, "clone_himmel",
+                with mock.patch.object(vmsdk.VM, "_assert_test_vm"), \
+                     mock.patch.object(vmsdk.VM, "clone_himmel",
                                        side_effect=vmsdk.VMError("dest exists")):
                     rc = vmsdk.main(["ubuntu_new", "clone"])
         self.assertEqual(rc, 1)
+
+    def test_clone_runs_after_the_test_vm_proof(self):
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False):
+            with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+                order = mock.Mock()
+                with mock.patch.object(vmsdk.VM, "_assert_test_vm") as a, \
+                     mock.patch.object(vmsdk.VM, "clone_himmel", return_value="~/himmel") as c:
+                    order.attach_mock(a, "proof")
+                    order.attach_mock(c, "clone")
+                    rc = vmsdk.main(["ubuntu_new", "clone", "main"])
+        self.assertEqual(rc, 0)
+        # the proof comes first: a clone before it would put the PAT on an unproven guest
+        self.assertEqual(order.mock_calls, [mock.call.proof(), mock.call.clone(ref="main")])
+
+    def test_clone_refuses_a_vm_that_is_not_a_running_test_vm(self):
+        # not in `list runningvms`: the clone must stop at the proof, before any guest access
+        with mock.patch.dict(os.environ,
+                             {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False):
+            with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+                with mock.patch.object(vmsdk, "_running_vms", return_value=[]), \
+                     mock.patch.object(vmsdk.VM, "clone_himmel") as c:
+                    rc = vmsdk.main(["ubuntu_new", "clone"])
+        self.assertEqual(rc, 1)
+        c.assert_not_called()
+
+    def test_clone_refuses_a_station(self):
+        with mock.patch.dict(os.environ,
+                             {"windows_vm_user": "w", "windows_vm_pass": "p"}, clear=False):
+            with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+                with mock.patch.object(vmsdk.VM, "clone_himmel") as c:
+                    rc = vmsdk.main(["win2", "clone"])
+        self.assertNotEqual(rc, 0)
+        c.assert_not_called()
 
 
 class TestSyncRepo(unittest.TestCase):

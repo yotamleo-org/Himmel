@@ -230,9 +230,10 @@ else fail_case "T5c rc=$rc: $out"; fi
 
 : > "$calls"
 out=$(EXISTS=1 FWD=2229 t5 'vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
-if [ "$rc" -eq 0 ] && grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
-    pass "T5d an existing clone already on the port returns 0 and touches nothing"
-else fail_case "T5d rc=$rc: $out"; fi
+if [ "$rc" -eq 0 ] && grep -q reached <<< "$out" && [ ! -s "$calls" ] \
+   && ! grep -q ensure_persistent_forward "$WORK/vbox-py.log"; then
+    pass "T5d an existing clone already on the port returns 0 and touches nothing (no VBoxManage call, no forward write)"
+else fail_case "T5d rc=$rc: $out; py: $(cat "$WORK/vbox-py.log")"; fi
 
 : > "$calls"
 out=$(CLAIMED="2222" t5 'vm_clone_ensure suite-ready-v4; echo "port=$PORT"'); rc=$?
@@ -240,11 +241,15 @@ if [ "$rc" -eq 0 ] && grep -q 'port=2299' <<< "$out" && grep -qE 'ensure_persist
     pass "T5e (R6c) no port argument takes vm_ar_next_ports as before"
 else fail_case "T5e rc=$rc: $out; py: $(cat "$WORK/vbox-py.log")"; fi
 
-: > "$calls"
-out=$(t5 'vm_clone_ensure suite-ready-v4 22x9; echo "reached"'); rc=$?
-if [ "$rc" -ne 0 ] && ! grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
-    pass "T5f a non-numeric port argument is refused"
-else fail_case "T5f rc=$rc: $out"; fi
+# T5f: a non-numeric argument, and a 6-digit one whose VALUE (2229) is in range, so only
+# the digit cap can refuse it (the range check alone would let it through).
+for badarg in 22x9 002229; do
+    : > "$calls"
+    out=$(t5 "vm_clone_ensure suite-ready-v4 $badarg; echo \"reached\""); rc=$?
+    if [ "$rc" -ne 0 ] && ! grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
+        pass "T5f port argument $badarg is refused"
+    else fail_case "T5f port argument $badarg rc=$rc: $out"; fi
+done
 
 # T5g: ports 0 and 65536 are outside 1..65535 and refused before any VBox call
 for badport in 0 65536; do
@@ -266,6 +271,43 @@ out=$(CLAIMED="2222 2229" t5 'vm_clone_ensure suite-ready-v4 02229; echo "reache
 if [ "$rc" -ne 0 ] && ! grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
     pass "T5h 02229 is refused when 2229 is already claimed"
 else fail_case "T5h claimed rc=$rc: $out"; fi
+
+# T5i-T5m: an EXISTING clone given a fixed port takes the registry lock and
+# checks the port against the other registered VMs, ignoring its own forward. The claimed
+# set lists the clone's own forward too (it is registered), so another VM shows up as a
+# second 2229. The lock is a directory: absent after the call = released.
+REGLOCK="$WORK/t5-locks/himmel-vm-lock-himmel-vm-registry"
+: > "$calls"
+out=$(EXISTS=1 FWD=2229 CLAIMED="2222 2229 2229" t5 'vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
+if [ "$rc" -ne 0 ] && grep -q '2229' <<< "$out" && grep -q 'another registered VM' <<< "$out" \
+   && ! grep -q reached <<< "$out" && [ ! -s "$calls" ] && [ ! -e "$REGLOCK" ]; then
+    pass "T5i an existing clone whose fixed port another VM claims is refused, registry lock released"
+else fail_case "T5i rc=$rc: $out; lock: $(ls -d "$REGLOCK" 2>&1)"; fi
+
+: > "$calls"
+out=$(EXISTS=1 FWD=2229 CLAIMED="2222 2229" t5 'vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
+if [ "$rc" -eq 0 ] && grep -q reached <<< "$out" && [ ! -s "$calls" ] && [ ! -e "$REGLOCK" ] \
+   && ! grep -q ensure_persistent_forward "$WORK/vbox-py.log"; then
+    pass "T5j the existing clone's own forward is not a conflict; registry lock released"
+else fail_case "T5j rc=$rc: $out; lock: $(ls -d "$REGLOCK" 2>&1)"; fi
+
+out=$(EXISTS=1 FWD=2229 CLAIMED="2229" t5 'vm_ar_claimed_ports() { [ -d "$HIMMEL_VM_LOCK_DIR/himmel-vm-lock-himmel-vm-registry" ] && echo LOCK-HELD-DURING-CHECK >&2; echo 2229; }; vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
+if [ "$rc" -eq 0 ] && grep -q LOCK-HELD-DURING-CHECK <<< "$out" && grep -q reached <<< "$out"; then
+    pass "T5k the claimed-port check of an existing clone runs under the registry lock"
+else fail_case "T5k rc=$rc: $out"; fi
+
+: > "$calls"
+out=$(EXISTS=1 FWD=2229 t5 'vm_ar_claimed_ports() { return 1; }; vm_clone_ensure suite-ready-v4 2229; echo "reached"'); rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'could not enumerate' <<< "$out" && ! grep -q reached <<< "$out" && [ ! -e "$REGLOCK" ]; then
+    pass "T5l an existing clone refuses when the registry cannot be enumerated, lock released"
+else fail_case "T5l rc=$rc: $out; lock: $(ls -d "$REGLOCK" 2>&1)"; fi
+
+# T5m: the allocator path (no fixed port) on an existing clone takes no lock and asks nothing.
+: > "$calls"
+out=$(EXISTS=1 CLAIMED="2229 2229" t5 'vm_ar_claimed_ports() { echo ENUMERATED >&2; return 1; }; vm_clone_ensure suite-ready-v4; echo "reached"'); rc=$?
+if [ "$rc" -eq 0 ] && grep -q reached <<< "$out" && ! grep -q ENUMERATED <<< "$out" && [ ! -e "$REGLOCK" ]; then
+    pass "T5m an existing clone with no fixed port is unchanged (no lock, no enumeration)"
+else fail_case "T5m rc=$rc: $out"; fi
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "RESULT: all passed"; exit 0; fi
