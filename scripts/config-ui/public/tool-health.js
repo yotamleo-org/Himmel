@@ -1,5 +1,5 @@
 // rendering only. Counts, rates, trend geometry and lane deltas are server-owned.
-import { esc } from "./render.js";
+import { esc, pg } from "./render.js";
 const pct = (v) => typeof v === "number" ? `${(v * 100).toFixed(1)} %` : "—";
 const count = (v) => typeof v === "number" ? String(v) : "—";
 const table = (head, rows) => `<div class="scroll"><table class="data"><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
@@ -26,7 +26,8 @@ function profileTable(data) {
   const body = rows.length ? table(["Profile", "Tool", "Calls", "Failure rate", "Listing cost, tokens (estimate: Skill listing only, MCP schemas not measured)", "Suggestion"], rows) : '<p class="nodata">No per-profile data: no sessions in this period</p>';
   return `<h3 class="sec">Tools by launch profile</h3><p class="sub">Per launch profile: how often each tool was called and failed, what listing it costs every session, and whether it earns its place in that profile's default. A tool that costs listing tokens and was never called in the window is suggested for on-demand (the console adds it when needed). Suggestions only: nothing changes until an operator applies it. Window: ${esc(String(days))} days. Sessions recorded before the launch profile was kept read as unknown.</p>${body}`;
 }
-export function renderToolHealth(data, token = "") {
+export const renderToolHealth = (data, token = "") => pg(toolHealthHtml(data, token));
+function toolHealthHtml(data, token) {
   const header = `<header class="ph"><h1>Tool health</h1><p>Read-only · daily model / lane / worker-vs-supervisor-session rollups · missing denominators are —, never 0 %. <a href="#/toolhealth">Tool health</a> · <a href="/#${esc(new URLSearchParams({ t: token, page: "toolhealth" }).toString())}">Link to this page</a></p></header>`;
   if (!data || data.state !== "ok") return `${header}<section class="box"><div class="fields">${filters(data || { selected: { days: 7 } })}</div><p class="nodata">${data?.state === "error" ? "Tool health unavailable: endpoint unreachable" : "No data: no worker digest ledger rows in this period"}</p><button class="btn" data-act="refresh-toolhealth">Refresh</button></section>`;
   const tools = (data.tools || []).map((r) => `<tr><td>${esc(r.tool)}</td><td>${count(r.calls)}</td><td>${count(r.failures)}</td><td>${pct(r.rate)}</td><td>${pct(r.error_rate)}</td><td>${pct(r.recovery_rate)}</td><td>${spark(r.trend)}</td><td>${(r.classes || []).slice(0, 3).map((c) => `${esc(c.class)} (${count(c.count)})`).join("<br>") || "—"}</td><td>${drill(r, token)}</td></tr>`);
