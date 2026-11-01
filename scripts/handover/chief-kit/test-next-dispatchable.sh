@@ -1740,8 +1740,8 @@ lacks "(8529) a full named ledger stays full with a stale ledger beside it" "$s8
 newbucket cnt85
 mkdoc "$B/HIMMEL-9250-N6-count.md" 4 ""
 mkfleet "$B/fleet.json" "N6:$B/HIMMEL-9250-N6-count.md"
-led create --ledger "$B/series/cnt.json" --sid cnt --completes-ticket no --writer "$B/HIMMEL-9250-N6-count.md"
-led add-item --ledger "$B/series/cnt.json" --key HIMMEL-9251 --writes scripts/config-ui/app.js --state committed
+led create --ledger "$B/series/cnt.json" --sid cnt --completes-ticket no --writer "$B/HIMMEL-9250-N6-count.md" || fail "(8529) setup: the count ledger was not created"
+led add-item --ledger "$B/series/cnt.json" --key HIMMEL-9251 --writes scripts/config-ui/app.js --state committed || fail "(8529) setup: the count ledger item was not added"
 s85i="$(runl 1 "$S85" "$B/fleet.json" --why)"
 lacks "(8529) a numbered block of 4 items takes no STACKABLE when its ledger lists one" "$s85i" "STACKABLE HIMMEL-851"
 # a Series line whose ledger is not there has an unknown count: no room
@@ -1790,6 +1790,17 @@ fam1="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" runl 
 lacks "(8529) a parked: sub-task is in no family row" "$fam1" "HIMMEL-877"
 lacks "(8529) a residual-depth sub-task with no admission is in no family row" "$fam1" "HIMMEL-878"
 lacks "(8529) a sub-task whose Done blocker reopened live is in no family row" "$fam1" "HIMMEL-879"
+famd="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="Done" runl 1 "$FAM" "$B/fleet.json")"
+has "(8529) a sub-task whose blocker is Done live is in its family row" "$famd" "SERIES FAMILY docs/handover HIMMEL-879,HIMMEL-881"
+# only a possible family member's blockers are read live: a sub-task outside the earliest version costs no Jira call
+mk HIMMEL-882 "To Do" High '[]' '["v1.0.2"]' '["HIMMEL-9391"]' "a later-version sub-task blocked by another ticket" "Edit docs/handover/fm-85.md."
+retype "$M/HIMMEL-882.md" "Sub-task"; reparent "$M/HIMMEL-882.md" HIMMEL-863
+# shellcheck disable=SC2016  # the $ names are literal text of the fake Jira CLI, expanded when it runs
+printf '#!/usr/bin/env bash\n[ "$1" = get ] || exit 2\nprintf "%%s\\n" "$2" >> "$LIVE_LOG"\nprintf "%%s\\tTask\\t%%s\\tt\\n" "$2" "$LIVE_STATUS"\n' > "$WORK/jira-logged"; chmod +x "$WORK/jira-logged"
+: > "$WORK/live-reads.log"
+NEXT_DISPATCH_JIRA_CMD="$WORK/jira-logged" LIVE_LOG="$WORK/live-reads.log" LIVE_STATUS="Done" runl 1 "$FAM" "$B/fleet.json" > /dev/null
+has "(8529) a family member's blocker is read live" "$(cat "$WORK/live-reads.log")" "HIMMEL-9390"
+lacks "(8529) a sub-task outside the earliest version has its blocker left unread" "$(cat "$WORK/live-reads.log")" "HIMMEL-9391"
 has "(8529) sub-tasks of one parent in one directory family give a SERIES FAMILY row" "$fam1" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
 lacks "(8529) a sub-task of another parent is not in the family row" "$fam1" "HIMMEL-872"
 lacks "(8529) a lone sub-task of its parent gives no family row" "$fam1" "SERIES FAMILY scripts/lib"

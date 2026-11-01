@@ -712,11 +712,18 @@ def reaches_blocker_check(i):
             and not (i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I))
             and not platform_dropped(i))
 
+def family_candidate(i):
+    # a To Do sub-task that could sit in a SERIES FAMILY row, by the checks that need no live read, held files or worker set;
+    # only its blockers are read live, so an irrelevant sub-task costs no Jira call
+    return bool(stacked and first_ver and i['type'] == 'Sub-task' and i['status'] == 'To Do' and first_ver in i['ver'] and i['parent'] and i['files']
+                and i['key'] not in done_pending and i['key'] not in briefs and not (i['labels'] & excl)
+                and not re.match(r'\s*parked:', i['title'], re.I) and not residual_out(i) and not platform_dropped(i))
+
 # every hard blocker of a candidate is read live, whatever the mirror says; so is every blocker of an in-work ticket (RESUME rows)
 live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
            + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
               for b in i['blocked_by']]
-           + [b for i in issues.values() if stacked and i['status'] == 'To Do' and i['type'] == 'Sub-task' for b in i['blocked_by']])  # a SERIES FAMILY member's blockers
+           + [b for i in issues.values() if family_candidate(i) for b in i['blocked_by']])  # a SERIES FAMILY member's blockers
 print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
 withheld_unreadable = []
@@ -1140,13 +1147,9 @@ if stacked and first_ver and not (pr_unknown or pr_files_unknown or workers_unkn
     # are never dispatch rows; the chief composes the series from this row (`series: [...]` in workers.json)
     families = {}
     for i in sorted(issues.values(), key=lambda i: int(i['key'].split('-')[1])):
-        if i['type'] != 'Sub-task' or i['status'] != 'To Do' or first_ver not in i['ver'] or not i['parent'] or not i['files']:
+        if not family_candidate(i) or i['key'] in worker_keys or i['key'] in pr_keys:
             continue
-        if i['key'] in worker_keys or i['key'] in pr_keys or i['key'] in done_pending or i['key'] in briefs or i['labels'] & excl:
-            continue
-        if re.match(r'\s*parked:', i['title'], re.I) or residual_out(i):
-            continue
-        if platform_dropped(i) or held_hit(i) or any(blocker_state(b) for b in i['blocked_by']):
+        if held_hit(i) or any(blocker_state(b) for b in i['blocked_by']):
             continue
         fams = {family_of(f) for f in i['files']}
         if len(fams) == 1:
