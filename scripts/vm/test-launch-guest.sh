@@ -263,17 +263,21 @@ check "C5 vm-cost: an empty first argument is not the default report: exit 2" "$
 rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp" bash "$COST" 2>&1)" || rc=$?
 check "C5 vm-cost: an unreadable ledger (a directory) is not an empty report: nonzero" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
 
-# a signal to the launcher reaches the guest ssh and the cut-short run still gets its row
+# a signal to the launcher reaches the guest ssh and the cut-short run still gets its row.
+# pid_state is alive or gone for a real pid and unstarted for an empty or non-numeric one, so a
+# stub ssh that never ran can not read as "gone".
+pid_state() { case "$1" in ''|*[!0-9]*) echo unstarted ;; *) if kill -0 "$1" 2>/dev/null; then echo alive; else echo gone; fi ;; esac; }
 printf '#!/bin/sh\necho $$ > "$SLEEP_PID"\nexec sleep 30\n' > "$tmp/bin/ssh"
 export SLEEP_PID="$tmp/sleeper.pid"
 rm -f "$LEDGER" "$SLEEP_PID"
 (cd "$tmp/repo" && exec env PATH="$tmp/bin:$PATH" LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-ok.sh" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 bash "$SCRIPT" ubuntu_new "$P" > /dev/null 2>&1) &
 lpid=$!
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$SLEEP_PID" ] && break; sleep 0.25; done
-kill -TERM "$lpid" 2>/dev/null
-rc=0; wait "$lpid" || rc=$?
 spid="$(cat "$SLEEP_PID" 2>/dev/null)"
-check "C6 SIGTERM to the launcher: the guest ssh is gone" "$(kill -0 "$spid" 2>/dev/null && echo alive || echo gone)" "gone"
+check "C6 SIGTERM: the stub ssh started" "$(pid_state "$spid")" "alive"
+check "C6 SIGTERM: the signal reached the launcher" "$(kill -TERM "$lpid" 2>/dev/null && echo sent || echo not-sent)" "sent"
+rc=0; wait "$lpid" || rc=$?
+check "C6 SIGTERM to the launcher: the guest ssh is gone" "$(pid_state "$spid")" "gone"
 check "C6 SIGTERM to the launcher: the cut-short run has its row" "$(rows)" "1"
 check "C6 SIGTERM to the launcher: exit is the signalled child's" "$rc" "143"
 kill "$spid" 2>/dev/null
@@ -288,12 +292,14 @@ for sig in INT QUIT; do
     (cd "$tmp/repo" && exec perl -e '$SIG{INT} = "DEFAULT"; $SIG{QUIT} = "DEFAULT"; exec @ARGV' env PATH="$tmp/bin:$PATH" LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-ok.sh" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 bash "$SCRIPT" ubuntu_new "$P" > /dev/null 2>&1) &
     lpid=$!
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$SLEEP_PID" ] && break; sleep 0.25; done
-    kill -"$sig" "$lpid" 2>/dev/null
-    sleep 1
     spid="$(cat "$SLEEP_PID" 2>/dev/null)"
-    check "C7 SIG$sig to the launcher: the guest ssh is gone" "$(kill -0 "$spid" 2>/dev/null && echo alive || echo gone)" "gone"
+    check "C7 SIG$sig: the stub ssh started" "$(pid_state "$spid")" "alive"
+    check "C7 SIG$sig: the signal reached the launcher" "$(kill -"$sig" "$lpid" 2>/dev/null && echo sent || echo not-sent)" "sent"
+    sleep 1
+    check "C7 SIG$sig to the launcher: the guest ssh is gone" "$(pid_state "$spid")" "gone"
     kill "$spid" 2>/dev/null
-    wait "$lpid" 2>/dev/null
+    rc=0; wait "$lpid" || rc=$?
+    check "C7 SIG$sig to the launcher: exit is the terminated child's" "$rc" "143"
 done
 
 # a ledger that cannot be written never changes the run: the answer and the exit code stay the guest's
