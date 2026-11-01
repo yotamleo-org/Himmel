@@ -387,6 +387,21 @@ to the manifest; the repo copy is never executed. OPS-1 ships `cron-entry.sh` (t
 (`pacman -Syu` on Arch, `apt-get` on Debian; log in `/var/log/himmel/ops/<id>.log`), each with its
 `<op>.json` schema.
 
+OPS-2 (HIMMEL-8562) adds three more, each `<op>.sh` plus `<op>.json`:
+
+| op | runs as | what it does |
+| --- | --- | --- |
+| `autologin` (`action=enable\|disable`) | root | Turns the display manager's automatic login for the operator user on or off. It follows `/etc/systemd/system/display-manager.service` to SDDM (`/etc/sddm.conf.d/himmel-autologin.conf`), LightDM (`/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf`) or GDM (the two `[daemon]` keys in `custom.conf`); any other display manager, or none, is refused. Its detail ends `keyring=present-locked-at-autologin` (an automatic login never types the login password, so an existing login keyring stays locked) or `keyring=none`. |
+| `reboot-recover` (`action=arm\|disarm`, `doc`, `repo`) | root | `arm` writes the root-owned marker `/var/lib/himmel/reboot-recover.json` and the user unit `/etc/systemd/user/himmel-recover.service` (enabled through `default.target.wants`, `ConditionPathExists` on the marker). At the next login `scripts/station-ops/recover.sh` runs as the operator, once per arming: it checks the services, verifies the bridge, re-arms the chief from `doc` with `arm-resume.sh --handover` and sends a status through the bridge bot. With no marker it does nothing. |
+| `chief-restart` (`chief`, `doc`, `repo`) | operator user | Stops the operator's running session named `chief` (SIGTERM, SIGKILL after 15 s) and re-arms it from `doc`; its stale queue lock passes to the re-armed session. A chief cannot restart itself. |
+
+An op whose schema says `"run_as": "operator-user"` runs as `operator_user` under `setpriv` (uid, gid and groups
+dropped, no new privileges, no capabilities, a fixed environment with that user's `HOME`) and its notice says "Run as: the
+operator user (not root)"; `"wants_session": true` appends `--session <the requesting session>` after the
+parameters, and `"not_session": "<param>"` makes the helper refuse (`result=self-restart`, a ledger row, before any
+notice, and again at approval) a request whose session equals that parameter. `chief-restart` sets all three, and its script
+refuses a self-restart as well.
+
 ```text
 afk-sudo op-request --session S --ticket T NAME key=value...     (or /op NAME key=value... from the operator's DM)
 ```

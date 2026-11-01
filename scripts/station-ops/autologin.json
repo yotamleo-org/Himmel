@@ -1,0 +1,8 @@
+{"name": "autologin",
+ "version": 1,
+ "run_as": "root",
+ "timeout_s": 30,
+ "effect": "turns the display manager's automatic login for the operator user on or off (SDDM, GDM or LightDM; any other display manager is refused); takes effect at the next boot or display manager restart; the login keyring is not unlocked by an automatic login and its state is reported",
+ "params": {
+  "action": {"enum": ["enable", "disable"]}
+ }}

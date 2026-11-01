@@ -26,7 +26,8 @@ assert_eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "$3"; fi; }
 umask 022
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/station-ops-test.XXXXXX")" || { echo "FAIL: mktemp"; exit 1; }
-trap 'rm -rf "$tmp"' EXIT
+cleanup() { local p; for p in ${STUBS:-}; do kill -KILL "$p" 2>/dev/null; done; rm -rf "$tmp"; }
+trap cleanup EXIT
 
 # A fake notice-bot curl: records each call's stdin config to $TG/NNN.txt and answers ok.
 TG="$tmp/tg"
@@ -286,6 +287,190 @@ chmod +x "$R/bin/pacman"
 assert_contains "RED: a pacman error is a failure, not nothing to upgrade" "result=failed" "$(op system-update --check)"
 printf '#!/bin/sh\nexit 1\n' > "$R/bin/pacman"
 assert_contains "pacman exit 1 with no output is nothing to upgrade" "result=unchanged" "$(op system-update --check)"
+
+echo "== autologin: detects the display manager, refuses an unknown one =="
+new_root al
+U=$(id -un)
+HOMEDIR=$(getent passwd "$U" | cut -d: -f6)
+dm() { mkdir -p "$R/etc/systemd/system"; ln -sf "/usr/lib/systemd/system/$1.service" "$R/etc/systemd/system/display-manager.service"; }
+assert_contains "RED: no display manager is refused" "result=failed" "$(op autologin --action enable)"
+dm lxdm
+out=$(op autologin --action enable)
+assert_contains "RED: an unknown display manager is refused" "result=failed" "$out"
+assert_contains "the refusal names the display manager" "unsupported display manager 'lxdm'" "$out"
+dm sddm
+assert_contains "a bad action is bad-param" "result=bad-param name=action" "$(op autologin --action toggle)"
+out=$(op autologin --check --action enable)
+assert_contains "--check reports a would-change" "result=would-change" "$out"
+assert_eq "--check wrote nothing" "no" "$([ -e "$R/etc/sddm.conf.d/himmel-autologin.conf" ] && echo yes || echo no)"
+out=$(op autologin --action enable)
+assert_contains "RED: SDDM enable changes the config" "result=changed" "$out"
+assert_contains "the SDDM file names the operator user" "User=$U" "$(cat "$R/etc/sddm.conf.d/himmel-autologin.conf" 2>/dev/null)"
+out=$(op autologin --action enable)
+assert_contains "RED: enable on an already-enabled config is unchanged" "result=unchanged" "$out"
+assert_eq "the SDDM file is untouched by the second enable" "[Autologin]
+User=$U" "$(cat "$R/etc/sddm.conf.d/himmel-autologin.conf")"
+assert_contains "disable removes the SDDM file" "result=changed" "$(op autologin --action disable)"
+assert_eq "the SDDM file is gone" "no" "$([ -e "$R/etc/sddm.conf.d/himmel-autologin.conf" ] && echo yes || echo no)"
+assert_contains "disable again is unchanged" "result=unchanged" "$(op autologin --action disable)"
+dm lightdm
+assert_contains "LightDM enable changes the config" "result=changed" "$(op autologin --action enable)"
+assert_contains "the LightDM file names the operator user" "autologin-user=$U" "$(cat "$R/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf" 2>/dev/null)"
+assert_contains "LightDM enable again is unchanged" "result=unchanged" "$(op autologin --action enable)"
+dm gdm3
+mkdir -p "$R/etc/gdm3"
+printf '[daemon]\n#WaylandEnable=false\nAutomaticLoginEnable=False\n\n[security]\nFoo=bar\n' > "$R/etc/gdm3/custom.conf"
+assert_contains "GDM enable changes the config" "result=changed" "$(op autologin --action enable)"
+gdm=$(cat "$R/etc/gdm3/custom.conf")
+assert_contains "GDM sets AutomaticLoginEnable" "AutomaticLoginEnable=True" "$gdm"
+assert_contains "GDM sets AutomaticLogin to the operator user" "AutomaticLogin=$U" "$gdm"
+assert_absent "GDM drops the old AutomaticLoginEnable=False" "AutomaticLoginEnable=False" "$gdm"
+assert_contains "GDM keeps the other sections" "Foo=bar" "$gdm"
+assert_eq "GDM writes each key once" "2" "$(printf '%s\n' "$gdm" | grep -c '^AutomaticLogin')"
+assert_contains "GDM enable again is unchanged" "result=unchanged" "$(op autologin --action enable)"
+assert_contains "GDM disable changes the config" "result=changed" "$(op autologin --action disable)"
+assert_absent "GDM disable removes the keys" "AutomaticLogin" "$(cat "$R/etc/gdm3/custom.conf")"
+assert_contains "GDM keeps the other sections after disable" "Foo=bar" "$(cat "$R/etc/gdm3/custom.conf")"
+assert_contains "GDM disable again is unchanged" "result=unchanged" "$(op autologin --action disable)"
+rm -f "$R/etc/gdm3/custom.conf"
+assert_contains "GDM enable creates a missing custom.conf" "result=changed" "$(op autologin --action enable)"
+assert_contains "the new custom.conf holds a [daemon] section" "[daemon]" "$(cat "$R/etc/gdm3/custom.conf")"
+echo "== autologin: the keyring state is reported =="
+dm sddm
+assert_contains "no login keyring reads keyring=none" "keyring=none" "$(op autologin --check --action disable)"
+mkdir -p "$R$HOMEDIR/.local/share/keyrings"; : > "$R$HOMEDIR/.local/share/keyrings/login.keyring"
+assert_contains "a login keyring reads locked at autologin" "keyring=present-locked-at-autologin" "$(op autologin --action enable)"
+assert_contains "autologin goes through the chain" "result=pending" "$(oreq 0 S1 autologin action=disable)"
+
+echo "== chief-restart: an operator-user op =="
+new_root cr
+cdoc="$R/chief-doc.md"; echo "# doc" > "$cdoc"
+# shellcheck disable=SC2016
+printf '#!/bin/sh\necho "$1 $2" >> "$HIMMEL_OPS_ROOT/rearm.calls"\n' > "$R/bin/rearm"; chmod +x "$R/bin/rearm"
+export HIMMEL_OPS_REARM_CMD="$R/bin/rearm"
+stub() { bash -c 'trap "exit 0" TERM; while :; do sleep 0.2; done' stub -n "$1" & STUBPID=$!; STUBS="${STUBS:-} $STUBPID"; sleep 0.4; }
+running() { local st; st=$(sed -n 's/^[0-9]* (.*) \(.\) .*/\1/p' "/proc/$1/stat" 2>/dev/null); [ -n "$st" ] && [ "$st" != Z ]; }
+gone() { local _; for _ in 1 2 3 4 5 6 7 8 9 10; do running "$1" || return 0; sleep 0.2; done; return 1; }
+out=$(op chief-restart --session chief-x1 --chief chief-x1 --doc "$cdoc" --repo "$R")
+assert_contains "RED: a chief restarting itself reads self-restart" "self-restart" "$out"
+assert_contains "the self-restart is a failure" "result=failed" "$out"
+assert_eq "a self-restart re-armed nothing" "no" "$([ -e "$R/rearm.calls" ] && echo yes || echo no)"
+stub chief-x2
+out=$(op chief-restart --check --session other --chief chief-x2 --doc "$cdoc" --repo "$R")
+assert_contains "--check counts the running chief" "stop 1 running" "$out"
+assert_eq "--check left the chief running" "yes" "$(running $STUBPID && echo yes || echo no)"
+out=$(op chief-restart --session other --chief chief-x2 --doc "$cdoc" --repo "$R")
+assert_contains "RED: a restart from another session changes" "result=changed" "$out"
+assert_contains "the restart stopped one session" "stopped 1 session" "$out"
+assert_eq "the running stub chief is gone" "yes" "$(gone $STUBPID && echo yes || echo no)"
+assert_contains "the chief was re-armed from its doc" "$cdoc $R" "$(cat "$R/rearm.calls" 2>/dev/null)"
+out=$(op chief-restart --session other --chief chief-x3 --doc "$cdoc" --repo "$R")
+assert_contains "a chief that is not running is just re-armed" "stopped 0 session" "$out"
+assert_contains "a bad chief name is bad-param" "result=bad-param name=chief" "$(op chief-restart --session other --chief 'a b' --doc "$cdoc" --repo "$R")"
+assert_contains "a doc that is not a .md is bad-param" "result=bad-param name=doc" "$(op chief-restart --session other --chief chief-x4 --doc /etc/passwd --repo "$R")"
+assert_contains "a missing doc fails" "no handover doc" "$(op chief-restart --session other --chief chief-x4 --doc "$R/none.md" --repo "$R")"
+
+echo "== chief-restart through the helper: operator-user ops, the session, self-restart =="
+out=$(oreq 0 chief-x5 chief-restart chief=chief-x5 "doc=$cdoc" "repo=$R")
+assert_contains "RED: the helper refuses a chief's own session before any notice" "result=self-restart" "$out"
+assert_absent "the self-restart files no request" "id=" "$out"
+assert_contains "the self-restart is in the ledger" '"result": "self-restart"' "$(ledger)"
+stub chief-x6
+out=$(oreq 10 other chief-restart chief=chief-x6 "doc=$cdoc" "repo=$R"); id=$(rid "$out")
+assert_contains "RED: an operator-user op from another session is pending" "result=pending" "$out"
+notice=$(cat "$TG"/*.txt)
+assert_contains "the notice names the op" "chief-restart" "$notice"
+assert_absent "the notice does not say ROOT for an operator-user op" "ROOT" "$notice"
+assert_eq "nothing ran before the code" "yes" "$(running $STUBPID && echo yes || echo no)"
+out=$(approve 13 "$id" "$(code 13)")
+assert_contains "the code runs the operator-user op" "result=ran" "$out"
+assert_eq "the stub chief was stopped by the approved op" "yes" "$(gone $STUBPID && echo yes || echo no)"
+assert_contains "the run row holds the op result" '"op_result": "changed"' "$(ledger)"
+echo "== operator-user ops: a root op still runs as root, an unknown run_as is refused =="
+cp "$R/usr/local/libexec/himmel/ops/chief-restart.sh" "$R/usr/local/libexec/himmel/ops/weird.sh"
+python3 -I -c 'import json, sys
+d = json.load(open(sys.argv[1] + "/chief-restart.json")); d["name"] = "weird"; d["run_as"] = "nobody"
+json.dump(d, open(sys.argv[1] + "/weird.json", "w"))' "$R/usr/local/libexec/himmel/ops"
+python3 -I "$OPS/build-manifest.py" "$R/usr/local/libexec/himmel/ops" >/dev/null 2>&1
+assert_contains "RED: an unknown run_as is unknown-op" "result=unknown-op" "$(oreq 50 other weird chief=chief-x8 "doc=$cdoc" "repo=$R")"
+assert_contains "a root op (cron-entry) is still accepted" "result=pending" "$(oreq 51 other cron-entry action=remove tag=ping)"
+unset HIMMEL_OPS_REARM_CMD
+
+echo "== reboot-recover: arm and disarm the root marker and the user unit =="
+new_root rr
+mkdir -p "$R/repo/scripts/station-ops" "$R/repo/scripts/telegram" "$R/repo/scripts/handover" "$R/state"
+cp "$OPS/recover.sh" "$R/repo/scripts/station-ops/recover.sh"
+printf '#!/bin/sh\nexit 0\n' > "$R/repo/scripts/telegram/restart-bridge.sh"
+printf '#!/bin/sh\necho "$*" >> "%s/arm.log"\n' "$R" > "$R/repo/scripts/handover/arm-resume.sh"
+rdoc="$R/doc.md"; echo "# doc" > "$rdoc"
+M="$R/var/lib/himmel/reboot-recover.json"
+arm() { op reboot-recover --action arm --doc "$rdoc" --repo "$R/repo"; }
+out=$(op reboot-recover --check --action arm --doc "$rdoc" --repo "$R/repo")
+assert_contains "--check reports a would-change" "result=would-change" "$out"
+assert_eq "--check wrote no marker" "no" "$([ -e "$M" ] && echo yes || echo no)"
+out=$(arm)
+assert_contains "RED: arm writes the marker" "result=changed" "$out"
+assert_contains "the marker names the user" "\"user\": \"$(id -un)\"" "$(cat "$M" 2>/dev/null)"
+assert_contains "the marker names the handover doc" "\"doc\": \"$rdoc\"" "$(cat "$M" 2>/dev/null)"
+assert_contains "the unit runs recover.sh from the repo" "ExecStart=/usr/bin/bash $R/repo/scripts/station-ops/recover.sh" "$(cat "$R/etc/systemd/user/himmel-recover.service" 2>/dev/null)"
+assert_contains "the unit needs the marker" "ConditionPathExists=/var/lib/himmel/reboot-recover.json" "$(cat "$R/etc/systemd/user/himmel-recover.service" 2>/dev/null)"
+assert_eq "the unit is enabled for every user session" "../himmel-recover.service" "$(readlink "$R/etc/systemd/user/default.target.wants/himmel-recover.service")"
+armed_at=$(sed 's/.*"armed_at": \([0-9]*\)}/\1/' "$M")
+sleep 1
+assert_contains "RED: arming the same marker again is unchanged" "result=unchanged" "$(arm)"
+assert_eq "the second arm kept armed_at" "$armed_at" "$(sed 's/.*"armed_at": \([0-9]*\)}/\1/' "$M")"
+echo "# other" > "$R/other.md"
+assert_contains "arming another doc changes the marker" "result=changed" "$(op reboot-recover --action arm --doc "$R/other.md" --repo "$R/repo")"
+assert_contains "a doc outside the regex is bad-param" "result=bad-param name=doc" "$(op reboot-recover --action arm --doc /etc/passwd --repo "$R/repo")"
+assert_contains "a repo without recover.sh is bad-param" "result=bad-param name=repo" "$(op reboot-recover --action arm --doc "$rdoc" --repo "$R")"
+assert_contains "arm without a doc is bad-param" "result=bad-param name=doc" "$(op reboot-recover --action arm --repo "$R/repo")"
+assert_contains "disarm with a doc is bad-param" "result=bad-param name=doc" "$(op reboot-recover --action disarm --doc "$rdoc")"
+assert_contains "disarm removes the marker" "result=changed" "$(op reboot-recover --action disarm)"
+assert_eq "the marker is gone" "no" "$([ -e "$M" ] && echo yes || echo no)"
+assert_contains "disarm again is unchanged" "result=unchanged" "$(op reboot-recover --action disarm)"
+
+echo "== recover.sh: acts only on a root marker, once per arming =="
+mkdir -p "$R/ubin"
+cat > "$R/ubin/systemctl" <<'FAKESYSTEMCTL'
+#!/bin/sh
+# systemctl --user is-active [--quiet] UNIT | start UNIT
+case "$2" in
+    is-active) for u in "$@"; do :; done; [ -e "$RECOVER_FAKE_DIR/down.$u" ] && exit 3; exit 0 ;;
+    start) exit 0 ;;
+esac
+FAKESYSTEMCTL
+chmod +x "$R/ubin/systemctl"
+cp "$tmp/fakecurl/curl" "$R/ubin/curl"
+printf 'TELEGRAM_BOT_TOKEN=%s\n' "$NTOK" > "$R/tg.env"
+rec() { PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_STATE="$R/state" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" \
+    TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?"; }
+out=$(rec)
+assert_contains "RED: a reboot with no marker makes recover do nothing" "no marker, nothing to do" "$out"
+assert_eq "no marker: nothing was re-armed" "no" "$([ -e "$R/arm.log" ] && echo yes || echo no)"
+assert_eq "no marker: no Telegram status" "0" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+arm >/dev/null
+out=$(rec)
+assert_contains "an armed marker re-arms the chief from its doc" "re-armed from doc.md" "$out"
+assert_contains "arm-resume got the handover doc" "--handover $rdoc --force --time" "$(cat "$R/arm.log" 2>/dev/null)"
+assert_contains "the status reports the services" "telegram-bridge.service=up" "$out"
+assert_contains "the status reports the bridge" "bridge up" "$out"
+assert_contains "recover exits 0 when all is well" "rc=0" "$out"
+assert_eq "one Telegram status was sent" "1" "$(find "$TG" -type f | wc -l | tr -d ' ')"
+out=$(rec)
+assert_contains "RED: the same arming is not recovered twice" "already recovered" "$out"
+assert_eq "no second re-arm" "1" "$(wc -l < "$R/arm.log" | tr -d ' ')"
+sleep 1
+op reboot-recover --action arm --doc "$R/other.md" --repo "$R/repo" >/dev/null
+: >"$R/down.telegram-bridge.service"
+out=$(rec)
+assert_contains "a new arming recovers again" "re-armed from other.md" "$out"
+assert_contains "a service that stays down is reported DOWN" "telegram-bridge.service=DOWN" "$out"
+assert_contains "a down service makes recover exit 1" "rc=1" "$out"
+rm -f "$R/down.telegram-bridge.service"
+python3 -I -c 'import json, sys
+p = sys.argv[1]
+m = json.load(open(p)); m["user"] = "someone-else"; json.dump(m, open(p, "w"))' "$M"
+assert_contains "a marker for another user is ignored" "the marker is for someone-else" "$(rec)"
 
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
