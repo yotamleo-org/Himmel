@@ -2,8 +2,9 @@
 """scripts/eval/handover-cost.py - re-derive the HIMMEL-6491 per-handover price from session JSONLs (HIMMEL-6501).
 
 Read-only, deterministic, no model call. Reads every *.jsonl directly under --dir (default:
-~/.claude/projects/-home-overlord-Documents-github-himmel). Only token counts and tool names
-are read.
+~/.claude/projects/-home-overlord-Documents-github-himmel) for chiefs and workers, plus the worker
+sessions in the sibling per-worktree dirs <dir>--claude-worktrees-* (only files written since the
+first chief began). Only token counts and tool names are read.
 
   handover-cost.py [--dir D] [--name-re RE] [--since ISO8601] [--workers-after ISO8601]
 
@@ -206,6 +207,20 @@ def main(argv=None):
             continue
         (chiefs if name_re.search(s["name"]) else workers).append(s)
     chiefs = sorted([c for c in chiefs if not a.since or c["first"] >= a.since], key=lambda c: c["first"])
+    # Workers run in their own worktrees, whose sessions live in sibling project dirs
+    # (<dir>--claude-worktrees-*). A session file last written before the first chief began cannot
+    # hold a relay from any chief, so those are skipped unread.
+    if chiefs:
+        floor = chiefs[0]["first"].timestamp()
+        for path in sorted(glob.glob(os.path.join(d.rstrip("/") + "--claude-worktrees-*", "*.jsonl"))):
+            try:
+                if os.path.getmtime(path) < floor:
+                    continue
+            except OSError:
+                continue
+            s = load(path)
+            if s["name"] and s["first"] and not name_re.search(s["name"]):
+                workers.append(s)
     if len(chiefs) < 2:
         print("handover-cost: fewer than two chiefs matching %r in %s" % (a.name_re, d), file=sys.stderr)
         return 2
