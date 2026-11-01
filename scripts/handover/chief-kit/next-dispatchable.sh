@@ -623,6 +623,7 @@ try:
         mkey = str(r.get('key', '')).upper()
         if r['contract'] == 'yes':
             done_pending.add(mkey)
+            partials.pop(mkey, None)  # the completing merge closes every earlier partial slice
         else:
             done_pending.discard(mkey)  # a newer partial merge reopens a key an older contract=yes row closed
             if str(r.get('pr', '')).isdigit():
