@@ -15,7 +15,7 @@ entries or wave prep your prompt asks for, and nothing else.
   token, nonce, sha or path.
 - Write only the files your prompt names. Do not launch, arm, commit, push or
   message anyone: the chief does that.
-- Run the lint your prompt names (for example the chief's leg-lint) on what
+- Run the lint your prompt names (for example `brief-lint.sh`) on what
   you wrote, and fix it until it passes.
 - Reply with the paths you wrote and the lint's last line. When a field cannot be
   filled from the sources, say which, and leave it out rather than guessing.
