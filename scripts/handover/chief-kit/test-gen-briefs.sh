@@ -910,6 +910,15 @@ pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few)"; rc=$?
 [ "$rc" = 0 ] && pass "3 files pass (rc 0)" || fail "3 files: rc=$rc: $pso"
 lacks "3 files: no size warning" "$pso" "warning:"
 
+PSBASE_GOOD="$PSBASE"; PSBASE="4ccb59dd6de2eba962c75f136096cd7b721ae312"  # a sha this fixture repo does not hold
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few nobase)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a base git cannot read refuses instead of counting one file (rc 1)" || fail "unreadable base, gate on: rc=$rc: $pso"
+has "the unreadable-base refusal says the Writes cannot be projected" "$pso" "cannot be projected"
+pso="$(psrun few nobase-off)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate off: an unreadable base warns and writes the brief (rc 0)" || fail "unreadable base, gate off: rc=$rc: $pso"
+has "gate off: the unreadable base is a warning" "$pso" "warning: worker N921 Writes cannot be projected"
+PSBASE="$PSBASE_GOOD"
+
 pso="$(psrun badbulk)"; rc=$?
 [ "$rc" = 1 ] && has "bulk other than mechanical is refused" "$pso" "bulk" || fail "bulk yes: rc=$rc: $pso"
 unset HIMMEL_CONFIG_DIR

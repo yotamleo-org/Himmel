@@ -494,14 +494,16 @@ def size_bands():
 
 def projected_files(writes, repo, base):
     # Files the Writes list touches: a directory expands to its tracked files at base; a path git does not know
-    # at base (a new file) counts once.
+    # at base (a new file) counts once. None when git cannot read base: a failed read must not pass as a small count.
     wp = write_paths(writes)
     if wp in ('', 'none named'):
         return 0
     files = set()
     for p in wp.split():
         r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base, '--', p], capture_output=True, text=True)
-        files.update(r.stdout.split('\n')[:-1] if r.returncode == 0 and r.stdout else [p])
+        if r.returncode != 0:
+            return None
+        files.update(r.stdout.split('\n')[:-1] if r.stdout else [p])
     return len(files)
 
 
@@ -511,12 +513,15 @@ def check_pr_size(l, repo, base):
         return  # the line and file bands do not apply to a scripted transform (the 300-file cap still holds at PR open)
     bands = size_bands()
     n = projected_files(l.get('writes', ''), repo, base)
-    if n > bands['hard']:
-        msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
+    if n is None or n > bands['hard']:
+        if n is None:
+            msg = 'worker %s Writes cannot be projected (git ls-tree failed for base %s in %s)' % (l['label'], base, repo)
+        else:
+            msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
         from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
         if himmel_flag('pr_size_gate'):
-            die(msg + '; split the ticket, or set "bulk": "mechanical" on a scripted transform')
+            die(msg + ('; split the ticket, or set "bulk": "mechanical" on a scripted transform' if n is not None else ''))
         print('gen-briefs: warning: ' + msg + '; pr_size_gate is off, so the brief is written', file=sys.stderr)
     elif n > bands['soft']:
         print('gen-briefs: warning: worker %s Writes project to %d files, over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft']), file=sys.stderr)
