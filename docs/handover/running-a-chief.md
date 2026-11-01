@@ -325,16 +325,23 @@ helper kind.
 
 | Helper kind | Agent | Model | Effort |
 |---|---|---|---|
-| Worker-brief or `legs.json` drafting, wave prep | `general-purpose` | `sonnet` | `medium` |
-| Ticket audit (still open, fixed or partial) | `general-purpose` | `sonnet` | `medium` |
-| Per-page docs review | `general-purpose` | `sonnet` | `medium` |
-| A specified edit list ending in a machine check | `general-purpose` | `haiku` | `medium` |
+| Worker-brief or `legs.json` drafting, wave prep | `brief-drafter` | `sonnet` | `medium` |
+| Ticket audit (still open, fixed or partial) | `ticket-auditor` | `sonnet` | `medium` |
+| Per-page docs review | `page-reviewer` | `sonnet` | `medium` |
+| A specified edit list ending in a machine check | `edit-runner` | `haiku` | `medium` |
 | A verdict-grade judge call | `judge`, `judge-ro` | `opus` | `high` |
 | Comment cleanup (`/no-comments`) | `comment-sicko` | `sonnet` | `medium` |
 | The one hard call | `general-purpose` | `fable` | `high` |
 
-A named agent's row matches the `model:` and `effort:` lines in its
+Dispatch a helper by its agent name (`subagent_type`) and still pass its
+`model`. The dispatch guards read the call's `model`, not the frontmatter, so
+`edit-runner` without `model: haiku` loses the Haiku exemption in
+`guard-implementor-dispatch.sh`. A named agent's row matches the `model:` and `effort:` lines in its
 `.claude/agents/<name>.md` frontmatter (`test-guard-agent-model.sh` checks it).
+Only the hard-call row stays on `general-purpose`. The Fable deny in
+`guard-agent-model.sh` reads the dispatch's `model`, so a `model: fable` agent
+definition would skip the `ESCALATION:` check. Pass `model: fable` and the
+`ESCALATION:` line on each such dispatch.
 A dispatch that sets effort to `high`, `xhigh` or `max` with no
 `EFFORT: <reason>` line in its prompt draws a warning from
 `guard-agent-model.sh` (warn only, same reason test as `TIER:`). An effort equal

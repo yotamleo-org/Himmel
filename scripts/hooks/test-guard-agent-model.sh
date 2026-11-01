@@ -158,8 +158,8 @@ check "fable + effort high + ESCALATION -> allow (the reason is stated)" allow "
 echo "== the helper tier table agrees with the agent frontmatter (model + effort) =="
 # table_check <doc> <agents_dir>: the `| Helper kind | Agent | Model | Effort |`
 # table in <doc> names a model and a valid effort per row; every agent it names
-# (other than general-purpose) has <agents_dir>/<name>.md whose frontmatter
-# model/effort match; every agent definition in <agents_dir> has a row.
+# has <agents_dir>/<name>.md whose frontmatter model/effort match, and only the
+# fable row may name general-purpose; every agent definition in <agents_dir> has a row.
 table_check() {
     awk -v dir="$2" '
         function trim(s) { gsub(/[` \t]/, "", s); return s }
@@ -180,7 +180,8 @@ table_check() {
             if (effort !~ /^(low|medium|high|xhigh|max)$/) { print "row with no valid effort: " $0; err = 1 }
             n = split(trim(c[3]), names, ",")
             for (i = 1; i <= n; i++) {
-                a = names[i]; if (a == "general-purpose") continue
+                a = names[i]
+                if (a == "general-purpose") { if (model != "fable") { print "row names general-purpose, not an agent definition: " $0; err = 1 }; continue }
                 named[a] = 1; f = dir "/" a ".md"
                 if ((getline probe < f) <= 0) { print "row names agent " a " with no " f; err = 1; continue }
                 close(f)
