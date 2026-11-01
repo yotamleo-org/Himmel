@@ -650,3 +650,35 @@ test("slice 4: handleInbound consumes /afk-lockdown, so it never reaches an inbo
   expect(ran).toEqual([]);
   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
 });
+
+test("HIMMEL-8203: the operator's /op reaches the helper as op-request with the name and key=value words, quotes kept as one word", async () => {
+  const { deps, calls, replies } = fake();
+  deps.runHelper = async (args, stdin) => { calls.push({ args, stdin }); return { code: 0, stdout: "result=pending id=abcdefgh expires=1 operator=4242\n" }; };
+  expect(makeAfkSudoGate(deps)(dm('/op cron-entry action=set tag=ping schedule="0 5 * * *" command=/usr/local/libexec/himmel/bin/open-session'))).toBe(true);
+  await settle();
+  expect(calls).toEqual([{ args: ["op-request", "--session", "telegram-op", "--ticket", "operator", "--", "cron-entry", "action=set", "tag=ping", "schedule=0 5 * * *", "command=/usr/local/libexec/himmel/bin/open-session"], stdin: "" }]);
+  expect(replies).toEqual(["✅ afk-sudo op cron-entry: result=pending id=abcdefgh expires=1 operator=4242"]);
+});
+
+test("HIMMEL-8203: a malformed /op line is refused before the helper, with the reason", async () => {
+  for (const [text, why] of [["/op", "usage"], ["/op Bad_Name", "op name"], ["/op cron-entry tag", "not key=value"], ['/op cron-entry tag="a', "unbalanced"], ["/op cron-entry a=1 b=2 c=3 d=4 e=5 f=6 g=7 h=8 i=9", "too many"]] as const) {
+    const { deps, calls, replies } = fake();
+    expect(makeAfkSudoGate(deps)(dm(text))).toBe(true);
+    await settle();
+    expect(calls).toEqual([]);
+    expect(replies[0]).toContain(why);
+  }
+});
+
+test("HIMMEL-8203: /op from a forwarded message, a group or another sender is consumed and runs nothing; an uninstalled helper leaves it alone", async () => {
+  for (const extra of [{ forwarded: true }, { caption: true }, { from: 999, chat_id: 999 }, { chat_id: -100123 }]) {
+    const { deps, calls, logs } = fake();
+    expect(makeAfkSudoGate(deps)(dm("/op system-update", extra))).toBe(true);
+    await settle();
+    expect(calls).toEqual([]);
+    expect(logs[0]).toContain("op refused");
+  }
+  expect(makeAfkSudoGate(fake(false).deps)(dm("/op system-update"))).toBe(false);
+  const on = fake();
+  for (const text of ["/ops system-update", "please /op system-update", "op system-update"]) expect(makeAfkSudoGate(on.deps)(dm(text))).toBe(false);
+});

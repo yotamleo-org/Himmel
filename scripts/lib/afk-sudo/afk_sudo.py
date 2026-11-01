@@ -11,6 +11,7 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo request ID...      --session S --ticket T --cwd DIR -- ARGV...   (allowlisted class, root)
   afk-sudo run-request        --session S --ticket T --blocked-by B [--as USER] [--cwd DIR] [--why W] -- ARGV...
                               (stdin of this process is the command's stdin, at most 64 KiB)
+  afk-sudo op-request         --session S --ticket T NAME key=value...   (a named station op from scripts/station-ops)
   afk-sudo approve ID --from SENDER --chat CHAT      (`NONCE CODE` is read from stdin)
   afk-sudo deny ID --from SENDER --chat CHAT
   afk-sudo status ID  |  run-status ID
@@ -93,6 +94,8 @@ GRANTS = os.path.join(STATE, "grants")
 # World-readable, root-owned: one empty `<sha256>.<id>` per live grant, so the PreToolUse check calls sudo only
 # for a command that has one. A marker is a hint, never the authority: the root-only grant in GRANTS is.
 MARKS = os.path.join(ROOT, "var/lib/himmel/afk-grants")
+# The op kind's root-owned scripts, schemas and manifest (install.sh); the repo copy is never executed.
+OPS = os.path.join(ROOT, "usr/local/libexec/himmel/ops")
 SHA_RE = re.compile(r"[0-9a-f]{64}")
 
 FIXED_PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -694,6 +697,8 @@ def execute(payload, config):
         return execute_run(payload, config)
     if payload.get("kind") == "grant":
         return execute_grant(payload, config)
+    if payload.get("kind") == "op":
+        return execute_op(payload, config)
     try:
         return subprocess.run(payload["argv"], cwd="/", env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C"},
                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -1022,6 +1027,9 @@ def send_result(config, rid, res, secs):
                 "byte-identical call in that session and cwd skips the classifier once")
     elif res["result"] != "ran":
         text = f"⛔ {rid} not run: {esc(res['result'])[0]}"
+    elif res.get("op"):  # the op's own status line (its detail never holds stdout beyond the one line), not stderr
+        text = (f"{'✅' if res['exit'] == 0 else '⚠️'} op {esc(res['op'])[0]} v{int(res['version'])} {rid}: "
+                f"{esc(res['op_result'])[0]} (exit {res['exit']}) {elem(res['detail'], LINE_KEEP, LINE_KEEP)[0]}")
     else:
         rc = res["exit"]
         secs = res["duration_ms"] / 1000 if "duration_ms" in res else secs
@@ -1257,6 +1265,276 @@ def grant_spend(config, args):
     return 0 if res == "granted" else 5
 
 
+# --- the op kind: a named, versioned, reviewed script approved by name and parameters ---
+OP_NAME = re.compile(r"[a-z][a-z0-9-]{0,30}")
+OP_KEY = re.compile(r"[a-z_]{1,20}")
+OP_STATUS = re.compile(r"op=([a-z][a-z0-9-]*) id=(\S+) result=(changed|unchanged|would-change|bad-param|failed)(?: name=([a-z_]+))? detail=(.*)")
+OP_PARAM_CAP = 400
+OP_CHECK_S = 30
+
+
+class OpUnknown(Exception):
+    """The op is not in the installed manifest, or is one this helper does not run."""
+
+
+class OpChanged(Exception):
+    """An installed op file no longer hashes to the manifest (or the manifest and schema disagree)."""
+
+
+def ops_enabled(config):
+    return isinstance(config.get("ops"), dict) and config["ops"].get("enabled") is True
+
+
+def op_env():
+    env = {"PATH": FIXED_PATH, "LANG": "C.UTF-8", "HOME": "/"}
+    if SEAM:  # the test seam of the op scripts (HIMMEL_OPS_ROOT, HIMMEL_OPS_BIN), honoured by them only when euid != 0
+        env.update({k: v for k, v in os.environ.items() if k.startswith("HIMMEL_OPS_") or k == "TMPDIR"})
+    return env
+
+
+def hash_path(path):
+    with open_regular(path) as f:
+        return hash_open(f)
+
+
+def load_op(name):
+    """(manifest entry, schema, script path) of an installed op whose files still hash to the manifest.
+    OpUnknown when the manifest does not list it, OpChanged when a file differs from the manifest. The files and
+    their directory are root-owned and not group- or world-writable (ab.Refused unsafe-perms otherwise), so no
+    session can swap one between this check and the start of the script."""
+    ab.check_safe(OPS, OWNER, kind="dir")
+    manifest = os.path.join(OPS, "manifest.json")
+    ab.check_safe(manifest, OWNER)
+    with open(manifest) as f:
+        entry = (json.load(f).get("ops") or {}).get(name)
+    if not isinstance(entry, dict):
+        raise OpUnknown(name)
+    script, schema_path = os.path.join(OPS, name + ".sh"), os.path.join(OPS, name + ".json")
+    try:
+        for p in (script, schema_path):
+            ab.check_safe(p, OWNER)
+        if not os.access(script, os.X_OK) or hash_path(script) != entry.get("sha256") or hash_path(schema_path) != entry.get("schema_sha256"):
+            raise OpChanged(name)
+        with open(schema_path) as f:
+            schema = json.load(f)
+    except (OSError, ValueError, ab.Refused) as e:
+        raise OpChanged(name) from e
+    if schema.get("name") != name or schema.get("version") != entry.get("version") or not isinstance(schema.get("params"), dict):
+        raise OpChanged(name)
+    if schema.get("run_as") != "root":  # ponytail: root ops only; the operator-user ops arrive with OPS-2
+        raise OpUnknown(name)
+    return entry, schema, script
+
+
+def bad_param(schema, params):
+    """The name of the first parameter outside the schema (unknown, missing when required, present when its `when`
+    does not hold, outside its enum or regex, over-long or unprintable), else None."""
+    spec = schema["params"]
+    for k, v in params.items():
+        if k not in spec or len(v) > OP_PARAM_CAP or not v.isprintable():
+            return k
+    for k, rule in spec.items():
+        when = rule.get("when") if isinstance(rule, dict) else None
+        wk, _, wv = (when or "").partition("=")
+        active = not when or params.get(wk) == wv
+        v = params.get(k)
+        if v is None:
+            if active:
+                return k
+            continue
+        if not active:
+            return k
+        if "enum" in rule and v not in rule["enum"]:
+            return k
+        if "re" in rule and not re.fullmatch(rule["re"], v):
+            return k
+        if "enum" not in rule and "re" not in rule:
+            return k
+    return None
+
+
+def op_argv(script, rid, op_user, schema, params):
+    argv = [script, "--id", rid, "--operator-user", op_user]
+    for k in schema["params"]:
+        if k in params:
+            argv += [f"--{k}", params[k]]
+    return argv
+
+
+def op_floor_argv(name, schema, params):
+    """What the never-remote floor reads for an op: the name and the parameters, never the installed script's own path
+    (under /usr/local/libexec/himmel, which the floor keeps free-form requests out of)."""
+    return [name] + op_argv("", "", "", schema, params)[5:]
+
+
+def run_op(argv, schema):
+    """Run the installed script and parse its last status line: (exit code, status match or None, streams, ms)."""
+    timeout = cfg_int(schema, "timeout_s", 60, 1, 1800)
+    rc, streams, ms = capture(argv, op_env(), "/", None, timeout)
+    lines = streams["stdout"][0].decode("utf-8", "replace").splitlines()
+    st = next((m for m in map(OP_STATUS.fullmatch, reversed(lines)) if m), None)
+    return rc, st, streams, ms
+
+
+def make_op_builder(spec):
+    """The payload builder broker.request calls once the id is known: writes the frozen record."""
+    def build(rid, created, expires):
+        rec = {"v": 1, "id": rid, "kind": "op", "name": spec["name"], "version": spec["version"],
+               "script_sha256": spec["script_sha256"], "schema_sha256": spec["schema_sha256"], "params": spec["params"],
+               "effect": spec["effect"], "check": spec["check"], "session": spec["session"], "ticket": spec["ticket"],
+               "created": created, "expires": expires}
+        digest = rec_hash(rec)
+        private_dir(RECORDS)
+        write_private(os.path.join(RECORDS, rid + ".json"), json.dumps(rec, sort_keys=True).encode())
+        extra = {"hash": digest, "op": spec["name"], "version": spec["version"], "params": spec["params"],
+                 "script_sha256": spec["script_sha256"]}
+        return {"kind": "op", "id": rid, "hash": digest}, extra
+    return build
+
+
+def op_facts(rec, nonce, digest):
+    """The op notice (HTML, at most MSG_CAP) and whether anything was cut: name, version, params and effect, from
+    root's frozen record only."""
+    left = max(1, round((rec["expires"] - now()) / 60))
+    cut = False
+    head = [f"🔧⚠️ AFK op <b>{esc(rec['name'])[0]}</b> v{int(rec['version'])} {rec['id']} · expires "
+            f"{time.strftime('%H:%MZ', time.gmtime(rec['expires']))} ({left} min) · nonce <b>{nonce}</b>",
+            "Run as: <b>⚠️ ROOT</b>", f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]}"]
+    body = ["params:" if rec["params"] else "params: none"]
+    for k, v in rec["params"].items():
+        t, c = elem(v, EL_CAP, EL_KEEP)
+        cut |= c
+        body.append(f"{esc(k)[0]} = {t}")
+    t, c = elem(rec["effect"], 600, 500)
+    cut |= c
+    body += [f"Effect: {t}"]
+    t, c = elem(rec["check"], 400, 300)
+    cut |= c
+    body += [f"Now (--check): {t}", f"script sha256 {rec['script_sha256'][:8]}", f"hash {digest[:8]} {digest[8:16]}…"]
+    text = "\n".join(head + body)
+    if len(text) > MSG_CAP - 40:
+        text, cut = "\n".join(head + ["params and effect: see the attached request"] + body[-2:]), True
+    return ("TRUNCATED, full request attached\n" + text if cut else text), cut
+
+
+def execute_op(payload, config):
+    """Re-check the installed op and its parameters against what the operator approved, then run it as root."""
+    rid = payload["id"]
+    try:
+        rec = load_record(rid)
+        if rec.get("id") != rid or rec.get("kind") != "op" or not hmac.compare_digest(rec_hash(rec), payload["hash"]):
+            return {"result": "hash-mismatch"}
+        if not ops_enabled(config):
+            return {"result": "ops-disabled"}
+        try:
+            entry, schema, script = load_op(rec["name"])
+        except (OpUnknown, OpChanged):
+            return {"result": "changed"}
+        if (entry["version"], entry["sha256"], entry["schema_sha256"]) != (rec["version"], rec["script_sha256"], rec["schema_sha256"]):
+            return {"result": "changed"}
+        if bad_param(schema, rec["params"]) is not None:
+            return {"result": "bad-param"}
+        op_pw = user_pw(config.get("operator_user"))
+        if op_pw is None:
+            return {"result": "bad-user"}
+        argv = op_argv(script, rid, op_pw.pw_name, schema, rec["params"])
+        extra = config.get("never_remote_extra")
+        rule = nr.check(op_floor_argv(rec["name"], schema, rec["params"]), [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
+        if rule:
+            return {"result": "never-remote", "rule": rule}
+        rc, st, streams, ms = run_op(argv, schema)
+    except (OSError, KeyError, TypeError, ValueError, ab.Refused):
+        return {"result": "hash-mismatch"}
+    out, err = streams["stdout"], streams["stderr"]
+    return {"result": "ran", "exit": rc, "op": rec["name"], "version": rec["version"],
+            "op_result": st.group(3) if st else "no-status", "detail": clean(st.group(5), 300) if st else "",
+            "stdout_bytes": out[1], "stderr_bytes": err[1], "stdout_sha256": out[2], "duration_ms": ms}
+
+
+def op_request(broker, config, args):
+    """File one op request: `op-request NAME key=value...`; prints the result lines and returns the exit code."""
+    if not ops_enabled(config):
+        print("result=ops-disabled")
+        return 5
+    op_pw = user_pw(config.get("operator_user"))
+    if op_pw is None:
+        print("result=bad-user")
+        return 5
+    words = args.words[1:] if args.words[:1] == ["--"] else args.words
+    if not words:
+        print("result=usage")
+        return 2
+    name, kv = words[0], words[1:]
+    meta = {"session": clean(args.session), "ticket": clean(args.ticket), "cwd": "/", "op": clean(name, 40)}
+    if not OP_NAME.fullmatch(name):
+        refuse_row(dict(meta, kind="op"), "unknown-op")
+        print("result=unknown-op")
+        return 5
+    try:
+        entry, schema, script = load_op(name)
+    except OpUnknown:
+        refuse_row(dict(meta, kind="op"), "unknown-op")
+        print("result=unknown-op")
+        return 5
+    except OpChanged:
+        refuse_row(dict(meta, kind="op"), "changed")
+        print(f"result=changed name={name}")
+        return 5
+    meta["version"] = entry["version"]
+    params, repeated = {}, None
+    for w in kv:
+        k, sep, v = w.partition("=")
+        if not sep or not OP_KEY.fullmatch(k):
+            repeated = repeated or clean(k, 20)
+        elif k in params:
+            repeated = repeated or k
+        else:
+            params[k] = v
+    bad = repeated or bad_param(schema, params)
+    if bad:
+        refuse_row(dict(meta, kind="op", params={k: clean(v, 120) for k, v in params.items()}), "bad-param", param=bad)
+        print(f"result=bad-param name={bad}")
+        return 5
+    argv = op_argv(script, "check", op_pw.pw_name, schema, params)
+    extra = config.get("never_remote_extra")
+    rule = nr.check(op_floor_argv(name, schema, params), [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
+    if rule:
+        refuse_row(dict(meta, kind="op"), "never-remote", rule=rule)
+        print(f"result=never-remote rule={rule}")
+        return 5
+    token = notice_token()
+    if not token:
+        print("result=no-notice-bot")
+        return 5
+    rc, st, _, _ = run_op(argv + ["--check"], dict(schema, timeout_s=OP_CHECK_S))
+    if st and st.group(3) == "bad-param":  # a rule only the script can judge (an opener's owner, mode and place)
+        refuse_row(dict(meta, kind="op", params=params), "bad-param", param=st.group(4) or "?")
+        print(f"result=bad-param name={st.group(4) or '?'}")
+        return 5
+    if not st or st.group(3) == "failed" or rc not in (0,):
+        refuse_row(dict(meta, kind="op", params=params), "check-failed")
+        print(f"result=check-failed detail={clean(st.group(5), 200) if st else 'no status line'}")
+        return 5
+    spec = {"name": name, "version": entry["version"], "script_sha256": entry["sha256"], "schema_sha256": entry["schema_sha256"],
+            "params": params, "effect": clean(schema.get("effect", ""), 600), "check": clean(st.group(5), 400),
+            "session": meta["session"], "ticket": meta["ticket"]}
+    window = cfg_int(config.get("ops"), "ttl_s", 900, 30, 3600)
+    broker.retain = prune
+    shown = clean(f"op {name} v{entry['version']} " + " ".join(f"{k}={v}" for k, v in params.items()), 300)
+    rid, expires, nonce = broker.request("op", shown, make_op_builder(spec), {k: meta[k] for k in ("session", "ticket", "cwd")}, window)
+    try:
+        rec = load_record(rid)
+        ok = send_notice(broker, config, token, rec, nonce, None, None, built=op_facts(rec, nonce, rec_hash(rec)))
+    except BaseException:
+        broker.withdraw(rid, "notice-failed")
+        raise
+    if not ok:
+        print(f"result=notice-failed id={rid}")
+        return 5
+    print(f"result=pending id={rid} expires={expires} operator={int(config['operator_id'])}")
+    return 0
+
+
 def disable_config(config):
     """Rewrite the station config with `enabled: false`, atomically, keeping its owner and mode. Narrowing only."""
     st = os.lstat(CONFIG)
@@ -1327,6 +1605,10 @@ def main(argv):
     gr.add_argument("--ticket", default="")
     gr.add_argument("--cwd", required=True)
     gr.add_argument("--why", default="")
+    o = sub.add_parser("op-request")
+    o.add_argument("--session", required=True)
+    o.add_argument("--ticket", required=True)
+    o.add_argument("words", nargs=argparse.REMAINDER)
     gs = sub.add_parser("grant-spend")
     gs.add_argument("--session", required=True)
     gs.add_argument("--sha256", required=True)
@@ -1414,6 +1696,8 @@ def main(argv):
             print(f"result=pending id={rid} expires={expires} operator={int(config['operator_id'])}")
         elif args.verb == "run-request":
             return run_request(broker, config, args)
+        elif args.verb == "op-request":
+            return op_request(broker, config, args)
         elif args.verb == "grant-request":
             return grant_request(broker, config, args)
         elif args.verb == "grant-spend":
@@ -1441,7 +1725,8 @@ def main(argv):
             if res["result"] != "ran":
                 print(f"result={res['result']} id={args.id}" + (f" rule={res['rule']}" if "rule" in res else ""))
                 return 5
-            print(f"result=ran id={args.id} exit={res['exit']} argv={pending['display']}")
+            print(f"result=ran id={args.id} exit={res['exit']}" + (f" op_result={res['op_result']}" if res.get("op") else "")
+                  + f" argv={pending['display']}")
         elif args.verb == "deny":
             broker.deny(args.id, args.sender, args.chat)
             print(f"result=denied id={args.id}")

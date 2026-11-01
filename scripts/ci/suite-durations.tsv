@@ -1226,3 +1226,4 @@ scripts/vm/test-claudex-guest.sh	2
 scripts/handover/chief-kit/test-enable-remote-control.sh	1
 scripts/eval/test-chief-wake-classes.sh	1
 marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	1
+scripts/station-ops/test-station-ops.sh	3

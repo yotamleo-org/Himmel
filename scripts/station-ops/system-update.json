@@ -1,0 +1,6 @@
+{"name": "system-update",
+ "version": 1,
+ "run_as": "root",
+ "timeout_s": 1800,
+ "effect": "upgrades every installed package (pacman -Syu --noconfirm on Arch, apt-get update and upgrade on Debian/Ubuntu); the full log goes to /var/log/himmel/ops/<id>.log and a reboot may be recommended",
+ "params": {}}

@@ -126,6 +126,50 @@ function lockdown(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
   return true;
 }
 
+// `/op <name> key=value ...`: the operator asks root to run one named, versioned station op. The helper
+// validates the name and every parameter against the installed schema and sends the notice (name, version, params,
+// effect, nonce) through root's notice bot; the approval is the usual `NONCE CODE`. A value with spaces is double-quoted:
+// `/op cron-entry action=set tag=ping schedule="0 5 * * *" command=/usr/local/bin/open-session`.
+const OPCMD = /^\s*\/op(?:@\w+)?(?=\s|$)(.*)$/is;
+const OP_NAME = /^[a-z][a-z0-9-]{0,30}$/;
+const OP_PAIR = /^[a-z_]{1,20}=[^"]*$/;
+const OP_MAX_PAIRS = 8;
+const OP_MAX_LEN = 800;
+
+// The op name and its `key=value` words, or the reason the line is refused (the helper checks the values).
+export function parseOp(rest: string): { name: string; args: string[] } | string {
+  const text = rest.trim();
+  if (text.length === 0) return "usage: /op <name> key=value ...";
+  if (text.length > OP_MAX_LEN) return "the op line is too long";
+  if ((text.match(/"/g)?.length ?? 0) % 2 !== 0) return "an unbalanced double quote";
+  const words = (text.match(/(?:[^\s"]+|"[^"]*")+/g) ?? []).map((w) => w.replace(/"/g, ""));
+  const [name, ...args] = words;
+  if (!OP_NAME.test(name ?? "")) return "the op name is not a-z, 0-9 and -";
+  if (args.length > OP_MAX_PAIRS) return "too many parameters";
+  const bad = args.find((a) => !OP_PAIR.test(a));
+  if (bad !== undefined) return `"${bad.slice(0, 30)}" is not key=value`;
+  return { name, args };
+}
+
+function opRequest(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
+  if (!eligible(deps.access(), msg)) {
+    deps.log("[afk-sudo] op refused: not a typed message in the operator's private chat");
+    return true;
+  }
+  const p = parseOp(rest);
+  if (typeof p === "string") {
+    void deps.reply(msg.chat_id, `⚠️ afk-sudo op: ${p}, nothing ran`).catch(() => {});
+    return true;
+  }
+  void deps.runHelper(["op-request", "--session", "telegram-op", "--ticket", "operator", "--", p.name, ...p.args], "")
+    .then((res) => {
+      const first = res.stdout.split("\n")[0]?.trim() || `exit ${res.code}`;
+      return deps.reply(msg.chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo op ${p.name}: ${first}`);
+    })
+    .catch((e) => deps.log(`[afk-sudo] op ${p.name} failed: ${e}`));
+  return true;
+}
+
 // The prompt reply: the notice's four-character nonce, then the six-digit code.
 const CODE_REPLY = /^\s*([0-9A-Za-z]{4})\s*(\d{3})[\s-]?(\d{3})\s*$/;
 const BARE_CODE = /^\s*\d{6}\s*$/;
@@ -173,6 +217,8 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
     if (!deps.installed()) return false;
     const lock = LOCKDOWN.exec(msg.text);
     if (lock) return lockdown(deps, msg, lock[1]);
+    const opc = OPCMD.exec(msg.text);
+    if (opc) return opRequest(deps, msg, opc[1]);
     const prompt = prompts && msg.reply_to_message_id != null ? prompts.get(msg.chat_id, msg.reply_to_message_id) : null;
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
     const line = parseAfkSudo(msg.text);

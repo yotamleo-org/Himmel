@@ -1208,3 +1208,4 @@ scripts/vm/test-claudex-guest.sh	local	new, behaviour suite for the claudex VM g
 scripts/handover/chief-kit/test-enable-remote-control.sh	pr	guard
 scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief wake-class measurement script, no gate role, HIMMEL-6541
 marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	local	behaviour suite, new (HIMMEL-8416)
+scripts/station-ops/test-station-ops.sh	pr	guard

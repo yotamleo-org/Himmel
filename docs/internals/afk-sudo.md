@@ -338,7 +338,7 @@ run kind's frozen argv for anything that needs more):
 `mode`, `operator_user`, `max_per_hour` (default 6, max 30), `run.enabled` (default
 false), `run.ttl_s` (default 900, max 3600), `run.timeout_s` (default 300, max 1800),
 `grant.enabled` (default false), `grant.ttl_s` (default 900, 30 to 3600),
-`never_remote_extra`. `install.sh` writes them with the safe defaults on first
+`ops.enabled` (default false), `ops.ttl_s` (default 900, 30 to 3600), `never_remote_extra`. `install.sh` writes them with the safe defaults on first
 install and never rewrites an existing config.
 
 ## Turning it off
@@ -375,9 +375,44 @@ config back: no verb, flag or argument sets `enabled: true` or `mode: "all"`, an
 anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
 the bridge's own lockdown switch is on, the poller does not consult this route at all.
 
+## The `op` kind: station ops (HIMMEL-8203)
+
+A station op is one named, versioned, reviewed script in `scripts/station-ops/<op>.sh` with a
+schema `<op>.json` (name, version, `run_as`, `timeout_s`, `effect`, `params` as an `enum` or a `re`,
+optionally `when: "key=value"`). `install.sh` copies them root-owned into
+`/usr/local/libexec/himmel/ops/` and `build-manifest.py` writes `manifest.json` (per op: version and the
+sha256 of the script and of the schema). The helper runs **only the installed copy** that still hashes
+to the manifest; the repo copy is never executed. OPS-1 ships `cron-entry.sh` (the operator's crontab, one
+`# HIMMEL-<tag>` line), `cron-system.sh` (`/etc/cron.d/himmel-<tag>`) and `system-update.sh`
+(`pacman -Syu` on Arch, `apt-get` on Debian; log in `/var/log/himmel/ops/<id>.log`), each with its
+`<op>.json` schema.
+
+```text
+afk-sudo op-request --session S --ticket T NAME key=value...     (or /op NAME key=value... from the operator's DM)
+```
+
+The helper refuses before any notice: `ops-disabled`, `unknown-op`, `changed` (an installed file differs
+from the manifest), `bad-param name=<p>` (outside its enum or regex, missing when required, present when
+its `when` does not hold, unknown or repeated), `never-remote`. It then runs the op with `--check` as
+root, and the notice shows the name, version, params, the schema's effect and the `--check` line ("will
+set …"). The approval is the usual `NONCE CODE`. Approval re-checks the manifest hash and the params
+(`changed`, nothing runs), then runs `<op>.sh --id ID --operator-user U --key value …` as root with a
+fixed environment. Each op is idempotent, prints one last line
+`op=<name> id=<id> result=changed|unchanged|would-change|bad-param|failed [name=<p>] detail=…`, and the
+helper ledgers it as `op`, `version`, `op_result`, `detail` on the `run` row (the request, code-check and
+run rows are the broker's). `cron-entry` `command` is one absolute path with no arguments under
+`/usr/local/bin/`, an executable that is root-owned and not group/other-writable, checked at `--check` and
+at run (`ponytail`: any such executable passes, not only a message-session opener; pin it to the installed
+opener once one ships). `cron-system` is root only (an operator-user job goes through `cron-entry`), and its `command` is one
+path with no arguments under `/usr/bin` or `/usr/sbin`, reached through no symlink, an executable whose
+directories all the way up are root-owned and not group/other-writable. The never-remote floor reads the op name and its parameters, not the installed
+script's own path, so a parameter that names `/usr/local/libexec/himmel` is refused (`cron-system` root jobs
+are therefore limited to `/usr/bin` and `/usr/sbin`). `ops.enabled` is off by default; `lockdown` denies a
+pending op request like any other.
+
 ## Verbs
 
-`request` (sudo kind, allowlist), `run-request`, `grant-request` (the command's bytes on
+`request` (sudo kind, allowlist), `run-request`, `op-request`, `grant-request` (the command's bytes on
 stdin), `grant-spend`, `approve`, `deny`, `lockdown`, `status`
 (`run-status` is an alias; both still answer on a locked-down station), `run-result ID [--stream stdout|stderr]` and `mode`
 (`result=mode mode=… enabled=… run_enabled=…`, the effective flag; answered before the
