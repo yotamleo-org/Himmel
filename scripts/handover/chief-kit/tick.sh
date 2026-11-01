@@ -2046,7 +2046,7 @@ try:
         if len(f) > 1 and f[1] == "true":
             released.add(f[0])
 except OSError:
-    pass
+    raise SystemExit
 gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do|wont fix|won\x27t fix)$", re.I)
 slots = {}
 for name in os.listdir(d):
@@ -2055,7 +2055,7 @@ for name in os.listdir(d):
     try:
         head = open(os.path.join(d, name), encoding="utf-8").read(3000).split("\n---")[0]
     except OSError:
-        continue
+        raise SystemExit
     def val(k):
         m = re.search("^" + k + ": (.*)$", head, re.M)
         if not m:
@@ -3251,6 +3251,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vm runner: %s\n' "$vmrun_summary"
     printf 'versionless-done: %s\n' "$vdone_summary"
     printf 'version mismatch: %s\n' "$vmismatch_summary"
+    [ -z "$cap_summary" ] || printf 'cap: %s\n' "$cap_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
     [ -z "$dbot_summary" ] || printf 'dependabot autoland: %s\n' "$dbot_summary"
