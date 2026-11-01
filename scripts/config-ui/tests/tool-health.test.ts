@@ -703,3 +703,256 @@ test("the guard drill-in splits the refusals by tool and names the legacy-unknow
   expect(rows.Read[0]).toBe("2");
   expect(rows["(unknown)"]).toEqual(["1", "tool not recorded (legacy)"]);
 });
+
+// ---- hook-chain incidents: the exact call, the reason a guard refused, the recorded timing. Hand-built log rows, temp files only.
+const INV = (n: number) => n.toString(16).padStart(12, "0");
+const C_DAY = "2026-10-28";
+const skipRow = (n: number, over: any = {}) => ({ ts: `${C_DAY}T10:00:${String(n % 60).padStart(2, "0")}.000Z`, action: "deny", member: "block-read-secrets.sh", budget: 15000, elapsed: 15072, reason: "ETIMEDOUT",
+  sessionId: "sess-chain", toolCall: "Read /x", callId: `toolu_C${n}`, tool: "Read", event: "PreToolUse", invocation: INV(n), occurrence: 0, origin: "production", ...over });
+const runMember = (over: any = {}) => ({ member: "block-read-secrets.sh", occurrence: 0, outcome: "deny", reason: "RULE", elapsed: 41, ...over });
+const runRow = (n: number, members: any[], over: any = {}) => ({ ts: `${C_DAY}T10:00:${String(n % 60).padStart(2, "0")}.000Z`, v: 1, origin: "production", event: "PreToolUse", session: "sess-chain",
+  callId: `toolu_C${n}`, tool: "Read", invocation: INV(n), exit: 2, elapsed: 20, members, ...over });
+const WINDOW_LINE = "must-run guard did not evaluate this call within its 15000ms window; failing closed";
+// Fixture T: three secrets-guard refusals (a rule denial, an ETIMEDOUT deny, an entry-deadline deny) and one advisory ENOBUFS skip.
+function chainT() {
+  return {
+    skip: { state: "ok", rows: [
+      skipRow(2, { denyLine: WINDOW_LINE }),
+      skipRow(3, { reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, starved: true, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" }),
+      skipRow(4, { action: "skip", member: "read-clamp.sh", reason: "ENOBUFS", elapsed: 321, budget: 8000 }),
+    ] },
+    run: { state: "ok", rows: [
+      runRow(1, [runMember({ denyLine: "blocked: a secret-shaped path" })]),
+      runRow(2, [runMember({ reason: "ETIMEDOUT", elapsed: 15072, budget: 15000, denyLine: WINDOW_LINE })]),
+      runRow(3, [runMember({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0, denyLine: "must-run guard was left no safe window before the entry deadline; failing closed" })]),
+      runRow(4, [runMember({ member: "read-clamp.sh", outcome: "skip", reason: "ENOBUFS", elapsed: 321, budget: 8000 })], { exit: 0 }),
+    ] },
+  };
+}
+const rollChain = (chain: any) => rollupToolHealth([], [], new URLSearchParams(), B_NOW, {}, { chain }).chain;
+const callEvent = (c: any, id: string) => c.events.find((e: any) => e.call_id === id);
+
+test("chain-reasons-and-actions-are-not-all-timeouts", () => {
+  const c = rollChain(chainT());
+  expect(c.state).toBe("ok");
+  expect(c.by_reason).toEqual({ rule: 1, timeout: 1, deadline: 1, buffer: 1, other: 0 });
+  expect(c.by_action).toEqual({ deny: 3, skip: 1 });
+  expect([c.infra, c.denials, c.events_total]).toEqual([3, 3, 4]);
+  expect(c.members["block-read-secrets.sh"]).toMatchObject({ denials: 3, skips: 0, runs: 3, by_reason: { rule: 1, timeout: 1, deadline: 1, buffer: 0, other: 0 } });
+  expect(c.members["read-clamp.sh"]).toMatchObject({ denials: 0, skips: 1, by_reason: { buffer: 1 } });
+  // One call is in both logs and counts once; the three refusals are three distinct calls.
+  expect(c.joined).toBe(3);
+  expect(new Set(c.events.filter((e: any) => e.outcome === "deny").map((e: any) => e.call_id)).size).toBe(3);
+  // A skip is not a success: the event makes no claim about what the tool did afterwards.
+  expect(callEvent(c, "toolu_C4")).toMatchObject({ outcome: "skip", reason: "ENOBUFS", member: "read-clamp.sh", session: "sess-chain" });
+  expect(callEvent(c, "toolu_C4")).not.toHaveProperty("recovered");
+});
+
+test("incident-timing-uses-recorded-budget", () => {
+  const c = rollChain(chainT());
+  expect(callEvent(c, "toolu_C2")).toMatchObject({ elapsed_ms: 15072, budget_ms: 15000, not_started: false, ratio: 15072 / 15000 });
+  expect(callEvent(c, "toolu_C3")).toMatchObject({ elapsed_ms: 0, not_started: true, ratio: null });
+  // Budget 0 gives no ratio, and another budget is used as recorded, never a fixed 15 s.
+  const v = rollChain({ skip: { state: "ok", rows: [skipRow(5, { elapsed: 90, budget: 0 }), skipRow(6, { elapsed: 8100, budget: 8000, member: "other-guard.sh" })] }, run: { state: "ok", rows: [] } });
+  expect(callEvent(v, "toolu_C5")).toMatchObject({ budget_ms: 0, ratio: null, not_started: false });
+  expect(callEvent(v, "toolu_C6")).toMatchObject({ budget_ms: 8000, ratio: 8100 / 8000 });
+  const missing = rollChain({ skip: { state: "ok", rows: [skipRow(7, { budget: undefined, elapsed: -3 })] }, run: { state: "ok", rows: [] } });
+  expect(callEvent(missing, "toolu_C7")).toMatchObject({ budget_ms: null, elapsed_ms: null, ratio: null });
+});
+
+const unprintable = (s: string) => [...s].some((ch) => { const n = ch.codePointAt(0)!; return n < 0x20 || (n >= 0x7f && n <= 0x9f) || n === 0x2028 || n === 0x2029; });
+
+test("deny-line-is-redacted-before-first-line-and-clip", () => {
+  const sep = String.fromCharCode(0x2028), bell = String.fromCharCode(7), esc = String.fromCharCode(27);
+  const lines = { long: "x".repeat(300), astral: "\u{1F600}".repeat(300), ctrl: `a${bell}b${esc}[31mred${sep}next`, markup: "<img src=x onerror=alert(1)> & \"q\"", notText: 42 };
+  const rows = Object.entries(lines).map(([k, denyLine], i) => skipRow(20 + i, { denyLine, member: `m${k}.sh` }));
+  const c = rollChain({ skip: { state: "ok", rows }, run: { state: "ok", rows: [] } });
+  const line = (k: string) => callEvent(c, `toolu_C${20 + Object.keys(lines).indexOf(k)}`).deny_line;
+  expect(Array.from(line("long")).length).toBe(240);
+  expect(Array.from(line("astral")).length).toBe(240);
+  expect(unprintable(line("ctrl"))).toBe(false);
+  expect(line("markup")).toBe(lines.markup); // kept as text: the renderer escapes it
+  expect(line("notText")).toBeNull();
+  // Different tools and messages stay distinct events, never merged into one group.
+  expect(new Set(c.events.map((e: any) => e.deny_line)).size).toBe(c.events.length);
+  // A skip is not a refusal and carries no line.
+  const skip = rollChain({ skip: { state: "ok", rows: [skipRow(30, { action: "skip", denyLine: "should not show" })] }, run: { state: "ok", rows: [] } });
+  expect(callEvent(skip, "toolu_C30").deny_line).toBeNull();
+});
+
+const auditSum = (a: any) => a.accepted + a.excluded_fixture + a.unverified + a.non_tool + a.malformed + a.duplicates + a.outside_window;
+// Fixture F: 657 incident inputs, exactly 270 marked test-origin (hang, hog, flood and a real guard name), 387 verified production.
+function chainF() {
+  const names = ["hang.sh", "hog.sh", "flood.sh", "block-read-secrets.sh"], rows: any[] = [];
+  for (let i = 0; i < 270; i++) rows.push(skipRow(1000 + i, { origin: "test", member: names[i % 4] }));
+  for (let i = 0; i < 387; i++) rows.push(skipRow(2000 + i, { ts: `${C_DAY}T11:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}.000Z` }));
+  return rows;
+}
+const skipOnly = (rows: any[]) => rollChain({ skip: { state: "ok", rows }, run: { state: "ok", rows: [] } });
+
+test("fixture-provenance-is-not-production-health", () => {
+  const rows = chainF();
+  let c = skipOnly(rows);
+  expect(c.audit).toMatchObject({ total: 657, accepted: 387, excluded_fixture: 270, unverified: 0, duplicates: 0 });
+  expect(c.state).toBe("ok");
+  expect(c.events_total).toBe(387);
+  expect(auditSum(c.audit)).toBe(c.audit.total);
+  // One row whose provenance cannot be shown is unverified: not an incident, not a fixture, and the roll-up is partial.
+  const legacy: any = skipRow(9000); delete legacy.origin;
+  c = skipOnly([...rows, legacy]);
+  expect(c.audit).toMatchObject({ total: 658, accepted: 387, excluded_fixture: 270, unverified: 1 });
+  expect([c.state, c.events_total]).toEqual(["partial", 387]);
+  // Replaying a duplicate incident changes neither the accepted count nor the event count.
+  c = skipOnly([...rows, rows[300]]);
+  expect(c.audit).toMatchObject({ total: 658, accepted: 387, duplicates: 1 });
+  expect(c.events_total).toBe(387);
+  expect(auditSum(c.audit)).toBe(c.audit.total);
+  // Every other input lands in exactly one named bucket too.
+  const odd = [skipRow(9001, { ts: "2026-09-01T00:00:00.000Z" }), skipRow(9002, { event: "SessionStart", callId: null }), skipRow(9003, { ts: "not a time" }), skipRow(9004, { callId: null }), skipRow(9005, { invocation: "short" })];
+  c = skipOnly(odd);
+  expect(c.audit).toMatchObject({ total: 5, accepted: 0, outside_window: 1, non_tool: 1, malformed: 1, unverified: 2 });
+  expect(auditSum(c.audit)).toBe(5);
+  expect(c.events_total).toBe(0);
+});
+
+test("a missing chain source reads unknown, never zero", () => {
+  const none = rollChain({ skip: { state: "absent" }, run: { state: "absent" } });
+  expect(none).toMatchObject({ state: "absent", infra: null, denials: null, invocations: null, by_reason: { rule: null, timeout: null, deadline: null, buffer: null }, by_action: { deny: null, skip: null } });
+  // Only the skip log: timeouts are known, rule denials are not derived from anything else.
+  const only = rollChain({ skip: { state: "ok", rows: [skipRow(2)] }, run: { state: "absent" } });
+  expect(only.state).toBe("partial");
+  expect(only.by_reason).toMatchObject({ rule: null, timeout: 1 });
+  expect([only.denials, only.invocations]).toEqual([null, null]);
+  expect(only.members["block-read-secrets.sh"]).toMatchObject({ runs: null, run_ms: null });
+  expect(rollupToolHealth([], [], new URLSearchParams(), B_NOW, {}, {}).chain).toEqual({ state: "not-read" }); // the chief board passes no chain
+  expect(rollChain({ skip: { state: "error" }, run: { state: "absent" } }).state).toBe("error");
+});
+
+test("chain logs are read from the override files or from the checkout and each worktree, and a damaged line makes the roll-up partial", () => {
+  const env: any = seed(), repo = join(env.HOME, "repo");
+  const put = (dir: string, name: string, rows: any[]) => { mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), rows.map((r) => (typeof r === "string" ? r : JSON.stringify(r))).join("\n") + "\n"); };
+  const main = join(repo, ".claude", "logs"), wt = join(repo, ".claude", "worktrees", "feat+x", ".claude", "logs");
+  put(main, "hook-chain-skips.jsonl", [skipRow(2)]);
+  put(wt, "hook-chain-skips.jsonl", [skipRow(3, { reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0 })]);
+  put(wt, "hook-runs.jsonl", [runRow(1, [runMember()])]);
+  const run = (e: object, opts: object = {}) => (sources as any).readToolHealth(e, new URLSearchParams(), B_NOW, { rtk: () => ({ state: "absent" }), ...opts }).chain;
+  const both = run(env, { repoRoot: repo });
+  expect(both).toMatchObject({ state: "ok", events_total: 3, by_reason: { rule: 1, timeout: 1, deadline: 1 }, sources: { skip: { files: 2 }, run: { files: 1 } } });
+  // An override names exactly one file and nothing else is read.
+  const one = run({ ...env, RUN_HOOK_CHAIN_SKIP_LOG: join(main, "hook-chain-skips.jsonl"), RUN_HOOK_CHAIN_RUN_LOG: join(wt, "hook-runs.jsonl") }, { repoRoot: repo });
+  expect(one).toMatchObject({ events_total: 2, sources: { skip: { files: 1 }, run: { files: 1 } } });
+  // No checkout given and no override: nothing is read, which is absent, not zero.
+  expect(run(env)).toMatchObject({ state: "absent", infra: null });
+  put(main, "hook-chain-skips.jsonl", [skipRow(2), "{not json"]);
+  const damaged = run(env, { repoRoot: repo });
+  expect(damaged.state).toBe("partial");
+  expect(damaged.audit).toMatchObject({ malformed: 1 });
+});
+
+// ---- the pages that show the chain incidents.
+const chainPage = (chain: any, ui: any, extra: any = {}) => page(roll([bEval(1, [bTool("Read", 5, { "denied/block-read-secrets": 3 })])], [bFail(1, "denied/block-read-secrets", 3)], { eligible: { "block-read-secrets": ["Read"] }, chain }), ui, extra);
+const GUARD = { guard: "denied/block-read-secrets" };
+const evCells = (html: string) => Object.fromEntries(cells(html, "data-chain-event").map(([k, c]: any) => [k, c]));
+const stat = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*)<`).exec(html) || [])[1];
+
+test("the guard drill-in says why it refused: a rule, a timeout and a guard that never started are separate rows", async () => {
+  const html = await chainPage(chainT(), GUARD);
+  const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0" });
+  const ev = evCells(html);
+  expect(Object.keys(ev).sort()).toEqual(["toolu_C1", "toolu_C2", "toolu_C3"]);
+  // [When, Outcome, Reason, Guard, Tool, Time used, Refusal line, Call]
+  expect(ev.toolu_C2.slice(1, 6)).toEqual(["Refused the call", "Timeout", "block-read-secrets.sh", "Read", "15072 ms of 15000 ms (100.5%)"]);
+  expect(ev.toolu_C2[6]).toBe(WINDOW_LINE);
+  expect(ev.toolu_C3[2]).toBe("Never started");
+  expect(ev.toolu_C3[5]).toBe("not started");
+  expect(ev.toolu_C1[2]).toBe("Rule");
+  expect(ev.toolu_C2[0]).toBe("2026-10-28 10:00:02 UTC");
+  expect(html).not.toContain("toolu_C4"); // another guard's skipped check is not this guard's incident
+  expect(html).toContain("model, lane, role and profile filters do not apply");
+});
+
+test("a call drawer carries the exact call id, the session and what is not recorded", async () => {
+  const sid = "48160000-0000-4000-8000-000000000199";
+  const chain = { skip: { state: "ok", rows: [skipRow(2, { sessionId: sid, denyLine: WINDOW_LINE })] }, run: { state: "ok", rows: [] } };
+  const html = await chainPage(chain, GUARD);
+  const drawer = /<tr data-chain-event="toolu_C2"[\s\S]*?<details>([\s\S]*?)<\/details>/.exec(html)![1];
+  expect(drawer).toContain("toolu_C2");
+  expect(drawer).toContain(INV(2));
+  expect(drawer).toContain(`href="/agui/#t=t&amp;run=${sid}"`);
+  expect(drawer).toContain("Recovery");
+  expect(drawer).toMatch(/Recovery<\/dt><dd>[^<]*not recorded/);
+  const odd = await chainPage({ skip: { state: "ok", rows: [skipRow(2, { sessionId: "sess-chain" })] }, run: { state: "ok", rows: [] } }, GUARD);
+  expect(odd).toContain("<code>sess-chain</code>");
+});
+
+test("a timing with no budget shows no percentage, and one that never started says so", async () => {
+  const chain = { skip: { state: "ok", rows: [skipRow(5, { elapsed: 90, budget: 0 }), skipRow(6, { elapsed: undefined, budget: undefined })] }, run: { state: "ok", rows: [] } };
+  const ev = evCells(await chainPage(chain, GUARD));
+  expect(ev.toolu_C5[5]).toBe("90 ms · no budget recorded");
+  expect(ev.toolu_C6[5]).toBe("not recorded");
+});
+
+test("a refusal line is escaped on the page", async () => {
+  const hostile = "<img src=x onerror=alert(1)> & \"q\" <script>alert(2)</script>";
+  const html = await chainPage({ skip: { state: "ok", rows: [skipRow(2, { denyLine: hostile })] }, run: { state: "ok", rows: [] } }, GUARD);
+  expect(html).not.toContain("<img src=x");
+  expect(html).not.toContain("<script>alert(2)");
+  expect(html).toContain("&lt;img src=x onerror=alert(1)&gt; &amp; &quot;q&quot; &lt;script&gt;alert(2)&lt;/script&gt;");
+});
+
+test("without chain logs the reason rows read — and unverified, never 0", async () => {
+  for (const chain of [undefined, { skip: { state: "absent" }, run: { state: "absent" } }]) {
+    const html = await chainPage(chain, GUARD);
+    const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
+    expect(why).toEqual({ rule: "—", timeout: "—", deadline: "—", buffer: "—", other: "—" });
+    expect(html).toContain("unverified");
+    expect(cells(html, "data-chain-event")).toEqual([]);
+  }
+  // Only the skip log: a timeout count is known, a rule denial count is not.
+  const half = Object.fromEntries(cells(await chainPage({ skip: { state: "ok", rows: [skipRow(2)] }, run: { state: "absent" } }, GUARD), "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
+  expect(half).toEqual({ rule: "—", timeout: "1", deadline: "0", buffer: "0", other: "0" });
+});
+
+test("the audit line counts the rows that were left out and why", async () => {
+  const chain = { skip: { state: "ok", rows: [skipRow(2), skipRow(3, { origin: "test" }), skipRow(4, { origin: undefined })] }, run: { state: "ok", rows: [] } };
+  const html = await chainPage(chain, GUARD);
+  const audit = /data-chain-audit>([^<]*)</.exec(html)![1];
+  expect(audit).toContain("accepted 1");
+  expect(audit).toContain("test fixtures excluded 1");
+  expect(audit).toContain("unverified 1");
+  expect(html).toMatch(/Partial:/);
+  expect(cells(html, "data-chain-event").map(([k]: any) => k)).toEqual(["toolu_C2"]);
+});
+
+test("a tool drill-in shows its timeouts and its recent events from the chain logs", async () => {
+  const html = await chainPage(chainT(), { tool: "Read" });
+  expect(stat(html, "timeouts")).toBe("1");
+  expect(Object.keys(evCells(html)).sort()).toEqual(["toolu_C1", "toolu_C2", "toolu_C3", "toolu_C4"]);
+  expect(html).not.toContain("needs new data (later build)");
+});
+
+test("a tool drill-in reads — for timeouts when the chain logs are missing, and for a skill or subagent row", async () => {
+  expect(stat(await chainPage(undefined, { tool: "Read" }), "timeouts")).toBe("—");
+  expect(stat(await chainPage({ skip: { state: "absent" }, run: { state: "absent" } }, { tool: "Read" }), "timeouts")).toBe("—");
+  const data = roll([bEval(1, [bTool("Skill:alpha:one", 2)])], [], { chain: chainT() });
+  const skill = await page(data, { tool: "Skill:alpha:one" }, { inventory: INVENTORY });
+  expect(stat(skill, "timeouts")).toBe("—");
+  expect(skill).toContain("name the tool, not the skill or subagent");
+  // A tool with no incident in complete logs is a real zero.
+  const none = roll([bEval(1, [bTool("Grep", 2)])], [], { chain: chainT() });
+  expect(stat(await page(none, { tool: "Grep" }), "timeouts")).toBe("0");
+});
+
+test("the hook list shows measured runs where the chain logs them and derived runs elsewhere", async () => {
+  const data = roll([bEval(1, [bTool("Bash", 4), bTool("Read", 3)])], [], { chain: chainT() });
+  const inventory = { ...INVENTORY, hooks: [...INVENTORY.hooks, { kind: "hook", source: "project", name: "block-read-secrets.sh", wired: [["PreToolUse", "Read"]], runs_twice: false }, { kind: "hook", source: "project", name: "notchained.sh", wired: [["PreToolUse", "Bash"]], runs_twice: false }] };
+  const hooks = Object.fromEntries(cells(await page(data, { kind: "hook" }, { inventory }), "data-tool-row"));
+  expect(hooks["hook:project:read-clamp.sh"][2]).toBe("1 runs measured");
+  expect(hooks["hook:project:block-read-secrets.sh"][2]).toBe("3 runs measured");
+  expect(hooks["hook:project:notchained.sh"][2]).toBe("4 runs derived");
+  const tab = await page(data, { tab: "hooks" }, { inventory });
+  expect(tab).not.toContain("Runs derived");
+  const unmeasured = await page(roll([bEval(1, [bTool("Bash", 4), bTool("Read", 3)])], [], { chain: { skip: { state: "absent" }, run: { state: "absent" } } }), { kind: "hook" }, { inventory });
+  expect(Object.fromEntries(cells(unmeasured, "data-tool-row"))["hook:project:read-clamp.sh"][2]).toBe("4 runs derived");
+});

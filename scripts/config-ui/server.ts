@@ -547,7 +547,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/tool-health") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         const scanEnv = env.HIMMEL_REPO ? env : { ...env, HIMMEL_REPO: stationRoot(root) };
-        return json(redactOut(readToolHealth(env, new URL(req.url).searchParams, now(), { eligible: eligibleFromInventory(readToolInventory(scanEnv, now())) })));
+        return json(redactOut(readToolHealth(env, new URL(req.url).searchParams, now(), { eligible: eligibleFromInventory(readToolInventory(scanEnv, now())), repoRoot: scanEnv.HIMMEL_REPO })));
       }
       // which tools the station has: a read-only scan of keys and file names, cached until ?rescan=1
       if (path === "/api/tool-inventory") {

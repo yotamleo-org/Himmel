@@ -6,6 +6,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { estimateProfileListing } from './profile-listing.mjs';
 import { canonicalProfileName } from '../../lanes/plugin-profiles.mjs';
+import { rollupChain } from './chain-incidents.mjs';
 
 export const LANES = ['native', 'claudex', 'openrouter', 'cloud', 'unknown'];
 const num = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -27,12 +28,13 @@ function readListing(path) {
 // callers that only want failure rates (the chief board) leave it off and skip the scan.
 // rtk: (ids) => {state, byId: Map<id, {path: 'rtk'|'bash', deny}>, duplicates}, the rtk history.db join; absent = not read.
 // eligible: {hook name without .sh: [PreToolUse matchers]}, the tools each guard is wired to check; absent = unknown.
-export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false, rtk, eligible } = {}) {
+// chain: the hook-chain logs as chain-incidents.mjs reads them ({skip, run}); absent = not read, and the chain section says so.
+export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false, rtk, eligible, chain } = {}) {
   const home = env.HOME || homedir();
   const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
     : estimateListing ? estimateProfileListing({ configDir: env.CLAUDE_CONFIG_DIR || join(home, '.claude') }) : {};
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing, { rtk, eligible });
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing, { rtk, eligible, chain });
 }
 
 // Option B (spec 0.3 B1): a guard's denominator is the calls to the tools it is wired to check, not Bash alone.
@@ -71,7 +73,7 @@ const profileOf = (...candidates) => {
 };
 
 // listing: {profile: {tool: listing tokens}} from profile-listing.mjs; absent = no drop candidates.
-export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}, { rtk, eligible } = {}) {
+export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}, { rtk, eligible, chain } = {}) {
   const days = query.get('days') === '30' ? 30 : 7;
   const since = query.get('since');
   const lastDay = dayOf(now), firstDay = since ? dayOf(Date.parse(since)) : dayOf(Date.parse(lastDay) - (days - 1) * 86400000);
@@ -262,7 +264,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const list = teamSlots.filter((s) => s.team === t), a = aggregate(list);
     return { team: t, sessions: new Set(list.map((s) => s.session)).size, calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0) };
   });
-  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
+  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), chain: rollupChain(chain, { firstDay, lastDay }), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
 }
 
 // Bash by command head and cause (spec 0.4 d) from the digest's bash_calls, joined to rtk's history.db by call id.
