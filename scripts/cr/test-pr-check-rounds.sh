@@ -519,19 +519,40 @@ rl1_pre_reason='Important finding deferred: the cited code is older than this PR
 rl1_pre_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-8","severity":"imp","class":"reader-allowlist","text":"- [critic-8]: old helper ignores errors [docs/guide/x.md:1]"}
 '
 rl1_pre_amend() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"pre_existing":true}}\n' "$1"; }
+# The adjudicator's own class for the finding (and, for hardening, its fu_why).
+# The leading newline keeps it a row of its own after a $(...) that lost its last one.
+rl1_class_amend() { printf '\n{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"fu_class":"%s"%s}}\n' "$1" "$2" "${3:+,\"fu_why\":\"$3\"}"; }
 rl1_text_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-9","severity":"imp","class":"reader-allowlist","text":"- [critic-9]: [pre-existing] old helper ignores errors [pre-existing] [docs/guide/x.md:1]"}
 '
-rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
 assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 2 is deferred, not blocking ($rl1_out)"
 assert_has "$rl1_ledger" '"verdict":"deferred"' "8429 the pre-existing Important gets a deferred amend row"
 assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8429 it is deferred to the branch's batch residual"
-assert_has "$rl1_ledger" '"fu_class":"polish"' "8429 it is deferred as polish, like a pending Suggestion"
+rl1_deferral="$(printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"')"
+assert_has "$rl1_deferral" '"fu_class":"polish"' "8429 it keeps the polish class its adjudicator gave it"
 assert_has "$rl1_ledger" "\"reason\":\"$rl1_pre_reason\"" "8429 the deferral says why: the code predates the PR"
 assert_has "$rl1_ledger" '"severity":"imp"' "8429 the finding keeps severity imp (I4)"
 assert_lacks "$rl1_ledger" '"severity":"sug"' "8429 nothing lowers the finding to a Suggestion (I4)"
 assert_eq "$(rl1_marker)" cleared "8429 the pre-existing deferral clears the marker"
-rl1_run feat/rl1 3 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+rl1_run feat/rl1 3 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
 assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 3 is deferred ($rl1_out)"
+# The finding's own class decides; none is forced. Hardening is kept, escape-class
+# is fixed in the PR (it blocks), and no class at all cannot be told from escape.
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+assert_eq "$rl1_rc" 0 "8429 a pre-existing hardening Important is deferred ($rl1_out)"
+rl1_deferral="$(printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"')"
+assert_has "$rl1_deferral" '"fu_class":"hardening"' "8429 the deferral keeps the hardening class, it is not forced to polish"
+assert_lacks "$rl1_deferral" '"fu_class":"polish"' "8429 the deferral of a hardening Important is not polish"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 escape)"
+assert_eq "$rl1_rc" 4 "8429 a pre-existing escape-class Important still blocks ($rl1_out)"
+assert_has "$rl1_out" 'critic-8' "8429 the blocking escape-class Important is named"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 an escape-class Important is never deferred by the pre_existing field"
+assert_eq "$(rl1_marker)" kept "8429 an escape-class pre-existing Important keeps the marker"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 4 "8429 a pre-existing Important with no class of its own is not deferred ($rl1_out)"
+assert_has "$rl1_out" 'fu_class' "8429 the refusal asks for a fu_class amend"
+assert_has "$rl1_out" 'critic-8' "8429 the unclassified Important is named"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 an unclassified pre-existing Important defers nothing"
 rl1_run feat/rl1 2 "$rl1_crit$(rl1_pre_amend critic-3)"
 assert_eq "$rl1_rc" 4 "8429 a Critical carrying the pre_existing field still blocks (I1) ($rl1_out)"
 assert_has "$rl1_out" 'critic-3' "8429 the blocking Critical is named"
@@ -541,7 +562,7 @@ rl1_run feat/rl1 2 "$rl1_text_imp"
 assert_eq "$rl1_rc" 4 "8429 an Important whose text merely says [pre-existing] still blocks ($rl1_out)"
 assert_has "$rl1_out" 'critic-9' "8429 the text-only Important is named as blocking"
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a [pre-existing] in the text defers nothing"
-rl1_run feat/rl1 2 "$rl1_pre_imp$rl1_text_imp$(rl1_pre_amend critic-8)"
+rl1_run feat/rl1 2 "$rl1_pre_imp$rl1_text_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
 assert_eq "$rl1_rc" 4 "8429 a text-only Important beside a pre-existing one still blocks ($rl1_out)"
 assert_lacks "$rl1_out" 'critic-8' "8429 only the untagged Important blocks"
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 nothing is deferred while an untagged Important is open"

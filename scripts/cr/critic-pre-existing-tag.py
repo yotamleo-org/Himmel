@@ -14,6 +14,12 @@ ancestor of --from, the last round's head), the line is outside this round's
 delta and the bullet gets the informational tag [outside-delta], with no amend.
 Anything else is left as it is.
 
+A line's age says when it was written, not whether this round's change broke
+it. So a line the critic was shown is never tagged: it is never tagged when it
+sits inside any hunk of the reviewed diff (--from..HEAD, else the base...HEAD
+diff), its three lines of context and the neighbours of a deletion-only hunk
+included. When git cannot say what the diff showed, nothing is tagged.
+
 Never tagged: a Critical (it always blocks), a Suggestion, a [context] finding
 (cited outside the reviewed diff on purpose: the critic claims the change
 breaks that line), or a citation that is not [file:line]. A tag the model wrote
@@ -21,7 +27,8 @@ itself is stripped from every bullet: the tags are ours alone. If the amend is
 refused, the bullet stays untagged and keeps blocking.
 
 git does the parsing: `git blame --porcelain -L n,n` has a fixed shape for one
-requested line, so no diff text and no shell text is read.
+requested line and only the `@@` header lines of `git diff` are read, so no
+diff text and no shell text is interpreted.
 
 Usage: critic-pre-existing-tag.py --round N --head SHA --db-sha SHA --branch B
            [--from SHA] [--ledger-append PATH] < findings > tagged
@@ -68,6 +75,36 @@ def is_ancestor(commit, other):
     return run(["git", "merge-base", "--is-ancestor", commit, other]).returncode == 0
 
 
+HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+_shown = {}
+
+
+def outside_shown_diff(args, path, line):
+    """True only when git says the reviewed diff did not show this line.
+
+    The reviewed diff is --from..HEAD when there is a start point, else the
+    base...HEAD diff, read with three lines of context like the critic's. Any
+    hunk range on the new side counts as shown, context lines included; a hunk
+    with no new-side lines (a deletion at the very edge) shows the line beside
+    it. If git fails, the line counts as shown, so nothing is tagged.
+    """
+    if path not in _shown:
+        spec = "%s..%s" % (args.from_sha, args.head) if args.from_sha else "%s...%s" % (args.db_sha, args.head)
+        r = run(["git", "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-renames",
+                 "--unified=3", spec, "--", path])
+        ranges = None
+        if r.returncode == 0:
+            ranges = []
+            for row in r.stdout.split("\n"):
+                m = HUNK.match(row)
+                if m:
+                    start, count = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+                    ranges.append((start, start + count - 1 if count else start + 1))
+        _shown[path] = ranges
+    ranges = _shown[path]
+    return ranges is not None and not any(a <= line <= b for a, b in ranges)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--round", required=True, type=int)
@@ -106,7 +143,7 @@ def main():
             line = body + " " + cite
         if section == "Important Issues" and not CONTEXT.search(body):
             path, n = c.group(1), int(c.group(2))
-            commit = blame(args.head, path, n) if n > 0 else None
+            commit = blame(args.head, path, n) if n > 0 and outside_shown_diff(args, path, n) else None
             if commit and is_ancestor(commit, args.db_sha):
                 r = subprocess.run(["bash", args.ledger_append, "amend", "--branch", args.branch, "--head", args.head,
                                     "--id", b.group(1), "--set", "pre_existing=true", "--reason", AMEND_REASON],

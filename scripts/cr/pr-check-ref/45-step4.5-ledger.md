@@ -172,14 +172,20 @@
    `[pre-existing]` and sets the ledger field `pre_existing=true` with an amend row
    (`ledger-append.sh amend --set pre_existing=true`). Only that field counts. An Important whose text
    merely says `[pre-existing]` still blocks, a Critical always blocks whatever it carries (I1), and a
-   `[context]` finding, round 1 and round 4+ are never tagged. Leave a tagged Important open (no
-   `severity=sug`, no hand-written `agreed` or `fixed`) and run step 4.9's `review-round.sh defer`: it
-   writes an `amend` with `verdict=deferred`, `fu_class=polish` and the reason `Important finding
-   deferred: the cited code is older than this PR (tagged pre-existing).` to the branch's batch
-   residual, the same ticket as the round's Suggestions, and the finding keeps severity `imp` (I4).
-   `agreed` or no verdict is deferred; `disproved` resolves it as usual; any other verdict keeps it
-   blocking. `defer` still exits 4 while a Critical or an untagged Important is open, and it refuses on
-   a change that touches a CI trust path, as for a Suggestions-only close (I5).
+   `[context]` finding, round 1 and round 4+ are never tagged. A line the critic was shown is never
+   tagged either: one inside any hunk of the reviewed diff, its context lines and the neighbours of a
+   deletion included, because the change may have broken it. Leave a tagged Important open (no
+   `severity=sug`, no hand-written `agreed` or `fixed`), give it its own class with an amend
+   (`--set fu_class=<escape|hardening|polish>`, plus `--set fu_why=...` for hardening), and run step 4.9's
+   `review-round.sh defer`: it writes an `amend` with `verdict=deferred`, the finding's own `fu_class` and
+   the reason `Important finding deferred: the cited code is older than this PR (tagged pre-existing).`
+   to the branch's batch residual, the same ticket as the round's Suggestions, and the finding keeps
+   severity `imp` (I4). No class is forced: an `escape` one is fixed in this PR and keeps blocking, and a
+   tagged Important with no class is refused (exit 4) until it has one. `agreed` or no verdict is
+   deferred; `disproved` resolves it as usual; any other verdict keeps it blocking. `defer` still exits 4
+   while a Critical or an untagged Important is open, and it refuses on a change that touches a CI trust
+   path, as for a Suggestions-only close (I5). The `pre_existing` amend counts only when signed, like
+   every lowering amend (`ledger-amend-auth.js`).
 
    **Correcting a record: `amend`, never a re-append (HIMMEL-1294).** Findings
    dedup on `(head, finding_id)`, so re-appending with different content writes

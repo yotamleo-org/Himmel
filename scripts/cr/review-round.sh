@@ -2101,15 +2101,24 @@ for (const o of findings.values()) {
   // I1: a Critical is never deferred by the pre_existing field. Only the
   // boolean true on the effective row counts, never a [pre-existing] in text.
   const preExisting = e.PRE_OK === "1" && severity === "imp" && o.pre_existing === true;
-  if (preExisting && !resolved && (!verdict || verdict === "agreed")) pending.push({
-    id,
-    artifact: o.artifact || "diff",
-    perspective: o.perspective || "off",
-    fu_class: "polish",
-    reason: e.PRE_REASON,
-    class: typeof o.class === "string" ? o.class.trim() : "",
-    text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
-  });
+  // The finding keeps its own class and none is forced: an escape-class Important
+  // is fixed in the PR, and one with no class cannot be told from it, so only a
+  // hardening or polish class from the adjudicator defers it.
+  const preClass = typeof o.fu_class === "string" ? o.fu_class.trim() : "";
+  if (preExisting && !resolved && (!verdict || verdict === "agreed")) {
+    if (preClass === "hardening" || preClass === "polish") pending.push({
+      id,
+      artifact: o.artifact || "diff",
+      perspective: o.perspective || "off",
+      fu_class: preClass,
+      fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
+      reason: e.PRE_REASON,
+      class: typeof o.class === "string" ? o.class.trim() : "",
+      text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
+    });
+    else if (preClass === "escape") blocking.push(id);
+    else unclassified.push(id);
+  }
   else if (preExisting && trackedDeferred && reason === e.PRE_REASON) capDeferred.push({id, ticket});
   else if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
   else if (!verdict && (severity === "sug" || severity === "nit")) pending.push({
@@ -2149,6 +2158,10 @@ if [ -n "$blocking" ] && [ "$delta_mode" -eq 1 ]; then
     exit 4
 fi
 unclassified="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).unclassified.join(" ")))' 2>/dev/null)" || unclassified=""
+if [ -n "$unclassified" ] && [ "$delta_mode" -eq 0 ]; then
+    echo "review-round: pre-existing Important finding(s) need an explicit fu_class amend before they can be deferred: $unclassified - amend each with --set fu_class=escape (fix it in this PR), --set fu_class=hardening (with its fu_why) or --set fu_class=polish, then re-run defer" >&2
+    exit 4
+fi
 if [ -n "$unclassified" ]; then
     echo "review-round: Important finding(s) in the delta round need an explicit fu_class amend before they can be deferred: $unclassified - amend each with --set fu_class=escape (fix it in this PR) or --set fu_class=hardening (exactly; polish or any other class does not qualify), then re-run defer" >&2
     exit 4
