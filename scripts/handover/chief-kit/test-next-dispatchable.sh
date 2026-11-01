@@ -1888,10 +1888,11 @@ lacks "and a partial PR a later contract=yes row completed is not named" "$(prin
 mkdir -p "$WORK/pm3/workers"
 cat > "$WORK/pm3/mrgh" <<'EOF'
 #!/usr/bin/env bash
-# the merge-rows filter's gh seam: `pr view <n> --json state,headRefOid --jq ...`; PR 5022 is never asked (a not-merged row follows its row)
+# the merge-rows filter's gh seam: `pr view <n> --json state,headRefOid --jq ...`; PR 5022 answers MERGED, so only its not-merged row keeps it out
 case "$3" in
     5020) echo "OPEN h20" ;;
     5021) echo "MERGED h21" ;;
+    5022) echo "MERGED h22" ;;
     *) exit 1 ;;
 esac
 EOF

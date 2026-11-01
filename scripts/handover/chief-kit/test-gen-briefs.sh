@@ -883,10 +883,11 @@ cat > "$WORK/pm-state/status-events.jsonl" <<'EOF'
 EOF
 cat > "$WORK/mrgh-stub.sh" <<'EOF'
 #!/usr/bin/env bash
-# the merge-rows filter's gh seam: `pr view <n> --json state,headRefOid --jq ...`; PR 4380 is never asked (its row says not-merged)
+# the merge-rows filter's gh seam: `pr view <n> --json state,headRefOid --jq ...`; PR 4380 answers MERGED, so only its not-merged row keeps it out
 case "$3" in
     4360) echo "OPEN g60" ;;
     4370) echo "MERGED g70" ;;
+    4380) echo "MERGED g80" ;;
     *) exit 1 ;;
 esac
 EOF

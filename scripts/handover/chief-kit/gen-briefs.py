@@ -879,8 +879,11 @@ def partial_merge_prs(keys):
         log = os.path.join(state, 'status-events.jsonl')
         open(log).close()
         # the log without a pre-merge row whose PR did not merge
-        eff = subprocess.run([sys.executable, '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib', 'merge-rows-effective.py'), log],
-                             capture_output=True, text=True)
+        try:  # the helper bounds its GitHub reads, not parsing a large log: a timeout reads as an unreadable log
+            eff = subprocess.run([sys.executable, '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib', 'merge-rows-effective.py'), log],
+                                 capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            raise OSError('merge-rows-effective timed out')
         if eff.returncode != 0:
             raise OSError(eff.stderr.strip() or 'merge-rows-effective failed')
         for line in eff.stdout.splitlines():

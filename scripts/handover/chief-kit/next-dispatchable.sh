@@ -628,7 +628,10 @@ status_unreadable = False
 def effective_rows(path):
     """The log's lines without a pre-merge row whose PR did not merge; an unreadable log raises OSError."""
     open(path).close()
-    r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True)
+    try:  # the helper bounds its GitHub reads, not parsing a large log: a timeout reads as an unreadable log
+        r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        raise OSError('merge-rows-effective timed out')
     if r.returncode != 0:
         raise OSError(r.stderr.strip() or 'merge-rows-effective failed')
     return r.stdout.splitlines()
