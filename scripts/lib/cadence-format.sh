@@ -119,8 +119,14 @@
 # v23: the qmd-reindex runner also refreshes the salus named index
 # (a second `qmd-reindex.sh --index salus` fire when salus.yml exists). An armed
 # v22 qmd runner never refreshes it. Re-arm with `qmd-cadence.sh arm --force`.
+# v24: every runner that launches claude loads CLAUDE_CODE_OAUTH_TOKEN from the
+# operator's token file (~/.config/himmel/claude-oauth-token) when the variable
+# is unset. On macOS the interactive login lives in the Keychain, which cron
+# cannot read, so an armed v23 runner fails "Not logged in" on every fire. Re-arm
+# with `pipeline-cadence.sh|graphmap-cadence.sh|drift-fix-cadence.sh arm --force`
+# (claude workers only; the setup steps are in docs/setup/new-machine.md).
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=23
+CADENCE_RUNNER_FORMAT_VERSION=24
 
 # Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
@@ -170,6 +176,28 @@ cadence_posix_worker_end() {
 # Shared home resolution for cadence emitters and staleness readers.
 cadence_user_home() {
     printf '%s' "${HOME:-/tmp}"
+}
+
+# cadence_oauth_token_lines
+# Print the POSIX-sh lines a runner that launches claude puts right after its
+# PATH line: when CLAUDE_CODE_OAUTH_TOKEN is unset or empty and the token file is
+# a readable regular file, export the file's first line (CR/LF stripped). The
+# default path is baked at arm time from the arming user's home; the
+# HIMMEL_CLAUDE_TOKEN_FILE override is read at fire time. A missing file changes
+# nothing and prints nothing, and the value is never echoed, logged or traced.
+# shellcheck disable=SC2016  # the runner's own $vars are emitted literally
+cadence_oauth_token_lines() {
+    local q_default
+    q_default=$(printf '%q' "$(cadence_user_home)/.config/himmel/claude-oauth-token")
+    printf '%s\n' '# cron cannot read the macOS Keychain login: load the OAuth token from its file'
+    printf '%s\n' 'if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then'
+    printf '    _tokf=${HIMMEL_CLAUDE_TOKEN_FILE:-%s}\n' "$q_default"
+    printf '%s\n' '    if [ -f "$_tokf" ] && [ -r "$_tokf" ]; then'
+    printf '%s\n' '        _tok=$(head -n 1 "$_tokf" 2>/dev/null | tr -d "\r\n") || _tok='
+    printf '%s\n' '        if [ -n "$_tok" ]; then CLAUDE_CODE_OAUTH_TOKEN=$_tok; export CLAUDE_CODE_OAUTH_TOKEN; fi'
+    printf '%s\n' '    fi'
+    printf '%s\n' '    unset _tokf _tok'
+    printf '%s\n' 'fi'
 }
 
 # cadence_runner_stamp <runner_dir>
