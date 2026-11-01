@@ -128,7 +128,8 @@ SECTION = re.compile(r"^## (Critical Issues|Important Issues|Suggestions|"
                      r"Already Dispositioned Re-raises|Dropped Citations|Note|REVIEW NOT PERFORMED)")
 SEV = {"Critical Issues": "crit", "Important Issues": "imp", "Suggestions": "sug"}
 BULLET = re.compile(r"^- \[([A-Za-z0-9._]+(?:-[A-Za-z0-9._]+)*?)-(\d+)\]: (.*?)\s*\[([^\]\s]+):(\d+)\]\s*$")
-CITATION_GUARD = re.compile(r"^- \[citation-guard-[0-9a-f]+\]: ")
+GUARD = "citation-guard"
+CITATION_GUARD = re.compile(r"^- \[" + GUARD + r"-[0-9a-f]{16}\]: ")
 FINDING_SHAPED = re.compile(r"^- \[[A-Za-z0-9._-]+-\d+\]")
 UNAVAILABLE = re.compile(r"^- ([A-Za-z0-9._-]+): unavailable\b")
 
@@ -333,7 +334,8 @@ def lint(fixtures, key_path, min_real=0, src=None):
 def parse_review(text):
     """(findings, unavailable critics, performed). A finding is a dict with
     critic, sev, file, line, text; bullets outside the three severity
-    sections (re-raises, dropped citations) are not findings."""
+    sections (re-raises, dropped citations) are not findings. The panel's
+    citation-guard Critical is one, under the pseudo-critic GUARD."""
     findings, unavailable, performed, sev, in_note = [], set(), True, None, False
     declared, counted, malformed = {}, {}, 0
     for line in text.splitlines():
@@ -360,10 +362,13 @@ def parse_review(text):
         # leaves the count short of the heading, so the case is unscored
         # rather than scored with that finding lost.
         # The guard's bullet (a critic cited a line that does not exist and the
-        # panel dropped it) counts toward the heading but is no finding: the
-        # case is scored with that finding lost, not left unscored.
+        # panel dropped it) is a blocking Critical of the panel, so on a clean
+        # twin it is a real false block. It counts toward the heading and is
+        # kept as a panel-level finding (no location, so it never hits a
+        # defect); member_metrics counts it for fp_rate only.
         if sev and CITATION_GUARD.match(line):
             counted[sev] += 1
+            findings.append({"critic": GUARD, "sev": sev, "text": line, "file": "", "line": 0})
             continue
         b = BULLET.match(line)
         if b and sev:
@@ -423,7 +428,7 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
 
     seen = set(critics)
     for findings, unavailable in per_case.values():
-        seen.update(f["critic"] for f in findings)
+        seen.update(f["critic"] for f in findings if f["critic"] != GUARD)
     members = sorted(seen) + ["panel"]
 
     metrics, ci, case_rows = {}, {}, {}
@@ -449,13 +454,14 @@ def member_metrics(members, per_case, cases, window, prefix, metrics, ci, case_r
         for cid, (findings, unavailable) in sorted(per_case.items()):
             if who != "panel" and who in unavailable:
                 continue
-            mine = findings if who == "panel" else [f for f in findings if f["critic"] == who]
+            blocks = findings if who == "panel" else [f for f in findings if f["critic"] == who]
+            mine = [f for f in blocks if f["critic"] != GUARD]
             c = cases[cid]
             all_f += len(mine)
             true_f += sum(1 for f in mine if any(loc_hit(f, d, window) and class_hit(f, d) for d in c["defects"]))
             if c["kind"] == "clean":
                 clean_n += 1
-                fp = any(f["sev"] in GATING for f in mine)
+                fp = any(f["sev"] in GATING for f in blocks)
                 clean_fp += fp
                 if who == "panel":
                     case_rows[cid] = {"findings": len(mine), "fp": fp}

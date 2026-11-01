@@ -299,6 +299,15 @@ eq "citation-guard: the lost finding is a miss on the seeded case" "$(metric "$T
 echo 1 > "$O4g/$LA.rc"
 python3 "$SCORE" score --outputs "$O4g" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA" --no-ledger --json "$TMP/s4h.json" >/dev/null 2>&1
 eq "citation-guard: a nonzero rc is still unscored" "$(metric "$TMP/s4h.json" unscored)" "1"
+# The guard's Critical blocks the CR gate, so on a clean twin it is a false
+# block: it counts for fp_rate, not for findings or precision, and the guard is
+# no roster member of its own.
+cp "$O4g/$LA.md" "$O4g/$LAc.md"
+python3 "$SCORE" score --outputs "$O4g" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LAc" --no-ledger --json "$TMP/s4i.json" >/dev/null 2>&1
+eq "citation-guard: a clean twin is scored" "$(metric "$TMP/s4i.json" unscored)" "0"
+eq "citation-guard: a clean twin counts as a false block in the panel fp_rate" "$(metric "$TMP/s4i.json" panel.fp_rate)" "1.0"
+eq "citation-guard: the false block is not a critic finding" "$(metric "$TMP/s4i.json" panel.findings)" "0"
+eq "citation-guard: the guard is no roster member" "$(jget "$TMP/s4i.json" critics)" '["codex"]'
 
 # A transcript that touches the key is flagged and the run marked inconclusive.
 O5="$TMP/out5"; mkdir -p "$O5"
