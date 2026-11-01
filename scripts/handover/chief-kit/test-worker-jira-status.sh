@@ -340,6 +340,21 @@ printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":
 printf '{"ts":"t","event":"merge","key":"%s","pr":"12","contract":"yes","result":"moved"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5c: a later completes=yes merge row wins -> D6" "$(row rule)" D6
+# The funnel's own row under event merge carries no contract; it must not hide the contract row.
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","result":"moved","rule":"D3","from":"IN CI","to":"In Progress","dir":"back"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5c (HIMMEL-8522): a derive row under event merge after a contract=no row -> D5c" "$(row rule)" D5c
+check "D5c (HIMMEL-8522): the replay is never demoted to To Do" "$(ntrans)" 0
+reset "IN CI"; owned WRAPPED
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"yes","result":"miss","stage":"transition"}\n' "$K" >> "$LOG"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","result":"noop","rule":"D3","from":"IN CI"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D4b (HIMMEL-8522): a derive row under event merge after a contract=yes miss row stays pending" "$(row stage)" done-pending
+reset "In Progress"; owned LIVE 11 0
+fn "$K" --event merge --pr 11 --head abc
+check "HIMMEL-8522: a funnel row for the merge event is not written under event merge" "$(row event)" derive
 
 # --- D5 / D6 / D7 ------------------------------------------------------------------
 reset "To Do"; owned LIVE 11 0

@@ -160,6 +160,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh\"",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "SessionStart": [

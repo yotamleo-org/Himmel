@@ -30,6 +30,14 @@
   ],
   "phases": [
     {
+      "id": "start",
+      "label": "Start"
+    },
+    {
+      "id": "plan",
+      "label": "Plan and design"
+    },
+    {
       "id": "dispatch",
       "label": "Dispatch"
     },
@@ -56,6 +64,253 @@
   ],
   "nodes": [
     {
+      "id": "s.idea",
+      "lane": "operator",
+      "phase": "start",
+      "label": "An idea arrives",
+      "summary": "Work begins as an idea: yours, a review's follow-up, or an audit's finding. Nothing is built from an idea alone.",
+      "pos": {
+        "wide": {
+          "x": 128,
+          "y": 66
+        },
+        "narrow": {
+          "y": 52
+        }
+      },
+      "step": {
+        "name": "An idea arrives",
+        "who": "you",
+        "place": "on the line",
+        "plain": "Work begins as an idea: yours, a review's follow-up, or an audit's finding. Nothing is built from an idea alone.",
+        "detail": "An idea comes from you, in a message to the chief, from a review finding left for later (a follow-up), or from an audit. The chief decides what happens next.",
+        "stage": "start"
+      }
+    },
+    {
+      "id": "p.grill",
+      "lane": "console",
+      "phase": "start",
+      "label": "Grill the idea",
+      "summary": "The chief chooses when an idea is questioned hard before it becomes a plan. You can ask for it too.",
+      "pos": {
+        "wide": {
+          "x": 128,
+          "y": 142
+        },
+        "narrow": {
+          "y": 136
+        }
+      },
+      "step": {
+        "name": "Grill the idea",
+        "who": "chief",
+        "place": "off the line, only sometimes",
+        "plain": "The chief chooses when an idea is questioned hard before it becomes a plan. You can ask for it too.",
+        "tag": "chief's choice",
+        "tagKind": "partial",
+        "detail": "The chief chooses when an idea is grilled, and you can ask for it. A grill asks the hard questions first. A big or core change goes on to the full spec route.",
+        "stage": "start"
+      }
+    },
+    {
+      "id": "s.minerva",
+      "lane": "console",
+      "phase": "start",
+      "label": "Write a checked spec",
+      "summary": "For a big or core change, minerva turns the idea into a spec checked by a critic. Its plan is written and checked in phase 2.",
+      "pos": {
+        "wide": {
+          "x": 128,
+          "y": 198
+        },
+        "narrow": {
+          "y": 220
+        }
+      },
+      "step": {
+        "name": "Write a checked spec",
+        "who": "chief",
+        "place": "off the line, only sometimes",
+        "plain": "For a big or core change, minerva turns the idea into a spec checked by a critic. Its plan is written and checked in phase 2.",
+        "tag": "on request; required for a core ticket, planned for this version",
+        "tagKind": "partial",
+        "detail": "minerva runs a grill, a brainstorm, a spec and a critic that checks it. Its plan, and the second critic that checks the plan, are step 6 in phase 2. Today minerva runs only when asked. Planned for this version: a core ticket is not built until its spec is signed; design work and urgent fixes pass.",
+        "changes": [
+          {
+            "text": "Required for a core ticket before it is built.",
+            "ticket": "HIMMEL-8353",
+            "state": "in progress"
+          }
+        ],
+        "stage": "start"
+      }
+    },
+    {
+      "id": "p.write",
+      "lane": "console",
+      "phase": "start",
+      "label": "Fill the ticket",
+      "summary": "Every change starts as a ticket that says what it is for, what done means and how it will be proved.",
+      "pos": {
+        "wide": {
+          "x": 328,
+          "y": 142
+        },
+        "narrow": {
+          "y": 304
+        }
+      },
+      "step": {
+        "name": "Fill the ticket",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "Every change starts as a ticket that says what it is for, what done means and how it will be proved.",
+        "tag": "checked when filled and when picked",
+        "tagKind": "partial",
+        "detail": "The ticket says what it is for, its plan, what done means and how it will be proved. A checker refuses a Task, Story or Bug that is missing a section and parks the draft. Every ticket meets the same check when the chief picks it: one without DoD or Proof is dropped.",
+        "stage": "start"
+      }
+    },
+    {
+      "id": "s.cost",
+      "lane": "console",
+      "phase": "start",
+      "label": "Count what the start cost",
+      "summary": "What the start cost, the grill, the spec and the design, is added to the ticket, so later tickets can be estimated from it.",
+      "pos": {
+        "wide": {
+          "x": 328,
+          "y": 198
+        },
+        "narrow": {
+          "y": 388
+        }
+      },
+      "step": {
+        "name": "Count what the start cost",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "What the start cost, the grill, the spec and the design, is added to the ticket, so later tickets can be estimated from it.",
+        "tag": "partial: workers counted per ticket, the chief's planning pooled",
+        "tagKind": "partial",
+        "detail": "Today each worker's cost is recorded against its ticket, and the Trends tab shows the cost per ticket. The chief's own sessions, where most grills and specs run, are pooled and not split per ticket. Planned with this phase: the start's cost joins the ticket's record, so later tickets can be estimated from tickets like them.",
+        "stage": "start"
+      }
+    },
+    {
+      "id": "p.plan",
+      "lane": "console",
+      "phase": "plan",
+      "label": "Write and check the plan",
+      "summary": "The ticket's plan is written and checked before the build: minerva's plan with a critic for a core ticket, the chief's plan otherwise.",
+      "pos": {
+        "wide": {
+          "x": 528,
+          "y": 142
+        },
+        "narrow": {
+          "y": 472
+        }
+      },
+      "step": {
+        "name": "Write and check the plan",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "The ticket's plan is written and checked before the build: minerva's plan with a critic for a core ticket, the chief's plan otherwise.",
+        "tag": "checked by a critic for a core ticket; signed with the spec, planned for this version",
+        "tagKind": "partial",
+        "detail": "The plan says how the ticket will be built and proved. For a core ticket it is minerva's plan, written after the spec and checked by a critic; for any other ticket the chief writes it into the ticket. The spec itself is step 3 in Start. Planned for this version: a core ticket's plan is signed with its spec before any build brief.",
+        "proposed": true,
+        "changes": [
+          {
+            "text": "For a core ticket, the plan is signed with the spec before any build brief.",
+            "ticket": "HIMMEL-8353",
+            "state": "in progress"
+          }
+        ],
+        "stage": "plan"
+      }
+    },
+    {
+      "id": "p.estimate",
+      "lane": "console",
+      "phase": "plan",
+      "label": "Estimate the effort",
+      "summary": "Sometimes the effort is estimated first; today this is a pilot and it never stops a start.",
+      "pos": {
+        "wide": {
+          "x": 528,
+          "y": 198
+        },
+        "narrow": {
+          "y": 556
+        }
+      },
+      "step": {
+        "name": "Estimate the effort",
+        "who": "chief",
+        "place": "off the line, only sometimes",
+        "plain": "Sometimes the effort is estimated first; today this is a pilot and it never stops a start.",
+        "tag": "pilot",
+        "tagKind": "partial",
+        "detail": "The effort estimate is a measured pilot and is not run on every ticket. The spec check needs an estimate; the brief shows it as one advisory line and never changes the start.",
+        "stage": "plan"
+      }
+    },
+    {
+      "id": "p.design",
+      "lane": "leg",
+      "phase": "plan",
+      "label": "Draw the design",
+      "summary": "A change to a page can get a mockup first, drawn by a design worker.",
+      "pos": {
+        "wide": {
+          "x": 528,
+          "y": 462
+        },
+        "narrow": {
+          "y": 640
+        }
+      },
+      "step": {
+        "name": "Draw the design",
+        "who": "worker",
+        "place": "off the line, only sometimes",
+        "plain": "A change to a page can get a mockup first, drawn by a design worker.",
+        "tag": "chief's choice",
+        "tagKind": "partial",
+        "detail": "The chief chooses to send a page change to a design worker. The mockup is kept with the plans and specs. Nothing routes a change there automatically.",
+        "stage": "plan"
+      }
+    },
+    {
+      "id": "p.approve",
+      "lane": "operator",
+      "phase": "plan",
+      "label": "You approve the design",
+      "summary": "You approve the design before the build ticket is filed. A gate that checks this is planned for the next version.",
+      "pos": {
+        "wide": {
+          "x": 528,
+          "y": 66
+        },
+        "narrow": {
+          "y": 724
+        }
+      },
+      "step": {
+        "name": "You approve the design",
+        "who": "you",
+        "place": "off the line, only sometimes",
+        "plain": "You approve the design before the build ticket is filed. A gate that checks this is planned for the next version.",
+        "tag": "planned for the next version",
+        "tagKind": "planned",
+        "detail": "The gate is planned for the next version. Today no gate reads an approval: the build ticket is filed only after you approve, or a blocking link or a hold label keeps it from being picked.",
+        "stage": "plan"
+      }
+    },
+    {
       "id": "c.start",
       "lane": "console",
       "phase": "dispatch",
@@ -69,12 +324,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 128,
+          "x": 728,
           "y": 142
         },
         "narrow": {
-          "y": 432
+          "y": 1188
         }
+      },
+      "step": {
+        "name": "Start the chief",
+        "who": "chief",
+        "place": "above the line: the chief's loop",
+        "plain": "Begin a chief session: it writes its own notes, claims them so no second chief starts, and prints how to launch it.",
+        "detail": "Starts the chief, the one long-running session that runs the fleet.",
+        "stage": "assign"
       }
     },
     {
@@ -91,12 +354,27 @@
       ],
       "pos": {
         "wide": {
-          "x": 128,
+          "x": 728,
           "y": 198
         },
         "narrow": {
-          "y": 52
+          "y": 808
         }
+      },
+      "step": {
+        "name": "Wait for the next event",
+        "who": "chief",
+        "place": "above the line: the chief's loop",
+        "plain": "The chief stays quiet until something needs it, then wakes with one short summary of why.",
+        "detail": "The loop waits; the next event starts its next turn.",
+        "changes": [
+          {
+            "text": "Housekeeping arrives as one digest every 15 minutes, and the wait stays armed.",
+            "ticket": "HIMMEL-8197",
+            "state": "in progress"
+          }
+        ],
+        "stage": "assign"
       }
     },
     {
@@ -113,12 +391,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 128,
+          "x": 728,
           "y": 254
         },
         "narrow": {
-          "y": 494
+          "y": 1250
         }
+      },
+      "step": {
+        "name": "Read the fleet's state",
+        "who": "chief",
+        "place": "above the line: the chief's loop",
+        "plain": "One line on the whole fleet: how many workers run, and which have gone quiet or not started.",
+        "detail": "Reads the fleet's state at the start of each turn.",
+        "stage": "assign"
       }
     },
     {
@@ -135,12 +421,32 @@
       ],
       "pos": {
         "wide": {
-          "x": 328,
+          "x": 928,
           "y": 142
         },
         "narrow": {
-          "y": 136
+          "y": 892
         }
+      },
+      "step": {
+        "name": "Pick the next tickets",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "Ranks the open tickets and drops any that would touch the same files as a running worker. Only reads.",
+        "detail": "A ranked list, checked so that no two workers write the same file. A ticket without DoD or Proof is dropped. Tickets whose files collide with nothing start together as a parallel wave. A ticket blocked by an open one waits in its dependency chain.",
+        "changes": [
+          {
+            "text": "Tickets that share files go to one worker as a stacked series instead of being held back.",
+            "ticket": "HIMMEL-8349",
+            "state": "in progress"
+          },
+          {
+            "text": "A blocker outside this version is pulled into it.",
+            "ticket": "HIMMEL-8350",
+            "state": "done"
+          }
+        ],
+        "stage": "assign"
       }
     },
     {
@@ -157,12 +463,27 @@
       ],
       "pos": {
         "wide": {
-          "x": 328,
+          "x": 928,
           "y": 198
         },
         "narrow": {
-          "y": 220
+          "y": 976
         }
+      },
+      "step": {
+        "name": "Write the brief and worktree",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "Writes the worker's instructions, its launch line and its own copy of the code (a worktree).",
+        "detail": "Writes the worker's brief and gives it its own worktree.",
+        "changes": [
+          {
+            "text": "A core ticket gets a build brief only after its spec is signed. Design work and urgent fixes pass.",
+            "ticket": "HIMMEL-8353",
+            "state": "in progress"
+          }
+        ],
+        "stage": "assign"
       }
     },
     {
@@ -179,12 +500,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 328,
+          "x": 928,
           "y": 254
         },
         "narrow": {
-          "y": 304
+          "y": 1060
         }
+      },
+      "step": {
+        "name": "Start a worker",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "Opens the worker in its own window, if there is usage left and a free slot.",
+        "detail": "Starts the worker. The start is refused at the fleet cap, when usage is out, or while a refusal page waits for you. These refusals are not logged.",
+        "stage": "assign"
       }
     },
     {
@@ -201,12 +530,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 328,
+          "x": 928,
           "y": 66
         },
         "narrow": {
-          "y": 578
+          "y": 1334
         }
+      },
+      "step": {
+        "name": "Your decision",
+        "who": "you",
+        "place": "off the line, only sometimes",
+        "plain": "Only you can lift a spent budget, rule on a blocked merge or set policy. The chief never stops to ask; it waits for your note.",
+        "detail": "When usage runs out or main is red, the chief asks for your ruling.",
+        "stage": "assign"
       }
     },
     {
@@ -223,12 +560,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 328,
+          "x": 928,
           "y": 462
         },
         "narrow": {
-          "y": 640
+          "y": 1396
         }
+      },
+      "step": {
+        "name": "Read the ticket",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "The worker reads its ticket first. From here on the ticket's status follows the worker's progress by itself.",
+        "detail": "The worker reads its ticket and reports its Jira status.",
+        "stage": "assign"
       }
     },
     {
@@ -245,12 +590,21 @@
       ],
       "pos": {
         "wide": {
-          "x": 528,
+          "x": 1128,
           "y": 462
         },
         "narrow": {
-          "y": 674
+          "y": 1430
         }
+      },
+      "step": {
+        "name": "Claim the work",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "The worker takes the lock on its brief and reports that it has started.",
+        "badge": "LIVE",
+        "detail": "The worker posts LIVE, and the Build clock starts.",
+        "stage": "build"
       }
     },
     {
@@ -267,12 +621,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 528,
+          "x": 1128,
           "y": 518
         },
         "narrow": {
-          "y": 758
+          "y": 1514
         }
+      },
+      "step": {
+        "name": "Write a failing test",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "One test that fails before the change exists, so the fix is proven, not assumed.",
+        "detail": "RED first: a test that fails before the change.",
+        "stage": "build"
       }
     },
     {
@@ -293,12 +655,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 528,
+          "x": 1128,
           "y": 574
         },
         "narrow": {
-          "y": 842
+          "y": 1598
         }
+      },
+      "step": {
+        "name": "Commit",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "Each commit says what kind of change it is and names its ticket; the first commit also says where it was tested and how it was checked for safety.",
+        "detail": "A conventional commit that names its ticket. The message check refuses any other.",
+        "stage": "build"
       }
     },
     {
@@ -319,12 +689,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 528,
+          "x": 1128,
           "y": 650
         },
         "narrow": {
-          "y": 926
+          "y": 1682
         }
+      },
+      "step": {
+        "name": "Checks on every push",
+        "who": "check",
+        "place": "an automatic check on the line",
+        "plain": "Before anything leaves the machine: no push or force push to main, the test and safety lines are present, and the pull request could merge.",
+        "detail": "The checks that run on every push.",
+        "stage": "build"
       }
     },
     {
@@ -341,12 +719,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 528,
+          "x": 1128,
           "y": 706
         },
         "narrow": {
-          "y": 1010
+          "y": 1766
         }
+      },
+      "step": {
+        "name": "Check whether the push needs a review",
+        "who": "check",
+        "place": "an automatic check on the line",
+        "plain": "Changed code or reviewable docs mean a review round must run before the PR opens; a notes-only change needs none.",
+        "detail": "Decides whether this push needs a review round first: changed code and reviewable docs do; a notes-only change does not.",
+        "stage": "build"
       }
     },
     {
@@ -367,12 +753,32 @@
       ],
       "pos": {
         "wide": {
-          "x": 728,
+          "x": 1328,
           "y": 462
         },
         "narrow": {
-          "y": 1128
+          "y": 1884
         }
+      },
+      "step": {
+        "name": "Automated review round",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "A second model reads the change. The worker answers each finding, fixes what it agrees with, and runs the affected tests. Three rounds at most.",
+        "detail": "A review round by a model from another family, before the PR opens.",
+        "changes": [
+          {
+            "text": "The critics may be given context beyond the diff, and must cite it.",
+            "ticket": "HIMMEL-8428",
+            "state": "done"
+          },
+          {
+            "text": "Nothing hands them the callers of the changed code or the ticket's intent yet.",
+            "ticket": "HIMMEL-8430",
+            "state": "not started"
+          }
+        ],
+        "stage": "review"
       }
     },
     {
@@ -389,12 +795,27 @@
       ],
       "pos": {
         "wide": {
-          "x": 728,
+          "x": 1328,
           "y": 650
         },
         "narrow": {
-          "y": 1318
+          "y": 2074
         }
+      },
+      "step": {
+        "name": "Review round limit",
+        "who": "check",
+        "place": "an automatic check on the line",
+        "plain": "After three rounds only one short round is left, and it blocks only on a critical finding or one that shows a flow broken today.",
+        "detail": "Three rounds, then one extra round that reviews only what changed. Beyond that, the chief must grant one more.",
+        "changes": [
+          {
+            "text": "Rounds 2 and 3 review only what changed since the round before. A finding that was already there may be put off if Important; a Critical one always blocks.",
+            "ticket": "HIMMEL-8429",
+            "state": "in progress"
+          }
+        ],
+        "stage": "review"
       }
     },
     {
@@ -411,12 +832,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 728,
+          "x": 1328,
           "y": 142
         },
         "narrow": {
-          "y": 1402
+          "y": 2158
         }
+      },
+      "step": {
+        "name": "Chief grants one more round",
+        "who": "chief",
+        "place": "off the line, only sometimes",
+        "plain": "The chief can allow one more round, on a judge's signed ruling. A worker cannot grant its own.",
+        "detail": "The chief grants one round past the limit.",
+        "stage": "review"
       }
     },
     {
@@ -433,12 +862,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 728,
+          "x": 1328,
           "y": 706
         },
         "narrow": {
-          "y": 1440
+          "y": 2196
         }
+      },
+      "step": {
+        "name": "CodeRabbit review",
+        "who": "check",
+        "place": "on the line",
+        "plain": "The CodeRabbit app reviews the pull request on GitHub. If it is absent or busy, that is noted, but any comment it leaves must still be resolved.",
+        "detail": "CodeRabbit reviews the PR.",
+        "stage": "review"
       }
     },
     {
@@ -455,12 +892,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 728,
+          "x": 1328,
           "y": 762
         },
         "narrow": {
-          "y": 1460
+          "y": 2216
         }
+      },
+      "step": {
+        "name": "Required reviewers passed",
+        "who": "check",
+        "place": "an automatic check on the line",
+        "plain": "Each required reviewer has passed on the latest commit. A setup with no required reviewer at all is an error, not a pass.",
+        "detail": "The required reviewers have passed.",
+        "stage": "review"
       }
     },
     {
@@ -477,12 +922,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 728,
+          "x": 1328,
           "y": 518
         },
         "narrow": {
-          "y": 1234
+          "y": 1990
         }
+      },
+      "step": {
+        "name": "Open the pull request",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "The pull request can open only once its review round has run.",
+        "detail": "The PR opens only after the review round has run.",
+        "stage": "review"
       }
     },
     {
@@ -499,12 +952,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 650
         },
         "narrow": {
-          "y": 1520
+          "y": 2276
         }
+      },
+      "step": {
+        "name": "Wait for CI",
+        "who": "check",
+        "place": "on the line",
+        "plain": "One wait for the CI result; the answer is its exit code, so nobody guesses whether it is green.",
+        "detail": "Waits for CI to finish and reads the result.",
+        "stage": "check"
       }
     },
     {
@@ -521,12 +982,29 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 706
         },
         "narrow": {
-          "y": 1480
+          "y": 2236
         }
+      },
+      "step": {
+        "name": "Start the full CI run",
+        "who": "check",
+        "place": "an automatic check on the line",
+        "plain": "The heavy CI jobs wait until review has passed and the quick checks are green. Today this is switched off, so CI runs in full on every push.",
+        "tag": "planned for this version",
+        "tagKind": "planned",
+        "detail": "Today's page draws this as planned. Heavy CI jobs can already wait for the ci:go label, but that switch is off by default, so CI runs in full on every push.",
+        "changes": [
+          {
+            "text": "The heavy CI jobs start only once CodeRabbit is clean on the commit, and fall back to running when CodeRabbit is absent. Built, not yet turned on.",
+            "ticket": "HIMMEL-6575",
+            "state": "not started"
+          }
+        ],
+        "stage": "check"
       }
     },
     {
@@ -543,12 +1021,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 462
         },
         "narrow": {
-          "y": 2196
+          "y": 2952
         }
+      },
+      "step": {
+        "name": "Fix a red CI run",
+        "who": "worker",
+        "place": "off the line, only sometimes",
+        "plain": "A failed check on the pull request is the worker's to fix. If main itself caused it, the worker says so once.",
+        "detail": "CI is red and the PR is at fault: fix it and start a new round.",
+        "stage": "check"
       }
     },
     {
@@ -565,12 +1051,21 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 518
         },
         "narrow": {
-          "y": 1626
+          "y": 2382
         }
+      },
+      "step": {
+        "name": "Report ready",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "The worker checks its ticket coverage, reports it is ready with the exact commit, and waits. This is the only wait a worker may take.",
+        "badge": "READY",
+        "detail": "The worker reports READY.",
+        "stage": "check"
       }
     },
     {
@@ -587,12 +1082,27 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 142
         },
         "narrow": {
-          "y": 1710
+          "y": 2466
         }
+      },
+      "step": {
+        "name": "Check the pull request is ready",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "The chief checks the commit, CI, open threads, the review record, the commit lines, the tickets and coverage, and whether the change touches a trust path.",
+        "detail": "The readiness check. A FAIL sends the change back to READY.",
+        "changes": [
+          {
+            "text": "When the check passes and a signed judge GO, or a plain GO case, is on the same commit, a script runs it with no chief turn.",
+            "ticket": "HIMMEL-8349",
+            "state": "in progress"
+          }
+        ],
+        "stage": "check"
       }
     },
     {
@@ -609,12 +1119,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 330
         },
         "narrow": {
-          "y": 1944
+          "y": 2700
         }
+      },
+      "step": {
+        "name": "A judge reviews",
+        "who": "judge",
+        "place": "off the line, only sometimes",
+        "plain": "A separate session rules on changes to guards, gates or CI, called at the cheapest tier that can rule.",
+        "detail": "Only when the change touches a trust path.",
+        "stage": "check"
       }
     },
     {
@@ -631,12 +1149,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 386
         },
         "narrow": {
-          "y": 2028
+          "y": 2784
         }
+      },
+      "step": {
+        "name": "Judge's verdict",
+        "who": "judge",
+        "place": "off the line, only sometimes",
+        "plain": "The judge writes a signed GO or NO-GO for one exact commit.",
+        "detail": "GO, or NO-GO and back to a fix.",
+        "stage": "check"
       }
     },
     {
@@ -653,12 +1179,27 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 198
         },
         "narrow": {
-          "y": 2112
+          "y": 2868
         }
+      },
+      "step": {
+        "name": "Turn the verdict into approval",
+        "who": "chief",
+        "place": "off the line, only sometimes",
+        "plain": "The chief files the judge's ruling, writes the approval if it is a GO, and updates the notes and board.",
+        "detail": "A GO verdict becomes the GO file.",
+        "changes": [
+          {
+            "text": "The judge's GO becomes the approval by script, with no chief turn.",
+            "ticket": "HIMMEL-8349",
+            "state": "in progress"
+          }
+        ],
+        "stage": "check"
       }
     },
     {
@@ -675,12 +1216,33 @@
       ],
       "pos": {
         "wide": {
-          "x": 928,
+          "x": 1528,
           "y": 254
         },
         "narrow": {
-          "y": 1816
+          "y": 2572
         }
+      },
+      "step": {
+        "name": "Approve this commit",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "The chief writes a signed approval for one pull request at one commit. The file is the approval; a new push needs a new one.",
+        "badge": "GO",
+        "detail": "The chief writes a GO file for this commit.",
+        "changes": [
+          {
+            "text": "A script writes the GO when every check passes; the chief only sees MERGED.",
+            "ticket": "HIMMEL-8349",
+            "state": "in progress"
+          },
+          {
+            "text": "The chief sees the scripted GO in its own record and digest.",
+            "ticket": "HIMMEL-8478",
+            "state": "done"
+          }
+        ],
+        "stage": "check"
       }
     },
     {
@@ -697,12 +1259,27 @@
       ],
       "pos": {
         "wide": {
-          "x": 1128,
+          "x": 1728,
           "y": 462
         },
         "narrow": {
-          "y": 2314
+          "y": 3070
         }
+      },
+      "step": {
+        "name": "Merge",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "The worker merges: the last checks run, then a squash merge pinned to the approved commit.",
+        "detail": "Merges once CI is green and a GO exists, pinned to the checked commit.",
+        "changes": [
+          {
+            "text": "Stacked pull requests merge in order; the next one then moves onto main.",
+            "ticket": "HIMMEL-8349",
+            "state": "in progress"
+          }
+        ],
+        "stage": "merge"
       }
     },
     {
@@ -719,12 +1296,22 @@
       ],
       "pos": {
         "wide": {
-          "x": 1128,
+          "x": 1728,
           "y": 518
         },
         "narrow": {
-          "y": 2367
+          "y": 3123
         }
+      },
+      "step": {
+        "name": "Close the ticket, if done",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "Only when the brief says this change finishes the ticket is the ticket closed. Either way the worker posts the pull request and merge on it.",
+        "tag": "only if the PR completes the ticket",
+        "tagKind": "partial",
+        "detail": "Closes the ticket only when this PR completes it.",
+        "stage": "merge"
       }
     },
     {
@@ -741,12 +1328,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 1128,
+          "x": 1728,
           "y": 650
         },
         "narrow": {
-          "y": 2734
+          "y": 3490
         }
+      },
+      "step": {
+        "name": "Guard on a direct merge",
+        "who": "check",
+        "place": "an automatic check on the line",
+        "plain": "Any other attempt to merge meets the same checks: open review threads, CI, the chief's approval and trust paths.",
+        "detail": "A guard on a merge typed by hand.",
+        "stage": "merge"
       }
     },
     {
@@ -763,12 +1358,21 @@
       ],
       "pos": {
         "wide": {
-          "x": 1128,
+          "x": 1728,
           "y": 574
         },
         "narrow": {
-          "y": 2420
+          "y": 3176
         }
+      },
+      "step": {
+        "name": "Worker wraps up",
+        "who": "worker",
+        "place": "on the line",
+        "plain": "The worker stops anything it started, proves nothing is left running, releases its lock and reports it is done.",
+        "badge": "WRAPPED",
+        "detail": "The worker posts WRAPPED.",
+        "stage": "merge"
       }
     },
     {
@@ -785,12 +1389,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 1128,
+          "x": 1728,
           "y": 142
         },
         "narrow": {
-          "y": 2504
+          "y": 3260
         }
+      },
+      "step": {
+        "name": "Chief reads the last report",
+        "who": "chief",
+        "place": "off the line, only sometimes",
+        "plain": "The chief reads what the worker reported: merged or done goes to tidy-up; anything else needs a closer look.",
+        "detail": "WRAPPED and MERGED come back to the chief's loop.",
+        "stage": "merge"
       }
     },
     {
@@ -807,12 +1419,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 1128,
+          "x": 1728,
           "y": 198
         },
         "narrow": {
-          "y": 2672
+          "y": 3428
         }
+      },
+      "step": {
+        "name": "File the follow-ups",
+        "who": "chief",
+        "place": "on the line",
+        "plain": "Anything the worker put off needs a ticket, or a stated reason why not.",
+        "detail": "Leftover work is filed as tickets.",
+        "stage": "merge"
       }
     },
     {
@@ -833,12 +1453,20 @@
       ],
       "pos": {
         "wide": {
-          "x": 1128,
+          "x": 1728,
           "y": 254
         },
         "narrow": {
-          "y": 2610
+          "y": 3366
         }
+      },
+      "step": {
+        "name": "Chief closes out the worker",
+        "who": "chief",
+        "place": "off the line, only sometimes",
+        "plain": "The chief closes the worker's window, pulls main, and updates the log, the board and the tracker.",
+        "detail": "The chief closes the worker.",
+        "stage": "merge"
       }
     },
     {
@@ -859,12 +1487,42 @@
       ],
       "pos": {
         "wide": {
-          "x": 1328,
+          "x": 1928,
           "y": 142
         },
         "narrow": {
-          "y": 2830
+          "y": 3586
         }
+      },
+      "step": {
+        "name": "Shift handoff to a new chief",
+        "who": "chief",
+        "place": "above the line: the chief's loop",
+        "plain": "At 45 % of its memory the chief starts its successor; each worker confirms the new chief.",
+        "detail": "At 45 % context, a new chief takes over the whole fleet. A handoff is refused while a helper session is live. This was v3's seventh phase.",
+        "changes": [
+          {
+            "text": "The chief hands over after 80 to 120 turns instead of at 45 % context.",
+            "ticket": "HIMMEL-8202",
+            "state": "in progress"
+          },
+          {
+            "text": "Each worker accepts the new chief in one turn.",
+            "ticket": "HIMMEL-7720",
+            "state": "in progress"
+          },
+          {
+            "text": "An open PR with no live worker blocks the handover.",
+            "ticket": "HIMMEL-8501",
+            "state": "done"
+          },
+          {
+            "text": "The new chief also receives the Start and Plan and design work still in flight: grills, specs and plans not yet tickets, as short pointers only, each with a one-line status.",
+            "ticket": "HIMMEL-8549",
+            "state": "not started"
+          }
+        ],
+        "stage": "assign"
       }
     }
   ],
@@ -882,7 +1540,11 @@
         }
       ],
       "path": {
-        "wide": "M203,184 H228 V142 H253"
+        "wide": "M803,184 H828 V142 H853"
+      },
+      "move": {
+        "lead": "when",
+        "say": "fewer workers than the fleet can hold: pick more work"
       }
     },
     {
@@ -898,7 +1560,11 @@
         }
       ],
       "path": {
-        "wide": "M328,274 V442"
+        "wide": "M928,274 V442"
+      },
+      "move": {
+        "lead": "when",
+        "say": "usage left, a free slot and a valid brief: the worker starts"
       }
     },
     {
@@ -915,7 +1581,11 @@
         }
       ],
       "path": {
-        "wide": "M253,254 H228 V191 H203"
+        "wide": "M853,254 H828 V191 H803"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "the fleet is full: wait for a free slot"
       }
     },
     {
@@ -932,7 +1602,11 @@
         }
       ],
       "path": {
-        "wide": "M403,247 H423 V56 H403"
+        "wide": "M1003,247 H1023 V56 H1003"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "the usage budget is spent: your decision"
       }
     },
     {
@@ -949,7 +1623,11 @@
         }
       ],
       "path": {
-        "wide": "M403,254 H433 V62 H403"
+        "wide": "M1003,254 H1033 V62 H1003"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a refusal page is still waiting for you"
       }
     },
     {
@@ -966,7 +1644,11 @@
         }
       ],
       "path": {
-        "wide": "M316,234 V218"
+        "wide": "M916,234 V218"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a top-tier worker without a stated reason: back to the brief"
       }
     },
     {
@@ -982,7 +1664,11 @@
         }
       ],
       "path": {
-        "wide": "M128,234 V218"
+        "wide": "M728,234 V218"
+      },
+      "move": {
+        "lead": "when",
+        "say": "a started worker shows no LIVE after 10 minutes: flagged, back to waiting"
       }
     },
     {
@@ -998,7 +1684,11 @@
         }
       ],
       "path": {
-        "wide": "M603,558 H628 V563 H603"
+        "wide": "M1203,558 H1228 V563 H1203"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "the message has no type or no ticket ID: rewrite it"
       }
     },
     {
@@ -1014,7 +1704,11 @@
         }
       ],
       "path": {
-        "wide": "M528,670 V686"
+        "wide": "M1128,670 V686"
+      },
+      "move": {
+        "lead": "when",
+        "say": "the change is code or reviewable docs: it needs a review round first"
       }
     },
     {
@@ -1030,7 +1724,11 @@
         }
       ],
       "path": {
-        "wide": "M716,498 V482"
+        "wide": "M1316,498 V482"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "the review round has not run: opening waits until it has"
       }
     },
     {
@@ -1046,7 +1744,11 @@
         }
       ],
       "path": {
-        "wide": "M740,482 V498"
+        "wide": "M1340,482 V498"
+      },
+      "move": {
+        "lead": "when",
+        "say": "no blocking finding left: the pull request may open"
       }
     },
     {
@@ -1062,7 +1764,11 @@
         }
       ],
       "path": {
-        "wide": "M653,458 H623 V569 H603"
+        "wide": "M1253,458 H1223 V569 H1203"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "a serious finding is agreed: fix, push, new round (phase 4, Build)"
       }
     },
     {
@@ -1079,7 +1785,11 @@
         }
       ],
       "path": {
-        "wide": "M803,446 H828 V643 H803"
+        "wide": "M1403,446 H1428 V643 H1403"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "three full rounds are used up: the limit applies"
       }
     },
     {
@@ -1095,7 +1805,11 @@
         }
       ],
       "path": {
-        "wide": "M803,650 H823 V452 H803"
+        "wide": "M1403,650 H1423 V452 H1403"
+      },
+      "move": {
+        "lead": "when",
+        "say": "one extra round is allowed, on what changed only"
       }
     },
     {
@@ -1112,7 +1826,11 @@
         }
       ],
       "path": {
-        "wide": "M803,657 H833 V138 H803"
+        "wide": "M1403,657 H1433 V138 H1403"
+      },
+      "move": {
+        "lead": "when",
+        "say": "the worker asks the chief for one more round"
       }
     },
     {
@@ -1129,7 +1847,11 @@
         }
       ],
       "path": {
-        "wide": "M928,630 V538"
+        "wide": "M1528,630 V538"
+      },
+      "move": {
+        "lead": "when",
+        "say": "every check green and every thread resolved"
       }
     },
     {
@@ -1146,7 +1868,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,646 H1028 V462 H1003"
+        "wide": "M1603,646 H1628 V462 H1603"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a check failed"
       }
     },
     {
@@ -1163,7 +1889,11 @@
         }
       ],
       "path": {
-        "wide": "M853,643 H818 V459 H803"
+        "wide": "M1453,643 H1418 V459 H1403"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "green, but the review state still blocks: another round (phase 5, Review)"
       }
     },
     {
@@ -1180,7 +1910,11 @@
         }
       ],
       "path": {
-        "wide": "M853,650 H838 V358 H418 V70 H403"
+        "wide": "M1453,650 H1438 V358 H1018 V70 H1003"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "GitHub would block the merge: your decision (phase 3, Assign)"
       }
     },
     {
@@ -1196,7 +1930,11 @@
         }
       ],
       "path": {
-        "wide": "M928,686 V670"
+        "wide": "M1528,686 V670"
+      },
+      "move": {
+        "lead": "when",
+        "say": "the reviewers passed and the quick run is green: the full CI starts"
       }
     },
     {
@@ -1212,7 +1950,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,702 H1028 V710 H1003"
+        "wide": "M1603,702 H1628 V710 H1603"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "waits while a reviewer hasn't passed, the quick run isn't green, or CodeRabbit is still reviewing"
       }
     },
     {
@@ -1228,7 +1970,11 @@
         }
       ],
       "path": {
-        "wide": "M853,462 H813 V490 H633 V574 H603"
+        "wide": "M1453,462 H1413 V490 H1233 V574 H1203"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "the pull request caused it: fix it, with its own review round (phase 4, Build)"
       }
     },
     {
@@ -1245,7 +1991,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,128 H1023 V508 H1003"
+        "wide": "M1603,128 H1623 V508 H1603"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a readiness check failed: back to READY"
       }
     },
     {
@@ -1261,7 +2011,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,135 H1028 V316 H1003"
+        "wide": "M1603,135 H1628 V316 H1603"
+      },
+      "move": {
+        "lead": "when",
+        "say": "the change touches a trust path, or the brief asks for a judge"
       }
     },
     {
@@ -1277,7 +2031,11 @@
         }
       ],
       "path": {
-        "wide": "M853,386 H843 V485 H618 V579 H603"
+        "wide": "M1453,386 H1443 V485 H1218 V579 H1203"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "NO-GO: back to a fix (phase 4, Build)"
       }
     },
     {
@@ -1293,7 +2051,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,382 H1033 V194 H1003"
+        "wide": "M1603,382 H1633 V194 H1603"
+      },
+      "move": {
+        "lead": "when",
+        "say": "GO on this exact commit"
       }
     },
     {
@@ -1310,7 +2072,11 @@
         }
       ],
       "path": {
-        "wide": "M916,274 V310"
+        "wide": "M1516,274 V310"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a trust path cannot take a plain approval: a judge first"
       }
     },
     {
@@ -1327,7 +2093,11 @@
         }
       ],
       "path": {
-        "wide": "M940,274 V310"
+        "wide": "M1540,274 V310"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a serious finding has no recorded decision: a judge or the chief rules"
       }
     },
     {
@@ -1344,7 +2114,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,238 H1018 V142 H1003"
+        "wide": "M1603,238 H1618 V142 H1603"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "the readiness check did not pass"
       }
     },
     {
@@ -1361,7 +2135,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,242 H1038 V246 H1003"
+        "wide": "M1603,242 H1638 V246 H1603"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a worker cannot write its own approval"
       }
     },
     {
@@ -1378,7 +2156,11 @@
         }
       ],
       "path": {
-        "wide": "M1003,250 H1018 V452 H1053"
+        "wide": "M1603,250 H1618 V452 H1653"
+      },
+      "move": {
+        "lead": "when",
+        "say": "approval written; the worker is told GO (phase 7, Merge and wrap up)"
       }
     },
     {
@@ -1395,7 +2177,11 @@
         }
       ],
       "path": {
-        "wide": "M1053,458 H1033 V514 H1003"
+        "wide": "M1653,458 H1633 V514 H1603"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "no approval for this commit: back to READY (phase 6, Check and approve)"
       }
     },
     {
@@ -1412,7 +2198,11 @@
         }
       ],
       "path": {
-        "wide": "M1053,466 H1038 V254 H1003"
+        "wide": "M1653,466 H1638 V254 H1603"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a trust path without a trust-reviewed approval (phase 6, Check and approve)"
       }
     },
     {
@@ -1429,7 +2219,11 @@
         }
       ],
       "path": {
-        "wide": "M1053,472 H1013 V291 H438 V76 H403"
+        "wide": "M1653,472 H1613 V291 H1038 V76 H1003"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "main is red: your decision (phase 3, Assign)"
       }
     },
     {
@@ -1446,7 +2240,11 @@
         }
       ],
       "path": {
-        "wide": "M1128,482 V498"
+        "wide": "M1728,482 V498"
+      },
+      "move": {
+        "lead": "when",
+        "say": "merged, pinned to the commit that was checked"
       }
     },
     {
@@ -1462,7 +2260,11 @@
         }
       ],
       "path": {
-        "wide": "M1203,564 H1228 V570 H1203"
+        "wide": "M1803,564 H1828 V570 H1803"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "a background task is still running: stop it, check again"
       }
     },
     {
@@ -1478,7 +2280,11 @@
         }
       ],
       "path": {
-        "wide": "M1203,135 H1228 V254 H1203"
+        "wide": "M1803,135 H1828 V254 H1803"
+      },
+      "move": {
+        "lead": "when",
+        "say": "MERGED or WRAPPED: close the worker out"
       }
     },
     {
@@ -1495,7 +2301,11 @@
         }
       ],
       "path": {
-        "wide": "M1128,162 V178"
+        "wide": "M1728,162 V178"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "put-off work has no ticket: file it"
       }
     },
     {
@@ -1511,7 +2321,11 @@
         }
       ],
       "path": {
-        "wide": "M1053,142 H1043 V323 H1003"
+        "wide": "M1653,142 H1643 V323 H1603"
+      },
+      "move": {
+        "lead": "when",
+        "say": "READY or a question: a judge or the chief looks (phase 6, Check and approve)"
       }
     },
     {
@@ -1527,7 +2341,11 @@
         }
       ],
       "path": {
-        "wide": "M203,198 H223 V170 H1223 V138 H1253"
+        "wide": "M803,198 H823 V170 H1823 V138 H1853"
+      },
+      "move": {
+        "lead": "when",
+        "say": "the chief's context is 45 % full: hand over"
       }
     },
     {
@@ -1544,7 +2362,11 @@
         }
       ],
       "path": {
-        "wide": "M1403,138 H1428 V146 H1403"
+        "wide": "M2003,138 H2028 V146 H2003"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "held while a helper session or outside process runs"
       }
     },
     {
@@ -1560,7 +2382,11 @@
         }
       ],
       "path": {
-        "wide": "M1253,146 H1233 V165 H233 V205 H203"
+        "wide": "M1853,146 H1833 V165 H833 V205 H803"
+      },
+      "move": {
+        "lead": "when",
+        "say": "every worker has accepted the new chief: back to waiting"
       }
     },
     {
@@ -1571,7 +2397,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M328,162 V178"
+        "wide": "M928,162 V178"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1582,7 +2412,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M340,218 V234"
+        "wide": "M940,218 V234"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1593,7 +2427,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M528,482 V498"
+        "wide": "M1128,482 V498"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1604,7 +2442,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M528,538 V554"
+        "wide": "M1128,538 V554"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1615,7 +2457,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M403,462 H453"
+        "wide": "M1003,462 H1053"
+      },
+      "move": {
+        "lead": "then",
+        "say": "(phase 4, Build)"
       }
     },
     {
@@ -1626,7 +2472,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M528,594 V630"
+        "wide": "M1128,594 V630"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1637,7 +2487,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M603,702 H638 V466 H653"
+        "wide": "M1203,702 H1238 V466 H1253"
+      },
+      "move": {
+        "lead": "then",
+        "say": "(phase 5, Review)"
       }
     },
     {
@@ -1648,7 +2502,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M803,511 H813 V699 H803"
+        "wide": "M1403,511 H1413 V699 H1403"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1659,7 +2517,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M728,726 V742"
+        "wide": "M1328,726 V742"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1670,7 +2532,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M803,762 H928 V726"
+        "wide": "M1403,762 H1528 V726"
+      },
+      "move": {
+        "lead": "then",
+        "say": "(phase 6, Check and approve)"
       }
     },
     {
@@ -1681,7 +2547,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M1003,522 H1008 V149 H1003"
+        "wide": "M1603,522 H1608 V149 H1603"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1692,7 +2562,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M1003,156 H1013 V258 H1003"
+        "wide": "M1603,156 H1613 V258 H1603"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1703,7 +2577,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M1203,578 H1218 V142 H1203"
+        "wide": "M1803,578 H1818 V142 H1803"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1714,7 +2592,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M1128,538 V554"
+        "wide": "M1728,538 V554"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1725,7 +2607,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M928,350 V366"
+        "wide": "M1528,350 V366"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1736,7 +2622,11 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M928,218 V234"
+        "wide": "M1528,218 V234"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
       }
     },
     {
@@ -1747,7 +2637,347 @@
       "condition": "next step",
       "sources": [],
       "path": {
-        "wide": "M728,162 V442"
+        "wide": "M1328,162 V442"
+      },
+      "move": {
+        "lead": "then",
+        "say": ""
+      }
+    },
+    {
+      "id": "m.s.idea.p.grill",
+      "from": "s.idea",
+      "to": "p.grill",
+      "kind": "flow",
+      "condition": "the chief decides it needs questioning",
+      "path": {
+        "wide": "M128,86 V122"
+      },
+      "move": {
+        "lead": "then",
+        "say": "the chief decides it needs questioning"
+      }
+    },
+    {
+      "id": "m.s.idea.p.write",
+      "from": "s.idea",
+      "to": "p.write",
+      "kind": "flow",
+      "condition": "a small, clear idea goes straight to the ticket",
+      "path": {
+        "wide": "M203,66 H228 V142 H253"
+      },
+      "move": {
+        "lead": "then",
+        "say": "a small, clear idea goes straight to the ticket"
+      }
+    },
+    {
+      "id": "m.p.grill.s.minerva",
+      "from": "p.grill",
+      "to": "s.minerva",
+      "kind": "flow",
+      "condition": "big or core: the full spec route",
+      "path": {
+        "wide": "M128,162 V178"
+      },
+      "move": {
+        "lead": "then",
+        "say": "big or core: the full spec route"
+      }
+    },
+    {
+      "id": "m.p.grill.p.write",
+      "from": "p.grill",
+      "to": "p.write",
+      "kind": "flow",
+      "condition": "it holds up: fill the ticket",
+      "path": {
+        "wide": "M203,138 H253"
+      },
+      "move": {
+        "lead": "then",
+        "say": "it holds up: fill the ticket"
+      }
+    },
+    {
+      "id": "m.p.grill.s.idea",
+      "from": "p.grill",
+      "to": "s.idea",
+      "kind": "loop",
+      "condition": "the grill changed the idea: think again",
+      "path": {
+        "wide": "M140,122 V86"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "the grill changed the idea: think again"
+      }
+    },
+    {
+      "id": "m.s.minerva.again",
+      "from": "s.minerva",
+      "to": "s.minerva",
+      "kind": "loop",
+      "condition": "a critic finds a hole: the spec is redone",
+      "path": {
+        "wide": "M53,194 H33 V202 H53"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "a critic finds a hole: the spec is redone"
+      }
+    },
+    {
+      "id": "m.s.minerva.p.write",
+      "from": "s.minerva",
+      "to": "p.write",
+      "kind": "flow",
+      "condition": "the checked spec goes into the ticket",
+      "path": {
+        "wide": "M203,198 H238 V150 H253"
+      },
+      "move": {
+        "lead": "then",
+        "say": "the checked spec goes into the ticket"
+      }
+    },
+    {
+      "id": "m.p.write.park",
+      "from": "p.write",
+      "to": "p.write",
+      "kind": "refusal",
+      "condition": "a section is empty: the draft is parked until it is filled",
+      "path": {
+        "wide": "M253,134 H241 V130 H253"
+      },
+      "move": {
+        "lead": "stops if",
+        "say": "a section is empty: the draft is parked until it is filled"
+      }
+    },
+    {
+      "id": "m.p.write.s.cost",
+      "from": "p.write",
+      "to": "s.cost",
+      "kind": "flow",
+      "condition": "the ticket is filed",
+      "path": {
+        "wide": "M328,162 V178"
+      },
+      "move": {
+        "lead": "then",
+        "say": "the ticket is filed"
+      }
+    },
+    {
+      "id": "m.s.cost.p.plan",
+      "from": "s.cost",
+      "to": "p.plan",
+      "kind": "flow",
+      "condition": "the ticket's plan is written and checked (phase 2, Plan and design)",
+      "path": {
+        "wide": "M403,194 H443 V150 H453"
+      },
+      "move": {
+        "lead": "then",
+        "say": "the ticket's plan is written and checked (phase 2, Plan and design)"
+      }
+    },
+    {
+      "id": "m.s.cost.p.estimate",
+      "from": "s.cost",
+      "to": "p.estimate",
+      "kind": "flow",
+      "condition": "its cost feeds the estimate of later tickets (phase 2, Plan and design)",
+      "path": {
+        "wide": "M403,202 H453"
+      },
+      "move": {
+        "lead": "then",
+        "say": "its cost feeds the estimate of later tickets (phase 2, Plan and design)"
+      }
+    },
+    {
+      "id": "m.p.plan.again",
+      "from": "p.plan",
+      "to": "p.plan",
+      "kind": "loop",
+      "condition": "a critic finds a hole: the plan is redone",
+      "path": {
+        "wide": "M453,138 H433 V130 H453"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "a critic finds a hole: the plan is redone"
+      }
+    },
+    {
+      "id": "m.p.plan.p.estimate",
+      "from": "p.plan",
+      "to": "p.estimate",
+      "kind": "flow",
+      "condition": "the plan is sized",
+      "path": {
+        "wide": "M528,162 V178"
+      },
+      "move": {
+        "lead": "then",
+        "say": "the plan is sized"
+      }
+    },
+    {
+      "id": "m.p.plan.p.design",
+      "from": "p.plan",
+      "to": "p.design",
+      "kind": "flow",
+      "condition": "a page change goes to design first",
+      "path": {
+        "wide": "M603,146 H616 V458 H603"
+      },
+      "move": {
+        "lead": "then",
+        "say": "a page change goes to design first"
+      }
+    },
+    {
+      "id": "m.p.plan.c.pick",
+      "from": "p.plan",
+      "to": "c.pick",
+      "kind": "flow",
+      "condition": "a small ticket waits for the chief to pick it (phase 3, Assign)",
+      "path": {
+        "wide": "M560,122 V96 H928 V122"
+      },
+      "move": {
+        "lead": "then",
+        "say": "a small ticket waits for the chief to pick it (phase 3, Assign)"
+      }
+    },
+    {
+      "id": "m.p.estimate.c.brief",
+      "from": "p.estimate",
+      "to": "c.brief",
+      "kind": "flow",
+      "condition": "an advisory line in the brief (phase 3, Assign)",
+      "path": {
+        "wide": "M603,202 H624 V226 H838 V206 H853"
+      },
+      "move": {
+        "lead": "then",
+        "say": "an advisory line in the brief (phase 3, Assign)"
+      }
+    },
+    {
+      "id": "m.p.design.p.approve",
+      "from": "p.design",
+      "to": "p.approve",
+      "kind": "flow",
+      "condition": "the mockup goes to you",
+      "path": {
+        "wide": "M453,462 H438 V70 H453"
+      },
+      "move": {
+        "lead": "then",
+        "say": "the mockup goes to you"
+      }
+    },
+    {
+      "id": "m.p.approve.p.design",
+      "from": "p.approve",
+      "to": "p.design",
+      "kind": "loop",
+      "condition": "changes asked: the design is redrawn",
+      "path": {
+        "wide": "M603,66 H632 V470 H603"
+      },
+      "move": {
+        "lead": "goes back if",
+        "say": "changes asked: the design is redrawn"
+      }
+    },
+    {
+      "id": "m.p.approve.p.write",
+      "from": "p.approve",
+      "to": "p.write",
+      "kind": "flow",
+      "condition": "approved: the build ticket is filed (phase 1, Start)",
+      "path": {
+        "wide": "M453,62 H338 V122"
+      },
+      "move": {
+        "lead": "then",
+        "say": "approved: the build ticket is filed (phase 1, Start)"
+      }
+    },
+    {
+      "id": "m.c.start.c.wait",
+      "from": "c.start",
+      "to": "c.wait",
+      "kind": "flow",
+      "condition": "from here the chief waits for work",
+      "path": {
+        "wide": "M716,162 V178"
+      },
+      "move": {
+        "lead": "next",
+        "say": "from here the chief waits for work"
+      }
+    },
+    {
+      "id": "m.o.ruling.c.wait",
+      "from": "o.ruling",
+      "to": "c.wait",
+      "kind": "flow",
+      "condition": "your note reaches the chief on its next wake",
+      "path": {
+        "wide": "M853,70 H818 V190 H803"
+      },
+      "move": {
+        "lead": "next",
+        "say": "your note reaches the chief on its next wake"
+      }
+    },
+    {
+      "id": "m.g.mergehook.l.merge",
+      "from": "g.mergehook",
+      "to": "l.merge",
+      "kind": "flow",
+      "condition": "stands beside the merge: a merge typed by hand meets it",
+      "path": {
+        "wide": "M1803,646 H1818 V466 H1803"
+      },
+      "move": {
+        "lead": "next",
+        "say": "stands beside the merge: a merge typed by hand meets it"
+      }
+    },
+    {
+      "id": "m.c.residual.s.idea",
+      "from": "c.residual",
+      "to": "s.idea",
+      "kind": "flow",
+      "condition": "the follow-up starts again at phase 1, as an idea (phase 1, Start)",
+      "path": {
+        "wide": "M1653,202 H1640 V100 H150 V86"
+      },
+      "move": {
+        "lead": "next",
+        "say": "the follow-up starts again at phase 1, as an idea (phase 1, Start)"
+      }
+    },
+    {
+      "id": "m.c.wrapmerged.c.wait",
+      "from": "c.wrapmerged",
+      "to": "c.wait",
+      "kind": "flow",
+      "condition": "the worker's window closes; the chief waits for the next event (phase 3, Assign)",
+      "path": {
+        "wide": "M1728,274 V286 H644 V202 H653"
+      },
+      "move": {
+        "lead": "next",
+        "say": "the worker's window closes; the chief waits for the next event (phase 3, Assign)"
       }
     }
   ],
@@ -1758,101 +2988,126 @@
       "steps": [
         {
           "at": "c.wait",
-          "caption": "WAKE underfilled: live is below the cap"
+          "caption": "WAKE underfilled: live is below the cap",
+          "say": "The chief wakes: fewer workers run than the fleet can hold"
         },
         {
           "at": "c.pick",
-          "caption": "Ranked, collision-checked candidates"
+          "caption": "Ranked, collision-checked candidates",
+          "say": "A ranked list, no two on the same files"
         },
         {
           "at": "c.brief",
-          "caption": "Brief, launcher and worktree"
+          "caption": "Brief, launcher and worktree",
+          "say": "The brief and its own worktree"
         },
         {
           "at": "c.arm",
-          "caption": "Bank PROCEED, fleet below cap, Tier line valid"
+          "caption": "Bank PROCEED, fleet below cap, Tier line valid",
+          "say": "Usage left, a free slot and a valid brief"
         },
         {
           "at": "l.ticket",
-          "caption": "Reads the ticket it ships"
+          "caption": "Reads the ticket it ships",
+          "say": "Reads the ticket it ships"
         },
         {
           "at": "l.live",
-          "caption": "Queue lock taken, LIVE bullet written"
+          "caption": "Queue lock taken, LIVE bullet written",
+          "say": "The worker takes its lock and posts LIVE"
         },
         {
           "at": "l.red",
-          "caption": "One failing assertion first"
+          "caption": "One failing assertion first",
+          "say": "One failing assertion first"
         },
         {
           "at": "l.commit",
-          "caption": "Conventional commit, trailers in the first commit"
+          "caption": "Conventional commit, trailers in the first commit",
+          "say": "A conventional commit; the first one says where it was tested and how it was checked"
         },
         {
           "at": "g.prepush",
-          "caption": "Pre-push gates pass"
+          "caption": "Pre-push gates pass",
+          "say": "The push checks pass"
         },
         {
           "at": "g.marker",
-          "caption": "Lane full: a CR marker is written"
+          "caption": "Lane full: a CR marker is written",
+          "say": "Code changed: a review round must run first"
         },
         {
           "at": "l.prcheck",
-          "caption": "round 1 of 3, zero blocking"
+          "caption": "round 1 of 3, zero blocking",
+          "say": "Round 1 of 3, nothing blocking"
         },
         {
           "at": "l.pr",
-          "caption": "Marker cleared, PR opens"
+          "caption": "Marker cleared, PR opens",
+          "say": "The review has run; the PR opens"
         },
         {
           "at": "g.coderabbit",
-          "caption": "CodeRabbit reviews the PR"
+          "caption": "CodeRabbit reviews the PR",
+          "say": "CodeRabbit reviews the PR"
         },
         {
           "at": "g.reviewgate",
-          "caption": "Every hard reviewer passed at the head"
+          "caption": "Every hard reviewer passed at the head",
+          "say": "Every required reviewer passed on this commit"
         },
         {
           "at": "g.release",
-          "caption": "ci:go released (planned)"
+          "caption": "ci:go released (planned)",
+          "say": "The heavy CI jobs start (ci:go, this version)"
         },
         {
           "at": "g.ci",
-          "caption": "check-ci exit 0"
+          "caption": "check-ci exit 0",
+          "say": "CI is green"
         },
         {
           "at": "l.ready",
-          "caption": "Coverage lint, then READY"
+          "caption": "Coverage lint, then READY",
+          "say": "Ticket coverage checked, then READY"
         },
         {
           "at": "c.verify",
-          "caption": "Ready-check PASS, TRUST-PATH no"
+          "caption": "Ready-check PASS, TRUST-PATH no",
+          "say": "The readiness check passes; no trust path"
         },
         {
           "at": "c.go",
-          "caption": "GO file written"
+          "caption": "GO file written",
+          "say": "The GO is written"
         },
         {
           "at": "l.merge",
-          "caption": "Squash merge pinned to the head"
+          "caption": "Squash merge pinned to the head",
+          "say": "A squash merge, pinned to the checked commit"
         },
         {
           "at": "l.close",
-          "caption": "Ticket closed if the PR completes it"
+          "caption": "Ticket closed if the PR completes it",
+          "say": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
-          "caption": "Subtree clean: CLOSABLE"
+          "caption": "Subtree clean: CLOSABLE",
+          "say": "Nothing is left running: the worker may close"
         },
         {
           "at": "c.legevent",
-          "caption": "MERGED or WRAPPED routed"
+          "caption": "MERGED or WRAPPED routed",
+          "say": "MERGED or WRAPPED reaches the chief"
         },
         {
           "at": "c.wrapmerged",
-          "caption": "Window closed, board and tracker updated"
+          "caption": "Window closed, board and tracker updated",
+          "say": "Window closed, board and tracker updated"
         }
-      ]
+      ],
+      "name": "A clean PR"
     },
     {
       "id": "w2",
@@ -1860,103 +3115,128 @@
       "steps": [
         {
           "at": "l.ready",
-          "caption": "READY at the head; the diff touches a trust path"
+          "caption": "READY at the head; the diff touches a trust path",
+          "say": "READY; the change touches a trust path"
         },
         {
           "at": "c.verify",
-          "caption": "TRUST-PATH: yes"
+          "caption": "TRUST-PATH: yes",
+          "say": "The change touches a trust path"
         },
         {
           "at": "j.judge",
-          "caption": "A judge is convened"
+          "caption": "A judge is convened",
+          "say": "A judge is convened"
         },
         {
           "at": "j.verdict",
           "caption": "NO-GO recorded for this head",
-          "state": "refused"
+          "state": "refused",
+          "say": "NO-GO for this commit"
         },
         {
           "at": "l.commit",
-          "caption": "The worker fixes and pushes; every push needs its own round"
+          "caption": "The worker fixes and pushes; every push needs its own round",
+          "say": "The worker fixes and pushes; every push needs its own round"
         },
         {
           "at": "g.prepush",
-          "caption": "Pre-push gates"
+          "caption": "Pre-push gates",
+          "say": "The push checks"
         },
         {
           "at": "g.marker",
-          "caption": "Marker re-minted"
+          "caption": "Marker re-minted",
+          "say": "A new review round must run"
         },
         {
           "at": "l.prcheck",
-          "caption": "Review round 2"
+          "caption": "Review round 2",
+          "say": "Review round 2"
         },
         {
           "at": "l.pr",
-          "caption": "PR is already open: push"
+          "caption": "PR is already open: push",
+          "say": "PR is already open: push"
         },
         {
           "at": "g.coderabbit",
-          "caption": "CodeRabbit reviews the PR"
+          "caption": "CodeRabbit reviews the PR",
+          "say": "CodeRabbit reviews the PR"
         },
         {
           "at": "g.reviewgate",
-          "caption": "Every hard reviewer passed at the head"
+          "caption": "Every hard reviewer passed at the head",
+          "say": "Every required reviewer passed on this commit"
         },
         {
           "at": "g.release",
-          "caption": "ci:go released (planned)"
+          "caption": "ci:go released (planned)",
+          "say": "The heavy CI jobs start (ci:go, this version)"
         },
         {
           "at": "g.ci",
-          "caption": "Green again"
+          "caption": "Green again",
+          "say": "Green again"
         },
         {
           "at": "l.ready",
-          "caption": "READY at the new head"
+          "caption": "READY at the new head",
+          "say": "READY at the new commit"
         },
         {
           "at": "c.verify",
-          "caption": "TRUST-PATH: yes again"
+          "caption": "TRUST-PATH: yes again",
+          "say": "A trust path again"
         },
         {
           "at": "j.judge",
-          "caption": "Judge reconvened"
+          "caption": "Judge reconvened",
+          "say": "Judge reconvened"
         },
         {
           "at": "j.verdict",
-          "caption": "GO on this exact head"
+          "caption": "GO on this exact head",
+          "say": "GO on this exact commit"
         },
         {
           "at": "c.verdictgo",
-          "caption": "write-verdict, then go.sh --trust-reviewed"
+          "caption": "write-verdict, then go.sh --trust-reviewed",
+          "say": "The verdict is filed, then a trust-reviewed GO is written"
         },
         {
           "at": "c.go",
           "caption": "Trust-reviewed GO",
-          "ghost": "e.go.trustplain"
+          "ghost": "e.go.trustplain",
+          "say": "Trust-reviewed GO"
         },
         {
           "at": "l.merge",
-          "caption": "The trust-path gate passes (exit 21 avoided)"
+          "caption": "The trust-path gate passes (exit 21 avoided)",
+          "say": "The trust-path check passes"
         },
         {
           "at": "l.close",
-          "caption": "Ticket closed if the PR completes it"
+          "caption": "Ticket closed if the PR completes it",
+          "say": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
-          "caption": "WRAP"
+          "caption": "WRAP",
+          "say": "WRAP"
         },
         {
           "at": "c.legevent",
-          "caption": "WRAPPED text says residual without a key: ESCALATE"
+          "caption": "WRAPPED text says residual without a key: ESCALATE",
+          "say": "WRAPPED mentions put-off work with no ticket: the chief looks"
         },
         {
           "at": "c.residual",
-          "caption": "The worker files a HIMMEL ticket"
+          "caption": "The worker files a HIMMEL ticket",
+          "say": "The follow-up is filed as a ticket"
         }
-      ]
+      ],
+      "name": "Judge NO-GO, then fix"
     },
     {
       "id": "w3",
@@ -1964,115 +3244,143 @@
       "steps": [
         {
           "at": "l.prcheck",
-          "caption": "Rounds 1 to 3; round 3 leaves an Important finding"
+          "caption": "Rounds 1 to 3; round 3 leaves an Important finding",
+          "say": "Rounds 1 to 3; round 3 leaves an Important finding"
         },
         {
           "at": "g.cap",
           "caption": "A 4th full round exits 8",
-          "state": "refused"
+          "state": "refused",
+          "say": "A fourth full round is refused"
         },
         {
           "at": "c.grant",
-          "caption": "FINDING to the chief; a signed judge NO-GO buys the round"
+          "caption": "FINDING to the chief; a signed judge NO-GO buys the round",
+          "say": "The worker asks the chief; a signed judge ruling grants one more round"
         },
         {
           "at": "l.prcheck",
-          "caption": "Counts as round 3: clean"
+          "caption": "Counts as round 3: clean",
+          "say": "Counts as round 3: clean"
         },
         {
           "at": "l.pr",
-          "caption": "PR opens"
+          "caption": "PR opens",
+          "say": "PR opens"
         },
         {
           "at": "g.coderabbit",
-          "caption": "CodeRabbit reviews the PR"
+          "caption": "CodeRabbit reviews the PR",
+          "say": "CodeRabbit reviews the PR"
         },
         {
           "at": "g.reviewgate",
-          "caption": "Every hard reviewer passed at the head"
+          "caption": "Every hard reviewer passed at the head",
+          "say": "Every required reviewer passed on this commit"
         },
         {
           "at": "g.release",
-          "caption": "ci:go released (planned)"
+          "caption": "ci:go released (planned)",
+          "say": "The heavy CI jobs start (ci:go, this version)"
         },
         {
           "at": "g.ci",
           "caption": "check-ci exit 1",
-          "state": "refused"
+          "state": "refused",
+          "say": "CI is red"
         },
         {
           "at": "l.cired",
-          "caption": "The PR's own fault"
+          "caption": "The PR's own fault",
+          "say": "The PR's own fault"
         },
         {
           "at": "l.commit",
-          "caption": "Fix commit"
+          "caption": "Fix commit",
+          "say": "Fix commit"
         },
         {
           "at": "g.prepush",
-          "caption": "Pre-push gates"
+          "caption": "Pre-push gates",
+          "say": "The push checks"
         },
         {
           "at": "g.marker",
-          "caption": "Marker re-minted"
+          "caption": "Marker re-minted",
+          "say": "A new review round must run"
         },
         {
           "at": "l.prcheck",
-          "caption": "Delta round"
+          "caption": "Delta round",
+          "say": "The extra round, on what changed"
         },
         {
           "at": "g.cap",
-          "caption": "One delta round, Critical or escape-class only"
+          "caption": "One delta round, Critical or escape-class only",
+          "say": "One extra round; only a critical finding or a flow broken today blocks"
         },
         {
           "at": "l.prcheck",
-          "caption": "Delta round clean"
+          "caption": "Delta round clean",
+          "say": "The extra round is clean"
         },
         {
           "at": "l.pr",
-          "caption": "Push to the open PR"
+          "caption": "Push to the open PR",
+          "say": "Push to the open PR"
         },
         {
           "at": "g.coderabbit",
-          "caption": "CodeRabbit reviews the PR"
+          "caption": "CodeRabbit reviews the PR",
+          "say": "CodeRabbit reviews the PR"
         },
         {
           "at": "g.reviewgate",
-          "caption": "Every hard reviewer passed at the head"
+          "caption": "Every hard reviewer passed at the head",
+          "say": "Every required reviewer passed on this commit"
         },
         {
           "at": "g.release",
-          "caption": "ci:go released (planned)"
+          "caption": "ci:go released (planned)",
+          "say": "The heavy CI jobs start (ci:go, this version)"
         },
         {
           "at": "g.ci",
-          "caption": "Green"
+          "caption": "Green",
+          "say": "Green"
         },
         {
           "at": "l.ready",
-          "caption": "READY"
+          "caption": "READY",
+          "say": "READY"
         },
         {
           "at": "c.verify",
-          "caption": "Ready-check PASS"
+          "caption": "Ready-check PASS",
+          "say": "The readiness check passes"
         },
         {
           "at": "c.go",
-          "caption": "GO file"
+          "caption": "GO file",
+          "say": "The GO is written"
         },
         {
           "at": "l.merge",
-          "caption": "Merge"
+          "caption": "Merge",
+          "say": "Merge"
         },
         {
           "at": "l.close",
-          "caption": "Ticket closed if the PR completes it"
+          "caption": "Ticket closed if the PR completes it",
+          "say": "Ticket closed if the PR completes it"
         },
         {
           "at": "l.wrap",
-          "caption": "WRAP"
+          "caption": "WRAP",
+          "say": "WRAP"
         }
-      ]
+      ],
+      "name": "Capped round, then CI red"
     }
   ],
   "coverage": {
@@ -2221,7 +3529,7 @@
   },
   "view": {
     "wide": {
-      "w": 1464,
+      "w": 2064,
       "h": 800,
       "box": [
         150,
@@ -2263,11 +3571,7 @@
         ],
         [
           3,
-          1
-        ],
-        [
-          4,
-          1
+          2
         ],
         [
           5,
@@ -2276,8 +3580,485 @@
         [
           6,
           1
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          8,
+          1
+        ],
+        [
+          9,
+          1
         ]
       ]
     }
-  }
+  },
+  "stages": [
+    {
+      "id": "start",
+      "n": 1,
+      "name": "Start",
+      "who": "you · chief",
+      "purpose": "where does a ticket come from, how hard was its idea tested, and what did that cost? It is for you, deciding which ideas need a grill or a spec first. Most go straight to a ticket.",
+      "line": [
+        {
+          "step": "s.idea"
+        },
+        {
+          "step": "p.grill"
+        },
+        {
+          "back": "the grill changed it: think again"
+        },
+        {
+          "step": "s.minerva"
+        },
+        {
+          "step": "p.write"
+        },
+        {
+          "step": "s.cost"
+        },
+        {
+          "artifact": "ticket"
+        }
+      ],
+      "map": [
+        {
+          "step": "s.idea"
+        },
+        {
+          "step": "p.grill",
+          "tag": "chief's choice"
+        },
+        {
+          "step": "s.minerva",
+          "tag": "core tickets: this version",
+          "planned": true
+        },
+        {
+          "step": "p.write",
+          "tag": "checked when picked"
+        },
+        {
+          "step": "s.cost",
+          "tag": "partial",
+          "planned": true
+        }
+      ],
+      "gates": [
+        "The ticket checker: it refuses a Task, Story or Bug that is missing a section.",
+        "The signed-spec gate for a core ticket: planned for this version.",
+        "DoD and Proof are checked again when the chief picks the ticket, in phase 3."
+      ],
+      "back": [
+        "A section is empty: the draft is parked until it is filled (a count, not a 7-day number).",
+        "The grill changed the idea: back to step 1.",
+        "A critic finds a hole in the spec: the spec is redone."
+      ],
+      "steps": [
+        "s.idea",
+        "p.grill",
+        "s.minerva",
+        "p.write",
+        "s.cost"
+      ],
+      "measure": null,
+      "noSource": "Nothing records when an idea arrives, and the chief's planning cost is pooled, not counted per ticket."
+    },
+    {
+      "id": "plan",
+      "n": 2,
+      "name": "Plan and design",
+      "who": "chief · you · a design worker",
+      "purpose": "is this ticket planned and sized, and is a page change designed and approved before anyone builds it? It is for you, approving designs. Every ticket gets a plan; most skip the design.",
+      "line": [
+        {
+          "step": "p.plan"
+        },
+        {
+          "gate": "plan checked by a critic"
+        },
+        {
+          "step": "p.estimate"
+        },
+        {
+          "step": "p.design"
+        },
+        {
+          "step": "p.approve"
+        },
+        {
+          "back": "changes asked: redraw"
+        },
+        {
+          "artifact": "ticket"
+        }
+      ],
+      "map": [
+        {
+          "step": "p.plan",
+          "tag": "core tickets: signed, this version",
+          "planned": true
+        },
+        {
+          "step": "p.estimate",
+          "tag": "pilot",
+          "planned": true
+        },
+        {
+          "step": "p.design",
+          "tag": "chief's choice"
+        },
+        {
+          "step": "p.approve",
+          "tag": "planned · next version",
+          "planned": true
+        }
+      ],
+      "gates": [
+        "The plan critic: a core ticket's plan is checked, and signed with its spec planned for this version.",
+        "The design-approval gate: planned for the next version. Not live.",
+        "The estimate is advisory: it never changes the start."
+      ],
+      "back": [
+        "A critic finds a hole in the plan: the plan is redone.",
+        "Changes asked on the design: it is redrawn."
+      ],
+      "steps": [
+        "p.plan",
+        "p.estimate",
+        "p.design",
+        "p.approve"
+      ],
+      "measure": null,
+      "noSource": "Nothing records an estimate or a design approval yet."
+    },
+    {
+      "id": "assign",
+      "n": 3,
+      "name": "Assign",
+      "who": "chief",
+      "purpose": "how does the chief turn tickets into running workers, and what holds a ticket back? It is for you, when a ticket is not starting.",
+      "line": [
+        {
+          "gate": "DoD and Proof, or dropped"
+        },
+        {
+          "gate": "one writer per file"
+        },
+        {
+          "step": "c.pick"
+        },
+        {
+          "step": "c.brief"
+        },
+        {
+          "gate": "start: fleet cap, usage"
+        },
+        {
+          "step": "c.arm"
+        },
+        {
+          "step": "l.ticket"
+        },
+        {
+          "artifact": "brief"
+        }
+      ],
+      "map": [
+        {
+          "step": "c.pick",
+          "tag": "waves, chains, stacked series"
+        },
+        {
+          "step": "c.brief"
+        },
+        {
+          "step": "c.arm"
+        },
+        {
+          "step": "l.ticket"
+        }
+      ],
+      "gates": [
+        "DoD and Proof when picked: a ticket without them is dropped. This is printed, not recorded.",
+        "The collision check: one writer per file.",
+        "A dependency chain: a ticket blocked by an open one waits.",
+        "Hold labels: waiting for you, design put off, held.",
+        "Start checks: the fleet cap, usage, a refusal page waiting for you.",
+        "This version: a core ticket needs a signed spec before its brief."
+      ],
+      "back": [
+        "Start refused: the chief waits for a free slot, or asks for your decision.",
+        "No DoD or Proof: back to filling the ticket.",
+        "An AFK shift is a second way in: it fans tickets out as helper sessions, each in its own worktree. This page draws only the chief's path."
+      ],
+      "steps": [
+        "c.start",
+        "c.wait",
+        "c.tick",
+        "c.pick",
+        "c.brief",
+        "c.arm",
+        "l.ticket",
+        "o.ruling",
+        "c.next"
+      ],
+      "measure": null,
+      "noSource": "Dropped tickets and refused starts are printed, not recorded."
+    },
+    {
+      "id": "build",
+      "n": 4,
+      "name": "Build",
+      "who": "worker · automatic checks",
+      "purpose": "what does a worker do before anyone reviews the change, and which checks run on each commit and push? It is for you, reading a worker's progress.",
+      "line": [
+        {
+          "step": "l.live"
+        },
+        {
+          "step": "l.red"
+        },
+        {
+          "step": "l.commit"
+        },
+        {
+          "gate": "commit message check"
+        },
+        {
+          "gate": "push checks"
+        },
+        {
+          "gate": "a review is owed before the PR"
+        },
+        {
+          "artifact": "commit"
+        }
+      ],
+      "map": [
+        {
+          "step": "l.live"
+        },
+        {
+          "step": "l.red"
+        },
+        {
+          "step": "l.commit"
+        }
+      ],
+      "gates": [
+        "The commit message check.",
+        "The checks on every push.",
+        "A push that needs a review goes through and leaves a review-owed marker; the PR cannot open until the review runs."
+      ],
+      "back": [
+        "A commit refused by the message check: not recorded.",
+        "The Build time includes the automated review rounds of phase 5, which run before the PR opens."
+      ],
+      "steps": [
+        "l.live",
+        "l.red",
+        "l.commit",
+        "g.prepush",
+        "g.marker"
+      ],
+      "measure": "build"
+    },
+    {
+      "id": "review",
+      "n": 5,
+      "name": "Review",
+      "who": "worker · automatic checks · chief",
+      "purpose": "how many review rounds does a change take, and what ends them? It is for you, when a PR seems stuck in review.",
+      "line": [
+        {
+          "step": "l.prcheck"
+        },
+        {
+          "back": "finding agreed: fix, new round"
+        },
+        {
+          "gate": "round limit (3)"
+        },
+        {
+          "step": "l.pr"
+        },
+        {
+          "step": "g.coderabbit"
+        },
+        {
+          "gate": "required reviewers"
+        },
+        {
+          "artifact": "PR"
+        }
+      ],
+      "map": [
+        {
+          "step": "l.prcheck"
+        },
+        {
+          "step": "l.pr"
+        },
+        {
+          "step": "g.coderabbit"
+        }
+      ],
+      "gates": [
+        "The round limit: 3 rounds, then one extra round on what changed.",
+        "CodeRabbit.",
+        "The required reviewers."
+      ],
+      "back": [
+        "A finding is agreed: fix it, push, and start a new round (3 rounds, then the limit).",
+        "At the round limit, the chief grants one more round."
+      ],
+      "steps": [
+        "l.prcheck",
+        "g.cap",
+        "c.grant",
+        "l.pr",
+        "g.coderabbit",
+        "g.reviewgate"
+      ],
+      "measure": "review"
+    },
+    {
+      "id": "check",
+      "n": 6,
+      "name": "Check and approve",
+      "who": "checks · worker · chief · judge",
+      "purpose": "what must be true before a change may merge, who approves it, and where does it go back? It is for you, when a change is green but not merged.",
+      "line": [
+        {
+          "step": "g.ci"
+        },
+        {
+          "gate": "CI"
+        },
+        {
+          "back": "CI red: fix"
+        },
+        {
+          "step": "l.ready"
+        },
+        {
+          "step": "c.verify"
+        },
+        {
+          "back": "readiness check fails"
+        },
+        {
+          "back": "judge NO-GO: fix"
+        },
+        {
+          "step": "c.go"
+        },
+        {
+          "artifact": "GO"
+        }
+      ],
+      "map": [
+        {
+          "step": "g.ci"
+        },
+        {
+          "step": "l.ready"
+        },
+        {
+          "step": "c.verify"
+        },
+        {
+          "step": "c.go"
+        }
+      ],
+      "gates": [
+        "ci:go: planned for this version. Today it is switched off (step 30).",
+        "CI: every required check.",
+        "The readiness check.",
+        "The judge, only on a trust path."
+      ],
+      "back": [
+        "The readiness check fails: back to READY. not counted",
+        "The judge says NO-GO: back to a fix. not counted",
+        "CI is red and the PR is at fault: fix it and start a new round."
+      ],
+      "steps": [
+        "g.release",
+        "g.ci",
+        "l.cired",
+        "l.ready",
+        "c.verify",
+        "j.judge",
+        "j.verdict",
+        "c.verdictgo",
+        "c.go"
+      ],
+      "measure": "check"
+    },
+    {
+      "id": "merge",
+      "n": 7,
+      "name": "Merge and wrap up",
+      "who": "worker · chief",
+      "purpose": "what happens after the merge, and how does the chief close the work out? It is for you, checking that nothing was left behind.",
+      "line": [
+        {
+          "gate": "merge guard"
+        },
+        {
+          "step": "l.merge"
+        },
+        {
+          "step": "l.close"
+        },
+        {
+          "step": "l.wrap"
+        },
+        {
+          "step": "c.residual"
+        },
+        {
+          "artifact": "on main"
+        }
+      ],
+      "map": [
+        {
+          "step": "l.merge"
+        },
+        {
+          "step": "l.close"
+        },
+        {
+          "step": "l.wrap"
+        },
+        {
+          "step": "c.residual"
+        }
+      ],
+      "gates": [
+        "The merge guard on a merge typed by hand.",
+        "The merge waits for green CI and a GO."
+      ],
+      "back": [
+        "A merge is refused (no GO, a trust path, or a red main): not recorded.",
+        "The chief files leftover work as follow-ups, which start again at phase 1."
+      ],
+      "steps": [
+        "l.merge",
+        "g.mergehook",
+        "l.close",
+        "l.wrap",
+        "c.legevent",
+        "c.residual",
+        "c.wrapmerged"
+      ],
+      "measure": "merge"
+    }
+  ]
 }

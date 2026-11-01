@@ -2663,12 +2663,31 @@ $remaining")
     return 0
 }
 
+# _merge_pre_row <nwo> <pr> <sha> — one status-events row (result=pending) for the merge, written
+# once gh reports it MERGED and before any Jira call, so a run killed in the Jira step still
+# leaves the record that this PR merged and whether it completes the ticket. The row after the
+# Jira step supersedes it. Best-effort: no key, no title or no log writes nothing.
+_merge_pre_row() {
+    local title key brief="" contract=no
+    declare -F status_event >/dev/null && declare -F ticket_key_from_title >/dev/null || return 0
+    title=$("$GH" pr view "$2" --repo "$1" --json title -q .title 2>/dev/null) || return 0  # swallow-ok: an unread title writes no pre-Jira row; the row after the Jira step still records the merge
+    key=$(ticket_key_from_title "$title") || return 0
+    [ -n "$key" ] || return 0
+    if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then contract=yes; fi
+    if [ -n "${WORKER_SESSION_DOC:-}" ] && [ -r "$WORKER_SESSION_DOC" ]; then
+        brief=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
+    fi
+    [ "$brief" != no ] || contract=no
+    status_event event=merge key="$key" pr="$2" head="$3" contract="$contract" result=pending stage=pre-jira
+}
+
 # jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
 # one status-event row for it, written before the per-key lock is released so
 # an event queued behind it reads done-pending. A merge that does not complete
 # the ticket asks the status funnel to re-derive it, after the release.
 jira_auto_transition_on_merge() {
     local result stage="" first
+    _merge_pre_row "$@"
     _MERGE_KEY=""
     if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then _MERGE_CONTRACT=yes; else _MERGE_CONTRACT=no; fi
     _jira_close_on_merge "$@"

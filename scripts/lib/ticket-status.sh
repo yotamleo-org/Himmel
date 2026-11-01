@@ -326,16 +326,17 @@ _ts_worker_state() {
     esac
 }
 
-# ts_partial_merge <KEY> — rc 0 when the key's latest merge row is completes=no.
+# ts_partial_merge <KEY> — rc 0 when the key's latest merge row that carries a contract is completes=no
+# (a funnel row written under event merge by an older worker-jira-status.sh has none).
 ts_partial_merge() {
     local log
     log="$(ts_state_dir)/status-events.jsonl"
     [ -r "$log" ] || return 1
-    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge")] | last
+    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
         | select(. != null and .contract == "no") | 1' "$log" 2>/dev/null)" ]
 }
 
-# ts_done_pending <KEY> — the key's latest merge row is completes=yes and its
+# ts_done_pending <KEY> — the key's latest merge row with a contract is completes=yes and its
 # Done did not land (result neither moved nor noop).
 # rc 0 = pending, 1 = none, 2 = the log is unreadable.
 ts_done_pending() {
@@ -343,7 +344,7 @@ ts_done_pending() {
     log="$(ts_state_dir)/status-events.jsonl"
     [ -e "$log" ] || return 1
     [ -r "$log" ] || return 2
-    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge")] | last
+    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
         | select(. != null and .contract == "yes" and .result != "moved" and .result != "noop") | 1' "$log" 2>/dev/null)" ]
 }
 

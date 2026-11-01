@@ -1644,7 +1644,7 @@ report_qmd_daemon_restart() {
 # Keep in step with record-hook-integrity.sh's pinned directory list. Printed
 # LAST, so it is the line the calling agent reads. PULL_HEAD_BEFORE is set just
 # before update_pull runs; unset means no pull was attempted.
-HOOK_PIN_PATHS="scripts/hooks scripts/guardrails scripts/lib scripts/handover marketplace/plugins/himmel-bus/lib"
+HOOK_PIN_PATHS="scripts/hooks scripts/guardrails scripts/lib scripts/handover marketplace/plugins/himmel-ops/hooks marketplace/plugins/himmel-bus/lib"
 report_session_restart_required() {
     [ -n "${CLAUDECODE:-}" ] || return 0
     [ -n "${PULL_HEAD_BEFORE:-}" ] || return 0
