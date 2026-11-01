@@ -478,6 +478,25 @@ absent 'running-a-chief: the Telegram verb is no longer /console' "$(cat "$RUNNI
 absent 'template: the start and handover commands are /chief new and /chief next --arm' "$(cat "$CHIEF")" '/console (new|next --arm)( |`)'
 absent 'running-a-chief: the start and handover commands are /chief new and /chief next' "$(cat "$RUNNING")" '/console (new|next)( |`)'
 
+# --- 11. machine markers travel by bullet only --------------------------------
+CLAUDEX="$DOCS/handover/worker-preface-claudex.md"
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'preface: LIVE, RESOLVED, CHECKPOINT, WRAPPED and READY are bullets only' "$(tr '\n' ' ' < "$PREFACE" | tr -s ' ')" '`LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and `READY <pr> <full head> GREEN` are bullets only, never a message'
+contains 'preface: a merge is no message either' "$(tr '\n' ' ' < "$PREFACE" | tr -s ' ')" 'a merge is no message either'
+# shellcheck disable=SC2016  # literal backticks in the regex, nothing to expand
+absent 'preface: no step sends WRAPPED' "$(cat "$PREFACE")" 'send `WRAPPED`|`WRAPPED` messages'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'claudex preface: bus markers are bullets only' "$(tr '\n' ' ' < "$CLAUDEX" | tr -s ' ')" '`LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and `READY` are bullets only, never a bus message'
+absent 'claudex preface: no milestone goes by bus as before' "$(cat "$CLAUDEX")" 'report each milestone there as before'
+contains 'chief template: the wake digest line' "$(cat "$CHIEF")" 'absorbed since last wake'
+# shellcheck disable=SC2016  # literal backticks in the regex, nothing to expand
+absent 'chief template: no worker WRAPPED/MERGED message to file by hand' "$(cat "$CHIEF")" "Write each worker's .MERGED. or .WRAPPED. message"
+# Pins against over-deletion: these pass on main and must stay.
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'pin: decisions, questions and blockers still go by SendMessage' "$(tr '\n' ' ' < "$PREFACE" | tr -s ' ')" 'decision, question, blocker and permission problem by `SendMessage`'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'pin: a token quote-back still goes only by SendMessage' "$(tr '\n' ' ' < "$PREFACE" | tr -s ' ')" 'quote-back goes only in your `SendMessage` reply'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-succession-docs.sh'
     exit 0
