@@ -98,6 +98,7 @@ check "6c same label twice rc" "$rc" 0
 # a MERGED/WRAPPED from N4304 finds the resumed manifest entry N4304b
 cat > "$W/list-resume" <<'EOF'
 #!/usr/bin/env bash
+[ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
 printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md
 EOF
 chmod +x "$W/list-resume"
@@ -107,6 +108,7 @@ contains "6d 8424 HANDLED" "$out" "HANDLED wrap-merged N4304"
 contains "6d 8424 wrap gets the resumed entry" "$calls" "/h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md --pr 4400"
 cat > "$W/list-resume2" <<'EOF'
 #!/usr/bin/env bash
+[ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
 printf '%s\n' /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md /h/HIMMEL-8-N4304c-resumed-2026-11-01-RESUME.md
 EOF
 chmod +x "$W/list-resume2"
@@ -114,6 +116,24 @@ LE_LIST="$W/list-resume2" run "MERGED #4400 → abcdef01 (N4304)"
 check "6d2 8424 two resumed entries for one label: rc" "$rc" 10
 contains "6d2 8424 reason" "$out" "ESCALATE ambiguous-label"
 check "6d2 8424 wrap not run" "$calls" ""
+# a replay of a label already recorded closed cannot tell the closed worker from its successor
+printf '%s\n' '- 10:00 N4304 WRAPPED, window closed.' > "$W/doc"
+LE_LIST="$W/list-resume" run "MERGED #4400 → abcdef01 (N4304)"
+check "6d3 8424 closed label with a successor entry: rc" "$rc" 10
+contains "6d3 8424 reason" "$out" "ESCALATE ambiguous-label"
+check "6d3 8424 wrap not run" "$calls" ""
+: > "$W/doc"
+# the label must match the doc's file name, not a directory or slug that mentions it
+cat > "$W/list-slug" <<'EOF'
+#!/usr/bin/env bash
+[ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
+printf '%s\n' /h/N4304b-dir/HIMMEL-8-N9000-check-status.md /h/HIMMEL-8-N9000-see-N4304b-note.md
+EOF
+chmod +x "$W/list-slug"
+LE_LIST="$W/list-slug" run "WRAPPED N4304"
+check "6d4 8424 a directory or slug naming N4304b is not the worker: rc" "$rc" 10
+contains "6d4 8424 reason" "$out" "not-in-manifest N4304"
+check "6d4 8424 wrap not run" "$calls" ""
 LE_LIST="$W/list-resume" run "WRAPPED N43"
 check "6e 8424 a shorter label never matches N4304b: rc" "$rc" 10
 contains "6e 8424 reason" "$out" "not-in-manifest N43"

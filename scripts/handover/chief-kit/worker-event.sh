@@ -56,6 +56,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/handover/chief-kit/residual-lines.sh
 . "$HERE/residual-lines.sh"
+# shellcheck source=scripts/lib/worker-identity.sh
+. "$HERE/../../lib/worker-identity.sh"
 if [ -n "${LE_WRAP:-}" ]; then WRAP=("$LE_WRAP"); else WRAP=(bash "$HERE/wrap-merged.sh"); fi
 if [ -n "${LE_CLOSE:-}" ]; then CLOSE=("$LE_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-worker.sh"); fi
 if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$HERE/station-sync.sh"); fi
@@ -112,10 +114,22 @@ if [ -n "$labels" ]; then
     label="$labels"
     listing="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || listing=""
     worker="$(printf '%s\n' "$listing" | grep -F -- "-${label}-" | head -n 1)" || worker=""
-    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not
+    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not;
+    # matched on each doc's worker label, never on a directory or slug that mentions it
     if [ -z "$worker" ]; then
-        succ="$(printf '%s\n' "$listing" | grep -E -- "-${label}[a-z]+-")" || succ=""
+        succ=""
+        while IFS= read -r cand; do
+            [ -n "$cand" ] || continue
+            [[ "$(worker_label "$cand")" =~ ^${label}[a-z]+$ ]] && succ="$succ$cand"$'\n'
+        done <<EOF
+$listing
+EOF
+        succ="${succ%$'\n'}"
         [ "$(printf '%s' "$succ" | grep -c .)" -le 1 ] || escalate "ambiguous-label"
+        # a label already recorded closed cannot tell the closed worker from its successor: a replay escalates
+        if [ -n "$succ" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
+            escalate "ambiguous-label"
+        fi
         worker="$succ"
     fi
     # a worker already wrapped has left the manifest; wrap-merged's chief-doc bullet
