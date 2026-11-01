@@ -21,53 +21,16 @@ assert_eq() {
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-himmel-secrets.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
-# Stub keyring: one `attrs<TAB>value` line per item; a lookup or search matches
-# an item holding every queried attribute, as libsecret does.
-KBIN="$TMP/kbin"
-mkdir -p "$KBIN"
-export KSTUB_STORE="$TMP/keyring.tsv" KSTUB_LOG="$TMP/keyring.log" KSTUB_LOCKED=false
-cat >"$KBIN/secret-tool" <<'STUB'
-#!/usr/bin/env bash
-printf 'secret-tool %s\n' "$*" >>"$KSTUB_LOG"
-verb="$1"; shift
-[ "${1:-}" = --all ] && shift
-if [ "$verb" = store ]; then shift 2; fi
-q=""
-while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
-case "$verb" in
-    store) IFS= read -r val || true; printf '%s\t%s\n' "${q# }" "$val" >>"$KSTUB_STORE"; exit 0 ;;
-    lookup) [ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1 ;;
-    search) [ -z "${KSTUB_SEARCH_FAIL:-}" ] || { echo 'secret-tool: stub failure' >&2; exit 1; } ;;
-esac
-rc=1
-while IFS="$(printf '\t')" read -r attrs val; do
-    m=1
-    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
-    [ "$m" = 1 ] || continue
-    case "$verb" in
-        lookup) printf '%s' "$val"; exit 0 ;;
-        # As libsecret's secret-tool.c: the item lines and the secret go to
-        # stdout (g_print), the attribute lines to stderr (g_printerr).
-        search)
-            printf '[/stub]\nlabel = stub\nsecret = %s\n' "$val"
-            for p in $attrs; do printf 'attribute.%s = %s\n' "${p%%=*}" "${p#*=}" >&2; done
-            rc=0 ;;
-    esac
-done <"$KSTUB_STORE"
-# A search that matches nothing exits 0, as libsecret's does.
-[ "$verb" = search ] && exit 0
-exit "$rc"
-STUB
-cat >"$KBIN/busctl" <<'STUB'
-#!/usr/bin/env bash
-printf 'busctl %s\n' "$*" >>"$KSTUB_LOG"
-case "$*" in *" Locked") echo "b ${KSTUB_LOCKED:-false}" ;; esac
-STUB
-chmod +x "$KBIN/secret-tool" "$KBIN/busctl"
-export PATH="$KBIN:$PATH"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=$TMP/stub-bus"
-unset CREDENTIALS_DIRECTORY HIMMEL_SECRETS_KEYRING
-kreset() { : >"$KSTUB_STORE"; : >"$KSTUB_LOG"; }
+# The stub keyring (secret-tool and busctl first on PATH) is shared with the
+# migrate-env and S0 suites.
+# shellcheck source=fixtures/keyring-stub.sh
+. "$(dirname "$0")/fixtures/keyring-stub.sh"
+
+# R0: no row below may reach a real keyring.
+# shellcheck disable=SC2153 # KBIN is set by the sourced fixture
+assert_eq "R0 secret-tool resolves inside the stub dir" "$KBIN/secret-tool" "$(command -v secret-tool)"
+assert_eq "R0 busctl resolves inside the stub dir" "$KBIN/busctl" "$(command -v busctl)"
+[ "$FAILED" -eq 0 ] || { echo "R0 failed: refusing to run against a possible real keyring"; exit 1; }
 
 REPO="$TMP/repo"
 mkdir -p "$REPO"
@@ -282,6 +245,96 @@ assert_eq "S9 credentials serve, trailing newline stripped" "TEST_HS_A=fake-cred
 got=$(cd "$REPO" && export CREDENTIALS_DIRECTORY="$CRED" && unset TEST_HS_M && "$HS" get TEST_HS_M 2>"$TMP/s9.err"; echo "rc=$?")
 assert_eq "S9 a multi-line value is skipped" "rc=1" "$got"
 assert_eq "S9 the skip line names the key only" "1|0" "$(grep -c TEST_HS_M "$TMP/s9.err")|$(grep -c line1 "$TMP/s9.err")"
+
+# R12: a store the keyring accepted but did not keep is `failed`, never `stored`.
+kreset
+printf 'JIRA_API_TOKEN=dummy-r12\n' >"$TMP/r12.env"
+got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_DROP_STORE=1 "$HS" import-env "$TMP/r12.env" 2>/dev/null; echo "rc=$?")
+assert_eq "R12 a dropped store prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R12 a kept store prints stored, exit 0" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
+
+# R12b: the read-back is keyring-only: the value in the process env, in
+# CREDENTIALS_DIRECTORY and in a .env does not make a dropped store `stored`.
+kreset
+mkdir -p "$TMP/r12b-cred"
+printf 'dummy-r12' >"$TMP/r12b-cred/JIRA_API_TOKEN"
+printf 'JIRA_API_TOKEN=dummy-r12\n' >"$REPO/.env"
+got=$(cd "$REPO" && env -u CLAUDECODE JIRA_API_TOKEN=dummy-r12 CREDENTIALS_DIRECTORY="$TMP/r12b-cred" KSTUB_DROP_STORE=1 "$HS" import-env "$TMP/r12.env" 2>/dev/null; echo "rc=$?")
+assert_eq "R12b env, credentials and .env do not satisfy the read-back" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+rm -f "$REPO/.env"
+
+# R13: an item in the scope written with a different value is held, not overwritten.
+kreset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tdummy-old\n' >"$KSTUB_STORE"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13 a different value in user scope is held, exit 0" "held JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13 a held key makes no store call" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+# read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
+assert_eq "R13 the held item keeps its value" "service=himmel key=JIRA_API_TOKEN scope=user	dummy-old" "$(cat "$KSTUB_STORE")"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --project "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13 with --project a user-scope item does not count" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13 --project stores the project item" "1" "$(grep -c "^service=himmel key=JIRA_API_TOKEN project=$PROJ	dummy-r12" "$KSTUB_STORE")"
+kreset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tdummy-r12\n' >"$KSTUB_STORE"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13 the same value already held is stored, with no second store call" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0|0" "$(printf '%s' "$got" | tr '\n' '|')|$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+
+# R13c: a lookup that errors or times out is not an absent item: nothing is stored.
+kreset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tdummy-old\n' >"$KSTUB_STORE"
+got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_LOOKUP_RC=124 "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13c a timed-out lookup prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13c a timed-out lookup makes no store call" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+
+got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_LOOKUP_FAIL=1 "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13c an existing item whose lookup exits 1 prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13c an existing item whose lookup exits 1 is not stored over" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+kreset
+got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_SEARCH_FAIL=1 "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13c a failed existence search prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13c a failed existence search makes no store call" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+
+# R14: a name in the keep file is skipped, not stored; the existing lines stay.
+kreset
+printf 'JIRA_API_TOKEN=dummy-r12\nFIRECRAWL_API_KEY=dummy-r14\nJIRA_EMAIL=dummy@example.invalid\n' >"$TMP/r14.env"
+printf 'JIRA_API_TOKEN\n' >"$TMP/r14.keep"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --keep-file "$TMP/r14.keep" "$TMP/r14.env" 2>&1; echo "rc=$?")
+assert_eq "R14 keep-file names are skipped, other lines unchanged" "skipped JIRA_API_TOKEN (env-keep)|stored FIRECRAWL_API_KEY|skipped JIRA_EMAIL (config key; it belongs in ~/.himmel)|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R14 a keep-file name makes no store call" "0" "$(grep -c 'store.*key JIRA_API_TOKEN' "$KSTUB_LOG")"
+
+# R14d: keep-file lines read as migrate-env reads them: comments and blanks dropped.
+kreset
+printf '# keep list\n  JIRA_API_TOKEN  # the station needs it in .env\n\nFIRECRAWL_API_KEY\r\n' >"$TMP/r14d.keep"
+printf 'JIRA_API_TOKEN=dummy-r12\nFIRECRAWL_API_KEY=dummy-r14\nTELEGRAM_BOT_TOKEN=dummy-r14d\n' >"$TMP/r14d.env"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --keep-file "$TMP/r14d.keep" "$TMP/r14d.env" 2>&1; echo "rc=$?")
+assert_eq "R14d a commented or padded keep-file line still skips its key" "skipped JIRA_API_TOKEN (env-keep)|skipped FIRECRAWL_API_KEY (env-keep)|stored TELEGRAM_BOT_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
+
+# R14c: a keep file that cannot be read stops the import before any store.
+kreset
+if [ "$(id -u)" != 0 ]; then
+    cp "$TMP/r14.keep" "$TMP/r14-unreadable.keep"
+    chmod 000 "$TMP/r14-unreadable.keep"
+    got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --keep-file "$TMP/r14-unreadable.keep" "$TMP/r14.env" 2>/dev/null; echo "rc=$?")
+    assert_eq "R14c an unreadable keep-file stops the import, rc 2" "rc=2" "$got"
+    assert_eq "R14c an unreadable keep-file stores nothing" "0" "$(grep -c . "$KSTUB_STORE")"
+fi
+
+# R14b: names --class secret reads the class owner, needs no backend, and
+# follows the owner when its case changes.
+got=$(cd "$REPO" && env -u CLAUDECODE HIMMEL_SECRETS_KEYRING=off "$HS" names --class secret 2>/dev/null; echo "rc=$?")
+assert_eq "R14b names lists JIRA_API_TOKEN with no backend, exit 0" "1|rc=0" "$(printf '%s' "$got" | grep -c '^JIRA_API_TOKEN$')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "R14b names lists no config key" "0" "$(printf '%s' "$got" | grep -c '^\(JIRA_EMAIL\|JIRA_BASE_URL\|WHISPER_MODEL\)$')"
+FX="$TMP/fx"
+mkdir -p "$FX/lib" "$FX/himmelctl/lib"
+cp "$(dirname "$HS")/himmel-secrets" "$(dirname "$HS")/load-dotenv.sh" "$FX/lib/"
+cp "$(dirname "$HS")/../himmelctl/lib/secrets-manifest.json" "$FX/himmelctl/lib/"
+sed 's/^        JIRA_BASE_URL|TELEGRAM_CHAT_ID/        JIRA_API_TOKEN|JIRA_BASE_URL|TELEGRAM_CHAT_ID/' "$FX/lib/load-dotenv.sh" >"$FX/lib/load-dotenv.new" && mv "$FX/lib/load-dotenv.new" "$FX/lib/load-dotenv.sh"
+got=$(cd "$REPO" && env -u CLAUDECODE HIMMEL_SECRETS_KEYRING=off "$FX/lib/himmel-secrets" names --class secret 2>/dev/null)
+assert_eq "R14b a copy of the owner that classes JIRA_API_TOKEN as config drops it" "0" "$(printf '%s' "$got" | grep -c '^JIRA_API_TOKEN$')"
+assert_eq "R14b the copy still lists the other secrets" "1" "$(printf '%s' "$got" | grep -c '^TELEGRAM_BOT_TOKEN$')"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" names 2>/dev/null; echo "rc=$?")
+assert_eq "R14b names without --class secret is a usage error" "rc=2" "$got"
 fi
 
 echo

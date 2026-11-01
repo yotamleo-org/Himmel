@@ -445,7 +445,7 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
         const parentMessageId = messageId ? firstText.get(messageId) : undefined;
         const ts = epochMs(rec);
         const agent = agentOf(rec);
-        out.push({ type: "TOOL_CALL_START", toolCallId, toolCallName, ...(parentMessageId ? { parentMessageId } : {}), agent, ...ts });
+        out.push({ type: "TOOL_CALL_START", toolCallId, toolCallName, ...(parentMessageId ? { parentMessageId } : {}), ...(messageId ? { apiMessageId: messageId } : {}), agent, ...ts });
         const input = isObject(block.input) ? block.input : {};
         if (toolCallName === "Agent" || toolCallName === "Task") {
           const kind = str(input.subagent_type) ?? "general-purpose";

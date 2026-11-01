@@ -106,7 +106,7 @@ def classify(name, path):
     if n.endswith("-console") or n.endswith("-chief") or "console" in n and "nextleg" in n:
         return "console"
     if "-n1" in n or "/worktrees/" in path.replace("--claude-worktrees-", "/worktrees/"):
-        return "leg"
+        return "worker"
     return "other"
 
 
@@ -133,7 +133,7 @@ def main():
     posts = [c["postTokens"] for s in sess for c in s["compactions"] if c.get("postTokens")]
     post = int(statistics.median(posts)) if posts else 45000
     res = {"post_tokens_median": post, "n_sessions": len(sess), "kinds": {}}
-    for kind in ("console", "leg", "other"):
+    for kind in ("console", "worker", "other"):
         ss = [s for s in sess if s["kind"] == kind]
         if not ss:
             continue

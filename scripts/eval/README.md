@@ -501,6 +501,36 @@ plus per-lane comparisons and deltas relative to native. All rate math stays
 on the server; the page is read-only. Overrides are
 `HIMMEL_EVAL_RUNS_LEDGER` and `HIMMEL_WORKER_SESSION_FAILURES_LEDGER`.
 
+Time to result: the digest keeps, per tool row, `timing` = the times (RESULT
+time minus START time) of calls issued alone, of calls that shared an API
+message, and a count of calls with no time. The page's p50 and p95 come from the
+calls issued alone, with n, and it labels the figure "time to result (includes
+waiting and hooks)", never a run time. A call without a result shows a dash,
+never 0; a digest written before the times were kept leaves its calls unknown.
+
+Why a guard refused: the page joins each counted refusal to its hook-chain row
+by call id. The reason rows count only refusals with such a row; the rest are
+"recorded before reasons were logged" (the refusal ended before the first
+run-log row, `hook-runs.jsonl`) or "no reason row, cause not established", so
+the rows and the two residuals add up to Refused.
+
+The daily record: `bun scripts/config-ui/tool-health-record.ts [--day YYYY-MM-DD]
+[--dry-run]` writes one finished UTC day of the page's own counts
+(`worker-digest/tool-health-record.mjs`) as an eval-runs row with
+`eval: tool-health`, through `worker-digest/tool_health_record.py`. Run it by
+hand; nothing schedules it. The config names what a count means (count
+definition, wiring fingerprint), never the day, so a series has one row per
+day, with the day in `meta.day`. `status` is `ok` only with the wiring, the
+hook-chain log, every call denominator and every guard's denominator known and
+every invariant holding;
+`partial` otherwise, `inconclusive` for a complete day with no calls. A day that
+has an ok row appends nothing. A late ok row older than the newest ok
+day of the eval, whatever its host or wiring, is stored `partial` (`meta.revision: backfill`), because
+`eval_feedback.py` reads the newest ok row per eval in file order. No rule in
+`feedback-rules.json` names `tool-health`, so the record changes nothing by
+itself. A rate over several days sums the counts first: 1/10 and 9/30 are
+10/40 = 25 %, not the 20 % mean of the two daily rates.
+
 ## leg_ledger: digests into the worker ledgers
 
 `worker-digest/worker_ledger.py` writes one digest as:

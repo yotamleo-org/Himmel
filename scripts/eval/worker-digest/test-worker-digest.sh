@@ -256,5 +256,16 @@ check "the per-tool metrics use the split key and still sum to tool_calls" 'jq -
 check "Bash rows carry [id, head, cause] per call: the first command word past env and rtk, else other" '[ "$(jq -c "[.tool_health[] | select(.tool == \"Bash\") | .bash_calls[]]" "$TMP/sk.json")" = "[[\"toolu_b1\",\"git\",null],[\"toolu_b2\",\"git\",null],[\"toolu_b3\",\"bun\",\"command\"],[\"toolu_b4\",\"other\",\"command\"],[\"toolu_b5\",\"cat\",\"guard\"]]" ]'
 check "no argument, prompt or command text reaches the digest" 'absent -E "SECRET|rm -rf|example.invalid|run build" "$TMP/sk.json"'
 
+echo "15. time to result per call: a single call, a batched call and a call with no result"
+# fixtures/call-timing.jsonl: Read alone (400 ms), Bash and Read sharing one API message (1200 and 490 ms), Grep with no result.
+S15=8510c1a5-0000-4000-8000-000000000001
+cp "$FX/call-timing.jsonl" "$TMP/$S15.jsonl"
+digest "$TMP/$S15.jsonl" >"$TMP/ct.json" 2>"$TMP/ct.err" || bad "digest of call-timing.jsonl exits 0: $(head -c 300 "$TMP/ct.err")"
+ctt() { jq -c --arg t "$1" '[.tool_health[] | select(.tool == $t) | .timing] | .[0]' "$TMP/ct.json"; }
+check "a single call keeps its time to result and is not marked batched" '[ "$(jq -c ".single" <<<"$(ctt Read)")" = "[400]" ]'
+check "a batched call keeps its time to result in the batched list, apart from the headline" '[ "$(jq -c ".batched" <<<"$(ctt Read)")" = "[490]" ] && [ "$(ctt Bash)" = "{\"single\":[],\"batched\":[1200],\"missing\":0}" ]'
+check "a call with no result has no time, counted as missing and never 0" '[ "$(ctt Grep)" = "{\"single\":[],\"batched\":[],\"missing\":1}" ]'
+check "no call text reaches the timing" 'absent -E "/x/|ls|pattern" <<<"$(jq -c "[.tool_health[].timing]" "$TMP/ct.json")"'
+
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

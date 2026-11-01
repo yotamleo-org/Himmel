@@ -15,8 +15,9 @@ const stamp = (ms) => `${new Date(ms).toISOString().slice(0, 16).replace("T", " 
 const hhmm = (ms) => `${new Date(ms).toISOString().slice(11, 16)} UTC`;
 const sub = (text) => `<p class="sub">${esc(text)}</p>`;
 const box = (id, title, purpose, body, tag = "") => `<section class="box" id="th-${id}"><h2>${esc(title)}${tag ? ` <span class="tag">${esc(tag)}</span>` : ""}</h2>${sub(purpose)}${body}</section>`;
-const table = (head, rows, empty = "Nothing to show") => (rows.length ? `<div class="scroll"><table class="data"><thead><tr>${head.map((h) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="nodata">${esc(empty)}</p>`);
+const table = (head, rows, empty = "Nothing to show", cls = "") => (rows.length ? `<div class="scroll"><table class="data${cls ? ` ${cls}` : ""}"><thead><tr>${head.map((h) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="nodata">${esc(empty)}</p>`);
 const td = (v) => `<td>${v}</td>`;
+const tdWrap = (v) => `<td class="wrap">${v}</td>`;
 
 export const TEAM_LABEL = { chief: "chief", "chief-relay": "chief relay", worker: "workers", judge: "judge", "release-manager": "release manager", critic: "critics", interactive: "interactive (you)", other: "other" };
 const KIND_LABEL = { builtin: "built-in", mcp: "MCP", res: "MCP resource", skill: "skill", cmd: "command", agent: "subagent", wf: "workflow", hook: "hook", cli: "CLI" };
@@ -404,30 +405,49 @@ function callDrawer(e, token) {
   return `<details><summary><code>${esc(e.call_id)}</code></summary><dl class="stats">${row("Time", esc(utc(e.ts)))}${row("Outcome", esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${row("Reason code", `<code>${esc(e.reason)}</code>`)}${row("Guard", esc(e.member))}${row("Tool", esc(e.tool || "—"))}${row("Session", sess)}${row("Call id", `<code>${esc(e.call_id)}</code>`)}${row("Chain run", `<code>${esc(e.invocation)}</code>`)}${row("Time used", esc(timingWords(e)))}${row("Refusal line", e.deny_line ? esc(e.deny_line) : "—")}${row("Recovery", "not recorded")}</dl></details>`;
 }
 const chainEvents = (events, token, empty) => table(["When (UTC)", "Outcome", "Reason", "Guard", "Tool", "Time used", "Refusal line", "Call"],
-  events.map((e) => `<tr data-chain-event="${esc(e.call_id)}">${td(esc(utc(e.ts)))}${td(esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${td(esc(reasonWords(e)))}${td(esc(e.member))}${td(esc(e.tool || "—"))}${td(esc(timingWords(e)))}${td(e.deny_line ? esc(e.deny_line) : "—")}${td(callDrawer(e, token))}</tr>`), empty);
+  events.map((e) => `<tr data-chain-event="${esc(e.call_id)}">${td(esc(utc(e.ts)))}${td(esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${td(esc(reasonWords(e)))}${td(esc(e.member))}${td(esc(e.tool || "—"))}${td(esc(timingWords(e)))}${tdWrap(e.deny_line ? esc(e.deny_line) : "—")}${tdWrap(callDrawer(e, token))}</tr>`), empty, "events");
 const noteP = (text) => (text ? `<p class="sub">${esc(text)}</p>` : "");
 function guardWhy(data, h, token) {
   if (isClassifier(h.class)) return "";
   const c = data.chain, suffix = h.class.replace(/^denied\//, ""), known = chainKnown(c);
   const name = Object.keys(c && c.members || {}).find((k) => k.replace(/\.(sh|js|mjs|py)$/, "") === suffix), m = name ? c.members[name] : null;
-  const count = (k) => (m ? m.by_reason[k] : known && c.by_reason[k] !== null ? 0 : null);
-  const rows = REASON_ROWS.map(([k, label, means]) => `<tr data-chain-reason="${k}">${td(esc(label))}${td(num(count(k)))}${td(esc(means))}</tr>`);
+  // With the counted refusals joined to the chain the rows count those refusals only, and two labelled residuals make them add up to Refused.
+  const gap = h.reason_gap && known ? h.reason_gap : null;
+  const count = (k) => (gap ? gap.by_reason[k] : m ? m.by_reason[k] : known && c.by_reason[k] !== null ? 0 : null);
+  const residual = gap ? [["before_logged", "Recorded before reasons were logged", gap.before_reasons_logged, `refused before the hook chain began to log a reason${gap.run_log_start ? ` (the first run-log row is ${utc(gap.run_log_start)})` : ""}`],
+    ["not_established", "No reason row, cause not established", gap.not_established, "refused with no chain row, and not older than the run log"]] : [];
+  const rows = [...REASON_ROWS.map(([k, label, means]) => [k, label, count(k), means]), ...residual].map(([k, label, n, means]) => `<tr data-chain-reason="${k}">${td(esc(label))}${td(num(n))}${td(esc(means))}</tr>`);
+  const unmatched = gap && gap.unmatched_chain > 0 ? `${gap.unmatched_chain} chain row${gap.unmatched_chain === 1 ? "" : "s"} names a refusal this window does not count (a session not yet digested, or a call outside the window).` : "";
   const shown = m ? m.events : [], total = m ? m.denials + m.skips : 0;
   const more = m && shown.length < total ? `Showing the newest ${shown.length} of ${total}.` : "";
   const outside = known && !m ? "No hook-chain row names this guard; it may run outside the chain." : "";
-  const body = `${noteP(chainNote(c))}${table(["Reason", "Refusals and skipped checks", "What it means"], rows)}${chainAudit(c)}${noteP(CHAIN_SCOPE)}${noteP(outside)}${known ? `${chainEvents(shown, token, "No refusal or skipped check recorded for this guard in the chain logs")}${noteP(more)}` : ""}`;
+  const body = `${noteP(chainNote(c))}${table(["Reason", gap ? "Refusals" : "Refusals and skipped checks", "What it means"], rows)}${chainAudit(c)}${noteP(CHAIN_SCOPE)}${noteP(outside)}${noteP(unmatched)}${known ? `${chainEvents(shown, token, "No refusal or skipped check recorded for this guard in the chain logs")}${noteP(more)}` : ""}`;
   return box("guard-why", "Why it refused", "Was it the rule, a timeout, or a guard that never started? One row per exact call, from the hook-chain logs.", body);
 }
 function toolChain(data, key, token) {
   const c = data && data.chain, tool = /^(Skill|Agent):/.test(key) ? null : key, known = chainKnown(c) && tool !== null;
   const mine = known ? (c.events || []).filter((e) => e.tool === tool) : [];
   const capped = known && isNum(c.events_total) && c.events_total > (c.events || []).length;
-  const timeouts = known ? `${capped ? "at least " : ""}${mine.filter((e) => e.kind === "timeout").length}` : "—";
+  // A skill or subagent has no exact incident ids: the chain rows name the tool, so its count needs new data, not 0.
+  const timeouts = tool === null ? "needs new data" : known ? `${capped ? "at least " : ""}${mine.filter((e) => e.kind === "timeout").length}` : "—";
   const shown = mine.slice(0, 20);
-  const notes = `${noteP(tool === null ? "The chain logs name the tool, not the skill or subagent, so its timeouts are unverified." : chainNote(c))}${chainAudit(c)}${noteP(CHAIN_SCOPE)}`;
+  const notes = `${noteP(tool === null ? "Needs new data: the chain logs name the tool, not the skill or subagent, so its timeouts have no exact call ids. The hook runner would have to record which skill or subagent a call named." : chainNote(c))}${chainAudit(c)}${noteP(CHAIN_SCOPE)}`;
   const none = capped ? `None of the newest ${c.events.length} events name this tool; ${c.events_total - c.events.length} older events are not shown` : "No guard refused or skipped a call to this tool in the chain logs";
   const events = known ? `${chainEvents(shown, token, none)}${noteP(shown.length < mine.length ? `Showing the newest ${shown.length} of ${capped ? "at least " : ""}${mine.length}.` : "")}` : "";
   return box("chain", "Timeouts and recent events", "How often did a guard time out on this tool, and what happened last? Guards that refused or skipped a call to it, from the hook-chain logs.", `<dl class="stats">${stat("timeouts", "Timeouts", timeouts)}</dl>${notes}${events}`);
+}
+// Time to result per tool: RESULT time minus START time, so it includes waiting and the hook chain. Calls that shared an API message
+// wait on each other and stay out of the headline; a call with no time is counted apart, never as 0.
+function timeBox(t, c) {
+  const tm = t.timing || {}, ms = (v) => (isNum(v) ? `${v} ms` : "—"), plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const hook = c && c.hook_ms_by_tool && c.hook_ms_by_tool[t.tool];
+  const batched = isNum(tm.batched_n) && tm.batched_n > 0 ? `${ms(tm.batched_p50_ms)} (${plural(tm.batched_n, "batched call")}, kept out of the headline)` : "—";
+  const hookText = hook ? `${ms(hook.p50_ms)} median over ${plural(hook.n, "run")} of the hook chain` : "—";
+  const notes = [hook ? "Hook chain time covers every session on this station and ignores the filters." : "", isNum(tm.unknown_calls) && tm.unknown_calls > 0 ? `${plural(tm.unknown_calls, "call")} ${tm.unknown_calls === 1 ? "was" : "were"} recorded before time to result was kept.` : "",
+    isNum(tm.missing) && tm.missing > 0 ? `${plural(tm.missing, "call")} had no result or no time recorded; they show as — and are not counted as 0.` : "",
+    tm.capped ? "Some calls were not kept, so the percentiles use the first kept times." : ""].filter(Boolean);
+  const stats = `<dl class="stats">${stat("ttr-p50", "Median (p50)", ms(tm.p50_ms))}${stat("ttr-p95", "p95", ms(tm.p95_ms))}${stat("ttr-n", "Calls timed", num(tm.n))}${stat("ttr-batched", "Batched calls", batched)}${stat("ttr-missing", "Calls with no time", num(tm.missing))}${stat("ttr-hook", "Hook chain time", hookText)}</dl>`;
+  return box("time", "Time to result", "How long until this tool's result came back? The headline is calls issued alone; it is time to result (includes waiting and hooks), not the time the tool itself ran.", `${stats}${notes.map(noteP).join("")}`);
 }
 function evidence(sessions, ids, token) {
   const seen = [...new Set(sessions || [])], ok = seen.filter((s) => UUID.test(s)), bad = seen.filter((s) => !UUID.test(s));
@@ -463,6 +483,7 @@ function toolDrill(data, inv, ui, token) {
   const classes = table(["Class", "Count", "Share of this tool's calls"], (t.classes || []).map((c) => `<tr data-class="${esc(c.class)}">${td(esc(c.class))}${td(num(c.count))}${td(pct(ratio(c.count, t.calls)))}</tr>`), "No failure class recorded");
   return `<section class="box">${head}${sub("Was it this tool, or its callers? The same population as the overview row.")}${stats}</section>
 ${t.tool === "Bash" ? bashSections(data) : ""}
+${timeBox(t, data.chain)}
 ${box("classes", "Failure classes", "Which kinds of failure, each over this tool's own calls.", classes)}
 ${box("trend", `${(t.trend || []).length}-day trend`, "Failure rate per UTC day; a gap is a day with no calls recorded.", trendTable(t.trend, "data-trend-day"))}
 ${box("evidence", "Evidence", "Sessions that recorded this tool, opened in AG-UI.", evidence(t.sessions, t.tool_call_ids, token))}

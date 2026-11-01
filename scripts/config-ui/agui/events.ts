@@ -47,6 +47,7 @@ export type ToolCallStartEvent = Base & {
   toolCallId: string;
   toolCallName: string;
   parentMessageId?: string;
+  apiMessageId?: string; // extra field (the schema is loose): the API message this call came from; calls sharing it were issued together
   agent?: AgentInfo;
 };
 export type ToolCallArgsEvent = Base & { type: "TOOL_CALL_ARGS"; toolCallId: string; delta: string };

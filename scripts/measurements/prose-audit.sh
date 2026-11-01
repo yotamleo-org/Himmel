@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# prose-audit.sh — report mechanical prose in himmel command/skill files
 # Read-only and deterministic: findings are advisory, so a
 # successful scan always exits 0. Non-zero means this reporter itself failed.
 # "~tokens" is bytes / 4, rounded; it is an approximation, not a tokenizer.
@@ -7,7 +6,6 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-# Tuned guesses, not policy. Override them to test or recalibrate the heuristic.
 MIN_BYTES="${PROSE_AUDIT_MIN_BYTES:-6144}"
 FENCE_RATIO="${PROSE_AUDIT_FENCE_RATIO:-15}"
 MAX_SNIPPETS="${PROSE_AUDIT_MAX_SNIPPETS:-3}"
@@ -45,15 +43,10 @@ for tree in "$ROOT/.claude/commands" "$ROOT/marketplace/plugins" "$ROOT/.agents/
     die "unreadable scan tree: ${tree#"$ROOT"/}"
   fi
 done
-# plugins/ (first-party top-level plugins) is optional: unlike the trees above
-# it need not exist in every adopter clone. Absent is fine; present-but-bad is not.
 if [ -d "$ROOT/plugins" ] && [ ! -r "$ROOT/plugins" ]; then
   die "unreadable scan tree: plugins"
 fi
 
-# Each discovery step's exit status is captured and checked (command
-# substitution, not a pipe, so $? reflects `find` itself) — a partial file
-# list from a failing `find` must not be mistaken for a complete scan.
 files=()
 discover() {
   local desc="$1"; shift
@@ -93,7 +86,6 @@ for file in "${files[@]}"; do
   fi
   bytes="${bytes//[[:space:]]/}"
 
-  # Fence delimiters are excluded; content bytes (including line endings) count.
   if ! fenced_bytes="$(LC_ALL=C awk '
     /^[[:space:]]*```/ { inside = !inside; next }
     inside { total += length($0) + 1 }
@@ -150,10 +142,6 @@ done
 total_tokens=$(( (total_bytes + 2) / 4 ))
 sorted=()
 if [ "${#records[@]}" -gt 0 ]; then
-  # As with discovery above: capture via command substitution (pipefail is
-  # set, so this reflects `sort`'s own exit status, not just the pipe's last
-  # stage) and cross-check the row count — a failed or truncated sort must
-  # not silently pass through as a shorter-but-clean report.
   if ! sorted_out="$(printf '%s\n' "${records[@]}" | LC_ALL=C sort -t $'\t' -k1,1nr -k2,2nr -k8,8)"; then
     die "sort failed — partial ranking, refusing to report"
   fi
