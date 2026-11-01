@@ -20,10 +20,12 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/guard-corpus-test.XXXXXX")" || {
   echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # HIMMEL-4647: never the live ledger
+# a loaded CI shard starved a sandbox launch past diff's 15s default (TIMEOUT => ODD-RC, exit 3)
+export GUARD_CORPUS_TIMEOUT_RUN=120
 
-PASS=0; FAIL=0
+PASS=0; FAIL=0; FAILED=()
 pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
-fail() { FAIL=$((FAIL + 1)); echo "FAIL $1"; }
+fail() { FAIL=$((FAIL + 1)); FAILED+=("$1"); echo "FAIL $1"; }
 has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in output";; esac; }
 hasnt() { case "$2" in *"$3"*) fail "$1: unexpected '$3' in output";; *) pass "$1";; esac; }
 
@@ -782,6 +784,39 @@ python3 "$DIFF" --base "$TMP/bg-deny-hook.sh" --head "$TMP/bg-deny-hook.sh" \
 if [ "$RC16B" = "0" ]; then pass "bg-child-control: backgrounded deny both sides => exit 0"
 else fail "bg-child-control: expected exit 0, got $RC16B"; fi
 
+# --- 17. GUARD_CORPUS_TIMEOUT_RUN sets the default per-row timeout ---
+# On a loaded 4-core shard a sandbox launch outlasted the 15s default and the row
+# read TIMEOUT (ODD-RC, exit 3). The suite exports a larger default; an explicit
+# --timeout-run still wins (bg-child above). A 4s hook: 2s env => TIMEOUT, 120s => clean.
+cat > "$TMP/sleep4-hook.sh" <<'STUB'
+#!/usr/bin/env bash
+cat >/dev/null
+sleep 4
+exit 0
+STUB
+chmod +x "$TMP/sleep4-hook.sh"
+OUT17A=$(GUARD_CORPUS_TIMEOUT_RUN=2 python3 "$DIFF" --base "$TMP/sleep4-hook.sh" --head "$TMP/sleep4-hook.sh" \
+        --corpus "$TMP/hid-row.jsonl" --jobs 1 2>&1); RC17A=$?
+if [ "$RC17A" = "3" ]; then pass "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=2 times a 4s hook out => exit 3"
+else fail "timeout-env: expected exit 3 for a 4s hook under a 2s env timeout, got $RC17A"; fi
+has "timeout-env: both sides read TIMEOUT" "$OUT17A" "rb=TIMEOUT rh=TIMEOUT"
+GUARD_CORPUS_TIMEOUT_RUN=120 python3 "$DIFF" --base "$TMP/sleep4-hook.sh" --head "$TMP/sleep4-hook.sh" \
+        --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC17B=$?
+if [ "$RC17B" = "0" ]; then pass "timeout-env-control: GUARD_CORPUS_TIMEOUT_RUN=120 lets the 4s hook finish => exit 0"
+else fail "timeout-env-control: expected exit 0, got $RC17B"; fi
+# a non-finite or malformed env value is a usage error (exit 2), never the regression code 1
+for BADT in nan inf abc 0; do
+  GUARD_CORPUS_TIMEOUT_RUN="$BADT" python3 "$DIFF" --base "$TMP/sleep4-hook.sh" --head "$TMP/sleep4-hook.sh" \
+          --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC17C=$?
+  if [ "$RC17C" = "2" ]; then pass "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=$BADT => usage error exit 2"
+  else fail "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=$BADT expected exit 2, got $RC17C"; fi
+done
+
 echo "----"
+# the log tail printed by run-shell-tests.sh is 40 lines; name every failed row here so it reaches it
+if [ "$FAIL" -gt 0 ]; then
+  echo "FAILED ROWS:"
+  printf '  %s\n' "${FAILED[@]}"
+fi
 echo "guard-corpus: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
