@@ -79,6 +79,10 @@ value that isn't backed by one of these links.
 | `coreutils` (for `gtimeout`) | `brew install coreutils` — macOS has no GNU `timeout`. Without `gtimeout`, `scripts/graphify/refresh-graph-map.sh` runs graph extraction with its run deadline DISABLED (unbounded) and skips the bounded pre-pull auto-commit/fetch. Homebrew installs it as `gtimeout`; no PATH change is needed. |
 | `bun` | `brew tap oven-sh/bun && brew install oven-sh/bun/bun` — bun is NOT in homebrew-core; the tap is still required (verified 2026-09 against github.com/oven-sh/homebrew-bun). `scripts/machine-setup/macos.sh` installs both `uv` and `bun` this way; it previously installed neither. |
 
+**macOS scheduled claude runs need a token.** Cron cannot read the login Keychain, so a cadence run says "Not logged in". Run `claude setup-token`, then
+`mkdir -p ~/.config/himmel`, write the token to `~/.config/himmel/claude-oauth-token` and `chmod 600` it. Re-arm each claude cadence
+with `arm --force` (`pipeline-cadence.sh`, `graphmap-cadence.sh`, `drift-fix-cadence.sh`) so its runner loads the file.
+
 #### Fleet CLIs — auxiliary post-install items
 
 Installing the CLI fleet on a new station (`claude`, `codex`, `hermes`,

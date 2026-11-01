@@ -246,6 +246,20 @@ if [ -f "$state/bat/drift-fix.sh" ]; then
   # shellcheck disable=SC2016  # literal '$log' is the assertion — the runner expands it at fire time, not here
   assert_has "$runner" '$log.prev' "drift runner rotates its log"
   assert_has "$runner" "[exit rc=" "drift runner stamps its exit rc for status"
+  # SCRUM-4: cron cannot read the macOS Keychain login, so the runner loads
+  # CLAUDE_CODE_OAUTH_TOKEN from an operator-owned file when it is unset.
+  # shellcheck disable=SC1091
+  . "$SCRIPT_DIR/../lib/cadence-format.sh"
+  assert_has "$runner" "# himmel-cadence-runner-format: $CADENCE_RUNNER_FORMAT_VERSION" "drift runner stamps the current format"
+  assert_has "$runner" "CLAUDE_CODE_OAUTH_TOKEN" "drift runner has the token-file load"
+  assert_has "$runner" "HIMMEL_CLAUDE_TOKEN_FILE" "drift runner honours HIMMEL_CLAUDE_TOKEN_FILE"
+  tok_dir=$(mktemp -d) || exit 1
+  printf '%s\n' "$runner" | awk '/^if \[ -z "\$\{CLAUDE_CODE_OAUTH_TOKEN/{p=1} p{print} p&&/^fi$/{exit}' > "$tok_dir/snippet.sh"
+  printf 'fake-token-123\n' > "$tok_dir/tok"
+  # shellcheck disable=SC2016  # the inner sh expands the variables, not this shell
+  tok_got=$(env -i PATH=/usr/bin:/bin HIMMEL_CLAUDE_TOKEN_FILE="$tok_dir/tok" /bin/sh -c '. "$1"; exec /bin/sh -c '\''printf "<%s>" "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"'\''' _ "$tok_dir/snippet.sh")
+  if [ "$tok_got" = "<fake-token-123>" ]; then pass "drift runner snippet exports the token file's first line"; else fail "drift runner snippet gave '$tok_got'"; fi
+  rm -rf "$tok_dir"
   if [ -x "$state/bat/drift-fix.sh" ]; then pass "drift runner is executable"; else fail "drift runner is not executable"; fi
 else
   fail "drift-fix.sh runner was not written"
