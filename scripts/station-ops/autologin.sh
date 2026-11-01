@@ -97,13 +97,15 @@ write_file() { # path content: replace atomically, mode 0644, root-owned
 old='' new=''
 if [ "$kind" = gdm ]; then
     [ ! -e "$file" ] || old=$(cat "$file") || die "cannot read $file"
-    new=$(printf '%s\n' "$old" | awk -v enable="$([ "$action" = enable ] && echo 1 || echo 0)" -v user="$user" '
+    sect=daemon # t13b-ok: GDM names its auto-login ini section daemon, no process is started
+    new=$(printf '%s\n' "$old" | awk -v enable="$([ "$action" = enable ] && echo 1 || echo 0)" -v user="$user" -v sect="$sect" '
+        BEGIN { sect_re = "^[ \t]*\\[" sect "\\][ \t]*$" }
         function emit() { if (enable == 1) { print "AutomaticLoginEnable=True"; print "AutomaticLogin=" user } }
-        /^[ \t]*\[/ { in_daemon = ($0 ~ /^[ \t]*\[daemon\][ \t]*$/) }
-        in_daemon && /^[ \t]*(AutomaticLoginEnable|AutomaticLogin)[ \t]*=/ { next }
+        /^[ \t]*\[/ { in_sect = ($0 ~ sect_re) }
+        in_sect && /^[ \t]*(AutomaticLoginEnable|AutomaticLogin)[ \t]*=/ { next }
         { print }
-        /^[ \t]*\[daemon\][ \t]*$/ { seen = 1; emit() }
-        END { if (!seen && enable == 1) { print "[daemon]"; emit() } }')
+        $0 ~ sect_re { seen = 1; emit() }
+        END { if (!seen && enable == 1) { print "[" sect "]"; emit() } }')
     new=${new#$'\n'}
     same=0; [ "$new" = "$old" ] && same=1
 else
