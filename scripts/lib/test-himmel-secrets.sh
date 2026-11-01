@@ -303,6 +303,13 @@ got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --keep-file "$TMP/r14.kee
 assert_eq "R14 keep-file names are skipped, other lines unchanged" "skipped JIRA_API_TOKEN (env-keep)|stored FIRECRAWL_API_KEY|skipped JIRA_EMAIL (config key; it belongs in ~/.himmel)|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
 assert_eq "R14 a keep-file name makes no store call" "0" "$(grep -c 'store.*key JIRA_API_TOKEN' "$KSTUB_LOG")"
 
+# R14d: keep-file lines read as migrate-env reads them: comments and blanks dropped.
+kreset
+printf '# keep list\n  JIRA_API_TOKEN  # the station needs it in .env\n\nFIRECRAWL_API_KEY\r\n' >"$TMP/r14d.keep"
+printf 'JIRA_API_TOKEN=dummy-r12\nFIRECRAWL_API_KEY=dummy-r14\nTELEGRAM_BOT_TOKEN=dummy-r14d\n' >"$TMP/r14d.env"
+got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --keep-file "$TMP/r14d.keep" "$TMP/r14d.env" 2>&1; echo "rc=$?")
+assert_eq "R14d a commented or padded keep-file line still skips its key" "skipped JIRA_API_TOKEN (env-keep)|skipped FIRECRAWL_API_KEY (env-keep)|stored TELEGRAM_BOT_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
+
 # R14c: a keep file that cannot be read stops the import before any store.
 kreset
 if [ "$(id -u)" != 0 ]; then
