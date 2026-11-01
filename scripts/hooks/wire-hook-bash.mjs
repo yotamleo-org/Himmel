@@ -42,7 +42,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // tools. The invariant is unchanged in strength: the flattened owned scripts,
 // in document order, must equal this list EXACTLY — same count, same order, no
 // extras, no unexpected repeats.
-const OWNED_EVENTS = Object.freeze(new Set(['PreToolUse', 'PostToolUse', 'SessionStart']));
+const OWNED_EVENTS = Object.freeze(new Set(['PreToolUse', 'PostToolUse', 'SessionStart', 'PermissionRequest']));
 export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // PreToolUse `Bash` chain.
   // FIRST, so the stuck-playbook pointer is what the agent reads on a third identical
@@ -232,6 +232,12 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // Its own group, not the --chain above, because it fires only on
   // "compact", not on every SessionStart source.
   'chief-compact-reinject.sh',
+  // PermissionRequest, one group after the trust ledger's own (its permreq entry is foreign).
+  // gate-shapes allows an exact gate shape in a worker worktree; the AFK hook denies a
+  // Bash prompt with the afk-run line only while the root helper reports the run kind on, and leaves
+  // to gate-shapes whatever it allows.
+  'permission-allow-gate-shapes.sh',
+  'afk-prompt-to-request.sh',
 ]);
 const KNOWN_HOOK_SCRIPTS = new Set(EXPECTED_SCRIPT_ORDER);
 const COMMAND_FIELD = /("command")(\s*:\s*)("(?:\\.|[^"\\])*")/g;
@@ -465,7 +471,11 @@ function bareCommand(script) {
 // process them in EXPECTED_SCRIPT_ORDER order and chain anchors correctly.
 // Scripts whose install target is not SessionStart. A script not
 // named here installs under SessionStart.
-const INSTALL_EVENT = Object.freeze({ 'bus-deliver-hook.sh': 'PostToolUse' });
+const INSTALL_EVENT = Object.freeze({
+  'bus-deliver-hook.sh': 'PostToolUse',
+  'permission-allow-gate-shapes.sh': 'PermissionRequest',
+  'afk-prompt-to-request.sh': 'PermissionRequest',
+});
 
 function missingOwnedScripts(entries) {
   const present = new Set(entries.flatMap((e) => e.classified.scripts));
@@ -677,7 +687,7 @@ export function rewriteSettingsText(text) {
   // "installed N" message needed. text/before/entries are re-derived from the
   // post-install text for everything that follows.
   let workingText = text;
-  for (const event of ['PostToolUse', 'SessionStart']) {
+  for (const event of ['PostToolUse', 'SessionStart', 'PermissionRequest']) {
     const forEvent = missing.filter((s) => (INSTALL_EVENT[s] || 'SessionStart') === event);
     if (forEvent.length > 0) workingText = installMissingEntries(workingText, forEvent, event);
   }

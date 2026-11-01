@@ -621,8 +621,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/permission-allow-gate-shapes.sh\"",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/permission-allow-gate-shapes.sh\"; else node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/permission-allow-gate-shapes.sh\"; fi",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" ]; then command -p sh \"$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/afk-prompt-to-request.sh\"; else node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/afk-prompt-to-request.sh\"; fi",
+            "timeout": 30
           }
         ]
       }
