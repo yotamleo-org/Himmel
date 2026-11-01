@@ -16,8 +16,9 @@
 #   --model    the critic model, recorded on the row and in its config.
 #   --critics  critic slugs to report even when they file nothing (default:
 #              the critics.json rows in --tiers).
-#
 #   --src      the repo real cases' base and fix commits live in (default this checkout).
+#   A non-delta case with a `base` in the key and an <id>.intent.md also gets --context-file = the critic
+#   context pack (scripts/cr/critic-context-pack.sh), built in its case repo from that note (no Jira).
 #
 #        run.sh --case-repo <case-id> --out <dest> [--src <repo>] [--fixtures <dir>] [--key <file>]
 #   Builds the case's scratch repo, no panel call: the case's `base` tree from
@@ -100,6 +101,10 @@ fi
 # The key marks delta cases; a sweep feeds each as its fix delta, whether or not --delta is given.
 deltas="$(python3 -c 'import json,sys
 print(",".join(sorted(c for c, v in json.load(open(sys.argv[1]))["cases"].items() if v.get("delta") is True)))' "$key")" || exit 2
+# A case with a base and its own intent note also gets the critic context pack, built in its
+# case repo from that note: the eval never calls Jira and the pack cites base-tree paths only.
+based="$(python3 -c 'import json,sys
+print(",".join(sorted(c for c, v in json.load(open(sys.argv[1]))["cases"].items() if v.get("base") and v.get("delta") is not True)))' "$key")" || exit 2
 if [ "$delta_only" = 1 ]; then
     [ -z "$only" ] || { echo "run.sh: --delta and --only are exclusive - no panel call made" >&2; exit 2; }
     [ -n "$deltas" ] || { echo "run.sh: --delta but the key marks no delta case - no panel call made" >&2; exit 2; }
@@ -151,7 +156,20 @@ for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch "$fixtures"/delta
             cp "$fixtures/$cid.delta.patch" "$dir/diff.patch" || exit 2
             cat "$patch" "$fixtures/$cid.delta.patch" > "$dir/context.patch" || exit 2
             ctx_args=(--context-file context.patch) ;;
-        *) cp "$patch" "$dir/diff.patch" || exit 2 ;;
+        *) cp "$patch" "$dir/diff.patch" || exit 2
+           case ",$based," in
+               *",$cid,"*)
+                   if [ -f "$fixtures/$cid.intent.md" ]; then
+                       # The case repo lives beside the critic's directory, never in it, and is gone once the pack is built.
+                       rrepo="$scratch/.repo-$cid"; rm -rf "$rrepo"
+                       bash "$0" --case-repo "$cid" --out "$rrepo" --fixtures "$fixtures" --key "$key" ${src:+--src "$src"} \
+                           || { echo "run.sh: cannot build the case repo for $cid" >&2; exit 2; }
+                       (cd "$rrepo" && bash "$HERE/../../cr/critic-context-pack.sh" HEAD~1 HEAD --intent-file "$fixtures/$cid.intent.md") \
+                           > "$dir/context.patch" || { echo "run.sh: cannot build the context pack for $cid" >&2; exit 2; }
+                       rm -rf "$rrepo"
+                       ctx_args=(--context-file context.patch)
+                   fi ;;
+           esac ;;
     esac
     echo "run.sh: $cid" >&2
     # The panel reads its tier set from CRITIC_PANEL_TIERS only when CR_PROFILE
