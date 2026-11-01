@@ -129,7 +129,8 @@ SECTION = re.compile(r"^## (Critical Issues|Important Issues|Suggestions|"
 SEV = {"Critical Issues": "crit", "Important Issues": "imp", "Suggestions": "sug"}
 BULLET = re.compile(r"^- \[([A-Za-z0-9._]+(?:-[A-Za-z0-9._]+)*?)-(\d+)\]: (.*?)\s*\[([^\]\s]+):(\d+)\]\s*$")
 GUARD = "citation-guard"
-CITATION_GUARD = re.compile(r"^- \[" + GUARD + r"-[0-9a-f]{16}\]: ")
+CITATION_GUARD = re.compile(r"^- \[" + GUARD + r"-[0-9a-f]{16}\]: \S")
+GUARD_SHAPED = re.compile(r"^- \[" + GUARD + r"-")
 FINDING_SHAPED = re.compile(r"^- \[[A-Za-z0-9._-]+-\d+\]")
 UNAVAILABLE = re.compile(r"^- ([A-Za-z0-9._-]+): unavailable\b")
 
@@ -376,7 +377,7 @@ def parse_review(text):
             counted[sev] += 1
             findings.append({"critic": critic, "sev": sev, "text": b.group(3),
                              "file": norm_path(b.group(4)), "line": int(b.group(5))})
-        elif sev and FINDING_SHAPED.match(line):
+        elif sev and (FINDING_SHAPED.match(line) or GUARD_SHAPED.match(line)):
             # Finding-shaped but rejected by BULLET: flagged apart from the
             # declared count, which a hand-edited heading can make agree.
             malformed += 1

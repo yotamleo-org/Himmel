@@ -299,6 +299,11 @@ eq "citation-guard: the lost finding is a miss on the seeded case" "$(metric "$T
 echo 1 > "$O4g/$LA.rc"
 python3 "$SCORE" score --outputs "$O4g" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA" --no-ledger --json "$TMP/s4h.json" >/dev/null 2>&1
 eq "citation-guard: a nonzero rc is still unscored" "$(metric "$TMP/s4h.json" unscored)" "1"
+# A guard-shaped bullet the panel never prints (no message) is malformed, not a guard.
+O4m="$TMP/out4m"; mkdir -p "$O4m"
+printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (1 found)\n- [citation-guard-6bd86d6b048c3229]: \n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n' > "$O4m/$LA.md"
+python3 "$SCORE" score --outputs "$O4m" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA" --no-ledger --json "$TMP/s4j.json" >/dev/null 2>&1
+eq "citation-guard: a guard bullet with no message is unscored" "$(metric "$TMP/s4j.json" unscored)" "1"
 # The guard's Critical blocks the CR gate, so on a clean twin it is a false
 # block: it counts for fp_rate, not for findings or precision, and the guard is
 # no roster member of its own.
