@@ -37,7 +37,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 
 # --- failure path state: set before any refusal can fire ---
-KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" NO_FB="" FAILING_OVER=0
+KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" NO_FB="" FAILING_OVER=0 STOPPED=0
 KIND_SAFE="${HIMMEL_API_KIND:-other}"
 case "$KIND_SAFE" in ""|*[!A-Za-z0-9._-]*) KIND_SAFE=other ;; esac
 JOB_SAFE="${HIMMEL_API_JOB_ID:-}"
@@ -63,7 +63,7 @@ release_slot() {
   done
   return 0
 }
-trap 'rm -f "$OUT" "$FB_OUT"; release_slot' EXIT
+trap 'rm -f "$OUT" "$FB_OUT" ${OUT:+"$OUT.timeout"}; release_slot' EXIT
 
 # one line for the alert: the key (ours or any the caller holds) and anything key-shaped become [key], no control characters
 redact() {
@@ -392,8 +392,13 @@ done
 
 OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
 
+# A signal that is ignored stays ignored in a child, one that is trapped is reset to its default there. After the call
+# ends this shell only records a TERM, so the node steps that settle the reservation start with the signals ignored:
+# a cancel's TERM must not cut a settle short.
+immune() { ( trap '' TERM INT HUP; exec "$@" ); }
+
 # --- reserve the full budget before spending; refusal here means no launch ---
-state() { node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
+state() { immune node "$REPO/scripts/lib/api-credit-state.mjs" "$@"; }
 RESERVED="$(state reserve --id "$JOB_ID" --usd "$BUDGET")"
 case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: $RESERVED" ;; esac
 
@@ -462,16 +467,16 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
 CALL_PID=$!
 # the watchdog's own sleep is ended with it, so no timer outlives the call
 ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
-  sleep "$CALL_TIMEOUT_S" & wait $!; stop_call ) &
+  sleep "$CALL_TIMEOUT_S" & wait $!; : >"$OUT.timeout"; stop_call ) &
 WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 # a cancel kills the call first and this shell right after: a default TERM here would end it before the settle below
-trap '' TERM INT HUP
+trap 'STOPPED=1' TERM INT HUP
 
 # --- settle on verified cost; a call that exited non-zero is dead and settles too; otherwise unknown ---
-COST="$(node "$REPO/scripts/api-lane/outcome.mjs" "$OUT")"
+COST="$(immune node "$REPO/scripts/api-lane/outcome.mjs" "$OUT")"
 if [ "$RC" -eq 0 ] && [ -n "$COST" ]; then
   DEAD_SETTLED=1
   SETTLED="$(state settle --id "$JOB_ID" --usd "$COST" --completion verified)"
@@ -494,7 +499,7 @@ EXIT_RC="$RC"
 REJECTED=""
 if [ "$RC" -ne 0 ]; then
   # only the error envelope's own result text counts: a denial or tool output elsewhere in the JSON may quote the phrase
-  REJECTED="$(node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const t=r&&r.is_error===true&&typeof r.result==="string"?r.result.toLowerCase():"";if(t.includes("credit balance is too low"))console.log("exhausted");else if(t.includes("invalid api key"))console.log("key_invalid")}catch{}' "$OUT" 2>/dev/null)" || REJECTED=""
+  REJECTED="$(immune node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const t=r&&r.is_error===true&&typeof r.result==="string"?r.result.toLowerCase():"";if(t.includes("credit balance is too low"))console.log("exhausted");else if(t.includes("invalid api key"))console.log("key_invalid")}catch{}' "$OUT" 2>/dev/null)" || REJECTED=""
 fi
 WHAT=""
 if [ -n "$REJECTED" ]; then
@@ -509,7 +514,7 @@ fi
 
 # --- secret-free launch record (no key, no prompt) ---
 # the usage split, so cache-report.mjs can read the hit rate back; null when the result has none.
-read -r U_IN U_CREATE U_READ < <(node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
+read -r U_IN U_CREATE U_READ < <(immune node "$REPO/scripts/api-lane/usage.mjs" "$OUT") || true
 SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 {
   printf '{"ts":"%s","job_id":"%s","account":"%s","organization_id":"%s","key_id":"%s","cycle_id":"%s","model":"%s","budget_usd":"%s","source":"%s","outcome":"%s","cost_usd":"%s","rc":%s,"kind":"%s","cache_ttl":"%s","input_tokens":%s,"cache_creation_tokens":%s,"cache_read_tokens":%s,"branch":"%s","head":"%s","pr":%s}\n' \
@@ -520,15 +525,18 @@ SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 
 # --- a failed call: alert, then the subscription fallback (never returns when it ran) ---
 # the reason is a class and a subtype only: the call's own result text may quote the prompt
-# A call that ended on TERM, INT or HUP was stopped by its caller (a --cancel TERMs the call and this launcher together,
-# and the call can end first, before this shell's own TERM lands): that is a stop, not a failure to alert on or replay.
-if [ "$EXIT_RC" -ne 0 ] && [ -z "$REJECTED" ] && [[ "$RC" =~ ^(129|130|143)$ ]]; then
-  echo "claude-api: the call was stopped by a signal (exit $RC); no alert, no fallback" >&2
+# A TERM, INT or HUP to this launcher is its caller stopping it (a --cancel TERMs the call and the launcher together,
+# and the call can end first): that is a stop, not a failure to alert on or replay. The call watchdog's own stop
+# signals only the call, so a timeout is still a failed call.
+if [ "$EXIT_RC" -ne 0 ] && [ -z "$REJECTED" ] && [ "$STOPPED" = 1 ]; then
+  echo "claude-api: stopped by its caller (exit $RC); no alert, no fallback" >&2
 elif [ "$EXIT_RC" -ne 0 ]; then
   if [ -n "$REJECTED" ]; then
     fail_over "$EXIT_RC" rejected "account $HIMMEL_API_ACCOUNT $WHAT"
+  elif [ -e "$OUT.timeout" ]; then
+    fail_over "$EXIT_RC" call-failed "the call hit the call timeout (${CALL_TIMEOUT_S}s)"
   else
-    SUBTYPE="$(node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(r&&typeof r.subtype==="string"&&/^[a-z_]{1,64}$/.test(r.subtype))console.log(r.subtype)}catch{}' "$OUT" 2>/dev/null)"
+    SUBTYPE="$(immune node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(r&&typeof r.subtype==="string"&&/^[a-z_]{1,64}$/.test(r.subtype))console.log(r.subtype)}catch{}' "$OUT" 2>/dev/null)"
     fail_over "$EXIT_RC" call-failed "the call exited $RC${SUBTYPE:+ ($SUBTYPE)}"
   fi
 fi

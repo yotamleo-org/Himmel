@@ -40,7 +40,7 @@ if [ -n "$FB" ]; then printf '%s' "\${STUB_FB_OUT:-$STUB_OUT}"; exit "\${STUB_FB
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 [ -z "\${STUB_DIE:-}" ] || kill -9 $$
-[ -z "\${STUB_TERM:-}" ] || kill -TERM $$
+[ -z "\${STUB_TERM:-}" ] || { ( sleep 0.05; kill -TERM "$PPID" ) </dev/null >/dev/null 2>&1 & kill -TERM $$; }
 exit "\${STUB_RC:-0}"
 `;
 
@@ -262,14 +262,29 @@ test('a call granted Edit, Write or Bash re-runs only after a refusal before any
   assert.equal(fbCalls(k), 1, 'a read-only grant keeps the fallback on a failed run');
 });
 
-test('a call ended by TERM was stopped by its caller: no alert, no subscription replay, even read-only', () => {
+// bulk-call --cancel TERMs the call and the launcher together; here the call ends first and the launcher's TERM
+// lands after it, while the launcher is settling.
+test('a TERM to the launcher after its call ended is a caller stop: no alert, no subscription replay, even read-only', () => {
   const f = fixture();
   const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_TERM: '1', STUB_FB_OUT: FB_OK });
   assert.equal(r.status, 143, r.stderr);
-  assert.match(r.stderr, /stopped by a signal/);
   assert.equal(fbCalls(f), 0, 'a stopped call was replayed on the subscription');
   assert.deepEqual(alerts(f), [], 'a stop raised an alert');
   assert.equal(f.status().reserved_usd, '0.000000', 'the reservation is still held');
+});
+
+test('the call watchdog ending a hung read-only call is a failed call: one alert, one subscription re-run', () => {
+  const f = fixture();
+  const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
+  try {
+    const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_HOLD: hold, HIMMEL_API_CALL_TIMEOUT_S: '1', STUB_FB_OUT: FB_OK });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, FB_OK);
+    assert.equal(fbCalls(f), 1);
+    assert.equal(alerts(f).length, 1);
+    assert.match(alertText(f), /call timeout/);
+    assert.equal(f.status().reserved_usd, '0.000000');
+  } finally { rmSync(hold, { force: true }); }
 });
 
 test('a subscription preflight refusal runs no fallback, the alert names it and the original code stands', () => {

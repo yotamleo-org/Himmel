@@ -1253,6 +1253,7 @@ root=""; prev=""
 for a in "$@"; do [ "$prev" = "--corpus-root" ] && root="$a"; prev="$a"; done
 manifest=absent; [ -f "$root/graphify-out/semantic-manifest.json" ] && manifest=present
 echo "args: $* manifest=$manifest" >> "$FAKE_SEM_LOG"
+echo "key=${ANTHROPIC_API_KEY:-unset} auth=${ANTHROPIC_AUTH_TOKEN:-unset}" >> "$FAKE_SEM_LOG.env"
 mkdir -p "$root/graphify-out" && echo '{}' > "$root/graphify-out/semantic-manifest.json"
 [ -z "${FAKE_SEM_RUNS:-}" ] || echo "$FAKE_SEM_RUNS" >> "$root/graphify-out/semantic-runs.jsonl"
 [ -z "${FAKE_SEM_OUT:-}" ] || echo "$FAKE_SEM_OUT"
@@ -1308,6 +1309,15 @@ fi
 # (c) second --semantic fire on the same worktree: the manifest survived the clean.
 : > "$FAKE_SEM_LOG"; rc=0; out=$(run_sem on --semantic) || rc=$?
 assert_contains "semantic manifest survives the per-run clean under --semantic" "manifest=present" "$(cat "$FAKE_SEM_LOG")"
+# (c1) the subscription backend must not inherit an exported API key (claude -p would bill it outside the API lane's accounting);
+# claude-api keeps its caller env, since semantic-update.sh refuses a caller key itself.
+: > "$FAKE_SEM_LOG"; rm -f "$FAKE_SEM_LOG.env"; rc=0
+out=$(ANTHROPIC_API_KEY=dummy-not-a-key ANTHROPIC_AUTH_TOKEN=dummy-not-a-token run_sem on --semantic) || rc=$?
+assert_eq "claude-cli semantic step with an exported API key rc=0" "0" "$rc"
+assert_eq "the claude-cli semantic step sees no ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN" "key=unset auth=unset" "$(cat "$FAKE_SEM_LOG.env")"
+: > "$FAKE_SEM_LOG"; rm -f "$FAKE_SEM_LOG.env"; rc=0
+out=$(GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api ANTHROPIC_API_KEY=dummy-not-a-key run_sem on --semantic) || rc=$?
+assert_contains "the claude-api semantic step keeps its caller env (its own refusal handles a key)" "key=dummy-not-a-key" "$(cat "$FAKE_SEM_LOG.env")"
 # (c2) a batch the semantic step submitted lands in the ledger row: id, state, request count, cost.
 tag="batch"; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
 seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20

@@ -24,10 +24,11 @@ accounts can run dry; the API lane is an explicit opt-in there.
 
 A failed call still fails first, exactly as before: the refusal line
 (`claude-api: refused: …`, exit 2), a rejected account (exit 6, the account is
-marked), or the call's own non-zero exit. A call that ended on TERM, INT or HUP
-(exit 143, 130 or 129) was stopped by its caller, for example `bulk-call.sh
---cancel`: it exits with that code and sends no alert and runs no fallback. Then
-the launcher:
+marked), or the call's own non-zero exit. A TERM, INT or HUP sent to the launcher
+itself is its caller stopping it, for example `bulk-call.sh --cancel`: the
+launcher exits with the call's code and sends no alert and runs no fallback.
+The call watchdog (`HIMMEL_API_CALL_TIMEOUT_S`) signals only the call, so a call
+it stops is a failed call and takes the path below. Then the launcher:
 
 1. **Decides whether to fall back** (first match wins):
 

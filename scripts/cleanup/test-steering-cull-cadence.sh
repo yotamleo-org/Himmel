@@ -214,6 +214,11 @@ env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT bash "$CAD
 check "default backend with the lane off exits 0" 0 $?
 hasnt "the default backend never refuses on the API lane" "HIMMEL_API_LANE=on" "$W/run8d.out"
 [ -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "default backend runs the subscription claude, not the API lane" || fail "default backend did not run on the subscription"
+_argv_flat="$(tr '\n' ' ' < "$W/argv" 2>/dev/null)"
+case "$_argv_flat" in
+    *"arg=--tools arg=Read arg=--allowedTools arg=Read "*) pass "the default backend grants the Read tool only, in both --tools and --allowedTools" ;;
+    *) fail "the default backend's tool grant is not Read in both flags: $_argv_flat" ;;
+esac
 rm -f "$W/argv"
 env -u STEERING_CULL_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8e.out" 2>&1
 check "default backend with the lane on exits 0" 0 $?
