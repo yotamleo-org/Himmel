@@ -623,8 +623,10 @@ try:
             prs_of = partials.setdefault(str(r.get('key', '')).upper(), [])
             if str(r['pr']) not in prs_of:
                 prs_of.append(str(r['pr']))
-except OSError:
+except FileNotFoundError:
     pass
+except OSError as e:
+    print('# warn: %s is unreadable (%s): merged contract rows are unknown, so a done-pending or partially merged ticket may be listed' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
 
 def partial_resume(key):
     # a ticket with a merged partial slice is in work: it is a RESUME row naming that slice, never a fresh To Do row

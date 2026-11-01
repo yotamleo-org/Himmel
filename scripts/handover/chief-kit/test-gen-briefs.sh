@@ -861,6 +861,10 @@ lacks "another ticket's partial merge is not listed" "$PM1" '#4399'
 bash "$HERE/brief-lint.sh" "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" 2>"$WORK/lintpm.err"; rc=$?
 [ "$rc" = 0 ] && pass "the partial-merge brief passes brief-lint.sh" || fail "partial-merge brief-lint rc=$rc: $(cat "$WORK/lintpm.err")"
 lacks "a ticket with no partial merge gets no Already merged block" "$(cat "$WORK/pm-bucket/HIMMEL-9103-N912-pm-none-2026-10-08.md")" "Already merged"
+# a status log that exists but cannot be read is reported, not read as "no partial merges"
+mkdir -p "$WORK/pm-state-bad/status-events.jsonl"
+pm_bad="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state-bad" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket2" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw2" --deadline 1791475000 2>&1)"
+has "an unreadable status log is warned about, not silently read as empty" "$pm_bad" "status-events.jsonl is unreadable"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

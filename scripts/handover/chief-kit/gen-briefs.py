@@ -582,8 +582,10 @@ def partial_merge_prs(keys):
                 if pr.isdigit() and pr not in seen:
                     seen.add(pr)
                     prs.append(pr)
-    except OSError:
+    except FileNotFoundError:
         pass
+    except OSError as e:
+        print('gen-briefs: warn: %s is unreadable (%s): the brief cannot name merged partial PRs' % (os.path.join(state, 'status-events.jsonl'), e.strerror or e), file=sys.stderr)
     return prs
 
 
