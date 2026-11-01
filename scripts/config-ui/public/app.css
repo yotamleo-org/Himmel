@@ -283,4 +283,22 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .sh-list{list-style:none;margin:0;padding:0;display:grid}
 .sh-list li{padding:var(--s2) 0;border-top:1px solid var(--rule);font-size:var(--fs-sm)}.sh-list li:first-child{border-top:0}
 @media (max-width:520px){.tiles.three{grid-template-columns:minmax(0,1fr)}}
+/* the chief chain (mockup v3): a fixed-layout table row, each segment's colspan its share of the shift (no inline style under the CSP) */
+.chain{height:30px;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--surface-2)}
+.chain table{width:100%;height:100%;table-layout:fixed;border-collapse:collapse}
+.cseg{padding:0;text-align:center;vertical-align:middle;font:700 10.5px/1 var(--font-mono);color:var(--camp);background:var(--camp-soft);border-right:1px solid var(--surface);overflow:hidden;white-space:nowrap}
+.cseg:nth-child(even){background:color-mix(in srgb,var(--camp) 24%,var(--surface))}
+.cseg.now{background:var(--camp);color:var(--surface)}
+.cseg.gap{background:var(--surface-2)}
+.cseg.fut{background:repeating-linear-gradient(135deg,var(--surface-2) 0 6px,var(--surface) 6px 12px);color:var(--muted);font-weight:500}
+.cseg small{display:block;font-weight:500;margin-top:2px}
+.chain-axis{display:flex;justify-content:space-between;font:10.5px var(--font-mono);color:var(--muted);margin-top:2px}
 .sh-badge{margin-left:var(--s1);font:700 10.5px var(--font-mono);padding:0 6px;border-radius:999px;background:var(--beta-soft);color:var(--beta)}
+/* the Morning report page (report.js): the day selector, the window bar and the report tables */
+.rp-days{display:flex;flex-wrap:wrap;gap:var(--s1);align-items:center}
+.rp-days .chip{text-decoration:none}
+.rp-more{display:inline-block}.rp-more summary{cursor:pointer;color:var(--muted);font:11px var(--font-mono)}
+.rp-bar{display:grid;gap:2px;color:var(--muted);font-size:var(--fs-sm)}
+.rp-list{margin:0;padding-left:var(--s4);display:grid;gap:var(--s1);font-size:var(--fs-sm)}
+.rp-list li{overflow-wrap:anywhere}
+#reports fieldset{border:0;padding:0;margin:0 0 var(--s2)}#reports label{display:block;margin:var(--s1) 0}

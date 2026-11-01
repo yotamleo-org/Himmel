@@ -33,6 +33,9 @@ unset CODEX_THREAD_ID 2>/dev/null || true
 # handover root; empty means "no such input" unless a test names one.
 export MORNING_SHIFT_SPEND_CMD=""
 export MORNING_WAITING_DIR=""
+# The shift record (shifts.jsonl) and the shift helper: empty means no such input unless a test names one.
+export SHIFTS_FILE=""
+export MORNING_SHIFT_CMD=""
 
 PASS=0
 FAIL=0
@@ -73,7 +76,12 @@ case "$1 $2" in
     "pr list")
         # --search present => merged date query; else the all-state PR map.
         if printf '%s ' "$@" | grep -q -- '--search'; then
-            printf '%s\n' "${FAKE_GH_PR_JSON:-[]}"
+            # FAKE_GH_SEARCH_FROM set => only the search for exactly that day finds the PRs.
+            if [ -n "${FAKE_GH_SEARCH_FROM:-}" ] && ! printf '%s\n' "$@" | grep -qxF -- "merged:>=$FAKE_GH_SEARCH_FROM"; then
+                printf '[]\n'
+            else
+                printf '%s\n' "${FAKE_GH_PR_JSON:-[]}"
+            fi
         else
             printf '%s\n' "${FAKE_GH_PR_ALL:-[]}"
         fi
@@ -566,7 +574,7 @@ first_four=$(printf '%s\n' "$h2_ascii" | sed -n '1,4p')
 rest=$(printf '%s\n' "$h2_ascii" | sed -n '5,$p')
 want_first=$'## What shipped\n## What waits on you\n## What it spent\n## What runs next'
 if [ "$first_four" = "$want_first" ]; then pass "first four headings are the frame 16 ones, in order"; else fail "first four headings" "got: $(printf '%s' "$first_four" | tr '\n' '|')"; fi
-want_rest=$'## TL;DR\n## Completed (1 PRs merged to main)\n## In-flight WIP\n## Stale worktrees\n## Backlog (1 To Do)\n## Docs drift\n## Failure review\n## Prompt cache\n## Suggested order'
+want_rest=$'## Chiefs\n## Spend per shift\n## TL;DR\n## Completed (1 PRs merged to main)\n## In-flight WIP\n## Stale worktrees\n## Backlog (1 To Do)\n## Docs drift\n## Failure review\n## Prompt cache\n## Suggested order'
 if [ "$rest" = "$want_rest" ]; then pass "every pre-change section kept below, in order"; else fail "sections below the four" "got: $(printf '%s' "$rest" | tr '\n' '|')"; fi
 assert_contains "f16: commits subsection kept" "### Commits"                  "$file"
 assert_contains "f16: done subsection kept"    "Tickets transitioned to Done" "$file"
@@ -771,6 +779,117 @@ rc=0
 if [ "$rc" -eq 0 ]; then pass "invalid tracker: run exits 0"; else fail "invalid tracker: run exits 0" "rc=$rc"; fi
 file=$(cat "$OUT_ADI" 2>/dev/null || true)
 assert_contains "invalid tracker: setting named" "tracker setting is invalid" "$file"
+
+# Shifts, chiefs and per-shift spend ---------------------------------
+# The generator reads the shift record (shifts.jsonl), counts each shift id in exactly one
+# report (the first made after its row is written), and prints the window, the chiefs and a
+# per-shift spend table whose columns carry a source mark and are never summed.
+
+SH_DIR="$TMP_ROOT/shifts"
+mkdir -p "$SH_DIR"
+SH_FILE="$SH_DIR/shifts.jsonl"
+ROW_NIGHT='{"id":"2026-10-27T20:00:00+01:00","name":"night","opened":"2026-10-27T20:00:00+01:00","closed":"2026-10-28T00:10:00+01:00","why":"idle","zone":"local","chiefs":[{"name":"HY-roadmap-chief","bucket":"roadmap","span":{"start":"2026-10-27T20:00:00+01:00","end":"2026-10-28T00:10:00+01:00","approx":false},"prs":[11]}],"buckets":["roadmap"],"gap":0}'
+ROW_DAY='{"id":"2026-10-28T08:00:00+01:00","name":"day","opened":"2026-10-28T08:00:00+01:00","closed":"2026-10-28T20:00:00+01:00","why":"cut","zone":"local","chiefs":[{"name":"IC-roadmap-chief","bucket":"roadmap","span":{"start":"2026-10-28T08:00:00+01:00","end":"2026-10-28T20:00:00+01:00","approx":false},"prs":[12,13]}],"buckets":["roadmap"],"gap":0}'
+ROW_EVE='{"id":"2026-10-28T20:00:00+01:00","name":"night","opened":"2026-10-28T20:00:00+01:00","closed":"2026-10-29T08:00:00+01:00","why":"cut","zone":"local","chiefs":[{"name":"IJ-roadmap-chief","bucket":"roadmap","span":{"start":"2026-10-28T20:00:00+01:00","end":"2026-10-29T08:00:00+01:00","approx":false},"prs":[14]}],"buckets":["roadmap"],"gap":0}'
+
+echo "TEST: a shift whose close is written after midnight is counted in exactly one report"
+printf '%s\n' "$ROW_NIGHT" > "$SH_FILE"
+SH_OUT1="$SH_DIR/r-10-28.md"; SH_OUT2="$SH_DIR/r-10-29.md"
+SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-28 run_script --since "$MARKER" --out "$SH_OUT1" >/dev/null
+printf '%s\n' "$ROW_DAY" >> "$SH_FILE"
+SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_OUT2" >/dev/null
+r1=$(cat "$SH_OUT1"); r2=$(cat "$SH_OUT2") # read-sink-ok: both files are this suite's own outputs under its temp dir
+assert_contains "shifts: the late-closed night shift is in the first report" "2026-10-27T20:00:00+01:00" "$r1"
+if grepq "$r2" -F -- "2026-10-27T20:00:00+01:00"; then fail "shifts: the night shift is not counted again in the next report"; else pass "shifts: the night shift is not counted again in the next report"; fi
+assert_contains "shifts: the day shift written later is in the next report" "2026-10-28T08:00:00+01:00" "$r2"
+if grepq "$r1" -F -- "2026-10-28T08:00:00+01:00"; then fail "shifts: the day shift is not in the earlier report"; else pass "shifts: the day shift is not in the earlier report"; fi
+SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-28 run_script --since "$MARKER" --out "$SH_OUT1" >/dev/null
+if grepq "$(cat "$SH_OUT1")" -F -- "2026-10-28T08:00:00+01:00"; then fail "shifts: re-running an older day does not take a later shift"; else pass "shifts: re-running an older day does not take a later shift"; fi
+SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_OUT2" >/dev/null
+assert_contains "shifts: re-running the same day keeps its shift" "2026-10-28T08:00:00+01:00" "$(cat "$SH_OUT2")" # read-sink-ok: this suite's own output under its temp dir
+printf '%s\n' "$ROW_EVE" >> "$SH_FILE"
+SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-29 run_script --dry-run --since "$MARKER" >/dev/null
+SHIFTS_FILE="$SH_FILE" MORNING_TODAY=2026-10-30 run_script --since "$MARKER" --out "$SH_DIR/r-10-30.md" >/dev/null
+assert_contains "shifts: a dry run takes no shift, so the next real report counts it" "2026-10-28T20:00:00+01:00" "$(cat "$SH_DIR/r-10-30.md")"
+
+echo "TEST: no shift record reads not available"
+SHIFTS_FILE="" run_script --since "$MARKER" --out "$SH_DIR/none.md" >/dev/null
+assert_contains "shifts: no record says so" "Shifts: not available" "$(cat "$SH_DIR/none.md")"
+
+echo "TEST: PRs merged per shift is counted over [opened, closed); a PR merged at the close time counts in the next shift"
+SH_FILE2="$SH_DIR/shifts2.jsonl"
+printf '%s\n%s\n' "$ROW_DAY" "$ROW_EVE" > "$SH_FILE2"
+PRS='[{"number":11,"title":"feat: A-1 early","mergedAt":"2026-10-28T06:59:59Z"},{"number":12,"title":"feat: A-2 inside day","mergedAt":"2026-10-28T10:00:00Z"},{"number":13,"title":"feat: A-3 at the close","mergedAt":"2026-10-28T19:00:00Z"},{"number":14,"title":"feat: A-4 inside night","mergedAt":"2026-10-29T03:00:00Z"}]'
+FAKE_GH_SEARCH_FROM=2026-10-27 FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs.md" --since-date 2026-10-28 >/dev/null
+prs=$(cat "$SH_DIR/prs.md")
+cell() { awk -F'|' -v id="$1" -v col="$2" 'index($2, id) { gsub(/^ +| +$/, "", $col); print $col; exit }' <<< "$3"; }
+shift_row() { grep -E "^\| (day|night) $1 \|" <<< "$2" | head -1; }
+day_prs=$(cell "2026-10-28T08:00:00+01:00" 4 "$prs"); night_prs=$(cell "2026-10-28T20:00:00+01:00" 4 "$prs")
+if [ "$day_prs" = "1" ]; then pass "prs: the day shift counts only the PR merged inside [opened, closed)"; else fail "prs: the day shift counts only the PR merged inside [opened, closed)" "got '$day_prs'"; fi
+if [ "$night_prs" = "2" ]; then pass "prs: the PR merged at the close time counts in the next shift"; else fail "prs: the PR merged at the close time counts in the next shift" "got '$night_prs'"; fi
+assert_contains "prs: the bar names both windows" "Spend per shift covers each shift over its own [opened, closed)" "$prs"
+assert_contains "prs: the report window is named" "The tiles, Completed and Chiefs cover 2026-10-29 00:00 to 2026-10-30 00:00" "$prs"
+
+echo "TEST: shift times stored to the minute (no seconds, the real shift.ts form) still name the shift and count its PRs"
+SH_FILE2M="$SH_DIR/shifts2m.jsonl"
+{ jq -c 'walk(if type == "string" then sub(":00\\+01:00$"; "+01:00") else . end)' <<< "$ROW_DAY"; jq -c 'walk(if type == "string" then sub(":00\\+01:00$"; "+01:00") else . end)' <<< "$ROW_EVE"; } > "$SH_FILE2M"
+FAKE_GH_SEARCH_FROM=2026-10-27 FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2M" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs-min.md" --since-date 2026-10-28 >/dev/null
+prsm=$(cat "$SH_DIR/prs-min.md")
+day_prs_m=$(cell "2026-10-28T08:00+01:00" 4 "$prsm"); night_prs_m=$(cell "2026-10-28T20:00+01:00" 4 "$prsm")
+if [ "$day_prs_m" = "1" ]; then pass "prs: a minute-form day shift counts only the PR merged inside it"; else fail "prs: a minute-form day shift counts only the PR merged inside it" "got '$day_prs_m'"; fi
+if [ "$night_prs_m" = "2" ]; then pass "prs: a minute-form night shift counts the PR merged at the day's close"; else fail "prs: a minute-form night shift counts the PR merged at the day's close" "got '$night_prs_m'"; fi
+
+echo "TEST: the per-shift PR query searches from the day before the earliest shift opened (a stub that accepts any date cannot catch a wrong one)"
+FAKE_GH_SEARCH_FROM=2099-01-01 FAKE_GH_PR_JSON="$PRS" SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/prs-wrong-date.md" --since-date 2026-10-28 >/dev/null
+day_prs_w=$(cell "2026-10-28T08:00:00+01:00" 4 "$(cat "$SH_DIR/prs-wrong-date.md")") # read-sink-ok: this suite's own output under its temp dir
+if [ "$day_prs_w" = "0" ]; then pass "prs: a search from the wrong day finds no PRs, so the right-day rows above are a real check"; else fail "prs: a search from the wrong day finds no PRs, so the right-day rows above are a real check" "got '$day_prs_w'"; fi
+
+echo "TEST: spend per shift shows a source mark per column, sums no column, and reads not available for a missing source"
+FAKE_SPEND_SH="$TMP_ROOT/shift-spend-per-shift.sh"
+cat >"$FAKE_SPEND_SH" <<'FAKE'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"window":{"since":"s","until":"u"},"fields":{
+ "claude_bank":{"status":"ok","source":"cadence log: usage samples","unit":"percent","five_hour":{"peak":41},"seven_day":{"delta":7.5}},
+ "codex_tokens":{"status":"ok","source":"codex rollouts: token_count","unit":"tokens","value":3400},
+ "codex_bank":{"status":"not available"},
+ "api_cost":{"status":"ok","source":"local-priced: launch records","unit":"USD","value":"2.5"},
+ "openrouter":{"status":"not available"}}}
+JSON
+FAKE
+chmod +x "$FAKE_SPEND_SH"
+MORNING_SHIFT_SPEND_CMD="$FAKE_SPEND_SH" SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/spend.md" >/dev/null
+sp=$(cat "$SH_DIR/spend.md")
+dayrow=$(shift_row "2026-10-28T08:00:00\\+01:00" "$sp")
+assert_contains "spend table: header names the spend columns" "| Claude bank | Codex tokens | Codex bank | API \$ | OpenRouter \$ |" "$sp"
+assert_contains "spend table: the Claude bank cell carries its source mark" "41% (cadence log)" "$dayrow"
+assert_contains "spend table: the Codex tokens cell carries its source mark" "3400 tokens (codex rollouts)" "$dayrow"
+assert_contains "spend table: the API cell carries its source mark" "\$2.50 (local-priced)" "$dayrow"
+assert_contains "spend table: a missing source reads not available" "not available" "$dayrow"
+if grepq "$sp" -F -- "Spend per shift: total"; then fail "spend table: no summed column"; else pass "spend table: no summed column"; fi
+MORNING_SHIFT_SPEND_CMD="false" SHIFTS_FILE="$SH_FILE2" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/spend-na.md" >/dev/null
+dayrow=$(shift_row "2026-10-28T08:00:00\\+01:00" "$(cat "$SH_DIR/spend-na.md")")
+assert_contains "spend table: a failing reader leaves every spend cell not available" "| not available | not available | not available | not available | not available |" "$dayrow"
+
+echo "TEST: the Chiefs section lists each chief of the counted shifts with its span and shift"
+assert_contains "chiefs: heading"     "## 👥 Chiefs" "$sp"
+assert_contains "chiefs: a chief row" "IC-roadmap-chief" "$sp"
+
+echo "TEST: a report that could not be written does not claim its shifts"
+SH_FILE3="$SH_DIR/shifts3.jsonl"
+printf '%s\n' "$ROW_DAY" > "$SH_FILE3"
+: > "$SH_DIR/not-a-dir"
+SHIFTS_FILE="$SH_FILE3" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/not-a-dir/r.md" >/dev/null 2>&1 || true
+SHIFTS_FILE="$SH_FILE3" MORNING_TODAY=2026-10-30 run_script --since "$MARKER" --out "$SH_DIR/after-failed.md" >/dev/null
+assert_contains "shifts: a shift whose report failed to write is counted by the next report" "2026-10-28T08:00:00+01:00" "$(cat "$SH_DIR/after-failed.md")"
+
+echo "TEST: the Waiting snapshot is the last clock cut's, not a later idle close's empty one"
+SH_FILE4="$SH_DIR/shifts4.jsonl"
+WAIT_CUT=$(jq -c '. + {waiting:[{kind:"go",ticket:"HIMMEL-1",title:"ship the thing",chief:"IC-roadmap-chief",since:null}]}' <<<"$ROW_DAY")
+WAIT_IDLE=$(jq -c '. + {waiting:[]}' <<<"$ROW_NIGHT")
+printf '%s\n%s\n' "$WAIT_CUT" "$WAIT_IDLE" > "$SH_FILE4"
+SHIFTS_FILE="$SH_FILE4" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/wait.md" >/dev/null
+assert_contains "waiting snapshot: the cut's row is shown" "ship the thing" "$(cat "$SH_DIR/wait.md")"
 
 # Summary --------------------------------------------------------------
 

@@ -355,6 +355,7 @@ _ix_obs=$(m_index observability-registry) || exit 2
 _ix_conf=$(m_index himmel-conf) || exit 2
 _ix_conf_local=$(m_index himmel-conf-local) || exit 2
 _ix_conf_json=$(m_index himmel-config-json) || exit 2
+_ix_ca_backups=$(m_index config-audit-backups) || exit 2
 
 CHANNEL_DIR="$(strip_trailing_slash "$(m_path "$_ix_channel")")"
 BRIDGE_ROOT="$(strip_trailing_slash "$(m_path "$_ix_bridge")")"
@@ -659,7 +660,7 @@ protected_path() {
   # exemptions accept, not a new gap this slice introduces.
   local _allowed_suffixes=(
     ".claude/himmel" ".claude/channels/telegram" ".claude/handover/bridge"
-    ".himmel"
+    ".himmel" ".himmel/state/config-audit/backups"
     ".claude/pipeline-cadence" ".claude/qmd-cadence" ".claude/graphmap-cadence"
   )
   if [ -n "$_t_lexical" ]; then
@@ -3731,13 +3732,40 @@ for _ix in "$_ix_conf" "$_ix_conf_local" "$_ix_conf_json"; do
     fail_step "[8/8] config file ${M_ID[$_ix]}: refused a suspicious path ('$_cf')"
   elif [ ! -e "$_cf" ] && [ ! -L "$_cf" ]; then
     echo "  absent, skipping: $_cf"
-  elif guarded run rm -f -- "$_cf"; then
-    [ "$DRY_RUN" -eq 0 ] && echo "  removed: $_cf"
   else
-    echo "  ERROR: failed to remove $_cf — residue remains; remove it manually." >&2
-    fail_step "[8/8] config file ${M_ID[$_ix]}: $_cf could not be removed"
+    # The removal leaves an audit row and a backup of the set.
+    _ca_id=""
+    [ "$DRY_RUN" -eq 1 ] || _ca_id=$(bash "$SCRIPT_DIR/lib/config-audit.sh" pre "$_cf" --script uninstall.sh 2>/dev/null) || _ca_id=""
+    if guarded run rm -f -- "$_cf"; then
+      if [ "$DRY_RUN" -eq 0 ]; then
+        echo "  removed: $_cf"
+        bash "$SCRIPT_DIR/lib/config-audit.sh" post "$_ca_id" "$_cf" remove --script uninstall.sh --pid "$$" 2>/dev/null \
+          || echo "  WARN: no config audit row for $_cf" >&2
+      fi
+    else
+      echo "  ERROR: failed to remove $_cf — residue remains; remove it manually." >&2
+      fail_step "[8/8] config file ${M_ID[$_ix]}: $_cf could not be removed"
+    fi
   fi
 done
+# the config audit backups: each holds a copy of the .env, so they go on every
+# uninstall, after the loop above (whose own removals add one more backup).
+_cab="$(strip_trailing_slash "$(m_path "$_ix_ca_backups")")"
+if [ "$HALTED" -eq 1 ]; then
+  STEPS_INCOMPLETE+=("[8/8] config audit backups: skipped — halted after an earlier failure")
+elif ! class_removes "$_ix_ca_backups"; then
+  echo "  kept (manifest class ${M_CLASS[$_ix_ca_backups]}): $_cab"
+elif suspicious_rm_path "$_cab"; then
+  echo "  ERROR: refusing to remove suspicious path: '$_cab'" >&2
+  fail_step "[8/8] config audit backups: refused a suspicious path ('$_cab')"
+elif [ ! -e "$_cab" ] && [ ! -L "$_cab" ]; then
+  echo "  absent, skipping: $_cab"
+elif guarded run rm -rf -- "$_cab"; then
+  [ "$DRY_RUN" -eq 0 ] && echo "  removed: $_cab"
+else
+  echo "  ERROR: failed to remove $_cab — residue remains; remove it manually." >&2
+  fail_step "[8/8] config audit backups: $_cab could not be removed"
+fi
 echo ""
 
 # S8: `tool register` rows are docs-only — himmel records the tool

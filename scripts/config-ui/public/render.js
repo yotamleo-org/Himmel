@@ -15,6 +15,7 @@ const READ_ONLY = {
 export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // The mockups' page header: the page title and its one-line purpose.
+export const pg = (html) => `<div class="pg">${html}</div>`; // the mockup main column at body size (app.css .pg)
 export const pageHeader = (title, sub) => `<header class="ph"><h1>${esc(title)}</h1><p>${esc(sub)}</p></header>`;
 
 // One compact command control; the full command is available on hover and to the existing copy handler.
@@ -194,6 +195,23 @@ export function renderVm(vm) {
   return `<section id="vm" aria-labelledby="h-vm">${head}<div class="card">
     <label>mode <select data-vm="mode" aria-label="vm mode">${opts}</select></label>${remote}
     <button class="btn" data-act="vm-save">save</button>${msg}</div></section>`;
+}
+
+// the Reports and shifts card: the four settings behind the Morning report and the Shift page.
+// rs = { data: GET /api/report-settings, error, draft: { report_day, idle, cut1, cut2, minrun }, msg }. The server validates; this only shows its answer.
+export function renderReports(rs) {
+  const head = `<h2 id="h-reports">Reports and shifts</h2><p class="sub">Where the Morning report's day starts and how a shift is cut (reports.* in the himmel config). A new day start applies from the next report on; past reports keep the window they were made with.</p>`;
+  if (!rs || (!rs.data && !rs.error)) return `<section id="reports" aria-labelledby="h-reports">${head}<div class="empty">loading…</div></section>`;
+  if (!rs.data) return `<section id="reports" aria-labelledby="h-reports">${head}<div class="nodata">${esc(rs.error)}</div></section>`;
+  const d = rs.draft || { report_day: rs.data.report_day, idle: String(rs.data.shift_idle_min), cut1: rs.data.shift_cuts[0], cut2: rs.data.shift_cuts[1], minrun: String(rs.data.shift_min_run_h) };
+  const radio = (v, label) => `<label><input type="radio" name="report_day" data-rs="report_day" value="${v}"${d.report_day === v ? " checked" : ""}> ${label}</label>`;
+  const msg = rs.msg ? `<div class="${rs.msg.ok ? "ro" : "nodata"}" role="status">${esc(rs.msg.text)}</div>` : "";
+  return `<section id="reports" aria-labelledby="h-reports">${head}<div class="card">
+    <fieldset><legend>report_day: where the day starts</legend>${radio("local", "local midnight on the station (default)")} ${radio("utc", "UTC midnight")}</fieldset>
+    <label>shift_idle_min <input data-rs="idle" value="${esc(d.idle)}" inputmode="numeric" aria-label="shift_idle_min"> minutes idle close a shift (default 60)</label>
+    <label>shift_cuts <input data-rs="cut1" value="${esc(d.cut1)}" placeholder="08:00" aria-label="shift_cuts day cut"> <input data-rs="cut2" value="${esc(d.cut2)}" placeholder="20:00" aria-label="shift_cuts night cut"> day and night cut, HH:MM (default 08:00 and 20:00)</label>
+    <label>shift_min_run_h <input data-rs="minrun" value="${esc(d.minrun)}" inputmode="decimal" aria-label="shift_min_run_h"> hours a chief must run to count (default 4)</label>
+    <button class="btn" data-act="reports-save">save</button>${msg}</div></section>`;
 }
 
 // the fleet cap card. fc = { data: GET /api/fleet-cap, error }. Read-only: the cap is gate policy, edited by hand in config.json.
@@ -412,5 +430,6 @@ ${renderSettings(feed, state)}
 ${renderFleetCap(state.fleetCap)}
 ${renderReviewGate(state.reviewGate)}
 ${renderVm(state.vm)}
+${renderReports(state.reports)}
 ${renderInventory(feed, state)}`;
 }

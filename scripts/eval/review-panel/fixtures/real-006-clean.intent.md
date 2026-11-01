@@ -1,0 +1,3 @@
+feat(cr): [HIMMEL-7345] a non-trust PR closes the review loop on a Suggestions-only round 2
+
+`review-round.sh defer` now runs from round 2. At rounds 2 and 3 it defers the open Suggestions and nits (follow-up ticket, through the existing cap disposition) and clears the marker, but only when the branch has exactly one open PR whose head is `--head`, and `trust_path_check` (from `scripts/lib/go-gate.sh`) answers `none`. Every other case exits 2 and the round-4 cap stays in force: a trust-path hit, any refusal, no open PR, several open PRs, a moved head. The tests cover the allow path and the trust-path refusal.

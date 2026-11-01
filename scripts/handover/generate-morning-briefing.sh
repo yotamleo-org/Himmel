@@ -103,6 +103,9 @@ Environment overrides:
   GH_CMD / GIT_CMD / JIRA_CMD / CLAUDE_CMD   Test overrides.
   HANDOVER_DIR                               External handover root (Mode B).
   MORNING_REPORT_LLM=1                        Enable --llm.
+  SHIFTS_FILE                                The shift record (default $HANDOVER_DIR/shifts.jsonl).
+  MORNING_SHIFT_CMD / MORNING_SHIFT_SPEND_CMD  The shift helper (run first) and the spend reader.
+  MORNING_TODAY=YYYY-MM-DD                   Test override of the report day.
 EOF
 }
 
@@ -153,7 +156,25 @@ since_marker="\`--since $SINCE_SHA\`"
 # LOCAL day, computed ONCE. Reused for the
 # --since-date default, the output filename, and the header so a run spanning
 # local midnight can't put one date in the filename and another in the header.
-today=$(date +%F)
+# The report day's zone is the `report_day` setting (local | utc, Configure's "Reports and shifts"):
+# a new value applies from the next report on, a report already made keeps the window it was made with.
+report_day="local"
+report_cfg="${HIMMEL_LUNA_CONFIG_PATH:-${HOME:-}/.himmel/config.json}"
+if [ -f "$report_cfg" ] && command -v jq >/dev/null 2>&1; then
+    # swallow-ok: an unreadable config leaves the default, local
+    _rd=$(jq -r '.reports.report_day // "local"' "$report_cfg" 2>/dev/null) || _rd="local"
+    case "$_rd" in utc) report_day="utc" ;; esac
+fi
+if [ -n "${MORNING_TODAY:-}" ]; then
+    today="$MORNING_TODAY"   # test seam: the report day
+elif [ "$report_day" = "utc" ]; then
+    today=$(TZ=UTC date +%F)
+else
+    today=$(date +%F)
+fi
+if [ "$report_day" = "utc" ]; then zone_label="UTC"; else zone_label="local midnight on the station, $(date +%Z)"; fi
+# swallow-ok: no next-day form (GNU or BSD date) leaves next_day empty, so the window line reads without its end
+next_day=$(date -d "$today + 1 day" +%F 2>/dev/null || date -j -v+1d -f %F "$today" +%F 2>/dev/null || echo "")
 
 # Resolve --since-date when not passed — LOCAL day.
 [ -z "$SINCE_DATE" ] && SINCE_DATE="$today"
@@ -440,6 +461,148 @@ $rel_versions
 EOF_VER
 fi
 
+# Shifts ---------------------------------------------------------
+# The shift record (shifts.jsonl, the one writer is scripts/config-ui/shift.ts) is read here, never
+# written. The helper runs first so a close pending since the last poll is written before the count.
+# Each shift id is counted in exactly one report: the first one made after its row is written. A
+# ledger beside the record (shifts.reported.tsv, id TAB report day) is that memory, so a re-run of a
+# day keeps its shifts and a re-run of an older day takes none that were written since.
+# The empty string for SHIFTS_FILE / MORNING_SHIFT_CMD means "no such input" (tests); unset means the real source.
+shifts_ok=0; shifts_json="[]"; shifts_n=0; shifts_why=""; ledger_new=""; ledger=""
+shifts_file=""
+if [ "${SHIFTS_FILE+set}" = set ]; then
+    shifts_file="$SHIFTS_FILE"
+elif _sroot=$(handover_root 2>/dev/null) && [ -n "$_sroot" ]; then # swallow-ok: no root means no record; the report says "not available (no shift record is configured)"
+    shifts_file="$_sroot/shifts.jsonl"
+fi
+if [ -z "$shifts_file" ]; then
+    shifts_why="no shift record is configured"
+elif ! command -v jq >/dev/null 2>&1; then
+    shifts_why="jq is not installed"
+else
+    shift_helper=()
+    if [ "${MORNING_SHIFT_CMD+set}" = set ]; then
+        if [ -n "$MORNING_SHIFT_CMD" ]; then read -r -a shift_helper <<<"$MORNING_SHIFT_CMD"; fi
+    elif [ -f "$SCRIPT_DIR/../config-ui/shift-cli.ts" ] && command -v bun >/dev/null 2>&1; then
+        shift_helper=(bun "$SCRIPT_DIR/../config-ui/shift-cli.ts")
+    fi
+    if [ ${#shift_helper[@]} -gt 0 ] && [ "$DRY_RUN" -eq 0 ]; then
+        # swallow-ok: a failed helper leaves the record as it is, and the report reads what was already written
+        SHIFTS_FILE="$shifts_file" "${shift_helper[@]}" >/dev/null 2>&1 || echo "WARNING: briefing: the shift helper failed — the shift record may be missing the newest shift" >&2
+    fi
+    if [ ! -f "$shifts_file" ]; then
+        shifts_why="no shifts.jsonl yet"
+    else
+        ledger="${shifts_file%.jsonl}.reported.tsv"
+        [ "$ledger" = "$shifts_file" ] && ledger="$shifts_file.reported.tsv"
+        # swallow-ok: an unreadable record leaves no ids, and the section reads not available
+        all_ids=$(jq -r '.id // empty' "$shifts_file" 2>/dev/null | awk '!seen[$0]++') || all_ids=""
+        ledger_latest=""
+        ledger_new=""   # claimed here, written to the ledger only after the report is on disk
+        [ -f "$ledger" ] && ledger_latest=$(cut -f2 "$ledger" | sort | tail -1)
+        counted=""
+        [ -f "$ledger" ] && counted=$(awk -F'\t' -v d="$today" '$2 == d { print $1 }' "$ledger")
+        # A shift not yet in the ledger belongs to this report, unless a later day's report exists.
+        if [ -z "$ledger_latest" ] || ! [[ "$today" < "$ledger_latest" ]]; then
+            while IFS= read -r _id; do
+                [ -n "$_id" ] || continue
+                if [ -f "$ledger" ] && awk -F'\t' -v id="$_id" '$1 == id { f = 1 } END { exit !f }' "$ledger"; then continue; fi
+                counted="${counted:+$counted$'\n'}$_id"
+                ledger_new="${ledger_new}$_id"$'\t'"$today"$'\n'
+            done <<<"$all_ids"
+        fi
+        ids_json=$(printf '%s\n' "$counted" | jq -R 'select(. != "")' | jq -sc '.')
+        # swallow-ok: an unparseable record leaves no shifts, and the section reads not available
+        if shifts_json=$(jq -sc --argjson ids "$ids_json" '[ .[] | select(.id as $i | $ids | index($i)) ] | unique_by(.id) | sort_by(.opened)' "$shifts_file" 2>/dev/null); then
+            shifts_ok=1
+            shifts_n=$(jq 'length' <<<"$shifts_json")
+        else
+            shifts_json="[]"; shifts_why="shifts.jsonl could not be read"
+        fi
+    fi
+fi
+
+# ISO-8601 with an offset to epoch seconds: shifts store their times so, gh stores UTC.
+# shellcheck disable=SC2016 # a jq program: $t, $e and $o are jq variables, not shell ones
+jq_ep='def ep: capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2})(:(?<s>[0-9]{2}))?(?<z>Z|[+-][0-9]{2}:[0-9]{2})?$") as $m
+    | (($m.d + ":" + ($m.s // "00") + "Z") | fromdateiso8601) as $e | ($m.z // "Z") as $o
+    | if $o == "Z" then $e
+      else ((($o[1:3] | sub("^0"; "") | if . == "" then 0 else tonumber end) * 3600) + (($o[4:6] | sub("^0"; "") | if . == "" then 0 else tonumber end) * 60)) as $s
+        | if $o[0:1] == "+" then $e - $s else $e + $s end end;'
+
+# Merged PRs for the per-shift column: its own query, from the day before the earliest counted shift opened,
+# since a night shift can reach back before the report day.
+shift_pr_json=""
+if [ "$shifts_n" -gt 0 ] && [ "$briefing_forge" = "github" ] && command -v "${GH_CMD%% *}" >/dev/null 2>&1; then
+    _min_open=$(jq -r 'map(.opened[0:10]) | min' <<<"$shifts_json")
+    # swallow-ok: no previous-day form (GNU or BSD date) searches from the opened day itself, still one day wide of the zone
+    _from_day=$(date -d "$_min_open - 1 day" +%F 2>/dev/null || date -j -v-1d -f %F "$_min_open" +%F 2>/dev/null || echo "$_min_open")
+    # swallow-ok: a failed gh read leaves the PRs-merged cells at not available
+    shift_pr_json=$($GH_CMD pr list --state merged --search "merged:>=$_from_day" --limit 500 --json number,title,mergedAt 2>/dev/null) || shift_pr_json=""
+    printf '%s' "$shift_pr_json" | jq -e 'type == "array"' >/dev/null 2>&1 || shift_pr_json=""
+fi
+
+# The Chiefs table, one row per chief per counted shift, from the stored span function output.
+chiefs_rows=""
+if [ "$shifts_n" -gt 0 ]; then
+    chiefs_rows=$(jq -r '.[] | .name as $sh | .id as $id | .chiefs[]? |
+        "| \(.name) | \(.span.start[11:16]) to \(if .span.end then .span.end[11:16] else "open" end)\(if .span.approx then " (approx)" else "" end) | \(.prs | length) | \($sh) \($id) |"' <<<"$shifts_json")
+fi
+
+# The Waiting rows snapshotted at the cut that closed the last counted shift, labelled with that time.
+waiting_snap=""; waiting_snap_at=""
+if [ "$shifts_n" -gt 0 ]; then
+    waiting_snap_at=$(jq -r '[ .[] | select(.waiting != null and .why != "idle") ] | last | .closed // empty' <<<"$shifts_json")
+    if [ -n "$waiting_snap_at" ]; then
+        waiting_snap=$(jq -r '[ .[] | select(.waiting != null and .why != "idle") ] | last | .waiting[]? |
+            "  - \(.kind) \(.ticket // "") \(.title) (\(.chief))"' <<<"$shifts_json")
+    fi
+fi
+
+# Spend per shift: the spend reader once per counted shift over its own [opened, closed); one cell per
+# source, each with its source mark, none a sum of another. A shift whose reader fails reads not available.
+na5="not available | not available | not available | not available | not available"
+shift_rows=""
+if [ "$shifts_n" -gt 0 ]; then
+    _i=0
+    while [ "$_i" -lt "$shifts_n" ]; do
+        _row=$(jq -c ".[$_i]" <<<"$shifts_json"); _i=$((_i+1))
+        _meta=$(jq -r --argjson prs "${shift_pr_json:-null}" "$jq_ep"'
+            (.opened | ep) as $o | (.closed | ep) as $c
+            | [ .id, .name, (.opened[5:10] + " " + .opened[11:16] + " to " + .closed[5:10] + " " + .closed[11:16]),
+                (.chiefs | length | tostring),
+                (if $prs == null then "not available" else ([ $prs[] | (.mergedAt | fromdateiso8601) | select(. >= $o and . < $c) ] | length | tostring) end),
+                ($o | todate), ($c | todate) ] | join("|")' <<<"$_row")
+        IFS='|' read -r _sid _sname _sspan _schiefs _sprs _ssince _suntil <<<"$_meta"
+        _cells="$na5"
+        if [ ${#spend_argv[@]} -gt 0 ]; then
+            # swallow-ok: a failed reader leaves the cells at not available
+            if _sj=$("${spend_argv[@]}" --since "$_ssince" --until "$_suntil" 2>/dev/null); then
+                # swallow-ok: an unparseable record leaves the cells at not available
+                _tsv=$(jq -r '
+                    def mark: (.source // "unknown source") | split(":")[0];
+                    [ (.fields.claude_bank | if .status == "ok" and (.five_hour.peak != null) then "\(.five_hour.peak)% (\(mark))" else "NA" end),
+                      (.fields.codex_tokens | if .status == "ok" then "\(.value) tokens (\(mark))" else "NA" end),
+                      (.fields.codex_bank | if .status == "ok" then "\(.value) points (\(mark))" else "NA" end),
+                      (.fields.api_cost | if .status == "ok" then "$\(.value)~\(mark)" else "NA" end),
+                      (.fields.openrouter | if .status == "ok" then "$\(.value)~\(mark)" else "NA" end)
+                    ] | @tsv' <<<"$_sj" 2>/dev/null) || _tsv=""
+                if [ -n "$_tsv" ]; then
+                    _cells=""
+                    while IFS= read -r _c; do
+                        case "$_c" in
+                            NA) _c="not available" ;;
+                            '$'*'~'*) _c="$(awk -v v="${_c#\$}" 'BEGIN { sub(/~.*/, "", v); printf "$%.2f", v }') (${_c#*~})" ;;
+                        esac
+                        _cells="${_cells:+$_cells | }$_c"
+                    done < <(tr '\t' '\n' <<<"$_tsv")
+                fi
+            fi
+        fi
+        shift_rows="$shift_rows| $_sname $_sid | $_sspan | $_sprs | $_schiefs | $_cells |"$'\n'
+    done
+fi
+
 # Deterministic judgment strings -----------------------------------------------
 
 inprog_count=$(printf '%s\n' "$inprogress_raw" | awk -F'\t' 'NF>=3 && $1!="KEY"{c++} END{print c+0}')
@@ -538,6 +701,9 @@ briefing=$(
 > Auto-generated by \`scripts/handover/generate-morning-briefing.sh\`.
 > Source markers: $since_marker,
 > \`--since-date $SINCE_DATE\`. Point-in-time snapshot — continuity is a session's job.
+>
+> The tiles, Completed and Chiefs cover $today 00:00 to ${next_day:-the next midnight} 00:00. Spend per shift covers each shift over its own [opened, closed).
+> Day starts: $zone_label · change on Configure.
 
 EOF
     # Reachability banner — when a tool call FAILED (not just returned nothing),
@@ -621,6 +787,27 @@ EOF
         printf -- '- Release progress: not available (the generator reads no release input)\n'
     fi
     printf -- '- Next step: %s\n\n' "$(printf '%s\n' "$order_final" | awk 'NF{print; exit}')"
+    printf '## 👥 Chiefs\n\n'
+    if [ "$shifts_n" -gt 0 ]; then
+        printf '| Chief | Span | PRs merged | Shift |\n|---|---|---|---|\n%s\n\n' "$chiefs_rows"
+    elif [ "$shifts_ok" -eq 1 ]; then
+        printf '_No shift was counted in this report._\n\n'
+    else
+        printf -- '- Shifts: not available (%s)\n\n' "$shifts_why"
+    fi
+    printf '## 💸 Spend per shift\n\n'
+    if [ "$shifts_n" -gt 0 ]; then
+        printf '| Shift | Span | PRs merged | Chiefs | Claude bank | Codex tokens | Codex bank | API $ | OpenRouter $ |\n|---|---|---|---|---|---|---|---|---|\n%s\n' "$shift_rows"
+        printf 'Each cell names its source in brackets and no column is a sum of another. A source that gave no figure reads not available.\n'
+        if [ -n "$waiting_snap_at" ]; then
+            printf '\nWaiting at the %s cut (the Shift page rows, snapshotted then):\n%s\n' "$waiting_snap_at" "${waiting_snap:-  - nothing}"
+        fi
+        printf '\n'
+    elif [ "$shifts_ok" -eq 1 ]; then
+        printf '_No shift was counted in this report._\n\n'
+    else
+        printf -- '- Shifts: not available (%s)\n\n' "$shifts_why"
+    fi
     printf '## TL;DR\n\n%s\n\n' "$tldr_final"
     printf '## ✅ Completed (%s PRs merged to main)\n\n' "$pr_count"
     if [ -n "$pr_table" ]; then
@@ -770,5 +957,7 @@ fi
 
 mkdir -p "$(dirname "$OUT_FILE")"
 printf '%s\n' "$briefing" > "$OUT_FILE"
+# The shifts this report counted are claimed only now that it is on disk, so a failed write leaves them for the next day.
+[ -n "$ledger_new" ] && printf '%s' "$ledger_new" >>"$ledger"
 echo "briefing: wrote $OUT_FILE ($pr_count PRs, $commit_count commits, ${#ticket_keys[@]} ticket keys)"
 exit 0

@@ -25,6 +25,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { keyringUnlocked, putSecret, resolveSecrets } from "../lib/resolve-secrets.mjs";
 
 const RAM_HOST = "ram.aliyuncs.com";
 const RAM_VERSION = "2015-05-01";
@@ -76,7 +77,7 @@ function pctEncode(s: string): string {
     .replace(/\(/g, "%28").replace(/\)/g, "%29").replace(/\*/g, "%2A");
 }
 
-async function ramCall(
+async function realRamCall(
   ak: string, sk: string, action: string, params: Record<string, string>,
 ): Promise<{ ok: boolean; status: number; code?: string; body: any }> {
   const query: Record<string, string> = { ...params };
@@ -108,9 +109,12 @@ async function ramCall(
 }
 
 // --- main --------------------------------------------------------------------
-async function main() {
-  const rotate = process.argv.includes("--rotate");
-  const root = repoRoot();
+type RamCall = typeof realRamCall;
+
+export async function main(opts: { root?: string; rotate?: boolean; call?: RamCall } = {}) {
+  const rotate = opts.rotate ?? process.argv.includes("--rotate");
+  const root = opts.root ?? repoRoot();
+  const ramCall = opts.call ?? realRamCall;
   let envPath = join(root, ".env");
   let fileEnv = parseEnvFile(envPath);
   if (!fileEnv.ALIBABA_QUOTA_AK || !fileEnv.ALIBABA_QUOTA_SK) {
@@ -121,14 +125,20 @@ async function main() {
       if (parsed.ALIBABA_QUOTA_AK && parsed.ALIBABA_QUOTA_SK) { envPath = mainEnv; fileEnv = parsed; }
     }
   }
-  const ak = process.env.ALIBABA_QUOTA_AK?.trim() || fileEnv.ALIBABA_QUOTA_AK;
-  const sk = process.env.ALIBABA_QUOTA_SK?.trim() || fileEnv.ALIBABA_QUOTA_SK;
+  // Lookup order: environment, credentials directory, keyring, then the .env above.
+  const held = resolveSecrets(root, ["ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK"]);
+  const fromResolver = Boolean(held.ALIBABA_QUOTA_AK?.trim() && held.ALIBABA_QUOTA_SK?.trim());
+  // True only when neither the environment nor a credentials directory could have served the pair.
+  const heldFromKeyring = fromResolver && !process.env.ALIBABA_QUOTA_AK?.trim() && !process.env.ALIBABA_QUOTA_SK?.trim()
+    && !process.env.CREDENTIALS_DIRECTORY;
+  const ak = held.ALIBABA_QUOTA_AK?.trim() || fileEnv.ALIBABA_QUOTA_AK;
+  const sk = held.ALIBABA_QUOTA_SK?.trim() || fileEnv.ALIBABA_QUOTA_SK;
   if (!ak || !sk) {
-    console.error(`create-monitoring-key: ALIBABA_QUOTA_AK / ALIBABA_QUOTA_SK not found in process.env, ${join(root, ".env")}, or the main checkout .env`);
+    console.error(`create-monitoring-key: ALIBABA_QUOTA_AK / ALIBABA_QUOTA_SK not found in process.env, the keyring, ${join(root, ".env")}, or the main checkout .env`);
     console.error("Add the MASTER pair to the main checkout .env first (it will be REPLACED there by the scoped key; masters stay in 1Password).");
     process.exit(2);
   }
-  console.log(`master key: ${mask(ak)} (from ${process.env.ALIBABA_QUOTA_AK ? "process.env" : envPath})`);
+  console.log(`master key: ${mask(ak)} (from ${fromResolver ? "process.env or the keyring" : envPath})`);
 
   // 1. ensure user
   const get = await ramCall(ak, sk, "GetUser", { UserName: USER_NAME });
@@ -163,8 +173,13 @@ async function main() {
 
   // 3. access key (refuse a silent second key; --rotate deletes existing first)
   // Persistence preflight FIRST: creating a key we cannot persist orphans a
-  // live credential (the secret is shown once) — check .env before minting.
-  if (!existsSync(envPath)) {
+  // live credential (the secret is shown once) — check a place to keep it before minting. A .env
+  // that exists is one; an unlocked keyring is another only once it has taken a write, which is
+  // proved by storing back the pair it already serves (never a master it does not hold).
+  const toKeyring = keyringUnlocked(root);
+  const keyringTakesWrites = toKeyring && heldFromKeyring
+    && putSecret(root, "ALIBABA_QUOTA_AK", ak) && putSecret(root, "ALIBABA_QUOTA_SK", sk);
+  if (!existsSync(envPath) && !keyringTakesWrites) {
     console.error(`create-monitoring-key: ${envPath} missing — refusing to mint a key that cannot be persisted; create the .env first.`);
     process.exit(1);
   }
@@ -216,23 +231,55 @@ async function main() {
   const newSk = minted.secret;
   console.log(`scoped key created: ${mask(newAk)}`);
 
-  // 4. swap the scoped pair into .env (values never printed; existence was
-  // preflighted before the key was minted).
-  const lines = readFileSync(envPath, "utf8").split(/\r?\n/);
-  const replaced = { ak: false, sk: false };
-  const next = lines.map((line) => {
-    if (/^\s*ALIBABA_QUOTA_AK\s*=/.test(line)) { replaced.ak = true; return `ALIBABA_QUOTA_AK=${newAk}`; }
-    if (/^\s*ALIBABA_QUOTA_SK\s*=/.test(line)) { replaced.sk = true; return `ALIBABA_QUOTA_SK=${newSk}`; }
-    return line;
-  });
-  if (!replaced.ak) next.push(`ALIBABA_QUOTA_AK=${newAk}`);
-  if (!replaced.sk) next.push(`ALIBABA_QUOTA_SK=${newSk}`);
-  writeFileSync(envPath, next.join("\n"), "utf8");
+  // 4. store the scoped pair: in the keyring when it is unlocked (put --stdin, no .env line),
+  // else swap it into .env (values never printed; the target was preflighted before minting).
+  const swapIntoEnv = (appendMissing: boolean): { ak: boolean; sk: boolean } => {
+    const replaced = { ak: false, sk: false };
+    const next = readFileSync(envPath, "utf8").split(/\r?\n/).map((line) => {
+      if (/^\s*ALIBABA_QUOTA_AK\s*=/.test(line)) { replaced.ak = true; return `ALIBABA_QUOTA_AK=${newAk}`; }
+      if (/^\s*ALIBABA_QUOTA_SK\s*=/.test(line)) { replaced.sk = true; return `ALIBABA_QUOTA_SK=${newSk}`; }
+      return line;
+    });
+    if (appendMissing && !replaced.ak) next.push(`ALIBABA_QUOTA_AK=${newAk}`);
+    if (appendMissing && !replaced.sk) next.push(`ALIBABA_QUOTA_SK=${newSk}`);
+    if (appendMissing || replaced.ak || replaced.sk) writeFileSync(envPath, next.join("\n"), "utf8");
+    return replaced;
+  };
+  if (toKeyring) {
+    const stored: Array<[string, string]> = [];
+    for (const [name, value, old] of [["ALIBABA_QUOTA_AK", newAk, ak], ["ALIBABA_QUOTA_SK", newSk, sk]] as const) {
+      if (!putSecret(root, name, value)) break;
+      stored.push([name, old]);
+    }
+    if (stored.length === 2) {
+      // A line already in .env would still shadow the keyring where a caller loads it: keep it in step, add none.
+      if (existsSync(envPath)) swapIntoEnv(false);
+      console.log(`keyring updated: ALIBABA_QUOTA_AK/SK now carry the SCOPED ${USER_NAME} key.`);
+      console.log("Masters remain recorded in 1Password only. Done.");
+      return;
+    }
+    // A name was refused. The keyring outranks .env, so a .env copy does not take effect until the
+    // keyring is fixed: put the keyring's own old value back where we can, save the minted key to
+    // .env so it is not lost, and exit non-zero, never reporting success.
+    let mixedPair = stored.length === 1 && !heldFromKeyring;
+    if (heldFromKeyring) for (const [name, old] of stored) if (!putSecret(root, name, old)) mixedPair = true;
+    if (!existsSync(envPath)) {
+      console.error("create-monitoring-key: the keyring refused the scoped key and there is no .env to hold it; the key was minted and is lost. Re-run with --rotate.");
+      process.exit(1);
+    }
+    swapIntoEnv(true);
+    console.error(`create-monitoring-key: the keyring refused the scoped key. It is saved in ${envPath}, but the keyring ${mixedPair ? "may now hold a new AK beside an old SK" : "still holds the older pair"} and outranks .env.`);
+    console.error("Fix the keyring, then store both names with: himmel-secrets put --stdin ALIBABA_QUOTA_AK, then ALIBABA_QUOTA_SK.");
+    process.exit(1);
+  }
+  const replaced = swapIntoEnv(true);
   console.log(`.env updated: ALIBABA_QUOTA_AK/SK now carry the SCOPED ${USER_NAME} key (${replaced.ak ? "replaced" : "appended"}).`);
   console.log("Masters remain recorded in 1Password only. Done.");
 }
 
-main().catch((e) => {
-  console.error(`create-monitoring-key: ${String(e?.message ?? e)}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((e) => {
+    console.error(`create-monitoring-key: ${String(e?.message ?? e)}`);
+    process.exit(1);
+  });
+}

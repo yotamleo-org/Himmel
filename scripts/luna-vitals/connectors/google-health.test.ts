@@ -1,8 +1,9 @@
-import { describe, test, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { chmodSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { pull } from './google-health';
+import { pull, loadSecretsIntoEnv, storeRefreshToken } from './google-health';
+import { stubKeyring } from '../../config-ui/tests/keyring-stub';
 import { ReconsentNeededError, RECONSENT_EXIT } from './auth/oauth';
 import { validateRow, writeArtifact } from '../src/types';
 
@@ -492,5 +493,109 @@ describe('pull', () => {
       'sleep dataPoint 0 ending 2026-05-02T06:00:00Z: no civilEndTime and no endUtcOffset - session dropped',
       'sleep 2026-01-02: malformed stage timestamps - sleep_hours omitted (degraded stage data)',
     ]);
+  });
+});
+
+// ── Rows S0-R1 and S0-R3 of the secrets-resolver slice ──
+// The real scripts/lib/himmel-secrets over a stub keyring (secret-tool and busctl first on PATH).
+// Dummy values only; the station keyring and the real .env are never reached.
+describe('google-health secrets through the resolver', () => {
+  const TOUCHED = ['PATH', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'KSTUB_FAIL_STORE', 'DBUS_SESSION_BUS_ADDRESS',
+    'GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN',
+    'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY'];
+  const saved: Record<string, string | undefined> = {};
+  let dir: string;
+  let stub: ReturnType<typeof stubKeyring>;
+  let log: string;
+
+  beforeAll(() => {
+    for (const k of TOUCHED) saved[k] = process.env[k];
+    dir = mkdtempSync(join(tmpdir(), 'gh-secrets-'));
+    stub = stubKeyring(dir);
+    // Log every secret-tool call's argv (a value travels on stdin, never on argv).
+    const bin = join(dir, 'kbin');
+    renameSync(join(bin, 'secret-tool'), join(bin, 'secret-tool.real'));
+    writeFileSync(join(bin, 'secret-tool'),
+      '#!/usr/bin/env bash\nprintf "secret-tool %s\\n" "$*" >>"$KSTUB_LOG"\n' +
+      // KSTUB_FAIL_STORE refuses every store, as a keyring that goes away mid-write would.
+      'case "$1" in store) [ -z "${KSTUB_FAIL_STORE:-}" ] || exit 1 ;; esac\n' +
+      'exec "$(dirname "$0")/secret-tool.real" "$@"\n');
+    chmodSync(join(bin, 'secret-tool'), 0o755);
+    log = join(dir, 'keyring.log');
+    Object.assign(process.env, stub.env, { KSTUB_LOG: log });
+    // Suite guard: secret-tool and busctl must resolve to the stub, or the run aborts.
+    for (const tool of ['secret-tool', 'busctl']) {
+      const where = Bun.which(tool, { PATH: process.env.PATH }) ?? '';
+      if (!where.startsWith(bin)) throw new Error(`${tool} resolves to ${where}, not the stub dir`);
+    }
+  });
+  afterAll(() => {
+    for (const k of TOUCHED) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    rmSync(dir, { recursive: true, force: true });
+  });
+  beforeEach(() => {
+    for (const k of ['GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN', 'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY']) delete process.env[k];
+    process.env.KSTUB_LOCKED = 'false';
+    delete process.env.KSTUB_FAIL_STORE;
+    writeFileSync(stub.store, '');
+    writeFileSync(log, '');
+  });
+
+  const NAMES = ['GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN'];
+
+  test('S0-R1 a credential held only in the keyring reaches process.env; the log has a lookup and no value', () => {
+    stub.put('GOOGLE_HEALTH_CLIENT_ID', 'dummy-s0-id');
+    stub.put('GOOGLE_HEALTH_REFRESH_TOKEN', 'dummy-s0-refresh');
+    loadSecretsIntoEnv(dir, NAMES);
+    expect(process.env.GOOGLE_HEALTH_CLIENT_ID).toBe('dummy-s0-id');
+    expect(process.env.GOOGLE_HEALTH_REFRESH_TOKEN).toBe('dummy-s0-refresh');
+    expect(process.env.GOOGLE_HEALTH_CLIENT_SECRET).toBeUndefined();
+    const logged = readFileSync(log, 'utf8');
+    expect(logged).toContain('secret-tool lookup service himmel key GOOGLE_HEALTH_CLIENT_ID scope user');
+    expect(logged).not.toContain('dummy-s0');
+  });
+
+  test('an exported credential is kept over the keyring', () => {
+    stub.put('GOOGLE_HEALTH_CLIENT_ID', 'dummy-keyring-id');
+    process.env.GOOGLE_HEALTH_CLIENT_ID = 'dummy-exported-id';
+    loadSecretsIntoEnv(dir, NAMES);
+    expect(process.env.GOOGLE_HEALTH_CLIENT_ID).toBe('dummy-exported-id');
+  });
+
+  test('S0-R3 keyring unlocked: the refreshed token is stored with put --stdin and no .env line is added', () => {
+    const envFile = join(dir, 'unlocked.env');
+    writeFileSync(envFile, 'OTHER=1\n');
+    const where = storeRefreshToken(dir, 'dummy-new-refresh', envFile)?.where;
+    expect(where).toBe('the keyring');
+    expect(stub.get('GOOGLE_HEALTH_REFRESH_TOKEN')).toBe('dummy-new-refresh');
+    expect(readFileSync(envFile, 'utf8')).toBe('OTHER=1\n');
+    const logged = readFileSync(log, 'utf8');
+    expect(logged).toContain('secret-tool store --label himmel: GOOGLE_HEALTH_REFRESH_TOKEN service himmel key GOOGLE_HEALTH_REFRESH_TOKEN scope user');
+    expect(logged).not.toContain('dummy-new-refresh');
+  });
+
+  test('a token line already in the .env is kept in step with the keyring, so a loaded .env cannot shadow it', () => {
+    const envFile = join(dir, 'stale.env');
+    writeFileSync(envFile, 'GOOGLE_HEALTH_REFRESH_TOKEN=dummy-old-refresh\nOTHER=1\n');
+    expect(storeRefreshToken(dir, 'dummy-new-refresh', envFile)?.where).toBe('the keyring');
+    expect(readFileSync(envFile, 'utf8')).toBe('GOOGLE_HEALTH_REFRESH_TOKEN=dummy-new-refresh\nOTHER=1\n');
+  });
+
+  test('an unlocked keyring that refuses the token still saves .env and says the older keyring token outranks it', () => {
+    process.env.KSTUB_FAIL_STORE = '1';
+    const envFile = join(dir, 'refused.env');
+    writeFileSync(envFile, 'OTHER=1\n');
+    expect(storeRefreshToken(dir, 'dummy-new-refresh', envFile)).toEqual({ where: envFile, shadowed: true });
+    expect(readFileSync(envFile, 'utf8')).toBe('OTHER=1\nGOOGLE_HEALTH_REFRESH_TOKEN=dummy-new-refresh\n');
+  });
+
+  test('S0-R3 keyring locked: today\'s .env write, nothing stored', () => {
+    process.env.KSTUB_LOCKED = 'true';
+    const envFile = join(dir, 'locked.env');
+    writeFileSync(envFile, 'OTHER=1\n');
+    const where = storeRefreshToken(dir, 'dummy-new-refresh', envFile)?.where;
+    expect(where).toBe(envFile);
+    expect(readFileSync(envFile, 'utf8')).toBe('OTHER=1\nGOOGLE_HEALTH_REFRESH_TOKEN=dummy-new-refresh\n');
+    expect(readFileSync(stub.store, 'utf8')).toBe('');
   });
 });

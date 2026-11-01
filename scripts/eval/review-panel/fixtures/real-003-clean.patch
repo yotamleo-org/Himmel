@@ -1,0 +1,85 @@
+diff --git a/scripts/hooks/auto-approve-safe-bash.sh b/scripts/hooks/auto-approve-safe-bash.sh
+index 0fd78b3d9..1ea4f0e2c 100755
+--- a/scripts/hooks/auto-approve-safe-bash.sh
++++ b/scripts/hooks/auto-approve-safe-bash.sh
+@@ -398,13 +398,16 @@ tokenize_seg_words() {
+                 # Keep the established Git-Bash/Windows `find C:\ <expr>`
+                 # spelling as a drive-root token; the following space still
+                 # delimits the next word instead of being consumed here.
+-                case "$nx" in [[:space:]]) word+="$c"; have=1; i=$((i + 1)); continue ;; esac
++                case "$nx" in " "|$'\t'|$'\n'|$'\r') word+="$c"; have=1; i=$((i + 1)); continue ;; esac
+                 word+="$c$nx"; have=1; i=$((i + 2)); continue ;;
+-            # ponytail: splits on CR where bash does not (safe direction: a
+-            # bash word still starts with its first sub-token, so a leading
++            # HIMMEL-5034: split on bash's IFS word separators (space, tab,
++            # newline); FF, VT and U+2028 are word bytes to bash, so a root
++            # walk needs a real separator.
++            # ponytail: also splits on CR where bash does not (safe direction:
++            # a bash word still starts with its first sub-token, so a leading
+             # flag stays visible); revisit when any flag check relies on a
+             # word's END or suffix rather than its prefix (HIMMEL-3886).
+-            [[:space:]])
++            " "|$'\t'|$'\n'|$'\r')
+                 if [ "$have" -eq 1 ]; then
+                     RB_TOKENS+=("$word"); word=""; have=0
+                 fi ;;
+@@ -1768,7 +1771,7 @@ case "${FIND_ROOTWALK_OK:-}" in
+     1|true|yes|on) ;;  # explicit truthy bypass — skip the deny scan entirely
+     *)
+         while IFS= read -r seg; do
+-            seg="${seg#"${seg%%[![:space:]]*}"}"   # ltrim
++            seg="${seg#"${seg%%[! $'\t']*}"}"   # ltrim space/tab only (HIMMEL-5034)
+             [ -z "$seg" ] && continue
+             if segment_is_rootwalk_find "$seg"; then
+                 emit_deny "a root-anchored find with no -maxdepth walks the WHOLE disk and can outlive its parent for 20+ minutes in headless/cadence sessions, where the fall-through prompt is unattended (HIMMEL-2121). Use the Glob tool, or scope it to a repo-rooted directory: find <dir> ... -maxdepth N. One-run bypass: set FIND_ROOTWALK_OK=1 in the LAUNCHING shell."
+@@ -1889,7 +1892,7 @@ ql_unquoted_sep=0
+ case "$SCAN_MASK" in *';'*|*'|'*|*'&'*|*$'\n'*) ql_unquoted_sep=1 ;; esac
+ ql_segs=0; ql_only=""
+ while IFS= read -r seg; do
+-    seg="${seg#"${seg%%[![:space:]]*}"}"   # ltrim
++    seg="${seg#"${seg%%[! $'\t']*}"}"   # ltrim space/tab only, same as the root-walk loop (HIMMEL-5034)
+     [ -z "$seg" ] && continue
+     ql_segs=$((ql_segs + 1)); ql_only="$seg"
+ done <<EOF
+@@ -1901,7 +1904,7 @@ fi
+
+ all_safe=1
+ while IFS= read -r seg; do
+-    seg="${seg#"${seg%%[![:space:]]*}"}"   # ltrim
++    seg="${seg#"${seg%%[! $'\t']*}"}"   # ltrim space/tab only, same as the root-walk loop (HIMMEL-5034)
+     [ -z "$seg" ] && continue
+     if ! segment_is_safe "$seg"; then all_safe=0; break; fi
+ done <<EOF
+diff --git a/scripts/hooks/test-auto-approve-safe-bash.sh b/scripts/hooks/test-auto-approve-safe-bash.sh
+index 60466c98c..8bde24155 100755
+--- a/scripts/hooks/test-auto-approve-safe-bash.sh
++++ b/scripts/hooks/test-auto-approve-safe-bash.sh
+@@ -1573,6 +1573,28 @@ assert "find / FF DENY"                       DENY  "$(decide "$(j_bash "find /
+ assert "find / VT DENY"                       DENY  "$(decide "$(j_bash "find / -name x${VT}")")"
+ assert "find / U+2028 bypass still PASS"      PASS  "$(FIND_ROOTWALK_OK=1 decide "$(j_bash "find / -name x${LS}")")"
+ assert "find / maxdepth U+2028 PASS"          PASS  "$(decide "$(j_bash "find / -maxdepth 2 -name x${LS}")")"
++# HIMMEL-5034 (judge j2194 on HIMMEL-4967): bash splits words on space, tab and
++# newline only, so a FF/VT/U+2028 inside the keyword or in place of the space
++# makes ONE word (command not found), never a root walk. No DENY for these.
++TB=$'\t'
++assert "FF before find / is one word PASS"     PASS  "$(decide "$(j_bash "${FF}find / -name x")")"
++assert "find FF / is one word PASS"            PASS  "$(decide "$(j_bash "find${FF}/ -name x")")"
++assert "VT before find / is one word PASS"     PASS  "$(decide "$(j_bash "${VT}find / -name x")")"
++assert "find VT / is one word PASS"            PASS  "$(decide "$(j_bash "find${VT}/ -name x")")"
++assert "U+2028 before find / is one word PASS" PASS  "$(decide "$(j_bash "${LS}find / -name x")")"
++assert "find U+2028 / is one word PASS"        PASS  "$(decide "$(j_bash "find${LS}/ -name x")")"
++assert "for-loop FF find / is one word PASS"   PASS  "$(decide "$(j_bash "for f in a; do ${FF}find / -name x; done")")"
++assert "tab-separated find / still DENY"       DENY  "$(decide "$(j_bash "find${TB}/ -name x")")"
++# Judge j2231a on HIMMEL-5034: the queue-lock and all-segments-safe ltrims must
++# agree with the root-walk one. A POSIX [[:space:]] ltrim strips U+2029/U+2002/
++# U+3000 in a UTF-8 locale, so a led `find /` went DENY to ALLOW. Never ALLOW.
++PS=$'\xe2\x80\xa9'
++EN=$'\xe2\x80\x82'
++ID=$'\xe3\x80\x80'
++assert "U+2029 before find / never ALLOW"      PASS  "$(decide "$(j_bash "${PS}find / -name x")")"
++assert "U+2002 before find / never ALLOW"      PASS  "$(decide "$(j_bash "${EN}find / -name x")")"
++assert "U+3000 before find / never ALLOW"      PASS  "$(decide "$(j_bash "${ID}find / -name x")")"
++assert "true; U+2029 find / never ALLOW"       PASS  "$(decide "$(j_bash "true; ${PS}find / -name x")")"
+ assert "impacted-suites literal FF never ALLOW" PASS "$(decide "$(j_bash "bash scripts/cr/impacted-suites.sh${FF}")")"
+
+ echo ""

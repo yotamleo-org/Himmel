@@ -141,7 +141,7 @@ test("header without feed.himmel reads version unknown, never blank", async ({ p
 
 test("rail page links are [Fleet, Health, Tool health, Configure, Roadmap, Kanban, Workflow, Docs]; Configure is current and the hash is #/config", async ({ page }) => {
   await openConfig(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
 });
@@ -173,7 +173,7 @@ const openTile = (page: Page, tile: string) => page.locator(`[data-act="health-t
 
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await openConfig(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
   await page.locator("nav.pages").getByRole("link", { name: /^Health\b/ }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");

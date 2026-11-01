@@ -74,6 +74,15 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 LIB="$ROOT/scripts/lib/load-dotenv.sh"
 # shellcheck source=../lib/load-dotenv.sh
 . "$LIB"
+# Every write below leaves an audit row against one backup of the
+# full set. A checkout without the lib (a fixture copy) writes unaudited.
+if [ -f "$ROOT/scripts/lib/config-audit.sh" ]; then
+    # shellcheck source=../lib/config-audit.sh
+    . "$ROOT/scripts/lib/config-audit.sh"
+else
+    config_audit_pre() { :; }
+    config_audit_post() { :; }
+fi
 
 envfile="" dry=0
 while [ "$#" -gt 0 ]; do
@@ -255,6 +264,10 @@ restore_hint() {
     echo "restore: cp $backup $envfile"
     echo "the backup holds your secrets; remove it once you are happy: rm $backup"
 }
+ca_bid=$(HIMMEL_CONFIG_AUDIT_ENV_FILE="$envfile" config_audit_pre "$poldir/config.json" migrate-env.sh)
+ca_post() {  # <file> <action>
+    HIMMEL_CONFIG_AUDIT_ENV_FILE="$envfile" config_audit_post "$ca_bid" "$1" "$2" migrate-env.sh
+}
 
 # The readers, run with the keys only in .env (an empty HOME, the policy dir
 # pointed at it) or only in their new place (the real HOME, an empty .env), in
@@ -354,6 +367,7 @@ if [ "${#config_keys[@]}" -gt 0 ]; then
         restore_hint
         exit 1
     fi
+    ca_post "$confdir/himmel.conf" migrate
 fi
 if [ "${#policy_keys[@]}" -gt 0 ]; then
     # A key config.json already holds is left alone; verify then says whether
@@ -363,6 +377,7 @@ if [ "${#policy_keys[@]}" -gt 0 ]; then
         restore_hint
         exit 1
     fi
+    ca_post "$poldir/config.json" migrate
 fi
 # ponytail: secrets go to one mode-600 file, not a keyring; upgrade path: this
 # function writes to the himmel keyring store once that ships.
@@ -497,6 +512,10 @@ if has_bad; then
                     && replace_file "$work/conf.new" "$confdir/himmel.conf"
             fi || { echo "migrate-env: could not apply the choice for $key; no lines were removed from .env." >&2; restore_hint; exit 1; }
         done
+        if [ -n "$keep_env" ]; then
+            ca_post "$poldir/config.json" settle
+            ca_post "$confdir/himmel.conf" settle
+        fi
         for key in $keep_him; do
             if [ "$(_himmel_key_class "$key")" = policy ]; then
                 keptvalue=$(value_of "$policy_before" "$key")
@@ -551,6 +570,7 @@ if [ "$rewrote" -eq 0 ]; then
     restore_hint
     exit 1
 fi
+ca_post "$envfile" migrate
 
 echo "verified: $verified"
 [ -z "$policy_all" ] || echo "policy compared: $policy_all"

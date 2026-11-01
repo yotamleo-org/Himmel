@@ -10,6 +10,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const probesLib = require('./probes.js');
+// Every himmel.conf write leaves an audit row and a backup. Required at the
+// write, not at load: CI stages scripts/himmelctl alone to run the bundle lint.
+const configAudit = () => require('../../lib/config-audit.cjs');
 
 function confPath({ home = os.homedir(), env = process.env } = {}) {
   return path.join(env.HIMMEL_CONFIG_DIR || path.join(home, '.himmel'), 'himmel.conf');
@@ -106,6 +109,7 @@ function upsertConfEntries(link, entries, dropKeys) {
   let mode = 0o644;
   try { mode = fs.statSync(file).mode & 0o777; } catch (e) { if (e.code !== 'ENOENT') throw e; }
   const tmp = `${file}.${process.pid}.tmp`;
+  const auditId = configAudit().pre(file, 'himmelctl behaviour-config');
   try {
     fs.writeFileSync(tmp, `${lines.join('\n')}\n`, { mode });
     fs.renameSync(tmp, file);
@@ -113,6 +117,7 @@ function upsertConfEntries(link, entries, dropKeys) {
     try { fs.unlinkSync(tmp); } catch (_) { /* tmp never created */ }
     throw e;
   }
+  configAudit().post(auditId, file, 'write', 'himmelctl behaviour-config');
 }
 
 // The path a write to FILE must replace: the end of FILE's link chain (a

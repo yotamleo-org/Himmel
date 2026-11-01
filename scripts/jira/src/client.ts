@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
 
 // The .env is found from this file's own install path, never the cwd: a run
 // from another repo must still reach the credentials. A worktree install has
@@ -34,30 +35,15 @@ const DOTENV_KEYS = new Set([
 
 const CONFIG_KEYS = new Set(['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
 
-// The credentials a station secrets move takes out of .env: when
-// neither the environment nor .env supplies one, the one resolver is asked.
+// The credentials a station secrets move takes out of .env. The one resolver is asked before
+// .env is read (environment, credentials directory, keyring, then .env), so a
+// keyring value beats a stale .env line; a name already exported or set by himmel.conf is kept.
 const RESOLVED_KEYS = ['JIRA_EMAIL', 'JIRA_API_TOKEN'];
 
 function resolveFromKeyring(root: string): void {
   const missing = RESOLVED_KEYS.filter((k) => !process.env[k]);
   if (missing.length === 0) return;
-  const resolver = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'lib', 'himmel-secrets');
-  if (!existsSync(resolver)) return;
-  let out = '';
-  try {
-    out = execFileSync('bash', [resolver, 'get', '--root', root, '--no-dotenv', ...missing], {
-      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000,
-    });
-  } catch (e) {
-    // exit 1 = nothing served; stdout of a partial hit is still usable
-    out = (e as { stdout?: string }).stdout ?? '';
-  }
-  for (const line of String(out ?? '').split('\n')) {
-    const i = line.indexOf('=');
-    if (i < 1) continue;
-    const k = line.slice(0, i);
-    if (missing.includes(k)) process.env[k] ||= line.slice(i + 1);
-  }
+  for (const [k, v] of Object.entries(resolveSecrets(root, missing))) process.env[k] ||= v;
 }
 
 // Match the shell loader's station profile selection; project config cannot
@@ -90,8 +76,8 @@ export function loadEnvFile(envPath: string): void {
     // The cwd need not be a git checkout; install credentials still apply.
   }
   if (projectRoot) readEnvFile(join(projectRoot, '.env'), new Set(['JIRA_PROJECT_KEY']));
-  readEnvFile(envPath, DOTENV_KEYS);
   resolveFromKeyring(dirname(envPath));
+  readEnvFile(envPath, DOTENV_KEYS);
 }
 
 function stripInlineComment(value: string): string {

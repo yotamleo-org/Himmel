@@ -17,6 +17,10 @@
 #     fallback. Without one, a refusal prints `ERROR: vm-clone: <reason>` and
 #     exits 1.
 #
+# Callers of vm_clone_ensure: after-report.sh, ci-runner.sh, provenance-roundtrip.sh,
+# chief-kit/vm-runner.sh (all take the allocator's port) and claudex-guest.sh (the one
+# caller that passes a fixed port: himmel-claudex on 2229).
+#
 # Globals (in / out)
 #   in : SOURCE_VM  the base VM the clones link to          (vm_clone_ensure)
 #        GUEST_USER the guest login                          (vm_ssh, vm_scp)
@@ -32,7 +36,7 @@
 #   vbox_py <code> [argv...]   run a scripts/lib/vbox.py snippet through the venv python
 #   vm_slot_acquire    claim a free clone slot 1..HIMMEL_VM_AR_MAX (flock; a cap, not a FIFO)
 #   vm_slot_release    close the slot's fd
-#   vm_clone_ensure <snapshot>  create $CLONE_NAME (linked clone + forward + baseline) if absent
+#   vm_clone_ensure <snapshot> [port]  create $CLONE_NAME (linked clone + forward + baseline) if absent; [port] pins the forward
 #   vm_restore <snapshot>       verify the baseline exists, restore it, read $PORT
 #   vm_boot            RAM budget check, start the clone, wait for ssh
 #   vm_ssh <cmd...>    run a command on the guest (stdin passes through)
@@ -179,11 +183,34 @@ vm_slot_release() {
     fi
 }
 
-# vm_clone_ensure <snapshot> — create $CLONE_NAME from $SOURCE_VM if it does not
+# vm_clone_ensure <snapshot> [port] — create $CLONE_NAME from $SOURCE_VM if it does not
 # exist yet. The caller already holds the vm-lock on $CLONE_NAME.
+# With a [port], that fixed port is used instead of the allocator's: it must not be
+# on any registered NAT forward (checked under the registry lock), and an existing
+# clone must already forward it. Without one the behaviour is unchanged.
 vm_clone_ensure() {
-    local snapshot="$1" _reg_lock_rc _port_rc
-    vm_ar_vm_exists "$CLONE_NAME" && return 0
+    local snapshot="$1" want_port="${2:-}" _reg_lock_rc _port_rc _have _claimed
+    case "$want_port" in
+        *[!0-9]*) _vm_fail "vm_clone_ensure: port argument must be a number, got '$want_port'" ;;
+    esac
+    if [ -n "$want_port" ]; then
+        want_port=$((10#$want_port))
+        if [ "$want_port" -lt 1 ] || [ "$want_port" -gt 65535 ]; then
+            _vm_fail "vm_clone_ensure: port must be between 1 and 65535, got '$want_port'"
+        fi
+    fi
+    if vm_ar_vm_exists "$CLONE_NAME"; then
+        if [ -n "$want_port" ]; then
+            _have=$(vbox_py '
+fw = vbox.get_forwards(sys.argv[1])
+ssh_fwds = [f for f in fw if f[1] == "tcp" and f[5] == "22" and f[2] == "127.0.0.1"]
+sys.exit(1) if not ssh_fwds else print(ssh_fwds[0][3])
+' "$CLONE_NAME") || _vm_fail "$CLONE_NAME exists but has no loopback ssh (tcp/22) NAT forward, cannot confirm port $want_port"
+            [ "$_have" = "$want_port" ] \
+                || _vm_fail "$CLONE_NAME already exists with ssh forward $_have, not the requested $want_port"
+        fi
+        return 0
+    fi
     # A SECOND, nested lock on a fixed sentinel name ("himmel-vm-registry",
     # not a real VM — the vm-lock library takes any name, a VM name is just
     # the common case) serializes port allocation + clonevm + the forward +
@@ -200,11 +227,25 @@ vm_clone_ensure() {
         5) _vm_fail "timed out waiting for the vm-lock on 'himmel-vm-registry' while creating $CLONE_NAME" ;;
         *) _vm_fail "could not acquire the vm-lock on 'himmel-vm-registry' while creating $CLONE_NAME" ;;
     esac
-    PORT=$(vm_ar_next_ports 1)
-    _port_rc=$?
-    if [ "$_port_rc" -ne 0 ]; then
-        vm_lock_release "himmel-vm-registry"
-        _vm_fail "port allocation failed"
+    if [ -n "$want_port" ]; then
+        _claimed=$(vm_ar_claimed_ports)
+        _port_rc=$?
+        if [ "$_port_rc" -ne 0 ]; then
+            vm_lock_release "himmel-vm-registry"
+            _vm_fail "could not enumerate the registered NAT forwards to check port $want_port"
+        fi
+        if grep -qx "$want_port" <<< "$_claimed"; then
+            vm_lock_release "himmel-vm-registry"
+            _vm_fail "port $want_port is already on a registered NAT forward — refusing to create $CLONE_NAME on it"
+        fi
+        PORT="$want_port"
+    else
+        PORT=$(vm_ar_next_ports 1)
+        _port_rc=$?
+        if [ "$_port_rc" -ne 0 ]; then
+            vm_lock_release "himmel-vm-registry"
+            _vm_fail "port allocation failed"
+        fi
     fi
     # (cd "$HOME" ...) on both VBoxManage calls: VBoxManage may
     # spawn the long-lived VBoxSVC, which inherits cwd and would pin a worktree.

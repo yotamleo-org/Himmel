@@ -352,8 +352,9 @@ again by the helper on every call, so it takes effect on the next verb:
    `run-disabled` when it is approved. The sudo-class kind is unaffected.
    `"grant": {"enabled": false}` does the same for the grant kind, and every `grant-spend`
    then answers `grant-disabled`, so a live grant and its marker allow nothing.
-3. `"enabled": false`: every verb except `mode` answers `result=disabled`, `approve` and
-   `deny` included, so a pending request can no longer be approved and runs out its expiry.
+3. `"enabled": false`: every verb except `mode`, `lockdown`, `status` and `run-status`
+   answers `result=disabled`, `approve` and `deny` included, so a pending request can no
+   longer be approved. `lockdown` (below) writes this value and also denies the pending one.
 4. Empty `/etc/himmel/afk-sudo/notice-bot.env` (`sudoedit`): no request of either kind is
    filed (`no-notice-bot`). A pending one can still be approved with the nonce already sent.
 5. `sudo bash scripts/lib/afk-sudo/install.sh --uninstall`: removes the helper, the floor
@@ -361,13 +362,24 @@ again by the helper on every call, so it takes effect on the next verb:
    ledger stay.
 
 A session cannot do any of these: the config, the helper and the sudoers rule are root-owned.
-The narrowing-only `/afk-lockdown` Telegram verb is slice S4, not built.
+
+**`/afk-lockdown` (HIMMEL-8067 slice 4).** The one Telegram verb that only narrows, for a
+lost phone or the end of a trip. Typed by the operator in their private chat, with no
+argument (text after it is refused and nothing runs), it calls the root helper's
+`lockdown --from SENDER --chat CHAT`, which checks the sender and chat against
+`operator_id`, rewrites the config with `"enabled": false` (everything else, mode included,
+untouched), denies the pending request (a `deny` ledger row) and writes a `lockdown` ledger
+row. It works on a station that is already off, and a station stays off until root edits the
+config back: no verb, flag or argument sets `enabled: true` or `mode: "all"`, and
+`lockdown --enable` is a usage error. A lockdown needs no TOTP code (it cannot widen
+anything), and it leaves live grants dead because `grant-spend` answers `disabled`. While
+the bridge's own lockdown switch is on, the poller does not consult this route at all.
 
 ## Verbs
 
 `request` (sudo kind, allowlist), `run-request`, `grant-request` (the command's bytes on
-stdin), `grant-spend`, `approve`, `deny`, `status`
-(`run-status` is an alias), `run-result ID [--stream stdout|stderr]` and `mode`
+stdin), `grant-spend`, `approve`, `deny`, `lockdown`, `status`
+(`run-status` is an alias; both still answer on a locked-down station), `run-result ID [--stream stdout|stderr]` and `mode`
 (`result=mode mode=… enabled=… run_enabled=…`, the effective flag; answered before the
 `enabled` check).
 

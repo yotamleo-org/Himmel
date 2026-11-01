@@ -1098,7 +1098,8 @@ _MCV_ROOT=""
 # _scratch_clone_exempt REPO — true when REPO (canonical, no
 # trailing slash) is a standalone clone inside a session scratchpad, i.e. it sits
 # at <tmp>/claude-<uid>/<project>/<session>/scratchpad/<something> under
-# $TMPDIR or /tmp, and is NOT himmel's own checkout. A worker doing fork upkeep
+# $TMPDIR or /tmp, or under the persistent root $HOME/.himmel/scratch/
+# (it survives a relaunch), and is NOT himmel's own checkout. A worker doing fork upkeep
 # clones the fork there; that clone is not a protected checkout. Everything else
 # is refused as before: a repo outside that layout, a linked worktree (its `.git`
 # is a file), the CLAUDE_PROJECT_DIR checkout, a `.himmel-dev` checkout, and a
@@ -1107,7 +1108,7 @@ _MCV_ROOT=""
 # scratch dir whose git setup points elsewhere (symlinked `.git`, a `commondir`
 # file, `core.worktree`) is refused too, and so is any git or helper error.
 _scratch_clone_exempt() {
-    local repo="$1" uid base rest seg proj_dir proj_primary
+    local repo="$1" uid base rest seg home_real
     uid=$(id -u 2>/dev/null) || return 1
     [ -d "$repo/.git" ] && [ ! -L "$repo/.git" ] && [ ! -e "$repo/.git/commondir" ] || return 1
     for base in "${TMPDIR:-}" /tmp; do
@@ -1123,24 +1124,38 @@ _scratch_clone_exempt() {
         seg="${rest%%/*}"; [ -n "$seg" ] || continue; rest="${rest#*/}"
         seg="${rest%%/*}"; [ -n "$seg" ] && [ "$seg" != "$rest" ] || continue; rest="${rest#*/}"
         [ "${rest%%/*}" = scratchpad ] && [ "${rest#*/}" != "$rest" ] && [ -n "${rest#*/}" ] || continue
-        [ ! -e "$repo/.himmel-dev" ] || return 1
-        if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
-            proj_dir=$(cd -P -- "$CLAUDE_PROJECT_DIR" 2>/dev/null && pwd -P) || proj_dir=""
-            proj_primary=""
-            [ -z "$proj_dir" ] || proj_primary=$(primary_checkout_root "$proj_dir" 2>/dev/null) || proj_primary=""
-            { [ "$repo" = "$proj_dir" ] || [ "$repo" = "$proj_primary" ]; } && return 1
-        fi
-        _scratch_clone_self_contained "$repo" || return 1
-        # Only adopted-primary.sh's own "no match" (exit 1) lets the clone through:
-        # a match, a usage error, a crash or a missing helper all refuse.
-        local ap aprc=0
-        ap="$(cd -P -- "$(dirname "${BASH_SOURCE[0]}")/../handover/chief-kit" 2>/dev/null && pwd -P)/adopted-primary.sh"
-        [ -f "$ap" ] || return 1
-        bash "$ap" "$repo" >/dev/null 2>&1 || aprc=$?
-        [ "$aprc" -eq 1 ] || return 1
-        return 0
+        _scratch_clone_checks "$repo"
+        return $?
     done
+    # The persistent root ~/.himmel/scratch/<clone> (any depth below it) survives
+    # a relaunch, which the session scratchpad does not; same checks.
+    home_real=$(cd -P -- "${HOME:-/nonexistent}" 2>/dev/null && pwd -P) || return 1
+    case "$repo" in
+        "$home_real/.himmel/scratch/"?*) _scratch_clone_checks "$repo"; return $? ;;
+    esac
     return 1
+}
+
+# _scratch_clone_checks REPO — the refusals shared by both scratch layouts: a
+# `.himmel-dev` checkout, the CLAUDE_PROJECT_DIR checkout (or its primary), a git
+# setup that leads elsewhere, and a registered adopter primary.
+_scratch_clone_checks() {
+    local repo="$1" proj_dir proj_primary ap aprc=0
+    [ ! -e "$repo/.himmel-dev" ] || return 1
+    if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+        proj_dir=$(cd -P -- "$CLAUDE_PROJECT_DIR" 2>/dev/null && pwd -P) || proj_dir=""
+        proj_primary=""
+        [ -z "$proj_dir" ] || proj_primary=$(primary_checkout_root "$proj_dir" 2>/dev/null) || proj_primary=""
+        { [ "$repo" = "$proj_dir" ] || [ "$repo" = "$proj_primary" ]; } && return 1
+    fi
+    _scratch_clone_self_contained "$repo" || return 1
+    # Only adopted-primary.sh's own "no match" (exit 1) lets the clone through:
+    # a match, a usage error, a crash or a missing helper all refuse.
+    ap="$(cd -P -- "$(dirname "${BASH_SOURCE[0]}")/../handover/chief-kit" 2>/dev/null && pwd -P)/adopted-primary.sh"
+    [ -f "$ap" ] || return 1
+    bash "$ap" "$repo" >/dev/null 2>&1 || aprc=$?
+    [ "$aprc" -eq 1 ] || return 1
+    return 0
 }
 
 # _scratch_clone_self_contained REPO — true only when git itself resolves REPO's

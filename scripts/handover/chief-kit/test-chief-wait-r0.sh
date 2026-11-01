@@ -225,7 +225,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 # Match the variable name literally in the source.
 # shellcheck disable=SC2016
 check "(r0m) bound under stop guard" 1 "$(grep -cE 'timeout -k 5 ([1-9][0-9]|1[0-9][0-9]|2[0-8][0-9]) bash "\$leg_event_cmd"' "$WAIT")"
-check "(r0n) header names relay bound" 1 "$(sed -n 219,224p "$WAIT" | grep -c 'relay')"
+check "(r0n) header names relay bound" 1 "$(sed -n 236,241p "$WAIT" | grep -c 'relay')"
 
 # --- (r0o) silent failures, SIGKILL and output-bearing failures keep the rc ---
 for event_rc in 7 137; do

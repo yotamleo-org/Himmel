@@ -1,0 +1,222 @@
+diff --git a/scripts/cr/pr-check-ref/48-step4.8-threads.md b/scripts/cr/pr-check-ref/48-step4.8-threads.md
+index 2e617e88e..bac18c16b 100644
+--- a/scripts/cr/pr-check-ref/48-step4.8-threads.md
++++ b/scripts/cr/pr-check-ref/48-step4.8-threads.md
+@@ -25,7 +25,7 @@
+    - **A PR that changes `.github/workflows/*.yml` dispatches each changed workflow BEFORE `READY`, not at the GO (HIMMEL-7104).** The chief's `ready-check.sh` check 10 needs a completed `workflow_dispatch` run at the PR head, so after the push run `gh workflow run <file>.yml --ref <branch>` once per changed workflow that is not on `WF_DISPATCH_EXEMPT` in `ready-check.sh`, wait for it with `gh run watch <id>`, and put every run id in your `READY` bullet as `dispatch: <file>.yml=<id>`. A failed run is yours to read: `ready-check.sh` passes it as a `PRE-EXISTING` line only when every failed job of it also failed in main's latest scheduled/push run of that workflow; a job red only on the PR is a new failure, fix it. Re-dispatch after every push, since a run at an older head proves nothing.
+    - ANY other `threads_rc` → BLOCKING in step 6 — 3 = unresolved threads, changes requested, or an outside-diff-range body finding; 4 = retired (HIMMEL-3360: the review-freshness leg no longer exists, so this code is never emitted — a script that still expects it is stale); 2 = the thread or body-findings lookup failed (fail-closed; CodeRabbit's own status never produces this code); 64 = usage error, NO gate ran (HIMMEL-3317 — fix the command line; step 4.8 passes only `--threads-only`); and any unexpected code is treated the same: address each comment, resolve its thread (always resolve the thread when fixing a CR finding), then re-run.
+
+-4.9. **Round-4 cap disposition (HIMMEL-2780; only when step 3.0 printed round 4 or later).** The current head's round-4+ panel has already executed and produced its rows; the cap removes the **next correction review**, not this review or any future fresh head's required review. Run this only after every producer has written its rows and steps 3.2–4.8 have finished, and only when step 3.6 reported `impacted_rc = 0` — the script clears the marker itself and does not read `impacted_rc`, so with a non-zero one skip it and follow step 6 (HIMMEL-2821); `panel-first-pass.sh` deliberately does not clear early. Critical or Important findings block at every full round. **In the delta round (HIMMEL-4600) only Critical or escape-class (`fu_class=escape`) findings block;** every open Important must first be classified by you with an explicit amend, `ledger-append.sh amend --branch '<branch>' --head <head> --id '<id>' --set fu_class=escape|hardening --reason '<why>'` — escape-class is fixed in this PR, never deferred, and `defer` refuses (exit 4, naming each id) while any Important lacks the amend; a classified-hardening Important is then deferred to the same ticket as `fu_class=hardening`, a suggestion/nit as `fu_class=polish`, each with the reason `Finding deferred in the one delta round after the three-round /pr-check cap.` — so `clear-cr-marker.sh` accepts the delta round's rows at the new head. For round 4+, leave suggestion/nit producer rows unamended in step 4.5 and pass the PR's **one** tracking ticket here; the script reads those existing rows (it never reruns or retypes a reviewer), appends `deferred` amendments with the ticket and reason through `ledger-append.sh` while preserving each row's artifact/perspective identity, preserves existing valid verdict scratch lines while writing the cap dispositions through `write-verdicts.sh`, then invokes `clear-cr-marker.sh` itself:
++4.9. **Round-4 cap disposition (HIMMEL-2780; only when step 3.0 printed round 4 or later, or round 2 or later on a Suggestions-only round of a PR that touches no CI trust path (step 6)).** The current head's round-4+ panel has already executed and produced its rows; the cap removes the **next correction review**, not this review or any future fresh head's required review. Run this only after every producer has written its rows and steps 3.2–4.8 have finished, and only when step 3.6 reported `impacted_rc = 0` — the script clears the marker itself and does not read `impacted_rc`, so with a non-zero one skip it and follow step 6 (HIMMEL-2821); `panel-first-pass.sh` deliberately does not clear early. Critical or Important findings block at every full round. **In the delta round (HIMMEL-4600) only Critical or escape-class (`fu_class=escape`) findings block;** every open Important must first be classified by you with an explicit amend, `ledger-append.sh amend --branch '<branch>' --head <head> --id '<id>' --set fu_class=escape|hardening --reason '<why>'` — escape-class is fixed in this PR, never deferred, and `defer` refuses (exit 4, naming each id) while any Important lacks the amend; a classified-hardening Important is then deferred to the same ticket as `fu_class=hardening`, a suggestion/nit as `fu_class=polish`, each with the reason `Finding deferred in the one delta round after the three-round /pr-check cap.` — so `clear-cr-marker.sh` accepts the delta round's rows at the new head. For round 4+, leave suggestion/nit producer rows unamended in step 4.5 and pass the PR's **one** tracking ticket here; the script reads those existing rows (it never reruns or retypes a reviewer), appends `deferred` amendments with the ticket and reason through `ledger-append.sh` while preserving each row's artifact/perspective identity, preserves existing valid verdict scratch lines while writing the cap dispositions through `write-verdicts.sh`, then invokes `clear-cr-marker.sh` itself:
+    ```bash
+    bash "<himmel_dir>/scripts/cr/review-round.sh" defer \
+        --head <head> --branch '<branch>' --defer-to HIMMEL-<n>
+diff --git a/scripts/cr/pr-check-ref/50-step5-decision.md b/scripts/cr/pr-check-ref/50-step5-decision.md
+index e4882aa63..5966ac047 100644
+--- a/scripts/cr/pr-check-ref/50-step5-decision.md
++++ b/scripts/cr/pr-check-ref/50-step5-decision.md
+@@ -49,6 +49,7 @@
+    - Leave the marker in place.
+    - Surface the Critical / Important findings (and any unresolved-thread count, and every impacted suite still missing a verdict) to the user.
+    - **Route each finding (HIMMEL-6303).** Fix each in-scope Critical or Important finding, and each finding in the version's priority pool, in this PR and run it through a round. Defer a genuinely out-of-scope Critical or Important finding only through step 4.5, with its ticket, `fu_class`, and finding reason. After the round cap, fix Critical and escape-class Important findings; defer classified-hardening Important findings and suggestions/nits only through the cap disposition, with the required ticket and reason. Every suggestion/nit still needs an explicit fixed, deferred, or disproved disposition. A change that does land clears on a signed judge GO at its exact head (`review-round.sh judge-go`, step 3.0), never on a new full round.
++   - **A Suggestions-only round 2 or later closes the loop (HIMMEL-7345).** When step 3.0 printed round 2 or 3 and every open finding at this head is a Suggestion or nit (no Critical or Important left open), leave those Suggestion/nit rows unamended in step 4.5 and run step 4.9's `review-round.sh defer` instead of another round: it defers each Suggestion to a follow-up ticket through the cap disposition and clears the marker. It does this only for the branch's one open PR, headed at this head, whose changed files match no pattern in the default branch's `scripts/ci/ci-trust-paths.txt` (the `trust_path_check` merge-on-green runs). On a trust-path PR, with no open PR, or on any refusal it exits 2 and the round-4 cap stays in force: fix the Suggestions in a round as before.
+    - Instruct: address the findings, commit fixes, resolve the addressed PR threads, then re-run `/pr-check`. Fix the whole round in ONE commit and ONE push (never a WIP push), and make any PR title/body/`## Ticket coverage` edit in that same step, not after CI is green: every push re-runs CI and an edit re-queues `pr-title-lint` and `codeowner-review-gate`. (A new commit invalidates the SHA in the marker too, but the marker is still present until `/pr-check` clears it.)
+
+ 6.5. **Critic-score footer (append after the gate decision in steps 5/6).** Emit a per-model verdict tally for this run plus the cumulative agreed% from the ledger:
+diff --git a/scripts/cr/review-round.sh b/scripts/cr/review-round.sh
+index 4e4c5e6b3..0e81a225f 100755
+--- a/scripts/cr/review-round.sh
++++ b/scripts/cr/review-round.sh
+@@ -1736,8 +1736,8 @@ fi
+
+ read_round || exit $?
+
+-if [ "$round" -lt 4 ]; then
+-    echo "review-round: $branch is at round $round; automatic deferral starts at round 4" >&2
++if [ "$round" -lt 2 ]; then
++    echo "review-round: $branch is at round $round; automatic deferral starts at round 2 on a PR that touches no CI trust path, round 4 otherwise" >&2
+     exit 2
+ fi
+ if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
+@@ -1749,23 +1749,69 @@ if [ ! -f "$ledger" ]; then
+     echo "review-round: CR ledger is missing at $ledger" >&2
+     exit 5
+ fi
++# Rounds 2 and 3 close early only on the branch's one open PR, headed at
++# --head, whose diff matches no pattern in the default branch's
++# ci-trust-paths.txt (trust_path_check, the question merge-on-green asks).
++# Any other answer, a refusal included, leaves the round-4 cap in force.
++if [ "$round" -lt 4 ]; then
++    early_refuse() {
++        echo "review-round: $branch is at round $round; an early close needs $1 - automatic deferral starts at round 4" >&2
++        exit 2
++    }
++    # shellcheck source=scripts/lib/timeout-bin.sh
++    # shellcheck disable=SC1091
++    . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
++    early_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
++        --json number -q 'if length == 1 then .[0].number else "" end' 2>/dev/null)" || early_pr=""
++    case "$early_pr" in
++        ''|*[!0-9]*) early_refuse "the branch's one open PR, and none was found" ;;
++    esac
++    early_repo="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh repo view --json owner,name,defaultBranchRef \
++        --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)" || early_repo=""
++    early_nwo="${early_repo%% *}"
++    early_default="${early_repo#* }"
++    case "$early_repo" in
++        *" "*) ;;
++        *) early_refuse "the repository and its default branch, and gh could not read them" ;;
++    esac
++    [ -n "$early_nwo" ] && [ -n "$early_default" ] \
++        || early_refuse "the repository and its default branch, and gh could not read them"
++    unset -f trust_path_check 2>/dev/null || true
++    # shellcheck source=scripts/lib/go-gate.sh
++    # shellcheck disable=SC1091
++    if ! . "$HIMMEL_ROOT/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F trust_path_check >/dev/null 2>&1; then
++        early_refuse "the trust-path check, and scripts/lib/go-gate.sh could not be loaded"
++    fi
++    early_trust="$(trust_path_check "$early_nwo" "$early_pr" "$full_head" "$early_default" "$HIMMEL_ROOT")" || early_trust="refused ${early_trust:-with no reason}"
++    case "$early_trust" in
++        none) ;;
++        "hit "*) early_refuse "a PR that touches no CI trust path, and PR #$early_pr touches trust path ${early_trust#hit }" ;;
++        *) early_refuse "a trust-path answer of none for PR #$early_pr, and the check said: $early_trust" ;;
++    esac
++fi
+ cap_reason='Suggestion deferred after the three-round /pr-check cap.'
+ delta_reason='Finding deferred in the one delta round after the three-round /pr-check cap.'
++early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes the review loop on a PR that touches no CI trust path.'
+ # --head is the head the one delta round reviewed.
+ delta_mode=0
+-if [ -f "$delta_state" ]; then
++if [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
+     delta_reviewed="$(awk '{print $2; exit}' "$delta_state" 2>/dev/null)" || delta_reviewed=""
+     [ "$delta_reviewed" = "$full_head" ] && delta_mode=1
+ fi
++amend_why='deferred by review-round.sh after the three-round cap'
+ if [ "$delta_mode" -eq 1 ]; then
+     defer_reason="$delta_reason"
+     round_label="the delta round"
++elif [ "$round" -lt 4 ]; then
++    defer_reason="$early_reason"
++    round_label="round $round"
++    amend_why='deferred by review-round.sh: a Suggestions-only round closes the loop on a non-trust PR'
+ else
+     defer_reason="$cap_reason"
+     round_label="round $round"
+ fi
+
+-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
++analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+ const fs = require("fs"), cp = require("child_process"), e = process.env;
+ const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
+ const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
+@@ -1841,7 +1887,7 @@ for (const o of findings.values()) {
+     class: typeof o.class === "string" ? o.class.trim() : ""
+   });
+   else if ((severity === "sug" || severity === "nit") && trackedDeferred &&
+-           reason === e.CAP_REASON) {
++           reason === e.DEFER_REASON) {
+     capDeferred.push({id, ticket});
+   }
+   else if (!verdict) blocking.push(id);
+@@ -1988,7 +2034,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
+         --artifact "$artifact" --perspective "$perspective" \
+         --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" ${fu_why:+--set "fu_why=$fu_why"} \
+         --set class=unattributed --set "reason=$defer_reason" \
+-        --reason 'deferred by review-round.sh after the three-round cap'; then
++        --reason "$amend_why"; then
+         amend_rc=5
+         break
+     fi
+diff --git a/scripts/cr/test-pr-check-rounds.sh b/scripts/cr/test-pr-check-rounds.sh
+index 482e56daa..8895ff010 100755
+--- a/scripts/cr/test-pr-check-rounds.sh
++++ b/scripts/cr/test-pr-check-rounds.sh
+@@ -41,6 +41,7 @@ cp "$HERE/../lib/chokepoint-seam-guard.sh" "$fx/scripts/lib/chokepoint-seam-guar
+ cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
+ cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
+ cp "$HERE/../lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock.sh"
++cp "$HERE/../lib/go-gate.sh" "$fx/scripts/lib/go-gate.sh"
+ chmod +x "$fx/scripts/cr/panel-first-pass.sh" "$fx/scripts/cr/ledger-append.sh" "$fx/scripts/cr/clear-review-marker.sh"
+ SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
+
+@@ -135,8 +136,23 @@ fi
+ # gets the fixture's verdict; any other branch is "identical" (a pushed PR branch
+ # trivially contains its own head), which is what a retargeted local
+ # origin/HEAD used to be able to exploit.
++# An early close asks for the repo and default branch, then trust_path_check
++# reads the default branch's trust list and the PR's head and file listing.
++if [ "${1:-}" = repo ] && [ "${2:-}" = view ]; then
++    printf '%s main\n' "${GH_NWO:-o/r}"
++    exit 0
++fi
+ if [ "${1:-}" = api ]; then
+     case "${2:-}" in
++        repos/*/contents/scripts/ci/ci-trust-paths.txt*)
++            cat "$GH_TRUST_LIST"
++            exit 0 ;;
++        repos/*/pulls/*/files)
++            printf '%s\n' "$GH_PR_FILES" | sed 's/$/\t/'
++            exit 0 ;;
++        repos/*/pulls/*)
++            printf '%s|%s\n' "$GH_PR_HEAD" "$(printf '%s\n' "$GH_PR_FILES" | wc -l | tr -d ' ')"
++            exit 0 ;;
+         repos/*/compare/*)
+             [ "${GH_COMPARE_RC:-0}" = 0 ] || exit "$GH_COMPARE_RC"
+             _br="${2##*...}"
+@@ -301,6 +317,55 @@ for recovery_failure in create-failed no-parent; do
+         no-parent) assert_eq "$(wc -c < "$recovery_log" | tr -d ' ')" 0 "missing parent never invokes Jira" ;;
+     esac
+ done
++# The early close: a Suggestions-only count of 2 or 3 closes the loop on a
++# PR whose diff touches no pattern in the default branch's ci-trust-paths.txt.
++rm -f "$recovery_git/cr-review-rounds/recovery.delta"
++GH_TRUST_LIST="$HERE/../ci/ci-trust-paths.txt" GH_PR_HEAD="$recovery_head"
++export GH_TRUST_LIST GH_PR_HEAD
++early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes the review loop on a PR that touches no CI trust path.'
++early_run() { # early_run <round> <pr files> <ledger rows> <env assignment>
++    printf '%s\n' "$1" > "$recovery_git/cr-review-rounds/recovery.round"
++    printf '%s' "$3" > "$recovery_git/cr-critic-scores.jsonl"
++    printf 'pending\n' > "$recovery_git/cr-pending/recovery"
++    early_rc=0
++    early_out="$(cd "$recovery_repo" && env GH_PR_FILES="$2" "$4" \
++        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" --defer-to HIMMEL-9600 2>&1)" || early_rc=$?
++    early_ledger="$(cat "$recovery_git/cr-critic-scores.jsonl")"
++}
++early_sug="$(printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-1","severity":"sug","class":"reader-allowlist"}' "$recovery_head")"$'\n'
++early_imp="$(printf '{"kind":"finding","branch":"recovery","head":"%s","finding_id":"critic-2","severity":"imp","class":"reader-allowlist"}' "$recovery_head")"$'\n'
++early_marker() { if [ -e "$recovery_git/cr-pending/recovery" ]; then printf kept; else printf cleared; fi; }
++for early_round in 2 3; do
++    early_run "$early_round" 'docs/guide/x.md' "$early_sug" GH_X=1
++    assert_eq "$early_rc" 0 "7345 a non-trust PR at round $early_round with only Suggestions closes the loop ($early_out)"
++    assert_has "$early_ledger" '"deferred_to":"HIMMEL-9600"' "7345 round $early_round early close defers the Suggestion to the follow-up ticket"
++    assert_has "$early_ledger" "\"reason\":\"$early_reason\"" "7345 round $early_round early close records the early-close reason"
++    assert_eq "$(early_marker)" cleared "7345 round $early_round early close clears the marker"
++done
++early_run 2 $'docs/guide/x.md\nscripts/cr/review-round.sh' "$early_sug" GH_X=1
++assert_eq "$early_rc" 2 "7345 a round-2 Suggestions-only PR touching a trust path does not close early"
++assert_has "$early_out" 'trust path scripts/cr/review-round.sh' "7345 the trust-path refusal names the trust path"
++assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 a trust-path PR at round 2 writes no deferral"
++assert_eq "$(early_marker)" kept "7345 a trust-path PR at round 2 keeps the marker"
++early_run 2 'docs/guide/x.md' "$early_sug$early_imp" GH_X=1
++assert_eq "$early_rc" 4 "7345 a round-2 non-trust PR with an open Important does not close early ($early_out)"
++assert_lacks "$early_ledger" '"verdict":"deferred"' "7345 an open Important at round 2 defers nothing"
++assert_eq "$(early_marker)" kept "7345 an open Important at round 2 keeps the marker"
++early_run 2 'docs/guide/x.md' "$early_sug" GH_PR_NONE=1
++assert_eq "$early_rc" 2 "7345 a round-2 branch with no open PR does not close early"
++assert_has "$early_out" 'one open PR' "7345 the no-PR refusal says it needs an open PR"
++assert_eq "$(early_marker)" kept "7345 a round-2 branch with no open PR keeps the marker"
++early_run 2 'docs/guide/x.md' "$early_sug" GH_PR_HEAD=0000000000000000000000000000000000000000
++assert_eq "$early_rc" 2 "7345 a PR whose head is not the reviewed head does not close early"
++assert_eq "$(early_marker)" kept "7345 a PR whose head moved keeps the marker"
++early_run 1 'docs/guide/x.md' "$early_sug" GH_X=1
++assert_eq "$early_rc" 2 "7345 round 1 never closes early"
++assert_eq "$(early_marker)" kept "7345 round 1 keeps the marker"
++early_ref="$(cat "$HERE/pr-check-ref/50-step5-decision.md")"
++assert_has "$early_ref" 'Fix the whole round in ONE commit and ONE push' "7345 the pr-check decision step says one commit and one push per round"
++assert_has "$(cat "$HERE/../../docs/handover/leg-preface.md")" 'One push per review round' "7345 the leg preface says one push per review round"
++assert_has "$early_ref" 'Suggestions-only round 2 or later' "7345 the pr-check decision step states the Suggestions-only early close"
++assert_has "$early_ref" 'ci-trust-paths.txt' "7345 the early close names the trust-path exclusion"
+ if [ "${1:-}" = --residual-recovery-only ]; then
+     printf 'residual recovery: %s failure(s)\n' "$fails"
+     [ "$fails" -eq 0 ]

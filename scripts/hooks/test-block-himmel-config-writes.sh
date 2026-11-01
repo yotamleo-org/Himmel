@@ -25,10 +25,11 @@ pass=0; fail=0
 ok()  { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail+1)); printf '  FAIL %s\n' "$1"; }
 
-# run <label> <block|allow> <json>
+# run <label> <block|allow> <json>; a guard that hangs fails its row (rc 124)
+TO=""; command -v timeout >/dev/null 2>&1 && TO="timeout 10"
 run() {
     local label="$1" expect="$2" json="$3" rc got
-    printf '%s' "$json" | bash "$HOOK" >/dev/null 2>&1
+    printf '%s' "$json" | $TO bash "$HOOK" >/dev/null 2>&1
     rc=$?
     case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" = "$expect" ]; then ok "$label"; else bad "$label - expected $expect got $got"; fi
@@ -392,6 +393,73 @@ if HOME="$T/config-set-home" HIMMELCTL_REPO_ROOT="$T/repo" node "$repo_root/scri
 else
     bad "himmelctl config set did not write station config"
 fi
+
+echo "== a refused rm/mv leaves an audit row (HIMMEL-8401) =="
+AUDIT="$HOME/.himmel/state/config-audit/audit.jsonl"
+rm -f "$AUDIT"
+run "rm of the config -> block" block "$(jq -nc --arg c "rm $CFG" '{tool_name:"Bash",session_id:"s-8401",tool_input:{command:$c}}')"
+cfg_real=$(cd "$HOME/.himmel" && pwd -P)/config.json
+if [ -f "$AUDIT" ] && jq -e --arg f "$cfg_real" 'select(.action=="denied-rm" and .file==$f and .denied==true and .session=="s-8401" and .script=="block-himmel-config-writes.sh")' "$AUDIT" >/dev/null 2>&1; then
+    ok "rm refusal wrote a denied-rm row for the config"
+else
+    bad "rm refusal wrote no denied-rm row ($(cat "$AUDIT" 2>/dev/null))"
+fi
+if grep -q 'rm /' "$AUDIT" 2>/dev/null; then bad "audit row carries the command text"; else ok "audit row carries no command text"; fi
+if [ -f "$CFG" ]; then ok "config still present after the refused rm"; else bad "config gone after the refused rm"; fi
+rm -f "$AUDIT"
+bash_case "rm of the config with a chained command -> block" block "rm $CFG; echo done"
+if jq -e --arg f "$cfg_real" 'select(.action=="denied-rm" and .file==$f)' "$AUDIT" >/dev/null 2>&1; then
+    ok "a chained rm records the config path without the separator"
+else
+    bad "a chained rm recorded the wrong path ($(cat "$AUDIT" 2>/dev/null))"
+fi
+# himmel.conf is a symlink here (set up above); the row names its realpath.
+bash_case "mv of himmel.conf -> block" block "mv $HOME/.himmel/himmel.conf $T/x"
+conf_real=$(cd "$HOME/.himmel" && readlink himmel.conf 2>/dev/null || echo "$HOME/.himmel/himmel.conf")
+if jq -e --arg f "$(cd "$(dirname "$conf_real")" && pwd -P)/himmel.conf" 'select(.action=="denied-mv" and .file==$f)' "$AUDIT" >/dev/null 2>&1; then
+    ok "mv refusal wrote a denied-mv row for himmel.conf"
+else
+    bad "mv refusal wrote no denied-mv row ($(cat "$AUDIT" 2>/dev/null))"
+fi
+n_before=$(wc -l 2>/dev/null < "$AUDIT" || echo 0)
+bash_case "cat of the config -> allow (no row)" allow "cat $CFG"
+bash_case "redirect over the config -> block (no rm row)" block "echo x > $CFG"
+n_after=$(wc -l 2>/dev/null < "$AUDIT" || echo 0)
+if [ "$n_before" = "$n_after" ]; then ok "a read or a non-rm write adds no audit row"; else bad "audit rows grew from $n_before to $n_after"; fi
+
+echo "== the restore verbs are the operator's (HIMMEL-8401) =="
+bash_case "session config-audit restore -> block" block "bash scripts/lib/config-audit.sh restore 20261031T120000Z-ab12"
+bash_case "session config-audit accept -> block" block "bash scripts/lib/config-audit.sh --script x accept"
+bash_case "session config-restore restore -> block" block "python3 scripts/telegram/config-restore.py restore 20261031T120000Z-ab12 --from 1 --chat 1"
+bash_case "session config-restore enroll -> block" block "python3 scripts/telegram/config-restore.py enroll --force"
+bash_case "a quoted restore verb -> block" block "bash scripts/lib/config-audit.sh 'restore' 20261031T120000Z-ab12"
+bash_case "a backslash-split accept verb -> block" block "bash scripts/lib/config-audit.sh acc\\ept"
+bash_case "an accept verb right before a ; -> block" block "bash scripts/lib/config-audit.sh accept; echo done"
+bash_case "an accept verb inside a subshell -> block" block "(bash scripts/lib/config-audit.sh accept)"
+bash_case "a sourced config_audit_main restore -> block" block ". scripts/lib/config-audit.sh; config_audit_main restore 20261031T120000Z-ab12"
+bash_case "a sourced _ca_restore -> block" block "source scripts/lib/config-audit.sh && _ca_restore 20261031T120000Z-ab12 x"
+bash_case "a sourced _ca_node accept -> block" block ". scripts/lib/config-audit.sh; _ca_node accept"
+bash_case "an ANSI-C hex restore verb -> block" block "bash scripts/lib/config-audit.sh \$'\\x72estore' 20261031T120000Z-ab12"
+bash_case "an ANSI-C octal accept verb -> block" block "bash scripts/lib/config-audit.sh \$'\\141ccept'"
+bash_case "an ANSI-C upper-case hex enroll verb -> block" block "python3 scripts/telegram/config-restore.py \$'\\x45nroll'"
+bash_case "a sourced config_audit_main list -> allow" allow ". scripts/lib/config-audit.sh; config_audit_main list"
+bash_case "config-audit list -> allow" allow "bash scripts/lib/config-audit.sh list"
+bash_case "config-audit check -> allow" allow "bash scripts/lib/config-audit.sh check"
+bash_case "a grep for the restore verb in the source -> allow" allow "git grep -n restore -- scripts/lib/config-audit.sh"
+echo "== the helper is spelled plainly (HIMMEL-8401 shell-parsing round) =="
+bash_case "an encoded & (\\x26) does not hang the guard -> allow" allow "printf '\\x26\\n'"
+bash_case "an encoded & (\\46) does not hang the guard -> allow" allow "printf '\\46\\n'"
+bash_case "an encoded & (\\046) does not hang the guard -> allow" allow "printf '\\046\\n'"
+bash_case "an ANSI-C & beside the helper -> block" block "bash scripts/lib/config-audit.sh \$'\\x26' list"
+bash_case "a \\u-spelled restore verb -> block" block "bash scripts/lib/config-audit.sh \$'\\u0072estore' 20261031T120000Z-ab12"
+bash_case "a \\U-spelled restore verb -> block" block "bash scripts/lib/config-audit.sh \$'\\U00000072estore' 20261031T120000Z-ab12"
+bash_case "a \${..} default as the verb -> block" block "bash scripts/lib/config-audit.sh \${v:-restore} 20261031T120000Z-ab12"
+bash_case "a \$(..) building the verb -> block" block "bash scripts/lib/config-audit.sh \$(printf rest)ore 20261031T120000Z-ab12"
+bash_case "a \$VAR holding the verb -> block" block "v=restore; bash scripts/lib/config-audit.sh \$v 20261031T120000Z-ab12"
+bash_case "a backtick building the verb -> block" block "bash scripts/lib/config-audit.sh \`printf rest\`ore 20261031T120000Z-ab12"
+bash_case "a brace expansion building the verb -> block" block "bash scripts/lib/config-audit.sh {restore,x} 20261031T120000Z-ab12"
+bash_case "node -e on the helper's JS -> block" block "node -e \"\$_CA_JS\" restore 20261031T120000Z-ab12"
+bash_case "a \$NAME/ path prefix to the helper -> allow" allow "bash \"\$HIMMEL_REPO/scripts/lib/config-audit.sh\" list"
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"
