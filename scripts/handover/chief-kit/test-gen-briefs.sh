@@ -876,10 +876,26 @@ cat > "$WORK/pm-state/status-events.jsonl" <<'EOF'
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4350","head":"fff","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4330","head":"ccc","contract":"yes","result":"moved"}
 {"ts":"t","event":"merge","key":"HIMMEL-9102","pr":"4399","head":"ddd","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4360","head":"g60","contract":"no","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4370","head":"g70","contract":"no","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4380","head":"g80","contract":"no","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4380","head":"g80","result":"not-merged","stage":"policy-refused"}
 EOF
+cat > "$WORK/mrgh-stub.sh" <<'EOF'
+#!/usr/bin/env bash
+# the merge-rows filter's gh seam: `pr view <n> --json state,headRefOid --jq ...`; PR 4380 answers MERGED, so only its not-merged row keeps it out
+case "$3" in
+    4360) echo "OPEN g60" ;;
+    4370) echo "MERGED g70" ;;
+    4380) echo "MERGED g80" ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/mrgh-stub.sh"
 cat > "$WORK/gh-stub.sh" <<'EOF'
 #!/usr/bin/env bash
 case "$3" in
+    4370) printf 'Remaining: the kill-after-merge slice\n' ;;
     4313) printf 'Slice C1a of the thing.\n\nRemaining: slices C1b and C4 (the {brace} readers)\n' ;;
     4320) printf 'No remaining line here.\n' ;;
     4340) printf 'Remaining:\n\nAn unrelated section follows.\n' ;;
@@ -891,7 +907,7 @@ cat > "$WORK/pm.json" <<'EOF'
 [{"label":"N911","keys":["HIMMEL-9101"],"slug":"pm-fix","branch":"fix/himmel-9101-pm-fix","title":"a partial ticket","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","writes":"scripts/x/","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9101] f"},
  {"label":"N912","keys":["HIMMEL-9103"],"slug":"pm-none","branch":"fix/himmel-9103-pm-none","title":"a clean ticket","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","writes":"scripts/x/","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9103] f"}]
 EOF
-pm_out="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw" --deadline 1791475000 2>&1)"; pm_rc=$?
+pm_out="$(MERGE_ROWS_GH="$WORK/mrgh-stub.sh" TICKET_STATUS_STATE_DIR="$WORK/pm-state" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw" --deadline 1791475000 2>&1)"; pm_rc=$?
 [ "$pm_rc" = 0 ] && pass "a ticket with partial merges generates (rc 0)" || fail "partial-merge gen rc=$pm_rc: $pm_out"
 PM1="$(tr '\n' ' ' < "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" | tr -s ' ')"
 has "the brief names the merged contract=no PR and its Remaining: text" "$PM1" "PR \`#4313\`: Remaining: slices C1b and C4 (the {brace} readers)"
@@ -899,6 +915,9 @@ has "a partial PR whose body has no Remaining: line is marked as needing a chief
 has "an empty Remaining: line does not borrow the text of the next line" "$PM1" "PR \`#4340\`: needs a chief note"
 has "a PR whose body gh cannot read says so, not that it has no Remaining: line" "$PM1" "PR \`#4350\`: needs a chief note (its body could not be read)"
 lacks "a contract=yes merge row is not listed as a partial" "$PM1" '#4330'
+has "a pre-merge row whose PR GitHub reports MERGED is named (a kill after the merge keeps the record)" "$PM1" "PR \`#4370\`: Remaining: the kill-after-merge slice"
+lacks "a pre-merge row whose PR is still open is not named" "$PM1" '#4360'
+lacks "a pre-merge row followed by a not-merged row is not named" "$PM1" '#4380'
 lacks "another ticket's partial merge is not listed" "$PM1" '#4399'
 bash "$HERE/brief-lint.sh" "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" 2>"$WORK/lintpm.err"; rc=$?
 [ "$rc" = 0 ] && pass "the partial-merge brief passes brief-lint.sh" || fail "partial-merge brief-lint rc=$rc: $(cat "$WORK/lintpm.err")"
