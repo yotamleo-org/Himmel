@@ -468,6 +468,22 @@ row('S0-R8 unlocked but the keyring refuses the store: the write is refused, no 
   ok(!fs.existsSync(envOf(ctx)), 'no .env was written');
 });
 
+row('S0-R8 removing a token the keyring still serves is refused, naming the manual clear, and .env is untouched', () => {
+  const ctx = mk(); const v = fake();
+  fs.writeFileSync(envOf(ctx), 'JIRA_API_TOKEN=' + v + '\n');
+  let msg = '';
+  withKeyring({ items: 'service=himmel key=JIRA_API_TOKEN scope=user\t' + fake() + '\n' }, () => { try { store.remove('JIRA_API_TOKEN', ctx); } catch (e) { msg = e.message; } });
+  ok(/keyring/.test(msg) && /HIMMEL-8473/.test(msg), 'the refusal names the keyring and the delete-verb ticket: ' + msg);
+  ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN=' + v), 'the .env line is still there');
+});
+
+row('S0-R8 removing a token the keyring does not hold still removes the .env line', () => {
+  const ctx = mk(); const v = fake();
+  fs.writeFileSync(envOf(ctx), 'JIRA_API_TOKEN=' + v + '\n');
+  withKeyring({}, () => { const r = store.remove('JIRA_API_TOKEN', ctx); ok(r.ok && r.removed, 'removed'); });
+  ok(!fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN'), 'the .env line is gone');
+});
+
 row('S0-R8 unlocked: a non-secret name (JIRA_EMAIL) still goes to .env', () => {
   const ctx = mk();
   ctx.gitCheckIgnore = () => true;

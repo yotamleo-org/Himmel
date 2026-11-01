@@ -5,7 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { stubKeyring } from '../../config-ui/tests/keyring-stub';
+import config from '../vitest.config';
 import { authHeader, normalizeEnv } from './env.js';
+
+// env.ts asks the secrets resolver at import time and this suite imports it in-process, so the suite
+// must run with the real keyring off: the config's setup file sets it, whatever the launching shell
+// exported. The resolver rows below switch it on only through their stub.
+it('keeps the in-process suite off the real keyring', () => {
+  expect(config.test?.setupFiles).toContain('./vitest.setup.ts');
+  expect(process.env.HIMMEL_SECRETS_KEYRING).toBe('off');
+});
 
 it('loads the install .env from an unrelated cwd with no Bitbucket variables exported', () => {
   const root = mkdtempSync(join(tmpdir(), 'bitbucket-own-path-'));

@@ -193,6 +193,10 @@ function fileWrite(name, value, ctx) {
   const e = entryOf(name);
   const file = e && storeFile(e.store, ctx);
   if (!file) refuse('secret has no writable file store (card entry)');
+  // himmel-secrets has no delete verb: dropping only the .env line would report "removed" while the keyring still serves the token.
+  if (value === null && keyringStored(e) && usable(resolveSecrets(ctx.himmelRoot, [name])[name])) {
+    refuse('the OS keyring still holds this token and himmel-secrets cannot delete it yet (HIMMEL-8473); remove the item from the keyring, then retry');
+  }
   if (value !== null && keyringStored(e) && putKeyring(name, value, ctx)) return { ok: true, path: 'the OS keyring (himmel-secrets)', tightened: false };
   if (name === 'JIRA_BASE_URL') {
     const target = behaviourConfig.readConfigVar(name, undefined, ctx).file;
