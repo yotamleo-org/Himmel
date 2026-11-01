@@ -390,6 +390,11 @@ eq "run --delta: the context is the round-1 diff then the delta" \
 eq "run --delta: the critic's directory holds the diff and the context only" "$(cat "$DL/delta-07.cwd")" "context.patch diff.patch "
 eq "run --delta: a clean delta twin is fed the same way" "$(cmp -s "$DL/delta-02.stdin" "$FIXD/delta-02.delta.patch" && echo same)" "same"
 eq "run --delta: the sweep is stamped a subset" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/rund/swept.json" 2>&1)" "False"
+# The bundle hash covers a delta transcript: editing one output changes it.
+h_before="$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; print(score.outputs_sha256(sys.argv[2]))' "$HERE" "$TMP/rund")"
+printf 'edited\n' >> "$TMP/rund/delta-07.md"
+h_after="$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; print(score.outputs_sha256(sys.argv[2]))' "$HERE" "$TMP/rund")"
+eq "outputs_sha256: a changed delta transcript changes the bundle hash" "$([ -n "$h_before" ] && [ "$h_before" != "$h_after" ] && echo differs || echo same)" "differs"
 # A full sweep (no --delta) feeds delta cases the same way and every other case its plain diff.
 rm -rf "$DL"; mkdir -p "$DL"
 STUB_LOG_DIR="$DL" REVIEW_PANEL_CMD="$TMP/stub-delta-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch-f" \

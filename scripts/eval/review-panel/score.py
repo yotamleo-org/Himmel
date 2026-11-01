@@ -596,7 +596,7 @@ def confighash(repo, rev):
 def outputs_sha256(outputs):
     h = hashlib.sha256()
     for n in sorted(os.listdir(outputs)):
-        if re.match(r"^(case|real)-.+\.(md|err|rc)$", n):
+        if re.match(r"^(case|real|delta)-.+\.(md|err|rc)$", n):
             with open(os.path.join(outputs, n), "rb") as fh:
                 h.update(n.encode() + b"\0")
                 h.update(_sha(fh.read()).encode())
