@@ -144,7 +144,7 @@ check "3: commit records wip = the worktree HEAD" "$(jget "$L1" 'd["items"][0]["
 check "3: commit moves the item to committed" "$(jget "$L1" 'd["items"][0]["state"]')" committed
 check "3: commit leaves the writer" "$(jget "$L1" 'd["writer"]')" "$A"
 sn commit --ledger "$L1" --doc "$A" K1
-check "3: committing a committed item refuses rc 2" "$rc" 2
+check "3: committing a committed item with nothing new is a no-op rc 0" "$rc $(jget "$L1" 'd["items"][0]["wip"]')" "0 $K1WIP"
 sn commit --ledger "$L1" --doc "$A" K2
 check "3: committing a planned item refuses rc 2" "$rc" 2
 
@@ -280,6 +280,24 @@ L8="$tmp/ledgers/s8.json"; mk "$L8" "$A" K1 || exit 1
 sn start --ledger "$L8" --doc "$A" K1
 check "8b: a start whose claim cannot be written fails rc 1" "$rc" 1
 check "8b: and changed nothing" "$(jget "$L8" 'd["items"][0]["state"]') $([ -e "$(wtp s8 K1)" ] && echo wt || echo none)" "planned none"
+
+# a fix commit on an already committed item is recorded by commit again; without that, pass is stuck on drift
+W4="$(jget "$L4" 'd["items"][0]["worktree"]')"
+commit_in "$W4" x1.txt
+sn commit --ledger "$L4" --doc "$A" K1
+check "8b: commit on an authoring item rc 0" "$rc" 0
+commit_in "$W4" x2.txt
+sn pass --ledger "$L4" --doc "$A" "$B"
+check "8b: a fix commit past the recorded wip blocks pass" "$rc" 2
+contains "8b: as drift" "$out" "SERIES-DRIFT K1 wip"
+sn commit --ledger "$L4" --doc "$A" K1
+check "8b: commit on a committed item refreshes wip rc 0" "$rc" 0
+check "8b: and wip is the new HEAD" "$(jget "$L4" 'd["items"][0]["wip"]')" "$(git -C "$W4" rev-parse HEAD)"
+sn pass --ledger "$L4" --doc "$A" "$B"
+check "8b: pass then succeeds" "$rc" 0
+sl set --ledger "$L2" --key K2 state=published >/dev/null
+sn commit --ledger "$L2" --doc "$A" K2
+check "8b: a published item cannot commit" "$rc" 2
 
 # --- 9. integration: real gen-briefs -> start + commit -> real next-dispatchable ----------------------------------------
 IB="$tmp/ibucket"; mkdir -p "$tmp/stub-jira" "$tmp/imirror" "$tmp/isigned"

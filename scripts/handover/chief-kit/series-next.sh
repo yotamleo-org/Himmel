@@ -217,7 +217,7 @@ cmd_commit() {
     need_writer
     need_item "$key"
     st="$(field "$key" state)"
-    [ "$st" = authoring ] || refuse "item $key is $st; only an authoring item commits"
+    case "$st" in authoring|committed) ;; *) refuse "item $key is $st; only an authoring or committed item commits" ;; esac   # committed: a later fix commit refreshes wip
     wt="$(field "$key" worktree)"
     wt_ok "$wt" || refuse "item $key has no usable worktree ($wt)"
     wt_dirty "$wt" && refuse "item $key worktree is dirty: git add and commit its work first ($wt)"

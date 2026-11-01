@@ -49,7 +49,9 @@ bash scripts/handover/chief-kit/series-next.sh abandon --ledger <p> --doc <doc> 
   `origin/main`), locks the worktree so `worktree.sh prune` keeps it, and records the
   branch, worktree, `cut_from`, `wip` and state `authoring`.
 - `commit` records the authoring item's worktree HEAD as `wip` and moves it to
-  `committed`. The worktree must be clean: git-commit your work first.
+  `committed`. The worktree must be clean: git-commit your work first. If you add a fix
+  commit to an item that is already `committed`, run `commit` again to refresh `wip`;
+  `pass` refuses the new HEAD as drift until you do.
 - `pass` hands the series to the RESUME doc. It refuses, naming the key and moving
   nothing, while an `authoring` or `committed` item's worktree is dirty, and prints
   `SERIES-DRIFT <key> wip` and refuses while any worktree HEAD differs from the ledger.
