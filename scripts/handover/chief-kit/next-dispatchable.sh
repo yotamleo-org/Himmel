@@ -90,6 +90,13 @@
 # a ci-trust path, and each holder's head merges into main with `git merge-tree` without a
 # conflict. Such a ticket is listed, preceded by a `# SOFT <holders> <files> for <KEY>` line.
 #
+# Series ledgers (stacked_series only): each ledger under the --workers-from manifest's `series/` directory, read through
+# chief-kit/series-ledger.py read, holds every non-abandoned item's writes as `series <sid>`, so the files stay held
+# between a predecessor's WRAPPED and its successor's launch. A published item stops holding once gh reports every PR of its
+# publish_branch merged or closed. A ledger whose writer doc has no LIVE bullet and no manifest entry 2 h after the newest
+# pass (a series with no pass: after the ledger's last write) prints `SERIES-ORPHAN <sid> <writer doc>`. With the flag off
+# the ledgers are not read and the output is as without them.
+#
 # Drops: every To Do ticket of the earliest unreleased version that is not listed
 # is counted by reason on a `# dropped from <version>:` line (owned, collision,
 # blocker, type, label, platform, residual-depth, classification, below --top ...);
@@ -721,6 +728,7 @@ if pool_only:
 # held files: live workers, open PRs, --held
 held = []
 series_workers = {}  # label -> item count, for a live worker whose brief carries a Series block (stacked_series only)
+manifest_docs = set()  # the resolved path of every worker doc the manifest lists (the orphan check asks whether a ledger's writer is among them)
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
@@ -732,6 +740,8 @@ if workers_from and os.path.isfile(workers_from):
     try:
         for worker in manifest_workers(json.load(open(workers_from))):
             doc = worker.get('doc', '')
+            if doc:
+                manifest_docs.add(os.path.realpath(doc))
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
             except OSError:
@@ -860,6 +870,65 @@ try:
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
 
+# stacked_series: every ledger under <bucket>/series/ (the bucket is the --workers-from manifest's directory), read through
+# series-ledger.py, is a holder. An item holds its writes as `series <sid>` until it is abandoned or gh reports every PR of its
+# publish_branch merged or closed, whatever any worker doc says; a gh answer that is missing or fails keeps the hold.
+# A writer doc with no LIVE bullet and no manifest entry SERIES_ORPHAN_S after the newest pass (or the ledger's last write, for
+# a series with no pass) is named SERIES-ORPHAN for the chief; it still holds until the chief abandons the series.
+# ponytail: a ledger carries no created_at, so a series with no pass ages from the ledger file's mtime, upgrade path: a created_at field in series-ledger.py create
+SERIES_ORPHAN_S = 2 * 3600
+series_orphans = []  # (sid, writer doc)
+
+def branch_states(branch):
+    # every PR state (OPEN, MERGED, CLOSED) gh lists for the head branch; None when gh cannot say
+    try:
+        return subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--head', branch, '--state', 'all', '--json', 'state', '--jq', '.[].state'],
+                              capture_output=True, text=True, timeout=60, check=True).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return None  # swallow-ok: a PR state that cannot be read keeps the hold
+
+def has_live_bullet(doc):
+    try:
+        return any(re.match(r'^- \d{1,2}:\d{2} LIVE\b', l) for l in open(doc, encoding='utf-8', errors='replace'))
+    except OSError:
+        return False  # swallow-ok: a doc that cannot be read shows no LIVE marker, so the series is named, never hidden
+
+def last_activity(led, path):
+    stamps = []
+    for x in led['passes']:
+        try:
+            stamps.append(datetime.datetime.strptime(x['at'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp())
+        except (KeyError, TypeError, ValueError):
+            continue  # swallow-ok: a pass with no readable time says nothing about the series' age
+    return max(stamps) if stamps else os.path.getmtime(path)
+
+if stacked and workers_from:
+    ledger_py = os.path.join(repo, 'scripts/handover/chief-kit/series-ledger.py')
+    series_dir = os.path.join(os.path.dirname(os.path.abspath(workers_from)), 'series')
+    try:
+        ledger_files = sorted(n for n in os.listdir(series_dir) if n.endswith('.json'))
+    except OSError:
+        ledger_files = []  # swallow-ok: no series directory means no series
+    for n in ledger_files:
+        path = os.path.join(series_dir, n)
+        try:
+            led = json.loads(subprocess.run([sys.executable, '-I', ledger_py, 'read', '--ledger', path], capture_output=True, text=True, timeout=60, check=True).stdout)
+            sid = str(led.get('sid') or n[:-len('.json')])
+            for it in led['items']:
+                if it.get('state') == 'abandoned':
+                    continue
+                if it.get('state') == 'published' and it.get('publish_branch'):
+                    states = branch_states(it['publish_branch'])
+                    if states and all(s in ('MERGED', 'CLOSED') for s in states):
+                        continue
+                held += [(w, 'series %s' % sid, True) for w in (it.get('writes') or []) if isinstance(w, str) and w]
+            writer = led['writer']
+            if time.time() - last_activity(led, path) > SERIES_ORPHAN_S and not has_live_bullet(writer) and os.path.realpath(writer) not in manifest_docs:
+                series_orphans.append((sid, writer))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+            workers_unknown = True  # a ledger that cannot be read could be hiding held files
+            print('next-dispatchable: series ledger %s is unreadable: the files it holds are unknown' % n, file=sys.stderr)
+
 # An IN CI ticket nobody holds is merged-not-closed when a merged PR cites it, else a RESUME row.
 # One bounded search per candidate key (a merged-PR list capped at N would miss an older merge).
 merged_unknown = False
@@ -978,6 +1047,8 @@ def classify(batch):
 print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
+for sid, wdoc in series_orphans:
+    print('SERIES-ORPHAN %s %s' % (sid, wdoc))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0

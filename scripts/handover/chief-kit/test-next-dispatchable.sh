@@ -1555,5 +1555,120 @@ b8a="$(NEXT_DISPATCH_SIBLING_MAX_AGE_MIN=abc run8 "$C8/HIMMEL-nextleg-2026-10-31
 has "(8436) a non-integer sibling age window does not stop the list" "$b8a" "${TAB}HIMMEL-57${TAB}"
 lacks "(8436) a non-integer sibling age window reads as the default" "$b8a" "RESUME${TAB}HIMMEL-53${TAB}"
 
+# --- (8349 S1b) the series ledger is a holder, and an abandoned series is flagged SERIES-ORPHAN ---
+# ledgers are written by the real series-ledger.py; the bucket is the directory of the --workers-from manifest
+export GHL_DIR="$WORK/ghl"; mkdir -p "$GHL_DIR"
+cat > "$WORK/gh-l" <<'EOF'
+#!/usr/bin/env bash
+# no open PRs; `pr list --head <branch> --state all` answers from $GHL_DIR/<branch with / as _>: one PR state per line
+prev=""
+for a in "$@"; do
+    if [ "$prev" = --head ]; then f="$GHL_DIR/${a//\//_}"; [ -f "$f" ] && cat "$f"; exit 0; fi
+    prev="$a"
+done
+exit 0
+EOF
+chmod +x "$WORK/gh-l"
+runl() { # <flag> <mirror> <manifest> args...
+    local flag="$1" mir="$2" man="$3"; shift 3
+    HIMMEL_FLAG_STACKED_SERIES="$flag" NEXT_DISPATCH_MIRROR="$mir" NEXT_DISPATCH_GH_CMD="$WORK/gh-l" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-s" bash "$SUT" --workers-from "$man" "$@" 2>/dev/null
+}
+led() { python3 -I "$HERE/series-ledger.py" "$@" > /dev/null; }
+backdate() { # <ledger> <hours>: every passes[].at moves that far into the past
+    python3 -I -c 'import datetime, json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+t = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=float(sys.argv[2]))).strftime("%Y-%m-%dT%H:%M:%SZ")
+for x in d["passes"]:
+    x["at"] = t
+json.dump(d, open(p, "w"))' "$1" "$2"
+}
+newbucket() { B="$WORK/b-$1"; mkdir -p "$B/series"; }
+
+newmir lg
+mk HIMMEL-871 "To Do" High '[]' '["v1.0.1"]' '[]' "wants app.js, held by the ledger" "$APP"
+mk HIMMEL-872 "To Do" High '[]' '["v1.0.1"]' '[]' "free ticket" "Edit scripts/lib/free-l.sh."
+mk HIMMEL-873 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file whose PR merged" "Edit scripts/lib/rel-l.sh."
+mk HIMMEL-874 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file whose PR is open" "Edit scripts/lib/open-l.sh."
+mk HIMMEL-875 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file gh knows no PR for" "Edit scripts/lib/nopr-l.sh."
+mk HIMMEL-876 "To Do" High '[]' '["v1.0.1"]' '[]' "wants an abandoned item's file" "Edit scripts/lib/aband-l.sh."
+mk HIMMEL-877 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file whose PR closed" "Edit scripts/lib/closed-l.sh."
+LM="$M"
+newbucket lg
+PRED="$B/HIMMEL-9000-N1-pred.md"; SUCC="$B/HIMMEL-9000-N2-succ-RESUME.md"
+printf '# pred\n> **Writes:** scripts/config-ui/app.js\n- 09:00 LIVE - started\n- 09:50 WRAPPED - handed off\n' > "$PRED"
+printf '# resume\n' > "$SUCC"
+mkfleet "$B/fleet.json" "N1:$PRED"
+SER="$B/series/s1.json"
+led create --ledger "$SER" --sid s1 --completes-ticket no --writer "$PRED"
+led add-item --ledger "$SER" --key HIMMEL-9001 --writes scripts/config-ui/app.js --state committed
+led add-item --ledger "$SER" --key HIMMEL-9002 --writes scripts/lib/rel-l.sh --state published --publish-branch series/s1/HIMMEL-9002
+led add-item --ledger "$SER" --key HIMMEL-9003 --writes scripts/lib/open-l.sh --state published --publish-branch series/s1/HIMMEL-9003
+led add-item --ledger "$SER" --key HIMMEL-9004 --writes scripts/lib/nopr-l.sh --state published --publish-branch series/s1/HIMMEL-9004
+led add-item --ledger "$SER" --key HIMMEL-9005 --writes scripts/lib/aband-l.sh --state abandoned
+led add-item --ledger "$SER" --key HIMMEL-9006 --writes scripts/lib/closed-l.sh --state published --publish-branch series/s1/HIMMEL-9006
+led pass --ledger "$SER" --from "$PRED" --to "$SUCC"
+printf 'MERGED\n' > "$GHL_DIR/series_s1_HIMMEL-9002"
+printf 'OPEN\n' > "$GHL_DIR/series_s1_HIMMEL-9003"
+printf 'CLOSED\n' > "$GHL_DIR/series_s1_HIMMEL-9006"
+lg1="$(runl 1 "$LM" "$B/fleet.json" --why)"
+has "(8349 S1b) F3: a committed item holds its file after the predecessor WRAPPED" "$lg1" "# drop HIMMEL-871 collision scripts/config-ui/app.js held by series s1"
+lacks "(8349 S1b) F3: the held candidate has no dispatch row" "$lg1" "LOCAL${TAB}HIMMEL-871${TAB}"
+has "(8349 S1b) a ticket the ledger does not hold still lists" "$lg1" "LOCAL${TAB}HIMMEL-872${TAB}"
+has "(8349 S1b) F4 hold-end: a published item whose PR gh reports merged holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-873${TAB}"
+has "(8349 S1b) a published item whose PR is open keeps holding" "$lg1" "# drop HIMMEL-874 collision scripts/lib/open-l.sh held by series s1"
+has "(8349 S1b) a published item gh knows no PR for keeps holding" "$lg1" "# drop HIMMEL-875 collision scripts/lib/nopr-l.sh held by series s1"
+has "(8349 S1b) an abandoned item holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-876${TAB}"
+has "(8349 S1b) a published item whose PR gh reports closed holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-877${TAB}"
+lacks "(8349 S1b) a fresh pass is no orphan" "$lg1" "SERIES-ORPHAN"
+# flag off: a ledger present changes nothing (byte-identical to the same run with no ledger directory)
+off1="$(runl 0 "$LM" "$B/fleet.json" --why | grep -v '^# source mirror_age_min=')"
+mv "$B/series" "$B/series.off"
+off2="$(runl 0 "$LM" "$B/fleet.json" --why | grep -v '^# source mirror_age_min=')"
+mv "$B/series.off" "$B/series"
+[ "$off1" = "$off2" ] && pass "(8349 S1b) flag off: a ledger present gives output byte-identical to no ledger" || fail "(8349 S1b) flag off output differs with a ledger present"
+has "(8349 S1b) flag off lists the ledger-held ticket as before" "$off1" "LOCAL${TAB}HIMMEL-871${TAB}"
+
+# SERIES-ORPHAN: the writer doc has no LIVE marker and no manifest entry, 2 h after the newest pass (or the ledger's last write)
+mkorph() { # <name> <doc body> <in manifest 0|1> <pass|create> <hours ago>
+    newbucket "$1"; WDOC="$B/HIMMEL-9100-N3-$1-RESUME.md"
+    printf '# resume\n> **Writes:** none named\n%s' "$2" > "$WDOC"
+    if [ "$3" = 1 ]; then mkfleet "$B/fleet.json" "N3:$WDOC"; else mkfleet "$B/fleet.json"; fi
+    SER="$B/series/o-$1.json"
+    if [ "$4" = pass ]; then
+        led create --ledger "$SER" --sid "o-$1" --completes-ticket no --writer "$B/prev.md"
+        led pass --ledger "$SER" --from "$B/prev.md" --to "$WDOC"
+        backdate "$SER" "$5"
+    else
+        led create --ledger "$SER" --sid "o-$1" --completes-ticket no --writer "$WDOC"
+        touch -d "$5 hours ago" "$SER"
+    fi
+}
+mkorph o1 "" 0 pass 3
+o1="$(runl 1 "$LM" "$B/fleet.json")"
+has "(8349 S1b) F4: a RESUME writer with no marker and no manifest entry 3 h after the pass is an orphan" "$o1" "SERIES-ORPHAN o-o1 $WDOC"
+o1off="$(runl 0 "$LM" "$B/fleet.json")"
+lacks "(8349 S1b) flag off prints no SERIES-ORPHAN" "$o1off" "SERIES-ORPHAN"
+mkorph o2 "- 10:00 LIVE - started
+" 0 pass 3
+o2="$(runl 1 "$LM" "$B/fleet.json")"
+lacks "(8349 S1b) F4: a writer doc with a LIVE marker is no orphan" "$o2" "SERIES-ORPHAN"
+mkorph o3 "" 1 pass 3
+o3="$(runl 1 "$LM" "$B/fleet.json")"
+lacks "(8349 S1b) F4: a writer doc the manifest lists is no orphan" "$o3" "SERIES-ORPHAN"
+mkorph o4 "" 0 pass 1
+o4="$(runl 1 "$LM" "$B/fleet.json")"
+lacks "(8349 S1b) a pass 1 h ago is inside the 2 h window" "$o4" "SERIES-ORPHAN"
+mkorph o5 "" 0 create 3
+o5="$(runl 1 "$LM" "$B/fleet.json")"
+has "(8349 S1b) a series with no pass counts from the ledger's last write" "$o5" "SERIES-ORPHAN o-o5 $WDOC"
+mkorph o6 "" 0 create 0
+o6="$(runl 1 "$LM" "$B/fleet.json")"
+lacks "(8349 S1b) a freshly created ledger is no orphan" "$o6" "SERIES-ORPHAN"
+# an unreadable ledger could hide a hold: the fleet reads as unknown, never as clear
+newbucket bad; printf 'not json\n' > "$B/series/bad.json"; mkfleet "$B/fleet.json"
+bad="$(runl 1 "$LM" "$B/fleet.json")"
+has "(8349 S1b) an unreadable ledger marks the live workers unknown" "$bad" "live workers unknown"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
