@@ -27,6 +27,11 @@ const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
 const { parseDotEnv, scopeConfigPathToCtx } = require('./probes.js');
+// The ESM resolver helper, loaded synchronously (require of an ES module needs Node 20.19 / 22.12+).
+// An older Node cannot load it: the .env read is then the only source, as before.
+function resolveSecrets(root, names) {
+  try { return require('../../lib/resolve-secrets.mjs').resolveSecrets(root, names); } catch (_e) { return {}; }
+}
 const lunaConfig = require('./luna-config.js');
 // the SAME bash resolver scripts/hooks/run-hook-with-bash.js's
 // own launcher uses to pick a real, usable Git Bash on Windows (never bare
@@ -88,6 +93,9 @@ function depToolName(item, ctx) {
 // only consumed to build a spawnSync `input` string (stdin), never argv.
 function resolveSudoPassword(repoRoot) {
   if (process.env.HIMMELCTL_SUDO_PASSWORD) return process.env.HIMMELCTL_SUDO_PASSWORD;
+  // The one resolver next (credentials directory, keyring); the .env read below is the last fallback.
+  const served = resolveSecrets(repoRoot, ['HIMMELCTL_SUDO_PASSWORD']).HIMMELCTL_SUDO_PASSWORD;
+  if (served) return served;
   try {
     const raw = fs.readFileSync(path.join(repoRoot, '.env'), 'utf8');
     const parsed = parseDotEnv(raw);

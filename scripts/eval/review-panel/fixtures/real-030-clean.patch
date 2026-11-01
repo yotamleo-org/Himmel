@@ -1,0 +1,186 @@
+diff --git a/scripts/telegram/afk-sudo-route.test.ts b/scripts/telegram/afk-sudo-route.test.ts
+index df862c04e..482e1f0de 100644
+--- a/scripts/telegram/afk-sudo-route.test.ts
++++ b/scripts/telegram/afk-sudo-route.test.ts
+@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { dispatchAfkCallbacks, makeAfkSudoCallback, makeAfkSudoGate, makeAfkSudoPrompts, parseAfkSudo, type AfkSudoCallbackDeps, type AfkSudoDeps } from "./afk-sudo-route";
+-import { GROUP_ANONYMOUS_BOT_ID } from "./gate";
++import { GROUP_ANONYMOUS_BOT_ID, isOperatorIdentity } from "./gate";
+ import { afkTapUnlessLocked, handleInbound, ingestBatch, ingestUpdates, inboundToDelivered, type AutoGate } from "./poller";
+ import { sessionDir } from "./bus";
+
+@@ -110,6 +110,105 @@ test("handleInbound: a consumed approve line is never appended to an inbox or ru
+   expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
+ });
+
++test("handleInbound: a bare six-digit message with no reply or live prompt is held, never reaches an inbox or run", async () => {
++  for (const text of ["123456", " 123456 ", "\t123456\n"]) {
++    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
++    const { deps, calls, replies, logs } = fake();
++    const ran: string[] = [];
++    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
++    await handleInbound(r, dm(text), async (s) => { ran.push(s); }, auto, async () => ({ verdict: "spawn" }) as never, () => true);
++    await settle();
++    expect(existsSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"))).toBe(false);
++    expect(ran).toEqual([]);
++    expect(calls).toEqual([]);
++    expect(replies).toHaveLength(1);
++    expect(replies[0]).toContain("held");
++    expect(replies[0]).toContain("text:");
++    expect([...replies, ...logs].join("\n")).not.toContain("123456");
++  }
++});
++
++test("handleInbound: operator and trusted anonymous-admin bare codes in a group never reach an inbox or run", async () => {
++  for (const from of [OP, GROUP_ANONYMOUS_BOT_ID]) {
++    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
++    const { deps, calls, replies, logs } = fake();
++    const groupAccess = { ...access, groups: { "-100123": { trustAnonymousAdmins: true } } };
++    deps.access = () => groupAccess;
++    const ran: string[] = [];
++    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
++    await handleInbound(r, dm("123456", { from, chat_id: -100123, sender_chat: -100123 }), async (s) => { ran.push(s); }, auto, async () => "spawn-high", (sender, chat, senderChat) => isOperatorIdentity(groupAccess, sender, chat, senderChat));
++    await settle();
++    expect(existsSync(join(sessionDir(r, "group_-100123"), "inbox.jsonl"))).toBe(false);
++    expect(ran).toEqual([]);
++    expect(calls).toEqual([]);
++    expect(replies).toHaveLength(1);
++    expect(replies[0]).toContain("held");
++    expect([...replies, ...logs].join("\n")).not.toContain("123456");
++  }
++});
++
++test("handleInbound: operator and trusted anonymous-admin bare replies to the bot in a group are held", async () => {
++  for (const from of [OP, GROUP_ANONYMOUS_BOT_ID]) {
++    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
++    const { deps, calls, replies, logs } = fake();
++    const groupAccess = { ...access, groups: { "-100123": { trustAnonymousAdmins: true } } };
++    deps.access = () => groupAccess;
++    const ran: string[] = [];
++    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
++    await handleInbound(r, dm("123456", { from, chat_id: -100123, sender_chat: -100123, reply_to_message_id: 42, reply_to_bot: true }), async (s) => { ran.push(s); }, auto, async () => "spawn-high", (sender, chat, senderChat) => isOperatorIdentity(groupAccess, sender, chat, senderChat));
++    await settle();
++    expect(existsSync(join(sessionDir(r, "group_-100123"), "inbox.jsonl"))).toBe(false);
++    expect(ran).toEqual([]);
++    expect(calls).toEqual([]);
++    expect(replies).toHaveLength(1);
++    expect(replies[0]).toContain("held");
++    expect([...replies, ...logs].join("\n")).not.toContain("123456");
++  }
++});
++
++test("handleInbound: non-operator group numbers stay forwarded", async () => {
++  for (const [from, trusted, senderChat] of [[999, true, -100123], [GROUP_ANONYMOUS_BOT_ID, false, -100123], [GROUP_ANONYMOUS_BOT_ID, true, -100999]] as const) {
++    const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
++    const { deps, calls, replies } = fake();
++    const groupAccess = { ...access, groups: { "-100123": { trustAnonymousAdmins: trusted } } };
++    deps.access = () => groupAccess;
++    const ran: string[] = [];
++    const auto: AutoGate = { enabledOps: new Set(), authorize: () => true, fire: () => {}, afkSudo: makeAfkSudoGate(deps, makeAfkSudoPrompts()) };
++    await handleInbound(r, dm("123456", { from, chat_id: -100123, sender_chat: senderChat }), async (s) => { ran.push(s); }, auto, async () => "spawn-high", (sender, chat, senderChat) => isOperatorIdentity(groupAccess, sender, chat, senderChat));
++    expect(existsSync(join(sessionDir(r, "group_-100123"), "inbox.jsonl"))).toBe(true);
++    expect(ran).toEqual(["group_-100123"]);
++    expect(calls).toEqual([]);
++    expect(replies).toEqual([]);
++  }
++});
++
++test("a failed hold notice is logged without leaking the code or reopening delivery", async () => {
++  const { deps, calls, logs } = fake();
++  deps.reply = async () => { throw new Error("outbox refused 123456"); };
++  expect(makeAfkSudoGate(deps)(dm("123456"))).toBe(true);
++  await settle();
++  expect(calls).toEqual([]);
++  expect(logs).toHaveLength(1);
++  expect(logs[0]).toContain("hold notice failed");
++  expect(logs.join("\n")).not.toContain("123456");
++});
++
++test("off by default: a bare six-digit message stays ordinary text without the helper", () => {
++  const { deps, calls, replies, logs } = fake(false);
++  expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(" 123456 "))).toBe(false);
++  expect(calls).toEqual([]);
++  expect(replies).toEqual([]);
++  expect(logs).toEqual([]);
++});
++
++test("bare-code hold does not consume ordinary numbers or numbers sent as text", () => {
++  const { deps } = fake();
++  const gate = makeAfkSudoGate(deps);
++  for (const text of ["12345", "1234567", "123 456", "123-456", "text: 123456", "number 123456"]) {
++    expect(gate(dm(text))).toBe(false);
++  }
++});
++
+ test("handleInbound: under lockdown an approve line never reaches the helper", async () => {
+   const r = mkdtempSync(join(tmpdir(), "afk-sudo-route-"));
+   writeFileSync(join(r, "lockdown"), "locked\n");
+@@ -266,14 +365,16 @@ test("button: while a code prompt is live, a code-shaped message sent without re
+     expect(b.replies.at(-1)).toContain("abcdefgh");
+     expect([...b.replies, ...b.logs].join("\n")).not.toContain("456");
+   }
+-  // not live: no tap, an expired window, a prompt that failed to send, a stranger, a forward, plain words
++  // Without a live prompt, a bare code is held rather than forwarded.
+   const none = buttons();
+-  expect(none.gate(dm("123456"))).toBe(false);
++  expect(none.gate(dm("123456"))).toBe(true);
++  expect(none.replies.at(-1)).toContain("held");
+   const late = buttons();
+   late.tap(tapOf("afk:approve:abcdefgh"));
+   await settle();
+   late.tick(151_000);
+-  expect(late.gate(dm("123456"))).toBe(false);
++  expect(late.gate(dm("123456"))).toBe(true);
++  expect(late.replies.at(-1)).toContain("held");
+   const live = buttons();
+   live.tap(tapOf("afk:approve:abcdefgh"));
+   await settle();
+diff --git a/scripts/telegram/afk-sudo-route.ts b/scripts/telegram/afk-sudo-route.ts
+index d7d87ede8..85b6a8d90 100644
+--- a/scripts/telegram/afk-sudo-route.ts
++++ b/scripts/telegram/afk-sudo-route.ts
+@@ -1,5 +1,5 @@
+ import { existsSync, readFileSync } from "node:fs";
+-import { GROUP_ANONYMOUS_BOT_ID, isAllowed, type Access } from "./gate";
++import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, type Access } from "./gate";
+
+ // Operator `approve <id> <code>` / `deny <id>` -> the root afk-sudo helper.
+ // The helper (scripts/lib/afk-sudo/afk_sudo.py, installed
+@@ -29,7 +29,7 @@ const LINE = /^\s*(approve|deny)\s+([a-z2-7]{8})\b(.*)$/is;
+ const MALFORMED = /^\s*approve\s+\S+\s.*(?<!\d)\d{3}[ -]?\d{3}(?!\d)/is;
+
+ export type AfkSudoLine = { verb: "approve" | "deny"; id: string; code: string };
+-export type AfkSudoMsg = { from: number; chat_id: number; text: string; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
++export type AfkSudoMsg = { from: number; chat_id: number; text: string; sender_chat?: number; forwarded?: boolean; caption?: boolean; reply_to_message_id?: number; reply_to_bot?: boolean };
+ export type AfkSudoTap = { callback_id: string; from: number; chat_id: number; data: string };
+ export type HelperRun = (args: string[], stdin: string) => Promise<{ code: number; stdout: string }>;
+ export type AfkSudoDeps = {
+@@ -151,9 +151,6 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
+       // inbox is readable by the sessions that can run the helper. Consume it, never
+       // pass it on: a reply to a bot message whose prompt is gone (the map is in
+       // memory, so a restart forgets it), or any message sent while a prompt waits.
+-      // ponytail: a bare code with no reply and no live prompt is still forwarded,
+-      // refusing every six-digit message would swallow ordinary numbers; upgrade
+-      // path: refuse an operator message that is only a six-digit run.
+       if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
+         const waiting = prompts?.live(msg.chat_id) ?? null;
+         if (msg.reply_to_bot === true || waiting) {
+@@ -163,6 +160,16 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
+           return true;
+         }
+       }
++      // Holding is not helper authorization: operator group messages, including
++      // trusted anonymous admins, must not carry a bare code into an inbox either.
++      // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
++      // Upgrade path: an explicit non-code message mode instead of guessing intent.
++      if ((msg.reply_to_message_id == null || msg.reply_to_bot === true) && CODE_REPLY.test(msg.text)
++        && msg.forwarded === false && msg.caption === false
++        && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
++        void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));
++        return true;
++      }
+       return false;
+     }
+     if (!eligible(deps.access(), msg)) {

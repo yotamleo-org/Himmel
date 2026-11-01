@@ -1,0 +1,3 @@
+fix(telegram): [HIMMEL-8206] a bare six-digit code with no reply or prompt stays out of inboxes
+
+With the AFK sudo helper installed, a typed operator message containing only six contiguous digits after trimming, without a reply or live prompt, is held before session inbox or run delivery. This also holds exact bare-code replies to the bot in groups. It covers private chats, operator messages in groups, and anonymous admins in groups explicitly configured to trust them, using the existing operator-identity predicate and sender-chat provenance checks. The bot explains that nothing ran and how to send an ordinary number using a `text:` prefix, without echoing the digits.

@@ -1,0 +1,189 @@
+diff --git a/scripts/config-ui/agui/fleet.ts b/scripts/config-ui/agui/fleet.ts
+index 7bfc9f298..90d69ffdc 100644
+--- a/scripts/config-ui/agui/fleet.ts
++++ b/scripts/config-ui/agui/fleet.ts
+@@ -81,11 +81,19 @@ export function graphOf(role: FleetRow["role"], doc: string): { parent: string |
+   let parent = plain(/your console is\W*`([^`]+)`/i.exec(doc)?.[1]);
+   if (role === "judge" || role === "consult") parent ??= plain(/dispatched by\s*(?:>\s*)?`([^`]+)`/.exec(doc)?.[1]);
+   if (role === "leg" || role === "judge" || role === "consult") {
+-    for (const m of doc.matchAll(/^- (?:[\d:]+ )?(?:LIVE — )?SUCCESSION accepted: `?([^\s`]+)`? replaces/gm)) parent = plain(m[1]) ?? parent;
++    // canonical `accepted: <new> replaces <old>`, or the relay wording `accepted — relay from <old>, new console <new>`
++    for (const m of doc.matchAll(/^- (?:[\d:]+ )?(?:LIVE — )?SUCCESSION accepted(?:: `?([^\s`]+)`? replaces| — relay from \S+, new console `?([^\s`,]+))/gm)) parent = plain(m[1] ?? m[2]) ?? parent;
+   }
+   return { parent, predecessor: null };
+ }
+
++// A console's own wrap is the line console.sh wrap writes (`WRAPPED — <text>`) under `## Results`, as the shell
++// reader scopes it; `WRAPPED N2470 (#2951 → …)` is a note about a leg, and a quoted wrap above Results is prose.
++const ownWrap = (doc: string) => {
++  const at = doc.search(/^## Results/m);
++  return at >= 0 && /^- (?:[\d:]+ )?WRAPPED —/m.test(doc.slice(at));
++};
++
+ const WINDOW_1M = 1_000_000, WINDOW = 200_000;
+ type Tally = Omit<Usage, "costEq" | "ceiling" | "ceilingFrom" | "fill">;
+ const count = (x: unknown) => (Number.isSafeInteger(x) && (x as number) >= 0 ? (x as number) : 0);
+@@ -304,8 +312,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
+   } catch { /* no probe cache: unmeasured */ }
+   const banks = { codex };
+   if (census.census === "unavailable") return { census: "unavailable", generatedAt: opts.now, sessions: [], edges: [], processOrphans: await processOrphansOf(opts), banks };
+-  const lockOf = (file: string, doc: string, wrapped: boolean): Promise<FleetRow["lock"]> => {
+-    if (wrapped) return Promise.resolve("released");
++  const lockOf = (file: string, doc: string): Promise<FleetRow["lock"]> => {
+     if (!/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m.test(doc)) return Promise.resolve("unknown");
+     return new Promise((ok) => {
+       // The lock owner resolves legacy keys and distinguishes free from corrupt or unreadable.
+@@ -368,23 +375,29 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
+     // A wrapped leg's window is closed: its codex price must not grow with later account usage (priced only while live).
+     const ids = { session: run ?? `pid ${c.pid}`, leg: name, ticket, model: backendModel };
+     const graph = graphOf(role, doc);
++    // a console is live only while its lock is held and wrapped only by its own wrap line once the lock is free (an
++    // unreadable lock is neither); every other role's state is the last bullet's marker
++    const lock = role === "console" ? await lockOf(c.doc, doc) : "unknown";
++    const wrapped = role === "console" ? ownWrap(doc) && lock === "released" : c.status === "WRAPPED";
++    const live = role === "console" ? lock === "held" : !wrapped;
++    const status = role === "console" ? (wrapped ? "WRAPPED" : live && c.status !== "WRAPPED" ? c.status : "") : c.status;
+     // Accepted succession in the doc overrides the original launch environment.
+     const parent = role === "console" ? null : graph.parent ?? plain(launch.HIMMEL_CONSOLE_NAME) ?? edges.get(c.doc)?.console ?? null;
+     return {
+       run, pid: Number(c.pid), name, role, model: c.model || null,
+       ticket, pr: role === "leg" ? prOf(doc) : null,
+-      state: stateOf(c.status, rec.status === "busy"),
++      state: role === "console" && !live && !wrapped ? "unknown" : stateOf(status, rec.status === "busy"),
+       activity: tools[0] && t0 !== undefined ? { tool: tools[0].name, summary: opts.redact(summarize(tools[0].args)).slice(0, 120), at: t0 + tools[0].start } : null,
+       lastEventAt: view && t0 !== undefined ? t0 + view.elapsed : null,
+       subagents: { total: subs.length, running: view ? subs.filter((id) => agentState(view!, id) === "running").length : 0 },
+       failures: view?.failures.length ?? 0,
+-      ...graph, parent, console: role === "console" ? name : parent, live: c.status !== "WRAPPED", lock: role === "console" ? await lockOf(c.doc, doc, c.status === "WRAPPED") : "unknown",
+-      lane, laneFrom, backendModel, marker: c.status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS,
++      ...graph, parent, console: role === "console" ? name : parent, live, lock,
++      lane, laneFrom, backendModel, marker: status || null, lastSeenAt: c.doc && doc ? docAt : null, prUrl: null, bus: NO_BUS,
+       agents: subs.map((id) => ({ name: opts.redact(view!.agents[id]?.name ?? id).slice(0, 80), role: view!.agents[id]?.role ?? "subagent", state: agentState(view!, id) })),
+       usage: finish(tally, { autocompact: c.autocompact ?? "", model: c.model, window: launch.CLAUDE_CODE_MAX_CONTEXT_TOKENS, priced: lane === "native" }), cloud: null,
+-      cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && c.status !== "WRAPPED" ? codex : null }) : null,
++      cost: tally ? costRowOf({ ...ids, lane, tally, codexStart: codexStartOf(launch), codexNow: lane === "claudex" && !wrapped ? codex : null }) : null,
+       eval: role === "leg" || role === "judge" ? evalRowOf({ ...ids, lane, rounds, view, doc }) : null,
+-      runtime: runtimeOf(rec.startedAt ?? c.startedAt, edges.get(c.doc)?.at ?? t0, doc, c.status === "WRAPPED", opts.now, docAt),
++      runtime: runtimeOf(rec.startedAt ?? c.startedAt, edges.get(c.doc)?.at ?? t0, doc, wrapped, opts.now, docAt),
+     };
+   }));
+   for (const file of census.consoleDocs ?? []) {
+@@ -394,13 +407,14 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
+       const s = await stat(file);
+       if (opts.now - s.mtimeMs > 72 * RECENT_MS) continue;
+       const doc = await readFile(file, "utf8");
+-      const wrapped = /^- (?:[\d:]+ )?WRAPPED\b/m.test(doc);
++      const lock = await lockOf(file, doc);
++      const wrapped = ownWrap(doc) && lock === "released";
+       rows.push({
+         name, role: "console", pid: null, run: null, model: null, ticket: null, pr: null,
+         state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
+         subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
+         agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
+-        lock: await lockOf(file, doc, wrapped), lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
++        lock, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
+         marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS,
+       });
+     } catch { /* archived console moved or unreadable */ }
+diff --git a/scripts/config-ui/tests/agui-fleet-graph.test.ts b/scripts/config-ui/tests/agui-fleet-graph.test.ts
+index 9599cc28b..43ccd57b4 100644
+--- a/scripts/config-ui/tests/agui-fleet-graph.test.ts
++++ b/scripts/config-ui/tests/agui-fleet-graph.test.ts
+@@ -29,6 +29,8 @@ test("a judge session's parent is the console that dispatched it, across the bri
+ test("consult children use their dispatch edge and stamped succession overrides the original console", () => {
+   expect(graphOf("consult" as any, `dispatched by \`${CONSOLE}\``).parent).toBe(CONSOLE);
+   expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CONSOLE} replaces ${PRIOR}`).parent).toBe(CONSOLE);
++  // the relay wording a leg improvised: it still names the new console
++  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CONSOLE} (listed live), token kept`).parent).toBe(CONSOLE);
+ });
+
+ test("a console hangs under the operator and names the console it succeeded", () => {
+diff --git a/scripts/config-ui/tests/agui-fleet.test.ts b/scripts/config-ui/tests/agui-fleet.test.ts
+index b14fc091e..af62c25e5 100644
+--- a/scripts/config-ui/tests/agui-fleet.test.ts
++++ b/scripts/config-ui/tests/agui-fleet.test.ts
+@@ -1,6 +1,7 @@
+ // GET /api/agui/fleet — every live session on one page. Drives the REAL fleet.sh (claude_sessions,
+ // leg_tail_status) through claude-sessions.sh's own seams: a stub pgrep and a fake /proc whose cmdlines carry -n.
+ import { test, expect, afterEach } from "bun:test";
++import { execFileSync } from "node:child_process";
+ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+@@ -30,7 +31,12 @@ test("token-gated and read-only: no token is 401, POST is 405", async () => {
+ });
+
+ test("3 live sessions and 1 wrapped: roles, tickets, PR, state, activity, subagents, failures", async () => {
+-  const { port } = boot();
++  const { port, dir, home } = boot();
++  // a console is running only while its queue lock is held
++  const root = join(dir, "handover");
++  const doc = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
++  writeFileSync(doc, "# console\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n");
++  execFileSync("bash", [join(import.meta.dir, "../../handover/queue-lock.sh"), "acquire", doc], { env: { PATH: process.env.PATH, HOME: home, HANDOVER_DIR: root } });
+   const b = await (await fleet(port)).json();
+   expect(b.census).toBe("ok");
+   const by = Object.fromEntries(b.sessions.map((s: any) => [s.name, s]));
+@@ -165,6 +171,62 @@ test("a console that released its lock is retired even while its process is aliv
+   expect(b.sessions.find((r: any) => r.name === FLEET.console.name).lock).toBe("released");
+ });
+
++test("a console whose last bullet describes a wrapped leg stays running while its lock is held", async () => {
++  const s = boot();
++  const root = join(s.dir, "handover");
++  const file = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
++  writeFileSync(file, "# console\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n- 09:30 WRAPPED N9999 (#1 → abc)\n");
++  execFileSync("bash", [join(import.meta.dir, "../../handover/queue-lock.sh"), "acquire", file], { env: { PATH: process.env.PATH, HOME: s.home, HANDOVER_DIR: root } });
++  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
++  expect(row).toMatchObject({ lock: "held", live: true, state: "running" });
++});
++
++test("a console's own wrap line retires it", async () => {
++  const s = boot();
++  const file = join(s.dir, "handover", "yotam", "himmel", `${FLEET.console.name}.md`);
++  writeFileSync(file, "# console\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n- 09:30 WRAPPED — handoff written\n");
++  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
++  expect(row).toMatchObject({ lock: "released", live: false, state: "wrapped" });
++});
++
++test("a wrap line quoted above ## Results never retires a console whose lock is held", async () => {
++  const s = boot();
++  const root = join(s.dir, "handover");
++  const file = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
++  writeFileSync(file, "# console\n- 08:00 WRAPPED — predecessor handoff\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n");
++  execFileSync("bash", [join(import.meta.dir, "../../handover/queue-lock.sh"), "acquire", file], { env: { PATH: process.env.PATH, HOME: s.home, HANDOVER_DIR: root } });
++  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
++  expect(row).toMatchObject({ lock: "held", live: true, state: "running" });
++});
++
++test("an own wrap line with the lock still held leaves the console live", async () => {
++  const s = boot();
++  const root = join(s.dir, "handover");
++  const file = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
++  writeFileSync(file, "# console\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n- 09:30 WRAPPED — handoff written\n");
++  execFileSync("bash", [join(import.meta.dir, "../../handover/queue-lock.sh"), "acquire", file], { env: { PATH: process.env.PATH, HOME: s.home, HANDOVER_DIR: root } });
++  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
++  expect(row).toMatchObject({ lock: "held", live: true, state: "running" });
++});
++
++test("a free lock with no own wrap line is not live", async () => {
++  const s = boot();
++  const file = join(s.dir, "handover", "yotam", "himmel", `${FLEET.console.name}.md`);
++  writeFileSync(file, "# console\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n");
++  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
++  expect(row).toMatchObject({ lock: "released", live: false, state: "unknown" });
++});
++
++test("an unreadable lock is unknown and never live", async () => {
++  const s = boot();
++  const root = join(s.dir, "handover");
++  const file = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
++  writeFileSync(file, "# console\n## Results\n- 09:00 LIVE — lock `fixture-lock`\n");
++  mkdirSync(join(root, ".locks", "queue", `yotam__himmel__${FLEET.console.name}.lock`), { recursive: true });
++  const row = (await (await fleet(s.port)).json()).sessions.find((r: any) => r.name === FLEET.console.name);
++  expect(row).toMatchObject({ lock: "unknown", live: false, state: "unknown" });
++});
++
+ test("a corrupt held lock directory is unknown, never proof the console released it", async () => {
+   const s = boot();
+   const root = join(s.dir, "handover");

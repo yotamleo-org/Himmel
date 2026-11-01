@@ -382,6 +382,10 @@ _suite_timeout_for() {
       # 40441105007; PR 4021 job 121981449917). 1500s is that x2.5 (the
       # loaded-budget rule); its five siblings keep the default.
       printf '1500' ;;
+    scripts/eval/review-panel/test-review-panel.sh|*/scripts/eval/review-panel/test-review-panel.sh)
+      # 60 real case repos: 291s local, killed at 2 x 600s on Linux CI (PR 4477
+      # shard 12). 1800s is above 6x local (the loaded-budget rule).
+      printf '1800' ;;
     scripts/eval/guard-corpus/test-guard-corpus.sh|*/scripts/eval/guard-corpus/test-guard-corpus.sh)
       # Runtime IPC masking scans before every fresh hook sandbox.
       # Full replay: 1407s local sequential, 1437s timed (2026-10-08); PR CI

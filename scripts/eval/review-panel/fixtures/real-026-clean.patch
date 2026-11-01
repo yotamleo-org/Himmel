@@ -1,0 +1,154 @@
+diff --git a/scripts/hooks/auto-approve-safe-bash.sh b/scripts/hooks/auto-approve-safe-bash.sh
+index 5dbf80cee..c9c1297d7 100755
+--- a/scripts/hooks/auto-approve-safe-bash.sh
++++ b/scripts/hooks/auto-approve-safe-bash.sh
+@@ -1212,16 +1212,51 @@ segment_is_safe() {
+                                            # falls through to normal permission,
+                                            # never a wider per-shape parse.
++                local sdd=0 sskip=0 ssv sln ssc srt=0 ssd0 ssk0 sre='^([0-9]*|&)[<>]+&?$'
+                 for k in "${a[@]}"; do
+                     shell_word_value "$k" || return 1
+                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # HIMMEL-3660: a glob could expand into -o/--output
++                    # HIMMEL-3655: bash ends a word at an unquoted `<`/`>`, this tokenizer
++                    # does not, so a glued redirect (`-T</dev/null`) hides that the option
++                    # consumed the next word; a heredoc/herestring (`<<-`, `<<<`) makes
++                    # the next word a delimiter, not an argument. Neither is modelled: PASS.
++                    case "$k" in *'<<'*) return 1 ;; esac
++                    case "$k" in *'<'*|*'>'*) is_redirect_word "$k" "$SW_VALUE" || return 1 ;; esac
++                    [ "$sdd" = 1 ] && continue    # HIMMEL-3655: after a literal `--` every word is positional
++                    # A redirect operator and its target are not sort arguments: neither
++                    # may start or end `--` handling nor consume an option value. Both are
++                    # still checked for -o/--output (fail closed), only the state is kept.
++                    ssd0=$sdd ssk0=$sskip
++                    ssv=$sskip; sskip=0           # 1 = this word is the previous option's value
+                     case "$SW_VALUE" in
++                        --) [ "$ssv" = 1 ] || sdd=1 ;;   # a value-consumed `--` ends nothing
+                         -[!-]*)
+-                            case "${SW_VALUE#-}" in *o*) return 1 ;; esac ;;
++                            case "${SW_VALUE#-}" in *o*) return 1 ;; esac
++                            # The first value-taking letter ends the cluster: the rest of
++                            # the word is its value; only a trailing one takes the next word.
++                            ssc=${SW_VALUE#-}
++                            while [ -n "$ssc" ]; do
++                                case "${ssc:0:1}" in
++                                    [kSTty]) [ "${#ssc}" = 1 ] && sskip=1; break ;;
++                                esac
++                                ssc=${ssc:1}
++                            done ;;
+                         --*)
+                             guard_is_long_abbrev "output" "$SW_VALUE" && return 1
+-                            guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1 ;;
++                            guard_is_long_abbrev "compress-program" "$SW_VALUE" && return 1
++                            case "$SW_VALUE" in
++                                *=*) ;;
++                                *) for sln in temporary-directory random-source buffer-size key field-separator files0-from batch-size parallel sort; do
++                                       guard_is_long_abbrev "$sln" "$SW_VALUE" && sskip=1
++                                   done ;;
++                            esac ;;
+                     esac
++                    if [ "$srt" = 1 ]; then
++                        sdd=$ssd0 sskip=$ssk0 srt=0   # this word was a redirect target
++                    elif is_redirect_word "$k" "$SW_VALUE"; then
++                        sdd=$ssd0 sskip=$ssk0
++                        [[ "$SW_VALUE" =~ $sre ]] && srt=1   # bare operator: the next word is its target
++                    fi
+                 done ;;
+-            xxd)                           # `xxd in out` / `xxd -r in out` writes
++            xxd)                          # `xxd in out` / `xxd -r in out` writes
+                 local xops=0               # a 2nd positional = output file → write
+                 for k in "${a[@]:$((i + 1))}"; do
+@@ -1267,7 +1302,11 @@ segment_is_safe() {
+                                            # program per file, `-z` runs decompressors,
+                                            # `ag --pager` runs a program. FAIL CLOSED.
++                local zc zi zv='gGpmW'     # ag letters that take a value
++                case "$bin" in rg|ripgrep) zv='efgtTmABCjdEMr' ;; esac
+                 for k in "${a[@]}"; do
+                     shell_word_value "$k" || return 1
+                     [ "$SW_HAS_UNQUOTED_GLOB" = 1 ] && return 1   # a glob could expand into one of these
++                    # a glued redirect (`--pre</dev/null sh`) ends the word in bash only
++                    case "$k" in *'<'*|*'>'*) is_redirect_word "$k" "$SW_VALUE" || return 1 ;; esac
+                     case "$SW_VALUE" in
+                         --*)
+@@ -1276,5 +1315,13 @@ segment_is_safe() {
+                             guard_is_long_abbrev "search-zip" "$SW_VALUE" && return 1
+                             guard_is_long_abbrev "pager" "$SW_VALUE" && return 1 ;;
+-                        -[!-]*) case "${SW_VALUE#-}" in *z*) return 1 ;; esac ;;
++                        -[!-]*)
++                            # HIMMEL-3985: the first value-taking letter ends the
++                            # cluster; the rest of the word is its value (-ezebra).
++                            zi=1
++                            while [ "$zi" -lt "${#SW_VALUE}" ]; do
++                                zc="${SW_VALUE:$zi:1}"; zi=$((zi + 1))
++                                [ "$zc" = z ] && return 1
++                                case "$zv" in *"$zc"*) break ;; esac
++                            done ;;
+                     esac
+                 done ;;
+diff --git a/scripts/hooks/test-auto-approve-safe-bash.sh b/scripts/hooks/test-auto-approve-safe-bash.sh
+index b5c1a4687..c86131b8c 100755
+--- a/scripts/hooks/test-auto-approve-safe-bash.sh
++++ b/scripts/hooks/test-auto-approve-safe-bash.sh
+@@ -280,4 +280,49 @@ assert "sort plain"               ALLOW "$(decide "$(j_bash 'sort f')")"
+ assert "sort -u plain"            ALLOW "$(decide "$(j_bash 'sort -u f')")"
+ assert "sort -k2 plain"           ALLOW "$(decide "$(j_bash 'sort -k2 f')")"
++# HIMMEL-3655: after a literal `--` every word is positional, so a file named
++# -o... is read, not an output option. A real -o BEFORE `--` still falls through.
++assert "sort -- -o file ALLOW"    ALLOW "$(decide "$(j_bash 'sort -- -o file')")"
++assert "sort -u -- -ofile ALLOW"  ALLOW "$(decide "$(j_bash 'sort -u -- -ofile')")"
++assert "sort -o out -- f PASS"    PASS  "$(decide "$(j_bash 'sort -o /tmp/pwned -- f')")"
++assert "sort --output= -- PASS"   PASS  "$(decide "$(j_bash 'sort --output=/tmp/pwned -- f')")"
++# A `--` that is the VALUE of a value-taking option ends nothing (judge j2528a).
++assert "sort -T -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -T -- -o /tmp/pwned f')")"
++assert "sort -uT -- -o PASS"      PASS  "$(decide "$(j_bash 'sort -uT -- -o /tmp/pwned f')")"
++assert "sort --temporary-directory -- -o PASS" PASS "$(decide "$(j_bash 'sort --temporary-directory -- -o /tmp/pwned f')")"
++assert "sort --random-source -- -o PASS" PASS "$(decide "$(j_bash 'sort --random-source -- -o /tmp/pwned f')")"
++assert "sort -S -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -S -- -o /tmp/pwned f')")"
++assert "sort -T -- --compress-program PASS" PASS "$(decide "$(j_bash 'sort -T -- --compress-program=sh f')")"
++assert "sort -k 1 -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort -k 1 -- -o f')")"
++assert "sort -T d -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort -T d -- -o f')")"
++assert "sort --sort -- -o PASS"   PASS  "$(decide "$(j_bash 'sort --sort -- -o /tmp/pwned f')")"
++assert "sort -t -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -t -- -o /tmp/pwned f')")"
++assert "sort -k -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -k -- -o /tmp/pwned f')")"
++assert "sort -y -- -o PASS"       PASS  "$(decide "$(j_bash 'sort -y -- -o /tmp/pwned f')")"
++# A redirect operator and its target are not sort arguments: a `--` target ends nothing (judge j2528b).
++assert "sort <<< -- -o PASS"      PASS  "$(decide "$(j_bash 'sort <<< -- -o /tmp/pwned f')")"
++assert "sort < -- -o PASS"        PASS  "$(decide "$(j_bash 'sort < -- -o /tmp/pwned f')")"
++assert "<<< -- sort -o PASS"      PASS  "$(decide "$(j_bash '<<< -- sort -o /tmp/pwned f')")"
++assert "sort <<< -- --compress PASS" PASS "$(decide "$(j_bash 'sort <<< -- --compress-program=sh f')")"
++assert "sort -T <in -- -o PASS"   PASS  "$(decide "$(j_bash 'sort -T <in -- -o /tmp/pwned f')")"
++assert "sort < in -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort < in -- -o f')")"
++assert "sort -T</dev/null -- -o PASS"  PASS "$(decide "$(j_bash 'sort -T</dev/null -- -o /tmp/pwned f')")"
++assert "sort --temporary-directory</dev/null PASS" PASS "$(decide "$(j_bash 'sort --temporary-directory</dev/null -- -o /tmp/pwned f')")"
++assert "sort -S<x -- -o PASS"     PASS  "$(decide "$(j_bash 'sort -S<x -- -o /tmp/pwned f')")"
++assert "sort -k<x -- -o PASS"     PASS  "$(decide "$(j_bash 'sort -k<x -- -o /tmp/pwned f')")"
++assert "sort -T<<<x compress PASS" PASS "$(decide "$(j_bash 'sort -T<<<x -- --compress-program=sh f')")"
++assert "sort <<- -- -o PASS"      PASS  "$(decide "$(j_bash 'sort <<- -- -o /tmp/pwned f')")"
++assert "sort << -- -o PASS"       PASS  "$(decide "$(j_bash 'sort << -- -o /tmp/pwned f')")"
++assert "sort {fd}<<< -- -o PASS"  PASS  "$(decide "$(j_bash 'sort {fd}<<< -- -o /tmp/pwned f')")"
++assert "sort 3<in -- -o f ALLOW"  ALLOW "$(decide "$(j_bash 'sort 3<in -- -o f')")"
++assert "sort -T>x -- -o PASS"     PASS  "$(decide "$(j_bash 'sort -T>x -- -o /tmp/pwned f')")"
++assert "sort -T''</dev/null PASS" PASS  "$(decide "$(j_bash "sort -T''</dev/null -- -o /tmp/pwned f")")"
++assert "rg --pre</dev/null PASS"  PASS  "$(decide "$(j_bash 'rg --pre</dev/null sh pat f')")"
++assert "rg --search-zip>x PASS"   PASS  "$(decide "$(j_bash 'rg --search-zip>x pat f')")"
++assert "rg pat 2>/dev/null ALLOW" ALLOW "$(decide "$(j_bash 'rg pat f 2>/dev/null')")"
++# An attached value ends the cluster scan: `-Tdirk` is -T with value `dirk`, not a
++# trailing -k that takes the next word (panel codex-1), so `--` still terminates.
++assert "sort -Tdirk -- -o f ALLOW" ALLOW "$(decide "$(j_bash 'sort -Tdirk -- -o f')")"
++assert "sort -Tk -- -o f ALLOW"   ALLOW "$(decide "$(j_bash 'sort -Tk -- -o f')")"
++assert "sort -uTdirk -- -o f ALLOW" ALLOW "$(decide "$(j_bash 'sort -uTdirk -- -o f')")"
+
+ # --- Correctness-CR locks: false-negatives that should ALLOW ---
+@@ -1548,4 +1593,13 @@ assert "rg pattern ALLOW"                     ALLOW "$(decide "$(j_bash 'rg patt
+ assert "rg -n pat dir ALLOW"                  ALLOW "$(decide "$(j_bash 'rg -n pat dir')")"
+ assert "rg -i --hidden pat ALLOW"             ALLOW "$(decide "$(j_bash 'rg -i --hidden pat')")"
++# HIMMEL-3985: a short-option cluster stops at an argument-taking letter, the
++# rest of the word is its value (-e zebra), not a -z flag.
++assert "rg -ezebra file ALLOW"                ALLOW "$(decide "$(j_bash 'rg -ezebra file')")"
++assert "rg -nezebra file ALLOW"               ALLOW "$(decide "$(j_bash 'rg -nezebra file')")"
++assert "rg -zn pat falls through"             PASS  "$(decide "$(j_bash 'rg -zn pat dir')")"
++assert "rg -nz pat falls through"             PASS  "$(decide "$(j_bash 'rg -nz pat dir')")"
++assert "rg -ie pat -z falls through"          PASS  "$(decide "$(j_bash 'rg -ie pat -z dir')")"
++assert "ag -Gzebra pat ALLOW"                 ALLOW "$(decide "$(j_bash 'ag -Gzebra pat')")"
++assert "ag -nz pat falls through"             PASS  "$(decide "$(j_bash 'ag -nz pat')")"
+ assert "grep -r x . ALLOW"                    ALLOW "$(decide "$(j_bash 'grep -r x .')")"
+ assert "ag pat ALLOW"                         ALLOW "$(decide "$(j_bash 'ag pat')")"

@@ -102,6 +102,39 @@ cronLog="$work/crontab.calls"
 printf '#!/usr/bin/env bash\necho called >> "%s"\nexit 1\n' "$cronLog" > "$fakeBin/crontab"
 chmod +x "$fakeBin/crontab"
 
+# The report asks the one secrets resolver for a repo-.env secret, so a stub keyring
+# (secret-tool and busctl, first on PATH through fakeBin) stands in for the real one in every report run.
+# Empty unless a row fills KSTUB_STORE; none reaches a real keyring.
+export KSTUB_STORE="$work/keyring.tsv" KSTUB_LOG="$work/keyring.log" KSTUB_LOCKED=false
+: > "$KSTUB_STORE"; : > "$KSTUB_LOG"
+cat > "$fakeBin/secret-tool" <<'STUB'
+#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >> "$KSTUB_LOG"
+verb="$1"; shift
+[ "${1:-}" = --all ] && shift
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+[ "$verb" = lookup ] || exit 1
+[ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    [ "$m" = 1 ] && { printf '%s' "$val"; exit 0; }
+done < "$KSTUB_STORE"
+exit 1
+STUB
+cat > "$fakeBin/busctl" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in *" Locked") echo "b ${KSTUB_LOCKED:-false}" ;; esac
+STUB
+chmod +x "$fakeBin/secret-tool" "$fakeBin/busctl"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$work/stub-bus"
+unset CREDENTIALS_DIRECTORY
+# Suite guard: abort unless the stubs are what resolve.
+for _bin in secret-tool busctl; do
+  [ "$(PATH="$fakeBin:$PATH" command -v "$_bin")" = "$fakeBin/$_bin" ] || fail "$_bin does not resolve to the stub keyring; aborting before any real keyring call"
+done
+
 run_report() {
   ( cd "$target" && HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" \
       HIMMELCTL_CACHE_DIR="$(winpath "$cacheDir")" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" \
@@ -291,6 +324,24 @@ done
 node_missing=$("$node_bin" -e 'const f=require(process.argv[1]);const m=require(process.argv[2]);const miss=m.secrets.map(s=>s.name).filter(n=>!(f.PRESENCE_SOURCES||{})[n]);process.stdout.write(miss.join(","))' "$repo_root/scripts/himmelctl/lib/config-feed.js" "$repo_root/scripts/himmelctl/lib/secrets-manifest.json" 2>&1)
 [ -z "$node_missing" ] || fail "g4 manifest secrets with no presence source: $node_missing"
 pass "g secret presence per consumer source, no values emitted, manifest fully covered"
+
+# ── g5. S0-R8: a repo-.env secret held only in the keyring reads present ────
+# BITBUCKET_EMAIL has no .env line in the fixture; the stub keyring holds it (a dummy value).
+if [ "$(uname -s)" = Darwin ]; then
+echo "SKIP: g5 — the resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up)"
+else
+WHISPER_MODEL='' WHISPER_DIR='' run_report --items secret:BITBUCKET_EMAIL > "$work/g5a.json" 2>/dev/null || fail "g5 report exited non-zero"
+[ "$(sec BITBUCKET_EMAIL "$work/g5a.json")" = absent ] || fail "g5 BITBUCKET_EMAIL read as present with no .env line and an empty keyring"
+printf 'service=himmel key=BITBUCKET_EMAIL scope=user\tkeyring-only-email-ffff\n' > "$KSTUB_STORE"; : > "$KSTUB_LOG"
+WHISPER_MODEL='' WHISPER_DIR='' run_report --items secret:BITBUCKET_EMAIL > "$work/g5b.json" 2>/dev/null || fail "g5 report exited non-zero"
+[ "$(sec BITBUCKET_EMAIL "$work/g5b.json")" = present ] || fail "g5 a keyring-only BITBUCKET_EMAIL did not read as present (S0-R8)"
+grep -q 'secret-tool lookup .*BITBUCKET_EMAIL' "$KSTUB_LOG" || fail "g5 the stub log shows no lookup argv (got: $(cat "$KSTUB_LOG"))"
+if grep -q 'keyring-only-email-ffff' "$KSTUB_LOG" "$work/g5b.json"; then fail "g5 the keyring value reached the log or the feed"; fi
+KSTUB_LOOKUP_FAIL=1 WHISPER_MODEL='' WHISPER_DIR='' run_report --items secret:BITBUCKET_EMAIL > "$work/g5c.json" 2>/dev/null || fail "g5 report exited non-zero"
+[ "$(sec BITBUCKET_EMAIL "$work/g5c.json")" = absent ] || fail "g5 a failing keyring lookup must read as absent, not present"
+: > "$KSTUB_STORE"
+pass "g5 a keyring-only repo-.env secret reads present (value never emitted); a failing lookup reads absent"
+fi
 
 # Jira settings are behaviour config, not .env-only presence. The report must
 # agree with a config-only CLI and must never emit a destination or credential.

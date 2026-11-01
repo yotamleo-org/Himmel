@@ -1,0 +1,67 @@
+diff --git a/scripts/hooks/block-read-secrets.sh b/scripts/hooks/block-read-secrets.sh
+index 723702859..af6e68f24 100755
+--- a/scripts/hooks/block-read-secrets.sh
++++ b/scripts/hooks/block-read-secrets.sh
+@@ -944,7 +944,7 @@ g4_scan() {
+     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
+     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
+     local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0 rdr=0
+-    local gsc="" kflag=0
++    local gsc="" kflag=0 fv=0 bx=0
+     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
+     set -f
+     local nw i nx
+@@ -962,6 +962,7 @@ g4_scan() {
+         # Nor any operand of a reader that runs no program (grep, cat, ls, an
+         # inert sed, ...): its pattern or file name is data, not a shell option.
+         xskip=$((dsc | rdr))
++        bx=$fv; fv=0
+         if [ "$msgv" = 1 ]; then msgv=0; xskip=1; fi
+         # git/gh message flags are data only for the positional subcommand (the
+         # first non-option word, past the values of -C/--git-dir/--work-tree/
+@@ -987,13 +988,19 @@ g4_scan() {
+             gh:-b|gh:--body|gh:-t|gh:--title) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then msgv=1; fi ;;
+             git:--message=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
+             gh:--body=*|gh:--title=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
++            gh:-f|gh:-F|gh:--raw-field|gh:--field) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then fv=1; fi ;;
++            gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then bx=1; fi ;;
+         esac
+         if [ "$xskip" = 0 ]; then
+         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
+         # brace expansion splits the word (`shopt -os x{,}trace`), so a
+         # word with an unquoted `{` matches xtrace as an in-order subsequence.
++        # Only the value of a `gh api` field flag (`-f query=mutation{...}`) is
++        # exempt: gh takes it as data, never as shell code.
++        if [ "$bx" = 0 ]; then
+         case "$w" in *'{'*) case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
+         fi
++        fi
+         # Redirect and fd skips run on the RAW split only. Tokenized, a real
+         # redirect is already out of the words (GU_SR), so a `>` word there is
+         # a user-quoted argument (`'>'`, `\>`, `$'>'`) and must not hide the next.
+diff --git a/scripts/hooks/test-block-read-secrets.sh b/scripts/hooks/test-block-read-secrets.sh
+index 9a78d09a3..24f06192b 100755
+--- a/scripts/hooks/test-block-read-secrets.sh
++++ b/scripts/hooks/test-block-read-secrets.sh
+@@ -1252,6 +1252,21 @@ assert_rc "5484 standalone yash -c quoted -x"   2 "$(run_case "$(j_bash "yash -c
+ # Brace expansion splits the word; setopt/unsetopt single-letter x.
+ assert_rc "5484 shopt -os x{,}trace"            2 "$(run_case "$(j_bash 'shopt -os x{,}trace')")"
+ assert_rc "5484 setopt x{,}trace"               2 "$(run_case "$(j_bash 'setopt x{,}trace')")"
++assert_rc "5484 quoted-prefix x{,}trace"        2 "$(run_case "$(j_bash 'shopt -os "x"{,}trace')")"
++assert_rc "6347 trap body x{,}trace"             2 "$(run_case "$(j_bash "trap 'set -o x{,}trace' DEBUG; true")")"
++assert_rc "6347 flock -c body x{,}trace"         2 "$(run_case "$(j_bash "flock /tmp/l -c 'set -o x{,}trace; true'")")"
++assert_rc "6347 su -c body x{,}trace"            2 "$(run_case "$(j_bash "su -c 'set -o x{,}trace'")")"
++assert_rc "6347 script -qc body x{,}trace"       2 "$(run_case "$(j_bash "script -qc 'set -o x{,}trace' /dev/null")")"
++assert_rc "6347 graphql -F value"                0 "$(run_case "$(j_bash "gh api graphql -F 'query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
++assert_rc "6347 graphql --raw-field value"       0 "$(run_case "$(j_bash "gh api graphql --raw-field 'query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
++assert_rc "6347 graphql --field value"           0 "$(run_case "$(j_bash "gh api graphql --field 'query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
++assert_rc "6347 graphql --raw-field=value"       0 "$(run_case "$(j_bash "gh api graphql --raw-field='query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
++assert_rc "6347 gh api positional x{,}trace"     2 "$(run_case "$(j_bash "gh api 'set -o x{,}trace'")")"
++assert_rc "6347 gh pr x{,}trace not a -f value"  2 "$(run_case "$(j_bash "gh pr view -f 'x{,}trace'")")"
++# A brace inside a quoted word never expands, so a GraphQL reply whose letters
++# x..t..r..a..c..e appear in order is data, not an xtrace option.
++assert_rc "6347 graphql reply, semicolon body"  0 "$(run_case "$(j_bash "gh api graphql -f 'query=mutation{addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"PRRT_kwDOS8WKNM6tonve\",body:\"Deferred to HIMMEL-6344: a malformed amend row is skipped and can leave a finding standing (fail-open, one extra round at most); fix there.\"}){comment{id}}}'")")"
++assert_rc "6347 graphql reply, prose body"      0 "$(run_case "$(j_bash "gh api graphql -f 'query=mutation{addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"PRRT_kwDOS8WKNM6tonve\",body:\"Deferred to HIMMEL-6344. A malformed amend row is skipped and can leave a finding standing, which fails open with one extra round at most. The fix is tracked there.\"}){comment{id}}}'")")"
+ assert_rc "5484 setopt -x"                      2 "$(run_case "$(j_bash 'setopt -x')")"
+ assert_rc "5484 unsetopt +x"                    2 "$(run_case "$(j_bash 'unsetopt +x')")"
+ assert_rc "5484 setopt extendedglob -x"         2 "$(run_case "$(j_bash 'setopt extendedglob -x')")"

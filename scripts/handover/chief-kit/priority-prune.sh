@@ -6,6 +6,18 @@
 #   priority-prune.sh --doc CHIEF_DOC [--mirror DIR]           print the pruned line
 #   priority-prune.sh --doc CHIEF_DOC [--mirror DIR] --count   print <closed>/<total>
 #   priority-prune.sh --doc CHIEF_DOC [--mirror DIR] --apply   also rewrite the line
+#   priority-prune.sh --doc CHIEF_DOC [--mirror DIR] --stale   print `<open>/<total>[ low][ KEY@VER ...]`
+#   priority-prune.sh --doc CHIEF_DOC --from-chains STATE_JSON [--registry FILE]   print a proposed line
+#
+# --stale reads the line's keys against the Jira mirror: `low` when fewer than 25 % are open,
+# then each open key whose fixVersions are set and lack the doc's `focus-version:` (a concrete vN; auto, none
+# or no line names nothing), as KEY@<its first fixVersion, spaces written as _>. tick.sh turns it into prio= / prio-stale=.
+# --from-chains is PRINT-ONLY (it never writes the doc; --apply with it is a usage error):
+# STATE_JSON is `chain-state.mjs --json --registry ...` output. For each chain in registry order, its open
+# members layer by layer (the state's per-chain step; within a layer, registry member order), each key once
+# at its first place, one `|` group per chain with an open member, then `rest of <focus-version>` when the
+# doc has a concrete focus-version. --registry defaults to the state's registry.path. The chief pastes a
+# proposed line by hand, only with an operator OK, and logs a PRIORITY-FROM-CHAINS Results bullet.
 #
 # The line is the first `priority:` line in the doc's `## Live state`, read
 # with next-dispatchable.sh's tokenizer (read_priority_line): keep the two in
@@ -18,29 +30,82 @@
 # --apply only with an operator OK and logs a `PRIORITY-PRUNE: <keys>` Results
 # bullet (chief.sh next accepts it for a line pruned to none).
 #
-# Exit: 0 printed; 1 no doc, mirror or Live state priority: line; 2 usage.
+# Exit: 0 printed; 1 no doc, mirror, chain state, registry or Live state priority: line; 2 usage.
 # PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 
-doc=""; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; mode=print
+doc=""; chains=""; have_chains=0; registry=""; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; mode=print
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
         --count) mode=count; shift ;;
         --apply) mode=apply; shift ;;
-        *) echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply]" >&2; exit 2 ;;
+        --stale) mode=stale; shift ;;
+        --from-chains) chains="${2:-}"; have_chains=1; shift 2 || exit 2 ;;
+        --registry) registry="${2:-}"; shift 2 || exit 2 ;;
+        *) echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply|--stale] | --from-chains STATE_JSON [--registry FILE]" >&2; exit 2 ;;
     esac
 done
-[ -n "$doc" ] || { echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply]" >&2; exit 2; }
+[ -n "$doc" ] || { echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply|--stale] | --from-chains STATE_JSON [--registry FILE]" >&2; exit 2; }
 [ -f "$doc" ] || { echo "priority-prune: no doc $doc" >&2; exit 1; }
-[ -d "$mirror" ] || { echo "priority-prune: no Jira mirror $mirror" >&2; exit 1; }
+if [ "$have_chains" -eq 1 ]; then
+    [ "$mode" = print ] || { echo "priority-prune: --from-chains only prints; it takes no --count, --apply or --stale" >&2; exit 2; }
+    [ -n "$chains" ] || { echo "priority-prune: --from-chains needs a chain-state file" >&2; exit 2; }
+    [ -f "$chains" ] || { echo "priority-prune: no chain state $chains" >&2; exit 1; }
+    mode=chains
+else
+    [ -d "$mirror" ] || { echo "priority-prune: no Jira mirror $mirror" >&2; exit 1; }
+fi
 
-export PP_DOC="$doc" PP_MIRROR="$mirror" PP_MODE="$mode"
+export PP_DOC="$doc" PP_MIRROR="$mirror" PP_MODE="$mode" PP_CHAINS="$chains" PP_REGISTRY="$registry"
 exec python3 -I - <<'PY'
 import os, re, sys
 
 doc, mirror, mode = os.environ['PP_DOC'], os.environ['PP_MIRROR'], os.environ['PP_MODE']
+VER = re.compile(r'^v\d[\w.-]*$')
+
+def focus_version(doc_lines):  # a concrete vN only: auto, none and no line read ''
+    for line in doc_lines:
+        m = re.match(r'focus-version:\s*(\S+)', line)
+        if m:
+            return m.group(1) if VER.match(m.group(1)) else ''
+    return ''
+
+if mode == 'chains':
+    import hashlib, json
+    try:
+        state = json.load(open(os.environ['PP_CHAINS'], encoding='utf-8'))
+        reg_path = os.environ['PP_REGISTRY'] or state['registry']['path']
+        reg_bytes = open(reg_path, 'rb').read()
+        order = [(c['id'], c['members']) for c in json.loads(reg_bytes.decode('utf-8'))['chains']]
+        tickets = state['tickets']
+        want = state['registry'].get('sha256')
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        print('priority-prune: cannot read the chain state or registry: %s' % e, file=sys.stderr)
+        sys.exit(1)
+    if want and hashlib.sha256(reg_bytes).hexdigest() != want:
+        print('priority-prune: the registry %s changed since the chain state was read (sha256 differs); re-run chain-state.mjs' % reg_path, file=sys.stderr)
+        sys.exit(1)
+    seen, groups = set(), []
+    for cid, members in order:
+        rows = []
+        for pos, k in enumerate(members):
+            t = tickets.get(k)
+            if not t or t.get('done') or k in seen:
+                continue
+            step = next((c.get('step') for c in t.get('chains', []) if c.get('id') == cid), None)
+            if step is not None:
+                rows.append((step, pos, k))
+        keys = [k for _, _, k in sorted(rows)]
+        seen.update(keys)
+        if keys:
+            groups.append(' '.join(k.split('-')[1] for k in keys))
+    fv = focus_version(open(doc, encoding='utf-8', errors='replace').read().split('\n'))
+    if fv:
+        groups.append('rest of ' + fv)
+    print('priority: ' + (' | '.join(groups) or 'none'))
+    sys.exit(0)
 TOK = re.compile(r'([(\[])|([)\]])|(\+)|(?<![\w.-])(HIMMEL-)?(\d{3,5})(?![\w-]|\.\d)(\s*\(CLOUD\))?')
 LINE = re.compile(r'^(\s*(?:[-*]\s+)?(?:\*\*)?priority:(?:\*\*)?\s*)(.*)$')
 
@@ -59,13 +124,19 @@ if at is None:
 eol = '\r' if lines[at].endswith('\r') else ''
 prefix, body = LINE.match(lines[at][:len(lines[at]) - len(eol)]).groups()
 
-def closed(key):
+def head_of(key):
     try:
-        head = open(os.path.join(mirror, key + '.md'), encoding='utf-8', errors='replace').read(4096)
+        return open(os.path.join(mirror, key + '.md'), encoding='utf-8', errors='replace').read(4096)
     except OSError:
-        return False
-    m = re.search(r'^statusCategory: "?([^"\n]*)"?$', head, re.M)
+        return ''
+
+def closed(key):
+    m = re.search(r'^statusCategory: "?([^"\n]*)"?$', head_of(key), re.M)
     return bool(m) and m.group(1).strip() == 'Done'
+
+def fix_versions(key):
+    m = re.search(r'^fixVersions: \[(.*)\]$', head_of(key), re.M)
+    return re.findall(r'"([^"]*)"', m.group(1)) if m else []
 
 # keys: [key, start, end, top-level, (group start, group end) or None, inner keys]
 keys, depth, plus, owner = [], 0, False, None
@@ -95,6 +166,19 @@ for k in keys:
 total, shut = len(state), sum(state.values())
 if mode == 'count':
     print('%d/%d' % (shut, total))
+    sys.exit(0)
+
+if mode == 'stale':
+    fv = focus_version(lines)
+    opened = [k for k in state if not state[k]]
+    res = ['%d/%d' % (len(opened), total)]
+    if total and len(opened) * 4 < total:
+        res.append('low')
+    for k in opened:
+        fvs = fix_versions(k)
+        if fv and fvs and fv not in fvs:
+            res.append('%s@%s' % (k, fvs[0].replace(' ', '_')))
+    print(' '.join(res))
     sys.exit(0)
 
 spans = []

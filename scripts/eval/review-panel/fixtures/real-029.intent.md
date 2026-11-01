@@ -1,0 +1,3 @@
+feat(chief-kit): [HIMMEL-8197] the chief waiter stays armed across events and batches housekeeping
+
+PR 4308 shipped the housekeeping digest (classify wake kinds, buffer them per `HOUSEKEEPING_DIGEST_SECS`). This PR adds the remaining wake that still nagged: a pool-unresolved or unowned-prs wake is now housekeeping unless its value changed since the last digest. First sight and a changed value wake at once: a changed set of unresolved lines, or a PR new to the unowned marker. An unchanged repeat joins the digest as one line, queued once per window. `HOUSEKEEPING_DIGEST_SECS=0` keeps the old behaviour.

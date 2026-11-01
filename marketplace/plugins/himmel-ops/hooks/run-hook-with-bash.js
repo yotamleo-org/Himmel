@@ -6,6 +6,7 @@
 // action rather than risking a guard script failing open under another shell.
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -393,15 +394,156 @@ function redactSecrets(text) {
     .replace(/\b[A-Za-z0-9_-]{40,}\b/g, '<redacted>');
 }
 
+// The secret patterns backtrack badly on a long identifier-like run, and the deny
+// line and the tool-call summary are built for a refused call too, so the patterns
+// only see a window of the text that is wider than the short form they keep.
+// A window that ends inside a word leaves a secret fragment too short for any
+// pattern, and redacting the longer words before it shortens the text enough to
+// bring that fragment into the short form: so a word the window cuts is replaced
+// by the marker, never kept in part. The slice bounds the work on a huge text; a
+// code point takes at most two UTF-16 units, so it still holds one past the window.
+function redactionWindow(text, size) {
+  const points = Array.from(text.slice(0, size * 2 + 2));
+  if (points.length <= size) return points.join('');
+  const cut = points.slice(0, size).join('');
+  return /\S/.test(points[size - 1]) && /\S/.test(points[size]) ? cut.replace(/\S+$/, '<redacted>') : cut;
+}
+
 // A short, greppable stand-in for the tool call a starved guard never saw —
 // capped at 120 chars so one runaway command can't bloat the JSONL row.
+const TOOL_CALL_REDACT_WINDOW_CODE_POINTS = 1000;
 function toolCallSummary(hookInput) {
   if (!hookInput || typeof hookInput !== 'object') return '';
   const name = typeof hookInput.tool_name === 'string' ? hookInput.tool_name : '';
   const ti = hookInput.tool_input && typeof hookInput.tool_input === 'object' ? hookInput.tool_input : {};
   const detail = ti.command || ti.cmd || ti.file_path || '';
-  const summary = redactSecrets(`${name} ${detail}`.trim());
+  const summary = redactSecrets(redactionWindow(`${name} ${detail}`.trim(), TOOL_CALL_REDACT_WINDOW_CODE_POINTS));
   return summary.length > 120 ? `${summary.slice(0, 117)}...` : summary;
+}
+
+// ---------------------------------------------------------------- identity
+//
+// A durable row has to name the exact call it is about, or a reader can only
+// guess which tool call a guard refused. The ids come from the hook payload
+// and are kept only when they have the plain shape of an id: a payload that
+// puts anything else there gets null, never a free-text field in the log.
+const CALL_ID_SHAPE = /^[A-Za-z0-9_.:-]{1,128}$/;
+const TOOL_NAME_SHAPE = /^[A-Za-z0-9_.:-]{1,160}$/;
+const EVENT_NAME_SHAPE = /^[A-Za-z]{1,40}$/;
+
+function callIdentity(hookInput) {
+  const input = hookInput && typeof hookInput === 'object' ? hookInput : {};
+  const pick = (value, shape) => (typeof value === 'string' && shape.test(value) ? value : null);
+  return {
+    callId: pick(input.tool_use_id, CALL_ID_SHAPE),
+    tool: pick(input.tool_name, TOOL_NAME_SHAPE),
+    event: pick(input.hook_event_name, EVENT_NAME_SHAPE),
+  };
+}
+
+// One id per launch of the chain: the same call refused twice in a session, or
+// the same member listed twice in one chain, stay distinguishable.
+function newInvocationId() {
+  return crypto.randomBytes(6).toString('hex');
+}
+
+// A log path override exists for the test suite alone, so a row written under
+// one is test-origin by construction. The reader excludes those rows from
+// production counts instead of guessing from a member's file name.
+function chainOrigin() {
+  return process.env.RUN_HOOK_CHAIN_SKIP_LOG || process.env.RUN_HOOK_CHAIN_RUN_LOG ? 'test' : 'production';
+}
+
+function rowIdentity(hookInput, invocation, occurrence) {
+  const { callId, tool, event } = callIdentity(hookInput);
+  return { callId, tool, event, invocation, occurrence, origin: chainOrigin() };
+}
+
+// ------------------------------------------------------------------ deny line
+//
+// The one line of a refusal message the log keeps. Control and ANSI sequences
+// are stripped first, so a name an escape sequence had split is whole again
+// when the secret patterns run. Those patterns backtrack badly on a long
+// identifier-like run, and this runs on the refusal path, where a stall would
+// let a hook timeout drop the refusal: the text they see is bounded, first to
+// a prefix of the message, then to a window of the first line that is wider
+// than the clip (redactionWindow), so a secret that straddles the clip boundary
+// is still whole inside the window and is redacted before the cut.
+// Markup is kept as text: the renderer escapes it.
+// eslint-disable-next-line no-control-regex
+const ANSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
+// Vertical tab and form feed are whitespace to the secret patterns, so they become a
+// space: dropping them would join a scheme or a flag to the credential after it.
+// eslint-disable-next-line no-control-regex
+const WHITESPACE_CONTROL = /[\u000b\u000c]/g;
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARACTER = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f]/g;
+const DENY_LINE_MAX_CODE_POINTS = 240;
+const DENY_MESSAGE_SCAN_MAX = 65536;
+const DENY_REDACT_WINDOW_CODE_POINTS = 1000;
+// U+2028 and U+2029 end a line too; they are built from their code points so the
+// source file never holds the raw separator characters.
+const LINE_BREAK = new RegExp('[\\r\\n' + String.fromCharCode(0x2028, 0x2029) + ']+');
+
+function denyLine(message) {
+  if (typeof message !== 'string') return null;
+  const first = message
+    .slice(0, DENY_MESSAGE_SCAN_MAX)
+    .replace(ANSI_SEQUENCE, '')
+    .replace(WHITESPACE_CONTROL, ' ')
+    .replace(CONTROL_CHARACTER, '')
+    .split(LINE_BREAK)
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!first) return null;
+  return Array.from(redactSecrets(redactionWindow(first, DENY_REDACT_WINDOW_CODE_POINTS))).slice(0, DENY_LINE_MAX_CODE_POINTS).join('');
+}
+
+// ----------------------------------------------------------------- run log
+//
+// One row per chain invocation: every member that ran, how long it took and
+// how it ended, including the rule denials the skip log never held. Written
+// only for a real call (a payload with a call id) or when a path is given
+// explicitly, so a suite that feeds the launcher made-up payloads cannot fill
+// a checkout's log. Best-effort and silent: this is observability, and a note
+// on stderr per tool call would be noise in the session context.
+// ponytail: an unbounded append of roughly half a kilobyte per tool call; the
+// reader reads only the tail of each file, upgrade path is a daily rotation.
+function runLogPath() {
+  if (process.env.RUN_HOOK_CHAIN_RUN_LOG) return process.env.RUN_HOOK_CHAIN_RUN_LOG;
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  return path.join(projectDir, '.claude', 'logs', 'hook-runs.jsonl');
+}
+
+function shouldLogRun(callId) {
+  if (process.env.RUN_HOOK_CHAIN_RUN_LOG) return true;
+  if (process.env.RUN_HOOK_CHAIN_SKIP_LOG) return false;
+  return callId !== null;
+}
+
+function logChainRun(ctx, st, code) {
+  const { callId, tool, event } = callIdentity(ctx.hookInput);
+  if (!shouldLogRun(callId)) return;
+  try {
+    const file = runLogPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const row = {
+      ts: new Date(ctx.startedAt).toISOString(),
+      v: 1,
+      origin: chainOrigin(),
+      event,
+      session: ctx.sessionId,
+      callId,
+      tool,
+      invocation: ctx.invocation,
+      exit: code,
+      elapsed: Date.now() - ctx.startedAt,
+      members: st.runs,
+    };
+    fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
+  } catch (_e) {
+    /* observability only: a failed write never changes the chain's decision */
+  }
 }
 
 function parseJsonObject(text) {
@@ -561,7 +703,7 @@ function spawnMember(bash, member, input, bound) {
 // dropped with a note and the chain continues — never a nonzero exit. No
 // must-run concept here: a --lifecycle chain is advisory BY DEFINITION
 // (always exits 0), so nothing on it can fail closed.
-function skipLifecycleMember(result, member, bound, memberStart, sessionId, hookInput) {
+function skipLifecycleMember(result, member, bound, memberStart, sessionId, hookInput, identity) {
   const basename = path.basename(member);
   const elapsed = Date.now() - memberStart;
   // only ETIMEDOUT/ENOBUFS are budget
@@ -580,6 +722,7 @@ function skipLifecycleMember(result, member, bound, memberStart, sessionId, hook
       reason: result.error.code,
       sessionId,
       toolCall: toolCallSummary(hookInput),
+      ...identity,
     });
     process.stderr.write(
       `run-hook-with-bash: SKIP ${basename} (budget=${bound}ms elapsed=${elapsed}ms) — guard did not evaluate this call.\n`,
@@ -606,7 +749,11 @@ function runLifecycleChain(members, bash, input, sessionId, hookInput) {
   // advisory that hangs would otherwise burn the ENTRY's timeout and have
   // Claude Code kill the whole chain, silently losing every later notice.
   const lifecycleDeadline = Date.now() + chainBudgetMs();
+  const invocation = newInvocationId();
+  const seen = new Map();
   for (const member of members) {
+    const occurrence = (seen.get(member) || 0) + 1;
+    seen.set(member, occurrence);
     // advisory-lane rewrite protection is symmetric with the
     // must-run lane — a tampered lifecycle member is skipped (not
     // fatal, matching this loop's existing advisory contract) rather than
@@ -620,7 +767,7 @@ function runLifecycleChain(members, bash, input, sessionId, hookInput) {
     const memberStart = Date.now();
     const result = spawnMember(bash, member, input, bound);
     if (result.error && !isRecoverableEpipe(result)) {
-      skipLifecycleMember(result, member, bound, memberStart, sessionId, hookInput);
+      skipLifecycleMember(result, member, bound, memberStart, sessionId, hookInput, rowIdentity(hookInput, invocation, occurrence));
       continue;
     }
     if (result.stderr) process.stderr.write(result.stderr);
@@ -705,16 +852,13 @@ function memberTimeBounds(mustRun, input, ctx) {
 // actually spent the budget, the same as the ETIMEDOUT path does
 // for a member that DID get to run.
 function denyIfEntryExhausted(basename, bound, ctx, st) {
-  logChainSkip({
-    ts: new Date().toISOString(),
+  recordIncident(ctx, st, basename, {
     action: 'deny',
-    member: basename,
+    reason: 'ENTRY_DEADLINE',
     budget: bound,
     elapsed: 0,
-    reason: 'ENTRY_DEADLINE',
-    sessionId: ctx.sessionId,
-    toolCall: toolCallSummary(ctx.hookInput),
     starved: true,
+    message: 'must-run guard was left no safe window before the entry deadline; failing closed',
   });
   const consumer = budgetConsumer(st.memberTimings, ctx.chainDeadline);
   const consumerNote = consumer
@@ -722,6 +866,28 @@ function denyIfEntryExhausted(basename, bound, ctx, st) {
     : ` must-run guard was left no safe window before the entry deadline; failing closed.`;
   process.stderr.write(`run-hook-with-bash: DENY ${basename} (entry deadline exhausted) —${consumerNote}\n`);
   return 2;
+}
+
+// One starvation incident: the skip-log row, carrying the exact call it is
+// about, and the matching entry in this invocation's run record. A deny also
+// keeps its redacted first line; a skip is not a refusal and keeps none.
+function recordIncident(ctx, st, basename, incident) {
+  const { action, reason, budget, elapsed, starved, message } = incident;
+  const deny = action === 'deny' ? { denyLine: denyLine(message) } : {};
+  logChainSkip({
+    ts: new Date().toISOString(),
+    action,
+    member: basename,
+    budget,
+    elapsed,
+    reason,
+    sessionId: ctx.sessionId,
+    toolCall: toolCallSummary(ctx.hookInput),
+    ...(starved ? { starved: true } : {}),
+    ...rowIdentity(ctx.hookInput, ctx.invocation, st.occurrence),
+    ...deny,
+  });
+  st.runs.push({ member: basename, occurrence: st.occurrence, outcome: action, reason, elapsed, budget, ...deny });
 }
 
 // A member that outran a LIMIT of ours is not a launcher failure. Two
@@ -739,19 +905,24 @@ function handleMemberRunError(result, basename, memberStart, elapsed, win, ctx, 
   const { bound, starved, mustRun } = win;
   const overran = { ETIMEDOUT: true, ENOBUFS: true };
   if (!overran[result.error.code]) {
+    st.runs.push({
+      member: basename,
+      occurrence: st.occurrence,
+      outcome: 'deny',
+      reason: 'SPAWN',
+      elapsed,
+      denyLine: denyLine('the hook interpreter failed to start; failing closed'),
+    });
     process.stderr.write(`run-hook-with-bash: failed to start ${ctx.bash}: ${result.error.message}\n`);
     return 2;
   }
-  logChainSkip({
-    ts: new Date().toISOString(),
+  recordIncident(ctx, st, basename, {
     action: mustRun ? 'deny' : 'skip',
-    member: basename,
+    reason: result.error.code,
     budget: bound,
     elapsed,
-    reason: result.error.code,
-    sessionId: ctx.sessionId,
-    toolCall: toolCallSummary(ctx.hookInput),
-    ...(mustRun && starved ? { starved: true } : {}),
+    starved: mustRun && starved,
+    message: `must-run guard did not evaluate this call within its ${bound}ms window; failing closed`,
   });
   if (mustRun) {
     const consumer = starved ? budgetConsumer(st.memberTimings, ctx.chainDeadline) : null;
@@ -791,13 +962,17 @@ function denyCrashedMustRun(result, basename, stderr) {
 }
 
 // Ends the chain: relays a deny (exit 2, or a JSON deny on exit 0) verbatim.
+function jsonBlockReason(output) {
+  return output && (output.decision === 'block' ? output.reason
+    : output.hookSpecificOutput && output.hookSpecificOutput.permissionDecisionReason);
+}
+
 function relayDeny(output, stdout, stderr) {
   // Claude Code ignores stdout JSON on exit 2 and reads stderr
   // as the reason, so a JSON block must carry its own reason there — else
   // stderr holds only an earlier member's unrelated notice. A member that
   // wrote its own stderr already chose its reason, so that stays as is.
-  const blockReason = output && (output.decision === 'block' ? output.reason
-    : output.hookSpecificOutput && output.hookSpecificOutput.permissionDecisionReason);
+  const blockReason = jsonBlockReason(output);
   if (typeof blockReason === 'string' && blockReason.trim() && !stderr.trim()) {
     process.stderr.write(`${blockReason}\n`);
   }
@@ -808,13 +983,19 @@ function relayDeny(output, stdout, stderr) {
 
 // File one finished, non-crashed member's output into the chain state.
 // Returns 2 when the member denied (ending the chain), else undefined.
-function collectMemberOutput(result, basename, stdout, stderr, st) {
+function collectMemberOutput(result, basename, stdout, stderr, st, run) {
   const status = typeof result.status === 'number' ? result.status : 2;
   const output = parseJsonObject(stdout);
 
   // exit 2 is the deny convention; a deny expressed as JSON on exit 0 is the
   // same decision in the structured channel. Both end the chain here.
-  if (status === 2 || (status === 0 && isDeny(output))) return relayDeny(output, stdout, stderr);
+  if (status === 2 || (status === 0 && isDeny(output))) {
+    const blockReason = jsonBlockReason(output);
+    run.outcome = 'deny';
+    run.reason = 'RULE';
+    run.denyLine = denyLine(stderr.trim() ? stderr : typeof blockReason === 'string' ? blockReason : '');
+    return relayDeny(output, stdout, stderr);
+  }
   if (status === 0 && output) {
     st.emitters.push({ source: basename, output, raw: stdout });
   } else if (stdout.trim()) {
@@ -825,16 +1006,32 @@ function collectMemberOutput(result, basename, stdout, stderr, st) {
   if (stderr) st.held.push(stderr);
   // Any other non-zero exit is a non-blocking error: report it, keep going,
   // and carry the first rc so the chain still reports the failure.
-  if (status !== 0 && st.carriedStatus === 0) st.carriedStatus = status;
+  if (status !== 0) {
+    run.outcome = 'error';
+    run.reason = `rc=${status}`;
+    if (st.carriedStatus === 0) st.carriedStatus = status;
+  }
   return undefined;
 }
 
 // Runs one PreToolUse chain member. Returns a number to end the chain with
 // that exit code, or undefined to carry on with the next member.
 function runChainMember(member, ctx, st) {
-  const gated = gateMemberIntegrity(member, ctx, st);
-  if (gated !== undefined) return gated === NEXT_MEMBER ? undefined : gated;
   const basename = path.basename(member);
+  st.occurrence = (st.occurrences.get(basename) || 0) + 1;
+  st.occurrences.set(basename, st.occurrence);
+  const gated = gateMemberIntegrity(member, ctx, st);
+  if (gated !== undefined) {
+    st.runs.push({
+      member: basename,
+      occurrence: st.occurrence,
+      outcome: gated === NEXT_MEMBER ? 'skip' : 'deny',
+      reason: 'INTEGRITY',
+      elapsed: 0,
+      ...(gated === NEXT_MEMBER ? {} : { denyLine: denyLine('hook script differs from its integrity record') }),
+    });
+    return gated === NEXT_MEMBER ? undefined : gated;
+  }
   const mustRun = MUST_RUN_CHAIN_MEMBERS.has(basename);
   const { bound, starved } = memberTimeBounds(mustRun, ctx.input, ctx);
   if (mustRun && bound < MIN_MEMBER_TIMEOUT_MS) return denyIfEntryExhausted(basename, bound, ctx, st);
@@ -848,11 +1045,18 @@ function runChainMember(member, ctx, st) {
   st.memberTimings.push({ basename, elapsedMs: elapsed, startedAt: memberStart });
   const stdout = result.stdout || '';
   const stderr = result.stderr || '';
+  const run = { member: basename, occurrence: st.occurrence, outcome: 'allow', elapsed };
+  st.runs.push(run);
   if (mustRun) {
     const crashed = denyCrashedMustRun(result, basename, stderr);
-    if (crashed !== undefined) return crashed;
+    if (crashed !== undefined) {
+      run.outcome = 'deny';
+      run.reason = 'CRASH';
+      run.denyLine = denyLine('must-run guard crashed instead of deciding; failing closed');
+      return crashed;
+    }
   }
-  return collectMemberOutput(result, basename, stdout, stderr, st);
+  return collectMemberOutput(result, basename, stdout, stderr, st, run);
 }
 
 // What the chain says once every member has run: held notices, the
@@ -1183,6 +1387,8 @@ function runChain(members, lifecycle = false) {
     input: guardPayload(input, hookInput),
     hookInput,
     sessionId,
+    startedAt: chainStartedAt,
+    invocation: newInvocationId(),
     chainDeadline: chainStartedAt + chainBudgetMs(),
     // the hard ceiling a must-run member's window is
     // capped against, derived from the settings.json entry timeout so the whole
@@ -1205,13 +1411,22 @@ function runChain(members, lifecycle = false) {
     // starvation-adjacent denial can name the member that ate the budget, not
     // merely the one that was starved by it.
     memberTimings: [],
+    // what each member did, in order, for the run log; `occurrence` is the
+    // ordinal of the member now running, so a member listed twice stays two
+    // distinct entries.
+    runs: [],
+    occurrences: new Map(),
+    occurrence: 0,
   };
 
+  let code;
   for (const member of members) {
-    const code = runChainMember(member, ctx, st);
-    if (code !== undefined) return code;
+    code = runChainMember(member, ctx, st);
+    if (code !== undefined) break;
   }
-  return finishChain(st, sessionId);
+  if (code === undefined) code = finishChain(st, sessionId);
+  logChainRun(ctx, st, code);
+  return code;
 }
 
 function main() {

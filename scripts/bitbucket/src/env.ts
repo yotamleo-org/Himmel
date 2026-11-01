@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
 
 // Match the Jira CLI: own install, primary checkout, then HIMMEL_REPO.
 function envFilePath(): string {
@@ -27,8 +28,11 @@ const DOTENV_KEYS = new Set([
   'BITBUCKET_EMAIL', 'BITBUCKET_API_TOKEN', 'BITBUCKET_WORKSPACE', 'BITBUCKET_REPO_SLUG',
 ]);
 
+// Order: environment, credentials directory, keyring (the one resolver), then this file's own .env read.
 function loadEnv(): void {
   const envPath = envFilePath();
+  const missing = [...DOTENV_KEYS].filter((k) => !process.env[k]);
+  for (const [key, value] of Object.entries(resolveSecrets(dirname(envPath), missing))) process.env[key] ||= value;
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const trimmed = line.trim();

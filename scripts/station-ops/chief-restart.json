@@ -1,0 +1,12 @@
+{"name": "chief-restart",
+ "version": 1,
+ "run_as": "operator-user",
+ "timeout_s": 120,
+ "wants_session": true,
+ "not_session": "chief",
+ "effect": "stops the operator's running chief session named <chief> (SIGTERM, then SIGKILL after 15 s) and re-arms it from its handover doc <doc> with <repo>/scripts/handover/arm-resume.sh; the stale queue lock is taken over by the re-armed session. Runs as the operator user, never as root. A chief cannot restart itself: a request from the chief's own session is refused",
+ "params": {
+  "chief": {"re": "^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$"},
+  "doc": {"re": "^/[A-Za-z0-9._/-]{1,300}\\.md$"},
+  "repo": {"re": "^/[A-Za-z0-9._/-]{1,250}$"}
+ }}

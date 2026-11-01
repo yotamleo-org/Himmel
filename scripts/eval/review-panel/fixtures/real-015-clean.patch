@@ -1,0 +1,126 @@
+diff --git a/scripts/cr/install-cr-gate.sh b/scripts/cr/install-cr-gate.sh
+index 5a2441d5c..048122cba 100755
+--- a/scripts/cr/install-cr-gate.sh
++++ b/scripts/cr/install-cr-gate.sh
+@@ -44,7 +44,9 @@ to_native_path() {
+
+ usage() {
+     cat <<'USAGE'
+-Usage: install-cr-gate.sh --target <path> [--remove] [--status] [--force] [-h|--help]
++Usage: install-cr-gate.sh --target <path> [--remove] [--status] [--force] [--impl-family <family>] [-h|--help]
++  --impl-family  also record the target's current branch as implemented by <family>
++                 (scripts/cr/set-impl-family.sh), turning on review gate 3c there
+ USAGE
+ }
+
+@@ -52,6 +54,8 @@ TARGET=""
+ DO_REMOVE=0
+ DO_STATUS=0
+ FORCE=0
++IMPL_FAMILY=""
++WANT_FAMILY=0
+ while [ $# -gt 0 ]; do
+     case "$1" in
+         # `shift 2` with only one arg left FAILS (and `set -e` is off by
+@@ -64,6 +68,10 @@ while [ $# -gt 0 ]; do
+         --remove) DO_REMOVE=1; shift ;;
+         --status) DO_STATUS=1; shift ;;
+         --force) FORCE=1; shift ;;
++        --impl-family)
++            [ $# -ge 2 ] || { echo "install-cr-gate: --impl-family requires a value" >&2; usage >&2; exit 2; }
++            IMPL_FAMILY="$2"; WANT_FAMILY=1; shift 2 ;;
++        --impl-family=*) IMPL_FAMILY="${1#--impl-family=}"; WANT_FAMILY=1; shift ;;
+         -h|--help) usage; exit 0 ;;
+         *) echo "install-cr-gate: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+     esac
+@@ -73,6 +81,15 @@ if [ -z "$TARGET" ]; then
+     usage >&2
+     exit 2
+ fi
++if [ "$WANT_FAMILY" -eq 1 ] && [ -z "$IMPL_FAMILY" ]; then
++    echo "install-cr-gate: --impl-family requires a non-empty value" >&2
++    usage >&2
++    exit 2
++fi
++if [ "$WANT_FAMILY" -eq 1 ] && { [ "$DO_STATUS" -eq 1 ] || [ "$DO_REMOVE" -eq 1 ]; }; then
++    echo "install-cr-gate: --impl-family applies to an install only, not --status/--remove" >&2
++    exit 2
++fi
+
+ if ! git -C "$TARGET" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+     echo "install-cr-gate: $TARGET is not a git work tree" >&2
+@@ -359,5 +376,12 @@ if [ "$DO_STATUS" -eq 1 ]; then
+ elif [ "$DO_REMOVE" -eq 1 ]; then
+     do_remove
+ else
+-    do_install
++    # do_install exits on every path; run it in a subshell so the family record
++    # below happens after a successful install (fresh OR already-current).
++    ( do_install ); install_rc=$?
++    [ "$install_rc" -eq 0 ] || exit "$install_rc"
++    if [ "$WANT_FAMILY" -eq 1 ]; then
++        # set-impl-family.sh records for the CURRENT branch of the cwd repo.
++        ( CDPATH='' cd -P -- "$TARGET" && bash "$SCRIPT_DIR/set-impl-family.sh" "$IMPL_FAMILY" ) || exit $?
++    fi
+ fi
+diff --git a/scripts/cr/test-install-cr-gate.sh b/scripts/cr/test-install-cr-gate.sh
+index 54b79e01d..6cc0f97a6 100755
+--- a/scripts/cr/test-install-cr-gate.sh
++++ b/scripts/cr/test-install-cr-gate.sh
+@@ -467,6 +467,56 @@ else
+     fail "T19 push_rc=$push_rc push_out=$push_out (no marker at $marker)"
+ fi
+
++echo "T27: --impl-family installs the gate AND records the family; a re-run changes nothing"
++d="$TMP_ROOT/f24"; mk_foreign_repo "$d" || exit 1
++hook="$d/work/.git/hooks/pre-push"
++rec="$d/work/.git/cr-impl-family/feat/x"
++out=$(bash "$INSTALLER" --target "$d/work" --impl-family Codex 2>&1); rc=$?
++[ "$rc" -eq 0 ] && [ -x "$hook" ] && [ "$(cat "$rec" 2>/dev/null)" = "codex" ] \
++    && pass || fail "T27a rc=$rc out=$out"
++before="$(cksum "$hook" "$rec")"
++out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
++after="$(cksum "$hook" "$rec")"
++[ "$rc" -eq 0 ] && grep -Fq "already-current" <<< "$out" && [ "$before" = "$after" ] \
++    && pass || fail "T27b rc=$rc out=$out"
++
++echo "T28: --impl-family with a bad value -> non-zero, no record written"
++d="$TMP_ROOT/f25"; mk_foreign_repo "$d" || exit 1
++out=$(bash "$INSTALLER" --target "$d/work" --impl-family 'bad family' 2>&1); rc=$?
++[ "$rc" -ne 0 ] && [ ! -e "$d/work/.git/cr-impl-family/feat/x" ] \
++    && pass || fail "T28 rc=$rc out=$out"
++
++echo "T29: --impl-family without a value, or with --status/--remove -> exit 2"
++d="$TMP_ROOT/f26"; mk_foreign_repo "$d" || exit 1
++out1=$(bash "$INSTALLER" --target "$d/work" --impl-family 2>&1); rc1=$?
++out2=$(bash "$INSTALLER" --target "$d/work" --status --impl-family codex 2>&1); rc2=$?
++out3=$(bash "$INSTALLER" --target "$d/work" --remove --impl-family codex 2>&1); rc3=$?
++[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ "$rc3" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
++    && pass || fail "T29 rc1=$rc1 rc2=$rc2 rc3=$rc3 out1=$out1 out2=$out2 out3=$out3"
++
++echo "T30: an EMPTY --impl-family value is refused, not read as 'no family requested'"
++out1=$(bash "$INSTALLER" --target "$d/work" --impl-family "" 2>&1); rc1=$?
++out2=$(bash "$INSTALLER" --target "$d/work" --impl-family= 2>&1); rc2=$?
++[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
++    && grep -Fq "requires a non-empty value" <<< "$out1" && grep -Fq "requires a non-empty value" <<< "$out2" \
++    && pass || fail "T30 rc1=$rc1 rc2=$rc2 out1=$out1 out2=$out2"
++
++echo "T31: an inherited CDPATH cannot send the family record to another repo"
++dd="$TMP_ROOT/f28"; mk_foreign_repo "$dd" || exit 1
++d="$TMP_ROOT/f27"; mk_foreign_repo "$d" || exit 1
++out=$(cd "$d" && CDPATH="$dd" bash "$INSTALLER" --target work --impl-family codex 2>&1); rc=$?
++[ "$rc" -eq 0 ] && [ "$(cat "$d/work/.git/cr-impl-family/feat/x" 2>/dev/null)" = "codex" ] \
++    && [ ! -e "$dd/work/.git/cr-impl-family" ] \
++    && pass || fail "T31 rc=$rc out=$out target_rec=$(cat "$d/work/.git/cr-impl-family/feat/x" 2>&1) decoy_has_dir=$([ -e "$dd/work/.git/cr-impl-family" ] && echo yes || echo no)"
++
++echo "T32: --impl-family with a REFUSED install (foreign hook, no --force) writes no record"
++d="$TMP_ROOT/f29"; mk_foreign_repo "$d" || exit 1
++printf '#!/bin/sh\necho foreign\n' > "$d/work/.git/hooks/pre-push"; chmod +x "$d/work/.git/hooks/pre-push"
++out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
++[ "$rc" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
++    && grep -Fq "foreign" "$d/work/.git/hooks/pre-push" \
++    && pass || fail "T32 rc=$rc out=$out"
++
+ echo
+ if [ "$SKIP" -gt 0 ]; then
+     echo "install-cr-gate tests: $PASS passed, $FAIL failed, $SKIP skipped"

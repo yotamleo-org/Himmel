@@ -159,7 +159,7 @@
 # vmismatch= (tick.sh: RESET rows of the version-status audit) wakes while it is a positive
 # count and on any change of that count; 0, ? and an absent field are left out of the key.
 # wt-ceiling= (the live/cap alarm) is in the key whole: reaching the ceiling
-# wakes once, while an unchanged alarm stays silent; absent is not a failure.
+# wakes once, while an unchanged alarm stays silent; absent is not a failure. cap= (`<version>:<n>`, past 15 open residuals) likewise.
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
 # non-empty list wakes on first sight (`WAKE unowned-prs <list>`), again at once when
 # a PR joins it, and again every CHIEF_WAIT_UNOWNED_REWAKE_MIN (default 60) while it
@@ -512,7 +512,7 @@ sample() {
     bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in workers livestate prs tails acts holds workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall dispatch denials closable deadwin; do
+    for f in workers livestate prs tails acts holds workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch cap vmrun parked stall dispatch denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # An older tick.sh prints legs= and legset=; field() matches whole tokens, so max_workers= is never workers=.
         if [ -z "$v" ]; then
@@ -524,7 +524,7 @@ sample() {
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = cap ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then fail_step="missing-field:$f"; tick_state=fail; key=""; return; fi
