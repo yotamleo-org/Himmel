@@ -964,9 +964,11 @@ if stacked and workers_from:
             # the ledger of a live series worker: named by its Series line (sid or path), or naming the worker's doc as its writer.
             # Its files then belong to that worker, and its non-abandoned items are the seats the worker has used
             for lbl, w in series_workers.items():
-                if w['sid'] == sid or w['ledger'] == os.path.realpath(path) or os.path.realpath(led['writer']) == os.path.realpath(w['doc']):
+                named = w['sid'] is not None  # a Series line that names its ledger reads that one only; the writer match serves a numbered block, which names none
+                if (w['sid'] == sid or w['ledger'] == os.path.realpath(path)) if named else os.path.realpath(led['writer']) == os.path.realpath(w['doc']):
                     series_label_of[sid] = lbl
-                    w['count'] = sum(1 for it in led['items'] if it.get('state') != 'abandoned')
+                    w['count'] = max(w.get('led_count', 0), sum(1 for it in led['items'] if it.get('state') != 'abandoned'))  # the fullest ledger it matches
+                    w['led_count'] = w['count']
             for it in led['items']:
                 if it.get('state') == 'abandoned':
                     continue

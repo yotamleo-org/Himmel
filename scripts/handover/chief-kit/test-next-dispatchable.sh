@@ -1726,6 +1726,12 @@ has "(8529) a full series still holds the file" "$s85c" "# drop HIMMEL-851 colli
 led set --ledger "$SL" --key HIMMEL-9204 state=abandoned
 s85d="$(runl 1 "$S85" "$B/fleet.json" --why)"
 has "(8529) an abandoned item frees a seat" "$s85d" "STACKABLE HIMMEL-851 $SW"
+# a worker whose Series line names its sid reads only that ledger: a stale ledger naming the same doc as writer neither sets its count nor joins it
+led add-item --ledger "$SL" --key HIMMEL-9205 --writes scripts/lib/e85.sh --state planned
+led create --ledger "$B/series/stale.json" --sid stale --completes-ticket no --writer "$SW"
+led add-item --ledger "$B/series/stale.json" --key HIMMEL-9206 --writes scripts/lib/stale-85.sh --state committed
+s85g="$(runl 1 "$S85" "$B/fleet.json" --why)"
+lacks "(8529) a stale ledger with the same writer does not make a full series worker STACKABLE" "$s85g" "STACKABLE"
 # a Series line whose ledger is not there has an unknown count: no room
 printf '# live\n> **Series:** gone %s/gone.json — read docs/handover/worker-sections/series.md\n> **Writes:** scripts/config-ui/app.js\n' "$B/series" > "$B/HIMMEL-9220-N3-noledger.md"
 mkfleet "$B/fleet-nl.json" "N3:$B/HIMMEL-9220-N3-noledger.md"
