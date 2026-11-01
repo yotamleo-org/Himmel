@@ -1714,11 +1714,12 @@ check_direction_real() {
 
 # Refuse a handover while an open PR maps to no live worker in the fleet manifest and to no hold
 # on the outgoing `queue:` line (orphan-pr-check.sh); every orphan is named. An
-# unreadable PR list never refuses.
+# unreadable PR list (exit 3) or failed check never refuses; only exit 1 does.
 # Args: outgoing doc.
 check_no_orphan_pr() {
-    local orphans
-    orphans="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --doc "$1" --repo "$repo" 2>/dev/null)" && return 0  # swallow-ok: only the check's exit 1 refuses; its own stderr names an unreadable PR list and exits 0
+    local orphans rc=0
+    orphans="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --doc "$1" --repo "$repo" 2>/dev/null)" || rc=$?  # swallow-ok: the rc is kept and only the check's exit 1 refuses
+    [ "$rc" -eq 1 ] || return 0
     err "refusing to hand over: an open PR has no live worker in the fleet manifest and no hold on the queue: line:"
     printf '%s\n' "$orphans" | while IFS= read -r line; do err "  $line"; done
     err "  relaunch a worker on it, or name its PR number or ticket key on the queue: line of $1, then retry"

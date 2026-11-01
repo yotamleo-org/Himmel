@@ -2739,6 +2739,14 @@ rco=0
 ORPHAN_PR_CHECK_PRS="$tmp/orphan-prs-one.json" chief next --bucket orph8501dst --doc "$doco" >/dev/null 2>&1 || rco=$?
 check "orph8501 a PR held on the queue: line passes" "0" "$rco"
 HANDOVER_DIR="$root" bash "$QL" release "$doco" "$tokeno" >/dev/null 2>&1
+# an unreadable PR list is neither an orphan nor a refusal
+outu="$(chief new --bucket orph8501u)"
+tokenu="$(token_of "$outu")"
+docu="$root/tester/orph8501u/DEMO-nextleg-${today}A-chief.md"
+rcu=0
+ORPHAN_PR_CHECK_PRS="$tmp/no-such-orphan-prs.json" chief next --bucket orph8501udst --doc "$docu" >/dev/null 2>&1 || rcu=$?
+check "orph8501 an unreadable PR list does not refuse next" "0" "$rcu"
+HANDOVER_DIR="$root" bash "$QL" release "$docu" "$tokenu" >/dev/null 2>&1
 
 # --- 84: a repo with no origin remote must not abort `next` mid-render: the
 # pointer falls back to a placeholder and the wrapped-PR section is still written.

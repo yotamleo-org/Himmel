@@ -93,8 +93,15 @@ check "no open PR: exits 0" "0" "$rc"
 # --- an unreadable PR list is not an orphan
 rm -f "$PRS"
 run
-check "unavailable PR list: fails open (exit 0)" "0" "$rc"
+check "unavailable PR list: exits 3, neither an orphan nor an all-clear" "3" "$rc"
 check "unavailable PR list: says so on stderr" "1" "$(grep -c 'unavailable' "$WORK/err")"
+
+# --- an unreadable manifest is unavailable too, never "no worker holds this PR"
+prs 101 "fix/himmel-111-alpha"
+printf 'not json\n' > "${DOC%.md}.fleet.json"
+run
+check "unreadable manifest: exits 3" "3" "$rc"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$W_LIVE" "$W_DONE" > "${DOC%.md}.fleet.json"
 
 # --- --workers-from names another manifest
 other="$WORK/other.fleet.json"
@@ -117,6 +124,7 @@ printf '#!/usr/bin/env bash\nprintf "# pool=0/7,LOW\\nPOOL-EMPTY\\n"\n' > "$STUB
 cat > "$STUB/orphan.sh" <<'EOF'
 #!/usr/bin/env bash
 echo x >> "$STUB/orphan.calls"
+[ ! -f "$STUB/orphan.unavailable" ] || exit 3
 [ -s "$STUB/orphans.out" ] || exit 0
 cat "$STUB/orphans.out"; exit 1
 EOF
@@ -141,6 +149,10 @@ printf 'UNMAPPED 4325 fix/himmel-8288-orphan\nUNMAPPED 4400 fix/himmel-9000-new\
 arm "$WORK/w4.out" 20
 check "waiter: a PR joining the orphan set wakes at once" "WAKE orphan-pr 4325,4400" "$(head -n1 "$WORK/w4.out")"
 : > "$STUB/orphans.out"
+: > "$STUB/orphan.unavailable"
+arm "$WORK/w4u.out" 4
+check "waiter: an unavailable read keeps the marker" "yes" "$([ -e "$INBOX.wait.orphan" ] && echo yes || echo no)"
+rm -f "$STUB/orphan.unavailable"
 arm "$WORK/w5.out" 4
 check "waiter: a clean read clears the marker" "no" "$([ -e "$INBOX.wait.orphan" ] && echo yes || echo no)"
 

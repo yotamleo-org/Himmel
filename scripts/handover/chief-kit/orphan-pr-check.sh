@@ -13,10 +13,11 @@
 #
 # The PR set is `gh pr list --state open --json number,headRefName` run in <repo>
 # (default: this checkout). Seam (tests): ORPHAN_PR_CHECK_PRS = a file holding that JSON.
-# An unreadable PR list is not an orphan: it prints `orphan-pr-check: unavailable ...` on
-# stderr and exits 0, so a gh outage never blocks a handover.
+# An unreadable PR list or manifest is not an orphan and not an all-clear: it prints
+# `orphan-pr-check: unavailable ...` on stderr and exits 3, so a gh outage never blocks a
+# handover (chief.sh refuses only on 1) and never clears a waiter's marker (only 0 does).
 #
-# Exit: 0 every PR mapped (or list unavailable); 1 at least one orphan; 2 usage.
+# Exit: 0 every PR mapped; 1 at least one orphan; 2 usage; 3 unavailable.
 # PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 # ponytail: the worker is matched by the ticket key in the branch name (as tick.sh's unowned-prs= does),
 # so a branch with no key maps only through the doc text or a hold on its PR number;
@@ -45,11 +46,11 @@ done
 [ -n "$doc" ] || usage
 [ -n "$manifest" ] || manifest="${doc%.md}.fleet.json"
 
-unavailable() { echo "orphan-pr-check: unavailable ($1)" >&2; exit 0; }
+unavailable() { echo "orphan-pr-check: unavailable ($1)" >&2; exit 3; }
 if [ -n "${ORPHAN_PR_CHECK_PRS:-}" ]; then
     prs_json="$(cat "$ORPHAN_PR_CHECK_PRS" 2>/dev/null)" || prs_json=""  # swallow-ok: an empty read exits as unavailable below, never as an orphan
 else
-    prs_json="$(cd "$repo" 2>/dev/null && timeout -k 2 30 gh pr list --state open --limit 200 --json number,headRefName 2>/dev/null)" || prs_json=""  # gnu-ok: Linux-only kit; swallow-ok: an empty read exits as unavailable below, never as an orphan
+    prs_json="$(cd "$repo" 2>/dev/null && timeout -k 2 30 gh pr list --state open --limit 1000 --json number,headRefName 2>/dev/null)" || prs_json=""  # gnu-ok: Linux-only kit; swallow-ok: an empty read exits as unavailable below, never as an orphan
 fi
 [ -n "$prs_json" ] || unavailable "the open-PR list could not be read"
 rows="$(printf '%s\n' "$prs_json" | jq -r '.[] | "\(.number)\t\(.headRefName)"' 2>/dev/null)" || unavailable "the open-PR list is not a JSON array"  # swallow-ok: a parse failure exits as unavailable, never as an orphan
