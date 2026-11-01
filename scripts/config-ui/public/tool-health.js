@@ -217,6 +217,7 @@ function hookRows(data, inv) {
     return { key: `hook:${h.source}:${h.name}`, kind: "hook", src: srcOf(h.source), source: h.source, hook: h, guard: hit ? cls : null, refused: hit ? hit.failures : null, runs: isNum(seen) ? seen : derivedRuns(h, data), runsMeasured: isNum(seen) };
   });
 }
+const RUNS_SCOPE = "Measured hook runs cover every session on this station and ignore the filters; derived runs and Refused follow them.";
 // A hook that ran inside the hook chain has a run count the chain log measured; any other hook keeps the derived count.
 function measuredRuns(data, name) {
   const m = data && data.chain && data.chain.members && Object.hasOwn(data.chain.members, name) ? data.chain.members[name] : null;
@@ -297,7 +298,7 @@ function toolList(data, inv, ui, opts = {}) {
 <div class="fields"><label>Source <select data-th="src"><option value="">All</option>${srcs.map((s) => `<option value="${s}"${ui.src === s ? " selected" : ""}>${esc(SRC_LABEL[s])}</option>`).join("")}</select></label><label>Search <input id="th-q" data-th="q" type="search" value="${esc(ui.q || "")}" placeholder="tool, skill, server"></label><label>Sort <select data-th="sort">${[["rate", "Highest failure rate"], ["failed", "Most failures"], ["calls", "Most calls"], ["name", "Name"]].map(([v, l]) => `<option value="${v}"${ui.sort === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>${chip("th-group", "kind", "Group by kind", ui.group === "kind")}${chip("th-group", "source", "Group by source", ui.group === "source")}${chip("th-before", "1", "Before split", !!ui.before)}</div>`;
   const empty = q ? `No tool matches “${ui.q}”` : "No tools match these filters";
   const more = !ui.all && limited.length < sorted.length ? `<button class="btn" data-act="th-all">Show all (${sorted.length})</button>` : ui.all && sorted.length > 10 ? `<button class="btn quiet" data-act="th-all">Top 10 only</button>` : "";
-  const shownLine = `<p class="sub">${limited.length} of ${sorted.length} shown${bad.size ? ' · <span class="tag fail">Count check failed</span> for ' + esc([...bad].join(", ")) : ""}. Errors include a red test suite. Rows marked “before the split” were written before skills, subagents and MCP servers got their own rows.</p>`;
+  const shownLine = `<p class="sub">${limited.length} of ${sorted.length} shown${bad.size ? ' · <span class="tag fail">Count check failed</span> for ' + esc([...bad].join(", ")) : ""}. Errors include a red test suite. Rows marked “before the split” were written before skills, subagents and MCP servers got their own rows.${limited.some((r) => r.kind === "hook" && r.runsMeasured) ? ` ${esc(RUNS_SCOPE)}` : ""}</p>`;
   return `${controls}${ui.before && data ? `<p class="sub">Before split: today's rows collapsed back to Skill, Agent and mcp, for comparison.</p>${beforeSplit(data)}` : `${shownLine}${table(["Tool", "Source", "Calls", "Failed", "Errors", "Denied", "Failure rate", ""], body, empty)}${more}`}`;
 }
 
@@ -548,7 +549,7 @@ function hooksTab(data, inv, ui) {
   const wait = invState(inv);
   if (wait) return box("hooks", "Hook wiring", "Which hook is wired where, and which runs twice?", wait);
   const rows = hookRows(data, inv).map((r) => [[r.hook.name, `<a data-tool="${esc(r.key)}" href="${esc(r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "map" }))}">${esc(r.hook.name)}</a>`], st_(r.source), [String(r.hook.wired.map((w) => w.join(":"))), esc((r.hook.wired || []).map(([e, m]) => `${e} · ${m}`).join(", ") || "—")], sv((r.hook.wired || []).length), [r.hook.runs_twice ? 1 : 0, r.hook.runs_twice ? '<span class="tag warn">×2 runs twice</span>' : "no"], [isNum(r.runs) ? r.runs : -1, `${num(r.runs)} <span class="dim">${r.runsMeasured ? "measured" : "derived"}</span>`], sv(r.refused)]);
-  return box("hooks", "Hook wiring", "Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.", sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui), "First build");
+  return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui), "First build");
 }
 
 // ---- reviewers (moved from Health): the weekly review page as written, never re-graded here.

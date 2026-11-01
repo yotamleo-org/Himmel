@@ -912,7 +912,7 @@ test("without chain logs the reason rows read — and unverified, never 0", asyn
   }
   // Only the skip log: a timeout count is known, a rule denial count is not.
   const half = Object.fromEntries(cells(await chainPage({ skip: { state: "ok", rows: [skipRow(2)] }, run: { state: "absent" } }, GUARD), "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
-  expect(half).toEqual({ rule: "—", timeout: "1", deadline: "0", buffer: "0", other: "0" });
+  expect(half).toEqual({ rule: "—", timeout: "1", deadline: "0", buffer: "0", other: "—" });
 });
 
 test("the audit line counts the rows that were left out and why", async () => {
@@ -971,6 +971,31 @@ test("a guard that never started is a refusal or a skip but not a measured run",
   // Only the allow and the timeout ran the guard; the integrity skip, the deadline deny and the spawn failure never did.
   expect(c.members["g.sh"]).toMatchObject({ runs: 2, denials: 3, skips: 1, run_ms: 15077, max_ms: 15072 });
   expect(c.invocations).toBe(5);
+  // The same three reasons read "not started" on the incident, never an elapsed time that looks like a fast run.
+  expect([61, 62, 63, 64].map((n) => callEvent(c, `toolu_C${n}`).not_started)).toEqual([true, true, true, false]);
+  expect(callEvent(c, "toolu_C61").ratio).toBeNull();
+});
+
+test("a count that only the run log can show reads unknown when the run log is missing", () => {
+  const timeout = (n: number) => skipRow(n);
+  const skipOnly = rollChain({ skip: { state: "ok", rows: [timeout(2)] }, run: { state: "absent" } });
+  // Rule denials, integrity skips, spawn failures and crashes are written to the run log only.
+  expect(skipOnly).toMatchObject({ infra: null, denials: null, by_action: { deny: null, skip: null }, by_reason: { rule: null, timeout: 1, deadline: 0, buffer: 0, other: null } });
+  expect(skipOnly.members["block-read-secrets.sh"].by_reason).toMatchObject({ rule: null, timeout: 1, other: null });
+  // The run log alone carries every kind, the skip-log kinds included.
+  const runOnly = rollChain({ skip: { state: "absent" }, run: { state: "ok", rows: [runRow(2, [runMember({ reason: "ETIMEDOUT", elapsed: 15072, budget: 15000 })])] } });
+  expect(runOnly).toMatchObject({ infra: 1, denials: 1, by_action: { deny: 1, skip: 0 }, by_reason: { rule: 0, timeout: 1, deadline: 0, buffer: 0, other: 0 } });
+});
+
+test("measured hook runs say they cover every session and ignore the filters", async () => {
+  const note = "Measured hook runs cover every session on this station and ignore the filters";
+  const inventory = { ...INVENTORY, hooks: [...INVENTORY.hooks, { kind: "hook", source: "project", name: "block-read-secrets.sh", wired: [["PreToolUse", "Read"]], runs_twice: false }] };
+  const data = roll([bEval(1, [bTool("Read", 3)])], [], { chain: chainT() });
+  expect(await page(data, { kind: "hook" }, { inventory })).toContain(note);
+  expect(await page(data, { tab: "hooks" }, { inventory })).toContain(note);
+  const unmeasured = roll([bEval(1, [bTool("Read", 3)])], [], { chain: { skip: { state: "absent" }, run: { state: "absent" } } });
+  expect(await page(unmeasured, { kind: "hook" }, { inventory })).not.toContain(note);
+  expect(await page(unmeasured, { tab: "hooks" }, { inventory })).not.toContain(note);
 });
 
 test("a worktree folder that cannot be listed makes the roll-up partial and the page says so", async () => {

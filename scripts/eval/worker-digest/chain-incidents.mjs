@@ -130,7 +130,7 @@ const clipLine = (v) => {
 function makeEvent(ts, base, entry) {
   const reason = entry.reason ?? 'RULE';
   const elapsed = nonNegative(entry.elapsed) ? entry.elapsed : null, budget = nonNegative(entry.budget) ? entry.budget : null;
-  const notStarted = reason === 'ENTRY_DEADLINE' && elapsed === 0;
+  const notStarted = NEVER_STARTED.has(reason);
   return {
     ts, outcome: entry.outcome, reason, kind: KIND_OF[reason] ?? 'other', member: base.member, occurrence: base.occurrence,
     tool: TOOL.test(base.tool ?? '') ? base.tool : null, session: base.session, call_id: base.callId, invocation: base.invocation,
@@ -216,13 +216,15 @@ export function rollupChain(chain, { firstDay = null, lastDay = null } = {}) {
   const complete = sources.skip.state === 'ok' && sources.run.state === 'ok' && audit.unverified === 0 && audit.malformed === 0 && !sources.skip.truncated && !sources.run.truncated && !worktreesUnreadable;
   const state = !usable ? (sources.skip.state === 'error' || sources.run.state === 'error' ? 'error' : 'absent') : complete ? 'ok' : 'partial';
   const unknown = (n, known) => known ? n : null; // a count the sources cannot show is "—", never 0
-  const reasonView = (r) => ({ ...r, rule: unknown(r.rule, ruleKnown), timeout: unknown(r.timeout, infraKnown), deadline: unknown(r.deadline, infraKnown), buffer: unknown(r.buffer, infraKnown), other: unknown(r.other, infraKnown) });
+  // The skip log carries only timeouts, buffer overflows and entry deadlines; rule denials, integrity skips, spawn failures and crashes
+  // are written to the run log alone, so a count that includes them is unknown without it.
+  const reasonView = (r) => ({ ...r, rule: unknown(r.rule, ruleKnown), timeout: unknown(r.timeout, infraKnown), deadline: unknown(r.deadline, infraKnown), buffer: unknown(r.buffer, infraKnown), other: unknown(r.other, ruleKnown) });
   return {
     state,
     sources: Object.fromEntries(Object.entries(sources).map(([k, s]) => [k, { state: s.state, files: s.files, malformed: s.malformed, truncated: s.truncated }])),
     audit, joined, rule_known: ruleKnown, infra_known: infraKnown, worktrees_unreadable: worktreesUnreadable,
-    by_reason: reasonView(byReason), by_action: infraKnown ? byAction : { deny: null, skip: null },
-    infra: unknown(infra, infraKnown), denials: unknown(byAction.deny, ruleKnown),
+    by_reason: reasonView(byReason), by_action: ruleKnown ? byAction : { deny: null, skip: null },
+    infra: unknown(infra, ruleKnown), denials: unknown(byAction.deny, ruleKnown),
     invocations: unknown(invocations, ruleKnown),
     events: list.slice(0, EVENT_CAP), events_total: list.length,
     members: Object.fromEntries([...members].map(([k, m]) => [k, { ...m, by_reason: reasonView(m.by_reason), runs: unknown(m.runs, ruleKnown), errors: unknown(m.errors, ruleKnown), run_ms: unknown(m.run_ms, ruleKnown), max_ms: unknown(m.max_ms, ruleKnown) }])),
