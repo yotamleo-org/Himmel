@@ -974,7 +974,8 @@ EOF
 # _ql_halted_marker <doc> <session> <how> -- the lock of a worker that died has just been
 # freed: append that worker's HALTED Results bullet, so its doc stops reading
 # LIVE and the ticket and the orphan-PR gate see a dead worker. Callers run it only after
-# _ql_owner_provably_dead said yes and the lock dir is gone. Writes nothing for a doc with no
+# _ql_owner_provably_dead said yes and BEFORE the lock dir is removed: while the dead holder
+# still owns the lock no successor can have written its own LIVE yet. Writes nothing for a doc with no
 # marker bullet (not a worker doc) or whose newest marker is already WRAPPED / HALTED. Never
 # fails the caller: a refused append is a WARN, and the lock is freed either way. Output is
 # discarded so acquire's last stdout line stays the release token.
@@ -1917,6 +1918,8 @@ queue_lock_acquire() {
         if _ql_owner_provably_dead "$lockdir" "$ttl"; then
             t_doc=$(_ql_json_field_str "$o_raw" handover)
         fi
+        # written while the dead holder still owns the lock and this taker holds the claim
+        _ql_halted_marker "$t_doc" "$o_session" "a takeover by a new acquire"
         rm -rf "$lockdir" 2>/dev/null
         # Same owner-file arbiter as the fresh acquire above: a uutils
         # mkdir co-winner must not overwrite or remove the true winner.
@@ -1956,7 +1959,6 @@ queue_lock_acquire() {
             echo "queue-lock: took over ($reason) -- previous holder: session=$o_session host=$o_host" >&2
             echo "queue-lock: acquired (session=$session host=$host)"
             _ql_arms_retire_both "$ho" "$ho_raw" "$_QL_ROOT"
-            _ql_halted_marker "$t_doc" "$o_session" "a takeover by a new acquire"
             echo "release-token: \`$session\`"
             return 0
         fi
@@ -2234,8 +2236,9 @@ queue_lock_release() {
         if _ql_owner_provably_dead "$lockdir" "$f_ttl"; then
             f_doc=$(_ql_json_field "$lockdir/owner.json" handover)
         fi
-        _ql_release_remove "$lockdir" "" "" 1 || return "$?"
+        # written while the dead holder still owns the lock, so a successor's LIVE can never precede it
         _ql_halted_marker "$f_doc" "$f_session" "a forced release (QUEUE_LOCK_FORCE_RELEASE=1)"
+        _ql_release_remove "$lockdir" "" "" 1 || return "$?"
         printf '%s FORCED RELEASE of session=%s host=%s lock=%s (QUEUE_LOCK_FORCE_RELEASE=1, by pid=%s on host=%s)\n' \
             "$(_ql_now_iso)" "${f_session:-unknown}" "${f_host:-unknown}" "$lockdir" "$$" "$(_ql_hostname)" \
             >> "$(dirname "$lockdir")/takeovers.log" 2>/dev/null || true
@@ -2760,6 +2763,7 @@ _ql_sweep_one_root() {
                     echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=failed-log-unwritable$sfx"
                     flagged=1
                 else
+                    _ql_halted_marker "$(_ql_json_field_str "$o_raw" handover)" "$o_session" "status --sweep --reap-dead"
                     rm -rf "$lockdir" 2>/dev/null
                     _ql_takeover_claim_release "$rclaim" "$rtoken" || true
                     if [ -d "$lockdir" ]; then
@@ -2772,7 +2776,6 @@ _ql_sweep_one_root() {
                         printf '%s REAPED STALE-DEAD session=%s host=%s lock=%s age=%ss (status --sweep --reap-dead, by pid=%s)\n' \
                             "$(_ql_now_iso)" "${o_session:-unknown}" "${o_host:-unknown}" "$lockdir" "$age" "$$" \
                             >> "$qdir/takeovers.log" 2>/dev/null || true
-                        _ql_halted_marker "$(_ql_json_field_str "$o_raw" handover)" "$o_session" "status --sweep --reap-dead"
                         echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=released$sfx"
                     fi
                 fi
