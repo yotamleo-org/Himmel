@@ -152,7 +152,9 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
         ( cd "$repo" && HIMMEL_API_TOOLS=Read HIMMEL_API_KIND=cull "$claude" -p "$prompt" \
             --model sonnet --output-format json --permission-mode plan --max-budget-usd "${STEERING_CULL_API_BUDGET_USD:-0.50}" ) > "$out" 2> "$STATE_DIR/last-run.err"
     else
-        ( cd "$repo" && "$claude" -p "$prompt" \
+        # claude -p bills an exported API key outside the API lane's accounting
+        ( cd "$repo" && env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+            "$claude" -p "$prompt" \
             --model sonnet --output-format json --permission-mode plan --tools Read --allowedTools Read ) > "$out" 2> "$STATE_DIR/last-run.err"
     fi
     rc=$?
