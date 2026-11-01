@@ -3433,6 +3433,46 @@ if [ -n "$H_LK_E" ] && [ ! -d "$H_LK_E" ] && [ "$(h_tail "$H_DOC_E")" = "- 10:00
 else
     fail "T8541e: WRAPPED doc (lock=$H_LK_E) tail: $(h_tail "$H_DOC_E")"
 fi
+# f: a doc lock held by another writer must not stall the release; the append times out with a WARN
+# shellcheck source=../lib/timeout-bin.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/timeout-bin.sh" 2>/dev/null
+if [ -n "$_TIMEOUT_BIN" ] && command -v flock >/dev/null 2>&1; then
+    H_DOC_F="$(h_doc halted-locked 'LIVE — working')"
+    H_LK_F="$(h_hold "$H_DOC_F" "$H_HOST-pid$H_PID" "$H_HOST")"
+    ( . "$SCRIPT_DIR/chief-kit/worker-doc-lock.sh"; doc_lock "$H_DOC_F" t8541 && exec sleep 60 ) &
+    H_HOLD_PID=$!
+    sleep 1
+    H_OUT_F="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=1 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 30 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_F=$?
+    kill "$H_HOLD_PID" 2>/dev/null; wait "$H_HOLD_PID" 2>/dev/null
+    if [ "$H_RC_F" -ne 124 ] && [ -n "$H_LK_F" ] && [ ! -d "$H_LK_F" ] && grepq "$H_OUT_F" "could not append the HALTED bullet"; then
+        pass "T8541f: a held doc lock times the HALTED append out with a WARN and the lock is still freed"
+    else
+        fail "T8541f: held doc lock (rc=$H_RC_F lock=$H_LK_F) out: $H_OUT_F"
+    fi
+else
+    pass "T8541f: skipped, needs GNU timeout and flock"
+fi
+# g: the append never runs bus adopt, so a sweeper cannot adopt a dead worker's chief edge
+H_DOC_G="$(h_doc halted-bus 'LIVE — working')"
+printf '%s\n' '- 10:01 SUCCESSION accepted: new-chief replaces old-chief' >> "$H_DOC_G"
+printf '#!/bin/sh\ntouch "%s/bus-called"\n' "$TMPDIR_ROOT" > "$TMPDIR_ROOT/bus-stub"; chmod +x "$TMPDIR_ROOT/bus-stub"
+h_hold "$H_DOC_G" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+HIMMEL_BUS_NAME=fixture-worker APPEND_RESULTS_BUS="$TMPDIR_ROOT/bus-stub" HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
+if grepq "$(h_tail "$H_DOC_G")" '^- [0-9:]* HALTED' && [ ! -e "$TMPDIR_ROOT/bus-called" ]; then
+    pass "T8541g: the HALTED append skips bus adopt"
+else
+    fail "T8541g: tail=$(h_tail "$H_DOC_G") bus-called=$([ -e "$TMPDIR_ROOT/bus-called" ] && echo yes || echo no)"
+fi
+# h: a forced takeover (QUEUE_LOCK_TAKEOVER=1) over a LIVE holder is not a dead worker
+H_DOC_H="$(h_doc halted-takeover-live 'LIVE — working')"
+h_hold "$H_DOC_H" "$H_HOST-pid$$" "$H_HOST" >/dev/null
+QUEUE_LOCK_TAKEOVER=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_H" taker-live-fixture >/dev/null 2>&1; H_RC_H=$?
+if [ "$H_RC_H" -eq 0 ] && [ "$(h_tail "$H_DOC_H")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541h: a forced takeover over a live holder writes no HALTED bullet"
+else
+    fail "T8541h: live takeover (rc=$H_RC_H) tail: $(h_tail "$H_DOC_H")"
+fi
 
 # --- T104: preflight warns when a declared file overlaps another live session's edits
 P_ROOT="$TMPDIR_ROOT/pf-handovers"; P_REPO="$TMPDIR_ROOT/pf-repo"

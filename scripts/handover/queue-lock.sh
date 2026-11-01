@@ -985,9 +985,17 @@ _ql_halted_marker() {
     [ -n "$doc" ] && [ -f "$doc" ] || return 0
     tail=$( . "$_QL_SCRIPT_DIR/../lib/worker-tail-status.sh" 2>/dev/null && worker_tail_status "$doc" ) || tail=""  # swallow-ok: an unreadable tail reads as no marker, so no HALTED is written
     case "$tail" in ''|WRAPPED|HALTED) return 0 ;; esac
-    if ! bash "$_QL_SCRIPT_DIR/chief-kit/append-results.sh" "$doc" \
+    # bounded: append-results waits on the doc flock and may run bus adopt, and a stuck doc lock must never stall a release.
+    # HIMMEL_BUS_NAME is unset so a sweeper never adopts a dead worker's chief edge under its own identity.
+    local tmo="${QUEUE_LOCK_HALTED_TIMEOUT_SECS:-10}"
+    case "$tmo" in ''|*[!0-9]*) tmo=10 ;; esac
+    # shellcheck source=../lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$_QL_SCRIPT_DIR/../lib/timeout-bin.sh" 2>/dev/null || true  # swallow-ok: no timeout binary leaves _TIMEOUT_BIN empty and the append runs unbounded, as the ponytail below says
+    # ponytail: without a GNU timeout (stock macOS) the append runs unbounded, upgrade path: a bash-only watchdog around the append
+    if ! env -u HIMMEL_BUS_NAME ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$tmo"} bash "$_QL_SCRIPT_DIR/chief-kit/append-results.sh" "$doc" \
         "HALTED — its queue lock (session=${session:-unknown}) was freed by $how with the holder provably dead and no wrap marker written" >/dev/null 2>&1; then
-        echo "WARN queue-lock: could not append the HALTED bullet to '$doc' (the lock is freed anyway)" >&2
+        echo "WARN queue-lock: could not append the HALTED bullet to '$doc' (timed out after ${tmo}s or refused; the lock is freed anyway)" >&2
     fi
     return 0
 }
