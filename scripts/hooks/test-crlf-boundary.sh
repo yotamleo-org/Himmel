@@ -876,6 +876,7 @@ printf '\nGrant hooks\n'
 CRLF_GD="$(mktemp -d -t crlf-grant.XXXXXX)" || exit 1
 check approval-grant-check   Bash 0 "$A_OK" "no decision without a grant" "AFK_GRANT_DIR=$CRLF_GD"
 check approval-grant-request Bash 0 "$A_OK" "tap exits 0"                 "AFK_GRANT_DIR=$CRLF_GD"
+check afk-prompt-to-request Bash 0 "$A_OK" "no decision while the helper is off"
 rmdir "$CRLF_GD"
 
 # ── Completeness guard ──────────────────────────────────────────────────────
