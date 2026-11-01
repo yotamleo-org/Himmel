@@ -6,7 +6,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { estimateProfileListing } from './profile-listing.mjs';
 import { canonicalProfileName } from '../../lanes/plugin-profiles.mjs';
-import { rollupChain } from './chain-incidents.mjs';
+import { memberOfGuardClass, rollupChain } from './chain-incidents.mjs';
 
 export const LANES = ['native', 'claudex', 'openrouter', 'cloud', 'unknown'];
 const num = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -177,7 +177,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       }
       for (const f of s.failures) {
         if (f.failure !== 'denied') continue;
-        const h = hooks.get(f.class) || { ...blank(), class: f.class };
+        const h = hooks.get(f.class) || { ...blank(), class: f.class, refusals: [] };
         const key = `${group}\0${f.class}`;
         const d = dailyHooks.get(key) || { ...blank(), class: f.class, day: s.day, model: s.model, lane: s.lane, role: s.role, group };
         for (const target of [h, d]) {
@@ -185,6 +185,8 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
           for (const id of f.tool_call_ids || []) if (typeof id === 'string') target.ids.add(id);
           if (typeof f.recovered === 'boolean') { target.known += f.count; if (f.recovered) target.recovered += f.count; }
         }
+        // The counted refusals themselves, so the chain can say which have a reason row; stripped before the result leaves.
+        h.refusals.push({ count: f.count, ids: Array.isArray(f.tool_call_ids) ? f.tool_call_ids : [], first: f.first_ts, last: f.last_ts });
         hooks.set(f.class, h); dailyHooks.set(key, d);
       }
     }
@@ -267,7 +269,11 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const list = teamSlots.filter((s) => s.team === t), a = aggregate(list);
     return { team: t, sessions: new Set(list.map((s) => s.session)).size, calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0) };
   });
-  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), chain: rollupChain(chain, { firstDay, lastDay }), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
+  const refused = new Map(result.hooks.filter((h) => h.class.startsWith('denied/')).map((h) => [memberOfGuardClass(h.class), h.refusals]));
+  const chainOut = rollupChain(chain, { firstDay, lastDay, refused });
+  result.hooks = result.hooks.map(({ refusals, ...h }) => ({ ...h, reason_gap: chainOut.gaps?.[memberOfGuardClass(h.class)] ?? null }));
+  const { gaps, ...chainShown } = chainOut ?? {};
+  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), chain: chainOut.state === 'not-read' ? chainOut : chainShown, filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
 }
 
 // Bash by command head and cause (spec 0.4 d) from the digest's bash_calls, joined to rtk's history.db by call id.

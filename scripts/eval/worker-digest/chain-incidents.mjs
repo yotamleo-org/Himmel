@@ -144,7 +144,11 @@ const blankMember = (member) => ({ member, denials: 0, skips: 0, by_reason: Obje
 
 // chain: {skip: {state, rows, malformed?, truncated?}, run: {...}} as readChainLogs returns it; absent = not read.
 // firstDay/lastDay (YYYY-MM-DD, inclusive) bound the window; rows outside it are counted, not audited.
-export function rollupChain(chain, { firstDay = null, lastDay = null } = {}) {
+// refused: Map<member, [{count, ids, first, last}]>, the counted refusals of each guard (the call log's rows). Each member then gets a
+// gap that splits its Refused count into: refusals with a chain deny row (by reason), refusals older than the first
+// run-log row ("recorded before reasons were logged") and the rest ("no reason row, cause not established"). A refusal is matched to
+// its chain row by exact call id, once. The three parts add up to the count of refusals.
+export function rollupChain(chain, { firstDay = null, lastDay = null, refused = null } = {}) {
   if (!isObject(chain)) return { state: 'not-read' };
   const sources = {};
   for (const name of ['skip', 'run']) {
@@ -154,7 +158,7 @@ export function rollupChain(chain, { firstDay = null, lastDay = null } = {}) {
   const audit = { total: 0, accepted: 0, excluded_fixture: 0, unverified: 0, non_tool: 0, malformed: 0, duplicates: 0, outside_window: 0 };
   audit.total = sources.skip.malformed + sources.run.malformed; audit.malformed = audit.total;
   const events = new Map(), members = new Map(), seen = new Set();
-  let invocations = 0, joined = 0;
+  let invocations = 0, joined = 0, runStart = null;
   const member = (name) => { if (!members.has(name)) members.set(name, blankMember(name)); return members.get(name); };
   const addEvent = (ts, base, entry) => {
     const ev = makeEvent(ts, base, entry), key = `${base.callId}\0${base.invocation}\0${base.member}\0${base.occurrence}`, prev = events.get(key);
@@ -169,6 +173,8 @@ export function rollupChain(chain, { firstDay = null, lastDay = null } = {}) {
       const ms = isObject(r) ? Date.parse(r.ts) : NaN;
       if (!isObject(r) || !Number.isFinite(ms) || Math.abs(ms) > 8640000000000000) { audit.malformed++; continue; }
       const day = dayOf(ms);
+      // The run log starts at its earliest verified production row, wherever that row falls against the window.
+      if (name === 'run' && r.origin === 'production' && !nonToolRow(r) && runIdentity(r) !== null && (runStart === null || ms < runStart)) runStart = ms;
       if ((firstDay && day < firstDay) || (lastDay && day > lastDay)) { audit.outside_window++; continue; }
       if (r.origin === 'test') { audit.excluded_fixture++; continue; }
       if (r.origin !== 'production') { audit.unverified++; continue; }
@@ -219,8 +225,33 @@ export function rollupChain(chain, { firstDay = null, lastDay = null } = {}) {
   // The skip log carries only timeouts, buffer overflows and entry deadlines; rule denials, integrity skips, spawn failures and crashes
   // are written to the run log alone, so a count that includes them is unknown without it.
   const reasonView = (r) => ({ ...r, rule: unknown(r.rule, ruleKnown), timeout: unknown(r.timeout, infraKnown), deadline: unknown(r.deadline, infraKnown), buffer: unknown(r.buffer, infraKnown), other: unknown(r.other, ruleKnown) });
+  const runLogStart = runStart === null ? null : new Date(runStart).toISOString();
+  const gaps = {};
+  if (ruleKnown && refused instanceof Map) {
+    for (const [name, rows] of refused) {
+      const denies = list.filter((ev) => ev.member === name && ev.outcome === 'deny');
+      const kindOf = new Map();
+      for (const ev of denies) if (!kindOf.has(ev.call_id)) kindOf.set(ev.call_id, ev.kind);
+      const used = new Set(), byReason = Object.fromEntries(KINDS.map((k) => [k, 0]));
+      let total = 0, withReason = 0, before = 0;
+      for (const row of rows) {
+        const want = count(row.count) ? row.count : 0, ids = Array.isArray(row.ids) ? row.ids.filter((id) => typeof id === 'string') : [];
+        let reasoned = 0;
+        for (const id of ids) {
+          if (reasoned >= want || used.has(id) || !kindOf.has(id)) continue;
+          used.add(id); reasoned++; byReason[kindOf.get(id)]++;
+        }
+        const rest = want - reasoned;
+        // Older than the first run-log row: the writer had not started to log reasons, so there is no row to find.
+        if (runStart !== null && Number.isFinite(row.last) && row.last < runStart) before += rest;
+        total += want; withReason += reasoned;
+      }
+      gaps[name] = { refused: total, with_reason: withReason, by_reason: byReason, before_reasons_logged: before, not_established: total - withReason - before,
+        unmatched_chain: denies.filter((ev) => !used.has(ev.call_id)).length, run_log_start: runLogStart };
+    }
+  }
   return {
-    state,
+    state, gaps, run_log_start: runLogStart,
     sources: Object.fromEntries(Object.entries(sources).map(([k, s]) => [k, { state: s.state, files: s.files, malformed: s.malformed, truncated: s.truncated }])),
     audit, joined, rule_known: ruleKnown, infra_known: infraKnown, worktrees_unreadable: worktreesUnreadable,
     by_reason: reasonView(byReason), by_action: ruleKnown ? byAction : { deny: null, skip: null },

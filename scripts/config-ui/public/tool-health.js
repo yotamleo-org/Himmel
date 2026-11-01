@@ -410,12 +410,17 @@ function guardWhy(data, h, token) {
   if (isClassifier(h.class)) return "";
   const c = data.chain, suffix = h.class.replace(/^denied\//, ""), known = chainKnown(c);
   const name = Object.keys(c && c.members || {}).find((k) => k.replace(/\.(sh|js|mjs|py)$/, "") === suffix), m = name ? c.members[name] : null;
-  const count = (k) => (m ? m.by_reason[k] : known && c.by_reason[k] !== null ? 0 : null);
-  const rows = REASON_ROWS.map(([k, label, means]) => `<tr data-chain-reason="${k}">${td(esc(label))}${td(num(count(k)))}${td(esc(means))}</tr>`);
+  // With the counted refusals joined to the chain the rows count those refusals only, and two labelled residuals make them add up to Refused.
+  const gap = h.reason_gap && known ? h.reason_gap : null;
+  const count = (k) => (gap ? gap.by_reason[k] : m ? m.by_reason[k] : known && c.by_reason[k] !== null ? 0 : null);
+  const residual = gap ? [["before_logged", "Recorded before reasons were logged", gap.before_reasons_logged, `refused before the hook chain began to log a reason${gap.run_log_start ? ` (the first run-log row is ${utc(gap.run_log_start)})` : ""}`],
+    ["not_established", "No reason row, cause not established", gap.not_established, "refused with no chain row, and not older than the run log"]] : [];
+  const rows = [...REASON_ROWS.map(([k, label, means]) => [k, label, count(k), means]), ...residual].map(([k, label, n, means]) => `<tr data-chain-reason="${k}">${td(esc(label))}${td(num(n))}${td(esc(means))}</tr>`);
+  const unmatched = gap && gap.unmatched_chain > 0 ? `${gap.unmatched_chain} chain row${gap.unmatched_chain === 1 ? "" : "s"} names a refusal this window does not count (a session not yet digested, or a call outside the window).` : "";
   const shown = m ? m.events : [], total = m ? m.denials + m.skips : 0;
   const more = m && shown.length < total ? `Showing the newest ${shown.length} of ${total}.` : "";
   const outside = known && !m ? "No hook-chain row names this guard; it may run outside the chain." : "";
-  const body = `${noteP(chainNote(c))}${table(["Reason", "Refusals and skipped checks", "What it means"], rows)}${chainAudit(c)}${noteP(CHAIN_SCOPE)}${noteP(outside)}${known ? `${chainEvents(shown, token, "No refusal or skipped check recorded for this guard in the chain logs")}${noteP(more)}` : ""}`;
+  const body = `${noteP(chainNote(c))}${table(["Reason", gap ? "Refusals" : "Refusals and skipped checks", "What it means"], rows)}${chainAudit(c)}${noteP(CHAIN_SCOPE)}${noteP(outside)}${noteP(unmatched)}${known ? `${chainEvents(shown, token, "No refusal or skipped check recorded for this guard in the chain logs")}${noteP(more)}` : ""}`;
   return box("guard-why", "Why it refused", "Was it the rule, a timeout, or a guard that never started? One row per exact call, from the hook-chain logs.", body);
 }
 function toolChain(data, key, token) {

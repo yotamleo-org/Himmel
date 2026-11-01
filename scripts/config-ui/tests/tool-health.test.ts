@@ -628,7 +628,8 @@ const bTool = (tool: string, calls: number, classes: Record<string, number> = {}
   const denials = Object.values(classes).reduce((n, v) => n + v, 0);
   return { agent, tool, calls, failures: denials, errors: 0, denials, classes, day: "2026-10-28" };
 };
-const bFail = (n: number, cls: string, count: number) => ({ session: bSession(n), agent, class: cls, failure: cls.split("/")[0], count, recovered: null, tool_call_ids: [] });
+const bFail = (n: number, cls: string, count: number, ids: string[] = [], span: [string, string] | null = null) => ({ session: bSession(n), agent, class: cls, failure: cls.split("/")[0], count, recovered: null, tool_call_ids: ids,
+  ...(span ? { first_ts: Date.parse(span[0]), last_ts: Date.parse(span[1]) } : {}) });
 const roll = (evals: any[], failures: any[], opts: any = {}) => rollupToolHealth(evals, failures, new URLSearchParams(), B_NOW, {}, opts);
 const guardOf = (d: any, cls: string) => d.hooks.find((h: any) => h.class === cls);
 const readPE = (env: object, eligible: any) => (sources as any).readToolHealth(env, new URLSearchParams(), P_NOW, { rtk: () => ({ state: "absent" }), eligible });
@@ -866,7 +867,7 @@ test("chain logs are read from the override files or from the checkout and each 
 });
 
 // ---- the pages that show the chain incidents.
-const chainPage = (chain: any, ui: any, extra: any = {}) => page(roll([bEval(1, [bTool("Read", 5, { "denied/block-read-secrets": 3 })])], [bFail(1, "denied/block-read-secrets", 3)], { eligible: { "block-read-secrets": ["Read"] }, chain }), ui, extra);
+const chainPage = (chain: any, ui: any, extra: any = {}) => page(roll([bEval(1, [bTool("Read", 5, { "denied/block-read-secrets": 3 })])], [bFail(1, "denied/block-read-secrets", 3, ["toolu_C1", "toolu_C2", "toolu_C3"], ["2026-10-28T10:00:00Z", "2026-10-28T10:00:09Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain }), ui, extra);
 const GUARD = { guard: "denied/block-read-secrets" };
 const evCells = (html: string) => Object.fromEntries(cells(html, "data-chain-event").map(([k, c]: any) => [k, c]));
 const stat = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*)<`).exec(html) || [])[1];
@@ -874,7 +875,7 @@ const stat = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*
 test("the guard drill-in says why it refused: a rule, a timeout and a guard that never started are separate rows", async () => {
   const html = await chainPage(chainT(), GUARD);
   const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
-  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0" });
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0", before_logged: "0", not_established: "0" });
   const ev = evCells(html);
   expect(Object.keys(ev).sort()).toEqual(["toolu_C1", "toolu_C2", "toolu_C3"]);
   // [When, Outcome, Reason, Guard, Tool, Time used, Refusal line, Call]
@@ -886,6 +887,40 @@ test("the guard drill-in says why it refused: a rule, a timeout and a guard that
   expect(ev.toolu_C2[0]).toBe("2026-10-28 10:00:02 UTC");
   expect(html).not.toContain("toolu_C4"); // another guard's skipped check is not this guard's incident
   expect(html).toContain("model, lane, role and profile filters do not apply");
+});
+
+// Fixture G: six counted refusals of one guard. Two are older than the first run-log row, two have a chain row (a rule and a
+// timeout), one names a call the chain never saw, one carries no call id. The chain also holds a refusal that no counted refusal names.
+const G = "denied/block-read-secrets";
+const gapData = (chain: any = chainT()) => roll([1, 2, 3, 4].map((n, i) => bEval(n, [bTool("Read", 5, { [G]: [2, 2, 1, 1][i] })]))
+  , [bFail(1, G, 2, ["toolu_old1", "toolu_old2"], ["2026-10-28T08:00:00Z", "2026-10-28T08:05:00Z"]),
+    bFail(2, G, 2, ["toolu_C1", "toolu_C2"], ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"]),
+    bFail(3, G, 1, ["toolu_nochain"], ["2026-10-28T10:40:00Z", "2026-10-28T10:40:00Z"]),
+    bFail(4, G, 1, [], ["2026-10-28T10:50:00Z", "2026-10-28T10:50:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain });
+
+test("guard-reason-rows-plus-no-reason-counts-equal-refused", async () => {
+  const gap = guardOf(gapData(), G).reason_gap;
+  expect(gap).toMatchObject({ refused: 6, with_reason: 2, before_reasons_logged: 2, not_established: 2, unmatched_chain: 1, run_log_start: "2026-10-28T10:00:01.000Z" });
+  expect(gap.by_reason).toEqual({ rule: 1, timeout: 1, deadline: 0, buffer: 0, other: 0 });
+  expect(Object.values(gap.by_reason).reduce((n: number, v: any) => n + v, 0) + gap.before_reasons_logged + gap.not_established).toBe(gap.refused);
+  // The page shows the same rows and the two labelled residuals, and they add up to the Refused card.
+  const html = await page(gapData(), GUARD);
+  const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "0", buffer: "0", other: "0", before_logged: "2", not_established: "2" });
+  expect(Object.values(why).reduce((n: number, v: any) => n + Number(v), 0)).toBe(6);
+  expect(html).toContain("Recorded before reasons were logged");
+  expect(html).toContain("No reason row, cause not established");
+  expect(html).toContain("1 chain row names a refusal this window does not count");
+});
+
+test("the reason split is unknown, never zero, when the run log cannot be read", async () => {
+  const skipOnlyChain = { skip: { state: "ok", rows: [skipRow(2)] }, run: { state: "absent" } };
+  expect(guardOf(gapData(skipOnlyChain), G).reason_gap).toBeNull();
+  expect(guardOf(gapData({ skip: { state: "absent" }, run: { state: "absent" } }), G).reason_gap).toBeNull();
+  expect(guardOf(gapData(null), G).reason_gap).toBeNull();
+  // Run log present but empty: nothing is known to have started, so no refusal is called "before reasons were logged".
+  const empty = guardOf(gapData({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows: [] } }), G).reason_gap;
+  expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_established: 6, run_log_start: null });
 });
 
 test("a call drawer carries the exact call id, the session and what is not recorded", async () => {
