@@ -51,17 +51,20 @@ echo "== enroll QR =="
 # authenticator app rejects, so the URI must arrive as ONE argument with none.
 mkdir -p "$T/qrbin" "$T/pyonly"
 # shellcheck disable=SC2016 # the stub's $ expansions are meant to be literal here
-printf '#!/bin/sh\nprintf "%%s" "$#" > "$QR_ARGC"\nprintf "%%s" "$*" > "$QR_ARGV"\nfor a in "$@"; do uri="$a"; done\nprintf "%%s" "$uri" > "$QR_URI"\necho QR-DRAWN\n' > "$T/qrbin/qrencode"
+printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$QR_ARGV"\nfor a in "$@"; do uri="$a"; done\nprintf "%%s" "$uri" > "$QR_URI"\necho QR-DRAWN\n' > "$T/qrbin/qrencode"
 chmod +x "$T/qrbin/qrencode"
 ln -s "$(command -v python3)" "$T/pyonly/python3"
-export QR_ARGC="$T/qr.argc" QR_ARGV="$T/qr.argv" QR_URI="$T/qr.uri"
-out="$(PATH="$T/qrbin:$PATH" HIMMEL_CONFIG_DIR="$T/qr1" cr enroll)"
+export QR_ARGV="$T/qr.argv" QR_URI="$T/qr.uri"
+out="$(PATH="$T/qrbin:$PATH" HIMMEL_CONFIG_DIR="$T/qr1" cr enroll)"; rc=$?
+[ "$rc" -eq 0 ] && has "enroll with qrencode succeeds" "result=enrolled" "$out" || fail "enroll with qrencode rc=$rc" "$out"
 [ -e "$QR_URI" ] && pass "enroll calls qrencode" || fail "qrencode was never called" "$out"
 has "enroll shows what qrencode drew" "QR-DRAWN" "$out"
+printed="$(printf '%s\n' "$out" | grep '^otpauth://')"
 uri_got="$(cat "$QR_URI" 2>/dev/null; printf x)" # the sentinel keeps a trailing newline from being stripped
-case "$uri_got" in otpauth://totp/*"&issuer=himmel"x) pass "qrencode gets the URI with no trailing newline" ;; *) fail "qrencode URI" "$(od -c "$QR_URI" 2>/dev/null | tail -3)" ;; esac
-[ "$(cat "$QR_ARGC" 2>/dev/null)" = 3 ] && has "qrencode is called as -t ansiutf8 URI" "-t ansiutf8 otpauth://" "$(cat "$QR_ARGV")" || fail "qrencode argc" "$(cat "$QR_ARGC" 2>/dev/null)"
-out="$(PATH="$T/pyonly" HIMMEL_CONFIG_DIR="$T/qr2" cr enroll)"
+[ -n "$printed" ] && [ "$uri_got" = "${printed}x" ] && pass "qrencode gets exactly the printed URI, no trailing newline" || fail "qrencode URI" "$(od -c "$QR_URI" 2>/dev/null | tail -3)"
+[ "$(cat "$QR_ARGV" 2>/dev/null)" = "$(printf '%s\n%s\n%s' -t ansiutf8 "$printed")" ] && pass "qrencode is called as -t ansiutf8 <URI>, one argument each" || fail "qrencode argv" "$(cat "$QR_ARGV" 2>/dev/null)"
+out="$(PATH="$T/pyonly" HIMMEL_CONFIG_DIR="$T/qr2" cr enroll)"; rc=$?
+[ "$rc" -eq 0 ] && has "enroll without qrencode succeeds" "result=enrolled" "$out" || fail "enroll without qrencode rc=$rc" "$out"
 has "without qrencode enroll still prints the URI" "otpauth://totp/" "$out"
 has "without qrencode enroll hints how to get one" "qrencode" "$out"
 
