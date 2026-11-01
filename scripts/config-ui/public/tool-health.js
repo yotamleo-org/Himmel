@@ -15,8 +15,9 @@ const stamp = (ms) => `${new Date(ms).toISOString().slice(0, 16).replace("T", " 
 const hhmm = (ms) => `${new Date(ms).toISOString().slice(11, 16)} UTC`;
 const sub = (text) => `<p class="sub">${esc(text)}</p>`;
 const box = (id, title, purpose, body, tag = "") => `<section class="box" id="th-${id}"><h2>${esc(title)}${tag ? ` <span class="tag">${esc(tag)}</span>` : ""}</h2>${sub(purpose)}${body}</section>`;
-const table = (head, rows, empty = "Nothing to show") => (rows.length ? `<div class="scroll"><table class="data"><thead><tr>${head.map((h) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="nodata">${esc(empty)}</p>`);
+const table = (head, rows, empty = "Nothing to show", cls = "") => (rows.length ? `<div class="scroll"><table class="data${cls ? ` ${cls}` : ""}"><thead><tr>${head.map((h) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>` : `<p class="nodata">${esc(empty)}</p>`);
 const td = (v) => `<td>${v}</td>`;
+const tdWrap = (v) => `<td class="wrap">${v}</td>`;
 
 export const TEAM_LABEL = { chief: "chief", "chief-relay": "chief relay", worker: "workers", judge: "judge", "release-manager": "release manager", critic: "critics", interactive: "interactive (you)", other: "other" };
 const KIND_LABEL = { builtin: "built-in", mcp: "MCP", res: "MCP resource", skill: "skill", cmd: "command", agent: "subagent", wf: "workflow", hook: "hook", cli: "CLI" };
@@ -404,7 +405,7 @@ function callDrawer(e, token) {
   return `<details><summary><code>${esc(e.call_id)}</code></summary><dl class="stats">${row("Time", esc(utc(e.ts)))}${row("Outcome", esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${row("Reason code", `<code>${esc(e.reason)}</code>`)}${row("Guard", esc(e.member))}${row("Tool", esc(e.tool || "—"))}${row("Session", sess)}${row("Call id", `<code>${esc(e.call_id)}</code>`)}${row("Chain run", `<code>${esc(e.invocation)}</code>`)}${row("Time used", esc(timingWords(e)))}${row("Refusal line", e.deny_line ? esc(e.deny_line) : "—")}${row("Recovery", "not recorded")}</dl></details>`;
 }
 const chainEvents = (events, token, empty) => table(["When (UTC)", "Outcome", "Reason", "Guard", "Tool", "Time used", "Refusal line", "Call"],
-  events.map((e) => `<tr data-chain-event="${esc(e.call_id)}">${td(esc(utc(e.ts)))}${td(esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${td(esc(reasonWords(e)))}${td(esc(e.member))}${td(esc(e.tool || "—"))}${td(esc(timingWords(e)))}${td(e.deny_line ? esc(e.deny_line) : "—")}${td(callDrawer(e, token))}</tr>`), empty);
+  events.map((e) => `<tr data-chain-event="${esc(e.call_id)}">${td(esc(utc(e.ts)))}${td(esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${td(esc(reasonWords(e)))}${td(esc(e.member))}${td(esc(e.tool || "—"))}${td(esc(timingWords(e)))}${tdWrap(e.deny_line ? esc(e.deny_line) : "—")}${tdWrap(callDrawer(e, token))}</tr>`), empty, "events");
 const noteP = (text) => (text ? `<p class="sub">${esc(text)}</p>` : "");
 function guardWhy(data, h, token) {
   if (isClassifier(h.class)) return "";

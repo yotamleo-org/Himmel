@@ -923,6 +923,18 @@ test("the reason split is unknown, never zero, when the run log cannot be read",
   expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_established: 6, run_log_start: null });
 });
 
+test("the recent-events table keeps a word whole in its narrow columns and lets the refusal line and call id take the wrapping", async () => {
+  const html = await chainPage(chainT(), GUARD);
+  expect(html).toContain('<table class="data events">');
+  const row = /<tr data-chain-event="toolu_C2">([\s\S]*?)<\/tr>/.exec(html)![1];
+  const cellsOf = [...row.matchAll(/<td( class="wrap")?>/g)].map((m) => !!m[1]);
+  // [When, Outcome, Reason, Guard, Tool, Time used, Refusal line, Call]: only the refusal line and the call id wrap anywhere.
+  expect(cellsOf).toEqual([false, false, false, false, false, false, true, true]);
+  const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
+  expect(css).toMatch(/\.data\.events th,\s*\.data\.events td\{overflow-wrap:normal\}/);
+  expect(css).toMatch(/\.data\.events td\.wrap\{overflow-wrap:anywhere\}/);
+});
+
 // ---- time to result per tool (RESULT time minus START time). Hand-built digest rows, no journal.
 const timed = (tool: string, calls: number, timing: any) => ({ ...bTool(tool, calls), timing });
 const timingOf = (d: any, tool: string) => d.tools.find((t: any) => t.tool === tool).timing;
