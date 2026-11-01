@@ -874,8 +874,12 @@ PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few"
 for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; done
 for n in $(seq 1 25); do echo "$n" > "$PS/scripts/mid/f$n.txt"; done
 for n in 1 2 3; do echo "$n" > "$PS/scripts/few/f$n.txt"; done
-git init -q "$PS" && git -C "$PS" add -A && git -C "$PS" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m base
-PSBASE="$(git -C "$PS" rev-parse HEAD)"
+if git init -q "$PS" && git -C "$PS" add -A && git -C "$PS" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m base && PSBASE="$(git -C "$PS" rev-parse HEAD)"; then
+    pass "the size-projection fixture repo holds a base commit"
+else
+    fail "the size-projection fixture repo could not be committed; the rows below cannot be trusted"
+    PSBASE=0000000000000000000000000000000000000000
+fi
 export HIMMEL_CONFIG_DIR="$WORK/no-conf"; unset HIMMEL_FLAG_PR_SIZE_GATE
 ps_workers() { # <name> <dir/> [extra json members]
     cat > "$WORK/ps-$1.json" <<PSEOF
