@@ -576,7 +576,8 @@ rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 
 KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
 mkdir -p "$KIT/scripts/ci"
 cp "$SUT" "$HERE/platform-dropped.re" "$KIT/scripts/handover/chief-kit/"
-cp "$HERE/../../ci/ci-trust-paths.txt" "$KIT/scripts/ci/"
+cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
+mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$KIT/scripts/lib/"
 export ADP_WT_LOG="$WORK/adp-wt.log"
 cat > "$KIT/scripts/_new-worktree.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -865,6 +866,53 @@ lacks "a ticket with no partial merge gets no Already merged block" "$(cat "$WOR
 mkdir -p "$WORK/pm-state-bad/status-events.jsonl"
 pm_bad="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state-bad" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket2" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw2" --deadline 1791475000 2>&1)"
 has "an unreadable status log is warned about, not silently read as empty" "$pm_bad" "status-events.jsonl is unreadable"
+
+# ---- the PR size projection (own block) ----
+# A Writes list that expands to more than the hard max of scripts/ci/pr-size-bands.tsv (40 files) is refused with
+# pr_size_gate on, unless the worker carries bulk: mechanical; flag off, or past only the soft max (20), is a warning.
+PS="$WORK/ps"; mkdir -p "$PS/scripts/big" "$PS/scripts/mid" "$PS/scripts/few"
+for n in $(seq 1 41); do echo "$n" > "$PS/scripts/big/f$n.txt"; done
+for n in $(seq 1 25); do echo "$n" > "$PS/scripts/mid/f$n.txt"; done
+for n in 1 2 3; do echo "$n" > "$PS/scripts/few/f$n.txt"; done
+git init -q "$PS" && git -C "$PS" add -A && git -C "$PS" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m base
+PSBASE="$(git -C "$PS" rev-parse HEAD)"
+export HIMMEL_CONFIG_DIR="$WORK/no-conf"; unset HIMMEL_FLAG_PR_SIZE_GATE
+ps_workers() { # <name> <dir/> [extra json members]
+    cat > "$WORK/ps-$1.json" <<PSEOF
+[{"label":"N921","keys":["HIMMEL-9201"],"slug":"size","branch":"fix/himmel-9201-size","title":"a sized fix","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"$2","scope":"\`$2\`","scope_short":"$2","commit":"fix(x): [HIMMEL-9201] f"$3}]
+PSEOF
+}
+psrun() { python3 "$SUT" "$WORK/ps-$1.json" --base "$PSBASE" --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/ps-bucket-$1${2:-}" --date 2026-10-08 --repo "$PS" --handover-root "$WORK/handovers" --work-dir "$WORK/psw-$1${2:-}" --deadline 1791475000 2>&1; }
+ps_brief() { ls "$WORK/ps-bucket-$1${2:-}"/HIMMEL-9201-*.md 2>/dev/null; }
+ps_workers big scripts/big/ ''; ps_workers bulk scripts/big/ ',"bulk":"mechanical"'; ps_workers mid scripts/mid/ ''; ps_workers few scripts/few/ ''; ps_workers badbulk scripts/few/ ',"bulk":"yes"'
+
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun big)"; rc=$?
+[ "$rc" = 1 ] && pass "pr_size_gate on: a Writes dir of 41 tracked files is refused (rc 1)" || fail "41 files with the gate on: rc=$rc: $pso"
+has "the refusal names the 40-file hard max" "$pso" "40-file hard max"
+has "the refusal names the pr-size-bands.tsv hard row" "$pso" "pr-size-bands.tsv row hard"
+has "the refusal says how many files the Writes expand to" "$pso" "41 files"
+[ -z "$(ps_brief big)" ] && pass "a refused brief writes no doc" || fail "a refused brief wrote a doc"
+
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun bulk)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on, bulk: mechanical: 41 files pass (rc 0)" || fail "bulk mechanical: rc=$rc: $pso"
+[ -n "$(ps_brief bulk)" ] && pass "the bulk mechanical worker gets its brief" || fail "bulk mechanical: no brief"
+
+pso="$(psrun big off)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate at its default (off): 41 files still write the brief (rc 0)" || fail "flag off: rc=$rc: $pso"
+has "flag off: a warning names the 40-file hard max" "$pso" "warning: worker N921 Writes project to 41 files, over the 40-file hard max"
+[ -n "$(ps_brief big off)" ] && pass "flag off: the brief is written" || fail "flag off: no brief"
+
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun mid)"; rc=$?
+[ "$rc" = 0 ] && pass "pr_size_gate on: 25 files (soft max only) pass (rc 0)" || fail "25 files: rc=$rc: $pso"
+has "25 files: a warning names the 20-file soft max" "$pso" "over the 20-file soft max"
+
+pso="$(HIMMEL_FLAG_PR_SIZE_GATE=1 psrun few)"; rc=$?
+[ "$rc" = 0 ] && pass "3 files pass (rc 0)" || fail "3 files: rc=$rc: $pso"
+lacks "3 files: no size warning" "$pso" "warning:"
+
+pso="$(psrun badbulk)"; rc=$?
+[ "$rc" = 1 ] && has "bulk other than mechanical is refused" "$pso" "bulk" || fail "bulk yes: rc=$rc: $pso"
+unset HIMMEL_CONFIG_DIR
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
