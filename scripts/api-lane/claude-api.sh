@@ -201,9 +201,12 @@ fail_over() {
       *) decision="skipped: the subscription preflight said ${token:-nothing}" ;;
     esac
   fi
+  # the preflight and the alert take time: a stop that lands in them still ends the failure path
+  [ "$STOPPED" = 0 ] || { echo "claude-api: stopped by its caller during the failure path; no alert, no fallback" >&2; return 0; }
   send_alert "$class" "$rc" "$reason" "$decision"
   echo "claude-api: fallback: $decision" >&2
   [ "$run" = 1 ] || return 0
+  [ "$STOPPED" = 0 ] || { echo "claude-api: stopped by its caller; the fallback was not run" >&2; return 0; }
   release_slot
   run_fallback "$class" "$rc"
 }
@@ -392,9 +395,8 @@ done
 
 OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
 
-# A signal that is ignored stays ignored in a child, one that is trapped is reset to its default there. After the call
-# ends this shell only records a TERM, so the node steps that settle the reservation start with the signals ignored:
-# a cancel's TERM must not cut a settle short.
+# Runs a command with TERM, INT and HUP ignored. This protects only a non-node wrapper that keeps the inherited
+# SIG_IGN; real node resets the disposition at startup, so a tree cancel that lands mid-settle can still cut a node step.
 immune() { ( trap '' TERM INT HUP; exec "$@" ); }
 
 # --- reserve the full budget before spending; refusal here means no launch ---
@@ -473,6 +475,7 @@ wait "$CALL_PID"
 RC=$?
 kill "$WATCHDOG_PID" 2>/dev/null
 # a cancel kills the call first and this shell right after: a default TERM here would end it before the settle below
+# ponytail: a tree cancel that lands mid-settle can cut a node step, so the reservation goes unknown or to the sweep, upgrade path: HIMMEL-8657
 trap 'STOPPED=1' TERM INT HUP
 
 # --- settle on verified cost; a call that exited non-zero is dead and settles too; otherwise unknown ---
@@ -534,6 +537,7 @@ elif [ "$EXIT_RC" -ne 0 ]; then
   if [ -n "$REJECTED" ]; then
     fail_over "$EXIT_RC" rejected "account $HIMMEL_API_ACCOUNT $WHAT"
   elif [ -e "$OUT.timeout" ]; then
+    echo "claude-api: the call hit the call timeout (${CALL_TIMEOUT_S}s)" >&2
     fail_over "$EXIT_RC" call-failed "the call hit the call timeout (${CALL_TIMEOUT_S}s)"
   else
     SUBTYPE="$(immune node -e 'try{const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(r&&typeof r.subtype==="string"&&/^[a-z_]{1,64}$/.test(r.subtype))console.log(r.subtype)}catch{}' "$OUT" 2>/dev/null)"

@@ -280,6 +280,7 @@ test('the call watchdog ending a hung read-only call is a failed call: one alert
     const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_HOLD: hold, HIMMEL_API_CALL_TIMEOUT_S: '1', STUB_FB_OUT: FB_OK });
     assert.equal(r.status, 0, r.stderr);
     assert.equal(r.stdout, FB_OK);
+    assert.match(r.stderr, /the call hit the call timeout/);
     assert.equal(fbCalls(f), 1);
     assert.equal(alerts(f).length, 1);
     assert.match(alertText(f), /call timeout/);
