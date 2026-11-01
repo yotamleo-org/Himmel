@@ -190,10 +190,12 @@ LEDGER="$tmp/vm-cost.jsonl"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\necho "{\\"type\\":\\"result\\",\\"total_cost_usd\\":1.25}"\n' > "$tmp/bin/ssh"
 chmod +x "$tmp/bin/ssh"
 runc() { LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 runv "$@"; }
+# like runc but stderr is left to the caller, so stdout and stderr can be asserted apart
+runo() { _l="$1"; shift; (cd "$tmp/repo" && LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_COST_LEDGER="$_l" LAUNCH_GUEST_TICKET=HIMMEL-1 PATH="$tmp/bin:$PATH" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-lane.sh" bash "$SCRIPT" "$@"); }
 rows() { if [ -f "$LEDGER" ]; then wc -l < "$LEDGER" | tr -d ' '; else echo 0; fi; }
 
 fresh; rm -f "$LEDGER"
-rc=0; out="$(LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 PATH="$tmp/bin:$PATH" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-lane.sh" bash -c 'cd "$1" && bash "$2" ubuntu_new "$3" 2>/dev/null' _ "$tmp/repo" "$SCRIPT" "$P")" || rc=$?
+rc=0; out="$(runo "$LEDGER" ubuntu_new "$P" 2>/dev/null)" || rc=$?
 check "C1 stubbed run: exit 0" "$rc" "0"
 check "C1 stubbed run: stdout is exactly the guest result" "$out" '{"type":"result","total_cost_usd":1.25}'
 check "C1 stubbed run writes exactly one row" "$(rows)" "1"
@@ -302,10 +304,10 @@ done
 # a ledger that cannot be written never changes the run: the answer and the exit code stay the guest's
 printf '#!/bin/sh\necho "{\\"total_cost_usd\\":0.5}"\nexit 3\n' > "$tmp/bin/ssh"
 mkdir -p "$tmp/ledger-is-a-dir"
-rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/ledger-is-a-dir" LAUNCH_GUEST_TICKET=HIMMEL-1 runv ubuntu_new "$P")" || rc=$?
+rc=0; out="$(runo "$tmp/ledger-is-a-dir" ubuntu_new "$P" 2>"$tmp/c8.err")" || rc=$?
 check "C8 unwritable ledger: the guest's exit code is unchanged" "$rc" "3"
-contains "C8 unwritable ledger: the guest answer still reaches stdout" "$out" '"total_cost_usd":0.5'
-contains "C8 unwritable ledger: says the row was not written" "$out" "could not write the cost ledger row"
+check "C8 unwritable ledger: stdout is exactly the guest answer" "$out" '{"total_cost_usd":0.5}'
+contains "C8 unwritable ledger: says the row was not written" "$(cat "$tmp/c8.err")" "could not write the cost ledger row"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
