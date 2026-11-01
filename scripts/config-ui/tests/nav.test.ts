@@ -18,7 +18,7 @@ const tokenOnlyInFragment = (href: string) => {
 };
 
 test("the rail lists Fleet first, then Health, Tool health and one Configure entry, on every page, plus Run when a run is open", () => {
-  const rail = ["Shift", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"];
+  const rail = ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"];
   expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(rail);
   expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(rail);
   expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual([...rail.slice(0, -1), "Run", "Docs"]);

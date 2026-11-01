@@ -89,6 +89,7 @@ let setup save your commit rules and other answers.
 | Your behaviour settings, such as the commit rules setup writes when you say yes; on a luna install it is a link into the vault | `~/.himmel/himmel.conf` | user | you | Kept; `--purge-state` removes it, and a link loses only the link, never its vault target | `himmel-conf` |
 | Your per-machine overrides of those settings | `~/.himmel/himmel.conf.local` | user | you | Kept; `--purge-state` removes it | `himmel-conf-local` |
 | The answers setup saves, such as the vault path and VM mode, and the shared gate policy | `~/.himmel/config.json` | user | you | Kept; `--purge-state` removes it, and a gate whose policy is gone then refuses | `himmel-config-json` |
+| The backups taken before each config write; each one holds a copy of your `.env` | `~/.himmel/state/config-audit/backups/` | user | himmel | Removed; the log beside it, which holds key names only, stays | `config-audit-backups` |
 
 If you also say yes to the `.salus` marker and the vault folder already
 exists, setup creates an empty `.salus` file in it. If the folder does not

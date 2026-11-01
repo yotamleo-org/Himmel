@@ -3393,8 +3393,20 @@ check_c74_config_split() {
         fi
     fi
 
+    # config.json existed once when a backup holds it or the last snapshot saw it.
+    # A no-op install never creates it, so an install alone is no sign of a loss.
+    local had_pol="" st="${HIMMEL_CONFIG_AUDIT_DIR:-$dir/state/config-audit}" b
+    for b in "$st"/backups/*/config.json; do [ -f "$b" ] && had_pol=1 && break; done
+    if [ -z "$had_pol" ] && [ -f "$st/watch.json" ] && command -v node >/dev/null 2>&1 \
+        && node -e 'const s = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); process.exit(s["config.json"] && s["config.json"].present ? 0 : 1)' "$st/watch.json" 2>/dev/null; then
+        had_pol=1
+    fi
     if [ ! -e "$pol" ]; then
-        if [ -n "$envbad" ]; then
+        # Its loss on an installed station silently resets every gate.
+        if [ -n "$had_pol" ] && [ -f "${HIMMELCTL_CACHE_DIR:-${HOME:-}/.claude/himmel}/install-profile.json" ]; then
+            emit FAIL C74-policy "$pol is missing on an installed station; every gate fell back to its default" \
+                "list the backups: bash $REPO_ROOT/scripts/lib/config-audit.sh list, then the operator restores one at their own prompt (or /config restore from Telegram)"
+        elif [ -n "$envbad" ]; then
             emit INFO C74-policy "no $pol, and .env is unreadable so the gate keys it carries were not checked" \
                 "fix the .env permissions, then re-run the doctor"
         elif [ -n "$present" ]; then
@@ -3424,6 +3436,31 @@ $key="*) ;; *) miss="$miss $key" ;; esac
         else
             emit OK C74-policy "$pol is parseable and holds every gate key .env carries"
         fi
+    fi
+
+    # C74-config-keys: a config file lost a key against the last recorded snapshot
+    # Key names only; never a value.
+    local ca="$REPO_ROOT/scripts/lib/config-audit.sh" out rc line f kind keys bk lost=0
+    if ! command -v node >/dev/null 2>&1 || [ ! -f "$ca" ]; then
+        emit INFO C74-config-keys "the config key snapshot was not checked (no node or no $ca)" "install Node (see docs/setup/new-machine.md)"
+        return
+    fi
+    out="$(HIMMEL_CONFIG_AUDIT_ENV_FILE="$envfile" bash "$ca" check 2>/dev/null)"; rc=$?
+    if [ "$rc" -eq 0 ]; then
+        emit OK C74-config-keys "no config file lost a key since the last snapshot"
+    elif [ "$rc" -eq 3 ]; then
+        while IFS=$'\t' read -r line f kind keys bk _; do
+            [ "$line" = LOSS ] || continue
+            [ "$keys" != - ] || keys=""
+            lost=$((lost+1))
+            emit WARN C74-config-keys "$f: $kind${keys:+ ($keys)}; newest good backup: $bk" \
+                "bash $ca list, then the operator restores at their own prompt; a deliberate edit: bash $ca accept"
+        done <<EOF
+$out
+EOF
+        [ "$lost" -gt 0 ] || emit INFO C74-config-keys "config-audit check reported a loss it did not name" "bash $ca check"
+    else
+        emit INFO C74-config-keys "config-audit check failed (rc=$rc), so the key snapshot was not compared" "bash $ca check"
     fi
 }
 

@@ -28,13 +28,13 @@ export HOME="$tmp/home"; mkdir -p "$HOME"
 export HANDOVER_DIR="$tmp/root"; mkdir -p "$HANDOVER_DIR"
 export USER_SLUG=u
 
-fails=0
-check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
-contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
+fails=0; failrows=""
+check()   { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); failrows="$failrows$1 | "; }; }
+contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); failrows="$failrows$1 | "; }; }
 lacks()    { printf '%s' "$2" | grep -qF -e "$3"; case $? in
                 1) echo "ok - $1" ;;
-                0) echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)) ;;
-                *) echo "FAIL - $1: grep errored"; fails=$((fails+1)) ;;
+                0) echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)); failrows="$failrows$1 | " ;;
+                *) echo "FAIL - $1: grep errored"; fails=$((fails+1)); failrows="$failrows$1 | " ;;
             esac; }
 
 # shellcheck source=scripts/handover/chief-kit/testlib-ready-pass.sh
@@ -43,8 +43,14 @@ lacks()    { printf '%s' "$2" | grep -qF -e "$3"; case $? in
 ready_pass_bin "$tmp/ready-bin"
 
 # A fixture anchor: a git repo whose origin is a local bare repo at the same commit,
-# carrying the real go-gate.sh and the two allowlists check 1 reads.
-ANCHOR="$tmp/anchor"
+# carrying the real go-gate.sh and the two allowlists check 1 reads. The real go.sh,
+# write-verdict.sh and delta-class.sh (slice A1b) resolve their verdict scope from the
+# checkout this file lives in, so the fixture anchor takes that checkout's primary-checkout
+# basename: both then name the same <user>/<bucket>.
+VBUCKET="$(basename "$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")")"
+ANCHOR="$tmp/anchors/$VBUCKET"
+VBUCKET="$(printf '%s' "$VBUCKET" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+mkdir -p "$tmp/anchors"
 git init -q --bare "$tmp/origin.git"
 git init -q "$ANCHOR"
 mkdir -p "$ANCHOR/scripts/lib" "$ANCHOR/scripts/guardrails"
@@ -57,7 +63,8 @@ git -C "$ANCHOR" remote add origin "$tmp/origin.git"
 git -C "$ANCHOR" push -q origin HEAD:refs/heads/main 2>/dev/null
 git -C "$tmp/origin.git" symbolic-ref HEAD refs/heads/main
 export READY_GO_ANCHOR="$ANCHOR" READY_CHECK_ANCHOR="$ANCHOR" AUTO_GO_ANCHOR="$ANCHOR"
-AUDIT="$HANDOVER_DIR/u/anchor/auto-go.jsonl"
+AUDIT="$HANDOVER_DIR/u/$VBUCKET/auto-go.jsonl"
+VDIR="$HANDOVER_DIR/u/$VBUCKET/verdicts"
 
 # gh in front of the ready-pass one: the queries auto-go.sh and ready-go.sh add. Everything
 # else falls through to the ready-pass stub, so ready-check still sees a green PR.
@@ -116,6 +123,40 @@ STUB
 chmod +x "$tmp/cpjira"
 export STUB_GC="$tmp/gc" CHAIN_PLAN_JIRA_CMD="$tmp/cpjira"
 
+# slice A1b seams: the bus CLI and the process census. The bus stub keeps what it was sent; the census stub
+# prints one claude_sessions row named STUB_SESSION (default: the worker doc's stem).
+cat > "$tmp/bus" <<'STUB'
+#!/usr/bin/env bash
+[ "${STUB_BUS_FAIL:-0}" = 1 ] && { echo "bus: no such peer" >&2; exit 1; }
+[ "$1" = send ] || exit 2
+printf '%s\n' "$2" > "$STUB_BUS_DIR/to"
+cp "$3" "$STUB_BUS_DIR/body"
+echo "sent #7 to $2"
+STUB
+cat > "$tmp/census" <<'STUB'
+#!/usr/bin/env bash
+[ -z "${STUB_SESSION-x}" ] || printf '4242\t%s\tclaude-sonnet-5-5\t\n' "${STUB_SESSION:-HIMMEL-1-N1-feature-2026-10-31}"
+STUB
+chmod +x "$tmp/bus" "$tmp/census"
+mkdir -p "$tmp/busdir"
+export AUTO_GO_BUS="$tmp/bus" AUTO_GO_CENSUS="$tmp/census" STUB_BUS_DIR="$tmp/busdir"
+
+# a judge's signed verdict, as test-go.sh builds one: the mac comes from go-gate.sh's go_verdict_mac under the GO key
+VSCOPE="u/$VBUCKET"
+mkdir -p "$HOME/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
+# verdict <qid> <verdict line> [<pr, default 77>] [<file name>] [<signed 1|0>]
+verdict() {
+    local vf="$VDIR/$1/${4:-judge-$1}.md" vmac
+    mkdir -p "$VDIR/$1"
+    printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n%s\n\npr: %s\n\nreason\n\n## Evidence checked\n\ne\n' "$1" "$2" "${3:-77}" > "$vf"
+    [ "${5:-1}" = 1 ] || return 0
+    # shellcheck disable=SC2094  # the mac is computed from $vf's body before it is appended to
+    # read-sink-ok: $vf is a verdict file this test just wrote under its own temp dir
+    vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" "$1" "$(basename "$vf" .md)" < "$vf")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
+    printf 'mac: %s\n' "$vmac" >> "$vf"
+}
+
 READY_REPO="$tmp/ready-repo"
 git init -q "$READY_REPO"
 cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
@@ -124,7 +165,34 @@ LEDGER="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-score
 SHA=0123456789abcdef0123456789abcdef01234567
 SHA2=fedcba9876543210fedcba9876543210fedcba98
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH=b
-ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2"
+# Real commits for the carried-judge rows (delta-class.sh reads them): J is the judged head, a docs-only
+# push after it classifies none, a push that touches a trust path classifies trust.
+rgit() { git -C "$READY_REPO" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+mkdir -p "$READY_REPO/scripts/ci" "$READY_REPO/docs"
+printf '^scripts/ci/\n' > "$READY_REPO/scripts/ci/ci-trust-paths.txt"
+printf 'x\n' > "$READY_REPO/scripts/ci/x.sh"
+printf 'c\n' > "$READY_REPO/docs/c.md"
+rgit add -A && rgit commit -qm base
+JUDGED=$(rgit rev-parse HEAD)
+rgit update-ref refs/remotes/origin/main "$JUDGED"
+printf 'more\n' >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm docs
+NDOC=$(rgit rev-parse HEAD)
+rgit checkout -q -b trust "$JUDGED"
+printf 'y\n' >> "$READY_REPO/scripts/ci/x.sh"; rgit add -A && rgit commit -qm trust
+NTRUST=$(rgit rev-parse HEAD)
+rgit checkout -q -
+# a second docs-only push after NDOC, on its own branch: NDOC is then an intermediate head between JUDGED and NDOC2
+rgit checkout -q -b docs2 "$NDOC"
+printf 'again\n' >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm docs2
+NDOC2=$(rgit rev-parse HEAD)
+# a run of further docs-only pushes after NDOC2 (CH[0] is the third push): the heads of a chain of no-op records
+CH=()
+for chi in 3 4 5 6 7 8 9 10; do
+    printf 'c%s\n' "$chi" >> "$READY_REPO/docs/c.md"; rgit add -A && rgit commit -qm "docs$chi"
+    CH+=("$(rgit rev-parse HEAD)")
+done
+rgit checkout -q -
+ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2" "${CH[@]}"
 cp "$LEDGER" "$tmp/ledger.base"
 
 CHIEF="$tmp/chief.md"
@@ -133,7 +201,8 @@ FLEET="$tmp/chief.fleet.json"
 # write_fixtures <lane> [<merge-hold line under ## Live state>] [<extra worker doc line>]
 write_fixtures() {
     {
-        printf '# chief\n\n## Live state\n\nlegs: N1:tok:lock:1\n'
+        # shellcheck disable=SC2016  # the backticks are the Live state entry's literal markers
+        printf '# chief\n\n## Live state\n\nlegs: `N1:tok1:lock:1`\n'
         [ -z "${2:-}" ] || printf '%s\n' "$2"
         printf 'queue: none\n\n## Results\n'
     } > "$CHIEF"
@@ -176,15 +245,13 @@ done
 rawrun --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA";  check "usage: no --doc -> exit 2" "$RC" "2"
 rawrun --doc "$CHIEF" --worker N1 --dry-run 77 "$SHA";    check "usage: no --fleet -> exit 2" "$RC" "2"
 rawrun --doc "$CHIEF" --fleet "$FLEET" --dry-run 77 "$SHA"; check "usage: no --worker -> exit 2" "$RC" "2"
-run 77 "$SHA"
-check    "usage: no --dry-run -> exit 2 (the real GO is slice A1b)" "$RC" "2"
-contains "usage: no --dry-run says why" "$OUT" "--dry-run"
 check    "usage errors write no audit row" "$(audit_rows)" "0"
 
 # --- 2. a worker or a relay never reaches the checks ---------------------------------------
 HIMMEL_CONSOLE_RELAY=1 run --dry-run 77 "$SHA"
 check "relay: exit 3" "$RC" "3"
-HIMMEL_CONSOLE_LEG=1 run --dry-run 77 "$SHA"
+# no seam is set on this row: with no claude ancestor (CI) the seam guard denies a marker plus a seam with exit 96 before the worker check
+OUT=$(HIMMEL_CONSOLE_LEG=1 env -u AUTO_GO_ANCHOR -u AUTO_GO_BUS -u AUTO_GO_CENSUS -u GH_CMD -u JIRA_CMD -u HIMMEL_LEGACY_NAMES bash "$SCRIPT" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
 check "chief-spawned worker: exit 3" "$RC" "3"
 check "exit 3 writes no audit row" "$(audit_rows)" "0"
 nogo  "exit 3"
@@ -194,8 +261,10 @@ nogo  "exit 3"
 # scrub is missing, and a run on without it would read the caller's GIT_DIR
 LIBTREE="$tmp/nolib"
 mkdir -p "$LIBTREE/scripts/handover/chief-kit" "$LIBTREE/scripts/lib"
+mkdir -p "$LIBTREE/scripts/cr"
 cp "$SCRIPT" "$LIBTREE/scripts/handover/chief-kit/auto-go.sh"
-cp "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$LIBTREE/scripts/lib/"
+cp "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$HERE/../../lib/chokepoint-seam-guard.sh" "$LIBTREE/scripts/lib/"
+cp "$HERE/../../cr/anchor-handoff.sh" "$LIBTREE/scripts/cr/"
 OUT=$(bash "$LIBTREE/scripts/handover/chief-kit/auto-go.sh" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
 check    "no git-clean.sh: exit 1" "$RC" "1"
 contains "no git-clean.sh: names the library" "$OUT" "scripts/lib/git-clean.sh"
@@ -209,8 +278,8 @@ check    "clean: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
 check    "clean: one audit row" "$(audit_rows)" "1"
 check    "clean: row pr/head/worker" "$(last_row | jq -r '[.pr, .head, .worker] | join(" ")')" "77 $SHA N1"
 check    "clean: row outcome would-go" "$(last_row | jq -r .outcome)" "would-go"
-check    "clean: checks 1-4 and 6-8 pass, in order" "$(last_row | jq -r '[.checks[] | select(.result != "not-built" and .result != "no-graph") | .n] | join(",")')" "1,2,3,4,6,8"
-check    "clean: check 5 is recorded as not built" "$(last_row | jq -r '.checks[] | select(.n == 5) | .result')" "not-built"
+check    "clean: checks 1-6 and 8 pass, in order" "$(last_row | jq -r '[.checks[] | select(.result != "no-graph") | .n] | join(",")')" "1,2,3,4,5,6,8"
+check    "clean: check 5 (no judge needed) passes" "$(last_row | jq -r '.checks[] | select(.n == 5) | .result')" "pass"
 check    "clean: no --graph is check7=no-graph" "$(last_row | jq -r '.checks[] | select(.n == 7) | .result')" "no-graph"
 check    "clean: no GO written, so no qid, delta, go_file or bus" "$(last_row | jq -r '[.qid, .delta, .go_file, .bus] | map(tostring) | join(",")')" "null,null,null,null"
 nogo     "clean"
@@ -307,8 +376,8 @@ reset; rawrun --doc "$tmp/briefdir" --fleet "$FLEET" --worker N1 --dry-run 77 "$
 reset; rawrun --doc "$tmp/no-such-chief.md" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA";  esc "check 4 a missing chief doc" 4
 reset
 
-# --- 4/5. check 5 is slice A1b; a trust-path hit already escalates here -----------------------------------
-STUB_FILE=scripts/ci/x.sh run --dry-run 77 "$SHA";  esc "check 5 trust-path hit (judge check is slice A1b)" 5
+# --- 4/5. check 5: a trust-path hit with no judge verdict at the head escalates ---------------------------
+STUB_FILE=scripts/ci/x.sh run --dry-run 77 "$SHA";  esc "check 5 trust-path hit with no judge verdict" 5
 contains "check 5 names the path" "$OUT" "scripts/ci/x.sh"
 reset
 
@@ -366,6 +435,217 @@ check "auto-go.sh reads no flag" "$(grep -cE 'himmel_flag|himmelFlag|HIMMEL_FLAG
 grep -vE '^[[:space:]]*(#|$)' "$HERE/../../ci/ci-trust-paths.txt" > "$tmp/trust.re"
 check "auto-go.sh is a trust path" "$(printf 'scripts/handover/chief-kit/auto-go.sh\n' | grep -cEf "$tmp/trust.re")" "1"
 
+# --- 8. slice A1b: check 5 (the judge) and the GO act -------------------------------------------------------------
+GOF="$HANDOVER_DIR/.locks/go/77.$SHA"
+JLINE='This touches a guard/gate, so the chief runs an opus judge before GO.'
+# gofresh: fresh fixtures, no GO files, verdicts, audit rows or bus traffic
+gofresh() { rm -rf "$HANDOVER_DIR/.locks" "$VDIR"; rm -f "$AUDIT" "$tmp/busdir/to" "$tmp/busdir/body"; reset; }
+gofile() { [ -f "${1:-$GOF}" ] && echo yes || echo no; }
+bust()   { cat "$tmp/busdir/to" 2>/dev/null || echo none; }
+q() { last_row | jq -r "$1"; }
+dry_nothing() { # <label>: nothing was written, sent or recorded as a GO
+    check "$1: no GO file" "$(gofile)" "no"
+    check "$1: nothing sent on the bus" "$(bust)" "none"
+}
+
+# 8a. an ordinary PR (no trust hit, no judge brief, not docs): no verdict needed, the GO is written and sent
+gofresh; run 77 "$SHA"
+check    "A1b ordinary: exit 0" "$RC" "0"
+check    "A1b ordinary: GO-SENT <pr> <head> to <label> bus=<#n>" "$OUT" "GO-SENT 77 $SHA to N1 bus=#7"
+check    "A1b ordinary: the GO file exists" "$(gofile)" "yes"
+contains "A1b ordinary: the GO file binds the head" "$(cat "$GOF" 2>/dev/null)" "head=$SHA"
+contains "A1b ordinary: the GO file is signed" "$(cat "$GOF" 2>/dev/null)" "mac="
+lacks    "A1b ordinary: a plain GO carries no trust-reviewed line" "$(cat "$GOF" 2>/dev/null)" "trust-reviewed="
+check    "A1b ordinary: bus message goes to the worker's live session" "$(bust)" "HIMMEL-1-N1-feature-2026-10-31"
+BODY=$(cat "$tmp/busdir/body" 2>/dev/null)
+contains "A1b ordinary: bus message is GO <pr> <head> - merge with: bash" "$BODY" "GO 77 $SHA - merge with: bash "
+contains "A1b ordinary: bus message names the GO file" "$BODY" "--go $GOF"
+contains "A1b ordinary: bus message quotes the worker's token" "$BODY" "\`tok1\`"
+lacks    "A1b ordinary: completes-ticket no leaves the Jira transition off" "$BODY" "--jira-transition"
+check    "A1b ordinary: audit outcome go" "$(q .outcome)" "go"
+check    "A1b ordinary: audit go_file" "$(q .go_file)" "$GOF"
+check    "A1b ordinary: audit bus" "$(q .bus)" "#7"
+check    "A1b ordinary: audit qid and delta are null" "$(q '[.qid, .delta] | map(tostring) | join(",")')" "null,null"
+check    "A1b ordinary: audit checks 1-6 and 8 pass" "$(q '[.checks[] | select(.result != "no-graph" and .result != "pass") | .n] | length')" "0"
+check    "A1b ordinary: the signed GO record names auto-go and script" "$(grep -l -x 'model: auto-go' "$VDIR"/go-pr-77/*.md 2>/dev/null | xargs grep -l -x 'effort: script' 2>/dev/null | wc -l | tr -d ' ')" "1"
+gofresh; write_fixtures native "" '> **Completes ticket:** yes'; run 77 "$SHA"
+contains "A1b completes-ticket yes adds --jira-transition" "$(cat "$tmp/busdir/body" 2>/dev/null)" "--jira-transition --go $GOF"
+
+# 8b. --dry-run still answers and still writes nothing
+gofresh; verdict q1 "**GO** for head \`$SHA\`."
+STUB_FILE=scripts/ci/x.sh run --dry-run 77 "$SHA"
+check    "A1b dry-run with a judge GO: WOULD-GO" "$OUT" "WOULD-GO 77 $SHA"
+check    "A1b dry-run: check 5 passes" "$(q '.checks[] | select(.n == 5) | .result')" "pass"
+dry_nothing "A1b dry-run"
+
+# 8c. a trust-path hit: one signed GO verdict at the head for this PR
+gofresh; verdict q1 "**GO** for head \`$SHA\`."
+STUB_FILE=scripts/ci/x.sh run 77 "$SHA"
+check    "A1b trust hit + judge GO: exit 0" "$RC" "0"
+check    "A1b trust hit + judge GO: GO-SENT" "$OUT" "GO-SENT 77 $SHA to N1 bus=#7"
+contains "A1b trust hit + judge GO: the GO file is trust-reviewed by the judge's qid" "$(cat "$GOF" 2>/dev/null)" "trust-reviewed=q1"
+check    "A1b trust hit + judge GO: audit qid" "$(q .qid)" "q1"
+check    "A1b trust hit + judge GO: audit delta stays null (a GO at the head itself)" "$(q .delta)" "null"
+gofresh; verdict q1 "**GO** for head \`$SHA\`."; verdict q2 "**GO** for head \`$SHA\`."
+STUB_FILE=scripts/ci/x.sh run 77 "$SHA"
+check    "A1b two qids with GO at the head: exit 0" "$RC" "0"
+gofresh; verdict q1 "**GO** for head \`$SHA\`."; verdict q2 "**NO-GO** for head \`$SHA\`."
+STUB_FILE=scripts/ci/x.sh run 77 "$SHA";  esc "A1b a GO and a NO-GO at the head" 5
+gofresh; verdict q1 "**GO** for head \`$SHA\`." 78
+STUB_FILE=scripts/ci/x.sh run 77 "$SHA";  esc "A1b a GO that names another PR" 5
+gofresh; verdict q1 "**GO** for head \`$SHA\`." 77 judge-q1 0
+STUB_FILE=scripts/ci/x.sh run 77 "$SHA";  esc "A1b an unsigned GO" 5
+gofresh; verdict q1 "**GO** for head \`$SHA\`."; verdict q3 "no verdict line here"
+STUB_FILE=scripts/ci/x.sh run 77 "$SHA";  esc "A1b a GO beside an unparsed verdict of the PR" 5
+gofresh; verdict q1 "**GO** for head \`$SHA2\`."
+STUB_FILE=scripts/ci/x.sh run 77 "$SHA";  esc "A1b a GO at another head that no delta carries" 5
+
+# 8d. a brief that asks for a judge (judge: true), though the diff hits no trust path
+gofresh; write_fixtures native "" "> $JLINE"; run 77 "$SHA";  esc "A1b judge brief with no verdict" 5
+gofresh; write_fixtures native "" "> $JLINE"; verdict q1 "**GO** for head \`$SHA\`."; run 77 "$SHA"
+check    "A1b judge brief + judge GO: exit 0" "$RC" "0"
+contains "A1b judge brief + judge GO: the GO is trust-reviewed" "$(cat "$GOF" 2>/dev/null)" "trust-reviewed=q1"
+
+# 8e. a docs PR (decision 286): the docs judge's GO at the head
+gofresh; STUB_FILE=docs/x.md run 77 "$SHA";  esc "A1b docs PR with no verdict" 5
+gofresh; STUB_FILE=README.md run 77 "$SHA";  esc "A1b a *.md file anywhere is a docs PR" 5
+gofresh; verdict q1 "**GO** for head \`$SHA\`."; STUB_FILE=docs/x.md run 77 "$SHA"
+check    "A1b docs PR + docs judge GO: exit 0" "$RC" "0"
+gofresh; run 77 "$SHA"
+check    "A1b a non-docs PR needs no verdict (ordinary GO)" "$RC" "0"
+
+# 8f. a GO at an earlier head carries when delta-class.sh says none (design 1.6)
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run --dry-run 77 "$NDOC"
+check    "A1b carried judge, dry-run: WOULD-GO" "$OUT" "WOULD-GO 77 $NDOC"
+check    "A1b carried judge, dry-run: no no-op record" "$([ -e "$VDIR/qj/delta-noop-$NDOC.md" ] && echo yes || echo no)" "no"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC"
+check    "A1b carried judge: exit 0" "$RC" "0"
+check    "A1b carried judge: a delta no-op record is written for the new head" "$([ -e "$VDIR/qj/delta-noop-$NDOC.md" ] && echo yes || echo no)" "yes"
+check    "A1b carried judge: audit qid" "$(q .qid)" "qj"
+check    "A1b carried judge: audit delta none" "$(q .delta)" "none"
+contains "A1b carried judge: the GO file is trust-reviewed by the carried qid" "$(cat "$HANDOVER_DIR/.locks/go/77.$NDOC" 2>/dev/null)" "trust-reviewed=qj"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NTRUST READY_STUB_HEAD=$NTRUST run 77 "$NTRUST";  esc "A1b a trust-path delta is not carried" 5
+check    "A1b a trust-path delta writes no no-op record" "$([ -e "$VDIR/qj/delta-noop-$NTRUST.md" ] && echo yes || echo no)" "no"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC";  esc "A1b a NO-GO at the head beats a carried GO" 5
+# a NO-GO by another qid at the judged head, or at a head between the judged head and this one, also refuses the carry
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC";  esc "A1b a NO-GO by another qid at the judged head refuses the carry" 5
+check    "A1b a NO-GO at the judged head: no no-op record" "$([ -e "$VDIR/qj/delta-noop-$NDOC.md" ] && echo yes || echo no)" "no"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**NO-GO** for head \`$NDOC\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO by another qid at an intermediate head refuses the carry" 5
+check    "A1b a NO-GO at an intermediate head: no no-op record" "$([ -e "$VDIR/qj/delta-noop-$NDOC2.md" ] && echo yes || echo no)" "no"
+
+# 8g. the act can fail after the checks: go.sh refuses, or the bus does not deliver
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2"
+contains "A1b go.sh refuses after a carry: the answer names the no-op record it left" "$OUT" "delta no-op record for qj"
+# a carry that starts from a delta no-op record resolves it to the judged head it rests on (a NO-GO at that head still refuses)
+# the no-op record for NDOC beside the judge's own GO at JUDGED, then a NO-GO at JUDGED, then a later docs-only head NDOC2
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC"   # go.sh fails after the carry and leaves the no-op record for NDOC
+rm -rf "$HANDOVER_DIR/.locks"; verdict qn "**NO-GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO at the judged head refuses a carry that can start from a no-op record" 5
+contains "A1b a carry that can start from a no-op record: the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+# the same with only the no-op record left (the judge's own GO file gone): no hex-order luck decides the result
+rm -f "$VDIR/qj/judge-qj.md"; rm -f "$AUDIT"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO at the judged head refuses a carry whose only record is the no-op" 5
+contains "A1b a carry whose only record is the no-op: the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+# a chain of no-op records: a record's judged head may itself rest on a no-op record, and the NO-GO check follows the chain to the root
+# (write-verdict.sh refuses to chain: delta-class.sh reads a judged head with only a no-op record as trust. The rows write signed
+# records by hand, since go_trust_verdict itself would accept one.)
+noop() { # <head> <judged head>: a signed no-op record in write-verdict.sh's layout
+    local nvf="$VDIR/qj/delta-noop-$1.md" nmac
+    mkdir -p "$VDIR/qj"
+    # shellcheck disable=SC2016  # the backticks are literal text in the verdict file
+    printf '# VERDICT qj - delta-noop-%s\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 77\nmodel: auto-go\neffort: script\ndelta: no-op\ndelta-judged: %s\ndelta-class: none\n\nevidence\n' "$1" "$1" "$2" > "$nvf"
+    # shellcheck disable=SC2094  # the mac is computed from $nvf's body before it is appended to
+    # read-sink-ok: $nvf is a verdict file this test just wrote under its own temp dir
+    nmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" "$VSCOPE" qj "delta-noop-$1" < "$nvf")" || return 1
+    printf 'mac: %s\n' "$nmac" >> "$nvf"
+}
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."
+noop "$NDOC" "$JUDGED"; noop "$NDOC2" "$NDOC"
+check    "A1b chain: the two no-op records exist" "$(set -- "$VDIR"/qj/delta-noop-*; echo $#)" "2"
+verdict qn "**NO-GO** for head \`$JUDGED\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a no-op chain of two: a NO-GO at the root refuses (head with the record)" 5
+contains "A1b a no-op chain of two (head with the record): the refusal names the NO-GO" "$OUT" "holds a NO-GO"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=${CH[0]} READY_STUB_HEAD=${CH[0]} run 77 "${CH[0]}";  esc "A1b a no-op chain of two: a NO-GO at the root refuses (carry loop)" 5
+# a chain past the hop cap (8) refuses
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."
+noop "$NDOC" "$JUDGED"; noop "$NDOC2" "$NDOC"; noop "${CH[0]}" "$NDOC2"; noop "${CH[1]}" "${CH[0]}"; noop "${CH[2]}" "${CH[1]}"
+noop "${CH[3]}" "${CH[2]}"; noop "${CH[4]}" "${CH[3]}"; noop "${CH[5]}" "${CH[4]}"; noop "${CH[6]}" "${CH[5]}"
+check    "A1b chain: nine no-op records exist" "$(set -- "$VDIR"/qj/delta-noop-*; echo $#)" "9"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=${CH[6]} READY_STUB_HEAD=${CH[6]} run 77 "${CH[6]}";  esc "A1b a no-op chain past the hop cap refuses" 5
+contains "A1b a no-op chain past the hop cap: the refusal says so" "$OUT" "hops"
+# an unreadable verdict file of another qid refuses (a directory named like a verdict stands in; it fails for root too)
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; verdict qn "**GO** for head \`$JUDGED\`."; mkdir -p "$VDIR/qn/bad.md"
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC READY_STUB_HEAD=$NDOC run 77 "$NDOC";  esc "A1b an unreadable verdict file refuses the carry" 5
+# a retry that finds the no-op record the failed attempt left still honours a NO-GO recorded since
+rm -rf "$HANDOVER_DIR/.locks"
+verdict qn "**NO-GO** for head \`$NDOC\`."
+STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2"
+contains "A1b retry over a left no-op record: ESCALATE auto-go 5" "$OUT" "ESCALATE auto-go 5 "
+gofresh; mkdir -p "$HANDOVER_DIR"; printf 'x\n' > "$HANDOVER_DIR/.locks"; run 77 "$SHA"
+check    "A1b go.sh refuses: exit 10" "$RC" "10"
+contains "A1b go.sh refuses: ESCALATE auto-go 9" "$OUT" "ESCALATE auto-go 9 "
+check    "A1b go.sh refuses: audit names check 9" "$(q '[.checks[] | select(.result == "fail")][0].n')" "9"
+check    "A1b go.sh refuses: nothing sent" "$(bust)" "none"
+gofresh; STUB_BUS_FAIL=1 run 77 "$SHA"
+check    "A1b bus fails: exit 11, the GO stands" "$RC" "11"
+contains "A1b bus fails: GO-WRITTEN" "$OUT" "GO-WRITTEN 77 $SHA"
+contains "A1b bus fails: the message for the chief to send" "$OUT" "SENDMESSAGE to=HIMMEL-1-N1-feature-2026-10-31 :: GO 77 $SHA - merge with: bash "
+check    "A1b bus fails: the GO file stands" "$(gofile)" "yes"
+check    "A1b bus fails: audit outcome go, no bus record" "$(q '[.outcome, .bus] | map(tostring) | join(",")')" "go,null"
+gofresh; STUB_SESSION='' run 77 "$SHA"
+check    "A1b no live session: exit 11" "$RC" "11"
+contains "A1b no live session: GO-WRITTEN" "$OUT" "GO-WRITTEN 77 $SHA"
+check    "A1b no live session: nothing sent" "$(bust)" "none"
+gofresh; printf '# chief\n\n## Live state\n\nqueue: none\n\n## Results\n' > "$CHIEF"; run 77 "$SHA"
+check    "A1b no token in Live state: exit 11" "$RC" "11"
+contains "A1b no token in Live state: says so" "$OUT" "no token"
+check    "A1b no token in Live state: nothing sent" "$(bust)" "none"
+
+# 8g2. go.sh exits 0 but its last line is not the GO path: ESCALATE 9, naming the path a GO file may stand at, and the audit row records it
+# a symlinked copy of the tree whose go.sh runs the real one and then prints one more line
+FK="$tmp/fk"; mkdir -p "$FK/scripts/handover/chief-kit"
+for fkd in "$HERE/../.."/*; do [ "$(basename "$fkd")" = handover ] || ln -s "$fkd" "$FK/scripts/$(basename "$fkd")"; done
+for fkf in "$HERE/.."/*; do [ "$(basename "$fkf")" = chief-kit ] || ln -s "$fkf" "$FK/scripts/handover/$(basename "$fkf")"; done
+for fkf in "$HERE"/*; do [ "$(basename "$fkf")" = go.sh ] || ln -s "$fkf" "$FK/scripts/handover/chief-kit/$(basename "$fkf")"; done
+# shellcheck disable=SC2016  # the stub's own $@ and $? must stay literal
+printf '#!/usr/bin/env bash\nbash "%s/go.sh" "$@"; rc=$?; echo "go: trailing note"; exit $rc\n' "$HERE" > "$FK/scripts/handover/chief-kit/go.sh"
+gofresh
+OUT=$(bash "$FK/scripts/handover/chief-kit/auto-go.sh" --doc "$CHIEF" --fleet "$FLEET" --worker N1 77 "$SHA" 2>&1); RC=$?
+check    "A1b go.sh exit 0, GO path not last: exit 10" "$RC" "10"
+contains "A1b go.sh exit 0, GO path not last: ESCALATE auto-go 9" "$OUT" "ESCALATE auto-go 9 "
+contains "A1b go.sh exit 0, GO path not last: names where a GO file may stand" "$OUT" ".locks/go/77.$SHA"
+check    "A1b go.sh exit 0, GO path not last: the GO file stands" "$(gofile)" "yes"
+contains "A1b go.sh exit 0, GO path not last: the audit row records the path" "$(q '.go_file')" ".locks/go/77.$SHA"
+
+# 8h. LK-j4368-1 item 2: the audit append never follows a symlink, or writes a non-regular file
+gofresh; mkdir -p "$(dirname "$AUDIT")"; printf 'keep\n' > "$tmp/victim.jsonl"; ln -s "$tmp/victim.jsonl" "$AUDIT"
+run --dry-run 77 "$SHA"
+check    "A1b symlinked audit target (dry-run): exit 1" "$RC" "1"
+check    "A1b symlinked audit target: the target is untouched" "$(cat "$tmp/victim.jsonl")" "keep"
+lacks    "A1b symlinked audit target: no answer given" "$OUT" "WOULD-GO"
+run 77 "$SHA"
+check    "A1b symlinked audit target (real run): exit 1" "$RC" "1"
+dry_nothing "A1b symlinked audit target (real run)"
+rm -f "$AUDIT" "$tmp/victim.jsonl"; ln -s "$tmp/no-such-victim.jsonl" "$AUDIT"; run --dry-run 77 "$SHA"
+check    "A1b dangling symlink as audit target: exit 1" "$RC" "1"
+check    "A1b dangling symlink as audit target: the target is not created" "$([ -e "$tmp/no-such-victim.jsonl" ] && echo yes || echo no)" "no"
+rm -f "$AUDIT"; mkdir -p "$AUDIT"; run --dry-run 77 "$SHA"
+check    "A1b directory as audit target: exit 1" "$RC" "1"
+rmdir "$AUDIT"
+
+# 8i. LK-j4368-1 item 1: the seams are closed the way go.sh closes them (anchor hand-off + chokepoint seam guard)
+AG="$HERE/auto-go.sh"
+check    "A1b auto-go.sh calls the chokepoint seam guard with its registry key" "$(grep -cx 'chokepoint_seam_guard scripts/handover/chief-kit/auto-go.sh || exit 96' "$AG")" "1"
+check    "A1b auto-go.sh hands a relative entry off to the anchor" "$(grep -cE '^\. .*anchor-handoff\.sh' "$AG")" "1"
+check    "A1b the registry names every seam auto-go.sh reads" "$(jq -r '."scripts/handover/chief-kit/auto-go.sh".seam_env_vars // [] | sort | join(",")' "$HERE/../../chokepoints.json")" "AUTO_GO_ANCHOR,AUTO_GO_BUS,AUTO_GO_CENSUS,GH_CMD,HIMMEL_LEGACY_NAMES,JIRA_CMD"
+
 if [ "$fails" -eq 0 ]; then echo "test-auto-go.sh: all rows passed"; exit 0; fi
-echo "test-auto-go.sh: $fails row(s) failed" >&2
+echo "test-auto-go.sh: $fails row(s) failed: $failrows" >&2
 exit 1

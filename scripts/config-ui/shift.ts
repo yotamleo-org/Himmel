@@ -19,7 +19,7 @@ import { acquireLock } from "./lock";
 import { REDACTED } from "../himmelctl/lib/redact.js";
 
 export type Opts = { idleMin: number; cuts: string[]; minHours: number };
-// the three numbers live on Configure (the Morning report build); these are the mockup's defaults
+// the three numbers live on Configure (report-settings.ts); these are the defaults, used until they are saved
 export const DEFAULTS: Opts = { idleMin: 60, cuts: ["08:00", "20:00"], minHours: 4 };
 
 export type Lock = { bucket: string; role: "chief" | "worker"; doc: string; at: number };
@@ -29,7 +29,9 @@ export type State = { open: Open | null; closedAt: number | null; at?: number };
 export type Span = { name: string; bucket: string; start: number; end: number | null; approx: boolean };
 export type Gap = { pr: number; chiefs: [string, string] };
 export type Chief = { name: string; bucket: string; span: { start: string; end: string | null; approx: boolean }; prs: number[] };
-export type Row = { id: string; name: "day" | "night"; opened: string; closed: string; why: "idle" | "cut"; zone: string; chiefs: Chief[]; buckets: string[]; gap: Gap[]; carried?: Carried[]; shipped?: number };
+export type Row = { id: string; name: "day" | "night"; opened: string; closed: string; why: "idle" | "cut"; zone: string; chiefs: Chief[]; buckets: string[]; gap: Gap[]; carried?: Carried[]; waiting?: WaitingSnap[]; shipped?: number };
+// A Waiting row as the Shift page showed it when the shift closed at a cut; the Morning report labels it with the close time.
+export type WaitingSnap = { kind: string; ticket: string | null; title: string; chief: string; since: string | null };
 export type Pr = { number: number; mergedAt: string; [k: string]: unknown };
 
 const MIN = 60_000, DAY = 86_400_000;
@@ -257,7 +259,9 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
   const ends = spans.map((s) => s.end).filter((e): e is number => e !== null);
   const obs: Obs = { now: t.now, locks, lastEnd: ends.length ? Math.max(...ends) : null, chiefLiveAt: live.length ? Math.min(...live) : null };
   const prs = await t.merged(state0.open?.opened ?? t.now - 3 * DAY, t.now + MIN);
-  const carried = rowsOf(await (t.boards?.(locks, spans) ?? [])).running.map((r): Carried => ({ ticket: r.ticket, title: r.title, stage: r.stage, pr: r.pr }));
+  const rows0 = rowsOf(await (t.boards?.(locks, spans) ?? []));
+  const carried = rows0.running.map((r): Carried => ({ ticket: r.ticket, title: r.title, stage: r.stage, pr: r.pr }));
+  const waiting = rows0.waiting.map((w): WaitingSnap => ({ kind: w.kind, ticket: w.ticket, title: w.title, chief: w.chief, since: w.since }));
   return withLock(t.file, () => {
     let st = readState(t.file);
     const closed: Row[] = [];
@@ -269,7 +273,7 @@ export async function tick(t: Tick): Promise<Snapshot & { closed: Row[] }> {
       st = r.state;
       if (!r.closed) break;
       const off = (r.closed.zone[0] === "-" ? -1 : 1) * (Number(r.closed.zone.slice(1, 3)) * 60 + Number(r.closed.zone.slice(4, 6)));
-      const full = { ...r.closed, carried: r.closed.why === "cut" ? carried : [], ...chiefsOf(spans, prs ?? [], Date.parse(r.closed.opened), Date.parse(r.closed.closed), t.now, off) };
+      const full = { ...r.closed, carried: r.closed.why === "cut" ? carried : [], waiting: r.closed.why === "cut" ? waiting : [], ...chiefsOf(spans, prs ?? [], Date.parse(r.closed.opened), Date.parse(r.closed.closed), t.now, off) };
       appendRow(t.file, full);
       closed.push(full);
     }

@@ -15,6 +15,7 @@ import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type Permi
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
 import { makeAfkSudoGate, makeAfkSudoCallback, makeAfkSudoPrompts, dispatchAfkCallbacks, operatorIdFromConfig, helperInstalled, spawnHelper } from "./afk-sudo-route";
+import { makeConfigRestoreGate, configRestoreEnrolled, spawnConfigRestore, runConfigWatch } from "./config-restore-route";
 import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./chief-heartbeat-watch";
 // resolve the bridge's own plugin profile per dispatch (lever-b)
 // instead of a hardcoded `undefined` (no --settings
@@ -435,9 +436,12 @@ export type OperatorFn = (fromId: number, chatId: number, senderChatId?: number)
 // in unit tests that don't exercise /arm.
 export type AutoFire = (msg: DeliveredMsg, route: Extract<Route, { kind: "auto" }>) => void;
 // afkSudo: the AFK sudo approve/deny route (afk-sudo-route.ts); true = consumed.
-export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean };
+// configRestore: the /config backups|restore route (config-restore-route.ts); true = consumed.
+export type AutoGate = { enabledOps: Set<string>; authorize: (from: number, chat_id: number) => boolean; fire: AutoFire; afkSudo?: (msg: DeliveredMsg) => boolean; configRestore?: (msg: DeliveredMsg) => boolean };
 // Under lockdown the line is not consumed: it falls through to the lockdown policy, which drops it.
-const afkSudoConsumed = (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): boolean => !lockdownEnabled(root) && auto?.afkSudo?.(msg) === true;
+// The MFA routes (afk sudo, config restore) run first; true = consumed.
+const mfaRouteConsumed = (root: string, auto: AutoGate | undefined, msg: DeliveredMsg): boolean =>
+  !lockdownEnabled(root) && (auto?.afkSudo?.(msg) === true || auto?.configRestore?.(msg) === true);
 
 // Single-threaded dispatch: the poller calls handleInbound serially, so the
 // "status === running" in-flight check needs no atomic CAS.
@@ -608,7 +612,7 @@ export async function handleInbound(root: string, msg: DeliveredMsg, run: Inboun
   // `model:`-prefixed message from a member is answered, just not re-modelled).
   // An afk-sudo approve/deny line is consumed before anything else can queue it,
   // so its TOTP code never reaches an inbox or a run.
-  if (afkSudoConsumed(root, auto, msg)) return;
+  if (mfaRouteConsumed(root, auto, msg)) return;
   const fromOperator = isOperator(msg.from, msg.chat_id, msg.sender_chat);
   const NO_TAG = { model: null as ModelOverride | null, rest: msg.text, unknown: false };
   const tag = fromOperator ? parseModelTag(msg.text) : NO_TAG;
@@ -2410,7 +2414,8 @@ export async function main(): Promise<void> {
     },
     answer: (id, text) => answerCallbackQuery(token, id, text),
   }, afkPrompts);
-  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo };
+  const configRestore = makeConfigRestoreGate({ access: () => access, enrolled: configRestoreEnrolled, run: spawnConfigRestore, reply: (chat: number, text: string) => replyViaOutbox(root, chat, text), log: logRedacted });
+  const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire, afkSudo, configRestore };
   // Operator -> chief routing. Same authorize as /arm — global
   // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
@@ -2469,6 +2474,10 @@ export async function main(): Promise<void> {
   };
   const heartbeatTimer = setInterval(guarded(() => checkStaleHeartbeats(root, Date.now(), HEARTBEAT_STALE_MS, heartbeatAlerted, censusSessionAlive, heartbeatAlert)), HEARTBEAT_CHECK_MS); // t13b-ok: unref'd periodic check in the existing poller process, no new service
   if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();
+  // The station config watcher: a deleted, truncated or key-losing config
+  // file alerts within one pass; config-audit.sh sends the alerts, a failure only logs.
+  const configWatchTimer = setInterval(guarded(() => runConfigWatch(logRedacted)), 60_000); // t13b-ok: unref'd periodic check in the existing poller process, no new service
+  if (typeof configWatchTimer.unref === "function") configWatchTimer.unref();
   // Outage tracking across loop iterations: consecutive getUpdates
   // failures drive the backoff, outageStartedAt/lastOutageAlertAt drive the
   // rate-limited log marker. All three reset together on the next clean call.

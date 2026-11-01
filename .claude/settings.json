@@ -58,6 +58,7 @@
       "Bash(bash \"$HIMMEL_REPO/scripts/handover/merge-on-green.sh\":*)",
       "Bash(bash \"$HIMMEL_REPO/scripts/handover/chief-kit/himmel-gate.sh\":*)",
       "Bash(bash scripts/handover/wrap-subtree-check.sh:*)",
+      "Bash(bash scripts/git/delete-approved-branch.sh:*)",
       "Bash(bash scripts/handover/arm-resume.sh:*)",
       "Bash(bash scripts/handover/resolve-active-item.sh:*)",
       "Bash(bash scripts/handover/headed-arm.sh:*)",

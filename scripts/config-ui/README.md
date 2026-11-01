@@ -152,6 +152,24 @@ redactor would otherwise read its 32+ letters and digits as a secret.
 - **The release record is derived.** `queue-lock` keeps no release record, so the last release is the newest lock heartbeat or
   WRAPPED stamp seen (`ponytail:` in `shift.ts`).
 
+## Morning report page (`#/report`)
+
+Second in the rail. `GET /api/reports` lists the `morning-report-YYYY-MM-DD.md` files under `$HANDOVER_DIR` (newest first, the
+newest file's age, today's date, and the "so far" shifts closed today read from `shifts.jsonl`); `GET /api/report?day=` parses
+one into blocks (`reports.ts`; the day is validated as a date and joined to a fixed file name, never a path). The generator
+(`scripts/handover/generate-morning-briefing.sh`) is the one writer of the files. It first runs `shift-cli.ts` (one `tick`, so
+a close pending since the last poll is written), then counts every shift row not yet reported once, in a ledger
+`shifts.reported.tsv` beside `shifts.jsonl`: a shift whose close is written after midnight lands in exactly one report. It
+adds a Chiefs table, the PRs merged per shift over `[opened, closed)` and a Spend per shift table whose columns each carry
+their source mark; no column is a sum, and a failing reader reads `not available`. The page shows a 36 h stale banner when
+the newest report is older than that, a degraded-inputs banner for the report's `⚠` lines, and "No report was made for
+<day>" for a missing day. Nothing here writes a report.
+
+The four settings live under `reports` in `~/.himmel/config.json` and are edited on Configure (`GET`/`POST /api/report-settings`,
+validated, saved through `luna-config.js`): `report_day` (`local` or `utc`), `shift_idle_min` (60), `shift_cuts` (`08:00`,
+`20:00`) and `shift_min_run_h` (4). A new `report_day` applies from the next report on; past reports keep the window they
+were made with. A closed shift also stores its Waiting rows as they stood at a clock cut.
+
 ## Roadmap page (`#/roadmap`)
 
 The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
@@ -484,6 +502,10 @@ imports, so its suite runs in CI without an install.
   direct landing on Kanban shows the plain-words empty state, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
+- Morning report e2e (`report.e2e.ts`, same opt-in suite): over a two-day fixture the
+  Morning report page selects the newest day, switches to the earlier one and says so for a
+  day with no report; the four Reports and shifts settings show their defaults on Configure,
+  save, and land in the himmel config. `E2E_SHOTS=<dir>` saves a screenshot of each frame.
 - Configure e2e (`settings.e2e.ts`, journey J3, same opt-in suite): Configure is
   the one rail entry (it replaced Settings and Setup; `#/setup` and the install
   hand-off's `page=setup` land on it with the Secrets tile open) with four tiles
