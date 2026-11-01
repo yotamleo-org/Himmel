@@ -54,6 +54,14 @@ printf '#!/usr/bin/env bash\nexit 2\n' > "$STUB/budget-off.sh"
 export CHIEF_WAIT_PAGE_CMD="$STUB/off.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh" CHIEF_WAIT_ORPHAN="$STUB/off.sh"
 export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh"
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
+# the core gate always asks the jira CLI (scripts/jira/dist is untracked, absent in CI): a fixture stand-in calls every key NOT-CORE
+mkdir -p "$WORK/stub-jira"
+cat > "$WORK/stub-jira/index.js" <<'STUBEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUBEOF
+export NEXT_DISPATCH_JIRA_CLI="$WORK/stub-jira/index.js"
 
 # The pool stub: each priority-pool call is counted; pool.rows is the pool, absent means
 # empty, pool.fail makes the call fail with no output.

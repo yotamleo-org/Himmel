@@ -356,7 +356,7 @@ printf 'v1.0.1\tfalse\t\n' > "$tmp/inc/HIMMEL.versions.tsv"
 printf -- '---\nkey: "HIMMEL-9390"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "x"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9390: wants a series file\n\n## Description\n\nEdit scripts/sa/a.sh please.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' > "$tmp/inc/HIMMEL/HIMMEL-9390.md"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/nd-gh"; chmod +x "$tmp/nd-gh"
 printf '{"schema":1,"legs":[]}\n' > "$IB/fleet.json"   # the predecessor has WRAPPED: only the ledger holds the file
-nd="$( HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$tmp/inc/HIMMEL" NEXT_DISPATCH_GH_CMD="$tmp/nd-gh" \
+nd="$( HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_JIRA_CLI="$tmp/stub-jira/index.js" NEXT_DISPATCH_MIRROR="$tmp/inc/HIMMEL" NEXT_DISPATCH_GH_CMD="$tmp/nd-gh" \
     bash "$HERE/next-dispatchable.sh" --workers-from "$IB/fleet.json" --no-classify --why 2>/dev/null )"; nd_rc=$?
 check "9: next-dispatchable rc 0" "$nd_rc" 0
 contains "9: the started + committed item still holds its file (collision drop)" "$nd" "collision scripts/sa/a.sh held by series HIMMEL-9301-N931"
