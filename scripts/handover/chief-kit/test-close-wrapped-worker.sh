@@ -363,7 +363,8 @@ unset CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT
 rm -rf "$SCR/refclone"
 # the refresh never runs a hook the clone planted: a reference-transaction hook fires on a
 # fetch that updates a ref (control), but not under the close check
-git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+git clone -q --template= "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+mkdir -p "$SCR/refclone/.git/hooks"
 printf '%s\n' '#!/bin/sh' "touch \"$W/hook-ran\"" > "$SCR/refclone/.git/hooks/reference-transaction"
 chmod 755 "$SCR/refclone/.git/hooks/reference-transaction"
 git -C "$SCR/refclone" config core.hooksPath "$SCR/refclone/.git/hooks"
