@@ -2231,12 +2231,16 @@ queue_lock_release() {
         f_session=$(_ql_json_field "$lockdir/owner.json" session)
         f_host=$(_ql_json_field "$lockdir/owner.json" host)
         # the proof reads owner.json, so take it before the dir goes away
-        local f_doc="" f_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
+        local f_doc="" f_raw="" f_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
         case "$f_ttl" in ''|*[!0-9]*) f_ttl=21600 ;; esac
         if _ql_owner_provably_dead "$lockdir" "$f_ttl"; then
             f_doc=$(_ql_json_field "$lockdir/owner.json" handover)
+            f_raw=$(cat "$lockdir/owner.json" 2>/dev/null) || f_raw=""  # swallow-ok: an unreadable owner.json leaves f_raw empty, so the re-check below writes no HALTED
         fi
-        # written while the dead holder still owns the lock, so a successor's LIVE can never precede it
+        # written while the dead holder still owns the lock, so a successor's LIVE normally cannot precede it;
+        # unlike the sweep and the takeover this path holds no claim, so re-read owner.json first and write nothing when it changed
+        # ponytail: two concurrent forced releases of one dead lock plus a successor acquire inside the append's few milliseconds can still mark the successor HALTED, upgrade path: hold the release claim across the proof, the append and the removal
+        [ "$(cat "$lockdir/owner.json" 2>/dev/null)" = "$f_raw" ] || f_doc=""  # swallow-ok: an unreadable owner.json differs from f_raw, so no HALTED is written
         _ql_halted_marker "$f_doc" "$f_session" "a forced release (QUEUE_LOCK_FORCE_RELEASE=1)"
         _ql_release_remove "$lockdir" "" "" 1 || return "$?"
         printf '%s FORCED RELEASE of session=%s host=%s lock=%s (QUEUE_LOCK_FORCE_RELEASE=1, by pid=%s on host=%s)\n' \

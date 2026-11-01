@@ -3417,21 +3417,21 @@ else
 fi
 # d: a LIVE holder (this shell's pid) force-released by a chief is not a dead worker
 H_DOC_D="$(h_doc halted-live 'LIVE — working')"
-h_hold "$H_DOC_D" "$H_HOST-pid$$" "$H_HOST" >/dev/null
-QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_D" >/dev/null 2>&1
-if [ "$(h_tail "$H_DOC_D")" = "- 10:00 LIVE — working" ]; then
-    pass "T8541d: freeing a lock whose holder is alive writes no HALTED bullet"
+H_LK_D="$(h_hold "$H_DOC_D" "$H_HOST-pid$$" "$H_HOST")"
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_D" >/dev/null 2>&1; H_RC_D=$?
+if [ "$H_RC_D" -eq 0 ] && [ -n "$H_LK_D" ] && [ ! -d "$H_LK_D" ] && [ "$(h_tail "$H_DOC_D")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541d: freeing a lock whose holder is alive removes it and writes no HALTED bullet"
 else
-    fail "T8541d: a live holder's doc was marked: $(h_tail "$H_DOC_D")"
+    fail "T8541d: live holder (rc=$H_RC_D lock=$H_LK_D) tail: $(h_tail "$H_DOC_D")"
 fi
 # e: a doc already WRAPPED gets no HALTED on top
 H_DOC_E="$(h_doc halted-wrapped 'WRAPPED — done')"
-h_hold "$H_DOC_E" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+H_LK_E="$(h_hold "$H_DOC_E" "$H_HOST-pid$H_PID" "$H_HOST")"
 HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
-if [ "$(h_tail "$H_DOC_E")" = "- 10:00 WRAPPED — done" ]; then
-    pass "T8541e: a doc whose newest marker is WRAPPED is left alone"
+if [ -n "$H_LK_E" ] && [ ! -d "$H_LK_E" ] && [ "$(h_tail "$H_DOC_E")" = "- 10:00 WRAPPED — done" ]; then
+    pass "T8541e: a reaped lock whose doc newest marker is WRAPPED leaves the doc alone"
 else
-    fail "T8541e: a WRAPPED doc was marked: $(h_tail "$H_DOC_E")"
+    fail "T8541e: WRAPPED doc (lock=$H_LK_E) tail: $(h_tail "$H_DOC_E")"
 fi
 
 # --- T104: preflight warns when a declared file overlaps another live session's edits
