@@ -692,7 +692,7 @@
         210,
         52
       ],
-      "what": "The automated review has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open until the review has run.",
+      "what": "The automated review has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open until the review has run, except in a starter install, which does not add that check.",
       "loop": [
         "Review round",
         "Findings",
@@ -1113,7 +1113,7 @@
         "Merge the checked commit",
         "Write the handover",
         "The next session reads it",
-        "Back to Start"
+        "Back to Plan"
       ],
       "chains": [
         {
@@ -1159,13 +1159,13 @@
             },
             {
               "k": "ok",
-              "q": "Is the relay delivered to every running worker? (the relay counts how many it reached)",
+              "q": "Is the relay delivered to every running worker? (the relay counts each worker it reached or printed a message for)",
               "by": "the relay",
               "outcome": {
                 "kind": "allow",
                 "text": "Allow"
               },
-              "next": "The old chief wraps; the new chief carries on from step 1.",
+              "next": "The old chief sends any printed message, then wraps; the new chief carries on from step 1.",
               "source": {
                 "file": "scripts/handover/chief-kit/relay-batch.sh",
                 "line": 336,

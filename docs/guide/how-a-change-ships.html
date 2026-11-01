@@ -191,7 +191,7 @@
       <details class="gnd" id="gn-review" data-t="review">
         <summary><span class="gnd-n">Second-model review</span><span class="reach r-clone">from your himmel clone</span></summary>
         <div class="gbody">
-          <p class="gwhat">The automated review has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open until the review has run.</p>
+          <p class="gwhat">The automated review has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open until the review has run, except in a starter install, which does not add that check.</p>
           <h3 class="gl-h"><b>2</b> The loop inside this step</h3>
           <ol class="inner"><li>Review round</li><li>Findings</li><li>Agree: fix and push</li><li>Next round, three at most</li><li>Clean: the review is marked done</li></ol>
           <h3 class="gl-h"><b>3</b> What decides each move</h3>
@@ -257,13 +257,13 @@
         <div class="gbody">
           <p class="gwhat">The merge is pinned to the commit that was checked; the merge squashes it. The handover writes what was done and what is next, so the next session, or the next shift of the chief, starts where this one stopped.</p>
           <h3 class="gl-h"><b>2</b> The loop inside this step</h3>
-          <ol class="inner"><li>Merge the checked commit</li><li>Write the handover</li><li>The next session reads it</li><li>Back to Start</li></ol>
+          <ol class="inner"><li>Merge the checked commit</li><li>Write the handover</li><li>The next session reads it</li><li>Back to Plan</li></ol>
           <h3 class="gl-h"><b>3</b> What decides each move</h3>
           <h4 class="gsubh">Handing over the chief</h4>
           <ol class="chain">
             <li class="ck" data-k="fill" data-src="scripts/handover/chief/chief.sh:1005"><span class="cq">Is the chief's context 45 % full?</span><span class="cby">the chief start <span class="reach r-clone">from your himmel clone</span></span><span class="oc o-allow">Hand over</span><span class="cnext">It starts its successor and writes a handoff note.</span></li>
             <li class="ck" data-k="busy" data-src="scripts/handover/chief/chief.sh:463"><span class="cq">Something of its own still running?</span><span class="cby">the chief start <span class="reach r-clone">from your himmel clone</span></span><span class="oc o-refuse">Refuse</span><span class="cnext">It stops its own tasks first.</span></li>
-            <li class="ck end" data-k="ok" data-src="scripts/handover/chief-kit/relay-batch.sh:336"><span class="cq">Is the relay delivered to every running worker? (the relay counts how many it reached)</span><span class="cby">the relay <span class="reach r-clone">from your himmel clone</span></span><span class="oc o-allow">Allow</span><span class="cnext">The old chief wraps; the new chief carries on from step 1.</span></li>
+            <li class="ck end" data-k="ok" data-src="scripts/handover/chief-kit/relay-batch.sh:336"><span class="cq">Is the relay delivered to every running worker? (the relay counts each worker it reached or printed a message for)</span><span class="cby">the relay <span class="reach r-clone">from your himmel clone</span></span><span class="oc o-allow">Allow</span><span class="cnext">The old chief sends any printed message, then wraps; the new chief carries on from step 1.</span></li>
           </ol>
           <p class="try" hidden><span class="try-l">What if</span> <button type="button" data-hit="busy">a task is still running</button><button type="button" data-hit="ok">every worker has the relay</button></p>
           <p class="gwhat"><b>Planned:</b> the hand-over will also carry the start, plan and design work still in flight (ideas being grilled, specs and plans that are not tickets yet), as short pointers only, each with a one-line status. The new chief opens one only when it picks that work up, so the hand-over stays small.</p>
