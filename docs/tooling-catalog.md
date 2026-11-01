@@ -68,7 +68,6 @@ truth for presence; named profiles can still opt in. Full detail:
 | `frontend-design` | Anthropic's frontend-design skill (official marketplace, local-path entry) | ON-DEMAND — `design` profile only; already cached; activation remains per profile |
 | `ui-ux-pro-max` | UI/UX design intelligence (7 skills), himmel entry pinned to upstream tag `v2.15.0` over HTTPS (replaces the old `ui-ux-pro-max@ui-ux-pro-max-skill` install; the operator script removes it) | ON-DEMAND, `design` core; catalog id `ui-ux-pro-max@himmel` |
 | `impeccable` | Design fluency skill (23 commands, 4 agents), himmel marketplace entry pinned to upstream tag `skill-v4.8.0` over HTTPS as a `git-subdir` source on `plugin/` (same pattern as the earlier plugin entries; a `url`+`path` source caches the whole repo and loses the agents/hooks) | ON-DEMAND — `design` profile only; replaces the user-scope `~/.claude/skills/impeccable` copy |
-| `obsidian-second-brain` | Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv), himmel marketplace entry pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e` (tag `v0.17.0`) over HTTPS (replaces the user-scope `~/.claude/skills/obsidian-second-brain` copy, which loaded ~2.2k tok into every session and ignored `enabledPlugins`). Install: `claude plugin install obsidian-second-brain@himmel` | ON-DEMAND — `lane-content` and `telegram` profiles (plus the operator profile); off in lean workers and the chief; catalog id `obsidian-second-brain@himmel` |
 | `find-docs` | `/find-docs`: current library, framework and API documentation lookup through the Context7 CLI (MIT, upstash/context7 `skills/find-docs`). himmel marketplace git-subdir entry pinned to upstream commit `7836c583918374fbecffacf866afb7594b919466` over HTTPS (replaces the user-scope `~/.claude/skills/find-docs` copy, which ignored `enabledPlugins` and loaded in every session). Install: `claude plugin install find-docs@himmel` | ON-DEMAND — `user` profile (plus the operator profile); off in every other profile; catalog id `find-docs@himmel` |
 | `emilkowalski-skills` | Emil Kowalski's design-engineering/animation skills: all 15 upstream skills load, including animation-performance (a marketplace `skills` list never restricts anything, so animate-expo, mobile-native and write-swift cannot be excluded without a fork). MIT, sha-pinned, `strict:false`, no skills list | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `taste-skill-core` | Leonxlnx/taste-skill, all 13 upstream skills in ONE plugin (sha-pinned, `strict:true`; the former imagegen and styles split never restricted anything) | ON-DEMAND, `design` core |
@@ -181,8 +180,7 @@ registry record **or** a retained version directory in the plugin cache; it
 says nothing about enabled state, effective project scope, or pin freshness.
 `NOT INSTALLED` entries are available catalog candidates without either.
 Legacy split/design marketplace artifacts remain explicitly listed while
-cached; listing them does not enable them. The obsidian-second-brain plugin
-has not yet replaced the user-scope skill on this station.
+cached; listing them does not enable them.
 
 Compare a station observation (read-only, no network):
 
@@ -237,7 +235,6 @@ can also be passed to `--installed` for a hermetic observation.
 | `mattpocock-skills@claude-plugins-official` | INSTALLED |
 | `mcp-server-dev@claude-plugins-official` | INSTALLED |
 | `motion-lexicon@himmel` | INSTALLED |
-| `obsidian-second-brain@himmel` | NOT INSTALLED |
 | `obsidian-triage@himmel` | INSTALLED |
 | `obsidian@obsidian-skills` | INSTALLED |
 | `plannotator-effective-html@himmel` | INSTALLED |
@@ -341,71 +338,24 @@ README's fork-delta section).
 
 ---
 
-### obsidian-second-brain (now the `obsidian-second-brain@himmel` plugin)
+### obsidian-second-brain (REMOVED, HIMMEL-8416)
 
-> The manual install (v0.8, a clone linked into `~/.claude/skills/`) is
-> retired: a user-scope copy ignores `enabledPlugins` and loads into every
-> session. Never re-create it; if one is present, move it out of
-> `~/.claude/skills/` (the profile probe fails while it is there). The
-> research-toolkit decision below still stands.
+Removed from the himmel marketplace and from every profile. The Telegram bridge
+and `lane-content` loaded it on every spawn for about 2.4k-3.5k tokens, and it
+earned nothing: 0 skill calls in 457 bridge runs over 30 days, and `lane-content`
+was never launched. Its one used piece, the MIT `validate-ai-first.sh`
+PostToolUse write hook, now ships in `obsidian-triage` (`hooks/validate-ai-first.sh`,
+licence header kept). The upstream project is still credited in
+[credits.md](credits.md). Nothing in himmel enables it any more. If a plugin
+copy is still installed on a machine, uninstall it (`claude plugin uninstall
+obsidian-second-brain@himmel`). A user-scope clone under `~/.claude/skills/`
+is not a plugin and that command does not touch it: move the directory out of
+`~/.claude/skills/` by hand.
 
-**Repo:** `eugeniughelbur/obsidian-second-brain`
-**Install:** `claude plugin install obsidian-second-brain@himmel` (himmel marketplace, pinned to upstream commit `87fe5437c44fffafb5188566d458891651536d4e`, tag `v0.17.0`)
-**Enable:** the `lane-content` and `telegram` profiles (plus the operator profile, once installed); off in every other named profile
-**Commands:** 47 slash commands from the plugin (5 research-toolkit
-commands are NOT adopted — see Research toolkit line below)
-**Update:** bump the `sha` pin in `marketplace/.claude-plugin/marketplace.json` to the new upstream commit, then `claude plugin marketplace update himmel` and `claude plugin update obsidian-second-brain@himmel` (it is url-sourced, so the marketplace refresh alone leaves the installed copy on the old commit)
-**Research toolkit:** NOT ADOPTED (proposed 2026-07-29, pending ADR sign-off) —
-operator confirmed no active XAI/Grok or Perplexity subscription. A
-`~/.config/obsidian-second-brain/.env`
-credentials file exists (since 2026-06-12) but is presence-without-validity —
-having the file is not evidence of a working subscription. `/x-read`, `/x-pulse`,
-`/research`, `/research-deep`, `/youtube` should be removed from
-`~/.claude/commands/` (operator action — these are user-scope files, not
-tracked by this repo). `/notebooklm` (Gemini File Search) uses a different key
-and is unaffected by this decision. Decision record:
+**Research toolkit:** was never adopted; the decision record stays at
 `docs/tool-adoption/registry.md` (research-toolkit row) and
-`specs/adr/adr-obsidian-second-brain-research-toolkit.md` in the handover
-state repo. Revisit if
-a subscription lands.
-
-**Commands:**
-
-| Command | Purpose | Category |
-|---------|---------|---------|
-| `/obsidian-init` | Generate vault `_CLAUDE.md`, `index.md`, `log.md` | Setup |
-| `/obsidian-save` | Extract vault-worthy items from conversation | Core |
-| `/obsidian-daily` | Create/update today's daily note | Core |
-| `/obsidian-log` | Log a work or dev session | Core |
-| `/obsidian-task` | Add tasks to kanban boards | Core |
-| `/obsidian-person` | Create/update person notes | Core |
-| `/obsidian-project` | Create/update project notes | Core |
-| `/obsidian-find` | Search vault for notes | Core |
-| `/obsidian-capture` | Quick capture to inbox | Core |
-| `/obsidian-recap` | Summarize recent vault activity | Review |
-| `/obsidian-review` | Review a note or area | Review |
-| `/obsidian-board` | Update kanban boards | Review |
-| `/obsidian-decide` | Log a decision | Review |
-| `/obsidian-adr` | Architecture Decision Record | Review |
-| `/obsidian-learn` | Log learning (book, course, concept) | Review |
-| `/obsidian-export` | Export vault content | Utility |
-| `/obsidian-world` | World/external context notes | Utility |
-| `/obsidian-health` | Vault audit — orphans, dead links | Maintenance |
-| `/obsidian-synthesize` | Auto-detect cross-vault patterns | Maintenance |
-| `/obsidian-reconcile` | Find and resolve contradictions | Maintenance |
-| `/obsidian-ingest` | Ingest a source into vault | Maintenance |
-| `/obsidian-visualize` | Visualize vault relationships | Thinking |
-| `/obsidian-challenge` | Red-team ideas against vault history | Thinking |
-| `/obsidian-emerge` | Surface unnamed patterns from recent notes | Thinking |
-| `/obsidian-connect` | Bridge unrelated domains | Thinking |
-| `/obsidian-graduate` | Promote idea fragments into full projects | Thinking |
-| `/research` | Web research with citations → vault | Research |
-| `/research-deep` | Deep multi-source research → vault | Research |
-| `/x-read` | Analyze X posts | Research |
-| `/x-pulse` | X trend analysis | Research |
-| `/notebooklm` | Source-grounded vault research (Gemini) | Research |
-| `/youtube` | Extract and summarize YouTube videos — **not for ad-hoc use here** (needs a Gemini/Grok key, breaks on ffmpeg 9); use obsidian-triage `/watch-youtube` | Research |
-| `/create-command` | Interview flow to create new vault command | Meta |
+`specs/adr/adr-obsidian-second-brain-research-toolkit.md` in the handover state
+repo.
 
 ---
 
@@ -780,7 +730,7 @@ changing which config dir loads, so hooks are unaffected).
 - `profiles` — `operator` (`null` sentinel: full `~/.claude`, never injected),
   `user` (adopter set), `lane-impl` (impl workers: floor +
   `lean-skills`), `lane-review` (automated review-only, same lean set),
-  `lane-content` (impl + `obsidian-triage` + `obsidian-second-brain`), `telegram`
+  `lane-content` (impl + `obsidian-triage`), `telegram`
   (the Telegram bridge's lean set + `mcpServers: ["qmd"]`
   allowlist — see [lane-calibration.md](internals/lane-calibration.md#plugin-profiles-lane-impl-is-not-the-chief-profile)).
 

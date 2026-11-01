@@ -246,6 +246,14 @@ user `himmel`:
 Keep NAT port forwards on loopback (`127.0.0.1`), set with `modifyvm` so they
 survive a power cycle. Run one VM at a time.
 
+**claudex guest.** `himmel-claudex` (host port `2229`) is a linked clone of
+`ubuntu_new` that carries the claudex lane. `scripts/vm/claudex-guest.sh
+create|provision|status himmel-claudex` builds and probes it; the operator makes
+the Codex login inside the guest; a session then starts with `scripts/vm/launch-guest.sh
+--lane claudex --classifier-model <m> --debug-file <guest path> himmel-claudex
+<prompt-file>` (auto permission mode, never a skip-permissions flag). The full
+order is in [testing.md](../internals/testing.md#claudex-lane-on-a-test-vm).
+
 Two guest types are supported: an Ubuntu **desktop** guest set up by
 `ubuntu-vm-setup.py`, and an Ubuntu **server** cloud image provisioned by
 cloud-init.
