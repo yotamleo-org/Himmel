@@ -135,7 +135,8 @@ const chainLog = readJsonl(join(stateDir, 'chain-log.jsonl'));
 // ---------------------------------------------------------------- merges and completion
 const mergesOf = new Map();
 for (const r of events) {
-    if (r.event !== 'merge' || !r.key) continue;
+    // A funnel row an older worker-jira-status.sh wrote under event merge has no contract.
+    if (r.event !== 'merge' || !r.key || r.contract === undefined) continue;
     if (!mergesOf.has(r.key)) mergesOf.set(r.key, []);
     mergesOf.get(r.key).push(r);
 }

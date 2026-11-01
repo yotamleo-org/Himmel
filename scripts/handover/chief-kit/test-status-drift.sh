@@ -603,6 +603,11 @@ reset "In Review"; logrow merge "$K" moved 7 no
 drift
 check "3b: a contract-no merge row is not a MERGE-MISMATCH" "$(dcount MERGE-MISMATCH)" 0
 
+reset "In Review"; logrow merge "$K" miss 7 yes
+printf '{"ts":"2026-10-21T10:00:05Z","event":"merge","key":"%s","result":"noop","rule":"D3","from":"In Review"}\n' "$K" >> "$LOG"
+drift
+contains "3b (HIMMEL-8522): a contract-less derive row under event merge does not hide the contract=yes row" "$(drows MERGE-MISMATCH)" "MERGE-MISMATCH $K"
+
 reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
 drift
 contains "3b: more merge keys than the check budget is reported, not dropped" "$(drows HEALTH)" "checked 20 of 21"

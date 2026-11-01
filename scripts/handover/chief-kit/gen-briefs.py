@@ -561,6 +561,57 @@ def render_rm_brief(l, ctx):
     return out + '\n'
 
 
+REMAINING_RE = re.compile(r'^\s*remaining:\s*(.*\S)', re.I | re.M)
+
+
+def partial_merge_prs(keys):
+    """The PR numbers of every merged contract=no (partial) merge row of these keys, oldest first.
+    The rows are written by merge-on-green.sh; the funnel's own rows carry no contract and never match."""
+    state = os.environ.get('TICKET_STATUS_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
+    prs, seen = [], set()
+    try:
+        with open(os.path.join(state, 'status-events.jsonl')) as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(r, dict) or r.get('event') != 'merge' or r.get('contract') != 'no' or r.get('key') not in keys:
+                    continue
+                pr = str(r.get('pr', ''))
+                if pr.isdigit() and pr not in seen:
+                    seen.add(pr)
+                    prs.append(pr)
+    except OSError:
+        pass
+    return prs
+
+
+def pr_remaining(pr, repo):
+    """The `Remaining:` text of PR <pr>'s body (the line merge-on-green.sh reads), or '' when it has none or the body is unreadable.
+    GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as `$CMD pr view <pr> --json body -q .body`."""
+    gh = os.environ.get('GEN_BRIEFS_GH_CMD') or 'gh'
+    try:
+        r = subprocess.run([gh, 'pr', 'view', pr, '--json', 'body', '-q', '.body'], cwd=repo, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    if r.returncode != 0:
+        return ''
+    return ' '.join(m.strip() for m in REMAINING_RE.findall(r.stdout))
+
+
+def partial_merge_block(keys, repo):
+    """The brief's `Already merged` block: every merged contract=no PR of the ticket and its Remaining: text, so a worker
+    never redoes merged work. A PR whose body has no Remaining: line is flagged for a chief note. No such PR, no block."""
+    lines = []
+    for pr in partial_merge_prs(keys):
+        rem = pr_remaining(pr, repo)
+        lines.append('PR `#%s`: %s' % (pr, 'Remaining: ' + rem if rem else 'needs a chief note (its body has no `Remaining:` line); do not guess the remaining work'))
+    if not lines:
+        return ''
+    return ('> **Already merged (partial merges, contract=no; do not redo this work):** ' + '; '.join(lines) + '.\n\n')
+
+
 def render_brief(l, ctx):
     n, keys = l['label'], l['keys']
     gets =' and '.join('`JIRA_PROJECT_KEY=%s node %s get %s`' % (k.split('-')[0], shlex.quote(ctx['kit'] + '/scripts/jira/dist/index.js'), k) for k in keys)
@@ -586,7 +637,7 @@ template_version: 3
 
 > **Prior art:** {prior}
 
-> **Contract:**
+{partialblock}> **Contract:**
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
 > 2. Do exactly what the ticket asks, smallest correct change. RED first: a failing test row reproducing the defect, shown failing before the fix: run it as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>` with nothing appended (no `>`, `2>&1`, `| tail`, `; echo rc`) and Read the log path its ERR line prints. {extra}{envline}
 > 2a. A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv (duration measured locally); name the rows in READY. Rows under a ci-trust-paths pattern still get a trust-reviewed GO.
@@ -611,7 +662,7 @@ template_version: 3
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
-           ctline=completes_line(l['scope']), grants=grants_block(l),
+           ctline=completes_line(l['scope']), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
            inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',

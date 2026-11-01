@@ -342,7 +342,7 @@ fi
 
 # --- from the outcome log ----------------------------------------------------------
 if [ -n "$logtail" ]; then
-    mkeys_all=$(jq -rs '[.[] | select(.event == "merge" and .key != null)] | group_by(.key) | map(last | select(.contract == "yes") | .key) | .[]' <<<"$logtail" 2>/dev/null) # swallow-ok: an unparsable window leaves MERGE-MISMATCH empty
+    mkeys_all=$(jq -rs '[.[] | select(.event == "merge" and .key != null and has("contract"))] | group_by(.key) | map(last | select(.contract == "yes") | .key) | .[]' <<<"$logtail" 2>/dev/null) # swallow-ok: an unparsable window leaves MERGE-MISMATCH empty
     mkeys=$(printf '%s\n' "$mkeys_all" | head -n 20)
     nmk=$(printf '%s\n' "$mkeys_all" | grep -c .) || nmk=0
     if [ "$nmk" -gt 20 ]; then

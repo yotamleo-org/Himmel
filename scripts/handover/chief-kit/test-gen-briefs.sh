@@ -36,7 +36,8 @@ EOF
 chmod +x "$WORK/wt.sh"
 export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
-export GEN_BRIEFS_NO_WT_CHECK=1  # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
+export TICKET_STATUS_STATE_DIR="$WORK/state-empty"  # the partial-merge block reads status-events.jsonl here, never the real one
+export GEN_BRIEFS_NO_WT_CHECK=1 # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
 
 cat > "$WORK/workers.json" <<'EOF'
 [
@@ -821,6 +822,40 @@ has "the dry-run launch of a non-UI worker reports its MCP servers" "$ui_mcp_imp
 lacks "the dry-run launch of a non-UI worker lists no playwright" "$ui_mcp_impl" "playwright"
 ui_gen - 'Bad;x'
 [ "$ui_rc" = 1 ] && grep -q 'profile' "$WORK/ui.err" && [ ! -e "$WORK/ui/launch-N901.sh" ] && pass "an invalid worker profile is refused before anything is written" || fail "bad profile rc=$ui_rc"
+
+# The brief names every merged contract=no PR of its ticket and the PR body's Remaining: text, so merged work is never redone.
+mkdir -p "$WORK/pm-state"
+cat > "$WORK/pm-state/status-events.jsonl" <<'EOF'
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4313","head":"aaa","contract":"no","result":"noop"}
+{"ts":"t","event":"derive","key":"HIMMEL-9101","pr":"4313","result":"moved","rule":"D3"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4313","result":"moved","rule":"D3"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4320","head":"bbb","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4330","head":"ccc","contract":"yes","result":"moved"}
+{"ts":"t","event":"merge","key":"HIMMEL-9102","pr":"4399","head":"ddd","contract":"no","result":"noop"}
+EOF
+cat > "$WORK/gh-stub.sh" <<'EOF'
+#!/usr/bin/env bash
+case "$3" in
+    4313) printf 'Slice C1a of the thing.\n\nRemaining: slices C1b and C4 (the {brace} readers)\n' ;;
+    4320) printf 'No remaining line here.\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/gh-stub.sh"
+cat > "$WORK/pm.json" <<'EOF'
+[{"label":"N911","keys":["HIMMEL-9101"],"slug":"pm-fix","branch":"fix/himmel-9101-pm-fix","title":"a partial ticket","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","writes":"scripts/x/","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9101] f"},
+ {"label":"N912","keys":["HIMMEL-9103"],"slug":"pm-none","branch":"fix/himmel-9103-pm-none","title":"a clean ticket","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","writes":"scripts/x/","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9103] f"}]
+EOF
+pm_out="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw" --deadline 1791475000 2>&1)"; pm_rc=$?
+[ "$pm_rc" = 0 ] && pass "a ticket with partial merges generates (rc 0)" || fail "partial-merge gen rc=$pm_rc: $pm_out"
+PM1="$(tr '\n' ' ' < "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" | tr -s ' ')"
+has "the brief names the merged contract=no PR and its Remaining: text" "$PM1" "PR \`#4313\`: Remaining: slices C1b and C4 (the {brace} readers)"
+has "a partial PR whose body has no Remaining: line is marked as needing a chief note" "$PM1" "PR \`#4320\`: needs a chief note"
+lacks "a contract=yes merge row is not listed as a partial" "$PM1" '#4330'
+lacks "another ticket's partial merge is not listed" "$PM1" '#4399'
+bash "$HERE/brief-lint.sh" "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" 2>"$WORK/lintpm.err"; rc=$?
+[ "$rc" = 0 ] && pass "the partial-merge brief passes brief-lint.sh" || fail "partial-merge brief-lint rc=$rc: $(cat "$WORK/lintpm.err")"
+lacks "a ticket with no partial merge gets no Already merged block" "$(cat "$WORK/pm-bucket/HIMMEL-9103-N912-pm-none-2026-10-08.md")" "Already merged"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
