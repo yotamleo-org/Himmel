@@ -258,7 +258,7 @@ def resolve_secrets(root, names):
     except (OSError, subprocess.SubprocessError):
         return out
     # exit 1 = nothing served; the stdout of a partial hit is still usable.
-    for line in r.stdout.splitlines():
+    for line in r.stdout.split("\n"):
         name, sep, value = line.partition("=")
         if sep and name in names:
             out[name] = value

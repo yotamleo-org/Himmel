@@ -959,6 +959,33 @@ class TestResolveSecrets(unittest.TestCase):
             spec.loader.exec_module(mod)
         self.assertEqual((mod.USER, mod.PASS), ("dummy-user-s0", "dummy-pass-s0"))
 
+    def _assert_falls_back_to_dotenv(self):
+        (self.tmp / ".env").write_text("himmel_github_token_vm=dummy-from-dotenv\n")
+        self.assertEqual(vmsdk.resolve_secrets(self.tmp, ["himmel_github_token_vm"]), {})
+        with mock.patch.object(vmsdk, "_env_path", return_value=self.tmp / ".env"):
+            vmsdk._load_dotenv_into_env(["himmel_github_token_vm"])
+        self.assertEqual(os.environ["himmel_github_token_vm"], "dummy-from-dotenv")
+
+    def test_a_missing_helper_returns_nothing_and_dotenv_serves(self):
+        with mock.patch.object(vmsdk, "_RESOLVER", self.tmp / "no-such-himmel-secrets"):
+            self._assert_falls_back_to_dotenv()
+
+    def test_a_helper_timeout_returns_nothing_and_dotenv_serves(self):
+        boom = vmsdk.subprocess.TimeoutExpired(cmd="bash", timeout=10)
+        with mock.patch.object(vmsdk.subprocess, "run", side_effect=boom) as run:
+            self._assert_falls_back_to_dotenv()
+        self.assertEqual(run.call_args.kwargs.get("timeout"), 10)  # the lookup is bounded
+
+    def test_a_helper_oserror_returns_nothing_and_dotenv_serves(self):
+        with mock.patch.object(vmsdk.subprocess, "run", side_effect=OSError("exec failed")):
+            self._assert_falls_back_to_dotenv()
+
+    def test_a_value_is_never_on_argv(self):
+        _kput("himmel_github_token_vm", "dummy-argv-s0")
+        with mock.patch.object(vmsdk.subprocess, "run", wraps=vmsdk.subprocess.run) as run:
+            vmsdk.resolve_secrets(self.tmp, ["himmel_github_token_vm"])
+        self.assertNotIn("dummy-argv-s0", " ".join(run.call_args.args[0]))
+
     def test_a_live_env_value_still_wins(self):
         _kput("himmel_github_token_vm", "dummy-from-keyring")
         os.environ["himmel_github_token_vm"] = "dummy-live"
