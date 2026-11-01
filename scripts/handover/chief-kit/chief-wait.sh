@@ -1373,6 +1373,8 @@ ready_ci() {
     fi
     # swallow-ok: an unreadable check list is PENDING, never GREEN
     b="$(timeout -k 5 30 gh pr checks "$1" --json bucket -q '.[].bucket' </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit
+    # gh exits 1 on a failed check and 8 on a pending one; any other non-zero is a failed read
+    case $? in 0|1|8) ;; *) printf 'PENDING\n'; return ;; esac
     if printf '%s\n' "$b" | grep -qE '^(fail|cancel)$'; then printf 'RED\n'
     elif [ -z "$b" ] || printf '%s\n' "$b" | grep -qx pending; then printf 'PENDING\n'
     else printf 'GREEN\n'; fi
