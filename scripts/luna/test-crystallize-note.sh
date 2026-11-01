@@ -189,6 +189,37 @@ lane_fallback "no-lane+BANK-STALE" BANK-STALE -u HIMMEL_API_LANE -u HIMMEL_API_A
 lane_fallback "no-lane+BANK-UNKNOWN" BANK-UNKNOWN -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT
 lane_fallback "bad-account+PROCEED" PROCEED HIMMEL_API_ACCOUNT=invalid
 
+# --- Case L4: lane ON but its call changes nothing (no credit) — the subscription takes over ---
+# NOCREDIT_STUB plays both launchers: called the lane way (no --output-format) it does
+# nothing, like a lane refusal; called the subscription way it runs the claude stub.
+NOCREDIT_STUB="$LANE_DIR/nocredit-stub.sh"
+cat > "$NOCREDIT_STUB" <<EOF
+#!/usr/bin/env bash
+case " \$* " in *" --output-format "*) exec "$STUB" "\$@" ;; esac
+exit 0
+EOF
+chmod +x "$NOCREDIT_STUB"
+lane_nocredit() { # <label> <verdict>
+    local label="$1" verdict="$2"
+    local sb note tr err rc=0
+    sb="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-nocredit.XXXXXX")" || exit 1
+    note="$sb/note.md"; tr="$sb/t.jsonl"; err="$sb/stderr.txt"
+    write_note "$note"; printf '{}\n' > "$tr"
+    env PF_VERDICT="$verdict" CRYSTALLIZE_CLAUDE_BIN="$NOCREDIT_STUB" STUB_MODE=success \
+        CRYSTALLIZE_PID_DIR="$sb/pids" bash "$CRYS" "$note" "$tr" 2>"$err" || rc=$?
+    case "$verdict" in
+        SKIPPED-*)
+            if [ "$rc" != "0" ] && [ "$(grep -c '^crystallize-note: skipped' "$err" 2>/dev/null)" = "1" ] \
+                && grep -q '^crystallized: false$' "$note"; then pass "$label: lane call changed nothing + $verdict -> one skip line, note untouched"; else fail "$label: expected one skip line and an untouched note (rc $rc)"; fi ;;
+        *)
+            if [ "$rc" = "0" ] && grep -q '^crystallized: true$' "$note"; then pass "$label: lane call changed nothing + $verdict -> the subscription crystallized the note"; else fail "$label: subscription did not take over (rc $rc)"; fi ;;
+    esac
+    rm -rf "$sb"
+}
+lane_nocredit "lane-nocredit" PROCEED
+lane_nocredit "lane-nocredit" BANK-STALE
+lane_nocredit "lane-nocredit" SKIPPED-BANK
+
 # A pinned proxy variable must not ride into the subscription run: the run is skipped, not proxied.
 SB="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-pin.XXXXXX")" || exit 1
 NOTE="$SB/note.md"; TR="$SB/t.jsonl"; MARK="$SB/marker.txt"; ENVD="$SB/env.txt"

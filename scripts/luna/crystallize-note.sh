@@ -6,8 +6,9 @@
 # Files Touched / Follow-ups), preserving frontmatter identity and setting
 # `crystallized: true`. With HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto
 # in the launching shell it is billed to the API through scripts/api-lane/claude-api.sh
-# (one print-mode call, tools limited to Read,Edit, a per-call budget). Without them
-# it falls back to one subscription `claude -p` call (native auth, json output,
+# (one print-mode call, tools limited to Read,Edit, a per-call budget). Without them,
+# or when that lane call leaves the note unchanged (no credit), it falls back to one
+# subscription `claude -p` call (native auth, json output,
 # --permission-mode acceptEdits, same tools and budget), run only when
 # scripts/lib/usage-preflight.sh prints PROCEED, BANK-STALE or BANK-UNKNOWN; on
 # SKIPPED-BANK, SKIPPED-FLEET or no verdict it prints one skip line and exits 2.
@@ -51,13 +52,26 @@ DEFAULT_MODEL="claude-opus-4-8"
 DEFAULT_BUDGET_USD="1.00"
 
 # Two ways to run, one gate. With the API lane on, the call goes through the lane
-# launcher. Without it (lane vars unset, or the lane has no credit), the call runs on
-# the subscription, but only if scripts/lib/usage-preflight.sh does not say stop:
-# PROCEED, BANK-STALE and BANK-UNKNOWN run (the last two are fail-open by that
-# script's contract); SKIPPED-BANK, SKIPPED-FLEET and anything else print ONE skip
-# line, exit 2 and leave the note untouched. The test overrides replace the launcher
-# and the preflight command, never the decision: CRYSTALLIZE_CLAUDE_BIN alone passes
-# no gate.
+# launcher; if that call leaves the note unchanged (no credit, a refusal), or the lane
+# is off (vars unset), the call runs on the subscription instead, but only if
+# scripts/lib/usage-preflight.sh does not say stop: PROCEED, BANK-STALE and
+# BANK-UNKNOWN run (the last two are fail-open by that script's contract);
+# SKIPPED-BANK, SKIPPED-FLEET and anything else print ONE skip line, exit 2 and leave
+# the note untouched. The test overrides replace the launcher and the preflight
+# command, never the decision: CRYSTALLIZE_CLAUDE_BIN alone passes no gate.
+subscription_gate() { # <why the subscription is wanted>
+    local why="$1" pf_out pf_verdict
+    PREFLIGHT="${CRYSTALLIZE_PREFLIGHT_BIN:-$HIMMEL_ROOT/scripts/lib/usage-preflight.sh}"
+    pf_out="$(bash "$PREFLIGHT" 2>/dev/null)"
+    pf_verdict="${pf_out##*$'\n'}"
+    case "$pf_verdict" in
+        PROCEED|BANK-STALE|BANK-UNKNOWN) ;;
+        *) echo "crystallize-note: skipped: $why (set HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell for the API lane) and the subscription fallback is blocked by usage-preflight (${pf_verdict:-no verdict}) -- note untouched" >&2
+           exit 2 ;;
+    esac
+    CLAUDE_BIN="${CRYSTALLIZE_CLAUDE_BIN:-$(command -v claude 2>/dev/null || true)}"
+    [ -n "$CLAUDE_BIN" ] || exit 0
+}
 LANE=0
 { [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } && LANE=1
 if [ "$LANE" = "1" ]; then
@@ -65,16 +79,7 @@ if [ "$LANE" = "1" ]; then
     [ -r "$LAUNCHER" ] \
         || { echo "crystallize-note: refusing claude-api: $LAUNCHER is missing -- note untouched" >&2; exit 2; }
 else
-    PREFLIGHT="${CRYSTALLIZE_PREFLIGHT_BIN:-$HIMMEL_ROOT/scripts/lib/usage-preflight.sh}"
-    PF_OUT="$(bash "$PREFLIGHT" 2>/dev/null)"
-    PF_VERDICT="${PF_OUT##*$'\n'}"
-    case "$PF_VERDICT" in
-        PROCEED|BANK-STALE|BANK-UNKNOWN) ;;
-        *) echo "crystallize-note: skipped: the API lane is off (set HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell) and the subscription fallback is blocked by usage-preflight (${PF_VERDICT:-no verdict}) -- note untouched" >&2
-           exit 2 ;;
-    esac
-    CLAUDE_BIN="${CRYSTALLIZE_CLAUDE_BIN:-$(command -v claude 2>/dev/null || true)}"
-    [ -n "$CLAUDE_BIN" ] || exit 0
+    subscription_gate "the API lane is off"
 fi
 
 # Concurrency cap — never pile up N full claude processes for N simultaneous
@@ -273,7 +278,16 @@ launch_subscription() {
         --permission-mode acceptEdits --tools Read,Edit --max-budget-usd "$BUDGET_USD" \
         ${add_dir[@]+"${add_dir[@]}"} </dev/null >/dev/null 2>&1
 }
-if [ "$LANE" = "1" ]; then ( launch_api_lane ) || true; else ( launch_subscription ) || true; fi
+if [ "$LANE" = "1" ]; then
+    ( launch_api_lane ) || true
+    # The lane left the note unchanged (no credit, a refusal): try the subscription once.
+    if [ "$(_hash "$NOTE_PATH")" = "$HASH_BEFORE" ]; then
+        subscription_gate "the API lane call changed nothing"
+        ( launch_subscription ) || true
+    fi
+else
+    ( launch_subscription ) || true
+fi
 
 # Edit-confirmed flag-set (T1d): only stamp crystallized:true when the note body
 # actually changed. A failed/no-op run leaves the note byte-unchanged and the
