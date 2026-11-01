@@ -28,11 +28,10 @@ ledger_path() {
     printf '%s/.ledger/vm-cost.jsonl\n' "$root"
 }
 
-case "${1:-}" in
-    --path) [ "$#" -eq 1 ] || { echo "usage: vm-cost.sh [--path]" >&2; exit 2; }; ledger_path; exit $? ;;
-    '') ;;
-    *) echo "usage: vm-cost.sh [--path]" >&2; exit 2 ;;
-esac
+if [ "$#" -gt 0 ]; then
+    [ "$#" -eq 1 ] && [ "$1" = --path ] || { echo "usage: vm-cost.sh [--path]" >&2; exit 2; }
+    ledger_path; exit $?
+fi
 command -v jq >/dev/null 2>&1 || { echo "vm-cost: jq is required" >&2; exit 1; }
 LEDGER="$(ledger_path)" || exit 1
 [ -r "$LEDGER" ] || { echo "vm-cost: no ledger at $LEDGER" >&2; exit 1; }

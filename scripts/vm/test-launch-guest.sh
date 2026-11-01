@@ -252,6 +252,23 @@ rc=0; out="$(unset LAUNCH_GUEST_COST_LEDGER; HANDOVER_DIR="$tmp/hd" bash "$COST"
 check "C5 vm-cost --path: default sits under the handover root" "$out" "$tmp/hd/.ledger/vm-cost.jsonl"
 rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --path extra 2>&1)" || rc=$?
 check "C5 vm-cost --path with an extra argument: exit 2" "$rc" "2"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" '' --bogus 2>&1)" || rc=$?
+check "C5 vm-cost: an empty first argument is not the default report: exit 2" "$rc" "2"
+
+# a signal to the launcher reaches the guest ssh and the cut-short run still gets its row
+printf '#!/bin/sh\necho $$ > "$SLEEP_PID"\nexec sleep 30\n' > "$tmp/bin/ssh"
+export SLEEP_PID="$tmp/sleeper.pid"
+rm -f "$LEDGER" "$SLEEP_PID"
+(cd "$tmp/repo" && exec env PATH="$tmp/bin:$PATH" LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-ok.sh" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 bash "$SCRIPT" ubuntu_new "$P" > /dev/null 2>&1) &
+lpid=$!
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$SLEEP_PID" ] && break; sleep 0.25; done
+kill -TERM "$lpid" 2>/dev/null
+rc=0; wait "$lpid" || rc=$?
+spid="$(cat "$SLEEP_PID" 2>/dev/null)"
+check "C6 SIGTERM to the launcher: the guest ssh is gone" "$(kill -0 "$spid" 2>/dev/null && echo alive || echo gone)" "gone"
+check "C6 SIGTERM to the launcher: the cut-short run has its row" "$(rows)" "1"
+check "C6 SIGTERM to the launcher: exit is the signalled child's" "$rc" "143"
+kill "$spid" 2>/dev/null
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi

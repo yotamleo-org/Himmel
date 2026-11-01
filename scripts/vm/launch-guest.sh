@@ -167,7 +167,13 @@ fi
 OUT="$(mktemp "${TMPDIR:-/tmp}/launch-guest-out.XXXXXX")" || exit 1
 trap 'rm -f "$OUT"' EXIT
 T0="$(date +%s)"
-RC=0; "${CMD[@]}" < "$PROMPT" > "$OUT" || RC=$?
+# the launcher is the ssh's parent now (it was exec), so a signal to it is forwarded to the
+# child and waited out, and the row still records the run that was cut short
+"${CMD[@]}" < "$PROMPT" > "$OUT" &
+CPID=$!
+trap 'kill "$CPID" 2>/dev/null' TERM INT HUP
+RC=0
+while kill -0 "$CPID" 2>/dev/null; do wait "$CPID"; RC=$?; done
 T1="$(date +%s)"
 cat "$OUT"
 if LEDGER="$(bash "$HERE/vm-cost.sh" --path 2>/dev/null)" && command -v jq >/dev/null 2>&1; then
