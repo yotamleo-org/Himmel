@@ -30,8 +30,10 @@ The chief supplies these paths in the launching shell:
   `569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13`.
   For a path ending in `marketplace/plugins/pstack/skills/statechart/scripts/statechart`,
   the vendored tree as landed on main (squash `7844b4172`, PR 4327; reviewed
-  at `ff8f35c3bb172d03dec3fdf93eaa539a5685d3ad`, whose only later change is the
-  `test/cli.test.ts` TLA2TOOLS sha helper) instead requires
+  at `ff8f35c3bb172d03dec3fdf93eaa539a5685d3ad`, whose only later change is in
+  `test/cli.test.ts`: a TLA2TOOLS sha helper, under which about 40 replay tests
+  skip without the pinned jar, and a missing-Java test matched loosely on
+  ENOENT) instead requires
   `61e16ef034ab70f9ab7c35678db5d52cd82817b85d41007b267ea66a0b443587`.
   `test-model-check-report.sh` fails if the vendored tree in the checkout stops
   hashing to this pin.

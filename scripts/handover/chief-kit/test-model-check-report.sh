@@ -269,6 +269,8 @@ sut, doc, root = map(pathlib.Path, sys.argv[1:])
 def digest(root):
     h = hashlib.sha256()
     for p in sorted(root.rglob('*')):
+        if p.is_symlink():
+            raise SystemExit(f'symlink in compiler tree: {p}')
         if p.is_dir():
             continue
         h.update(p.relative_to(root).as_posix().encode() + b'\0')
