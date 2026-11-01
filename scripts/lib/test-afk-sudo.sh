@@ -1580,6 +1580,115 @@ python3 -I -c 'import json, sys; p = sys.argv[1] + "/etc/himmel/afk-sudo.json"; 
 out=$(h 0 lockdown --from "$OP" --chat "$OP")
 assert_eq "slice 4: lockdown leaves the mode alone and only switches the station off" "False all" "$(enabled_of)"
 
+echo "== HIMMEL-8067 slice 5: every approve, deny, refusal and run row says who approved and how =="
+# lrows <id>: one `event result via approver` line per ledger row of that request ("-" when a field is absent).
+lrows() { python3 -I -c 'import json, sys
+for l in open(sys.argv[1] + "/var/log/himmel/afk-sudo.jsonl"):
+    r = json.loads(l)
+    if r.get("id") == sys.argv[2]:
+        print(r["event"], r["result"], r.get("via", "-"), r.get("approver", "-"))' "$R" "$1"; }
+# approve_via <now-offset> <id> <via> <approver> <code> [from]: the operator's `<nonce> <code>` on stdin, the channel in flags.
+approve_via() { printf '%s %s\n' "$(state_nonce "$2")" "$5" | AFK_SUDO_RUN=1 AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) python3 -I "$HELPER" approve "$2" --from "${6:-$OP}" --chat "${6:-$OP}" --via "$3" --approver "$4" 2>&1; }
+new_root via5; cfg "$ALL" true
+out=$(hr 0 run-request --session S1 --ticket HIMMEL-8067 --blocked-by classifier -- true </dev/null); id=$(rid "$out")
+held_nonce=$(state_nonce "$id")
+out=$(approve_via 3 "$id" ssh alice "$(code 3)")
+assert_contains "RED 5a: an SSH approve runs the request" "result=ran" "$out"
+rows=$(lrows "$id")
+assert_contains "RED 5a: the approval row says ssh and who" "code-check approved ssh alice" "$rows"
+assert_contains "RED 5a: the run row says ssh and who" "run ran ssh alice" "$rows"
+assert_contains "the request row still holds what the session said blocked it" '"blocked_by": "classifier"' "$(ledger)"
+assert_absent "the ledger never holds the code" "$(code 3)" "$(ledger)"
+assert_eq "the nonce root held was a real 4-character one" "4" "${#held_nonce}"
+assert_absent "the ledger never holds the nonce" "\"$held_nonce\"" "$(ledger)"
+new_root via5tg; cfg "$ALL" true
+id=$(rid "$(rr 0 -- true)"); out=$(AFK_SUDO_RUN=1 approve 3 "$id" "$(code 3)")
+assert_contains "the Telegram path passes neither flag and still runs" "result=ran" "$out"
+rows=$(lrows "$id")
+assert_contains "a Telegram approve defaults to via telegram and the sender" "code-check approved telegram $OP" "$rows"
+assert_contains "a Telegram run row defaults the same way" "run ran telegram $OP" "$rows"
+new_root via5deny; cfg "$ALL" true
+id=$(rid "$(rr 0 -- true)")
+out=$(h 1 deny "$id" --from "$OP" --chat "$OP" --via ssh --approver alice)
+assert_contains "an SSH deny denies" "result=denied" "$out"
+assert_contains "RED 5b: the deny row says ssh and who" "deny denied ssh alice" "$(lrows "$id")"
+id=$(rid "$(rr 2 -- true)"); h 3 deny "$id" --from "$OP" --chat "$OP" >/dev/null
+assert_contains "a Telegram deny defaults to via telegram" "deny denied telegram $OP" "$(lrows "$id")"
+id=$(rid "$(rr 4 -- true)")
+out=$(h 5 deny "$id" --from 99 --chat 99 --via ssh --approver mallory)
+assert_contains "a deny from a non-operator is refused" "result=not-operator" "$out"
+assert_contains "RED 5c: the not-operator refusal row says ssh and who" "code-check not-operator ssh mallory" "$(lrows "$id")"
+out=$(h 6 deny zzzzzzzz --from "$OP" --chat "$OP" --via ssh --approver alice)
+assert_contains "a deny for an unknown id finds nothing" "result=no-pending" "$out"
+assert_contains "RED 5c: the no-pending deny row says ssh and who" "deny no-pending ssh alice" "$(lrows zzzzzzzz)"
+
+echo "== slice 5: each refusal of an SSH approve carries via and approver =="
+new_root via5ref; cfg "$ALL" true
+id=$(rid "$(rr 0 -- true)")
+assert_contains "a non-operator SSH approve is refused" "result=not-operator" "$(approve_via 3 "$id" ssh mallory "$(code 3)" 99)"
+assert_contains "RED 5d: not-operator row" "code-check not-operator ssh mallory" "$(lrows "$id")"
+assert_contains "a wrong code is refused" "result=wrong-code" "$(approve_via 4 "$id" ssh alice 000000)"
+assert_contains "RED 5d: wrong-code row" "code-check wrong-code ssh alice" "$(lrows "$id")"
+id=$(rid "$(rr 40 -- true)"); c=$(code 43)
+out=$(printf '%s %s\n' "$(other_nonce "$(state_nonce "$id")")" "$c" | AFK_SUDO_RUN=1 AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + 43)) python3 -I "$HELPER" approve "$id" --from "$OP" --chat "$OP" --via ssh --approver alice 2>&1)
+assert_contains "a wrong nonce is refused" "result=bad-nonce" "$out"
+assert_contains "RED 5d: bad-nonce row" "code-check bad-nonce ssh alice" "$(lrows "$id")"
+id=$(rid "$(rr 80 -- true)")
+assert_contains "the spent code is a replay" "result=replay" "$(approve_via 81 "$id" ssh alice "$c")"
+assert_contains "RED 5d: replay row" "code-check replay ssh alice" "$(lrows "$id")"
+h 82 deny "$id" --from "$OP" --chat "$OP" >/dev/null
+id=$(rid "$(rr 120 -- true)")
+assert_contains "an approve after the window is expired" "result=expired" "$(approve_via 1100 "$id" ssh alice "$(code 1100)")"
+assert_contains "RED 5d: expired row" "code-check expired ssh alice" "$(lrows "$id")"
+assert_contains "an approve of an unknown id finds nothing" "result=no-pending" "$(approve_via 1200 zzzzzzzz ssh alice "$(code 1200)")"
+assert_contains "RED 5d: no-pending row" "code-check no-pending ssh alice" "$(lrows zzzzzzzz)"
+new_root via5lock; cfg "$ALL" true
+for k in 1 2 3; do
+    id=$(rid "$(rr $((k * 40)) -- true)"); approve_via $((k * 40 + 1)) "$id" ssh alice 000000 >/dev/null
+done
+assert_contains "three wrong codes lock" "result=locked" "$(approve_via 150 zzzzzzzz ssh alice "$(code 150)")"
+assert_contains "RED 5d: the lockout refusal row says ssh and who" "code-check locked ssh alice" "$(lrows zzzzzzzz)"
+
+echo "== slice 5: the hard limits hold over SSH =="
+new_root via5hard; cfg "$ALL" true
+printf '#!/bin/sh\necho x >> "%s/once.log"\n' "$R" > "$R/bin/once"; chmod 0755 "$R/bin/once"
+id=$(rid "$(rr 0 -- "$R/bin/once")")
+approve_via 3 "$id" ssh alice "$(code 3)" >/dev/null
+assert_contains "a second approve of the same id is refused" "result=no-pending" "$(approve_via 40 "$id" ssh alice "$(code 40)")"
+assert_eq "the call re-ran exactly once" "1" "$(wc -l < "$R/once.log" | tr -d ' ')"
+new_root via5edit; cfg "$ALL" true
+id=$(rid "$(rr 0 -- true)")
+python3 -I "$tmp/edit-record.py" "$R/var/lib/himmel/afk-sudo/records/$id.json" "$R/pwned"
+assert_contains "RED 5e: an SSH approve of a changed record is refused" "result=hash-mismatch" "$(approve_via 3 "$id" ssh alice "$(code 3)")"
+assert_contains "RED 5e: the hash-mismatch row says ssh and who" "run hash-mismatch ssh alice" "$(lrows "$id")"
+if [ ! -e "$R/pwned" ]; then pass "the changed command did not run"; else fail "the changed command ran"; fi
+new_root via5none; cfg "$ALL" true
+printf '#!/bin/sh\necho x >> "%s/never.log"\n' "$R" > "$R/bin/never"; chmod 0755 "$R/bin/never"
+id=$(rid "$(rr 0 -- "$R/bin/never")")
+assert_contains "RED 5f: nobody approves, the request expires" "result=expired" "$(h 1000 status "$id")"
+assert_contains "RED 5f: the expiry is in the ledger" "expire expired" "$(lrows "$id")"
+if [ ! -e "$R/never.log" ]; then pass "RED 5f: no approval means the deny stands, nothing ran"; else fail "RED 5f: an unapproved request ran"; fi
+new_root via5hook; cfg "$ALL" true
+id=$(rid "$(hr 0 run-request --session S1 --ticket T --blocked-by hook:block-edit-on-main -- true </dev/null)")
+assert_contains "RED 5g: a guard refusal is approvable over SSH" "result=ran" "$(approve_via 3 "$id" ssh alice "$(code 3)")"
+assert_contains "RED 5g: its approval row says ssh and who" "code-check approved ssh alice" "$(lrows "$id")"
+assert_contains "RED 5g: a floor-violating guard-refused request is still refused" "rule=disk-wipe" "$(hr 40 run-request --session S1 --ticket T --blocked-by hook:block-edit-on-main -- bash -c 'mkfs.ext4 /dev/vdb' </dev/null)"
+new_root via5bad; cfg "$ALL" true
+id=$(rid "$(rr 0 -- true)"); before=$(ledger | wc -l | tr -d ' ')
+assert_contains "RED 5h: an unknown via is refused" "result=bad-via" "$(approve_via 3 "$id" carrier-pigeon alice "$(code 3)")"
+assert_eq "RED 5h: an unknown via writes no row and reads no state" "$before" "$(ledger | wc -l | tr -d ' ')"
+assert_contains "the request stays pending after a bad via" "result=pending" "$(h 4 status "$id")"
+assert_contains "an unknown via on deny is refused too" "result=bad-via" "$(h 5 deny "$id" --from "$OP" --chat "$OP" --via carrier-pigeon)"
+assert_contains "the request still stays pending" "result=pending" "$(h 6 status "$id")"
+new_root via5lockdown; cfg "$ALL" true
+id=$(rid "$(rr 0 -- true)")
+h 1 lockdown --from "$OP" --chat "$OP" >/dev/null
+assert_contains "RED 5i: a lockdown deny row says via telegram and the sender" "deny denied telegram $OP" "$(lrows "$id")"
+new_root via5off; cfg "$ALL" false
+assert_contains "the feature is off by default: nothing to approve" "result=run-disabled" "$(rr 0 -- true)"
+new_root via5off2 false
+assert_contains "RED 5j: an SSH approve on a disabled station finds nothing to approve" "result=disabled" "$(approve_via 2 aaaaaaaa ssh alice 123456)"
+
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
 INSTALL="$LIB/install.sh"
 # shellcheck disable=SC2016 # the install.sh text is matched literally, $LIBEXEC included

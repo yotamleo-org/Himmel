@@ -12,8 +12,8 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo run-request        --session S --ticket T --blocked-by B [--as USER] [--cwd DIR] [--why W] -- ARGV...
                               (stdin of this process is the command's stdin, at most 64 KiB)
   afk-sudo op-request         --session S --ticket T NAME key=value...   (a named station op from scripts/station-ops)
-  afk-sudo approve ID --from SENDER --chat CHAT      (`NONCE CODE` is read from stdin)
-  afk-sudo deny ID --from SENDER --chat CHAT
+  afk-sudo approve ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]   (`NONCE CODE` is read from stdin)
+  afk-sudo deny ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]
   afk-sudo status ID  |  run-status ID
   afk-sudo lockdown --from SENDER --chat CHAT   (operator only; sets enabled: false and denies every pending request; takes nothing that turns anything on)
   afk-sudo run-result ID [--stream stdout|stderr]
@@ -1656,6 +1656,11 @@ def main(argv):
             a.add_argument("id")
         a.add_argument("--from", dest="sender", type=int, required=True)
         a.add_argument("--chat", type=int, required=True)
+        if verb != "lockdown":
+            # How the approval arrived and who gave it, for the ledger. The Telegram route
+            # passes neither; himmelctl approve|deny passes `--via ssh --approver <operator_user>`.
+            a.add_argument("--via", default="telegram")
+            a.add_argument("--approver", default=None)
     for verb in ("status", "run-status"):
         sub.add_parser(verb).add_argument("id")
     g = sub.add_parser("run-result")
@@ -1751,7 +1756,8 @@ def main(argv):
             else:
                 nonce, code = "", toks[0] if toks else ""
             t0 = time.monotonic()
-            pending, res = broker.approve(args.id, code, args.sender, args.chat, lambda payload: execute(payload, config), nonce)
+            pending, res = broker.approve(args.id, code, args.sender, args.chat, lambda payload: execute(payload, config), nonce,
+                                          args.via, clean(args.approver, 64) if args.approver else None)
             try:
                 send_result(config, args.id, res, time.monotonic() - t0)
             except (ab.Refused, OSError, ValueError, KeyError, TypeError):
@@ -1765,7 +1771,7 @@ def main(argv):
             print(f"result=ran id={args.id} exit={res['exit']}" + (f" op_result={res['op_result']}" if res.get("op") else "")
                   + f" argv={pending['display']}")
         elif args.verb == "deny":
-            broker.deny(args.id, args.sender, args.chat)
+            broker.deny(args.id, args.sender, args.chat, args.via, clean(args.approver, 64) if args.approver else None)
             print(f"result=denied id={args.id}")
         else:
             print(f"result={broker.status(args.id)} id={args.id}")
