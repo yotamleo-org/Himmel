@@ -15,7 +15,7 @@
       "id": "vault",
       "title": "Vault & capture",
       "rows": [
-        "luna-vault-scaffold", "luna-sources", "obsidian-second-brain", "pipeline-cadence",
+        "luna-vault-scaffold", "luna-sources", "pipeline-cadence",
         "doctor:C3-luna", "doctor:C26-salus-marker", "doctor:C51-firecrawl-parked",
         "plugin:claude-obsidian@himmel", "plugin:luna-correlate@himmel", "plugin:obsidian-triage@himmel",
         "secret:FIRECRAWL_*", "secret:WHISPER_MODEL",
