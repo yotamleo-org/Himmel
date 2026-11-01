@@ -2,7 +2,7 @@
 // files. A phase with nothing behind it says "no source yet"; the cost per ticket says "no data yet".
 import { test, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readPhaseStats } from "../phase-stats";
@@ -97,6 +97,12 @@ test("phase-stats: Review's entries per day are the same branches it counts, and
   chmodSync(locked, 0o000);
   const s = readPhaseStats(env, roundsDir, NOW);
   expect(phase(s, "review")).toMatchObject({ n: 1, perDay: [0, 0, 0, 0, 0, 1, 0] });
+});
+
+test("phase-stats: a symlinked directory under the rounds directory is not followed", () => {
+  const { env, roundsDir } = fixture(EVENTS, { "feat/himmel-1-a": [2, "2026-10-30"] });
+  symlinkSync("..", join(roundsDir, "feat", "loop"));
+  expect(phase(readPhaseStats(env, roundsDir, NOW), "review")).toMatchObject({ n: 1 });
 });
 
 test("phase-stats: an outlier against an 8-in-10 line of zero minutes still reads as a finite multiple", () => {

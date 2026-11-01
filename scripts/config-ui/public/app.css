@@ -442,4 +442,4 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .wf-sum thead th,.wf-rev thead th,.wf-out thead th{font:600 11px var(--font-mono);color:var(--muted)}
 .wf-cost .wf-v{display:inline;margin-right:6px}
 @media (max-width:1100px){.wf-map{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media (max-width:720px){.wf-map{grid-template-columns:minmax(0,1fr)}.wf-ph:last-child .wf-art{right:0}}
+@media (max-width:720px){.wf-map{grid-template-columns:minmax(0,1fr)}.wf-ph .wf-art{right:12px;transform:translate(0,-50%)}.wf-to{white-space:normal}}

@@ -189,7 +189,7 @@
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Reclaim merged ones, or raise the worktree limit in Settings.",
+              "next": "Reclaim merged ones, or raise the worktree limit with its environment switch; Settings has no control for it yet.",
               "source": {
                 "file": "scripts/_new-worktree.sh",
                 "line": 130,

@@ -8,7 +8,7 @@
 // ponytail: a ticket's first event of each kind stands for the whole ticket (a second PR on one ticket is not split, and
 // a branch whose ticket merged counts as merged in Review);
 // upgrade path: key the spans by PR number once every event row carries one.
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -52,7 +52,7 @@ function rounds(dir: string): { branch: string; round: number; at: number }[] {
       const p = join(d, name);
       let st, round;
       try {
-        st = statSync(p);
+        st = lstatSync(p);
         if (st.isDirectory()) { walk(p, `${prefix}${name}/`); continue; }
         if (!name.endsWith(".round")) continue;
         round = Number.parseInt(readFileSync(p, "utf8"), 10);
