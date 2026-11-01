@@ -281,6 +281,7 @@ H40=0780b95dcad44fe293c7798066626cd52bb2dce0
 cat > "$W/autogo" <<'EOF3'
 #!/usr/bin/env bash
 echo "autogo $*" >> "$LE_CALLS"
+[ -z "${LE_AUTOGO_ERR:-}" ] || echo "$LE_AUTOGO_ERR" >&2
 [ -z "${LE_AUTOGO_OUT:-}" ] || echo "$LE_AUTOGO_OUT"
 exit "${LE_AUTOGO_RC:-0}"
 EOF3
@@ -326,6 +327,18 @@ LE_AUTOGO_OUT="WOULD-GO 2553 $H40" run "READY 2553 $H40 GREEN N2088"
 contains "15h a WOULD-GO from a live run is an error" "$out" "ESCALATE auto-go-error rc=0 WOULD-GO"
 LE_AUTOGO_OUT="GO-SENT 2554 $H40 to N2088 bus=#7 qid=q1" run "READY 2553 $H40 GREEN N2088"
 contains "15h a GO-SENT for another PR is an error" "$out" "ESCALATE auto-go-error rc=0 GO-SENT 2554"
+
+# a warning auto-go.sh prints on stderr before its answer does not hide the answer
+WARN="auto-go: warning - the audit row could not be written to /x"
+LE_AUTOGO_ERR="$WARN" LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N2088 bus=#7 qid=q1" run "READY 2553 $H40 GREEN N2088"
+check "15j a sent GO behind a stderr warning is handled" "$out" "HANDLED auto-go N2088"
+LE_AUTOGO_ERR="$WARN" LE_AUTOGO_RC=11 LE_AUTOGO_OUT="GO-WRITTEN 2553 $H40 qid=q1 bus-failed: no live session
+SENDMESSAGE to=HIMMEL-2-N2088-bar-2026-10-14 :: GO 2553" run "READY 2553 $H40 GREEN N2088"
+check "15j a GO-WRITTEN behind a stderr warning: rc 11" "$rc" 11
+check "15j a GO-WRITTEN behind a stderr warning: its answer line comes first" "$(printf '%s\n' "$out" | head -n 1)" "GO-WRITTEN 2553 $H40 qid=q1 bus-failed: no live session"
+contains "15j a GO-WRITTEN behind a stderr warning: the warning is still passed on" "$out" "$WARN"
+LE_AUTOGO_ERR="$WARN" LE_AUTOGO_RC=10 LE_AUTOGO_OUT="ESCALATE auto-go 3 not ready" run "READY 2553 $H40 GREEN N2088"
+check "15j a refusal behind a stderr warning is passed on" "$out" "ESCALATE auto-go 3 not ready"
 
 printf '# chief\n' > "$W/doc"
 LE_AUTOGO_OUT="GO-SENT 2553 $H40 to N2088 bus=#7 qid=q1" run "READY 2553 $H40 GREEN N2088"

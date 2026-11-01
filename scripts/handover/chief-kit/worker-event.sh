@@ -141,7 +141,8 @@ if [ "$marker" = READY ]; then
     [[ $line =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || escalate "ready-unparsed"
     rpr="${BASH_REMATCH[1]}"; rhead="${BASH_REMATCH[2]}"
     aout="$("${AUTOGO[@]}" --doc "$DOC" --fleet "$FLEET" --worker "$label" "$rpr" "$rhead" 2>&1)"; arc=$?
-    afirst="$(printf '%s\n' "$aout" | grep -m1 '[^[:space:]]')" || afirst=""
+    # the answer is auto-go's first answer line: a stderr warning printed before it must not hide it
+    afirst="$(printf '%s\n' "$aout" | grep -m1 -E '^(GO-SENT|GO-WRITTEN|ESCALATE|WOULD-GO) ')" || afirst=""
     # bullet <text>: the chief doc's record of the scripted answer; a failed append is reported, never fatal
     bullet() { local e; e="$(bash "$HERE/append-results.sh" "$DOC" "$1" 2>&1)" || echo " doc-bullet=failed $(printf '%s' "$e" | tr '\n' ' ')"; }
     go_re="^GO-SENT $rpr $rhead to [^ ]+ bus=#[0-9]+ qid=([A-Za-z0-9._-]+)\$"
@@ -153,7 +154,9 @@ if [ "$marker" = READY ]; then
     if [ "$arc" -eq 11 ] && [[ $afirst =~ $gw_re ]]; then
         # the SENDMESSAGE line stays whole: a failed append is reported on a line of its own
         bres="$(bullet "AUTO-GO #$rpr ${rhead:0:8} qid=${BASH_REMATCH[1]} to $label bus-failed")"
-        printf '%s\n' "$aout"
+        # the answer lines first (the relay wakes on the first line), any warning after them
+        printf '%s\n' "$aout" | grep -E '^(GO-WRITTEN|SENDMESSAGE) '
+        printf '%s\n' "$aout" | grep -vE '^(GO-WRITTEN|SENDMESSAGE) |^[[:space:]]*$'
         [ -z "$bres" ] || printf '%s\n' "${bres# }"
         exit 11
     fi
