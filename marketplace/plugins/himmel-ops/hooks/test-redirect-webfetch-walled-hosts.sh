@@ -14,7 +14,7 @@ PLUGIN_DIR="$(cd "$HERE/.." && pwd)"
 HIMMEL_ROOT="$(cd "$HERE/../../../.." && pwd)"
 FAILED=0
 
-command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
+command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required and not on PATH"; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/walled-host.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT

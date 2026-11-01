@@ -4083,11 +4083,13 @@ reachable under `WALLED_TOOLING_DIR` (default
 `scripts/hooks/redirect-webfetch-walled-hosts.sh` stays wired in the himmel
 project lane as a shim: it points `WALLED_TOOLING_DIR` at `scripts/web`, sets
 `WEBFETCH_WALLED_LOG=/dev/null` and runs the plugin source, so a himmel session
-that fires both lanes writes one JSONL row, not two. The launcher's source walk
-does not follow that shim's `bash <file>`, so `marketplace/plugins/himmel-ops/hooks`
-is a pinned dir (`PIN_DIRS` in both `hook-integrity.js` copies and the loop in
-`record-hook-integrity.sh`): an edited plugin hook file is denied like an edited
-`scripts/hooks` one, and `ci-trust-paths.txt` lists the plugin source and its suite.
+that fires both lanes writes one JSONL row, not two. The shim sources the plugin
+file instead of running it with `bash <file>`, because the launcher verifies a
+sourced file against the integrity pins and does not follow a `bash <file>` exec.
+`marketplace/plugins/himmel-ops/hooks` is a pinned dir (`PIN_DIRS` in both
+`hook-integrity.js` copies and the loop in `record-hook-integrity.sh`), so an
+edited plugin source is denied at the launcher, whether the plugin file or the
+shim is launched, and `ci-trust-paths.txt` lists the plugin source and its suite.
 
 Each deny appends one row (`ts`, `session_id`, `decision`, `host`) to
 `WEBFETCH_WALLED_LOG` (default `~/.claude/webfetch-walled/denials.jsonl`). The

@@ -2263,5 +2263,28 @@ else
   bad "row 65: expected rc=2 with a DENY message, got rc=$rc65 err=$(cat "$T/row65.err")"
 fi
 
+# Row 66: the real himmel project-lane shim for the walled-host redirect runs
+# the plugin source. Launching the PINNED shim after the plugin source was
+# edited must be denied, because the launcher verifies what the shim runs.
+P66="$T/row66"
+mkdir -p "$P66/scripts/hooks" "$P66/marketplace/plugins/himmel-ops/hooks"
+cp "$HOOKS_DIR/redirect-webfetch-walled-hosts.sh" "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh"
+cp "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" "$P66/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh"
+git -C "$P66" init -q
+git -C "$P66" -c user.email=t@t -c user.name=t add -A
+git -C "$P66" -c user.email=t@t -c user.name=t commit -q -m shim
+OUT66="$T/row66-out"
+PAYLOAD66='{"session_id":"worker-session-66","hook_event_name":"PreToolUse","tool_name":"WebFetch","tool_input":{"url":"https://example.com/","prompt":"p"}}'
+printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" bash "$RECORDER" >/dev/null
+printf '# tampered\n' >> "$P66/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh"
+printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" \
+  node "$LAUNCHER" --optional "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh" >"$T/row66.out" 2>"$T/row66.err"
+rc66=$?
+if [ "$rc66" -eq 2 ] && grep -qi 'DENY' "$T/row66.err"; then
+  ok "row 66: launching the pinned walled-host shim after its plugin source was edited is denied"
+else
+  bad "row 66: expected rc=2 with a DENY message, got rc=$rc66 err=$(cat "$T/row66.err")"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
