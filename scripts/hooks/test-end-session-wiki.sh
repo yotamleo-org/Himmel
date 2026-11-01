@@ -328,9 +328,9 @@ rm -rf "$SB"
 
 # --- Case 9b: lane env ------------------------------------------------------------
 # The hook never sets the lane itself: a crystallizer it spawns sees exactly the
-# launching shell's HIMMEL_API_LANE / HIMMEL_API_ACCOUNT. Without them the
-# crystallizer refuses (exit 2) and the hook appends its one refusal line to the hook
-# log. CRYSTALLIZE_CLAUDE_BIN is a stub in every row.
+# launching shell's HIMMEL_API_LANE / HIMMEL_API_ACCOUNT. Without them the hook does
+# not spawn and appends ONE skip line (naming both variables and where to set them) to
+# the hook log. CRYSTALLIZE_CLAUDE_BIN is a stub in every row.
 lane_sandbox() { # sets SB, MARK, WRAP, LOGF
     SB="$(make_sandbox)"; MARK="$SB/marker.txt"
     WRAP="$SB/wrap.sh"
@@ -348,19 +348,18 @@ lane_run() { # <env-assignments...> ; the hook runs inside the sandbox from lane
         CRYSTALLIZE_MARKER="$MARK" bash "$HOOK"
 }
 
-# 9b-1 (RED on main, where the refusal line goes to /dev/null): no lane env -> exactly one
-# refusal line in the hook log naming both lane variables. CRYSTALLIZE_CLAUDE_BIN is set
-# and is no bypass: the stub is never called and the note stays mechanical.
+# 9b-1 (RED on main, where the refusal goes to /dev/null): no lane env -> exactly one
+# skip line in the hook log naming both lane variables and where to set them.
 lane_sandbox
 lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT CRYSTALLIZE_CLAUDE_BIN="$STUB"
-i=0; while ! grep -q 'crystallize-note: refusing claude-api' "$LOGF" 2>/dev/null && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
-if [ "$(grep -c 'crystallize-note: refusing claude-api' "$LOGF" 2>/dev/null)" = "1" ] \
-    && [ "$(grep -c 'crystallize-note: refusing claude-api.*HIMMEL_API_LANE=on.*HIMMEL_API_ACCOUNT' "$LOGF" 2>/dev/null)" = "1" ]; then
-    pass "lane-env: no lane variables -> one refusal line in the hook log naming both lane variables"
-else
-    fail "lane-env: no lane variables -> refusal line missing, duplicated or unclear in the hook log"
-fi
 sleep 0.3
+if [ "$(grep -c 'crystallizer skipped: set HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell' "$LOGF" 2>/dev/null)" = "1" ]; then
+    pass "lane-env: no lane variables -> one skip line in the hook log naming both lane variables and where to set them"
+else
+    fail "lane-env: no lane variables -> skip line missing, duplicated or unclear in the hook log"
+fi
+# 9b-1b (regression-only, also passes on main): CRYSTALLIZE_CLAUDE_BIN is set and is no
+# bypass: the stub is never called and the note stays mechanical.
 NOTE9B="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
 if [ ! -s "$MARK" ] && [ -n "$NOTE9B" ] && grep -q '^crystallized: false$' "$NOTE9B"; then
     pass "lane-env: CRYSTALLIZE_CLAUDE_BIN with the lane off is no bypass (stub never called, note stays mechanical)"

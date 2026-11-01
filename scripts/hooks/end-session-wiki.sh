@@ -223,12 +223,14 @@ spawn_crystallizer() {
     # shellcheck source=/dev/null
     [ -r "$detach_lib" ] && . "$detach_lib" || return 0
     # The hook never turns the API lane on: HIMMEL_API_LANE / HIMMEL_API_ACCOUNT pass
-    # through from the launching shell untouched. Without them the crystallizer runs
-    # on the subscription (usage-preflight gated); when the preflight says stop it
-    # prints ONE skip line on stderr. detach_run sends stderr to /dev/null, so the
-    # inner redirect lands that line in this hook's log instead; a log that cannot be
-    # opened must not stop the crystallizer, so a failed redirect falls through to a
-    # plain exec.
+    # through from the launching shell untouched. Lane on (the same check the
+    # crystallizer gates on) means the crystallizer runs; lane off means the hook
+    # logs ONE skip line saying where to set it and does not spawn. detach_run sends
+    # stderr to /dev/null, so the inner redirect lands any other crystallizer refusal
+    # in this hook's log instead; a log that cannot be opened must not stop the
+    # crystallizer, so a failed redirect falls through to a plain exec.
+    { [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } \
+        || { log_msg "crystallizer skipped: set HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell before claude starts"; return 0; }
     # shellcheck disable=SC2016  # the single-quoted body is the child shell's script
     detach_run bash -c 'log="$1"; shift; exec bash "$@" 2>>"$log" || exec bash "$@"' _ "$LOG_PATH" "$crys" "$ABS_PATH" "$TRANSCRIPT_PATH"
     return 0
