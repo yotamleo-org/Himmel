@@ -1726,12 +1726,24 @@ has "(8529) a full series still holds the file" "$s85c" "# drop HIMMEL-851 colli
 led set --ledger "$SL" --key HIMMEL-9204 state=abandoned
 s85d="$(runl 1 "$S85" "$B/fleet.json" --why)"
 has "(8529) an abandoned item frees a seat" "$s85d" "STACKABLE HIMMEL-851 $SW"
-# a worker whose Series line names its sid reads only that ledger: a stale ledger naming the same doc as writer neither sets its count nor joins it
-led add-item --ledger "$SL" --key HIMMEL-9205 --writes scripts/lib/e85.sh --state planned
+# a worker whose Series line names its sid reads only that ledger: a stale ledger naming the same doc as writer neither joins it nor sets its count
+M="$S85"; mk HIMMEL-855 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file only the stale ledger holds" "Edit scripts/lib/stale-85.sh."
 led create --ledger "$B/series/stale.json" --sid stale --completes-ticket no --writer "$SW"
 led add-item --ledger "$B/series/stale.json" --key HIMMEL-9206 --writes scripts/lib/stale-85.sh --state committed
 s85g="$(runl 1 "$S85" "$B/fleet.json" --why)"
-lacks "(8529) a stale ledger with the same writer does not make a full series worker STACKABLE" "$s85g" "STACKABLE"
+has "(8529) the named ledger still gives STACKABLE with a stale ledger beside it" "$s85g" "STACKABLE HIMMEL-851 $SW"
+lacks "(8529) a file only a stale ledger with the same writer holds is not STACKABLE on the worker" "$s85g" "STACKABLE HIMMEL-855"
+led add-item --ledger "$SL" --key HIMMEL-9205 --writes scripts/lib/e85.sh --state planned
+s85h="$(runl 1 "$S85" "$B/fleet.json" --why)"
+lacks "(8529) a full named ledger stays full with a stale ledger beside it" "$s85h" "STACKABLE HIMMEL-851"
+# a numbered block keeps its own item count when the ledger holds fewer items
+newbucket cnt85
+mkdoc "$B/HIMMEL-9250-N6-count.md" 4 ""
+mkfleet "$B/fleet.json" "N6:$B/HIMMEL-9250-N6-count.md"
+led create --ledger "$B/series/cnt.json" --sid cnt --completes-ticket no --writer "$B/HIMMEL-9250-N6-count.md"
+led add-item --ledger "$B/series/cnt.json" --key HIMMEL-9251 --writes scripts/config-ui/app.js --state committed
+s85i="$(runl 1 "$S85" "$B/fleet.json" --why)"
+lacks "(8529) a numbered block of 4 items takes no STACKABLE when its ledger lists one" "$s85i" "STACKABLE HIMMEL-851"
 # a Series line whose ledger is not there has an unknown count: no room
 printf '# live\n> **Series:** gone %s/gone.json — read docs/handover/worker-sections/series.md\n> **Writes:** scripts/config-ui/app.js\n' "$B/series" > "$B/HIMMEL-9220-N3-noledger.md"
 mkfleet "$B/fleet-nl.json" "N3:$B/HIMMEL-9220-N3-noledger.md"
@@ -1763,12 +1775,21 @@ mk HIMMEL-873 "To Do" High '[]' '["v1.0.1"]' '[]' "a lone sub-task of a third pa
 mk HIMMEL-874 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of the first parent in another family" "Edit scripts/lib/fe-85.sh."
 mk HIMMEL-875 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of the first parent spanning two families" "Edit docs/handover/ff-85.md and scripts/lib/ff-85.sh."
 mk HIMMEL-876 "To Do" High '[]' '["v1.0.1"]' '[]' "WSL station triage in docs/handover" "Edit docs/handover/fg-85.md."
-for k in 870 871 872 873 874 875 876; do retype "$M/HIMMEL-$k.md" "Sub-task"; done
+mk HIMMEL-877 "To Do" High '[]' '["v1.0.1"]' '[]' "parked: a sub-task in docs/handover" "Edit docs/handover/fh-85.md."
+mk HIMMEL-878 "To Do" High '["residual-depth-1"]' '["v1.0.1"]' '[]' "a residual sub-task in docs/handover" "Edit docs/handover/fi-85.md."
+mk HIMMEL-879 "To Do" High '[]' '["v1.0.1"]' '["HIMMEL-9390"]' "a sub-task blocked by a ticket reopened live" "Edit docs/handover/fj-85.md."
+mk HIMMEL-9390 "Done" High '[]' '["v1.0.1"]' '[]' "a blocker the mirror calls Done" "Edit scripts/lib/fk-85.sh."
+mk HIMMEL-881 "To Do" High '[]' '["v1.0.1"]' '[]' "the unblocked sibling of the blocked sub-task" "Edit docs/handover/fl-85.md."
+for k in 870 871 872 873 874 875 876 877 878 879 881; do retype "$M/HIMMEL-$k.md" "Sub-task"; done
+reparent "$M/HIMMEL-877.md" HIMMEL-860; reparent "$M/HIMMEL-878.md" HIMMEL-860; reparent "$M/HIMMEL-879.md" HIMMEL-863; reparent "$M/HIMMEL-881.md" HIMMEL-863
 reparent "$M/HIMMEL-876.md" HIMMEL-860; reparent "$M/HIMMEL-870.md" HIMMEL-860; reparent "$M/HIMMEL-871.md" HIMMEL-860; reparent "$M/HIMMEL-875.md" HIMMEL-860
 reparent "$M/HIMMEL-872.md" HIMMEL-861; reparent "$M/HIMMEL-873.md" HIMMEL-862; reparent "$M/HIMMEL-874.md" HIMMEL-860
 FAM="$M"
 newbucket fam; mkfleet "$B/fleet.json"
-fam1="$(runl 1 "$FAM" "$B/fleet.json")"
+fam1="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" runl 1 "$FAM" "$B/fleet.json")"
+lacks "(8529) a parked: sub-task is in no family row" "$fam1" "HIMMEL-877"
+lacks "(8529) a residual-depth sub-task with no admission is in no family row" "$fam1" "HIMMEL-878"
+lacks "(8529) a sub-task whose Done blocker reopened live is in no family row" "$fam1" "HIMMEL-879"
 has "(8529) sub-tasks of one parent in one directory family give a SERIES FAMILY row" "$fam1" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
 lacks "(8529) a sub-task of another parent is not in the family row" "$fam1" "HIMMEL-872"
 lacks "(8529) a lone sub-task of its parent gives no family row" "$fam1" "SERIES FAMILY scripts/lib"
@@ -1779,7 +1800,7 @@ lacks "(8529) flag off prints no SERIES FAMILY row" "$fam0" "SERIES FAMILY"
 # a sub-task whose file a live worker holds is not offered
 printf '# live\n> **Writes:** docs/handover/fa-85.md\n' > "$B/HIMMEL-9240-N5-holder.md"
 mkfleet "$B/fleet-h.json" "N5:$B/HIMMEL-9240-N5-holder.md"
-fam2="$(runl 1 "$FAM" "$B/fleet-h.json")"
+fam2="$(NEXT_DISPATCH_JIRA_CMD="$WORK/jira-live" LIVE_STATUS="In Progress" runl 1 "$FAM" "$B/fleet-h.json")"
 lacks "(8529) a sub-task held by a live worker gives no family row" "$fam2" "SERIES FAMILY"
 
 # A ticket with a merged contract=no PR is in work, never a fresh To Do row: its RESUME row names the PR and the

@@ -715,7 +715,8 @@ def reaches_blocker_check(i):
 # every hard blocker of a candidate is read live, whatever the mirror says; so is every blocker of an in-work ticket (RESUME rows)
 live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
            + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
-              for b in i['blocked_by']])
+              for b in i['blocked_by']]
+           + [b for i in issues.values() if stacked and i['status'] == 'To Do' and i['type'] == 'Sub-task' for b in i['blocked_by']])  # a SERIES FAMILY member's blockers
 print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
 withheld_unreadable = []
@@ -967,8 +968,7 @@ if stacked and workers_from:
                 named = w['sid'] is not None  # a Series line that names its ledger reads that one only; the writer match serves a numbered block, which names none
                 if (w['sid'] == sid or w['ledger'] == os.path.realpath(path)) if named else os.path.realpath(led['writer']) == os.path.realpath(w['doc']):
                     series_label_of[sid] = lbl
-                    w['count'] = max(w.get('led_count', 0), sum(1 for it in led['items'] if it.get('state') != 'abandoned'))  # the fullest ledger it matches
-                    w['led_count'] = w['count']
+                    w['count'] = max(w['count'] or 0, sum(1 for it in led['items'] if it.get('state') != 'abandoned'))  # the fullest of the brief's numbered items and every ledger it matches
             for it in led['items']:
                 if it.get('state') == 'abandoned':
                     continue
@@ -1143,6 +1143,8 @@ if stacked and first_ver and not (pr_unknown or pr_files_unknown or workers_unkn
         if i['type'] != 'Sub-task' or i['status'] != 'To Do' or first_ver not in i['ver'] or not i['parent'] or not i['files']:
             continue
         if i['key'] in worker_keys or i['key'] in pr_keys or i['key'] in done_pending or i['key'] in briefs or i['labels'] & excl:
+            continue
+        if re.match(r'\s*parked:', i['title'], re.I) or residual_out(i):
             continue
         if platform_dropped(i) or held_hit(i) or any(blocker_state(b) for b in i['blocked_by']):
             continue
