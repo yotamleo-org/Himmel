@@ -3390,30 +3390,31 @@ h_tail() { sed -n '/^- /p' "$1" | tail -n 1; }
 H_PID="$(h_dead_pid)"
 # a: --reap-dead sweep
 H_DOC_A="$(h_doc halted-reap 'LIVE — working')"
-h_hold "$H_DOC_A" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+H_LK_A="$(h_hold "$H_DOC_A" "$H_HOST-pid$H_PID" "$H_HOST")"
 HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
-if grepq "$(h_tail "$H_DOC_A")" '^- [0-9:]* HALTED'; then
-    pass "T8541a: --reap-dead of a dead holder's lock appends a HALTED bullet to the worker doc"
+if [ -n "$H_LK_A" ] && [ ! -d "$H_LK_A" ] && grepq "$(h_tail "$H_DOC_A")" '^- [0-9:]* HALTED'; then
+    pass "T8541a: --reap-dead of a dead holder's lock frees it and appends a HALTED bullet to the worker doc"
 else
-    fail "T8541a: reap left the doc tail as: $(h_tail "$H_DOC_A")"
+    fail "T8541a: reap (lock=$H_LK_A) left the doc tail as: $(h_tail "$H_DOC_A")"
 fi
 # b: forced release (the chief's QUEUE_LOCK_FORCE_RELEASE), holder dead
 H_DOC_B="$(h_doc halted-force 'LIVE — working')"
-h_hold "$H_DOC_B" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
-QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_B" >/dev/null 2>&1
-if grepq "$(h_tail "$H_DOC_B")" '^- [0-9:]* HALTED'; then
-    pass "T8541b: a forced release of a dead holder's lock appends a HALTED bullet"
+H_LK_B="$(h_hold "$H_DOC_B" "$H_HOST-pid$H_PID" "$H_HOST")"
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_B" >/dev/null 2>&1; H_RC_B=$?
+if [ "$H_RC_B" -eq 0 ] && [ -n "$H_LK_B" ] && [ ! -d "$H_LK_B" ] && grepq "$(h_tail "$H_DOC_B")" '^- [0-9:]* HALTED'; then
+    pass "T8541b: a forced release of a dead holder's lock frees it and appends a HALTED bullet"
 else
-    fail "T8541b: forced release left the doc tail as: $(h_tail "$H_DOC_B")"
+    fail "T8541b: forced release (rc=$H_RC_B lock=$H_LK_B) left the doc tail as: $(h_tail "$H_DOC_B")"
 fi
 # c: stale takeover by a new session
 H_DOC_C="$(h_doc halted-takeover 'LIVE — working')"
-h_hold "$H_DOC_C" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
-HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_C" taker-fixture >/dev/null 2>&1
-if grepq "$(h_tail "$H_DOC_C")" '^- [0-9:]* HALTED'; then
-    pass "T8541c: a stale takeover from a dead holder appends a HALTED bullet"
+H_LK_C="$(h_hold "$H_DOC_C" "$H_HOST-pid$H_PID" "$H_HOST")"
+HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_C" taker-fixture >/dev/null 2>&1; H_RC_C=$?
+if [ "$H_RC_C" -eq 0 ] && [ -n "$H_LK_C" ] && grepq "$(cat "$H_LK_C/owner.json" 2>/dev/null)" '"session":"taker-fixture"' \
+    && grepq "$(h_tail "$H_DOC_C")" '^- [0-9:]* HALTED'; then
+    pass "T8541c: a stale takeover from a dead holder hands the lock over and appends a HALTED bullet"
 else
-    fail "T8541c: takeover left the doc tail as: $(h_tail "$H_DOC_C")"
+    fail "T8541c: takeover (rc=$H_RC_C lock=$H_LK_C) left the doc tail as: $(h_tail "$H_DOC_C")"
 fi
 # d: a LIVE holder (this shell's pid) force-released by a chief is not a dead worker
 H_DOC_D="$(h_doc halted-live 'LIVE — working')"
