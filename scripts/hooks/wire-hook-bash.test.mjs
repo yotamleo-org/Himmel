@@ -386,6 +386,43 @@ test('installs the bus delivery hooks into PostToolUse and SessionStart, dark an
   });
 });
 
+// The PermissionRequest scripts are owned and install under
+// PermissionRequest (INSTALL_EVENT), after gate-shapes, never under SessionStart.
+test('installs the AFK prompt hook under PermissionRequest after gate-shapes, wired', () => {
+  withFixture((fixture) => {
+    const strip = JSON.parse(readFileSync(fixture, 'utf8'));
+    for (const groups of Object.values(strip.hooks)) {
+      for (const group of groups) group.hooks = group.hooks.filter((h) => !/afk-prompt-to-request\.sh/.test(h.command ?? ''));
+    }
+    strip.hooks.PermissionRequest = strip.hooks.PermissionRequest.filter((group) => group.hooks.length > 0);
+    writeFileSync(fixture, `${JSON.stringify(strip, null, 2)}\n`);
+
+    const result = invoke(fixture);
+    assert.equal(result.status, 0, result.stderr);
+    const after = JSON.parse(readFileSync(fixture, 'utf8'));
+    const where = Object.entries(after.hooks).flatMap(([event, groups]) =>
+      groups.flatMap((group) => group.hooks.map((h, idx) => ({ event, hooks: group.hooks, idx, command: h.command ?? '' }))))
+      .filter((e) => e.command.includes('afk-prompt-to-request.sh'));
+    assert.deepEqual(where.map((e) => e.event), ['PermissionRequest']);
+    assert.match(where[0].hooks[where[0].idx - 1].command, /permission-allow-gate-shapes\.sh/);
+    assert.ok(where[0].command.startsWith(`${WIRED_LAUNCHER} `), 'the installed entry is routed through the launcher');
+  });
+});
+
+test('refuses an impostor scripts/hooks/*.sh script under PermissionRequest', () => {
+  withFixture((fixture) => {
+    const settings = JSON.parse(readFileSync(fixture, 'utf8'));
+    settings.hooks.PermissionRequest.push({ hooks: [{ type: 'command', command: 'bash $CLAUDE_PROJECT_DIR/scripts/hooks/totally-rogue.sh' }] });
+    writeFileSync(fixture, `${JSON.stringify(settings, null, 2)}\n`);
+    const before = readFileSync(fixture, 'utf8');
+
+    const result = invoke(fixture);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /invokes unrecognised hook script: totally-rogue\.sh/);
+    assert.equal(readFileSync(fixture, 'utf8'), before);
+  });
+});
+
 test('installs a missing entry without disturbing an unrelated foreign SessionStart hook', () => {
   withFixture((fixture) => {
     const settings = withoutScript(readFileSync(fixture, 'utf8'), 'qmd-staleness-notice.sh');
