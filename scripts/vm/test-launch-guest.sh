@@ -245,6 +245,13 @@ rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/none.jsonl" bash "$COST" 2>&1)" || r
 check "C5 vm-cost: no ledger: exit 1" "$rc" "1"
 rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --bogus 2>&1)" || rc=$?
 check "C5 vm-cost: bad flag: exit 2" "$rc" "2"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --path 2>&1)" || rc=$?
+check "C5 vm-cost --path: override is printed" "$out" "$tmp/two.jsonl"
+mkdir -p "$tmp/hd"
+rc=0; out="$(unset LAUNCH_GUEST_COST_LEDGER; HANDOVER_DIR="$tmp/hd" bash "$COST" --path 2>&1)" || rc=$?
+check "C5 vm-cost --path: default sits under the handover root" "$out" "$tmp/hd/.ledger/vm-cost.jsonl"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --path extra 2>&1)" || rc=$?
+check "C5 vm-cost --path with an extra argument: exit 2" "$rc" "2"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
