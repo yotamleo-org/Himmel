@@ -2036,6 +2036,28 @@ for (const [shape, rule] of [
     assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunchAllow')), rule);
   });
 }
+// R14: the allow rule now launches the claudex lane in auto mode, and the comment says so.
+test('_comment_vmLaunchAllow documents the claudex lane and auto mode', () => {
+  assert.match(REG._comment_vmLaunchAllow, /--lane claudex/);
+  assert.match(REG._comment_vmLaunchAllow, /--permission-mode auto/);
+});
+// R15: the classifier trust names the claudex test VM and its provisioner.
+test('the Test VMs trust entry names himmel-claudex and claudex-guest.sh is the last trusted script', () => {
+  const env = resolveProfile(REG, 'worker-impl', { anchor: ANCHOR, installed: [] }).autoMode.environment;
+  const vms = env.filter((e) => e.startsWith('Test VMs:'));
+  assert.equal(vms.length, 1);
+  assert.match(vms[0], /himmel-claudex/);
+  assert.ok(vms[0].includes(`through ${ANCHOR}/scripts/vm/guest-exec.sh, ${ANCHOR}/scripts/vm/vm-lock.sh or ${ANCHOR}/scripts/lib/vmsdk.py`), 'guestExec, vmLock and vmsdk still resolve to their scripts');
+  const tooling = env.filter((e) => e.startsWith('Trusted repo tooling:'));
+  assert.equal(tooling.length, 1);
+  assert.ok(tooling[0].includes(`marketplace/plugins/himmel-bus/bin/bus, ${ANCHOR}/scripts/vm/claudex-guest.sh. Not covered:`), 'claudex-guest.sh is the last named script');
+  // provision runs vmsdk.py clone, which reads the GitHub token: trusting the wrapper must not lift that carve-out
+  assert.match(tooling[0], /Not covered:.*vmsdk\.py clone, claudex-guest\.sh provision \(it runs vmsdk\.py clone\), a secrets reader/);
+  // the exact-scripts allow entry must not re-grant provision either
+  const allow = resolveProfile(REG, 'worker-impl', { anchor: ANCHOR, installed: [] }).autoMode.allow.filter((e) => e.startsWith('Running one of the exact scripts'));
+  assert.equal(allow.length, 1);
+  assert.match(allow[0], /Nor does it cover claudex-guest\.sh provision, which runs vmsdk\.py clone/);
+});
 test('vmLaunch is restricted to worker-vm', () => {
   const registry = structuredClone(REG);
   registry.profiles['worker-impl'].vmLaunch = true;
