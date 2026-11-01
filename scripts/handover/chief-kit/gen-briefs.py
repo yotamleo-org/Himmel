@@ -561,6 +561,7 @@ def flag_on(name):
 
 
 CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
+CORE_FIELDS = {'CORE': 3, 'BYPASS': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>
 
 
 def core_gate_on():
@@ -598,8 +599,8 @@ def per_key_lines(out, keys, spec=False):
         t = line.split()
         if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
             got[t[2]] = line
-        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= 2:
-            got[t[1]] = line
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+            got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
 

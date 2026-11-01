@@ -1149,6 +1149,10 @@ cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/no-dist/index.js" cgrun nodist 0)"; rc=$?
 printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$CG/junk.js"
 cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/junk.js" cgrun nodist 0)"; rc=$?
 [ "$rc" = 1 ] && has "a core-check that prints nothing parseable is CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED" || fail "unparseable rc=$rc: $cgo"
+printf "console.log('BYPASS HIMMEL-9419');\n" > "$CG/truncated.js"
+cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/truncated.js" cgrun nodist 0)"; rc=$?
+[ "$rc" = 1 ] && has "a truncated BYPASS line (no kind, no reason) is CORE-CHECK-FAILED, never a bypass" "$cgo" "CORE-CHECK-FAILED" || fail "truncated BYPASS rc=$rc: $cgo"
+[ -z "$(cg_brief nodist)" ] && pass "a truncated BYPASS line writes no brief" || fail "a brief was written for a truncated BYPASS line"
 
 # flag off: a core key with no spec writes a WARN line and a warn row, and nothing else changes (I6): the brief equals the flag-on signed brief bar the gate's own line
 cg_mirror HIMMEL-9421 Task Medium '[]'
