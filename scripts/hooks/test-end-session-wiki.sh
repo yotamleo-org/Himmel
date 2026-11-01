@@ -363,8 +363,7 @@ lane_sandbox
 lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PF_VERDICT=SKIPPED-BANK CRYSTALLIZE_CLAUDE_BIN="$STUB"
 i=0; while ! grep -q 'crystallize-note: skipped' "$LOGF" 2>/dev/null && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
 if [ "$(grep -c 'crystallize-note: skipped' "$LOGF" 2>/dev/null)" = "1" ] \
-    && grep 'crystallize-note: skipped' "$LOGF" | grep -q 'HIMMEL_API_LANE=on' \
-    && grep 'crystallize-note: skipped' "$LOGF" | grep -q 'HIMMEL_API_ACCOUNT'; then
+    && [ "$(grep -c 'crystallize-note: skipped.*HIMMEL_API_LANE=on.*HIMMEL_API_ACCOUNT' "$LOGF" 2>/dev/null)" = "1" ]; then
     pass "lane-env: preflight stop -> one skip line in the hook log naming both lane variables"
 else
     fail "lane-env: preflight stop -> skip line missing, duplicated or unclear in the hook log"
