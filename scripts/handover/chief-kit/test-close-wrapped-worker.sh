@@ -336,7 +336,7 @@ rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "path inside a broken scratchpad clone: rc 8" "$rc" "8"
 # a subtree find cannot read is refused, not skipped
 mkdir -p "$SCR/unread/sub"
-chmod 000 "$SCR/unread/sub"
+chmod 000 "$SCR/unread/sub" || { echo "FAIL - fixture: chmod 000 on the unreadable subtree failed"; fails=$((fails+1)); }
 if [ -r "$SCR/unread/sub" ]; then
     echo "skip - scratchpad dir find cannot scan: chmod 000 is not enforced for this user (root)"
 else
@@ -346,15 +346,26 @@ else
 fi
 chmod 755 "$SCR/unread/sub"
 # a path ending a sentence, and one in markdown bold, name the clone too
-git init -q -b main "$SCR/forkp"
-GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/forkp" commit -q --allow-empty -m rebased
+for fx in forkp "dotted."; do
+    if ! git init -q -b main "$SCR/$fx" \
+        || ! GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/$fx" commit -q --allow-empty -m rebased; then
+        echo "FAIL - fixture: could not build the $fx clone"; fails=$((fails+1))
+    fi
+done
 mkdoc "- 10:00 WRAPPED - done" "The unpushed work sits in $SCR/forkp."
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad clone named at the end of a sentence: rc 8" "$rc" "8"
+contains "scratchpad clone named at the end of a sentence: refused for its unpushed commit" "$out" "holds commits on no remote"
 mkdoc "- 10:00 WRAPPED - done" "clone: **$SCR/forkp**"
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad clone named in markdown bold: rc 8" "$rc" "8"
-rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone" "$SCR/unread" "$SCR/forkp"
+contains "scratchpad clone named in markdown bold: refused for its unpushed commit" "$out" "holds commits on no remote"
+# a clone whose own name ends in punctuation is still found as written
+mkdoc "- 10:00 WRAPPED - done" "clone: \`$SCR/dotted.\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad clone whose name ends in a dot: rc 8" "$rc" "8"
+contains "scratchpad clone whose name ends in a dot: refused for its unpushed commit" "$out" "holds commits on no remote"
+rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone" "$SCR/unread" "$SCR/forkp" "$SCR/dotted."
 
 # --- 5. 2 matching sessions -------------------------------------------------------
 mkcmdline 202 claude -n "$SESSION_NAME" work

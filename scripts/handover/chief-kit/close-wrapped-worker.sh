@@ -222,10 +222,12 @@ if ! scratch_paths=$(printf '%s\n' "$scratch_raw" | sort -u); then
     exit 8
 fi
 scratch_clones=""
-while IFS= read -r sc_path; do
-    [ -n "$sc_path" ] || continue
-    # a path ending a sentence ("...scratchpad/fork.") carries prose punctuation
-    while :; do case "$sc_path" in *[.:!?]) sc_path="${sc_path%?}" ;; *) break ;; esac; done
+while IFS= read -r sc_orig; do
+    [ -n "$sc_orig" ] || continue
+    # a path ending a sentence ("...scratchpad/fork.") carries prose punctuation: check it as written and stripped
+    sc_stripped="$sc_orig"
+    while :; do case "$sc_stripped" in *[.:!?]) sc_stripped="${sc_stripped%?}" ;; *) break ;; esac; done
+    for sc_path in "$sc_orig" "$sc_stripped"; do
     sc_root="${sc_path%%/scratchpad/*}/scratchpad"
     sc_d="$sc_path"
     while [ "$sc_d" != "$sc_root" ] && [ ! -d "$sc_d" ]; do sc_d="${sc_d%/*}"; done
@@ -244,6 +246,7 @@ while IFS= read -r sc_path; do
     done <<EOF
 $sc_below
 EOF
+    done
 done <<EOF
 $scratch_paths
 EOF
