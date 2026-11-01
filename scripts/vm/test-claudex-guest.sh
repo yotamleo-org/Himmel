@@ -102,7 +102,7 @@ cat > "$GBIN/claude" <<'EOS'
 #!/usr/bin/env bash
 echo "claude $*" >> "$GUEST_TOOL_LOG"
 case "$1" in
-    --version) echo "2.1.314 (Claude Code)" ;;
+    --version) if [ -e "$GUEST_STATUS_FILE.wrongver" ]; then echo "2.0.0 (Claude Code)"; else echo "2.1.314 (Claude Code)"; fi ;;
     install) mkdir -p "$HOME/.local/bin"; cp "$0" "$HOME/.local/bin/claude" ;;
 esac
 exit 0
@@ -118,6 +118,9 @@ cat > "$GBIN/node" <<'EOS'
 #!/usr/bin/env bash
 echo "node $*" >> "$GUEST_TOOL_LOG"
 echo '{"enabledPlugins":{}}'
+# a flag file lets a row make the checkout vanish right after the settings step
+[ -e "$GUEST_STATUS_FILE.rmrepo" ] && rm -rf "$HOME/himmel"
+exit 0
 EOS
 chmod +x "$GBIN"/*
 
@@ -326,6 +329,39 @@ mkdir -p "$GH/Documents/github/himmel" && echo keep > "$GH/Documents/github/himm
 run_cg provision himmel-claudex
 check "R5d an existing directory fails provision" rc_nonzero
 check "R5d the directory is untouched" test "$(cat "$GH/Documents/github/himmel/marker" 2>/dev/null)" = keep -a ! -L "$GH/Documents/github/himmel"
+
+# --- R8: a short or empty key file is regenerated to 64 bytes at mode 600 ---
+for stale in "" "abc"; do
+    new_world
+    mkdir -p "$GH/.config/himmel" && printf '%s' "$stale" > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"
+    run_cg provision himmel-claudex
+    check "R8 a ${#stale}-byte key file: provision exits 0" rc_is 0
+    check "R8 a ${#stale}-byte key file is regenerated to 64 bytes" test "$(wc -c < "$GH/.config/himmel/cliproxy.key")" = 64
+    check "R8 a ${#stale}-byte key file ends at mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key")" = 600 # gnu-ok: linux-only suite
+    check "R8 a ${#stale}-byte key file leaves no temp file" test ! -e "$GH/.config/himmel/cliproxy.key.tmp"
+done
+
+# --- R9: a claude whose --version stays wrong after the install fails provision ---
+new_world
+touch "$GUEST_STATUS_FILE.wrongver"
+run_cg provision himmel-claudex
+check "R9 a wrong claude version after install fails provision" rc_nonzero
+check "R9 the failure names the version" out_has "installed claude version is not 2.1.314"
+rm -f "$GUEST_STATUS_FILE.wrongver"
+
+# --- R10: with ~/himmel gone, provision and status fail and never report 'not ready' ---
+new_world
+touch "$GUEST_STATUS_FILE.rmrepo"
+run_cg provision himmel-claudex
+check "R10 provision fails when the checkout disappears before the status check" rc_nonzero
+check "R10 that failure says --status did not run to a normal end" out_has "did not run to a normal end"
+rm -f "$GUEST_STATUS_FILE.rmrepo"
+new_world
+run_cg provision himmel-claudex >/dev/null 2>&1
+rm -rf "$GH/himmel"
+run_cg status himmel-claudex
+check "R10 status fails when the checkout is missing" rc_nonzero
+check "R10 status says --status did not run to a normal end" out_has "did not run to a normal end"
 
 # --- R7: status prints the --status output verbatim, parses no config ---
 new_world

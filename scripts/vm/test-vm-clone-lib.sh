@@ -246,6 +246,27 @@ if [ "$rc" -ne 0 ] && ! grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
     pass "T5f a non-numeric port argument is refused"
 else fail_case "T5f rc=$rc: $out"; fi
 
+# T5g: ports 0 and 65536 are outside 1..65535 and refused before any VBox call
+for badport in 0 65536; do
+    : > "$calls"
+    out=$(t5 "vm_clone_ensure suite-ready-v4 $badport; echo \"reached\""); rc=$?
+    if [ "$rc" -ne 0 ] && ! grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
+        pass "T5g port $badport is refused"
+    else fail_case "T5g port $badport rc=$rc: $out"; fi
+done
+
+# T5h: a leading-zero port is the same port as the registered forward (02229 = 2229)
+: > "$calls"
+out=$(EXISTS=1 FWD=2229 t5 'vm_clone_ensure suite-ready-v4 02229; echo "reached"'); rc=$?
+if [ "$rc" -eq 0 ] && grep -q reached <<< "$out"; then
+    pass "T5h 02229 matches an existing clone forwarding 2229"
+else fail_case "T5h rc=$rc: $out"; fi
+: > "$calls"
+out=$(CLAIMED="2222 2229" t5 'vm_clone_ensure suite-ready-v4 02229; echo "reached"'); rc=$?
+if [ "$rc" -ne 0 ] && ! grep -q reached <<< "$out" && [ ! -s "$calls" ]; then
+    pass "T5h 02229 is refused when 2229 is already claimed"
+else fail_case "T5h claimed rc=$rc: $out"; fi
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "RESULT: all passed"; exit 0; fi
 echo "RESULT: $FAILED failure(s)"; exit 1
