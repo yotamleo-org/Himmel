@@ -36,7 +36,7 @@ export LAUNCH_GUEST_COST_LEDGER="$tmp/default-ledger.jsonl"
 # nor may any launch ask a real guest for its usage: the default guest answer is a healthy 10 percent
 printf '#!/bin/sh\necho 10\n' > "$tmp/usage-default.sh"; chmod +x "$tmp/usage-default.sh"
 export LAUNCH_GUEST_USAGE="$tmp/usage-default.sh"
-unset LAUNCH_GUEST_TICKET LAUNCH_GUEST_ACCOUNT
+unset LAUNCH_GUEST_TICKET LAUNCH_GUEST_ACCOUNT HIMMEL_GUEST_REPO LAUNCH_GUEST_WARN_PCT
 run() { (cd "$tmp/repo" && LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" bash "$SCRIPT" "$@" 2>&1); }
 
 rc=0; out="$(run)" || rc=$?

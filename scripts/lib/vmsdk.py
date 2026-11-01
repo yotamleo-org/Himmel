@@ -529,7 +529,7 @@ class VM:
                 u = (cache.get(window) or {}).get("utilization")
                 if u is None:
                     continue
-                if isinstance(u, bool) or not isinstance(u, (int, float)) or not 0 <= u <= 100:
+                if isinstance(u, bool) or not isinstance(u, (int, float)) or not 0 <= u < float("inf"):
                     return "unknown"
                 figures.append(u)
         except (ValueError, KeyError, TypeError, AttributeError):

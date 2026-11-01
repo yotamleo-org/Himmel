@@ -2877,6 +2877,13 @@ class TestGuestUsage(unittest.TestCase):
             with self.subTest(out=out):
                 self.assertEqual(self._usage(0, out), "unknown")
 
+    def test_an_over_limit_figure_is_kept_not_called_unknown(self):
+        self.assertEqual(self._usage(0, self._cache(five=103, seven=40)), 103)
+        self.assertEqual(self._usage(0, self._cache(five=100)), 100)
+
+    def test_a_non_finite_figure_is_unknown(self):
+        self.assertEqual(self._usage(0, self._cache(five=float("inf"))), "unknown")
+
     def test_unknown_when_the_guest_cannot_be_reached(self):
         with mock.patch.object(self.vm, "guest_exec", side_effect=vmsdk.VMError("not running")):
             self.assertEqual(self.vm.guest_usage_percent(), "unknown")
