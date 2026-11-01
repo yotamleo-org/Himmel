@@ -170,6 +170,7 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
       resolution: typeof fm.resolution === 'string' ? fm.resolution : null,
       sector: typeof fm.sector === 'string' && fm.sector ? fm.sector : null,
       ...(typeof fm.parent === 'string' && fm.parent ? { parent: fm.parent } : {}),
+      ...(Array.isArray(fm.labels) && fm.labels.length ? { labels: fm.labels.map(String) } : {}),
     });
   }
   return { issues, sync };
@@ -423,11 +424,19 @@ export function signSpec(ctx: Ctx, o: {
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)) {
     throw new Error('release operator spec: the spec or a verdict file changed while it was checked; sign again');
   }
+  const records = readOperatorRecords('spec', ctx.env);
   if (o.supersedes) {
-    const old = readOperatorRecords('spec', ctx.env).find((r) => r.id === o.supersedes);
+    const old = records.find((r) => r.id === o.supersedes);
     if (!old) throw new Error(`release operator spec: ${o.supersedes} is no verified spec record in a declared release`);
     const dropped = (old.keys ?? []).filter((k) => !o.keys.includes(k));
     if (dropped.length) throw new Error(`release operator spec: --keys must keep every key of ${o.supersedes}; missing ${dropped.join(', ')}`);
+  }
+  // A key already signed is re-signed only by superseding its record (spec §2).
+  const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
+  const held = records.find((r) => !superseded.has(r.id) && r.id !== o.supersedes && r.keys?.some((k) => o.keys.includes(k)));
+  if (held) {
+    const k = held.keys?.find((x) => o.keys.includes(x));
+    throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
   }
   return locked(ctx, (l) => appendOperator(ctx, l.k, {
     kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, verdicts,
@@ -435,8 +444,9 @@ export function signSpec(ctx: Ctx, o: {
   }));
 }
 
-// Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the file's sha256
-// matches, else `SPEC-STALE`; a sub-task with no record reads its mirror parent's, one hop; else `NO-SPEC`.
+// Per key, the newest verified unsuperseded spec record decides: `SPEC ok` while the spec and every
+// verdict file still hash as signed, else `SPEC-STALE` (a missing file included); a sub-task with no
+// record reads its mirror parent's, one hop; else `NO-SPEC`.
 export function specCheck(env: Record<string, string | undefined>, keys: string[], mirrorRoot: string | null): { lines: string[]; ok: boolean } {
   const records = readOperatorRecords('spec', env);
   const superseded = new Set(records.flatMap((r) => r.supersedes ?? []));
@@ -449,10 +459,36 @@ export function specCheck(env: Record<string, string | undefined>, keys: string[
     const parent = snap && /^sub-?task$/i.test(snap.type) ? snap.parent : null;
     const r = newest(k) ?? (parent ? newest(parent) : undefined);
     if (!r?.spec_path) return `NO-SPEC ${k}`;
-    const fresh = existsSync(r.spec_path) && fileSha(r.spec_path) === r.spec_sha256;
+    const fresh = [{ path: r.spec_path, sha256: r.spec_sha256 }, ...(r.verdicts ?? [])]
+      .every((v) => existsSync(v.path) && fileSha(v.path) === v.sha256);
     return `${fresh ? 'SPEC ok' : 'SPEC-STALE'} ${k} ${r.spec_path} ${r.id}`;
   });
   return { lines, ok: lines.every((l) => l.startsWith('SPEC ok ')) };
+}
+
+// --- core-gate bypass records (spec §4); coreMatch reads them through readOperatorRecords ---
+
+function coreKeys(verb: string, keys: string[]): string[] {
+  if (!keys.length) throw new Error(`release operator ${verb}: no keys given`);
+  const bad = keys.find((k) => !ISSUE_KEY.test(k));
+  if (bad !== undefined) throw new Error(`release operator ${verb}: '${bad}' is not a ticket key`);
+  return [...new Set(keys)].sort();
+}
+
+// The operator lets the named core keys build without a signed spec.
+export function coreBypass(ctx: Ctx, o: { keys: string[]; decision: string; verbatim: string }): OperatorRow {
+  operatorFence(ctx);
+  const keys = coreKeys('core-bypass', o.keys);
+  return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'core-bypass', decision: o.decision, keys, verbatim: o.verbatim }));
+}
+
+// The tickets in flight when the gate turns on; written once across every declared release.
+export function coreSnapshot(ctx: Ctx, o: { keys: string[] }): OperatorRow {
+  operatorFence(ctx);
+  const keys = coreKeys('core-snapshot', o.keys);
+  const prior = readOperatorRecords('core-snapshot', ctx.env)[0];
+  if (prior) throw new Error(`release operator core-snapshot: ${prior.id} is already recorded; the snapshot is written once, at flag-on`);
+  return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'core-snapshot', decision: null, keys }));
 }
 
 // --- fold: a finished ticket recorded as delivered in a version (the chief) ---------

@@ -16,11 +16,11 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, reopen, request as releaseRequest, rmRun, rule, signSpec, specCheck, standing, state, takeover, withdraw,
+  apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rule, signSpec, specCheck, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
-import { coreMatch, loadCorePatterns, sizeGuard } from '../core.js';
+import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
 import type { Authority, Op, Verb } from '../release/types.js';
@@ -372,13 +372,16 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('core-check')
-    .description('Per key: CORE, REVIEW or NOT-CORE from scripts/ci/core-paths.txt (a rename or bulk change touching core is REVIEW)')
-    .requiredOption('--paths <paths>', 'Comma-separated paths the change touches; for a rename pass both the old and the new path')
+    .description('Per key: CORE, REVIEW, BYPASS, UNKNOWN or NOT-CORE from scripts/ci/core-paths.txt, the mirror and the '
+      + 'core-bypass and core-snapshot records of every declared release (a rename or bulk change touching core is REVIEW)')
+    .requiredOption('--paths <paths>', 'Comma-separated repository-relative files or directories the change touches; for a rename pass both the old and the new path')
     .requiredOption('--key <keys...>', 'Ticket key(s) of the worker')
     .option('--change-class <class>', 'rename or bulk: a mechanical change, ruled case by case')
     .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')
     .option('--widen-reason <why>', 'Let a core list matching more than 2 % of tracked files proceed, with this reason on the record')
-    .action((o: { paths: string; key: string[]; changeClass?: string; corePaths?: string; widenReason?: string }) => {
+    .option('--docs-only', 'The leg touches docs only: a key core by its label alone is a design leg and BYPASS')
+    .option('--mirror <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror); a key with no mirror file is UNKNOWN')
+    .action((o: { paths: string; key: string[]; changeClass?: string; corePaths?: string; widenReason?: string; docsOnly?: boolean; mirror?: string }) => {
       if (o.changeClass !== undefined && o.changeClass !== 'rename' && o.changeClass !== 'bulk') {
         throw new Error('release core-check: --change-class is rename or bulk');
       }
@@ -387,8 +390,12 @@ export function registerRelease(program: Command): void {
         .split('\n').filter(Boolean);
       const guard = sizeGuard(patterns, tracked, o.widenReason);
       if (guard.line) console.log(guard.line);
-      const paths = o.paths.split(',').map((p) => p.trim()).filter(Boolean);
-      for (const l of coreMatch(paths, o.key, { patterns, changeClass: o.changeClass })) console.log(l);
+      const paths = expandPaths(list(o.paths), tracked);
+      const mirror = o.mirror ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null);
+      const records = [...readOperatorRecords('core-bypass'), ...readOperatorRecords('core-snapshot')]
+        .sort((a, b) => a.ts.localeCompare(b.ts));
+      const issues = mirror ? readMirror(mirror).issues : null;
+      for (const l of coreMatch(paths, o.key, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records })) console.log(l);
     });
 
   rel.command('request <release>')
@@ -596,6 +603,23 @@ export function registerRelease(program: Command): void {
         verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
       });
       console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);
+    });
+  operator.command('core-bypass <release>')
+    .description('Let core keys build without a signed spec; core-check reads it from every declared release')
+    .requiredOption('--keys <list>', 'Comma-separated keys the bypass covers')
+    .requiredOption('--decision <n>', 'Operator decision number')
+    .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
+    .action((release: string, o: { keys: string; decision: string; verbatimFile: string }) => {
+      const r = coreBypass(ctxFor(release), { keys: list(o.keys), decision: o.decision, verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim() });
+      console.log(`${r.id} core-bypass for ${(r.keys ?? []).join(', ')}`);
+    });
+  operator.command('core-snapshot <release>')
+    .description('Record, once, the tickets in flight when the core gate turns on; core-check reads them as grandfathered')
+    .requiredOption('--keys-file <path>', 'One key per line; blank lines and # comments are skipped')
+    .action((release: string, o: { keysFile: string }) => {
+      const keys = readFileSync(o.keysFile, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('#'));
+      const r = coreSnapshot(ctxFor(release), { keys });
+      console.log(`${r.id} core-snapshot of ${(r.keys ?? []).length} keys`);
     });
   operator.command('takeover <release>')
     .requiredOption('--epoch <n>', 'The epoch being taken over')

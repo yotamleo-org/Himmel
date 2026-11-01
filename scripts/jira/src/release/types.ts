@@ -61,7 +61,7 @@ export interface RulingRow {
   mac?: string;
 }
 
-export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec';
+export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec' | 'core-bypass' | 'core-snapshot';
 
 export interface OperatorRow {
   id: string;
@@ -143,4 +143,5 @@ export interface IssueSnap {
   // The keys the mirror lists under links.blocked_by.
   blockedBy?: string[];
   parent?: string | null;
+  labels?: string[];
 }

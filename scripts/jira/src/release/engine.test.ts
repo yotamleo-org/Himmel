@@ -1344,13 +1344,35 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     expect(() => sign(sctx(), ['K-1'], p, { supersedes: 'O-R1-0999' })).toThrow(/O-R1-0999 is no verified spec record/);
   });
 
-  it('two unsuperseded records over one key: the newest decides', () => {
+  it('a re-sign of an already-signed key without --supersedes is refused, naming the record to supersede', () => {
     declared();
     const a = spec('K-1-a.md');
     const b = spec('K-1-b.md', join(root, 'specs-b'));
-    sign(sctx(), ['K-1'], a);
-    const later = sign({ ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') }, ['K-1', 'K-2'], b);
+    const first = sign(sctx(), ['K-1'], a);
+    expect(() => sign(sctx(), ['K-2', 'K-1'], b)).toThrow(/K-1 is already signed in O-R1-0002; re-sign with --supersedes O-R1-0002/);
+    expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${a} ${first.id}`, 'NO-SPEC K-2']);
+    const later = sign({ ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') }, ['K-1', 'K-2'], b, { supersedes: first.id });
     expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${b} ${later.id}`, `SPEC ok K-2 ${b} ${later.id}`]);
+  });
+
+  it('a missing spec file is refused at signing and reads SPEC-STALE once signed', () => {
+    declared();
+    expect(() => sign(sctx(), ['K-1'], join(root, 'specs', 'absent.md'), { verdicts: [] }))
+      .toThrow(/release operator spec: spec not found: .*absent\.md/);
+    const p = spec();
+    const r = sign(sctx(), ['K-1'], p);
+    unlinkSync(p);
+    expect(check(['K-1'])).toEqual([`SPEC-STALE K-1 ${p} ${r.id}`]);
+  });
+
+  it('a missing verdict file is refused at signing and reads SPEC-STALE once signed', () => {
+    declared();
+    const p = spec();
+    expect(() => sign(sctx(), ['K-1'], p, { verdicts: [verdict(p, 'spec', 'SPEC CLEAN'), `${p}.critic-plan-r9.md`] }))
+      .toThrow(/release operator spec: verdict file not found: .*critic-plan-r9\.md/);
+    const r = sign(sctx(), ['K-1'], p);
+    unlinkSync(`${p}.critic-plan-r1.md`);
+    expect(check(['K-1'])).toEqual([`SPEC-STALE K-1 ${p} ${r.id}`]);
   });
 
   it('an uncovered key gives NO-SPEC and a non-zero result', () => {
