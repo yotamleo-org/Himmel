@@ -3376,7 +3376,8 @@ h_doc() {
 # fresh liveness record so the holder reads as the given (dead or live) session.
 h_hold() {
     HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$1" held-by-fixture >/dev/null 2>&1
-    local lk; lk="$(find "$H_QDIR" -maxdepth 1 -type d -name "*$(basename "$1" .md).lock" 2>/dev/null | head -n 1)"
+    local lk="" cand
+    for cand in "$H_QDIR"/*"$(basename "$1" .md)".lock; do [ -d "$cand" ] && lk="$cand" && break; done
     [ -n "$lk" ] || return 1
     sed -i.bak -e "s/\"session\":\"[^\"]*\"/\"session\":\"$2\"/" -e "s/\"host\":\"[^\"]*\"/\"host\":\"$3\"/" \
         -e "s/\"heartbeat\":\"[^\"]*\"/\"heartbeat\":\"$D_OLD_HB\"/" "$lk/owner.json" && rm -f "$lk/owner.json.bak"
