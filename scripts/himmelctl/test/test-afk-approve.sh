@@ -179,7 +179,11 @@ while time.time() < end:
         sent = True
 bad = False
 try:
+    grace = time.time() + 5  # EOF on the pty can arrive just before the child is waitable
     done, status = os.waitpid(pid, os.WNOHANG)
+    while not done and time.time() < grace:
+        time.sleep(0.05)
+        done, status = os.waitpid(pid, os.WNOHANG)
     if not done:
         os.kill(pid, 9)  # a verb that never exits after the reply must fail the row, not hang the suite
         os.waitpid(pid, 0)
