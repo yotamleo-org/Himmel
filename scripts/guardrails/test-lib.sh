@@ -1006,7 +1006,7 @@ GITID -C "$MV_PER/graphify" commit -q --allow-empty -m init
 git -C "$MV_PER/graphify" checkout -q -b feat/p
 MV_PER_C=$(cd "$MV_PER/graphify" && pwd -P)
 mkdir -p "$MV_PER/gfork/nested"
-git -C "$MV_PER/gfork/nested" init -q -b main
+git -C "$MV_PER/gfork/nested" init -q -b main || { fail "main_checkout_verdict fixture: the nested persistent-root git init failed - the row would test a missing repo"; }
 GITID -C "$MV_PER/gfork/nested" commit -q --allow-empty -m init
 MV_PERN_C=$(cd "$MV_PER/gfork/nested" && pwd -P)
 

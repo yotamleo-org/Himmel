@@ -210,7 +210,7 @@ fi
 # rebase in progress leaves its commits there); a scan or git failure refuses.
 sc_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
 sc_grep_rc=0
-scratch_raw=$(grep -oE '[^[:space:]`"'"'"'()<>,;]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;]+' "$DOC") || sc_grep_rc=$?
+scratch_raw=$(grep -oE '[^[:space:]`"'"'"'()<>,;*]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;*]+' "$DOC") || sc_grep_rc=$?
 if [ "$sc_grep_rc" -gt 1 ]; then
     echo "close-wrapped-worker: refusing - cannot scan $DOC for session-scratchpad clones (grep rc=$sc_grep_rc)" >&2
     exit 8
@@ -222,6 +222,8 @@ fi
 scratch_clones=""
 while IFS= read -r sc_path; do
     [ -n "$sc_path" ] || continue
+    # a path ending a sentence ("...scratchpad/fork.") carries prose punctuation
+    while :; do case "$sc_path" in *[.:!?]) sc_path="${sc_path%?}" ;; *) break ;; esac; done
     sc_root="${sc_path%%/scratchpad/*}/scratchpad"
     sc_d="$sc_path"
     while [ "$sc_d" != "$sc_root" ] && [ ! -d "$sc_d" ]; do sc_d="${sc_d%/*}"; done

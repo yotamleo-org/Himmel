@@ -337,11 +337,24 @@ check "path inside a broken scratchpad clone: rc 8" "$rc" "8"
 # a subtree find cannot read is refused, not skipped
 mkdir -p "$SCR/unread/sub"
 chmod 000 "$SCR/unread/sub"
-mkdoc "- 10:00 WRAPPED - done" "fork clones: \`$SCR/unread\`"
-rc=0; out=$(run "$DOC" 2>&1) || rc=$?
-check "scratchpad dir find cannot scan: rc 8" "$rc" "8"
+if [ -r "$SCR/unread/sub" ]; then
+    echo "skip - scratchpad dir find cannot scan: chmod 000 is not enforced for this user (root)"
+else
+    mkdoc "- 10:00 WRAPPED - done" "fork clones: \`$SCR/unread\`"
+    rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+    check "scratchpad dir find cannot scan: rc 8" "$rc" "8"
+fi
 chmod 755 "$SCR/unread/sub"
-rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone" "$SCR/unread"
+# a path ending a sentence, and one in markdown bold, name the clone too
+git init -q -b main "$SCR/forkp"
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/forkp" commit -q --allow-empty -m rebased
+mkdoc "- 10:00 WRAPPED - done" "The unpushed work sits in $SCR/forkp."
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad clone named at the end of a sentence: rc 8" "$rc" "8"
+mkdoc "- 10:00 WRAPPED - done" "clone: **$SCR/forkp**"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad clone named in markdown bold: rc 8" "$rc" "8"
+rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone" "$SCR/unread" "$SCR/forkp"
 
 # --- 5. 2 matching sessions -------------------------------------------------------
 mkcmdline 202 claude -n "$SESSION_NAME" work
