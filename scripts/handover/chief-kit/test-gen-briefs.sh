@@ -976,7 +976,8 @@ printf 'v1.0.1\tfalse\t\n' > "$WORK/sr-nd/HIMMEL.versions.tsv"
 printf -- '---\nkey: "HIMMEL-9390"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "x"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9390: wants a series file\n\n## Description\n\nEdit scripts/sa/a.sh please.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' > "$WORK/sr-nd/HIMMEL/HIMMEL-9390.md"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/sr-gh"; chmod +x "$WORK/sr-gh"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N931"}]}\n' "$SRD" > "$SRB/fleet.json"
-srnd="$(HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$WORK/sr-nd/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/sr-gh" bash "$HERE/next-dispatchable.sh" --workers-from "$SRB/fleet.json" --no-classify --why 2>"$WORK/srnd.err")"
+srnd="$(HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$WORK/sr-nd/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/sr-gh" bash "$HERE/next-dispatchable.sh" --workers-from "$SRB/fleet.json" --no-classify --why 2>"$WORK/srnd.err")"; rc=$?
+[ "$rc" = 0 ] && pass "S2a: next-dispatchable exits 0 on the written series (rc 0)" || fail "S2a: next-dispatchable rc=$rc: $srnd"
 has "S2a: next-dispatchable lists the series writer as the holder a colliding candidate stacks on" "$srnd" "STACKABLE HIMMEL-9390 $SRD"
 lacks "S2a: next-dispatchable reports no unreadable ledger or doc for the written series" "$(cat "$WORK/srnd.err")" "unreadable"
 
@@ -986,6 +987,16 @@ srbad nograntkey 'del w[0]["series_grant"]' "decision"
 srbad compact 'w[0]["context_guard"] = "compact"' "compact mode"
 srbad fifth 'w += [dict(w[2], label="N93%d" % i, keys=["HIMMEL-930%d" % i], slug="sr-x%d" % i, branch="feat/himmel-930%d-sr-x%d" % (i, i)) for i in (4, 5)]; w[0]["series"] = ["N932", "N933", "N934", "N935"]' "at most 4"
 srbad unknown 'w[0]["series"] = ["N932", "N999"]' "N999"
+srbad dupkey 'w[2]["keys"] = ["HIMMEL-9302"]' "more than once"
+
+# a manifest outside the bucket would hide the ledger from next-dispatchable.sh, which reads series/ beside the manifest
+srmut mfout 'pass'
+mfo="$(HIMMEL_FLAG_STACKED_SERIES=1 python3 "$SUT" "$WORK/sr-mfout.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/sr-b-mfout" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/srw-mfout" --deadline 1791475000 --manifest "$WORK/elsewhere.fleet.json" 2>&1)"; rc=$?
+[ "$rc" = 1 ] && has "S2a: a manifest outside the bucket is refused" "$mfo" "not in the bucket" || fail "S2a: manifest outside the bucket rc=$rc: $mfo"
+[ -z "$(find "$WORK/sr-b-mfout" -type f -print -quit 2>/dev/null)" ] && pass "S2a: the manifest refusal writes no brief, launcher or ledger" || fail "S2a: the manifest refusal wrote $(find "$WORK/sr-b-mfout" -type f)"
+srmut mfin 'pass'
+mfi="$(HIMMEL_FLAG_STACKED_SERIES=1 python3 "$SUT" "$WORK/sr-mfin.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/sr-b-mfin" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/srw-mfin" --deadline 1791475000 --manifest "$WORK/sr-b-mfin/x.fleet.json" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && [ -f "$WORK/sr-b-mfin/series/HIMMEL-9301-N931.json" ] && pass "S2a: a manifest in the bucket writes the ledger beside it (rc 0)" || fail "S2a: manifest in the bucket rc=$rc: $mfi"
 
 # a ledger that already exists is exit 4 from the verb: a refusal, not a traceback, and no brief
 srmut exists 'pass'

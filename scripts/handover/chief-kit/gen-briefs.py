@@ -64,7 +64,8 @@ series-ledger.py (create, then one add-item per item, state planned) just before
 series_grant is {family, decision}: family is non-blank single-line text, decision a positive integer (the operator decision that
 granted the family); a series without both is refused. A series is also refused when the items state different completes-ticket
 values (a ticket that states none counts as yes), when a worker's context_guard is compact (its unlock needs a pushed checkpoint
-an unpublished item never has; the values are compact|handoff), when a label is unknown, repeated or already a series writer, and
+an unpublished item never has; the values are compact|handoff), when a label is unknown, repeated or already a series writer, when
+a ticket key appears twice, when --manifest is not in the bucket (next-dispatchable.sh reads series/ beside the manifest), and
 when a ledger for the sid already exists. Every refusal comes before anything is written.
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
 worker preface and are not repeated.
@@ -573,6 +574,10 @@ def plan_series(workers):
             wp = write_paths(m.get('writes', '')).split()
             wp = [] if wp == ['none', 'named'] else wp
             items += [(k, wp) for k in m['keys']]
+        item_keys = [k for k, _ in items]
+        dup = sorted({k for k in item_keys if item_keys.count(k) > 1})
+        if dup:
+            die('worker %s: a series names ticket %s more than once; every item is one ticket' % (label, ', '.join(dup)))
         if len(items) > SERIES_MAX:
             die('worker %s: a series holds at most %d items; its tickets make %d' % (label, SERIES_MAX, len(items)))
         values = {(COMPLETES_RE.findall(m['scope']) or ['yes'])[-1].lower() for m in members}
@@ -964,7 +969,9 @@ def main():
     for l in workers:
         sp = l.get('series_plan')
         if sp:
-            sp['ledger'] = os.path.join(a.bucket, 'series', sp['sid'] + '.json')
+            if a.manifest and os.path.realpath(os.path.dirname(os.path.abspath(a.manifest))) != os.path.realpath(a.bucket):
+                die('--manifest %s is not in the bucket %s; next-dispatchable.sh reads series ledgers beside the manifest, so it would never see the ledger of series %s' % (a.manifest, a.bucket, sp['sid']))
+            sp['ledger'] =os.path.join(a.bucket, 'series', sp['sid'] + '.json')
             if os.path.exists(sp['ledger']):
                 die('series ledger %s already exists; pick a new series or remove it' % sp['ledger'])
     os.makedirs(a.bucket, exist_ok=True)
