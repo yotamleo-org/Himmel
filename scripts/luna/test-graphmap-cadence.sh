@@ -536,7 +536,7 @@ assert_contains "himmel runner stamps the format version (HIMMEL-588)" "# himmel
 if [ "$FMT" -ge 24 ]; then pass "runner format is at least v24 (token-file load)"; else fail "runner format is $FMT, want >= 24"; fi
 assert_contains "luna runner has the token-file load"   "CLAUDE_CODE_OAUTH_TOKEN" "$luna_sh"
 assert_contains "himmel runner has the token-file load" "CLAUDE_CODE_OAUTH_TOKEN" "$himmel_sh"
-assert_contains "luna runner names the default token path" "/.config/himmel/claude-oauth-token" "$luna_sh_plain"
+assert_contains "luna runner names the default token path" "/.himmel/secrets/claude-oauth-token" "$luna_sh_plain"
 assert_contains "luna runner honours HIMMEL_CLAUDE_TOKEN_FILE" "HIMMEL_CLAUDE_TOKEN_FILE" "$luna_sh"
 tok_snippet="$TMP_ROOT/token-snippet.sh"
 awk '/^if \[ -z "\$\{CLAUDE_CODE_OAUTH_TOKEN/{p=1} p{print} p&&/^fi$/{exit}' "$CRON_DIR/graphmap-luna.sh" > "$tok_snippet"

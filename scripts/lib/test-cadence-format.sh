@@ -268,7 +268,7 @@ _tok_tmp=$(mktemp -d "${TMPDIR:-/tmp}/cadence-token.XXXXXX") || { echo "FAIL: mk
 HOME="$_tok_tmp/home" cadence_oauth_token_lines > "$_tok_tmp/snippet.sh"
 _tok_text=$(cat "$_tok_tmp/snippet.sh")
 case "$_tok_text" in
-  *CLAUDE_CODE_OAUTH_TOKEN*"$_tok_tmp/home/.config/himmel/claude-oauth-token"*) pass=$((pass + 1)); echo "  ok: the snippet bakes the home-relative default token path" ;;
+  *CLAUDE_CODE_OAUTH_TOKEN*"$_tok_tmp/home/.himmel/secrets/claude-oauth-token"*) pass=$((pass + 1)); echo "  ok: the snippet bakes the home-relative default token path" ;;
   *) fail=$((fail + 1)); echo "  FAIL: no baked default token path in the snippet: $_tok_text" ;;
 esac
 case "$_tok_text" in
@@ -297,10 +297,47 @@ assert_eq "a directory is not a token file" \
 printf 'no-newline-token' > "$_tok_tmp/tok2"
 assert_eq "token file without a trailing newline loads" \
   "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/tok2")" "<no-newline-token>"
-mkdir -p "$_tok_tmp/home/.config/himmel"
-printf 'fake-token-123\n' > "$_tok_tmp/home/.config/himmel/claude-oauth-token"
+: > "$_tok_tmp/empty"
+assert_eq "an empty token file exports nothing" \
+  "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/empty")" "<UNSET>"
+printf '  \t \n\n' > "$_tok_tmp/blank"
+assert_eq "a whitespace-only token file exports nothing" \
+  "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/blank")" "<UNSET>"
+printf 'unreadable-token\n' > "$_tok_tmp/noread"
+chmod 000 "$_tok_tmp/noread"
+if [ "$(id -u)" = 0 ]; then
+  echo "  skip: an unreadable token file (root reads any file)"
+else
+  assert_eq "an unreadable token file exports nothing" \
+    "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$_tok_tmp/noread")" "<UNSET>"
+fi
+printf 'dash-token\n' > "$_tok_tmp/-dash"
+assert_eq "an override path starting with a dash is a path, not a head option" \
+  "$(cd "$_tok_tmp" && run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE=-dash)" "<dash-token>"
+mkdir -p "$_tok_tmp/home/.himmel/secrets"
+printf 'fake-token-123\n' > "$_tok_tmp/home/.himmel/secrets/claude-oauth-token"
 assert_eq "default path is used when HIMMEL_CLAUDE_TOKEN_FILE is unset" \
   "$(run_token_snippet)" "<fake-token-123>"
+
+# The default lives under .himmel/secrets so an agent session cannot read it:
+# run the existing block-read-secrets hook on the default path, a Read and a cat.
+_tok_hook="$SCRIPT_DIR/../hooks/block-read-secrets.sh"
+_tok_default="$_tok_tmp/home/.himmel/secrets/claude-oauth-token"
+if command -v jq >/dev/null 2>&1 && [ -f "$_tok_hook" ]; then
+  _tok_read=$(printf '{"tool_name":"Read","tool_input":{"file_path":%s}}' "$(printf '%s' "$_tok_default" | jq -Rs .)")
+  _tok_cat=$(printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(printf 'cat %s' "$_tok_default" | jq -Rs .)")
+  printf '%s' "$_tok_read" | bash "$_tok_hook" >/dev/null 2>&1
+  assert_eq "block-read-secrets refuses a Read of the default token path" "$?" "2"
+  printf '%s' "$_tok_cat" | bash "$_tok_hook" >/dev/null 2>&1
+  assert_eq "block-read-secrets refuses a cat of the default token path" "$?" "2"
+  # Control: the same hook lets an unfenced path through, so the refusals above come from the path.
+  _tok_ctl=$(printf '{"tool_name":"Read","tool_input":{"file_path":%s}}' "$(printf '%s' "$_tok_tmp/home/.config/himmel/claude-oauth-token" | jq -Rs .)")
+  printf '%s' "$_tok_ctl" | bash "$_tok_hook" >/dev/null 2>&1
+  assert_eq "control: block-read-secrets lets an unfenced token path through" "$?" "0"
+else
+  echo "  skip: block-read-secrets rows (jq or the hook is missing)"
+fi
+chmod 600 "$_tok_tmp/noread"
 rm -rf "$_tok_tmp"
 
 echo

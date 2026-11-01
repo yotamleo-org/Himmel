@@ -80,7 +80,7 @@ value that isn't backed by one of these links.
 | `bun` | `brew tap oven-sh/bun && brew install oven-sh/bun/bun` — bun is NOT in homebrew-core; the tap is still required (verified 2026-09 against github.com/oven-sh/homebrew-bun). `scripts/machine-setup/macos.sh` installs both `uv` and `bun` this way; it previously installed neither. |
 
 **macOS scheduled claude runs need a token.** Cron cannot read the login Keychain, so a cadence run says "Not logged in". Run `claude setup-token`, then
-`mkdir -p ~/.config/himmel`, write the token to `~/.config/himmel/claude-oauth-token` and `chmod 600` it. Re-arm each claude cadence
+`mkdir -p ~/.himmel/secrets`, write the token to `~/.himmel/secrets/claude-oauth-token` and `chmod 600` it (himmel's read guard already fences that folder against agent reads). Re-arm each claude cadence
 with `arm --force` (`pipeline-cadence.sh`, `graphmap-cadence.sh`, `drift-fix-cadence.sh`) so its runner loads the file.
 
 #### Fleet CLIs — auxiliary post-install items

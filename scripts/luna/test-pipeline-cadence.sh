@@ -562,7 +562,7 @@ for _w in harvest synth health; do
     _rsh_var="${_w}_sh"
     _rsh="${!_rsh_var}"
     assert_contains "$_w runner has the token-file load" 'CLAUDE_CODE_OAUTH_TOKEN' "$_rsh"
-    assert_contains "$_w runner names the default token path" '/.config/himmel/claude-oauth-token' "$_rsh"
+    assert_contains "$_w runner names the default token path" '/.himmel/secrets/claude-oauth-token' "$_rsh"
     assert_contains "$_w runner honours HIMMEL_CLAUDE_TOKEN_FILE" 'HIMMEL_CLAUDE_TOKEN_FILE' "$_rsh"
 done
 assert_not_contains "fetch-health runner has no token-file load" 'CLAUDE_CODE_OAUTH_TOKEN' "$fetch_health_sh"

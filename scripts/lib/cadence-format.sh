@@ -120,7 +120,7 @@
 # (a second `qmd-reindex.sh --index salus` fire when salus.yml exists). An armed
 # v22 qmd runner never refreshes it. Re-arm with `qmd-cadence.sh arm --force`.
 # v24: every runner that launches claude loads CLAUDE_CODE_OAUTH_TOKEN from the
-# operator's token file (~/.config/himmel/claude-oauth-token) when the variable
+# operator's token file (~/.himmel/secrets/claude-oauth-token) when the variable
 # is unset. On macOS the interactive login lives in the Keychain, which cron
 # cannot read, so an armed v23 runner fails "Not logged in" on every fire. Re-arm
 # with `pipeline-cadence.sh|graphmap-cadence.sh|drift-fix-cadence.sh arm --force`
@@ -181,19 +181,21 @@ cadence_user_home() {
 # cadence_oauth_token_lines
 # Print the POSIX-sh lines a runner that launches claude puts right after its
 # PATH line: when CLAUDE_CODE_OAUTH_TOKEN is unset or empty and the token file is
-# a readable regular file, export the file's first line (CR/LF stripped). The
-# default path is baked at arm time from the arming user's home; the
+# a readable regular file, export the file's first line (whitespace stripped; a
+# blank line exports nothing). The default sits under ~/.himmel/secrets, which
+# block-read-secrets.sh already fences against agent reads. The default path is
+# baked at arm time from the arming user's home; the
 # HIMMEL_CLAUDE_TOKEN_FILE override is read at fire time. A missing file changes
 # nothing and prints nothing, and the value is never echoed, logged or traced.
 # shellcheck disable=SC2016  # the runner's own $vars are emitted literally
 cadence_oauth_token_lines() {
     local q_default
-    q_default=$(printf '%q' "$(cadence_user_home)/.config/himmel/claude-oauth-token")
+    q_default=$(printf '%q' "$(cadence_user_home)/.himmel/secrets/claude-oauth-token")
     printf '%s\n' '# cron cannot read the macOS Keychain login: load the OAuth token from its file'
     printf '%s\n' 'if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then'
     printf '    _tokf=${HIMMEL_CLAUDE_TOKEN_FILE:-%s}\n' "$q_default"
     printf '%s\n' '    if [ -f "$_tokf" ] && [ -r "$_tokf" ]; then'
-    printf '%s\n' '        _tok=$(head -n 1 "$_tokf" 2>/dev/null | tr -d "\r\n") || _tok='
+    printf '%s\n' '        _tok=$(head -n 1 -- "$_tokf" 2>/dev/null | tr -d " \t\r\n") || _tok='
     printf '%s\n' '        if [ -n "$_tok" ]; then CLAUDE_CODE_OAUTH_TOKEN=$_tok; export CLAUDE_CODE_OAUTH_TOKEN; fi'
     printf '%s\n' '    fi'
     printf '%s\n' '    unset _tokf _tok'
