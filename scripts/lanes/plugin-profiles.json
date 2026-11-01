@@ -46,7 +46,7 @@
     "Bash(SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- bash scripts/ci/test-*.sh)",
     "Bash(SUITE_LOCK_WAIT=60 bash scripts/quiet-run.sh suite -- bash templates/luna-second-brain/scripts/test-*.sh)"
   ],
-  "_comment_vmLaunchAllow": "HIMMEL-5997: the ONE rule only the worker-vm profile adds (profile field vmLaunch). It names a station-side script, not ssh: scripts/vm/launch-guest.sh refuses any VM absent from scripts/lib/vms.json, any kind=station entry (win2) and any non-ubuntu guest before it opens a connection, then runs claude on the guest with an explicit --permission-mode acceptEdits and an --allowedTools list, never a skip-permissions flag. A claude launch on this station, a wildcard ssh, or another script does not match the rule. The auto-mode classifier refused every worker that started a claude agent by hand (HIMMEL-5973, [Create Unsafe Agents]); an allow rule is checked before the classifier (HIMMEL-2959), so this is the sanctioned path.",
+  "_comment_vmLaunchAllow": "HIMMEL-5997: the ONE rule only the worker-vm profile adds (profile field vmLaunch). It names a station-side script, not ssh: scripts/vm/launch-guest.sh refuses any VM absent from scripts/lib/vms.json, any kind=station entry (win2) and any non-ubuntu guest before it opens a connection, then runs claude on the guest with an explicit --permission-mode acceptEdits and an --allowedTools list, never a skip-permissions flag. HIMMEL-8476 widens the same rule: with --lane claudex (only himmel-claudex, a validated --classifier-model and --debug-file required) the script runs scripts/claude-codex on the guest with an explicit --permission-mode auto, still never a skip-permissions flag, after the guest's claude-codex --preflight-only and the Codex bank preflight. A claude launch on this station, a wildcard ssh, or another script does not match the rule. The auto-mode classifier refused every worker that started a claude agent by hand (HIMMEL-5973, [Create Unsafe Agents]); an allow rule is checked before the classifier (HIMMEL-2959), so this is the sanctioned path.",
   "vmLaunchAllow": [
     "Bash(bash scripts/vm/launch-guest.sh:*)"
   ],
@@ -110,7 +110,6 @@
     "obsidian@obsidian-skills",
     "qmd@qmd",
     "claude-obsidian@himmel",
-    "obsidian-second-brain@himmel",
     "find-docs@himmel",
     "graphify@himmel",
     "handover@himmel",
@@ -151,7 +150,7 @@
   "profiles": {
     "operator": null,
     "user": {
-      "_comment": "HIMMEL-3064: lean-skills@himmel replaces superpowers@claude-plugins-official + mattpocock-skills@claude-plugins-official (restated here for audit-clarity though base already carries it). plannotator-effective-html@himmel moved OUT to the new design profile -- its 6 skills cost ~630 tok every session for 1 invocation in 1628 transcripts, so design/UI work now opts in via --profile design instead of every session paying for it. HIMMEL-4018: obsidian-second-brain@himmel (~2.2k tok listing) is enabled in lane-content and telegram — the vault-filing profiles — and stays off here (HIMMEL-7178: 1 osb command in 14 days, /youtube, which obsidian-triage /watch-youtube covers) and in every lean worker and chief profile; enable on demand with plugin-profile.sh enable obsidian-second-brain.",
+      "_comment": "HIMMEL-3064: lean-skills@himmel replaces superpowers@claude-plugins-official + mattpocock-skills@claude-plugins-official (restated here for audit-clarity though base already carries it). plannotator-effective-html@himmel moved OUT to the new design profile -- its 6 skills cost ~630 tok every session for 1 invocation in 1628 transcripts, so design/UI work now opts in via --profile design instead of every session paying for it. HIMMEL-8416: the vault-note plugin was removed from the catalog and every profile; obsidian-triage covers its used pieces.",
       "enable": [
         "lean-skills@himmel",
         "find-docs@himmel",
@@ -408,8 +407,7 @@
     "lane-content": {
       "gateAllow": true,
       "enable": [
-        "obsidian-triage@himmel",
-        "obsidian-second-brain@himmel"
+        "obsidian-triage@himmel"
       ],
       "drop": ["i-have-adhd@himmel"],
       "contextBudget": 45000,
@@ -419,10 +417,9 @@
     },
     "telegram": {
       "gateAllow": false,
-      "_comment": "HIMMEL-2961. Wired ONLY at the bridge dispatch (scripts/telegram/poller.ts's makeRunFn/runOnce, the sole per-message cold `claude` spawn) — the entry-point inventory found two other Telegram-adjacent spawn sites and both are out of scope: auto-action.ts's dispatchAutoAction spawns no claude at all (it shells out to fixed scripts), and hermes is its own interpreter, dormant, with no plugin-profile seam to wire. enable is obsidian-triage (the actual Telegram workload — clip/harvest/archive/triage/media-enrich commands). claude-obsidian was DROPPED (HIMMEL-4020): the bridge's vault-filing prompt (run.ts) names only a vault-local skill or obsidian-second-brain, and 147 bridge transcripts show 0 claude-obsidian skill calls and 0 obsidian-vault MCP calls (only obsidian-triage:luna-ingest/telegram-clip ran), while its skill listing costs ~1.6k first-turn tokens; telegram-himmel@himmel is deliberately EXCLUDED even though it is the bridge's own plugin — its .mcp.json defines an MCP server also named telegram (gated by HIMMEL_MCP_TELEGRAM/TELEGRAM_OWN_POLLER) that launches a second poller-adjacent process, which would be self-referential/recursive inside the very session the live poller spawned. luna-correlate@himmel is excluded as unrelated (health-factor correlation, not content work). mcpServers names only qmd — of every plugin in this profile's enable+base+floor union, qmd is the sole one that bundles an MCP server this profile's own plugin set actually needs (of the other marketplace plugins that bundle one, luna-correlate and telegram-himmel are excluded above, and obsidian-second-brain's `vault` server is deliberately left out — see the HIMMEL-4018 note below); --strict-mcp-config then strips every USER-level server (graphify/obsidian-vault/context7/etc.) the bridge never touches. MEASURED (profile-context-probe.mjs, HIMMEL-2961): baseline (no --settings, today's live bridge) = 33440-33493 first-turn tokens across runs; telegram profile measured=32541 against contextBudget=45000 (delta -952) — the injected lean set is already BELOW the unleaned baseline, so the win here is deny-by-default correctness (no ambient full ~/.claude leak into an unattended bridge run) rather than a token reduction. HIMMEL-4018: obsidian-second-brain@himmel added to enable because run.ts's attachment-filing prompt falls back to it when the vault has no local filing skill (luna has none); ~2.2k tok fits the 45000 budget. mcpServers deliberately stays [qmd], so --strict-mcp-config strips the plugin's own `vault` MCP server here; its slash commands still load.",
+      "_comment": "HIMMEL-2961. Wired ONLY at the bridge dispatch (scripts/telegram/poller.ts's makeRunFn/runOnce, the sole per-message cold `claude` spawn) — the entry-point inventory found two other Telegram-adjacent spawn sites and both are out of scope: auto-action.ts's dispatchAutoAction spawns no claude at all (it shells out to fixed scripts), and hermes is its own interpreter, dormant, with no plugin-profile seam to wire. enable is obsidian-triage (the actual Telegram workload — clip/harvest/archive/triage/media-enrich commands). claude-obsidian was DROPPED (HIMMEL-4020): the bridge's vault-filing prompt (run.ts) named only a vault-local skill or the vault-note plugin, and 147 bridge transcripts show 0 claude-obsidian skill calls and 0 obsidian-vault MCP calls (only obsidian-triage:luna-ingest/telegram-clip ran), while its skill listing costs ~1.6k first-turn tokens; telegram-himmel@himmel is deliberately EXCLUDED even though it is the bridge's own plugin — its .mcp.json defines an MCP server also named telegram (gated by HIMMEL_MCP_TELEGRAM/TELEGRAM_OWN_POLLER) that launches a second poller-adjacent process, which would be self-referential/recursive inside the very session the live poller spawned. luna-correlate@himmel is excluded as unrelated (health-factor correlation, not content work). mcpServers names only qmd — of every plugin in this profile's enable+base+floor union, qmd is the sole one that bundles an MCP server this profile's own plugin set actually needs (of the other marketplace plugins that bundle one, luna-correlate and telegram-himmel are excluded above); --strict-mcp-config then strips every USER-level server (graphify/obsidian-vault/context7/etc.) the bridge never touches. MEASURED (profile-context-probe.mjs, HIMMEL-2961): baseline (no --settings, today's live bridge) = 33440-33493 first-turn tokens across runs; telegram profile measured=32541 against contextBudget=45000 (delta -952) — the injected lean set is already BELOW the unleaned baseline, so the win here is deny-by-default correctness (no ambient full ~/.claude leak into an unattended bridge run) rather than a token reduction. HIMMEL-8416: the vault-note plugin HIMMEL-4018 had added here was REMOVED: 0 skill calls in 457 bridge runs over 30 days for ~2.4k-3.5k tokens per spawn; its validate-ai-first write hook now ships in obsidian-triage, and run.ts's filing prompt names obsidian-triage.",
       "enable": [
-        "obsidian-triage@himmel",
-        "obsidian-second-brain@himmel"
+        "obsidian-triage@himmel"
       ],
       "mcpServers": ["qmd"],
       "contextBudget": 45000,

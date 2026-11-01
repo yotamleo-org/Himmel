@@ -66,9 +66,8 @@ fork's himmel branch plus the one `install` line, run once per clone.
 
 ## Fork inventory (2026-10-16)
 
-From `gh repo list yotamleo-org --fork`; the HIMMEL-5900 registry
-(`scripts/guardrails/himmel-adapters.json`) lists every fork (standard:
-`docs/internals/fork-adapters.md`).
+The HIMMEL-5900 registry (`scripts/guardrails/himmel-adapters.json`) lists the
+forks tracked as himmel adapters (standard: `docs/internals/fork-adapters.md`).
 
 | Fork | Default | Language | Own hooks | Own lint | CI |
 |---|---|---|---|---|---|
@@ -79,7 +78,7 @@ From `gh repo list yotamleo-org --fork`; the HIMMEL-5900 registry
 | graphify | v8 | Python | `.pre-commit-config.yaml` | `pyproject.toml` | yes |
 | home-assistant.io | current | HTML | none | `.editorconfig` | yes |
 | hermes-agent | main | Python | none | eslint, prettier | yes |
-| codex-plugin-cc, claude-obsidian, claude-video | main | JS / Python | none | none | yes |
+| codex-plugin-cc, claude-obsidian | main | JS / Python | none | none | yes |
 | caveman | main | Go | none | `.editorconfig` | yes |
 | codex | main | Rust | none | prettier | yes |
 | effective-html, obsidian-skills | main | HTML / none | none | none | none |
