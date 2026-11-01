@@ -67,7 +67,8 @@ TOOLING=$(jq -r '((.autoMode.environment // []) + (.autoMode.allow // []))[] | s
 GOT_PATHS=$(grep -oE '[A-Za-z0-9._/-]*/[A-Za-z0-9._/-]*' <<<"$TOOLING" | sed 's/\.$//' | sort -u)
 WANT_PATHS=$(printf '%s\n' /tmp "$ANCHOR/.claude/worktrees/" "$ANCHOR/marketplace/plugins/himmel-bus/bin/bus" \
     "$ANCHOR/scripts/check-ci.sh" "$ANCHOR/scripts/handover/chief-kit/append-results.sh" "$ANCHOR/scripts/lib/vmsdk.py" \
-    "$ANCHOR/scripts/quiet-run.sh" "$ANCHOR/scripts/vm/guest-exec.sh" "$ANCHOR/scripts/vm/vm-lock.sh" | sort -u)
+    "$ANCHOR/scripts/quiet-run.sh" "$ANCHOR/scripts/vm/guest-exec.sh" "$ANCHOR/scripts/vm/vm-lock.sh" \
+    "$ANCHOR/scripts/vm/claudex-guest.sh" | sort -u)
 [ -n "$GOT_PATHS" ] && [ "$GOT_PATHS" = "$WANT_PATHS" ] && ok "T2 the trust text names exactly the expected anchor-absolute paths" \
     || bad "T2 named paths drifted: got [$(printf '%s' "$GOT_PATHS" | tr '\n' ' ')]"
 jq -e '[.autoMode.environment[] | select(startswith("Trusted repo tooling:"))] | length == 1 and all(test("Not covered:.*GO, verdict and merge scripts.*push wrappers.*settings writers.*secrets helpers.*worktree.*branch changed"))' "$TMP/impl.json" >/dev/null 2>&1 \
@@ -86,7 +87,7 @@ jq -e '([.autoMode.environment[] | select(startswith("Trusted repo tooling:"))] 
 # Pin the whole tooling text (anchor written as ANCHOR): a widening in prose
 # with no path in it changes the digest. A deliberate wording change re-pins here.
 PIN=$(jq -r --arg a "$ANCHOR" '((.autoMode.environment // []) + (.autoMode.allow // []))[] | select(startswith("Source control:") | not) | split($a) | join("ANCHOR")' "$TMP/impl.json" 2>/dev/null | git hash-object --stdin)
-[ "$PIN" = "cff8f43714d2ce1ca6a6322fce9fd5653301dcdf" ] && ok "T2 the tooling trust text matches its pinned digest" \
+[ "$PIN" = "52aea701eb443b61e31d224b7b8fea24c8e1ef06" ] && ok "T2 the tooling trust text matches its pinned digest" \
     || bad "T2 the tooling trust text changed (digest $PIN): re-read it for a widening, then re-pin"
 
 # T3: a composed profile list carries the allow entries once.
