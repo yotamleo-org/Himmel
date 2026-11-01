@@ -2,11 +2,9 @@
 # selector: tree-scan
 # Smoke test for scripts/hooks/check-npm-licenses.sh.
 #
-# Scope: the package-DISCOVERY logic, which is the thing the fix
-# changed (find scripts -maxdepth 3 → git ls-files all committed packages).
-# We do NOT run npx license-checker here — that needs network + npm installs
-# and tests the license verdict, not the enumeration. We build a throwaway git
-# repo mirroring the real package.json layout and assert:
+# Scope: package discovery and scanner identity. Network-facing npm/npx calls
+# are stubbed; the real gate runs against isolated repositories and a trusted
+# scanner double, independently of each inspected tree. Discovery cases assert:
 #   1. the NEW source `git ls-files '*package.json' :(exclude)*/node_modules/*`
 #      finds ALL committed packages (incl. the 4 formerly-missed ones), and
 #   2. the OLD `find scripts -maxdepth 3` pattern would have MISSED them
@@ -192,6 +190,154 @@ else
     FAILED=$((FAILED + 1))
 fi
 rm -rf "$CLI_REPO"
+
+# Case 8: returning to inspected-tree npx resolution must run the harmless
+# local sentinel and fail these checks. The npm double only supplies the
+# independently installed scanner; it never performs a network operation.
+SCAN_FIXTURE=$(fixture_mktemp_dir) || exit 1
+trap 'rm -rf "$REPO" "$SCAN_FIXTURE"' EXIT
+mkdir -p "$SCAN_FIXTURE/bin" "$SCAN_FIXTURE/repo"
+SCAN_REPO="$SCAN_FIXTURE/repo"
+SCAN_PKG="$SCAN_REPO/package with spaces"
+(
+    fixture_enter_git_init_dir "$SCAN_REPO" || exit 1
+    mkdir -p "$SCAN_PKG"
+    git init -q -b main
+    git config user.email t@t
+    git config user.name t
+    echo '{"name":"inspected","license":"MIT"}' > "$SCAN_PKG/package.json"
+    git add -A
+    git -c commit.gpgsign=false commit -q -m "scanner identity fixture"
+) || exit 1
+cat > "$SCAN_FIXTURE/local-scanner" <<'STUB'
+#!/usr/bin/env bash
+: > "$SCAN_FIXTURE/local-ran"
+exit 0
+STUB
+cat > "$SCAN_FIXTURE/trusted-scanner" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+start= production= private= allowed=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --start) start="$2"; shift ;;
+        --production) production=yes ;;
+        --excludePrivatePackages) private=yes ;;
+        --onlyAllow=*) allowed="${1#--onlyAllow=}" ;;
+        *) exit 91 ;;
+    esac
+    shift
+done
+[ "$start" = "$SCAN_PKG" ] && [ "$production" = yes ] && [ "$private" = yes ] || exit 92
+case "$PWD/" in "$SCAN_REPO/"*) exit 93 ;; esac
+printf '%s\n' trusted >> "$SCAN_FIXTURE/scanner-log"
+IFS= read -r license < "$start/node_modules/production-license"
+case ";$allowed;" in *";$license;"*) exit 0 ;; *) exit 1 ;; esac
+STUB
+cat > "$SCAN_FIXTURE/bin/npm" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$PWD $*" >> "$SCAN_FIXTURE/npm-log"
+case " $* " in *" --ignore-scripts "*) ;; *) exit 94 ;; esac
+case " $* " in
+    *" --prefix "*)
+        [ "$1" = ci ] || exit 97
+        case " $* " in *" --include=dev "*) ;; *) exit 97 ;; esac
+        case "$PWD/" in "$SCAN_REPO/"*) exit 95 ;; esac
+        prefix=
+        while [ "$#" -gt 0 ]; do
+            if [ "$1" = --prefix ]; then prefix="$2"; shift; fi
+            shift
+        done
+        [ -n "$prefix" ] || exit 96
+        case "$prefix/" in "$SCAN_REPO/"*) exit 95 ;; esac
+        printf '%s\n' "$prefix" > "$SCAN_FIXTURE/tool-dir"
+        # Refuse floating specs, missing locks and a lock that does not bind
+        # the exact scanner version and registry integrity.
+        node - "$prefix" <<'JS'
+const fs = require('node:fs');
+const prefix = process.argv[2];
+const pkg = JSON.parse(fs.readFileSync(`${prefix}/package.json`, 'utf8'));
+const lock = JSON.parse(fs.readFileSync(`${prefix}/package-lock.json`, 'utf8'));
+const version = pkg.devDependencies['license-checker'];
+const scanner = lock.packages['node_modules/license-checker'];
+if (!/^\d+\.\d+\.\d+$/.test(version) || pkg.dependencies ||
+    lock.packages[''].devDependencies['license-checker'] !== version ||
+    scanner.dev !== true || scanner.version !== version ||
+    !scanner.resolved || !scanner.integrity) process.exit(98);
+JS
+        [ "${BOOTSTRAP_FAIL:-0}" = 0 ] || exit 1
+        mkdir -p "$prefix/node_modules/.bin"
+        cp "$SCAN_FIXTURE/trusted-scanner" "$prefix/node_modules/.bin/license-checker"
+        ;;
+    *)
+        mkdir -p node_modules/.bin
+        cp "$SCAN_FIXTURE/local-scanner" node_modules/.bin/license-checker
+        echo MIT > node_modules/production-license
+        ;;
+esac
+STUB
+cat > "$SCAN_FIXTURE/bin/npx" <<'STUB'
+#!/usr/bin/env bash
+# Model npx's local-bin preference without ever downloading a package.
+exec "$PWD/node_modules/.bin/license-checker" "$@"
+STUB
+chmod +x "$SCAN_FIXTURE/local-scanner" "$SCAN_FIXTURE/trusted-scanner" "$SCAN_FIXTURE/bin/npm" "$SCAN_FIXTURE/bin/npx"
+
+for scan_case in existing-allowed existing-disallowed lock-install no-lock-install bootstrap-failure; do
+    rm -rf "$SCAN_PKG/node_modules"
+    rm -f "$SCAN_PKG/package-lock.json" "$SCAN_FIXTURE/local-ran" "$SCAN_FIXTURE/tool-dir"
+    : > "$SCAN_FIXTURE/scanner-log"
+    : > "$SCAN_FIXTURE/npm-log"
+    bootstrap_fail=0
+    expected_rc=0
+    case "$scan_case" in
+        lock-install) echo '{"lockfileVersion":3}' > "$SCAN_PKG/package-lock.json" ;;
+        no-lock-install) ;;
+        *)
+            mkdir -p "$SCAN_PKG/node_modules/.bin"
+            cp "$SCAN_FIXTURE/local-scanner" "$SCAN_PKG/node_modules/.bin/license-checker"
+            echo MIT > "$SCAN_PKG/node_modules/production-license"
+            ;;
+    esac
+    if [ "$scan_case" = existing-disallowed ]; then
+        echo GPL-3.0 > "$SCAN_PKG/node_modules/production-license"
+        expected_rc=1
+    elif [ "$scan_case" = bootstrap-failure ]; then
+        bootstrap_fail=1
+        expected_rc=1
+    fi
+    scan_rc=0
+    scan_out=$(cd "$SCAN_REPO" && env PATH="$SCAN_FIXTURE/bin:$PATH" SCAN_FIXTURE="$SCAN_FIXTURE" SCAN_REPO="$SCAN_REPO" SCAN_PKG="$SCAN_PKG" BOOTSTRAP_FAIL="$bootstrap_fail" bash "$SCRIPT" 2>&1) || scan_rc=$?
+    assert_eq "$scan_case: gate verdict" "$expected_rc" "$scan_rc"
+    local_ran=no
+    [ ! -f "$SCAN_FIXTURE/local-ran" ] || local_ran=yes
+    assert_eq "$scan_case: inspected scanner never launched" no "$local_ran"
+    scanner_log=$(< "$SCAN_FIXTURE/scanner-log")
+    expected_log=trusted
+    [ "$scan_case" != bootstrap-failure ] || expected_log=
+    assert_eq "$scan_case: trusted scanner with production/license arguments" "$expected_log" "$scanner_log"
+    if [ -f "$SCAN_FIXTURE/tool-dir" ]; then
+        IFS= read -r tool_dir < "$SCAN_FIXTURE/tool-dir"
+        tool_remains=no
+        [ ! -e "$tool_dir" ] || tool_remains=yes
+        assert_eq "$scan_case: temporary scanner cleaned up" no "$tool_remains"
+    fi
+    npm_log=$(< "$SCAN_FIXTURE/npm-log")
+    case "$scan_case" in
+        lock-install) install_arg='ci --omit=dev --ignore-scripts' ;;
+        no-lock-install) install_arg='install --omit=dev --ignore-scripts' ;;
+        *) install_arg= ;;
+    esac
+    if [ -n "$install_arg" ]; then
+        if grepq "$npm_log" -F "$SCAN_PKG $install_arg"; then
+            echo "PASS $scan_case: production install suppresses lifecycle scripts"
+        else
+            echo "FAIL $scan_case: production install suppresses lifecycle scripts ($scan_out)"
+            FAILED=$((FAILED + 1))
+        fi
+    fi
+done
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

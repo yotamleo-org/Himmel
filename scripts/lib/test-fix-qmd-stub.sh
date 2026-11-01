@@ -56,6 +56,9 @@ assert() {
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
+# The fixer records provenance rows; keep them out of the real ~/.himmel, which
+# a suite running beside this one may hash.
+export HIMMEL_PROVENANCE_DIR="$tmpdir/prov"
 
 # Fake plugin cache with an upstream-shaped broken stub (no dist/ tree).
 # The root deliberately contains a plugins/cache segment so the patched
