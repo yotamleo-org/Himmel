@@ -99,8 +99,8 @@ while IFS="$(printf '\t')" read -r n branch; do
 $live_docs
 EOF_TXT
     [ -z "$mapped" ] || continue
-    if printf '%s\n' "$queue_line" | grep -qE "(^|[^0-9A-Za-z-])#?$n([^0-9]|\$)"; then continue; fi
-    if [ -n "$key" ] && printf '%s\n' "$queue_line" | grep -qiE "(^|[^A-Za-z0-9])$key([^0-9]|\$)"; then continue; fi
+    if grep -qE "(^|[^0-9A-Za-z-])#?$n([^0-9]|\$)" <<< "$queue_line"; then continue; fi
+    if [ -n "$key" ] && grep -qiE "(^|[^A-Za-z0-9])$key([^0-9]|\$)" <<< "$queue_line"; then continue; fi
     printf 'UNMAPPED %s %s\n' "$n" "$branch"
     orphans=$((orphans + 1))
 done <<EOF_ROWS
