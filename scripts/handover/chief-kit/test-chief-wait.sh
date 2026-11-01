@@ -918,6 +918,15 @@ wait_exit "$WPID"
 check "(rdy) a new head wakes again" "0" "$rc"
 check "(rdy) with each failed verdict" "WAKE ready 2566 $HB ready-check=FAIL ci=RED coverage=FAIL disposition=open:2 out=$I.wait.ready-2566" "$(head -n 1 "$WORK/rdy-same.out")"
 check "(rdy) the trust path reaches cr-disposition" "check 2566 $HB --trust-path yes" "$(cat "$STUB/disp.calls" 2>/dev/null)"
+# a READY with no GREEN is not a ready wake and does not consume its head
+ready_stubs_pass
+HC=cccccccccccccccccccccccccccccccccccccccc
+printf -- '- 10:30 READY 2566 %s\n' "$HC" >> "$RL"
+ready_tick "N1:READY" "N1:READY#4"
+start "$I" "$WORK/rdy-nog.out" --doc "$RD" --workers-from "$RM"
+wait_exit "$WPID"
+check "(rdy) a READY without GREEN is no ready wake" "" "$(grep '^WAKE ready' "$WORK/rdy-nog.out")"
+check "(rdy) and runs no check" "" "$(cat "$STUB/rc.calls" 2>/dev/null)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION
 

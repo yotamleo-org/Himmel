@@ -1332,7 +1332,7 @@ ready_wake() {
         [ -n "$label" ] && [ -f "$ldoc" ] || continue
         bullet="$(grep -E '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$ldoc" | tail -n 1)"
         rest="$(printf '%s\n' "$bullet" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?//')"
-        [[ $rest =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})([^0-9a-f]|$) ]] || continue
+        [[ $rest =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})[[:space:]]+GREEN([^A-Za-z0-9_]|$) ]] || continue
         pr="${BASH_REMATCH[1]}"; head="${BASH_REMATCH[2]}"
         if grep -qxF -- "$pr $head" "$ready_woke_file" 2>/dev/null; then
             ready_fold="$ready_fold $label"; continue
