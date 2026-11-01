@@ -7,10 +7,10 @@
 #
 # cmdpos_clean_for <names-fn> <command> is true when no segment of <command>
 # executes a script but the himmel-gate dispatcher by its anchored spelling:
-# every command word is a reader, an inert sed, a pathspec-only git, echo,
-# printf without -v, cd, or `bash "$HIMMEL_REPO/scripts/handover/chief-kit/
-# himmel-gate.sh"`, with no VAR= word, substitution, $'…', comment or write
-# redirect. A guard whose rule is about how a script is EXECUTED (a seam var
+# every command word is a reader (alone or after `timeout <duration>`), an
+# inert sed, a pathspec-only git, echo, printf without -v, cd, or `bash
+# "$HIMMEL_REPO/scripts/handover/chief-kit/himmel-gate.sh"`, with no VAR= word,
+# substitution but a <(…) a reader reads, $'…', comment or write redirect. A guard whose rule is about how a script is EXECUTED (a seam var
 # beside it, its rc piped away) has nothing to judge in such a command, so a
 # mention in a commit message, grep, sed -n or quoted heredoc body is not one.
 #
@@ -109,13 +109,125 @@ short_cluster_has_O() { # short_cluster_has_O <word> <subcommand or ''>
     done
     return 1
 }
+ST_SAFE_RE='^[A-Za-z0-9_./:@+,%=][A-Za-z0-9_./:@+,%=-]*$'
+ST_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
+st_bound() {
+    local n=$1 use=$2 s=0 k=0 a b c v depth=0 bound=0 ok=0 i pb
+    local -a fb
+    case "$n" in
+        [a-z]*) ;;
+        BASH* | COMP* | EPOCH* | RANDOM | SRANDOM | SECONDS | LINENO | HISTCMD | \
+            FUNCNAME | GROUPS | DIRSTACK | PIPESTATUS | PWD | OLDPWD | IFS | OPTIND | OPTARG | REPLY) return 1 ;;
+        [A-Z]*) ;;
+        *) return 1 ;;
+    esac
+    [ "$ST_SUBST" = 0 ] || return 1
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        case "${ST_SEP[s]}" in ';' | nl | '&&' | '||' | '|' | '') ;; *) return 1 ;; esac
+        a=$k
+        while [ "$k" -lt "$ST_N" ] && [ "${ST_S[k]}" = "$s" ]; do k=$((k + 1)); done
+        b=$k c=$a
+        while [ "$c" -lt "$b" ] && [ -n "${ST_RO[c]}" ]; do c=$((c + 1)); done
+        if [ "$c" -lt "$b" ] && [ "${ST_W[c]}${ST_Q[c]}" = do0 ]; then
+            [ "$depth" -gt 0 ] || return 1
+            c=$((c + 1))
+        fi
+        # VAR= words, each checked; a segment of nothing else binds the name
+        i=$c pb=0
+        while [ "$i" -lt "$b" ] && { [ -n "${ST_RO[i]}" ] || [ "${ST_A[i]}" = 1 ]; }; do
+            if [ "${ST_A[i]}" = 1 ]; then
+                v=${ST_W[i]#*=}
+                case "${ST_W[i]%%=*}" in
+                    IFS) return 1 ;;
+                    "$n") [ "${ST_X[i]}${ST_G[i]}" = 00 ] && [[ $v =~ $ST_SAFE_RE ]] || return 1
+                        if [ "$c" = "$a" ] && [ "$depth" = 0 ] && [ "${ST_SEP[s]}" != '|' ] && [ "$s" -lt "$use" ] \
+                            && { [ "$s" = 0 ] || [ "${ST_SEP[s - 1]}" = ';' ] || [ "${ST_SEP[s - 1]}" = nl ]; }; then
+                            pb=1
+                        fi ;;
+                esac
+            fi
+            i=$((i + 1))
+        done
+        [ "$i" -lt "$b" ] || [ "$pb" = 0 ] || bound=1
+        [ "$i" -lt "$b" ] && c=$i || c=-1
+        if [ "$c" -ge 0 ]; then
+            [ "${ST_Q[c]}${ST_X[c]}${ST_G[c]}" = 000 ] || return 1
+            case "${ST_W[c]}" in
+                for)
+                    [ "$((c + 3))" -lt "$b" ] && [ "${ST_W[c + 2]}${ST_Q[c + 2]}" = in0 ] || return 1
+                    case "${ST_SEP[s]}" in ';' | nl) ;; *) return 1 ;; esac
+                    [[ ${ST_W[c + 1]} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && [ "${ST_Q[c + 1]}" = 0 ] || return 1
+                    [ "${ST_W[c + 1]}" != IFS ] || return 1
+                    fb[depth]=0
+                    if [ "${ST_W[c + 1]}" = "$n" ]; then
+                        fb[depth]=1
+                        i=$((c + 3))
+                        while [ "$i" -lt "$b" ]; do
+                            [ -z "${ST_RO[i]}" ] && [ "${ST_X[i]}${ST_G[i]}" = 00 ] && [[ ${ST_W[i]} =~ $ST_SAFE_RE ]] || return 1
+                            i=$((i + 1))
+                        done
+                    fi
+                    depth=$((depth + 1)) ;;
+                done) [ "$depth" -gt 0 ] || return 1; depth=$((depth - 1)) ;;
+                git | echo) ;;
+                *) case "$PR_READERS" in *" ${ST_W[c]} "*) ;; *) return 1 ;; esac ;;
+            esac
+        fi
+        if [ "$s" = "$use" ]; then
+            ok=$bound i=0
+            while [ "$i" -lt "$depth" ]; do [ "${fb[i]}" = 0 ] || ok=1; i=$((i + 1)); done
+        fi
+        s=$((s + 1))
+    done
+    [ "$depth" = 0 ] && [ "$ok" = 1 ]
+}
+st_bound_word() {
+    local t=${ST_W[$1]} r
+    [ "${ST_G[$1]}" = 0 ] || return 1
+    while [[ $t =~ $ST_REF_RE ]]; do
+        r=${BASH_REMATCH[2]#\{}
+        t="${BASH_REMATCH[1]}x${BASH_REMATCH[3]}"
+        st_bound "${r%\}}" "${ST_S[$1]}" || return 1
+    done
+    case "$t" in *'$'*) return 1 ;; esac
+    REPLY=$t
+}
+st_procsub_only() {
+    local s=0 h k w n=0
+    [ "$ST_SUBST$ST_HEREDOC" = 10 ] || return 1
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        # shellcheck disable=SC2016 # the tokenizer's literal operator words
+        case "${ST_SEP[s]}" in
+            '<(')
+                [ "${ST_SEP[s + 1]:-}" = ')' ] || return 1
+                # the outer command: back over each <(…) closed before this one
+                h=$s
+                while [ "$h" -ge 2 ] && [ "${ST_SEP[h - 1]}" = ')' ]; do h=$((h - 2)); done
+                k=0 w=-1
+                while [ "$k" -lt "$ST_N" ]; do
+                    if [ "${ST_S[k]}" = "$h" ] && [ -z "${ST_RO[k]}" ]; then w=$k; break; fi
+                    k=$((k + 1))
+                done
+                [ "$w" -ge 0 ] && [ "${ST_Q[w]}${ST_X[w]}${ST_G[w]}${ST_A[w]}" = 0000 ] || return 1
+                case "$PR_READERS" in *" ${ST_W[w]} "*) ;; *) return 1 ;; esac
+                n=$((n + 1)) ;;
+            ')') [ "$s" -ge 1 ] && [ "${ST_SEP[s - 1]}" = '<(' ] || return 1 ;;
+            '$(' | '`' | '>(' | '(') return 1 ;;
+        esac
+        s=$((s + 1))
+    done
+    [ "$n" -gt 0 ]
+}
 git_mentions_only() { # git_mentions_only <command-word index>
     local j=$(( $1 + 1 )) sg=${ST_S[$1]} w sub='' cached=0 dir=0 paths=0 xp=0 bad=0 xk nsub=0 es
     local bsub='' bnext=0 rsub=0 xc xch
     while [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; do
         w=${ST_W[j]}
         if [ -n "${ST_RO[j]}" ]; then j=$((j + 1)); continue; fi
-        if [ "${ST_X[j]}${ST_G[j]}" != 00 ]; then
+        # a $NAME the command bound to one safe literal reads as a plain word
+        if [ "${ST_X[j]}${ST_G[j]}" = 10 ] && st_bound_word "$j"; then
+            w=$REPLY
+        elif [ "${ST_X[j]}${ST_G[j]}" != 00 ]; then
             # an expanded word that can begin with `-` may become
             # an exec-capable option (`-O{bash,x}`, `{-O,x}bash`, `--ext-d?ff`).
             # After --, words are pathspec operands, not options.
@@ -329,11 +441,16 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
     # shellcheck disable=SC2016 # as above
     local s3="\"\$HIMMEL_REPO/$GATE_REL_NEW\"" s4="\"\${HIMMEL_REPO}/$GATE_REL_NEW\""
     st_tokenize "$cmd" || return 1
-    [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
+    [ "$ST_ANSIC$ST_COMMENT" = 00 ] || return 1
+    [ "$ST_SUBST" = 0 ] || st_procsub_only || return 1
     k=0
     while [ "$k" -lt "$ST_N" ]; do
         [ "${ST_A[k]}" = 0 ] || return 1
-        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; cw=-1; kind=''; fi
+        if [ "${ST_S[k]}" != "$sg" ]; then
+            sg=${ST_S[k]}; cw=-1; kind=''
+            # the words after a <(…) are the outer reader's operands
+            if [ "$ST_SUBST" = 1 ] && [ "$sg" -gt 0 ] && [ "${ST_SEP[sg - 1]}" = ')' ]; then cw=$k; fi
+        fi
         w=${ST_W[k]}
         case "${ST_RO[k]}" in
             *'>&') case "$w" in *[!0-9-]* | '') return 1 ;; esac ;;
@@ -353,6 +470,8 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
             [ "${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 000 ] || return 1
             case "$w" in
                 bash)
+                    # a gate inside or beside a <(…) loses its rc
+                    [ "$ST_SUBST" = 0 ] || return 1
                     j=$((k + 1))
                     while [ "$j" -lt "$ST_N" ] && [ -n "${ST_RO[j]}" ]; do j=$((j + 1)); done
                     [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
@@ -378,6 +497,16 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                 sed) st_sed_args "$k" 0 || return 1 ;;
                 git | /usr/bin/git) cmdpos_git "$k" || return 1; kind=strict ;;
                 printf) kind='printf' ;;
+                timeout)
+                    # timeout <duration> <reader> runs the reader with its own
+                    # words, so the segment reads as the reader alone.
+                    j=$((k + 2))
+                    [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
+                    [ "${ST_Q[k + 1]}${ST_X[k + 1]}${ST_G[k + 1]}${ST_RO[k + 1]}" = 000 ] || return 1
+                    [[ ${ST_W[k + 1]} =~ ^[0-9]+([.][0-9]+)?[smhd]?$ ]] || return 1
+                    [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}${ST_RO[j]}" = 000 ] || return 1
+                    case "$PR_READERS" in *" ${ST_W[j]} "*) ;; *) return 1 ;; esac
+                    ;;
                 echo | cd) ;;
                 *) case "$PR_READERS" in *" $w "*) ;; *) return 1 ;; esac ;;
             esac
