@@ -24,6 +24,7 @@ check() { # label, then the condition as a command
     if "$@"; then echo "PASS $label"; else echo "FAIL $label"; FAILED=$((FAILED + 1)); fi
 }
 
+fx_fail() { echo "FAIL fixture setup failed (line ${BASH_LINENO[0]}): the suite stops here"; exit 1; }
 BIN="$WORK/bin"          # station-side stubs
 GBIN="$WORK/gbin"        # guest-side stubs
 STATE="$WORK/vbox-state"
@@ -92,7 +93,8 @@ if verb == "exec":
     sys.stdout.write(p.stdout)
     sys.exit(p.returncode)
 if verb == "clone":
-    sys.exit(0)
+    # the one call the provisioner makes: exactly `himmel-claudex clone`, nothing after it
+    sys.exit(0 if a == ["himmel-claudex", "clone"] else 2)
 sys.exit(2)
 EOS
 chmod +x "$BIN"/*
@@ -117,6 +119,8 @@ done
 cat > "$GBIN/node" <<'EOS'
 #!/usr/bin/env bash
 echo "node $*" >> "$GUEST_TOOL_LOG"
+# the one invocation the provisioner makes: the profiles script with the worker-impl profile
+[ "$1" = scripts/lanes/plugin-profiles.mjs ] && [ "$2" = worker-impl ] && [ "$#" -eq 2 ] || exit 2
 echo '{"enabledPlugins":{}}'
 # a flag file lets a row make the checkout vanish right after the settings step
 [ -e "$GUEST_STATUS_FILE.rmrepo" ] && rm -rf "$HOME/himmel"
@@ -130,14 +134,16 @@ CANARY_ENV="CANARY-ENV-$$-a1f3"; CANARY_CODEX="CANARY-CODEX-$$-b2e4"; CANARY_PRO
 mkdir -p "$STATION_HOME/.codex" "$STATION_HOME/.cli-proxy-api" "$WORK/primary"
 echo "{\"token\":\"$CANARY_CODEX\"}" > "$STATION_HOME/.codex/auth.json"
 echo "{\"token\":\"$CANARY_PROXY\"}" > "$STATION_HOME/.cli-proxy-api/codex-x.json"
-git -C "$WORK/primary" init -q . && echo "PAT=$CANARY_ENV" > "$WORK/primary/.env"
+if ! { git -C "$WORK/primary" init -q . && echo "PAT=$CANARY_ENV" > "$WORK/primary/.env"; }; then
+    echo "FAIL fixture: could not build the primary checkout with its .env canary"; exit 1
+fi
 
 GH="$WORK/guest-home"
 export FAKE_VBOX_LOG="$WORK/vbox.log" FAKE_VBOX_STATE="$STATE" FAKE_VMSDK_LOG="$WORK/vmsdk.log"
 export GUEST_TOOL_LOG="$WORK/guest-tools.log" GUEST_STATUS_FILE="$WORK/status.out" GUEST_PREFLIGHT_RC_FILE="$WORK/preflight.rc"
 
 new_world() { # fresh fake guest + station VirtualBox state; claudex-base present unless $1 = nobase
-    rm -rf "$GH" "$STATE"; mkdir -p "$GH/himmel/scripts/setup" "$GH/himmel/scripts/lanes" "$STATE"
+    rm -rf "$GH" "$STATE"; mkdir -p "$GH/himmel/scripts/setup" "$GH/himmel/scripts/lanes" "$STATE" || fx_fail
     : > "$FAKE_VBOX_LOG"; : > "$FAKE_VMSDK_LOG"; : > "$GUEST_TOOL_LOG"
     printf 'ubuntu_new\nhimmel-claudex\n' > "$STATE/vms"
     echo 2222 > "$STATE/fwd-ubuntu_new"; echo 2229 > "$STATE/fwd-himmel-claudex"
@@ -162,7 +168,7 @@ EOS
 // stub: the stub node on PATH never reads it
 EOS
     # login shells on the guest still find the stubs first
-    printf 'PATH="%s:$PATH"; export PATH\n' "$GBIN" > "$GH/.profile"
+    printf 'PATH="%s:$PATH"; export PATH\n' "$GBIN" > "$GH/.profile" || fx_fail
     printf 'OK    key matches config.yaml\nrunning:     OK   127.0.0.1:8317\n' > "$GUEST_STATUS_FILE"
     echo 20 > "$GUEST_PREFLIGHT_RC_FILE"
 }
@@ -325,7 +331,7 @@ kill "$HOLD_PID" 2>/dev/null; wait "$HOLD_PID" 2>/dev/null
 
 # --- R5d: ~/Documents/github/himmel already a directory is refused and left alone ---
 new_world
-mkdir -p "$GH/Documents/github/himmel" && echo keep > "$GH/Documents/github/himmel/marker"
+{ mkdir -p "$GH/Documents/github/himmel" && echo keep > "$GH/Documents/github/himmel/marker"; } || fx_fail
 run_cg provision himmel-claudex
 check "R5d an existing directory fails provision" rc_nonzero
 check "R5d the directory is untouched" test "$(cat "$GH/Documents/github/himmel/marker" 2>/dev/null)" = keep -a ! -L "$GH/Documents/github/himmel"
@@ -333,13 +339,75 @@ check "R5d the directory is untouched" test "$(cat "$GH/Documents/github/himmel/
 # --- R8: a short or empty key file is regenerated to 64 bytes at mode 600 ---
 for stale in "" "abc"; do
     new_world
-    mkdir -p "$GH/.config/himmel" && printf '%s' "$stale" > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"
+    { mkdir -p "$GH/.config/himmel" && printf '%s' "$stale" > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"; } || fx_fail
     run_cg provision himmel-claudex
     check "R8 a ${#stale}-byte key file: provision exits 0" rc_is 0
     check "R8 a ${#stale}-byte key file is regenerated to 64 bytes" test "$(wc -c < "$GH/.config/himmel/cliproxy.key")" = 64
     check "R8 a ${#stale}-byte key file ends at mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key")" = 600 # gnu-ok: linux-only suite
     check "R8 a ${#stale}-byte key file leaves no temp file" test ! -e "$GH/.config/himmel/cliproxy.key.tmp"
 done
+
+# --- R8b: a kept key must be 64 hex characters: 64 bytes of anything else is replaced ---
+new_world
+{ mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 z > "$GH/.config/himmel/cliproxy.key"; } || fx_fail
+run_cg provision himmel-claudex
+check "R8b a 64-byte non-hex key: provision exits 0" rc_is 0
+check "R8b a 64-byte non-hex key is replaced by 64 hex characters" \
+    grep -Eqx '[0-9a-f]{64}' "$GH/.config/himmel/cliproxy.key"
+check "R8b the replaced key is at mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key")" = 600 # gnu-ok: linux-only suite
+
+# --- R8c: a valid kept key is left as is and ends at mode 600 ---
+new_world
+{ mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 a > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"; } || fx_fail
+run_cg provision himmel-claudex
+check "R8c a valid kept key: provision exits 0" rc_is 0
+check "R8c a valid kept key keeps its bytes" test "$(cat "$GH/.config/himmel/cliproxy.key")" = "$(printf '%064d' 0 | tr 0 a)"
+check "R8c a valid kept key ends at mode 600" test "$(stat -c %a "$GH/.config/himmel/cliproxy.key")" = 600 # gnu-ok: linux-only suite
+
+# --- R8d: a symlink at the key path is refused before any chmod or cat reaches its target ---
+new_world
+{ mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 b > "$GH/target.key" && chmod 644 "$GH/target.key"; } || fx_fail
+ln -s "$GH/target.key" "$GH/.config/himmel/cliproxy.key" || fx_fail
+run_cg provision himmel-claudex
+check "R8d a symlinked key path fails provision" rc_nonzero
+check "R8d the refusal names the symlink" out_has "symlink"
+check "R8d the link target keeps mode 644 (no chmod followed the link)" test "$(stat -c %a "$GH/target.key")" = 644 # gnu-ok: linux-only suite
+check "R8d the link is still a link and its target is untouched" \
+    test -L "$GH/.config/himmel/cliproxy.key" -a "$(cat "$GH/target.key")" = "$(printf '%064d' 0 | tr 0 b)"
+new_world
+{ mkdir -p "$GH/.config/himmel" && ln -s "$GH/nowhere.key" "$GH/.config/himmel/cliproxy.key"; } || fx_fail
+run_cg provision himmel-claudex
+check "R8d a dangling symlinked key path fails provision" rc_nonzero
+check "R8d a dangling link is not written through" test ! -e "$GH/nowhere.key"
+
+# --- R11: a dangling ~/.claude/settings.json symlink is left alone, never written through ---
+new_world
+{ mkdir -p "$GH/.claude" && ln -s "$GH/nowhere.json" "$GH/.claude/settings.json"; } || fx_fail
+run_cg provision himmel-claudex
+check "R11 a dangling settings.json link: provision exits 0" rc_is 0
+check "R11 a dangling settings.json link is not written through" test ! -e "$GH/nowhere.json"
+
+# --- R12: a *.local.json the guest grew itself does not refuse a re-provision; a .env still does (R5b) ---
+new_world
+{ mkdir -p "$GH/.claude" && echo '{"permissions":{}}' > "$GH/.claude/settings.local.json"; } || fx_fail
+run_cg provision himmel-claudex
+check "R12 a guest-grown settings.local.json: provision exits 0 (out: ${out:0:200})" rc_is 0
+check "R12 the settings.local.json is preserved byte for byte" test "$(cat "$GH/.claude/settings.local.json" 2>/dev/null)" = '{"permissions":{}}'
+
+# --- R13: the strict stubs refuse what the provisioner never sends (a lax stub would pass these) ---
+stub_rc() { # <cmd...>: rc of a stub run against a scratch log
+    FAKE_VMSDK_LOG="$WORK/stub-probe.log" GUEST_TOOL_LOG="$WORK/stub-probe.log" "$@" > /dev/null 2>&1 < /dev/null
+}
+stub_refused() { ! stub_rc "$@"; }
+check "R13 the vmsdk stub accepts exactly 'himmel-claudex clone'" stub_rc python3 -I "$WORK/vmsdk-stub.py" himmel-claudex clone
+check "R13 the vmsdk stub refuses a clone with an extra argument" stub_refused python3 -I "$WORK/vmsdk-stub.py" himmel-claudex clone main
+check "R13 the vmsdk stub refuses a clone of another VM" stub_refused python3 -I "$WORK/vmsdk-stub.py" ubuntu_new clone
+check "R13 the node stub accepts the worker-impl profile script call" \
+    stub_rc "$GBIN/node" scripts/lanes/plugin-profiles.mjs worker-impl
+check "R13 the node stub refuses another script" stub_refused "$GBIN/node" scripts/other.mjs worker-impl
+check "R13 the node stub refuses another profile" stub_refused "$GBIN/node" scripts/lanes/plugin-profiles.mjs worker-spec
+check "R13 the fixture primary checkout is a git repo carrying the .env canary" \
+    bash -c 'git -C "$1" rev-parse --git-dir >/dev/null 2>&1 && grep -q "$2" "$1/.env"' _ "$WORK/primary" "$CANARY_ENV"
 
 # --- R9: a claude whose --version stays wrong after the install fails provision ---
 new_world

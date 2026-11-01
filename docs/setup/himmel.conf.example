@@ -18,6 +18,7 @@
 # TICKET_ID_REQUIRED=1
 # TICKET_ID_PATTERN=#[0-9]+
 # TICKET_ID_EXEMPT_AUTHORS=dependabot[bot],dependabot
+# HIMMEL_TRACKER_TEAM_MODE=off
 
 # Code review
 # CR_PROFILE=free,paid
