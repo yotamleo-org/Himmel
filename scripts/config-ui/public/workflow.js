@@ -171,7 +171,7 @@ function workflowTab(model, ix, ui, stats) {
   const open = hl ? ix.stageOf(hl) : ui.phase;
   const above = model.stages.flatMap((s) => s.steps).filter((id) => ix.node.get(id).step.place.startsWith("above")).map((id) => ix.num.get(id));
   return `<p class="wf-tabq"><b>Workflow tab:</b> the system, explained. It shows the path every change takes, with one measured number per phase. It is not a live monitor: nothing here shows what is running right now.</p>`
-    + `<div class="wf-band"><span class="wf-ring" aria-hidden="true"></span><div><b>Above the line: the chief's loop.</b> It is not one change, and it runs all the time: wait, read the fleet, pick, brief, start a worker. Each worker it starts enters the line at phase 3. When its shift ends, a new chief takes over the whole fleet, with the start and plan work still in flight. Its steps are ${above.join(", ")}, in phase 3's drill-in.</div></div>`
+    + `<div class="wf-band"><span class="wf-ring" aria-hidden="true"></span><div><b>Above the line: the chief's loop.</b> It is not one change, and it runs all the time: wait, read the fleet, pick, brief, start a worker. Each worker it starts enters the line at phase 3. When its shift ends, a new chief takes over the whole fleet; handing over the start and plan work still in flight is planned, not built yet. Its steps are ${above.join(", ")}, in phase 3's drill-in.</div></div>`
     + storyMap(model, ix, stats, open)
     + walkPanel(model, ix, ui)
     + `<nav class="wf-ctl wf-picker" aria-label="Open a phase">${model.stages.map((s) => `<a class="btn" href="#/workflow?phase=${esc(s.id)}"${open === s.id ? ' aria-current="true"' : ""}>${s.n} · ${esc(s.name)}</a>`).join("")}</nav>`

@@ -105,9 +105,9 @@ export function readPhaseStats(env: Env, roundsDir: string, now: number): PhaseS
     const vs = took.map((t) => t.v).sort((x, y) => x - y);
     const median = quantile(vs, 0.5), p80 = quantile(vs, 0.8);
     if (median !== null && p80 !== null)
-      // far outside: past the 8-in-10 line and 3 × the median (2 × for rounds); a median under 1 counts as 1
+      // far outside: past the 8-in-10 line and 3 × the median (2 × for rounds); a median or 8-in-10 line under 1 counts as 1
       for (const t of took) if (t.v > p80 && t.v >= (unit === "rounds" ? 2 : 3) * Math.max(median, 1))
-        outliers.push({ pr: prOf(t.key), phase: id, value: t.v, unit, times: Math.round((t.v / p80) * 10) / 10 });
+        outliers.push({ pr: prOf(t.key), phase: id, value: t.v, unit, times: Math.round((t.v / Math.max(p80, 1)) * 10) / 10 });
     return { id, name, state: vs.length ? "ok" : "nodata", unit, n: vs.length, median, p80, perDay: perDay(entered), counts };
   };
   const none = (id: string, name: string, counts: string): PhaseRow =>

@@ -99,6 +99,14 @@ test("phase-stats: Review's entries per day are the same branches it counts, and
   expect(phase(s, "review")).toMatchObject({ n: 1, perDay: [0, 0, 0, 0, 0, 1, 0] });
 });
 
+test("phase-stats: an outlier against an 8-in-10 line of zero minutes still reads as a finite multiple", () => {
+  const quick = [1, 2, 3, 4, 5, 6].flatMap((i) => [ev("live", `HIMMEL-${i}`, "2026-10-26T10:00:00Z"), ev("pr-open", `HIMMEL-${i}`, "2026-10-26T10:00:00Z", String(i))]);
+  const { env } = fixture([...quick, ev("live", "HIMMEL-7", "2026-10-26T10:00:00Z"), ev("pr-open", "HIMMEL-7", "2026-10-26T10:30:00Z", "7")]);
+  const s = readPhaseStats(env, "", NOW);
+  expect(phase(s, "build")).toMatchObject({ median: 0, p80: 0 });
+  expect(s.outliers.map((o) => [o.pr, o.times])).toEqual([["7", 30]]);
+});
+
 test("phase-stats: no records at all reads as no data yet, never an error", () => {
   const dir = mkdtempSync(join(tmpdir(), "phase-stats-none-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
