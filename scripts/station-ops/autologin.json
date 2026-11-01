@@ -1,8 +1,9 @@
 {"name": "autologin",
- "version": 1,
+ "version": 2,
  "run_as": "root",
  "timeout_s": 30,
- "effect": "turns the display manager's automatic login for the operator user on or off (SDDM, GDM or LightDM; any other display manager is refused); takes effect at the next boot or display manager restart; the login keyring is not unlocked by an automatic login and its state is reported",
+ "effect": "turns the display manager's automatic login for the operator user on or off (SDDM, GDM or LightDM; any other display manager is refused); enable names the desktop session to start (an installed X11 or Wayland session; GDM starts the user's own default); takes effect at the next boot or display manager restart; the login keyring is not unlocked by an automatic login and its state is reported",
  "params": {
-  "action": {"enum": ["enable", "disable"]}
+  "action": {"enum": ["enable", "disable"]},
+  "session": {"re": "^[A-Za-z0-9._-]{1,60}$", "when": "action=enable"}
  }}

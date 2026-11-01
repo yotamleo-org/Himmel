@@ -293,53 +293,62 @@ new_root al
 U=$(id -un)
 HOMEDIR=$(getent passwd "$U" | cut -d: -f6)
 dm() { mkdir -p "$R/etc/systemd/system"; ln -sf "/usr/lib/systemd/system/$1.service" "$R/etc/systemd/system/display-manager.service"; }
-assert_contains "RED: no display manager is refused" "result=failed" "$(op autologin --action enable)"
+mkdir -p "$R/usr/share/xsessions" "$R/usr/share/wayland-sessions"; : > "$R/usr/share/xsessions/xfce.desktop"; : > "$R/usr/share/wayland-sessions/plasma.desktop"
+assert_contains "RED: no display manager is refused" "result=failed" "$(op autologin --action enable --session xfce)"
 dm lxdm
-out=$(op autologin --action enable)
+out=$(op autologin --action enable --session xfce)
 assert_contains "RED: an unknown display manager is refused" "result=failed" "$out"
 assert_contains "the refusal names the display manager" "unsupported display manager 'lxdm'" "$out"
 dm sddm
 assert_contains "a bad action is bad-param" "result=bad-param name=action" "$(op autologin --action toggle)"
-out=$(op autologin --check --action enable)
+out=$(op autologin --check --action enable --session xfce)
 assert_contains "--check reports a would-change" "result=would-change" "$out"
 assert_eq "--check wrote nothing" "no" "$([ -e "$R/etc/sddm.conf.d/himmel-autologin.conf" ] && echo yes || echo no)"
-out=$(op autologin --action enable)
+out=$(op autologin --action enable --session xfce)
 assert_contains "RED: SDDM enable changes the config" "result=changed" "$out"
 assert_contains "the SDDM file names the operator user" "User=$U" "$(cat "$R/etc/sddm.conf.d/himmel-autologin.conf" 2>/dev/null)"
-out=$(op autologin --action enable)
+out=$(op autologin --action enable --session xfce)
 assert_contains "RED: enable on an already-enabled config is unchanged" "result=unchanged" "$out"
 assert_eq "the SDDM file is untouched by the second enable" "[Autologin]
-User=$U" "$(cat "$R/etc/sddm.conf.d/himmel-autologin.conf")"
+User=$U
+Session=xfce.desktop" "$(cat "$R/etc/sddm.conf.d/himmel-autologin.conf")"
+assert_contains "RED: enable without a session is bad-param" "result=bad-param name=session" "$(op autologin --action enable)"
+assert_contains "RED: a session that is not installed is bad-param" "result=bad-param name=session" "$(op autologin --action enable --session nosuch)"
+assert_contains "a session with a path in it is bad-param" "result=bad-param name=session" "$(op autologin --action enable --session ../xfce)"
+assert_contains "a Wayland session is accepted" "result=changed" "$(op autologin --action enable --session plasma)"
+assert_contains "disable with a session is bad-param" "result=bad-param name=session" "$(op autologin --action disable --session xfce)"
+assert_contains "enable with another session changes the file" "result=changed" "$(op autologin --action enable --session xfce)"
 assert_contains "disable removes the SDDM file" "result=changed" "$(op autologin --action disable)"
 assert_eq "the SDDM file is gone" "no" "$([ -e "$R/etc/sddm.conf.d/himmel-autologin.conf" ] && echo yes || echo no)"
 assert_contains "disable again is unchanged" "result=unchanged" "$(op autologin --action disable)"
 dm lightdm
-assert_contains "LightDM enable changes the config" "result=changed" "$(op autologin --action enable)"
+assert_contains "LightDM enable changes the config" "result=changed" "$(op autologin --action enable --session xfce)"
 assert_contains "the LightDM file names the operator user" "autologin-user=$U" "$(cat "$R/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf" 2>/dev/null)"
-assert_contains "LightDM enable again is unchanged" "result=unchanged" "$(op autologin --action enable)"
+assert_contains "RED: the LightDM file names the session (lightdm defaults to one that may not be installed)" "autologin-session=xfce" "$(cat "$R/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf" 2>/dev/null)"
+assert_contains "LightDM enable again is unchanged" "result=unchanged" "$(op autologin --action enable --session xfce)"
 dm gdm3
 mkdir -p "$R/etc/gdm3"
 printf '[daemon]\n#WaylandEnable=false\nAutomaticLoginEnable=False\n\n[security]\nFoo=bar\n' > "$R/etc/gdm3/custom.conf"
-assert_contains "GDM enable changes the config" "result=changed" "$(op autologin --action enable)"
+assert_contains "GDM enable changes the config" "result=changed" "$(op autologin --action enable --session xfce)"
 gdm=$(cat "$R/etc/gdm3/custom.conf")
 assert_contains "GDM sets AutomaticLoginEnable" "AutomaticLoginEnable=True" "$gdm"
 assert_contains "GDM sets AutomaticLogin to the operator user" "AutomaticLogin=$U" "$gdm"
 assert_absent "GDM drops the old AutomaticLoginEnable=False" "AutomaticLoginEnable=False" "$gdm"
 assert_contains "GDM keeps the other sections" "Foo=bar" "$gdm"
 assert_eq "GDM writes each key once" "2" "$(printf '%s\n' "$gdm" | grep -c '^AutomaticLogin')"
-assert_contains "GDM enable again is unchanged" "result=unchanged" "$(op autologin --action enable)"
+assert_contains "GDM enable again is unchanged" "result=unchanged" "$(op autologin --action enable --session xfce)"
 assert_contains "GDM disable changes the config" "result=changed" "$(op autologin --action disable)"
 assert_absent "GDM disable removes the keys" "AutomaticLogin" "$(cat "$R/etc/gdm3/custom.conf")"
 assert_contains "GDM keeps the other sections after disable" "Foo=bar" "$(cat "$R/etc/gdm3/custom.conf")"
 assert_contains "GDM disable again is unchanged" "result=unchanged" "$(op autologin --action disable)"
 rm -f "$R/etc/gdm3/custom.conf"
-assert_contains "GDM enable creates a missing custom.conf" "result=changed" "$(op autologin --action enable)"
+assert_contains "GDM enable creates a missing custom.conf" "result=changed" "$(op autologin --action enable --session xfce)"
 assert_contains "the new custom.conf holds a [daemon] section" "[daemon]" "$(cat "$R/etc/gdm3/custom.conf")"
 echo "== autologin: the keyring state is reported =="
 dm sddm
 assert_contains "no login keyring reads keyring=none" "keyring=none" "$(op autologin --check --action disable)"
 mkdir -p "$R$HOMEDIR/.local/share/keyrings"; : > "$R$HOMEDIR/.local/share/keyrings/login.keyring"
-assert_contains "a login keyring reads locked at autologin" "keyring=present-locked-at-autologin" "$(op autologin --action enable)"
+assert_contains "a login keyring reads locked at autologin" "keyring=present-locked-at-autologin" "$(op autologin --action enable --session xfce)"
 assert_contains "autologin goes through the chain" "result=pending" "$(oreq 0 S1 autologin action=disable)"
 
 echo "== chief-restart: an operator-user op =="

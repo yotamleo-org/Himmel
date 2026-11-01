@@ -1,9 +1,13 @@
 #!/bin/bash
-# autologin v1: turn the display manager's automatic login for the operator user on or off.
+# autologin v2: turn the display manager's automatic login for the operator user on or off.
 # Run by the afk-sudo helper as root after a Telegram approval, from the root-owned copy in
 # /usr/local/libexec/himmel/ops/.
 #
-#   autologin.sh [--check] --id ID --operator-user U --action enable|disable
+#   autologin.sh [--check] --id ID --operator-user U --action enable|disable [--session S]
+#
+# enable needs --session S, a desktop session installed as /usr/share/{xsessions,wayland-sessions}/S.desktop
+# (LightDM's own default is a distro session that may not be installed, and then it shows the greeter); disable
+# takes none. GDM starts the user's own default session and ignores S.
 #
 # The display manager is the one /etc/systemd/system/display-manager.service points at. SDDM gets
 # /etc/sddm.conf.d/himmel-autologin.conf, LightDM /etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf (both
@@ -24,7 +28,7 @@ if [ "$(id -u)" != 0 ]; then
     [ -z "${HIMMEL_OPS_BIN:-}" ] || PATH="$HIMMEL_OPS_BIN:$PATH"
 fi
 
-id=- check=0 user='' action=''
+id=- check=0 user='' action='' session=''
 say() { # result [name] detail
     if [ $# -eq 3 ]; then printf 'op=autologin id=%s result=%s name=%s detail=%s\n' "$id" "$1" "$2" "$3"
     else printf 'op=autologin id=%s result=%s detail=%s\n' "$id" "$1" "$2"; fi
@@ -39,6 +43,7 @@ while [ $# -gt 0 ]; do
         --id) id=$2 ;;
         --operator-user) user=$2 ;;
         --action) action=$2 ;;
+        --session) session=$2 ;;
         *) die "unknown argument $1" ;;
     esac
     shift 2
@@ -47,6 +52,14 @@ done
 [[ $id =~ ^[A-Za-z0-9-]{1,40}$ ]] || id=-
 [[ $user =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "no valid operator user"
 case $action in enable | disable) ;; *) bad action "must be enable or disable" ;; esac
+if [ "$action" = enable ]; then
+    [[ $session =~ ^[A-Za-z0-9._-]{1,60}$ ]] || bad session "enable needs the name of an installed desktop session"
+    case $session in .* | *..*) bad session "no dots at the start or in a row" ;; esac
+    [ -f "$ROOT/usr/share/xsessions/$session.desktop" ] || [ -f "$ROOT/usr/share/wayland-sessions/$session.desktop" ] \
+        || bad session "no installed session $session (/usr/share/xsessions or wayland-sessions)"
+else
+    [ -z "$session" ] || bad session "not allowed with disable"
+fi
 home=$(getent passwd "$user" | cut -d: -f6)
 [ -n "$home" ] || die "no such user $user"
 
@@ -58,10 +71,12 @@ dm=$(basename "$link" .service)
 case $dm in
     sddm) kind=sddm; file="$ROOT/etc/sddm.conf.d/himmel-autologin.conf"
         want="[Autologin]
-User=$user" ;;
+User=$user
+Session=$session.desktop" ;;
     lightdm) kind=lightdm; file="$ROOT/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf"
         want="[Seat:*]
-autologin-user=$user" ;;
+autologin-user=$user
+autologin-session=$session" ;;
     gdm | gdm3) kind=gdm
         file="$ROOT/etc/gdm3/custom.conf"
         [ -e "$ROOT/etc/gdm/custom.conf" ] && [ ! -e "$file" ] && file="$ROOT/etc/gdm/custom.conf" ;;
