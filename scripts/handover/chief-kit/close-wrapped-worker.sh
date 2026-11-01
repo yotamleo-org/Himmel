@@ -91,7 +91,8 @@
 #   3  refused - the queue lock is not free: on the doc, or on its sibling doc (the
 #      <stem>-RESUME.md of an original doc, the original of a -RESUME doc) when one exists
 #   4  refused - the last marker-bullet is not WRAPPED: the doc's own, or the sibling doc's
-#      when the doc itself has no marker-bullet
+#      when the doc itself has no marker-bullet; an original doc is also refused
+#      while its -RESUME sibling has a last marker-bullet that is not WRAPPED
 #   5  refused - >1 live sessions matched the worker's names (0 for a --chief)
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
