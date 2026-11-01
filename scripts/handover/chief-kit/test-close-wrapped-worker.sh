@@ -327,6 +327,7 @@ git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
 git -C "$SCR/refclone" checkout -q -b topic2
 GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/refclone" commit -q --allow-empty -m topic2-only
 git -C "$SCR/refclone" push -q origin topic2 2>/dev/null
+check "skipFetchAll fixture: topic2 was pushed and is tracked" "$(git -C "$SCR/refclone" rev-parse --verify -q refs/remotes/origin/topic2 >/dev/null && echo yes || echo no)" "yes"
 git -C "$SCR/refclone" config remote.origin.skipFetchAll true
 git -C "$W/scr-remote.git" branch -D topic2 >/dev/null
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
