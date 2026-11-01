@@ -11,6 +11,8 @@ set -uo pipefail
 root="$(git rev-parse --show-toplevel)"
 node_bin="${NODE:-node}"
 
+# The keyring stays off for every row but the S0-R8 ones, which switch the stub on for themselves.
+export HIMMEL_SECRETS_KEYRING=off
 SS_ROOT="$root" "$node_bin" - <<'NODE'
 'use strict';
 const fs = require('fs');
@@ -365,6 +367,131 @@ row('m himmel-env resolves to the primary checkout from a linked worktree, as th
   ok(fs.readFileSync(path.join(primary, '.env'), 'utf8').includes('JIRA_EMAIL=a@example.com'), 'write went to the primary .env');
   ok(!fs.existsSync(path.join(wt, '.env')), 'no .env created in the worktree');
   eq(store.detect('JIRA_API_TOKEN', { ...mk(), himmelRoot: path.join(tmp, 'nogit') }).status, 'not-set');
+});
+
+// ── detect and write go through the one secrets resolver ──
+// A stub keyring (secret-tool and busctl first on PATH) in front of the real scripts/lib/himmel-secrets;
+// no row reaches a real keyring. The suite runs with the keyring OFF (set by the bash wrapper); a row
+// switches it on for itself only, through the stub.
+const kdir = path.join(tmp, 'kring'); const kbin = path.join(kdir, 'kbin');
+fs.mkdirSync(kbin, { recursive: true });
+const kstore = path.join(kdir, 'keyring.tsv'); const klog = path.join(kdir, 'keyring.log');
+fs.writeFileSync(path.join(kbin, 'secret-tool'), [
+  '#!/usr/bin/env bash',
+  'printf "secret-tool %s\\n" "$*" >>"$KSTUB_LOG"',
+  'verb="$1"; shift',
+  '[ "${1:-}" = --all ] && shift',
+  '[ "$verb" = store ] && shift 2',
+  'q=""',
+  'while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done',
+  'q="${q# }"',
+  'case "$verb" in',
+  '  store) [ -z "${KSTUB_STORE_FAIL:-}" ] || exit 1',
+  '    IFS= read -r val || true',
+  '    printf "%s\\t%s\\n" "$q" "$val" >>"$KSTUB_STORE"; exit 0 ;;',
+  '  lookup) [ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1',
+  '    while IFS="$(printf "\\t")" read -r attrs val; do',
+  '      m=1; for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done',
+  '      if [ "$m" = 1 ]; then printf "%s" "$val"; exit 0; fi',
+  '    done <"$KSTUB_STORE"; exit 1 ;;',
+  'esac',
+  'exit 1',
+].join('\n') + '\n', { mode: 0o755 });
+fs.writeFileSync(path.join(kbin, 'busctl'), '#!/usr/bin/env bash\ncase "$*" in "--user get-property org.freedesktop.secrets /org/freedesktop/secrets/aliases/default org.freedesktop.Secret.Collection Locked") echo "b ${KSTUB_LOCKED:-false}" ;; esac\n', { mode: 0o755 });
+// Suite guard: abort unless the stubs are what resolve.
+for (const tool of ['secret-tool', 'busctl']) {
+  const r = spawnSync('bash', ['-c', 'command -v ' + tool], { env: { PATH: kbin + ':' + process.env.PATH }, encoding: 'utf8' });
+  if (!r.stdout.startsWith(kbin)) { fail('suite guard', tool + ' does not resolve to the stub keyring'); process.exit(1); }
+}
+// Run fn with the stub keyring switched on (locked or not), then restore the environment.
+function withKeyring(opts, fn) {
+  const names = ['PATH', 'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY', 'DBUS_SESSION_BUS_ADDRESS', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'KSTUB_STORE_FAIL', 'KSTUB_LOOKUP_FAIL', 'JIRA_API_TOKEN', 'BITBUCKET_API_TOKEN'];
+  const saved = Object.fromEntries(names.map((n) => [n, process.env[n]]));
+  fs.writeFileSync(kstore, opts.items || ''); fs.writeFileSync(klog, '');
+  // An exported token would be served by the resolver before the keyring stub is asked.
+  for (const k of ['HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY', 'JIRA_API_TOKEN', 'BITBUCKET_API_TOKEN']) delete process.env[k];
+  Object.assign(process.env, { PATH: kbin + ':' + process.env.PATH, DBUS_SESSION_BUS_ADDRESS: 'unix:path=' + path.join(kdir, 'bus'), KSTUB_STORE: kstore, KSTUB_LOG: klog, KSTUB_LOCKED: opts.locked ? 'true' : 'false' });
+  for (const k of ['KSTUB_STORE_FAIL', 'KSTUB_LOOKUP_FAIL']) { if (opts[k]) process.env[k] = '1'; else delete process.env[k]; }
+  try { return fn(); } finally { for (const n of names) { if (saved[n] === undefined) delete process.env[n]; else process.env[n] = saved[n]; } }
+}
+const held = (name) => fs.readFileSync(kstore, 'utf8').split('\n').filter((l) => l.startsWith('service=himmel key=' + name + ' '));
+const envOf = (ctx) => path.join(ctx.himmelRoot, '.env');
+// The resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up): rows that need a served keyring item skip there.
+const krow = process.platform === 'darwin' ? (n) => console.log('SKIP - ' + n + ': the resolver skips the keyring on Darwin') : row;
+
+krow('S0-R8 a keyring-only token is detected as set, source keyring, with no .env', () => {
+  const ctx = mk(); const v = fake();
+  withKeyring({ items: 'service=himmel key=JIRA_API_TOKEN scope=user\t' + v + '\n' }, () => {
+    const d = store.detect('JIRA_API_TOKEN', ctx); eq(d.status, 'set'); eq(d.source, 'keyring');
+    ok(/secret-tool lookup .*JIRA_API_TOKEN/.test(fs.readFileSync(klog, 'utf8')), 'a lookup argv is logged');
+    ok(!fs.readFileSync(klog, 'utf8').includes(v), 'the log holds no value');
+  });
+  ok(!fs.existsSync(envOf(ctx)), 'no .env was created');
+});
+
+row('S0-R8 a name the keyring does not hold is still detected from .env', () => {
+  const ctx = mk(); const v = fake();
+  fs.writeFileSync(envOf(ctx), 'JIRA_API_TOKEN=' + v + '\n');
+  withKeyring({}, () => { const d = store.detect('JIRA_API_TOKEN', ctx); eq(d.status, 'set'); eq(d.source, 'store'); });
+});
+
+row('S0-R8 a failing keyring lookup leaves detect on .env alone (not-set without one)', () => {
+  const ctx = mk();
+  withKeyring({ items: 'service=himmel key=JIRA_API_TOKEN scope=user\t' + fake() + '\n', KSTUB_LOOKUP_FAIL: true }, () => eq(store.detect('JIRA_API_TOKEN', ctx).status, 'not-set'));
+});
+
+krow('S0-R8 unlocked: a token is written through put --stdin and adds no .env line', () => {
+  const ctx = mk(); const v = fake();
+  withKeyring({}, () => {
+    const r = store.write('JIRA_API_TOKEN', v, ctx);
+    ok(r.ok, 'write ok');
+    eq(held('JIRA_API_TOKEN').length, 1, 'one keyring item');
+    ok(held('JIRA_API_TOKEN')[0].endsWith('\t' + v), 'the keyring holds the value');
+    const log = fs.readFileSync(klog, 'utf8');
+    ok(/secret-tool store .*key JIRA_API_TOKEN/.test(log), 'a store argv is logged');
+    ok(!log.includes(v), 'the log holds no value (it travelled on stdin)');
+  });
+  ok(!fs.existsSync(envOf(ctx)), 'no .env line, no .env');
+});
+
+row('S0-R8 locked: the token is written to .env as today, the keyring untouched', () => {
+  const ctx = mk(); const v = fake();
+  ctx.gitCheckIgnore = () => true;
+  withKeyring({ locked: true }, () => { store.write('JIRA_API_TOKEN', v, ctx); eq(held('JIRA_API_TOKEN').length, 0); });
+  ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN=' + v), 'the .env holds it');
+});
+
+krow('S0-R8 unlocked but the keyring refuses the store: the write is refused, no .env line (an older keyring value would shadow it)', () => {
+  const ctx = mk(); const v = fake();
+  ctx.gitCheckIgnore = () => true;
+  let msg = '';
+  withKeyring({ KSTUB_STORE_FAIL: true }, () => { try { store.write('JIRA_API_TOKEN', v, ctx); } catch (e) { msg = e.message; } });
+  ok(/refused the store/.test(msg), 'the write names the refusal: ' + msg);
+  ok(!msg.includes(v), 'the error holds no value');
+  ok(!fs.existsSync(envOf(ctx)), 'no .env was written');
+});
+
+krow('S0-R8 removing a token the keyring still serves is refused, naming the manual clear, and .env is untouched', () => {
+  const ctx = mk(); const v = fake();
+  fs.writeFileSync(envOf(ctx), 'JIRA_API_TOKEN=' + v + '\n');
+  let msg = '';
+  withKeyring({ items: 'service=himmel key=JIRA_API_TOKEN scope=user\t' + fake() + '\n' }, () => { try { store.remove('JIRA_API_TOKEN', ctx); } catch (e) { msg = e.message; } });
+  ok(/keyring/.test(msg) && /HIMMEL-8473/.test(msg), 'the refusal names the keyring and the delete-verb ticket: ' + msg);
+  ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN=' + v), 'the .env line is still there');
+});
+
+row('S0-R8 removing a token the keyring does not hold still removes the .env line', () => {
+  const ctx = mk(); const v = fake();
+  fs.writeFileSync(envOf(ctx), 'JIRA_API_TOKEN=' + v + '\n');
+  withKeyring({}, () => { const r = store.remove('JIRA_API_TOKEN', ctx); ok(r.ok && r.removed, 'removed'); });
+  ok(!fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN'), 'the .env line is gone');
+});
+
+row('S0-R8 unlocked: a non-secret name (JIRA_EMAIL) still goes to .env', () => {
+  const ctx = mk();
+  ctx.gitCheckIgnore = () => true;
+  withKeyring({}, () => { store.write('JIRA_EMAIL', 'a@example.com', ctx); eq(held('JIRA_EMAIL').length, 0); });
+  ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_EMAIL=a@example.com'), 'the .env holds it');
 });
 
 console.log(fails ? fails + ' failure(s)' : 'all rows passed');
