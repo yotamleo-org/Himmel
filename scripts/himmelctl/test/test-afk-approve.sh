@@ -177,15 +177,21 @@ while time.time() < end:
     if not sent and b"Nonce Code:" in buf:
         os.write(fd, reply.encode() + b"\r")
         sent = True
+bad = False
 try:
-    done, _ = os.waitpid(pid, os.WNOHANG)
+    done, status = os.waitpid(pid, os.WNOHANG)
     if not done:
         os.kill(pid, 9)  # a verb that never exits after the reply must fail the row, not hang the suite
         os.waitpid(pid, 0)
         buf += b"\n[driver: the verb did not exit]"
+        bad = True
+    elif not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0):
+        buf += b"\n[driver: the verb did not exit 0]"
+        bad = True
 except ChildProcessError:
     pass
 sys.stdout.write(buf.decode("utf8", "replace"))
+sys.exit(1 if bad else 0)
 PYTTY
 {
   printf 'HOME=%s\nUSERPROFILE=%s\nHIMMELCTL_CACHE_DIR=%s\nHIMMEL_LUNA_CONFIG_PATH=%s\n' \
@@ -195,6 +201,7 @@ PYTTY
 rm -f "$tmp/log.argv" "$tmp/log.stdin"
 tty_out="$(python3 -I "$tmp/tty-drive.py" "$node_bin" "$bin" "${NONCE}${CODE}" "$tmp/tty.env" 2>&1)"
 assert_contains "RED 9: the terminal prompt asks for the nonce and the code" "Nonce Code:" "$tty_out"
+assert_absent "the verb on a terminal exits on its own with status 0" "[driver: the verb did not exit" "$tty_out"
 assert_absent "RED 9: the typed code is not echoed" "$CODE" "$tty_out"
 assert_absent "RED 9: the typed nonce is not echoed" "$NONCE" "$tty_out"
 assert_contains "RED 9: the prompt shows one bullet per key" "••••••••••" "$tty_out"
