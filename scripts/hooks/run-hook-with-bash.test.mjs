@@ -1274,6 +1274,32 @@ test('a secret-shaped token in the starved command is redacted in the JSONL row'
   });
 });
 
+// The starved command is redacted before it is cut to its short form. A huge
+// identifier-like run in it must not stall the launcher: the same secret
+// patterns backtrack badly on one, and this runs for a refused call too.
+test('a huge identifier-like command in a starved call is logged promptly', () => {
+  for (const command of ['a'.repeat(300000), 'KEY'.repeat(3000)]) {
+    withChain((dir) => {
+      const logFile = join(dir, 'skips.jsonl');
+      const input = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } });
+      const result = spawnSync(
+        process.execPath,
+        [LAUNCHER, '--chain', join(dir, 'hang.sh')],
+        {
+          encoding: 'utf8',
+          input,
+          timeout: 10000,
+          env: { ...process.env, RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500', RUN_HOOK_CHAIN_SKIP_LOG: logFile },
+        },
+      );
+      assert.equal(result.error, undefined, 'the launcher must finish on its own');
+      const rows = readFileSync(logFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].toolCall, 'Bash <redacted>');
+    });
+  }
+});
+
 // The credential in an "Authorization:
 // Bearer <token>" header sits in a SEPARATE word after the scheme, which the
 // name=value redaction alone does not reach.

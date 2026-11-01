@@ -395,13 +395,18 @@ function redactSecrets(text) {
 }
 
 // A short, greppable stand-in for the tool call a starved guard never saw —
-// capped at 120 chars so one runaway command can't bloat the JSONL row.
+// capped at 120 chars so one runaway command can't bloat the JSONL row. The
+// secret patterns backtrack badly on a long identifier-like run and this runs
+// for a refused call too, so they only see a window that is wider than the cap:
+// a secret that straddles the cap is still whole inside it and is redacted
+// before the cut.
+const TOOL_CALL_REDACT_WINDOW_CHARS = 1000;
 function toolCallSummary(hookInput) {
   if (!hookInput || typeof hookInput !== 'object') return '';
   const name = typeof hookInput.tool_name === 'string' ? hookInput.tool_name : '';
   const ti = hookInput.tool_input && typeof hookInput.tool_input === 'object' ? hookInput.tool_input : {};
   const detail = ti.command || ti.cmd || ti.file_path || '';
-  const summary = redactSecrets(`${name} ${detail}`.trim());
+  const summary = redactSecrets(`${name} ${detail}`.trim().slice(0, TOOL_CALL_REDACT_WINDOW_CHARS));
   return summary.length > 120 ? `${summary.slice(0, 117)}...` : summary;
 }
 
