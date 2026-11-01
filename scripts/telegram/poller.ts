@@ -2509,7 +2509,7 @@ export async function main(): Promise<void> {
   // its keep. The flush path touches only outbox files; the run path touches only
   // inbox/meta/pending — disjoint, so the timer adds no shared-file race.
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
-  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root, operatorChat))), FLUSH_MS);
+  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root, operatorChat))), FLUSH_MS); // t13b-ok: the existing outbox flush timer, only its arguments changed
   if (typeof flushTimer.unref === "function") flushTimer.unref();
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
