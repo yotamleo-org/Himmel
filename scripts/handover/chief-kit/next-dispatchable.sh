@@ -879,13 +879,17 @@ except (OSError, subprocess.SubprocessError):
 SERIES_ORPHAN_S = 2 * 3600
 series_orphans = []  # (sid, writer doc)
 
+BRANCH_PR_LIMIT = 100
+
 def branch_states(branch):
-    # every PR state (OPEN, MERGED, CLOSED) gh lists for the head branch; None when gh cannot say
+    # every PR state (OPEN, MERGED, CLOSED) gh lists for the head branch; None when gh cannot say, or when the list
+    # fills its limit (a PR past it could be open)
     try:
-        return subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--head', branch, '--state', 'all', '--json', 'state', '--jq', '.[].state'],
-                              capture_output=True, text=True, timeout=60, check=True).stdout.split()
+        out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--head', branch, '--state', 'all', '--limit', str(BRANCH_PR_LIMIT), '--json', 'state', '--jq', '.[].state'],
+                             capture_output=True, text=True, timeout=60, check=True).stdout.split()
     except (OSError, subprocess.SubprocessError):
         return None  # swallow-ok: a PR state that cannot be read keeps the hold
+    return out if len(out) < BRANCH_PR_LIMIT else None
 
 def has_live_bullet(doc):
     try:
@@ -907,8 +911,12 @@ if stacked and workers_from:
     series_dir = os.path.join(os.path.dirname(os.path.abspath(workers_from)), 'series')
     try:
         ledger_files = sorted(n for n in os.listdir(series_dir) if n.endswith('.json'))
-    except OSError:
+    except FileNotFoundError:
         ledger_files = []  # swallow-ok: no series directory means no series
+    except OSError:
+        ledger_files = []
+        workers_unknown = True  # a directory that cannot be listed could be hiding every hold
+        print('next-dispatchable: series directory %s cannot be listed: the files its ledgers hold are unknown' % series_dir, file=sys.stderr)
     for n in ledger_files:
         path = os.path.join(series_dir, n)
         try:

@@ -1561,11 +1561,13 @@ export GHL_DIR="$WORK/ghl"; mkdir -p "$GHL_DIR"
 cat > "$WORK/gh-l" <<'EOF'
 #!/usr/bin/env bash
 # no open PRs; `pr list --head <branch> --state all` answers from $GHL_DIR/<branch with / as _>: one PR state per line
-prev=""
+prev=""; lim=30; br=""   # gh pr list shows 30 results unless --limit says more
 for a in "$@"; do
-    if [ "$prev" = --head ]; then f="$GHL_DIR/${a//\//_}"; [ -f "$f" ] && cat "$f"; exit 0; fi
+    [ "$prev" = --limit ] && lim="$a"
+    [ "$prev" = --head ] && br="$a"
     prev="$a"
 done
+if [ -n "$br" ]; then f="$GHL_DIR/${br//\//_}"; [ -f "$f" ] && head -n "$lim" "$f"; fi
 exit 0
 EOF
 chmod +x "$WORK/gh-l"
@@ -1593,6 +1595,7 @@ mk HIMMEL-874 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file whose PR is open
 mk HIMMEL-875 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file gh knows no PR for" "Edit scripts/lib/nopr-l.sh."
 mk HIMMEL-876 "To Do" High '[]' '["v1.0.1"]' '[]' "wants an abandoned item's file" "Edit scripts/lib/aband-l.sh."
 mk HIMMEL-877 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file whose PR closed" "Edit scripts/lib/closed-l.sh."
+mk HIMMEL-878 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file whose branch has 31 PRs, the 31st open" "Edit scripts/lib/many-l.sh."
 LM="$M"
 newbucket lg
 PRED="$B/HIMMEL-9000-N1-pred.md"; SUCC="$B/HIMMEL-9000-N2-succ-RESUME.md"
@@ -1607,7 +1610,9 @@ led add-item --ledger "$SER" --key HIMMEL-9003 --writes scripts/lib/open-l.sh --
 led add-item --ledger "$SER" --key HIMMEL-9004 --writes scripts/lib/nopr-l.sh --state published --publish-branch series/s1/HIMMEL-9004
 led add-item --ledger "$SER" --key HIMMEL-9005 --writes scripts/lib/aband-l.sh --state abandoned
 led add-item --ledger "$SER" --key HIMMEL-9006 --writes scripts/lib/closed-l.sh --state published --publish-branch series/s1/HIMMEL-9006
+led add-item --ledger "$SER" --key HIMMEL-9007 --writes scripts/lib/many-l.sh --state published --publish-branch series/s1/HIMMEL-9007
 led pass --ledger "$SER" --from "$PRED" --to "$SUCC"
+{ n=0; while [ "$n" -lt 30 ]; do echo MERGED; n=$((n + 1)); done; echo OPEN; } > "$GHL_DIR/series_s1_HIMMEL-9007"
 printf 'MERGED\n' > "$GHL_DIR/series_s1_HIMMEL-9002"
 printf 'OPEN\n' > "$GHL_DIR/series_s1_HIMMEL-9003"
 printf 'CLOSED\n' > "$GHL_DIR/series_s1_HIMMEL-9006"
@@ -1620,6 +1625,7 @@ has "(8349 S1b) a published item whose PR is open keeps holding" "$lg1" "# drop 
 has "(8349 S1b) a published item gh knows no PR for keeps holding" "$lg1" "# drop HIMMEL-875 collision scripts/lib/nopr-l.sh held by series s1"
 has "(8349 S1b) an abandoned item holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-876${TAB}"
 has "(8349 S1b) a published item whose PR gh reports closed holds nothing" "$lg1" "LOCAL${TAB}HIMMEL-877${TAB}"
+has "(8349 S1b) a PR beyond gh's default 30 results still holds the file" "$lg1" "# drop HIMMEL-878 collision scripts/lib/many-l.sh held by series s1"
 lacks "(8349 S1b) a fresh pass is no orphan" "$lg1" "SERIES-ORPHAN"
 # flag off: a ledger present changes nothing (byte-identical to the same run with no ledger directory)
 off1="$(runl 0 "$LM" "$B/fleet.json" --why | grep -v '^# source mirror_age_min=')"
@@ -1669,6 +1675,18 @@ lacks "(8349 S1b) a freshly created ledger is no orphan" "$o6" "SERIES-ORPHAN"
 newbucket bad; printf 'not json\n' > "$B/series/bad.json"; mkfleet "$B/fleet.json"
 bad="$(runl 1 "$LM" "$B/fleet.json")"
 has "(8349 S1b) an unreadable ledger marks the live workers unknown" "$bad" "live workers unknown"
+# a missing series directory is no series; one that cannot be listed could be hiding every hold
+newbucket nodir; rmdir "$B/series"; mkfleet "$B/fleet.json"
+nodir="$(runl 1 "$LM" "$B/fleet.json")"
+lacks "(8349 S1b) a bucket with no series directory is not unknown" "$nodir" "live workers unknown"
+newbucket perm; mkfleet "$B/fleet.json"; chmod 000 "$B/series"
+if [ "$(id -u)" -eq 0 ]; then
+    pass "(8349 S1b) an unlistable series directory marks the live workers unknown (skipped: root lists it anyway)"
+else
+    perm="$(runl 1 "$LM" "$B/fleet.json")"
+    has "(8349 S1b) an unlistable series directory marks the live workers unknown" "$perm" "live workers unknown"
+fi
+chmod 755 "$B/series"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
