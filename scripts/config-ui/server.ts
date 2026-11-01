@@ -24,6 +24,7 @@ import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
+import { readPhaseStats } from "./phase-stats";
 import { liveBoards, readMerged, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
 import { readToolInventory } from "./tool-inventory";
@@ -243,10 +244,14 @@ export function jiraBin(env: Env, checkout: string = CHECKOUT): string {
 // The station anchor the feed judges (config-feed.js repoRoot): the primary checkout behind a worktree
 // (git-common-dir), else the checkout itself.
 export function stationRoot(checkout: string): string {
+  const common = gitCommonDir(checkout);
+  return common && basename(common) === ".git" ? dirname(common) : checkout;
+}
+// the checkout's absolute git-common-dir (shared by every worktree), "" outside git.
+function gitCommonDir(checkout: string): string {
   try {
-    const common = execFileSync("git", ["-C", checkout, "rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).trim();
-    return common && basename(common) === ".git" ? dirname(common) : checkout;
-  } catch { return checkout; }
+    return execFileSync("git", ["-C", checkout, "rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch { return ""; }
 }
 
 export type Progress = { i: number; n: number; source: string };
@@ -612,6 +617,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/rollup") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readRollup(env)));
+      }
+      // the Eval tab: per-phase numbers for the last 7 full days, read from the ticket status records and the review-round files.
+      if (path === "/api/phase-stats") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        const common = gitCommonDir(root);
+        return json(redactOut(readPhaseStats(env, common ? join(common, "cr-review-rounds") : "", now())));
       }
       // the review page (critics and judges on planted bugs and merged PRs), read from the file the weekly judge-accuracy cadence wrote.
       if (path === "/api/reviewers") {

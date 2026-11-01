@@ -69,7 +69,7 @@
             {
               "k": "tier",
               "q": "A top-tier worker (opus, fable) without a stated reason?",
-              "by": "`headed-arm-worker.sh`",
+              "by": "the worker start",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -84,7 +84,7 @@
             {
               "k": "cap",
               "q": "Is the fleet at its size cap?",
-              "by": "`usage-preflight.sh`",
+              "by": "the usage check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Wait"
@@ -102,8 +102,8 @@
             },
             {
               "k": "usage",
-              "q": "Is this lane's usage bank used up? (the usage preflight says `SKIPPED-BANK`)",
-              "by": "`headed-arm-worker.sh`",
+              "q": "Is this lane's usage bank used up? (the usage check says the budget is spent)",
+              "by": "the worker start",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -169,7 +169,7 @@
             {
               "k": "name",
               "q": "Is the branch name a `type/slug` (feat, fix, chore, docs, refactor, test)?",
-              "by": "`_new-worktree.sh`",
+              "by": "the worktree check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse if not"
@@ -184,12 +184,12 @@
             {
               "k": "ceiling",
               "q": "Are too many worktrees open already?",
-              "by": "`_new-worktree.sh`",
+              "by": "the worktree check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Reclaim merged ones, or raise `HIMMEL_WORKTREE_CEILING`.",
+              "next": "Reclaim merged ones, or raise the worktree limit with its environment switch; Settings has no control for it yet.",
               "source": {
                 "file": "scripts/_new-worktree.sh",
                 "line": 130,
@@ -199,7 +199,7 @@
             {
               "k": "merged",
               "q": "Does that branch name belong to a pull request that already merged?",
-              "by": "`_new-worktree.sh`",
+              "by": "the worktree check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -219,7 +219,7 @@
                 "kind": "allow",
                 "text": "Allow"
               },
-              "next": "`OK new-worktree: …` names the folder to start Claude in.",
+              "next": "The worktree check names the folder to start Claude in.",
               "source": {
                 "file": "scripts/_new-worktree.sh",
                 "line": 171,
@@ -245,7 +245,7 @@
             {
               "k": "main",
               "q": "Committing on `main`?",
-              "by": "`check-worktree-isolation.sh`",
+              "by": "the worktree isolation check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -260,7 +260,7 @@
             {
               "k": "shape",
               "q": "Does the message start with a type: `feat:`, `fix:`, `chore:` …?",
-              "by": "`check-commit-msg.sh`",
+              "by": "the commit message check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse if not"
@@ -275,12 +275,12 @@
             {
               "k": "ticket",
               "q": "Does it name a ticket in your tracker's form: `#1` by default, or your Jira key such as `ABC-123`?",
-              "by": "`check-commit-msg.sh`",
+              "by": "the commit message check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse if not"
               },
-              "next": "No tracker? Set `TICKET_ID_REQUIRED=0` in `~/.himmel/himmel.conf`.",
+              "next": "No tracker? Turn the ticket-ID rule off in Settings.",
               "source": {
                 "file": "scripts/hooks/check-commit-msg.sh",
                 "line": 309,
@@ -348,12 +348,12 @@
             {
               "k": "main",
               "q": "An edit in a repo that is on `main`?",
-              "by": "`block-edit-on-main.sh`",
+              "by": "the edit-on-main guard",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Make a worktree first. Once, on purpose: start Claude with `EDIT_ON_MAIN_OK=1 claude`.",
+              "next": "Make a worktree first. Once, on purpose: start Claude with the edit-on-main off switch.",
               "source": {
                 "file": "scripts/hooks/block-edit-on-main.sh",
                 "line": 269,
@@ -363,12 +363,12 @@
             {
               "k": "secret",
               "q": "Reading `.env`, a key file or another secret?",
-              "by": "`block-read-secrets.sh`",
+              "by": "the secrets guard",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Keys stay out of Claude's context. Once: `READ_SECRETS_OK=1 claude`.",
+              "next": "Keys stay out of Claude's context. Once: start Claude with the secrets off switch.",
               "source": {
                 "file": "scripts/hooks/block-read-secrets.sh",
                 "line": 700,
@@ -378,12 +378,12 @@
             {
               "k": "destroy",
               "q": "A destructive command: `rm -rf`, `git reset --hard`, `git clean -f`, a force push?",
-              "by": "`block-destructive-commands.sh`",
+              "by": "the destructive-command guard",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "Once: `DESTRUCTIVE_OK=1 claude`.",
+              "next": "Once: start Claude with the destructive-command off switch.",
               "source": {
                 "file": "marketplace/plugins/himmel-guard/hooks/block-destructive-commands.sh",
                 "line": 208,
@@ -397,7 +397,7 @@
             {
               "k": "safe",
               "q": "A read-only look: `ls`, `git log`, `grep` and the like?",
-              "by": "`auto-approve-safe-bash.sh`",
+              "by": "the safe-read approver",
               "outcome": {
                 "kind": "allow",
                 "text": "Allow"
@@ -450,7 +450,7 @@
             {
               "k": "main",
               "q": "Pushing to `main`?",
-              "by": "`check-push-target.sh`",
+              "by": "the push-target check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -465,7 +465,7 @@
             {
               "k": "force",
               "q": "A force push to `main`?",
-              "by": "`check-no-force-push.sh`",
+              "by": "the force-push check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -480,7 +480,7 @@
             {
               "k": "owed",
               "q": "Code changed since the last clean review?",
-              "by": "`check-cr-before-push.sh`",
+              "by": "the review-before-push check",
               "outcome": {
                 "kind": "allow",
                 "text": "Allow, review owed"
@@ -499,7 +499,7 @@
             {
               "k": "platforms",
               "q": "Script changes with no `Platforms tested:` line in a commit or the PR body?",
-              "by": "`check-platforms-tested.sh`",
+              "by": "the platforms-tested check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -518,7 +518,7 @@
             {
               "k": "security",
               "q": "Code changes with no `Security reviewed:` line in a commit or the PR body?",
-              "by": "`check-security-reviewed.sh`",
+              "by": "the security-reviewed check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -577,7 +577,7 @@
         190,
         52
       ],
-      "what": "Your own CI runs on every push. `check-ci.sh` waits once in the foreground and its exit code is the answer, so nobody guesses whether a run is green.",
+      "what": "Your own CI runs on every push. The CI reader waits once in the foreground and its exit code is the answer, so nobody guesses whether a run is green.",
       "loop": [
         "Push",
         "CI runs",
@@ -591,7 +591,7 @@
             {
               "k": "red",
               "q": "A check failed? (exit 1)",
-              "by": "`check-ci.sh`",
+              "by": "the CI reader",
               "outcome": {
                 "kind": "refuse",
                 "text": "Back to Build"
@@ -606,7 +606,7 @@
             {
               "k": "threads",
               "q": "Green, but review threads are open? (exit 3)",
-              "by": "`check-ci.sh`",
+              "by": "the CI reader",
               "outcome": {
                 "kind": "refuse",
                 "text": "Back to review"
@@ -621,7 +621,7 @@
             {
               "k": "block",
               "q": "GitHub will block the merge? (exit 5 or 6)",
-              "by": "`check-ci.sh`",
+              "by": "the CI reader",
               "outcome": {
                 "kind": "ask",
                 "text": "Ask"
@@ -636,12 +636,12 @@
             {
               "k": "wait",
               "q": "Cannot tell yet? (exit 2)",
-              "by": "`check-ci.sh`",
+              "by": "the CI reader",
               "outcome": {
                 "kind": "ask",
                 "text": "Wait"
               },
-              "next": "Run `check-ci.sh` again, or repair the read.",
+              "next": "Run the CI reader again, or repair the read.",
               "source": {
                 "file": "scripts/check-ci.sh",
                 "line": 101,
@@ -651,7 +651,7 @@
             {
               "k": "green",
               "q": "Green and resolved (exit 0)",
-              "by": "`check-ci.sh`",
+              "by": "the CI reader",
               "outcome": {
                 "kind": "allow",
                 "text": "Allow"
@@ -692,13 +692,13 @@
         210,
         52
       ],
-      "what": "`/pr-check` has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open while a review is owed.",
+      "what": "The automated review has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open until the review has run, except in a starter install, which does not add that check.",
       "loop": [
         "Review round",
         "Findings",
         "Agree: fix and push",
         "Next round, three at most",
-        "Clean: the review-owed marker clears"
+        "Clean: the review is marked done"
       ],
       "chains": [
         {
@@ -707,7 +707,7 @@
             {
               "k": "find",
               "q": "A blocking finding that you agree with?",
-              "by": "`/pr-check`",
+              "by": "the automated review",
               "outcome": {
                 "kind": "refuse",
                 "text": "Back to Build"
@@ -722,7 +722,7 @@
             {
               "k": "cap",
               "q": "Three full rounds used already?",
-              "by": "`review-round.sh`",
+              "by": "the review round",
               "outcome": {
                 "kind": "ask",
                 "text": "Ask"
@@ -737,7 +737,7 @@
             {
               "k": "clean",
               "q": "Clean",
-              "by": "`clear-review-marker.sh`",
+              "by": "the review-done marker",
               "outcome": {
                 "kind": "allow",
                 "text": "Allow"
@@ -768,12 +768,12 @@
             {
               "k": "owed",
               "q": "Is a review still owed for this branch?",
-              "by": "`check-cr-marker-on-pr-create.sh`",
+              "by": "the review-before-PR check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
               },
-              "next": "`gh pr create` waits for a clean review.",
+              "next": "Opening the pull request waits for a clean review.",
               "source": {
                 "file": "scripts/hooks/check-cr-marker-on-pr-create.sh",
                 "line": 509,
@@ -819,7 +819,7 @@
         36,
         46
       ],
-      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; a failed read lets the merge through with a warning, except in a clone armed with the CodeRabbit app, where an unreadable review ledger holds every required reviewer and a failed CodeRabbit read holds a required CodeRabbit review.",
+      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any merge Claude tries goes through it. It refuses on what it can read; a failed read lets the merge through with a warning, except in a clone armed with the CodeRabbit app, where an unreadable review ledger holds every required reviewer and a failed CodeRabbit read holds a required CodeRabbit review.",
       "loop": [
         "Claude asks to merge",
         "The gate reads CI, the reviewers and CodeRabbit's threads",
@@ -833,7 +833,7 @@
             {
               "k": "reviewer",
               "q": "A required reviewer has not passed at this commit?",
-              "by": "`review-merge-gate.sh`",
+              "by": "the reviewer gate",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -848,7 +848,7 @@
             {
               "k": "threads",
               "q": "Unresolved CodeRabbit review threads?",
-              "by": "`review-merge-gate.sh`",
+              "by": "the reviewer gate",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -863,7 +863,7 @@
             {
               "k": "ci",
               "q": "A check failed or still running on this commit?",
-              "by": "`ci-green-gate.sh`",
+              "by": "the green-CI gate",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -932,7 +932,7 @@
             {
               "k": "ci",
               "q": "CI red, or threads open?",
-              "by": "`check-ci.sh`",
+              "by": "the CI reader",
               "outcome": {
                 "kind": "refuse",
                 "text": "Back to Build"
@@ -951,7 +951,7 @@
             {
               "k": "ready",
               "q": "Does the chief's ready-check fail? (head, CI, threads, trailers, ticket coverage)",
-              "by": "`ready-check.sh`",
+              "by": "the readiness check",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -970,7 +970,7 @@
             {
               "k": "trust",
               "q": "Does the change touch a trust path (guards, gates, CI)?",
-              "by": "`go.sh`",
+              "by": "the approval writer",
               "outcome": {
                 "kind": "ask",
                 "text": "Ask a judge"
@@ -1015,7 +1015,7 @@
             {
               "k": "self",
               "q": "A worker trying to approve its own merge?",
-              "by": "`go.sh`",
+              "by": "the approval writer",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -1034,7 +1034,7 @@
             {
               "k": "nogo",
               "q": "No approval for this exact commit?",
-              "by": "`go-gate.sh`",
+              "by": "the approval gate",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -1053,7 +1053,7 @@
             {
               "k": "red",
               "q": "Is main itself red?",
-              "by": "`merge-on-green.sh`",
+              "by": "the merge",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -1108,7 +1108,7 @@
         146,
         52
       ],
-      "what": "The merge is pinned to the commit that was checked; `merge-on-green.sh` squashes it. `/handover` writes what was done and what is next, so the next session, or the next shift of the chief, starts where this one stopped.",
+      "what": "The merge is pinned to the commit that was checked; the merge squashes it. The handover writes what was done and what is next, so the next session, or the next shift of the chief, starts where this one stopped.",
       "loop": [
         "Merge the checked commit",
         "Write the handover",
@@ -1122,7 +1122,7 @@
             {
               "k": "fill",
               "q": "Is the chief's context 45 % full?",
-              "by": "`chief.sh`",
+              "by": "the chief start",
               "outcome": {
                 "kind": "allow",
                 "text": "Hand over"
@@ -1141,7 +1141,7 @@
             {
               "k": "busy",
               "q": "Something of its own still running?",
-              "by": "`chief.sh`",
+              "by": "the chief start",
               "outcome": {
                 "kind": "refuse",
                 "text": "Refuse"
@@ -1159,13 +1159,13 @@
             },
             {
               "k": "ok",
-              "q": "Is the relay delivered to every running worker? (`RELAYED n of m`)",
-              "by": "`relay-batch.sh`",
+              "q": "Is the relay delivered to every running worker? (the relay counts each worker it reached or printed a message for)",
+              "by": "the relay",
               "outcome": {
                 "kind": "allow",
                 "text": "Allow"
               },
-              "next": "The old chief wraps; the new chief carries on from step 1.",
+              "next": "The old chief sends any printed message, then wraps; the new chief carries on from step 1.",
               "source": {
                 "file": "scripts/handover/chief-kit/relay-batch.sh",
                 "line": 336,
