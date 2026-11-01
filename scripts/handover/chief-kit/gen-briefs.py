@@ -54,6 +54,18 @@ inherited (HIMMEL-7837): a resumed ORPHAN PR or a takeover of another author's P
 authors: non-empty list of single-line strings, mode: resume|takeover}. The brief gets the template's
 Inherited PR block with those values filled in, after the Contract. Any other shape is refused.
 No inherited key, no block.
+series, series_grant, context_guard (HIMMEL-8349 slice S2a; read only with the stacked_series flag on, else all three are
+ignored and every output is byte-identical to a file without them): `series` on ONE worker (the series writer) is a non-empty
+list of other workers' labels whose tickets run as its follow-on items, in order; every ticket key of the writer and then of each
+named worker is one item, at most 4 items in all. The named workers get NO brief or launcher; the writer's Writes line is the
+union of every item's Writes. The brief gets `> **Series:** <sid> <ledger path> - read docs/handover/worker-sections/series.md`
+and `> **Series grant:** <family> (operator decision <n>)`, and the ledger `<bucket>/series/<sid>.json` is created through
+series-ledger.py (create, then one add-item per item, state planned) just before the brief is written; sid is <first key>-<label>.
+series_grant is {family, decision}: family is non-blank single-line text, decision a positive integer (the operator decision that
+granted the family); a series without both is refused. A series is also refused when the items state different completes-ticket
+values (a ticket that states none counts as yes), when a worker's context_guard is compact (its unlock needs a pushed checkpoint
+an unpublished item never has; the values are compact|handoff), when a label is unknown, repeated or already a series writer, and
+when a ledger for the sid already exists. Every refusal comes before anything is written.
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
 worker preface and are not repeated.
 
@@ -527,6 +539,89 @@ def check_pr_size(l, repo, base):
         print('gen-briefs: warning: worker %s Writes project to %d files, over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft']), file=sys.stderr)
 
 
+SERIES_MAX = 4
+SERIES_DOC = 'docs/handover/worker-sections/series.md'
+SERIES_LEDGER_PY = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'series-ledger.py')
+
+
+def flag_on(name):
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+    from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+    return himmel_flag(name)
+
+
+def plan_series(workers):
+    # Every series refusal, before anything is written. Sets l['series_plan'] on each series writer and returns the
+    # workers without the ones it names, which get no brief or launcher.
+    by_label = {w['label']: w for w in workers if w.get('kind') != 'rm'}
+    named = set()
+    for w in workers:
+        if 'series' not in w or w.get('kind') == 'rm':
+            continue
+        label, names = w['label'], w['series']
+        if not isinstance(names, list) or not names or not all(isinstance(n, str) for n in names):
+            die('worker %s: series must be a non-empty list of worker labels' % label)
+        for n in names:
+            if n not in by_label:
+                die('worker %s: series names %r, which is not a worker label in this file' % (label, n))
+            if n == label or n in named or 'series' in by_label[n]:
+                die('worker %s: series names %s, which is itself a series writer, this worker or already in another series' % (label, n))
+            named.add(n)
+        members = [w] + [by_label[n] for n in names]
+        items = []
+        for m in members:
+            wp = write_paths(m.get('writes', '')).split()
+            wp = [] if wp == ['none', 'named'] else wp
+            items += [(k, wp) for k in m['keys']]
+        if len(items) > SERIES_MAX:
+            die('worker %s: a series holds at most %d items; its tickets make %d' % (label, SERIES_MAX, len(items)))
+        values = {(COMPLETES_RE.findall(m['scope']) or ['yes'])[-1].lower() for m in members}
+        if len(values) > 1:
+            die('worker %s: the series mixes completes-ticket values (%s); a series carries one, so run the ticket whose value differs outside it' % (label, ', '.join(sorted(values))))
+        for m in members:
+            cg = m.get('context_guard')
+            if cg == 'compact':
+                die('worker %s: context_guard compact is refused for a series worker: compact mode unlocks only on a pushed checkpoint, which an unpublished item never has; use handoff' % m['label'])
+            if cg not in (None, 'handoff'):
+                die('worker %s: context_guard %r must be compact or handoff' % (m['label'], cg))
+        g = w.get('series_grant')
+        if not isinstance(g, dict) or set(g) != {'family', 'decision'}:
+            die('worker %s: a series needs series_grant {family, decision}; a grant line with no operator decision number is refused' % label)
+        fam, dec = g['family'], g['decision']
+        if not isinstance(fam, str) or not fam.strip() or GRANT_FIELD_BAD_CHAR_RE.search(fam):
+            die('worker %s: series_grant.family must be non-blank single-line text with no backtick or control character' % label)
+        if isinstance(dec, bool) or not isinstance(dec, int) or dec < 1:
+            die('worker %s: series_grant.decision must be the positive integer of the operator decision that granted %s' % (label, fam))
+        union = list(dict.fromkeys(p for _, wp in items for p in wp))
+        if union:
+            w['writes'] = ' '.join(union)
+        w['series_plan'] = dict(sid='%s-%s' % (w['keys'][0], label), items=items, completes=values.pop(), grant='%s (operator decision %d)' % (fam.strip(), dec))
+    return [w for w in workers if w['label'] not in named]
+
+
+def create_series_ledger(sp, doc):
+    # Only series-ledger.py writes a ledger (invariant I3). A ledger left half-built is removed, never kept.
+    def led(*args):
+        return subprocess.run([sys.executable, '-I', SERIES_LEDGER_PY] + list(args) + ['--ledger', sp['ledger']], capture_output=True, text=True)
+    r = led('create', '--sid', sp['sid'], '--completes-ticket', sp['completes'], '--writer', doc, '--grant', sp['grant'])
+    if r.returncode != 0:
+        die('series ledger %s %s' % (sp['ledger'], 'already exists; pick a new series or remove it' if r.returncode == 4 else 'was not created (series-ledger.py rc %d): %s' % (r.returncode, r.stderr.strip())))
+    for key, wp in sp['items']:
+        r = led('add-item', '--key', key, '--writes', ','.join(wp), '--state', 'planned')
+        if r.returncode != 0:
+            for p in (sp['ledger'], sp['ledger'] + '.lock'):
+                if os.path.exists(p):
+                    os.unlink(p)
+            die('series ledger item %s was not added (series-ledger.py rc %d): %s' % (key, r.returncode, r.stderr.strip()))
+
+
+def series_lines(l):
+    sp = l.get('series_plan')
+    if not sp:
+        return ''
+    return '\n> **Series:** %s %s — read %s\n> **Series grant:** %s\n' % (sp['sid'], sp['ledger'], SERIES_DOC, sp['grant'])
+
+
 _DOCS_FILLER = {'writes', 'write', 'and', 'or', 'plus', 'also', 'the', 'a', 'an', 'only', 'new', 'edit', 'update', 'add', 'in', 'under', 'of', 'to', 'doc', 'docs', 'file', 'files', 'section', 'sections'}
 
 
@@ -688,7 +783,7 @@ template_version: 3
 {hookline} `cd` into the worktree, never EnterWorktree.
 > - **Reporting:** BLOCKED / permission prompt / question → the chief first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
 > - **Shape denials:** rewrite as one literal command, retry once. Edit files with the Edit tool; a script that must name a seam variable, `unset` or `-u` goes in a file run as `python3 -I <file>`, never a heredoc or `perl -pi` on the command line.
-{abline}{tierline}{ctline}
+{abline}{tierline}{ctline}{seriesline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
@@ -718,7 +813,7 @@ template_version: 3
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
-           ctline=completes_line(l['scope']), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
+           ctline=completes_line(l['scope']), seriesline=series_lines(l), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
            inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',
@@ -853,6 +948,8 @@ def main():
     branches = [l['branch'] for l in workers if l.get('kind') != 'rm']
     if len(set(branches)) != len(branches):
         die('duplicate worker branches (two workers would share one worktree)')
+    if any('series' in l and l.get('kind') != 'rm' for l in workers) and flag_on('stacked_series'):
+        workers = plan_series(workers)
 
     work_dir = a.work_dir or os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'himmel-chief', 'gen-briefs')
     deadline = a.deadline or str(int(datetime.now().timestamp()) + 43200)
@@ -864,6 +961,12 @@ def main():
     a.bucket = resolve_bucket(a.bucket, a.handover_root, a.repo)
     ctx['bucket'] = a.bucket
     refuse_git_bucket(a.bucket, a.handover_root)
+    for l in workers:
+        sp = l.get('series_plan')
+        if sp:
+            sp['ledger'] = os.path.join(a.bucket, 'series', sp['sid'] + '.json')
+            if os.path.exists(sp['ledger']):
+                die('series ledger %s already exists; pick a new series or remove it' % sp['ledger'])
     os.makedirs(a.bucket, exist_ok=True)
 
     # Validate and reserve names for every worker before touching a worktree.
@@ -912,6 +1015,8 @@ def main():
                 if anc.returncode != 0:
                     die('worktree %s is not based on %s; no brief written for %s or the workers after it' % (l['wt'], a.base, l['label']))
         doc = os.path.join(a.bucket, l['stem'] + '.md')
+        if l.get('series_plan'):
+            create_series_ledger(l['series_plan'], doc)
         with open(doc, 'w') as f:
             f.write(render_rm_brief(l, ctx) if l.get('kind') == 'rm' else render_brief(l, ctx))
         launcher = os.path.join(a.bucket, 'launch-%s.sh' % l['label'])

@@ -927,5 +927,86 @@ pso="$(psrun badbulk)"; rc=$?
 [ "$rc" = 1 ] && has "bulk other than mechanical is refused" "$pso" "bulk" || fail "bulk yes: rc=$rc: $pso"
 unset HIMMEL_CONFIG_DIR
 
+# --- S2a: with stacked_series on, a writer's `series: [<label>, ...]` writes ONE brief (Series line, grant line, the union of
+# the items' Writes) and creates the ledger through series-ledger.py; the named workers get no brief or launcher. Flag off: the key is ignored. ---
+export HIMMEL_CONFIG_DIR="$WORK/no-conf"; unset HIMMEL_FLAG_STACKED_SERIES
+SRP="HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/sa\`."
+cat > "$WORK/sr-base.json" <<SREOF
+[
+ {"label":"N931","keys":["HIMMEL-9301"],"slug":"sr-a","branch":"feat/himmel-9301-sr-a","title":"series writer","desc":"d","why":"w","prior":"$SRP","writes":"scripts/sa/a.sh","scope":"\`scripts/sa/a.sh\` completes-ticket: no","scope_short":"a.sh","commit":"feat(sa): [HIMMEL-9301] a","series":["N932","N933"],"series_grant":{"family":"scripts/sa/","decision":388}},
+ {"label":"N932","keys":["HIMMEL-9302"],"slug":"sr-b","branch":"feat/himmel-9302-sr-b","title":"series item b","desc":"d","why":"w","prior":"$SRP","writes":"scripts/sa/b.sh","scope":"\`scripts/sa/b.sh\` completes-ticket: no","scope_short":"b.sh","commit":"feat(sa): [HIMMEL-9302] b"},
+ {"label":"N933","keys":["HIMMEL-9303"],"slug":"sr-c","branch":"feat/himmel-9303-sr-c","title":"series item c","desc":"d","why":"w","prior":"$SRP","writes":"scripts/sa/c.sh","scope":"\`scripts/sa/c.sh\` completes-ticket: no","scope_short":"c.sh","commit":"feat(sa): [HIMMEL-9303] c"}
+]
+SREOF
+srmut() { # <name> <python statements editing the worker list w>: sr-<name>.json from the base
+    python3 -I -c 'import json, sys; w = json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(w, open(sys.argv[2], "w"))' "$WORK/sr-base.json" "$WORK/sr-$1.json" "$2"
+}
+srrun() { # <name> [flag value, default 1]
+    HIMMEL_FLAG_STACKED_SERIES="${2:-1}" python3 "$SUT" "$WORK/sr-$1.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/sr-b-$1" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/srw-$1" --deadline 1791475000 2>&1
+}
+srledger() { python3 -I "$HERE/series-ledger.py" read --ledger "$1" 2>&1; }
+srsummary() { printf '%s' "$1" | python3 -I -c 'import json, sys; d = json.load(sys.stdin); print(",".join(i["key"] for i in d["items"]), ",".join(i["state"] for i in d["items"]), ",".join(",".join(i["writes"]) for i in d["items"]), d["writer"], d["completes_ticket"], d["grant"], sep="|")'; }
+srbad() { # <name> <python edit> <stderr fragment>: refused, rc 1, no brief, no launcher, no ledger
+    srmut "$1" "$2"
+    local o rc=0; o="$(srrun "$1")" || rc=$?
+    [ "$rc" = 1 ] && has "S2a: $1 refusal names its cause" "$o" "$3" || fail "S2a: $1 rc=$rc: $o"
+    lacks "S2a: $1 refusal is no traceback" "$o" "Traceback"
+    [ -z "$(find "$WORK/sr-b-$1" -type f -print -quit 2>/dev/null)" ] && pass "S2a: $1 refusal writes no brief, launcher or ledger" || fail "S2a: $1 wrote $(find "$WORK/sr-b-$1" -type f)"
+}
+
+srmut ok 'pass'
+sro="$(srrun ok)"; rc=$?
+[ "$rc" = 0 ] && pass "S2a: a series writer with stacked_series on generates (rc 0)" || fail "S2a ok rc=$rc: $sro"
+SRB="$WORK/sr-b-ok"; SRD="$SRB/HIMMEL-9301-N931-sr-a-2026-10-08.md"; SRL="$SRB/series/HIMMEL-9301-N931.json"
+[ -f "$SRD" ] && pass "S2a: the writer's brief is written" || fail "S2a: no brief $SRD"
+[ ! -e "$SRB/launch-N932.sh" ] && [ ! -e "$SRB/launch-N933.sh" ] && [ -z "$(find "$SRB" -name 'HIMMEL-9302-*' -o -name 'HIMMEL-9303-*')" ] && pass "S2a: the named workers get no brief and no launcher" || fail "S2a: a named worker got a file: $(ls "$SRB")"
+[ -f "$SRB/launch-N931.sh" ] && pass "S2a: the writer gets its launcher" || fail "S2a: no writer launcher"
+srbrief="$(cat "$SRD" 2>/dev/null)"
+has "S2a: the Series line carries the sid, the ledger path and the series.md path" "$srbrief" "> **Series:** HIMMEL-9301-N931 $SRL — read docs/handover/worker-sections/series.md"
+has "S2a: the grant line names the family and the operator decision" "$srbrief" "> **Series grant:** scripts/sa/ (operator decision 388)"
+has "S2a: the Writes line is the union of the items' Writes" "$srbrief" "> **Writes:** scripts/sa/a.sh scripts/sa/b.sh scripts/sa/c.sh"
+has "S2a: the ledger holds the three items planned, their writes, the brief doc as writer, one completes value and the grant" "$(srsummary "$(srledger "$SRL")")" "HIMMEL-9301,HIMMEL-9302,HIMMEL-9303|planned,planned,planned|scripts/sa/a.sh,scripts/sa/b.sh,scripts/sa/c.sh|$SRD|no|scripts/sa/ (operator decision 388)"
+bash "$HERE/brief-lint.sh" "$SRD" 2>"$WORK/srlint.err"; rc=$?
+[ "$rc" = 0 ] && pass "S2a: the series brief passes brief-lint.sh" || fail "S2a: series brief brief-lint rc=$rc: $(cat "$WORK/srlint.err")"
+lacks "S2a: the .out file lists no named worker" "$(cat "$WORK/sr-ok.json.out" 2>/dev/null)" "\"label\": \"N932\""
+
+# the brief gen-briefs wrote is read by the real next-dispatchable.sh: the Series line parses and the series worker holds the files
+mkdir -p "$WORK/sr-nd/HIMMEL"
+printf 'v1.0.1\tfalse\t\n' > "$WORK/sr-nd/HIMMEL.versions.tsv"
+printf -- '---\nkey: "HIMMEL-9390"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "x"\npriority: "High"\nlabels: []\nfixVersions: ["v1.0.1"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9390: wants a series file\n\n## Description\n\nEdit scripts/sa/a.sh please.\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' > "$WORK/sr-nd/HIMMEL/HIMMEL-9390.md"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/sr-gh"; chmod +x "$WORK/sr-gh"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N931"}]}\n' "$SRD" > "$SRB/fleet.json"
+srnd="$(HIMMEL_FLAG_STACKED_SERIES=1 NEXT_DISPATCH_MIRROR="$WORK/sr-nd/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/sr-gh" bash "$HERE/next-dispatchable.sh" --workers-from "$SRB/fleet.json" --no-classify --why 2>"$WORK/srnd.err")"
+has "S2a: next-dispatchable lists the series writer as the holder a colliding candidate stacks on" "$srnd" "STACKABLE HIMMEL-9390 $SRD"
+lacks "S2a: next-dispatchable reports no unreadable ledger or doc for the written series" "$(cat "$WORK/srnd.err")" "unreadable"
+
+srbad mixed 'w[2]["scope"] = "scripts/sa/c.sh completes-ticket: yes"' "completes-ticket"
+srbad nogrant 'w[0]["series_grant"] = {"family": "scripts/sa/"}' "decision"
+srbad nograntkey 'del w[0]["series_grant"]' "decision"
+srbad compact 'w[0]["context_guard"] = "compact"' "compact mode"
+srbad fifth 'w += [dict(w[2], label="N93%d" % i, keys=["HIMMEL-930%d" % i], slug="sr-x%d" % i, branch="feat/himmel-930%d-sr-x%d" % (i, i)) for i in (4, 5)]; w[0]["series"] = ["N932", "N933", "N934", "N935"]' "at most 4"
+srbad unknown 'w[0]["series"] = ["N932", "N999"]' "N999"
+
+# a ledger that already exists is exit 4 from the verb: a refusal, not a traceback, and no brief
+srmut exists 'pass'
+mkdir -p "$WORK/sr-b-exists/series"
+python3 -I "$HERE/series-ledger.py" create --ledger "$WORK/sr-b-exists/series/HIMMEL-9301-N931.json" --sid HIMMEL-9301-N931 --completes-ticket no --writer /elsewhere.md
+o="$(srrun exists)"; rc=$?
+[ "$rc" = 1 ] && has "S2a: an existing ledger is a refusal that names it" "$o" "already exists" || fail "S2a: existing ledger rc=$rc: $o"
+lacks "S2a: an existing ledger is no traceback" "$o" "Traceback"
+[ -z "$(find "$WORK/sr-b-exists" -name '*.md' -print -quit)" ] && pass "S2a: an existing ledger leaves no brief" || fail "S2a: a brief was written beside an existing ledger"
+
+# flag off: the series keys are ignored: one brief per worker, no ledger, and the writer's brief is the one a workers file without the keys gets
+srmut off 'pass'
+sroff="$(srrun off 0)"; rc=$?
+[ "$rc" = 0 ] && pass "S2a: stacked_series off generates (rc 0)" || fail "S2a off rc=$rc: $sroff"
+[ -f "$WORK/sr-b-off/HIMMEL-9302-N932-sr-b-2026-10-08.md" ] && [ ! -e "$WORK/sr-b-off/series" ] && pass "S2a: flag off writes a brief per worker and no ledger" || fail "S2a: flag off wrote: $(find "$WORK/sr-b-off")"
+srmut plain 'for x in w: x.pop("series", None); x.pop("series_grant", None)'
+srrun plain 0 >/dev/null
+norm() { sed -E 's#BZ-N[0-9]+-[0-9a-f]{8}#NONCE#g; s#sr-b-[a-z]+#BUCKET#g' "$1"; }
+[ "$(norm "$WORK/sr-b-off/HIMMEL-9301-N931-sr-a-2026-10-08.md")" = "$(norm "$WORK/sr-b-plain/HIMMEL-9301-N931-sr-a-2026-10-08.md")" ] && pass "S2a: flag off, the writer's brief is byte-identical to the one without the series keys (I8)" || fail "S2a: flag off changed the writer's brief"
+lacks "S2a: flag off, the brief carries no Series line" "$(cat "$WORK/sr-b-off/HIMMEL-9301-N931-sr-a-2026-10-08.md")" "**Series"
+unset HIMMEL_CONFIG_DIR
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
