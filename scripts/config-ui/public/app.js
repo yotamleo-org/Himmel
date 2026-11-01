@@ -790,7 +790,7 @@ function toolHealthClick(b) {
   else if (act === "th-sort") { const t = b.dataset.table, col = Number(b.dataset.col), was = thUi.sorts[t]; thUi.sorts[t] = { col, desc: !!(was && was.col === col && !was.desc) }; }
   else if (act === "th-rescan") return void thLoaders().inventory.load("rescan=1");
   else if (act === "th-reviewers") return void thLoaders().reviewers.load("");
-  else if (act === "th-reset") { Object.assign(thUi, { kind: null, src: null, q: "", group: null, all: false, before: false }); return; } // the link itself routes
+  else if (act === "th-reset") Object.assign(thUi, { kind: null, src: null, q: "", group: null, all: false, before: false }); // a link to the current hash fires no hashchange, so paint here too
   else return;
   paint();
 }

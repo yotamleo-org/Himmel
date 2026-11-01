@@ -590,6 +590,17 @@ test("a failed rescan or reviewers refresh keeps the last answer and says it is 
   expect(app).toContain("stale: rv.error");
 });
 
+test("Reset filters clears the page-memory filters and repaints, also when its link is the current hash", () => {
+  const app = readFileSync(resolve(import.meta.dir, "../public/app.js"), "utf8");
+  const src = app.match(/function toolHealthClick\(b\) \{[\s\S]*?\n\}/)![0];
+  const thUi: any = { kind: "mcp", src: "project", q: "git", group: "g", all: true, before: true, sorts: {} };
+  let painted = 0;
+  const click = new Function("thUi", "paint", "thLoaders", `${src}; return toolHealthClick;`)(thUi, () => { painted++; }, () => ({}));
+  click({ dataset: { act: "th-reset" } });
+  expect(thUi).toMatchObject({ kind: null, src: null, q: "", group: null, all: false, before: false });
+  expect(painted).toBe(1);
+});
+
 test("a hook on a non-tool event has no derived runs, and a command's bash count leaves out unmatched calls", async () => {
   const data = readP(seedP());
   const bashCalls = data.tools.find((t: any) => t.tool === "Bash").calls;
