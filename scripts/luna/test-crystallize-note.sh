@@ -38,6 +38,13 @@ cat > "$LANE_STUB" <<EOF
 exec "$STUB" "\$@"
 EOF
 chmod +x "$LANE_STUB"
+# The subscription fallback is gated on usage-preflight.sh; the suite never runs the
+# real one. This stub prints the verdict token named in PF_VERDICT (default PROCEED).
+PF_STUB="$LANE_DIR/preflight-stub.sh"
+# shellcheck disable=SC2016  # the stub body is written literally; it expands when the stub runs
+printf '#!/usr/bin/env bash\necho "${PF_VERDICT:-PROCEED}"\n' > "$PF_STUB"
+chmod +x "$PF_STUB"
+export CRYSTALLIZE_PREFLIGHT_BIN="$PF_STUB"
 
 write_note() {
     # $1 = path
@@ -135,27 +142,62 @@ env CRYSTALLIZE_MODEL="env-switch-model" CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MOD
 if grep -qxF 'arg=env-switch-model' "$ARGVD" 2>/dev/null; then pass "model: CRYSTALLIZE_MODEL still overrides the default"; else fail "model: CRYSTALLIZE_MODEL no longer reaches the launcher"; fi
 rm -rf "$SB"
 
-# --- Case L2: lane unset — refuse, never launch, note untouched, no fallback -----
-lane_refusal() { # <label> <env-assignments...>
-    local label="$1"; shift
+# --- Case L2: no API lane AND the usage preflight says stop — one skip line, never launch ---
+lane_skip() { # <label> <verdict> <env-assignments...>
+    local label="$1" verdict="$2"; shift 2
     local sb note tr mark err rc=0 before after
-    sb="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-refusal.XXXXXX")" || exit 1
+    sb="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-skip.XXXXXX")" || exit 1
     note="$sb/note.md"; tr="$sb/t.jsonl"; mark="$sb/marker.txt"; err="$sb/stderr.txt"
     write_note "$note"; printf '{}\n' > "$tr"
     before="$( { sha256sum "$note" 2>/dev/null || shasum -a 256 "$note"; } | awk '{print $1}')"
-    env "$@" CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success CRYSTALLIZE_MARKER="$mark" \
+    env "$@" PF_VERDICT="$verdict" CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success CRYSTALLIZE_MARKER="$mark" \
         CRYSTALLIZE_PID_DIR="$sb/pids" bash "$CRYS" "$note" "$tr" 2>"$err" || rc=$?
     after="$( { sha256sum "$note" 2>/dev/null || shasum -a 256 "$note"; } | awk '{print $1}')"
-    if [ "$rc" != "0" ]; then pass "$label: exits non-zero ($rc)"; else fail "$label: exited 0 without the API lane"; fi
-    if grep -q '^crystallize-note: refusing claude-api' "$err" 2>/dev/null; then pass "$label: ERR line names the refusal"; else fail "$label: no refusal line on stderr"; fi
-    if [ ! -s "$mark" ]; then pass "$label: the claude stub was never called"; else fail "$label: claude launched without the API lane"; fi
-    if [ "$before" = "$after" ] && grep -q '^crystallized: false$' "$note"; then pass "$label: mechanical note unchanged"; else fail "$label: note changed without the API lane"; fi
+    if [ "$rc" != "0" ]; then pass "$label: exits non-zero ($rc)"; else fail "$label: exited 0 although the preflight said $verdict"; fi
+    if [ "$(grep -c '^crystallize-note: skipped' "$err" 2>/dev/null)" = "1" ] \
+        && grep -q 'HIMMEL_API_LANE=on' "$err" && grep -q "$verdict" "$err"; then pass "$label: one skip line names the lane variables and the verdict"; else fail "$label: skip line missing or unclear"; fi
+    if [ ! -s "$mark" ]; then pass "$label: the claude stub was never called (CRYSTALLIZE_CLAUDE_BIN does not bypass the gate)"; else fail "$label: claude launched past a $verdict verdict"; fi
+    if [ "$before" = "$after" ] && grep -q '^crystallized: false$' "$note"; then pass "$label: mechanical note unchanged"; else fail "$label: note changed"; fi
     rm -rf "$sb"
 }
-lane_refusal "lane-off" -u HIMMEL_API_LANE
-lane_refusal "lane-no-account" -u HIMMEL_API_ACCOUNT
-lane_refusal "lane-not-on" HIMMEL_API_LANE=off
-lane_refusal "lane-bad-account" HIMMEL_API_ACCOUNT=invalid
+lane_skip "lane-off+SKIPPED-BANK" SKIPPED-BANK -u HIMMEL_API_LANE
+lane_skip "lane-no-account+SKIPPED-FLEET" SKIPPED-FLEET -u HIMMEL_API_ACCOUNT
+lane_skip "lane-not-on+SKIPPED-BANK" SKIPPED-BANK HIMMEL_API_LANE=off
+lane_skip "lane-bad-account+SKIPPED-FLEET" SKIPPED-FLEET HIMMEL_API_ACCOUNT=invalid
+
+# --- Case L3: no API lane, preflight not stopping — the subscription fallback crystallizes ---
+# PROCEED, BANK-STALE and BANK-UNKNOWN all run it (the last two are fail-open by the
+# preflight's contract). The call is print-mode, json output, explicit permission mode.
+lane_fallback() { # <label> <verdict> <env-assignments...>
+    local label="$1" verdict="$2"; shift 2
+    local sb note tr mark argvd rc=0
+    sb="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-sub.XXXXXX")" || exit 1
+    note="$sb/note.md"; tr="$sb/t.jsonl"; mark="$sb/marker.txt"; argvd="$sb/argv.txt"
+    write_note "$note"; printf '{}\n' > "$tr"
+    env "$@" PF_VERDICT="$verdict" CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success CRYSTALLIZE_MARKER="$mark" \
+        CRYSTALLIZE_ARGV_DUMP="$argvd" CRYSTALLIZE_PID_DIR="$sb/pids" bash "$CRYS" "$note" "$tr" 2>/dev/null || rc=$?
+    if [ "$rc" = "0" ]; then pass "$label: exits 0"; else fail "$label: exit was $rc"; fi
+    if [ -s "$mark" ]; then pass "$label: the subscription claude ran"; else fail "$label: claude never ran"; fi
+    if grep -q '^crystallized: true$' "$note"; then pass "$label: note crystallized"; else fail "$label: note not crystallized"; fi
+    if grep -qxF 'arg=-p' "$argvd" 2>/dev/null && grep -qxF 'arg=--output-format' "$argvd" 2>/dev/null \
+        && grep -qxF 'arg=json' "$argvd" 2>/dev/null && grep -qxF 'arg=--permission-mode' "$argvd" 2>/dev/null \
+        && grep -qxF 'arg=acceptEdits' "$argvd" 2>/dev/null; then pass "$label: print mode, json output, explicit permission mode"; else fail "$label: argv shape wrong"; fi
+    rm -rf "$sb"
+}
+lane_fallback "no-lane+PROCEED" PROCEED -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT
+lane_fallback "no-lane+BANK-STALE" BANK-STALE -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT
+lane_fallback "no-lane+BANK-UNKNOWN" BANK-UNKNOWN -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT
+lane_fallback "bad-account+PROCEED" PROCEED HIMMEL_API_ACCOUNT=invalid
+
+# A pinned proxy variable must not ride into the subscription run: the run is skipped, not proxied.
+SB="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-pin.XXXXXX")" || exit 1
+NOTE="$SB/note.md"; TR="$SB/t.jsonl"; MARK="$SB/marker.txt"; ENVD="$SB/env.txt"
+write_note "$NOTE"; printf '{}\n' > "$TR"
+env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_BASE_URL="http://127.0.0.1:9" PF_VERDICT=PROCEED \
+    CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success CRYSTALLIZE_MARKER="$MARK" CRYSTALLIZE_ENV_DUMP="$ENVD" \
+    CRYSTALLIZE_PID_DIR="$SB/pids" bash "$CRYS" "$NOTE" "$TR" 2>/dev/null
+if grep -qxF 'ANTHROPIC_BASE_URL=<unset>' "$ENVD" 2>/dev/null; then pass "subscription: ambient ANTHROPIC_BASE_URL is cleared before the launch"; else fail "subscription: ambient proxy variable reached claude"; fi
+rm -rf "$SB"
 
 # --- Case 1: success — sections filled, crystallized true, identity preserved --
 SB="$(mktemp -d)"
