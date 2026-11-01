@@ -1,5 +1,6 @@
 // Shared read-only rollup for the Tool health page and chief board.
 // Denominators live in eval-runs metadata; class/recovery rows come from worker-failures.
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +11,9 @@ export const LANES = ['native', 'claudex', 'openrouter', 'cloud', 'unknown'];
 const num = (n) => Number.isSafeInteger(n) && n >= 0;
 const rate = (n, d) => d !== null && d > 0 ? n / d : null;
 const dayOf = (t) => Number.isFinite(t) && Math.abs(t) <= 8640000000000000 ? new Date(t).toISOString().slice(0, 10) : null;
-const inferredTool = (cls) => cls.startsWith('error/') ? cls.slice(6).split(':')[0] : /^(denied|suite)\//.test(cls) ? 'Bash' : null;
+// A denial recorded before per-tool cohorts names no tool: it sits in this explicit bucket, never guessed as Bash.
+export const UNKNOWN_TOOL = '(unknown)';
+const inferredTool = (cls) => cls.startsWith('error/') ? cls.slice(6).split(':')[0] : cls.startsWith('suite/') ? 'Bash' : cls.startsWith('denied/') ? UNKNOWN_TOOL : null;
 function readRows(path) {
   try { return readFileSync(path, 'utf8').split('\n').flatMap((l) => { try { const r = JSON.parse(l); return r && typeof r === 'object' ? [r] : []; } catch { return []; } }); }
   catch { return []; }
@@ -23,13 +26,34 @@ function readListing(path) {
 // estimateListing: price each profile's Skill listing from the installed plugins (unbilled scan, cached in memory);
 // callers that only want failure rates (the chief board) leave it off and skip the scan.
 // rtk: (ids) => {state, byId: Map<id, {path: 'rtk'|'bash', deny}>, duplicates}, the rtk history.db join; absent = not read.
-export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false, rtk } = {}) {
+// eligible: {hook name without .sh: [PreToolUse matchers]}, the tools each guard is wired to check; absent = unknown.
+export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false, rtk, eligible } = {}) {
   const home = env.HOME || homedir();
   const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
     : estimateListing ? estimateProfileListing({ configDir: env.CLAUDE_CONFIG_DIR || join(home, '.claude') }) : {};
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing, { rtk });
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing, { rtk, eligible });
 }
+
+// Option B (spec 0.3 B1): a guard's denominator is the calls to the tools it is wired to check, not Bash alone.
+// A matcher is an anchored pattern over tool names ('*' or '' = every tool); a wired tool nobody called reads 0 calls.
+// ponytail: anchored regex over the matcher text, Claude Code's own matching of exotic matchers is not mirrored, a matcher that does not compile gives no denominator.
+function eligibleCalls(eligible, name, rows, complete) {
+  if (!eligible || typeof eligible !== 'object' || !Object.hasOwn(eligible, name) || !Array.isArray(eligible[name]) || !complete) return null;
+  const parts = eligible[name].flatMap((m) => m === '*' || m === '' ? ['.*'] : String(m).split('|'));
+  const by = Object.fromEntries(parts.filter((p) => /^[\w-]+$/.test(p)).map((p) => [p, 0]));
+  let tests;
+  try { tests = parts.map((p) => new RegExp(`^(?:${p})$`)); } catch { return null; }
+  for (const [tool, calls] of rows) {
+    if (tool === UNKNOWN_TOOL || !tests.some((re) => re.test(tool))) continue;
+    if (calls === null) return null;
+    by[tool] = calls;
+  }
+  return { by, calls: Object.values(by).reduce((n, v) => n + v, 0) };
+}
+// A short id of the wiring, so a changed wiring starts a new series rather than splicing two denominators.
+const eligibleFingerprint = (eligible) => eligible && typeof eligible === 'object'
+  ? createHash('sha256').update(JSON.stringify(Object.keys(eligible).sort().map((k) => [k, [...eligible[k]].sort()]))).digest('hex').slice(0, 12) : null;
 
 // Launch profile → v9 role (spec 0.4 a). An unmapped or absent profile is "other", never guessed.
 const ROLE_OF = { chief: 'chief', 'chief-relay': 'chief-relay', 'worker-impl': 'worker', 'worker-bus': 'worker', 'worker-vm': 'worker',
@@ -47,7 +71,7 @@ const profileOf = (...candidates) => {
 };
 
 // listing: {profile: {tool: listing tokens}} from profile-listing.mjs; absent = no drop candidates.
-export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}, { rtk } = {}) {
+export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}, { rtk, eligible } = {}) {
   const days = query.get('days') === '30' ? 30 : 7;
   const since = query.get('since');
   const lastDay = dayOf(now), firstDay = since ? dayOf(Date.parse(since)) : dayOf(Date.parse(lastDay) - (days - 1) * 86400000);
@@ -165,7 +189,19 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     }
     const unknownGroups = new Set(list.filter((s) => !s.known || s.incomplete).map((s) => `${s.day}\0${s.model}\0${s.lane}\0${s.role}`));
     for (const d of daily.values()) if (unknownGroups.has(`${d.day}\0${d.model}\0${d.lane}\0${d.role}`)) d.calls = null;
-    return { tools: [...tools.values()].map(finish), daily: [...daily.values()].map(finish), hooks: [...hooks.values()].map((h) => finish({ ...h, calls: bashCalls })), daily_hooks: [...dailyHooks.values()].map(({ group, ...h }) => finish({ ...h, calls: bashByGroup.get(group) })), totalCalls };
+    // Per guard: refusals by the tool that was refused (by_tool), what no tool row accounts for (unattributed), and the option-B
+    // rate over the calls to the tools the guard is wired to check. A refusal outside that set voids the rate (outside_eligible).
+    const withEligible = (h, rows, complete) => {
+      const by = {};
+      for (const t of rows) { const n = t.classes.get(h.class); if (n) by[t.tool] = n; }
+      const e = h.class.startsWith('denied/') ? eligibleCalls(eligible, h.class.slice(7), rows.map((t) => [t.tool, t.calls]), complete) : null;
+      const outside = e ? h.failures - Object.entries(by).reduce((n, [tool, v]) => n + (Object.hasOwn(e.by, tool) ? v : 0), 0) : null;
+      return { ...h, by_tool: by, unattributed: h.failures - Object.values(by).reduce((n, v) => n + v, 0), eligible_calls: e ? e.calls : null, eligible_by_tool: e ? e.by : null, outside_eligible: outside, eligible_rate: e && outside === 0 ? rate(h.failures, e.calls) : null };
+    };
+    const allKnown = !list.some((s) => !s.known || s.incomplete);
+    return { tools: [...tools.values()].map(finish), daily: [...daily.values()].map(finish),
+      hooks: [...hooks.values()].map((h) => finish(withEligible({ ...h, calls: bashCalls }, [...tools.values()], allKnown))),
+      daily_hooks: [...dailyHooks.values()].map(({ group, ...h }) => finish(withEligible({ ...h, calls: bashByGroup.get(group) }, [...daily.values()].filter((d) => `${d.day}\0${d.model}\0${d.lane}\0${d.role}` === group), !unknownGroups.has(group)))), totalCalls };
   }
   const all = [...slots.values()].filter((s) => matches(s, false));
   const filtered = all.filter((s) => matches(s));
@@ -226,7 +262,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const list = teamSlots.filter((s) => s.team === t), a = aggregate(list);
     return { team: t, sessions: new Set(list.map((s) => s.session)).size, calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0) };
   });
-  return { state: slots.size ? 'ok' : 'absent', ...result, window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
+  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
 }
 
 // Bash by command head and cause (spec 0.4 d) from the digest's bash_calls, joined to rtk's history.db by call id.

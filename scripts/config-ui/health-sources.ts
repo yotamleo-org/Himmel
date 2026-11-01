@@ -10,8 +10,9 @@ import { readToolHealth as readToolHealthRollup } from "../eval/worker-digest/to
 import { rtkHistory } from "./rtk-history";
 // The page prices each profile's Skill listing from the installed plugins (an unbilled scan, never a claude run).
 // The Bash drill-in joins rtk's history.db by call id (read-only); a test passes its own join.
-export const readToolHealth = (env: Env = process.env, query?: URLSearchParams, now?: number, { rtk }: { rtk?: unknown } = {}) =>
-  readToolHealthRollup(env, query, now, { estimateListing: true, rtk: rtk ?? rtkHistory(env) });
+// eligible: the tools each guard is wired to check ({hook name: [matchers]}, from the station scan); absent = no option-B rate.
+export const readToolHealth = (env: Env = process.env, query?: URLSearchParams, now?: number, { rtk, eligible }: { rtk?: unknown; eligible?: Record<string, string[]> | null } = {}) =>
+  readToolHealthRollup(env, query, now, { estimateListing: true, rtk: rtk ?? rtkHistory(env), eligible });
 // The one owner of tracker/forge; read here, never re-derived.
 // @ts-ignore plain ES module, no types
 import { projectModeTracker, projectModeForge, projectModeIdRequired } from "../lib/project-mode.mjs";

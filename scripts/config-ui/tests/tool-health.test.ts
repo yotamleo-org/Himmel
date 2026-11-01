@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as sources from "../health-sources";
+import { rollupToolHealth } from "../../eval/worker-digest/tool-health.mjs";
 import { startServer } from "../server";
 import { navLinks, parseLanding } from "../public/nav.js";
 
@@ -24,7 +25,7 @@ function seed() {
     const digest = { digest_v: 2, mapper_v: 1, trajectory_v: 1, session, status: "ok", model: agent.model,
       lane: s.lane, started_ts: Date.parse("2026-10-07T12:00:00Z"), agents: [agent],
       metrics: { tool_calls: s.bash + s.read, turns: 1, tool_calls_by_tool: { Bash: s.bash, Read: s.read }, tool_failures_by_tool: { Bash: s.errors + s.denied } },
-      tool_health: [{ agent, lane: s.lane, tool: "Bash", calls: s.bash, failures: s.errors + s.denied, errors: s.errors, denials: s.denied }, { agent, lane: s.lane, tool: "Read", calls: s.read, failures: 0, errors: 0, denials: 0 }],
+      tool_health: [{ agent, lane: s.lane, tool: "Bash", calls: s.bash, failures: s.errors + s.denied, errors: s.errors, denials: s.denied, classes: { ...(s.denied ? { "denied/read-clamp": s.denied } : {}), ...(s.errors ? { "error/Bash": s.errors } : {}) } }, { agent, lane: s.lane, tool: "Read", calls: s.read, failures: 0, errors: 0, denials: 0, classes: {} }],
       failures: [row("denied/read-clamp", s.denied, s.recovered), ...(s.errors ? [row("error/Bash", s.errors, null)] : [])] };
     const file = join(dir, `digest${i}.json`); writeFileSync(file, JSON.stringify(digest));
     const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/worker-digest/worker_ledger.py"), "record", "--digest", file, "--lane", s.lane, "--worker", `N${i + 1}`, "--failures-ledger", failures, "--eval-ledger", evals, "--state-dir", join(dir, "state")]);
@@ -63,7 +64,9 @@ test("legacy digests keep failures visible without inventing a zero rate", () =>
   for (const r of lines) { delete r.meta.tool_health; r.config.digest_v = 1; }
   writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, lines.map(JSON.stringify).join("\n") + "\n");
   const data = read(env);
-  expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: null, failures: 8, rate: null });
+  // The 3 errors are Bash's; the 5 denials name no tool, so they sit in the explicit legacy-unknown bucket.
+  expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: null, failures: 3, rate: null });
+  expect(data.tools.find((r: any) => r.tool === "(unknown)")).toMatchObject({ calls: null, failures: 5, denials: 5, rate: null });
   expect(data.hooks[0].rate).toBeNull();
 });
 
@@ -88,7 +91,10 @@ test("a mixed legacy population poisons incomplete denominators, not failure cou
   delete rows[0].meta.tool_health;
   writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
   const data = read(env);
-  expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: null, failures: 8, rate: null });
+  // The legacy session's denial names no tool: it leaves Bash for the unknown bucket, and the 8 failures still add up.
+  expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: null, failures: 7, rate: null });
+  expect(data.tools.find((r: any) => r.tool === "(unknown)")).toMatchObject({ calls: null, failures: 1, rate: null });
+  expect(data.tools.reduce((n: number, t: any) => n + t.failures, 0)).toBe(8);
   expect(data.daily.find((r: any) => r.tool === "Bash" && r.lane === "native").rate).toBeNull();
   expect(read(env, new URLSearchParams({ lane: "claudex" })).tools.find((r: any) => r.tool === "Bash").calls).toBe(30);
 });
@@ -611,4 +617,89 @@ test("a hook on a non-tool event has no derived runs, and a command's bash count
   const bash = { ...data.bash, rtk: { state: "ok", matched: 2, unmatched: 1, duplicates: 0 }, commands: [{ head: "git", calls: 3, failures: 0, cause: {}, rtk: 1, bash: 1 }] };
   const cmds = Object.fromEntries(cells(await page({ ...data, bash }, { tool: "Bash" }), "data-command"));
   expect(cmds.git).toEqual(["git", "3", "1", "1", "0"]);
+});
+
+// ---- refused-tool attribution and the option-B guard rate. Hand-built ledger rows, no writer, no HOME.
+const B_NOW = Date.parse("2026-10-28T23:59:00Z");
+const bSession = (n: number) => "48160000-0000-4000-8000-0000000001" + String(n).padStart(2, "0");
+const bEval = (n: number, health?: any[], over: any = {}) => ({ eval: "leg-trajectory", run_id: bSession(n), status: "ok", ts: "2026-10-28T12:00:00Z", lane: "native", model: "gpt-6.1-sol", config: {},
+  meta: { leg: true, started_ts: Date.parse("2026-10-28T12:00:00Z"), profile: "worker-impl", ...(health ? { tool_health: health } : {}) }, ...over });
+const bTool = (tool: string, calls: number, classes: Record<string, number> = {}) => {
+  const denials = Object.values(classes).reduce((n, v) => n + v, 0);
+  return { agent, tool, calls, failures: denials, errors: 0, denials, classes, day: "2026-10-28" };
+};
+const bFail = (n: number, cls: string, count: number) => ({ session: bSession(n), agent, class: cls, failure: cls.split("/")[0], count, recovered: null, tool_call_ids: [] });
+const roll = (evals: any[], failures: any[], opts: any = {}) => rollupToolHealth(evals, failures, new URLSearchParams(), B_NOW, {}, opts);
+const guardOf = (d: any, cls: string) => d.hooks.find((h: any) => h.class === cls);
+const readPE = (env: object, eligible: any) => (sources as any).readToolHealth(env, new URLSearchParams(), P_NOW, { rtk: () => ({ state: "absent" }), eligible });
+const SECRETS = ["Bash", "PowerShell", "Read", "Grep"], CLAMP = ["Bash", "Read", "Grep"];
+const WIRED = { "block-read-secrets": SECRETS, "read-clamp": CLAMP, "block-write-into-main-checkout": ["Bash"] };
+// Fixture Q: Bash 4, Read 3, Grep 2, PowerShell 1 calls; three secrets refusals, one read-clamp, one write-into-main.
+const qEvals = () => [bEval(1, [bTool("Bash", 4, { "denied/block-read-secrets": 1, "denied/block-write-into-main-checkout": 1 }),
+  bTool("Read", 3, { "denied/block-read-secrets": 1, "denied/read-clamp": 1 }), bTool("Grep", 2), bTool("PowerShell", 1, { "denied/block-read-secrets": 1 })])];
+const qFails = () => [bFail(1, "denied/block-read-secrets", 3), bFail(1, "denied/read-clamp", 1), bFail(1, "denied/block-write-into-main-checkout", 1)];
+
+test("eligible-tools-follow-effective-matchers", () => {
+  const d = roll(qEvals(), qFails(), { eligible: WIRED });
+  expect(guardOf(d, "denied/block-read-secrets")).toMatchObject({ failures: 3, eligible_calls: 10, eligible_rate: 0.3, eligible_by_tool: { Bash: 4, PowerShell: 1, Read: 3, Grep: 2 } });
+  expect(guardOf(d, "denied/read-clamp")).toMatchObject({ eligible_calls: 9, eligible_rate: 1 / 9 });
+  expect(guardOf(d, "denied/block-write-into-main-checkout")).toMatchObject({ eligible_calls: 4, eligible_rate: 0.25 });
+  expect(d.totalCalls).toBe(10); // the three eligible sums overlap; none of them is the fleet total
+  // A changed wiring changes the series fingerprint; an unchanged one keeps it. A wired tool nobody called reads 0 calls.
+  const wider = roll(qEvals(), qFails(), { eligible: { ...WIRED, "block-write-into-main-checkout": ["Bash", "Edit"] } });
+  expect(guardOf(wider, "denied/block-write-into-main-checkout")).toMatchObject({ eligible_calls: 4, eligible_by_tool: { Bash: 4, Edit: 0 } });
+  expect(wider.eligible_fingerprint).not.toBe(d.eligible_fingerprint);
+  expect(roll(qEvals(), qFails(), { eligible: { ...WIRED } }).eligible_fingerprint).toBe(d.eligible_fingerprint);
+  // A matcher is a pattern over tool names: mcp__.* takes every recorded MCP tool, once.
+  const mcp = roll([bEval(1, [bTool("Bash", 4), bTool("mcp__qmd__query", 6, { "denied/block-mcp": 2 })])], [bFail(1, "denied/block-mcp", 2)], { eligible: { "block-mcp": ["mcp__.*"] } });
+  expect(guardOf(mcp, "denied/block-mcp")).toMatchObject({ eligible_calls: 6, eligible_rate: 2 / 6 });
+});
+
+test("an unknown matcher or an incomplete cohort gives no eligible denominator, never a Bash fallback", () => {
+  const none = roll(qEvals(), qFails(), { eligible: { "read-clamp": CLAMP } });
+  expect(guardOf(none, "denied/block-read-secrets")).toMatchObject({ failures: 3, eligible_calls: null, eligible_rate: null, eligible_by_tool: null });
+  const off = roll(qEvals(), qFails(), { eligible: null });
+  expect(guardOf(off, "denied/read-clamp")).toMatchObject({ eligible_calls: null, eligible_rate: null });
+  expect(off.eligible_fingerprint).toBeNull();
+  expect(roll(qEvals(), qFails()).eligible_fingerprint).toBeNull(); // the chief board passes no map
+  const partial = roll([bEval(1, (qEvals()[0].meta as any).tool_health, { status: "partial" })], qFails(), { eligible: WIRED });
+  expect(guardOf(partial, "denied/block-read-secrets")).toMatchObject({ failures: 3, eligible_calls: null, eligible_rate: null });
+  // A refusal on a tool outside the wired set is a count check failure: no rate, the surplus shown.
+  const stray = roll([bEval(1, [bTool("Bash", 4), bTool("Edit", 2, { "denied/read-clamp": 1 })])], [bFail(1, "denied/read-clamp", 1)], { eligible: { "read-clamp": CLAMP } });
+  expect(guardOf(stray, "denied/read-clamp")).toMatchObject({ eligible_calls: 4, eligible_rate: null, outside_eligible: 1 });
+});
+
+test("denial-attribution-preserves-actual-tool-and-legacy-unknown", () => {
+  // L: a legacy session, no tool cohorts, one denial that names no tool.
+  const legacy = roll([bEval(1)], [bFail(1, "denied/read-clamp", 1)]);
+  expect(legacy.tools.find((t: any) => t.tool === "Bash")).toBeUndefined();
+  expect(legacy.tools.find((t: any) => t.tool === "(unknown)")).toMatchObject({ failures: 1, denials: 1, calls: null });
+  expect(guardOf(legacy, "denied/read-clamp")).toMatchObject({ failures: 1, by_tool: { "(unknown)": 1 }, unattributed: 0, rate: null });
+  // An error class still names its tool, so only denials lose the Bash guess.
+  const mixed = roll([bEval(1)], [bFail(1, "denied/read-clamp", 1), bFail(1, "error/Bash", 2)]);
+  expect(mixed.tools.find((t: any) => t.tool === "Bash")).toMatchObject({ failures: 2, denials: 0 });
+  // An explicit Read denial with Read calls lands on Read, not Bash.
+  const modern = roll([bEval(1, [bTool("Bash", 10), bTool("Read", 5, { "denied/read-clamp": 1 })])], [bFail(1, "denied/read-clamp", 1)]);
+  expect(modern.tools.find((t: any) => t.tool === "Read")).toMatchObject({ calls: 5, denials: 1 });
+  expect(modern.tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, denials: 0 });
+  expect(guardOf(modern, "denied/read-clamp")).toMatchObject({ failures: 1, by_tool: { Read: 1 }, unattributed: 0 });
+  // Total denials survive: per guard the tool split adds up to the refusals, a legacy and a modern session together.
+  const both = roll([bEval(1), bEval(2, [bTool("Bash", 10), bTool("Read", 5, { "denied/read-clamp": 2 })])], [bFail(1, "denied/read-clamp", 1), bFail(2, "denied/read-clamp", 2)]);
+  const g = guardOf(both, "denied/read-clamp");
+  expect(g.failures).toBe(3);
+  expect(g.by_tool).toEqual({ "(unknown)": 1, Read: 2 });
+});
+
+test("a guard table row shows the option-B rate beside the legacy rate", async () => {
+  const row = (cells(await page(readPE(seedP(), { "read-clamp": CLAMP })), "data-guard-row")[0] as any)[1];
+  expect(row).toEqual(expect.arrayContaining(["5", "7.14%", "÷70 eligible call attempts", "10.0%", "÷50 Bash calls (legacy)"]));
+  const none = (cells(await page(readPE(seedP(), null)), "data-guard-row")[0] as any)[1];
+  expect(none).toEqual(expect.arrayContaining(["5", "—", "eligible tools unknown", "10.0%", "÷50 Bash calls (legacy)"]));
+});
+
+test("the guard drill-in splits the refusals by tool and names the legacy-unknown bucket", async () => {
+  const data = roll([bEval(1), bEval(2, [bTool("Bash", 10), bTool("Read", 5, { "denied/read-clamp": 2 })])], [bFail(1, "denied/read-clamp", 1), bFail(2, "denied/read-clamp", 2)], { eligible: { "read-clamp": CLAMP } });
+  const rows = Object.fromEntries(cells(await page(data, { guard: "denied/read-clamp" }), "data-guard-tool").map(([k, c]: any) => [k, c.slice(1, 3)]));
+  expect(rows.Read[0]).toBe("2");
+  expect(rows["(unknown)"]).toEqual(["1", "tool not recorded (legacy)"]);
 });

@@ -7,6 +7,7 @@ const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const pct = (v) => (isNum(v) ? `${(v * 100).toFixed(1)}%` : "—");
 const num = (v) => (isNum(v) ? String(v) : "—");
 const ratio = (a, b) => (isNum(a) && isNum(b) && b > 0 ? a / b : null);
+const UNKNOWN_TOOL = "(unknown)"; // the reader's bucket for a refusal recorded before tools were named
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const dayLabel = (d) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
@@ -298,7 +299,13 @@ function toolList(data, inv, ui, opts = {}) {
 const isClassifier = (cls) => /^denied\/classifier(:|$)/.test(cls);
 function guardsPanel(data, ui) {
   const rows = (data.hooks || []).filter((h) => !isClassifier(h.class)).sort((a, b) => b.failures - a.failures || (a.class < b.class ? -1 : 1));
-  return table(["Guard", "Refused", "Rate", "Denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${td(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct(h.rate))}${td(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window");
+  return table(["Guard", "Refused", "Rate", "Denominator", "Bash-only rate (legacy)", "Legacy denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${td(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct2(h.eligible_rate))}${td(eligibleWords(h))}${td(pct(h.rate))}${td(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window");
+}
+// Option B: refusals over the calls to the tools the guard is wired to check ("eligible call attempts", never "calls checked").
+const pct2 = (v) => (isNum(v) ? `${(v * 100).toFixed(2)}%` : "—");
+function eligibleWords(h) {
+  if (!isNum(h.eligible_calls)) return "eligible tools unknown";
+  return isNum(h.outside_eligible) && h.outside_eligible > 0 ? `÷${h.eligible_calls} eligible call attempts · Count check failed: ${h.outside_eligible} refused on another tool` : `÷${h.eligible_calls} eligible call attempts`;
 }
 function classifierPanel(data) {
   const rows = (data.hooks || []).filter((h) => isClassifier(h.class)).sort((a, b) => b.failures - a.failures);
@@ -335,7 +342,7 @@ function overview(data, st, ui) {
   if (!(data.tools || []).length) return `${kpis(data)}<p class="nodata">No observations match these filters. <a class="btn" href="${esc(toolHealthHref({ filters: {} }))}">Reset filters</a></p>`;
   return `${banner}${kpis(data)}${dailyPanel(data, st)}
 ${box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", toolList(data, st.inventory, ui), "First build")}
-<div class="th-cols">${box("guards", "Guards that refuse most", "Which guard blocks the most calls? Every rate is over Bash calls only, the legacy denominator; a refusal can be correct.", guardsPanel(data, ui), "÷ Bash calls only")}${box("classifier", "Classifier denials", "Which calls did the auto-mode classifier deny? A count per category; the reason stays unverified.", classifierPanel(data), "reason unverified")}</div>
+<div class="th-cols">${box("guards", "Guards that refuse most", "Which guard blocks the most calls? The rate is over the calls to the tools each guard is wired to check; the Bash-only rate is the older denominator, kept for comparison. A refusal can be correct.", guardsPanel(data, ui), "÷ eligible call attempts")}${box("classifier", "Classifier denials", "Which calls did the auto-mode classifier deny? A count per category; the reason stays unverified.", classifierPanel(data), "reason unverified")}</div>
 ${box("lanes", "Bash on each lane", "Does Bash fail more on one lane?", lanePanel(data))}
 ${box("unused", "Loaded, never used", "Costs usage in every session; could load on demand. The cost is the estimated tokens per listing, not a measured gain.", candidatesPanel(data) + profilePanel(data))}`;
 }
@@ -390,9 +397,15 @@ function guardDrill(data, ui, token) {
   for (const d of data.daily_hooks || []) if (d.class === h.class) by.set(d.day, (by.get(d.day) || 0) + (isNum(d.failures) ? d.failures : 0));
   const days = windowDays(data).map((day) => ({ day, n: by.has(day) ? by.get(day) : cohort.has(day) ? 0 : null }));
   const max = Math.max(0, ...days.map((d) => d.n || 0));
-  const stats = `<dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
-  return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls? Counts only; why it refused needs new data (later).")}${stats}</section>
-${box("guard-days", "Refusals per day", "Refusals per UTC day; a gap is a day with no calls recorded.", `${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}`, "÷ Bash calls only")}
+  const stats = `<dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
+  const eligible = h.eligible_by_tool && typeof h.eligible_by_tool === "object" ? h.eligible_by_tool : null, byTool = h.by_tool && typeof h.by_tool === "object" ? h.by_tool : {};
+  const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, tool) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
+  const toolRows = [...new Set([...Object.keys(byTool), ...(eligible ? Object.keys(eligible) : [])])].sort((a, b) => (byTool[b] || 0) - (byTool[a] || 0) || (a < b ? -1 : 1))
+    .map((tool) => `<tr data-guard-tool="${esc(tool)}">${td(esc(tool))}${td(num(byTool[tool] || 0))}${td(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
+  const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
+  return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls, and which tool did it refuse? Counts only; why it refused needs new data (later).")}${stats}</section>
+${split}
+${box("guard-days", "Refusals per day", "Refusals per UTC day; a gap is a day with no calls recorded.", `${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}`)}
 ${box("evidence", "Evidence", "Sessions where it refused, opened in AG-UI.", evidence(h.sessions, h.tool_call_ids, token))}`;
 }
 
