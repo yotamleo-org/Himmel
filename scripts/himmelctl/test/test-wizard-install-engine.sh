@@ -776,6 +776,9 @@ echo "ok: case z2 — the enabledPlugins watch follows CLAUDE_CONFIG_DIR"
 # resolver (environment, credentials directory, keyring) before the repo .env.
 # The real scripts/lib/himmel-secrets runs over a stub keyring (secret-tool and
 # busctl first on PATH); no case reaches a real keyring. All values are dummies.
+if [ "$(uname -s)" = Darwin ]; then
+echo "SKIP: cases s0-a..s0-d — the resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up)"
+else
 kbin="$work/kbin"; mkdir -p "$kbin"
 export KSTUB_STORE="$work/keyring.tsv" KSTUB_LOG="$work/keyring.log"
 cat >"$kbin/secret-tool" <<'STUB'
@@ -837,5 +840,6 @@ echo "ok: case s0-c — a failing keyring lookup falls back to .env"
 [ "$(s0_run "$s0Root" S0_WANT=dummy-env-pw HIMMELCTL_SUDO_PASSWORD=dummy-env-pw)" = match ] \
   || fail "case s0-d: the live environment must win over the keyring"
 echo "ok: case s0-d — the live environment wins"
+fi
 
 echo "PASS"

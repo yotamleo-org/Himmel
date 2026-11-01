@@ -327,6 +327,9 @@ pass "g secret presence per consumer source, no values emitted, manifest fully c
 
 # ── g5. S0-R8: a repo-.env secret held only in the keyring reads present ────
 # BITBUCKET_EMAIL has no .env line in the fixture; the stub keyring holds it (a dummy value).
+if [ "$(uname -s)" = Darwin ]; then
+echo "SKIP: g5 — the resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up)"
+else
 WHISPER_MODEL='' WHISPER_DIR='' run_report --items secret:BITBUCKET_EMAIL > "$work/g5a.json" 2>/dev/null || fail "g5 report exited non-zero"
 [ "$(sec BITBUCKET_EMAIL "$work/g5a.json")" = absent ] || fail "g5 BITBUCKET_EMAIL read as present with no .env line and an empty keyring"
 printf 'service=himmel key=BITBUCKET_EMAIL scope=user\tkeyring-only-email-ffff\n' > "$KSTUB_STORE"; : > "$KSTUB_LOG"
@@ -338,6 +341,7 @@ KSTUB_LOOKUP_FAIL=1 WHISPER_MODEL='' WHISPER_DIR='' run_report --items secret:BI
 [ "$(sec BITBUCKET_EMAIL "$work/g5c.json")" = absent ] || fail "g5 a failing keyring lookup must read as absent, not present"
 : > "$KSTUB_STORE"
 pass "g5 a keyring-only repo-.env secret reads present (value never emitted); a failing lookup reads absent"
+fi
 
 # Jira settings are behaviour config, not .env-only presence. The report must
 # agree with a config-only CLI and must never emit a destination or credential.

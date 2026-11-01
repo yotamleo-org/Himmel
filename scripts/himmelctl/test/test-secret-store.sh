@@ -397,7 +397,7 @@ fs.writeFileSync(path.join(kbin, 'secret-tool'), [
   'esac',
   'exit 1',
 ].join('\n') + '\n', { mode: 0o755 });
-fs.writeFileSync(path.join(kbin, 'busctl'), '#!/usr/bin/env bash\ncase "$*" in *" Locked") echo "b ${KSTUB_LOCKED:-false}" ;; esac\n', { mode: 0o755 });
+fs.writeFileSync(path.join(kbin, 'busctl'), '#!/usr/bin/env bash\ncase "$*" in "--user get-property org.freedesktop.secrets /org/freedesktop/secrets/aliases/default org.freedesktop.Secret.Collection Locked") echo "b ${KSTUB_LOCKED:-false}" ;; esac\n', { mode: 0o755 });
 // Suite guard: abort unless the stubs are what resolve.
 for (const tool of ['secret-tool', 'busctl']) {
   const r = spawnSync('bash', ['-c', 'command -v ' + tool], { env: { PATH: kbin + ':' + process.env.PATH }, encoding: 'utf8' });
@@ -415,8 +415,10 @@ function withKeyring(opts, fn) {
 }
 const held = (name) => fs.readFileSync(kstore, 'utf8').split('\n').filter((l) => l.startsWith('service=himmel key=' + name + ' '));
 const envOf = (ctx) => path.join(ctx.himmelRoot, '.env');
+// The resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up): rows that need a served keyring item skip there.
+const krow = process.platform === 'darwin' ? (n) => console.log('SKIP - ' + n + ': the resolver skips the keyring on Darwin') : row;
 
-row('S0-R8 a keyring-only token is detected as set, source keyring, with no .env', () => {
+krow('S0-R8 a keyring-only token is detected as set, source keyring, with no .env', () => {
   const ctx = mk(); const v = fake();
   withKeyring({ items: 'service=himmel key=JIRA_API_TOKEN scope=user\t' + v + '\n' }, () => {
     const d = store.detect('JIRA_API_TOKEN', ctx); eq(d.status, 'set'); eq(d.source, 'keyring');
@@ -437,7 +439,7 @@ row('S0-R8 a failing keyring lookup leaves detect on .env alone (not-set without
   withKeyring({ items: 'service=himmel key=JIRA_API_TOKEN scope=user\t' + fake() + '\n', KSTUB_LOOKUP_FAIL: true }, () => eq(store.detect('JIRA_API_TOKEN', ctx).status, 'not-set'));
 });
 
-row('S0-R8 unlocked: a token is written through put --stdin and adds no .env line', () => {
+krow('S0-R8 unlocked: a token is written through put --stdin and adds no .env line', () => {
   const ctx = mk(); const v = fake();
   withKeyring({}, () => {
     const r = store.write('JIRA_API_TOKEN', v, ctx);
@@ -458,7 +460,7 @@ row('S0-R8 locked: the token is written to .env as today, the keyring untouched'
   ok(fs.readFileSync(envOf(ctx), 'utf8').includes('JIRA_API_TOKEN=' + v), 'the .env holds it');
 });
 
-row('S0-R8 unlocked but the keyring refuses the store: the write is refused, no .env line (an older keyring value would shadow it)', () => {
+krow('S0-R8 unlocked but the keyring refuses the store: the write is refused, no .env line (an older keyring value would shadow it)', () => {
   const ctx = mk(); const v = fake();
   ctx.gitCheckIgnore = () => true;
   let msg = '';
@@ -468,7 +470,7 @@ row('S0-R8 unlocked but the keyring refuses the store: the write is refused, no 
   ok(!fs.existsSync(envOf(ctx)), 'no .env was written');
 });
 
-row('S0-R8 removing a token the keyring still serves is refused, naming the manual clear, and .env is untouched', () => {
+krow('S0-R8 removing a token the keyring still serves is refused, naming the manual clear, and .env is untouched', () => {
   const ctx = mk(); const v = fake();
   fs.writeFileSync(envOf(ctx), 'JIRA_API_TOKEN=' + v + '\n');
   let msg = '';

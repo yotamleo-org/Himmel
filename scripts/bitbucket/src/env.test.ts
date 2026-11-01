@@ -151,7 +151,8 @@ describe('Bitbucket credentials through the secrets resolver', () => {
   const basic = (email: string, token: string) => 'Basic ' + Buffer.from(email + ':' + token).toString('base64');
   const DOTENV = 'BITBUCKET_EMAIL=env@example.invalid\nBITBUCKET_API_TOKEN=dummy-dotenv-token\n';
 
-  it('S0-R7 credentials held only in the keyring are served, and the stub log shows a lookup with no value', () => {
+  // The resolver skips the keyring on Darwin (macOS Keychain backend is a follow-up).
+  it.skipIf(process.platform === 'darwin')('S0-R7 credentials held only in the keyring are served, and the stub log shows a lookup with no value', () => {
     stub.put('BITBUCKET_EMAIL', 'kr@example.invalid');
     stub.put('BITBUCKET_API_TOKEN', 'dummy-keyring-token');
     const run = header(install(null));
@@ -162,7 +163,7 @@ describe('Bitbucket credentials through the secrets resolver', () => {
     expect(calls).not.toContain('dummy-keyring-token');
   });
 
-  it('S0-R2 a key in both the keyring and .env resolves to the keyring value', () => {
+  it.skipIf(process.platform === 'darwin')('S0-R2 a key in both the keyring and .env resolves to the keyring value', () => {
     stub.put('BITBUCKET_API_TOKEN', 'dummy-keyring-token');
     expect(header(install(DOTENV)).stdout).toBe(basic('env@example.invalid', 'dummy-keyring-token'));
   });
