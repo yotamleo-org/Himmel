@@ -961,7 +961,7 @@ SRB="$WORK/sr-b-ok"; SRD="$SRB/HIMMEL-9301-N931-sr-a-2026-10-08.md"; SRL="$SRB/s
 [ -f "$SRD" ] && pass "S2a: the writer's brief is written" || fail "S2a: no brief $SRD"
 [ ! -e "$SRB/launch-N932.sh" ] && [ ! -e "$SRB/launch-N933.sh" ] && [ -z "$(find "$SRB" -name 'HIMMEL-9302-*' -o -name 'HIMMEL-9303-*')" ] && pass "S2a: the named workers get no brief and no launcher" || fail "S2a: a named worker got a file: $(ls "$SRB")"
 [ -f "$SRB/launch-N931.sh" ] && pass "S2a: the writer gets its launcher" || fail "S2a: no writer launcher"
-srbrief="$(cat "$SRD" 2>/dev/null)"
+srbrief="$(cat "$SRD" 2>/dev/null)"  # read-sink-ok: SRD is a fixture path under this test's own mktemp dir
 has "S2a: the Series line carries the sid, the ledger path and the series.md path" "$srbrief" "> **Series:** HIMMEL-9301-N931 $SRL — read docs/handover/worker-sections/series.md"
 has "S2a: the grant line names the family and the operator decision" "$srbrief" "> **Series grant:** scripts/sa/ (operator decision 388)"
 has "S2a: the Writes line is the union of the items' Writes" "$srbrief" "> **Writes:** scripts/sa/a.sh scripts/sa/b.sh scripts/sa/c.sh"
