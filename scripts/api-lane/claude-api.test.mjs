@@ -73,7 +73,7 @@ function fixture() {
   save();
   writeFileSync(paths.stub, STUB, { mode: 0o700 });
   // the alert sender is always this stub: no fixture can reach the real Telegram sender
-  writeFileSync(paths.alert, `#!/bin/bash\n{ echo "type=$TG_NOTIFICATION_TYPE"; echo "msg=$TG_MESSAGE"; echo "repo=$TG_REPO_NAME"; echo "args=$*"; } >> '${paths.alertLog}'\nenv >> '${paths.alertLog}.env'\nexit "\${ALERT_RC:-0}"\n`, { mode: 0o700 });
+  writeFileSync(paths.alert, `#!/bin/bash\n{ echo "type=$TG_NOTIFICATION_TYPE"; echo "msg=$TG_MESSAGE"; echo "repo=$TG_REPO_NAME"; echo "args=$*"; } >> '${paths.alertLog}'\nenv >> '${paths.alertLog}.env'\n[ -z "\${ALERT_TERM_PARENT:-}" ] || kill -TERM "$PPID"\nexit "\${ALERT_RC:-0}"\n`, { mode: 0o700 });
   writeFileSync(paths.ps, '#!/bin/bash\nexit 0\n', { mode: 0o700 });
   const ok = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.012345, result: 'hi' });
   const env = { PATH: process.env.PATH, HOME: dir, TMPDIR: dir,
@@ -271,6 +271,16 @@ test('a TERM to the launcher after its call ended is a caller stop: no alert, no
   assert.equal(fbCalls(f), 0, 'a stopped call was replayed on the subscription');
   assert.deepEqual(alerts(f), [], 'a stop raised an alert');
   assert.equal(f.status().reserved_usd, '0.000000', 'the reservation is still held');
+});
+
+// the alert stub TERMs the launcher mid failure path: the alert was already sent, the fallback must not start
+test('a stop that lands while the alert is sent ends the failure path before the fallback runs', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK, ALERT_TERM_PARENT: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /stopped by its caller; the fallback was not run/);
+  assert.equal(fbCalls(f), 0, 'the fallback ran after a stop');
+  assert.equal(alerts(f).length, 1);
 });
 
 test('the call watchdog ending a hung read-only call is a failed call: one alert, one subscription re-run', () => {

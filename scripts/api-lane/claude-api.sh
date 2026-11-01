@@ -202,6 +202,7 @@ fail_over() {
     esac
   fi
   # the preflight and the alert take time: a stop that lands in them still ends the failure path
+  # ponytail: the check before the alert has no test seam in the usage preflight, upgrade path: HIMMEL-8657
   [ "$STOPPED" = 0 ] || { echo "claude-api: stopped by its caller during the failure path; no alert, no fallback" >&2; return 0; }
   send_alert "$class" "$rc" "$reason" "$decision"
   echo "claude-api: fallback: $decision" >&2

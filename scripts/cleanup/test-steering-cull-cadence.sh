@@ -43,7 +43,7 @@ printf '# rtk\n' > "$HOME/.claude/RTK.md"
 cat > "$W/claude.sh" <<'SH'
 #!/usr/bin/env bash
 { printf 'cwd=%s\n' "$PWD"; printf 'arg=%s\n' "$@"; } >> "$STUB_DIR/argv"
-printf 'key=%s auth=%s org=%s lq=%s\n' "${ANTHROPIC_API_KEY:-unset}" "${ANTHROPIC_AUTH_TOKEN:-unset}" "${ANTHROPIC_ORG_A_KEY:-unset}" "${LQ_API_KEY:-unset}" >> "$STUB_DIR/cred"
+printf 'key=%s auth=%s orga=%s orgb=%s lq=%s\n' "${ANTHROPIC_API_KEY:-unset}" "${ANTHROPIC_AUTH_TOKEN:-unset}" "${ANTHROPIC_ORG_A_KEY:-unset}" "${ANTHROPIC_ORG_B_KEY:-unset}" "${LQ_API_KEY:-unset}" >> "$STUB_DIR/cred"
 cat "$STUB_DIR/claude.json"
 exit "$(cat "$STUB_DIR/claude.rc" 2>/dev/null || echo 0)"
 SH
@@ -212,9 +212,9 @@ printf 'slug=u__himmel__new-chief session=s host=h age=40s status=OK\n' > "$W/sw
 
 # no backend env at all: the default is claude-cli, so the run needs no API lane
 rm -f "$W/cred"
-env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_API_KEY=dummy-not-a-key ANTHROPIC_AUTH_TOKEN=dummy-not-a-token ANTHROPIC_ORG_A_KEY=dummy-not-a-key LQ_API_KEY=dummy-not-a-key bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8d.out" 2>&1
+env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_API_KEY=dummy-not-a-key ANTHROPIC_AUTH_TOKEN=dummy-not-a-token ANTHROPIC_ORG_A_KEY=dummy-not-a-key ANTHROPIC_ORG_B_KEY=dummy-not-a-key LQ_API_KEY=dummy-not-a-key bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8d.out" 2>&1
 check "default backend with the lane off exits 0" 0 $?
-[ "$(cat "$W/cred" 2>/dev/null)" = "key=unset auth=unset org=unset lq=unset" ] && pass "the claude-cli launch drops an exported API key, auth token, org key and LQ key" || fail "the claude-cli launch inherited an API credential: $(cat "$W/cred" 2>/dev/null)"
+[ "$(cat "$W/cred" 2>/dev/null)" = "key=unset auth=unset orga=unset orgb=unset lq=unset" ] && pass "the claude-cli launch drops an exported API key, auth token, both org keys and LQ key" || fail "the claude-cli launch inherited an API credential: $(cat "$W/cred" 2>/dev/null)"
 hasnt "the default backend never refuses on the API lane" "HIMMEL_API_LANE=on" "$W/run8d.out"
 [ -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "default backend runs the subscription claude, not the API lane" || fail "default backend did not run on the subscription"
 _argv_flat="$(tr '\n' ' ' < "$W/argv" 2>/dev/null)"
