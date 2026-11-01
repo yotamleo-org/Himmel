@@ -57,7 +57,7 @@ export STUB_DIR="$W"
 
 export STEERING_CULL_CLAUDE="$W/claude.sh"
 export STEERING_CULL_PREFLIGHT_CMD="$W/preflight.sh"
-# claude-cli is an explicit opt-in (the default is claude-api); sections 1-7 exercise the bank path.
+# claude-cli is the default; pinned here so sections 1-7 exercise the bank path whatever the shell sets.
 export STEERING_CULL_BACKEND=claude-cli
 export STEERING_CULL_STATE_DIR="$W/state"
 export CADENCE_ALERT_FILE="$W/alerts.log"
@@ -209,16 +209,16 @@ rm -f "$W/argv" "$W/lane-argv"
 : > "$INB_B"; : > "$W/alerts.log"
 printf 'slug=u__himmel__new-chief session=s host=h age=40s status=OK\n' > "$W/sweep.txt"
 
-# no backend env at all: the default is claude-api, so a missing lane refuses and no model is called
+# no backend env at all: the default is claude-cli, so the run needs no API lane
 env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8d.out" 2>&1
-check "default backend with the lane off exits 1" 1 $?
-has "default-backend refusal is the claude-api ERR line" "ERR steering-cull: STEERING_CULL_BACKEND=claude-api needs HIMMEL_API_LANE=on" "$W/run8d.out"
-[ ! -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "default backend with the lane off calls no model, no fallback" || fail "model called for the default backend with the lane off"
+check "default backend with the lane off exits 0" 0 $?
+hasnt "the default backend never refuses on the API lane" "HIMMEL_API_LANE=on" "$W/run8d.out"
+[ -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "default backend runs the subscription claude, not the API lane" || fail "default backend did not run on the subscription"
+rm -f "$W/argv"
 env -u STEERING_CULL_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8e.out" 2>&1
 check "default backend with the lane on exits 0" 0 $?
-has "default backend resolves to the API lane" "acct=A" "$W/lane-argv"
-[ ! -e "$W/argv" ] && pass "default backend never runs the subscription claude" || fail "subscription claude ran on the default backend"
-rm -f "$W/lane-argv"
+[ -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "the lane being on does not move the default off the subscription" || fail "default backend reached the API lane"
+rm -f "$W/argv" "$W/lane-argv"
 
 STEERING_CULL_BACKEND=bogus bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8a.out" 2>&1
 check "unknown backend exits 1" 1 $?
@@ -252,10 +252,12 @@ has "runner bakes the backend" "STEERING_CULL_BACKEND=claude-api" "$W/runner/ste
 has "runner bakes the lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull-cadence.sh"
 has "runner bakes the account" "HIMMEL_API_ACCOUNT=B" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" >"$W/arm8c.out" 2>&1
-has "a default arm bakes claude-api" "STEERING_CULL_BACKEND=claude-api" "$W/runner/steering-cull-cadence.sh"
-has "a default arm bakes the lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull-cadence.sh"
-has "a default arm bakes the auto account" "HIMMEL_API_ACCOUNT=auto" "$W/runner/steering-cull-cadence.sh"
-hasnt "a default arm never bakes claude-cli" "claude-cli" "$W/runner/steering-cull-cadence.sh"
+check "a default arm exits 0" 0 $?
+has "a default arm bakes claude-cli" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
+hasnt "a default arm never bakes the API lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull-cadence.sh"
+hasnt "a default arm never bakes an API account" "HIMMEL_API_ACCOUNT" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --api-account A >"$W/arm8e.out" 2>&1
+check "a default arm with --api-account is refused" 1 $?
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm8d.out" 2>&1
 check "arm --backend claude-cli exits 0" 0 $?
 has "an explicit claude-cli arm pins the backend against an inherited env" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
