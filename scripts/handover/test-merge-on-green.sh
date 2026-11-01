@@ -4104,7 +4104,7 @@ assert_status_row "status: a finished merge leaves the pre-Jira row too" \
 # merges still leaves the record. A row for a PR that did not merge is marked result=not-merged (no contract).
 w0_title="feat(jira): [HIMMEL-374] reconciler"
 STUB_JIRA_BUILD=1 STUB_MERGE_SNAPSHOT=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: the row exists when the merge call runs"
-if jq -e -s 'map(select(.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .contract == "no" and .result == "pending" and .stage == "pre-merge")) | length == 1' \
+if jq -e -s 'map(select(.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .repo == "owner/repo" and .contract == "no" and .result == "pending" and .stage == "pre-merge")) | length == 1' \
     "$LAST_GH_LOG.rows-at-merge" >/dev/null 2>&1; then pass
 else fail "W0: the pending pre-merge row is in the log before gh pr merge runs (rows then: $(cat "$LAST_GH_LOG.rows-at-merge" 2>/dev/null))"; fi
 STUB_JIRA_BUILD=1 STUB_MERGE_SNAPSHOT=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: an opted-in merge" -- --jira-transition

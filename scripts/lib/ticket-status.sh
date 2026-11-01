@@ -350,8 +350,10 @@ ts_done_pending() {
     log="$(ts_state_dir)/status-events.jsonl"
     [ -e "$log" ] || return 1
     [ -r "$log" ] || return 2
-    [ -n "$(ts_merge_rows "$log" 2>/dev/null | jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
-        | select(. != null and .contract == "yes" and .result != "moved" and .result != "noop") | 1' 2>/dev/null)" ]
+    local rows
+    rows=$(ts_merge_rows "$log" 2>/dev/null) || return 2
+    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
+        | select(. != null and .contract == "yes" and .result != "moved" and .result != "noop") | 1' <<<"$rows" 2>/dev/null)" ]
 }
 
 _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="${3:-}"; }

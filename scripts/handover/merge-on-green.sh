@@ -1947,7 +1947,7 @@ _merge_intent_row() {
     MERGE_INTENT_KEY=$(ticket_key_from_title "$fresh_title") || { MERGE_INTENT_KEY=""; return 0; }
     [ -n "$MERGE_INTENT_KEY" ] || return 0
     _merge_contract
-    status_event event=merge key="$MERGE_INTENT_KEY" pr="$pr_num" head="$sha" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-merge || true
+    status_event event=merge key="$MERGE_INTENT_KEY" pr="$pr_num" head="$sha" repo="$nwo" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-merge || true
 }
 # _merge_not_merged_row <reason> — this run learned for certain that PR #pr_num did not merge at $sha. The row
 # carries no contract, so no reader takes it for a merge outcome; it only retires the pre-merge row above.
