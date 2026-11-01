@@ -11,7 +11,7 @@
 #
 # --stale reads the line's keys against the Jira mirror: `low` when fewer than 25 % are open,
 # then each open key whose fixVersions are set and lack the doc's `focus-version:` (a concrete vN; auto, none
-# or no line names nothing), as KEY@<its first fixVersion>. tick.sh turns it into prio= / prio-stale=.
+# or no line names nothing), as KEY@<its first fixVersion, spaces written as _>. tick.sh turns it into prio= / prio-stale=.
 # --from-chains is PRINT-ONLY (it never writes the doc; --apply with it is a usage error):
 # STATE_JSON is `chain-state.mjs --json --registry ...` output. For each chain in registry order, its open
 # members layer by layer (the state's per-chain step; within a layer, registry member order), each key once
@@ -34,7 +34,7 @@
 # PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 
-doc=""; chains=""; registry=""; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; mode=print
+doc=""; chains=""; have_chains=0; registry=""; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; mode=print
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
@@ -42,15 +42,16 @@ while [ "$#" -gt 0 ]; do
         --count) mode=count; shift ;;
         --apply) mode=apply; shift ;;
         --stale) mode=stale; shift ;;
-        --from-chains) chains="${2:-}"; shift 2 || exit 2 ;;
+        --from-chains) chains="${2:-}"; have_chains=1; shift 2 || exit 2 ;;
         --registry) registry="${2:-}"; shift 2 || exit 2 ;;
         *) echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply|--stale] | --from-chains STATE_JSON [--registry FILE]" >&2; exit 2 ;;
     esac
 done
 [ -n "$doc" ] || { echo "usage: priority-prune.sh --doc CHIEF_DOC [--mirror DIR] [--count|--apply|--stale] | --from-chains STATE_JSON [--registry FILE]" >&2; exit 2; }
 [ -f "$doc" ] || { echo "priority-prune: no doc $doc" >&2; exit 1; }
-if [ -n "$chains" ]; then
+if [ "$have_chains" -eq 1 ]; then
     [ "$mode" = print ] || { echo "priority-prune: --from-chains only prints; it takes no --count, --apply or --stale" >&2; exit 2; }
+    [ -n "$chains" ] || { echo "priority-prune: --from-chains needs a chain-state file" >&2; exit 2; }
     [ -f "$chains" ] || { echo "priority-prune: no chain state $chains" >&2; exit 1; }
     mode=chains
 else
@@ -72,14 +73,19 @@ def focus_version(doc_lines):  # a concrete vN only: auto, none and no line read
     return ''
 
 if mode == 'chains':
-    import json
+    import hashlib, json
     try:
         state = json.load(open(os.environ['PP_CHAINS'], encoding='utf-8'))
         reg_path = os.environ['PP_REGISTRY'] or state['registry']['path']
-        order = [(c['id'], c['members']) for c in json.load(open(reg_path, encoding='utf-8'))['chains']]
+        reg_bytes = open(reg_path, 'rb').read()
+        order = [(c['id'], c['members']) for c in json.loads(reg_bytes.decode('utf-8'))['chains']]
         tickets = state['tickets']
-    except (OSError, ValueError, KeyError, TypeError) as e:
+        want = state['registry'].get('sha256')
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         print('priority-prune: cannot read the chain state or registry: %s' % e, file=sys.stderr)
+        sys.exit(1)
+    if want and hashlib.sha256(reg_bytes).hexdigest() != want:
+        print('priority-prune: the registry %s changed since the chain state was read (sha256 differs); re-run chain-state.mjs' % reg_path, file=sys.stderr)
         sys.exit(1)
     seen, groups = set(), []
     for cid, members in order:
@@ -171,7 +177,7 @@ if mode == 'stale':
     for k in opened:
         fvs = fix_versions(k)
         if fv and fvs and fv not in fvs:
-            res.append('%s@%s' % (k, fvs[0]))
+            res.append('%s@%s' % (k, fvs[0].replace(' ', '_')))
     print(' '.join(res))
     sys.exit(0)
 

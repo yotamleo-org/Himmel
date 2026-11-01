@@ -130,6 +130,16 @@ printf '%s\n' '## Live state' 'priority: 6127' > "$WORK/nofv.md"
 same "--from-chains without a focus-version: line has no rest-of tail" "$(run --doc "$WORK/nofv.md" --from-chains "$WORK/cs.json")" \
     "priority: 9001 9002 | 9003 | 9006 9005"
 bash "$SUT" --mirror "$M" --doc "$WORK/fc.md" --from-chains "$WORK/no-such.json" >/dev/null 2>&1; same "--from-chains with a missing state file exits 1" "$?" "1"
+bash "$SUT" --mirror "$M" --doc "$WORK/fc.md" --from-chains "" --apply >/dev/null 2>&1; same "an empty --from-chains value with --apply is a usage error" "$?" "2"
+same "an empty --from-chains value with --apply writes nothing" "$(cmp -s "$WORK/fc.md" "$WORK/fc.orig" && echo same)" "same"
+# The state records the registry's sha256: a registry that changed since is refused, a matching one is read.
+reg_sha="$(sha256sum "$WORK/reg.json" | cut -d' ' -f1)"
+sed "s|\"registry\":{\"path\":\"$WORK/reg.json\"}|\"registry\":{\"path\":\"$WORK/reg.json\",\"sha256\":\"$reg_sha\"}|" "$WORK/cs.json" > "$WORK/cs-sha.json"
+same "--from-chains: a state whose registry sha256 matches is read" "$(run --doc "$WORK/fc.md" --from-chains "$WORK/cs-sha.json")" "$fc"
+sed "s|\"sha256\":\"$reg_sha\"|\"sha256\":\"0000\"|" "$WORK/cs-sha.json" > "$WORK/cs-badsha.json"
+out="$(run --doc "$WORK/fc.md" --from-chains "$WORK/cs-badsha.json")"; rc=$?
+same "--from-chains: a registry that changed since the state was read exits 1" "$rc" "1"
+same "--from-chains: a registry that changed prints no proposal" "$out" ""
 
 # --- --stale: <open>/<total> then `low` under 25 % open, then each open key whose fixVersion is not the focus-version.
 mkv() { # <num> <statusCategory> <fixVersions json>
@@ -148,6 +158,9 @@ printf '%s\n' '## Live state' 'priority: 7001 7002 7003 7004' 'focus-version: v1
 mkv 7004 Done '["v1.1.3"]'
 same "--stale: every key closed is 0 open of 4, low" "$(run --doc "$WORK/s4.md" --stale)" "0/4 low"
 mkv 7004 "To Do" '["v1.1.3"]'
+mkv 7007 "To Do" '["New Version 1"]'
+printf '%s\n' '## Live state' 'priority: 7001 7002 7003 7007 7004' 'focus-version: v1.1.3' > "$WORK/s9.md"
+same "--stale: a fixVersion name with spaces stays one token" "$(run --doc "$WORK/s9.md" --stale)" "2/5 HIMMEL-7007@New_Version_1"
 printf '%s\n' '## Live state' 'priority: 7001 7002 7003 7005 7004 7003' 'focus-version: v1.1.3' > "$WORK/s5.md"
 same "--stale: an open v1.1.5 key under focus-version v1.1.3 is named" "$(run --doc "$WORK/s5.md" --stale)" "2/5 HIMMEL-7005@v1.1.5"
 printf '%s\n' '## Live state' 'priority: 7001 7002 7003 7005 7004 7003' 'focus-version: auto' > "$WORK/s6.md"
