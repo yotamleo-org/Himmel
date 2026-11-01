@@ -128,6 +128,14 @@ assert_lacks "$out" "[outside-delta]" "T2 without a delta there is nothing to be
 assert_has "$out" "- [codex-10]: imp on an unchanged context line of the delta hunk [a.txt:3]" "T2 a context line of the whole-PR diff is not tagged either"
 assert_has "$out" "- [codex-11]: imp on a context line beside a deletion-only hunk [b.txt:4]" "T2 a deletion-only hunk's neighbour is not tagged either"
 
+# --- the repository's own diff.context: the panel's plain git diff reads it, so the tagger must too.
+# With diff.context=10 the delta hunk of a.txt shows lines 1..11, so base line 8 was shown.
+git -C "$repo" config diff.context 10
+run_tag 2 --from "$p1"
+git -C "$repo" config --unset diff.context
+assert_has "$out" "- [codex-2]: imp on base code far from the change [a.txt:8]" "T2b a line shown through the repository's diff.context is NOT tagged"
+assert_eq "$amends" "" "T2b a line shown through diff.context earns no amend"
+
 # --- rounds 1 and 4 never tag, never amend (S3) ------------------------------
 for r in 1 4 5; do
     run_tag "$r" --from "$p1"

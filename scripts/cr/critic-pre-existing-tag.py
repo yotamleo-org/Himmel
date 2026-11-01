@@ -17,8 +17,8 @@ Anything else is left as it is.
 A line's age says when it was written, not whether this round's change broke
 it. So a line the critic was shown is never tagged: it is never tagged when it
 sits inside any hunk of the reviewed diff (--from..HEAD, else the base...HEAD
-diff), its three lines of context and the neighbours of a deletion-only hunk
-included. When git cannot say what the diff showed, nothing is tagged.
+diff), its context lines (the repository's own diff context, as the critic's
+plain git diff reads it) and the neighbours of a deletion-only hunk included. When git cannot say what the diff showed, nothing is tagged.
 
 Never tagged: a Critical (it always blocks), a Suggestion, a [context] finding
 (cited outside the reviewed diff on purpose: the critic claims the change
@@ -83,7 +83,8 @@ def outside_shown_diff(args, path, line):
     """True only when git says the reviewed diff did not show this line.
 
     The reviewed diff is --from..HEAD when there is a start point, else the
-    base...HEAD diff, read with three lines of context like the critic's. Any
+    base...HEAD diff, read with the repository's own context setting, like the
+    critic's. Any
     hunk range on the new side counts as shown, context lines included; a hunk
     with no new-side lines (a deletion at the very edge) shows the line beside
     it. If git fails, the line counts as shown, so nothing is tagged.
@@ -91,7 +92,7 @@ def outside_shown_diff(args, path, line):
     if path not in _shown:
         spec = "%s..%s" % (args.from_sha, args.head) if args.from_sha else "%s...%s" % (args.db_sha, args.head)
         r = run(["git", "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-renames",
-                 "--unified=3", spec, "--", path])
+                 spec, "--", path])
         ranges = None
         if r.returncode == 0:
             ranges = []
