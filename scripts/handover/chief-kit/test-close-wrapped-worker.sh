@@ -1545,6 +1545,11 @@ reset_calls
 rc=0; out=$(run "$RES8" 2>&1) || rc=$?
 check "8424: RESUME doc tail LIVE, original WRAPPED -> still rc 4" "$rc" "4"
 check "8424: RESUME doc tail LIVE: nothing signaled" "$(cat "$CALLS")" ""
+# negative: the original doc's WRAPPED is stale while its RESUME doc's newest marker is LIVE (both locks free)
+reset_calls
+rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
+check "8424: original WRAPPED but RESUME doc tail LIVE -> rc 4" "$rc" "4"
+check "8424: RESUME doc tail LIVE, closing the original: nothing signaled" "$(cat "$CALLS")" ""
 # negative: the original doc's close refuses while the RESUME doc's lock is held
 acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$RES8" "cwl-test-holder" 2>&1)"
 token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"

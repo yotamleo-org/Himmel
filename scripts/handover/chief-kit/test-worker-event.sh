@@ -105,6 +105,15 @@ LE_LIST="$W/list-resume" run "MERGED #4400 → abcdef01 (N4304)"
 check "6d 8424 N4304 message, N4304b manifest entry: rc" "$rc" 0
 contains "6d 8424 HANDLED" "$out" "HANDLED wrap-merged N4304"
 contains "6d 8424 wrap gets the resumed entry" "$calls" "/h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md --pr 4400"
+cat > "$W/list-resume2" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md /h/HIMMEL-8-N4304c-resumed-2026-11-01-RESUME.md
+EOF
+chmod +x "$W/list-resume2"
+LE_LIST="$W/list-resume2" run "MERGED #4400 → abcdef01 (N4304)"
+check "6d2 8424 two resumed entries for one label: rc" "$rc" 10
+contains "6d2 8424 reason" "$out" "ESCALATE ambiguous-label"
+check "6d2 8424 wrap not run" "$calls" ""
 LE_LIST="$W/list-resume" run "WRAPPED N43"
 check "6e 8424 a shorter label never matches N4304b: rc" "$rc" 10
 contains "6e 8424 reason" "$out" "not-in-manifest N43"

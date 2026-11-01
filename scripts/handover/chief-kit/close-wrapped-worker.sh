@@ -218,6 +218,14 @@ if [ "$last_marker" != "WRAPPED" ]; then
     echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
 fi
+# an original doc's WRAPPED is stale once its -RESUME doc reports anything newer than WRAPPED (the resumed worker is still going)
+if [ -n "$SIB_DOC" ] && [[ $DOC != *-RESUME.md ]]; then
+    sib_marker=$(worker_tail_status "$SIB_DOC")
+    if [ -n "$sib_marker" ] && [ "$sib_marker" != "WRAPPED" ]; then
+        echo "close-wrapped-worker: refusing - the sibling doc $SIB_DOC last Results marker-bullet is '$sib_marker', not WRAPPED" >&2
+        exit 4
+    fi
+fi
 
 # git-env-ok: every git call below goes through sc_git, which runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
 # (the remote refresh inlines the same scrub because it also runs under timeout, and
