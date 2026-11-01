@@ -63,6 +63,7 @@ export function buildRecord(rollup, { day }) {
   if (rollup.eligible_fingerprint == null) missing.push('wiring');
   if (chain.state !== 'ok') missing.push('hook-chain log');
   if (!totalKnown) missing.push('call denominators');
+  if (guards.some(([, h]) => !num(h.eligible_calls))) missing.push('guard denominators');
   const status = missing.length || problems.length ? 'partial' : rollup.totalCalls === 0 ? 'inconclusive' : 'ok';
   const a = chain.audit || {};
   return {

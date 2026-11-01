@@ -521,10 +521,11 @@ The daily record: `bun scripts/config-ui/tool-health-record.ts [--day YYYY-MM-DD
 hand; nothing schedules it. The config names what a count means (count
 definition, wiring fingerprint), never the day, so a series has one row per
 day, with the day in `meta.day`. `status` is `ok` only with the wiring, the
-hook-chain log and every call denominator known and every invariant holding;
+hook-chain log, every call denominator and every guard's denominator known and
+every invariant holding;
 `partial` otherwise, `inconclusive` for a complete day with no calls. A day that
-has an ok row appends nothing. A late ok row older than the series' newest ok
-day is stored `partial` (`meta.revision: backfill`), because
+has an ok row appends nothing. A late ok row older than the newest ok
+day of the eval, whatever its host or wiring, is stored `partial` (`meta.revision: backfill`), because
 `eval_feedback.py` reads the newest ok row per eval in file order. No rule in
 `feedback-rules.json` names `tool-health`, so the record changes nothing by
 itself. A rate over several days sums the counts first: 1/10 and 9/30 are

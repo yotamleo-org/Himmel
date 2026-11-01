@@ -64,6 +64,19 @@ test("a permission prompt is not a guard and gets no guard case or metric", () =
   expect(rec.cases["guard:block-read-secrets"]).toBeDefined();
 });
 
+test("a guard with refusals and no denominator makes the day partial even when the wiring and the call total are known", () => {
+  // The wiring names read-clamp only, so block-read-secrets refused 3 calls over an unknown number of eligible ones.
+  const rec = day(roll(qEvals(), qFails(), { eligible: { "read-clamp": ["Bash", "Read", "Grep"] } }));
+  expect(rec.cases["guard:block-read-secrets"].eligible_calls).toBeNull();
+  expect(rec.status).toBe("partial");
+  expect(rec.meta.audit.missing_sources).toContain("guard denominators");
+  // A refusal outside the wired tools voids the rate but not the denominator, so the day stays ok.
+  const outside = day(roll(qEvals(), qFails(), { eligible: { "block-read-secrets": ["Bash"], "read-clamp": ["Bash", "Read", "Grep"] } }));
+  expect(outside.cases["guard:block-read-secrets"].eligible_calls).toBe(4);
+  expect(outside.cases["guard:block-read-secrets"].outside_eligible).toBeGreaterThan(0);
+  expect(outside.status).toBe("ok");
+});
+
 test("a complete day with no calls is inconclusive and every rate is null", () => {
   const rec = day(roll([evalOn(DAY, 1, [])], []));
   expect(rec.status).toBe("inconclusive");
