@@ -23,6 +23,18 @@ Sources, none of them a new pipeline:
                                path; absent or failing -> those columns are null
   tickets, cost_eq             first-parent merge subjects and the `worker-burn:`
                                PR-body lines (`cost-eq=` summed, `k` = x1000)
+  start_cost_eq, build_cost_eq, start_share_pct, cost_per_ticket_median, ticket_costs,
+  chief_pool_cost_eq           the per-ticket usage store (usage-compute.sh records,
+                               HIMMEL_USAGE_STORE, default ~/.himmel/state/usage) for the
+                               tickets merged in the window. Start = chief sessions titled
+                               with the ticket key (totals.console); build = legs + judges;
+                               cost-eq uses the burn weights, subagents included.
+                               start_share_pct is the share spent before the build;
+                               ticket_costs lists {ticket,start,build} per ticket. Chief
+                               cost tied to no ticket is the `_chief` pool: chief_pool_cost_eq
+                               (all-time, records carry no date), never allocated. A ticket
+                               merged in two windows counts in both; a chief session not
+                               titled with the key lands in the pool.
   cache_hit_pct                mean `overall` of the cache-health rolling history
                                (CACHE_HEALTH_HISTORY, default
                                history.jsonl in cache-health.py's state dir)
@@ -164,6 +176,66 @@ def flake_rows(script, t0, t1):
     return a - b, "ok"
 
 
+TOKEN_WEIGHTS = (("input", "WORKER_SESSION_BURN_W_INPUT", 1.0),
+                 ("cache_read", "WORKER_SESSION_BURN_W_CACHE_READ", 0.1),
+                 ("cache_create", "WORKER_SESSION_BURN_W_CACHE_CREATE", 1.25),
+                 ("output", "WORKER_SESSION_BURN_W_OUTPUT", 5.0))
+
+
+def counters_cost(c):
+    """cost-eq of one usage-record counter set: the session's tokens plus its subagents'."""
+    total = 0.0
+    for f, env, default in TOKEN_WEIGHTS:
+        w = float(os.environ.get(env, default))
+        total += w * ((c.get(f) or 0) + (c.get("sub_" + f) or 0))
+    return total
+
+
+def load_usage(path):
+    """Latest record per ticket from the per-ticket usage store (usage-compute.sh)."""
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return None
+    recs = {}
+    for line in lines:
+        try:
+            r = json.loads(line)
+            if isinstance(r["ticket"], str) and isinstance(r["totals"], dict):
+                recs[r["ticket"]] = r
+        except (ValueError, KeyError, TypeError):
+            continue
+    return recs
+
+
+def kind_cost(r, *kinds):
+    return sum(counters_cost(r["totals"].get(k) or {}) for k in kinds)
+
+
+def usage_cols(tickets, recs):
+    """Start (chief sessions titled with the ticket) and build (legs and judges) per ticket.
+    The _chief pool is chief cost tied to no ticket: listed, never allocated."""
+    cols = {"start_cost_eq": None, "build_cost_eq": None, "start_share_pct": None,
+            "cost_per_ticket_median": None, "ticket_costs": None, "chief_pool_cost_eq": None}
+    if recs is None:
+        return cols, "absent"
+    if "_chief" in recs:
+        cols["chief_pool_cost_eq"] = num(kind_cost(recs["_chief"], "console"))
+    rows = [(t, kind_cost(recs[t], "console"), kind_cost(recs[t], "leg", "judge")) for t in sorted(tickets) if t in recs]
+    if not rows:
+        return cols, "no-match"
+    start, build = sum(r[1] for r in rows), sum(r[2] for r in rows)
+    totals = sorted(r[1] + r[2] for r in rows)
+    mid = len(totals) // 2
+    cols.update({
+        "start_cost_eq": num(start), "build_cost_eq": num(build),
+        "start_share_pct": num(100.0 * start / (start + build)) if start + build else None,
+        "cost_per_ticket_median": num(totals[mid] if len(totals) % 2 else (totals[mid - 1] + totals[mid]) / 2),
+        "ticket_costs": [{"ticket": t, "start": num(s), "build": num(b)} for t, s, b in rows],
+    })
+    return cols, "ok"
+
+
 def build_row(kind, key, t0, t1, a):
     since, until = stamp(t0), stamp(t1)
     ref = key if kind == "version" else a.ref
@@ -183,6 +255,7 @@ def build_row(kind, key, t0, t1, a):
     flakes, flake_state = flake_rows(a.flake_script, t0, t1)
     n_t = len(costed)
     merges = sr["merges"] if sr else None
+    ucols, usage_state = usage_cols(tickets, a.usage)
     return {
         "v": 1, "ts": int(a.now.timestamp()), "host": socket.gethostname(), "source": "weekly-rollup",
         "kind": kind, "key": key, "since": since, "until": until,
@@ -195,16 +268,19 @@ def build_row(kind, key, t0, t1, a):
         "cost_eq": num(cost) if workers else None,
         "cost_eq_per_ticket": num(ticket_cost / n_t) if n_t else None,
         "legs": workers,
+        **ucols,
         "cache_hit_pct": cache,
         "flake_rows": flakes,
         "failure_rate_pct": None, "denial_rate_pct": None, "ship_stage_median_min": None,
         "no_source": NO_SOURCE,
         "sources": {"self_review": sr_state, "cost": "ok" if workers else "no-burn-lines",
-                    "cache": cache_state, "flake": flake_state},
+                    "cache": cache_state, "flake": flake_state, "usage": usage_state},
     }
 
 
 KEPT = {"self_review": ("merges", "fix_share_pct", "red_main"),
+        "usage": ("start_cost_eq", "build_cost_eq", "start_share_pct", "cost_per_ticket_median",
+                  "ticket_costs", "chief_pool_cost_eq"),
         "cache": ("cache_hit_pct",),
         "flake": ("flake_rows",)}
 
@@ -276,6 +352,7 @@ def cmd_write(a):
     a.ref = a.ref or default_ref(a.repo)
     a.self_review = a.self_review or os.environ.get("SELF_REVIEW_SCRIPT") or str(ROOT / "scripts/insights/self-review.sh")
     a.cache_history = os.environ.get("CACHE_HEALTH_HISTORY") or str(Path.home() / ".himmel/state/cache-health" / "history.jsonl")
+    a.usage = load_usage(Path(os.environ.get("HIMMEL_USAGE_STORE") or Path.home() / ".himmel/state/usage") / "records.jsonl")
     a.flake_script = os.environ.get("FLAKE_SUMMARY_SCRIPT") or str(ROOT / "scripts/observability/suite-flake-summary.sh")
     end = dt.date.fromisoformat(a.end) if a.end else a.now.date()
     out = Path(a.out or os.environ.get("WEEKLY_ROLLUP_FILE") or Path.home() / ".himmel/state/rollup/weekly.jsonl")
