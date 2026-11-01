@@ -31,6 +31,7 @@ import base64
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import time
@@ -90,7 +91,15 @@ def enroll(force):
     write600(SEED, seed + "\n", exclusive=True)
     write600(OPERATOR, json.dumps({"operator_id": op}) + "\n", exclusive=False)
     print("Add this to your authenticator app, then clear the terminal (shown once):")
-    print(f"otpauth://totp/himmel-config-restore:{os.uname().nodename}?secret={seed}&issuer=himmel")
+    uri = f"otpauth://totp/himmel-config-restore:{os.uname().nodename}?secret={seed}&issuer=himmel"
+    print(uri)
+    sys.stdout.flush()
+    # The URI is ONE argument, never piped: a pipe encodes the trailing newline and
+    # the authenticator app rejects the code.
+    if shutil.which("qrencode"):
+        subprocess.run(["qrencode", "-t", "ansiutf8", uri], check=False)
+    else:
+        print("No QR code (qrencode is missing): install it (e.g. sudo pacman -S qrencode) or type the secret in by hand.")
     print(f"result=enrolled operator={op}")
     return 0
 
