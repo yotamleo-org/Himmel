@@ -2724,7 +2724,7 @@ check "83 the rulings section stays" "$(grep -c '^## Rulings and judgement notes
 HANDOVER_DIR="$root" bash "$QL" release "$doc83A" "$token83" >/dev/null 2>&1
 
 # --- orph8501: `next` refuses (exit 8, naming the PR, no HANDOFF) while an open PR maps to
-# no manifest worker and no queue: hold; naming the PR on the queue: line lets it through.
+# no live worker record and no queue: hold; naming the PR on the queue: line lets it through.
 outo="$(chief new --bucket orph8501)"
 tokeno="$(token_of "$outo")"
 doco="$root/tester/orph8501/DEMO-nextleg-${today}A-chief.md"
@@ -2744,8 +2744,11 @@ outu="$(chief new --bucket orph8501u)"
 tokenu="$(token_of "$outu")"
 docu="$root/tester/orph8501u/DEMO-nextleg-${today}A-chief.md"
 rcu=0
-ORPHAN_PR_CHECK_PRS="$tmp/no-such-orphan-prs.json" chief next --bucket orph8501udst --doc "$docu" >/dev/null 2>&1 || rcu=$?
+ORPHAN_PR_CHECK_PRS="$tmp/no-such-orphan-prs.json" chief next --bucket orph8501udst --doc "$docu" >"$tmp/outu" 2>&1 || rcu=$?
 check "orph8501 an unreadable PR list does not refuse next" "0" "$rcu"
+check "orph8501 an unreadable PR list says the handover was not gated" "1" "$(grep -cF 'orphan-pr check unavailable (rc=3): handover not gated' "$tmp/outu")"
+check "orph8501 the check's own stderr is kept" "1" "$(grep -cF 'orphan-pr-check: unavailable (the open-PR list could not be read)' "$tmp/outu")"
+check "orph8501 the HANDOFF carries the not-gated line" "1" "$(grep -cF 'orphan-pr check unavailable (rc=3)' "$root/tester/orph8501u/DEMO-nextleg-${today}A-chief-HANDOFF.md")"
 HANDOVER_DIR="$root" bash "$QL" release "$docu" "$tokenu" >/dev/null 2>&1
 
 # --- 84: a repo with no origin remote must not abort `next` mid-render: the

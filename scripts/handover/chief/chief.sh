@@ -1712,13 +1712,20 @@ check_direction_real() {
     return 1
 }
 
-# Refuse a handover while an open PR maps to no live worker in the fleet manifest and to no hold
+# Refuse a handover while an open PR maps to no live worker record and to no hold
 # on the outgoing `queue:` line (orphan-pr-check.sh); every orphan is named. An
-# unreadable PR list (exit 3) or failed check never refuses; only exit 1 does.
+# unreadable PR list (exit 3) or failed check never refuses (fail-open, no deadlock): it is
+# said on stderr and carried into the HANDOFF as orphan_gate_note; only exit 1 refuses.
 # Args: outgoing doc.
+orphan_gate_note=""
 check_no_orphan_pr() {
     local orphans rc=0
-    orphans="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --doc "$1" --repo "$repo" 2>/dev/null)" || rc=$?  # swallow-ok: the rc is kept and only the check's exit 1 refuses
+    orphan_gate_note=""
+    orphans="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --doc "$1" --repo "$repo")" || rc=$?  # swallow-ok: the rc is kept and only the check's exit 1 refuses
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+        err "orphan-pr check unavailable (rc=$rc): handover not gated"
+        orphan_gate_note="orphan-pr check unavailable (rc=$rc): this handover was not gated on unowned open PRs; run orphan-pr-check.sh"
+    fi
     [ "$rc" -eq 1 ] || return 0
     err "refusing to hand over: an open PR is unowned (its ticket's worker record reads wrapped or none, or is absent) and no queue: line names it:"
     printf '%s\n' "$orphans" | while IFS= read -r line; do err "  $line"; done
@@ -2216,6 +2223,7 @@ cmd_next() {
             hf_lastgo="over the HANDOFF size budget — read \`last GO:\` in the Live state of \`$successor_doc_ref\`"
         done
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
+        [ -z "$orphan_gate_note" ] || printf '\n> %s\n' "$orphan_gate_note" >> "$predecessor_handoff"
         # Still over budget after the pointer pass: the remainder is the rulings
         # and the wrapped-PR list, which are never trimmed — say so loudly.
         hf_total="$(wc -c < "$predecessor_handoff" | tr -d ' ')"

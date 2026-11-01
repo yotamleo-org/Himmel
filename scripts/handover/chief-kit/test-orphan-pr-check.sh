@@ -196,7 +196,9 @@ arm "$WORK/w4.out" 20
 check "waiter: a PR joining the orphan set wakes at once" "WAKE orphan-pr 4325,4400" "$(head -n1 "$WORK/w4.out")"
 : > "$STUB/orphans.out"
 : > "$STUB/orphan.unavailable"
+calls_before="$(wc -l < "$STUB/orphan.calls")"
 arm "$WORK/w4u.out" 4
+check "waiter: the unavailable arm ran the check" "yes" "$([ "$(wc -l < "$STUB/orphan.calls")" -gt "$calls_before" ] && echo yes || echo no)"
 check "waiter: an unavailable read keeps the marker" "yes" "$([ -e "$INBOX.wait.orphan" ] && echo yes || echo no)"
 rm -f "$STUB/orphan.unavailable"
 arm "$WORK/w5.out" 4

@@ -2178,6 +2178,7 @@
         "succession partial": "succession progress report: operational",
         "relay-on-live": "succession relay housekeeping: operational",
         "unowned-prs": "PR ownership housekeeping: operational",
+        "orphan-pr": "an open PR with no live worker record or queue: hold: the chief relaunches or names it, operational triage",
         "unwatched": "a live worker missing from the fleet manifest: watch housekeeping, not a workflow decision",
         "doctor": "a new doctor WARN/FAIL check id: the chief fixes, tickets or rules on it, operational triage",
         "pool-stale": "a pool disposition whose blocker shipped: the chief re-rules the parked ticket, operational triage",
