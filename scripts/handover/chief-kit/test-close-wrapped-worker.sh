@@ -1533,9 +1533,10 @@ reset_calls
 rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
 check "8424: WRAPPED original doc + live <stem>-RESUME session -> rc 0" "$rc" "0"
 exact_count "8424: TERM sent to the -RESUME session" "$(cat "$CALLS")" "kill -TERM 330" "1"
-# the RESUME doc has no marker of its own: WRAPPED is read from the original doc, written after it
+# the RESUME doc has no marker of its own: WRAPPED is read from the original doc, which holds a
+# marker bullet written after the hand-off bullet that names the RESUME doc (hand-off evidence)
 printf '# worker\n\n## Results (newest at the bottom)\n' > "$RES8"
-age_file "$RES8" 1
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed\n- 12:00 WRAPPED - done\n' "$(basename "$RES8")" > "$ORIG8"
 reset_calls
 rc=0; out=$(run "$RES8" 2>&1) || rc=$?
 check "8424: RESUME doc with no marker, original WRAPPED -> rc 0" "$rc" "0"
@@ -1597,9 +1598,8 @@ exact_count "8424: legacy-family -RESUME session TERMed" "$(cat "$CALLS")" "kill
 # a successor letter in the RESUME doc's label (N18b) still finds the original (N18), both ways
 ORIGL="$W/HIMMEL-9-N18-demo-2026-01-01.md"
 RESL="$W/HIMMEL-9-N18b-demo-2026-01-01-RESUME.md"
-printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$ORIGL"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed\n- 12:00 WRAPPED - done\n' "$(basename "$RESL")" > "$ORIGL"
 printf '# worker\n\n## Results (newest at the bottom)\n' > "$RESL"
-age_file "$RESL" 1
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 mkcmdline 340 claude -n HIMMEL-9-N18b-demo-2026-01-01 work
 pgrep_x_stub 340
@@ -1611,12 +1611,28 @@ reset_calls
 rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
 check "8424: N18 original doc finds its N18b successor and the live session -> rc 0" "$rc" "0"
 exact_count "8424: N18 original doc: the N18b session TERMed once" "$(cat "$CALLS")" "kill -TERM 340" "1"
-# negative: a RESUME doc newer than the original borrows nothing (a successor just launched after a hand-off)
-touch "$RESL"
+# negative: a successor just launched after a hand-off. The RESUME doc was written first, then the
+# original's hand-off WRAPPED named it (the last marker bullet), then a bus adopt touched the original;
+# the live N18b session has written nothing yet. Neither doc closes: a TERM would kill the starting successor.
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - hand-off to %s\n- 10:05 bus-adopt: N18b adopted the chief\n' "$RESL" > "$ORIGL"
 reset_calls
 rc=0; out=$(run "$RESL" 2>&1) || rc=$?
-check "8424: RESUME doc newer than a WRAPPED original, no marker -> rc 4" "$rc" "4"
-check "8424: newer RESUME doc: nothing signaled" "$(cat "$CALLS")" ""
+check "8424: hand-off WRAPPED naming the RESUME doc is no evidence, RESUME doc -> rc 4" "$rc" "4"
+check "8424: hand-off WRAPPED, RESUME doc: nothing signaled" "$(cat "$CALLS")" ""
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: hand-off WRAPPED naming the RESUME doc is no evidence, original -> rc 4" "$rc" "4"
+check "8424: hand-off WRAPPED, original: nothing signaled" "$(cat "$CALLS")" ""
+# negative: no bullet of the original names the RESUME doc at all
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$ORIGL"
+reset_calls
+rc=0; out=$(run "$RESL" 2>&1) || rc=$?
+check "8424: no bullet names the RESUME doc, RESUME doc -> rc 4" "$rc" "4"
+check "8424: no bullet names the RESUME doc, RESUME doc: nothing signaled" "$(cat "$CALLS")" ""
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: no bullet names the RESUME doc, original -> rc 4" "$rc" "4"
+check "8424: no bullet names the RESUME doc, original: nothing signaled" "$(cat "$CALLS")" ""
 # negative: two successor RESUME docs for one original is refused, not guessed
 RESL2="$W/HIMMEL-9-N18c-demo-2026-01-01-RESUME.md"
 printf '# worker\n' > "$RESL2"
