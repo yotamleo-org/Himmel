@@ -675,6 +675,7 @@ def core_gate(l, ctx):
             if enforce:
                 refusals.append('%s is not in the Jira mirror (%s), so neither core nor a bypass can be proven; refresh the mirror, then re-run' % (k, mirror_dir(k)))
             else:
+                lines.append('> **Core gate:** WARN %s' % verdict[k])
                 print('gen-briefs: WARN core gate: %s is not in the Jira mirror (%s); core_gate is off, so the brief is written' % (k, mirror_dir(k)), file=sys.stderr)
         elif t[0] == 'CORE':
             core[k] = t[2] if len(t) > 2 else ''

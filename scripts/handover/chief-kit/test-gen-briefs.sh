@@ -1134,6 +1134,7 @@ cgo="$(cgrun miss)"; rc=$?
 cg_workers missoff HIMMEL-9418 "$CORE_WRITES" ''
 cgo="$(cgrun missoff 0)"; rc=$?
 [ "$rc" = 0 ] && has "a mirror miss with core_gate off warns and writes the brief" "$cgo" "WARN" || fail "mirror miss off rc=$rc: $cgo"
+has "the flag-off mirror miss leaves a Core gate WARN UNKNOWN line in the brief" "$(cat "$(cg_brief missoff)" 2>/dev/null)" "> **Core gate:** WARN UNKNOWN HIMMEL-9418"
 [ "$(cg_field missoff HIMMEL-9418 outcome)" = unknown ] && pass "the flag-off mirror miss appends an unknown row too" || fail "unknown row off: $(cat "$(cg_log missoff)" 2>/dev/null)"
 
 # a core-check that cannot run is always a refusal, flag on or off
@@ -1145,7 +1146,7 @@ cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/no-dist/index.js" cgrun nodist)"; rc=$?
 cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/no-dist/index.js" cgrun nodist 0)"; rc=$?
 [ "$rc" = 1 ] && has "no dist/, core_gate off: still CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED" || fail "no dist off rc=$rc: $cgo"
 [ -z "$(cg_brief nodist)" ] && pass "a core-check that cannot run writes no brief" || fail "a brief was written with no dist"
-printf 'exit 0\n' > "$CG/junk.js"
+printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$CG/junk.js"
 cgo="$(GEN_BRIEFS_JIRA_CLI="$CG/junk.js" cgrun nodist 0)"; rc=$?
 [ "$rc" = 1 ] && has "a core-check that prints nothing parseable is CORE-CHECK-FAILED" "$cgo" "CORE-CHECK-FAILED" || fail "unparseable rc=$rc: $cgo"
 
