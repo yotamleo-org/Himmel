@@ -899,6 +899,15 @@ test("sendDocument drops a permanent 4xx (false, no retry) and omits an absent c
   expect(cap).toBeNull();
 });
 
+test("sendDocument returns false, never throws, for a file that vanished after the caller's check", async () => {
+  let calls = 0;
+  const fake = (async () => { calls++; return new Response("{}"); }) as unknown as typeof fetch;
+  const errs = spyOn(console, "error").mockImplementation(() => {});
+  expect(await sendDocument("123:FAKE", 42, join(root(), "gone.txt"), undefined, fake, async () => {})).toBe(false);
+  errs.mockRestore();
+  expect(calls).toBe(0);
+});
+
 test("an outbox line with document_path is delivered via the document sender; text lines are unchanged", async () => {
   const r = root(); await ensureSession(r, "__chat__");
   await writeMeta(r, "__chat__", { chat_id: 5, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });

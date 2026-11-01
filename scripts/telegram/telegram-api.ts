@@ -113,11 +113,14 @@ export async function sendMessage(token: string, chat_id: number, text: string,
 const DOC_UPLOAD_TIMEOUT_MS = 120_000;
 export async function sendDocument(token: string, chat_id: number, path: string, caption?: string,
     f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void): Promise<boolean> {
+  let bytes: ArrayBuffer;
+  try { bytes = await Bun.file(path).arrayBuffer(); }   // a file gone or unreadable since the caller's check is a refusal, never a throw
+  catch { console.error(`[telegram] sendDocument cannot read the file chat=${redactChatId(chat_id)}`); return false; }
   for (let attempt = 0; attempt < 5; attempt++) {
     const form = new FormData();
     form.set("chat_id", String(chat_id));
     if (caption) form.set("caption", caption.slice(0, 1024));   // Bot API caption limit
-    form.set("document", new File([await Bun.file(path).arrayBuffer()], basename(path)));   // BunFile ignores the filename arg
+    form.set("document", new File([bytes], basename(path)));   // BunFile ignores the filename arg
     let res: Response;
     try {
       res = await f(API(token, "sendDocument"), { method: "POST", body: form, signal: AbortSignal.timeout(DOC_UPLOAD_TIMEOUT_MS) });

@@ -1,4 +1,5 @@
 import { join, dirname, basename, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { readdir, readFile, stat, mkdir, open, unlink } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
@@ -396,11 +397,12 @@ export async function queueFile(root: string, chat: number, path: string, captio
   const st = await stat(abs).catch(() => null);
   if (!st) throw new Error(`file not found: ${path}`);
   if (!st.isFile()) throw new Error(`not a regular file: ${path}`);
+  if (st.size > MAX_SEND_BYTES) throw new Error(`file is ${(st.size / 1048576).toFixed(1)} MB, over the Telegram 50 MB upload limit: ${path}`);
   let send = abs;
   if (/\.(md|markdown)$/i.test(abs)) {
     const dir = join(root, "outgoing");
     await mkdir(dir, { recursive: true });
-    send = join(dir, `${basename(abs).replace(/\.(md|markdown)$/i, "")}-${Date.now()}.html`);
+    send = join(dir, `${basename(abs).replace(/\.(md|markdown)$/i, "")}-${randomUUID()}.html`);
     await Bun.write(send, renderMarkdownHtml(await readFile(abs, "utf8"), basename(abs)));
   }
   const size = (await stat(send)).size;
