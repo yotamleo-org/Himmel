@@ -228,7 +228,7 @@ thw 2026-10-27 ok >"$TMP/th2.out" 2>&1
 check "the same day twice appends nothing" '[ "$(lines "$TL")" = 1 ] && grep -q "already\|exists" "$TMP/th2.out"'
 thw 2026-10-28 ok >/dev/null 2>&1
 check "a second day is a second row of the same series (same confighash)" '[ "$(lines "$TL")" = 2 ] && [ "$(jq -s "map(.confighash) | unique | length" "$TL")" = 1 ]'
-check "the config carries neither the date nor a count" '! jq -c .config "$TL" | grep -q "2026-\|\"n\"\|denials"'
+check "the config carries neither the date nor a count" 'absent "2026-\|\"n\"\|denials" <<<"$(jq -c .config "$TL")"'
 thw 2026-10-20 ok >/dev/null 2>&1
 check "a late backfill is stored partial with its revision, never ok" 'jq -e "select(.meta.day == \"2026-10-20\") | .status == \"partial\" and .meta.revision == \"backfill\"" "$TL" >/dev/null'
 check "the newest ok row is still the newest day, though the backfill was written last" '[ "$(newest_ok_day)" = 2026-10-28 ]'
