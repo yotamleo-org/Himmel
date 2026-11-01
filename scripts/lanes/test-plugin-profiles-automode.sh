@@ -87,7 +87,7 @@ jq -e '([.autoMode.environment[] | select(startswith("Trusted repo tooling:"))] 
 # Pin the whole tooling text (anchor written as ANCHOR): a widening in prose
 # with no path in it changes the digest. A deliberate wording change re-pins here.
 PIN=$(jq -r --arg a "$ANCHOR" '((.autoMode.environment // []) + (.autoMode.allow // []))[] | select(startswith("Source control:") | not) | split($a) | join("ANCHOR")' "$TMP/impl.json" 2>/dev/null | git hash-object --stdin)
-[ "$PIN" = "0a1f549f3361e346498ce4208494a80f5e4a81cd" ] && ok "T2 the tooling trust text matches its pinned digest" \
+[ "$PIN" = "b01fbd0e6170de4e2702db4e14acc778fc4ce343" ] && ok "T2 the tooling trust text matches its pinned digest" \
     || bad "T2 the tooling trust text changed (digest $PIN): re-read it for a widening, then re-pin"
 
 # T3: a composed profile list carries the allow entries once.

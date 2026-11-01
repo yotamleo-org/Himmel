@@ -704,6 +704,9 @@ types `ssh`; the one exception is `launch-guest.sh`, which runs the session and
 its guest preflight over its own known_hosts-pinned ssh. In order:
 
 1. `bash scripts/vm/claudex-guest.sh create himmel-claudex`, then `provision himmel-claudex`.
+   `provision` runs `vmsdk.py clone`, which reads the GitHub token, so the
+   classifier judges it on its own: the operator runs it, or it runs outside
+   auto mode.
 2. `bash scripts/vm/claudex-guest.sh status himmel-claudex`: the guest
    `claude-codex --preflight-only` exits 20 or 21 until the operator has logged
    in to Codex inside the guest.

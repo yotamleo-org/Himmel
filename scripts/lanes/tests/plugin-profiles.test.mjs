@@ -2053,6 +2053,10 @@ test('the Test VMs trust entry names himmel-claudex and claudex-guest.sh is the 
   assert.ok(tooling[0].includes(`marketplace/plugins/himmel-bus/bin/bus, ${ANCHOR}/scripts/vm/claudex-guest.sh. Not covered:`), 'claudex-guest.sh is the last named script');
   // provision runs vmsdk.py clone, which reads the GitHub token: trusting the wrapper must not lift that carve-out
   assert.match(tooling[0], /Not covered:.*vmsdk\.py clone, claudex-guest\.sh provision \(it runs vmsdk\.py clone\), a secrets reader/);
+  // the exact-scripts allow entry must not re-grant provision either
+  const allow = resolveProfile(REG, 'worker-impl', { anchor: ANCHOR, installed: [] }).autoMode.allow.filter((e) => e.startsWith('Running one of the exact scripts'));
+  assert.equal(allow.length, 1);
+  assert.match(allow[0], /Nor does it cover claudex-guest\.sh provision, which runs vmsdk\.py clone/);
 });
 test('vmLaunch is restricted to worker-vm', () => {
   const registry = structuredClone(REG);
