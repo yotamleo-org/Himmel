@@ -1756,8 +1756,9 @@ mk HIMMEL-872 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of another parent 
 mk HIMMEL-873 "To Do" High '[]' '["v1.0.1"]' '[]' "a lone sub-task of a third parent" "Edit scripts/lib/fd-85.sh."
 mk HIMMEL-874 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of the first parent in another family" "Edit scripts/lib/fe-85.sh."
 mk HIMMEL-875 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of the first parent spanning two families" "Edit docs/handover/ff-85.md and scripts/lib/ff-85.sh."
-for k in 870 871 872 873 874 875; do retype "$M/HIMMEL-$k.md" "Sub-task"; done
-reparent "$M/HIMMEL-870.md" HIMMEL-860; reparent "$M/HIMMEL-871.md" HIMMEL-860; reparent "$M/HIMMEL-875.md" HIMMEL-860
+mk HIMMEL-876 "To Do" High '[]' '["v1.0.1"]' '[]' "WSL station triage in docs/handover" "Edit docs/handover/fg-85.md."
+for k in 870 871 872 873 874 875 876; do retype "$M/HIMMEL-$k.md" "Sub-task"; done
+reparent "$M/HIMMEL-876.md" HIMMEL-860; reparent "$M/HIMMEL-870.md" HIMMEL-860; reparent "$M/HIMMEL-871.md" HIMMEL-860; reparent "$M/HIMMEL-875.md" HIMMEL-860
 reparent "$M/HIMMEL-872.md" HIMMEL-861; reparent "$M/HIMMEL-873.md" HIMMEL-862; reparent "$M/HIMMEL-874.md" HIMMEL-860
 FAM="$M"
 newbucket fam; mkfleet "$B/fleet.json"
@@ -1766,6 +1767,7 @@ has "(8529) sub-tasks of one parent in one directory family give a SERIES FAMILY
 lacks "(8529) a sub-task of another parent is not in the family row" "$fam1" "HIMMEL-872"
 lacks "(8529) a lone sub-task of its parent gives no family row" "$fam1" "SERIES FAMILY scripts/lib"
 lacks "(8529) a sub-task spanning two families is in no family row" "$fam1" "HIMMEL-875"
+lacks "(8529) a sub-task the host platform filter drops is in no family row" "$fam1" "HIMMEL-876"
 fam0="$(runl 0 "$FAM" "$B/fleet.json")"
 lacks "(8529) flag off prints no SERIES FAMILY row" "$fam0" "SERIES FAMILY"
 # a sub-task whose file a live worker holds is not offered

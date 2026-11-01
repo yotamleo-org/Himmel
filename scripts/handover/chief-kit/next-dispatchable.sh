@@ -1142,7 +1142,7 @@ if stacked and first_ver and not (pr_unknown or pr_files_unknown or workers_unkn
             continue
         if i['key'] in worker_keys or i['key'] in pr_keys or i['key'] in done_pending or i['key'] in briefs or i['labels'] & excl:
             continue
-        if held_hit(i) or any(blocker_state(b) for b in i['blocked_by']):
+        if platform_dropped(i) or held_hit(i) or any(blocker_state(b) for b in i['blocked_by']):
             continue
         fams = {family_of(f) for f in i['files']}
         if len(fams) == 1:
