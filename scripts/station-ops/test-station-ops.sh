@@ -357,6 +357,11 @@ assert_contains "GDM disable again is unchanged" "result=unchanged" "$(op autolo
 rm -f "$R/etc/gdm3/custom.conf"
 assert_contains "GDM enable creates a missing custom.conf" "result=changed" "$(op autologin --action enable --session xfce)"
 assert_contains "the new custom.conf holds a [daemon] section" "[daemon]" "$(cat "$R/etc/gdm3/custom.conf")"
+printf '[daemon]\r\nAutomaticLoginEnable=True\r\nAutomaticLogin=%s\r\n' "$U" > "$R/etc/gdm3/custom.conf"
+assert_contains "RED: GDM disable recognises a CRLF section" "result=changed" "$(op autologin --action disable)"
+assert_absent "RED: and removes the keys from a CRLF file" "AutomaticLogin" "$(cat "$R/etc/gdm3/custom.conf")"
+printf '[daemon]\nTimedLoginEnable=true\nTimedLogin=bob\n' > "$R/etc/gdm3/custom.conf"
+assert_contains "RED: GDM timed login is reported as another way in" "$R/etc/gdm3/custom.conf(timed-login)" "$(op autologin --check --action disable)"
 echo "== autologin: the keyring state is reported =="
 dm sddm
 assert_contains "no login keyring reads keyring=none" "keyring=none" "$(op autologin --check --action disable)"
@@ -521,6 +526,7 @@ mkdir -p "$R/stamp-state/recover-done" # a directory where the stamp file belong
 out=$(HIMMEL_RECOVER_STATE="$R/stamp-state" PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?")
 assert_contains "RED: a stamp write that fails after the recovery steps names the stamp path" "cannot record completion in $R/stamp-state/recover-done" "$out"
 assert_contains "the failed stamp write makes recover exit 1" "rc=1" "$out"
+assert_contains "RED: a failed stamp write still sends the status report" "recover: reboot recovery on" "$out"
 
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

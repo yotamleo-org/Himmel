@@ -99,7 +99,7 @@ if [ "$kind" = gdm ]; then
     [ ! -e "$file" ] || old=$(cat "$file") || die "cannot read $file"
     sect=daemon # t13b-ok: GDM names its auto-login ini section daemon, no process is started
     new=$(printf '%s\n' "$old" | awk -v enable="$([ "$action" = enable ] && echo 1 || echo 0)" -v user="$user" -v sect="$sect" '
-        BEGIN { sect_re = "^[ \t]*\\[" sect "\\][ \t]*$" }
+        BEGIN { sect_re = "^[ \t]*\\[" sect "\\][ \t\r]*$" }
         function emit() { if (enable == 1) { print "AutomaticLoginEnable=True"; print "AutomaticLogin=" user } }
         /^[ \t]*\[/ { in_sect = ($0 ~ sect_re) }
         in_sect && /^[ \t]*(AutomaticLoginEnable|AutomaticLogin)[ \t]*=/ { next }
@@ -131,6 +131,10 @@ case $kind in
     lightdm) for f in "$ROOT/etc/lightdm/lightdm.conf" "$ROOT"/etc/lightdm/lightdm.conf.d/*.conf; do
             [ -f "$f" ] && [ "$f" != "$file" ] && auto_in "$f" '' autologin-user && others="$others $f"
         done ;;
+    gdm) if [ -f "$file" ] && awk -v sec="$sect" '
+            /^[ \t]*\[/ { in_s = ($0 ~ ("^[ \t]*\\[" sec "\\][ \t\r]*$")); next }
+            in_s && /^[ \t]*TimedLoginEnable[ \t]*=[ \t]*([Tt]rue|1)[ \t\r]*$/ { found = 1 }
+            END { exit(found ? 0 : 1) }' "$file" 2>/dev/null; then others="$file(timed-login)"; fi ;;
 esac
 others=${others# }
 keyring="$keyring; other-autologin=${others:-none}"
