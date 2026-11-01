@@ -560,7 +560,7 @@ def main(argv):
     # GUARD_CORPUS_TIMEOUT_RUN: a loaded CI shard can starve a sandbox launch
     # past 15s (a TIMEOUT row is ODD-RC, exit 3); the suite raises the default.
     ap.add_argument("--timeout-run", type=float,
-                    default=float(os.environ.get("GUARD_CORPUS_TIMEOUT_RUN", "15")),
+                    default=os.environ.get("GUARD_CORPUS_TIMEOUT_RUN", "15"),
                     help="per-row hard timeout (kills the hook); default 15 or "
                          "$GUARD_CORPUS_TIMEOUT_RUN")
     ap.add_argument("--timeout-warn", type=float, default=5.0,
