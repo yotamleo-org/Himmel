@@ -1,6 +1,6 @@
-import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, mkdtemp, copyFile, rm, open } from "node:fs/promises";
-import { existsSync, readFileSync, lstatSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, realpath, readlink, mkdtemp, copyFile, rm, open } from "node:fs/promises";
+import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
+import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
@@ -8,7 +8,7 @@ import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getUpdates, getMe, sendMessage, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
+import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
 import { installTimestampedLogging } from "./log-timestamp";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
 import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
@@ -1045,7 +1045,14 @@ export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, 
 
 // Send-then-commit: send each complete outbox line, advance the byte-cursor only
 // AFTER the send resolves (at-least-once on crash). Per-chat throttle is the caller's job.
-export async function flushOutboxes(root: string, send: SendFn): Promise<void> {
+// An outbox line may carry document_path (+ caption) instead of text; it is
+// delivered through sendDoc (sendDocument in prod) to the session's own chat. A document
+// that cannot be delivered (no sender, missing/oversize file, Bot API refusal) is told to
+// the chat as a text notice — never a silent drop — and the cursor still advances.
+export type SendDocFn = (chat_id: number, path: string, caption?: string) => Promise<boolean>;
+export const MAX_DOC_BYTES = 50 * 1024 * 1024;
+
+export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDocFn): Promise<void> {
   let names: string[] = [];
   try { names = await readdir(join(root, "sessions")); } catch { return; }
   for (const s of names) {
@@ -1065,9 +1072,14 @@ export async function flushOutboxes(root: string, send: SendFn): Promise<void> {
       for (const ln of complete.split("\n")) {
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
         if (ln.trim()) {
-          let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object } | null = null;
+          let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string } | null = null;
           try { out = JSON.parse(ln); } catch {}
-          if (out) {
+          if (out && typeof out.document_path === "string") {
+            if (typeof out.text === "string" && out.text) await send(meta.chat_id, out.text, out.reply_to_message_id, out.markup);
+            // A group chat never receives a file, whatever the session is called (a ticket session can run in a group).
+            const ok = !s.startsWith("group_") && meta.chat_id > 0 && sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
+            if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be outside the send folder, missing, over 50 MB, sent from a group, or refused by Telegram.`);
+          } else if (out) {
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
           }
@@ -1623,7 +1635,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       // Not a content-filter block and no agent ran: code 0 settles the session
       // back to idle with its pending lines uncommitted.
       if (lockdownEnabled(root)) { lockedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "locked, reset at the station" }); }
-      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, extraEnv, mcpConfig), deadlineMs);
+      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, extraEnv, mcpConfig), deadlineMs);
     }, undefined, retryAt);
     // run.log: persist the run's output tail — before this, a dead
     // run's stdout/stderr vanished and failures were undebuggable
@@ -2191,15 +2203,56 @@ async function sessionsList(root: string): Promise<string[]> {
 // block polling. Routes to the SAME session the chat uses (group_<id> for a group, so a
 // group `/arm` reply lands in that group and its per-group context is preserved;
 // __chat__ for a DM) — mirrors handleInbound's chatSession routing.
-export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object): Promise<void> {
+async function appendOutboxLine(root: string, chat_id: number, line: object): Promise<void> {
   const session = chat_id < 0 ? `group_${chat_id}` : "__chat__";
   const { created } = await ensureSession(root, session);
   const meta = await readMeta(root, session);
   if (created || !meta) {
     await writeMeta(root, session, { chat_id, status: "idle", last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
   }
-  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify({ text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) }));
+  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify(line));
 }
+
+export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object): Promise<void> {
+  await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
+}
+
+// Queue a local file for the chat; flushOutboxes sends it via sendDocument.
+export async function sendFileViaOutbox(root: string, chat_id: number, document_path: string, caption?: string): Promise<void> {
+  await appendOutboxLine(root, chat_id, { document_path, ...(caption ? { caption } : {}) });
+}
+
+// The poller-side document sender. The poller reads files outside any tool-permission
+// hook, so it ships only what sits under <bridge root>/outgoing (where send-file copies
+// its files): the real path must be inside that directory's real path, the path itself
+// must not be a symlink, and the file must be regular and within the Bot API's 50 MB.
+export const makeSendDoc = (token: string, root: string, operatorChat: number | null, upload: typeof sendDocument = sendDocument, beforeOpen?: () => Promise<void>): SendDocFn => async (chat, path, caption) => {
+  if (!isAbsolute(path) || operatorChat === null || chat !== operatorChat) return false;   // a file goes to the operator's own chat only
+  let bytes: Buffer;
+  let name: string;
+  try {
+    const base = await realpath(join(root, "outgoing"));
+    if (!(await realpath(path)).startsWith(base + sep)) return false;   // cheap refusal before anything is opened
+    // Open once (a final-component symlink is refused; O_NONBLOCK so a FIFO cannot hang the poller),
+    // then ask where the HELD descriptor lives, not where the name resolves now: on Linux that is
+    // /proc/self/fd/<n>, which a swapped parent directory cannot change. Elsewhere the path is
+    // resolved again and must land inside outgoing on the very inode we hold (a swap that survives
+    // that needs a hard link into outgoing). The bytes sent are the descriptor's, never a re-open.
+    await beforeOpen?.();   // test seam: lets a test swap a parent directory between the check and the open
+    const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const st = await fh.stat();
+      const held = await readlink(`/proc/self/fd/${fh.fd}`).catch(() => null);
+      const real = held ?? await realpath(path);
+      if (!real.startsWith(base + sep) || !st.isFile() || st.size > MAX_DOC_BYTES) return false;
+      if (held === null) { const at = await stat(real); if (st.dev !== at.dev || st.ino !== at.ino) return false; }
+      bytes = await fh.readFile();
+      name = basename(real);
+    } finally { await fh.close(); }
+  } catch { return false; }
+  if (bytes.length > MAX_DOC_BYTES) return false;
+  return upload(token, chat, { name, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer }, caption);
+};
 
 // --- getUpdates outage handling ---
 // Before this, a non-ok getUpdates response (e.g. a Telegram-API-side Bad
@@ -2456,7 +2509,7 @@ export async function main(): Promise<void> {
   // its keep. The flush path touches only outbox files; the run path touches only
   // inbox/meta/pending — disjoint, so the timer adds no shared-file race.
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
-  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send)), FLUSH_MS);
+  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token, root, operatorChat))), FLUSH_MS); // t13b-ok: the existing outbox flush timer, only its arguments changed
   if (typeof flushTimer.unref === "function") flushTimer.unref();
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
