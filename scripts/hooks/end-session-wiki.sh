@@ -226,9 +226,11 @@ spawn_crystallizer() {
     # through from the launching shell untouched. Without them the crystallizer runs
     # on the subscription (usage-preflight gated); when the preflight says stop it
     # prints ONE skip line on stderr. detach_run sends stderr to /dev/null, so the
-    # inner redirect lands that line in this hook's log instead.
+    # inner redirect lands that line in this hook's log instead; a log that cannot be
+    # opened must not stop the crystallizer, so a failed redirect falls through to a
+    # plain exec.
     # shellcheck disable=SC2016  # the single-quoted body is the child shell's script
-    detach_run bash -c 'log="$1"; shift; exec bash "$@" 2>>"$log"' _ "$LOG_PATH" "$crys" "$ABS_PATH" "$TRANSCRIPT_PATH"
+    detach_run bash -c 'log="$1"; shift; exec bash "$@" 2>>"$log" || exec bash "$@"' _ "$LOG_PATH" "$crys" "$ABS_PATH" "$TRANSCRIPT_PATH"
     return 0
 }
 

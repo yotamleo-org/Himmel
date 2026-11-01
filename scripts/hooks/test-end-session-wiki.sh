@@ -398,6 +398,15 @@ else
 fi
 rm -rf "$SB"
 
+# 9b-5: a hook log that cannot be opened for append must not stop the crystallizer.
+lane_sandbox
+mkdir -p "$(dirname "$LOGF")"; : > "$LOGF"; chmod 444 "$LOGF"
+lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_CLAUDE_BIN="$STUB"
+i=0; while [ ! -s "$MARK" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+if [ -s "$MARK" ]; then pass "lane-env: an unwritable hook log does not stop the crystallizer"; else fail "lane-env: an unwritable hook log stopped the crystallizer"; fi
+chmod 644 "$LOGF" 2>/dev/null
+rm -rf "$SB"
+
 # --- Case 10: BSD/macOS `date +%s%3N` must not crash the REST-success path (GH#202)
 # `%N` is a GNU extension. On BSD date, `+%s%3N` is NOT an error (exit 0, so the
 # hook's `|| echo 0` guard never fires) — it yields a non-numeric string like
