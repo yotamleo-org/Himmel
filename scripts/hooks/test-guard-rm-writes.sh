@@ -31,6 +31,7 @@ JIRA='node /repo/scripts/jira/dist/index.js'
 # The session scratchpad lives under /tmp/claude-<uid>.
 TMP_SCRATCH="/tmp/claude-$(id -u)"
 mkdir -p "$TMP_SCRATCH"
+chmod 700 "$TMP_SCRATCH"
 
 pass=0
 fail=0

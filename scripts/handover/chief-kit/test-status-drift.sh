@@ -608,6 +608,28 @@ printf '{"ts":"2026-10-21T10:00:05Z","event":"merge","key":"%s","result":"noop",
 drift
 contains "3b (HIMMEL-8522): a contract-less derive row under event merge does not hide the contract=yes row" "$(drows MERGE-MISMATCH)" "MERGE-MISMATCH $K"
 
+# A merge row written before the merge call is a MERGE-MISMATCH only once its PR is proven merged.
+cat > "$tmp/mrgh" <<'EOF'
+#!/usr/bin/env bash
+# the merge-rows filter gh seam: pr view <n> --json ...
+case "$3" in 8601) echo "OPEN h1" ;; 8602) echo "MERGED h2" ;; *) exit 1 ;; esac
+EOF
+chmod +x "$tmp/mrgh"
+prerow() { # <pr> <head> - a stage=pre-merge pending contract=yes row for $K
+    mkdir -p "$TICKET_STATUS_STATE_DIR"
+    printf '{"ts":"2026-10-21T10:00:00Z","event":"merge","key":"%s","pr":"%s","head":"%s","contract":"yes","result":"pending","stage":"pre-merge"}\n' "$K" "$1" "$2" >> "$LOG"
+}
+reset "In Review"; prerow 8601 h1
+MERGE_ROWS_GH="$tmp/mrgh" drift
+check "3b (HIMMEL-8616): a pre-merge row whose PR is still open is not a MERGE-MISMATCH" "$(dcount MERGE-MISMATCH)" 0
+reset "In Review"; prerow 8602 h2
+MERGE_ROWS_GH="$tmp/mrgh" drift
+contains "3b (HIMMEL-8616): a pre-merge row whose PR GitHub reports MERGED is a MERGE-MISMATCH" "$(drows MERGE-MISMATCH)" "MERGE-MISMATCH $K"
+reset "In Review"; prerow 8602 h2
+printf '{"ts":"2026-10-21T10:00:01Z","event":"merge","key":"%s","pr":"8602","head":"h2","result":"not-merged","stage":"merge-failed"}\n' "$K" >> "$LOG"
+MERGE_ROWS_GH="$tmp/mrgh" drift
+check "3b (HIMMEL-8616): a not-merged row after the pre-merge row retires it" "$(dcount MERGE-MISMATCH)" 0
+
 reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
 drift
 contains "3b: more merge keys than the check budget is reported, not dropped" "$(drows HEALTH)" "checked 20 of 21"

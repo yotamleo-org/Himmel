@@ -31,6 +31,9 @@ cat > "$tmp/vms.json" <<'J'
 }
 J
 P="$tmp/repo/prompt.txt"
+# no launch in this suite may write the operator's real cost ledger
+export LAUNCH_GUEST_COST_LEDGER="$tmp/default-ledger.jsonl"
+unset LAUNCH_GUEST_TICKET LAUNCH_GUEST_ACCOUNT
 run() { (cd "$tmp/repo" && LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" bash "$SCRIPT" "$@" 2>&1); }
 
 rc=0; out="$(run)" || rc=$?
@@ -179,6 +182,133 @@ for pair in "x; --dangerously-skip-permissions|~/d.log" "gateway|~/a b" "gateway
     check "R13 rejects [$pair]" "$rc" "2"
 done
 check "R13 none of those reached ssh" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
+
+# --- one cost ledger row per launched run, summed by vm-cost.sh ---
+# the ssh stub now answers like a guest claude -p --output-format json
+COST="$HERE/vm-cost.sh"
+LEDGER="$tmp/vm-cost.jsonl"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\necho "{\\"type\\":\\"result\\",\\"total_cost_usd\\":1.25}"\n' > "$tmp/bin/ssh"
+chmod +x "$tmp/bin/ssh"
+runc() { LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 runv "$@"; }
+# like runc but stderr is left to the caller, so stdout and stderr can be asserted apart
+runo() { _l="$1"; shift; (cd "$tmp/repo" && LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_COST_LEDGER="$_l" LAUNCH_GUEST_TICKET=HIMMEL-1 PATH="$tmp/bin:$PATH" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-lane.sh" bash "$SCRIPT" "$@"); }
+rows() { if [ -f "$LEDGER" ]; then wc -l < "$LEDGER" | tr -d ' '; else echo 0; fi; }
+
+fresh; rm -f "$LEDGER"
+rc=0; out="$(runo "$LEDGER" ubuntu_new "$P" 2>"$tmp/c1.err")" || rc=$?
+check "C1 stubbed run: exit 0" "$rc" "0"
+lacks "C1 stubbed run: a written row prints no ledger warning" "$(cat "$tmp/c1.err")" "could not write the cost ledger row"
+check "C1 stubbed run: stdout is exactly the guest result" "$out" '{"type":"result","total_cost_usd":1.25}'
+check "C1 stubbed run writes exactly one row" "$(rows)" "1"
+row="$(cat "$LEDGER" 2>/dev/null)"
+check "C1 row: ticket" "$(printf '%s' "$row" | jq -r .ticket 2>/dev/null)" "HIMMEL-1"
+check "C1 row: vm" "$(printf '%s' "$row" | jq -r .vm 2>/dev/null)" "ubuntu_new"
+check "C1 row: account label defaults to the vm" "$(printf '%s' "$row" | jq -r .account 2>/dev/null)" "ubuntu_new"
+check "C1 row: usd from the guest result" "$(printf '%s' "$row" | jq -r .usd 2>/dev/null)" "1.25"
+check "C1 row: seconds is a whole number" "$(printf '%s' "$row" | jq -r '.seconds | type' 2>/dev/null)" "number"
+check "C1 row: utc stamp" "$(printf '%s' "$row" | jq -r '.ts | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$")' 2>/dev/null)" "true"
+
+fresh; rm -f "$LEDGER"
+rc=0; out="$(runc --dry-run ubuntu_new "$P")" || rc=$?
+check "C2 dry-run writes no row" "$(rows)" "0"
+rc=0; out="$(runc nosuchvm "$P")" || rc=$?
+check "C2 refused vm writes no row" "$(rows)" "0"
+rc=0; out="$(PATH="$tmp/bin:$PATH" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-skip.sh" run ubuntu_new "$P")" || rc=$?
+check "C2 exhausted bank writes no row" "$(rows)" "0"
+
+# a guest answer that is not json still records the run, with a null usd and its source
+printf '#!/bin/sh\necho NOT-JSON\nexit 7\n' > "$tmp/bin/ssh"
+rm -f "$LEDGER"
+rc=0; out="$(runc ubuntu_new "$P")" || rc=$?
+check "C3 failing guest: rc passes through" "$rc" "7"
+row="$(cat "$LEDGER" 2>/dev/null)"
+check "C3 non-json answer: one row" "$(rows)" "1"
+check "C3 non-json answer: usd null" "$(printf '%s' "$row" | jq -r '.usd' 2>/dev/null)" "null"
+check "C3 non-json answer: usd_source unknown" "$(printf '%s' "$row" | jq -r '.usd_source' 2>/dev/null)" "unknown"
+
+# the account label is a label: a token-shaped value is refused before any ssh
+fresh; rm -f "$LEDGER"
+rc=0; out="$(LAUNCH_GUEST_ACCOUNT='sk-ant x;id' runc ubuntu_new "$P")" || rc=$?
+check "C4 bad account label: exit 2" "$rc" "2"
+check "C4 bad account label: no row" "$(rows)" "0"
+for lbl in sk-ant-api03-abcDEF123 SK-ANT-abc sk-proj-abc; do
+    fresh; rm -f "$LEDGER"
+    rc=0; out="$(LAUNCH_GUEST_ACCOUNT="$lbl" runc ubuntu_new "$P")" || rc=$?
+    check "C4 token-shaped label $lbl: exit 2" "$rc" "2"
+    check "C4 token-shaped label $lbl: no row and no ssh" "$(rows)$([ -e "$SSH_LOG" ] && echo ran)" "0"
+done
+
+# vm-cost.sh: a two-row fixture prints the sum per ticket and per account
+cat > "$tmp/two.jsonl" <<'J'
+{"ticket":"HIMMEL-1","vm":"ubuntu_new","account":"acct-a","seconds":100,"usd":1.5,"usd_source":"guest-json","ts":"2026-11-01T10:00:00Z"}
+{"ticket":"HIMMEL-1","vm":"ubuntu_new","account":"acct-b","seconds":200,"usd":2.25,"usd_source":"guest-json","ts":"2026-11-01T11:00:00Z"}
+{"ticket":"HIMMEL-2","vm":"ubuntu_new","account":"acct-a","seconds":50,"usd":null,"usd_source":"unknown","ts":"2026-11-01T12:00:00Z"}
+J
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" 2>&1)" || rc=$?
+check "C5 vm-cost: exit 0" "$rc" "0"
+check "C5 vm-cost: the whole report is exactly the four expected rows" "$out" "$(printf 'ticket\tHIMMEL-1\t2\t300\t3.75\t0\nticket\tHIMMEL-2\t1\t50\t0\t1\naccount\tacct-a\t2\t150\t1.5\t1\naccount\tacct-b\t1\t200\t2.25\t0')"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/none.jsonl" bash "$COST" 2>&1)" || rc=$?
+check "C5 vm-cost: no ledger: exit 1" "$rc" "1"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --bogus 2>&1)" || rc=$?
+check "C5 vm-cost: bad flag: exit 2" "$rc" "2"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --path 2>&1)" || rc=$?
+check "C5 vm-cost --path: override is printed" "$out" "$tmp/two.jsonl"
+mkdir -p "$tmp/hd"
+rc=0; out="$(unset LAUNCH_GUEST_COST_LEDGER; HANDOVER_DIR="$tmp/hd" bash "$COST" --path 2>&1)" || rc=$?
+check "C5 vm-cost --path: default sits under the handover root" "$out" "$tmp/hd/.ledger/vm-cost.jsonl"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --path extra 2>&1)" || rc=$?
+check "C5 vm-cost --path with an extra argument: exit 2" "$rc" "2"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" '' --bogus 2>&1)" || rc=$?
+check "C5 vm-cost: an empty first argument is not the default report: exit 2" "$rc" "2"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp" bash "$COST" 2>&1)" || rc=$?
+check "C5 vm-cost: an unreadable ledger (a directory) is not an empty report: nonzero" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+
+# a signal to the launcher reaches the guest ssh and the cut-short run still gets its row.
+# pid_state is alive or gone for a real pid and unstarted for an empty or non-numeric one, so a
+# stub ssh that never ran can not read as "gone".
+pid_state() { case "$1" in ''|*[!0-9]*) echo unstarted ;; *) if kill -0 "$1" 2>/dev/null; then echo alive; else echo gone; fi ;; esac; }
+printf '#!/bin/sh\necho $$ > "$SLEEP_PID"\nexec sleep 30\n' > "$tmp/bin/ssh"
+export SLEEP_PID="$tmp/sleeper.pid"
+rm -f "$LEDGER" "$SLEEP_PID"
+(cd "$tmp/repo" && exec env PATH="$tmp/bin:$PATH" LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-ok.sh" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 bash "$SCRIPT" ubuntu_new "$P" > /dev/null 2>&1) &
+lpid=$!
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$SLEEP_PID" ] && break; sleep 0.25; done
+spid="$(cat "$SLEEP_PID" 2>/dev/null)"
+check "C6 SIGTERM: the stub ssh started" "$(pid_state "$spid")" "alive"
+check "C6 SIGTERM: the signal reached the launcher" "$(kill -TERM "$lpid" 2>/dev/null && echo sent || echo not-sent)" "sent"
+rc=0; wait "$lpid" || rc=$?
+check "C6 SIGTERM to the launcher: the guest ssh is gone" "$(pid_state "$spid")" "gone"
+check "C6 SIGTERM to the launcher: the cut-short run has its row" "$(rows)" "1"
+check "C6 SIGTERM to the launcher: exit is the signalled child's" "$rc" "143"
+kill "$spid" 2>/dev/null
+
+# a terminal Ctrl-C or Ctrl-\ must end the guest run. The launcher starts with the default
+# disposition (perl resets what a background subshell inherited), and a background child of a
+# non-interactive bash starts with SIGINT and SIGQUIT ignored, so a forwarded INT or QUIT would
+# be ignored by the ssh: the launcher has to send TERM.
+printf '#!/bin/sh\necho $$ > "$SLEEP_PID"\nexec sleep 8\n' > "$tmp/bin/ssh"
+for sig in INT QUIT; do
+    rm -f "$LEDGER" "$SLEEP_PID"
+    (cd "$tmp/repo" && exec perl -e '$SIG{INT} = "DEFAULT"; $SIG{QUIT} = "DEFAULT"; exec @ARGV' env PATH="$tmp/bin:$PATH" LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" LAUNCH_GUEST_PREFLIGHT="$tmp/pre-ok.sh" LAUNCH_GUEST_COST_LEDGER="$LEDGER" LAUNCH_GUEST_TICKET=HIMMEL-1 bash "$SCRIPT" ubuntu_new "$P" > /dev/null 2>&1) &
+    lpid=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$SLEEP_PID" ] && break; sleep 0.25; done
+    spid="$(cat "$SLEEP_PID" 2>/dev/null)"
+    check "C7 SIG$sig: the stub ssh started" "$(pid_state "$spid")" "alive"
+    check "C7 SIG$sig: the signal reached the launcher" "$(kill -"$sig" "$lpid" 2>/dev/null && echo sent || echo not-sent)" "sent"
+    sleep 1
+    check "C7 SIG$sig to the launcher: the guest ssh is gone" "$(pid_state "$spid")" "gone"
+    kill "$spid" 2>/dev/null
+    rc=0; wait "$lpid" || rc=$?
+    check "C7 SIG$sig to the launcher: exit is the terminated child's" "$rc" "143"
+done
+
+# a ledger that cannot be written never changes the run: the answer and the exit code stay the guest's
+printf '#!/bin/sh\necho "{\\"total_cost_usd\\":0.5}"\nexit 3\n' > "$tmp/bin/ssh"
+mkdir -p "$tmp/ledger-is-a-dir"
+rc=0; out="$(runo "$tmp/ledger-is-a-dir" ubuntu_new "$P" 2>"$tmp/c8.err")" || rc=$?
+check "C8 unwritable ledger: the guest's exit code is unchanged" "$rc" "3"
+check "C8 unwritable ledger: stdout is exactly the guest answer" "$out" '{"total_cost_usd":0.5}'
+contains "C8 unwritable ledger: says the row was not written" "$(cat "$tmp/c8.err")" "could not write the cost ledger row"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
