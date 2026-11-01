@@ -1712,6 +1712,19 @@ check_direction_real() {
     return 1
 }
 
+# Refuse a handover while an open PR maps to no live worker in the fleet manifest and to no hold
+# on the outgoing `queue:` line (orphan-pr-check.sh); every orphan is named. An
+# unreadable PR list never refuses.
+# Args: outgoing doc.
+check_no_orphan_pr() {
+    local orphans
+    orphans="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --doc "$1" --repo "$repo" 2>/dev/null)" && return 0  # swallow-ok: only the check's exit 1 refuses; its own stderr names an unreadable PR list and exits 0
+    err "refusing to hand over: an open PR has no live worker in the fleet manifest and no hold on the queue: line:"
+    printf '%s\n' "$orphans" | while IFS= read -r line; do err "  $line"; done
+    err "  relaunch a worker on it, or name its PR number or ticket key on the queue: line of $1, then retry"
+    return 1
+}
+
 # The verbatim quote of every `OPERATOR ... (verbatim): "<quote>"` (or '<quote>')
 # Results bullet of a doc, one per line. A quote ends at the first matching
 # quote mark not followed by a letter or digit, so an apostrophe inside is kept.
@@ -1967,6 +1980,7 @@ cmd_next() {
     check_live_line_kept priority PRIORITY-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_rulings_recorded "$predecessor_doc" "$predecessor_live_state" || exit 6
     check_direction_real "$predecessor_doc" || exit 7
+    check_no_orphan_pr "$predecessor_doc" || exit 8
     # The outgoing direction rides into the successor doc and the HANDOFF; the
     # successor's block starts as the predecessor's (a stale one is not detected).
     local predecessor_direction
