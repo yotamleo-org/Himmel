@@ -21,27 +21,27 @@ LIB="$(cd "$(dirname "$0")" && pwd)/clear-stale-claude-marker.sh"
 # probe <shell> -- source the lib in a fresh child shell and print what is left.
 # The child's environment is whatever the caller exported.
 probe() {
-  "$1" -c '. "$1"; printf "%s|%s|%s" "${CLAUDE_CODE_CHILD_SESSION:-unset}" "${CLAUDE_PID:-unset}" "${CLAUDECODE:-unset}"' probe "$LIB"
+  "$1" -c '. "$1"; printf "%s|%s|%s|%s|%s" "${CLAUDE_CODE_CHILD_SESSION:-unset}" "${CLAUDE_PID:-unset}" "${CLAUDECODE:-unset}" "${CLAUDE_CODE_MESSAGING_TOKEN:-unset}" "${CLAUDE_CODE_MESSAGING_SOCKET:-unset}"' probe "$LIB"
 }
 
 # A pid that has certainly exited.
 sleep 0 & dead=$!; wait "$dead"
 
 echo "== Case 1: dead CLAUDE_PID is cleared =="
-got=$(CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=$dead CLAUDECODE=1 probe bash)
-[ "$got" = "unset|unset|unset" ] && pass "dead pid: all markers dropped" || fail "dead pid: got [$got]"
+got=$(CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=$dead CLAUDECODE=1 CLAUDE_CODE_MESSAGING_TOKEN=tok CLAUDE_CODE_MESSAGING_SOCKET=/tmp/sock probe bash)
+[ "$got" = "unset|unset|unset|unset|unset" ] && pass "dead pid: all markers and messaging vars dropped" || fail "dead pid: got [$got]"
 
 echo "== Case 2: live but non-ancestor CLAUDE_PID is cleared (the iTerm case) =="
 sleep 30 & other=$!
-got=$(CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=$other CLAUDECODE=1 probe bash)
+got=$(CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=$other CLAUDECODE=1 CLAUDE_CODE_MESSAGING_TOKEN=tok CLAUDE_CODE_MESSAGING_SOCKET=/tmp/sock probe bash)
 kill "$other" 2>/dev/null; wait "$other" 2>/dev/null
-[ "$got" = "unset|unset|unset" ] && pass "unrelated live pid: all markers dropped" || fail "unrelated live pid: got [$got]"
+[ "$got" = "unset|unset|unset|unset|unset" ] && pass "unrelated live pid: all markers and messaging vars dropped" || fail "unrelated live pid: got [$got]"
 
 echo "== Case 3: live ancestor CLAUDE_PID is kept (a real claude child) =="
 # The outer bash stands in for claude: it exports its own pid, like claude does.
-got=$(bash -c 'export CLAUDE_PID=$$ CLAUDE_CODE_CHILD_SESSION=1 CLAUDECODE=1; bash -c ". \"\$1\"; printf \"%s|%s\" \"\${CLAUDE_CODE_CHILD_SESSION:-unset}\" \"\${CLAUDE_PID:-unset}\"" x "$1"; echo "|$$"' outer "$LIB")
+got=$(bash -c 'export CLAUDE_PID=$$ CLAUDE_CODE_CHILD_SESSION=1 CLAUDECODE=1 CLAUDE_CODE_MESSAGING_TOKEN=tok CLAUDE_CODE_MESSAGING_SOCKET=/tmp/sock; bash -c ". \"\$1\"; printf \"%s|%s|%s|%s\" \"\${CLAUDE_CODE_CHILD_SESSION:-unset}\" \"\${CLAUDE_PID:-unset}\" \"\${CLAUDE_CODE_MESSAGING_TOKEN:-unset}\" \"\${CLAUDE_CODE_MESSAGING_SOCKET:-unset}\"" x "$1"; echo "|$$"' outer "$LIB")
 want_pid=${got##*|}
-[ "$got" = "1|$want_pid|$want_pid" ] && pass "ancestor pid: marker kept" || fail "ancestor pid: got [$got]"
+[ "$got" = "1|$want_pid|tok|/tmp/sock|$want_pid" ] && pass "ancestor pid: marker and messaging vars kept" || fail "ancestor pid: got [$got]"
 
 echo "== Case 4: marker without CLAUDE_PID is cleared =="
 got=$(env -u CLAUDE_PID CLAUDE_CODE_CHILD_SESSION=1 bash -c '. "$1"; printf "%s" "${CLAUDE_CODE_CHILD_SESSION:-unset}"' x "$LIB")
@@ -53,8 +53,8 @@ got=$(env -u CLAUDE_PID -u CLAUDE_CODE_CHILD_SESSION -u CLAUDECODE KEEP=me bash 
 
 echo "== Case 6: zsh sources it the same way =="
 if command -v zsh >/dev/null 2>&1; then
-  got=$(CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=$dead CLAUDECODE=1 probe zsh)
-  [ "$got" = "unset|unset|unset" ] && pass "zsh: dead pid dropped" || fail "zsh: got [$got]"
+  got=$(CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=$dead CLAUDECODE=1 CLAUDE_CODE_MESSAGING_TOKEN=tok CLAUDE_CODE_MESSAGING_SOCKET=/tmp/sock probe zsh)
+  [ "$got" = "unset|unset|unset|unset|unset" ] && pass "zsh: dead pid dropped" || fail "zsh: got [$got]"
 else
   pass "zsh absent: skipped"
 fi
