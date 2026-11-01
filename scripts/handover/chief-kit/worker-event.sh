@@ -44,7 +44,9 @@
 # `HANDLED noop <label>` (rc 0) when the worker is out of the manifest and the chief doc
 # already records `<label> WRAPPED, window closed.` (a re-run on a closed worker), or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
-# marker-<X>, unfiled-residual: <line>, or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it.
+# marker-<X>, unfiled-residual: <line>, auto-go <n> <why> (auto-go.sh refused), auto-go-error rc=<n>,
+# or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it, or
+# auto-go.sh's `GO-WRITTEN …` lines (rc 11: the GO file stands, the bus send failed).
 # Usage errors exit 2 before anything runs.
 #
 # Test seams (env): LE_WRAP LE_CLOSE LE_LIST LE_LIVE LE_STATION LE_STATION_LOG LE_AUTOGO.
