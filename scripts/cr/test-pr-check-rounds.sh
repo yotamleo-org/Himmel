@@ -35,7 +35,7 @@ cp "$HERE/ledger-append.sh" "$fx/scripts/cr/ledger-append.sh"
 cp "$HERE/write-verdicts.sh" "$fx/scripts/cr/write-verdicts.sh"
 cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
 cp "$HERE/ledger-amend-auth.js" "$fx/scripts/cr/ledger-amend-auth.js"
-cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$fx/scripts/cr/"
+cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$HERE/critic-pre-existing-tag.py" "$fx/scripts/cr/"
 # Every chokepoint fails closed without its seam-guard lib.
 cp "$HERE/../lib/chokepoint-seam-guard.sh" "$fx/scripts/lib/chokepoint-seam-guard.sh"
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
@@ -510,6 +510,67 @@ assert_eq "$rl1_rc" 4 "8425 an open Critical at round 1 still blocks ($rl1_out)"
 assert_has "$rl1_out" 'remain blocking at round 1' "8425 the round-1 Critical refusal says it remains blocking"
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 an open Critical at round 1 writes no deferred row"
 assert_eq "$(rl1_marker)" kept "8425 an open Critical at round 1 keeps the marker"
+
+# I1 and I4: only the structured pre_existing field (an amend row
+# the tagger writes) lets defer defer an Important, at rounds 2 and 3, to the
+# branch's batch residual. A Critical never is, and an Important whose text
+# merely says [pre-existing] still blocks.
+rl1_pre_reason='Important finding deferred: the cited code is older than this PR (tagged pre-existing).'
+rl1_pre_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-8","severity":"imp","class":"reader-allowlist","text":"- [critic-8]: old helper ignores errors [docs/guide/x.md:1]"}
+'
+rl1_pre_amend() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"pre_existing":true}}\n' "$1"; }
+rl1_text_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-9","severity":"imp","class":"reader-allowlist","text":"- [critic-9]: [pre-existing] old helper ignores errors [pre-existing] [docs/guide/x.md:1]"}
+'
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 2 is deferred, not blocking ($rl1_out)"
+assert_has "$rl1_ledger" '"verdict":"deferred"' "8429 the pre-existing Important gets a deferred amend row"
+assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8429 it is deferred to the branch's batch residual"
+assert_has "$rl1_ledger" '"fu_class":"polish"' "8429 it is deferred as polish, like a pending Suggestion"
+assert_has "$rl1_ledger" "\"reason\":\"$rl1_pre_reason\"" "8429 the deferral says why: the code predates the PR"
+assert_has "$rl1_ledger" '"severity":"imp"' "8429 the finding keeps severity imp (I4)"
+assert_lacks "$rl1_ledger" '"severity":"sug"' "8429 nothing lowers the finding to a Suggestion (I4)"
+assert_eq "$(rl1_marker)" cleared "8429 the pre-existing deferral clears the marker"
+rl1_run feat/rl1 3 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 3 is deferred ($rl1_out)"
+rl1_run feat/rl1 2 "$rl1_crit$(rl1_pre_amend critic-3)"
+assert_eq "$rl1_rc" 4 "8429 a Critical carrying the pre_existing field still blocks (I1) ($rl1_out)"
+assert_has "$rl1_out" 'critic-3' "8429 the blocking Critical is named"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a Critical is never deferred by the pre_existing field (I1)"
+assert_eq "$(rl1_marker)" kept "8429 an open Critical keeps the marker"
+rl1_run feat/rl1 2 "$rl1_text_imp"
+assert_eq "$rl1_rc" 4 "8429 an Important whose text merely says [pre-existing] still blocks ($rl1_out)"
+assert_has "$rl1_out" 'critic-9' "8429 the text-only Important is named as blocking"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a [pre-existing] in the text defers nothing"
+rl1_run feat/rl1 2 "$rl1_pre_imp$rl1_text_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 4 "8429 a text-only Important beside a pre-existing one still blocks ($rl1_out)"
+assert_lacks "$rl1_out" 'critic-8' "8429 only the untagged Important blocks"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 nothing is deferred while an untagged Important is open"
+rl1_run feat/rl1 1 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 4 "8429 the field defers nothing at round 1 (the tagger runs at rounds 2 and 3 only) ($rl1_out)"
+rl1_run feat/rl1 4 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 4 "8429 the field defers nothing at round 4 ($rl1_out)"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 rounds 1 and 4 write no deferral for a pre_existing Important"
+
+# `from` reads the round and its start point
+# under the counter lock, so it never reads a round start has half written.
+# Hold the lock as another process would: from waits, then refuses (exit 5)
+# and prints no start point; once the lock is free it prints it, and a leaked
+# lock would make that second call wait again.
+mkdir -p "$rl1_git/cr-review-rounds/feat"
+rl1_from_head="$(git -C "$rl1_repo" rev-parse feat/rl1)"
+printf '3\n' > "$rl1_git/cr-review-rounds/feat/rl1.round"
+printf '%s\n' "$rl1_from_head" > "$rl1_git/cr-review-rounds/feat/rl1.from"
+SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$fx/scripts/lib/shared-branch-lock.sh" acquire "$rl1_repo" feat/rl1 test-holder >/dev/null 2>&1 \
+    || fail "8429 the test could not take the counter lock"
+rl1_from_rc=0
+rl1_from_out="$(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" from --branch feat/rl1 2>"$tmp/rl1-from.err")" || rl1_from_rc=$?
+SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$fx/scripts/lib/shared-branch-lock.sh" release "$rl1_repo" feat/rl1 >/dev/null 2>&1 \
+    || fail "8429 the test could not release the counter lock"
+assert_eq "$rl1_from_rc" 5 "8429 from refuses while the counter lock stays held"
+assert_eq "$rl1_from_out" "" "8429 from prints no start point while the counter lock is held"
+assert_has "$(cat "$tmp/rl1-from.err")" 'counter lock' "8429 from says it could not take the counter lock"
+assert_eq "$(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" from --branch feat/rl1 2>&1)" "$rl1_from_head" "8429 from prints the start point once the lock is free"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.from"
 
 # S5: a reset moves the key aside, so the next early close files a new batch.
 cat > "$tmp/bin/rl1-reset-gh" <<'STUB'

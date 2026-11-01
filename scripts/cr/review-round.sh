@@ -1435,15 +1435,21 @@ fi
 
 # from: print the reviewed head the current round started from (.from), only
 # when .round holds 2 or 3 at call time; in the first round and the delta
-# round (which has its own .delta) it prints nothing. Read-only. Exit 0, or 5 on an
-# unreadable counter.
+# round (which has its own .delta) it prints nothing. Read-only, but it reads the
+# round and .from under the counter lock start and abort write under, so it
+# never sees a round start has half written. Exit 0, or 5 on an unreadable
+# counter or a counter lock it cannot take.
 if [ "$verb" = "from" ]; then
-    read_round || exit 5
-    if [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; then
+    counter_lock || exit 5
+    from_rc=0
+    read_round || from_rc=5
+    if [ "$from_rc" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then
         # swallow-ok: an empty, missing or invalid .from prints nothing
         state_sha "$from_state" || true
     fi
-    exit 0
+    SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+        bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    exit "$from_rc"
 fi
 
 # abort: a round whose panel aborted after start (panel-first-pass exit 7, or
@@ -1997,6 +2003,10 @@ fi
 cap_reason='Suggestion deferred after the three-round /pr-check cap.'
 delta_reason='Finding deferred in the one delta round after the three-round /pr-check cap.'
 early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes the review loop on a PR that touches no CI trust path.'
+# An Important deferred in the second or third round because its ledger row
+# carries the structured pre_existing field (an amend row critic-pre-existing-tag.py
+# wrote after git blame placed the cited line before the PR). Never read from text.
+pre_reason='Important finding deferred: the cited code is older than this PR (tagged pre-existing).'
 # --head is the head the one delta round reviewed.
 delta_mode=0
 if [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
@@ -2016,7 +2026,11 @@ else
     round_label="round $round"
 fi
 
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+# The pre_existing field counts only at the rounds the tagger runs in (2 and 3),
+# and never in the delta round, where an Important is classified by an amend.
+pre_ok=0
+if [ "$delta_mode" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then pre_ok=1; fi
+analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
@@ -2084,7 +2098,20 @@ for (const o of findings.values()) {
     else if (!resolved && verdict !== "fixed") blocking.push(id);
     continue;
   }
-  if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
+  // I1: a Critical is never deferred by the pre_existing field. Only the
+  // boolean true on the effective row counts, never a [pre-existing] in text.
+  const preExisting = e.PRE_OK === "1" && severity === "imp" && o.pre_existing === true;
+  if (preExisting && !resolved && (!verdict || verdict === "agreed")) pending.push({
+    id,
+    artifact: o.artifact || "diff",
+    perspective: o.perspective || "off",
+    fu_class: "polish",
+    reason: e.PRE_REASON,
+    class: typeof o.class === "string" ? o.class.trim() : "",
+    text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
+  });
+  else if (preExisting && trackedDeferred && reason === e.PRE_REASON) capDeferred.push({id, ticket});
+  else if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
   else if (!verdict && (severity === "sug" || severity === "nit")) pending.push({
     id,
     artifact: o.artifact || "diff",
@@ -2251,6 +2278,9 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
     artifact="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).artifact))' 2>/dev/null)" || artifact=""
     perspective="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).perspective))' 2>/dev/null)" || perspective=""
     fu_class="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).fu_class))' 2>/dev/null)" || fu_class=""
+    # A finding may carry its own deferral reason (a pre-existing Important);
+    # the rest take the round's.
+    finding_reason="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).reason||""))' 2>/dev/null)" || finding_reason=""   # swallow-ok: an empty reason takes the round's reason
     if [ -z "$finding_id" ] || [ -z "$artifact" ] || [ -z "$perspective" ] || [ -z "$fu_class" ]; then
         amend_rc=5
         break
@@ -2324,7 +2354,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         --branch "$branch" --head "$full_head" --id "$finding_id" \
         --artifact "$artifact" --perspective "$perspective" \
         --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" ${fu_why:+--set "fu_why=$fu_why"} \
-        --set class=unattributed --set "reason=$defer_reason" \
+        --set class=unattributed --set "reason=${finding_reason:-$defer_reason}" \
         --reason "$amend_why"; then
         amend_rc=5
         break

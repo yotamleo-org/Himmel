@@ -167,6 +167,20 @@
    not a free pass. The deferral is printed and audit-logged when the marker
    clears.
 
+   **A `[pre-existing]` Important is deferred by an amend row, never downgraded (HIMMEL-8429).**
+   At rounds 2 and 3, `critic-pre-existing-tag.py` tags an Important finding on code older than the PR
+   `[pre-existing]` and sets the ledger field `pre_existing=true` with an amend row
+   (`ledger-append.sh amend --set pre_existing=true`). Only that field counts. An Important whose text
+   merely says `[pre-existing]` still blocks, a Critical always blocks whatever it carries (I1), and a
+   `[context]` finding, round 1 and round 4+ are never tagged. Leave a tagged Important open (no
+   `severity=sug`, no hand-written `agreed` or `fixed`) and run step 4.9's `review-round.sh defer`: it
+   writes an `amend` with `verdict=deferred`, `fu_class=polish` and the reason `Important finding
+   deferred: the cited code is older than this PR (tagged pre-existing).` to the branch's batch
+   residual, the same ticket as the round's Suggestions, and the finding keeps severity `imp` (I4).
+   `agreed` or no verdict is deferred; `disproved` resolves it as usual; any other verdict keeps it
+   blocking. `defer` still exits 4 while a Critical or an untagged Important is open, and it refuses on
+   a change that touches a CI trust path, as for a Suggestions-only close (I5).
+
    **Correcting a record: `amend`, never a re-append (HIMMEL-1294).** Findings
    dedup on `(head, finding_id)`, so re-appending with different content writes
    nothing. That used to exit 0 silently — the caller believed the severity was
