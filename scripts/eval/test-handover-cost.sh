@@ -135,6 +135,16 @@ check "P calls after S first call is 3 (the relay piece)" 'row "$TMP/a.out" | gr
 check "S calls to its first marker bullet is - when S wrote none" 'row "$TMP/a.out" | grep -q " s_to_marker=- "'
 check "S calls to its first marker bullet counts the call, not an earlier text mention of append-results.sh" 'row "$TMP/m2.out" | grep -q " s_to_marker=2 "'
 
+echo "3h. workers in per-worktree sibling project dirs"
+if ! { mkdir -p "$TMP/wt/proj" "$TMP/wt/proj--claude-worktrees-a" "$TMP/wt/proj--claude-worktrees-b" "$TMP/wt/proj--claude-worktrees-c" \
+  && cp "$FX"/console-*.jsonl "$TMP/wt/proj/" && cp "$FX/leg-new.jsonl" "$TMP/wt/proj--claude-worktrees-a/" \
+  && cp "$FX/leg-old.jsonl" "$TMP/wt/proj--claude-worktrees-b/" && cp "$FX/leg-new.jsonl" "$TMP/wt/proj--claude-worktrees-c/leg-stale.jsonl" \
+  && touch -t 202001010000 "$TMP/wt/proj--claude-worktrees-c/leg-stale.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/wt/proj" >"$TMP/wt.out" 2>&1; wtrc=$?
+check "the sibling run exits 0" '[ "$wtrc" = 0 ]'
+check "workers from the sibling worktree dirs are counted (worker=5/1250 workers=2)" 'row "$TMP/wt.out" | grep -q " worker=5/1250 workers=2 "'
+check "a sibling session file last written before the first chief is not read (the stale one adds nothing)" '! row "$TMP/wt.out" | grep -q "workers=3"'
+
 echo "4. errors"
 mkdir "$TMP/empty"
 python3 "$HC" --dir "$TMP/empty" >"$TMP/e.out" 2>&1; erc=$?
