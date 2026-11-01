@@ -192,7 +192,7 @@ printf 'WRAPPED N2078\n' > "$W/msg"
 out="$(LE_LIVE='' bash "$SCRIPT" --doc "$W/c.md" --fleet "$W/c.fleet.json" "$W/msg" 2>/dev/null)"; rc=$?
 check "11 rc" "$rc" 0
 lacks "11 workers line drops the wrapped worker" "$(cat "$W/c.md")" "N2078:"
-contains "11 workers line is none" "$(cat "$W/c.md")" "legs: none"
+contains "11 workers line is none" "$(cat "$W/c.md")" "workers: none"
 
 # 12. a WRAPPED message that mentions deferred / follow-up / residual must name a ticket
 run "WRAPPED N2078. Deferred: the retry path."

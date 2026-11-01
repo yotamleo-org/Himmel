@@ -10,7 +10,7 @@
 ## How {{LETTER}} starts
 
 Run ACTION ZERO from `{{SUCCESSOR_DOC}}` unchanged; expect at the root sweep
-`<the locks the successor should find>`. Kit: `{{KIT}}`. Its `legs:` line holds
+`<the locks the successor should find>`. Kit: `{{KIT}}`. Its `workers:` line holds
 the predecessor's workers and tokens; a worker is yours only once it has quoted back.
 A relay MAY keep a worker's token (a `{{LETTER}}-<worker>-<hex>` rotation is optional).
 Ask `{{PREDECESSOR}}` (minus `.md`) to re-brief each worker from its own socket,
@@ -33,7 +33,7 @@ Then re-arm without `--succession`.
 > pointer); rulings are never trimmed.
 
 {{LIVE_STATE}}; never retype a worker's nonce, lock token or pid. A worker not on its
-`legs:` line is not alive (confirm with ListAgents).
+`workers:` line is not alive (confirm with ListAgents).
 
 **Workers** (fleet manifest, last Results marker of each):
 

@@ -78,7 +78,7 @@ else
     echo "SKIP: hang rows (no timeout binary)"
 fi
 
-# --render-workers writes the legs: line through live-state.sh (the lock tokens
+# --render-workers writes the workers: line through live-state.sh (the lock tokens
 # come from the held locks, the nonce is kept), instead of a hand edit
 LDOC="$ROOT/DEMO-1-N61-a-2026-10-16.md"; : > "$LDOC"
 LCON="$ROOT/DEMO-next-2026-10-16A-chief.md"
@@ -88,11 +88,11 @@ printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}
 env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LDOC" >/dev/null 2>&1
 tok="$(env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" status "$LDOC" 2>/dev/null | head -1 | jq -r '.session // empty')"
 out8="$(bash "$AZ" --doc "$LCON" --root "$ROOT" 2>&1)"
-check "without --render-workers the legs: line is not touched" "1" "$(grep -c 'stale-token' "$LCON")"
+check "without --render-workers the workers: line is not touched" "1" "$(grep -c 'stale-token' "$LCON")"
 check "without --render-workers there is no WORKERS section" "0" "$(printf '%s\n' "$out8" | grep -c '^== WORKERS')"
 out9="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-workers 2>&1)"
 check "--render-workers prints a WORKERS section" "1" "$(printf '%s\n' "$out9" | grep -c '^== WORKERS')"
-check "the legs: line now carries the held lock token" "1" "$(grep -c "^legs: \`N61:Z-N61-aa:$tok:7\`" "$LCON")"
+check "the workers: line now carries the held lock token" "1" "$(grep -c "^workers: \`N61:Z-N61-aa:$tok:7\`" "$LCON")"
 check "the nonce was kept, not rewritten" "0" "$(grep -c 'stale-token' "$LCON")"
 check "the next field line is intact" "1" "$(grep -c '^last GO: none$' "$LCON")"
 rm -f "${LCON%.md}.fleet.json"

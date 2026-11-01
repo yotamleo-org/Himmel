@@ -5,7 +5,7 @@
 #   relay-batch.sh <chief doc> --successor <session> [--claudex <label>[,<label>...]]
 #                  [--fresh <label>=<token>]...
 #
-# Reads the chief doc's `## Live state` `legs:` entries (`<label>:<nonce>:<lock>:<pid>`)
+# Reads the chief doc's `## Live state` `workers:` entries (`<label>:<nonce>:<lock>:<pid>`)
 # and its fleet manifest (label -> worker doc -> worker name). Per worker it builds
 # ONE relay message — "your chief is now <successor>; token `<nonce>`; quote back
 # to <successor>" — which is exactly the S1 relay of docs/handover/worker-preface.md
@@ -108,7 +108,7 @@ relay_text() {
     [ -z "${2:-}" ] || tok="$tok Your fresh token \`$2\`: adopt it as your token."
     printf 'SUCCESSION relay from %s: your chief is now %s.%s This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: %s replaces %s\n' "$sender" "$successor" "$tok" "$successor" "$sender"
 }
-not_in_live() { echo "NOT-IN-LIVE-STATE $1 ($2) — in the fleet manifest, not in ## Live state legs:; relay by hand if it is live"; }
+not_in_live() { echo "NOT-IN-LIVE-STATE $1 ($2) — in the fleet manifest, not in ## Live state workers:; relay by hand if it is live"; }
 notice_text() { printf 'SUCCESSION bus record from %s: your chief is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor"; }
 notice_dir=""; notice_t0=0
 # send_notice <label> <session>: a claudex worker's bus record, sent as soon as its inbox

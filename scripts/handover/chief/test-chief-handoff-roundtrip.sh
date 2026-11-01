@@ -50,7 +50,7 @@ release
 rm
 focus-version
 focus-plan"
-seeded_fields="legs
+seeded_fields="workers
 queue
 last GO
 acked"
@@ -103,7 +103,7 @@ docA="$root/tester/rtsrc/DEMO-nextleg-${today}A-chief.md"
 docB="$root/tester/rtdst/DEMO-nextleg-${today}B-chief.md"
 handoff="${docA%.md}-HANDOFF.md"
 # shellcheck disable=SC2016  # literal backticks, unexpanded on purpose
-fixture_live='legs: `N1:AP-N1-aaaa1111:lock-one:111` `N2:AP-N2-bbbb2222:lock-two:222`
+fixture_live='workers: `N1:AP-N1-aaaa1111:lock-one:111` `N2:AP-N2-bbbb2222:lock-two:222`
 queue: /fixture/q/one.md /fixture/q/two.md
 last GO: 3101:0123456789abcdef0123456789abcdef01234567
 acked: esc-17, esc-18
@@ -122,12 +122,12 @@ focus-plan: /fixture/plan/focus-plan.md
 # ENVIRON, not `-v`: BSD awk (macOS) refuses a newline in a -v value.
 LIVE="$fixture_live" awk '
     $0 == "## Live state" { f = 1; print; next }
-    f && /^legs:/ { printf "%s\n", ENVIRON["LIVE"]; skip = 1; next }
+    f && /^workers:/ { printf "%s\n", ENVIRON["LIVE"]; skip = 1; next }
     skip && /^## / { skip = 0; f = 0 }
     skip { next }
     { print }' "$docA" > "$docA.new" && mv "$docA.new" "$docA"
 check "2 fixture doc carries every field" \
-    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(legs\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\|release\|rm\|focus-version\|focus-plan\):')" "15"
+    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(workers\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\|release\|rm\|focus-version\|focus-plan\):')" "15"
 
 rc=0
 chief next --bucket rtdst --doc "$docA" >/dev/null 2>&1 || rc=$?

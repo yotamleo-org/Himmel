@@ -8,25 +8,25 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > exactly this section after an autocompact, and `<kit>/tick.sh` flags
 > `livestate=DRIFT:<worker>[,…]` when it disagrees with the worker locks actually
 > held (and `livestate=MALFORMED:<worker>[,…]` for a malformed entry, below). Update this section on every dispatch, ruling, wrap and GO — not only
-> at handover; `chief.sh next` seeds its `legs:` block, `queue:`, `last GO:` and
+> at handover; `chief.sh next` seeds its `workers:` block, `queue:`, `last GO:` and
 > `acked:` into the successor's own Live state (the HANDOFF holds only
 > the pointer `Live state: seeded into <successor doc>`, never a nonce), so a
 > stale line here is a stale line there too, and the successor's
 > `action-zero.sh --render-workers` keeps the seeded nonces. **Only the open workers
-> and the last GO are seeded:** a `legs:` span whose label is no longer in the fleet
+> and the last GO are seeded:** a `workers:` span whose label is no longer in the fleet
 > manifest (`fleet-manifest.sh remove` at the wrap), the shift prose on that line
 > and the `prior …` chain after the first GO stay behind. `next` appends them
 > byte for byte, under a dated header, to `specs/history/chief-live-state-<your doc stem>.md`
 > in the successor's bucket (earlier content in that file stays) and the HANDOFF names
 > it (a HANDOFF that already existed is left unchanged and may not: the path is always
-> `<successor bucket>/specs/history/chief-live-state-<predecessor doc stem>.md`). The `legs:` block
+> `<successor bucket>/specs/history/chief-live-state-<predecessor doc stem>.md`). The `workers:` block
 > is seeded whole in three cases: no readable manifest, a manifest row with no label, or a block
-> holding no worker span. If the history write fails, `legs:` and `last GO:` are both seeded
+> holding no worker span. If the history write fails, `workers:` and `last GO:` are both seeded
 > whole (a warning names the file). `last GO:` is otherwise always cut to the last GO. A malformed span of an open
 > worker is kept, so the tick reads MALFORMED. A `pool-disposition:` line inside the block is kept. Keep your own Live
 > state that lean: the tick prints `ACTION livestate-over-budget=<bytes>/<limit>`
 > past `LIVESTATE_BUDGET_BYTES` (default 12000). A per-worker detail line
-> past the `legs:` block is not seeded: put what the successor needs in the
+> past the `workers:` block is not seeded: put what the successor needs in the
 > HANDOFF's judgement notes. A worker's nonce is
 > updated **only after** that worker's quote-back (of the fresh nonce, when one
 > was issued): until then the line still names the predecessor's. A relay may hand out no fresh token,
@@ -46,9 +46,9 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `tick.sh` prints in `workers=`. A label may contain letters, digits, `_`, `.`
 > and `-`, so a full doc stem also parses.
 >
-> **Prose is permitted on the `legs:` line, and the tick reads it as prose**. Only a backtick span of exactly four non-empty colon-separated
+> **Prose is permitted on the `workers:` line, and the tick reads it as prose**. Only a backtick span of exactly four non-empty colon-separated
 > fields under a label is an entry. A span with whitespace, no colon, or a first
-> field that is not a worker label (`` `legs:` ``, `` `procs:2` ``,
+> field that is not a worker label (`` `workers:` ``, `` `procs:2` ``,
 > `` `livestate=DRIFT:N192` ``, `` `N191` ``) is ignored, so a note may quote
 > tick fields and name workers freely. **A span that looks like an entry but is not
 > one** — a label (`N<k>` or a worker doc stem) with a colon and not four non-empty
@@ -60,14 +60,14 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > treated as prose even when malformed, so a truncated entry under such a label
 > reads as absent (`DRIFT`) rather than `MALFORMED`.
 >
-> **Write the `legs:` line by script, not by hand:** `action-zero.sh --render-workers`
+> **Write the `workers:` line by script, not by hand:** `action-zero.sh --render-workers`
 > renders only before the chief takes its own lock (ACTION ZERO); a chief that
 > already holds its lock re-renders with `live-state.sh <this doc>`. Either rebuilds
 > it from the fleet manifest, with lock tokens read from the held locks and the
 > nonces kept.
 >
-> **The `legs:` block may wrap**. The tick reads the whole block:
-> every line that starts with `legs:`, plus the lines wrapped directly under it,
+> **The `workers:` block may wrap**. The tick reads the whole block:
+> every line that starts with `workers:`, plus the lines wrapped directly under it,
 > up to the first blank line or the next `field:` line (`queue:`, `last GO:`,
 > `acked:` — any line starting with a word and a colon) or the first list-marker
 > line (`- `, `* `, `+ `, `1. `, or a line starting `>` or `#`). A span anywhere
@@ -76,7 +76,7 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > held worker named only there reads `DRIFT`. Put every worker's span in the block;
 > **the blank line before the per-worker detail is load-bearing**: a wrapped line
 > never starts with a list marker, so a marker ends the block, but prose
-> written straight under `legs:` without one is read as part of it.
+> written straight under `workers:` without one is read as part of it.
 > `board:` is the local chief board file's path (ACTION ZERO step 12);
 > `chief.sh next` carries it to your successor with the rest of this section.
 > `tracker:` is the roadmap-tracker page's local path; `none` (the
