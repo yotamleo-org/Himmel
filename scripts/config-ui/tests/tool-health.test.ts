@@ -655,6 +655,14 @@ test("eligible-tools-follow-effective-matchers", () => {
   expect(guardOf(mcp, "denied/block-mcp")).toMatchObject({ eligible_calls: 6, eligible_rate: 2 / 6 });
 });
 
+test("a guard wired to Agent or Skill counts the split Agent:<type> and Skill:<plugin>:<skill> calls", () => {
+  const split = roll([bEval(1, [bTool("Bash", 4), bTool("Agent:judge", 3, { "denied/guard-subagent-model": 1 }), bTool("Agent:explore", 2),
+    bTool("Skill:alpha:one", 2, { "denied/skill-guard": 1 })])], [bFail(1, "denied/guard-subagent-model", 1), bFail(1, "denied/skill-guard", 1)],
+  { eligible: { "guard-subagent-model": ["Agent"], "skill-guard": ["Skill"] } });
+  expect(guardOf(split, "denied/guard-subagent-model")).toMatchObject({ eligible_calls: 5, eligible_rate: 1 / 5, outside_eligible: 0, eligible_by_tool: { Agent: 5 } });
+  expect(guardOf(split, "denied/skill-guard")).toMatchObject({ eligible_calls: 2, eligible_rate: 1 / 2, outside_eligible: 0, eligible_by_tool: { Skill: 2 } });
+});
+
 test("an unknown matcher or an incomplete cohort gives no eligible denominator, never a Bash fallback", () => {
   const none = roll(qEvals(), qFails(), { eligible: { "read-clamp": CLAMP } });
   expect(guardOf(none, "denied/block-read-secrets")).toMatchObject({ failures: 3, eligible_calls: null, eligible_rate: null, eligible_by_tool: null });
@@ -702,6 +710,13 @@ test("the guard drill-in splits the refusals by tool and names the legacy-unknow
   const rows = Object.fromEntries(cells(await page(data, { guard: "denied/read-clamp" }), "data-guard-tool").map(([k, c]: any) => [k, c.slice(1, 3)]));
   expect(rows.Read[0]).toBe("2");
   expect(rows["(unknown)"]).toEqual(["1", "tool not recorded (legacy)"]);
+});
+
+test("the guard drill-in calls a refused Agent:<type> row a wired tool for a guard wired to Agent", async () => {
+  const data = roll([bEval(1, [bTool("Agent:judge", 3, { "denied/guard-subagent-model": 1 }), bTool("Edit", 2, { "denied/guard-subagent-model": 1 })])], [bFail(1, "denied/guard-subagent-model", 2)], { eligible: { "guard-subagent-model": ["Agent"] } });
+  const rows = Object.fromEntries(cells(await page(data, { guard: "denied/guard-subagent-model" }), "data-guard-tool").map(([k, c]: any) => [k, c.slice(1, 3)]));
+  expect(rows["Agent:judge"]).toEqual(["1", "a tool this guard is wired to check"]);
+  expect(rows.Edit).toEqual(["1", "not a tool this guard is wired to check"]);
 });
 
 // ---- hook-chain incidents: the exact call, the reason a guard refused, the recorded timing. Hand-built log rows, temp files only.
@@ -956,6 +971,14 @@ test("the hook list shows measured runs where the chain logs them and derived ru
   expect(tab).not.toContain("Runs derived");
   const unmeasured = await page(roll([bEval(1, [bTool("Bash", 4), bTool("Read", 3)])], [], { chain: { skip: { state: "absent" }, run: { state: "absent" } } }), { kind: "hook" }, { inventory });
   expect(Object.fromEntries(cells(unmeasured, "data-tool-row"))["hook:project:read-clamp.sh"][2]).toBe("4 runs derived");
+});
+
+test("a map tile that adds measured and derived hook runs says it mixes them", async () => {
+  const data = roll([bEval(1, [bTool("Bash", 4), bTool("Read", 3)])], [], { chain: chainT() });
+  const inventory = { ...INVENTORY, hooks: [...INVENTORY.hooks, { kind: "hook", source: "project", name: "notchained.sh", wired: [["PreToolUse", "Bash"]], runs_twice: false }] };
+  const lines = [...(await page(data, { tab: "map" }, { inventory })).matchAll(/data-kind="hook" aria-pressed="[a-z]+"><b>[^<]*<\/b><span>([^<]*)<\/span>/g)].map((m) => m[1]);
+  expect(lines.some((l) => /^5 runs measured and derived · /.test(l))).toBe(true);
+  expect(lines.some((l) => /^\S+ runs derived · /.test(l))).toBe(false);
 });
 
 test("a guard that never started is a refusal or a skip but not a measured run", () => {

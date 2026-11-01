@@ -477,7 +477,8 @@ function guardDrill(data, ui, token) {
   const max = Math.max(0, ...days.map((d) => d.n || 0));
   const stats = `<dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
   const eligible = h.eligible_by_tool && typeof h.eligible_by_tool === "object" ? h.eligible_by_tool : null, byTool = h.by_tool && typeof h.by_tool === "object" ? h.by_tool : {};
-  const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, tool) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
+  const wiredName = (tool) => (/^(?:Skill|Agent):/.test(tool) ? tool.slice(0, tool.indexOf(":")) : tool);
+  const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, wiredName(tool)) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
   const toolRows = [...new Set([...Object.keys(byTool), ...(eligible ? Object.keys(eligible) : [])])].sort((a, b) => (byTool[b] || 0) - (byTool[a] || 0) || (a < b ? -1 : 1))
     .map((tool) => `<tr data-guard-tool="${esc(tool)}">${td(esc(tool))}${td(num(byTool[tool] || 0))}${td(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
   const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
@@ -537,7 +538,7 @@ function mapTab(data, inv, ui) {
     const rate = ratio(failed, calls);
     const tint = outside ? "" : !isNum(calls) || calls === 0 ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
     const runs = k === "hook" ? items.reduce((n, r) => (n === null || !isNum(r.runs) ? null : n + r.runs), 0) : null;
-    const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : "derived"} · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
+    const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
     return `<button class="mc${tint}${ui.src === s && ui.kind === k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${ui.src === s && ui.kind === k}"><b>${items.length} ${esc(KIND_LABEL[k])}</b><span>${esc(line)}</span></button>`;
   };
   const grid = `<div class="thmap" data-cols="${kinds.length}"><span class="mh"></span>${kinds.map((k) => `<span class="mh">${esc(KIND_LABEL[k])}</span>`).join("")}${srcs.map((s) => `<span class="mr">${esc(SRC_LABEL[s])}</span>${kinds.map((k) => cell(s, k)).join("")}`).join("")}</div>`;
