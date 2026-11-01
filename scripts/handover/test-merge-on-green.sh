@@ -750,6 +750,16 @@ case "\$1" in
         if [ "\$2" = "comment" ] && [ "\$4" = "--comment-file" ] && [ -f "\$5" ]; then
             sed 's/^/comment-body: /' "\$5" >> "\$JIRA_LOG"
         fi
+        # STUB_JIRA_KILL_RUN=1: the run is killed in the Jira step (SIGKILL to the outermost merge-on-green.sh process).
+        if [ "\$2" = "get" ] && [ "\${STUB_JIRA_KILL_RUN:-0}" = "1" ]; then
+            victim="" pid=\$\$
+            while [ -n "\$pid" ] && [ "\$pid" -gt 1 ]; do
+                case "\$(ps -o args= -p "\$pid" 2>/dev/null)" in *scripts/handover/merge-on-green.sh*) victim=\$pid ;; esac
+                pid=\$(ps -o ppid= -p "\$pid" 2>/dev/null | tr -d ' ')
+            done
+            [ -z "\$victim" ] || kill -9 "\$victim"
+            sleep 1
+        fi
         # STUB_JIRA_TRANSITION_STAMPS=<v>: the transition stamps <v>, and every later get reads it back.
         if [ "\$2" = "get" ] && [ -n "\${STUB_JIRA_TRANSITION_STAMPS:-}" ] && [ -e "\$JIRA_LOG.stamped" ]; then
             printf '{"fields":{"issuetype":{"name":"Task"},"status":{"name":"Done"},"fixVersions":[{"name":"%s"}]}}\n' "\$STUB_JIRA_TRANSITION_STAMPS"
@@ -4064,6 +4074,19 @@ assert_funnel_not_called "status: no key, no funnel event"
 STUB_JIRA_BUILD=1 STUB_JIRA_ISSUE_TYPE=Epic STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "status: Epic" -- --jira-transition
 assert_status_row "status: an Epic is a classified skip" '.event == "merge" and .result == "skip" and .stage == "never-touch-type"'
+# A run killed in the Jira step still leaves the merge's contract row (written once gh reports MERGED).
+STUB_JIRA_BUILD=1 STUB_JIRA_KILL_RUN=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 137 "status: a partial merge killed in the Jira step"
+assert_status_row "status: a partial merge killed in the Jira step still leaves its completes=no row" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .contract == "no" and .result == "pending"'
+STUB_JIRA_BUILD=1 STUB_JIRA_KILL_RUN=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 137 "status: an opted-in merge killed in the Jira step" -- --jira-transition
+assert_status_row "status: an opted-in merge killed in the Jira step still leaves its completes=yes row" \
+    '.event == "merge" and .key == "HIMMEL-374" and .contract == "yes" and .result == "pending"'
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "status: a finished merge keeps both rows, the Jira outcome last" -- --jira-transition
+assert_status_row "status: a finished merge leaves the pre-Jira row too" \
+    '.event == "merge" and .contract == "yes" and .result == "pending" and .stage == "pre-jira"'
 # The Done write waits on the funnel's per-key lock: a held lock defers it, and
 # the deferral is a completes=yes row the derive reads as done-pending. Both
 # lock cases need a flock binary; without one (stock macOS) the write runs unlocked.
@@ -4093,7 +4116,7 @@ EOF
     TS_LIB_SRC="$ts_probe/ticket-status.sh" MOG_TS_DIR="$mog_ts" STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_FAIL=1 \
         STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
         run_mog 0 "status: failed Done write with a lock probe" -- --jira-transition
-    if [ "$(cat "$mog_ts/probe.log" 2>/dev/null)" = held ]; then pass
+    if [ "$(tail -n 1 "$mog_ts/probe.log" 2>/dev/null)" = held ]; then pass
     else fail "status: the completes=yes merge row is written under the status lock (probe: $(cat "$mog_ts/probe.log" 2>/dev/null))"; fi
     rm -rf "$mog_ts" "$ts_probe"
 fi

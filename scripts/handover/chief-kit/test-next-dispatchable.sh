@@ -59,6 +59,7 @@ cat > "$WORK/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GH_ARGS"
 [ -f "$GH_FAIL" ] && exit 1
+if [ "$2" = view ]; then cat "$PR_BODY_DIR/$3" 2>/dev/null || exit 1; exit 0; fi
 if [ "$2" = list ]; then
     case "$*" in *merged*) [ -f "$MERGED_FAIL" ] && exit 1; cat "$MERGED_TSV" ;; *headRefName*) cat "$PRS_TSV" ;; *) echo 4242 ;; esac
 else echo scripts/lib/pr-held.sh; fi
@@ -1692,6 +1693,36 @@ else
     has "(8349 S1b) an unlistable series directory marks the live workers unknown" "$perm" "live workers unknown"
 fi
 chmod 755 "$B/series"
+
+# A ticket with a merged contract=no PR is in work, never a fresh To Do row: its RESUME row names the PR and the
+# PR body's Remaining: text; a partial PR whose body has none is NEEDS-CHIEF-NOTE and is not dispatched.
+PM_STATE="$WORK/pm"; mkdir -p "$PM_STATE/workers"
+export PR_BODY_DIR="$WORK/prbody"; mkdir -p "$PR_BODY_DIR"
+printf 'Slice one.\n\nRemaining: slice two and the {brace} reader\n' > "$PR_BODY_DIR/5001"
+printf 'Slice one, no tail.\n' > "$PR_BODY_DIR/5002"
+printf 'Remaining: the other half\n' > "$PR_BODY_DIR/5003"
+MPM="$WORK/mpm/HIMMEL"; mkdir -p "$MPM"
+M_SAVE="$M"; M="$MPM"
+mk HIMMEL-80 "In Progress" Medium '[]' '[]' '[]' "partial with a remaining line" "Edit scripts/lib/pm1.sh."
+mk HIMMEL-81 "In Progress" Medium '[]' '[]' '[]' "partial without a remaining line" "Edit scripts/lib/pm2.sh."
+mk HIMMEL-82 "To Do" Medium '[]' '[]' '[]' "demoted to To Do after a partial merge" "Edit scripts/lib/pm3.sh."
+mk HIMMEL-83 "To Do" Medium '[]' '[]' '[]' "plain to do" "Edit scripts/lib/pm4.sh."
+M="$M_SAVE"
+cat > "$PM_STATE/status-events.jsonl" <<'EOF'
+{"ts":"t","event":"merge","key":"HIMMEL-80","pr":"5001","contract":"no","result":"noop"}
+{"ts":"t","event":"derive","key":"HIMMEL-80","pr":"5001","result":"moved","rule":"D3"}
+{"ts":"t","event":"merge","key":"HIMMEL-81","pr":"5002","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-82","pr":"5003","contract":"no","result":"noop"}
+EOF
+pm="$(NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$PM_STATE/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+has "a partial merge with a Remaining: line is a RESUME row" "$pm" "RESUME	HIMMEL-80"
+has "its RESUME row names the merged PR and the Remaining: text" "$(printf '%s\n' "$pm" | grep 'HIMMEL-80	')" "partial=PR #5001 merged, Remaining: slice two and the {brace} reader"
+has "a partial merge without a Remaining: line is flagged as needing a chief note" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-81: merged PR #5002 has no Remaining: line, needs a chief note"
+lacks "a partial merge without a Remaining: line is not dispatchable" "$pm" "	HIMMEL-81	"
+has "a To Do ticket with a merged partial PR is a RESUME row" "$pm" "RESUME	HIMMEL-82"
+has "and its RESUME row carries the PR's Remaining: text" "$(printf '%s\n' "$pm" | grep 'HIMMEL-82	')" "Remaining: the other half"
+lacks "a To Do ticket with a merged partial PR is never an ordinary row" "$pm" "LOCAL	HIMMEL-82"
+has "a plain To Do ticket is still an ordinary row" "$pm" "LOCAL	HIMMEL-83"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
