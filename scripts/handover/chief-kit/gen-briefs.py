@@ -332,6 +332,8 @@ def validate(worker, i, repo):
             die('worker %s: tier.reason must be non-blank single-line text' % worker['label'])
     if 'writes' in worker and not isinstance(worker['writes'], str):
         die('worker %s: writes must be a string copied from the ticket Writes text' % worker['label'])
+    if worker.get('bulk') not in (None, 'mechanical'):
+        die('worker %s: bulk %r must be "mechanical" (a scripted transform) or absent' % (worker['label'], worker['bulk']))
     for v in COMPLETES_ANY_RE.findall(worker['scope']):
         if v.lower() not in ('yes', 'no'):
             die('worker %s: scope states completes-ticket: %s; the value must be yes or no' % (worker['label'], v))
@@ -472,6 +474,57 @@ def _writes_scope(scope):
             return ' '.join(g.group(1) + p for p in parts)
         return g.group(1)
     return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, scope)
+
+
+SIZE_BANDS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ci', 'pr-size-bands.tsv')
+
+
+def size_bands():
+    # band -> max_files, from the one data file worker-pr-open.sh reads too (scripts/ci/pr-size-bands.tsv).
+    out = {}
+    try:
+        for line in open(SIZE_BANDS):
+            cols = line.rstrip('\n').split('\t')
+            if len(cols) >= 4 and not line.startswith('#') and cols[0] != 'band' and cols[2].isdigit():
+                out[cols[0]] = int(cols[2])
+    except OSError:
+        die('cannot read the size bands from %s' % SIZE_BANDS, 2)
+    return out
+
+
+def projected_files(writes, repo, base):
+    # Files the Writes list touches: a directory expands to its tracked files at base; a path git does not know
+    # at base (a new file) counts once. None when git cannot read base: a failed read must not pass as a small count.
+    wp = write_paths(writes)
+    if wp in ('', 'none named'):
+        return 0
+    files = set()
+    for p in wp.split():
+        r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', base, '--', p], capture_output=True, text=True)
+        if r.returncode != 0:
+            return None
+        files.update(r.stdout.split('\n')[:-1] if r.stdout else [p])
+    return len(files)
+
+
+def check_pr_size(l, repo, base):
+    # The early check for the size bands that worker-pr-open.sh enforces only at PR open.
+    if l.get('bulk') == 'mechanical':
+        return  # the line and file bands do not apply to a scripted transform (the 300-file cap still holds at PR open)
+    bands = size_bands()
+    n = projected_files(l.get('writes', ''), repo, base)
+    if n is None or n > bands['hard']:
+        if n is None:
+            msg = 'worker %s Writes cannot be projected (git ls-tree failed for base %s in %s)' % (l['label'], base, repo)
+        else:
+            msg = 'worker %s Writes project to %d files, over the %d-file hard max (pr-size-bands.tsv row hard)' % (l['label'], n, bands['hard'])
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+        from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+        if himmel_flag('pr_size_gate'):
+            die(msg + ('; split the ticket, or set "bulk": "mechanical" on a scripted transform' if n is not None else ''))
+        print('gen-briefs: warning: ' + msg + '; pr_size_gate is off, so the brief is written', file=sys.stderr)
+    elif n > bands['soft']:
+        print('gen-briefs: warning: worker %s Writes project to %d files, over the %d-file soft max (pr-size-bands.tsv row soft)' % (l['label'], n, bands['soft']), file=sys.stderr)
 
 
 _DOCS_FILLER = {'writes', 'write', 'and', 'or', 'plus', 'also', 'the', 'a', 'an', 'only', 'new', 'edit', 'update', 'add', 'in', 'under', 'of', 'to', 'doc', 'docs', 'file', 'files', 'section', 'sections'}
@@ -820,7 +873,8 @@ def main():
         l['judge'] = bool(l.get('judge'))
         l['model_key'] = bool(l.get('model'))
         if l.get('kind') != 'rm':
-            l['profile'] = l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else DOCS_PROFILE if docs_only(l.get('writes', '')) else 'worker-impl')
+            check_pr_size(l, a.repo, a.base)
+            l['profile'] =l.get('profile') or (UI_PROFILE if UI_PATH_RE.search(write_paths(l.get('writes', ''))) else DOCS_PROFILE if docs_only(l.get('writes', '')) else 'worker-impl')
         rm = l.get('kind') == 'rm'
         l['model'] = l.get('model') or (RM_MODEL if rm else LANE_MODELS.get(l.get('lane', 'native'), DEFAULT_MODEL))
         if l.get('ab_arm') and l.get('lane', 'native') == 'native' and l['model'].startswith('claude-sonnet-5') and sonnet_ceiling_profile(l['profile']):
