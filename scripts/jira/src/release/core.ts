@@ -128,7 +128,7 @@ export function coreMatch(paths: string[], keys: string[], o: CoreCtx): string[]
   const res = o.patterns.map((p) => new RegExp(p));
   const norm = paths.map((p) => posix.normalize(p));
   const hit = norm.find((p) => !TEST_PATH.test(p) && matchesAny(res, p));
-  const docsPaths = norm.every(isDocsPath);
+  const docsPaths = norm.length > 0 && norm.every(isDocsPath);
   const byPath = (k: string) => (o.changeClass ? `REVIEW ${k} ${hit} ${o.changeClass}` : `CORE ${k} ${hit}`);
   return keys.map((k) => {
     if (o.issues === undefined) return hit === undefined ? `NOT-CORE ${k}` : byPath(k);

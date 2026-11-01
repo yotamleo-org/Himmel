@@ -240,6 +240,11 @@ describe('core-check decides each key on its own (HIMMEL-8353 C1b leftovers)', (
     expect(out).toEqual(['CORE K-4 label core']);
   });
 
+  it('--docs-only with no path at all keeps a label-only key CORE', async () => {
+    await run('core-check', '--paths', ',', '--docs-only', '--mirror', m(), '--key', 'K-4');
+    expect(out).toEqual(['CORE K-4 label core']);
+  });
+
   it('a key with no mirror file is UNKNOWN even when a path matched', async () => {
     const dir = m();
     await run('core-check', '--paths', MOG, '--mirror', dir, '--key', 'K-5', 'K-9');
