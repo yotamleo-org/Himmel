@@ -233,7 +233,10 @@ canary, and the head commit is exactly the case diff. The integrity, split and
 sweep rows run on the 24 synthetic cases only.
 
 The two baseline sweeps over the grown corpus are the chief's; their
-`results.jsonl` rows are committed in the remainder PR after the corpus is final.
+`results.jsonl` rows (runs `2026-11-01-8427-mw1` and `-mw2`) are committed with the
+remainder PR. Both are `status=partial`: delta-06 is unscored in each because the
+citation guard drops its finding, and the gate ignores partial rows, so RL4 reads no
+ok row until that case scores (HIMMEL-8570).
 
 ### Delta cases (`delta-*`, HIMMEL-8429)
 
