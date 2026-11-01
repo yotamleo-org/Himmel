@@ -286,6 +286,19 @@ eq "unscored: a declared bullet without [file:line] is unscored" "$(metric "$TMP
 printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n- [codex-1]: off-by-one with no citation\n\n## Suggestions (0 found)\n' > "$O4b/$LA.md"
 python3 "$SCORE" score --outputs "$O4b" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA" --no-ledger --json "$TMP/s4e.json" >/dev/null 2>&1
 eq "unscored: a malformed bullet the heading count omits is unscored" "$(metric "$TMP/s4e.json" unscored)" "1"
+# A citation-guard Critical (the critic cited a line that does not exist and the
+# guard dropped it) is a finding lost, not a cut-short review: the case is
+# scored (a miss on the seeded case) and the sweep stays ok.
+O4g="$TMP/out4g"; mkdir -p "$O4g"
+printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (1 found)\n- [citation-guard-6bd86d6b048c3229]: Review is not clean: 1 blocking finding(s) were rejected because their citations were unverifiable. Inspect Dropped Citations below.\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n\n## Dropped Citations (1 dropped)\n- [codex-1]: off-by-one [%s:%s]\n' "$la_file" "$((la_line + 1000))" > "$O4g/$LA.md"
+python3 "$SCORE" score --outputs "$O4g" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA" --no-ledger --json "$TMP/s4g.json" >/dev/null 2>&1
+eq "citation-guard: a dropped-citation Critical is scored, not unscored" "$(metric "$TMP/s4g.json" unscored)" "0"
+eq "citation-guard: the sweep status is ok" "$(jget "$TMP/s4g.json" status)" "ok"
+eq "citation-guard: the lost finding is a miss on the seeded case" "$(metric "$TMP/s4g.json" codex.recall)" "0.0"
+# A nonzero panel exit still wins over the guard bullet.
+echo 1 > "$O4g/$LA.rc"
+python3 "$SCORE" score --outputs "$O4g" --fixtures "$FIX" --key "$KEY" --critics codex --only "$LA" --no-ledger --json "$TMP/s4h.json" >/dev/null 2>&1
+eq "citation-guard: a nonzero rc is still unscored" "$(metric "$TMP/s4h.json" unscored)" "1"
 
 # A transcript that touches the key is flagged and the run marked inconclusive.
 O5="$TMP/out5"; mkdir -p "$O5"

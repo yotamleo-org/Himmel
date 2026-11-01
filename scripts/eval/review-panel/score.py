@@ -128,6 +128,7 @@ SECTION = re.compile(r"^## (Critical Issues|Important Issues|Suggestions|"
                      r"Already Dispositioned Re-raises|Dropped Citations|Note|REVIEW NOT PERFORMED)")
 SEV = {"Critical Issues": "crit", "Important Issues": "imp", "Suggestions": "sug"}
 BULLET = re.compile(r"^- \[([A-Za-z0-9._]+(?:-[A-Za-z0-9._]+)*?)-(\d+)\]: (.*?)\s*\[([^\]\s]+):(\d+)\]\s*$")
+CITATION_GUARD = re.compile(r"^- \[citation-guard-[0-9a-f]+\]: ")
 FINDING_SHAPED = re.compile(r"^- \[[A-Za-z0-9._-]+-\d+\]")
 UNAVAILABLE = re.compile(r"^- ([A-Za-z0-9._-]+): unavailable\b")
 
@@ -358,11 +359,15 @@ def parse_review(text):
         # Count only bullets BULLET parses: a malformed one (no [file:line])
         # leaves the count short of the heading, so the case is unscored
         # rather than scored with that finding lost.
+        # The guard's bullet (a critic cited a line that does not exist and the
+        # panel dropped it) counts toward the heading but is no finding: the
+        # case is scored with that finding lost, not left unscored.
+        if sev and CITATION_GUARD.match(line):
+            counted[sev] += 1
+            continue
         b = BULLET.match(line)
         if b and sev:
             critic = b.group(1)
-            if critic.startswith("citation-guard"):
-                continue
             counted[sev] += 1
             findings.append({"critic": critic, "sev": sev, "text": b.group(3),
                              "file": norm_path(b.group(4)), "line": int(b.group(5))})
