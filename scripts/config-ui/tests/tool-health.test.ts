@@ -316,10 +316,10 @@ test("Bash rolls up by command head and cause; rtk joins by call id and a missin
   const byId = new Map([["toolu_a", { path: "rtk", deny: false }], ["toolu_c", { path: "bash", deny: true }], ["toolu_d", { path: "bash", deny: false }]]);
   const data = readRtk(env, () => ({ state: "ok", byId, duplicates: 1 }));
   expect(data.bash.commands).toEqual([
-    { head: "git", calls: 2, failures: 1, cause: { command: 1, rtk_hook: 0, guard: 0, classifier: 0, other: 0 }, rtk: 1 },
-    { head: "cat", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 1, guard: 0, classifier: 0, other: 0 }, rtk: 0 },
-    { head: "gh", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 1, other: 0 }, rtk: 0 },
-    { head: "other", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 0, other: 1 }, rtk: 0 },
+    { head: "git", calls: 2, failures: 1, cause: { command: 1, rtk_hook: 0, guard: 0, classifier: 0, other: 0 }, rtk: 1, bash: 0 },
+    { head: "cat", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 1, guard: 0, classifier: 0, other: 0 }, rtk: 0, bash: 1 },
+    { head: "gh", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 1, other: 0 }, rtk: 0, bash: 1 },
+    { head: "other", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 0, other: 1 }, rtk: 0, bash: 0 },
   ]);
   expect(data.bash).toMatchObject({ recorded: 5, unrecorded: 45, rtk: { state: "ok", matched: 3, unmatched: 2, duplicates: 1 },
     fleet: { rtk: { calls: 1, failures: 0 }, bash: { calls: 2, failures: 2 }, unmatched: { calls: 2, failures: 2 } } });
@@ -332,6 +332,7 @@ test("Bash rolls up by command head and cause; rtk joins by call id and a missin
   expect(unread.bash.rtk).toEqual({ state: "not-read", matched: null, unmatched: null, duplicates: null });
   expect(unread.bash.fleet).toBeNull();
   expect(unread.bash.commands[0].rtk).toBeNull();
+  expect(unread.bash.commands[0].bash).toBeNull();
   expect(readRtk(env, () => ({ state: "absent" })).bash.rtk.state).toBe("absent");
   expect(readRtk(env, () => { throw new Error("locked"); }).bash.rtk.state).toBe("error");
 });
@@ -587,4 +588,16 @@ test("a failed rescan or reviewers refresh keeps the last answer and says it is 
   const app = readFileSync(resolve(import.meta.dir, "../public/app.js"), "utf8");
   expect(app).toContain("stale: inv.error");
   expect(app).toContain("stale: rv.error");
+});
+
+test("a hook on a non-tool event has no derived runs, and a command's bash count leaves out unmatched calls", async () => {
+  const data = readP(seedP());
+  const bashCalls = data.tools.find((t: any) => t.tool === "Bash").calls;
+  const inventory = { ...INVENTORY, hooks: [...INVENTORY.hooks, { kind: "hook", source: "alpha@himmel", name: "start.sh", wired: [["SessionStart", "*"]], runs_twice: false }] };
+  const hooks = Object.fromEntries(cells(await page(data, { kind: "hook" }, { inventory }), "data-tool-row"));
+  expect(hooks["hook:alpha@himmel:start.sh"][2]).toBe("— runs derived");
+  expect(hooks["hook:project:read-clamp.sh"][2]).toBe(`${bashCalls} runs derived`);
+  const bash = { ...data.bash, rtk: { state: "ok", matched: 2, unmatched: 1, duplicates: 0 }, commands: [{ head: "git", calls: 3, failures: 0, cause: {}, rtk: 1, bash: 1 }] };
+  const cmds = Object.fromEntries(cells(await page({ ...data, bash }, { tool: "Bash" }), "data-command"));
+  expect(cmds.git).toEqual(["git", "3", "1", "1", "0"]);
 });

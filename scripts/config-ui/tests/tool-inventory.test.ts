@@ -138,3 +138,14 @@ test("only a chief profile's servers load in chief, and an unreadable file reads
     expect(inv.sources.find((s: any) => s.id === "mcp-user")).toMatchObject({ state: "error" });
   } finally { chmodSync(userFile, 0o644); }
 });
+
+test("an unreadable directory reads error with no count, never a scan of zero", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const { env, repo, home } = station();
+  const dirsOff = [join(repo, ".claude", "commands"), join(home, ".claude", "commands"), join(home, ".himmel", "launch-profiles", "mcp-aaa")];
+  for (const d of dirsOff) chmodSync(d, 0o000);
+  try {
+    const src = Object.fromEntries(scanToolInventory(env, 0).sources.map((s: any) => [s.id, s]));
+    for (const id of ["project-claude", "user-claude", "mcp-profiles"]) expect(src[id]).toMatchObject({ state: "error", found: null });
+  } finally { for (const d of dirsOff) chmodSync(d, 0o755); }
+});

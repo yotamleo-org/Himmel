@@ -220,10 +220,13 @@ function cliRows(data, inv) {
   const heads = new Map((data && data.bash && data.bash.commands || []).map((c) => [c.head, c]));
   return (inv && inv.clis || []).filter((c) => c.state === "ok").map((c) => ({ key: `cli:${c.name}`, kind: "cli", src: "station", source: "station", cli: c, calls: heads.has(c.name) ? heads.get(c.name).calls : null }));
 }
+// Only a tool event's runs follow from tool calls; a hook on any other event has no derived count.
+const TOOL_EVENTS = new Set(["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"]);
 function derivedRuns(h, data) {
   const tools = data && data.tools || [];
   let n = 0;
-  for (const [, matcher] of h.wired || []) {
+  for (const [event, matcher] of h.wired || []) {
+    if (!TOOL_EVENTS.has(event)) return null;
     let re;
     try { re = !matcher || matcher === "*" ? /.*/ : new RegExp(`^(?:${matcher})$`); } catch { return null; }
     for (const t of tools) { const base = t.tool.split(":")[0]; if (re.test(base) || re.test(t.tool)) { if (!isNum(t.calls)) return null; n += t.calls; } }
@@ -355,7 +358,7 @@ function bashSections(data) {
   const b = data.bash;
   if (!b) return "";
   const rtkOk = b.rtk && b.rtk.state === "ok";
-  const cmds = table(["Command", "Calls", "rtk", "bash", "Failed"], (b.commands || []).map((c) => `<tr data-command="${esc(c.head)}">${td(esc(c.head))}${td(num(c.calls))}${td(rtkOk ? num(c.rtk) : "—")}${td(rtkOk && isNum(c.rtk) ? String(c.calls - c.rtk) : "—")}${td(num(c.failures))}</tr>`), "No Bash command recorded in this window");
+  const cmds = table(["Command", "Calls", "rtk", "bash", "Failed"], (b.commands || []).map((c) => `<tr data-command="${esc(c.head)}">${td(esc(c.head))}${td(num(c.calls))}${td(rtkOk ? num(c.rtk) : "—")}${td(rtkOk ? num(c.bash) : "—")}${td(num(c.failures))}</tr>`), "No Bash command recorded in this window");
   const causes = { command: "command", rtk_hook: "rtk hook", guard: "himmel guard", classifier: "classifier", other: "other" };
   const totals = Object.fromEntries(Object.keys(causes).map((k) => [k, (b.commands || []).reduce((n, c) => n + ((c.cause && c.cause[k]) || 0), 0)]));
   const fl = b.fleet;

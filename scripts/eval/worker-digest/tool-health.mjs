@@ -248,11 +248,12 @@ function bashRollup(filtered, every, rtk) {
   };
   const commands = new Map();
   for (const c of mine) {
-    const r = commands.get(c[1]) || { head: c[1], calls: 0, failures: 0, cause: Object.fromEntries(CAUSES.map((k) => [k, 0])), rtk: ok ? 0 : null };
+    const r = commands.get(c[1]) || { head: c[1], calls: 0, failures: 0, cause: Object.fromEntries(CAUSES.map((k) => [k, 0])), rtk: ok ? 0 : null, bash: ok ? 0 : null };
     r.calls++;
     const cause = causeOf(c);
     if (cause) { r.failures++; r.cause[cause]++; }
     if (ok && pathOf(c[0]) === 'rtk') r.rtk++;
+    if (ok && pathOf(c[0]) === 'bash') r.bash++;
     commands.set(c[1], r);
   }
   const total = bashTotal(filtered);
