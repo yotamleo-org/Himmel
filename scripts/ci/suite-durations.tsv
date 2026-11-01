@@ -756,6 +756,7 @@ scripts/hooks/test-read-clamp.sh	1
 scripts/hooks/test-reconcile-rtk-hook.sh	0
 scripts/hooks/test-record-hook-integrity.sh	3
 scripts/hooks/test-record-primary-baseline.sh	0
+scripts/hooks/test-redirect-webfetch-walled-hosts-plugin.sh	1
 scripts/hooks/test-redirect-webfetch-walled-hosts.sh	0
 scripts/hooks/test-refresh-statusline-caches.sh	4
 scripts/hooks/test-refresh-where-are-we-on-end.sh	14

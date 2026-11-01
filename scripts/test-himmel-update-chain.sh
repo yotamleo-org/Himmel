@@ -390,6 +390,17 @@ assert_contains "restart warning: channel pull printed" "RESTART CLAUDE NOW" "$o
 assert_contains "restart warning: names the changed pinned file" "(e.g. scripts/hooks/channel-guard.sh)" "$out"
 assert_eq "restart warning: is the closing line" "    (re-pin refused: not the anchor tip). Exit claude and start a new session." "$(printf '%s\n' "$out" | tail -n 1)"
 
+# The plugin hooks dir is a launcher pin dir too: a pinned .sh changed there
+# and reached by a channel update must warn.
+push_change_7 marketplace/plugins/himmel-ops/hooks/plugin-guard.sh
+git -C "$pusher7" tag v9.10.0
+git -C "$pusher7" push --quiet origin v9.10.0
+push_change_7 docs/after-tag-2.md
+rc=0; out=$(HIMMEL_UPDATE_CHANNEL=stable update_7 1) || rc=$?
+assert_eq "restart warning: channel pull of a plugin hooks .sh: rc 0" "0" "$rc"
+assert_contains "restart warning: channel pull of a plugin hooks .sh printed" "RESTART CLAUDE NOW" "$out"
+assert_contains "restart warning: names the changed plugin hooks file" "(e.g. marketplace/plugins/himmel-ops/hooks/plugin-guard.sh)" "$out"
+
 # ─── Test 8: marketplace re-sync re-applies the codex SessionEnd bump ────────
 echo "Test 8: apply run re-raises the openai-codex SessionEnd timeout (HIMMEL-5965)"
 make_mock_clone

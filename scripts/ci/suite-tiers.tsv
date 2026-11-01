@@ -757,6 +757,7 @@ scripts/hooks/test-read-clamp.sh	pr	guard
 scripts/hooks/test-reconcile-rtk-hook.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-record-hook-integrity.sh	pr	static-gate
 scripts/hooks/test-record-primary-baseline.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/hooks/test-redirect-webfetch-walled-hosts-plugin.sh	pr	trust-path
 scripts/hooks/test-redirect-webfetch-walled-hosts.sh	pr	trust-path
 scripts/hooks/test-refresh-statusline-caches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-refresh-where-are-we-on-end.sh	local	behaviour suite, 0 catches in the 400-PR audit window

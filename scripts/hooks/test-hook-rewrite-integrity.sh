@@ -2238,5 +2238,61 @@ source "$D/../lib/armor.sh"
 E
 }
 
+# Row 65: a hook source file under marketplace/plugins/himmel-ops/hooks/ is
+# pinned like a scripts/hooks one. The himmel project-lane shim for the
+# walled-host redirect runs that plugin file, and the static source walk does
+# not follow a `bash <file>` exec, so an unpinned plugin file would run
+# unchecked. An edit after the SessionStart pin must be denied.
+P65="$T/row65"
+mkdir -p "$P65/marketplace/plugins/himmel-ops/hooks"
+H65="$P65/marketplace/plugins/himmel-ops/hooks/fake-plugin-hook.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$H65"
+chmod +x "$H65"
+git -C "$P65" init -q
+git -C "$P65" -c user.email=t@t -c user.name=t add -A
+git -C "$P65" -c user.email=t@t -c user.name=t commit -q -m plugin-hook
+OUT65="$T/row65-out"
+printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$P65" HIMMEL_HOOK_INTEGRITY_DIR="$OUT65" bash "$RECORDER" >/dev/null
+printf '#!/usr/bin/env bash\nexit 0\n# tampered\n' > "$H65"
+printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$P65" HIMMEL_HOOK_INTEGRITY_DIR="$OUT65" \
+  node "$LAUNCHER" --optional "$H65" >"$T/row65.out" 2>"$T/row65.err"
+rc65=$?
+if [ "$rc65" -eq 2 ] && grep -qi 'DENY' "$T/row65.err"; then
+  ok "row 65: an edited marketplace/plugins/himmel-ops/hooks file is denied at the launcher"
+else
+  bad "row 65: expected rc=2 with a DENY message, got rc=$rc65 err=$(cat "$T/row65.err")"
+fi
+
+# Row 66: the real himmel project-lane shim for the walled-host redirect runs
+# the plugin source. Launching the PINNED shim after the plugin source was
+# edited must be denied, because the launcher verifies what the shim runs.
+P66="$T/row66"
+mkdir -p "$P66/scripts/hooks" "$P66/marketplace/plugins/himmel-ops/hooks"
+P66_SETUP=1
+cp "$HOOKS_DIR/redirect-webfetch-walled-hosts.sh" "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh" || P66_SETUP=0
+cp "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" "$P66/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" || P66_SETUP=0
+git -C "$P66" init -q
+git -C "$P66" -c user.email=t@t -c user.name=t add -A
+git -C "$P66" -c user.email=t@t -c user.name=t commit -q -m shim
+OUT66="$T/row66-out"
+PAYLOAD66='{"session_id":"worker-session-66","hook_event_name":"PreToolUse","tool_name":"WebFetch","tool_input":{"url":"https://example.com/","prompt":"p"}}'
+printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" bash "$RECORDER" >/dev/null
+# Control: the untampered pinned shim launches (rc 0), which proves the setup
+# copied both files and the recorder pinned them before the tamper below.
+printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" \
+  node "$LAUNCHER" --optional "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh" >"$T/row66-pre.out" 2>"$T/row66-pre.err"
+rc66pre=$?
+printf '# tampered\n' >> "$P66/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh"
+printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" \
+  node "$LAUNCHER" --optional "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh" >"$T/row66.out" 2>"$T/row66.err"
+rc66=$?
+if [ "$P66_SETUP" -ne 1 ] || [ "$rc66pre" -ne 0 ]; then
+  bad "row 66: setup failed (copies ok=$P66_SETUP) or the untampered pinned shim did not launch, rc=$rc66pre err=$(cat "$T/row66-pre.err")"
+elif [ "$rc66" -eq 2 ] && grep -qi 'DENY' "$T/row66.err"; then
+  ok "row 66: launching the pinned walled-host shim after its plugin source was edited is denied"
+else
+  bad "row 66: expected rc=2 with a DENY message, got rc=$rc66 err=$(cat "$T/row66.err")"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

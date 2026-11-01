@@ -1261,7 +1261,7 @@ function walkIdentities(candidate, resolvedProject, spelledProject) {
 //
 // PIN_DIRS mirrors the directories record-hook-integrity.sh pins; a closure
 // file outside them could never carry a pin, so row 46 refuses one.
-const PIN_DIRS = ['scripts/hooks', 'scripts/guardrails', 'scripts/lib', 'scripts/handover'];
+const PIN_DIRS = ['scripts/hooks', 'scripts/guardrails', 'scripts/lib', 'scripts/handover', 'marketplace/plugins/himmel-ops/hooks'];
 const SOURCED_DENY = 'sourced-lib: ';
 const MAX_CLOSURE_FILES = 256;
 const VAR_NAME = '[A-Za-z_][A-Za-z0-9_]*';

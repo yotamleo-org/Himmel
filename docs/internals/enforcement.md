@@ -4053,18 +4053,50 @@ on missing `jq`, malformed, or empty stdin. Claude lane only —
 `ScheduleWakeup` is a Claude Code tool, so `.codex/hooks.json` carries no twin.
 Suite: `scripts/hooks/test-guard-worker-wakeup.sh`.
 
-### `redirect-webfetch-walled-hosts.sh` — WebFetch redirect for walled hosts (HIMMEL-4908)
+### `redirect-webfetch-walled-hosts.sh` — WebFetch redirect for walled hosts (HIMMEL-4908, HIMMEL-8124)
 
-PreToolUse, matcher `WebFetch`. A URL whose host (or a subdomain of it) is on the
-one line of `scripts/web/walled-hosts.conf` (x.com, twitter.com,
-mobile.twitter.com, instagram.com, reddit.com, redd.it) is denied with the paste-ready, shell-quoted
-`bash scripts/web/fetch-url.sh '<url>'`; the Scrapling stealth fetcher returns
-the page where WebFetch gets HTTP 402. Any other host is allowed silently. A
-workflow convenience, not a fence: it fails open on missing `jq`/conf, malformed
-input or a control character in the URL, and makes no network call. Bypass:
+PreToolUse, matcher `WebFetch`. A URL whose host (or a subdomain of it) is a
+walled host (x.com, twitter.com, mobile.twitter.com, instagram.com, reddit.com,
+redd.it) is denied. Any other host is allowed silently. A workflow convenience,
+not a fence: it fails open on missing `jq`, malformed input or a control
+character in the URL, and makes no network call. Bypass:
 `HIMMEL_WEBFETCH_WALLED_OK=1` in the launching shell. Codex has no WebFetch
-tool, so there is no `.codex/hooks.json` twin. Suite:
-`scripts/hooks/test-redirect-webfetch-walled-hosts.sh`.
+tool, so there is no `.codex/hooks.json` twin.
+
+**One source, two lanes (HIMMEL-8124).** The rule lives only in
+`marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh`, wired
+in the himmel-ops `hooks.json` as
+`${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh`, so an adopter
+repo gets it too. The file has two modes, by whether the himmel fetcher is
+reachable under `WALLED_TOOLING_DIR` (default
+`$CLAUDE_PROJECT_DIR/scripts/web`):
+
+- **himmel** (`fetch-url.sh` and `walled-hosts.conf` both there): the host list
+  is the one line of `scripts/web/walled-hosts.conf` and the deny carries the
+  paste-ready, shell-quoted `bash <scripts/web/fetch-url.sh> '<url>'`; the
+  Scrapling stealth fetcher returns the page where WebFetch gets HTTP 402.
+- **adopter** (no such files): the host list is the `WALLED_HOSTS` string in the
+  hook, which the suite pins equal to the conf line, and the deny names no
+  himmel script. It says to use a browser-capable tool or ask the operator to
+  paste the text, and names the bypass.
+
+`scripts/hooks/redirect-webfetch-walled-hosts.sh` stays wired in the himmel
+project lane as a shim: it points `WALLED_TOOLING_DIR` at `scripts/web`, sets
+`WEBFETCH_WALLED_LOG=/dev/null` and runs the plugin source, so a himmel session
+that fires both lanes writes one JSONL row, not two. The shim sources the plugin
+file instead of running it with `bash <file>`, because the launcher verifies a
+sourced file against the integrity pins and does not follow a `bash <file>` exec.
+`marketplace/plugins/himmel-ops/hooks` is a pinned dir (`PIN_DIRS` in both
+`hook-integrity.js` copies and the loop in `record-hook-integrity.sh`), so an
+edited plugin source is denied at the launcher, whether the plugin file or the
+shim is launched, and `ci-trust-paths.txt` lists the plugin source and its suite.
+
+Each deny appends one row (`ts`, `session_id`, `decision`, `host`) to
+`WEBFETCH_WALLED_LOG` (default `~/.claude/webfetch-walled/denials.jsonl`). The
+URL is not logged, since it can carry a token. Suites:
+`scripts/hooks/test-redirect-webfetch-walled-hosts-plugin.sh`
+(runs the installed `hooks.json` command in a non-himmel fixture repo) and
+`scripts/hooks/test-redirect-webfetch-walled-hosts.sh` (the project-lane shim).
 
 <a id="guard-worker-context-handoffsh--chief-spawned-worker-context-hand-off-himmel-4569"></a>
 

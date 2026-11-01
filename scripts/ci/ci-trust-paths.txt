@@ -45,6 +45,7 @@
 # Hook denials and allow-list logic.
 ^scripts/hooks/(block|guard|cadence-deny)-
 ^scripts/hooks/(auto-approve-safe-bash|permission-allow-gate-shapes|narrow-allow|cadence-approve-engines|require-quiet-run|read-clamp|orchestrator-inline-guard|rtk-hook-guard|hook-integrity|record-hook-integrity|guardrail-|run-hook-with-bash|wire-|mcp-policy|redirect-webfetch-walled-hosts|detect-token-in-output|infra-destroy-verbs)
+^marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts\.sh$
 # Commit/push gates and CR triggers.
 ^scripts/hooks/(check-(cr-|security-reviewed|platforms-tested|push-target|no-force-push|main-ref|merged-branch|pr-mergeable|single-writer|pr-lane|worktree-isolation|hookspath|lockfile|settings-portability|fail-open|trust-suites|guardrail)|trigger-cr-on-|install-(single-writer-floor|main-ref-transaction|cr-pre-push-legacy))
 # RED suites for the trust-path hook denials, allow logic and commit/push gates.

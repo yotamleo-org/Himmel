@@ -74,6 +74,10 @@ function unwire(text) {
       commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-busy-loop.sh"';
       continue;
     }
+    if (command.includes('/hooks/redirect-webfetch-walled-hosts.sh')) {
+      commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh"';
+      continue;
+    }
     const match = command.match(/scripts\/hooks\/([A-Za-z0-9._-]+\.sh)"/);
     assert.ok(match, `could not extract project hook script from ${command}`);
     const script = match[1];
@@ -246,4 +250,12 @@ test('block-busy-loop.sh is a plugin-sourced Bash entry, never a $CLAUDE_PROJECT
   assert.equal(entries.length, 1);
   assert.equal(entries[0].matcher, 'Bash');
   assert.equal(entries[0].hooks[0].command, `${WIRED_PREFIX}"\${CLAUDE_PLUGIN_ROOT}/hooks/block-busy-loop.sh"`);
+});
+
+test('redirect-webfetch-walled-hosts.sh is a plugin-sourced WebFetch entry, never a $CLAUDE_PROJECT_DIR one', () => {
+  const pre = JSON.parse(readFileSync(PLUGIN_HOOKS, 'utf8')).hooks.PreToolUse;
+  const entries = pre.filter((g) => g.hooks.some((h) => h.command.includes('redirect-webfetch-walled-hosts.sh')));
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].matcher, 'WebFetch');
+  assert.equal(entries[0].hooks[0].command, `${WIRED_PREFIX}"\${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh"`);
 });
