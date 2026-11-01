@@ -313,8 +313,9 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .thchart .line{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke}.thchart .gap{fill:var(--dim);font:10px var(--font-mono)}
 .thchart .shiftband{fill:var(--beta-soft)}
 .th-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
+.th-cols .data th{white-space:nowrap}.th-cols .data td{overflow-wrap:break-word}
 .th-grp th{text-align:left;color:var(--dim);font:600 11px var(--font-mono);text-transform:uppercase;letter-spacing:.06em}
-.thbar{--w:0%;display:inline-block;height:6px;width:var(--w);min-width:1px;max-width:80px;background:var(--crit);border-radius:3px;vertical-align:middle}
+.thbar{--w:0%;display:inline-block;height:6px;width:80px;background:linear-gradient(to right,var(--crit) var(--w),var(--surface-2) var(--w));border-radius:3px;vertical-align:middle}
 a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--s2);margin:var(--s2) 0}
 .stats dt{font:600 11px var(--font-mono);color:var(--muted)}.stats dd{margin:0;font:700 var(--fs-lg) var(--font-mono);color:var(--ink)}
