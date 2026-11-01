@@ -2051,6 +2051,8 @@ test('the Test VMs trust entry names himmel-claudex and claudex-guest.sh is the 
   const tooling = env.filter((e) => e.startsWith('Trusted repo tooling:'));
   assert.equal(tooling.length, 1);
   assert.ok(tooling[0].includes(`marketplace/plugins/himmel-bus/bin/bus, ${ANCHOR}/scripts/vm/claudex-guest.sh. Not covered:`), 'claudex-guest.sh is the last named script');
+  // provision runs vmsdk.py clone, which reads the GitHub token: trusting the wrapper must not lift that carve-out
+  assert.match(tooling[0], /Not covered:.*vmsdk\.py clone, claudex-guest\.sh provision \(it runs vmsdk\.py clone\), a secrets reader/);
 });
 test('vmLaunch is restricted to worker-vm', () => {
   const registry = structuredClone(REG);
