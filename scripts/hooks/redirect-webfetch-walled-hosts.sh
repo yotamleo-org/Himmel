@@ -9,7 +9,7 @@
 # file rather than exec'ing it, so the launcher's sourced-file check verifies the
 # bytes it runs against the integrity pins. Fails OPEN if the plugin source is
 # absent. Bypass: HIMMEL_WEBFETCH_WALLED_OK=1 in the launching shell. Spec:
-# marketplace/plugins/himmel-ops/hooks/test-redirect-webfetch-walled-hosts.sh
+# scripts/hooks/test-redirect-webfetch-walled-hosts-plugin.sh
 # and scripts/hooks/test-redirect-webfetch-walled-hosts.sh.
 here="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$here/../../marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" ] && [ -r "$here/../../marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" ] || exit 0

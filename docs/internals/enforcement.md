@@ -4094,7 +4094,7 @@ shim is launched, and `ci-trust-paths.txt` lists the plugin source and its suite
 Each deny appends one row (`ts`, `session_id`, `decision`, `host`) to
 `WEBFETCH_WALLED_LOG` (default `~/.claude/webfetch-walled/denials.jsonl`). The
 URL is not logged, since it can carry a token. Suites:
-`marketplace/plugins/himmel-ops/hooks/test-redirect-webfetch-walled-hosts.sh`
+`scripts/hooks/test-redirect-webfetch-walled-hosts-plugin.sh`
 (runs the installed `hooks.json` command in a non-himmel fixture repo) and
 `scripts/hooks/test-redirect-webfetch-walled-hosts.sh` (the project-lane shim).
 

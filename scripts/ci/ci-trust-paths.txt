@@ -51,7 +51,6 @@
 # RED suites for the trust-path hook denials, allow logic and commit/push gates.
 ^scripts/hooks/test-(block|guard|cadence-deny)-.*\.sh$
 ^scripts/hooks/test-(auto-approve-safe-bash|permission-allow-gate-shapes|narrow-allow|cadence-approve-engines|require-quiet-run|read-clamp|orchestrator-inline-guard|rtk-hook-guard|hook-integrity|record-hook-integrity|guardrail-|run-hook-with-bash|wire-|mcp-policy|redirect-webfetch-walled-hosts|detect-token-in-output|infra-destroy-verbs).*\.sh$
-^marketplace/plugins/himmel-ops/hooks/test-redirect-webfetch-walled-hosts\.sh$
 ^scripts/hooks/test-(check-(commit-msg|cr-|security-reviewed|platforms-tested|push-target|no-force-push|main-ref|merged-branch|pr-mergeable|single-writer|pr-lane|worktree-isolation|hookspath|lockfile|settings-portability|fail-open|trust-suites|guardrail)|trigger-cr-on-|install-(single-writer-floor|main-ref-transaction|cr-pre-push-legacy)).*\.sh$
 # RED suites for the integrity launcher and its canonical/plugin wiring.
 ^scripts/hooks/test-(hook-rewrite-integrity|launcher-lifecycle-integrity|plugin-hook-bash-wiring|wired-hooks-integrity-resolution)\.sh$

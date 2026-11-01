@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-redirect-webfetch-walled-hosts.sh — suite for the plugin WebFetch redirect
+# test-redirect-webfetch-walled-hosts-plugin.sh — suite for the plugin WebFetch redirect
 # on login-walled hosts. The suite is the spec.
 #
 # Every plugin case runs the INSTALLED hooks.json command with CLAUDE_PLUGIN_ROOT
@@ -7,11 +7,11 @@
 # so a wiring that points at $CLAUDE_PROJECT_DIR/scripts/hooks/ (an --optional
 # no-op outside himmel) reads as allow and fails the deny rows.
 #
-# Usage: bash marketplace/plugins/himmel-ops/hooks/test-redirect-webfetch-walled-hosts.sh
+# Usage: bash scripts/hooks/test-redirect-webfetch-walled-hosts-plugin.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_DIR="$(cd "$HERE/.." && pwd)"
-HIMMEL_ROOT="$(cd "$HERE/../../../.." && pwd)"
+HIMMEL_ROOT="$(cd "$HERE/../.." && pwd)"
+PLUGIN_DIR="$HIMMEL_ROOT/marketplace/plugins/himmel-ops"
 FAILED=0
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required and not on PATH"; exit 1; }
