@@ -78,10 +78,11 @@ else
     [ -z "$schedule$command" ] || bad "$([ -n "$schedule" ] && echo schedule || echo command)" "not allowed with remove"
 fi
 
-cur=$(crontab -u "$user" -l 2>&1)
+cur=$(crontab -u "$user" -l 2>/dev/null)
 status=$?
 if [ "$status" -ne 0 ]; then
-    case $cur in *"no crontab for"*) cur= ;; *) die "cannot read the crontab of $user: $cur" ;; esac
+    err=$(crontab -u "$user" -l 2>&1 >/dev/null)
+    case $err in *"no crontab for"*) cur= ;; *) die "cannot read the crontab of $user: $err" ;; esac
 fi
 
 orig='' new='' found=0

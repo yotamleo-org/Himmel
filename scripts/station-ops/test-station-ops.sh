@@ -74,7 +74,8 @@ user=$2
 f="$HIMMEL_OPS_ROOT/cron.$user"
 echo "$@" >> "$HIMMEL_OPS_ROOT/crontab.calls"
 case "$3" in
-    -l) [ -f "$f" ] && cat "$f" || { echo "no crontab for $user" >&2; exit 1; } ;;
+    -l) [ -e "$HIMMEL_OPS_ROOT/cron.warn" ] && echo "crontab: warning from the lister" >&2
+        [ -f "$f" ] && cat "$f" || { echo "no crontab for $user" >&2; exit 1; } ;;
     -) cat > "$f" ;;
 esac
 FAKECRON
@@ -128,6 +129,14 @@ out=$(op cron-entry --action remove --tag ping)
 assert_contains "remove drops the tagged line" "result=changed" "$out"
 assert_eq "the table is empty after remove" "" "$(table)"
 assert_contains "remove again is unchanged" "result=unchanged" "$(op cron-entry --action remove --tag ping)"
+
+echo "== RED: crontab -l stderr never lands in the table =="
+new_root warn
+: > "$R/cron.warn"
+printf '5 4 * * * /bin/true\n' > "$R/cron.$(id -un)"
+out=$(op cron-entry --action set --tag ping --schedule "0 5 * * *" --command "$R$CMD")
+assert_contains "set succeeds with a lister warning" "result=changed" "$out"
+assert_absent "RED: the lister warning is not in the table" "warning from the lister" "$(table)"
 out=$(op cron-entry --action set --tag bad --schedule "0 5 * * *" --command "/home/x/evil")
 assert_contains "the script itself refuses a command outside the opener dirs" "result=bad-param name=command" "$out"
 
@@ -214,6 +223,13 @@ assert_contains "a locked-down station refuses a new op request" "result=disable
 echo "== cron-system =="
 new_root sys
 f="$R/etc/cron.d/himmel-nightly"
+printf '#!/bin/sh\nexit 0\n' > "$R/usr/sbin/himmel-job"; chmod 0755 "$R/usr/sbin/himmel-job"
+assert_contains "RED: an interpreter-style command with a file argument is bad-param" "result=bad-param name=command" "$(op cron-system --action set --tag evil --schedule "30 2 * * *" --user root --command "$R/usr/sbin/himmel-job /home/x/x.sh")"
+chmod 0775 "$R/usr/sbin/himmel-job"
+assert_contains "RED: a group-writable command is bad-param" "result=bad-param name=command" "$(op cron-system --action set --tag evil --schedule "30 2 * * *" --user root --command "$R/usr/sbin/himmel-job")"
+chmod 0755 "$R/usr/sbin/himmel-job"
+assert_contains "RED: a job for a user who is neither root nor the operator is bad-param" "result=bad-param name=user" "$(op cron-system --action set --tag evil --schedule "30 2 * * *" --user nobody --command "$R/usr/sbin/himmel-job")"
+assert_eq "no refusal wrote a cron.d file" "no" "$([ -e "$R/etc/cron.d/himmel-evil" ] && echo yes || echo no)"
 out=$(op cron-system --action set --tag nightly --schedule "30 2 * * *" --user root --command "$R/usr/sbin/himmel-job")
 assert_contains "cron-system set writes the file" "result=changed" "$out"
 assert_contains "the file holds the line" "30 2 * * * root $R/usr/sbin/himmel-job" "$(cat "$f" 2>/dev/null)"
