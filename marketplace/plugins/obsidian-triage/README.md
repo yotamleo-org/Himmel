@@ -384,6 +384,11 @@ live fetch (adopter-safe).
 `/x-read`; this is a clean-room himmel-native reimplementation that skips Grok —
 not a vendored fork (no `UPSTREAM_PIN`, no `plugin-upstreams.json` entry).
 
+**Attribution (HIMMEL-8416).** `hooks/validate-ai-first.sh` is ported from
+[eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)
+v0.18.1 (MIT, Eugeniu Ghelbur) and keeps its MIT licence header. The marketplace
+no longer carries that plugin; this one hook is the only piece himmel still uses.
+
 ## Idempotency
 
 `/triage-clips`:
