@@ -206,7 +206,7 @@ mkdir -p "$V/handovers/n"
 printf 'secret\n' >"$V/handovers/n/leak-note.md"
 run_sync
 assert_eq "S10 secret note stays in the vault" "yes" "$([ -e "$V/handovers/n/leak-note.md" ] && echo yes || echo no)"
-assert_eq "S10b nothing quarantined for it" "no" "$(find "$TMP/quarantine" -name 'leak-note.md' | grep -q . && echo yes || echo no)"
+assert_eq "S10b nothing quarantined for it" "" "$(find "$TMP/quarantine" -name 'leak-note.md')"
 assert_eq "S10c stall reason names hook and path" "fake-gitleaks:handovers/n/leak-note.md" "$(cat "$V/.git/vault-autosync-reason" 2>/dev/null)"
 
 # --- S11: tool state mixed with a real secret: nothing is moved (all or nothing)
