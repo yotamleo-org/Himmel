@@ -712,6 +712,8 @@ emit_runner() {
     # runner_path_snapshot's header for why this replaced the old
     # node-dir-only prepend.
     printf 'PATH=%s; export PATH\n' "$q_path"
+    # cron cannot read the macOS Keychain login (SCRUM-4, runner format v24).
+    cadence_oauth_token_lines
     printf 'log=%s\n' "$q_log"
     printf '# Test log existence BEFORE the capture redirect opens $log.\n'
     printf '# The old brace-group form (`{ [ -f ] && mv; } >> "$log"`) created\n'

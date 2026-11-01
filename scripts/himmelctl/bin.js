@@ -7760,7 +7760,7 @@ function cmdConfigGetInitiative(worker) {
   }
   console.log(`HIMMEL_INITIATIVE=${current || '(unset)'} (from ${file})`);
   const active = INITIATIVE_WORKERS.filter((l) => activeSet.has(l));
-  console.log(`active legs: ${active.length > 0 ? active.join(', ') : '(none)'}`);
+  console.log(`active workers: ${active.length > 0 ? active.join(', ') : '(none)'}`);
   return 0;
 }
 
