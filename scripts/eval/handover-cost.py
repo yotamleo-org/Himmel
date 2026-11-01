@@ -212,13 +212,13 @@ def main(argv=None):
     # hold a relay from any chief, so those are skipped unread.
     if chiefs:
         floor = chiefs[0]["first"].timestamp()
-        for path in sorted(glob.glob(os.path.join(d.rstrip("/") + "--claude-worktrees-*", "*.jsonl"))):
+        for path in sorted(glob.glob(os.path.join(os.path.abspath(d) + "--claude-worktrees-*", "*.jsonl"))):
             try:
                 if os.path.getmtime(path) < floor:
                     continue
+                s = load(path)
             except OSError:
                 continue
-            s = load(path)
             if s["name"] and s["first"] and not name_re.search(s["name"]):
                 workers.append(s)
     if len(chiefs) < 2:

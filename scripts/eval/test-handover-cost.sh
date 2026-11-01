@@ -139,7 +139,7 @@ echo "3h. workers in per-worktree sibling project dirs"
 if ! { mkdir -p "$TMP/wt/proj" "$TMP/wt/proj--claude-worktrees-a" "$TMP/wt/proj--claude-worktrees-b" "$TMP/wt/proj--claude-worktrees-c" \
   && cp "$FX"/console-*.jsonl "$TMP/wt/proj/" && cp "$FX/leg-new.jsonl" "$TMP/wt/proj--claude-worktrees-a/" \
   && cp "$FX/leg-old.jsonl" "$TMP/wt/proj--claude-worktrees-b/" && cp "$FX/leg-new.jsonl" "$TMP/wt/proj--claude-worktrees-c/leg-stale.jsonl" \
-  && touch -d 2020-01-01 "$TMP/wt/proj--claude-worktrees-c/leg-stale.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+  && touch -t 202001010000 "$TMP/wt/proj--claude-worktrees-c/leg-stale.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/wt/proj" >"$TMP/wt.out" 2>&1; wtrc=$?
 check "the sibling run exits 0" '[ "$wtrc" = 0 ]'
 check "workers from the sibling worktree dirs are counted (worker=5/1250 workers=2)" 'row "$TMP/wt.out" | grep -q " worker=5/1250 workers=2 "'
