@@ -181,6 +181,21 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   return { state, scanned_at: new Date(now).toISOString(), sources, tools, hooks: hooks.sort((a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name)), clis };
 }
 
+// The tools each guard is wired to check, for the option-B guard rate: {hook name without .sh: [PreToolUse / PermissionRequest
+// matchers]}, the union over every source that wires it. null when no settings source was read or one was unreadable,
+// so a half-read wiring never yields a denominator.
+export function eligibleFromInventory(inv: Inventory): Record<string, string[]> | null {
+  const sources = inv.sources.filter((s) => s.id.startsWith("hooks-"));
+  if (!sources.some((s) => s.state === "ok") || sources.some((s) => s.state === "error")) return null;
+  const out: Record<string, string[]> = {};
+  for (const h of inv.hooks) {
+    if (!h.name.endsWith(".sh")) continue;
+    const name = h.name.slice(0, -3), matchers = h.wired.filter(([event]) => event === "PreToolUse" || event === "PermissionRequest").map(([, matcher]) => matcher);
+    if (matchers.length) out[name] = [...new Set([...(out[name] || []), ...matchers])];
+  }
+  return out;
+}
+
 // One scan per station, re-read on ?rescan=1 (as /api/feed?refresh=1 does).
 const cache = new Map<string, Inventory>();
 export function readToolInventory(env: Env, now: number, rescan = false): Inventory {

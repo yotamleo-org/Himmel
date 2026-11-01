@@ -7,6 +7,7 @@ const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const pct = (v) => (isNum(v) ? `${(v * 100).toFixed(1)}%` : "—");
 const num = (v) => (isNum(v) ? String(v) : "—");
 const ratio = (a, b) => (isNum(a) && isNum(b) && b > 0 ? a / b : null);
+const UNKNOWN_TOOL = "(unknown)"; // the reader's bucket for a refusal recorded before tools were named
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const dayLabel = (d) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
@@ -212,9 +213,15 @@ function toolCounts(r, data) {
 function hookRows(data, inv) {
   const refused = new Map((data && data.hooks || []).map((h) => [h.class, h]));
   return (inv && inv.hooks || []).map((h) => {
-    const cls = `denied/${h.name.replace(/\.(sh|js|mjs|py)$/, "")}`, hit = refused.get(cls);
-    return { key: `hook:${h.source}:${h.name}`, kind: "hook", src: srcOf(h.source), source: h.source, hook: h, guard: hit ? cls : null, refused: hit ? hit.failures : null, runs: derivedRuns(h, data) };
+    const cls = `denied/${h.name.replace(/\.(sh|js|mjs|py)$/, "")}`, hit = refused.get(cls), seen = measuredRuns(data, h.name);
+    return { key: `hook:${h.source}:${h.name}`, kind: "hook", src: srcOf(h.source), source: h.source, hook: h, guard: hit ? cls : null, refused: hit ? hit.failures : null, runs: isNum(seen) ? seen : derivedRuns(h, data), runsMeasured: isNum(seen) };
   });
+}
+const RUNS_SCOPE = "Measured hook runs cover every session on this station and ignore the filters; derived runs and Refused follow them.";
+// A hook that ran inside the hook chain has a run count the chain log measured; any other hook keeps the derived count.
+function measuredRuns(data, name) {
+  const m = data && data.chain && data.chain.members && Object.hasOwn(data.chain.members, name) ? data.chain.members[name] : null;
+  return m && isNum(m.runs) ? m.runs : null;
 }
 function cliRows(data, inv) {
   const heads = new Map((data && data.bash && data.bash.commands || []).map((c) => [c.head, c]));
@@ -245,7 +252,7 @@ function listRow(r, data, ui, bad, max) {
   const srcText = r.source && r.src !== "core" ? `${SRC_LABEL[r.src]} · ${r.source}` : SRC_LABEL[r.src];
   if (r.kind === "hook") {
     const link = r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "hooks" });
-    return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(link)}">${esc(r.hook.name)}</a> ${chip}${r.hook.runs_twice ? ' <span class="tag warn">×2 runs twice</span>' : ""}`)}${td(esc(srcText))}${td(`${num(r.runs)} <span class="dim">runs derived</span>`)}${td(num(r.refused))}${td("—")}${td(num(r.refused))}${td("—")}${td("")}</tr>`;
+    return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(link)}">${esc(r.hook.name)}</a> ${chip}${r.hook.runs_twice ? ' <span class="tag warn">×2 runs twice</span>' : ""}`)}${td(esc(srcText))}${td(`${num(r.runs)} <span class="dim">runs ${r.runsMeasured ? "measured" : "derived"}</span>`)}${td(num(r.refused))}${td("—")}${td(num(r.refused))}${td("—")}${td("")}</tr>`;
   }
   if (r.kind === "cli") return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tab: "station" }))}">${esc(r.cli.name)}</a> ${chip}`)}${td(esc(srcText))}${td(`${num(r.calls)} <span class="dim">Bash calls</span>`)}${td("—")}${td("—")}${td("—")}${td("—")}${td("")}</tr>`;
   const c = toolCounts(r, data), flagged = bad.has(r.key);
@@ -291,14 +298,20 @@ function toolList(data, inv, ui, opts = {}) {
 <div class="fields"><label>Source <select data-th="src"><option value="">All</option>${srcs.map((s) => `<option value="${s}"${ui.src === s ? " selected" : ""}>${esc(SRC_LABEL[s])}</option>`).join("")}</select></label><label>Search <input id="th-q" data-th="q" type="search" value="${esc(ui.q || "")}" placeholder="tool, skill, server"></label><label>Sort <select data-th="sort">${[["rate", "Highest failure rate"], ["failed", "Most failures"], ["calls", "Most calls"], ["name", "Name"]].map(([v, l]) => `<option value="${v}"${ui.sort === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>${chip("th-group", "kind", "Group by kind", ui.group === "kind")}${chip("th-group", "source", "Group by source", ui.group === "source")}${chip("th-before", "1", "Before split", !!ui.before)}</div>`;
   const empty = q ? `No tool matches “${ui.q}”` : "No tools match these filters";
   const more = !ui.all && limited.length < sorted.length ? `<button class="btn" data-act="th-all">Show all (${sorted.length})</button>` : ui.all && sorted.length > 10 ? `<button class="btn quiet" data-act="th-all">Top 10 only</button>` : "";
-  const shownLine = `<p class="sub">${limited.length} of ${sorted.length} shown${bad.size ? ' · <span class="tag fail">Count check failed</span> for ' + esc([...bad].join(", ")) : ""}. Errors include a red test suite. Rows marked “before the split” were written before skills, subagents and MCP servers got their own rows.</p>`;
+  const shownLine = `<p class="sub">${limited.length} of ${sorted.length} shown${bad.size ? ' · <span class="tag fail">Count check failed</span> for ' + esc([...bad].join(", ")) : ""}. Errors include a red test suite. Rows marked “before the split” were written before skills, subagents and MCP servers got their own rows.${limited.some((r) => r.kind === "hook" && r.runsMeasured) ? ` ${esc(RUNS_SCOPE)}` : ""}</p>`;
   return `${controls}${ui.before && data ? `<p class="sub">Before split: today's rows collapsed back to Skill, Agent and mcp, for comparison.</p>${beforeSplit(data)}` : `${shownLine}${table(["Tool", "Source", "Calls", "Failed", "Errors", "Denied", "Failure rate", ""], body, empty)}${more}`}`;
 }
 
 const isClassifier = (cls) => /^denied\/classifier(:|$)/.test(cls);
 function guardsPanel(data, ui) {
   const rows = (data.hooks || []).filter((h) => !isClassifier(h.class)).sort((a, b) => b.failures - a.failures || (a.class < b.class ? -1 : 1));
-  return table(["Guard", "Refused", "Rate", "Denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${td(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct(h.rate))}${td(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window");
+  return table(["Guard", "Refused", "Rate", "Denominator", "Bash-only rate (legacy)", "Legacy denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${td(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct2(h.eligible_rate))}${td(eligibleWords(h))}${td(pct(h.rate))}${td(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window");
+}
+// Option B: refusals over the calls to the tools the guard is wired to check ("eligible call attempts", never "calls checked").
+const pct2 = (v) => (isNum(v) ? `${(v * 100).toFixed(2)}%` : "—");
+function eligibleWords(h) {
+  if (!isNum(h.eligible_calls)) return "eligible tools unknown";
+  return isNum(h.outside_eligible) && h.outside_eligible > 0 ? `÷${h.eligible_calls} eligible call attempts · Count check failed: ${h.outside_eligible} refused on another tool` : `÷${h.eligible_calls} eligible call attempts`;
 }
 function classifierPanel(data) {
   const rows = (data.hooks || []).filter((h) => isClassifier(h.class)).sort((a, b) => b.failures - a.failures);
@@ -335,7 +348,7 @@ function overview(data, st, ui) {
   if (!(data.tools || []).length) return `${kpis(data)}<p class="nodata">No observations match these filters. <a class="btn" href="${esc(toolHealthHref({ filters: {} }))}">Reset filters</a></p>`;
   return `${banner}${kpis(data)}${dailyPanel(data, st)}
 ${box("tools", "Tools", "Which tool, skill, hook or plugin fails most? Each name opens its drill-in.", toolList(data, st.inventory, ui), "First build")}
-<div class="th-cols">${box("guards", "Guards that refuse most", "Which guard blocks the most calls? Every rate is over Bash calls only, the legacy denominator; a refusal can be correct.", guardsPanel(data, ui), "÷ Bash calls only")}${box("classifier", "Classifier denials", "Which calls did the auto-mode classifier deny? A count per category; the reason stays unverified.", classifierPanel(data), "reason unverified")}</div>
+<div class="th-cols">${box("guards", "Guards that refuse most", "Which guard blocks the most calls? The rate is over the calls to the tools each guard is wired to check; the Bash-only rate is the older denominator, kept for comparison. A refusal can be correct.", guardsPanel(data, ui), "÷ eligible call attempts")}${box("classifier", "Classifier denials", "Which calls did the auto-mode classifier deny? A count per category; the reason stays unverified.", classifierPanel(data), "reason unverified")}</div>
 ${box("lanes", "Bash on each lane", "Does Bash fail more on one lane?", lanePanel(data))}
 ${box("unused", "Loaded, never used", "Costs usage in every session; could load on demand. The cost is the estimated tokens per listing, not a measured gain.", candidatesPanel(data) + profilePanel(data))}`;
 }
@@ -343,7 +356,79 @@ ${box("unused", "Loaded, never used", "Costs usage in every session; could load 
 // ---- drill-ins
 const back = (ui) => `<a class="btn quiet" href="${esc(toolHealthHref(ui))}">Back to overview</a>`;
 const stat = (id, label, v) => `<div><dt>${esc(label)}</dt><dd data-stat="${id}">${esc(v)}</dd></div>`;
-const later = (what) => `<p class="nodata">${esc(what)}: needs new data (later build)</p>`;
+
+// ---- hook-chain incidents (the `chain` section of GET /api/tool-health): why a guard refused one exact call, with the recorded timing.
+const REASON_ROWS = [
+  ["rule", "Rule", "the guard looked at the call and said no"],
+  ["timeout", "Timeout", "the guard started but ran past its time budget"],
+  ["deadline", "Never started", "the chain had no time left to run the guard"],
+  ["buffer", "Output too large", "the guard's output overflowed its buffer"],
+  ["other", "Other", "a reason code this page does not name"],
+];
+const OUTCOME_WORDS = { deny: "Refused the call", skip: "Skipped the check" };
+const CHAIN_SCOPE = "Hook-chain logs cover every session on this station. The day window applies; the model, lane, role and profile filters do not apply to this box.";
+const utc = (iso) => { const t = Date.parse(iso); return Number.isFinite(t) ? `${new Date(t).toISOString().slice(0, 19).replace("T", " ")} UTC` : "—"; };
+const chainKnown = (c) => !!c && c.infra_known === true;
+function chainNote(c) {
+  if (!c || c.state === "not-read") return "Hook-chain logs were not read for this response, so the reason is unverified.";
+  if (c.state === "absent") return "No hook-chain log was found on this station, so the reason is unverified.";
+  if (c.state === "error") return "A hook-chain log could not be read, so the reason is unverified.";
+  if (c.state !== "partial") return "";
+  const why = [], a = c.audit || {};
+  for (const [name, label] of [["skip", "skip log"], ["run", "run log"]]) {
+    const s = c.sources && c.sources[name];
+    if (!s || s.state !== "ok") why.push(`the ${label} is unavailable`);
+    else if (s.truncated) why.push(`the ${label} was read from its newest part only`);
+  }
+  if (c.worktrees_unreadable) why.push("a worktree folder could not be listed, so its logs may be missing");
+  if (a.unverified > 0) why.push(`unverified rows left out: ${a.unverified}`);
+  if (a.malformed > 0) why.push(`malformed rows left out: ${a.malformed}`);
+  return `Partial: ${why.join("; ")}. A count may be low, and a — is unverified.`;
+}
+function chainAudit(c) {
+  const a = c && (c.state === "ok" || c.state === "partial") ? c.audit : null;
+  if (!a) return "";
+  return `<p class="sub" data-chain-audit>Rows read ${num(a.total)}: accepted ${num(a.accepted)} · test fixtures excluded ${num(a.excluded_fixture)} · unverified ${num(a.unverified)} · malformed ${num(a.malformed)} · duplicates ${num(a.duplicates)} · outside the window ${num(a.outside_window)} · not tool calls ${num(a.non_tool)}</p>`;
+}
+function timingWords(e) {
+  if (e.not_started) return "not started";
+  if (!isNum(e.elapsed_ms)) return "not recorded";
+  if (!isNum(e.budget_ms)) return `${e.elapsed_ms} ms · budget not recorded`;
+  if (e.budget_ms === 0) return `${e.elapsed_ms} ms · no budget recorded`;
+  return `${e.elapsed_ms} ms of ${e.budget_ms} ms (${pct(e.ratio)})`;
+}
+const reasonWords = (e) => (e.kind === "other" ? `Other: ${e.reason}` : (REASON_ROWS.find(([k]) => k === e.kind) || [])[1] || `Other: ${e.reason}`);
+function callDrawer(e, token) {
+  const sess = UUID.test(e.session || "") ? `<a href="/agui/#${esc(new URLSearchParams({ t: token, run: e.session }).toString())}">${esc(e.session)}</a>` : e.session ? `<code>${esc(e.session)}</code>` : "—";
+  const row = (label, v) => `<div><dt>${esc(label)}</dt><dd>${v}</dd></div>`;
+  return `<details><summary><code>${esc(e.call_id)}</code></summary><dl class="stats">${row("Time", esc(utc(e.ts)))}${row("Outcome", esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${row("Reason code", `<code>${esc(e.reason)}</code>`)}${row("Guard", esc(e.member))}${row("Tool", esc(e.tool || "—"))}${row("Session", sess)}${row("Call id", `<code>${esc(e.call_id)}</code>`)}${row("Chain run", `<code>${esc(e.invocation)}</code>`)}${row("Time used", esc(timingWords(e)))}${row("Refusal line", e.deny_line ? esc(e.deny_line) : "—")}${row("Recovery", "not recorded")}</dl></details>`;
+}
+const chainEvents = (events, token, empty) => table(["When (UTC)", "Outcome", "Reason", "Guard", "Tool", "Time used", "Refusal line", "Call"],
+  events.map((e) => `<tr data-chain-event="${esc(e.call_id)}">${td(esc(utc(e.ts)))}${td(esc(OUTCOME_WORDS[e.outcome] || e.outcome))}${td(esc(reasonWords(e)))}${td(esc(e.member))}${td(esc(e.tool || "—"))}${td(esc(timingWords(e)))}${td(e.deny_line ? esc(e.deny_line) : "—")}${td(callDrawer(e, token))}</tr>`), empty);
+const noteP = (text) => (text ? `<p class="sub">${esc(text)}</p>` : "");
+function guardWhy(data, h, token) {
+  if (isClassifier(h.class)) return "";
+  const c = data.chain, suffix = h.class.replace(/^denied\//, ""), known = chainKnown(c);
+  const name = Object.keys(c && c.members || {}).find((k) => k.replace(/\.(sh|js|mjs|py)$/, "") === suffix), m = name ? c.members[name] : null;
+  const count = (k) => (m ? m.by_reason[k] : known && c.by_reason[k] !== null ? 0 : null);
+  const rows = REASON_ROWS.map(([k, label, means]) => `<tr data-chain-reason="${k}">${td(esc(label))}${td(num(count(k)))}${td(esc(means))}</tr>`);
+  const shown = m ? m.events : [], total = m ? m.denials + m.skips : 0;
+  const more = m && shown.length < total ? `Showing the newest ${shown.length} of ${total}.` : "";
+  const outside = known && !m ? "No hook-chain row names this guard; it may run outside the chain." : "";
+  const body = `${noteP(chainNote(c))}${table(["Reason", "Refusals and skipped checks", "What it means"], rows)}${chainAudit(c)}${noteP(CHAIN_SCOPE)}${noteP(outside)}${known ? `${chainEvents(shown, token, "No refusal or skipped check recorded for this guard in the chain logs")}${noteP(more)}` : ""}`;
+  return box("guard-why", "Why it refused", "Was it the rule, a timeout, or a guard that never started? One row per exact call, from the hook-chain logs.", body);
+}
+function toolChain(data, key, token) {
+  const c = data && data.chain, tool = /^(Skill|Agent):/.test(key) ? null : key, known = chainKnown(c) && tool !== null;
+  const mine = known ? (c.events || []).filter((e) => e.tool === tool) : [];
+  const capped = known && isNum(c.events_total) && c.events_total > (c.events || []).length;
+  const timeouts = known ? `${capped ? "at least " : ""}${mine.filter((e) => e.kind === "timeout").length}` : "—";
+  const shown = mine.slice(0, 20);
+  const notes = `${noteP(tool === null ? "The chain logs name the tool, not the skill or subagent, so its timeouts are unverified." : chainNote(c))}${chainAudit(c)}${noteP(CHAIN_SCOPE)}`;
+  const none = capped ? `None of the newest ${c.events.length} events name this tool; ${c.events_total - c.events.length} older events are not shown` : "No guard refused or skipped a call to this tool in the chain logs";
+  const events = known ? `${chainEvents(shown, token, none)}${noteP(shown.length < mine.length ? `Showing the newest ${shown.length} of ${capped ? "at least " : ""}${mine.length}.` : "")}` : "";
+  return box("chain", "Timeouts and recent events", "How often did a guard time out on this tool, and what happened last? Guards that refused or skipped a call to it, from the hook-chain logs.", `<dl class="stats">${stat("timeouts", "Timeouts", timeouts)}</dl>${notes}${events}`);
+}
 function evidence(sessions, ids, token) {
   const seen = [...new Set(sessions || [])], ok = seen.filter((s) => UUID.test(s)), bad = seen.filter((s) => !UUID.test(s));
   const links = ok.map((s) => `<a href="/agui/#${esc(new URLSearchParams({ t: token, run: s }).toString())}">${esc(s)}</a>`);
@@ -372,7 +457,7 @@ function toolDrill(data, inv, ui, token) {
   const r = catalogue(data, inv).find((x) => x.key === ui.tool);
   if (!r) return `<section class="box">${back(ui)}<h2>No matching tool</h2>${sub(`“${ui.tool}” is not in this window's response or the station scan.`)}</section>`;
   const head = `${back(ui)}<h2>Tool drill-in: ${esc(displayName(r))} <span class="tag">${esc(KIND_LABEL[r.kind])}</span> <span class="tag">${esc(SRC_LABEL[r.src])}${r.source && r.src !== "core" ? ` · ${esc(r.source)}` : ""}</span></h2>`;
-  if (!r.t) return `<section class="box">${head}${sub("What happened to this tool in the window?")}<p class="nodata">No recorded calls in this window. The station scan lists it; calls ${isNum(data && data.totalCalls) ? "0" : "—"}.</p>${later("Timeouts")}${later("Recent events")}</section>`;
+  if (!r.t) return `<section class="box">${head}${sub("What happened to this tool in the window?")}<p class="nodata">No recorded calls in this window. The station scan lists it; calls ${isNum(data && data.totalCalls) ? "0" : "—"}.</p></section>${toolChain(data, r.key, token)}`;
   const t = r.t, bad = badCounts(data).has(t.tool);
   const stats = `<dl class="stats">${stat("calls", "Calls", num(t.calls))}${stat("failed", "Failed", num(t.failures))}${stat("errors", "Errors", num(t.errors))}${stat("denied", "Denied", num(t.denials))}${stat("rate", "Failure rate", bad ? "Count check failed" : pct(t.rate))}${stat("error-rate", "Error rate", bad ? "—" : pct(t.error_rate))}${stat("recovery", "Recovery", `${pct(t.recovery_rate)} (${num(t.recovered)} of ${num(t.known)} known)`)}</dl>`;
   const classes = table(["Class", "Count", "Share of this tool's calls"], (t.classes || []).map((c) => `<tr data-class="${esc(c.class)}">${td(esc(c.class))}${td(num(c.count))}${td(pct(ratio(c.count, t.calls)))}</tr>`), "No failure class recorded");
@@ -381,7 +466,7 @@ ${t.tool === "Bash" ? bashSections(data) : ""}
 ${box("classes", "Failure classes", "Which kinds of failure, each over this tool's own calls.", classes)}
 ${box("trend", `${(t.trend || []).length}-day trend`, "Failure rate per UTC day; a gap is a day with no calls recorded.", trendTable(t.trend, "data-trend-day"))}
 ${box("evidence", "Evidence", "Sessions that recorded this tool, opened in AG-UI.", evidence(t.sessions, t.tool_call_ids, token))}
-${box("later", "Timeouts and recent events", "How often did it time out, and what happened last?", later("Timeouts") + later("Recent events"), "Later")}`;
+${toolChain(data, t.tool, token)}`;
 }
 function guardDrill(data, ui, token) {
   const h = data && (data.hooks || []).find((x) => x.class === ui.guard);
@@ -390,9 +475,17 @@ function guardDrill(data, ui, token) {
   for (const d of data.daily_hooks || []) if (d.class === h.class) by.set(d.day, (by.get(d.day) || 0) + (isNum(d.failures) ? d.failures : 0));
   const days = windowDays(data).map((day) => ({ day, n: by.has(day) ? by.get(day) : cohort.has(day) ? 0 : null }));
   const max = Math.max(0, ...days.map((d) => d.n || 0));
-  const stats = `<dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
-  return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls? Counts only; why it refused needs new data (later).")}${stats}</section>
-${box("guard-days", "Refusals per day", "Refusals per UTC day; a gap is a day with no calls recorded.", `${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}`, "÷ Bash calls only")}
+  const stats = `<dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
+  const eligible = h.eligible_by_tool && typeof h.eligible_by_tool === "object" ? h.eligible_by_tool : null, byTool = h.by_tool && typeof h.by_tool === "object" ? h.by_tool : {};
+  const wiredName = (tool) => (/^(?:Skill|Agent):/.test(tool) ? tool.slice(0, tool.indexOf(":")) : tool);
+  const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, wiredName(tool)) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
+  const toolRows = [...new Set([...Object.keys(byTool), ...(eligible ? Object.keys(eligible) : [])])].sort((a, b) => (byTool[b] || 0) - (byTool[a] || 0) || (a < b ? -1 : 1))
+    .map((tool) => `<tr data-guard-tool="${esc(tool)}">${td(esc(tool))}${td(num(byTool[tool] || 0))}${td(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
+  const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
+  return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls, and which tool did it refuse, and why?")}${stats}</section>
+${guardWhy(data, h, token)}
+${split}
+${box("guard-days", "Refusals per day", "Refusals per UTC day; a gap is a day with no calls recorded.", `${chart(days.map((d) => ({ day: d.day, n: d.n })), (d) => d.n, max, String, "bar")}${table(["Day (UTC)", "Refused"], days.map((d) => `<tr data-guard-day="${d.day}">${td(esc(dayLabel(d.day)))}${td(num(d.n))}</tr>`))}`)}
 ${box("evidence", "Evidence", "Sessions where it refused, opened in AG-UI.", evidence(h.sessions, h.tool_call_ids, token))}`;
 }
 
@@ -445,19 +538,19 @@ function mapTab(data, inv, ui) {
     const rate = ratio(failed, calls);
     const tint = outside ? "" : !isNum(calls) || calls === 0 ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
     const runs = k === "hook" ? items.reduce((n, r) => (n === null || !isNum(r.runs) ? null : n + r.runs), 0) : null;
-    const line = k === "hook" ? `${num(runs)} runs derived · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
+    const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
     return `<button class="mc${tint}${ui.src === s && ui.kind === k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${ui.src === s && ui.kind === k}"><b>${items.length} ${esc(KIND_LABEL[k])}</b><span>${esc(line)}</span></button>`;
   };
   const grid = `<div class="thmap" data-cols="${kinds.length}"><span class="mh"></span>${kinds.map((k) => `<span class="mh">${esc(KIND_LABEL[k])}</span>`).join("")}${srcs.map((s) => `<span class="mr">${esc(SRC_LABEL[s])}</span>${kinds.map((k) => cell(s, k)).join("")}`).join("")}</div>`;
   const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
   const picked = ui.src || ui.kind ? box("map-list", `Tools: ${[ui.src && SRC_LABEL[ui.src], ui.kind && KIND_LABEL[ui.kind]].filter(Boolean).join(" · ")}`, "The tiles you picked; each name opens its drill-in.", toolList(data, inv, ui, { withOutside: true })) : "";
-  return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are derived from matchers × matching calls, not measured.", `${wait}<p class="sub"><span class="tag">hook runs derived</span></p>${legend}${grid}`, "First build")}${picked}`;
+  return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are measured where the hook chain logged them; any other hook's runs are derived from matchers × matching calls.", `${wait}<p class="sub"><span class="tag">hook runs: measured or derived, as each tile says</span></p>${legend}${grid}`, "First build")}${picked}`;
 }
 function hooksTab(data, inv, ui) {
   const wait = invState(inv);
   if (wait) return box("hooks", "Hook wiring", "Which hook is wired where, and which runs twice?", wait);
-  const rows = hookRows(data, inv).map((r) => [[r.hook.name, `<a data-tool="${esc(r.key)}" href="${esc(r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "map" }))}">${esc(r.hook.name)}</a>`], st_(r.source), [String(r.hook.wired.map((w) => w.join(":"))), esc((r.hook.wired || []).map(([e, m]) => `${e} · ${m}`).join(", ") || "—")], sv((r.hook.wired || []).length), [r.hook.runs_twice ? 1 : 0, r.hook.runs_twice ? '<span class="tag warn">×2 runs twice</span>' : "no"], sv(r.runs), sv(r.refused)]);
-  return box("hooks", "Hook wiring", "Which hook is wired where, and which runs twice? Runs are derived from matchers × matching calls (later: measured).", sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs derived", "Refused"], rows, ui), "First build");
+  const rows = hookRows(data, inv).map((r) => [[r.hook.name, `<a data-tool="${esc(r.key)}" href="${esc(r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "map" }))}">${esc(r.hook.name)}</a>`], st_(r.source), [String(r.hook.wired.map((w) => w.join(":"))), esc((r.hook.wired || []).map(([e, m]) => `${e} · ${m}`).join(", ") || "—")], sv((r.hook.wired || []).length), [r.hook.runs_twice ? 1 : 0, r.hook.runs_twice ? '<span class="tag warn">×2 runs twice</span>' : "no"], [isNum(r.runs) ? r.runs : -1, `${num(r.runs)} <span class="dim">${r.runsMeasured ? "measured" : "derived"}</span>`], sv(r.refused)]);
+  return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui), "First build");
 }
 
 // ---- reviewers (moved from Health): the weekly review page as written, never re-graded here.

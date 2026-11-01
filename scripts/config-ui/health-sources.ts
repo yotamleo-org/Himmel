@@ -7,11 +7,14 @@ import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readToolHealth as readToolHealthRollup } from "../eval/worker-digest/tool-health.mjs";
+import { readChainLogs } from "../eval/worker-digest/chain-incidents.mjs";
 import { rtkHistory } from "./rtk-history";
 // The page prices each profile's Skill listing from the installed plugins (an unbilled scan, never a claude run).
 // The Bash drill-in joins rtk's history.db by call id (read-only); a test passes its own join.
-export const readToolHealth = (env: Env = process.env, query?: URLSearchParams, now?: number, { rtk }: { rtk?: unknown } = {}) =>
-  readToolHealthRollup(env, query, now, { estimateListing: true, rtk: rtk ?? rtkHistory(env) });
+// eligible: the tools each guard is wired to check ({hook name: [matchers]}, from the station scan); absent = no option-B rate.
+// repoRoot: the checkout whose hook-chain logs (its own and each worktree's) back the incident view; absent = only an override file is read.
+export const readToolHealth = (env: Env = process.env, query?: URLSearchParams, now?: number, { rtk, eligible, repoRoot }: { rtk?: unknown; eligible?: Record<string, string[]> | null; repoRoot?: string | null } = {}) =>
+  readToolHealthRollup(env, query, now, { estimateListing: true, rtk: rtk ?? rtkHistory(env), eligible, chain: readChainLogs(env, repoRoot ?? null) });
 // The one owner of tracker/forge; read here, never re-derived.
 // @ts-ignore plain ES module, no types
 import { projectModeTracker, projectModeForge, projectModeIdRequired } from "../lib/project-mode.mjs";
