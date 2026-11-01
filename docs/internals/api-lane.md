@@ -24,7 +24,10 @@ accounts can run dry; the API lane is an explicit opt-in there.
 
 A failed call still fails first, exactly as before: the refusal line
 (`claude-api: refused: …`, exit 2), a rejected account (exit 6, the account is
-marked), or the call's own non-zero exit. Then the launcher:
+marked), or the call's own non-zero exit. A call that ended on TERM, INT or HUP
+(exit 143, 130 or 129) was stopped by its caller, for example `bulk-call.sh
+--cancel`: it exits with that code and sends no alert and runs no fallback. Then
+the launcher:
 
 1. **Decides whether to fall back** (first match wins):
 

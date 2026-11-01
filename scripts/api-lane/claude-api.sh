@@ -520,7 +520,11 @@ SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 
 # --- a failed call: alert, then the subscription fallback (never returns when it ran) ---
 # the reason is a class and a subtype only: the call's own result text may quote the prompt
-if [ "$EXIT_RC" -ne 0 ]; then
+# A call that ended on TERM, INT or HUP was stopped by its caller (a --cancel TERMs the call and this launcher together,
+# and the call can end first, before this shell's own TERM lands): that is a stop, not a failure to alert on or replay.
+if [ "$EXIT_RC" -ne 0 ] && [ -z "$REJECTED" ] && [[ "$RC" =~ ^(129|130|143)$ ]]; then
+  echo "claude-api: the call was stopped by a signal (exit $RC); no alert, no fallback" >&2
+elif [ "$EXIT_RC" -ne 0 ]; then
   if [ -n "$REJECTED" ]; then
     fail_over "$EXIT_RC" rejected "account $HIMMEL_API_ACCOUNT $WHAT"
   else

@@ -40,6 +40,7 @@ if [ -n "$FB" ]; then printf '%s' "\${STUB_FB_OUT:-$STUB_OUT}"; exit "\${STUB_FB
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 [ -z "\${STUB_DIE:-}" ] || kill -9 $$
+[ -z "\${STUB_TERM:-}" ] || kill -TERM $$
 exit "\${STUB_RC:-0}"
 `;
 
@@ -86,7 +87,7 @@ function fixture() {
     HIMMEL_API_FALLBACK: 'off', HIMMEL_API_ALERT_CMD: paths.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const good = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
-  const run = (args = good, extra = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
+  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8', ...opts });
   const status = (account = 'A') => {
     const r = spawnSync(process.execPath, [STATE, 'status'], { env: { ...env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
     return JSON.parse(r.stdout);
@@ -170,7 +171,8 @@ function keyNowhere(f, r) {
 test('a refused call (lane off) sends one alert and re-runs the prompt once on the subscription, native auth, no key', () => {
   const f = fixture();
   const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy',
-    ANTHROPIC_BASE_URL: 'https://evil.example', ANTHROPIC_ORG_A_KEY: DUMMY, LQ_API_KEY: DUMMY, CLAUDECODE: '1' });
+    ANTHROPIC_BASE_URL: 'https://evil.example', ANTHROPIC_ORG_A_KEY: DUMMY, LQ_API_KEY: DUMMY, CLAUDECODE: '1' },
+  { argv0: SESSION_ARGV0 }); // a marker needs a `claude` ancestor, or the subscription preflight's seam guard refuses on CI's primary checkout
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stderr, /api lane is OFF/);
   assert.equal(r.stdout, FB_OK);
@@ -258,6 +260,16 @@ test('a call granted Edit, Write or Bash re-runs only after a refusal before any
   const k = fixture();
   assert.equal(k.run(k.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK }).status, 0);
   assert.equal(fbCalls(k), 1, 'a read-only grant keeps the fallback on a failed run');
+});
+
+test('a call ended by TERM was stopped by its caller: no alert, no subscription replay, even read-only', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_TERM: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(r.status, 143, r.stderr);
+  assert.match(r.stderr, /stopped by a signal/);
+  assert.equal(fbCalls(f), 0, 'a stopped call was replayed on the subscription');
+  assert.deepEqual(alerts(f), [], 'a stop raised an alert');
+  assert.equal(f.status().reserved_usd, '0.000000', 'the reservation is still held');
 });
 
 test('a subscription preflight refusal runs no fallback, the alert names it and the original code stands', () => {
