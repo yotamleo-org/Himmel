@@ -370,7 +370,10 @@ if [[ $DOC == *-RESUME.md && ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
 fi
 # the resumed worker's window is named <stem>-RESUME (the original doc's stem plus
 # -RESUME), or carries the sibling doc's own names (its b-suffixed label included).
-[[ $DOC == *-RESUME.md ]] || names="$names${doc_stem}-RESUME,"
+if [[ $DOC != *-RESUME.md ]]; then
+    ident_names="${ident#*$'\t'}"
+    for ident_name in ${ident_names//,/ }; do names="$names${ident_name}-RESUME,"; done
+fi
 if [ -n "$SIB_DOC" ]; then
     sib_ident=$(worker_identity "$SIB_DOC")
     names="$names${sib_ident#*$'\t'},$(basename "$SIB_DOC" .md),"

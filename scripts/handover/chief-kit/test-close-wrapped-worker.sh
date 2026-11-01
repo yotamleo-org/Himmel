@@ -1575,6 +1575,23 @@ reset_calls
 rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
 check "8424: an unrelated -RESUME session: CLOSED-ALREADY rc 0" "$rc" "0"
 check "8424: an unrelated -RESUME session is never signaled" "$(cat "$CALLS")" ""
+# the undated name and the legacy-family derived name gain -RESUME too
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 333 claude -n HIMMEL-9-N8-demo-RESUME work
+pgrep_x_stub 333
+reset_calls
+rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
+check "8424: undated <name>-RESUME session on the original doc -> rc 0" "$rc" "0"
+exact_count "8424: undated -RESUME session TERMed" "$(cat "$CALLS")" "kill -TERM 333" "1"
+LORIG8="$W/HIMMEL-9-demo-legN8-2026-01-01.md"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$LORIG8"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 334 claude -n HIMMEL-9-N8-demo-RESUME work
+pgrep_x_stub 334
+reset_calls
+rc=0; out=$(run "$LORIG8" 2>&1) || rc=$?
+check "8424: legacy-family derived <name>-RESUME session on the original doc -> rc 0" "$rc" "0"
+exact_count "8424: legacy-family -RESUME session TERMed" "$(cat "$CALLS")" "kill -TERM 334" "1"
 
 # --- cause 2: a judge session's doc stem is not an N<k> worker stem ---------------
 rm -rf "$W/proc"; mkdir -p "$W/proc"
