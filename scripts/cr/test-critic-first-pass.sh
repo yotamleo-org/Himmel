@@ -935,18 +935,22 @@ check "I10 golden: over-cap diff prompt is byte-identical to base" "$(golden_big
 check "I10 golden: an empty --context-file is no context (small)" "$(golden_small --context-file '')" "02676c1a147ade3457354588c56a57fc21b5cf19a404efb332ca7831d7b8139f"
 
 ctx="$tmp/ctx.txt"
-printf '%s\n' '{"range": ["lib/util.sh", 40, 50]}' '' 'function helper() {' '  return 1' '}' > "$ctx"
+printf '%s\n' '{"range": ["lib/util.sh", 40, 50]}' '{"range": ["foo.sh", 1, 5]}' '' 'function helper() {' '  return 1' '}' > "$ctx"
 cat > "$tmp/stub.py" <<'PY'
 print("## Critical Issues (1 found)")
 print("- [CRITIC-1]: caller ignores the helper's failure [lib/util.sh:42]")
 print("## Important Issues (0 found)")
-print("## Suggestions (1 found)")
-print("- [CRITIC-2]: outside every range [lib/util.sh:51]")
+print("## Suggestions (2 found)")
+print("- [CRITIC-2]: loop bound in the diff [context] [foo.sh:3]")
+print("- [CRITIC-3]: outside every range [lib/util.sh:51]")
 PY
 ctx_out="$(printf '%s' "$DIFF" | HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s --context-file "$ctx" 2>"$tmp/ctx.err")"
 check "context citation inside a listed range is kept and tagged [context]" "$(grep -cF -e '- [s-1]: caller ignores the helper'"'"'s failure [context] [lib/util.sh:42]' <<< "$ctx_out")" "1"
 check "context citation outside every range is still dropped" "$(grep -c '^## Dropped Citations (1 dropped)' <<< "$ctx_out")" "1"
-check "a diff citation is never tagged [context]" "$(printf '%s' "$DIFF" | HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s --context-file "$ctx" 2>/dev/null | grep -c 'foo.sh.*\[context\]')" "0"
+# foo.sh:3 is in the diff AND in a context range: the diff wins, and the
+# [context] tag the model wrote itself is stripped.
+check "a diff citation inside a context range is kept untagged" "$(grep -cF -e 'loop bound in the diff [foo.sh:3]' <<< "$ctx_out")" "1"
+check "a diff citation is never tagged [context]" "$(grep -cF -e '[context] [foo.sh:3]' <<< "$ctx_out")" "0"
 ctx_pp="$(printf '%s' "$DIFF" | bash "$CFP" --model gpt-5.5 --print-prompt --context-file "$ctx" 2>/dev/null)"
 check "context file rides in a <context> block" "$(grep -c '^<context>$' <<< "$ctx_pp")" "1"
 check "context block carries the file text" "$(grep -c '^function helper() {$' <<< "$ctx_pp")" "1"
