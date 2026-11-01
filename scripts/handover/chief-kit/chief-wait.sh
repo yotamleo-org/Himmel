@@ -287,6 +287,11 @@
 # Worker messages (SendMessage) wake a chief on their own; only the Telegram
 # and tick paths depend on this waiter.
 #
+# A pool-unresolved or unowned-prs wake joins the housekeeping digest unless its value
+# changed since the last one: for pool-unresolved the capacity, the dispatchable keys or the
+# unresolved lines (marker <inbox>.wait.poolhk, cleared when the pool resolves); for unowned-prs
+# a PR new to the marker. First sight and any change wake at once.
+#
 # ponytail: upgrade path HIMMEL-3510. An external SIGKILL of the waiter re-invokes the session (task
 # notification, measured); the harness-internal "low memory" kill
 # of a background task is unreproduced, so a waiter lost that way
@@ -812,6 +817,8 @@ pool_probe() { # [timeout secs] sets pool_lf (the dispatch flags), pool_out (the
     pool_summary="$(printf '%s\n' "$pool_out" | DOC='' bash "$HERE/tick.sh" --pool-dispositions --doc "$console_doc" 2>/dev/null)" || pool_summary=""  # swallow-ok: an unavailable interpreter keeps the legacy underfill wake, never an all-clear
     pool_counts="$(printf '%s\n' "$pool_summary" | sed -n 's/^# pool-counts //p')"
     pool_unresolved="$(printf '%s\n' "$pool_summary" | sed -n '/^# pool-unresolved /p')"
+    # a probe that read the pool and found nothing unresolved ends the streak: a set that returns is a change
+    [ -z "$pool_out" ] || [ -n "$pool_unresolved" ] || rm -f "$pool_sig_file"
 }
 pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '# dispatchable in <version>' heading (the version of its '# dropped from' line), then the rest; a listed row's '# disposition' line is dropped, the row already says it
     awk -F'\t' '
@@ -835,7 +842,27 @@ pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '#
             for (i = first; i <= NR; i++) if (kind[i] == "rest") print line[i]
         }'
 }
-underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
+# underfill_wake: prints the WAKE block for the pool pool_probe just read and succeeds. A
+# pool-unresolved block whose unresolved lines match the last one woken (or digested) is
+# housekeeping: it joins the digest as one line and the call fails; the first sight and any
+# change wake at once. HOUSEKEEPING_DIGEST_SECS=0 keeps every block.
+pool_sig_file="$inbox.wait.poolhk"
+underfill_wake() {
+    local blk sum line
+    blk="$(underfill_block)" || return 1
+    if [ -n "$pool_unresolved" ] && [ "$housekeeping_secs" -gt 0 ]; then
+        sum="$(printf '%s|%s|%s\n' "$cap_val" "$pool_sig" "$pool_unresolved" | cksum)"  # capacity and the dispatchable keys count as a change too: an underfilled fleet with new work wakes at once
+        if [ "$sum" = "$(cat "$pool_sig_file" 2>/dev/null)" ]; then  # swallow-ok: no marker reads empty, so the first sight wakes
+            line="capacity=$cap_val${pool_counts:+ pool=$pool_counts} $(printf '%s' "$pool_unresolved" | tr '\n' ';')"
+            grep -qxF -- "pool-unresolved $line" "$housekeeping_file" 2>/dev/null && return 1  # swallow-ok: no buffer yet reads as not queued; the same line queues once per window
+            housekeeping_add pool-unresolved "$line" || return 1
+            return 0
+        fi
+        printf '%s\n' "$sum" > "$pool_sig_file" 2>/dev/null
+    fi
+    printf '%s\n' "$blk"
+}
+underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
     local back="" extra="" count="" intake_ver="" wake=underfilled
     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
     else
@@ -872,8 +899,7 @@ pool_watch_wake() {
     if [ ! -e "$pool_watch" ] || [ "$(( $(date +%s) - $(stat -c %Y "$pool_watch" 2>/dev/null || echo 0) ))" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ]; then  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable marker is due
         pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
         touch "$pool_watch" 2>/dev/null
-        if [ -n "$pool_unresolved" ]; then
-            underfill_wake
+        if [ -n "$pool_unresolved" ] && underfill_wake; then
             return 0
         fi
     fi
@@ -908,7 +934,17 @@ underfill_repool() {
 # new to the marker, holds a PR the marker lacks, or the marker is older than the re-wake
 # window.
 unowned_wake() {
-    set_wake "$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
+    local nums num
+    nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
+    # unowned_rewake: the wake is the re-wake window alone, the same set the marker already holds
+    unowned_rewake=1
+    if [ ! -e "$unowned_file" ]; then unowned_rewake=""
+    else
+        for num in $nums; do
+            grep -qxF -- "$num" "$unowned_file" 2>/dev/null || { unowned_rewake=""; break; }
+        done
+    fi
+    set_wake "$nums" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
 }
 # set_wake: <newline-separated items> <marker file> <re-wake minutes> — the shared marker
 # logic: succeeds (and refreshes the marker) when the marker is missing, holds none of
@@ -1628,8 +1664,15 @@ while :; do
                 *)
                     unowned_none_streak=0
                     if unowned_wake "$unowned_val"; then
-                        printf 'WAKE unowned-prs %s\n%s\n' "$unowned_val" "$tick_line"
-                        exit_reason='wake-unowned-prs'; exit 0
+                        # a re-wake of a set the marker already holds is housekeeping; a first sight or a joining PR wakes at once
+                        if [ -n "$unowned_rewake" ] && [ "$housekeeping_secs" -gt 0 ]; then
+                            if housekeeping_add unowned-prs "$unowned_val" "$tick_line"; then
+                                exit_reason='wake-unowned-prs'; exit 0
+                            fi
+                        else
+                            printf 'WAKE unowned-prs %s\n%s\n' "$unowned_val" "$tick_line"
+                            exit_reason='wake-unowned-prs'; exit 0
+                        fi
                     fi ;;
             esac
             unwatched_val="$(printf '%s\n' "$tick_line" | sed -n 's/.* procs=[^ ]*unwatched=\([^ ,]*\).*/\1/p')"
