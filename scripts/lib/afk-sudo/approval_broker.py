@@ -34,6 +34,8 @@ BUSY_ROW_S = 600
 KEEP_DONE = 20
 MAX_SLOTS = 3
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
+# How an approval reached root: the Telegram route (the default) or `himmelctl approve|deny` from an SSH shell.
+VIAS = ("telegram", "ssh")
 # Crockford base32: no I, L, O or U, so a nonce read off a phone screen has one spelling.
 NONCE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 NONCE_LEN = 4
@@ -244,24 +246,33 @@ class Broker:
         want = p.get("nonce") or ""
         return bool(want) and hmac.compare_digest(want.encode(), norm_nonce(nonce).encode())
 
-    def _sender_ok(self, rid, sender, chat, meta):
-        if int(sender) != self.operator_id or int(chat) != self.operator_id:
-            self._refuse("code-check", "not-operator", meta, id=rid, sender=int(sender), chat=int(chat))
+    @staticmethod
+    def _who(via, approver, sender):
+        """The ledger's who-and-how for an approve or deny: `via` (telegram|ssh) and `approver` (the sender id
+        unless the caller names one). An unknown `via` is refused before any state is read or any row written."""
+        if via not in VIAS:
+            raise Refused("bad-via")
+        return {"via": via, "approver": str(approver) if approver else str(int(sender))}
 
-    def approve(self, rid, code, sender, chat, executor, nonce=""):
+    def _sender_ok(self, rid, sender, chat, meta, who):
+        if int(sender) != self.operator_id or int(chat) != self.operator_id:
+            self._refuse("code-check", "not-operator", meta, id=rid, sender=int(sender), chat=int(chat), **who)
+
+    def approve(self, rid, code, sender, chat, executor, nonce="", via="telegram", approver=None):
         """Check the nonce and the code; on success run executor(payload) once. Returns (pending, result).
         A wrong nonce counts as a wrong code (towards the lockout) and ends the request; a valid code
         sent with it is spent, since it was typed where a look-alike may have read it. A replayed code
         (one already spent, e.g. on another slot) is refused and the request stays pending. An unknown
-        id ends no request."""
+        id ends no request. `via` and `approver` go on every row this writes."""
+        who = self._who(via, approver, sender)
         fd = self._locked()
         try:
             s, t = self._load(), self.now()
             p = self._slot(s, rid)
             meta = p["meta"] if p else {}
-            self._sender_ok(rid, sender, chat, meta)
+            self._sender_ok(rid, sender, chat, meta, who)
             if t < s["locked_until"]:
-                self._refuse("code-check", "locked", meta, id=rid)
+                self._refuse("code-check", "locked", meta, id=rid, **who)
             seed = open(self.seed_path).read().strip()
             step = int(t // STEP_S)
             hit = None
@@ -277,13 +288,13 @@ class Broker:
                 if spend:
                     self._bump(s, hit)
                 self._save(s)
-                self._refuse("code-check", "expired", meta, id=rid)
+                self._refuse("code-check", "expired", meta, id=rid, **who)
             self._expire(s, t)
             if not p:
                 if spend:
                     self._bump(s, hit)
                 self._save(s)
-                self._refuse("code-check", "no-pending", meta, id=rid)
+                self._refuse("code-check", "no-pending", meta, id=rid, **who)
             result = None
             if not self._nonce_ok(p, nonce):
                 result = "bad-nonce"
@@ -291,7 +302,7 @@ class Broker:
                 result = "no-code" if not code else "replay" if hit is not None else "wrong-code"
             if result == "replay":
                 self._save(s)
-                self._refuse("code-check", result, p["meta"], id=rid)
+                self._refuse("code-check", result, p["meta"], id=rid, **who)
             if result:
                 s["wrong"] += 1
                 if s["wrong"] >= MAX_WRONG:
@@ -302,13 +313,13 @@ class Broker:
                 if spend:
                     self._bump(s, hit)
                 self._save(s)
-                self._refuse("code-check", result, p["meta"], id=rid)
+                self._refuse("code-check", result, p["meta"], id=rid, **who)
             s["wrong"] = 0
             self._drop(s, rid)
             self._bump(s, max(hit, t // STEP_S))
             self._finish(s, rid, "running")
             self._save(s)
-            self._row("code-check", "approved", p["meta"], id=rid, sender=int(sender))
+            self._row("code-check", "approved", p["meta"], id=rid, sender=int(sender), **who)
         finally:
             os.close(fd)
         res = executor(p["payload"])
@@ -324,39 +335,42 @@ class Broker:
             if res["result"] == "ran":
                 self._finish(s, rid, f"ran:{res['exit']}")
                 self._save(s)
-                self._row("run", "ran", p["meta"], id=rid, exit=res["exit"], **extra)
+                self._row("run", "ran", p["meta"], id=rid, exit=res["exit"], **who, **extra)
             elif res["result"] == "granted":
                 self._finish(s, rid, "granted")
                 self._save(s)
-                self._row("grant", "granted", p["meta"], id=rid, **extra)
+                self._row("grant", "granted", p["meta"], id=rid, **who, **extra)
             else:
                 self._finish(s, rid, "refused:" + res["result"])
                 self._save(s)
-                self._row("run", res["result"], p["meta"], id=rid, **extra)
+                self._row("run", res["result"], p["meta"], id=rid, **who, **extra)
         finally:
             os.close(fd)
         return p, res
 
-    def deny(self, rid, sender, chat):
+    def deny(self, rid, sender, chat, via="telegram", approver=None):
+        who = self._who(via, approver, sender)
         fd = self._locked()
         try:
             s = self._load()
             p = self._slot(s, rid)
             meta = p["meta"] if p else {}
-            self._sender_ok(rid, sender, chat, meta)
+            self._sender_ok(rid, sender, chat, meta, who)
             if not p:
-                self._refuse("deny", "no-pending", meta, id=rid)
+                self._refuse("deny", "no-pending", meta, id=rid, **who)
             self._finish(s, rid, "denied")
             self._drop(s, rid)
             self._spend(s, self.now())
             self._save(s)
-            self._row("deny", "denied", meta, id=rid, sender=int(sender))
+            self._row("deny", "denied", meta, id=rid, sender=int(sender), **who)
         finally:
             os.close(fd)
 
     def deny_all(self, sender):
         """Deny every pending request under one lock (the lockdown); returns their ids in slot order.
-        The caller has already checked the sender."""
+        The caller has already checked the sender. The lockdown comes through the Telegram route only,
+        so its deny rows say via telegram."""
+        who = self._who("telegram", None, sender)
         fd = self._locked()
         try:
             s = self._load()
@@ -368,7 +382,7 @@ class Broker:
                 self._spend(s, self.now())
                 self._save(s)
                 for p in slots:
-                    self._row("deny", "denied", p["meta"], id=p["id"], sender=int(sender))
+                    self._row("deny", "denied", p["meta"], id=p["id"], sender=int(sender), **who)
             return [p["id"] for p in slots]
         finally:
             os.close(fd)

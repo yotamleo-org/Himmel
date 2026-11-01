@@ -541,6 +541,7 @@ scripts/hermes/test-parity-measure.sh	15
 scripts/hermes/test-soul-markers.sh	0
 scripts/hermes/test-tier-coupling.sh	0
 scripts/himmelctl/test/test-adopter-profile-lane-allowlist-cache-fallback.sh	0
+scripts/himmelctl/test/test-afk-approve.sh	1
 scripts/himmelctl/test/test-bridge-persistence.sh	0
 scripts/himmelctl/test/test-config-feed-worktree-parity.sh	1
 scripts/himmelctl/test/test-config-feed.sh	5

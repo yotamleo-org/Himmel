@@ -275,6 +275,14 @@ sent writes a `notice` row (`notice-failed`). A wrong nonce writes a `code-check
 nonce, the seed, any output or a stdin body. A `busy` refusal writes one row per session per 10
 minutes.
 
+Every row an approve or a deny writes also carries `via` (`telegram` or `ssh`) and `approver` (see
+[Approving over SSH](#approving-over-ssh)): the `code-check` rows (`approved` and each refusal:
+`not-operator`, `locked`, `expired`, `no-pending`, `bad-nonce`, `replay`, `wrong-code`, `no-code`),
+the `deny` rows (a single deny, its refusals, and each request a lockdown denies), and the `run` or
+`grant` row that holds the re-run's result. Taken with the request row (which holds `blocked_by`), the
+ledger shows per request the denial that caused it, the request, who approved or denied and how, and
+the result of the one re-run. An `expire` row is not an answer, so it carries neither field.
+
 ## Spent steps (HIMMEL-8078 part 2)
 
 A code valid for request A is refused (`replay`) for request B when A ended without
@@ -424,6 +432,48 @@ directories all the way up are root-owned and not group/other-writable. The neve
 script's own path, so a parameter that names `/usr/local/libexec/himmel` is refused (`cron-system` root jobs
 are therefore limited to `/usr/bin` and `/usr/sbin`). `ops.enabled` is off by default; `lockdown` denies a
 pending op request like any other.
+
+## Approving over SSH
+
+HIMMEL-8067. `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
+operator answer a pending request from an SSH shell, for example after a classifier denial when the phone
+is out of reach. It is a thin caller of the same root helper the Telegram route calls:
+
+```text
+sudo -n /usr/local/libexec/himmel/afk-sudo approve ID --from OP --chat OP --via ssh --approver USER   # NONCE CODE on stdin
+sudo -n /usr/local/libexec/himmel/afk-sudo deny    ID --from OP --chat OP --via ssh --approver USER
+sudo -n /usr/local/libexec/himmel/afk-sudo status  ID
+```
+
+What the verb checks itself: the id is 8 characters of `a-z2-7`; the reply is a 4-character nonce and a
+6-digit code; the config at `/etc/himmel/afk-sudo.json` names a numeric `operator_id` and an
+`operator_user`, and the caller is that user (checked before anything is sent, for `approve` and `deny`; a
+read of `status` needs no identity). The nonce is the one root put in the notice-bot message, and it and
+the code travel on stdin only (a masked prompt on a terminal), so neither is in any argv, log or ledger
+row. The `--from`/`--chat` the helper checks against `operator_id` always come from the config, never from
+the caller's input.
+
+What the helper and broker still check, unchanged for both paths: the operator id, the lockout, the
+request's window, the nonce (`bad-nonce`), the TOTP code and its single-use step (`replay`, `wrong-code`),
+the frozen record and its hash (`hash-mismatch`), the file, `argv[0]` and cwd bindings (`changed`), and the
+never-remote floor. A request re-runs at most once, as the exact record the operator was shown; an
+approve of a record changed after the request is refused, and a request nobody approves expires and its
+denial stands. A guard refusal (`--blocked-by hook:<guard>`) is approvable like any other claim, subject
+to the floor. With the station off (`enabled` false) or the run kind off (`run.enabled` false), there is
+nothing to approve and the helper answers `disabled` or `run-disabled`.
+
+`--via` (`telegram` or `ssh`, default `telegram`) and `--approver` (default: the sender id) are the
+caller's claim, like `--from`: a process running as the operator's user can pass any value, and the
+nonce plus the code are the control. They exist so the ledger can say who approved and how.
+The broker refuses an unknown `via` (`bad-via`) before it reads state or writes a row. The Telegram route
+passes neither flag, so its rows say `via=telegram`.
+
+**Deviation from the design spec.** Spec section 5 ends "No SSH approve verb: an operator with a shell
+runs `sudo` directly." The ticket body, its Definition of Done and the operator rulings of 10-29 and
+10-31 require the verb, and "log all actions that are done this way", so the ticket wins. The verb
+adds no approver (the user who may run it can already `sudo` the helper) and the shell route has the
+same code, nonce and floor as Telegram; what it adds is the ledger's `via=ssh` and a CLI that keeps the
+nonce and code out of argv. The spec is amended by the chief, not here.
 
 ## Verbs
 

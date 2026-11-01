@@ -26,6 +26,7 @@ the ones those pages only mention in passing.
 | `deps` | `ensure`/`upgrade` only | Check, install or bump the declared toolchain |
 | `gaps` | no | What this setup lacks relative to a reference install profile |
 | `trust` | yes | Wire or unwire the trust shadow ledger's hook entries |
+| `approve` / `deny` | yes | Answer an AFK request from an SSH shell: `approve <id>`, `approve status <id>`, `deny <id>`. See [internals/afk-sudo.md](internals/afk-sudo.md#approving-over-ssh) |
 | `report` | no | Read-only JSON config feed that the config UI renders; secrets show presence, never values. See [ui.md](ui.md) |
 | `ui` | no | Read-only config UI on 127.0.0.1 (needs bun); the operator runs it from a terminal. See [ui.md](ui.md) |
 | `--version [--all]` | no | Version, describe string, commit; `--all` adds per-component currency |
@@ -163,6 +164,29 @@ restart. `trust status` reports how many entries are wired (for example
 `7/7`) and writes nothing. "Wired" is a different claim from "recording": to
 confirm rows are actually landing, run `node scripts/trust/shadow-ledger.mjs
 report` and check for non-zero rows and a PROVEN collection line.
+
+## `approve` and `deny`
+
+```text
+himmelctl approve <id>          # asks for "Nonce Code:" (masked on a terminal, or one line on stdin)
+himmelctl approve status <id>   # prints the request's state
+himmelctl deny <id>
+```
+
+`approve <id>` answers an AFK request (a `run`, `op`, `grant` or `sudo` request a blocked session filed)
+from an SSH shell, the way a Telegram reply does. Type the 4-character nonce from the notice-bot message,
+then the 6-digit authenticator code, on one line (`K7QF 482913`; spaces are free). Both go to the root
+helper on its stdin through `sudo -n`, never on a command line, and neither is written to a log or the
+ledger. `deny <id>` denies a pending request; `approve status <id>` prints its state and works for any
+user. Several requests can be pending at once: each call names one id.
+
+`approve` and `deny` refuse, before anything is sent, unless you run them as the `operator_user` in
+`/etc/himmel/afk-sudo.json`, so SSH adds no new approver. They send that config's own operator id and tag
+the call `via=ssh` with your user name; the ledger rows for the approval, the deny and the run all carry
+both. The helper and broker make every other check (nonce, code, replay, expiry, the exact frozen
+request, the never-remote floor). The verb enables nothing: with the helper off, `approve` prints
+`result=disabled`. Exit codes: 0 done, 2 usage (bad id or reply, nothing sent), 5 refused. Details:
+[internals/afk-sudo.md](internals/afk-sudo.md#approving-over-ssh).
 
 ## `--version`
 

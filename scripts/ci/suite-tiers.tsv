@@ -540,6 +540,7 @@ scripts/hermes/test-parity-measure.sh	pr	static-gate
 scripts/hermes/test-soul-markers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hermes/test-tier-coupling.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-adopter-profile-lane-allowlist-cache-fallback.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/himmelctl/test/test-afk-approve.sh	pr	guard
 scripts/himmelctl/test/test-bridge-persistence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-config-feed-worktree-parity.sh	pr	static-gate
 scripts/himmelctl/test/test-config-feed.sh	local	behaviour suite, 0 catches in the 400-PR audit window
