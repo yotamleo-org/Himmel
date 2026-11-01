@@ -1701,18 +1701,23 @@ export PR_BODY_DIR="$WORK/prbody"; mkdir -p "$PR_BODY_DIR"
 printf 'Slice one.\n\nRemaining: slice two and the {brace} reader\n' > "$PR_BODY_DIR/5001"
 printf 'Slice one, no tail.\n' > "$PR_BODY_DIR/5002"
 printf 'Remaining: the other half\n' > "$PR_BODY_DIR/5003"
+printf 'Remaining:\n\nAn unrelated section follows.\n' > "$PR_BODY_DIR/5004"
 MPM="$WORK/mpm/HIMMEL"; mkdir -p "$MPM"
 M_SAVE="$M"; M="$MPM"
 mk HIMMEL-80 "In Progress" Medium '[]' '[]' '[]' "partial with a remaining line" "Edit scripts/lib/pm1.sh."
 mk HIMMEL-81 "In Progress" Medium '[]' '[]' '[]' "partial without a remaining line" "Edit scripts/lib/pm2.sh."
 mk HIMMEL-82 "To Do" Medium '[]' '[]' '[]' "demoted to To Do after a partial merge" "Edit scripts/lib/pm3.sh."
 mk HIMMEL-83 "To Do" Medium '[]' '[]' '[]' "plain to do" "Edit scripts/lib/pm4.sh."
+mk HIMMEL-84 "In Progress" Medium '[]' '[]' '[]' "partial with an empty remaining line" "Edit scripts/lib/pm5.sh."
+mk HIMMEL-85 "In Progress" Medium '[]' '[]' '[]' "partial whose PR body gh cannot read" "Edit scripts/lib/pm6.sh."
 M="$M_SAVE"
 cat > "$PM_STATE/status-events.jsonl" <<'EOF'
 {"ts":"t","event":"merge","key":"HIMMEL-80","pr":"5001","contract":"no","result":"noop"}
 {"ts":"t","event":"derive","key":"HIMMEL-80","pr":"5001","result":"moved","rule":"D3"}
 {"ts":"t","event":"merge","key":"HIMMEL-81","pr":"5002","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-82","pr":"5003","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-84","pr":"5004","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-85","pr":"5005","contract":"no","result":"noop"}
 EOF
 pm="$(NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$PM_STATE/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
 has "a partial merge with a Remaining: line is a RESUME row" "$pm" "RESUME	HIMMEL-80"
@@ -1723,6 +1728,9 @@ has "a To Do ticket with a merged partial PR is a RESUME row" "$pm" "RESUME	HIMM
 has "and its RESUME row carries the PR's Remaining: text" "$(printf '%s\n' "$pm" | grep 'HIMMEL-82	')" "Remaining: the other half"
 lacks "a To Do ticket with a merged partial PR is never an ordinary row" "$pm" "LOCAL	HIMMEL-82"
 has "a plain To Do ticket is still an ordinary row" "$pm" "LOCAL	HIMMEL-83"
+has "an empty Remaining: line does not borrow the next line's text" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-84"
+lacks "an empty Remaining: line is not a RESUME row" "$pm" "RESUME	HIMMEL-84"
+has "a PR body gh cannot read is reported as unreadable, not as missing a Remaining: line" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-85: merged PR #5005 body could not be read (gh failed)"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -830,6 +830,8 @@ cat > "$WORK/pm-state/status-events.jsonl" <<'EOF'
 {"ts":"t","event":"derive","key":"HIMMEL-9101","pr":"4313","result":"moved","rule":"D3"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4313","result":"moved","rule":"D3"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4320","head":"bbb","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4340","head":"eee","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4350","head":"fff","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4330","head":"ccc","contract":"yes","result":"moved"}
 {"ts":"t","event":"merge","key":"HIMMEL-9102","pr":"4399","head":"ddd","contract":"no","result":"noop"}
 EOF
@@ -838,6 +840,7 @@ cat > "$WORK/gh-stub.sh" <<'EOF'
 case "$3" in
     4313) printf 'Slice C1a of the thing.\n\nRemaining: slices C1b and C4 (the {brace} readers)\n' ;;
     4320) printf 'No remaining line here.\n' ;;
+    4340) printf 'Remaining:\n\nAn unrelated section follows.\n' ;;
     *) exit 1 ;;
 esac
 EOF
@@ -851,6 +854,8 @@ pm_out="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state" GEN_BRIEFS_GH_CMD="$WORK/gh-s
 PM1="$(tr '\n' ' ' < "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" | tr -s ' ')"
 has "the brief names the merged contract=no PR and its Remaining: text" "$PM1" "PR \`#4313\`: Remaining: slices C1b and C4 (the {brace} readers)"
 has "a partial PR whose body has no Remaining: line is marked as needing a chief note" "$PM1" "PR \`#4320\`: needs a chief note"
+has "an empty Remaining: line does not borrow the text of the next line" "$PM1" "PR \`#4340\`: needs a chief note"
+has "a PR whose body gh cannot read says so, not that it has no Remaining: line" "$PM1" "PR \`#4350\`: needs a chief note (its body could not be read)"
 lacks "a contract=yes merge row is not listed as a partial" "$PM1" '#4330'
 lacks "another ticket's partial merge is not listed" "$PM1" '#4399'
 bash "$HERE/brief-lint.sh" "$WORK/pm-bucket/HIMMEL-9101-N911-pm-fix-2026-10-08.md" 2>"$WORK/lintpm.err"; rc=$?

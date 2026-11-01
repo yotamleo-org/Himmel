@@ -561,7 +561,7 @@ def render_rm_brief(l, ctx):
     return out + '\n'
 
 
-REMAINING_RE = re.compile(r'^\s*remaining:\s*(.*\S)', re.I | re.M)
+REMAINING_RE = re.compile(r'^[ \t]*remaining:[ \t]*(.*\S)', re.I | re.M)
 
 
 def partial_merge_prs(keys):
@@ -588,15 +588,15 @@ def partial_merge_prs(keys):
 
 
 def pr_remaining(pr, repo):
-    """The `Remaining:` text of PR <pr>'s body (the line merge-on-green.sh reads), or '' when it has none or the body is unreadable.
-    GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as `$CMD pr view <pr> --json body -q .body`."""
+    """The `Remaining:` text of PR <pr>'s body (the line merge-on-green.sh reads): '' when the body has none, None when the body
+    could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as `$CMD pr view <pr> --json body -q .body`."""
     gh = os.environ.get('GEN_BRIEFS_GH_CMD') or 'gh'
     try:
         r = subprocess.run([gh, 'pr', 'view', pr, '--json', 'body', '-q', '.body'], cwd=repo, capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
-        return ''
+        return None
     if r.returncode != 0:
-        return ''
+        return None
     return ' '.join(m.strip() for m in REMAINING_RE.findall(r.stdout))
 
 
@@ -606,7 +606,8 @@ def partial_merge_block(keys, repo):
     lines = []
     for pr in partial_merge_prs(keys):
         rem = pr_remaining(pr, repo)
-        lines.append('PR `#%s`: %s' % (pr, 'Remaining: ' + rem if rem else 'needs a chief note (its body has no `Remaining:` line); do not guess the remaining work'))
+        why = 'its body could not be read' if rem is None else 'its body has no `Remaining:` line'
+        lines.append('PR `#%s`: %s' % (pr, 'Remaining: ' + rem if rem else 'needs a chief note (%s); do not guess the remaining work' % why))
     if not lines:
         return ''
     return ('> **Already merged (partial merges, contract=no; do not redo this work):** ' + '; '.join(lines) + '.\n\n')

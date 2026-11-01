@@ -964,15 +964,18 @@ if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
     except (OSError, subprocess.SubprocessError):
         merged_unknown = True
 
-# The `Remaining:` text of a merged partial PR's body (the line merge-on-green.sh reads); '' when the body has none or gh cannot read it.
+# The `Remaining:` text of a merged partial PR's body (the line merge-on-green.sh reads); '' when the body has none.
+# A body gh cannot read is recorded in unread_prs and also returns '', so the ticket is never dispatched blind.
 remaining_cache = {}
+unread_prs = set()
 def remaining_of(pr):
     if pr not in remaining_cache:
         try:
             body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
         except (OSError, subprocess.SubprocessError):
             body = ''
-        remaining_cache[pr] = ' '.join(m.strip() for m in re.findall(r'(?im)^\s*remaining:\s*(.*\S)', body))
+            unread_prs.add(pr)
+        remaining_cache[pr] = ' '.join(m.strip() for m in re.findall(r'(?im)^[ \t]*remaining:[ \t]*(.*\S)', body))
     return remaining_cache[pr]
 
 # In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
@@ -1081,7 +1084,8 @@ print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(c
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
 for k, prs in needs_note:
-    print('NEEDS-CHIEF-NOTE %s: merged PR %s has no Remaining: line, needs a chief note before it is dispatched' % (k, ', '.join('#' + p for p in prs)))
+    print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched' % (k, ', '.join('#' + p for p in prs),
+          'body could not be read (gh failed)' if any(p in unread_prs for p in prs) else 'has no Remaining: line'))
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, wdoc))
 if skipped_platform:
