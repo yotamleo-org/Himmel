@@ -198,7 +198,7 @@ function evalTab(model, stats) {
     + `</tbody></table></section>`
     + `<section class="box"><h2>Outliers</h2>${stats.outliers.length ? `<table class="wf-out"><thead><tr><th>Change</th><th>Phase</th><th>Time or rounds</th><th>vs the 8-in-10 line</th></tr></thead><tbody>`
       + stats.outliers.map((o) => { const p = statRow(stats, o.phase); return `<tr><th>${o.pr ? `PR ${esc(o.pr)}` : "a branch with no PR"}</th><td>${esc(name(o.phase))}</td><td>${esc(fmtValue(o.value, o.unit))}</td><td>${o.times} × ${esc(fmtValue(p && p.p80, o.unit))}</td></tr>`; }).join("")
-      + `</tbody></table><p class="sub">A ticket that was parked and resumed counts its wait, so the longest rows are often a pause, not slow work.</p>` : `<p class="sub">No change was far outside its phase's 8-in-10 line.</p>`}</section>`
+      + `</tbody></table><p class="sub">A ticket that was parked and resumed counts its wait, so the longest rows are often a pause, not slow work. An 8-in-10 line under 1 minute counts as 1 minute here.</p>` : `<p class="sub">No change was far outside its phase's 8-in-10 line.</p>`}</section>`
     + `<section class="box"><h2>Cost per ticket</h2><p class="wf-cost"><span class="wf-v wf-none">${esc(stats.cost.say)}</span> What one ticket costs, and how much of it is spent before the build starts, is not joined to the ticket yet.</p></section>`;
 }
 

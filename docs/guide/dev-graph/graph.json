@@ -3834,7 +3834,7 @@
           "gate": "push checks"
         },
         {
-          "gate": "a review runs first"
+          "gate": "a review is owed before the PR"
         },
         {
           "artifact": "commit"
@@ -3854,7 +3854,7 @@
       "gates": [
         "The commit message check.",
         "The checks on every push.",
-        "A push that needs a review is held until the review round runs."
+        "A push that needs a review goes through and leaves a review-owed marker; the PR cannot open until the review runs."
       ],
       "back": [
         "A commit refused by the message check: not recorded.",
