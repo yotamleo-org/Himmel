@@ -2,7 +2,7 @@
 // files. A phase with nothing behind it says "no source yet"; the cost per ticket says "no data yet".
 import { test, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readPhaseStats } from "../phase-stats";
@@ -76,7 +76,6 @@ test("phase-stats: Check and approve runs from the first CI run to the merge; Me
   const s = readPhaseStats(env, roundsDir, NOW);
   expect(phase(s, "check")).toMatchObject({ state: "ok", n: 2, median: 90 });
   expect(phase(s, "merge")).toMatchObject({ state: "ok", n: 2, median: 1.5 });
-  expect(phase(s, "review").perDay).toEqual([0, 1, 1, 0, 1, 0, 0]); // PRs opened per day
 });
 
 test("phase-stats: Review counts each branch's highest round, split merged or not; a far outlier is named by its PR", () => {
@@ -90,6 +89,14 @@ test("phase-stats: Review counts each branch's highest round, split merged or no
   const build = s.outliers.filter((o) => o.phase === "build");
   expect(build.map((o) => o.pr)).toEqual(["13"]);
   expect(JSON.stringify(s.outliers)).not.toContain("HIMMEL-");
+});
+
+test("phase-stats: Review's entries per day are the same branches it counts, and an unreadable round file is skipped", () => {
+  const { env, roundsDir } = fixture(EVENTS, { "feat/himmel-1-a": [2, "2026-10-30"], "feat/himmel-2-b": [4, "2026-10-30"] });
+  const locked = join(roundsDir, "feat", "himmel-2-b.round");
+  chmodSync(locked, 0o000);
+  const s = readPhaseStats(env, roundsDir, NOW);
+  expect(phase(s, "review")).toMatchObject({ n: 1, perDay: [0, 0, 0, 0, 0, 1, 0] });
 });
 
 test("phase-stats: no records at all reads as no data yet, never an error", () => {

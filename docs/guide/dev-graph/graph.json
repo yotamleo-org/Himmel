@@ -806,7 +806,7 @@
         "name": "Review round limit",
         "who": "check",
         "place": "an automatic check on the line",
-        "plain": "After three rounds only one short round is left, and it blocks only on a critical finding.",
+        "plain": "After three rounds only one short round is left, and it blocks only on a critical finding or one that shows a flow broken today.",
         "detail": "Three rounds, then one extra round that reviews only what changed. Beyond that, the chief must grant one more.",
         "changes": [
           {
@@ -3317,7 +3317,7 @@
         {
           "at": "g.cap",
           "caption": "One delta round, Critical or escape-class only",
-          "say": "One extra round; only a critical finding blocks"
+          "say": "One extra round; only a critical finding or a flow broken today blocks"
         },
         {
           "at": "l.prcheck",

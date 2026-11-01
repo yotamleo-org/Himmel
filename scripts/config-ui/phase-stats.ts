@@ -5,7 +5,8 @@
 //   Check and approve first CI run to the merge, per ticket
 //   Merge and wrap up the merge to WRAPPED, per ticket
 // Start, Plan and design and Assign have no record behind them: "no source yet". The cost per ticket: "no data yet".
-// ponytail: a ticket's first event of each kind stands for the whole ticket (a second PR on one ticket is not split);
+// ponytail: a ticket's first event of each kind stands for the whole ticket (a second PR on one ticket is not split, and
+// a branch whose ticket merged counts as merged in Review);
 // upgrade path: key the spans by PR number once every event row carries one.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -49,11 +50,13 @@ function rounds(dir: string): { branch: string; round: number; at: number }[] {
     try { names = readdirSync(d); } catch { return; }
     for (const name of names) {
       const p = join(d, name);
-      let st;
-      try { st = statSync(p); } catch { continue; }
-      if (st.isDirectory()) { walk(p, `${prefix}${name}/`); continue; }
-      if (!name.endsWith(".round")) continue;
-      const round = Number.parseInt(readFileSync(p, "utf8"), 10);
+      let st, round;
+      try {
+        st = statSync(p);
+        if (st.isDirectory()) { walk(p, `${prefix}${name}/`); continue; }
+        if (!name.endsWith(".round")) continue;
+        round = Number.parseInt(readFileSync(p, "utf8"), 10);
+      } catch { continue; }
       if (Number.isInteger(round) && round > 0) out.push({ branch: prefix + name.slice(0, -".round".length), round, at: st.mtimeMs });
     }
   };
@@ -115,14 +118,13 @@ export function readPhaseStats(env: Env, roundsDir: string, now: number): PhaseS
   const branches = rounds(roundsDir).filter((r) => inWin(r.at)).map((r) => ({ ...r, key: keyOf(r.branch) }));
   const review = { threeUp: { merged: 0, notMerged: 0 }, under: { merged: 0, notMerged: 0 } };
   for (const b of branches) review[b.round >= 3 ? "threeUp" : "under"][merged(b.key) ? "merged" : "notMerged"]++;
-  const prOpened = [...first.values()].map((k) => k.get("pr-open")?.ts).filter((t): t is number => t !== undefined);
 
   const phases = [
     none("start", "Start", "nothing records when an idea arrives"),
     none("plan", "Plan and design", "nothing records an estimate or a design approval"),
     none("assign", "Assign", "nothing records a pick or a refused start"),
     row("build", "Build", "each ticket's time from LIVE to its PR opening", "min", build.took, build.entered),
-    row("review", "Review", "each branch's highest review round", "rounds", branches.map((b) => ({ key: b.key ?? "", v: b.round })), prOpened),
+    row("review", "Review", "each branch's highest review round", "rounds", branches.map((b) => ({ key: b.key ?? "", v: b.round })), branches.map((b) => b.at)),
     row("check", "Check and approve", "each ticket's time from its first CI run to its merge", "min", check.took, check.entered),
     row("merge", "Merge and wrap up", "each ticket's time from its merge to WRAPPED", "min", merge.took, merge.entered),
   ];
