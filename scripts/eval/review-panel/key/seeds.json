@@ -543,6 +543,426 @@
       "kind": "clean",
       "pair": "real-010",
       "split": "sealed"
+    },
+    "real-011": {
+      "base": "a12735b67a5e763806f7407125f91372168d63b2",
+      "defects": [
+        {
+          "class": "logic",
+          "file": "scripts/handover/console-kit/next-dispatchable.sh",
+          "id": "real-011-1",
+          "line": 501
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-011",
+      "split": "open"
+    },
+    "real-011-clean": {
+      "base": "a12735b67a5e763806f7407125f91372168d63b2",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-011",
+      "split": "open"
+    },
+    "real-012": {
+      "base": "81a741ca44f8c20dc48dc74b7cb185c892a9866e",
+      "defects": [
+        {
+          "class": "logic",
+          "file": "scripts/handover/chief-kit/ready-check.sh",
+          "id": "real-012-1",
+          "line": 307
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-012",
+      "split": "sealed"
+    },
+    "real-012-clean": {
+      "base": "81a741ca44f8c20dc48dc74b7cb185c892a9866e",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-012",
+      "split": "sealed"
+    },
+    "real-013": {
+      "base": "d6c2b6f492a99ef628340874682b196bb858cf17",
+      "defects": [
+        {
+          "class": "logic",
+          "file": "scripts/jira/src/release/engine.ts",
+          "id": "real-013-1",
+          "line": 507
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-013",
+      "split": "open"
+    },
+    "real-013-clean": {
+      "base": "d6c2b6f492a99ef628340874682b196bb858cf17",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-013",
+      "split": "open"
+    },
+    "real-014": {
+      "base": "cc9086633cb3a21c07f4d13f3ebae3e06293998f",
+      "defects": [
+        {
+          "class": "logic",
+          "file": "scripts/handover/chief-kit/status-drift.sh",
+          "id": "real-014-1",
+          "line": 194
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-014",
+      "split": "sealed"
+    },
+    "real-014-clean": {
+      "base": "cc9086633cb3a21c07f4d13f3ebae3e06293998f",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-014",
+      "split": "sealed"
+    },
+    "real-015": {
+      "base": "399e7a884077f738166829d64325bb20704b2524",
+      "defects": [
+        {
+          "class": "logic",
+          "file": "scripts/cr/install-cr-gate.sh",
+          "id": "real-015-1",
+          "line": 385
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-015",
+      "split": "open"
+    },
+    "real-015-clean": {
+      "base": "399e7a884077f738166829d64325bb20704b2524",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-015",
+      "split": "open"
+    },
+    "real-016": {
+      "base": "5ad3ece1045eb133f7b50cef7d00a1d74f158a40",
+      "defects": [
+        {
+          "class": "logic",
+          "file": "scripts/lib/gh-ci-cache.sh",
+          "id": "real-016-1",
+          "line": 351
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-016",
+      "split": "sealed"
+    },
+    "real-016-clean": {
+      "base": "5ad3ece1045eb133f7b50cef7d00a1d74f158a40",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-016",
+      "split": "sealed"
+    },
+    "real-017": {
+      "base": "399e7a884077f738166829d64325bb20704b2524",
+      "defects": [
+        {
+          "class": "fail-open",
+          "file": "scripts/hooks/block-read-secrets.sh",
+          "id": "real-017-1",
+          "line": 1021
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-017",
+      "split": "open"
+    },
+    "real-017-clean": {
+      "base": "399e7a884077f738166829d64325bb20704b2524",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-017",
+      "split": "open"
+    },
+    "real-018": {
+      "base": "3192e615900644c0bf824f26fea9c5130253f044",
+      "defects": [
+        {
+          "class": "fail-open",
+          "file": "scripts/hooks/block-write-into-main-checkout.sh",
+          "id": "real-018-1",
+          "line": 2813
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-018",
+      "split": "sealed"
+    },
+    "real-018-clean": {
+      "base": "3192e615900644c0bf824f26fea9c5130253f044",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-018",
+      "split": "sealed"
+    },
+    "real-019": {
+      "base": "adb8120f240e50cc8300ea9243fde1f38aeee162",
+      "defects": [
+        {
+          "class": "fail-open",
+          "file": "scripts/ci/shellcheck-pr-range.sh",
+          "id": "real-019-1",
+          "line": 53
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-019",
+      "split": "open"
+    },
+    "real-019-clean": {
+      "base": "adb8120f240e50cc8300ea9243fde1f38aeee162",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-019",
+      "split": "open"
+    },
+    "real-020": {
+      "base": "6edb85b7b993365881bdadd92f98963f6ca0abdb",
+      "defects": [
+        {
+          "class": "test-cannot-fail",
+          "file": "scripts/config-ui/tests/agui-fleet.test.ts",
+          "id": "real-020-1",
+          "line": 196
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-020",
+      "split": "sealed"
+    },
+    "real-020-clean": {
+      "base": "6edb85b7b993365881bdadd92f98963f6ca0abdb",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-020",
+      "split": "sealed"
+    },
+    "real-021": {
+      "base": "350678d490544122943b20623542dc24d92939b7",
+      "defects": [
+        {
+          "class": "test-cannot-fail",
+          "file": "scripts/hooks/test-block-edit-live-settings.sh",
+          "id": "real-021-1",
+          "line": 1368
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-021",
+      "split": "open"
+    },
+    "real-021-clean": {
+      "base": "350678d490544122943b20623542dc24d92939b7",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-021",
+      "split": "open"
+    },
+    "real-022": {
+      "base": "c43ff2a71abfb2e6ddba615e67d5a129d783cd4b",
+      "defects": [
+        {
+          "class": "test-cannot-fail",
+          "file": "scripts/handover/console-kit/ready-check.sh",
+          "id": "real-022-1",
+          "line": 449
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-022",
+      "split": "sealed"
+    },
+    "real-022-clean": {
+      "base": "c43ff2a71abfb2e6ddba615e67d5a129d783cd4b",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-022",
+      "split": "sealed"
+    },
+    "real-023": {
+      "base": "47338cbe429cb894b38f43248eb9efc19c1c2bb9",
+      "defects": [
+        {
+          "class": "toctou",
+          "file": "scripts/luna/qmd-embed-model.sh",
+          "id": "real-023-1",
+          "line": 418
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-023",
+      "split": "open"
+    },
+    "real-023-clean": {
+      "base": "47338cbe429cb894b38f43248eb9efc19c1c2bb9",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-023",
+      "split": "open"
+    },
+    "real-024": {
+      "base": "1e36a32eee05b6a6055fc4bc450fae5fc64a600a",
+      "defects": [
+        {
+          "class": "toctou",
+          "file": "scripts/lib/bank-preflight.sh",
+          "id": "real-024-1",
+          "line": 559
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-024",
+      "split": "sealed"
+    },
+    "real-024-clean": {
+      "base": "1e36a32eee05b6a6055fc4bc450fae5fc64a600a",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-024",
+      "split": "sealed"
+    },
+    "real-025": {
+      "base": "a12735b67a5e763806f7407125f91372168d63b2",
+      "defects": [
+        {
+          "class": "quoting",
+          "file": "scripts/hooks/block-chokepoint-env-prefix.sh",
+          "id": "real-025-1",
+          "line": 306
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-025",
+      "split": "open"
+    },
+    "real-025-clean": {
+      "base": "a12735b67a5e763806f7407125f91372168d63b2",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-025",
+      "split": "open"
+    },
+    "real-026": {
+      "base": "42f6c2bdcdaaa1a8885aff1656df2778616538c8",
+      "defects": [
+        {
+          "class": "quoting",
+          "file": "scripts/hooks/auto-approve-safe-bash.sh",
+          "id": "real-026-1",
+          "line": 1230
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-026",
+      "split": "sealed"
+    },
+    "real-026-clean": {
+      "base": "42f6c2bdcdaaa1a8885aff1656df2778616538c8",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-026",
+      "split": "sealed"
+    },
+    "real-027": {
+      "base": "59ff17c9cc6959d30b45410d369b286152445ef4",
+      "defects": [
+        {
+          "class": "cross-file",
+          "file": "scripts/ci/queue-latency.sh",
+          "id": "real-027-1",
+          "line": 129
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-027",
+      "split": "open"
+    },
+    "real-027-clean": {
+      "base": "59ff17c9cc6959d30b45410d369b286152445ef4",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-027",
+      "split": "open"
+    },
+    "real-028": {
+      "base": "4a14dc84d1c01205f61ea558271fcfaa0c745c82",
+      "defects": [
+        {
+          "class": "cross-file",
+          "file": "scripts/handover/arm-resume.sh",
+          "id": "real-028-1",
+          "line": 2758
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-028",
+      "split": "sealed"
+    },
+    "real-028-clean": {
+      "base": "4a14dc84d1c01205f61ea558271fcfaa0c745c82",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-028",
+      "split": "sealed"
+    },
+    "real-029": {
+      "base": "5a15b1091aa6f5fc920e36d11f4dbc574b603ada",
+      "defects": [
+        {
+          "class": "spec-miss",
+          "file": "scripts/handover/chief-kit/chief-wait.sh",
+          "id": "real-029-1",
+          "line": 850
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-029",
+      "split": "open"
+    },
+    "real-029-clean": {
+      "base": "5a15b1091aa6f5fc920e36d11f4dbc574b603ada",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-029",
+      "split": "open"
+    },
+    "real-030": {
+      "base": "275fa40085410e2009f46d5be6cea329578d009c",
+      "defects": [
+        {
+          "class": "spec-miss",
+          "file": "scripts/telegram/afk-sudo-route.ts",
+          "id": "real-030-1",
+          "line": 167
+        }
+      ],
+      "kind": "seeded",
+      "pair": "real-030",
+      "split": "sealed"
+    },
+    "real-030-clean": {
+      "base": "275fa40085410e2009f46d5be6cea329578d009c",
+      "defects": [],
+      "kind": "clean",
+      "pair": "real-030",
+      "split": "sealed"
     }
   },
   "split": {

@@ -1,0 +1,227 @@
+diff --git a/scripts/hooks/block-write-into-main-checkout.sh b/scripts/hooks/block-write-into-main-checkout.sh
+index f045b6680..6c1ee5505 100755
+--- a/scripts/hooks/block-write-into-main-checkout.sh
++++ b/scripts/hooks/block-write-into-main-checkout.sh
+@@ -202,7 +202,20 @@
+ #     deliberate exception: a genuine, unconditional `cd <worktree> &&
+ #     <relative write>` issued from a primary cwd also denies under this rule,
+ #     even though it is runtime-safe — the rule does not distinguish "safe"
+-#     divergence from "unsafe" divergence). The fallback re-checks only the
++#     divergence from "unsafe" divergence). One narrow relaxation:
++#     when the cd is a plain, unpiped cd/pushd that is the FIRST command of the
++#     line, onto an existing directory that, symlinks resolved, lies in no git
++#     repo at all (a scratch folder), `_bwimc_ecwd_sure` is set and the fallback
++#     is skipped for the redirect/verb candidates that call `_bwimc_cd_guard`
++#     (a worktree, the primary or any other checkout keeps the re-check; the
++#     cp/mv/ln destination-type union below is untouched). The flag survives only
++#     while every later clause's command word is a literal echo, printf, cat, tee or
++#     touch; any other word (rm, eval, `.`, a variable or brace-expanded word, a
++#     wrapper, a group) clears it. While it holds, the candidate is checked against
++#     the cd target and its symlink-resolved form. Exposure left: after a `;` a cd
++#     that fails at runtime leaves the cwd unchanged although the write is allowed,
++#     and a directory made a repo by a `.git` created after the check is not seen.
++#     The fallback re-checks only the
+ #     raw operand, so the cp/mv/ln destination-TYPE decisions (dest is a dir
+ #     vs an entry, entry vs follow) and the `<dest>/<basename(src)>` child
+ #     check (incl. `-t`) get the same rule separately: each destination block
+@@ -2515,6 +2528,7 @@ _bwimc_unq_eq() {
+ # have failed or never run, so the modelled cwd is not where the shell is.
+ _bwimc_chdir_model() {
+     local raw="$1" carg r q="${1//[!\"]/}" a="${1//[!\']/}"
++    _bwimc_ecwd_sure=0
+     case "$raw" in
+         ''|*'$'*|*'`'*|*[*?[]*|*\\*) _bwimc_ecwd_unres=1; return 0 ;;
+     esac
+@@ -2674,7 +2688,8 @@ _bwimc_fsmut_hit() {
+     return 1
+ }
+ _bwimc_ecwd_track() {
+-    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0
++    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0 cs first="${_bwimc_ecwd_first:-0}"
++    _bwimc_ecwd_first=0
+     while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
+     n=${#toks[@]}
+     # a cd/pushd/popd that is not the clause's first command word
+@@ -2690,6 +2705,14 @@ _bwimc_ecwd_track() {
+     [ "$i" -lt "$n" ] || return 0
+     _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
+     cmdi=$i
++    # A sure cd (set at the end of this function) survives only a later clause whose command
++    # word is a literal from this closed set of commands that cannot move the shell's cwd.
++    # Anything else (a cd/pushd/popd, eval, `.`/source, a variable or brace-expanded command word,
++    # a wrapper, a group) clears it, so the write is re-checked against the payload cwd.
++    case "$tu" in
++        echo|printf|cat|tee|touch) ;;
++        *) _bwimc_ecwd_sure=0 ;;
++    esac
+     case "$tu" in
+         cd|pushd)
+             i=$((i+1))
+@@ -2794,6 +2817,20 @@ _bwimc_ecwd_track() {
+                             _bwimc_ecwd_unres=1
+                         elif r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd") && ! _bwimc_fsmut_hit "$r"; then
+                             _bwimc_ecwd="$r"; _bwimc_ecwd_unres=0
++                            # A plain cd that is the FIRST command
++                            # of the line, unpiped, onto a directory that exists
++                            # and is enterable runs (and a `&&` chain stops if it fails;
++                            # after a `;` a failing cd leaves the cwd unchanged, a race this
++                            # does not close), so a write that follows lands in $r, or in
++                            # its symlink-resolved form $cs. Trusted only when $cs lies in no
++                            # git repo at all (a scratch folder): the primary, a worktree or
++                            # any other checkout keeps the re-check. The trust ends at the
++                            # first later clause whose command word is not in the closed set
++                            # above, and a candidate is checked against both $r and $cs.
++                            [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 0 ] \
++                                && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
++                                && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
++                                && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
+                         else
+                             # also reached when an earlier clause
+                             # of this command removed/moved/chmod-ed the target.
+@@ -2886,7 +2923,13 @@ _bwimc_cd_guard() {
+         esac ;;
+     esac
+     [ "$_bwimc_ecwd_unres" = 1 ] && _bwimc_deny "unresolved-cd" "$1" "" ""
+-    [ "$_bwimc_ecwd" != "$_bwimc_cwd" ] && _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
++    # a sure cd (see _bwimc_ecwd_track) needs no payload-cwd re-check, but the candidate is
++    # also resolved against the symlink-resolved cd target, where the write physically lands
++    if [ "${_bwimc_ecwd_sure:-0}" = 1 ]; then
++        [ "${_bwimc_ecwd_cs:-}" != "$_bwimc_ecwd" ] && _bwimc_check_target "$1" "${_bwimc_ecwd_cs:-$_bwimc_cwd}" "${2:-follow}"
++    elif [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
++        _bwimc_check_target "$1" "$_bwimc_cwd" "${2:-follow}"
++    fi
+     return 0
+ }
+
+@@ -4715,6 +4758,8 @@ _bwimc_check_interp_body() {
+     _bwimc_ibody_saved_ecwd="$_bwimc_ecwd"
+     _bwimc_ibody_saved_unres="$_bwimc_ecwd_unres"
+     _bwimc_ibody_saved_pushn="$_bwimc_ecwd_pushn"
++    _bwimc_ibody_saved_first="${_bwimc_ecwd_first:-0}"; _bwimc_ibody_saved_sure="${_bwimc_ecwd_sure:-0}"
++    _bwimc_ecwd_first=0; _bwimc_ecwd_sure=0
+     # the body once as written, once with its comments removed.
+     _bwimc_strip_comments "$body"
+     _bwimc_ib_texts=("$body")
+@@ -4831,6 +4876,7 @@ _bwimc_check_interp_body() {
+     _bwimc_ecwd="$_bwimc_ibody_saved_ecwd"
+     _bwimc_ecwd_unres="$_bwimc_ibody_saved_unres"
+     _bwimc_ecwd_pushn="$_bwimc_ibody_saved_pushn"
++    _bwimc_ecwd_first="$_bwimc_ibody_saved_first"; _bwimc_ecwd_sure="$_bwimc_ibody_saved_sure"
+ }
+
+ # _bwimc_subst_paren_end TEXT START: Sets _BWIMC_PEND to the index
+@@ -5193,6 +5239,8 @@ _bwimc_ecwd="$_bwimc_cwd"
+ _bwimc_ecwd_unres=0
+ _bwimc_ecwd_pushn=0
+ _bwimc_ecwd_pure=1
++_bwimc_ecwd_first=1
++_bwimc_ecwd_sure=0
+ _bwimc_fsmut=""
+ [ "$_bwimc_engine" = ast ] || _bwimc_redir_scan_text "$_bwimc_hb"
+
+@@ -6961,6 +7009,8 @@ _bwimc_ecwd="$_bwimc_cwd"
+ _bwimc_ecwd_unres=0
+ _bwimc_ecwd_pushn=0
+ _bwimc_ecwd_pure=1
++_bwimc_ecwd_first=1
++_bwimc_ecwd_sure=0
+ _bwimc_fsmut=""
+ _bwimc_spd_on=0
+ _bwimc_sub_ecwd=(); _bwimc_sub_unres=(); _bwimc_sub_pushn=(); _bwimc_sub_d=0
+@@ -6974,12 +7024,14 @@ while IFS= read -r _bwimc_clause; do
+     fi
+     case "$_bwimc_clause" in
+         "$_BWIMC_SUBOPEN")
++            _bwimc_ecwd_first=0; _bwimc_ecwd_sure=0
+             _bwimc_sub_ecwd[_bwimc_sub_d]="$_bwimc_ecwd"
+             _bwimc_sub_unres[_bwimc_sub_d]="$_bwimc_ecwd_unres"
+             _bwimc_sub_pushn[_bwimc_sub_d]="$_bwimc_ecwd_pushn"
+             _bwimc_sub_d=$((_bwimc_sub_d+1))
+             continue ;;
+         "$_BWIMC_SUBCLOSE")
++            _bwimc_ecwd_sure=0
+             if [ "$_bwimc_sub_d" -gt 0 ]; then
+                 _bwimc_sub_d=$((_bwimc_sub_d-1))
+                 _bwimc_ecwd="${_bwimc_sub_ecwd[_bwimc_sub_d]}"
+diff --git a/scripts/hooks/test-block-write-into-main-checkout-cd.sh b/scripts/hooks/test-block-write-into-main-checkout-cd.sh
+index c72bdf93a..f9fea395a 100755
+--- a/scripts/hooks/test-block-write-into-main-checkout-cd.sh
++++ b/scripts/hooks/test-block-write-into-main-checkout-cd.sh
+@@ -356,6 +356,7 @@ check_both "54 fromP: x=\$(cd wt); echo x > a.txt (cd inside a command substitut
+ # destination-type class deferred to) takes this relaxation back:
+ # post-fix, the union check fires on every _bwimc_ecwd/_bwimc_cwd
+ # divergence unconditionally, so this row denies again too.
++# (Relaxed ONLY for a cd target in no git repo at all — rows 97+.)
+ check_both "55 fromP: cd wt && echo x > a.txt (genuine, runtime-safe cd — still denies post-fix under the strict superset rule)" block \
+     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && echo x > a.txt\",\"cwd\":\"$FIX/primary\"}}"
+
+@@ -709,5 +710,69 @@ check_both "96g fromP: cd wt/missing; env -C scripts tee ../a.txt denies" block
+ check_both "96h fromP: false && cd wt; env -C scripts tee ../a.txt denies" block \
+     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"false && cd $FIX/wt; env -C scripts tee ../a.txt </dev/null\",\"cwd\":\"$FIX/primary\"}}"
+
++echo "== HIMMEL-8200 (a relative write after a plain cd into a scratch folder resolves against the cd target) =="
++
++# 97: from a PRIMARY payload cwd, a cd that is the FIRST command of the line
++# always runs (a failing one is caught by the exists check, or ends the && chain),
++# so the cwd the write resolves in is the cd target and nothing else. When that
++# target lies in no git repo (a scratch folder), the union fallback of rows 43-54
++# must not re-check the write against the payload cwd.
++mkdir -p "$FIX/scratch8200"
++check_both "97 fromP: cd scratch && echo x > out.txt (cd target outside the primary) allows" allow \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "97b fromP: cd scratch; echo x > out.txt allows" allow \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++# 97c-d (control): the cd target itself is the primary, so the same write still denies.
++check_both "97c fromP: cd primary && echo x > out.txt still denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "97d fromW: cd primary && echo x > out.txt still denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/wt\"}}"
++# 97e-g (controls): a cd that is NOT the first command may not have run, a second
++# cd re-opens the question, and an absolute write into the primary is untouched.
++check_both "97e fromP: false && cd scratch; echo x > out.txt (cd may not run) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"false && cd $FIX/scratch8200; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "97f fromP: cd scratch && cd nope; echo x > out.txt (second cd fails) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && cd $FIX/scratch8200/nope; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "97g fromP: cd scratch && echo x > primary/out.txt (absolute primary target) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && echo x > $FIX/primary/out.txt\",\"cwd\":\"$FIX/primary\"}}"
++
++# 97h-i (controls): the cd target must lie in NO git repo once symlinks are
++# resolved: a link inside scratch pointing at the primary, and a worktree
++# target (row 55's shape, with a redirect), keep the payload-cwd re-check.
++ln -sfn "$FIX/primary" "$FIX/scratch8200/lnk-to-primary"
++check_both "97h fromP: cd scratch/lnk-to-primary && echo x > out.txt (symlink into the primary) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200/lnk-to-primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "97i fromP: cd wt && echo x > out.txt (worktree target) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++
++# 98: the trust a sure cd earns lasts only while every later clause names a
++# command from a closed set that cannot move the shell's cwd. A later clause that
++# moves it in a way the tracker cannot see (brace expansion, eval, a variable
++# holding `cd`, `.` reading stdin) must clear it, so the write is re-checked
++# against the payload cwd and denies.
++check_both "98a fromP: cd scratch; {cd,-}; echo x > out.txt (brace-expanded cd) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; {cd,-}; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98b fromP: pushd scratch; eval ' popd'; echo x > out.txt denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"pushd $FIX/scratch8200; eval ' popd'; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98c fromP: cd scratch; X=cd; \$X -; echo x > out.txt (variable cd) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; X=cd; \$X -; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98d fromP: cd scratch; . /dev/stdin <<< 'cd -'; echo x > out.txt denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200; . /dev/stdin <<< 'cd -'; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++# 98e-j: the plain shapes around the first command of the line.
++check_both "98e fromP: cd scratch | cat; echo x > out.txt (piped cd) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 | cat; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98f fromP: cd scratch & echo x > out.txt (background cd) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 & echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98g fromP: cd scratch && (cd primary; echo x > out.txt) (subshell cd) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && (cd $FIX/primary; echo x > out.txt)\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98h fromP: cd scratch && pushd primary && echo x > out.txt denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && pushd $FIX/primary >/dev/null && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98i fromP: cd scratch && rm out.txt (rm is not in the closed set) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && rm out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98j fromP: cd scratch && touch out.txt allows" allow \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && touch out.txt\",\"cwd\":\"$FIX/primary\"}}"
++check_both "98k fromP: cd scratch && cd primary && echo x > out.txt (second cd) denies" block \
++    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/scratch8200 && cd $FIX/primary && echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}"
++
+ printf '\n%d passed, %d failed\n' "$pass" "$fail"
+ [ "$fail" -eq 0 ]

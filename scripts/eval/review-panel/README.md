@@ -10,7 +10,7 @@ sees.
 | path | what |
 |---|---|
 | `fixtures/case-NN.patch` | 24 frozen one-file git diffs: 12 seeded, 12 clean twins. Ids are opaque and shuffled, so a case id says nothing about its class or its twin |
-| `fixtures/real-NNN.patch`, `real-NNN-clean.patch` | 10 real review escapes and their clean twins, frozen from merged history, with `real-NNN*.intent.md` (below) |
+| `fixtures/real-NNN.patch`, `real-NNN-clean.patch` | 30 real review escapes and their clean twins, frozen from merged history, with `real-NNN*.intent.md` (below) |
 | `fixtures/delta-NN.patch`, `delta-NN.delta.patch` | 10 delta cases: a round-1 diff and the fix delta, run with the delta as the diff (below) |
 | `key/seeds.json` | the answer key: per case its twin `pair`, `kind` (seeded / clean), `split` (open / sealed) and `defects` (`id`, `class`, `file`, new-file `line`), plus a `canary` string |
 | `score.py` | `lint` (fixture/key integrity + leak lint) and `score` (matcher, metrics, eval-runs row) |
@@ -142,12 +142,17 @@ checkout); `lint --min-real N` refuses a set with fewer than N real cases.
   JSON line each with the escaped `head`, its `base` and its `fix`. It builds no
   case: curating candidates into fixtures is a human step.
 
-#### The shipped real corpus (HIMMEL-8427, slice 1 of 2)
+#### The shipped real corpus (HIMMEL-8427)
 
-10 escapes and their 10 clean twins, each pair with an intent file:
+30 escapes and their 30 clean twins, each pair with an intent file:
 `real-NNN.patch`, `real-NNN-clean.patch`, `real-NNN.intent.md` and
 `real-NNN-clean.intent.md` (the same text in both). Each pair is one `pair` in
-the key; every class has one open and one sealed pair.
+the key; every class has an open and a sealed pair, and each half holds 15 pairs.
+`lint --min-real N` counts case files, so the 30 pairs are 60 real cases and
+the full set passes `--min-real 60`. By class: logic 8, fail-open 5,
+test-cannot-fail 5, cross-file 4, spec-miss 4, quoting 2, toctou 2. Slice 1
+(PR 4424) shipped `real-001` to `real-010`; the remainder PR shipped
+`real-011` to `real-030`. The 30 count has no shortfall.
 
 | pair | class | split | PR | ticket | seed site |
 |---|---|---|---|---|---|
@@ -161,6 +166,26 @@ the key; every class has one open and one sealed pair.
 | `real-008` | cross-file | sealed | 3618 | HIMMEL-7061 | `scripts/handover/console-kit/action-zero.sh:127` (the re-render path is documented in `docs/handover/console-sections/live-state.md`) |
 | `real-009` | spec-miss | open | 4364 | HIMMEL-8365 | `scripts/telegram/afk-sudo-route.ts:161` |
 | `real-010` | spec-miss | sealed | 4186 | HIMMEL-8028 | `scripts/handover/chief-kit/next-dispatchable.sh:900` |
+| `real-011` | logic | open | 3617 | HIMMEL-7064 | `scripts/handover/console-kit/next-dispatchable.sh:501` (a Story is admitted to RESUME while the IN CI merged-PR lookup still excludes it) |
+| `real-012` | logic | sealed | 4297 | HIMMEL-8238 | `scripts/handover/chief-kit/ready-check.sh:307` |
+| `real-013` | logic | open | 4357 | HIMMEL-8348 | `scripts/jira/src/release/engine.ts:507` |
+| `real-014` | logic | sealed | 4188 | HIMMEL-6829 | `scripts/handover/chief-kit/status-drift.sh:194` |
+| `real-015` | logic | open | 3978 | HIMMEL-6415 | `scripts/cr/install-cr-gate.sh:385` |
+| `real-016` | logic | sealed | 3713 | HIMMEL-7045 | `scripts/lib/gh-ci-cache.sh:351` |
+| `real-017` | fail-open | open | 3975 | HIMMEL-6347 | `scripts/hooks/block-read-secrets.sh:1021` |
+| `real-018` | fail-open | sealed | 4306 | HIMMEL-8200 | `scripts/hooks/block-write-into-main-checkout.sh:2813` |
+| `real-019` | fail-open | open | 3047 | HIMMEL-6256 | `scripts/ci/shellcheck-pr-range.sh:53` |
+| `real-020` | test-cannot-fail | sealed | 3035 | HIMMEL-6113 | `scripts/config-ui/tests/agui-fleet.test.ts:196` |
+| `real-021` | test-cannot-fail | open | 4098 | HIMMEL-7912 | `scripts/hooks/test-block-edit-live-settings.sh:1368` |
+| `real-022` | test-cannot-fail | sealed | 3646 | HIMMEL-7145 | `scripts/handover/console-kit/ready-check.sh:449` |
+| `real-023` | toctou | open | 2827 | HIMMEL-5882 | `scripts/luna/qmd-embed-model.sh:418` |
+| `real-024` | toctou | sealed | 3152 | HIMMEL-6422 | `scripts/lib/bank-preflight.sh:559` |
+| `real-025` | quoting | open | 3620 | HIMMEL-7009 | `scripts/hooks/block-chokepoint-env-prefix.sh:306` |
+| `real-026` | quoting | sealed | 2528 | HIMMEL-3655 | `scripts/hooks/auto-approve-safe-bash.sh:1230` |
+| `real-027` | cross-file | open | 3420 | HIMMEL-6666 | `scripts/ci/queue-latency.sh:129` (the only reader of the probe line is `tick.sh`, outside the diff) |
+| `real-028` | cross-file | sealed | 2768 | HIMMEL-1332 | `scripts/handover/arm-resume.sh:2758` (`hop.sh` and the auto-arm snapshots still decline the default) |
+| `real-029` | spec-miss | open | 4461 | HIMMEL-8197 | `scripts/handover/chief-kit/chief-wait.sh:850` |
+| `real-030` | spec-miss | sealed | 4314 | HIMMEL-8206 | `scripts/telegram/afk-sudo-route.ts:167` |
 
 How a pair is built. The escaped case is the diff from the PR's merge-base with
 main to the head the judge ruled NO-GO on. Its clean twin is that same diff plus
@@ -177,25 +202,41 @@ squash-merged, so they are in no ref a CI checkout fetches, and a `fix` there
 would make `lint` fail with "not a commit". The leak check ran at curation
 against each repairing commit (0 shared lines for `real-001` to `real-010`; for
 `real-007` against the PR's merged head, since the repairing commit's test lines
-recur in the escaped diff). A later pair whose repair is reachable from main
-should carry `fix` again.
+recur in the escaped diff). For `real-011` to `real-030` the lines a repair adds
+that also stand in the escaped diff are test scaffolding only (a `rc=$?`
+capture, a loop header, a `settle()` call), never the repairing logic: at most 5
+such lines per pair, 14 for `real-030` whose repair adds a short test beside an
+existing one. A later pair whose repair is reachable from main should carry
+`fix` again.
 
 Harvest at curation (merged-PR history plus judge verdicts, 2026-10-31): 1378
 candidates: judge NO-GO 913, fix-forward 462, revert 2, `deferred-escape` 1,
-caused-by 0; 1335 carry a `base` and a `fix`. The 10 pairs come from the NO-GO
+caused-by 0; 1335 carry a `base` and a `fix`. The 30 pairs come from the NO-GO
 and small-diff end of that list (diffs of at most 5 files and about 120 added
 lines, except `real-007`, the required cross-file case, which touches 16 files).
+The remainder pass re-ran the harvest (1357 candidates since 2026-09-01) and kept
+the NO-GO verdicts with a repairing commit still in the local clone; every pair
+was read against its judge verdict, and a candidate whose diff carries a hint
+word (`seed`, `inject`, `planted`, `defect`, `canary`) was dropped for another.
 
-The suite rows cover the corpus shape (10 and 10, two escapes per class, an open
-and a sealed pair per class), `lint --min-real 10`, and, for every shipped case,
-the case-repo isolation row: two commits, nothing under
-`scripts/eval/review-panel/`, no `cr-*` state under `.git`, no key canary, and
-the head commit is exactly the case diff. The integrity, split and sweep rows
-run on the 24 synthetic cases only.
+A patch is written with the smallest context (3, else 2, else 1 lines) that does
+not end it in a blank line, because `end-of-file-fixer` strips that line and
+breaks the last hunk; `trailing-whitespace` also empties blank context lines,
+which `git apply` still accepts.
 
-Not shipped yet (the remainder PR, HIMMEL-8427): 20 more pairs to reach 30 and
-30, with at least 4 cross-file and 4 spec-miss pairs in total. The two baseline
-sweeps over the grown corpus are the chief's.
+The suite rows cover the corpus shape (30 and 30, the class counts with at least
+4 cross-file and 4 spec-miss, 15 open and 15 sealed pairs, an open and a sealed
+pair per class), `lint --min-real 60` (the flag counts case files, so 30 pairs
+are 60) and, for every shipped case, the case-repo isolation row: two commits,
+nothing under `scripts/eval/review-panel/`, no `cr-*` state under `.git`, no key
+canary, and the head commit is exactly the case diff. The integrity, split and
+sweep rows run on the 24 synthetic cases only.
+
+The two baseline sweeps over the grown corpus are the chief's; their
+`results.jsonl` rows (runs `2026-11-01-8427-mw1` and `-mw2`) are committed with the
+remainder PR. Both are `status=partial`: delta-06 is unscored in each because the
+citation guard drops its finding, and the gate ignores partial rows, so RL4 reads no
+ok row until that case scores (HIMMEL-8570).
 
 ### Delta cases (`delta-*`, HIMMEL-8429)
 

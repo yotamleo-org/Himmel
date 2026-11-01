@@ -1,0 +1,121 @@
+diff --git a/scripts/handover/arm-resume.sh b/scripts/handover/arm-resume.sh
+index 4f993f943..797c31021 100755
+--- a/scripts/handover/arm-resume.sh
++++ b/scripts/handover/arm-resume.sh
+@@ -2750,6 +2750,44 @@ if [ -z "$WORKTREE_BRANCH" ]; then
+     unset _fm_wt
+ fi
+
++# A himmel CODE arm defaults to worktree isolation. Applies when nothing named
++# a worktree (no --worktree/resume_worktree:), the doc is not a console doc, the
++# cwd (--cwd, else resume_cwd:) IS this checkout's primary tree (not a worktree,
++# not the luna vault or another repo, so vault arms stay single-tree), and a
++# HIMMEL-<n> ticket comes from the file name or the 'ticket:' frontmatter. A
++# missing resume_cwd: with a ticket also isolates. 'resume_isolation: primary'
++# opts back out; every decline that resolves to the primary prints a WARN.
++# ponytail: headed-arm-leg.sh and headed-arm.sh launches are not defaulted, extend the same rules there under HIMMEL-5845
++if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_console" -eq 0 ]; then
++    _iso_fm=$(awk '/^---[[:space:]]*$/{c++; next} c==1' "$HANDOVER_PATH")
++    _iso_mode=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_isolation:[[:space:]]*//p' | head -1 | tr -d "\r\"' ")
++    _iso_cwd="$RESUME_CWD_OVERRIDE"
++    [ -n "$_iso_cwd" ] || _iso_cwd=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_cwd:[[:space:]]*//p' | head -1 | tr -d "\r\"'")
++    _iso_tkt=$(basename "$HANDOVER_PATH" | grep -oE 'HIMMEL-[0-9]+' | head -1 || true)
++    [ -n "$_iso_tkt" ] || _iso_tkt=$(printf '%s\n' "$_iso_fm" | sed -n 's/^ticket:[[:space:]]*//p' | head -1 | grep -oE 'HIMMEL-[0-9]+' | head -1 || true)
++    _iso_root=$(cd "${ARM_ISOLATION_ROOT:-$SCRIPT_DIR/../..}" && pwd)   # ARM_ISOLATION_ROOT: test seam
++    _iso_primary=0
++    if [ -d "$_iso_root/.git" ]; then
++        if [ -z "$_iso_cwd" ]; then
++            [ -n "$_iso_tkt" ] && _iso_primary=1
++        elif [ -d "$_iso_cwd" ] && [ "$(_arm_realpath "$_iso_cwd")" = "$(_arm_realpath "$_iso_root")" ]; then
++            _iso_primary=1
++        fi
++    fi
++    if [ "$_iso_primary" -eq 1 ]; then
++        if [ "$_iso_mode" = "primary" ]; then
++            echo "WARN arm-resume: himmel code arm resolves to the primary checkout WITHOUT worktree isolation: resume_isolation: primary honoured (opt-out)" >&2
++        elif [ -z "$_iso_tkt" ]; then
++            echo "WARN arm-resume: himmel code arm resolves to the primary checkout WITHOUT worktree isolation: no HIMMEL ticket in the file name or ticket: frontmatter" >&2
++        else
++            WORKTREE_BRANCH="fix/$(printf '%s' "$_iso_tkt" | tr '[:upper:]' '[:lower:]')-arm"
++            RESUME_CWD_OVERRIDE=""
++            echo "arm-resume: himmel code arm ($_iso_tkt) -> default worktree isolation '$WORKTREE_BRANCH' (HIMMEL-1332; set 'resume_isolation: primary' to opt out)" >&2
++        fi
++    fi
++    unset _iso_fm _iso_mode _iso_cwd _iso_tkt _iso_root _iso_primary
++fi
++
+ if [ -n "$WORKTREE_BRANCH" ]; then
+     if [ -n "$RESUME_CWD_OVERRIDE" ]; then
+         echo "ERR arm-resume: --cwd and --worktree are mutually exclusive (the worktree IS the cwd)" >&2
+diff --git a/scripts/handover/test-arm-resume.sh b/scripts/handover/test-arm-resume.sh
+index c87814b84..4c6bddb2c 100755
+--- a/scripts/handover/test-arm-resume.sh
++++ b/scripts/handover/test-arm-resume.sh
+@@ -101,7 +101,7 @@ T32|T32
+ T33|T33
+ T33c|T33c
+ T38|T38
+-W1-W8|W1-W8 W1 W2 W3 W4 W5 W6 W7 W8
++W1-W8|W1-W8 W1 W2 W3 W4 W5 W6 W7 W8 W9 W10 W11 W12 W13 W14 W15 W16
+ T33-collision|T33-collision
+ T34|T34
+ T35|T35
+@@ -2324,7 +2324,7 @@ fi
+ # ---------------------------------------------------------------------------
+ # W1-W5: --worktree isolation for code arms
+ # ---------------------------------------------------------------------------
+-if _sec_selected "W1-W8" "W1" "W2" "W3" "W4" "W5" "W6" "W7" "W8"; then
++if _sec_selected "W1-W8" "W1" "W2" "W3" "W4" "W5" "W6" "W7" "W8" "W9" "W10" "W11" "W12" "W13" "W14" "W15" "W16"; then
+ # W1: --worktree dry-run computes the type+slug path, resumes there, pre-trusts it.
+ HO=$(make_handover "")
+ out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$HO" --worktree feat/wt-test --dry-run 2>&1)
+@@ -2401,6 +2401,49 @@ rc=$?
+ assert_rc "W8 reuse existing worktree exits 0 (cmd not called)" 0 "$rc"
+ assert_contains "W8 announces reuse" "reusing existing worktree" "$out"
+ rm -rf "$W8_DIR"
++
++# W9-W12: himmel code arms default to worktree isolation.
++W9_ROOT="$TMP/w9-primary"; mkdir -p "$W9_ROOT/.git" "$TMP/w9-other"
++_w9_ho() { # <file-name> <resume_cwd> [extra frontmatter line]
++    local f="$HANDOVER_DIR/$1"
++    { printf -- '---\nsession_kind: test\nresume_cwd: %s\n' "$2"; [ -n "${3:-}" ] && printf '%s\n' "$3"; printf -- '---\n# t\n'; } > "$f"
++    printf '%s' "$f"
++}
++_w9_run() { SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" bash "$ARM" --time "$(future_time)" --handover "$1" --dry-run "${@:2}" 2>&1; echo "arm-rc=$?"; }
++out=$(_w9_run "$(_w9_ho HIMMEL-1332-w9.md "$W9_ROOT")")
++assert_contains "W9 himmel code arm defaults to a worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
++out=$(_w9_run "$(_w9_ho HIMMEL-1332-w10.md "$W9_ROOT" "resume_isolation: primary")")
++assert_not_contains "W10 resume_isolation: primary opts out" "would create worktree" "$out"
++assert_contains "W10 exits 0" "arm-rc=0" "$out"
++assert_contains "W10 opt-out is logged loudly" "resume_isolation: primary honoured" "$out"
++out=$(_w9_run "$(_w9_ho HIMMEL-1332-w11.md "$TMP/w9-other")")
++assert_not_contains "W11 a non-himmel resume_cwd (vault arm) is untouched" "would create worktree" "$out"
++assert_contains "W11 exits 0" "arm-rc=0" "$out"
++out=$(_w9_run "$(_w9_ho luna-note-w12.md "$W9_ROOT")")
++assert_not_contains "W12 no HIMMEL ticket in the handover name is untouched" "would create worktree" "$out"
++assert_contains "W12 exits 0" "arm-rc=0" "$out"
++assert_contains "W12 the primary-without-isolation decline names its reason" "WARN arm-resume: himmel code arm resolves to the primary checkout WITHOUT worktree isolation: no HIMMEL ticket" "$out"
++# W13: --cwd resolving to the primary (the hop.sh path) isolates too.
++out=$(_w9_run "$(_w9_ho HIMMEL-1332-w13.md "$TMP/w9-other")" --cwd "$W9_ROOT")
++assert_contains "W13 --cwd naming the primary checkout defaults to a worktree" "would create worktree 'fix/himmel-1332-arm'" "$out"
++assert_contains "W13 exits 0" "arm-rc=0" "$out"
++# W14: no resume_cwd: and no ticket in the file name, ticket: in the frontmatter.
++W14_HO="$HANDOVER_DIR/luna-note-w14.md"
++printf -- '---\nsession_kind: test\nticket: HIMMEL-1332\n---\n# t\n' > "$W14_HO"
++out=$(_w9_run "$W14_HO")
++assert_contains "W14 missing resume_cwd plus a frontmatter ticket isolates" "would create worktree 'fix/himmel-1332-arm'" "$out"
++assert_contains "W14 exits 0" "arm-rc=0" "$out"
++# W15: a failed create under the default is a hard exit 4, not a silent primary arm.
++W15_HO="$(_w9_ho HIMMEL-9915-w15.md "$W9_ROOT")"
++out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_ISOLATION_ROOT="$W9_ROOT" ARM_WORKTREE_CMD="bash $WT_FAIL_STUB" bash "$ARM" --time "$(future_time)" --handover "$W15_HO" 2>&1)
++rc=$?
++assert_rc "W15 failed default worktree create exits 4" 4 "$rc"
++assert_contains "W15 names the failed branch" "worktree create failed for branch 'fix/himmel-9915-arm'" "$out"
++# W16: a console doc is excluded from the default.
++out=$(_w9_run "$(_w9_ho HIMMEL-1332-w16-console.md "$W9_ROOT")")
++assert_not_contains "W16 a console doc is untouched" "would create worktree" "$out"
++assert_not_contains "W16 a console doc prints no isolation WARN" "WITHOUT worktree isolation" "$out"
++rm -rf "$W9_ROOT" "$TMP/w9-other" "$W14_HO"
+ fi
+
+ # ---------------------------------------------------------------------------

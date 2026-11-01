@@ -1,0 +1,164 @@
+diff --git a/scripts/handover/chief-kit/chief-wait.sh b/scripts/handover/chief-kit/chief-wait.sh
+index 3f79accb2..d04fe0fd2 100755
+--- a/scripts/handover/chief-kit/chief-wait.sh
++++ b/scripts/handover/chief-kit/chief-wait.sh
+@@ -14,7 +14,10 @@
+ # housekeeping window ends. HOUSEKEEPING_DIGEST_SECS defaults to 900; 0 keeps
+ # the original unbatched output. Board changes, status sweeps and informational
+ # LIVE/ACK/WRAPPED/MERGED marker changes share a persisted housekeeping buffer.
+-# Telegram, actionable worker events, succession and handover-budget stay urgent.
++# Telegram, actionable worker events, succession and handover-budget stay urgent. A
++# pool-unresolved or unowned-prs wake joins the digest unless its value changed since the
++# last one (the unresolved lines, or a PR new to the unowned marker): first sight and a
++# change wake at once.
+ # Exit-on-WAKE and re-arming remain; this does not provide persistent delivery.
+ #
+ #   WAKE housekeeping kinds=<sorted kinds>  one window of buffered housekeeping,
+@@ -835,7 +838,27 @@ pool_view() { # stdin: the pool pass; stdout: its ticket rows grouped under a '#
+             for (i = first; i <= NR; i++) if (kind[i] == "rest") print line[i]
+         }'
+ }
+-underfill_wake() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
++# underfill_wake: prints the WAKE block for the pool pool_probe just read and succeeds. A
++# pool-unresolved block whose unresolved lines match the last one woken (or digested) is
++# housekeeping: it joins the digest as one line and the call fails; the first sight and any
++# change wake at once. HOUSEKEEPING_DIGEST_SECS=0 keeps every block.
++pool_sig_file="$inbox.wait.poolhk"
++underfill_wake() {
++    local blk sum line
++    blk="$(underfill_block)" || return 1
++    if [ -n "$pool_unresolved" ] && [ "$housekeeping_secs" -gt 0 ]; then
++        sum="$(printf '%s\n' "$pool_unresolved" | cksum)"
++        if [ "$sum" = "$(cat "$pool_sig_file" 2>/dev/null)" ]; then  # swallow-ok: no marker reads empty, so the first sight wakes
++            line="capacity=$cap_val${pool_counts:+ pool=$pool_counts} $(printf '%s' "$pool_unresolved" | tr '\n' ';')"
++            grep -qxF -- "pool-unresolved $line" "$housekeeping_file" 2>/dev/null && return 1  # swallow-ok: no buffer yet reads as not queued; the same line queues once per window
++            housekeeping_add pool-unresolved "$line" || return 1
++            return 0
++        fi
++        printf '%s\n' "$sum" > "$pool_sig_file" 2>/dev/null
++    fi
++    printf '%s\n' "$blk"
++}
++underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
+     local back="" extra="" count="" intake_ver="" wake=underfilled
+     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
+     else
+@@ -872,8 +895,7 @@ pool_watch_wake() {
+     if [ ! -e "$pool_watch" ] || [ "$(( $(date +%s) - $(stat -c %Y "$pool_watch" 2>/dev/null || echo 0) ))" -ge "${CHIEF_WAIT_UNDERFILL_REPOOL_SEC:-1800}" ]; then  # gnu-ok: chief kit is Linux-only; swallow-ok: an unreadable marker is due
+         pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}"
+         touch "$pool_watch" 2>/dev/null
+-        if [ -n "$pool_unresolved" ]; then
+-            underfill_wake
++        if [ -n "$pool_unresolved" ] && underfill_wake; then
+             return 0
+         fi
+     fi
+@@ -908,7 +930,17 @@ underfill_repool() {
+ # new to the marker, holds a PR the marker lacks, or the marker is older than the re-wake
+ # window.
+ unowned_wake() {
+-    set_wake "$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
++    local nums num
++    nums="$(printf '%s\n' "$1" | tr ',' '\n' | sed 's/:.*//')"
++    # unowned_rewake: the wake is the re-wake window alone, the same set the marker already holds
++    unowned_rewake=1
++    if [ ! -e "$unowned_file" ]; then unowned_rewake=""
++    else
++        for num in $nums; do
++            grep -qxF -- "$num" "$unowned_file" 2>/dev/null || { unowned_rewake=""; break; }
++        done
++    fi
++    set_wake "$nums" "$unowned_file" "${CHIEF_WAIT_UNOWNED_REWAKE_MIN:-60}"
+ }
+ # set_wake: <newline-separated items> <marker file> <re-wake minutes> — the shared marker
+ # logic: succeeds (and refreshes the marker) when the marker is missing, holds none of
+@@ -1628,8 +1660,15 @@ while :; do
+                 *)
+                     unowned_none_streak=0
+                     if unowned_wake "$unowned_val"; then
+-                        printf 'WAKE unowned-prs %s\n%s\n' "$unowned_val" "$tick_line"
+-                        exit_reason='wake-unowned-prs'; exit 0
++                        # a re-wake of a set the marker already holds is housekeeping; a first sight or a joining PR wakes at once
++                        if [ -n "$unowned_rewake" ] && [ "$housekeeping_secs" -gt 0 ]; then
++                            if housekeeping_add unowned-prs "$unowned_val" "$tick_line"; then
++                                exit_reason='wake-unowned-prs'; exit 0
++                            fi
++                        else
++                            printf 'WAKE unowned-prs %s\n%s\n' "$unowned_val" "$tick_line"
++                            exit_reason='wake-unowned-prs'; exit 0
++                        fi
+                     fi ;;
+             esac
+             unwatched_val="$(printf '%s\n' "$tick_line" | sed -n 's/.* procs=[^ ]*unwatched=\([^ ,]*\).*/\1/p')"
+diff --git a/scripts/handover/chief-kit/test-chief-wait-b.sh b/scripts/handover/chief-kit/test-chief-wait-b.sh
+index 2acb289e6..fe1274d0b 100755
+--- a/scripts/handover/chief-kit/test-chief-wait-b.sh
++++ b/scripts/handover/chief-kit/test-chief-wait-b.sh
+@@ -414,7 +414,7 @@ wait_exit "$WPID"
+ check "(u5542) a PR with no live owner wakes on first sight" "0" "$rc"
+ check "(u5542) the wake names the PR and its age" "WAKE unowned-prs #2575:120m" "$(head -n1 "$WORK/y.out")"
+
+-start "$I" "$WORK/y2.out" --workers "N1.md"
++HOUSEKEEPING_DIGEST_SECS=0 start "$I" "$WORK/y2.out" --workers "N1.md"  # 8197: with the digest on, a same-set re-wake joins the digest (test-chief-wait-pool.sh)
+ wait_hb "$I" || fail "(u5542-2) no baseline heartbeat"
+ unowned_line "#2575:121m"
+ wait_exit "$WPID"
+diff --git a/scripts/handover/chief-kit/test-chief-wait-pool.sh b/scripts/handover/chief-kit/test-chief-wait-pool.sh
+index 2635f0fc2..fa15ba534 100755
+--- a/scripts/handover/chief-kit/test-chief-wait-pool.sh
++++ b/scripts/handover/chief-kit/test-chief-wait-pool.sh
+@@ -193,6 +193,45 @@ EOF
+     check '(8197) a failed payload read emits no wake and retains the queue' '124:0:yes' "$digest_rc:$(grep -c '^WAKE ' "$WORK/readfailure.out"):$([ -s "$I.wait.housekeeping" ] && echo yes)"
+     timeout 4 bash "$WAIT" "$I" --workers N1.md > "$WORK/readrecover.out" 2> "$WORK/readrecover.err"; digest_rc=$?
+     check '(8197) the next arm delivers the retained payload after reads recover' '0:1:1' "$digest_rc:$(grep -c '^WAKE housekeeping' "$WORK/readrecover.out"):$(grep -c '^tick .*retained-payload' "$WORK/readrecover.out")"
++
++    # A pool-unresolved or unowned-prs wake is housekeeping unless its value changed since the last
++    # digest: first sight and a changed set wake at once, an unchanged repeat joins the digest.
++    sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line" > "$STUB/okcap.line"
++    cat > "$STUB/okcap-tick.sh" <<'EOF'
++#!/usr/bin/env bash
++cat "$STUB/okcap.line"
++EOF
++    export CHIEF_WAIT_TICK="$STUB/okcap-tick.sh" HOUSEKEEPING_DIGEST_SECS=30
++    printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
++    I="$(new_inbox poolhk)"
++    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolhk1.out" 2>/dev/null; digest_rc=$?
++    check '(8197) the first sight of an unresolved pool wakes at once' '0:1' "$digest_rc:$(grep -c '^WAKE pool-unresolved' "$WORK/poolhk1.out")"
++    timeout 6 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolhk2.out" 2>/dev/null; digest_rc=$?
++    check '(8197) an unchanged unresolved pool does not wake again, it joins the digest' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/poolhk2.out"):$(grep -c '^pool-unresolved ' "$I.wait.housekeeping")"
++    printf '# disposition HIMMEL-16 classification BLOCKED: needs slicing\n# disposition HIMMEL-17 classification BLOCKED: needs slicing\n' > "$STUB/dispositions"
++    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolhk3.out" 2>/dev/null; digest_rc=$?
++    check '(8197) a changed unresolved set wakes at once' '0:1' "$digest_rc:$(grep -c '^WAKE pool-unresolved' "$WORK/poolhk3.out")"
++    printf '%s\n' "$(( $(date +%s) - 31 ))" > "$I.wait.housekeeping.since"
++    timeout 8 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolhk4.out" 2>/dev/null; digest_rc=$?
++    check '(8197) the digest carries the buffered pool-unresolved line' '0:1' "$digest_rc:$(grep -c '^WAKE housekeeping kinds=pool-unresolved' "$WORK/poolhk4.out")"
++    HOUSEKEEPING_DIGEST_SECS=0 timeout 6 bash "$WAIT" "$(new_inbox poolhk0)" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/poolhk0.out" 2>/dev/null; digest_rc=$?
++    check '(8197) zero keeps the unbatched pool-unresolved wake' '0:1' "$digest_rc:$(grep -c '^WAKE pool-unresolved' "$WORK/poolhk0.out")"
++    rm -f "$STUB/dispositions"
++
++    unowned_hk() { sed -e "s/ unowned-prs=[^ ]*//" -e "s/ bank=/ unowned-prs=$1 bank=/" "$STUB/okcap.line" > "$STUB/okcap.line.tmp" && mv "$STUB/okcap.line.tmp" "$STUB/okcap.line"; }
++    export CHIEF_WAIT_UNOWNED_REWAKE_MIN=1
++    unowned_hk '#2575:120m'
++    I="$(new_inbox unownedhk)"
++    timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk1.out" 2>/dev/null; digest_rc=$?
++    check '(8197) the first sight of an unowned PR wakes at once' '0:WAKE unowned-prs #2575:120m' "$digest_rc:$(head -n 1 "$WORK/unhk1.out")"
++    touch -d '2 hours ago' "$I.wait.unowned"
++    unowned_hk '#2575:121m'
++    timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk2.out" 2>/dev/null; digest_rc=$?
++    check '(8197) the same unowned set past its re-wake window joins the digest, no wake' '124:0:1' "$digest_rc:$(grep -c '^WAKE ' "$WORK/unhk2.out"):$(grep -c '^unowned-prs #2575:121m' "$I.wait.housekeeping")"
++    unowned_hk '#2575:130m,#2600:15m'
++    timeout 6 bash "$WAIT" "$I" --workers N1.md > "$WORK/unhk3.out" 2>/dev/null; digest_rc=$?
++    check '(8197) a PR joining the unowned set wakes at once' '0:WAKE unowned-prs #2575:130m,#2600:15m' "$digest_rc:$(head -n 1 "$WORK/unhk3.out")"
++    unset CHIEF_WAIT_UNOWNED_REWAKE_MIN
+     [ "$fails" -eq 0 ]
+ )
+ if ! housekeeping_cases; then fails=$((fails + 1)); fi
+@@ -306,7 +345,7 @@ check '(replay) undispositioned tickets wake pool-unresolved' 1 "$(grep -c '^WAK
+ check '(replay) BLOCKED keys are named by class' 1 "$(grep -c '^# pool-unresolved classification HIMMEL-16 ' "$WORK/replay1.out")"
+ check '(replay) listed but undispatched keys remain unresolved' 1 "$(grep -c '^# pool-unresolved listed HIMMEL-35 ' "$WORK/replay1.out")"
+ arm "$I" "$WORK/replay2.out" 4
+-check '(replay) unresolved keys re-wake unchanged on the bounded cadence' 1 "$(grep -c '^WAKE pool-unresolved' "$WORK/replay2.out")"
++check '(replay) an unchanged unresolved set joins the digest on the bounded cadence, no wake (8197)' 0:1 "$(grep -c '^WAKE ' "$WORK/replay2.out"):$(grep -c '^pool-unresolved ' "$I.wait.housekeeping")"
+ # Capacity is no excuse for silently dropping the open pool.
+ sed 's/ capacity=[^ ]*/ capacity=ok/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+ I="$(new_inbox replayfull)"

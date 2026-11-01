@@ -325,7 +325,7 @@ scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	1
 scripts/eval/qmd-quality/test-qmd-quality.sh	2
 scripts/eval/retrieval-eval/test-answer-ab.sh	2
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	9
-scripts/eval/review-panel/test-review-panel.sh	105
+scripts/eval/review-panel/test-review-panel.sh	291
 scripts/eval/sandbox-poc/test-probe.sh	4
 scripts/eval/scrape-bench/test-scrape-bench.sh	0
 scripts/eval/test-autocompact-ab.sh	2

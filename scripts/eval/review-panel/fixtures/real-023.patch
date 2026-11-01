@@ -1,0 +1,106 @@
+diff --git a/scripts/luna/qmd-embed-model.sh b/scripts/luna/qmd-embed-model.sh
+index adda0a70f..51972da12 100755
+--- a/scripts/luna/qmd-embed-model.sh
++++ b/scripts/luna/qmd-embed-model.sh
+@@ -390,10 +390,32 @@ cmd_reembed() {
+     case "$copy" in /*) : ;; *) die 1 "--copy must be an absolute path" ;; esac
+     [ "$copy" != "$live" ] || die 2 "--copy is the live index; reembed never writes the live index"
+-    [ ! -e "$copy" ] || die 2 "$copy already exists; remove it or pick another --copy"
+     need_sqlite
++    # A copy carrying the .partial marker is an interrupted run: reuse it (no new
++    # backup). It resumes without --force once it holds only the target model;
++    # a run interrupted before the first vectors landed still holds the old
++    # model and restarts forced on the same copy.
++    local resume=0 reuse=0
++    if [ -e "$copy" ]; then
++        [ ! "$copy" -ef "$live" ] || die 2 "--copy is the same file as the live index (link); reembed never writes the live index"
++        if [ -e "$copy.partial" ]; then
++            reuse=1
++            ! compare_index "$copy" "$uri" >/dev/null 2>&1 || resume=1
++        elif compare_index "$copy" "$uri" >/dev/null 2>&1; then
++            die 2 "$copy is a finished copy of an older live index; swap it in, or remove it to copy the current live index"
++        else
++            die 2 "$copy already exists and does not hold only $name vectors; remove it or pick another --copy"
++        fi
++    fi
+     resolve_qmd
+
+-    say "[1/4] consistent copy of $live to $copy"
+-    sqlite3 -readonly "$live" ".backup '$copy'" || { rm -f "$copy"; die 5 "sqlite3 .backup failed"; }
++    if [ "$resume" -eq 1 ]; then
++        say "[1/4] resuming the partial copy $copy (already holds only $name vectors)"
++    elif [ "$reuse" -eq 1 ]; then
++        say "[1/4] restarting the interrupted copy $copy (no $name vectors yet)"
++    else
++        say "[1/4] consistent copy of $live to $copy"
++        sqlite3 -readonly "$live" ".backup '$copy'" || { rm -f "$copy"; die 5 "sqlite3 .backup failed"; }
++        : >"$copy.partial" || die 5 "could not write the resume marker $copy.partial"
++    fi
+
+     # qmd reads models.embed from the config BEFORE QMD_EMBED_MODEL, so the
+@@ -406,7 +428,10 @@ cmd_reembed() {
+     write_yml_embed "$scratch/index.yml" "$uri" || die 2 "the egress gate refused the config copy; nothing was re-embedded"
+
+-    say "[2/4] qmd embed --force on the copy with $uri (long: about 2 h for our corpus on a 4090)"
+-    INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed --force --timeout 0 --max-docs-per-batch 4096 || rc=$?
+-    [ "$rc" -eq 0 ] || die 5 "qmd embed failed on the copy (rc=$rc); the live index is untouched. Remove $copy and retry."
++    local force="--force"
++    [ "$resume" -eq 1 ] && force=""
++    say "[2/4] qmd embed ${force:+$force }on the copy with $uri (long: about 2 h for our corpus on a 4090)"
++    # shellcheck disable=SC2086  # $force is empty or the single word --force
++    INDEX_PATH="$copy" QMD_CONFIG_DIR="$scratch" run_qmd embed $force --timeout 0 --max-docs-per-batch 4096 || rc=$?
++    [ "$rc" -eq 0 ] || die 5 "qmd embed failed on the copy (rc=$rc); the live index is untouched. Re-run the same command to resume from $copy (finished vectors are kept)."
+
+     say "[3/4] completeness: a second embed pass must find nothing to do"
+@@ -419,4 +444,5 @@ cmd_reembed() {
+     compare_index "$copy" "$uri" || rc=$?
+     [ "$rc" -eq 0 ] || die 5 "the copy failed its model check"
++    rm -f "$copy.partial"
+     say "built $copy with $name. To switch this host: bash $HERE/qmd-embed-model.sh swap --copy $copy"
+ }
+diff --git a/scripts/luna/test-qmd-embed-model.sh b/scripts/luna/test-qmd-embed-model.sh
+index 4b1c25e0d..3e29e1df8 100755
+--- a/scripts/luna/test-qmd-embed-model.sh
++++ b/scripts/luna/test-qmd-embed-model.sh
+@@ -216,6 +216,40 @@ assert_not_contains "qmd never used the live config dir" "QMD_CONFIG_DIR=$H/.con
+ assert_contains "embed ran forced with no session cap" "ARGS=embed --force --timeout 0" "$log"
+ assert_contains "embed batches 4096 docs so a remote embedder commits per batch" "--max-docs-per-batch 4096" "$log"
++if [ ! -e "$copy.partial" ]; then pass "a finished run removes the resume marker"; else fail "a finished run removes the resume marker"; fi
++# A finished copy is a snapshot of an older live index: never reused.
++sqlite3 "$copy" "CREATE TABLE resume_marker(x INT);"
+ rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+-assert_rc "reembed refuses to overwrite an existing copy" 2 "$rc"
++assert_rc "reembed refuses a finished copy" 2 "$rc"
++assert_contains "the refusal names the finished copy" "finished copy of an older live index" "$out"
++# A copy that still carries the marker is a partial run: resume it.
++: >"$copy.partial"
++: >"$H/qmd.log"
++rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
++assert_rc "reembed resumes a partial copy of the target model" 0 "$rc"
++if [ ! -e "$copy.partial" ]; then pass "the resumed run removes the resume marker"; else fail "the resumed run removes the resume marker"; fi
++assert_contains "the resume kept the copy (no new backup)" "resume_marker" "$(sqlite3 "$copy" .tables)"
++log="$(cat "$H/qmd.log")"
++assert_contains "the resume embeds without --force" "ARGS=embed --timeout 0 --max-docs-per-batch 4096" "$log"
++assert_not_contains "the resume never forces" "embed --force" "$log"
++# An interrupted first pass leaves the marker on a copy that still holds the old model: restart it forced, keep the copy.
++sqlite3 "$copy" "UPDATE content_vectors SET model='$GEMMA';"
++: >"$copy.partial"
++: >"$H/qmd.log"
++rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
++assert_rc "reembed restarts an interrupted copy that still holds the old model" 0 "$rc"
++assert_contains "the restart kept the copy (no new backup)" "resume_marker" "$(sqlite3 "$copy" .tables)"
++assert_contains "the restart embeds forced" "ARGS=embed --force --timeout 0 --max-docs-per-batch 4096" "$(cat "$H/qmd.log")"
++# A copy still holding another model is not resumable.
++sqlite3 "$copy" "UPDATE content_vectors SET model='$GEMMA';"
++rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
++assert_rc "reembed refuses a copy holding another model" 2 "$rc"
++assert_contains "the refusal says to remove the copy" "remove it or pick another --copy" "$out"
++sqlite3 "$copy" "UPDATE content_vectors SET model='$QWEN'; DROP TABLE resume_marker;"
++# A link to the live index is the live index: never resumed.
++ln -s "$(IDX)" "$H/.cache/qmd/link.sqlite"
++rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$H/.cache/qmd/link.sqlite" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
++assert_rc "reembed refuses a symlink to the live index as --copy" 2 "$rc"
++assert_contains "the link refusal names the live index" "same file as the live index" "$out"
++rm -f "$H/.cache/qmd/link.sqlite"
+ rc=0; out=$(run bash "$SCRIPT" reembed --model qwen --copy "$(IDX)" --qmd-bin "$STUBS/qmd" 2>&1) || rc=$?
+ assert_rc "reembed refuses the live index as --copy" 2 "$rc"
