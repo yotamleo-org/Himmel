@@ -91,7 +91,7 @@ while [ $# -gt 0 ]; do
             echo "panel-first-pass: unknown arg: $1" >&2; exit 2 ;;
     esac
 done
-if [ -n "$CONTEXT_FILE" ] && [ ! -r "$CONTEXT_FILE" ]; then
+if [ -n "$CONTEXT_FILE" ] && { [ ! -f "$CONTEXT_FILE" ] || [ ! -r "$CONTEXT_FILE" ]; }; then
     echo "panel-first-pass: --context-file '$CONTEXT_FILE' is not a readable file" >&2
     exit 2
 fi

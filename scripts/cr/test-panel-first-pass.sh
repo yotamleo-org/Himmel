@@ -774,6 +774,15 @@ out="$( (cd "$repo4" && HIMMEL_SESSION_LANE=claudex FAKE_RC=0 \
 if [ "$rc" -eq 2 ]; then ok "T25 an unreadable context file exits 2"; else bad "T25 unreadable exit (got $rc, want 2)"; fi
 if [ -f "$CALL_LOG" ]; then bad "T25 panel invoked with an unreadable context file"; else ok "T25 panel never invoked"; fi
 rm -rf "$repo4/.git/cr-review-rounds"
+# A directory is readable but not a file: it exits 2 before a round is spent.
+mkdir -p "$tmp/ctx-dir"
+rm -f "$CALL_LOG" "$tmp/err"
+out="$( (cd "$repo4" && HIMMEL_SESSION_LANE=claudex FAKE_RC=0 \
+    bash "$SCRIPT" --head "$r4_feature" --branch feature --context-file "$tmp/ctx-dir") 2>"$tmp/err" )"; rc=$?
+if [ "$rc" -eq 2 ]; then ok "T25 a directory context file exits 2"; else bad "T25 directory exit (got $rc, want 2)"; fi
+if [ -f "$CALL_LOG" ]; then bad "T25 panel invoked with a directory context file"; else ok "T25 panel never invoked for a directory"; fi
+if [ -e "$repo4/.git/cr-review-rounds/feature.round" ]; then bad "T25 a directory context file spent a round"; else ok "T25 a directory context file spends no round"; fi
+rm -rf "$repo4/.git/cr-review-rounds"
 
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*
