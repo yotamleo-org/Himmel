@@ -2928,6 +2928,31 @@ for (const c of DENY_LINE_CASES) {
   });
 }
 
+// The deny line is built on the refusal path, after the guard decided: if building it stalled, a hook
+// timeout would drop the refusal. A message that is one huge identifier-like run must not stall it.
+for (const [label, message] of [
+  ['a repeated secret-name shape', `BLOCKED: ${'KEY'.repeat(3000)}\n`],
+  ['one very long word', `BLOCKED: ${'a'.repeat(300000)}\n`],
+]) {
+  test(`a refusal whose message is ${label} is still relayed promptly`, () => {
+    withChain((dir) => {
+      writeFileSync(join(dir, 'msg.txt'), message);
+      writeFileSync(join(dir, 'deny-msg.sh'), '#!/usr/bin/env bash\ncat "$(dirname "$0")/msg.txt" >&2\nexit 2\n');
+      chmodSync(join(dir, 'deny-msg.sh'), 0o755);
+      const runLog = join(dir, 'runs.jsonl');
+      const result = spawnSync(process.execPath, [LAUNCHER, '--chain', join(dir, 'deny-msg.sh')], {
+        encoding: 'utf8',
+        input: CALL_PAYLOAD(),
+        timeout: 10000,
+        env: { ...process.env, RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500', RUN_HOOK_CHAIN_SKIP_LOG: join(dir, 'skips.jsonl'), RUN_HOOK_CHAIN_RUN_LOG: runLog },
+      });
+      assert.equal(result.error, undefined, 'the launcher finishes inside 10 s');
+      assert.equal(result.status, 2);
+      assert.equal(jsonlRows(runLog)[0].members[0].denyLine, 'BLOCKED: <redacted>');
+    });
+  });
+}
+
 test('a rule denial with no message stores a null deny line', () => {
   withChain((dir) => {
     writeFileSync(join(dir, 'deny-silent.sh'), '#!/usr/bin/env bash\nexit 2\n');

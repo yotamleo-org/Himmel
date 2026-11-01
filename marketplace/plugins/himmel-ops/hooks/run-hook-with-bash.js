@@ -445,28 +445,38 @@ function rowIdentity(hookInput, invocation, occurrence) {
 
 // ------------------------------------------------------------------ deny line
 //
-// The one line of a refusal message the log keeps. The whole message is
-// redacted first, so a secret that would straddle the clip boundary is gone
-// before anything is cut; control and ANSI sequences are stripped, then the
-// text is redacted again because stripping can join the halves of a name an
-// escape sequence had split. Markup is kept as text: the renderer escapes it.
+// The one line of a refusal message the log keeps. Control and ANSI sequences
+// are stripped first, so a name an escape sequence had split is whole again
+// when the secret patterns run. Those patterns backtrack badly on a long
+// identifier-like run, and this runs on the refusal path, where a stall would
+// let a hook timeout drop the refusal: the text they see is bounded, first to
+// a prefix of the message, then to a window of the first line that is wider
+// than the clip, so a secret that straddles the clip boundary is still whole
+// inside the window and is redacted before the cut.
+// Markup is kept as text: the renderer escapes it.
 // eslint-disable-next-line no-control-regex
 const ANSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTER = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
 const DENY_LINE_MAX_CODE_POINTS = 240;
+const DENY_MESSAGE_SCAN_MAX = 65536;
+const DENY_REDACT_WINDOW_CODE_POINTS = 1000;
 // U+2028 and U+2029 end a line too; they are built from their code points so the
 // source file never holds the raw separator characters.
 const LINE_BREAK = new RegExp('[\\r\\n' + String.fromCharCode(0x2028, 0x2029) + ']+');
 
 function denyLine(message) {
   if (typeof message !== 'string') return null;
-  const stripped = redactSecrets(message).replace(ANSI_SEQUENCE, '').replace(CONTROL_CHARACTER, '');
-  const first = redactSecrets(stripped)
+  const first = message
+    .slice(0, DENY_MESSAGE_SCAN_MAX)
+    .replace(ANSI_SEQUENCE, '')
+    .replace(CONTROL_CHARACTER, '')
     .split(LINE_BREAK)
     .map((line) => line.trim())
     .find(Boolean);
-  return first ? Array.from(first).slice(0, DENY_LINE_MAX_CODE_POINTS).join('') : null;
+  if (!first) return null;
+  const window = Array.from(first).slice(0, DENY_REDACT_WINDOW_CODE_POINTS).join('');
+  return Array.from(redactSecrets(window)).slice(0, DENY_LINE_MAX_CODE_POINTS).join('');
 }
 
 // ----------------------------------------------------------------- run log
