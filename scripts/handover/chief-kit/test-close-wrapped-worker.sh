@@ -363,6 +363,7 @@ rm -rf "$SCR/refclone"
 git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
 printf '%s\n' '#!/bin/sh' "touch \"$W/hook-ran\"" > "$SCR/refclone/.git/hooks/reference-transaction"
 chmod 755 "$SCR/refclone/.git/hooks/reference-transaction"
+git -C "$SCR/refclone" config core.hooksPath "$SCR/refclone/.git/hooks"
 git -C "$W/scr-remote.git" branch hookctl main
 git -C "$SCR/refclone" fetch -q origin 2>/dev/null
 check "planted hook control: a plain fetch runs the hook" "$([ -e "$W/hook-ran" ] && echo ran || echo not)" "ran"
