@@ -517,6 +517,10 @@ out=$(HIMMEL_RECOVER_STATE="$R/ro/state" PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="
 assert_contains "RED: a completion stamp that cannot be written is a failure" "cannot record" "$out"
 assert_contains "the failed stamp makes recover exit 1" "rc=1" "$out"
 chmod 0755 "$R/ro"
+mkdir -p "$R/stamp-state/recover-done" # a directory where the stamp file belongs: the state dir is fine, the stamp write fails
+out=$(HIMMEL_RECOVER_STATE="$R/stamp-state" PATH="$R/ubin:$PATH" RECOVER_FAKE_DIR="$R" HIMMEL_RECOVER_ROOT="$R" HIMMEL_RECOVER_SERVICES="telegram-bridge.service" TELEGRAM_ENV="$R/tg.env" bash "$OPS/recover.sh" 2>&1; echo "rc=$?")
+assert_contains "RED: a stamp write that fails after the recovery steps names the stamp path" "cannot record completion in $R/stamp-state/recover-done" "$out"
+assert_contains "the failed stamp write makes recover exit 1" "rc=1" "$out"
 
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
