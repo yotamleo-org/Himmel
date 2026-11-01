@@ -1735,5 +1735,35 @@ has "an empty Remaining: line does not borrow the next line's text" "$pm" "NEEDS
 lacks "an empty Remaining: line is not a RESUME row" "$pm" "RESUME	HIMMEL-84"
 has "a PR body gh cannot read is reported as unreadable, not as missing a Remaining: line" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-85: merged PR #5005 body could not be read (gh failed)"
 
+# The LATEST contract-bearing merge row of a key decides: a contract=yes row followed by a newer contract=no merge is a
+# partial again (RESUME), a contract=no row followed by a contract=yes row is done-pending.
+mkdir -p "$WORK/pm2/workers"
+printf 'Remaining: the late slice\n' > "$PR_BODY_DIR/5007"
+M="$MPM"
+mk HIMMEL-86 "To Do" Medium '[]' '[]' '[]' "yes then a newer partial merge" "Edit scripts/lib/pm7.sh."
+mk HIMMEL-87 "To Do" Medium '[]' '[]' '[]' "partial then a newer completing merge" "Edit scripts/lib/pm8.sh."
+M="$M_SAVE"
+cat > "$WORK/pm2/status-events.jsonl" <<'EOF'
+{"ts":"t","event":"merge","key":"HIMMEL-86","pr":"5006","contract":"yes","result":"ok"}
+{"ts":"t","event":"merge","key":"HIMMEL-86","pr":"5007","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-87","pr":"5008","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-87","pr":"5009","contract":"yes","result":"ok"}
+EOF
+pm2="$(NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm2/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+has "a newer contract=no merge after a contract=yes row is a RESUME row" "$pm2" "RESUME	HIMMEL-86"
+has "and its RESUME row names the newer partial PR's Remaining: text" "$(printf '%s\n' "$pm2" | grep 'HIMMEL-86	')" "Remaining: the late slice"
+lacks "a contract=yes row after a partial merge is done-pending, not a RESUME row" "$pm2" "RESUME	HIMMEL-87"
+lacks "and it is not an ordinary row either" "$pm2" "LOCAL	HIMMEL-87"
+
+# An unreadable status log withholds only a To Do candidate whose key already has a merge on the main ref (git log grep
+# "[KEY]"), prints one WARN naming them, and keeps every other candidate.
+PMG="$WORK/pm-git"; mkdir -p "$PMG"
+git -C "$PMG" init -q -b main && git -C "$PMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(x): [HIMMEL-83] a merged slice" \
+    && git -C "$PMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(x): [HIMMEL-830] a lookalike key"
+pmg="$(NEXT_DISPATCH_GIT_DIR="$PMG" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+lacks "an unreadable status log withholds a candidate whose key has a merge on main" "$pmg" "LOCAL	HIMMEL-83"
+has "and names it in one WARN" "$pmg" "# WARN: status-events.jsonl is unreadable: withheld HIMMEL-83 (a merge on main)"
+has "while a candidate with no merge on main is still dispatched" "$pmg" "LOCAL	HIMMEL-82"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

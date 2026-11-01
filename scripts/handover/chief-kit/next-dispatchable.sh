@@ -609,24 +609,40 @@ for name in names:
         continue
     if isinstance(rec, dict) and rec.get('state') == 'wrapped' and rec.get('resume_brief'):
         briefs[name[:-5].upper()] = str(rec['resume_brief'])
-done_pending = set()
+done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
 partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
+status_unreadable = False
 try:
     for line in open(os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl')):
         try:
             r = json.loads(line)
         except ValueError:
             continue
-        if isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') == 'yes':
-            done_pending.add(str(r.get('key', '')).upper())
-        elif isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') == 'no' and str(r.get('pr', '')).isdigit():
-            prs_of = partials.setdefault(str(r.get('key', '')).upper(), [])
-            if str(r['pr']) not in prs_of:
-                prs_of.append(str(r['pr']))
+        if not (isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') in ('yes', 'no')):
+            continue
+        mkey = str(r.get('key', '')).upper()
+        if r['contract'] == 'yes':
+            done_pending.add(mkey)
+        else:
+            done_pending.discard(mkey)  # a newer partial merge reopens a key an older contract=yes row closed
+            if str(r.get('pr', '')).isdigit():
+                prs_of = partials.setdefault(mkey, [])
+                if str(r['pr']) not in prs_of:
+                    prs_of.append(str(r['pr']))
 except FileNotFoundError:
     pass
 except OSError as e:
-    print('# warn: %s is unreadable (%s): merged contract rows are unknown, so a done-pending or partially merged ticket may be listed' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
+    status_unreadable = True
+    print('# warn: %s is unreadable (%s): merged contract rows are unknown, so a To Do ticket with a merge on main is withheld' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
+
+def merged_on_main(key):
+    # True when the main ref carries a commit citing [KEY]; a git read that fails counts as merged (unknown fails closed)
+    try:
+        r = subprocess.run(['git', '-C', os.environ['ND_GIT_DIR'], 'log', os.environ['ND_MAIN_REF'], '--fixed-strings', '--grep=[%s]' % key, '-1', '--format=%h'],
+                           capture_output=True, text=True, timeout=60, check=True)
+        return bool(r.stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        return True
 
 def partial_resume(key):
     # a ticket with a merged partial slice is in work: it is a RESUME row naming that slice, never a fresh To Do row
@@ -700,6 +716,7 @@ live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['b
               for b in i['blocked_by']])
 print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
+withheld_unreadable = []
 cands = []
 for i in issues.values():
     if i['status'] != 'To Do' or i['key'] in briefs or (partial_resume(i['key']) and i['type'] not in ('Epic', 'Sub-task')):
@@ -729,7 +746,13 @@ for i in issues.values():
     if residual_out(i):
         drop(i, 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
         continue
+    if status_unreadable and merged_on_main(i['key']):
+        withheld_unreadable.append(i['key'])
+        drop(i, 'status-events.jsonl unreadable and the key has a merge on main')
+        continue
     cands.append(i)
+if withheld_unreadable:
+    print('# WARN: status-events.jsonl is unreadable: withheld %s (a merge on main)' % ', '.join(withheld_unreadable))
 cands.sort(key=ranked)
 pool_only = os.environ.get('ND_POOL_ONLY') == '1'
 next_tier = [i for i in cands if tier_of(i) > 4]
