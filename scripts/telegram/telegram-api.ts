@@ -111,16 +111,21 @@ export async function sendMessage(token: string, chat_id: number, text: string,
 // Same contract as sendMessage: true only on a Bot API ok:true, a permanent 4xx or
 // retry exhaustion returns false, a lost response is NOT retried (it would duplicate).
 const DOC_UPLOAD_TIMEOUT_MS = 120_000;
-export async function sendDocument(token: string, chat_id: number, path: string, caption?: string,
+export type DocSource = string | { name: string; bytes: ArrayBuffer };
+export async function sendDocument(token: string, chat_id: number, source: DocSource, caption?: string,
     f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void): Promise<boolean> {
   let bytes: ArrayBuffer;
-  try { bytes = await Bun.file(path).arrayBuffer(); }   // a file gone or unreadable since the caller's check is a refusal, never a throw
-  catch { console.error(`[telegram] sendDocument cannot read the file chat=${redactChatId(chat_id)}`); return false; }
+  let name: string;
+  if (typeof source === "string") {
+    name = basename(source);
+    try { bytes = await Bun.file(source).arrayBuffer(); }   // a file gone or unreadable since the caller's check is a refusal, never a throw
+    catch { console.error(`[telegram] sendDocument cannot read the file chat=${redactChatId(chat_id)}`); return false; }
+  } else ({ name, bytes } = source);   // bytes the caller already validated: no second open of a path that could be swapped
   for (let attempt = 0; attempt < 5; attempt++) {
     const form = new FormData();
     form.set("chat_id", String(chat_id));
     if (caption) form.set("caption", caption.slice(0, 1024));   // Bot API caption limit
-    form.set("document", new File([bytes], basename(path)));   // BunFile ignores the filename arg
+    form.set("document", new File([bytes], name));   // BunFile ignores the filename arg
     let res: Response;
     try {
       res = await f(API(token, "sendDocument"), { method: "POST", body: form, signal: AbortSignal.timeout(DOC_UPLOAD_TIMEOUT_MS) });

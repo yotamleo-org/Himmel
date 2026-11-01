@@ -958,6 +958,21 @@ test("the poller's document sender refuses a path outside the root and a symlink
   expect(uploads).toEqual([]);
 });
 
+test("the poller's document sender uploads the bytes it validated, even if the path is swapped for a symlink afterwards", async () => {
+  const { makeSendDoc } = await import("./poller");
+  const r = root(); const out = join(r, "outgoing"); mkdirSync(out);
+  const f = join(out, "a.txt"); writeFileSync(f, "validated");
+  const secret = join(r, "secret.env"); writeFileSync(secret, "TOKEN=x");
+  let got = "";
+  const send = makeSendDoc("123:FAKE", r, (async (_t: string, _c: number, src: any) => {
+    unlinkSync(f); symlinkSync(secret, f);   // the swap lands after the checks, before the upload reads anything
+    got = typeof src === "string" ? readFileSync(src, "utf8") : Buffer.from(src.bytes).toString("utf8");
+    return true;
+  }) as any);
+  expect(await send(7, f)).toBe(true);
+  expect(got).toBe("validated");
+});
+
 test("a document line in a group session is refused and never reaches the document sender", async () => {
   const r = root(); await ensureSession(r, "group_-50");
   await writeMeta(r, "group_-50", { chat_id: -50, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });

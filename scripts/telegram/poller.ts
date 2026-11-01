@@ -1,5 +1,5 @@
-import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, lstat, realpath, mkdtemp, copyFile, rm, open } from "node:fs/promises";
-import { existsSync, readFileSync, lstatSync } from "node:fs";
+import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, realpath, mkdtemp, copyFile, rm, open } from "node:fs/promises";
+import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
@@ -2228,16 +2228,25 @@ export async function sendFileViaOutbox(root: string, chat_id: number, document_
 // must not be a symlink, and the file must be regular and within the Bot API's 50 MB.
 export const makeSendDoc = (token: string, root: string, upload: typeof sendDocument = sendDocument): SendDocFn => async (chat, path, caption) => {
   if (!isAbsolute(path)) return false;
-  let real: string;
+  let bytes: Buffer;
+  let name: string;
   try {
     const base = await realpath(join(root, "outgoing"));
-    real = await realpath(path);
+    const real = await realpath(path);
     if (!real.startsWith(base + sep)) return false;
-    if ((await lstat(path)).isSymbolicLink()) return false;
-    const st = await stat(real);
-    if (!st.isFile() || st.size > MAX_DOC_BYTES) return false;
+    // Open once (a final-component symlink is refused), validate THAT descriptor, and upload its
+    // bytes: a file or parent directory swapped after this point cannot change what is sent.
+    const fh = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const st = await fh.stat();
+      const at = await stat(real);
+      if (!st.isFile() || st.size > MAX_DOC_BYTES || st.dev !== at.dev || st.ino !== at.ino) return false;
+      bytes = await fh.readFile();
+    } finally { await fh.close(); }
+    name = basename(real);
   } catch { return false; }
-  return upload(token, chat, real, caption);
+  if (bytes.length > MAX_DOC_BYTES) return false;
+  return upload(token, chat, { name, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer }, caption);
 };
 
 // --- getUpdates outage handling ---
