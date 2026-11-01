@@ -2268,19 +2268,27 @@ fi
 # edited must be denied, because the launcher verifies what the shim runs.
 P66="$T/row66"
 mkdir -p "$P66/scripts/hooks" "$P66/marketplace/plugins/himmel-ops/hooks"
-cp "$HOOKS_DIR/redirect-webfetch-walled-hosts.sh" "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh"
-cp "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" "$P66/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh"
+P66_SETUP=1
+cp "$HOOKS_DIR/redirect-webfetch-walled-hosts.sh" "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh" || P66_SETUP=0
+cp "$REPO_ROOT/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" "$P66/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" || P66_SETUP=0
 git -C "$P66" init -q
 git -C "$P66" -c user.email=t@t -c user.name=t add -A
 git -C "$P66" -c user.email=t@t -c user.name=t commit -q -m shim
 OUT66="$T/row66-out"
 PAYLOAD66='{"session_id":"worker-session-66","hook_event_name":"PreToolUse","tool_name":"WebFetch","tool_input":{"url":"https://example.com/","prompt":"p"}}'
 printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" bash "$RECORDER" >/dev/null
+# Control: the untampered pinned shim launches (rc 0), which proves the setup
+# copied both files and the recorder pinned them before the tamper below.
+printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" \
+  node "$LAUNCHER" --optional "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh" >"$T/row66-pre.out" 2>"$T/row66-pre.err"
+rc66pre=$?
 printf '# tampered\n' >> "$P66/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh"
 printf '%s' "$PAYLOAD66" | CLAUDE_PROJECT_DIR="$P66" HIMMEL_HOOK_INTEGRITY_DIR="$OUT66" \
   node "$LAUNCHER" --optional "$P66/scripts/hooks/redirect-webfetch-walled-hosts.sh" >"$T/row66.out" 2>"$T/row66.err"
 rc66=$?
-if [ "$rc66" -eq 2 ] && grep -qi 'DENY' "$T/row66.err"; then
+if [ "$P66_SETUP" -ne 1 ] || [ "$rc66pre" -ne 0 ]; then
+  bad "row 66: setup failed (copies ok=$P66_SETUP) or the untampered pinned shim did not launch, rc=$rc66pre err=$(cat "$T/row66-pre.err")"
+elif [ "$rc66" -eq 2 ] && grep -qi 'DENY' "$T/row66.err"; then
   ok "row 66: launching the pinned walled-host shim after its plugin source was edited is denied"
 else
   bad "row 66: expected rc=2 with a DENY message, got rc=$rc66 err=$(cat "$T/row66.err")"
