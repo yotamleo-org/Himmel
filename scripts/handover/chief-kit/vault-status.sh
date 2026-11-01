@@ -2,8 +2,10 @@
 # vault-status.sh — One-token health of the luna vault's commit
 # path, for tick.sh's vault= field and chief-wait.sh's wake:
 #   ok               nothing staged/dirty past the threshold, nothing unpushed past it
-#   STALL:<age>,<n>  <n> staged/modified tracked files, the oldest <age> old (the
-#                    auto-commit is stuck: reproduce with `git -C <vault> hook run pre-commit`)
+#   STALL:<age>,<n>[,<reason>]  <n> staged/modified tracked files, the oldest <age> old (the
+#                    auto-commit is stuck: reproduce with `git -C <vault> hook run pre-commit`);
+#                    <reason> = `<hook id>:<first refused file>` from <git-dir>/vault-autosync-reason,
+#                    written by the vault's auto-commit (absent → the two-field form)
 #   PUSH-LAG:<age>   local commits ahead of upstream, the oldest <age> old
 #   skip             no vault configured, or the path is not a git repo
 #   unknown          a git read failed (fail-soft: always exit 0)
@@ -73,7 +75,17 @@ EOF
 fi
 if [ "$n" -gt 0 ] && [ -n "$oldest" ]; then
     age=$((now - oldest))
-    if [ "$age" -ge $((stall_min * 60)) ]; then printf 'STALL:%s,%s\n' "$(fmt_age "$age")" "$n"; exit 0; fi
+    if [ "$age" -ge $((stall_min * 60)) ]; then
+        # the reason vault-autosync.sh recorded for its last refused commit:
+        # one comma-free token, <hook id>:<first refused file>; absent → the two-field form
+        reason=""
+        rf="$(g rev-parse --path-format=absolute --git-path vault-autosync-reason 2>/dev/null)" || rf=""  # swallow-ok: the reason is optional, STALL stays two-field without it
+        if [ -n "$rf" ] && [ -f "$rf" ]; then
+            reason="$(head -n 1 "$rf" 2>/dev/null | tr -d '\n' | tr -c 'A-Za-z0-9._/:+-' '_' | cut -c 1-120)"  # swallow-ok: the reason is optional, STALL stays two-field without it
+        fi
+        printf 'STALL:%s,%s%s\n' "$(fmt_age "$age")" "$n" "${reason:+,$reason}"
+        exit 0
+    fi
 fi
 
 g rev-parse --verify -q '@{u}' >/dev/null 2>&1; up_rc=$?
