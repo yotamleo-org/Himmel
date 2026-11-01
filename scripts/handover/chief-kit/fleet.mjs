@@ -673,7 +673,7 @@ function row(l) {
     st = [el('span', 'tok tok-' + l.status.token, l.status.token), el('span', 'sub', ' ' + (l.status.ageSec === null ? (l.status.time || '') : dur(l.status.ageSec) + ' ago')), el('div', 'text', l.status.text)];
   } else st = [el('span', 'sub', 'no status bullet yet')];
   const pr = l.pr ? [el('span', 'mono', '#' + l.pr.number), el('div', 'sub ci-' + l.pr.ci, l.pr.ci + (l.pr.draft ? ' · draft' : ''))] : [el('span', 'sub', '–')];
-  li.append(cell('leg', 'Worker', worker), cell('rt', 'Runtime', rt), cell('proc', 'Process', proc), cell('lock', 'Lock', lock), cell('status', 'Status', st), cell('pr', 'PR · CI', pr), cell('log', 'Log', [el('span', 'log mono', l.lastLine || '–')]));
+  li.append(cell('worker', 'Worker', worker), cell('rt', 'Runtime', rt), cell('proc', 'Process', proc), cell('lock', 'Lock', lock), cell('status', 'Status', st), cell('pr', 'PR · CI', pr), cell('log', 'Log', [el('span', 'log mono', l.lastLine || '–')]));
   return li;
 }
 function render(s, note) {

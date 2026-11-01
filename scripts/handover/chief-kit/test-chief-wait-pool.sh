@@ -427,7 +427,7 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/gh"
 # shellcheck disable=SC2016  # the stub body is literal text, expanded when the stub runs
 printf '#!/usr/bin/env bash\nfor k in "$@"; do printf "%%s\\tLOCAL-NATIVE\\tstub\\n" "$k"; done\n' > "$WORK/classify"
 chmod +x "$WORK/gh" "$WORK/classify"
-printf '{"schema":1,"legs":[]}\n' > "$WORK/fleet.json"
+printf '{"schema":1,"workers":[]}\n' > "$WORK/fleet.json"
 printf '# chief\n\n## Live state\n\n- priority: \n' > "$WORK/chief.md"
 export NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify"
 export TICKET_STATUS_STATE_DIR="$WORK/ts-none" HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger-none.jsonl"
@@ -443,7 +443,7 @@ check "(rp-real) the wake block carries the drop summary (the LOW pool's second 
 # --- (rp-workers) a live worker's ticket stays out of the pool: --workers-from reaches the dispatcher ---
 mk HIMMEL-3 '["ps3-blocker"]' "second pool head" "Edit scripts/lib/gamma.sh only."
 printf '# worker\n' > "$WORK/HIMMEL-1-held-worker.md"
-printf '{"schema":1,"legs":[{"label":"held","doc":"%s"}]}\n' "$WORK/HIMMEL-1-held-worker.md" > "$WORK/fleet-held.json"
+printf '{"schema":1,"workers":[{"label":"held","doc":"%s"}]}\n' "$WORK/HIMMEL-1-held-worker.md" > "$WORK/fleet-held.json"
 hand="$(bash "$HERE/next-dispatchable.sh" --priority-pool-only --top 7 --doc "$WORK/chief.md" --workers-from "$WORK/fleet-held.json" </dev/null 2>/dev/null)"
 I="$(new_inbox rplegs)"
 timeout 20 bash "$WAIT" "$I" --doc "$WORK/chief.md" --workers-from "$WORK/fleet-held.json" > "$WORK/rplegs.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set

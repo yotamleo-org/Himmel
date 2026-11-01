@@ -37,7 +37,7 @@ mk 5217 "To Do" "To Do"
 
 DOC="$WORK/chief.md"
 printf '%s\n' '# chief' '' 'priority: 6127 above Live state is not the line' '' '## Live state' \
-    'legs: none' \
+    'workers: none' \
     'priority: 6127 | 6137(K1) 6143(K7) 6138(K2) | 6123 6125 | 6132(BOARD +5217 6057) 1481(+6057 6078 6025) (verify-close 1293) 5641d | rest of v1.1.3 | 5993 6100' \
     'versions: v1.1.3' '' '## Results' > "$DOC"
 cp "$DOC" "$WORK/chief.orig"
@@ -84,7 +84,7 @@ run --doc "$WORK/mode.md" --apply >/dev/null
 same "--apply keeps the doc's file mode" "$(find "$WORK/mode.md" -perm 640)" "$WORK/mode.md"
 
 # No line, no doc, no mirror: exit 1 and print nothing.
-printf '%s\n' '## Live state' 'legs: none' > "$WORK/none.md"
+printf '%s\n' '## Live state' 'workers: none' > "$WORK/none.md"
 out="$(run --doc "$WORK/none.md" --count)"; rc=$?
 same "no priority: line exits 1" "$rc" "1"
 same "no priority: line prints nothing" "$out" ""
@@ -168,7 +168,7 @@ same "--stale: focus-version: auto names no off-version key" "$(run --doc "$WORK
 big="priority:"; for n in $(seq 7101 7180); do mkv "$n" Done '["v1.1.3"]'; big="$big $n"; done
 printf '%s\n' '## Live state' "$big 7004" 'focus-version: v1.1.3' > "$WORK/s7.md"
 same "--stale: 1 open key of 81 is low" "$(run --doc "$WORK/s7.md" --stale)" "1/81 low"
-printf '%s\n' '## Live state' 'legs: none' > "$WORK/s8.md"
+printf '%s\n' '## Live state' 'workers: none' > "$WORK/s8.md"
 out="$(run --doc "$WORK/s8.md" --stale)"; rc=$?
 same "--stale: no priority: line exits 1" "$rc" "1"
 

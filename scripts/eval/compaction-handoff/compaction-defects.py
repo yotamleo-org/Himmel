@@ -428,7 +428,7 @@ def main():
             new_b = [b for b in bounds if b["uuid"] not in seen_b]
             actual = sum(t["cost"] for t in fresh) + sum(
                 b["pre"] * ab.W_CR + b["summary_chars"] / 4.0 * ab.W_OUT for b in new_b)
-            sims.append({"leg": title, "profile": prof, "model": model, "turns": len(fresh),
+            sims.append({"worker": title, "profile": prof, "model": model, "turns": len(fresh),
                          "bounds": bounds, "turns_list": turns, "priced": {t["id"] for t in fresh},
                          "actual": round(actual), "actual_compactions": len(new_b)})
         starts = [b["turn"] for b in bounds]
@@ -446,7 +446,7 @@ def main():
             c = score(turns, clo, lo, False)[0] if ctrl_ok else None
             pc, px = window_cost(turns[max(0, lo - N):lo])
             qc, qx = window_cost(turns[lo:hi])
-            rec = {"leg": title, "transcript": os.path.basename(path), "profile": prof, "model": model,
+            rec = {"worker": title, "transcript": os.path.basename(path), "profile": prof, "model": model,
                    "uuid": b["uuid"], "trigger": b["trigger"], "pre_tokens": b["pre"], "post_tokens": b["post"],
                    "turn": lo, "post_turns": hi - lo, "control_turns": N if ctrl_ok else 0,
                    "defects": d, "control": c,
@@ -473,7 +473,7 @@ def main():
             for s in sims:
                 r = simulate(s["turns_list"], s["bounds"], C, a.resume_tokens, post_med, s["priced"])
                 if r:
-                    per.append({"leg": s["leg"], "profile": s["profile"], "model": s["model"], "turns": s["turns"],
+                    per.append({"worker": s["worker"], "profile": s["profile"], "model": s["model"], "turns": s["turns"],
                                 "actual": s["actual"], "actual_compactions": s["actual_compactions"],
                                 "b": r["b"], "c": r["c"]})
             out["simulate"].append({"ceiling": C, "post_ctx_median": post_med, "workers": per,

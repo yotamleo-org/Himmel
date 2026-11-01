@@ -566,7 +566,7 @@ bmk 106 'To Do' '[]' 'operator follow-up' '[]' '[]' 'A follow-up from HIMMEL-105
 bmk 107 'To Do' '["v1.0.1"]' 'nobody claims me' '[]' '[]'
 bmk 108 'To Do' '[]' 'linked follow-up' '[]' '["HIMMEL-100"]'
 bmk 109 'To Do' '["v1.0.1"]' 'named by a ruling' '[]' '[]' 'Mentions HIMMEL-200 which is newer, never an origin.'
-# A multi-day leg: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
+# A multi-day worker: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
 printf '%s\n' '# worker' '## Results' '- 22:00 LIVE — started' '- 23:30 LIVE — PR 1 open' '- 01:00 READY 1 abc GREEN' \
     '- 23:00 WRAPPED — merged' > "$bh/HIMMEL-100-N90-planned-origin-2026-10-01.md"
 # A note after WRAPPED and a later section's bullet are past the measured span; a later section's filing is not the worker's.
@@ -761,7 +761,7 @@ render --plan-dir "$W/plan4" --mirror-dir "$cu" >/dev/null
 cuhtml="$(cat "$out" 2>/dev/null)"
 contains 'a released version is not the plan blocks current version (HIMMEL-5217)' "$cuhtml" '"CUR":1,'
 # Item 1: a worker listed in a chief's fleet manifest is live without a held queue lock.
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md" > "$bk/test-console.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md" > "$bk/test-console.fleet.json"
 render >/dev/null
 fmhtml="$(cat "$out" 2>/dev/null)"
 rm -f "$bk/test-console.fleet.json"

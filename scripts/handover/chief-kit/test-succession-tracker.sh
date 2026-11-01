@@ -45,7 +45,7 @@ mkleg N8 "- 03:00 LIVE — started" "$(q "$SUCC" "$PRED")"
 # shellcheck disable=SC2016  # the backticks are literal markers in the Live state
 printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N2:Y-N2-bb:lockB:12`\n\n## Results\n' > "$CDOC"
 cat > "$MAN" <<EOF
-{"schema": 1, "legs": [
+{"schema": 1, "workers": [
  {"doc": "$WORK/N1.md", "label": "N1", "lane": "native"},
  {"doc": "$WORK/N2.md", "label": "N2", "lane": "native"}
 ]}
@@ -70,7 +70,7 @@ one() { # <label> -> prints the tracker output for a chief holding just that wor
     local l="$1"
     # shellcheck disable=SC2016
     printf '# chief\n\n## Live state\nlegs: `%s:Y-%s-aa:lockA:11`\n' "$l" "$l" > "$CDOC"
-    printf '{"schema": 1, "legs": [{"doc": "%s/%s.md", "label": "%s", "lane": "native"}]}\n' "$WORK" "$l" "$l" > "$MAN"
+    printf '{"schema": 1, "workers": [{"doc": "%s/%s.md", "label": "%s", "lane": "native"}]}\n' "$WORK" "$l" "$l" > "$MAN"
     run "${@:2}"
 }
 has "a bullet without backticks or a time stamp is accepted" "$(one N3)" "N3 quoted-back"
@@ -98,7 +98,7 @@ has "a quote-back under Chief Rulings (claudex) is quoted-back" "$(one N13)" "N1
 printf '# worker\n\n> - **Token and console:** your RETASK token is `Z-N14-cc`; your chief is **`%s`** (the only session)\n\n## Results (newest at the bottom)\n\n- 03:00 LIVE — started\n' "$SUCC" > "$WORK/N14.md"
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N14:Z-N14-cc:lockC:13`\n' > "$CDOC"
-printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}, {"doc": "%s/N14.md", "label": "N14", "lane": "native"}]}\n' "$WORK" "$WORK" > "$MAN"
+printf '{"schema": 1, "workers": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}, {"doc": "%s/N14.md", "label": "N14", "lane": "native"}]}\n' "$WORK" "$WORK" > "$MAN"
 out="$(run)"; rc=$?
 has "a worker the successor dispatched is skipped, not missing" "$out" "N14 own"
 eq "and the inherited set reads complete without it (rc 0)" "$rc" 0
@@ -107,14 +107,14 @@ has "and the tally counts inherited workers only" "$out" "COMPLETE 1/1"
 # a worker held in Live state with no manifest row cannot be read
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nlegs: `N9:Y-N9-aa:lockA:11`\n' > "$CDOC"
-printf '{"schema": 1, "legs": []}\n' > "$MAN"
+printf '{"schema": 1, "workers": []}\n' > "$MAN"
 has "a Live-state worker with no manifest row is missing (no doc to read)" "$(run)" "N9 missing"
 
 # a complete set prints the LIVE line, once, print only
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N8:Y-N8-bb:lockB:12`\n' > "$CDOC"
 cat > "$MAN" <<EOF
-{"schema": 1, "legs": [
+{"schema": 1, "workers": [
  {"doc": "$WORK/N1.md", "label": "N1", "lane": "native"},
  {"doc": "$WORK/N8.md", "label": "N8", "lane": "native"}
 ]}
@@ -134,7 +134,7 @@ eq "and the manifest is untouched too" "$(cksum < "$MAN")" "$man_before"
 SPD="$WORK/sp ace"; mkdir -p "$SPD"
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11`\n' > "$SPD/c.md"
-printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}]}\n' "$WORK" > "$SPD/c.fleet.json"
+printf '{"schema": 1, "workers": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}]}\n' "$WORK" > "$SPD/c.fleet.json"
 out="$(bash "$SUT" "$SPD/c.md" --successor "$SUCC" 2>&1)"
 has "a doc path with a space is escaped in the printed command" "$out" 'append-results.sh '"$WORK"'/sp\ ace/c.md '
 bash "$SUT" "$CDOC" --successor 'x"; touch /tmp/pwn; "' >/dev/null 2>&1; rc=$?
@@ -148,7 +148,7 @@ eq "a malformed workers entry beside a valid one is not complete (rc 1)" "$rc" 1
 lacks "and prints no LIVE line for it" "$out" "append-results.sh"
 has "and names the malformed entry" "$out" "malformed"
 
-# A real chief doc glued `queue: none` onto the legs: line and the next
+# A real chief doc glued `queue: none` onto the workers: line and the next
 # line is `last GO:`. Prose after the spans is tolerated, a field line is never a worker.
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N8:Y-N8-bb:lockB:12`queue: none\nlast GO: `2846:1874de54:x:y` (BC)\nacked: none\n\n## Results\n' > "$CDOC"
@@ -178,18 +178,18 @@ out="$(run)"; rc=$?
 eq "quoted tick fields and a bare label are prose (rc 0)" "$rc" 0
 has "and the two real entries are the set" "$out" "COMPLETE 2/2"
 
-# a manifest worker missing from the legs: line still counts, so a dropped entry cannot
+# a manifest worker missing from the workers: line still counts, so a dropped entry cannot
 # make the set read complete
 cp "$MAN" "$MAN.keep"
-printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}, {"doc": "%s/N2.md", "label": "N2", "lane": "native"}]}\n' "$WORK" "$WORK" > "$MAN"
+printf '{"schema": 1, "workers": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}, {"doc": "%s/N2.md", "label": "N2", "lane": "native"}]}\n' "$WORK" "$WORK" > "$MAN"
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11`\n' > "$CDOC"
 out="$(run)"; rc=$?
-eq "a manifest worker absent from the legs: line keeps the set incomplete (rc 1)" "$rc" 1
+eq "a manifest worker absent from the workers: line keeps the set incomplete (rc 1)" "$rc" 1
 has "and names the absent worker as waiting" "$out" "waiting on: N2"
 
 # a duplicated span counts its worker once
-printf '{"schema": 1, "legs": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}]}\n' "$WORK" > "$MAN"
+printf '{"schema": 1, "workers": [{"doc": "%s/N1.md", "label": "N1", "lane": "native"}]}\n' "$WORK" > "$MAN"
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nlegs: `N1:Y-N1-aa:lockA:11` `N1:Y-N1-aa:lockA:11`\n' > "$CDOC"
 out="$(run)"; rc=$?

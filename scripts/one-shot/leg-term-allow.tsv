@@ -70,3 +70,34 @@
 ^scripts/telegram/test-break-glass\.sh$	legs: \.workers	K5 old-format manifest fixture; leaves with HIMMEL-6647
 ^scripts/telegram/router\.ts$	\|legs\||"legs"|\(\?:worker\|leg\)	K5 the /legs, /launch-leg and /launch-bypass-leg spellings are accepted on purpose; leaves with HIMMEL-6647
 ^scripts/telegram/router\.test\.ts$	"/legs"	K5 test pins that /legs still routes; leaves with HIMMEL-6647
+^scripts/eval/autocompact-ab\.py$	pre-rename .?legs|"legs" in mdata|get\("legs"\)	K5 reads the pre-rename manifest array while legacy names are on; leaves with HIMMEL-6647
+^scripts/eval/chief-load-inventory\.py$	\(\?:leg\|worker\)	K5 legacy script-name reads in the load classifier; leaves with HIMMEL-6647
+^scripts/eval/compaction-handoff/compaction-defects\.py$	\(\?:worker\|leg\)-pr-open	K5 legacy forwarder-name read; leaves with HIMMEL-6647
+^scripts/eval/graphify-ab/summarize\.py$	\(\?:leg\|worker\)-graph	K5 legacy graph-script name read; leaves with HIMMEL-6647
+^scripts/eval/retrieval-eval/retrieval-eval\.py$	\(\?:leg\|worker\)-graph	K5 legacy graph-script name read; leaves with HIMMEL-6647
+^scripts/eval/profile-openings\.py$	\(\?:worker\|leg\)	K5 legacy launch-line read; leaves with HIMMEL-6647
+^scripts/eval/worker-digest/worker-digest\.ts$	\(\?:leg\|worker\)-graph	K5 legacy graph-script name read; leaves with HIMMEL-6647
+^scripts/eval/weekly-rollup\.py$	\(\?:worker\|leg\)-burn	K5 legacy burn-line read; leaves with HIMMEL-6647
+^scripts/eval/test-autocompact-ab\.sh$	pre-rename|"legs"|legs-array	K5 test pins that an old legs-array manifest still reads and is refused with the switch off; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/board\.mjs$	pre-rename .?legs:|\^legs:|older tick\.sh|field\.legs	K5 reads the pre-rename Live state line and the older tick field; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/chief-wait\.sh$	legs=|legset=|pre-rename .?legs|\.legs\)|field legs	K5 reads the pre-rename manifest array and the older tick fields; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/fleet-manifest\.sh$	pre-rename .?legs|take .?legs|\.legs\)|has\("legs"\)	K5 reads and rewrites the pre-rename manifest array; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/fleet\.mjs$	pre-rename .?legs:|\^legs:	K5 reads the pre-rename Live state line; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/handoff-facts\.sh$	pre-rename .?legs|\.legs\)|workers\|legs\)	K5 reads the pre-rename manifest array and field name; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/live-state\.sh$	pre-rename .?legs|\.legs\)|echo legs	K5 reads the pre-rename manifest array and Live state block; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/pr-stall\.sh$	pre-rename .?legs|\.legs\)	K5 reads the pre-rename manifest array; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/relay-batch\.sh$	pre-rename .?legs|\.legs\)|live_key=legs	K5 reads the pre-rename manifest array and Live state line; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/tracker\.py$	pre-rename .?legs|'legs' in m|m\.get\('legs'\)	K5 reads the pre-rename manifest array; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/version-status-audit\.sh$	pre-rename .?legs|legs-only|'legs' in m|m\.get\('legs'\)	K5 reads the pre-rename manifest array; leaves with HIMMEL-6647
+^scripts/handover/chief/chief\.sh$	pre-rename .?legs|\.legs\)|wkey=legs|workers\|legs\|queue	K5 reads the pre-rename manifest array and Live state line; leaves with HIMMEL-6647
+^scripts/handover/test-arm-resume-context\.sh$	--tier leg|got: leg	K5 test pins that the old --tier value is refused; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-auto-go\.sh$	"legs":\[|pre-rename|old .?legs	K5 old-format manifest fixtures pin that an old legs array still reads; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-chief-wait-b\.sh$	legs=|legset=|"legs":\[|old .?legs	K5 old-format manifest and older tick-field fixtures pin that they still read; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-board\.sh$	legs=|legset=|lacks '[^']*\(HIMMEL-8309\)'	K5 older tick-field stub, and tests pin that the old word is absent from the page; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-compacted-check\.sh$	legs:	K5 old-format COMPACTED bullet fixture pins that it still reads; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-doc-reader-agreement\.sh$	M1a|legs:|old legs|for form in legs|legs-output-grep|"\$fn" legs	K5 old-format chief docs and manifests pin that every reader still reads them; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-fleet-manifest\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format manifest sections pin the read, the refusal and the rewrite; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-live-state\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format Live state sections pin the read, the refusal and the rewrite; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-relay-batch\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format doc and manifest section pins the read and the refusal; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-succession-tracker\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format doc and manifest section pins the read and the refusal; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-tracker\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format manifest section pins the read and the refusal; leaves with HIMMEL-6647

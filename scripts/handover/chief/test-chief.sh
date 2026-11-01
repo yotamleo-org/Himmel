@@ -1560,7 +1560,7 @@ check "58b next with an unresolvable chief profile: exit 2" "$rc58x" "2"
 check "58b next refusal: successor doc removed" "$([ -e "$doc58xB" ] && echo 1 || echo 0)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc58xA" "$token58x" >/dev/null 2>&1
 
-# --- 60: `next` seeds the predecessor's `legs:`, `queue:`, `last GO:` and
+# --- 60: `next` seeds the predecessor's `workers:`, `queue:`, `last GO:` and
 # `acked:` verbatim into the successor's own `## Live state`, and ONLY those
 # lines: a marker planted in the neighbouring `## Compact instructions` body
 # must NOT leak. The HANDOFF points at the seeded doc and carries no nonce, so
@@ -1602,7 +1602,7 @@ awk -v workers_line="$fixture60_workers" -v marker="$marker60" '
 
 leg60="$root/tester/livestatesrc/DEMO-leg60-N9.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$leg60"
-printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
+printf '{"workers":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
 leg60tok="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$leg60" 2>/dev/null)")"
 
 rc60=0
@@ -2351,9 +2351,9 @@ chief next --bucket fleet77dst2 --doc "$doc77A" >/dev/null 2>&1
 check "77 no predecessor manifest: successor gets none (no-op)" "$([ -e "$man77C" ] && echo yes || echo no)" "no"
 check "77 no predecessor manifest: step 10 names the successor's own manifest path" \
     "$(grep -Fc "$man77C" "$doc77C" 2>/dev/null)" "1"
-printf '{"schema":1,"legs":["/x/worker.md"]}\n' > "$man77A"
+printf '{"schema":1,"workers":["/x/worker.md"]}\n' > "$man77A"
 chief next --bucket fleet77dst --doc "$doc77A" >/dev/null 2>&1
-check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"legs":["/x/worker.md"]}'
+check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
 check "77 successor step 10 names the carried manifest path" "$(grep -Fc "$man77B" "$doc77B" 2>/dev/null)" "1"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
@@ -3226,11 +3226,11 @@ for i in $(seq 1 20); do legs94="$legs94 \`C$i:nonce-closed-$i:lock-closed-$i:$i
 legs94="$legs94 (KA 01:4x: SHIFT-NOTE-94 closed workers wrapped and pruned)"
 # shellcheck disable=SC2016  # literal fixture text
 go94='last GO: `94:aaaa1111` (ordinary), prior `93:bbbb2222` (PRIOR-GO-94) (prior `92:cccc3333` (older))'
-awk -v legs="$legs94" -v go="$go94" '
+awk -v workers="$legs94" -v go="$go94" '
     /^workers:/ { print workers; print "pool-disposition: DEMO-94 question POOL-LINE-94"; next }
     /^last GO:/ { print go; next }
     { print }' "$doc94A" > "$doc94A.new" && mv "$doc94A.new" "$doc94A"
-printf '{"legs":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
+printf '{"workers":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
 rc94=0
 chief next --bucket trim94dst --doc "$doc94A" >/dev/null 2>&1 || rc94=$?
 live94="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc94B" 2>/dev/null)"
@@ -3253,7 +3253,7 @@ out94b="$(chief new --bucket trim94b)"
 token94b="$(token_of "$out94b")"
 doc94bA="$root/tester/trim94b/DEMO-nextleg-${today}A-chief.md"
 doc94bB="$root/tester/trim94bdst/DEMO-nextleg-${today}B-chief.md"
-awk -v legs="$legs94" '/^workers:/ { print legs; next } { print }' "$doc94bA" > "$doc94bA.new" && mv "$doc94bA.new" "$doc94bA"
+awk -v workers="$legs94" '/^workers:/ { print workers; next } { print }' "$doc94bA" > "$doc94bA.new" && mv "$doc94bA.new" "$doc94bA"
 rm -f "${doc94bA%.md}.fleet.json"
 chief next --bucket trim94bdst --doc "$doc94bA" >/dev/null 2>&1
 check "94b with no manifest every worker span is seeded" "$(grep -c 'C20:nonce-closed-20' "$doc94bB" 2>/dev/null)" "1"
@@ -3262,11 +3262,11 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc94bA" "$token94b" >/dev/null 2>&1
 
 # 94c-94e: seed94 <bucket> <workers line> <manifest json, or - for none> [<existing history text>] runs next on a fresh chief doc.
 seed94() {
-    local b="$1" legs="$2" man="$3" pre="${4:-}" out tok A h
+    local b="$1" workers="$2" man="$3" pre="${4:-}" out tok A h
     out="$(chief new --bucket "$b")"; tok="$(token_of "$out")"
     A="$root/tester/$b/DEMO-nextleg-${today}A-chief.md"
     h="$root/tester/${b}dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
-    awk -v legs="$legs" '/^workers:/ { print legs; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
+    awk -v workers="$workers" '/^workers:/ { print workers; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
     if [ "$man" = - ]; then rm -f "${A%.md}.fleet.json"; else printf '%s\n' "$man" > "${A%.md}.fleet.json"; fi
     if [ -n "$pre" ]; then mkdir -p "${h%/*}"; printf '%s\n' "$pre" > "$h"; fi
     if ! chief next --bucket "${b}dst" --doc "$A" >/dev/null 2>&1; then echo "FAIL - seed94 $b: chief next failed"; fails=$((fails+1)); fi

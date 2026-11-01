@@ -668,16 +668,16 @@ drop_holds_left() {
 # lowers a count; that is the window closing, not an event.
 denial_rank() { case "$1" in SHIP-STEP) echo 3 ;; PAUSE-RISK) echo 2 ;; REPEAT) echo 1 ;; *) echo 0 ;; esac; }
 denials_rose() {
-    local old new tok otok leg rest n cls on ocls found
+    local old new tok otok worker rest n cls on ocls found
     old="$(key_field denials "$1")"; new="$(key_field denials "$2")"
     for tok in $(printf '%s' "$new" | tr ',' ' '); do
-        leg="${tok%%:*}"
-        case "$leg" in none|skip) continue ;; esac
+        worker="${tok%%:*}"
+        case "$worker" in none|skip) continue ;; esac
         rest="${tok#*:}"; n="${rest%%:*}"; cls=""
         case "$rest" in *:*) cls="${rest#*:}" ;; esac
         found=""
         for otok in $(printf '%s' "$old" | tr ',' ' '); do
-            [ "${otok%%:*}" = "$leg" ] || continue
+            [ "${otok%%:*}" = "$worker" ] || continue
             found=1; rest="${otok#*:}"; on="${rest%%:*}"; ocls=""
             case "$rest" in *:*) ocls="${rest#*:}" ;; esac
             [ "$n" -gt "$on" ] 2>/dev/null && return 0
@@ -719,11 +719,11 @@ drop_stall_resolved() {
 # a page, so one class rise is one page. The label is reduced to a safe charset:
 # it goes into an operator message and a record filename.
 denial_pages() {
-    local old new tok otok leg rest n cls ocls
+    local old new tok otok worker rest n cls ocls
     old="$(key_field denials "$1")"; new="$(key_field denials "$2")"
     for tok in $(printf '%s' "$new" | tr ',' ' '); do
-        leg="$(printf '%s' "${tok%%:*}" | tr -cd 'A-Za-z0-9._#+-')"
-        case "$leg" in ''|none|skip) continue ;; esac
+        worker="$(printf '%s' "${tok%%:*}" | tr -cd 'A-Za-z0-9._#+-')"
+        case "$worker" in ''|none|skip) continue ;; esac
         rest="${tok#*:}"; n="${rest%%:*}"; cls=""
         case "$rest" in *:*) cls="${rest#*:}" ;; esac
         [ "$(denial_rank "$cls")" -ge 2 ] || continue
@@ -733,7 +733,7 @@ denial_pages() {
             rest="${otok#*:}"; ocls=""
             case "$rest" in *:*) ocls="${rest#*:}" ;; esac
         done
-        [ "$(denial_rank "$cls")" -gt "$(denial_rank "$ocls")" ] && printf '%s %s %s\n' "$leg" "$cls" "$n"
+        [ "$(denial_rank "$cls")" -gt "$(denial_rank "$ocls")" ] && printf '%s %s %s\n' "$worker" "$cls" "$n"
     done
 }
 
@@ -762,17 +762,17 @@ page_send() {  # <text> <deadline epoch>: the timeout is what is left of the bat
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
 page_denials() {
-    local leg cls n end rc_name
-    end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per leg
-    denial_pages "$1" "$2" | while read -r leg cls n; do
-        denial_page_write "$leg" "$n" "$cls" || true
+    local worker cls n end rc_name
+    end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per worker
+    denial_pages "$1" "$2" | while read -r worker cls n; do
+        denial_page_write "$worker" "$n" "$cls" || true
         # A native worker launched with Remote Control is answered from the
         # Claude app; name its session. No such session found (claudex, unprofiled): the plain text.
-        rc_name="$(rc_session_for "$leg")"
+        rc_name="$(rc_session_for "$worker")"
         if [ -n "$rc_name" ]; then
-            page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Open the Remote Control session $rc_name in the Claude app and answer there, or review it and: ack-denial.sh $leg" "$end"
+            page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Open the Remote Control session $rc_name in the Claude app and answer there, or review it and: ack-denial.sh $worker" "$end"
         else
-            page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $leg" "$end"
+            page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $worker" "$end"
         fi
     done
 }

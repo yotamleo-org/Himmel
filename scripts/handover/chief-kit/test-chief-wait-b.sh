@@ -247,14 +247,14 @@ check "(pk3) the wake names parked" "WAKE tick changed=parked usage=PROCEED" "$(
 reset_stub
 I="$(new_inbox m3748)"
 M="$WORK/m3748/console.fleet.json"
-printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
 start "$I" "$WORK/m3748.out" --workers-from "$M"
 wait_hb "$I" || fail "(m3748) no baseline heartbeat"
 # The stub tick ignores the manifest, so its line moves first: a sample
 # between the two writes sees a changed key under the OLD worker set (pending,
 # not yet a wake), and the next one sees the new worker set and re-baselines.
 tick_line "N1:FRESH,N2:FRESH" "ok"
-printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"},{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"}]}\n' > "$M"
 sleep 2
 wait_exit "$WPID"
 check "(m3748) a dispatch through the manifest does not wake the console" "running" "$rc"
@@ -262,7 +262,7 @@ check "(m3748) and prints nothing" "" "$(cat "$WORK/m3748.out")"
 # A remove + re-add reorders the manifest, and tick prints workers in manifest
 # order: the same set in a new order is the chief's own act too.
 tick_line "N2:FRESH,N1:FRESH" "ok"
-printf '{"schema":1,"legs":[{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"},{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
+printf '{"schema":1,"workers":[{"doc":"/x/HIMMEL-2-N2-b.md","label":"N2"},{"doc":"/x/HIMMEL-1-N1-a.md","label":"N1"}]}\n' > "$M"
 sleep 2
 wait_exit "$WPID"
 check "(m3748) a reorder through the manifest does not wake the console" "running" "$rc"

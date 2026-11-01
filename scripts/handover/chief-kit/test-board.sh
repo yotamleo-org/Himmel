@@ -174,7 +174,7 @@ touch -d '2 hours ago' "$B/HIMMEL-3375-N18-iota-2026-09-21-RESUME.md" "$B/HIMMEL
 DOC="$B/HIMMEL-nextleg-2026-09-21V-chief.md"
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 printf '%s\n' '# console' '' '## Live state' '' \
-    'legs: `N1:V-N1-aaaa1111:cachyos-x8664-pid111111:111`' \
+    'workers: `N1:V-N1-aaaa1111:cachyos-x8664-pid111111:111`' \
     '  `N2:V-N2-bbbb2222:cachyos-x8664-pid222222:222`' \
     '  `N3:V-N3-cccc3333:cachyos-x8664-pid333333:333`' \
     '  `N4:V-N4-dddd4444:cachyos-x8664-pid444444:444`' \
@@ -401,7 +401,7 @@ contains 'a READY-TO-OPEN worker is explained as awaiting the PR open' "$html" '
 lacks 'a READY-TO-OPEN worker with a fresh lock is not called lost or stale' "$html" 'lock FRESH — lost or stale'
 # A PR with no checks yet is not green.
 contains 'an empty check rollup reads pending, not green' "$html" '<li data-ci="pending"><b>#2003</b>'
-# The legs: block reads exactly as tick.sh's grammar: four non-empty fields, the
+# The workers: block reads exactly as tick.sh's grammar: four non-empty fields, the
 # tick's label class, every terminator.
 contains 'a label with _ . - is a worker (tick label class)' "$html" 'data-label="N16_x.y-z"'
 lacks 'a detail bullet under the block adds no phantom worker' "$html" 'data-label="N13"'
@@ -717,14 +717,14 @@ mrun() {
 }
 mrun >/dev/null
 lacks 'no manifest: tick gets no --workers (the RESUME-doc scan stays the fallback, HIMMEL-3988)' "$(cat "$W/argv.log")" "$M/HIMMEL-9901"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N901","added":"2026-10-01T00:00:00Z"}]}\n' "$M/HIMMEL-9901-N901-x-RESUME.md" > "$MFLEET"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N901","added":"2026-10-01T00:00:00Z"}]}\n' "$M/HIMMEL-9901-N901-x-RESUME.md" > "$MFLEET"
 mrun --changed >/dev/null
 contains 'manifest present: tick is armed with the manifest workers (HIMMEL-3988)' "$(cat "$W/argv.log")" "--workers $M/HIMMEL-9901-N901-x-RESUME.md"
 lacks 'manifest present: a RESUME doc it does not list is not armed (HIMMEL-3988)' "$(cat "$W/argv.log")" 'HIMMEL-9902'
 contains 'manifest present: the listed worker is on the board' "$(cat "$M/board.html")" 'data-label="N901"'
 same 'manifest unchanged: --changed reports UNCHANGED' "$(mrun --changed)" "UNCHANGED $M/board.html"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N901"},{"doc":"%s","label":"N902"}]}\n' "$M/HIMMEL-9901-N901-x-RESUME.md" "$M/HIMMEL-9902-N902-x-RESUME.md" > "$MFLEET"
-same 'manifest gained a leg: --changed reports CHANGED (HIMMEL-3988)' "$(mrun --changed)" "CHANGED $M/board.html"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N901"},{"doc":"%s","label":"N902"}]}\n' "$M/HIMMEL-9901-N901-x-RESUME.md" "$M/HIMMEL-9902-N902-x-RESUME.md" > "$MFLEET"
+same 'manifest gained a worker: --changed reports CHANGED (HIMMEL-3988)' "$(mrun --changed)" "CHANGED $M/board.html"
 mrun --workers "$M/HIMMEL-9902-N902-x-RESUME.md" >/dev/null
 contains 'an explicit --workers wins over the manifest' "$(cat "$W/argv.log")" "--workers $M/HIMMEL-9902-N902-x-RESUME.md"
 lacks 'an explicit --workers wins over the manifest (manifest worker not armed)' "$(cat "$W/argv.log")" 'HIMMEL-9901'
@@ -1073,7 +1073,7 @@ for n in $(seq 801 815); do
     printf '%s\n' "# judge j$n" '## Results' '- 11:00 LIVE — reading the diff' "$tailb" > "$f"
     mf="$mf{\"doc\":\"$f\",\"label\":\"j$n\"},"
 done
-printf '{"schema":1,"legs":[%s]}\n' "${mf%,}" > "$S/chief-s.fleet.json"
+printf '{"schema":1,"workers":[%s]}\n' "${mf%,}" > "$S/chief-s.fleet.json"
 # This fleet's own tick: the 25 workers held and FINDING, the fleet full.
 slocks=''; stails=''
 for n in $(seq 701 725); do slocks="${slocks}N$n:FRESH,"; stails="${stails}N$n:FINDING,"; done
@@ -1110,9 +1110,9 @@ jcheck '--json: legend keys for stage, state, verb, ci, budget and failure' '["s
 jcheck '--json: one recommendation per report card' '["velocity","health","tools","roadmap"].every((k) => typeof M.cards[k].recommendation === "string" && M.cards[k].recommendation.length > 0)'
 jcheck '--json: milestones are done/total per fixVersion' 'M.milestones.length === 2 && M.milestones[0].version === "v1.0.0" && M.milestones[0].done === 3 && M.milestones[0].total === 6 && M.milestones[1].done === 1 && M.milestones[1].total === 2'
 jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL-9001")'
-jcheck '--json: every live leg is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
-jcheck '--json: a READY leg is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
-jcheck '--json: finished legs are counted, not listed' 'M.console.archive_legs >= 2 && !M.legs.some((l) => l.leg === "N4" || l.leg === "N5")'
+jcheck '--json: every live worker is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
+jcheck '--json: a READY worker is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
+jcheck '--json: finished workers are counted, not listed' 'M.console.archive_legs >= 2 && !M.legs.some((l) => l.leg === "N4" || l.leg === "N5")'
 for secret in aaaa1111 pid111111 pid777777 cafe1919 x8664; do
     lacks "--json: no nonce/lock-token text: $secret" "$jtxt" "$secret"
 done

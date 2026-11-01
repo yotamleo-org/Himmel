@@ -643,9 +643,9 @@ contains "held lock: log names the claim" "$log9" "still claimed after waiting"
 # different name) would wrongly look like a dedup hit and block the launch.
 d10a="$tmp/c10a"
 mk_stub "$d10a" 0  # konsole stub + a placeholder pgrep; overwritten below by the real matcher
-mk_matcher_pgrep "$d10a" "claude --model x -n HIMMEL-2545Xleg load foo and continue" "HIMMEL-2545.leg"
+mk_matcher_pgrep "$d10a" "claude --model x -n HIMMEL-2545Xworker load foo and continue" "HIMMEL-2545.worker"
 rc10a=0
-run_headed_arm "$d10a" "$REPO" "HIMMEL-2545.leg" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
+run_headed_arm "$d10a" "$REPO" "HIMMEL-2545.worker" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
 check "regex metachar: exit 0 (a launch, not a dedup)" "$rc10a" "0"
 wait_record "$d10a" || true
 if [ -s "$d10a/record" ]; then echo "ok - regex metachar: literal '.' does NOT false-match a different session"
@@ -653,9 +653,9 @@ else echo "FAIL - regex metachar: literal '.' does NOT false-match a different s
 # (b) must STILL match itself: the exact same literal name, dot and all.
 d10b="$tmp/c10b"
 mk_stub "$d10b" 0
-mk_matcher_pgrep "$d10b" "claude --model x -n HIMMEL-2545.leg load foo and continue" "HIMMEL-2545.leg"
+mk_matcher_pgrep "$d10b" "claude --model x -n HIMMEL-2545.worker load foo and continue" "HIMMEL-2545.worker"
 rc10b=0
-run_headed_arm "$d10b" "$REPO" "HIMMEL-2545.leg" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
+run_headed_arm "$d10b" "$REPO" "HIMMEL-2545.worker" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
 check "regex metachar: still dedups its own literal name" "$rc10b" "0"
 settle
 if [ -s "$d10b/record" ]; then echo "FAIL - regex metachar: konsole must NOT be invoked (self-match)"; fails=$((fails+1))

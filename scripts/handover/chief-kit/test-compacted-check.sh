@@ -64,7 +64,7 @@ check    "1: matching bullet rc 0" "$rc" 0
 contains "1: matching bullet prints G11 ok" "$out" "G11 ok"
 
 # --- 2. corrupted queue order + dropped last GO ------------------------------
-d2="$tmp/d2.md"; mk_doc "$d2" "- COMPACTED 12:00 — legs: \`$WORKERS\`, queue: 13,12, last GO: none"
+d2="$tmp/d2.md"; mk_doc "$d2" "- COMPACTED 12:00 — workers: \`$WORKERS\`, queue: 13,12, last GO: none"
 rc=0; out="$(bash "$SCRIPT" "$d2" "$s1" 2>&1)" || rc=$?
 check    "2: corrupted bullet rc 1" "$rc" 1
 contains "2: names the queue loss" "$out" "G11 LOSS queue"
@@ -73,7 +73,7 @@ lacks    "2: does not blame workers (which matched)" "$out" "G11 LOSS workers"
 
 # --- 3. two snaps: the newest is used ----------------------------------------
 s3="$tmp/s3"; mk_snap "$s3" 1 "$WORKERS" "12,13" "12:abc1234"; mk_snap "$s3" 2 "$WORKERS" "13" "12:abc1234"
-d3="$tmp/d3.md"; mk_doc "$d3" "- COMPACTED 12:05 — legs: \`$WORKERS\`, queue: 13, last GO: 12:abc1234"
+d3="$tmp/d3.md"; mk_doc "$d3" "- COMPACTED 12:05 — workers: \`$WORKERS\`, queue: 13, last GO: 12:abc1234"
 rc=0; out="$(bash "$SCRIPT" "$d3" "$s3" 2>&1)" || rc=$?
 check    "3: newest snap wins rc 0" "$rc" 0
 contains "3: newest snap wins G11 ok" "$out" "G11 ok"
@@ -101,7 +101,7 @@ check    "6: no bullet rc 1" "$rc" 1
 contains "6: no bullet names the bullet" "$out" "G11 LOSS bullet"
 
 # --- 7. backticks stripped ----------------------------------------------------
-d7="$tmp/d7.md"; mk_doc "$d7" "- COMPACTED 12:00 — legs: \`$WORKERS\`, queue: 12,13, last GO: \`12:abc1234\`"
+d7="$tmp/d7.md"; mk_doc "$d7" "- COMPACTED 12:00 — workers: \`$WORKERS\`, queue: 12,13, last GO: \`12:abc1234\`"
 rc=0; out="$(bash "$SCRIPT" "$d7" "$s1" 2>&1)" || rc=$?
 check    "7: backticked bullet rc 0" "$rc" 0
 
