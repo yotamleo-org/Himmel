@@ -67,6 +67,15 @@ values (a ticket that states none counts as yes), when a worker's context_guard 
 an unpublished item never has; the values are compact|handoff), when a label is unknown, repeated or already a series writer, when
 a ticket key appears twice, when --manifest is not in the bucket (next-dispatchable.sh reads series/ beside the manifest), and
 when a ledger for the sid already exists. Every refusal comes before anything is written.
+The core gate (HIMMEL-8353 C2), only with the core_gate flag on (off, the default, changes nothing): for every worker, after
+the Writes parse and before any file is written, the built jira CLI is asked `release core-check --paths <Writes>
+[--docs-only] --mirror <dir> --key <each key>` (the primary checkout's scripts/jira/dist/index.js; GEN_BRIEFS_JIRA_CLI
+replaces it, tests) and, for each CORE key, `release spec-check`. A BYPASS key gets a `> **Core gate:** <KEY> bypass=<kind> —
+<reason>` brief line, a SPEC ok key a `> **Spec:** <KEY> <path> (O-<id>)` line. A core key with no signed spec, or a key
+missing from the mirror (UNKNOWN), is refused. A core-check that cannot run (no dist/, a non-zero exit, a line that
+does not parse) is refused as CORE-CHECK-FAILED. A worker carrying a `core_bypass` or `bypass` key is refused: a bypass
+comes only from core-check. Every decision on a core key appends one JSON row to `<bucket>/core-gate.jsonl` (written by this
+script only; a re-run reaching the same outcome for the same key and brief appends nothing).
 The brief follows the v3 shape of docs/handover/worker-brief-template.md; invariant rules live in the
 worker preface and are not repeated.
 
@@ -95,7 +104,7 @@ the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-50
 
 Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it); 2 usage.
 """
-import argparse, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
+import argparse, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
 
 
@@ -551,6 +560,150 @@ def flag_on(name):
     return himmel_flag(name)
 
 
+CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
+CORE_FIELDS = {'CORE': 3, 'BYPASS': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>
+
+
+def core_gate_on():
+    # The one read of core_gate (gen-briefs is its only reader); the literal name is what check-flags.sh counts as a read.
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+    from flags import himmel_flag  # scripts/lib/flags.py, the registry reader
+    return himmel_flag('core_gate')
+
+
+def jira_cli():
+    # The primary checkout's built CLI (dist/ is untracked, so a worktree has none); GEN_BRIEFS_JIRA_CLI is the test seam.
+    if os.environ.get('GEN_BRIEFS_JIRA_CLI'):
+        return os.environ['GEN_BRIEFS_JIRA_CLI']
+    here = os.path.dirname(os.path.abspath(__file__))
+    r = subprocess.run(['git', '-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir'], capture_output=True, text=True)
+    primary = os.path.dirname(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else os.path.join(here, '..', '..', '..')
+    return os.path.join(primary, 'scripts', 'jira', 'dist', 'index.js')
+
+
+def run_jira(cli, args):
+    # (completed process or None, why it did not run). A missing CLI, node or a timeout is never read as an answer.
+    if not os.path.isfile(cli):
+        return None, 'no built jira CLI at %s' % cli
+    try:
+        # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd, and ours may be no repository at all
+        return subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli))), ''
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, 'node could not run %s (%s)' % (cli, e)
+
+
+def per_key_lines(out, keys, spec=False):
+    # The one line each key got; a key with no line is simply absent from the result.
+    got = {}
+    for line in out.splitlines():
+        t = line.split()
+        if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
+            got[t[2]] = line
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+            got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
+    return {k: got[k] for k in keys if k in got}
+
+
+def core_log(path, rows):
+    # Append-only; a row for a key, brief and outcome the log already holds is not appended again (a retried pass).
+    # The read and the append share one exclusive lock, so two passes on one bucket cannot both append the same row.
+    try:
+        with open(path, 'a+') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            f.seek(0)
+            seen = set()
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                seen.add((r.get('key'), r.get('brief'), r.get('outcome')))
+            for r in rows:
+                if (r['key'], r['brief'], r['outcome']) not in seen:
+                    f.write(json.dumps(r) + '\n')
+    except OSError as e:
+        die('cannot write the core gate log %s (%s); a decision that cannot be recorded is not made' % (path, e), 2)
+
+
+def core_gate(l, ctx):
+    # The spec section 3 refusal for one worker; sets l['core_lines'] for the brief. The caller runs it only with core_gate on.
+    label = l['label']
+    for k in ('core_bypass', 'bypass'):
+        if k in l:
+            die('worker %s: %s is refused; a core bypass comes only from jira release core-check (design leg, Bug, emergency, operator record)' % (label, k))
+    sp = l.get('series_plan')
+    keys = [k for k, _ in sp['items']] if sp else l['keys']
+    cli = jira_cli()
+    brief = os.path.join(ctx['bucket'], l['stem'] + '.md')
+    log = os.path.join(ctx['bucket'], 'core-gate.jsonl')
+    rows = []
+
+    def row(key, outcome, matched=None, kind=None, line=None):
+        rows.append(dict(ts=datetime.now().astimezone().isoformat(timespec='seconds'), key=key, worker=label, brief=brief,
+                         matched=matched, outcome=outcome, bypass=kind, spec_check=line, chief=ctx['chief']))
+
+    def failed(why, fkeys):
+        for k in fkeys:
+            row(k, 'failed', line=why)
+        core_log(log, rows)
+        die('worker %s: CORE-CHECK-FAILED %s; a gate that cannot run never passes (build the jira CLI: npm --prefix scripts/jira run build)' % (label, why))
+
+    groups = {}
+    for k in keys:
+        groups.setdefault(os.path.abspath(mirror_dir(k)), []).append(k)  # absolute: the CLI runs from its own checkout
+    wp = write_paths(l.get('writes', '')).split()
+    paths = [] if wp in ([], ['none', 'named']) else wp
+    verdict = {}
+    for mdir, ks in groups.items():
+        r, why = run_jira(cli, ['release', 'core-check', '--paths', ','.join(paths)] + (['--docs-only'] if docs_only(l.get('writes', '')) else []) + ['--mirror', mdir, '--key'] + ks)
+        if r is None or r.returncode != 0:
+            failed(why or 'core-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:300]), keys)
+        got = per_key_lines(r.stdout, ks)
+        if len(got) != len(ks):
+            failed('core-check printed no parseable line for %s' % ', '.join(k for k in ks if k not in got), keys)
+        verdict.update(got)
+
+    refusals, lines, core = [], [], {}
+    for k in keys:
+        t = verdict[k].split(None, 3)
+        if t[0] == 'BYPASS':
+            kind, reason = (t[2] if len(t) > 2 else '?'), (t[3] if len(t) > 3 else '')
+            lines.append('> **Core gate:** %s bypass=%s — %s' % (k, kind, reason))
+            row(k, 'bypass', kind=kind, line=verdict[k])
+        elif t[0] == 'UNKNOWN':
+            row(k, 'unknown', line=verdict[k])
+            refusals.append('%s is not in the Jira mirror (%s), so neither core nor a bypass can be proven; refresh the mirror, then re-run' % (k, mirror_dir(k)))
+        elif t[0] == 'CORE':
+            core[k] = t[2] if len(t) > 2 else ''
+            if len(t) > 3:
+                core[k] += ' ' + t[3]
+
+    spec = {}
+    for mdir, ks in groups.items():
+        cks = [k for k in ks if k in core]
+        if not cks:
+            continue
+        r, why = run_jira(cli, ['release', 'spec-check', '--mirror', mdir] + cks)
+        if r is None or r.returncode not in (0, 1):
+            failed(why or 'spec-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:300]), list(core))
+        got = per_key_lines(r.stdout, cks, spec=True)
+        if len(got) != len(cks):
+            failed('spec-check printed no parseable line for %s' % ', '.join(k for k in cks if k not in got), list(core))
+        spec.update(got)
+    for k in core:
+        t = spec[k].split()
+        if t[:2] == ['SPEC', 'ok'] and len(t) >= 5:
+            lines.append('> **Spec:** %s %s (%s)' % (k, ' '.join(t[3:-1]), t[-1]))
+            row(k, 'spec', matched=core[k], line=spec[k])
+        else:
+            row(k, 'refused', matched=core[k], line=spec[k])
+            refusals.append('%s is core (%s) and has no signed minerva spec: %s; run minerva, then jira release operator spec' % (k, core[k], spec[k]))
+    core_log(log, rows)
+    if refusals:
+        die('\n'.join('worker %s: %s' % (label, m) for m in refusals))
+    l['core_lines'] = ('\n' + '\n'.join(lines) + '\n') if lines else ''
+
+
 def plan_series(workers):
     # Every series refusal, before anything is written. Sets l['series_plan'] on each series writer and returns the
     # workers without the ones it names, which get no brief or launcher.
@@ -788,7 +941,7 @@ template_version: 3
 {hookline} `cd` into the worktree, never EnterWorktree.
 > - **Reporting:** BLOCKED / permission prompt / question → the chief first (SendMessage). Never stop on AskUserQuestion. Doc bullets record plain facts; token quote-backs go in your SendMessage reply (HIMMEL-4931).
 > - **Shape denials:** rewrite as one literal command, retry once. Edit files with the Edit tool; a script that must name a seam variable, `unset` or `-u` goes in a file run as `python3 -I <file>`, never a heredoc or `perl -pi` on the command line.
-{abline}{tierline}{ctline}{seriesline}
+{abline}{tierline}{ctline}{seriesline}{coreline}
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
@@ -818,7 +971,7 @@ template_version: 3
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
                      if l.get('tier') and tier_gate(l['model']) else ''),
            shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
-           ctline=completes_line(l['scope']), seriesline=series_lines(l), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
+           ctline=completes_line(l['scope']), seriesline=series_lines(l), coreline=l.get('core_lines', ''), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
            inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',
@@ -996,6 +1149,8 @@ def main():
             l['nonce'] = '%s-%s-%s' % (letter, l['label'], secrets.token_hex(4))
             l['stem'] = '%s-%s-%s-%s' % (l['keys'][0], l['label'], l['slug'], a.date)
             l['wt'] = '%s/.claude/worktrees/%s' % (a.repo, l['branch'].replace('/', '+'))
+            if core_gate_on():
+                core_gate(l, ctx)
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):
             die('%s already exists in the bucket; refusing to overwrite a live worker doc' % (l['stem'] + '.md'))
         if os.path.exists(os.path.join(a.bucket, 'launch-%s.sh' % l['label'])):
