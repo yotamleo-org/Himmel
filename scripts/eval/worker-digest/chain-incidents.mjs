@@ -15,6 +15,8 @@ export const EVENT_CAP = 300;
 export const MEMBER_EVENT_CAP = 20;
 export const KINDS = ['rule', 'timeout', 'deadline', 'buffer', 'other'];
 const KIND_OF = { RULE: 'rule', ETIMEDOUT: 'timeout', ENTRY_DEADLINE: 'deadline', ENOBUFS: 'buffer' };
+// A run-record entry with one of these reasons names a guard the chain never started: it is a refusal or a skip, not a run.
+const NEVER_STARTED = new Set(['INTEGRITY', 'ENTRY_DEADLINE', 'SPAWN']);
 const DENY_LINE_MAX_CODE_POINTS = 240;
 const CALL_ID = /^[A-Za-z0-9_.:-]{1,128}$/;
 const INVOCATION = /^[0-9a-f]{12}$/;
@@ -45,7 +47,7 @@ export function chainLogPaths(env, repoRoot) {
       try {
         for (const name of readdirSync(worktrees)) {
           const dir = join(worktrees, name);
-          try { if (statSync(dir).isDirectory()) dirs.push(join(dir, '.claude', 'logs')); } catch { /* a vanished worktree */ }
+          try { if (statSync(dir).isDirectory()) dirs.push(join(dir, '.claude', 'logs')); } catch (e) { if (e?.code !== 'ENOENT') worktreesUnreadable = true; /* ENOENT: a vanished worktree */ }
         }
       } catch { worktreesUnreadable = true; }
     }
@@ -185,9 +187,11 @@ export function rollupChain(chain, { firstDay = null, lastDay = null } = {}) {
       invocations++;
       for (const m of r.members) {
         const stats = member(m.member);
-        stats.runs++;
-        if (m.outcome === 'error') stats.errors++;
-        if (nonNegative(m.elapsed)) { stats.run_ms += m.elapsed; stats.max_ms = Math.max(stats.max_ms, m.elapsed); }
+        if (!NEVER_STARTED.has(m.reason)) {
+          stats.runs++;
+          if (m.outcome === 'error') stats.errors++;
+          if (nonNegative(m.elapsed)) { stats.run_ms += m.elapsed; stats.max_ms = Math.max(stats.max_ms, m.elapsed); }
+        }
         if (m.outcome === 'deny' || m.outcome === 'skip') {
           addEvent(ts, { member: m.member, occurrence: m.occurrence, tool: r.tool, session: r.session, callId: r.callId, invocation: r.invocation }, m);
         }
@@ -207,14 +211,16 @@ export function rollupChain(chain, { firstDay = null, lastDay = null } = {}) {
   }
   const infra = byReason.timeout + byReason.deadline + byReason.buffer + byReason.other;
   const usable = sources.skip.state === 'ok' || sources.run.state === 'ok';
-  const complete = sources.skip.state === 'ok' && sources.run.state === 'ok' && audit.unverified === 0 && audit.malformed === 0 && !sources.skip.truncated && !sources.run.truncated;
+  // A worktree folder that could not be listed may hold logs this read never saw, so the counts cannot be called complete.
+  const worktreesUnreadable = chain.worktreesUnreadable === true;
+  const complete = sources.skip.state === 'ok' && sources.run.state === 'ok' && audit.unverified === 0 && audit.malformed === 0 && !sources.skip.truncated && !sources.run.truncated && !worktreesUnreadable;
   const state = !usable ? (sources.skip.state === 'error' || sources.run.state === 'error' ? 'error' : 'absent') : complete ? 'ok' : 'partial';
   const unknown = (n, known) => known ? n : null; // a count the sources cannot show is "—", never 0
   const reasonView = (r) => ({ ...r, rule: unknown(r.rule, ruleKnown), timeout: unknown(r.timeout, infraKnown), deadline: unknown(r.deadline, infraKnown), buffer: unknown(r.buffer, infraKnown), other: unknown(r.other, infraKnown) });
   return {
     state,
     sources: Object.fromEntries(Object.entries(sources).map(([k, s]) => [k, { state: s.state, files: s.files, malformed: s.malformed, truncated: s.truncated }])),
-    audit, joined, rule_known: ruleKnown, infra_known: infraKnown,
+    audit, joined, rule_known: ruleKnown, infra_known: infraKnown, worktrees_unreadable: worktreesUnreadable,
     by_reason: reasonView(byReason), by_action: infraKnown ? byAction : { deny: null, skip: null },
     infra: unknown(infra, infraKnown), denials: unknown(byAction.deny, ruleKnown),
     invocations: unknown(invocations, ruleKnown),

@@ -379,6 +379,7 @@ function chainNote(c) {
     if (!s || s.state !== "ok") why.push(`the ${label} is unavailable`);
     else if (s.truncated) why.push(`the ${label} was read from its newest part only`);
   }
+  if (c.worktrees_unreadable) why.push("a worktree folder could not be listed, so its logs may be missing");
   if (a.unverified > 0) why.push(`unverified rows left out: ${a.unverified}`);
   if (a.malformed > 0) why.push(`malformed rows left out: ${a.malformed}`);
   return `Partial: ${why.join("; ")}. A count may be low, and a — is unverified.`;
@@ -423,7 +424,8 @@ function toolChain(data, key, token) {
   const timeouts = known ? `${capped ? "at least " : ""}${mine.filter((e) => e.kind === "timeout").length}` : "—";
   const shown = mine.slice(0, 20);
   const notes = `${noteP(tool === null ? "The chain logs name the tool, not the skill or subagent, so its timeouts are unverified." : chainNote(c))}${chainAudit(c)}${noteP(CHAIN_SCOPE)}`;
-  const events = known ? `${chainEvents(shown, token, "No guard refused or skipped a call to this tool in the chain logs")}${noteP(shown.length < mine.length ? `Showing the newest ${shown.length} of ${mine.length}.` : "")}` : "";
+  const none = capped ? `None of the newest ${c.events.length} events name this tool; ${c.events_total - c.events.length} older events are not shown` : "No guard refused or skipped a call to this tool in the chain logs";
+  const events = known ? `${chainEvents(shown, token, none)}${noteP(shown.length < mine.length ? `Showing the newest ${shown.length} of ${capped ? "at least " : ""}${mine.length}.` : "")}` : "";
   return box("chain", "Timeouts and recent events", "How often did a guard time out on this tool, and what happened last? Guards that refused or skipped a call to it, from the hook-chain logs.", `<dl class="stats">${stat("timeouts", "Timeouts", timeouts)}</dl>${notes}${events}`);
 }
 function evidence(sessions, ids, token) {

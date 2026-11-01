@@ -1,6 +1,6 @@
 // three seeded digests exercise the real ledger writer and server rate math.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as sources from "../health-sources";
@@ -738,7 +738,8 @@ test("chain-reasons-and-actions-are-not-all-timeouts", () => {
   expect(c.by_reason).toEqual({ rule: 1, timeout: 1, deadline: 1, buffer: 1, other: 0 });
   expect(c.by_action).toEqual({ deny: 3, skip: 1 });
   expect([c.infra, c.denials, c.events_total]).toEqual([3, 3, 4]);
-  expect(c.members["block-read-secrets.sh"]).toMatchObject({ denials: 3, skips: 0, runs: 3, by_reason: { rule: 1, timeout: 1, deadline: 1, buffer: 0, other: 0 } });
+  // The guard that never started (the entry-deadline deny) is a refusal but not a run.
+  expect(c.members["block-read-secrets.sh"]).toMatchObject({ denials: 3, skips: 0, runs: 2, by_reason: { rule: 1, timeout: 1, deadline: 1, buffer: 0, other: 0 } });
   expect(c.members["read-clamp.sh"]).toMatchObject({ denials: 0, skips: 1, by_reason: { buffer: 1 } });
   // One call is in both logs and counts once; the three refusals are three distinct calls.
   expect(c.joined).toBe(3);
@@ -949,10 +950,57 @@ test("the hook list shows measured runs where the chain logs them and derived ru
   const inventory = { ...INVENTORY, hooks: [...INVENTORY.hooks, { kind: "hook", source: "project", name: "block-read-secrets.sh", wired: [["PreToolUse", "Read"]], runs_twice: false }, { kind: "hook", source: "project", name: "notchained.sh", wired: [["PreToolUse", "Bash"]], runs_twice: false }] };
   const hooks = Object.fromEntries(cells(await page(data, { kind: "hook" }, { inventory }), "data-tool-row"));
   expect(hooks["hook:project:read-clamp.sh"][2]).toBe("1 runs measured");
-  expect(hooks["hook:project:block-read-secrets.sh"][2]).toBe("3 runs measured");
+  expect(hooks["hook:project:block-read-secrets.sh"][2]).toBe("2 runs measured");
   expect(hooks["hook:project:notchained.sh"][2]).toBe("4 runs derived");
   const tab = await page(data, { tab: "hooks" }, { inventory });
   expect(tab).not.toContain("Runs derived");
   const unmeasured = await page(roll([bEval(1, [bTool("Bash", 4), bTool("Read", 3)])], [], { chain: { skip: { state: "absent" }, run: { state: "absent" } } }), { kind: "hook" }, { inventory });
   expect(Object.fromEntries(cells(unmeasured, "data-tool-row"))["hook:project:read-clamp.sh"][2]).toBe("4 runs derived");
+});
+
+test("a guard that never started is a refusal or a skip but not a measured run", () => {
+  const member = (over: any) => runMember({ member: "g.sh", ...over });
+  const run = [
+    runRow(60, [member({ outcome: "allow", reason: undefined, elapsed: 5 })]),
+    runRow(61, [member({ outcome: "skip", reason: "INTEGRITY", elapsed: 0 })], { exit: 0 }),
+    runRow(62, [member({ reason: "ENTRY_DEADLINE", elapsed: 0, budget: 0 })]),
+    runRow(63, [member({ reason: "SPAWN", elapsed: 3 })]),
+    runRow(64, [member({ reason: "ETIMEDOUT", elapsed: 15072, budget: 15000 })]),
+  ];
+  const c = rollChain({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows: run } });
+  // Only the allow and the timeout ran the guard; the integrity skip, the deadline deny and the spawn failure never did.
+  expect(c.members["g.sh"]).toMatchObject({ runs: 2, denials: 3, skips: 1, run_ms: 15077, max_ms: 15072 });
+  expect(c.invocations).toBe(5);
+});
+
+test("a worktree folder that cannot be listed makes the roll-up partial and the page says so", async () => {
+  const chain = { ...chainT(), worktreesUnreadable: true };
+  expect(rollChain(chain)).toMatchObject({ state: "partial", worktrees_unreadable: true, events_total: 4 });
+  expect(rollChain(chainT())).toMatchObject({ state: "ok", worktrees_unreadable: false });
+  expect(await chainPage(chain, GUARD)).toMatch(/Partial:[^<]*worktree/);
+});
+
+test("a tool whose events fall outside the newest ones does not read as having none", async () => {
+  const rows = Array.from({ length: 301 }, (_, i) => skipRow(100 + i, { tool: "Edit", callId: `toolu_E${i}`, invocation: INV(100 + i) }));
+  const html = await chainPage({ skip: { state: "ok", rows }, run: { state: "ok", rows: [] } }, { tool: "Read" });
+  expect(html).not.toContain("No guard refused or skipped a call to this tool");
+  expect(html).toContain("newest 300");
+  expect(stat(html, "timeouts")).toBe("at least 0");
+  // A tool with more events than the page shows, in a capped list, says the total is a floor.
+  const reads = Array.from({ length: 301 }, (_, i) => skipRow(100 + i, { callId: `toolu_R${i}`, invocation: INV(100 + i) }));
+  const some = await chainPage({ skip: { state: "ok", rows: reads }, run: { state: "ok", rows: [] } }, { tool: "Read" });
+  expect(some).toContain("Showing the newest 20 of at least 300.");
+});
+
+(process.getuid?.() === 0 ? test.skip : test)("a worktree folder that cannot be inspected makes the roll-up partial", () => {
+  const env: any = seed(), repo = join(env.HOME, "repo"), worktrees = join(repo, ".claude", "worktrees");
+  mkdirSync(join(worktrees, "feat+x", ".claude", "logs"), { recursive: true });
+  writeFileSync(join(worktrees, "feat+x", ".claude", "logs", "hook-chain-skips.jsonl"), JSON.stringify(skipRow(2)) + "\n");
+  mkdirSync(join(repo, ".claude", "logs"), { recursive: true });
+  writeFileSync(join(repo, ".claude", "logs", "hook-chain-skips.jsonl"), JSON.stringify(skipRow(3)) + "\n");
+  writeFileSync(join(repo, ".claude", "logs", "hook-runs.jsonl"), JSON.stringify(runRow(1, [runMember()])) + "\n");
+  const run = () => (sources as any).readToolHealth(env, new URLSearchParams(), B_NOW, { rtk: () => ({ state: "absent" }), repoRoot: repo }).chain;
+  expect(run()).toMatchObject({ state: "ok", worktrees_unreadable: false, events_total: 3 });
+  chmodSync(worktrees, 0o444); // listable, but its entries cannot be inspected
+  try { expect(run()).toMatchObject({ state: "partial", worktrees_unreadable: true }); } finally { chmodSync(worktrees, 0o755); }
 });
