@@ -25,8 +25,27 @@ const DIGEST_SCHEMA = 2;
 const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
 const laneEnv = process.env.WORKER_SESSION_LANE || "";
 const lane = LANES.has(laneEnv) ? laneEnv : "unknown";
-// Only conventional lowercase MCP identifiers, never result/argument text.
-const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_]{1,160}$/.test(s) ? s : s.startsWith("mcp__") ? "mcp" : "other";
+// Only lowercase MCP identifiers (a hyphen allowed), never result/argument text. ponytail: a capital still folds
+// to "mcp" because the canary fixture's mcp__CANARY… name must not reach the digest; admit capitals per server.
+const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_-]{1,160}$/.test(s) ? s : s.startsWith("mcp__") ? "mcp" : "other";
+// Split keys: Skill:<plugin>:<skill> and Agent:<subagent_type>, each part through a bounded name check.
+const SPLIT_PART = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$/;
+const splitName = (v: unknown) => typeof v === "string" && /^[^:]+(:[^:]+)?$/.test(v) && v.split(":").every((p) => SPLIT_PART.test(p)) ? v : null;
+// The first command word past env assignments and an rtk wrapper, never more of the command.
+const HEAD = /^[a-z][a-z0-9_.+-]{0,40}$/;
+const commandHead = (cmd: string) => {
+  const w = cmd.trim().split(/\s+/);
+  let i = 0;
+  while (i < w.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[i])) i++;
+  if (w[i] === "rtk") i++;
+  return HEAD.test(w[i] ?? "") ? w[i] : "other";
+};
+// Who broke a failed Bash call, from its failure class.
+const bashCause = (cls: string) => cls.startsWith("error/") || cls.startsWith("suite/") ? "command"
+  : cls.startsWith("denied/classifier:") ? "classifier"
+  : cls === "denied/other" || cls === "denied/permission-prompt" || !cls.startsWith("denied/") ? "other" : "guard";
+// ponytail: per-row cap on bash_calls keeps one runaway session bounded; raise it if a real session hits it.
+const MAX_BASH_CALLS = 5000;
 const REPO = resolve(import.meta.dir, "../../..");
 const TRAJECTORY = join(REPO, "scripts/eval/lane-quality/trajectory.py");
 const MAX_BYTES = 200 * 1024 * 1024;
@@ -170,14 +189,16 @@ function hookNames(): Set<string> | null {
 }
 
 // spawnSync throws when the binary is not on PATH, so each spawn sits inside the try.
-function trackedNames(): { tests: Set<string>; scripts: Set<string> } | null {
+function trackedNames(): { tests: Set<string>; scripts: Set<string>; agents: Set<string> } | null {
   try {
     const r = spawnSync(["git", "-C", REPO, "ls-files", "-z"]);
     if (!r.success) return null;
-    const names = r.stdout.toString().split("\0").map((p) => basename(p));
+    const paths = r.stdout.toString().split("\0");
+    const names = paths.map((p) => basename(p));
     return {
       tests: new Set(names.filter((n) => /^test-[\w.-]+\.sh$|\.test\.ts$/.test(n))),
       scripts: new Set(names.filter((n) => /^[\w.+-]+\.sh$/.test(n))),
+      agents: new Set(paths.map((p) => /^\.claude\/agents\/([\w.-]+)\.md$/.exec(p)?.[1]).filter((n): n is string => !!n)),
     };
   } catch { return null; }
 }
@@ -290,6 +311,7 @@ async function main() {
   const hooks = hookList ?? new Set<string>();
   const tests = names?.tests ?? new Set<string>();
   const scripts = names?.scripts ?? new Set<string>();
+  const agentNames = names?.agents ?? new Set<string>();
   const ledger = ledgerRows(o.ledger, session);
   const registry = exitCodes();
   if (!registry) lookupsFailed.push("exit-codes");
@@ -308,7 +330,7 @@ async function main() {
   const callsByTool: Record<string, number> = Object.create(null);
   const failuresByTool: Record<string, number> = Object.create(null);
   const callDay = new Map<string, string | null>();
-  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number> }>();
+  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number>; bash_calls?: [string, string, string | null][] }>();
   const toolRow = (agent: Agent, tool: string, day: string | null) => {
     const key = `${agent.id}\0${day}\0${tool}`;
     let r = health.get(key);
@@ -333,7 +355,8 @@ async function main() {
     r.agent = agents.get(agent.id) ?? agent;
     r.count++;
     if (id && callName.has(id)) {
-      const tool = toolKey(callName.get(id)!);
+      const tool = callKey(id);
+      if (tool === "Bash" && !callCause.has(id)) callCause.set(id, bashCause(cls));
       failuresByTool[tool] = (failuresByTool[tool] ?? 0) + 1;
       const h = toolRow(agent, tool, callDay.get(id) ?? null);
       h.failures++;
@@ -346,9 +369,24 @@ async function main() {
     if (id) { const all = allIds.get(r) ?? []; all.push(id); allIds.set(r, all); }
     return r;
   };
-  const command = (id: string): string => {
-    try { const v = JSON.parse(callArgs.get(id) ?? "").command; return typeof v === "string" ? v : ""; } catch { return ""; }
+  const argsOf = (id: string): Record<string, unknown> => {
+    try { const v = JSON.parse(callArgs.get(id) ?? ""); return v && typeof v === "object" ? v : {}; } catch { return {}; }
   };
+  const command = (id: string): string => { const v = argsOf(id).command; return typeof v === "string" ? v : ""; };
+  // The split key of a call; its args are complete once its result (or the journal end) is reached.
+  const callKey = (id: string): string => {
+    const name = callName.get(id) ?? "";
+    if (name === "Skill") { const s = splitName(argsOf(id).skill); return s ? `Skill:${s}` : "Skill"; }
+    // A subagent_type is free text (the canary fixture puts one there), so only a known kind or a tracked
+    // .claude/agents name becomes a key. ponytail: plugin agents (codex:codex-rescue) read "Agent" until a
+    // plugin agent list is read here.
+    if (name === "Agent" || name === "Task") {
+      const s = splitName(argsOf(id).subagent_type ?? "general-purpose");
+      return s && (KINDS.has(s) || agentNames.has(s)) ? `Agent:${s}` : "Agent";
+    }
+    return toolKey(name);
+  };
+  const callCause = new Map<string, string>();
   const suiteSub = (cmd: string): string => {
     for (const hit of cmd.matchAll(TEST_NAME)) if (tests.has(basename(hit[1]))) return basename(hit[1]);
     return "other";
@@ -418,11 +456,8 @@ async function main() {
         const a = seen(agentOf(e.agent));
         callAgent.set(e.toolCallId, a);
         callName.set(e.toolCallId, e.toolCallName);
-        const tool = toolKey(e.toolCallName);
-        callsByTool[tool] = (callsByTool[tool] ?? 0) + 1;
         const day = typeof e.timestamp === "number" && Number.isFinite(e.timestamp) ? new Date(e.timestamp).toISOString().slice(0, 10) : null;
         callDay.set(e.toolCallId, day);
-        toolRow(a, tool, day).calls++;
         break;
       }
       case "TOOL_CALL_ARGS": callArgs.set(e.toolCallId, (callArgs.get(e.toolCallId) ?? "") + e.delta); break;
@@ -464,6 +499,16 @@ async function main() {
         break;
       }
     }
+  }
+  // Calls are counted after the loop: the split key needs the call's args, which follow its start event.
+  for (const [id, agent] of callAgent) {
+    const tool = callKey(id);
+    callsByTool[tool] = (callsByTool[tool] ?? 0) + 1;
+    const h = toolRow(agent, tool, callDay.get(id) ?? null);
+    h.calls++;
+    if (tool !== "Bash") continue;
+    const bc = (h.bash_calls ??= []);
+    if (bc.length < MAX_BASH_CALLS) bc.push([id, commandHead(command(id)), callCause.get(id) ?? null]);
   }
   m.subagents = [...agents.keys()].filter((id) => id !== "main").length;
   for (const { row } of suiteLast.values()) row.final_red = false;

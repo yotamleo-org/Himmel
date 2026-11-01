@@ -14,7 +14,7 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo approve ID --from SENDER --chat CHAT      (`NONCE CODE` is read from stdin)
   afk-sudo deny ID --from SENDER --chat CHAT
   afk-sudo status ID  |  run-status ID
-  afk-sudo lockdown --from SENDER --chat CHAT   (operator only; sets enabled: false and denies the pending request; takes nothing that turns anything on)
+  afk-sudo lockdown --from SENDER --chat CHAT   (operator only; sets enabled: false and denies every pending request; takes nothing that turns anything on)
   afk-sudo run-result ID [--stream stdout|stderr]
   afk-sudo grant-request      --session S --cwd DIR [--ticket T] [--why W]   (the command's bytes on stdin)
   afk-sudo grant-spend        --session S --sha256 H --cwd DIR
@@ -1284,7 +1284,7 @@ def disable_config(config):
 
 
 def lockdown(config, args):
-    """HIMMEL-8067 slice 4: switch the station off and deny the pending request. Works on an already-off station;
+    """HIMMEL-8067 slice 4: switch the station off and deny every pending request. Works on an already-off station;
     takes no argument that could turn anything on, and the only thing it writes is `enabled: false`."""
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now()))
     op = config.get("operator_id")
@@ -1296,25 +1296,13 @@ def lockdown(config, args):
     denied, failed = [], False
     try:
         broker = ab.Broker(STATE, LEDGER, SEED, op, config.get("window_s", 120), OWNER, now)
-        # Read and deny under one lock, as Broker.deny does, so no approve can take the request in between.
-        fd = broker._locked()
-        try:
-            s = broker._load()
-            pending = s["pending"]
-            if pending:
-                broker._finish(s, pending["id"], "denied")
-                s["pending"] = None
-                broker._spend(s, now())
-                broker._save(s)
-                broker._row("deny", "denied", pending["meta"], id=pending["id"], sender=op)
-                denied.append(pending["id"])
-        finally:
-            os.close(fd)
+        # Read and deny under one lock, so no approve can take a request in between.
+        denied = broker.deny_all(op)
     except (ab.Refused, OSError, ValueError, KeyError, TypeError):
         failed = True
     ab.append_row(LEDGER, {"ts": ts, "event": "lockdown", "result": "locked", "sender": args.sender, "denied": denied,
                            "deny_failed": failed}, OWNER)
-    print("result=locked" + (f" denied={denied[0]}" if denied else "") + (" deny=failed" if failed else ""))
+    print("result=locked" + (f" denied={','.join(denied)}" if denied else "") + (" deny=failed" if failed else ""))
     return 5 if failed else 0
 
 

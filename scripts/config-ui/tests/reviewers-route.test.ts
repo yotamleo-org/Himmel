@@ -1,4 +1,4 @@
-// GET /api/reviewers — the review page (scripts/eval/review-page.py, written weekly by judge-accuracy-cadence.sh) as served text, read-only; and the Health page's Reviewers section.
+// GET /api/reviewers — the review page (scripts/eval/review-page.py, written weekly by judge-accuracy-cadence.sh) as served text, read-only; and the Tool health page's Reviewers tab.
 import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -54,18 +54,24 @@ test("reviewers: an absent file is state absent; the route is token-gated and re
   expect((await get(s.port, { "X-Himmel-Token": TOKEN }, "POST")).status).toBe(405);
 });
 
-test("Health page: the Reviewers section shows headings, the bullets and the numbers as written", async () => {
-  const s = boot(PAGE);
-  const reviewers = await (await get(s.port)).json();
-  const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers });
-  expect(html).toContain('id="reviewers"');
-  expect(html).toContain("<h4>The judges</h4>");
-  expect(html).toContain("<li>A bug got past a GO on 2 of 100 merged PRs: 2 % (likely between 1 % and 7 %).</li>");
-});
-
-test("Health page: no page shows 'no data yet'; the page text is escaped", () => {
-  expect(renderHealth(null, null)).toContain("No data: no review page yet");
+test("reviewers-move-to-tool-health-as-source-text", async () => {
+  const { renderToolHealth } = await import("../public/tool-health.js");
+  const tab = (reviewers: any) => renderToolHealth({ data: { state: "absent", selected: { days: 7 } }, reviewers }, "t", { tab: "reviewers" }) as string;
+  const R = { state: "ok", text: "# Review sample\n\nCaught 8 of 10 planted cases.\n", writtenAt: "2026-10-26T03:00:00Z" };
+  const html = tab(R);
+  expect(html).toContain("Caught 8 of 10 planted cases.");
+  expect(html).toContain("File updated 2026-10-26 03:00 UTC");
+  expect(html).not.toContain("80");
+  expect(html).not.toContain('class="tile');
+  expect(tab({ state: "absent" })).toContain("No review page yet");
+  expect(tab({ state: "ok", text: "  \n", writtenAt: R.writtenAt })).toContain("Review page is empty");
+  expect(tab({ state: "error", reason: "unreadable" })).toContain("Review page could not load");
+  expect(tab(undefined)).toContain("Loading the review page");
   const evil = `<img src=x onerror=alert(1)>`;
-  const html = renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers: { state: "ok", text: `## ${evil}\n\n- ${evil}\n`, writtenAt: "2026-10-24T00:00:00Z" } });
-  expect(html).not.toContain("<img");
+  expect(tab({ ...R, text: `## ${evil}\n\n- ${evil}\n` })).not.toContain("<img");
+  const s = boot(PAGE);
+  const served = tab(await (await get(s.port)).json());
+  expect(served).toContain("<h4>The judges</h4>");
+  expect(served).toContain("<li>A bug got past a GO on 2 of 100 merged PRs: 2 % (likely between 1 % and 7 %).</li>");
+  expect(renderHealth(null, { bank: { state: "absent" }, workers: { state: "absent" }, monitoring: { state: "absent" }, mode: { state: "absent" }, reviewers: R })).not.toContain("How good are our reviewers?");
 });

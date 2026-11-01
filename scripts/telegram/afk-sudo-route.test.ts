@@ -238,7 +238,7 @@ test("handleInbound: under lockdown an approve line never reaches the helper", a
 
 // --- Approve / Deny buttons, then a ForceReply code prompt ---
 
-function buttons(opts: { operator?: number | null; promptId?: number | null; allowFrom?: string[] } = {}) {
+function buttons(opts: { operator?: number | null; promptId?: number | null; promptIds?: number[]; allowFrom?: string[] } = {}) {
   const base = fake();
   if (opts.allowFrom) base.deps.access = () => ({ allowFrom: opts.allowFrom! });
   const sent: { chat: number; text: string }[] = [];
@@ -247,7 +247,7 @@ function buttons(opts: { operator?: number | null; promptId?: number | null; all
   const deps: AfkSudoCallbackDeps = {
     ...base.deps,
     operatorId: () => (opts.operator === undefined ? OP : opts.operator),
-    prompt: async (chat, text) => { sent.push({ chat, text }); return opts.promptId === undefined ? 77 : opts.promptId; },
+    prompt: async (chat, text) => { sent.push({ chat, text }); return opts.promptIds?.shift() ?? (opts.promptId === undefined ? 77 : opts.promptId); },
     answer: async (_cb, text) => { answers.push(text); },
   };
   const prompts = makeAfkSudoPrompts(() => clock, 150_000);
@@ -304,6 +304,31 @@ test("button: a prompt is single use", async () => {
   expect(b.calls.length).toBe(1);
   expect(b.replies.at(-1)).toContain("already used");
   expect([...b.replies, ...b.logs].join("\n")).not.toContain("654321");
+});
+
+test("HIMMEL-8067 slice 2: two waiting requests get their own prompts and each reply approves its own id", async () => {
+  const b = buttons({ promptIds: [77, 78] });
+  b.tap(tapOf("afk:approve:aaaaaaaa"));
+  b.tap(tapOf("afk:approve:bbbbbbbb"));
+  await settle();
+  expect(b.gate(reply("K7QF 123456", 78))).toBe(true);
+  await settle();
+  expect(b.gate(reply("M2PX 654321", 77))).toBe(true);
+  await settle();
+  expect(b.calls.map((c) => c.args[1])).toEqual(["bbbbbbbb", "aaaaaaaa"]);
+  expect(b.calls.map((c) => c.stdin)).toEqual(["K7QF 123456\n", "M2PX 654321\n"]);
+});
+
+test("HIMMEL-8067 slice 2: a code sent without replying while two prompts wait names both requests", async () => {
+  const b = buttons({ promptIds: [77, 78] });
+  b.tap(tapOf("afk:approve:aaaaaaaa"));
+  b.tap(tapOf("afk:approve:bbbbbbbb"));
+  await settle();
+  expect(b.gate(dm("123456"))).toBe(true);
+  await settle();
+  expect(b.calls).toEqual([]);
+  expect(b.replies.at(-1)).toContain("aaaaaaaa");
+  expect(b.replies.at(-1)).toContain("bbbbbbbb");
 });
 
 test("button: a Deny tap denies at once and asks for no code", async () => {

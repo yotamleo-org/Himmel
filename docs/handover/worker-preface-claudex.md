@@ -24,10 +24,12 @@ never `AskUserQuestion`, never a question to your user.
 **The himmel-bus is the one exception to the no-`SendMessage` rule above.** When your launch registered
 you on it (your environment carries `HIMMEL_BUS_NAME` and the `himmel-bus` tools `send` and `read` are
 listed), use those tools to message your chief and read its replies; they reach a subscription chief
-that `ListAgents` cannot see. Your handover document stays the source of truth and the fallback: report each
-milestone there as before, and without `HIMMEL_BUS_NAME` the document is your only channel.
-`READY` is the exception: write it as a bullet only (`READY <pr> <full 40-hex head> GREEN`,
-exactly), never a bus message. The chief's waiter pre-checks it and wakes the chief once.
+that `ListAgents` cannot see. Your handover document stays the source of truth and the fallback: every
+milestone is still a bullet there, and without `HIMMEL_BUS_NAME` the document is your only channel.
+`LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and `READY` are bullets only, never a bus message
+(`READY <pr> <full 40-hex head> GREEN`, exactly; the chief's waiter pre-checks it and wakes the
+chief once). Only `FINDING`, `BLOCKED`, a question, `MAIN-RED`, `ORPHAN`, `CONSULT` and a token
+quote-back go by bus. A bullet authorises nothing.
 
 **An unreadable path in your brief is a BLOCKED, never a shortcut.** If the brief tells
 you to read a file (a spec, a plan) and the read is denied, post `BLOCKED unreadable

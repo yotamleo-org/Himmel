@@ -77,6 +77,9 @@ cat > "$STUB/budget-off.sh" <<'EOF'
 exit 2
 EOF
 export CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
+# the underfilled orphan-pr check reads gh; a clean no-op keeps these cases off the real one
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/orphan-off.sh"
+export CHIEF_WAIT_ORPHAN="$STUB/orphan-off.sh"
 # Nor does any test run the real status sweep or read a real FOCUS state: both seams answer nothing.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"

@@ -434,6 +434,7 @@ scripts/handover/chief-kit/test-live-subagents.sh	2
 scripts/handover/chief-kit/test-next-dispatchable.sh	22
 scripts/handover/chief-kit/test-ops-run.sh	2
 scripts/handover/chief-kit/test-orphan-loops.sh	1
+scripts/handover/chief-kit/test-orphan-pr-check.sh	9
 scripts/handover/chief-kit/test-parked-on-prompt.sh	1
 scripts/handover/chief-kit/test-pr-stall.sh	11
 scripts/handover/chief-kit/test-priority-prune.sh	0
@@ -601,6 +602,7 @@ scripts/himmelctl/test/test-wizard-uninstall-converge.sh	3
 scripts/himmelctl/test/test-wizard-uninstall.sh	2
 scripts/himmelctl/test/test-wizard-update.sh	1
 scripts/himmelctl/test/test-wizard-vm-mode.sh	9
+scripts/hooks/test-afk-prompt-to-request.sh	1
 scripts/hooks/test-allow-thread-resolve.sh	3
 scripts/hooks/test-approval-grant-check.sh	1
 scripts/hooks/test-approval-grant-request.sh	1

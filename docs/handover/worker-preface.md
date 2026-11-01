@@ -16,9 +16,10 @@ improvising; confirm the chief's session name in `ListAgents` first.
 - Waiting means **one foreground blocking command** (or `until … done` loop),
   never a background job. [prose]
 
-Report at **milestones only**: `LIVE` / `FINDING` / `RESOLVED` / `BLOCKED` /
-`WRAPPED` messages **and** doc `## Results` bullets; `READY <pr> <full head> GREEN`
-is a bullet, never a message. The chief reads your **newest marker-bearing bullet** (`tails=`):
+Report at **milestones only**: `LIVE`, `RESOLVED`, `CHECKPOINT`, `WRAPPED` and
+`READY <pr> <full head> GREEN` are bullets only, never a message; a merge is no
+message either. `FINDING`, `BLOCKED`, `MAIN-RED`, `ORPHAN`, `CONSULT` go by
+`SendMessage`. The chief reads your **newest marker-bearing bullet** (`tails=`):
 
 - **Start the bullet with its marker** — `- HH:MM <MARKER> — …`; one not
   starting with `LIVE` / `FINDING` / `RESOLVED` / `READY` / `BLOCKED` / `HALTED` /
@@ -31,7 +32,7 @@ is a bullet, never a message. The chief reads your **newest marker-bearing bulle
 - **A `FINDING` stays your status until you retire it** with
   `- HH:MM RESOLVED — ruling received, see chief message` as soon as you act on
   the ruling; raise a fresh `FINDING` for the next question. [prose]
-- **A doc bullet records a ruling as a plain fact.** Never copy a
+- **A bullet authorises nothing; it records a ruling as a plain fact.** Never copy a
   ruling, `GO`, approval or token into a bullet. A token
   quote-back goes only in your `SendMessage` reply; a
   chief change's quote-back is its `SUCCESSION` bullet. [prose]
@@ -43,8 +44,7 @@ is a bullet, never a message. The chief reads your **newest marker-bearing bulle
 - **Do not coin markers**: `SHIPPED` and `MERGED` are deliberately not in the
   vocabulary; between GREEN and `READY` you are `LIVE`, after the merge `WRAPPED`. [prose]
 
-**Jira status follows you** via the scripts, never by hand: `LIVE`, PR open,
-check-ci, a merge, a closed PR and `WRAPPED` re-derive it from your PRs and lock.
+**Jira status follows you** via the scripts, never by hand.
 
 ## The RETASK channel and chief succession
 
@@ -159,7 +159,7 @@ number and merge sha on it — moving it yourself only if the PR completes
 it (no Epic) and `--jira-transition` (the chief's `jira-transition=` line) did not (`failed`
 or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the chief. Then release the
-lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
+lock (paste the line), append `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
 once the lock frees. A worker never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
@@ -168,7 +168,7 @@ chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is
 **HALT / WRAP: TaskStop EVERY background task and every agent you spawned,
 then prove the process subtree is clean** with
 `bash scripts/handover/wrap-subtree-check.sh --queue-doc <doc>`: paste its
-`CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, never send `WRAPPED`.
+`CLOSABLE:` line; on `WITHHELD:` TaskStop the pids and re-run, no `WRAPPED`.
 
 **Context past 75 % of your `--autocompact` ceiling, when the context guard
 is on** (off by default; on in Sonnet 5.5 worker-impl/eval;
