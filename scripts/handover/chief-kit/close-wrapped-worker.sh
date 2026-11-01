@@ -14,9 +14,10 @@
 # finished one that cannot be closed (no/ambiguous window, live subtree) is
 # refused and its reason printed. It prints `sweep: closed=<n> refused=<n>
 # skipped=<n>` and exits 0; the tick's closable=<n> field says when to run it.
-# --check runs every pre-close check below and stops before anything with a
-# side effect: no session-note capture, no TERM, no cost row, reap, digest or
-# prune. It prints SAFE-TO-CLOSE (rc 0) or the refusal a real close would
+# --check runs every pre-close check below and stops before any close action:
+# no session-note capture, no TERM, no cost row, reap, digest or prune. The
+# scratchpad-clone check still runs a bounded git fetch --prune in each named
+# clone, so it updates that clone's remote-tracking refs and needs the network. It prints SAFE-TO-CLOSE (rc 0) or the refusal a real close would
 # print, with the same exit code, so an operator closing a window by hand can
 # ask first. Exit 0 means safe to close.
 # --chief closes a wrapped PREDECESSOR chief's window: the
@@ -99,7 +100,7 @@
 #      directory cannot be scanned for clones, git cannot inspect a clone, or
 #      the clone's remote branches cannot be refreshed (a failed or timed-out
 #      bounded git fetch --prune of each remote; CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT,
-#      default 30s)
+#      default 30s; a value that is not a positive integer is refused too)
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # konsole workers are Linux/KDE-only, same guard as
@@ -203,6 +204,8 @@ if [ "$last_marker" != "WRAPPED" ]; then
 fi
 
 # git-env-ok: every git call below goes through sc_git, which runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
+# (the remote refresh inlines the same scrub because it also runs under timeout, and
+# adds core.hooksPath=/dev/null so a clone-planted hook never runs under the chief)
 # A clone in a session scratchpad is deleted when its session ends. A
 # WRAPPED doc that names such a clone still holding commits on no remote is losing
 # that work: refuse the close (the chief sends the worker back to push it to a
@@ -264,12 +267,21 @@ while IFS= read -r sc_dir; do
     # them first (pruning), bounded; a failed or timed-out refresh refuses. Each remote is
     # fetched by name: --all skips a remote set to remote.<name>.skipFetchAll.
     sc_fetch_err=""
+    # GNU timeout treats 0 as "no limit": the bound must be a positive integer.
+    sc_fetch_timeout="${CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT:-30}"
+    case "$sc_fetch_timeout" in
+        ''|*[!0-9]*) sc_fetch_timeout=0 ;;
+    esac
+    if [ "$sc_fetch_timeout" -le 0 ]; then
+        echo "close-wrapped-worker: refusing - CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT must be a positive integer (seconds), got '${CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT:-}'; it bounds the remote refresh of $sc_dir" >&2
+        exit 8
+    fi
     if ! sc_remotes=$(sc_git -C "$sc_dir" remote 2>&1); then
         sc_fetch_err="cannot list remotes: $sc_remotes"
     else
         while IFS= read -r sc_remote; do
             [ -n "$sc_remote" ] || continue
-            if ! sc_fetch_out=$(GIT_TERMINAL_PROMPT=0 timeout -k 5 "${CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT:-30}" env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$sc_dir" fetch --prune --quiet -- "$sc_remote" 2>&1); then
+            if ! sc_fetch_out=$(GIT_TERMINAL_PROMPT=0 timeout -k 5 "$sc_fetch_timeout" env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -c core.hooksPath=/dev/null -C "$sc_dir" fetch --prune --quiet -- "$sc_remote" 2>&1); then
                 sc_fetch_err="remote $sc_remote: $sc_fetch_out"
                 break
             fi
