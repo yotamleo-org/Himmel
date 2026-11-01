@@ -3356,6 +3356,125 @@ else
 fi
 kill "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null; wait "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null
 
+# --- T8541a-e: whoever frees a DEAD holder's lock (reap-dead sweep, forced
+# release, stale takeover) also appends that worker's HALTED Results bullet, so
+# the doc's newest marker stops reading LIVE. A live holder's lock, and a doc
+# whose newest marker is already WRAPPED or HALTED, get nothing.
+H_ROOT="$TMPDIR_ROOT/halted-root"
+H_QDIR="$H_ROOT/.locks/queue"
+mkdir -p "$H_ROOT/HIMMEL-8541-test" "$H_QDIR"
+H_HOST="$(hostname 2>/dev/null)"
+# h_dead_pid -- a pid that really ran and was killed, then reaped.
+h_dead_pid() { sleep 30 & local p=$!; kill "$p" 2>/dev/null; wait "$p" 2>/dev/null; printf '%s' "$p"; }
+# h_doc <name> <last-marker-bullet> -- a worker doc whose newest bullet is the given one.
+h_doc() {
+    local d="$H_ROOT/HIMMEL-8541-test/$1.md"
+    printf '%s\n' '# worker doc' "> RETASK token \`fixture\`" '' '## Results (newest at the bottom)' "- 10:00 $2" > "$d"
+    printf '%s' "$d"
+}
+# h_hold <doc> <session> <host> -- really acquire, then age the owner and drop the
+# fresh liveness record so the holder reads as the given (dead or live) session.
+h_hold() {
+    HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$1" held-by-fixture >/dev/null 2>&1
+    local lk="" cand
+    for cand in "$H_QDIR"/*"$(basename "$1" .md)".lock; do [ -d "$cand" ] && lk="$cand" && break; done
+    [ -n "$lk" ] || return 1
+    sed -i.bak -e "s/\"session\":\"[^\"]*\"/\"session\":\"$2\"/" -e "s/\"host\":\"[^\"]*\"/\"host\":\"$3\"/" \
+        -e "s/\"heartbeat\":\"[^\"]*\"/\"heartbeat\":\"$D_OLD_HB\"/" "$lk/owner.json" && rm -f "$lk/owner.json.bak"
+    rm -f "$lk/liveness"
+    printf '%s' "$lk"
+}
+# h_tail <doc> -- the newest `- ` bullet.
+h_tail() { sed -n '/^- /p' "$1" | tail -n 1; }
+
+H_PID="$(h_dead_pid)"
+# a: --reap-dead sweep
+H_DOC_A="$(h_doc halted-reap 'LIVE — working')"
+H_LK_A="$(h_hold "$H_DOC_A" "$H_HOST-pid$H_PID" "$H_HOST")"
+HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
+if [ -n "$H_LK_A" ] && [ ! -d "$H_LK_A" ] && grepq "$(h_tail "$H_DOC_A")" '^- [0-9:]* HALTED'; then
+    pass "T8541a: --reap-dead of a dead holder's lock frees it and appends a HALTED bullet to the worker doc"
+else
+    fail "T8541a: reap (lock=$H_LK_A) left the doc tail as: $(h_tail "$H_DOC_A")"
+fi
+# b: forced release (the chief's QUEUE_LOCK_FORCE_RELEASE), holder dead
+H_DOC_B="$(h_doc halted-force 'LIVE — working')"
+H_LK_B="$(h_hold "$H_DOC_B" "$H_HOST-pid$H_PID" "$H_HOST")"
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_B" >/dev/null 2>&1; H_RC_B=$?
+if [ "$H_RC_B" -eq 0 ] && [ -n "$H_LK_B" ] && [ ! -d "$H_LK_B" ] && grepq "$(h_tail "$H_DOC_B")" '^- [0-9:]* HALTED'; then
+    pass "T8541b: a forced release of a dead holder's lock frees it and appends a HALTED bullet"
+else
+    fail "T8541b: forced release (rc=$H_RC_B lock=$H_LK_B) left the doc tail as: $(h_tail "$H_DOC_B")"
+fi
+# c: stale takeover by a new session
+H_DOC_C="$(h_doc halted-takeover 'LIVE — working')"
+H_LK_C="$(h_hold "$H_DOC_C" "$H_HOST-pid$H_PID" "$H_HOST")"
+HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_C" taker-fixture >/dev/null 2>&1; H_RC_C=$?
+if [ "$H_RC_C" -eq 0 ] && [ -n "$H_LK_C" ] && grepq "$(cat "$H_LK_C/owner.json" 2>/dev/null)" '"session":"taker-fixture"' \
+    && grepq "$(h_tail "$H_DOC_C")" '^- [0-9:]* HALTED'; then
+    pass "T8541c: a stale takeover from a dead holder hands the lock over and appends a HALTED bullet"
+else
+    fail "T8541c: takeover (rc=$H_RC_C lock=$H_LK_C) left the doc tail as: $(h_tail "$H_DOC_C")"
+fi
+# d: a LIVE holder (this shell's pid) force-released by a chief is not a dead worker
+H_DOC_D="$(h_doc halted-live 'LIVE — working')"
+H_LK_D="$(h_hold "$H_DOC_D" "$H_HOST-pid$$" "$H_HOST")"
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_D" >/dev/null 2>&1; H_RC_D=$?
+if [ "$H_RC_D" -eq 0 ] && [ -n "$H_LK_D" ] && [ ! -d "$H_LK_D" ] && [ "$(h_tail "$H_DOC_D")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541d: freeing a lock whose holder is alive removes it and writes no HALTED bullet"
+else
+    fail "T8541d: live holder (rc=$H_RC_D lock=$H_LK_D) tail: $(h_tail "$H_DOC_D")"
+fi
+# e: a doc already WRAPPED gets no HALTED on top
+H_DOC_E="$(h_doc halted-wrapped 'WRAPPED — done')"
+H_LK_E="$(h_hold "$H_DOC_E" "$H_HOST-pid$H_PID" "$H_HOST")"
+HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
+if [ -n "$H_LK_E" ] && [ ! -d "$H_LK_E" ] && [ "$(h_tail "$H_DOC_E")" = "- 10:00 WRAPPED — done" ]; then
+    pass "T8541e: a reaped lock whose doc newest marker is WRAPPED leaves the doc alone"
+else
+    fail "T8541e: WRAPPED doc (lock=$H_LK_E) tail: $(h_tail "$H_DOC_E")"
+fi
+# f: a doc lock held by another writer must not stall the release; the append times out with a WARN
+# shellcheck source=../lib/timeout-bin.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/timeout-bin.sh" 2>/dev/null
+if [ -n "$_TIMEOUT_BIN" ] && command -v flock >/dev/null 2>&1; then
+    H_DOC_F="$(h_doc halted-locked 'LIVE — working')"
+    H_LK_F="$(h_hold "$H_DOC_F" "$H_HOST-pid$H_PID" "$H_HOST")"
+    ( . "$SCRIPT_DIR/chief-kit/worker-doc-lock.sh"; doc_lock "$H_DOC_F" t8541 && exec sleep 60 ) &
+    H_HOLD_PID=$!
+    sleep 1
+    H_OUT_F="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=1 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 30 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_F=$?
+    kill "$H_HOLD_PID" 2>/dev/null; wait "$H_HOLD_PID" 2>/dev/null
+    if [ "$H_RC_F" -ne 124 ] && [ -n "$H_LK_F" ] && [ ! -d "$H_LK_F" ] && grepq "$H_OUT_F" "could not append the HALTED bullet"; then
+        pass "T8541f: a held doc lock times the HALTED append out with a WARN and the lock is still freed"
+    else
+        fail "T8541f: held doc lock (rc=$H_RC_F lock=$H_LK_F) out: $H_OUT_F"
+    fi
+else
+    pass "T8541f: skipped, needs GNU timeout and flock"
+fi
+# g: the append never runs bus adopt, so a sweeper cannot adopt a dead worker's chief edge
+H_DOC_G="$(h_doc halted-bus 'LIVE — working')"
+printf '%s\n' '- 10:01 SUCCESSION accepted: new-chief replaces old-chief' >> "$H_DOC_G"
+printf '#!/bin/sh\ntouch "%s/bus-called"\n' "$TMPDIR_ROOT" > "$TMPDIR_ROOT/bus-stub"; chmod +x "$TMPDIR_ROOT/bus-stub"
+h_hold "$H_DOC_G" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+HIMMEL_BUS_NAME=fixture-worker APPEND_RESULTS_BUS="$TMPDIR_ROOT/bus-stub" HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
+if grepq "$(h_tail "$H_DOC_G")" '^- [0-9:]* HALTED' && [ ! -e "$TMPDIR_ROOT/bus-called" ]; then
+    pass "T8541g: the HALTED append skips bus adopt"
+else
+    fail "T8541g: tail=$(h_tail "$H_DOC_G") bus-called=$([ -e "$TMPDIR_ROOT/bus-called" ] && echo yes || echo no)"
+fi
+# h: a forced takeover (QUEUE_LOCK_TAKEOVER=1) over a LIVE holder is not a dead worker
+H_DOC_H="$(h_doc halted-takeover-live 'LIVE — working')"
+h_hold "$H_DOC_H" "$H_HOST-pid$$" "$H_HOST" >/dev/null
+QUEUE_LOCK_TAKEOVER=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_H" taker-live-fixture >/dev/null 2>&1; H_RC_H=$?
+if [ "$H_RC_H" -eq 0 ] && [ "$(h_tail "$H_DOC_H")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541h: a forced takeover over a live holder writes no HALTED bullet"
+else
+    fail "T8541h: live takeover (rc=$H_RC_H) tail: $(h_tail "$H_DOC_H")"
+fi
+
 # --- T104: preflight warns when a declared file overlaps another live session's edits
 P_ROOT="$TMPDIR_ROOT/pf-handovers"; P_REPO="$TMPDIR_ROOT/pf-repo"
 mkdir -p "$P_ROOT/q" "$P_REPO"

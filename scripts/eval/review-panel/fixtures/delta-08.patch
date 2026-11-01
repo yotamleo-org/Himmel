@@ -1,0 +1,29 @@
+diff --git a/scripts/tools/clamp.sh b/scripts/tools/clamp.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/tools/clamp.sh
+@@ -0,0 +1,9 @@
++#!/usr/bin/env bash
++# clamp.sh - clamp <value> into [<lo>, <hi>].
++# usage: clamp.sh <value> <lo> <hi>
++set -uo pipefail
++
++v="$1"; lo="$2"; hi="$3"
++[ "$v" -lt "$lo" ] && v="$lo"
++[ "$v" -gt "$hi" ] && v="$hi"
++echo "$v"
+diff --git a/scripts/tools/test-clamp.sh b/scripts/tools/test-clamp.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/tools/test-clamp.sh
+@@ -0,0 +1,10 @@
++#!/usr/bin/env bash
++# test-clamp.sh - suite for clamp.sh.
++set -u
++HERE="$(cd "$(dirname "$0")" && pwd)"
++fail=0
++check() { # name expected actual
++    if [ "$2" = "$3" ]; then echo "PASS $1"; else echo "FAIL $1: expected '$2', got '$3'"; fail=1; fi
++}
++check "inside range is unchanged" "2" "$(bash "$HERE/clamp.sh" 2 1 3)"
++exit "$fail"

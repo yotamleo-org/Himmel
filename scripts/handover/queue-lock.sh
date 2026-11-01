@@ -971,6 +971,35 @@ EOF
     return 0
 }
 
+# _ql_halted_marker <doc> <session> <how> -- the lock of a worker that died has just been
+# freed: append that worker's HALTED Results bullet, so its doc stops reading
+# LIVE and the ticket and the orphan-PR gate see a dead worker. Callers run it only after
+# _ql_owner_provably_dead said yes and BEFORE the lock dir is removed: while the dead holder
+# still owns the lock no successor can have written its own LIVE yet. Writes nothing for a doc with no
+# marker bullet (not a worker doc) or whose newest marker is already WRAPPED / HALTED. Never
+# fails the caller: a refused append is a WARN, and the lock is freed either way. Output is
+# discarded so acquire's last stdout line stays the release token.
+# ponytail: a taker whose own command line names the doc defeats the proof upstream, so its takeover writes no HALTED (the successor writes its own LIVE), upgrade path: carry the holder's pid in owner.json
+_ql_halted_marker() {
+    local doc="$1" session="$2" how="$3" tail=""
+    [ -n "$doc" ] && [ -f "$doc" ] || return 0
+    tail=$( . "$_QL_SCRIPT_DIR/../lib/worker-tail-status.sh" 2>/dev/null && worker_tail_status "$doc" ) || tail=""  # swallow-ok: an unreadable tail reads as no marker, so no HALTED is written
+    case "$tail" in ''|WRAPPED|HALTED) return 0 ;; esac
+    # bounded: append-results waits on the doc flock and may run bus adopt, and a stuck doc lock must never stall a release.
+    # HIMMEL_BUS_NAME is unset so a sweeper never adopts a dead worker's chief edge under its own identity.
+    local tmo="${QUEUE_LOCK_HALTED_TIMEOUT_SECS:-10}"
+    case "$tmo" in ''|*[!0-9]*) tmo=10 ;; esac
+    # shellcheck source=../lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$_QL_SCRIPT_DIR/../lib/timeout-bin.sh" 2>/dev/null || true  # swallow-ok: no timeout binary leaves _TIMEOUT_BIN empty and the append runs unbounded, as the ponytail below says
+    # ponytail: without a GNU timeout (stock macOS) the append runs unbounded, upgrade path: a bash-only watchdog around the append
+    if ! env -u HIMMEL_BUS_NAME ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$tmo"} bash "$_QL_SCRIPT_DIR/chief-kit/append-results.sh" "$doc" \
+        "HALTED — its queue lock (session=${session:-unknown}) was freed by $how with the holder provably dead and no wrap marker written" >/dev/null 2>&1; then
+        echo "WARN queue-lock: could not append the HALTED bullet to '$doc' (timed out after ${tmo}s or refused; the lock is freed anyway)" >&2
+    fi
+    return 0
+}
+
 # _ql_scan_pick <canonical-doc> [skip-lockdir] -- print the lock dir that
 # answers "who holds this doc": the first FRESH one _ql_scan_locks finds, else
 # the first at all. A stale lock that sorts before a fresh one must not hide
@@ -1892,6 +1921,13 @@ queue_lock_acquire() {
             return 2
         fi
         # Step 3: destroy the verified-stale generation, fresh-acquire.
+        # the proof reads owner.json, so take it before the dir goes away
+        local t_doc=""
+        if _ql_owner_provably_dead "$lockdir" "$ttl"; then
+            t_doc=$(_ql_json_field_str "$o_raw" handover)
+        fi
+        # written while the dead holder still owns the lock and this taker holds the claim
+        _ql_halted_marker "$t_doc" "$o_session" "a takeover by a new acquire"
         rm -rf "$lockdir" 2>/dev/null
         # Same owner-file arbiter as the fresh acquire above: a uutils
         # mkdir co-winner must not overwrite or remove the true winner.
@@ -2202,6 +2238,18 @@ queue_lock_release() {
         local f_session f_host
         f_session=$(_ql_json_field "$lockdir/owner.json" session)
         f_host=$(_ql_json_field "$lockdir/owner.json" host)
+        # the proof reads owner.json, so take it before the dir goes away
+        local f_doc="" f_raw="" f_ttl="${QUEUE_LOCK_TTL_SECONDS:-21600}"
+        case "$f_ttl" in ''|*[!0-9]*) f_ttl=21600 ;; esac
+        if _ql_owner_provably_dead "$lockdir" "$f_ttl"; then
+            f_doc=$(_ql_json_field "$lockdir/owner.json" handover)
+            f_raw=$(cat "$lockdir/owner.json" 2>/dev/null) || f_raw=""  # swallow-ok: an unreadable owner.json leaves f_raw empty, so the re-check below writes no HALTED
+        fi
+        # written while the dead holder still owns the lock, so a successor's LIVE normally cannot precede it;
+        # unlike the sweep and the takeover this path holds no claim, so re-read owner.json first and write nothing when it changed
+        # ponytail: two concurrent forced releases of one dead lock plus a successor acquire inside the append's few milliseconds can still mark the successor HALTED, upgrade path: hold the release claim across the proof, the append and the removal
+        [ "$(cat "$lockdir/owner.json" 2>/dev/null)" = "$f_raw" ] || f_doc=""  # swallow-ok: an unreadable owner.json differs from f_raw, so no HALTED is written
+        _ql_halted_marker "$f_doc" "$f_session" "a forced release (QUEUE_LOCK_FORCE_RELEASE=1)"
         _ql_release_remove "$lockdir" "" "" 1 || return "$?"
         printf '%s FORCED RELEASE of session=%s host=%s lock=%s (QUEUE_LOCK_FORCE_RELEASE=1, by pid=%s on host=%s)\n' \
             "$(_ql_now_iso)" "${f_session:-unknown}" "${f_host:-unknown}" "$lockdir" "$$" "$(_ql_hostname)" \
@@ -2727,6 +2775,7 @@ _ql_sweep_one_root() {
                     echo "slug=$slug session=${o_session:-unknown} host=${o_host:-unknown} age=${age}s status=STALE-DEAD reap=failed-log-unwritable$sfx"
                     flagged=1
                 else
+                    _ql_halted_marker "$(_ql_json_field_str "$o_raw" handover)" "$o_session" "status --sweep --reap-dead"
                     rm -rf "$lockdir" 2>/dev/null
                     _ql_takeover_claim_release "$rclaim" "$rtoken" || true
                     if [ -d "$lockdir" ]; then
