@@ -3491,11 +3491,11 @@ test("cold runFn: a registry + validator change under a running poller still val
 
   await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"before" }));
   await runFn("HIMMEL-4687");
-  expect(JSON.parse(captured[0]!).enabledPlugins["obsidian-second-brain@himmel"]).toBe(true);
+  expect(JSON.parse(captured[0]!).enabledPlugins["obsidian-triage@himmel"]).toBe(true);
 
   const reg = JSON.parse(await readFile(join(lanes, "plugin-profiles.json"), "utf8"));
   reg.profiles["worker-x4687"] = reg.profiles["worker-e2e"];
-  reg.profiles.telegram.enable = reg.profiles.telegram.enable.filter((id: string) => id !== "obsidian-second-brain@himmel");
+  reg.profiles.telegram.enable = reg.profiles.telegram.enable.filter((id: string) => id !== "obsidian-triage@himmel");
   await writeFile(join(lanes, "plugin-profiles.json"), JSON.stringify(reg, null, 2));
   const mjs = await readFile(join(lanes, "plugin-profiles.mjs"), "utf8");
   expect(mjs).toContain("'chief-relay']);");
@@ -3504,7 +3504,7 @@ test("cold runFn: a registry + validator change under a running poller still val
   await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"after" }));
   await runFn("HIMMEL-4687");
   expect(captured).toHaveLength(2);
-  expect(JSON.parse(captured[1]!).enabledPlugins["obsidian-second-brain@himmel"]).toBe(false);
+  expect(JSON.parse(captured[1]!).enabledPlugins["obsidian-triage@himmel"]).toBe(false);
 });
 
 test("dispatcher: N identical dispatch failures in a row alert exactly once; a success re-arms it", async () => {

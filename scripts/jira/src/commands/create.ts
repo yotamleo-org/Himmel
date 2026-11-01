@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
-import { coreMatch, loadCorePatterns, type ChangeClass } from '../core.js';
+import { coreMatch, loadCorePatterns, type ChangeClass } from '../release/core.js';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';

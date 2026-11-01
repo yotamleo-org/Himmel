@@ -120,8 +120,10 @@ cmd_provision() {
     take_vm_lock
     has_base_snapshot || fail "$VM has no $BASE_SNAPSHOT snapshot — run 'claudex-guest.sh create $VM' first"
 
-    # (1) the guest must hold no secret file before anything is cloned or installed
-    scan=$(vm_guest_scan_cmd '~' full) || fail "could not build the guest secret scan"
+    # (1) the guest must hold no .env before anything is cloned or installed. The `env` profile,
+    # not `full`: this guest grows its own *.local.json (claude writes .claude/settings.local.json
+    # on approval), which would refuse every re-provision; a .env is the host-secret carrier.
+    scan=$(vm_guest_scan_cmd '~' env) || fail "could not build the guest secret scan"
     out=$(gx 300 "$scan" 2>&1); rc=$?
     [ "$rc" -eq 0 ] || fail "the guest secret scan did not complete (exit $rc): $out"
     hits=$(vm_guest_scan_hits '~' "$out" 2>/dev/null)
@@ -136,12 +138,14 @@ cmd_provision() {
     install_cmd='export PATH="$HOME/.local/bin:$PATH"; if [ "$("$HOME/.local/bin/claude" --version 2>/dev/null | cut -d" " -f1)" != '"$PIN_VERSION"' ]; then claude install '"$PIN_VERSION"' || exit 1; fi; [ "$("$HOME/.local/bin/claude" --version 2>/dev/null | cut -d" " -f1)" = '"$PIN_VERSION"' ] || { echo "installed claude version is not '"$PIN_VERSION"'" >&2; exit 1; }; grep -qxF "export DISABLE_AUTOUPDATER=1" "$HOME/.profile" 2>/dev/null || echo "export DISABLE_AUTOUPDATER=1" >> "$HOME/.profile"'
     out=$(gl 900 "$install_cmd" 2>&1) || fail "claude install $PIN_VERSION: $out"
 
-    # (4) the guest-local cli-proxy key, created once (generated in the guest, never on a host command line)
-    key_cmd='f="$HOME/.config/himmel/cliproxy.key"; mkdir -p "$HOME/.config/himmel" && chmod 700 "$HOME/.config/himmel" || exit 1; if [ "$(wc -c < "$f" 2>/dev/null)" != 64 ]; then rm -f "$f" "$f.tmp"; ( umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > "$f.tmp" ) || { rm -f "$f.tmp"; exit 1; }; [ "$(wc -c < "$f.tmp")" -eq 64 ] || { rm -f "$f.tmp"; exit 1; }; mv "$f.tmp" "$f" || exit 1; fi; chmod 600 "$f" || exit 1; grep -qF "cliproxy.key" "$HOME/.profile" 2>/dev/null || printf "%s\n" "export CLIPROXY_API_KEY=\"\$(cat \"\$HOME/.config/himmel/cliproxy.key\")\"" >> "$HOME/.profile"'
+    # (4) the guest-local cli-proxy key, created once (generated in the guest, never on a host command line).
+    # A symlink at the path is refused before chmod or cat can follow it; a kept key must be a regular
+    # file of exactly 64 hex characters, anything else is replaced.
+    key_cmd='f="$HOME/.config/himmel/cliproxy.key"; mkdir -p "$HOME/.config/himmel" && chmod 700 "$HOME/.config/himmel" || exit 1; if [ -L "$f" ]; then echo "$f is a symlink, refusing to use it" >&2; exit 3; fi; if ! { [ -f "$f" ] && [ "$(wc -c < "$f")" = 64 ] && grep -Eqx "[0-9a-f]{64}" "$f"; }; then rm -f "$f" "$f.tmp"; ( umask 077; head -c 32 /dev/urandom | od -An -tx1 | tr -d " \n" > "$f.tmp" ) || { rm -f "$f.tmp"; exit 1; }; [ "$(wc -c < "$f.tmp")" -eq 64 ] || { rm -f "$f.tmp"; exit 1; }; mv "$f.tmp" "$f" || exit 1; fi; chmod 600 "$f" || exit 1; grep -qF "cliproxy.key" "$HOME/.profile" 2>/dev/null || printf "%s\n" "export CLIPROXY_API_KEY=\"\$(cat \"\$HOME/.config/himmel/cliproxy.key\")\"" >> "$HOME/.profile"'
     out=$(gx 60 "$key_cmd" 2>&1) || fail "cliproxy key: $out"
 
-    # (5) an empty user settings file, only when absent
-    out=$(gx 60 '[ -e "$HOME/.claude/settings.json" ] || { mkdir -p "$HOME/.claude" && echo "{}" > "$HOME/.claude/settings.json"; }' 2>&1) \
+    # (5) an empty user settings file, only when absent (a dangling symlink is present: never written through)
+    out=$(gx 60 '[ -e "$HOME/.claude/settings.json" ] || [ -L "$HOME/.claude/settings.json" ] || { mkdir -p "$HOME/.claude" && echo "{}" > "$HOME/.claude/settings.json"; }' 2>&1) \
         || fail "~/.claude/settings.json: $out"
 
     # (6) the proxy: install, then register

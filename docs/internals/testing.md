@@ -695,6 +695,41 @@ and `seed-provenance.sh` synthetic inventories through the `INV_BASE` seam (no
 VM, linux-only) and covers the state, stub, `claude.json` and
 armed-crontab checks.
 
+## claudex lane on a test VM
+
+`himmel-claudex` is the one guest that carries the claudex lane (Claude Code on
+the Codex / cli-proxy path), so a lane proof runs off-station. Guest commands go
+through the VM queue lock and `scripts/vm/guest-exec.sh`, and a worker never
+types `ssh`; the one exception is `launch-guest.sh`, which runs the session and
+its guest preflight over its own known_hosts-pinned ssh. In order:
+
+1. `bash scripts/vm/claudex-guest.sh create himmel-claudex`, then `provision himmel-claudex`.
+   `provision` runs `vmsdk.py clone`, which reads the GitHub token, so the
+   classifier judges it on its own: the operator runs it, or it runs outside
+   auto mode.
+2. `bash scripts/vm/claudex-guest.sh status himmel-claudex`: the guest
+   `claude-codex --preflight-only` exits 20 or 21 until the operator has logged
+   in to Codex inside the guest.
+3. The operator logs in at their own terminal (the device code cannot show
+   through guest-exec); then `status` again must report 0. Snapshot.
+4. Session: `bash scripts/vm/launch-guest.sh --lane claudex --classifier-model <m> --debug-file '~/<name>.log' himmel-claudex <prompt-file>`.
+   `<m>` is `gateway`, or a Claude model name when the guest's proxy serves
+   one. Both flags are required and validated (`--debug-file` is an absolute or
+   `~/` guest path of `[A-Za-z0-9._/-]`, no `..`). Single-quote a `~/` path, or
+   the host shell expands it to the station's home before the launcher sees it. Add `--dry-run` to print the
+   command without any preflight.
+5. Read the debug file with `bash scripts/vm/guest-exec.sh himmel-claudex -- 'grep -n -e classifier_request_started -e denied <file>'`.
+6. After any snapshot restore, run `status` first.
+
+The lane launches `scripts/claude-codex ... -p --permission-mode auto` on the
+guest, never a skip-permissions flag. Before the session the launcher runs the
+guest preflight and the Codex bank preflight (plus the Claude bank when the
+classifier is not `gateway`); any non-zero guest preflight or `SKIPPED-*` bank
+verdict refuses with exit 2 and no session. A quota or 429 stops the run; there
+is no retry. Every lane, native included, pins ssh to
+`~/.himmel/vm/known_hosts/<vm>`. The unit rows are in
+`scripts/vm/test-launch-guest.sh`.
+
 ## What counts as CI evidence
 
 Public CI runs the suite jobs on every PR, so a green **`shell-unit`**

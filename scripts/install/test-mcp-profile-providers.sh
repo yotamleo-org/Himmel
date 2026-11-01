@@ -83,8 +83,8 @@
 # registering install types (RED control #4 is the negative control).
 #
 # Without the allow-list this invariant is RED on 2 of 5 profiles the day it
-# lands, since nothing in himmel provisions those two (manifest.json's
-# obsidian-second-brain is a `plugin`-kind item with a file-exists probe, not
+# lands, since nothing in himmel provisions those two (a manifest
+# `plugin`-kind item has a file-exists probe, not
 # an MCP registration) — the point of the list is that adding a genuinely
 # unprovided member costs a visible, reviewable edit instead of silently
 # shipping a profile that resolves to nothing on a fresh machine. Hermetic:

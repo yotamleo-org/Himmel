@@ -76,8 +76,8 @@ the failure mode:
 - **Access paths in use:** read the vault with grep, qmd and the graphify
   CLI (see Retrieval Routing above); write notes as plain files. No vault
   MCP server or claude-obsidian skill is loaded in a default session, so do
-  not assume one is there. obsidian-second-brain stays installed and can be
-  enabled on demand (`plugin-profile.sh enable obsidian-second-brain`).
+  not assume one is there. obsidian-second-brain is no longer part of himmel
+  (HIMMEL-8416).
 - **Session capture:** a `SessionEnd` hook (`scripts/hooks/end-session-wiki.sh`)
   writes eligible session notes under `sessions/YYYY/MM/` in the resolved
   target vault. If the target key is rejected because another vault owns the

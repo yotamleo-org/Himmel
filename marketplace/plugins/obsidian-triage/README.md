@@ -331,7 +331,6 @@ Companion plugins — read the **Install method** column carefully (different so
 |--------|--------------|----------------|-----|
 | `obsidian` (kepano) | [kepano/obsidian-skills](https://github.com/kepano/obsidian-skills) — NOT in himmel marketplace | `/plugin install obsidian@obsidian-skills` (kepano's own marketplace) | Provides `obsidian-markdown` skill that `/triage-clips` can use for OFM syntax. **Recommended, not required** — conservative-subset fallback is documented in the command body. *(Not himmel-pinned: a bare-SHA pin isn't installable and kepano publishes no tags, HIMMEL-435.)* |
 | `claude-obsidian` (AgriciDaniel) | [AgriciDaniel/claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) @ tag `v3.0.1` in himmel marketplace.json | `/plugin install claude-obsidian` from himmel marketplace | `wiki-query` optionally powers richer Phase 4 Related Notes traversal. Optional. *(LUNA-4's vendor fork was retired at v2.2.0 — HIMMEL-2925; the pin now points directly at upstream.)* |
-| `obsidian-second-brain` (eugeniughelbur) | [eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain) @ tag `v0.17.0` in himmel marketplace.json | `claude plugin install obsidian-second-brain@himmel` from himmel marketplace (never a clone under `~/.claude/skills/`, HIMMEL-4018) | Daily notes, kanban, ADRs, vault operating manual. `triage-clips` writes to today's daily note via this skill's conventions. |
 
 ## Usage
 
@@ -384,6 +383,11 @@ live fetch (adopter-safe).
 [eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)'s
 `/x-read`; this is a clean-room himmel-native reimplementation that skips Grok —
 not a vendored fork (no `UPSTREAM_PIN`, no `plugin-upstreams.json` entry).
+
+**Attribution (HIMMEL-8416).** `hooks/validate-ai-first.sh` is ported from
+[eugeniughelbur/obsidian-second-brain](https://github.com/eugeniughelbur/obsidian-second-brain)
+v0.18.1 (MIT, Eugeniu Ghelbur) and keeps its MIT licence header. The marketplace
+no longer carries that plugin; this one hook is the only piece himmel still uses.
 
 ## Idempotency
 
