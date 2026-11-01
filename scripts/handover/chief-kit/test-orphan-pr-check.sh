@@ -201,6 +201,8 @@ check "waiter: a PR joining the orphan set wakes at once" "WAKE orphan-pr 4325,4
 : > "$STUB/orphan.unavailable"
 calls_before="$(wc -l < "$STUB/orphan.calls")"
 arm "$WORK/w4u.out" 4
+check "waiter: an unavailable read stays quiet until the timeout (rc 124)" "124" "$wrc"
+check "waiter: an unavailable read prints no wake" "" "$(cat "$WORK/w4u.out")"
 check "waiter: the unavailable arm ran the check" "yes" "$([ "$(wc -l < "$STUB/orphan.calls")" -gt "$calls_before" ] && echo yes || echo no)"
 check "waiter: an unavailable read keeps the marker" "yes" "$([ -e "$INBOX.wait.orphan" ] && echo yes || echo no)"
 rm -f "$STUB/orphan.unavailable"
