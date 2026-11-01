@@ -997,6 +997,7 @@ scripts/afk/test-morning-report.sh	local	behaviour suite, 0 catches in the 400-P
 scripts/afk/test-per-project.sh	local	behaviour suite, per-project afk-shift state
 scripts/afk/test-self-heal.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-stop-marker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/afk/test-suggest-allowlist.sh	local	behaviour suite, AFK ledger allowlist suggestions (HIMMEL-8067)
 scripts/parity/test-guard-conformance.sh	pr	static-gate
 scripts/parity/test-launcher-context-env-parity.sh	pr	static-gate
 scripts/parity/test-t12-no-bloat-lib.sh	pr	static-gate
