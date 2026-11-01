@@ -77,7 +77,7 @@ test("workers: absent with no manifest, ok with one (real fleet-manifest.sh and 
   expect((await body(s.port)).workers.state).toBe("absent");
   const doc = join(s.root, "HIMMEL-1-N1-x-RESUME.md");
   writeFileSync(doc, "---\ndescription: Show the worker descriptions\n---\n## Results\n- 03:00 LIVE — x\n");
-  writeFileSync(join(s.root, "c.fleet.json"), JSON.stringify({ schema: 1, legs: [{ doc }] }));
+  writeFileSync(join(s.root, "c.fleet.json"), JSON.stringify({ schema: 1, workers: [{ doc }] }));
   const l = (await body(s.port)).workers;
   expect(l.state).toBe("ok");
   expect(l.workers).toEqual([{ doc, status: "LIVE", description: "Show the worker descriptions" }]);

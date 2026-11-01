@@ -317,7 +317,7 @@ effort guidance, including the chief's own wake-up budget, is in
   no free-text bypass.
 - **Nothing enforces this yet.** Until the gen-briefs core gate lands, run
   `jira release core-check` and `spec-check` yourself before you write a core
-  brief, and run a minerva leg for each `CORE` key without `SPEC ok`.
+  brief, and run a minerva worker for each `CORE` key without `SPEC ok`.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per

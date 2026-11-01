@@ -3681,7 +3681,7 @@ else
   done
   # headed-arm-worker.sh appends one launch record per worker launch to
   # launch-logs/<session>.log here (the cost cohort's source). One line naming
-  # the dir + a count, not one line per leg: a long-lived machine has hundreds.
+  # the dir + a count, not one line per worker: a long-lived machine has hundreds.
   if [ -d "$HIMMEL_CACHE_DIR/launch-logs" ]; then
     _launch_n=0
     for _launch_rec in "$HIMMEL_CACHE_DIR"/launch-logs/*.log; do
