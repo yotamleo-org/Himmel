@@ -239,7 +239,7 @@ test('a failed call alerts once and falls back; a failing fallback returns its o
   assert.equal(rows(g).at(-1).outcome, 'sub-fallback-failed');
 });
 
-test('a call granted Edit, Write or Bash re-runs only after a refusal before any request; a failed run is never replayed', () => {
+test('a call granted Edit, Write or Bash re-runs only after a refusal before any request; a run that started is never replayed', () => {
   for (const tools of ['Read,Edit', 'Write', 'Read,Grep,Bash']) {
     const f = fixture();
     const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK });
@@ -248,8 +248,9 @@ test('a call granted Edit, Write or Bash re-runs only after a refusal before any
     assert.equal(alerts(f).length, 1, tools);
     assert.match(alertText(f), /fallback: not run: the call could change files/, tools);
     const g = fixture();
-    assert.equal(g.run(g.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, STUB_OUT: CREDIT_LOW, STUB_RC: '1', STUB_FB_OUT: FB_OK }).status, 0, tools);
-    assert.equal(fbCalls(g), 1, `${tools}: a rejected account (exit 6) re-runs`);
+    assert.equal(g.run(g.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, STUB_OUT: CREDIT_LOW, STUB_RC: '1', STUB_FB_OUT: FB_OK }).status, 6, tools);
+    assert.equal(fbCalls(g), 0, `${tools}: a rejection on a later turn could follow an edit, so exit 6 is not replayed`);
+    assert.match(alertText(g), /fallback: not run: the call could change files/, tools);
     const h = fixture();
     assert.equal(h.run(h.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK }).status, 0, tools);
     assert.equal(fbCalls(h), 1, `${tools}: a refusal (exit 2) re-runs`);

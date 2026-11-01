@@ -33,7 +33,7 @@ marked), or the call's own non-zero exit. Then the launcher:
    | `HIMMEL_API_FALLBACK=off` | no fallback |
    | the request itself was refused (bad argument, run kind, cache TTL, job id or tool grant) | no fallback |
    | the call ran and its prompt came on stdin (the call spent it) | no fallback |
-   | the call was granted `Edit`, `Write` or `Bash`, ran, and failed (it may have half-done its edits) | no fallback; a refusal (exit 2) or a rejected account (exit 6) still falls back |
+   | the call was granted `Edit`, `Write` or `Bash` and ran (it may have half-done its edits; a rejected account can answer on a later turn) | no fallback; only a refusal before any request (exit 2) falls back |
    | the native usage preflight says `PROCEED`, `BANK-STALE` or `BANK-UNKNOWN` | **runs the fallback** |
    | the preflight says `SKIPPED-BANK` or `SKIPPED-FLEET` (or nothing) | no fallback |
 
