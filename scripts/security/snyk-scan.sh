@@ -35,7 +35,7 @@
 # ponytail: the Open Source estimate is the number of tracked manifest dirs, an upper bound on what snyk counts; the ledger records the real project count after the run, upgrade path: read the live usage from the Snyk API.
 #
 # Forks mode (--forks): shallow-fetches each fork at the ref himmel pins (qmd and graphify from
-# scripts/lib/*-bin.sh, claude-hud from scripts/upstreams.json, obsidian-second-brain and
+# scripts/lib/*-bin.sh, claude-hud from scripts/upstreams.json, and
 # claude-obsidian from marketplace.json) into a scratch dir, runs the Open Source scan on it and
 # writes <date>.forks.json plus <date>.forks.summary.md with one section per fork. A fork that
 # tracks its upstream also gets a scan of the upstream default branch, and each finding is
@@ -180,21 +180,19 @@ if [ "$forks" -eq 1 ]; then
 
     # name|repo-url|ref|up (also scan the upstream default branch) or - (the fork carries the delta)
     fork_table() {
-        local qurl qref gref href sref cref
+        local qurl qref gref href cref
         qurl="$(sed -n 's/^_qmd_fork_repo().*:-\([^}]*\)}.*/\1/p' "$repo/scripts/lib/qmd-bin.sh" 2>/dev/null)"
         qref="$(sed -n 's/^_qmd_fork_ref().*:-\([0-9a-f]\{40\}\)}.*/\1/p' "$repo/scripts/lib/qmd-bin.sh" 2>/dev/null)"
         gref="$(sed -n 's/^_graphify_fork_ref().*:-\([0-9a-f]\{40\}\)}.*/\1/p' "$repo/scripts/lib/graphify-bin.sh" 2>/dev/null)"
         href="$(jq -r '.entries[] | select(.name=="claude-hud") | .pinned_commit // empty' "$repo/scripts/upstreams.json" 2>/dev/null)"
-        sref="$(jq -r '.plugins[] | select(.name=="obsidian-second-brain") | .source.sha // empty' "$repo/marketplace/.claude-plugin/marketplace.json" 2>/dev/null)"
         cref="$(jq -r '.plugins[] | select(.name=="claude-obsidian") | .source.ref // empty' "$repo/marketplace/.claude-plugin/marketplace.json" 2>/dev/null)"
         local pair
-        for pair in "qmd:$qurl" "qmd:$qref" "graphify:$gref" "claude-hud:$href" "obsidian-second-brain:$sref" "claude-obsidian:$cref"; do
+        for pair in "qmd:$qurl" "qmd:$qref" "graphify:$gref" "claude-hud:$href" "claude-obsidian:$cref"; do
             [ -n "${pair#*:}" ] || { err "cannot read the ${pair%%:*} pin under $repo"; return 1; }
         done
         printf 'qmd|%s|%s|-\n' "$qurl" "$qref"
         printf 'graphify|https://github.com/yotamleo-org/graphify|%s|-\n' "$gref" # env-literal-ok: the fork's own identity, scan target
         printf 'claude-hud|https://github.com/jarrodwatts/claude-hud|%s|up\n' "$href"
-        printf 'obsidian-second-brain|https://github.com/yotamleo-org/obsidian-second-brain|%s|-\n' "$sref" # env-literal-ok: the fork's own identity, scan target
         printf 'claude-obsidian|https://github.com/AgriciDaniel/claude-obsidian|%s|up\n' "$cref"
     }
 

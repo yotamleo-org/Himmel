@@ -43,16 +43,6 @@
       },
       "allow_destructive": []
     },
-    "plugin_obsidian-second-brain_vault": {
-      "verdict": "allow", "egress": "local", "note": "obsidian-second-brain@himmel vault MCP",
-      "tools": {
-        "obsidian_search": "read", "obsidian_read_note": "read", "obsidian_backlinks": "read",
-        "obsidian_list_skills": "read", "obsidian_get_skill": "read", "obsidian_vault_health": "read",
-        "obsidian_validate_note": "read",
-        "obsidian_capture": "write", "obsidian_save_note": "write", "obsidian_update_note": "write",
-        "obsidian_replace_text": "write", "obsidian_move_note": "write"
-      }
-    },
     "context7": {
       "verdict": "allow", "egress": "off-box", "provider": null, "note": "Upstash Context7; the query text leaves the box",
       "tools": { "resolve-library-id": "read", "query-docs": "read" }

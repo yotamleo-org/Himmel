@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.97] — 2026-11-01
+
+### Changed
+- `_CLAUDE.md` "Access paths in use" no longer says obsidian-second-brain can
+  be enabled on demand: the plugin is no longer part of himmel.
+
 ## [0.4.96] — 2026-10-31
 
 ### Changed

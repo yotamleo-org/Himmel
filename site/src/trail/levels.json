@@ -82,7 +82,7 @@
       "turn_on": "run the installer again and pick the <code>luna</code> profile; it scaffolds a vault (or uses yours) and offers the scheduled jobs below.",
       "outcome": "A link you drop into your vault at midnight is a connected, summarized note by morning, and search over it stays fresh.",
       "components": [
-        { "name": "Your vault, from the template", "status": "shipped", "plugin": "obsidian-second-brain@himmel", "detail": "<p>Start from the bundled <code>templates/luna-second-brain/</code> or a vault already made from it. Any folder of notes is not enough.</p>" },
+        { "name": "Your vault, from the template", "status": "shipped", "detail": "<p>Start from the bundled <code>templates/luna-second-brain/</code> or a vault already made from it. Any folder of notes is not enough.</p>" },
         { "name": "Scheduled jobs", "status": "shipped", "cadences": true, "detail": "<p>Recurring jobs on your system's scheduler (cron). You see a row only when its condition holds, and anything you decline is recorded as declined.</p>" },
         { "name": "Vault search (qmd)", "status": "shipped", "plugin": "qmd@himmel", "detail": "<p>Local search over your vault. Re-indexing is its own job: arm only the pipeline and your search goes stale.</p>" },
         { "name": "Clip triage (obsidian-triage)", "status": "shipped", "plugin": "obsidian-triage@himmel", "detail": "<p><code>/triage-clips</code> summarizes and tags Web Clipper output in <code>Clippings/</code> and moves action items to today's daily note. <code>/synthesize-clips</code> finds patterns across clips.</p>" },

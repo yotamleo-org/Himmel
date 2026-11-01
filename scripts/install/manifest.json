@@ -430,16 +430,6 @@
       "provenance": { "kinds": ["json-elem"] }
     },
     {
-      "id": "obsidian-second-brain",
-      "kind": "plugin",
-      "scopes": ["user"],
-      "profiles": ["luna", "all"],
-      "deps": [],
-      "probe": { "type": "settings-key", "file": ".claude/settings.json", "key": "enabledPlugins.obsidian-second-brain@himmel", "expect": false },
-      "removable": "full-offboard-only",
-      "offboard": "advise"
-    },
-    {
       "id": "cadence-armed",
       "kind": "scheduler",
       "scopes": ["user"],

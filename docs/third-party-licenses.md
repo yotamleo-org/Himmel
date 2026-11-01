@@ -465,7 +465,6 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | fork:yotamleo-org/twitter-cli | — | public-clis | Apache-2.0 | — |
 | fork:yotamleo-org/claude-obsidian | — | AgriciDaniel | MIT | — |
 | fork:yotamleo-org/codex-plugin-cc | — | OpenAI | Apache-2.0 | — |
-| fork:yotamleo-org/obsidian-second-brain | — | Eugeniu Ghelbur | MIT | — |
 | fork:yotamleo-org/effective-html | — | plannotator | MIT | — |
 | fork:yotamleo-org/claude-hud | — | Jarrod Watts | MIT | — |
 | fork:yotamleo-org/claude-statusline | — | Kamran Ahmed | MIT | — |
