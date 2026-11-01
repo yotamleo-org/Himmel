@@ -221,6 +221,19 @@ rm -rf "$V/specs/shots2"
 run_sync
 assert_eq "S12 recovery: reason cleared" "no" "$([ -e "$V/.git/vault-autosync-reason" ] && echo yes || echo no)"
 
+# --- S12b: a TRACKED tool-state file is never quarantined (its deletion would be committed)
+mkdir -p "$V/x/Default"
+printf 'v1\n' >"$V/x/Default/Preferences"
+git -C "$V" add -A
+git -C "$V" commit -q -m "track a preferences file" --no-verify
+printf 'v2\n' >"$V/x/Default/Preferences"
+run_sync
+assert_eq "S12b tracked tool-state file stays in the vault" "yes" "$([ -e "$V/x/Default/Preferences" ] && echo yes || echo no)"
+assert_eq "S12c it stays tracked" "x/Default/Preferences" "$(git -C "$V" ls-files -- x/Default/Preferences)"
+assert_eq "S12d it is not quarantined" "" "$(find "$TMP/quarantine" -path '*x/Default/Preferences')"
+git -C "$V" checkout -q -- x/Default/Preferences
+run_sync
+
 # --- S13: the template .gitignore hides tool state, not ordinary notes -------
 G="$TMP/gi"
 git init -q -b main "$G"
