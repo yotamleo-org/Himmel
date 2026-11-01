@@ -19,7 +19,8 @@
 # (`agent-model-escalation: …`, exit 0) so the override is auditable; the reason
 # also stays in the dispatch prompt.
 #
-# TIER WARN (never a deny): a general-purpose (or untyped) dispatch whose
+# TIER WARN (never a deny): any non-judge dispatch (untyped, general-purpose,
+# or a typed helper such as brief-drafter, whose frontmatter a call's `model` overrides) whose
 # `model` matches warn_model_patterns in the policy file (today: Opus) and whose
 # prompt has no `TIER: <reason>` line (same reason-quality test as ESCALATION)
 # gets one additionalContext line naming the cheaper tier per helper kind
@@ -118,7 +119,7 @@ verdict=$(printf '%s' "$input" | jq -r --slurpfile pol "$policy" --arg fe "$agen
     | (if $tool != "Agent" or $m == "" then "allow"
        elif ($pats | any(. as $r | $m | test($r))) then "blocked"
        elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$")) and ($m | test("^(claude-)?opus(-[0-9][0-9a-z.-]*)?(\\[[^\\]]*\\])?$") | not) then "judge"
-       elif ($t == "" or $t == "general-purpose") and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then "warn"
+       elif ($t | test("(^|:)(console-)?judge(-[a-z0-9-]+)?$") | not) and ($tgood | length) == 0 and ($wpats | any(. as $r | $m | test($r))) then "warn"
        else "allow" end) as $kind
     | if $kind == "allow" and ($ewarn | not) then "allow"
       else [$kind, (if $ewarn then "effort" else "-" end), $status,
@@ -132,7 +133,7 @@ if [ "$kind" = "warn" ] || [ "$kind" = "allow" ]; then
     # Warn only: additionalContext, NO permissionDecision (that would also skip a
     # permission prompt), exit 0. Allow stays silent for every other dispatch.
     warn_msg=""
-    [ "$kind" = "warn" ] && warn_msg="agent-model-warn: a general-purpose helper on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for legs.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
+    [ "$kind" = "warn" ] && warn_msg="agent-model-warn: a helper dispatch on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for legs.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
     [ "$eflag" = "effort" ] && warn_msg="${warn_msg:+$warn_msg }agent-model-effort-warn: a dispatch at effort '${effort}' with no EFFORT: line. Each helper kind has a default effort (docs/handover/running-a-chief.md, helper table): drop the effort override, or add a prompt line 'EFFORT: <reason>' with a real reason."
     [ -n "$warn_msg" ] || exit 0
     jq -nc --arg ctx "$warn_msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}' 2>/dev/null
