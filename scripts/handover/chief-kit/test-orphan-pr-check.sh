@@ -138,6 +138,17 @@ run
 check "a PR entry with no number: exits 3, no fictitious orphan" "3" "$rc"
 check "a PR entry with no number: prints no UNMAPPED line" "" "$out"
 
+# --- a malformed author field is not an all-clear: the PR is still read, as a non-Dependabot one
+printf '[{"number":107,"headRefName":"fix/himmel-777-odd","author":"someone"}]\n' > "$PRS"
+run
+check "a PR whose author is not an object is still checked, never an all-clear" "UNMAPPED 107 fix/himmel-777-odd" "$out"
+
+# --- an unreadable chief doc cannot name a hold, so the check is unavailable, not a pile of orphans
+prs "$(pr 108 fix/himmel-888-held)"
+out="$(ORPHAN_PR_CHECK_PRS="$PRS" bash "$OPC" --doc "$WORK/no-such-chief-doc.md" 2>/dev/null)"; rc=$?
+check "an unreadable chief doc: exits 3" "3" "$rc"
+check "an unreadable chief doc: prints no UNMAPPED line" "" "$out"
+
 # --- an unparsable worker record cannot show the PR unowned
 prs "$(pr 106 fix/himmel-666-broken)"
 printf 'not json\n' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-666.json"

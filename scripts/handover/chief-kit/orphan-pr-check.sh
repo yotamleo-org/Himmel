@@ -53,16 +53,17 @@ fi
 [ -n "$prs_json" ] || unavailable "the open-PR list could not be read"
 printf '%s\n' "$prs_json" | jq -e 'type == "array" and all(.[]; type == "object" and (.number | type == "number") and (.headRefName | type == "string"))' >/dev/null 2>&1 \
     || unavailable "the open-PR list is not an array of PRs"  # swallow-ok: a malformed list exits as unavailable, never as an orphan
-rows="$(printf '%s\n' "$prs_json" | jq -r '.[] | select((.isCrossRepository // false) | not) | select(((.author.login // "") | test("dependabot"; "i") | not) and (.headRefName | startswith("dependabot/") | not)) | "\(.number)\t\(.headRefName)"')"
+rows="$(printf '%s\n' "$prs_json" | jq -r '.[] | select((.isCrossRepository? // false) == true | not) | select((((.author? | .login?) // "") | tostring | test("dependabot"; "i") | not) and (.headRefName | startswith("dependabot/") | not)) | "\(.number)\t\(.headRefName)"' 2>/dev/null)" || unavailable "the open-PR list could not be filtered"  # swallow-ok: a filter failure exits as unavailable, never as an all-clear
 [ -n "$rows" ] || exit 0
 
 ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]'; }
 
+[ -r "$doc" ] || unavailable "the chief doc could not be read"
 queue_line="$(awk '
     $0 == "## Live state" { s = 1; next }
     s && /^## / { exit }
     s && index($0, "queue:") == 1 { print; exit }
-' "$doc" 2>/dev/null)"
+' "$doc" 2>/dev/null)" || unavailable "the chief doc's queue: line could not be read"  # swallow-ok: a read failure exits as unavailable, never as an empty queue
 
 owned_by_record() { # <KEY> — rc 0 when its worker record reads a state other than wrapped or none
     local rec_state
