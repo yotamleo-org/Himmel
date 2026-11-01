@@ -80,12 +80,15 @@ printf '{"ts":"t","event":"merge","key":"HIMMEL-9103","pr":"13","head":"h13","re
 mrow HIMMEL-9104 14 h14 yes pending pre-merge
 mrow HIMMEL-9105 15 h15 no pending pre-merge
 mrow HIMMEL-9105 15 h15 no noop ""
+mrow HIMMEL-9108 17 h17 yes pending pre-merge
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9108","pr":"17","head":"h17","result":"moved"}\n' >> "$log"
 printf 'not json\n' >> "$log"
 check "merge-rows: a pre-merge row whose PR is open is dropped" "$(ts_merge_rows "$log" | grep -c '"pr":"11"')" 0
 check "merge-rows: one whose PR GitHub reports MERGED at its head is kept" "$(ts_merge_rows "$log" | grep -c '"pr":"12"')" 1
 check "merge-rows: one followed by a not-merged row is dropped without asking GitHub" "$(ts_merge_rows "$log" | grep -c '"pr":"13"')" 1
 check "merge-rows: one merged at another head than the row's is dropped" "$(ts_merge_rows "$log" | grep -c '"pr":"14"')" 0
 check "merge-rows: one a later merge row of the same PR and head follows is kept with that row" "$(ts_merge_rows "$log" | grep -c '"pr":"15"')" 2
+check "merge-rows: a later contract-less merge row (an older funnel's derive row) does not confirm the pre-merge row" "$(ts_merge_rows "$log" | grep -c '"pr":"17".*"stage":"pre-merge"')" 0
 check "merge-rows: an unparseable line passes through" "$(ts_merge_rows "$log" | grep -c 'not json')" 1
 export TICKET_STATUS_STATE_DIR="$tmp/mrstate"
 mkdir -p "$TICKET_STATUS_STATE_DIR"

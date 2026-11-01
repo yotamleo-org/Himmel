@@ -6,8 +6,9 @@ merge, so a run killed right after GitHub merges still leaves the record. The sa
 when the PR never merged. A reader of the merge rows therefore reads this filter's output, not the raw log:
 
   - a pre-merge row followed by a result=not-merged row of the same key, pr and head is dropped (the run said so);
-  - a pre-merge row followed by any other merge row of the same key, pr and head is kept (that row is written only
-    once GitHub reported the PR MERGED; a stage=pre-merge row of a retry does not count);
+  - a pre-merge row followed by any other merge row that carries a contract, of the same key, pr and head, is kept
+    (that row is written only once GitHub reported the PR MERGED; a stage=pre-merge row of a retry does not count,
+    nor does a contract-less row, which an older funnel wrote as a derive row);
   - a pre-merge row with nothing after it is kept only when GitHub says the PR is MERGED at that head. A PR
     that is open, closed, or unreadable is not a merge: the row is dropped.
 
@@ -86,7 +87,8 @@ def main(argv):
         if is_pre_merge(r):
             key, pr, head, repo = (str(r.get(f, '')) for f in ('key', 'pr', 'head', 'repo'))
             later = next((x for x in rows[i + 1:] if is_merge(x) and not is_pre_merge(x) and str(x.get('key', '')) == key
-                          and str(x.get('pr', '')) == pr and str(x.get('head', '')) == head), None)
+                          and str(x.get('pr', '')) == pr and str(x.get('head', '')) == head
+                          and ('contract' in x or x.get('result') == 'not-merged')), None)
             if later is not None:
                 keep = later.get('result') != 'not-merged'
             else:
