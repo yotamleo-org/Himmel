@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 
 const API = (t: string, m: string) => `https://api.telegram.org/bot${t}/${m}`;
 type F = typeof fetch;
@@ -103,6 +104,40 @@ export async function sendMessage(token: string, chat_id: number, text: string,
     if (attempt < 4) await sleep(1000);                      // transient 5xx (or 2xx ok:false) → bounded retry (skip on last attempt — no retry follows)
   }
   console.error(`[telegram] sendMessage gave up after retries chat=${redactChatId(chat_id)}`);
+  return false;
+}
+// Send a local file as a document (multipart; any file type, the Bot
+// API caps uploads at 50 MB — the caller refuses an oversize file before it gets here).
+// Same contract as sendMessage: true only on a Bot API ok:true, a permanent 4xx or
+// retry exhaustion returns false, a lost response is NOT retried (it would duplicate).
+const DOC_UPLOAD_TIMEOUT_MS = 120_000;
+export async function sendDocument(token: string, chat_id: number, path: string, caption?: string,
+    f: F = fetch, sleep: (ms:number)=>Promise<void> = (ms)=>Bun.sleep(ms), receipt?: (messageId: number) => void): Promise<boolean> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const form = new FormData();
+    form.set("chat_id", String(chat_id));
+    if (caption) form.set("caption", caption.slice(0, 1024));   // Bot API caption limit
+    form.set("document", new File([await Bun.file(path).arrayBuffer()], basename(path)));   // BunFile ignores the filename arg
+    let res: Response;
+    try {
+      res = await f(API(token, "sendDocument"), { method: "POST", body: form, signal: AbortSignal.timeout(DOC_UPLOAD_TIMEOUT_MS) });
+    } catch {
+      console.error(`[telegram] sendDocument transport failure chat=${redactChatId(chat_id)}`);
+      return false;
+    }
+    const j: any = await res.json().catch(() => ({}));
+    if (res.ok && j?.ok === true) {
+      if (Number.isSafeInteger(j.result?.message_id) && j.result.message_id > 0) receipt?.(j.result.message_id);
+      return true;
+    }
+    if (res.status === 429) { if (attempt < 4) await sleep((j?.parameters?.retry_after ?? 1) * 1000); continue; }
+    if (res.status >= 400 && res.status < 500) {
+      console.error(`[telegram] sendDocument ${res.status} chat=${redactChatId(chat_id)}: ${j?.description ?? ""}`);
+      return false;
+    }
+    if (attempt < 4) await sleep(1000);
+  }
+  console.error(`[telegram] sendDocument gave up after retries chat=${redactChatId(chat_id)}`);
   return false;
 }
 // Bound on file-fetch calls: unlike getUpdates (long-poll bounds itself), a hung

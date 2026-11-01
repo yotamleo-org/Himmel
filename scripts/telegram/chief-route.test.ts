@@ -856,3 +856,98 @@ test("an alias matches the chief's bucket, so a hyphenated project resolves", as
   await routeText(r, "/chief chief:my-project hello");
   expect(readFileSync(f, "utf8")).toContain("[telegram from=1 chat=1] hello\n");
 });
+
+// ---- send a file to Telegram (specs/plans as HTML) --------------
+// All mocked: no real Bot API, no real bot token (the token below is a fake literal).
+import { sendDocument } from "./telegram-api";
+import { truncateSync } from "node:fs";
+
+const sendFile = async (r: string, ...args: string[]) => {
+  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "send-file", ...args], { env: { ...process.env, BRIDGE_ROOT: r }, stdout: "pipe", stderr: "pipe" });
+  const err = await new Response(p.stderr).text();
+  const code = await p.exited;
+  const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+  const lines = existsSync(outbox) ? readFileSync(outbox, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
+  return { code, err, lines };
+};
+
+test("sendDocument posts multipart sendDocument with chat_id, caption and the file bytes", async () => {
+  const r = root(); const f = join(r, "plan.txt"); writeFileSync(f, "hello file");
+  const seen: { url: string; method?: string; body?: any }[] = [];
+  const fake = (async (url: string, init: any) => { seen.push({ url, method: init.method, body: init.body }); return new Response(JSON.stringify({ ok: true, result: { message_id: 9 } })); }) as unknown as typeof fetch;
+  let mid = 0;
+  expect(await sendDocument("123:FAKE", 42, f, "the caption", fake, async () => {}, (id) => { mid = id; })).toBe(true);
+  expect(mid).toBe(9);
+  expect(seen[0].url).toBe("https://api.telegram.org/bot123:FAKE/sendDocument");
+  expect(seen[0].method).toBe("POST");
+  expect(seen[0].body).toBeInstanceOf(FormData);
+  expect(seen[0].body.get("chat_id")).toBe("42");
+  expect(seen[0].body.get("caption")).toBe("the caption");
+  const doc = seen[0].body.get("document") as File;
+  expect(doc.name).toBe("plan.txt");
+  expect(await doc.text()).toBe("hello file");
+});
+
+test("sendDocument drops a permanent 4xx (false, no retry) and omits an absent caption", async () => {
+  const r = root(); const f = join(r, "a.bin"); writeFileSync(f, "x");
+  let calls = 0; let cap: unknown = "unset";
+  const fake = (async (_u: string, init: any) => { calls++; cap = init.body.get("caption"); return new Response(JSON.stringify({ ok: false, description: "bad" }), { status: 400 }); }) as unknown as typeof fetch;
+  const errs = spyOn(console, "error").mockImplementation(() => {});
+  expect(await sendDocument("123:FAKE", 42, f, undefined, fake, async () => {})).toBe(false);
+  errs.mockRestore();
+  expect(calls).toBe(1);
+  expect(cap).toBeNull();
+});
+
+test("an outbox line with document_path is delivered via the document sender; text lines are unchanged", async () => {
+  const r = root(); await ensureSession(r, "__chat__");
+  await writeMeta(r, "__chat__", { chat_id: 5, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
+  const out = join(sessionDir(r, "__chat__"), "outbox.jsonl");
+  await appendLine(out, JSON.stringify({ text: "plain" }));
+  await appendLine(out, JSON.stringify({ document_path: "/x/spec.html", caption: "the spec" }));
+  const texts: any[] = []; const docs: any[] = [];
+  await flushOutboxes(r, async (chat, text) => { texts.push([chat, text]); }, async (chat, path, caption) => { docs.push([chat, path, caption]); return true; });
+  expect(texts).toEqual([[5, "plain"]]);
+  expect(docs).toEqual([[5, "/x/spec.html", "the spec"]]);
+});
+
+test("a document the sender could not deliver tells the chat instead of vanishing", async () => {
+  const r = root(); await ensureSession(r, "__chat__");
+  await writeMeta(r, "__chat__", { chat_id: 5, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
+  await appendLine(join(sessionDir(r, "__chat__"), "outbox.jsonl"), JSON.stringify({ document_path: "/x/spec.html" }));
+  const texts: string[] = [];
+  await flushOutboxes(r, async (_c, text) => { texts.push(text); }, async () => false);
+  expect(texts.length).toBe(1);
+  expect(texts[0]).toContain("spec.html");
+});
+
+test("send-file queues one document line for the chat's outbox", async () => {
+  const r = root(); const f = join(r, "notes.txt"); writeFileSync(f, "n");
+  const res = await sendFile(r, "1", f, "see", "this");
+  expect(res.code).toBe(0);
+  expect(res.lines).toEqual([{ document_path: f, caption: "see this" }]);
+});
+
+test("send-file renders a markdown spec to a standalone HTML file and queues that", async () => {
+  const r = root(); const f = join(r, "spec.md"); writeFileSync(f, "# Title <b>\n\n| a | b |\n|---|---|\n| 1 | 2 |\n");
+  const res = await sendFile(r, "1", f);
+  expect(res.code).toBe(0);
+  const path = res.lines[0].document_path as string;
+  expect(path.endsWith(".html")).toBe(true);
+  const html = readFileSync(path, "utf8");
+  expect(html).toContain("<!doctype html>");
+  expect(html).toContain("<h1>");
+  expect(html).toContain("<table>");
+  expect(html).toContain('name="viewport"');
+  expect(html).not.toContain("<b>");   // raw html in the markdown is not passed through
+});
+
+test("send-file refuses a missing file, a directory and an oversize file before queuing anything", async () => {
+  const r = root(); const big = join(r, "big.bin"); writeFileSync(big, ""); truncateSync(big, 50 * 1024 * 1024 + 1);
+  const missing = await sendFile(r, "1", join(r, "nope.txt"));
+  const dir = await sendFile(r, "1", r);
+  const over = await sendFile(r, "1", big);
+  for (const x of [missing, dir, over]) { expect(x.code).not.toBe(0); expect(x.lines).toEqual([]); }
+  expect(missing.err).toContain("not found");
+  expect(over.err).toContain("50 MB");
+});

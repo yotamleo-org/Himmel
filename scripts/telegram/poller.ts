@@ -1,6 +1,6 @@
 import { readFile, writeFile, rename, mkdir, readdir, unlink, stat, mkdtemp, copyFile, rm, open } from "node:fs/promises";
 import { existsSync, readFileSync, lstatSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
@@ -8,7 +8,7 @@ import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { getUpdates, getMe, sendMessage, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
+import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
 import { installTimestampedLogging } from "./log-timestamp";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
 import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
@@ -1045,7 +1045,14 @@ export type SendFn = (chat_id: number, text: string, replyToMessageId?: number, 
 
 // Send-then-commit: send each complete outbox line, advance the byte-cursor only
 // AFTER the send resolves (at-least-once on crash). Per-chat throttle is the caller's job.
-export async function flushOutboxes(root: string, send: SendFn): Promise<void> {
+// An outbox line may carry document_path (+ caption) instead of text; it is
+// delivered through sendDoc (sendDocument in prod) to the session's own chat. A document
+// that cannot be delivered (no sender, missing/oversize file, Bot API refusal) is told to
+// the chat as a text notice — never a silent drop — and the cursor still advances.
+export type SendDocFn = (chat_id: number, path: string, caption?: string) => Promise<boolean>;
+export const MAX_DOC_BYTES = 50 * 1024 * 1024;
+
+export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDocFn): Promise<void> {
   let names: string[] = [];
   try { names = await readdir(join(root, "sessions")); } catch { return; }
   for (const s of names) {
@@ -1065,9 +1072,12 @@ export async function flushOutboxes(root: string, send: SendFn): Promise<void> {
       for (const ln of complete.split("\n")) {
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
         if (ln.trim()) {
-          let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object } | null = null;
+          let out: { text?: string; console?: string; reply_to_message_id?: number; markup?: object; document_path?: string; caption?: string } | null = null;
           try { out = JSON.parse(ln); } catch {}
-          if (out) {
+          if (out && typeof out.document_path === "string") {
+            const ok = sendDoc ? await sendDoc(meta.chat_id, out.document_path, typeof out.caption === "string" ? out.caption : undefined) : false;
+            if (!ok) await send(meta.chat_id, `⚠️ couldn't send the file ${basename(out.document_path)} — it may be missing, over 50 MB, or refused by Telegram.`);
+          } else if (out) {
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
           }
@@ -2191,15 +2201,35 @@ async function sessionsList(root: string): Promise<string[]> {
 // block polling. Routes to the SAME session the chat uses (group_<id> for a group, so a
 // group `/arm` reply lands in that group and its per-group context is preserved;
 // __chat__ for a DM) — mirrors handleInbound's chatSession routing.
-export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object): Promise<void> {
+async function appendOutboxLine(root: string, chat_id: number, line: object): Promise<void> {
   const session = chat_id < 0 ? `group_${chat_id}` : "__chat__";
   const { created } = await ensureSession(root, session);
   const meta = await readMeta(root, session);
   if (created || !meta) {
     await writeMeta(root, session, { chat_id, status: "idle", last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
   }
-  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify({ text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) }));
+  await appendLine(join(sessionDir(root, session), "outbox.jsonl"), JSON.stringify(line));
 }
+
+export async function replyViaOutbox(root: string, chat_id: number, text: string, consoleName?: string, replyToMessageId?: number, markup?: object): Promise<void> {
+  await appendOutboxLine(root, chat_id, { text, ...(consoleName ? { console: consoleName } : {}), ...(Number.isSafeInteger(replyToMessageId) && replyToMessageId! > 0 ? { reply_to_message_id: replyToMessageId } : {}), ...(markup ? { markup } : {}) });
+}
+
+// Queue a local file for the chat; flushOutboxes sends it via sendDocument.
+export async function sendFileViaOutbox(root: string, chat_id: number, document_path: string, caption?: string): Promise<void> {
+  await appendOutboxLine(root, chat_id, { document_path, ...(caption ? { caption } : {}) });
+}
+
+// The poller-side document sender: refuses (false) a path that is not an absolute
+// regular file within the Bot API's 50 MB cap, then uploads it.
+export const makeSendDoc = (token: string, upload: typeof sendDocument = sendDocument): SendDocFn => async (chat, path, caption) => {
+  if (!isAbsolute(path)) return false;
+  try {
+    const st = await stat(path);
+    if (!st.isFile() || st.size > MAX_DOC_BYTES) return false;
+  } catch { return false; }
+  return upload(token, chat, path, caption);
+};
 
 // --- getUpdates outage handling ---
 // Before this, a non-ok getUpdates response (e.g. a Telegram-API-side Bad
@@ -2456,7 +2486,7 @@ export async function main(): Promise<void> {
   // its keep. The flush path touches only outbox files; the run path touches only
   // inbox/meta/pending — disjoint, so the timer adds no shared-file race.
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
-  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send)), FLUSH_MS);
+  const flushTimer = setInterval(guarded(() => flushOutboxes(root, send, makeSendDoc(token))), FLUSH_MS);
   if (typeof flushTimer.unref === "function") flushTimer.unref();
   // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
