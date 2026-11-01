@@ -19,6 +19,67 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import vmsdk
 
+# --- stub keyring: every row that reaches himmel-secrets runs over this ---
+import atexit
+import tempfile
+
+_KSTUB_DIR = tempfile.mkdtemp(prefix="test-vmsdk-kstub.")
+atexit.register(shutil.rmtree, _KSTUB_DIR, ignore_errors=True)
+_KSTUB_SECRET_TOOL = r'''#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >>"$KSTUB_LOG"
+verb="$1"; shift
+[ "${1:-}" = --all ] && shift
+if [ "$verb" = store ]; then shift 2; fi
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+case "$verb" in
+    store) IFS= read -r val || true; printf '%s\t%s\n' "${q# }" "$val" >>"$KSTUB_STORE"; exit 0 ;;
+esac
+rc=1
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    [ "$m" = 1 ] || continue
+    case "$verb" in
+        lookup) printf '%s' "$val"; exit 0 ;;
+        search) printf '[/stub]\nlabel = stub\nsecret = %s\n' "$val"; rc=0 ;;
+    esac
+done <"$KSTUB_STORE"
+[ "$verb" = search ] && exit 0
+exit "$rc"
+'''
+_KSTUB_BUSCTL = r'''#!/usr/bin/env bash
+printf 'busctl %s\n' "$*" >>"$KSTUB_LOG"
+case "$*" in *" Locked") echo "b false" ;; esac
+'''
+for _n, _body in (("secret-tool", _KSTUB_SECRET_TOOL), ("busctl", _KSTUB_BUSCTL)):
+    _p = Path(_KSTUB_DIR) / _n
+    _p.write_text(_body)
+    _p.chmod(0o755)
+_KSTUB_STORE = str(Path(_KSTUB_DIR) / "keyring.tsv")
+_KSTUB_LOG = str(Path(_KSTUB_DIR) / "keyring.log")
+Path(_KSTUB_STORE).write_text("")
+Path(_KSTUB_LOG).write_text("")
+os.environ.update({"PATH": _KSTUB_DIR + os.pathsep + os.environ["PATH"],
+                   "KSTUB_STORE": _KSTUB_STORE, "KSTUB_LOG": _KSTUB_LOG,
+                   "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + _KSTUB_DIR + "/stub-bus"})
+os.environ.pop("CREDENTIALS_DIRECTORY", None)
+os.environ.pop("HIMMEL_SECRETS_KEYRING", None)
+# Suite guard: abort unless the stubs are what resolve, so no row reaches a real keyring.
+for _n in ("secret-tool", "busctl"):
+    if not (shutil.which(_n) or "").startswith(_KSTUB_DIR):
+        sys.exit(f"test-vmsdk: {_n} does not resolve to the stub keyring; aborting")
+
+
+def _kreset():
+    Path(_KSTUB_STORE).write_text("")
+    Path(_KSTUB_LOG).write_text("")
+
+
+def _kput(name, value):
+    with open(_KSTUB_STORE, "a") as fh:
+        fh.write(f"service=himmel key={name} scope=user\t{value}\n")
+
 
 class _FakeChannel:
     def __init__(self, rc):
@@ -833,6 +894,77 @@ class TestReadback(unittest.TestCase):
              mock.patch.object(vmsdk.vbox, "restore_snapshot"), \
              self._run(_SHOWVMINFO_SNAP):
             self.assertEqual(vmsdk.main(["ubuntu_new", "restore", "clean"]), 1)
+
+
+@unittest.skipIf(sys.platform == "darwin", "the resolver skips the keyring on Darwin")
+class TestResolveSecrets(unittest.TestCase):
+    """HIMMEL-8370 S0b: the Python door to himmel-secrets (rows S0-R5, S0-R2)."""
+
+    def setUp(self):
+        _kreset()
+        self.tmp = Path(tempfile.mkdtemp(prefix="vmsdk-s0b."))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        env = mock.patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        for k in vmsdk.PAT_ENVS:
+            os.environ.pop(k, None)
+
+    def test_resolve_secrets_serves_a_keyring_only_name(self):
+        _kput("S0B_DUMMY_A", "dummy=with=equals")
+        got = vmsdk.resolve_secrets(self.tmp, ["S0B_DUMMY_A", "S0B_DUMMY_NONE"])
+        self.assertEqual(got, {"S0B_DUMMY_A": "dummy=with=equals"})
+
+    def test_resolve_secrets_no_names_runs_nothing(self):
+        self.assertEqual(vmsdk.resolve_secrets(self.tmp, []), {})
+        self.assertEqual(Path(_KSTUB_LOG).read_text(), "")
+
+    def test_s0_r5_load_dotenv_into_env_reads_a_keyring_only_pat(self):
+        _kput("himmel_github_token_vm", "dummy-pat-s0")
+        with mock.patch.object(vmsdk, "_env_path", return_value=self.tmp / ".env"):
+            vmsdk._load_dotenv_into_env(list(vmsdk.PAT_ENVS))
+        self.assertEqual(os.environ.get("himmel_github_token_vm"), "dummy-pat-s0")
+        log = Path(_KSTUB_LOG).read_text()
+        self.assertIn("secret-tool lookup", log)
+        self.assertNotIn("dummy-pat-s0", log)  # a lookup argv carries no value
+
+    def test_s0_r2_keyring_wins_over_dotenv(self):
+        _kput("himmel_github_token_vm", "dummy-from-keyring")
+        (self.tmp / ".env").write_text("himmel_github_token_vm=dummy-from-dotenv\n")
+        with mock.patch.object(vmsdk, "_env_path", return_value=self.tmp / ".env"):
+            vmsdk._load_dotenv_into_env(["himmel_github_token_vm"])
+        self.assertEqual(os.environ["himmel_github_token_vm"], "dummy-from-keyring")
+
+    def test_dotenv_stays_the_last_fallback(self):
+        (self.tmp / ".env").write_text("himmel_github_token_vm2=dummy-from-dotenv\n")
+        with mock.patch.object(vmsdk, "_env_path", return_value=self.tmp / ".env"):
+            vmsdk._load_dotenv_into_env(["himmel_github_token_vm2"])
+        self.assertEqual(os.environ["himmel_github_token_vm2"], "dummy-from-dotenv")
+
+    def test_ubuntu_vm_setup_reads_a_keyring_only_login(self):
+        try:
+            import dotenv
+            import paramiko  # noqa: F401 - the provisioner imports it at load
+        except ImportError:
+            self.skipTest("python-dotenv or paramiko not installed")
+        import importlib.util
+        _kput("ubuntu_vm_user", "dummy-user-s0")
+        _kput("ubuntu_vm_pass", "dummy-pass-s0")
+        for k in ("ubuntu_vm_user", "ubuntu_vm_pass"):
+            os.environ.pop(k, None)
+        path = Path(__file__).resolve().parents[1] / "machine-setup" / "ubuntu-vm-setup.py"
+        spec = importlib.util.spec_from_file_location("ubuntu_vm_setup_s0b", path)
+        mod = importlib.util.module_from_spec(spec)
+        with mock.patch.object(dotenv, "find_dotenv", return_value=str(self.tmp / ".env")):
+            spec.loader.exec_module(mod)
+        self.assertEqual((mod.USER, mod.PASS), ("dummy-user-s0", "dummy-pass-s0"))
+
+    def test_a_live_env_value_still_wins(self):
+        _kput("himmel_github_token_vm", "dummy-from-keyring")
+        os.environ["himmel_github_token_vm"] = "dummy-live"
+        with mock.patch.object(vmsdk, "_env_path", return_value=self.tmp / ".env"):
+            vmsdk._load_dotenv_into_env(["himmel_github_token_vm"])
+        self.assertEqual(os.environ["himmel_github_token_vm"], "dummy-live")
 
 
 class TestDeclaredDeps(unittest.TestCase):

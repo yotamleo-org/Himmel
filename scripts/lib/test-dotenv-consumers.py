@@ -41,7 +41,7 @@ class DotenvConsumers(unittest.TestCase):
         sys.path.insert(0, str(ROOT / 'scripts/lib'))
         self.addCleanup(lambda: sys.path.remove(str(ROOT / 'scripts/lib')))
         module = module_at(ROOT / 'scripts/lib/vmsdk.py')
-        with patch.dict(os.environ, {}, clear=True), patch.object(module, '_env_path', return_value=self.fixture):
+        with patch.dict(os.environ, {'HIMMEL_SECRETS_KEYRING': 'off'}, clear=True), patch.object(module, '_env_path', return_value=self.fixture):
             # A real registry-selected consumer must load only its two keys.
             registry = {'fixture': {'os': 'ubuntu', 'ssh_port': 2222, 'user_env': 'ubuntu_vm_user', 'pass_env': 'ubuntu_vm_pass'}}
             with patch.object(module, '_load_registry', return_value=registry):
@@ -53,7 +53,7 @@ class DotenvConsumers(unittest.TestCase):
 
     def test_consumer_keys_still_load_cloudinit(self):
         module = module_at(ROOT / 'scripts/machine-setup/make-cloudinit-seed.py')
-        with patch.dict(os.environ, {}, clear=True), patch.object(module, '_env_path', return_value=self.fixture):
+        with patch.dict(os.environ, {'HIMMEL_SECRETS_KEYRING': 'off'}, clear=True), patch.object(module, '_env_path', return_value=self.fixture):
             module._load_dotenv()
             self.assertEqual(os.environ['ubuntu_vm_user'], 'fixture-user')
             self.assertEqual(os.environ['ubuntu_vm_pass'], 'dummy-ubuntu')
@@ -62,7 +62,7 @@ class DotenvConsumers(unittest.TestCase):
 
     def test_consumer_keys_still_load_provisioners(self):
         for platform in ('ubuntu', 'windows'):
-            with self.subTest(platform=platform), patch.dict(os.environ, {}, clear=True), patch.object(dotenv, 'find_dotenv', return_value=str(self.fixture)), patch.object(dotenv.main, 'find_dotenv', return_value=str(self.fixture)):
+            with self.subTest(platform=platform), patch.dict(os.environ, {'HIMMEL_SECRETS_KEYRING': 'off'}, clear=True), patch.object(dotenv, 'find_dotenv', return_value=str(self.fixture)), patch.object(dotenv.main, 'find_dotenv', return_value=str(self.fixture)):
                 module = module_at(ROOT / f'scripts/machine-setup/{platform}-vm-setup.py')
                 self.assertEqual(module.USER, 'fixture-user' if platform == 'ubuntu' else 'fixture-windows')
                 self.assertEqual(module.PASS, f'dummy-{platform}')

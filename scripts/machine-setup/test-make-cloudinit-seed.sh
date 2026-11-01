@@ -49,6 +49,44 @@ echo "ssh-ed25519 AAAAFAKEKEYFIXTURE test@example" > "$PUBKEY_FILE"
 
 PLAIN_PASSWORD="S3cr3t-plaintext-marker"
 
+# Stub keyring: the rows that reach himmel-secrets run over
+# secret-tool and busctl stubs first on PATH; none reaches a real keyring.
+KBIN="$TMP/kbin"
+mkdir -p "$KBIN"
+export KSTUB_STORE="$TMP/keyring.tsv" KSTUB_LOG="$TMP/keyring.log"
+cat >"$KBIN/secret-tool" <<'STUB'
+#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >>"$KSTUB_LOG"
+verb="$1"; shift
+[ "${1:-}" = --all ] && shift
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+[ "$verb" = lookup ] || exit 1
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    [ "$m" = 1 ] && { printf '%s' "$val"; exit 0; }
+done <"$KSTUB_STORE"
+exit 1
+STUB
+cat >"$KBIN/busctl" <<'STUB'
+#!/usr/bin/env bash
+printf 'busctl %s\n' "$*" >>"$KSTUB_LOG"
+case "$*" in *" Locked") echo "b false" ;; esac
+STUB
+chmod +x "$KBIN/secret-tool" "$KBIN/busctl"
+export PATH="$KBIN:$PATH"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$TMP/stub-bus"
+unset CREDENTIALS_DIRECTORY HIMMEL_SECRETS_KEYRING
+: >"$KSTUB_STORE"; : >"$KSTUB_LOG"
+# Suite guard: abort unless the stubs are what resolve.
+for _bin in secret-tool busctl; do
+    case "$(command -v "$_bin")" in
+        "$KBIN"/*) ;;
+        *) echo "FAIL $_bin does not resolve to the stub keyring; aborting"; exit 1 ;;
+    esac
+done
+
 # T0: the openssl fallback's subprocess env is scrubbed of anything
 # password/secret/token/key/credential/auth-shaped (and explicitly
 # ubuntu_vm_pass), PATH kept.
@@ -467,6 +505,47 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
     fi
     ;;
 esac
+
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP S0-R6/S0-R2: the resolver skips the keyring on Darwin"
+else
+# S0-R6: ubuntu_vm_pass held only in the (stub) keyring, no env value and no
+# .env line (_env_path points at an empty dir): the seed builds, and the stub
+# log shows a lookup argv with no value in it.
+: >"$KSTUB_LOG"
+printf 'service=himmel key=ubuntu_vm_pass scope=user\t%s\n' "$PLAIN_PASSWORD" >"$KSTUB_STORE"
+mkdir -p "$TMP/noenv"
+cat >"$TMP/seed-keyring.py" <<PYEOF
+import importlib.util, os, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('seed', '$SCRIPT')
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+m._env_path = lambda: Path('$TMP/noenv/.env')
+if sys.argv[1] == 'dry-run':
+    m.main(['--user', 'himmeltest', '--pubkey', '$PUBKEY_FILE', '--dry-run'])
+else:
+    m._load_dotenv()
+    print('PASS=' + os.environ.get('ubuntu_vm_pass', '<unset>'))
+PYEOF
+OUT_K=$(env -u ubuntu_vm_pass python3 "$TMP/seed-keyring.py" dry-run 2>&1)
+RC_K=$?
+assert_contains "S0-R6 a keyring-only ubuntu_vm_pass builds the seed" "$OUT_K" 'name: "himmeltest"'
+assert_not_contains "S0-R6 the keyring-served password is never printed" "$OUT_K" "$PLAIN_PASSWORD"
+[ "$RC_K" -eq 0 ] || { echo "FAIL S0-R6 exited $RC_K"; FAILED=$((FAILED + 1)); }
+assert_contains "S0-R6 the stub log shows a lookup argv" "$(cat "$KSTUB_LOG")" "secret-tool lookup"
+assert_not_contains "S0-R6 the stub log carries no value" "$(cat "$KSTUB_LOG")" "$PLAIN_PASSWORD"
+
+# S0-R2: the same key in the keyring and .env: the keyring value wins.
+printf 'ubuntu_vm_pass=dummy-from-dotenv\n' >"$TMP/noenv/.env"
+OUT_R2=$(env -u ubuntu_vm_pass python3 "$TMP/seed-keyring.py" load 2>&1)
+assert_contains "S0-R2 keyring wins over .env" "$OUT_R2" "PASS=$PLAIN_PASSWORD"
+
+# The .env stays the last fallback when the keyring holds nothing.
+: >"$KSTUB_STORE"
+OUT_FB=$(env -u ubuntu_vm_pass python3 "$TMP/seed-keyring.py" load 2>&1)
+assert_contains "S0b .env is the last fallback" "$OUT_FB" "PASS=dummy-from-dotenv"
+fi
 
 if [ "$FAILED" -eq 0 ]; then
     echo "ALL PASS"

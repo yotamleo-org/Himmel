@@ -296,8 +296,18 @@ DOTENV_KEYS = frozenset({
 })
 
 
+# The secret-class names among DOTENV_KEYS: asked of the keyring before .env.
+SECRET_KEYS = ("BITBUCKET_API_TOKEN", "FIRECRAWL_API_KEY")
+
+
 def load_repo_env(env: dict[str, str], repo_root: Path) -> dict[str, str]:
     loaded = dict(env)
+    # Order: live process value, the keyring (himmel-secrets), then .env. A name
+    # the keyring serves is already in `loaded`, so the .env loop below skips it.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+    import vmsdk
+    missing = [k for k in SECRET_KEYS if not loaded.get(k, "")]
+    loaded.update(vmsdk.resolve_secrets(repo_root, missing))
     env_file = repo_root / ".env"
     if not env_file.is_file():
         return loaded

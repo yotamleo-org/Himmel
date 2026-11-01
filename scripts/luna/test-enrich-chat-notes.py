@@ -23,6 +23,53 @@ mod = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(mod)
 os.environ["HIMMEL_BILLED_OK"] = "1"  # every network call here is a stub
 
+# --- stub keyring: every row that reaches himmel-secrets runs over this ---
+import atexit
+import shutil
+
+_KSTUB_DIR = tempfile.mkdtemp(prefix="test-enrich-kstub.")
+atexit.register(shutil.rmtree, _KSTUB_DIR, ignore_errors=True)
+_KSTUB_SECRET_TOOL = r'''#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >>"$KSTUB_LOG"
+verb="$1"; shift
+[ "${1:-}" = --all ] && shift
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+[ "$verb" = lookup ] || exit 1
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    [ "$m" = 1 ] && { printf '%s' "$val"; exit 0; }
+done <"$KSTUB_STORE"
+exit 1
+'''
+_KSTUB_BUSCTL = r'''#!/usr/bin/env bash
+printf 'busctl %s\n' "$*" >>"$KSTUB_LOG"
+case "$*" in *" Locked") echo "b false" ;; esac
+'''
+for _n, _body in (("secret-tool", _KSTUB_SECRET_TOOL), ("busctl", _KSTUB_BUSCTL)):
+    _p = Path(_KSTUB_DIR) / _n
+    _p.write_text(_body)
+    _p.chmod(0o755)
+_KSTUB_STORE = str(Path(_KSTUB_DIR) / "keyring.tsv")
+_KSTUB_LOG = str(Path(_KSTUB_DIR) / "keyring.log")
+Path(_KSTUB_STORE).write_text("")
+Path(_KSTUB_LOG).write_text("")
+os.environ.update({"PATH": _KSTUB_DIR + os.pathsep + os.environ["PATH"],
+                   "KSTUB_STORE": _KSTUB_STORE, "KSTUB_LOG": _KSTUB_LOG,
+                   "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + _KSTUB_DIR + "/stub-bus"})
+os.environ.pop("CREDENTIALS_DIRECTORY", None)
+os.environ.pop("HIMMEL_SECRETS_KEYRING", None)
+# Suite guard: abort unless the stubs are what resolve, so no row reaches a real keyring.
+for _n in ("secret-tool", "busctl"):
+    if not (shutil.which(_n) or "").startswith(_KSTUB_DIR):
+        sys.exit(f"test-enrich-chat-notes: {_n} does not resolve to the stub keyring; aborting")
+
+
+def _kput(name, value):
+    with open(_KSTUB_STORE, "a") as fh:
+        fh.write(f"service=himmel key={name} scope=user\t{value}\n")
+
 
 class _FakeDateTime:
     """Stand-in for the datetime class: now(...) always returns `fixed`.
@@ -210,6 +257,41 @@ class TestKeyAndRoot(unittest.TestCase):
                 self.assertEqual(mod.resolve_api_key(Path("."), "DEEPSEEK_API_KEY"), "sk-dotenv")
             finally:
                 mod.primary_root = orig
+
+    @unittest.skipIf(sys.platform == "darwin", "the resolver skips the keyring on Darwin")
+    def test_s0_r6_keyring_only_key(self):
+        """HIMMEL-8370 S0b: a key only in the keyring, no env value, no .env line."""
+        self.addCleanup(Path(_KSTUB_STORE).write_text, "")
+        Path(_KSTUB_STORE).write_text("")
+        Path(_KSTUB_LOG).write_text("")
+        _kput("DEEPSEEK_API_KEY", "sk-dummy-keyring")
+        with tempfile.TemporaryDirectory() as td:
+            os.environ.pop("DEEPSEEK_API_KEY", None)
+            orig = mod.primary_root
+            mod.primary_root = lambda d: Path(td)
+            try:
+                self.assertEqual(mod.resolve_api_key(Path("."), "DEEPSEEK_API_KEY"), "sk-dummy-keyring")
+            finally:
+                mod.primary_root = orig
+        log = Path(_KSTUB_LOG).read_text()
+        self.assertIn("secret-tool lookup", log)
+        self.assertNotIn("sk-dummy-keyring", log)  # a lookup argv carries no value
+
+    @unittest.skipIf(sys.platform == "darwin", "the resolver skips the keyring on Darwin")
+    def test_s0_r2_keyring_wins_over_dotenv(self):
+        self.addCleanup(Path(_KSTUB_STORE).write_text, "")
+        Path(_KSTUB_STORE).write_text("")
+        _kput("DEEPSEEK_API_KEY", "sk-dummy-keyring")
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / ".env").write_text("DEEPSEEK_API_KEY=sk-dummy-dotenv\n", encoding="utf-8")
+            os.environ.pop("DEEPSEEK_API_KEY", None)
+            orig = mod.primary_root
+            mod.primary_root = lambda d: Path(td)
+            try:
+                self.assertEqual(mod.resolve_api_key(Path("."), "DEEPSEEK_API_KEY"), "sk-dummy-keyring")
+            finally:
+                mod.primary_root = orig
+        Path(_KSTUB_STORE).write_text("")
 
     def test_missing_key_returns_none(self):
         with tempfile.TemporaryDirectory() as td:

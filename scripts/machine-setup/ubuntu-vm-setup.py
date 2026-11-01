@@ -27,6 +27,7 @@ import argparse
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import vbox
+import vmsdk
 
 try:
     import paramiko
@@ -39,11 +40,15 @@ except ImportError:
     sys.exit("Missing: pip install python-dotenv")
 
 DOTENV_KEYS = ("ubuntu_vm_user", "ubuntu_vm_pass")
+# Order: live environment, the keyring (himmel-secrets), then .env.
+_val = None
+for _key, _val in vmsdk.resolve_secrets(os.path.dirname(os.path.abspath(__file__)), DOTENV_KEYS).items():
+    os.environ.setdefault(_key, _val)
 _values = dotenv_values(find_dotenv(), interpolate=False)
 for _key in DOTENV_KEYS:
     if _values.get(_key) is not None:
         os.environ.setdefault(_key, _values[_key])
-del _values
+del _values, _val
 
 HOST = "127.0.0.1"
 PORT = 2222

@@ -24,6 +24,53 @@ fetch_health = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = fetch_health
 SPEC.loader.exec_module(fetch_health)
 
+# --- stub keyring: every row that reaches himmel-secrets runs over this ---
+import atexit
+import shutil
+
+_KSTUB_DIR = tempfile.mkdtemp(prefix="test-fetch-health-kstub.")
+atexit.register(shutil.rmtree, _KSTUB_DIR, ignore_errors=True)
+_KSTUB_SECRET_TOOL = r'''#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >>"$KSTUB_LOG"
+verb="$1"; shift
+[ "${1:-}" = --all ] && shift
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+[ "$verb" = lookup ] || exit 1
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    [ "$m" = 1 ] && { printf '%s' "$val"; exit 0; }
+done <"$KSTUB_STORE"
+exit 1
+'''
+_KSTUB_BUSCTL = r'''#!/usr/bin/env bash
+printf 'busctl %s\n' "$*" >>"$KSTUB_LOG"
+case "$*" in *" Locked") echo "b false" ;; esac
+'''
+for _n, _body in (("secret-tool", _KSTUB_SECRET_TOOL), ("busctl", _KSTUB_BUSCTL)):
+    _p = Path(_KSTUB_DIR) / _n
+    _p.write_text(_body)
+    _p.chmod(0o755)
+_KSTUB_STORE = str(Path(_KSTUB_DIR) / "keyring.tsv")
+_KSTUB_LOG = str(Path(_KSTUB_DIR) / "keyring.log")
+Path(_KSTUB_STORE).write_text("")
+Path(_KSTUB_LOG).write_text("")
+os.environ.update({"PATH": _KSTUB_DIR + os.pathsep + os.environ["PATH"],
+                   "KSTUB_STORE": _KSTUB_STORE, "KSTUB_LOG": _KSTUB_LOG,
+                   "DBUS_SESSION_BUS_ADDRESS": "unix:path=" + _KSTUB_DIR + "/stub-bus"})
+os.environ.pop("CREDENTIALS_DIRECTORY", None)
+os.environ.pop("HIMMEL_SECRETS_KEYRING", None)
+# Suite guard: abort unless the stubs are what resolve, so no row reaches a real keyring.
+for _n in ("secret-tool", "busctl"):
+    if not (shutil.which(_n) or "").startswith(_KSTUB_DIR):
+        sys.exit(f"test_fetch_health: {_n} does not resolve to the stub keyring; aborting")
+
+
+def _kput(name, value):
+    with open(_KSTUB_STORE, "a") as fh:
+        fh.write(f"service=himmel key={name} scope=user\t{value}\n")
+
 
 class _StubResponse:
     """Minimal urlopen-style response for the main()-level probe tests."""
@@ -386,7 +433,7 @@ class FetchHealthTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             state_file = root / "fetch-health.json"
-            env = {"HOME": tmp, "PATH": "", "HIMMEL_FETCH_HEALTH_STATE": str(state_file)}
+            env = {"HOME": tmp, "PATH": "", "HIMMEL_SECRETS_KEYRING": "off", "HIMMEL_FETCH_HEALTH_STATE": str(state_file)}
             with patch.object(fetch_health, "primary_repo_root", return_value=root):
                 with patch.dict(os.environ, env, clear=True):
                     stdout = io.StringIO()
@@ -400,7 +447,7 @@ class FetchHealthTests(unittest.TestCase):
     def test_probe_mode_exit_code_zero_when_status_ok(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            env = {"HOME": tmp, "PATH": "/bin"}
+            env = {"HOME": tmp, "PATH": "/bin", "HIMMEL_SECRETS_KEYRING": "off"}
             completed = subprocess.CompletedProcess(["gh"], 0, "cli/cli\n", "")
             with patch.object(fetch_health, "primary_repo_root", return_value=root):
                 with patch.object(fetch_health.shutil, "which", return_value="/bin/gh"):
@@ -435,7 +482,7 @@ class FetchHealthTests(unittest.TestCase):
                 # fetch_http builds instead — that is the actual socket seam.
                 with patch.object(fetch_health, "primary_repo_root", return_value=root):
                     with patch.object(fetch_health.urllib.request, "build_opener", lambda *a, **k: _StubOpener(firecrawl_body)):
-                        with patch.dict(os.environ, {"HOME": tmp, "PATH": "/bin", "HIMMEL_FIRECRAWL_LEDGER": str(root / "ledger.jsonl")}, clear=True):
+                        with patch.dict(os.environ, {"HOME": tmp, "PATH": "/bin", "HIMMEL_SECRETS_KEYRING": "off", "HIMMEL_FIRECRAWL_LEDGER": str(root / "ledger.jsonl")}, clear=True):
                             stdout = io.StringIO()
                             with redirect_stdout(stdout):
                                 code = fetch_health.main(["--probe", source])
@@ -517,6 +564,47 @@ class FetchHealthTests(unittest.TestCase):
                 self.assertEqual(registry["github"]().status, "ok")
 
             self.assertNotIn("ROUTER_PASS", seen_envs["/bin/gh"])
+
+
+@unittest.skipIf(sys.platform == "darwin", "the resolver skips the keyring on Darwin")
+class KeyringReaderTests(unittest.TestCase):
+    """HIMMEL-8370 S0b: load_repo_env finds a secret in the keyring (rows S0-R6, S0-R2)."""
+
+    def setUp(self):
+        Path(_KSTUB_STORE).write_text("")
+        Path(_KSTUB_LOG).write_text("")
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        env = patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        for k in ("BITBUCKET_API_TOKEN", "FIRECRAWL_API_KEY"):
+            os.environ.pop(k, None)
+
+    def test_s0_r6_keyring_only_bitbucket_token(self):
+        _kput("BITBUCKET_API_TOKEN", "dummy-bb-s0")
+        loaded = fetch_health.load_repo_env({}, self.root)
+        self.assertEqual(loaded["BITBUCKET_API_TOKEN"], "dummy-bb-s0")
+        log = Path(_KSTUB_LOG).read_text()
+        self.assertIn("secret-tool lookup", log)
+        self.assertNotIn("dummy-bb-s0", log)  # a lookup argv carries no value
+
+    def test_s0_r2_keyring_wins_over_dotenv(self):
+        _kput("FIRECRAWL_API_KEY", "dummy-from-keyring")
+        (self.root / ".env").write_text("FIRECRAWL_API_KEY=dummy-from-dotenv\n")
+        loaded = fetch_health.load_repo_env({}, self.root)
+        self.assertEqual(loaded["FIRECRAWL_API_KEY"], "dummy-from-keyring")
+
+    def test_a_live_process_value_still_wins(self):
+        _kput("BITBUCKET_API_TOKEN", "dummy-from-keyring")
+        loaded = fetch_health.load_repo_env({"BITBUCKET_API_TOKEN": "dummy-live"}, self.root)
+        self.assertEqual(loaded["BITBUCKET_API_TOKEN"], "dummy-live")
+
+    def test_dotenv_stays_the_last_fallback(self):
+        (self.root / ".env").write_text("BITBUCKET_API_TOKEN=dummy-from-dotenv\n")
+        loaded = fetch_health.load_repo_env({}, self.root)
+        self.assertEqual(loaded["BITBUCKET_API_TOKEN"], "dummy-from-dotenv")
 
 
 class InstagramScraplingProbeTests(unittest.TestCase):

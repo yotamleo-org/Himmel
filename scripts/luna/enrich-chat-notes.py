@@ -288,14 +288,21 @@ def primary_root(script_dir):
 
 
 def resolve_api_key(script_dir, key_env):
-    """Env var named `key_env` wins; else the PRIMARY checkout's .env.
+    """Env var named `key_env` wins; then the keyring (himmel-secrets); else
+    the PRIMARY checkout's .env.
     Never resolves from the process CWD (HIMMEL-460 trap). `key_env` is the
     provider's key env var (DEEPSEEK_API_KEY / OPENAI_API_KEY /
     ANTHROPIC_API_KEY)."""
     key = os.environ.get(key_env)
     if key:
         return key
-    envf = primary_root(script_dir) / ".env"
+    root = primary_root(script_dir)
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+    import vmsdk
+    key = vmsdk.resolve_secrets(root, [key_env]).get(key_env)
+    if key:
+        return key
+    envf = root / ".env"
     if not envf.is_file():
         return None
     prefix = key_env + "="
