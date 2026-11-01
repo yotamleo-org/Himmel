@@ -300,6 +300,8 @@ def build_console_doc(rng, template, name):
     lines = template.split("\n")
     out, done = [], False
     for ln in lines:
+        if ln.startswith("workers:"):
+            continue  # the template's placeholder; `workers:` wins over `legs:`, and this corpus is old `legs:` docs
         out.append(ln)
         if ln == "## Live state" and not done:
             out.extend(block + tail_lines + [""])
