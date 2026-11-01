@@ -96,7 +96,10 @@
 #      <project>/<session>/scratchpad/<clone>) holding commits on no remote
 #      (that clone dies with the session), or the check could not run: the doc
 #      cannot be scanned, the named paths or clones cannot be sorted, a named
-#      directory cannot be scanned for clones, or git cannot inspect a clone
+#      directory cannot be scanned for clones, git cannot inspect a clone, or
+#      the clone's remote branches cannot be refreshed (a failed or timed-out
+#      bounded git fetch --all --prune; CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT,
+#      default 30s)
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # konsole workers are Linux/KDE-only, same guard as
