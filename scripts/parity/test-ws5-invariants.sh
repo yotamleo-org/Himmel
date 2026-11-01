@@ -267,9 +267,12 @@ git diff "$BASE...HEAD" | awk -v vendored_file="$VENDORED_LIST" -v removed_file=
         # surface, and a TSV has none. *.test.(ts|js|mjs|cjs)
         # gets the same test-fixture exemption as the shell "test-*"
         # convention: a JS/TS test legitimately asserts on the very marker
-        # words T13(b) scans for (e.g. a setInterval-timing test).
+        # words T13(b) scans for (e.g. a setInterval-timing test). The
+        # review-panel fixtures are frozen real code kept as data, never
+        # shipped source, so that one directory is exempt too.
         skip = (base ~ /^test-/) || (base ~ /\.tsv$/) \
-            || (base ~ /\.test\.(ts|js|mjs|cjs)$/) || (f in vendored)
+            || (base ~ /\.test\.(ts|js|mjs|cjs)$/) || (f in vendored) \
+            || (f ~ /^scripts\/eval\/review-panel\/fixtures\//)
         kind = (tolower(base) ~ /\.md$/) ? "md" : ((tolower(base) ~ /\.(sh|bash)$/) ? "sh" : ((tolower(base) ~ /\.(js|ts|mjs|cjs)$/) ? "js" : "code"))
         next
     }
