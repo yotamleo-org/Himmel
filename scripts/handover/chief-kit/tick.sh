@@ -116,6 +116,11 @@ rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
+cap=<version>:<n>[,<version>:<n>] (HIMMEL-6762) follows vmismatch= and is ABSENT unless an unreleased version
+holds more than 15 open residual tickets (labelled residual, not Done or Closed, by fixVersion; the count board.mjs
+shows against its soft cap), read from the Jira mirror. In chief-wait's action key whole: a version crossing the
+cap, or its count moving, wakes once; an unchanged value does not.
+
 slotage=<worker>:<range>:<n>suites:<age>m[,...] (HIMMEL-5788) sits just before tmp= and is ABSENT unless a
 live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
 holder did not record reads ?. Read-only, advisory, not in chief-wait's action key. Env seams:
@@ -2025,6 +2030,53 @@ if [ -n "$leaks_version" ]; then
     fi
 fi
 
+# cap=<version>:<n>[,<version>:<n>]: each unreleased version holding more than 15 open
+# residual tickets (labelled residual, not Done/Resolved/Closed/Won't, by fixVersion), counted from the Jira
+# mirror the way board.mjs counts its CR_SOFT_CAP slots. ABSENT at 15 or fewer, with no mirror or on a failed
+# read. In chief-wait's wake key whole: a version crossing the cap or its count moving wakes once.
+cap_summary=""
+if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
+    cap_summary="$(CAP_MIRROR="$nd_mirror" timeout -k 2 30 python3 -I -c '
+import json, os, re
+d = os.environ["CAP_MIRROR"]
+released = set()
+try:
+    for l in open(d + ".versions.tsv", encoding="utf-8"):
+        f = l.rstrip("\n").split("\t")
+        if len(f) > 1 and f[1] == "true":
+            released.add(f[0])
+except OSError:
+    pass
+gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do|wont fix|won\x27t fix)$", re.I)
+slots = {}
+for name in os.listdir(d):
+    if not name.endswith(".md"):
+        continue
+    try:
+        head = open(os.path.join(d, name), encoding="utf-8").read(3000).split("\n---")[0]
+    except OSError:
+        continue
+    def val(k):
+        m = re.search("^" + k + ": (.*)$", head, re.M)
+        if not m:
+            return None
+        try:
+            return json.loads(m.group(1))
+        except ValueError:
+            return m.group(1)
+    labels = val("labels") or []
+    if not any(re.search(r"(^|-)residual(-|$)", str(x)) for x in labels):
+        continue
+    if gone.match(str(val("status") or "")) or gone.match(str(val("statusCategory") or "")):
+        continue
+    for v in val("fixVersions") or []:
+        slots[v] = slots.get(v, 0) + 1
+over = [(v, n) for v, n in slots.items() if n > 15 and v not in released]
+over.sort(key=lambda p: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", p[0])])
+print(",".join(re.sub(r"\s", "_", v) + ":" + str(n) for v, n in over))
+' 2>/dev/null)" || cap_summary=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read leaves the field off
+fi
+
 # rm-queue=<n>,<oldest age>m[,run]: open placement requests of the chief doc's `release:` release,
 # from one `jira release state <R> --json` read; the age is the oldest open request's. When the oldest is
 # TICK_RMRUN_MIN minutes old (default 30), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
@@ -3294,6 +3346,7 @@ else
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
     compact_field vmismatch "$vmismatch_summary"
+    compact_field cap "$cap_summary"
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
     compact_field dbot "$dbot_summary"

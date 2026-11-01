@@ -2771,6 +2771,45 @@ contains 'a failed leak read reads leaks=? (HIMMEL-7153)' "$lk_err" ' leaks=?'
 not_contains 'a failed leak read prints no ACTION line (HIMMEL-7153)' "$lk_err" 'ACTION leaks'
 lk_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_LEAKS_PROBE="$W/lk-probe-3.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 not_contains 'no mirror hides leaks (HIMMEL-7153)' "$lk_skip" 'leaks='
+# --- cap=<version>:<n>[,...]: unreleased versions past 15 open residual slots, counted from the
+# mirror as board.mjs counts them; absent at 15 or fewer.
+cp_dir="$W/cp"; cp_m="$cp_dir/HIMMEL"; mkdir -p "$cp_m"
+printf 'v1.0.0\ttrue\t2026-01-01\tfalse\nv1.1.3\tfalse\t\tfalse\nv1.1.4\tfalse\t\tfalse\nv1.1.5\tfalse\t\tfalse\n' > "$cp_dir/HIMMEL.versions.tsv"
+cp_n=0
+cp_mk() { # <status> <labels json> <fixVersions json> [count]: count tickets (default 1)
+    local i="${4:-1}"
+    while [ "$i" -gt 0 ]; do
+        cp_n=$((cp_n + 1))
+        printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "x"\npriority: "Medium"\nlabels: %s\nfixVersions: %s\nparent: null\n---\n\n# HIMMEL-%s: fixture\n' "$cp_n" "$1" "$2" "$3" "$cp_n" > "$cp_m/HIMMEL-$cp_n.md"
+        i=$((i - 1))
+    done
+}
+cp_tick() { NEXT_DISPATCH_MIRROR="$cp_m" TICK_LEAKS_PROBE="$W/lk-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null; }
+cp_mk "To Do" '["residual"]' '["v1.1.3"]' 16
+cp_mk "In Progress" '["backlog","residual-depth-1"]' '["v1.1.4"]' 15
+cp_mk "Done" '["residual"]' '["v1.1.4"]' 3
+cp_mk "Closed" '["residual"]' '["v1.1.4"]' 2
+cp_mk "To Do" '["backlog"]' '["v1.1.4"]' 4
+cp_mk "To Do" '["residual"]' '["v1.0.0"]' 20
+cp_over="$(cp_tick)"
+contains 'a version past 15 open residuals puts cap=<version>:<n> on the line (HIMMEL-6762)' "$cp_over" ' cap=v1.1.3:16'
+not_contains 'a version at exactly 15 open residuals is not on the cap field, nor Done, Closed, unlabelled or a released version (HIMMEL-6762)' "$cp_over" 'v1.1.4:'
+not_contains 'a released version past 15 is not on the cap field (HIMMEL-6762)' "$cp_over" 'v1.0.0:'
+cp_mk "To Do" '["residual"]' '["v1.1.5"]' 17
+contains 'two versions past 15 are both named, in version order (HIMMEL-6762)' "$(cp_tick)" ' cap=v1.1.3:16,v1.1.5:17'
+rm -f "$cp_m/HIMMEL-1.md"
+cp_fifteen="$(cp_tick)"
+contains 'the other over-run stays on the field (HIMMEL-6762)' "$cp_fifteen" ' cap=v1.1.5:17'
+not_contains 'a version dropping to exactly 15 open residuals leaves the cap field (HIMMEL-6762)' "$cp_fifteen" 'v1.1.3:'
+rm -f "$cp_m"/HIMMEL-6[1-9].md "$cp_m"/HIMMEL-7[0-7].md
+cp_none="$(cp_tick)"
+not_contains 'no version past 15 leaves cap= off the line (HIMMEL-6762)' "$cp_none" 'cap='
+cp_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_LEAKS_PROBE="$W/lk-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+not_contains 'no mirror leaves cap= off the line (HIMMEL-6762)' "$cp_skip" ' cap='
+# Both brief templates file every follow-up with `jira create --follow-up-of <KEY>`.
+for cp_tpl in worker-brief-template chief-template; do
+    if grep -q -- 'jira create --follow-up-of <KEY>' "$HERE/../../../docs/handover/$cp_tpl.md"; then pass "docs/handover/$cp_tpl.md names jira create --follow-up-of <KEY> (HIMMEL-6762)"; else fail "docs/handover/$cp_tpl.md names jira create --follow-up-of <KEY> (HIMMEL-6762)"; fi
+done
 case "$vd_zero" in *wt-orphans*|*wt-ceiling*) fail "no worktree.sh under REPO reads no wt-orphans field (out='$vd_zero')" ;; *) pass 'no worktree.sh under REPO reads no wt-orphans field (HIMMEL-6584)' ;; esac
 mkdir -p "$REPO"
 printf '#!/bin/sh\nprintf "ORPHAN /w/a branch=x dirty=0 ahead=1 idle=2d\\nORPHAN /w/b branch=detached:0123456789ab dirty=1 ahead=0 idle=9h\\nCEILING 72/100 worktrees (alarm at 70)\\n"\nexit 1\n' > "$W/wto-probe-2.sh"
