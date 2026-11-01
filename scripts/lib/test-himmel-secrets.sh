@@ -286,6 +286,14 @@ got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_LOOKUP_RC=124 "$HS" import-env "$TMP
 assert_eq "R13c a timed-out lookup prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
 assert_eq "R13c a timed-out lookup makes no store call" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
 
+got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_LOOKUP_FAIL=1 "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13c an existing item whose lookup exits 1 prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13c an existing item whose lookup exits 1 is not stored over" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+kreset
+got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_SEARCH_FAIL=1 "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13c a failed existence search prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13c a failed existence search makes no store call" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+
 # R14: a name in the keep file is skipped, not stored; the existing lines stay.
 kreset
 printf 'JIRA_API_TOKEN=dummy-r12\nFIRECRAWL_API_KEY=dummy-r14\nJIRA_EMAIL=dummy@example.invalid\n' >"$TMP/r14.env"
