@@ -39,14 +39,14 @@ d2="$tmp/HIMMEL-2-N65-b-2026-09-30-RESUME.md"
 bash "$SCRIPT" add "$m" "$d1" >/dev/null 2>&1; rc=$?
 check '1. add to a missing manifest succeeds' 0 "$rc"
 check '1. the new manifest is schema 1' 1 "$(jq -r '.schema' "$m" 2>/dev/null)"
-check '1. the entry carries the absolute doc' "$d1" "$(jq -r '.legs[0].doc' "$m" 2>/dev/null)"
-check '1. the entry carries the worker-identity label' N61 "$(jq -r '.legs[0].label' "$m" 2>/dev/null)"
-check '1. the entry carries an added timestamp' yes "$(jq -e '.legs[0].added | test("^[0-9]{4}-")' "$m" >/dev/null 2>&1 && echo yes)"
+check '1. the entry carries the absolute doc' "$d1" "$(jq -r '.workers[0].doc' "$m" 2>/dev/null)"
+check '1. the entry carries the worker-identity label' N61 "$(jq -r '.workers[0].label' "$m" 2>/dev/null)"
+check '1. the entry carries an added timestamp' yes "$(jq -e '.workers[0].added | test("^[0-9]{4}-")' "$m" >/dev/null 2>&1 && echo yes)"
 
 # 2. idempotent add, order, list.
 bash "$SCRIPT" add "$m" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" add "$m" "$d2" >/dev/null 2>&1
-check '2. a repeated add does not duplicate a worker' 2 "$(jq '.legs | length' "$m" 2>/dev/null)"
+check '2. a repeated add does not duplicate a worker' 2 "$(jq '.workers | length' "$m" 2>/dev/null)"
 check '2. list prints the docs in manifest order' "$d1
 $d2" "$(bash "$SCRIPT" list "$m" 2>/dev/null)"
 
@@ -55,7 +55,7 @@ bash "$SCRIPT" remove "$m" N61 >/dev/null 2>&1; rc=$?
 check '3. remove by label succeeds' 0 "$rc"
 check '3. remove by label drops only that worker' "$d2" "$(bash "$SCRIPT" list "$m" 2>/dev/null)"
 bash "$SCRIPT" remove "$m" "$d2" >/dev/null 2>&1
-check '3. remove by doc empties the worker set' 0 "$(jq '.legs | length' "$m" 2>/dev/null)"
+check '3. remove by doc empties the worker set' 0 "$(jq '.workers | length' "$m" 2>/dev/null)"
 check '3. an empty manifest lists nothing and succeeds' "0:" "$(out="$(bash "$SCRIPT" list "$m" 2>/dev/null)"; echo "$?:$out")"
 bash "$SCRIPT" remove "$m" N99 >/dev/null 2>&1; rc=$?
 check '3. removing a worker that is not listed is not an error' 0 "$rc"
@@ -63,13 +63,13 @@ check '3. removing a worker that is not listed is not an error' 0 "$rc"
 # 4. relative doc refused.
 bash "$SCRIPT" add "$m" relative/HIMMEL-3-N70-c.md >/dev/null 2>&1; rc=$?
 check '4. a relative doc is a usage error (rc 2)' 2 "$rc"
-check '4. and writes nothing' 0 "$(jq '.legs | length' "$m" 2>/dev/null)"
+check '4. and writes nothing' 0 "$(jq '.workers | length' "$m" 2>/dev/null)"
 
 # 5. foreign keys survive.
 printf '{"schema":1,"chains":{"c1":["N61"]},"legs":[{"doc":"%s","label":"N61","lane":"opus"}]}\n' "$d1" > "$m"
 bash "$SCRIPT" add "$m" "$d2" >/dev/null 2>&1
 check '5. a top-level key the writer does not own survives' '["N61"]' "$(jq -c '.chains.c1' "$m" 2>/dev/null)"
-check '5. a per-worker key the writer does not own survives' opus "$(jq -r '.legs[0].lane' "$m" 2>/dev/null)"
+check '5. a per-worker key the writer does not own survives' opus "$(jq -r '.workers[0].lane' "$m" 2>/dev/null)"
 
 # 6. missing / invalid.
 bash "$SCRIPT" list "$tmp/none.fleet.json" >/dev/null 2>&1; rc=$?
@@ -105,7 +105,7 @@ while [ "$i" -le 12 ]; do
     i=$((i + 1))
 done
 for p in $pids; do wait "$p"; done
-check '7. twelve concurrent adds keep all twelve workers' 12 "$(jq '.legs | length' "$c" 2>/dev/null)"
+check '7. twelve concurrent adds keep all twelve workers' 12 "$(jq '.workers | length' "$c" 2>/dev/null)"
 check '7. no temp file is left behind' 0 "$(find "$tmp" -name 'race.fleet.json.*' ! -name '*.lock' | wc -l | tr -d ' ')"
 
 # 7b. two concatenated schema-1 objects are not one manifest
@@ -126,18 +126,18 @@ check '7b. list refuses an empty file (rc 1)' 1 "$rc"
 m5="$tmp/lane.fleet.json"
 l1="$tmp/HIMMEL-5-N70-x.md"; l2="$tmp/HIMMEL-5-N71-y.md"; l3="$tmp/HIMMEL-5-P01-z.md"; l4="$tmp/HIMMEL-5-N72-w.md"
 bash "$SCRIPT" add "$m5" "$l1" >/dev/null 2>&1
-check '7c. a missing --lane is stored unknown, never guessed' unknown "$(jq -r '.legs[0].lane' "$m5")"
-check '7c. a missing --lockless stores no lockless key' null "$(jq -r '.legs[0].lockless // "null"' "$m5")"
+check '7c. a missing --lane is stored unknown, never guessed' unknown "$(jq -r '.workers[0].lane' "$m5")"
+check '7c. a missing --lockless stores no lockless key' null "$(jq -r '.workers[0].lockless // "null"' "$m5")"
 bash "$SCRIPT" add "$m5" --lane claudex "$l2" >/dev/null 2>&1; rc=$?
 check '7c. add --lane claudex succeeds' 0 "$rc"
-check '7c. the lane is stored' claudex "$(jq -r --arg d "$l2" '.legs[] | select(.doc == $d) | .lane' "$m5")"
+check '7c. the lane is stored' claudex "$(jq -r --arg d "$l2" '.workers[] | select(.doc == $d) | .lane' "$m5")"
 bash "$SCRIPT" add "$m5" "$l3" --lane deepseek --lockless >/dev/null 2>&1; rc=$?
 check '7c. flags after the doc are accepted' 0 "$rc"
-check '7c. --lockless is stored as true' true "$(jq -r --arg d "$l3" '.legs[] | select(.doc == $d) | .lockless' "$m5")"
-check '7c. the lockless row also keeps its lane' deepseek "$(jq -r --arg d "$l3" '.legs[] | select(.doc == $d) | .lane' "$m5")"
+check '7c. --lockless is stored as true' true "$(jq -r --arg d "$l3" '.workers[] | select(.doc == $d) | .lockless' "$m5")"
+check '7c. the lockless row also keeps its lane' deepseek "$(jq -r --arg d "$l3" '.workers[] | select(.doc == $d) | .lane' "$m5")"
 bash "$SCRIPT" add "$m5" --lane 'Bad Lane' "$l4" >/dev/null 2>&1; rc=$?
 check '7c. a malformed lane is a usage error (rc 2)' 2 "$rc"
-check '7c. and writes nothing' 3 "$(jq '.legs | length' "$m5")"
+check '7c. and writes nothing' 3 "$(jq '.workers | length' "$m5")"
 bash "$SCRIPT" add "$m5" --lane >/dev/null 2>&1; rc=$?
 check '7c. --lane with no value is a usage error (rc 2)' 2 "$rc"
 # A manifest written before the fields existed still lists and accepts adds.
@@ -146,10 +146,12 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N70","added":"x"}]}\n' "$l1" > 
 check '7c. an old manifest still lists' "$l1" "$(bash "$SCRIPT" list "$m6" 2>/dev/null)"
 bash "$SCRIPT" add "$m6" --lane native "$l2" >/dev/null 2>&1; rc=$?
 check '7c. an old manifest still takes an add' 0 "$rc"
-check '7c. the old row keeps no lane key' null "$(jq -r '.legs[0].lane // "null"' "$m6")"
+check '7c. the old row keeps no lane key' null "$(jq -r '.workers[0].lane // "null"' "$m6")"
 
 # 8. M1a: `list` and the schema check take a `workers` array first, the pre-rename `legs` array
-#    still reads, and HIMMEL_LEGACY_NAMES=0 refuses the old one. (The writer still writes `legs`; M1b flips it.)
+#    still reads, and HIMMEL_LEGACY_NAMES=0 refuses the old one. (M1b: the writer rewrote m6 above to `workers`,
+#    so the frozen old-manifest input is written again here.)
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N70","added":"x"}]}\n' "$l1" > "$m6"
 m8="$tmp/workers.fleet.json"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N70","added":"x"}]}\n' "$l1" > "$m8"
 check '8. a manifest with a workers array lists' "$l1" "$(bash "$SCRIPT" list "$m8" 2>/dev/null)"
@@ -168,7 +170,7 @@ check '8. with HIMMEL_LEGACY_NAMES=0 a workers manifest still lists' "$l1" "$(HI
 bash "$SCRIPT" add "$m8b" "$l3" >/dev/null 2>&1; rc=$?
 check '8. add to a manifest holding both arrays succeeds (rc 0)' 0 "$rc"
 check '8. the add lands in the workers array the readers read' 2 "$(jq '.workers | length' "$m8b")"
-check '8. the add leaves the legs array alone' 1 "$(jq '.legs | length' "$m8b")"
+check '8. the add drops the stale legs array' false "$(jq 'has("legs")' "$m8b")"
 bash "$SCRIPT" remove "$m8" "$l1" >/dev/null 2>&1; rc=$?
 check '8. remove from a workers-only manifest succeeds (rc 0)' 0 "$rc"
 check '8. the remove empties the workers array and adds no legs key' "0 false" "$(jq -r '"\(.workers | length) \(has("legs"))"' "$m8")"
@@ -180,37 +182,56 @@ check '8. and it lists with HIMMEL_LEGACY_NAMES=0' "$l1" "$(HIMMEL_LEGACY_NAMES=
 HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" add "$m6" "$l3" >/dev/null 2>&1; rc=$?
 check '8. with HIMMEL_LEGACY_NAMES=0 an add to an old legs manifest is refused (rc 1)' 1 "$rc"
 
+# 9. M1b: every write says `workers` and drops `legs`, an old legs manifest included (same entries, same order).
+m9a="$tmp/m1b-add.fleet.json"
+printf '{"schema":1,"chains":{"c1":["N70"]},"legs":[{"doc":"%s","label":"N70","added":"x","lane":"opus"},{"doc":"%s","label":"N71","added":"y"}]}\n' "$l1" "$l2" > "$m9a"
+bash "$SCRIPT" add "$m9a" "$l3" >/dev/null 2>&1; rc=$?
+check '9. an add to an old legs manifest succeeds (rc 0)' 0 "$rc"
+check '9. that manifest now has a workers array and no legs key' "true false" "$(jq -r '"\(has("workers")) \(has("legs"))"' "$m9a")"
+check '9. the old entries keep their order and the new one is appended' "$l1 $l2 $l3" "$(jq -r '[.workers[].doc] | join(" ")' "$m9a")"
+check '9. a per-worker and a top-level key survive the rename' "opus [\"N70\"]" "$(jq -r '"\(.workers[0].lane) \(.chains.c1 | tojson)"' "$m9a")"
+m9b="$tmp/m1b-remove.fleet.json"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N70","added":"x"},{"doc":"%s","label":"N71","added":"y"}]}\n' "$l1" "$l2" > "$m9b"
+bash "$SCRIPT" remove "$m9b" N70 >/dev/null 2>&1; rc=$?
+check '9. a remove from an old legs manifest succeeds (rc 0)' 0 "$rc"
+check '9. that manifest now has a workers array and no legs key' "true false" "$(jq -r '"\(has("workers")) \(has("legs"))"' "$m9b")"
+check '9. the remove leaves the other entry' "$l2" "$(jq -r '[.workers[].doc] | join(" ")' "$m9b")"
+m9c="$tmp/m1b-new.fleet.json"
+bash "$SCRIPT" add "$m9c" "$l1" >/dev/null 2>&1
+check '9. a new manifest has a workers array and no legs key' "true false" "$(jq -r '"\(has("workers")) \(has("legs"))"' "$m9c")"
+check '9. the new manifest lists the doc' "$l1" "$(bash "$SCRIPT" list "$m9c" 2>/dev/null)"
+
 m7="$tmp/m7.json"
 bash "$SCRIPT" add "$m7" $'/a/x.md\n/b/y.md' >/dev/null 2>&1; rc=$?
 check '7c. a doc argument holding a newline is refused (rc 2), not split into two rows' 2 "$rc"
-check '7c. a newline-holding argument adds no row' 0 "$(jq -r '.legs | length' "$m7" 2>/dev/null || echo 0)"
+check '7c. a newline-holding argument adds no row' 0 "$(jq -r '.workers | length' "$m7" 2>/dev/null || echo 0)"
 
 # N2: re-adding a listed doc with a different lane/lockless is refused, not ignored.
 m8="$tmp/m8.json"
 bash "$SCRIPT" add "$m8" --lane native "$l1" >/dev/null 2>&1
 bash "$SCRIPT" add "$m8" --lane claudex "$l1" >/dev/null 2>&1; rc=$?
 check '7d. re-adding with a different --lane is refused (rc 1)' 1 "$rc"
-check '7d. the refused re-add leaves the lane alone' native "$(jq -r '.legs[0].lane' "$m8")"
+check '7d. the refused re-add leaves the lane alone' native "$(jq -r '.workers[0].lane' "$m8")"
 bash "$SCRIPT" add "$m8" --lockless "$l1" >/dev/null 2>&1; rc=$?
 check '7d. re-adding with --lockless on a locked row is refused (rc 1)' 1 "$rc"
 bash "$SCRIPT" add "$m8" --lane native "$l1" >/dev/null 2>&1; rc=$?
 check '7d. re-adding with the same lane stays a no-op (rc 0)' 0 "$rc"
 bash "$SCRIPT" add "$m8" "$l1" >/dev/null 2>&1; rc=$?
 check '7d. re-adding with no flags stays a no-op (rc 0)' 0 "$rc"
-check '7d. still one row' 1 "$(jq '.legs | length' "$m8")"
+check '7d. still one row' 1 "$(jq '.workers | length' "$m8")"
 
 # an optional autocompact A/B arm is stored, validated and conflict-checked.
 m9="$tmp/m9.json"
 bash "$SCRIPT" add "$m9" --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. add --arm 400k (rc 0)' 0 "$rc"
-check '7e. the arm is stored' 400k "$(jq -r '.legs[0].arm' "$m9")"
+check '7e. the arm is stored' 400k "$(jq -r '.workers[0].arm' "$m9")"
 bash "$SCRIPT" add "$m9" "$l2" >/dev/null 2>&1
-check '7e. a worker added with no --arm carries no arm key' false "$(jq '.legs[1] | has("arm")' "$m9")"
+check '7e. a worker added with no --arm carries no arm key' false "$(jq '.workers[1] | has("arm")' "$m9")"
 bash "$SCRIPT" add "$m9" --arm 300k "$l3" >/dev/null 2>&1; rc=$?
 check '7e. a bad --arm value is a usage error (rc 2)' 2 "$rc"
 bash "$SCRIPT" add "$m9" --arm 200k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. re-adding with a different arm is refused (rc 1)' 1 "$rc"
-check '7e. the refused re-add leaves the arm alone' 400k "$(jq -r '.legs[0].arm' "$m9")"
+check '7e. the refused re-add leaves the arm alone' 400k "$(jq -r '.workers[0].arm' "$m9")"
 bash "$SCRIPT" add "$m9" --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. re-adding with the same arm stays a no-op (rc 0)' 0 "$rc"
 

@@ -194,6 +194,12 @@ commands:
                           behind --prune (never bundled into the same Y/n as a
                           converge); run from the same location the
                           corresponding install was run from, same as status
+  approve <id>            answer an AFK request from an SSH shell: asks for the
+                          4-character nonce from the notice and the 6-digit code
+                          (stdin or a masked prompt), and sends them to the root
+                          afk-sudo helper; runs only as the config's operator_user
+                          approve status <id>   print the request's state
+  deny <id>               deny a pending AFK request, same identity rule
   config                  prints the link to the UI Configure page, where himmel
                           capabilities (initiative steps, delegation lanes, opt-in
                           hooks) are toggled without hand-editing files; scripts use:
@@ -429,6 +435,8 @@ function parseArgs(argv) {
     trustVerb: null,   // trust: 'on' | 'off' | 'status' (null = none given)
     targetScope: null, // scope set: 'project' | 'user' (null = none given)
     depsVerb: null,    // deps: status|ensure|upgrade (consumed positionally, see the 'deps' case)
+    afkVerb: null,     // approve/deny: approve|deny|status (consumed positionally, see the 'approve' case)
+    afkId: null,       // approve/deny: the request id
     withModels: false, // deps upgrade: --with-models
     lanes: null,       // install: --lanes csv (null = ask, or take the default)
     withCodex: false,  // install: --with-codex (opt-in lane)
@@ -604,6 +612,20 @@ function parseArgs(argv) {
           return args;
         }
         args.targetScope = a;
+        break;
+      // `approve <id>`, `approve status <id>` and `deny <id>` answer an AFK request over SSH. Each consumes its
+      // id here; `status` after `approve` is a verb, not the top-level `status` subcommand, as under `deps`.
+      case 'approve': {
+        if (!setSubcommand('approve')) return args;
+        const next = argv[++i];
+        args.afkVerb = next === 'status' ? 'status' : 'approve';
+        args.afkId = next === 'status' ? argv[++i] : next;
+        break;
+      }
+      case 'deny':
+        if (!setSubcommand('deny')) return args;
+        args.afkVerb = 'deny';
+        args.afkId = argv[++i];
         break;
       case 'deps': {
         // Consumes its verb (status|ensure|upgrade) as part of THIS case —
@@ -8531,6 +8553,9 @@ async function main() {
   }
   if (args.subcommand === 'deps') {
     return await cmdDeps(args);
+  }
+  if (args.subcommand === 'approve' || args.subcommand === 'deny') {
+    return await require('./lib/afk-approve').runAfkApprove({ verb: args.afkVerb, id: args.afkId });
   }
   // parseArgs already rejected unknown subcommands, so this is unreachable.
   console.error(`himmelctl: unknown command: ${args.subcommand}`);

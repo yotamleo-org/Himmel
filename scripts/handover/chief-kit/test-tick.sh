@@ -1660,7 +1660,7 @@ not_contains 'a wrapped (FREE) worker with no session omits the zero procs count
 #   livestate=MALFORMED:N2;DRIFT:N1
 tpl3287="$HERE/../../../docs/handover/chief-template.md"
 awk '/^## Live state$/ { keep = 1 } /^## Compact instructions$/ { keep = 0 } keep' "$tpl3287" > "$W/handover/chief.md"
-contains 'the template Live state section was extracted (HIMMEL-3287 precondition)' "$(cat "$W/handover/chief.md")" 'legs: '
+contains 'the template Live state section was extracted (HIMMEL-3287 precondition)' "$(cat "$W/handover/chief.md")" 'workers: '
 o3287="$(bash "$SUT" --workers '')"
 contains 'the chief template'"'"'s own legs: placeholder reads livestate=ok on a chief with no workers (HIMMEL-3287)' "$o3287" 'livestate=ok '
 case "$o3287" in

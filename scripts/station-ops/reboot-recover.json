@@ -1,0 +1,10 @@
+{"name": "reboot-recover",
+ "version": 1,
+ "run_as": "root",
+ "timeout_s": 30,
+ "effect": "arm: writes the root-owned marker /var/lib/himmel/reboot-recover.json (operator user, handover doc, repo) and installs the user unit himmel-recover.service for every user session; after the next login it checks the services, verifies the Telegram bridge, re-arms the chief from <doc> and sends a status, once per arming. disarm: removes the marker, so a later login does nothing. With no marker the unit does not start",
+ "params": {
+  "action": {"enum": ["arm", "disarm"]},
+  "doc": {"re": "^/[A-Za-z0-9._/-]{1,300}\\.md$", "when": "action=arm"},
+  "repo": {"re": "^/[A-Za-z0-9._/-]{1,250}$", "when": "action=arm"}
+ }}

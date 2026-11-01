@@ -12,8 +12,8 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo run-request        --session S --ticket T --blocked-by B [--as USER] [--cwd DIR] [--why W] -- ARGV...
                               (stdin of this process is the command's stdin, at most 64 KiB)
   afk-sudo op-request         --session S --ticket T NAME key=value...   (a named station op from scripts/station-ops)
-  afk-sudo approve ID --from SENDER --chat CHAT      (`NONCE CODE` is read from stdin)
-  afk-sudo deny ID --from SENDER --chat CHAT
+  afk-sudo approve ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]   (`NONCE CODE` is read from stdin)
+  afk-sudo deny ID --from SENDER --chat CHAT [--via telegram|ssh --approver NAME]
   afk-sudo status ID  |  run-status ID
   afk-sudo lockdown --from SENDER --chat CHAT   (operator only; sets enabled: false and denies every pending request; takes nothing that turns anything on)
   afk-sudo run-result ID [--stream stdout|stderr]
@@ -1270,6 +1270,7 @@ OP_NAME = re.compile(r"[a-z][a-z0-9-]{0,30}")
 OP_KEY = re.compile(r"[a-z_]{1,20}")
 OP_STATUS = re.compile(r"op=([a-z][a-z0-9-]*) id=(\S+) result=(changed|unchanged|would-change|bad-param|failed)(?: name=([a-z_]+))? detail=(.*)")
 OP_PARAM_CAP = 400
+OP_RUN_AS = ("root", "operator-user")
 OP_CHECK_S = 30
 
 
@@ -1321,7 +1322,7 @@ def load_op(name):
         raise OpChanged(name) from e
     if schema.get("name") != name or schema.get("version") != entry.get("version") or not isinstance(schema.get("params"), dict):
         raise OpChanged(name)
-    if schema.get("run_as") != "root":  # ponytail: root ops only; the operator-user ops arrive with OPS-2
+    if schema.get("run_as") not in OP_RUN_AS:
         raise OpUnknown(name)
     return entry, schema, script
 
@@ -1353,12 +1354,24 @@ def bad_param(schema, params):
     return None
 
 
-def op_argv(script, rid, op_user, schema, params):
+def op_argv(script, rid, op_user, schema, params, session=None):
+    """The op's argv. An op whose schema says `"wants_session": true` also gets `--session <the requesting session>`,
+    after its parameters (so the never-remote floor, which drops the first five elements, never reads it)."""
     argv = [script, "--id", rid, "--operator-user", op_user]
     for k in schema["params"]:
         if k in params:
             argv += [f"--{k}", params[k]]
+    if schema.get("wants_session") is True and session:
+        argv += ["--session", session]
     return argv
+
+
+def own_session(schema, params, session):
+    """True when the op's schema names a parameter (`not_session`) that must differ from the requesting session and
+    does not: a chief asking to restart itself."""
+    key = schema.get("not_session")
+    value = params.get(key, "") if isinstance(key, str) else ""
+    return bool(value) and bool(session) and session in (value, clean(value))
 
 
 def op_floor_argv(name, schema, params):
@@ -1367,10 +1380,24 @@ def op_floor_argv(name, schema, params):
     return [name] + op_argv("", "", "", schema, params)[5:]
 
 
-def run_op(argv, schema):
-    """Run the installed script and parse its last status line: (exit code, status match or None, streams, ms)."""
+def run_op(argv, schema, as_pw=None):
+    """Run the installed script and parse its last status line: (exit code, status match or None, streams, ms).
+    A schema with `run_as: operator-user` runs as the operator (setpriv drops uid, gid and groups, no new privileges,
+    no capabilities; a fixed environment with that user's HOME); any other runs as the helper's own user, root."""
     timeout = cfg_int(schema, "timeout_s", 60, 1, 1800)
-    rc, streams, ms = capture(argv, op_env(), "/", None, timeout)
+    env = op_env()
+    not_run = (127, None, {k: (b"", 0, hashlib.sha256().hexdigest()) for k in ("stdout", "stderr")}, 0)
+    if schema.get("run_as") == "operator-user":
+        if as_pw is None:
+            return not_run
+        env.update({"HOME": as_pw.pw_dir, "USER": as_pw.pw_name, "LOGNAME": as_pw.pw_name,
+                    "XDG_RUNTIME_DIR": f"/run/user/{as_pw.pw_uid}"})
+        if not SEAM:
+            sp = setpriv_path()
+            if not sp:
+                return not_run
+            argv = [sp, f"--reuid={as_pw.pw_uid}", f"--regid={as_pw.pw_gid}", "--init-groups", "--no-new-privs", "--inh-caps=-all"] + argv
+    rc, streams, ms = capture(argv, env, "/", None, timeout)
     lines = streams["stdout"][0].decode("utf-8", "replace").splitlines()
     st = next((m for m in map(OP_STATUS.fullmatch, reversed(lines)) if m), None)
     return rc, st, streams, ms
@@ -1381,7 +1408,7 @@ def make_op_builder(spec):
     def build(rid, created, expires):
         rec = {"v": 1, "id": rid, "kind": "op", "name": spec["name"], "version": spec["version"],
                "script_sha256": spec["script_sha256"], "schema_sha256": spec["schema_sha256"], "params": spec["params"],
-               "effect": spec["effect"], "check": spec["check"], "session": spec["session"], "ticket": spec["ticket"],
+               "run_as": spec["run_as"], "effect": spec["effect"], "check": spec["check"], "session": spec["session"], "ticket": spec["ticket"],
                "created": created, "expires": expires}
         digest = rec_hash(rec)
         private_dir(RECORDS)
@@ -1399,7 +1426,8 @@ def op_facts(rec, nonce, digest):
     cut = False
     head = [f"🔧⚠️ AFK op <b>{esc(rec['name'])[0]}</b> v{int(rec['version'])} {rec['id']} · expires "
             f"{time.strftime('%H:%MZ', time.gmtime(rec['expires']))} ({left} min) · nonce <b>{nonce}</b>",
-            "Run as: <b>⚠️ ROOT</b>", f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]}"]
+            "Run as: <b>⚠️ ROOT</b>" if rec.get("run_as", "root") == "root" else "Run as: <b>the operator user</b> (not root)",
+            f"Session: {esc(rec['session'])[0]} · {esc(rec['ticket'])[0]}"]
     body = ["params:" if rec["params"] else "params: none"]
     for k, v in rec["params"].items():
         t, c = elem(v, EL_CAP, EL_KEEP)
@@ -1418,7 +1446,8 @@ def op_facts(rec, nonce, digest):
 
 
 def execute_op(payload, config):
-    """Re-check the installed op and its parameters against what the operator approved, then run it as root."""
+    """Re-check the installed op and its parameters against what the operator approved, then run it (as root, or as
+    the operator user when its schema says so)."""
     rid = payload["id"]
     try:
         rec = load_record(rid)
@@ -1434,15 +1463,19 @@ def execute_op(payload, config):
             return {"result": "changed"}
         if bad_param(schema, rec["params"]) is not None:
             return {"result": "bad-param"}
+        if rec.get("run_as", "root") != schema["run_as"]:
+            return {"result": "changed"}
+        if own_session(schema, rec["params"], rec.get("session")):
+            return {"result": "self-restart"}
         op_pw = user_pw(config.get("operator_user"))
         if op_pw is None:
             return {"result": "bad-user"}
-        argv = op_argv(script, rid, op_pw.pw_name, schema, rec["params"])
+        argv = op_argv(script, rid, op_pw.pw_name, schema, rec["params"], rec.get("session"))
         extra = config.get("never_remote_extra")
         rule = nr.check(op_floor_argv(rec["name"], schema, rec["params"]), [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
         if rule:
             return {"result": "never-remote", "rule": rule}
-        rc, st, streams, ms = run_op(argv, schema)
+        rc, st, streams, ms = run_op(argv, schema, op_pw)
     except (OSError, KeyError, TypeError, ValueError, ab.Refused):
         return {"result": "hash-mismatch"}
     out, err = streams["stdout"], streams["stderr"]
@@ -1495,7 +1528,11 @@ def op_request(broker, config, args):
         refuse_row(dict(meta, kind="op", params={k: clean(v, 120) for k, v in params.items()}), "bad-param", param=bad)
         print(f"result=bad-param name={bad}")
         return 5
-    argv = op_argv(script, "check", op_pw.pw_name, schema, params)
+    if own_session(schema, params, meta["session"]):  # a chief cannot restart itself; the op script refuses it too
+        refuse_row(dict(meta, kind="op", params=params), "self-restart", param=schema["not_session"])
+        print(f"result=self-restart name={schema['not_session']}")
+        return 5
+    argv = op_argv(script, "check", op_pw.pw_name, schema, params, meta["session"])
     extra = config.get("never_remote_extra")
     rule = nr.check(op_floor_argv(name, schema, params), [], "/", op_pw.pw_dir, extra if isinstance(extra, list) else [])
     if rule:
@@ -1506,7 +1543,7 @@ def op_request(broker, config, args):
     if not token:
         print("result=no-notice-bot")
         return 5
-    rc, st, _, _ = run_op(argv + ["--check"], dict(schema, timeout_s=OP_CHECK_S))
+    rc, st, _, _ = run_op(argv + ["--check"], dict(schema, timeout_s=OP_CHECK_S), op_pw)
     if st and st.group(3) == "bad-param":  # a rule only the script can judge (an opener's owner, mode and place)
         refuse_row(dict(meta, kind="op", params=params), "bad-param", param=st.group(4) or "?")
         print(f"result=bad-param name={st.group(4) or '?'}")
@@ -1516,7 +1553,7 @@ def op_request(broker, config, args):
         print(f"result=check-failed detail={clean(st.group(5), 200) if st else 'no status line'}")
         return 5
     spec = {"name": name, "version": entry["version"], "script_sha256": entry["sha256"], "schema_sha256": entry["schema_sha256"],
-            "params": params, "effect": clean(schema.get("effect", ""), 600), "check": clean(st.group(5), 400),
+            "params": params, "run_as": schema["run_as"], "effect": clean(schema.get("effect", ""), 600), "check": clean(st.group(5), 400),
             "session": meta["session"], "ticket": meta["ticket"]}
     window = cfg_int(config.get("ops"), "ttl_s", 900, 30, 3600)
     broker.retain = prune
@@ -1619,6 +1656,11 @@ def main(argv):
             a.add_argument("id")
         a.add_argument("--from", dest="sender", type=int, required=True)
         a.add_argument("--chat", type=int, required=True)
+        if verb != "lockdown":
+            # How the approval arrived and who gave it, for the ledger. The Telegram route
+            # passes neither; himmelctl approve|deny passes `--via ssh --approver <operator_user>`.
+            a.add_argument("--via", default="telegram")
+            a.add_argument("--approver", default=None)
     for verb in ("status", "run-status"):
         sub.add_parser(verb).add_argument("id")
     g = sub.add_parser("run-result")
@@ -1714,7 +1756,8 @@ def main(argv):
             else:
                 nonce, code = "", toks[0] if toks else ""
             t0 = time.monotonic()
-            pending, res = broker.approve(args.id, code, args.sender, args.chat, lambda payload: execute(payload, config), nonce)
+            pending, res = broker.approve(args.id, code, args.sender, args.chat, lambda payload: execute(payload, config), nonce,
+                                          args.via, clean(args.approver, 64) if args.approver else None)
             try:
                 send_result(config, args.id, res, time.monotonic() - t0)
             except (ab.Refused, OSError, ValueError, KeyError, TypeError):
@@ -1728,7 +1771,7 @@ def main(argv):
             print(f"result=ran id={args.id} exit={res['exit']}" + (f" op_result={res['op_result']}" if res.get("op") else "")
                   + f" argv={pending['display']}")
         elif args.verb == "deny":
-            broker.deny(args.id, args.sender, args.chat)
+            broker.deny(args.id, args.sender, args.chat, args.via, clean(args.approver, 64) if args.approver else None)
             print(f"result=denied id={args.id}")
         else:
             print(f"result={broker.status(args.id)} id={args.id}")

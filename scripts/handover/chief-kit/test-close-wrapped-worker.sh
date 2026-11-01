@@ -466,7 +466,7 @@ fleet_manifest="$W/fleet.json"
 bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$DOC" "$W/HIMMEL-9-N2-other.md"
 rc=0; out=$(run --fleet "$fleet_manifest" "$DOC" 2>&1) || rc=$?
 check 'fleet: successful no-worktree close returns zero' 0 "$rc"
-check 'fleet: close removes only its own doc' "$W/HIMMEL-9-N2-other.md" "$(jq -r '.legs[].doc' "$fleet_manifest")"
+check 'fleet: close removes only its own doc' "$W/HIMMEL-9-N2-other.md" "$(jq -r '.workers[].doc' "$fleet_manifest")"
 bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$DOC"
 fleet_before="$(cat "$fleet_manifest")"
 mkdoc '- 10:00 LIVE - not wrapped'
@@ -483,7 +483,7 @@ for fleet_mode in ok not-candidate in-use fail; do
     bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$DOC"
     mkdoc '- 10:00 WRAPPED - done' "worktree: \`$WT/.claude/worktrees/demo\`"
     rc=0; out=$(CWL_CLEAN_MODE="$fleet_mode" run --fleet "$fleet_manifest" "$DOC" 2>&1) || rc=$?
-    fleet_present="$(jq --arg d "$DOC" 'any(.legs[]; .doc == $d)' "$fleet_manifest")"
+    fleet_present="$(jq --arg d "$DOC" 'any(.workers[]; .doc == $d)' "$fleet_manifest")"
     if [ "$fleet_mode" = fail ]; then
         check 'fleet: failed prune status' 1 "$rc"
         check 'fleet: failed prune keeps doc' true "$fleet_present"
@@ -1480,7 +1480,7 @@ check "resume N7c, original gone: nothing signaled" "$(cat "$CALLS")" ""
 bash "$HERE/fleet-manifest.sh" add "$W/closed-already.fleet.json" "$RDOC" "$W/HIMMEL-9-N2-other.md"
 rc=0; out=$(run --fleet "$W/closed-already.fleet.json" "$RDOC" 2>&1) || rc=$?
 check "closed-already: --fleet rc 0" "$rc" "0"
-check "closed-already: the manifest keeps only the other worker" "$W/HIMMEL-9-N2-other.md" "$(jq -r '.legs[].doc' "$W/closed-already.fleet.json")"
+check "closed-already: the manifest keeps only the other worker" "$W/HIMMEL-9-N2-other.md" "$(jq -r '.workers[].doc' "$W/closed-already.fleet.json")"
 
 # A plain N7b doc is its own worker: with its session gone it never claims the live N7 window.
 BDOC="$W/HIMMEL-9-N7b-demo-2026-01-01.md"
@@ -1574,7 +1574,7 @@ check "sweep: exactly two sessions signaled" "$(grep -c '^kill -TERM ' "$CALLS")
 not_contains "sweep: the still-working worker is never signaled" "$(cat "$CALLS")" "kill -TERM 272"
 not_contains "sweep: the held WRAPPED worker is never signaled" "$(cat "$CALLS")" "kill -TERM 273"
 contains "sweep: summary names the counts" "$out" "sweep: closed=2 refused=0 skipped=2"
-check "sweep: held and live workers stay in the manifest" "$(printf '%s\n%s' "$SW_HELD" "$SW_C")" "$(jq -r '.legs[].doc' "$sweep_manifest")"
+check "sweep: held and live workers stay in the manifest" "$(printf '%s\n%s' "$SW_HELD" "$SW_C")" "$(jq -r '.workers[].doc' "$sweep_manifest")"
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$SW_HELD" "$token" >/dev/null 2>&1
 # a sweep without a manifest is a usage error
 rc=0; run --sweep >/dev/null 2>&1 || rc=$?

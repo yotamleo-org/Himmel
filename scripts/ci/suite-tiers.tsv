@@ -541,6 +541,7 @@ scripts/hermes/test-parity-measure.sh	pr	static-gate
 scripts/hermes/test-soul-markers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hermes/test-tier-coupling.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-adopter-profile-lane-allowlist-cache-fallback.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/himmelctl/test/test-afk-approve.sh	pr	guard
 scripts/himmelctl/test/test-bridge-persistence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-config-feed-worktree-parity.sh	pr	static-gate
 scripts/himmelctl/test/test-config-feed.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1210,3 +1211,4 @@ scripts/handover/chief-kit/test-enable-remote-control.sh	pr	guard
 scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief wake-class measurement script, no gate role, HIMMEL-6541
 marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	local	behaviour suite, new (HIMMEL-8416)
 scripts/station-ops/test-station-ops.sh	pr	guard
+scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new for HIMMEL-8349 (series-next.sh, slice S2b)

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check(); backtick spans are literal
 # scripts/handover/chief-kit/test-live-state.sh - suite for live-state.sh
-# which renders a chief doc's `## Live state` `legs:` entries
+# which renders a chief doc's `## Live state` `workers:` entries
 # from its fleet manifest + the held worker locks:
 #   1. a held manifest worker gets `<label>:<nonce>:<lock-token>:<pid>`, the lock
 #      token read from the lock, the nonce from --nonce (a new worker)
 #   2. a rerun with no flags keeps the chief-written nonce and pid
 #   3. a manifest worker that holds no lock is left out; a worker off the manifest drops
 #   4. a new worker with no --nonce is refused and the doc is untouched
-#   5. prose on the legs: line survives; other fields and sections are untouched
+#   5. prose on the workers: line survives; other fields and sections are untouched
 #   6. --print writes nothing; the rendered line is what tick.sh's parser reads
-#   7. a chief doc with no `legs:` line is refused
+#   7. a chief doc with neither a `workers:` nor a `legs:` line is refused
 #
 # Hermetic: temp dir + its own HANDOVER_DIR. PLATFORM GUARD: Linux-only kit.
 set -uo pipefail
@@ -65,7 +65,7 @@ check '4. the refused run leaves the doc untouched' "$before" "$(cat "$con")"
 # 1. nonce supplied; token from the lock.
 bash "$SCRIPT" "$con" --nonce N61=nonce-61 --nonce N65=nonce-65 --pid N61=111 --pid N65=222 >/dev/null 2>&1; rc=$?
 check '1. render succeeds' 0 "$rc"
-line="$(grep '^legs:' "$con")"
+line="$(grep '^workers:' "$con")"
 case "$line" in *'`N61:nonce-61:tok-one:111`'*) r=yes ;; *) r=no ;; esac
 check '1. N61 entry carries its nonce, the lock token and pid' yes "$r"
 case "$line" in *'`N65:nonce-65:tok-two:222`'*) r=yes ;; *) r=no ;; esac
@@ -75,7 +75,7 @@ check '3. a manifest worker holding no lock is left out' none "$r"
 case "$line" in *N99*) r=has ;; *) r=none ;; esac
 check '3. a worker off the manifest drops' none "$r"
 case "$line" in *'(N50 WRAPPED earlier)'*) r=kept ;; *) r=lost ;; esac
-check '5. prose on the legs: line survives' kept "$r"
+check '5. prose on the workers: line survives' kept "$r"
 check '5. the queue: field is untouched' 'queue: none' "$(grep '^queue:' "$con")"
 check '5. a legs: bullet outside Live state is untouched' '- legs: `N61:not:an:entry` in a bullet below the section' "$(grep '^- legs:' "$con")"
 
@@ -89,21 +89,21 @@ check '2. a rerun changes nothing' "$(cat "$tmp/after1")" "$(cat "$con")"
 bash "$LOCK" release "$d2" tok-two >/dev/null 2>&1
 bash "$LOCK" acquire "$d2" tok-two-b >/dev/null 2>&1
 bash "$SCRIPT" "$con" >/dev/null 2>&1
-case "$(grep '^legs:' "$con")" in *'`N65:nonce-65:tok-two-b:222`'*) r=yes ;; *) r=no ;; esac
+case "$(grep '^workers:' "$con")" in *'`N65:nonce-65:tok-two-b:222`'*) r=yes ;; *) r=no ;; esac
 check '2b. a re-acquired lock updates the token, keeps nonce and pid' yes "$r"
 
 # 3b. removing a worker from the manifest drops it.
 bash "$FM" remove "$m" N65 >/dev/null 2>&1
 bash "$SCRIPT" "$con" >/dev/null 2>&1
-case "$(grep '^legs:' "$con")" in *N65*) r=has ;; *) r=none ;; esac
+case "$(grep '^workers:' "$con")" in *N65*) r=has ;; *) r=none ;; esac
 check '3b. a worker removed from the manifest drops' none "$r"
 
 # 6. --print writes nothing.
 cp "$con" "$tmp/after2"
 out="$(bash "$SCRIPT" "$con" --print 2>/dev/null)"
 check '6. --print leaves the doc untouched' "$(cat "$tmp/after2")" "$(cat "$con")"
-case "$out" in 'legs: `N61:nonce-61:tok-one:111`'*) r=yes ;; *) r=no ;; esac
-check '6. --print prints the legs: line' yes "$r"
+case "$out" in 'workers: `N61:nonce-61:tok-one:111`'*) r=yes ;; *) r=no ;; esac
+check '6. --print prints the workers: line' yes "$r"
 
 # 7. no legs: line.
 printf '# c\n\n## Live state\n\nqueue: none\n' > "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md"
@@ -122,18 +122,18 @@ con9="$HANDOVER_DIR/b/HIMMEL-nextleg-Z-chief.md"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\n' > "$con9"
 bash "$FM" add "${con9%.md}.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$con9" --nonce N61=n9 --pid N61=9 >/dev/null 2>&1
-check '9. legs: none becomes the entries alone' 'legs: `N61:n9:tok-one:9`' "$(grep '^legs:' "$con9")"
+check '9. legs: none becomes the entries alone' 'workers: `N61:n9:tok-one:9`' "$(grep '^workers:' "$con9")"
 bash "$FM" remove "${con9%.md}.fleet.json" N61 >/dev/null 2>&1
 bash "$SCRIPT" "$con9" >/dev/null 2>&1
 bash "$SCRIPT" "$con9" >/dev/null 2>&1
-check '9. an empty render is a stable single none' 'legs: none' "$(grep '^legs:' "$con9")"
+check '9. an empty render is a stable single none' 'workers: none' "$(grep '^workers:' "$con9")"
 
 # 10. a backslash in the preserved prose survives the rewrite (not awk-interpreted).
 con10="$HANDOVER_DIR/b/HIMMEL-nextleg-W-chief.md"
 printf '# c\n\n## Live state\n\nlegs: `N61:n10:tok-one:10` note a\\nb \\t end\nqueue: none\n' > "$con10"
 bash "$FM" add "${con10%.md}.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$con10" >/dev/null 2>&1
-check '10. backslashes in prose are written verbatim' 'legs: `N61:n10:tok-one:10` note a\nb \t end' "$(grep '^legs:' "$con10")"
+check '10. backslashes in prose are written verbatim' 'workers: `N61:n10:tok-one:10` note a\nb \t end' "$(grep '^workers:' "$con10")"
 check '10. the doc keeps its line count' 6 "$(wc -l < "$con10" | tr -d ' ')"
 
 # 11. a lock status failure (not "free") refuses and leaves the doc untouched.
@@ -188,7 +188,7 @@ check '15. the lockless row is listed with its lane and doc' "lockless: N90 (dee
 check '15. the stale lockless line is replaced, not stacked' 1 "$(grep -c '^lockless:' "$lk")"
 case "$lk_err" in *N90*) r=noise ;; *) r=quiet ;; esac
 check '15. a lockless row is not reported as a worker that holds no lock' quiet "$r"
-check '15. the legs: line carries only the locked worker' 'legs: `N61:n14:tok-one:14`' "$(grep '^legs:' "$lk")"
+check '15. the workers: line carries only the locked worker' 'workers: `N61:n14:tok-one:14`' "$(grep '^workers:' "$lk")"
 check '15. the queue: field is untouched' 'queue: none' "$(grep '^queue:' "$lk")"
 bash "$FM" remove "${lk%.md}.fleet.json" N90 >/dev/null 2>&1
 bash "$SCRIPT" "$lk" >/dev/null 2>&1
@@ -288,7 +288,7 @@ check '21. --digest reads the workers: line' 'workers: `N61:nonce-61:tok-one:111
 printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:tok-one:111`\nqueue: none\n\n## Results\n' > "$wk"
 bash "$SCRIPT" "$wk" >/dev/null 2>&1; rc=$?
 check '21. an old legs: doc over a workers manifest renders' 0 "$rc"
-check '21. that render leaves exactly one worker line, the legs: one' 1 "$(grep -c '^legs:' "$wk")"
+check '21. that render leaves exactly one worker line, a workers: one and no legs: one' '1 0' "$(grep -c '^workers:' "$wk") $(grep -c '^legs:' "$wk")"
 printf '# c\n\n## Live state\n\nlegs: `N99:old:old:1`\nworkers: `N61:nonce-61:tok-one:111`\nqueue: none\n\n## Results\n' > "$wk"
 out="$(bash "$SCRIPT" "$wk" --print 2>/dev/null)"
 case "$out" in 'workers: `N61:nonce-61:tok-one:111`'*) r=workers ;; *) r="[$out]" ;; esac
@@ -301,6 +301,68 @@ check '21. with HIMMEL_LEGACY_NAMES=0 an old legs manifest is refused' 1 "$rc"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","added":"x"}]}\n' "$d1" > "$wm"
 HIMMEL_LEGACY_NAMES=0 bash "$SCRIPT" "$wk" --print >/dev/null 2>&1; rc=$?
 check '21. with HIMMEL_LEGACY_NAMES=0 an old legs: line is not read' 1 "$rc"
+
+# 22. M1b: the render writes ONE `workers:` line and REPLACES an old `legs:` block in place
+#     (wrapped continuation lines included), entries and prose unchanged, `lockless:` right after.
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","added":"x"}]}\n' "$d1" > "$wm"
+printf '# c\n\n## Live state\n\nhead: abc\nlegs: `N61:nonce-61:tok-one:111` note a\n  wrapped prose b\nqueue: none\n\n## Results\n' > "$wk"
+bash "$SCRIPT" "$wk" >/dev/null 2>&1; rc=$?
+check '22. an old legs: block renders (rc 0)' 0 "$rc"
+check '22. no legs: line is left' 0 "$(grep -c '^legs:' "$wk")"
+check '22. exactly one workers: line' 1 "$(grep -c '^workers:' "$wk")"
+check '22. its entries and prose are unchanged, the wrapped lines joined' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$(grep '^workers:' "$wk")"
+check '22. it sits where the legs: block was, between head: and queue:' 'head: abc|workers: `N61:nonce-61:tok-one:111` note a wrapped prose b|queue: none' "$(sed -n '/^head:/,/^queue:/p' "$wk" | paste -sd'|')"
+out="$(bash "$SCRIPT" "$wk" --print 2>/dev/null)"
+check '22. --print on that doc says workers:' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$out"
+printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\n\n## Results\n' > "$wk"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N61","added":"x"}]}\n' "$d1" > "$wm"
+bash "$SCRIPT" "$wk" --nonce N61=n22 --pid N61=22 >/dev/null 2>&1; rc=$?
+check '22. an old legs: doc over an old legs manifest renders (rc 0)' 0 "$rc"
+check '22. and writes workers:, not legs:' 'workers: `N61:n22:tok-one:22`|0' "$(grep '^workers:' "$wk")|$(grep -c '^legs:' "$wk")"
+
+# 23. A render that picked `legs:` before another render replaced it with `workers:` re-reads the
+#     key under the doc lock and still writes. The parent holds the doc lock, starts the render,
+#     waits until it is blocked in flock (a bounded poll, so its key was picked), then writes the
+#     first renderer's doc with a STALE token and a STALE lockless value: only the second render
+#     can correct them, so a render that does nothing fails the exact assertions below.
+# shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
+. "$HERE/worker-doc-lock.sh"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","added":"x"},{"doc":"%s","label":"N70","lane":"eval","lockless":true,"added":"x"}]}\n' "$d1" "$d2" > "$wm"
+want_workers='workers: `N61:nonce-61:tok-one:111` first'
+want_lockless="lockless: N70 (eval) $d2"
+printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:stale-tok:111` first\nqueue: none\n\n## Results\n' > "$wk"
+lock_rc=0; doc_lock "$wk" test-live-state || lock_rc=$?
+check '23. setup: the test holds the doc lock' 0 "$lock_rc"
+bash "$SCRIPT" "$wk" 9>&- >/dev/null 2>&1 &
+race_pid=$!
+ready=no
+for _ in $(seq 1 100); do
+    if pgrep -P "$race_pid" -x flock >/dev/null 2>&1; then ready=yes; break; fi
+    kill -0 "$race_pid" 2>/dev/null || break
+    sleep 0.1
+done
+check '23. setup: the render is blocked on the doc lock before the doc changes' yes "$ready"
+printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:stale-tok:111` first\nlockless: N70 (eval) stale-doc\nqueue: none\n\n## Results\n' > "$wk"
+doc_unlock
+wait "$race_pid"; rc=$?
+check '23. the render that lost the legs: to workers: race exits 0' 0 "$rc"
+check '23. it corrects the stale token on the workers: line' "$want_workers" "$(grep '^workers:' "$wk")"
+check '23. it corrects the stale lockless: line' "$want_lockless" "$(grep '^lockless:' "$wk")"
+check '23. it leaves no legs: line' 0 "$(grep -c '^legs:' "$wk")"
+
+# 24. The key can also flip between the pick and the read of the block (a stub jq flips the doc on
+#     the manifest read, which runs between the two): the render restarts instead of refusing an
+#     empty block.
+mkdir -p "$tmp/flipbin"
+printf '# c\n\n## Live state\n\nworkers: `N61:nonce-61:stale-tok:111` first\nqueue: none\n\n## Results\n' > "$tmp/flip-src.md"
+printf '#!/usr/bin/env bash\nif [ -f %q ]; then cp %q %q; rm -f %q; fi\nexec %q "$@"\n' "$tmp/flip-src.md" "$tmp/flip-src.md" "$wk" "$tmp/flip-src.md" "$(command -v jq)" > "$tmp/flipbin/jq"
+chmod +x "$tmp/flipbin/jq"
+printf '# c\n\n## Live state\n\nlegs: `N61:nonce-61:stale-tok:111` first\nqueue: none\n\n## Results\n' > "$wk"
+PATH="$tmp/flipbin:$PATH" bash "$SCRIPT" "$wk" >/dev/null 2>"$tmp/flip-err"; rc=$?
+check '24. a key that flips before the block is read does not refuse (rc 0)' 0 "$rc"
+check '24. it renders the corrected workers: line' "$want_workers" "$(grep '^workers:' "$wk")"
+check '24. it renders the lockless: line' "$want_lockless" "$(grep '^lockless:' "$wk")"
+check '24. it leaves no legs: line and no refusal text' '0 0' "$(grep -c '^legs:' "$wk") $(grep -c 'no workers: line' "$tmp/flip-err")"
 
 [ "$t1" = tok-one ] || { echo "FAIL - setup: lock token [$t1]"; fails=$((fails+1)); }
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }

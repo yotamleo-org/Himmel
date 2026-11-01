@@ -275,6 +275,14 @@ sent writes a `notice` row (`notice-failed`). A wrong nonce writes a `code-check
 nonce, the seed, any output or a stdin body. A `busy` refusal writes one row per session per 10
 minutes.
 
+Every row an approve or a deny writes also carries `via` (`telegram` or `ssh`) and `approver` (see
+[Approving over SSH](#approving-over-ssh)): the `code-check` rows (`approved` and each refusal:
+`not-operator`, `locked`, `expired`, `no-pending`, `bad-nonce`, `replay`, `wrong-code`, `no-code`),
+the `deny` rows (a single deny, its refusals, and each request a lockdown denies), and the `run` or
+`grant` row that holds the re-run's result. Taken with the request row (which holds `blocked_by`), the
+ledger shows per request the denial that caused it, the request, who approved or denied and how, and
+the result of the one re-run. An `expire` row is not an answer, so it carries neither field.
+
 ## Spent steps (HIMMEL-8078 part 2)
 
 A code valid for request A is refused (`replay`) for request B when A ended without
@@ -387,6 +395,21 @@ to the manifest; the repo copy is never executed. OPS-1 ships `cron-entry.sh` (t
 (`pacman -Syu` on Arch, `apt-get` on Debian; log in `/var/log/himmel/ops/<id>.log`), each with its
 `<op>.json` schema.
 
+OPS-2 (HIMMEL-8562) adds three more, each `<op>.sh` plus `<op>.json`:
+
+| op | runs as | what it does |
+| --- | --- | --- |
+| `autologin` (`autologin.sh`; `action=enable\|disable`, `session` with enable) | root | Turns the display manager's automatic login for the operator user on or off; enable names an installed desktop session (LightDM's own default is a distro session that may be missing). It follows `/etc/systemd/system/display-manager.service` to SDDM (`/etc/sddm.conf.d/himmel-autologin.conf`), LightDM (`/etc/lightdm/lightdm.conf.d/50-himmel-autologin.conf`) or GDM (the two `[daemon]` keys in `custom.conf`); any other display manager, or none, is refused. Its detail ends `keyring=present-locked-at-autologin` (an automatic login never types the login password, so an existing login keyring stays locked) or `keyring=none`. |
+| `reboot-recover` (`action=arm\|disarm`, `doc`, `repo`) | root | `arm` writes the root-owned marker `/var/lib/himmel/reboot-recover.json` and the user unit `/etc/systemd/user/himmel-recover.service` (enabled through `default.target.wants`, `ConditionPathExists` on the marker). At the next login `scripts/station-ops/recover.sh` runs as the operator, once per arming: it checks the services, verifies the bridge, re-arms the chief from `doc` with `arm-resume.sh --handover` and sends a status through the bridge bot. With no marker it does nothing. |
+| `chief-restart` (`chief-restart.sh`; `chief`, `doc`, `repo`) | operator user | Stops the operator's running session named `chief` (SIGTERM, SIGKILL after 15 s) and re-arms it from `doc`; its stale queue lock passes to the re-armed session. A chief cannot restart itself. |
+
+An op whose schema says `"run_as": "operator-user"` runs as `operator_user` under `setpriv` (uid, gid and groups
+dropped, no new privileges, no capabilities, a fixed environment with that user's `HOME`) and its notice says "Run as: the
+operator user (not root)"; `"wants_session": true` appends `--session <the requesting session>` after the
+parameters, and `"not_session": "<param>"` makes the helper refuse (`result=self-restart`, a ledger row, before any
+notice, and again at approval) a request whose session equals that parameter. `chief-restart` sets all three, and its script
+refuses a self-restart as well.
+
 ```text
 afk-sudo op-request --session S --ticket T NAME key=value...     (or /op NAME key=value... from the operator's DM)
 ```
@@ -409,6 +432,48 @@ directories all the way up are root-owned and not group/other-writable. The neve
 script's own path, so a parameter that names `/usr/local/libexec/himmel` is refused (`cron-system` root jobs
 are therefore limited to `/usr/bin` and `/usr/sbin`). `ops.enabled` is off by default; `lockdown` denies a
 pending op request like any other.
+
+## Approving over SSH
+
+HIMMEL-8067. `himmelctl approve <id>`, `himmelctl deny <id>` and `himmelctl approve status <id>` let the
+operator answer a pending request from an SSH shell, for example after a classifier denial when the phone
+is out of reach. It is a thin caller of the same root helper the Telegram route calls:
+
+```text
+sudo -n /usr/local/libexec/himmel/afk-sudo approve ID --from OP --chat OP --via ssh --approver USER   # NONCE CODE on stdin
+sudo -n /usr/local/libexec/himmel/afk-sudo deny    ID --from OP --chat OP --via ssh --approver USER
+sudo -n /usr/local/libexec/himmel/afk-sudo status  ID
+```
+
+What the verb checks itself: the id is 8 characters of `a-z2-7`; the reply is a 4-character nonce and a
+6-digit code; the config at `/etc/himmel/afk-sudo.json` names a numeric `operator_id` and an
+`operator_user`, and the caller is that user (checked before anything is sent, for `approve` and `deny`; a
+read of `status` needs no identity). The nonce is the one root put in the notice-bot message, and it and
+the code travel on stdin only (a masked prompt on a terminal), so neither is in any argv, log or ledger
+row. The `--from`/`--chat` the helper checks against `operator_id` always come from the config, never from
+the caller's input.
+
+What the helper and broker still check, unchanged for both paths: the operator id, the lockout, the
+request's window, the nonce (`bad-nonce`), the TOTP code and its single-use step (`replay`, `wrong-code`),
+the frozen record and its hash (`hash-mismatch`), the file, `argv[0]` and cwd bindings (`changed`), and the
+never-remote floor. A request re-runs at most once, as the exact record the operator was shown; an
+approve of a record changed after the request is refused, and a request nobody approves expires and its
+denial stands. A guard refusal (`--blocked-by hook:<guard>`) is approvable like any other claim, subject
+to the floor. With the station off (`enabled` false) or the run kind off (`run.enabled` false), there is
+nothing to approve and the helper answers `disabled` or `run-disabled`.
+
+`--via` (`telegram` or `ssh`, default `telegram`) and `--approver` (default: the sender id) are the
+caller's claim, like `--from`: a process running as the operator's user can pass any value, and the
+nonce plus the code are the control. They exist so the ledger can say who approved and how.
+The broker refuses an unknown `via` (`bad-via`) before it reads state or writes a row. The Telegram route
+passes neither flag, so its rows say `via=telegram`.
+
+**Deviation from the design spec.** Spec section 5 ends "No SSH approve verb: an operator with a shell
+runs `sudo` directly." The ticket body, its Definition of Done and the operator rulings of 10-29 and
+10-31 require the verb, and "log all actions that are done this way", so the ticket wins. The verb
+adds no approver (the user who may run it can already `sudo` the helper) and the shell route has the
+same code, nonce and floor as Telegram; what it adds is the ledger's `via=ssh` and a CLI that keeps the
+nonce and code out of argv. The spec is amended by the chief, not here.
 
 ## Verbs
 

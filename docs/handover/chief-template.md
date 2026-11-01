@@ -103,7 +103,7 @@ Run these, in order, and write the result as the first bullet under
 > **Authority-bearing state, not a summary:** update on every dispatch, ruling, wrap and GO; a nonce changes **only after** its worker's quote-back.
 > Span `<worker>:<nonce>:<lock-token>:<pid>`; rules: `chief-sections/live-state.md`.
 
-legs: <none dispatched yet — else one entry per leg, in the format above>
+workers: <none dispatched yet — else one entry per worker, in the format above>
 queue: <held queue-lock docs in launch order, or "none">
 last GO: <`<pr>:<sha>`, or "none this shift">
 acked: <relay escalation ids acked this shift (only when a relay is live), or "none">
@@ -119,7 +119,7 @@ tracker: {{TRACKER_URL}}
 
 `SessionStart:compact` re-injects `## Live state` and this section. **Your first
 action after every compaction is the `COMPACTED` bullet**, under `## Results`:
-`- COMPACTED <HH:MM> — legs: <as re-injected>, queue: <as re-injected>, last GO: <as re-injected>`
+`- COMPACTED <HH:MM> — workers: <as re-injected>, queue: <as re-injected>, last GO: <as re-injected>`
 and, in the same batch, `Read` each `specs/decisions/chief-decisions-<date>.md`
 that `decisions:` names.
 If the hook warned that `## Live state` is missing, write it from step 2's lock
