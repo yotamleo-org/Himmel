@@ -100,7 +100,7 @@ check "still-crossed run sends nothing" 0 "$(sends)"
 # ---- 3b. an alert key persisted before the rename reads as the worker key ----
 printf '{"active":{"role-drop:leg":"old text"}}\n' > "$STATE/alert-state.json"
 rm -f "$W/sent"
-run
+HIMMEL_LEGACY_NAMES=1 run
 check "an old role-drop:leg key is not re-alerted or recovered" 0 "$(sends)"
 has "the old key is carried as the worker key" "role-drop:worker" "$STATE/alert-state.json"
 hasnt "the old key is gone from the state" "role-drop:leg" "$STATE/alert-state.json"

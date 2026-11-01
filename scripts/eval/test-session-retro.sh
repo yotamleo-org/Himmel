@@ -62,10 +62,10 @@ python3 "$SR" --ledger "$FX" --top -1 >"$TMP/neg.out" 2>&1; trc=$?
 check "a non-positive --top is a usage error (exit 2)" '[ "$trc" = 2 ]'
 
 printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":"N1","count":1}' '{"ts":"2026-10-08T00:00:01Z","session":"s","class":"c","leg":"N2","count":10}' >"$TMP/two.jsonl"
-python3 "$SR" --ledger "$TMP/two.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/workers.out" 2>&1
-check "example workers rank by worker occurrences within one session" 'grep -qE "c[[:space:]]+N2,N1$" "$TMP/workers.out"'
-python3 "$SR" --ledger "$TMP/two.jsonl" --now 2026-10-09T02:00:00+02:00 >"$TMP/off.out" 2>&1
-check "an offset --now is shown as the UTC instant" 'grep -q ".. 2026-10-09T00:00Z" "$TMP/off.out"'
+python3 "$SR" --ledger "$TMP/two.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/workers.out" 2>&1; w2rc=$?
+check "example workers rank by worker occurrences within one session" '[ "$w2rc" = 0 ] && grep -qE "c[[:space:]]+N2,N1$" "$TMP/workers.out"'
+python3 "$SR" --ledger "$TMP/two.jsonl" --now 2026-10-09T02:00:00+02:00 >"$TMP/off.out" 2>&1; offrc=$?
+check "an offset --now is shown as the UTC instant" '[ "$offrc" = 0 ] && grep -q ".. 2026-10-09T00:00Z" "$TMP/off.out"'
 python3 "$SR" --ledger "$FX" --days -1 >"$TMP/days.out" 2>&1; drc=$?
 check "a non-positive --days is a usage error (exit 2)" '[ "$drc" = 2 ]'
 

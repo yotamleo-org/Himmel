@@ -80,11 +80,14 @@ assert_not_contains "fresh: null kinds omitted" "bridge" "$OUT"
 # a history row written before the rename keeps the old role key: it reads as worker while legacy names are on
 mk_state "$TMP_ROOT/oldkey" $((NOW - 3600))
 printf '{"ts":%s,"overall":98.0,"roles":{"console":99.0,"leg":97.0,"subagent":90.0,"bridge":null,"other":null}}\n' "$((NOW - 3600))" >> "$TMP_ROOT/oldkey/history.jsonl"
-OUT=$(run_line "$TMP_ROOT/oldkey")
-assert_contains "old role key reads as worker" "worker 97.0%" "$OUT"
-OUT=$(HIMMEL_LEGACY_NAMES=0 run_line "$TMP_ROOT/oldkey")
-assert_not_contains "old role key is ignored with legacy names off" "worker 97.0%" "$OUT"
 if [ "$(wc -l <<< "$OUT")" -eq 1 ]; then pass "fresh: exactly one line"; else fail "fresh: exactly one line" "$OUT"; fi
+OLD=$(HIMMEL_LEGACY_NAMES=1 run_line "$TMP_ROOT/oldkey")
+assert_contains "old role key reads as worker" "worker 97.0%" "$OLD"
+OFFRC=0
+OFF=$(HIMMEL_LEGACY_NAMES=0 python3 -I "$LINE" --state-dir "$TMP_ROOT/oldkey" --now "$NOW" 2>&1) || OFFRC=$?
+if [ "$OFFRC" -eq 0 ]; then pass "legacy names off: the line exits 0"; else fail "legacy names off: the line exits 0" "rc=$OFFRC: $OFF"; fi
+assert_contains "legacy names off: the line still renders the cache line" "cache: 7d read ratio" "$OFF"
+assert_not_contains "old role key is ignored with legacy names off: no worker role" "worker" "$OFF"
 
 echo "TEST: baseline healthy"
 mk_state "$TMP_ROOT/ok" $((NOW - 3600))

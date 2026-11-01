@@ -156,8 +156,9 @@ route >/dev/null 2>&1
 check "a fourth worker the same day does not comment twice" '[ "$(calls comment)" = 1 ] && [ "$(decs "$LOG" | jq -r "select(.workers == 4) | .decision")" = skipped:comment-daily ]'
 # a state file written before the rename keeps last_legs: it still dedupes the repeated decision while legacy names are on
 nd="$(dlines "$LOG")"
-jq '(.classes[] | select(has("last_workers"))) |= (.last_legs = .last_workers | del(.last_workers))' "$ST" >"$ST.old" && mv "$ST.old" "$ST"
-route >/dev/null 2>&1
+if jq '(.classes[] | select(has("last_workers"))) |= (.last_legs = .last_workers | del(.last_workers))' "$ST" >"$ST.old"; then mv "$ST.old" "$ST"; else bad "the legacy last_legs state fixture is written"; fi
+check "the fixture carries last_legs and no last_workers before the route" 'jq -e "[.classes[] | select(has(\"last_legs\"))] | length > 0" "$ST" >/dev/null && ! grep -q last_workers "$ST"'
+HIMMEL_LEGACY_NAMES=1 route >/dev/null 2>&1
 check "an old last_legs state key still dedupes a repeated decision: no new line" '[ "$(dlines "$LOG")" = "$nd" ]'
 check "the old state key is carried as last_workers" 'jq -e "[.classes[] | select(has(\"last_workers\"))] | length > 0" "$ST" >/dev/null && ! grep -q last_legs "$ST"'
 
