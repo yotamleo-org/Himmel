@@ -1959,7 +1959,7 @@ has "(8591) core-check is not told --docs-only" "$(cat "$CG/calls.log")" "releas
 lacks "(8591) core-check is not told --docs-only (flag absent)" "$(cat "$CG/calls.log")" "--docs-only"
 has "(8591) spec-check asks the core keys only" "$(grep 'release spec-check' "$CG/calls.log")" "HIMMEL-901"
 lacks "(8591) spec-check is not asked about a NOT-CORE key" "$(grep 'release spec-check' "$CG/calls.log")" "HIMMEL-905"
-has "(8591) the CLI runs from its own checkout" "$(cat "$CG/calls.log")" "(cwd $WORK/cg-stub)"
+has "(8591) the CLI runs from its own checkout" "$(cat "$CG/calls.log")" "(cwd $(cd "$WORK/cg-stub" && pwd -P))"
 # a DESIGN row takes a --top slot and holds no files
 cgt="$(runcg "$CGM" 1 --top 1)"
 [ "$(printf '%s\n' "$cgt" | grep -c "^DESIGN")" = 1 ] && [ "$(printf '%s\n' "$cgt" | grep -c "^LOCAL")" = 0 ] && pass "(8591) a DESIGN row takes a --top slot" || fail "(8591) --top 1 should print exactly the DESIGN row: $cgt"
