@@ -3356,6 +3356,83 @@ else
 fi
 kill "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null; wait "$D_CLAUDE_PID" "$D_WRAPPED_PID" "$D_ENV_PID" 2>/dev/null
 
+# --- T8541a-e: whoever frees a DEAD holder's lock (reap-dead sweep, forced
+# release, stale takeover) also appends that worker's HALTED Results bullet, so
+# the doc's newest marker stops reading LIVE. A live holder's lock, and a doc
+# whose newest marker is already WRAPPED or HALTED, get nothing.
+H_ROOT="$TMPDIR_ROOT/halted-root"
+H_QDIR="$H_ROOT/.locks/queue"
+mkdir -p "$H_ROOT/HIMMEL-8541-test" "$H_QDIR"
+H_HOST="$(hostname 2>/dev/null)"
+# h_dead_pid -- a pid that really ran and was killed, then reaped.
+h_dead_pid() { sleep 30 & local p=$!; kill "$p" 2>/dev/null; wait "$p" 2>/dev/null; printf '%s' "$p"; }
+# h_doc <name> <last-marker-bullet> -- a worker doc whose newest bullet is the given one.
+h_doc() {
+    local d="$H_ROOT/HIMMEL-8541-test/$1.md"
+    printf '%s\n' '# worker doc' "> RETASK token \`fixture\`" '' '## Results (newest at the bottom)' "- 10:00 $2" > "$d"
+    printf '%s' "$d"
+}
+# h_hold <doc> <session> <host> -- really acquire, then age the owner and drop the
+# fresh liveness record so the holder reads as the given (dead or live) session.
+h_hold() {
+    HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$1" held-by-fixture >/dev/null 2>&1
+    local lk; lk="$(find "$H_QDIR" -maxdepth 1 -type d -name "*$(basename "$1" .md).lock" 2>/dev/null | head -n 1)"
+    [ -n "$lk" ] || return 1
+    sed -i.bak -e "s/\"session\":\"[^\"]*\"/\"session\":\"$2\"/" -e "s/\"host\":\"[^\"]*\"/\"host\":\"$3\"/" \
+        -e "s/\"heartbeat\":\"[^\"]*\"/\"heartbeat\":\"$D_OLD_HB\"/" "$lk/owner.json" && rm -f "$lk/owner.json.bak"
+    rm -f "$lk/liveness"
+    printf '%s' "$lk"
+}
+# h_tail <doc> -- the newest `- ` bullet.
+h_tail() { sed -n '/^- /p' "$1" | tail -n 1; }
+
+H_PID="$(h_dead_pid)"
+# a: --reap-dead sweep
+H_DOC_A="$(h_doc halted-reap 'LIVE — working')"
+h_hold "$H_DOC_A" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
+if grepq "$(h_tail "$H_DOC_A")" '^- [0-9:]* HALTED'; then
+    pass "T8541a: --reap-dead of a dead holder's lock appends a HALTED bullet to the worker doc"
+else
+    fail "T8541a: reap left the doc tail as: $(h_tail "$H_DOC_A")"
+fi
+# b: forced release (the chief's QUEUE_LOCK_FORCE_RELEASE), holder dead
+H_DOC_B="$(h_doc halted-force 'LIVE — working')"
+h_hold "$H_DOC_B" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_B" >/dev/null 2>&1
+if grepq "$(h_tail "$H_DOC_B")" '^- [0-9:]* HALTED'; then
+    pass "T8541b: a forced release of a dead holder's lock appends a HALTED bullet"
+else
+    fail "T8541b: forced release left the doc tail as: $(h_tail "$H_DOC_B")"
+fi
+# c: stale takeover by a new session
+H_DOC_C="$(h_doc halted-takeover 'LIVE — working')"
+h_hold "$H_DOC_C" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_C" taker-fixture >/dev/null 2>&1
+if grepq "$(h_tail "$H_DOC_C")" '^- [0-9:]* HALTED'; then
+    pass "T8541c: a stale takeover from a dead holder appends a HALTED bullet"
+else
+    fail "T8541c: takeover left the doc tail as: $(h_tail "$H_DOC_C")"
+fi
+# d: a LIVE holder (this shell's pid) force-released by a chief is not a dead worker
+H_DOC_D="$(h_doc halted-live 'LIVE — working')"
+h_hold "$H_DOC_D" "$H_HOST-pid$$" "$H_HOST" >/dev/null
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_D" >/dev/null 2>&1
+if [ "$(h_tail "$H_DOC_D")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541d: freeing a lock whose holder is alive writes no HALTED bullet"
+else
+    fail "T8541d: a live holder's doc was marked: $(h_tail "$H_DOC_D")"
+fi
+# e: a doc already WRAPPED gets no HALTED on top
+H_DOC_E="$(h_doc halted-wrapped 'WRAPPED — done')"
+h_hold "$H_DOC_E" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+HANDOVER_DIR="$H_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
+if [ "$(h_tail "$H_DOC_E")" = "- 10:00 WRAPPED — done" ]; then
+    pass "T8541e: a doc whose newest marker is WRAPPED is left alone"
+else
+    fail "T8541e: a WRAPPED doc was marked: $(h_tail "$H_DOC_E")"
+fi
+
 # --- T104: preflight warns when a declared file overlaps another live session's edits
 P_ROOT="$TMPDIR_ROOT/pf-handovers"; P_REPO="$TMPDIR_ROOT/pf-repo"
 mkdir -p "$P_ROOT/q" "$P_REPO"
