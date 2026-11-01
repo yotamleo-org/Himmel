@@ -46,6 +46,8 @@ const bashCause = (cls: string) => cls.startsWith("error/") || cls.startsWith("s
   : cls === "denied/other" || cls === "denied/permission-prompt" || !cls.startsWith("denied/") ? "other" : "guard";
 // ponytail: per-row cap on bash_calls keeps one runaway session bounded; raise it if a real session hits it.
 const MAX_BASH_CALLS = 5000;
+// ponytail: per-row cap on the kept call times, a row past it keeps its first MAX_TIMED and says capped; upgrade = a fixed histogram per row.
+const MAX_TIMED = 2000;
 const REPO = resolve(import.meta.dir, "../../..");
 const TRAJECTORY = join(REPO, "scripts/eval/lane-quality/trajectory.py");
 const MAX_BYTES = 200 * 1024 * 1024;
@@ -330,7 +332,9 @@ async function main() {
   const callsByTool: Record<string, number> = Object.create(null);
   const failuresByTool: Record<string, number> = Object.create(null);
   const callDay = new Map<string, string | null>();
-  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number>; bash_calls?: [string, string, string | null][] }>();
+  // Time to result per call (RESULT time minus START time) and the API message each call came from, to tell a call run alone from a batch.
+  const callStart = new Map<string, number>(), callEnd = new Map<string, number>(), callApi = new Map<string, string>();
+  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number>; bash_calls?: [string, string, string | null][]; timing?: { single: number[]; batched: number[]; missing: number; capped?: true } }>();
   const toolRow = (agent: Agent, tool: string, day: string | null) => {
     const key = `${agent.id}\0${day}\0${tool}`;
     let r = health.get(key);
@@ -458,10 +462,13 @@ async function main() {
         callName.set(e.toolCallId, e.toolCallName);
         const day = typeof e.timestamp === "number" && Number.isFinite(e.timestamp) ? new Date(e.timestamp).toISOString().slice(0, 10) : null;
         callDay.set(e.toolCallId, day);
+        if (typeof e.timestamp === "number" && Number.isFinite(e.timestamp)) callStart.set(e.toolCallId, e.timestamp);
+        if (typeof e.apiMessageId === "string") callApi.set(e.toolCallId, e.apiMessageId);
         break;
       }
       case "TOOL_CALL_ARGS": callArgs.set(e.toolCallId, (callArgs.get(e.toolCallId) ?? "") + e.delta); break;
       case "TOOL_CALL_RESULT": {
+        if (typeof e.timestamp === "number" && Number.isFinite(e.timestamp) && !callEnd.has(e.toolCallId)) callEnd.set(e.toolCallId, e.timestamp);
         if (e.subagent) seen(agentOf(e.subagent));
         const a = callAgent.get(e.toolCallId) ?? seen(agentOf(undefined));
         const cmd = command(e.toolCallId);
@@ -501,11 +508,21 @@ async function main() {
     }
   }
   // Calls are counted after the loop: the split key needs the call's args, which follow its start event.
+  const apiCalls = new Map<string, number>();
+  for (const api of callApi.values()) apiCalls.set(api, (apiCalls.get(api) ?? 0) + 1);
   for (const [id, agent] of callAgent) {
     const tool = callKey(id);
     callsByTool[tool] = (callsByTool[tool] ?? 0) + 1;
     const h = toolRow(agent, tool, callDay.get(id) ?? null);
     h.calls++;
+    // A call with no START, no RESULT, a negative interval or an unknown API message has no time; it is counted as missing, never as 0.
+    const t = (h.timing ??= { single: [], batched: [], missing: 0 });
+    const start = callStart.get(id), end = callEnd.get(id), api = callApi.get(id);
+    if (start === undefined || end === undefined || end < start || api === undefined) t.missing++;
+    else {
+      const list = apiCalls.get(api)! > 1 ? t.batched : t.single;
+      if (list.length < MAX_TIMED) list.push(Math.round(end - start)); else t.capped = true;
+    }
     if (tool !== "Bash") continue;
     const bc = (h.bash_calls ??= []);
     if (bc.length < MAX_BASH_CALLS) bc.push([id, commandHead(command(id)), callCause.get(id) ?? null]);

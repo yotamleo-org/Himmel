@@ -628,7 +628,8 @@ const bTool = (tool: string, calls: number, classes: Record<string, number> = {}
   const denials = Object.values(classes).reduce((n, v) => n + v, 0);
   return { agent, tool, calls, failures: denials, errors: 0, denials, classes, day: "2026-10-28" };
 };
-const bFail = (n: number, cls: string, count: number) => ({ session: bSession(n), agent, class: cls, failure: cls.split("/")[0], count, recovered: null, tool_call_ids: [] });
+const bFail = (n: number, cls: string, count: number, ids: string[] = [], span: [string, string] | null = null) => ({ session: bSession(n), agent, class: cls, failure: cls.split("/")[0], count, recovered: null, tool_call_ids: ids,
+  ...(span ? { first_ts: Date.parse(span[0]), last_ts: Date.parse(span[1]) } : {}) });
 const roll = (evals: any[], failures: any[], opts: any = {}) => rollupToolHealth(evals, failures, new URLSearchParams(), B_NOW, {}, opts);
 const guardOf = (d: any, cls: string) => d.hooks.find((h: any) => h.class === cls);
 const readPE = (env: object, eligible: any) => (sources as any).readToolHealth(env, new URLSearchParams(), P_NOW, { rtk: () => ({ state: "absent" }), eligible });
@@ -866,7 +867,7 @@ test("chain logs are read from the override files or from the checkout and each 
 });
 
 // ---- the pages that show the chain incidents.
-const chainPage = (chain: any, ui: any, extra: any = {}) => page(roll([bEval(1, [bTool("Read", 5, { "denied/block-read-secrets": 3 })])], [bFail(1, "denied/block-read-secrets", 3)], { eligible: { "block-read-secrets": ["Read"] }, chain }), ui, extra);
+const chainPage = (chain: any, ui: any, extra: any = {}) => page(roll([bEval(1, [bTool("Read", 5, { "denied/block-read-secrets": 3 })])], [bFail(1, "denied/block-read-secrets", 3, ["toolu_C1", "toolu_C2", "toolu_C3"], ["2026-10-28T10:00:00Z", "2026-10-28T10:00:09Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain }), ui, extra);
 const GUARD = { guard: "denied/block-read-secrets" };
 const evCells = (html: string) => Object.fromEntries(cells(html, "data-chain-event").map(([k, c]: any) => [k, c]));
 const stat = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*)<`).exec(html) || [])[1];
@@ -874,7 +875,7 @@ const stat = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*
 test("the guard drill-in says why it refused: a rule, a timeout and a guard that never started are separate rows", async () => {
   const html = await chainPage(chainT(), GUARD);
   const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
-  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0" });
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "1", buffer: "0", other: "0", before_logged: "0", not_established: "0" });
   const ev = evCells(html);
   expect(Object.keys(ev).sort()).toEqual(["toolu_C1", "toolu_C2", "toolu_C3"]);
   // [When, Outcome, Reason, Guard, Tool, Time used, Refusal line, Call]
@@ -886,6 +887,107 @@ test("the guard drill-in says why it refused: a rule, a timeout and a guard that
   expect(ev.toolu_C2[0]).toBe("2026-10-28 10:00:02 UTC");
   expect(html).not.toContain("toolu_C4"); // another guard's skipped check is not this guard's incident
   expect(html).toContain("model, lane, role and profile filters do not apply");
+});
+
+// Fixture G: six counted refusals of one guard. Two are older than the first run-log row, two have a chain row (a rule and a
+// timeout), one names a call the chain never saw, one carries no call id. The chain also holds a refusal that no counted refusal names.
+const G = "denied/block-read-secrets";
+const gapData = (chain: any = chainT()) => roll([1, 2, 3, 4].map((n, i) => bEval(n, [bTool("Read", 5, { [G]: [2, 2, 1, 1][i] })]))
+  , [bFail(1, G, 2, ["toolu_old1", "toolu_old2"], ["2026-10-28T08:00:00Z", "2026-10-28T08:05:00Z"]),
+    bFail(2, G, 2, ["toolu_C1", "toolu_C2"], ["2026-10-28T10:30:00Z", "2026-10-28T10:31:00Z"]),
+    bFail(3, G, 1, ["toolu_nochain"], ["2026-10-28T10:40:00Z", "2026-10-28T10:40:00Z"]),
+    bFail(4, G, 1, [], ["2026-10-28T10:50:00Z", "2026-10-28T10:50:00Z"])], { eligible: { "block-read-secrets": ["Read"] }, chain });
+
+test("guard-reason-rows-plus-no-reason-counts-equal-refused", async () => {
+  const gap = guardOf(gapData(), G).reason_gap;
+  expect(gap).toMatchObject({ refused: 6, with_reason: 2, before_reasons_logged: 2, not_established: 2, unmatched_chain: 1, run_log_start: "2026-10-28T10:00:01.000Z" });
+  expect(gap.by_reason).toEqual({ rule: 1, timeout: 1, deadline: 0, buffer: 0, other: 0 });
+  expect(Object.values(gap.by_reason).reduce((n: number, v: any) => n + v, 0) + gap.before_reasons_logged + gap.not_established).toBe(gap.refused);
+  // The page shows the same rows and the two labelled residuals, and they add up to the Refused card.
+  const html = await page(gapData(), GUARD);
+  const why = Object.fromEntries(cells(html, "data-chain-reason").map(([k, c]: any) => [k, c[1]]));
+  expect(why).toEqual({ rule: "1", timeout: "1", deadline: "0", buffer: "0", other: "0", before_logged: "2", not_established: "2" });
+  expect(Object.values(why).reduce((n: number, v: any) => n + Number(v), 0)).toBe(6);
+  expect(html).toContain("Recorded before reasons were logged");
+  expect(html).toContain("No reason row, cause not established");
+  expect(html).toContain("1 chain row names a refusal this window does not count");
+});
+
+test("the reason split is unknown, never zero, when the run log cannot be read", async () => {
+  const skipOnlyChain = { skip: { state: "ok", rows: [skipRow(2)] }, run: { state: "absent" } };
+  expect(guardOf(gapData(skipOnlyChain), G).reason_gap).toBeNull();
+  expect(guardOf(gapData({ skip: { state: "absent" }, run: { state: "absent" } }), G).reason_gap).toBeNull();
+  expect(guardOf(gapData(null), G).reason_gap).toBeNull();
+  // Run log present but empty: nothing is known to have started, so no refusal is called "before reasons were logged".
+  const empty = guardOf(gapData({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows: [] } }), G).reason_gap;
+  expect(empty).toMatchObject({ refused: 6, with_reason: 0, before_reasons_logged: 0, not_established: 6, run_log_start: null });
+});
+
+test("the recent-events table keeps a word whole in its narrow columns and lets the refusal line and call id take the wrapping", async () => {
+  const html = await chainPage(chainT(), GUARD);
+  expect(html).toContain('<table class="data events">');
+  const row = /<tr data-chain-event="toolu_C2">([\s\S]*?)<\/tr>/.exec(html)![1];
+  const cellsOf = [...row.matchAll(/<td( class="wrap")?>/g)].map((m) => !!m[1]);
+  // [When, Outcome, Reason, Guard, Tool, Time used, Refusal line, Call]: only the refusal line and the call id wrap anywhere.
+  expect(cellsOf).toEqual([false, false, false, false, false, false, true, true]);
+  const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
+  expect(css).toMatch(/\.data\.events th,\s*\.data\.events td\{overflow-wrap:normal\}/);
+  expect(css).toMatch(/\.data\.events td\.wrap\{overflow-wrap:anywhere\}/);
+});
+
+// ---- time to result per tool (RESULT time minus START time). Hand-built digest rows, no journal.
+const timed = (tool: string, calls: number, timing: any) => ({ ...bTool(tool, calls), timing });
+const timingOf = (d: any, tool: string) => d.tools.find((t: any) => t.tool === tool).timing;
+
+test("time-to-result-headline-comes-from-single-calls-only", () => {
+  const d = roll([bEval(1, [timed("Read", 6, { single: [300, 400, 500], batched: [490, 9000], missing: 1 })])], []);
+  expect(timingOf(d, "Read")).toEqual({ n: 3, p50_ms: 400, p95_ms: 500, batched_n: 2, batched_p50_ms: 490, missing: 1, unknown_calls: 0, capped: false });
+  expect(d.tools.find((t: any) => t.tool === "Read")).not.toHaveProperty("timing_raw");
+  // A digest written before timing was kept leaves its calls unknown, never fast.
+  const mixed = roll([bEval(1, [timed("Read", 1, { single: [100], batched: [], missing: 0 })]), bEval(2, [bTool("Read", 4)])], []);
+  expect(timingOf(mixed, "Read")).toMatchObject({ n: 1, p50_ms: 100, unknown_calls: 4 });
+  expect(timingOf(roll([bEval(1, [bTool("Read", 2)])], []), "Read")).toMatchObject({ n: 0, p50_ms: null, p95_ms: null, batched_p50_ms: null, unknown_calls: 2 });
+  // A call with no result is missing, not a zero that would pull the median down.
+  expect(timingOf(roll([bEval(1, [timed("Grep", 1, { single: [], batched: [], missing: 1 })])], []), "Grep")).toMatchObject({ n: 0, p50_ms: null, missing: 1 });
+});
+
+test("the hook chain time per tool comes from the run log, and is unknown without it", () => {
+  const rows = [20, 40, 60].map((ms, i) => runRow(60 + i, [], { elapsed: ms }));
+  const c = rollChain({ skip: { state: "ok", rows: [] }, run: { state: "ok", rows } });
+  expect(c.hook_ms_by_tool.Read).toEqual({ n: 3, p50_ms: 40, p95_ms: 60 });
+  expect(rollChain({ skip: { state: "ok", rows: [] }, run: { state: "absent" } }).hook_ms_by_tool).toBeNull();
+});
+
+const ttr = (html: string, id: string) => (new RegExp(`data-stat="${id}">([^<]*)<`).exec(html) || [])[1];
+
+test("the tool drill-in shows time to result for a single, a batched and a missing call, labelled as including waiting and hooks", async () => {
+  const run = [20, 40, 60].map((ms, i) => runRow(60 + i, [], { elapsed: ms }));
+  const chain = { skip: { state: "ok", rows: [] }, run: { state: "ok", rows: run } };
+  const data = roll([bEval(1, [timed("Read", 3, { single: [400], batched: [490], missing: 1 }), timed("Grep", 1, { single: [], batched: [], missing: 1 })])], [], { chain });
+  const html = await page(data, { tool: "Read" });
+  expect(html).toContain("time to result (includes waiting and hooks)");
+  expect(html).not.toMatch(/run time/i);
+  expect(ttr(html, "ttr-p50")).toBe("400 ms");
+  expect(ttr(html, "ttr-p95")).toBe("400 ms");
+  expect(ttr(html, "ttr-n")).toBe("1");
+  expect(ttr(html, "ttr-batched")).toBe("490 ms (1 batched call, kept out of the headline)");
+  expect(ttr(html, "ttr-missing")).toBe("1");
+  expect(ttr(html, "ttr-hook")).toBe("40 ms median over 3 runs of the hook chain");
+  // The hook chain figure covers every session on the station, whatever the filters say, and the box says so.
+  expect(html).toContain("Hook chain time covers every session on this station and ignores the filters.");
+  // A tool whose only call has no result shows a dash, never 0 ms.
+  const none = await page(data, { tool: "Grep" });
+  expect(ttr(none, "ttr-p50")).toBe("—");
+  expect(ttr(none, "ttr-p95")).toBe("—");
+  expect(ttr(none, "ttr-n")).toBe("0");
+  expect(ttr(none, "ttr-hook")).toBe("—");
+  expect(none).not.toContain("0 ms");
+});
+
+test("a digest written before timing was kept says so, and a tool with no timing reads a dash", async () => {
+  const html = await page(roll([bEval(1, [bTool("Read", 3)])], []), { tool: "Read" });
+  expect(ttr(html, "ttr-p50")).toBe("—");
+  expect(html).toContain("3 calls were recorded before time to result was kept");
 });
 
 test("a call drawer carries the exact call id, the session and what is not recorded", async () => {
@@ -953,8 +1055,10 @@ test("a tool drill-in reads — for timeouts when the chain logs are missing, an
   expect(stat(await chainPage({ skip: { state: "absent" }, run: { state: "absent" } }, { tool: "Read" }), "timeouts")).toBe("—");
   const data = roll([bEval(1, [bTool("Skill:alpha:one", 2)])], [], { chain: chainT() });
   const skill = await page(data, { tool: "Skill:alpha:one" }, { inventory: INVENTORY });
-  expect(stat(skill, "timeouts")).toBe("—");
+  // No exact incident ids name a skill or subagent, so its timeout count is "needs new data" with the blocker named, never 0.
+  expect(stat(skill, "timeouts")).toBe("needs new data");
   expect(skill).toContain("name the tool, not the skill or subagent");
+  expect(skill).toContain("record which skill or subagent a call named");
   // A tool with no incident in complete logs is a real zero.
   const none = roll([bEval(1, [bTool("Grep", 2)])], [], { chain: chainT() });
   expect(stat(await page(none, { tool: "Grep" }), "timeouts")).toBe("0");
