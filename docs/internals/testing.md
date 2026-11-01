@@ -709,10 +709,11 @@ its guest preflight over its own known_hosts-pinned ssh. In order:
    in to Codex inside the guest.
 3. The operator logs in at their own terminal (the device code cannot show
    through guest-exec); then `status` again must report 0. Snapshot.
-4. Session: `bash scripts/vm/launch-guest.sh --lane claudex --classifier-model <m> --debug-file ~/<name>.log himmel-claudex <prompt-file>`.
+4. Session: `bash scripts/vm/launch-guest.sh --lane claudex --classifier-model <m> --debug-file '~/<name>.log' himmel-claudex <prompt-file>`.
    `<m>` is `gateway`, or a Claude model name when the guest's proxy serves
    one. Both flags are required and validated (`--debug-file` is an absolute or
-   `~/` guest path of `[A-Za-z0-9._/-]`, no `..`). Add `--dry-run` to print the
+   `~/` guest path of `[A-Za-z0-9._/-]`, no `..`). Single-quote a `~/` path, or
+   the host shell expands it to the station's home before the launcher sees it. Add `--dry-run` to print the
    command without any preflight.
 5. Read the debug file with guest-exec `grep -n -e classifier_request_started -e denied <file>`.
 6. After any snapshot restore, run `status` first.

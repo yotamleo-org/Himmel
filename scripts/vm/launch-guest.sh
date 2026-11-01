@@ -119,8 +119,9 @@ if [ "$DRY" -eq 1 ]; then
     exit 0
 fi
 if [ "$LANE" = claudex ]; then
-    # the guest must have a live Codex proxy before a session starts (exit 20/21 = not ready)
-    GP=(ssh -p "$PORT" "${SSHO[@]}" "$GUSER@127.0.0.1" "bash -lc \"cd $GUEST_REPO && bash scripts/claude-codex --preflight-only\"")
+    # the guest must have a live Codex proxy before a session starts (exit 20/21 = not ready);
+    # the guest-side timeout bounds a preflight that hangs after ssh has connected
+    GP=(ssh -p "$PORT" "${SSHO[@]}" "$GUSER@127.0.0.1" "bash -lc \"cd $GUEST_REPO && timeout --signal=KILL 120 bash scripts/claude-codex --preflight-only\"")
     GRC=0; "${GP[@]}" >&2 < /dev/null || GRC=$?
     [ "$GRC" -eq 0 ] || { echo "launch-guest: guest claude-codex --preflight-only exited $GRC - not launching a guest session" >&2; exit 2; }
 fi
