@@ -828,6 +828,7 @@ scripts/lib/test-claude-headless.sh	pr	trust-path
 scripts/lib/test-claude-lane.sh	pr	trust-path
 scripts/lib/test-claude-version.sh	pr	trust-path
 scripts/lib/test-clean-sandbox.sh	pr	guard
+scripts/lib/test-clear-stale-claude-marker.sh	pr	trust-path
 scripts/lib/test-commit-class.sh	pr	trust-path
 scripts/lib/test-compute-duration.sh	pr	trust-path
 scripts/lib/test-cr-available.sh	pr	trust-path
