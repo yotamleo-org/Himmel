@@ -329,17 +329,14 @@ rm -rf "$SB"
 # --- Case 9b: lane env ------------------------------------------------------------
 # The hook never sets the lane itself: a crystallizer it spawns sees exactly the
 # launching shell's HIMMEL_API_LANE / HIMMEL_API_ACCOUNT. Without them the
-# crystallizer falls back to the subscription (usage-preflight gated), or, when the
-# preflight says stop, ONE skip line lands in the hook log and nothing is launched.
-# The preflight and the claude binary are stubs; CRYSTALLIZE_CLAUDE_BIN is set in every row.
-lane_sandbox() { # sets SB, MARK, PF, WRAP, LOGF
+# crystallizer refuses (exit 2) and the hook appends its one refusal line to the hook
+# log. CRYSTALLIZE_CLAUDE_BIN is a stub in every row.
+lane_sandbox() { # sets SB, MARK, WRAP, LOGF
     SB="$(make_sandbox)"; MARK="$SB/marker.txt"
-    PF="$SB/pf.sh"; WRAP="$SB/wrap.sh"
-    # shellcheck disable=SC2016  # the stub bodies are written literally; they expand when the stub runs
-    printf '#!/usr/bin/env bash\necho "${PF_VERDICT:-PROCEED}"\n' > "$PF"
-    # shellcheck disable=SC2016
+    WRAP="$SB/wrap.sh"
+    # shellcheck disable=SC2016  # the stub body is written literally; it expands when the stub runs
     printf '#!/usr/bin/env bash\nprintf "HIMMEL_API_LANE=%%s\\nHIMMEL_API_ACCOUNT=%%s\\n" "${HIMMEL_API_LANE-<unset>}" "${HIMMEL_API_ACCOUNT-<unset>}" > "$LANE_DUMP"\nexec "%s" "$@"\n' "$STUB" > "$WRAP"
-    chmod +x "$PF" "$WRAP"
+    chmod +x "$WRAP"
     LOGF="$(log_path_for "$SB/home" "$SB/proj")"
 }
 lane_run() { # <env-assignments...> ; the hook runs inside the sandbox from lane_sandbox
@@ -347,32 +344,33 @@ lane_run() { # <env-assignments...> ; the hook runs inside the sandbox from lane
     payload=$(printf '{"transcript_path":"%s","cwd":"%s","session_id":"t","reason":"other"}' "$SB/transcript.jsonl" "$SB/proj")
     printf '%s' "$payload" | env "$@" OSTYPE="linux-gnu" OS="" HOME="$SB/home" \
         LUNA_VAULT_PATH="$SB/vault" OBSIDIAN_API_KEY="" CLAUDE_PROJECT_DIR="$SB/proj" \
-        CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_PREFLIGHT_BIN="$PF" STUB_MODE="success" \
+        CRYSTALLIZE_PID_DIR="$SB/pids" STUB_MODE="success" \
         CRYSTALLIZE_MARKER="$MARK" bash "$HOOK"
 }
 
-# 9b-1: no lane env, preflight PROCEED -> the crystallizer runs on the subscription stub.
+# 9b-1 (RED on main, where the refusal line goes to /dev/null): no lane env -> exactly one
+# refusal line in the hook log naming both lane variables. CRYSTALLIZE_CLAUDE_BIN is set
+# and is no bypass: the stub is never called and the note stays mechanical.
 lane_sandbox
-lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PF_VERDICT=PROCEED CRYSTALLIZE_CLAUDE_BIN="$STUB"
-i=0; while [ ! -s "$MARK" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
-if [ -s "$MARK" ]; then pass "lane-env: no lane variables + PROCEED -> the crystallizer still ran (subscription)"; else fail "lane-env: no lane variables + PROCEED -> crystallizer never ran"; fi
-rm -rf "$SB"
-
-# 9b-2: no lane env, preflight SKIPPED-BANK -> exactly one skip line in the hook log, no launch.
-lane_sandbox
-lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PF_VERDICT=SKIPPED-BANK CRYSTALLIZE_CLAUDE_BIN="$STUB"
-i=0; while ! grep -q 'crystallize-note: skipped' "$LOGF" 2>/dev/null && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
-if [ "$(grep -c 'crystallize-note: skipped' "$LOGF" 2>/dev/null)" = "1" ] \
-    && [ "$(grep -c 'crystallize-note: skipped.*HIMMEL_API_LANE=on.*HIMMEL_API_ACCOUNT' "$LOGF" 2>/dev/null)" = "1" ]; then
-    pass "lane-env: preflight stop -> one skip line in the hook log naming both lane variables"
+lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT CRYSTALLIZE_CLAUDE_BIN="$STUB"
+i=0; while ! grep -q 'crystallize-note: refusing claude-api' "$LOGF" 2>/dev/null && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+if [ "$(grep -c 'crystallize-note: refusing claude-api' "$LOGF" 2>/dev/null)" = "1" ] \
+    && [ "$(grep -c 'crystallize-note: refusing claude-api.*HIMMEL_API_LANE=on.*HIMMEL_API_ACCOUNT' "$LOGF" 2>/dev/null)" = "1" ]; then
+    pass "lane-env: no lane variables -> one refusal line in the hook log naming both lane variables"
 else
-    fail "lane-env: preflight stop -> skip line missing, duplicated or unclear in the hook log"
+    fail "lane-env: no lane variables -> refusal line missing, duplicated or unclear in the hook log"
 fi
 sleep 0.3
-if [ ! -s "$MARK" ]; then pass "lane-env: preflight stop -> the claude stub was never called"; else fail "lane-env: claude launched past a SKIPPED-BANK verdict"; fi
+NOTE9B="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
+if [ ! -s "$MARK" ] && [ -n "$NOTE9B" ] && grep -q '^crystallized: false$' "$NOTE9B"; then
+    pass "lane-env: CRYSTALLIZE_CLAUDE_BIN with the lane off is no bypass (stub never called, note stays mechanical)"
+else
+    fail "lane-env: CRYSTALLIZE_CLAUDE_BIN bypassed the lane gate"
+fi
 rm -rf "$SB"
 
-# 9b-3: lane env set -> the spawned crystallizer receives both variables unchanged (A and auto).
+# 9b-2 (regression-only, also passes on main): lane env set -> the spawned crystallizer
+# receives both variables unchanged (A and auto).
 for ACC in A auto; do
     lane_sandbox
     LANE_DUMP="$SB/lane.txt"
@@ -386,19 +384,8 @@ for ACC in A auto; do
     rm -rf "$SB"
 done
 
-# 9b-4: CRYSTALLIZE_CLAUDE_BIN set, lane off, preflight stop -> no bypass: stub untouched, note stays mechanical.
-lane_sandbox
-lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PF_VERDICT=SKIPPED-FLEET CRYSTALLIZE_CLAUDE_BIN="$STUB"
-sleep 1
-NOTE9B="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
-if [ ! -s "$MARK" ] && [ -n "$NOTE9B" ] && grep -q '^crystallized: false$' "$NOTE9B"; then
-    pass "lane-env: CRYSTALLIZE_CLAUDE_BIN with the lane off and a preflight stop is no bypass (note stays mechanical)"
-else
-    fail "lane-env: CRYSTALLIZE_CLAUDE_BIN bypassed the gate"
-fi
-rm -rf "$SB"
-
-# 9b-5: a hook log that cannot be opened for append must not stop the crystallizer.
+# 9b-3 (regression-only: guards the stderr redirect against a naive version of it, passes on
+# main): a hook log that cannot be opened for append must not stop the crystallizer.
 lane_sandbox
 mkdir -p "$(dirname "$LOGF")"; : > "$LOGF"; chmod 444 "$LOGF"
 lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_CLAUDE_BIN="$STUB"
