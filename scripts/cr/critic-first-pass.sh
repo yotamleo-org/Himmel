@@ -279,7 +279,7 @@ fi
 # New-file hunk ranges "file start end" per line — used by the citation guard
 # and computed on the (possibly truncated) diff.
 # shellcheck disable=SC2317,SC2329  # cleanup is invoked indirectly via trap (SC2329 = false-positive for trap-invoked functions)
-cleanup() { rm -f "${ranges_file:-}" "${headings_file:-}" "${newside_file:-}" "${ctx_ranges_file:-}" "${pf:-}"; }
+cleanup() { rm -f "${ranges_file:-}" "${headings_file:-}" "${newside_file:-}" "${ctx_ranges_file:-}" "${ctx_snap:-}" "${pf:-}"; }
 trap cleanup EXIT
 ranges_file="$(mktemp -t cfp-ranges.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
 headings_file="$(mktemp -t cfp-headings.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
@@ -368,7 +368,10 @@ ctx_block=""
 ctx_ranges_file=""
 if [ -n "$context_file" ] && [ "$artifact_mode" -eq 0 ]; then
     ctx_ranges_file="$(mktemp -t cfp-ctx.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
-    if ! CTX="$context_file" OUT="$ctx_ranges_file" node -e '
+    # One snapshot feeds both the ranges and the prompt text, so the ranges
+    # always describe the text the critic sees.
+    ctx_snap="$(mktemp -t cfp-ctxsnap.XXXXXX)" || { echo "critic-first-pass.sh: mktemp failed — fail-open, proceed claude-only" >&2; exit 1; }
+    if ! cp -- "$context_file" "$ctx_snap" 2>/dev/null || ! CTX="$ctx_snap" OUT="$ctx_ranges_file" node -e '
       const fs = require("fs");
       const raw = fs.readFileSync(process.env.CTX, "utf8");
       const cut = raw.indexOf("\n\n");
@@ -386,7 +389,7 @@ if [ -n "$context_file" ] && [ "$artifact_mode" -eq 0 ]; then
         echo "critic-first-pass.sh: context file refused (unreadable, bad range header or a control character in a path) — reviewing the diff alone" >&2
         : > "$ctx_ranges_file"
     else
-        ctx_text="$(cat "$context_file")"
+        ctx_text="$(cat "$ctx_snap")"
         ctx_bytes="$(printf '%s\n' "$ctx_text" | wc -c | tr -d '[:space:]')"
         diff_now="$(printf '%s\n' "$diff_in" | wc -c | tr -d '[:space:]')"
         # ponytail: an over-cap context is dropped whole, never trimmed per
