@@ -2041,14 +2041,47 @@ check_c29() {
         rows="$rows$(printf '       · pid %s (%s)' "$c29_pid" "$c29_name")
 "
     done
-    if [ "$n" -eq 0 ]; then
+    # SCRUM-2 (ps route only): a Mac app opened via `open -a` from a claude Bash
+    # tool keeps CLAUDE_CODE_CHILD_SESSION=1 and that claude's CLAUDE_PID for its
+    # whole life; once that claude is gone, every claude started from the app
+    # saves no transcript. Name each such app bundle once (lowest pid).
+    local app_n=0 app_rows="" app_pids="" app_seen="" app_pid app_bundle app_env app_cpid
+    if [ "$src" = ps ]; then
+        app_pids=" $(_c29_table ps | awk '{ print $1 }' | tr '\n' ' ')"
+        while IFS=$'\t' read -r app_pid app_bundle; do
+            [ -n "$app_pid" ] || continue
+            case "$app_seen" in *"|$app_bundle|"*) continue ;; esac
+            app_env="$(_c29_environ ps "$app_pid")" || continue
+            grep -q '^CLAUDE_CODE_CHILD_SESSION=1$' <<< "$app_env" || continue
+            app_cpid="$(grep -m1 '^CLAUDE_PID=' <<< "$app_env")"
+            app_cpid="${app_cpid#CLAUDE_PID=}"
+            # a live claude owns the marker legitimately; empty/absent = dead
+            case "$app_pids" in *" $app_cpid "*) [ -n "$app_cpid" ] && continue ;; esac
+            app_seen="$app_seen|$app_bundle|"
+            app_n=$((app_n+1))
+            app_rows="$app_rows$(printf '       · pid %s (%s)' "$app_pid" "$app_bundle")
+"
+        done < <(_c29_table ps | awk '{ c = $0; sub(/^[ \t]*[0-9]+[ \t]+[0-9]+[ \t]+/, "", c)
+                 i = index(c, ".app/"); if (!i) next
+                 b = substr(c, 1, i - 1); sub(/.*\//, "", b)
+                 printf "%s\t%s\n", $1, b }' | sort -n)
+    fi
+    if [ "$n" -eq 0 ] && [ "$app_n" -eq 0 ]; then
         emit OK C29-child-session "no claude child-session launchers missing persistence"
         return
     fi
-    emit WARN C29-child-session \
-        "$n running claude session(s) launched as a child session; transcript not saved (HIMMEL-2545)" \
-        "relaunch through: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ... (macOS: a GUI app can carry the marker too — quit the terminal AND the launcher that opened it, e.g. Raycast, and reopen both from the Dock)"
-    printf '%s' "$rows"
+    if [ "$n" -gt 0 ]; then
+        emit WARN C29-child-session \
+            "$n running claude session(s) launched as a child session; transcript not saved (HIMMEL-2545)" \
+            "relaunch through: env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ... (macOS: a GUI app can carry the marker too — quit the terminal AND the launcher that opened it, e.g. Raycast, and reopen both from the Dock)"
+        printf '%s' "$rows"
+    fi
+    if [ "$app_n" -gt 0 ]; then
+        emit WARN C29-child-session \
+            "$app_n Mac app(s) still carry a closed claude's session marker; every claude started from them saves no transcript (SCRUM-2)" \
+            "quit the app and reopen it from the Dock"
+        printf '%s' "$app_rows"
+    fi
 }
 
 # --- C30: telegram-bridge liveness (read-only advisory) ------------
