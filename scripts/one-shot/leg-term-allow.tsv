@@ -44,3 +44,12 @@
 ^scripts/hooks/test-guard-bus-store\.sh$	old role spelling	K5 guard test pins that the old role spelling is still refused; leaves with HIMMEL-6647
 ^scripts/handover/test-bus-idle-waker\.sh$	cmdline-leg	K5 fixture file name; leaves with HIMMEL-6647
 ^scripts/config-ui/(agui(-web/src/board-model|/fleet)|tests/e2e/agui-fixtures)\.ts$	legacy wire fallback$	K5 reader fallbacks for the old manifest and board keys and the e2e fixture that feeds them (renamed-identifiers.md N44, N45); leaves with HIMMEL-6647
+^docs/internals/cache-health\.md$	rename say .leg.	K5 documents the pre-rename history and alert-key read; leaves with HIMMEL-6647
+^scripts/eval/cache-health\.py$	leg\[A-Z\]|role name .leg.|== .leg.|role-drop:leg|:leg\$	K5 session-title classifier and the pre-rename role and alert-key reads; leaves with HIMMEL-6647
+^scripts/handover/cache-health-line\.py$	roles\.get\(.leg.\)	K5 reader maps a pre-rename history role to worker; leaves with HIMMEL-6647
+^scripts/eval/test-cache-health\.sh$	role-drop:leg	K5 test pins that a pre-rename alert key still reads; leaves with HIMMEL-6647
+^scripts/handover/test-cache-health-line\.sh$	.leg.:97	K5 test pins that a pre-rename history row still reads; leaves with HIMMEL-6647
+^scripts/lib/test-bank-preflight\.sh$	pre-rename leg key|has\(.leg.\)	K5 test pins that a new ledger row carries no pre-rename key; leaves with HIMMEL-6647
+^scripts/ci/escape-report\.sh$	FOUND_BY=	K5 the found-by:leg label stays accepted on existing issues; leaves with HIMMEL-6647
+^scripts/eval/test-handover-cost\.sh$	legs-after	K5 test pins that the retired --legs-after flag is refused; leaves with HIMMEL-6647
+^scripts/eval/worker-digest/worker_ledger\.py$	headed-arm-\(\?:worker\|leg\)	K5 legacy launch-line read; leaves with HIMMEL-6647
