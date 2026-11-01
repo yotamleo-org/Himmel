@@ -942,6 +942,32 @@ unwatched_file="$inbox.wait.unwatched"
 unwatched_wake() {
     set_wake "$(printf '%s\n' "$1" | tr '+' '\n')" "$unwatched_file" "${CHIEF_WAIT_UNWATCHED_REWAKE_MIN:-60}"
 }
+# orphan_wake: at an underfilled sample, with --doc, an open PR whose ticket's worker record reads
+# wrapped or none (or is absent) and that the doc's `queue:` line does not name wakes (`WAKE orphan-pr <n,...>`
+# then its UNMAPPED lines). The check runs gh, so it samples at most every
+# CHIEF_WAIT_ORPHAN_SAMPLE_MIN (default 5) minutes; the wake follows the unowned-prs marker
+# logic (first sight, a PR new to the marker, CHIEF_WAIT_ORPHAN_REWAKE_MIN, default 60). A clean
+# read clears the marker `<inbox>.wait.orphan`; a failed or timed-out read leaves it (not an
+# all-clear). CHIEF_WAIT_ORPHAN replaces the check command (tests).
+orphan_file="$inbox.wait.orphan"
+orphan_at_file="$inbox.wait.orphan.at"
+orphan_cmd="${CHIEF_WAIT_ORPHAN:-$HERE/orphan-pr-check.sh}"
+orphan_wake() { # prints the WAKE block and returns 0 on a wake
+    local out rc=0 nums
+    [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -r "$orphan_cmd" ] || return 1
+    if [ -e "$orphan_at_file" ] && [ -n "$(find "$orphan_at_file" -mmin "-${CHIEF_WAIT_ORPHAN_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the check runs
+    : > "$orphan_at_file" 2>/dev/null
+    out="$(timeout -k 2 "${CHIEF_WAIT_ORPHAN_TIMEOUT:-60}" bash "$orphan_cmd" --doc "$console_doc" </dev/null 2>/dev/null 9>&-)" || rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the rc is kept and only 0 or 1 acts, any other rc is no wake and no all-clear
+    case "$rc" in
+        0) rm -f "$orphan_file"; return 1 ;;
+        1) ;;
+        *) return 1 ;;
+    esac
+    nums="$(printf '%s\n' "$out" | sed -n 's/^UNMAPPED \([0-9][0-9]*\) .*/\1/p')"
+    [ -n "$nums" ] || return 1
+    set_wake "$nums" "$orphan_file" "${CHIEF_WAIT_ORPHAN_REWAKE_MIN:-60}" || return 1
+    printf 'WAKE orphan-pr %s\n%s\n%s\n' "$(printf '%s\n' "$nums" | paste -sd, -)" "$out" "$tick_line"
+}
 
 stale_file="$inbox.wait.stale"
 # stale_wake: <pool-stale= value, `n:KEY,...` with an optional `?`> — prints the keys the marker does
@@ -1588,6 +1614,10 @@ while :; do
                     if pool_watch_wake; then exit_reason='wake-pool-unresolved'; exit 0; fi ;;
             esac
             case "$cap_val" in UNDERFILLED:*) rm -f "$inbox.wait.pool" ;; esac
+            case "$cap_val" in
+                UNDERFILLED:*)
+                    if orphan_wake; then exit_reason='wake-orphan-pr'; exit 0; fi ;;
+            esac
             unowned_val="$(field unowned-prs "$tick_line")"
             case "$unowned_val" in
                 '') unowned_none_streak=0 ;;

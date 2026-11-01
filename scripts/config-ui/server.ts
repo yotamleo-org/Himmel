@@ -26,6 +26,7 @@ import { readFleet } from "./agui/fleet";
 import { readRollup } from "./rollup";
 import { liveBoards, readMerged, readShifts, redactShift, shiftsFile, tick as tickShifts, viewOf } from "./shift";
 import { readReviewers } from "./reviewers";
+import { readToolInventory } from "./tool-inventory";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
@@ -541,6 +542,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/tool-health") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readToolHealth(env, new URL(req.url).searchParams, now())));
+      }
+      // which tools the station has: a read-only scan of keys and file names, cached until ?rescan=1
+      if (path === "/api/tool-inventory") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        const scanEnv = env.HIMMEL_REPO ? env : { ...env, HIMMEL_REPO: stationRoot(root) };
+        return json(redactOut(readToolInventory(scanEnv, now(), new URL(req.url).searchParams.get("rescan") === "1")));
       }
       if (path === "/api/health") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });

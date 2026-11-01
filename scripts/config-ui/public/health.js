@@ -259,24 +259,6 @@ function trendsHtml(health) {
   return `<div class="trends">${r.cards.map(trendCard).join("")}</div>`;
 }
 
-// The review page text from GET /api/reviewers, as sent: only its Markdown headings, bullets and paragraphs are shaped here.
-function reviewersHtml(health) {
-  const r = health && health.reviewers;
-  if (!r || r.state !== "ok") return nodata(r && r.reason ? r.reason : "no review page yet");
-  const out = [];
-  let list = false;
-  for (const line of String(r.text).split("\n")) {
-    const li = /^- (.*)$/.exec(line);
-    if (list && !li) { out.push("</ul>"); list = false; }
-    if (li) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${esc(li[1])}</li>`); continue; }
-    const h = /^#{1,3} (.*)$/.exec(line);
-    if (h) out.push(line.startsWith("# ") ? "" : `<h4>${esc(h[1])}</h4>`);
-    else if (line.trim()) out.push(`<p>${esc(line)}</p>`);
-  }
-  if (list) out.push("</ul>");
-  return `<div class="card" id="reviewers-page">${out.join("")}<p class="sub">Written ${esc(String(r.writtenAt).slice(0, 10))}</p></div>`;
-}
-
 function searchHtml(feed) {
   if (!feed) return nodata("the doctor feed is still running");
   const rows = (feed.rows || []).filter((r) => r.bundle === "search");
@@ -306,6 +288,5 @@ export function renderHealth(feed, health, view = {}) {
     section("verdict", "Is this project working right now?", "One word, from the doctor feed and any firing alerts. A tile opens its panel.", verdictHtml(feed, own, view.now ?? Date.now()) + tilesHtml(feed, own, open), "sec"),
     panel ? panel() : "",
     section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health), "sec"),
-    section("reviewers", "How good are our reviewers?", "The critics on planted bugs and the judges on merged PRs, from the weekly review page; read-only.", reviewersHtml(health), "sec"),
   ].join("\n")}</div>`;
 }

@@ -74,7 +74,8 @@ Run these, in order, and write the result as the first bullet under
     re-invokes you when it exits:
     `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --doc "<this file>" --token <your token> --workers "<absolute worker docs>" [--succession {{SESSION_NAME}}]`
     It exits on the first real event (`WAKE telegram | tick | underfilled |
-    tick-fail`), so an idle chief takes **zero** turns. **Re-start it in the
+    tick-fail`), so an idle chief takes **zero** turns; a WAKE may add an
+    `absorbed since last wake:` wraps/merges line. **Re-start it in the
     turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
     old one, absolute worker doc paths) or you go deaf. Record the task id in your
     first bullet; `cat "<inbox>.wait"` is its heartbeat. Wake keys, heartbeat
@@ -187,9 +188,8 @@ merged-docs list: `chief-sections/merges.md`.
 
 ## Wrapping a worker
 
-Write each worker's `MERGED` or `WRAPPED` message to a file and run
-`bash scripts/handover/chief-kit/worker-event.sh --doc <chief doc> --fleet <manifest> <message-file>`:
-`HANDLED ...` is done, `ESCALATE <reason>` is by hand: on `WRAPPED`, confirm
+`WRAPPED`/merged are bullets only. A `--workers-from` waiter runs
+`worker-event.sh` on them; else, or on `WAKE worker-event … out=<file>`, finish by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/chief-kit/close-wrapped-worker.sh <worker-doc>`. Never run the
 bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence, `digest=`:
