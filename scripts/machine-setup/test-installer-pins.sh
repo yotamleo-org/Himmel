@@ -33,8 +33,8 @@ FIXTURE_NODE_BIN='0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad
 FIXTURE_CLAUDE_MANIFEST_LINUX_X64='fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824'
 FIXTURE_NVM_INSTALL='48a0eee9a60e07422dce0eb5774754c83889570ca1ee2566c516acbe8af03a9e  install.sh'
 FIXTURE_NVM_TAG_COMMIT='a885b885fef16fac4bc544188fb25e9e37ae83e8'
-FIXTURE_CERTIFI_WHEEL='42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b'
-FIXTURE_CERTIFI_SDIST='035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae'
+FIXTURE_CERTIFI_WHEEL='e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1'
+FIXTURE_CERTIFI_SDIST='a9895e6e2758b371e0545e321a3a8fd1fcfd9829ada8824a936dfb16aaaf36cd'
 
 echo "installers: no unpinned curl-pipe, no moving alias (HIMMEL-7092)"
 no_match() { grep -Eq -- "$1" "$2"; [ $? -eq 1 ]; }
@@ -106,7 +106,7 @@ fi
 echo "certifi: pinned past the emSign-compromised release (HIMMEL-7092)"
 for f in requirements-scrapling.txt requirements-whisper.txt; do
   p="$repo_root/marketplace/plugins/obsidian-triage/tools/$f"
-  check "$f pins certifi==2026.10.19"      grep -q '^certifi==2026\.10\.19 ' "$p"
+  check "$f pins certifi==2026.10.23"      grep -q '^certifi==2026\.10\.23 ' "$p"
   check "$f no longer pins certifi 2026.7.22" no_match '^certifi==2026\.7\.22' "$p"
   check "$f carries the wheel hash"        grep -q "sha256:$FIXTURE_CERTIFI_WHEEL" "$p"
   check "$f carries the sdist hash"        grep -q "sha256:$FIXTURE_CERTIFI_SDIST" "$p"
