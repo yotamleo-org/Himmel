@@ -1523,6 +1523,9 @@ check "resume N7c: the original session's transcript is found and its note writt
 
 # --- a worker relaunched under <stem>-RESUME closes like any other ---
 # WRAPPED lands on the ORIGINAL doc; the live window is named <stem>-RESUME.
+# release tokens as a worker's LIVE bullet quotes them: the predecessor's (TK1) and the successor's (TK2)
+TK1="\`cwl-host-pid100\`"
+TK2="\`cwl-host-pid200\`"
 ORIG8="$W/HIMMEL-9-N8-demo-2026-01-01.md"
 RES8="$W/HIMMEL-9-N8-demo-2026-01-01-RESUME.md"
 printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$ORIG8"
@@ -1536,7 +1539,7 @@ exact_count "8424: TERM sent to the -RESUME session" "$(cat "$CALLS")" "kill -TE
 # the RESUME doc has no marker of its own: WRAPPED is read from the original doc, which holds a
 # marker bullet written after the hand-off bullet that names the RESUME doc (hand-off evidence)
 printf '# worker\n\n## Results (newest at the bottom)\n' > "$RES8"
-printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed\n- 12:00 WRAPPED - done\n' "$(basename "$RES8")" > "$ORIG8"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n' "$TK1" "$(basename "$RES8")" "$TK2" > "$ORIG8"
 reset_calls
 rc=0; out=$(run "$RES8" 2>&1) || rc=$?
 check "8424: RESUME doc with no marker, original WRAPPED -> rc 0" "$rc" "0"
@@ -1598,7 +1601,7 @@ exact_count "8424: legacy-family -RESUME session TERMed" "$(cat "$CALLS")" "kill
 # a successor letter in the RESUME doc's label (N18b) still finds the original (N18), both ways
 ORIGL="$W/HIMMEL-9-N18-demo-2026-01-01.md"
 RESL="$W/HIMMEL-9-N18b-demo-2026-01-01-RESUME.md"
-printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed\n- 12:00 WRAPPED - done\n' "$(basename "$RESL")" > "$ORIGL"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n' "$TK1" "$(basename "$RESL")" "$TK2" > "$ORIGL"
 printf '# worker\n\n## Results (newest at the bottom)\n' > "$RESL"
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 mkcmdline 340 claude -n HIMMEL-9-N18b-demo-2026-01-01 work
@@ -1633,6 +1636,36 @@ reset_calls
 rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
 check "8424: no bullet names the RESUME doc, original -> rc 4" "$rc" "4"
 check "8424: no bullet names the RESUME doc, original: nothing signaled" "$(cat "$CALLS")" ""
+# negative: a vault shape seen live. A BLOCKED bullet names the RESUME stem in prose, then a WRAPPED that does not
+# name it: no marker after the hand-off was written by a successor, so neither doc closes
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 BLOCKED - waiting on %s\n- 10:30 WRAPPED - done\n' "$TK1" "$(basename "$RESL" .md)" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: BLOCKED naming the RESUME stem then a WRAPPED not naming it, $(basename "$d") -> rc 4" "$rc" "4"
+    check "8424: BLOCKED/WRAPPED shape, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
+done
+# negative: the LIVE after the hand-off reuses the predecessor's release token, so it is not the successor's
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n' "$TK1" "$(basename "$RESL")" "$TK1" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: successor LIVE reusing the predecessor's token, $(basename "$d") -> rc 4" "$rc" "4"
+    check "8424: reused token, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
+done
+# negative: a successor LIVE with a new token but no WRAPPED after it (still going)
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n' "$TK1" "$(basename "$RESL")" "$TK2" > "$ORIGL"
+reset_calls
+rc=0; out=$(run "$RESL" 2>&1) || rc=$?
+check "8424: new-token LIVE with no WRAPPED after it, RESUME doc -> rc 4" "$rc" "4"
+# positive control: the same hand-off, a new-token LIVE, then WRAPPED done closes from both docs
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n' "$TK1" "$(basename "$RESL")" "$TK2" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: hand-off, new-token LIVE, WRAPPED done, $(basename "$d") -> rc 0" "$rc" "0"
+    exact_count "8424: new-token evidence, $(basename "$d"): the N18b session TERMed once" "$(cat "$CALLS")" "kill -TERM 340" "1"
+done
 # negative: two successor RESUME docs for one original is refused, not guessed
 RESL2="$W/HIMMEL-9-N18c-demo-2026-01-01-RESUME.md"
 printf '# worker\n' > "$RESL2"

@@ -99,6 +99,7 @@ check "6c same label twice rc" "$rc" 0
 cat > "$W/list-resume" <<'EOF'
 #!/usr/bin/env bash
 [ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
+echo ok >> "$0.ran"
 printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md
 EOF
 chmod +x "$W/list-resume"
@@ -109,6 +110,7 @@ contains "6d 8424 wrap gets the resumed entry" "$calls" "/h/HIMMEL-8-N4304b-resu
 cat > "$W/list-resume2" <<'EOF'
 #!/usr/bin/env bash
 [ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
+echo ok >> "$0.ran"
 printf '%s\n' /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md /h/HIMMEL-8-N4304c-resumed-2026-11-01-RESUME.md
 EOF
 chmod +x "$W/list-resume2"
@@ -127,20 +129,27 @@ check "6d3 8424 wrap not run" "$calls" ""
 cat > "$W/list-slug" <<'EOF'
 #!/usr/bin/env bash
 [ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
+echo ok >> "$0.ran"
 printf '%s\n' /h/N4304b-dir/HIMMEL-8-N9000-check-status.md /h/HIMMEL-8-N9000-see-N4304b-note.md
 EOF
 chmod +x "$W/list-slug"
+# a list stub that failed would read as an empty manifest and make the not-in-manifest rows pass: prove it listed
+rm -f "$W/list-slug.ran" "$W/list-resume.ran"
 LE_LIST="$W/list-slug" run "WRAPPED N4304"
 check "6d4 8424 a directory or slug naming N4304b is not the worker: rc" "$rc" 10
 contains "6d4 8424 reason" "$out" "not-in-manifest N4304"
 check "6d4 8424 wrap not run" "$calls" ""
+check "6d4 8424 the list stub ran and listed" "$(cat "$W/list-slug.ran" 2>/dev/null)" "ok"
 LE_LIST="$W/list-resume" run "WRAPPED N43"
 check "6e 8424 a shorter label never matches N4304b: rc" "$rc" 10
 contains "6e 8424 reason" "$out" "not-in-manifest N43"
+check "6e 8424 the list stub ran and listed" "$(cat "$W/list-resume.ran" 2>/dev/null)" "ok"
+rm -f "$W/list-resume.ran"
 LE_LIST="$W/list-resume" run "WRAPPED N4399"
 check "6f 8424 an unrelated label still escalates: rc" "$rc" 10
 contains "6f 8424 reason" "$out" "not-in-manifest N4399"
 check "6f 8424 wrap not run" "$calls" ""
+check "6f 8424 the list stub ran and listed" "$(cat "$W/list-resume.ran" 2>/dev/null)" "ok"
 
 LE_WRAP_RC=3 LE_WRAP_ERR="wrap-merged: step pr-state failed: PR #2566 is 'OPEN'" run "MERGED #2566 N2088"
 check "7 rc" "$rc" 10
@@ -307,6 +316,25 @@ contains "13 refused close escalates" "$out" "ESCALATE close-wrapped-failed rc=3
 contains "13 refusal surfaced" "$out" "queue lock held"
 # read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
 check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
+
+# 13b. a WRAPPED that resolves to a successor doc with no PR of its own, while the original sibling names one,
+# takes wrap-merged's merge verification, never the direct close
+printf '%s\n' '## Results' '- 10:00 READY 2553 abc' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-6-N5001-orig-2026-10-14.md"
+printf '%s\n' '## Results' '- 11:00 WRAPPED done' > "$W/HIMMEL-6-N5001b-orig-2026-10-14-RESUME.md"
+printf '%s\n' '## Results' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-7-N5002-plain-2026-10-14.md"
+printf '%s\n' '## Results' '- 11:00 WRAPPED done' > "$W/HIMMEL-7-N5002b-plain-2026-10-14-RESUME.md"
+cat > "$W/list13b" <<EOF3
+#!/usr/bin/env bash
+printf '%s\n' $W/HIMMEL-6-N5001b-orig-2026-10-14-RESUME.md $W/HIMMEL-7-N5002b-plain-2026-10-14-RESUME.md
+EOF3
+chmod +x "$W/list13b"
+LE_LIST="$W/list13b" run "WRAPPED N5001."
+check "13b successor with a PR-marked original: rc" "$rc" 0
+contains "13b successor with a PR-marked original goes to wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/fleet.json $W/HIMMEL-6-N5001b-orig-2026-10-14-RESUME.md"
+lacks "13b successor with a PR-marked original is not closed directly" "$calls" "close"
+LE_LIST="$W/list13b" run "WRAPPED N5002."
+contains "13b successor and original both without a PR: direct close" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-7-N5002b-plain-2026-10-14-RESUME.md"
+lacks "13b no PR anywhere: wrap-merged not run" "$calls" "wrap --doc"
 
 LE_LIST="$W/list13" run "MERGED #2566 N3001"
 contains "13 MERGED never takes the close path" "$calls" "wrap --doc"

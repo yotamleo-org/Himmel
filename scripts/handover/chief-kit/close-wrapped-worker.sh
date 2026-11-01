@@ -31,9 +31,9 @@
 #   - the doc's last `## Results` marker-bullet (one of LIVE/FINDING/
 #     RESOLVED/READY/BLOCKED/HALTED/WRAPPED, leading token of the newest
 #     such bullet) is WRAPPED; a -RESUME doc with no marker-bullet of its own reads the original's
-#     (a resumed worker's WRAPPED lands on the original doc) only when the original holds a marker
-#     bullet written after the one naming the -RESUME doc, and the sibling's queue lock must be
-#     free too;
+#     (a resumed worker's WRAPPED lands on the original doc) only when the original's Results hold,
+#     after the hand-off WRAPPED naming the -RESUME doc, a LIVE with a new release token and then a
+#     WRAPPED, and the sibling's queue lock must be free too;
 #   - exactly one live `claude` session's real argv (via
 #     scripts/lanes/lib/claude-sessions.sh's claude_sessions, /proc-argv
 #     based, never a flattened pgrep -af scan) carries a `-n <name>` naming
@@ -95,7 +95,8 @@
 #      marker of its own reads the original's, only with hand-off evidence); an original doc is
 #      also refused while its -RESUME sibling has a last marker-bullet that is not WRAPPED; and
 #      both docs of a pair are refused while the -RESUME doc has no marker-bullet and the
-#      original holds no marker-bullet after the one naming the -RESUME doc (no hand-off evidence)
+#      original's Results hold no successor LIVE (new release token) then WRAPPED after the
+#      hand-off WRAPPED (no hand-off evidence)
 #   5  refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
 #      doc has more than one successor -RESUME doc (-N<k>[a-z]-...-RESUME.md)
 #   6  refused - the matched session still has a non-harness process alive
@@ -257,17 +258,33 @@ if ! . "$HERE/../../lib/worker-tail-status.sh"; then
     exit 1
 fi
 
-# resume_evidence <original doc> <resume doc>: success when the original doc holds a marker bullet
-# written AFTER its last bullet naming the resume doc's stem. A hand-off WRAPPED that names the
-# RESUME path is the last marker bullet right after the resume doc is written, so it is not
-# evidence; file mtimes are not either (the launch, a bus adopt and a vault pull all rewrite them).
+# resume_evidence <original doc> <resume doc>: success only on a record that nothing but the resumed
+# worker writes. In the original's `## Results` section: the hand-off is the first WRAPPED at or after
+# the first bullet naming the resume doc's stem; after it comes a LIVE carrying a release token
+# (`<host>-pid<N>`) other than the last LIVE token before the hand-off, then a WRAPPED. A bullet that
+# merely names the stem, a later marker of any kind, and file mtimes (a launch, a bus adopt and a vault
+# pull all rewrite them) prove nothing about a successor that has just started.
 resume_evidence() {
     local stem
     stem=$(basename "$2" .md)
-    sed -nE '/^- /p' "$1" | awk -v stem="$stem" '
-        index($0, stem) { ref = NR }
-        match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/) { last = NR }
-        END { exit !(ref > 0 && last > ref) }'
+    awk -v stem="$stem" '
+        /^## / { inres = ($0 ~ /^## Results/); next }
+        !inres || !/^- / { next }
+        {
+            mk = ""; tok = ""
+            if (match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/)) {
+                mk = substr($0, RSTART, RLENGTH)
+                sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", mk)
+                sub(/[^A-Za-z0-9_]$/, "", mk)
+            }
+            if (mk == "LIVE" && match($0, /`[^`]*-pid[0-9]+`/)) tok = substr($0, RSTART + 1, RLENGTH - 2)
+            if (!named && index($0, stem)) named = 1
+            if (named && !hand && mk == "WRAPPED") { hand = 1; next }
+            if (!hand) { if (tok != "") pred = tok; next }
+            if (!live && tok != "" && tok != pred) { live = 1; next }
+            if (live && mk == "WRAPPED") wrapped = 1
+        }
+        END { exit !wrapped }' "$1"
 }
 
 last_marker=$(worker_tail_status "$DOC")
@@ -276,9 +293,10 @@ if [ -n "$SIB_DOC" ]; then
     res_marker=$(worker_tail_status "$sib_res")
     if [ -z "$res_marker" ]; then
         # the resumed worker has written nothing of its own yet, so it may be a successor that has just
-        # started: only a later marker on the original (the resumed wrap) lets either doc close
+        # started: only the successor's own record on the original (a LIVE with a new release token,
+        # then its WRAPPED, after the hand-off) lets either doc close
         if ! resume_evidence "$sib_orig" "$sib_res"; then
-            echo "close-wrapped-worker: refusing - $sib_res has no marker-bullet of its own and $sib_orig holds no marker-bullet after the one naming it (no hand-off evidence)" >&2
+            echo "close-wrapped-worker: refusing - $sib_res has no marker-bullet of its own and $sib_orig holds no successor LIVE (new release token) then WRAPPED after the hand-off (no hand-off evidence)" >&2
             exit 4
         fi
         if [[ $DOC == *-RESUME.md ]]; then last_marker=$(worker_tail_status "$sib_orig"); fi

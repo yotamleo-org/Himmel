@@ -200,6 +200,22 @@ close_only=""
 if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     && ! grep -qE '^- .*(READY|PR) #?[0-9]+' "$worker"; then
     close_only=1
+    # a resumed worker's PR may be named only in the doc of the worker it continues (or of a
+    # sibling successor): any doc of the same worker base naming a PR keeps the merge verification
+    # a listing or read that fails keeps the verified path: the direct close is the one that kills
+    wk_base="$(worker_base "$worker")"
+    if ! sibs="$(find "$(dirname "$worker")" -maxdepth 1 -type f \( -name "*-${wk_base}-*.md" -o -name "*-${wk_base}[a-z]-*.md" \))"; then
+        close_only=""
+    else
+        while IFS= read -r sib; do
+            [ -n "$sib" ] && [ "$sib" != "$worker" ] || continue
+            [ "$(worker_base "$sib")" = "$wk_base" ] || continue
+            sib_rc=0; grep -qE '^- .*(READY|PR) #?[0-9]+' "$sib" || sib_rc=$?
+            if [ "$sib_rc" -ne 1 ]; then close_only=""; break; fi
+        done <<EOF
+$sibs
+EOF
+    fi
 fi
 
 errf="$(mktemp "${TMPDIR:-/tmp}/worker-event.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
