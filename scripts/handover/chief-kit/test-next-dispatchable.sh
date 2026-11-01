@@ -1758,12 +1758,20 @@ lacks "and it is not an ordinary row either" "$pm2" "LOCAL	HIMMEL-87"
 # An unreadable status log withholds only a To Do candidate whose key already has a merge on the main ref (git log grep
 # "[KEY]"), prints one WARN naming them, and keeps every other candidate.
 PMG="$WORK/pm-git"; mkdir -p "$PMG"
+M="$MPM"
+mk HIMMEL-88 "To Do" Medium '[]' '[]' '[]' "only a lookalike key on main" "Edit scripts/lib/pm9.sh."
+M="$M_SAVE"
 git -C "$PMG" init -q -b main && git -C "$PMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(x): [HIMMEL-83] a merged slice" \
-    && git -C "$PMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(x): [HIMMEL-830] a lookalike key"
+    && git -C "$PMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fix(x): [HIMMEL-880] a lookalike key"
 pmg="$(NEXT_DISPATCH_GIT_DIR="$PMG" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
 lacks "an unreadable status log withholds a candidate whose key has a merge on main" "$pmg" "LOCAL	HIMMEL-83"
 has "and names it in one WARN" "$pmg" "# WARN: status-events.jsonl is unreadable: withheld HIMMEL-83 (a merge on main)"
 has "while a candidate with no merge on main is still dispatched" "$pmg" "LOCAL	HIMMEL-82"
+has "a key whose only main commit cites a lookalike key ([HIMMEL-880]) is not withheld" "$pmg" "LOCAL	HIMMEL-88"
+# a git read that fails (no such ref) counts as merged: every candidate is withheld, not dispatched on an unknown
+pmn="$(NEXT_DISPATCH_GIT_DIR="$PMG" NEXT_DISPATCH_MAIN_REF=no-such-ref NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+lacks "an unreadable status log and a failed git read withholds a candidate (unknown fails closed)" "$pmn" "LOCAL	HIMMEL-82"
+has "and the WARN names it" "$(printf '%s\n' "$pmn" | grep '^# WARN')" "HIMMEL-82"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

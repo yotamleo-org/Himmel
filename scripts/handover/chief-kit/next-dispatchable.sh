@@ -633,7 +633,7 @@ except FileNotFoundError:
     pass
 except OSError as e:
     status_unreadable = True
-    print('# warn: %s is unreadable (%s): merged contract rows are unknown, so a To Do ticket with a merge on main is withheld' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
+    print('# warn: %s is unreadable (%s): merged contract rows are unknown: a To Do ticket with a merge on main is withheld, but a done-pending or partially merged In Progress ticket may still be listed as RESUME' % (os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl'), e.strerror or e))
 
 def merged_on_main(key):
     # True when the main ref carries a commit citing [KEY]; a git read that fails counts as merged (unknown fails closed)
