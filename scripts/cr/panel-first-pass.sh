@@ -15,7 +15,10 @@
 # fence into a real script removes the parse surface entirely.
 #
 # Usage:
-#   bash scripts/cr/panel-first-pass.sh --head <sha> --branch <name>
+#   bash scripts/cr/panel-first-pass.sh --head <sha> --branch <name> [--context-file <f>]
+#
+# --context-file: code beyond the diff every critic may cite (format in
+# critic-first-pass.sh --help); forwarded to critic-panel.sh.
 #
 # --head/--branch are REQUIRED and must be step 1's CAPTURED values, never
 # re-derived here: review the SHA the ledger will certify, not
@@ -70,6 +73,7 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 HEAD_SHA=""
 BRANCH=""
+CONTEXT_FILE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --head)
@@ -78,10 +82,19 @@ while [ $# -gt 0 ]; do
         --branch)
             [ $# -ge 2 ] || { echo "panel-first-pass: --branch requires a branch name" >&2; exit 2; }
             BRANCH="$2"; shift 2 ;;
+        --context-file)
+            # Code beyond the diff for every critic (critic-first-pass.sh
+            # --context-file); forwarded to critic-panel.sh as given.
+            [ $# -ge 2 ] || { echo "panel-first-pass: --context-file requires a file" >&2; exit 2; }
+            CONTEXT_FILE="$2"; shift 2 ;;
         *)
             echo "panel-first-pass: unknown arg: $1" >&2; exit 2 ;;
     esac
 done
+if [ -n "$CONTEXT_FILE" ] && [ ! -r "$CONTEXT_FILE" ]; then
+    echo "panel-first-pass: --context-file '$CONTEXT_FILE' is not a readable file" >&2
+    exit 2
+fi
 [ -n "$HEAD_SHA" ] || { echo "panel-first-pass: --head is required (step 1's captured SHA)" >&2; exit 2; }
 [ -n "$BRANCH" ]   || { echo "panel-first-pass: --branch is required (step 1's captured branch)" >&2; exit 2; }
 # the round counter and ledger are per-branch shared state; only
@@ -237,7 +250,7 @@ else
     # CR_USAGE_LOG=1: each critic logs a chars/4 ESTIMATED usage
     # ledger record. No CRITIC_PANEL_TIERS here: the panel
     # resolves tiers from the exported CR_PROFILE.
-    panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" --base "$db" --base-sha "$db_sha" 2>"$panel_tmp")
+    panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$panel_tmp")
     panel_rc=$?
     panel_avail_lines=$(cat "$panel_tmp"); rm -f "$panel_tmp"
     if [ "$panel_rc" -eq 7 ]; then
@@ -270,7 +283,7 @@ PINABORT
             retry_diff=$(rtk proxy git diff "$diff_range" 2>/dev/null) || retry_diff=""
             if [ -n "$retry_diff" ]; then
                 retry_tmp=$(mktemp -t cr-panel-avail.XXXXXX)
-                panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" --base "$db" --base-sha "$db_sha" 2>"$retry_tmp")
+                panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$retry_tmp")
                 panel_rc=$?
                 panel_avail_lines=$(cat "$retry_tmp"); rm -f "$retry_tmp"
                 # The retry is a SECOND panel invocation, so it has its own

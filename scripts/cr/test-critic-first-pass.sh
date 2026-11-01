@@ -915,4 +915,63 @@ cls_multi="$(cls_run "$(printf 'API call failed after 3 retries\nError code: 429
 check "multiline vendor error with a later 429 line -> rate-limit (finer class wins)" "$(printf '%s' "$cls_multi" | cut -d'|' -f1,2)" "1|rate-limit"
 check "multiline vendor error: vendor first line stays the last stderr line" "$(printf '%s' "$cls_multi" | cut -d'|' -f3-)" "critic-first-pass.sh: raw tail: API call failed after 3 retries"
 
+# --- context beyond the diff -----------------------------------------------
+# sha256 of stdin, without depending on sha256sum vs shasum.
+h256(){ python3 -I -c 'import hashlib,sys;print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'; }
+BIG="$DIFF
+diff --git a/bar.sh b/bar.sh
+index 0000000..2222222 100644
+--- a/bar.sh
++++ b/bar.sh
+@@ -1,1 +1,2 @@
+ one
++two"
+golden_small(){ for m in gpt-5.5 claude-opus-4-8 qwen/qwen3-coder-480b; do printf '%s' "$DIFF" | CRITIC_KNOWN_FINDINGS=0 bash "$CFP" --model "$m" --print-prompt "$@"; done | h256; }
+golden_big(){ for m in gpt-5.5 claude-opus-4-8 qwen/qwen3-coder-480b; do printf '%s' "$BIG" | CRITIC_KNOWN_FINDINGS=0 CRITIC_FIRST_PASS_CAP_BYTES=200 bash "$CFP" --model "$m" --print-prompt; done | h256; }
+# I10: with no context file the prompt is byte-identical to the base prompt
+# (eb11eb50d), for a small diff and for an over-cap (truncated) diff.
+check "I10 golden: small-diff prompt is byte-identical to base" "$(golden_small)" "02676c1a147ade3457354588c56a57fc21b5cf19a404efb332ca7831d7b8139f"
+check "I10 golden: over-cap diff prompt is byte-identical to base" "$(golden_big)" "b437c2869aba993647ca3b9f3d461283a73741cf5987e0cfd4cf23cb2ab331ae"
+check "I10 golden: an empty --context-file is no context (small)" "$(golden_small --context-file '')" "02676c1a147ade3457354588c56a57fc21b5cf19a404efb332ca7831d7b8139f"
+
+ctx="$tmp/ctx.txt"
+printf '%s\n' '{"range": ["lib/util.sh", 40, 50]}' '' 'function helper() {' '  return 1' '}' > "$ctx"
+cat > "$tmp/stub.py" <<'PY'
+print("## Critical Issues (1 found)")
+print("- [CRITIC-1]: caller ignores the helper's failure [lib/util.sh:42]")
+print("## Important Issues (0 found)")
+print("## Suggestions (1 found)")
+print("- [CRITIC-2]: outside every range [lib/util.sh:51]")
+PY
+ctx_out="$(printf '%s' "$DIFF" | HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s --context-file "$ctx" 2>"$tmp/ctx.err")"
+check "context citation inside a listed range is kept and tagged [context]" "$(grep -cF -e '- [s-1]: caller ignores the helper'"'"'s failure [context] [lib/util.sh:42]' <<< "$ctx_out")" "1"
+check "context citation outside every range is still dropped" "$(grep -c '^## Dropped Citations (1 dropped)' <<< "$ctx_out")" "1"
+check "a diff citation is never tagged [context]" "$(printf '%s' "$DIFF" | HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s --context-file "$ctx" 2>/dev/null | grep -c 'foo.sh.*\[context\]')" "0"
+ctx_pp="$(printf '%s' "$DIFF" | bash "$CFP" --model gpt-5.5 --print-prompt --context-file "$ctx" 2>/dev/null)"
+check "context file rides in a <context> block" "$(grep -c '^<context>$' <<< "$ctx_pp")" "1"
+check "context block carries the file text" "$(grep -c '^function helper() {$' <<< "$ctx_pp")" "1"
+# score.py's bullet parser still reads a [context]-tagged bullet (A28).
+tagged_line="$(grep -F '[context]' <<< "$ctx_out")"
+check "score.py BULLET parses a [context]-tagged bullet" "$(L="$tagged_line" python3 -I -c 'import os,re,sys
+src=open(sys.argv[1]).read()
+m=re.search(r"^BULLET = (re\.compile\(.*\))$",src,re.M)
+b=eval(m.group(1),{"re":re}).match(os.environ["L"])
+print(b.group(4)+":"+b.group(5) if b else "nomatch")' "$HERE/../eval/review-panel/score.py")" "lib/util.sh:42"
+
+# A30: a range path with a control character gives no context at all (fail-closed).
+printf '{"range": ["lib/util.sh\\u0007", 40, 50]}\n{"range": ["lib/util.sh", 40, 50]}\n\ntext\n' > "$tmp/ctx-bad.txt"
+bad_pp="$(printf '%s' "$DIFF" | bash "$CFP" --model gpt-5.5 --print-prompt --context-file "$tmp/ctx-bad.txt" 2>"$tmp/ctx-bad.err")"
+check "control-char range path: no <context> block" "$(grep -c '<context>' <<< "$bad_pp")" "0"
+check "control-char range path: the run says so" "$(grep -c 'context file refused' "$tmp/ctx-bad.err")" "1"
+bad_out="$(printf '%s' "$DIFF" | HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s --context-file "$tmp/ctx-bad.txt" 2>/dev/null)"
+check "control-char range path: the context citation is dropped" "$(grep -c '\[context\]' <<< "$bad_out")" "0"
+
+# A31: over CRITIC_PROMPT_CAP_BYTES the context is cut first, the diff never.
+cap_pp="$(printf '%s' "$DIFF" | CRITIC_PROMPT_CAP_BYTES=200 bash "$CFP" --model gpt-5.5 --print-prompt --context-file "$ctx" 2>"$tmp/cap.err")"
+check "over the prompt cap: context cut" "$(grep -c '<context>' <<< "$cap_pp")" "0"
+check "over the prompt cap: the diff is kept whole" "$(grep -c '^+another line$' <<< "$cap_pp")" "1"
+check "over the prompt cap: the run says what was cut" "$(grep -c 'context file cut' "$tmp/cap.err")" "1"
+cap_out="$(printf '%s' "$DIFF" | CRITIC_PROMPT_CAP_BYTES=200 HERMES_PY="$tmp/py.sh" bash "$CFP" --model x/y --slug s --context-file "$ctx" 2>/dev/null)"
+check "over the prompt cap: a cut context certifies no citation" "$(grep -c '\[context\]' <<< "$cap_out")" "0"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
