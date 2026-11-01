@@ -184,8 +184,10 @@ arm() { timeout "$2" bash "$WAIT" "$INBOX" --workers N1.md --doc "$DOC" > "$1" 2
 
 printf 'UNMAPPED 4325 fix/himmel-8288-orphan\n' > "$STUB/orphans.out"
 arm "$WORK/w1.out" 20
+check "waiter: the first underfilled wake exits 0" "0" "$wrc"
 check "waiter: the underfilled streak's first sample still wakes underfilled" "WAKE underfilled" "$(head -n1 "$WORK/w1.out" | cut -c1-16)"
 arm "$WORK/w2.out" 20
+check "waiter: the orphan wake exits 0" "0" "$wrc"
 check "waiter: the next underfilled sample wakes orphan-pr naming the PR" "WAKE orphan-pr 4325" "$(head -n1 "$WORK/w2.out")"
 check "waiter: the wake carries the UNMAPPED line" "1" "$(grep -c '^UNMAPPED 4325 fix/himmel-8288-orphan$' "$WORK/w2.out")"
 arm "$WORK/w3.out" 4
@@ -193,6 +195,7 @@ check "waiter: the same orphan set does not re-wake inside the window" "" "$(cat
 check "waiter: the quiet arm was still running when its timeout fired" "124" "$wrc"
 printf 'UNMAPPED 4325 fix/himmel-8288-orphan\nUNMAPPED 4400 fix/himmel-9000-new\n' > "$STUB/orphans.out"
 arm "$WORK/w4.out" 20
+check "waiter: the joining-PR wake exits 0" "0" "$wrc"
 check "waiter: a PR joining the orphan set wakes at once" "WAKE orphan-pr 4325,4400" "$(head -n1 "$WORK/w4.out")"
 : > "$STUB/orphans.out"
 : > "$STUB/orphan.unavailable"

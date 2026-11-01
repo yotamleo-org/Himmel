@@ -1721,7 +1721,7 @@ orphan_gate_note=""
 check_no_orphan_pr() {
     local orphans rc=0
     orphan_gate_note=""
-    orphans="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --doc "$1" --repo "$repo")" || rc=$?  # swallow-ok: the rc is kept and only the check's exit 1 refuses
+    orphans="$(bash "$HERE/../chief-kit/orphan-pr-check.sh" --doc "$1" --repo "${project_dir:-$repo}")" || rc=$?  # swallow-ok: the rc is kept and only the check's exit 1 refuses
     if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
         err "orphan-pr check unavailable (rc=$rc): handover not gated"
         orphan_gate_note="orphan-pr check unavailable (rc=$rc): this handover was not gated on unowned open PRs; run orphan-pr-check.sh"
