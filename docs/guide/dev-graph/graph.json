@@ -2164,7 +2164,8 @@
         "underfilled": "e.wake.underfilled",
         "pool-unresolved": "e.wake.underfilled",
         "succession complete": "e.next.complete",
-        "handover-budget": "e.next.fill"
+        "handover-budget": "e.next.fill",
+        "ready": "c.verify"
       },
       "unmapped": {
         "telegram": "operator inbound message: not a workflow decision",

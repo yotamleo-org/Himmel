@@ -92,6 +92,23 @@
 #                               resolve call was denied). Once per bullet; the chief
 #                               resolves each thread itself, never the operator. The
 #                               tick line follows and its key is saved.
+#   WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING> coverage=<PASS|FAIL>
+#        disposition=<ok|open:<n>> out=<file>   with --workers-from and the auto_go flag off
+#                               (on, the relay above hands READY to worker-event): a worker doc
+#                               whose newest marker bullet is `READY <pr> <head40> GREEN`. Before
+#                               waking, the waiter runs `timeout -k 5 90 ready-check.sh <pr> <head>`,
+#                               one bounded CI read (`gh pr checks`; a failed read is PENDING) and
+#                               `timeout -k 5 90 cr-disposition.sh check <pr> <head> --trust-path
+#                               <ready-check's TRUST-PATH>` (read only; open:? = it could not
+#                               evaluate). coverage= is ready-check's item 7. Once per (PR, head):
+#                               <inbox>.wait.readywoke keeps `<pr> <head>`, and a repeat READY of
+#                               a woken head folds that worker's tails=/acts= move into the
+#                               saved key, so it wakes nothing. out= is <inbox>.wait.ready-<pr>,
+#                               the three outputs, tokens scrubbed; the payload carries no
+#                               bullet text. The tick line follows and its key is saved. The
+#                               chief reads the diff and rules; GO stays go.sh. Seams (tests):
+#                               CHIEF_WAIT_READY_CHECK, CHIEF_WAIT_CI (prints the CI word),
+#                               CHIEF_WAIT_DISPOSITION.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <chief doc>
 #   <tracker output>            (the successor's waiter): every inherited worker quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -223,7 +240,8 @@
 #                      CHIEF_WAIT_TICK_TIMEOUT (+5 s kill grace each), and a
 #                      Telegram line waits for it. The relay adds at most one
 #                      wrap attempt (240 s +5 s kill grace), refreshing the heartbeat
-#                      before its call. Older than those bounds plus a few polls,
+#                      before its call; a READY wake's three checks (90 + 30 + 90 s,
+#                      +5 s kill grace each) refresh it before each one. Older than those bounds plus a few polls,
 #                      waiting or sampling, means it died without trapping (SIGKILL).
 #   <inbox>.wait.state   the saved action key (line 1: tick-args hash, line 2: key;
 #                        line 3 `failwoke` once a failure streak has woken).
@@ -236,6 +254,8 @@
 #                        (`<label> <marker> <cksum>`); <inbox>.wait.le-<label> holds
 #                        worker-event's last output for that worker, tokens scrubbed.
 #   <inbox>.wait.ready   with auto_go on: `<label><TAB><line>`, the last READY bullet handed on.
+#   <inbox>.wait.readywoke  with auto_go off: `<pr> <head40>`, each READY already woken for;
+#                        <inbox>.wait.ready-<pr> holds that wake's checks, tokens scrubbed.
 #   <inbox>.handover     handover mode: while it is fresh (younger
 #                        than CHIEF_WAIT_HANDOVER_MIN, default 60) the waiter
 #                        skips tick/bank/page sampling and wakes only on Telegram.
@@ -1299,6 +1319,93 @@ EOF
     return 1
 }
 
+# ready_wake: with --workers-from and auto_go off, a worker doc whose newest marker bullet
+# is `READY <pr> <head40> GREEN` wakes the chief once per (PR, head), the checks already
+# run (see the header). A head already woken adds its worker's label to $ready_fold.
+ready_woke_file="$inbox.wait.readywoke"
+ready_wake() {
+    local label ldoc bullet rest pr head rc_out rc trust ci disp drc cov rck dsp outf
+    ready_fold=""
+    [ -n "$legs_from" ] || return 1
+    auto_go_on && return 1
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -f "$ldoc" ] || continue
+        bullet="$(grep -E '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$ldoc" | tail -n 1)"
+        rest="$(printf '%s\n' "$bullet" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?//')"
+        [[ $rest =~ ^READY[[:space:]]+#?([0-9]+)[[:space:]]+([0-9a-f]{40})[[:space:]]+GREEN([^A-Za-z0-9_]|$) ]] || continue
+        pr="${BASH_REMATCH[1]}"; head="${BASH_REMATCH[2]}"
+        if grep -qxF -- "$pr $head" "$ready_woke_file" 2>/dev/null; then
+            ready_fold="$ready_fold $label"; continue
+        fi
+        heartbeat sampling
+        rc_out="$(timeout -k 5 90 bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        if [ "$rc" -eq 0 ]; then rck=PASS; else rck=FAIL; fi
+        if printf '%s\n' "$rc_out" | grep -q '^\[PASS\] 7\.'; then cov=PASS; else cov=FAIL; fi
+        if printf '%s\n' "$rc_out" | grep -qx 'TRUST-PATH: yes'; then trust=yes; else trust=no; fi
+        heartbeat sampling
+        ci="$(ready_ci "$pr" "$head")"
+        heartbeat sampling
+        disp="$(timeout -k 5 90 bash "${CHIEF_WAIT_DISPOSITION:-$HERE/cr-disposition.sh}" check "$pr" "$head" --trust-path "$trust" </dev/null 2>&1 9>&-)"; drc=$?  # gnu-ok: Linux-only kit
+        case "$drc" in
+            0) dsp=ok ;;
+            1) dsp="open:$(printf '%s\n' "$disp" | sed -nE 's/^DISPOSITION FAIL \(([0-9]+) of .*/\1/p' | head -n 1)"
+               [ "$dsp" != open: ] || dsp='open:?' ;;
+            *) dsp='open:?' ;;
+        esac
+        outf="$inbox.wait.ready-$pr"
+        printf '%s READY %s %s\n== ready-check rc=%s\n%s\n== ci %s\n== cr-disposition check rc=%s\n%s\n' \
+            "$label" "$pr" "$head" "$rc" "$rc_out" "$ci" "$drc" "$disp" | r0_scrub > "$outf" 2>/dev/null
+        printf '%s %s\n' "$pr" "$head" >> "$ready_woke_file"
+        printf 'WAKE ready %s %s ready-check=%s ci=%s coverage=%s disposition=%s out=%s\n' "$pr" "$head" "$rck" "$ci" "$cov" "$dsp" "$outf"
+        return 0
+    done <<EOF
+$(jq -r "$JQ_W"'W[]? | [.label, .doc] | @tsv' "$legs_from")
+EOF
+    return 1
+}
+# ready_ci <pr> <head>: GREEN, RED or PENDING from one bounded, non-blocking read; a failed read is PENDING.
+ready_ci() {
+    local b
+    if [ -n "${CHIEF_WAIT_CI:-}" ]; then
+        b="$(timeout -k 5 30 bash "$CHIEF_WAIT_CI" "$1" "$2" </dev/null 2>/dev/null 9>&- | head -n 1)"  # gnu-ok: Linux-only kit
+        case "$b" in GREEN|RED|PENDING) printf '%s\n' "$b" ;; *) printf 'PENDING\n' ;; esac
+        return
+    fi
+    # swallow-ok: an unreadable check list is PENDING, never GREEN
+    b="$(timeout -k 5 30 gh pr checks "$1" --json bucket -q '.[].bucket' </dev/null 2>/dev/null 9>&-)"  # gnu-ok: Linux-only kit
+    # gh exits 1 on a failed check and 8 on a pending one; any other non-zero is a failed read
+    case $? in 0|1|8) ;; *) printf 'PENDING\n'; return ;; esac
+    if printf '%s\n' "$b" | grep -qE '^(fail|cancel)$'; then printf 'RED\n'
+    elif [ -z "$b" ] || printf '%s\n' "$b" | grep -qx pending; then printf 'PENDING\n'
+    else printf 'GREEN\n'; fi
+}
+# ready_fold_key <saved key> <new key> <labels>: tails= and acts= take the new value when
+# they differ from the saved one only in those labels' tokens; every other field keeps
+# the saved value. A repeat READY of a head already woken is not a new event.
+ready_fold_key() {
+    awk -v s="$1" -v k="$2" -v a=" $3 " '
+    function strip(v,   n, t, i, l, o) {
+        n = split(v, t, ","); o = ""
+        for (i = 1; i <= n; i++) {
+            l = t[i]; sub(/:.*/, "", l)
+            if (t[i] == "none" || index(a, " " l " ")) continue
+            o = o "," t[i]
+        }
+        return o
+    }
+    BEGIN {
+        nk = split(k, kp, "|")
+        for (i = 1; i <= nk; i++) { f = kp[i]; sub(/=.*/, "", f); kv[f] = substr(kp[i], length(f) + 2) }
+        ns = split(s, sp, "|"); out = ""
+        for (i = 1; i <= ns; i++) {
+            f = sp[i]; sub(/=.*/, "", f); v = substr(sp[i], length(f) + 2)
+            if ((f == "tails" || f == "acts") && (f in kv) && strip(kv[f]) == strip(v)) v = kv[f]
+            out = out "|" f "=" v
+        }
+        print substr(out, 2)
+    }'
+}
+
 # r0_fold_key: <saved key> <new key> <absorbed words> — the baseline after the relay
 # absorbed those workers' wraps (words: labels and #<pr>). A field whose only difference
 # is absorbed tokens (`<word>`, `<word>:…`; `none` counts as empty) takes the new
@@ -1454,6 +1561,12 @@ while :; do
             if r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-worker-event'; exit 0; fi
             # a denied thread resolve is the chief's job; its acts= move is folded like the worker-event wake's
             if resolve_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-resolve'; exit 0; fi
+            # a READY is checked before it wakes; a repeat of a woken head folds into the baseline
+            if ready_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-ready'; exit 0; fi
+            if [ -n "$ready_fold" ] && [ -n "$saved" ]; then
+                ready_new="$(ready_fold_key "$saved" "$key" "$ready_fold")"
+                [ "$ready_new" = "$saved" ] || { saved="$ready_new"; save_key "$saved"; }
+            fi
             # a wrap the relay absorbed folds only that worker into the baseline
             if [ -n "$saved" ] && { [ -n "$r0_handled" ] || [ -n "$r0_refold" ]; }; then
                 saved="$(r0_fold_key "$saved" "$key" "$r0_fold")"; save_key "$saved"
