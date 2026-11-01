@@ -6,7 +6,8 @@
 #
 # Knobs (all unset by default):
 #   KSTUB_LOCKED=true       busctl reports the collection locked
-#   KSTUB_LOOKUP_FAIL=1     every lookup fails
+#   KSTUB_LOOKUP_FAIL=1     every lookup fails (exit 1, as an absent item)
+#   KSTUB_LOOKUP_RC=<n>     every lookup exits <n> (124 = timed out)
 #   KSTUB_SEARCH_FAIL=1     every search fails
 #   KSTUB_DROP_STORE=1      a store succeeds and keeps nothing
 # Files: $KSTUB_STORE holds one `attrs<TAB>value` line per item; $KSTUB_LOG holds
@@ -30,7 +31,9 @@ case "$verb" in
         IFS= read -r val || true
         [ -n "${KSTUB_DROP_STORE:-}" ] && exit 0
         printf '%s\t%s\n' "${q# }" "$val" >>"$KSTUB_STORE"; exit 0 ;;
-    lookup) [ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1 ;;
+    lookup)
+        [ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1
+        [ -z "${KSTUB_LOOKUP_RC:-}" ] || exit "$KSTUB_LOOKUP_RC" ;;
     search) [ -z "${KSTUB_SEARCH_FAIL:-}" ] || { echo 'secret-tool: stub failure' >&2; exit 1; } ;;
 esac
 rc=1

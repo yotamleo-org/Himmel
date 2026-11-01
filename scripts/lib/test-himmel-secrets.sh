@@ -279,6 +279,13 @@ printf 'service=himmel key=JIRA_API_TOKEN scope=user\tdummy-r12\n' >"$KSTUB_STOR
 got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
 assert_eq "R13 the same value already held is stored, with no second store call" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0|0" "$(printf '%s' "$got" | tr '\n' '|')|$(grep -c '^secret-tool store' "$KSTUB_LOG")"
 
+# R13c: a lookup that errors or times out is not an absent item: nothing is stored.
+kreset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tdummy-old\n' >"$KSTUB_STORE"
+got=$(cd "$REPO" && env -u CLAUDECODE KSTUB_LOOKUP_RC=124 "$HS" import-env "$TMP/r12.env" 2>&1; echo "rc=$?")
+assert_eq "R13c a timed-out lookup prints failed, exit 1" "failed JIRA_API_TOKEN|imported 0 key(s) into the keyring|rc=1" "$(printf '%s' "$got" | tr '\n' '|')"
+assert_eq "R13c a timed-out lookup makes no store call" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+
 # R14: a name in the keep file is skipped, not stored; the existing lines stay.
 kreset
 printf 'JIRA_API_TOKEN=dummy-r12\nFIRECRAWL_API_KEY=dummy-r14\nJIRA_EMAIL=dummy@example.invalid\n' >"$TMP/r14.env"
@@ -286,6 +293,16 @@ printf 'JIRA_API_TOKEN\n' >"$TMP/r14.keep"
 got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --keep-file "$TMP/r14.keep" "$TMP/r14.env" 2>&1; echo "rc=$?")
 assert_eq "R14 keep-file names are skipped, other lines unchanged" "skipped JIRA_API_TOKEN (env-keep)|stored FIRECRAWL_API_KEY|skipped JIRA_EMAIL (config key; it belongs in ~/.himmel)|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
 assert_eq "R14 a keep-file name makes no store call" "0" "$(grep -c 'store.*key JIRA_API_TOKEN' "$KSTUB_LOG")"
+
+# R14c: a keep file that cannot be read stops the import before any store.
+kreset
+if [ "$(id -u)" != 0 ]; then
+    cp "$TMP/r14.keep" "$TMP/r14-unreadable.keep"
+    chmod 000 "$TMP/r14-unreadable.keep"
+    got=$(cd "$REPO" && env -u CLAUDECODE "$HS" import-env --keep-file "$TMP/r14-unreadable.keep" "$TMP/r14.env" 2>/dev/null; echo "rc=$?")
+    assert_eq "R14c an unreadable keep-file stops the import, rc 2" "rc=2" "$got"
+    assert_eq "R14c an unreadable keep-file stores nothing" "0" "$(grep -c . "$KSTUB_STORE")"
+fi
 
 # R14b: names --class secret reads the class owner, needs no backend, and
 # follows the owner when its case changes.
