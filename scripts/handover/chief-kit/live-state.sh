@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# live-state.sh — Renders a chief doc's `## Live state` `legs:`
+# live-state.sh — Renders a chief doc's `## Live state` `workers:`
 # entries from its fleet manifest (<chief doc stem>.fleet.json,
 # fleet-manifest.sh) instead of the chief hand-editing them on every dispatch
 # and wrap.
@@ -18,7 +18,7 @@
 #   lock-token  the worker's held queue lock (`queue-lock.sh status <doc>` owner.json
 #               `session`): read from the lock on every render, never typed
 #   nonce       AUTHORITY-BEARING and chief-only: kept from the entry already on
-#               the legs: line, or given with --nonce for a worker not yet listed.
+#               the workers: line, or given with --nonce for a worker not yet listed.
 #               Never read from the worker doc or the manifest, which a worker or a
 #               manifest edit could set
 #   pid         informational: kept from the existing entry, else --pid, else the
@@ -27,18 +27,20 @@
 # lock is gone as livestate=DRIFT); a worker off the manifest drops. A new worker
 # with no nonce is refused and the doc is not touched.
 #
-# Only the legs: block (the `legs:` line plus the lines wrapped under it, ended
-# as tick.sh ends it) inside `## Live state` is rewritten, to ONE `legs:` line:
-# the entries, then whatever prose the old block carried. Every other line is
+# Only the workers: block (the `workers:` line plus the lines wrapped under it, ended
+# as tick.sh ends it) inside `## Live state` is rewritten, to ONE `workers:` line:
+# the entries, then whatever prose the old block carried. A doc still carrying the
+# pre-rename `legs:` block (read only while legacy names are on) has that block
+# REPLACED by the one `workers:` line, in place. Every other line is
 # copied through. --print writes nothing and prints the new line.
 # tick.sh is unchanged: livestate=DRIFT/MALFORMED and nonces= read the result as
 # they read a hand-written line.
 #
 # a manifest row marked lockless (an eval/pilot row) is not a worker that
 # lost its lock: it is listed on its own `lockless: <label> (<lane>) <doc>; ...` line
-# right after the legs: line (replaced on every render), for succession to carry.
+# right after the workers: line (replaced on every render), for succession to carry.
 #
-# Exit: 0 ok; 1 refused (no manifest, no legs: line, new worker without a nonce);
+# Exit: 0 ok; 1 refused (no manifest, no workers: line, new worker without a nonce);
 # 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 # shellcheck disable=SC2016  # backtick spans and awk programs are literal, not expansions
 set -uo pipefail
@@ -76,7 +78,8 @@ if [ "$digest" -eq 1 ] && { [ "$print_only" -ne 0 ] || [ -n "$nonces$pids" ]; };
 
 # The manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`.
 # The Live state line is `workers:`; the pre-rename `legs:` line is read only while legacy names
-# are on, and `workers:` wins when a doc carries both. The block is rendered under the key the doc has.
+# are on, and `workers:` wins when a doc carries both. The block is read under the key the doc has
+# and written back as `workers:`.
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
@@ -132,7 +135,7 @@ manifest="${doc%.md}.fleet.json"
 rows="$(jq -r "$JQ_W"'W[] | [.label, .doc, ((.lane // "") | if . == "" then "unknown" else . end), ((.lockless == true) | tostring)] | @tsv' "$manifest" 2>/dev/null)" \
     || { echo "live-state: unreadable fleet manifest: $manifest" >&2; exit 1; }
 old_block="$(awk -v k="$live_key" "$block_awk" "$doc")"
-[ -n "$old_block" ] || { echo "live-state: no $live_key: line under '## Live state' in $doc" >&2; exit 1; }
+[ -n "$old_block" ] || { echo "live-state: no workers: line under '## Live state' in $doc" >&2; exit 1; }
 
 entry_re='`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`'
 old_entries="$(printf '%s\n' "$old_block" | grep -oE "$entry_re" | tr -d '`')"
@@ -180,9 +183,9 @@ if [ -n "$missing" ]; then
 fi
 
 prose="$(printf '%s\n' "$old_block" | sed -E "s/^${live_key}:[[:space:]]*//; s/$entry_re//g" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//; s/^none$//; s/^none //')"
-if [ -n "$new_entries" ]; then new_line="$live_key: $new_entries$prose"; else new_line="$live_key: none${prose:+ $prose}"; fi
+if [ -n "$new_entries" ]; then new_line="workers: $new_entries$prose"; else new_line="workers: none${prose:+ $prose}"; fi
 new_line="$(printf '%s' "$new_line" | sed -E 's/ +$//')"
-# The lockless section follows the legs: line; a stale `lockless:` line is replaced.
+# The lockless section follows the workers: line; a stale `lockless:` line is replaced.
 [ -z "$lockless_rows" ] || new_line="$new_line"$'\n'"lockless: ${lockless_rows%; }"
 
 if [ "$print_only" -eq 1 ]; then

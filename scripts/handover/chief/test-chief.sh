@@ -1573,7 +1573,7 @@ doc60B="$root/tester/livestatedst/DEMO-nextleg-${today}B-chief.md"
 handoff60A="$root/tester/livestatesrc/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 
 # shellcheck disable=SC2016  # backtick worker span, literal fixture text
-fixture60_workers='legs: `N9:nonce-fixture-60:lock-fixture-60:42424`'
+fixture60_workers='workers: `N9:nonce-fixture-60:lock-fixture-60:42424`'
 marker60='MARKER-60-COMPACT-INSTRUCTIONS-MUST-NOT-LEAK'
 awk -v workers_line="$fixture60_workers" -v marker="$marker60" '
     $0 == "## Live state" {
@@ -1615,7 +1615,7 @@ check "60 successor Live state seeds the predecessor's workers line verbatim" \
 check "60 successor Live state seeds queue, last GO and acked verbatim" \
     "$(printf '%s\n' "$live60B" | grep -Fxc -e 'queue: N9' -e 'last GO: `#999:deadbeef00`' -e 'acked: none')" "3"
 check "60 successor Live state keeps no placeholder workers line" \
-    "$(printf '%s\n' "$live60B" | grep -c '^legs: <')" "0"
+    "$(printf '%s\n' "$live60B" | grep -c '^workers: <')" "0"
 check "60 HANDOFF carries no copy of the fixture nonce" \
     "$(grep -Fc 'nonce-fixture-60' "$handoff60A" 2>/dev/null)" "0"
 check "60 HANDOFF points at the seeded successor doc" \
@@ -3221,13 +3221,13 @@ doc94B="$root/tester/trim94dst/DEMO-nextleg-${today}B-chief.md"
 handoff94A="$root/tester/trim94/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 hist94="$root/tester/trim94dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
 # shellcheck disable=SC2016  # backtick worker spans are literal fixture text
-legs94='legs: `N1:n-one:lock-one:11` `N2:n-two:lock-two:22`'
+legs94='workers: `N1:n-one:lock-one:11` `N2:n-two:lock-two:22`'
 for i in $(seq 1 20); do legs94="$legs94 \`C$i:nonce-closed-$i:lock-closed-$i:$i\`"; done
 legs94="$legs94 (KA 01:4x: SHIFT-NOTE-94 closed workers wrapped and pruned)"
 # shellcheck disable=SC2016  # literal fixture text
 go94='last GO: `94:aaaa1111` (ordinary), prior `93:bbbb2222` (PRIOR-GO-94) (prior `92:cccc3333` (older))'
 awk -v legs="$legs94" -v go="$go94" '
-    /^legs:/ { print legs; print "pool-disposition: DEMO-94 question POOL-LINE-94"; next }
+    /^workers:/ { print legs; print "pool-disposition: DEMO-94 question POOL-LINE-94"; next }
     /^last GO:/ { print go; next }
     { print }' "$doc94A" > "$doc94A.new" && mv "$doc94A.new" "$doc94A"
 printf '{"legs":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
@@ -3253,7 +3253,7 @@ out94b="$(chief new --bucket trim94b)"
 token94b="$(token_of "$out94b")"
 doc94bA="$root/tester/trim94b/DEMO-nextleg-${today}A-chief.md"
 doc94bB="$root/tester/trim94bdst/DEMO-nextleg-${today}B-chief.md"
-awk -v legs="$legs94" '/^legs:/ { print legs; next } { print }' "$doc94bA" > "$doc94bA.new" && mv "$doc94bA.new" "$doc94bA"
+awk -v legs="$legs94" '/^workers:/ { print legs; next } { print }' "$doc94bA" > "$doc94bA.new" && mv "$doc94bA.new" "$doc94bA"
 rm -f "${doc94bA%.md}.fleet.json"
 chief next --bucket trim94bdst --doc "$doc94bA" >/dev/null 2>&1
 check "94b with no manifest every worker span is seeded" "$(grep -c 'C20:nonce-closed-20' "$doc94bB" 2>/dev/null)" "1"
@@ -3266,7 +3266,7 @@ seed94() {
     out="$(chief new --bucket "$b")"; tok="$(token_of "$out")"
     A="$root/tester/$b/DEMO-nextleg-${today}A-chief.md"
     h="$root/tester/${b}dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
-    awk -v legs="$legs" '/^legs:/ { print legs; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
+    awk -v legs="$legs" '/^workers:/ { print legs; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
     if [ "$man" = - ]; then rm -f "${A%.md}.fleet.json"; else printf '%s\n' "$man" > "${A%.md}.fleet.json"; fi
     if [ -n "$pre" ]; then mkdir -p "${h%/*}"; printf '%s\n' "$pre" > "$h"; fi
     if ! chief next --bucket "${b}dst" --doc "$A" >/dev/null 2>&1; then echo "FAIL - seed94 $b: chief next failed"; fails=$((fails+1)); fi
@@ -3287,7 +3287,7 @@ check "94f a manifest row with no label seeds the complete legs block" "$(grep -
 
 # 94d: a malformed span of an open worker is kept (the tick reads MALFORMED), a closed worker's is dropped.
 # shellcheck disable=SC2016  # literal fixture text
-seed94 trim94d 'legs: `N1:n-one:lock-one:11` `N2:n-two:lock-two` `C1:nonce-closed-1:lock-closed-1:1` (prose) `procs:2`' "$man94"
+seed94 trim94d 'workers: `N1:n-one:lock-one:11` `N2:n-two:lock-two` `C1:nonce-closed-1:lock-closed-1:1` (prose) `procs:2`' "$man94"
 doc94dB="$root/tester/trim94ddst/DEMO-nextleg-${today}B-chief.md"
 # shellcheck disable=SC2016  # literal fixture text
 check "94d the malformed span of an open worker is kept" "$(grep -cF '`N2:n-two:lock-two`' "$doc94dB" 2>/dev/null)" "1"
