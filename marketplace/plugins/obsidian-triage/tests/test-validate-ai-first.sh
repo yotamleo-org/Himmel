@@ -37,7 +37,7 @@ printf '# outside\n' > "$tmp/outside.md"
 
 run() { # $1=file; the vault is the fixture vault
   printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$1" \
-    | HOME="$tmp/home" OBSIDIAN_VAULT_PATH="$tmp/vault" bash "$HOOK" 2>/dev/null
+    | HOME="$tmp/home" OBSIDIAN_VAULT_PATH="$tmp/vault" AI_FIRST_SKIP_CHECKS='' OBSIDIAN_ENV_FILE="$tmp/none.env" bash "$HOOK" 2>/dev/null
 }
 
 out="$(run "$tmp/vault/20-Areas/bad.md")"

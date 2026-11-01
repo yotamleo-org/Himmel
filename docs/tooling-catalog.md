@@ -346,9 +346,11 @@ earned nothing: 0 skill calls in 457 bridge runs over 30 days, and `lane-content
 was never launched. Its one used piece, the MIT `validate-ai-first.sh`
 PostToolUse write hook, now ships in `obsidian-triage` (`hooks/validate-ai-first.sh`,
 licence header kept). The upstream project is still credited in
-[credits.md](credits.md). If a user-scope clone or a plugin copy is still
-installed on a machine, uninstall it (`claude plugin uninstall
-obsidian-second-brain@himmel`); nothing in himmel enables it any more.
+[credits.md](credits.md). Nothing in himmel enables it any more. If a plugin
+copy is still installed on a machine, uninstall it (`claude plugin uninstall
+obsidian-second-brain@himmel`). A user-scope clone under `~/.claude/skills/`
+is not a plugin and that command does not touch it: move the directory out of
+`~/.claude/skills/` by hand.
 
 **Research toolkit:** was never adopted; the decision record stays at
 `docs/tool-adoption/registry.md` (research-toolkit row) and
