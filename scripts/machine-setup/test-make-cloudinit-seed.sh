@@ -514,6 +514,7 @@ else
 # log shows a lookup argv with no value in it.
 : >"$KSTUB_LOG"
 printf 'service=himmel key=ubuntu_vm_pass scope=user\t%s\n' "$PLAIN_PASSWORD" >"$KSTUB_STORE"
+printf 'service=himmel key=ubuntu_vm_user scope=user\thimmeltest\n' >>"$KSTUB_STORE"
 mkdir -p "$TMP/noenv"
 cat >"$TMP/seed-keyring.py" <<PYEOF
 import importlib.util, os, sys
@@ -536,15 +537,21 @@ assert_not_contains "S0-R6 the keyring-served password is never printed" "$OUT_K
 assert_contains "S0-R6 the stub log shows a lookup argv" "$(cat "$KSTUB_LOG")" "secret-tool lookup"
 assert_not_contains "S0-R6 the stub log carries no value" "$(cat "$KSTUB_LOG")" "$PLAIN_PASSWORD"
 
-# S0-R2: the same key in the keyring and .env: the keyring value wins.
-printf 'ubuntu_vm_pass=dummy-from-dotenv\n' >"$TMP/noenv/.env"
-OUT_R2=$(env -u ubuntu_vm_pass python3 "$TMP/seed-keyring.py" load 2>&1)
-assert_contains "S0-R2 keyring wins over .env" "$OUT_R2" "PASS=$PLAIN_PASSWORD"
+if python3 -c "import dotenv" 2>/dev/null; then
+    # S0-R2: the same key in the keyring and .env (the user only in .env, so
+    # the .env read runs): the keyring value wins.
+    printf 'service=himmel key=ubuntu_vm_pass scope=user\t%s\n' "$PLAIN_PASSWORD" >"$KSTUB_STORE"
+    printf 'ubuntu_vm_pass=dummy-from-dotenv\nubuntu_vm_user=himmeltest\n' >"$TMP/noenv/.env"
+    OUT_R2=$(env -u ubuntu_vm_pass -u ubuntu_vm_user python3 "$TMP/seed-keyring.py" load 2>&1)
+    assert_contains "S0-R2 keyring wins over .env" "$OUT_R2" "PASS=$PLAIN_PASSWORD"
 
-# The .env stays the last fallback when the keyring holds nothing.
-: >"$KSTUB_STORE"
-OUT_FB=$(env -u ubuntu_vm_pass python3 "$TMP/seed-keyring.py" load 2>&1)
-assert_contains "S0b .env is the last fallback" "$OUT_FB" "PASS=dummy-from-dotenv"
+    # The .env stays the last fallback when the keyring holds nothing.
+    : >"$KSTUB_STORE"
+    OUT_FB=$(env -u ubuntu_vm_pass -u ubuntu_vm_user python3 "$TMP/seed-keyring.py" load 2>&1)
+    assert_contains "S0b .env is the last fallback" "$OUT_FB" "PASS=dummy-from-dotenv"
+else
+    echo "SKIP S0-R2 and the .env fallback: python-dotenv not installed"
+fi
 fi
 
 if [ "$FAILED" -eq 0 ]; then
