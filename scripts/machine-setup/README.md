@@ -16,7 +16,7 @@ curl -fsSL "https://raw.githubusercontent.com/yotamleo/Himmel/main/scripts/machi
 bash /tmp/ubuntu.sh --luna-remote "https://github.com/<you>/<your-vault>.git"
 ```
 
-**What it installs:** apt packages (git, python3, jq, curl), node LTS via NodeSource, uv+uvx, bun, Claude Code CLI, RTK (.deb), himmel repo + setup, claude-hud statusline, CLAUDE.md + RTK.md, obsidian-second-brain plugin, Luna vault + pre-commit, `~/.claude/settings.json` (jq deep-merge), **end-session-wiki SessionEnd hook (prompted: Y/n, bash-only)**, **`at` + atd (auto-arm scheduler backend, prompted: Y/n)**, Obsidian (.deb).
+**What it installs:** apt packages (git, python3, jq, curl), node LTS via NodeSource, uv+uvx, bun, Claude Code CLI, RTK (.deb), himmel repo + setup, claude-hud statusline, CLAUDE.md + RTK.md, Luna vault + pre-commit, `~/.claude/settings.json` (jq deep-merge), **end-session-wiki SessionEnd hook (prompted: Y/n, bash-only)**, **`at` + atd (auto-arm scheduler backend, prompted: Y/n)**, Obsidian (.deb).
 
 **After run:** Complete the printed manual checklist (Jira token, Atlassian MCP token, qmd embed).
 

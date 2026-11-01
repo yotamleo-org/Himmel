@@ -11,11 +11,6 @@
     "synced_base": "skill-v4.8.0",
     "tag_prefix": "skill-v"
   },
-  "obsidian-second-brain": {
-    "upstream_repo": "eugeniughelbur/obsidian-second-brain",
-    "track": "release",
-    "synced_base": "v0.18.1"
-  },
   "ui-ux-pro-max": {
     "upstream_repo": "nextlevelbuilder/ui-ux-pro-max-skill",
     "track": "release",

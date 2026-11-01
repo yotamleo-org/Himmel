@@ -45,7 +45,7 @@ vendoring records name the upstream pins and carried deviations.
 | lottie-motion-design | https://github.com/lottiefiles/motion-design-skill | lottiefiles | MIT | f9a8a041b85185ee4881b3471d3415e939aac772 |
 | luna-correlate | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/luna-correlate | yotamleo | MIT | In-tree |
 | motion-lexicon | https://github.com/Ryan-yang125/motion-lexicon | Ryan-yang125 | MIT | v6.0.0 |
-| obsidian-second-brain | https://github.com/yotamleo-org/obsidian-second-brain | Eugeniu Ghelbur | MIT | e42dac7976cdf1466f4a6d90f2de96f92e41c1f4 |
+| obsidian-second-brain | https://github.com/yotamleo-org/obsidian-second-brain | Eugeniu Ghelbur | MIT | removed from the marketplace (HIMMEL-8416); last pin e42dac7976cdf1466f4a6d90f2de96f92e41c1f4; its `validate-ai-first.sh` hook is ported into obsidian-triage |
 | obsidian-triage | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/obsidian-triage | yotamleo | MIT | In-tree |
 | plannotator-effective-html | https://github.com/yotamleo-org/effective-html | plannotator | MIT | e4b08eb3168a14d6c3957ea13ba71376c6a9448e |
 | platform-design-skills | https://github.com/ehmo/platform-design-skills | ehmo | MIT | dc2be825d8b439caea78e9eaa8fb3ac23b0ff3e9 |
@@ -93,7 +93,7 @@ source of truth for the shipped revision; no pin is invented for dormant forks.
 | yotamleo-org/graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs | Apache-2.0 | branch himmel-main; [pin site](../scripts/lib/graphify-bin.sh) | runtime-dependency |
 | yotamleo-org/hermes-agent | https://github.com/NousResearch/hermes-agent | NousResearch | MIT | branch main; [pin site](../scripts/upstreams.json) | dormant |
 | yotamleo-org/home-assistant.io | https://github.com/home-assistant/home-assistant.io | Home Assistant contributors | CC-BY-NC-SA-4.0 | branch current; no pin site registered | upstream-contribution |
-| yotamleo-org/obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | branch main; [pin site](../marketplace/.claude-plugin/marketplace.json) | runtime-dependency |
+| yotamleo-org/obsidian-second-brain | https://github.com/eugeniughelbur/obsidian-second-brain | Eugeniu Ghelbur | MIT | branch main; no pin site (removed from the marketplace, HIMMEL-8416) | removed |
 | yotamleo-org/obsidian-skills | https://github.com/kepano/obsidian-skills | Steph Ango | MIT | branch himmel-main; no pin site registered | runtime-dependency |
 | yotamleo-org/qmd | https://github.com/tobi/qmd | Tobi Lütke | MIT | branch main; [pin site](../scripts/lib/qmd-bin.sh) | runtime-dependency |
 | yotamleo-org/twitter-cli | https://github.com/public-clis/twitter-cli | public-clis | Apache-2.0 | branch himmel-main; no pin site registered | dormant |
