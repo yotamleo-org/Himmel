@@ -104,7 +104,7 @@ the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-50
 
 Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it); 2 usage.
 """
-import argparse, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
+import argparse, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
 
 
@@ -605,21 +605,21 @@ def per_key_lines(out, keys, spec=False):
 
 def core_log(path, rows):
     # Append-only; a row for a key, brief and outcome the log already holds is not appended again (a retried pass).
-    seen = set()
+    # The read and the append share one exclusive lock, so two passes on one bucket cannot both append the same row.
     try:
-        for line in open(path):
-            try:
-                r = json.loads(line)
-            except ValueError:
-                continue
-            seen.add((r.get('key'), r.get('brief'), r.get('outcome')))
-    except OSError:
-        pass
-    new = [r for r in rows if (r['key'], r['brief'], r['outcome']) not in seen]
-    try:
-        with open(path, 'a') as f:
-            for r in new:
-                f.write(json.dumps(r) + '\n')
+        with open(path, 'a+') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            f.seek(0)
+            seen = set()
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                seen.add((r.get('key'), r.get('brief'), r.get('outcome')))
+            for r in rows:
+                if (r['key'], r['brief'], r['outcome']) not in seen:
+                    f.write(json.dumps(r) + '\n')
     except OSError as e:
         die('cannot write the core gate log %s (%s); a decision that cannot be recorded is not made' % (path, e), 2)
 
