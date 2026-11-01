@@ -192,14 +192,15 @@ def counters_cost(c):
 
 
 def valid_totals(totals):
-    """True when each kind is a counter dict whose known counters are numbers (or absent)."""
+    """True when each kind is a counter dict whose known counters are numbers; a kind or
+    counter may be absent, but a present value of the wrong type (even a falsy one) is not."""
     for kind in ("console", "leg", "judge"):
-        c = totals.get(kind) or {}
+        c = totals.get(kind, {})
         if not isinstance(c, dict):
             return False
         for f, _, _ in TOKEN_WEIGHTS:
             for k in (f, "sub_" + f):
-                v = c.get(k) or 0
+                v = c.get(k, 0)
                 if isinstance(v, bool) or not isinstance(v, (int, float)):
                     return False
     return True

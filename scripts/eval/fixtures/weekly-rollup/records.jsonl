@@ -5,4 +5,6 @@
 {"schema":1,"ticket":"_chief","totals":{"console":{"input":500,"cache_read":5000,"cache_create":0,"output":100,"sub_input":0,"sub_cache_read":0,"sub_cache_create":0,"sub_output":0,"turns":3,"sub_turns":0},"leg":{"input":0,"cache_read":0,"cache_create":0,"output":0,"sub_input":0,"sub_cache_read":0,"sub_cache_create":0,"sub_output":0,"turns":0,"sub_turns":0},"judge":{"input":0,"cache_read":0,"cache_create":0,"output":0,"sub_input":0,"sub_cache_read":0,"sub_cache_create":0,"sub_output":0,"turns":0,"sub_turns":0}}}
 {"schema":1,"ticket":"HIMMEL-4","totals":{"console":1}}
 {"schema":1,"ticket":"HIMMEL-3","totals":{"leg":{"input":"x"}}}
+{"schema":1,"ticket":"HIMMEL-4","totals":{"leg":[]}}
+{"schema":1,"ticket":"HIMMEL-3","totals":{"leg":{"input":false}}}
 {"schema":1,"ticket":"_unattributed","totals":{"console":{"input":0,"cache_read":0,"cache_create":0,"output":0,"sub_input":0,"sub_cache_read":0,"sub_cache_create":0,"sub_output":0,"turns":0,"sub_turns":0},"leg":{"input":99999,"cache_read":0,"cache_create":0,"output":0,"sub_input":0,"sub_cache_read":0,"sub_cache_create":0,"sub_output":0,"turns":1,"sub_turns":0},"judge":{"input":0,"cache_read":0,"cache_create":0,"output":0,"sub_input":0,"sub_cache_read":0,"sub_cache_create":0,"sub_output":0,"turns":0,"sub_turns":0}}}
