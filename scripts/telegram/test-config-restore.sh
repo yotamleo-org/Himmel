@@ -46,6 +46,24 @@ has "enroll records the operator id from allowFrom" "result=enrolled operator=$O
 out="$(cr enroll)"; rc=$?
 [ "$rc" -ne 0 ] && has "a second enroll refuses without --force" "already-enrolled" "$out" || fail "second enroll rc=$rc" "$out"
 
+echo "== enroll QR =="
+# A stub qrencode records its argv; a pipe would encode a trailing newline that an
+# authenticator app rejects, so the URI must arrive as ONE argument with none.
+mkdir -p "$T/qrbin" "$T/pyonly"
+# shellcheck disable=SC2016 # the stub's $ expansions are meant to be literal here
+printf '#!/bin/sh\nprintf "%%s" "$#" > "$QR_ARGC"\nprintf "%%s" "$*" > "$QR_ARGV"\nfor a in "$@"; do uri="$a"; done\nprintf "%%s" "$uri" > "$QR_URI"\necho QR-DRAWN\n' > "$T/qrbin/qrencode"
+chmod +x "$T/qrbin/qrencode"
+ln -s "$(command -v python3)" "$T/pyonly/python3"
+export QR_ARGC="$T/qr.argc" QR_ARGV="$T/qr.argv" QR_URI="$T/qr.uri"
+out="$(PATH="$T/qrbin:$PATH" HIMMEL_CONFIG_DIR="$T/qr1" cr enroll)"
+[ -e "$QR_URI" ] && pass "enroll calls qrencode" || fail "qrencode was never called" "$out"
+has "enroll shows what qrencode drew" "QR-DRAWN" "$out"
+case "$(cat "$QR_URI" 2>/dev/null)" in otpauth://totp/*"&issuer=himmel") pass "qrencode gets the URI with no trailing newline" ;; *) fail "qrencode URI" "$(od -c "$QR_URI" 2>/dev/null | tail -3)" ;; esac
+[ "$(cat "$QR_ARGC" 2>/dev/null)" = 3 ] && has "qrencode is called as -t ansiutf8 URI" "-t ansiutf8 otpauth://" "$(cat "$QR_ARGV")" || fail "qrencode argc" "$(cat "$QR_ARGC" 2>/dev/null)"
+out="$(PATH="$T/pyonly" HIMMEL_CONFIG_DIR="$T/qr2" cr enroll)"
+has "without qrencode enroll still prints the URI" "otpauth://totp/" "$out"
+has "without qrencode enroll hints how to get one" "qrencode" "$out"
+
 echo "== a backup to restore =="
 printf '{"policy":{"CR_FLOOR_FALLBACK":"planted-value-8401"},"fleet":{"cap":"planted-cap-8401"}}\n' > "$CFG"
 bid="$(bash "$CA" pre "$CFG" --script test)"
