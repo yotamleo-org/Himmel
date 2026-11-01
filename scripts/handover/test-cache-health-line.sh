@@ -36,7 +36,7 @@ mk_state() {
 }
 # add_day DIR DAYS_AGO OVERALL CHIEF WORKER SUBAGENT — one history row for that day.
 add_day() {
-    printf '{"ts":%s,"overall":%s,"roles":{"console":%s,"leg":%s,"subagent":%s,"bridge":null,"other":null}}\n' \
+    printf '{"ts":%s,"overall":%s,"roles":{"console":%s,"worker":%s,"subagent":%s,"bridge":null,"other":null}}\n' \
         "$((NOW - $2 * DAY - 3600))" "$3" "$4" "$5" "$6" >> "$1/history.jsonl"
 }
 run_line() { python3 -I "$LINE" --state-dir "$1" --now "$NOW" 2>&1 || true; }
@@ -73,10 +73,17 @@ for d in 0 1 2; do add_day "$TMP_ROOT/fresh" "$d" 98.0 99.0 97.0 90.0; done
 OUT=$(run_line "$TMP_ROOT/fresh")
 assert_contains "fresh: 7d ratio" "cache: 7d read ratio 98.0%" "$OUT"
 assert_contains "fresh: per kind console" "console 99.0%" "$OUT"
-assert_contains "fresh: per kind leg" "leg 97.0%" "$OUT"
+assert_contains "fresh: per kind worker" "worker 97.0%" "$OUT"
 assert_contains "fresh: per kind subagent" "subagent 90.0%" "$OUT"
 assert_contains "fresh: no baseline" "no baseline yet" "$OUT"
 assert_not_contains "fresh: null kinds omitted" "bridge" "$OUT"
+# a history row written before the rename keeps the old role key: it reads as worker while legacy names are on
+mk_state "$TMP_ROOT/oldkey" $((NOW - 3600))
+printf '{"ts":%s,"overall":98.0,"roles":{"console":99.0,"leg":97.0,"subagent":90.0,"bridge":null,"other":null}}\n' "$((NOW - 3600))" >> "$TMP_ROOT/oldkey/history.jsonl"
+OUT=$(run_line "$TMP_ROOT/oldkey")
+assert_contains "old role key reads as worker" "worker 97.0%" "$OUT"
+OUT=$(HIMMEL_LEGACY_NAMES=0 run_line "$TMP_ROOT/oldkey")
+assert_not_contains "old role key is ignored with legacy names off" "worker 97.0%" "$OUT"
 if [ "$(wc -l <<< "$OUT")" -eq 1 ]; then pass "fresh: exactly one line"; else fail "fresh: exactly one line" "$OUT"; fi
 
 echo "TEST: baseline healthy"

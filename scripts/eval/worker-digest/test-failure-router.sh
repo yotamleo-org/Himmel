@@ -132,8 +132,8 @@ check "HIMMEL-7354: the body carries the six ticket sections" '[ "$(grep -c "^##
 check "HIMMEL-7354: the create names the standalone label and the table sector" 'grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal,standalone" "$STUB/calls.log" && grep -q -F -- "--sector Quality & proof" "$STUB/calls.log" && [ "$(cat "$STUB/sectors.log")" = "Quality & proof" ]'
 check "the body names the class, the worker count and both workers" 'grep -q "denied/guard-pr-check-literal" "$body" && grep -q "distinct workers (14 d): 2" "$body" && grep -q "N100, N200" "$body"'
 check "no canary in the body, the call log, the state or the decision log" '! grep -q "$CANARY" "$body" "$STUB/calls.log" "$ST" "$LOG"'
-check "one filed line, carrying the ticket" '[ "$(dlines "$LOG")" = 1 ] && decs "$LOG" | jq -e "select(.class == \"denied/guard-pr-check-literal\") | .decision == \"filed\" and .ticket == \"HIMMEL-9001\" and .legs == 2 and (.ts | test(\"^2026-10-07T12:00:00\"))" >/dev/null'
-check "e. N500 + N500b count as one leg: no decision" '! grep -q "denied/guard-gh" "$LOG"'
+check "one filed line, carrying the ticket" '[ "$(dlines "$LOG")" = 1 ] && decs "$LOG" | jq -e "select(.class == \"denied/guard-pr-check-literal\") | .decision == \"filed\" and .ticket == \"HIMMEL-9001\" and .workers == 2 and (.ts | test(\"^2026-10-07T12:00:00\"))" >/dev/null'
+check "e. N500 + N500b count as one worker: no decision" '! grep -q "denied/guard-gh" "$LOG"'
 check "signal-only, never-routed and run_error classes log nothing" '! grep -Eq "traj/|blocked/|suite/test-tick|run_error/" "$LOG"'
 check "a subagent-role denial does not count" '! grep -q "block-git-stash" "$LOG"'
 check "a row older than 14 days does not count" '! grep -q "guard-relay-writes" "$LOG"'
@@ -153,7 +153,13 @@ check "the comment body passes the alphabet check and has the new count" '[ -n "
 check "one commented line" '[ "$(dlines "$LOG")" = 2 ] && [ "$(decs "$LOG" | jq -r "select(.decision == \"commented\") | .ticket")" = HIMMEL-9001 ]'
 row N400 denied/guard-pr-check-literal 1
 route >/dev/null 2>&1
-check "a fourth worker the same day does not comment twice" '[ "$(calls comment)" = 1 ] && [ "$(decs "$LOG" | jq -r "select(.legs == 4) | .decision")" = skipped:comment-daily ]'
+check "a fourth worker the same day does not comment twice" '[ "$(calls comment)" = 1 ] && [ "$(decs "$LOG" | jq -r "select(.workers == 4) | .decision")" = skipped:comment-daily ]'
+# a state file written before the rename keeps last_legs: it still dedupes the repeated decision while legacy names are on
+nd="$(dlines "$LOG")"
+jq '(.classes[] | select(has("last_workers"))) |= (.last_legs = .last_workers | del(.last_workers))' "$ST" >"$ST.old" && mv "$ST.old" "$ST"
+route >/dev/null 2>&1
+check "an old last_legs state key still dedupes a repeated decision: no new line" '[ "$(dlines "$LOG")" = "$nd" ]'
+check "the old state key is carried as last_workers" 'jq -e "[.classes[] | select(has(\"last_workers\"))] | length > 0" "$ST" >/dev/null && ! grep -q last_legs "$ST"'
 
 echo "c + d. the daily cap and the memory-inbox candidate"
 row N100 suite/test-board.sh 0 false worker 2026-10-06T10:00:00Z true; row N200 suite/test-board.sh 0 false worker 2026-10-06T10:00:00Z true
@@ -174,8 +180,8 @@ check "and it still writes no second inbox candidate" '[ "$(grep -c "^- " "$INBO
 
 echo "f. every decision has exactly one decision-log line"
 check "the log is 8 lines, one per decision, in order" '[ "$(dlines "$LOG")" = 8 ] && [ "$(decs "$LOG" | jq -r .decision | tr "\n" " ")" = "filed commented skipped:comment-daily filed filed capped commented filed " ]'
-check "every line is the standard envelope plus {class,workers,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"legs\",\"source\",\"ticket\",\"ts\",\"v\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/worker-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
-check "every route-intent line is the standard envelope plus {class,workers,intent}, and each one precedes a decision line" '[ "$(jq -c "select(.kind == \"route-intent\") | keys" "$LOG" | sort -u)" = "[\"class\",\"host\",\"intent\",\"kind\",\"legs\",\"source\",\"ts\",\"v\"]" ] && [ "$(jq -r .kind "$LOG" | grep -c route-intent)" = "$(( $(dlines "$LOG") - $(decs "$LOG" | jq -r .decision | grep -Ec "^(skipped|capped|recurred)") ))" ]'
+check "every line is the standard envelope plus {class,workers,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"source\",\"ticket\",\"ts\",\"v\",\"workers\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/worker-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
+check "every route-intent line is the standard envelope plus {class,workers,intent}, and each one precedes a decision line" '[ "$(jq -c "select(.kind == \"route-intent\") | keys" "$LOG" | sort -u)" = "[\"class\",\"host\",\"intent\",\"kind\",\"source\",\"ts\",\"v\",\"workers\"]" ] && [ "$(jq -r .kind "$LOG" | grep -c route-intent)" = "$(( $(dlines "$LOG") - $(decs "$LOG" | jq -r .decision | grep -Ec "^(skipped|capped|recurred)") ))" ]'
 
 echo "dry-run writes nothing and calls no Jira"
 row N600 denied/guard-pr-check-literal 1
@@ -201,7 +207,7 @@ check "a search error files nothing and logs skipped:search-error" '[ "$(calls c
 rm -f "$STUB/list.rc"
 printf -- '- class: denied/x\n- note: %s\n' "$CANARY" >"$TMP/badbody"
 check "check-body refuses a line outside the alphabet" '! python3 "$FR" check-body "$TMP/badbody" >/dev/null 2>&1'
-printf -- '- class: denied/x\n- legs: N1, rm -rf /\n' >"$TMP/badbody2"
+printf -- '- class: denied/x\n- workers: N1, rm -rf /\n' >"$TMP/badbody2"
 check "check-body refuses a value outside its label's alphabet" '! python3 "$FR" check-body "$TMP/badbody2" >/dev/null 2>&1'
 
 F3="$TMP/f3"; mkdir -p "$F3"; n0="$(calls create)"
@@ -450,7 +456,7 @@ jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z"
 python3 "$FR" route --ledger "$F18/l.jsonl" --state "$F18/s.json" --log "$F18/log" --inbox "$F18/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F18/out" 2>&1
 check "HIMMEL-7004: the 1500-worker class files, not skipped:jira-error" '[ "$(decs "$F18/log" | jq -r "select(.class == \"denied/guard-wide\") | .decision")" = filed ]'
 b18="$(ls -t "$STUB"/body.create.* | head -n 1)"
-check "HIMMEL-7004: the body counts all 1500 workers and lists exactly 500 of them" 'grep -q "distinct workers (14 d): 1500" "$b18" && [ "$(grep "^- legs: " "$b18" | tr -cd N | wc -c)" -eq 500 ] && python3 "$FR" check-body "$b18" >/dev/null'
+check "HIMMEL-7004: the body counts all 1500 workers and lists exactly 500 of them" 'grep -q "distinct workers (14 d): 1500" "$b18" && [ "$(grep "^- workers: " "$b18" | tr -cd N | wc -c)" -eq 500 ] && python3 "$FR" check-body "$b18" >/dev/null'
 
 echo "HIMMEL-7420: a class whose ticket and PR lists are long still files, with the cut counted"
 F19="$TMP/f19"; mkdir -p "$F19"

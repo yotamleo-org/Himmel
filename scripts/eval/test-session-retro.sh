@@ -53,18 +53,18 @@ check "a null or timezone-less ts is skipped or read, never a crash" '[ "$brc" =
 python3 "$SR" --ledger "$TMP/none.jsonl" >"$TMP/miss.out" 2>&1; mrc=$?
 check "a missing ledger exits 2 with a message" '[ "$mrc" = 2 ] && grep -q "cannot read" "$TMP/miss.out"'
 
-printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":{"x":1},"count":1}' >"$TMP/leg.jsonl"
-python3 "$SR" --ledger "$TMP/leg.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/worker.out" 2>&1; lrc=$?
+printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":{"x":1},"count":1}' >"$TMP/nonstring.jsonl"
+python3 "$SR" --ledger "$TMP/nonstring.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/worker.out" 2>&1; lrc=$?
 check "a non-string worker is skipped, not a crash" '[ "$lrc" = 0 ] && grep -q "skipped=1" "$TMP/worker.out"'
 python3 "$SR" --ledger "$FX" --now not-a-date >"$TMP/now.out" 2>&1; nrc=$?
 check "an invalid --now is a usage error (exit 2)" '[ "$nrc" = 2 ]'
 python3 "$SR" --ledger "$FX" --top -1 >"$TMP/neg.out" 2>&1; trc=$?
 check "a non-positive --top is a usage error (exit 2)" '[ "$trc" = 2 ]'
 
-printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":"N1","count":1}' '{"ts":"2026-10-08T00:00:01Z","session":"s","class":"c","leg":"N2","count":10}' >"$TMP/legs.jsonl"
-python3 "$SR" --ledger "$TMP/legs.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/workers.out" 2>&1
+printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":"N1","count":1}' '{"ts":"2026-10-08T00:00:01Z","session":"s","class":"c","leg":"N2","count":10}' >"$TMP/two.jsonl"
+python3 "$SR" --ledger "$TMP/two.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/workers.out" 2>&1
 check "example workers rank by worker occurrences within one session" 'grep -qE "c[[:space:]]+N2,N1$" "$TMP/workers.out"'
-python3 "$SR" --ledger "$TMP/legs.jsonl" --now 2026-10-09T02:00:00+02:00 >"$TMP/off.out" 2>&1
+python3 "$SR" --ledger "$TMP/two.jsonl" --now 2026-10-09T02:00:00+02:00 >"$TMP/off.out" 2>&1
 check "an offset --now is shown as the UTC instant" 'grep -q ".. 2026-10-09T00:00Z" "$TMP/off.out"'
 python3 "$SR" --ledger "$FX" --days -1 >"$TMP/days.out" 2>&1; drc=$?
 check "a non-positive --days is a usage error (exit 2)" '[ "$drc" = 2 ]'
