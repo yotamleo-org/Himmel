@@ -16,7 +16,7 @@ vendoring records name the upstream pins and carried deviations.
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 24423fafbeaec92615f857751f68903aec444642 |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 3af8f101a5f4c33dec95621b80d8f1f0b93cf96a |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
 | anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | ca45fc496a3436251f191354091d557da31c15b5 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
