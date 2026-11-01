@@ -34,6 +34,7 @@ me="$(id -un)"
 OP=4242
 NONCE=K7QF
 CODE=482913
+unset STUB_RC STUB_OUT  # the stub reads these; an operator's environment must not change a baseline case
 
 # The stub helper: records its argv (one element per line) and its stdin, answers STUB_OUT, exits STUB_RC.
 cat > "$tmp/fake-helper" <<'STUB'
