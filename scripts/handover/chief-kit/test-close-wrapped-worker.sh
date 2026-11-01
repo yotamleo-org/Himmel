@@ -1533,8 +1533,9 @@ reset_calls
 rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
 check "8424: WRAPPED original doc + live <stem>-RESUME session -> rc 0" "$rc" "0"
 exact_count "8424: TERM sent to the -RESUME session" "$(cat "$CALLS")" "kill -TERM 330" "1"
-# the RESUME doc has no marker of its own: WRAPPED is read from the original doc
+# the RESUME doc has no marker of its own: WRAPPED is read from the original doc, written after it
 printf '# worker\n\n## Results (newest at the bottom)\n' > "$RES8"
+age_file "$RES8" 1
 reset_calls
 rc=0; out=$(run "$RES8" 2>&1) || rc=$?
 check "8424: RESUME doc with no marker, original WRAPPED -> rc 0" "$rc" "0"
@@ -1592,6 +1593,38 @@ reset_calls
 rc=0; out=$(run "$LORIG8" 2>&1) || rc=$?
 check "8424: legacy-family derived <name>-RESUME session on the original doc -> rc 0" "$rc" "0"
 exact_count "8424: legacy-family -RESUME session TERMed" "$(cat "$CALLS")" "kill -TERM 334" "1"
+
+# a successor letter in the RESUME doc's label (N18b) still finds the original (N18), both ways
+ORIGL="$W/HIMMEL-9-N18-demo-2026-01-01.md"
+RESL="$W/HIMMEL-9-N18b-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$ORIGL"
+printf '# worker\n\n## Results (newest at the bottom)\n' > "$RESL"
+age_file "$RESL" 1
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 340 claude -n HIMMEL-9-N18b-demo-2026-01-01 work
+pgrep_x_stub 340
+reset_calls
+rc=0; out=$(run "$RESL" 2>&1) || rc=$?
+check "8424: N18b RESUME doc, N18 original WRAPPED, live N18b session -> rc 0" "$rc" "0"
+exact_count "8424: N18b RESUME doc: the N18b session TERMed once" "$(cat "$CALLS")" "kill -TERM 340" "1"
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: N18 original doc finds its N18b successor and the live session -> rc 0" "$rc" "0"
+exact_count "8424: N18 original doc: the N18b session TERMed once" "$(cat "$CALLS")" "kill -TERM 340" "1"
+# negative: a RESUME doc newer than the original borrows nothing (a successor just launched after a hand-off)
+touch "$RESL"
+reset_calls
+rc=0; out=$(run "$RESL" 2>&1) || rc=$?
+check "8424: RESUME doc newer than a WRAPPED original, no marker -> rc 4" "$rc" "4"
+check "8424: newer RESUME doc: nothing signaled" "$(cat "$CALLS")" ""
+# negative: two successor RESUME docs for one original is refused, not guessed
+RESL2="$W/HIMMEL-9-N18c-demo-2026-01-01-RESUME.md"
+printf '# worker\n' > "$RESL2"
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: two successor RESUME docs -> rc 5" "$rc" "5"
+check "8424: two successors: nothing signaled" "$(cat "$CALLS")" ""
+rm -f "$RESL2" "$RESL"
 
 # --- cause 2: a judge session's doc stem is not an N<k> worker stem ---------------
 rm -rf "$W/proc"; mkdir -p "$W/proc"
