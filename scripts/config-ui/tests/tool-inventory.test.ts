@@ -124,3 +124,17 @@ test("the route is authenticated and GET-only, caches its scan and re-reads on r
     expect(JSON.stringify(first)).not.toMatch(/SECRET/);
   } finally { s.stop(); }
 });
+
+test("only a chief profile's servers load in chief, and an unreadable file reads error, not absent", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const { env, home } = station();
+  json(join(home, ".himmel", "launch-profiles", "mcp-ccc", "worker-impl.mcp.json"), { mcpServers: { "worker-only": {} } });
+  const userFile = join(home, ".claude.json");
+  chmodSync(userFile, 0o000);
+  try {
+    const inv = scanToolInventory(env, 0);
+    expect(inv.tools.find((t: any) => t.kind === "mcp" && t.name === "worker-only")).toMatchObject({ configured_in: ["mcp-profiles"], loads_in_chief: false });
+    expect(inv.tools.find((t: any) => t.kind === "mcp" && t.name === "qmd")).toMatchObject({ loads_in_chief: true });
+    expect(inv.sources.find((s: any) => s.id === "mcp-user")).toMatchObject({ state: "error" });
+  } finally { chmodSync(userFile, 0o644); }
+});

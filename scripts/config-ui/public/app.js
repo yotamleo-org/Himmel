@@ -474,8 +474,11 @@ function loadToolHealth(force = false) {
   if (force || (!toolInventory.state.data && !toolInventory.state.loading)) toolInventory.load("");
   if (force || (!toolReviewers.state.data && !toolReviewers.state.loading)) toolReviewers.load("");
 }
-// leaving a drill-in puts focus back on the row that opened it
+// The server CSP refuses inline style attributes, so bar widths and map columns are set through the CSSOM after paint.
+// Leaving a drill-in puts focus back on the row that opened it.
 function thFocusBack() {
+  for (const el of document.querySelectorAll(".thbar[data-w]")) el.style.setProperty("--w", `${el.dataset.w}%`);
+  for (const el of document.querySelectorAll(".thmap[data-cols]")) el.style.setProperty("--cols", el.dataset.cols);
   const back = thReturn && [...document.querySelectorAll("a[data-tool]")].find((a) => a.dataset.tool === thReturn);
   if (back) { back.focus(); thReturn = null; }
 }
@@ -483,8 +486,8 @@ function toolHealthPage() {
   const l = thLoaders(), inv = l.inventory.state, rv = l.reviewers.state;
   return renderToolHealth({
     ...l.health.state,
-    inventory: inv.data || (inv.error ? { state: "error", reason: inv.error } : null),
-    reviewers: rv.data || (rv.error ? { state: "error", reason: rv.error } : undefined),
+    inventory: inv.data ? (inv.error ? { ...inv.data, stale: inv.error } : inv.data) : inv.error ? { state: "error", reason: inv.error } : null,
+    reviewers: rv.data ? (rv.error ? { ...rv.data, stale: rv.error } : rv.data) : rv.error ? { state: "error", reason: rv.error } : undefined,
     shift,
   }, token, thUi);
 }

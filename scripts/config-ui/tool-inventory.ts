@@ -23,7 +23,7 @@ const NAME = /^[\w.:-]{1,120}$/;
 
 function readJson(file: string): Read {
   let text: string;
-  try { text = readFileSync(file, "utf8"); } catch { return { state: "absent" }; }
+  try { text = readFileSync(file, "utf8"); } catch (e: any) { return { state: e && (e.code === "ENOENT" || e.code === "ENOTDIR") ? "absent" : "error" }; }
   try { return { state: "ok", v: JSON.parse(text) }; } catch { return { state: "error" }; }
 }
 const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -137,11 +137,11 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   source("mcp-user", "~/.claude.json → .mcpServers keys · .projects[$HIMMEL_REPO].disabledMcpServers", user.state, { servers: userServers.length, off_here: userServers.filter((k) => disabled.has(k)).length });
   const profileRoot = join(home, ".himmel", "launch-profiles"), profileDirs = ls(profileRoot).filter((n) => n.startsWith("mcp-"));
   let profileState: State = profileDirs.length ? "ok" : "absent";
-  const profileServers = new Set<string>();
+  const profileServers = new Set<string>(), chiefServers = new Set<string>();
   for (const d of profileDirs) for (const f of ls(join(profileRoot, d)).filter((n) => n.endsWith(".mcp.json"))) {
     const r = readJson(join(profileRoot, d, f));
     if (r.state === "error") profileState = "error";
-    for (const k of mcpKeys(r.v)) profileServers.add(k);
+    for (const k of mcpKeys(r.v)) { profileServers.add(k); if (f === "chief.mcp.json" || f === "console.mcp.json") chiefServers.add(k); }
   }
   if (profileState === "ok") for (const k of profileServers) note(k, "mcp-profiles");
   source("mcp-profiles", "~/.himmel/launch-profiles/mcp-*/<profile>.mcp.json → .mcpServers keys", profileState, { servers: profileServers.size, profiles: profileDirs.length });
@@ -153,7 +153,7 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   for (const [server, from] of [...configured].sort(([a], [b]) => a.localeCompare(b))) {
     const list = ["mcp-user", "mcp-profiles", "mcp-project", "mcp-plugins"].filter((s) => from.has(s));
     tools.push({ kind: "mcp", source: list.some((s) => s !== "mcp-plugins") ? "mcp-config" : pluginMcp.get(server)!, name: server,
-      configured_in: list, loads_in_chief: from.has("mcp-profiles"), off_here: disabled.has(server) });
+      configured_in: list, loads_in_chief: chiefServers.has(server), off_here: disabled.has(server) });
   }
   source("mcp-runtime", "a live session's tool list (mcp__<server>__*)", "absent", null, "source unknown: read from recorded calls");
   source("core", "a recorded session's tool, skill and agent lists", "absent", null, "needs a session record");
@@ -162,9 +162,9 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   source("clis", "command -v <cli> · <cli> --version (5 s timeout)", clis.some((c) => c.state !== "absent") ? "ok" : "absent",
     { found: clis.filter((c) => c.state !== "absent").length, missing: clis.filter((c) => c.state === "absent").length });
   const db = join(home, ".local", "share", "rtk", "history.db");
-  let bytes: number | null = null;
-  try { bytes = statSync(db).size; } catch { /* absent */ }
-  source("rtk-history", "~/.local/share/rtk/history.db, opened read-only", bytes === null ? "absent" : "ok", { bytes: bytes ?? 0 });
+  let bytes = 0, dbState: State = "ok";
+  try { bytes = statSync(db).size; } catch (e: any) { dbState = e && (e.code === "ENOENT" || e.code === "ENOTDIR") ? "absent" : "error"; }
+  source("rtk-history", "~/.local/share/rtk/history.db, opened read-only", dbState, { bytes });
 
   // A hook script wired in more than one place runs twice on the same call.
   const hooks = [...hookRows.values()];

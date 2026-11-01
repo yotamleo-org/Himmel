@@ -246,7 +246,7 @@ function listRow(r, data, ui, bad, max) {
   }
   if (r.kind === "cli") return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tab: "station" }))}">${esc(r.cli.name)}</a> ${chip}`)}${td(esc(srcText))}${td(`${num(r.calls)} <span class="dim">Bash calls</span>`)}${td("—")}${td("—")}${td("—")}${td("—")}${td("")}</tr>`;
   const c = toolCounts(r, data), flagged = bad.has(r.key);
-  const bar = isNum(c.failures) && max > 0 ? `<span class="thbar" style="--w:${((c.failures / max) * 100).toFixed(1)}%"></span>` : "";
+  const bar = isNum(c.failures) && max > 0 ? `<span class="thbar" data-w="${((c.failures / max) * 100).toFixed(1)}"></span>` : "";
   const rateCell = flagged ? '<span class="tag fail">Count check failed</span>' : `<span class="${c.rate >= 0.1 ? "bad-t" : c.rate >= 0.05 ? "warn-t" : ""}">${pct(c.rate)}</span>${isNum(c.calls) && c.calls > 0 && c.calls < 10 ? ' <span class="tag">few calls</span>' : ""}`;
   return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tool: r.key }))}">${esc(displayName(r))}</a> ${chip}`)}${td(esc(srcText))}${td(num(c.calls))}${td(num(c.failures))}${td(num(c.errors))}${td(num(c.denials))}${td(rateCell)}${td(bar)}</tr>`;
 }
@@ -422,7 +422,8 @@ function stationTab(data, inv, ui) {
   const clis = (inv.clis || []).map((c) => [st_(c.name), st_(c.path || "absent"), st_(c.version || "—"), sv(heads.has(c.name) ? heads.get(c.name) : data && data.bash && data.bash.recorded ? 0 : null)]);
   const count = (kind) => (inv.tools || []).filter((t) => t.kind === kind).length;
   const tiles = `<div class="kpis">${[["Skills", count("skill")], ["Commands", count("cmd")], ["Subagents", count("agent")], ["Workflows", count("wf")], ["MCP servers", servers.size], ["Hooks", (inv.hooks || []).length], ["CLIs on PATH", (inv.clis || []).filter((c) => c.state === "ok").length]].map(([k, v]) => `<div class="kpi"><span class="k">${esc(k)}</span><b class="kv">${num(v)}</b></div>`).join("")}</div>`;
-  const scan = `<div class="filters"><span>Scanned at ${esc(inv.scanned_at ? stamp(Date.parse(inv.scanned_at)) : "—")}</span><button class="btn" data-act="th-rescan">Rescan</button></div>`;
+  const at = esc(inv.scanned_at ? stamp(Date.parse(inv.scanned_at)) : "—");
+  const scan = `<div class="filters"><span>Scanned at ${at}</span>${inv.stale ? ` <span class="pill warn">Rescan failed (${esc(inv.stale)}); showing the scan from ${at}</span>` : ""}<button class="btn" data-act="th-rescan">Rescan</button></div>`;
   return `${box("station", "Station inventory", "What this station has. AG-UI reads these files and commands, then fills the map. A source it cannot find reads absent, never 0.", scan + tiles, "read-only scan")}
 ${box("sources", "Where AG-UI reads each source", "Which file or command feeds each count? MCP servers are read as names only, never their arguments or environment.", sortable("sources", ["Source", "Reads at runtime", "Found", "Note"], sources, ui))}
 ${box("mcp", "MCP servers", "Which servers exist, and which load in a chief session?", sortable("mcp", ["Server", "Configured in", "Loads in chief", "Tools", "Calls"], mcp, ui))}
@@ -444,7 +445,7 @@ function mapTab(data, inv, ui) {
     const line = k === "hook" ? `${num(runs)} runs derived · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
     return `<button class="mc${tint}${ui.src === s && ui.kind === k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${ui.src === s && ui.kind === k}"><b>${items.length} ${esc(KIND_LABEL[k])}</b><span>${esc(line)}</span></button>`;
   };
-  const grid = `<div class="thmap" style="--cols:${kinds.length}"><span class="mh"></span>${kinds.map((k) => `<span class="mh">${esc(KIND_LABEL[k])}</span>`).join("")}${srcs.map((s) => `<span class="mr">${esc(SRC_LABEL[s])}</span>${kinds.map((k) => cell(s, k)).join("")}`).join("")}</div>`;
+  const grid = `<div class="thmap" data-cols="${kinds.length}"><span class="mh"></span>${kinds.map((k) => `<span class="mh">${esc(KIND_LABEL[k])}</span>`).join("")}${srcs.map((s) => `<span class="mr">${esc(SRC_LABEL[s])}</span>${kinds.map((k) => cell(s, k)).join("")}`).join("")}</div>`;
   const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
   const picked = ui.src || ui.kind ? box("map-list", `Tools: ${[ui.src && SRC_LABEL[ui.src], ui.kind && KIND_LABEL[ui.kind]].filter(Boolean).join(" · ")}`, "The tiles you picked; each name opens its drill-in.", toolList(data, inv, ui, { withOutside: true })) : "";
   return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are derived from matchers × matching calls, not measured.", `${wait}<p class="sub"><span class="tag">hook runs derived</span></p>${legend}${grid}`, "First build")}${picked}`;
@@ -476,7 +477,7 @@ function reviewersTab(r) {
       else if (line.trim()) out.push(`<p>${esc(line)}</p>`);
     }
     if (list) out.push("</ul>");
-    body = `<div class="card" id="reviewers-page">${out.join("")}</div>${updated(r)}<p class="sub">As written by the weekly review job.</p>`;
+    body = `${r.stale ? `<p><span class="pill warn">Refresh failed (${esc(r.stale)}); showing the page read earlier</span></p>` : ""}<div class="card" id="reviewers-page">${out.join("")}</div>${updated(r)}<p class="sub">As written by the weekly review job.</p>`;
   }
   return box("reviewers", "Reviewers", purpose, body);
 }

@@ -566,3 +566,25 @@ test("every tool row and map tile's tool opens a drill-in; none is a dead click"
     for (const [key] of listed) expect(picked).toContain(`data-tool="${key}"`);
   }
 });
+
+test("the page paints under the server CSP: widths ride data attributes, never an inline style", async () => {
+  const data = readP(seedP());
+  const html = (await page(data, {}, { inventory: INVENTORY })) + (await page(data, { tab: "map" }, { inventory: INVENTORY }));
+  expect(html).not.toMatch(/\sstyle=/);
+  expect(html).toMatch(/class="thbar" data-w="[0-9.]+"/);
+  expect(html).toMatch(/class="thmap" data-cols="[0-9]+"/);
+  const app = readFileSync(resolve(import.meta.dir, "../public/app.js"), "utf8");
+  expect(app).toContain('setProperty("--w"');
+  expect(app).toContain('setProperty("--cols"');
+});
+
+test("a failed rescan or reviewers refresh keeps the last answer and says it is stale", async () => {
+  const data = readP(seedP());
+  expect(await page(data, { tab: "station" }, { inventory: { ...INVENTORY, stale: "down" } })).toContain("Rescan failed (down); showing the scan from");
+  const text = "# Reviewers\n\nCaught 8 of 10.\n";
+  expect(await page(data, { tab: "reviewers" }, { reviewers: { state: "ok", writtenAt: "2026-10-26T03:00:00Z", text, stale: "down" } })).toContain("Refresh failed (down); showing the page read earlier");
+  expect(await page(data, { tab: "reviewers" }, { reviewers: { state: "ok", writtenAt: "2026-10-26T03:00:00Z", text } })).not.toContain("Refresh failed");
+  const app = readFileSync(resolve(import.meta.dir, "../public/app.js"), "utf8");
+  expect(app).toContain("stale: inv.error");
+  expect(app).toContain("stale: rv.error");
+});
