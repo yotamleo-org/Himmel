@@ -190,6 +190,15 @@ if ! bash "$HERE/../queue-lock.sh" status "$DOC" >/dev/null 2>&1; then
     exit 3
 fi
 
+# a worker relaunched under a -RESUME session has two docs, the original and
+# <stem>-RESUME.md, and WRAPPED may land on either. The sibling's lock must be free too.
+if [[ $DOC == *-RESUME.md ]]; then SIB_DOC="${DOC%-RESUME.md}.md"; else SIB_DOC="${DOC%.md}-RESUME.md"; fi
+[ -f "$SIB_DOC" ] || SIB_DOC=""
+if [ -n "$SIB_DOC" ] && ! bash "$HERE/../queue-lock.sh" status "$SIB_DOC" >/dev/null 2>&1; then
+    echo "close-wrapped-worker: refusing - the queue lock on its sibling doc $SIB_DOC is not free" >&2
+    exit 3
+fi
+
 # shellcheck source=scripts/lib/worker-tail-status.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/worker-tail-status.sh"; then
@@ -198,6 +207,8 @@ if ! . "$HERE/../../lib/worker-tail-status.sh"; then
 fi
 
 last_marker=$(worker_tail_status "$DOC")
+# a doc with no marker of its own reads the sibling's tail (a resumed worker's WRAPPED lands on the original)
+if [ -z "$last_marker" ] && [ -n "$SIB_DOC" ]; then last_marker=$(worker_tail_status "$SIB_DOC"); fi
 if [ "$last_marker" != "WRAPPED" ]; then
     echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
@@ -342,6 +353,13 @@ if [[ $DOC == *-RESUME.md && ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
         orig_names="$orig_names,$(printf '%s' "$resume_name" | sed -E "s/-(leg)?${ident%%$'\t'*}(-|\$)/-\\1${orig_label}\\2/")"
     done
     names="$names${orig_names#,},"
+fi
+# the resumed worker's window is named <stem>-RESUME (the original doc's stem plus
+# -RESUME), or carries the sibling doc's own names (its b-suffixed label included).
+[[ $DOC == *-RESUME.md ]] || names="$names${doc_stem}-RESUME,"
+if [ -n "$SIB_DOC" ]; then
+    sib_ident=$(worker_identity "$SIB_DOC")
+    names="$names${sib_ident#*$'\t'},$(basename "$SIB_DOC" .md),"
 fi
 
 sessions=$(claude_sessions)

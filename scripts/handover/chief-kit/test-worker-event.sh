@@ -95,6 +95,24 @@ check "6b wrap not run" "$calls" ""
 run "WRAPPED N2078 (N2078 again)"
 check "6c same label twice rc" "$rc" 0
 
+# a MERGED/WRAPPED from N4304 finds the resumed manifest entry N4304b
+cat > "$W/list-resume" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md
+EOF
+chmod +x "$W/list-resume"
+LE_LIST="$W/list-resume" run "MERGED #4400 → abcdef01 (N4304)"
+check "6d 8424 N4304 message, N4304b manifest entry: rc" "$rc" 0
+contains "6d 8424 HANDLED" "$out" "HANDLED wrap-merged N4304"
+contains "6d 8424 wrap gets the resumed entry" "$calls" "/h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md --pr 4400"
+LE_LIST="$W/list-resume" run "WRAPPED N43"
+check "6e 8424 a shorter label never matches N4304b: rc" "$rc" 10
+contains "6e 8424 reason" "$out" "not-in-manifest N43"
+LE_LIST="$W/list-resume" run "WRAPPED N4399"
+check "6f 8424 an unrelated label still escalates: rc" "$rc" 10
+contains "6f 8424 reason" "$out" "not-in-manifest N4399"
+check "6f 8424 wrap not run" "$calls" ""
+
 LE_WRAP_RC=3 LE_WRAP_ERR="wrap-merged: step pr-state failed: PR #2566 is 'OPEN'" run "MERGED #2566 N2088"
 check "7 rc" "$rc" 10
 contains "7 escalate rc" "$out" "ESCALATE wrap-merged-failed rc=3"

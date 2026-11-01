@@ -1521,6 +1521,56 @@ out=$(HOME="$ESW_SBR/home" LUNA_VAULT_PATH="$ESW_SBR/vault" OBSIDIAN_API_KEY="" 
 check "resume N7c: a session-note capture still closes -> rc 0" "$rc" "0"
 check "resume N7c: the original session's transcript is found and its note written" "$(find "$ESW_SBR/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
+# --- a worker relaunched under <stem>-RESUME closes like any other ---
+# WRAPPED lands on the ORIGINAL doc; the live window is named <stem>-RESUME.
+ORIG8="$W/HIMMEL-9-N8-demo-2026-01-01.md"
+RES8="$W/HIMMEL-9-N8-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$ORIG8"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 330 claude -n HIMMEL-9-N8-demo-2026-01-01-RESUME work
+pgrep_x_stub 330
+reset_calls
+rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
+check "8424: WRAPPED original doc + live <stem>-RESUME session -> rc 0" "$rc" "0"
+exact_count "8424: TERM sent to the -RESUME session" "$(cat "$CALLS")" "kill -TERM 330" "1"
+# the RESUME doc has no marker of its own: WRAPPED is read from the original doc
+printf '# worker\n\n## Results (newest at the bottom)\n' > "$RES8"
+reset_calls
+rc=0; out=$(run "$RES8" 2>&1) || rc=$?
+check "8424: RESUME doc with no marker, original WRAPPED -> rc 0" "$rc" "0"
+exact_count "8424: RESUME doc: TERM sent to the -RESUME session" "$(cat "$CALLS")" "kill -TERM 330" "1"
+# negative: the RESUME doc's own newest marker wins over a WRAPPED original (resumed worker still going)
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 11:00 LIVE - resumed\n' > "$RES8"
+reset_calls
+rc=0; out=$(run "$RES8" 2>&1) || rc=$?
+check "8424: RESUME doc tail LIVE, original WRAPPED -> still rc 4" "$rc" "4"
+check "8424: RESUME doc tail LIVE: nothing signaled" "$(cat "$CALLS")" ""
+# negative: the original doc's close refuses while the RESUME doc's lock is held
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$RES8" "cwl-test-holder" 2>&1)"
+token="$(printf '%s' "$acq_out" | sed -n "s/.*release-token: \`\([^\`]*\)\`.*/\\1/p")"
+reset_calls
+rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
+check "8424: original WRAPPED but RESUME doc lock held -> rc 3" "$rc" "3"
+check "8424: RESUME lock held: nothing signaled" "$(cat "$CALLS")" ""
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$RES8" "$token" >/dev/null 2>&1
+# negative: a plain worker with no RESUME session still closes by its own name
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+rm -f "$RES8"
+mkcmdline 331 claude -n HIMMEL-9-N8-demo-2026-01-01 work
+pgrep_x_stub 331
+reset_calls
+rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
+check "8424: original-stem session still closes a non-RESUME worker -> rc 0" "$rc" "0"
+exact_count "8424: original-stem session TERMed" "$(cat "$CALLS")" "kill -TERM 331" "1"
+# negative: an unrelated -RESUME session is never matched
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 332 claude -n HIMMEL-9-N88-demo-2026-01-01-RESUME work
+pgrep_x_stub 332
+reset_calls
+rc=0; out=$(run "$ORIG8" 2>&1) || rc=$?
+check "8424: an unrelated -RESUME session: CLOSED-ALREADY rc 0" "$rc" "0"
+check "8424: an unrelated -RESUME session is never signaled" "$(cat "$CALLS")" ""
+
 # --- cause 2: a judge session's doc stem is not an N<k> worker stem ---------------
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 JDOC="$W/HIMMEL-9-judge-j7y-2026-01-01-RESUME.md"

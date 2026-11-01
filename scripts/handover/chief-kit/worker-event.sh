@@ -110,7 +110,10 @@ labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)" || labels="
 if [ -n "$labels" ]; then
     [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
     label="$labels"
-    worker="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || worker=""
+    listing="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || listing=""
+    worker="$(printf '%s\n' "$listing" | grep -F -- "-${label}-" | head -n 1)" || worker=""
+    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not
+    [ -n "$worker" ] || worker="$(printf '%s\n' "$listing" | grep -E -- "-${label}[a-z]+-" | head -n 1)" || worker=""
     # a worker already wrapped has left the manifest; wrap-merged's chief-doc bullet
     # (`<label> WRAPPED, window closed.`) says so, and a re-run is then a noop.
     # ponytail: a worker closed by close-wrapped (no such bullet) or named only by its
