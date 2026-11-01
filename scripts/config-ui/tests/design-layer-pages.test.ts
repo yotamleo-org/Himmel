@@ -83,9 +83,11 @@ test("Shift draws the chief chain as the mockup v3 chart: a segment per chief wi
       { name: "IH", bucket: "himmel", span: { start: "2026-10-28T04:26+01:00", end: null, approx: false }, prs: [4144] },
     ],
   };
-  const html = renderShift(view, { now: Date.parse("2026-10-28T05:05+01:00") });
+  const html = renderShift(view, {}); // "now" is the server's elapsed minutes (545 from 20:00 = 05:05), not the browser clock
   const chiefs = html.slice(html.indexOf('id="sh-chiefs"'), html.indexOf('id="sh-waiting"'));
   expect(chiefs).toMatch(/<div class="chain" role="img" aria-label="[^"]*HY[^"]*">/);
+  // the label carries the whole timeline: approximate spans, hand-over gaps and what is left of the shift
+  expect(chiefs).toMatch(/aria-label="[^"]*approximately IA[^"]*hand-over gap 22:20 to 04:26[^"]*left until the 08:00 cut"/);
   expect(chiefs).toMatch(/<td class="cseg"[^>]*colspan="\d+"[^>]*>HY<small>2<\/small><\/td>/);
   expect(chiefs).toMatch(/<td class="cseg"[^>]*>≈?IA<small>1<\/small><\/td>/);
   expect(chiefs).toMatch(/<td class="cseg now"[^>]*>IH<small>1<\/small><\/td>/);
@@ -99,11 +101,24 @@ test("Shift draws the chief chain as the mockup v3 chart: a segment per chief wi
 test("Shift chain: time already passed since the last chief ended is a gap, only the rest of an open shift is ahead", () => {
   const view = {
     ...shiftView,
-    shift: { ...shiftView.shift, opened: "2026-10-27T20:00+01:00", nextCut: "2026-10-28T08:00+01:00" },
+    shift: { ...shiftView.shift, opened: "2026-10-27T20:00+01:00", nextCut: "2026-10-28T08:00+01:00", minutes: 360 },
     chiefs: [{ name: "HY", bucket: "himmel", span: { start: "2026-10-27T20:00+01:00", end: "2026-10-27T21:00+01:00", approx: false }, prs: [] }],
   };
-  const html = renderShift(view, { now: Date.parse("2026-10-28T02:00+01:00") });
+  // a browser clock far past the cut must not move the edge: the server says 360 minutes (02:00) have elapsed
+  const html = renderShift(view, { now: Date.parse("2026-10-29T12:00+01:00") });
   expect(html).toMatch(/<td class="cseg gap" colspan="42"><\/td><td class="cseg fut" colspan="50">to the 08:00 cut<\/td>/); // of 12 h: 21:00 to 02:00 is 42 %, 02:00 to 08:00 is 50 %
+});
+
+test("Shift chain: a hand-over gap shorter than half a percent of the shift is still drawn", () => {
+  const view = {
+    ...shiftView,
+    shift: { ...shiftView.shift, opened: "2026-10-27T20:00+01:00", nextCut: "2026-10-28T08:00+01:00", minutes: 200 },
+    chiefs: [
+      { name: "HY", bucket: "himmel", span: { start: "2026-10-27T20:00+01:00", end: "2026-10-27T21:00+01:00", approx: false }, prs: [] },
+      { name: "IA", bucket: "himmel", span: { start: "2026-10-27T21:03+01:00", end: "2026-10-27T23:20+01:00", approx: false }, prs: [] },
+    ],
+  };
+  expect(renderShift(view, {})).toMatch(/title="hand-over gap 21:00–21:03"/); // 3 min of 12 h is under half a percent
 });
 
 test("the Health project picker sits above the page links in the rail", () => {
