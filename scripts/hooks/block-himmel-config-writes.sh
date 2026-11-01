@@ -78,7 +78,15 @@ set -uo pipefail
 # shellcheck disable=SC2154 # rc is assigned inside the trap string
 trap 'rc=$?; if [ "$rc" != 0 ] && [ "$rc" != 2 ]; then exit 2; fi' EXIT
 
+# A refused rm or mv of a guarded file leaves a row in the config audit log
+# with the file, action, session, never the command text. Best effort:
+# the row never changes the refusal.
+ATTEMPT="" ATTEMPT_FILE="" SESSION=""
 deny() {
+    if [ -n "$ATTEMPT" ]; then
+        { CLAUDE_SESSION_ID="$SESSION" bash "${BASH_SOURCE[0]%/*}/../lib/config-audit.sh" denied "$ATTEMPT_FILE" "denied-$ATTEMPT" \
+            --script block-himmel-config-writes.sh --pid "$PPID"; } >/dev/null 2>&1 || true
+    fi
     {
         echo "block-himmel-config-writes: refusing - $1."
         echo
@@ -297,7 +305,57 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null) || c
 # CR is stripped ONLY for the substring detection below. The command-word
 # allowlist sees the raw text, so a program named `cat<CR>` is not `cat`.
 lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
+# The restore writes the whole config set and accept silences the watcher; both,
+# and a new restore seed, are the operator's (Telegram bridge or their own prompt),
+# never a session's. list and check stay allowed. ANSI-C escapes are decoded and
+# quotes and backslashes stripped first, so $'\x72estore', 'restore' or acc\ept is
+# still the verb; so is the sourced form (config_audit_main, _ca_node, _ca_restore).
+# Decoding runs on the case-kept text (\u and \U differ) and must shrink it each
+# pass; an escape that does not decode (a shell without \u) is refused.
+lcv="${cmd//$'\r'/}"; lcv="${lcv//\$\'/\'}"; lcv="${lcv//\$\"/\"}"
+while [[ "$lcv" =~ \\(x[0-9a-fA-F]{1,2}|u[0-9a-fA-F]{1,4}|U[0-9a-fA-F]{1,8}|[0-7]{1,3}) ]]; do
+    _e="${BASH_REMATCH[1]}"
+    { case "$_e" in [xuU]*) _ch=$(printf %b "\\$_e") ;; *) _ch=$(printf %b "\\0${_e}") ;; esac; } 2>/dev/null
+    _n=${#lcv}
+    lcv="${lcv/"\\$_e"/"$_ch"}"
+    [ "${#lcv}" -lt "$_n" ] || deny "the command carries an escape (\\$_e) the guard cannot decode"
+done
+lcv=$(printf '%s' "$lcv" | tr -d "\"'\\\\" | tr '[:upper:]' '[:lower:]')
+# A command naming the audit or restore helper is spelled plainly: the shell
+# would otherwise build the verb the guard reads (a variable, $'..', $(..),
+# backticks, brace expansion). A $NAME/ path prefix is the one expansion kept.
+_ckw='(config-audit|config_audit|config-restore|_ca_(js|node|restore))'
+if [[ "$lc" =~ $_ckw ]] || [[ "$lcv" =~ $_ckw ]]; then
+    _plain="the config audit or restore helper is named with shell expansion; spell it plainly (a \$NAME/ path prefix is fine), e.g. bash \"\$HIMMEL_REPO/scripts/lib/config-audit.sh\" list"
+    _rest=$(printf '%s' "$cmd" | sed -E 's/\$[A-Za-z_][A-Za-z0-9_]*\///g')
+    case "$_rest" in *'$'*) deny "$_plain (it carries a \$ expansion)" ;; esac
+    case "$cmd" in *'`'*) deny "$_plain (it carries a backtick)" ;; esac
+    if [[ "$cmd" =~ \{[^}]*(,|\.\.)[^}]*\} ]]; then deny "$_plain (it carries a brace expansion)"; fi
+fi
+_verb=""
+if [[ "$lcv" =~ (config-audit|config_audit_main|_ca_node)[^\|\;\&]*[[:space:]](restore|accept)([^a-z0-9_-]|$) ]]; then
+    _verb="${BASH_REMATCH[2]}"
+elif [[ "$lcv" =~ config-restore[^\|\;\&]*[[:space:]](restore|enroll)([^a-z0-9_-]|$) ]]; then
+    _verb="${BASH_REMATCH[1]}"
+elif [[ "$lcv" =~ (^|[^a-z0-9_])_ca_restore([^a-z0-9_]|$) ]]; then
+    _verb=restore
+fi
+[ -z "$_verb" ] || deny "a session runs the config $_verb verb. Only the operator restores (from Telegram: /config restore <id> <code>) or accepts a config change at their own prompt; read-only: config-audit.sh list"
 names_guarded_file "$cmd" || names_guarded_file "$lc" || exit 0
+# rm/mv/unlink as a command word: every such command denies below, so the row is
+# written from deny(). The first word naming a guarded file is the row's path.
+if [[ "$lc" =~ (^|[^a-z0-9_.-])(rm|mv|unlink)([[:space:]]|$) ]]; then
+    ATTEMPT="${BASH_REMATCH[2]}" ATTEMPT_FILE="$STATION_DIR"
+    set -f
+    for _w in $(printf '%s' "$cmd" | tr -d "\"'"); do
+        names_guarded_file "$_w" || continue
+        _w="${_w%%[;&|<>)]*}" # an attached separator is not part of the path
+        case "$_w" in \~/*) _w="$HOME/${_w#\~/}" ;; /*) ;; *) _w="$(printf '%s' "$input" | jq -r '.cwd // "."' 2>/dev/null)/$_w" ;; esac # swallow-ok: the audit row's path only; the deny below never reads it
+        ATTEMPT_FILE="$_w"; break
+    done
+    set +f
+    SESSION=$(printf '%s' "$input" | jq -r '.session_id // ""' 2>/dev/null) || SESSION="" # swallow-ok: audit-row metadata; the deny never reads it
+fi
 
 # The command names the file. Structural allow-list (no shell splitter): ALLOW only when
 #   1. every character is in [A-Za-z0-9 _./~:=,@+-] - no quote, $, backtick,

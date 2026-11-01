@@ -1172,6 +1172,8 @@ scripts/test-doctor-status-drift.sh	1
 scripts/ci/test-macos-cadence-concurrency.sh	0
 scripts/ci/test-macos-cadence-matrix.sh	0
 scripts/lib/test-afk-sudo.sh	37
+scripts/lib/test-config-audit.sh	2
+scripts/telegram/test-config-restore.sh	1
 scripts/test-himmel-doctor-hook-layers.sh	1
 marketplace/plugins/himmel-guard/test-himmel-guard-hermetic.sh	0
 marketplace/plugins/obsidian-triage/tests/test-requirements-resolve-ci-mode.sh	16

@@ -1530,6 +1530,33 @@ assert_rc "3111 Grep path=~/.himmel/himmel.conf" 0 "$(run_case "$(j_grep '/home/
 assert_rc "3111 Read .env beside it still denies" 2 "$(run_case "$(j_read '/home/user/.himmel/.env')")"
 assert_rc "3111 Bash cat .env still denies"      2 "$(run_case "$(j_bash 'cat ~/.himmel/himmel.conf .env')")"
 
+# A config-audit backup holds a copy of the .env: the whole backups tree is secret,
+# by its name and through a symlink, while the audit log (key names only) stays readable.
+CAB='/home/user/.himmel/state/config-audit/backups/20261031T184732Z-d6c6'
+assert_rc "8401 Read a backup .env"              2 "$(run_case "$(j_read "$CAB/.env")")"
+assert_rc "8401 Read a backup env (old name)"    2 "$(run_case "$(j_read "$CAB/env")")"
+assert_rc "8401 Bash cat a backup env"           2 "$(run_case "$(j_bash "cat $CAB/env")")"
+assert_rc "8401 Bash cat a backup himmel.conf"   2 "$(run_case "$(j_bash "cat $CAB/himmel.conf")")"
+assert_rc "8401 Bash grep -r the backups dir"    2 "$(run_case "$(j_bash 'grep -r TOKEN ~/.himmel/state/config-audit/backups')")"
+assert_rc "8401 Grep path=the config-audit dir"  2 "$(run_case "$(j_grep '/home/user/.himmel/state/config-audit')")"
+assert_rc "8401 Read the restore seed"           2 "$(run_case "$(j_read '/home/user/.himmel/secrets/config-restore.seed')")"
+assert_rc "8401 Bash cat the restore seed"       2 "$(run_case "$(j_bash 'cat ~/.himmel/secrets/config-restore.seed')")"
+assert_rc "8401 Read the audit log is allowed"   0 "$(run_case "$(j_read '/home/user/.himmel/state/config-audit/audit.jsonl')")"
+CALINK=$(mktemp -d "${TMPDIR:-/tmp}/rs-calink.XXXXXX") || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
+mkdir -p "$CALINK/station/state/config-audit/backups/20261031T184732Z-d6c6"
+: > "$CALINK/station/state/config-audit/backups/20261031T184732Z-d6c6/env"
+ln -s "$CALINK/station/state/config-audit/backups/20261031T184732Z-d6c6/env" "$CALINK/notes.txt"
+ln -s "$CALINK/station/state/config-audit/backups" "$CALINK/b"
+assert_rc "8401 Read a symlink to a backup env"  2 "$(run_case "$(j_read "$CALINK/notes.txt")")"
+assert_rc "8401 Bash cat a symlink to it"        2 "$(run_case "$(j_bash "cat $CALINK/notes.txt")")"
+assert_rc "8401 Bash cat through a dir symlink"  2 "$(run_case "$(j_bash "cat $CALINK/b/20261031T184732Z-d6c6/env")")"
+ln -s "$CALINK/loop2" "$CALINK/loop1"
+ln -s "$CALINK/loop1" "$CALINK/loop2"
+: > "$CALINK/plain.txt"
+assert_rc "8401 Read a symlink that never resolves" 2 "$(run_case "$(j_read "$CALINK/loop1")")"
+assert_rc "8401 Read a plain file is allowed"    0 "$(run_case "$(j_read "$CALINK/plain.txt")")"
+rm -rf "$CALINK"
+
 echo ""
 if [ "$FAILED" -eq 0 ]; then
     echo "All cases passed."

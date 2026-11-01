@@ -52,7 +52,7 @@
         "probe-disagree:C28-guardrail-consent", "doctor:C32-main-ref-guard", "doctor:C34-cost-guards",
         "doctor:C41-mcp-argv-key", "doctor:C43-rtk-hook", "doctor:C57-dotenv-allowlists", "doctor:C58-mcp-sdk-v1", "doctor:C82-mcp-sources",
         "doctor:C65-git-hooks", "doctor:C65-branch-protection", "doctor:C65-gate-deps",
-        "doctor:C74-himmel-conf", "doctor:C74-env-keys", "doctor:C74-policy",
+        "doctor:C74-himmel-conf", "doctor:C74-env-keys", "doctor:C74-policy", "doctor:C74-config-keys",
         "doctor:C75-keyring", "doctor:C75-secrets", "doctor:C75-config-keys"
       ]
     },
