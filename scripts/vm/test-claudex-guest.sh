@@ -24,6 +24,7 @@ check() { # label, then the condition as a command
     if "$@"; then echo "PASS $label"; else echo "FAIL $label"; FAILED=$((FAILED + 1)); fi
 }
 
+fx_fail() { echo "FAIL fixture setup failed (line ${BASH_LINENO[0]}): the suite stops here"; exit 1; }
 BIN="$WORK/bin"          # station-side stubs
 GBIN="$WORK/gbin"        # guest-side stubs
 STATE="$WORK/vbox-state"
@@ -142,7 +143,7 @@ export FAKE_VBOX_LOG="$WORK/vbox.log" FAKE_VBOX_STATE="$STATE" FAKE_VMSDK_LOG="$
 export GUEST_TOOL_LOG="$WORK/guest-tools.log" GUEST_STATUS_FILE="$WORK/status.out" GUEST_PREFLIGHT_RC_FILE="$WORK/preflight.rc"
 
 new_world() { # fresh fake guest + station VirtualBox state; claudex-base present unless $1 = nobase
-    rm -rf "$GH" "$STATE"; mkdir -p "$GH/himmel/scripts/setup" "$GH/himmel/scripts/lanes" "$STATE"
+    rm -rf "$GH" "$STATE"; mkdir -p "$GH/himmel/scripts/setup" "$GH/himmel/scripts/lanes" "$STATE" || fx_fail
     : > "$FAKE_VBOX_LOG"; : > "$FAKE_VMSDK_LOG"; : > "$GUEST_TOOL_LOG"
     printf 'ubuntu_new\nhimmel-claudex\n' > "$STATE/vms"
     echo 2222 > "$STATE/fwd-ubuntu_new"; echo 2229 > "$STATE/fwd-himmel-claudex"
@@ -167,7 +168,7 @@ EOS
 // stub: the stub node on PATH never reads it
 EOS
     # login shells on the guest still find the stubs first
-    printf 'PATH="%s:$PATH"; export PATH\n' "$GBIN" > "$GH/.profile"
+    printf 'PATH="%s:$PATH"; export PATH\n' "$GBIN" > "$GH/.profile" || fx_fail
     printf 'OK    key matches config.yaml\nrunning:     OK   127.0.0.1:8317\n' > "$GUEST_STATUS_FILE"
     echo 20 > "$GUEST_PREFLIGHT_RC_FILE"
 }
@@ -330,7 +331,7 @@ kill "$HOLD_PID" 2>/dev/null; wait "$HOLD_PID" 2>/dev/null
 
 # --- R5d: ~/Documents/github/himmel already a directory is refused and left alone ---
 new_world
-mkdir -p "$GH/Documents/github/himmel" && echo keep > "$GH/Documents/github/himmel/marker"
+{ mkdir -p "$GH/Documents/github/himmel" && echo keep > "$GH/Documents/github/himmel/marker"; } || fx_fail
 run_cg provision himmel-claudex
 check "R5d an existing directory fails provision" rc_nonzero
 check "R5d the directory is untouched" test "$(cat "$GH/Documents/github/himmel/marker" 2>/dev/null)" = keep -a ! -L "$GH/Documents/github/himmel"
@@ -338,7 +339,7 @@ check "R5d the directory is untouched" test "$(cat "$GH/Documents/github/himmel/
 # --- R8: a short or empty key file is regenerated to 64 bytes at mode 600 ---
 for stale in "" "abc"; do
     new_world
-    mkdir -p "$GH/.config/himmel" && printf '%s' "$stale" > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"
+    { mkdir -p "$GH/.config/himmel" && printf '%s' "$stale" > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"; } || fx_fail
     run_cg provision himmel-claudex
     check "R8 a ${#stale}-byte key file: provision exits 0" rc_is 0
     check "R8 a ${#stale}-byte key file is regenerated to 64 bytes" test "$(wc -c < "$GH/.config/himmel/cliproxy.key")" = 64
@@ -348,7 +349,7 @@ done
 
 # --- R8b: a kept key must be 64 hex characters: 64 bytes of anything else is replaced ---
 new_world
-mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 z > "$GH/.config/himmel/cliproxy.key"
+{ mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 z > "$GH/.config/himmel/cliproxy.key"; } || fx_fail
 run_cg provision himmel-claudex
 check "R8b a 64-byte non-hex key: provision exits 0" rc_is 0
 check "R8b a 64-byte non-hex key is replaced by 64 hex characters" \
@@ -357,7 +358,7 @@ check "R8b the replaced key is at mode 600" test "$(stat -c %a "$GH/.config/himm
 
 # --- R8c: a valid kept key is left as is and ends at mode 600 ---
 new_world
-mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 a > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"
+{ mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 a > "$GH/.config/himmel/cliproxy.key" && chmod 644 "$GH/.config/himmel/cliproxy.key"; } || fx_fail
 run_cg provision himmel-claudex
 check "R8c a valid kept key: provision exits 0" rc_is 0
 check "R8c a valid kept key keeps its bytes" test "$(cat "$GH/.config/himmel/cliproxy.key")" = "$(printf '%064d' 0 | tr 0 a)"
@@ -365,8 +366,8 @@ check "R8c a valid kept key ends at mode 600" test "$(stat -c %a "$GH/.config/hi
 
 # --- R8d: a symlink at the key path is refused before any chmod or cat reaches its target ---
 new_world
-mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 b > "$GH/target.key" && chmod 644 "$GH/target.key"
-ln -s "$GH/target.key" "$GH/.config/himmel/cliproxy.key"
+{ mkdir -p "$GH/.config/himmel" && printf '%064d' 0 | tr 0 b > "$GH/target.key" && chmod 644 "$GH/target.key"; } || fx_fail
+ln -s "$GH/target.key" "$GH/.config/himmel/cliproxy.key" || fx_fail
 run_cg provision himmel-claudex
 check "R8d a symlinked key path fails provision" rc_nonzero
 check "R8d the refusal names the symlink" out_has "symlink"
@@ -374,24 +375,24 @@ check "R8d the link target keeps mode 644 (no chmod followed the link)" test "$(
 check "R8d the link is still a link and its target is untouched" \
     test -L "$GH/.config/himmel/cliproxy.key" -a "$(cat "$GH/target.key")" = "$(printf '%064d' 0 | tr 0 b)"
 new_world
-mkdir -p "$GH/.config/himmel" && ln -s "$GH/nowhere.key" "$GH/.config/himmel/cliproxy.key"
+{ mkdir -p "$GH/.config/himmel" && ln -s "$GH/nowhere.key" "$GH/.config/himmel/cliproxy.key"; } || fx_fail
 run_cg provision himmel-claudex
 check "R8d a dangling symlinked key path fails provision" rc_nonzero
 check "R8d a dangling link is not written through" test ! -e "$GH/nowhere.key"
 
 # --- R11: a dangling ~/.claude/settings.json symlink is left alone, never written through ---
 new_world
-mkdir -p "$GH/.claude" && ln -s "$GH/nowhere.json" "$GH/.claude/settings.json"
+{ mkdir -p "$GH/.claude" && ln -s "$GH/nowhere.json" "$GH/.claude/settings.json"; } || fx_fail
 run_cg provision himmel-claudex
 check "R11 a dangling settings.json link: provision exits 0" rc_is 0
 check "R11 a dangling settings.json link is not written through" test ! -e "$GH/nowhere.json"
 
 # --- R12: a *.local.json the guest grew itself does not refuse a re-provision; a .env still does (R5b) ---
 new_world
-mkdir -p "$GH/.claude" && echo '{"permissions":{}}' > "$GH/.claude/settings.local.json"
+{ mkdir -p "$GH/.claude" && echo '{"permissions":{}}' > "$GH/.claude/settings.local.json"; } || fx_fail
 run_cg provision himmel-claudex
 check "R12 a guest-grown settings.local.json: provision exits 0 (out: ${out:0:200})" rc_is 0
-check "R12 the settings.local.json is left in place" test -f "$GH/.claude/settings.local.json"
+check "R12 the settings.local.json is preserved byte for byte" test "$(cat "$GH/.claude/settings.local.json" 2>/dev/null)" = '{"permissions":{}}'
 
 # --- R13: the strict stubs refuse what the provisioner never sends (a lax stub would pass these) ---
 stub_rc() { # <cmd...>: rc of a stub run against a scratch log
