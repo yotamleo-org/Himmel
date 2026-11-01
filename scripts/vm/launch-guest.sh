@@ -171,7 +171,9 @@ T0="$(date +%s)"
 # child and waited out, and the row still records the run that was cut short
 "${CMD[@]}" < "$PROMPT" > "$OUT" &
 CPID=$!
-trap 'kill "$CPID" 2>/dev/null' TERM INT HUP
+trap 'kill -TERM "$CPID" 2>/dev/null' TERM
+trap 'kill -INT "$CPID" 2>/dev/null' INT
+trap 'kill -HUP "$CPID" 2>/dev/null' HUP
 RC=0
 wait "$CPID" || RC=$?
 while kill -0 "$CPID" 2>/dev/null; do wait "$CPID" || RC=$?; done

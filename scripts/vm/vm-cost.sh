@@ -13,7 +13,7 @@
 #   {ticket, vm, account, seconds, usd, usd_source, ts}. The account is a label, never a token.
 # Unparseable ledger lines are skipped. Exit: 0 report, 1 no ledger or no jq, 2 usage.
 # Platform: POSIX bash 3.2+ and jq.
-set -u
+set -u -o pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 ledger_path() {

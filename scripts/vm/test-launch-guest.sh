@@ -254,6 +254,8 @@ rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" --path extra
 check "C5 vm-cost --path with an extra argument: exit 2" "$rc" "2"
 rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp/two.jsonl" bash "$COST" '' --bogus 2>&1)" || rc=$?
 check "C5 vm-cost: an empty first argument is not the default report: exit 2" "$rc" "2"
+rc=0; out="$(LAUNCH_GUEST_COST_LEDGER="$tmp" bash "$COST" 2>&1)" || rc=$?
+check "C5 vm-cost: an unreadable ledger (a directory) is not an empty report: nonzero" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
 
 # a signal to the launcher reaches the guest ssh and the cut-short run still gets its row
 printf '#!/bin/sh\necho $$ > "$SLEEP_PID"\nexec sleep 30\n' > "$tmp/bin/ssh"
