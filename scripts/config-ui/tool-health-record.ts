@@ -14,7 +14,8 @@ const args = process.argv.slice(2);
 const flag = (name: string) => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
 const now = Date.now(), today = new Date(now).toISOString().slice(0, 10);
 const day = flag("--day") ?? new Date(now - 86400000).toISOString().slice(0, 10);
-if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(Date.parse(day))) { console.error("tool-health-record: --day must be YYYY-MM-DD"); process.exit(2); }
+const parsedDay = Date.parse(`${day}T00:00:00.000Z`);
+if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || Number.isNaN(parsedDay) || new Date(parsedDay).toISOString().slice(0, 10) !== day) { console.error("tool-health-record: --day must be a real YYYY-MM-DD date"); process.exit(2); }
 if (day >= today) { console.error(`tool-health-record: ${day} has not finished (UTC today is ${today}); its record would be final too early`); process.exit(2); }
 
 const repo = env.HIMMEL_REPO || stationRoot(dirname(import.meta.dir));

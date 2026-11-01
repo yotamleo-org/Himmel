@@ -235,7 +235,8 @@ check "the newest ok row is still the newest day, though the backfill was writte
 thw 2026-10-20 ok >/dev/null 2>&1
 check "the backfilled day twice appends nothing" '[ "$(lines "$TL")" = 3 ]'
 fbrun "$TMP/th-ch0.jsonl" "$RULES" >"$TMP/fb0.out" 2>&1
-check "no rule in feedback-rules.json names tool-health, so the feedback step writes nothing" '[ ! -s "$TMP/th-ch0.jsonl" ] && ! grep -q "tool-health" "$TMP/fb0.out"'
+fb0rc=$?
+check "no rule in feedback-rules.json names tool-health, so the feedback step runs clean and writes nothing" '[ "$fb0rc" = 0 ] && [ ! -s "$TMP/th-ch0.jsonl" ] && ! grep -q "tool-health" "$TMP/fb0.out"'
 fbrun "$TMP/th-ch1.jsonl" "$TMP/th-rules.json" >"$TMP/fb1.out" 2>&1
 check "given a rule, feedback picks the newest ok day as its baseline, not the late backfill" '[ "$(lines "$TMP/th-ch1.jsonl")" = 1 ] && jq -e ".baseline_run_id | contains(\"2026-10-28\")" "$TMP/th-ch1.jsonl" >/dev/null'
 thw 2026-10-29 partial >/dev/null 2>&1; thw 2026-10-29 partial >/dev/null 2>&1

@@ -973,6 +973,8 @@ test("the tool drill-in shows time to result for a single, a batched and a missi
   expect(ttr(html, "ttr-batched")).toBe("490 ms (1 batched call, kept out of the headline)");
   expect(ttr(html, "ttr-missing")).toBe("1");
   expect(ttr(html, "ttr-hook")).toBe("40 ms median over 3 runs of the hook chain");
+  // The hook chain figure covers every session on the station, whatever the filters say, and the box says so.
+  expect(html).toContain("Hook chain time covers every session on this station and ignores the filters.");
   // A tool whose only call has no result shows a dash, never 0 ms.
   const none = await page(data, { tool: "Grep" });
   expect(ttr(none, "ttr-p50")).toBe("—");

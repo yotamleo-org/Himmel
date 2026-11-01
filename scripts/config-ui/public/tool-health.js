@@ -443,7 +443,7 @@ function timeBox(t, c) {
   const hook = c && c.hook_ms_by_tool && c.hook_ms_by_tool[t.tool];
   const batched = isNum(tm.batched_n) && tm.batched_n > 0 ? `${ms(tm.batched_p50_ms)} (${plural(tm.batched_n, "batched call")}, kept out of the headline)` : "—";
   const hookText = hook ? `${ms(hook.p50_ms)} median over ${plural(hook.n, "run")} of the hook chain` : "—";
-  const notes = [isNum(tm.unknown_calls) && tm.unknown_calls > 0 ? `${plural(tm.unknown_calls, "call")} ${tm.unknown_calls === 1 ? "was" : "were"} recorded before time to result was kept.` : "",
+  const notes = [hook ? "Hook chain time covers every session on this station and ignores the filters." : "", isNum(tm.unknown_calls) && tm.unknown_calls > 0 ? `${plural(tm.unknown_calls, "call")} ${tm.unknown_calls === 1 ? "was" : "were"} recorded before time to result was kept.` : "",
     isNum(tm.missing) && tm.missing > 0 ? `${plural(tm.missing, "call")} had no result or no time recorded; they show as — and are not counted as 0.` : "",
     tm.capped ? "Some calls were not kept, so the percentiles use the first kept times." : ""].filter(Boolean);
   const stats = `<dl class="stats">${stat("ttr-p50", "Median (p50)", ms(tm.p50_ms))}${stat("ttr-p95", "p95", ms(tm.p95_ms))}${stat("ttr-n", "Calls timed", num(tm.n))}${stat("ttr-batched", "Batched calls", batched)}${stat("ttr-missing", "Calls with no time", num(tm.missing))}${stat("ttr-hook", "Hook chain time", hookText)}</dl>`;

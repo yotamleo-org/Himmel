@@ -56,6 +56,14 @@ test("a record with a missing source or denominator is partial and its unknowns 
   expect(day(roll(qEvals(), qFails(), { chain: legacy })).status).toBe("partial");
 });
 
+test("a permission prompt is not a guard and gets no guard case or metric", () => {
+  const evals = [evalOn(DAY, 1, [tool(DAY, "Bash", 4, { [SECRETS]: 1, "denied/permission-prompt": 2 }), tool(DAY, "Read", 3, { [SECRETS]: 1 }), tool(DAY, "Grep", 2), tool(DAY, "PowerShell", 1, { [SECRETS]: 1 })])];
+  const rec = day(roll(evals, [fail(1, SECRETS, 3), fail(1, "denied/permission-prompt", 2)]));
+  expect(Object.keys(rec.cases).filter((k) => k.includes("permission-prompt"))).toEqual([]);
+  expect(Object.keys(rec.metrics).filter((k) => k.includes("permission-prompt"))).toEqual([]);
+  expect(rec.cases["guard:block-read-secrets"]).toBeDefined();
+});
+
 test("a complete day with no calls is inconclusive and every rate is null", () => {
   const rec = day(roll([evalOn(DAY, 1, [])], []));
   expect(rec.status).toBe("inconclusive");
@@ -122,6 +130,10 @@ test("the command prints a day's record without writing, refuses a day that has 
     const today = cli(env, "--day", new Date().toISOString().slice(0, 10), "--dry-run");
     expect(today.status).toBe(2);
     expect(today.stderr).toContain("has not finished");
+    // A day that does not exist is refused, not read as another day.
+    const fake = cli(env, "--day", "2026-02-30", "--dry-run");
+    expect(fake.status).toBe(2);
+    expect(fake.stderr).toContain("real YYYY-MM-DD date");
     const ledger = join(dir, "out.jsonl");
     expect(cli(env, "--day", DAY, "--ledger", ledger).status).toBe(0);
     const again = cli(env, "--day", DAY, "--ledger", ledger);

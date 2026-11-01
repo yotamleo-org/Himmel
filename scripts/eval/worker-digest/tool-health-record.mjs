@@ -9,7 +9,7 @@ import { rollupToolHealth } from './tool-health.mjs';
 export const RECORD_VERSION = 1;
 const num = (n) => typeof n === 'number' && Number.isFinite(n);
 const ratio = (n, d) => num(n) && num(d) && d > 0 ? n / d : null;
-const GUARD = /^denied\/(?!classifier|other$)(.+)$/;
+const GUARD = /^denied\/(?!classifier|other$|permission-prompt$)(.+)$/;
 const REASONS = ['rule', 'timeout', 'deadline', 'buffer', 'other'];
 
 // The page's roll-up over exactly one UTC day: window = [day, day].
