@@ -56,8 +56,8 @@ export type AfkSudoPrompts = {
   add: (chat_id: number, message_id: number, id: string) => void;
   get: (chat_id: number, message_id: number) => { id: string; expired: boolean; used: boolean } | null;
   use: (chat_id: number, message_id: number) => void;
-  // The id of an unused, unexpired prompt waiting for a code in this chat, or null.
-  live: (chat_id: number) => string | null;
+  // The ids of the unused, unexpired prompts waiting for a code in this chat (several requests can wait at once).
+  live: (chat_id: number) => string[];
 };
 export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000): AfkSudoPrompts {
   const m = new Map<string, { id: string; at: number; used: boolean }>();
@@ -73,8 +73,9 @@ export function makeAfkSudoPrompts(now: () => number = Date.now, ttlMs = 150_000
     },
     use(c, p) { const v = m.get(key(c, p)); if (v) v.used = true; },
     live(c) {
-      for (const [k, v] of m) if (k.startsWith(`${c}:`) && !v.used && now() - v.at <= ttlMs) return v.id;
-      return null;
+      const ids = new Set<string>();
+      for (const [k, v] of m) if (k.startsWith(`${c}:`) && !v.used && now() - v.at <= ttlMs) ids.add(v.id);
+      return [...ids];
     },
   };
 }
@@ -190,10 +191,10 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // whatever words surround it, or is only a spaced or hyphenated code, or any
       // message sent while a prompt waits.
       if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
-        const waiting = prompts?.live(msg.chat_id) ?? null;
-        if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting) {
-          void deps.reply(msg.chat_id, waiting
-            ? `⚠️ afk-sudo: reply to the "Nonce and code for ${waiting}" message with the nonce and the code, nothing ran`
+        const waiting = prompts?.live(msg.chat_id) ?? [];
+        if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting.length > 0) {
+          void deps.reply(msg.chat_id, waiting.length > 0
+            ? `⚠️ afk-sudo: reply to the "Nonce and code for ${waiting.join('" or "Nonce and code for ')}" message with the nonce and the code, nothing ran`
             : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});
           return true;
         }

@@ -601,6 +601,7 @@ scripts/himmelctl/test/test-wizard-uninstall-converge.sh	3
 scripts/himmelctl/test/test-wizard-uninstall.sh	2
 scripts/himmelctl/test/test-wizard-update.sh	1
 scripts/himmelctl/test/test-wizard-vm-mode.sh	9
+scripts/hooks/test-afk-prompt-to-request.sh	1
 scripts/hooks/test-allow-thread-resolve.sh	3
 scripts/hooks/test-approval-grant-check.sh	1
 scripts/hooks/test-approval-grant-request.sh	1

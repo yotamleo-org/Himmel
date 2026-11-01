@@ -271,10 +271,10 @@ notice_nonce() { tg notice sendMessage text | sed -n 's/.*nonce <b>\([^<]*\)<\/b
 # state_nonce <id>: the nonce root holds for a pending id (empty when none).
 state_nonce() { python3 -I -c 'import json, sys
 try:
-    p = json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json"))["pending"] or {}
+    slots = json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json")).get("slots") or []
 except OSError:
-    p = {}
-print(p.get("nonce", "") if p.get("id") == sys.argv[2] else "")' "$R" "$1"; }
+    slots = []
+print("".join(p.get("nonce", "") for p in slots if p.get("id") == sys.argv[2]))' "$R" "$1"; }
 
 # h <now-offset> <verb> [args...]: run the helper in the current sandbox.
 h() { local off="$1"; shift; AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + off)) python3 -I "$HELPER" "$@" 2>&1; }
@@ -285,6 +285,8 @@ approve() { approve_raw "$1" "$2" "$(state_nonce "$2") $3" "${4:-}"; }
 # code <now-offset>: the TOTP the operator's authenticator shows at that time.
 code() { python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; print(b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' "$LIB" "$R/etc/himmel/afk-sudo/totp.seed" $((T0 + $1)); }
 req() { h "$1" request --session S1 --ticket HIMMEL-8066 --cwd /work -- systemctl restart himmel-test.service; }
+# reqs <now-offset> <session>: an allowlisted request from that session.
+reqs() { h "$1" request --session "$2" --ticket HIMMEL-8067 --cwd /work -- systemctl restart himmel-test.service; }
 rid() { printf '%s\n' "$1" | sed -n 's/^result=[^ ]* id=\([a-z2-7]*\).*/\1/p' | head -1; }
 ledger() { cat "$R/var/log/himmel/afk-sudo.jsonl" 2>/dev/null; }
 runs() { wc -l < "$R/ran.log" | tr -d ' '; }
@@ -357,12 +359,13 @@ assert_contains "a valid code on an expired id denies" "result=expired" "$out"
 out=$(req 126); id=$(rid "$out")
 out=$(approve 127 "$id" "$(code 125)")
 assert_contains "the code sent to the expired id cannot approve the next request" "result=replay" "$out"
+h 128 deny "$id" --from "$OP" --chat "$OP" >/dev/null
 out=$(req 200); id=$(rid "$out")
 out=$(approve 201 zzzzzzzz "$(code 201)")
 assert_contains "a valid code on an unknown id denies" "result=no-pending" "$out"
-out=$(req 202); id=$(rid "$out")
 out=$(approve 203 "$id" "$(code 201)")
-assert_contains "the code sent to the unknown id cannot approve the next request" "result=replay" "$out"
+assert_contains "the code sent to the unknown id cannot approve the pending request" "result=replay" "$out"
+h 204 deny "$id" --from "$OP" --chat "$OP" >/dev/null
 assert_contains "no spent code ran the command" "0" "$(runs)"
 out=$(req 300); id=$(rid "$out")
 out=$(approve 301 "$id" "١٢٣٤٥٦")
@@ -396,6 +399,30 @@ for n in 1 2 3 4 5 6; do
 done
 out=$(req 10)
 assert_contains "a seventh request inside an hour is rate-limited" "result=rate-limited" "$out"
+
+echo "== HIMMEL-8067 slice 2: three pending slots, one per session, each approved on its own =="
+new_root slots
+a=$(rid "$(reqs 0 S1)")
+out=$(reqs 1 S2); b=$(rid "$out")
+assert_contains "RED slice 2: a second session's request is pending, not busy" "result=pending" "$out"
+out=$(reqs 2 S3); c=$(rid "$out")
+assert_contains "slice 2: a third session's request is pending" "result=pending" "$out"
+assert_contains "slice 2: a fourth session is busy while three wait" "result=busy" "$(reqs 3 S4)"
+assert_contains "slice 2: a session with a request pending is busy" "result=busy" "$(reqs 4 S1)"
+out=$(approve 5 "$b" "$(code 5)")
+assert_contains "slice 2: the second session's request is approved by its own id" "result=ran id=$b" "$out"
+assert_contains "slice 2: the first session's request is still pending" "result=pending" "$(h 6 status "$a")"
+out=$(approve 7 "$a" "$(code 7)")
+assert_contains "slice 2: a code of the step just spent is refused replay" "result=replay" "$out"
+assert_contains "RED slice 2: a replayed code leaves the request pending" "result=pending" "$(h 8 status "$a")"
+out=$(approve 31 "$a" "$(code 31)")
+assert_contains "slice 2: the next step's code approves it" "result=ran id=$a" "$out"
+out=$(approve 61 zzzzzzzz "$(code 61)")
+assert_contains "slice 2: approving an unknown id is refused" "result=no-pending" "$out"
+assert_contains "RED slice 2: approving an unknown id leaves the other requests pending" "result=pending" "$(h 62 status "$c")"
+assert_contains "slice 2: the code sent to an unknown id is spent all the same" "result=replay" "$(approve 63 "$c" "$(code 63)")"
+assert_contains "slice 2: S3 can still be denied" "result=denied" "$(h 64 deny "$c" --from "$OP" --chat "$OP")"
+assert_eq "slice 2: two commands ran" "2" "$(runs)"
 
 echo "== the helper refuses an unsafe seed, config or ledger =="
 new_root perms
@@ -442,17 +469,17 @@ assert_absent "the bot token never appears in curl's argv" "SECRETTOKEN" "$args"
 assert_contains "the token reaches curl on stdin" "SECRETTOKEN" "$(cat "$tmp/curl.stdin" 2>/dev/null)"
 
 echo "== slice 1a: a spent step stays spent for the next request (HIMMEL-8078 part 2) =="
-for how in deny burn expire; do
+for how in deny unknown-id expire; do
     new_root "spent-$how"
     out=$(req 0); idA=$(rid "$out"); c=$(code 3)
     case "$how" in
         deny) h 3 deny "$idA" --from "$OP" --chat "$OP" >/dev/null; at=4 ;;
-        burn) approve 3 zzzzzzzz "$c" >/dev/null; at=4 ;;
+        unknown-id) approve 3 zzzzzzzz "$c" >/dev/null; at=4 ;;
         expire) at=125; c=$(code 125) ;;
     esac
-    out=$(req "$at"); idB=$(rid "$out")
+    out=$(reqs "$at" S2); idB=$(rid "$out")
     out=$(approve $((at + 1)) "$idB" "$c")
-    assert_contains "a code valid for request A is refused for B after A is $how-ed in the same step" "result=replay" "$out"
+    assert_contains "a code valid for request A is refused for B after a $how in the same step" "result=replay" "$out"
     assert_contains "nothing ran after $how" "0" "$(runs)"
 done
 
@@ -1069,7 +1096,7 @@ rr 0 -- true >/dev/null
 assert_contains "a second run request while one is pending is busy" "result=busy" "$(rr 1 -- true)"
 rr 2 -- true >/dev/null
 assert_contains "two busy requests from one session leave one ledger row" "1" "$(ledger | grep -c '"result": "busy"')"
-hr 3 run-request --session S2 --ticket T --blocked-by classifier -- true </dev/null >/dev/null
+for n in 2 3 4; do hr 3 run-request --session "S$n" --ticket T --blocked-by classifier -- true </dev/null >/dev/null; done
 assert_contains "another session's busy request gets its own row" "2" "$(ledger | grep -c '"result": "busy"')"
 new_root maxhr; cfg "$ALL" true ', "max_per_hour": 2'
 for n in 1 2; do out=$(rr "$n" -- true); h "$n" deny "$(rid "$out")" --from "$OP" --chat "$OP" >/dev/null; done
@@ -1098,8 +1125,8 @@ if [ "$1" = run-status ] && [ ! -e "$FAKE_R/polled.$2" ]; then
     : > "$FAKE_R/polled.$2"
     case "${FAKE_ACTION:-approve}" in
         approve)
-            python3 -I -c 'import json, sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; p = json.load(open(sys.argv[4]))["pending"] or {}; print(p.get("nonce", ""), b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' \
-                "$FAKE_LIB" "$FAKE_R/etc/himmel/afk-sudo/totp.seed" "$now" "$FAKE_R/var/lib/himmel/afk-sudo/state.json" | run_helper "$now" approve "$2" --from "$FAKE_OP" --chat "$FAKE_OP" >/dev/null ;;
+            python3 -I -c 'import json, sys; sys.path.insert(0, sys.argv[1]); import approval_broker as b; n = "".join(p.get("nonce", "") for p in json.load(open(sys.argv[4])).get("slots") or [] if p.get("id") == sys.argv[5]); print(n, b.totp(open(sys.argv[2]).read().strip(), int(sys.argv[3]) // 30))' \
+                "$FAKE_LIB" "$FAKE_R/etc/himmel/afk-sudo/totp.seed" "$now" "$FAKE_R/var/lib/himmel/afk-sudo/state.json" "$2" | run_helper "$now" approve "$2" --from "$FAKE_OP" --chat "$FAKE_OP" >/dev/null ;;
         deny) run_helper "$now" deny "$2" --from "$FAKE_OP" --chat "$FAKE_OP" >/dev/null ;;
         expire) now=$((now + 1000)) ;;
     esac
@@ -1179,6 +1206,7 @@ assert_contains "the request ends on a bad nonce" "result=denied:bad-nonce" "$(h
 out=$(rr 40 -- true); id=$(rid "$out"); n=$(notice_nonce)
 out=$(AFK_SUDO_RUN=1 approve_raw 41 "$id" "$n $c")
 assert_contains "the code a bad nonce exposed is spent" "result=replay" "$out"
+h 42 deny "$id" --from "$OP" --chat "$OP" >/dev/null
 out=$(rr 80 -- true); id=$(rid "$out"); n=$(notice_nonce)
 out=$(AFK_SUDO_RUN=1 approve_raw 81 "$id" "$(printf '%s' "$n" | tr '[:upper:]' '[:lower:]') $(code 81)")
 assert_contains "the right nonce (any case) and code run the request" "result=ran" "$out"
@@ -1422,7 +1450,7 @@ ghook() {
     PATH="$tmp/fakesudo:$PATH" AFK_GRANT_DIR="$R/var/lib/himmel/afk-grants" AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) \
         bash "$REPO_ROOT/scripts/hooks/$2" < "$tmp/gpay.json" 2>&1
 }
-pending_id() { python3 -I -c 'import json, sys; print((json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json"))["pending"] or {}).get("id", ""))' "$R" 2>/dev/null; }
+pending_id() { python3 -I -c 'import json, sys; print(((json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json")).get("slots") or [{}])[-1]).get("id", ""))' "$R" 2>/dev/null; }
 ALLOW='"permissionDecision":"allow"'
 
 new_root ghooks; cfg_grant true; mkdir -p "$R/var/lib/himmel/afk-grants"
@@ -1473,6 +1501,13 @@ assert_contains "slice 4: the ledger has a lockdown row" '"event": "lockdown"' "
 assert_contains "slice 4: the lockdown row names the denied id" "\"denied\": [\"$id\"]" "$(ledger)"
 assert_contains "slice 4: the pending request has its own deny row" '"event": "deny"' "$(ledger)"
 assert_eq "slice 4: nothing ran" "0" "$(runs)"
+new_root lockdown-slots
+a=$(rid "$(reqs 0 S1)"); b=$(rid "$(reqs 1 S2)"); c=$(rid "$(reqs 2 S3)")
+out=$(h 3 lockdown --from "$OP" --chat "$OP")
+assert_contains "RED slice 2: lockdown names every pending request it denied" "denied=$a,$b,$c" "$out"
+for x in "$a" "$b" "$c"; do assert_contains "slice 2: lockdown denied $x" "result=denied id=$x" "$(h 4 status "$x")"; done
+assert_contains "slice 2: the lockdown row names all three ids" "\"denied\": [\"$a\", \"$b\", \"$c\"]" "$(ledger)"
+assert_eq "slice 2: each slot has its own deny row" "3" "$(ledger | grep -c '"event": "deny"')"
 
 echo "== slice 4: lockdown with nothing pending, and on an already-off station =="
 new_root lockdown-idle

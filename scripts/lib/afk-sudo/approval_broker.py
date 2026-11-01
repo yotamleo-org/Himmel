@@ -5,12 +5,13 @@ caller passes one to approve(). Every file it reads or writes must be owned by
 `owner` (uid 0 in production) and not group- or world-writable; the seed must
 not be group- or world-readable either. Anything else refuses `unsafe-perms`.
 
-State (pending slot, replay step, lockout, request times, recent outcomes) is
+State (pending slots, replay step, lockout, request times, recent outcomes) is
 one JSON file under a flock. The ledger is JSONL, one row per event, and never
 holds the code or the seed.
 
-ponytail: one pending request per station; upgrade path is a slot per request
-id once one station runs several AFK sessions that each need approval.
+At most MAX_SLOTS requests wait at once, one per session (meta "session"), each
+approved or denied by its own id. One TOTP code approves one request: after a
+code is spent, the next request needs the next step's code.
 """
 import base64
 import fcntl
@@ -31,6 +32,7 @@ LOCK_S = 900
 MAX_PER_HOUR = 6
 BUSY_ROW_S = 600
 KEEP_DONE = 20
+MAX_SLOTS = 3
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 # Crockford base32: no I, L, O or U, so a nonce read off a phone screen has one spelling.
 NONCE_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -108,8 +110,21 @@ class Broker:
         if os.path.lexists(self.state_path):
             check_safe(self.state_path, self.owner)
             with open(self.state_path) as f:
-                return json.load(f)
-        return {"pending": None, "last_step": -1, "wrong": 0, "locked_until": 0, "requests": [], "done": {}}
+                s = json.load(f)
+            # A state file written before the slots (one "pending" request or None) reads as a list.
+            if "slots" not in s:
+                old = s.pop("pending", None)
+                s["slots"] = [old] if old else []
+            return s
+        return {"slots": [], "last_step": -1, "wrong": 0, "locked_until": 0, "requests": [], "done": {}}
+
+    @staticmethod
+    def _slot(s, rid):
+        return next((p for p in s["slots"] if p["id"] == rid), None)
+
+    @staticmethod
+    def _drop(s, rid):
+        s["slots"] = [p for p in s["slots"] if p["id"] != rid]
 
     def _save(self, s):
         tmp = self.state_path + ".tmp"
@@ -141,10 +156,9 @@ class Broker:
         self._bump(s, t // STEP_S)
 
     def _expire(self, s, t):
-        p = s["pending"]
-        if p and t > p["expires"]:
+        for p in [p for p in s["slots"] if t > p["expires"]]:
             self._finish(s, p["id"], "expired")
-            s["pending"] = None
+            self._drop(s, p["id"])
             # The step the request ran out in, not the (lazy) detection time.
             self._bump(s, p["expires"] // STEP_S)
             self._row("expire", "expired", p["meta"], id=p["id"])
@@ -165,7 +179,8 @@ class Broker:
         return quiet
 
     def request(self, kind, display, payload, meta, window_s=None):
-        """Open the one pending slot; returns (id, expires, nonce). Raises Refused.
+        """Open a pending slot; returns (id, expires, nonce). Raises Refused (`busy` when this session
+        already has one or MAX_SLOTS are taken).
 
         The nonce is held in the state file only (never a ledger row, never the requester's output):
         the caller sends it to the operator through the root-only notice bot, and approve() needs it
@@ -181,7 +196,8 @@ class Broker:
             if t < s["locked_until"]:
                 self._refuse("request", "locked", meta)
             self._expire(s, t)
-            if s["pending"]:
+            sess = str(meta.get("session", ""))
+            if len(s["slots"]) >= MAX_SLOTS or any(str(p["meta"].get("session", "")) == sess for p in s["slots"]):
                 quiet = self._busy_quiet(s, meta, t)
                 self._save(s)
                 if quiet:
@@ -197,12 +213,12 @@ class Broker:
                 meta.update(extra)
             nonce = "".join(secrets.choice(NONCE_ALPHABET) for _ in range(NONCE_LEN))
             s["requests"].append(t)
-            s["pending"] = {"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta,
-                            "expires": t + window, "nonce": nonce}
+            s["slots"].append({"id": rid, "kind": kind, "display": display, "payload": payload, "meta": meta,
+                               "expires": t + window, "nonce": nonce})
             self._save(s)
             self._row("request", "pending", meta, id=rid)
             if self.retain:
-                self.retain(set(s["done"]) | {rid})
+                self.retain(set(s["done"]) | {p["id"] for p in s["slots"]})
             return rid, int(t + window), nonce
         finally:
             os.close(fd)
@@ -212,10 +228,10 @@ class Broker:
         fd = self._locked()
         try:
             s = self._load()
-            p = s["pending"]
-            if p and p["id"] == rid:
+            p = self._slot(s, rid)
+            if p:
                 self._finish(s, rid, result)
-                s["pending"] = None
+                self._drop(s, rid)
                 self._spend(s, self.now())
                 self._save(s)
                 self._row("notice", result, p["meta"], id=rid)
@@ -235,12 +251,14 @@ class Broker:
     def approve(self, rid, code, sender, chat, executor, nonce=""):
         """Check the nonce and the code; on success run executor(payload) once. Returns (pending, result).
         A wrong nonce counts as a wrong code (towards the lockout) and ends the request; a valid code
-        sent with it is spent, since it was typed where a look-alike may have read it."""
+        sent with it is spent, since it was typed where a look-alike may have read it. A replayed code
+        (one already spent, e.g. on another slot) is refused and the request stays pending. An unknown
+        id ends no request."""
         fd = self._locked()
         try:
             s, t = self._load(), self.now()
-            p = s["pending"]
-            meta = p["meta"] if p and p["id"] == rid else {}
+            p = self._slot(s, rid)
+            meta = p["meta"] if p else {}
             self._sender_ok(rid, sender, chat, meta)
             if t < s["locked_until"]:
                 self._refuse("code-check", "locked", meta, id=rid)
@@ -254,19 +272,14 @@ class Broker:
             # A valid code sent to an expired or unknown id is spent all the
             # same, so it can never approve the next request.
             spend = hit is not None and hit > s["last_step"]
-            if p and p["id"] == rid and t > p["expires"]:
+            if p and t > p["expires"]:
                 self._expire(s, t)
                 if spend:
                     self._bump(s, hit)
                 self._save(s)
                 self._refuse("code-check", "expired", meta, id=rid)
             self._expire(s, t)
-            p = s["pending"]
-            if not p or p["id"] != rid:
-                if p:
-                    self._finish(s, p["id"], "burned")
-                    s["pending"] = None
-                    self._spend(s, t)
+            if not p:
                 if spend:
                     self._bump(s, hit)
                 self._save(s)
@@ -276,19 +289,22 @@ class Broker:
                 result = "bad-nonce"
             elif hit is None or hit <= s["last_step"]:
                 result = "no-code" if not code else "replay" if hit is not None else "wrong-code"
+            if result == "replay":
+                self._save(s)
+                self._refuse("code-check", result, p["meta"], id=rid)
             if result:
-                if result != "replay":
-                    s["wrong"] += 1
-                    if s["wrong"] >= MAX_WRONG:
-                        s["locked_until"], s["wrong"] = t + LOCK_S, 0
+                s["wrong"] += 1
+                if s["wrong"] >= MAX_WRONG:
+                    s["locked_until"], s["wrong"] = t + LOCK_S, 0
                 self._finish(s, rid, "denied:" + result)
-                s["pending"] = None
+                self._drop(s, rid)
                 self._spend(s, t)
                 if spend:
                     self._bump(s, hit)
                 self._save(s)
                 self._refuse("code-check", result, p["meta"], id=rid)
-            s["wrong"], s["pending"] = 0, None
+            s["wrong"] = 0
+            self._drop(s, rid)
             self._bump(s, max(hit, t // STEP_S))
             self._finish(s, rid, "running")
             self._save(s)
@@ -325,16 +341,35 @@ class Broker:
         fd = self._locked()
         try:
             s = self._load()
-            p = s["pending"]
-            meta = p["meta"] if p and p["id"] == rid else {}
+            p = self._slot(s, rid)
+            meta = p["meta"] if p else {}
             self._sender_ok(rid, sender, chat, meta)
-            if not p or p["id"] != rid:
+            if not p:
                 self._refuse("deny", "no-pending", meta, id=rid)
             self._finish(s, rid, "denied")
-            s["pending"] = None
+            self._drop(s, rid)
             self._spend(s, self.now())
             self._save(s)
             self._row("deny", "denied", meta, id=rid, sender=int(sender))
+        finally:
+            os.close(fd)
+
+    def deny_all(self, sender):
+        """Deny every pending request under one lock (the lockdown); returns their ids in slot order.
+        The caller has already checked the sender."""
+        fd = self._locked()
+        try:
+            s = self._load()
+            slots = s["slots"]
+            if slots:
+                for p in slots:
+                    self._finish(s, p["id"], "denied")
+                s["slots"] = []
+                self._spend(s, self.now())
+                self._save(s)
+                for p in slots:
+                    self._row("deny", "denied", p["meta"], id=p["id"], sender=int(sender))
+            return [p["id"] for p in slots]
         finally:
             os.close(fd)
 
@@ -344,8 +379,7 @@ class Broker:
             s = self._load()
             self._expire(s, self.now())
             self._save(s)
-            p = s["pending"]
-            if p and p["id"] == rid:
+            if self._slot(s, rid):
                 return "pending"
             return s["done"].get(rid, "unknown")
         finally:
