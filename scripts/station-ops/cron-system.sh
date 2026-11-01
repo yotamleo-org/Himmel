@@ -58,6 +58,8 @@ if [ "$action" = set ]; then
     case "$path/" in *"/../"* | *"/./"* | *"//"*) bad command "no . or .. segments" ;; esac
     if [ "$cuser" = root ]; then
         rel=${path#"$ROOT"}
+        # ponytail: root jobs get only /usr/bin and /usr/sbin, because the never-remote floor refuses a parameter naming
+        # /usr/local/libexec/himmel; upgrade path: offer that directory once the floor exempts an op's own parameters.
         { [ "$rel" != "$path" ] || [ -z "$ROOT" ]; } || bad command "root jobs run only a command under /usr/bin or /usr/sbin"
         case $rel in /usr/bin/* | /usr/sbin/*) ;; *) bad command "root jobs run only a command under /usr/bin or /usr/sbin" ;; esac
     fi
