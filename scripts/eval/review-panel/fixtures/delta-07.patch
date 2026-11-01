@@ -1,0 +1,22 @@
+diff --git a/scripts/tools/cache-refresh.sh b/scripts/tools/cache-refresh.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/tools/cache-refresh.sh
+@@ -0,0 +1,17 @@
++#!/usr/bin/env bash
++# cache-refresh.sh - refresh the local index cache when it is older than a day.
++set -uo pipefail
++
++cache="${INDEX_CACHE:-$HOME/.cache/himmel/index.json}"
++max_age=86400
++
++# is_stale: succeeds (0) when the cache is missing or older than max_age.
++is_stale() {
++    [ -f "$cache" ] || return 0
++    age=$(( $(date +%s) - $(stat -c %Y "$cache") ))
++    [ "$age" -gt "$max_age" ]
++}
++
++if is_stale; then
++    himmel-index --rebuild --out "$cache"
++fi

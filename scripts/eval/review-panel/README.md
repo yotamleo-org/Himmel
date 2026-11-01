@@ -11,6 +11,7 @@ sees.
 |---|---|
 | `fixtures/case-NN.patch` | 24 frozen one-file git diffs: 12 seeded, 12 clean twins. Ids are opaque and shuffled, so a case id says nothing about its class or its twin |
 | `fixtures/real-NNN.patch`, `real-NNN-clean.patch` | 10 real review escapes and their clean twins, frozen from merged history, with `real-NNN*.intent.md` (below) |
+| `fixtures/delta-NN.patch`, `delta-NN.delta.patch` | 10 delta cases: a round-1 diff and the fix delta, run with the delta as the diff (below) |
 | `key/seeds.json` | the answer key: per case its twin `pair`, `kind` (seeded / clean), `split` (open / sealed) and `defects` (`id`, `class`, `file`, new-file `line`), plus a `canary` string |
 | `score.py` | `lint` (fixture/key integrity + leak lint) and `score` (matcher, metrics, eval-runs row) |
 | `run.sh` | one sweep: lint, panel per fixture, score, one ledger row |
@@ -195,6 +196,38 @@ run on the 24 synthetic cases only.
 Not shipped yet (the remainder PR, HIMMEL-8427): 20 more pairs to reach 30 and
 30, with at least 4 cross-file and 4 spec-miss pairs in total. The two baseline
 sweeps over the grown corpus are the chief's.
+
+### Delta cases (`delta-*`, HIMMEL-8429)
+
+Review rounds 2 and 3 will review only what changed since the last round, so
+the eval grades that: a delta case is a round-1 diff plus the fix delta that
+follows it, with the defect in the delta.
+
+| file | what |
+|---|---|
+| `delta-NN.patch` | the round-1 diff (a new-file diff, like a `case-NN`) |
+| `delta-NN.delta.patch` | the fix delta on top of it; the seeded twin's delta holds the defect, the clean twin's delta is the correct fix |
+| `key/seeds.json` entry | the usual case entry plus `"delta": true`; `defects[].file`/`line` are a file and a new-file line of the delta |
+
+`score.py lint` refuses a key entry marked `delta` with no `<id>.delta.patch`, a
+`*.delta.patch` whose case the key does not mark delta, a delta that does not
+apply on the tree its round-1 diff builds (cases with a `base` skip that check),
+a seed line that is not an added line of the delta, and a delta patch carrying
+the canary, the key path or a hint word. The twin rule reads the deltas.
+
+`run.sh` feeds a delta case to the panel with the **delta as the diff** (stdin)
+and `--context-file context.patch` (the round-1 diff then the delta) in the
+critic's scratch dir; the critic sees nothing else. Any sweep does this for the
+key's delta cases; `run.sh --delta` sweeps only them (a subset sweep like
+`--only`, exclusive with it, not gate-eligible).
+
+The shipped 10 are 5 pairs, split by hand (3 open, 2 sealed): `logic` (the delta
+inverts `is_stale`, the unchanged caller keeps the old sense), `fail-open` (an
+unreadable commit-message file allows the commit), `scope-creep` (a dry-run fix
+that also lowers the retention default), `test-cannot-fail` (an assertion that
+compares a call with itself) and `quoting` (an unquoted exclude argument). The
+pairs add to the 22 + 22 above; adding them changed `config.fixture_set`, so
+they start a new eval-compare series and need the base re-baseline sweeps.
 
 ## The merge gate (HIMMEL-8426)
 

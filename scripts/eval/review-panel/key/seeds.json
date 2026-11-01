@@ -229,6 +229,111 @@
       "pair": "quoting-b",
       "split": "sealed"
     },
+    "delta-01": {
+      "defects": [
+        {
+          "class": "test-cannot-fail",
+          "file": "scripts/tools/test-clamp.sh",
+          "id": "delta-d-1",
+          "line": 11
+        }
+      ],
+      "delta": true,
+      "kind": "seeded",
+      "pair": "delta-d",
+      "split": "sealed"
+    },
+    "delta-02": {
+      "defects": [],
+      "delta": true,
+      "kind": "clean",
+      "pair": "delta-a",
+      "split": "open"
+    },
+    "delta-03": {
+      "defects": [],
+      "delta": true,
+      "kind": "clean",
+      "pair": "delta-e",
+      "split": "open"
+    },
+    "delta-04": {
+      "defects": [
+        {
+          "class": "fail-open",
+          "file": "scripts/hooks/require-ticket-id.sh",
+          "id": "delta-b-1",
+          "line": 7
+        }
+      ],
+      "delta": true,
+      "kind": "seeded",
+      "pair": "delta-b",
+      "split": "sealed"
+    },
+    "delta-05": {
+      "defects": [],
+      "delta": true,
+      "kind": "clean",
+      "pair": "delta-c",
+      "split": "open"
+    },
+    "delta-06": {
+      "defects": [
+        {
+          "class": "quoting",
+          "file": "scripts/tools/archive-dir.sh",
+          "id": "delta-e-1",
+          "line": 15
+        }
+      ],
+      "delta": true,
+      "kind": "seeded",
+      "pair": "delta-e",
+      "split": "open"
+    },
+    "delta-07": {
+      "defects": [
+        {
+          "class": "logic",
+          "file": "scripts/tools/cache-refresh.sh",
+          "id": "delta-a-1",
+          "line": 17
+        }
+      ],
+      "delta": true,
+      "kind": "seeded",
+      "pair": "delta-a",
+      "split": "open"
+    },
+    "delta-08": {
+      "defects": [],
+      "delta": true,
+      "kind": "clean",
+      "pair": "delta-d",
+      "split": "sealed"
+    },
+    "delta-09": {
+      "defects": [],
+      "delta": true,
+      "kind": "clean",
+      "pair": "delta-b",
+      "split": "sealed"
+    },
+    "delta-10": {
+      "defects": [
+        {
+          "class": "scope-creep",
+          "file": "scripts/tools/prune-logs.sh",
+          "id": "delta-c-1",
+          "line": 7
+        }
+      ],
+      "delta": true,
+      "kind": "seeded",
+      "pair": "delta-c",
+      "split": "open"
+    },
     "real-001": {
       "base": "14c483e81c996817b05d6890764bca02a6ed8ea5",
       "defects": [

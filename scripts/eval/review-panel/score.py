@@ -72,7 +72,8 @@ EVAL_ID = "review-panel"
 SOURCE = "scripts/eval/review-panel/score.py"
 DEFAULT_WINDOW = 3
 GATING = ("crit", "imp")
-CASE_FILE = re.compile(r"^(case|real)-[^/]+\.patch$")
+CASE_FILE = re.compile(r"^(case|real|delta)-[^/]+\.patch$")
+DELTA_SUFFIX = ".delta.patch"  # <id>.delta.patch: the fix delta of a delta case (key "delta": true)
 # Repo-relative paths the gate reads from a tree.
 REL = "scripts/eval/review-panel"
 CBS_LIST, RESULTS = REL + "/cbs.txt", REL + "/results.jsonl"
@@ -199,6 +200,24 @@ def apply_problem(fixtures, key_path, cid, src):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def delta_apply_problem(round1, delta):
+    """None when the delta applies on the tree the round-1 diff builds, else the reason it does not."""
+    tmp = tempfile.mkdtemp(prefix="review-panel-delta.")
+    try:
+        for name, body in (("round1.patch", round1), ("delta.patch", delta)):
+            with open(os.path.join(tmp, name), "w", encoding="utf-8") as fh:
+                fh.write(body)
+        for name in ("round1.patch", "delta.patch"):
+            # No --unsafe-paths: git refuses a path that leaves the working area (the cwd, outside a checkout).
+            r = subprocess.run(["git", "apply", "--directory", "tree", name],
+                               capture_output=True, text=True, errors="replace", cwd=tmp)
+            if r.returncode != 0:
+                return "%s: %s" % (name, (r.stderr.strip().splitlines() or ["rc %d" % r.returncode])[-1])
+        return None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def lint(fixtures, key_path, min_real=0, src=None):
     problems = []
     try:
@@ -206,10 +225,16 @@ def lint(fixtures, key_path, min_real=0, src=None):
     except (OSError, ValueError) as e:
         return ["key %s: %s" % (key_path, e)], 0, 0
     cases = key["cases"]
-    files = sorted(f[:-6] for f in os.listdir(fixtures) if CASE_FILE.match(f))
+    names = os.listdir(fixtures)
+    files = sorted(f[:-6] for f in names if CASE_FILE.match(f) and not f.endswith(DELTA_SUFFIX))
     if sorted(cases) != files:
         problems.append("fixtures and key disagree: only-fixture=%s only-key=%s"
                         % (sorted(set(files) - set(cases)), sorted(set(cases) - set(files))))
+    # A delta case (key "delta": true) is <id>.patch (the round-1 diff) plus <id>.delta.patch (the fix delta,
+    # which holds the seed); a delta patch of any other case is an orphan.
+    for n in sorted(names):
+        if n.endswith(DELTA_SUFFIX) and not (cases.get(n[:-len(DELTA_SUFFIX)], {}).get("delta") is True):
+            problems.append("%s: a delta patch of a case the key does not mark delta" % n)
     n_real = sum(1 for f in files if f.startswith("real-"))
     if n_real < min_real:
         problems.append("only %d real-* cases, --min-real wants %d" % (n_real, min_real))
@@ -219,16 +244,31 @@ def lint(fixtures, key_path, min_real=0, src=None):
             text = fh.read()
         ipath = os.path.join(fixtures, cid + ".intent.md")
         intent = open(ipath, encoding="utf-8", errors="replace").read() if os.path.isfile(ipath) else ""
-        for marker in (key["canary"],) + KEY_MARKERS:
-            if marker in text or marker in intent:
-                problems.append("%s: carries key marker %r" % (cid, marker))
-        m = HINT_WORDS.search(text)
-        if m:
-            problems.append("%s: carries hint word %r" % (cid, m.group(0)))
         c = cases.get(cid)
+        is_delta = bool(c) and c.get("delta") is True
+        dtext = None
+        if is_delta:
+            dpath = os.path.join(fixtures, cid + DELTA_SUFFIX)
+            if os.path.isfile(dpath):
+                with open(dpath, encoding="utf-8") as fh:
+                    dtext = fh.read()
+            else:
+                problems.append("%s: a delta case needs %s%s" % (cid, cid, DELTA_SUFFIX))
+        for label, body in ((cid, text), (cid + ".delta", dtext or "")):
+            for marker in (key["canary"],) + KEY_MARKERS:
+                if marker in body or (body is text and marker in intent):
+                    problems.append("%s: carries key marker %r" % (label, marker))
+            m = HINT_WORDS.search(body)
+            if m:
+                problems.append("%s: carries hint word %r" % (label, m.group(0)))
         if not c:
             continue
-        diff = patch_files(text)
+        if is_delta and dtext is not None and not c.get("base"):
+            why = delta_apply_problem(text, dtext)
+            if why:
+                problems.append("%s: the delta does not apply on the round-1 diff: %s" % (cid, why))
+        # A delta case's seed sits in the delta; its twin comparison reads the delta too.
+        diff = patch_files((dtext or "") if is_delta else text)
         ctx = norm_path(c.get("context_seed") or "")
         if c.get("kind") not in ("seeded", "clean"):
             problems.append("%s: kind must be seeded or clean" % cid)
@@ -556,7 +596,7 @@ def confighash(repo, rev):
 def outputs_sha256(outputs):
     h = hashlib.sha256()
     for n in sorted(os.listdir(outputs)):
-        if re.match(r"^(case|real)-.+\.(md|err|rc)$", n):
+        if re.match(r"^(case|real|delta)-.+\.(md|err|rc)$", n):
             with open(os.path.join(outputs, n), "rb") as fh:
                 h.update(n.encode() + b"\0")
                 h.update(_sha(fh.read()).encode())
