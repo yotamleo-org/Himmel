@@ -65,7 +65,10 @@ function chainHtml(chiefs, v, ui) {
     said.push(`${c.name} ${clock(c.span.start)} to ${to}, ${c.prs.length} PR${c.prs.length === 1 ? "" : "s"}`);
     if (stop > cursor) { cursor = stop; cursorIso = c.span.end || ""; }
   }
-  if (end - cursor >= total / 200) cells.push(closed ? `<td class="cseg gap" colspan="${units(end - cursor)}"></td>` : `<td class="cseg fut" colspan="${units(end - cursor)}">to the ${esc(clock(s.nextCut))} cut</td>`);
+  // an open shift: what has already passed since the last chief is a gap, only the rest is ahead
+  const past = closed ? end : Math.min(Math.max(nowM, cursor), end);
+  if (past - cursor >= total / 200) cells.push(`<td class="cseg gap" colspan="${units(past - cursor)}"></td>`);
+  if (!closed && end - past >= total / 200) cells.push(`<td class="cseg fut" colspan="${units(end - past)}">to the ${esc(clock(s.nextCut))} cut</td>`);
   return `<div class="chain" role="img" aria-label="${esc(`${chiefs.length} chief${chiefs.length === 1 ? "" : "s"}: ${said.join("; ")}`)}"><table><tbody><tr>${cells.join("")}</tr></tbody></table></div>`
     + `<div class="chain-axis"><span>${esc(clock(s.opened))}</span><span>${esc(clock(closed ? s.closed : s.nextCut))}</span></div>`;
 }

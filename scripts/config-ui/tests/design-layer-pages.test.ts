@@ -96,6 +96,16 @@ test("Shift draws the chief chain as the mockup v3 chart: a segment per chief wi
   expect(chiefs).not.toContain("style="); // the CSP (default-src 'self') refuses inline styles
 });
 
+test("Shift chain: time already passed since the last chief ended is a gap, only the rest of an open shift is ahead", () => {
+  const view = {
+    ...shiftView,
+    shift: { ...shiftView.shift, opened: "2026-10-27T20:00+01:00", nextCut: "2026-10-28T08:00+01:00" },
+    chiefs: [{ name: "HY", bucket: "himmel", span: { start: "2026-10-27T20:00+01:00", end: "2026-10-27T21:00+01:00", approx: false }, prs: [] }],
+  };
+  const html = renderShift(view, { now: Date.parse("2026-10-28T02:00+01:00") });
+  expect(html).toMatch(/<td class="cseg gap" colspan="42"><\/td><td class="cseg fut" colspan="50">to the 08:00 cut<\/td>/); // of 12 h: 21:00 to 02:00 is 42 %, 02:00 to 08:00 is 50 %
+});
+
 test("the Health project picker sits above the page links in the rail", () => {
   const js = read("app.js");
   expect(js).toMatch(/\$\("#pages"\)\.innerHTML = \(currentPage\.id === "health" \? projectPicker\(\) : ""\) \+ navLinks\(/);
