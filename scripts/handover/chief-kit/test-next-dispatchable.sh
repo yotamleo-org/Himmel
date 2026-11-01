@@ -38,6 +38,11 @@ mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json
 retype() { # <fixture file> <type>: portable in-place edit (no sed -i: BSD and GNU differ)
     sed "s/^type: \"Task\"/type: \"$2\"/" "$1" > "$1.tmp" && mv "$1.tmp" "$1"
 }
+ago() { # <file> <hours>: set the file's mtime that far into the past (no touch -d: BSD and GNU differ)
+    python3 -I -c 'import os, sys, time
+t = time.time() - float(sys.argv[2]) * 3600
+os.utime(sys.argv[1], (t, t))' "$1" "$2" || fail "could not backdate $1"
+}
 mk HIMMEL-1 "To Do" Medium '[]' '["v1.0.2"]' '[]' "free later version" "Edit scripts/lib/alpha.sh only."
 mk HIMMEL-2 "To Do" Medium '[]' '["v1.0.1"]' '[]' "free earlier version" "Edit scripts/lib/beta.sh only."
 mk HIMMEL-3 "To Do" High '[]' '["v1.0.1"]' '[]' "collides with an open PR" "Edit scripts/lib/pr-held.sh please."
@@ -1540,7 +1545,7 @@ printf '# live\n' > "$C8/HIMMEL-57-N11-elsewhere-2026-10-31.md"
 b8o="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20)"
 has "(8436) a worker of a different chain does not hold its ticket here" "$b8o" "${TAB}HIMMEL-57${TAB}"
 # a stale worker doc of the other chief (no write for a day) holds nothing
-touch -d '2 days ago' "$W53"
+ago "$W53" 48
 b8s="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 --resume-only)"
 has "(8436) a worker doc untouched for over a day no longer holds its ticket" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
 # malformed sibling manifests never break the read: a list, entries that are not objects, a null or numeric doc, a doc-less entry
@@ -1647,7 +1652,7 @@ mkorph() { # <name> <doc body> <in manifest 0|1> <pass|create> <hours ago>
         backdate "$SER" "$5"
     else
         led create --ledger "$SER" --sid "o-$1" --completes-ticket no --writer "$WDOC"
-        touch -d "$5 hours ago" "$SER"
+        ago "$SER" "$5"
     fi
 }
 mkorph o1 "" 0 pass 3
