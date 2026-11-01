@@ -909,12 +909,15 @@ class TestCLI(unittest.TestCase):
         with mock.patch.dict(os.environ,
                              {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False):
             with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+                order = mock.Mock()
                 with mock.patch.object(vmsdk.VM, "_assert_test_vm") as a, \
                      mock.patch.object(vmsdk.VM, "clone_himmel", return_value="~/himmel") as c:
+                    order.attach_mock(a, "proof")
+                    order.attach_mock(c, "clone")
                     rc = vmsdk.main(["ubuntu_new", "clone", "main"])
         self.assertEqual(rc, 0)
-        a.assert_called_once_with()
-        c.assert_called_once_with(ref="main")
+        # the proof comes first: a clone before it would put the PAT on an unproven guest
+        self.assertEqual(order.mock_calls, [mock.call.proof(), mock.call.clone(ref="main")])
 
     def test_clone_refuses_a_vm_that_is_not_a_running_test_vm(self):
         # not in `list runningvms`: the clone must stop at the proof, before any guest access
