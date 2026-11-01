@@ -195,8 +195,9 @@ runo() { _l="$1"; shift; (cd "$tmp/repo" && LAUNCH_GUEST_VMS_JSON="$tmp/vms.json
 rows() { if [ -f "$LEDGER" ]; then wc -l < "$LEDGER" | tr -d ' '; else echo 0; fi; }
 
 fresh; rm -f "$LEDGER"
-rc=0; out="$(runo "$LEDGER" ubuntu_new "$P" 2>/dev/null)" || rc=$?
+rc=0; out="$(runo "$LEDGER" ubuntu_new "$P" 2>"$tmp/c1.err")" || rc=$?
 check "C1 stubbed run: exit 0" "$rc" "0"
+lacks "C1 stubbed run: a written row prints no ledger warning" "$(cat "$tmp/c1.err")" "could not write the cost ledger row"
 check "C1 stubbed run: stdout is exactly the guest result" "$out" '{"type":"result","total_cost_usd":1.25}'
 check "C1 stubbed run writes exactly one row" "$(rows)" "1"
 row="$(cat "$LEDGER" 2>/dev/null)"
