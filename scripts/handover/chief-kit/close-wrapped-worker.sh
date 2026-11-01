@@ -256,6 +256,13 @@ if ! scratch_clones=$(printf '%s' "$scratch_clones" | sort -u); then
 fi
 while IFS= read -r sc_dir; do
     [ -n "$sc_dir" ] || continue
+    # The clone's remote-tracking refs may be stale: a branch deleted or rewound on the
+    # remote since the last fetch would hide commits that no longer exist there. Refresh
+    # them first (pruning), bounded; a failed or timed-out refresh refuses.
+    if ! sc_fetch_out=$(GIT_TERMINAL_PROMPT=0 timeout -k 5 "${CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT:-30}" env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$sc_dir" fetch --all --prune --quiet 2>&1); then
+        echo "close-wrapped-worker: refusing - cannot inspect the session-scratchpad clone $sc_dir the doc names: cannot refresh its remote branches first (fetch failed: $sc_fetch_out); fix the remote or move the clone under ~/.himmel/scratch before the close" >&2
+        exit 8
+    fi
     if ! sc_unpushed=$(sc_git -C "$sc_dir" rev-list -n 1 --all --not --remotes 2>&1); then
         echo "close-wrapped-worker: refusing - cannot inspect the session-scratchpad clone $sc_dir the doc names (git failed: $sc_unpushed); fix it or move the clone under ~/.himmel/scratch before the close" >&2
         exit 8

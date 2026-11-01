@@ -307,6 +307,28 @@ check "scratchpad-clone pushed: no refusal -> rc 0" "$rc" "0"
 mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/gone-clone\`"
 rc=0; out=$(run "$DOC" 2>&1) || rc=$?
 check "scratchpad-clone already gone: no refusal -> rc 0" "$rc" "0"
+# A remote branch deleted on the remote after the clone's last fetch must not
+# hide its commits behind a stale remote-tracking ref; an unreachable remote is refused.
+git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+git -C "$SCR/refclone" checkout -q -b topic
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/refclone" commit -q --allow-empty -m topic-only
+git -C "$SCR/refclone" push -q origin topic 2>/dev/null
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/refclone\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone refreshed remote still has the branch: rc 0" "$rc" "0"
+git -C "$W/scr-remote.git" branch -D topic >/dev/null
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone remote branch deleted since last fetch: rc 8" "$rc" "8"
+contains "scratchpad-clone remote branch deleted since last fetch: names the clone" "$out" "$SCR/refclone"
+contains "scratchpad-clone remote branch deleted since last fetch: refused for its unpushed commit" "$out" "holds commits on no remote"
+rm -rf "$SCR/refclone"
+git clone -q "$W/scr-remote.git" "$SCR/refclone" 2>/dev/null
+git -C "$SCR/refclone" remote set-url origin "$W/no-such-remote.git"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone unreachable remote: rc 8" "$rc" "8"
+contains "scratchpad-clone unreachable remote: names the clone" "$out" "$SCR/refclone"
+contains "scratchpad-clone unreachable remote: says the refresh failed" "$out" "cannot refresh"
+rm -rf "$SCR/refclone"
 # a clone one level deeper than scratchpad/<dir>, named by its full path, and by its parent
 mkdir -p "$SCR/gfork"
 git init -q -b main "$SCR/gfork/graphify"
