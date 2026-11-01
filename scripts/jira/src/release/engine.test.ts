@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, pull, readMirror, readOperatorRecords, rmRun, signSpec, specCheck, standing,
+  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, signSpec, specCheck, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { execFileSync } from 'node:child_process';
@@ -1353,6 +1353,24 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${a} ${first.id}`, 'NO-SPEC K-2']);
     const later = sign({ ...sctx(), now: () => new Date('2026-10-22T10:00:00.000Z') }, ['K-1', 'K-2'], b, { supersedes: first.id });
     expect(check(['K-1', 'K-2'])).toEqual([`SPEC ok K-1 ${b} ${later.id}`, `SPEC ok K-2 ${b} ${later.id}`]);
+  });
+
+  it('signing a spec and writing the core snapshot wait on the release root lock, not only the release lock', () => {
+    declared();
+    const p = spec();
+    const rootLock = join(root, 'release', '.lock');
+    writeFileSync(rootLock, 'another writer');
+    // Each read of the clock moves 4 s on, so the 10 s lock wait ends in a few polls and the fresh lock never turns stale.
+    let t = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => (t += 4000));
+    try {
+      expect(() => sign(sctx(), ['K-1'], p)).toThrow(/release\/\.lock is held/);
+      expect(() => coreSnapshot(sctx(), { keys: ['K-1'] })).toThrow(/release\/\.lock is held/);
+    } finally {
+      clock.mockRestore();
+      unlinkSync(rootLock);
+    }
+    expect(readOperatorRecords('spec', specEnv())).toEqual([]);
   });
 
   it('a missing spec file is refused at signing and reads SPEC-STALE once signed', () => {

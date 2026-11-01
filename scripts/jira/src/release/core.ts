@@ -100,9 +100,13 @@ export interface CoreCtx {
 
 const EMERGENCY_LABELS = ['red-main', 'regression'];
 
+// gen-briefs' docs_only test, per path: a path under docs/ or a .md file.
+const isDocsPath = (p: string) => p.startsWith('docs/') || p.endsWith('.md');
+
 // The spec §4 bypass table, for a key that is core: `<kind> <reason>`, or null.
-function bypassOf(k: string, snap: IssueSnap, labelOnly: boolean, o: CoreCtx): string | null {
-  if (labelOnly && o.docsOnly) return 'design core by label only, docs-only leg';
+// A design leg needs the caller's --docs-only and every path a docs path: it never writes code.
+function bypassOf(k: string, snap: IssueSnap, labelOnly: boolean, docsPaths: boolean, o: CoreCtx): string | null {
+  if (labelOnly && o.docsOnly && docsPaths) return 'design core by label only, docs-only leg';
   if (snap.type === 'Bug' && (snap.priority === 'Highest' || snap.priority === 'Blocker')) return `emergency Bug at ${snap.priority}`;
   const label = EMERGENCY_LABELS.find((l) => snap.labels?.includes(l));
   if (label) return `emergency label ${label}`;
@@ -122,14 +126,16 @@ function bypassOf(k: string, snap: IssueSnap, labelOnly: boolean, o: CoreCtx): s
 // is REVIEW: the chief or a judge rules it per slice (operator 10-31).
 export function coreMatch(paths: string[], keys: string[], o: CoreCtx): string[] {
   const res = o.patterns.map((p) => new RegExp(p));
-  const hit = paths.map((p) => posix.normalize(p)).find((p) => !TEST_PATH.test(p) && matchesAny(res, p));
+  const norm = paths.map((p) => posix.normalize(p));
+  const hit = norm.find((p) => !TEST_PATH.test(p) && matchesAny(res, p));
+  const docsPaths = norm.every(isDocsPath);
   const byPath = (k: string) => (o.changeClass ? `REVIEW ${k} ${hit} ${o.changeClass}` : `CORE ${k} ${hit}`);
   return keys.map((k) => {
     if (o.issues === undefined) return hit === undefined ? `NOT-CORE ${k}` : byPath(k);
     const snap = o.issues?.get(k);
     if (!snap) return `UNKNOWN ${k}`;
     if (hit === undefined && !snap.labels?.includes('core')) return `NOT-CORE ${k}`;
-    const bypass = bypassOf(k, snap, hit === undefined, o);
+    const bypass = bypassOf(k, snap, hit === undefined, docsPaths, o);
     if (bypass) return `BYPASS ${k} ${bypass}`;
     return hit === undefined ? `CORE ${k} label core` : byPath(k);
   });
