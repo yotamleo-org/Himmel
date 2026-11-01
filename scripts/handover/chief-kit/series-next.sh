@@ -68,7 +68,8 @@ d = json.loads(sys.argv[1])
 it = [i for i in d["items"] if i["key"] == sys.argv[2]]
 v = it[0].get(sys.argv[3]) if it else None
 print("" if v is None else v)' "$LJ" "$1" "$2"; }
-has_item() { keys | grep -qxF -- "$1"; }
+KEYS="$(keys)"   # captured once: a pipe into an early-exiting grep or head reads as failure under pipefail
+has_item() { grep -qxF -- "$1" <<< "$KEYS"; }
 rp()     { python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
 ledger_set() { python3 -I "$LEDGER_PY" set --ledger "$LEDGER" "$@" || fail "series-ledger.py set failed: $*"; }
 
@@ -175,9 +176,9 @@ cmd_start() {
     fi
     st="$(field "$key" state)"
     [ "$st" = planned ] || refuse "item $key is $st; only a planned item starts"
-    idx="$(keys | grep -nxF -- "$key" | head -1 | cut -d: -f1)"
+    idx="$(grep -nxF -- "$key" <<< "$KEYS")"; idx="${idx%%:*}"
     if [ "$idx" -gt 1 ]; then
-        prev="$(keys | sed -n "$((idx - 1))p")"
+        prev="$(sed -n "$((idx - 1))p" <<< "$KEYS")"
         cut="$(field "$prev" wip)"
         [ -n "$cut" ] || refuse "the previous item $prev has no wip: start and commit it first"
     else

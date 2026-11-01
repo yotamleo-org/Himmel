@@ -307,7 +307,7 @@ SM="$DOCS/series.md"
 check "10: series.md exists" "$([ -f "$SM" ] && echo yes || echo no)" yes
 sm="$(cat "$SM" 2>/dev/null)"
 handoff="$(awk '/^## Hand-off at READY/ { on = 1; next } /^## / { on = 0 } on' "$SM" 2>/dev/null)"
-pos() { printf '%s\n' "$handoff" | grep -n -m1 -F -- "$1" | cut -d: -f1; }
+pos() { local m; m="$(grep -n -m1 -F -- "$1" <<< "$handoff")"; printf '%s\n' "${m%%:*}"; }
 p_resume="$(pos 'RESUME doc')"; p_commit="$(pos 'series-next.sh commit')"; p_pass="$(pos 'series-next.sh pass')"; p_wrap="$(pos 'WRAPPED')"
 check "10: the hand-off order is RESUME doc, commit, pass, WRAPPED" "$([ -n "$p_resume" ] && [ -n "$p_commit" ] && [ -n "$p_pass" ] && [ -n "$p_wrap" ] && [ "$p_resume" -lt "$p_commit" ] && [ "$p_commit" -lt "$p_pass" ] && [ "$p_pass" -lt "$p_wrap" ] && echo ordered || echo "no:$p_resume,$p_commit,$p_pass,$p_wrap")" ordered
 # shellcheck disable=SC2016  # the backticks are literal page text

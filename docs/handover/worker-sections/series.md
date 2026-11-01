@@ -30,7 +30,7 @@ leg one item. The state of the series is on disk, not in your context: the ledge
 Run them from your worktree or the primary checkout. `<p>` is the ledger path from the
 brief's Series line, `<doc>` is your own handover doc.
 
-```
+```bash
 bash scripts/handover/chief-kit/series-next.sh status --ledger <p>
 bash scripts/handover/chief-kit/series-next.sh start --ledger <p> --doc <doc> <KEY>
 bash scripts/handover/chief-kit/series-next.sh commit --ledger <p> --doc <doc> <KEY>
@@ -61,7 +61,7 @@ A follow-on item's scope, do-not lines and commit text live in its ledger item, 
 your brief. `series-next.sh start` prints the item's `scope`, `do_not` and `commit_text` from the ledger item
 for the worker that authors it, after its state lines:
 
-```
+```text
 ITEM-SCOPE <KEY>
   <scope>
 DO-NOT <line>
