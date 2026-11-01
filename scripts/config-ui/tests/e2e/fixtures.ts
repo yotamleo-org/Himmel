@@ -98,7 +98,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   const setBullet = (b: string) => writeFileSync(legDoc, `# worker\n\n## Results\n- 02:00 LIVE — started\n${b}\n`);
   if (o.handover) {
     setBullet(o.handover.bullet);
-    writeFileSync(join(hroot, "himmel", "c.fleet.json"), JSON.stringify({ schema: 1, legs: [{ doc: legDoc, label: "N1", added: "2026-10-05T00:00:00Z" }] }));
+    writeFileSync(join(hroot, "himmel", "c.fleet.json"), JSON.stringify({ schema: 1, workers: [{ doc: legDoc, label: "N1", added: "2026-10-05T00:00:00Z" }] }));
   }
   const tracker = o.tracker ?? "jira", mirror = join(dir, "mirror"), gh = join(dir, "gh");
   mkdirSync(mirror, { recursive: true });
