@@ -7,8 +7,12 @@
 #
 # usage: run.sh --out <dir> [--fixtures <dir>] [--key <file>] [--tiers <t>]
 #               [--critics a,b] [--only case-01,...] [--meta-json <json>]
-#               [--ledger <path> | --no-ledger] [--model <m>]
-#   --tiers    CRITIC_PANEL_TIERS for the panel (default paid: the codex row).
+#               [--ledger <path> | --no-ledger] [--model <m>] [--delta]
+#   --delta    sweep only the delta cases (a subset sweep, like --only; exclusive with it).
+#              A delta case (key "delta": true, files <id>.patch + <id>.delta.patch) is fed as
+#              diff = the fix delta, with --context-file = the round-1 diff then the delta; any
+#              sweep feeds delta cases that way, with or without --delta.
+#   --tiers   CRITIC_PANEL_TIERS for the panel (default paid: the codex row).
 #   --model    the critic model, recorded on the row and in its config.
 #   --critics  critic slugs to report even when they file nothing (default:
 #              the critics.json rows in --tiers).
@@ -28,7 +32,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PANEL="${REVIEW_PANEL_CMD:-$HERE/../../cr/critic-panel.sh}"
 fixtures="$HERE/fixtures"; key="$HERE/key/seeds.json"
-out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=(); model=""; case_repo=""; src=""
+out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=(); model=""; case_repo=""; src=""; delta_only=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -47,6 +51,7 @@ while [ $# -gt 0 ]; do
         --meta-json) meta="${2:-}"; shift 2 ;;
         --ledger) ledger_args=(--ledger "${2:-}"); shift 2 ;;
         --no-ledger) ledger_args=(--no-ledger); shift ;;
+        --delta) delta_only=1; shift ;;
         --model) model="${2:-}"; shift 2 ;;
         *) echo "run.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -92,6 +97,15 @@ print(",".join(r["slug"] for r in json.load(open(sys.argv[1]))["panel"] if r.get
         "$HERE/../../cr/critics.json" "$tiers")" || critics=""
 fi
 
+# The key marks delta cases; a sweep feeds each as its fix delta, whether or not --delta is given.
+deltas="$(python3 -c 'import json,sys
+print(",".join(sorted(c for c, v in json.load(open(sys.argv[1]))["cases"].items() if v.get("delta") is True)))' "$key")" || exit 2
+if [ "$delta_only" = 1 ]; then
+    [ -z "$only" ] || { echo "run.sh: --delta and --only are exclusive - no panel call made" >&2; exit 2; }
+    [ -n "$deltas" ] || { echo "run.sh: --delta but the key marks no delta case - no panel call made" >&2; exit 2; }
+    only="$deltas"
+fi
+
 if [ -n "$only" ] && ! python3 -c 'import json,sys
 cases=json.load(open(sys.argv[1]))["cases"]
 bad=sorted({c for c in sys.argv[2].split(",") if c} - set(cases))
@@ -121,15 +135,24 @@ fi
 
 python3 "$HERE/score.py" stamp "$out" --fixtures "$fixtures" --key "$key" --panel "$PANEL" --tiers "$tiers" --only "$only" || exit 2
 
-for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch; do
+for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch "$fixtures"/delta-*.patch; do
     [ -e "$patch" ] || continue
+    case "$patch" in *.delta.patch) continue ;; esac
     cid="$(basename "$patch" .patch)"
     if [ -n "$only" ]; then
         case ",$only," in *",$cid,"*) ;; *) continue ;; esac
     fi
     dir="$scratch/$cid"
     rm -rf "$dir" && mkdir -p "$dir" || exit 2
-    cp "$patch" "$dir/diff.patch" || exit 2
+    ctx_args=()
+    case ",$deltas," in
+        *",$cid,"*)
+            # A delta case: the critic reviews the fix delta, with the round-1 diff then the delta as context.
+            cp "$fixtures/$cid.delta.patch" "$dir/diff.patch" || exit 2
+            cat "$patch" "$fixtures/$cid.delta.patch" > "$dir/context.patch" || exit 2
+            ctx_args=(--context-file context.patch) ;;
+        *) cp "$patch" "$dir/diff.patch" || exit 2 ;;
+    esac
     echo "run.sh: $cid" >&2
     # The panel reads its tier set from CRITIC_PANEL_TIERS only when CR_PROFILE
     # is unset; the triviality gate would skip the paid tier on a small diff,
@@ -138,7 +161,7 @@ for patch in "$fixtures"/case-*.patch "$fixtures"/real-*.patch; do
     # scratch dir would otherwise read a local overlay.
     (cd "$dir" && env -u CR_PROFILE CRITIC_PANEL_TIERS="$tiers" CR_TRIVIALITY_OVERRIDE=full \
         CRITIC_KNOWN_FINDINGS=0 CRITICS_JSON="$HERE/../../cr/critics.json" \
-        bash "$PANEL" < diff.patch > "$out/$cid.md" 2> "$out/$cid.err")
+        bash "$PANEL" ${ctx_args[@]+"${ctx_args[@]}"} < diff.patch > "$out/$cid.md" 2> "$out/$cid.err")
     echo "$?" > "$out/$cid.rc"
 done
 

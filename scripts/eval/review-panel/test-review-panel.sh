@@ -92,6 +92,60 @@ python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); c=[c for c,v in sor
 out=$(python3 "$SCORE" lint --fixtures "$TMP/leak/fixtures" --key "$TMP/leak/badkey.json" 2>&1); rc=$?
 eq "lint: a seed line outside its diff's added lines is refused" "$rc" "1"
 
+# --- delta cases: <id>.patch + <id>.delta.patch + a key entry with "delta": true ----
+# RED at base: lint knows no delta case, so a key entry marked delta with no delta patch is accepted.
+mkdir -p "$TMP/dl/fixtures"; cp "$FIX"/case-*.patch "$TMP/dl/fixtures/"
+python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); k["cases"]["case-01"]["delta"]=True; json.dump(k,open(sys.argv[2],"w"))' "$KEY" "$TMP/dl/nodelta.json"
+out=$(python3 "$SCORE" lint --fixtures "$TMP/dl/fixtures" --key "$TMP/dl/nodelta.json" 2>&1); rc=$?
+eq "delta lint: a delta case with no delta patch is refused" "$rc" "1"
+has "delta lint: names the missing delta patch" "$out" "case-01.delta.patch"
+# The shipped delta cases (delta-*), joined to the synthetic set so the split rules see every class in both halves.
+FIXD="$TMP/dl/shipped"; KEYD="$TMP/dl/shipped.json"
+mkdir -p "$FIXD"; cp "$FIX"/case-*.patch "$FIX_ALL"/delta-*.patch "$FIXD/"
+python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); k["cases"]={c: v for c, v in k["cases"].items() if c.startswith(("case-", "delta-"))}; json.dump(k, open(sys.argv[2], "w"))' "$KEY_ALL" "$KEYD"
+out=$(python3 "$SCORE" lint --fixtures "$FIXD" --key "$KEYD" 2>&1); rc=$?
+eq "delta corpus: the shipped delta cases lint with the synthetic set" "$rc:$out" "0:review-panel lint: 17 seeded, 17 clean, 0 problem(s)"
+eq "delta corpus: 10 delta cases, each with a delta patch" \
+  "$(python3 -c 'import json,os,sys; k=json.load(open(sys.argv[1]))["cases"]; d=sorted(c for c,v in k.items() if v.get("delta") is True); print(len(d), all(os.path.isfile(os.path.join(sys.argv[2], c + ".delta.patch")) for c in d))' "$KEY_ALL" "$FIX_ALL")" "10 True"
+eq "delta corpus: 5 seeded and 5 clean, an open and a sealed half" \
+  "$(python3 -c 'import json,sys
+k=[v for v in json.load(open(sys.argv[1]))["cases"].values() if v.get("delta") is True]
+print("seeded=%d clean=%d halves=%s" % (sum(v["kind"]=="seeded" for v in k), sum(v["kind"]=="clean" for v in k), "+".join(sorted({v["split"] for v in k}))))' "$KEY_ALL")" "seeded=5 clean=5 halves=open+sealed"
+# Refusals: each mutation of a valid delta case breaks lint, and lint names it.
+dl_lint() { python3 "$SCORE" lint --fixtures "$FIXD" --key "${1:-$KEYD}" 2>&1; }
+cp "$FIXD/delta-01.delta.patch" "$FIXD/case-05.delta.patch"
+out=$(dl_lint); rc=$?
+eq "delta lint: a delta patch of a case the key does not mark delta is refused" "$rc" "1"
+has "delta lint: names the orphan delta patch" "$out" "case-05.delta.patch"
+rm -f "$FIXD/case-05.delta.patch"
+python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); k["cases"]["delta-07"]["defects"][0]["line"]=1; json.dump(k,open(sys.argv[2],"w"))' "$KEYD" "$TMP/dl/line1.json"
+out=$(dl_lint "$TMP/dl/line1.json"); rc=$?
+eq "delta lint: a seed line that is not an added line of the delta is refused" "$rc" "1"
+cp "$FIXD/delta-07.delta.patch" "$TMP/dl/d07.keep"
+cp "$FIXD/delta-04.delta.patch" "$FIXD/delta-07.delta.patch"
+out=$(dl_lint); rc=$?
+eq "delta lint: a delta that does not apply on its round-1 diff is refused" "$rc" "1"
+has "delta lint: says so" "$out" "does not apply on the round-1 diff"
+cp "$TMP/dl/d07.keep" "$FIXD/delta-07.delta.patch"
+# A patch naming a path outside its scratch tree is refused, and nothing is written there.
+probe="review-panel-escape-probe.$$"; rm -f "${TMPDIR:-/tmp}/$probe"
+cp "$FIXD/delta-07.patch" "$TMP/dl/r07.keep"
+printf 'diff --git a/../../%s b/../../%s\nnew file mode 100644\n--- /dev/null\n+++ b/../../%s\n@@ -0,0 +1 @@\n+x\n' "$probe" "$probe" "$probe" >> "$FIXD/delta-07.patch"
+out=$(dl_lint); rc=$?
+eq "delta lint: a patch path that leaves the scratch tree is refused" "$rc" "1"
+eq "delta lint: and nothing is written outside the tree" "$([ -e "${TMPDIR:-/tmp}/$probe" ] && echo written || echo none)" "none"
+rm -f "${TMPDIR:-/tmp}/$probe"; cp "$TMP/dl/r07.keep" "$FIXD/delta-07.patch"
+printf '+# planted bug: off by one here\n' >> "$FIXD/delta-07.delta.patch"
+out=$(dl_lint); rc=$?
+eq "delta lint: a delta patch carrying a hint word is refused" "$rc" "1"
+has "delta lint: names the delta patch" "$out" "delta-07.delta"
+cp "$TMP/dl/d07.keep" "$FIXD/delta-07.delta.patch"
+printf '+# %s\n' "$canary" >> "$FIXD/delta-07.delta.patch"
+out=$(dl_lint); rc=$?
+eq "delta lint: a delta patch carrying the key canary is refused" "$rc" "1"
+cp "$TMP/dl/d07.keep" "$FIXD/delta-07.delta.patch"
+eq "delta lint: restored, the set lints again" "$(dl_lint >/dev/null; echo $?)" "0"
+
 # --- matcher on canned outputs --------------------------------------------------
 LA=$(case_of logic-a seeded); LAc=$(case_of logic-a clean)
 QA=$(case_of quoting-a seeded); QAc=$(case_of quoting-a clean)
@@ -270,7 +324,9 @@ cat > "$TMP/stub-panel.sh" <<'EOF'
 diff="$(cat)"
 here="$(pwd)"
 if git rev-parse --show-toplevel >/dev/null 2>&1; then echo "STUB: cwd is inside a git checkout: $here" >&2; exit 9; fi
-if [ "$(ls -A "$here" | tr '\n' ' ')" != "diff.patch " ]; then echo "STUB: cwd holds more than the diff: $(ls -A "$here")" >&2; exit 9; fi
+held="$(ls -A "$here" | tr '\n' ' ')"
+# A delta case also holds its context file (the round-1 diff then the delta); nothing else.
+if [ "$held" != "diff.patch " ] && [ "$held" != "context.patch diff.patch " ]; then echo "STUB: cwd holds more than the diff: $held" >&2; exit 9; fi
 case "$diff" in *rpk-canary*|*seeds.json*) echo "STUB: the canary reached stdin" >&2; exit 9 ;; esac
 printf '%s\n' "$CRITIC_PANEL_TIERS" > "$STUB_LOG_DIR/tiers"
 printf '%s %s\n' "${CR_TRIVIALITY_OVERRIDE:-}" "${CRITIC_KNOWN_FINDINGS:-}" > "$STUB_LOG_DIR/env"
@@ -311,6 +367,60 @@ STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_S
   bash "$RUN" --out "$TMP/run4" --no-ledger --critics codex --only "case-01,case-99" >/dev/null 2>&1; rc=$?
 eq "run: an --only id the key lacks refuses the sweep" "$rc" "2"
 eq "run: no panel call for a mixed valid/unknown --only" "$(cat "$TMP/stublog/tiers")" ""
+# run.sh --delta: a delta case reaches the panel as diff = the fix delta, context = the round-1 diff then the delta.
+cat > "$TMP/stub-delta-panel.sh" <<'EOF'
+#!/usr/bin/env bash
+ctx=""
+id="$(basename "$(pwd)")"
+# Like the real panel, refuse an option it does not know; the suite counts the refusals.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --context-file) ctx="$2"; shift 2 ;;
+    *) echo "stub panel: unknown option $1" >&2; echo "$1" >> "$STUB_LOG_DIR/$id.argerr"; exit 2 ;;
+  esac
+done
+cat > "$STUB_LOG_DIR/$id.stdin"
+[ -z "$ctx" ] || cp "$ctx" "$STUB_LOG_DIR/$id.ctx"
+printf '%s\n' "$(ls -A | tr '\n' ' ')" > "$STUB_LOG_DIR/$id.cwd"
+printf '# Critic Panel Review (1/1 critics responded)\n\n## Critical Issues (0 found)\n\n## Important Issues (0 found)\n\n## Suggestions (0 found)\n'
+EOF
+DL="$TMP/dlog"; rm -rf "$DL"; mkdir -p "$DL"
+STUB_LOG_DIR="$DL" REVIEW_PANEL_CMD="$TMP/stub-delta-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch-d" \
+  bash "$RUN" --out "$TMP/rund" --fixtures "$FIXD" --key "$KEYD" --delta --no-ledger --critics codex >/dev/null 2>&1; rc=$?
+eq "run --delta: exit 0 on a stub panel" "$rc" "0"
+eq "run --delta: only the 10 delta cases are swept" \
+  "$(find "$TMP/rund" -name 'delta-*.md' | wc -l | tr -d ' '):$(find "$TMP/rund" -name 'case-*.md' | wc -l | tr -d ' ')" "10:0"
+eq "run --delta: the panel's stdin is the fix delta" "$(cmp -s "$DL/delta-07.stdin" "$FIXD/delta-07.delta.patch" && echo same)" "same"
+eq "run --delta: the context is the round-1 diff then the delta" \
+  "$(cat "$FIXD/delta-07.patch" "$FIXD/delta-07.delta.patch" | cmp -s - "$DL/delta-07.ctx" && echo same)" "same"
+eq "run --delta: the critic's directory holds the diff and the context only" "$(cat "$DL/delta-07.cwd")" "context.patch diff.patch "
+eq "run --delta: a clean delta twin is fed the same way" "$(cmp -s "$DL/delta-02.stdin" "$FIXD/delta-02.delta.patch" && echo same)" "same"
+eq "run --delta: run.sh passes the panel no option it does not know" "$(find "$DL" -name '*.argerr' | wc -l | tr -d ' ')" "0"
+eq "run --delta: the sweep is stamped a subset" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/rund/swept.json" 2>&1)" "False"
+# The bundle hash covers a delta transcript: editing one output changes it.
+h_before="$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; print(score.outputs_sha256(sys.argv[2]))' "$HERE" "$TMP/rund")"
+printf 'edited\n' >> "$TMP/rund/delta-07.md"
+h_after="$(python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import score; print(score.outputs_sha256(sys.argv[2]))' "$HERE" "$TMP/rund")"
+eq "outputs_sha256: a changed delta transcript changes the bundle hash" "$([ -n "$h_before" ] && [ "$h_before" != "$h_after" ] && echo differs || echo same)" "differs"
+# A full sweep (no --delta) feeds delta cases the same way and every other case its plain diff.
+rm -rf "$DL"; mkdir -p "$DL"
+STUB_LOG_DIR="$DL" REVIEW_PANEL_CMD="$TMP/stub-delta-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch-f" \
+  bash "$RUN" --out "$TMP/runf" --fixtures "$FIXD" --key "$KEYD" --no-ledger --critics codex >/dev/null 2>&1; rc=$?
+eq "run (full): exit 0 with delta cases in the set" "$rc" "0"
+eq "run (full): one output per case, delta cases included" "$(find "$TMP/runf" -name '*.md' | wc -l | tr -d ' ')" "34"
+eq "run (full): a delta case is still fed its delta" "$(cmp -s "$DL/delta-07.stdin" "$FIXD/delta-07.delta.patch" && echo same)" "same"
+eq "run (full): a plain case is fed its diff with no context" \
+  "$(cmp -s "$DL/case-01.stdin" "$FIXD/case-01.patch" && echo same):$([ -e "$DL/case-01.ctx" ] && echo ctx || echo none)" "same:none"
+eq "run (full): run.sh passes the panel no option it does not know" "$(find "$DL" -name '*.argerr' | wc -l | tr -d ' ')" "0"
+# --delta refuses before any panel call when it cannot name delta cases.
+rm -rf "$DL"; mkdir -p "$DL"
+STUB_LOG_DIR="$DL" REVIEW_PANEL_CMD="$TMP/stub-delta-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch-d" \
+  bash "$RUN" --out "$TMP/rund2" --fixtures "$FIXD" --key "$KEYD" --delta --only delta-07 --no-ledger --critics codex >/dev/null 2>&1; rc=$?
+eq "run --delta: exclusive with --only" "$rc" "2"
+STUB_LOG_DIR="$DL" REVIEW_PANEL_CMD="$TMP/stub-delta-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch-d" \
+  bash "$RUN" --out "$TMP/rund3" --fixtures "$TMP/syn/fixtures" --key "$TMP/syn/seeds.json" --delta --no-ledger --critics codex >/dev/null 2>&1; rc=$?
+eq "run --delta: a key with no delta case refuses the sweep" "$rc" "2"
+eq "run --delta: no panel call on either refusal" "$(find "$DL" -type f | wc -l | tr -d ' ')" "0"
 # A full sweep from a committed copy of this eval, whose own critic-panel.sh is the stub, stamps clean;
 # the same sweep whose panel edits a CBS file mid-run is caught by run.sh's re-stamp after the loop.
 RR="$TMP/run-repo"

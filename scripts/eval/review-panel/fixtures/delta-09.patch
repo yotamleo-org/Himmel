@@ -1,0 +1,18 @@
+diff --git a/scripts/hooks/require-ticket-id.sh b/scripts/hooks/require-ticket-id.sh
+new file mode 100644
+--- /dev/null
++++ b/scripts/hooks/require-ticket-id.sh
+@@ -0,0 +1,13 @@
++#!/usr/bin/env bash
++# require-ticket-id.sh - commit-msg guard: refuse a message with no ticket ID.
++# usage: require-ticket-id.sh <commit-msg-file>; exit 2 = refuse, exit 0 = allow.
++set -uo pipefail
++
++msg_file="${1:-}"
++subject="$(head -n 1 "$msg_file")"
++
++if ! printf '%s\n' "$subject" | grep -Eq '\[?[A-Z][A-Z0-9]+-[0-9]+\]?'; then
++    echo "require-ticket-id: no ticket ID in: $subject" >&2
++    exit 2
++fi
++exit 0
