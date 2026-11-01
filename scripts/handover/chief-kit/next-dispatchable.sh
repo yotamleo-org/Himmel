@@ -228,6 +228,7 @@ TRUST_RE = re.compile(r'Trust path\s*\([^)]*\)')
 WRITES_LEAD = '> **Writes:**'
 SERIES_LEAD = '> **Series:**'
 SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')  # "1. HIMMEL-9 branch=..." one item of a series worker's block
+SERIES_ID_RE = re.compile(r'(?!\d+\.\s)(\S+)\s+(\S+)')  # "<sid> <ledger path> - read ...": what follows the lead on the Series line S2a writes
 SERIES_CAP = 4
 stacked = os.environ.get('ND_STACKED') == '1'  # the stacked_series flag, read by the shell wrapper
 
@@ -410,7 +411,7 @@ for n in names:
     t = re.search(r'^# [A-Z]+-\d+: (.*)$', body, re.M)
     issues[key] = {
         'key': key, 'type': unq(fm_val(fm, 'type')), 'status': unq(fm_val(fm, 'status')), 'cat': unq(fm_val(fm, 'statusCategory')),
-        'prio': unq(fm_val(fm, 'priority')), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
+        'prio': unq(fm_val(fm, 'priority')), 'parent': unq(fm_val(fm, 'parent')).replace('null', ''), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
         'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
         'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
         'title': t.group(1).strip() if t else '', 'files': files_in(body),
@@ -762,7 +763,7 @@ if pool_only:
 
 # held files: live workers, open PRs, --held
 held = []
-series_workers = {}  # label -> item count, for a live worker whose brief carries a Series block (stacked_series only)
+series_workers = {}  # label -> {'doc', 'sid', 'ledger', 'count'} for a live worker whose brief carries a Series line (stacked_series only); count is None until known
 manifest_docs = set()  # the resolved path of every worker doc the manifest lists (the orphan check asks whether a ledger's writer is among them)
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
@@ -802,8 +803,10 @@ if workers_from and os.path.isfile(workers_from):
             held += [(f, 'live worker %s' % worker.get('label', '?'), True) for f in mine]
             sl = [i for i, l in enumerate(lines) if l.startswith(SERIES_LEAD)] if stacked else []
             items = set(SERIES_ITEM_RE.findall(block(sl[0]))) if sl else set()
-            if items:  # a series worker: its brief carries a Series block, one numbered line per item. A block that names no item has an unknown count, so it offers no room
-                series_workers[worker.get('label', '?')] = len(items)
+            sid_m = SERIES_ID_RE.match(lines[sl[0]][len(SERIES_LEAD):].strip()) if sl else None
+            if items or sid_m:  # a series worker: its Series line names the sid and ledger (S2a), or its block has one numbered line per item. The count is the ledger's when it is read below; a block that names neither has an unknown count, so it offers no room
+                series_workers[worker.get('label', '?')] = {'doc': doc, 'sid': sid_m.group(1) if sid_m else None,
+                                                            'ledger': os.path.realpath(sid_m.group(2)) if sid_m else None, 'count': len(items) or None}
             if os.environ.get('ND_WHY') == '1':
                 for f in dict.fromkeys(mine):
                     if not concrete(f):
@@ -913,6 +916,7 @@ except (OSError, subprocess.SubprocessError):
 # ponytail: a ledger carries no created_at, so a series with no pass ages from the ledger file's mtime, upgrade path: a created_at field in series-ledger.py create
 SERIES_ORPHAN_S = 2 * 3600
 series_orphans = []  # (sid, writer doc)
+series_label_of = {}  # ledger sid -> the label of the live series worker that owns the ledger
 
 BRANCH_PR_LIMIT = 100
 
@@ -957,6 +961,12 @@ if stacked and workers_from:
         try:
             led = json.loads(subprocess.run([sys.executable, '-I', ledger_py, 'read', '--ledger', path], capture_output=True, text=True, timeout=60, check=True).stdout)
             sid = str(led.get('sid') or n[:-len('.json')])
+            # the ledger of a live series worker: named by its Series line (sid or path), or naming the worker's doc as its writer.
+            # Its files then belong to that worker, and its non-abandoned items are the seats the worker has used
+            for lbl, w in series_workers.items():
+                if w['sid'] == sid or w['ledger'] == os.path.realpath(path) or os.path.realpath(led['writer']) == os.path.realpath(w['doc']):
+                    series_label_of[sid] = lbl
+                    w['count'] = sum(1 for it in led['items'] if it.get('state') != 'abandoned')
             for it in led['items']:
                 if it.get('state') == 'abandoned':
                     continue
@@ -1046,17 +1056,19 @@ for i in issues.values():
 resume.sort(key=ranked if pool_only else rank)
 
 def stackable_on(i):
-    # (worker label, items) when every file the ticket collides on is held by ONE live series worker with room; else None.
-    # A holder that is an open PR, the --held list or a second worker, or an unread PR / worker set, keeps the drop.
+    # (worker label, items, writer doc) when every file the ticket collides on is held by ONE live series worker with room; else None.
+    # A series worker's own ledger is that same worker, not a second holder. A holder that is an open PR, the --held list or a
+    # second worker, or an unread PR / worker set, keeps the drop.
     if pr_unknown or pr_files_unknown or workers_unknown:
         return None
-    holders = {who for _, who in held_hits(i)}
+    holders = {('live worker ' + series_label_of[who[len('series '):]]) if who.startswith('series ') and who[len('series '):] in series_label_of else who
+               for _, who in held_hits(i)}
     if len(holders) != 1:
         return None
     who = next(iter(holders))
     label = who[len('live worker '):] if who.startswith('live worker ') else None
-    count = series_workers.get(label)
-    return (label, count) if count is not None and count < SERIES_CAP else None
+    w = series_workers.get(label)
+    return (label, w['count'], w['doc']) if w and w['count'] is not None and w['count'] < SERIES_CAP else None
 
 stackable_rows = []
 free = []
@@ -1068,7 +1080,7 @@ for i in cands:
     if hit:
         stack = stackable_on(i) if stacked else None
         if stack:
-            stackable_rows.append((i, 'STACKABLE %s on %s (%d/%d)' % (i['key'], stack[0], stack[1], SERIES_CAP), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
+            stackable_rows.append((i, 'STACKABLE %s %s' % (i['key'], stack[2]), 'stackable on %s (%d/%d)' % (stack[0], stack[1], SERIES_CAP)))
             continue  # judged in emit_stackable once it is classified: a ticket that would be BLOCKED is not offered
         soft = soft_overlap(i, held_hits(i))
         if soft is None:
@@ -1114,6 +1126,30 @@ for k, prs in needs_note:
           'body could not be read (gh failed)' if any(p in unread_prs for p in prs) else 'has no Remaining: line'))
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, wdoc))
+
+def family_of(f):
+    # a path's directory family: the first two path components, as scripts/cleanup/cleanup-batch.sh cuts it
+    # ponytail: the rule lives in cleanup-batch.sh (awk) and here, upgrade path = one scripts/lib helper both call
+    p = canon(f).strip('/').split('/') + (['*'] if f.endswith('/') else [])  # a directory is cut as a file inside it
+    return '/'.join(p[:2]) if len(p) >= 3 else (p[0] if len(p) == 2 else '.')
+
+if stacked and first_ver and not (pr_unknown or pr_files_unknown or workers_unknown):
+    # SERIES FAMILY: To Do sub-tasks of one parent whose files all sit in one directory family, free of every holder. Sub-tasks
+    # are never dispatch rows; the chief composes the series from this row (`series: [...]` in workers.json)
+    families = {}
+    for i in sorted(issues.values(), key=lambda i: int(i['key'].split('-')[1])):
+        if i['type'] != 'Sub-task' or i['status'] != 'To Do' or first_ver not in i['ver'] or not i['parent'] or not i['files']:
+            continue
+        if i['key'] in worker_keys or i['key'] in pr_keys or i['key'] in done_pending or i['key'] in briefs or i['labels'] & excl:
+            continue
+        if held_hit(i) or any(blocker_state(b) for b in i['blocked_by']):
+            continue
+        fams = {family_of(f) for f in i['files']}
+        if len(fams) == 1:
+            families.setdefault((i['parent'], next(iter(fams))), []).append(i['key'])
+    for (_, fam), keys in families.items():
+        if len(keys) >= 2:
+            print('SERIES FAMILY %s %s' % (fam, ','.join(keys[:SERIES_CAP])))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0

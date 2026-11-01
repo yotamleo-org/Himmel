@@ -1466,7 +1466,7 @@ mkfleet() { # <fleet file> <label:doc> ...
 mkdoc "$WORK/HIMMEL-790-N5-series.md" 2 ""
 mkfleet "$WORK/fleet-s.json" "N5:$WORK/HIMMEL-790-N5-series.md"
 st="$(runs "$SM" 1 --workers-from "$WORK/fleet-s.json" --why)"
-has "(8349) a candidate colliding only with a live series worker is STACKABLE" "$st" "STACKABLE HIMMEL-851 on N5 (2/4)"
+has "(8349) a candidate colliding only with a live series worker is STACKABLE" "$st" "STACKABLE HIMMEL-851 $WORK/HIMMEL-790-N5-series.md"
 lacks "(8349) a STACKABLE candidate has no dispatch row" "$st" "LOCAL${TAB}HIMMEL-851${TAB}"
 lacks "(8349) a STACKABLE candidate is not told as an ordinary collision" "$st" "# drop HIMMEL-851 collision"
 has "(8349) a free ticket still lists beside a series worker" "$st" "LOCAL${TAB}HIMMEL-853${TAB}"
@@ -1481,7 +1481,7 @@ M="$SM"; mk HIMMEL-845 "To Do" High '[]' '["v1.0.1"]' '[]' "blocked wants app.js
 sb="$(runs "$SM" 1 --workers-from "$WORK/fleet-s.json" --why)"
 lacks "(8349) a BLOCKED candidate is not offered as STACKABLE" "$sb" "STACKABLE HIMMEL-845"
 has "(8349) a BLOCKED candidate drops on its classification" "$sb" "# drop HIMMEL-845 classification BLOCKED"
-has "(8349) the classifiable candidate is still offered" "$sb" "STACKABLE HIMMEL-851 on N5 (2/4)"
+has "(8349) the classifiable candidate is still offered" "$sb" "STACKABLE HIMMEL-851 $WORK/HIMMEL-790-N5-series.md"
 
 # a Series block that names no item has an unknown count: it offers no room, and --resume-only lists no STACKABLE row
 printf '# live\n> **Series:**\n> **Writes:** scripts/config-ui/app.js\n' > "$WORK/HIMMEL-794-N9-empty.md"
@@ -1693,6 +1693,86 @@ else
     has "(8349 S1b) an unlistable series directory marks the live workers unknown" "$perm" "live workers unknown"
 fi
 chmod 755 "$B/series"
+
+# --- (8529) a series worker is read from the `> **Series:** <sid> <ledger path>` line S2a writes, its own ledger is not a second holder,
+# the offered row is `STACKABLE <KEY> <writer doc>`, and sub-tasks of one parent in one directory family give a SERIES FAMILY row ---
+newmir s85
+mk HIMMEL-851 "To Do" High '[]' '["v1.0.1"]' '[]' "wants app.js" "$APP"
+mk HIMMEL-854 "To Do" High '[]' '["v1.0.1"]' '[]' "wants a file only the ledger holds" "Edit scripts/lib/led-only-85.sh."
+mk HIMMEL-853 "To Do" High '[]' '["v1.0.1"]' '[]' "free ticket" "Edit scripts/lib/free-85.sh."
+S85="$M"
+newbucket s85
+SW="$B/HIMMEL-9200-N1-series.md"
+SL="$B/series/s85.json"
+printf '# live\n> **Series:** s85 %s — read docs/handover/worker-sections/series.md\n> **Writes:** scripts/config-ui/app.js\n- 09:00 LIVE - started\n' "$SL" > "$SW"
+mkfleet "$B/fleet.json" "N1:$SW"
+led create --ledger "$SL" --sid s85 --completes-ticket no --writer "$SW"
+led add-item --ledger "$SL" --key HIMMEL-9201 --writes scripts/config-ui/app.js --state committed
+led add-item --ledger "$SL" --key HIMMEL-9202 --writes scripts/lib/led-only-85.sh --state authoring
+s85a="$(runl 1 "$S85" "$B/fleet.json" --why)"
+has "(8529) a series worker's Series line plus its ledger gives STACKABLE <KEY> <writer doc>" "$s85a" "STACKABLE HIMMEL-851 $SW"
+lacks "(8529) the stackable candidate has no dispatch row" "$s85a" "LOCAL${TAB}HIMMEL-851${TAB}"
+lacks "(8529) the stackable candidate is not an ordinary collision" "$s85a" "# drop HIMMEL-851 collision"
+has "(8529) a file only the series ledger holds is stackable on its writer" "$s85a" "STACKABLE HIMMEL-854 $SW"
+has "(8529) a free ticket still lists beside the series worker" "$s85a" "LOCAL${TAB}HIMMEL-853${TAB}"
+s85off="$(runl 0 "$S85" "$B/fleet.json" --why)"
+lacks "(8529) flag off prints no STACKABLE for a new-format series worker" "$s85off" "STACKABLE"
+# the room comes from the ledger: 4 live items are full, an abandoned item is no seat
+led add-item --ledger "$SL" --key HIMMEL-9203 --writes scripts/lib/c85.sh --state planned
+led add-item --ledger "$SL" --key HIMMEL-9204 --writes scripts/lib/d85.sh --state planned
+s85c="$(runl 1 "$S85" "$B/fleet.json" --why)"
+lacks "(8529) a ledger of 4 live items takes no STACKABLE" "$s85c" "STACKABLE"
+has "(8529) a full series still holds the file" "$s85c" "# drop HIMMEL-851 collision"
+led set --ledger "$SL" --key HIMMEL-9204 state=abandoned
+s85d="$(runl 1 "$S85" "$B/fleet.json" --why)"
+has "(8529) an abandoned item frees a seat" "$s85d" "STACKABLE HIMMEL-851 $SW"
+# a Series line whose ledger is not there has an unknown count: no room
+printf '# live\n> **Series:** gone %s/gone.json — read docs/handover/worker-sections/series.md\n> **Writes:** scripts/config-ui/app.js\n' "$B/series" > "$B/HIMMEL-9220-N3-noledger.md"
+mkfleet "$B/fleet-nl.json" "N3:$B/HIMMEL-9220-N3-noledger.md"
+s85e="$(runl 1 "$S85" "$B/fleet-nl.json" --why)"
+lacks "(8529) a Series line with no ledger offers no STACKABLE room" "$s85e" "STACKABLE"
+# a second live worker on the same file keeps the drop
+mkdoc "$B/HIMMEL-9230-N4-plain.md" 0 ""
+mkfleet "$B/fleet-two.json" "N1:$SW" "N4:$B/HIMMEL-9230-N4-plain.md"
+s85f="$(runl 1 "$S85" "$B/fleet-two.json" --why)"
+lacks "(8529) a series worker plus a second worker on the file is not STACKABLE" "$s85f" "STACKABLE HIMMEL-851"
+
+# the older numbered block names no sid: the ledger whose writer is the worker's doc is still its own
+newbucket old85
+mkdoc "$B/HIMMEL-9210-N2-old.md" 2 ""
+mkfleet "$B/fleet-old.json" "N2:$B/HIMMEL-9210-N2-old.md"
+SL2="$B/series/old.json"
+led create --ledger "$SL2" --sid old --completes-ticket no --writer "$B/HIMMEL-9210-N2-old.md"
+led add-item --ledger "$SL2" --key HIMMEL-9211 --writes scripts/config-ui/app.js --state committed
+s85b="$(runl 1 "$S85" "$B/fleet-old.json" --why)"
+has "(8529) a numbered-block series worker whose ledger names it as writer is one holder" "$s85b" "STACKABLE HIMMEL-851 $B/HIMMEL-9210-N2-old.md"
+
+# SERIES FAMILY: To Do sub-tasks of one parent whose files all sit in one directory family (first two path components)
+newmir fam
+reparent() { sed "s/^parent: null/parent: \"$2\"/" "$1" > "$1.tmp" && mv "$1.tmp" "$1"; }
+mk HIMMEL-870 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task in docs/handover" "Edit docs/handover/fa-85.md."
+mk HIMMEL-871 "To Do" High '[]' '["v1.0.1"]' '[]' "another sub-task in docs/handover" "Edit docs/handover/sub/fb-85.md."
+mk HIMMEL-872 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of another parent in docs/handover" "Edit docs/handover/fc-85.md."
+mk HIMMEL-873 "To Do" High '[]' '["v1.0.1"]' '[]' "a lone sub-task of a third parent" "Edit scripts/lib/fd-85.sh."
+mk HIMMEL-874 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of the first parent in another family" "Edit scripts/lib/fe-85.sh."
+mk HIMMEL-875 "To Do" High '[]' '["v1.0.1"]' '[]' "a sub-task of the first parent spanning two families" "Edit docs/handover/ff-85.md and scripts/lib/ff-85.sh."
+for k in 870 871 872 873 874 875; do retype "$M/HIMMEL-$k.md" "Sub-task"; done
+reparent "$M/HIMMEL-870.md" HIMMEL-860; reparent "$M/HIMMEL-871.md" HIMMEL-860; reparent "$M/HIMMEL-875.md" HIMMEL-860
+reparent "$M/HIMMEL-872.md" HIMMEL-861; reparent "$M/HIMMEL-873.md" HIMMEL-862; reparent "$M/HIMMEL-874.md" HIMMEL-860
+FAM="$M"
+newbucket fam; mkfleet "$B/fleet.json"
+fam1="$(runl 1 "$FAM" "$B/fleet.json")"
+has "(8529) sub-tasks of one parent in one directory family give a SERIES FAMILY row" "$fam1" "SERIES FAMILY docs/handover HIMMEL-870,HIMMEL-871"
+lacks "(8529) a sub-task of another parent is not in the family row" "$fam1" "HIMMEL-872"
+lacks "(8529) a lone sub-task of its parent gives no family row" "$fam1" "SERIES FAMILY scripts/lib"
+lacks "(8529) a sub-task spanning two families is in no family row" "$fam1" "HIMMEL-875"
+fam0="$(runl 0 "$FAM" "$B/fleet.json")"
+lacks "(8529) flag off prints no SERIES FAMILY row" "$fam0" "SERIES FAMILY"
+# a sub-task whose file a live worker holds is not offered
+printf '# live\n> **Writes:** docs/handover/fa-85.md\n' > "$B/HIMMEL-9240-N5-holder.md"
+mkfleet "$B/fleet-h.json" "N5:$B/HIMMEL-9240-N5-holder.md"
+fam2="$(runl 1 "$FAM" "$B/fleet-h.json")"
+lacks "(8529) a sub-task held by a live worker gives no family row" "$fam2" "SERIES FAMILY"
 
 # A ticket with a merged contract=no PR is in work, never a fresh To Do row: its RESUME row names the PR and the
 # PR body's Remaining: text; a partial PR whose body has none is NEEDS-CHIEF-NOTE and is not dispatched.
