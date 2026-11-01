@@ -242,6 +242,14 @@ for args in "" "77" "77 $SHA extra" "x1 $SHA" "077 $SHA" "77 ${SHA%?}" "77 ${SHA
   check "usage: [$args] -> exit 2" "$rc" "2"
 done
 
+# a usage error names where to run it and the expected arguments
+for args in "" "77 ${SHA%?}"; do
+  # shellcheck disable=SC2086  # word-splitting the args string IS the point
+  uout="$(bash "$SCRIPT" $args 2>&1)" || true
+  contains "usage [$args]: names the run location" "$uout" "run it from the primary checkout"
+  contains "usage [$args]: names the script path form" "$uout" "scripts/handover/chief-kit/ready-check.sh <pr-number> <full-40-hex-head-sha>"
+done
+
 # --- 0. all-green PR: exit 0, READY-CHECK PASS, all six PASS lines ------
 reset_stubs
 : > "$GH_LOG"
@@ -281,6 +289,28 @@ STUB_MSS=DIRTY
 rc=0; out="$(run)" || rc=$?
 check "dirty-merge: exit 1" "$rc" "1"
 contains "dirty-merge: check 1 fails" "$out" "[FAIL] 1."
+
+# --- 1c. check 1 fails: a head behind main says what to do --------------
+reset_stubs
+STUB_MSS=BEHIND
+rc=0; out="$(run)" || rc=$?
+check "behind-main: exit 1 (verdict unchanged)" "$rc" "1"
+contains "behind-main: check 1 still fails" "$out" "[FAIL] 1."
+contains "behind-main: says merge origin/main into the branch" "$out" "git merge origin/main"
+contains "behind-main: says to re-run at the new head" "$out" "re-run with the new head sha"
+contains "behind-main: says nothing to do when CLEAN and the head matches" "$out" "nothing to do when mergeStateStatus is CLEAN and the head matches"
+
+# --- 12a. check 12 fails: a stale anchor says to run from the primary checkout ---
+reset_stubs
+STALE_ANCHOR="$tmp/tp-stale"
+git clone -q "$TP_ANCHOR" "$STALE_ANCHOR"
+git -C "$TP_ANCHOR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "newer"
+STUB_FILES="scripts/handover/chief-kit/ready-check.sh"
+rc=0; out="$(READY_CHECK_ANCHOR="$STALE_ANCHOR" run)" || rc=$?
+check "stale-anchor: exit 1" "$rc" "1"
+contains "stale-anchor: check 12 refuses" "$out" "[FAIL] 12."
+contains "stale-anchor: names the cause" "$out" "behind origin"
+contains "stale-anchor: says to run from the primary checkout, not a worktree" "$out" "not from a worktree"
 
 # --- 2. check 2 fails: a red check in the rollup ------------------------
 reset_stubs
