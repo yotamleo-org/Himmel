@@ -348,7 +348,7 @@ A dispatch that sets effort to `high`, `xhigh` or `max` with no
 to the named agent's own `effort:` frontmatter, such as `judge` at `high`, draws
 no warning.
 
-A general-purpose helper dispatched on an Opus model with no `TIER: <reason>`
+Any helper other than a judge (general-purpose or a named agent) dispatched on an Opus model with no `TIER: <reason>`
 line in its prompt draws a warning from `guard-agent-model.sh` (warn only, never
 a deny; the reason must pass the same length and placeholder test as
 `ESCALATION:`). Opus is for the one hard call: put the reason on that line.

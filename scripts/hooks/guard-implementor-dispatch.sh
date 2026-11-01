@@ -665,7 +665,7 @@ fi
 # --- independently protect a nearly exhausted parent bank. ---
 subagent_in_set=0
 case "$subagent_type" in
-    general-purpose|claude|Plan) subagent_in_set=1 ;;
+    general-purpose|claude|Plan|brief-drafter|edit-runner) subagent_in_set=1 ;;
 esac
 model_in_set=0
 case "$model_lc" in

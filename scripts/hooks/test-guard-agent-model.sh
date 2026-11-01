@@ -85,7 +85,7 @@ check "no model -> allow" allow "$(agent general-purpose '' 'x')"
 silent "model sonnet -> no output" "$(agent general-purpose sonnet 'x')"
 silent "no model -> no output" "$(agent general-purpose '' 'x')"
 
-echo "== general-purpose Opus dispatch with no TIER line -> warn only (exit 0 + additionalContext) =="
+echo "== Opus dispatch of any non-judge agent with no TIER line -> warn only (exit 0 + additionalContext) =="
 # warn <label> <json>: exit 0, additionalContext names the TIER line, and NO permissionDecision.
 warn() {
     local o rc ctx pd
@@ -108,7 +108,15 @@ warn "general-purpose + opus + ESCALATION only (not a TIER line) -> warn" "$(age
 silent "general-purpose + opus + TIER reason -> no output" "$(agent general-purpose opus "$TIERMARK")"
 silent "general-purpose + sonnet -> no output" "$(agent general-purpose sonnet 'x')"
 silent "general-purpose + haiku -> no output" "$(agent general-purpose haiku 'x')"
-silent "Explore + opus -> no output (not general-purpose)" "$(agent Explore opus 'x')"
+warn "Explore + opus -> warn (any non-judge agent type)" "$(agent Explore opus 'x')"
+warn "brief-drafter + opus -> warn" "$(agent brief-drafter opus 'x')"
+warn "ticket-auditor + opus -> warn" "$(agent ticket-auditor opus 'x')"
+warn "page-reviewer + claude-opus-5-5 -> warn" "$(agent page-reviewer claude-opus-5-5 'x')"
+warn "edit-runner + opus -> warn" "$(agent edit-runner opus 'x')"
+silent "brief-drafter + opus + TIER reason -> no output" "$(agent brief-drafter opus "$TIERMARK")"
+silent "brief-drafter + sonnet -> no output" "$(agent brief-drafter sonnet 'x')"
+silent "judge + opus -> no output (its own tier)" "$(agent judge opus 'x')"
+silent "judge-ro + opus -> no output (its own tier)" "$(agent judge-ro opus 'x')"
 silent "general-purpose + opus-sonnet (opus-prefixed, not Opus) -> no output" "$(agent general-purpose opus-sonnet 'x')"
 silent "general-purpose + opusfake -> no output" "$(agent general-purpose opusfake 'x')"
 check "general-purpose + fable, no marker -> still denied" block "$(agent general-purpose fable 'x')"
@@ -204,7 +212,7 @@ else
     bad "helper table vs frontmatter: $tc_out"
 fi
 TC="$(mktemp -d -t guard-agent-model-tc.XXXXXX)" || { echo "failed to create temporary directory" >&2; exit 1; }
-trap 'rm -rf "$TC"' EXIT
+trap 'rm -rf "$TC" "$TC.chief-gp.md"' EXIT
 tc_setup_fail() { echo "table_check fixture setup failed: $1" >&2; exit 1; }
 cp "$AGENTS"/*.md "$TC/" || tc_setup_fail "copy agents"
 sed 's/^effort: .*/effort: low/' "$AGENTS/judge.md" > "$TC/judge.md" || tc_setup_fail "write judge effort low"
@@ -221,6 +229,19 @@ if table_check "$CHIEF_DOC" "$TC" >/dev/null; then
     bad "fixture with an agent definition missing from the table passes table_check"
 else
     ok "fixture with an agent definition missing from the table fails table_check"
+fi
+rm -f "$TC/unlisted.md" || tc_setup_fail "remove unlisted agent"
+# shellcheck disable=SC2016 # the backticks are literal markdown, not expansions
+sed 's/^| Worker-brief or `legs.json` drafting, wave prep | `brief-drafter` |/| Worker-brief or `legs.json` drafting, wave prep | `general-purpose` |/' "$CHIEF_DOC" > "$TC.chief-gp.md" || tc_setup_fail "write general-purpose row doc"
+# shellcheck disable=SC2016 # the backticks are literal markdown, not expansions
+grep -q '^| Worker-brief or `legs.json` drafting, wave prep | `general-purpose` | `sonnet` |' "$TC.chief-gp.md" || tc_setup_fail "general-purpose sonnet row not written"
+rm -f "$TC/brief-drafter.md" || tc_setup_fail "remove brief-drafter agent"
+if gp_out="$(table_check "$TC.chief-gp.md" "$TC")"; then
+    bad "fixture with a non-fable general-purpose row passes table_check"
+elif [ "$gp_out" = "row names general-purpose, not an agent definition: | Worker-brief or \`legs.json\` drafting, wave prep | \`general-purpose\` | \`sonnet\` | \`medium\` |" ]; then
+    ok "fixture with a non-fable general-purpose row fails table_check"
+else
+    bad "non-fable general-purpose row fixture failed for another reason: $gp_out"
 fi
 
 echo "== judge override off its frontmatter tier (opus) =="
@@ -298,7 +319,7 @@ case "$aud" in
     "agent-model-escalation: "*"one hard call, needs taste"*) ok "marked fable override echoes its reason on stderr" ;;
     *) bad "no audit line for a marked override - got: $aud" ;;
 esac
-silent "marker with nothing to override (opus, typed agent) -> no output" "$(agent Explore opus "$MARK")"
+silent "marker with nothing to override (opus, judge) -> no output" "$(agent judge opus "$MARK")"
 silent "marker with no model -> no output" "$(agent general-purpose '' "$MARK")"
 
 echo "== the blocked-model list is DATA (agent-model-policy.json) =="
@@ -311,7 +332,7 @@ fi
 # The hook finds its policy relative to itself, so a sandboxed copy with its own
 # policy exercises the data-driven path without a test-only env seam.
 SB="$(mktemp -d -t guard-agent-model-sb.XXXXXX)" || { echo "failed to create temporary directory" >&2; exit 1; }
-trap 'rm -rf "$TC" "$SB"' EXIT
+trap 'rm -rf "$TC" "$TC.chief-gp.md" "$SB"' EXIT
 mkdir -p "$SB/hooks" "$SB/guardrails"
 cp "$HOOK" "$SB/hooks/guard-agent-model.sh"
 SHIPPED_HOOK="$HOOK"; HOOK="$SB/hooks/guard-agent-model.sh"
