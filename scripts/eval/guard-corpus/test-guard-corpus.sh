@@ -787,7 +787,7 @@ else fail "bg-child-control: expected exit 0, got $RC16B"; fi
 # --- 17. GUARD_CORPUS_TIMEOUT_RUN sets the default per-row timeout ---
 # On a loaded 4-core shard a sandbox launch outlasted the 15s default and the row
 # read TIMEOUT (ODD-RC, exit 3). The suite exports a larger default; an explicit
-# --timeout-run still wins (bg-child above). A 4s hook: 2s env => TIMEOUT, 30s => clean.
+# --timeout-run still wins (bg-child above). A 4s hook: 2s env => TIMEOUT, 120s => clean.
 cat > "$TMP/sleep4-hook.sh" <<'STUB'
 #!/usr/bin/env bash
 cat >/dev/null
@@ -799,11 +799,18 @@ OUT17A=$(GUARD_CORPUS_TIMEOUT_RUN=2 python3 "$DIFF" --base "$TMP/sleep4-hook.sh"
         --corpus "$TMP/hid-row.jsonl" --jobs 1 2>&1); RC17A=$?
 if [ "$RC17A" = "3" ]; then pass "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=2 times a 4s hook out => exit 3"
 else fail "timeout-env: expected exit 3 for a 4s hook under a 2s env timeout, got $RC17A"; fi
-has "timeout-env: row named ODD-RC" "$OUT17A" "ODD-RC"
-GUARD_CORPUS_TIMEOUT_RUN=30 python3 "$DIFF" --base "$TMP/sleep4-hook.sh" --head "$TMP/sleep4-hook.sh" \
+has "timeout-env: both sides read TIMEOUT" "$OUT17A" "rb=TIMEOUT rh=TIMEOUT"
+GUARD_CORPUS_TIMEOUT_RUN=120 python3 "$DIFF" --base "$TMP/sleep4-hook.sh" --head "$TMP/sleep4-hook.sh" \
         --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC17B=$?
-if [ "$RC17B" = "0" ]; then pass "timeout-env-control: GUARD_CORPUS_TIMEOUT_RUN=30 lets the 4s hook finish => exit 0"
+if [ "$RC17B" = "0" ]; then pass "timeout-env-control: GUARD_CORPUS_TIMEOUT_RUN=120 lets the 4s hook finish => exit 0"
 else fail "timeout-env-control: expected exit 0, got $RC17B"; fi
+# a non-finite or malformed env value is a usage error (exit 2), never the regression code 1
+for BADT in nan inf abc 0; do
+  GUARD_CORPUS_TIMEOUT_RUN="$BADT" python3 "$DIFF" --base "$TMP/sleep4-hook.sh" --head "$TMP/sleep4-hook.sh" \
+          --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC17C=$?
+  if [ "$RC17C" = "2" ]; then pass "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=$BADT => usage error exit 2"
+  else fail "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=$BADT expected exit 2, got $RC17C"; fi
+done
 
 echo "----"
 # the log tail printed by run-shell-tests.sh is 40 lines; name every failed row here so it reaches it
