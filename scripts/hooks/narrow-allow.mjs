@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { withSettingsLock } from '../lib/settings-lock.mjs';
+import configAudit from '../lib/config-audit.cjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ALLOW_ARRAY = /"allow"\s*:\s*\[([\s\S]*?)\]/;
@@ -229,6 +230,7 @@ export function writeSettingsAtomic(settingsPath, output, tmpPath = tempPathFor(
     if (error?.code !== 'ENOENT') throw error;
     targetMode = undefined;
   }
+  const auditId = configAudit.pre(settingsPath, 'narrow-allow.mjs');
   try {
     writeFileSync(tmpPath, output, { encoding: 'utf8', flag: 'wx' });
     staged = true;
@@ -238,6 +240,7 @@ export function writeSettingsAtomic(settingsPath, output, tmpPath = tempPathFor(
     if (staged) { try { unlinkSync(tmpPath); } catch { /* best-effort cleanup of our own staged temp */ } }
     throw error;
   }
+  configAudit.post(auditId, settingsPath, 'write', 'narrow-allow.mjs');
 }
 
 async function main() {

@@ -54,6 +54,9 @@
 #                           Set only by headed-arm-worker.sh --consult, whose
 #                           sandbox those scopes' write roots would widen. It
 #                           only ever loads LESS (clause 4).
+#   WORKER_SESSION_REMOTE_CONTROL    a session name -> --remote-control <name>
+#                           Set only on a native-lane launch; the
+#                           claudex proxy endpoint makes that lane ineligible.
 # Seam: WORKER_SESSION_CLAUDE_BIN overrides the `claude` binary this execs (default:
 # `claude` from PATH). headed-arm-worker.sh sets it to scripts/claude-codex on
 # the claudex lane so all profile flags reach that backend;
@@ -138,6 +141,21 @@ fi
 # worker doc's front matter, so the digest step finds the session by id.
 _session_id="${WORKER_SESSION_ID:-}"
 [ -z "$_session_id" ] || PRE+=(--session-id "$_session_id")
+
+# The operator reaches a native worker from the Claude app by its
+# session name. Set by headed-arm-worker.sh on native launches only; unset or
+# empty adds nothing (clause 3).
+_remote_control="${WORKER_SESSION_REMOTE_CONTROL:-}"
+if [ -n "$_remote_control" ]; then
+    # A lane launcher (claudex, openrouter, deepseek) is not a Remote Control endpoint:
+    # refuse rather than hand it a flag it would misread or drop.
+    case "${CLAUDE_BIN##*/}" in
+        claude-codex|claude-openrouter|claude-deepseek)
+            echo "worker-claude-launcher: refusing to launch: WORKER_SESSION_REMOTE_CONTROL is set but the lane launcher ${CLAUDE_BIN##*/} is not a Remote Control endpoint (native lane only)" >&2
+            exit 2 ;;
+    esac
+    PRE+=(--remote-control "$_remote_control")
+fi
 if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}" = 1 ]; then
     PRE+=(--setting-sources "")
     # The consult is confined only if the FINAL argv carries

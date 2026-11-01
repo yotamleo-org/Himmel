@@ -1,6 +1,7 @@
 // The Workflow page: the development graph, drawn by the docs page's own dev-graph.js from its own graph.json.
 // The server hands both out read-only under /dev-graph/. The CSP is default-src 'self': external files only,
 // no inline script or style, so the stylesheet is index.html's <link> and the graph sets its styles through the CSSOM.
+import { pg } from "./render.js";
 let loaded = null; // module + data, fetched once per page load; a failure is dropped so the next visit retries
 function load() {
   if (!loaded) {
@@ -13,7 +14,7 @@ function load() {
 }
 
 export function renderWorkflow() {
-  return `<header class="ph"><h1>Workflow</h1><p>How a change travels from a console's dispatch to a merged pull request: the lanes, the gates, and the refusals between them.</p></header><section class="box"><div id="workflow-graph" aria-label="Development graph"></div></section>`;
+  return pg(`<header class="ph"><h1>Workflow</h1><p>How a change travels from a console's dispatch to a merged pull request: the lanes, the gates, and the refusals between them.</p></header><section class="box"><div id="workflow-graph" aria-label="Development graph"></div></section>`);
 }
 
 // Draws the graph into #workflow-graph once renderWorkflow's markup is in the page; returns the function that undoes it,

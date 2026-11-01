@@ -14,7 +14,7 @@ vi.mock('../client.js', () => ({
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
-import { resolveTitle, registerCreate } from './create.js';
+import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn } from './create.js';
 import { registerRelease } from './release.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
@@ -1855,5 +1855,72 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     vi.stubEnv('GIT_DIR', join(root, 'repo', '.git'));
     await expect(file('Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test')).rejects.toThrow(/USER_SLUG/);
     expect(posted()).toBe(false);
+  });
+});
+
+// A core ticket is marked core when it is filed: the Agent detail's paths go to coreMatch.
+describe('create — core label from the Agent detail (HIMMEL-8353)', () => {
+  let out: string[];
+  const body = (detail: string) => PLAIN.replace(/## Agent detail\n[^\n]*$/, `## Agent detail\n${detail}`);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    out = [];
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { out.push(String(s)); });
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.includes('/issue/')) return { fields: { labels: [], status: { name: 'To Do' }, fixVersions: [] } };
+      return { key: 'HIMMEL-77' };
+    });
+  });
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  const file = async (detail: string, ...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--type', 'Task', '--title', 'the console loses a worker', '--desc', body(detail), ...HOME, '--fix-version', 'v1.1.3', ...args]);
+  };
+  const labels = () => {
+    const call = mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue');
+    return (call?.[2] as { fields: { labels?: string[] } }).fields.labels ?? [];
+  };
+
+  it('an Agent detail naming scripts/jira/src/release/engine.ts adds the core label', async () => {
+    await file('Edits `scripts/jira/src/release/engine.ts` and its suite.');
+    expect(labels()).toContain('core');
+    expect(out).toContain('core: scripts/jira/src/release/engine.ts');
+  });
+
+  it('a rename touching a core path adds no label and prints core-review for the chief', async () => {
+    await file('Moves scripts/jira/src/release/engine.ts.', '--change-class', 'rename');
+    expect(labels()).not.toContain('core');
+    expect(out).toContain('core-review: scripts/jira/src/release/engine.ts');
+  });
+
+  it('reads an Agent detail past a fenced heading, and prints the verdict on stderr', async () => {
+    const detail = '```\n## Example\n```\nEdits scripts/jira/src/release/engine.ts.';
+    expect(pathsIn(agentDetailOf(body(detail)))).toEqual(['scripts/jira/src/release/engine.ts']);
+    await file(detail);
+    expect(out).toContain('core: scripts/jira/src/release/engine.ts');
+  });
+
+  it('keeps the paths of adjacent ADF list items apart', () => {
+    const item = (t: string) => ({ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }] });
+    const doc = { content: [
+      { type: 'heading', content: [{ type: 'text', text: 'Agent detail' }] },
+      { type: 'bulletList', content: [item('docs/a.md'), item('scripts/jira/src/release/engine.ts')] },
+    ] };
+    expect(pathsIn(agentDetailOfAdf(doc))).toEqual(['docs/a.md', 'scripts/jira/src/release/engine.ts']);
+  });
+
+  it('an Agent detail with no core path adds no label and prints nothing', async () => {
+    await file('Edits docs/internals/enforcement.md only.');
+    expect(labels()).not.toContain('core');
+    expect(out.filter((l) => l.startsWith('core'))).toEqual([]);
   });
 });

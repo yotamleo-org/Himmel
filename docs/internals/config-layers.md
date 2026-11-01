@@ -179,6 +179,56 @@ A missing file never turns a gate on its permissive side: unset policy keys
 leave the cross-model requirement off, the floor fallback off, and automerge
 off, which are today's defaults.
 
+On an installed station (`~/.claude/himmel/install-profile.json` exists), a
+missing `config.json` that existed before is a C74 FAIL, not a notice: every gate
+has fallen back to its default. It existed before when a backup holds a copy or
+the last healthy snapshot recorded it. A no-op install never creates the file, so
+without either sign the row stays INFO. The row C74-config-keys warns for each file that lost keys since the
+last healthy snapshot.
+
+### The config audit log, backups and restore
+
+`scripts/lib/config-audit.sh` (HIMMEL-8401) makes a lost or shrunken station
+config loud and recoverable:
+
+- **Every write is backed up and logged.** The writers (`himmelctl` luna and
+  behaviour config, `migrate-env.sh`, the hook and telemetry wirers, the trust
+  wirer and `uninstall.sh`) call `pre` before a write and `post` after it. A
+  backup holds the whole set together: the `.env`, `himmel.conf`,
+  `himmel.conf.local` and `config.json`. A restore therefore brings back keys
+  that lived in `.env` before the split. The 10 newest backups per file are kept
+  (`HIMMEL_CONFIG_BACKUPS_KEEP`). Each backup holds a copy of the `.env`, so
+  `block-read-secrets.sh` refuses a session's read of the backups (by the
+  spelled and the resolved path), and every uninstall removes them.
+- **The audit log** `~/.himmel/state/config-audit/audit.jsonl` has one row per
+  write: time, pid, session, script, file, action, before/after sha256 and the
+  added, removed and changed key NAMES. It never holds a value. A session's
+  refused `rm` or `mv` of a config file (`block-himmel-config-writes.sh`) adds
+  a `denied` row.
+- **The watcher.** The Telegram bridge runs `config-audit.sh watch` every 60 s.
+  An unaudited deletion, truncation or key loss alerts the operator's DM and
+  every armed chief inbox, naming the file, the lost keys and the newest backup
+  that holds them. `config-audit.sh accept` takes the live set as healthy after a
+  deliberate hand edit.
+- **The restore.** `config-audit.sh list` shows the backups with a key-name diff.
+  The operator restores from Telegram with `/config restore <id> <code>`
+  (`scripts/telegram/README.md`). The code is a TOTP from a separate seed,
+  `~/.himmel/secrets/config-restore.seed`, enrolled in a plain terminal with
+  `python3 scripts/telegram/config-restore.py enroll`. The restore runs in the
+  bridge's process, never in a session: the guard refuses the restore, accept
+  and enroll verbs from a Claude session.
+
+ponytail: the seed, backups and audit log are owned by the same uid as every
+session, so a session can read the seed or plant a backup. The TOTP defends
+against a forged or hijacked Telegram sender, not against a hostile same-uid
+session. Upgrade path: a root-owned store with the restore as an afk-sudo kind
+(after HIMMEL-8066's root helper).
+
+ponytail: a planted newest backup becomes the watcher's "newest good backup"
+suggestion, and `list` names a changed key only as "values differ", so the
+operator cannot tell a planted value from a real one before restoring. Upgrade
+path: the same root-owned store, whose backups a session cannot write.
+
 ## Secrets: the keyring resolver
 
 `scripts/lib/himmel-secrets` serves every secret-class key. `load_dotenv`

@@ -325,7 +325,7 @@ scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	1
 scripts/eval/qmd-quality/test-qmd-quality.sh	2
 scripts/eval/retrieval-eval/test-answer-ab.sh	2
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	9
-scripts/eval/review-panel/test-review-panel.sh	5
+scripts/eval/review-panel/test-review-panel.sh	105
 scripts/eval/sandbox-poc/test-probe.sh	4
 scripts/eval/scrape-bench/test-scrape-bench.sh	0
 scripts/eval/test-autocompact-ab.sh	2
@@ -349,6 +349,7 @@ scripts/eval/test-stability-scorecard.sh	2
 scripts/eval/test-weekly-rollup.sh	3
 scripts/eval/test-worktree-latency-curve.sh	1
 scripts/git/test-classify-branches.sh	2
+scripts/git/test-delete-approved-branch.sh	1
 scripts/git/test-restore-to-head.sh	2
 scripts/graphify/test-anchor-seeds.sh	1
 scripts/graphify/test-ast-update.sh	3
@@ -990,6 +991,7 @@ scripts/afk/test-morning-report.sh	7
 scripts/afk/test-per-project.sh	1
 scripts/afk/test-self-heal.sh	8
 scripts/afk/test-stop-marker.sh	1
+scripts/afk/test-suggest-allowlist.sh	1
 scripts/parity/test-guard-conformance.sh	1
 scripts/parity/test-launcher-context-env-parity.sh	0
 scripts/parity/test-t12-no-bloat-lib.sh	0
@@ -1170,6 +1172,8 @@ scripts/test-doctor-status-drift.sh	1
 scripts/ci/test-macos-cadence-concurrency.sh	0
 scripts/ci/test-macos-cadence-matrix.sh	0
 scripts/lib/test-afk-sudo.sh	37
+scripts/lib/test-config-audit.sh	2
+scripts/telegram/test-config-restore.sh	1
 scripts/test-himmel-doctor-hook-layers.sh	1
 marketplace/plugins/himmel-guard/test-himmel-guard-hermetic.sh	0
 marketplace/plugins/obsidian-triage/tests/test-requirements-resolve-ci-mode.sh	16
@@ -1215,3 +1219,6 @@ scripts/eval/routing/test-score.sh	15
 scripts/test-himmel-doctor-mcp-sources.sh	1
 scripts/handover/test-windows-arms-dropped.sh	0
 scripts/handover/chief-kit/test-intake-backfill.sh	1
+scripts/vm/test-claudex-guest.sh	2
+scripts/handover/chief-kit/test-enable-remote-control.sh	1
+scripts/eval/test-chief-wake-classes.sh	1

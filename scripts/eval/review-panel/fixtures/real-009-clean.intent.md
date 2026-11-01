@@ -1,0 +1,3 @@
+fix(telegram): [HIMMEL-8365] an operator reply with six digits reaches the chief
+
+The bridge answered every reply to a bot message that holds six digits (even split by spaces or hyphens, like two ticket numbers or a date) with the afk-sudo expired notice, and the message never reached the chief. Definition of done: a reply to a non-afk-sudo bot message whose text is "do 8276 8277 next" is not consumed (the gate returns false); a bare six-digit reply to an expired afk-sudo prompt still gets the expired notice and is held (the HIMMEL-8206 rows stay green). An afk-sudo code must never reach a session inbox.

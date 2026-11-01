@@ -62,7 +62,8 @@ const actionHtml = (a, chief) => a.kind === "configure" ? `<a class="fixact btn 
   : `<span class="fixact chief">${esc(chiefLabel(chief))}</span>`;
 
 const nodata = (what) => `<div class="nodata">No data: ${esc(what)}</div>`;
-const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
+// cls: "box" (the all-projects view), "sec" (an unboxed block in the project grid) or "p g-*" (the open tile's group panel)
+const section = (id, title, sub, body, cls = "box") => `<section id="${id}" class="${cls}" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
 
 const groupOf = (r) => (r.source === "cadence" ? "job" : r.bundle === "search" ? "srch" : "chk");
 const sharedOf = (feed) => ((feed && feed.rows) || []).filter((r) => r.scope === "shared");
@@ -139,7 +140,7 @@ function tabsHtml(feed, health, view) {
 }
 
 // four group tiles (frame 1); a tile opens its panel under the strip, one at a time. Counts come from the rows, never invented.
-const GROUPS = [["chk", "Checks", "checks"], ["use", "Usage", "usage"], ["job", "Scheduled jobs", "jobs"], ["srch", "Search & graph", "search"]];
+const GROUPS = [["chk", "Checks", "checks", "!"], ["use", "Usage", "usage", "%"], ["job", "Scheduled jobs", "jobs", "⏱"], ["srch", "Search & graph", "search", "⌕"]];
 const worst = (rows) => (rows.some((r) => r.health === "fail") ? "fail" : rows.some((r) => r.health === "warn") ? "warn" : "ok");
 function tileVal(g, feed, health) {
   const rows = (feed && feed.rows) || [];
@@ -158,9 +159,9 @@ function tileVal(g, feed, health) {
   return l.length ? [`${l.length} checked`, c.fail + c.warn ? `${c.fail + c.warn} to look at` : "fresh", w] : ["doctor reports no search rows", "no data", "off"];
 }
 function tilesHtml(feed, health, open) {
-  return `<div class="tiles htiles">${GROUPS.map(([g, name, id]) => {
+  return `<div class="tiles htiles">${GROUPS.map(([g, name, id, ic]) => {
     const [val, word, cls] = tileVal(g, feed, health);
-    return `<button type="button" class="tile g-${g}" data-act="health-tile" data-tile="${id}" aria-expanded="${open === id}"><span class="tname">${esc(name)}</span><span class="tval">${esc(val)}</span><span class="pill ${esc(cls)}">${esc(word)}</span></button>`;
+    return `<button type="button" class="tile g-${g}" data-act="health-tile" data-tile="${id}" aria-expanded="${open === id}"><span class="ic" aria-hidden="true">${ic}</span><span class="tname">${esc(name)}</span><span class="tval">${esc(val)}</span><span class="pill ${esc(cls)}">${esc(word)}</span></button>`;
   }).join("")}</div>`;
 }
 
@@ -294,16 +295,17 @@ export function renderHealth(feed, health, view = {}) {
   const v = verdict(feed, own), open = view.tile || (feed && (v.cls === "fail" || v.cls === "warn") ? "checks" : "none");
   const sharedTag = `<span class="scope">shared</span>`;
   const panel = {
-    checks: () => section("broken", "Checks", "Worst first. Each row has one fix action; shared rows are the machine's, not this project's.", tabsHtml(feed, own, view)),
-    usage: () => section("usage", "Usage", "Read-only: the newest bank-preflight ledger row and the subscription usage budget windows.", sharedTag + bankHtml(health) + quotaHtml(health) + fleetLink(view)),
-    jobs: () => section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", sharedTag + jobsHtml(feed)),
-    search: () => section("search", "Search & graph", "From the doctor's search rows.", searchHtml(feed)),
+    checks: () => section("broken", "Checks", "Worst first. Each row has one fix action; shared rows are the machine's, not this project's.", tabsHtml(feed, own, view), "p g-chk"),
+    usage: () => section("usage", "Usage", "Read-only: the newest bank-preflight ledger row and the subscription usage budget windows.", sharedTag + bankHtml(health) + quotaHtml(health) + fleetLink(view), "p g-use"),
+    jobs: () => section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", sharedTag + jobsHtml(feed), "p g-job"),
+    search: () => section("search", "Search & graph", "From the doctor's search rows.", searchHtml(feed), "p g-srch"),
   }[open];
-  return [
+  // mockup v2: the strip, the tiles and the open tile's panel sit straight in the main-column grid (app.css .pg), unboxed
+  return `<div class="pg">${[
     `<header class="ph"><h1>Health · ${esc(name)}</h1><p>Is himmel working here, what is broken and who fixes it, from the doctor feed and the monitoring tier.</p></header>`,
-    section("verdict", "Is this project working right now?", "One word, from the doctor feed and any firing alerts. A tile opens its panel.", verdictHtml(feed, own, view.now ?? Date.now()) + tilesHtml(feed, own, open)),
+    section("verdict", "Is this project working right now?", "One word, from the doctor feed and any firing alerts. A tile opens its panel.", verdictHtml(feed, own, view.now ?? Date.now()) + tilesHtml(feed, own, open), "sec"),
     panel ? panel() : "",
-    section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health)),
-    section("reviewers", "How good are our reviewers?", "The critics on planted bugs and the judges on merged PRs, from the weekly review page; read-only.", reviewersHtml(health)),
-  ].join("\n");
+    section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health), "sec"),
+    section("reviewers", "How good are our reviewers?", "The critics on planted bugs and the judges on merged PRs, from the weekly review page; read-only.", reviewersHtml(health), "sec"),
+  ].join("\n")}</div>`;
 }

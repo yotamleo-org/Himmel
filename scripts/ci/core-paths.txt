@@ -15,7 +15,7 @@
 ^scripts/handover/chief-kit/(gen-briefs|next-dispatchable|headed-arm-worker|brief-lint)\.
 # Merge and GO.
 ^scripts/handover/merge-on-green\.sh$
-^scripts/handover/chief-kit/(go|ready-check|verdict-go)\.
+^scripts/handover/chief-kit/(go|auto-go|ready-check|verdict-go)\.
 ^scripts/cr/(pr-check-[a-z0-9]+|review-round)\.
 # The release engine and the core match itself.
 ^scripts/jira/src/release/

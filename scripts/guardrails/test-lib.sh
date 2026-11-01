@@ -996,6 +996,55 @@ else
     fail "main_checkout_verdict fixture: the --no-hardlinks clone failed - the row would test a missing clone"
 fi
 
+# The persistent scratch root ~/.himmel/scratch/<clone> (HOME is the
+# fixture's $FIX/home here) is exempt like the session scratchpad, with the same
+# refusals; it survives a relaunch where the scratchpad does not.
+MV_PER="$HOME/.himmel/scratch"
+mkdir -p "$MV_PER/gfork"
+git -C "$MV_PER/graphify" init -q -b main 2>/dev/null || { mkdir -p "$MV_PER/graphify"; git -C "$MV_PER/graphify" init -q -b main; }
+GITID -C "$MV_PER/graphify" commit -q --allow-empty -m init
+git -C "$MV_PER/graphify" checkout -q -b feat/p
+MV_PER_C=$(cd "$MV_PER/graphify" && pwd -P)
+mkdir -p "$MV_PER/gfork/nested"
+git -C "$MV_PER/gfork/nested" init -q -b main || { fail "main_checkout_verdict fixture: the nested persistent-root git init failed - the row would test a missing repo"; }
+GITID -C "$MV_PER/gfork/nested" commit -q --allow-empty -m init
+MV_PERN_C=$(cd "$MV_PER/gfork/nested" && pwd -P)
+
+out=$(main_checkout_verdict "$MV_PER_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: clone under ~/.himmel/scratch -> rc=0 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent-root clone -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+out=$(main_checkout_verdict "$MV_PERN_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: clone nested under ~/.himmel/scratch/<dir>/ on main -> rc=0 (HIMMEL-8484)"; else fail "main_checkout_verdict: nested persistent-root clone -> expected rc=0 got rc=$rc out=[$out]"; fi
+
+: > "$MV_PER_C/.himmel-dev"
+out=$(main_checkout_verdict "$MV_PER_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root clone carrying .himmel-dev stays denied -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent himmel-dev clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+rm -f "$MV_PER_C/.himmel-dev"
+
+out=$(CLAUDE_PROJECT_DIR="$MV_PER_C" main_checkout_verdict "$MV_PER_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: the project checkout stays denied under the persistent root -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent clone == CLAUDE_PROJECT_DIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+# The primary checkout and a persistent-root dir whose git setup leads into another
+# checkout keep their refusals (a linked worktree has a `.git` file, never the
+# standalone `.git` directory the exemption requires).
+out=$(main_checkout_verdict "$MV_PRIMFEAT_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: a primary outside the persistent root stays denied -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: primary with a persistent root present -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+MV_PER_LN="$MV_PER/lnk"
+mkdir -p "$MV_PER_LN"
+ln -s "$MV_PRIMFEAT_C/.git" "$MV_PER_LN/.git"
+MV_PER_LN_C=$(cd "$MV_PER_LN" && pwd -P)
+out=$(main_checkout_verdict "$MV_PER_LN_C/newfile.txt"); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root dir with a symlinked .git into a primary -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent symlinked .git -> expected rc=2 got rc=$rc out=[$out]"; fi
+
+# The adopted-primary helper gates this root too: a library copy with no helper
+# beside it refuses the same clone the real tree allows.
+MV_NOAP2="$FIX/noap2/scripts/guardrails"
+mkdir -p "$MV_NOAP2"
+cp "$LIB" "$MV_NOAP2/lib.sh"
+out=$( ( . "$MV_NOAP2/lib.sh"; main_checkout_verdict "$MV_PER_C/newfile.txt" ) ); rc=$?
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root clone refused when adopted-primary.sh is missing -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent root, missing adopted-primary.sh -> expected rc=2 got rc=$rc out=[$out]"; fi
+
 # A copy of the library with no chief-kit/adopted-primary.sh beside it refuses
 # (the helper is missing), where the real tree allows the same clone.
 MV_NOAP="$FIX/noap/scripts/guardrails"

@@ -68,6 +68,7 @@ import { fileURLToPath } from 'node:url';
 import { isMain } from '../lib/is-main.mjs';
 
 import { acquireLock } from '../lib/settings-lock.mjs';
+import configAudit from '../lib/config-audit.cjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -455,6 +456,7 @@ export function writeAtomic(settingsPath, expectedBytes, output) {
     fail(`${settingsPath} changed while this ran — refusing to overwrite another writer`);
   }
   const tmp = `${settingsPath}.wire-session-telemetry.${process.pid}.tmp`;
+  const auditId = configAudit.pre(settingsPath, 'wire-session-telemetry-hooks.mjs');
   try {
     writeFileSync(tmp, output, 'utf8');
     renameSync(tmp, settingsPath);
@@ -462,6 +464,7 @@ export function writeAtomic(settingsPath, expectedBytes, output) {
     try { unlinkSync(tmp); } catch { /* nothing left to clean up */ }
     throw e;
   }
+  configAudit.post(auditId, settingsPath, 'write', 'wire-session-telemetry-hooks.mjs');
 }
 
 async function main() {

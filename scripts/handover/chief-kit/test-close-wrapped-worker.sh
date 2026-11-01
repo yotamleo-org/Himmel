@@ -288,6 +288,85 @@ check "zero-match: rc 0 (the window already exited, HIMMEL-7811)" "$rc" "0"
 contains "zero-match: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
 check "zero-match: kill never called" "$(cat "$CALLS")" ""
 
+# --- 4b. a session-scratchpad clone holding unpushed commits ------------
+SCR="$W/claude-$(id -u)/proj/sess/scratchpad"
+mkdir -p "$SCR"
+git init -q -b main --bare "$W/scr-remote.git"
+git init -q -b main "$SCR/forkclone"
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/forkclone" commit -q --allow-empty -m rebased
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/forkclone\`"
+reset_calls
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone unpushed: rc 8" "$rc" "8"
+contains "scratchpad-clone unpushed: names the clone" "$out" "$SCR/forkclone"
+check "scratchpad-clone unpushed: kill never called" "$(cat "$CALLS")" ""
+git -C "$SCR/forkclone" remote add origin "$W/scr-remote.git"
+git -C "$SCR/forkclone" push -q origin main 2>/dev/null
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone pushed: no refusal -> rc 0" "$rc" "0"
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/gone-clone\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone already gone: no refusal -> rc 0" "$rc" "0"
+# a clone one level deeper than scratchpad/<dir>, named by its full path, and by its parent
+mkdir -p "$SCR/gfork"
+git init -q -b main "$SCR/gfork/graphify"
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/gfork/graphify" commit -q --allow-empty -m rebased
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/gfork/graphify\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone nested one level: rc 8" "$rc" "8"
+mkdoc "- 10:00 WRAPPED - done" "fork clones: \`$SCR/gfork\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad parent naming a nested unpushed clone: rc 8" "$rc" "8"
+# commits reachable only from a detached HEAD (a rebase in progress) count
+git -C "$SCR/forkclone" checkout -q --detach
+GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/forkclone" commit -q --allow-empty -m detached
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/forkclone\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone detached-HEAD commit: rc 8" "$rc" "8"
+# a clone git cannot read is refused, not waved through
+mkdir -p "$SCR/broken/.git"
+mkdoc "- 10:00 WRAPPED - done" "fork clone: \`$SCR/broken\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad-clone git cannot inspect: rc 8" "$rc" "8"
+contains "scratchpad-clone git cannot inspect: says so" "$out" "cannot inspect"
+# the doc names a file inside that broken clone: still refused, not missed
+mkdir -p "$SCR/broken/sub"
+mkdoc "- 10:00 WRAPPED - done" "fork file: \`$SCR/broken/sub/notes.txt\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "path inside a broken scratchpad clone: rc 8" "$rc" "8"
+# a subtree find cannot read is refused, not skipped
+mkdir -p "$SCR/unread/sub"
+chmod 000 "$SCR/unread/sub" || { echo "FAIL - fixture: chmod 000 on the unreadable subtree failed"; fails=$((fails+1)); }
+if [ -r "$SCR/unread/sub" ]; then
+    echo "skip - scratchpad dir find cannot scan: chmod 000 is not enforced for this user (root)"
+else
+    mkdoc "- 10:00 WRAPPED - done" "fork clones: \`$SCR/unread\`"
+    rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+    check "scratchpad dir find cannot scan: rc 8" "$rc" "8"
+fi
+chmod 755 "$SCR/unread/sub"
+# a path ending a sentence, and one in markdown bold, name the clone too
+for fx in forkp "dotted."; do
+    if ! git init -q -b main "$SCR/$fx" \
+        || ! GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t git -C "$SCR/$fx" commit -q --allow-empty -m rebased; then
+        echo "FAIL - fixture: could not build the $fx clone"; fails=$((fails+1))
+    fi
+done
+mkdoc "- 10:00 WRAPPED - done" "The unpushed work sits in $SCR/forkp."
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad clone named at the end of a sentence: rc 8" "$rc" "8"
+contains "scratchpad clone named at the end of a sentence: refused for its unpushed commit" "$out" "holds commits on no remote"
+mkdoc "- 10:00 WRAPPED - done" "clone: **$SCR/forkp**"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad clone named in markdown bold: rc 8" "$rc" "8"
+contains "scratchpad clone named in markdown bold: refused for its unpushed commit" "$out" "holds commits on no remote"
+# a clone whose own name ends in punctuation is still found as written
+mkdoc "- 10:00 WRAPPED - done" "clone: \`$SCR/dotted.\`"
+rc=0; out=$(run "$DOC" 2>&1) || rc=$?
+check "scratchpad clone whose name ends in a dot: rc 8" "$rc" "8"
+contains "scratchpad clone whose name ends in a dot: refused for its unpushed commit" "$out" "holds commits on no remote"
+rm -rf "$SCR/gfork" "$SCR/broken" "$SCR/forkclone" "$SCR/unread" "$SCR/forkp" "$SCR/dotted."
+
 # --- 5. 2 matching sessions -------------------------------------------------------
 mkcmdline 202 claude -n "$SESSION_NAME" work
 mkcmdline 203 claude -n "$SESSION_NAME" work

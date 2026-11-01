@@ -1,0 +1,17 @@
+{"type":"custom-title","customTitle":"HIMMEL-nextleg-2026-10-19A-roadmap-console"}
+{"type":"user","message":{"content":"please check the board"}}
+{"type":"assistant","message":{"id":"a1","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"user","message":{"content":"<cross-session-message from=\"w\" from-mode=\"x\">READY 4001 abc GREEN"}}
+{"type":"assistant","message":{"id":"a2","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/handover/go.sh 4001"}}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}
+{"type":"assistant","message":{"id":"a3","content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"user","message":{"content":"<cross-session-message from=\"w\" from-mode=\"x\">LIVE lock held"}}
+{"type":"assistant","message":{"id":"a4","content":[{"type":"text","text":"noted"}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"user","message":{"content":"<task-notification><summary>Background command \"bash leg-event.sh\" completed</summary></task-notification>"}}
+{"type":"assistant","message":{"id":"a5","content":[{"type":"text","text":"seen"}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"user","message":{"content":"<task-notification><summary>Background command \"bash console-wait.sh\" completed</summary><output-file>@FX@/wait.out</output-file></task-notification>"}}
+{"type":"assistant","message":{"id":"a6","content":[{"type":"tool_use","name":"Agent","input":{"prompt":"p"}}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"assistant","message":{"id":"a6","content":[{"type":"text","text":"same request, second block"}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"done"}]}}
+{"type":"assistant","message":{"id":"a7","content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}
+{"type":"assistant","message":{"id":"a8","content":[{"type":"text","text":"thinking"}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}

@@ -488,6 +488,11 @@ class TestCloneToken(unittest.TestCase):
         self.assertIsNotNone(err)
         self.assertTrue(any(c.startswith("rm -rf ") and "/tmp/tok.X" in c for c in cmds))
 
+    def test_askpass_dir_is_removed_after_a_successful_clone(self):
+        cmds, _, err = self._clone()
+        self.assertIsNone(err)
+        self.assertTrue(any(c.startswith("rm -rf ") and "/tmp/tok.X" in c for c in cmds))
+
     def test_failed_cleanup_is_reported_not_swallowed(self):
         vm = vmsdk.VM("ubuntu_new")
         def fake_run(cmd, **kw):

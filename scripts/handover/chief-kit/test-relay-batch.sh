@@ -69,6 +69,9 @@ check "a native worker whose bus record lands gets no SendMessage" "0" "$(printf
 check "the native bus record is the relay: it names itself an S1 relay" "1" "$(grep -cF 'is an S1 relay' "$WORK/bus.body")"
 check "the native bus record gives the exact acknowledgement with no trailing text" "1" "$(grep -c 'SUCCESSION accepted: DEMO-nextleg-2026-10-08B-chief replaces DEMO-nextleg-2026-10-08A-chief$' "$WORK/bus.body")"
 check "the native bus record forbids anything after the acknowledgement on its line" "1" "$(grep -cF 'nothing after it on that line' "$WORK/bus.body")"
+# The hook delivers the record beside a tool result; it must say so, or a worker treats it as S6.
+check "the native bus record says it arrives beside a tool result, not inside one" "1" "$(grep -cF 'beside a tool result, not inside one' "$WORK/bus.body")"
+check "the native bus record asks for the bullet in the next tool batch, no ListAgents, also while wrapping" "1" "$(grep -cF 'in your very next tool batch, with no ListAgents, also while wrapping' "$WORK/bus.body")"
 check "a bus-relayed worker counts as relayed" "1" "$(printf '%s\n' "$out" | grep -c '^RELAYED 2 of 2$')"
 check "claudex relay gives the same exact acknowledgement before the send flags" "1" "$(grep -cF 'SUCCESSION accepted: DEMO-nextleg-2026-10-08B-chief replaces DEMO-nextleg-2026-10-08A-chief --token tok-eight' "$WORK/send.log")"
 check "claudex relay forbids anything after the acknowledgement on its line" "1" "$(grep -cF 'nothing after it on that line' "$WORK/send.log")"

@@ -92,6 +92,11 @@
 #   7  refused - the matched session still has a live in-process subagent (an
 #      Agent-tool child, e.g. a chief's judge call), or live-subagents.sh
 #      could not prove it has none; retry once they finish
+#   8  refused - the doc names a session-scratchpad clone (/tmp/claude-<uid>/
+#      <project>/<session>/scratchpad/<clone>) holding commits on no remote
+#      (that clone dies with the session), or the check could not run: the doc
+#      cannot be scanned, the named paths or clones cannot be sorted, a named
+#      directory cannot be scanned for clones, or git cannot inspect a clone
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # konsole workers are Linux/KDE-only, same guard as
@@ -193,6 +198,75 @@ if [ "$last_marker" != "WRAPPED" ]; then
     echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
 fi
+
+# git-env-ok: every git call below goes through sc_git, which runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
+# A clone in a session scratchpad is deleted when its session ends. A
+# WRAPPED doc that names such a clone still holding commits on no remote is losing
+# that work: refuse the close (the chief sends the worker back to push it to a
+# staging branch or move it under ~/.himmel/scratch). A clone already gone cannot
+# be checked and is skipped.
+# A named path may sit below the clone (a file) or above it (a parent holding
+# clones): walk up to the nearest existing directory, take the nearest ancestor
+# holding a .git (git need not work there: a broken clone still refuses below)
+# and any repo up to three levels below it. --all counts a detached HEAD too (a
+# rebase in progress leaves its commits there); a scan or git failure refuses.
+sc_git() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
+sc_grep_rc=0
+scratch_raw=$(grep -oE '[^[:space:]`"'"'"'()<>,;*]*/claude-[0-9]+/[^/[:space:]]+/[^/[:space:]]+/scratchpad/[^[:space:]`"'"'"'()<>,;*]+' "$DOC") || sc_grep_rc=$?
+if [ "$sc_grep_rc" -gt 1 ]; then
+    echo "close-wrapped-worker: refusing - cannot scan $DOC for session-scratchpad clones (grep rc=$sc_grep_rc)" >&2
+    exit 8
+fi
+if ! scratch_paths=$(printf '%s\n' "$scratch_raw" | sort -u); then
+    echo "close-wrapped-worker: refusing - cannot sort the session-scratchpad paths named in $DOC" >&2
+    exit 8
+fi
+scratch_clones=""
+while IFS= read -r sc_orig; do
+    [ -n "$sc_orig" ] || continue
+    # a path ending a sentence ("...scratchpad/fork.") carries prose punctuation: check it as written and stripped
+    sc_stripped="$sc_orig"
+    while :; do case "$sc_stripped" in *[.:!?]) sc_stripped="${sc_stripped%?}" ;; *) break ;; esac; done
+    for sc_path in "$sc_orig" "$sc_stripped"; do
+    sc_root="${sc_path%%/scratchpad/*}/scratchpad"
+    sc_d="$sc_path"
+    while [ "$sc_d" != "$sc_root" ] && [ ! -d "$sc_d" ]; do sc_d="${sc_d%/*}"; done
+    [ "$sc_d" != "$sc_root" ] || continue
+    sc_up="$sc_d"
+    while [ "$sc_up" != "$sc_root" ] && [ -n "$sc_up" ]; do
+        if [ -e "$sc_up/.git" ]; then scratch_clones="$scratch_clones$sc_up"$'\n'; break; fi
+        sc_up="${sc_up%/*}"
+    done
+    if ! sc_below=$(find "$sc_d" -maxdepth 3 -type d -name .git -prune); then
+        echo "close-wrapped-worker: refusing - cannot scan $sc_d, named by the doc, for session-scratchpad clones; fix its permissions or move the clones under ~/.himmel/scratch before the close" >&2
+        exit 8
+    fi
+    while IFS= read -r sc_g; do
+        [ -n "$sc_g" ] && scratch_clones="$scratch_clones${sc_g%/.git}"$'\n'
+    done <<EOF
+$sc_below
+EOF
+    done
+done <<EOF
+$scratch_paths
+EOF
+if ! scratch_clones=$(printf '%s' "$scratch_clones" | sort -u); then
+    echo "close-wrapped-worker: refusing - cannot sort the session-scratchpad clones named in $DOC" >&2
+    exit 8
+fi
+while IFS= read -r sc_dir; do
+    [ -n "$sc_dir" ] || continue
+    if ! sc_unpushed=$(sc_git -C "$sc_dir" rev-list -n 1 --all --not --remotes 2>&1); then
+        echo "close-wrapped-worker: refusing - cannot inspect the session-scratchpad clone $sc_dir the doc names (git failed: $sc_unpushed); fix it or move the clone under ~/.himmel/scratch before the close" >&2
+        exit 8
+    fi
+    if [ -n "$sc_unpushed" ]; then
+        echo "close-wrapped-worker: refusing - the doc names the session-scratchpad clone $sc_dir, which holds commits on no remote (e.g. $sc_unpushed); push them to a staging branch or move the clone under ~/.himmel/scratch before the close" >&2
+        exit 8
+    fi
+done <<EOF
+$scratch_clones
+EOF
 
 # shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091

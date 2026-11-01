@@ -330,6 +330,7 @@ scripts/eval/test-stability-scorecard.sh	local	behaviour suite, 0 catches in the
 scripts/eval/test-weekly-rollup.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-worktree-latency-curve.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/git/test-classify-branches.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/git/test-delete-approved-branch.sh	local	new, behaviour suite for the approved remote-branch delete script, no gate role, HIMMEL-8452
 scripts/git/test-restore-to-head.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/graphify/test-anchor-seeds.sh	pr	guard
 scripts/graphify/test-ast-update.sh	pr	guard
@@ -996,6 +997,7 @@ scripts/afk/test-morning-report.sh	local	behaviour suite, 0 catches in the 400-P
 scripts/afk/test-per-project.sh	local	behaviour suite, per-project afk-shift state
 scripts/afk/test-self-heal.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-stop-marker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/afk/test-suggest-allowlist.sh	local	behaviour suite, AFK ledger allowlist suggestions (HIMMEL-8067)
 scripts/parity/test-guard-conformance.sh	pr	static-gate
 scripts/parity/test-launcher-context-env-parity.sh	pr	static-gate
 scripts/parity/test-t12-no-bloat-lib.sh	pr	static-gate
@@ -1189,6 +1191,8 @@ scripts/test-doctor-status-drift.sh	local	new, behaviour suite for the doctor C8
 scripts/ci/test-macos-cadence-concurrency.sh	pr	trust-path
 scripts/ci/test-macos-cadence-matrix.sh	pr	trust-path
 scripts/lib/test-afk-sudo.sh	pr	trust-path
+scripts/lib/test-config-audit.sh	pr	trust-path
+scripts/telegram/test-config-restore.sh	pr	guard
 scripts/test-himmel-doctor-hook-layers.sh	local	new, behaviour suite for the doctor C81 hook-layer check, the installer user-scope wire and the himmel-guard command, no gate role, HIMMEL-8059
 scripts/eval/routing/test-score.sh	local	behaviour suite, new HIMMEL-8088
 scripts/test-himmel-doctor-mcp-sources.sh	local	new, behaviour suite for the doctor C82 MCP source listing, no gate role, HIMMEL-8061
@@ -1197,3 +1201,6 @@ scripts/handover/test-windows-arms-dropped.sh	pr	static-gate
 scripts/luna/test-cadence-alert.sh	local	new, behaviour suite for the qmd rc-5 alert cause, no gate role, HIMMEL-7610
 scripts/handover/chief-kit/test-focus-refresh-chains.sh	local	behaviour suite, stubbed refresh stages, no gate role
 scripts/handover/chief-kit/test-intake-backfill.sh	local	new, behaviour suite for the dry-run intake backfill planner, no gate role, HIMMEL-8336
+scripts/vm/test-claudex-guest.sh	local	new, behaviour suite for the claudex VM guest provisioner (stubbed VBoxManage/vmsdk), no gate role, HIMMEL-8326
+scripts/handover/chief-kit/test-enable-remote-control.sh	pr	guard
+scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief wake-class measurement script, no gate role, HIMMEL-6541

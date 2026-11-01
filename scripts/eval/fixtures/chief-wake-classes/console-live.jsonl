@@ -1,0 +1,3 @@
+{"type":"custom-title","customTitle":"HIMMEL-nextleg-2026-10-19B-roadmap-console"}
+{"type":"user","message":{"content":"excluded by --exclude B"}}
+{"type":"assistant","message":{"id":"b1","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":10}}}

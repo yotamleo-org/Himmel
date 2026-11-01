@@ -1,0 +1,81 @@
+diff --git a/scripts/telegram/afk-sudo-route.test.ts b/scripts/telegram/afk-sudo-route.test.ts
+index 482e1f0de..452e2370b 100644
+--- a/scripts/telegram/afk-sudo-route.test.ts
++++ b/scripts/telegram/afk-sudo-route.test.ts
+@@ -344,8 +344,8 @@ test("button: a six-digit reply to an unknown message is ordinary text, not cons
+   expect(b.calls).toEqual([]);
+ });
+
+-test("button: a code-shaped reply to a bot message with no known prompt is consumed, however it is spaced", async () => {
+-  for (const text of ["123 456", "123-456", " 123456 ", "1234567", "12 34 56"]) {
++test("button: a reply to a bot message with no known prompt holding a standalone six-digit token, or only a spaced code, is consumed", async () => {
++  for (const text of [" 123456 ", "code 123456", "123456 thanks", "ship 123456 and 654321 today", "123 456", "123-456", "12 34 56", "1234567", "10-31 08"]) {
+     const b = buttons();
+     expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
+     await settle();
+@@ -354,6 +354,16 @@ test("button: a code-shaped reply to a bot message with no known prompt is consu
+   }
+ });
+
++test("button: HIMMEL-8365 a reply to a non-sudo bot message whose six digits exist only split by spaces or hyphens inside words is ordinary text", async () => {
++  for (const text of ["do 8276 8277 next", "ticket 123-456 is done"]) {
++    const b = buttons();
++    expect(b.gate(reply(text, 99, { reply_to_bot: true }))).toBe(false);
++    await settle();
++    expect(b.calls).toEqual([]);
++    expect(b.replies).toEqual([]);
++  }
++});
++
+ test("button: while a code prompt is live, a code-shaped message sent without replying is consumed, not forwarded", async () => {
+   for (const text of ["123456", "123 456", "123-456"]) {
+     const b = buttons();
+@@ -383,11 +393,12 @@ test("button: while a code prompt is live, a code-shaped message sent without re
+   }
+ });
+
+-test("button: a code buried in words or punctuation is consumed on a reply to a bot message and while a prompt is live", async () => {
++test("button: a code buried in words or punctuation is consumed while a prompt is live, and on a reply to a bot message when it is a standalone six-digit token", async () => {
+   const texts = ["123456.", "code 123456", "123456 thanks", "approve 123456", "my code is 123 456, ok", "(123-456)"];
+   for (const text of texts) {
++    // a reply to a bot message with no known prompt is held only for a contiguous six-digit token
+     const gone = buttons();
+-    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(true);
++    expect(gone.gate(reply(text, 99, { reply_to_bot: true }))).toBe(/(?<!\d)\d{6}(?!\d)/.test(text));
+     const live = buttons();
+     live.tap(tapOf("afk:approve:abcdefgh"));
+     await settle();
+diff --git a/scripts/telegram/afk-sudo-route.ts b/scripts/telegram/afk-sudo-route.ts
+index 85b6a8d90..8ee1a0719 100644
+--- a/scripts/telegram/afk-sudo-route.ts
++++ b/scripts/telegram/afk-sudo-route.ts
+@@ -105,6 +105,14 @@ const CODE_REPLY = /^\s*(\d{6})\s*$/;
+ // Six digits in a row, spaces or hyphens allowed between them ("123 456", "123-456"),
+ // anywhere in the text. Used only to decide a message must not be forwarded.
+ const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
++// A reply to a bot message is held for six contiguous digits standing alone
++// (CODE_TOKEN) and for a text that is nothing but digits, spaces and hyphens
++// totalling six or seven ("123 456", "12 34 56", "1234567"). Numbers inside words
++// that are six digits only once spaces or hyphens are ignored ("do 8276 8277 next",
++// "ticket 123-456 is done") are ordinary text.
++const CODE_TOKEN = /(?<!\d)\d{6}(?!\d)/u;
++const CODE_ONLY = /^\d{6,7}$/u;
++const heldAsCode = (text: string): boolean => CODE_TOKEN.test(text) || CODE_ONLY.test(text.replace(/[\s-]/gu, ""));
+
+ // A reply to a prompt this bridge issued. Always consumed, so a code (or a
+ // mistyped one) never lands in a session inbox or a run prompt.
+@@ -150,10 +158,12 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
+       // A message holding a code is still a code, wherever it sits in the text, and an
+       // inbox is readable by the sessions that can run the helper. Consume it, never
+       // pass it on: a reply to a bot message whose prompt is gone (the map is in
+-      // memory, so a restart forgets it), or any message sent while a prompt waits.
++      // memory, so a restart forgets it) when it holds a standalone six-digit token,
++      // whatever words surround it, or is only a spaced or hyphenated code, or any
++      // message sent while a prompt waits.
+       if (CODE_RUN.test(msg.text) && eligible(deps.access(), msg)) {
+         const waiting = prompts?.live(msg.chat_id) ?? null;
+-        if (msg.reply_to_bot === true || waiting) {
++        if ((msg.reply_to_bot === true && heldAsCode(msg.text)) || waiting) {
+           void deps.reply(msg.chat_id, waiting
+             ? `⚠️ afk-sudo: reply to the "Code for ${waiting}:" message with the code, nothing ran`
+             : "⚠️ afk-sudo: that code prompt expired, tap Approve again").catch(() => {});

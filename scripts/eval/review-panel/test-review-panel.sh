@@ -17,12 +17,19 @@ trap 'rm -rf "$TMP"' EXIT
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never.jsonl"
 
 PASS=0; FAIL=0
+# The integrity, split and sweep rows below drive the 24 synthetic case-* cases through a temp copy of the
+# fixtures and the key; the shipped real-* corpus (RL3) has its own rows at the end, since each real case's lint
+# applies its diff to its base commit.
+FIX_ALL="$FIX"; KEY_ALL="$KEY"
 pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "FAIL $1"; }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: expected '$3', got '$2'"; fi; }
 has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in '$2'";; esac; }
 
 command -v python3 >/dev/null 2>&1 || { echo "SKIP test-review-panel: python3 not on PATH"; exit 0; }
+mkdir -p "$TMP/syn/fixtures"; cp "$FIX_ALL"/case-*.patch "$TMP/syn/fixtures/"
+python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); k["cases"]={c: v for c, v in k["cases"].items() if c.startswith("case-")}; json.dump(k, open(sys.argv[2], "w"))' "$KEY_ALL" "$TMP/syn/seeds.json"
+FIX="$TMP/syn/fixtures"; KEY="$TMP/syn/seeds.json"
 
 # metric <scores.json> <name> - one metric from score.py --json output.
 metric() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["metrics"].get(sys.argv[2]); print("null" if v is None else (round(v,4) if isinstance(v,float) else v))' "$1" "$2"; }
@@ -57,7 +64,7 @@ PY
 # --- fixture + key integrity ------------------------------------------------------
 eq "fixtures: 24 frozen diffs" "$(find "$FIX" -name 'case-*.patch' | wc -l | tr -d ' ')" "24"
 out=$(python3 "$SCORE" lint --fixtures "$FIX" --key "$KEY" 2>&1); rc=$?
-eq "lint: the shipped set is clean" "$rc" "0"
+eq "lint: the synthetic set is clean" "$rc" "0"
 # The corpus-shape rows count the synthetic case-* subset: real-* escapes (RL3) join beside it.
 eq "key: 12 seeded and 12 clean synthetic cases" "$(python3 -c 'import json,sys; c=[v for k,v in json.load(open(sys.argv[1]))["cases"].items() if k.startswith("case-")]; print("%d seeded, %d clean" % (sum(v["kind"]=="seeded" for v in c), sum(v["kind"]=="clean" for v in c)))' "$KEY")" "12 seeded, 12 clean"
 classes=$(python3 -c 'import json,sys; print(" ".join(sorted({d["class"] for k,v in json.load(open(sys.argv[1]))["cases"].items() if k.startswith("case-") for d in v["defects"]})))' "$KEY")
@@ -525,6 +532,44 @@ eq "harvest: the revert (with its fixer) and the NO-GO are both listed" \
   "revert:10:11:HIMMEL-1 judge-no-go:12:None:HIMMEL-2"
 has "harvest: the escaped PR's base is its merge's first parent" "$out" "\"base\": \"$SB\""
 has "harvest: the NO-GO head" "$out" '"head": "abc12"'
+
+# --- the shipped real-escape corpus -----------------------------------------------------------
+# Ten review escapes frozen from merged history, each with a clean twin and an intent file.
+n_seeded=$(find "$FIX_ALL" -name 'real-*.patch' ! -name 'real-*-clean.patch' | wc -l | tr -d ' ')
+n_clean=$(find "$FIX_ALL" -name 'real-*-clean.patch' | wc -l | tr -d ' ')
+eq "real corpus: 10 escapes and 10 clean twins" "$n_seeded:$n_clean" "10:10"
+eq "real corpus: every case carries an intent file" "$(find "$FIX_ALL" -name 'real-*.intent.md' | wc -l | tr -d ' ')" "20"
+out=$(python3 "$SCORE" lint --fixtures "$FIX_ALL" --key "$KEY_ALL" --min-real 10 2>&1); rc=$?
+eq "real corpus: lint --min-real 10 passes on the shipped set" "$rc" "0"
+eq "real corpus: two escapes of each class, cross-file and spec-miss included" \
+  "$(python3 -c 'import collections, json, sys
+n = collections.Counter(d["class"] for k, v in json.load(open(sys.argv[1]))["cases"].items() if k.startswith("real-") for d in v["defects"])
+print(" ".join("%s:%d" % kv for kv in sorted(n.items())))' "$KEY_ALL")" \
+  "cross-file:2 fail-open:2 logic:2 spec-miss:2 test-cannot-fail:2"
+eq "real corpus: each class has an open and a sealed pair" \
+  "$(python3 -c 'import collections, json, sys
+h = collections.defaultdict(set)
+for k, v in json.load(open(sys.argv[1]))["cases"].items():
+    if k.startswith("real-") and v["kind"] == "seeded":
+        h[v["defects"][0]["class"]].add(v["split"])
+print(" ".join("%s:%s" % (c, "+".join(sorted(s))) for c, s in sorted(h.items())))' "$KEY_ALL")" \
+  "cross-file:open+sealed fail-open:open+sealed logic:open+sealed spec-miss:open+sealed test-cannot-fail:open+sealed"
+# real-007 is the LT-j4386-1 escape: a bus reader and its writers changed in one diff.
+eq "real corpus: real-007 changes the bus reader and the chief writers together" \
+  "$(grep -cE '^diff --git a/(marketplace/plugins/himmel-bus/lib/identity\.mjs|scripts/handover/chief/chief\.sh) ' "$FIX_ALL/real-007.patch")" "2"
+# I9: a real case's scratch repo holds the base tree and the case diff only - no key, no results
+# row, no review ledger - for every shipped case.
+canary_all=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["canary"])' "$KEY_ALL")
+for rp in "$FIX_ALL"/real-*.patch; do
+  rid=$(basename "$rp" .patch); riso="$TMP/iso/$rid"
+  bash "$RUN" --case-repo "$rid" --out "$riso" --fixtures "$FIX_ALL" --key "$KEY_ALL" >/dev/null 2>&1; rc=$?
+  eq "case-repo $rid: built" "$rc" "0"
+  eq "case-repo $rid: 2 commits, no key or results file, no review ledger, no canary" \
+    "$(git -C "$riso" rev-list --count HEAD 2>/dev/null):$(git -C "$riso" ls-files -- scripts/eval/review-panel | wc -l | tr -d ' '):$(find "$riso/.git" -name 'cr-*' | wc -l | tr -d ' '):$(git -C "$riso" grep -c "$canary_all" | wc -l | tr -d ' ')" \
+    "2:0:0:0"
+  eq "case-repo $rid: the head commit is exactly the case diff" \
+    "$(git -C "$riso" diff --name-only HEAD~1 HEAD | wc -l | tr -d ' ')" "$(grep -c '^diff --git ' "$rp")"
+done
 
 echo
 echo "test-review-panel: PASS=$PASS FAIL=$FAIL"

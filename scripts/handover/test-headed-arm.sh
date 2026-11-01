@@ -2493,4 +2493,48 @@ check "bjj SIGTERM-ignoring bind: headed-arm.sh returns within 15s" "$hungbj" "n
 check "bjk SIGTERM-ignoring bind: launch exit 0 (fail-open)" "$rcbj" "0"
 contains "bjl SIGTERM-ignoring bind: timeout warned into the arm log" "$(cat "$dbj/log" 2>/dev/null)" "timed out after 2s"
 
+# (8436) a headed arm refuses a ticket that already has a live worker of another lineage.
+# mk_tdup <dir> <live worker name> <arm name>: pgrep reports pid 9002 (a live claude named <live worker name>) for the
+# ticket scan; once konsole has launched it reports pid 9001 (the arm's own session) so the post-launch poll confirms.
+mk_tdup() {
+  local dir="$1" live="$2" arm="$3"
+  mk_stub "$dir" 1 alive "$arm"
+  _fake_claude_proc "$dir" "$live" 9002
+  cat > "$dir/pgrep" <<PGREP_EOF
+#!/usr/bin/env bash
+if [ -e "$dir/confirmable" ]; then echo 9001; exit 0; fi
+case "\$*" in *"-n HIMMEL-8436-N"*) echo 9002; exit 0 ;; esac
+exit 1
+PGREP_EOF
+  chmod 755 "$dir/pgrep"
+}
+td1="$tmp/td1"; mk_tdup "$td1" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
+tdout="$(run_headed_arm "$td1" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td1/signal-never" "$PAST" 2>&1)"; tdrc=$?
+check "8436a a second worker on a ticket with a live worker is refused (exit 16)" "$tdrc" "16"
+contains "8436b the refusal names the ticket and the live session" "$tdout" "HIMMEL-8436-N4000-first-worker-2026-10-31"
+check "8436c the refused arm launched no konsole" "$([ -e "$td1/record" ] && echo launched || echo none)" "none"
+td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-leg-2026-10-31" "HIMMEL-8436-N4332b-second-leg-2026-10-31"
+run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-leg-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
+check "8436d a second leg of the same worker lineage (same N) still launches" "$tdrc2" "0"
+td3="$tmp/td3"; mk_tdup "$td3" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
+HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td3" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td3/signal-never" "$PAST" >/dev/null 2>&1; tdrc3=$?
+check "8436e HEADED_ARM_ALLOW_TICKET_DUP=1 lets a second worker on the ticket launch" "$tdrc3" "0"
+td4="$tmp/td4"; mk_tdup "$td4" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8437-N4333-other-ticket-2026-10-31"
+run_headed_arm "$td4" "$REPO" "HIMMEL-8437-N4333-other-ticket-2026-10-31" "doc8437.md" "$td4/signal-never" "$PAST" >/dev/null 2>&1; tdrc4=$?
+check "8436f a worker on a different ticket launches" "$tdrc4" "0"
+not_contains "8436g the refusal hands over no recipe for the override" "$tdout" "HEADED_ARM_ALLOW_TICKET_DUP"
+# the override is read once and cleared: a konsole that records its own env must not see it
+td5="$tmp/td5"; mk_tdup "$td5" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
+cat > "$td5/konsole" <<KONSOLE_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$td5/record"
+printf '%s\n' "\${HEADED_ARM_ALLOW_TICKET_DUP-unset}" > "$td5/dupenv"
+: > "$td5/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$td5/konsole"
+HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td5" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td5/signal-never" "$PAST" >/dev/null 2>&1; tdrc5=$?
+check "8436h the override launches the second worker" "$tdrc5" "0"
+check "8436i the override does not ride into the launched worker's env" "$(cat "$td5/dupenv" 2>/dev/null)" "unset"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

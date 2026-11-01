@@ -462,8 +462,9 @@ sec_review_rounds() {
     }')"
 }
 
-# "## AFK sudo approvals": the last 24 h of the afk-sudo ledger,
-# result counts plus one line per command that ran. AFK_SUDO_LEDGER is a test
+# "## AFK approvals": the last 24 h of the afk-sudo ledger,
+# result and kind counts, one line per command that ran, every never-remote
+# refusal. AFK_SUDO_LEDGER is a test
 # seam. No ledger (the helper not installed) renders no section at all.
 sec_afk_sudo() {
     local ledger="${AFK_SUDO_LEDGER:-/var/log/himmel/afk-sudo.jsonl}" out
@@ -482,18 +483,36 @@ for line in open(sys.argv[1]):
     except (ValueError, KeyError):
         continue
 if not rows:
-    print("_None — no AFK sudo request in the last 24 h._")
+    print("_None — no AFK approval in the last 24 h._")
     sys.exit()
-n = sum(1 for r in rows if r.get("event") == "request")
+reqs = [r for r in rows if r.get("event") == "request"]
 # An approve after expiry logs an expire row and an expired code-check: count it once.
 tally = Counter(r.get("result") for r in rows if r.get("result") not in ("pending", "ran")
                 and not (r.get("event") == "code-check" and r.get("result") == "expired"))
-print("**%d requests** in the last 24 h: %s." % (n, ", ".join("%s %d" % kv for kv in sorted(tally.items())) or "no outcome yet"))
-for r in rows:
-    if r.get("event") == "run":
-        print("- %s `%s` %s, exit %s (session %s, ticket %s)" % (r["ts"], r.get("id"), shlex.join(r.get("argv", [])), r.get("exit"), r.get("session"), r.get("ticket")))
+print("**%d requests** in the last 24 h: %s." % (len(reqs), ", ".join("%s %d" % kv for kv in sorted(tally.items())) or "no outcome yet"))
+# A row without a kind is an 8066 sudo request.
+kinds = Counter(r.get("kind") or "sudo" for r in reqs)
+if kinds:
+    print("\nBy kind: %s.\n" % ", ".join("%s %d" % kv for kv in sorted(kinds.items())))
+def what(r):
+    if r.get("argv"):
+        return shlex.join(r["argv"])
+    return " ".join(str(x) for x in (r.get("op"), r.get("params")) if x) or "?"
+ran = [r for r in rows if r.get("event") == "run" and r.get("result") == "ran"]
+for r in ran:
+    # The sudo producer runs as root and writes no run_as: a row without a kind is that one.
+    who = r.get("run_as") or ("root" if (r.get("kind") or "sudo") == "sudo" else "")
+    extra = "".join(f for f in (", %s ms" % r["duration_ms"] if "duration_ms" in r else "", ", as %s" % who if who else "") if f)
+    print("- %s `%s` %s, exit %s%s (session %s, ticket %s)" % (r["ts"], r.get("id"), what(r), r.get("exit"), extra, r.get("session"), r.get("ticket")))
+if ran:
+    print("\nTurn what ran into an allowlist: `bash scripts/afk/suggest-allowlist.sh` (read-only).")
+refused = [r for r in rows if r.get("result") == "never-remote"]
+if refused:
+    print("\nNever-remote refusals:")
+    for r in refused:
+        print("- %s never-remote %s: %s" % (r["ts"], r.get("rule", "?"), what(r)))
 ' "$ledger" 2>/dev/null)" || out="_afk-sudo ledger unavailable._"
-    printf '## AFK sudo approvals\n\n%s' "$out"
+    printf '## AFK approvals\n\n%s' "$out"
 }
 
 # Assemble from the template ---------------------------------------------

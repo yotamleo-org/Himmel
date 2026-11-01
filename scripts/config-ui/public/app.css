@@ -1,6 +1,7 @@
 /* Theme tokens and the rail: theme.css. Layout: sticky left rail beside one scrolling column. Text in the UI font, monospace for data (ids, rows, codes), as the approved mockups set it. */
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:var(--fs-sm)/1.55 var(--font-ui);margin:0}
+a{color:var(--accent)}
 code,pre,kbd,.bhead,.row-head,.kv,.hrow .id,.hrow .ro{font-family:var(--font-mono)}
 .top{margin-top:2px;font:500 11px/1.4 var(--font-mono);color:var(--muted);overflow-wrap:anywhere;letter-spacing:0}
 .top .ver{display:block}
@@ -130,6 +131,17 @@ button.o{cursor:pointer}.o:focus-visible{outline:1px solid var(--accent);outline
 .btn.solid{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
 .btn.quiet{border-color:transparent;color:var(--muted)}
 .tile .num{font:700 var(--fs-xl)/1.1 var(--font-ui);color:var(--gc)}.tile.zero .num{color:var(--muted)}
+div.tile{cursor:default}.tiles.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+/* The mockup main column: one grid at the mockup body size (a page opts in with <div class="pg">); an unboxed
+   section whose h2 is the muted section line; the group panel, with the group colour (--gc) as its left edge. */
+.pg{display:grid;gap:var(--s3);align-content:start;min-width:0;font-size:var(--fs-base)}
+.pg>.ph,.pg>.tiles,.pg>p,.pg>section,.sec>.tiles,.sec>.sub,.p>.sub{margin:0}
+.sec{display:grid;gap:var(--s2);min-width:0}
+.sec>h2,.p>h2,.p-h>h2{font:700 11px var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0}
+.p{display:grid;gap:var(--s2);padding:var(--s3) var(--s4);border:1px solid var(--rule);border-left:4px solid var(--gc,var(--accent));border-radius:10px;background:var(--surface);min-width:0;overflow-wrap:anywhere}
+.p.need{border-color:var(--beta)}
+.p-h{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px var(--s3)}
+.p-h>h2 b{color:var(--gc,var(--accent));font-size:var(--fs-sm);margin-left:4px}
 @media (max-width:760px){.bar{grid-template-columns:90px minmax(0,1fr)}.bar>:last-child{grid-column:1/-1}}
 /* Health's shared feed sections keep UI text proportional and data monospace. */
 .box .row-head{font:var(--fs-sm)/1.5 var(--font-ui);padding:var(--s2) 0;grid-template-columns:74px 62px minmax(100px,200px) minmax(0,1fr) auto}
@@ -243,7 +255,7 @@ details.more{margin:6px 0}details.more>summary{cursor:pointer;color:var(--dim);p
 @media (max-width:760px){.rm-board{grid-template-columns:1fr 1fr}}
 /* Health page v2 (HIMMEL-8044): group tiles reuse the Configure tile; rows, tabs, Shared panel, project lines and the rail picker. Tokens only. */
 .g-chk{--gc:var(--accent)}.g-use{--gc:var(--road)}.g-job{--gc:var(--camp)}.g-srch{--gc:var(--alpha)}
-.htiles .tile{grid-template-columns:minmax(0,1fr)}.htiles .tile>*{grid-column:1}.htiles .tile .pill{justify-self:start;margin-top:4px}
+.htiles .tile .pill{justify-self:start;margin-top:4px}
 .fixact{white-space:nowrap}.alert .scope{margin-left:var(--s1)}
 .vhead .pills{display:flex;gap:var(--s1)}
 .pill.off{background:var(--surface-2);color:var(--muted)}.pill.scope,.scope{background:var(--note-soft);color:var(--note)}
@@ -259,15 +271,34 @@ details.bundle>summary{cursor:pointer;padding:6px 0}
 .minis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s2);margin:0 0 var(--s2)}
 .mini{border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3);display:grid;gap:2px}
 .prj .phead{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);margin:0 0 var(--s1)}.prj .phead .ro{flex:1 1 200px}
-.picker{display:grid;gap:4px;margin:var(--s3) 0 0;font:600 10.5px var(--font-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.picker{display:grid;gap:4px;margin:0 0 var(--s3);font:600 10.5px var(--font-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .picker select{font:var(--fs-sm) var(--font-ui);text-transform:none;letter-spacing:0;color:var(--ink);background:var(--surface);border:1px solid var(--rule-strong);border-radius:6px;padding:6px 8px;min-width:0;width:100%}
 @media (max-width:900px){.minis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-/* the Shift page (shift.js): scoped to .sh-* */
+/* the Shift page (shift.js, mockup v3): the shift line, then the shared group tiles and group panels */
+.g-wait{--gc:var(--beta)}.g-run{--gc:var(--accent)}.g-ship{--gc:var(--ship)}.g-carry{--gc:var(--road)}.g-chief{--gc:var(--camp)}
+.sh-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px var(--s3)}
 .sh-head .sh-title{font:600 var(--fs-md) var(--font-ui);margin:0}
-.sh-pager{display:flex;gap:var(--s3);align-items:center;margin:var(--s2) 0;font-size:var(--fs-sm)}
-.sh-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:var(--s2);margin-top:var(--s2)}
-.sh-tile{display:grid;gap:2px}
-.sh-tile b{font:600 var(--fs-xl) var(--font-ui)}
-.sh-tile span{color:var(--muted);font-size:var(--fs-xs)}
-.sh-list{list-style:none;margin:0;padding:0;display:grid;gap:var(--s2)}
+.sh-head .sub{margin:2px 0 0;font-size:var(--fs-sm);color:var(--muted)}
+.sh-pager{display:flex;gap:var(--s2);align-items:center;font:11px var(--font-mono);color:var(--muted)}
+.sh-list{list-style:none;margin:0;padding:0;display:grid}
+.sh-list li{padding:var(--s2) 0;border-top:1px solid var(--rule);font-size:var(--fs-sm)}.sh-list li:first-child{border-top:0}
+@media (max-width:520px){.tiles.three{grid-template-columns:minmax(0,1fr)}}
+/* the chief chain (mockup v3): a fixed-layout table row, each segment's colspan its share of the shift (no inline style under the CSP) */
+.chain{height:30px;border:1px solid var(--rule);border-radius:6px;overflow:hidden;background:var(--surface-2)}
+.chain table{width:100%;height:100%;table-layout:fixed;border-collapse:collapse}
+.cseg{padding:0;text-align:center;vertical-align:middle;font:700 10.5px/1 var(--font-mono);color:var(--camp);background:var(--camp-soft);border-right:1px solid var(--surface);overflow:hidden;white-space:nowrap}
+.cseg:nth-child(even){background:color-mix(in srgb,var(--camp) 24%,var(--surface))}
+.cseg.now{background:var(--camp);color:var(--surface)}
+.cseg.gap{background:var(--surface-2)}
+.cseg.fut{background:repeating-linear-gradient(135deg,var(--surface-2) 0 6px,var(--surface) 6px 12px);color:var(--muted);font-weight:500}
+.cseg small{display:block;font-weight:500;margin-top:2px}
+.chain-axis{display:flex;justify-content:space-between;font:10.5px var(--font-mono);color:var(--muted);margin-top:2px}
 .sh-badge{margin-left:var(--s1);font:700 10.5px var(--font-mono);padding:0 6px;border-radius:999px;background:var(--beta-soft);color:var(--beta)}
+/* the Morning report page (report.js): the day selector, the window bar and the report tables */
+.rp-days{display:flex;flex-wrap:wrap;gap:var(--s1);align-items:center}
+.rp-days .chip{text-decoration:none}
+.rp-more{display:inline-block}.rp-more summary{cursor:pointer;color:var(--muted);font:11px var(--font-mono)}
+.rp-bar{display:grid;gap:2px;color:var(--muted);font-size:var(--fs-sm)}
+.rp-list{margin:0;padding-left:var(--s4);display:grid;gap:var(--s1);font-size:var(--fs-sm)}
+.rp-list li{overflow-wrap:anywhere}
+#reports fieldset{border:0;padding:0;margin:0 0 var(--s2)}#reports label{display:block;margin:var(--s1) 0}

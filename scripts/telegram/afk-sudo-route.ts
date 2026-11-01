@@ -96,16 +96,33 @@ function eligible(access: Access, msg: AfkSudoMsg): boolean {
 // One helper call, fired not awaited; the nonce and code go on stdin only. A ran
 // approve is acknowledged without the helper's argv line: the command and its
 // redacted output come from root's notice bot, which no session can drive.
-function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny", id: string, code: string, from: number, chat_id: number): void {
-  const args = [verb, id, "--from", String(from), "--chat", String(chat_id)];
+function runVerb(deps: AfkSudoDeps, verb: "approve" | "deny" | "lockdown", id: string, code: string, from: number, chat_id: number): void {
+  const args = verb === "lockdown" ? [verb, "--from", String(from), "--chat", String(chat_id)] : [verb, id, "--from", String(from), "--chat", String(chat_id)];
   void deps.runHelper(args, verb === "approve" ? `${code}\n` : "")
     .then((res) => {
       const first = res.stdout.split("\n")[0]?.trim() || `exit ${res.code}`;
       const said = verb === "approve" && res.code === 0 && first.startsWith("result=ran ")
         ? "approved; the result comes from the notice bot" : first;
-      return deps.reply(chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo ${verb} ${id}: ${said}`);
+      return deps.reply(chat_id, `${res.code === 0 ? "✅" : "⚠️"} afk-sudo ${verb}${id && ` ${id}`}: ${said}`);
     })
     .catch((e) => deps.log(`[afk-sudo] ${verb} ${id} failed: ${e}`));
+}
+
+// `/afk-lockdown`: the one verb that only narrows. It carries no argument to the helper but the
+// sender and chat, so nothing typed after it can reach a flag; text after it is refused.
+const LOCKDOWN = /^\s*\/afk-lockdown(?:@\w+)?(?=\s|$)(.*)$/is;
+
+function lockdown(deps: AfkSudoDeps, msg: AfkSudoMsg, rest: string): true {
+  if (!eligible(deps.access(), msg)) {
+    deps.log("[afk-sudo] lockdown refused: not a typed message in the operator's private chat");
+    return true;
+  }
+  if (rest.trim() !== "") {
+    void deps.reply(msg.chat_id, "⚠️ afk-sudo: /afk-lockdown takes no arguments, nothing ran").catch(() => {});
+    return true;
+  }
+  runVerb(deps, "lockdown", "", "", msg.from, msg.chat_id);
+  return true;
 }
 
 // The prompt reply: the notice's four-character nonce, then the six-digit code.
@@ -153,6 +170,8 @@ function codeReply(deps: AfkSudoDeps, prompts: AfkSudoPrompts, msg: AfkSudoMsg, 
 export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (msg: AfkSudoMsg) => boolean {
   return (msg) => {
     if (!deps.installed()) return false;
+    const lock = LOCKDOWN.exec(msg.text);
+    if (lock) return lockdown(deps, msg, lock[1]);
     const prompt = prompts && msg.reply_to_message_id != null ? prompts.get(msg.chat_id, msg.reply_to_message_id) : null;
     if (prompt) return codeReply(deps, prompts!, msg, prompt);
     const line = parseAfkSudo(msg.text);

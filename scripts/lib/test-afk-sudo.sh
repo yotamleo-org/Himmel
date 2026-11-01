@@ -1452,6 +1452,99 @@ assert_eq "RED HIMMEL-7686: a grant file not root-only gives no allow" "" "$(gho
 
 open_regular_tests
 
+echo "== HIMMEL-8067 slice 4: lockdown turns the station off and denies the pending request =="
+# enabled_of: the config's "enabled" and "mode" as `<enabled> <mode>`, from the sandbox file.
+enabled_of() { python3 -I -c 'import json, sys; c = json.load(open(sys.argv[1] + "/etc/himmel/afk-sudo.json")); print(c.get("enabled"), c.get("mode", "-"))' "$R"; }
+new_root lockdown
+out=$(req 0); id=$(rid "$out")
+assert_contains "slice 4: a request is pending before the lockdown" "result=pending" "$out"
+out=$(h 1 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: lockdown answers locked" "result=locked" "$out"
+assert_contains "slice 4: lockdown names the request it denied" "denied=$id" "$out"
+assert_eq "slice 4: the config now reads enabled false" "False -" "$(enabled_of)"
+assert_eq "slice 4: the config file keeps its mode" "0o644" "$(python3 -I -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$R/etc/himmel/afk-sudo.json")"
+assert_contains "slice 4: the config keeps the class list" "systemctl-restart" "$(cat "$R/etc/himmel/afk-sudo.json")"
+assert_contains "slice 4: the pending request reads denied" "result=denied id=$id" "$(h 2 status "$id")"
+out=$(h 3 mode)
+assert_contains "slice 4: mode reports the station disabled" "enabled=false" "$out"
+out=$(req 4)
+assert_contains "slice 4: a new request is refused disabled" "result=disabled" "$out"
+assert_contains "slice 4: the ledger has a lockdown row" '"event": "lockdown"' "$(ledger)"
+assert_contains "slice 4: the lockdown row names the denied id" "\"denied\": [\"$id\"]" "$(ledger)"
+assert_contains "slice 4: the pending request has its own deny row" '"event": "deny"' "$(ledger)"
+assert_eq "slice 4: nothing ran" "0" "$(runs)"
+
+echo "== slice 4: lockdown with nothing pending, and on an already-off station =="
+new_root lockdown-idle
+out=$(h 0 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: an idle station locks down" "result=locked" "$out"
+assert_eq "slice 4: an idle station reads enabled false" "False -" "$(enabled_of)"
+out=$(h 1 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: a second lockdown is still locked" "result=locked" "$out"
+new_root lockdown-off false
+out=$(h 0 lockdown --from "$OP" --chat "$OP")
+assert_contains "slice 4: an already-off station answers locked" "result=locked" "$out"
+
+echo "== slice 4: concurrent lockdowns do not share a temporary file =="
+new_root lockdown-race
+printf 'stale' > "$R/etc/himmel/afk-sudo.json.lockdown.tmp"
+for n in 1 2 3 4 5 6 7 8; do
+    ( h 0 lockdown --from "$OP" --chat "$OP" > "$tmp/ld-race.$n" ) &
+done
+wait
+RACE_OK=0
+for n in 1 2 3 4 5 6 7 8; do grep -q '^result=locked' "$tmp/ld-race.$n" && RACE_OK=$((RACE_OK+1)); done
+assert_eq "slice 4: eight parallel lockdowns all answer locked" "8" "$RACE_OK"
+assert_eq "slice 4: the config reads enabled false after the race" "False -" "$(enabled_of)"
+assert_eq "slice 4: a file at the old fixed temp name is left alone" "stale" "$(cat "$R/etc/himmel/afk-sudo.json.lockdown.tmp")"
+assert_eq "slice 4: no temporary file of the lockdown is left behind" "1" "$(find "$R/etc/himmel" -maxdepth 1 -name '*tmp*' | wc -l | tr -d ' ')"
+
+echo "== slice 4: the pending request is read and denied under one broker lock, and the rename is synced =="
+new_root lockdown-lock
+req 0 > /dev/null
+# shellcheck disable=SC2016 # python source, not shell
+LOCKPROBE='import os, stat, sys
+sys.path.insert(0, sys.argv[1])
+import afk_sudo as s
+locks, dirsyncs, real_lock, real_fsync = [0], [0], s.ab.Broker._locked, os.fsync
+def counted(self):
+    locks[0] += 1
+    return real_lock(self)
+def synced(fd):
+    if stat.S_ISDIR(os.fstat(fd).st_mode):
+        dirsyncs[0] += 1
+    return real_fsync(fd)
+s.ab.Broker._locked = counted
+s.os.fsync = synced
+rc = s.main(["lockdown", "--from", sys.argv[2], "--chat", sys.argv[2]])
+print(f"locks={locks[0]} dirsyncs={dirsyncs[0]} rc={rc}")'
+out=$(AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + 1)) python3 -I -c "$LOCKPROBE" "$LIB" "$OP" 2>&1 | tail -n 1)
+assert_eq "slice 4: lockdown takes the broker lock once for the read and the deny, and syncs the config directory" "locks=1 dirsyncs=1 rc=0" "$out"
+
+echo "== slice 4: lockdown can only narrow =="
+new_root lockdown-sender
+out=$(req 0); id=$(rid "$out")
+out=$(h 1 lockdown --from 999 --chat 999)
+assert_contains "slice 4: another sender's lockdown is refused" "result=not-operator" "$out"
+out=$(h 1 lockdown --from "$OP" --chat 999)
+assert_contains "slice 4: a lockdown from another chat is refused" "result=not-operator" "$out"
+assert_eq "slice 4: a refused lockdown leaves the station on" "True -" "$(enabled_of)"
+assert_contains "slice 4: a refused lockdown leaves the request pending" "result=pending" "$(h 2 status "$id")"
+for extra in "--enable" "--enabled=true" "--mode=all" "--all" "true"; do
+    # shellcheck disable=SC2086
+    out=$(h 3 lockdown --from "$OP" --chat "$OP" $extra); rc=$?
+    assert_absent "slice 4: lockdown $extra does not lock or change anything" "result=locked" "$out"
+    assert_eq "slice 4: lockdown $extra leaves the station on" "True -" "$(enabled_of)"
+done
+new_root lockdown-off2 false
+out=$(h 0 lockdown --enable --from "$OP" --chat "$OP")
+assert_absent "slice 4: lockdown --enable never turns a station on" "result=locked" "$out"
+assert_eq "slice 4: an off station stays off after lockdown --enable" "False -" "$(enabled_of)"
+new_root lockdown-all
+python3 -I -c 'import json, sys; p = sys.argv[1] + "/etc/himmel/afk-sudo.json"; c = json.load(open(p)); c["mode"] = "all"; json.dump(c, open(p, "w"))' "$R"
+out=$(h 0 lockdown --from "$OP" --chat "$OP")
+assert_eq "slice 4: lockdown leaves the mode alone and only switches the station off" "False all" "$(enabled_of)"
+
 echo "== slice 1a: install.sh ships the floor and the new config keys =="
 INSTALL="$LIB/install.sh"
 # shellcheck disable=SC2016 # the install.sh text is matched literally, $LIBEXEC included

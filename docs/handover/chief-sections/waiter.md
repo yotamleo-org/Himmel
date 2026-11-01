@@ -184,6 +184,22 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     digest starts over. The relay takes no lock and sends nothing to a worker;
     the chief keeps every authority write (GO, judge, dispatch, Jira).
 
+    **A READY wakes you once, already checked** (HIMMEL-6540). Armed with
+    `--workers-from` and the `auto_go` flag off, a worker whose newest marker bullet
+    is `READY <pr> <head40> GREEN` wakes you with one line:
+    `WAKE ready <pr> <head40> ready-check=<PASS|FAIL> ci=<GREEN|RED|PENDING> coverage=<PASS|FAIL> disposition=<ok|open:<n>> out=<file>`,
+    plus the tick line. Before waking, the waiter ran `timeout -k 5 90 ready-check.sh
+    <pr> <head>`, one bounded `gh pr checks` read (a failed read is `PENDING`, never
+    `GREEN`) and `cr-disposition.sh check <pr> <head>` (read only; `open:?` = it
+    could not evaluate); `coverage=` is ready-check's item 7. The out file
+    (`<inbox>.wait.ready-<pr>`) holds the three outputs, tokens scrubbed. Do not
+    re-run ready-check or poll CI: read the diff, rule, and GO through `go.sh` or
+    `verdict-go.sh` as before, which run their own gates. It wakes once per (PR,
+    head) (`<inbox>.wait.readywoke`): the same head written again wakes nothing,
+    a new head wakes again. A READY that is not the newest bullet, or does not
+    carry a 40-hex head, still wakes as `WAKE tick changed=tails,acts`. Workers
+    write READY as a bullet only, never a message.
+
     **A hold wakes you once.** `WAKE tick changed=holds` means a worker entered the
     `holds=` set (`BLOCKED`, or a `FINDING` awaiting a ruling, untouched for
     `TICK_HOLD_MIN` minutes, default 20): read its newest bullet and answer it. It
@@ -203,3 +219,5 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     invalid) stays as the fallback for an absolute spelling. The chief never
     re-spells the command to dodge a refusal: it sends the operator the exact
     line and holds.
+
+    **A classifier-refused native worker.** The `DENIAL-PAGE` Telegram names the Remote Control session to open (the worker's session name) when that worker runs with `--remote-control`: the operator answers from the Claude app, in the worker's own window. A native plain-worker `--profile` launch carries the flag by default; claudex (the shim refuses the flag on a lane launcher), a judge, a relay, a release manager, a consult and a headless session never do. For a native worker that lacks it, `bash <kit>/enable-remote-control.sh [--relaunch] <session-name> <signal-file> <deadline-epoch> <log>` reports it (exit 5 plans the relaunch and ends nothing; `--relaunch` runs the launcher `--dry-run` first and ends nothing if that fails (exit 7), then ends that session and relaunches the same name on the same doc, model, profile, owning chief and `WORKER_SESSION_EFFORT`, destroying its context window; the profile comes from the launch record line whose `session_id` is the live session's own; a consult, judge, relay, release manager, A/B-arm or context-mode launch is refused, exit 4, since a relaunch would not restore it).

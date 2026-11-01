@@ -364,7 +364,18 @@ g4_secret_path() {
         */.ssh/*)
             case "$b" in *.pub|known_hosts|known_hosts.old|config|authorized_keys) return 1 ;; esac
             return 0 ;;
+        */config-audit|*/config-audit/backups|*/config-audit/backups/*) return 0 ;;
+        */.himmel/secrets|*/.himmel/secrets/*)                          return 0 ;;
     esac
+    # A config-audit backup holds a copy of the .env, so its tree is matched on the
+    # canonical path too: a symlink to it, or through a linked directory, is the same file.
+    # A link chain that does not resolve (a loop, or past the hop cap) is refused.
+    local raw="${1//[\'\"]/}" c
+    case "$raw" in \~/*) raw="$HOME/${raw#\~/}" ;; esac
+    if [ -e "$raw" ] || [ -L "$raw" ]; then
+        c=$(guard_canon_path "$raw") || return 0
+        case "$c" in */config-audit|*/config-audit/backups|*/config-audit/backups/*|*/.himmel/secrets|*/.himmel/secrets/*) return 0 ;; esac
+    fi
     return 1
 }
 

@@ -83,6 +83,7 @@
 
 import argparse
 import json
+import math
 import os
 import shutil
 import signal
@@ -557,8 +558,20 @@ def main(argv):
     ap.add_argument("--head", required=True, help="hook path or sha:REL/PATH")
     ap.add_argument("--corpus", required=True, help="JSONL from gen")
     ap.add_argument("--repo", default=".", help="repo for sha: specs")
-    ap.add_argument("--timeout-run", type=float, default=15.0,
-                    help="per-row hard timeout (kills the hook)")
+    # GUARD_CORPUS_TIMEOUT_RUN: a loaded CI shard can starve a sandbox launch
+    # past 15s (a TIMEOUT row is ODD-RC, exit 3); the suite raises the default.
+    def _timeout_secs(text):
+        # nan/inf pass float() but make communicate() raise, which would exit 1
+        # (the regression code); reject them as a usage error instead.
+        val = float(text)
+        if not math.isfinite(val) or val <= 0:
+            raise argparse.ArgumentTypeError("must be a finite number > 0: %r" % text)
+        return val
+
+    ap.add_argument("--timeout-run", type=_timeout_secs,
+                    default=os.environ.get("GUARD_CORPUS_TIMEOUT_RUN", "15"),
+                    help="per-row hard timeout (kills the hook); default 15 or "
+                         "$GUARD_CORPUS_TIMEOUT_RUN")
     ap.add_argument("--timeout-warn", type=float, default=5.0,
                     help="wall time over this => TIMEOUT RISK")
     ap.add_argument("--jobs", type=int, default=8)

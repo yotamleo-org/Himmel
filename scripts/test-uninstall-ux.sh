@@ -101,6 +101,10 @@ fixture() {
     printf '#!/usr/bin/env bash\nexit 0\n' > "$FX_HOME/.claude/graphmap-cadence/run.sh"
     printf '{"flows":[{"name":"graphmap","cadence_seconds":3600}],"expected_tasks":["graphmap"]}\n' \
         > "$FX_HOME/.himmel/observability.json"
+    # a config audit backup holds a copy of the .env; the audit log beside it holds key names only
+    mkdir -p "$FX_HOME/.himmel/state/config-audit/backups/b1"
+    printf 'FIXTURE_KEY=fixture\n' > "$FX_HOME/.himmel/state/config-audit/backups/b1/.env"
+    printf '{"keys":["FIXTURE_KEY"]}\n' > "$FX_HOME/.himmel/state/config-audit/audit.jsonl"
     printf '%s\n' "$SETTINGS_JSON" > "$FX_HOME/.claude/settings.json"
     printf '%s\n' "$SETTINGS_JSON" > "$FX_PROJ/.claude/settings.json"
     git -C "$FX_PROJ" init -q 2>/dev/null
@@ -280,6 +284,8 @@ else pass "D1 dry-run issued only read-only claude calls"; fi
 assert_has "D1 lists the telegram channel path" "$FX_HOME/.claude/channels/telegram" "$out"
 assert_has "D1 lists the bridge path" "$FX_HOME/.claude/handover/bridge" "$out"
 assert_has "D1 lists the cache path" "$FX_HOME/.claude/himmel" "$out"
+assert_has "D1 lists the config audit backups" "$FX_HOME/.himmel/state/config-audit/backups" "$out"
+assert_exists "D1 dry-run keeps the config audit backups" "$FX_HOME/.himmel/state/config-audit/backups/b1/.env"
 assert_has "D1 lists the user settings file" "$FX_HOME/.claude/settings.json" "$out"
 assert_has "D1 lists the project settings file" "$FX_PROJ/.claude/settings.json" "$out"
 assert_has "D1 lists the git hooks it would remove" "$FX_PROJ/.git/hooks/pre-commit" "$out"
@@ -335,6 +341,8 @@ assert_absent "S1 pipeline-cadence dir removed (himmel's own code)" "$FX_HOME/.c
 assert_absent "S1 qmd-cadence dir removed (himmel's own code)" "$FX_HOME/.claude/qmd-cadence"
 assert_absent "S1 graphmap-cadence dir removed (himmel's own code)" "$FX_HOME/.claude/graphmap-cadence"
 assert_absent "S1 observability registry removed (himmel's own bookkeeping)" "$FX_HOME/.himmel/observability.json"
+assert_absent "S1 config audit backups removed (each holds a .env copy)" "$FX_HOME/.himmel/state/config-audit/backups"
+assert_exists "S1 config audit log kept (key names only)" "$FX_HOME/.himmel/state/config-audit/audit.jsonl"
 
 # ── S2 — --purge-state ALSO removes operator state (distinct outcome) ──────
 fixture s2

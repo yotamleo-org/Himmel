@@ -233,6 +233,17 @@ subagent policy). Loop
 fix → re-critic until it returns clean, **cap 2 rounds** (then advance with
 any residual findings noted).
 
+**Save every critic return as a verdict file (HIMMEL-8353).** After each round,
+write the critic's return verbatim, in both modes, to
+`<spec-file>.critic-spec-r<n>.md` beside the spec (`<n>` = the round, from 1).
+Its last line is the verdict: `SPEC CLEAN`, or `SPEC FINDINGS <count>`. If the
+critic did not end with that line, append it yourself (`<count>` = the findings
+in the return). Never edit the critic's text. `jira release operator spec`
+signs the spec with the last round's file and hashes it. It refuses a last line
+in any other form. A `FINDINGS` file signs only when the spec's
+`## Critic rounds` section gives each residual a
+`- R<n>: fixed|ASSUMPTION|ponytail|deferred → HIMMEL-<n>` line.
+
 CHARTER — the single source is **`panel-charter.md`** in this skill dir; paste
 its contents into the subagent prompt verbatim. Do NOT inline a second copy here
 — the file is the one source, shared with the panel lane below (two prose-synced
@@ -292,6 +303,10 @@ Terminal section.
 Dispatch a fresh subagent (Agent tool, `model: sonnet` at high effort) against
 the written plan file. Loop
 fix → re-critic until clean, **cap 2 rounds**.
+
+Save each return as Stage 2 does, beside the **spec** (not the plan):
+`<spec-file>.critic-plan-r<n>.md`, ending in `PLAN CLEAN` or
+`PLAN FINDINGS <count>`.
 
 CHARTER — the single source is **`plan-charter.md`** in this skill dir; paste its
 contents into the subagent prompt verbatim (no inline second copy — same

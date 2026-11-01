@@ -17,6 +17,9 @@
   "scripts/handover/chief-kit/go.sh": {
     "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO", "HIMMEL_LEGACY_NAMES"]
   },
+  "scripts/handover/chief-kit/auto-go.sh": {
+    "seam_env_vars": ["AUTO_GO_ANCHOR", "AUTO_GO_BUS", "AUTO_GO_CENSUS", "GH_CMD", "JIRA_CMD", "HIMMEL_LEGACY_NAMES"]
+  },
   "scripts/handover/merge-fork-pr.sh": {
     "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO", "HIMMEL_LEGACY_NAMES"]
   },
@@ -30,7 +33,7 @@
     "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/headed-arm-worker.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_ALLOW_TICKET_DUP", "HIMMEL_POLICY_FOLLOWS_HOME", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/lib/claude-headless.sh": {
     "seam_env_vars": ["NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK", "HIMMEL_DISPATCH_MAX_CONCURRENT", "HIMMEL_DISPATCH_ROW_TTL_SECS", "HIMMEL_HEADLESS_SEAM_DIR", "HIMMEL_HEADLESS_NO_FLOCK", "HIMMEL_LEGACY_NAMES"]

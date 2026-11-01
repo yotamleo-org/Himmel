@@ -555,6 +555,7 @@ printf '{}\n' > "$fxP/.claude/settings.json"
 cp "$repo_root/scripts/trust/wire-trust-hooks.mjs" "$fxP/scripts/trust/wire-trust-hooks.mjs"
 cp "$repo_root/scripts/trust/shadow-ledger.mjs" "$fxP/scripts/trust/shadow-ledger.mjs"
 cp "$repo_root/scripts/lib/settings-lock.mjs" "$fxP/scripts/lib/settings-lock.mjs"
+cp "$repo_root/scripts/lib/config-audit.cjs" "$fxP/scripts/lib/config-audit.cjs"
 cp "$repo_root/scripts/lib/is-main.mjs" "$fxP/scripts/lib/is-main.mjs"
 
 # P1: `himmelctl profile list` dispatches to the stub with EXACTLY ["list"]

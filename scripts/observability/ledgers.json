@@ -121,6 +121,19 @@
       "grandfathered": true
     },
     {
+      "id": "branch-deletes",
+      "default_path": "~/.himmel/branch-deletes.log",
+      "override_env": "HIMMEL_BRANCH_DELETE_LOG",
+      "writer": "scripts/git/delete-approved-branch.sh",
+      "readers": [],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "hook-chain-skips",
       "default_path": "<repo>/.claude/logs/hook-chain-skips.jsonl",
       "override_env": "RUN_HOOK_CHAIN_SKIP_LOG",
