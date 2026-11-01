@@ -33,6 +33,8 @@
 #      LAUNCH_GUEST_TICKET (cost ledger ticket; default the HIMMEL-n of the branch, else unknown),
 #      LAUNCH_GUEST_ACCOUNT (cost ledger account label, never a token; default the VM name),
 #      LAUNCH_GUEST_COST_LEDGER (ledger path; default <handover root>/.ledger/vm-cost.jsonl),
+#      HIMMEL_GUEST_REPO (the himmel checkout on the guest, an absolute or ~/ guest path; default
+#        ~/Documents/github/himmel; a host shell expands a bare ~ in an assignment, so pass an absolute path),
 #      LAUNCH_GUEST_WARN_PCT (guest account share of its limit, a number, default 80, from which a
 #        launch prints one WARN line; an account at 100 or more is refused),
 #      LAUNCH_GUEST_USAGE (guest usage command run as `<cmd> <vm> usage`; default scripts/lib/vmsdk.py).
@@ -51,7 +53,14 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VMS_JSON="${LAUNCH_GUEST_VMS_JSON:-$HERE/../lib/vms.json}"
 # shellcheck disable=SC2088  # the guest shell, not this one, expands the tilde
-GUEST_REPO='~/Documents/github/himmel'
+GUEST_REPO="${HIMMEL_GUEST_REPO:-~/Documents/github/himmel}"
+# spliced into the guest shell, so an override is an absolute or ~/ guest path of a closed shape
+# shellcheck disable=SC2088  # a literal ~/ prefix of a guest path, not a host expansion
+case "$GUEST_REPO" in
+    */../*|*/..|*[!A-Za-z0-9._/~-]*) echo "launch-guest: HIMMEL_GUEST_REPO must be an absolute or ~/ guest path of [A-Za-z0-9._/-], no .." >&2; exit 2 ;;
+    '~/'*|/*) ;;
+    *) echo "launch-guest: HIMMEL_GUEST_REPO must be an absolute or ~/ guest path of [A-Za-z0-9._/-], no .." >&2; exit 2 ;;
+esac
 ALLOWED_TOOLS='Read,Grep,Glob,Edit,Write,Bash(git:*),Bash(bash scripts/*:*)'
 DRY=0; LANE=native; CMODEL=""; DEBUG=""
 USAGE="usage: launch-guest.sh [--dry-run] [--lane native|claudex] [--classifier-model <m>] [--debug-file <guest path>] <vm> <prompt-file>"

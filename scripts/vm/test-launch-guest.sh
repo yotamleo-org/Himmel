@@ -404,6 +404,22 @@ fresh; rm -f "$LEDGER"
 rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>/dev/null)" || rc=$?
 check "E8 non-json answer: still one row, model null" "$(rows)$(jq -r '.model | type' "$LEDGER" 2>/dev/null)" "1null"
 
+# the guest checkout path is one override, a closed shape because it is spliced into the guest shell
+rc=0; out="$(run --dry-run ubuntu_new "$P")" || rc=$?
+contains "G1 default guest repo is unchanged" "$out" 'cd ~/Documents/github/himmel &&'
+rc=0; out="$(HIMMEL_GUEST_REPO=/srv/guest-checkout/himmel run --dry-run ubuntu_new "$P")" || rc=$?
+check "G1 absolute override: exit 0" "$rc" "0"
+contains "G1 absolute override: the guest cd uses it" "$out" 'cd /srv/guest-checkout/himmel &&'
+lacks "G1 absolute override: the default is gone" "$out" "Documents/github/himmel"
+rc=0; out="$(HIMMEL_GUEST_REPO='~/himmel' run --dry-run ubuntu_new "$P")" || rc=$?
+contains "G1 ~/ override stays a literal tilde for the guest shell" "$out" 'cd ~/himmel &&'
+for bad in 'himmel' '/x; id' '/x y' '/a/../b' '~/../b' '$(id)' '/a`id`'; do
+    fresh; rc=0; out="$(HIMMEL_GUEST_REPO="$bad" runv ubuntu_new "$P")" || rc=$?
+    check "G2 bad override [$bad]: exit 2" "$rc" "2"
+    contains "G2 bad override [$bad]: says so" "$out" "HIMMEL_GUEST_REPO must be"
+    check "G2 bad override [$bad]: no ssh" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
+done
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
 echo "FAIL - test-launch-guest.sh ($fails failure(s))"; exit 1
