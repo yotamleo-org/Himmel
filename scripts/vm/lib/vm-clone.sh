@@ -251,8 +251,8 @@ sys.exit(1) if not ssh_fwds else print(ssh_fwds[0][3])
     # CLONE_NAME lock alone does not close this race: two slot-holders
     # creating himmel-ar-1 and himmel-ar-2 for the FIRST time never contend
     # on the SAME lock name, so without this they could both read "port 2231
-    # is free" and both claim it. Held only for the creation span — never
-    # needed again once a clone's own forward is on record.
+    # is free" and both claim it. Held only for the creation span here, and
+    # for the fixed-port check of an existing clone above.
     _vm_registry_lock "creating $CLONE_NAME"
     if [ -n "$want_port" ]; then
         _claimed=$(vm_ar_claimed_ports)
