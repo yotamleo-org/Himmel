@@ -265,7 +265,7 @@ while IFS= read -r sc_dir; do
     # fetched by name: --all skips a remote set to remote.<name>.skipFetchAll.
     sc_fetch_err=""
     if ! sc_remotes=$(sc_git -C "$sc_dir" remote 2>&1); then
-        sc_fetch_err="$sc_remotes"
+        sc_fetch_err="cannot list remotes: $sc_remotes"
     else
         while IFS= read -r sc_remote; do
             [ -n "$sc_remote" ] || continue
