@@ -962,12 +962,14 @@ short_cluster_has_O() { # short_cluster_has_O <word> <subcommand or ''>
 # command word is a reader, git or echo, none of which assigns a shell
 # variable; no word assigns IFS; a substitution, group, subshell, if, while or
 # case, or a name bash changes on its own, is unbound. Fails closed.
+# ST_BV holds every value the command gives the name.
 ST_SAFE_RE='^[A-Za-z0-9_./:@+,%=][A-Za-z0-9_./:@+,%=-]*$'
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
 ST_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
 st_bound() {
     local n=$1 use=$2 s=0 k=0 a b c v depth=0 bound=0 ok=0 i pb
     local -a fb
+    ST_BV=()
     case "$n" in
         [a-z]*) ;;
         BASH* | COMP* | EPOCH* | RANDOM | SRANDOM | SECONDS | LINENO | HISTCMD | \
@@ -994,6 +996,7 @@ st_bound() {
                 case "${ST_W[i]%%=*}" in
                     IFS) return 1 ;;
                     "$n") [ "${ST_X[i]}${ST_G[i]}" = 00 ] && [[ $v =~ $ST_SAFE_RE ]] || return 1
+                        ST_BV+=("$v")
                         if [ "$c" = "$a" ] && [ "$depth" = 0 ] && [ "${ST_SEP[s]}" != '|' ] && [ "$s" -lt "$use" ] \
                             && { [ "$s" = 0 ] || [ "${ST_SEP[s - 1]}" = ';' ] || [ "${ST_SEP[s - 1]}" = nl ]; }; then
                             pb=1
@@ -1018,6 +1021,7 @@ st_bound() {
                         i=$((c + 3))
                         while [ "$i" -lt "$b" ]; do
                             [ -z "${ST_RO[i]}" ] && [ "${ST_X[i]}${ST_G[i]}" = 00 ] && [[ ${ST_W[i]} =~ $ST_SAFE_RE ]] || return 1
+                            ST_BV+=("${ST_W[i]}")
                             i=$((i + 1))
                         done
                     fi
@@ -1035,16 +1039,21 @@ st_bound() {
     done
     [ "$depth" = 0 ] && [ "$ok" = 1 ]
 }
-# st_bound_word <word index> - true when the word's every $ is a $NAME or
-# ${NAME} st_bound proves holds one safe literal and the word has no glob;
-# REPLY is the word with each reference read as the letter x.
+# st_bound_word <word index> <any> - true when the word's every $ is a $NAME
+# or ${NAME} st_bound proves bound to safe literals, and the word has no glob
+# and is no -c or --config-env value (read from the raw next word); REPLY is
+# the word with each reference replaced by its value. A name with several
+# values passes only when <any> is 1 (a slot where every value reads alike).
 st_bound_word() {
-    local t=${ST_W[$1]} r
+    local t=${ST_W[$1]} r p q v i
     [ "${ST_G[$1]}" = 0 ] || return 1
+    case "${ST_W[$1 - 1]:-}" in -c | --config-env) return 1 ;; esac
     while [[ $t =~ $ST_REF_RE ]]; do
-        r=${BASH_REMATCH[2]#\{}
-        t="${BASH_REMATCH[1]}x${BASH_REMATCH[3]}"
+        r=${BASH_REMATCH[2]#\{} p=${BASH_REMATCH[1]} q=${BASH_REMATCH[3]}
         st_bound "${r%\}}" "${ST_S[$1]}" || return 1
+        v=${ST_BV[0]}
+        for i in "${ST_BV[@]}"; do [ "$i" = "$v" ] || [ "${2:-0}" = 1 ] || return 1; done
+        t="$p$v$q"
     done
     case "$t" in *'$'*) return 1 ;; esac
     REPLY=$t
@@ -1086,8 +1095,9 @@ git_mentions_only() { # git_mentions_only <command-word index>
     while [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; do
         w=${ST_W[j]}
         if [ -n "${ST_RO[j]}" ]; then j=$((j + 1)); continue; fi
-        # a $NAME the command bound to one safe literal reads as a plain word
-        if [ "${ST_X[j]}${ST_G[j]}" = 10 ] && st_bound_word "$j"; then
+        # a $NAME the command bound to safe literals reads as its value; any
+        # of several values reads alike only as a -C directory (dir=1)
+        if [ "${ST_X[j]}${ST_G[j]}" = 10 ] && st_bound_word "$j" "$dir"; then
             w=$REPLY
         elif [ "${ST_X[j]}${ST_G[j]}" != 00 ]; then
             # an expanded word that can begin with `-` may become
