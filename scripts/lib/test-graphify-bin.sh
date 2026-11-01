@@ -136,6 +136,13 @@ assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, si
   grep -qE "'graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}'" <<<"$hint"
 fork_ref="$(env -u GRAPHIFY_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_fork_ref')"
 assert "hint installs the resolver's own fork commit" grep -qF "yotamleo-org/graphify@$fork_ref'" <<<"$hint"
+# The pin is the fork rebased on upstream v8 (0.9.99).
+assert "default fork ref is the v8 rebase tip (HIMMEL-8386)" \
+  test "$fork_ref" = "73e634aabca19d9694b4065cf0cea817f4f62a65"
+assert "default version is the v8 fork stamp 0.9.99+himmel.1 (HIMMEL-8386)" \
+  test "$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version')" = "0.9.99+himmel.1"
+assert "upstreams.json graphify synced_base is 0.9.99 (HIMMEL-8386)" \
+  test "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const l=Array.isArray(r)?r:(r.upstreams||r.entries||[]);console.log(l.find(e=>e.name==="graphify").synced_base)' "$SCRIPT_DIR/../upstreams.json")" = "0.9.99"
 assert "hint carries --with mcp (HIMMEL-996: upstream keeps the mcp dep optional)" \
   grep -q -- '--with ' <<<"$hint"
 assert "hint binds the patched mcp floor, single-quoted (the extras do not pull mcp in)" \
