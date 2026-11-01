@@ -18,7 +18,7 @@
     { "name": "TICKET_ID_PATTERN", "class": "config", "explanation": "Regular expression matching a ticket ID.", "effect": "The commit-message gate uses this pattern instead of its tracker default." },
     { "name": "TICKET_ID_EXEMPT_AUTHORS", "class": "config", "explanation": "Authors exempt from the ticket-ID check.", "effect": "Listed authors may commit without a ticket ID." },
     { "name": "TRACKER", "class": "config", "explanation": "Ticket tracker: jira, local or none.", "effect": "Chooses ticket lookup and commit-message rules." },
-    { "name": "HIMMEL_TRACKER_TEAM_MODE", "class": "config", "explanation": "Team mode for the tracker board: on or off (default off).", "effect": "Off: any real status-drift row is a doctor warning. On: team mode, status drift is shown as information only." },
+    { "name": "HIMMEL_TRACKER_TEAM_MODE", "class": "config", "explanation": "Team mode for the tracker board: on or off (default off).", "effect": "Off: any real status-drift row is a doctor warning. On: fresh, readable real status-drift rows are shown as information; unknown, stale, or unreadable drift data remains a doctor warning." },
     { "name": "JIRA_EMAIL", "class": "config", "explanation": "Atlassian account email paired with your Jira token.", "effect": "Jira requests authenticate as this account; the token stays in the secret store." },
     { "name": "JIRA_PROJECTS", "class": "config", "explanation": "Jira projects this installation works with.", "effect": "Scopes multi-project Jira operations." },
     { "name": "JIRA_PROJECT_KEY", "class": "config", "explanation": "Default Jira project prefix, such as ABC.", "effect": "Selects the default project for Jira commands." },
