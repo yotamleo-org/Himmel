@@ -179,8 +179,8 @@ flagged is skipped.
 ### Backfilling the thread onto every X clip (`x-thread-backfill.mjs`)
 
 Clips enriched before HIMMEL-8667 kept only post 1. The backfill re-fetches the
-thread of **every** X clip under `Clippings/` (one level of subfolders too),
-not only the `needs_thread: true` ones:
+thread of **every** X clip under `Clippings/` at any depth (archived clips in
+`_done/YYYY-MM/` too; `_media/` and `_synthesis/` are skipped), not only the `needs_thread: true` ones:
 
 ```bash
 node x-thread-backfill.mjs --vault ~/Documents/luna                 # dry run: fetch + report, writes nothing

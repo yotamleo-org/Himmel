@@ -4,6 +4,9 @@
  * <vault>/Clippings/ and keep the author's self-thread (and link-bearing
  * replies) under `## Thread`. Same capture as fxtwitter-enrich.mjs.
  *
+ * Walks Clippings/ at any depth (archived clips in _done/YYYY-MM/ included;
+ * _media and _synthesis are skipped).
+ *
  * Usage:
  *   node x-thread-backfill.mjs --vault <dir> [--apply] [--limit N] [--resume-after <rel path>]
  *
@@ -24,9 +27,23 @@
  *
  * Exit: 0 done, 1 bad usage, 3 at least one guarded write was reverted.
  */
-import { existsSync } from "node:fs";
-import { relative, sep } from "node:path";
-import { findClips, rethreadClip } from "./fxtwitter-enrich.mjs";
+import { existsSync, readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { rethreadClip } from "./fxtwitter-enrich.mjs";
+
+// Every .md under Clippings/ at any depth (archived clips live in _done/YYYY-MM/).
+// _media holds downloaded media and _synthesis holds notes, not clips.
+const SKIP_DIRS = new Set(["_media", "_synthesis"]);
+function findAllClips(dir, out = []) {
+  let entries;
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) findAllClips(p, out); }
+    else if (e.isFile() && e.name.endsWith(".md")) out.push(p);
+  }
+  return out;
+}
 
 function usage(code) {
   const out = code === 0 ? console.log : console.error;
@@ -56,7 +73,7 @@ const counts = { seen: 0, "adds-text": 0, "no-new-text": 0, "fetch-failed": 0 };
 let writeFailed = 0;
 let skippedNonX = 0;
 let done = 0;
-for (const clip of findClips(args.vault)) {
+for (const clip of findAllClips(join(args.vault, "Clippings")).sort()) {
   const rel = relative(args.vault, clip).split(sep).join("/");
   if (args.resumeAfter && rel <= args.resumeAfter) continue;
   if (args.limit > 0 && done >= args.limit) break;

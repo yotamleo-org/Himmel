@@ -826,6 +826,11 @@ mkdir -p "$bf_fx"
 mk_x_clip "$bf_vault" theo.md theo 2114653423937507555
 cp "$THEO_FX" "$bf_fx/2114653423937507555.json"
 mk_x_clip "$bf_vault" single.md solo 81
+# Archived clips live below Clippings/_done/<month>/: the walk must reach them.
+mkdir -p "$bf_vault/Clippings/_done/2026-05"
+cp "$bf_vault/Clippings/single.md" "$bf_vault/Clippings/_done/2026-05/deep-single.md"
+mk_x_clip "$tmpdir/bf-deep" deep-theo.md theo 2114653423937507555
+cp "$tmpdir/bf-deep/Clippings/deep-theo.md" "$bf_vault/Clippings/_done/2026-05/deep-theo.md"
 cat >"$bf_fx/81.json" <<'EOF'
 { "code": 200, "thread": [ { "id": "81", "author": { "screen_name": "solo" }, "text": "only post" } ] }
 EOF
@@ -861,7 +866,7 @@ t21_rc=$?
 assert "Test21: dry-run exits 0" "0" "$t21_rc"
 assert "Test21: dry-run writes nothing (vault checksum unchanged)" "$sum0" "$(vault_sum "$bf_vault")"
 assert "Test21: dry-run summary carries the four counts" \
-    "summary: seen=4 adds-text=2 no-new-text=1 fetch-failed=1" \
+    "summary: seen=6 adds-text=3 no-new-text=2 fetch-failed=1" \
     "$(grep '^summary:' "$tmpdir/t21-dry.out")"
 t21_per=no; grep -q "theo.md.*adds-text" "$tmpdir/t21-dry.out" && grep -q "broken.md.*fetch-failed" "$tmpdir/t21-dry.out" && grep -q "single.md.*no-new-text" "$tmpdir/t21-dry.out" && t21_per=yes
 assert "Test21: dry-run prints a verdict per clip" "yes" "$t21_per"
@@ -876,7 +881,7 @@ sum1="$(vault_sum "$bf_vault")"
 FXT_THREAD_FIXTURE_DIR="$bf_fx" node "$BACKFILL" --vault "$bf_vault" --apply >"$tmpdir/t21-apply2.out" 2>&1
 assert "Test21: a second --apply is a byte-identical no-op" "$sum1" "$(vault_sum "$bf_vault")"
 assert "Test21: second run reports nothing left to add" \
-    "summary: seen=4 adds-text=0 no-new-text=3 fetch-failed=1" \
+    "summary: seen=6 adds-text=0 no-new-text=5 fetch-failed=1" \
     "$(grep '^summary:' "$tmpdir/t21-apply2.out")"
 
 # -- Summary -----------------------------------------------------------
