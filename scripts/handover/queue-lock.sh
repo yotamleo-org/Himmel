@@ -2169,11 +2169,12 @@ queue_lock_adopt() {
         echo "queue-lock: adopt needs a session scope (CLAUDE_CODE_SESSION_ID or QUEUE_LOCK_SESSION_SCOPE); nothing registered" >&2
         return 2
     fi
-    if ! _ql_owner_matches "$lockdir" "$session"; then
+    o_session=""
+    [ -f "$lockdir/owner.json" ] && o_session=$(_ql_json_field "$lockdir/owner.json" session)
+    if [ -z "$o_session" ] || ! _ql_token_matches "$session" "$o_session"; then
         echo "queue-lock: adopt refused -- no lock for this queue is held by that token; nothing registered" >&2
         return 2
     fi
-    o_session=$(_ql_json_field "$lockdir/owner.json" session)
     _ql_token_persist "$ho" "$o_session" "$lockdir"
     _ql_acquire_liveness "$lockdir"
     echo "queue-lock: adopted (session=$o_session): this session's self-heartbeat now keeps it fresh"
