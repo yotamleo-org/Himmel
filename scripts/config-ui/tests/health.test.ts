@@ -46,7 +46,7 @@ test("renderHealth escapes every feed, ledger and alert string", () => {
 // Frame 9: with no feed yet the strip says No data and every tile names the source it waits for; no panel opens.
 test("renderHealth with no feed and no health still renders the strip, the tiles and the trends", () => {
   const html = renderHealth(null, null);
-  expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(["Is this project working right now?", "Trends"]);
+  expect([...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1])).toEqual(["Trends"]);
   expect([...html.matchAll(/data-act="health-tile"/g)].length).toBe(4);
   expect(html).toContain("waiting for the doctor feed");
   expect(html).not.toContain('id="workers"'); // the worker list lives on Fleet (Q2)
@@ -83,6 +83,21 @@ test("the Health row status pills have one width and centred text", async () => 
   expect(rule![1]).toContain("flex:none");
   expect(rule![1]).toContain("min-width:4.6em");
   expect(rule![1]).toContain("text-align:center");
+});
+
+// The approved v2 mockup has no heading over the strip; the section keeps an accessible name.
+test("the verdict strip has no visible heading, only an accessible name", () => {
+  const html = renderHealth(null, null);
+  expect(html).not.toContain("Is this project working right now?</h2>");
+  expect(html).toMatch(/<section id="verdict" class="sec" aria-label="Is this project working right now\?">/);
+});
+
+// At phone width the rail's links wrap in a row; the Health picker takes a full line of its own.
+test("the rail project picker takes its own line when the rail wraps", async () => {
+  const css = await Bun.file(new URL("../public/app.css", import.meta.url)).text();
+  const rule = /(?:^|\n)\.pages \.picker\{([^}]*)\}/.exec(css);
+  expect(rule).not.toBeNull();
+  expect(rule![1]).toContain("flex:1 0 100%");
 });
 
 const own = (id: string, health: string, fix: object = {}) => r(id, health, { scope: "project", fix: { by: "chief", ...fix } });
@@ -139,9 +154,9 @@ test("a firing alert carries one who-fixes-it answer, the chief's", () => {
 test("one tile panel is open at a time, and Checks opens by itself only on a problem", () => {
   const h2s = (html: string) => [...html.matchAll(/<h2 [^>]*>([^<]*)</g)].map((m) => m[1]);
   const bad = feed(own("a", "fail"), r("cadence:qmd", "ok", { source: "cadence", scope: "shared" }), r("qmd-index", "ok", { bundle: "search", scope: "shared" }));
-  expect(h2s(renderHealth(bad, null))).toEqual(["Is this project working right now?", "Checks", "Trends"]);
+  expect(h2s(renderHealth(bad, null))).toEqual(["Checks", "Trends"]);
   const calm = feed(own("a", "ok"));
-  expect(h2s(renderHealth(calm, null))).toEqual(["Is this project working right now?", "Trends"]);
+  expect(h2s(renderHealth(calm, null))).toEqual(["Trends"]);
   expect(renderHealth(calm, null)).toContain("nothing broken");
   expect(h2s(renderHealth(bad, null, { tile: "jobs" }))).toContain("Scheduled jobs");
   expect(h2s(renderHealth(bad, null, { tile: "jobs" }))).not.toContain("Checks");
