@@ -179,6 +179,10 @@ if [ "$cmd" = "api" ]; then
             esac
             exit 0 ;;
         repos/octo/demo/branches/main/protection/required_status_checks)
+            # GitHub answers this endpoint only for an admin token: the read-only token is refused.
+            if [ "${GH_STUB_CLASSIC_ADMIN_ONLY:-}" = 1 ] && [ "$_tok" = read ]; then
+                echo "gh: Must have admin rights to Repository. (HTTP 403)" >&2; exit 1
+            fi
             case "${GH_STUB_CLASSIC:-none}" in
                 none) echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
                 fail) echo "gh: Must have admin rights to Repository. (HTTP 403)" >&2; exit 1 ;;
@@ -2992,25 +2996,39 @@ check_eq "6430-b --threads-only never calls the funnel" "0" "$(wc -c < "$STUBDIR
 unset TICKET_STATUS_FUNNEL STUBDIR_JIRA_LOG GH_STUB_TITLE WORKER_SESSION_JIRA_STATUS
 
 # 8644 — the main token's REST limit is spent (every call on it is HTTP 403). The rollup
-# probe, the --watch and the PR/thread/protection reads of check-ci.sh and its cache lib
-# ride the second, read-only token: none of them touches the main one. The three gate reads
-# of the sourced libs (ci-green-gate, coderabbit-body-findings/-signal, cr-first-release)
-# still use the main token and are tracked in a follow-up ticket, so the run itself may still end
-# non-zero here: the row pins the reads, not the verdict.
+# probe, the --watch and the PR/thread reads of check-ci.sh and its cache lib ride the
+# second, read-only token. The classic branch-protection read is admin-only, so GitHub
+# refuses the read token and the router retries it on the main token, the one read that
+# still lands there; while the main token is spent that read is rate limited, and the
+# pre-watch required-check gate defers it to the post-settle gate, which stays fail-closed
+# (exit 5). The gate reads of the sourced libs (ci-green-gate, coderabbit-body-findings/-signal,
+# cr-first-release) still use the main token and are tracked in a follow-up ticket.
 mkdir -p "$STUBDIR/ghr-root"
 printf 'himmel_github_token_vm2=%s\n' ghp_CHECKCIREADTOKEN > "$STUBDIR/ghr-root/.env"
 : > "$STUBDIR/toklog"
-export GH_STUB_MAIN_SPENT=1 GH_STUB_TOKLOG="$STUBDIR/toklog" GH_READ_ENV_ROOT="$STUBDIR/ghr-root"
-# a protected base (a classic rule that exists): a missing rule is a 404, which the router
-# retries on the main token, and that is the spent one
+export GH_STUB_MAIN_SPENT=1 GH_STUB_CLASSIC_ADMIN_ONLY=1 GH_STUB_TOKLOG="$STUBDIR/toklog" GH_READ_ENV_ROOT="$STUBDIR/ghr-root"
+# a protected base (a classic rule that exists): the read token is refused (HTTP 403, as GitHub
+# does for a non-admin token), the router retries on the main token, and that is the spent one
 CLASSIC_OVERRIDE="ctx:unit-tests"
 run cr-completed --grace 30
-unset GH_STUB_MAIN_SPENT GH_STUB_TOKLOG
-export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"
-check_eq "8644 main token spent: no check-ci read ran on the main token" "" "$(grep '^main ' "$STUBDIR/toklog" | grep -v -e 'statuses?per_page=100' -e 'variable get CI_GO_GATE' -e '/reviews --paginate' | cut -c1-120 | head -5 | tr '\n' ';')"
+assert_rc 5 "8644 main token spent: the post-settle required-check gate stays fail-closed (exit 5, never green)"
+unset GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY GH_STUB_TOKLOG
+check_eq "8644 main token spent: no check-ci read but the admin-only protection read ran on the main token" "" "$(grep '^main ' "$STUBDIR/toklog" | grep -v -e 'statuses?per_page=100' -e 'variable get CI_GO_GATE' -e '/reviews --paginate' -e 'protection/required_status_checks' | cut -c1-120 | head -5 | tr '\n' ';')"
 check_eq "8644 main token spent: the --watch ran on the read token" "yes" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
+# a read token is loaded and the protection read is refused on both tokens (not a rate limit):
+# the required set is unreadable, so the run ends at the pre-watch gate and is never green
+: > "$STUBDIR/toklog"
+export GH_STUB_TOKLOG="$STUBDIR/toklog"
+CLASSIC_OVERRIDE=fail
+run cr-completed --grace 30
+unset GH_STUB_TOKLOG
+export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"
+assert_rc 5 "8644 both tokens refused the protection read: exit 5, never green"
+assert_err_has "required-set unreadable" "8644 both tokens refused the protection read: names the unreadable required set"
+check_eq "8644 both tokens refused the protection read: a refusal that is not a rate limit never defers to the watch" "no" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
+CLASSIC_OVERRIDE=none
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 212 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 212"; exit 1; fi
+if [ "$COUNT" -ne 213 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 213"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
