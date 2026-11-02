@@ -23,12 +23,24 @@
 #   5. CONTROL — on a temp copy, a script name the tree lacks fails case 1,
 #              the ceiling check moved after the merged-PR check fails case 3,
 #              and a changed chief hand-over threshold fails case 4.
+#   6. SOURCES — in the workflow model (docs/guide/dev-graph/graph.json), each
+#              step with no `sources` and each `m.` move carries either `source`
+#              ({file, line, text}: that line of that file still holds the text)
+#              or `noSource` (why no code stands behind it). The line is strict:
+#              a shifted citation fails and names the line to write. Each cited
+#              basename is named below, so a change to the file selects this suite.
+#   7. CONTROL — on a temp copy, a reworded cited line and a shifted cited line
+#              fail case 6 for a step and for a move, and a step with neither
+#              field fails it.
 #
 # Cited files (basenames, for impacted-suites.sh):
 #   _new-worktree.sh check-commit-msg.sh check-worktree-isolation.sh
 #   wire-pretooluse-hooks.sh review-merge-gate.sh headed-arm-worker.sh
 #   usage-preflight.sh check-ci.sh review-round.sh chief.sh merge-on-green.sh
 #   check-no-force-push.sh check-push-target.sh
+#   SKILL.md plan-charter.md ticket-standard-check.sh worker-pr-open.sh
+#   plugin-profiles.json next-dispatchable.sh effort-route.mjs chief-wait.sh
+#   block-unresolved-cr-merge.sh residual-lines.sh wrap-merged.sh
 #
 # Platform guard (posix-bash): POSIX bash 3.2+, python3, git.
 # Usage: bash scripts/docs/test-workflow-page-drift.sh [repo-root]
@@ -197,6 +209,45 @@ if case == "facts":
             if s in text:
                 out.append("%s: the page still says: %s" % (name, s))
 
+if case == "sources":
+    model_rel = "docs/guide/dev-graph/graph.json"
+    model = json.loads(read(model_rel))
+    targets = [("step", n) for n in model["nodes"] if not n.get("sources")] + \
+              [("move", e) for e in model["edges"] if e["id"].startswith("m.")]
+    if not targets:
+        out.append("the model has no step or move for this case to check")
+    named = ""
+    for head_line in open(os.path.join(real_root, "scripts/docs/test-workflow-page-drift.sh"), encoding="utf-8"):
+        if not head_line.startswith("#"):
+            break
+        named += head_line
+    for kind, item in targets:
+        where = "%s %s" % (kind, item["id"])
+        src, why = item.get("source"), item.get("noSource")
+        if bool(src) == bool(why):
+            out.append("%s: needs a source or a noSource, exactly one" % where)
+            continue
+        if why:
+            continue
+        path, at, want = src.get("file", ""), src.get("line"), src.get("text", "")
+        if not path or os.path.isabs(path) or ".." in path.split("/") or not want.strip() or type(at) is not int:
+            out.append("%s: source needs a file inside the tree, a line and a text" % where)
+            continue
+        body = read(path)
+        if body is None:
+            out.append("%s: cited file missing: %s" % (where, path))
+            continue
+        if os.path.basename(path) not in named:
+            out.append("%s: %s is not named in this suite's Cited files, so a change to it would not select this suite" % (where, os.path.basename(path)))
+        lines = body.split("\n")
+        if 1 <= at <= len(lines) and want in lines[at - 1]:
+            continue
+        hits = [i for i, l in enumerate(lines, 1) if want in l]
+        if hits:
+            out.append("%s: moved to line %d, cited line %s:%d no longer holds: %s (update its line in %s)" % (where, hits[0], path, at, want, model_rel))
+        else:
+            out.append("%s: the text is gone from %s, cited at line %d: %s" % (where, path, at, want))
+
 for line in out:
     print(line)
 PY
@@ -248,6 +299,57 @@ moved=s.pop(i); s.append(moved); open(p,"w",encoding="utf-8").write("\n".join(s)
   r=$(check facts "$C")
   if grep -qF "chief hands over at 45 %: scripts/handover/chief/chief.sh no longer says" <<< "$r"; then ok "5c. CONTROL: a changed hand-over threshold fails case 4"; else bad "5c. CONTROL: a changed hand-over threshold fails case 4" "got: ${r:-nothing}"; fi
 fi
+
+run_case "6. SOURCES: each new step and move cites a line that holds its text, or says why it has none" sources
+
+# --- 7. CONTROL: a fresh temp copy of the model and its cited files per mutation;
+# prints the id of the mutated step or move, nothing when the model cites none.
+S="$TMP/sources"
+mut_source() {
+  python3 -I - "$ROOT" "$S" "$1" "$2" <<'PY'
+import json, os, shutil, sys
+root, dest, kind, mode = sys.argv[1:5]
+rel = "docs/guide/dev-graph/graph.json"
+shutil.rmtree(dest, ignore_errors=True)
+model = json.load(open(os.path.join(root, rel), encoding="utf-8"))
+cited = [x for x in model["nodes"] + model["edges"] if x.get("source")]
+for x in cited:
+    path = os.path.join(dest, x["source"]["file"])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    shutil.copyfile(os.path.join(root, x["source"]["file"]), path)
+os.makedirs(os.path.dirname(os.path.join(dest, rel)), exist_ok=True)
+pool = model["nodes"] if kind == "step" else model["edges"]
+target = next((x for x in pool if x.get("source")), None)
+if target and mode == "unmark":
+    del target["source"]
+elif target and mode in ("reword", "shift"):
+    src = target["source"]
+    path = os.path.join(dest, src["file"])
+    lines = open(path, encoding="utf-8").read().split("\n")
+    if mode == "reword":
+        lines[src["line"] - 1] = lines[src["line"] - 1].replace(src["text"], "REWORDED")
+    else:
+        lines.insert(0, "")
+    open(path, "w", encoding="utf-8").write("\n".join(lines))
+json.dump(model, open(os.path.join(dest, rel), "w", encoding="utf-8"))
+if target:
+    print(target["id"])
+PY
+}
+control_source() { # <name> <step|move> <mode> <what the failure says>
+  local id r
+  id=$(mut_source "$2" "$3")
+  r=$(check sources "$S" "$ROOT/$PAGE_REL")
+  if [ -n "$id" ] && grep -qF "$2 $id: $4" <<< "$r"; then ok "$1"; else bad "$1" "id=${id:-none}; got: ${r:-nothing}"; fi
+}
+mut_source step none >/dev/null
+r=$(check sources "$S" "$ROOT/$PAGE_REL")
+if [ -z "$r" ]; then ok "7a. CONTROL: the unchanged copy passes case 6"; else bad "7a. CONTROL: the unchanged copy passes case 6" "$r"; fi
+control_source "7b. CONTROL: a step's cited line reworded fails case 6" step reword "the text is gone"
+control_source "7c. CONTROL: a move's cited line reworded fails case 6" move reword "the text is gone"
+control_source "7d. CONTROL: a step's cited line shifted fails case 6" step shift "moved to line"
+control_source "7e. CONTROL: a move's cited line shifted fails case 6" move shift "moved to line"
+control_source "7f. CONTROL: a step with neither source nor noSource fails case 6" step unmark "needs a source or a noSource"
 
 echo
 echo "$pass passed, $fail failed"

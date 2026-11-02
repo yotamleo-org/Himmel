@@ -5,6 +5,7 @@ import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderWorkflow, parseWorkflowRoute } from "../public/workflow.js";
+import { readPhaseStats } from "../phase-stats";
 
 const MODEL = JSON.parse(readFileSync(join(import.meta.dir, "../../../docs/guide/dev-graph/graph.json"), "utf8"));
 const FORBIDDEN = /HIMMEL-\d+|~\/|\b[\w.-]+\.(sh|py|jsonl?|md|ya?ml|js|ts|mjs)\b|scripts\/|docs\/|\.github|\.claude|graph\.json|WAKE/;
@@ -85,8 +86,23 @@ test("Workflow: no ticket ID, file path, script name or WAKE key in the visible 
     const { text } = await parse(tab(ui));
     expect(text.match(FORBIDDEN)).toBeNull();
   }
-  const evalTab = renderWorkflow(MODEL, { tab: "eval" }, STATS);
-  expect((await parse(evalTab)).text.match(FORBIDDEN)).toBeNull();
+  for (const stats of statsStates()) {
+    expect((await parse(renderWorkflow(MODEL, { tab: "eval" }, stats))).text.match(FORBIDDEN)).toBeNull();
+    expect((await parse(renderWorkflow(MODEL, { tab: "workflow", phase: null, step: null, walk: null, at: 0 }, stats))).text.match(FORBIDDEN)).toBeNull();
+  }
+});
+
+test("Eval: a ticket ID planted in the Eval text fails the forbidden-word scan", async () => {
+  const [loaded] = statsStates();
+  const planted = { ...loaded, phases: loaded.phases.map((p, i) => (i ? p : { ...p, counts: "see HIMMEL-1234" })) };
+  expect((await parse(renderWorkflow(MODEL, { tab: "eval" }, planted))).text.match(FORBIDDEN)?.[0]).toBe("HIMMEL-1234");
+});
+
+test("Workflow: the chief band states the built hand-over, not the planned one", () => {
+  const html = tab();
+  expect(html).not.toContain("planned, not built yet");
+  expect(html).toContain("the newest ten files of start, plan and design work changed in the last two days (saved grill notes, specs and plans), as short pointers only, and counts the rest");
+  expect(html).toContain("A grill that was never saved to a file does not appear.");
 });
 
 test("Workflow: ?phase=build opens Build; #s-l.commit opens Build and highlights Commit", async () => {
@@ -135,6 +151,14 @@ const STATS = {
   outliers: [{ pr: "4347", phase: "build", value: 7435.8, unit: "min", times: 146.4 }],
   cost: { state: "nodata", say: "no data yet" },
 };
+
+// Every Eval branch, in the words the server sends: phase-stats.ts's own counts and cost text over the numbers above.
+// The state directory does not exist, so no fleet record is read.
+function statsStates() {
+  const real = readPhaseStats({ TICKET_STATUS_STATE_DIR: "/nonexistent/workflow-page-test" }, "", Date.parse(STATS.to));
+  const loaded = { ...STATS, cost: real.cost, phases: STATS.phases.map((p) => ({ ...p, counts: real.phases.find((r) => r.id === p.id)!.counts })) };
+  return [loaded, { ...loaded, outliers: [] }, { ...loaded, outliers: [{ pr: null, phase: "build", value: 90, unit: "min", times: 2 }] }];
+}
 
 test("Eval: one row per phase with a Start row, the 7-day numbers in words, and the cost per ticket says no data yet", async () => {
   const html = renderWorkflow(MODEL, { tab: "eval" }, STATS);

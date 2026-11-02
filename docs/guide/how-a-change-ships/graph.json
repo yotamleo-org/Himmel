@@ -1168,7 +1168,7 @@
               "next": "The old chief sends any printed message, then wraps; the new chief carries on from step 1.",
               "source": {
                 "file": "scripts/handover/chief-kit/relay-batch.sh",
-                "line": 336,
+                "line": 344,
                 "text": "echo \"RELAYED $sent of $total\""
               },
               "reach": {
