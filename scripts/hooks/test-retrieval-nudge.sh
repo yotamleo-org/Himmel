@@ -280,6 +280,25 @@ done
 wait
 if [ "$(cat "$TMP"/par.* | grep -c '^2$')" = 1 ] && [ "$(cat "$TMP"/par.* | grep -c '^0$')" = 5 ]; then pass "six concurrent sweeps on one key: exactly one refusal"; else fail "concurrent sweeps: $(cat "$TMP"/par.* | tr '\n' ' ')"; fi
 
+# 16c. A qmd call in a salus session is never logged (its query text is PHI-path content); a quoted
+# qmd helper path with a space still counts as a qmd call; an option value and a separated
+# redirection target are not a pattern or a root.
+vcall v22 Bash 'qmd query -c salus "Alice Smith diagnosis"'
+vcall v22b Bash 'qmd query -c luna "Alice Smith diagnosis"' "" "$TMP/salus-app"
+vcall v22c Bash 'qmd query -c luna "Alice Smith diagnosis"' "" "$TMP/marked/sub"
+if ! grep -q 'Alice' "$VLOG" && ! grep -q '"session_id":"v22' "$VLOG"; then pass "salus session (command, cwd path, .salus marker): a qmd call writes no log row"; else fail "salus qmd call logged"; fi
+vcall v23 Bash "bash '$TMP/my repo/scripts/lib/qmd-bounded.sh' query -c luna \"notes\""
+vcall v23 Bash "$S"
+a=$rc
+vcall v23b Bash "bash \"$TMP/my repo/scripts/lib/qmd-bounded.sh\" query -c luna \"notes\""
+vcall v23b Bash "$S"
+if [ "$a" = 0 ] && [ "$rc" = 0 ]; then pass "a quoted qmd helper path with a space clears the deny"; else fail "quoted spaced qmd path (single=$a double=$rc)"; fi
+vrows 0 operand \
+    "rg --sort path HIMMEL-8847 $VAULT" \
+    "rg --sortr modified HIMMEL-8847 $VAULT" \
+    "rg notes . > $VAULT/output" \
+    "grep -rl notes . 2> $VAULT/err"
+
 # 17. Known residual: a heredoc line that is itself a vault sweep is refused (counted as a false refusal), once.
 vcall v14 Bash $'cat > note.md <<EOF\ngrep -r notes '"$VAULT"$'\nEOF'
 a=$rc

@@ -107,6 +107,26 @@ log_row() { # EVENT ROOT
         >>"$LOG" 2>/dev/null || true
 }
 
+lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Is this a salus session? The hook is silent there, and writes no log row for any call.
+is_salus() {
+    case "$(lc "$cwd|$cmd|$gpath|$gpattern")" in *salus*) return 0 ;; esac
+    if command -v git >/dev/null 2>&1 && [ -n "$cwd" ] && [ -d "$cwd" ]; then
+        unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
+        case "$(lc "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null; git -C "$cwd" remote -v 2>/dev/null)")" in *salus*) return 0 ;; esac
+    fi
+    local d=$cwd parent
+    while [ -n "$d" ]; do
+        [ -e "$d/.salus" ] && return 0
+        parent=${d%/*}
+        [ "$parent" = "$d" ] && break
+        d=$parent
+    done
+    [ -e "/.salus" ] && return 0
+    return 1
+}
+
 had_deny=false
 [ -e "$DIR/$sid.denied" ] && had_deny=true
 
@@ -115,7 +135,8 @@ is_qmd=0
 case "$tool" in
     mcp__qmd__* | mcp__plugin_qmd_qmd__*) is_qmd=1 ;;
     Bash)
-        flat=$(printf '%s' "$cmd" | sed -E "s/'[^']*'/Q/g; s/\"([^\"\\\\]|\\\\.)*\"/Q/g" | tr ';|&' '\n')
+        # a quoted helper path (a checkout path with a space is printed quoted) keeps its name
+        flat=$(printf '%s' "$cmd" | sed -E -e "s/'[^']*qmd-bounded\.sh'/qmd-bounded.sh/g" -e 's/"[^"]*qmd-bounded\.sh"/qmd-bounded.sh/g' -e "s/'[^']*'/Q/g; s/\"([^\"\\\\]|\\\\.)*\"/Q/g" | tr ';|&' '\n')
         while IFS= read -r seg; do
             seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//; s/^((timeout[[:space:]]+[^[:space:]]+|rtk([[:space:]]+proxy)?|env|command|bash|sh)[[:space:]]+)+//')
             if grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)' <<<"$seg"; then
@@ -126,14 +147,13 @@ case "$tool" in
         ;;
 esac
 if [ "$is_qmd" = 1 ]; then
+    is_salus && exit 0
     if [ ! -e "$DIR/$sid.clear" ]; then
         : >"$DIR/$sid.clear" 2>/dev/null && log_row qmd_clear ""
     fi
     exit 0
 fi
 [ -e "$DIR/$sid.clear" ] && exit 0
-
-lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 # A cd/pushd anywhere in the command: the cwd the journal reports is no longer where a relative root points.
 has_cd=0
@@ -197,7 +217,7 @@ tokenize() {
 # Does one Bash segment match the closed list? Sets root. 0 = yes.
 segment_matches() {
     local seg="$1" first kind="" t skip=0 pattern="" havepat=0 recursive=0 r
-    local roots=()
+    local roots=() redir_op='^[0-9]*[<>]+$'
     seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//; s/^((timeout[[:space:]]+[^[:space:]]+|rtk([[:space:]]+proxy)?|env|command)[[:space:]]+)+//')
     # a command substitution or backtick builds words this parse cannot read
     case "$seg" in *\$\(* | *\`*) return 1 ;; esac
@@ -212,10 +232,12 @@ segment_matches() {
     for t in "${toks[@]:1}"; do
         if [ "$skip" = 1 ]; then skip=0; continue; fi
         case "$t" in
-            [0-9][\<\>]* | [\<\>]* | '&>'*) ;;  # a redirection, not a pattern or a root
+            [0-9][\<\>]* | [\<\>]* | '&>'*)  # a redirection, not a pattern or a root; its target is the next word
+                [[ "$t" =~ $redir_op ]] && skip=1
+                ;;
             -e | -f | --regexp | --regexp=* | --file | --file=* | -e* | -f*) return 1 ;;
             --recursive | --dereference-recursive) recursive=1 ;;
-            -A | -B | -C | -m | -d | --include | --exclude | --exclude-dir | --max-count | --context | --after-context | --before-context | -g | -t | -T | -j | -M | --glob | --iglob | --type | --type-not | --threads | --max-depth | --max-columns) skip=1 ;;
+            -A | -B | -C | -m | -d | --include | --exclude | --exclude-dir | --max-count | --context | --after-context | --before-context | -g | -t | -T | -j | -M | --glob | --iglob | --type | --type-not | --threads | --max-depth | --max-columns | --sort | --sortr) skip=1 ;;
             --*) ;;
             -?*) case "$t" in -*[rR]*) [ "$kind" = grep ] && [[ "$t" =~ ^-[A-Za-z]*[rR][A-Za-z]*$ ]] && recursive=1 ;; esac ;;
             *)
@@ -253,19 +275,7 @@ esac
 [ "$matched" = 1 ] || exit 0
 
 # Silent in a salus session.
-case "$(lc "$cwd|$cmd|$gpath|$gpattern")" in *salus*) exit 0 ;; esac
-if command -v git >/dev/null 2>&1 && [ -n "$cwd" ] && [ -d "$cwd" ]; then
-    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
-    case "$(lc "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null; git -C "$cwd" remote -v 2>/dev/null)")" in *salus*) exit 0 ;; esac
-fi
-d=$cwd
-while [ -n "$d" ]; do
-    [ -e "$d/.salus" ] && exit 0
-    parent=${d%/*}
-    [ "$parent" = "$d" ] && break
-    d=$parent
-done
-[ -e "/.salus" ] && exit 0
+is_salus && exit 0
 
 if [ "$had_deny" = true ]; then
     log_row retry_allowed "$root"
