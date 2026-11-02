@@ -1745,6 +1745,13 @@ reset_calls
 rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
 check "8424: plain doc with a WRAPPED Results tail and a later Notes section -> rc 0" "$rc" "0"
 exact_count "8424: plain doc control: the N18 session TERMed once" "$(cat "$CALLS")" "kill -TERM 341" "1"
+# a finished worker (Results ends WRAPPED) whose doc has a later ## Notes bullet that starts with LIVE: the Results tail
+# decides, so it closes (the whole-file tail would read LIVE and strand the window)
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - done\n\n## Notes\n\n- 11:00 LIVE - a note that starts with a marker\n' "$TK1" > "$ORIGL"
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: Results ends WRAPPED, a later Notes bullet starts with LIVE -> rc 0" "$rc" "0"
+exact_count "8424: Notes LIVE bullet: the N18 session TERMed once" "$(cat "$CALLS")" "kill -TERM 341" "1"
 # the real layout of a worker that got a ruling: Results tail LIVE, then ## Chief Rulings, then the worker's own
 # WRAPPED appended at the end of the file (append-results.sh) -> closes; the same under ## Console Rulings
 for sec in "Chief Rulings" "Console Rulings"; do
