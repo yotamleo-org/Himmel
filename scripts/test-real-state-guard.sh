@@ -563,17 +563,18 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
     has "$label is refused at the door" "$TMP/v.out" "refused, nothing was posted"
     if grep -q 'ENOTFOUND' "$TMP/v.out"; then fail "$label reached the Jira host lookup"; else pass "$label never looked up the Jira host"; fi
   }
-  v_open() { # <label> <cmd...>
-    local label="$1"
-    shift
+  v_open() { # <label> <downstream text the run must reach> <cmd...>
+    local label="$1" want="$2"
+    shift 2
     "$@" >"$TMP/v.out" 2>&1
     if grep -q 'nothing was posted' "$TMP/v.out"; then fail "$label was refused"; else pass "$label is not refused"; fi
+    has "$label gets past the door to its own work" "$TMP/v.out" "$want"
   }
   v_refused "JP1 a test's release apply" "${VENV[@]}" "$REAL_BUN" "$J" release apply R8818 RU-1
   v_refused "JP2 a test's release rm-run" "${VENV[@]}" "$REAL_BUN" "$J" release rm-run R8818
-  v_open "JP3 a real session's release apply" as_session "${VENV[@]}" "$REAL_BUN" "$J" release apply R8818 RU-1
+  v_open "JP3 a real session's release apply" "is UNKNOWN" as_session "${VENV[@]}" "$REAL_BUN" "$J" release apply R8818 RU-1
   v_refused "JP4 a test's jira create" "${VENV[@]}" "${V_CREATE[@]}"
-  v_open "JP5 a real session's jira create" as_session "${VENV[@]}" "${V_CREATE[@]}"
+  v_open "JP5 a real session's jira create" "no release is declared" as_session "${VENV[@]}" "${V_CREATE[@]}"
 else
   echo "SKIP - JP rows: no bun or no scripts/jira/node_modules here; release.test.ts and create.test.ts hold the door rows"
 fi
