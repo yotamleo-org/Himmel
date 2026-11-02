@@ -594,13 +594,14 @@ export function registerRelease(program: Command): void {
     .description('Sign a minerva spec for its keys after the operator approves it')
     .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
     .requiredOption('--spec <path>', 'The spec file (by convention under the state repo specs/designs/ bucket; any path signs)')
+    .option('--plan <path>', 'The spec\'s plan file (the trace lint reads the invariants\' tests from it); default: the spec')
     .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
     .requiredOption('--decision <n>', 'Operator decision number')
     .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
     .option('--supersedes <O-id>', 'The spec record this re-sign replaces')
-    .action((release: string, o: { keys: string; spec: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
+    .action((release: string, o: { keys: string; spec: string; plan?: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
       const r = signSpec(ctxFor(release), {
-        keys: list(o.keys), spec: o.spec, verdicts: o.verdict, decision: o.decision,
+        keys: list(o.keys), spec: o.spec, plan: o.plan, verdicts: o.verdict, decision: o.decision,
         verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
       });
       console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);

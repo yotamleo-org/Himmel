@@ -80,6 +80,7 @@ export interface OperatorRow {
   // kind 'spec': the signed minerva spec, its critics' verdict files, and the record it replaces.
   spec_path?: string;
   spec_sha256?: string;
+  plan_path?: string | null;
   verdicts?: Array<{ path: string; sha256: string }>;
   supersedes?: string | null;
   residuals?: number;
