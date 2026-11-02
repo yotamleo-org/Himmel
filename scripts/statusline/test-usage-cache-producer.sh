@@ -634,7 +634,7 @@ run_test "(11c) HIMMEL-8827 control: a malformed oauth five_hour, a missing seve
     "{\"seven_day\":{\"utilization\":43}}"; do
     printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
     printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "$payload" "JSON" > "$stub";
-    bash "$PRODUCER" </dev/null;
+    bash "$PRODUCER" </dev/null || exit 1;
     [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" = "1234567890" ] || { echo "stamped on: $payload" >&2; exit 1; };
   done;
 '
@@ -649,9 +649,11 @@ run_test "(11d) HIMMEL-8827 control: stdin windows out of range or one-sided kee
     "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":101}}" \
     "{\"five_hour\":{\"utilization\":10}}" \
     "{\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":false},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":\"x\",\"seven_day\":{\"utilization\":43}}" \
     "{\"five_hour\":null}"; do
     printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
-    printf "%s" "{\"rate_limits\":$rl}" | bash "$PRODUCER";
+    printf "%s" "{\"rate_limits\":$rl}" | bash "$PRODUCER" || exit 1;
     [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" = "1234567890" ] || { echo "stamped on: $rl" >&2; exit 1; };
   done;
   printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";

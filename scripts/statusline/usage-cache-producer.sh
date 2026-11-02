@@ -201,10 +201,11 @@ stdin_five=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.utilization //
 stdin_five_reset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
 stdin_seven=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.utilization // .rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
 stdin_seven_reset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
-# A five_hour PRESENT in rate_limits but carrying no number is the
-# source saying "no active 5-hour window"; a five_hour key that is simply absent
-# says nothing and stays a partial payload.
-stdin_five_present=$(printf '%s' "$input" | jq -r 'if ((.rate_limits | type) == "object") and (.rate_limits | has("five_hour")) then "1" else "" end' 2>/dev/null)
+# A five_hour PRESENT in rate_limits as null or an object with no utilization is
+# the source saying "no active 5-hour window". It is read from the raw JSON: a
+# false/string value is malformed, not empty. A five_hour key that is simply
+# absent says nothing and stays a partial payload.
+stdin_five_present=$(printf '%s' "$input" | jq -r 'if ((.rate_limits | type) == "object") and (.rate_limits | has("five_hour")) and (.rate_limits.five_hour | if type == "null" then true elif type == "object" then (.utilization == null and .used_percentage == null) else false end) then "1" else "" end' 2>/dev/null)
 
 # ── Branch A: stdin carries rate_limits — mirror into both files ─────────────
 # Either window qualifies (CR codex-1: a seven_day-only payload must still be
