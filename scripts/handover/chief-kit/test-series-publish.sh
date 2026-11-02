@@ -37,7 +37,7 @@ unset GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR G
     GIT_ALTERNATE_OBJECT_DIRECTORIES SERIES_LEDGER_LOCK_TIMEOUT HIMMEL_FLAG_STACKED_SERIES
 export HANDOVER_DIR="$tmp/handovers"; mkdir -p "$HANDOVER_DIR/.locks/go"
 
-git init -q --bare "$tmp/origin.git"
+git init -q --bare --template= "$tmp/origin.git"   # no template files, as on a minimal CI git: no hooks directory
 REPO="$tmp/repo"
 git clone -q "$tmp/origin.git" "$REPO" 2>/dev/null
 git -C "$REPO" config user.email t@test.local
@@ -222,7 +222,9 @@ land_k1 s4
 W2="$(wtp s4 K2)"
 K2WIP="$(jget "$L4" 'd["items"][1]["wip"]')"
 before="$(cat "$L4")"
+mkdir -p "$tmp/origin.git/hooks"   # a git without template files creates no hooks directory
 printf '#!/bin/sh\nexit 1\n' > "$tmp/origin.git/hooks/pre-receive"; chmod +x "$tmp/origin.git/hooks/pre-receive"
+check "5b: control: the pre-receive hook is installed and executable" "$([ -x "$tmp/origin.git/hooks/pre-receive" ] && echo yes || echo no)" yes
 sp --ledger "$L4" --doc "$B" K2
 check "5b: a refused push exits 1" "$rc" 1
 contains "5b: the failure names the push" "$out" "git push of series-pub/s4/K2 failed"
