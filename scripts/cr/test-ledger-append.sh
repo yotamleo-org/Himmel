@@ -1762,6 +1762,9 @@ check "HIMMEL-8870: the refusal names --head and says nothing was written" "$(gr
 CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "" --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
 check "HIMMEL-8870: a finding with an empty --head exits 2" "$?" "2"
 check "HIMMEL-8870: a finding with an empty --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "  " --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
+check "a finding with a whitespace-only --head exits 2" "$?" "2"
+check "a finding with a whitespace-only --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
 CR_LEDGER="$NHL" bash "$LA" finding --branch b --head H8870 --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
 check "HIMMEL-8870: the same finding with a head still writes" "$(grep -c '"head":"H8870"' "$NHL")" "1"
 

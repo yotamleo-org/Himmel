@@ -237,7 +237,7 @@ if [ "$kind" = "finding" ] && [ -z "$batch_file" ]; then
   fi
   # A row with no head can be neither promoted (review-round.sh) nor amended
   # (amend looks a row up by head), so it would sit in the ledger for good.
-  if [ -z "$head" ]; then
+  if [ -z "${head//[[:space:]]/}" ]; then
     echo "ledger-append.sh: finding needs --head <sha> (a row with no head can be neither promoted nor amended) - NOTHING was written" >&2
     exit 2
   fi
