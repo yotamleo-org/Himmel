@@ -8,6 +8,7 @@ import type { Command } from 'commander';
 import { projectKey, request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
+import { newestFixVersionEntry } from '../release/version-writes.js';
 import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
@@ -33,6 +34,7 @@ export const liveJira: JiraPort = {
     const got = await request<{ fields?: { fixVersions?: Array<{ name?: string }> } }>('GET', `/issue/${key}?fields=fixVersions`);
     return (got.fields?.fixVersions ?? []).map((v) => v.name ?? '');
   },
+  newestFixVersionEntry: (key) => newestFixVersionEntry(<T>(path: string) => request<T>('GET', path), key),
   async setFixVersion(key, op, version) {
     await setFixVersion(key, op, version, 'rm-apply');
     writeJiraBreadcrumb(key);

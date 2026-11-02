@@ -21,7 +21,7 @@ vi.mock('node:child_process', async (orig) => {
   }) as typeof m.execFileSync;
   return { ...m, execFileSync };
 });
-import type { IssueSnap, OperatorRow, RulingRow } from './types.js';
+import type { IssueSnap, OperatorRow, RequestRow, RulingRow } from './types.js';
 import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
 import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
 
@@ -31,8 +31,18 @@ class FakeJira implements JiraPort {
   async issue(key: string) { return this.live.get(key) ?? null; }
   comments = new Map<string, Array<{ id: string; body: string }>>();
   posted = 0;
+  entries = new Map<string, string>();
+  entryCalls = 0;
+  entryFails = false;
+  async newestFixVersionEntry(key: string) {
+    this.entryCalls++;
+    if (this.entryFails) throw new Error('entry read down');
+    return { id: this.entries.get(key) ?? 'create', ts: '' };
+  }
+  writes = 0;
   async fixVersions(key: string) { return [...(this.fv.get(key) ?? [])]; }
   async setFixVersion(key: string, op: 'add' | 'remove', v: string) {
+    this.writes++;
     const cur = this.fv.get(key) ?? [];
     this.fv.set(key, op === 'add' ? [...new Set([...cur, v])] : cur.filter((x) => x !== v));
   }
@@ -1699,5 +1709,169 @@ describe('admission rows enter the reducer through reduceLoaded (HIMMEL-8724 S1)
     const lines = await rmRun(ctx(), admitAllRows);
     expect(lines.join('\n')).toContain('R-R1-0001');
     expect(readFileSync(join(ctx().dir, 'rulings.jsonl'), 'utf8')).toContain('"phase":"intent"');
+  });
+});
+
+describe('version-repair entry check and held state', () => {
+  const rulings = () => readChain<RulingRow>(join(ctx().dir, 'rulings.jsonl'), loadKey(ctx().keyPath)).verified;
+  const requests = () => readChain<RequestRow>(join(ctx().dir, 'requests.jsonl'), loadKey(ctx().keyPath)).verified;
+  const latestReq = (req: string) => requests().filter((r) => r.req === req).at(-1);
+  const phases = () => rulings().map((r) => r.phase);
+  const next = { ...rmEnv, HIMMEL_RM_DOC: '/abs/b.md' };
+  const newEpoch = () => {
+    leaseRelease(ctx(rmEnv));
+    leaseAcquire(ctx(next), { expectEpoch: 1, doc: '/abs/b.md', session: 'b' });
+  };
+  // A repair move v1→v2 on K-1, ruled to intent and not yet applied.
+  const repairEvidence = { rule: 'version-repair', entry: '99' };
+  const ruledMove = async (evidence: Record<string, unknown> = repairEvidence) => {
+    await setup();
+    jira.fv.set('K-1', ['v1']);
+    const q = request(ctx(), { verb: 'REVERSION', key: 'K-1', from_v: 'v1', to_v: 'v2', why: 'w', evidence, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' }, supersedes: ['baseline-v1-g1'] });
+    return { q, r };
+  };
+
+  it('entry-moved goes to withdrawn', async () => {
+    const { q, r } = await ruledMove();
+    jira.entries.set('K-1', '100');
+    const got = await apply(ctx(rmEnv), r.id);
+    expect(got.phase).toBe('void');
+    expect(jira.writes).toBe(0);
+    expect(jira.posted).toBe(0);
+    expect(phases()).toContain('void');
+    expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
+    expect(latestReq(q.req)?.reason).toBe('entry-moved');
+    expect(claim(ctx(rmEnv))).toEqual([]);
+    expect(state(ctx()).requests.open).toEqual([]);
+  });
+
+  it('older epoch untouched withdraws, never reopens', async () => {
+    const { q, r } = await ruledMove();
+    newEpoch();
+    const got = await apply(ctx(next), r.id);
+    expect(got.phase).toBe('void');
+    expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
+    expect(latestReq(q.req)?.reason).toBe('never-landed');
+    expect(jira.entryCalls).toBe(0);
+    expect(claim(ctx(next))).toEqual([]);
+    expect(state(ctx()).requests.open).toEqual([]);
+  });
+
+  it('own partial write stays mismatch and throws, ruling not voided', async () => {
+    const { r } = await ruledMove();
+    jira.fv.set('K-1', []);
+    newEpoch();
+    await expect(apply(ctx(next), r.id)).rejects.toThrow(/partly applied/);
+    expect(phases()).toEqual(['intent']);
+    expect(jira.entryCalls).toBe(0);
+  });
+
+  it('own landed write goes applied', async () => {
+    const { r } = await ruledMove();
+    jira.fv.set('K-1', ['v2']);
+    jira.entries.set('K-1', '101');
+    newEpoch();
+    expect((await apply(ctx(next), r.id)).phase).toBe('receipted');
+    expect(jira.writes).toBe(0);
+    expect(jira.entryCalls).toBe(0);
+  });
+
+  it('own landed write goes applied in the current epoch though the entry moved', async () => {
+    const { r } = await ruledMove();
+    jira.fv.set('K-1', ['v2']);
+    jira.entries.set('K-1', '101');
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+    expect(jira.writes).toBe(0);
+  });
+
+  it('same-epoch retry after a partial is not entry-moved', async () => {
+    const { r } = await ruledMove();
+    jira.fv.set('K-1', []);
+    jira.entries.set('K-1', '100');
+    await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/partly applied/);
+    expect(jira.writes).toBe(0);
+    expect(phases()).toEqual(['intent']);
+  });
+
+  it('a matching entry applies as today', async () => {
+    const { r } = await ruledMove();
+    jira.entries.set('K-1', '99');
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+    expect(jira.fv.get('K-1')).toEqual(['v2']);
+  });
+
+  it('a port with no entry method refuses a version-repair request', async () => {
+    const { r } = await ruledMove();
+    const bare = {
+      ...ctx(rmEnv),
+      jira: { fixVersions: (k: string) => jira.fixVersions(k), setFixVersion: jira.setFixVersion.bind(jira), findComment: jira.findComment.bind(jira), addComment: jira.addComment.bind(jira) },
+    } as unknown as Ctx;
+    await expect(apply(bare, r.id)).rejects.toThrow(/newestFixVersionEntry/);
+    expect(jira.writes).toBe(0);
+    expect(phases()).toEqual(['intent']);
+  });
+
+  it('entry read failure makes no write and stays intent', async () => {
+    const { r } = await ruledMove();
+    jira.entryFails = true;
+    await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow('entry read down');
+    expect(jira.writes).toBe(0);
+    expect(phases()).toEqual(['intent']);
+  });
+
+  it('after an entry read failure the next run withdraws it as never-landed', async () => {
+    const { q, r } = await ruledMove();
+    jira.entryFails = true;
+    await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow('entry read down');
+    newEpoch();
+    expect((await apply(ctx(next), r.id)).phase).toBe('void');
+    expect(latestReq(q.req)?.reason).toBe('never-landed');
+  });
+
+  it('chief-filed request behaves as today', async () => {
+    const { q, r } = await ruledMove({});
+    jira.entries.set('K-1', '100');
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+    expect(jira.entryCalls).toBe(0);
+    expect(latestReq(q.req)?.state).toMatch(/^ruled:/);
+  });
+
+  describe('held', () => {
+    const repairAsk = (evidence: Record<string, unknown>) => {
+      declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+      return request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence, from: 'console' });
+    };
+    const holdAll: Judge = async (input) => input.requests.map((q) => ({ req: q.req, outcome: 'HOLD', reason: 'no sector' }));
+
+    it('HOLD on a version-repair request writes held and claim skips it', async () => {
+      const q = repairAsk({ rule: 'version-repair', entry: '5' });
+      await rmRun(ctx(), holdAll);
+      expect(latestReq(q.req)?.state).toBe('held');
+      let calls = 0;
+      await rmRun(ctx(), async (input) => { calls++; return holdAll(input); });
+      expect(calls).toBe(0);
+    });
+
+    it('HOLD on a chief-filed request stays claimed', async () => {
+      const q = repairAsk({});
+      await rmRun(ctx(), holdAll);
+      expect(latestReq(q.req)?.state).toMatch(/^claimed:/);
+    });
+
+    it('withdraw moves a held request out', async () => {
+      const q = repairAsk({ rule: 'version-repair', entry: '5' });
+      await rmRun(ctx(), holdAll);
+      withdraw(ctx(), { req: q.req, reason: 'entry moved' });
+      expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
+    });
+
+    it('contradicting operator decision withdraws a held request', async () => {
+      const q = repairAsk({ rule: 'version-repair', entry: '5' });
+      await rmRun(ctx(), holdAll);
+      operatorDecision(ctx(), { decision: '200', keys: ['K-2'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'x' });
+      expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
+    });
   });
 });
