@@ -311,7 +311,9 @@ done <<<"$keys"
 # that carries no PR number covers every PR of its key. One row per open ticket (not Done, not
 # an Epic), naming its newest PR with no merge row.
 # Cost per run: one gh list (about ten paged calls, 7 s for 1000 PRs), one pass over the log, and
-# one Jira get per distinct key with an unrecorded PR, at most MNR_CAP; the 90 s budget bounds the run.
+# one Jira get per distinct key with an unrecorded PR, newest first, until the MNR_BUDGET seconds (default 40)
+# are spent; a Done ticket costs a read but never hides an older open one, and the PRs left unread are one
+# HEALTH row. The 90 s budget bounds the whole run.
 # swallow-ok: an unreadable merged list becomes a HEALTH row below, never a plausible count
 msince=$(date -u -d '14 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-14d +%Y-%m-%d 2>/dev/null) # swallow-ok: no date is the unreadable case the next line turns into a HEALTH row
 mprs=""
@@ -325,7 +327,8 @@ if [ -r "$LOG" ]; then
     # swallow-ok: an unreadable log becomes a HEALTH row below, never a row for every merged PR
     mr=$(ts_merge_rows "$LOG" 2>/dev/null) && mrows=$(jq -R -r 'fromjson? | select(.event == "merge" and has("contract")) | "\(.key)\t\(.pr // "")"' <<<"$mr" 2>/dev/null) || mlog=unreadable
 fi
-MNR_CAP=40
+MNR_BUDGET="${TICKET_STATUS_DRIFT_MNR_BUDGET:-40}"
+case "$MNR_BUDGET" in ''|*[!0-9]*) MNR_BUDGET=40 ;; esac
 case "$nmp" in
     ''|*[!0-9]*) add HEALTH - "gh: the merged-PR list is unreadable" gh "gh auth status; then rerun this check" ;;
     *)
@@ -334,16 +337,15 @@ case "$nmp" in
             nmp=0
         fi
         mseen=""
-        mreads=0
+        mstart=$SECONDS
         mskipped=0
         while IFS=$'\t' read -r n title; do
             [ -n "$n" ] || continue
             k=$(ticket_key_from_title "$title") || continue
             case " $mseen " in *" $k "*) continue ;; esac
             case $'\n'"$mrows"$'\n' in *$'\n'"$k"$'\t'"$n"$'\n'*|*$'\n'"$k"$'\t\n'*) continue ;; esac
-            if [ "$mreads" -ge "$MNR_CAP" ]; then mskipped=$((mskipped + 1)); continue; fi
+            if [ $((SECONDS - mstart)) -ge "$MNR_BUDGET" ]; then mskipped=$((mskipped + 1)); continue; fi
             mseen="$mseen $k"
-            mreads=$((mreads + 1))
             if ts_read_jira "$k"; then
                 [ "$TS_J_TYPE" != Epic ] && [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || continue
                 add MERGED-NO-ROW "$k" "PR #$n merged with no merge row and the ticket is $TS_J_STATUS: close the ticket or record the remainder" "merge-on-green.sh" "jira transition $k Done (work finished), or record the remainder as a partial"
@@ -351,7 +353,7 @@ case "$nmp" in
                 add HEALTH "$k" "status unknown (stage=get)" jira "$SWEEP_FIX"
             fi
         done <<<"$([ "$nmp" -gt 0 ] && jq -r '.[] | [.number, .title] | @tsv' <<<"$mprs")"
-        [ "$mskipped" -eq 0 ] || add HEALTH - "merged-no-row: $mskipped more merged PRs not checked (cap $MNR_CAP Jira reads per run)" - "rerun after closing the listed tickets"
+        [ "$mskipped" -eq 0 ] || add HEALTH - "merged-no-row: $mskipped more merged PRs not checked (${MNR_BUDGET}s read budget spent)" - "rerun this check; the newest unrecorded PRs are read first"
         ;;
 esac
 

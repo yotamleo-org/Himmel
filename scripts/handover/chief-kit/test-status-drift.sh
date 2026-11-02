@@ -672,11 +672,16 @@ check "3b (HIMMEL-8834): one row per ticket, naming the newest unrecorded PR" "$
 reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"; logrow merge "$K" moved "" yes
 drift
 check "3b (HIMMEL-8834): a merge row with no PR number covers every PR of its key" "$(dcount MERGED-NO-ROW)" 0
-# The Jira reads of the class are capped per run; the rest is one HEALTH row.
-reset "To Do"; mergedpr "$(jq -nc '[range(0; 42) | {number: (9100 + .), title: ("fix: [HIMMEL-" + ((9100 + .) | tostring) + "] x")}]')"
+# The Jira reads of the class are bounded by a time budget, not a count: Done tickets never use it up
+# for the older open ones, and the PRs left unread are one HEALTH row.
+manypr='[range(0; 42) | {number: (9100 + .), title: ("fix: [HIMMEL-" + ((9100 + .) | tostring) + "] x")}]'
+reset "Done"; mergedpr "$(jq -nc "$manypr")"
 drift
-check "3b (HIMMEL-8834): at most 40 keys are read per run" "$(dcount MERGED-NO-ROW)" 40
-contains "3b (HIMMEL-8834): and the rest is one HEALTH row" "$(drows HEALTH)" "2 more merged PRs not checked"
+check "3b (HIMMEL-8834): 42 Done tickets with unrecorded PRs are all read, none reported" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 0/0
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"
+TICKET_STATUS_DRIFT_MNR_BUDGET=0 drift
+check "3b (HIMMEL-8834): a spent read budget reads no more keys" "$(dcount MERGED-NO-ROW)" 0
+contains "3b (HIMMEL-8834): and the unread PRs are one HEALTH row" "$(drows HEALTH)" "42 more merged PRs not checked"
 
 reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
 drift
