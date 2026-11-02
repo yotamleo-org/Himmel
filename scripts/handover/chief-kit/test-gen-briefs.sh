@@ -715,6 +715,9 @@ rc=0; HOME="$WORK/home" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_C
 PB="$(tr '\n' ' ' < "$WORK"/hr/tester/phi/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
 has "a phi-roots repo says it searches nothing" "$PB" "no notes search"
 lacks "and names no luna search" "$PB" "query -c luna"
+DEN="$WORK/deny-repo"; git init -q "$DEN"; mkdir -p "$WORK/home2/.config/claude-glm"; printf '%s\n' "$DEN" > "$WORK/home2/.config/claude-glm/egress-denylist"
+rc=0; HOME="$WORK/home2" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/den" --repo "$DEN" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/den.out" 2>"$WORK/den.err" || rc=$?
+has "an egress-denylist repo says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/den/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
 ADP2="$WORK/adapter2"; git init -q "$ADP2"
 rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp2" --repo "$ADP2" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp2.err") || rc=$?
 has "an adopter --no-worktree refusal prints himmel's _new-worktree.sh line, not a worktree.sh the adopter lacks" "$(cat "$WORK/adp2.err")" "$KIT/scripts/_new-worktree.sh fix/himmel-9001-plain-fix --no-install"

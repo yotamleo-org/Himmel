@@ -1051,7 +1051,7 @@ template_version: 3
 
 
 def salus_marked(repo):
-    # The check scripts/claude-codex runs: a .salus or .salus-profile marker on the repo or an ancestor, or a repo inside (or holding) a phi-roots entry.
+    # The check scripts/claude-codex runs: a .salus or .salus-profile marker on the repo or an ancestor, or a repo inside (or holding) a phi-roots or egress-denylist entry.
     d = os.path.realpath(repo)
     top = d
     while True:
@@ -1061,9 +1061,9 @@ def salus_marked(repo):
         if up == top:
             break
         top = up
-    for cfg in ('claude-codex', 'claude-glm'):
+    for cfg, name in (('claude-codex', 'phi-roots'), ('claude-glm', 'phi-roots'), ('claude-glm', 'egress-denylist')):
         try:
-            lines = open(os.path.join(os.path.expanduser('~'), '.config', cfg, 'phi-roots')).read().splitlines()
+            lines = open(os.path.join(os.path.expanduser('~'), '.config', cfg, name)).read().splitlines()
         except OSError:
             continue
         for root in lines:
