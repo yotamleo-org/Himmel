@@ -269,7 +269,7 @@ export function readRoadmap(o: Opts): Roadmap {
     drift: tickets.filter((t) => t.drift === 1).map((t) => prop(t, `Jira says ${versions[t.v].n}, the plan says ${t.pv}: move fixVersion to ${t.pv} or re-plan`)),
     unthemed: unthemed.map((t) => prop(t, source === "github"
       ? "assign a theme in the plan (stage1 overlay)"
-      : source === "local" ? "assign a Sector with the card's Sector select on the Kanban"
+      : source === "local" ? "assign a Sector with the card's Sector select on the Board"
         : `assign a Sector: jira edit HIMMEL-${t.k} --sector "<sector>"`)),
     releasedOpen: open.filter((t) => versions[t.v].rel).map((t) => prop(t, `${versions[t.v].n} is released but this is still open: move to ${run ?? "the running version"}`)),
     duplicates: [...byTitle.values()].filter((g) => g.length > 1).map((g) => ({ keys: g.map((t) => t.k).sort((a, b) => a - b), title: g[0].t,

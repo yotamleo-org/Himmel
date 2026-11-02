@@ -4,13 +4,13 @@ Audience: newcomer who has installed himmel, and contributor. Owner: HIMMEL-6836
 
 himmel has no hosted UI. Three surfaces exist, all local, and each is started by a
 command you run yourself. Only the config UI can change anything on your machine. Configure switches show a dry-run and ask
-for a confirm, and a typed value is saved on request. A Kanban drop and a theme select on the Roadmap
+for a confirm, and a typed value is saved on request. A card drop and a Sector select on the Board
 write to Jira at once, with no confirm. The other two surfaces only display. If a user asks "the himmel UI",
 they almost always mean the first one.
 
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
-| Config UI | One local web app: Shift, Morning report, Configure, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
+| Config UI | One local web app: Shift, Morning report, Configure, Health, Tool health, Fleet, Board pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
 | Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed` | a running himmel chief |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
@@ -19,8 +19,8 @@ they almost always mean the first one.
 Serves on `127.0.0.1` only (loopback), behind a per-launch token. It reads the
 same data as `himmelctl report --json`. Health, Tool health, Fleet, Workflow and the
 inventory only display. Shift never changes configuration; its poll, `GET /api/shift`, only
-records a closed shift in `shifts.jsonl`. What can change something is on Configure and the Roadmap and
-Kanban boards; the table after the switches maps every action to its route. A switch shows its
+records a closed shift in `shifts.jsonl`. What can change something is on Configure and the Board's
+lanes; the table after the switches maps every action to its route. A switch shows its
 dry-run first, then, once confirmed, runs the `himmelctl` command printed under it and writes:
 
 | Switch | What it writes | Takes effect |
@@ -78,8 +78,8 @@ Open in Health link to that check's row. It takes a minute or two and stops at 2
 (no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
 page only, so press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
 
-The Roadmap and Kanban boards also write to Jira: dragging a card to another column
-transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
+The Board's lanes also write to Jira: dragging a card to another column
+transitions the ticket, and a card's Sector select sets its Sector field (`jira edit --sector`). Both go
 through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card where it was.
 With `TRACKER=local` the boards read the local tracker store instead and need no Jira: cards keep
 their `LOCAL-<n>` ids, and a drop or a Sector select is written to the store through the tracker
@@ -102,7 +102,7 @@ This is the full set, each mapped to the code that handles it:
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
 | Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
-| Kanban move, card theme | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute`, `scripts/config-ui/local-tracker.ts`) |
+| Board lane move, card Sector | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute`, `scripts/config-ui/local-tracker.ts`) |
 
 ```bash
 node scripts/himmelctl/bin.js ui              # prints ONE URL carrying the token
@@ -161,8 +161,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   removed here; the always-on service saves one only after you log in at `/login`
   (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login.
   Tracker: the Jira connection and the commit rules, tracker and ticket-id-required. Project scope: the
-  handover root and luna vault path, each with a dry-run before it changes. Roadmap and Kanban only
-  appear when the UI can read a tracker; the old `#/setup` route lands on `#/config`), `#/health` (one verdict:
+  handover root and luna vault path, each with a dry-run before it changes. The Board only
+  appears when the UI can read a tracker; the old `#/setup` route lands on `#/config`), `#/health` (one verdict:
   All clear / Needs a look / Act now, under four tiles, Checks, Usage, Scheduled jobs and Search & graph; a tile
   opens its panel, one at a time, and Checks opens by itself only when something is wrong. The Checks panel holds
   What is broken and Every item checked as two tabs, the checks grouped by bundle; each failing row and each firing
@@ -171,10 +171,11 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   Velocity, Cost and Health cards from the weekly roll-up follows, see below; the rail's project picker
   switches to another registered project or to **All my projects**, where the Shared problems (the machine, not a
   project) show once above each project worst first; a legacy Inventory stays below until its tests move), `#/toolhealth` (tool-call failure and
-  denial rates by model and lane), `#/roadmap` (releases, drift, sync and
-  librarian, live from the Jira mirror, or releases and librarian from the local tracker store; click a version for its kanban at
-  `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done
-  hideable), `#/workflow` (the development graph and its guided walkthroughs,
+  denial rates by model and lane), `#/board` (the one per-version page: a drift banner, a version strip, and
+  three tabs, Roadmap (the status lanes of the running version, `?v=<version>` for another or `?v=all` for every
+  one), Chains and Tidy up (status drift, sync and librarian), live from the Jira mirror, or the lanes and librarian
+  from the local tracker store; the old `#/roadmap`, `#/roadmap/<version>` and `#/kanban` routes land on it),
+  `#/workflow` (the development graph and its guided walkthroughs,
   the same graph as the docs page), and **Fleet** at `/agui/`.
 - **Fleet and run view (AG-UI).** `/agui/` lists every live Claude session
   with its ticket, PR and state; clicking one opens its run page: assistant
@@ -226,7 +227,7 @@ artifacts; neither runs a server.
   `--changed` prints `CHANGED <path>` or `UNCHANGED <path>`.
 - **Tracker** (`tracker.py`): release panels and a kanban by Jira version and
   theme. Run `node scripts/jira/dist/index.js mirror` first; without a mirror
-  it has nothing to show. The same view also lives live at `#/roadmap` in the
+  it has nothing to show. The same view also lives live at `#/board` in the
   config UI.
 
 Both are Linux-only chief tooling; an install without a chief does not
