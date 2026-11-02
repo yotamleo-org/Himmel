@@ -23,11 +23,12 @@ export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # HIMMEL-4647: never the
 # a loaded CI shard starved a sandbox launch past diff's 15s default (TIMEOUT => ODD-RC, exit 3)
 export GUARD_CORPUS_TIMEOUT_RUN=120
 
-# sandbox-run.sh scans its ROOT (the checkout it lives in) with `find` on every
-# launch and exits 125 when an entry vanishes mid-scan or a FIFO/socket is present. On a CI
-# shard four suites mutate the shared checkout at once, so replay rows came back rc 125 at
-# random indexes. diff therefore runs from a private staged copy (byte-identical to the
-# tracked files, verified below and again at the end), so its ROOT is this suite's own $TMP.
+# sandbox-run.sh scans its ROOT (the checkout it lives in) with `find` on every launch. On
+# Linux a FIFO/socket found there is masked and a vanished entry is tolerated; on Darwin a
+# FIFO/socket under ROOT is still refused (rc 125). On a CI shard four suites mutate the shared
+# checkout at once, so the scan was once a source of random rc 125 rows. diff therefore runs
+# from a private staged copy (byte-identical to the tracked files, verified below and again at
+# the end), so its ROOT is this suite's own $TMP.
 # The hooks under test are not staged: diff still materialises the real ones itself.
 STAGE="$TMP/stage"
 STAGED_PAIRS=("$HERE/diff:$STAGE/scripts/eval/guard-corpus/diff"
