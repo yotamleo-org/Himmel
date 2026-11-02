@@ -79,7 +79,7 @@ Open in Health link to that check's row. It takes a minute or two and stops at 2
 page only, so press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
 
 The Board's lanes also write to Jira: dragging a card to another column
-transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
+transitions the ticket, and a card's Sector select sets its Sector field (`jira edit --sector`). Both go
 through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card where it was.
 With `TRACKER=local` the boards read the local tracker store instead and need no Jira: cards keep
 their `LOCAL-<n>` ids, and a drop or a Sector select is written to the store through the tracker

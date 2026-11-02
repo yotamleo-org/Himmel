@@ -197,14 +197,14 @@ function driftBanner(dr) {
     + `${dr.stale ? " · the saved run is older than 3 h" : ""} <a href="#/board?tab=tidy">Tidy up ▸</a></div>`;
 }
 
-function stripHtml(d, sel, ch) {
+function stripHtml(d, sel, ch, tab) {
   const note = d.releaseUnknown ? `<div class="nodata">release state unknown: no versions snapshot, so no version is shown as released</div>` : "";
   const tiles = d.versions.map((v, i) => {
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0), flight = c.prog + c.rev + c.ci;
     const tag = v.rel ? `released${v.date ? " " + v.date : ""}` : i === d.cur ? "running" : i === d.next ? "next" : "planned";
     const inChains = chainOk(ch) ? d.tickets.filter((t) => t.v === i && ch.tickets[idOf(t)]).length : null;
-    const open = v.open.length ? `<span class="ro">${v.open.length} still open: ${v.open.map((k) => `HIMMEL-${k}`).map(esc).join(", ")}</span>` : "";
-    return `<a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ v: v.n })}"${i === sel ? ` aria-current="true"` : ""}><span><b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : i === d.cur ? " warn" : ""}">${esc(tag)}</span></span>`
+    const open = v.open.length ? `<span class="ro pill fail">${v.open.length} still open: ${v.open.map((k) => `HIMMEL-${k}`).map(esc).join(", ")}</span>` : "";
+    return `<a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}><span><b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : i === d.cur ? " warn" : ""}">${esc(tag)}</span></span>`
       + `<progress value="${c.done}" max="${total || 1}" aria-label="${esc(v.n)}: ${c.done} of ${total} done"></progress>`
       + `<span class="ro">${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}${inChains !== null ? ` · ${inChains} in chains` : ""}</span>${open}</a>`;
   }).join("");
@@ -230,16 +230,21 @@ function tabsHtml(ui, tab, ch, dr) {
     `<a class="tab" role="tab" aria-selected="${tab === id}" href="${boardHref({ tab: id, v: ui.v })}">${esc(label)}${em[id] ? ` <span class="ro">${esc(em[id])}</span>` : ""}</a>`).join("")}</nav>`;
 }
 
+// The one filter bar and refresh, drawn above every tab: the version links keep the tab, the Sector, Chain and Hide Done filters narrow what the tab lists.
+function barHtml(d, ui, ch, tab) {
+  const here = d.versions[d.cur] ? d.versions[d.cur].n : d.versions[d.next] ? d.versions[d.next].n : "all";
+  const keep = tab === "roadmap" ? "" : tab;
+  const lanes = `<a href="${boardHref({ tab: keep, v: here })}">this version</a> · <a href="${boardHref({ tab: keep, v: "all" })}">all versions</a>`;
+  const chainSel = chainOk(ch) ? `<label>Chain <select data-rm-chain><option value="">all</option>${ch.chains.map((c) =>
+    `<option value="${esc(c.id)}"${ui.chain === c.id ? " selected" : ""}>${esc(c.id)}</option>`).join("")}</select></label>` : "";
+  return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${chainSel}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
+    + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
+}
+
 function lanesHtml(d, ui, sel, ch) {
   const gh = d.source === "github";
   const writeOn = !!ui.writes && !gh;
-  const here = d.versions[d.cur] ? d.versions[d.cur].n : d.versions[d.next] ? d.versions[d.next].n : "all";
-  const lanes = `<a href="${boardHref({ v: here })}">this version</a> · <a href="${boardHref({ v: "all" })}">all versions</a>`;
-  const chainSel = chainOk(ch) ? `<label>Chain <select data-rm-chain><option value="">all</option>${ch.chains.map((c) =>
-    `<option value="${esc(c.id)}"${ui.chain === c.id ? " selected" : ""}>${esc(c.id)}</option>`).join("")}</select></label>` : "";
-  const bar = `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${chainSel}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
-    + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
-  if (sel === -2) return section("rm-lanes", "Roadmap", "", bar + `<div class="empty">${esc(ui.v)}: no such version in the mirror.</div>`);
+  if (sel === -2) return section("rm-lanes", "Roadmap", "", `<div class="empty">${esc(ui.v)}: no such version in the mirror.</div>`);
   const shown = byTheme(d, ui)
     .filter((t) => sel < 0 || t.v === sel)
     .filter((t) => !(ui.hideDone && t.b === "done"))
@@ -247,7 +252,7 @@ function lanesHtml(d, ui, sel, ch) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, bar + (shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch) : `<div class="empty">No tickets match.</div>`));
+  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch) : `<div class="empty">No tickets match.</div>`);
 }
 
 function chainsTab(ui, ch) {
@@ -282,7 +287,8 @@ function statusDriftHtml(dr) {
 }
 
 function tidyTab(d, ui, sel, dr) {
-  const u = { ...ui, version: sel >= 0 ? sel : null };
+  // Tidy up covers every version unless the route names one: a default of the running version would hide the other versions' sync ops and released-but-open tickets.
+  const u = { ...ui, version: ui.v && ui.v !== "all" && sel >= 0 ? sel : null };
   if (d.source === "github") return section("rm-tidy", "Tidy up", "", `<div class="nodata">GitHub issues are read-only here, so there is nothing to tidy: change them on GitHub.</div>`);
   const lib = section("rm-librarian", "Librarian", "Ready-to-approve cleanups.", librarianHtml(d, u));
   if (d.source === "local") return lib; // the local store has no Jira status, no plan and no worker sync
@@ -304,8 +310,8 @@ function boardPage(data, ui, extras) {
   const tab = TABS.some(([id]) => id === ui.tab) ? ui.tab : "roadmap";
   const sel = selIndex(data, ui);
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
-    : `the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"})`;
+    : `the Jira mirror (${data.mirror.count} tickets, newest update ${esc(data.mirror.newest || "unknown")})`;
   const fresh = `<p class="ro rm-fresh">read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${esc(dr.file.writtenHm || "unknown")}` : ""}</p>`;
   const body = tab === "chains" ? chainsTab(ui, ch) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : lanesHtml(data, ui, sel, ch);
-  return [page, fresh, driftBanner(dr), stripHtml(data, sel, ch), linksHtml(ch), tabsHtml(ui, tab, ch, dr), body].join("\n");
+  return [page, fresh, driftBanner(dr), stripHtml(data, sel, ch, tab), linksHtml(ch), tabsHtml(ui, tab, ch, dr), barHtml(data, ui, ch, tab), body].join("\n");
 }

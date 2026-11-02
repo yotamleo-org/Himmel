@@ -80,6 +80,35 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   expect(errs).toEqual([]);
 });
 
+test("dragging a card to another column sends its new status", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  const sent: string[] = [];
+  await page.route("**/api/roadmap/write", async (route) => { sent.push(route.request().postData() || ""); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }); });
+  await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]'));
+  await expect.poll(() => sent.length).toBe(1);
+  expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
+});
+
+test("the Chain filter narrows the lanes to that chain's tickets", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  await expect(page.locator(".rm-card", { hasText: "Not in any chain" })).toBeVisible();
+  await page.locator("select[data-rm-chain]").selectOption("memory");
+  await expect(page.locator(".rm-card", { hasText: "Not in any chain" })).toHaveCount(0);
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeVisible();
+});
+
+test("every tab carries the one filter bar and refresh, and Tidy up lists every version by default", async ({ page }) => {
+  await open(page);
+  for (const tab of ["roadmap", "chains", "tidy"]) {
+    await go(page, `#/board?tab=${tab}`);
+    await expect(page.locator('.rm-bar [data-act="refresh-roadmap"]')).toHaveCount(1);
+  }
+  await go(page, "#/board?tab=tidy");
+  await expect(page.locator("#rm-librarian")).toContainText("HIMMEL-12"); // released-but-open on v1.1.2, not the running version
+});
+
 for (const [width, height] of [[1280, 900], [390, 844]]) {
   for (const scheme of ["light", "dark"] as const) {
     test(`the Board at ${width} px, ${scheme}: every tab draws, no console error, no sideways scroll`, async ({ page }) => {

@@ -132,7 +132,7 @@ function carriedHtml(v, ui) {
   return `<ul class="sh-list">${v.carried.map((c) => `<li>${ticketLink(c.ticket)} ${esc(c.title)} <span class="pill">${esc(c.stage)}</span> ${prRef(c.pr, ui)}</li>`).join("")}</ul>`;
 }
 
-const links = (ui, v) => `<p class="sub"><a href="#/shift${v && v.shift && v.shift.closed ? "/" + encodeURIComponent(v.shift.id) : ""}" data-act="refresh-shift">refresh</a> · See also <a href="#/roadmap">Roadmap</a> · <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
+const links = (ui, v) => `<p class="sub"><a href="#/shift${v && v.shift && v.shift.closed ? "/" + encodeURIComponent(v.shift.id) : ""}" data-act="refresh-shift">refresh</a> · See also <a href="#/board">Board</a> · <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
 
 export function renderShift(v, ui) {
   const page = pageHeader("Shift", "One shift is the whole fleet between cuts: what is running, what waits on you, what shipped.");

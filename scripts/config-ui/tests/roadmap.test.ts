@@ -257,6 +257,36 @@ test("Board: one page with the header, the version strip, the three tabs and the
   expect(renderBoard(r, { version: null, theme: r.themes.indexOf("tracker"), v: "all" }, null)).not.toContain("Orphaned work");
 });
 
+test("Board: one filter bar and refresh above every tab, a version tile keeps the tab, an unknown version says so, and the mirror date is escaped", () => {
+  const r = read(station());
+  for (const tab of ["roadmap", "chains", "tidy"]) {
+    const html = renderBoard(r, { version: null, theme: null, tab }, { drift: driftOk(), chains: chainsOk() });
+    expect(html.match(/class="rm-bar fields"/g)?.length).toBe(1);
+    expect(html).toContain('data-act="refresh-roadmap"');
+    expect(html).toContain("data-rm-hide-done");
+  }
+  const tidy = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(), chains: null });
+  expect(tidy).toContain('href="#/board?tab=tidy&amp;v=v1.1.1"'); // the tile keeps Tidy up; the Roadmap tab's tiles carry no tab
+  expect(renderBoard(r, { version: null, theme: null }, null)).toContain('href="#/board?v=v1.1.1"');
+  expect(renderBoard(r, { version: null, theme: null, v: "no-such" }, null)).toContain("no such version in the mirror");
+  const evil = renderBoard({ ...r, mirror: { ...r.mirror, newest: "<img src=x onerror=1>" } }, { version: null, theme: null }, null);
+  expect(evil).not.toContain("<img src=x");
+  expect(evil).toContain("&lt;img src=x");
+  // a released version with open tickets is drawn in the failing look, not as muted text
+  expect(renderBoard(r, { version: null, theme: null }, null)).toMatch(/class="ro pill fail">\d+ still open: HIMMEL-4/);
+});
+
+test("Board: Tidy up covers every version by default and narrows only when the route names one", () => {
+  const r = read(station());
+  const sections = (html: string) => html.slice(html.indexOf('id="rm-sync"'));
+  const dflt = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(), chains: null });
+  const all = renderBoard(r, { version: null, theme: null, tab: "tidy", v: "all" }, { drift: driftOk(), chains: null });
+  expect(sections(dflt)).toBe(sections(all));
+  expect(dflt).toContain("is released but this is still open"); // the Released-but-open proposal lives on a version other than the running one
+  const named = renderBoard(r, { version: null, theme: null, tab: "tidy", v: "v1.1.3" }, { drift: driftOk(), chains: null });
+  expect(sections(named)).not.toBe(sections(all));
+});
+
 test("Board: the Tidy up tab carries the Drift, Worker to Jira sync and Librarian sections unchanged", () => {
   const html = renderBoard(read(station()), { version: null, theme: null, tab: "tidy", v: "all" }, { drift: driftOk(), chains: null });
   for (const id of ["rm-drift", "rm-sync", "rm-librarian"]) expect(html).toContain(`id="${id}"`);
