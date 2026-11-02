@@ -298,6 +298,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const root = opts.root ?? CHECKOUT;
   // the project whose .env holds the project-scoped secrets; the directory the server was started in by default.
   const projectRoot = opts.projectRoot ?? process.cwd();
+  // the tracker (its git config, its default-bucket store) is the project's, never the checkout the UI is served from
+  const trackerRoot = opts.projectRoot ?? opts.root ?? process.cwd();
   const setupOpts = { env, home: env.HOME || homedir(), himmelRoot: root, projectRoot };
   const himmelctl = himmelctlBin(env);
   const stateDir = join(env.HOME || homedir(), ".himmel", "state", "config-ui");
@@ -392,11 +394,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   async function localWriteRoute(b: Record<string, unknown>): Promise<Response> {
     const req = parseLocalWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
-    if (!(await trackerSources(env, root)).includes("local")) return json({ error: "the local tracker is not this project's tracker" }, 403);
+    if (!(await trackerSources(env, trackerRoot)).includes("local")) return json({ error: "the local tracker is not this project's tracker" }, 403);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     let res: WriteResult | undefined;
-    try { res = await applyLocalWrite(req, { env, root, onSpawn: lock.setGroup }); } catch { /* audited below as an error */ } finally { lock.release(); }
+    try { res = await applyLocalWrite(req, { env, root: trackerRoot, onSpawn: lock.setGroup }); } catch { /* audited below as an error */ } finally { lock.release(); }
     let audit = "ok";
     try {
       appendAudit(auditPath, { time: new Date(now()).toISOString(), action: req.action, target: req.key, value: req.value, argv: res?.argv ?? [], rc: res?.rc ?? null,
@@ -413,10 +415,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const req = parseWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
     // GitHub cards are read-only in the page; the server holds the same contract, before the write lock is taken.
-    const first = (await trackerSources(env, root))[0], setting = trackerSetting(env, root);
+    const first = (await trackerSources(env, trackerRoot))[0], setting = trackerSetting(env, trackerRoot);
     if (first === "github") return json({ error: "GitHub roadmap is read-only" }, 403);
-    // a local or none project never writes Jira, whatever mirror is lying around
-    if (first === "local" || first === "none" || setting === "local" || setting === "none") return json({ error: "this project's tracker is not Jira" }, 403);
+    // a Jira write needs a Jira project: a local or none project, or any other non-empty setting (a typo, TRACKER=Local, github
+    // with gh logged out), never writes Jira, whatever mirror is lying around
+    if (first === "local" || first === "none" || (setting !== "" && setting !== "jira")) return json({ error: "this project's tracker is not Jira" }, 403);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     const mirrorDir = env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
@@ -657,7 +660,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // the tracker sources the rail gates Roadmap and Kanban on.
       if (path === "/api/sources") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        return json({ sources: await trackerSources(env, root) });
+        return json({ sources: await trackerSources(env, trackerRoot) });
       }
       // the roadmap, read live from the Jira mirror, the plan dir, the drift log and the workers on every request, or from the
       // GitHub issues or the local tracker store when that is the first source. Read-only: the sync list is a plan the chief kit
@@ -665,10 +668,10 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/roadmap") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         const mirrorDir = jiraMirrorDir(env);
-        const first = (await trackerSources(env, root))[0];
+        const first = (await trackerSources(env, trackerRoot))[0];
         if (first === "none") return json(redactOut({ ...readRoadmap({ mirrorDir, none: true, workers: { state: "absent" } }), sync: [] }));
-        if (first === "local" || (!first && trackerSetting(env, root) === "local")) {
-          const items = await readLocalItems(env, root);
+        if (first === "local" || (!first && trackerSetting(env, trackerRoot) === "local")) {
+          const items = await readLocalItems(env, trackerRoot);
           const r = readRoadmap({ mirrorDir, local: items ?? [], workers: { state: "absent" } });
           return json(redactOut({ ...r, ...(items ? {} : { reason: "the local tracker store could not be read" }), sync: [] }));
         }

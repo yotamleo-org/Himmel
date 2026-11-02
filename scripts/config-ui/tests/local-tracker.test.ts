@@ -2,6 +2,7 @@
 // LOCAL-<n> id, and a drop or a Sector select written through the tracker seam (scripts/lib/tracker.sh). Both Jira CLIs are
 // stubs that log any call (JIRA_CMD for the seam, CONFIG_UI_JIRA_CLI for jira-write.ts): a local card must reach neither.
 import { test, expect, afterEach } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +20,17 @@ const item = (n: number, status: string, title: string, o: { fv?: string; epic?:
   ["---", `id: LOCAL-${n}`, `title: ${JSON.stringify(title)}`, "type: Task", `status: ${status}`, `fix_version:${o.fv ? " " + o.fv : ""}`,
     `epic:${o.epic ? " " + o.epic : ""}`, "created: 2026-10-01T00:00:00Z", ...(o.sector ? [`sector: ${JSON.stringify(o.sector)}`] : []), "links:", "---", "", "", "## Log", ""].join("\n");
 
-function scratch(o: { tracker?: string; items?: boolean; mirror?: boolean; failedRead?: boolean } = {}) {
+// a git repo named `name` under `base`, with the given git config set
+function repo(base: string, name: string, cfg: Record<string, string> = {}) {
+  const p = join(base, name);
+  mkdirSync(p);
+  execFileSync("git", ["init", "-q", p]);
+  for (const [k, v] of Object.entries(cfg)) execFileSync("git", ["-C", p, "config", k, v]);
+  return p;
+}
+
+// projectGit: the server's projectRoot is a git repo (under the scratch dir) carrying this git config, while root stays a plain dir
+function scratch(o: { tracker?: string; items?: boolean; mirror?: boolean; failedRead?: boolean; projectGit?: Record<string, string> } = {}) {
   const d = mkdtempSync(join(tmpdir(), "local-tracker-"));
   cleanups.push(() => rmSync(d, { recursive: true, force: true }));
   const store = join(d, "store");
@@ -39,7 +50,8 @@ function scratch(o: { tracker?: string; items?: boolean; mirror?: boolean; faile
   const env = { PATH: process.env.PATH, HOME: d, TRACKER: o.tracker ?? "local", ...(o.failedRead ? { HANDOVER_DIR: join(d, "missing-handover"), USER_SLUG: "x" } : { TRACKER_STORE: store }), JIRA_CMD: seamJira,
     HIMMEL_SECRETS_KEYRING: "off", HIMMEL_JIRA_MIRROR: o.mirror ? mirror : join(d, "no-mirror"), CONFIG_UI_JIRA_CLI: join(import.meta.dir, "stub-jira.js"), STUB_JIRA_LOG: cliLog,
     CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } as Record<string, string>;
-  const srv = startServer({ port: 0, token: TOKEN, root: d, env, legsScript: join(d, "no-workers.sh") });
+  const projectRoot = o.projectGit ? repo(d, "proj", o.projectGit) : undefined;
+  const srv = startServer({ port: 0, token: TOKEN, root: d, projectRoot, env, legsScript: join(d, "no-workers.sh") });
   cleanups.push(() => srv.stop());
   const base = `http://127.0.0.1:${srv.port}`;
   const get = async (p: string) => (await fetch(base + p, { headers: { "X-Himmel-Token": TOKEN } })).json();
@@ -140,10 +152,41 @@ test("local writes are refused with no seam call: no token, a bad id, a bad Sect
 });
 
 test("a Jira write for a HIMMEL key is refused with 403 and no Jira call on a local or none project, whatever the store holds", async () => {
-  for (const [name, o] of [["local with items", {}], ["local, store unreadable", { failedRead: true }], ["local, empty store", { items: false }], ["none", { tracker: "none" }]] as [string, Parameters<typeof scratch>[0]][]) {
+  for (const [name, o] of [["local with items", {}], ["local, store unreadable", { failedRead: true }], ["local, empty store", { items: false }], ["none", { tracker: "none" }], ["implicit local, no setting", { tracker: "" }], ["a malformed setting", { tracker: "Local" }], ["a typo", { tracker: "lokal" }]] as [string, Parameters<typeof scratch>[0]][]) {
     const s = scratch({ ...o, mirror: true });
     const r = await s.post({ key: "HIMMEL-1", status: "prog" });
     expect([name, r.status]).toEqual([name, 403]);
     expect([name, s.jiraCalls()]).toEqual([name, []]);
   }
+});
+
+test("the tracker is read from the project root, not the checkout root: a project that is local only by git config refuses a Jira write", async () => {
+  const s = scratch({ tracker: "", mirror: true, items: false, projectGit: { "himmel.tracker": "local" } });
+  const r = await s.post({ key: "HIMMEL-1", status: "prog" });
+  expect(r.status).toBe(403);
+  expect(s.jiraCalls()).toEqual([]);
+});
+
+test("the default-bucket store is the project's, not the checkout's: reads and writes both follow projectRoot", async () => {
+  const d = mkdtempSync(join(tmpdir(), "local-tracker-bucket-"));
+  cleanups.push(() => rmSync(d, { recursive: true, force: true }));
+  const H = join(d, "handovers");
+  const root = repo(d, "rootrepo"), proj = repo(d, "projrepo");
+  for (const [name, title] of [["rootrepo", "Root item"], ["projrepo", "Project item"]]) {
+    const store = join(H, "u", name, "tracker");
+    mkdirSync(store, { recursive: true });
+    writeFileSync(join(store, "LOCAL-1.md"), item(1, "To Do", title));
+    writeFileSync(join(store, "next-id"), "2\n");
+  }
+  const env = { PATH: process.env.PATH, HOME: d, TRACKER: "local", HANDOVER_DIR: H, USER_SLUG: "u", HIMMEL_SECRETS_KEYRING: "off", HIMMEL_JIRA_MIRROR: join(d, "no-mirror"),
+    CONFIG_UI_JIRA_CLI: join(import.meta.dir, "stub-jira.js"), CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } as Record<string, string>;
+  const srv = startServer({ port: 0, token: TOKEN, root, projectRoot: proj, env, legsScript: join(d, "no-workers.sh") });
+  cleanups.push(() => srv.stop());
+  const base = `http://127.0.0.1:${srv.port}`;
+  const rm = await (await fetch(base + "/api/roadmap", { headers: { "X-Himmel-Token": TOKEN } })).json();
+  expect(rm.tickets.map((t: { t: string }) => t.t)).toEqual(["Project item"]);
+  const w = await fetch(base + "/api/roadmap/write", { method: "POST", headers: { "content-type": "application/json", origin: base, "x-himmel-token": TOKEN }, body: JSON.stringify({ key: "LOCAL-1", backend: "local", status: "prog" }) });
+  expect(w.status).toBe(200);
+  expect(readFileSync(join(H, "u", "projrepo", "tracker", "LOCAL-1.md"), "utf8")).toContain("\nstatus: In Progress\n");
+  expect(readFileSync(join(H, "u", "rootrepo", "tracker", "LOCAL-1.md"), "utf8")).toContain("\nstatus: To Do\n");
 });

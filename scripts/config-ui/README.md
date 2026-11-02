@@ -209,7 +209,11 @@ route, `#/workflow&w=<id>&s=<n>`.
   "new sector…" option) posts `{key, backend: "local", sector}` and runs `tracker_sector <id> <name>`. Same token gate,
   write lock and audit row as a Jira write (`action: tracker-transition|tracker-sector`); no Jira CLI runs. The seam
   refuses a status off its ladder (400, the reason in `output`), an absent item answers 404, and a move the seam will
-  not make (out of Done) answers 409. An empty store is not a source, so the rail hides both pages.
+  not make (out of Done) answers 409. An empty store is not a source, so the rail hides both pages. The tracker is read
+  from the project the server was started in (its working directory), not the checkout the UI is served from. A Jira write
+  (`{key, status|sector}` without `backend: "local"`) answers 403 unless the project's tracker is Jira: a local or none
+  project, or any other non-empty `TRACKER` (a typo, `Local`, `github` with gh logged out), is refused whatever Jira
+  mirror is lying around.
 - **No tracker.** With `TRACKER=none`, `GET /api/sources` lists `none`: the rail keeps Roadmap and Kanban and both pages
   say no tracker is configured instead of drawing an empty board.
 - **Sector grouping (HIMMEL-8379).** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
