@@ -451,6 +451,7 @@ scripts/handover/chief-kit/test-status-drift.sh	51
 scripts/handover/chief-kit/test-model-check-report.sh	5
 scripts/handover/chief-kit/test-succession-tracker.sh	1
 scripts/handover/chief-kit/test-tick-deadwin.sh	7
+scripts/handover/chief-kit/test-tick-fields.sh	299
 scripts/handover/chief-kit/test-tick-holds.sh	3
 scripts/handover/chief-kit/test-tick-nolive.sh	13
 scripts/handover/chief-kit/test-tick-pool-stale.sh	2

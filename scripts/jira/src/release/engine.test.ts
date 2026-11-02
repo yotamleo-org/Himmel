@@ -3,8 +3,8 @@ import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, op
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, signSpec, specCheck, standing,
+  apply, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
+  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { execFileSync } from 'node:child_process';
@@ -22,6 +22,7 @@ vi.mock('node:child_process', async (orig) => {
   return { ...m, execFileSync };
 });
 import type { IssueSnap, OperatorRow, RulingRow } from './types.js';
+import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
 import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
@@ -396,6 +397,126 @@ describe('release engine (HIMMEL-6796)', () => {
       expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(conflict);
       expect(() => admit(req, { ...pull, supersedes: [prior], authority: { kind: 'operator', ref: move.id } })).toThrow(conflict);
     });
+
+    describe('an operator restore of a key held under an older operator record (HIMMEL-8761)', () => {
+      const restoreTo = (to_v: string, from_v: string | null = null) => ({ outcome: 'MOVE', op: { kind: 'move' as const, from_v, to_v } });
+      const restore = restoreTo('v2');
+      const T = (hh: number) => `2026-10-21T${String(hh).padStart(2, '0')}:00:00.000Z`;
+
+      // K-2 is placed in `v` under an operator ruling, then Jira drifts; a REVERSION to restore it is claimed.
+      async function drifted(decisions: () => void, v = 'v2', verb: 'REVERSION' | 'INTAKE' = 'REVERSION', from_v: string | null = null) {
+        await setup();
+        const o = decide(T(9), 'add', null, v);
+        const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: v, why: 'w', evidence: {}, from: 'console' });
+        claim(ctx(rmEnv));
+        const r = admit(q.req, { op: { kind: 'add', from_v: null, to_v: v }, authority: { kind: 'operator', ref: o.id } });
+        await apply(ctx(rmEnv), r.id);
+        jira.fv.set('K-2', []);
+        decisions();
+        const q2 = request(ctx(), { verb, key: 'K-2', from_v, to_v: v, why: 'operator restored it', evidence: {}, from: 'console' });
+        claim(ctx(rmEnv));
+        return { prior: r.id, req: q2.req };
+      }
+
+      const lastAdmission = () => readAdmissions('v2').filter((a) => a.key === 'K-2').at(-1);
+
+      it('lands under the newest operator record that places the key, and the ruling reads in', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide(T(11), 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior] });
+        expect(r.authority).toEqual({ kind: 'operator', ref: newest.id });
+        expect(r.op).toEqual({ kind: 'add', from_v: null, to_v: 'v2' });
+        await apply(ctx(rmEnv), r.id);
+        expect(jira.fv.get('K-2')).toEqual(['v2']);
+        const s = state(ctx());
+        expect(s.integrity).toEqual([]);
+        expect(s.records.find((x) => x.key === 'K-2' && x.version === 'v2')).toMatchObject({ placement: 'in', ruling: r.id });
+      });
+
+      it('lands the same when the request cites the newest record', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide(T(11), 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior], authority: { kind: 'operator', ref: newest.id } });
+        expect(r.authority).toEqual({ kind: 'operator', ref: newest.id });
+        expect(r.op).toEqual({ kind: 'add', from_v: null, to_v: 'v2' });
+      });
+
+      it('lands when a newer decision names another key', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => {
+          newest = decide(T(11), 'add', null, 'v2');
+          operatorDecision(at(T(12)), { decision: '383', keys: ['K-9'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'another key' });
+        });
+        expect(admit(req, { ...restore, supersedes: [prior] }).authority).toEqual({ kind: 'operator', ref: newest.id });
+      });
+
+      it('lands when a newer core-bypass names the key, which places nothing', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => {
+          newest = decide(T(11), 'add', null, 'v2');
+          coreBypass(at(T(12)), { keys: ['K-2'], decision: '451', verbatim: 'core bypass' });
+        });
+        expect(admit(req, { ...restore, supersedes: [prior] }).authority).toEqual({ kind: 'operator', ref: newest.id });
+      });
+
+      it('is still refused when the newest record contradicts the restore', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide(T(11), 'remove', 'v2', null); });
+        expect(() => admit(req, { ...restore, supersedes: [prior] })).toThrow(new RegExp(`CONFLICT K-2: ${newest.id} \\(newer\\) remove v2→backlog`));
+      });
+
+      it.each([
+        ['an add to another version', 'add', null, 'v1'],
+        ['a keep with no version', 'keep', null, null],
+        ['a keep in another version', 'keep', 'v1', 'v1'],
+      ])('is refused when %s is the operator\'s newer word on the key', async (_name, op, from_v, to_v) => {
+        let placing!: OperatorRow;
+        const { prior, req } = await drifted(() => { placing = decide(T(11), 'add', null, 'v2'); decide(T(12), op, from_v, to_v); });
+        const conflict = new RegExp(`CONFLICT K-2: ${placing.id} \\(newer\\) add backlog→v2`);
+        expect(() => admit(req, { ...restore, supersedes: [prior] })).toThrow(conflict);
+        expect(() => admit(req, { ...restore, supersedes: [prior], authority: { kind: 'operator', ref: placing.id } })).toThrow(/does not cover K-2 move/);
+        expect(jira.fv.get('K-2')).toEqual([]);
+      });
+
+      it('rewrites only a REVERSION: an INTAKE move under the same record is still refused', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); }, 'v2', 'INTAKE');
+        expect(() => admit(req, { ...restore, outcome: 'ADMIT', supersedes: [prior] })).toThrow(/CONFLICT K-2: /);
+      });
+
+      it('rewrites only a move from backlog: a move from another version is still refused', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); }, 'v2', 'REVERSION', 'v1');
+        expect(() => admit(req, { ...restoreTo('v2', 'v1'), supersedes: [prior] })).toThrow(/CONFLICT K-2: /);
+      });
+
+      it('keeps the op of a record that is not an add: a move record covers the move as it is', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'move', null, 'v2'); });
+        expect(admit(req, { ...restore, supersedes: [prior] }).op).toEqual({ kind: 'move', from_v: null, to_v: 'v2' });
+      });
+
+      it('never lands under the standing emergency record: citing it stays refused', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v1'); }, 'v1');
+        expect(() => admit(req, { ...restoreTo('v1'), supersedes: [prior], authority: { kind: 'operator', ref: 'O-R1-emergency' } }))
+          .toThrow(/O-R1-emergency does not cover K-2 move/);
+      });
+
+      it('records an rm-admit after an rm-remove, so the latest ledger row reads the key in', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); });
+        appendAdmission({ version: 'v2', key: 'K-2', kind: 'rm-remove', reason: 'earlier removal', by: 'rm', ruling: 'R-R1-0099' });
+        expect(lastAdmission()?.kind).toBe('rm-remove');
+        const r = admit(req, { ...restore, supersedes: [prior] });
+        await apply(ctx(rmEnv), r.id);
+        expect(lastAdmission()).toMatchObject({ kind: 'rm-admit', ruling: r.id });
+      });
+
+      it('writes no Jira field when the admissions ledger cannot take the restore row', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior] });
+        vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'a-dir-not-a-file'));
+        mkdirSync(join(root, 'a-dir-not-a-file'));
+        await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow();
+        expect(jira.fv.get('K-2')).toEqual([]);
+      });
+    });
   });
 
   it('keeps operator acts and requests out of the RM and of chief-spawned workers', () => {
@@ -757,6 +878,18 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
     expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
     expect(ask('K-2').req).toBe('Q-R1-0002');
+  });
+
+  it('the run summary counts the refused requests, and a run with no refusal prints none (HIMMEL-8761)', async () => {
+    declared();
+    ask('K-2');
+    const refused = await rmRun(ctx(), async () => []);
+    expect(rmRunSummary('R1', refused)).toBe('RM-RUN R1 summary: 1 refused');
+    ask('K-3');
+    const ruled = await rmRun(ctx(), admitAll);
+    expect(ruled).toContainEqual(expect.stringMatching(/^RULING /));
+    expect(rmRunSummary('R1', ruled)).toBeNull();
+    expect(rmRunSummary('R1', ['PENDING R-R1-0002: release rule: REFUSED upstream'])).toBeNull();
   });
 
   it('a request the judge leaves out is reported and stays claimed for the next run', async () => {
