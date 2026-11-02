@@ -41,7 +41,7 @@ describe('init-cli --discover project resolution (portability)', () => {
 const KEYRING_STUB = resolve(__dirname, '..', '..', '..', 'scripts', 'lib', 'fixtures', 'keyring-stub.sh');
 function stubbedRun(args, items = {}, locked = false) {
   const dir = mkdtempSync(join(tmpdir(), 'himmel-initcli-kr-'));
-  spawnSync('bash', ['-c', 'TMP="$1"; . "$2"', '_', dir, KEYRING_STUB], { encoding: 'utf8' });
+  expect(spawnSync('bash', ['-c', 'TMP="$1"; . "$2"', '_', dir, KEYRING_STUB], { encoding: 'utf8' }).status).toBe(0);
   const store = join(dir, 'keyring.tsv');
   writeFileSync(store, Object.entries(items).map(([k, v]) => `service=himmel key=${k} scope=user\t${v}\n`).join(''));
   const envFile = join(dir, '.env');

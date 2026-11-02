@@ -9,7 +9,7 @@ import { envFilePath, jiraFetch } from '../lib/jira-fetch.mjs';
 // The shared stub keyring (secret-tool + busctl first on PATH): no row here reaches a real keyring.
 const KEYRING_STUB = fileURLToPath(new URL('../../../scripts/lib/fixtures/keyring-stub.sh', import.meta.url));
 function stubKeyring(dir, items = {}) {
-  spawnSync('bash', ['-c', 'TMP="$1"; . "$2"', '_', dir, KEYRING_STUB], { encoding: 'utf8' });
+  expect(spawnSync('bash', ['-c', 'TMP="$1"; . "$2"', '_', dir, KEYRING_STUB], { encoding: 'utf8' }).status).toBe(0);
   const store = join(dir, 'keyring.tsv');
   writeFileSync(store, Object.entries(items).map(([k, v]) => `service=himmel key=${k} scope=user\t${v}\n`).join(''));
   return {
