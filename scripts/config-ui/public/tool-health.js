@@ -197,7 +197,7 @@ function chart(rows, value, max, label, kind) {
   const X = (i) => left + (i + 0.5) * step, Y = (v) => base - (v / top) * plot;
   const grid = [0, 1, 2].map((i) => `<line x1="${left}" y1="${base - (plot * i) / 2}" x2="${right}" y2="${base - (plot * i) / 2}" class="grid"/><text class="ax" x="34" y="${base - (plot * i) / 2 + 4}" text-anchor="end">${esc(label((top * i) / 2))}</text>`).join("");
   const band = rows.map((r, i) => (r.shift ? `<rect x="${left + i * step}" y="${base - plot}" width="${step}" height="${plot}" class="shiftband"><title>AFK shift</title></rect>` : "")).join("");
-  const dl = rows.map((r, i) => `<text class="dl" x="${X(i)}" y="168" text-anchor="middle"${rows.length > 14 ? ' font-size="8"' : ""}>${esc(String(Number(r.day.slice(8, 10))))}</text>`).join("");
+  const dl = rows.map((r, i) => `<text class="dl" x="${X(i)}" y="168" text-anchor="middle"${rows.length > 14 ? " data-dense" : ""}>${esc(String(Number(r.day.slice(8, 10))))}</text>`).join("");
   let marks = "", line = "", prev = null;
   rows.forEach((r, i) => {
     const v = value(r), x = X(i);
