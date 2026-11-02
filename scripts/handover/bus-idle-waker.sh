@@ -79,7 +79,9 @@ for v in "$POLL" "$GRACE" "$REWAKE" "$MAX"; do
     case "$v" in ''|*[!0-9.]*|*.*.*|.) echo "bus-idle-waker: --poll, --grace, --rewake and --max-polls take a number" >&2; exit 64 ;; esac
 done
 case "$MAX" in *.*) echo "bus-idle-waker: --max-polls takes an integer" >&2; exit 64 ;; esac
-case "$MAX_WAKES" in ''|*[!0-9]*|0) echo "bus-idle-waker: --max-wakes takes a positive integer" >&2; exit 64 ;; esac
+case "$MAX_WAKES" in ''|*[!0-9]*) MAX_WAKES=0 ;; esac
+[ "$((10#$MAX_WAKES))" -gt 0 ] || { echo "bus-idle-waker: --max-wakes takes a positive integer" >&2; exit 64; }
+MAX_WAKES=$((10#$MAX_WAKES))
 [ "$(awk -v p="$POLL" 'BEGIN{print (p > 0)}')" = 1 ] || { echo "bus-idle-waker: --poll must be above 0" >&2; exit 64; }
 
 STATE_DIR="${BUS_WAKER_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus-waker}"

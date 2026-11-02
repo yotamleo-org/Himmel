@@ -189,6 +189,9 @@ BUS_N=2 BUS_AFTER_CALLS=6 BUS_N_AFTER=0 run 14 0 --rewake 0 --max-wakes 2
 bash "$WAKER" --name legX --service s --session /S --max-wakes 0 >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 64 ] && pass "--max-wakes 0 is refused (rc=64)" || fail "--max-wakes 0: expected rc=64, got rc=$rc"
+bash "$WAKER" --name legX --service s --session /S --max-wakes 00 --max-polls 1 >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "--max-wakes 00 is refused too (rc=64), it would silence every wake" || fail "--max-wakes 00: expected rc=64, got rc=$rc"
 
 echo "== dialog and target =="
 # Screens copied from a real konsole (Claude Code 2.1.303) through getAllDisplayedText.
