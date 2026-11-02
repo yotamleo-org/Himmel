@@ -57,10 +57,12 @@
 # Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
 # macOS konsole shim, a distinct failure from 3 above; 16 another live worker
-# session already holds the same ticket (dedup layer 1b); 4 no pgrep on
+# session already holds the same ticket, or another lineage's arm for that
+# ticket is mid-launch and holds its ticket claim (dedup layer 1b); 4 no pgrep on
 # PATH (see the pgrep availability check below); 5 the claim-lock root could
 # not be created (an environment fault, never a dedup hit); 6 the claim
-# retry budget was exhausted without ever confirming a running session (an
+# retry budget was exhausted without ever confirming a running session, or a
+# same-lineage arm kept the ticket claim past the session-visibility budget (an
 # UNRESOLVED arm, never a dedup hit either); 7 konsole
 # survived its settle but the named session never became visible to pgrep
 # within the post-launch budget (UNCONFIRMED, never
