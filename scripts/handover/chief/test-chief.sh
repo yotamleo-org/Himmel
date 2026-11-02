@@ -469,7 +469,8 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
 BANNED='overlord|yotamleo|luna|cachyos' # leak-pattern-allow
 leak_free() {
     local matches
-    matches="$(grep -niE "$BANNED" "$1" 2>/dev/null | grep -vc 'leak-pattern-allow')"
+    # the exact collection flag "-c luna" (followed by a space or the line end) is a search command, not a leak # leak-pattern-allow
+    matches="$(sed 's/-c luna\( \|$\)/\1/g' "$1" 2>/dev/null | grep -niE "$BANNED" | grep -vc 'leak-pattern-allow')"
     [ "$matches" = "0" ] && echo yes || echo no
 }
 # The temp-root scan is narrowly exempted for the queue-lock RELEASE TOKEN
@@ -520,6 +521,19 @@ check "8 no leak in test-chief.sh" "$(leak_free "$HERE/test-chief.sh")" "yes"
 check "8 no leak in chief-template.md" "$(leak_free "$REPO_REAL/docs/handover/chief-template.md")" "yes"
 check "8 no leak in chief-handoff-template.md" "$(leak_free "$REPO_REAL/docs/handover/chief-handoff-template.md")" "yes"
 check "8 no leak in worker-brief-template.md" "$(leak_free "$REPO_REAL/docs/handover/worker-brief-template.md")" "yes"
+# The collection name in a search command (-c luna) is allowed; any other luna still trips the scan. # leak-pattern-allow
+leakf8="$(mktemp "${TMPDIR:-/tmp}/leakf8.XXXXXX")" || exit 1
+printf 'run qmd query -c luna "topic" now\n' > "$leakf8" # leak-pattern-allow
+check "8 control: the collection flag alone is not a leak" "$(leak_free "$leakf8")" "yes"
+printf 'run qmd query -c luna "topic" now\nthe luna vault\n' > "$leakf8" # leak-pattern-allow
+check "8 control: a bare luna beside the flag still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'see /home/x/luna/handovers\n' > "$leakf8" # leak-pattern-allow
+check "8 control: a /luna/ path still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'run qmd query -c lunar "topic"\n' > "$leakf8" # leak-pattern-allow
+check "8 control: -c followed by a longer word starting luna still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'run qmd query -c luna/x "topic"\n' > "$leakf8" # leak-pattern-allow
+check "8 control: -c luna/x (a path) still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+rm -f "$leakf8"
 check "8 no leak in running-a-chief.md" "$(leak_free "$REPO_REAL/docs/handover/running-a-chief.md")" "yes"
 check "8 no leak in .claude/commands/chief.md" "$(leak_free "$REPO_REAL/.claude/commands/chief.md")" "yes"
 
