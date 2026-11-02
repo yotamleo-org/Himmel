@@ -139,6 +139,15 @@ export HIMMEL_DOCTOR_PROC="$HIMMEL_DOCTOR_PROC_BASE/no-proc"
 HIMMEL_DOCTOR_SYSTEMCTL_BASE="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-nosystemctl.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
 export HIMMEL_DOCTOR_SYSTEMCTL="$HIMMEL_DOCTOR_SYSTEMCTL_BASE/no-systemctl"
 
+# Hermeticity: C24 reads the user's crontab to walk every # HIMMEL-... row's runner and script. A real
+# crontab is read by uid, so a dead row on the dev box would turn every unrelated case red and print a
+# path into the log. Put an empty crontab first on PATH for the whole suite; dedicated C24 cases put their
+# own stub in front of it.
+DOCTOR_CRON_STUB_DIR="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-nocrontab.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
+printf '#!/bin/sh\nexit 0\n' > "$DOCTOR_CRON_STUB_DIR/crontab"
+chmod +x "$DOCTOR_CRON_STUB_DIR/crontab"
+export PATH="$DOCTOR_CRON_STUB_DIR:$PATH"
+
 # Hermeticity: C8's runner-home defaults resolve via
 # cadence_user_home (USERPROFILE via cygpath on Windows) — per-case HOME
 # redirection does NOT cover that, so pin all four seams to empty dirs
@@ -161,7 +170,7 @@ tool_dirs() {
         d="$(command -v "$t" 2>/dev/null)" && dirname "$d"
     done | sort -u | tr '\n' ':'
 }
-TOOLS_PATH="$(tool_dirs)"
+TOOLS_PATH="$DOCTOR_CRON_STUB_DIR:$(tool_dirs)"
 
 # fake uname=Linux (to exercise the non-Windows --fix path on this MINGW box)
 FAKEROOT="$(mktemp -d)"; FAKEBIN="$FAKEROOT/bin"; mkdir -p "$FAKEBIN"
@@ -2071,6 +2080,156 @@ if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'expected-but-abs
     pass "C24 -> WARN (expected task absent)"
 else
     fail "C24 absent -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+# ── C24: a himmel cron line whose runner or the script the runner calls is gone ──
+# fake_cron_lines <dir> <crontab-line...> — a crontab stub that prints the given lines verbatim.
+# shellcheck disable=SC2016  # $1 is emitted literally for the fake binary's own /bin/sh
+fake_cron_lines() {
+    local dir="$1" n; shift
+    mkdir -p "$dir"
+    : > "$dir/crontab.txt"
+    for n in "$@"; do printf '%s\n' "$n" >> "$dir/crontab.txt"; done
+    printf '#!/bin/sh\nif [ "$1" = "-l" ]; then cat "%s/crontab.txt"; fi\nexit 0\n' "$dir" > "$dir/crontab"
+    chmod +x "$dir/crontab"
+}
+c24_run() { # <tmp>
+    PATH="$1/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$1/none/*.mcp.json" CLAUDE_DIR="$1/claude" HOME="$1/home" bash "$DOC" --no-color 2>&1
+}
+
+echo "== C24 (HIMMEL-8640): runner exists but calls a missing script -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 dead script: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/usr/bin/env bash\nbash %s/scripts/eval/leg-digest/failure-review-cadence.sh run --vault %s/vault\n' "$t" "$t" > "$t/runner/failure-review-cadence.sh"
+chmod +x "$t/runner/failure-review-cadence.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/scripts/eval/leg-digest/failure-review-cadence.sh" && grepq "$out" -F 'arm --force'; then
+    pass "C24 -> FAIL (runner calls a missing script; path and re-arm remedy named)"
+else
+    fail "C24 dead script -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24 (HIMMEL-8640): the runner itself is missing -> FAIL naming the runner =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 dead runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/runner/failure-review-cadence.sh"; then
+    pass "C24 -> FAIL (runner missing; path named)"
+else
+    fail "C24 dead runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24 (HIMMEL-8640): runner and script both exist, plus a bare-command cron line -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 live runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner" "$t/scripts/eval/worker-digest"; write_settings "$t/claude" "$WRAPPER"
+: > "$t/scripts/eval/worker-digest/failure-review-cadence.sh"
+printf '#!/usr/bin/env bash\nbash %s/scripts/eval/worker-digest/failure-review-cadence.sh run --vault %s/vault\n' "$t" "$t" > "$t/runner/failure-review-cadence.sh"
+chmod +x "$t/runner/failure-review-cadence.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview" "0 0 * * * true # HIMMEL-Qmd-Reindex"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (live runner and script; a non-path command is skipped)"
+else
+    fail "C24 live runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: the suite reads an empty stub crontab, never the real one =="
+if [ "$(command -v crontab)" = "$DOCTOR_CRON_STUB_DIR/crontab" ] && [ -z "$(crontab -l)" ]; then
+    pass "C24 -> the default crontab on PATH is the empty suite stub"
+else
+    fail "C24 hermetic crontab -> $(command -v crontab)"
+fi
+
+echo "== C24: a quoted runner path with a space is not resolved -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 quoted space: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/no such dir/runner.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (unterminated quote word is skipped, not printed as a dead path)"
+else
+    fail "C24 quoted space -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: a backslash-escaped runner path with a space is not resolved -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 escaped space: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * $t/no\\ such\\ dir/runner.sh # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (trailing-backslash word is skipped)"
+else
+    fail "C24 escaped space -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: a commented-out HIMMEL row is not a cron row -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 commented row: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "# 15 06 * * * \"$t/runner/gone.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (commented-out row is ignored)"
+else
+    fail "C24 commented row -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an indented commented-out HIMMEL row is not a cron row -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 indented comment: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "  # 15 06 * * * \"$t/runner/gone.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (an indented commented-out row is ignored)"
+else
+    fail "C24 indented comment -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an absolute data path after an option flag is not a script -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 option operand: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+: > "$t/runner/r.sh"; chmod +x "$t/runner/r.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" --output $t/out/generated.js # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if PATH="$t/probe:$PATH" crontab -l 2>/dev/null | grep -qF '# HIMMEL-FailureReview' && grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (the operand of an option flag is data, not a script)"
+else
+    fail "C24 option operand -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an interpreter flag before a missing script on the cron row -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 interpreter flag row: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * bash -e $t/missing/s.sh # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/missing/s.sh"; then
+    pass "C24 -> FAIL (a boolean interpreter flag does not hide the missing script)"
+else
+    fail "C24 interpreter flag row -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an interpreter flag before a missing script inside the runner -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 interpreter flag runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/usr/bin/env bash\nbash -e %s/missing/s.sh run\n' "$t" > "$t/runner/r.sh"
+chmod +x "$t/runner/r.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/missing/s.sh"; then
+    pass "C24 -> FAIL (a boolean interpreter flag inside the runner does not hide the missing script)"
+else
+    fail "C24 interpreter flag runner -> $(printf '%s' "$out" | grep C24)"
 fi
 rm -rf "$t"
 

@@ -1440,7 +1440,80 @@ _c24_cron_has_task() {
     grep -qE "# ${task}\$" <<< "$cron"
 }
 
+# _c24_dead_cron_paths — for each crontab row tagged "# HIMMEL-<name>", print "<name>: <path>" for every
+# absolute path the row EXECUTES that does not exist: its command, and the script an interpreter command
+# (bash sh zsh dash python python3 node bun perl ruby) runs. When the command is a readable #! file, the
+# non-comment lines of it are judged the same way. A data operand (an option's value, an argument after the
+# script) is never judged. Read-only.
+# ponytail: split on whitespace, so a path with a space is skipped (a word with an odd quote count or a
+# trailing backslash stops the judging); upgrade path is shlex in python.
+# _c24_word_path <word> — prints the path a row word names with quotes and backslashes removed; rc 1 when
+# the word is one half of a quoted or escaped path that whitespace splitting cut.
+_c24_word_path() {
+    local w="$1" dq sq
+    case "$w" in *\\) return 1 ;; esac
+    dq="${w//[^\"]/}"; sq="${w//[^\']/}"
+    [ $((${#dq} % 2)) -eq 0 ] && [ $((${#sq} % 2)) -eq 0 ] || return 1
+    w="${w//\\/}"; w="${w//\"/}"; w="${w//\'/}"
+    printf '%s' "$w"
+}
+# _c24_exec_paths <words...> — prints "C <path>" for an absolute command and "S <path>" for the absolute
+# script an interpreter command runs; leading NAME=value words are skipped.
+_c24_exec_paths() {
+    local w p cmd="" base
+    for w in "$@"; do
+        p="$(_c24_word_path "$w")" || return 0
+        if [ -z "$cmd" ]; then
+            case "$p" in *=*) continue ;; esac
+            cmd="$p"
+            case "$p" in /*) printf 'C %s\n' "$p" ;; esac
+            base="${p##*/}"
+            case "$base" in bash|sh|zsh|dash|python|python3|node|bun|perl|ruby) ;; *) return 0 ;; esac
+            continue
+        fi
+        case "$p" in -c) return 0 ;; -*) continue ;; esac
+        case "$p" in /*) printf 'S %s\n' "$p" ;; esac
+        return 0
+    done
+}
+_c24_dead_cron_paths() {
+    local cron line task cmd words kind p runner rline rwords
+    cron="$(crontab -l 2>/dev/null)" || return 0
+    while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in '#'*) continue ;; *'# HIMMEL-'*) ;; *) continue ;; esac
+        task="${line##*# }"
+        read -r _ _ _ _ _ cmd <<< "$line"
+        cmd="${cmd%% # HIMMEL-*}"
+        read -r -a words <<< "$cmd"
+        runner=""
+        while read -r kind p; do
+            [ -n "$p" ] || continue
+            [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+            if [ "$kind" = C ] && [ -z "$runner" ]; then runner="$p"; fi
+        done < <(_c24_exec_paths ${words[@]+"${words[@]}"})
+        # The runner is a generated #! script that names the script it runs.
+        if [ -n "$runner" ] && [ -f "$runner" ] && [ -r "$runner" ]; then
+            IFS= read -r -n 2 rline < "$runner" || true
+            [ "$rline" = '#!' ] || continue
+            while IFS= read -r rline; do
+                case "$rline" in '#'*) continue ;; esac
+                read -r -a rwords <<< "$rline"
+                while read -r kind p; do
+                    [ -n "$p" ] || continue
+                    [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+                done < <(_c24_exec_paths ${rwords[@]+"${rwords[@]}"})
+            done < "$runner"
+        fi
+    done <<< "$cron"
+}
+
 check_c24() {
+    local dead; dead="$(_c24_dead_cron_paths | sort -u)"
+    if [ -n "$dead" ]; then
+        emit FAIL C24-cadence-registry "an installed cron runner calls a path that does not exist: $(printf '%s' "$dead" | tr '\n' ';' | sed 's/;$//; s/;/; /g')" \
+            "re-arm that cadence with its script's 'arm --force' (failure review: bash scripts/eval/worker-digest/failure-review-cadence.sh arm --force --time <HH:MM> --vault <vault> [--live]); himmel-update re-arms a failure-review runner whose script moved in the rename"
+    fi
     local registry; registry="$(observability_registry_path)"
     if [ ! -f "$registry" ]; then
         emit OK C24-cadence-registry "no cadence observability registry yet (nothing expected)"
