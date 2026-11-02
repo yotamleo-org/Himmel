@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/brief-lint.sh <brief> - arming-time
-# check that a worker or judge brief carries a filled `> **Prior art:**` line.
+# scripts/handover/chief-kit/brief-lint.sh [--core-only] <brief> - arming-time
+# check that a worker or judge brief carries a filled `> **Prior art:**` line,
+# and that a brief naming a core ticket has a signed minerva spec behind it.
 #
 # The chief fills the field at dispatch from one qmd query (jira-himmel +
 # luna) and, when code structure matters, one graphify query, so the retrieval
@@ -12,11 +13,19 @@
 # continuation lines (up to the next `> **Field:**`, a non-blockquote line, or
 # an empty or whitespace-only `>` line).
 #
-# Exit 0 pass, 1 fail (reason on stderr), 2 usage.
+# The core rule (last section) runs on every brief that names a ticket key in its
+# title; --core-only runs it alone, for a launch that skips the prior-art check.
+#
+# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 core-gate refusal.
 set -u
 
+core_only=0
+if [ "${1:-}" = "--core-only" ]; then
+    core_only=1
+    shift
+fi
 if [ "$#" -ne 1 ]; then
-    echo "usage: brief-lint.sh <brief>" >&2
+    echo "usage: brief-lint.sh [--core-only] <brief>" >&2
     exit 2
 fi
 doc="$1"
@@ -37,6 +46,111 @@ field="$(awk '
 flat="$(printf '%s' "$field" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
 
 fail() { echo "brief-lint: $doc: $1" >&2; exit 1; }
+
+# The core gate: every brief whose title names ticket keys is checked, whatever its shape and
+# whether or not it has run. `release core-check` answers per key from the CLI and the operator records
+# alone: NOT-CORE and BYPASS pass, UNKNOWN refuses, CORE needs `release spec-check` to answer SPEC ok.
+# No line the brief writes itself can pass a key. BRIEF_LINT_JIRA_CLI and BRIEF_LINT_MIRROR are test seams.
+core_rule() {
+    local cli common core_err core_rc=0
+    cli="${BRIEF_LINT_JIRA_CLI:-}"
+    if [ -z "$cli" ]; then
+        # shellcheck source=../../lib/git-clean.sh
+        . "$(dirname "$0")/../../lib/git-clean.sh"
+        common="$(git_clean -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""  # swallow-ok: no repository means the python stage below reports the CLI as absent, which refuses
+        if [ -z "$common" ]; then common="$(dirname "$0")/../../../.git"; fi
+        cli="$(dirname "$common")/scripts/jira/dist/index.js"
+    fi
+    core_err="$(python3 -I - "$doc" "$cli" <<'PY'
+import os, re, subprocess, sys
+
+doc, cli = sys.argv[1], sys.argv[2]
+lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
+title = next((l for l in lines if l.startswith('# ')), '')
+keys = list(dict.fromkeys(re.findall(r'\b[A-Z][A-Z0-9]*-[0-9]+\b', title)))
+if not keys:
+    sys.exit(0)
+paths = []
+for i, line in enumerate(lines):
+    if line.startswith('> **Writes:**'):
+        text = line[len('> **Writes:**'):]
+        for nxt in lines[i + 1:]:
+            if not nxt.startswith('> ') or nxt.startswith('> **'):
+                break
+            text += ' ' + nxt[2:]
+        paths = [p for p in re.split(r'[\s,`]+', text.strip()) if p and p not in ('none', 'named')]
+        break
+docs_only = bool(paths) and all(p.startswith('docs/') or p.endswith('.md') for p in paths)
+primary = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli))))
+
+def failed(why):
+    print('CORE-CHECK-FAILED: build the jira CLI (npm --prefix %s/scripts/jira run build) -- %s' % (primary, why))
+    sys.exit(1)
+
+def run(args):
+    # a missing CLI, node or a timeout is never an answer
+    if not os.path.isfile(cli):
+        failed('no built jira CLI at %s' % cli)
+    try:
+        # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd
+        return subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)))
+    except (OSError, subprocess.SubprocessError) as e:
+        failed('node could not run %s (%s)' % (cli, e))
+
+def per_key(out, ks, spec=False):
+    got = {}
+    for line in out.splitlines():
+        t = line.split()
+        if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
+            got[t[2]] = line
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')) and len(t) >= {'CORE': 3, 'BYPASS': 4}.get(t[0], 2):
+            got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
+    return {k: got[k] for k in ks if k in got}
+
+groups = {}
+for k in keys:
+    mirror = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + k.split('-')[0])
+    groups.setdefault(os.path.abspath(mirror), []).append(k)
+verdict, spec = {}, {}
+for mirror, ks in groups.items():
+    r = run(['release', 'core-check', '--paths', ','.join(paths)] + (['--docs-only'] if docs_only else []) + ['--mirror', mirror, '--key'] + ks)
+    if r.returncode != 0:
+        failed('core-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:200]))
+    got = per_key(r.stdout, ks)
+    if len(got) != len(ks):
+        failed('core-check printed no parseable line for %s' % ', '.join(k for k in ks if k not in got))
+    verdict.update(got)
+    core = [k for k in ks if got[k].split()[0] == 'CORE']
+    if core:
+        r = run(['release', 'spec-check', '--mirror', mirror] + core)
+        if r.returncode not in (0, 1):
+            failed('spec-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:200]))
+        sgot = per_key(r.stdout, core, spec=True)
+        if len(sgot) != len(core):
+            failed('spec-check printed no parseable line for %s' % ', '.join(k for k in core if k not in sgot))
+        spec.update(sgot)
+refusals = []
+for k in keys:
+    t = verdict[k].split()
+    if t[0] == 'UNKNOWN':
+        refusals.append('core brief %s is not in the Jira mirror, so neither core nor a bypass can be proven; refresh the mirror, then re-run' % k)
+    elif t[0] == 'CORE' and not spec[k].startswith('SPEC ok'):
+        refusals.append('core brief %s is core (%s) and has no signed minerva spec: %s; run minerva, then jira release operator spec' % (k, ' '.join(t[2:]), spec[k]))
+if refusals:
+    print('; '.join(refusals))
+    sys.exit(1)
+PY
+)" || core_rc=$?
+    if [ "$core_rc" -ne 0 ]; then
+        echo "brief-lint: $doc: $core_err" >&2
+        exit 3
+    fi
+}
+
+if [ "$core_only" -eq 1 ]; then
+    core_rule
+    exit 0
+fi
 
 grep -Eq '^> \*\*Prior art( \([^)]*\))?:\*\*' "$doc" || fail "no '> **Prior art:**' line (required: related tickets, prior fixes, graph neighbours with their source, or 'none found (<query>)')"
 [ -n "$flat" ] || fail "'> **Prior art:**' is empty"
@@ -108,82 +222,5 @@ if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; t
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
 fi
 
-# The core gate: a fresh template-shaped build brief (a `> **Contract:**` line) whose title
-# names a ticket key that `release core-check` answers CORE for, given the brief's Writes, must carry a
-# `> **Spec:** <KEY> ...` or a `> **Core gate:** <KEY> bypass=...` line, so a hand-written brief cannot skip the
-# gate gen-briefs enforces. It reads no flag and asks the built jira CLI only; a doc that has run, a judge brief
-# (no Contract line) and a title with no key are not gated. It checks that the line is present, not that the
-# record behind it is valid. BRIEF_LINT_JIRA_CLI and BRIEF_LINT_MIRROR are the test seams (as in gen-briefs.py).
-# ponytail: brief-lint checks the line is present, not that the record behind it is valid; upgrade = a spec-check call per Spec: line.
-if ! worker_doc_has_run "$doc"; then
-    cli="${BRIEF_LINT_JIRA_CLI:-}"
-    if [ -z "$cli" ]; then
-        # shellcheck source=../../lib/git-clean.sh
-        . "$(dirname "$0")/../../lib/git-clean.sh"
-        common="$(git_clean -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""  # swallow-ok: no repository means the python stage below reports the CLI as absent, which refuses
-        cli="$(dirname "${common:-$(dirname "$0")/../../../.git}")/scripts/jira/dist/index.js"
-    fi
-    core_err="$(python3 -I - "$doc" "$cli" <<'PY'
-import os, re, subprocess, sys
-
-doc, cli = sys.argv[1], sys.argv[2]
-lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
-if not any(l.startswith('> **Contract:**') for l in lines):
-    sys.exit(0)
-title = next((l for l in lines if l.startswith('# ')), '')
-m = re.match(r'# ([A-Z][A-Z0-9]*-[0-9]+)\b', title)
-if not m:
-    sys.exit(0)
-key = m.group(1)
-paths = []
-for i, line in enumerate(lines):
-    if line.startswith('> **Writes:**'):
-        text = line[len('> **Writes:**'):]
-        for nxt in lines[i + 1:]:
-            if not nxt.startswith('> ') or nxt.startswith('> **'):
-                break
-            text += ' ' + nxt[2:]
-        paths = [p for p in re.split(r'[\s,`]+', text.strip()) if p and p != 'none' and p != 'named']
-        break
-docs_only = bool(paths) and all(p.startswith('docs/') or p.endswith('.md') for p in paths)
-mirror = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + key.split('-')[0])
-primary = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli))))
-
-def failed(why):
-    print('CORE-CHECK-FAILED: build the jira CLI (npm --prefix %s/scripts/jira run build) -- %s' % (primary, why))
-    sys.exit(1)
-
-if not os.path.isfile(cli):
-    failed('no built jira CLI at %s' % cli)
-try:
-    # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd
-    r = subprocess.run(['node', cli, 'release', 'core-check', '--paths', ','.join(paths)] + (['--docs-only'] if docs_only else []) +
-                       ['--mirror', os.path.abspath(mirror), '--key', key],
-                       capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)))
-except (OSError, subprocess.SubprocessError) as e:
-    failed('node could not run %s (%s)' % (cli, e))
-if r.returncode != 0:
-    failed('core-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:200]))
-verdict = None
-for line in r.stdout.splitlines():
-    t = line.split()
-    # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
-    if len(t) >= {'CORE': 3, 'BYPASS': 4}.get(t[0] if t else '', 2) and t[0] in ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN') and t[1] == key:
-        verdict = t
-        break
-if verdict is None:
-    failed('core-check printed no parseable line for %s' % key)
-if verdict[0] == 'UNKNOWN':
-    print('core brief %s is not in the Jira mirror (%s), so neither core nor a bypass can be proven; refresh the mirror, then re-run' % (key, mirror))
-    sys.exit(1)
-if verdict[0] != 'CORE':
-    sys.exit(0)
-k = re.escape(key)
-if any(re.match(r'> \*\*Spec:\*\* %s\s' % k, l) or re.match(r'> \*\*Core gate:\*\* %s bypass=' % k, l) for l in lines):
-    sys.exit(0)
-print('core brief %s carries neither a Spec: nor a Core gate: bypass= line (core by %s); gen-briefs writes the line, or run minerva and jira release operator spec' % (key, verdict[2]))
-sys.exit(1)
-PY
-)" || fail "$core_err"
-fi
+core_rule
 exit 0

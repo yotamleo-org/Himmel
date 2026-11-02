@@ -313,11 +313,16 @@ effort guidance, including the chief's own wake-up budget, is in
   `core-bypass` record (`jira release operator core-bypass <R> --keys <K,…>
   --decision <n> --verbatim-file <f>`), and a key in the in-flight snapshot
   (`jira release operator core-snapshot <R> --keys-file <f>`, written once,
-  at flag-on). Both records are read from every declared release. There is
-  no free-text bypass.
-- **Nothing enforces this yet.** Until the gen-briefs core gate lands, run
-  `jira release core-check` and `spec-check` yourself before you write a core
-  brief, and run a minerva worker for each `CORE` key without `SPEC ok`.
+  when the gate became permanent). Both records are read from every declared
+  release. There is no free-text bypass.
+- **The gate is enforced, with no flag.** `gen-briefs.py` refuses a core
+  worker with no `SPEC ok`, `next-dispatchable.sh` lists such a ticket as a
+  `DESIGN` row, and `brief-lint.sh` (run at every launch, even one that skips
+  the prior-art check) refuses any brief whose title names a key that `core-check`
+  answers `CORE` for without a `SPEC ok` from `spec-check`. A line written into
+  the brief itself passes nothing, and a Results bullet exempts nothing: an
+  in-flight key passes only through the `core-snapshot` record. Run a minerva
+  worker for each `CORE` key without `SPEC ok`.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per

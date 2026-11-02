@@ -212,49 +212,105 @@ grep -Fq '> **Writes note:**' <<< "$err" && ok "7g refusal names Writes note as 
 rc=0; out="$(run_worker "$tmp/writes_word.md" --profile worker-impl)" || rc=$?
 { [ "$rc" -ne 0 ] && grep -Fq '> **Writes note:**' <<< "$out"; } && ok "7h launcher refuses prose Writes with the fix hint" || bad "7h launcher accepted prose Writes (rc=$rc): $out"
 
-# 8. The core gate's brief-lint half: a template-shaped build brief whose key is core
-# for its Writes must carry a `> **Spec:** <KEY> ...` or a `> **Core gate:** <KEY> bypass=...` line. The rows run the REAL
-# built jira CLI (core-check) over a fixture mirror; nothing is stubbed. The rule reads no flag.
-PRIMARY="$(dirname "$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)")"
-REAL_CLI="$PRIMARY/scripts/jira/dist/index.js"
-mkdir -p "$tmp/cg-mirror" "$tmp/cg-state" "$tmp/cg-keys"
+# 8. The core gate's brief-lint half: every brief whose title names ticket keys is checked, whatever its shape, whether or
+# not it has run. A key core-check answers NOT-CORE or BYPASS for passes; UNKNOWN refuses; CORE passes only when
+# spec-check answers SPEC ok for it. A line the brief writes itself (Spec:, Core gate:) passes nothing. The CLI is a
+# fixture stand-in over a fixture mirror (the real dist/ is untracked, absent in CI); the rows run in CI.
+mkdir -p "$tmp/cg-mirror" "$tmp/cg-stub" "$tmp/cg-signed" "$tmp/no-dist"
 printf '{"lastSync":"2026-11-01T00:00:00Z"}\n' > "$tmp/cg-mirror/.cursor.json"
-printf -- '---\nkey: "HIMMEL-9411"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-9411: t\n\n## Description\n\nx\n' > "$tmp/cg-mirror/HIMMEL-9411.md"
-export BRIEF_LINT_MIRROR="$tmp/cg-mirror" HIMMEL_RELEASE_STATE_DIR="$tmp/cg-state" HIMMEL_RELEASE_KEY_DIR="$tmp/cg-keys"
+cg_ticket() { # <KEY> <type> <priority>
+    printf -- '---\nkey: "%s"\nstatus: "To Do"\ntype: "%s"\npriority: "%s"\nlabels: []\n---\n# %s: t\n' "$1" "$2" "$3" "$1" > "$tmp/cg-mirror/$1.md"
+}
+cg_ticket HIMMEL-9411 Task Medium   # core Writes, no spec
+cg_ticket HIMMEL-9412 Task Medium   # core Writes, no spec (second key of a pair)
+cg_ticket HIMMEL-9413 Task Medium   # core Writes, signed
+cg_ticket HIMMEL-9414 Bug Medium    # a Bug: core-check answers BYPASS
+printf '/state/specs/spec.md O-R1-9413\n' > "$tmp/cg-signed/HIMMEL-9413"
+cat > "$tmp/cg-stub/index.js" <<'STUBEOF'
+const fs = require('fs');
+const a = process.argv.slice(2);
+const opt = (n) => { const i = a.indexOf(n); return i < 0 ? null : a[i + 1]; };
+const mirror = opt('--mirror');
+const ticket = (k) => {
+  let t;
+  try { t = fs.readFileSync(mirror + '/' + k + '.md', 'utf8'); } catch (e) { return null; }
+  const f = (n) => ((t.match(new RegExp('^' + n + ': (.*)$', 'm')) || [])[1] || '').replace(/"/g, '');
+  return { type: f('type') };
+};
+if (a[0] === 'release' && a[1] === 'core-check') {
+  const hit = (opt('--paths') || '').split(',').filter(Boolean).find((p) => /^(scripts\/handover\/|marketplace\/plugins\/himmel-bus\/)/.test(p));
+  for (const k of a.slice(a.indexOf('--key') + 1)) {
+    const t = ticket(k);
+    if (!t) console.log('UNKNOWN ' + k);
+    else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
+    else if (hit) console.log('CORE ' + k + ' ' + hit);
+    else console.log('NOT-CORE ' + k);
+  }
+} else if (a[0] === 'release' && a[1] === 'spec-check') {
+  let missing = 0;
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) {
+    let r = '';
+    try { r = fs.readFileSync(process.env.BRIEF_LINT_TEST_SIGNED + '/' + k, 'utf8').trim(); } catch (e) { missing = 1; }
+    console.log(r ? 'SPEC ok ' + k + ' ' + r : 'NO-SPEC ' + k);
+  }
+  process.exit(missing);
+} else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUBEOF
+export BRIEF_LINT_MIRROR="$tmp/cg-mirror" BRIEF_LINT_JIRA_CLI="$tmp/cg-stub/index.js" BRIEF_LINT_TEST_SIGNED="$tmp/cg-signed"
 CORE_W='> **Writes:** scripts/handover/chief-kit/next-dispatchable.sh'
 mk core_none '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
-mk core_spec '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Spec:** HIMMEL-9411 /state/specs/spec.md (O-R1-9411)' '## Results (newest at the bottom)'
-mk core_bypass_line '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Core gate:** HIMMEL-9411 bypass=design — label-only core ticket' '## Results (newest at the bottom)'
-mk core_other_key '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Spec:** HIMMEL-1 /state/specs/spec.md (O-R1-1)' '## Results (newest at the bottom)'
+mk core_signed '# HIMMEL-9413 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+mk core_self_gate '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Core gate:** HIMMEL-9411 bypass=design — written by the brief itself' '## Results (newest at the bottom)'
+mk core_self_spec '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '> **Spec:** HIMMEL-9411 /state/specs/spec.md (O-R1-9411)' '## Results (newest at the bottom)'
 mk core_docs '# HIMMEL-9411 — a docs fix' "$PA" '> **Contract:** y' '> **Writes:** docs/internals/x.md' '## Results (newest at the bottom)'
 mk core_ran '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)' '- 10:00 LIVE — started'
+mk bug_ran '# HIMMEL-9414 — a bug fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)' '- 10:00 LIVE — started'
 mk core_judge '# HIMMEL-9411 — a core review' "$PA" '> **Completion condition:** z' "$CORE_W" '## Results (newest at the bottom)'
-mk core_unknown '# HIMMEL-9412 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
-if [ -f "$REAL_CLI" ]; then
-    export BRIEF_LINT_JIRA_CLI="$REAL_CLI"
-    expect_rc "8a a core build brief with neither a Spec: nor a Core gate: line is refused" 1 "$tmp/core_none.md"
-    err="$(bash "$LINT" "$tmp/core_none.md" 2>&1 >/dev/null)"
-    grep -Fq 'core brief HIMMEL-9411 carries neither a Spec: nor a Core gate: bypass= line' <<< "$err" \
-        && ok "8a2 the refusal names the key and the missing line" || bad "8a2 refusal text: $err"
-    expect_rc "8b a core brief carrying the Spec: line passes" 0 "$tmp/core_spec.md"
-    expect_rc "8c a core brief carrying a Core gate: bypass= line passes" 0 "$tmp/core_bypass_line.md"
-    expect_rc "8d a Spec: line for another key does not satisfy the gate" 1 "$tmp/core_other_key.md"
-    expect_rc "8e a non-core brief (docs-only Writes) passes" 0 "$tmp/core_docs.md"
-    expect_rc "8f a doc that has run (a Results bullet) is not gated" 0 "$tmp/core_ran.md"
-    expect_rc "8g a judge brief (no Contract line) is not gated" 0 "$tmp/core_judge.md"
-    expect_rc "8h a key the mirror lacks is refused, never passed" 1 "$tmp/core_unknown.md"
-else
-    echo "SKIP 8a-8h: no built jira CLI at $REAL_CLI (npm --prefix $PRIMARY/scripts/jira run build)"
-fi
+mk core_nocontract '# HIMMEL-9411 — a core fix' "$PA" "$CORE_W" '## Results (newest at the bottom)'
+mk core_unknown '# HIMMEL-9499 — a core fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+mk core_pair '# HIMMEL-9413 + HIMMEL-9412 — a core pair' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+expect_rc "8a a core build brief with no signed spec is refused (exit 3)" 3 "$tmp/core_none.md"
+err="$(bash "$LINT" "$tmp/core_none.md" 2>&1 >/dev/null)"
+grep -Fq 'core brief HIMMEL-9411 is core' <<< "$err" && grep -Fq 'no signed minerva spec' <<< "$err" \
+    && ok "8a2 the refusal names the key and the missing spec" || bad "8a2 refusal text: $err"
+! grep -Eq 'Spec:|Core gate|bypass=' <<< "$err" && ok "8a3 the refusal names no line that would make it pass" || bad "8a3 refusal names a passing line: $err"
+expect_rc "8b a core brief whose key spec-check answers SPEC ok passes" 0 "$tmp/core_signed.md"
+expect_rc "8c a self-written Core gate: bypass= line passes nothing" 3 "$tmp/core_self_gate.md"
+expect_rc "8d a self-written Spec: line passes nothing when spec-check says NO-SPEC" 3 "$tmp/core_self_spec.md"
+expect_rc "8e a non-core brief (docs-only Writes) passes" 0 "$tmp/core_docs.md"
+expect_rc "8f a Results bullet does not exempt a core key" 3 "$tmp/core_ran.md"
+expect_rc "8f2 a doc that has run passes when core-check answers BYPASS for its key" 0 "$tmp/bug_ran.md"
+expect_rc "8g a judge brief naming a core key is gated too" 3 "$tmp/core_judge.md"
+expect_rc "8g2 a keyed brief with no Contract line is gated too" 3 "$tmp/core_nocontract.md"
+expect_rc "8h a key the mirror lacks is refused, never passed" 3 "$tmp/core_unknown.md"
+expect_rc "8h2 every title key is checked: a signed first key does not carry an unsigned second" 3 "$tmp/core_pair.md"
+err="$(bash "$LINT" "$tmp/core_pair.md" 2>&1 >/dev/null)"
+grep -Fq 'HIMMEL-9412' <<< "$err" && ! grep -Fq 'brief HIMMEL-9413 is core' <<< "$err" \
+    && ok "8h3 the refusal names only the unsigned key" || bad "8h3 refusal text: $err"
+rc=0; bash "$LINT" --core-only "$tmp/core_none.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "8h4 --core-only runs the core rule" || bad "8h4 --core-only on a core brief (rc=$rc)"
+rc=0; bash "$LINT" --core-only "$tmp/none.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "8h5 --core-only skips the prior-art check" || bad "8h5 --core-only on a keyless no-prior-art brief (rc=$rc)"
+# the launcher: --no-prior-art-check skips only the prior-art check; the core refusal stands and does not suggest the flag
+rc=0; out="$(run_worker "$tmp/core_none.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'core brief HIMMEL-9411 is core' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "8i the launcher refuses a core brief without suggesting --no-prior-art-check" || bad "8i launcher core refusal (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/core_none.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'core brief HIMMEL-9411 is core' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "8i2 --no-prior-art-check does not skip the core gate" || bad "8i2 --no-prior-art-check skipped the core gate (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/core_signed.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+[ "$rc" -eq 0 ] && ok "8i3 --no-prior-art-check still launches a signed core brief" || bad "8i3 signed core brief with the flag (rc=$rc): $out"
 export BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js"
-expect_rc "8i an absent dist/ is CORE-CHECK-FAILED, not a pass" 1 "$tmp/core_none.md"
+expect_rc "8j an absent dist/ is CORE-CHECK-FAILED, not a pass" 3 "$tmp/core_none.md"
 err="$(bash "$LINT" "$tmp/core_none.md" 2>&1 >/dev/null)"
 grep -Fq 'CORE-CHECK-FAILED: build the jira CLI (npm --prefix' <<< "$err" \
-    && ok "8i2 the refusal names the build command" || bad "8i2 refusal text: $err"
+    && ok "8j2 the refusal names the build command" || bad "8j2 refusal text: $err"
 printf '// valid JavaScript that exits 0 and prints no verdict line\n' > "$tmp/junk.js"
-BRIEF_LINT_JIRA_CLI="$tmp/junk.js" expect_rc "8j a core-check that prints no verdict line is CORE-CHECK-FAILED" 1 "$tmp/core_none.md"
-BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" expect_rc "8k a brief outside the rule never asks the CLI (a keyless template brief passes)" 0 "$tmp/tmpl_ok.md"
-unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI HIMMEL_RELEASE_STATE_DIR HIMMEL_RELEASE_KEY_DIR
+BRIEF_LINT_JIRA_CLI="$tmp/junk.js" expect_rc "8k a core-check that prints no verdict line is CORE-CHECK-FAILED" 3 "$tmp/core_none.md"
+printf "const a = process.argv.slice(2);\nif (a[1] === 'core-check') console.log('CORE ' + a[a.indexOf('--key') + 1] + ' x'); else console.log('junk');\n" > "$tmp/junk-spec.js"
+BRIEF_LINT_JIRA_CLI="$tmp/junk-spec.js" expect_rc "8k2 a spec-check that prints no verdict line is CORE-CHECK-FAILED" 3 "$tmp/core_none.md"
+BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" expect_rc "8l a brief with no ticket key in its title never asks the CLI" 0 "$tmp/tmpl_ok.md"
+unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI BRIEF_LINT_TEST_SIGNED
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
