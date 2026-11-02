@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # scripts/eval/worker-digest/graph-use-report.sh - how much sessions actually use the code graph.
 #
-#   graph-use-report.sh [--days N] [--root PROJECTS_DIR]...
+#   graph-use-report.sh [--days N] [--min-tools N] [--root PROJECTS_DIR]... [--handovers DIR]
+#
+# Three tables: graph use and qmd use per scope, lane, kind and role, and the graph-qmd: Results bullets per role
+# (docs under --handovers, default $HANDOVER_DIR, with no bullet are no data, not zero).
 #
 # Read-only. Scans the session journals modified in the last N days (default 7) under every PROJECTS_DIR (default: each
 # ~/.claude*/projects that exists, one per lane: .claude is "claude", .claude-codex is "codex", ...). A journal is a session
@@ -15,10 +18,17 @@
 set -u
 
 DAYS=7
+MINTOOLS=0
+UNTIL=""
+HDIR="${HANDOVER_DIR:-}"
+HEXPLICIT=0
 ROOTS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --days) [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] || { echo "graph-use-report: --days needs a number" >&2; exit 2; }; DAYS="$2"; shift 2 ;;
+    --until-epoch) [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] || { echo "graph-use-report: --until-epoch needs epoch seconds" >&2; exit 2; }; UNTIL="$2"; shift 2 ;;
+    --min-tools) [ $# -ge 2 ] && [[ "$2" =~ ^[0-9]+$ ]] || { echo "graph-use-report: --min-tools needs a number" >&2; exit 2; }; MINTOOLS="$2"; shift 2 ;;
+    --handovers) [ $# -ge 2 ] || { echo "graph-use-report: --handovers needs a directory" >&2; exit 2; }; HDIR="$2"; HEXPLICIT=1; shift 2 ;;
     --root) [ $# -ge 2 ] || { echo "graph-use-report: --root needs a directory" >&2; exit 2; }; ROOTS+=("$2"); shift 2 ;;
     *) echo "graph-use-report: unknown argument $1" >&2; exit 2 ;;
   esac
@@ -28,13 +38,26 @@ if [ ${#ROOTS[@]} -eq 0 ]; then
 fi
 [ ${#ROOTS[@]} -gt 0 ] || { echo "graph-use-report: no ~/.claude*/projects directory and no --root" >&2; exit 2; }
 for d in "${ROOTS[@]}"; do [ -d "$d" ] || { echo "graph-use-report: no such directory $d" >&2; exit 2; }; done
+if [ -n "$HDIR" ] && [ ! -d "$HDIR" ]; then
+  [ "$HEXPLICIT" = 1 ] && { echo "graph-use-report: no such directory $HDIR" >&2; exit 2; }
+  HDIR=""
+fi
 command -v jq >/dev/null || { echo "graph-use-report: jq is required" >&2; exit 2; }
+# The window: the last DAYS days by mtime, or with --until-epoch (GNU find) the DAYS days that end at that instant, to re-run a past window.
+if [ -n "$UNTIL" ]; then WIN=(-newermt "@$((UNTIL - DAYS * 86400))" ! -newermt "@$UNTIL"); else WIN=(-mtime "-$DAYS"); fi
 
 # One row per journal: tools search query explain path mcp bare bare_fail wrapper wrapper_fail. A bad journal LINE is
 # skipped by fromjson?; a journal jq cannot read at all fails the program and is counted by the caller.
 # shellcheck disable=SC2016  # jq program, $x, $t, $g and $errs are jq variables
 JQ='
-  def rx(w): "(^|[;&|(\n]|-l?c\\s+[\"'"'"'])\\s*((do|then|else)\\s+)?(\\w+=\\S*\\s+)*(timeout\\s+\\d+\\s+)?(rtk\\s+(proxy\\s+)?)?(bash\\s+)?(\\S*/)?" + w + "\\s+(?<form>query|explain|path)\\b";
+  def lead: "(^|[;&|(\n]|-l?c\\s+[\"'"'"'])\\s*((do|then|else)\\s+)?(\\w+=\\S*\\s+)*(timeout\\s+\\d+\\s+)?(rtk\\s+(proxy\\s+)?)?((ba)?sh\\s+)?(\\S*/)?";
+  def rx(w): lead + w + "\\s+(?<form>query|explain|path)\\b";
+  def rxq(w): lead + w + "\\s+(?<form>[a-z][a-z_-]*)\\b";
+  def qhit: . as $c
+    | if ($c | test(rxq("qmd"))) then {k: "bare", v: ($c | capture(rxq("qmd")).form)}
+      elif ($c | test(rxq("qmd-bounded\\.sh"))) then {k: "wrap", v: ($c | capture(rxq("qmd-bounded\\.sh")).form)}
+      else empty end;
+  def qsearch: . == "query" or . == "search" or . == "vsearch" or . == "deep_search";
   def hit: . as $c
     | if ($c | test(rx("graphify"))) then {k: "bare", f: ($c | capture(rx("graphify")).form)}
       elif ($c | test(rx("(worker|leg)-graph\\.sh"))) then {k: "wrap", f: ($c | capture(rx("(worker|leg)-graph\\.sh")).form)}
@@ -46,14 +69,21 @@ JQ='
   | ($x | map(select(has("e")) | .e)) as $errs
   | ($x | map(select(has("u")))) as $t
   | ($t | map(select(.n == "Bash") | . as $b | ($b.c | hit) as $h | {id: $b.u, k: $h.k, f: $h.f})) as $g
+  | ($t | map(select(.n == "Bash") | . as $b | ($b.c | qhit) as $h | {id: $b.u, k: $h.k, s: ($h.v | qsearch)})) as $q
+  | ($t | map(select(.n | test("^mcp__(plugin_qmd_)?qmd__")) | {s: (.n | sub("^mcp__(plugin_qmd_)?qmd__"; "") | qsearch)})) as $m
   | def failed($k): $g | map(select(.k == $k and (.id as $i | any($errs[]; . == $i)))) | length;
     def n($k): $g | map(select(.k == $k)) | length;
     def form($f): $g | map(select(.f == $f)) | length;
+    def qfailed($k): $q | map(select(.k == $k and (.id as $i | any($errs[]; . == $i)))) | length;
+    def qn($k): $q | map(select(.k == $k)) | length;
     [ ($t | length),
       ($t | map(select(.n == "Grep" or .n == "Glob" or (.n == "Bash" and (.c | test("(^|[;&|([:space:]\"'"'"'])(git[[:space:]]+grep|grep|egrep|fgrep|rg|ugrep)[[:space:]]")))) ) | length),
       form("query"), form("explain"), form("path"),
       ($t | map(select(.n | test("^mcp__graphify__"))) | length),
-      n("bare"), failed("bare"), n("wrap"), failed("wrap") ]
+      n("bare"), failed("bare"), n("wrap"), failed("wrap"),
+      ($q | map(select(.s)) | length), ($q | map(select(.s | not)) | length),
+      ($m | map(select(.s)) | length), ($m | map(select(.s | not)) | length),
+      qn("bare"), qfailed("bare"), qn("wrap"), qfailed("wrap") ]
   | @tsv'
 
 TAB="$(printf '\t')"
@@ -64,7 +94,7 @@ for root in "${ROOTS[@]}"; do
   root="${root%/}"
   lane="$(basename "$(dirname "$root")")"; lane="${lane#.}"; lane="${lane#claude-}"
   # find's own errors (a directory it cannot read) are kept, one line each, and reported below
-  find "$root" -type f -name '*.jsonl' -mtime "-$DAYS" -print0 >"$WORK/list" 2>"$WORK/err"
+  find "$root" -type f -name '*.jsonl' "${WIN[@]}" -print0 >"$WORK/list" 2>"$WORK/err"
   unwalked=$((unwalked + $(grep -c . "$WORK/err")))
   while IFS= read -r -d '' f; do
     rel="${f#"$root"/}"
@@ -75,38 +105,116 @@ for root in "${ROOTS[@]}"; do
     esac
     proj="${rel%%/*}"
     case "$proj" in *[Hh]immel*) hm=1 ;; *) hm=0 ;; esac
+    # role: a subagent by its .meta.json agentType, a session by the name its journal records
+    if [ "$kind" = sub ]; then
+      role=sub
+      if [ -r "${f%.jsonl}.meta.json" ]; then
+        case "$(jq -r '.agentType // ""' "${f%.jsonl}.meta.json" 2>/dev/null)" in judge | judge-ro) role=judge ;; esac
+      fi
+    else
+      name="$(sed -n '/"type": *"agent-name"/{s/^.*"agentName": *"\([^"]*\)".*$/\1/p;q;}' "$f" 2>/dev/null)"
+      case "$name" in
+        *-chief) role=console ;;
+        HIMMEL-[0-9]*-N[0-9]*) role=leg ;;
+        *) role=other ;;
+      esac
+    fi
     # a bad journal LINE is skipped inside jq; a journal jq cannot read at all is counted and reported
     if one="$(jq -nrR "$JQ" "$f" 2>/dev/null)"; then
       njournals=$((njournals + 1))
-      rows="$rows$lane$TAB$kind$TAB$hm$TAB$one"$'\n'
+      rows="$rows$lane$TAB$kind$TAB$hm$TAB$role$TAB$one"$'\n'
     else
       unread=$((unread + 1))
     fi
   done <"$WORK/list"
 done
 
-echo "graph-use-report: window ${DAYS}d, $njournals journals in ${#ROOTS[@]} roots"
-echo "counted: a Bash call whose command leads with graphify, worker-graph.sh or leg-graph.sh then query, explain or path (also after cd, env, timeout N, rtk, rtk proxy, bash, bash -c or -lc, a newline, ; && |, \$( ), do or then), and every mcp__graphify__ tool call. A call failed when its tool_result has is_error. Main = a session journal, sub = a subagent journal. Scope himmel = a project directory whose name contains himmel; graph_pct = journals with a graph call over journals that ran any tool."
-echo "not counted: a call behind any other wrapper (xargs, env -i, sudo, a function), a call whose command is not a string, a call that only a pipe or a here-doc builds, and the second graph call of a command that holds two (one command counts once, a bare call before a wrapper call), so those are missed; a quoted mention such as echo \"x; graphify query y\" is counted by mistake, so the number is approximate, not a floor."
+echo "graph-use-report: window ${DAYS}d${UNTIL:+ ending at epoch $UNTIL}, $njournals journals in ${#ROOTS[@]} roots"
+echo "counted: a Bash call whose command leads with graphify, worker-graph.sh or leg-graph.sh then query, explain or path, and every mcp__graphify__ tool call (graph); a Bash call whose command leads with qmd or qmd-bounded.sh then a verb, and every mcp__qmd__ or mcp__plugin_qmd_qmd__ tool call (qmd), with the search verbs query, search, vsearch and deep_search apart from every other verb (status, update, embed, get, multi_get and the rest). A command leads when it starts or follows cd, env, timeout N, rtk, rtk proxy, bash, sh, bash -c or -lc, a newline, ; && |, \$( ), do or then. A path that only names a script (cat, ls or git log of scripts/lib/qmd-bounded.sh) is not a call. A call failed when its tool_result has is_error. Main = a session journal, sub = a subagent journal. Role: a main journal whose recorded name ends in -chief is console, one named HIMMEL-<key>-N<n>... is leg, any other or no name is other; a subagent journal whose .meta.json agentType is judge or judge-ro is judge, any other subagent is sub. Scope himmel = a project directory whose name contains himmel. graph_pct and qmd_pct = journals with a call over journals that ran any tool; search_pct = journals with a qmd search call over the same. searched = journals with a Grep or Glob call or a Bash command that has grep, rg or ugrep after a command boundary or a quote, so it counts mentions, not use (echo use grep here counts)."
+echo "bullets: one row per role over the handover docs under --handovers (default \$HANDOVER_DIR) changed in the window that have a ## Results heading; role by file name: *-chief* is console, HIMMEL-<key>-N<n>... is leg, any other is other. A doc's graph-qmd: bullet is used_or_cited when it says used or cited (and not not used), called_only when it names results without that, none_found for none found, na_shipping for n/a; a doc with no bullet is no_data, not a zero. The words are the worker's own claim, not a check. --min-tools N keeps only journals that ran at least N tools (the audit's population is 5)."
+echo "not counted: a call behind any other wrapper (xargs, env -i, sudo, a function), a call whose command is not a string, a call that only a pipe builds, and the second graph call (or second qmd call) of a command that holds two (one command counts once per tool, a bare call before a wrapper call), so those are missed; a quoted mention such as echo \"x; graphify query y\" and a line inside a here-doc that begins like a call are counted by mistake, so the numbers are approximate, not a floor."
 [ "$unread" -gt 0 ] && echo "journals that could not be read, left out of every number: $unread"
 [ "$unwalked" -gt 0 ] && echo "directories that could not be walked, journals under them left out of every number: $unwalked"
-printf 'scope\tlane\tkind\tjournals\twith_tools\twith_graph\tgraph_pct\tcalls\tquery\texplain\tpath\tmcp\tbare\tbare_fail\twrapper\twrapper_fail\tsearched\tsearched_no_graph\n'
-printf '%s' "$rows" | awk -F'\t' '
-  NF == 13 {
-    calls = $6 + $7 + $8 + $9
+# A journal row is: lane kind himmel role, then tools searched query explain path mcp bare bare_fail wrapper wrapper_fail,
+# then qmd shell_search shell_other mcp_search mcp_other bare bare_fail wrapper wrapper_fail.
+echo "== graph =="
+printf 'scope\tlane\tkind\trole\tjournals\twith_tools\twith_graph\tgraph_pct\tcalls\tquery\texplain\tpath\tmcp\tbare\tbare_fail\twrapper\twrapper_fail\tsearched\tsearched_no_graph\n'
+printf '%s' "$rows" | awk -F'\t' -v mt="$MINTOOLS" '
+  NF == 22 && $5 >= mt {
+    calls = $7 + $8 + $9 + $10
     for (s = 0; s < 2; s++) {
       if (s == 1 && $3 != 1) continue
-      k = (s ? "himmel" : "all") "\t" $1 "\t" $2
+      k = (s ? "himmel" : "all") "\t" $1 "\t" $2 "\t" $4
       seen[k] = 1; j[k]++
-      if ($4 > 0) wt[k]++
+      if ($5 > 0) wt[k]++
       if (calls > 0) wg[k]++
-      c[k] += calls; q[k] += $6; e[k] += $7; p[k] += $8; m[k] += $9
-      b[k] += $10; bf[k] += $11; w[k] += $12; wf[k] += $13
-      if ($5 > 0) { se[k]++; if (calls == 0) sn[k]++ }
+      c[k] += calls; q[k] += $7; e[k] += $8; p[k] += $9; m[k] += $10
+      b[k] += $11; bf[k] += $12; w[k] += $13; wf[k] += $14
+      if ($6 > 0) { se[k]++; if (calls == 0) sn[k]++ }
     }
   }
   END {
     for (k in seen)
       printf "%s\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", k, j[k], wt[k], wg[k],
         wt[k] ? sprintf("%.0f%%", 100 * wg[k] / wt[k]) : "n/a", c[k], q[k], e[k], p[k], m[k], b[k], bf[k], w[k], wf[k], se[k], sn[k]
-  }' | sort -t "$TAB" -k1,1 -k2,2 -k3,3
+  }' | sort -t "$TAB" -k1,1 -k2,2 -k3,3 -k4,4
+echo "== qmd =="
+printf 'scope\tlane\tkind\trole\tjournals\twith_tools\twith_qmd\tqmd_pct\twith_search\tsearch_pct\tcalls\tsearch_shell\tsearch_mcp\tother_shell\tother_mcp\tbare\tbare_fail\twrapper\twrapper_fail\n'
+printf '%s' "$rows" | awk -F'\t' -v mt="$MINTOOLS" '
+  NF == 22 && $5 >= mt {
+    calls = $15 + $16 + $17 + $18
+    srch = $15 + $17
+    for (s = 0; s < 2; s++) {
+      if (s == 1 && $3 != 1) continue
+      k = (s ? "himmel" : "all") "\t" $1 "\t" $2 "\t" $4
+      seen[k] = 1; j[k]++
+      if ($5 > 0) wt[k]++
+      if (calls > 0) wq[k]++
+      if (srch > 0) ws[k]++
+      c[k] += calls; ss[k] += $15; so[k] += $16; ms[k] += $17; mo[k] += $18
+      b[k] += $19; bf[k] += $20; w[k] += $21; wf[k] += $22
+    }
+  }
+  END {
+    for (k in seen)
+      printf "%s\t%d\t%d\t%d\t%s\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", k, j[k], wt[k], wq[k],
+        wt[k] ? sprintf("%.0f%%", 100 * wq[k] / wt[k]) : "n/a", ws[k], wt[k] ? sprintf("%.0f%%", 100 * ws[k] / wt[k]) : "n/a",
+        c[k], ss[k], ms[k], so[k], mo[k], b[k], bf[k], w[k], wf[k]
+  }' | sort -t "$TAB" -k1,1 -k2,2 -k3,3 -k4,4
+
+# The graph-qmd: Results bullets: the only record of whether a worker cited or used what the notes search and the graph
+# returned. One row per role over the handover docs (a doc with a ## Results heading) changed in the window. A doc with no
+# bullet is no_data, never a zero; a bullet that is n/a (shipping) is na_shipping and carries no signal either.
+if [ -n "$HDIR" ]; then
+  hrows=""
+  while IFS= read -r -d '' d; do
+    grep -q '^## Results' "$d" 2>/dev/null || continue
+    case "$(basename "$d")" in
+      *-chief*) role=console ;;
+      HIMMEL-[0-9]*-N[0-9]*) role=leg ;;
+      *) role=other ;;
+    esac
+    st="$(awk '
+      /^## Results/ { r = 1; next }
+      /^## / { r = 0 }
+      r && /^- .*graph-qmd:/ {
+        t = $0; sub(/^.*graph-qmd:/, "", t); t = tolower(t)
+        if (t ~ /^ *n\/a/) s = 1
+        else if (t ~ /(used|cited)/ && t !~ /(not used|did not use|unused|never used|not cited|neither|none of)/) s = 4
+        else if (t ~ /none found/) s = 2
+        else s = 3
+        if (s > best) best = s
+      }
+      END { print best + 0 }' "$d" 2>/dev/null)"
+    hrows="$hrows$role$TAB${st:-0}"$'\n'
+  done < <(find "$HDIR" -type f -name '*.md' "${WIN[@]}" -not -path '*/specs/*' -not -path '*/verdicts/*' -print0 2>/dev/null)
+  echo "== bullets =="
+  printf 'role\tdocs\twith_bullet\tused_or_cited\tcalled_only\tnone_found\tna_shipping\tno_data\n'
+  printf '%s' "$hrows" | awk -F'\t' '
+    NF == 2 {
+      seen[$1] = 1; d[$1]++
+      if ($2 > 0) wb[$1]++
+      if ($2 == 4) u[$1]++; else if ($2 == 3) ca[$1]++; else if ($2 == 2) nf[$1]++; else if ($2 == 1) na[$1]++
+    }
+    END { for (r in seen) printf "%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", r, d[r], wb[r], u[r], ca[r], nf[r], na[r], d[r] - wb[r] }' | sort
+fi
