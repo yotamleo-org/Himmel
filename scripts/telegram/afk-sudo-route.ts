@@ -248,10 +248,11 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // Holding is not helper authorization: operator group messages, including
       // trusted anonymous admins, must not carry a bare code into an inbox either.
       // A `NONCE CODE` pair is held the same way: a session can call the helper's
-      // approve itself, so the pair must never reach an inbox.
+      // approve itself, so the pair must never reach an inbox. A text that is only six or
+      // seven digits once spaces and hyphens are removed ("123 456") is held too.
       // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
       // Upgrade path: an explicit non-code message mode instead of guessing intent.
-      if ((msg.reply_to_message_id == null || msg.reply_to_bot === true) && (BARE_CODE.test(msg.text) || CODE_REPLY.test(msg.text))
+      if ((msg.reply_to_message_id == null || msg.reply_to_bot === true) && (BARE_CODE.test(msg.text) || CODE_REPLY.test(msg.text) || CODE_ONLY.test(msg.text.replace(/[\s-]/gu, "")))
         && msg.forwarded === false && msg.caption === false
         && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
         void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));

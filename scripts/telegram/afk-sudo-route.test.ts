@@ -218,8 +218,24 @@ test("off by default: a bare six-digit message stays ordinary text without the h
 test("bare-code hold does not consume ordinary numbers or numbers sent as text", () => {
   const { deps } = fake();
   const gate = makeAfkSudoGate(deps);
-  for (const text of ["12345", "1234567", "123 456", "123-456", "text: 123456", "number 123456"]) {
+  for (const text of ["12345", "12345678", "text: 123456", "number 123456", "do 8276 8277 next", "ticket 123-456 is done"]) {
     expect(gate(dm(text))).toBe(false);
+  }
+});
+
+test("HIMMEL-8375: a spaced or hyphenated six or seven digit code sent as a new message with no prompt is held, never forwarded", () => {
+  for (const text of ["123 456", "123-456", " 12 34 56 ", "123 - 456", "1234 567", "123-4567", "1234567", "\t123\n456\n"]) {
+    const { deps, calls, replies, logs } = fake();
+    expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(true);
+    expect(calls).toEqual([]);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("held");
+    expect([...replies, ...logs].join("\n")).not.toContain("456");
+  }
+  // Fail closed only on what is wholly a code: words, other characters or a different digit count pass.
+  for (const text of ["123 45", "123 456 78 9", "123_456", "123.456", "do 123 456", "123 456 ok"]) {
+    const { deps } = fake();
+    expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(false);
   }
 });
 
