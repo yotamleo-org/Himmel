@@ -32,7 +32,7 @@ occasionally and is handled by the next section, not by tightening the gate.
 
 ## Main red after a green merge
 
-Main-red must stay rare and be fixed fast. The merge gate backs this up:
+Main-red must stay rare and be fixed fast. The merge gate only makes it visible:
 `merge-on-green.sh` no longer refuses a PR whose own checks passed because the newest
 completed `CI` run on main is red (HIMMEL-8675): the merge proceeds and prints one
 `MAIN-RED advisory:` line. Its audit line reads `MAIN-RED main-red-advisory ... via=advisory

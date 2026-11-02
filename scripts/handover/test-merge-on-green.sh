@@ -4790,17 +4790,23 @@ assert_gh_has "5115-f: the failed log was read for the red run" "run view 379647
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=test-unrelated.sh')" \
     run_mog 0 "5115-g: unrelated suite= → merged as advisory"
+assert_audit_has "5115-g: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-g: and never as a declared fix" "main-red-declared"
 
-# 5115-h — a declaration whose log cannot be read is not verified: refuse.
+# 5115-h — a declaration whose log cannot be read is not verified: it merges as an advisory.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_VIEW_FAIL=1 \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=shell-unit-shard')" \
     run_mog 0 "5115-h: unreadable failed log → merged as advisory"
+assert_audit_has "5115-h: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-h: and never as a declared fix" "main-red-declared"
 
 # 5115-l — a fragment of a failed job name is not a job: `unit` sits inside
 # `shell-unit-shard (...)` but names nothing the run failed on.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=unit')" \
     run_mog 0 "5115-l: fragment suite= is not a failed job → merged as advisory"
+assert_audit_has "5115-l: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-l: and never as a declared fix" "main-red-declared"
 
 # 5115-m — the declaration may be the commit subject on a one-line commit.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" \
@@ -4824,6 +4830,8 @@ STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG2" \
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG2" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=foo.sh')" \
     run_mog 0 "5115-p: tail fragment of a .sh name → merged as advisory"
+assert_audit_has "5115-p: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-p: and never as a declared fix" "main-red-declared"
 rm -f "$MOG_RUN_LOG2"
 
 # 5115-q — a prefix is a matrix base name only when followed by ` (`: a job
@@ -4834,6 +4842,8 @@ printf '%s\t%s\t%s\n' \
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG3" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=shell-unit-shard')" \
     run_mog 0 "5115-q: prefix followed by a non-matrix suffix → merged as advisory"
+assert_audit_has "5115-q: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-q: and never as a declared fix" "main-red-declared"
 rm -f "$MOG_RUN_LOG3"
 
 # 5115-i — DECIDED: no completed run in the window means no red was observed.
@@ -4864,12 +4874,15 @@ STUB_RUN_LIST_JSON='[{"databaseId":400,"status":"completed","conclusion":"failur
 STUB_RUN_LIST_FAIL=1 run_mog 22 "5115-j: run list read fails → exit 22"
 assert_audit_has "5115-j: audited" "REFUSED reason=main-red"
 
-# 5115-k — the dry run reports the same refusal.
-STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "5115-k: dry-run on red main → merged as advisory" -- --dry-run
+# 5115-k — the dry run reports the same advisory and makes no merge call.
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "5115-k: dry-run on red main → advisory reported" -- --dry-run
+no_merge_call "5115-k: a dry run makes no merge call"
+assert_err_has "5115-k: the dry run prints the advisory" "MAIN-RED advisory:"
 
 # 8675-a (RED, real window) — a red main no longer blocks a PR whose own CI is
 # green: the merge proceeds, the audit line names the red run and `via=advisory`,
-# and one MAIN-RED advisory line is printed.STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "8675-a: red main, PR's own CI green → merged as advisory"
+# and one MAIN-RED advisory line is printed.
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "8675-a: red main, PR's own CI green → merged as advisory"
 assert_audit_has "8675-a: audited as an advisory merge" "via=advisory"
 assert_audit_has "8675-a: audit names the red run id" "run=37964772913"
 assert_audit_lacks "8675-a: not a refusal" "REFUSED reason=main-red"
@@ -4892,7 +4905,7 @@ MOG_FX_ROOT=$(cd "$MOG_FX_ROOT" && pwd)
 mog5134_run() {  # <expect rc> <label> [--] [run_mog args]: red main, PR 77 at GO_SHA, root MOG_FX_ROOT
     HANDOVER_DIR="$MOG_FX_ROOT" STUB_SHA="$GO_SHA" STUB_RUN_LIST_JSON="${MOG_RUN_FX:-$MOG_RUN_RED}" run_mog "$@"
 }
-# 5134-a (RED) — red main, nothing declared, no fix-GO: refused, as before.
+# 5134-a — red main, nothing declared, no fix-GO: an advisory merge.
 mog5134_run 0 "5134-a: red main, no declaration, no fix-GO → merged as advisory"
 
 # 5134-b — a fix-GO for the red run, this PR and this head: merged, audited.
@@ -4904,6 +4917,8 @@ assert_merge_has "5134-b: merge pins the certified head" "--match-head-commit $G
 # 5134-c — stale: main moved to a newer red run; the fix-GO names the old one.
 MOG_RUN_FX='[{"conclusion":"failure","createdAt":"2026-10-10T07:00:00Z","databaseId":37999999999,"event":"schedule","headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"completed"},{"conclusion":"failure","createdAt":"2026-10-09T17:13:47Z","databaseId":37964772913,"event":"push","headSha":"f343c0e266336aee395f2612d8f62ca3b927528f","status":"completed"}]' \
     mog5134_run 0 "5134-c: stale fix-GO (main has a newer red run) → merged as advisory"
+assert_audit_has "5134-c: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-c: and never as a declared fix" "main-red-declared"
 assert_err_has "5134-c: stderr names the CURRENT red run" "37999999999"
 assert_merge_has "5134-c: the merge ran" "--squash"
 # ... and a fix-GO written for the new run is accepted.
@@ -4924,12 +4939,16 @@ assert_audit_has "5134-d: audited as an advisory merge" "via=advisory"
 printf 'pr=77\nhead=%s\nfix-main-red-run=37964772913\nby=worker\nat=2026-10-10T00:00:00Z\n' "$GO_SHA" \
     > "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913"
 mog5134_run 0 "5134-e: unsigned fix-GO → merged as advisory"
+assert_audit_has "5134-e: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-e: and never as a declared fix" "main-red-declared"
 
 # 5134-f — a fix-GO for a different PR (78) does not unblock PR 77, even
 # renamed onto PR 77's path (the mac binds the PR number).
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 78 "$GO_SHA"
 cp "$MOG_FX_ROOT/.locks/go/fix-main-red.78.$GO_SHA.37964772913" "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913"
 mog5134_run 0 "5134-f: a fix-GO signed for PR 78 → merged as advisory"
+assert_audit_has "5134-f: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-f: and never as a declared fix" "main-red-declared"
 
 # 5134-g — green main: a fix-GO has no effect (and is not audited as a fix).
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 77 "$GO_SHA"
@@ -4941,6 +4960,8 @@ assert_audit_lacks "5134-g: not audited as a main-red fix" "main-red-declared"
 rm -f "$MOG_FX_ROOT/.locks/go/"fix-main-red.77.*
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 77 "$GO_OLD"
 mog5134_run 0 "5134-h: fix-GO for an older head → merged as advisory"
+assert_audit_has "5134-h: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-h: and never as a declared fix" "main-red-declared"
 rm -rf "$MOG_FX_ROOT"
 
 # ── suite= declaration: say what is accepted ────────────────────
@@ -4964,7 +4985,7 @@ rm -f "$MOG_RUN_LOG4"
 # merged through the gate. A re-run keeps its run id, so the gate reads the
 # previous attempt of a run that is not completed and has attempt > 1.
 MOG_RUN_RERUN='[{"attempt":2,"conclusion":"","createdAt":"2026-10-25T19:37:01Z","databaseId":40226871918,"event":"workflow_dispatch","headSha":"be152579752f51ff26575c459654b1245d0f5abd","status":"in_progress"},{"attempt":1,"conclusion":"success","createdAt":"2026-10-25T15:45:05Z","databaseId":40208416958,"event":"schedule","headSha":"3f196bdadad920756c87caec0838ece0205b863c","status":"completed"}]'
-# 7656-a (RED) — red run being re-run, older green completed: refused.
+# 7656-a — red run being re-run, older green completed: an advisory merge.
 STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=failure \
     run_mog 0 "7656-a: red run being re-run, older green behind it → merged as advisory"
 assert_audit_has "7656-a: audited as an advisory merge" "via=advisory"
@@ -5107,14 +5128,14 @@ assert_audit_has "7658-a: audited as a cap-only pass" "main-red-cap-only"
 assert_audit_has "7658-a: audited with the cap-only route" "via=cap-only"
 assert_merge_has "7658-a: the merge ran" "--squash"
 if [ -z "$(git -C "$LAST_TMP" for-each-ref refs/himmel-mog-mr)" ]; then pass; else fail "7658-a: the private refs were deleted again"; fi
-# 7658-b — one failed suite is a real assertion failure (rc=1): blocks.
+# 7658-b — one failed suite is a real assertion failure (rc=1): an advisory merge.
 STUB_RUN_LOG_FILE="$MOG7658_LOG_ASSERT" cap_run 0 "7658-b: a cap timeout plus an assertion failure → merged as advisory"
 assert_err_has "7658-b: prints the class and the suites" "main-red: assertion ($MOG7658_S1, $MOG7658_S2)"
 assert_audit_has "7658-b: audited as an advisory merge" "via=advisory"
 assert_audit_has "7658-b: the audit line names the class and the failed suites" "class=assertion suites=$MOG7658_S1,$MOG7658_S2"
 assert_err_has "7658-b: the advisory names the failed suites" "MAIN-RED advisory:"
 assert_merge_has "7658-b: the merge ran" "--squash"
-# 7658-c — a cap exceeded WITHOUT assertions passing is not a clean cap: blocks.
+# 7658-c — a cap exceeded WITHOUT assertions passing is not a clean cap: an advisory merge.
 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAPFAIL" cap_run 0 "7658-c: a cap timeout that did not have its assertions passing → merged as advisory"
 assert_err_has "7658-c: prints the class" "main-red: assertion ("
 assert_merge_has "7658-c: the merge ran" "--squash"
@@ -5124,16 +5145,16 @@ assert_err_has "7658-d: prints the class and only the reached suite" "main-red: 
 if [ -z "$(git -C "$LAST_TMP" for-each-ref refs/himmel-mog-mr)" ]; then pass; else fail "7658-d: the private refs were deleted again"; fi
 assert_audit_has "7658-d: audited as an advisory merge" "via=advisory"
 assert_merge_has "7658-d: the merge ran" "--squash"
-# 7658-e — fail closed: the PR head cannot be fetched, so what it reaches is unknown.
+# 7658-e — the PR head cannot be fetched, so what it reaches is unknown: an advisory, not a cap pass.
 MOG_CAP_NOPULL=1 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-e: cap-only red but the PR head is unfetchable → merged as advisory"
 assert_err_has "7658-e: prints the class" "main-red: cap-unverified ($MOG7658_S1, $MOG7658_S2)"
 assert_merge_has "7658-e: the merge ran" "--squash"
-# 7658-f — fail closed: the failed log cannot be read.
+# 7658-f — the failed log cannot be read: an advisory, not a cap pass.
 STUB_RUN_VIEW_FAIL=1 cap_run 0 "7658-f: unreadable failed log → merged as advisory"
 assert_err_has "7658-f: prints the class" "main-red: unclassified ()"
 assert_merge_has "7658-f: the merge ran" "--squash"
 # 7658-g — a red with no Failed-suites block (the apt-get exit-124 log of run
-# 37964772913, 5115) is no cap timeout: blocks.
+# 37964772913, 5115) is no cap timeout: an advisory merge.
 STUB_RUN_LOG_FILE="$MOG7658_LOG_APT" cap_run 0 "7658-g: a red whose log names no failed suite → merged as advisory"
 assert_err_has "7658-g: prints the class" "main-red: unclassified ()"
 assert_merge_has "7658-g: the merge ran" "--squash"

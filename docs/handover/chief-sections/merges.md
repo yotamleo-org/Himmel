@@ -62,12 +62,14 @@ claudex path above, tracked as a follow-up.
 **A red main and the merge gate.** A red main no longer stops a PR whose own CI
 passed (HIMMEL-8675): `merge-on-green.sh` prints one `MAIN-RED advisory:` line,
 audits `main-red-advisory ... via=advisory run=<red run id>` with the class and
-failed suites, and merges. A run that is being re-run counts as red until its new
-attempt completes. It prints `main-red: <class> (<suites>)` on every red it
+failed suites, and merges. A run that is being re-run counts by its previous
+attempt. It prints `main-red: <class> (<suites>)` on every red it
 classifies (`cap-only`, `assertion`, `cap-overlap`, `cap-unverified`,
-`unclassified`: see [`main-red.md`](main-red.md)). Exit 22 is left for an
+`unclassified`: defined in [`ci-merge-flow.md`](../../internals/ci-merge-flow.md),
+section "Main red after a green merge"). Exit 22 is left for an
 unreadable run list or run window. The gate is advisory, so the HOLD on a real
-blocker is yours: withhold the GO of every PR while main is genuinely broken, and
+blocker is yours: withhold the GO of every PR while main is genuinely broken
+(a GO file written before main went red stays valid until you delete it), and
 read the `MAIN-RED advisory:` lines of the merges that did land. The fix PR's
 `Fixes-main-red:` line and `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>`
 are now audit labels only (`via=<declaration>`), not required. After an advisory

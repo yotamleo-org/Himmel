@@ -10,10 +10,10 @@ is the chief's to enforce by withholding GOs:
 - **Test-only red** (a flake, a cap timeout, a fragile case; the code under
   test is fine): quarantine the case and file its ticket at once. The fleet
   keeps merging. A cap timeout with assertions passing, in suites a PR does
-  not reach, is audited `main-red: cap-only`;
+  not reach, prints `main-red: cap-only` and is audited `main-red-cap-only ... via=cap-only`;
   the ticket and the fix are still owed.
 - **Real blocker** (main's code is broken): HOLD merges until the fix lands.
-  A merge onto the red main, advisory or fix, queues the recheck itself:
+  A merge onto the red main, advisory or fix (a cap-only pass queues none), queues the recheck itself:
   `merge-on-green.sh` dispatches one
   `ci.yml` run on main and prints
   `MAIN-RECHECK dispatched run=<id>`. Watch that run; lift the HOLD when it is

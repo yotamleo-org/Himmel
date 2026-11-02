@@ -186,8 +186,9 @@
 #       fast-forward to it (an anchor that can is pulled and the gate re-runs). Checked after the
 #       chief-GO gate, before any mutation, on --dry-run too.
 #   22  main-red gate: main's CI state cannot be established: the run list
-#       of the CI workflow on the default branch cannot be read, or holds
-#       no completed non-cancelled run within its --limit 50 window, or a run
+#       of the CI workflow on the default branch cannot be read, or its full
+#       --limit 50 window holds no completed non-cancelled run (a shorter list
+#       with none is audited `main-red=no-completed-run` and proceeds), or a run
 #       being re-run has an unreadable previous attempt. A RED main no longer
 #       exits 22: the PR's own checks are green by now (exit 14
 #       otherwise), so it merges and the newest completed run, if red, is
@@ -196,8 +197,8 @@
 #       A PR that declares the fix (`Fixes-main-red: run=<id>`/`suite=<name>`
 #       verified against the run, or a chief fix-GO from go.sh --fix-main-red)
 #       or whose red is cap-only is audited `via=<declaration>`/`via=cap-only`
-#       instead; those labels no longer gate anything. Any merge onto a red main
-#       queues one `ci.yml` re-check (MAIN-RECHECK). After the trust-path
+#       instead; those labels no longer gate anything. An advisory or declared-fix
+#       merge (not a cap-only pass) queues one `ci.yml` re-check (MAIN-RECHECK). After the trust-path
 #       gate, before any mutation, on --dry-run too.
 #   23  plugin-bump recheck: the PR changes a file under
 #       marketplace/plugins/ and `check-plugin-drift.sh --bump-required`, run
@@ -1456,7 +1457,7 @@ elif [ "$mr_conc" != success ]; then
         else
             # The PR's own checks passed (check-ci gate above), so a red
             # main it did not cause no longer blocks it: it merges, loudly audited.
-            echo "MAIN-RED advisory: $mr_what (covers $mr_range${mr_list:+; failed suites: ${mr_list//,/, }}) — PR #$pr_num's own CI is green, so merging; a green merge onto a red main still means fix main first" >&2
+            echo "MAIN-RED advisory: $mr_what (covers $mr_range${mr_list:+; failed suites: ${mr_list//,/, }}) — PR #$pr_num's own CI is green, so main's red does not block it; a green merge onto a red main still means fix main first" >&2
             audit "MAIN-RED main-red-advisory repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=advisory${mr_cls:+ class=$mr_cls}${mr_list:+ suites=$mr_list}${mr_att:+ attempt=$mr_att}"
         fi
         mr_fix=1
