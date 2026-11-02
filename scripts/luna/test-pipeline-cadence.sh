@@ -551,6 +551,37 @@ assert_contains "health runner stamps the format version (HIMMEL-588)"  "# himme
 assert_contains "harvest runner restores arm-time PATH snapshot (HIMMEL-2840)" '; export PATH' "$harvest_sh"
 assert_contains "synth runner restores arm-time PATH snapshot (HIMMEL-2840)"   '; export PATH' "$synth_sh"
 assert_contains "health runner restores arm-time PATH snapshot (HIMMEL-2840)"  '; export PATH' "$health_sh"
+
+# SCRUM-4: on macOS the interactive login sits in the Keychain, which cron
+# cannot read, so every scheduled claude run said "Not logged in". Each claude
+# runner loads CLAUDE_CODE_OAUTH_TOKEN from an operator-owned token file when
+# the variable is unset; the fetch-health runner never launches claude.
+echo "TEST: claude runners load the OAuth token from a file, fetch-health does not (SCRUM-4)"
+if [ "$FMT" -ge 24 ]; then pass "runner format is at least v24 (token-file load)"; else fail "runner format is $FMT, want >= 24"; fi
+for _w in harvest synth health; do
+    _rsh_var="${_w}_sh"
+    _rsh="${!_rsh_var}"
+    assert_contains "$_w runner has the token-file load" 'CLAUDE_CODE_OAUTH_TOKEN' "$_rsh"
+    assert_contains "$_w runner names the default token path" '/.himmel/secrets/claude-oauth-token' "$_rsh"
+    assert_contains "$_w runner honours HIMMEL_CLAUDE_TOKEN_FILE" 'HIMMEL_CLAUDE_TOKEN_FILE' "$_rsh"
+done
+assert_not_contains "fetch-health runner has no token-file load" 'CLAUDE_CODE_OAUTH_TOKEN' "$fetch_health_sh"
+# Run ONLY the generated snippet, pulled out of the real harvest runner, under
+# /bin/sh with a minimal env. The probe prints what a child process inherits.
+tok_snippet="$TMP_ROOT/token-snippet.sh"
+awk '/^if \[ -z "\$\{CLAUDE_CODE_OAUTH_TOKEN/{p=1} p{print} p&&/^fi$/{exit}' "$CRON_DIR/pipeline-harvest.sh" > "$tok_snippet"
+tok_probe="$TMP_ROOT/token-probe.sh"
+cat > "$tok_probe" <<'PROBE'
+# read-sink-ok: test probe sources the snippet under test, a fixture file under the test's own TMP_ROOT
+. "$1"
+exec /bin/sh -c 'printf "<%s>" "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"'
+PROBE
+run_token_snippet() { env -i PATH=/usr/bin:/bin "$@" /bin/sh "$tok_probe" "$tok_snippet"; }
+printf 'fake-token-123\n' > "$TMP_ROOT/fake-token"
+assert_contains "extracted token snippet is non-empty" 'CLAUDE_CODE_OAUTH_TOKEN' "$(cat "$tok_snippet")"
+assert_rc "token file present -> exported, nothing printed" "<fake-token-123>" "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$TMP_ROOT/fake-token")"
+assert_rc "token file absent -> nothing exported, nothing printed" "<UNSET>" "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$TMP_ROOT/no-such-token")"
+assert_rc "variable already set -> not overwritten" "<already-set>" "$(run_token_snippet HIMMEL_CLAUDE_TOKEN_FILE="$TMP_ROOT/fake-token" CLAUDE_CODE_OAUTH_TOKEN=already-set)"
 assert_contains "harvest runner cds into vault" "cd $VAULT || {" "$harvest_sh"
 assert_contains "harvest runner runs /harvest-clips" "/harvest-clips" "$harvest_sh"
 assert_contains "harvest runner chains /triage-clips" "/triage-clips" "$harvest_sh"

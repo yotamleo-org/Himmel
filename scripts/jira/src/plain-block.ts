@@ -172,6 +172,30 @@ export function homeVerdict(
   return { action: 'refuse', message: `jira: refused: ${why}.` };
 }
 
+/**
+ * The Sector a create takes from its title when --sector is absent (HIMMEL-8659):
+ * a leading "<Sector>:" naming a live option gives that option's canonical label.
+ * A Task, Story or Bug whose "<Word>:" prefix names no live option is refused with
+ * the valid list. A title with no prefix, a commit prefix (lowercase), an Epic or
+ * Subtask, or an unreadable option list (`sectors` empty) derives nothing.
+ */
+export function titleSector(
+  type: string,
+  title: string,
+  sectors: readonly string[],
+): { sector?: string; refuse?: string } {
+  if (sectors.length === 0 || WARN_ONLY_TYPES.has(type.trim().toLowerCase())) return {};
+  const t = title.trim();
+  const hit = sectors.find((s) => t.toLowerCase().startsWith(s.toLowerCase() + ':'));
+  if (hit !== undefined) return { sector: hit };
+  if (!SECTOR_SHAPED.test(t)) return {};
+  return {
+    refuse:
+      `jira: refused: the title opens with "${t.slice(0, t.indexOf(':'))}:", which is not a Sector. ` +
+      `Valid sectors: ${sectors.join(', ')}. Pass --sector, or retitle.`,
+  };
+}
+
 export function titleTemplate(sectors: readonly string[] = SECTORS): string {
   return `Ticket title (system or user-facing):
   system:       <Sector>: <the result>   e.g. "Ship loop: merge waits for the signed GO"

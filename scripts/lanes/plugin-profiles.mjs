@@ -322,6 +322,12 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
   if (spec.sonnetContextGuard !== undefined && !['compact', 'handoff'].includes(spec.sonnetContextGuard)) {
     errors.push(`profile "${name}" sonnetContextGuard must be compact or handoff`);
   }
+  // The guard's share of the ceiling for a Sonnet launch (the hook reads it
+  // as HIMMEL_WORKER_SESSION_CONTEXT_SHARE, 1-100). Same native-lane claude-sonnet-5 gate.
+  if (spec.sonnetContextShare !== undefined && (!Number.isSafeInteger(spec.sonnetContextShare)
+    || spec.sonnetContextShare < 1 || spec.sonnetContextShare > 100)) {
+    errors.push(`profile "${name}" sonnetContextShare must be an integer from 1 to 100`);
+  }
   // contextBudget — the first-turn token ceiling the measured
   // probe asserts against, so it is REQUIRED on every non-operator profile
   // (a missing budget would let a lane's context footprint grow unnoticed).
@@ -585,11 +591,13 @@ export function contextForProfile(registry, name) {
   const specs = name.split(',').map((member) => registry.profiles[member]);
   const sonnetCeilings = specs.map((spec) => spec?.sonnetAutocompact).filter((v) => v !== undefined);
   const sonnetGuards = specs.map((spec) => spec?.sonnetContextGuard).filter((v) => v !== undefined);
+  const sonnetShares = specs.map((spec) => spec?.sonnetContextShare).filter((v) => v !== undefined);
   return {
     contextMode: specs.some((spec) => spec?.contextMode === '1m') ? '1m' : 'standard',
     autocompact: Math.max(...specs.map((spec) => spec?.autocompact ?? 200000)),
     ...(sonnetCeilings.length ? { sonnetAutocompact: Math.max(...sonnetCeilings) } : {}),
     ...(sonnetGuards.length ? { sonnetContextGuard: sonnetGuards.includes('handoff') ? 'handoff' : 'compact' } : {}),
+    ...(sonnetShares.length ? { sonnetContextShare: Math.min(...sonnetShares) } : {}),
   };
 }
 

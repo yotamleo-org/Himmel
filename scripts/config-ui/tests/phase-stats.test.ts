@@ -51,6 +51,18 @@ function fixture(events: Ev[] = EVENTS, rounds: Record<string, [number, string]>
 
 const phase = (s: ReturnType<typeof readPhaseStats>, id: string) => s.phases.find((p) => p.id === id)!;
 
+test("phase-stats: a merge row written before the merge call, or retired by a not-merged row, is not the merge (HIMMEL-8616)", () => {
+  // one ticket: CI starts 08:00, the row written before the merge call lands 08:10, the real merge 09:00
+  const row = (ts: string, extra: Record<string, string> = {}): Ev => ({ ...ev("merge", "HIMMEL-7", ts, "7"), ...extra } as Ev);
+  const ci = ev("ci-start", "HIMMEL-7", "2026-10-27T08:00:00Z", "7");
+  const pre = row("2026-10-27T08:10:00Z", { stage: "pre-merge", result: "pending" });
+  const check = (events: Ev[]) => { const f = fixture(events); return phase(readPhaseStats(f.env, f.roundsDir, NOW), "check"); };
+  // the merge row GitHub confirmed ends the phase at 60 min; the pre-merge row before it does not end it at 10
+  expect(check([ci, pre, row("2026-10-27T09:00:00Z", { stage: "pre-jira", result: "pending" })]).median).toBe(60);
+  // a PR that never merged: the pre-merge row and the row that retires it end nothing
+  expect(check([ci, pre, row("2026-10-27T08:11:00Z", { result: "not-merged", stage: "merge-failed" })]).n).toBe(0);
+});
+
 test("phase-stats: seven phases in order; Start, Plan and design and Assign have no source yet", () => {
   const { env, roundsDir } = fixture();
   const s = readPhaseStats(env, roundsDir, NOW);

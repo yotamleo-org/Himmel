@@ -31,6 +31,10 @@ export HIMMEL_FLOW_RUNS_LEDGER="$tmp/flow-runs.jsonl"
 # the ledger. Default every un-overridden case at a scratch ledger so this suite
 # never writes into the real repo's .git/cr-critic-scores.jsonl.
 export CR_LEDGER="$tmp/default-ledger.jsonl"
+# a --slug claude row takes the claude critic, whose lane-off path now runs on the subscription
+# too: both of its launchers are a failing stub here, so no row can reach a real claude.
+printf '#!/bin/sh\nexit 1\n' > "$tmp/no-claude"; chmod +x "$tmp/no-claude"
+export HIMMEL_CLAUDE_BIN="$tmp/no-claude" CFP_CLAUDE_API_LAUNCHER="$tmp/no-claude" CADENCE_USAGE_SKIP_REFRESH=1
 fails=0
 check(){ if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: got [$2] want [$3]"; fails=$((fails+1)); fi; }
 
@@ -954,6 +958,8 @@ check "a diff citation is never tagged [context]" "$(grep -cF -e '[context] [foo
 ctx_pp="$(printf '%s' "$DIFF" | bash "$CFP" --model gpt-5.5 --print-prompt --context-file "$ctx" 2>/dev/null)"
 check "context file rides in a <context> block" "$(grep -c '^<context>$' <<< "$ctx_pp")" "1"
 check "context block carries the file text" "$(grep -c '^function helper() {$' <<< "$ctx_pp")" "1"
+# The delta sentence rides with a context file and is absent without one.
+check "RL5 delta sentence present with a context file, absent without" "$(grep -c '^Review the changes in <diff>\. <context> is the whole PR, for reference\.' <<< "$ctx_pp"),$(printf '%s' "$DIFF" | bash "$CFP" --model gpt-5.5 --print-prompt 2>/dev/null | grep -c 'is the whole PR, for reference')" "1,0"
 # score.py's bullet parser still reads a [context]-tagged bullet (A28).
 tagged_line="$(grep -F '[context]' <<< "$ctx_out")"
 check "score.py BULLET parses a [context]-tagged bullet" "$(L="$tagged_line" python3 -I -c 'import os,re,sys

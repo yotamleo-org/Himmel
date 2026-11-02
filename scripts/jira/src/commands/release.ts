@@ -1,5 +1,5 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -16,12 +16,12 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rule, signSpec, specCheck, standing, state, takeover, withdraw,
+  apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
-import { releaseDir, releaseKeyPath } from '../release/paths.js';
+import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
 import type { Authority, Op, Verb } from '../release/types.js';
 
@@ -34,7 +34,7 @@ export const liveJira: JiraPort = {
     return (got.fields?.fixVersions ?? []).map((v) => v.name ?? '');
   },
   async setFixVersion(key, op, version) {
-    await setFixVersion(key, op, version);
+    await setFixVersion(key, op, version, 'rm-apply');
     writeJiraBreadcrumb(key);
   },
   async findComment(key, marker) {
@@ -287,7 +287,8 @@ export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 // The call runs on the API lane (decision 288): the lane is on and the account auto-picked unless the caller says
-// otherwise, so an operator's HIMMEL_API_LANE=off still refuses; the launcher has no subscription fallback.
+// otherwise, so an operator's HIMMEL_API_LANE=off still refuses the API call. The lane then alerts and, unless
+// HIMMEL_API_FALLBACK=off, re-runs a refused or failed call once on the subscription, replaying the stdin prompt (docs/internals/api-lane.md).
 export function apiLaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     ...judgeEnv(env),
@@ -330,8 +331,56 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check']);
+
+const TEST_RUN_GUARD = join(dirname(fileURLToPath(import.meta.url)), '../../../lib/test-run-guard');
+
+/** A test on the station never writes the live release queue. Only exit 77 refuses. */
+function refuseTestWrite(verb: string): void {
+  let root: string;
+  try {
+    root = releaseRoot();
+  } catch {
+    return; // the verb reports the unset state itself
+  }
+  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', `jira-release-${verb}`, root], { stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was written`);
+}
+
+/** A loopback Jira is a local stub: it cannot reach the real one. */
+function jiraIsLoopback(): boolean {
+  try {
+    const host = new URL(process.env.JIRA_BASE_URL ?? '').hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A test on the station never posts to the real Jira, whatever its release root. `what` names the
+ * command in the refusal ("release leaks", "create"). Only exit 77 refuses.
+ */
+export function refuseTestJiraPost(what: string): void {
+  if (jiraIsLoopback()) return;
+  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', '--real', `jira-${what.replace(/ /g, '-')}-comment`], { stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status === 77) throw new Error(`${what}: refused, nothing was posted`);
+}
+
+/** The release verbs that write to Jira: apply sets fix versions and posts the receipt; rm-run applies. */
+const JIRA_POSTING_VERBS = new Set(['apply', 'rm-run']);
+
 export function registerRelease(program: Command): void {
   const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
+  rel.hook('preAction', (_release, action) => {
+    // leaks reads unless --comment is set: that posts a real Jira comment and updates the breadcrumb state.
+    const verb = action.name();
+    const postsToJira = action.parent === rel
+      && ((verb === 'leaks' && Boolean(action.opts().comment)) || JIRA_POSTING_VERBS.has(verb));
+    if (postsToJira) refuseTestJiraPost(`release ${verb}`);
+    const readOnly = action.parent === rel && READ_ONLY_VERBS.has(verb) && !postsToJira;
+    if (!readOnly) refuseTestWrite(verb);
+  });
 
   rel.command('state <release>')
     .description('Effective release state from the one reducer (never a clean result on unknown input)')
@@ -379,7 +428,7 @@ export function registerRelease(program: Command): void {
     .option('--change-class <class>', 'rename or bulk: a mechanical change, ruled case by case')
     .option('--core-paths <file>', 'Core list (default: scripts/ci/core-paths.txt of this checkout)')
     .option('--widen-reason <why>', 'Let a core list matching more than 2 % of tracked files proceed, with this reason on the record')
-    .option('--docs-only', 'The leg touches docs only: a key core by its label alone is a design leg and BYPASS')
+    .option('--docs-only', 'The worker touches docs only: a key core by its label alone is a design worker and BYPASS')
     .option('--mirror <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror); a key with no mirror file is UNKNOWN')
     .action((o: { paths: string; key: string[]; changeClass?: string; corePaths?: string; widenReason?: string; docsOnly?: boolean; mirror?: string }) => {
       if (o.changeClass !== undefined && o.changeClass !== 'rename' && o.changeClass !== 'bulk') {
@@ -456,6 +505,8 @@ export function registerRelease(program: Command): void {
         doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o),
       });
       for (const l of lines) console.log(l);
+      const summary = rmRunSummary(release, lines);
+      if (summary) console.log(summary);
       if (lines.some((l) => /^(REFUSED|PENDING) /.test(l))) process.exitCode = 2;
     });
 
@@ -593,13 +644,14 @@ export function registerRelease(program: Command): void {
     .description('Sign a minerva spec for its keys after the operator approves it')
     .requiredOption('--keys <list>', 'Comma-separated keys the spec covers')
     .requiredOption('--spec <path>', 'The spec file (by convention under the state repo specs/designs/ bucket; any path signs)')
+    .option('--plan <path>', 'The spec\'s plan file (the trace lint reads the invariants\' tests from it); default: the spec')
     .requiredOption('--verdict <path>', 'A critic verdict file; give the spec critic\'s and the plan critic\'s', (v: string, all: string[]) => [...all, v], [] as string[])
     .requiredOption('--decision <n>', 'Operator decision number')
     .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
     .option('--supersedes <O-id>', 'The spec record this re-sign replaces')
-    .action((release: string, o: { keys: string; spec: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
+    .action((release: string, o: { keys: string; spec: string; plan?: string; verdict: string[]; decision: string; verbatimFile: string; supersedes?: string }) => {
       const r = signSpec(ctxFor(release), {
-        keys: list(o.keys), spec: o.spec, verdicts: o.verdict, decision: o.decision,
+        keys: list(o.keys), spec: o.spec, plan: o.plan, verdicts: o.verdict, decision: o.decision,
         verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), supersedes: o.supersedes,
       });
       console.log(`${r.id} spec ${r.spec_path} signed for ${(r.keys ?? []).join(', ')}`);

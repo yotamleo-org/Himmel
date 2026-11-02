@@ -8,7 +8,7 @@ import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
 import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
-import { appendAdmission, assertAdmissionsWritable, readAdmissions } from '../commands/admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable, readAdmissions, type Admission } from '../commands/admissions-ledger.js';
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
@@ -186,8 +186,18 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
 function reduceLoaded(l: Loaded, mirror: ReturnType<typeof readMirror>): ReleaseState {
   return reduce({
     decl: l.decl, baselines: l.baselines, rulings: l.rulings, operator: l.operator, events: l.events,
-    issues: mirror.issues, mirrorSync: mirror.sync,
+    issues: mirror.issues, mirrorSync: mirror.sync, admissions: admissionsOrNull(),
   });
+}
+
+// A bad ledger line (or no ledger location) reads UNKNOWN for the reducer's admissions input only: the overall
+// status stays OK, so rm-queue and rm-run keep working on one bad line in an unsigned, lock-free ledger.
+function admissionsOrNull(): Admission[] | null {
+  try {
+    return readAdmissions();
+  } catch {
+    return null;
+  }
 }
 
 function readLease(ctx: Ctx, k: Buffer): Lease {
@@ -293,7 +303,7 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
 }
 
 // Where an operator decision puts its keys; undefined for an op that places nothing.
-function placementOf(o: { op?: string; from_v?: string | null; to_v?: string | null }): string | null | undefined {
+export function placementOf(o: { op?: string; from_v?: string | null; to_v?: string | null }): string | null | undefined {
   if (o.op === 'keep' || o.op === 'discharge') return o.from_v ?? null;
   if (o.op === 'remove') return null;
   if (o.op === 'add' || o.op === 'move') return o.to_v ?? null;
@@ -357,12 +367,14 @@ export function readOperatorRecords(kind: OperatorRow['kind'], env: Record<strin
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
-// The minerva scripts of the primary checkout, found from this module, not the caller's cwd.
-function minervaScript(name: string): string {
+// The primary checkout, found from this module, not the caller's cwd.
+function checkoutRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const common = execFileSync('git', ['-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
-  return join(dirname(common), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
+  return dirname(common);
 }
+
+const minervaScript = (name: string): string => join(checkoutRoot(), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
 
 function runMinerva(name: string, args: string[], cwd: string): void {
   try {
@@ -415,18 +427,27 @@ function checkResiduals(specText: string, residuals: number): void {
 }
 
 export function signSpec(ctx: Ctx, o: {
-  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string;
+  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string;
 }): OperatorRow {
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
   const spec = resolve(o.spec);
   if (!existsSync(spec)) throw new Error(`release operator spec: spec not found: ${spec}`);
+  // The plan carries the invariants' acceptance tests; with no --plan the spec stands in for it.
+  const plan = o.plan ? resolve(o.plan) : spec;
+  if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
   const { verdicts, residuals } = readVerdicts(o.verdicts);
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   checkResiduals(bytes.toString('utf8'), residuals);
   runMinerva('minerva-spec-gate.sh', [spec], dirname(spec));
-  runMinerva('minerva-trace-lint.sh', [spec, spec], dirname(spec));
+  // The lint resolves cited paths against its cwd's repo, so it runs from the checkout, whichever repo holds the
+  // spec; the spec's own repo (the state repo) is the second place a cited path may exist.
+  let own: string[] = [];
+  try {
+    own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
+  } catch { /* a spec outside any repo has no second root */ }
+  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot());
   // The record signs the bytes the checks read: a spec or verdict edited meanwhile refuses.
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)) {
     throw new Error('release operator spec: the spec or a verdict file changed while it was checked; sign again');
@@ -447,7 +468,7 @@ export function signSpec(ctx: Ctx, o: {
       throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
     }
     return appendOperator(ctx, l.k, {
-      kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, verdicts,
+      kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, plan_path: o.plan ? plan : null, verdicts,
       supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
     });
   });
@@ -775,6 +796,20 @@ function checkBlockerPull(ctx: Ctx, p: {
   return true;
 }
 
+// The operator's newest decision naming the key, whatever version it touches: the key's latest word.
+const keyNewestDecision = (rows: OperatorRow[], key: string): OperatorRow | undefined =>
+  rows.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(key)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
+
+// A REVERSION can only rule a move, but an operator `add` into a version places the key there too: the restore
+// is that add, so the record covers it. Only when that add is also the key's newest decision of any kind: a newer
+// record elsewhere (another version, a keep) is the operator's latest word and the restore stays refused.
+// Any other op stays as it is and is checked against the record.
+function restoreAsAdd(verb: Verb, op: Op, governing: OperatorRow | undefined, newest: OperatorRow | undefined): Op {
+  const same = verb === 'REVERSION' && op.kind === 'move' && op.from_v === null && governing?.op === 'add'
+    && (governing.from_v ?? null) === null && (governing.to_v ?? null) === op.to_v && newest?.id === governing.id;
+  return same ? { kind: 'add', from_v: null, to_v: op.to_v } : op;
+}
+
 export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
   return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
@@ -807,6 +842,8 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       && [x.from_v, x.to_v].some((v) => v != null && touched.includes(v)))
       .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
     let authority = o.authority;
+    let op = o.op;
+    const restored = restoreAsAdd(req.verb, o.op, governing, keyNewestDecision(l.operator.verified, req.key));
     const pulling = checkBlockerPull(ctx, { decl: l.decl, ops, governing, key: req.key, op: o.op, authority });
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
@@ -828,22 +865,24 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       const conflict = (g: OperatorRow) => new Error(`release rule: CONFLICT ${req.key}: ${g.id} (newer) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} governs ${req.key}; rule under it`);
       if (cited?.kind === 'decision') {
         if (governing && governing.id !== cited.id) throw conflict(governing);
+        op = restored;
         continue;
       }
       if (authority.kind === 'operator') continue;
       if (!governing || Date.parse(governing.ts) <= since) throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
-      if (!scopeOk({ authority: { kind: 'operator', ref: governing.id }, key: req.key, op: o.op }, ops, l.decl.current)) throw conflict(governing);
+      if (!scopeOk({ authority: { kind: 'operator', ref: governing.id }, key: req.key, op: restored }, ops, l.decl.current)) throw conflict(governing);
+      op = restored;
       authority = { kind: 'operator', ref: governing.id };
     }
     if (authority.kind === 'operator') {
-      if (!scopeOk({ authority, key: req.key, op: o.op }, ops, l.decl.current)) throw new Error(`release rule: ${authority.ref ?? '(no ref)'} does not cover ${req.key} ${o.op.kind} ${o.op.from_v}→${o.op.to_v}`);
+      if (!scopeOk({ authority, key: req.key, op }, ops, l.decl.current)) throw new Error(`release rule: ${authority.ref ?? '(no ref)'} does not cover ${req.key} ${op.kind} ${op.from_v}→${op.to_v}`);
     }
     if (authority.kind === 'import' && !authority.ref) throw new Error('release rule: an import names its source in --ref');
 
     const id = seq(`R-${ctx.release}`, l.rulings.rows.map((r) => r.id));
     const row = appendChain<RulingRow>(f(ctx, 'rulings.jsonl'), l.k, {
-      id, epoch: lease.epoch, req: req.req, ts: ts(ctx), verb: req.verb, key: req.key, op: o.op, outcome: o.outcome,
-      class: classOf(l.decl, o.op), sector, ground: o.ground, reason: o.reason, supersedes: o.supersedes,
+      id, epoch: lease.epoch, req: req.req, ts: ts(ctx), verb: req.verb, key: req.key, op, outcome: o.outcome,
+      class: classOf(l.decl, op), sector, ground: o.ground, reason: o.reason, supersedes: o.supersedes,
       authority, phase: 'intent',
     });
     const { prev: _p, mac: _m, ...rest } = req;
@@ -923,7 +962,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
-      if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || ((op.kind === 'remove' || op.kind === 'move') && op.from_v)) assertAdmissionsWritable();
+      if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || (last.verb === 'REVERSION' && op.kind === 'add')
+        || ((op.kind === 'remove' || op.kind === 'move') && op.from_v)) assertAdmissionsWritable();
       const cur = await ctx.jira.fixVersions(k);
       if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
@@ -942,7 +982,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       // An RM admission is a ledger row like the chief's, so the board counts it; a replay finds the row first.
       // A REVERSION move into a version is an admission there too; readers ignore the row for an unfrozen version.
       const admitted = last.verb === 'INTAKE' && last.outcome === 'ADMIT'
-        || last.verb === 'REVERSION' && last.op.kind === 'move';
+        || last.verb === 'REVERSION' && (last.op.kind === 'move' || last.op.kind === 'add');
       if (!superseded && admitted && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
@@ -1154,6 +1194,13 @@ export interface RmRunOptions {
   ruling?: string;
   /** The chief's reason for the same, console marker only; one ledger row records it with the count. */
   chiefOverride?: string;
+}
+
+// The last line of an rm-run that refused anything: how many requests the engine refused, so a refusal is not
+// only buried in the lines above. A run with no refusal prints none and keeps its output.
+export function rmRunSummary(release: string, lines: string[]): string | null {
+  const n = lines.filter((x) => /^REFUSED /.test(x)).length;
+  return n ? `RM-RUN ${release} summary: ${n} refused` : null;
 }
 
 export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promise<string[]> {

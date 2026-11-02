@@ -57,7 +57,16 @@ conf="$confdir/himmel.conf"
 # ~/.himmel/himmel.conf to it. Safe to repeat on a correct link.
 die_create() { echo "migrate-env-config: could not create $1; nothing more was written." >&2; exit 1; }
 
+# write_door: a test on the station never writes the real himmel.conf or a real vault's .himmel.
+# Only exit 77 refuses; a missing or crashing guard lets the run through.
+write_door() {
+    local rc=0
+    bash "$HERE/../lib/test-run-guard" check migrate-env-config "$conf" ${vault:+"$vault"} >&2 || rc=$?
+    [ "$rc" -ne 77 ] || { echo "migrate-env-config: refused, nothing was written." >&2; exit 77; }
+}
+
 link_vault() {
+    write_door
     tracked="$vault/.himmel/himmel.conf"
     mkdir -p "$vault/.himmel" "$confdir" 2>/dev/null || die_create "$vault/.himmel"
     [ -e "$tracked" ] || { : > "$tracked"; } 2>/dev/null || die_create "$tracked"
@@ -143,6 +152,7 @@ for key in ${config_keys[@]+"${config_keys[@]}"}; do
         echo "skip  $key (no value in .env)"
         continue
     fi
+    write_door
     # A last line with no newline gets one first, so the append starts a line.
     if ! { mkdir -p "$confdir" \
         && { [ ! -s "$conf" ] || [ -z "$(tail -c 1 "$conf")" ] || printf '\n' >> "$conf"; } \

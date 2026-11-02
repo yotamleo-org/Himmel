@@ -52,13 +52,14 @@ assert_lacks() {
 }
 
 # _list_panel_avail_tmp -- portable (Git Bash / BSD / GNU) replacement for
-# `find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'cr-panel-avail.*'`: -maxdepth is
+# `find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'cr-panel-avail.*'` (and the
+# cr-pfp-ctx.* context file): -maxdepth is
 # GNU-only. A subshell-scoped nullglob keeps the glob from leaking the
 # literal pattern when nothing matches, without touching the caller's shopts.
 _list_panel_avail_tmp() {
     (
         shopt -s nullglob
-        for f in "${TMPDIR:-/tmp}"/cr-panel-avail.*; do
+        for f in "${TMPDIR:-/tmp}"/cr-panel-avail.* "${TMPDIR:-/tmp}"/cr-pfp-ctx.*; do
             printf '%s\n' "$f"
         done
     ) | sort
@@ -91,7 +92,7 @@ cp "$HERE/anchor-handoff.sh" "$fx/scripts/cr/anchor-handoff.sh"
 cp "$HERE/base-resolver.sh" "$fx/scripts/cr/base-resolver.sh"
 cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
 cp "$HERE/ledger-amend-auth.js" "$fx/scripts/cr/ledger-amend-auth.js"
-cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$HERE/ledger-append.sh" "$fx/scripts/cr/"
+cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$HERE/ledger-append.sh" "$HERE/critic-pre-existing-tag.py" "$fx/scripts/cr/"
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
 cp "$HERE/../lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock.sh"
@@ -107,7 +108,16 @@ cat > "$fx/scripts/cr/critic-panel.sh" <<'STUBEOF'
 #!/usr/bin/env bash
 printf 'called\n' >> "$CALL_LOG"
 printf '%s\n' "$*" >> "$ARGS_LOG"
-cat >/dev/null
+# STDIN_LOG keeps the diff the panel was handed; CTX_COPY keeps the context
+# file it was handed (the script under test removes its own copy on exit).
+if [ -n "${STDIN_LOG:-}" ]; then cat > "$STDIN_LOG"; else cat >/dev/null; fi
+if [ -n "${CTX_COPY:-}" ]; then
+    _prev=""
+    for _a in "$@"; do
+        if [ "$_prev" = "--context-file" ] && [ -n "$_a" ] && [ -f "$_a" ]; then cp "$_a" "$CTX_COPY"; fi
+        _prev="$_a"
+    done
+fi
 if [ -n "${PROBE_LEDGER:-}" ]; then
     if grep -qF '"kind":"preflight"' "$PROBE_LEDGER" 2>/dev/null; then echo yes; else echo no; fi > "$PROBE_OUT"
 fi
@@ -784,6 +794,133 @@ if [ -f "$CALL_LOG" ]; then bad "T25 panel invoked with a directory context file
 if [ -e "$repo4/.git/cr-review-rounds/feature.round" ]; then bad "T25 a directory context file spent a round"; else ok "T25 a directory context file spends no round"; fi
 rm -rf "$repo4/.git/cr-review-rounds"
 
+# T26: rounds 2 and 3 review only what changed since the last round
+# with the whole PR as context; any doubt about the start point
+# reviews the full diff, as before. r5_new makes main + feature (H1 = one
+# change to f.txt); r5_round runs one first pass and keeps what the panel got.
+r5_new() {
+    mkdir -p "$1"
+    (
+        fixture_enter_git_init_dir "$1" || exit 1
+        git -c init.defaultBranch=main init -q
+        git config user.email t@t.test
+        git config user.name tester
+        git config commit.gpgsign false
+        echo base > f.txt
+        git add f.txt
+        git commit -q -m init
+        git checkout -q -b feature
+        echo change >> f.txt
+        git commit -q -am change
+    ) || { echo "FAIL: T26 fixture repo setup failed" >&2; exit 1; }
+}
+r5_commit() { ( cd "$1" && echo "$3" >> "$2" && git add "$2" && git commit -q -m "edit $2" && git rev-parse HEAD ); }
+r5_avail() { ( cd "$1" && CR_LEDGER="$1/.git/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" avail --branch feature --head "$2" --model codex --status ok >/dev/null ); }
+r5_from() { ( cd "$1" && bash "$fx/scripts/cr/review-round.sh" from --branch feature ); }
+r5_round() {
+    rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/stdin-log" "$tmp/ctx-copy" "$tmp/err"
+    r5_out="$( (cd "$1" && STDIN_LOG="$tmp/stdin-log" CTX_COPY="$tmp/ctx-copy" FAKE_RC=0 FAKE_OUT="${R5_FAKE_OUT:-}" \
+        bash "$SCRIPT" --head "$2" --branch feature) 2>"$tmp/err" )"; r5_rc=$?
+    r5_err="$(cat "$tmp/err")"
+    r5_stdin="$(cat "$tmp/stdin-log" 2>/dev/null)"
+    r5_args="$(cat "$ARGS_LOG" 2>/dev/null)"
+    r5_ctx="$(cat "$tmp/ctx-copy" 2>/dev/null)"
+}
+
+# A: the first round reviews the whole branch; the second reviews H1..H2 with the PR as context.
+r5a="$tmp/repo5a"; r5_new "$r5a"
+r5a_h1="$(git -C "$r5a" rev-parse HEAD)"
+r5_round "$r5a" "$r5a_h1"
+if [ "$r5_rc" -eq 0 ]; then ok "T26 round 1 exits 0"; else bad "T26 round 1 exit (got $r5_rc; err: $r5_err)"; fi
+assert_has "$r5_out" "round 1 of 3" "T26 round 1 is round 1"
+assert_has "$r5_stdin" "+change" "T26 round 1 reviews the full branch diff"
+assert_lacks "$r5_args" "--context-file /" "T26 round 1 passes no context file"
+r5_avail "$r5a" "$r5a_h1"
+r5a_h2="$(r5_commit "$r5a" g.txt second)"
+r5_round "$r5a" "$r5a_h2"
+if [ "$r5_rc" -eq 0 ]; then ok "T26 round 2 exits 0"; else bad "T26 round 2 exit (got $r5_rc; err: $r5_err)"; fi
+assert_has "$r5_out" "round 2 of 3" "T26 round 2 is round 2"
+if [ "$(r5_from "$r5a")" = "$r5a_h1" ]; then ok "T26 round 2 'from' prints the last reviewed head"; else bad "T26 round 2 'from' (got '$(r5_from "$r5a")', want $r5a_h1)"; fi
+assert_has "$r5_stdin" "+second" "T26 round 2 reviews the change since the last round"
+assert_lacks "$r5_stdin" "+change" "T26 round 2 does not re-review the earlier round's diff"
+assert_has "$r5_args" "--context-file /" "T26 round 2 passes the whole PR as context"
+assert_has "$r5_ctx" '{"range":["f.txt",2,2]}' "T26 context ranges cover the earlier round's hunk"
+assert_has "$r5_ctx" '{"range":["g.txt",1,1]}' "T26 context ranges cover the delta's hunk"
+assert_has "$r5_ctx" "+change" "T26 context text holds the whole PR"
+assert_has "$r5_err" "round 2 reviews" "T26 round 2 says which range it reviewed"
+
+# B: no reviewed head before the second round (no avail row at H1): nothing to start from.
+r5b="$tmp/repo5b"; r5_new "$r5b"
+r5b_h1="$(git -C "$r5b" rev-parse HEAD)"
+r5_round "$r5b" "$r5b_h1"
+r5b_h2="$(r5_commit "$r5b" g.txt second)"
+r5_round "$r5b" "$r5b_h2"
+assert_has "$r5_out" "round 2 of 3" "T26 fallback B: round 2 ran"
+assert_has "$r5_stdin" "+change" "T26 fallback B: an empty start point reviews the full diff"
+assert_lacks "$r5_args" "--context-file /" "T26 fallback B: no context file with the full diff"
+
+# C: the start point equals HEAD (an empty delta is never reviewed as clean).
+r5c="$tmp/repo5c"; r5_new "$r5c"
+r5c_h1="$(git -C "$r5c" rev-parse HEAD)"
+r5_round "$r5c" "$r5c_h1"
+r5_avail "$r5c" "$r5c_h1"
+r5c_h2="$(r5_commit "$r5c" g.txt second)"
+r5_round "$r5c" "$r5c_h2"
+printf '%s\n' "$r5c_h2" > "$r5c/.git/cr-review-rounds/feature.from"
+r5_round "$r5c" "$r5c_h2"
+assert_has "$r5_out" "round 2 of 3" "T26 fallback C: round 2 re-entered"
+assert_has "$r5_stdin" "+change" "T26 fallback C: a start point equal to HEAD reviews the full diff"
+assert_lacks "$r5_args" "--context-file /" "T26 fallback C: no context file with the full diff"
+
+# D: HEAD does not descend from the start point.
+r5d="$tmp/repo5d"; r5_new "$r5d"
+r5d_h1="$(git -C "$r5d" rev-parse HEAD)"
+r5_round "$r5d" "$r5d_h1"
+r5_avail "$r5d" "$r5d_h1"
+r5d_h2="$(r5_commit "$r5d" g.txt second)"
+r5_round "$r5d" "$r5d_h2"
+r5d_side="$(cd "$r5d" && git checkout -q -b side main && echo side > s.txt && git add s.txt && git commit -q -m side && git rev-parse HEAD && git checkout -q feature)"
+printf '%s\n' "$r5d_side" > "$r5d/.git/cr-review-rounds/feature.from"
+r5_round "$r5d" "$r5d_h2"
+assert_has "$r5_stdin" "+change" "T26 fallback D: a start point HEAD does not descend from reviews the full diff"
+assert_lacks "$r5_args" "--context-file /" "T26 fallback D: no context file with the full diff"
+
+# E: a merge of the default branch sits in the range.
+r5e="$tmp/repo5e"; r5_new "$r5e"
+r5e_h1="$(git -C "$r5e" rev-parse HEAD)"
+r5_round "$r5e" "$r5e_h1"
+r5_avail "$r5e" "$r5e_h1"
+r5e_h2="$(r5_commit "$r5e" g.txt second)"
+r5_round "$r5e" "$r5e_h2"
+r5_avail "$r5e" "$r5e_h2"
+(cd "$r5e" && git checkout -q main && echo upstream > u.txt && git add u.txt && git commit -q -m upstream && git checkout -q feature && git merge -q --no-edit main) \
+    || { echo "FAIL: T26 merge fixture failed" >&2; exit 1; }
+r5e_h3="$(git -C "$r5e" rev-parse HEAD)"
+r5_round "$r5e" "$r5e_h3"
+assert_has "$r5_out" "round 3 of 3" "T26 fallback E: round 3 ran"
+assert_has "$r5_stdin" "+change" "T26 fallback E: a merge of the default branch in range reviews the full diff"
+assert_lacks "$r5_args" "--context-file /" "T26 fallback E: no context file with the full diff"
+
+# T27: rounds 2 and 3 tag an Important finding on code older than the PR and
+# set the ledger field `review-round.sh defer` reads; the first round tags nothing.
+r6="$tmp/repo5g"; r5_new "$r6"
+r6_h1="$(git -C "$r6" rev-parse HEAD)"
+R5_FAKE_OUT='## Important Issues (1 found)
+- [codex-1]: the old line is wrong [f.txt:1]'
+r5_round "$r6" "$r6_h1"
+assert_has "$r5_out" "- [codex-1]: the old line is wrong [f.txt:1]" "T27 round 1 leaves the finding untagged"
+assert_lacks "$r5_out" "[pre-existing]" "T27 round 1 tags nothing"
+r5_avail "$r6" "$r6_h1"
+r6_h2="$(r5_commit "$r6" g.txt second)"
+# The panel writes its own finding rows before the tagger runs; stand in for it.
+( cd "$r6" && CR_LEDGER="$r6/.git/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
+    --branch feature --head "$r6_h2" --model codex --id codex-1 --severity imp --file f.txt --line 1 --verdict "" >/dev/null 2>&1 ) \
+    || bad "T27 fixture finding row"
+r5_round "$r6" "$r6_h2"
+assert_has "$r5_out" "- [codex-1]: the old line is wrong [pre-existing] [f.txt:1]" "T27 round 2 tags an Important on code older than the PR"
+assert_has "$(cat "$r6/.git/cr-critic-scores.jsonl")" '"pre_existing":true' "T27 round 2 sets the pre_existing ledger field"
+R5_FAKE_OUT=""
+
 # --- no writes outside the mktemp fixture -----------------------------------
 # panel-first-pass.sh's only persistent writes are mktemp -t cr-panel-avail.*
 # scratch files, always rm -f'd before it returns. Any NEW one since the
@@ -793,7 +930,7 @@ rm -rf "$repo4/.git/cr-review-rounds"
 _post_tmp="$(_list_panel_avail_tmp)"
 _new_tmp="$(comm -13 <(printf '%s\n' "$_pre_tmp") <(printf '%s\n' "$_post_tmp") 2>/dev/null || true)"
 if [ -z "$_new_tmp" ]; then
-    ok "no NEW leaked cr-panel-avail scratch files outside the fixture"
+    ok "no NEW leaked cr-panel-avail or cr-pfp-ctx scratch files outside the fixture"
 else
     bad "leaked scratch files outside the fixture: $_new_tmp"
 fi

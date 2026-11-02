@@ -37,7 +37,7 @@ eq('done % drills to the done tickets (HIMMEL-3990)', nums(M.drill('done', { v: 
 eq('what is left drills to open tickets, live worker first (HIMMEL-3990)', nums(M.drill('left', { v: 0 })), [11, 12, 13]);
 eq('the workers figure drills to the tickets a worker is on (HIMMEL-3990)', nums(M.drill('live', { v: 0 })), [11]);
 eq('the started-no-worker figure drills to started tickets without a worker (HIMMEL-3990)', nums(M.drill('prog', { v: 0 })), []);
-eq('a done ticket shows no worker even if its doc lingers (HIMMEL-3990)', M.leg(P[0]), null);
+eq('a done ticket shows no worker even if its doc lingers (HIMMEL-3990)', M.worker(P[0]), null);
 eq('a theme drills across the train only (HIMMEL-3990)', nums(M.drill('all', { t: 0 })), [11, 14, 10]);
 eq('the train figure spans every v1.0.x version (HIMMEL-3990)', M.tally(M.inTrain()).n, 5);
 
@@ -101,7 +101,7 @@ eq('the what-if shows the target before and after, under its own caps (HIMMEL-39
     [1, 0.009, 3, 0.036, []]);
 eq('a new trail starts empty and keeps its parent caps (HIMMEL-3990)', [M3.whatIf(2, [], -1).to.before.n, M3.whatIf(0, pk.moved, -1).to.after.b], [0, []]);
 eq('decisions: a stopped worker first, the running version cap, then drift and the unplaced (HIMMEL-3990)',
-    M3.decisions().map((d) => d.type + ':' + d.band + ':' + (d.p ? d.p[0] : d.i)), ['leg:0:25', 'cap:1:0', 'drift:2:26', 'unplaced:2:1']);
+    M3.decisions().map((d) => d.type + ':' + d.band + ':' + (d.p ? d.p[0] : d.i)), ['worker:0:25', 'cap:1:0', 'drift:2:26', 'unplaced:2:1']);
 const M6 = model({ V: ["v1.0.1"], T: ["tooling"], CUR: 0, PIN: [], P: [row(50, 0, 0, 1, 1, 2)], VC: [null], VP: [null], U: [], WORKER: {} });
 eq('an open ticket outside the plan is a flag, not a decision (HIMMEL-4930)', M6.decisions().map((d) => d.type), []);
 eq('what we gained lists done work by version, newest first (HIMMEL-3990)', M3.gains().map((g) => [g.i, nums(g.done)]), [[0, [20]]]);
@@ -118,7 +118,7 @@ const M5 = model({ V: ['v1.0.1'], T: ['tooling'], CUR: 0, VC: [c3], U: [], WORKE
     ACT: { 50: [1, 60], 51: [1, 40], 52: [2, 200], 53: [1, 10], 55: [1, 15] } });
 eq('a done ticket carries what it took; an open one does not (HIMMEL-3990)', [M5.act(M5.inV(0)[0]), M5.act(M5.inV(0)[3])], [[1, 60], null]);
 eq('accuracy groups measured done tickets by estimate, smallest first, with medians (HIMMEL-3990)',
-    M5.accuracy().map((x) => [x.size, x.n, x.med, x.legs, nums(x.rows.map((r) => r.p))]),
+    M5.accuracy().map((x) => [x.size, x.n, x.med, x.workers, nums(x.rows.map((r) => r.p))]),
     [['XS–S', 1, 15, 1, [55]], ['S', 2, 50, 1, [51, 50]], ['M–L', 1, 200, 2, [52]]]);
 eq('the in-progress column drills to every started ticket, worker or not (HIMMEL-3990)', nums(M.drill('doing', { v: 0 })), [11]);
 eq('a page without actuals measures nothing (HIMMEL-3990)', M.accuracy(), []);
@@ -127,7 +127,7 @@ eq('a page without actuals measures nothing (HIMMEL-3990)', M.accuracy(), []);
 const m = /<script type="application\/json" id="data">([\s\S]*?)<\/script>/.exec(html);
 const R = model(JSON.parse(m[1]));
 const r1 = R.drill('live', { v: 0 });
-eq('the rendered data: the live worker ticket drills from the workers figure (HIMMEL-3990)', [nums(r1), R.leg(r1[0])], [[1], ['N55', 'LIVE', 1525]]);
+eq('the rendered data: the live worker ticket drills from the workers figure (HIMMEL-3990)', [nums(r1), R.worker(r1[0])], [[1], ['N55', 'LIVE', 1525]]);
 eq('the rendered data: the planned ticket loads its kind (HIMMEL-3990)', [R.load(0).kinds[0].used, nums(R.load(0).kinds[0].tickets)], [0.009, [1]]);
 eq('the rendered data: the row text is the user impact (HIMMEL-3990)', r1[0][9], 'changed impact');
 

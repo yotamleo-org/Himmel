@@ -20,6 +20,13 @@
 # --context-file: code beyond the diff every critic may cite (format in
 # critic-first-pass.sh --help); forwarded to critic-panel.sh.
 #
+# The second and third rounds review only the change since the last round:
+# review-round.sh from names the start point, the diff is <from>..<head>, and
+# the whole PR rides as the context file (unless the caller passed one). Any
+# doubt about the start point reviews the full diff, saying why on stderr. After
+# the panel, critic-pre-existing-tag.py tags an Important finding on code older
+# than the PR [pre-existing] and sets the ledger field review-round.sh defer reads.
+#
 # --head/--branch are REQUIRED and must be step 1's CAPTURED values, never
 # re-derived here: review the SHA the ledger will certify, not
 # live HEAD, and pin the branch too - a SHA pin alone would pass a switch to a
@@ -74,6 +81,9 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HEAD_SHA=""
 BRANCH=""
 CONTEXT_FILE=""
+# The context file a later round builds for itself, removed on every exit.
+ctx_tmp=""
+trap '[ -z "$ctx_tmp" ] || rm -f "$ctx_tmp"' EXIT
 while [ $# -gt 0 ]; do
     case "$1" in
         --head)
@@ -162,6 +172,7 @@ diff_rc=0
 # Diff from the CAPTURED base SHA, not the live $db name: $db
 # stays the operator-visible name in messages.
 diff_range="$db_sha...$HEAD_SHA"
+scoped_from=""   # the last round's head, once a round 2 or 3 reviews only the change since it
 diff_out=$(git diff "$diff_range") || diff_rc=$?
 panel_avail_lines=""   # "panel-availability: <slug> ok|unavailable (rc=N)" lines
 panel_findings=""      # the merged findings block
@@ -225,6 +236,71 @@ else
         fi
         exit "$1"
     }
+    # scope_since_last_round: rounds 2 and 3 review only what changed since the
+    # last round (review-round.sh from), with the whole PR as context for the
+    # critic to cite. Any doubt about the start point keeps the full diff: an
+    # empty or unreadable start point, HEAD itself, a start point HEAD does not
+    # descend from, a merge of the default branch in range, an empty change, or
+    # a context file that cannot be built. A caller's own --context-file stays.
+    scope_since_last_round() {
+        sl_why=""
+        # -q --verify is spelled this way on purpose: the T9 mutant drops the head guard by its long spelling.
+        sl_head="$(git rev-parse -q --verify "$HEAD_SHA^{commit}" 2>/dev/null)" || sl_head=""   # swallow-ok: an unresolvable head reads as "start point is HEAD itself" below, which keeps the full diff
+        sl_from="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" from --branch "$BRANCH" 2>/dev/null)" || sl_why="the start point could not be read"   # swallow-ok: sl_why is set, which keeps the full diff
+        sl_merges=""
+        if [ -n "$sl_why" ]; then
+            :
+        elif [ -z "$sl_from" ]; then
+            sl_why="no reviewed head precedes this round"
+        elif [ -z "$sl_head" ] || [ "$sl_from" = "$sl_head" ]; then
+            sl_why="the start point is HEAD itself"
+        elif ! git merge-base --is-ancestor "$sl_from" "$sl_head" 2>/dev/null; then
+            sl_why="HEAD does not descend from the start point"
+        elif ! sl_merges="$(git rev-list --merges "$sl_from..$sl_head" "^$db_sha" 2>/dev/null)"; then   # swallow-ok: sl_why is set, which keeps the full diff
+            sl_why="the range could not be listed"
+        elif [ -n "$sl_merges" ]; then
+            sl_why="a merge of the default branch is in range"
+        elif git diff --quiet "$sl_from" "$sl_head" 2>/dev/null; then
+            sl_why="the change since the start point is empty"
+        fi
+        if [ -z "$sl_why" ] && [ -z "$CONTEXT_FILE" ]; then
+            ctx_tmp="$(mktemp -t cr-pfp-ctx.XXXXXX)" || ctx_tmp=""
+            if [ -z "$ctx_tmp" ]; then
+                sl_why="the context file could not be created"
+            else
+                # One {"range": [path, start, end]} line per new-side hunk of the
+                # whole PR, a blank line, then the whole PR diff. A path git
+                # quotes or that holds a control character is not listed.
+                sl_ranges="$(git diff -U0 --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ "$db_sha...$sl_head" 2>/dev/null | awk '
+                    /^\+\+\+ / { f = ""; p = substr($0, 5); if (substr(p, 1, 2) == "b/") { p = substr(p, 3); if (p !~ /["\\[:cntrl:]]/) f = p } next }
+                    /^@@ / && f != "" && match($0, /[+][0-9]+(,[0-9]+)?/) {
+                        s = substr($0, RSTART + 1, RLENGTH - 1); n = split(s, a, ",")
+                        ln = (n > 1) ? a[2] + 0 : 1
+                        if (ln > 0) printf "{\"range\":[\"%s\",%d,%d]}\n", f, a[1] + 0, a[1] + ln - 1
+                    }')" || sl_ranges=""
+                # diff_out is still the whole PR here (db_sha...HEAD_SHA, read above).
+                if [ -z "$sl_ranges" ] || [ -z "$diff_out" ]; then
+                    sl_why="the whole PR has no citable lines to give as context"
+                elif ! printf '%s\n\n%s\n' "$sl_ranges" "$diff_out" > "$ctx_tmp"; then
+                    sl_why="the context file could not be written"
+                fi
+            fi
+        fi
+        if [ -z "$sl_why" ]; then
+            sl_diff="$(git diff "$sl_from..$sl_head" 2>/dev/null)" || sl_diff=""   # swallow-ok: an empty sl_diff sets sl_why on the next line, which keeps the full diff
+            [ -n "$sl_diff" ] || sl_why="the change since the start point could not be read"
+        fi
+        if [ -n "$sl_why" ]; then
+            [ -z "$ctx_tmp" ] || { rm -f "$ctx_tmp"; ctx_tmp=""; }
+            echo "panel-first-pass: round $review_round reviews the full diff ($sl_why)" >&2
+            return 0
+        fi
+        [ -z "$ctx_tmp" ] || CONTEXT_FILE="$ctx_tmp"
+        diff_range="$sl_from..$sl_head"
+        diff_out="$sl_diff"
+        scoped_from="$sl_from"
+        echo "panel-first-pass: round $review_round reviews $sl_from..$sl_head, the change since the last round; the whole PR rides as context" >&2
+    }
     case "$review_round" in
         *" delta "*)
             # the one delta round reviews only last-reviewed
@@ -242,6 +318,7 @@ else
             ;;
         *)
             printf 'pr-check: round %s of 3 on %s\n' "$review_round" "$BRANCH"
+            case "$review_round" in 2|3) scope_since_last_round ;; esac
             ;;
     esac
     [ -z "${CR_PROFILE:-}" ] && echo "Default cross-model CR - no free critics registered, using the PAID codex anchor (~2min; set CR_PROFILE=none for instant claude-only)."
@@ -334,6 +411,25 @@ PINABORTRETRY
         fi
     fi
 fi
+
+# Rounds 2 and 3 tag an Important finding on code older than the PR
+# (critic-pre-existing-tag.py): git blame decides, and the ledger field
+# review-round.sh defer reads is set by that script, never by a finding's text.
+# On any failure the findings stay as the panel gave them, and an untagged
+# Important keeps blocking.
+case "${review_round:-}" in
+    2|3)
+        if [ -n "$panel_findings" ]; then
+            tag_head="$(git rev-parse -q --verify "$HEAD_SHA^{commit}" 2>/dev/null)" || tag_head=""   # swallow-ok: an empty --head makes the tagger tag nothing, and an untagged Important keeps blocking
+            if tagged="$(printf '%s\n' "$panel_findings" | python3 -I "$HIMMEL_ROOT/scripts/cr/critic-pre-existing-tag.py" \
+                --round "$review_round" --head "$tag_head" --db-sha "$db_sha" --branch "$BRANCH" ${scoped_from:+--from "$scoped_from"})"; then
+                panel_findings="$tagged"
+            else
+                echo "panel-first-pass: critic-pre-existing-tag.py failed (rc=$?); the findings stay untagged" >&2
+            fi
+        fi
+        ;;
+esac
 
 # Surface the captured availability lines to our own stderr
 # step 4.5 records these): this script's process exits when it returns, so -

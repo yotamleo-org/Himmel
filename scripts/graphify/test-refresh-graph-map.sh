@@ -1533,6 +1533,91 @@ assert "notes/cache.md" in d
 assert "graphify_native" not in d
 PY
 
+# --- T22d: a run over an UNCHANGED corpus with a populated cache
+# queues zero files. The stub models graphify's cache rule: a file is queued
+# only when the scratch copy's seeded cache holds no entry for it, and a queued
+# file gets its entry written. Run 1 over an unseeded corpus queues all three;
+# run 2 over the same corpus must find them in the cache the runner carried
+# across the promote and seeded back. REGRESSION GUARD, not a RED proof: the
+# cache round trip already works on main (T22a/T22b); what emptied the weekly
+# run was a cache that was never filled (4.6 percent coverage), not a lost one.
+# Scratch fixture and stubbed extraction only: no vault, no claude. ---
+QCORPUS="$WS/queuecorpus"; QMAPS="$WS/queuemaps"; QBIN="$WS/queuebin"; QLOG="$WS/queue.log"
+mkdir -p "$QCORPUS/notes" "$QMAPS" "$QBIN"
+for n in a b c; do printf '# %s\ncontent %s\n' "$n" "$n" > "$QCORPUS/notes/$n.md"; done
+: > "$QLOG"
+cat > "$QBIN/graphify" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then printf 'graphify 0.0.0\n'; exit 0; fi
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; fi
+if [ "\$1" != "cluster-only" ] && [ "\$2" = "--update" ]; then
+  queued=0
+  mkdir -p "\$target/graphify-out/cache/semantic"
+  for f in "\$target"/notes/*.md; do
+    key="\$(basename "\$f" .md)"
+    if [ ! -f "\$target/graphify-out/cache/semantic/\$key.json" ]; then
+      queued=\$((queued + 1))
+      printf '{"nodes":[]}' > "\$target/graphify-out/cache/semantic/\$key.json"
+    fi
+  done
+  printf 'queued=%s\n' "\$queued" >> "$QLOG"
+fi
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+chmod +x "$QBIN/graphify"
+for q_run in 1 2; do
+  out=$( GRAPHIFY_MAP_BIN="$QBIN/graphify" PATH="$QBIN:$PATH" \
+    bash "$SCRIPT" --name queuetest --corpus-root "$QCORPUS" --backend claude-cli \
+    --maps-dir "$QMAPS" --title "Queue Map" --slug queue-map --corpus-tag queue 2>&1 ); rc=$?
+  [ "$rc" -eq 0 ] || fail "T22d run $q_run exit 0 (got $rc): $out"
+done
+[ "$(sed -n 1p "$QLOG")" = "queued=3" ] \
+  && pass "T22d first run over an unseeded corpus queues every file (queued=3)" \
+  || fail "T22d first run should queue 3 files: $(cat "$QLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+[ "$(sed -n 2p "$QLOG")" = "queued=0" ] \
+  && pass "T22d second run over the unchanged corpus queues zero files" \
+  || fail "T22d second run over an unchanged corpus should queue 0 files: $(cat "$QLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+
+# --- T22e: a `handovers` line in the corpus-root .graphify-corpus-ignore keeps
+# every handovers/ file out of the scratch copy graphify extracts from, while
+# the other notes stay. REGRESSION GUARD, not a RED proof: the exclusion
+# mechanism already honours any directory line; the vault's own file lives
+# outside this repo. Scratch fixture only: no vault content. ---
+HXCORPUS="$WS/hxcorpus"; HXMAPS="$WS/hxmaps"; HXBIN="$WS/hxbin"; HXLOG="$WS/hx.log"
+mkdir -p "$HXCORPUS/notes" "$HXCORPUS/handovers/team/repo" "$HXMAPS" "$HXBIN"
+printf '# n\n' > "$HXCORPUS/notes/n.md"
+printf '# h\n' > "$HXCORPUS/handovers/team/repo/h.md"
+printf 'handovers\n' > "$HXCORPUS/.graphify-corpus-ignore"
+: > "$HXLOG"
+cat > "$HXBIN/graphify" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then printf 'graphify 0.0.0\n'; exit 0; fi
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; fi
+if [ "\$1" != "cluster-only" ] && [ "\$2" = "--update" ]; then
+  (cd "\$target" && find . -name '*.md' -not -path './graphify-out/*' | sort) >> "$HXLOG"
+fi
+mkdir -p "\$target/graphify-out"
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+chmod +x "$HXBIN/graphify"
+out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify" PATH="$HXBIN:$PATH" \
+  bash "$SCRIPT" --name hxtest --corpus-root "$HXCORPUS" --backend claude-cli \
+  --maps-dir "$HXMAPS" --title "Hx Map" --slug hx-map --corpus-tag hx 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T22e exit 0 (got $rc): $out"
+{ grep -qx './notes/n.md' "$HXLOG" && ! grep -q 'handovers' "$HXLOG"; } \
+  && pass "T22e a handovers line in .graphify-corpus-ignore keeps handovers/ out of the scratch copy" \
+  || fail "T22e scratch copy should hold notes/n.md and no handovers/ file: $(cat "$HXLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+
 # --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
 # `if !`, no error message, no controlled exit). This script runs under
@@ -4338,6 +4423,16 @@ n=$(mg_count "$MGC/graphify-out/graph.json")
 [ "$(mg_has "$MGC/graphify-out/graph.json" old-sem-0)" = 0 ] && pass "T-merge re-extracted file's stale semantic node is replaced" || fail "T-merge old-sem-0 still present"
 [ -f "$MGC/graphify-out/semantic-manifest.json" ] && pass "T-merge semantic manifest stamped" || fail "T-merge semantic-manifest.json missing"
 
+# a markdown file under a skipped dir (fixtures/) is extracted from the scratch copy but is not in the
+# plan's batch: its nodes must not enter the live graph (they would never be owned or replaced)
+mkdir -p "$MGC/fixtures"; printf '# fx\n' > "$MGC/fixtures/x.md"; git -C "$MGC" add fixtures/x.md >/dev/null 2>&1
+git -C "$MGC" -c core.hooksPath=/dev/null commit -qm fixtures >/dev/null 2>&1
+out=$(mg_run mgt "$MGC" --merge-into-live); rc=$?
+out2=$(mg_run mgt "$MGC" --merge-into-live); rc2=$?
+{ [ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && [ "$(mg_has "$MGC/graphify-out/graph.json" sem-fixtures/x.md)" = 0 ]; } \
+  && pass "T-merge a skip-dir file's node does not enter the live graph (two runs)" \
+  || fail "T-merge fixtures node landed in the live graph (rc=$rc/$rc2): $out $out2"
+
 # control: the vault shape (no flag, no AST graph) still promotes the extraction as before
 MGV="$WS/mg-vault"; mkdir -p "$MGV/notes"; printf '# n\n' > "$MGV/notes/a.md"
 out=$(mg_run mgv "$MGV"); rc=$?
@@ -4415,6 +4510,112 @@ out=$(mg_run scl "$SCL"); rc=$?
 { [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$SCL/graphify-out/graph.json")" = 10 ]; } \
   && pass "T-scope control: a rule change still refuses a loss among the in-scope sources" \
   || fail "T-scope in-scope loss expected the shrink-guard refusal (rc=$rc): $out"
+
+# --- T-recent: the capped run serves notes changed in the last 7 days that
+# have no cache entry FIRST. The stub packs one chunk per
+# uncached note in sorted path order (like graphify), keys its cache by the
+# corpus-relative path (like graphify's content+relative-path key, which is why
+# the pre-pass cache is a hit in the full run), and logs every note it extracts.
+# No real extraction: STUB only. ---
+RBIN="$WS/rbin"; mkdir -p "$RBIN"
+cat > "$RBIN/graphify" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "--version" ]; then echo "graphify 0.0.0"; exit 0; fi
+if [ "$1" = "cluster-only" ]; then
+  mkdir -p "$2/graphify-out"
+  printf '%s\n' "$STUB_REPORT" > "$2/graphify-out/GRAPH_REPORT.md"
+  exit 0
+fi
+target="$1"
+mkdir -p "$target/graphify-out/cache"
+todo=()
+while IFS= read -r p; do
+  [ -e "$target/graphify-out/cache/${p//\//__}.json" ] || todo+=("$p")
+done < <( cd "$target" && find . -type f -name '*.md' -not -path './graphify-out/*' | sed 's|^\./||' | LC_ALL=C sort )
+echo "target-notes ${#todo[@]}" >> "$STUB_PASSES"
+m=${#todo[@]}; k=0
+for p in "${todo[@]}"; do
+  sleep 0.3
+  echo "$p" >> "$STUB_CALLS"
+  printf '{}' > "$target/graphify-out/cache/${p//\//__}.json"
+  k=$((k+1))
+  case "$target" in *graphify-recent-*) [ -z "${STUB_CKPT_FAIL:-}" ] || echo "[graphify] incremental cache checkpoint failed: stub" >&2 ;; esac
+  echo "[graphify extract] chunk $k/$m done" >&2
+done
+printf '{"nodes":[],"links":[]}' > "$target/graphify-out/graph.json"
+exit 0
+STUB
+chmod +x "$RBIN/graphify"
+export STUB_REPORT="$REPORT_FIXTURE" STUB_CALLS="$WS/recent-calls.log" STUB_PASSES="$WS/recent-passes.log"
+RCORPUS="$WS/recentvault"; RMAPS="$RCORPUS/60-Maps"; RSP="$WS/recent-scratch"
+recent_corpus() {  # $1 = recently changed notes (space-separated); backlog a b c is 30 days old
+  rm -rf "$RCORPUS" "$RSP"; mkdir -p "$RCORPUS/notes" "$RMAPS" "$RSP"; rm -f "$STUB_CALLS" "$STUB_PASSES"
+  local n
+  for n in a b c; do printf '# %s\nbacklog\n' "$n" > "$RCORPUS/notes/$n.md"; touch -d '30 days ago' "$RCORPUS/notes/$n.md"; done
+  for n in $1; do printf '# %s\nchanged\n' "$n" > "$RCORPUS/notes/$n.md"; done
+}
+recent_run() {  # $1 = chunk cap
+  env -u GRAPHIFY_SECONDS_PER_CHUNK GRAPHIFY_MAX_CHUNKS_PER_RUN="$1" GRAPHIFY_MAP_BIN="$RBIN/graphify" PATH="$RBIN:$PATH" \
+    bash "$SCRIPT" --name recent --corpus-root "$RCORPUS" --backend claude --maps-dir "$RMAPS" \
+    --title "Recent Map" --slug recent-map --corpus-tag recent --scratch "$RSP" 2>&1
+}
+recent_calls() { tr '\n' ' ' < "$STUB_CALLS" 2>/dev/null; }
+recent_cached() { ( cd "$RCORPUS/graphify-out/cache" 2>/dev/null && printf '%s ' *.json ); }
+
+echo "T-recent: a backlog plus one note changed this week, cap 1 -> the changed note is the first chunk"
+recent_corpus "z"
+out=$(recent_run 1); rc=$?
+[ "$(recent_calls)" = "notes/z.md " ] \
+  && pass "T-recent the only chunk of the capped run is the changed note, not the alphabetically first backlog note" \
+  || fail "T-recent the first chunk should be notes/z.md alone, extracted: $(recent_calls)"
+[ "$rc" -eq 4 ] && pass "T-recent the run stops at its cap (exit 4)" || fail "T-recent should exit 4 (got $rc): $out"
+[ "$(recent_cached)" = "notes__z.md.json " ] \
+  && pass "T-recent only the changed note is cached" || fail "T-recent cache should hold only notes__z.md.json: $(recent_cached)"
+[ ! -e "$RCORPUS/graphify-out/graph.json" ] && pass "T-recent nothing partial was promoted" || fail "T-recent a partial graph.json was promoted"
+[ -z "$(ls -d "$RSP"/graphify-recent-* 2>/dev/null)" ] && pass "T-recent the pre-pass scratch corpus is removed" || fail "T-recent a pre-pass scratch corpus was left behind"
+
+echo "T-recent control: no note changed this week -> the order is unchanged and there is no pre-pass"
+recent_corpus ""
+out=$(recent_run 1); rc=$?
+[ "$(recent_calls)" = "notes/a.md " ] \
+  && pass "T-recent control the first chunk is the alphabetically first backlog note" || fail "T-recent control expected notes/a.md alone, got: $(recent_calls)"
+[ "$(wc -l < "$STUB_PASSES")" -eq 1 ] && pass "T-recent control graphify ran once (no pre-pass)" || fail "T-recent control expected one graphify pass: $(tr '\n' ';' < "$STUB_PASSES")"
+
+echo "T-recent control: every note changed this week -> there is no recent subset, so no pre-pass"
+recent_corpus "z"
+touch "$RCORPUS/notes/a.md" "$RCORPUS/notes/b.md" "$RCORPUS/notes/c.md"
+out=$(recent_run 1); rc=$?
+[ "$(recent_calls)" = "notes/a.md " ] && [ "$(wc -l < "$STUB_PASSES")" -eq 1 ] \
+  && pass "T-recent control all-recent corpus runs once in the sorted order" || fail "T-recent control all-recent expected one pass starting at notes/a.md, got: $(recent_calls) passes: $(tr '\n' ';' < "$STUB_PASSES")"
+
+echo "T-recent control: the changed note already has a cache entry -> the order is unchanged"
+recent_corpus "z"
+mkdir -p "$RCORPUS/graphify-out/cache"; printf '{}' > "$RCORPUS/graphify-out/cache/notes__z.md.json"
+out=$(recent_run 1); rc=$?
+[ "$(recent_calls)" = "notes/a.md " ] \
+  && pass "T-recent control a cached changed note is not served again; the backlog goes on" || fail "T-recent control expected notes/a.md alone, got: $(recent_calls)"
+
+echo "T-recent ckpt: a failed checkpoint in the pre-pass keeps the later cap stop from reading as resumable"
+recent_corpus "z"
+out=$(STUB_CKPT_FAIL=1 recent_run 2); rc=$?
+[ "$rc" -eq 2 ] && grep -q 'NOT resumable' <<<"$out" \
+  && pass "T-recent ckpt the cap stop fails (exit 2) instead of claiming the pre-pass chunks were kept" || fail "T-recent ckpt expected exit 2 with NOT resumable (got $rc): $out"
+
+echo "T-recent cap: both passes count against the one cap"
+recent_corpus "y z"
+out=$(recent_run 3); rc=$?
+[ "$(recent_calls)" = "notes/y.md notes/z.md notes/a.md " ] \
+  && pass "T-recent cap 3 = two changed notes then one backlog note" || fail "T-recent cap 3 expected y z a, got: $(recent_calls)"
+[ "$rc" -eq 4 ] && pass "T-recent cap 3 stops at exit 4" || fail "T-recent cap 3 should exit 4 (got $rc): $out"
+grep -q 'chunk cap 3 reached' <<<"$out" && pass "T-recent the stop reports the total across both passes" || fail "T-recent expected 'chunk cap 3 reached': $out"
+recent_corpus "y z"
+out=$(recent_run 2); rc=$?
+[ "$(recent_calls)" = "notes/y.md notes/z.md " ] && [ "$rc" -eq 4 ] \
+  && pass "T-recent cap 2 spent entirely by the changed notes: no full-run chunk starts (exit 4)" || fail "T-recent cap 2 expected y z and exit 4, got: $(recent_calls) rc=$rc"
+recent_corpus "x y z"
+out=$(recent_run 2); rc=$?
+[ "$(recent_calls)" = "notes/x.md notes/y.md " ] && [ "$rc" -eq 4 ] \
+  && pass "T-recent cap 2 with three changed notes stops inside the pre-pass (exit 4)" || fail "T-recent cap 2 with x y z expected x y and exit 4, got: $(recent_calls) rc=$rc"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 if [ "$SKIPS" -ne 0 ]; then echo "ALL PASS ($SKIPS skipped)"; else echo "ALL PASS"; fi

@@ -23,12 +23,76 @@
 # tree. Delivery is pluggable: LUNA_VAULT_ALERT_CMD names an executable that is
 # called with one argument, the message. Unset → the stall is only logged. A
 # sink that exits non-zero leaves the episode un-alerted, so the next run retries.
+#
+# Stall reason + tool-state self-heal: every refused run records
+# `<hook id>:<first file>` in <git-dir>/vault-autosync-reason (cleared with the
+# episode) so vault-status.sh can print STALL:<age>,<n>,<reason>. When EVERY file
+# the hooks refused is browser-profile / tool state that is new to the vault
+# (a Chrome Default/Preferences holds tokens), those files and any other staged
+# tool state are unstaged, moved to LUNA_VAULT_QUARANTINE_DIR (default
+# ~/.himmel/state/vault-quarantine)/<utc-stamp>/, and the commit is retried
+# once. Anything else stays a STALL for the operator.
 set -uo pipefail
 
 log() { echo "[vault-autosync] $*"; }
 
 _stall_file=""
-_stall_clear() { [ -z "$_stall_file" ] || rm -f "$_stall_file"; }
+_reason_file=""
+_stall_clear() {
+  [ -z "$_stall_file" ] || rm -f "$_stall_file"
+  [ -z "$_reason_file" ] || rm -f "$_reason_file"
+}
+
+# pre-commit prints `- hook id: <id>` per failing hook; a hook that reports the
+# file says `In <file> line N:` (shellcheck) or `File: <file>` (gitleaks).
+_refused_files() { # <captured output>: every file the hooks named, one per line
+  printf '%s\n' "$1" | sed -n -e 's/^In \(.*\) line [0-9]*:$/\1/p' -e 's/^File:[[:space:]]*//p'
+}
+_stall_reason() { # <captured output>: record `<hook>:<first file>` for vault-status.sh
+  local hook file
+  hook="$(printf '%s\n' "$1" | sed -n 's/^- hook id: //p' | head -n1)"
+  file="$(_refused_files "$1" | head -n1)"
+  [ -n "$_reason_file" ] || return 0
+  printf '%s:%s\n' "${hook:-none}" "${file:-none}" | tr -c 'A-Za-z0-9._/:+\n-' '_' >"$_reason_file"
+}
+
+# Browser-profile / tool state that never belongs in a vault.
+_tool_state() { # <repo-relative path>
+  case "/$1" in
+    */Default/Preferences | */Default/Secure\ Preferences | */Local\ State | \
+      */Default/Cache/* | */Default/Code\ Cache/* | */Default/GPUCache/* | */Default/*-journal) return 0 ;;
+  esac
+  return 1
+}
+
+# Heal a refusal caused only by new tool-state files: unstage them and move them
+# out of the vault. Returns 0 when something was quarantined, 1 otherwise.
+_heal_tool_state() { # <captured output of the refused commit>
+  local refused f stamp dest n=0
+  local -a move=()
+  refused="$(_refused_files "$1")"
+  [ -n "$refused" ] || return 1
+  while IFS= read -r f; do
+    _tool_state "$f" || return 1
+    ! git cat-file -e "HEAD:$f" 2>/dev/null || return 1 # a tracked file is not ours to move
+  done <<EOF
+$refused
+EOF
+  while IFS= read -r -d '' f; do
+    if _tool_state "$f" && ! git cat-file -e "HEAD:$f" 2>/dev/null; then move+=("$f"); fi
+  done < <(git diff --cached --name-only -z)
+  [ "${#move[@]}" -gt 0 ] || return 1
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  dest="${LUNA_VAULT_QUARANTINE_DIR:-${HOME:-/tmp}/.himmel/state/vault-quarantine}/$stamp"
+  for f in "${move[@]}"; do
+    mkdir -p "$dest/$(dirname "$f")" || return 1
+    git rm -q --cached -- "$f" || return 1
+    mv -- "$f" "$dest/$f" || return 1
+    n=$((n + 1))
+  done
+  log "quarantined $n tool-state file(s) to $dest (a browser profile or tool state must not enter the vault)." >&2
+  return 0
+}
 
 # Called with the refused commit's captured output. Records the episode's start,
 # and once it is older than the threshold alerts through LUNA_VAULT_ALERT_CMD.
@@ -51,10 +115,8 @@ _stall_note() {
   thr=$((10#$thr)) # a zero-padded value (08) is decimal, not an invalid octal
   [ $((now - first)) -ge $((thr * 60)) ] || return 0
 
-  # pre-commit prints `- hook id: <id>` per failing hook; a hook that reports the
-  # file says `In <file> line N:` (shellcheck) or `File: <file>` (gitleaks).
   hook="$(printf '%s\n' "$out" | sed -n 's/^- hook id: //p' | head -n1)"
-  file="$(printf '%s\n' "$out" | sed -n -e 's/^In \(.*\) line [0-9]*:$/\1/p' -e 's/^File:[[:space:]]*//p' | head -n1)"
+  file="$(_refused_files "$out" | head -n1)"
   msg="vault-autosync STALL: commit refused (hook: ${hook:-none reported}, file: ${file:-none reported}) for $(((now - first) / 60)) min in $REPO_ROOT - pending changes are not being committed."
   log "$msg" >&2
   if [ -z "${LUNA_VAULT_ALERT_CMD:-}" ]; then
@@ -84,6 +146,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 }
 cd "$REPO_ROOT" || exit 1
 _stall_file="$(git rev-parse --git-dir 2>/dev/null)/vault-autosync-stall"
+_reason_file="$(git rev-parse --git-dir 2>/dev/null)/vault-autosync-reason"
 
 # github-sync races this script's own commits — both stage,
 # commit and push the same vault on their own schedules. Mutually exclusive;
@@ -155,9 +218,22 @@ if ! _commit; then
       log "nothing to commit after retry — no-op."
       exit 0
     fi
-    log "commit BLOCKED by pre-commit (secret detected, or a hook keeps modifying files) — NOT pushing." >&2
-    _stall_note "$_commit_out"
-    exit 1
+    # Tool state only (a browser profile)? Quarantine it and commit the rest, once.
+    _blocked=1
+    if _heal_tool_state "$_commit_out"; then
+      if [ -z "$(git status --porcelain)" ]; then
+        _stall_clear
+        log "nothing left to commit after the quarantine — no-op."
+        exit 0
+      fi
+      ! _commit || _blocked=0
+    fi
+    if [ "$_blocked" = 1 ]; then
+      log "commit BLOCKED by pre-commit (secret detected, or a hook keeps modifying files) — NOT pushing." >&2
+      _stall_reason "$_commit_out"
+      _stall_note "$_commit_out"
+      exit 1
+    fi
   fi
 fi
 _stall_clear

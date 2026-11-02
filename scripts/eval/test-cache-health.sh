@@ -78,8 +78,8 @@ check "no-crossing sends nothing" 0 "$(sends)"
 python3 -I -c '
 import json,sys
 m=json.load(open(sys.argv[1]))
-l=m["roles"]["leg"]
-ok = m["schema"]==1 and set(m["roles"])=={"console","leg","subagent","bridge","other"} and l["sessions"]==1 and l["tokens"]==6000012 and l["hit_pct"]==98.0 and l["baseline_hit_pct"]==98.0 and l["compactions"]==1
+l=m["roles"]["worker"]
+ok = m["schema"]==1 and set(m["roles"])=={"console","worker","subagent","bridge","other"} and l["sessions"]==1 and l["tokens"]==6000012 and l["hit_pct"]==98.0 and l["baseline_hit_pct"]==98.0 and l["compactions"]==1
 sys.exit(0 if ok else 1)' "$STATE/metrics.json" && pass "metrics schema + deduped per-role numbers" || fail "metrics.json content wrong"
 [ "$(( $(wc -l < "$STATE/history.jsonl") ))" = 1 ] && pass "history has one row" || fail "history rows"
 
@@ -88,20 +88,28 @@ rm -f "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 900000 100000
 run; check "crossing run exits 0" 0 $?
 check "crossing sends exactly one message" 1 "$(sends)"
-has "alert names the role" "leg hit rate 90.0%" "$W/sent"
+has "alert names the role" "worker hit rate 90.0%" "$W/sent"
 has "alert names the baseline" "98.0% baseline" "$W/sent"
-has "active state holds the crossing" "role-drop:leg" "$STATE/alert-state.json"
+has "active state holds the crossing" "role-drop:worker" "$STATE/alert-state.json"
 
 # ---- 3. no repeat: still crossed -> silent -----------------------------------
 rm -f "$W/sent"
 run
 check "still-crossed run sends nothing" 0 "$(sends)"
 
+# ---- 3b. an alert key persisted before the rename reads as the worker key ----
+printf '{"active":{"role-drop:leg":"old text"}}\n' > "$STATE/alert-state.json"
+rm -f "$W/sent"
+HIMMEL_LEGACY_NAMES=1 run
+check "an old role-drop:leg key is not re-alerted or recovered" 0 "$(sends)"
+has "the old key is carried as the worker key" "role-drop:worker" "$STATE/alert-state.json"
+hasnt "the old key is gone from the state" "role-drop:leg" "$STATE/alert-state.json"
+
 # ---- 4. recovery: back to steady -> one recovery message, then silence -------
 python3 -I "$W/gen.py" "$R" "$NOW" 980000 20000
 run
 check "recovery sends exactly one message" 1 "$(sends)"
-has "recovery message" "cache-health RECOVERED: role-drop leg" "$W/sent"
+has "recovery message" "cache-health RECOVERED: role-drop worker" "$W/sent"
 rm -f "$W/sent"
 run
 check "after recovery nothing repeats" 0 "$(sends)"
@@ -112,7 +120,7 @@ run; rm -f "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 955000 45000   # 95.5 % = 2.5 below 98
 run
 check "inside the clear margin: no recovery yet" 0 "$(sends)"
-has "still active inside the margin" "role-drop:leg" "$STATE/alert-state.json"
+has "still active inside the margin" "role-drop:worker" "$STATE/alert-state.json"
 
 # ---- 6. failed send keeps the crossing pending (retry next run) --------------
 rm -rf "$STATE" "$W/sent"
@@ -120,7 +128,7 @@ python3 -I "$W/gen.py" "$R" "$NOW" 900000 100000
 echo 1 > "$W/send.rc"
 run; check "failed send exits non-zero" 3 $?
 check "failed send tried once" 1 "$(sends)"
-hasnt "failed send is not recorded as active" "role-drop:leg" "$STATE/alert-state.json"
+hasnt "failed send is not recorded as active" "role-drop:worker" "$STATE/alert-state.json"
 rm -f "$W/send.rc" "$W/sent"
 run
 check "retry after the failure delivers" 1 "$(sends)"
@@ -129,7 +137,7 @@ check "retry after the failure delivers" 1 "$(sends)"
 python3 -I "$PY" check --root "$W/no-such-root" --state-dir "$STATE" --now "$NOW" --notify-cmd "$SEND" >"$W/run.out" 2>&1
 check "missing root exits 2" 2 $?
 has "missing root names the path" "transcript root not found" "$W/run.out"
-has "missing root leaves the active alert alone" "role-drop:leg" "$STATE/alert-state.json"
+has "missing root leaves the active alert alone" "role-drop:worker" "$STATE/alert-state.json"
 
 # ---- 6c. input and invocation guards ------------------------------------------
 python3 -I "$PY" check --root "$R" --state-dir "$STATE" --now "$NOW" >"$W/run.out" 2>&1
@@ -153,7 +161,7 @@ rm -f "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 980000 20000 legsilent
 run
 check "thin data sends no recovery" 0 "$(sends)"
-has "thin data keeps the active alert" "role-drop:leg" "$STATE/alert-state.json"
+has "thin data keeps the active alert" "role-drop:worker" "$STATE/alert-state.json"
 
 # ---- 6e. an unreadable directory is incomplete data: exit 2 ------------------
 mkdir -p "$R/locked"; cp "$R/c1.jsonl" "$R/locked/x.jsonl"; chmod 000 "$R/locked"
@@ -195,6 +203,7 @@ P="$W/primary"; mkdir -p "$P/scripts/eval" "$P/scripts/luna"
 git init -q "$P"
 cp "$DIR/cache-health-cadence.sh" "$DIR/cache-health.py" "$P/scripts/eval/"
 cp "$DIR/../luna/cadence-alert.sh" "$P/scripts/luna/"
+mkdir -p "$P/scripts/lib"; cp "$DIR/../lib/env_alias.py" "$P/scripts/lib/"
 git -C "$P" add -A; git -C "$P" -c user.name=t -c user.email=t@t commit -q -m fixture
 BR="$W/bridge"; mkdir -p "$BR/consoles"; : > "$BR/consoles/live-chief.md"
 printf '#!/bin/sh\nexit 0\n' > "$W/sweep.sh"; chmod +x "$W/sweep.sh"

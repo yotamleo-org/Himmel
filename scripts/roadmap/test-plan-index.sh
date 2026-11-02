@@ -96,13 +96,11 @@ r="$(ROADMAP_QMD_BIN="$W/no-such-qmd" bash "$SUT" --refresh --plan-dir "$plan" -
 r="$(run --check 2>&1)"; rc=$?
 if [ "$rc" != 0 ]; then contains "--check reports stale" "$r" "stale"; else fail "--check on stale should be non-zero"; fi
 
-# an existing collection is rescanned: `update` runs before `embed`
 : > "$calls"; echo five >> "$mir/HIMMEL-111.md"
 run --refresh >/dev/null 2>&1
 u="$(grep -n '^update' "$calls" | head -1 | cut -d: -f1)"; e="$(grep -n '^embed' "$calls" | head -1 | cut -d: -f1)"
 [ -n "$u" ] && [ -n "$e" ] && [ "$u" -lt "$e" ] && pass "qmd update runs before embed" || fail "update did not precede embed: $(cat "$calls")"
 
-# a collection of the same name pointing at another directory is refused
 printf '%s\n' "$W/elsewhere" > "$calls.registered"
 echo six >> "$mir/HIMMEL-111.md"; cp "$out/.fp" "$W/fp.keep"
 r="$(run --refresh 2>&1)"; rc=$?
@@ -110,20 +108,17 @@ r="$(run --refresh 2>&1)"; rc=$?
 [ "$(cat "$out/.fp")" = "$(cat "$W/fp.keep")" ] && pass "collection elsewhere: fingerprint not advanced" || fail "fingerprint advanced on wrong collection path"
 printf '%s\n' "$out/docs" > "$calls.registered"
 
-# a ticket key that is not a plain key never becomes a path outside the docs dir
 cp -r "$plan" "$W/plan2"
 printf '../../escape\t1\t1\t1\t3\tv1\tc\t\tbugs\tx\n' >> "$W/plan2/stage3/placement.tsv"
 r="$(ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" --refresh --plan-dir "$W/plan2" --out "$W/out2" 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "bad ticket key: refresh non-zero" || fail "bad ticket key rc=0"
 [ ! -e "$W/out2/escape.md" ] && pass "bad ticket key: nothing written outside docs" || fail "path-traversal key wrote a file"
 
-# two group names with one slug each keep their own doc
 cp -r "$plan" "$W/plan3"
 sed -i.bak 's/Knowledge substrate/Guard-safety/' "$W/plan3/stage1/C01.tsv"; rm -f "$W/plan3/stage1/C01.tsv.bak"
 ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" --refresh --plan-dir "$W/plan3" --out "$W/out3" >/dev/null 2>&1
 [ "$(find "$W/out3/docs" -name 'theme-*.md' | wc -l)" -eq 2 ] && pass "slug collision: both theme docs kept" || fail "slug collision overwrote a theme doc"
 
-# --out inside/over the plan dir never deletes the plan
 cp -r "$plan" "$W/plan4"; before4="$(cd "$W/plan4" && find . -type f | sort | xargs sha256sum | sha256sum)"
 ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" --refresh --plan-dir "$W/plan4" --out "$W/plan4/stage1/.." >/dev/null 2>&1; rc2=$?
 [ "$rc2" != 0 ] && pass "out overlapping the plan dir: refresh non-zero" || fail "overlapping out rc=0"
@@ -141,14 +136,12 @@ ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" --refresh --plan-dir "$plan" --out "$mir" -
 bash "$SUT" --refresh --plan-dir >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "missing option value: exit 2" || fail "missing option value rc=$rc"
 
-# deleted docs with a kept key are stale, and a refresh restores them
 rm -rf "$out/docs"
 r="$(run --check 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "missing docs: --check stale despite kept key" || fail "--check fresh with docs deleted"
 r="$(run --refresh 2>&1)"; contains "missing docs: refresh rebuilds" "$r" "rebuilt"
 [ -f "$out/docs/HIMMEL-111.md" ] && pass "missing docs: restored" || fail "docs not restored"
 
-# one deleted generated doc with a kept key is stale, and a refresh restores it
 rm -f "$out/docs/HIMMEL-222.md"
 r="$(run --check 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "one doc deleted: --check stale despite kept key" || fail "--check fresh with a doc deleted"
@@ -156,7 +149,6 @@ r="$(run --refresh 2>&1)"; contains "one doc deleted: refresh rebuilds" "$r" "re
 [ -f "$out/docs/HIMMEL-222.md" ] && pass "one doc deleted: restored" || fail "deleted doc not restored"
 r="$(run --check 2>&1)"; contains "after restore: fresh again" "$r" "fresh"
 
-# a changed generator makes the docs stale even when no input changed
 mkdir -p "$W/gen"; cp "$HERE/plan-index.sh" "$HERE/plan_docs.py" "$W/gen/"
 grun() { QMD_CALLS="$W/gen-calls" ROADMAP_QMD_BIN="$W/qmd" bash "$W/gen/plan-index.sh" "$@" --plan-dir "$plan" --out "$W/outg" --watch "$mir"; }
 grun --refresh >/dev/null 2>&1
@@ -166,7 +158,6 @@ r="$(grun --check 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "generator changed: --check stale" || fail "--check fresh after the generator changed"
 r="$(grun --refresh 2>&1)"; contains "generator changed: refresh rebuilds" "$r" "rebuilt"
 
-# a held lock refuses a concurrent refresh
 mkdir "$out/.lock"; echo seven >> "$mir/HIMMEL-111.md"
 r="$(run --refresh 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "held lock: refresh non-zero" || fail "refresh ran under a held lock"

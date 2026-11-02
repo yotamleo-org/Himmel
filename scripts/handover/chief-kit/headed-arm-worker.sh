@@ -806,10 +806,27 @@ fi
 # gated on every brief, not only a template-shaped one (a
 # `> **Contract:**` or `> **Completion condition:**` line), so a brief that drops
 # both fields cannot escape it. Relay and consult briefs are not worker/judge briefs.
-if [ "$NO_PRIOR_ART_CHECK" -eq 0 ] && [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
-    if ! prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" "$DOC" 2>&1)"; then
+# --no-prior-art-check skips the prior-art check only: the core gate (brief-lint.sh --core-only)
+# still runs, and its refusal (exit 3) never suggests the flag, since the flag cannot clear it.
+if [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
+    lint_core_only=""
+    [ "$NO_PRIOR_ART_CHECK" -eq 1 ] && lint_core_only="--core-only"
+    lint_judge=""
+    [ "$JUDGE" -eq 1 ] && lint_judge="--judge"
+    lint_rc=0
+    prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" ${lint_core_only:+"$lint_core_only"} ${lint_judge:+"$lint_judge"} "$DOC" 2>&1)" || lint_rc=$?
+    if [ "$lint_rc" -eq 3 ] || { [ "$lint_rc" -ne 0 ] && [ "$NO_PRIOR_ART_CHECK" -eq 1 ]; }; then
+        echo "headed-arm-worker: refusing launch: $prior_art_err" >&2
+        exit 2
+    elif [ "$lint_rc" -ne 0 ] && case "$prior_art_err" in *'Writes'*) true ;; *) false ;; esac; then
+        echo "headed-arm-worker: refusing launch: $prior_art_err" >&2
+        exit 2
+    elif [ "$lint_rc" -ne 0 ]; then
         echo "headed-arm-worker: refusing launch: $prior_art_err (fill the Prior art line, or pass --no-prior-art-check to launch without it)" >&2
         exit 2
+    else
+        # a passed core bypass is shown at launch, as gen-briefs shows it (brief-lint logged the row beside the brief)
+        grep -F 'bypass=' <<< "$prior_art_err" >&2 || true  # swallow-ok: no bypass line means nothing to show
     fi
 fi
 
@@ -1087,6 +1104,7 @@ RESOLVED_AUTOCOMPACT="200000"
 DESIGN_CONTEXT_REASON=""
 CONTEXT_SOURCE="operator-ruling"
 SONNET_CEILING=0
+SONNET_SHARE=""
 GUARD_FROM_PROFILE=0
 if [ -n "$PROFILE" ]; then
     if ! _worker_context_json="$(node "$PROFILES_MJS" "$PROFILE" --context)" \
@@ -1116,6 +1134,10 @@ if [ -n "$PROFILE" ]; then
                 if _sonnet_ceiling="$(printf '%s' "$_worker_context_json" | jq -er '.sonnetAutocompact | select(type == "number" and . >= 200000 and . <= 450000 and floor == .)')"; then
                     RESOLVED_AUTOCOMPACT="$_sonnet_ceiling"
                     [ "$_sonnet_ceiling" = "200000" ] || SONNET_CEILING=1
+                    # The profile's guard share (the hook's deny point is share x ceiling,
+                    # rounded UP to a whole % of the window; 73 keeps it ahead of the
+                    # earliest 450000 compaction). Empty = the hook's 75.
+                    SONNET_SHARE="$(printf '%s' "$_worker_context_json" | jq -r '.sonnetContextShare | select(type == "number" and . >= 1 and . <= 100 and floor == .)')"
                     if [ -z "$CONTEXT_GUARD" ]; then
                         CONTEXT_GUARD="$(printf '%s' "$_worker_context_json" | jq -r '.sonnetContextGuard // empty')"
                         [ -z "$CONTEXT_GUARD" ] || GUARD_FROM_PROFILE=1
@@ -1593,6 +1615,13 @@ fi
 unset -v CONTEXT_GUARD
 worker_env_drop_token HIMMEL_WORKER_SESSION_AUTOCOMPACT
 worker_propagate_env HIMMEL_WORKER_SESSION_AUTOCOMPACT "$RESOLVED_AUTOCOMPACT"
+# The share goes only with the Sonnet ceiling it was calibrated against
+# (a 1m override clears SONNET_CEILING; an A/B arm refuses on a Sonnet launch). The
+# launching shell's own share was scrubbed above with the rest of the chief-context
+# env, so only the profile's value reaches the worker.
+if [ "$SONNET_CEILING" = "1" ] && [ -n "$SONNET_SHARE" ]; then
+    worker_propagate_env HIMMEL_WORKER_SESSION_CONTEXT_SHARE "$SONNET_SHARE"
+fi
 # HIMMEL_READ_CLAMP_LINES: raises read-clamp.sh's
 # whole-file limit for a judge - independent reading is the job. 4000 is a
 # judgment call (no source document names a number): ~10x the worker default of
@@ -2328,11 +2357,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # three-source resolution above ran in THIS wrapper's own process, and
     # stays <unset> when no source yielded a well-formed name.
     # the context mode and ceiling the worker's context guard reads.
-    printf 'headed-arm-worker: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s\n' \
+    printf 'headed-arm-worker: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s HIMMEL_WORKER_SESSION_CONTEXT_SHARE=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
         "$WORKER_SESSION_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
         "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
-        "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT"
+        "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT" "${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-<unset>}"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
     # the dry-run report stays byte-identical to today's, same guarantee shape
     # as the --profile line below.

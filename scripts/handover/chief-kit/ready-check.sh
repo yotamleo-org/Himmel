@@ -12,8 +12,9 @@
 #
 # Usage: ready-check.sh <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
-#   --only 7 runs ONLY check 7 — a worker's own pre-READY lint of its
-#   PR body, the same code the chief runs. Prints COVERAGE-LINT PASS|FAIL.
+#   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
+#   same code the chief runs — plus the warn-only check 14. Prints
+#   COVERAGE-LINT PASS|FAIL.
 #
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
@@ -123,6 +124,18 @@
 #      *.md/*.txt, docs/**, handovers/**) and a Dependabot dependency-only PR. An
 #      unreadable file list FAILs. Not part of `--only 7`.
 #
+# 14. bug-origin line, WARN only: never a FAIL, never the marker or the exit code.
+#      A PR whose title's first [KEY] is a Jira Bug carries one column-one line
+#      outside any fence: bug-origin: <#pr|sha|unknown> <class> — <reason>. Prints
+#      [PASS], [WARN] (none, malformed, duplicate), or [WARN] not checked (the title
+#      or Jira read failed or timed out, an empty type, a missing lib, no timeout
+#      binary). One bounded Jira read; `--only 7` adds one bounded gh pr view.
+#
+# 15. CodeRabbit rate-limited, WARN only: a head whose CodeRabbit status
+#      is success + "Review rate limited" prints one [WARN] line saying no review was
+#      posted. Never a FAIL, never the marker or the exit code; nothing prints for any
+#      other state or an unreadable status. Not part of `--only 7`.
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
 # ledger rows, no GO files, no PR comments.
@@ -136,15 +149,19 @@
 set -u
 
 usage() {
+    local rc_primary
+    rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
+    case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
     echo "usage: ready-check.sh <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
+    echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 ONLY7=0
 if [ "${1:-}" = "--only" ]; then
     if [ "$#" -ne 3 ] || [ "$2" != "7" ]; then
         usage
-        echo "ready-check: --only takes exactly '7 <pr-number>' (the only check a worker can run alone)" >&2
+        echo "ready-check: --only takes exactly '7 <pr-number>' (the one lint a worker can run alone)" >&2
         exit 2
     fi
     ONLY7=1
@@ -338,7 +355,11 @@ elif [ "$head_now" = "$SHA" ] && [ "$mss" = "CLEAN" ]; then
 elif [ "$head_now" = "$SHA" ] && [ "$mss" = "UNSTABLE" ] && [ "$gated" -gt 0 ] && [ -z "$bad" ] && [ -n "$skipped" ]; then
     echo "[PASS] 1. head=$head_now matches, mergeStateStatus=UNSTABLE with only non-gating checks not green ($skipped)"
 else
-    echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN)"
+    if [ "$mss" = "BEHIND" ]; then
+        echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN) — behind main: git fetch origin && git merge origin/main into the branch, push, then re-run with the new head sha (nothing to do when mergeStateStatus is CLEAN and the head matches)"
+    else
+        echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN)"
+    fi
     mark_fail
 fi
 
@@ -1308,6 +1329,9 @@ else
 fi
 if [ "$tp_rc" -ne 0 ]; then
     echo "[FAIL] 12. trust path: refused ${tp_out:-trust_path_check exited $tp_rc with no reason}"
+    case "$tp_out" in
+        *anchor*) echo "       hint: run ready-check.sh from the primary checkout (pulled to origin's tip), not from a worktree" ;;
+    esac
     mark_fail
 else
     echo "[PASS] 12. trust path: $tp_out"
@@ -1338,6 +1362,124 @@ else
     mark_fail
 fi
 fi  # ONLY7 == 0: check 13
+
+# --- 14. bug-origin line (warn only: never mark_fail, never the marker or exit code)
+# bug_origin_state <body>: prints none, malformed, duplicate or ok. A column-one
+# bug-origin: line outside a fence is the record; malformed beats duplicate.
+bug_origin_state() {
+    local lines good bad
+    lines=$(printf '%s\n' "$1" | tr -d '\r' | awk '
+        { s = $0; sub(/^ ? ? ?/, "", s); n = match(s, /^(```+|~~~+)/) ? RLENGTH : 0; c = substr(s, 1, 1); rest = substr(s, n + 1) }
+        flen { if (n >= flen && c == fch && rest ~ /^[ \t]*$/) flen = 0; next }
+        n && !(c == "`" && index(rest, "`")) { flen = n; fch = c; next }
+        /^bug-origin:/ { print }
+    ')
+    if [ -z "$lines" ]; then echo none; return 0; fi
+    # The class list is bug-origin-report.py's LINE; scripts/eval/bug-origin/line-table.tsv runs through both.
+    local ere='^bug-origin:[[:blank:]]+((#[0-9]+|[0-9a-f]{7,40})[[:blank:]]+(test-gap|design-gap|review-deferred|unknown|review-miss:(cr|judge|panel)(,(cr|judge|panel))*|(residual|trigger):[A-Za-z0-9][A-Za-z0-9._/#-]*|commit:[0-9a-f]{7,40})|unknown[[:blank:]]+unknown)[[:blank:]]+(—|-)[[:blank:]]+[^[:blank:]]'
+    good=$(printf '%s\n' "$lines" | LC_ALL=C grep -cE "$ere")
+    bad=$(printf '%s\n' "$lines" | LC_ALL=C grep -cvE "$ere")
+    if [ "$bad" -gt 0 ]; then echo malformed
+    elif [ "$good" -gt 1 ]; then echo duplicate
+    else echo ok
+    fi
+}
+
+# check_bug_origin: prints check 14's lines, quoting no PR or Jira text. Nothing
+# here touches RESULT, so a missing lib or a slow Jira costs a warn line at most.
+check_bug_origin() {
+    local bo_lib bo_title bo_key bo_rc bo_reply bo_type bo_state
+    bo_lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the two -f tests below, which warn
+    _TIMEOUT_BIN=""
+    # shellcheck source=/dev/null
+    [ ! -f "$bo_lib/timeout-bin.sh" ] || . "$bo_lib/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN warns just below
+    if [ -z "$_TIMEOUT_BIN" ]; then
+        echo "[WARN] 14. bug-origin not checked: timeout"
+        return 0
+    fi
+    if [ "$ONLY7" -eq 1 ]; then
+        bo_title=$("$_TIMEOUT_BIN" -k 5 15 "$GH" pr view "$PR" --repo "$nwo" --json title --jq '.title' 2>/dev/null) || bo_title=""  # swallow-ok: an unreadable title warns just below
+    else
+        bo_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || bo_title=""  # swallow-ok: an unreadable title warns just below
+    fi
+    if [ -z "$bo_title" ]; then
+        echo "[WARN] 14. bug-origin not checked: title"
+        return 0
+    fi
+    if [ ! -f "$bo_lib/ticket-status.sh" ]; then
+        echo "[WARN] 14. bug-origin not checked: lib"
+        return 0
+    fi
+    # A subshell: that lib sources three more into this trust-path script.
+    bo_key=$(
+        # shellcheck source=/dev/null
+        . "$bo_lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides, rc 70 warns
+        declare -F ticket_key_from_title >/dev/null || exit 70
+        ticket_key_from_title "$bo_title"
+    )
+    bo_rc=$?
+    if [ "$bo_rc" -eq 1 ]; then
+        echo "[PASS] 14. bug-origin: not a Bug-ticket PR"
+        return 0
+    elif [ "$bo_rc" -ne 0 ] || [ -z "$bo_key" ]; then
+        echo "[WARN] 14. bug-origin not checked: lib"
+        return 0
+    fi
+    bo_reply=$(
+        export -f jira_run jira_get
+        # shellcheck disable=SC2016  # $1 expands in the child shell
+        "$_TIMEOUT_BIN" -k 5 15 bash -c 'jira_get "$1"' "$0" "$bo_key"
+    ) || {
+        echo "[WARN] 14. bug-origin not checked: jira"
+        return 0
+    }
+    bo_type=$(printf '%s' "$bo_reply" | jq -r '.fields.issuetype.name // empty' 2>/dev/null) || bo_type=""  # swallow-ok: an unreadable reply warns just below
+    if [ -z "$bo_type" ]; then
+        echo "[WARN] 14. bug-origin not checked: type"
+        return 0
+    elif [ "$bo_type" != "Bug" ]; then
+        echo "[PASS] 14. bug-origin: not a Bug-ticket PR"
+        return 0
+    fi
+    bo_state=$(bug_origin_state "$cov_body")
+    if [ "$bo_state" = ok ]; then
+        echo "[PASS] 14. bug-origin line present"
+        return 0
+    fi
+    echo "[WARN] 14. bug-origin: $bo_state"
+    echo "        accepted: bug-origin: <#pr|sha|unknown> <test-gap|design-gap|review-deferred|review-miss:<cr,judge,panel>|residual:<token>|trigger:<token>|commit:<sha>|unknown> — <reason>"
+    echo "        see the Ship step of docs/handover/worker-brief-template.md"
+}
+check_bug_origin
+
+# --- 15. CodeRabbit rate-limited at the head: WARN only, never mark_fail.
+# CodeRabbit posts success + "Review rate limited" and reviews nothing, so the green
+# status is not a review. Same reader as check-ci (scripts/lib/coderabbit-signal.sh):
+# prints only on a positive match; a repo without CodeRabbit, a reviewed head and an
+# unreadable status print nothing (nothing here ever claims a head was reviewed).
+check_cr_rate_limited() {
+    local cr_dir cr_lib cr_out
+    [ "$ONLY7" -eq 0 ] || return 0
+    cr_dir="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the -f tests below, which print nothing
+    cr_lib="$cr_dir/coderabbit-signal.sh"
+    [ -f "$cr_lib" ] || return 0
+    _TIMEOUT_BIN=""
+    # shellcheck source=/dev/null
+    [ ! -f "$cr_dir/timeout-bin.sh" ] || . "$cr_dir/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN skips this advisory row just below
+    [ -n "$_TIMEOUT_BIN" ] || return 0
+    # Both status reads run in one child under a deadline: a stalled gh costs this
+    # advisory row, never the verdict line.
+    # shellcheck disable=SC2016  # the body expands in the child shell
+    cr_out=$(GH_CMD="$GH" "$_TIMEOUT_BIN" -k 5 20 bash -c '
+        . "$1" 2>/dev/null || exit 0  # read-sink-ok: $1 is the own lib path built from dirname of this script, never user input
+        [ "$(cr_signal_state "$2" "$3" "$4" 2>/dev/null)" = skipped ] || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
+        d=$(cr_signal_description "$2" "$3" "$4" 2>/dev/null) || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
+        ! grep -qiE "rate.?limit" <<< "$d" || echo rl' _ "$cr_lib" "$owner" "$repo" "$SHA") || cr_out=""  # swallow-ok: advisory, a timeout or an unreadable status prints nothing
+    if [ "$cr_out" = rl ]; then
+        echo "[WARN] 15. CodeRabbit rate-limited at head ${SHA:0:8}: NO CodeRabbit review here (the green status is not a review); not gating, a posted finding still blocks. Re-request once when capacity returns: \`@coderabbitai review\`"
+    fi
+}
+check_cr_rate_limited
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

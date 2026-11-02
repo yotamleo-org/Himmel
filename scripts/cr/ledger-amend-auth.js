@@ -1,8 +1,9 @@
 // scripts/cr/ledger-amend-auth.js - who may lower a CR ledger finding.
 //
 // An `amend` row that can lower a finding's blocking effect (severity below
-// crit, verdict disproved/fixed/deferred, a deferred_to ticket, or a head
-// re-key) counts only when it is signed: ledger-append.sh, the ledger's single
+// crit, verdict disproved/fixed/deferred, a deferred_to ticket, a head
+// re-key, or pre_existing=true, which lets `review-round.sh defer` defer an
+// Important) counts only when it is signed: ledger-append.sh, the ledger's single
 // writer, stamps every amend it writes with src and amend_mac, an HMAC-SHA256
 // under the chief's GO key (~/.config/himmel/go-hmac.key, the key
 // scripts/lib/go-gate.sh go_msg_mac signs with) over domain himmel-amend-v1,
@@ -52,7 +53,8 @@ function mac(o, key) {
 function lowers(set) {
   if ("severity" in set && !["crit", "critical"].includes(String(set.severity).trim().toLowerCase())) return true;
   if ("verdict" in set && ["disproved", "fixed", "deferred"].includes(String(set.verdict).trim().toLowerCase())) return true;
-  return Boolean(set.deferred_to) || "head" in set;
+  // pre_existing=true is what `review-round.sh defer` reads to defer an Important.
+  return Boolean(set.deferred_to) || "head" in set || set.pre_existing === true;
 }
 
 function verified(o, key) {

@@ -101,6 +101,57 @@ for seam9 in HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_WORKER_SYSTEMD_RUN HEADED_A
     contains "W9 the $seam9 refusal says so" "$out" "--consult refuses"
 done
 
+# W10. a Sonnet worker profile exports its own guard share (73, so the
+# deny lands 33 % = 330000 tokens, ahead of the earliest 450000 compaction at 343158);
+# the share rides the same native-lane claude-sonnet-5 gate as the 450000 ceiling.
+mkdir -p "$T/notcore-jira"
+cat >"$T/notcore-jira/index.js" <<'NCEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+NCEOF
+export BRIEF_LINT_JIRA_CLI="$T/notcore-jira/index.js"
+fx10() { printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none found (qmd -c jira-himmel "fixture")' '' '# HIMMEL-9999 fixture brief' "$@"; }
+fx10 >"$T/doc10.md"
+fx10 '> **Tier:** opus — design: multi-step design' >"$T/opus-doc10.md"
+dry10() { bash "$SCRIPT" --dry-run "${@:4}" --profile "$1" HIMMEL-9999-worker "$2" /tmp/nosig 99999999999 /tmp/worker.log "$3" 2>&1; }
+out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 impl on Sonnet exports the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+out="$(dry10 worker-eval "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 eval on Sonnet exports the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+out="$(dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 control: docs on Sonnet keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
+contains "W10 control: docs on Sonnet exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+out="$(dry10 worker-impl "$T/opus-doc10.md" claude-opus-5-5)"
+contains "W10 control: impl on Opus keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
+contains "W10 control: impl on Opus exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5 --lane deepseek)"
+contains "W10 control: impl on a non-native lane keeps the 200000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"
+contains "W10 control: impl on a non-native lane exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-4-6)"
+contains "W10 control: impl on an older Sonnet exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+fx10 '> **Context:** 1m — operator-ruling: HIMMEL-8825 fixture 1m worker' >"$T/onem-doc10.md"
+out="$(WORKER_SESSION_CONTEXT=1m dry10 worker-impl "$T/onem-doc10.md" claude-sonnet-5-5)"
+contains "W10 control: impl on Sonnet with a sanctioned 1m override resolves auto, not the 450000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=auto"
+contains "W10 control: impl on Sonnet with a sanctioned 1m override exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+out="$(HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 a share set in the launching shell is scrubbed: the profile's wins" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+out="$(HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 control: a launching-shell share does not reach a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+out="$(HEADED_ARM_LAUNCHER_ENV='HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 KEEP_ME=1' dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 a stale launcher share token is replaced by the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+not_contains "W10 the stale launcher share token is gone" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50"
+out="$(HEADED_ARM_LAUNCHER_ENV='HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 KEEP_ME=1' dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 control: a stale launcher share token does not reach a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+not_contains "W10 control: the stale launcher share token is removed for a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50"
+for bad10 in 0 101 73.5 '"73"'; do
+    printf '%s\n' '{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,' \
+        "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"sonnetAutocompact\":450000,\"sonnetContextGuard\":\"handoff\",\"sonnetContextShare\":$bad10}}}" >"$T/bad-share.json"
+    rc=0; out="$(PLUGIN_PROFILES_REGISTRY="$T/bad-share.json" dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)" || rc=$?
+    check "W10 sonnetContextShare $bad10 refuses the launch (exit 2)" "$rc" "2"
+    contains "W10 the refusal names sonnetContextShare" "$out" "sonnetContextShare"
+done
+
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
 echo "PASS all cases"

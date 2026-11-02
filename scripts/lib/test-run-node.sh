@@ -789,5 +789,42 @@ EOF
     fi
 fi
 
+echo "== run-node: the DEFAULT fallback dirs include \$HOME/.bun/bin, last (macOS command -p drops the caller's PATH) =="
+# On macOS /bin/sh is bash 3.2 and `command -p sh run-node.sh` hands the child
+# its built-in default PATH, so a hook never sees ~/.bun/bin. RUN_NODE_EXTRA_PATH_DIRS
+# is left UNSET here on purpose: this pins the shipped default, in both copies.
+if [ -z "$real_node" ]; then
+    echo "  SKIP: no real node on PATH to resolve against"
+else
+    for copy in "${COPIES[@]}"; do
+        rel="${copy#"$REPO_ROOT/"}"
+        if ! tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-run-node-bun.XXXXXX")" || [ -z "$tmp" ]; then
+            fail "mktemp -d failed for the bun-default fixture ($rel)"
+            continue
+        fi
+        PATH_ORDER_TMP="$tmp"
+        fake_home="$tmp/home"; mkdir -p "$fake_home"
+        node_link_dir="$tmp/nodebin"; mkdir -p "$node_link_dir"
+        ln -s "$real_node" "$node_link_dir/node"
+        cat > "$tmp/path-hook.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s' "$PATH"
+EOF
+        chmod +x "$tmp/path-hook.sh"
+        out="$(cd "$tmp" && env -u CLAUDE_PLUGIN_ROOT -u RUN_NODE_EXTRA_PATH_DIRS PATH="$UTILS_DIR" RESOLVE_NODE_PROBE_DIRS="$node_link_dir" NVM_SYMLINK="" RESOLVE_NODE_NVM4W_DIR="" RESOLVE_NODE_NVM_ROOT="$tmp/none" FNM_DIR="$tmp/none" HOME="$fake_home" CLAUDE_PROJECT_DIR="$REPO_ROOT" /bin/sh "$copy" "$REPO_ROOT/scripts/hooks/run-hook-with-bash.js" "$tmp/path-hook.sh" 2>"$tmp/err.txt")"
+        rc=$?
+        err="$(cat "$tmp/err.txt")"
+        case "$rc|:$out:" in
+            "0|"*":$fake_home/.bun/bin:"*) pass "default PATH widen includes \$HOME/.bun/bin ($rel)" ;;
+            *) fail "default PATH widen lacks \$HOME/.bun/bin ($rel): rc=$rc out='$out' err='$err'" ;;
+        esac
+        case "$rc|$out" in
+            "0|"*":$fake_home/.local/bin:$fake_home/.bun/bin") pass "\$HOME/.bun/bin is appended last, after .local/bin ($rel)" ;;
+            *) fail "\$HOME/.bun/bin is not the last PATH entry ($rel): out='$out'" ;;
+        esac
+        rm -rf "$tmp"
+    done
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

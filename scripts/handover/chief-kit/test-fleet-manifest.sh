@@ -66,7 +66,7 @@ check '4. a relative doc is a usage error (rc 2)' 2 "$rc"
 check '4. and writes nothing' 0 "$(jq '.workers | length' "$m" 2>/dev/null)"
 
 # 5. foreign keys survive.
-printf '{"schema":1,"chains":{"c1":["N61"]},"legs":[{"doc":"%s","label":"N61","lane":"opus"}]}\n' "$d1" > "$m"
+printf '{"schema":1,"chains":{"c1":["N61"]},"workers":[{"doc":"%s","label":"N61","lane":"opus"}]}\n' "$d1" > "$m"
 bash "$SCRIPT" add "$m" "$d2" >/dev/null 2>&1
 check '5. a top-level key the writer does not own survives' '["N61"]' "$(jq -c '.chains.c1' "$m" 2>/dev/null)"
 check '5. a per-worker key the writer does not own survives' opus "$(jq -r '.workers[0].lane' "$m" 2>/dev/null)"
@@ -80,12 +80,12 @@ check '6. list on an invalid manifest fails' 1 "$rc"
 bash "$SCRIPT" add "$tmp/bad.fleet.json" "$d1" >/dev/null 2>&1; rc=$?
 check '6. add refuses an invalid manifest' 1 "$rc"
 check '6. and leaves it untouched' 'not json' "$(cat "$tmp/bad.fleet.json")"
-printf '{"schema":2,"legs":[]}\n' > "$tmp/v2.fleet.json"
+printf '{"schema":2,"workers":[]}\n' > "$tmp/v2.fleet.json"
 bash "$SCRIPT" list "$tmp/v2.fleet.json" >/dev/null 2>&1; rc=$?
 check '6. an unknown schema version is refused' 1 "$rc"
 for bad in '{"doc":""}' '{"doc":"rel/x.md"}' '{"doc":7}' '{}' '{"doc":"/a b.md"}' '{"doc":"/a*.md"}'; do
-    printf '{"schema":1,"legs":[%s]}\n' "$bad" > "$tmp/leg.fleet.json"
-    bash "$SCRIPT" list "$tmp/leg.fleet.json" >/dev/null 2>&1; rc=$?
+    printf '{"schema":1,"workers":[%s]}\n' "$bad" > "$tmp/worker.fleet.json"
+    bash "$SCRIPT" list "$tmp/worker.fleet.json" >/dev/null 2>&1; rc=$?
     check "6. a worker entry $bad is refused (tick would read it as a smaller fleet)" 1 "$rc"
 done
 
@@ -142,7 +142,7 @@ bash "$SCRIPT" add "$m5" --lane >/dev/null 2>&1; rc=$?
 check '7c. --lane with no value is a usage error (rc 2)' 2 "$rc"
 # A manifest written before the fields existed still lists and accepts adds.
 m6="$tmp/old.fleet.json"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N70","added":"x"}]}\n' "$l1" > "$m6"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N70","added":"x"}]}\n' "$l1" > "$m6"
 check '7c. an old manifest still lists' "$l1" "$(bash "$SCRIPT" list "$m6" 2>/dev/null)"
 bash "$SCRIPT" add "$m6" --lane native "$l2" >/dev/null 2>&1; rc=$?
 check '7c. an old manifest still takes an add' 0 "$rc"

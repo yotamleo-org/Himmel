@@ -14,6 +14,9 @@
 # Every fake value is generated at runtime.
 set -uo pipefail
 
+# The cases store a canary: never into a real keyring, whatever label or runner started this suite.
+export HIMMEL_SECRETS_KEYRING=off
+
 repo_root=$(git rev-parse --show-toplevel)
 wizard="$repo_root/scripts/himmelctl/bin.js"
 driver="$repo_root/scripts/himmelctl/test/pty-drive.py"

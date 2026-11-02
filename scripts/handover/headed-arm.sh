@@ -57,10 +57,12 @@
 # Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
 # macOS konsole shim, a distinct failure from 3 above; 16 another live worker
-# session already holds the same ticket (dedup layer 1b); 4 no pgrep on
+# session already holds the same ticket, or another lineage's arm for that
+# ticket is mid-launch and holds its ticket claim (dedup layer 1b); 4 no pgrep on
 # PATH (see the pgrep availability check below); 5 the claim-lock root could
 # not be created (an environment fault, never a dedup hit); 6 the claim
-# retry budget was exhausted without ever confirming a running session (an
+# retry budget was exhausted without ever confirming a running session, or a
+# same-lineage arm kept the ticket claim past the session-visibility budget (an
 # UNRESOLVED arm, never a dedup hit either); 7 konsole
 # survived its settle but the named session never became visible to pgrep
 # within the post-launch budget (UNCONFIRMED, never
@@ -975,37 +977,7 @@ elif [ "$sc_rc" -eq 2 ]; then
     exit 9
 fi
 
-# Dedup layer 1b: one worker per TICKET, across chiefs. Layer 1 dedups by session name only, so two
-# chiefs on one chain could each arm a worker (different N numbers) on the same ticket. A worker name is
-# <KEY>-N<digits>[letter]-...: refuse while another live claude session carries the same <KEY>-N prefix with different
-# digits (legs b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
-# allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
-# ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
-if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
-    TICKET_KEY="${BASH_REMATCH[1]}"; TICKET_N="${BASH_REMATCH[2]}"
-    TICKET_RIVAL=""
-    rival_pids="$("$PGREP" -f "[c]laude .*-n $(ere_escape "$TICKET_KEY")-N" 2>/dev/null)" || rival_pids=""  # swallow-ok: no match or a failed scan both leave no rival named; the guard fails open
-    for rival_pid in $rival_pids; do
-        if [ -d "$PROC" ]; then
-            rival_comm="$(cat "$PROC/$rival_pid/comm" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
-            [ "$rival_comm" = claude ] || continue
-            rival_name="$(tr '\0' '\n' < "$PROC/$rival_pid/cmdline" 2>/dev/null | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
-        else
-            rival_comm="$(ps -o comm= -p "$rival_pid" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
-            [ "${rival_comm##*/}" = claude ] || continue
-            rival_name="$(ps -ww -o args= -p "$rival_pid" 2>/dev/null | tr -s ' ' '\n' | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
-        fi
-        [ "$rival_name" != "$NAME" ] || continue
-        if [[ "$rival_name" =~ ^${TICKET_KEY}-N([0-9]+) ]] && [ "${BASH_REMATCH[1]}" != "$TICKET_N" ]; then
-            TICKET_RIVAL="$rival_name"; break
-        fi
-    done
-    if [ -n "$TICKET_RIVAL" ]; then
-        echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket. Only the operator, from the shell that launches the chief, can allow a second worker on it" >&2
-        echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
-        exit 16
-    fi
-fi
+# Dedup layer 1b (one worker per TICKET, across chiefs) runs after the name claim below, under a ticket-scoped claim.
 
 # Dedup layer 2: the check above is a non-atomic check-then-launch
 # - two arms racing on the exact same NAME could both see "no match" here
@@ -1331,22 +1303,29 @@ LOCK="$LOCKDIR/$NAME.lock"
 # avoid, reached through its own bookkeeping. If the stamp write fails, do
 # not proceed holding an unstampable lock: remove it and fail loudly with
 # a distinct exit instead of silently wedging every future arm.
-stamp_or_fail_loudly() {
-    if date +%s > "$LOCK/acquired" 2>/dev/null; then
+#
+# The three helpers below take an optional lock path (default: the session-name
+# $LOCK) so the ticket-scoped claim uses the same mkdir claim and
+# stale rule, not a second lock scheme.
+stamp_or_fail_loudly() { # stamp_or_fail_loudly [lock path]
+    local lk="${1:-$LOCK}"
+    if date +%s > "$lk/acquired" 2>/dev/null; then
         return 0
     fi
-    # The failed stamp write usually means $LOCK was mkdir'd mode
+    # The failed stamp write usually means $lk was mkdir'd mode
     # 000 (umask 0777); BSD/macOS `rm -rf` cannot remove such a directory
     # (EACCES), so restore owner access to the lock this claim created first.
-    chmod -R u+rwx "$LOCK" 2>/dev/null
-    rm -rf "$LOCK" 2>/dev/null
-    echo "headed-arm: claimed the lock '$LOCK' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed" >&2
+    chmod -R u+rwx "$lk" 2>/dev/null
+    rm -rf "$lk" 2>/dev/null
+    # A ticket claim is taken while the name claim is held: do not leave that one behind.
+    [ "$lk" = "$LOCK" ] || rm -rf "$LOCK" 2>/dev/null
+    echo "headed-arm: claimed the lock '$lk' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed" >&2
     exit 8
 }
-steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
-    local expected_at="$1" victim stolen_at
-    victim="$LOCK.stale.$$.$RANDOM"
-    if ! mv "$LOCK" "$victim" 2>/dev/null; then
+steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp> [lock path]
+    local expected_at="$1" lk="${2:-$LOCK}" victim stolen_at
+    victim="$lk.stale.$$.$RANDOM"
+    if ! mv "$lk" "$victim" 2>/dev/null; then
         # Someone else already stole (or the owner released) it first -
         # this attempt lost the race; not an error, just not ours.
         return 1
@@ -1359,13 +1338,13 @@ steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
         # itself loses a race (rare), leave the orphaned $victim rather
         # than risk a second bad steal - never claim in this branch either
         # way.
-        mv "$victim" "$LOCK" 2>/dev/null
+        mv "$victim" "$lk" 2>/dev/null
         return 1
     fi
     rm -rf "$victim" 2>/dev/null
     # prim-ok: a stamped lease claimed across processes with stale-steal; with_lock is a synchronous per-process lock that fails closed on a dead owner
-    if mkdir "$LOCK" 2>/dev/null; then
-        stamp_or_fail_loudly
+    if mkdir "$lk" 2>/dev/null; then
+        stamp_or_fail_loudly "$lk"
         return 0
     fi
     # Another claimant (a fresh arm, or another reclaimer) grabbed the now-
@@ -1373,14 +1352,15 @@ steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
     # race too, not an error.
     return 1
 }
-claim_lock() {
+claim_lock() { # claim_lock [lock path]
+    local lk="${1:-$LOCK}"
     # prim-ok: a stamped lease claimed across processes with stale-steal; with_lock is a synchronous per-process lock that fails closed on a dead owner
-    if mkdir "$LOCK" 2>/dev/null; then
-        stamp_or_fail_loudly
+    if mkdir "$lk" 2>/dev/null; then
+        stamp_or_fail_loudly "$lk"
         return 0
     fi
     local held_at age
-    held_at="$(cat "$LOCK/acquired" 2>/dev/null)" || held_at=""
+    held_at="$(cat "$lk/acquired" 2>/dev/null)" || held_at=""
     case "$held_at" in
         # No readable stamp yet: either a fresh claim (the stamp write above
         # races the mkdir by a hair) or a crash between mkdir and the stamp
@@ -1390,7 +1370,7 @@ claim_lock() {
     age=$(( $(date +%s) - held_at ))
     [ "$age" -ge "$STALE_LOCK_SECS" ] || return 1
     if [ -n "${HEADED_ARM_STALE_HOOK:-}" ]; then "$HEADED_ARM_STALE_HOOK"; fi
-    steal_stale_lock "$held_at"
+    steal_stale_lock "$held_at" "$lk"
 }
 
 # A contender that found the lock held used to exit 0 IMMEDIATELY,
@@ -1494,6 +1474,76 @@ elif [ "$sc_rc" -eq 2 ]; then
     exit 9
 fi
 
+# Dedup layer 1b: one worker per TICKET, across chiefs. Layer 1 dedups by session name only, so two
+# chiefs on one chain could each arm a worker (different N numbers) on the same ticket. A worker name is
+# <KEY>-N<digits>[letter]-...: refuse while another live claude session carries the same <KEY>-N prefix with different
+# digits (workers b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
+# allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
+# ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
+#
+# The scan below is a check-then-launch, so it runs under an atomic ticket-scoped claim
+# ($LOCKDIR/ticket-<KEY>.lock: the name claim's mkdir, stamp and stale rule). The claim is held from before the scan
+# until the post-launch poll below ends (the launched session is then visible to pgrep, or the budget is spent),
+# where it is released together with the name claim, so a second arm either finds the claim held or, once it is
+# released, finds the first session in its own scan. It is not held through the bus bind that follows.
+# A held claim whose holder is another lineage refuses at once (exit 16, the 8436 message); a holder of the SAME N
+# (workers b/c of one N) is waited out for the session-visibility budget plus a margin for the launch itself, then
+# the arm gives up as exit 6 like an exhausted name claim. A different ticket key is a different claim. An EXIT trap
+# releases it on every exit path before the poll ends.
+# ponytail: a claim left by a kill -9 blocks that ticket until STALE_LOCK_SECS, the same ceiling as the name claim.
+TICKET_LOCK=""
+# the holder keeps the claim through its launch (settle plus the visibility poll), so wait that budget plus 2s
+TICKET_WAIT_ITERS=$((SESSION_VISIBLE_RETRY_ITERS + 40))
+if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
+    TICKET_KEY="${BASH_REMATCH[1]}"; TICKET_N="${BASH_REMATCH[2]}"
+    TICKET_RIVAL=""
+    ticket_claim="$LOCKDIR/ticket-$TICKET_KEY.lock"
+    t_n=0
+    while :; do
+        if claim_lock "$ticket_claim"; then
+            TICKET_LOCK="$ticket_claim"
+            trap '[ -z "$TICKET_LOCK" ] || rm -rf "$TICKET_LOCK" 2>/dev/null' EXIT
+            printf '%s\n' "$NAME" > "$TICKET_LOCK/holder" 2>/dev/null  # swallow-ok: the holder name only decorates a refusal; an unreadable one is retried as same-lineage
+            break
+        fi
+        t_holder="$(cat "$ticket_claim/holder" 2>/dev/null)" || t_holder=""  # swallow-ok: no readable holder yet is treated like same-lineage and retried
+        if [[ "$t_holder" =~ ^${TICKET_KEY}-N([0-9]+) ]] && [ "${BASH_REMATCH[1]}" != "$TICKET_N" ]; then
+            TICKET_RIVAL="$t_holder"; break
+        fi
+        t_n=$((t_n+1))
+        if [ "$t_n" -ge "$TICKET_WAIT_ITERS" ]; then
+            echo "$(date +%F_%T) UNRESOLVED: the launch claim for $TICKET_KEY is still held after waiting - the armed successor $NAME may be lost" >> "$LOG"
+            rm -rf "$LOCK" 2>/dev/null
+            exit 6
+        fi
+        sleep "$SESSION_VISIBLE_RETRY_SLEEP"
+    done
+    if [ -z "$TICKET_RIVAL" ]; then
+        rival_pids="$("$PGREP" -f "[c]laude .*-n $(ere_escape "$TICKET_KEY")-N" 2>/dev/null)" || rival_pids=""  # swallow-ok: no match or a failed scan both leave no rival named; the guard fails open
+        for rival_pid in $rival_pids; do
+            if [ -d "$PROC" ]; then
+                rival_comm="$(cat "$PROC/$rival_pid/comm" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
+                [ "$rival_comm" = claude ] || continue
+                rival_name="$(tr '\0' '\n' < "$PROC/$rival_pid/cmdline" 2>/dev/null | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
+            else
+                rival_comm="$(ps -o comm= -p "$rival_pid" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
+                [ "${rival_comm##*/}" = claude ] || continue
+                rival_name="$(ps -ww -o args= -p "$rival_pid" 2>/dev/null | tr -s ' ' '\n' | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
+            fi
+            [ "$rival_name" != "$NAME" ] || continue
+            if [[ "$rival_name" =~ ^${TICKET_KEY}-N([0-9]+) ]] && [ "${BASH_REMATCH[1]}" != "$TICKET_N" ]; then
+                TICKET_RIVAL="$rival_name"; break
+            fi
+        done
+    fi
+    if [ -n "$TICKET_RIVAL" ]; then
+        echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket. Only the operator, from the shell that launches the chief, can allow a second worker on it" >&2
+        echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
+        rm -rf "$LOCK" 2>/dev/null
+        exit 16
+    fi
+fi
+
 cd "$REPO" || { rm -rf "$LOCK" 2>/dev/null; exit 1; }
 # A headless launch never reaches konsole; headless_launch exits.
 if [ "$HEADLESS" = "1" ]; then
@@ -1527,9 +1577,10 @@ fi
 # choosing and may never be executed by BSD script at all (every existing
 # --lane claudex case passes a recording stub), so refusing there would
 # break a launch that works.
-# The lock is already CLAIMED by this point, and this script has no EXIT
-# trap - every other refusal past the claim releases it by hand (the two
-# session_confirmed branches and the `cd "$REPO"` guard just above all do).
+# The lock is already CLAIMED by this point, and the EXIT trap releases only
+# the ticket claim - every other refusal past the claim releases this name
+# claim by hand (the two session_confirmed branches, the ticket refusal and
+# the `cd "$REPO"` guard just above all do).
 # Without the release here the refusal holds $LOCK for STALE_LOCK_SECS, so
 # the re-arm that follows it -- and on a Mac --lane claudex refuses EVERY
 # time, so there always is one -- dies in the claim-retry loop as exit 6
@@ -1823,7 +1874,10 @@ done
 # should already be exec'd is genuinely suspicious, not routine, so
 # treating it as confirmed-failure is the correct default, not an
 # overreaction.
+# The ticket claim goes with the name claim: the bus bind and the waker below can
+# outlast a sibling's wait, and the session is already visible to its scan.
 rm -rf "$LOCK" 2>/dev/null
+if [ -n "$TICKET_LOCK" ]; then rm -rf "$TICKET_LOCK" 2>/dev/null; TICKET_LOCK=""; fi
 if [ "$sv_indeterminate" -eq 1 ]; then
     echo "headed-arm: pgrep scan failed confirming the post-launch session for $NAME - refusing to report an indeterminate scan as either success or failure" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed confirming $NAME after launch" >> "$LOG"

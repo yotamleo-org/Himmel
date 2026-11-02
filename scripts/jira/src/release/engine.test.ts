@@ -3,8 +3,8 @@ import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, op
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, signSpec, specCheck, standing,
+  apply, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
+  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { execFileSync } from 'node:child_process';
@@ -22,6 +22,7 @@ vi.mock('node:child_process', async (orig) => {
   return { ...m, execFileSync };
 });
 import type { IssueSnap, OperatorRow, RulingRow } from './types.js';
+import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
 import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
 
 class FakeJira implements JiraPort {
@@ -396,6 +397,126 @@ describe('release engine (HIMMEL-6796)', () => {
       expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(conflict);
       expect(() => admit(req, { ...pull, supersedes: [prior], authority: { kind: 'operator', ref: move.id } })).toThrow(conflict);
     });
+
+    describe('an operator restore of a key held under an older operator record (HIMMEL-8761)', () => {
+      const restoreTo = (to_v: string, from_v: string | null = null) => ({ outcome: 'MOVE', op: { kind: 'move' as const, from_v, to_v } });
+      const restore = restoreTo('v2');
+      const T = (hh: number) => `2026-10-21T${String(hh).padStart(2, '0')}:00:00.000Z`;
+
+      // K-2 is placed in `v` under an operator ruling, then Jira drifts; a REVERSION to restore it is claimed.
+      async function drifted(decisions: () => void, v = 'v2', verb: 'REVERSION' | 'INTAKE' = 'REVERSION', from_v: string | null = null) {
+        await setup();
+        const o = decide(T(9), 'add', null, v);
+        const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: v, why: 'w', evidence: {}, from: 'console' });
+        claim(ctx(rmEnv));
+        const r = admit(q.req, { op: { kind: 'add', from_v: null, to_v: v }, authority: { kind: 'operator', ref: o.id } });
+        await apply(ctx(rmEnv), r.id);
+        jira.fv.set('K-2', []);
+        decisions();
+        const q2 = request(ctx(), { verb, key: 'K-2', from_v, to_v: v, why: 'operator restored it', evidence: {}, from: 'console' });
+        claim(ctx(rmEnv));
+        return { prior: r.id, req: q2.req };
+      }
+
+      const lastAdmission = () => readAdmissions('v2').filter((a) => a.key === 'K-2').at(-1);
+
+      it('lands under the newest operator record that places the key, and the ruling reads in', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide(T(11), 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior] });
+        expect(r.authority).toEqual({ kind: 'operator', ref: newest.id });
+        expect(r.op).toEqual({ kind: 'add', from_v: null, to_v: 'v2' });
+        await apply(ctx(rmEnv), r.id);
+        expect(jira.fv.get('K-2')).toEqual(['v2']);
+        const s = state(ctx());
+        expect(s.integrity).toEqual([]);
+        expect(s.records.find((x) => x.key === 'K-2' && x.version === 'v2')).toMatchObject({ placement: 'in', ruling: r.id });
+      });
+
+      it('lands the same when the request cites the newest record', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide(T(11), 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior], authority: { kind: 'operator', ref: newest.id } });
+        expect(r.authority).toEqual({ kind: 'operator', ref: newest.id });
+        expect(r.op).toEqual({ kind: 'add', from_v: null, to_v: 'v2' });
+      });
+
+      it('lands when a newer decision names another key', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => {
+          newest = decide(T(11), 'add', null, 'v2');
+          operatorDecision(at(T(12)), { decision: '383', keys: ['K-9'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'another key' });
+        });
+        expect(admit(req, { ...restore, supersedes: [prior] }).authority).toEqual({ kind: 'operator', ref: newest.id });
+      });
+
+      it('lands when a newer core-bypass names the key, which places nothing', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => {
+          newest = decide(T(11), 'add', null, 'v2');
+          coreBypass(at(T(12)), { keys: ['K-2'], decision: '451', verbatim: 'core bypass' });
+        });
+        expect(admit(req, { ...restore, supersedes: [prior] }).authority).toEqual({ kind: 'operator', ref: newest.id });
+      });
+
+      it('is still refused when the newest record contradicts the restore', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide(T(11), 'remove', 'v2', null); });
+        expect(() => admit(req, { ...restore, supersedes: [prior] })).toThrow(new RegExp(`CONFLICT K-2: ${newest.id} \\(newer\\) remove v2→backlog`));
+      });
+
+      it.each([
+        ['an add to another version', 'add', null, 'v1'],
+        ['a keep with no version', 'keep', null, null],
+        ['a keep in another version', 'keep', 'v1', 'v1'],
+      ])('is refused when %s is the operator\'s newer word on the key', async (_name, op, from_v, to_v) => {
+        let placing!: OperatorRow;
+        const { prior, req } = await drifted(() => { placing = decide(T(11), 'add', null, 'v2'); decide(T(12), op, from_v, to_v); });
+        const conflict = new RegExp(`CONFLICT K-2: ${placing.id} \\(newer\\) add backlog→v2`);
+        expect(() => admit(req, { ...restore, supersedes: [prior] })).toThrow(conflict);
+        expect(() => admit(req, { ...restore, supersedes: [prior], authority: { kind: 'operator', ref: placing.id } })).toThrow(/does not cover K-2 move/);
+        expect(jira.fv.get('K-2')).toEqual([]);
+      });
+
+      it('rewrites only a REVERSION: an INTAKE move under the same record is still refused', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); }, 'v2', 'INTAKE');
+        expect(() => admit(req, { ...restore, outcome: 'ADMIT', supersedes: [prior] })).toThrow(/CONFLICT K-2: /);
+      });
+
+      it('rewrites only a move from backlog: a move from another version is still refused', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); }, 'v2', 'REVERSION', 'v1');
+        expect(() => admit(req, { ...restoreTo('v2', 'v1'), supersedes: [prior] })).toThrow(/CONFLICT K-2: /);
+      });
+
+      it('keeps the op of a record that is not an add: a move record covers the move as it is', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'move', null, 'v2'); });
+        expect(admit(req, { ...restore, supersedes: [prior] }).op).toEqual({ kind: 'move', from_v: null, to_v: 'v2' });
+      });
+
+      it('never lands under the standing emergency record: citing it stays refused', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v1'); }, 'v1');
+        expect(() => admit(req, { ...restoreTo('v1'), supersedes: [prior], authority: { kind: 'operator', ref: 'O-R1-emergency' } }))
+          .toThrow(/O-R1-emergency does not cover K-2 move/);
+      });
+
+      it('records an rm-admit after an rm-remove, so the latest ledger row reads the key in', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); });
+        appendAdmission({ version: 'v2', key: 'K-2', kind: 'rm-remove', reason: 'earlier removal', by: 'rm', ruling: 'R-R1-0099' });
+        expect(lastAdmission()?.kind).toBe('rm-remove');
+        const r = admit(req, { ...restore, supersedes: [prior] });
+        await apply(ctx(rmEnv), r.id);
+        expect(lastAdmission()).toMatchObject({ kind: 'rm-admit', ruling: r.id });
+      });
+
+      it('writes no Jira field when the admissions ledger cannot take the restore row', async () => {
+        const { prior, req } = await drifted(() => { decide(T(11), 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior] });
+        vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'a-dir-not-a-file'));
+        mkdirSync(join(root, 'a-dir-not-a-file'));
+        await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow();
+        expect(jira.fv.get('K-2')).toEqual([]);
+      });
+    });
   });
 
   it('keeps operator acts and requests out of the RM and of chief-spawned workers', () => {
@@ -757,6 +878,18 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
     expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
     expect(ask('K-2').req).toBe('Q-R1-0002');
+  });
+
+  it('the run summary counts the refused requests, and a run with no refusal prints none (HIMMEL-8761)', async () => {
+    declared();
+    ask('K-2');
+    const refused = await rmRun(ctx(), async () => []);
+    expect(rmRunSummary('R1', refused)).toBe('RM-RUN R1 summary: 1 refused');
+    ask('K-3');
+    const ruled = await rmRun(ctx(), admitAll);
+    expect(ruled).toContainEqual(expect.stringMatching(/^RULING /));
+    expect(rmRunSummary('R1', ruled)).toBeNull();
+    expect(rmRunSummary('R1', ['PENDING R-R1-0002: release rule: REFUSED upstream'])).toBeNull();
   });
 
   it('a request the judge leaves out is reported and stays claimed for the next run', async () => {
@@ -1373,6 +1506,57 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     expect(readOperatorRecords('spec', specEnv())).toEqual([]);
   });
 
+  // A spec kept outside the checkout (the state repo bucket) with a Fact ownership matrix and invariants.
+  function bucketSpec(cited: string): { spec: string; plan: string } {
+    const p = spec('K-1-bucket-2026-11-02.md', join(root, 'bucket', 'designs'));
+    writeFileSync(p, [
+      '# K-1: a status feed', '', 'Estimate record: est.json', '',
+      '## Alternatives considered', '', '- none better.', '', '## Definition of done', '', '- the fixture signs.', '',
+      '## Fact ownership', '',
+      '| Fact | Existing surfaces | Owner after | Non-owners |', '|---|---|---|---|',
+      `| item status | \`${cited}\` (\`--held\`, \`ROW_REGISTRIES\`) | the feed | n/a |`, '',
+      '## Invariants', '', '- I1 — one fact is one row.', '',
+    ].join('\n'));
+    const plan = join(root, 'bucket', 'plans', 'K-1-bucket-plan-2026-11-02.md');
+    mkdirSync(join(root, 'bucket', 'plans'), { recursive: true });
+    writeFileSync(plan, 'plan\n\n- Task 1: I1 — Test: `scripts/test-feed.sh` feeds a fact from two real sources.\n');
+    return { spec: p, plan };
+  }
+
+  it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
+    declared();
+    const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
+    const r = sign(sctx(), ['K-1'], p, { plan });
+    expect(r.keys).toEqual(['K-1']);
+    expect(readOperatorRecords('spec', specEnv())[0].plan_path).toBe(plan);
+    expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+  });
+
+  it('a spec with invariants cannot be signed without its plan, nor with itself as the plan', () => {
+    declared();
+    const { spec: p } = bucketSpec('docs/handover/running-a-chief.md');
+    expect(() => sign(sctx(), ['K-1'], p)).toThrow(/the plan is the spec/);
+    expect(() => sign(sctx(), ['K-1'], p, { plan: p })).toThrow(/the plan is the spec/);
+    expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+  });
+
+  it('a bucket spec naming a truly missing path is still refused, and so is one whose plan names no test', () => {
+    declared();
+    const bad = bucketSpec('scripts/no-such-file.sh');
+    expect(() => sign(sctx(), ['K-1'], bad.spec, { plan: bad.plan })).toThrow(/cites scripts\/no-such-file\.sh, which does not exist/);
+    const ok = bucketSpec('docs/handover/running-a-chief.md');
+    writeFileSync(ok.plan, 'plan\n\n- Task 1: I1 is covered somewhere.\n');
+    expect(() => sign(sctx(), ['K-1'], ok.spec, { plan: ok.plan })).toThrow(/I1 has no plan line naming its acceptance test/);
+    expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+  });
+
+  it('a missing plan file is refused at signing', () => {
+    declared();
+    const { spec: p } = bucketSpec('docs/handover/running-a-chief.md');
+    expect(() => sign(sctx(), ['K-1'], p, { plan: join(root, 'bucket', 'plans', 'absent.md') }))
+      .toThrow(/release operator spec: plan not found: .*absent\.md/);
+  });
+
   it('a missing spec file is refused at signing and reads SPEC-STALE once signed', () => {
     declared();
     expect(() => sign(sctx(), ['K-1'], join(root, 'specs', 'absent.md'), { verdicts: [] }))
@@ -1474,5 +1658,46 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     } finally {
       process.chdir(was);
     }
+  });
+});
+
+describe('admission rows enter the reducer through reduceLoaded (HIMMEL-8724 S1)', () => {
+  // HIMMEL_ADMISSIONS_LEDGER is a temp path (beforeEach), so none of these reads the operator's ledger.
+  const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
+  const row = (key: string, kind: string) => JSON.stringify({ ts: '2026-10-21T09:30:00.000Z', version: 'v1', key, kind, actor: 'someone' });
+  const admitAllRows: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+
+  it('an override row in the ledger clears the unauthorized flag through state()', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'] }, { key: 'K-4', fixVersions: ['v1'] }]);
+    expect(state(ctx()).leaks.unauthorized).toEqual(['K-3@v1', 'K-4@v1']);
+    writeFileSync(ledger(), [row('K-3', 'override'), row('K-4', 'rm-admit')].join('\n') + '\n');
+    const s = state(ctx());
+    expect(s.inputs.admissions).toBe('FRESH');
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('bad admissions line reads UNKNOWN and status stays OK', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'] }]);
+    writeFileSync(ledger(), [row('K-3', 'override'), 'not json at all'].join('\n') + '\n');
+    const s = state(ctx());
+    expect(s.inputs.admissions).toBe('UNKNOWN');
+    expect(s.status).toBe('OK');
+    expect(s.leaks.unauthorized).toEqual(['K-3@v1']);
+  });
+
+  it('bad admissions line: rule() and rmRun still run', async () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }]);
+    writeFileSync(ledger(), 'not json at all\n');
+    request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+    // rmRun's own reduceLoaded and rule()'s did not throw on the bad line: the run completes and the intent row is on disk.
+    // (apply()'s separate ledger read is unchanged by S1 and still reports the ruling PENDING.)
+    const lines = await rmRun(ctx(), admitAllRows);
+    expect(lines.join('\n')).toContain('R-R1-0001');
+    expect(readFileSync(join(ctx().dir, 'rulings.jsonl'), 'utf8')).toContain('"phase":"intent"');
   });
 });

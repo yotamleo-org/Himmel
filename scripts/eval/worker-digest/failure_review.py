@@ -96,7 +96,7 @@ def run_router(a):
         if a.live:
             m = LIVE_LINE.match(line)
             if m:
-                decisions.append({"class": m.group(1), "legs": int(m.group(2)), "decision": m.group(3),
+                decisions.append({"class": m.group(1), "workers": int(m.group(2)), "decision": m.group(3),
                                   "ticket": m.group(4)})
             m = REASON_LINE.match(line)
             if m and decisions and decisions[-1]["class"] == m.group(1):
@@ -161,7 +161,7 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     skipped = [d for d in decisions if d["decision"].startswith("skipped:")]
     if routed:
         out += ["- %s %s%s (workers %d in %s)" % (d["decision"], d["class"], " " + d["ticket"] if d.get("ticket") else "",
-                                               d["legs"], days) for d in routed]
+                                               d["workers"], days) for d in routed]
     else:
         out.append("- routed: none")
     if boxed:

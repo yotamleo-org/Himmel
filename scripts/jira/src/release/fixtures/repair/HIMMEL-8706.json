@@ -1,0 +1,101 @@
+{
+  "key": "HIMMEL-8706",
+  "source": "jira history --json read once on 2026-11-02, scrubbed by allowlist; changelog entries, from and to are real",
+  "journalSynthesized": false,
+  "journal": [],
+  "changelog": [
+    {
+      "id": "85772",
+      "created": "2026-11-02T04:12:49.746+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86026",
+      "created": "2026-11-02T06:47:58.706+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86032",
+      "created": "2026-11-02T06:49:18.628+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86039",
+      "created": "2026-11-02T06:57:43.490+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86058",
+      "created": "2026-11-02T07:11:22.695+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86105",
+      "created": "2026-11-02T07:31:19.085+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86312",
+      "created": "2026-11-02T09:09:56.321+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86328",
+      "created": "2026-11-02T09:25:12.328+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86331",
+      "created": "2026-11-02T09:27:03.528+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "86379",
+      "created": "2026-11-02T11:27:59.514+0100",
+      "items": [
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        }
+      ]
+    }
+  ]
+}

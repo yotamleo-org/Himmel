@@ -65,6 +65,7 @@
   "nodes": [
     {
       "id": "s.idea",
+      "noSource": "An idea is a message, a review's follow-up or an audit's finding; no code receives it.",
       "lane": "operator",
       "phase": "start",
       "label": "An idea arrives",
@@ -89,6 +90,11 @@
     },
     {
       "id": "p.grill",
+      "source": {
+        "file": "marketplace/plugins/lean-skills/skills/grilling/SKILL.md",
+        "line": 6,
+        "text": "Interview the user relentlessly until you reach a shared understanding."
+      },
       "lane": "console",
       "phase": "start",
       "label": "Grill the idea",
@@ -115,6 +121,11 @@
     },
     {
       "id": "s.minerva",
+      "source": {
+        "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
+        "line": 6,
+        "text": "grill → brainstorm → critic → spec → critic → plan"
+      },
       "lane": "console",
       "phase": "start",
       "label": "Write a checked spec",
@@ -148,6 +159,11 @@
     },
     {
       "id": "p.write",
+      "source": {
+        "file": "marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh",
+        "line": 113,
+        "text": "echo \"REFUSED $type draft: missing or empty: $missing\""
+      },
       "lane": "console",
       "phase": "start",
       "label": "Fill the ticket",
@@ -174,6 +190,11 @@
     },
     {
       "id": "s.cost",
+      "source": {
+        "file": "scripts/lanes/worker-pr-open.sh",
+        "line": 145,
+        "text": "if ! raw=$(\"$HERE/worker-burn.sh\" --profile \"$profile\""
+      },
       "lane": "console",
       "phase": "start",
       "label": "Count what the start cost",
@@ -200,6 +221,11 @@
     },
     {
       "id": "p.plan",
+      "source": {
+        "file": "marketplace/plugins/himmel-ops/skills/minerva/plan-charter.md",
+        "line": 1,
+        "text": "Red-team this implementation plan."
+      },
       "lane": "console",
       "phase": "plan",
       "label": "Write and check the plan",
@@ -234,6 +260,11 @@
     },
     {
       "id": "p.estimate",
+      "source": {
+        "file": "marketplace/plugins/himmel-ops/skills/effort-assess/SKILL.md",
+        "line": 6,
+        "text": "an estimate says how sure it is"
+      },
       "lane": "console",
       "phase": "plan",
       "label": "Estimate the effort",
@@ -260,6 +291,11 @@
     },
     {
       "id": "p.design",
+      "source": {
+        "file": "scripts/lanes/plugin-profiles.json",
+        "line": 166,
+        "text": "\"design\": {"
+      },
       "lane": "leg",
       "phase": "plan",
       "label": "Draw the design",
@@ -286,6 +322,7 @@
     },
     {
       "id": "p.approve",
+      "noSource": "No gate reads an approval today; that gate is planned for the next version.",
       "lane": "operator",
       "phase": "plan",
       "label": "You approve the design",
@@ -1517,9 +1554,9 @@
             "state": "done"
           },
           {
-            "text": "The new chief also receives the Start and Plan and design work still in flight: grills, specs and plans not yet tickets, as short pointers only, each with a one-line status.",
+            "text": "The new chief also receives the newest ten files of Start, Plan and design work changed in the last two days (saved grill notes, specs and plans), as short pointers only, each with a one-line status, and a count of the rest.",
             "ticket": "HIMMEL-8549",
-            "state": "not started"
+            "state": "in progress"
           }
         ],
         "stage": "assign"
@@ -2211,7 +2248,7 @@
       "to": "o.ruling",
       "kind": "refusal",
       "exit": 22,
-      "condition": "main is red; needs Fixes-main-red or go.sh --fix-main-red",
+      "condition": "main's CI state cannot be read (an unreadable run list, a full window with no completed run, an unreadable re-run attempt); a red main only warns",
       "sources": [
         {
           "file": "scripts/handover/merge-on-green.sh",
@@ -2223,7 +2260,7 @@
       },
       "move": {
         "lead": "stops if",
-        "say": "main is red: your decision (phase 3, Assign)"
+        "say": "main's CI state is unknown: retry, or your decision (phase 3, Assign)"
       }
     },
     {
@@ -2646,6 +2683,7 @@
     },
     {
       "id": "m.s.idea.p.grill",
+      "noSource": "The chief's judgment: no code sends an idea to a grill.",
       "from": "s.idea",
       "to": "p.grill",
       "kind": "flow",
@@ -2660,6 +2698,7 @@
     },
     {
       "id": "m.s.idea.p.write",
+      "noSource": "The chief's judgment: no code sends a small idea straight to a ticket.",
       "from": "s.idea",
       "to": "p.write",
       "kind": "flow",
@@ -2674,6 +2713,7 @@
     },
     {
       "id": "m.p.grill.s.minerva",
+      "noSource": "The chief's judgment: no code picks the full spec route.",
       "from": "p.grill",
       "to": "s.minerva",
       "kind": "flow",
@@ -2688,6 +2728,7 @@
     },
     {
       "id": "m.p.grill.p.write",
+      "noSource": "The chief's judgment: no code moves a grilled idea to the ticket.",
       "from": "p.grill",
       "to": "p.write",
       "kind": "flow",
@@ -2702,6 +2743,7 @@
     },
     {
       "id": "m.p.grill.s.idea",
+      "noSource": "The chief's judgment: no code sends a changed idea back.",
       "from": "p.grill",
       "to": "s.idea",
       "kind": "loop",
@@ -2716,6 +2758,11 @@
     },
     {
       "id": "m.s.minerva.again",
+      "source": {
+        "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
+        "line": 235,
+        "text": "fix → re-critic until it returns clean, **cap 2 rounds**"
+      },
       "from": "s.minerva",
       "to": "s.minerva",
       "kind": "loop",
@@ -2730,6 +2777,7 @@
     },
     {
       "id": "m.s.minerva.p.write",
+      "noSource": "A minerva run ends without filing a ticket; the spec is carried into it by hand.",
       "from": "s.minerva",
       "to": "p.write",
       "kind": "flow",
@@ -2744,6 +2792,11 @@
     },
     {
       "id": "m.p.write.park",
+      "source": {
+        "file": "marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh",
+        "line": 130,
+        "text": "echo \"parked in intake queue: $dest\""
+      },
       "from": "p.write",
       "to": "p.write",
       "kind": "refusal",
@@ -2758,6 +2811,7 @@
     },
     {
       "id": "m.p.write.s.cost",
+      "noSource": "Not a call: filing a ticket starts no cost record; the cost is written when the PR opens.",
       "from": "p.write",
       "to": "s.cost",
       "kind": "flow",
@@ -2772,6 +2826,7 @@
     },
     {
       "id": "m.s.cost.p.plan",
+      "noSource": "Not a call: no code hands a ticket from its cost to its plan.",
       "from": "s.cost",
       "to": "p.plan",
       "kind": "flow",
@@ -2786,6 +2841,7 @@
     },
     {
       "id": "m.s.cost.p.estimate",
+      "noSource": "Planned: no code feeds a ticket's cost into later estimates yet.",
       "from": "s.cost",
       "to": "p.estimate",
       "kind": "flow",
@@ -2800,6 +2856,11 @@
     },
     {
       "id": "m.p.plan.again",
+      "source": {
+        "file": "marketplace/plugins/himmel-ops/skills/minerva/SKILL.md",
+        "line": 307,
+        "text": "fix → re-critic until clean, **cap 2 rounds**."
+      },
       "from": "p.plan",
       "to": "p.plan",
       "kind": "loop",
@@ -2814,6 +2875,7 @@
     },
     {
       "id": "m.p.plan.p.estimate",
+      "noSource": "The chief's judgment: no code sizes a plan when it is written.",
       "from": "p.plan",
       "to": "p.estimate",
       "kind": "flow",
@@ -2828,6 +2890,7 @@
     },
     {
       "id": "m.p.plan.p.design",
+      "noSource": "The chief's judgment: no code routes a page change to design.",
       "from": "p.plan",
       "to": "p.design",
       "kind": "flow",
@@ -2842,6 +2905,11 @@
     },
     {
       "id": "m.p.plan.c.pick",
+      "source": {
+        "file": "scripts/handover/chief-kit/next-dispatchable.sh",
+        "line": 2,
+        "text": "Ranked, collision-checked list of the next"
+      },
       "from": "p.plan",
       "to": "c.pick",
       "kind": "flow",
@@ -2856,6 +2924,11 @@
     },
     {
       "id": "m.p.estimate.c.brief",
+      "source": {
+        "file": "scripts/lanes/effort-route.mjs",
+        "line": 48,
+        "text": "advisory: describe(r)"
+      },
       "from": "p.estimate",
       "to": "c.brief",
       "kind": "flow",
@@ -2870,6 +2943,7 @@
     },
     {
       "id": "m.p.design.p.approve",
+      "noSource": "By hand: the mockup reaches you as a message; no code sends it.",
       "from": "p.design",
       "to": "p.approve",
       "kind": "flow",
@@ -2884,6 +2958,7 @@
     },
     {
       "id": "m.p.approve.p.design",
+      "noSource": "By hand: you ask for changes; no gate reads the answer.",
       "from": "p.approve",
       "to": "p.design",
       "kind": "loop",
@@ -2898,6 +2973,7 @@
     },
     {
       "id": "m.p.approve.p.write",
+      "noSource": "By hand: no gate reads an approval before the build ticket is filed; that gate is planned.",
       "from": "p.approve",
       "to": "p.write",
       "kind": "flow",
@@ -2912,6 +2988,11 @@
     },
     {
       "id": "m.c.start.c.wait",
+      "source": {
+        "file": "scripts/handover/chief-kit/chief-wait.sh",
+        "line": 2,
+        "text": "The chief's one event waiter."
+      },
       "from": "c.start",
       "to": "c.wait",
       "kind": "flow",
@@ -2926,6 +3007,11 @@
     },
     {
       "id": "m.o.ruling.c.wait",
+      "source": {
+        "file": "scripts/handover/chief-kit/chief-wait.sh",
+        "line": 24,
+        "text": "WAKE telegram"
+      },
       "from": "o.ruling",
       "to": "c.wait",
       "kind": "flow",
@@ -2940,6 +3026,11 @@
     },
     {
       "id": "m.g.mergehook.l.merge",
+      "source": {
+        "file": "scripts/hooks/block-unresolved-cr-merge.sh",
+        "line": 4,
+        "text": "Blocks `gh pr merge` on FOUR independent gates"
+      },
       "from": "g.mergehook",
       "to": "l.merge",
       "kind": "flow",
@@ -2954,6 +3045,11 @@
     },
     {
       "id": "m.c.residual.s.idea",
+      "source": {
+        "file": "scripts/handover/chief-kit/residual-lines.sh",
+        "line": 12,
+        "text": "A line is filed when it carries a HIMMEL-<n> key"
+      },
       "from": "c.residual",
       "to": "s.idea",
       "kind": "flow",
@@ -2968,6 +3064,11 @@
     },
     {
       "id": "m.c.wrapmerged.c.wait",
+      "source": {
+        "file": "scripts/handover/chief-kit/wrap-merged.sh",
+        "line": 16,
+        "text": "close-wrapped-worker.sh --fleet <manifest> <worker doc>, ALWAYS"
+      },
       "from": "c.wrapmerged",
       "to": "c.wait",
       "kind": "flow",
@@ -3407,7 +3508,8 @@
         "20": "PR title fails the conventional-commit gate: operational",
         "23": "plugin-bump recheck: operational",
         "24": "static re-check refusal: operational",
-        "25": "local-commit guard refusal: operational"
+        "25": "local-commit guard refusal: operational",
+        "26": "partial merge with no remainder in the PR body: operational"
       }
     },
     "scripts/handover/chief-kit/go.sh": {
@@ -3462,7 +3564,10 @@
         "12": "e.verify.trust",
         "13": "e.verify.fail"
       },
-      "unmapped": {}
+      "unmapped": {
+        "14": "warn only: a Bug-ticket PR with no bug-origin line, never a FAIL, so no workflow decision",
+        "15": "warn only: a head whose CodeRabbit status reads rate limited, never a FAIL, so no workflow decision"
+      }
     },
     "scripts/handover/chief-kit/chief-wait.sh": {
       "table": "wake",
@@ -4046,7 +4151,7 @@
         "The merge waits for green CI and a GO."
       ],
       "back": [
-        "A merge is refused (no GO, a trust path, or a red main): not recorded.",
+        "A merge is refused (no GO, a trust path, or main's CI state unknown): not recorded.",
         "The chief files leftover work as follow-ups, which start again at phase 1."
       ],
       "steps": [

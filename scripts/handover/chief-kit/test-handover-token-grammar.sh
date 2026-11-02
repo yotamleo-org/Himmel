@@ -77,6 +77,14 @@ done
 
 # --- 2. gen-briefs.py worker nonces --------------------------------------------
 printf '#!/usr/bin/env bash\necho "created worktree $1"\n' > "$WORK/wt.sh"; chmod +x "$WORK/wt.sh"
+# the core gate always asks the jira CLI (scripts/jira/dist is untracked, absent in CI): a fixture stand-in calls every key NOT-CORE
+mkdir -p "$WORK/stub-jira"
+cat > "$WORK/stub-jira/index.js" <<'STUBEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUBEOF
+export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js"
 printf '%s\n' '[{"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}]' > "$WORK/workers.json"
 n=0
 for letter in "" ABC; do

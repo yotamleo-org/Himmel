@@ -1,6 +1,6 @@
 // A stub Secret Service for the himmel-secrets resolver: secret-tool and busctl first on PATH, items in a TSV file.
 // Every login test that touches the vault passes this env, so none reaches the real keyring.
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SECRET_TOOL = [
@@ -40,7 +40,8 @@ const SECRET_TOOL = [
 
 const BUSCTL = [
   "#!/usr/bin/env bash",
-  'case "$*" in *" Locked") echo "b ${KSTUB_LOCKED:-false}" ;; esac',
+  // locked from the start (KSTUB_LOCKED) or from the moment lock() creates the marker file, so a running server sees the wallet lock.
+  'case "$*" in *" Locked") if [ -e "$KSTUB_STORE.locked" ]; then echo "b true"; else echo "b ${KSTUB_LOCKED:-false}"; fi ;; esac',
 ].join("\n") + "\n";
 
 export function stubKeyring(dir: string) {
@@ -66,5 +67,7 @@ export function stubKeyring(dir: string) {
   };
   const put = (key: string, value: string) => writeFileSync(store, `${readFileSync(store, "utf8")}service=himmel key=${key} scope=user\t${value}\n`);
   const putProject = (key: string, value: string, project: string) => writeFileSync(store, `${readFileSync(store, "utf8")}service=himmel key=${key} project=${project}\t${value}\n`);
-  return { env, store, get, put, putProject, raw: () => readFileSync(store, "utf8") };
+  const lock = () => writeFileSync(`${store}.locked`, "");
+  const unlock = () => rmSync(`${store}.locked`, { force: true });
+  return { env, store, get, put, putProject, lock, unlock, raw: () => readFileSync(store, "utf8") };
 }

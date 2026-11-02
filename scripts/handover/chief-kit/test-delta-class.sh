@@ -315,5 +315,81 @@ hcls() { HANDOVER_DIR="$tmp/root" USER_SLUG=u bash "$SCRIPT" --qid Q9h --ledger 
 check "9: a harness-bucket verdict is found without --repo -> none" "$(hcls)" none
 check "9: an empty --repo never falls back to the harness bucket -> trust" "$(hcls --repo '')" trust
 
+# 11: --qid classifies against a head a delta-noop recorded, through the real judged head
+env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q11 GO "$Jq" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" >/dev/null 2>&1 \
+    || { echo "FAIL: cannot write the delta-noop fixture's real verdict"; fails=$((fails+1)); }
+real11=$(find "$tmp/root" -path '*/verdicts/Q11/judge.md' | head -n 1)
+dir11=$(dirname "$real11")
+# a delta-noop record for $Nq: the real verdict's text with the head swapped and the delta header added
+mknoop() {  # <noop head> <delta-judged line value> [file name]
+    awk -v h="$1" -v dj="$2" '
+        /^\*\*GO\*\* for head `/ { print "**GO** for head `" h "`."; next }
+        /^pr: / { print; print "delta: no-op"; if (dj != "") print "delta-judged: " dj; print "delta-class: none"; next }
+        { print }' "$real11" > "$dir11/${3:-delta-noop-$1}.md"
+}
+mknoop "$Nq" "$Jq"
+printf 'again\n' >> docs/c.md; N11=$(step docs11)
+printf 'more again\n' >> docs/c.md; N11d=$(step docs11d)
+git reset -q --hard "$N11"
+echo "x3" > scripts/ci/x.sh; N11t=$(step trust11)
+git reset -q --hard "$N11d"
+dcls() {  # <judged> <new> [extra args]
+    local j="$1" n="$2"; shift 2
+    HANDOVER_DIR="$tmp/root" USER_SLUG=u bash "$SCRIPT" --qid Q11 --ledger "$ledger" --trust-file "$trustf" "$@" "$j" "$n"
+}
+check "11a: a head recorded by a delta-noop and a delta outside the trust list -> none" "$(dcls "$Nq" "$N11")" none
+check "11b: the same head with a delta on a trust path -> trust" "$(dcls "$Nq" "$N11t")" trust
+check "11c: a short sha -> trust" "$(dcls "${Nq%????????}" "$N11")" trust
+check "11c: an unknown 40-hex sha -> trust" "$(dcls 2222222222222222222222222222222222222222 "$N11")" trust
+check "11c: a short sha gives its reason on stderr, stdout stays one word" "$(dcls "${Nq%????????}" "$N11" 2>&1 >/dev/null | grep -c 'not a full 40-char sha')" 1
+check "11b: a trust-path match gives its pattern on stderr" "$(dcls "$Nq" "$N11t" 2>&1 >/dev/null | grep -c 'matches trust pattern')" 1
+mknoop "$N11" "$Nq"
+check "11d: a noop that names another noop as its judged head fails closed -> trust" "$(dcls "$N11" "$N11d")" trust
+mknoop "$N11d" ""
+check "11e: a noop record with no delta-judged line fails closed -> trust" "$(dcls "$N11d" "$N11d")" trust
+
+# 11f: write-verdict.sh refuses a no-op as the judged head on its own check, not through the classifier
+printf 'last\n' >> docs/c.md; N11x=$(step docs11x)
+check "11f: the classifier alone calls the delta from a noop-recorded head none" "$(dcls "$Nq" "$N11x")" none
+err11=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q11 GO "$N11x" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" --delta-noop "$Nq" 2>&1 >/dev/null)
+rc11=$?
+check "11f: ...yet --delta-noop naming that no-op head is refused rc 2" "$rc11" 2
+check "11f: ...by the no-op check, not the classifier" "$(printf '%s\n' "$err11" | grep -c 'is itself a no-op record')" 1
+check "11f: ...and nothing is written" "$([ -e "$dir11/delta-noop-$N11x.md" ] && echo yes || echo no)" no
+
+# 11g: a head that a real verdict also rules on keeps that verdict's findings; the no-op record does not redirect past it
+awk -v h="$Nq" '/^\*\*GO\*\* for head `/ { print "**GO** for head `" h "`."; next } /^finding: / { print "finding: src/b.txt:2"; next } { print }' "$real11" > "$dir11/judge2.md"
+edit 'NR==2 { $0 = "two" } 1' src/b.txt; N11y=$(step edit11y)
+check "11g: a real verdict at a head that also has a no-op record keeps its finding -> finding" "$(dcls "$Nq" "$N11y")" finding
+
+# 11h: a no-op record worded NO-GO is no redirect; 11i: two no-op records for one head naming different targets fail closed
+printf 'z1\n' >> docs/c.md; Nz1=$(step docs11z1)
+printf 'z2\n' >> docs/c.md; Nz2=$(step docs11z2)
+printf 'zf\n' >> docs/c.md; NzF=$(step docs11zf)
+awk -v h="$Nz1" -v dj="$Jq" '
+    /^\*\*GO\*\* for head `/ { print "**NO-GO** for head `" h "`."; next }
+    /^pr: / { print; print "delta: no-op"; print "delta-judged: " dj; print "delta-class: none"; next }
+    { print }' "$real11" > "$dir11/delta-noop-$Nz1.md"
+check "11h: a NO-GO-worded no-op record names no judged head -> trust" "$(dcls "$Nz1" "$NzF")" trust
+check "11h: ...and says why on stderr" "$(dcls "$Nz1" "$NzF" 2>&1 >/dev/null | grep -c 'is not a GO')" 1
+mknoop "$Nz2" "$Jq"
+mknoop "$Nz2" "$Nq" "delta-noop-$Nz2-b"
+check "11i: two no-op records for one head naming different targets -> trust" "$(dcls "$Nz2" "$NzF")" trust
+check "11i: ...and says why on stderr" "$(dcls "$Nz2" "$NzF" 2>&1 >/dev/null | grep -c 'name different judged heads')" 1
+# 11j: write-verdict.sh refuses only a head that holds a no-op record and no real one: $Nq holds both
+err11j=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q11 GO "$NzF" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" --delta-noop "$Nq" 2>&1 >/dev/null)
+check "11j: a judged head with a real record beside its no-op record is not refused as a no-op" "$(printf '%s\n' "$err11j" | grep -c 'is itself a no-op record')" 0
+
+# 11k: a new head that descends from the real judged head but not from the supplied no-op head is a rewritten history
+prev11=$(git rev-parse HEAD)
+git checkout -q -b side11 "$Nq"
+printf 'side\n' >> docs/c.md; Nside=$(step docs11side)
+check "11k: a head that does not descend from the supplied no-op head -> trust" "$(dcls "$N11" "$Nside")" trust
+check "11k: ...and says why on stderr" "$(dcls "$N11" "$Nside" 2>&1 >/dev/null | grep -c 'does not descend from the supplied')" 1
+git checkout -q "$prev11"
+
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"

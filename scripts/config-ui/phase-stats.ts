@@ -36,6 +36,9 @@ function events(file: string): Ev[] {
   for (const line of text.split("\n")) {
     try {
       const r = JSON.parse(line), ts = Date.parse(r?.ts);
+      // A merge row written before the merge call (stage pre-merge), or retiring it (result not-merged), is not
+      // a merge; the row merge-on-green.sh writes once GitHub reports MERGED is, as it was before that row existed.
+      if (r?.event === "merge" && (r.stage === "pre-merge" || r.result === "not-merged")) continue;
       if (Number.isFinite(ts) && typeof r.event === "string" && typeof r.key === "string") out.push({ ts, event: r.event, key: r.key, pr: typeof r.pr === "string" ? r.pr : "" });
     } catch { /* a torn line */ }
   }

@@ -152,8 +152,8 @@
 #
 # --semantic (OFF by default): after the structural refresh, run
 # semantic-update.sh on the dedicated worktree with GRAPH_CADENCE_SEMANTIC_BACKEND
-# (default claude-api: API credit, needs the API lane; claude-cli and ollama are
-# explicit opt-ins: subscription bank-gated, and local zero egress). Under it the per-run `git clean` keeps
+# (default claude-cli: subscription, bank-gated; claude-api is an
+# explicit opt-in that needs the API lane; ollama is local, zero egress). Under it the per-run `git clean` keeps
 # graphify-out/, so the semantic manifest (the change gate) persists between
 # fires. A failure alerts through scripts/luna/cadence-alert.sh (worker
 # graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
@@ -189,9 +189,9 @@
 #   GRAPH_CADENCE_GRAPH_PUBLISH   override the graph-publish.sh path.
 #   GRAPH_CADENCE_MERGE_ON_GREEN  override the merge-on-green.sh path.
 #   GRAPH_CADENCE_SEMANTIC_UPDATE override the semantic-update.sh path.
-#   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-api (default; needs
-#                                 HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT, else
-#                                 rc=1), claude-cli or ollama (explicit opt-in);
+#   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-cli (default), claude-api
+#                                 (opt-in; needs HIMMEL_API_LANE=on and
+#                                 HIMMEL_API_ACCOUNT, else rc=1) or ollama;
 #                                 `api` and `cli` are aliases; any other value
 #                                 refuses rc=1.
 #   GRAPH_CADENCE_LEDGER_ROOT     override the handover-root resolution
@@ -270,7 +270,7 @@ Optional:
   --flow-name <name>  Flow-run ledger name for this run (A-Za-z0-9._- only,
                        else rc=2). Default: graph-publish-<corpus-slug>.
   --semantic          Also run the incremental semantic step (backend from
-                       GRAPH_CADENCE_SEMANTIC_BACKEND, default claude-api)
+                       GRAPH_CADENCE_SEMANTIC_BACKEND, default claude-cli)
                        after the structural refresh. OFF by default.
 EOF
 }
@@ -375,13 +375,13 @@ AST_UPDATE="${GRAPH_CADENCE_AST_UPDATE:-$SCRIPT_DIR/ast-update.sh}"
 GRAPH_PUBLISH="${GRAPH_CADENCE_GRAPH_PUBLISH:-$SCRIPT_DIR/graph-publish.sh}"
 MERGE_ON_GREEN="${GRAPH_CADENCE_MERGE_ON_GREEN:-$REPO_ROOT/scripts/handover/merge-on-green.sh}"
 SEMANTIC_UPDATE="${GRAPH_CADENCE_SEMANTIC_UPDATE:-$SCRIPT_DIR/semantic-update.sh}"
-# the semantic backend is claude-api unless opted into claude-cli or ollama (or
-# the `cli` alias), resolved by the shared scripts/lib/llm-backend.sh.
+# the semantic backend is claude-cli unless opted into claude-api (or the `api`
+# alias) or ollama, resolved by the shared scripts/lib/llm-backend.sh.
 # Anything else refuses before any work (fail closed, no silent fallback), and
 # claude-api under --semantic refuses unless the API lane is on (never a fallback
 # to the bank); a run without --semantic never uses the backend, so it never refuses.
 . "$REPO_ROOT/scripts/lib/llm-backend.sh"
-SEMANTIC_BACKEND="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-api}")" || {
+SEMANTIC_BACKEND="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}")" || {
     echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND:-}' is not accepted -- claude-cli, claude-api or ollama only" >&2
     exit 1
 }
@@ -439,6 +439,12 @@ FLOW_NAME="${FLOW_NAME_OVERRIDE:-graph-publish-${CORPUS_SLUG}}"
 # OWN ledger.jsonl into.
 # shellcheck source=../lib/flow-run-ledger.sh
 # shellcheck disable=SC1091
+# A test on the station never refreshes, publishes or promotes into the real graph; only exit 77 refuses.
+# Before the first write, the flow-run start row.
+_door_rc=0
+bash "$REPO_ROOT/scripts/lib/test-run-guard" check graph-cadence "$WORKTREE_DIR" "$HIMMEL_ROOT/graphify-out" || _door_rc=$?
+[ "$_door_rc" -ne 77 ] || exit 77
+
 . "$REPO_ROOT/scripts/lib/flow-run-ledger.sh"
 START_TS=$(date -u +%s)
 RUN_ID=$(_fr_emit_append_start "$FLOW_NAME" "" "" "" "" "graph-cadence" "$LOG_FILE" "$$")
@@ -511,6 +517,12 @@ else
     printf '[%s] ERR graph-cadence: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_msg" >> "$LOG_FILE" 2>/dev/null || true
     _fr_emit_append_end "$FLOW_NAME" "$RUN_ID" "" 2 error "" "$_msg"
     exit 2
+fi
+_door_rc=0
+bash "$REPO_ROOT/scripts/lib/test-run-guard" check graph-cadence "$LEDGER_ROOT" || _door_rc=$?
+if [ "$_door_rc" -eq 77 ]; then
+    _fr_emit_append_end "$FLOW_NAME" "$RUN_ID" "" 77 error "" "refused: a test on the station would write the real ledger root"
+    exit 77
 fi
 LEDGER_DIR="$LEDGER_ROOT/.graph-cadence"
 if ! mkdir -p "$LEDGER_DIR"; then
@@ -1059,7 +1071,11 @@ if [ "$SEMANTIC" -eq 1 ]; then
     [ -f "$_run_log" ] || _run_log=$(lsof -a -p "$$" -d 1 -Fn 2>/dev/null | sed -n 's/^n//p')
     [ -f "$_run_log" ] || _run_log="$LOG_FILE"
     _sem_worker="graph-semantic-$CORPUS_SLUG"
-    _sem_out=$(bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
+    # claude -p bills an exported API key outside the API lane's accounting: only claude-api may carry the caller env
+    # (semantic-update.sh refuses a caller key itself)
+    _sem_env=()
+    [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY)
+    _sem_out=$(${_sem_env[@]+"${_sem_env[@]}"} bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
         --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
     _sem_rc=$?
     printf '%s\n' "$_sem_out"

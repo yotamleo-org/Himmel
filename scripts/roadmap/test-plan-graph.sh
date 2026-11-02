@@ -51,7 +51,6 @@ r="$(run --refresh 2>&1)"; rc=$?
 g="$out/graph.json"
 [ -f "$g" ] && pass "graph.json written beside the docs" || fail "no $g"
 
-# schema + the four typed edges, pure python
 py="$(python3 - "$g" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -80,7 +79,6 @@ contains "no dangling edge endpoints" "$py" "dangling True"
 contains "edge count is exactly the plan's rows" "$py" "count True"
 contains "edges are EXTRACTED (no LLM)" "$py" "conf True"
 
-# same inputs => byte-identical graph (deterministic)
 cp "$g" "$W/g1"; run --refresh --force >/dev/null 2>&1 || fail "forced rebuild failed"
 cmp -s "$W/g1" "$g" && pass "deterministic: forced rebuild is byte-identical" || fail "graph differs between rebuilds"
 
@@ -134,7 +132,6 @@ python3 "$HERE/plan_docs.py" --plan-dir "$plan" --docs "$W/ovl/docs" --graph "$W
 [ "$rc" != 0 ] && pass "--graph inside --docs is refused" || fail "--graph inside --docs accepted (rc=0)"
 [ ! -e "$W/ovl/docs/graph.json" ] && pass "overlapping --graph wrote nothing" || fail "overlapping --graph was written"
 
-# a missing graph.json with a kept key is stale
 rm -f "$g"
 r="$(run --check 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "missing graph.json: --check stale" || fail "--check fresh with graph deleted"

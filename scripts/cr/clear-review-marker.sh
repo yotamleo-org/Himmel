@@ -63,8 +63,8 @@
 #      decision for every finding, not just crit|imp.
 #   4e. A lane=full marker needs, on a branch with `score` rows, a
 #      `preflight` row (/pr-check step 2.8) stamped before the first `score`
-#      row. The docs-audit lane and a branch whose first `score` row predates
-#      the gate are exempt (reason=missing-preflight).
+#      row at a commit this branch added. The docs-audit lane and a branch whose
+#      first such row predates the gate are exempt (reason=missing-preflight).
 #   4f. A lane=full marker whose diff changes a non-test guard or gate file
 #      (scripts/hooks/, scripts/ci/check-*, clear-review-marker.sh,
 #      scripts/testing/check-*, chief-kit
@@ -76,7 +76,9 @@
 #   4d. Every finding stamped with this branch whose effective verdict is
 #      agreed or fixed, at ANY round head, has a variant-sweep record in
 #      <git-common-dir>/cr-class-sweeps/<branch> (written by
-#      write-verdicts.sh sweep). A legacy row with no branch stamp is exempt.
+#      write-verdicts.sh sweep). A legacy row with no branch stamp is exempt, and
+#      so is a design-skill row: artifact exactly spec or plan at a head that is
+#      not a commit hex (a document outside the tree has no code class to sweep).
 #      `--check-sweeps <file>` runs only this gate's record
 #      check over the SWEEP lines in <file>, at write time: exit 14 when the
 #      gate would refuse one, else 0; no marker, no write, no clear.
@@ -742,8 +744,15 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
       // RESOLVE (to a commit, unambiguously) and to the SAME commit.
       // The verdict is compared lowercase, so a raw row spelled
       // Agreed or Fixed still needs its record.
-      if (o.kind === "finding" && e.BRANCH && o.branch === e.BRANCH) {
-          const sh = String(o.head || "").toLowerCase();
+      // Skipped: a row whose artifact is exactly spec or plan AND whose head is
+      // not a commit hex. Such a finding (written by the design skill, head = a
+      // spec id) edits a document outside the tree, has no code class to sweep, and its
+      // head can never match SWEEP_RE. Every other row is collected, so a row with
+      // no artifact, a misspelled one, or a spec row at a real commit still needs
+      // its record (fail closed).
+      const sh = String(o.head || "").toLowerCase();
+      const isDocRow = (o.artifact === "spec" || o.artifact === "plan") && !isHex(sh);
+      if (o.kind === "finding" && e.BRANCH && o.branch === e.BRANCH && !isDocRow) {
           const rest = [o.finding_id || "?", o.artifact || "diff", o.perspective || "off"].join(SEP);
           if (isHex(sh)) {
               for (const [k, w] of sweptByKey) {
@@ -1429,7 +1438,9 @@ fi
 # <git-common-dir>/cr-class-sweeps/<branch> (write-verdicts.sh sweep). A
 # deferred, disproved or unadjudicated finding needs none (gates 4/4b own
 # those), and a legacy row with no branch stamp is exempt: it cannot be tied
-# to this branch, and the same rule keeps review-round.sh promote off it.
+# to this branch, and the same rule keeps review-round.sh promote off it. A
+# design-skill row (artifact exactly spec or plan, head not a commit hex) is
+# exempt too: it changes a document outside the tree, so it has no class to sweep.
 # A record is checked against the tree, not only its shape (see
 # the node pass); a finding whose records all fail lists why after its id.
 # Read-only, so it runs under --dry-run too.
@@ -1460,25 +1471,43 @@ esac
 # no pass. A branch whose first `score` row predates PREFLIGHT_GATE_SINCE (or
 # carries no ts) was in flight when this gate shipped and is exempt. Rows are
 # matched on the branch stamp, so a legacy unstamped row never counts either
-# way. Read-only, so it runs under --dry-run too.
+# way. Only a `score` row at a commit this branch added counts: a design-skill
+# panel row (head not a commit hex) and a row at the base or off the branch did
+# not review this branch's code. A merge-base or a commit-shaped head that
+# cannot be read never reports ok. Read-only, so it runs under --dry-run too.
 # ponytail: the cutoff is a constant, not a ledger-recorded ship date. Upgrade
 # path: drop it once no in-flight branch predates it.
 if [ "$marker_lane" = "full" ]; then
-    preflight_verdict=$(LEDGER="$ledger" BRANCH="$branch" PREFLIGHT_GATE_SINCE="2026-10-22T00:00:00Z" node -e '
-      const fs = require("fs"), e = process.env;
+    preflight_verdict=$(LEDGER="$ledger" BRANCH="$branch" BASE="$marker_base" TIP="$tip" PREFLIGHT_GATE_SINCE="2026-10-22T00:00:00Z" node -e '
+      const fs = require("fs"), cp = require("child_process"), e = process.env;
+      const git = (...a) => cp.execFileSync("git", a, {encoding: "utf8", stdio: ["ignore", "pipe", "ignore"]}).trim();
       const rows = fs.existsSync(e.LEDGER)
           ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
       const t = (r) => Date.parse(r.ts);
-      let firstScore = Infinity, firstPreflight = Infinity, bad = 0;
+      let firstScore = Infinity, firstPreflight = Infinity, unreadable = false, branchCommits = null;
+      const onBranch = (head) => {
+          if (!branchCommits) {
+              const mb = git("merge-base", "--end-of-options", e.BASE, e.TIP);
+              branchCommits = new Set(git("rev-list", mb + ".." + e.TIP).split("\n"));
+          }
+          return branchCommits.has(git("rev-parse", "--verify", "--quiet", head + "^{commit}"));
+      };
       for (const l of rows) {
           let r;
           try { r = JSON.parse(l); } catch { continue; }
           if (!r || r.branch !== e.BRANCH) continue;
-          if (r.kind === "score") firstScore = Math.min(firstScore, Number.isNaN(t(r)) ? -Infinity : t(r));
-          else if (r.kind === "preflight" && !Number.isNaN(t(r))) firstPreflight = Math.min(firstPreflight, t(r));
+          if (r.kind === "score") {
+              const head = String(r.head || "").toLowerCase();
+              if (head !== "" && !/^[0-9a-f]{7,64}$/.test(head)) continue;
+              try {
+                  if (!onBranch(head)) continue;
+              } catch { unreadable = true; continue; }
+              firstScore = Math.min(firstScore, Number.isNaN(t(r)) ? -Infinity : t(r));
+          } else if (r.kind === "preflight" && !Number.isNaN(t(r))) firstPreflight = Math.min(firstPreflight, t(r));
       }
       const since = Date.parse(e.PREFLIGHT_GATE_SINCE);
-      console.log(firstScore === Infinity || firstScore < since || firstPreflight < firstScore ? "ok" : "missing");' 2>/dev/null || echo "error")
+      const passes = firstScore === Infinity || firstScore < since || firstPreflight < firstScore;
+      console.log(!passes ? "missing" : unreadable ? "error" : "ok");' 2>/dev/null || echo "error")
     case "$preflight_verdict" in
         ok) ;;
         missing)
@@ -1489,7 +1518,7 @@ if [ "$marker_lane" = "full" ]; then
             audit "REFUSED reason=missing-preflight branch=$branch sha=$tip"
             exit 14 ;;
         *)
-            echo "clear-cr-marker: could not evaluate the pre-round lessons pass from $ledger — refusing closed." >&2
+            echo "clear-cr-marker: could not evaluate the pre-round lessons pass from $ledger (the ledger, the merge-base with ${marker_base:0:8} or a score row's head is unreadable) — refusing closed." >&2
             audit "REFUSED reason=preflight-unreadable branch=$branch sha=$tip"
             exit 14 ;;
     esac

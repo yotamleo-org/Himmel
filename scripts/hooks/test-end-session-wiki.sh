@@ -326,6 +326,73 @@ sleep 0.5
 if [ ! -s "$MARK" ]; then pass "crystallize:false suppresses the spawn"; else fail "crystallize:false still spawned the crystallizer"; fi
 rm -rf "$SB"
 
+# --- Case 9b: lane env ------------------------------------------------------------
+# The hook never sets the lane itself: a crystallizer it spawns sees exactly the
+# launching shell's HIMMEL_API_LANE / HIMMEL_API_ACCOUNT. Without them the hook does
+# not spawn and appends ONE skip line (naming both variables and where to set them) to
+# the hook log. CRYSTALLIZE_CLAUDE_BIN is a stub in every row.
+lane_sandbox() { # sets SB, MARK, WRAP, LOGF
+    SB="$(make_sandbox)"; MARK="$SB/marker.txt"
+    WRAP="$SB/wrap.sh"
+    # shellcheck disable=SC2016  # the stub body is written literally; it expands when the stub runs
+    printf '#!/usr/bin/env bash\nprintf "HIMMEL_API_LANE=%%s\\nHIMMEL_API_ACCOUNT=%%s\\n" "${HIMMEL_API_LANE-<unset>}" "${HIMMEL_API_ACCOUNT-<unset>}" > "$LANE_DUMP"\nexec "%s" "$@"\n' "$STUB" > "$WRAP"
+    chmod +x "$WRAP"
+    LOGF="$(log_path_for "$SB/home" "$SB/proj")"
+}
+lane_run() { # <env-assignments...> ; the hook runs inside the sandbox from lane_sandbox
+    local payload
+    payload=$(printf '{"transcript_path":"%s","cwd":"%s","session_id":"t","reason":"other"}' "$SB/transcript.jsonl" "$SB/proj")
+    printf '%s' "$payload" | env "$@" OSTYPE="linux-gnu" OS="" HOME="$SB/home" \
+        LUNA_VAULT_PATH="$SB/vault" OBSIDIAN_API_KEY="" CLAUDE_PROJECT_DIR="$SB/proj" \
+        CRYSTALLIZE_PID_DIR="$SB/pids" STUB_MODE="success" \
+        CRYSTALLIZE_MARKER="$MARK" bash "$HOOK"
+}
+
+# 9b-1 (RED on main, where the refusal goes to /dev/null): no lane env -> exactly one
+# skip line in the hook log naming both lane variables and where to set them.
+lane_sandbox
+lane_run -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT CRYSTALLIZE_CLAUDE_BIN="$STUB"
+sleep 0.3
+if [ "$(grep -c 'crystallizer skipped: set HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell' "$LOGF" 2>/dev/null)" = "1" ]; then
+    pass "lane-env: no lane variables -> one skip line in the hook log naming both lane variables and where to set them"
+else
+    fail "lane-env: no lane variables -> skip line missing, duplicated or unclear in the hook log"
+fi
+# 9b-1b (regression-only, also passes on main): CRYSTALLIZE_CLAUDE_BIN is set and is no
+# bypass: the stub is never called and the note stays mechanical.
+NOTE9B="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
+if [ ! -s "$MARK" ] && [ -n "$NOTE9B" ] && grep -q '^crystallized: false$' "$NOTE9B"; then
+    pass "lane-env: CRYSTALLIZE_CLAUDE_BIN with the lane off is no bypass (stub never called, note stays mechanical)"
+else
+    fail "lane-env: CRYSTALLIZE_CLAUDE_BIN bypassed the lane gate"
+fi
+rm -rf "$SB"
+
+# 9b-2 (regression-only, also passes on main): lane env set -> the spawned crystallizer
+# receives both variables unchanged (A and auto).
+for ACC in A auto; do
+    lane_sandbox
+    LANE_DUMP="$SB/lane.txt"
+    lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="$ACC" LANE_DUMP="$LANE_DUMP" CRYSTALLIZE_CLAUDE_BIN="$WRAP"
+    i=0; while [ ! -s "$LANE_DUMP" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+    if grep -qxF 'HIMMEL_API_LANE=on' "$LANE_DUMP" 2>/dev/null && grep -qxF "HIMMEL_API_ACCOUNT=$ACC" "$LANE_DUMP" 2>/dev/null; then
+        pass "lane-env: lane variables (account $ACC) reach the spawned crystallizer unchanged"
+    else
+        fail "lane-env: lane variables (account $ACC) did not reach the crystallizer"
+    fi
+    rm -rf "$SB"
+done
+
+# 9b-3 (regression-only: guards the stderr redirect against a naive version of it, passes on
+# main): a hook log that cannot be opened for append must not stop the crystallizer.
+lane_sandbox
+mkdir -p "$LOGF"  # a directory cannot be appended to, and the hook's own log_msg chmod cannot make it writable
+lane_run HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_CLAUDE_BIN="$STUB"
+i=0; while [ ! -s "$MARK" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+if [ -s "$MARK" ]; then pass "lane-env: an unwritable hook log does not stop the crystallizer"; else fail "lane-env: an unwritable hook log stopped the crystallizer"; fi
+chmod 755 "$LOGF" 2>/dev/null
+rm -rf "$SB"
+
 # --- Case 10: BSD/macOS `date +%s%3N` must not crash the REST-success path (GH#202)
 # `%N` is a GNU extension. On BSD date, `+%s%3N` is NOT an error (exit 0, so the
 # hook's `|| echo 0` guard never fires) — it yields a non-numeric string like

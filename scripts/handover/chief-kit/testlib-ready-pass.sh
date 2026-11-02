@@ -44,6 +44,10 @@ case "$*" in
                 statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"build",status:"COMPLETED",conclusion:"SUCCESS"}],pageInfo:{hasNextPage:false,endCursor:null}}}
             }}}}'
         exit $? ;;
+    # ready-check row 15 (CodeRabbit rate-limit advisory): no statuses at the head, so it
+    # prints nothing. Unanswered, a suite whose own gh stub sits in front of this one
+    # bounces the call between the two stubs until row 15's 20 s deadline.
+    "api repos/"*"/commits/"*"/statuses"*) printf '[]\n'; exit 0 ;;
     *"commits(first:100)"*) exit 0 ;;
     *"api graphql"*) printf '0 false null\n'; exit 0 ;;
     *"api --paginate"*"/files"*'select(.status'*) exit 0 ;;

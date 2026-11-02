@@ -37,7 +37,7 @@
 #   (human->prompt, prompt->advisory, advisory->gate) with a hosting suggestion. Proposals are printed
 #   only; no rung, gate, hook or setting is ever changed.
 # Env: KNOWN_FINDINGS_PROMOTE_N / KNOWN_FINDINGS_PROMOTE_M (defaults for the flags above),
-#      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
+#      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json; --refresh instead defaults to the current git tree's scripts/cr/known-findings.json and exits 2 when it has none),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
 # Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input / unknown detector type, 3 (--diff --area only) an open hit.
 set -uo pipefail
@@ -74,6 +74,13 @@ done
 case "$PROMO_N" in *[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
 case "$PROMO_M" in *[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
 [ "$AREA" = 0 ] || [ "$MODE" = diff ] || { echo "known-findings.sh: --area is valid only with --diff" >&2; exit 2; }
+# --refresh writes the catalogue, so it targets the caller's tree however this copy was entered
+# (relative hand-off or the absolute anchor spelling); an explicit KNOWN_FINDINGS_FILE wins.
+if [ "$MODE" = refresh ] && [ -z "${KNOWN_FINDINGS_FILE:-}" ]; then
+  _kf_top="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git rev-parse --show-toplevel 2>/dev/null)" || _kf_top=""  # swallow-ok: no git tree is reported just below
+  KF="$_kf_top/scripts/cr/known-findings.json"
+  [ -n "$_kf_top" ] && [ -f "$KF" ] || { echo "known-findings.sh: --refresh needs scripts/cr/known-findings.json in the current git tree (or KNOWN_FINDINGS_FILE)" >&2; exit 2; }
+fi
 [ -f "$KF" ] || { echo "known-findings.sh: not found: $KF" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || { echo "known-findings.sh: node is required" >&2; exit 2; }
 
@@ -135,12 +142,21 @@ function learningsFeed(rows) {
   try { repoFull = require("child_process").execFileSync("git", ["remote", "get-url", "origin"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().replace(/\.git$/, "").split(/[/:]/).slice(-2).join("/").toLowerCase(); } catch (e) { repoFull = ""; }
   const sameRepo = (repo) => { const r = repo.toLowerCase(); return !!repoFull && !!r && (r.includes("/") ? r === repoFull : r === repoFull.split("/").pop()); };
   const lines = [], stale = [], live = [], short = (t) => t.slice(0, 80);
+  // every reason except the platform one, first hit wins; a file under the renamed console-kit dir is looked up as chief-kit
+  const otherReason = (r) => {
+    if (/\bglm\b/i.test(r.text)) return "glm";
+    if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) return "private-repo-propagation";
+    const file = r.file.replace(/^\.?\//, "");
+    if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(file) && !tracked.has(file.replace(/(^|\/)console-kit\//, "$1chief-kit/"))) return "file-gone";
+    return null;
+  };
+  // a rule that rejects the platform ("not <os>", "<os> support dropped") states current policy, not a claim about it
+  const rejectsPlatform = /\b(?:not|no|never|without)\s+(?:\w+\s+){0,3}windows\b|\bwindows\b[^.;]{0,60}\b(?:dropped|unsupported|not supported|no longer|removed|retired)\b/i;
   for (const r of rows) {
     let reason = null;
     if (/\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
-    else if (/\bglm\b/i.test(r.text)) reason = "glm";
-    else if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) reason = "private-repo-propagation";
-    else if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
+    else reason = otherReason(r);
+    if (reason === "windows" && rejectsPlatform.test(r.text)) reason = otherReason(r);
     const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
     if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
       const st = ticketStatus(key);

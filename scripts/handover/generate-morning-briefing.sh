@@ -90,7 +90,10 @@ Optional:
                            inclusive.
   --out PATH               Output path. Default:
                            $HANDOVER_DIR/morning-report-$(date +%F).md
-                           (Mode B) or $repo/handovers/... (Mode A).
+                           (Mode B) or $repo/handovers/... (Mode A). A himmel
+                           checkout (scripts/handover/chief-kit/ exists)
+                           with no HANDOVER_DIR and no --out exits 1 and
+                           writes nothing.
   --jira-limit N           Max rows per jira status query. Default 200.
   --backlog-limit N        Max To-Do rows rendered in Backlog. Default 40.
   --llm                    Enrich TL;DR + Suggested order + Backlog clustering
@@ -179,8 +182,33 @@ next_day=$(date -d "$today + 1 day" +%F 2>/dev/null || date -j -v+1d -f %F "$tod
 # Resolve --since-date when not passed — LOCAL day.
 [ -z "$SINCE_DATE" ] && SINCE_DATE="$today"
 
+# The handover root a station configured (/handover-setup writes HANDOVER_DIR into .env) reaches this run even
+# when the invoking shell never exported it; a value the shell did export wins. The shift helper inherits it.
+# shellcheck source=../lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/load-dotenv.sh"
+load_dotenv HANDOVER_DIR || true
+if [ -z "${HANDOVER_DIR:-}" ]; then
+    # A himmelctl cache .env without the key hides the checkout's own .env (where set-handover-dir.sh writes it).
+    # The primary checkout is the parent of the git common dir, as set-handover-dir.sh resolves it.
+    # swallow-ok: no resolvable common dir means no primary .env to read
+    _primary=$( (cd "$repo_root" && cd "$($GIT_CMD rev-parse --git-common-dir)/.." && pwd) 2>/dev/null ) || _primary=""
+    if [ -n "$_primary" ]; then load_dotenv --root "$_primary" HANDOVER_DIR || true; fi
+fi
+
 # Resolve --out when not passed.
+# A himmel checkout (it ships scripts/handover/chief-kit/) never keeps a report: its handovers/ is a
+# stub, so a run without a handover root would leave the report where the operator does not look.
+refuse_no_root() {
+    echo "ERR briefing: $1; no report was written." >&2
+    echo "Set the handover root and run it again: HANDOVER_DIR=<root> bash scripts/handover/generate-morning-briefing.sh" >&2
+    exit 1
+}
+himmel_checkout=0
+[ -d "$repo_root/scripts/handover/chief-kit" ] && himmel_checkout=1
+
 if [ -z "$OUT_FILE" ]; then
+    [ "$himmel_checkout" -eq 1 ] && [ -z "${HANDOVER_DIR:-}" ] && refuse_no_root "HANDOVER_DIR is not set and no .env configures one, in a himmel checkout"
     # _ensure: this script WRITES the report to OUT_FILE, so we need the Mode A
     # inline dir to exist. Stderr is NOT suppressed: a broken HANDOVER_DIR (Mode
     # B typo) must surface so the operator notices the silent fallback to
@@ -188,6 +216,7 @@ if [ -z "$OUT_FILE" ]; then
     if root=$(handover_root_ensure); then
         OUT_FILE="$root/morning-report-$today.md"
     else
+        [ "$himmel_checkout" -eq 1 ] && refuse_no_root "HANDOVER_DIR='${HANDOVER_DIR:-}' is not a usable handover root"
         echo "WARNING: handover_root_ensure failed — falling back to $repo_root/handovers/" >&2
         OUT_FILE="$repo_root/handovers/morning-report-$today.md"
     fi
@@ -195,9 +224,6 @@ fi
 
 # The tracker is the current project's: jira only when project-mode says so (a
 # JIRA_CMD override means jira). No tracker is a normal state, not an outage.
-# shellcheck source=../lib/load-dotenv.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/../lib/load-dotenv.sh"
 no_tracker=0
 no_tracker_msg="No Jira tracker configured."
 JIRA_ARGV=()
@@ -488,7 +514,13 @@ else
     fi
     if [ ${#shift_helper[@]} -gt 0 ] && [ "$DRY_RUN" -eq 0 ]; then
         # swallow-ok: a failed helper leaves the record as it is, and the report reads what was already written
-        SHIFTS_FILE="$shifts_file" "${shift_helper[@]}" >/dev/null 2>&1 || echo "WARNING: briefing: the shift helper failed — the shift record may be missing the newest shift" >&2
+        helper_rc=0
+        helper_err=$(SHIFTS_FILE="$shifts_file" "${shift_helper[@]}" 2>&1 >/dev/null) || helper_rc=$?
+        if [ "$helper_rc" -ne 0 ]; then
+            helper_why="exit $helper_rc"
+            [ -n "$helper_err" ] && helper_why="$helper_why: ${helper_err%%$'\n'*}"
+            echo "WARNING: briefing: the shift helper failed ($helper_why) — the shift record may be missing the newest shift" >&2
+        fi
     fi
     if [ ! -f "$shifts_file" ]; then
         shifts_why="no shifts.jsonl yet"

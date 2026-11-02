@@ -737,10 +737,10 @@ function verifyPluginSet(enabledPlugins, ctx, settings) {
 
 // ── settings-key ─────────────────────────────────────────────────────────
 
-// The Jira CLI reads these two from ~/.himmel/himmel.conf.local, then
+// The Jira CLI reads these three from ~/.himmel/himmel.conf.local, then
 // himmel.conf, before it reads .env (scripts/jira/src/client.ts CONFIG_KEYS),
 // so a `.env` probe must look in the same files.
-const HIMMEL_CONF_KEYS = ['JIRA_EMAIL', 'JIRA_PROJECT_KEY'];
+const HIMMEL_CONF_KEYS = ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY'];
 
 function overlayHimmelConf(data, ctx) {
   const home = (ctx.env && ctx.env.HOME) || os.homedir();
@@ -3302,7 +3302,7 @@ function probePhiCoherence(item, ctx) {
 // the hook's own source (the hook stays the single source of truth, per its
 // own header comment). The worker-to-required-engine-suffix PAIRING itself
 // (which schedule needs which engine) is NOT derivable from the live list
-// output — it lives in this item's own manifest descriptor (`legs`),
+// output — it lives in this item's own manifest descriptor (`workers`),
 // declarative data alongside the manifest, the same way qmd-index declares
 // its own `collections` or luna-sources its own `sources`.
 //
@@ -3322,9 +3322,9 @@ function probeEngineAllowlist(item, ctx) {
   const batDir = resolvePipelineBatDir(item, ctx);
   const armedSchedules = armedPipelineSchedules(Object.keys(PIPELINE_RUNNER_BASE), batDir);
 
-  const workers = item.probe.legs || [];
-  const armedLegs = workers.filter((worker) => armedSchedules.indexOf(worker.schedule) !== -1);
-  if (armedLegs.length === 0) {
+  const workers = item.probe.workers || [];
+  const armedWorkers = workers.filter((worker) => armedSchedules.indexOf(worker.schedule) !== -1);
+  if (armedWorkers.length === 0) {
     return {
       actual: 'absent',
       detail: `no luna cadence worker with a known engine requirement is currently armed under ${batDir}`,
@@ -3332,7 +3332,7 @@ function probeEngineAllowlist(item, ctx) {
     };
   }
   const problems = [];
-  for (const worker of armedLegs) {
+  for (const worker of armedWorkers) {
     const missing = worker.requiredSuffixes.filter((s) => !suffixes.has(s));
     if (missing.length > 0) {
       problems.push(`${worker.schedule}: armed but missing from cadence-approve-engines.sh's allow-list (would silently stall waiting for approval): ${missing.join(', ')}`);
@@ -3343,7 +3343,7 @@ function probeEngineAllowlist(item, ctx) {
   }
   return {
     actual: 'present',
-    detail: `every armed worker's required engine(s) are present in cadence-approve-engines.sh's allow-list (${armedLegs.map((l) => l.schedule).join(', ')})`,
+    detail: `every armed worker's required engine(s) are present in cadence-approve-engines.sh's allow-list (${armedWorkers.map((l) => l.schedule).join(', ')})`,
   };
 }
 

@@ -27,10 +27,12 @@ cat > "$REPO/scripts/graphify/seed-claude-config.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-# Bank stub: verdict from $WS/bank (default PROCEED); every call logged.
+# Bank stub: verdict from $WS/bank (default PROCEED); every call logged. The real launcher's fallback asks
+# with CADENCE_USAGE_LANE=native: $WS/bank-native answers it when present (the T68c rows).
 cat > "$REPO/scripts/lib/usage-preflight.sh" <<EOF
 #!/usr/bin/env bash
 echo bank >> "$WS/calls.log"
+[ "\${CADENCE_USAGE_LANE:-}" = native ] && [ -r "$WS/bank-native" ] && { cat "$WS/bank-native"; exit 0; }
 cat "$WS/bank" 2>/dev/null || echo PROCEED
 EOF
 # API-lane stub: records its argv, stdin, cwd and whether `claude`
@@ -39,7 +41,14 @@ cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
 echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
 echo "lane-kind=\${HIMMEL_API_KIND-UNSET}" >> "$WS/calls.log"
-echo "lane \$* | stdin=\$(cat | tr '\\n' ' ') | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
+cat > "$WS/lane-stdin"
+prev=""; for a in "\$@"; do
+  if [ "\$prev" = --append-system-prompt-file ]; then
+    mkdir -p "$WS/lane-sys"; echo "\$a" >> "$WS/lane-sys-paths"; cat "\$a" > "$WS/lane-sys/\$(ls "$WS/lane-sys" | wc -l | tr -d ' ')"
+  fi
+  prev="\$a"
+done
+echo "lane \$* | stdin=\$(tr '\\n' ' ' < "$WS/lane-stdin") | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
 if [ -n "\${LANE_STUB_REFUSE:-}" ]; then
   echo 'claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})' >&2
   exit 2
@@ -73,10 +82,13 @@ echo "OLLAMA_NUM_CTX=\${GRAPHIFY_OLLAMA_NUM_CTX-unset}" >> "$WS/env.log"
 echo "API_TIMEOUT=\${GRAPHIFY_API_TIMEOUT-unset}" >> "$WS/env.log"
 echo "CLAUDE_BIN=\$(command -v claude || echo none)" >> "$WS/env.log"
 echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR-unset}" >> "$WS/env.log"
-if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
+# GRAPHIFY_STUB_CACHE_HIT: a seeded entry answers the extract with no call, as graphify's cache does; graphify's
+# real key is content plus its own prompt, so it cannot see which mode wrote the entry, and neither does this one.
+if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\${GRAPHIFY_STUB_CACHE_HIT:-}" ] || [ ! -e "\$2/graphify-out/cache/semantic/new.json" ]; }; then
   claude --help > "$WS/claude-help.out" 2>&1
-  for _ in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
-    printf '%b' "\${GRAPHIFY_STUB_PROMPT:-extract this}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
+  for call_n in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
+    p="\${GRAPHIFY_STUB_PROMPT:-extract this}"
+    printf '%b' "\${p//@CALL@/\$call_n}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
       || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
   done
 fi
@@ -486,19 +498,81 @@ grep -q json-schema "$WS/claude-help.out"; h37=$?
 case "$h37" in 1) pass "T37 shim --help omits --json-schema" ;; 0) fail "T37 shim --help advertises --json-schema" ;; *) fail "T37 claude-help.out unreadable (grep rc=$h37)" ;; esac
 
 echo "T37b: the lane call is tagged kind=graphify and the fixed addendum sits between graphify's instructions and the chunk (HIMMEL-8403)"
-C37B="$WS/c37b"; new_corpus "$C37B"; : > "$WS/calls.log"; : > "$WS/claude.out"
+addendum() { sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d'; }
+reset_lane() { : > "$WS/calls.log"; : > "$WS/claude.out"; : > "$WS/lane-stdin"; : > "$WS/lane-sys-paths"; rm -rf "$WS/lane-sys"; }
+# same_bytes <label> <expected file> <got file>: a byte comparison; the flattened form is only the failure message
+same_bytes() {
+  if cmp -s "$2" "$3"; then pass "$1"
+  # read-sink-ok: both paths are this suite's own files under $WS
+  else fail "$1: got [$(tr '\n' ' ' < "$3")] want [$(tr '\n' ' ' < "$2")]"; fi
+}
+C37B="$WS/c37b"; new_corpus "$C37B"; reset_lane
 TAIL37B='Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK BODY'
 out=$(GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37B" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37b --corpus-root "$C37B" --corpus-class himmel-code --backend claude-api); rc=$?
-lane=$(grep '^lane ' "$WS/calls.log" | head -1)
 [ "$rc" -eq 0 ] && pass "T37b exit 0" || fail "T37b exit 0 (got $rc): $out"
 grep -qx 'lane-kind=graphify' "$WS/calls.log" && pass "T37b lane kind is graphify" || fail "T37b kind: $(grep lane-kind "$WS/calls.log")"
-ADD37B="$(sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d' | tr '\n' ' ')"
+ADD37B="$(addendum)"
 [ "${#ADD37B}" -gt 200 ] && pass "T37b positive control: the addendum text was read from the script" || fail "T37b addendum text not read from the script (${#ADD37B} chars)"
 # the expected prompt: instructions, "---", the whole addendum, "---", then graphify's own request and the chunk, unchanged
-EXP37B="$( { printf 'SCHEMA TEXT\n\n---\n'; sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d'; printf '\n\n---\n'; printf '%b' "$TAIL37B"; } | tr '\n' ' ')"
-GOT37B="${lane#*stdin=}"; GOT37B="${GOT37B% | cwdcorpus=*}"
-if [ "$GOT37B" = "$EXP37B" ]; then pass "T37b the lane gets exactly: instructions, whole addendum, graphify's request, chunk"
-else fail "T37b forwarded prompt differs from the expected one: got [$GOT37B] want [$EXP37B]"; fi
+{ printf 'SCHEMA TEXT\n\n---\n'; addendum; printf '\n\n---\n'; printf '%b' "$TAIL37B"; } > "$WS/exp37b"
+same_bytes "T37b the lane gets exactly: instructions, whole addendum, graphify's request, chunk" "$WS/exp37b" "$WS/lane-stdin"
+[ ! -s "$WS/lane-sys-paths" ] && pass "T37b unset opt-in: no system-prompt file" || fail "T37b unset opt-in passed a system-prompt file: $(cat "$WS/lane-sys-paths")"
+
+echo "T37c: GRAPHIFY_API_SYSTEM_PROMPT=1 sends the instructions and the addendum as ONE system file, the request and the chunk on stdin (HIMMEL-8410)"
+C37C="$WS/c37c"; new_corpus "$C37C"; reset_lane
+TAIL37C='Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK @CALL@ BODY'
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37c --corpus-root "$C37C" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && pass "T37c exit 0" || fail "T37c exit 0 (got $rc): $out"
+[ "$(wc -l < "$WS/lane-sys-paths")" -eq 2 ] && [ "$(sort -u "$WS/lane-sys-paths" | wc -l)" -eq 1 ] && pass "T37c both calls pass the same file" || fail "T37c paths: $(cat "$WS/lane-sys-paths")"
+{ printf 'SCHEMA TEXT\n\n---\n'; addendum; } > "$WS/exp37c-sys"
+same_bytes "T37c the system file is the instructions plus the whole addendum" "$WS/exp37c-sys" "$WS/lane-sys/0"
+same_bytes "T37c the second call's system file is byte-identical" "$WS/lane-sys/0" "$WS/lane-sys/1"
+printf 'Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK 2 BODY' > "$WS/exp37c-in"
+same_bytes "T37c stdin is only the request and the chunk" "$WS/exp37c-in" "$WS/lane-stdin"
+grep -q 'stdin=Now extract .*CHUNK 1 BODY' "$WS/calls.log" && pass "T37c the first call carried its own chunk" || fail "T37c first call stdin: $(grep '^lane ' "$WS/calls.log" | head -1)"
+SYS37C="$(head -1 "$WS/lane-sys-paths")"
+case "$SYS37C" in /*) pass "T37c the path is absolute" ;; *) fail "T37c relative path: $SYS37C" ;; esac
+[ ! -e "$SYS37C" ] && [ -z "$(scratch)" ] && pass "T37c the scratch file is gone after the run" || fail "T37c left behind: $SYS37C $(scratch)"
+
+echo "T37d: opt-in, a call whose instructions differ from the run's file stays inline, so the file never changes (HIMMEL-8410)"
+C37D="$WS/c37d"; new_corpus "$C37D"; reset_lane
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_PROMPT="SCHEMA @CALL@\\n\\n---\\n$TAIL37C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37d --corpus-root "$C37D" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(wc -l < "$WS/lane-sys-paths")" -eq 1 ] && pass "T37d only the first call passes the file" || fail "T37d (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+{ printf 'SCHEMA 2\n\n---\n'; addendum; printf '\n\n---\n'; printf 'Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK 2 BODY'; } > "$WS/exp37d"
+same_bytes "T37d the differing call sends today's whole prompt" "$WS/exp37d" "$WS/lane-stdin"
+
+echo "T37e: opt-in without graphify's request line behaves as today: no file, the addendum last (HIMMEL-8410)"
+C37E="$WS/c37e"; new_corpus "$C37E"; reset_lane
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_PROMPT="no request line" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37e --corpus-root "$C37E" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ ! -s "$WS/lane-sys-paths" ] && pass "T37e no system-prompt file" || fail "T37e (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+{ printf 'no request line\n\n---\n'; addendum; } > "$WS/exp37e"
+same_bytes "T37e the prompt is unchanged" "$WS/exp37e" "$WS/lane-stdin"
+
+echo "T37f: only the value 1 opts in (HIMMEL-8410)"
+C37F="$WS/c37f"; new_corpus "$C37F"; reset_lane
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=0 GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37B" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37f --corpus-root "$C37F" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ ! -s "$WS/lane-sys-paths" ] && pass "T37f the value 0 is off" || fail "T37f (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+same_bytes "T37f the prompt is unchanged" "$WS/exp37b" "$WS/lane-stdin"
+
+echo "T37g: the opt-in keeps its own extraction cache, so a later run without it never replays its answers (HIMMEL-8410)"
+C37G="$WS/c37g"; new_corpus "$C37G"
+cache_run() { GRAPHIFY_STUB_CACHE_HIT=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37g --corpus-root "$C37G" --corpus-class himmel-code --backend claude-api; }
+reset_lane; out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 cache_run); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^lane ' "$WS/calls.log" && [ -f "$C37G/graphify-out/cache/semantic-r1-system/new.json" ] && [ ! -e "$C37G/graphify-out/cache/semantic-r1" ] \
+  && pass "T37g the on-run calls the lane and its entries land in semantic-r1-system" || fail "T37g on-run (rc=$rc): $(ls "$C37G/graphify-out/cache") $out"
+printf 'aleph\n' > "$C37G/a.md"; reset_lane; out=$(cache_run); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^lane ' "$WS/calls.log" \
+  && pass "T37g the off-run on the same corpus calls the lane" || fail "T37g off-run replayed the on-run's answers (rc=$rc): $out"
+printf 'alpha\n' > "$C37G/a.md"; reset_lane; out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 cache_run); rc=$?
+[ "$rc" -eq 0 ] && ! grep -q '^lane ' "$WS/calls.log" \
+  && pass "T37g positive control: a second on-run replays its own cache with no call" || fail "T37g second on-run (rc=$rc): $(cat "$WS/calls.log") $out"
+
+echo "T37h: opt-in, a scratch path with a space reaches the lane as one argument (HIMMEL-8410)"
+C37H="$WS/c37h"; new_corpus "$C37H"; reset_lane; mkdir -p "$WS/tmp space"
+out=$(TMPDIR="$WS/tmp space" GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37h --corpus-root "$C37H" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && case "$(cat "$WS/lane-sys-paths")" in *"/tmp space/"*) true ;; *) false ;; esac \
+  && pass "T37h the path holds the space" || fail "T37h (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+same_bytes "T37h the file behind that path is the system text" "$WS/exp37c-sys" "$WS/lane-sys/0"
 
 echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or lane call)"
 C38="$WS/c38"; new_corpus "$C38"; touch "$C38/.salus"; : > "$WS/calls.log"
@@ -629,6 +703,88 @@ C68B="$WS/c68b"; new_corpus "$C68B"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CHUNKFAIL=1 LANE_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t68b --corpus-root "$C68B" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [ "$rc" -eq 5 ] && pass "T68b the run exits 5 too" || fail "T68b exit (got $rc): $out"
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T68b two lane calls: the first rejection plus one rotated call" || fail "T68b lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+
+# --- the real launcher (scripts/api-lane/claude-api.sh) under the shim, only `claude` stubbed ---
+# The rows above stub the whole lane, so they cannot show what the launcher really does with a rejection: replay
+# it on the subscription (exit 0, the fallback's own cost) or, when the fallback does not run, exit 6.
+RL="$WS/rl"
+real_lane_on() {
+  mkdir -p "$RL/alerts" "$RL/slots" "$WS/home"
+  cp "$REPO/scripts/api-lane/claude-api.sh" "$WS/claude-api.stub.sh"
+  cp "$REAL_REPO/scripts/api-lane/claude-api.sh" "$REAL_REPO/scripts/api-lane/roster.mjs" "$REAL_REPO/scripts/api-lane/usage.mjs" "$REPO/scripts/api-lane/"
+  cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/fleet-reservation-key.sh" "$REAL_REPO/scripts/lib/native-auth-pin.sh" "$REPO/scripts/lib/"
+  local now; now=$(date +%s)
+  printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00","key_id":"key-a","reset_at":"2099-01-01T00:00:00Z"}}}' "$RL/ledger.json" > "$RL/config.json"
+  printf '{"version":1,"accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","grant_usd":"50.00","remaining_usd":"50.00","reconciled_spent_usd":"0","starts_at":%d,"expires_at":%d,"observed_at":%d,"source":"operator-console-snapshot","exclusive_org":true,"discrepancy":false}}}' $((now-1000)) $((now+3600)) "$now" > "$RL/snapshot.json"
+  printf 'ANTHROPIC_API_KEY=sk-ant-dummy-not-a-real-key-0000\n' > "$RL/key-A.env"; chmod 600 "$RL/key-A.env"
+  printf '#!/bin/bash\nexit 0\n' > "$RL/alert-stub"; chmod +x "$RL/alert-stub"
+  # a call with the API key is the API call; one without it is the subscription fallback
+  cat > "$RL/claude-stub" <<STUB
+#!/usr/bin/env bash
+cat > /dev/null
+if [ -n "\${ANTHROPIC_API_KEY:-}" ]; then
+  echo api >> "$WS/rl-calls.log"
+  if [ -n "\${RL_STUB_FAIL:-}" ]; then
+    echo '{"type":"result","subtype":"error_max_budget_usd","is_error":true}'
+    exit 1
+  fi
+  if [ -n "\${RL_STUB_REJECT:-}" ]; then
+    echo '{"type":"result","is_error":true,"result":"API Error: 400 Your credit balance is too low to access the Anthropic API."}'
+    exit 1
+  fi
+  echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total_cost_usd":0.25,"usage":{"input_tokens":1,"output_tokens":1}}'
+  exit 0
+fi
+echo sub >> "$WS/rl-calls.log"
+echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total_cost_usd":0.31,"usage":{"input_tokens":1,"output_tokens":1}}'
+STUB
+  chmod +x "$RL/claude-stub"
+  : > "$WS/rl-calls.log"; : > "$WS/calls.log"; : > "$WS/claude.out"; rm -f "$WS/bank-native" "$RL"/ledger.json* "$RL/launches.jsonl"
+}
+real_lane_off() { cp "$WS/claude-api.stub.sh" "$REPO/scripts/api-lane/claude-api.sh"; rm -f "$WS/bank-native"; }
+run_real_lane() {
+  env "${LANE_ENV[@]}" HOME="$WS/home" PATH="$WS/bin:$PATH" HIMMEL_API_CREDIT_CONFIG="$RL/config.json" HIMMEL_API_CREDIT_SNAPSHOT="$RL/snapshot.json" \
+    HIMMEL_API_CREDIT_STATE="$RL/ledger.json" HIMMEL_API_CLAUDE_BIN="$RL/claude-stub" HIMMEL_API_ALERT_CMD="$RL/alert-stub" \
+    HIMMEL_API_ALERT_DIR="$RL/alerts" HIMMEL_FLEET_SLOTS="$RL/slots" CADENCE_USAGE_SKIP_REFRESH=1 GRAPHIFY_STUB_CALL_CLAUDE=1 \
+    bash "$SCRIPT" "$@" 2>&1
+}
+
+echo "T68c: through the real launcher, a rejection the fallback does not rerun exits 6 and the breaker stops dispatch"
+real_lane_on
+C68C="$WS/c68c"; new_corpus "$C68C"; echo SKIPPED-BANK > "$WS/bank-native"
+out=$(GRAPHIFY_STUB_CHUNKFAIL=1 RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 run_real_lane --name t68c --corpus-root "$C68C" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 5 ] && pass "T68c the run exits 5 after rejected chunks" || fail "T68c exit (got $rc): $out"
+[ "$(grep -c '^api$' "$WS/rl-calls.log")" -eq 1 ] && pass "T68c one API call, the other four chunks never dispatched" || fail "T68c API calls: $(grep -c '^api$' "$WS/rl-calls.log") (rc=$rc)"
+[ "$(grep -c '^claude-shim-rc=6$' "$WS/calls.log")" -eq 5 ] && pass "T68c every chunk reports the launcher's own exit 6" || fail "T68c shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
+[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 0 ] && pass "T68c the subscription fallback never ran" || fail "T68c fallback ran: $(cat "$WS/rl-calls.log")"
+real_lane_off
+
+echo "T68d: through the real launcher, a rejection replayed on the subscription adds nothing to the API spend, and the breaker stays open"
+real_lane_on
+C68D="$WS/c68d"; new_corpus "$C68D"
+out=$(RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68d --corpus-root "$C68D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
+grep -q 'past the planned cap' "$WS/claude.out" && fail "T68d a rejected (unbilled) attempt reserved against the run cap: $(cat "$WS/claude.out")" || pass "T68d a rejected attempt reserves nothing"
+[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68d all three chunks ran on the subscription" || fail "T68d lane calls: $(tr '\n' ' ' < "$WS/rl-calls.log") (rc=$rc): $out"
+[ "$(grep -c '^claude-shim-rc=' "$WS/calls.log")" -eq 0 ] && pass "T68d no chunk failed: the fallback's exit replaced the rejection" || fail "T68d shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
+[ "$(lastrun "$C68D" cost_usd)" = "0.0" ] && pass "T68d the API spend is 0 (the subscription's 0.31 per chunk is not API spend)" || fail "T68d row: $(tail -1 "$C68D/graphify-out/semantic-runs.jsonl" 2>&1)"
+real_lane_off
+
+echo "T68f: through the real launcher, a failed API attempt replayed on the subscription still reserves its per-call budget"
+real_lane_on
+C68F="$WS/c68f"; new_corpus "$C68F"
+out=$(RL_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68f --corpus-root "$C68F" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
+[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68f all three chunks ran on the subscription" || fail "T68f lane calls: $(tr "\n" " " < "$WS/rl-calls.log") (rc=$rc): $(head -c 900 "$WS/claude.out")"
+[ "$(lastrun "$C68F" cost_usd)" = "0.0" ] && pass "T68f the API spend stays 0" || fail "T68f row: $(tail -1 "$C68F/graphify-out/semantic-runs.jsonl" 2>&1)"
+grep -q 'past the planned cap' "$WS/claude.out" && pass "T68f the failed attempts' reserve (1.00 each) passes the 1.50 cap" || fail "T68f no cap WARN: $(head -c 900 "$WS/claude.out")"
+real_lane_off
+
+echo "T68e: through the real launcher, an API call that succeeds still adds its cost to the spend"
+real_lane_on
+C68E="$WS/c68e"; new_corpus "$C68E"
+out=$(GRAPHIFY_STUB_CALL_N=2 run_real_lane --name t68e --corpus-root "$C68E" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$(grep -c '^api$' "$WS/rl-calls.log")" -eq 2 ] && pass "T68e both calls ran on the API" || fail "T68e lane calls: $(tr "\n" " " < "$WS/rl-calls.log") (rc=$rc): $(head -c 900 "$WS/claude.out")"
+[ "$(lastrun "$C68E" cost_usd)" = "0.5" ] && pass "T68e the spend is the two calls' 0.25" || fail "T68e row: $(tail -1 "$C68E/graphify-out/semantic-runs.jsonl" 2>&1)"
+real_lane_off
 
 echo "T66: a failed extract names the first lane refusal in its closing line"
 C66="$WS/c66"; new_corpus "$C66"; : > "$WS/calls.log"
@@ -886,6 +1042,14 @@ out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --co
   && pass "T72 run row: batch_id msgbatch_stub, batch_requests 1, cost_usd 0.0035" || fail "T72 row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
 [[ "$out" == *"state=merged requests=1 cost_usd=0.003500"* ]] && pass "T72 the BATCH line closes the run as merged" || fail "T72 BATCH line: $out"
 grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
+
+echo "T72b: the opt-in does not reach a batch, so a batch keeps semantic-r1 with the knob set (HIMMEL-8410)"
+C72B="$WS/c72b"; new_corpus "$C72B"; batch_reset
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t72b --corpus-root "$C72B" --corpus-class himmel-code --backend claude-api); rc=$?
+echo ended > "$WS/batch-status"
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t72b --corpus-root "$C72B" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ -f "$C72B/graphify-out/cache/semantic-r1/new.json" ] && [ ! -e "$C72B/graphify-out/cache/semantic-r1-system" ] \
+  && pass "T72b entries land in semantic-r1" || fail "T72b (rc=$rc): $(ls "$C72B/graphify-out/cache") $out"
 
 echo "T73: a prompt the batch did not answer fails that chunk call (exit 1), so its files stay unstamped"
 C73="$WS/c73"; new_corpus "$C73"; batch_reset

@@ -194,7 +194,7 @@ check "oversized stamp (wraps to now) -> BANK-STALE" BANK-STALE \
 rm -f "$W/ledger.jsonl"
 printf '%s' "$(stamp_account "$(fx 10 20 "$NOW")")" > "$W/c.json"
 CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/ledger.jsonl" \
-  CADENCE_USAGE_WORKER="$(printf 'leg\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
+  CADENCE_USAGE_WORKER="$(printf 'worker\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
 # jq silently repairs invalid UTF-8, so decode strictly. Positive control: the
 # same decoder must reject a raw invalid byte.
 strict_utf8() { python3 -I -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' < "$1" >/dev/null 2>&1 && echo true || echo false; }
@@ -1037,7 +1037,9 @@ verdict_new() {
 check "CADENCE_USAGE_CACHE is read" PROCEED \
   "$(verdict_new "$(fx 10 20 "$NOW" "")")"
 check "ledger row goes to CADENCE_USAGE_LEDGER with CADENCE_USAGE_WORKER" newleg \
-  "$(tail -1 "$W/ledger-new.jsonl" 2>/dev/null | jq -r '.leg' 2>/dev/null)"
+  "$(tail -1 "$W/ledger-new.jsonl" 2>/dev/null | jq -r '.worker' 2>/dev/null)"
+check "a new ledger row carries no pre-rename leg key" false \
+  "$(tail -1 "$W/ledger-new.jsonl" 2>/dev/null | jq -r 'has("leg")' 2>/dev/null)"
 check "CADENCE_USAGE_MAX_PCT is the ceiling" SKIPPED-BANK \
   "$(CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 60 20 "$NOW" "")")"
 check "a non-numeric CADENCE_USAGE_MAX_PCT -> BANK-UNKNOWN" BANK-UNKNOWN \

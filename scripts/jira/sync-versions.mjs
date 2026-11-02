@@ -333,8 +333,8 @@ export function formatReport(r) {
 
 // ---- I/O boundary (needs gh, git with the tags, and a built jira CLI) ----
 
-function sh(cmd, args) {
-  return execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: BUF });
+function sh(cmd, args, env) {
+  return execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: BUF, ...(env ? { env: { ...process.env, ...env } } : {}) });
 }
 
 // gh list --limit truncates silently; a result that fills the limit may be cut
@@ -398,8 +398,8 @@ export function isShallowClone(dir) {
   return sh('git', ['-C', dir, 'rev-parse', '--is-shallow-repository']).trim() === 'true';
 }
 
-function makeJira(cli, project) {
-  const run = (args) => sh('node', [cli, ...args]);
+export function makeJira(cli, project) {
+  const run = (args, env) => sh('node', [cli, ...args], env);
   const lines = (out) => out.split('\n').filter(Boolean);
   const keysOf = (jql) =>
     new Set(lines(run(['list', '--jql', jql, '--limit', '50000'])).map((l) => l.split('\t')[0]));
@@ -423,7 +423,8 @@ function makeJira(cli, project) {
       run(['version-release', name, '--project', project, '--date', date]);
     },
     fixVersion: async (key, name) => {
-      run(['fix-version', key, '--add', name]);
+      // The tag backfill names itself, over any inherited name, so the journal reads it as a machine write.
+      run(['fix-version', key, '--add', name], { HIMMEL_VERSION_WRITER: 'sync-versions' });
     },
   };
 }

@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveSecrets } from '../../lib/resolve-secrets.mjs';
+import { preRead, recordVersionWrite, versionWriteScope, type Getter, type WriteRequest } from './release/version-writes.js';
 
 // The .env is found from this file's own install path, never the cwd: a run
 // from another repo must still reach the credentials. A worktree install has
@@ -204,14 +205,62 @@ export function confluenceAuthHeader(): string {
   return authHeader();
 }
 
+// The version-write hook's reads carry their own deadline: the write's fetch has none, so a hung read
+// must not hang a real write.
+export const HOOK_DEADLINE_MS = 5000;
+
+function hookGetter(auth: string): Getter {
+  return async <T>(path: string): Promise<T> => {
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { abort.abort(); reject(new Error('version-write hook read timed out')); }, HOOK_DEADLINE_MS);
+    });
+    try {
+      const res = await Promise.race([
+        fetch(`${baseUrl()}/rest/api/3${path}`, { method: 'GET', headers: { Authorization: auth, Accept: 'application/json' }, signal: abort.signal }),
+        deadline,
+      ]);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return JSON.parse(await Promise.race([res.text(), deadline])) as T;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+// Journals a Fix Version write for the repair. Best-effort: any failure leaves the Jira
+// write intact and the change unbound, which is the safe direction. Reads here never re-enter requestAt.
+async function beginVersionWrite(
+  apiBase: string, method: string, path: string, body: unknown, auth: string, writer: string | undefined,
+): Promise<((response: unknown) => Promise<void>) | null> {
+  try {
+    if (!versionWriteScope(apiBase, method, path, body)) return null;
+    const req: WriteRequest = { apiBase, method, path, body, writer, get: hookGetter(auth) };
+    const pre = await preRead(req);
+    if (!pre) return null;
+    return async (response) => {
+      try {
+        await recordVersionWrite(req, response, pre);
+      } catch {
+        // unbound
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function requestAt<T>(
   apiBase: string,
   method: string,
   path: string,
   body?: unknown,
   auth: string = authHeader(),
+  writer?: string,
 ): Promise<T> {
   const url = `${baseUrl()}${apiBase}${path}`;
+  const record = await beginVersionWrite(apiBase, method, path, body, auth, writer);
   const res = await fetch(url, {
     method,
     headers: {
@@ -226,11 +275,14 @@ export async function requestAt<T>(
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
   const text = await res.text();
-  return (text.trim() ? JSON.parse(text) : {}) as T;
+  const parsed = (text.trim() ? JSON.parse(text) : {}) as T;
+  if (record) await record(parsed);
+  return parsed;
 }
 
-export const request = <T>(method: string, path: string, body?: unknown) =>
-  requestAt<T>('/rest/api/3', method, path, body);
+// `writer` names the code path that chose a Fix Version, for the journal; a hand path passes nothing.
+export const request = <T>(method: string, path: string, body?: unknown, writer?: string) =>
+  requestAt<T>('/rest/api/3', method, path, body, undefined, writer);
 export const agileRequest = <T>(method: string, path: string, body?: unknown) =>
   requestAt<T>('/rest/agile/1.0', method, path, body);
 export const confluenceV2 = <T>(method: string, path: string, body?: unknown) =>

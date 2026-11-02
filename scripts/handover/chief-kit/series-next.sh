@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/series-next.sh - the leg-side driver of a stacked series.
+# scripts/handover/chief-kit/series-next.sh - the worker-side driver of a stacked series.
 #
-# A series is one ledger (<sid>.json, written ONLY by series-ledger.py) and one item per leg. This script starts the next
-# item, records its commit, hands the series to a successor leg and abandons an item. It never edits the JSON itself:
+# A series is one ledger (<sid>.json, written ONLY by series-ledger.py) and one item per worker. This script starts the next
+# item, records its commit, hands the series to a successor worker and abandons an item. It never edits the JSON itself:
 # every read is `series-ledger.py read`, every write is `series-ledger.py set|pass` (invariant I3). It reads no flag
 # and is inert unless a ledger exists. Page for the worker: docs/handover/worker-sections/series.md.
 #
 # USAGE (run from any checkout or worktree of the repo; git state is read from the current directory)
 #   series-next.sh status  --ledger P                       read-only: one ITEM row per item, drift, abandoned parents, GO files
-#   series-next.sh start   --ledger P --doc DOC KEY         the writer's one start per leg: worktree, lock, ledger, item scope
+#   series-next.sh start   --ledger P --doc DOC KEY         the writer's one start per worker: worktree, lock, ledger, item scope
 #   series-next.sh commit  --ledger P --doc DOC KEY         record the authoring item's worktree HEAD as wip, state committed
 #   series-next.sh pass    --ledger P --doc DOC RESUME-DOC  hand the series on; refuses unrecorded or drifted work
 #   series-next.sh abandon --ledger P --doc DOC KEY         mark the item abandoned (status then names the next item's parent)
 #
 # Exit: 0 ok, 1 failure (ledger unreadable, git or ledger write failed), 2 refused (not the writer, wrong state, dirty,
-# drift, one item per leg). A refusal moves nothing.
+# drift, one item per worker). A refusal moves nothing.
 #
 # Every `status` row is rebuilt from the ledger, git (the shared object store) and gh, never from a transcript (F2).
 # GH_CMD overrides `gh` (tests). HANDOVER_DIR locates <handover root>/.locks/go for GO-FILE rows.
 #
-# ponytail: "one start per leg" is a claim file per writer doc under <ledger>.starts.d/ because series-ledger.py has no
+# ponytail: "one start per worker" is a claim file per writer doc under <ledger>.starts.d/ because series-ledger.py has no
 #   started_by field; nothing there is a .json, so next-dispatchable never reads it as a ledger. Upgrade: a started_by item field.
 # ponytail: an item worktree skips worktree.sh's setup (deps install) because worktree.sh new refuses a series/ branch and cuts
 #   only from origin/<default>; upgrade: a start-point argument and a series type in _new-worktree.sh.
@@ -250,7 +250,7 @@ cmd_pass() {
         refuse "pass refused: unrecorded work in an unpublished item; nothing moved"
     fi
     # need_writer compared realpaths, so the ledger gets the recorded writer (its raw string compare then matches) and an
-    # absolute resume doc (a relative one would resolve against the next leg's cwd)
+    # absolute resume doc (a relative one would resolve against the next worker's cwd)
     case "$ARG" in /*) to="$ARG" ;; *) to="$PWD/$ARG" ;; esac
     python3 -I "$LEDGER_PY" pass --ledger "$LEDGER" --from "$(top writer)" --to "$to" || fail "series-ledger.py pass failed"
     echo "PASSED $DOC to $ARG"

@@ -135,7 +135,7 @@ cat > "$C" <<EOC
 # chief
 
 ## Live state
-legs: \`N1:DC-N1-aa11:tok1:$P1\` \`N2:DC-N2-bb22:tok2:$P2\` \`N3:DB-N3-cc33:tok3:$P3\`
+workers: \`N1:DC-N1-aa11:tok1:$P1\` \`N2:DC-N2-bb22:tok2:$P2\` \`N3:DB-N3-cc33:tok3:$P3\`
 
 ## Results
 EOC

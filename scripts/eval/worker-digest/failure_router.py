@@ -63,6 +63,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import worker_ledger  # noqa: E402
 
+sys.path.insert(0, os.path.join(HERE, "..", "..", "lib"))
+from env_alias import legacy_names_on  # noqa: E402
+
 TABLE = os.path.join(HERE, "failure-routes.table.json")
 PLAYBOOK = os.path.join(HERE, "..", "..", "..", "docs", "internals", "stuck-playbook.md")
 LOG_ENV, STATE_ENV, INBOX_ENV = "HIMMEL_FAILURE_ROUTES_LOG", "HIMMEL_FAILURE_ROUTES_STATE", "HIMMEL_FAILURE_INBOX"
@@ -193,7 +196,7 @@ def check_body(text, table=None):
             continue
         m = re.match(r"^- ([A-Za-z ()0-9]+): (.*)$", line)
         label, val = (m.group(1), m.group(2)) if m else (None, None)
-        good = {"class": lambda v: CLASS.match(v), "legs": lambda v: WORKERS.match(v),
+        good = {"class": lambda v: CLASS.match(v), "workers": lambda v: WORKERS.match(v),
                 "tickets": lambda v: KEYS.match(v), "PRs": lambda v: PRS.match(v),
                 "not listed": lambda v: re.match(r"^\d+ more tickets or PRs, see the digest$", v),
                 "route": lambda v: v in rows, "playbook entry names the hook": lambda v: v in ("yes", "no")}
@@ -217,7 +220,7 @@ def build_body(table, t, cls, workers, counted, update):
         out += [HEADS[0], ""]
     out += ["- class: %s" % cls,
            "- distinct workers (%d d): %d" % (table["window_days"], len(workers)),
-           "- legs: %s" % ", ".join(workers[:MAX_BODY_WORKERS])]
+           "- workers: %s" % ", ".join(workers[:MAX_BODY_WORKERS])]
     if not update:
         cut = max(len(tickets) - MAX_BODY_REFS, 0) + max(len(prs) - MAX_BODY_REFS, 0)
         tickets, prs = tickets[:MAX_BODY_REFS], prs[:MAX_BODY_REFS]
@@ -260,6 +263,34 @@ def excerpt(text):
     return ""
 
 
+def refusal(text):
+    """The line that says why the CLI failed: the first stderr line that is not part of a title warning.
+
+    The CLI prints `jira: warning: ...` and its multi-line title template before it refuses, so the
+    first line is the warning, not the refusal (HIMMEL-8734)."""
+    skip = ("jira: warning:", "Ticket title", "  ", "Sectors:", "Leave out")
+    for line in (text or "").splitlines():
+        if line.strip() and not line.startswith(skip):
+            return line.strip()[:200]
+    return excerpt(text)
+
+
+TITLE_MAX = 90  # the CLI warns past this (scripts/jira/src/plain-block.ts)
+
+
+def fit_title(title, sector):
+    """A title the CLI's template check accepts: the Sector first, no internal name, at most TITLE_MAX characters.
+
+    {sub} carries a tool or hook name (error/Bash:usage:ready-check, suite/test-x.sh): its ':', '_' and
+    '.' would read as a second prefix, an internal name or a file path."""
+    t = re.sub(r"[:_.]+", " ", title)
+    t = re.sub(r"\s+", " ", t).strip()
+    t = (sector + ": " if sector else "") + t
+    if len(t) > TITLE_MAX:
+        t = t[:TITLE_MAX + 1].rsplit(" ", 1)[0].rstrip(" ,;-")
+    return t
+
+
 JIRA_ERR = ""
 
 
@@ -277,7 +308,7 @@ def jira(argv, args):
         JIRA_ERR = excerpt(str(e))
         return None
     if r.returncode != 0:
-        JIRA_ERR = excerpt(r.stderr) or excerpt(r.stdout) or "exit %d" % r.returncode
+        JIRA_ERR = refusal(r.stderr) or excerpt(r.stdout) or "exit %d" % r.returncode
         return None
     return r.stdout
 
@@ -414,9 +445,12 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
     if not intent("file"):
         return "skipped:log-error", None
     sector = ["--sector", table["sector"]] if table.get("sector") else []
-    out = with_file(body, lambda f: jira(jbin, ["create", "--type", "Task", "--title", title, "--desc-file", f,
+    # The CLI refuses an unplaced Task. The backlog is a placement that needs no version lookup; the
+    # release manager moves it with the INTAKE request the notifier files.
+    place = ["--backlog", "--proposed-version", "backlog", "--why", "filed by the daily failure review, awaiting triage"]
+    out = with_file(body, lambda f: jira(jbin, ["create", "--type", "Task", "--title", fit_title(title, table.get("sector")), "--desc-file", f,
                                                  "--labels", "failure-loop,fl-%s,standalone" % slug(cls)]
-                                         + sector + ["--project", project]))
+                                         + sector + place + ["--project", project]))
     m = re.search(r"^Created ([A-Z][A-Z0-9]+-\d+)$", out or "", re.M)
     if not m:
         if out is not None:
@@ -456,6 +490,7 @@ def route(a):
         for k in set(by) | set(state["classes"] if state_ok else ()):
             slugs.setdefault(slug(k), set()).add(k)
         decisions = 0
+        failed = False
         sent = []
         fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
         # The daily cap stops the walk, so the widest classes go first, not the alphabetical ones.
@@ -463,6 +498,10 @@ def route(a):
             t, workers, counted = fires[cls]
             n = len(workers)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}
+            if "last_legs" in c:  # a state file written before the rename
+                old = c.pop("last_legs")
+                if legacy_names_on():
+                    c.setdefault("last_workers", old)
             if set(workers) <= set(c.get("acted", [])):
                 continue
             inbox = a.inbox if t.get("inbox") and state_ok and not c.get("inbox") else None
@@ -477,7 +516,7 @@ def route(a):
                 try:
                     worker_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(),
                                                 "source": SOURCE, "kind": "route-intent", "class": cls,
-                                                "legs": n, "intent": kind}])
+                                                "workers": n, "intent": kind}])
                     return True
                 except OSError as e:
                     print("failure-router: cannot log the intent, nothing sent: %s" % e, file=sys.stderr)
@@ -486,21 +525,23 @@ def route(a):
             dec, ticket = decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent,
                                  len(slugs[slug(cls)]) > 1)
             if a.dry_run:
-                print(json.dumps({"class": cls, "legs": n, "decision": dec, "ticket": ticket,
+                print(json.dumps({"class": cls, "workers": n, "decision": dec, "ticket": ticket,
                                   "inbox": bool(inbox)}, separators=(",", ":")))
                 continue
-            if (dec, workers) == (c.get("last_decision"), c.get("last_legs")):
+            if (dec, workers) == (c.get("last_decision"), c.get("last_workers")):
                 if state_ok:
                     save_state(a.state, state)
                 continue
             # Log before saving the state: a failed log write must leave the class unacted, not a silent send.
             worker_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(), "source": SOURCE,
-                                        "kind": "route-decision", "class": cls, "legs": n, "decision": dec,
+                                        "kind": "route-decision", "class": cls, "workers": n, "decision": dec,
                                         "ticket": ticket}])
             if state_ok:
-                c["last_decision"], c["last_legs"] = dec, workers
+                c["last_decision"], c["last_workers"] = dec, workers
                 save_state(a.state, state)
             decisions += 1
+            failed = failed or dec in ("skipped:search-error", "skipped:jira-error", "skipped:log-error",
+                                       "skipped:state-unreadable")
             print("failure-router: %s workers=%d %s%s" % (cls, n, dec, " " + ticket if ticket else ""))
             if dec in ("skipped:search-error", "skipped:jira-error") and JIRA_ERR:
                 print("failure-router: %s reason: %s" % (cls, JIRA_ERR))
@@ -513,6 +554,8 @@ def route(a):
             notify(a, "chief", "failure-router: " + ", ".join("%s %s (%s)" % (dec, ticket, cls) for dec, cls, ticket in sent))
         if not a.dry_run:
             print("failure-router: decisions=%d" % decisions)
+            if not failed:
+                print("failure-router: nothing here needs the operator")
         return 0
     finally:
         if lock:

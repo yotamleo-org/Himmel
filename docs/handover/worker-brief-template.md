@@ -90,6 +90,7 @@ template_version: 3
 > `graphify query` when code structure matters. If the search found nothing,
 > write `none found (<the query you ran>)`; a bare `none`, an empty line or this
 > placeholder is refused at arming by `brief-lint.sh`.>
+> Before you design, run `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel "<topic>"` (tickets and PRs) and `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna "<topic>"` (specs, audits and decisions), and `bash scripts/graphify/worker-graph.sh explain "<symbol>"`, and cite what each returned, or write none found with the query you ran. Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, or `graph-qmd: n/a, shipping` on a resume that only ships. Put the notes query and the graph symbol for THIS ticket where the two quoted placeholders stand (plain words and paths only: no quote, backtick, backslash, dollar sign or exclamation mark, since the worker runs them inside double quotes), and keep the rest as written. A salus-marked repo (a `.salus` marker or a phi-roots entry) searches nothing: replace the commands with the sentence the lint's refusal quotes for a salus-marked repo, and put `graph-qmd: n/a, salus-marked repo` in Results; those words count only where true, judged from the brief's `resume_cwd`. `brief-lint.sh` refuses a worker brief without this line or with either placeholder left in, whatever the Prior art line above cites.
 
 > **Exemplar (optional):** <one in-repo path — a gate, a suite, a script — that
 > shows the paved path for this change, and what to copy from it. Omit the line
@@ -214,6 +215,37 @@ template_version: 3
 >    (`chief-sections/merges.md`) and sends `MERGED #<pr> → <sha>`; the worker
 >    then `cd`s out and wraps. `completes-ticket:` still decides the chief's
 >    `--jira-transition`. A hand-written claudex brief says the same.
+>    **A PR that fixes a Bug carries one bug-origin line** in its body, at
+>    column one and outside any code fence, saying how the bug got in:
+>    `bug-origin: <#pr|sha|unknown> <class> — <reason>`
+>    The reason is mandatory and names no other PR; origin `unknown` takes only
+>    class `unknown`. `ready-check.sh` item 14 warns on a missing or malformed
+>    line, it never fails. Find the origin with two commands. Save
+>    `gh pr list --state merged --limit 10000 --json number,mergedAt,headRefName,headRefOid,mergeCommit`
+>    to a scratch file, then run
+>    `python3 scripts/eval/bug-origin/bug-origin-report.py trace --base origin/main --head HEAD --prs <that file> --verdicts <bucket>/verdicts`,
+>    `<bucket>` being the directory that holds your handover doc. `trace` only
+>    proposes: read the ticket and the introducing diff, and follow a noisy hit
+>    (a rename, a re-baseline, the initial public release) to the next candidate.
+>    `not read` is not evidence: `trace` ran without that source, so re-run it
+>    with the source. The class is the first of these that fits:
+>    (1) `unknown`, origin `unknown`: no introducing commit or PR could be found.
+>    (2) `design-gap`: the code does what its ticket or spec asked, and the
+>    requirement or platform assumption was wrong or missing, e.g. a guard built
+>    as specified on a platform assumption that did not hold.
+>    (3) `review-miss:<layer>`: a reader of only the introducing diff and its
+>    ticket could have named the defect, and a review could have seen it, e.g. a
+>    command whose exit code is dropped in the added lines. The layer is the
+>    earliest whose job covers it: `cr` a defect inside one hunk, `panel` one
+>    needing reasoning across files or behaviour, `judge` a PR that does not do
+>    what its ticket asked or a claim with no evidence. `cr` needs no evidence on
+>    record; `panel` and `judge` need `trace` to show a review at some layer.
+>    (4) `test-gap`: not nameable from the diff alone, and a test could have
+>    shown it, e.g. two scripts each correct alone, wrong together.
+>    (5) `unknown` with a found origin: anything else, e.g. a panel defect with
+>    no review on record. The reason says which.
+>    A slice that does not itself fix the bug writes
+>    `bug-origin: unknown unknown — slice, origin on <KEY>`.
 >    **The PR body carries a `## Ticket coverage` section**: one list line per ask of each cited ticket, each ending
 >    `done` or `deferred → HIMMEL-<n>` (`->` also accepted), e.g.
 >    `- ask one: done` / `- ask two: deferred → HIMMEL-<n>`. A deferred key

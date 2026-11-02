@@ -66,6 +66,13 @@ export GIT_NO_REPLACE_OBJECTS=1
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# every read-only GitHub call below rides the second, read-only token
+# (scripts/lib/gh-read.sh) so a spent main token does not stop a review round; a
+# refused or missing read token falls back to the main one inside the router. The
+# executed form, not the function: these calls sit behind `timeout`, which cannot
+# run a shell function. A copy without the lib (a fixture) keeps plain gh. Writes
+# never go through here.
+if [ -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ]; then _RR_GH=(bash "$HIMMEL_ROOT/scripts/lib/gh-read.sh"); else _RR_GH=(gh); fi
 
 usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
@@ -289,7 +296,7 @@ if [ -n "$base_sha" ]; then
         exit 8
     fi
     _vb_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || _vb_got=""
-    _vb_def="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}" --jq .default_branch 2>/dev/null)" || _vb_def=""
+    _vb_def="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" api "repos/{owner}/{repo}" --jq .default_branch 2>/dev/null)" || _vb_def=""
     case "$_vb_def" in
         ''|*[!A-Za-z0-9._/-]*) _vb_def="" ;;
     esac
@@ -297,7 +304,7 @@ if [ -n "$base_sha" ]; then
         echo "review-round: --base-sha '$base_sha' cannot be verified (unresolvable commit or unreadable remote default branch) - refused" >&2
         exit 8
     fi
-    _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
+    _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
     case "$_vb_status" in
         identical|ahead) base_sha="$_vb_got" ;;
         *)
@@ -634,7 +641,7 @@ record_binds() {
         # shellcheck disable=SC1091
         . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
         _rb_rc=0
-        pr_want="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+        pr_want="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" pr list --head "$branch" --state open \
             --json number -q '.[].number' 2>/dev/null)" || _rb_rc=1
         if [ "$_rb_rc" -ne 0 ]; then pr_want=""; fi
         if [ "$_rb_rc" -eq 0 ] && [ -z "$pr_want" ]; then pr_none=1; fi
@@ -1098,7 +1105,7 @@ ci_red_unlock() {
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
     ci_red_names=""
-    _cr_rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api --paginate "repos/{owner}/{repo}/commits/$1/check-runs" \
+    _cr_rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" api --paginate "repos/{owner}/{repo}/commits/$1/check-runs" \
         --jq '.check_runs[] | [.status, (.conclusion // ""), .name] | @tsv' 2>/dev/null)" || {
         echo "review-round: cannot read the check-runs of $1 (gh api) - no CI-red unlock" >&2
         return 1
@@ -1435,15 +1442,21 @@ fi
 
 # from: print the reviewed head the current round started from (.from), only
 # when .round holds 2 or 3 at call time; in the first round and the delta
-# round (which has its own .delta) it prints nothing. Read-only. Exit 0, or 5 on an
-# unreadable counter.
+# round (which has its own .delta) it prints nothing. Read-only, but it reads the
+# round and .from under the counter lock start and abort write under, so it
+# never sees a round start has half written. Exit 0, or 5 on an unreadable
+# counter or a counter lock it cannot take.
 if [ "$verb" = "from" ]; then
-    read_round || exit 5
-    if [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; then
+    counter_lock || exit 5
+    from_rc=0
+    read_round || from_rc=5
+    if [ "$from_rc" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then
         # swallow-ok: an empty, missing or invalid .from prints nothing
         state_sha "$from_state" || true
     fi
-    exit 0
+    SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+        bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    exit "$from_rc"
 fi
 
 # abort: a round whose panel aborted after start (panel-first-pass exit 7, or
@@ -1712,7 +1725,11 @@ fi
 # Exit 0 = no still-open findings; exit 3 = one or more rows are still-open
 # (the caller's round was not actually clean for that finding, whether it was
 # left agreed or never adjudicated at all); exit 1 = a malformed ledger row
-# or a ledger write failure; exit 2 = --head does not resolve to a commit;
+# or a ledger write failure, or a finding row with a BLANK head and no later row
+# that looks like its retry (same branch, finding id, model, severity, file,
+# artifact and perspective, at a head that names a commit here). With such a row the blank
+# one is skipped and counted and that row decides; the match is a heuristic and
+# can pass a blank row that was not a retry; exit 2 = --head does not resolve to a commit;
 # exit 5 = the CR ledger file itself is missing.
 if [ "$verb" = "promote" ]; then
     if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
@@ -1739,6 +1756,19 @@ for (const line of lines) {
 if (malformed !== 0) {
   process.stdout.write(JSON.stringify({malformed}));
   process.exit(0);
+}
+const commitCache = new Map();
+function isCommit(value) {
+  const h = String(value || "");
+  if (!commitCache.has(h)) {
+    let ok = false;
+    try {
+      cp.execFileSync("git", ["rev-parse", "--verify", "--quiet", h + "^{commit}"], {stdio: "ignore"});
+      ok = true;
+    } catch { ok = false; }
+    commitCache.set(h, ok);
+  }
+  return commitCache.get(h);
 }
 const resolveCache = new Map();
 function resolvesToHead(value) {
@@ -1821,7 +1851,27 @@ for (const o of atHead) {
   fpAtHead.get(o.fingerprint).add(idKey);
 }
 const outLines = [];
-for (const row of findingRows) {
+const blankRefused = [];
+for (let ri = 0; ri < findingRows.length; ri++) {
+  const row = findingRows[ri];
+  if (!String(row.head || "").trim()) {
+    // A row written with no head cannot be amended (amend finds a
+    // row by head) and no later commit relates to it. It is skipped only when
+    // a row that looks like its retry exists: written later in the ledger, on
+    // this branch, at a head that names a commit here, with the same finding id, model,
+    // severity, file, artifact and perspective. That row is judged on its own
+    // below. Finding ids recur across PRs, so the id alone proves nothing, and
+    // even this match is a heuristic: it can pass a blank row that was not a
+    // retry. With no such row there is nothing to judge it by, and promote
+    // refuses rather than guess.
+    const hasTwin = !!row.finding_id && findingRows.some((t, ti) => ti > ri && /^[0-9a-f]{7,64}$/i.test(String(t.head || "")) && isCommit(t.head) &&
+      t.finding_id === row.finding_id && (t.artifact || "diff") === (row.artifact || "diff") &&
+      (t.perspective || "off") === (row.perspective || "off") && (t.model || "") === (row.model || "") &&
+      (t.severity || "") === (row.severity || "") && (t.file || "") === (row.file || ""));
+    if (hasTwin) outLines.push(JSON.stringify({action: "skip-blank-head", id: row.finding_id, head: "", branch: row.branch}));
+    else blankRefused.push(row.finding_id || "(no id)");
+    continue;
+  }
   const idKey = [row.head, row.finding_id, row.artifact || "diff", row.perspective || "off"].join(SEP);
   const effective = Object.assign({}, row, amendSetFor(row.branch || "", row.head, row.finding_id, row.artifact || "diff", row.perspective || "off") || {});
   const verdict = String(effective.verdict || "").trim();
@@ -1830,7 +1880,14 @@ for (const row of findingRows) {
   else if (verdict === "conflict" || verdict === "unaddressed") action = "warn-unadjudicated";
   else if (verdict === "") action = "still-open-unadjudicated";
   else if (verdict !== "agreed") continue;
-  else if (resolvesToHead(row.head)) {
+  else if ((row.artifact === "spec" || row.artifact === "plan") && effective.head && !/^[0-9a-f]{7,64}$/i.test(String(effective.head))) {
+    // A design-skill finding (artifact exactly spec or plan, head not a commit
+    // hex) edits a document outside the tree: no later commit could fix it, so
+    // it can never be promoted. The head is the amended one, as in the sweep
+    // gate, so a row re-keyed onto a commit stays open. An amend cannot set the
+    // artifact, so it cannot relabel a code finding into this case.
+    continue;
+  } else if (resolvesToHead(row.head)) {
     // A finding raised (and agreed) AT the
     // very head being asserted clean has had no later commit that could have
     // fixed it — promoting it here would stamp an untouched, still-present
@@ -1855,7 +1912,7 @@ for (const row of findingRows) {
   }));
 }
 fs.writeFileSync(e.DECISIONS_FILE, outLines.length ? outLines.join("\n") + "\n" : "");
-process.stdout.write(JSON.stringify({malformed: 0}));
+process.stdout.write(JSON.stringify({malformed: 0, blank: blankRefused.join(", ")}));
 ' 2>/dev/null)"
     node_rc=$?
     malformed="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).malformed)))' 2>/dev/null)" || malformed=""
@@ -1869,8 +1926,18 @@ process.stdout.write(JSON.stringify({malformed: 0}));
         echo "review-round: malformed CR ledger row(s) — refusing automatic promotion" >&2
         exit 1
     fi
+    if ! blank_refused="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).blank||"")))')"; then
+        rm -f "$decisions_tmp"
+        echo "review-round: could not evaluate the ledger for promotion" >&2
+        exit 1
+    fi
+    if [ -n "$blank_refused" ]; then
+        rm -f "$decisions_tmp"
+        echo "review-round: finding row(s) with a blank head and no later row on $branch that looks like their retry (same finding id, model, severity, file, artifact and perspective, at a commit that exists here): $blank_refused - the ledger is append-only, so record each again with ledger-append.sh finding --head <sha>; nothing was promoted" >&2
+        exit 1
+    fi
     head8="$(printf '%s' "$full_head" | cut -c1-8)"
-    promoted=0 still_open=0 skip_terminal=0 warn_count=0 write_fail=0
+    promoted=0 still_open=0 skip_terminal=0 warn_count=0 blank_skipped=0 write_fail=0
     while IFS= read -r decision || [ -n "$decision" ]; do
         [ -n "$decision" ] || continue
         action="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).action))' 2>/dev/null)" || action=""
@@ -1880,6 +1947,11 @@ process.stdout.write(JSON.stringify({malformed: 0}));
         row_artifact="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).artifact))' 2>/dev/null)" || row_artifact=""
         row_perspective="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).perspective))' 2>/dev/null)" || row_perspective=""
         row_verdict="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).verdict))' 2>/dev/null)" || row_verdict=""
+        if [ "$action" = "skip-blank-head" ] && [ -n "$id" ]; then
+            echo "skip-blank-head ${id} (blank head; the row at a real head decides)"
+            blank_skipped=$((blank_skipped + 1))
+            continue
+        fi
         if [ -z "$action" ] || [ -z "$id" ] || [ -z "$row_head" ]; then
             write_fail=1
             break
@@ -1921,7 +1993,7 @@ process.stdout.write(JSON.stringify({malformed: 0}));
         echo "review-round: ledger write failed during promotion" >&2
         exit 1
     fi
-    echo "review-round promote: $promoted promoted, $still_open still-open, $skip_terminal skip-terminal, $warn_count warn (head $head8)"
+    echo "review-round promote: $promoted promoted, $still_open still-open, $skip_terminal skip-terminal, $warn_count warn, $blank_skipped blank-head skipped (head $head8)"
     [ "$still_open" -eq 0 ] || exit 3
     exit 0
 fi
@@ -1956,12 +2028,12 @@ if [ "$round" -lt 4 ]; then
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
-    early_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+    early_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" pr list --head "$branch" --state open \
         --json number -q 'if length == 1 then .[0].number else "" end' 2>/dev/null)" || early_pr=""
     case "$early_pr" in
         ''|*[!0-9]*) early_pr="" ;;
     esac
-    early_repo="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh repo view --json owner,name,defaultBranchRef \
+    early_repo="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" repo view --json owner,name,defaultBranchRef \
         --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)" || early_repo=""
     early_nwo="${early_repo%% *}"
     early_default="${early_repo#* }"
@@ -1997,6 +2069,10 @@ fi
 cap_reason='Suggestion deferred after the three-round /pr-check cap.'
 delta_reason='Finding deferred in the one delta round after the three-round /pr-check cap.'
 early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes the review loop on a PR that touches no CI trust path.'
+# An Important deferred in the second or third round because its ledger row
+# carries the structured pre_existing field (an amend row critic-pre-existing-tag.py
+# wrote after git blame placed the cited line before the PR). Never read from text.
+pre_reason='Important finding deferred: the cited code is older than this PR (tagged pre-existing).'
 # --head is the head the one delta round reviewed.
 delta_mode=0
 if [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
@@ -2016,7 +2092,11 @@ else
     round_label="round $round"
 fi
 
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+# The pre_existing field counts only at the rounds the tagger runs in (2 and 3),
+# and never in the delta round, where an Important is classified by an amend.
+pre_ok=0
+if [ "$delta_mode" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then pre_ok=1; fi
+analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
@@ -2084,7 +2164,29 @@ for (const o of findings.values()) {
     else if (!resolved && verdict !== "fixed") blocking.push(id);
     continue;
   }
-  if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
+  // I1: a Critical is never deferred by the pre_existing field. Only the
+  // boolean true on the effective row counts, never a [pre-existing] in text.
+  const preExisting = e.PRE_OK === "1" && severity === "imp" && o.pre_existing === true;
+  // The finding keeps its own class and none is forced: an escape-class Important
+  // is fixed in the PR, and one with no class cannot be told from it, so only a
+  // hardening or polish class from the adjudicator defers it.
+  const preClass = typeof o.fu_class === "string" ? o.fu_class.trim() : "";
+  if (preExisting && !resolved && (!verdict || verdict === "agreed")) {
+    if (preClass === "hardening" || preClass === "polish") pending.push({
+      id,
+      artifact: o.artifact || "diff",
+      perspective: o.perspective || "off",
+      fu_class: preClass,
+      fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
+      reason: e.PRE_REASON,
+      class: typeof o.class === "string" ? o.class.trim() : "",
+      text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
+    });
+    else if (preClass === "escape") blocking.push(id);
+    else unclassified.push(id);
+  }
+  else if (preExisting && trackedDeferred && reason === e.PRE_REASON) capDeferred.push({id, ticket});
+  else if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
   else if (!verdict && (severity === "sug" || severity === "nit")) pending.push({
     id,
     artifact: o.artifact || "diff",
@@ -2122,6 +2224,10 @@ if [ -n "$blocking" ] && [ "$delta_mode" -eq 1 ]; then
     exit 4
 fi
 unclassified="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).unclassified.join(" ")))' 2>/dev/null)" || unclassified=""
+if [ -n "$unclassified" ] && [ "$delta_mode" -eq 0 ]; then
+    echo "review-round: pre-existing Important finding(s) need an explicit fu_class amend before they can be deferred: $unclassified - amend each with --set fu_class=escape (fix it in this PR), --set fu_class=hardening (with its fu_why) or --set fu_class=polish, then re-run defer" >&2
+    exit 4
+fi
 if [ -n "$unclassified" ]; then
     echo "review-round: Important finding(s) in the delta round need an explicit fu_class amend before they can be deferred: $unclassified - amend each with --set fu_class=escape (fix it in this PR) or --set fu_class=hardening (exactly; polish or any other class does not qualify), then re-run defer" >&2
     exit 4
@@ -2132,6 +2238,21 @@ if [ -n "$blocking" ]; then
 fi
 if [ "$pending_count" -eq 0 ] && [ "$cap_deferred_count" -eq 0 ]; then
     exit 0
+fi
+
+# Every pending hardening finding needs a valid reason of its own or the
+# supplied --fu-why, checked once before anything is commented, filed or
+# amended, so a refused run leaves nothing behind for a retry to repeat.
+hardening_unreasoned="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const ok=/^(unseen-failure|no-check|vacuous-check|no-recovery|silent-rot)$/;process.stdout.write(JSON.parse(s).pending.filter(f=>f.fu_class==="hardening"&&!ok.test(f.fu_why||"")).map(f=>f.id).join(" "))})')" || exit 5
+if [ -n "$hardening_unreasoned" ]; then
+    case "$fu_why_arg" in
+        unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) ;;
+        *)
+            echo "review-round: hardening finding(s) with no valid fu_why: $hardening_unreasoned; marker remains pending" >&2
+            echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2
+            exit 6
+            ;;
+    esac
 fi
 
 # defer_to is a single small ticket-key string (well under the pipe
@@ -2187,7 +2308,7 @@ if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
-    pr_title="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+    pr_title="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" pr list --head "$branch" --state open \
         --json title -q 'if length == 1 then .[0].title else "" end' 2>/dev/null)" || pr_title=""
     residual_parent="$(printf '%s\n' "$pr_title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sed -n '1p')" || residual_parent=""
     # An early close usually has no PR yet: the conventional-commit hook puts
@@ -2211,14 +2332,36 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
         rm -f "$batch_body"
         exit 5
     fi
-    # ponytail: only Suggestions and nits reach an early close, and the
-    # analysis classes each one polish, so polish is the batch's most severe
-    # class. Upgrade: when a batch can hold other classes, pass the most
-    # severe of them (escape over hardening over polish).
+    # The batch takes the most severe class it holds. Suggestions and nits are
+    # polish; a pre-existing Important may be hardening (escape never reaches a
+    # deferral), and a hardening batch needs a valid reason, taken from its first
+    # hardening finding or from --fu-why.
+    if ! batch_why="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).pending.filter(f=>f.fu_class==="hardening");const ok=h.map(f=>f.fu_why).find(w=>/^(unseen-failure|no-check|vacuous-check|no-recovery|silent-rot)$/.test(w));process.stdout.write(h.length?(ok||"invalid"):"")})')"; then
+        rm -f "$batch_body"
+        exit 5
+    fi
+    batch_class=polish
+    batch_why_args=()
+    if [ -n "$batch_why" ]; then
+        batch_class=hardening
+        if [ "$batch_why" = invalid ]; then batch_why="$fu_why_arg"; fi
+        case "$batch_why" in
+            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) batch_why_args=(--fu-why "$batch_why") ;;
+            *)
+                rm -f "$batch_body"
+                echo "review-round: the batch holds a hardening finding but none has a valid fu_why; marker remains pending" >&2
+                echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2
+                exit 6
+                ;;
+        esac
+    fi
+    # ponytail: a batch that already exists keeps the class it was filed with
+    # and only gains a comment. Upgrade: read that ticket's class and file a
+    # hardening finding on its own when the batch is polish.
     create_rc=0
     created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
         --type Task --title "Review follow-ups for $branch" --sector 'Ship loop' --labels standalone \
-        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class polish)" || create_rc=$?
+        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class "$batch_class" ${batch_why_args[@]+"${batch_why_args[@]}"})" || create_rc=$?
     rm -f "$batch_body"
     defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
     if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
@@ -2251,6 +2394,9 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
     artifact="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).artifact))' 2>/dev/null)" || artifact=""
     perspective="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).perspective))' 2>/dev/null)" || perspective=""
     fu_class="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).fu_class))' 2>/dev/null)" || fu_class=""
+    # A finding may carry its own deferral reason (a pre-existing Important);
+    # the rest take the round's.
+    finding_reason="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).reason||""))' 2>/dev/null)" || finding_reason=""   # swallow-ok: an empty reason takes the round's reason
     if [ -z "$finding_id" ] || [ -z "$artifact" ] || [ -z "$perspective" ] || [ -z "$fu_class" ]; then
         amend_rc=5
         break
@@ -2324,7 +2470,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         --branch "$branch" --head "$full_head" --id "$finding_id" \
         --artifact "$artifact" --perspective "$perspective" \
         --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" ${fu_why:+--set "fu_why=$fu_why"} \
-        --set class=unattributed --set "reason=$defer_reason" \
+        --set class=unattributed --set "reason=${finding_reason:-$defer_reason}" \
         --reason "$amend_why"; then
         amend_rc=5
         break

@@ -11,7 +11,7 @@ such as Need or Token and the file that answers it is missing. worker-graph.sh u
       concept and rationale labels, its rationale text and its code labels, TF-IDF weighted
       across all files. Prints nothing when no file scores or the graph cannot be read.
       Files under EVAL_DIR are never candidates. The question is also asked in the other fleet
-      vocabulary (scripts/qmd/vocab-expand.py swaps console/chief, leg/worker, ... from the rename
+      vocabulary (scripts/qmd/vocab-expand.py swaps console/chief and the other pairs from the rename
       registry) and a file keeps its best score over the versions. A swapped version only
       re-ranks a file that already shares a non-registry word with the question, so swapped-in
       words alone never bring a file in ("wave of workers" never seeds a worker thread). A file the

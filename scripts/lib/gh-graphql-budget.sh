@@ -41,10 +41,14 @@ GHB_WAITED=0
 # An exhausted budget makes gh exit non-zero yet still print the headers, so
 # the exit status is ignored and only the headers are parsed.
 ghb_read() {
-    local out
+    local out reader=gh
     GHB_REMAINING=""
     GHB_RESET=""
-    out=$(gh api -i graphql -f query='{rateLimit{remaining}}' 2>&1 | tr -d '\r') || true
+    # the budget that matters is the token the reads ride (gh-read.sh), so
+    # probe through the router when the caller has sourced it; its one-line warning
+    # would land in the parsed text, hence QUIET. Without it (a bare source) plain gh.
+    if declare -F gh_read >/dev/null 2>&1; then reader=gh_read; fi
+    out=$(GH_READ_QUIET=1 "$reader" api -i graphql -f query='{rateLimit{remaining}}' 2>&1 | tr -d '\r') || true
     GHB_REMAINING=$(printf '%s\n' "$out" | awk -F': *' 'tolower($1)=="x-ratelimit-remaining" {print $2; exit}')
     GHB_RESET=$(printf '%s\n' "$out" | awk -F': *' 'tolower($1)=="x-ratelimit-reset" {print $2; exit}')
     case "$GHB_REMAINING" in ''|*[!0-9]*) GHB_REMAINING=""; GHB_RESET=""; return 1 ;; esac

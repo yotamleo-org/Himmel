@@ -55,8 +55,9 @@ case "$op" in
   create) grab "$@"
         # What the real CLI refuses: a body without the six sections (a real Plan and DoD line), a Task with neither
         # a parent nor the standalone label, a missing Sector.
-        f=""; lbl=""; sec=""
-        while [ $# -gt 0 ]; do case "$1" in --desc-file) f="$2"; shift 2 ;; --labels) lbl="$2"; shift 2 ;; --sector) sec="$2"; shift 2 ;; *) shift ;; esac; done
+        f=""; lbl=""; sec=""; ttl=""; all="$*"
+        while [ $# -gt 0 ]; do case "$1" in --desc-file) f="$2"; shift 2 ;; --labels) lbl="$2"; shift 2 ;; --sector) sec="$2"; shift 2 ;; --title) ttl="$2"; shift 2 ;; *) shift ;; esac; done
+        printf '%s\n' "$ttl" >>"$d/titles.log"
         [ -f "$d/create.err" ] && { cat "$d/create.err" >&2; exit 1; }
         for h in Impact What Why Plan DoD "Agent detail"; do
           grep -q "^## $h\$" "$f" || { echo "jira: refused: ticket body lacks the ticket shape: missing \"## $h\"" >&2; exit 1; }
@@ -67,7 +68,13 @@ case "$op" in
         done
         case ",$lbl," in *,standalone,*) ;; *) echo "jira: refused: a Task needs --parent or --labels standalone" >&2; exit 1 ;; esac
         [ -n "$sec" ] || { echo "jira: refused: no Sector, pass --sector" >&2; exit 1; }
+        # What the real CLI refuses: a Task with no placement (create.ts placeAtFiling), after the title warning.
+        case " $all " in
+          *" --proposed-version "*|*" --fix-version "*) ;;
+          *) printf 'jira: warning: title does not fit the template: it is too long (99 characters, keep it at most 90) (filing anyway)\nTicket title (system or user-facing):\n  system:       <Sector>: <the result>\nA Task needs a placement (sector: %s): pass --proposed-version <v> to file it with a proposed version\n' "$sec" >&2; exit 1 ;;
+        esac
         printf '%s\n' "$sec" >>"$d/sectors.log"
+        printf '%s\n' "$all" >>"$d/creates.log"
         [ "$(wc -c <"$f")" -gt 8000 ] && { echo "HTTP 400: The entered text is too long. It exceeds the allowed limit" >&2; exit 1; }
         n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) grab "$@"; echo "Comment added to $1" ;;
@@ -132,8 +139,8 @@ check "HIMMEL-7354: the body carries the six ticket sections" '[ "$(grep -c "^##
 check "HIMMEL-7354: the create names the standalone label and the table sector" 'grep -q -- "^create .*--labels failure-loop,fl-denied-guard-pr-check-literal,standalone" "$STUB/calls.log" && grep -q -F -- "--sector Quality & proof" "$STUB/calls.log" && [ "$(cat "$STUB/sectors.log")" = "Quality & proof" ]'
 check "the body names the class, the worker count and both workers" 'grep -q "denied/guard-pr-check-literal" "$body" && grep -q "distinct workers (14 d): 2" "$body" && grep -q "N100, N200" "$body"'
 check "no canary in the body, the call log, the state or the decision log" '! grep -q "$CANARY" "$body" "$STUB/calls.log" "$ST" "$LOG"'
-check "one filed line, carrying the ticket" '[ "$(dlines "$LOG")" = 1 ] && decs "$LOG" | jq -e "select(.class == \"denied/guard-pr-check-literal\") | .decision == \"filed\" and .ticket == \"HIMMEL-9001\" and .legs == 2 and (.ts | test(\"^2026-10-07T12:00:00\"))" >/dev/null'
-check "e. N500 + N500b count as one leg: no decision" '! grep -q "denied/guard-gh" "$LOG"'
+check "one filed line, carrying the ticket" '[ "$(dlines "$LOG")" = 1 ] && decs "$LOG" | jq -e "select(.class == \"denied/guard-pr-check-literal\") | .decision == \"filed\" and .ticket == \"HIMMEL-9001\" and .workers == 2 and (.ts | test(\"^2026-10-07T12:00:00\"))" >/dev/null'
+check "e. N500 + N500b count as one worker: no decision" '! grep -q "denied/guard-gh" "$LOG"'
 check "signal-only, never-routed and run_error classes log nothing" '! grep -Eq "traj/|blocked/|suite/test-tick|run_error/" "$LOG"'
 check "a subagent-role denial does not count" '! grep -q "block-git-stash" "$LOG"'
 check "a row older than 14 days does not count" '! grep -q "guard-relay-writes" "$LOG"'
@@ -153,7 +160,14 @@ check "the comment body passes the alphabet check and has the new count" '[ -n "
 check "one commented line" '[ "$(dlines "$LOG")" = 2 ] && [ "$(decs "$LOG" | jq -r "select(.decision == \"commented\") | .ticket")" = HIMMEL-9001 ]'
 row N400 denied/guard-pr-check-literal 1
 route >/dev/null 2>&1
-check "a fourth worker the same day does not comment twice" '[ "$(calls comment)" = 1 ] && [ "$(decs "$LOG" | jq -r "select(.legs == 4) | .decision")" = skipped:comment-daily ]'
+check "a fourth worker the same day does not comment twice" '[ "$(calls comment)" = 1 ] && [ "$(decs "$LOG" | jq -r "select(.workers == 4) | .decision")" = skipped:comment-daily ]'
+# a state file written before the rename keeps last_legs: it still dedupes the repeated decision while legacy names are on
+nd="$(dlines "$LOG")"
+if jq '(.classes[] | select(has("last_workers"))) |= (.last_legs = .last_workers | del(.last_workers))' "$ST" >"$ST.old"; then mv "$ST.old" "$ST"; else bad "the legacy last_legs state fixture is written"; fi
+check "the fixture carries last_legs and no last_workers before the route" 'jq -e "[.classes[] | select(has(\"last_legs\"))] | length > 0" "$ST" >/dev/null && ! grep -q last_workers "$ST"'
+HIMMEL_LEGACY_NAMES=1 route >/dev/null 2>&1
+check "an old last_legs state key still dedupes a repeated decision: no new line" '[ "$(dlines "$LOG")" = "$nd" ]'
+check "the old state key is carried as last_workers" 'jq -e "[.classes[] | select(has(\"last_workers\"))] | length > 0" "$ST" >/dev/null && ! grep -q last_legs "$ST"'
 
 echo "c + d. the daily cap and the memory-inbox candidate"
 row N100 suite/test-board.sh 0 false worker 2026-10-06T10:00:00Z true; row N200 suite/test-board.sh 0 false worker 2026-10-06T10:00:00Z true
@@ -174,8 +188,8 @@ check "and it still writes no second inbox candidate" '[ "$(grep -c "^- " "$INBO
 
 echo "f. every decision has exactly one decision-log line"
 check "the log is 8 lines, one per decision, in order" '[ "$(dlines "$LOG")" = 8 ] && [ "$(decs "$LOG" | jq -r .decision | tr "\n" " ")" = "filed commented skipped:comment-daily filed filed capped commented filed " ]'
-check "every line is the standard envelope plus {class,workers,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"legs\",\"source\",\"ticket\",\"ts\",\"v\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/worker-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
-check "every route-intent line is the standard envelope plus {class,workers,intent}, and each one precedes a decision line" '[ "$(jq -c "select(.kind == \"route-intent\") | keys" "$LOG" | sort -u)" = "[\"class\",\"host\",\"intent\",\"kind\",\"legs\",\"source\",\"ts\",\"v\"]" ] && [ "$(jq -r .kind "$LOG" | grep -c route-intent)" = "$(( $(dlines "$LOG") - $(decs "$LOG" | jq -r .decision | grep -Ec "^(skipped|capped|recurred)") ))" ]'
+check "every line is the standard envelope plus {class,workers,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"source\",\"ticket\",\"ts\",\"v\",\"workers\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/worker-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
+check "every route-intent line is the standard envelope plus {class,workers,intent}, and each one precedes a decision line" '[ "$(jq -c "select(.kind == \"route-intent\") | keys" "$LOG" | sort -u)" = "[\"class\",\"host\",\"intent\",\"kind\",\"source\",\"ts\",\"v\",\"workers\"]" ] && [ "$(jq -r .kind "$LOG" | grep -c route-intent)" = "$(( $(dlines "$LOG") - $(decs "$LOG" | jq -r .decision | grep -Ec "^(skipped|capped|recurred)") ))" ]'
 
 echo "dry-run writes nothing and calls no Jira"
 row N600 denied/guard-pr-check-literal 1
@@ -201,7 +215,7 @@ check "a search error files nothing and logs skipped:search-error" '[ "$(calls c
 rm -f "$STUB/list.rc"
 printf -- '- class: denied/x\n- note: %s\n' "$CANARY" >"$TMP/badbody"
 check "check-body refuses a line outside the alphabet" '! python3 "$FR" check-body "$TMP/badbody" >/dev/null 2>&1'
-printf -- '- class: denied/x\n- legs: N1, rm -rf /\n' >"$TMP/badbody2"
+printf -- '- class: denied/x\n- workers: N1, rm -rf /\n' >"$TMP/badbody2"
 check "check-body refuses a value outside its label's alphabet" '! python3 "$FR" check-body "$TMP/badbody2" >/dev/null 2>&1'
 
 F3="$TMP/f3"; mkdir -p "$F3"; n0="$(calls create)"
@@ -450,7 +464,7 @@ jq -nc --arg c "$CANARY" 'range(1; 1501) as $i | {v:1, ts:"2026-10-06T10:00:00Z"
 python3 "$FR" route --ledger "$F18/l.jsonl" --state "$F18/s.json" --log "$F18/log" --inbox "$F18/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F18/out" 2>&1
 check "HIMMEL-7004: the 1500-worker class files, not skipped:jira-error" '[ "$(decs "$F18/log" | jq -r "select(.class == \"denied/guard-wide\") | .decision")" = filed ]'
 b18="$(ls -t "$STUB"/body.create.* | head -n 1)"
-check "HIMMEL-7004: the body counts all 1500 workers and lists exactly 500 of them" 'grep -q "distinct workers (14 d): 1500" "$b18" && [ "$(grep "^- legs: " "$b18" | tr -cd N | wc -c)" -eq 500 ] && python3 "$FR" check-body "$b18" >/dev/null'
+check "HIMMEL-7004: the body counts all 1500 workers and lists exactly 500 of them" 'grep -q "distinct workers (14 d): 1500" "$b18" && [ "$(grep "^- workers: " "$b18" | tr -cd N | wc -c)" -eq 500 ] && python3 "$FR" check-body "$b18" >/dev/null'
 
 echo "HIMMEL-7420: a class whose ticket and PR lists are long still files, with the cut counted"
 F19="$TMP/f19"; mkdir -p "$F19"
@@ -462,6 +476,30 @@ python3 "$FR" route --ledger "$F19/l.jsonl" --state "$F19/s.json" --log "$F19/lo
 check "HIMMEL-7420: the class with 1500 tickets and PRs files, not skipped:jira-error" '[ "$(decs "$F19/log" | jq -r "select(.class == \"error/Bash\") | .decision")" = filed ]'
 b19="$(ls -t "$STUB"/body.create.* | head -n 1)"
 check "HIMMEL-7420: the body lists 200 tickets and 200 PRs, counts the rest, and passes the alphabet" '[ "$(grep "^- tickets: " "$b19" | tr -cd H | wc -c)" -eq 200 ] && [ "$(grep "^- PRs: " "$b19" | tr -cd "#" | wc -c)" -eq 200 ] && grep -q "^- not listed: 2600 more tickets or PRs, see the digest$" "$b19" && python3 "$FR" check-body "$b19" >/dev/null'
+
+echo "HIMMEL-8734: a filing carries a placement, a template-fit title, and a refusal is logged by its own line"
+F20="$TMP/f20"; mkdir -p "$F20"
+SAVE="$LED"; LED="$F20/l.jsonl"
+row N1 error/Bash:usage:check-host-file-read-sinks; row N2 error/Bash:usage:check-host-file-read-sinks; row N3 error/Bash:usage:check-host-file-read-sinks
+LED="$SAVE"
+: >"$STUB/titles.log"; : >"$STUB/creates.log"
+python3 "$FR" route --ledger "$F20/l.jsonl" --state "$F20/s.json" --log "$F20/log" --inbox "$F20/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F20/out" 2>&1
+check "HIMMEL-8734: a Task the CLI would refuse for placement is filed with one" '[ "$(decs "$F20/log" | jq -r "select(.class == \"error/Bash:usage:check-host-file-read-sinks\") | .decision")" = filed ] && grep -q -- "--proposed-version backlog" "$STUB/creates.log" && grep -q -- "--backlog" "$STUB/creates.log" && grep -q -- "--why [^-]" "$STUB/creates.log"'
+t20="$(head -n 1 "$STUB/titles.log")"
+check "HIMMEL-8734: the title opens with the Sector, is at most 90 characters and has no internal name" '[ -n "$t20" ] && [ "${#t20}" -le 90 ] && case "$t20" in "Quality & proof: "*) true ;; *) false ;; esac && ! printf %s "$t20" | grep -Eq "Bash:|[a-z]+_[a-z_]+|--[a-z]|\.(sh|py|ts|md)\b"'
+F21="$TMP/f21"; mkdir -p "$F21"
+SAVE="$LED"; LED="$F21/l.jsonl"; row N1 denied/guard-twelve 1; row N2 denied/guard-twelve 1; LED="$SAVE"
+printf 'jira: warning: title does not fit the template: it is too long (99 characters, keep it at most 90) (filing anyway)\nTicket title (system or user-facing):\n  system:       <Sector>: <the result>\nSectors: A, B\nLeave out commit prefixes.\nA Task needs a placement (sector: Quality & proof): pass --proposed-version <v>\n' >"$STUB/create.err"
+python3 "$FR" route --ledger "$F21/l.jsonl" --state "$F21/s.json" --log "$F21/log" --inbox "$F21/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F21/out" 2>&1
+rm -f "$STUB/create.err"
+check "HIMMEL-8734: a warning followed by a refusal logs the refusal, not the warning" 'grep -q "^failure-router: denied/guard-twelve reason: A Task needs a placement" "$F21/out" && ! grep -q "reason: jira: warning" "$F21/out"'
+
+F22="$TMP/f22"; mkdir -p "$F22"
+SAVE="$LED"; LED="$F22/l.jsonl"; row N1 denied/guard-thirteen 1; row N2 denied/guard-thirteen 1; LED="$SAVE"
+jq '.sector = "Visibility"' "$HERE/failure-routes.table.json" >"$F22/table.json"
+: >"$STUB/titles.log"
+python3 "$FR" route --table "$F22/table.json" --ledger "$F22/l.jsonl" --state "$F22/s.json" --log "$F22/log" --inbox "$F22/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+check "the title opens with the table's Sector, not a fixed one" 'case "$(head -n 1 "$STUB/titles.log")" in "Visibility: "*) true ;; *) false ;; esac'
 
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'

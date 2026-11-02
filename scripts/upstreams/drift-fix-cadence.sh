@@ -455,6 +455,8 @@ emit_runner() {
     if [ -n "$q_node_dir" ]; then
         printf 'PATH=%s:$PATH\nexport PATH\n' "$q_node_dir"
     fi
+    # cron cannot read the macOS Keychain login (SCRUM-4, runner format v24).
+    cadence_oauth_token_lines
     printf 'log=%s\n' "$q_log"
     printf 'if [ -f "$log" ]; then mv -f "$log" "$log.prev" 2>/dev/null; fi\n'
     printf '{\n'

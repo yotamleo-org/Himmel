@@ -102,6 +102,9 @@ _tracker_jira_link() {
     return $rc
 }
 
+# A Jira Sector is set by config-ui's own write path (jira-write.ts, `edit --sector`), so the seam has none.
+_tracker_jira_sector() { return 4; }
+
 # _tracker_jira_query [field=value ...] — JQL scoped to the resolver's project
 # key (never a hardcoded one), printed as <id> TAB <status> TAB <title>.
 _tracker_jira_query() {

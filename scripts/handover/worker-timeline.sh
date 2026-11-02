@@ -369,13 +369,13 @@ node -e '
   // branch name = label with the appended "@<head>" suffix stripped. Split on
   // the LAST '@' (the head is the trailing hex token) so a branch name that
   // itself contains '@' is not truncated.
-  const branch = (worker) => { const i = worker.lastIndexOf("@"); return i < 0 ? leg : worker.slice(0, i); };
+  const branch = (worker) => { const i = worker.lastIndexOf("@"); return i < 0 ? worker : worker.slice(0, i); };
   const rows = [];
   for (const line of fs.readFileSync(0, "utf8").split(/\r?\n/)){
     if (line === "") continue;
     const c = line.split("\t");
     if (c.length < 6) continue;
-    rows.push({ ms: Number(c[0]), src: c[1], leg: c[2], ev: c[3], session: c[4], iso: c[5] });
+    rows.push({ ms: Number(c[0]), src: c[1], worker: c[2], ev: c[3], session: c[4], iso: c[5] });
   }
   const fmt = (ms) => {
     let s = Math.floor(ms/1000), neg = s < 0; if (neg) s = -s;
@@ -399,7 +399,7 @@ node -e '
     const isDisp = r.ev.startsWith("dispatch");
     const isLand = r.ev.startsWith("land");
     if (!isDisp && !isLand) continue;
-    if (!sessions.has(r.session)) sessions.set(r.session, { leg: r.leg });
+    if (!sessions.has(r.session)) sessions.set(r.session, { worker: r.worker });
     const o = sessions.get(r.session);
     if (isDisp && !o.disp) o.disp = r;
     if (isLand) o.land = r;
@@ -432,7 +432,7 @@ node -e '
   const gate = new Map();   // branch -> [firstMs, lastMs]
   for (const r of rows){
     if (r.src !== "gate" || !inWin(r.ms)) continue;
-    const br = branch(r.leg);
+    const br = branch(r.worker);
     if (!gate.has(br)) gate.set(br, [r.ms, r.ms]);
     else { const g = gate.get(br); g[0] = Math.min(g[0], r.ms); g[1] = Math.max(g[1], r.ms); }
   }
@@ -452,7 +452,7 @@ node -e '
     anyWorker = true;
     const tag = (o.disp.ms < since) ? " (dispatched pre-window)" : "";
     const land = o.land ? `${fmt(o.land.ms - o.disp.ms)} (land ${o.land.ev.replace(/^land /,"")})${tag}` : "(never landed — still running or aborted)";
-    const label = `${o.leg} [${session}]`;
+    const label = `${o.worker} [${session}]`;
     const name = label.length > 34 ? label.slice(0,33)+"…" : label;
     process.stdout.write(`  ${name.padEnd(34)} ${land}\n`);
   }
@@ -472,7 +472,7 @@ node -e '
       // as-is; only gate labels carry the suffix branch() strips.
       let waitStr = "n/a";
       let best = null;
-      for (const o of sessions.values()) if (o.disp && o.leg === br && (!best || o.disp.ms < best)) best = o.disp.ms;
+      for (const o of sessions.values()) if (o.disp && o.worker === br && (!best || o.disp.ms < best)) best = o.disp.ms;
       if (best !== null) waitStr = fmt(g[0] - best);
       const name = br.length > 34 ? br.slice(0,33)+"…" : br;
       process.stdout.write(`  ${name.padEnd(34)} run=${run.padEnd(8)} wait-to-first=${waitStr}\n`);

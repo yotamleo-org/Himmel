@@ -36,7 +36,21 @@ esac
 EOF
 cat > "$tmp/bus" <<'EOF'
 #!/usr/bin/env bash
-[ "$1" = unread ] && printf '%s\n' "${BUS_N:-0}"
+case "$1" in unread|tip) ;; *) exit 0 ;; esac
+# BUS_AFTER_CALLS=<k> BUS_N_AFTER=<m> BUS_TIP_AFTER=<t>: after k unread calls the count turns into m and the
+# newest record number into t (a read, an inbox line, or a new bus message). BUS_AFTER2_CALLS=<k2> BUS_N_AFTER2=<m2>
+# turns the count into m2 after k2 calls (a read to 0, then a new message).
+if [ "$1" = unread ] && [ -n "${BUS_AFTER_CALLS:-}" ]; then
+  c=$(cat "$QLOG.busn" 2>/dev/null || echo 0); c=$((c + 1)); printf '%s' "$c" > "$QLOG.busn"
+fi
+c=$(cat "$QLOG.busn" 2>/dev/null || echo 0)
+if [ "$1" = tip ]; then
+  if [ -n "${BUS_AFTER_CALLS:-}" ] && [ "$c" -gt "$BUS_AFTER_CALLS" ]; then printf '%s\n' "${BUS_TIP_AFTER:-0}"; else printf '%s\n' "${BUS_TIP:-0}"; fi
+  exit 0
+fi
+if [ -n "${BUS_AFTER2_CALLS:-}" ] && [ "$c" -gt "$BUS_AFTER2_CALLS" ]; then printf '%s\n' "${BUS_N_AFTER2:-0}"; exit 0; fi
+if [ -n "${BUS_AFTER_CALLS:-}" ] && [ "$c" -gt "$BUS_AFTER_CALLS" ]; then printf '%s\n' "${BUS_N_AFTER:-0}"; exit 0; fi
+printf '%s\n' "${BUS_N:-0}"
 EOF
 chmod +x "$tmp/qdbus" "$tmp/bus"
 export QLOG="$tmp/qlog" QPID=4242 QSCREEN="$FIX/screen-idle.txt" BUS_WAKER_PROC="$tmp/proc"
@@ -49,7 +63,7 @@ FIXED='You have unread himmel messages: read them now.'
 
 run() { # run <polls> <grace> [extra args]; env BUS_N / inbox decide the count
   local polls="$1" grace="$2"; shift 2
-  : > "$QLOG"; rm -f "$QLOG.pid" "$QLOG.screen"
+  : > "$QLOG"; rm -f "$QLOG.pid" "$QLOG.screen" "$QLOG.busn"
   BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" \
     bash "$WAKER" --name legX --service org.kde.konsole-1 --session /Sessions/3 \
     --poll 0.2 --grace "$grace" --rewake 100 --max-polls "$polls" "$@" >/dev/null 2>&1
@@ -157,6 +171,52 @@ rc=$?
 [ "$rc" -eq 64 ] && pass "--pid 0 is refused (rc=64): kill -0 0 would probe the process group" || fail "--pid 0: expected rc=64, got rc=$rc"
 BUS_N=2 run 3 0 --pid "$$"
 [ "$RUN_RC" -eq 0 ] && grep -qF 'unread himmel messages: read them now.' "$QLOG" && pass "--pid: a live konsole still gets the wake" || fail "--pid live: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+
+echo "== rewake cap (HIMMEL-8863) =="
+# Mail that is never read (the worker is over the fill line and cannot read it) must not be re-typed forever:
+# --rewake 0 makes every poll eligible, so the sendText count is the cap.
+sends() { grep -cF "$FIXED" "$QLOG"; }
+wc -c < "$HANDOVER_DIR/inbox/legX.md" | tr -d ' \n' > "$HANDOVER_DIR/inbox/.cursor/legX" # the earlier inbox lines are consumed: only the bus count moves
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=2 run 14 0 --rewake 0
+[ "$RUN_RC" -eq 0 ] && [ "$(sends)" -eq 5 ] && pass "unread mail nobody reads: the default cap stops the wakes at 5" || fail "default cap: wanted 5 wakes, got $(sends)"
+[ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = capped ] && pass "the cap leaves state capped for the chief tick" || fail "capped state: '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+rm -rf "$BUS_WAKER_STATE_DIR"
+: > "$QLOG"; rm -f "$QLOG.pid" "$QLOG.screen"
+BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service org.kde.konsole-1 --session /Sessions/3 \
+  --poll 0.2 --grace 0 --rewake 0 --max-polls 10 --max-wakes 2 >/dev/null 2>"$tmp/cap-err"
+[ "$(sends)" -eq 2 ] && pass "--max-wakes 2 stops at 2 wakes" || fail "--max-wakes 2: got $(sends) wakes"
+[ "$(grep -c 'rewake cap' "$tmp/cap-err")" -eq 1 ] && pass "the cap is reported once, not once per poll" || fail "cap report lines: $(cat "$tmp/cap-err")"
+# A new message after the cap (the unread count changes) wakes again, and the capped state is cleared.
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=2 BUS_AFTER_CALLS=6 BUS_N_AFTER=3 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 4 ] && pass "a new message after the cap wakes again (2 wakes, then 2 more for the new count)" || fail "new mail after cap: wanted 4 wakes, got $(sends)"
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=2 BUS_AFTER_CALLS=6 BUS_N_AFTER=0 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 2 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "mail read after the cap clears the capped state" || fail "read after cap: $(sends) wakes, state '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+# The real `bus unread` is a 0/1 presence flag: a second bus message leaves it at 1, so the newest record number (`bus tip`) is what moves.
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=1 BUS_TIP=5 BUS_AFTER_CALLS=6 BUS_N_AFTER=1 BUS_TIP_AFTER=6 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 4 ] && pass "a second bus message after the cap (unread stays the flag 1, tip moves) wakes again" || fail "flag 1 to 1, tip 5 to 6: wanted 4 wakes, got $(sends)"
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=1 BUS_TIP=5 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 2 ] && [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = capped ] && pass "the same bus mail (flag 1, tip unchanged) stays capped at 2 wakes" || fail "flag 1, tip 5: wanted 2 wakes and capped, got $(sends) / '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=1 BUS_TIP=5 BUS_AFTER_CALLS=6 BUS_N_AFTER=1 BUS_TIP_AFTER=0 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 2 ] && pass "a tip that reads 0 (broken or unreadable log) does not reset the cap" || fail "tip 5 to 0: wanted 2 wakes, got $(sends)"
+# Survivors of the first review: the count falling to a smaller non-zero value ends the set and clears the state, and 2 to 0 to 2 starts a new one.
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=3 BUS_AFTER_CALLS=6 BUS_N_AFTER=2 run 7 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 3 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "a count falling from 3 to 2 after the cap ends the set: a wake, and the capped state cleared" || fail "3 to 2: wanted 3 wakes and no state, got $(sends) / '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=2 BUS_AFTER_CALLS=6 BUS_N_AFTER=0 BUS_AFTER2_CALLS=8 BUS_N_AFTER2=2 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 4 ] && pass "mail read after the cap (2 to 0) and then new mail (0 to 2) wakes again" || fail "2 to 0 to 2: wanted 4 wakes, got $(sends)"
+bash "$WAKER" --name legX --service s --session /S --max-wakes 0 >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "--max-wakes 0 is refused (rc=64)" || fail "--max-wakes 0: expected rc=64, got rc=$rc"
+bash "$WAKER" --name legX --service s --session /S --max-wakes 00 --max-polls 1 >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 64 ] && pass "--max-wakes 00 is refused too (rc=64), it would silence every wake" || fail "--max-wakes 00: expected rc=64, got rc=$rc"
 
 echo "== dialog and target =="
 # Screens copied from a real konsole (Claude Code 2.1.303) through getAllDisplayedText.

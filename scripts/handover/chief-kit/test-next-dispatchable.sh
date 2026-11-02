@@ -28,6 +28,15 @@ export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 # and the admissions ledger: the real one must never admit a fixture key
 export HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger-none.jsonl"
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
+# the core gate is permanent and asks the built jira CLI (scripts/jira/dist is untracked, absent in CI), so every
+# row below runs with a fixture stand-in that calls every key NOT-CORE; the C3 section at the end swaps in its own stand-in per run
+mkdir -p "$WORK/notcore-stub"
+cat > "$WORK/notcore-stub/index.js" <<'NCEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+NCEOF
+export NEXT_DISPATCH_JIRA_CLI="$WORK/notcore-stub/index.js"
 
 mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>; MK_BARE=1 leaves the body without a DoD and Proof tail
     local tail='\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n'
@@ -1842,7 +1851,7 @@ EOF
 pm="$(NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$PM_STATE/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
 has "a partial merge with a Remaining: line is a RESUME row" "$pm" "RESUME	HIMMEL-80"
 has "its RESUME row names the merged PR and the Remaining: text" "$(printf '%s\n' "$pm" | grep 'HIMMEL-80	')" "partial=PR #5001 merged, Remaining: slice two and the {brace} reader"
-has "a partial merge without a Remaining: line is flagged as needing a chief note" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-81: merged PR #5002 has no Remaining: line, needs a chief note"
+has "a partial merge without a Remaining: line is flagged as needing a chief note" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-81: merged PR #5002 has no Remaining: line and no deferred line under ## Ticket coverage, needs a chief note"
 lacks "a partial merge without a Remaining: line is not dispatchable" "$pm" "	HIMMEL-81	"
 has "a To Do ticket with a merged partial PR is a RESUME row" "$pm" "RESUME	HIMMEL-82"
 has "and its RESUME row carries the PR's Remaining: text" "$(printf '%s\n' "$pm" | grep 'HIMMEL-82	')" "Remaining: the other half"
@@ -1854,6 +1863,118 @@ has "an unreadable status log is warned about, not silently read as empty" "$pmb
 has "an empty Remaining: line does not borrow the next line's text" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-84"
 lacks "an empty Remaining: line is not a RESUME row" "$pm" "RESUME	HIMMEL-84"
 has "a PR body gh cannot read is reported as unreadable, not as missing a Remaining: line" "$pm" "NEEDS-CHIEF-NOTE HIMMEL-85: merged PR #5005 body could not be read (gh failed)"
+
+# A partial PR whose body records its remainder only as `deferred → HIMMEL-<n>` lines under `## Ticket coverage`
+# (what workers write) is read, not NEEDS-CHIEF-NOTE. A remainder handed wholly to other tickets is HANDED-OFF; one that
+# stays on the ticket (a Remaining: line, a deferred line naming the ticket itself or no ticket) is a RESUME row.
+PMC_STATE="$WORK/pmc"; mkdir -p "$PMC_STATE/workers"
+MPMC="$WORK/mpmc/HIMMEL"; mkdir -p "$MPMC"
+printf '## Summary\nslice one\n\n## Ticket coverage\n- slice one: done\n- rest: deferred → HIMMEL-9\n' > "$PR_BODY_DIR/5101"
+printf '## Ticket coverage\n- slice one: done\n- rest: deferred -> HIMMEL-121\n' > "$PR_BODY_DIR/5102"
+printf 'Remaining: the reader\n\n## Ticket coverage\n- the writer: deferred → HIMMEL-9\n' > "$PR_BODY_DIR/5103"
+printf '## Ticket coverage\n- slice one: done\n- slice two: done\n' > "$PR_BODY_DIR/5104"
+printf '## Ticket coverage\n- rest: deferred → HIMMEL-9\n- more: deferred → HIMMEL-10\n\n## Notes\n- not a coverage line: deferred → HIMMEL-77\n' > "$PR_BODY_DIR/5105"
+printf '## Ticket coverage\n- rest: deferred → HIMMEL-9\n' > "$PR_BODY_DIR/5106"
+printf 'Remaining: the half no one took\n' > "$PR_BODY_DIR/5107"
+printf '## Ticket coverage\n- slice one: done\n\n### Handed on\n- rest: deferred → HIMMEL-9\n' > "$PR_BODY_DIR/5108"
+printf 'Remaining: the reader\tand the writer\n' > "$PR_BODY_DIR/5109"
+printf '## Ticket coverage\n- rest: deferred → HIMMEL-9\n##\n- after: deferred → HIMMEL-77\n' > "$PR_BODY_DIR/5110"
+M_SAVE="$M"; M="$MPMC"
+mk HIMMEL-128 "In Progress" Medium '[]' '[]' '[]' "an empty heading ends the coverage section" "Edit scripts/lib/pc9.sh."
+mk HIMMEL-126 "In Progress" Medium '[]' '[]' '[]' "a deferred line under a level-three heading inside the coverage" "Edit scripts/lib/pc7.sh."
+mk HIMMEL-127 "In Progress" Medium '[]' '[]' '[]' "a Remaining line holding a tab" "Edit scripts/lib/pc8.sh."
+mk HIMMEL-120 "In Progress" Medium '[]' '[]' '[]' "coverage hands the whole remainder to HIMMEL-9" "Edit scripts/lib/pc1.sh."
+mk HIMMEL-121 "In Progress" Medium '[]' '[]' '[]' "coverage defers to the ticket itself" "Edit scripts/lib/pc2.sh."
+mk HIMMEL-122 "In Progress" Medium '[]' '[]' '[]' "a Remaining line beside a deferred line" "Edit scripts/lib/pc3.sh."
+mk HIMMEL-123 "In Progress" Medium '[]' '[]' '[]' "coverage of done lines only" "Edit scripts/lib/pc4.sh."
+mk HIMMEL-124 "In Progress" Medium '[]' '[]' '[]' "deferred to two tickets, a later section also defers" "Edit scripts/lib/pc5.sh."
+mk HIMMEL-125 "In Progress" Medium '[]' '[]' '[]' "one slice handed off, one slice remaining" "Edit scripts/lib/pc6.sh."
+M="$M_SAVE"
+cat > "$PMC_STATE/status-events.jsonl" <<'EOF'
+{"ts":"t","event":"merge","key":"HIMMEL-120","pr":"5101","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-121","pr":"5102","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-122","pr":"5103","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-123","pr":"5104","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-124","pr":"5105","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-125","pr":"5106","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-125","pr":"5107","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-126","pr":"5108","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-127","pr":"5109","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-128","pr":"5110","contract":"no","result":"noop"}
+EOF
+pmc="$(NEXT_DISPATCH_MIRROR="$MPMC" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$PMC_STATE/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+has "a coverage-only partial PR handing its remainder to another ticket is HANDED-OFF" "$pmc" "HANDED-OFF HIMMEL-120: remainder on HIMMEL-9"
+lacks "a coverage-only partial PR is not NEEDS-CHIEF-NOTE" "$pmc" "NEEDS-CHIEF-NOTE HIMMEL-120"
+lacks "a handed-off ticket is not a RESUME row" "$pmc" "RESUME	HIMMEL-120"
+has "a deferred line naming the ticket itself stays a RESUME row" "$pmc" "RESUME	HIMMEL-121"
+has "and its RESUME row carries the deferred line as Remaining:" "$(printf '%s\n' "$pmc" | grep 'HIMMEL-121	')" "partial=PR #5102 merged, Remaining: rest: deferred -> HIMMEL-121"
+lacks "a self-deferred ticket is not HANDED-OFF" "$pmc" "HANDED-OFF HIMMEL-121"
+has "a Remaining: line beside a deferred line is a RESUME row" "$pmc" "RESUME	HIMMEL-122"
+has "and its RESUME row carries both" "$(printf '%s\n' "$pmc" | grep 'HIMMEL-122	')" "Remaining: the reader; the writer: deferred → HIMMEL-9"
+lacks "a Remaining: line keeps the ticket out of HANDED-OFF" "$pmc" "HANDED-OFF HIMMEL-122"
+has "a coverage of done lines only is NEEDS-CHIEF-NOTE" "$pmc" "NEEDS-CHIEF-NOTE HIMMEL-123: merged PR #5104 has no Remaining: line and no deferred line under ## Ticket coverage"
+has "the NEEDS-CHIEF-NOTE row names the one action that clears it" "$pmc" "add one to PR #5104's body"
+has "a remainder deferred to several tickets names them all" "$pmc" "HANDED-OFF HIMMEL-124: remainder on HIMMEL-9, HIMMEL-10"
+lacks "a deferred line outside ## Ticket coverage is not read" "$pmc" "HIMMEL-77"
+has "a ticket with one handed-off and one remaining partial PR is a RESUME row" "$pmc" "RESUME	HIMMEL-125"
+has "and its RESUME row carries both PRs" "$(printf '%s\n' "$pmc" | grep 'HIMMEL-125	')" "partial=PR #5107 merged, Remaining: the half no one took"
+lacks "a ticket with a remaining partial PR is not HANDED-OFF" "$pmc" "HANDED-OFF HIMMEL-125"
+has "a deferred line under a ### heading inside the coverage section is still read" "$pmc" "HANDED-OFF HIMMEL-126: remainder on HIMMEL-9"
+has "an empty heading ends the coverage section, so a later deferred line is not read" "$pmc" "HANDED-OFF HIMMEL-128: remainder on HIMMEL-9"
+has "a tab inside a Remaining: line does not break the reader's answer line" "$(printf '%s\n' "$pmc" | grep 'HIMMEL-127	')" "partial=PR #5109 merged, Remaining: the reader and the writer"
+
+# Two partial PRs handing the same ticket on name it once; a PR two tickets share is read once per ticket, because the
+# deferred ticket's own key changes the answer.
+PMD_STATE="$WORK/pmd"; mkdir -p "$PMD_STATE/workers"
+MPMD="$WORK/mpmd/HIMMEL"; mkdir -p "$MPMD"
+printf '## Ticket coverage\n- rest: deferred -> HIMMEL-9\n' > "$PR_BODY_DIR/5111"
+printf '## Ticket coverage\n- more: deferred -> HIMMEL-9\n' > "$PR_BODY_DIR/5112"
+printf '## Ticket coverage\n- rest: deferred -> HIMMEL-131\n' > "$PR_BODY_DIR/5113"
+printf '## Ticket coverage\n- rest: deferred -> after HIMMEL-9 merges, stays here\n' > "$PR_BODY_DIR/5114"
+printf '## Ticket coverage\n- rest: deferred -> HIMMEL-9, HIMMEL-10\n' > "$PR_BODY_DIR/5115"
+M_SAVE="$M"; M="$MPMD"
+mk HIMMEL-132 "In Progress" Medium '[]' '[]' '[]' "a deferred line whose key is not last stays remaining" "Edit scripts/lib/pd4.sh."
+mk HIMMEL-133 "In Progress" Medium '[]' '[]' '[]' "a deferred line naming two tickets stays remaining" "Edit scripts/lib/pd5.sh."
+mk HIMMEL-129 "In Progress" Medium '[]' '[]' '[]' "two partial PRs hand on to one ticket" "Edit scripts/lib/pd1.sh."
+mk HIMMEL-130 "In Progress" Medium '[]' '[]' '[]' "the first of two tickets sharing a partial PR" "Edit scripts/lib/pd2.sh."
+mk HIMMEL-131 "In Progress" Medium '[]' '[]' '[]' "the second of two tickets sharing a partial PR" "Edit scripts/lib/pd3.sh."
+M="$M_SAVE"
+cat > "$PMD_STATE/status-events.jsonl" <<'EOF'
+{"ts":"t","event":"merge","key":"HIMMEL-129","pr":"5111","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-129","pr":"5112","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-130","pr":"5113","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-131","pr":"5113","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-132","pr":"5114","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-133","pr":"5115","contract":"no","result":"noop"}
+EOF
+pmd="$(NEXT_DISPATCH_MIRROR="$MPMD" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$PMD_STATE/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+has "two partial PRs handing on to one ticket name it once" "$pmd" "HANDED-OFF HIMMEL-129: remainder on HIMMEL-9"
+lacks "and not twice" "$pmd" "HIMMEL-9, HIMMEL-9"
+has "a PR shared by two tickets hands the first one on to the second" "$pmd" "HANDED-OFF HIMMEL-130: remainder on HIMMEL-131"
+has "and the second, whose own key it names, keeps the remainder" "$pmd" "RESUME	HIMMEL-131"
+lacks "the second is not handed off on the first's answer" "$pmd" "HANDED-OFF HIMMEL-131"
+has "a deferred line whose key is not last stays a RESUME row" "$pmd" "RESUME	HIMMEL-132"
+lacks "and does not hand off on the key inside its prose" "$pmd" "HANDED-OFF HIMMEL-132"
+has "a deferred line naming two tickets stays a RESUME row (ready-check.sh accepts one key, last)" "$pmd" "RESUME	HIMMEL-133"
+lacks "and hands nothing off" "$pmd" "HANDED-OFF HIMMEL-133"
+
+# A reader answer the dispatcher does not recognise, or one of the wrong shape, reads as an unreadable body: never dispatched blind.
+printf 'import sys\nanswers = {"HIMMEL-140": "garbage", "HIMMEL-141": "remaining", "HIMMEL-142": "remaining\\ta\\tb", "HIMMEL-143": "handed-off\\tHIMMEL-9", "HIMMEL-144": "handed-off\\tHIMMEL-9\\ttext\\textra"}\nsys.stdout.write(answers[sys.argv[1]] + "\\n")\n' > "$WORK/odd-reader.py"
+PME_STATE="$WORK/pme"; mkdir -p "$PME_STATE/workers"
+MPME="$WORK/mpme/HIMMEL"; mkdir -p "$MPME"
+M_SAVE="$M"; M="$MPME"
+: > "$PME_STATE/status-events.jsonl"
+for n in 140 141 142 143 144; do
+    printf 'Remaining: x\n' > "$PR_BODY_DIR/52$n"
+    mk "HIMMEL-$n" "In Progress" Medium '[]' '[]' '[]' "a partial PR whose reader answers oddly $n" "Edit scripts/lib/pe$n.sh."
+    printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"52%s","contract":"no","result":"noop"}\n' "$n" "$n" >> "$PME_STATE/status-events.jsonl"
+done
+M="$M_SAVE"
+pme="$(NEXT_DISPATCH_READER="$WORK/odd-reader.py" NEXT_DISPATCH_MIRROR="$MPME" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$PME_STATE/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+for n in 140 141 142 143 144; do
+    has "an odd reader answer ($n) reads as an unreadable body" "$pme" "NEEDS-CHIEF-NOTE HIMMEL-$n: merged PR #52$n body could not be read"
+    lacks "and an odd reader answer ($n) is not dispatched" "$pme" "RESUME	HIMMEL-$n"
+done
 
 # The LATEST contract-bearing merge row of a key decides: a contract=yes row followed by a newer contract=no merge is a
 # partial again (RESUME), a contract=no row followed by a contract=yes row is done-pending.
@@ -1883,6 +2004,36 @@ lacks "and it is not an ordinary row either" "$pm2" "LOCAL	HIMMEL-87"
 has "a partial after a completing merge is a RESUME row naming only the new partial" "$(printf '%s\n' "$pm2" | grep 'HIMMEL-89	')" "Remaining: the new half"
 lacks "and a partial PR a later contract=yes row completed is not named" "$(printf '%s\n' "$pm2" | grep 'HIMMEL-89	')" "the old half"
 
+# A merge row written BEFORE the merge call (stage pre-merge) counts only once GitHub reports its PR MERGED
+# at that head, or a later row of the same PR does; a row followed by result=not-merged, or whose PR is still open, is ignored.
+mkdir -p "$WORK/pm3/workers"
+cat > "$WORK/pm3/mrgh" <<'EOF'
+#!/usr/bin/env bash
+# the merge-rows filter's gh seam: `pr view <n> --json state,headRefOid --jq ...`; PR 5022 answers MERGED, so only its not-merged row keeps it out
+case "$3" in
+    5020) echo "OPEN h20" ;;
+    5021) echo "MERGED h21" ;;
+    5022) echo "MERGED h22" ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/pm3/mrgh"
+M="$MPM"
+mk HIMMEL-91 "To Do" Medium '[]' '[]' '[]' "pre-merge row, PR still open" "Edit scripts/lib/pm11.sh."
+mk HIMMEL-92 "To Do" Medium '[]' '[]' '[]' "pre-merge row, PR merged on GitHub" "Edit scripts/lib/pm12.sh."
+mk HIMMEL-93 "To Do" Medium '[]' '[]' '[]' "pre-merge row retired by a not-merged row" "Edit scripts/lib/pm13.sh."
+M="$M_SAVE"
+cat > "$WORK/pm3/status-events.jsonl" <<'EOF'
+{"ts":"t","event":"merge","key":"HIMMEL-91","pr":"5020","head":"h20","contract":"yes","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-92","pr":"5021","head":"h21","contract":"yes","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-93","pr":"5022","head":"h22","contract":"yes","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-93","pr":"5022","head":"h22","result":"not-merged","stage":"merge-failed"}
+EOF
+pm3="$(MERGE_ROWS_GH="$WORK/pm3/mrgh" NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 50 --workers-dir "$WORK/pm3/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+has "a pre-merge row whose PR is still open is not done-pending" "$pm3" "HIMMEL-91	"
+lacks "a pre-merge row whose PR GitHub reports MERGED is done-pending (a kill after the merge keeps the record)" "$pm3" "HIMMEL-92	"
+has "a pre-merge row retired by a not-merged row is not done-pending" "$pm3" "HIMMEL-93	"
+
 # An unreadable status log withholds only a To Do candidate whose key already has a merge on the main ref (git log grep
 # "[KEY]"), prints one WARN naming them, and keeps every other candidate.
 PMG="$WORK/pm-git"; mkdir -p "$PMG"
@@ -1901,6 +2052,102 @@ has "a key whose only main commit cites a lookalike key ([HIMMEL-880]) is not wi
 pmn="$(NEXT_DISPATCH_GIT_DIR="$PMG" NEXT_DISPATCH_MAIN_REF=no-such-ref NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$WORK/pm-bad/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
 lacks "an unreadable status log and a failed git read withholds a candidate (unknown fails closed)" "$pmn" "LOCAL	HIMMEL-82"
 has "and the WARN names it" "$(printf '%s\n' "$pmn" | grep '^# WARN')" "HIMMEL-82"
+
+# --- (8591, C3 of 8353; permanent since 8592, C5) a core To Do ticket with no signed minerva spec lists as a DESIGN row ---
+# The jira CLI is a fixture stand-in (scripts/jira/dist is untracked, absent in CI): it answers from CG/core/<KEY> and
+# CG/spec/<KEY> lines and logs every call to CG/calls.log; CG/mode makes it fail (exit3, junk, spec3).
+CG="$WORK/cg"; mkdir -p "$CG/core" "$CG/spec"
+mkdir -p "$WORK/cg-stub"
+cat > "$WORK/cg-stub/index.js" <<'EOF'
+const fs = require('fs');
+const a = process.argv.slice(2);
+const dir = process.env.CG;
+fs.appendFileSync(dir + '/calls.log', a.join(' ') + ' (cwd ' + process.cwd() + ')\n');
+let mode = '';
+try { mode = fs.readFileSync(dir + '/mode', 'utf8').trim(); } catch (e) { /* no mode: answer normally */ }
+const opt = (n) => { const i = a.indexOf(n); return i < 0 ? null : a[i + 1]; };
+const line = (sub, k) => { try { return fs.readFileSync(dir + '/' + sub + '/' + k, 'utf8').trim(); } catch (e) { return ''; } };
+if (a[0] === 'release' && a[1] === 'core-check') {
+  if (mode === 'exit3') { console.error('boom'); process.exit(3); }
+  if (mode === 'junk') { console.log('this is not a verdict'); process.exit(0); }
+  for (const k of a.slice(a.indexOf('--key') + 1)) console.log(line('core', k) || 'NOT-CORE ' + k);
+} else if (a[0] === 'release' && a[1] === 'spec-check') {
+  if (mode === 'spec3') { console.error('boom'); process.exit(3); }
+  let bad = 0;
+  for (const k of a.slice(a.indexOf('--mirror') + 2)) { const l = line('spec', k); if (!l.startsWith('SPEC ok')) bad = 1; console.log(l || 'NO-SPEC ' + k); }
+  process.exit(bad);
+} else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+EOF
+export CG
+runcg() { # <mirror dir> args...: the script under test with no flag set and the stub CLI
+    local mir="$1"; shift
+    NEXT_DISPATCH_JIRA_CLI="${CG_CLI:-$WORK/cg-stub/index.js}" NEXT_DISPATCH_MIRROR="$mir" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-s" bash "$SUT" "$@" 2>/dev/null
+}
+newmir cg
+for n in 901 902 903 904 905 906; do mk "HIMMEL-$n" "To Do" High '[]' '["v1.0.1"]' '[]' "cg $n" "Edit scripts/lib/cg$n.sh please."; done
+printf 'CORE HIMMEL-901 label core\n' > "$CG/core/HIMMEL-901"; printf 'NO-SPEC HIMMEL-901\n' > "$CG/spec/HIMMEL-901"
+printf 'CORE HIMMEL-902 label core\n' > "$CG/core/HIMMEL-902"; printf 'SPEC-STALE HIMMEL-902 core paths changed since the spec\n' > "$CG/spec/HIMMEL-902"
+printf 'CORE HIMMEL-903 label core\n' > "$CG/core/HIMMEL-903"; printf 'SPEC ok HIMMEL-903 specs/designs/x.md abc123\n' > "$CG/spec/HIMMEL-903"
+printf 'BYPASS HIMMEL-904 bug a Bug is not gated\n' > "$CG/core/HIMMEL-904"
+printf 'UNKNOWN HIMMEL-906\n' > "$CG/core/HIMMEL-906"
+CGM="$M"
+cg="$(runcg "$CGM")"
+has "(8591) a core To Do ticket with no signed spec prints DESIGN <KEY> NO-SPEC" "$cg" "DESIGN${TAB}HIMMEL-901${TAB}NO-SPEC${TAB}High${TAB}v1.0.1${TAB}cg 901${TAB}files=scripts/lib/cg901.sh"
+has "(8591) a SPEC-STALE answer prints DESIGN <KEY> SPEC-STALE" "$cg" "DESIGN${TAB}HIMMEL-902${TAB}SPEC-STALE${TAB}"
+lacks "(8591) a core ticket with a signed spec prints no DESIGN row" "$cg" "DESIGN${TAB}HIMMEL-903"
+has "(8591) a core ticket with a signed spec lists as a normal row" "$cg" "LOCAL${TAB}HIMMEL-903${TAB}"
+lacks "(8591) a BYPASS key prints no DESIGN row" "$cg" "DESIGN${TAB}HIMMEL-904"
+has "(8591) a BYPASS key lists as a normal row" "$cg" "LOCAL${TAB}HIMMEL-904${TAB}"
+lacks "(8591) a NOT-CORE key prints no DESIGN row" "$cg" "DESIGN${TAB}HIMMEL-905"
+has "(8591) a NOT-CORE key lists as a normal row" "$cg" "LOCAL${TAB}HIMMEL-905${TAB}"
+lacks "(8591) a ticket with a DESIGN row is not also a dispatch row (no-spec)" "$cg" "LOCAL${TAB}HIMMEL-901"
+lacks "(8591) a ticket with a DESIGN row is not also a dispatch row (stale)" "$cg" "LOCAL${TAB}HIMMEL-902"
+lacks "(8591) an UNKNOWN key is never listed" "$cg" "HIMMEL-906${TAB}"
+cgw="$(runcg "$CGM" --why)"
+has "(8591) an UNKNOWN key is withheld with the core-unknown drop" "$cgw" "# drop HIMMEL-906 core-unknown"
+[ "$(grep -c 'release core-check' "$CG/calls.log")" -ge 1 ] && pass "(8591) the CLI was asked core-check" || fail "(8591) core-check was never called"
+has "(8591) core-check is not told --docs-only" "$(cat "$CG/calls.log")" "release core-check --paths"
+lacks "(8591) core-check is not told --docs-only (flag absent)" "$(cat "$CG/calls.log")" "--docs-only"
+has "(8591) spec-check asks the core keys only" "$(grep 'release spec-check' "$CG/calls.log")" "HIMMEL-901"
+lacks "(8591) spec-check is not asked about a NOT-CORE key" "$(grep 'release spec-check' "$CG/calls.log")" "HIMMEL-905"
+has "(8591) the CLI runs from its own checkout" "$(cat "$CG/calls.log")" "(cwd $(cd "$WORK/cg-stub" && pwd -P))"
+# a DESIGN row takes a --top slot and holds no files
+cgt="$(runcg "$CGM" --top 1)"
+[ "$(printf '%s\n' "$cgt" | grep -c "^DESIGN")" = 1 ] && [ "$(printf '%s\n' "$cgt" | grep -c "^LOCAL")" = 0 ] && pass "(8591) a DESIGN row takes a --top slot" || fail "(8591) --top 1 should print exactly the DESIGN row: $cgt"
+mk HIMMEL-907 "To Do" Medium '[]' '["v1.0.1"]' '[]' "shares the DESIGN ticket's file" "Edit scripts/lib/cg901.sh please."
+cgh="$(runcg "$CGM")"
+has "(8591) a DESIGN row holds no files against another candidate" "$cgh" "LOCAL${TAB}HIMMEL-907${TAB}"
+rm -f "$CGM/HIMMEL-907.md"
+
+# fail closed: a CLI that cannot run lists no To Do row and prints one CORE-CHECK-FAILED header
+for how in missing exit3 junk spec3; do
+    : > "$CG/calls.log"; rm -f "$CG/mode"
+    CG_CLI=""
+    case "$how" in
+        missing) CG_CLI="$WORK/no-such-cli.js" ;;
+        *) printf '%s\n' "$how" > "$CG/mode" ;;
+    esac
+    cgf="$(runcg "$CGM")"
+    has "(8591) a CLI that cannot run ($how) prints CORE-CHECK-FAILED" "$cgf" "# WARN CORE-CHECK-FAILED"
+    [ "$(printf '%s\n' "$cgf" | grep -c "CORE-CHECK-FAILED")" = 1 ] && pass "(8591) ($how) exactly one CORE-CHECK-FAILED header" || fail "(8591) ($how) CORE-CHECK-FAILED header count is not 1"
+    lacks "(8591) a CLI that cannot run ($how) lists no To Do row" "$cgf" "LOCAL${TAB}HIMMEL-905"
+    lacks "(8591) a CLI that cannot run ($how) prints no DESIGN row" "$cgf" "DESIGN${TAB}"
+    lacks "(8591) a CLI that cannot run ($how) lists no normal row at all" "$cgf" "LOCAL${TAB}"
+done
+CG_CLI=""; rm -f "$CG/mode"
+
+# --resume-only lists no To Do row: it never calls the CLI
+: > "$CG/calls.log"
+runcg "$CGM" --resume-only > /dev/null
+[ ! -s "$CG/calls.log" ] && pass "(8591) --resume-only never calls the CLI" || fail "(8591) --resume-only called the CLI: $(cat "$CG/calls.log")"
+
+# no flag exists: a core ticket with no signed spec lists as a DESIGN row with nothing set, and an env var named like the old flag changes nothing
+: > "$CG/calls.log"
+cgnoflag="$(runcg "$CGM")"
+cgold="$(HIMMEL_FLAG_CORE_GATE=0 runcg "$CGM")"
+has "(8592) no flag set: a core ticket with no signed spec is a DESIGN row" "$cgnoflag" "DESIGN${TAB}HIMMEL-901${TAB}NO-SPEC${TAB}"
+[ "$cgnoflag" = "$cgold" ] && pass "(8592) the old flag variable set to 0 changes nothing (the gate is permanent)" || fail "(8592) HIMMEL_FLAG_CORE_GATE=0 changed the output"
+[ -s "$CG/calls.log" ] && pass "(8592) the CLI is asked with no flag set" || fail "(8592) the CLI was never asked with no flag set"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

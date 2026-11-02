@@ -48,10 +48,23 @@
 # with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
 # `merged PRs unknown` header and no IN CI row.
 #
+# Partial-merge rows: a ticket with a merged contract=no PR reads that PR's remainder, a `Remaining:` line or the
+# `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
+# the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
+# handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
+# umbrella by hand); a body with neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it.
+#
 # Held RESUME rows: an in-work ticket a file collision keeps off the list prints
 # `RESUME-HELD <KEY> by <holder>` (a live worker, the --held list, an open PR, or `listed <KEY>`
 # for another RESUME row; the last in the full pass only), so no in-work ticket vanishes unnamed.
 # A DISPOSITION ... BLOCKED-BY comment hides nothing here: stuck-scan.sh re-checks it.
+#
+# DESIGN rows (always on):
+# the built jira CLI (`release core-check`, then `release spec-check` for the core keys; NEXT_DISPATCH_JIRA_CLI replaces
+# its path) says which To Do candidates are core. A core one with no signed minerva spec prints
+# `DESIGN<TAB><KEY><TAB>NO-SPEC|SPEC-STALE<TAB>prio<TAB>version<TAB>title<TAB>files=...` instead of a dispatch row: it takes a
+# --top slot, holds no files, and is the design leg to dispatch first. A key the mirror lacks is withheld
+# (`# drop <KEY> core-unknown`); a check that cannot run lists no To Do row and prints `# WARN CORE-CHECK-FAILED <reason>`.
 #
 # Chain workers: with --workers-from naming a `<prefix>-nextleg-<date><letter>-<name>.fleet.json`,
 # the other manifests of that chain in the same directory (same prefix and name, any letter) also own their live
@@ -129,7 +142,8 @@
 # Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`),
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
-# NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default).
+# NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
+# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> <KEY>`).
 #
 # Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable.
 # PLATFORM GUARD: the chief kit is Linux-only.
@@ -613,8 +627,22 @@ for name in names:
 done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
 partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
 status_unreadable = False
+
+
+def effective_rows(path):
+    """The log's lines without a pre-merge row whose PR did not merge; an unreadable log raises OSError."""
+    open(path).close()
+    try:  # the helper bounds its GitHub reads, not parsing a large log: a timeout reads as an unreadable log
+        r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        raise OSError('merge-rows-effective timed out')
+    if r.returncode != 0:
+        raise OSError(r.stderr.strip() or 'merge-rows-effective failed')
+    return r.stdout.splitlines()
+
+
 try:
-    for line in open(os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl')):
+    for line in effective_rows(os.path.join(os.path.dirname(workers.rstrip('/')), 'status-events.jsonl')):
         try:
             r = json.loads(line)
         except ValueError:
@@ -768,6 +796,92 @@ pool_only = os.environ.get('ND_POOL_ONLY') == '1'
 next_tier = [i for i in cands if tier_of(i) > 4]
 if pool_only:
     cands = [i for i in cands if tier_of(i) <= 4]
+
+# The core gate (permanent): the built jira CLI says
+# which To Do candidates are core and whether each has a signed minerva spec. A core ticket with no `SPEC ok` lists as a
+# `DESIGN <KEY> NO-SPEC|SPEC-STALE` row, not a build row. Fail closed: a check that cannot run lists no To Do row, and a key
+# the mirror lacks (UNKNOWN) is withheld.
+design = {}  # KEY -> NO-SPEC | SPEC-STALE
+CORE_VERBS = ('CORE', 'NOT-CORE', 'BYPASS', 'UNKNOWN')
+CORE_FIELDS = {'CORE': 3, 'BYPASS': 4}  # tokens a core-check line needs: CORE <K> <match>, BYPASS <K> <kind> <reason...>
+
+def core_run(args, ok_rc, project):
+    # (stdout, '') for a run whose exit code is in ok_rc, else (None, why). A missing CLI, node or a timeout is never an answer.
+    try:
+        cli = os.environ.get('NEXT_DISPATCH_JIRA_CLI')
+        if not cli:
+            common = subprocess.run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], cwd=repo, capture_output=True, text=True, timeout=20, check=True).stdout.strip()
+            cli = os.path.join(os.path.dirname(common), 'scripts/jira/dist/index.js')
+        if not os.path.isfile(cli):
+            return None, 'no built jira CLI at %s' % cli
+        # cwd inside the CLI's own checkout: it runs `git rev-parse` from its cwd
+        r = subprocess.run(['node', cli] + args, capture_output=True, text=True, timeout=120, cwd=os.path.dirname(os.path.abspath(cli)),
+                           env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY', project)))
+    except (OSError, subprocess.SubprocessError) as e:
+        return None, 'the jira CLI could not run (%s)' % e
+    if r.returncode not in ok_rc:
+        return None, '%s exited %d: %s' % (args[1], r.returncode, (r.stderr or r.stdout).strip()[:200])
+    return r.stdout, ''
+
+def core_lines(out, keys, spec=False):
+    # The one line each key got (gen-briefs.py per_key_lines); a key with no line is absent from the result.
+    got = {}
+    for line in out.splitlines():
+        t = line.split()
+        if spec and t[:2] == ['SPEC', 'ok'] and len(t) >= 4:
+            got[t[2]] = line
+        elif t and (t[0] in ('SPEC-STALE', 'NO-SPEC') if spec else t[0] in CORE_VERBS) and len(t) >= CORE_FIELDS.get(t[0], 2):
+            got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
+    return {k: got[k] for k in keys if k in got}
+
+def core_spec_pass(cs):
+    # the candidates that may still list (a DESIGN one is recorded in `design`); core-check takes ONE --paths per call, so
+    # tickets naming the same files share a call (the calls run in parallel), then spec-check asks once for every CORE key
+    mdir = os.path.abspath(mirror)
+    project = cs[0]['key'].split('-')[0]
+    def fail(why):
+        print('# WARN CORE-CHECK-FAILED %s' % ' '.join(why.split()))
+        for i in cs:
+            drop(i, 'core-check failed (a gate that cannot run lists no To Do row)')
+        return []
+    groups = {}
+    for i in cs:
+        groups.setdefault(tuple(i['files']), []).append(i['key'])
+    items = list(groups.items())
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(8, len(items))) as pool:
+        results = list(pool.map(lambda g: core_run(['release', 'core-check', '--paths', ','.join(g[0]), '--mirror', mdir, '--key'] + g[1], (0,), project), items))
+    verdict = {}
+    for (_, ks), (out, why) in zip(items, results):
+        if out is None:
+            return fail(why)
+        got = core_lines(out, ks)
+        if len(got) != len(ks):
+            return fail('core-check printed no parseable line for %s' % ', '.join(k for k in ks if k not in got))
+        verdict.update(got)
+    keep, core = [], []
+    for i in cs:
+        verb = verdict[i['key']].split()[0]
+        if verb == 'UNKNOWN':
+            drop(i, 'core-unknown (not in the mirror: neither core nor a bypass can be proven)')
+            continue
+        keep.append(i)
+        if verb == 'CORE':
+            core.append(i['key'])
+    if core:
+        out, why = core_run(['release', 'spec-check', '--mirror', mdir] + core, (0, 1), project)
+        if out is None:
+            return fail(why)
+        got = core_lines(out, core, spec=True)
+        if len(got) != len(core):
+            return fail('spec-check printed no parseable line for %s' % ', '.join(k for k in core if k not in got))
+        for k in core:
+            if not got[k].startswith('SPEC ok'):
+                design[k] = got[k].split()[0]
+    return keep
+
+if cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
+    cands = core_spec_pass(cands)
 
 # held files: live workers, open PRs, --held
 held = []
@@ -1009,22 +1123,33 @@ if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
     except (OSError, subprocess.SubprocessError):
         merged_unknown = True
 
-# The `Remaining:` text of a merged partial PR's body (the line merge-on-green.sh reads); '' when the body has none.
-# A body gh cannot read is recorded in unread_prs and also returns '', so the ticket is never dispatched blind.
-remaining_cache = {}
+# The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
+# (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
+# Returns (kind, handed_keys, text), kind none | remaining | handed-off. A body gh cannot read, or a reader that fails, is
+# recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
+remainder_cache = {}
 unread_prs = set()
-def remaining_of(pr):
-    if pr not in remaining_cache:
+reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
+def remainder_of(pr, key):
+    if (pr, key) not in remainder_cache:
+        ans = ('none', [], '')
         try:
             body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
+            out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
+            if out[0] == 'remaining' and len(out) == 2:
+                ans = ('remaining', [], out[1])
+            elif out[0] == 'handed-off' and len(out) == 3:
+                ans = ('handed-off', out[1].split(', '), out[2])
+            elif out[0] != 'none':
+                raise subprocess.SubprocessError('unrecognised reader answer')
         except (OSError, subprocess.SubprocessError):
-            body = ''
             unread_prs.add(pr)
-        remaining_cache[pr] = ' '.join(m.strip() for m in re.findall(r'(?im)^[ \t]*remaining:[ \t]*(.*\S)', body))
-    return remaining_cache[pr]
+        remainder_cache[(pr, key)] = ans
+    return remainder_cache[(pr, key)]
 
 # In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
-needs_note = []  # (key, partial PR numbers with no Remaining: text) of in-work tickets that need a chief note first
+needs_note = []  # (key, partial PR numbers that record no remainder) of in-work tickets that need a chief note first
+handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
 resume = []
 resume_held = []  # (key, holder) of in-work tickets a collision keeps off the list
 for i in issues.values():
@@ -1057,9 +1182,13 @@ for i in issues.values():
     if hit:
         resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
         continue
-    i['partial'] = [(pr, remaining_of(pr)) for pr in partials.get(i['key'], [])] if partial_resume(i['key']) else []
-    if any(not text for _, text in i['partial']):  # a merged slice whose PR body names no remaining work: not dispatched blind
-        needs_note.append((i['key'], [pr for pr, text in i['partial'] if not text]))
+    parts = [(pr, remainder_of(pr, i['key'])) for pr in partials.get(i['key'], [])] if partial_resume(i['key']) else []
+    i['partial'] = [(pr, ans[2]) for pr, ans in parts]
+    if any(ans[0] == 'none' for _, ans in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
+        needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
+        continue
+    if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
+        handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
         continue
     resume.append(i)
 resume.sort(key=ranked if pool_only else rank)
@@ -1084,6 +1213,12 @@ free = []
 for i in cands:
     if i['key'] in worker_keys or i['key'] in pr_keys:  # a live worker or an open PR already owns the ticket
         drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
+        continue
+    if i['key'] in design:  # a design leg writes only its spec in the state repo: it holds no files against the rest of the list
+        if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
+            drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
+        else:
+            free.append(i)
         continue
     hit = held_hit(i)
     if hit:
@@ -1131,8 +1266,12 @@ print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(c
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
 for k, prs in needs_note:
-    print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched' % (k, ', '.join('#' + p for p in prs),
-          'body could not be read (gh failed)' if any(p in unread_prs for p in prs) else 'has no Remaining: line'))
+    unread = any(p in unread_prs for p in prs)
+    print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched%s' % (k, ', '.join('#' + p for p in prs),
+          'body could not be read (gh failed)' if unread else 'has no Remaining: line and no deferred line under ## Ticket coverage',
+          '' if unread else '; to clear it add one to PR %s\'s body (gh pr edit <n> --body-file), or close %s by hand if nothing remains' % (', '.join('#' + p for p in prs), k)))
+for k, keys in handed_off:
+    print('HANDED-OFF %s: remainder on %s' % (k, ', '.join(dict.fromkeys(keys))))
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, wdoc))
 
@@ -1266,7 +1405,7 @@ def drop_summary():
             if i['key'] in briefs:
                 r = 'resume-brief (a wrapped worker resumes it: RESUME row)'
             elif partial_resume(i['key']):
-                r = 'partial-merge (a merged contract=no PR: RESUME row, or needs a chief note)'
+                r = 'partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)'
             elif pool_only and tier_of(i) > 4:
                 r = 'tier 5 (outside the priority pool)'
             else:
@@ -1345,6 +1484,8 @@ if classified and top > len(resume):
     for i in free:
         if len(ok_rows) >= top * 2:
             break
+        if i['key'] in design:  # a DESIGN row is not classified
+            continue
         if not proof_refuse(i):
             ok_rows.append(i)
     halves = [ok_rows[:top], ok_rows[top:]]
@@ -1389,9 +1530,17 @@ def emit_free(rows):
         start += len(batch)
         batch = [i for i in batch if not proof_refuse(i)]
         if classified:
-            classify_new(batch)
+            classify_new([i for i in batch if i['key'] not in design])
         for i in batch:
             seen.add(i['key'])
+            if i['key'] in design:  # the design dispatch: no lane, and it holds no files against the rest of the list
+                emitted.append(i)
+                lane_of[i['key']] = 'DESIGN'
+                say('\t'.join(['DESIGN', i['key'], design[i['key']], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
+                n += 1
+                if n >= top:
+                    break
+                continue
             rc = row_class(i)
             if rc is None:
                 continue
@@ -1411,7 +1560,7 @@ def emit_free(rows):
     while stacked and n >= top:
         # the list is full, but a ticket that joins a listed series takes no slot: still offer it the join. A join widens the
         # series' files, so scan again until a pass joins nobody
-        late = [i for i in rows if i['key'] not in seen and i['key'] not in why and picked_hit(i) and not proof_refuse(i)]
+        late = [i for i in rows if i['key'] not in seen and i['key'] not in why and i['key'] not in design and picked_hit(i) and not proof_refuse(i)]
         if classified:
             classify_new(late)
         joined = False

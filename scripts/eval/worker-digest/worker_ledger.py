@@ -10,7 +10,7 @@ Turns one P1 digest (worker-digest.ts) into two ledger writes, then a marker:
 
   Path: $HIMMEL_WORKER_SESSION_FAILURES_LEDGER, else ~/.himmel/leg-failures.jsonl.
 
-WORKER-FAILURES ROW (v 1) -- closed-list categories only, never journal text:
+WORKER-FAILURES ROW (v 1) -- closed-list categories, plus on a denied row one redacted refusal line:
   v, ts, host, source, kind "leg-failure"       registry envelope
   session     the worker's session uuid
   worker, chief, ticket, pr                      who the row belongs to, or null
@@ -20,7 +20,14 @@ WORKER-FAILURES ROW (v 1) -- closed-list categories only, never journal text:
   count, identical_retry, recovered, first_ts, last_ts
   tool_call_ids  at most five tool-call ids
   final_red   suite rows only
-Unknown keys are refused, so a field carrying free text cannot ride in.
+  refusal_line  denied rows only, optional: the guard's already-redacted first refusal line from the
+              hook-chain log (the first refused call that has one), at most 240 code points on one line,
+              or null when none was recorded; older rows lack the key
+Unknown keys are refused, but refusal_line is free text: it is redacted for secrets only and can still echo
+command or path text. It stays on this host (the ledger, the marker and the leg-digest state file are never sent);
+the egress guard is the failure router's named-field pick and its check_body alphabet check, which never take it.
+A salus-rooted session records no refusal_line (its chain log is not the himmel one); a session whose cwd is a
+himmel checkout but that names a salus path stays local, in the ledger and the marker, and is never sent.
 
 IDEMPOTENCE (spec 5.3), all under a per-session flock at <state-dir>/<session>.lock:
   marker present with status ok          -> append nothing
@@ -78,6 +85,8 @@ TICKET = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 CHIEF = re.compile(r"^[A-Za-z0-9._-]{1,120}$")
 MODEL = re.compile(r"^(claude|gpt|gemini|glm|codex|o\d)[a-z0-9.\-\[\]]{0,60}$", re.I)
 TITLE = re.compile(r"^([A-Z][A-Z0-9]+-\d+)-(N\d+[a-z]?)-")
+LINE_MAX = 240
+NOT_PRINTABLE = re.compile("[\x00-\x1f\x7f-\x9f  ]")
 DIGEST_TIMEOUT = 60
 LIVE_MINUTES = 30
 DIGEST_ERRORS = ("timeout", "crash", "no-journal", "bad-json", "too-big")
@@ -104,7 +113,7 @@ def validate(row):
     """List of problems; empty = a valid v1 worker-failures row."""
     if not isinstance(row, dict):
         return ["row is not an object"]
-    extra = sorted(set(row) - set(KEYS) - {"final_red"})
+    extra = sorted(set(row) - set(KEYS) - {"final_red", "refusal_line"})
     p = ["unknown key %s" % k for k in extra] + ["missing %s" % k for k in KEYS if k not in row]
     if p:
         return p
@@ -156,6 +165,11 @@ def validate(row):
         p.append("tool_call_ids must be at most five ids")
     if "final_red" in row and (row["failure"] != "suite" or not isinstance(row["final_red"], bool)):
         p.append("final_red is a boolean on suite rows only")
+    if "refusal_line" in row:
+        line = row["refusal_line"]
+        if row["failure"] != "denied" or not (line is None or (
+                isinstance(line, str) and 1 <= len(line) <= LINE_MAX and not NOT_PRINTABLE.search(line))):
+            p.append("refusal_line is null or one line of 1 to %d code points, on denied rows only" % LINE_MAX)
     return p
 
 
@@ -340,6 +354,8 @@ def build_rows(digest, who):
              "tool_call_ids": f.get("tool_call_ids")}
         if "final_red" in f:
             r["final_red"] = f["final_red"]
+        if "refusal_line" in f:
+            r["refusal_line"] = f["refusal_line"]
         problems = validate(r)
         if problems:
             raise ValueError("worker-failures row %s: %s" % (f.get("class"), "; ".join(problems)))
@@ -561,7 +577,7 @@ def main(argv=None):
         s.add_argument("--state-dir", default=default_state_dir())
     r = sub.choices["record"]
     r.add_argument("--digest", required=True)
-    r.add_argument("--worker", dest="leg")
+    r.add_argument("--worker", dest="worker")
     r.add_argument("--chief", dest="console")
     for k in ("ticket", "doc", "lane", "launch-name"):
         r.add_argument("--" + k)
@@ -588,7 +604,7 @@ def main(argv=None):
     try:
         with open(a.digest, encoding="utf-8") as fh:
             digest = json.load(fh)
-        who = {"leg": a.leg, "ticket": a.ticket, "console": a.console, "pr": a.pr, "doc": a.doc,
+        who = {"leg": a.worker, "ticket": a.ticket, "console": a.console, "pr": a.pr, "doc": a.doc,
                "lane": a.lane, "state_dir": a.state_dir, "digest_error": a.digest_error,
                "launch_name": a.launch_name}
         f, e = record(digest, who, a.failures_ledger, a.eval_ledger)

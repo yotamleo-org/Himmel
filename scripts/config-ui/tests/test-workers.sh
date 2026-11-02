@@ -33,9 +33,9 @@ quoted="$root/himmel/HIMMEL-3-N3-quoted-RESUME.md"
 printf '%s\n' '---' 'description: Show worker descriptions' '---' '## Results' '- 01:00 LIVE — a' > "$live"
 printf '# HIMMEL-2 — Finish the workers list — worker N2\n## Results\n- 01:00 LIVE — a\n- 02:00 WRAPPED — done\n' > "$wrapped"
 printf '%s\n' '---' $'description: Show\t\t"quoted" workers' '---' '## Results' '- 01:00 LIVE — a' > "$quoted"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"old"}]}' "$wrapped" > "$root/himmel/old.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"old"}]}' "$wrapped" > "$root/himmel/old.fleet.json"
 touch -d '2020-01-01' "$root/himmel/old.fleet.json"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"},{"doc":"%s","label":"N3"}]}' "$live" "$wrapped" "$quoted" > "$root/himmel/new.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"},{"doc":"%s","label":"N3"}]}' "$live" "$wrapped" "$quoted" > "$root/himmel/new.fleet.json"
 
 # shellcheck source=../../lib/worker-tail-status.sh
 . "$REPO/scripts/lib/worker-tail-status.sh"

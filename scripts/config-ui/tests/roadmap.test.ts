@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
-import { renderKanban, renderRoadmap } from "../public/roadmap.js";
+import { renderBoard, renderKanban, renderRoadmap } from "../public/roadmap.js";
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
@@ -212,11 +212,161 @@ test("the page renders every section and escapes ticket text", () => {
   expect(renderRoadmap({ state: "absent", reason: "no Jira mirror" }, {})).toContain("no Jira mirror");
 });
 
-test("the rail lists Roadmap and Kanban after Fleet, and both are console routes", () => {
-  const labels = navLinks({ here: "console", token: TOKEN, current: "roadmap" }).map((l) => l.label);
-  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
-  expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "roadmap" });
-  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "kanban" });
+// This test pinned the two entries "Roadmap" and "Kanban"; the rail now has the one Board entry and the old
+// landings resolve to it (a deliberate change of the pinned assertion, named in the PR body).
+test("the rail lists one Board entry after Configure, and Board is a console route; the old landings resolve to it", () => {
+  const labels = navLinks({ here: "console", token: TOKEN, current: "board" }).map((l) => l.label);
+  expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"]);
+  expect(parseLanding(`#t=${TOKEN}&page=board`)).toEqual({ token: TOKEN, page: "board" });
+  expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "board" });
+  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "board", q: "v=all" });
+});
+
+const driftOk = (real: { class: string; key: string; line: string }[] = [], known = 0, transient = 0) => ({
+  file: { exists: true, writtenHm: "03:08" }, sdrift: "3:abc", unknown: false, stale: false, mode: "single-user", modeSource: "default",
+  real, known: [], transient: [], checkers: [], counts: { real: real.length, known, transient } });
+const chainsOk = () => ({ schema: "himmel.chains/1", chains: [{ id: "memory", name: "Memory guard rework", total: 2, done: 1, steps: 2, next: { step: 2, keys: ["HIMMEL-5"] } }],
+  tickets: {
+    "HIMMEL-1": { key: "HIMMEL-1", state: "in flight", chains: [{ id: "memory", step: 1, steps: 2, state: "in flight" }], badges: ["memory"], more: 0 },
+    "HIMMEL-5": { key: "HIMMEL-5", state: "waits on you", chains: [{ id: "memory", step: 2, steps: 2, state: "waits on you" }], badges: ["memory"], more: 0 },
+  } });
+
+test("Board: one page with the header, the version strip, the three tabs and the running version's lanes", () => {
+  const r = read(station());
+  const html = renderBoard(r, { version: null, theme: null }, null);
+  expect(html).toContain("<h1>Board</h1>");
+  for (const v of ["v1.1.1", "v1.1.2", "v1.1.3"]) expect(html).toContain(`href="#/board?v=${v}"`); // the strip: one tile per version
+  expect(html).toMatch(/released 2026-10-01/);
+  for (const tab of ["roadmap", "chains", "tidy"]) expect(html).toContain(`href="#/board?tab=${tab}`);
+  expect(html).toMatch(/aria-selected="true"[^>]*>Roadmap|>Roadmap[^<]*<\/a>/);
+  // no version asked: the running version (v1.1.2) is the board
+  for (const col of ["To do", "In progress", "In review", "Done"]) expect(html).toContain(col);
+  expect(html).toContain("Roadmap in the ui");
+  expect(html).not.toContain("Shipped thing"); // v1.1.1
+  // v=all: every version on the lanes; v=<name> narrows to that one
+  const all = renderBoard(r, { version: null, theme: null, v: "all" }, null);
+  for (const t of ["Roadmap in the ui", "Shipped thing", "Left behind", "Resumed work"]) expect(all).toContain(t);
+  expect(renderBoard(r, { version: null, theme: null, v: "v1.1.1" }, null)).not.toContain("Roadmap in the ui");
+  // drag and the Sector select keep working on the lanes
+  const w = renderBoard(r, { version: null, theme: null, writes: true }, null);
+  expect(w).toContain('data-rm-drop="prog"');
+  expect(w).toContain('draggable="true" data-rm-card="1"');
+  expect(w).toContain('data-rm-theme-key="1"');
+  // hide Done and the Sector filter still narrow the lanes
+  expect(renderBoard(r, { version: null, theme: null, v: "all", hideDone: true }, null)).not.toContain("Shipped thing");
+  expect(renderBoard(r, { version: null, theme: r.themes.indexOf("tracker"), v: "all" }, null)).not.toContain("Orphaned work");
+});
+
+test("Board: one filter bar and refresh above every tab, a version tile keeps the tab, an unknown version says so, and the mirror date is escaped", () => {
+  const r = read(station());
+  for (const tab of ["roadmap", "chains", "tidy"]) {
+    const html = renderBoard(r, { version: null, theme: null, tab }, { drift: driftOk(), chains: chainsOk() });
+    expect(html.match(/class="rm-bar fields"/g)?.length).toBe(1);
+    expect(html).toContain('data-act="refresh-roadmap"');
+    expect(html).toContain("data-rm-hide-done");
+  }
+  const tidy = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(), chains: null });
+  expect(tidy).toContain('href="#/board?tab=tidy&amp;v=v1.1.1"'); // the tile keeps Tidy up; the Roadmap tab's tiles carry no tab
+  expect(renderBoard(r, { version: null, theme: null }, null)).toContain('href="#/board?v=v1.1.1"');
+  expect(renderBoard(r, { version: null, theme: null, v: "no-such" }, null)).toContain("no such version in the mirror");
+  const evil = renderBoard({ ...r, mirror: { ...r.mirror, newest: "<img src=x onerror=1>" } }, { version: null, theme: null }, null);
+  expect(evil).not.toContain("<img src=x");
+  expect(evil).toContain("&lt;img src=x");
+  // a released version with open tickets is drawn in the failing look, not as muted text
+  expect(renderBoard(r, { version: null, theme: null }, null)).toMatch(/class="ro pill fail">\d+ still open: HIMMEL-4/);
+});
+
+test("Board: a chain badge keeps the selected version in its link, and has none when no version is selected", () => {
+  const r = read(station());
+  const withV = renderBoard(r, { version: null, theme: null, v: "all" }, { drift: null, chains: chainsOk() });
+  expect(withV).toMatch(/class="rm-chain" href="#\/board\?tab=chains&amp;v=all&amp;at=HIMMEL-1"/);
+  expect(renderBoard(r, { version: null, theme: null }, { drift: null, chains: chainsOk() })).toMatch(/class="rm-chain" href="#\/board\?tab=chains&amp;at=HIMMEL-1"/);
+});
+
+test("Board: Tidy up covers every version by default and narrows only when the route names one", () => {
+  const r = read(station());
+  const sections = (html: string) => html.slice(html.indexOf('id="rm-sync"'));
+  const dflt = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(), chains: null });
+  const all = renderBoard(r, { version: null, theme: null, tab: "tidy", v: "all" }, { drift: driftOk(), chains: null });
+  expect(sections(dflt)).toBe(sections(all));
+  expect(dflt).toContain("is released but this is still open"); // the Released-but-open proposal lives on a version other than the running one
+  const named = renderBoard(r, { version: null, theme: null, tab: "tidy", v: "v1.1.3" }, { drift: driftOk(), chains: null });
+  expect(sections(named)).not.toBe(sections(all));
+});
+
+test("Board: the Tidy up tab carries the Drift, Worker to Jira sync and Librarian sections unchanged", () => {
+  const html = renderBoard(read(station()), { version: null, theme: null, tab: "tidy", v: "all" }, { drift: driftOk(), chains: null });
+  for (const id of ["rm-drift", "rm-sync", "rm-librarian"]) expect(html).toContain(`id="${id}"`);
+  expect(html).toContain("Worker to Jira sync");
+  expect(html).toContain("Librarian");
+  expect(html).toMatch(/<table class="[^"]*\bdata\b/);
+  expect(html).not.toContain("rm-board"); // the lanes belong to the Roadmap tab
+});
+
+test("Board: the drift banner and the Tidy up table come from the saved drift run; absent says so, with no made-up count", () => {
+  const r = read(station());
+  const real = [{ class: "VERSION-DRIFT", key: "HIMMEL-6691", line: "VERSION-DRIFT HIMMEL-6691 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=jira release request v1.1.3" }];
+  const banner = renderBoard(r, { version: null, theme: null }, { drift: driftOk(real, 4, 1), chains: null });
+  expect(banner).toContain("1 drift row");
+  expect(banner).toContain("4 known checker bug");
+  expect(banner).toContain("1 transient");
+  expect(banner).toContain("single-user");
+  const tidy = renderBoard(r, { version: null, theme: null, tab: "tidy" }, { drift: driftOk(real), chains: null });
+  expect(tidy).toContain("VERSION-DRIFT");
+  expect(tidy).toContain("HIMMEL-6691");
+  expect(tidy).toContain("release-manager");
+  expect(tidy).toContain("jira release request v1.1.3");
+  for (const extras of [null, { drift: { state: "absent", reason: "no saved drift run configured" }, chains: null }]) {
+    const none = renderBoard(r, { version: null, theme: null }, extras);
+    expect(none).toContain("drift: not read");
+    expect(none).not.toContain("drift row");
+  }
+  const stale = renderBoard(r, { version: null, theme: null }, { drift: { ...driftOk(), stale: true }, chains: null });
+  expect(stale).toContain("older than");
+  for (const bad of [{ ...driftOk(), unknown: true }, { ...driftOk(), file: { exists: false } }]) {
+    expect(renderBoard(r, { version: null, theme: null }, { drift: bad, chains: null })).not.toMatch(/\d+ drift</);
+  }
+});
+
+test("Board: chain badges, the waits-for-you card and the Chains tab come from the chain read; absent shows a notice, never a count", () => {
+  const r = read(station());
+  const html = renderBoard(r, { version: null, theme: null }, { drift: null, chains: chainsOk() });
+  expect(html).toContain("memory 1/2");
+  expect(html).toContain("in flight");
+  expect(html).toContain('href="#/board?tab=chains&amp;at=HIMMEL-1"');
+  expect(html).toContain("1 waits for you");
+  const chains = renderBoard(r, { version: null, theme: null, tab: "chains" }, { drift: null, chains: chainsOk() });
+  expect(chains).toContain("Memory guard rework");
+  expect(chains).toContain("1/2");
+  expect(chains).toContain('id="cn-HIMMEL-1"');
+  for (const extras of [null, { drift: null, chains: { state: "absent", reason: "no chain registry (HIMMEL_CHAIN_REGISTRY is not set)" } }]) {
+    const none = renderBoard(r, { version: null, theme: null }, extras);
+    expect(none).not.toContain("rm-chain");
+    expect(none).not.toMatch(/\d+ waits? for you/);
+    expect(none).toContain("waits for you: not read");
+    expect(renderBoard(r, { version: null, theme: null, tab: "chains" }, extras)).toContain("no chain registry");
+  }
+  // the Chain filter narrows the lanes to one chain's tickets
+  const one = renderBoard(r, { version: null, theme: null, chain: "memory" }, { drift: null, chains: chainsOk() });
+  expect(one).toContain("Roadmap in the ui"); // HIMMEL-1
+  expect(one).not.toContain("Orphaned work"); // HIMMEL-2, in no chain
+});
+
+test("Board: loading, no tracker, unavailable and GitHub read-only states, and ticket text is escaped", () => {
+  const r = read(station());
+  r.tickets[0].t = "<script>x</script>";
+  const html = renderBoard(r, { version: null, theme: null, v: "all" }, null);
+  expect(html).not.toContain("<script>x");
+  expect(html).toContain("&lt;script&gt;x");
+  expect(renderBoard(null, {}, null)).toContain("<h1>Board</h1>");
+  expect(renderBoard(null, {}, null)).toContain("loading");
+  expect(renderBoard({ state: "absent", reason: "no Jira mirror" }, {}, null)).toContain("no Jira mirror");
+  const none = renderBoard({ ...r, source: "none" }, {}, null);
+  expect(none).toContain("No tracker is configured");
+  expect(none).toContain("this is not an empty board");
+  const gh = renderBoard({ ...r, source: "github" }, { writes: true, v: "all" }, null);
+  expect(gh).toContain("read-only");
+  expect(gh).not.toContain("draggable");
 });
 
 test("#/roadmap/<version>: one version's board, four status columns, ticket links, the other versions absent", () => {
@@ -307,4 +457,16 @@ test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the e
   const r2 = await (await fetch(url, { headers: { "X-Himmel-Token": TOKEN } })).json();
   expect(r2.tickets.length).toBe(8);
   expect((await fetch(`http://127.0.0.1:${srv.port}/roadmap.js`)).status).toBe(200);
+});
+
+test("local-store items render as cards keyed by their generated LOCAL-<n> id, never as HIMMEL-<n>", () => {
+  const local = [
+    { id: "LOCAL-1", title: "First", status: "To Do", type: "Task", fix_version: "", epic: "", sector: "" },
+    { id: "LOCAL-7", title: "Seventh", status: "In Review", type: "Task", fix_version: "", epic: "LOCAL-1", sector: "" },
+  ];
+  const r = { ...readRoadmap({ mirrorDir: "", local, workers: { state: "absent" } }), sync: [] };
+  expect(r.tickets.map((t) => [t.k, t.id, t.b])).toEqual([[1, "LOCAL-1", "todo"], [7, "LOCAL-7", "rev"]]);
+  const html = renderKanban(r, { hideDone: false, writes: true });
+  expect(html).toContain("<b>LOCAL-7</b>");
+  expect(html).not.toContain("HIMMEL-7");
 });

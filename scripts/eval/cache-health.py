@@ -14,7 +14,7 @@ Metrics (see docs/internals/cache-health.md for the metrics.json schema):
   window (default 24h) and a BASELINE window (the 7 days before it).
 
 Alert rules (every default is a flag):
-  role-drop        (roles in --alert-roles, default console,leg) a role's recent hit rate is more than --drop-pts (3) below its baseline
+  role-drop        (roles in --alert-roles, default console,worker) a role's recent hit rate is more than --drop-pts (3) below its baseline
   session-low      (same roles) a session over --session-min-tokens (1M) with hit below --session-hit (90 %)
   compactions      mean compactions per active worker above --compactions-max (4)
 Hysteresis: a crossing is notified once; it stays quiet while it stays crossed; a
@@ -29,7 +29,10 @@ import argparse, fcntl, json, os, re, subprocess, sys, time
 from collections import defaultdict
 from datetime import datetime
 
-ROLES = ["console", "leg", "subagent", "bridge", "other"]
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from env_alias import legacy_names_on
+
+ROLES = ["console", "worker", "subagent", "bridge", "other"]
 HISTORY_KEEP = 24 * 30  # hourly runs, 30 days
 
 
@@ -47,7 +50,7 @@ def classify(path, title, first):
     if "-console" in t or t.endswith("-chief"):
         return "console"
     if re.search(r"HIMMEL-\d+-.*N\d+|leg[A-Z]?\d+|-N\d+", t):
-        return "leg"
+        return "worker"
     if first.startswith("You are Telegram bridge session"):
         return "bridge"
     return "other"
@@ -182,13 +185,24 @@ def compute(root, now, recent_h, baseline_d, offender_min, top_n):
                 roles=roles, top_offenders=offenders[:top_n]), offenders
 
 
+def legacy_role(role):
+    """The pre-rename role name `leg` reads as `worker` while legacy names are on."""
+    return "worker" if role == "leg" and legacy_names_on() else role
+
+
+def legacy_key(key):
+    """An alert key persisted before the rename (`role-drop:leg`) reads as the worker key."""
+    return re.sub(r"^(role-drop|compactions):leg$", r"\1:worker", key) if legacy_names_on() else key
+
+
 def evaluate(metrics, offenders, a):
     """-> {key: (kind, text)} for every rule currently crossed (entering threshold)
     and {key: kind} for those still inside the clear margin."""
     cross, holding = {}, {}
+    alert_roles = [legacy_role(x) for x in a.alert_roles.split(",")]
     for role, r in metrics["roles"].items():
         d = r["delta_pts"]
-        if role not in a.alert_roles.split(","):
+        if role not in alert_roles:
             continue
         if d is None or r["tokens"] < a.role_min_tokens or r["baseline_tokens"] < a.role_min_tokens:
             holding["role-drop:" + role] = True  # too little data to judge: keep an active alert, raise none
@@ -198,12 +212,12 @@ def evaluate(metrics, offenders, a):
                 role, r["hit_pct"], -d, r["baseline_hit_pct"])
         elif d < -a.clear_pts:
             holding["role-drop:" + role] = True
-    worker = metrics["roles"]["leg"]
+    worker = metrics["roles"]["worker"]
     if worker["sessions"] and worker["compactions_per_session"] is not None and worker["compactions_per_session"] > a.compactions_max:
-        cross["compactions:leg"] = "workers average %.1f compactions each (limit %g) over %d sessions" % (
+        cross["compactions:worker"] = "workers average %.1f compactions each (limit %g) over %d sessions" % (
             worker["compactions_per_session"], a.compactions_max, worker["sessions"])
     for o in offenders:
-        if o["role"] in a.alert_roles.split(",") and o["tokens"] >= a.session_min_tokens and o["hit_pct"] is not None and o["hit_pct"] < a.session_hit:
+        if o["role"] in alert_roles and o["tokens"] >= a.session_min_tokens and o["hit_pct"] is not None and o["hit_pct"] < a.session_hit:
             cross["session-low:" + o["session"]] = "%s session %s: %.1f%% hit over %.1fM tokens" % (
                 o["role"], o["title"][:40], o["hit_pct"], o["tokens"] / 1e6)
     return cross, holding
@@ -249,7 +263,7 @@ def cmd_check(a, metrics, offenders):
             print("cache-health: another check holds the lock, skipping", file=sys.stderr)
             return 0
     st_path = os.path.join(sd, "alert-state.json")
-    active = load_json(st_path, {}).get("active", {})  # key -> text at crossing
+    active = {legacy_key(k): v for k, v in load_json(st_path, {}).get("active", {}).items()}  # key -> text at crossing
     cross, holding = evaluate(metrics, offenders, a)
     new = {k: v for k, v in cross.items() if k not in active}
     # An active key stays active while crossed or inside the clear margin.
@@ -328,7 +342,7 @@ def main():
     p.add_argument("--session-min-tokens", type=float, default=1e6)
     p.add_argument("--session-hit", type=float, default=90.0)
     p.add_argument("--compactions-max", type=float, default=4.0)
-    p.add_argument("--alert-roles", default="console,leg")  # subagent/other/bridge hit rates swing with cold starts: metrics only
+    p.add_argument("--alert-roles", default="console,worker")  # subagent/other/bridge hit rates swing with cold starts: metrics only
     p.add_argument("--top", type=int, default=10)
     a = p.parse_args()
     now = a.now if a.now is not None else time.time()

@@ -250,6 +250,7 @@ case " $* " in
             shift
         done
         [ -n "$prefix" ] || exit 96
+        [ "$prefix" = "$(pwd -P)" ] || exit 93  # npm 11 refuses a --prefix that differs from its physical cwd
         case "$prefix/" in "$SCAN_REPO/"*) exit 95 ;; esac
         printf '%s\n' "$prefix" > "$SCAN_FIXTURE/tool-dir"
         # Refuse floating specs, missing locks and a lock that does not bind

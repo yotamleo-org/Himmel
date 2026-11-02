@@ -259,10 +259,12 @@ mog_build_fixture() {
     # The PARTIAL report appends to the chief doc through this sibling.
     mkdir -p "$tmp/scripts/handover/chief-kit"
     cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
+    # The partial-merge remainder reader, read from the anchor's scripts/lib.
+    cp "$SCRIPT_DIR/../lib/pr_remainder.py" "$tmp/scripts/lib/pr_remainder.py"
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
-    cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$SCRIPT_DIR/../lib/status-marker.sh" "$tmp/scripts/lib/"
+    cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$SCRIPT_DIR/../lib/status-marker.sh" "$SCRIPT_DIR/../lib/merge-rows-effective.py" "$tmp/scripts/lib/"
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/chief-kit/worker-jira-status.sh"
     # The CR thread recorder at its anchor path is a stub: it logs its argv to
@@ -422,7 +424,10 @@ case "$verb" in
                 printf '%s|https://github.com/%s/pull/%s|%s|%s|%s|%s' \
                     "${STUB_STATE-OPEN}" "$nwo" "${STUB_NUM:-77}" "${STUB_NUM:-77}" "${STUB_SHA-abc123def456}" "${STUB_BASE-main}" "${STUB_HEAD_BRANCH-feat/stub-head}" ;;
             body)
-                printf '%s' "${STUB_PR_BODY-}" ;;
+                # Defaults to a body that records a remainder: a partial (bare) merge of a ticket-tagged PR
+                # whose body records none is refused (exit 26), and most cases are bare merges.
+                printf '%s' "${STUB_PR_BODY-Remaining: the next slice}"
+                exit "${STUB_BODY_RC:-0}" ;;
             "mergeStateStatus,reviewDecision")
                 [ "${STUB_POLICY_FAIL:-0}" = "1" ] && { echo "gh: policy query failed" >&2; exit 1; }
                 printf '%s|%s' "${STUB_MERGE_STATE-CLEAN}" "${STUB_REVIEW_DECISION-}" ;;
@@ -548,6 +553,19 @@ case "$verb" in
         [ "${STUB_MERGE_REQUIRED_CHECK:-0}" = "1" ] && { echo "Pull request $nwo#77 is not mergeable: Required status check \"codeowner-review-gate\" is expected." >&2; exit 1; }
         [ "${STUB_MERGE_BASE_MODIFIED:-0}" = "1" ] && { echo "GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)" >&2; exit 1; }
         [ "${STUB_MERGE_FAIL:-0}" = "1" ] && { echo "merge conflict / head moved" >&2; exit 1; }
+        # STUB_MERGE_SNAPSHOT=1: copy the status-events rows as they stand when the merge call runs.
+        [ "${STUB_MERGE_SNAPSHOT:-0}" != "1" ] || cp "$TICKET_STATUS_STATE_DIR/status-events.jsonl" "$GH_LOG.rows-at-merge" 2>/dev/null || : > "$GH_LOG.rows-at-merge"
+        # STUB_MERGE_KILL=before|after: SIGKILL the outermost merge-on-green.sh before the merge lands / right after it did.
+        if [ "${STUB_MERGE_KILL:-}" = "before" ] || [ "${STUB_MERGE_KILL:-}" = "after" ]; then
+            [ "$STUB_MERGE_KILL" != "after" ] || echo "merged"
+            victim="" pid=$$
+            while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+                case "$(ps -o args= -p "$pid" 2>/dev/null)" in *scripts/handover/merge-on-green.sh*) victim=$pid ;; esac
+                pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+            done
+            [ -z "$victim" ] || kill -9 "$victim"
+            sleep 1
+        fi
         echo "merged"
         ;;
     "run list")
@@ -747,6 +765,8 @@ fi
 case "\$1" in
     */dist/index.js)
         echo "\$*" >> "\$JIRA_LOG"
+        # The name each edit carries into the Fix Version journal.
+        if [ "\$2" = "edit" ]; then echo "edit-writer: \${HIMMEL_VERSION_WRITER:-unset}" >> "\$JIRA_LOG"; fi
         if [ "\$2" = "comment" ] && [ "\$4" = "--comment-file" ] && [ -f "\$5" ]; then
             sed 's/^/comment-body: /' "\$5" >> "\$JIRA_LOG"
         fi
@@ -914,6 +934,14 @@ run_mog() {
     # sets it EMPTY and MOG_UNSET_HIMMEL_REPO=1 removes it from the child's
     # environment (env -u) — the two refusal paths of control (b).
     local himmel_repo_dir="${MOG_HIMMEL_REPO:-$tmp}"
+    # MOG_ANCHOR_READER=<file|ABSENT> builds a DISTINCT anchor tree whose scripts/lib/pr_remainder.py is that file (or missing),
+    # while the worktree keeps its own copy: the anchor's reader must be the one that decides the partial-merge gate.
+    if [ -n "${MOG_ANCHOR_READER:-}" ]; then
+        himmel_repo_dir="$tmp/anchor"
+        mkdir -p "$himmel_repo_dir"
+        mog_build_fixture "$himmel_repo_dir"
+        if [ "$MOG_ANCHOR_READER" = ABSENT ]; then rm -f "$himmel_repo_dir/scripts/lib/pr_remainder.py"; else cp "$MOG_ANCHOR_READER" "$himmel_repo_dir/scripts/lib/pr_remainder.py"; fi
+    fi
     [ "${MOG_NO_HIMMEL_REPO:-0}" = "1" ] && himmel_repo_dir=""
     # cwd matters: the post-merge prune reads `git worktree
     # list` from the checkout the script runs in. Default to the (non-repo)
@@ -2009,6 +2037,20 @@ MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
     run_mog 0 "merged from inside the worktree → deferred, exit 0"
 if [ -d "$P_WT" ]; then pass; else fail "11j: the caller's own cwd was removed"; fi
 assert_audit_has "11j: audit records the deferral" "prune=own-cwd-deferred"
+# 11j2. The deferral prints ONE hint on stderr (where every other
+# post-merge note goes) saying the worktree was KEPT because the merge ran from
+# inside it, with the exact prune command.
+assert_err_has "11j2: hint says the worktree was kept" "KEPT worktree '$P_WT'"
+assert_err_has "11j2: hint says why (the merge ran from inside it)" "merge ran from inside it"
+assert_err_has "11j2: hint carries the prune command" "git -C '$P_REPO' worktree remove '$P_WT' && git -C '$P_REPO' branch -D 'feat/mog-prune'"
+if [ "$(grep -cF 'KEPT worktree' <<< "$LAST_ERR")" = "1" ]; then pass; else fail "11j2: expected exactly one keep hint (err: $LAST_ERR)"; fi
+# 11j3. Negative control: a merge NOT from inside the worktree prunes it and
+# prints no keep hint.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 0 "11j3: merged from the primary checkout → pruned, exit 0"
+assert_audit_has "11j3: audit records the prune" "prune=removed"
+if grepq "$LAST_ERR" -F 'KEPT worktree'; then fail "11j3: a pruning merge printed the keep hint (err: $LAST_ERR)"; else pass; fi
 
 # 11k. A commit pushed after the squash merge (tip != certified sha) keeps the
 # tree — clean-garden's exact-head-match rule, and what makes the branch -D
@@ -3847,6 +3889,11 @@ assert_audit_lacks "jira: default case no longer reports would-transition" "woul
 assert_jira_log_lacks "jira: partial merge makes no transition call" "index.js transition"
 assert_jira_log_lacks "jira: partial merge never transitions to Done" "transition HIMMEL-374 Done"
 assert_jira_log_has "jira: partial merge comments a Remaining line" "comment-body: Remaining:"
+# The same ticket sitting in a later version would be folded by a completing merge (the cases below); a partial one writes no stamp.
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "8823: partial merge of a ticket in a later version"
+assert_jira_log_lacks "8823: partial merge writes no stamp" "edit-writer:"
+assert_jira_log_lacks "8823: partial merge makes no edit call" "index.js edit"
 # A bare merge leaves the ticket open, so say so (stderr) and tell the chief doc.
 assert_err_has "jira: bare merge prints the PARTIAL line" "PARTIAL HIMMEL-374: next slice not dispatched"
 # A merge of a ticket held in a later unreleased version than the current one files an INTAKE
@@ -3952,11 +3999,89 @@ assert_jira_log_has "jira: Remaining text is quoted in the comment" "comment-bod
 assert_jira_log_lacks "jira: partial merge on a Remaining body makes no transition" "index.js transition"
 assert_audit_has "jira: partial merge audit records the unchanged status and comment" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged comment=ok"
 
-# No Remaining line in the body: still dispatchable, and the comment says so.
+# A partial (contract=no) merge whose body records no remainder is REFUSED before it lands (exit 26), and the
+# refusal names the missing line; nothing is merged, commented or transitioned.
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
-    run_mog 0 "jira: partial merge with no Remaining line in the body"
-assert_jira_log_lacks "jira: no-note partial merge makes no transition" "index.js transition"
-assert_jira_log_has "jira: no-note comment names the gap" "comment-body: Remaining: not recorded"
+    run_mog 26 "8673: partial merge with no remainder in the body is refused"
+assert_err_has "8673: the refusal names the missing Remaining: line" "has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\`"
+assert_audit_has "8673: the refusal is audited" "REFUSED reason=partial-remainder-missing"
+assert_jira_log_lacks "8673: a refused partial merge posts no comment" "comment-body"
+# a completing PR's coverage holds only done lines: run without --jira-transition it is refused, so the caller must choose
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n- slice two: done\n' \
+    run_mog 26 "8673: a coverage of done lines only is refused without --jira-transition"
+# the remainder recorded only as a deferred line under ## Ticket coverage merges, and the breadcrumb posts it
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Summary\nslice one\n\n## Ticket coverage\n- slice one: done\n- rest: deferred \xe2\x86\x92 HIMMEL-9\n' \
+    run_mog 0 "8673: a deferred coverage line is a recorded remainder"
+assert_jira_log_has "8673: the breadcrumb posts the deferred line" "comment-body: Remaining: rest: deferred → HIMMEL-9"
+# a completing merge (--jira-transition) is not a partial one: no remainder is asked of it
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n' \
+    run_mog 0 "8673: a completing merge needs no remainder" -- --jira-transition
+
+# The gate's reader is the ANCHOR's scripts/lib/pr_remainder.py, never the worktree's copy, and every refusal lands before
+# any merge call (also on --dry-run). Each refusal row asserts it merged nothing.
+mog_rdr=$(mktemp -d "${TMPDIR:-/tmp}/mog-reader.XXXXXX")
+if [ -z "$mog_rdr" ] || [ ! -d "$mog_rdr" ]; then
+    fail "8673 setup: mktemp -d produced no sandbox for the stub readers"
+else
+    printf 'import sys\nprint("none")\n' > "$mog_rdr/says-none.py"
+    printf 'import sys\n' > "$mog_rdr/says-nothing.py"
+    printf 'import sys\nprint("remaining\\tslice 2")\nsys.exit(5)\n' > "$mog_rdr/fails-with-answer.py"
+    # a distinct anchor whose reader says `none` refuses a body the worktree's own reader would accept
+    MOG_ANCHOR_READER="$mog_rdr/says-none.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: the anchor's reader decides, not the worktree's"
+    assert_audit_has "8673: the anchor's none is the audited reason" "REFUSED reason=partial-remainder-missing"
+    assert_gh_lacks "8673: the anchor's none merged nothing" "pr merge"
+    # and a branch-poisoned worktree reader never runs while the anchor's real reader accepts the body
+    MOG_POISON=lib/pr_remainder.py MOG_ANCHOR_READER="$SCRIPT_DIR/../lib/pr_remainder.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 0 "8673: a poisoned worktree reader is not run, the anchor's decides"
+    if [ -e "$LAST_TMP/poison.ran" ]; then fail "8673: the worktree's own reader ran inside the gate"; else pass; fi
+    assert_gh_has "8673: the anchor's reader accepted, the merge happened" "pr merge"
+    # a broken anchor refuses: no reader, no answer, or a reader that fails after answering
+    MOG_ANCHOR_READER=ABSENT STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: an anchor without the reader refuses"
+    assert_audit_has "8673: a missing reader is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+    assert_gh_lacks "8673: a missing reader merged nothing" "pr merge"
+    MOG_ANCHOR_READER="$mog_rdr/says-nothing.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: a reader that answers nothing refuses"
+    assert_audit_has "8673: an empty answer is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+    assert_gh_lacks "8673: an empty answer merged nothing" "pr merge"
+    MOG_ANCHOR_READER="$mog_rdr/fails-with-answer.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: a reader that exits non-zero refuses even with an answer"
+    assert_audit_has "8673: a failing reader is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+    assert_gh_lacks "8673: a failing reader merged nothing" "pr merge"
+    rm -rf "$mog_rdr"
+fi
+# a body read where gh exits 3 (the old reader-absent code) is a refused read, never a skipped check
+STUB_BODY_RC=3 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 26 "8673: a body read where gh exits 3 is refused"
+assert_audit_has "8673: the failed read is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+assert_gh_lacks "8673: the failed read merged nothing" "pr merge"
+STUB_BODY_RC=1 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 26 "8673: a body read where gh exits 1 is refused"
+assert_gh_lacks "8673: the exit-1 read merged nothing" "pr merge"
+# the refusals name the missing line and merge nothing, on a real merge and on --dry-run
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 26 "8673: no remainder refuses before the merge call"
+assert_gh_lacks "8673: the refused partial merge never called pr merge" "pr merge"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 26 "8673: no remainder refuses on --dry-run too" -- --dry-run
+assert_audit_has "8673: the dry-run refusal is audited" "REFUSED reason=partial-remainder-missing"
+assert_audit_lacks "8673: the dry-run refusal wrote no would-merge line" "DRYRUN would-merge"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n' \
+    run_mog 26 "8673: a coverage of done lines refuses before the merge call"
+assert_gh_lacks "8673: the done-only refusal never called pr merge" "pr merge"
+# the brief's completes-ticket: no binds even when --jira-transition is given
+printf '# worker\n\n> **Completes ticket:** no\n\n## Results\n' > "$LAST_TMP/worker-no-8673.md"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 26 "8673: a brief that says no is a partial merge even with --jira-transition" -- --jira-transition --worker-doc "$LAST_TMP/worker-no-8673.md"
+assert_gh_lacks "8673: the brief-no refusal never called pr merge" "pr merge"
+# a title naming no ticket is not a partial merge of one: no remainder is asked of it
+STUB_PR_BODY="just a summary" run_mog 0 "8673: a title with no ticket key asks for no remainder"
+assert_gh_has "8673: the keyless title merged" "pr merge"
+# the breadcrumb posts what the reader found
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'slice 1\nRemaining: slice 2\n\n## Ticket coverage\n- rest: deferred -> HIMMEL-9\n' \
+    run_mog 0 "8673: a Remaining line beside a deferred line is one remainder"
+assert_jira_log_has "8673: the breadcrumb posts both" "comment-body: Remaining: slice 2; rest: deferred -> HIMMEL-9"
 
 # A ticket already Done is left alone by a partial merge; an Epic never moves.
 # A bare merge never transitions, so the next three rows (Done, Epic, failed
@@ -4087,6 +4212,36 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "status: a finished merge keeps both rows, the Jira outcome last" -- --jira-transition
 assert_status_row "status: a finished merge leaves the pre-Jira row too" \
     '.event == "merge" and .contract == "yes" and .result == "pending" and .stage == "pre-jira"'
+# The pending row is written BEFORE the merge call, so a run killed right after GitHub
+# merges still leaves the record. A row for a PR that did not merge is marked result=not-merged (no contract).
+w0_title="feat(jira): [HIMMEL-374] reconciler"
+STUB_JIRA_BUILD=1 STUB_MERGE_SNAPSHOT=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: the row exists when the merge call runs"
+if jq -e -s 'map(select(.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .repo == "owner/repo" and .contract == "no" and .result == "pending" and .stage == "pre-merge")) | length == 1' \
+    "$LAST_GH_LOG.rows-at-merge" >/dev/null 2>&1; then pass
+else fail "W0: the pending pre-merge row is in the log before gh pr merge runs (rows then: $(cat "$LAST_GH_LOG.rows-at-merge" 2>/dev/null))"; fi
+STUB_JIRA_BUILD=1 STUB_MERGE_SNAPSHOT=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: an opted-in merge" -- --jira-transition
+if jq -e -s 'map(select(.event == "merge" and .contract == "yes" and .result == "pending" and .stage == "pre-merge")) | length == 1' \
+    "$LAST_GH_LOG.rows-at-merge" >/dev/null 2>&1; then pass
+else fail "W0: the pre-merge row of an opted-in merge says contract=yes (rows then: $(cat "$LAST_GH_LOG.rows-at-merge" 2>/dev/null))"; fi
+STUB_JIRA_BUILD=1 STUB_MERGE_KILL=before STUB_PR_TITLE="$w0_title" run_mog 137 "W0: killed before the merge lands"
+assert_status_row "W0: a run killed before the merge leaves its pre-merge row" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .contract == "no" and .result == "pending" and .stage == "pre-merge"'
+STUB_JIRA_BUILD=1 STUB_MERGE_KILL=after STUB_PR_TITLE="$w0_title" run_mog 137 "W0: killed right after the merge landed"
+assert_status_row "W0: a run killed right after the merge still leaves its pending row" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .result == "pending" and .stage == "pre-merge"'
+STUB_MERGE_POLICY_REFUSED=1 STUB_PR_TITLE="$w0_title" run_mog 18 "W0: GitHub refused the merge"
+assert_status_row "W0: a refused merge is marked not-merged for the same pr and head, with no contract" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .result == "not-merged" and (has("contract") | not)'
+STUB_MERGE_FAIL=1 STUB_POST_STATE=CLOSED STUB_PR_TITLE="$w0_title" run_mog 15 "W0: the merge failed and the PR is closed"
+assert_status_row "W0: a failed merge of a PR that did not merge is marked not-merged" \
+    '.event == "merge" and .pr == "77" and .head == "abc123def456" and .result == "not-merged"'
+STUB_MERGE_FAIL=1 STUB_POST_STATE=OPEN STUB_PR_TITLE="$w0_title" run_mog 15 "W0: the merge outcome is unproven"
+if jq -e -s 'map(select(.result == "not-merged")) | length == 0' "$LAST_TMP/ts/status-events.jsonl" >/dev/null 2>&1; then pass
+else fail "W0: an unproven (still OPEN) merge is not marked not-merged (rows: $(cat "$LAST_TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
+w0_file="$(mktemp "${TMPDIR:-/tmp}/mog-w0-notdir.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
+MOG_TS_DIR="$w0_file" STUB_JIRA_BUILD=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: an unwritable status log does not block the merge"
+assert_gh_has "W0: the merge still ran with an unwritable status log" "pr merge 77"
+rm -f "$w0_file"
 # The Done write waits on the funnel's per-key lock: a held lock defers it, and
 # the deferral is a completes=yes row the derive reads as done-pending. Both
 # lock cases need a flock binary; without one (stock macOS) the write runs unlocked.
@@ -4157,6 +4312,8 @@ STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(
     run_mog 0 "jira: closed ticket in a later unreleased version is folded to the current one" -- --jira-transition
 assert_jira_log_has "jira: fold sets fixVersion to the current unreleased version" "edit HIMMEL-374 --fix-version v1.1.3"
 assert_audit_has "jira: fold is recorded on the audit line" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=v1.1.3"
+assert_jira_log_has "8823: merge stamp carries merge-stamp" "edit-writer: merge-stamp"
+assert_jira_log_lacks "8823: no merge-stamp edit goes out unnamed" "edit-writer: unset"
 
 assert_jira_log_has "jira: the versions lookup names the ticket's project" "versions --project HIMMEL"
 
@@ -4172,6 +4329,9 @@ assert_audit_has "jira: failed re-add keeps the lost version recoverable" "fixve
 STUB_JIRA_BUILD=1 STUB_JIRA_ADD_FIX_FAIL_ONCE=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.2"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: a re-add that fails once is retried" -- --jira-transition
 assert_audit_has "jira: the retried re-add leaves the fold ok" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=v1.1.3"
+# The replace, the failed re-add and its retry are three edits, and every one is named.
+if [ "$(grep -c '^edit-writer: merge-stamp$' "$LAST_JIRA_LOG")" = 3 ]; then pass; else fail "8823: retry after a failed add still carries merge-stamp (jira log: $(cat "$LAST_JIRA_LOG" 2>/dev/null))"; fi  # read-sink-ok: LAST_JIRA_LOG is this suite's own stub log inside its sandbox
+assert_jira_log_lacks "8823: no retry edit goes out unnamed" "edit-writer: unset"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n' STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: with no dated version the first unreleased one is current" -- --jira-transition
@@ -4697,21 +4857,21 @@ printf '%s\t%s\t%s\n' \
 mog5115_commits() { printf '{"commits":[{"messageHeadline":"fix: x","messageBody":"%s"}]}' "$1"; }
 
 # 5115-a (RED, real window) — main red, no declaration: merged before this gate.
-STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 22 "5115-a: main's latest completed run is red → exit 22"
-assert_audit_has "5115-a: audited as a red-main refusal" "REFUSED reason=main-red"
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "5115-a: main's latest completed run is red → merged as advisory"
+assert_audit_has "5115-a: audited as an advisory merge" "via=advisory"
 assert_err_has "5115-a: stderr names the red run" "37964772913"
 assert_err_has "5115-a: stderr names the range base (only cancelled runs behind, so outside the window)" "previous run outside the listed window"
 assert_err_has "5115-a: stderr names the commit range (head)" "f343c0e2"
-assert_clear_not_invoked "5115-a: nothing mutated before the refusal"
-no_merge_call "5115-a: no merge call"
+assert_merge_has "5115-a: the merge ran" "--squash"
 
 # 5115-b — green main (cancelled pushes over a success) is allowed.
 run_mog 0 "5115-b: green main (cancelled newer, success behind) → merged"
 assert_gh_has "5115-b: main's runs were read" "run list"
+assert_audit_lacks "5115-b: green-main merge is not an advisory" "via=advisory"
 
 # 5115-c — cancelled and in-progress runs are skipped: fall back to the
 # previous COMPLETED run, which is red.
-STUB_RUN_LIST_JSON="$MOG_RUN_RED_NEWER_CANCELLED" run_mog 22 "5115-c: cancelled/in-progress latest falls back to the red completed run → exit 22"
+STUB_RUN_LIST_JSON="$MOG_RUN_RED_NEWER_CANCELLED" run_mog 0 "5115-c: cancelled/in-progress latest falls back to the red completed run → merged as advisory"
 assert_err_has "5115-c: the fallback run is the red one" "37964772913"
 
 # 5115-d — declared fix by run id, verified against the red run.
@@ -4721,8 +4881,9 @@ assert_audit_has "5115-d: audited as the declared fix" "main-red-declared"
 
 # 5115-e — forged: the run id is not the red run.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: run=12345')" \
-    run_mog 22 "5115-e: forged run id → exit 22"
-assert_audit_has "5115-e: audited as a refusal" "REFUSED reason=main-red"
+    run_mog 0 "5115-e: forged run id → merged as advisory"
+assert_audit_has "5115-e: audited as an advisory merge" "via=advisory"
+assert_audit_lacks "5115-e: and never as a declared fix" "main-red-declared"
 
 # 5115-f — declared by suite, verified against the red run's failed log.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG" \
@@ -4733,18 +4894,24 @@ assert_gh_has "5115-f: the failed log was read for the red run" "run view 379647
 # 5115-g — forged: a suite the red run never failed on.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=test-unrelated.sh')" \
-    run_mog 22 "5115-g: unrelated suite= → exit 22"
+    run_mog 0 "5115-g: unrelated suite= → merged as advisory"
+assert_audit_has "5115-g: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-g: and never as a declared fix" "main-red-declared"
 
-# 5115-h — a declaration whose log cannot be read is not verified: refuse.
+# 5115-h — a declaration whose log cannot be read is not verified: it merges as an advisory.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_VIEW_FAIL=1 \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=shell-unit-shard')" \
-    run_mog 22 "5115-h: unreadable failed log → exit 22"
+    run_mog 0 "5115-h: unreadable failed log → merged as advisory"
+assert_audit_has "5115-h: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-h: and never as a declared fix" "main-red-declared"
 
 # 5115-l — a fragment of a failed job name is not a job: `unit` sits inside
 # `shell-unit-shard (...)` but names nothing the run failed on.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=unit')" \
-    run_mog 22 "5115-l: fragment suite= is not a failed job → exit 22"
+    run_mog 0 "5115-l: fragment suite= is not a failed job → merged as advisory"
+assert_audit_has "5115-l: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-l: and never as a declared fix" "main-red-declared"
 
 # 5115-m — the declaration may be the commit subject on a one-line commit.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" \
@@ -4754,7 +4921,7 @@ STUB_RUN_LIST_JSON="$MOG_RUN_RED" \
 # 5115-n — the reported range base is the previous COMPLETED non-cancelled
 # sweep, not a cancelled run sitting between.
 STUB_RUN_LIST_JSON='[{"databaseId":300,"status":"completed","conclusion":"failure","event":"schedule","headSha":"aaaaaaaaaaaa1111111111111111111111111111"},{"databaseId":200,"status":"completed","conclusion":"cancelled","event":"push","headSha":"bbbbbbbbbbbb2222222222222222222222222222"},{"databaseId":100,"status":"completed","conclusion":"success","event":"schedule","headSha":"cccccccccccc3333333333333333333333333333"}]' \
-    run_mog 22 "5115-n: range base skips a cancelled run → exit 22"
+    run_mog 0 "5115-n: range base skips a cancelled run → merged as advisory"
 assert_err_has "5115-n: range runs from the previous completed sweep" "cccccccccccc..aaaaaaaaaaaa"
 
 # 5115-o/p — a .sh suite on an ##[error] line must be a whole path component:
@@ -4767,7 +4934,9 @@ STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG2" \
     run_mog 0 "5115-o: whole .sh name on an error line → merged"
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG2" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=foo.sh')" \
-    run_mog 22 "5115-p: tail fragment of a .sh name → exit 22"
+    run_mog 0 "5115-p: tail fragment of a .sh name → merged as advisory"
+assert_audit_has "5115-p: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-p: and never as a declared fix" "main-red-declared"
 rm -f "$MOG_RUN_LOG2"
 
 # 5115-q — a prefix is a matrix base name only when followed by ` (`: a job
@@ -4777,7 +4946,9 @@ printf '%s\t%s\t%s\n' \
     'shell-unit-shard extra' 'UNKNOWN STEP' '2026-10-09T17:54:35.0819579Z ##[error]Process completed with exit code 1.' > "$MOG_RUN_LOG3"
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG3" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=shell-unit-shard')" \
-    run_mog 22 "5115-q: prefix followed by a non-matrix suffix → exit 22"
+    run_mog 0 "5115-q: prefix followed by a non-matrix suffix → merged as advisory"
+assert_audit_has "5115-q: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5115-q: and never as a declared fix" "main-red-declared"
 rm -f "$MOG_RUN_LOG3"
 
 # 5115-i — DECIDED: no completed run in the window means no red was observed.
@@ -4799,17 +4970,43 @@ assert_audit_has "5115-r: audited as a run-list refusal" "phase=run-list seen=50
 # named main) on top of a RED schedule run must not hide the red; and a RED
 # pull_request run on top of a green schedule run must not block.
 STUB_RUN_LIST_JSON='[{"databaseId":400,"status":"completed","conclusion":"success","event":"pull_request","headSha":"dddddddddddd4444444444444444444444444444"},{"databaseId":300,"status":"completed","conclusion":"failure","event":"schedule","headSha":"aaaaaaaaaaaa1111111111111111111111111111"},{"databaseId":100,"status":"completed","conclusion":"success","event":"schedule","headSha":"cccccccccccc3333333333333333333333333333"}]' \
-    run_mog 22 "5115-s: green fork pull_request run does not hide a red schedule run → exit 22"
+    run_mog 0 "5115-s: green fork pull_request run does not hide a red schedule run → merged as advisory"
 assert_err_has "5115-s: the red run is the schedule run" "300"
 STUB_RUN_LIST_JSON='[{"databaseId":400,"status":"completed","conclusion":"failure","event":"pull_request_target","headSha":"dddddddddddd4444444444444444444444444444"},{"databaseId":300,"status":"completed","conclusion":"success","event":"schedule","headSha":"aaaaaaaaaaaa1111111111111111111111111111"}]' \
     run_mog 0 "5115-s2: red fork pull_request_target run does not block a green main → merged"
+assert_audit_lacks "5115-s2: green-main merge is not an advisory" "via=advisory"
 
 # 5115-j — an unreadable run list is unverified: refuse (fail closed).
 STUB_RUN_LIST_FAIL=1 run_mog 22 "5115-j: run list read fails → exit 22"
 assert_audit_has "5115-j: audited" "REFUSED reason=main-red"
 
-# 5115-k — the dry run reports the same refusal.
-STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 22 "5115-k: dry-run on red main → exit 22" -- --dry-run
+# 5115-k — the dry run reports the same advisory and makes no merge call.
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "5115-k: dry-run on red main → advisory reported" -- --dry-run
+no_merge_call "5115-k: a dry run makes no merge call"
+assert_gh_lacks "5115-k: a dry run queues no re-check" "workflow run ci.yml"
+assert_err_has "5115-k: the dry run prints the advisory" "MAIN-RED advisory:"
+
+# 8675-a (RED, real window) — a red main no longer blocks a PR whose own CI is
+# green: the merge proceeds, the audit line names the red run and `via=advisory`,
+# and one MAIN-RED advisory line is printed.
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "8675-a: red main, PR's own CI green → merged as advisory"
+assert_audit_has "8675-a: audited as an advisory merge" "via=advisory"
+assert_audit_has "8675-a: audit names the red run id" "run=37964772913"
+assert_audit_lacks "8675-a: a readable commit list is not flagged unreadable" "commits=unreadable"
+assert_audit_lacks "8675-a: not a refusal" "REFUSED reason=main-red"
+assert_err_has "8675-a: prints the MAIN-RED advisory" "MAIN-RED advisory:"
+assert_err_has "8675-a: the advisory names the red run" "37964772913"
+assert_merge_has "8675-a: the merge ran" "--squash"
+assert_gh_has "8675-a: main is re-checked after the merge" "workflow run ci.yml"
+# 8675-b — a red PR on a red main is still refused, by the PR-green gate (14).
+STUB_CI_RC=1 STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 14 "8675-b: red PR on a red main → exit 14"
+no_merge_call "8675-b: no merge call"
+assert_audit_lacks "8675-b: never reaches the main-red advisory" "via=advisory"
+# 8675-c — an unreadable commit list only leaves a declaration unverified: an advisory merge.
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_COMMITS_FAIL=1 run_mog 0 "8675-c: red main, commit list unreadable → merged as advisory"
+assert_audit_has "8675-c: audited as an advisory merge" "via=advisory"
+assert_audit_has "8675-c: the audit says the commits were not read" "commits=unreadable"
+assert_merge_has "8675-c: the merge ran" "--squash"
 rm -f "$MOG_RUN_LOG"
 
 # ── chief-written fix-GO is the second way through the gate ───
@@ -4821,8 +5018,8 @@ MOG_FX_ROOT=$(cd "$MOG_FX_ROOT" && pwd)
 mog5134_run() {  # <expect rc> <label> [--] [run_mog args]: red main, PR 77 at GO_SHA, root MOG_FX_ROOT
     HANDOVER_DIR="$MOG_FX_ROOT" STUB_SHA="$GO_SHA" STUB_RUN_LIST_JSON="${MOG_RUN_FX:-$MOG_RUN_RED}" run_mog "$@"
 }
-# 5134-a (RED) — red main, nothing declared, no fix-GO: refused, as before.
-mog5134_run 22 "5134-a: red main, no declaration, no fix-GO → exit 22"
+# 5134-a — red main, nothing declared, no fix-GO: an advisory merge.
+mog5134_run 0 "5134-a: red main, no declaration, no fix-GO → merged as advisory"
 
 # 5134-b — a fix-GO for the red run, this PR and this head: merged, audited.
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 77 "$GO_SHA"
@@ -4832,9 +5029,11 @@ assert_merge_has "5134-b: merge pins the certified head" "--match-head-commit $G
 
 # 5134-c — stale: main moved to a newer red run; the fix-GO names the old one.
 MOG_RUN_FX='[{"conclusion":"failure","createdAt":"2026-10-10T07:00:00Z","databaseId":37999999999,"event":"schedule","headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"completed"},{"conclusion":"failure","createdAt":"2026-10-09T17:13:47Z","databaseId":37964772913,"event":"push","headSha":"f343c0e266336aee395f2612d8f62ca3b927528f","status":"completed"}]' \
-    mog5134_run 22 "5134-c: stale fix-GO (main has a newer red run) → exit 22"
+    mog5134_run 0 "5134-c: stale fix-GO (main has a newer red run) → merged as advisory"
+assert_audit_has "5134-c: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-c: and never as a declared fix" "main-red-declared"
 assert_err_has "5134-c: stderr names the CURRENT red run" "37999999999"
-no_merge_call "5134-c: no merge call"
+assert_merge_has "5134-c: the merge ran" "--squash"
 # ... and a fix-GO written for the new run is accepted.
 go_write "$MOG_FX_ROOT" --fix-main-red 37999999999 77 "$GO_SHA"
 MOG_RUN_FX='[{"conclusion":"failure","createdAt":"2026-10-10T07:00:00Z","databaseId":37999999999,"event":"schedule","headSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"completed"}]' \
@@ -4846,19 +5045,24 @@ sed -i.bak 's/^fix-main-red-run=.*/fix-main-red-run=37964772913/' "$MOG_FX_ROOT/
 cp "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964000000" "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913"
 rm -f "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913.bak" "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964000000"
 rm -f "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37999999999"
-mog5134_run 22 "5134-d: fix-GO edited to the red run id (mac signs another) → exit 22"
-assert_audit_has "5134-d: audited as a red-main refusal" "REFUSED reason=main-red"
+mog5134_run 0 "5134-d: fix-GO edited to the red run id (mac signs another) → merged as advisory"
+assert_audit_has "5134-d: audited as an advisory merge" "via=advisory"
+assert_audit_lacks "5134-d: and never as a declared fix" "main-red-declared"
 
 # 5134-e — unsigned: a hand-written file with the right fields and no mac.
 printf 'pr=77\nhead=%s\nfix-main-red-run=37964772913\nby=worker\nat=2026-10-10T00:00:00Z\n' "$GO_SHA" \
     > "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913"
-mog5134_run 22 "5134-e: unsigned fix-GO → exit 22"
+mog5134_run 0 "5134-e: unsigned fix-GO → merged as advisory"
+assert_audit_has "5134-e: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-e: and never as a declared fix" "main-red-declared"
 
-# 5134-f — a fix-GO for a different PR (78) does not unblock PR 77, even
-# renamed onto PR 77's path (the mac binds the PR number).
+# 5134-f — a fix-GO for a different PR (78) is not a declaration for PR 77, even
+# renamed onto PR 77's path (the mac binds the PR number): an advisory merge.
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 78 "$GO_SHA"
 cp "$MOG_FX_ROOT/.locks/go/fix-main-red.78.$GO_SHA.37964772913" "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913"
-mog5134_run 22 "5134-f: a fix-GO signed for PR 78 → exit 22"
+mog5134_run 0 "5134-f: a fix-GO signed for PR 78 → merged as advisory"
+assert_audit_has "5134-f: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-f: and never as a declared fix" "main-red-declared"
 
 # 5134-g — green main: a fix-GO has no effect (and is not audited as a fix).
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 77 "$GO_SHA"
@@ -4869,17 +5073,16 @@ assert_audit_lacks "5134-g: not audited as a main-red fix" "main-red-declared"
 # 5134-h — a fix-GO for another head does not unblock this one.
 rm -f "$MOG_FX_ROOT/.locks/go/"fix-main-red.77.*
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 77 "$GO_OLD"
-mog5134_run 22 "5134-h: fix-GO for an older head → exit 22"
+mog5134_run 0 "5134-h: fix-GO for an older head → merged as advisory"
+assert_audit_has "5134-h: a rejected declaration is audited as an advisory" "via=advisory"
+assert_audit_lacks "5134-h: and never as a declared fix" "main-red-declared"
 rm -rf "$MOG_FX_ROOT"
 
 # ── suite= declaration: say what is accepted ────────────────────
-# The refusal text names what the matcher takes (a failed job name without
-# spaces, or any .sh script named on an ##[error] line) and the way out for the
-# rest (a job name with spaces needs run=<id>); it no longer says test-*.sh.
-STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 22 "5135-a: red main, undeclared → exit 22 with the accepted shapes"
-assert_err_has "5135-a: refusal says any .sh script" "any .sh script"
-assert_err_has "5135-a: refusal says a spaced job name needs run=<id>" "with spaces needs run=<id>"
-assert_err_lacks "5135-a: refusal no longer claims only test-*.sh" "test-*.sh"
+# The matcher takes a failed job name without spaces, or any .sh script named on
+# an ##[error] line; an undeclared red is now an advisory, not a refusal.
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "5135-a: red main, undeclared → merged as advisory"
+assert_err_has "5135-a: prints the MAIN-RED advisory" "MAIN-RED advisory:"
 # 5135-b — a non-test- .sh named on an ##[error] line IS accepted, as stated.
 MOG_RUN_LOG4="$(mktemp "${TMPDIR:-/tmp}/mog-runlog4.XXXXXX")" || { echo "FAIL: 5135 setup: mktemp" >&2; exit 1; }
 printf '%s\t%s\t%s\n' \
@@ -4896,17 +5099,18 @@ rm -f "$MOG_RUN_LOG4"
 # merged through the gate. A re-run keeps its run id, so the gate reads the
 # previous attempt of a run that is not completed and has attempt > 1.
 MOG_RUN_RERUN='[{"attempt":2,"conclusion":"","createdAt":"2026-10-25T19:37:01Z","databaseId":40226871918,"event":"workflow_dispatch","headSha":"be152579752f51ff26575c459654b1245d0f5abd","status":"in_progress"},{"attempt":1,"conclusion":"success","createdAt":"2026-10-25T15:45:05Z","databaseId":40208416958,"event":"schedule","headSha":"3f196bdadad920756c87caec0838ece0205b863c","status":"completed"}]'
-# 7656-a (RED) — red run being re-run, older green completed: refused.
+# 7656-a — red run being re-run, older green completed: an advisory merge.
 STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=failure \
-    run_mog 22 "7656-a: red run being re-run, older green behind it → exit 22"
-assert_audit_has "7656-a: audited as a red-main refusal" "REFUSED reason=main-red"
+    run_mog 0 "7656-a: red run being re-run, older green behind it → merged as advisory"
+assert_audit_has "7656-a: audited as an advisory merge" "via=advisory"
 assert_err_has "7656-a: stderr names the re-run run" "40226871918"
 assert_err_has "7656-a: stderr says it is being re-run" "re-run"
 assert_gh_has "7656-a: the previous attempt was read" "run view 40226871918"
-no_merge_call "7656-a: no merge call"
+assert_merge_has "7656-a: the merge ran" "--squash"
 # 7656-b — the previous attempt of the re-run was green: main is green.
 STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=success \
     run_mog 0 "7656-b: re-run of a green attempt → merged"
+assert_audit_lacks "7656-b: green-main merge is not an advisory" "via=advisory"
 # 7656-c — a FRESH run in progress (attempt 1) is not a re-run: the older
 # completed green run still decides, as before.
 STUB_RUN_LIST_JSON='[{"attempt":1,"conclusion":"","createdAt":"2026-10-25T19:37:01Z","databaseId":40226871918,"event":"workflow_dispatch","headSha":"be152579752f51ff26575c459654b1245d0f5abd","status":"in_progress"},{"attempt":1,"conclusion":"success","createdAt":"2026-10-25T15:45:05Z","databaseId":40208416958,"event":"schedule","headSha":"3f196bdadad920756c87caec0838ece0205b863c","status":"completed"}]' \
@@ -4926,6 +5130,7 @@ assert_audit_has "7656-e: audited as the declared fix" "main-red-declared"
 # completed run decides, as for a cancelled completed run.
 STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=cancelled \
     run_mog 0 "7656-f: re-run of a cancelled attempt falls back to the older green run → merged"
+assert_audit_lacks "7656-f: green-main merge is not an advisory" "via=advisory"
 
 # ── a cap-timeout-only red in suites the PR does not reach passes ──
 # The real failed log (gh run view --log-failed, 2026-10-25) of run 40226871918:
@@ -5039,34 +5244,36 @@ assert_audit_has "7658-a: audited as a cap-only pass" "main-red-cap-only"
 assert_audit_has "7658-a: audited with the cap-only route" "via=cap-only"
 assert_merge_has "7658-a: the merge ran" "--squash"
 if [ -z "$(git -C "$LAST_TMP" for-each-ref refs/himmel-mog-mr)" ]; then pass; else fail "7658-a: the private refs were deleted again"; fi
-# 7658-b — one failed suite is a real assertion failure (rc=1): blocks.
-STUB_RUN_LOG_FILE="$MOG7658_LOG_ASSERT" cap_run 22 "7658-b: a cap timeout plus an assertion failure → exit 22"
+# 7658-b — one failed suite is a real assertion failure (rc=1): an advisory merge.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_ASSERT" cap_run 0 "7658-b: a cap timeout plus an assertion failure → merged as advisory"
 assert_err_has "7658-b: prints the class and the suites" "main-red: assertion ($MOG7658_S1, $MOG7658_S2)"
-assert_audit_has "7658-b: audited as a red-main refusal" "REFUSED reason=main-red"
-no_merge_call "7658-b: no merge call"
-# 7658-c — a cap exceeded WITHOUT assertions passing is not a clean cap: blocks.
-STUB_RUN_LOG_FILE="$MOG7658_LOG_CAPFAIL" cap_run 22 "7658-c: a cap timeout that did not have its assertions passing → exit 22"
+assert_audit_has "7658-b: audited as an advisory merge" "via=advisory"
+assert_audit_has "7658-b: the audit line names the class and the failed suites" "class=assertion suites=$MOG7658_S1,$MOG7658_S2"
+assert_err_has "7658-b: the advisory names the failed suites" "MAIN-RED advisory:"
+assert_merge_has "7658-b: the merge ran" "--squash"
+# 7658-c — a cap exceeded WITHOUT assertions passing is not a clean cap: an advisory merge.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_CAPFAIL" cap_run 0 "7658-c: a cap timeout that did not have its assertions passing → merged as advisory"
 assert_err_has "7658-c: prints the class" "main-red: assertion ("
-no_merge_call "7658-c: no merge call"
+assert_merge_has "7658-c: the merge ran" "--squash"
 # 7658-d — cap-only, but the PR changes a tool the first capped suite drives.
-MOG_CAP_TOUCH=tool STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-d: cap-timeout-only red in a suite the PR reaches → exit 22"
+MOG_CAP_TOUCH=tool STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-d: cap-timeout-only red in a suite the PR reaches → merged as advisory"
 assert_err_has "7658-d: prints the class and only the reached suite" "main-red: cap-overlap ($MOG7658_S1)"
 if [ -z "$(git -C "$LAST_TMP" for-each-ref refs/himmel-mog-mr)" ]; then pass; else fail "7658-d: the private refs were deleted again"; fi
-assert_audit_has "7658-d: audited as a red-main refusal" "REFUSED reason=main-red"
-no_merge_call "7658-d: no merge call"
-# 7658-e — fail closed: the PR head cannot be fetched, so what it reaches is unknown.
-MOG_CAP_NOPULL=1 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-e: cap-only red but the PR head is unfetchable → exit 22"
+assert_audit_has "7658-d: audited as an advisory merge" "via=advisory"
+assert_merge_has "7658-d: the merge ran" "--squash"
+# 7658-e — the PR head cannot be fetched, so what it reaches is unknown: an advisory, not a cap pass.
+MOG_CAP_NOPULL=1 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-e: cap-only red but the PR head is unfetchable → merged as advisory"
 assert_err_has "7658-e: prints the class" "main-red: cap-unverified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-e: no merge call"
-# 7658-f — fail closed: the failed log cannot be read.
-STUB_RUN_VIEW_FAIL=1 cap_run 22 "7658-f: unreadable failed log → exit 22"
+assert_merge_has "7658-e: the merge ran" "--squash"
+# 7658-f — the failed log cannot be read: an advisory, not a cap pass.
+STUB_RUN_VIEW_FAIL=1 cap_run 0 "7658-f: unreadable failed log → merged as advisory"
 assert_err_has "7658-f: prints the class" "main-red: unclassified ()"
-no_merge_call "7658-f: no merge call"
+assert_merge_has "7658-f: the merge ran" "--squash"
 # 7658-g — a red with no Failed-suites block (the apt-get exit-124 log of run
-# 37964772913, 5115) is no cap timeout: blocks.
-STUB_RUN_LOG_FILE="$MOG7658_LOG_APT" cap_run 22 "7658-g: a red whose log names no failed suite → exit 22"
+# 37964772913, 5115) is no cap timeout: an advisory merge.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_APT" cap_run 0 "7658-g: a red whose log names no failed suite → merged as advisory"
 assert_err_has "7658-g: prints the class" "main-red: unclassified ()"
-no_merge_call "7658-g: no merge call"
+assert_merge_has "7658-g: the merge ran" "--squash"
 # 7658-h — a declared fix still wins over the classifier and is not a cap pass.
 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: run=40226871918')" \
     cap_run 0 "7658-h: the declared fix for the run → merged by the declaration"
@@ -5074,46 +5281,46 @@ assert_audit_has "7658-h: audited as the declared fix" "via=run=40226871918"
 assert_audit_lacks "7658-h: not audited as a cap-only pass" "main-red-cap-only"
 # 7658-i..m — a clean cap row does not make the red cap-only when the run failed for a
 # reason that names no suite, or the shard did not end on the runner's own exit.
-STUB_RUN_LOG_FILE="$MOG7658_LOG_HC" cap_run 22 "7658-i: cap rows plus a home-canary honeytoken FAIL → exit 22"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_HC" cap_run 0 "7658-i: cap rows plus a home-canary honeytoken FAIL → merged as advisory"
 assert_err_has "7658-i: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-i: no merge call"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_LINT" cap_run 22 "7658-j: cap rows plus a failed job that is not a shell-unit job → exit 22"
+assert_merge_has "7658-i: the merge ran" "--squash"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_LINT" cap_run 0 "7658-j: cap rows plus a failed job that is not a shell-unit job → merged as advisory"
 assert_err_has "7658-j: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-j: no merge call"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_DEAD" cap_run 22 "7658-k: cap rows plus a shard that exited 1 with no Failed-suites block → exit 22"
+assert_merge_has "7658-j: the merge ran" "--squash"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_DEAD" cap_run 0 "7658-k: cap rows plus a shard that exited 1 with no Failed-suites block → merged as advisory"
 assert_err_has "7658-k: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-k: no merge call"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_NOEXIT" cap_run 22 "7658-l: cap rows but the shard never printed the runner's own exit line → exit 22"
+assert_merge_has "7658-k: the merge ran" "--squash"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_NOEXIT" cap_run 0 "7658-l: cap rows but the shard never printed the runner's own exit line → merged as advisory"
 assert_err_has "7658-l: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-l: no merge call"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_ODD" cap_run 22 "7658-m: a Failed-suites row the classifier cannot parse → exit 22"
+assert_merge_has "7658-l: the merge ran" "--squash"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_ODD" cap_run 0 "7658-m: a Failed-suites row the classifier cannot parse → merged as advisory"
 assert_err_has "7658-m: prints the class" "main-red: unclassified ($MOG7658_S1)"
-no_merge_call "7658-m: no merge call"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_ROLL" cap_run 22 "7658-n: cap rows plus a rollup job that failed in another step → exit 22"
+assert_merge_has "7658-m: the merge ran" "--squash"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_ROLL" cap_run 0 "7658-n: cap rows plus a rollup job that failed in another step → merged as advisory"
 assert_err_has "7658-n: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-n: no merge call"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_STEP2" cap_run 22 "7658-p: cap rows plus a second failed step in the same shard job → exit 22"
+assert_merge_has "7658-n: the merge ran" "--squash"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_STEP2" cap_run 0 "7658-p: cap rows plus a second failed step in the same shard job → merged as advisory"
 assert_err_has "7658-p: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-p: no merge call"
+assert_merge_has "7658-p: the merge ran" "--squash"
 # A shard that never ran writes no failed log, so the log alone cannot show it.
-STUB_RUN_JOBS_JSON="$MOG7658_JOBS_QUEUED" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-q: cap rows plus a shard that stayed queued, no log lines → exit 22"
+STUB_RUN_JOBS_JSON="$MOG7658_JOBS_QUEUED" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-q: cap rows plus a shard that stayed queued, no log lines → merged as advisory"
 assert_err_has "7658-q: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-q: no merge call"
-STUB_RUN_JOBS_JSON="$MOG7658_JOBS_CANCELLED" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-r: cap rows plus a cancelled shard, no log lines → exit 22"
+assert_merge_has "7658-q: the merge ran" "--squash"
+STUB_RUN_JOBS_JSON="$MOG7658_JOBS_CANCELLED" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-r: cap rows plus a cancelled shard, no log lines → merged as advisory"
 assert_err_has "7658-r: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-r: no merge call"
-STUB_RUN_JOBS_FAIL=1 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-s: cap rows but the run's job list cannot be read → exit 22"
+assert_merge_has "7658-r: the merge ran" "--squash"
+STUB_RUN_JOBS_FAIL=1 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-s: cap rows but the run's job list cannot be read → merged as advisory"
 assert_err_has "7658-s: prints the class" "main-red: unclassified ()"
-no_merge_call "7658-s: no merge call"
+assert_merge_has "7658-s: the merge ran" "--squash"
 # Control: the real shape of run 40226871918, every non-success job has failed-log lines.
 STUB_RUN_JOBS_JSON="$MOG7658_JOBS_OK" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-t: cap rows, every failed job shows in the log, the rest passed or skipped → merged"
 assert_err_has "7658-t: prints the pass reason" "main-red: cap-only ($MOG7658_S1, $MOG7658_S2)"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_BUDGET" cap_run 22 "7658-u: cap rows plus the runner's run-budget stop → exit 22"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_BUDGET" cap_run 0 "7658-u: cap rows plus the runner's run-budget stop → merged as advisory"
 assert_err_has "7658-u: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-u: no merge call"
-STUB_RUN_LOG_FILE="$MOG7658_LOG_STOPPED" cap_run 22 "7658-v: cap rows plus the runner's SUITE_STOP_ON_FAIL stop → exit 22"
+assert_merge_has "7658-u: the merge ran" "--squash"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_STOPPED" cap_run 0 "7658-v: cap rows plus the runner's SUITE_STOP_ON_FAIL stop → merged as advisory"
 assert_err_has "7658-v: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
-no_merge_call "7658-v: no merge call"
+assert_merge_has "7658-v: the merge ran" "--squash"
 # 7658-o — the classifier matches text other files own: the rollup step name in ci.yml,
 # the runner's exit line in home-canary.sh and the cap and stop rows in run-shell-tests.sh.
 # shellcheck disable=SC2016

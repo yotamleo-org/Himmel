@@ -11,7 +11,9 @@
 #        HIMMEL_API_KIND are set here and a caller's value is ignored.
 # Out:   stdout = the artifact path (JSON, mode 600, under the judge dir /tmp/claude-<uid>/j<PR>[a-z]).
 #        status RECORDED (exit 0) | STALE | MISSING | DENIED | ERROR | UNRECORDED | REFUSED | TIMEOUT (exit 3);
-#        exit 2 = a usage refusal before any call. A refusal is final: there is no subscription fallback.
+#        exit 2 = a usage refusal before any call. A refused or failed API call alerts and re-runs once on the
+#        subscription inside claude-api.sh (gated by the usage preflight); the artifact reflects
+#        that run. HIMMEL_API_FALLBACK=off switches it off.
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

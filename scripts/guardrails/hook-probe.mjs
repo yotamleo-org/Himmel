@@ -125,8 +125,10 @@ const firstLine = (text) => String(text || '').split('\n').map((l) => l.trim()).
 // Reduce one hook's rc/stdout/stderr to a decision. Claude Code reads exit 2 as
 // block, exit 0 + a JSON envelope as the envelope's decision, any other exit as
 // a non-blocking ERROR (not a deny — it is shown, and the call goes ahead).
+// A recoverable EPIPE (the hook exited with a numeric status before draining its
+// stdin) is not an error: the hook's own output is the verdict, as in runChain.
 export function classify(result) {
-  if (!result || result.error || result.signal) {
+  if (!result || (result.error && !isRecoverableEpipe(result)) || result.signal) {
     const why = result && (result.error ? result.error.message : `signal ${result.signal}`);
     return { decision: 'error', rc: result && result.status !== null ? result.status : null, reason: why || 'no result' };
   }

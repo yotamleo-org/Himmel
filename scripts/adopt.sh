@@ -216,6 +216,7 @@ PORTABLE_FILES=(
   scripts/lib/forge-none.sh
   scripts/cr/critics.json
   scripts/lib/ticket-status.sh
+  scripts/lib/merge-rows-effective.py
   scripts/lib/status-marker.sh
   scripts/lib/timeout-bin.sh
   scripts/lib/prim.sh

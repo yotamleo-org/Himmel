@@ -838,6 +838,19 @@ check "  ...and the amend carries fu_why" "$(L="$FU" node -e 'const rs=require("
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set reason=updated --reason x
 check "control: amending only the reason needs no fu_class" "$?" "0"
 
+# An amend can set pre_existing=true, the structured field the
+# pre-existing tagger writes and `review-round.sh defer` reads. Only the value
+# true; a typo or false would read as "not pre-existing" and silently do nothing.
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set pre_existing=true --reason x 2>/dev/null
+check "amend accepts pre_existing=true" "$?" "0"
+check "  ...and stores it as the boolean true" "$(L="$FU" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].set.pre_existing===true)')" "true"
+FU_N=$(wc -l <"$FU" | tr -d ' ')
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set pre_existing=false --reason x 2>/dev/null
+check "amend rejects pre_existing=false" "$?" "2"
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set pre_existing=yes --reason x 2>/dev/null
+check "amend rejects a pre_existing value other than true" "$?" "2"
+check "  ...and nothing was written" "$(wc -l <"$FU" | tr -d ' ')" "$FU_N"
+
 # ── `attempt` kind — per-invocation timing, NEVER deduped ──────
 AT="$tmp/attempt.jsonl"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH1 --model glm --responding-model glm-5.2 --status timeout --attempt 1 --duration-secs 451 --detail "rc=124"
@@ -1737,6 +1750,23 @@ for bad in "--head abc123 --source judge:j1 --pr 3861" "--head 9D87A2790A6B7D121
   check "dependabot-go: [$bad] is refused" "$?" "2"
 done
 check "dependabot-go: a refused row writes nothing" "$(test -s "$tmp/dg-bad.jsonl" && echo wrote || echo none)" "none"
+
+# ── a finding row with no head is refused, never written ──
+# A blank head made review-round.sh promote abort, and amend (which needs a
+# non-empty --head) could not reach the row to correct it.
+NHL="$tmp/nohead.jsonl"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>"$tmp/nohead.err"
+check "HIMMEL-8870: a finding with no --head exits 2" "$?" "2"
+check "HIMMEL-8870: a finding with no --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+check "HIMMEL-8870: the refusal names --head and says nothing was written" "$(grep -c -- '--head.*NOTHING was written' "$tmp/nohead.err")" "1"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "" --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
+check "HIMMEL-8870: a finding with an empty --head exits 2" "$?" "2"
+check "HIMMEL-8870: a finding with an empty --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "  " --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
+check "a finding with a whitespace-only --head exits 2" "$?" "2"
+check "a finding with a whitespace-only --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --head H8870 --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
+check "HIMMEL-8870: the same finding with a head still writes" "$(grep -c '"head":"H8870"' "$NHL")" "1"
 
 # ── the amend fu_class gate must not pipe $set_pairs into grep ──
 # Under `set -o pipefail`, `printf ... | grep -q` reports the producer's status when

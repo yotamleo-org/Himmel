@@ -1,0 +1,53 @@
+{
+  "key": "HIMMEL-8231",
+  "source": "jira history --json read once on 2026-11-02, scrubbed by allowlist; changelog entries, from and to are real",
+  "journalSynthesized": true,
+  "journal": [
+    {
+      "ts": "2026-11-01T22:13:42.360+0100",
+      "key": "HIMMEL-8231",
+      "from": [
+        "v1.1.4"
+      ],
+      "to": [],
+      "mechanism": "displace-residual",
+      "entry": "85466"
+    }
+  ],
+  "changelog": [
+    {
+      "id": "82803",
+      "created": "2026-10-30T10:01:10.209+0100",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "85399",
+      "created": "2026-11-01T20:56:26.364+0100",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.1.4"
+        }
+      ]
+    },
+    {
+      "id": "85466",
+      "created": "2026-11-01T22:13:42.360+0100",
+      "items": [
+        {
+          "field": "other"
+        },
+        {
+          "field": "Fix Version",
+          "fromString": "v1.1.4",
+          "toString": null
+        }
+      ]
+    }
+  ]
+}

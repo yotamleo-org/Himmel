@@ -83,8 +83,8 @@ fi
 LDOC="$ROOT/DEMO-1-N61-a-2026-10-16.md"; : > "$LDOC"
 LCON="$ROOT/DEMO-next-2026-10-16A-chief.md"
 # shellcheck disable=SC2016  # the backticks are literal span markers
-printf '# chief\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\nlast GO: none\n\n## Results\n' > "$LCON"
-printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
+printf '# chief\n\n## Live state\nworkers: `N61:Z-N61-aa:stale-token:7`queue: none\nlast GO: none\n\n## Results\n' > "$LCON"
+printf '{"schema": 1, "workers": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
 env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LDOC" >/dev/null 2>&1
 tok="$(env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" status "$LDOC" 2>/dev/null | head -1 | jq -r '.session // empty')"
 out8="$(bash "$AZ" --doc "$LCON" --root "$ROOT" 2>&1)"
@@ -103,16 +103,16 @@ printf 'not json\n' > "${LCON%.md}.fleet.json"
 bash "$AZ" --doc "$LCON" --root "$ROOT" --render-workers >/dev/null 2>&1; rc11=$?
 check "a render that fails exits nonzero" "1" "$rc11"
 rm -f "${LCON%.md}.fleet.json"
-# a chief doc whose lock another session holds keeps its legs: line
-printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
+# a chief doc whose lock another session holds keeps its workers: line
+printf '{"schema": 1, "workers": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
 # shellcheck disable=SC2016  # the backticks are literal span markers
-printf '# chief\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\n\n## Results\n' > "$LCON"
-workers_before="$(grep '^legs: ' "$LCON")"
-check "lock held: the fixture has a legs: line" "1" "$([ -n "$workers_before" ] && echo 1 || echo 0)"
+printf '# chief\n\n## Live state\nworkers: `N61:Z-N61-aa:stale-token:7`queue: none\n\n## Results\n' > "$LCON"
+workers_before="$(grep '^workers: ' "$LCON")"
+check "lock held: the fixture has a workers: line" "1" "$([ -n "$workers_before" ] && echo 1 || echo 0)"
 env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LCON" >/dev/null 2>&1; acq12=$?
 check "lock held: the fixture lock was acquired" "0" "$acq12"
 out12="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-workers 2>&1)"; rc12=$?
-check "lock held: the legs: line is left unchanged" "$workers_before" "$(grep '^legs: ' "$LCON")"
+check "lock held: the workers: line is left unchanged" "$workers_before" "$(grep '^workers: ' "$LCON")"
 check "lock held: WORKERS says unavailable" "1" "$(printf '%s\n' "$out12" | sed -n '/^== WORKERS/,/^== DOC/p' | grep -c '^unavailable')"
 check "lock held: the run exits nonzero" "1" "$rc12"
 check "lock held: the wording does not claim another session" "0" "$(printf '%s\n' "$out12" | grep -c 'another session holds')"
@@ -126,7 +126,7 @@ cat > "$DDOC" <<'DOC'
 
 ## Live state
 head: abc123
-legs: `N61:nonce:lock:7`
+workers: `N61:nonce:lock:7`
   `N62:nonce-two:lock-two:8`
 queue: held-doc.md
 lock: chief-lock
@@ -148,7 +148,7 @@ digest="$(printf '%s\n' "$dout" | awk '/^== DOC$/ {s=1; next} /^== / {s=0} s')"
 # shellcheck disable=SC2016  # backticks are literal worker span markers
 expected_digest='**Status:** LIVE
 head: abc123
-legs: `N61:nonce:lock:7` `N62:nonce-two:lock-two:8`
+workers: `N61:nonce:lock:7` `N62:nonce-two:lock-two:8`
 queue: held-doc.md
 lock: chief-lock
 open rulings: 2
@@ -169,10 +169,10 @@ check "missing Live state prints DOC unavailable and later sections still run" 2
 # digest leaves those out instead of printing them as unavailable.
 CDOC="$ROOT/plain-chief.md"
 # shellcheck disable=SC2016 # literal backticks
-printf '# chief\n\n## Live state\nlegs: `N61:nonce:lock:7`\nqueue: none\n\n## Results\n' > "$CDOC"
+printf '# chief\n\n## Live state\nworkers: `N61:nonce:lock:7`\nqueue: none\n\n## Results\n' > "$CDOC"
 cdigest="$(bash "$AZ" --doc "$CDOC" --root "$ROOT" 2>&1 | awk '/^== DOC$/ {s=1; next} /^== / {s=0} s')"
 check "DOC digest of a chief doc prints no unavailable field" "0" "$(printf '%s\n' "$cdigest" | grep -c 'unavailable')"
-check "DOC digest still prints the legs: and queue: lines" "2" "$(printf '%s\n' "$cdigest" | grep -cE '^(legs|queue): ')"
+check "DOC digest still prints the workers: and queue: lines" "2" "$(printf '%s\n' "$cdigest" | grep -cE '^(workers|queue): ')"
 
 # A flagged lock makes the sweep exit 20: its lines are the result, not a failure.
 SROOT="$WORK/sweeproot"; mkdir -p "$SROOT/.locks/queue/stale.lock"

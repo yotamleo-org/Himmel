@@ -111,6 +111,49 @@ fi'
 # shellcheck disable=SC2016 # a regex, matched as text
 FENCE_RE='^if himmel_repo=\$\(printenv HIMMEL_REPO \| grep \.\) ?;? then bash "\$himmel_repo/scripts/cr/pr-check-context\.sh" ?;? else echo "[^"$`\\]*" >&2 ?;? exit 2 ?;? fi ?;?$'
 
+# The anchor's path as a remedy prints it: the PHYSICAL path of HIMMEL_REPO (the
+# rule generator emits its rule from the git common-dir's parent, never from a
+# symlink), and only when the rule generator (plugin-profiles.mjs
+# validatedAnchorPath) would emit a rule for it - no `..`, no worktree, nothing
+# the matcher could read as syntax. Step 0's himmel_dir is the WORKTREE on the
+# himmel lane, so the remedy never names it.
+# rc 0 prints the path. rc 1: no usable anchor directory (unset, relative, or no
+# .git DIRECTORY - a worktree's .git is a file). rc 2: a real anchor directory
+# whose path cannot be printed unquoted.
+anchor_remedy_dir() {
+    local a="${HIMMEL_REPO:-}" r
+    while [ "${a%/}" != "$a" ]; do a="${a%/}"; done
+    case "$a" in /*) ;; *) return 1 ;; esac
+    [ -d "$a/.git" ] || return 1
+    case "$a" in */../* | */..) return 2 ;; esac
+    r=$(cd -P "$a" 2>/dev/null && pwd -P) || return 1 # swallow-ok: a failed cd is rc 1, no usable anchor
+    case "$r" in
+        *[!A-Za-z0-9._/+-]* | */.claude/worktrees/*) return 2 ;;
+    esac
+    printf '%s' "$r"
+}
+# remedy_cmd <repo-relative script> <args placeholder> [exempt-printed]: the unquoted
+# anchored spelling, which the generated `bash <anchor>/scripts/...:*` rules match.
+# When the anchor's path cannot be printed that way, an absolute anchor directory
+# gets the guard-exempt "$HIMMEL_REPO/..." spelling (unquoted args only; omitted
+# when the caller printed it already), and anything else gets no runnable line.
+remedy_cmd() {
+    local d rc=0
+    d=$(anchor_remedy_dir) || rc=$?
+    case "$rc" in
+        0) echo "bash $d/$1 $2" ;;
+        2)
+            if [ -z "${3:-}" ]; then
+                echo "bash \"\$HIMMEL_REPO/$1\" <unquoted-args>"
+            fi
+            echo "(HIMMEL_REPO's path cannot be printed unquoted, so no allow rule matches an anchored path here; the exempt spelling has none either, so the classifier judges it)"
+            ;;
+        *)
+            echo "(HIMMEL_REPO is unset, relative, or not a primary checkout - a worktree is not one - so no runnable line can be printed: export HIMMEL_REPO to himmel's primary checkout in your launching shell)"
+            ;;
+    esac
+}
+
 shown=""
 flat=""
 deny() {
@@ -144,10 +187,16 @@ deny() {
                 # shellcheck disable=SC2016 # printed verbatim, never expanded
                 echo 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh" <unquoted-args>'
                 echo
-                echo "If an argument genuinely needs quoting, use the anchor's copy by step 0's"
-                echo "printed himmel_dir instead, as its own command:"
+                echo "If an argument genuinely needs quoting, use the anchor's copy by HIMMEL_REPO's"
+                echo "own path (not step 0's himmel_dir, which is this worktree), as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/merge-on-green.sh\" <args>"
+                remedy_cmd scripts/handover/merge-on-green.sh '<args>' exempt-printed
+                ;;
+            *console-kit/himmel-gate* | *chief-kit/himmel-gate*)
+                echo "Run the anchored spelling instead - EVERY argument must be unquoted:"
+                echo
+                # shellcheck disable=SC2016 # printed verbatim, never expanded
+                echo 'bash "$HIMMEL_REPO/scripts/handover/chief-kit/himmel-gate.sh" <unquoted-args>'
                 ;;
             *console-kit/go* | *chief-kit/go*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
@@ -165,12 +214,21 @@ deny() {
                 echo "bash \"<himmel_dir>/scripts/handover/chief-kit/chief-wait.sh\" <args>"
                 ;;
             *)
-                echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
+                echo "Run the anchor's copy by HIMMEL_REPO's own path (not step 0's himmel_dir, which is"
+                echo "this worktree on the himmel lane), as its own command:"
                 echo
-                # shellcheck disable=SC2016 # printed verbatim, never expanded
+                # The path is unquoted on purpose: the allow rule for the anchor's
+                # copy is `bash <anchor>/scripts/cr/<x>.sh:*`, which a quoted path or a
+                # literal $HIMMEL_REPO never matches. It exists for the wildcard-tail
+                # writers only; known-findings.sh and doc-freshness-advisory.sh hold
+                # a relative exact rule and have none, so the classifier judges them.
                 case "${entries:-}" in
-                    ' '*' '*|'') echo "bash \"<himmel_dir>/scripts/cr/<script>.sh\" <args>" ;;
-                    *) echo 'bash "$HIMMEL_REPO/scripts/cr/'"${entries# }"'" <args>' ;;
+                    ' '*' '*|'') remedy_cmd 'scripts/cr/<script>.sh' '<args>' ;;
+                    *) remedy_cmd "scripts/cr/${entries# }" '<args>' ;;
+                esac
+                case "${entries:-}" in
+                    ' known-findings.sh' | ' doc-freshness-advisory.sh')
+                        echo "(no allow rule covers the anchored spelling of this script, so the classifier judges it)" ;;
                 esac
                 ;;
         esac
@@ -953,6 +1011,37 @@ short_cluster_has_O() { # short_cluster_has_O <word> <subcommand or ''>
     done
     return 1
 }
+# st_procsub_only - true when every substitution in the command is a <(…) of
+# one simple command, read by a reader: it expands to a /dev/fd path, never an
+# option or a command word, and its inner command is a segment of its own that
+# every check reads like any other. No heredoc (a live $ in an unquoted body
+# sets ST_SUBST too), no subshell, no $(…), backtick or >(…).
+st_procsub_only() {
+    local s=0 h k w n=0
+    [ "$ST_SUBST$ST_HEREDOC" = 10 ] || return 1
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        # shellcheck disable=SC2016 # the tokenizer's literal operator words
+        case "${ST_SEP[s]}" in
+            '<(')
+                [ "${ST_SEP[s + 1]:-}" = ')' ] || return 1
+                # the outer command: back over each <(…) closed before this one
+                h=$s
+                while [ "$h" -ge 2 ] && [ "${ST_SEP[h - 1]}" = ')' ]; do h=$((h - 2)); done
+                k=0 w=-1
+                while [ "$k" -lt "$ST_N" ]; do
+                    if [ "${ST_S[k]}" = "$h" ] && [ -z "${ST_RO[k]}" ]; then w=$k; break; fi
+                    k=$((k + 1))
+                done
+                [ "$w" -ge 0 ] && [ "${ST_Q[w]}${ST_X[w]}${ST_G[w]}${ST_A[w]}" = 0000 ] || return 1
+                case "$PR_READERS" in *" ${ST_W[w]} "*) ;; *) return 1 ;; esac
+                n=$((n + 1)) ;;
+            ')') [ "$s" -ge 1 ] && [ "${ST_SEP[s - 1]}" = '<(' ] || return 1 ;;
+            '$(' | '`' | '>(' | '(') return 1 ;;
+        esac
+        s=$((s + 1))
+    done
+    [ "$n" -gt 0 ]
+}
 git_mentions_only() { # git_mentions_only <command-word index>
     local j=$(( $1 + 1 )) sg=${ST_S[$1]} w sub='' cached=0 dir=0 paths=0 xp=0 bad=0 xk nsub=0 es
     local bsub='' bnext=0 rsub=0 xc xch
@@ -1498,7 +1587,8 @@ if [ "$PR_TOKFAIL" = 0 ]; then
     # (`$(printf %s -Obash)`, `$G grep`), and no word of it is classified, so
     # a line with ANY substitution fails closed, git word or not (`g$(echo i)t`).
     # Fail direction: closed (deny only when a guarded script is mentioned).
-    [ "$ST_SUBST" = 1 ] && PR_GIT_UNSAFE=1
+    # A <(…) read by a reader expands to a path, never a word git parses.
+    [ "$ST_SUBST" = 1 ] && ! st_procsub_only && PR_GIT_UNSAFE=1
     while [ "$k" -lt "$ST_N" ]; do
         if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; cw=-1; fi
         if [ -z "${ST_RO[k]}" ]; then
@@ -1737,11 +1827,16 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
     # shellcheck disable=SC2016 # as above
     local s3="\"\$HIMMEL_REPO/$GATE_REL_NEW\"" s4="\"\${HIMMEL_REPO}/$GATE_REL_NEW\""
     st_tokenize "$cmd" || return 1
-    [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
+    [ "$ST_ANSIC$ST_COMMENT" = 00 ] || return 1
+    [ "$ST_SUBST" = 0 ] || st_procsub_only || return 1
     k=0
     while [ "$k" -lt "$ST_N" ]; do
         [ "${ST_A[k]}" = 0 ] || return 1
-        if [ "${ST_S[k]}" != "$sg" ]; then sg=${ST_S[k]}; cw=-1; kind=''; fi
+        if [ "${ST_S[k]}" != "$sg" ]; then
+            sg=${ST_S[k]}; cw=-1; kind=''
+            # the words after a <(…) are the outer reader's operands
+            if [ "$ST_SUBST" = 1 ] && [ "$sg" -gt 0 ] && [ "${ST_SEP[sg - 1]}" = ')' ]; then cw=$k; fi
+        fi
         w=${ST_W[k]}
         case "${ST_RO[k]}" in
             *'>&') case "$w" in *[!0-9-]* | '') return 1 ;; esac ;;
@@ -1761,6 +1856,8 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
             [ "${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 000 ] || return 1
             case "$w" in
                 bash)
+                    # a gate inside or beside a <(…) loses its rc
+                    [ "$ST_SUBST" = 0 ] || return 1
                     j=$((k + 1))
                     while [ "$j" -lt "$ST_N" ] && [ -n "${ST_RO[j]}" ]; do j=$((j + 1)); done
                     [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
@@ -1786,6 +1883,16 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                 sed) st_sed_args "$k" 0 || return 1 ;;
                 git | /usr/bin/git) cmdpos_git "$k" || return 1; kind=strict ;;
                 printf) kind='printf' ;;
+                timeout)
+                    # timeout <duration> <reader> runs the reader with its own
+                    # words, so the segment reads as the reader alone.
+                    j=$((k + 2))
+                    [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
+                    [ "${ST_Q[k + 1]}${ST_X[k + 1]}${ST_G[k + 1]}${ST_RO[k + 1]}" = 000 ] || return 1
+                    [[ ${ST_W[k + 1]} =~ ^[0-9]+([.][0-9]+)?[smhd]?$ ]] || return 1
+                    [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}${ST_RO[j]}" = 000 ] || return 1
+                    case "$PR_READERS" in *" ${ST_W[j]} "*) ;; *) return 1 ;; esac
+                    ;;
                 echo | cd) ;;
                 *) case "$PR_READERS" in *" $w "*) ;; *) return 1 ;; esac ;;
             esac
@@ -1857,6 +1964,8 @@ runs=0
 chdir=0
 wrapped=0
 bare_runs=0
+rgword=0
+rgrun=0
 while IFS= read -r line; do
     read -r -a w <<<"$line"
     i=0
@@ -1905,7 +2014,11 @@ for x in $simple; do
         -execdir|-okdir) runs=1 ;;
     esac
     [[ "$x" =~ ^[[:upper:]_][[:upper:][:digit:]_]*= ]] && wrapped=1
+    # rg runs its --pre / --hostname-bin program, like a wrapper
+    [ "${x##*/}" != rg ] || rgword=1
+    case "$x" in --pre | --pre=* | --hostname-bin | --hostname-bin=*) rgrun=1 ;; esac
 done
+[ "$rgword$rgrun" != 11 ] || { runs=1; wrapped=1; bare_runs=1; }
 # -execdir/-okdir moves find's cwd only while running the word right after
 # it; that word only makes a guarded run unverifiable when it could itself
 # run something (an interpreter, a wrapper, or a target's own name) -

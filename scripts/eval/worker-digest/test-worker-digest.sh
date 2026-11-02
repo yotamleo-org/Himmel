@@ -10,7 +10,7 @@
 #  7. status ok / partial / inconclusive, and the digest spawns nothing but git and python3.
 #
 # check() evals its condition, so the single quotes are deliberate.
-# shellcheck disable=SC2016
+# shellcheck disable=SC2016,SC2034
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DIG="$HERE/worker-digest.ts"
@@ -18,6 +18,8 @@ FX="$HERE/fixtures"
 REPO="$(cd "$HERE/../../.." && pwd)"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/worker-digest-test.XXXXXX")" || { echo "test-worker-digest: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
+# No case reads this checkout's real hook-chain logs: both point at an absent file unless a case overrides them.
+export RUN_HOOK_CHAIN_SKIP_LOG="$TMP/no-chain-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$TMP/no-chain-runs.jsonl"
 PASS=0; FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ok   $1"; }
 bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
@@ -266,6 +268,50 @@ check "a single call keeps its time to result and is not marked batched" '[ "$(j
 check "a batched call keeps its time to result in the batched list, apart from the headline" '[ "$(jq -c ".batched" <<<"$(ctt Read)")" = "[490]" ] && [ "$(ctt Bash)" = "{\"single\":[],\"batched\":[1200],\"missing\":0}" ]'
 check "a call with no result has no time, counted as missing and never 0" '[ "$(ctt Grep)" = "{\"single\":[],\"batched\":[],\"missing\":1}" ]'
 check "no call text reaches the timing" 'absent -E "/x/|ls|pattern" <<<"$(jq -c "[.tool_health[].timing]" "$TMP/ct.json")"'
+
+echo "16. a tool behind bash -c, cd, env and rtk is counted under its own name (HIMMEL-8707)"
+# fixtures/graph-heads.jsonl: 21 Bash calls, ids toolu_<g|q|r|k><n>. q3 to q7 are the forms the qmd hook allows:
+# qmd-bounded.sh by bash, sh, an env prefix, its path alone, and after a cd. q1 and q2 are forms the hook refuses.
+S16=8707c1a5-0000-4000-8000-000000000001
+cp "$FX/graph-heads.jsonl" "$TMP/$S16.jsonl"
+digest "$TMP/$S16.jsonl" >"$TMP/gh.json" 2>"$TMP/gh.err" || bad "digest of graph-heads.jsonl exits 0: $(head -c 300 "$TMP/gh.err")"
+gh() { jq -r --arg id "toolu_$1" '[.tool_health[] | select(.tool == "Bash") | .bash_calls[] | select(.[0] == $id)] | .[0][1]' "$TMP/gh.json"; }
+check "graphify behind bash -c, cd, env+rtk, the worker-graph.sh wrapper and a nested bash -c counts as graphify" '[ "$(gh g1)$(gh g2)$(gh g3)$(gh g4)$(gh g5)" = graphifygraphifygraphifygraphifygraphify ]'
+check "graphify behind env assignments before bash -c, bare or after a cd, counts as graphify" '[ "$(gh g6)$(gh g7)" = graphifygraphify ]'
+check "qmd behind bash -c and cd+rtk counts as qmd" '[ "$(gh q1)$(gh q2)" = qmdqmd ]'
+check "qmd-bounded.sh by bash, sh, an env prefix, its own path and after a cd counts as qmd, whatever its verb" '[ "$(gh q3)$(gh q4)$(gh q5)$(gh q6)$(gh q7)" = qmdqmdqmdqmdqmd ]'
+check "rtk own commands (gain, proxy, recall), bare or behind bash -c and cd, count as rtk" '[ "$(gh r1)$(gh r2)$(gh r3)" = rtkrtkrtk ]'
+check "a real unknown stays under its own first word, other heads read as before" '[ "$(gh k1)" = weirdtool ] && [ "$(gh k2)" = bash ] && [ "$(gh k3)" = git ] && [ "$(gh k4)" = other ]'
+
+echo "17. a refused call's digest row carries the runner's redacted deny line (HIMMEL-8575)"
+# fixtures/chain-refusal: a journal of eleven refusals and the hook-chain run log that goes with it. make-chain-log.sh has the REAL launcher
+# write the secret-bearing, long and huge identifier-like rows (the one field it sets to test is rewritten to production) and adds the static rows.
+CR="$FX/chain-refusal"; S17=8575c1a5-0000-4000-8000-000000000001
+mkdir -p "$TMP/cr/j"
+cp "$CR/journal.jsonl" "$TMP/cr/j/$S17.jsonl"
+bash "$CR/make-chain-log.sh" "$TMP/cr" >"$TMP/cr/make.out" 2>&1 || bad "the chain log builds: $(head -c 300 "$TMP/cr/make.out")"
+cd17() { bun "$DIG" --transcript "$TMP/cr/j/$S17.jsonl" --denials-ledger "$FX/classifier-denials.jsonl"; }
+T0=$SECONDS
+RUN_HOOK_CHAIN_SKIP_LOG="$TMP/cr/no-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$TMP/cr/hook-runs.jsonl" cd17 >"$TMP/cr/with.json" 2>"$TMP/cr/with.err" || bad "the digest with a chain log exits 0: $(head -c 300 "$TMP/cr/with.err")"
+T1=$SECONDS
+cd17 >"$TMP/cr/without.json" 2>/dev/null || bad "the digest with no chain log exits 0"
+crow() { jq -c --arg k "$1" '[.failures[] | select(.class == $k)] | .[0] // empty' "$2"; }
+cline() { crow "$1" "$TMP/cr/with.json" | jq -c 'if has("refusal_line") then .refusal_line else "ABSENT" end'; }
+check "the fixtures digest to the eleven refused calls in nine classes" '[ "$(jq "[.failures[] | select(.failure == \"denied\")] | length" "$TMP/cr/with.json")" = 9 ]'
+check "a secret-bearing refusal: the row carries the runner-redacted line" '[ "$(cline denied/block-read-secrets)" = "\"refused: API_TOKEN=<redacted> was read\"" ]'
+check "and the secret string is in neither the digest nor the chain log the launcher wrote" 'absent SECRETVALUE8575zq "$TMP/cr/with.json" "$TMP/cr/hook-runs.jsonl" && grep -q "API_TOKEN=<redacted>" "$TMP/cr/hook-runs.jsonl"'
+check "a refusal longer than 240 code points is exactly 240 in the row" '[ "$(crow denied/read-clamp "$TMP/cr/with.json" | jq ".refusal_line | explode | length")" = 240 ]'
+check "an aggregated row holds the line of its first refused call that has one (agg1 has none, agg3 comes after agg2)" '[ "$(cline denied/check-push-target)" = "\"check-push-target: push to a remote that is not the fork is refused (agg2)\"" ]'
+check "a refused call with no chain row, with a test-origin row, or with only a row of another guard carries null" '[ "$(cline denied/guard-pr-check-literal)" = null ] && [ "$(cline denied/block-write-into-main-checkout)" = null ]'
+check "a classifier denial and a permission prompt carry null" '[ "$(cline denied/classifier:merge-without-review)" = null ] && [ "$(cline denied/permission-prompt)" = null ]'
+check "no denied row carries an empty string, and the key is present on every denied row" '[ "$(jq "[.failures[] | select(.failure == \"denied\" and (has(\"refusal_line\") | not))] | length" "$TMP/cr/with.json")" = 0 ] && [ "$(jq "[.failures[] | select(.refusal_line == \"\")] | length" "$TMP/cr/with.json")" = 0 ]'
+check "the field is absent on every other failure kind" '[ "$(jq "[.failures[] | select(.failure != \"denied\" and has(\"refusal_line\"))] | length" "$TMP/cr/with.json")" = 0 ]'
+check "a huge identifier-like run through the real launcher is a line of at most 240 code points" '[ "$(cline denied/block-destructive-commands | jq -r "length <= 240 and length > 0")" = true ]'
+check "a 2 MB identifier-like denyLine written into a production row is cut to 240, and the digest finishes in under 5 s" '[ "$(cline denied/block-git-stash | jq length)" = 240 ] && [ "$((T1 - T0))" -lt 5 ]'
+check "canary: the journal text never reaches the new field (the line comes from the chain log)" 'absent -e CANARY8575zq -e TESTORIGIN8575 -e WRONGMEMBER8575 "$TMP/cr/with.json" "$TMP/cr/without.json"'
+check "a missing chain log is null on every denied row, never an error, and the status is unchanged" 'jq -e "([.failures[] | select(.failure == \"denied\") | if has(\"refusal_line\") then .refusal_line else \"ABSENT\" end] | all(. == null)) and .status == \"ok\"" "$TMP/cr/without.json" >/dev/null && [ "$(jq -r .status "$TMP/cr/with.json")" = ok ]'
+check "control: apart from refusal_line the digest is the same with and without a chain log" '[ "$(jq -S "del(.failures[].refusal_line)" "$TMP/cr/with.json")" = "$(jq -S "del(.failures[].refusal_line)" "$TMP/cr/without.json")" ]'
+check "control: the classes fixture digest gains only a null refusal_line on its denied rows" '[ "$(jq "[.failures[] | select(.failure == \"denied\") | .refusal_line] | all(. == null)" "$TMP/classes.json")" = true ] && [ "$(jq "[.failures[] | select(.failure == \"denied\" and (has(\"refusal_line\") | not))] | length" "$TMP/classes.json")" = 0 ]'
 
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

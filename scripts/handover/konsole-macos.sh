@@ -163,9 +163,11 @@ CMDFILE="$RUNDIR/session.command"
 # %q-quote every element so an argv value carrying spaces/quotes (a claude
 # prompt, a tabtitle) survives the trip through the .command file's shell.
 _q_cmd=$(printf '%q ' "${CMD[@]}")
-# Measured: `open -a` does NOT inherit the launching shell's
-# environment the way konsole inherits its parent's -- the .command body
-# starts from a fresh login-shell environment. Without this, $PATH is
+# Measured: the .command BODY does not inherit the launching shell's
+# environment the way konsole inherits its parent's -- it starts from the
+# terminal app's own login-shell environment. (The APP is another matter: an
+# app `open -a` has to START inherits the caller's whole environment; see the
+# marker clear before the launch below.) Without this, $PATH is
 # whatever the GUI session has and the launcher (`claude`) either resolves
 # to a different binary or is not found at all, which is the same class of
 # bug fixed on arm-resume.sh's macOS path. Propagate PATH
@@ -248,6 +250,14 @@ fi
 # session; create the tab in the window that holds it. Fail open: osascript
 # failing (Automation permission denied, session gone) means no tab was
 # created, so falling back to `open -a` cannot launch the body twice.
+#
+# Clear claude's session marker first (SCRUM-2). When the terminal app is not
+# running yet, `open -a` (or osascript's `tell application`) starts it with THIS
+# process's environment, and the app keeps it for life: armed from a claude
+# Bash tool, every later tab would carry CLAUDE_CODE_CHILD_SESSION=1 and every
+# claude started there would save no transcript. The body never needed these.
+unset CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDECODE CLAUDE_CODE_SESSION_ID \
+    CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_JOB_DIR
 _launched=0
 if [ "$TERM_APP" = "iTerm" ] && [ -n "${ITERM_SESSION_ID:-}" ]; then
     if osascript - "${ITERM_SESSION_ID#*:}" "$CMDFILE" >/dev/null <<'APPLESCRIPT'

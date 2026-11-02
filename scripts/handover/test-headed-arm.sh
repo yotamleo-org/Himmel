@@ -34,6 +34,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
 # suite's own per-case overrides are the only source, same as
 # chief-kit/test-headed-arm-worker.sh:40.
 unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/null || true
+# The ticket-duplicate rows (8436*) assert a refusal; HEADED_ARM_ALLOW_TICKET_DUP=1 exported in the
+# operator's launching shell would silently turn them into launches. Rows that want it set it per call.
+unset HEADED_ARM_ALLOW_TICKET_DUP
 # A real macOS host reads uname=Darwin, which picks the macOS shim
 # and its ~7 minute session-visibility budget; every case that launches but
 # never confirms (44c+) then outruns the CI timeout. Pin the platform so the
@@ -643,9 +646,9 @@ contains "held lock: log names the claim" "$log9" "still claimed after waiting"
 # different name) would wrongly look like a dedup hit and block the launch.
 d10a="$tmp/c10a"
 mk_stub "$d10a" 0  # konsole stub + a placeholder pgrep; overwritten below by the real matcher
-mk_matcher_pgrep "$d10a" "claude --model x -n HIMMEL-2545Xleg load foo and continue" "HIMMEL-2545.leg"
+mk_matcher_pgrep "$d10a" "claude --model x -n HIMMEL-2545Xworker load foo and continue" "HIMMEL-2545.worker"
 rc10a=0
-run_headed_arm "$d10a" "$REPO" "HIMMEL-2545.leg" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
+run_headed_arm "$d10a" "$REPO" "HIMMEL-2545.worker" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
 check "regex metachar: exit 0 (a launch, not a dedup)" "$rc10a" "0"
 wait_record "$d10a" || true
 if [ -s "$d10a/record" ]; then echo "ok - regex metachar: literal '.' does NOT false-match a different session"
@@ -653,9 +656,9 @@ else echo "FAIL - regex metachar: literal '.' does NOT false-match a different s
 # (b) must STILL match itself: the exact same literal name, dot and all.
 d10b="$tmp/c10b"
 mk_stub "$d10b" 0
-mk_matcher_pgrep "$d10b" "claude --model x -n HIMMEL-2545.leg load foo and continue" "HIMMEL-2545.leg"
+mk_matcher_pgrep "$d10b" "claude --model x -n HIMMEL-2545.worker load foo and continue" "HIMMEL-2545.worker"
 rc10b=0
-run_headed_arm "$d10b" "$REPO" "HIMMEL-2545.leg" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
+run_headed_arm "$d10b" "$REPO" "HIMMEL-2545.worker" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
 check "regex metachar: still dedups its own literal name" "$rc10b" "0"
 settle
 if [ -s "$d10b/record" ]; then echo "FAIL - regex metachar: konsole must NOT be invoked (self-match)"; fails=$((fails+1))
@@ -2513,9 +2516,10 @@ tdout="$(run_headed_arm "$td1" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-
 check "8436a a second worker on a ticket with a live worker is refused (exit 16)" "$tdrc" "16"
 contains "8436b the refusal names the ticket and the live session" "$tdout" "HIMMEL-8436-N4000-first-worker-2026-10-31"
 check "8436c the refused arm launched no konsole" "$([ -e "$td1/record" ] && echo launched || echo none)" "none"
-td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-leg-2026-10-31" "HIMMEL-8436-N4332b-second-leg-2026-10-31"
-run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-leg-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
-check "8436d a second leg of the same worker lineage (same N) still launches" "$tdrc2" "0"
+check "8464p a scan refusal releases the ticket claim" "$(compgen -G "$td1/locks/ticket-*" | grep -c .)" "0"
+td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-worker-2026-10-31" "HIMMEL-8436-N4332b-second-worker-2026-10-31"
+run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-worker-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
+check "8436d a second worker of the same worker lineage (same N) still launches" "$tdrc2" "0"
 td3="$tmp/td3"; mk_tdup "$td3" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
 HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td3" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td3/signal-never" "$PAST" >/dev/null 2>&1; tdrc3=$?
 check "8436e HEADED_ARM_ALLOW_TICKET_DUP=1 lets a second worker on the ticket launch" "$tdrc3" "0"
@@ -2536,5 +2540,102 @@ chmod 755 "$td5/konsole"
 HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td5" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td5/signal-never" "$PAST" >/dev/null 2>&1; tdrc5=$?
 check "8436h the override launches the second worker" "$tdrc5" "0"
 check "8436i the override does not ride into the launched worker's env" "$(cat "$td5/dupenv" 2>/dev/null)" "unset"
+
+# Two arms for one ticket, started together, launch exactly one session. The
+# ticket scan and the launch have nothing held between them unless the arm claims the ticket first.
+# mk_pair <dir> <arm name> <arm name>: one shared konsole stub that records each launch and marks the launching name;
+# a pgrep stub whose ticket scan (pattern ending -N) answers after 0.6s (the scan-to-launch gap two arms race in) with
+# every session launched so far, and whose name scan answers only for a name that has launched.
+mk_pair() {
+  local dir="$1" a="$2" b="$3"
+  mkdir -p "$dir"
+  _fake_claude_proc "$dir" "$a" 9001
+  _fake_claude_proc "$dir" "$b" 9002
+  cat > "$dir/konsole" <<KONSOLE_EOF
+#!/usr/bin/env bash
+n=""; p=""
+for a in "\$@"; do [ "\$p" = -n ] && n="\$a"; p="\$a"; done
+printf '%s\n' "\$*" >> "$dir/record"
+: > "$dir/launched-\$n"
+sleep 5
+KONSOLE_EOF
+  cat > "$dir/pgrep" <<PGREP_EOF
+#!/usr/bin/env bash
+pat="\$2"
+case "\$pat" in
+  *-N) sleep 0.6
+       [ -e "$dir/launched-$a" ] && echo 9001
+       [ -e "$dir/launched-$b" ] && echo 9002
+       exit 0 ;;
+esac
+case "\$pat" in *"$a"*) [ -e "$dir/launched-$a" ] && { echo 9001; exit 0; } ;; esac
+case "\$pat" in *"$b"*) [ -e "$dir/launched-$b" ] && { echo 9002; exit 0; } ;; esac
+exit 1
+PGREP_EOF
+  chmod 755 "$dir/konsole" "$dir/pgrep"
+}
+# run_pair <dir> <name a> <name b>: both arms started together; prints "<sorted exit codes>|<launch count>"
+run_pair() {
+  local dir="$1" a="$2" b="$3" pa pb ra rb
+  run_headed_arm "$dir" "$REPO" "$a" "doc8464.md" "$dir/signal-never" "$PAST" >/dev/null 2>&1 & pa=$!
+  run_headed_arm "$dir" "$REPO" "$b" "doc8464.md" "$dir/signal-never" "$PAST" >/dev/null 2>&1 & pb=$!
+  ra=0; wait "$pa" || ra=$?
+  rb=0; wait "$pb" || rb=$?
+  printf '%s|%s\n' "$(printf '%s\n' "$ra" "$rb" | sort -n | tr '\n' ' ')" "$(grep -c . "$dir/record" 2>/dev/null || echo 0)"
+}
+tp1="$tmp/tp1"; mk_pair "$tp1" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
+check "8464a two arms for one ticket started together: one launches (exit 0), one is refused (exit 16), one session" \
+  "$(run_pair "$tp1" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02")" "0 16 |1"
+check "8464b the ticket claim is released after a launch and after a claim-held refusal" "$(compgen -G "$tp1/locks/ticket-*" | grep -c .)" "0"
+tp2="$tmp/tp2"; mk_pair "$tp2" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8465-N2-second-2026-11-02"
+check "8464c two arms for different tickets both launch" \
+  "$(run_pair "$tp2" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8465-N2-second-2026-11-02")" "0 0 |2"
+tp3="$tmp/tp3"; mk_pair "$tp3" "HIMMEL-8464-N7-first-2026-11-02" "HIMMEL-8464-N7b-second-2026-11-02"
+check "8464d two arms of one worker lineage (same N) started together both launch" \
+  "$(run_pair "$tp3" "HIMMEL-8464-N7-first-2026-11-02" "HIMMEL-8464-N7b-second-2026-11-02")" "0 0 |2"
+# a stale ticket claim (a crashed arm's) is reclaimed; a fresh one held by another lineage refuses
+tp4="$tmp/tp4"; mk_pair "$tp4" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
+mkdir -p "$tp4/locks/ticket-HIMMEL-8464.lock"; echo 1 > "$tp4/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N9-crashed-2026-11-02" > "$tp4/locks/ticket-HIMMEL-8464.lock/holder"
+run_headed_arm "$tp4" "$REPO" "HIMMEL-8464-N1-first-2026-11-02" "doc8464.md" "$tp4/signal-never" "$PAST" >/dev/null 2>&1; tprc4=$?
+check "8464e a stale ticket claim is reclaimed and the arm launches" "$tprc4" "0"
+tp5="$tmp/tp5"; mk_pair "$tp5" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
+mkdir -p "$tp5/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp5/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N9-live-2026-11-02" > "$tp5/locks/ticket-HIMMEL-8464.lock/holder"
+tpout="$(run_headed_arm "$tp5" "$REPO" "HIMMEL-8464-N1-first-2026-11-02" "doc8464.md" "$tp5/signal-never" "$PAST" 2>&1)"; tprc5=$?
+check "8464f a fresh ticket claim held by another lineage refuses (exit 16)" "$tprc5" "16"
+contains "8464g the refusal names the holder" "$tpout" "HIMMEL-8464-N9-live-2026-11-02"
+check "8464h the refused arm launched no konsole" "$([ -e "$tp5/record" ] && echo launched || echo none)" "none"
+check "8464i the refused arm left no name claim behind" "$(compgen -G "$tp5/locks/*.lock" | grep -c .)" "1"
+# a fresh same-lineage claim that is never released: the arm waits out the visibility budget, then gives up (exit 6)
+tp6="$tmp/tp6"; mk_pair "$tp6" "HIMMEL-8464-N7-first-2026-11-02" "HIMMEL-8464-N7b-second-2026-11-02"
+mkdir -p "$tp6/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp6/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N7-first-2026-11-02" > "$tp6/locks/ticket-HIMMEL-8464.lock/holder"
+tp6_t0=$(date +%s)
+run_headed_arm "$tp6" "$REPO" "HIMMEL-8464-N7b-second-2026-11-02" "doc8464.md" "$tp6/signal-never" "$PAST" >/dev/null 2>&1; tprc6=$?
+tp6_t1=$(date +%s)
+check "8464j a same-lineage claim that is never released ends the arm with exit 6" "$tprc6" "6"
+check "8464k that arm launched no konsole" "$([ -e "$tp6/record" ] && echo launched || echo none)" "none"
+check "8464l that arm's own name claim is gone" "$(compgen -G "$tp6/locks/HIMMEL-8464-N7b-*.lock" | grep -c .)" "0"
+check "8464m the held ticket claim is untouched" "$(cat "$tp6/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N7-first-2026-11-02"
+check "8464n the wait is bounded (under 20s)" "$([ $((tp6_t1 - tp6_t0)) -lt 20 ] && echo yes || echo no)" "yes"
+# the ticket claim is released once the session is visible, not held through the slow bus bind
+tp7="$tmp/tp7"; mk_pair "$tp7" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
+cat > "$tp7/bus" <<'BUS_EOF'
+#!/usr/bin/env bash
+: > "$(dirname "$0")/bind-started"
+exec sleep 30
+BUS_EOF
+chmod 755 "$tp7/bus"
+HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$tp7/bus" HEADED_ARM_BUS_BIND_SECS=3 \
+  run_headed_arm "$tp7" "$REPO" "HIMMEL-8464-N1-first-2026-11-02" "doc8464.md" "$tp7/signal-never" "$PAST" >/dev/null 2>&1 &
+tp7_pid=$!
+tp7_n=0
+while [ ! -e "$tp7/bind-started" ] && [ "$tp7_n" -lt 100 ]; do sleep 0.05; tp7_n=$((tp7_n+1)); done
+tp7_held="$(compgen -G "$tp7/locks/ticket-*" | grep -c .)"
+tp7_alive="$(kill -0 "$tp7_pid" 2>/dev/null && echo yes || echo no)"
+tp7_started="$([ -e "$tp7/bind-started" ] && echo yes || echo no)"
+check "8464o the ticket claim is gone while the bus bind still runs" "$tp7_held|$tp7_alive|$tp7_started" "0|yes|yes"
+# a successor takes the ticket after the release: the first arm's exit must not delete the successor's claim
+mkdir -p "$tp7/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp7/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N2-second-2026-11-02" > "$tp7/locks/ticket-HIMMEL-8464.lock/holder"
+wait "$tp7_pid" 2>/dev/null; pkill -f "$tp7/bus" 2>/dev/null || true
+check "8464q the first arm's exit leaves a successor's ticket claim alone" "$(cat "$tp7/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N2-second-2026-11-02"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

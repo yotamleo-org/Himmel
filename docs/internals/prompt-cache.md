@@ -241,11 +241,33 @@ claude-api shim) read 3 % over 442 runs on one organization (19.5 M tokens writt
   (steering cull), `probe` (credit measurement), `eval`, `judge`, `bulk`,
   `critic`. A call without one still logs `other`.
 
-`ponytail:` the non-batch graphify path still misses: the CLI caches on block
-boundaries and graphify sends one text block, so reordering alone cannot make a
-different chunk hit. Upgrade path: carry the instructions as a system prompt
-(`--append-system-prompt-file` on the claude-api.sh allowlist) after a quality
-proof.
+### The non-batch graphify path (HIMMEL-8410)
+
+The CLI caches on block boundaries and graphify sends one text block, so reordering
+alone cannot make a different chunk hit. A system prompt is its own block, shared
+across calls.
+
+- **Launcher.** `claude-api.sh` accepts `--append-system-prompt-file`, in both
+  spellings, when the value is a readable regular file not starting with a dash.
+  Anything else is refused, and every other dash flag stays refused.
+- **Shim.** With `GRAPHIFY_API_SYSTEM_PROMPT=1` on the synchronous path
+  (`GRAPHIFY_API_BATCH=0`), `semantic-update.sh` writes graphify's fixed instructions
+  and the addendum to one file per run, removed when the run ends, and leaves the
+  "Now extract ..." line and the chunk on stdin. A prompt without that line, or
+  whose fixed text differs from the run's file, is sent whole, as it is with the
+  knob unset.
+- **Extraction cache.** The knob's runs keep their answers in
+  `cache/semantic-r1-system`, because graphify's cache key cannot see the knob. Neither
+  mode replays the other's answers, so a failed proof leaves nothing in the default
+  cache.
+
+It is off by default because it is unproven: graphify's own source records that a
+system prompt once made the CLI answer conversationally, and that answer parses to
+nothing. The proof needs paid calls, so no live number exists yet and the 3 % above
+is still this path's reading.
+
+`ponytail:` opt-in until the paid quality proof. Upgrade path: flip the default once
+the proof passes.
 
 ## Re-run
 

@@ -139,9 +139,9 @@ test("header without feed.himmel reads version unknown, never blank", async ({ p
   await expect(page.locator("header.top")).toContainText("version unknown (feed has no himmel identity)");
 });
 
-test("rail page links are [Fleet, Health, Tool health, Configure, Roadmap, Kanban, Workflow, Docs]; Configure is current and the hash is #/config", async ({ page }) => {
+test("rail page links are [Fleet, Health, Tool health, Configure, Board, Workflow, Docs]; Configure is current and the hash is #/config", async ({ page }) => {
   await openConfig(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"]);
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Configure");
   expect(await page.evaluate(() => location.hash)).toBe("#/config");
 });
@@ -161,7 +161,7 @@ const LEDGER = [
 const PAGE_ALERT = { labels: { alertname: "E2EPageAlert", severity: "page" }, annotations: { summary: "e2e-page-alert-summary" } };
 // the strip, the one open tile panel, then trends; Checks opens by itself only when something is wrong (Q5).
 // The reviewers panel lives on Tool health's Reviewers tab, not here.
-const SECTIONS = ["Is this project working right now?", "Checks", "Trends"];
+const SECTIONS = ["Checks", "Trends"]; // the strip carries no heading, as the approved mockup has none
 const SECTIONS_CALM = SECTIONS.filter((s) => s !== "Checks");
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
@@ -174,7 +174,7 @@ const openTile = (page: Page, tile: string) => page.locator(`[data-act="health-t
 
 test("health: Config to Health to browser back; aria-current follows; one header on both", async ({ page }) => {
   await openConfig(page);
-  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"]);
+  expect(await page.locator("nav.pages a").allTextContents()).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"]);
   await page.locator("nav.pages").getByRole("link", { name: /^Health\b/ }).click();
   await expect(page.locator('nav.pages a[aria-current="page"]')).toHaveText("Health");
   expect(await page.evaluate(() => location.hash)).toBe("#/health");

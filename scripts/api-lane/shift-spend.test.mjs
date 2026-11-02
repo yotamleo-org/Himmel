@@ -42,7 +42,7 @@ function codexRoot(label, files) {
   for (const [name, lines] of Object.entries(files)) rollout(root, name, lines);
   return root;
 }
-const ledgerRow = (ts, five, seven, extra = {}) => JSON.stringify({ ts, leg: 'x', verdict: 'PROCEED', five_hour: five, seven_day: seven, age: '3', degraded: false, ...extra });
+const ledgerRow = (ts, five, seven, extra = {}) => JSON.stringify({ ts, worker: 'x', verdict: 'PROCEED', five_hour: five, seven_day: seven, age: '3', degraded: false, ...extra });
 
 test('codex tokens: only growth inside [since, until) counts, per session, summed across sessions', () => {
   const root = codexRoot('codex-a', {

@@ -1,4 +1,4 @@
-// Journey J3: the Configure page (it replaced Settings and Setup) with its four group tiles, and Roadmap and Kanban follow the tracker source.
+// Journey J3: the Configure page (it replaced Settings and Setup) with its four group tiles, and the Board follows the tracker source.
 import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness, type TrackerKind } from "./fixtures";
 
@@ -78,12 +78,14 @@ test("J3. a switch on Configure still previews its dry-run first and runs nothin
   expect(h.argv().every((l) => l.endsWith("--dry-run")), h.argv().join("\n")).toBe(true);
 });
 
-for (const [tracker, shown] of [["none", false], ["local", false], ["jira", true]] as [TrackerKind, boolean][]) {
-  test(`J3. with the ${tracker} tracker the rail ${shown ? "shows" : "hides"} Roadmap and Kanban`, async ({ page }) => {
+for (const [tracker, shown] of [["none", true], ["local", false], ["jira", true]] as [TrackerKind, boolean][]) {
+  test(`J3. with the ${tracker} tracker the rail ${shown ? "shows" : "hides"} Board`, async ({ page }) => {
     await open(page, tracker);
     const rail = page.locator("nav.pages a");
-    await expect.poll(async () => (await rail.allTextContents()).includes("Roadmap")).toBe(shown);
-    expect((await rail.allTextContents()).includes("Kanban")).toBe(shown);
+    await expect.poll(async () => (await rail.allTextContents()).includes("Board")).toBe(shown);
+    // the two pages the Board replaced are gone from the rail whatever the tracker
+    const labels = await rail.allTextContents();
+    expect(labels.includes("Roadmap") || labels.includes("Kanban")).toBe(false);
   });
 }
 

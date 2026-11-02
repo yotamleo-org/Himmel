@@ -18,7 +18,6 @@ run() {
 }
 
 if [ "$ARM" = "baseline" ]; then
-  # Raw CLI arm - direct invocations, no runner.
   JIRA_CMD=(node scripts/jira/dist/index.js)
   run jira-create-1 "${JIRA_CMD[@]}" create --type Task --project HIMTEST --title "vm-smoke-${STAMP}-1"
   run jira-create-2 "${JIRA_CMD[@]}" create --type Task --project HIMTEST --title "vm-smoke-${STAMP}-2"
@@ -35,8 +34,6 @@ if [ "$ARM" = "baseline" ]; then
   run gh-pr-list-3  gh pr list --repo yotamleo/himmel --limit 5
   run gh-pr-checks-1 gh pr checks 101 --repo yotamleo/himmel
 else
-  # Plugin arm - go through himmel-run, capture the *summary line* that
-  # Claude actually sees.
   run jira-create-1 himmel-run jira -- create --type Task --project HIMTEST --title "vm-smoke-${STAMP}-1"
   run jira-create-2 himmel-run jira -- create --type Task --project HIMTEST --title "vm-smoke-${STAMP}-2"
   run jira-create-3 himmel-run jira -- create --type Task --project HIMTEST --title "vm-smoke-${STAMP}-3"

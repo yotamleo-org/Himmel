@@ -43,6 +43,9 @@
 #   D4b no PR, a completes=yes merge row         no-write + miss stage=done-pending
 #   D5  no PR, an owner not provably ended       In Progress
 #   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
+#       or, a wrapped owner and no merge row at all, a merged PR whose first [KEY] is the
+#       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
+#       filter is no-write + miss
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D7  no PR, never owned                       no-write
@@ -326,14 +329,60 @@ _ts_worker_state() {
     esac
 }
 
+# ts_merge_rows [<log>] — the status-events log (stdin without a file) minus every pre-merge row whose PR did
+# not merge; see merge-rows-effective.py. Every reader of the merge rows reads this.
+ts_merge_rows() {
+    python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@"
+}
+
 # ts_partial_merge <KEY> — rc 0 when the key's latest merge row that carries a contract is completes=no
 # (a funnel row written under event merge by an older worker-jira-status.sh has none).
+# rc 0 = partial, 1 = none, 2 = the filter failed (not read as "none").
 ts_partial_merge() {
-    local log
+    local log rows
     log="$(ts_state_dir)/status-events.jsonl"
     [ -r "$log" ] || return 1
+    rows=$(ts_merge_rows "$log" 2>/dev/null) || return 2
     [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
-        | select(. != null and .contract == "no") | 1' "$log" 2>/dev/null)" ]
+        | select(. != null and .contract == "no") | 1' <<<"$rows" 2>/dev/null)" ]
+}
+
+# ts_has_merge_row <KEY> — rc 0 when the key has any merge row that carries a contract
+# (merge-on-green.sh and pr-merge.sh write one per merge). rc 1 = none, 2 = the filter failed.
+ts_has_merge_row() {
+    local log rows
+    log="$(ts_state_dir)/status-events.jsonl"
+    [ -r "$log" ] || return 1
+    rows=$(ts_merge_rows "$log" 2>/dev/null) || return 2
+    [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | first
+        | select(. != null) | 1' <<<"$rows" 2>/dev/null)" ]
+}
+
+# ts_merged_no_row <KEY> — rc 0 when a PR whose title's first [KEY] is <KEY> merged and no merge row
+# records it (the caller has checked ts_has_merge_row): TS_MERGED_PR = its number. The funnel logs
+# the find as stage=merged-no-row, and a logged find answers without a gh call, so the sweep's
+# snapshot (open PRs only) needs no merged-PR read. rc 0 = found, 1 = none (or a snapshot
+# derive with nothing logged), 2 = the merged list is unreadable (no-write + miss, never a move).
+ts_merged_no_row() {
+    local log json rows num title k
+    TS_MERGED_PR=""
+    log="$(ts_state_dir)/status-events.jsonl"
+    if [ -r "$log" ]; then
+        num=$(jq -Rr --arg k "$1" 'fromjson? | select(.key == $k and .stage == "merged-no-row") | .merged_pr // empty' "$log" 2>/dev/null | tail -n 1)
+        case "$num" in ''|*[!0-9]*) ;; *) TS_MERGED_PR=$num; return 0 ;; esac
+    fi
+    [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
+    json=$(gh pr list --state merged --search "$1 in:title" --limit "${TICKET_STATUS_PR_LIMIT:-50}" \
+        --json number,title 2>/dev/null) || return 2
+    rows=$(jq -r 'sort_by(.number) | reverse | .[] | [.number, .title] | @tsv' <<<"$json" 2>/dev/null) || return 2
+    while IFS=$'\t' read -r num title; do
+        [ -n "$num" ] || continue
+        k=$(ticket_key_from_title "$title") || continue
+        [ "$k" = "$1" ] || continue
+        TS_MERGED_PR=$num
+        return 0
+    done <<<"$rows"
+    return 1
 }
 
 # ts_done_pending <KEY> — the key's latest merge row with a contract is completes=yes and its
@@ -344,15 +393,17 @@ ts_done_pending() {
     log="$(ts_state_dir)/status-events.jsonl"
     [ -e "$log" ] || return 1
     [ -r "$log" ] || return 2
+    local rows
+    rows=$(ts_merge_rows "$log" 2>/dev/null) || return 2
     [ -n "$(jq -R -n --arg k "$1" '[inputs | fromjson? | select(.key == $k and .event == "merge" and has("contract"))] | last
-        | select(. != null and .contract == "yes" and .result != "moved" and .result != "noop") | 1' "$log" 2>/dev/null)" ]
+        | select(. != null and .contract == "yes" and .result != "moved" and .result != "noop") | 1' <<<"$rows" 2>/dev/null)" ]
 }
 
 _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="${3:-}"; }
 
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
-    TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none
+    TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""
     TS_LOCK_HELD=""; TS_LOCK_SEEN=false; TS_GONE=0; TS_OWNER_DOC=""
     ts_read_jira "$key" || { _ts_no_write miss "" get; return 0; }
     [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || { _ts_no_write skip D0; return 0; }
@@ -413,8 +464,24 @@ ts_derive() {
         return 0
     fi
     if [ "$TS_WORKER_STATE" != wrapped ]; then TS_DERIVED="In Progress"; TS_RULE=D5
-    elif ts_partial_merge "$key"; then TS_DERIVED="In Progress"; TS_RULE=D5c
-    else TS_DERIVED="To Do"; TS_RULE=D6
+    else
+        rc=0; ts_partial_merge "$key" || rc=$?
+        if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
+        elif [ "$rc" -eq 0 ]; then TS_DERIVED="In Progress"; TS_RULE=D5c
+        else
+            # No partial row: a ticket with no merge row at all may still have shipped a PR merged
+            # outside merge-on-green; that is a partial too.
+            rc=0; ts_has_merge_row "$key" || rc=$?
+            if [ "$rc" -eq 1 ]; then
+                rc=0; ts_merged_no_row "$key" || rc=$?
+                if [ "$rc" -eq 0 ]; then TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
+                elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" gh
+                else TS_DERIVED="To Do"; TS_RULE=D6
+                fi
+            elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
+            else TS_DERIVED="To Do"; TS_RULE=D6
+            fi
+        fi
     fi
 }
 

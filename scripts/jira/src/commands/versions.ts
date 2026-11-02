@@ -274,8 +274,10 @@ export async function setFixVersion(
   key: string,
   op: 'add' | 'remove',
   name: string,
+  writer?: string,
 ): Promise<string> {
-  await request('PUT', `/issue/${key}`, buildFixVersionBody(op, name));
+  // A caller that names no writer is hand: it passes no argument at all.
+  await request('PUT', `/issue/${key}`, buildFixVersionBody(op, name), ...(writer === undefined ? [] : [writer]));
   await verifyVersionField(key, 'fixVersions', 'Fix-version', op, name);
   return `${key} fixVersion ${op === 'add' ? '+' : '-'}${name}`;
 }

@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"e1","name":"mcp__qmd__query","input":{"searches":[]}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"e1","is_error":true,"content":[{"type":"text","text":"refused"}]}]}}

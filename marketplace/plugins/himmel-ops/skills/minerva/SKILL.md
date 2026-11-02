@@ -157,8 +157,10 @@ It also carries, for the terminal lint (HIMMEL-4375):
   - how each non-owner is folded, delegated or removed.
 
   Build it by grepping the repo, never from memory. Self-answer mode does not
-  exempt it. The lint detects the surface from the H1 and the first section,
-  so name it there.
+  exempt it. The lint treats a spec as a surface when any line outside a code
+  fence names one of those words, or when it carries a `## Fact ownership`
+  section, wherever that section sits. A spec that only mentions one in passing
+  pays a single `none (grep: <pattern>)` row.
 
 **Choose the written-design size yourself.** At its brainstorming step "Size
 the Work", pick brainstorming step "A project" (the full written design) and say so;

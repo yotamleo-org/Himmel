@@ -139,6 +139,15 @@ export HIMMEL_DOCTOR_PROC="$HIMMEL_DOCTOR_PROC_BASE/no-proc"
 HIMMEL_DOCTOR_SYSTEMCTL_BASE="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-nosystemctl.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
 export HIMMEL_DOCTOR_SYSTEMCTL="$HIMMEL_DOCTOR_SYSTEMCTL_BASE/no-systemctl"
 
+# Hermeticity: C24 reads the user's crontab to walk every # HIMMEL-... row's runner and script. A real
+# crontab is read by uid, so a dead row on the dev box would turn every unrelated case red and print a
+# path into the log. Put an empty crontab first on PATH for the whole suite; dedicated C24 cases put their
+# own stub in front of it.
+DOCTOR_CRON_STUB_DIR="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-nocrontab.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
+printf '#!/bin/sh\nexit 0\n' > "$DOCTOR_CRON_STUB_DIR/crontab"
+chmod +x "$DOCTOR_CRON_STUB_DIR/crontab"
+export PATH="$DOCTOR_CRON_STUB_DIR:$PATH"
+
 # Hermeticity: C8's runner-home defaults resolve via
 # cadence_user_home (USERPROFILE via cygpath on Windows) — per-case HOME
 # redirection does NOT cover that, so pin all four seams to empty dirs
@@ -161,7 +170,7 @@ tool_dirs() {
         d="$(command -v "$t" 2>/dev/null)" && dirname "$d"
     done | sort -u | tr '\n' ':'
 }
-TOOLS_PATH="$(tool_dirs)"
+TOOLS_PATH="$DOCTOR_CRON_STUB_DIR:$(tool_dirs)"
 
 # fake uname=Linux (to exercise the non-Windows --fix path on this MINGW box)
 FAKEROOT="$(mktemp -d)"; FAKEBIN="$FAKEROOT/bin"; mkdir -p "$FAKEBIN"
@@ -956,7 +965,7 @@ out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" 
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
 if grepq "$out" 'WARN C8-cadence: graphmap-cadence runners are stale' \
-    && grepq "$out" 'bash scripts/luna/graphmap-cadence.sh arm --force'; then
+    && grepq "$out" 'bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed'; then
     pass "C8 -> WARN (stale graphmap runner)"
 else
     fail "C8 -> $(printf '%s' "$out" | grep C8)"
@@ -2074,6 +2083,211 @@ else
 fi
 rm -rf "$t"
 
+# ── C24: a himmel cron line whose runner or the script the runner calls is gone ──
+# fake_cron_lines <dir> <crontab-line...> — a crontab stub that prints the given lines verbatim.
+# shellcheck disable=SC2016  # $1 is emitted literally for the fake binary's own /bin/sh
+fake_cron_lines() {
+    local dir="$1" n; shift
+    mkdir -p "$dir"
+    : > "$dir/crontab.txt"
+    for n in "$@"; do printf '%s\n' "$n" >> "$dir/crontab.txt"; done
+    printf '#!/bin/sh\nif [ "$1" = "-l" ]; then cat "%s/crontab.txt"; fi\nexit 0\n' "$dir" > "$dir/crontab"
+    chmod +x "$dir/crontab"
+}
+c24_run() { # <tmp>
+    PATH="$1/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$1/none/*.mcp.json" CLAUDE_DIR="$1/claude" HOME="$1/home" bash "$DOC" --no-color 2>&1
+}
+
+echo "== C24 (HIMMEL-8640): runner exists but calls a missing script -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 dead script: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/usr/bin/env bash\nbash %s/scripts/eval/leg-digest/failure-review-cadence.sh run --vault %s/vault\n' "$t" "$t" > "$t/runner/failure-review-cadence.sh"
+chmod +x "$t/runner/failure-review-cadence.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/scripts/eval/leg-digest/failure-review-cadence.sh" && grepq "$out" -F 'arm --force'; then
+    pass "C24 -> FAIL (runner calls a missing script; path and re-arm remedy named)"
+else
+    fail "C24 dead script -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24 (HIMMEL-8640): the runner itself is missing -> FAIL naming the runner =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 dead runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/runner/failure-review-cadence.sh"; then
+    pass "C24 -> FAIL (runner missing; path named)"
+else
+    fail "C24 dead runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24 (HIMMEL-8640): runner and script both exist, plus a bare-command cron line -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 live runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner" "$t/scripts/eval/worker-digest"; write_settings "$t/claude" "$WRAPPER"
+: > "$t/scripts/eval/worker-digest/failure-review-cadence.sh"
+printf '#!/usr/bin/env bash\nbash %s/scripts/eval/worker-digest/failure-review-cadence.sh run --vault %s/vault\n' "$t" "$t" > "$t/runner/failure-review-cadence.sh"
+chmod +x "$t/runner/failure-review-cadence.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview" "0 0 * * * true # HIMMEL-Qmd-Reindex"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (live runner and script; a non-path command is skipped)"
+else
+    fail "C24 live runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: the suite reads an empty stub crontab, never the real one =="
+if [ "$(command -v crontab)" = "$DOCTOR_CRON_STUB_DIR/crontab" ] && [ -z "$(crontab -l)" ]; then
+    pass "C24 -> the default crontab on PATH is the empty suite stub"
+else
+    fail "C24 hermetic crontab -> $(command -v crontab)"
+fi
+
+echo "== C24: a quoted runner path with a space is not resolved -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 quoted space: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/no such dir/runner.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (unterminated quote word is skipped, not printed as a dead path)"
+else
+    fail "C24 quoted space -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: a backslash-escaped runner path with a space is not resolved -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 escaped space: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * $t/no\\ such\\ dir/runner.sh # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (trailing-backslash word is skipped)"
+else
+    fail "C24 escaped space -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: a commented-out HIMMEL row is not a cron row -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 commented row: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "# 15 06 * * * \"$t/runner/gone.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (commented-out row is ignored)"
+else
+    fail "C24 commented row -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+# c24_runner_case <label> <fail|ok> <needle> <runner line...> — a cron row calls a #! runner holding the lines
+# (@T@ stands for the scratch dir); fail expects a C24 FAIL naming <needle>, ok expects a C24 line and no FAIL.
+c24_runner_case() {
+    local label="$1" expect="$2" needle="$3" t out l; shift 3
+    t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 $label: mktemp -d failed"; exit 1; }
+    mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner" "$t/scripts/lib"; write_settings "$t/claude" "$WRAPPER"
+    : > "$t/scripts/lib/usage-preflight.sh"
+    { printf '#!/usr/bin/env bash\n'; for l in "$@"; do printf '%s\n' "${l//@T@/$t}"; done; } > "$t/runner/r.sh"
+    chmod +x "$t/runner/r.sh"
+    fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" # HIMMEL-FailureReview"
+    out="$(c24_run "$t")"
+    if [ "$expect" = fail ]; then
+        if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "${needle//@T@/$t}"; then pass "C24 $label -> FAIL naming the script"; else fail "C24 $label -> $(printf '%s' "$out" | grep C24)"; fi
+    else
+        if grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then pass "C24 $label -> no FAIL"; else fail "C24 $label -> $(printf '%s' "$out" | grep C24)"; fi
+    fi
+    rm -rf "$t"
+}
+echo "== C24: runner shapes the cadence generators write =="
+# shellcheck disable=SC2016  # the runner lines keep their $ literal
+c24_runner_case 'a $( ) capture whose assignment opens the command' ok '' \
+    '_bank=$(CADENCE_USAGE_WORKER=x @T@/scripts/lib/usage-preflight.sh) || _bank='
+# shellcheck disable=SC2016
+c24_runner_case 'a brace group around a script' ok '' \
+    '{ [ "$_o" = complete ] && @T@/scripts/lib/usage-preflight.sh --stamp .; } || true'
+# shellcheck disable=SC2016
+c24_runner_case 'a missing script after an opening parenthesis' fail '@T@/missing/q.sh' \
+    '_rc=0; ( /usr/bin/bash @T@/missing/q.sh --qmd-bin x; _m=$?; exit $_m )'
+# shellcheck disable=SC2016
+c24_runner_case 'a missing script after unset' fail '@T@/missing/a.sh' \
+    '_rc=0; unset X; /usr/bin/bash @T@/missing/a.sh'
+
+echo "== C24: the runners the real pipeline-cadence.sh arm writes walk clean =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 real arm: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/pc" "$t/vault" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/claude"; chmod +x "$t/bin/claude"
+# shellcheck disable=SC2016  # the stub's own $1 stays literal
+printf '#!/bin/sh\ncase "$1" in -l) cat "%s/state" 2>/dev/null || exit 1 ;; -) cat > "%s/state" ;; esac\n' "$t" "$t" > "$t/armcron"
+chmod +x "$t/armcron"
+if env OSTYPE=linux-gnu HOME="$t/home" PATH="$t/bin:$PATH" PIPELINE_CRONTAB="$t/armcron" PIPELINE_BAT_DIR="$t/pc" \
+    bash "$REPO_ROOT/scripts/luna/pipeline-cadence.sh" arm --vault "$t/vault" > /dev/null 2>&1 && [ -s "$t/state" ]; then
+    cp "$t/state" "$t/probe/crontab.txt"
+    # shellcheck disable=SC2016
+    printf '#!/bin/sh\nif [ "$1" = "-l" ]; then cat "%s/probe/crontab.txt"; fi\n' "$t" > "$t/probe/crontab"; chmod +x "$t/probe/crontab"
+    out="$(c24_run "$t")"
+    if [ "$(grep -c 'HIMMEL-Pipeline' "$t/probe/crontab.txt")" -eq 4 ] && grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
+        pass "C24 -> no FAIL over the four runners pipeline-cadence.sh arm writes"
+    else
+        fail "C24 real arm -> $(printf '%s' "$out" | grep C24)"
+    fi
+else
+    fail "C24 real arm: pipeline-cadence.sh arm did not install the runners"
+fi
+rm -rf "$t"
+
+echo "== C24: an indented commented-out HIMMEL row is not a cron row -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 indented comment: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "  # 15 06 * * * \"$t/runner/gone.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (an indented commented-out row is ignored)"
+else
+    fail "C24 indented comment -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an absolute data path after an option flag is not a script -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 option operand: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+: > "$t/runner/r.sh"; chmod +x "$t/runner/r.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" --output $t/out/generated.js # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if PATH="$t/probe:$PATH" crontab -l 2>/dev/null | grep -qF '# HIMMEL-FailureReview' && grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (the operand of an option flag is data, not a script)"
+else
+    fail "C24 option operand -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an interpreter flag before a missing script on the cron row -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 interpreter flag row: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * bash -e $t/missing/s.sh # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/missing/s.sh"; then
+    pass "C24 -> FAIL (a boolean interpreter flag does not hide the missing script)"
+else
+    fail "C24 interpreter flag row -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an interpreter flag before a missing script inside the runner -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 interpreter flag runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/usr/bin/env bash\nbash -e %s/missing/s.sh run\n' "$t" > "$t/runner/r.sh"
+chmod +x "$t/runner/r.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/missing/s.sh"; then
+    pass "C24 -> FAIL (a boolean interpreter flag inside the runner does not hide the missing script)"
+else
+    fail "C24 interpreter flag runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
 echo "== C24: scheduler probe itself fails (access-denied/transient) -> INFO, not a false-mass-WARN (codex-1, CR round 3) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
@@ -2783,6 +2997,54 @@ if grepq "$out" 'WARN C29-child-session: 2 running' && grepq "$out" 'pid 200 (tt
     pass "C29 -> WARN on macOS names only the marked interactive root claudes, by tty"
 else
     fail "C29 ps-route -> $(printf '%s' "$out" | grep -A6 C29)"
+fi
+rm -rf "$t"
+
+echo "== C29 (macOS route): a Mac app still carrying a DEAD claude's marker is named; a live one and a shell are not (SCRUM-2) =="
+#   100 Raycast, marker of dead claude 89183          -> WARN names Raycast once
+#   110 Raycast helper, same marker                   -> folded into Raycast
+#   120 iTerm2, marker of live claude 300             -> skipped (a running claude's child)
+#   130 zsh, marker of dead claude                    -> skipped (not an app)
+#   140 Obsidian, dead marker + persistence override  -> skipped (its claudes save transcripts)
+#   300 claude, unmarked                              -> no session WARN
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 ps-carrier: mktemp -d failed"; exit 1; }
+write_settings "$t/claude" "$WRAPPER"
+fix="$t/fix"; mkdir -p "$fix"
+cat > "$fix/table" <<'TABLE'
+    1     0 /sbin/launchd
+  100     1 /Applications/Raycast.app/Contents/MacOS/Raycast
+  110   100 /Applications/Raycast.app/Contents/Frameworks/Raycast Helper (GPU)
+  120     1 /Applications/iTerm.app/Contents/MacOS/iTerm2
+  130   120 -zsh
+  140     1 /Applications/Obsidian.app/Contents/MacOS/Obsidian
+  300   130 claude
+TABLE
+printf '/Applications/Raycast.app/Contents/MacOS/Raycast' > "$fix/100.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/100.env"
+printf 'helper' > "$fix/110.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/110.env"
+printf 'iTerm2' > "$fix/120.args"; printf 'CLAUDE_PID=300 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/120.env"
+printf -- '-zsh' > "$fix/130.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1' > "$fix/130.env"
+printf 'Obsidian' > "$fix/140.args"; printf 'CLAUDE_PID=89183 CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1' > "$fix/140.env"
+printf 'claude' > "$fix/300.args"; printf 'HOME=/x' > "$fix/300.env"
+cat > "$t/ps" <<PS
+#!/usr/bin/env bash
+fix="$fix"
+a="\$*"; p="\${a##* }"
+case "\$*" in
+    "-ww -axo pid=,ppid=,comm=") cat "\$fix/table" ;;
+    "-E -ww -o command= -p "*) [ -f "\$fix/\$p.args" ] || exit 0
+        printf '%s %s\n' "\$(cat "\$fix/\$p.args")" "\$(cat "\$fix/\$p.env")" ;;
+    "-ww -o command= -p "*) [ -f "\$fix/\$p.args" ] || exit 1; cat "\$fix/\$p.args"; echo ;;
+    "-o tty= -p "*) printf 'ttys%03d \n' "\$p" ;;
+    *) exit 1 ;;
+esac
+PS
+chmod +x "$t/ps"
+out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/no-such-proc" HIMMEL_DOCTOR_PS="$t/ps" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'WARN C29-child-session: 1 Mac app' && grepq "$out" 'pid 100 (Raycast)' \
+    && grepq "$out" 'saves no transcript: Raycast ' && ! grepq "$out" 'pid 110' && ! grepq "$out" 'iTerm' && ! grepq "$out" 'pid 130' && ! grepq "$out" 'Obsidian' && ! grepq "$out" 'running claude session'; then
+    pass "C29 -> WARN names the Mac app carrying a dead claude's marker, once per app"
+else
+    fail "C29 ps-carrier -> $(printf '%s' "$out" | grep -A6 C29)"
 fi
 rm -rf "$t"
 
@@ -6133,6 +6395,75 @@ rm -f "$c83_t/reindex-state"
 out="$(c83_run)"
 if grepq "$out" 'C83-qmd-embed-backlog'; then fail "C83 no state -> $(printf '%s' "$out" | grep -A1 C83)"; else pass "C83 no state -> silent"; fi
 rm -rf "$c83_t"
+
+# --- C84-release-queue: a declared release the chief doc does not name ---
+# Fixture: <t>/h/release/<R>/release.json is the declaration (the CLI's layout) and the
+# newest <t>/h/*-chief.md is the chief doc whose `release:` line the tick reads.
+# Seam: HIMMEL_RELEASE_STATE_DIR (the same override the tick and chief.sh honour).
+c84_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c84.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c84_t/home" "$c84_t/claude" "$c84_t/h/release/R1"
+# The probe stands in for `jira release state <R> --json`, whose status is OK only when release.json verifies.
+cat > "$c84_t/probe" <<'EOF'
+#!/usr/bin/env bash
+[ -z "${C84_RC:-}" ] || exit "$C84_RC"
+printf '{"status":"%s","integrity":["release.json for %s is missing or does not verify"]}\n' "${C84_STATUS:-OK}" "$1"
+[ "${C84_STATUS:-OK}" = OK ] || exit 3
+EOF
+c84_run() { HIMMEL_DOCTOR_RM_STATE_PROBE="$c84_t/probe" HIMMEL_RELEASE_STATE_DIR="$c84_t/h/release" CLAUDE_DIR="$c84_t/claude" HOME="$c84_t/home" bash "$DOC" --only C84 --no-color 2>&1; }
+c84_doc() { rm -f "$c84_t/h/"*-chief.md; [ "$#" -eq 0 ] || printf '# chief\n## Live state\n%s\n' "$1" > "$c84_t/h/X-chief.md"; }
+printf '{"name":"R1"}\n' > "$c84_t/h/release/R1/release.json"
+echo "== C84-release-queue: a declared release and a chief doc with no release: line -> WARN =="
+c84_doc "epics: none"
+out="$(c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'R1' && grepq "$out" -F 'rm-queue=off' && grepq "$out" -F "release: <R>"; then
+    pass "C84 declared release, no release: line -> WARN naming the release, rm-queue=off and the fix"
+else
+    fail "C84 no release: line -> $(printf '%s' "$out" | head -4)"
+fi
+echo "== C84-release-queue: the line names a release with no declaration -> WARN =="
+c84_doc "release: R9"
+out="$(c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'R9'; then pass "C84 line names an undeclared release -> WARN"; else fail "C84 undeclared R9 -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: the declaration is empty -> WARN =="
+c84_doc "release: R1"
+: > "$c84_t/h/release/R1/release.json"
+out="$(c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'R1'; then pass "C84 empty release.json -> WARN"; else fail "C84 empty state -> $(printf '%s' "$out" | head -4)"; fi
+printf '{"name":"R1"}\n' > "$c84_t/h/release/R1/release.json"
+echo "== C84-release-queue: a declared release and no chief doc -> WARN =="
+c84_doc
+out="$(c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'no chief doc'; then pass "C84 no chief doc -> WARN"; else fail "C84 no chief doc -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: healthy control (line names the declared release) -> OK =="
+c84_doc "release: R1"
+out="$(c84_run)"
+if grepq "$out" 'OK   C84-release-queue' && ! grepq "$out" 'WARN C84-release-queue'; then pass "C84 healthy -> OK"; else fail "C84 healthy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: the declaration does not verify (release state is not OK) -> WARN =="
+c84_doc "release: R1"
+out="$(C84_STATUS=UNKNOWN c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'UNKNOWN' && grepq "$out" -F 'does not verify'; then pass "C84 unverifiable declaration -> WARN naming the state and the integrity reason"; else fail "C84 unverified -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: the state read fails outright (exit 1, then a timeout's 124) -> WARN, never OK =="
+for c84_rc in 1 124; do
+    out="$(C84_RC=$c84_rc c84_run)"
+    if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F "exited $c84_rc" && ! grepq "$out" 'OK   C84-release-queue'; then pass "C84 state read exit $c84_rc -> WARN naming the exit status"; else fail "C84 state read exit $c84_rc -> $(printf '%s' "$out" | head -4)"; fi
+done
+echo "== C84-release-queue: the default handover root comes from --root, not the working directory =="
+c84_p="$c84_t/proj"; mkdir -p "$c84_p/handovers/u/himmel/release/R1" "$c84_t/elsewhere"
+git init -q "$c84_p"
+ln -s "$REPO_ROOT/scripts" "$c84_p/scripts"  # the doctor sources its libs from the --root checkout
+printf '{"name":"R1"}\n' > "$c84_p/handovers/u/himmel/release/R1/release.json"
+printf '# chief\n## Live state\nrelease: R1\n' > "$c84_p/handovers/u/himmel/X-chief.md"
+out="$(cd "$c84_t/elsewhere" && env -u HANDOVER_DIR -u HIMMEL_RELEASE_STATE_DIR HIMMEL_DOCTOR_RM_STATE_PROBE="$c84_t/probe" CLAUDE_DIR="$c84_t/claude" HOME="$c84_t/home" bash "$DOC" --root "$c84_p" --only C84 --no-color 2>&1)"
+if grepq "$out" 'OK   C84-release-queue'; then pass "C84 finds the --root checkout's declaration from a non-git working directory"; else fail "C84 --root default -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: disabled controls (release: none; nothing declared) -> INFO, never WARN =="
+c84_doc "release: none"
+out="$(c84_run)"
+if grepq "$out" 'INFO C84-release-queue' && grepq "$out" -F 'none' && ! grepq "$out" 'WARN C84-release-queue'; then pass "C84 release: none -> INFO"; else fail "C84 none -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c84_t/h/release/R1"
+c84_doc "epics: none"
+out="$(c84_run)"
+if grepq "$out" 'INFO C84-release-queue' && ! grepq "$out" 'WARN C84-release-queue'; then pass "C84 nothing declared -> INFO"; else fail "C84 nothing declared -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c84_t"
 
 # --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs pin ------
 # Fixture fork clone (a throwaway git repo: commit A older, B newer), a fixture

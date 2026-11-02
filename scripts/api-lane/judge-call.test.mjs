@@ -1,6 +1,7 @@
 // Judge-call bridge fixtures. Dummy key and a stub claude only: no provider call, no real
 // credential. Breaks caught: a stale or missing verdict recorded as a ruling, a tool denial hidden behind
-// rc=0, a verdict without evidence, a fallback to the subscription lane, an unbounded parent artifact,
+// rc=0, a verdict without evidence, a refused launch that skips the alert or the subscription fallback,
+// an unbounded parent artifact,
 // a tool grant wider than Read/Glob/Grep, a non-judgment-tier model.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,6 +30,7 @@ const STUB = `#!/bin/bash
 echo called >> "$STUB_LOG"
 echo "args=$*" > "$STUB_ENV"
 echo "cwd=$PWD" >> "$STUB_ENV"
+echo "key_present=$([ -n "\${ANTHROPIC_API_KEY:-}" ] && echo 1 || echo 0)" >> "$STUB_ENV"
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 exit "\${STUB_RC:-0}"
@@ -54,11 +56,13 @@ function fixture() {
   }])) };
   const p = { config: join(dir, 'config.json'), snapshot: join(dir, 'snapshot.json'), state,
     stub: join(dir, 'claude-stub'), log: join(dir, 'stub.log'), env: join(dir, 'stub.env'), ps: join(dir, 'ps'),
-    q: join(dir, 'question.md'), hold: join(dir, 'hold') };
+    q: join(dir, 'question.md'), hold: join(dir, 'hold'), alert: join(dir, 'alert-stub'), alertLog: join(dir, 'alert.log') };
   writeFileSync(p.config, JSON.stringify(config));
   writeFileSync(p.snapshot, JSON.stringify(snapshot));
   writeFileSync(p.stub, STUB, { mode: 0o700 });
   writeFileSync(p.ps, '#!/bin/bash\nexit 0\n', { mode: 0o700 });
+  // the alert sender is always this stub: no fixture can reach the real Telegram sender
+  writeFileSync(p.alert, `#!/bin/bash\necho "type=$TG_NOTIFICATION_TYPE msg=$TG_MESSAGE" >> '${p.alertLog}'\n`, { mode: 0o700 });
   writeFileSync(p.q, 'Is the change in scripts/x.sh sound? Read it and rule.\n');
   mkdirSync(join(dir, '.config', 'himmel'), { recursive: true });
   writeFileSync(join(dir, '.config', 'himmel', 'go-hmac.key'), `${'0123456789abcdef'.repeat(4)}\n`, { mode: 0o600 });
@@ -72,7 +76,8 @@ function fixture() {
     STUB_LOG: p.log, STUB_ENV: p.env, STUB_OUT: result(go()),
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: p.ps, FLEET_PROC: dir,
     CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
-    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json') };
+    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
+    HIMMEL_API_ALERT_CMD: p.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const args = ['--qid', `q${pr}`, '--pr', String(pr), '--head', HEAD, '--question-file', p.q,
     '--model', 'claude-opus-5-5', '--max-budget-usd', '0.10'];
@@ -215,14 +220,21 @@ test('the prompt tells the judge a class other needs a class-reason line', () =>
   assert.match(readFileSync(f.p.env, 'utf8'), /class-reason: <why>/);
 });
 
-test('a refused launch is final: REFUSED, claude never called, no subscription fallback', () => {
+test('a refused launch alerts once, then the judge runs once on the subscription with no key and its verdict is recorded', () => {
   const f = fixture();
   const r = f.run(f.args, { HIMMEL_API_LANE: 'off' });
-  assert.equal(r.status, 3);
-  assert.equal(r.art.status, 'REFUSED');
-  assert.match(r.art.reason, /api lane is OFF/);
-  assert.equal(f.called(), false);
-  assert.equal(r.art.verdict_path, null);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.art.status, 'RECORDED');
+  assert.equal(r.art.verdict, 'GO');
+  assert.equal(readFileSync(f.p.log, 'utf8'), 'called\n');
+  const seen = readFileSync(f.p.env, 'utf8');
+  assert.match(seen, /^key_present=0$/m);
+  assert.match(seen, /--permission-mode dontAsk/);
+  assert.match(seen, /--model claude-opus-5-5/);
+  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /^type=api-lane refused msg=kind judge, .*api lane is OFF.*fallback: running on the subscription/);
+  assert.ok(!alerts[0].includes(DUMMY));
 });
 
 test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {

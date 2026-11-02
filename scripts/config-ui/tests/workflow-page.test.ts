@@ -5,6 +5,7 @@ import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { renderWorkflow, parseWorkflowRoute } from "../public/workflow.js";
+import { readPhaseStats } from "../phase-stats";
 
 const MODEL = JSON.parse(readFileSync(join(import.meta.dir, "../../../docs/guide/dev-graph/graph.json"), "utf8"));
 const FORBIDDEN = /HIMMEL-\d+|~\/|\b[\w.-]+\.(sh|py|jsonl?|md|ya?ml|js|ts|mjs)\b|scripts\/|docs\/|\.github|\.claude|graph\.json|WAKE/;
@@ -85,8 +86,23 @@ test("Workflow: no ticket ID, file path, script name or WAKE key in the visible 
     const { text } = await parse(tab(ui));
     expect(text.match(FORBIDDEN)).toBeNull();
   }
-  const evalTab = renderWorkflow(MODEL, { tab: "eval" }, STATS);
-  expect((await parse(evalTab)).text.match(FORBIDDEN)).toBeNull();
+  for (const stats of [...statsStates(), null, { error: "server unreachable" }]) {
+    expect((await parse(renderWorkflow(MODEL, { tab: "eval" }, stats))).text.match(FORBIDDEN)).toBeNull();
+    expect((await parse(renderWorkflow(MODEL, { tab: "workflow", phase: null, step: null, walk: null, at: 0 }, stats))).text.match(FORBIDDEN)).toBeNull();
+  }
+});
+
+test("Eval: a ticket ID planted in the Eval text fails the forbidden-word scan", async () => {
+  const [loaded] = statsStates();
+  const planted = { ...loaded, phases: loaded.phases.map((p, i) => (i ? p : { ...p, counts: "see HIMMEL-1234" })) };
+  expect((await parse(renderWorkflow(MODEL, { tab: "eval" }, planted))).text.match(FORBIDDEN)?.[0]).toBe("HIMMEL-1234");
+});
+
+test("Workflow: the chief band states the built hand-over, not the planned one", () => {
+  const html = tab();
+  expect(html).not.toContain("planned, not built yet");
+  expect(html).toContain("the newest ten files of start, plan and design work changed in the last two days (saved grill notes, specs and plans), as short pointers only, and counts the rest");
+  expect(html).toContain("A grill that was never saved to a file does not appear.");
 });
 
 test("Workflow: ?phase=build opens Build; #s-l.commit opens Build and highlights Commit", async () => {
@@ -136,6 +152,14 @@ const STATS = {
   cost: { state: "nodata", say: "no data yet" },
 };
 
+// Each loaded Eval branch, in the words the server sends: phase-stats.ts's own counts and cost text over the numbers above.
+// The state directory does not exist, so no fleet record is read.
+function statsStates() {
+  const real = readPhaseStats({ TICKET_STATUS_STATE_DIR: "/nonexistent/workflow-page-test" }, "", Date.parse(STATS.to));
+  const loaded = { ...STATS, cost: real.cost, phases: STATS.phases.map((p) => ({ ...p, counts: real.phases.find((r) => r.id === p.id)!.counts })) };
+  return [loaded, { ...loaded, outliers: [] }, { ...loaded, outliers: [{ pr: null, phase: "build", value: 90, unit: "min", times: 2 }] }];
+}
+
 test("Eval: one row per phase with a Start row, the 7-day numbers in words, and the cost per ticket says no data yet", async () => {
   const html = renderWorkflow(MODEL, { tab: "eval" }, STATS);
   const rows: string[][] = [];
@@ -154,4 +178,30 @@ test("Eval: one row per phase with a Start row, the 7-day numbers in words, and 
   expect(html).toMatch(/wf-cost[^>]*>[\s\S]*no data yet/);
   expect(html).toContain("PR 4347");
   expect(renderWorkflow(MODEL, { tab: "eval" }, null)).toContain("loading");
+});
+
+// the story map's Frame 1 pieces: a drill-in link per phase, the legend, the always-on and measurement
+// notes, and each step's dot inside its own label link so a narrow column cannot strand the dot on a line above it
+test("Workflow: the story map has a drill-in link per phase, the legend, the always-on note and the measurement note", () => {
+  const html = tab();
+  const map = html.slice(html.indexOf('<ol class="wf-map">'), html.lastIndexOf("</li></ol>", html.indexOf("Key")) + 10);
+  const phases = map.split('<li class="wf-ph').slice(1);
+  expect(phases).toHaveLength(7);
+  phases.forEach((ph, i) => {
+    const id = MODEL.stages[i].id;
+    expect(ph).toContain(`<a class="wf-to wf-open" href="#/workflow?phase=${id}">Open the drill-in ›</a>`);
+  });
+  expect(html).toContain('aria-label="Key"');
+  for (const k of ["a step (worker, check or judge)", "a step (chief)", "a step (you)", "an automatic check", "a way back", "planned, pilot, or only sometimes", "what passes to the next phase"]) expect(html).toContain(k);
+  expect(html).toContain("Always on, under every phase:");
+  expect(html).toContain("each tool call meets himmel's guards first");
+  expect(html).toContain("Each phase shows one number: a 7-day measurement from the fleet's own records, not live state.");
+});
+
+test("Workflow: a step's dot sits inside the same link as its label", () => {
+  const html = tab();
+  const steps = html.split('<ol class="wf-steps">').slice(1).map((s) => s.slice(0, s.indexOf("</ol>")));
+  const items = steps.flatMap((s) => s.split("<li>").slice(1));
+  expect(items).toHaveLength(MODEL.stages.reduce((n: number, s: { map: unknown[] }) => n + s.map.length, 0));
+  for (const li of items) expect(li).toMatch(/^<a class="wf-mstep"[^>]*><span class="wf-g wf-s[^"]*" aria-hidden="true"><\/span>/);
 });

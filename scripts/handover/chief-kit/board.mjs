@@ -135,7 +135,7 @@ const liveField = (key) => {
     const l = live.find((x) => x.startsWith(`${key}:`));
     return l ? l.slice(key.length + 1).trim() : '';
 };
-// The legs: BLOCK, read by tick.sh's own grammar: every `legs:` line
+// The workers: BLOCK, read by tick.sh's own grammar: every `workers:` line
 // plus the lines wrapped under it, up to the first blank line, the next `word:`
 // field, or a list-marker / `>` / `#` line (a detail bullet may quote a span
 // freely). An entry is a backtick span of exactly four non-empty colon fields
@@ -456,7 +456,7 @@ for (const n of new Set([...legInfo.values()].map((i) => i.pr).filter(Boolean)))
 const LADDER = ['LIVE', 'PARKED-USAGE', 'READY-TO-OPEN', 'PR open', 'READY', 'BLOCKED','MERGED', 'WRAPPED', 'WRAPPED, window still open'];
 const labels = [...new Set([...liveLabels, ...locks.keys(), ...tails.keys(), ...legInfo.keys()])]
     .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10) || a.localeCompare(b));
-const legs = labels.map((label) => {
+const workers = labels.map((label) => {
     const info = legInfo.get(label) || { ticket: '', last: '', pr: null };
     // tick marks a READY past the GO-hold `READY!stale`; the board's phase is READY either way.
     const tail = (tails.get(label) || '').replace(/!stale$/, '');
@@ -515,7 +515,7 @@ const closeNote = (doc) => {
     const what = lines.find((x) => x.startsWith('WITHHELD')) || lines[lines.length - 1] || 'close check refused (rc ' + r.status + ')';
     return 'still running: ' + what.replace(/^close-wrapped-worker: /, '');
 };
-const wrappedLegs = legs.filter((l) => l.phase === 'WRAPPED' && legInfo.get(l.label)?.file);
+const wrappedLegs = workers.filter((l) => l.phase === 'WRAPPED' && legInfo.get(l.label)?.file);
 if (censusNames && wrappedLegs.length) {
     let out = '';
     try {
@@ -538,11 +538,11 @@ if (censusNames && wrappedLegs.length) {
 // closing/reopening on an otherwise-unchanged tick fingerprint is invisible to
 // board-fp; --changed folds this signature in separately (below) rather than
 // asking tick.sh to account for a read it never performs.
-const censusSig = legs.filter((l) => l.phase === 'WRAPPED, window still open').map((l) => l.label).sort().join(',');
+const censusSig = workers.filter((l) => l.phase === 'WRAPPED, window still open').map((l) => l.label).sort().join(',');
 // tick keeps CI colour and fleet capacity out of board-fp on purpose (they
 // move without a chief act), but the page shows them, so --changed must see them too.
 // board.mjs is the only reader that knows what it rendered; tick.sh stays untouched.
-const ciFleetSig = [fleetOk ? `${fleetLive}/${fleetCap}` : '', ...(openPrs || []).map((p) => `#${p.number}=${ciOf(p)}`), ...legs.filter((l) => l.ci).map((l) => `${l.label}=${l.ci}`)].join(',');
+const ciFleetSig = [fleetOk ? `${fleetLive}/${fleetCap}` : '', ...(openPrs || []).map((p) => `#${p.number}=${ciOf(p)}`), ...workers.filter((l) => l.ci).map((l) => `${l.label}=${l.ci}`)].join(',');
 
 // ---------------------------------------------------------------- render
 const now = new Date();
@@ -557,10 +557,10 @@ const consoleName = basename(docPath, '.md');
 // The operator board, its archive and its json are not touched.
 if (opt.view === 'user') {
     const prTitle = (n) => ((openByNum.get(n) || {}).title || '');
-    const waitingLegs = legs.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED'
+    const waitingLegs = workers.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED'
         && (l.phase === 'READY' || l.phase === 'BLOCKED' || l.tail === 'FINDING'));
     const waitingSet = new Set(waitingLegs.map((l) => l.label));
-    const running = legs.filter((l) => (l.phase === 'LIVE' || l.phase === 'PR open') && !waitingSet.has(l.label))
+    const running = workers.filter((l) => (l.phase === 'LIVE' || l.phase === 'PR open') && !waitingSet.has(l.label))
         .map((l) => ({ ticket: l.ticket || 'worker session', goal: goalOf(prTitle(l.prNum)) || l.desc, tag: l.phase === 'PR open' ? 'in review' : 'building' }));
     const waiting = [
         ...waitingLegs.map((l) => (l.phase === 'READY'
@@ -580,8 +580,8 @@ if (opt.view === 'user') {
 // One compact card per live worker: a 25-worker fleet must fit the 15 KB page. The description
 // The description takes its bytes out of the bullet's clip, so a card never grows past its budget.
 const legCard = (l) => `<li data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}<p>${l.last ? safe(l.last, l.desc ? Math.max(40, 108 - Math.min(l.desc.length, 60)) : 130) : '<i>no handover bullet yet</i>'}</p>${l.desc ? `<p class="ds">${safe(l.desc, 60)}</p>` : ''}</li>`;
-const ladder = LADDER.map((p) => `<li data-ladder="${esc(p)}" data-count="${legs.filter((l) => l.phase === p).length}"><span>${esc(p)}</span><b>${legs.filter((l) => l.phase === p).length}</b></li>`).join('\n');
-const needRows = legs.filter((l) => l.needs).map((l) => {
+const ladder = LADDER.map((p) => `<li data-ladder="${esc(p)}" data-count="${workers.filter((l) => l.phase === p).length}"><span>${esc(p)}</span><b>${workers.filter((l) => l.phase === p).length}</b></li>`).join('\n');
+const needRows = workers.filter((l) => l.needs).map((l) => {
     const tailWhy = l.phase === 'READY' ? `READY${l.prNum ? ` · PR #${l.prNum}` : ''} — awaiting GO`
         : l.phase === 'READY-TO-OPEN' ? 'READY-TO-OPEN — awaiting PR open'
             : l.phase === 'BLOCKED' ? 'BLOCKED — needs a ruling'
@@ -627,8 +627,8 @@ const rmPanel = (s) => {
 const prRows = (openPrs || []).map((p) => `<li data-ci="${ciOf(p)}"><b>#${p.number}</b> ${safe(p.title, 90)} <span class="pr">${ciOf(p)}${p.isDraft ? ' · draft' : ''}</span></li>`).join('\n');
 // Done work never reaches the published page: a WRAPPED or MERGED worker and the merged PRs
 // go to a local archive file beside it (written below), one self-contained line each.
-const doneLegs = legs.filter((l) => l.phase === 'WRAPPED' || l.phase === 'MERGED');
-const liveLegs = legs.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED');
+const doneLegs = workers.filter((l) => l.phase === 'WRAPPED' || l.phase === 'MERGED');
+const liveLegs = workers.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED');
 const archivePath = `${outPath.replace(/\.html$/, '')}-archive.html`;
 const logRows = consoleResults.map((l) => `<li>${safe(l.slice(2), 200)}</li>`).join('\n');
 const panel = (title, body, empty) => `<section><h2>${title}</h2>${body ? `<ul>${body}</ul>` : `<p class="none">${empty}</p>`}</section>`;
@@ -800,15 +800,15 @@ const failuresSection = (() => {
         const routes = jsonRows(process.env.HIMMEL_FAILURE_ROUTES_LOG || join(home, '.himmel', 'state', 'failure-routes.log.jsonl'), start);
         const byClass = new Map();
         for (const r of rows) {
-            const c = byClass.get(r.class) || { legs: new Set(), events: 0, rec: 0, known: 0 };
-            c.legs.add(r.leg);
+            const c = byClass.get(r.class) || { workers: new Set(), events: 0, rec: 0, known: 0 };
+            c.workers.add(r.leg);
             c.events += typeof r.count === 'number' ? r.count : 1;
             if (typeof r.recovered === 'boolean') { c.known += 1; if (r.recovered) c.rec += 1; }
             byClass.set(r.class, c);
         }
         const lastRoute = new Map();
         for (const r of routes) if (typeof r.decision === 'string') lastRoute.set(r.class, r);
-        const sorted = [...byClass].sort(([a, x], [b, y]) => y.legs.size - x.legs.size || y.events - x.events || (a < b ? -1 : a > b ? 1 : 0));
+        const sorted = [...byClass].sort(([a, x], [b, y]) => y.workers.size - x.workers.size || y.events - x.events || (a < b ? -1 : a > b ? 1 : 0));
         const route = (cls) => {
             const r = lastRoute.get(cls);
             if (!r) return 'signal';
@@ -824,9 +824,9 @@ const failuresSection = (() => {
         const toolHealth = readToolHealth(process.env, new URLSearchParams({ since: start }));
         const rates = toolHealth.class_rates || {}, counts = toolHealth.class_counts || {};
         const rateOf = (cls, c) => (typeof rates[cls] === 'number' && counts[cls] === c.events ? rates[cls] : null);
-        trend.failures.classes = sorted.map(([cls, c]) => ({ class: redact(cls), sessions: c.legs.size, events: c.events, rate: rateOf(cls, c),
+        trend.failures.classes = sorted.map(([cls, c]) => ({ class: redact(cls), sessions: c.workers.size, events: c.events, rate: rateOf(cls, c),
             recovered: c.known ? c.rec / c.known : null, route: redact(route(cls)) }));
-        const trOf = ([cls, c]) => `<tr data-class="${safe(cls, 80)}"><td>${safe(cls, 80)}</td><td>${c.legs.size}</td><td>${c.events}</td><td>${rateOf(cls, c) === null ? '—' : `${(rateOf(cls, c) * 100).toFixed(1)} %`}</td><td>${c.known ? `${Math.round((c.rec / c.known) * 100)} %` : '—'}</td><td>${safe(route(cls), 60)}</td></tr>`;
+        const trOf = ([cls, c]) => `<tr data-class="${safe(cls, 80)}"><td>${safe(cls, 80)}</td><td>${c.workers.size}</td><td>${c.events}</td><td>${rateOf(cls, c) === null ? '—' : `${(rateOf(cls, c) * 100).toFixed(1)} %`}</td><td>${c.known ? `${Math.round((c.rec / c.known) * 100)} %` : '—'}</td><td>${safe(route(cls), 60)}</td></tr>`;
         const head = '<tr><th>class</th><th>worker sessions</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>';
         archiveTables.push(`<h2>Failure classes — this shift, every class</h2>\n<table>${head}\n${sorted.map(trOf).join('\n')}\n</table>`);
         const more = sorted.length > 5 ? `<p class="sub">top 5 of ${sorted.length} classes; the rest in the archive</p>` : '';

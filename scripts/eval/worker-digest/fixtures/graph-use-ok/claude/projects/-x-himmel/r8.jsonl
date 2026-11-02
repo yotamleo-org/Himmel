@@ -1,0 +1,1 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"h1","name":"Bash","input":{"command":"bash scripts/graphify/worker-graph.sh query x"}},{"type":"tool_use","id":"h2","name":"Bash","input":{"command":"qmd query y"}}]}}

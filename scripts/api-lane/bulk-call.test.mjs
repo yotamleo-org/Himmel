@@ -2,7 +2,7 @@
 // credential. Breaks caught: a worker or relay launching the call on its own authority, a tool grant wider than
 // Read/Glob/Grep (or one that can spawn), a non-Haiku model or an over-ceiling budget, a site outside the asked
 // files kept, a tool denial hidden behind rc=0, a reply that is not the JSON object kept, a cancel that leaves
-// the call running, a fallback to the subscription lane.
+// the call running, a refused launch that skips the alert or the subscription fallback.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -27,6 +27,7 @@ const STUB = `#!/bin/bash
 echo called >> "$STUB_LOG"
 echo "args=$*" > "$STUB_ENV"
 echo "cwd=$PWD" >> "$STUB_ENV"
+echo "key_present=$([ -n "\${ANTHROPIC_API_KEY:-}" ] && echo 1 || echo 0)" >> "$STUB_ENV"
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 exit "\${STUB_RC:-0}"
@@ -52,11 +53,13 @@ function fixture() {
   const p = { config: join(dir, 'config.json'), snapshot: join(dir, 'snapshot.json'), state,
     stub: join(dir, 'claude-stub'), log: join(dir, 'stub.log'), env: join(dir, 'stub.env'), ps: join(dir, 'ps'),
     cls: join(dir, 'class.md'), paths: join(dir, 'paths.txt'), hold: join(dir, 'hold'),
-    a: join(dir, 'a.sh'), b: join(dir, 'b.sh') };
+    a: join(dir, 'a.sh'), b: join(dir, 'b.sh'), alert: join(dir, 'alert-stub'), alertLog: join(dir, 'alert.log') };
   writeFileSync(p.config, JSON.stringify(config));
   writeFileSync(p.snapshot, JSON.stringify(snapshot));
   writeFileSync(p.stub, STUB, { mode: 0o700 });
   writeFileSync(p.ps, '#!/bin/bash\nexit 0\n', { mode: 0o700 });
+  // the alert sender is always this stub: no fixture can reach the real Telegram sender
+  writeFileSync(p.alert, `#!/bin/bash\necho "type=$TG_NOTIFICATION_TYPE msg=$TG_MESSAGE" >> '${p.alertLog}'\n`, { mode: 0o700 });
   writeFileSync(p.cls, 'An unquoted variable expansion in a test: [ $x = y ].\n');
   writeFileSync(p.a, 'echo one\n[ $x = y ]\n');
   writeFileSync(p.b, 'echo two\n');
@@ -69,7 +72,8 @@ function fixture() {
     STUB_LOG: p.log, STUB_ENV: p.env, STUB_OUT: result(JSON.stringify({ sites: [{ file: p.a, line: 2, why: 'unquoted $x' }] })),
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: p.ps, FLEET_PROC: dir,
     CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
-    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json') };
+    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
+    HIMMEL_API_ALERT_CMD: p.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const args = ['--task-id', id, '--class-file', p.cls, '--paths-file', p.paths,
     '--model', 'claude-haiku-5-5', '--max-budget-usd', '0.05'];
@@ -200,12 +204,20 @@ test('a claude error result keeps its cost but is ERROR with no sites', () => {
   assert.deepEqual(r.art.sites, []);
 });
 
-test('the lane OFF is REFUSED: the stub never runs and there is no subscription fallback', () => {
+test('the lane OFF is refused, alerts once, then the same call runs once on the subscription with no key', () => {
   const f = fixture();
   const r = f.run(f.args, { HIMMEL_API_LANE: 'off' });
-  assert.equal(r.status, 3);
-  assert.equal(r.art.status, 'REFUSED');
-  assert.equal(f.called(), false);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.art.status, 'OK');
+  assert.equal(readFileSync(f.p.log, 'utf8'), 'called\n');
+  const seen = readFileSync(f.p.env, 'utf8');
+  assert.match(seen, /^key_present=0$/m);
+  assert.match(seen, /--permission-mode dontAsk/);
+  assert.match(seen, /--tools Read,Glob,Grep /);
+  const alerts = readFileSync(f.p.alertLog, 'utf8').trim().split('\n');
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /^type=api-lane refused msg=kind bulk, .*api lane is OFF.*fallback: running on the subscription/);
+  assert.ok(!alerts[0].includes(DUMMY));
 });
 
 test('a timed-out call is TIMEOUT and its reservation is settled in the ledger', () => {

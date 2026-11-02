@@ -1,11 +1,12 @@
 // the tracker sources the UI can read (trackerSources) and the GitHub issues source behind Roadmap and Kanban.
 // gh is always a stub (GH_CMD) answering fake issues; nothing here reaches GitHub or Jira.
 import { test, expect, afterEach } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRoadmap } from "../roadmap";
-import { renderKanban, renderRoadmap } from "../public/roadmap.js";
+import { renderBoard, renderKanban, renderRoadmap } from "../public/roadmap.js";
 import { navLinks } from "../public/nav.js";
 import { startServer } from "../server";
 import { ISSUE_LIMIT, trackerSources } from "../tracker-sources";
@@ -68,13 +69,72 @@ test("trackerSources: the Jira mirror, once it holds tickets, is a source", asyn
   expect(await trackerSources(scratch({ mirror: true }).env, "/")).toEqual(["jira"]);
 });
 
-test("trackerSources: a configured source the UI cannot read is not listed (missing mirror, TRACKER=local, unauthenticated gh)", async () => {
+test("trackerSources: a configured source the UI cannot read is not listed (missing mirror, an empty local store, unauthenticated gh)", async () => {
   const s = scratch();
   expect(await trackerSources({ ...s.env, HIMMEL_JIRA_MIRROR: join(s.d, "nope") }, s.d)).toEqual([]);
-  expect(await trackerSources({ ...s.env, TRACKER: "local" }, s.d)).toEqual([]);
+  expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: join(s.d, "no-store") }, s.d)).toEqual([]);
   const unauth = scratch({ ghAuth: false });
   expect(await trackerSources({ ...unauth.env, TRACKER: "github" }, unauth.d)).toEqual([]);
   expect(unauth.ghCalls()).toEqual(["auth status"]);
+});
+
+test("trackerSources: TRACKER=local with items in the store lists local, ahead of a Jira mirror", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  writeFileSync(join(store, "LOCAL-1.md"), '---\nid: LOCAL-1\ntitle: "x"\ntype: Task\nstatus: To Do\nfix_version:\nepic:\ncreated: 2026-10-01T00:00:00Z\nlinks:\n---\n\n## Log\n');
+  expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d)).toEqual(["local", "jira"]);
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("TRACKER=local with a store that cannot be resolved stays local and says so; it never falls through to the Jira mirror's writable board", async () => {
+  const s = scratch({ mirror: true });
+  const env = { ...s.env, TRACKER: "local", HANDOVER_DIR: join(s.d, "missing-handover"), USER_SLUG: "x" };
+  expect(await trackerSources(env, s.d)).toEqual(["local", "jira"]);
+  const { get } = serve(env, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("local");
+  expect(r.reason).toContain("could not be read");
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("GET /api/roadmap: an explicit local project with an empty store and a Jira mirror answers source local with no tickets, not the mirror's board", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  const { get } = serve({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("local");
+  expect(r.tickets).toEqual([]);
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("trackerSources: an explicit TRACKER=local with an empty store and a Jira mirror lists nothing, not the mirror", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d)).toEqual([]);
+});
+
+test("trackerSources: TRACKER=none is listed as none, so the rail keeps the Board and it can say so", async () => {
+  const s = scratch();
+  expect(await trackerSources({ ...s.env, TRACKER: "none" }, s.d)).toEqual(["none"]);
+  const labels = navLinks({ here: "console", token: TOKEN, current: "config", sources: ["none"] }).map((l: { label: string }) => l.label);
+  expect(labels).toContain("Board");
+});
+
+test("TRACKER=none: /api/roadmap and both pages show the explicit no-tracker state, not an empty board", async () => {
+  const s = scratch();
+  const { get } = serve({ ...s.env, TRACKER: "none" }, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("none");
+  expect(r.tickets).toEqual([]);
+  for (const html of [renderKanban(r, { hideDone: false, writes: true }), renderRoadmap(r, { writes: true }), renderBoard(r, { writes: true }, null)]) {
+    expect(html).toContain("No tracker is configured");
+    expect(html).not.toContain("rm-board");
+    expect(html).not.toContain("Jira mirror");
+  }
+  expect(s.jiraCalls()).toBe(false);
 });
 
 test("trackerSources: TRACKER=github with gh authenticated lists github", async () => {
@@ -129,12 +189,12 @@ test("the Roadmap page says when the issue list is truncated, as the Kanban does
   expect(renderRoadmap({ ...r, truncated: false }, { writes: false })).not.toContain("older ones are missing");
 });
 
-test("the rail hides Roadmap and Kanban when the sources are empty, keeps them otherwise or while unknown", () => {
+test("the rail hides the Board when the sources are empty, keeps it otherwise or while unknown", () => {
   const labels = (sources?: string[]) => navLinks({ here: "console", token: TOKEN, current: "config", sources }).map((l: { label: string }) => l.label);
   expect(labels([])).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Workflow", "Docs"]);
-  expect(labels(["github"])).toContain("Kanban");
-  expect(labels(["jira"])).toContain("Roadmap");
-  expect(labels(undefined)).toContain("Roadmap");
+  expect(labels(["github"])).toContain("Board");
+  expect(labels(["jira"])).toContain("Board");
+  expect(labels(undefined)).toContain("Board");
 });
 
 test("GitHub issues map to the roadmap: state and labels to columns, milestone to version, theme- label to theme, #number ids", () => {
@@ -181,4 +241,43 @@ test("GET /api/roadmap: with gh unauthenticated there is no source and no board"
   expect(r.state).toBe("absent");
   expect(r.tickets).toEqual([]);
   expect(s.ghCalls().some((c) => c.startsWith("issue list"))).toBe(false);
+});
+
+test("a project launched from another checkout keeps its own tracker: the checkout's .env neither picks the tracker nor the mirror", async () => {
+  const s = scratch({ mirror: true });
+  const checkout = join(s.d, "checkout"), project = join(s.d, "project"), store = join(s.d, "store");
+  for (const p of [checkout, project, store]) mkdirSync(p);
+  writeFileSync(join(checkout, ".env"), "TRACKER=jira\nJIRA_PROJECT_KEY=OTHER\n"); // the himmel checkout's, not this project's
+  execFileSync("git", ["-C", project, "init", "-q"]);
+  execFileSync("git", ["-C", project, "config", "himmel.tracker", "local"]);
+  writeFileSync(join(store, "LOCAL-1.md"), '---\nid: LOCAL-1\ntitle: "x"\ntype: Task\nstatus: To Do\nfix_version:\nepic:\ncreated: 2026-10-01T00:00:00Z\nlinks:\n---\n\n## Log\n');
+  const env = { ...s.env, TRACKER_STORE: store };
+  const srv = startServer({ port: 0, token: TOKEN, root: checkout, projectRoot: project, env, legsScript: join(checkout, "no-workers.sh") });
+  cleanups.push(() => srv.stop());
+  const base = `http://127.0.0.1:${srv.port}`;
+  const get = async (p: string) => (await fetch(base + p, { headers: { "X-Himmel-Token": TOKEN } })).json();
+  expect((await get("/api/sources")).sources[0]).toBe("local");
+  expect((await get("/api/roadmap")).source).toBe("local");
+  const drop = await fetch(`${base}/api/roadmap/write`, { method: "POST", headers: { "content-type": "application/json", origin: base, "x-himmel-token": TOKEN }, body: JSON.stringify({ key: "HIMMEL-1", status: "rev" }) });
+  expect(drop.status).toBe(403); // a local project never writes Jira
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("GET /api/board: on a GitHub board or a populated local store the Jira-backed drift and chain reads are absent, whatever names their inputs", async () => {
+  for (const tracker of ["github", "local"]) {
+    const s = scratch({ mirror: true });
+    const store = join(s.d, "store");
+    mkdirSync(store);
+    writeFileSync(join(store, "LOCAL-1.md"), '---\nid: LOCAL-1\ntitle: "x"\ntype: Task\nstatus: To Do\nfix_version:\nepic:\ncreated: 2026-10-01T00:00:00Z\nlinks:\n---\n\n## Log\n');
+    const drift = join(s.d, "focus-drift.txt"), registry = join(s.d, "registry.json");
+    writeFileSync(drift, "VERSION-DRIFT HIMMEL-1 says x | writer=release-manager | fix=jira release request v1\nsdrift=1:abc\n");
+    writeFileSync(registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "c", goal: "g", members: ["HIMMEL-1"] }] }));
+    const { get } = serve({ ...s.env, TRACKER: tracker, TRACKER_STORE: store, HIMMEL_FOCUS_DRIFT: drift, HIMMEL_CHAIN_REGISTRY: registry }, s.d);
+    expect((await get("/api/sources")).sources[0]).toBe(tracker); // the active tracker really is this one
+    const r = await get("/api/board");
+    expect(r.drift.state).toBe("absent");
+    expect(r.drift.reason).toContain("not Jira");
+    expect(r.chains.state).toBe("absent");
+    expect(r.chains.reason).toContain("not Jira");
+  }
 });

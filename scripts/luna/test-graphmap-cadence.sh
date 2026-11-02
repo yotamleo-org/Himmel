@@ -530,6 +530,20 @@ himmel_sh_plain=${himmel_sh//\\/}
 FMT="$CADENCE_RUNNER_FORMAT_VERSION"
 assert_contains "luna runner stamps the format version (HIMMEL-588)"   "# himmel-cadence-runner-format: $FMT" "$luna_sh"
 assert_contains "himmel runner stamps the format version (HIMMEL-588)" "# himmel-cadence-runner-format: $FMT" "$himmel_sh"
+# SCRUM-4: the semantic pair shells the claude CLI (claude-cli backend), which
+# cannot read the macOS Keychain under cron, so it loads the OAuth token from a
+# file when unset; the AST runners never launch claude (asserted further down).
+if [ "$FMT" -ge 24 ]; then pass "runner format is at least v24 (token-file load)"; else fail "runner format is $FMT, want >= 24"; fi
+assert_contains "luna runner has the token-file load"   "CLAUDE_CODE_OAUTH_TOKEN" "$luna_sh"
+assert_contains "himmel runner has the token-file load" "CLAUDE_CODE_OAUTH_TOKEN" "$himmel_sh"
+assert_contains "luna runner names the default token path" "/.himmel/secrets/claude-oauth-token" "$luna_sh_plain"
+assert_contains "luna runner honours HIMMEL_CLAUDE_TOKEN_FILE" "HIMMEL_CLAUDE_TOKEN_FILE" "$luna_sh"
+tok_snippet="$TMP_ROOT/token-snippet.sh"
+awk '/^if \[ -z "\$\{CLAUDE_CODE_OAUTH_TOKEN/{p=1} p{print} p&&/^fi$/{exit}' "$CRON_DIR/graphmap-luna.sh" > "$tok_snippet"
+printf 'fake-token-123\n' > "$TMP_ROOT/fake-token"
+# shellcheck disable=SC2016  # the inner sh expands the variables, not this shell
+tok_got=$(env -i PATH=/usr/bin:/bin HIMMEL_CLAUDE_TOKEN_FILE="$TMP_ROOT/fake-token" /bin/sh -c '. "$1"; exec /bin/sh -c '\''printf "<%s>" "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"'\''' _ "$tok_snippet")
+assert_rc "luna runner snippet exports the token file's first line" "<fake-token-123>" "$tok_got"
 assert_contains "luna runner fires refresh-graph-map.sh"   "refresh-graph-map.sh" "$luna_sh_plain"
 assert_contains "luna runner names the luna corpus"        "--name luna"          "$luna_sh"
 assert_contains "luna runner sets the luna slug"           "--slug graphify-luna-map" "$luna_sh"
@@ -606,6 +620,21 @@ for kind in "luna:graphmap-luna:refresh-graph-map.sh:3" "himmel:graphmap-himmel:
         esac
     done
 done
+# refresh-graph-map.sh exit 4 = stopped at the chunk cap, finished
+# chunks kept, the next run resumes. That is partial progress, never a failure,
+# so the weekly runners treat it like the bank skip: neither page nor clear.
+echo "TEST: refresh runners treat exit 4 (chunk cap, resumable) as partial progress"
+for k_file in luna himmel; do
+    scr="$TMP_ROOT/emit-$k_file-cap"
+    mkdir -p "$scr"
+    sed "s@$TMP_ROOT/bin/bash@$REAL_BASH@" "$CRON_DIR/graphmap-$k_file.sh" > "$scr/runner-src.sh"
+    cadence_exec_runner "$scr/runner-src.sh" "$HIMMEL_ROOT_EXP/scripts/graphify/refresh-graph-map.sh" 4 "$scr" || true
+    alerts=$(cat "$scr/alerts" 2>/dev/null || true)
+    assert_contains "$k_file chunk-cap exit 4 reached the outcome handling (skipped flow-run row)" \
+        '"exit_code":4,"outcome":"skipped"' "$(cat "$scr/flow-runs.jsonl" 2>/dev/null || true)"
+    assert_not_contains "$k_file chunk-cap exit 4 does not page" "fail " "$alerts"
+    assert_not_contains "$k_file chunk-cap exit 4 does not clear an open alert" "clear " "$alerts"
+done
 echo "TEST: AST runner .sh fires ast-update.sh by absolute path (free, no bank, no claude)"
 ast_luna_sh=$(cat "$CRON_DIR/graphmap-ast-luna.sh" 2>/dev/null || echo MISSING)
 ast_himmel_sh=$(cat "$CRON_DIR/graphmap-ast-himmel.sh" 2>/dev/null || echo MISSING)
@@ -613,6 +642,8 @@ ast_luna_sh_plain=${ast_luna_sh//\\/}
 ast_himmel_sh_plain=${ast_himmel_sh//\\/}
 assert_contains "ast-luna runner stamps the format version"   "# himmel-cadence-runner-format: $FMT" "$ast_luna_sh"
 assert_contains "ast-himmel runner stamps the format version" "# himmel-cadence-runner-format: $FMT" "$ast_himmel_sh"
+assert_not_contains "ast-luna runner has no token-file load (never launches claude)"   "CLAUDE_CODE_OAUTH_TOKEN" "$ast_luna_sh"
+assert_not_contains "ast-himmel runner has no token-file load (never launches claude)" "CLAUDE_CODE_OAUTH_TOKEN" "$ast_himmel_sh"
 assert_contains "ast-luna runner fires ast-update.sh by absolute path"   "$AST_UPDATE_SCRIPT_EXP" "$ast_luna_sh_plain"
 assert_contains "ast-himmel runner fires ast-update.sh by absolute path" "$AST_UPDATE_SCRIPT_EXP" "$ast_himmel_sh_plain"
 assert_not_contains "ast-luna runner has no bare --force on the cadence line (it's inside the wrapper)"   "--force" "$ast_luna_sh_plain"
@@ -708,6 +739,25 @@ if [ "$storm_lines" = "1" ]; then
     pass "storm marker only on the storm log"
 else
     fail "storm marker only on the storm log" "expected 1 storm line, got $storm_lines"
+fi
+rm -f "$CRON_DIR/graphmap-luna.log" "$CRON_DIR/graphmap-himmel.log" "$CRON_DIR/graphmap-ast-luna.log"
+
+# Test C5b2: a refresh run that stopped at the chunk cap ends with
+# `[exit rc=4]`. Status names that as partial progress on the two refresh logs
+# only; structural rc 4 (promote lock busy) on the AST log is a different thing.
+echo "TEST: cron status reads a chunk-cap exit 4 as partial progress, not a failure"
+printf 'refresh-graph-map: chunk cap 55 reached -- graphify-out left unpromoted, resumable (exit 4)\n[exit rc=4]\n' \
+    > "$CRON_DIR/graphmap-luna.log"
+printf '[exit rc=0]\n' > "$CRON_DIR/graphmap-himmel.log"
+printf '[exit rc=4]\n' > "$CRON_DIR/graphmap-ast-luna.log"
+out=$(run_cron status)
+assert_contains "chunk-cap exit 4 is reported as partial progress" "run outcome: partial progress" "$out"
+assert_contains "partial progress says the next run resumes" "resumes from the kept cache" "$out"
+partial_tasks=$(awk '/^(ARMED|UNHEALTHY|not armed)/ { if (match($0, /HIMMEL-GraphMap[A-Za-z-]*/)) task = substr($0, RSTART, RLENGTH) } /run outcome: partial progress/ { print task }' <<< "$out" | tr '\n' ' ')
+if [ "$partial_tasks" = "HIMMEL-GraphMap-Luna " ]; then
+    pass "partial progress only on the refresh log that hit the cap"
+else
+    fail "partial progress only on the refresh log that hit the cap" "expected exactly the Luna task, got: $partial_tasks"
 fi
 rm -f "$CRON_DIR/graphmap-luna.log" "$CRON_DIR/graphmap-himmel.log" "$CRON_DIR/graphmap-ast-luna.log"
 
@@ -1417,6 +1467,13 @@ assert_not_contains "cron_payload omits --out-root when unset" "--out-root" "$cp
 cp_with_root=$(run_cp bash script.sh luna corpus maps title slug tag /out/root)
 assert_contains "cron_payload appends --out-root when set" "--out-root /out/root" "$cp_with_root"
 
+# The himmel live graph is AST-heavy, so its weekly refresh merges the docs-only
+# extraction into it; the vault graph is docs-only and keeps the plain promote.
+cp_himmel=$(run_cp bash script.sh himmel corpus maps title slug tag)
+assert_contains "cron_payload merges the himmel refresh into the live graph" "--merge-into-live" "$cp_himmel"
+assert_not_contains "cron_payload keeps the plain promote for luna" "--merge-into-live" "$cp_no_root"
+assert_not_contains "cron_payload keeps the plain promote for luna with an out-root" "--merge-into-live" "$cp_with_root"
+
 acp_no_dir=$(run_acp bash script.sh corpus)
 assert_not_contains "ast_cron_payload omits GRAPHIFY_OUT= when unset" "GRAPHIFY_OUT=" "$acp_no_dir"
 acp_with_dir=$(run_acp bash script.sh corpus /out/root/graphify-out)
@@ -1553,5 +1610,87 @@ for _m in semantic-luna.paused semantic.paused; do
     fi
 done
 rm -f "$CSTATE3/fail-write" "$CRON_DIR3/semantic-luna.paused" "$CRON_DIR3/semantic.paused"
+
+echo "TEST: arm --rewrite-armed regenerates existing runners at the current format and touches no crontab line (HIMMEL-8754)"
+RWDIR="$TMP_ROOT/cron-runners-rewrite"; mkdir -p "$RWDIR"
+RWSTATE="$TMP_ROOT/cron-state-rewrite"; mkdir -p "$RWSTATE"
+RWCRON="$TMP_ROOT/crontab-fake-rewrite.sh"
+cat >"$RWCRON" <<FAKE
+#!/bin/sh
+CSTATE="$RWSTATE"
+FAKE
+cat >>"$RWCRON" <<'FAKE'
+case "${1:-}" in
+    -l) if [ -f "$CSTATE/crontab" ]; then cat "$CSTATE/crontab"; else echo "no crontab" >&2; exit 1; fi ;;
+    -)  cat > "$CSTATE/crontab" ;;
+    *)  exit 64 ;;
+esac
+FAKE
+chmod +x "$RWCRON"
+run_rw() {
+    env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$RWCRON" \
+        GRAPHMAP_BAT_DIR="$RWDIR" PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:$CLAUDE_BIN_DIR_PATH:$PATH" \
+        "$REAL_BASH" "$SCRIPT" "$@"
+}
+RW_VER=$(sed -n 's/^CADENCE_RUNNER_FORMAT_VERSION=//p' "$SCRIPT_DIR/../lib/cadence-format.sh")
+# the station shape: weekly himmel, hourly himmel AST, publish every 2h; no luna rows
+cat >"$RWSTATE/crontab" <<'TAB'
+20 13 * * 0 /old/graphmap-himmel.sh # HIMMEL-GraphMap-Himmel
+15 * * * * /old/graphmap-ast-himmel.sh # HIMMEL-GraphMapAst-Himmel
+30 */2 * * * /old/graphmap-publish-himmel.sh # HIMMEL-GraphPublish-Himmel
+TAB
+cp "$RWSTATE/crontab" "$RWSTATE/crontab.before"
+# v24 runners on disk for every task but the luna semantic one (never armed)
+for _r in luna himmel ast-luna ast-himmel publish-himmel; do
+    printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\necho old %s\n' "$_r" > "$RWDIR/graphmap-$_r.sh"; chmod +x "$RWDIR/graphmap-$_r.sh"
+done
+rc=0; out=$(run_rw arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed exits 0" 0 "$rc"
+if cmp -s "$RWSTATE/crontab" "$RWSTATE/crontab.before"; then pass "rewrite-armed leaves the crontab byte-identical (luna rows stay absent, publish stays */2)"; else fail "rewrite-armed changed the crontab" "$(cat "$RWSTATE/crontab")"; fi
+for _r in luna himmel ast-luna ast-himmel publish-himmel; do
+    assert_contains "rewrite-armed restamps graphmap-$_r.sh at v$RW_VER" "himmel-cadence-runner-format: $RW_VER" "$(cat "$RWDIR/graphmap-$_r.sh")"
+done
+assert_contains "rewrite-armed himmel runner carries --merge-into-live" "--merge-into-live" "$(cat "$RWDIR/graphmap-himmel.sh")"
+assert_not_contains "rewrite-armed luna runner does not" "--merge-into-live" "$(cat "$RWDIR/graphmap-luna.sh")"
+if [ -e "$RWDIR/graphmap-semantic-luna.sh" ]; then fail "rewrite-armed created a runner that was not armed"; else pass "rewrite-armed does not create an absent runner"; fi
+for _flag in --force --ast-only --with-publish --publish-semantic --with-luna-semantic --semantic-active; do
+    rc=0; run_rw arm --vault "$VAULT" --rewrite-armed "$_flag" >/dev/null 2>&1 || rc=$?
+    assert_rc "arm --rewrite-armed with $_flag is refused" 1 "$rc"
+done
+rc=0; run_rw arm --vault "$VAULT" --rewrite-armed --publish-every-hours 6 >/dev/null 2>&1 || rc=$?
+assert_rc "arm --rewrite-armed with --publish-every-hours is refused" 1 "$rc"
+if cmp -s "$RWSTATE/crontab" "$RWSTATE/crontab.before"; then pass "refused combinations leave the crontab alone"; else fail "refused combination changed the crontab"; fi
+printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\n' > "$RWDIR/graphmap-himmel.sh"
+rc=0; out=$(run_rw arm --vault "$VAULT" --rewrite-armed --dry-run 2>&1) || rc=$?
+assert_rc "arm --rewrite-armed --dry-run exits 0" 0 "$rc"
+assert_not_contains "dry-run writes no runner" "format: $RW_VER" "$(cat "$RWDIR/graphmap-himmel.sh")"
+assert_contains "dry-run names the runner it would rewrite" "graphmap-himmel.sh" "$out"
+# a runner that cannot be replaced fails the run (rc 4) and keeps the old file, never "rewrote"
+if [ "$(id -u)" != 0 ]; then
+    chmod a-w "$RWDIR"
+    rc=0; out=$(run_rw arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+    chmod u+w "$RWDIR"
+    assert_rc "arm --rewrite-armed with an unwritable runner dir exits 4" 4 "$rc"
+    assert_not_contains "a failed rewrite is not reported as rewrote" "rewrote $RWDIR" "$out"
+    assert_not_contains "a failed rewrite keeps the old himmel runner" "format: $RW_VER" "$(cat "$RWDIR/graphmap-himmel.sh")"
+fi
+# a station with only AST + publish runners needs no claude CLI, and a publish runner armed with
+# --publish-semantic keeps its semantic branch through the rewrite
+RWDIR2="$TMP_ROOT/cron-runners-rewrite-ast"; mkdir -p "$RWDIR2"
+run_rw2() {
+    env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$RWCRON" \
+        GRAPHMAP_BAT_DIR="$RWDIR2" PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:/usr/bin:/bin" \
+        "$REAL_BASH" "$SCRIPT" "$@"
+}
+if ! PATH="/usr/bin:/bin" command -v claude >/dev/null 2>&1; then
+    printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\necho old\n' > "$RWDIR2/graphmap-ast-himmel.sh"
+    printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\nGRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic\n' > "$RWDIR2/graphmap-publish-himmel.sh"
+    chmod +x "$RWDIR2/graphmap-ast-himmel.sh" "$RWDIR2/graphmap-publish-himmel.sh"
+    rc=0; out=$(run_rw2 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+    assert_rc "arm --rewrite-armed on an AST-only station needs no claude CLI" 0 "$rc"
+    assert_contains "AST-only rewrite restamps the AST runner" "himmel-cadence-runner-format: $RW_VER" "$(cat "$RWDIR2/graphmap-ast-himmel.sh")"
+    assert_contains "rewrite keeps the publish runner's semantic branch" "--semantic" "$(cat "$RWDIR2/graphmap-publish-himmel.sh")"
+    assert_contains "rewrite keeps the publish runner's api-lane env" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$(cat "$RWDIR2/graphmap-publish-himmel.sh")"
+fi
 
 summary

@@ -186,6 +186,15 @@ export HIMMEL_DENIAL_ACK_DIR="$tmp/pinned-denial-acks"
 # pinned so no case here writes the operator's real ~/.claude.json.
 export WORKER_SESSION_PRETRUST_HOME="$tmp/pinned-pretrust-home"
 mkdir -p "$HANDOVER_DIR" "$HIMMEL_FLEET_SLOTS" "$XDG_RUNTIME_DIR" "$WORKER_SESSION_PRETRUST_HOME"
+# the arming gate's core check (brief-lint.sh) asks the jira CLI for every brief whose title names a ticket key; scripts/jira/dist
+# is untracked, absent in CI, so a fixture stand-in calls every key NOT-CORE (the refusals themselves are test-brief-lint.sh's)
+mkdir -p "$tmp/notcore-jira"
+cat > "$tmp/notcore-jira/index.js" <<'NCEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+NCEOF
+export BRIEF_LINT_JIRA_CLI="$tmp/notcore-jira/index.js"
 fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # the arming gate runs brief-lint on every brief, so a fixture brief carries
@@ -245,7 +254,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_REMOTE_CONTROL|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_REMOTE_CONTROL|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|HIMMEL_WORKER_SESSION_CONTEXT_SHARE|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -964,7 +973,7 @@ not_contains "profile numeric ceiling: not an operator ruling" "$log8profile" "o
 sonnet_reg="$tmp/sonnet-registry.json"
 cat > "$sonnet_reg" <<'SONNET_EOF'
 {"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,
-"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"handoff"},
+"worker-impl":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"handoff","sonnetContextShare":73},
 "worker-eval":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000,"sonnetAutocompact":450000,"sonnetContextGuard":"compact"},
 "worker-docs":{"enable":[],"contextBudget":50000,"contextMode":"standard","autocompact":200000}}}
 SONNET_EOF
@@ -987,7 +996,11 @@ contains "sonnet ceiling: impl on Sonnet renders --autocompact 450000" "$sa_rec"
 contains "sonnet ceiling: impl on Sonnet exports the 450000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=450000"
 contains "sonnet ceiling: impl on Sonnet turns the hand-off guard on" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff"
 not_contains "sonnet ceiling: no 1m suffix" "$sa_rec" "[1m]"
+check "sonnet share: a real launch delivers exactly the profile share to the worker's env" "$(printf '%s\n' "$sa_env" | grep '^HIMMEL_WORKER_SESSION_CONTEXT_SHARE=')" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+contains "sonnet share: the share rides the launcher env token list into the konsole argv" "$sa_rec" " HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73 "
+not_contains "sonnet share: no mangled share value reaches the konsole argv" "$sa_rec" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=730"
 sonnet_launch impl-opus worker-impl claude-opus-5-5
+not_contains "sonnet share: a real launch on Opus delivers no share" "$sa_env" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE="
 check "sonnet ceiling: impl on Opus launches" "$sa_rc" "0"
 contains "sonnet ceiling: impl on Opus keeps --autocompact 200000" "$sa_rec" "--autocompact 200000"
 contains "sonnet ceiling: impl on Opus exports the 200000 ceiling" "$sa_env" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=200000"

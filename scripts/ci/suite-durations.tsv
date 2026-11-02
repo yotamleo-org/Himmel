@@ -252,6 +252,7 @@ scripts/cr/test-critic-panel-instrumentation.sh	2
 scripts/cr/test-critic-panel-registry.sh	3
 scripts/cr/test-critic-panel-triviality.sh	2
 scripts/cr/test-critic-panel.sh	68
+scripts/cr/test-critic-pre-existing-tag.sh	1
 scripts/cr/test-dependabot-go.sh	8
 scripts/cr/test-doc-freshness-advisory.sh	1
 scripts/cr/test-docs-audit-panel.sh	1
@@ -277,6 +278,7 @@ scripts/cr/test-pr-check-rounds.sh	732
 scripts/cr/test-pr-check-run.sh	4
 scripts/cr/test-pr-check-step0.sh	0
 scripts/cr/test-residue-scan.sh	0
+scripts/cr/test-review-round.sh	6
 scripts/cr/test-ship-tail-model-free.sh	0
 # Local Linux measurement: fast default fixtures; explicit full diagnostics are not scheduled here.
 scripts/cr/test-suite-file-selection.sh	3
@@ -300,6 +302,7 @@ scripts/docs/test-second-model-review-page.sh	0
 scripts/docs/test-site-guides.sh	2
 scripts/docs/test-team-page.sh	1
 scripts/docs/test-troubleshooting-page.sh	1
+scripts/eval/bug-origin/test-bug-origin-report.sh	1
 scripts/eval/compaction-handoff/test-compaction-ab.sh	19
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
 scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	8
@@ -438,7 +441,7 @@ scripts/handover/chief-kit/test-orphan-pr-check.sh	9
 scripts/handover/chief-kit/test-parked-on-prompt.sh	1
 scripts/handover/chief-kit/test-pr-stall.sh	11
 scripts/handover/chief-kit/test-priority-prune.sh	0
-scripts/handover/chief-kit/test-ready-check.sh	187
+scripts/handover/chief-kit/test-ready-check.sh	250
 scripts/handover/chief-kit/test-ready-go.sh	8
 scripts/handover/chief-kit/test-relay-batch.sh	24
 scripts/handover/chief-kit/test-run-suite.sh	1
@@ -449,10 +452,12 @@ scripts/handover/chief-kit/test-status-drift.sh	51
 scripts/handover/chief-kit/test-model-check-report.sh	5
 scripts/handover/chief-kit/test-succession-tracker.sh	1
 scripts/handover/chief-kit/test-tick-deadwin.sh	7
+scripts/handover/chief-kit/test-tick-fields.sh	299
 scripts/handover/chief-kit/test-tick-holds.sh	3
 scripts/handover/chief-kit/test-tick-nolive.sh	13
 scripts/handover/chief-kit/test-tick-pool-stale.sh	2
 scripts/handover/chief-kit/test-tick-rmqueue.sh	12
+scripts/handover/chief-kit/test-tick-vmspend.sh	4
 scripts/handover/chief-kit/test-tick.sh	339
 scripts/handover/chief-kit/test-tracker.sh	14
 scripts/handover/chief-kit/test-vault-status.sh	3
@@ -1229,3 +1234,6 @@ scripts/eval/test-chief-wake-classes.sh	1
 marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	1
 scripts/station-ops/test-station-ops.sh	3
 scripts/handover/chief-kit/test-series-next.sh	8
+scripts/handover/chief-kit/test-holds.sh	11
+scripts/handover/chief-kit/test-series-publish.sh	13
+scripts/jira/test-empty-sector-check.sh	1

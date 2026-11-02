@@ -90,16 +90,16 @@ def main(argv=None):
             if r.get("failure") == "traj" and not a.include_traj:
                 continue
             rows += 1
-            c = classes.setdefault(cls, {"sessions": set(), "legs": {}, "count": 0})
+            c = classes.setdefault(cls, {"sessions": set(), "workers": {}, "count": 0})
             c["count"] += n
             c["sessions"].add(sess)
-            c["legs"][worker] = c["legs"].get(worker, 0) + n
+            c["workers"][worker] = c["workers"].get(worker, 0) + n
 
     ranked = sorted(classes.items(), key=lambda kv: (-len(kv[1]["sessions"]), -kv[1]["count"], kv[0]))
     print("session-retro: %s .. %s  rows=%d classes=%d skipped=%d  ledger=%s"
           % (cutoff.strftime("%Y-%m-%dT%H:%MZ"), now.strftime("%Y-%m-%dT%H:%MZ"), rows, len(classes), skipped, path))
     for i, (cls, c) in enumerate(ranked[: a.top], 1):
-        workers = [w for w, _ in sorted(c["legs"].items(), key=lambda kv: (-kv[1], kv[0]))[:EXAMPLES]]
+        workers = [w for w, _ in sorted(c["workers"].items(), key=lambda kv: (-kv[1], kv[0]))[:EXAMPLES]]
         print("%d\t%d\t%d\t%s\t%s" % (i, len(c["sessions"]), c["count"], cls, ",".join(workers)))
     return 0
 

@@ -36,15 +36,15 @@
 # budget as interactive use, so a run first asks scripts/lib/usage-preflight.sh
 # and skips (rc 0) unless it prints PROCEED.
 #
-# Backend (STEERING_CULL_BACKEND, resolved by scripts/lib/llm-backend.sh): claude-api
-# is the default. It sends the call through scripts/api-lane/claude-api.sh (API credit,
-# Read tool only, plan mode, a per-call budget STEERING_CULL_API_BUDGET_USD, default
-# 0.50); it needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT (else the run refuses, rc 1),
-# skips bank-preflight (it draws no subscription budget) and never falls back to
-# claude-cli. claude-cli is the explicit opt-in and the bank-preflight path above: set
-# STEERING_CULL_BACKEND=claude-cli, or `arm --backend claude-cli`. `arm` with no
-# --backend arms the cron runner on the API lane with the auto account;
-# `arm --backend claude-api --api-account A|B|auto` picks the account.
+# Backend (STEERING_CULL_BACKEND, resolved by scripts/lib/llm-backend.sh): claude-cli
+# is the default, the bank-preflight path above; `arm` with no --backend
+# arms the cron runner on it. claude-api is the explicit opt-in: set
+# STEERING_CULL_BACKEND=claude-api, or `arm --backend claude-api --api-account A|B|auto`.
+# It sends the call through scripts/api-lane/claude-api.sh (API credit, Read tool only,
+# plan mode, a per-call budget STEERING_CULL_API_BUDGET_USD, default 0.50) and skips
+# bank-preflight here; it needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT (else the run
+# refuses, rc 1). A refused or failed call inside claude-api.sh alerts and re-runs once
+# on the subscription behind its own usage preflight (docs/internals/api-lane.md).
 #
 # Seams (tests): STEERING_CULL_CLAUDE, STEERING_CULL_API_LANE, STEERING_CULL_PREFLIGHT_CMD,
 # STEERING_CULL_STATE_DIR, STEERING_CULL_DATE, STEERING_CULL_CRONTAB,
@@ -113,7 +113,7 @@ cmd_run() {
     [ -n "$repo" ] || repo="$(resolve_primary)" || { echo "ERR steering-cull: cannot resolve the repo" >&2; return 64; }
     [ -n "$pdir" ] || { echo "ERR steering-cull: --proposal-dir is required" >&2; return 64; }
 
-    backend="$(llm_backend_resolve "${STEERING_CULL_BACKEND:-claude-api}")" || {
+    backend="$(llm_backend_resolve "${STEERING_CULL_BACKEND:-claude-cli}")" || {
         echo "ERR steering-cull: STEERING_CULL_BACKEND='${STEERING_CULL_BACKEND:-}' is not accepted: claude-cli or claude-api only" >&2; return 1; }
     case "$backend" in
         claude-cli)
@@ -152,7 +152,9 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
         ( cd "$repo" && HIMMEL_API_TOOLS=Read HIMMEL_API_KIND=cull "$claude" -p "$prompt" \
             --model sonnet --output-format json --permission-mode plan --max-budget-usd "${STEERING_CULL_API_BUDGET_USD:-0.50}" ) > "$out" 2> "$STATE_DIR/last-run.err"
     else
-        ( cd "$repo" && "$claude" -p "$prompt" \
+        # claude -p bills an exported API key outside the API lane's accounting
+        ( cd "$repo" && env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+            "$claude" -p "$prompt" \
             --model sonnet --output-format json --permission-mode plan --tools Read --allowedTools Read ) > "$out" 2> "$STATE_DIR/last-run.err"
     fi
     rc=$?
@@ -197,6 +199,12 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
     fi
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
     inbox="$root/consoles/$chief.md"
+    # A test on the station never writes a real bridge inbox; only exit 77 refuses.
+    guard_rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check steering-cull-inbox "$inbox" || guard_rc=$?
+    if [ "$guard_rc" = 77 ]; then
+        return 1
+    fi
     if [ -f "$inbox" ] && printf -- '- %s [steering-cull] proposal %s: %s low, %s escalated\n' "$(date +%H:%M)" "$doc" "$low" "$esc" >> "$inbox"; then
         bash "$ALERT" clear steering-cull
         return 0
@@ -245,10 +253,7 @@ cmd_arm() {
         backend="$(llm_backend_resolve "$backend")" || { echo "ERR steering-cull: --backend must be claude-cli or claude-api" >&2; return 1; }
         [ "$backend" != "ollama" ] || { echo "ERR steering-cull: --backend must be claude-cli or claude-api" >&2; return 1; }
     fi
-    if [ -z "$backend" ]; then
-        backend="claude-api"
-        [ -n "$acct" ] || acct="auto"
-    fi
+    [ -n "$backend" ] || backend="claude-cli"
     if [ "$backend" = "claude-api" ]; then
         case "$acct" in A|B|auto) ;; *) echo "ERR steering-cull: --backend claude-api needs --api-account A|B|auto" >&2; return 1 ;; esac
     elif [ -n "$acct" ]; then
@@ -270,6 +275,10 @@ cmd_arm() {
         echo "DRY steering-cull: would write $runner and install: $entry"
         return 0
     fi
+    # A test on the station never writes the real crontab or a runner under the real home; only exit 77 refuses.
+    local guard_rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$CRONTAB_BIN" steering-cull-arm "$RUNNER_DIR" || guard_rc=$?
+    [ "$guard_rc" -ne 77 ] || return 77
     mkdir -p "$RUNNER_DIR" || return 4
     # shellcheck disable=SC2016  # the runner's own $log must stay literal
     {
@@ -309,6 +318,10 @@ cmd_disarm() {
     cron_read || return 4
     if [ -z "$(cron_entry)" ]; then echo "steering-cull-cadence: nothing armed — disarm is a no-op"; return 0; fi
     if [ "$dry" -eq 1 ]; then echo "DRY steering-cull: would remove the $TASK_NAME crontab entry"; return 0; fi
+    # A test on the station never writes the real crontab or a runner under the real home; only exit 77 refuses.
+    local guard_rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$CRONTAB_BIN" steering-cull-disarm "$RUNNER_DIR" || guard_rc=$?
+    [ "$guard_rc" -ne 77 ] || return 77
     { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
     rm -f "$RUNNER_DIR/steering-cull-cadence.sh"
     echo "steering-cull-cadence: disarmed"

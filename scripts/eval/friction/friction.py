@@ -448,7 +448,7 @@ def scan_docs(docs_dir, since, names):
                     break
             if hold is not None and hold > 720:
                 hold = None
-            rows.append({'source': src, 'class': cls, 'leg': worker, 'marker': marker, 'hold_min': hold,
+            rows.append({'source': src, 'class': cls, 'worker': worker, 'marker': marker, 'hold_min': hold,
                          'operator': bool(re.search(r'operator', text, re.I)), 'snippet': mask(text[8:])})
     return rows
 
@@ -522,10 +522,10 @@ def aggregate(tx_rows, doc_rows):
     by_class.sort(key=lambda r: (-r['count'], r['class']))
     sources = {}
     for r in doc_rows:
-        a = sources.setdefault(r['source'], {'blocks': 0, 'legs': set(), 'holds': [], 'operator': 0,
+        a = sources.setdefault(r['source'], {'blocks': 0, 'workers': set(), 'holds': [], 'operator': 0,
                                              'classes': collections.Counter()})
         a['blocks'] += 1
-        a['legs'].add(r['leg'])
+        a['workers'].add(r['worker'])
         a['operator'] += 1 if r['operator'] else 0
         a['classes'][r['class']] += 1
         if r['hold_min'] is not None:
@@ -533,7 +533,7 @@ def aggregate(tx_rows, doc_rows):
     by_source = []
     for src, a in sources.items():
         tx_n = sum(c['count'] for c in by_class if c['source'] == src)
-        by_source.append({'source': src, 'doc_blocks': a['blocks'], 'distinct_legs': len(a['legs']),
+        by_source.append({'source': src, 'doc_blocks': a['blocks'], 'distinct_workers': len(a['workers']),
                           'median_hold_min': _med(a['holds']), 'total_hold_min': round(sum(a['holds']), 1),
                           'console_turns': a['blocks'], 'operator_interrupts': a['operator'],
                           'transcript_refusals': tx_n,
@@ -541,13 +541,13 @@ def aggregate(tx_rows, doc_rows):
     by_source.sort(key=lambda r: (-r['score'], r['source']))
     dc = {}
     for r in doc_rows:
-        a = dc.setdefault((r['source'], r['class']), {'n': 0, 'legs': set(), 'holds': [], 'op': 0})
+        a = dc.setdefault((r['source'], r['class']), {'n': 0, 'workers': set(), 'holds': [], 'op': 0})
         a['n'] += 1
-        a['legs'].add(r['leg'])
+        a['workers'].add(r['worker'])
         a['op'] += 1 if r['operator'] else 0
         if r['hold_min'] is not None:
             a['holds'].append(r['hold_min'])
-    doc_classes = [{'source': k[0], 'class': k[1], 'doc_blocks': a['n'], 'distinct_legs': len(a['legs']),
+    doc_classes = [{'source': k[0], 'class': k[1], 'doc_blocks': a['n'], 'distinct_workers': len(a['workers']),
                     'median_hold_min': _med(a['holds']), 'total_hold_min': round(sum(a['holds']), 1),
                     'operator_interrupts': a['op']} for k, a in dc.items()]
     doc_classes.sort(key=lambda r: (-(r['total_hold_min'] + 5 * r['doc_blocks'] + 15 * r['operator_interrupts']),
@@ -568,7 +568,7 @@ def render_md(agg, meta):
              'transcript refusals | score |', '|---|---|---|---|---|---|---|---|---|---|']
     for i, r in enumerate(agg['by_source'], 1):
         lines.append('| %d | %s | %d | %d | %s | %s | %d | %d | %d | %s |' % (
-            i, r['source'], r['doc_blocks'], r['distinct_legs'],
+            i, r['source'], r['doc_blocks'], r['distinct_workers'],
             '-' if r['median_hold_min'] is None else r['median_hold_min'], r['total_hold_min'],
             r['console_turns'], r['operator_interrupts'], r['transcript_refusals'], r['score']))
     lines += ['', '## A2. Escalations by source x class (worker docs)', '',
@@ -576,7 +576,7 @@ def render_md(agg, meta):
               '|---|---|---|---|---|---|---|---|']
     for i, r in enumerate(agg['doc_classes'], 1):
         lines.append('| %d | %s | %s | %d | %d | %s | %s | %d |' % (
-            i, r['source'], r['class'], r['doc_blocks'], r['distinct_legs'],
+            i, r['source'], r['class'], r['doc_blocks'], r['distinct_workers'],
             '-' if r['median_hold_min'] is None else r['median_hold_min'], r['total_hold_min'],
             r['operator_interrupts']))
     lines += ['', '## B. Refusals seen in transcripts, by source x class', '',

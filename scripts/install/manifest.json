@@ -465,7 +465,7 @@
       "scopes": ["user"],
       "profiles": ["luna", "all"],
       "deps": [],
-      "probe": {"type": "cadence-runs", "script": "scripts/luna/graphmap-cadence.sh", "tasks": [{"task": "HIMMEL-GraphMap-Luna", "intervalHours": 168}, {"task": "HIMMEL-GraphMap-Himmel", "intervalHours": 168}, {"task": "HIMMEL-GraphMapAst-Luna", "intervalHours": 24}, {"task": "HIMMEL-GraphMapAst-Himmel", "intervalHours": 1}, {"task": "HIMMEL-GraphPublish-Himmel", "intervalHours": 2}, {"task": "HIMMEL-GraphSemantic-Luna", "intervalHours": 2}]},
+      "probe": {"type": "cadence-runs", "script": "scripts/luna/graphmap-cadence.sh", "tasks": [{"task": "HIMMEL-GraphMap-Luna", "intervalHours": 168, "okRcs": [0, 4]}, {"task": "HIMMEL-GraphMap-Himmel", "intervalHours": 168, "okRcs": [0, 4]}, {"task": "HIMMEL-GraphMapAst-Luna", "intervalHours": 24}, {"task": "HIMMEL-GraphMapAst-Himmel", "intervalHours": 1}, {"task": "HIMMEL-GraphPublish-Himmel", "intervalHours": 2}, {"task": "HIMMEL-GraphSemantic-Luna", "intervalHours": 2}]},
       "removable": "full-offboard-only",
       "offboard": "advise"
     },
@@ -560,7 +560,7 @@
         "script": "scripts/hooks/cadence-approve-engines.sh",
         "envVar": "PIPELINE_BAT_DIR",
         "defaultSubdir": ".claude/pipeline-cadence",
-        "legs": [
+        "workers": [
           { "schedule": "harvest", "requiredSuffixes": [
             "marketplace/plugins/obsidian-triage/tools/harvest-clip-body-batch.py",
             "marketplace/plugins/obsidian-triage/tools/ig-media-fetch.py"

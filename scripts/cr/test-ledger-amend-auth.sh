@@ -102,6 +102,23 @@ check "7b: a keyed reader drops it" "$(kept "$L7")" "first:first"
 check "7c: a keyless reader honours it" "$(HOME="$SCRATCH_HOME" kept "$L7")" "first:first cx-1:claudex deferral"
 check "7d: the amend carries the verdict, ticket and class" "$(grep '"kind":"amend"' "$L7" | grep '"finding_id":"cx-1"' | grep '"verdict":"deferred"' | grep '"deferred_to":"HIMMEL-7"' | grep -c '"fu_class":"polish"')" "1"
 
+# --- 8. pre_existing=true lowers: `review-round.sh defer` defers an Important on it
+# With a GO key present, an unsigned amend setting the field is dropped like any
+# other lowering amend; a signed one is kept; a false value cannot defer anything.
+L8="$tmp/ledger8.jsonl"
+{ signed "$(amend b g1 '{"reason":"x"}' cut)"; echo
+  amend b g2 '{"pre_existing":true}' unsigned-pre; echo
+  signed "$(amend b g3 '{"pre_existing":true}' signed-pre)"; echo
+  amend b g4 '{"pre_existing":false}' false-pre; echo; } > "$L8"
+check "8a: an unsigned pre_existing=true amend is dropped, a signed one kept" "$(kept "$L8")" "g1:cut g3:signed-pre g4:false-pre"
+LA8="$tmp/la8.jsonl"
+(cd "$REPO" && CR_LEDGER="$LA8" bash "$LA" finding --branch b --head 2222222222222222222222222222222222222222 --model codex --id la-8 \
+  --severity imp --file a.sh --line 1 --verdict "" --text "a finding" >/dev/null 2>&1) || { echo "FAIL: fixture finding not written"; fails=$((fails+1)); }
+{ signed "$(amend b first8 '{"reason":"x"}' first)"; echo; } >> "$LA8"
+(cd "$REPO" && CR_LEDGER="$LA8" bash "$LA" amend --branch b --head 2222222222222222222222222222222222222222 --id la-8 --set pre_existing=true \
+  --reason "signed by the writer" >/dev/null 2>&1) || { echo "FAIL: fixture amend not written"; fails=$((fails+1)); }
+check "8b: a ledger-append.sh pre_existing amend verifies" "$(kept "$LA8")" "first8:first la-8:signed by the writer"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-ledger-amend-auth.sh"
