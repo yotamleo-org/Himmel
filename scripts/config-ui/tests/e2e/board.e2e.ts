@@ -56,6 +56,8 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator("#main .alert").first()).toContainText("1 drift row");
   await expect(page.locator("#main .alert").first()).toContainText("1 transient");
   // the lanes of the running version, with the chain badge on a chain ticket and none on the others
+  await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeHidden(); // a Done ticket: the Done column is folded
+  await page.locator("#rm-lanes details.rm-done summary").click();
   await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeVisible();
   await expect(page.locator(".rm-card", { hasText: "Old shipped work" })).toHaveCount(0);
   await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain")).toContainText("memory 2/2 · can launch");
