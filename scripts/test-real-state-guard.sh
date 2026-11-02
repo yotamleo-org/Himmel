@@ -180,6 +180,7 @@ eq "U4 go test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a go bash 
 eq "U5 npm test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash test' >/dev/null 2>&1; echo $?)" 77
 cp "$TMP/real-tool.sh" "$TMP/run"
 eq "U7 npm run test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run test' >/dev/null 2>&1; echo $?)" 77
+eq "U9 npm run with an option before test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run --silent test' >/dev/null 2>&1; echo $?)" 77
 eq "U8 negative control: npm run build is not a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run build' >/dev/null 2>&1; echo $?)" 0
 eq "U6 negative control: go with a non-test argument is not a runner" "$(as_session bash -c "exec -a go bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
 

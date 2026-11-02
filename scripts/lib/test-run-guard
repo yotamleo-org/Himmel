@@ -121,7 +121,7 @@ is_runner_name() { case "${1##*/}" in vitest*|pytest*|py.test|jest*|bats|mocha*|
 # argv_runs_test <argv...>: a test in script position, never a mention. An inline -c body, a later
 # argument and a session name all leave it unmatched. Sets suite when it knows the file.
 argv_runs_test() {
-    local a0="${1##*/}" a0path="$1"
+    local a0="${1##*/}" a0path="$1" k
     shift
     is_runner_name "$a0" && return 0
     if is_test_name "$a0"; then suite="$a0path"; return 0; fi
@@ -140,7 +140,11 @@ argv_runs_test() {
             test) case "$a0" in bun|deno|go|cargo|npm|pnpm|yarn) return 0 ;; esac; return 1 ;;
             run) case "$a0" in
                 bun|deno) ;;
-                npm|pnpm|yarn) case "${2:-}" in test|test:*) return 0 ;; esac; return 1 ;;
+                npm|pnpm|yarn)
+                    for k in "${@:2}"; do
+                        case "$k" in -*) ;; test|test:*) return 0 ;; *) return 1 ;; esac
+                    done
+                    return 1 ;;
                 *) return 1 ;;
             esac ;;
             *)
