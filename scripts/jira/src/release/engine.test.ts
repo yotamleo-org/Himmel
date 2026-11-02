@@ -1830,6 +1830,38 @@ describe('version-repair entry check and held state', () => {
     expect(latestReq(q.req)?.reason).toBe('never-landed');
   });
 
+  describe('offered keep, add and move each land at read-back', () => {
+    const rule1 = async (verb: 'INTAKE' | 'REVERSION', from_v: string | null, to_v: string | null, outcome: string, op: { kind: 'keep' | 'add' | 'move'; from_v: string | null; to_v: string | null }) => {
+      await setup();
+      const q = request(ctx(), { verb, key: 'K-1', from_v, to_v, why: 'w', evidence: repairEvidence, from: 'console' });
+      claim(ctx(rmEnv));
+      jira.entries.set('K-1', '99');
+      return admit(q.req, { outcome, op, supersedes: ['baseline-v1-g1'] });
+    };
+
+    it('keep on a member goes applied with no PUT', async () => {
+      const r = await rule1('REVERSION', 'v1', 'v1', 'KEEP', { kind: 'keep', from_v: 'v1', to_v: 'v1' });
+      jira.fv.set('K-1', ['v1']);
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.writes).toBe(0);
+    });
+
+    it('move on a key already in the target goes applied with no PUT', async () => {
+      const r = await rule1('REVERSION', 'v1', 'v2', 'MOVE', { kind: 'move', from_v: 'v1', to_v: 'v2' });
+      jira.fv.set('K-1', ['v2']);
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.writes).toBe(0);
+    });
+
+    it('add on a stripped key makes one PUT and goes applied', async () => {
+      const r = await rule1('INTAKE', null, 'v1', 'ADMIT', { kind: 'add', from_v: null, to_v: 'v1' });
+      jira.fv.set('K-1', []);
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.writes).toBe(1);
+      expect(jira.fv.get('K-1')).toEqual(['v1']);
+    });
+  });
+
   it('chief-filed request behaves as today', async () => {
     const { q, r } = await ruledMove({});
     jira.entries.set('K-1', '100');
