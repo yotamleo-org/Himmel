@@ -932,7 +932,7 @@ def render_rm_brief(l, ctx):
 
 
 REMAINING_RE = re.compile(r'^[ \t]*remaining:[ \t]*(.*\S)', re.I | re.M)
-HEADING_RE = re.compile(r'^(#{1,6})[ \t]+\S')
+HEADING_RE = re.compile(r'^(#{1,6})(?:[ \t]+\S|[ \t]*$)')
 COVERAGE_HEAD_RE = re.compile(r'^#{2}[ \t]+ticket coverage[ \t]*$', re.I)
 DEFERRED_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[ \t]*(.*)$', re.I)
 TICKET_KEY_RE = re.compile(r'\b[A-Za-z][A-Za-z0-9]*-\d+\b')
