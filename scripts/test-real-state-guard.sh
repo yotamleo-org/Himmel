@@ -474,6 +474,160 @@ printf '# doc\n\n## Chief Rulings (newest at the bottom)\n' >"$TDOC"
 HIMMEL_CONSOLE_RUNDIR="$TMP/rundir" HANDOVER_DIR="$TMP/hermetic-handovers" bash "$SEND" HIMMEL-1-chief "mirror hermetic" --doc "$TDOC" >/dev/null 2>&1
 has "D3 a send with a temp doc stays local" "$TDOC" "mirror hermetic"
 
+# ---- the scheduler, the second Telegram sender and the Jira post doors ----
+# Every tool is a recorder first on PATH (asserted below), so a door that fails to refuse reaches a
+# recorder, never the real crontab, atd or Telegram. SCH rows: arm-resume's crontab and at writes.
+# CAS rows: the config-audit alert's chief-route sender. JP rows: release apply, release rm-run and jira
+# create, each against a Jira host that never resolves, so a run past the door shows as a host lookup.
+echo "== scheduler, config-audit sender and Jira post doors (HIMMEL-8818)"
+cat >"$BIN/sched-recorder" <<'STUB'
+#!/usr/bin/env bash
+t="${0##*/}"
+printf '%s %s\n' "$t" "$*" >>"$REC"
+case "$t:${1:-}" in
+  crontab:-l) exit 1 ;;
+  crontab:-|at:*) cat >/dev/null ;;
+esac
+exit 0
+STUB
+chmod +x "$BIN/sched-recorder"
+for t in crontab at atrm atq; do ln -sf sched-recorder "$BIN/$t"; done
+for tool in crontab at atrm atq; do
+  [ "$(command -v "$tool")" = "$BIN/$tool" ] || { echo "FAIL - suite guard: $tool does not resolve to the recorder"; exit 1; }
+done
+calls_exact() { grep -c -x -- "$1" "$REC" || true; }
+
+ARM="$root/scripts/handover/arm-resume.sh"
+ARMBIN="$TMP/armbin"
+mkdir -p "$ARMBIN" "$TMP/arm-dotenv" "$TMP/arm-work" "$TMP/arm-docs/handovers"
+git init -q "$TMP/arm-work"
+git init -q "$TMP/arm-docs"
+# shellcheck disable=SC2016 # the stub's own $1, expanded when it runs
+printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.296 (Claude Code)"; exit 0; fi\nexit 0\n' >"$ARMBIN/claude"
+chmod +x "$ARMBIN/claude"
+# arm-resume resolves its plugin profile with node, so the arm gets the real one; no scheduler tool is behind it.
+REAL_NODE="$(PATH="${PATH#"$BIN":}" command -v node || true)"
+[ -n "$REAL_NODE" ] && ln -sf "$REAL_NODE" "$ARMBIN/node"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-real-state-guard"}}' >"$TMP/claude-account.json"
+ARM_DOC="$TMP/arm-docs/handovers/handover-s1.md"
+printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n# Test handover\n' "$TMP/arm-work" >"$ARM_DOC"
+ARM_TIME="$(python3 -c 'import datetime; print((datetime.datetime.now()+datetime.timedelta(minutes=30)).strftime("%H:%M"))')"
+ARM_ENV=(env PATH="$ARMBIN:$PATH" FLEET_CAP_OK=1 ARM_WITH_LIVE_WORKERS=1 ARM_TERMINAL_APP=none ARM_TEMP_CWD_OK=1
+  ARM_RESUME_DOTENV_ROOT="$TMP/arm-dotenv" ARM_RESUME_LOG_DIR="$TMP/arm-logs" ARM_RUNNER_DIR="$TMP/arm-runners"
+  HIMMEL_FLEET_SLOTS="$TMP/fleet-slots" SKILL_TELEMETRY_DIR="$TMP/telemetry" WORKER_BRIDGE_ROOT="$TMP/worker-bridge"
+  WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json" HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
+  CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+  CLAUDE_ACCOUNT_CONFIG="$TMP/claude-account.json" HANDOVER_DIR="$TMP/arm-docs/handovers")
+
+# SCH1/SCH2: the crontab install (the macOS shape and the Linux fallback), forced with OSTYPE.
+reset
+rc=0; "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH1 a test's crontab arm exits 77" "$rc" 77
+eq "SCH1 a test's crontab arm installs nothing" "$(calls_exact 'crontab -')" 0
+reset
+as_session "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1
+eq "SCH2 a real session's crontab arm installs its entry" "$(calls_exact 'crontab -')" 1
+# SCH3/SCH4: the at job.
+reset
+rc=0; "${ARM_ENV[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH3 a test's at arm exits 77" "$rc" 77
+eq "SCH3 a test's at arm schedules no job" "$(calls at)" 0
+reset
+as_session "${ARM_ENV[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1
+eq "SCH4 a real session's at arm schedules its job" "$(calls at)" 1
+
+# CAS1/CAS2: the config-audit alert's Telegram sender is the chief-route bun call.
+CA_ACCESS="$TMP/ca-access.json"
+printf '{"allowFrom":["12345"]}\n' >"$CA_ACCESS"
+# shellcheck disable=SC2016 # the inline script's own $1, expanded by the child bash
+CA_ALERT=(env TELEGRAM_ACCESS_PATH="$CA_ACCESS" BRIDGE_ROOT="$TMP/ca-bridge" HIMMEL_CONFIG_ALERT_CMD= HIMMEL_CONFIG_AUDIT_DIR="$TMP/ca-state"
+  bash -c '. "$1"; _ca_alert "config alert"' _ "$root/scripts/lib/config-audit.sh")
+reset
+"${CA_ALERT[@]}" >/dev/null 2>&1
+eq "CAS1 a test's config alert sends no Telegram message" "$(calls bun)" 0
+reset
+as_session "${CA_ALERT[@]}" >/dev/null 2>&1
+eq "CAS2 a real session's config alert sends its Telegram message" "$(calls bun)" 1
+
+# JP rows: release apply, release rm-run and jira create post to Jira.
+if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; then
+  J="$root/scripts/jira/src/index.ts"
+  VENV=(env HIMMEL_RELEASE_STATE_DIR="$TMP/v-queue" JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token JIRA_PROJECT_KEY=HIMMEL)
+  V_BODY="$(printf '## Impact\nx\n\n## What\nx\n\n## Why\nx\n\n## Plan\n- x\n\n## DoD\n- x\n\n## Agent detail\nx\n')"
+  V_CREATE=("$REAL_BUN" "$J" create --type Task --title "from a test" --desc "$V_BODY" --labels standalone --backlog --proposed-version backlog --why "a test must not file this")
+  v_refused() { # <label> <cmd...>
+    local label="$1" vrc=0
+    shift
+    "$@" >"$TMP/v.out" 2>&1 || vrc=$?
+    if [ "$vrc" != 0 ]; then pass "$label exits non-zero"; else fail "$label exits non-zero"; fi
+    has "$label is refused at the door" "$TMP/v.out" "refused, nothing was posted"
+    if grep -q 'ENOTFOUND' "$TMP/v.out"; then fail "$label reached the Jira host lookup"; else pass "$label never looked up the Jira host"; fi
+  }
+  v_open() { # <label> <downstream text the run must reach> <cmd...>
+    local label="$1" want="$2"
+    shift 2
+    "$@" >"$TMP/v.out" 2>&1
+    if grep -q 'nothing was posted' "$TMP/v.out"; then fail "$label was refused"; else pass "$label is not refused"; fi
+    has "$label gets past the door to its own work" "$TMP/v.out" "$want"
+  }
+  v_refused "JP1 a test's release apply" "${VENV[@]}" "$REAL_BUN" "$J" release apply R8818 RU-1
+  v_refused "JP2 a test's release rm-run" "${VENV[@]}" "$REAL_BUN" "$J" release rm-run R8818
+  v_open "JP3 a real session's release apply" "is UNKNOWN" as_session "${VENV[@]}" "$REAL_BUN" "$J" release apply R8818 RU-1
+  v_refused "JP4 a test's jira create" "${VENV[@]}" "${V_CREATE[@]}"
+  v_open "JP5 a real session's jira create" "no release is declared" as_session "${VENV[@]}" "${V_CREATE[@]}"
+else
+  echo "SKIP - JP rows: no bun or no scripts/jira/node_modules here; the node-suites vitest rows in release.test.ts and create.test.ts (post door from a test on the station) gate the same doors"
+fi
+
+# SCH5-SCH8, CAS3/CAS4: a missing or crashing guard fails open, as M4/M5 do for the merge alert. The mirror is
+# the repo with every entry symlinked except the script under test (copied) and scripts/lib/test-run-guard.
+mk_mirror() { # <dir> <missing|crash>
+  local d="$1" mode="$2" e
+  mkdir -p "$d/scripts/lib" "$d/scripts/handover"
+  for e in "$root"/* "$root"/.[!.]*; do [ "${e##*/}" = scripts ] || ln -s "$e" "$d/${e##*/}"; done
+  for e in "$root"/scripts/* "$root"/scripts/.[!.]*; do
+    case "${e##*/}" in handover | lib) ;; *) ln -s "$e" "$d/scripts/${e##*/}" ;; esac
+  done
+  for e in "$root"/scripts/lib/*; do case "${e##*/}" in test-run-guard | config-audit.sh) ;; *) ln -s "$e" "$d/scripts/lib/${e##*/}" ;; esac; done
+  for e in "$root"/scripts/handover/*; do [ "${e##*/}" = arm-resume.sh ] || ln -s "$e" "$d/scripts/handover/${e##*/}"; done
+  cp "$root/scripts/handover/arm-resume.sh" "$d/scripts/handover/arm-resume.sh"
+  cp "$root/scripts/lib/config-audit.sh" "$d/scripts/lib/config-audit.sh"
+  [ "$mode" = crash ] && printf '#!/usr/bin/env bash\nexit 1\n' >"$d/scripts/lib/test-run-guard"
+  return 0
+}
+mk_mirror "$TMP/mir-missing" missing
+mk_mirror "$TMP/mir-crash" crash
+for mode in missing crash; do
+  M="$TMP/mir-$mode"
+  [ "$mode" = missing ] && n_at=SCH5 n_cr=SCH6 n_ca=CAS3 || n_at=SCH7 n_cr=SCH8 n_ca=CAS4
+  reset
+  rc=0; "${ARM_ENV[@]}" bash "$M/scripts/handover/arm-resume.sh" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+  eq "$n_at a test's at arm still schedules with the guard $mode" "$(calls at)" 1
+  if [ "$rc" = 77 ]; then fail "$n_at the at arm was refused with the guard $mode"; else pass "$n_at the at arm is not refused with the guard $mode"; fi
+  reset
+  rc=0; "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$M/scripts/handover/arm-resume.sh" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+  eq "$n_cr a test's crontab arm still installs with the guard $mode" "$(calls_exact 'crontab -')" 1
+  if [ "$rc" = 77 ]; then fail "$n_cr the crontab arm was refused with the guard $mode"; else pass "$n_cr the crontab arm is not refused with the guard $mode"; fi
+  reset
+  "${CA_ALERT[@]:0:${#CA_ALERT[@]}-1}" "$M/scripts/lib/config-audit.sh" >/dev/null 2>&1
+  eq "$n_ca a test's config alert still sends with the guard $mode" "$(calls bun)" 1
+done
+
+# SCH9/SCH10: a stub crontab or at outside the real-tool dirs stays allowed for a test (the door asks --tool, not --real).
+mkdir -p "$TMP/stubtools"
+cp "$BIN/sched-recorder" "$TMP/stubtools/crontab"
+cp "$BIN/sched-recorder" "$TMP/stubtools/at"
+STUB_ARM=("${ARM_ENV[@]}" PATH="$TMP/stubtools:$ARMBIN:$PATH")
+eq "SCH9 the stub at resolves to the stub dir" "$(PATH="$TMP/stubtools:$PATH" command -v at)" "$TMP/stubtools/at"
+reset
+rc=0; "${STUB_ARM[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH9 a test's at arm with a stub at is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+eq "SCH9 the stub at was reached" "$(calls at)" 1
+reset
+rc=0; "${STUB_ARM[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH10 a test's crontab arm with a stub crontab is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+eq "SCH10 the stub crontab was reached" "$(calls_exact 'crontab -')" 1
+
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS - test-real-state-guard: all rows"; exit 0; fi
 echo "FAIL - test-real-state-guard: $fails row(s)"

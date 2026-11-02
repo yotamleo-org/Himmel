@@ -43,6 +43,8 @@ describe('--affects-version (HIMMEL-6236)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     process.env.JIRA_PROJECT_KEY = 'HIMMEL';
+    // create posts to Jira; a loopback Jira is a stub, so the post door stays open.
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     let affects = [{ name: 'v1.1.3' }];
     mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
       if (method === 'POST') return { key: 'HIMMEL-1' };
@@ -56,6 +58,7 @@ describe('--affects-version (HIMMEL-6236)', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     if (savedKey === undefined) delete process.env.JIRA_PROJECT_KEY;
     else process.env.JIRA_PROJECT_KEY = savedKey;
   });
