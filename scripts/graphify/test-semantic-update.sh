@@ -27,10 +27,12 @@ cat > "$REPO/scripts/graphify/seed-claude-config.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-# Bank stub: verdict from $WS/bank (default PROCEED); every call logged.
+# Bank stub: verdict from $WS/bank (default PROCEED); every call logged. The real launcher's fallback asks
+# with CADENCE_USAGE_LANE=native: $WS/bank-native answers it when present (the T68c rows).
 cat > "$REPO/scripts/lib/usage-preflight.sh" <<EOF
 #!/usr/bin/env bash
 echo bank >> "$WS/calls.log"
+[ "\${CADENCE_USAGE_LANE:-}" = native ] && [ -r "$WS/bank-native" ] && { cat "$WS/bank-native"; exit 0; }
 cat "$WS/bank" 2>/dev/null || echo PROCEED
 EOF
 # API-lane stub: records its argv, stdin, cwd and whether `claude`
@@ -701,6 +703,74 @@ C68B="$WS/c68b"; new_corpus "$C68B"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CHUNKFAIL=1 LANE_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t68b --corpus-root "$C68B" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [ "$rc" -eq 5 ] && pass "T68b the run exits 5 too" || fail "T68b exit (got $rc): $out"
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T68b two lane calls: the first rejection plus one rotated call" || fail "T68b lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+
+# --- the real launcher (scripts/api-lane/claude-api.sh) under the shim, only `claude` stubbed ---
+# The rows above stub the whole lane, so they cannot show what the launcher really does with a rejection: replay
+# it on the subscription (exit 0, the fallback's own cost) or, when the fallback does not run, exit 6.
+RL="$WS/rl"
+real_lane_on() {
+  mkdir -p "$RL/alerts" "$RL/slots" "$WS/home"
+  cp "$REPO/scripts/api-lane/claude-api.sh" "$WS/claude-api.stub.sh"
+  cp "$REAL_REPO/scripts/api-lane/claude-api.sh" "$REAL_REPO/scripts/api-lane/roster.mjs" "$REAL_REPO/scripts/api-lane/usage.mjs" "$REPO/scripts/api-lane/"
+  cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/fleet-reservation-key.sh" "$REAL_REPO/scripts/lib/native-auth-pin.sh" "$REPO/scripts/lib/"
+  local now; now=$(date +%s)
+  printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00","key_id":"key-a","reset_at":"2099-01-01T00:00:00Z"}}}' "$RL/ledger.json" > "$RL/config.json"
+  printf '{"version":1,"accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","grant_usd":"50.00","remaining_usd":"50.00","reconciled_spent_usd":"0","starts_at":%d,"expires_at":%d,"observed_at":%d,"source":"operator-console-snapshot","exclusive_org":true,"discrepancy":false}}}' $((now-1000)) $((now+3600)) "$now" > "$RL/snapshot.json"
+  printf 'ANTHROPIC_API_KEY=sk-ant-dummy-not-a-real-key-0000\n' > "$RL/key-A.env"; chmod 600 "$RL/key-A.env"
+  printf '#!/bin/bash\nexit 0\n' > "$RL/alert-stub"; chmod +x "$RL/alert-stub"
+  # a call with the API key is the API call; one without it is the subscription fallback
+  cat > "$RL/claude-stub" <<STUB
+#!/usr/bin/env bash
+cat > /dev/null
+if [ -n "\${ANTHROPIC_API_KEY:-}" ]; then
+  echo api >> "$WS/rl-calls.log"
+  if [ -n "\${RL_STUB_REJECT:-}" ]; then
+    echo '{"type":"result","is_error":true,"result":"API Error: 400 Your credit balance is too low to access the Anthropic API."}'
+    exit 1
+  fi
+  echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total_cost_usd":0.25,"usage":{"input_tokens":1,"output_tokens":1}}'
+  exit 0
+fi
+echo sub >> "$WS/rl-calls.log"
+echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total_cost_usd":0.31,"usage":{"input_tokens":1,"output_tokens":1}}'
+STUB
+  chmod +x "$RL/claude-stub"
+  : > "$WS/rl-calls.log"; : > "$WS/calls.log"; : > "$WS/claude.out"; rm -f "$WS/bank-native" "$RL"/ledger.json* "$RL/launches.jsonl"
+}
+real_lane_off() { cp "$WS/claude-api.stub.sh" "$REPO/scripts/api-lane/claude-api.sh"; rm -f "$WS/bank-native"; }
+run_real_lane() {
+  env "${LANE_ENV[@]}" HOME="$WS/home" PATH="$WS/bin:$PATH" HIMMEL_API_CREDIT_CONFIG="$RL/config.json" HIMMEL_API_CREDIT_SNAPSHOT="$RL/snapshot.json" \
+    HIMMEL_API_CREDIT_STATE="$RL/ledger.json" HIMMEL_API_CLAUDE_BIN="$RL/claude-stub" HIMMEL_API_ALERT_CMD="$RL/alert-stub" \
+    HIMMEL_API_ALERT_DIR="$RL/alerts" HIMMEL_FLEET_SLOTS="$RL/slots" CADENCE_USAGE_SKIP_REFRESH=1 GRAPHIFY_STUB_CALL_CLAUDE=1 \
+    bash "$SCRIPT" "$@" 2>&1
+}
+
+echo "T68c: through the real launcher, a rejection the fallback does not rerun exits 6 and the breaker stops dispatch"
+real_lane_on
+C68C="$WS/c68c"; new_corpus "$C68C"; echo SKIPPED-BANK > "$WS/bank-native"
+out=$(GRAPHIFY_STUB_CHUNKFAIL=1 RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 run_real_lane --name t68c --corpus-root "$C68C" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 5 ] && pass "T68c the run exits 5 after rejected chunks" || fail "T68c exit (got $rc): $out"
+[ "$(grep -c '^api$' "$WS/rl-calls.log")" -eq 1 ] && pass "T68c one API call, the other four chunks never dispatched" || fail "T68c API calls: $(grep -c '^api$' "$WS/rl-calls.log") (rc=$rc)"
+[ "$(grep -c '^claude-shim-rc=6$' "$WS/calls.log")" -eq 5 ] && pass "T68c every chunk reports the launcher's own exit 6" || fail "T68c shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
+[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 0 ] && pass "T68c the subscription fallback never ran" || fail "T68c fallback ran: $(cat "$WS/rl-calls.log")"
+real_lane_off
+
+echo "T68d: through the real launcher, a rejection replayed on the subscription adds nothing to the API spend, and the breaker stays open"
+real_lane_on
+C68D="$WS/c68d"; new_corpus "$C68D"
+out=$(RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68d --corpus-root "$C68D" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68d all three chunks ran on the subscription" || fail "T68d lane calls: $(tr '\n' ' ' < "$WS/rl-calls.log") (rc=$rc): $out"
+[ "$(grep -c '^claude-shim-rc=' "$WS/calls.log")" -eq 0 ] && pass "T68d no chunk failed: the fallback's exit replaced the rejection" || fail "T68d shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
+[ "$(lastrun "$C68D" cost_usd)" = "0.0" ] && pass "T68d the API spend is 0 (the subscription's 0.31 per chunk is not API spend)" || fail "T68d row: $(tail -1 "$C68D/graphify-out/semantic-runs.jsonl" 2>&1)"
+real_lane_off
+
+echo "T68e: through the real launcher, an API call that succeeds still adds its cost to the spend"
+real_lane_on
+C68E="$WS/c68e"; new_corpus "$C68E"
+out=$(GRAPHIFY_STUB_CALL_N=2 run_real_lane --name t68e --corpus-root "$C68E" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$(grep -c '^api$' "$WS/rl-calls.log")" -eq 2 ] && pass "T68e both calls ran on the API" || fail "T68e lane calls: $(tr "\n" " " < "$WS/rl-calls.log") (rc=$rc): $(head -c 900 "$WS/claude.out")"
+[ "$(lastrun "$C68E" cost_usd)" = "0.5" ] && pass "T68e the spend is the two calls' 0.25" || fail "T68e row: $(tail -1 "$C68E/graphify-out/semantic-runs.jsonl" 2>&1)"
+real_lane_off
 
 echo "T66: a failed extract names the first lane refusal in its closing line"
 C66="$WS/c66"; new_corpus "$C66"; : > "$WS/calls.log"
