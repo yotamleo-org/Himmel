@@ -155,3 +155,29 @@ test("Eval: one row per phase with a Start row, the 7-day numbers in words, and 
   expect(html).toContain("PR 4347");
   expect(renderWorkflow(MODEL, { tab: "eval" }, null)).toContain("loading");
 });
+
+// the story map's Frame 1 pieces: a drill-in link per phase, the legend, the always-on and measurement
+// notes, and each step's dot inside its own label link so a narrow column cannot strand the dot on a line above it
+test("Workflow: the story map has a drill-in link per phase, the legend, the always-on note and the measurement note", () => {
+  const html = tab();
+  const map = html.slice(html.indexOf('<ol class="wf-map">'), html.lastIndexOf("</li></ol>", html.indexOf("Key")) + 10);
+  const phases = map.split('<li class="wf-ph').slice(1);
+  expect(phases).toHaveLength(7);
+  phases.forEach((ph, i) => {
+    const id = MODEL.stages[i].id;
+    expect(ph).toContain(`<a class="wf-to wf-open" href="#/workflow?phase=${id}">Open the drill-in ›</a>`);
+  });
+  expect(html).toContain('aria-label="Key"');
+  for (const k of ["a step (worker)", "a step (chief)", "a step (you)", "an automatic check", "a way back", "planned, pilot, or only sometimes", "what passes to the next phase"]) expect(html).toContain(k);
+  expect(html).toContain("Always on, under every phase:");
+  expect(html).toContain("each tool call meets himmel's guards first");
+  expect(html).toContain("Each phase shows one number: a 7-day measurement from the fleet's own records, not live state.");
+});
+
+test("Workflow: a step's dot sits inside the same link as its label", () => {
+  const html = tab();
+  const steps = html.split('<ol class="wf-steps">').slice(1).map((s) => s.slice(0, s.indexOf("</ol>")));
+  const items = steps.flatMap((s) => s.split("<li>").slice(1));
+  expect(items).toHaveLength(MODEL.stages.reduce((n: number, s: { map: unknown[] }) => n + s.map.length, 0));
+  for (const li of items) expect(li).toMatch(/^<a class="wf-mstep"[^>]*><span class="wf-g wf-s[^"]*" aria-hidden="true"><\/span>/);
+});
