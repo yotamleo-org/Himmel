@@ -494,6 +494,13 @@ python3 "$FR" route --ledger "$F21/l.jsonl" --state "$F21/s.json" --log "$F21/lo
 rm -f "$STUB/create.err"
 check "HIMMEL-8734: a warning followed by a refusal logs the refusal, not the warning" 'grep -q "^failure-router: denied/guard-twelve reason: A Task needs a placement" "$F21/out" && ! grep -q "reason: jira: warning" "$F21/out"'
 
+F22="$TMP/f22"; mkdir -p "$F22"
+SAVE="$LED"; LED="$F22/l.jsonl"; row N1 denied/guard-thirteen 1; row N2 denied/guard-thirteen 1; LED="$SAVE"
+jq '.sector = "Visibility"' "$HERE/failure-routes.table.json" >"$F22/table.json"
+: >"$STUB/titles.log"
+python3 "$FR" route --table "$F22/table.json" --ledger "$F22/l.jsonl" --state "$F22/s.json" --log "$F22/log" --inbox "$F22/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+check "the title opens with the table's Sector, not a fixed one" 'case "$(head -n 1 "$STUB/titles.log")" in "Visibility: "*) true ;; *) false ;; esac'
+
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'
 check "the window is 14 days and the cap is 3" 'jq -e ".window_days == 14 and .daily_cap == 3" "$HERE/failure-routes.table.json" >/dev/null'

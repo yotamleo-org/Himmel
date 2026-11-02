@@ -278,14 +278,14 @@ def refusal(text):
 TITLE_MAX = 90  # the CLI warns past this (scripts/jira/src/plain-block.ts)
 
 
-def fit_title(title):
+def fit_title(title, sector):
     """A title the CLI's template check accepts: the Sector first, no internal name, at most TITLE_MAX characters.
 
     {sub} carries a tool or hook name (error/Bash:usage:ready-check, suite/test-x.sh): its ':', '_' and
     '.' would read as a second prefix, an internal name or a file path."""
     t = re.sub(r"[:_.]+", " ", title)
     t = re.sub(r"\s+", " ", t).strip()
-    t = "Quality & proof: " + t
+    t = (sector + ": " if sector else "") + t
     if len(t) > TITLE_MAX:
         t = t[:TITLE_MAX + 1].rsplit(" ", 1)[0].rstrip(" ,;-")
     return t
@@ -448,7 +448,7 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
     # The CLI refuses an unplaced Task. The backlog is a placement that needs no version lookup; the
     # release manager moves it with the INTAKE request the notifier files.
     place = ["--backlog", "--proposed-version", "backlog", "--why", "filed by the daily failure review, awaiting triage"]
-    out = with_file(body, lambda f: jira(jbin, ["create", "--type", "Task", "--title", fit_title(title), "--desc-file", f,
+    out = with_file(body, lambda f: jira(jbin, ["create", "--type", "Task", "--title", fit_title(title, table.get("sector")), "--desc-file", f,
                                                  "--labels", "failure-loop,fl-%s,standalone" % slug(cls)]
                                          + sector + place + ["--project", project]))
     m = re.search(r"^Created ([A-Z][A-Z0-9]+-\d+)$", out or "", re.M)
