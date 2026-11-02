@@ -147,7 +147,7 @@ deny() {
                 echo "If an argument genuinely needs quoting, use the anchor's copy by step 0's"
                 echo "printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/merge-on-green.sh\" <args>"
+                echo "bash <himmel_dir>/scripts/handover/merge-on-green.sh <args>"
                 ;;
             *console-kit/go* | *chief-kit/go*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
@@ -167,10 +167,12 @@ deny() {
             *)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                # shellcheck disable=SC2016 # printed verbatim, never expanded
+                # The path is unquoted on purpose: the worker's allow rule for the
+                # anchor's copy is `bash <anchor>/scripts/cr/<x>.sh:*`, which a
+                # quoted path or a literal $HIMMEL_REPO never matches.
                 case "${entries:-}" in
-                    ' '*' '*|'') echo "bash \"<himmel_dir>/scripts/cr/<script>.sh\" <args>" ;;
-                    *) echo 'bash "$HIMMEL_REPO/scripts/cr/'"${entries# }"'" <args>' ;;
+                    ' '*' '*|'') echo "bash <himmel_dir>/scripts/cr/<script>.sh <args>" ;;
+                    *) echo "bash <himmel_dir>/scripts/cr/${entries# } <args>" ;;
                 esac
                 ;;
         esac

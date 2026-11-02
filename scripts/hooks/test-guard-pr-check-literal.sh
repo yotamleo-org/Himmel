@@ -537,6 +537,66 @@ run 'quoted arg on the anchored spelling -> deny (would loop without the fix)' 2
 need_in_err "remedy says args must be unquoted" "unquoted"
 need_in_err "remedy offers the himmel_dir fallback" "<himmel_dir>/scripts/handover/merge-on-green.sh"
 
+# ---- every spelling the remedy prints must match an allow rule -------------
+# A worker that follows a printed line is spared the auto-mode classifier only
+# if a rule its settings hold matches that line. A quoted path matches none (the
+# rule text carries no quote), so each printed `bash ...` line is expanded and
+# matched against the rules plugin-profiles.mjs generates for worker-impl,
+# anchored at the fixture primary - what a leg actually holds.
+PCLI="$(cd "$(dirname "$0")/../lanes" && pwd)/plugin-profiles.mjs"
+mkdir -p "$TMP/rules-home"
+RULES="$(cd "$WT" && env HIMMEL_REPO="$WT" HOME="$TMP/rules-home" USERPROFILE="$TMP/rules-home" node "$PCLI" worker-impl 2>/dev/null | jq -r '.permissions.allow[]' 2>/dev/null)"
+
+# printed_matches <label> <match|nomatch> <command>
+printed_matches() {
+    local label="$1" want="$2" cmd="$3" rule inner hit=no
+    while IFS= read -r rule; do
+        inner="${rule#Bash(}"
+        inner="${inner%)}"
+        case "$inner" in
+            *':*')
+                inner="${inner%:\*}"
+                if [ "$cmd" = "$inner" ]; then hit=yes; break; fi
+                case "$cmd" in "$inner "*) hit=yes; break ;; esac ;;
+            *) if [ "$cmd" = "$inner" ]; then hit=yes; break; fi ;;
+        esac
+    done <<<"$RULES"
+    if { [ "$want" = match ] && [ "$hit" = yes ]; } || { [ "$want" = nomatch ] && [ "$hit" = no ]; }; then
+        echo "PASS $label"
+    else
+        echo "FAIL $label - expected $want, rule hit=$hit for: $cmd"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
+# printed_lines_match <label>: every `bash ...` line of the last deny, with the
+# step-0 placeholders filled in (the anchor for <himmel_dir>), must match a rule.
+printed_lines_match() {
+    local line n=0 cmd
+    while IFS= read -r line; do
+        case "$line" in 'bash '*) ;; *) continue ;; esac
+        cmd="${line//<himmel_dir>/$PRIMARY}"
+        cmd="${cmd//<unquoted-args>/--go /g}"
+        cmd="${cmd//<args>/--go /g}"
+        n=$((n + 1))
+        printed_matches "$1 line $n [$line]" match "$cmd"
+    done <<<"$LAST_ERR"
+    if [ "$n" -eq 0 ]; then echo "FAIL $1 - no printed bash line: $LAST_ERR"; FAILED=$((FAILED + 1)); fi
+}
+
+if [ -n "$RULES" ]; then echo "PASS worker-impl allow rules generated"; else echo "FAIL could not generate worker-impl allow rules"; FAILED=$((FAILED + 1)); fi
+# shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
+run 'merge-on-green deny, for the printed-spelling rows' 2 \
+    "$(payload "bash \"\$HIMMEL_REPO/scripts/handover/merge-on-green.sh\" --branch 'x'" "$WT")" "$HR"
+printed_lines_match "merge-on-green remedy"
+run 'a gated scripts/cr writer from a non-himmel root, for the printed-spelling rows' 2 \
+    "$(payload 'bash scripts/cr/write-verdicts.sh' "$OTHER")" "$HR"
+printed_lines_match "scripts/cr writer remedy"
+# negative controls: a quote or a variable in the path still matches no rule
+printed_matches 'control: quoted anchor path matches no rule' nomatch "bash \"$PRIMARY/scripts/handover/merge-on-green.sh\" --go /g"
+# shellcheck disable=SC2016 # the literal text
+printed_matches 'control: variable path matches no rule' nomatch 'bash $HOME/scripts/handover/merge-on-green.sh --go /g'
+
 # ---- chief-O NO-GO finding 2: go.sh's own sibling-sourced libs -------------
 # go.sh sources scripts/lib/go-gate.sh and scripts/lib/handover-path.sh via a
 # branch-relative $HERE, so they must be in its GUARDED set too - a byte-equal
@@ -2487,7 +2547,7 @@ run "behind main, two untouched writers in one call -> deny (not one simple comm
     "$(payload 'bash scripts/cr/write-verdicts.sh; bash scripts/handover/merge-on-green.sh' "$WT")" "$HR"
 run "behind main, untouched writer whose merge-base copy skips the hand-off -> deny" 2 \
     "$(payload 'bash scripts/cr/review-round.sh' "$WT")" "$HR"
-need_in_err "deny names the anchored spelling" "\$HIMMEL_REPO/"
+need_in_err "deny names the anchored spelling" "bash <himmel_dir>/scripts/cr/review-round.sh"
 run "behind main, pr-check-context.sh keeps the whole-tree equality -> deny" 2 "$(payload "$LITERAL" "$WT")" "$HR"
 echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh"
 run "behind main, dirty scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
@@ -2510,7 +2570,7 @@ g -C "$PRIMARY" commit -qam 'main moves the hand-off'
 run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
 run "behind main, hand-off moved on main, scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
-need_in_err "deny names the anchored spelling" "\$HIMMEL_REPO/scripts/cr/write-verdicts.sh"
+need_in_err "deny names the anchored spelling" "bash <himmel_dir>/scripts/cr/write-verdicts.sh"
 g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 # main moved to a child that restores its bytes, so the merge-base is a commit
