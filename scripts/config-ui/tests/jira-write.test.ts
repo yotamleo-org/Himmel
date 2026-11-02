@@ -17,9 +17,10 @@ afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 function boot(extra: Record<string, string> = {}, checkout?: string) {
   const dir = mkdtempSync(join(tmpdir(), "jira-write-"));
   const home = join(dir, "home"), root = join(dir, "root"), log = join(dir, "jira.log");
-  mkdirSync(home); mkdirSync(root);
+  const own = join(dir, "checkout"); // hermetic: no .env of the real checkout is read
+  mkdirSync(home); mkdirSync(root); mkdirSync(own);
   const s = startServer({
-    port: 0, token: TOKEN, ...(checkout ? { root: checkout } : {}),
+    port: 0, token: TOKEN, root: checkout ?? own,
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_JIRA_CLI: JIRA, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
       STUB_JIRA_LOG: log, ...extra },
   });
@@ -120,6 +121,32 @@ test("a drop refreshes, and reads before and after from, the mirror the cards re
   expect((await b.post({ key: "HIMMEL-7", status: "rev" })).status).toBe(200);
   expect(b.calls().find((c) => c[0] === "mirror")).toEqual(["mirror", "--root", mirror]);
   expect(b.audit()[0].before).toEqual({ status: "To Do" }); // read from that mirror, not the default directory
+});
+
+// a checkout dir holding a .env with `lines`
+function checkoutWith(lines: string[]) {
+  const dir = mkdtempSync(join(tmpdir(), "jira-write-co-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, ".env"), lines.join("\n") + "\n");
+  return dir;
+}
+
+test("a drop is refused when only the project's .env says the tracker is none: the write gate reads the same settings as the rail", async () => {
+  const b = boot({}, checkoutWith(["TRACKER=none"]));
+  const r = await b.post({ key: "HIMMEL-7", status: "rev" });
+  expect(r.status).toBe(403);
+  expect(b.calls()).toEqual([]); // no Jira CLI call
+});
+
+test("the Jira child gets the project key from the .env and no other .env value", async () => {
+  const log = join(mkdtempSync(join(tmpdir(), "jira-env-")), "env.log");
+  cleanups.push(() => rmSync(join(log, ".."), { recursive: true, force: true }));
+  const b = boot({ STUB_JIRA_ENV_LOG: log }, checkoutWith(["JIRA_PROJECT_KEY=ZED", "PLANTED_SECRET=hunter2-planted"])); // a planted fake, not a credential gitleaks:allow
+  expect((await b.post({ key: "HIMMEL-7", status: "rev" })).status).toBe(200);
+  const seen = readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen.every((x) => x.key === "ZED")).toBe(true); // the child's project key is the .env's
+  expect(seen.every((x) => x.secret === null)).toBe(true); // a .env secret never reaches the child
 });
 
 test("roadmap.ts falls back to the Jira theme label over the plan theme, and maps a matching slug to the plan's name", () => {

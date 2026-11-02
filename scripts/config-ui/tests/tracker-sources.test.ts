@@ -1,6 +1,7 @@
 // the tracker sources the UI can read (trackerSources) and the GitHub issues source behind Roadmap and Kanban.
 // gh is always a stub (GH_CMD) answering fake issues; nothing here reaches GitHub or Jira.
 import { test, expect, afterEach } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -240,6 +241,26 @@ test("GET /api/roadmap: with gh unauthenticated there is no source and no board"
   expect(r.state).toBe("absent");
   expect(r.tickets).toEqual([]);
   expect(s.ghCalls().some((c) => c.startsWith("issue list"))).toBe(false);
+});
+
+test("a project launched from another checkout keeps its own tracker: the checkout's .env neither picks the tracker nor the mirror", async () => {
+  const s = scratch({ mirror: true });
+  const checkout = join(s.d, "checkout"), project = join(s.d, "project"), store = join(s.d, "store");
+  for (const p of [checkout, project, store]) mkdirSync(p);
+  writeFileSync(join(checkout, ".env"), "TRACKER=jira\nJIRA_PROJECT_KEY=OTHER\n"); // the himmel checkout's, not this project's
+  execFileSync("git", ["-C", project, "init", "-q"]);
+  execFileSync("git", ["-C", project, "config", "himmel.tracker", "local"]);
+  writeFileSync(join(store, "LOCAL-1.md"), '---\nid: LOCAL-1\ntitle: "x"\ntype: Task\nstatus: To Do\nfix_version:\nepic:\ncreated: 2026-10-01T00:00:00Z\nlinks:\n---\n\n## Log\n');
+  const env = { ...s.env, TRACKER_STORE: store };
+  const srv = startServer({ port: 0, token: TOKEN, root: checkout, projectRoot: project, env, legsScript: join(checkout, "no-workers.sh") });
+  cleanups.push(() => srv.stop());
+  const base = `http://127.0.0.1:${srv.port}`;
+  const get = async (p: string) => (await fetch(base + p, { headers: { "X-Himmel-Token": TOKEN } })).json();
+  expect((await get("/api/sources")).sources[0]).toBe("local");
+  expect((await get("/api/roadmap")).source).toBe("local");
+  const drop = await fetch(`${base}/api/roadmap/write`, { method: "POST", headers: { "content-type": "application/json", origin: base, "x-himmel-token": TOKEN }, body: JSON.stringify({ key: "HIMMEL-1", status: "rev" }) });
+  expect(drop.status).toBe(403); // a local project never writes Jira
+  expect(s.jiraCalls()).toBe(false);
 });
 
 test("GET /api/board: on a GitHub board or a populated local store the Jira-backed drift and chain reads are absent, whatever names their inputs", async () => {

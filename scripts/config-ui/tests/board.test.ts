@@ -169,6 +169,15 @@ test("GET /api/board and /api/roadmap read the same Jira mirror when it is set o
   expect((await get(url.replace("/api/board", "/api/sources"))).sources).toEqual(["jira"]); // the rail stays lit
 });
 
+test("GET /api/board: the extras are absent when only the project's .env says the tracker is none", async () => {
+  const s = scratch();
+  writeFileSync(join(s.d, ".env"), "TRACKER=none\n");
+  const r = await get(serve({ HIMMEL_FOCUS_DRIFT: s.drift, HIMMEL_CHAIN_REGISTRY: s.registry }, s));
+  expect(r.drift.state).toBe("absent");
+  expect(r.drift.reason).toContain("not Jira");
+  expect(r.chains.reason).toContain("not Jira");
+});
+
 test("GET /api/roadmap: a non-empty process env mirror beats the checkout's .env", async () => {
   const s = scratch();
   const other = join(s.d, "dotenv-mirror");
