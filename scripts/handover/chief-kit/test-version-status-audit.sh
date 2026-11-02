@@ -56,7 +56,7 @@ mkl HIMMEL-28 Task "To Do" "To Do" '["v1.0.2"]' '[]' '["HIMMEL-22"]' '[]'
 
 mkdir -p "$WORK/workers"
 printf '# worker\n\n## Results\n- 10:00 LIVE — up\n' > "$WORK/workers/HIMMEL-7-N1-x.md"
-printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$WORK/workers/HIMMEL-7-N1-x.md" > "$WORK/fleet.json"
+printf '{"workers":[{"label":"N1","doc":"%s"}]}\n' "$WORK/workers/HIMMEL-7-N1-x.md" > "$WORK/fleet.json"
 printf '#!/usr/bin/env bash\nif [ -f "$GH_FAIL" ]; then exit 1; fi\ncase " $* " in *" --state open "*) ;; *) exit 1 ;; esac\nprintf "9999\\tfeat: [HIMMEL-1] x\\tfeat/himmel-1-x\\n"\n' > "$WORK/gh"
 chmod +x "$WORK/gh"
 
@@ -72,7 +72,7 @@ lacks "a Closed row in a released version yields no row" "$out" "HIMMEL-9	"
 lacks "a To Do row in a later version yields no row" "$out" "HIMMEL-8	"
 lacks "a started row in the earliest unreleased version yields no row" "$out" "HIMMEL-6	"
 has "later-version ticket owned by an open PR is OWNED" "$out" "HIMMEL-1	In Progress	v1.0.2	PR:9999	OWNED"
-has "later-version ticket owned by a live worker is OWNED" "$out" "HIMMEL-7	In Review	v1.0.2	leg:N1	OWNED"
+has "later-version ticket owned by a live worker is OWNED" "$out" "HIMMEL-7	In Review	v1.0.2	worker:N1	OWNED"
 has "versionless open blocker (target lists it as blocked_by) is a row" "$out" "BLOCKER-NO-VERSION	HIMMEL-20	To Do	-	none	RESET"
 has "versionless open blocker (blocker lists the target in blocks) is a row" "$out" "BLOCKER-NO-VERSION	HIMMEL-21	To Do	-	none	RESET"
 lacks "a backlog-labelled blocker yields no row" "$out" "HIMMEL-23	"
@@ -86,8 +86,8 @@ has "count line counts every row" "$out" "vmismatch=7"
 [ "$rc" = 1 ] && pass "exit 1 when a RESET row exists" || fail "exit 1 when a RESET row exists (rc=$rc)"
 
 printf '# worker\n\n## Results\n- 10:00 LIVE — up\n- 11:00 WRAPPED — merged\n- 12:00 PARKED-USAGE — relaunched, waiting for RESUME\n' > "$WORK/workers/HIMMEL-10-N2-x.md"
-printf '{"legs":[{"label":"N2","doc":"%s"}]}\n' "$WORK/workers/HIMMEL-10-N2-x.md" > "$WORK/fleet-parked.json"
-has "a PARKED-USAGE tail after an old WRAPPED still owns its ticket" "$(run --workers-from "$WORK/fleet-parked.json")" "HIMMEL-10	In Progress	v1.0.2	leg:N2	OWNED"
+printf '{"workers":[{"label":"N2","doc":"%s"}]}\n' "$WORK/workers/HIMMEL-10-N2-x.md" > "$WORK/fleet-parked.json"
+has "a PARKED-USAGE tail after an old WRAPPED still owns its ticket" "$(run --workers-from "$WORK/fleet-parked.json")" "HIMMEL-10	In Progress	v1.0.2	worker:N2	OWNED"
 
 # clean mirror
 C="$WORK/clean/HIMMEL"; mkdir -p "$C"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/clean/HIMMEL.versions.tsv"
@@ -128,9 +128,9 @@ out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$B" 2>
 [ "$rc" = 3 ] && pass "mirror with no parsable ticket exits 3" || fail "mirror with no parsable ticket exits 3 (rc=$rc: $out)"
 
 # an unreadable worker doc stays OWNED but is marked unverified
-printf '{"legs":[{"label":"N9","doc":"%s/workers/HIMMEL-10-N9-gone.md"}]}\n' "$WORK" > "$WORK/fleet-gone.json"
+printf '{"workers":[{"label":"N9","doc":"%s/workers/HIMMEL-10-N9-gone.md"}]}\n' "$WORK" > "$WORK/fleet-gone.json"
 out="$(run --workers-from "$WORK/fleet-gone.json")"
-has "unreadable worker doc is OWNED with an unverified marker" "$out" "HIMMEL-10	In Progress	v1.0.2	leg:N9?	OWNED"
+has "unreadable worker doc is OWNED with an unverified marker" "$out" "HIMMEL-10	In Progress	v1.0.2	worker:N9?	OWNED"
 
 # the open-PR read is capped at 200: a full page is reported
 printf '#!/usr/bin/env bash\nfor i in $(seq 1 200); do printf "%%s\\tt\\tb\\n" "$i"; done\n' > "$WORK/gh-many"; chmod +x "$WORK/gh-many"

@@ -93,7 +93,7 @@ if [ -f "$STUB/le.retry-first" ] && grep -q '^N1 ' "$STUB/le.stdin"; then
 fi
 # le.rm: act like wrap-merged, drop N1 from the manifest and from the tick line
 if [ -f "$STUB/le.rm" ]; then
-    jq -c '.legs |= map(select(.label != "N1"))' "$4" > "$4.tmp" && mv "$4.tmp" "$4"
+    jq -c '.workers |= map(select(.label != "N1"))' "$4" > "$4.tmp" && mv "$4.tmp" "$4"
     rm -f "$STUB/tick.seq"
     cp "$STUB/tick.after" "$STUB/tick.line.new" && mv "$STUB/tick.line.new" "$STUB/tick.line"
 fi
@@ -155,7 +155,7 @@ fleet() {
     D="$WORK/$1/chief.md"; printf '# chief\n' > "$D"
     L="$WORK/$1/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L"
     M="$WORK/$1/chief.fleet.json"
-    printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}]}\n' "$L" > "$M"
+    printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$L" > "$M"
     export HB_FILE="$I.wait"
 }
 start() { # <inbox> <outfile> [tick args...]
@@ -168,7 +168,7 @@ start() { # <inbox> <outfile> [tick args...]
 fleet2() {
     fleet "$1"
     L2="$WORK/$1/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
-    printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M"
+    printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M"
 }
 
 # --- (r0k/l) the wrap bound and silent timeout diagnostics -------------------
@@ -394,7 +394,7 @@ printf 'HANDLED auto-go N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"
 HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s5.out" --doc "$D" --workers-from "$M"
 wait_hb "$I" || fail "(r0s5) no baseline heartbeat"
 L2="$WORK/r0s5/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L2"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M.new" && mv "$M.new" "$M"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$L" "$L2" > "$M.new" && mv "$M.new" "$M"
 printf -- '%s\n%s\n' "$READY_A" "$READY_B" >> "$L"
 n=0
 while [ "$n" -lt 80 ] && [ ! -s "$STUB/le.stdin.1" ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
@@ -557,7 +557,7 @@ tick_seq "$(tick_text "N1:WRAPPED,N2:BLOCKED")"
 wait_exit "$WPID"
 check "(r0g) N2's change wakes (rc 0)" "0" "$rc"
 check "(r0g) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0g.out")"
-check "(r0g) the relay dropped N1 from the manifest" "N2" "$(jq -r '.legs[].label' "$M")"
+check "(r0g) the relay dropped N1 from the manifest" "N2" "$(jq -r '.workers[].label' "$M")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (r0i) a window turning closable beside the absorbed wrap still wakes -----

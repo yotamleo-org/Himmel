@@ -560,7 +560,7 @@
         "script": "scripts/hooks/cadence-approve-engines.sh",
         "envVar": "PIPELINE_BAT_DIR",
         "defaultSubdir": ".claude/pipeline-cadence",
-        "legs": [
+        "workers": [
           { "schedule": "harvest", "requiredSuffixes": [
             "marketplace/plugins/obsidian-triage/tools/harvest-clip-body-batch.py",
             "marketplace/plugins/obsidian-triage/tools/ig-media-fetch.py"

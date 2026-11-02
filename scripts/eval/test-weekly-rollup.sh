@@ -131,7 +131,7 @@ check "a finished week is not partial" false "$(f 2026-W36 partial)"
 # cache-create 1.25, output 5; subagent counters included; last record per ticket wins).
 # Hand sums, W37 (fixture tickets 3 and 4):
 #   ticket 3 start (console) 1000 + 1000 + 500 + 500 + 500 (sub output) = 3500
-#            build (leg 2000+2000+1000+1000 = 6000, judge 1000) = 7000, total 10500
+#            build (worker 2000+2000+1000+1000 = 6000, judge 1000) = 7000, total 10500
 #   ticket 4 start 0, build 4000 + 1000 = 5000
 #   week: start 3500, build 12000, start share 3500/15500 = 22.58%, median ticket 7750
 # W36 (ticket 1 has a record, ticket 2 none): start 2000, build 6000, share 25, median 8000.
@@ -256,6 +256,10 @@ check "review cost line" "cost: cost-eq=400k workers=3 per-ticket=200k (+125k vs
   "$(sed -n 2p "$W/review.out")"
 check "review health line" "health: red-main=0 (+0) cache-hit=92% (n/a) flakes=2 (+2); failure and denial rates: no source yet" \
   "$(sed -n 3p "$W/review.out")"
+jq -c 'if has("workers") then .legs = .workers | del(.workers) else . end' "$OUT" >"$W/old-rows.jsonl"
+run review --version v1.1.0 --file "$W/old-rows.jsonl" >"$W/review-old.out" 2>&1
+check "a row stored before the rename (legs key) still reviews" "cost: cost-eq=400k workers=3 per-ticket=200k (+125k vs v1.0.0)" \
+  "$(sed -n 2p "$W/review-old.out")"
 run review --version v9.9.9 --file "$OUT" >"$W/review2.out" 2>&1
 check "an unknown version reads no data yet" "velocity: no data yet cost: no data yet health: no data yet" \
   "$(tr '\n' ' ' <"$W/review2.out" | sed 's/ $//')"

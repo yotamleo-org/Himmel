@@ -643,9 +643,9 @@ contains "held lock: log names the claim" "$log9" "still claimed after waiting"
 # different name) would wrongly look like a dedup hit and block the launch.
 d10a="$tmp/c10a"
 mk_stub "$d10a" 0  # konsole stub + a placeholder pgrep; overwritten below by the real matcher
-mk_matcher_pgrep "$d10a" "claude --model x -n HIMMEL-2545Xleg load foo and continue" "HIMMEL-2545.leg"
+mk_matcher_pgrep "$d10a" "claude --model x -n HIMMEL-2545Xworker load foo and continue" "HIMMEL-2545.worker"
 rc10a=0
-run_headed_arm "$d10a" "$REPO" "HIMMEL-2545.leg" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
+run_headed_arm "$d10a" "$REPO" "HIMMEL-2545.worker" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
 check "regex metachar: exit 0 (a launch, not a dedup)" "$rc10a" "0"
 wait_record "$d10a" || true
 if [ -s "$d10a/record" ]; then echo "ok - regex metachar: literal '.' does NOT false-match a different session"
@@ -653,9 +653,9 @@ else echo "FAIL - regex metachar: literal '.' does NOT false-match a different s
 # (b) must STILL match itself: the exact same literal name, dot and all.
 d10b="$tmp/c10b"
 mk_stub "$d10b" 0
-mk_matcher_pgrep "$d10b" "claude --model x -n HIMMEL-2545.leg load foo and continue" "HIMMEL-2545.leg"
+mk_matcher_pgrep "$d10b" "claude --model x -n HIMMEL-2545.worker load foo and continue" "HIMMEL-2545.worker"
 rc10b=0
-run_headed_arm "$d10b" "$REPO" "HIMMEL-2545.leg" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
+run_headed_arm "$d10b" "$REPO" "HIMMEL-2545.worker" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
 check "regex metachar: still dedups its own literal name" "$rc10b" "0"
 settle
 if [ -s "$d10b/record" ]; then echo "FAIL - regex metachar: konsole must NOT be invoked (self-match)"; fails=$((fails+1))
@@ -2513,9 +2513,9 @@ tdout="$(run_headed_arm "$td1" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-
 check "8436a a second worker on a ticket with a live worker is refused (exit 16)" "$tdrc" "16"
 contains "8436b the refusal names the ticket and the live session" "$tdout" "HIMMEL-8436-N4000-first-worker-2026-10-31"
 check "8436c the refused arm launched no konsole" "$([ -e "$td1/record" ] && echo launched || echo none)" "none"
-td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-leg-2026-10-31" "HIMMEL-8436-N4332b-second-leg-2026-10-31"
-run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-leg-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
-check "8436d a second leg of the same worker lineage (same N) still launches" "$tdrc2" "0"
+td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-worker-2026-10-31" "HIMMEL-8436-N4332b-second-worker-2026-10-31"
+run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-worker-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
+check "8436d a second worker of the same worker lineage (same N) still launches" "$tdrc2" "0"
 td3="$tmp/td3"; mk_tdup "$td3" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
 HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td3" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td3/signal-never" "$PAST" >/dev/null 2>&1; tdrc3=$?
 check "8436e HEADED_ARM_ALLOW_TICKET_DUP=1 lets a second worker on the ticket launch" "$tdrc3" "0"

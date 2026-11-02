@@ -394,7 +394,7 @@ check "check 4 a merge-hold line outside ## Live state is not read" "$RC" "0"
 reset; write_fixtures native "" '> **Merge:** chief'; run --dry-run 77 "$SHA";  esc "check 4 brief says Merge: chief" 4
 # a brief that is readable by test -r but that grep cannot read (a directory) is a read error, not "no hold"
 reset; mkdir -p "$tmp/briefdir"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N1","lane":"native","added":"2026-10-31T00:00:00Z"}]}\n' "$tmp/briefdir" > "$FLEET"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1","lane":"native","added":"2026-10-31T00:00:00Z"}]}\n' "$tmp/briefdir" > "$FLEET"
 run --dry-run 77 "$SHA";  esc "check 4 a brief that grep cannot read" 4
 # the chief doc is read by awk, and GNU awk skips a directory operand with rc 0: test -r alone read that as "no merge-hold"
 reset; rawrun --doc "$tmp/briefdir" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA";  esc "check 4 a chief doc that is a directory" 4
