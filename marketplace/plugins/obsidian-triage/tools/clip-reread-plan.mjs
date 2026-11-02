@@ -108,13 +108,13 @@ function parseThread(section, clippedId) {
 }
 
 function isXSource(src) {
-  try { return /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/.test(new URL(src.replace(/^"|"$/g, "")).hostname); } catch { return false; }
+  try { return /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/.test(new URL(src.replace(/^["']|["']$/g, "")).hostname); } catch { return false; }
 }
 
 function classify(text) {
   const parts = split(text);
   if (!parts || !isXSource(parts.fm.source || "")) return null; // not an X clip
-  const triaged = /^true$/.test((parts.fm.processed || "").replace(/^"|"$/g, ""));
+  const triaged = /^true$/.test((parts.fm.processed || "").replace(/^["']|["']$/g, ""));
   const m = parts.body.match(THREAD_RE);
   if (!triaged) return { verdict: "kept", reason: "fresh", triageSkip: false, parts };
   if (!m) return { verdict: "skipped", reason: "no-thread", triageSkip: false, parts };

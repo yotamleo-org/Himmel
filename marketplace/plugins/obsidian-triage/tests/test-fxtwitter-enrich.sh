@@ -1333,6 +1333,10 @@ assert "Test26: a re-plan after apply still keeps the link clip (derived fields 
     "$(node "$PLAN" --vault "$t26_vault" | grep -q 'links.md.*kept.*new-links' && echo yes || echo no)"
 mkdir -p "$tmpdir/vault-t26b/Clippings"
 printf -- '---\nsource: https://notx.com/jack/status/1?u=twitter.com\nprocessed: true\n---\n# t\n' >"$tmpdir/vault-t26b/Clippings/other.md"
+mkdir -p "$tmpdir/vault-t26c/Clippings"
+printf -- "---\nsource: 'https://x.com/jack/status/31'\nprocessed: 'true'\n---\n# t\n" >"$tmpdir/vault-t26c/Clippings/quoted.md"
+assert "Test26: single-quoted source and processed values are read like unquoted ones" "yes" \
+    "$(node "$PLAN" --vault "$tmpdir/vault-t26c" | grep -q 'quoted.md.*skipped.*no-thread' && echo yes || echo no)"
 if [ "$(id -u)" != "0" ]; then
     mkdir -p "$tmpdir/vault-t26b/Clippings/locked"
     chmod 000 "$tmpdir/vault-t26b/Clippings/locked"
