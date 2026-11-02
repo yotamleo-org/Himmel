@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# test-plan-graph.sh — hermetic tests for the graph.json that
-# plan-index.sh --refresh emits next to the qmd docs: schema + the four typed
-# edges (pure python, always run), a graphify explain/query fixture (SKIPs when the
-# graphify binary is absent), the egress hook allowing the no-backend run, a failed
-# emit failing the whole refresh before the fingerprint moves, and the source plan
-# dir / any graphify-out left untouched. Fixture plan dir + stub qmd + temp out dir;
-# graphify is only ever pointed at the temp graph by absolute --graph, from a temp cwd.
-#
 # PLATFORM GUARD: operator-side roadmap tooling (Linux);
 # this suite needs bash + python3.
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail
@@ -51,7 +43,6 @@ r="$(run --refresh 2>&1)"; rc=$?
 g="$out/graph.json"
 [ -f "$g" ] && pass "graph.json written beside the docs" || fail "no $g"
 
-# schema + the four typed edges, pure python
 py="$(python3 - "$g" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -80,7 +71,6 @@ contains "no dangling edge endpoints" "$py" "dangling True"
 contains "edge count is exactly the plan's rows" "$py" "count True"
 contains "edges are EXTRACTED (no LLM)" "$py" "conf True"
 
-# same inputs => byte-identical graph (deterministic)
 cp "$g" "$W/g1"; run --refresh --force >/dev/null 2>&1 || fail "forced rebuild failed"
 cmp -s "$W/g1" "$g" && pass "deterministic: forced rebuild is byte-identical" || fail "graph differs between rebuilds"
 
@@ -118,7 +108,6 @@ fi
 [ "$(find "$plan" -type f | wc -l)" -eq 3 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
 [ -z "$(find "$plan" "$out" -name graphify-out)" ] && pass "no graphify-out under plan or out" || fail "graphify-out appeared"
 
-# a failed graph emit fails the whole refresh and the fingerprint does not move
 cp "$out/.fp" "$W/fp.keep"; rm -f "$g"; mkdir "$g"; echo x > "$g/blocker"
 echo bump >> "$plan/stage3/meta.json"
 r="$(run --refresh 2>&1)"; rc=$?
@@ -134,7 +123,6 @@ python3 "$HERE/plan_docs.py" --plan-dir "$plan" --docs "$W/ovl/docs" --graph "$W
 [ "$rc" != 0 ] && pass "--graph inside --docs is refused" || fail "--graph inside --docs accepted (rc=0)"
 [ ! -e "$W/ovl/docs/graph.json" ] && pass "overlapping --graph wrote nothing" || fail "overlapping --graph was written"
 
-# a missing graph.json with a kept key is stale
 rm -f "$g"
 r="$(run --check 2>&1)"; rc=$?
 [ "$rc" != 0 ] && pass "missing graph.json: --check stale" || fail "--check fresh with graph deleted"
