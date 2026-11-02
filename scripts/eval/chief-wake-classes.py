@@ -46,13 +46,13 @@ def sibling(file, name):
 cli = sibling("chief-load-inventory.py", "chief_load_inventory")
 hc = sibling("handover-cost.py", "handover_cost")
 
-JUDGE_BASH = re.compile(r"\bgo\.sh\b|verdict-go\.sh|write-verdict\.sh|headed-arm-leg\.sh|"
+JUDGE_BASH = re.compile(r"\bgo\.sh\b|verdict-go\.sh|write-verdict\.sh|headed-arm-(?:leg|worker)\.sh|"
                         r"jira/dist/index\.js\s+(create|comment|transition|edit|link)")
 RULING = re.compile(r"\b(GO|HOLD|NO-GO|ruling|concur|approved|defer|narrow|halt)\b", re.I)
 TOKEN = re.compile(r"\b[A-Z]{1,3}-N\d+-[0-9a-f]{6,}")
-JUDGE_PATH = re.compile(r"brief|RESUME|evidence|verdict|-worker|/N\d+", re.I)
-SCRIPT = re.compile(r"(console-wait\.sh|chief-wait\.sh|worker-event\.sh|close-wrapped-leg\.sh|wrap-merged\.sh|"
-                    r"ready-check\.sh|check-ci\.sh|verdict-go\.sh|board\.mjs|action-zero\.sh|headed-arm-leg\.sh|"
+JUDGE_PATH = re.compile(r"brief|RESUME|evidence|verdict|-(?:leg|worker)|/N\d+", re.I)
+SCRIPT = re.compile(r"(console-wait\.sh|chief-wait\.sh|(?:leg|worker)-event\.sh|close-wrapped-(?:leg|worker)\.sh|wrap-merged\.sh|"
+                    r"ready-check\.sh|check-ci\.sh|verdict-go\.sh|board\.mjs|action-zero\.sh|headed-arm-(?:leg|worker)\.sh|"
                     r"gen-briefs\.py|merge-on-green\.sh|relay-batch\.sh|tick\.sh|ops-run\.sh|run-suite\.sh|"
                     r"console\.sh|chief\.sh)")
 OPERATOR_KINDS = ("operator", "session-load", "local-command", "session-start",
