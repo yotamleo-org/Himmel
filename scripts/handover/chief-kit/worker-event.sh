@@ -56,6 +56,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/handover/chief-kit/residual-lines.sh
 . "$HERE/residual-lines.sh"
+# shellcheck source=scripts/lib/worker-identity.sh
+. "$HERE/../../lib/worker-identity.sh"
 if [ -n "${LE_WRAP:-}" ]; then WRAP=("$LE_WRAP"); else WRAP=(bash "$HERE/wrap-merged.sh"); fi
 if [ -n "${LE_CLOSE:-}" ]; then CLOSE=("$LE_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-worker.sh"); fi
 if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$HERE/station-sync.sh"); fi
@@ -110,7 +112,26 @@ labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)" || labels="
 if [ -n "$labels" ]; then
     [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
     label="$labels"
-    worker="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || worker=""
+    listing="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || listing=""
+    worker="$(printf '%s\n' "$listing" | grep -F -- "-${label}-" | head -n 1)" || worker=""
+    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not;
+    # matched on each doc's worker label, never on a directory or slug that mentions it
+    if [ -z "$worker" ]; then
+        succ=""
+        while IFS= read -r cand; do
+            [ -n "$cand" ] || continue
+            [[ "$(worker_label "$cand")" =~ ^${label}[a-z]+$ ]] && succ="$succ$cand"$'\n'
+        done <<EOF
+$listing
+EOF
+        succ="${succ%$'\n'}"
+        [ "$(printf '%s' "$succ" | grep -c .)" -le 1 ] || escalate "ambiguous-label"
+        # a label already recorded closed cannot tell the closed worker from its successor: a replay escalates
+        if [ -n "$succ" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
+            escalate "ambiguous-label"
+        fi
+        worker="$succ"
+    fi
     # a worker already wrapped has left the manifest; wrap-merged's chief-doc bullet
     # (`<label> WRAPPED, window closed.`) says so, and a re-run is then a noop.
     # ponytail: a worker closed by close-wrapped (no such bullet) or named only by its
@@ -179,6 +200,31 @@ close_only=""
 if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
     && ! grep -qE '^- .*(READY|PR) #?[0-9]+' "$worker"; then
     close_only=1
+    # a resumed worker's PR may be named only in the doc of the worker it continues (or of a
+    # sibling successor): any doc of the same worker base naming a PR keeps the merge verification
+    # a listing or read that fails keeps the verified path: the direct close is the one that kills
+    wk_base="$(worker_base "$worker")"
+    # every doc in the directory is listed: the worker_base filter below decides who is a sibling, so a
+    # legacy -legN<k>-/-leg<k>- original or a multi-letter successor is never missed by a name glob
+    # worker_base forks several processes and the live handovers directory holds thousands of docs, so a
+    # pure-bash prefilter runs first: every doc of an N<digits> base carries those digits in its name (a
+    # canonical N<k>[a-z]*, a legacy -legN<k>- or -leg<k>-), so a name without them is no sibling. Any
+    # other base (a whole-stem fallback label) skips the prefilter.
+    sib_key=""
+    if [[ $wk_base =~ ^N[0-9]+$ ]]; then sib_key="${wk_base#N}"; fi
+    if ! sibs="$(find "$(dirname "$worker")" -maxdepth 1 -type f -name '*.md')"; then
+        close_only=""
+    else
+        while IFS= read -r sib; do
+            [ -n "$sib" ] && [ "$sib" != "$worker" ] || continue
+            if [ -n "$sib_key" ]; then case "${sib##*/}" in *"$sib_key"*) ;; *) continue ;; esac; fi
+            [ "$(worker_base "$sib")" = "$wk_base" ] || continue
+            sib_rc=0; grep -qE '^- .*(READY|PR) #?[0-9]+' "$sib" || sib_rc=$?
+            if [ "$sib_rc" -ne 1 ]; then close_only=""; break; fi
+        done <<EOF
+$sibs
+EOF
+    fi
 fi
 
 errf="$(mktemp "${TMPDIR:-/tmp}/worker-event.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"

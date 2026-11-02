@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """series-ledger.py: the one reader and writer of a stacked series' ledger <sid>.json.
 
-Invariant: every ledger write goes through this script, under its lock; exactly one leg writes a series, and
+Invariant: every ledger write goes through this script, under its lock; exactly one worker writes a series, and
 only `pass` moves it.
 
 USAGE

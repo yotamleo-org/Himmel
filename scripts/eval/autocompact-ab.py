@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
-# scripts/eval/autocompact-ab.py - per-leg report for the autocompact
-# A/B (200k control vs 400k audited arm). Local-only: reads leg docs and Claude
+# scripts/eval/autocompact-ab.py - per-worker report for the autocompact
+# A/B (200k control vs 400k audited arm). Local-only: reads worker docs and Claude
 # Code session JSONL, runs no inference, sends nothing anywhere.
 #
-#   autocompact-ab.py [--manifest <fleet.json>]... [--doc <leg doc>]...
+#   autocompact-ab.py [--manifest <fleet.json>]... [--doc <worker doc>]...
 #                     [--projects <dir>] [--all] [--json]
 #
-# Legs come from fleet manifests (legs[].doc, optional legs[].arm) and/or --doc.
+# Workers come from fleet manifests (workers[].doc, optional workers[].arm) and/or --doc.
 # One row per TICKET-N<k> (scripts/lib/worker-identity.sh): a RESUME successor,
-# listed or found beside its parent, folds into the parent's row, and the leg is
-# wrapped when the LAST doc in the chain ends in WRAPPED. Only wrapped legs are
+# listed or found beside its parent, folds into the parent's row, and the worker is
+# wrapped when the LAST doc in the chain ends in WRAPPED. Only wrapped workers are
 # reported unless --all, and --all rows are marked open and never averaged. The
-# arm is the manifest `arm` (the launcher's record); a leg without one is
+# arm is the manifest `arm` (the launcher's record); a worker without one is
 # `unlabelled`, and a chain whose listed docs carry different arms, or that
 # holds a doc nobody listed, is `unproven`; both are left out of the summary. The
 # brief's `ab-400k` line is not evidence: a 200000 launch can carry it.
-# Legs with no matching transcript are `unmeasured` and left out of the means.
+# Workers with no matching transcript are `unmeasured` and left out of the means.
 #
-# Per leg: arm, compactions (count + the token level at each, `preTokens` of the
-# compact_boundary row), handoffs (RESUME docs beside the leg doc), input tokens
+# Per worker: arm, compactions (count + the token level at each, `preTokens` of the
+# compact_boundary row), handoffs (RESUME docs beside the worker doc), input tokens
 # split cache_read / cache_create / uncached, price-weighted cost (the same
 # weights as scripts/lanes/lib/burn-weights.sh, same WORKER_SESSION_BURN_W_* overrides),
 # wall-clock (first to last row timestamp), PR outcome and mean output tokens
@@ -27,7 +27,7 @@
 #
 # ponytail: PR outcome is read from the doc's Results bullets (READY count, PR
 # number, review-round mentions) because CI itself is not in the transcript;
-# upgrade path = join the leg-cost ledger `pr` against gh run history once the
+# upgrade path = join the worker-cost ledger `pr` against gh run history once the
 # A/B has data worth that.
 import argparse, glob, json, os, re, subprocess, sys
 from datetime import datetime
@@ -158,8 +158,8 @@ _IDENTITY_CACHE = {}
 
 def identity(doc):
     """(label, base, session names) from scripts/lib/worker-identity.sh, the one
-    derivation of a leg's identity; never a local regex. Warns on stderr when
-    the call fails or the doc name is not a leg doc (the stem is its own leg)."""
+    derivation of a worker's identity; never a local regex. Warns on stderr when
+    the call fails or the doc name is not a worker doc (the stem is its own worker)."""
     if doc in _IDENTITY_CACHE:
         return _IDENTITY_CACHE[doc]
     stem = os.path.basename(doc)
@@ -175,26 +175,26 @@ def identity(doc):
         if p.returncode == 0 and label:
             res = (label, base, [n for n in names.split(",") if n])
             if label == stem:
-                why = "not a leg doc name, grouped by its own stem"
+                why = "not a worker doc name, grouped by its own stem"
         else:
             why = "call failed (rc=%d)" % p.returncode
     except (OSError, subprocess.SubprocessError) as e:
         why = "call failed (%s)" % e
     if why:
-        print("autocompact-ab: leg-identity: %s: %s" % (stem, why), file=sys.stderr)
+        print("autocompact-ab: worker-identity: %s: %s" % (stem, why), file=sys.stderr)
     _IDENTITY_CACHE[doc] = res or (stem, stem, [stem])
     return _IDENTITY_CACHE[doc]
 
 
 def chain_key(doc, base):
-    """One leg = TICKET-N<k>: the ticket key of the stem plus worker_base."""
+    """One worker = TICKET-N<k>: the ticket key of the stem plus worker_base."""
     stem = os.path.basename(doc)
     m = re.match(r"^([A-Za-z][A-Za-z0-9]*-\d+)-", stem)
     return (m.group(1) if m else "", base)
 
 
 def resume_siblings(doc):
-    """RESUME docs beside `doc` that continue the same TICKET-N<k> leg."""
+    """RESUME docs beside `doc` that continue the same TICKET-N<k> worker."""
     m = STEM.match(os.path.basename(doc))
     if not m:
         return []
@@ -206,7 +206,7 @@ def resume_siblings(doc):
 
 
 def parent_docs(doc):
-    """Docs beside `doc` that ARE the leg itself (leg-identity label == base),
+    """Docs beside `doc` that ARE the worker itself (worker-identity label == base),
     whatever their naming: a listed RESUME successor does not follow the parent's
     -RESUME glob, so its parent brief is found here, never by a local regex."""
     m = STEM.match(os.path.basename(doc))
@@ -226,7 +226,7 @@ def parent_docs(doc):
 
 def chain_rows(members, projects, claimed):
     """members: {doc: {manifest arms}} sharing one TICKET-N<k>; `claimed` is the
-    set of transcript paths earlier rows already own. One row per leg."""
+    set of transcript paths earlier rows already own. One row per worker."""
     docs = {doc: None for doc in members}
     for doc in list(docs):
         for r in resume_siblings(doc) + parent_docs(doc):
@@ -267,12 +267,12 @@ def chain_rows(members, projects, claimed):
             if x not in seen_n:
                 seen_n.add(x)
                 names.append(x)
-    row = {"leg": stem, "arm": arm,
+    row = {"worker": stem, "arm": arm,
            "chain": [os.path.basename(p) for p, _ in parsed],
            "wrapped": bool(last) and last[-1][0] == "WRAPPED",
            "handoffs": len(parsed) - 1}
     row.update(pr_outcome(markers))
-    # a session titled for two legs belongs to the first row that claims it
+    # a session titled for two workers belongs to the first row that claims it
     paths = [p for p in find_transcripts(projects, names) if p not in claimed]
     claimed.update(paths)
     row["transcripts"] = len(paths)
@@ -292,16 +292,16 @@ def summary(rows):
     out = []
     for arm in ("200k", "400k"):
         every = [r for r in rows if r["arm"] == arm]
-        # a leg with no transcript is unmeasured, not zero: left out of the means
+        # a worker with no transcript is unmeasured, not zero: left out of the means
         # (a transcript with no usable assistant usage row counts as no transcript)
         rs = [r for r in every if r["transcripts"] > 0 and r["calls"] > 0]
         if not every:
             continue
         if not rs:
-            out.append({"arm": arm, "legs": 0, "unmeasured": len(every)})
+            out.append({"arm": arm, "workers": 0, "unmeasured": len(every)})
             continue
         ci = [r for r in rs if r["ci_first_try"] != "n/a"]
-        out.append({"arm": arm, "legs": len(rs), "unmeasured": len(every) - len(rs),
+        out.append({"arm": arm, "workers": len(rs), "unmeasured": len(every) - len(rs),
                     "compactions": round(mean([len(r["compactions"]) for r in rs]), 2),
                     "handoffs": round(mean([r["handoffs"] for r in rs]), 2),
                     "cost_eq": round(mean([r["cost_eq"] for r in rs])),
@@ -318,11 +318,11 @@ def main():
     ap.add_argument("--doc", action="append", default=[])
     ap.add_argument("--projects", default=os.path.join(
         os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"), "projects"))
-    ap.add_argument("--all", action="store_true", help="include legs that have not wrapped")
+    ap.add_argument("--all", action="store_true", help="include workers that have not wrapped")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
 
-    legs = []
+    workers = []
     for mf in a.manifest:
         try:
             mdata = json.load(open(mf))
@@ -332,23 +332,23 @@ def main():
                 raise ValueError("manifest carries the pre-rename legs array and the legacy-names switch is off")
             if mworkers is None:
                 mworkers = mdata.get("legs")
-            for leg in mworkers or []:
-                legs.append((leg.get("doc"), leg.get("arm")))
+            for worker in mworkers or []:
+                workers.append((worker.get("doc"), worker.get("arm")))
         except (OSError, ValueError) as e:
             print("autocompact-ab: unreadable manifest %s: %s" % (mf, e), file=sys.stderr)
             return 1
-    legs += [(d, None) for d in a.doc]
-    if not legs:
-        print("usage: autocompact-ab.py [--manifest <fleet.json>]... [--doc <leg doc>]...", file=sys.stderr)
+    workers += [(d, None) for d in a.doc]
+    if not workers:
+        print("usage: autocompact-ab.py [--manifest <fleet.json>]... [--doc <worker doc>]...", file=sys.stderr)
         return 2
 
     # one row per TICKET-N<k>: a listed RESUME successor folds into its parent
     groups, order = {}, []
-    for doc, arm in legs:
+    for doc, arm in workers:
         if not doc:
             continue
         if not os.path.isfile(doc):
-            print("autocompact-ab: unreadable leg doc, skipped: %s" % doc, file=sys.stderr)
+            print("autocompact-ab: unreadable worker doc, skipped: %s" % doc, file=sys.stderr)
             continue
         _, base, _ = identity(doc)
         key = chain_key(doc, base)
@@ -362,40 +362,40 @@ def main():
     for key in order:
         r = chain_rows(groups[key], a.projects, claimed)
         if r is None:
-            print("autocompact-ab: unreadable leg doc, skipped: %s" % key[1], file=sys.stderr)
+            print("autocompact-ab: unreadable worker doc, skipped: %s" % key[1], file=sys.stderr)
         elif r["wrapped"] or a.all:
             rows.append(r)
 
-    # open legs (--all) are listed for inspection, never averaged into the arms
+    # open workers (--all) are listed for inspection, never averaged into the arms
     summ = summary([r for r in rows if r["wrapped"]])
     if a.json:
-        print(json.dumps({"legs": rows, "summary": summ}, indent=2))
+        print(json.dumps({"workers": rows, "summary": summ}, indent=2))
         return 0
 
     print("%-52s %-8s %-10s %5s %-24s %4s %9s %9s %9s %9s %8s %7s %-5s %3s %6s" % (
-        "leg", "state", "arm", "comp", "compaction-levels", "hand", "cache-rd", "cache-cr",
+        "worker", "state", "arm", "comp", "compaction-levels", "hand", "cache-rd", "cache-cr",
         "uncached", "cost-eq", "wall-min", "out/trn", "ci-1st", "rev", "pr"))
     for r in rows:
         lv = ",".join(fmt_tok(c["tokens"]) for c in r["compactions"]) or "-"
         print("%-52s %-8s %-10s %5d %-24s %4d %9s %9s %9s %9s %8.1f %7.0f %-5s %3d %6s" % (
-            r["leg"][:52], "wrapped" if r["wrapped"] else "open", r["arm"], len(r["compactions"]), lv, r["handoffs"],
+            r["worker"][:52], "wrapped" if r["wrapped"] else "open", r["arm"], len(r["compactions"]), lv, r["handoffs"],
             fmt_tok(r["cache_read"]), fmt_tok(r["cache_create"]), fmt_tok(r["uncached"]),
             fmt_tok(r["cost_eq"]), r["wall_s"] / 60.0, r["mean_out_per_turn"],
             r["ci_first_try"], r["review_rounds"], r["pr"] or "-"))
         if r["transcripts"] == 0 or r["calls"] == 0:
-            print("  ^ no measured transcript for this leg (customTitle not matched or no usage rows)")
+            print("  ^ no measured transcript for this worker (customTitle not matched or no usage rows)")
     unl = [r for r in rows if r["arm"] in ("unlabelled", "unproven")]
     if unl:
-        print("\n%d unlabelled or arm-unproven leg(s) left out of the summary" % len(unl))
-    print("\narm summary (means per leg)")
-    print("%-5s %5s %6s %6s %10s %9s %8s %7s %4s  (legs without a transcript are excluded)" % (
-        "arm", "legs", "comp", "hand", "cost-eq", "wall-min", "out/trn", "ci-1st", "rev"))
+        print("\n%d unlabelled or arm-unproven worker(s) left out of the summary" % len(unl))
+    print("\narm summary (means per worker)")
+    print("%-5s %5s %6s %6s %10s %9s %8s %7s %4s  (workers without a transcript are excluded)" % (
+        "arm", "workers", "comp", "hand", "cost-eq", "wall-min", "out/trn", "ci-1st", "rev"))
     for s in summ:
-        if s["legs"] == 0:
-            print("%-5s %5d  (no measured leg; %d unmeasured)" % (s["arm"], 0, s["unmeasured"]))
+        if s["workers"] == 0:
+            print("%-5s %5d  (no measured worker; %d unmeasured)" % (s["arm"], 0, s["unmeasured"]))
             continue
         print("%-5s %5d %6.2f %6.2f %10s %9.1f %8.0f %7s %4.2f" % (
-            s["arm"], s["legs"], s["compactions"], s["handoffs"], fmt_tok(s["cost_eq"]),
+            s["arm"], s["workers"], s["compactions"], s["handoffs"], fmt_tok(s["cost_eq"]),
             s["wall_s"] / 60.0, s["out_per_turn"], s["ci_first_try"], s["review_rounds"]))
     return 0
 

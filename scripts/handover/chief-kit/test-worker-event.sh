@@ -95,6 +95,62 @@ check "6b wrap not run" "$calls" ""
 run "WRAPPED N2078 (N2078 again)"
 check "6c same label twice rc" "$rc" 0
 
+# a MERGED/WRAPPED from N4304 finds the resumed manifest entry N4304b
+cat > "$W/list-resume" <<'EOF'
+#!/usr/bin/env bash
+[ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
+echo ok >> "$0.ran"
+printf '%s\n' /h/HIMMEL-1-N2078-foo-2026-10-14.md /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md
+EOF
+chmod +x "$W/list-resume"
+LE_LIST="$W/list-resume" run "MERGED #4400 → abcdef01 (N4304)"
+check "6d 8424 N4304 message, N4304b manifest entry: rc" "$rc" 0
+contains "6d 8424 HANDLED" "$out" "HANDLED wrap-merged N4304"
+contains "6d 8424 wrap gets the resumed entry" "$calls" "/h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md --pr 4400"
+cat > "$W/list-resume2" <<'EOF'
+#!/usr/bin/env bash
+[ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
+echo ok >> "$0.ran"
+printf '%s\n' /h/HIMMEL-8-N4304b-resumed-2026-10-31-RESUME.md /h/HIMMEL-8-N4304c-resumed-2026-11-01-RESUME.md
+EOF
+chmod +x "$W/list-resume2"
+LE_LIST="$W/list-resume2" run "MERGED #4400 → abcdef01 (N4304)"
+check "6d2 8424 two resumed entries for one label: rc" "$rc" 10
+contains "6d2 8424 reason" "$out" "ESCALATE ambiguous-label"
+check "6d2 8424 wrap not run" "$calls" ""
+# a replay of a label already recorded closed cannot tell the closed worker from its successor
+printf '%s\n' '- 10:00 N4304 WRAPPED, window closed.' > "$W/doc"
+LE_LIST="$W/list-resume" run "MERGED #4400 → abcdef01 (N4304)"
+check "6d3 8424 closed label with a successor entry: rc" "$rc" 10
+contains "6d3 8424 reason" "$out" "ESCALATE ambiguous-label"
+check "6d3 8424 wrap not run" "$calls" ""
+: > "$W/doc"
+# the label must match the doc's file name, not a directory or slug that mentions it
+cat > "$W/list-slug" <<'EOF'
+#!/usr/bin/env bash
+[ "$#" -eq 1 ] && [ "${1##*/}" = fleet.json ] || exit 1
+echo ok >> "$0.ran"
+printf '%s\n' /h/N4304b-dir/HIMMEL-8-N9000-check-status.md /h/HIMMEL-8-N9000-see-N4304b-note.md
+EOF
+chmod +x "$W/list-slug"
+# a list stub that failed would read as an empty manifest and make the not-in-manifest rows pass: prove it listed
+rm -f "$W/list-slug.ran" "$W/list-resume.ran"
+LE_LIST="$W/list-slug" run "WRAPPED N4304"
+check "6d4 8424 a directory or slug naming N4304b is not the worker: rc" "$rc" 10
+contains "6d4 8424 reason" "$out" "not-in-manifest N4304"
+check "6d4 8424 wrap not run" "$calls" ""
+check "6d4 8424 the list stub ran and listed" "$(cat "$W/list-slug.ran" 2>/dev/null)" "ok"
+LE_LIST="$W/list-resume" run "WRAPPED N43"
+check "6e 8424 a shorter label never matches N4304b: rc" "$rc" 10
+contains "6e 8424 reason" "$out" "not-in-manifest N43"
+check "6e 8424 the list stub ran and listed" "$(cat "$W/list-resume.ran" 2>/dev/null)" "ok"
+rm -f "$W/list-resume.ran"
+LE_LIST="$W/list-resume" run "WRAPPED N4399"
+check "6f 8424 an unrelated label still escalates: rc" "$rc" 10
+contains "6f 8424 reason" "$out" "not-in-manifest N4399"
+check "6f 8424 wrap not run" "$calls" ""
+check "6f 8424 the list stub ran and listed" "$(cat "$W/list-resume.ran" 2>/dev/null)" "ok"
+
 LE_WRAP_RC=3 LE_WRAP_ERR="wrap-merged: step pr-state failed: PR #2566 is 'OPEN'" run "MERGED #2566 N2088"
 check "7 rc" "$rc" 10
 contains "7 escalate rc" "$out" "ESCALATE wrap-merged-failed rc=3"
@@ -260,6 +316,62 @@ contains "13 refused close escalates" "$out" "ESCALATE close-wrapped-failed rc=3
 contains "13 refusal surfaced" "$out" "queue lock held"
 # read-sink-ok: LE_LIVE_CALLS is the suite's own scratch file under $W
 check "13 refused close runs no live-state" "$(cat "$LE_LIVE_CALLS")" ""
+
+# 13b. a WRAPPED that resolves to a successor doc with no PR of its own, while the original sibling names one,
+# takes wrap-merged's merge verification, never the direct close
+printf '%s\n' '## Results' '- 10:00 READY 2553 abc' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-6-N5001-orig-2026-10-14.md"
+printf '%s\n' '## Results' '- 11:00 WRAPPED done' > "$W/HIMMEL-6-N5001b-orig-2026-10-14-RESUME.md"
+printf '%s\n' '## Results' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-7-N5002-plain-2026-10-14.md"
+printf '%s\n' '## Results' '- 11:00 WRAPPED done' > "$W/HIMMEL-7-N5002b-plain-2026-10-14-RESUME.md"
+cat > "$W/list13b" <<EOF3
+#!/usr/bin/env bash
+printf '%s\n' $W/HIMMEL-6-N5001b-orig-2026-10-14-RESUME.md $W/HIMMEL-7-N5002b-plain-2026-10-14-RESUME.md
+EOF3
+chmod +x "$W/list13b"
+LE_LIST="$W/list13b" run "WRAPPED N5001."
+check "13b successor with a PR-marked original: rc" "$rc" 0
+contains "13b successor with a PR-marked original goes to wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/fleet.json $W/HIMMEL-6-N5001b-orig-2026-10-14-RESUME.md"
+lacks "13b successor with a PR-marked original is not closed directly" "$calls" "close"
+LE_LIST="$W/list13b" run "WRAPPED N5002."
+contains "13b successor and original both without a PR: direct close" "$calls" "close --fleet $W/fleet.json $W/HIMMEL-7-N5002b-plain-2026-10-14-RESUME.md"
+lacks "13b no PR anywhere: wrap-merged not run" "$calls" "wrap --doc"
+# a legacy-named original (-leg<k>-) and a multi-letter successor (N5004bc) are still siblings of one worker
+printf '%s\n' '## Results' '- 10:00 READY 2554 abc' '- 10:30 WRAPPED hand-off' > "$W/HIMMEL-8-legN5004-orig-2026-10-14.md"
+printf '%s\n' '## Results' '- 11:00 WRAPPED done' > "$W/HIMMEL-8-N5004bc-orig-2026-10-14-RESUME.md"
+cat > "$W/list13c" <<EOF3
+#!/usr/bin/env bash
+printf '%s\n' $W/HIMMEL-8-N5004bc-orig-2026-10-14-RESUME.md
+EOF3
+chmod +x "$W/list13c"
+LE_LIST="$W/list13c" run "WRAPPED N5004."
+contains "13b legacy-named original with a PR goes to wrap-merged" "$calls" "wrap --doc $W/doc --fleet $W/fleet.json $W/HIMMEL-8-N5004bc-orig-2026-10-14-RESUME.md"
+lacks "13b legacy-named original with a PR is not closed directly" "$calls" "close"
+# 13d. unrelated docs in the directory cost no worker_base call each (the live handovers dir holds thousands;
+# worker_base forks sed, so a sed shim counts the calls): the count with 40 extra unrelated docs equals the count without
+D13="$W/d13d"; mkdir -p "$D13" "$W/shim"
+cat > "$W/shim/sed" <<EOF5
+#!/usr/bin/env bash
+echo x >> "$W/sedcalls"
+exec $(command -v sed) "\$@"
+EOF5
+chmod +x "$W/shim/sed"
+printf '%s\n' '## Results' '- 10:30 WRAPPED done' > "$D13/HIMMEL-12-N5010-plain-2026-10-14.md"
+cat > "$W/list13d" <<EOF6
+#!/usr/bin/env bash
+printf '%s\n' $D13/HIMMEL-12-N5010-plain-2026-10-14.md
+EOF6
+chmod +x "$W/list13d"
+: > "$W/sedcalls"
+PATH="$W/shim:$PATH" LE_LIST="$W/list13d" run "WRAPPED N5010."
+contains "13d sole doc: direct close" "$calls" "close --fleet $W/fleet.json $D13/HIMMEL-12-N5010-plain-2026-10-14.md"
+# read-sink-ok: sedcalls is the suite's own scratch file under $W
+sed_alone="$(wc -l < "$W/sedcalls" | tr -d ' ')"
+for i in $(seq 1 40); do printf '%s\n' '## Results' '- 10:00 READY 9999 abc' > "$D13/HIMMEL-$((100 + i))-N$((7000 + i))-other-2026-10-14.md"; done
+: > "$W/sedcalls"
+PATH="$W/shim:$PATH" LE_LIST="$W/list13d" run "WRAPPED N5010."
+contains "13d with unrelated PR-naming docs present: still a direct close" "$calls" "close --fleet $W/fleet.json $D13/HIMMEL-12-N5010-plain-2026-10-14.md"
+# read-sink-ok: sedcalls is the suite's own scratch file under $W
+check "13d unrelated docs add no worker_base calls" "$(wc -l < "$W/sedcalls" | tr -d ' ')" "$sed_alone"
 
 LE_LIST="$W/list13" run "MERGED #2566 N3001"
 contains "13 MERGED never takes the close path" "$calls" "wrap --doc"

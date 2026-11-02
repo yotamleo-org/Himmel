@@ -30,13 +30,19 @@
 #   - `queue-lock.sh status <worker-doc>` reports free (rc=0);
 #   - the doc's last `## Results` marker-bullet (one of LIVE/FINDING/
 #     RESOLVED/READY/BLOCKED/HALTED/WRAPPED, leading token of the newest
-#     such bullet) is WRAPPED;
+#     such bullet) is WRAPPED, read from the Results section and the `## Chief Rulings` / `## Console Rulings` sections the
+#     writers add below it (a bullet in any other later section, a `## Notes` line naming WRAPPED or
+#     starting with LIVE, is no tail); a -RESUME doc with no marker-bullet of its own reads the original's
+#     (a resumed worker's WRAPPED lands on the original doc) only when the original's Results hold,
+#     after the hand-off WRAPPED naming the -RESUME doc, a LIVE with a new release token and then a
+#     WRAPPED, and the sibling's queue lock must be free too;
 #   - exactly one live `claude` session's real argv (via
 #     scripts/lanes/lib/claude-sessions.sh's claude_sessions, /proc-argv
 #     based, never a flattened pgrep -af scan) carries a `-n <name>` naming
 #     the worker (names derived by scripts/lib/worker-identity.sh's worker_identity -
-#     the doc stem, its undated form, and any legacy-family derived name; a
-#     relaunched worker's trailing -r<N> on the session name is accepted).
+#     the doc stem, its undated form, and any legacy-family derived name, each also
+#     with -RESUME, plus the sibling doc's names; a relaunched worker's trailing -r<N>
+#     on the session name is accepted).
 # ponytail: name-only window match, upgrade path HIMMEL-5928: the launch record
 # (launch-logs/<name>.log) holds no pid and a finished worker's lock is free, so
 # there is no recorded pid to resolve by. Upgrade path: have headed-arm-worker.sh
@@ -85,9 +91,16 @@
 #      Not for --chief: a predecessor chief with 0 sessions still exits 5.
 #   1  gh/git/queue-lock plumbing failure, or the TERM signal itself failed
 #   2  usage (missing/unreadable doc)
-#   3  refused - the queue lock is not free
-#   4  refused - the doc's last marker-bullet is not WRAPPED
-#   5  refused - >1 live sessions matched the worker's names (0 for a --chief)
+#   3  refused - the queue lock is not free: on the doc, or on its sibling doc (the
+#      <stem>-RESUME.md of an original doc, the original of a -RESUME doc) when one exists
+#   4  refused - the last marker-bullet is not WRAPPED: the doc's own (a -RESUME doc with no
+#      marker of its own reads the original's, only with hand-off evidence); an original doc is
+#      also refused while its -RESUME sibling has a last marker-bullet that is not WRAPPED; and
+#      both docs of a pair are refused while the -RESUME doc has no marker-bullet and the
+#      original's Results hold no successor LIVE (new release token) then WRAPPED after the
+#      hand-off WRAPPED (no hand-off evidence)
+#   5  refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
+#      doc has more than one successor -RESUME doc (-N<k>[a-z]-...-RESUME.md)
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
 #   7  refused - the matched session still has a live in-process subagent (an
@@ -164,7 +177,9 @@ if [ "$SWEEP_MODE" -eq 1 ]; then
         case "$sw_rc" in
             0) sw_closed=$((sw_closed + 1))
                if [ "$CHECK_MODE" -eq 1 ]; then echo "sweep: would close $sw_doc"; else echo "sweep: closed $sw_doc"; fi ;;
-            3|4) sw_skipped=$((sw_skipped + 1)) ;;
+            3|4) sw_skipped=$((sw_skipped + 1))
+                 # a doc that reads WRAPPED further down but whose Results tail is not would strand its window silently
+                 case "$sw_out" in *"not the worker's tail"*) echo "sweep: skipped $sw_doc (rc=$sw_rc): $(printf '%s\n' "$sw_out" | tail -n 1)" ;; esac ;;
             *) sw_refused=$((sw_refused + 1)); echo "sweep: refused $sw_doc (rc=$sw_rc): $(printf '%s\n' "$sw_out" | tail -n 1)" ;;
         esac
     done <<EOF
@@ -190,6 +205,56 @@ if ! bash "$HERE/../queue-lock.sh" status "$DOC" >/dev/null 2>&1; then
     exit 3
 fi
 
+# a worker relaunched under a -RESUME session has two docs, the original and
+# <stem>-RESUME.md, and WRAPPED may land on either. The sibling's lock must be free too.
+# The resumed worker's label carries a successor letter (N4426b), so the sibling is found by
+# the label with and without it: a RESUME doc looks for the original (letter dropped, with and
+# without -RESUME); an original looks for <stem>-RESUME.md, else the one -N<k>[a-z]-...-RESUME.md
+# successor (more than one is refused).
+# shellcheck source=scripts/lib/worker-identity.sh
+# shellcheck disable=SC1091
+if ! . "$HERE/../../lib/worker-identity.sh"; then
+    echo "close-wrapped-worker: cannot load scripts/lib/worker-identity.sh" >&2
+    exit 1
+fi
+SIB_DOC=""
+sib_dir="$(dirname "$DOC")"
+sib_base="$(basename "$DOC" .md)"
+sib_label="$(worker_label "$DOC")"
+if [[ $DOC == *-RESUME.md ]]; then
+    sib_stem="${sib_base%-RESUME}"
+    sib_cands="$sib_dir/$sib_stem.md"
+    if [[ $sib_label =~ ^(N[0-9]+)[a-z]+$ ]]; then
+        sib_dropped="$(printf '%s' "$sib_stem" | sed -E "s/-(leg)?${sib_label}(-|\$)/-\\1${BASH_REMATCH[1]}\\2/")"
+        sib_cands="$sib_cands"$'\n'"$sib_dir/$sib_dropped.md"$'\n'"$sib_dir/$sib_dropped-RESUME.md"
+    fi
+    while IFS= read -r sib_c; do
+        [ -f "$sib_c" ] && [ "$sib_c" != "$DOC" ] && { SIB_DOC="$sib_c"; break; }
+    done <<EOF
+$sib_cands
+EOF
+elif [ -f "$sib_dir/$sib_base-RESUME.md" ]; then
+    SIB_DOC="$sib_dir/$sib_base-RESUME.md"
+else
+    sib_pat="$(printf '%s' "$sib_base" | sed -E "s/(-(leg)?)${sib_label}(-|\$)/\\1${sib_label}[a-z]\\3/")"
+    if [ "$sib_pat" != "$sib_base" ]; then
+        sib_found="$(find "$sib_dir" -maxdepth 1 -type f -name "$sib_pat-RESUME.md")" || {
+            echo "close-wrapped-worker: cannot list $sib_dir for successor -RESUME docs" >&2
+            exit 1
+        }
+        sib_n="$(printf '%s' "$sib_found" | grep -c .)"
+        if [ "$sib_n" -gt 1 ]; then
+            echo "close-wrapped-worker: refusing - $sib_n successor -RESUME docs match $DOC; close the right one by name" >&2
+            exit 5
+        fi
+        SIB_DOC="$sib_found"
+    fi
+fi
+if [ -n "$SIB_DOC" ] && ! bash "$HERE/../queue-lock.sh" status "$SIB_DOC" >/dev/null 2>&1; then
+    echo "close-wrapped-worker: refusing - the queue lock on its sibling doc $SIB_DOC is not free" >&2
+    exit 3
+fi
+
 # shellcheck source=scripts/lib/worker-tail-status.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/worker-tail-status.sh"; then
@@ -197,8 +262,99 @@ if ! . "$HERE/../../lib/worker-tail-status.sh"; then
     exit 1
 fi
 
-last_marker=$(worker_tail_status "$DOC")
+# resume_evidence <original doc> <resume doc>: success only on a record that nothing but the resumed
+# worker writes. In the original's `## Results` section: the hand-off is the first WRAPPED at or after
+# the first bullet naming the resume doc's stem; after it comes a LIVE carrying a release token
+# (`<host>-pid<N>`) other than the last LIVE token before the hand-off, then a WRAPPED. A bullet that
+# merely names the stem, a later marker of any kind, and file mtimes (a launch, a bus adopt and a vault
+# pull all rewrite them) prove nothing about a successor that has just started.
+resume_evidence() {
+    local stem
+    stem=$(basename "$2" .md)
+    awk -v stem="$stem" '
+        /^## Results( |$)/ { seen = 1; inres = 1; next }
+        /^## / { inres = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
+        !inres || !/^- / { next }
+        {
+            mk = ""; tok = ""
+            if (match($0, /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/)) {
+                mk = substr($0, RSTART, RLENGTH)
+                sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", mk)
+                sub(/[^A-Za-z0-9_]$/, "", mk)
+            }
+            if (mk == "LIVE" && match($0, /`[^`]*-pid[0-9]+`/)) tok = substr($0, RSTART + 1, RLENGTH - 2)
+            if (!named && index($0, stem)) named = 1
+            if (named && !hand && mk == "WRAPPED") { hand = 1; next }
+            if (!hand) { if (tok != "") pred = tok; next }
+            if (!live && tok != "" && tok != pred) { live = 1; next }
+            if (live && mk != "") tailmk = mk
+            if (live && mk == "WRAPPED") wrapped = 1
+        }
+        END { exit !(wrapped && tailmk == "WRAPPED") }' "$1"
+}
+
+# results_tail_status <doc>: the doc's tail status read from its `## Results` section and the ruling sections
+# the writers add after it (`## Chief Rulings`, `## Console Rulings`), through the one marker parser
+# (worker_tail_status). append-results.sh appends at the end of the file, so once inbox-send adds a ruling
+# section the worker's later bullets sit below it and still count; a bullet in any other later section (a
+# `## Notes` line that mentions WRAPPED) never reads as the worker's tail. Prints `nosection` for a doc with
+# no Results heading (a legacy doc: the whole-file tail stands). Returns 1 when the text cannot be copied.
+results_tail_status() {
+    local tmp out
+    if ! grep -qE '^## Results( |$)' "$1" 2>/dev/null; then printf 'nosection'; return 0; fi
+    tmp=$(mktemp "${TMPDIR:-/tmp}/cww-results.XXXXXX") || return 1
+    if ! awk '/^## Results( |$)/ { seen = 1; keep = 1; next } /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next } keep' "$1" > "$tmp"; then rm -f "$tmp"; return 1; fi
+    out=$(worker_tail_status "$tmp"); rm -f "$tmp"
+    printf '%s' "$out"
+}
+
+# doc_tail_status <doc>: the status the close gates read for a doc - its Results tail (results_tail_status),
+# or the whole-file tail for a legacy doc with no Results heading. Returns 1 when the doc cannot be read.
+doc_tail_status() {
+    local rt
+    rt=$(results_tail_status "$1") || return 1
+    if [ "$rt" = nosection ]; then worker_tail_status "$1"; else printf '%s' "$rt"; fi
+}
+
+if ! last_marker=$(doc_tail_status "$DOC"); then
+    echo "close-wrapped-worker: refusing - cannot read the ## Results section of $DOC" >&2
+    exit 4
+fi
+tail_doc="$DOC"   # the doc last_marker is read from
+if [ -n "$SIB_DOC" ]; then
+    if [[ $DOC == *-RESUME.md ]]; then sib_res="$DOC"; sib_orig="$SIB_DOC"; else sib_res="$SIB_DOC"; sib_orig="$DOC"; fi
+    if ! res_marker=$(doc_tail_status "$sib_res"); then
+        echo "close-wrapped-worker: refusing - cannot read the ## Results section of $sib_res" >&2
+        exit 4
+    fi
+    if [ -z "$res_marker" ]; then
+        # the resumed worker has written nothing of its own yet, so it may be a successor that has just
+        # started: only the successor's own record on the original (a LIVE with a new release token,
+        # then its WRAPPED, after the hand-off) lets either doc close
+        if ! resume_evidence "$sib_orig" "$sib_res"; then
+            echo "close-wrapped-worker: refusing - $sib_res has no marker-bullet of its own and $sib_orig holds no successor LIVE (new release token) then WRAPPED after the hand-off (no hand-off evidence)" >&2
+            exit 4
+        fi
+        if [[ $DOC == *-RESUME.md ]]; then
+            tail_doc="$sib_orig"
+            if ! last_marker=$(doc_tail_status "$sib_orig"); then
+                echo "close-wrapped-worker: refusing - cannot read the ## Results section of $sib_orig" >&2
+                exit 4
+            fi
+        fi
+    elif [ "$res_marker" != "WRAPPED" ] && [[ $DOC != *-RESUME.md ]]; then
+        # an original doc's WRAPPED is stale once its -RESUME doc reports anything newer than WRAPPED
+        echo "close-wrapped-worker: refusing - the sibling doc $SIB_DOC last Results marker-bullet is '$res_marker', not WRAPPED" >&2
+        exit 4
+    fi
+fi
 if [ "$last_marker" != "WRAPPED" ]; then
+    # the whole-file tail can still read WRAPPED: a bullet in a section after Results that is not a ruling section
+    # (a ## Notes line naming WRAPPED) is no worker tail, and a sweep must say so rather than strand the window
+    if [ "$(worker_tail_status "$tail_doc")" = WRAPPED ]; then
+        echo "close-wrapped-worker: refusing - the ## Results tail of $tail_doc (with its Chief/Console Rulings sections) is '${last_marker:-<none>}', not WRAPPED: a WRAPPED in any other later section is not the worker's tail" >&2
+        exit 4
+    fi
     echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
 fi
@@ -338,10 +494,24 @@ names=",${ident#*$'\t'},${doc_stem},"
 orig_names=""
 if [[ $DOC == *-RESUME.md && ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
     orig_label="${BASH_REMATCH[1]}"
+    set -f
     for resume_name in ${names//,/ }; do
         orig_names="$orig_names,$(printf '%s' "$resume_name" | sed -E "s/-(leg)?${ident%%$'\t'*}(-|\$)/-\\1${orig_label}\\2/")"
     done
+    set +f
     names="$names${orig_names#,},"
+fi
+# the resumed worker's window is named <stem>-RESUME (the original doc's stem plus
+# -RESUME), or carries the sibling doc's own names (its b-suffixed label included).
+if [[ $DOC != *-RESUME.md ]]; then
+    ident_names="${ident#*$'\t'}"
+    set -f
+    for ident_name in ${ident_names//,/ }; do names="$names${ident_name}-RESUME,"; done
+    set +f
+fi
+if [ -n "$SIB_DOC" ]; then
+    sib_ident=$(worker_identity "$SIB_DOC")
+    names="$names${sib_ident#*$'\t'},$(basename "$SIB_DOC" .md),"
 fi
 
 sessions=$(claude_sessions)
@@ -376,7 +546,8 @@ EOF
 # runs under any of the worker's names: the window already exited. That is a close, not a
 # refusal. A predecessor chief keeps the refusal (chief-wait.sh reads its rc 5).
 if [ "$match_count" -eq 0 ] && [ "$CHIEF_MODE" -eq 0 ]; then
-    echo "CLOSED-ALREADY: $(worker_label "$DOC") has no live session under [${ident#*$'\t'}]; nothing to signal"
+    names_shown="$(printf '%s' "$names" | tr -s ',' | sed -E 's/^,//; s/,$//')"
+    echo "CLOSED-ALREADY: $(worker_label "$DOC") has no live session under [$names_shown]; nothing to signal"
     [ "$CHECK_MODE" -eq 1 ] && exit 0
     close_success
 fi

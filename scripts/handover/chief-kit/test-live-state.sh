@@ -48,12 +48,12 @@ cat > "$con" <<'DOC'
 
 ## Live state
 
-legs: `N99:old-nonce:old-lock:1` (N50 WRAPPED earlier)
+workers: `N99:old-nonce:old-lock:1` (N50 WRAPPED earlier)
 queue: none
 last GO: none
 
 ## Results
-- legs: `N61:not:an:entry` in a bullet below the section
+- workers: `N61:not:an:entry` in a bullet below the section
 DOC
 
 # 4. a new worker without --nonce is refused, doc untouched.
@@ -77,7 +77,7 @@ check '3. a worker off the manifest drops' none "$r"
 case "$line" in *'(N50 WRAPPED earlier)'*) r=kept ;; *) r=lost ;; esac
 check '5. prose on the workers: line survives' kept "$r"
 check '5. the queue: field is untouched' 'queue: none' "$(grep '^queue:' "$con")"
-check '5. a legs: bullet outside Live state is untouched' '- legs: `N61:not:an:entry` in a bullet below the section' "$(grep '^- legs:' "$con")"
+check '5. a workers: bullet outside Live state is untouched' '- workers: `N61:not:an:entry` in a bullet below the section' "$(grep '^- workers:' "$con")"
 
 # 2. rerun with no flags keeps nonce and pid.
 cp "$con" "$tmp/after1"
@@ -105,11 +105,11 @@ check '6. --print leaves the doc untouched' "$(cat "$tmp/after2")" "$(cat "$con"
 case "$out" in 'workers: `N61:nonce-61:tok-one:111`'*) r=yes ;; *) r=no ;; esac
 check '6. --print prints the workers: line' yes "$r"
 
-# 7. no legs: line.
+# 7. no workers: line.
 printf '# c\n\n## Live state\n\nqueue: none\n' > "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md"
 bash "$FM" add "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md" --nonce N61=x >/dev/null 2>&1; rc=$?
-check '7. a doc with no legs: line is refused' 1 "$rc"
+check '7. a doc with no workers: line is refused' 1 "$rc"
 
 # 8. a backslash in a nonce is refused (awk -v would interpret it).
 before8="$(cat "$con")"
@@ -200,7 +200,7 @@ lk2="$HANDOVER_DIR/b/HIMMEL-nextleg-M-chief.md"
 lk2d="$HANDOVER_DIR/b/HIMMEL-4869-N91-pilot.md"; lk2s="$HANDOVER_DIR/b/HIMMEL-4869-N92-str.md"
 : > "$lk2d"; : > "$lk2s"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\n\n## Results\n' > "$lk2"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N91","lane":"","lockless":true},{"doc":"%s","label":"N92","lane":"native","lockless":"true"}]}\n' "$lk2d" "$lk2s" > "${lk2%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N91","lane":"","lockless":true},{"doc":"%s","label":"N92","lane":"native","lockless":"true"}]}\n' "$lk2d" "$lk2s" > "${lk2%.md}.fleet.json"
 lk2_err="$(bash "$SCRIPT" "$lk2" 2>&1 >/dev/null)"
 check '16. an empty lane is listed as unknown' "lockless: N91 (unknown) $lk2d" "$(grep '^lockless:' "$lk2")"
 case "$lk2_err" in *'N92 holds no lock'*) r=visible ;; *) r="[$lk2_err]" ;; esac
@@ -215,7 +215,7 @@ status: LIVE
 # chief
 ## Live state
 head: abc123
-legs: `N61:nonce:held-lock:13`
+workers: `N61:nonce:held-lock:13`
   `N62:nonce-two:held-two:14`
 queue: held.md
 lock: own-lock
@@ -232,7 +232,7 @@ PRIVATE body
 1. PRIVATE numbered body list
 
 ## Results
-legs: `N99:not:a:worker`
+workers: `N99:not:a:worker`
 PRIVATE history
 DOC
 before_digest="$(cat "$digest_doc")"
@@ -240,7 +240,7 @@ digest_out="$(bash "$SCRIPT" "$digest_doc" --digest 2>/dev/null)"; rc=$?
 check '17. digest works without a manifest' 0 "$rc"
 want_digest='status: LIVE
 head: abc123
-legs: `N61:nonce:held-lock:13` `N62:nonce-two:held-two:14`
+workers: `N61:nonce:held-lock:13` `N62:nonce-two:held-two:14`
 queue: held.md
 lock: own-lock
 open rulings: 2

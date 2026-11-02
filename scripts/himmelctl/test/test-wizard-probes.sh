@@ -4997,7 +4997,7 @@ const item = {
   id: 'engine-allowlist-fixture', probe: {
     type: 'engine-allowlist', script: 'scripts/hooks/cadence-approve-engines.sh',
     envVar: 'PIPELINE_BAT_DIR', defaultSubdir: '.claude/pipeline-cadence',
-    legs: [{ schedule: 'health', requiredSuffixes: ['no/such/engine-script-exists.py'] }],
+    workers: [{ schedule: 'health', requiredSuffixes: ['no/such/engine-script-exists.py'] }],
   },
 };
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user', env: process.env };
