@@ -1095,6 +1095,17 @@ if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-preflight'; then pass; els
     fail "4e-b must refuse with reason=missing-preflight: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
+# 4e-e. The shape a real design panel writes: critic-first-pass.sh stamps the full
+# commit at HEAD, here the base the branch was cut from, before any preflight.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+_pf_base=$(git -C "$tmp" rev-parse --verify refs/heads/main)
+write_ledger "$tmp" "$(_pf_score 2026-11-01T03:39:00Z "$_pf_base")" "$(_pf_row 2026-11-01T07:17:54Z "$sha")" \
+    "$(_pf_score 2026-11-01T07:19:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "4e-e a design panel score at the base commit before the preflight does not count → exit 0"
+rm -rf "$tmp"
+
 # 4e-c. Fail closed: a merge-base that cannot be read never reports ok.
 make_repo || exit 1
 write_marker "$tmp" "$sha" full .git/test-origin.git deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
@@ -3166,6 +3177,36 @@ if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round' && gr
     fail "8aa-diff must refuse with reason=unadjudicated-earlier-round naming d1@$_r1: $LAST_CLEAR_OUT"; fi
 if grepq "$LAST_CLEAR_OUT" -F 'still-open codex-1' || grepq "$LAST_CLEAR_OUT" -F 'still-open claude-18'; then
     fail "8aa-diff must not hold the spec or plan rows: $LAST_CLEAR_OUT"; else pass; fi
+rm -rf "$tmp"
+
+# 8aa-diff-nonhex. Control: an agreed diff row at a non-commit head never leaves
+# gate 4c; only artifact spec or plan does. The clear path stops at the sweep gate
+# first (SWEEP_RE takes hex heads only), so promote is asked directly as well.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-spec","branch":"feat/x","model":"codex","finding_id":"d2","severity":"imp","file":"a.sh","line":1,"verdict":"agreed"}')" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8aa-diff-nonhex an agreed diff row at a non-commit head is refused -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep'; then pass; else
+    fail "8aa-diff-nonhex must stop at the sweep gate: $LAST_CLEAR_OUT"; fi
+_nh_rc=0
+_nh_out=$(cd "$tmp" && bash "$tmp/scripts/cr/review-round.sh" promote --branch feat/x --head "$sha" 2>&1) || _nh_rc=$?
+if [ "$_nh_rc" -eq 3 ] && grepq "$_nh_out" -F 'still-open d2@himmel-8'; then pass; else
+    fail "8aa-diff-nonhex promote must hold d2@himmel-8519-spec (rc=$_nh_rc): $_nh_out"; fi
+rm -rf "$tmp"
+
+# 8aa-diff-prefix. Same control through the whole clear path: a head that starts
+# with a commit hex satisfies the sweep gate's prefix match, so gate 4c decides.
+sweep_fixture
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"%s-spec","branch":"feat/x","model":"codex","finding_id":"d3","severity":"imp","file":"a.sh","line":1,"verdict":"agreed"}' "$_r1")" \
+    "$(avail_ok "${_tip:0:8}")"
+write_sweeps "$tmp" "SWEEP [d3@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4"
+run_clear "$tmp" 14 "8aa-diff-prefix an agreed diff row past the sweep gate at a non-commit head stays open -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round' && grepq "$LAST_CLEAR_OUT" -F "still-open d3@$_r1"; then pass; else
+    fail "8aa-diff-prefix must refuse with reason=unadjudicated-earlier-round naming d3: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
 # 8aa-commit. Control: an agreed spec row at a real commit head is a code finding
