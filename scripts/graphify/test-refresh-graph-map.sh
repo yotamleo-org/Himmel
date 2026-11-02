@@ -1578,10 +1578,10 @@ for q_run in 1 2; do
 done
 [ "$(sed -n 1p "$QLOG")" = "queued=3" ] \
   && pass "T22d first run over an unseeded corpus queues every file (queued=3)" \
-  || fail "T22d first run should queue 3 files: $(cat "$QLOG")"
+  || fail "T22d first run should queue 3 files: $(cat "$QLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
 [ "$(sed -n 2p "$QLOG")" = "queued=0" ] \
   && pass "T22d second run over the unchanged corpus queues zero files" \
-  || fail "T22d second run over an unchanged corpus should queue 0 files: $(cat "$QLOG")"
+  || fail "T22d second run over an unchanged corpus should queue 0 files: $(cat "$QLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
 
 # --- T22e: a `handovers` line in the corpus-root .graphify-corpus-ignore keeps
 # every handovers/ file out of the scratch copy graphify extracts from, while
@@ -1616,7 +1616,7 @@ out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify" PATH="$HXBIN:$PATH" \
 [ "$rc" -eq 0 ] || fail "T22e exit 0 (got $rc): $out"
 { grep -qx './notes/n.md' "$HXLOG" && ! grep -q 'handovers' "$HXLOG"; } \
   && pass "T22e a handovers line in .graphify-corpus-ignore keeps handovers/ out of the scratch copy" \
-  || fail "T22e scratch copy should hold notes/n.md and no handovers/ file: $(cat "$HXLOG")"
+  || fail "T22e scratch copy should hold notes/n.md and no handovers/ file: $(cat "$HXLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
 
 # --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
