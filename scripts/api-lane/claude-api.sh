@@ -176,7 +176,8 @@ run_fallback() {
   elif [ "$class" = refused ]; then fallback_child <&0 3<&- &
   else fallback_child </dev/null 3<&- & fi
   fb_pid=$!
-  trap 'kill -TERM "$fb_pid" 2>/dev/null; wait "$fb_pid" 2>/dev/null; exit 143' TERM INT HUP
+  # a stop during the fallback still leaves its launch record: the subscription run may have drawn usage
+  trap 'kill -TERM "$fb_pid" 2>/dev/null; wait "$fb_pid" 2>/dev/null; record_fallback "$class" "$api_rc" 143; exit 143' TERM INT HUP
   wait "$fb_pid"
   fb_rc=$?
   trap '' TERM INT HUP
@@ -401,18 +402,30 @@ OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch fi
 
 # A prompt on stdin is kept in a mode-600 scratch file (removed by the EXIT trap on every exit path) so the call reads
 # it from there and the subscription fallback can replay the same bytes. Everything above refuses before stdin is read.
-# The read is bounded by the call timeout (where `timeout` exists), as the call's own stdin read was by its watchdog.
+# The read is bounded by a watchdog at the call timeout on every host, as the call's own stdin read was by its watchdog,
+# and a terminal is refused (nobody types a prompt into a one-shot launcher).
+# ponytail: a SIGKILL or an OOM kill leaves the mode-600 prompt file in TMPDIR (the EXIT trap cannot run), upgrade path: sweep claude-api-prompt.* files older than the call timeout at launch
 CALL_TIMEOUT_S="${HIMMEL_API_CALL_TIMEOUT_S:-3600}"
 [[ "$CALL_TIMEOUT_S" =~ ^[1-9][0-9]{0,8}$ ]] || CALL_TIMEOUT_S=3600
 if [ "$HAS_PROMPT" != 1 ]; then
+  [ ! -t 0 ] || { NO_FB="there is no prompt to keep"; refuse "the prompt must be an argument or piped on stdin; stdin is a terminal"; }
   PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
   chmod 600 "$PROMPT_FILE"
-  # a half-read stdin cannot be replayed whole
-  if command -v timeout >/dev/null 2>&1; then timeout --foreground "$CALL_TIMEOUT_S" cat >"$PROMPT_FILE"; else cat >"$PROMPT_FILE"; fi ||
-    { NO_FB="the prompt could not be kept"; refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
+  # a background job gets /dev/null for stdin, so the read names fd 0; a half-read stdin cannot be replayed whole
+  cat <&0 >"$PROMPT_FILE" &
+  READ_PID=$!
+  ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
+    sleep "$CALL_TIMEOUT_S" & wait $!; kill "$READ_PID" 2>/dev/null ) 3<&- &
+  READ_WD=$!
+  trap 'kill "$READ_PID" "$READ_WD" 2>/dev/null; exit 143' TERM INT HUP
+  wait "$READ_PID" || { kill "$READ_WD" 2>/dev/null; NO_FB="the prompt could not be kept"
+    refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
+  kill "$READ_WD" 2>/dev/null
+  trap - TERM INT HUP
   exec 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not reopen the stdin prompt"; }
 else
-  exec 3<&0
+  # a closed stdin becomes /dev/null: the call then starts as it would have with an empty stdin (the idiom of scripts/lib/qmd-bounded.sh)
+  { exec 3<&0; } 2>/dev/null || exec 3</dev/null
 fi
 
 # Runs a command with TERM, INT and HUP ignored. This protects only a non-node wrapper that keeps the inherited

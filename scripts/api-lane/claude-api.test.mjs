@@ -38,6 +38,7 @@ if [ -n "$FB" ]; then env > "$STUB_ENV.fb.full"; printf '%s\\n' "$@" > "$STUB_EN
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
   echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
   echo "args=$*"; } > "$STUB_ENV$FB"
+while [ -n "$FB" ] && [ -n "\${STUB_FB_HOLD:-}" ] && [ -e "$STUB_FB_HOLD" ]; do sleep 0.05; done
 if [ -n "$FB" ]; then printf '%s' "\${STUB_FB_OUT:-$STUB_OUT}"; exit "\${STUB_FB_RC:-0}"; fi
 [ -z "\${STUB_IGNORE_TERM:-}" ] || trap '' TERM
 [ -z "\${STUB_CHILD:-}" ] || { sleep 300 & echo "child_pid=$!" >> "$STUB_ENV"; }
@@ -445,8 +446,68 @@ test('HIMMEL-8649: a stdin prompt on a Bash-granted call that ran is still never
   assert.equal(existsSync(join(g.dir, 'stdin.seen.mode')), false);
 });
 
-test('HIMMEL-8649: a stdin that never closes is cut at the call timeout, refused with no fallback, and leaves no scratch file', async (t) => {
-  if (spawnSync('sh', ['-c', 'command -v timeout']).status !== 0) { t.skip('no timeout binary on this host'); return; }
+test('HIMMEL-8649: an argv prompt with a closed stdin still starts the call', () => {
+  const f = fixture();
+  const r = spawnSync('sh', ['-c', 'exec bash "$0" "$@" <&-', LAUNCH, ...f.good], { env: f.env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(f.called(), true, 'the API call never started');
+});
+
+test('HIMMEL-8649: a terminal on stdin with no argv prompt is refused with no fallback and no scratch file', (t) => {
+  if (spawnSync('python3', ['-I', '-c', 'import pty']).status !== 0) { t.skip('no python3 pty on this host'); return; }
+  const f = fixture();
+  const runner = join(f.dir, 'pty-run.py');
+  writeFileSync(runner, [
+    'import pty, subprocess, sys',
+    'm, s = pty.openpty()',
+    "r = subprocess.run(['bash', sys.argv[1]] + sys.argv[2:], stdin=s, capture_output=True, text=True, timeout=20)",
+    'sys.stderr.write(r.stderr)',
+    'sys.exit(r.returncode)',
+  ].join('\n'));
+  const r = spawnSync('python3', ['-I', runner, LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f) }, encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /stdin is a terminal/);
+  assert.equal(f.called(), false);
+  assert.equal(fbCalls(f), 0);
+  assert.deepEqual(promptFiles(f), []);
+});
+
+test('HIMMEL-8649: a launcher stopped while it buffers a stdin prompt removes the scratch file', async () => {
+  const f = fixture();
+  const child = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f) }, stdio: ['pipe', 'ignore', 'ignore'] });
+  child.stdin.write('half a prompt');
+  const done = new Promise((resolve) => child.on('close', resolve));
+  const until = Date.now() + 15000;
+  while (promptFiles(f).length === 0 && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(promptFiles(f).length, 1, 'the scratch file never appeared');
+  child.kill('SIGTERM');
+  const code = await Promise.race([done, new Promise((r) => setTimeout(() => r('hung'), 10000))]);
+  if (code === 'hung') child.kill('SIGKILL');
+  assert.notEqual(code, 'hung', 'the launcher outlived its TERM');
+  assert.deepEqual(promptFiles(f), [], 'left behind after a stop while buffering');
+  assert.equal(f.called(), false);
+});
+
+test('HIMMEL-8649: a launcher stopped during the subscription fallback still writes the fallback launch record', async () => {
+  const f = fixture();
+  const hold = join(f.dir, 'fb-hold'); writeFileSync(hold, '');
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_HOLD: hold }, stdio: 'ignore' });
+  const done = new Promise((resolve) => child.on('close', resolve));
+  try {
+    const until = Date.now() + 15000;
+    while (!existsSync(`${f.paths.log}.fb`) && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(fbCalls(f), 1, 'the fallback never started');
+    child.kill('SIGTERM');
+    const code = await Promise.race([done, new Promise((r) => setTimeout(() => r('hung'), 10000))]);
+    assert.equal(code, 143);
+    const last = rows(f).at(-1);
+    assert.equal(last.lane, 'sub-fallback');
+    assert.equal(last.outcome, 'sub-fallback-failed');
+    assert.equal(last.rc, 143);
+  } finally { rmSync(hold, { force: true }); if (child.exitCode === null) child.kill('SIGKILL'); }
+});
+
+test('HIMMEL-8649: a stdin that never closes is cut at the call timeout, refused with no fallback, and leaves no scratch file', async () => {
   const f = fixture();
   const child = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f), HIMMEL_API_CALL_TIMEOUT_S: '1', STUB_FB_OUT: FB_OK }, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.write('half a prompt');

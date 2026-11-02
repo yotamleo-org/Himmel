@@ -35,10 +35,10 @@
 # HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell,
 # refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise,
 # before any call: it never switches itself to the claude-cli backend. Each
-# chunk call then follows the lane's own failure rule: a refusal before any
-# request alerts and re-runs the chunk once on the subscription unless
-# HIMMEL_API_FALLBACK=off; a call that ran spent its stdin prompt and is not
-# replayed (docs/internals/api-lane.md). Spend is bounded by
+# chunk call then follows the lane's own failure rule: a refusal or a failed
+# call alerts and re-runs the chunk once on the subscription, replaying its
+# stdin prompt, unless HIMMEL_API_FALLBACK=off (docs/internals/api-lane.md).
+# Spend is bounded by
 # --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
 # 1.00) and the batch is sized to the run cap; the lane's own credit answer is the
 # hard stop. The plan's estimate line prints before any call, and --dry-run stops

@@ -74,9 +74,10 @@ it stops is a failed call and takes the path below. Then the launcher:
      environment.
    - A prompt on stdin is kept in a mode-600 scratch file
      (`claude-api-prompt.*` under `TMPDIR`) that the API call reads and the
-     fallback replays byte for byte; the file is removed on every exit path. A
-     refusal before the prompt is buffered has not read stdin, so a piped
-     prompt still reaches the fallback.
+     fallback replays byte for byte; the file is removed on every trapped exit
+     path. A terminal on stdin is refused, and the read is cut at
+     `HIMMEL_API_CALL_TIMEOUT_S` on every host. A refusal before the prompt is
+     buffered has not read stdin, so a piped prompt still reaches the fallback.
    - The fallback's stdout is the launcher's stdout, and its exit code replaces
      the API exit code. A caller sees an ordinary result (judge-call records the
      verdict, bulk-call writes `OK`) when the fallback succeeds.
@@ -115,6 +116,7 @@ The API call's own row and its reservation are settled as before.
 
 ## Known limits
 
+- ponytail: a SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
 - ponytail: two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
 - ponytail: the fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
 - ponytail: a looping caller (bulk) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem.
