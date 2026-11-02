@@ -65,7 +65,7 @@ _mba_send() {
     # crashing guard must never cost a real alert.
     local guard_rc=0
     bash "$_MBA_LIB_DIR/test-run-guard" check --quiet --tool bun merge-block-alert || guard_rc=$?
-    [ "$guard_rc" != 77 ] || return 0
+    [ "$guard_rc" != 77 ] || return 77   # refused, not delivered: the caller must not keep the sentinel
     # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
     $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1
 }
@@ -97,7 +97,12 @@ merge_block_alert() {
         echo "merge-block-alert: no operator chat id readable — DM not sent (the line above is the only alert)" >&2
         return 0
     fi
-    if ! _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}"; then
+    local send_rc=0
+    _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}" || send_rc=$?
+    if [ "$send_rc" = 77 ]; then
+        rm -f "$dir/$key" 2>/dev/null
+        echo "merge-block-alert: refused by the test guard, nothing sent" >&2
+    elif [ "$send_rc" != 0 ]; then
         rm -f "$dir/$key" 2>/dev/null
         echo "merge-block-alert: DM delivery failed — exit code unchanged" >&2
     fi
@@ -208,7 +213,7 @@ _mba_route_chief() {
     # A test on the station never writes a real bridge inbox; only exit 77 stops the route.
     local guard_rc=0
     bash "$_MBA_LIB_DIR/test-run-guard" check --quiet merge-watch-route "$root" || guard_rc=$?
-    [ "$guard_rc" != 77 ] || return 0
+    [ "$guard_rc" != 77 ] || return 77   # refused, not delivered: the caller drops its sentinel
     file=$(_mba_chief_inbox_path "$root" "$name") || return 1
     local folded
     folded=$(printf '%s' "$text" | tr '\n' ' ')

@@ -333,6 +333,8 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
 
 const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check']);
 
+const TEST_RUN_GUARD = join(dirname(fileURLToPath(import.meta.url)), '../../../lib/test-run-guard');
+
 /** A test on the station never writes the live release queue. Only exit 77 refuses. */
 function refuseTestWrite(verb: string): void {
   let root: string;
@@ -341,17 +343,36 @@ function refuseTestWrite(verb: string): void {
   } catch {
     return; // the verb reports the unset state itself
   }
-  const guard = join(dirname(fileURLToPath(import.meta.url)), '../../../lib/test-run-guard');
-  const r = spawnSync('bash', [guard, 'check', `jira-release-${verb}`, root], { stdio: ['ignore', 'inherit', 'inherit'] });
+  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', `jira-release-${verb}`, root], { stdio: ['ignore', 'inherit', 'inherit'] });
   if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was written`);
+}
+
+/** A loopback Jira is a local stub: it cannot reach the real one. */
+function jiraIsLoopback(): boolean {
+  try {
+    const host = new URL(process.env.JIRA_BASE_URL ?? '').hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/** A test on the station never posts a real Jira comment, whatever its release root. Only exit 77 refuses. */
+function refuseTestJiraPost(verb: string): void {
+  if (jiraIsLoopback()) return;
+  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', '--real', `jira-release-${verb}-comment`], { stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was posted`);
 }
 
 export function registerRelease(program: Command): void {
   const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
   rel.hook('preAction', (_release, action) => {
     // leaks reads unless --comment is set: that posts a real Jira comment and updates the breadcrumb state.
-    const readOnly = action.parent === rel && READ_ONLY_VERBS.has(action.name()) && !(action.name() === 'leaks' && action.opts().comment);
-    if (!readOnly) refuseTestWrite(action.name());
+    const verb = action.name();
+    const postsToJira = action.parent === rel && verb === 'leaks' && Boolean(action.opts().comment);
+    if (postsToJira) refuseTestJiraPost(verb);
+    const readOnly = action.parent === rel && READ_ONLY_VERBS.has(verb) && !postsToJira;
+    if (!readOnly) refuseTestWrite(verb);
   });
 
   rel.command('state <release>')

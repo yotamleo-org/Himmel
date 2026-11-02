@@ -290,6 +290,8 @@ function jiraAnswers(versions: Array<{ name: string; description?: string }>, co
 describe('jira release leaks (HIMMEL-7153)', () => {
   beforeEach(() => {
     vi.mocked(request).mockReset();
+    // The mock never connects; a loopback Jira is how the post door tells a local stub from the real one.
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'ledger.jsonl'));
     writeFileSync(join(root, 'ledger.jsonl'), JSON.stringify({
       ts: '2026-10-23T00:00:00.000Z', version: 'v1', key: 'K-3', kind: 'override', actor: 'console',

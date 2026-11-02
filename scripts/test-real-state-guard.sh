@@ -280,8 +280,19 @@ class H(http.server.BaseHTTPRequestHandler):
     def _r(self):
         self.rfile.read(int(self.headers.get('Content-Length') or 0))
         open(log, 'a').write(self.command + ' ' + self.path + '\n')
-        self.send_response(500)
+        path = self.path.split('?')[0]
+        if self.command == 'GET' and path.endswith('/versions'):
+            body = '[{"name":"v1.1.3","description":"frozen: 2026-10-20\\nfrozen-keys: K-1"}]'
+        elif self.command == 'GET' and '/comment' in path:
+            body = '{"comments":[],"total":0}'
+        elif self.command == 'POST':
+            body = '{"id":"c-1"}'
+        else:
+            body = '{}'
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
         self.end_headers()
+        self.wfile.write(body.encode())
     do_GET = do_POST = do_PUT = do_DELETE = _r
     def log_message(self, *a): pass
 s = http.server.HTTPServer(('127.0.0.1', 0), H)
@@ -291,17 +302,36 @@ PY
   python3 -I "$TMP/rec-server.py" "$HTTPLOG" "$TMP/port" >/dev/null 2>&1 &
   SRV=$!
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$TMP/port" ] && break; sleep 0.2; done
-  JIRA_ENV=(env JIRA_BASE_URL="http://127.0.0.1:$(cat "$TMP/port" 2>/dev/null)" JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token)
-  LEAKS=("${JIRA_ENV[@]}" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/no-mirror")
+  # A mirror of K-1 alone (no leak) and one with K-2 too (a leak): the recorder answers, so a run that gets through shows as a POST.
+  : >"$TMP/ledger.jsonl"
+  for m in mirror-none mirror-leak; do
+    mkdir -p "$TMP/$m"
+    printf '{"lastSync":"2026-10-23T00:00:00Z"}\n' >"$TMP/$m/.cursor.json"
+  done
+  for k in K-1 K-2; do
+    printf -- '---\nkey: "%s"\nstatus: "In Progress"\ntype: "Task"\npriority: "Medium"\nfixVersions: ["v1.1.3"]\n---\n' "$k" >"$TMP/mirror-leak/$k.md"
+  done
+  cp "$TMP/mirror-leak/K-1.md" "$TMP/mirror-none/K-1.md"
+  JIRA_ENV=(env JIRA_BASE_URL="http://127.0.0.1:$(cat "$TMP/port" 2>/dev/null)" JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl")
+  LEAKS=("${JIRA_ENV[@]}" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak")
   rc=0; "${LEAKS[@]}" --comment >"$TMP/j.out" 2>&1 || rc=$?
   has "J4 a test's leaks --comment is refused" "$TMP/j.out" "REFUSED"
   eq "J4 a test's leaks --comment reaches no Jira" "$(wc -l <"$HTTPLOG" | tr -d ' ')" 0
-  rc=0; "${LEAKS[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  rc=0; "${JIRA_ENV[@]}" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-none" >"$TMP/j.out" 2>&1 || rc=$?
   if grep -q 'REFUSED' "$TMP/j.out"; then fail "J5 leaks without --comment was refused"; else pass "J5 leaks without --comment is not refused"; fi
   if grep -q '^GET ' "$HTTPLOG" && ! grep -qv '^GET ' "$HTTPLOG"; then pass "J5 leaks without --comment reaches the recorder with reads only"; else fail "J5 leaks without --comment reaches the recorder with reads only ($(head -c 200 "$HTTPLOG"))"; fi
   : >"$HTTPLOG"
   as_session "${LEAKS[@]}" --comment >"$TMP/j.out" 2>&1
   if grep -q 'REFUSED' "$TMP/j.out"; then fail "J6 a real session's leaks --comment was refused"; else pass "J6 a real session's leaks --comment is not refused"; fi
+  if grep -q '^POST .*/issue/K-2/comment' "$HTTPLOG"; then pass "J6 a real session's leaks --comment posts its comment"; else fail "J6 a real session's leaks --comment posts its comment ($(head -c 300 "$HTTPLOG") $(head -c 300 "$TMP/j.out"))"; fi
+  # J7/J8: the door must refuse on the Jira post itself, not only on the release root. A temp root, or no root at all, leaves the root door open.
+  : >"$HTTPLOG"
+  J7=(env HIMMEL_RELEASE_STATE_DIR="$TMP/j7-queue" JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak" --comment)
+  rc=0; "${J7[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  has "J7 a test's leaks --comment with a temp release root is refused" "$TMP/j.out" "REFUSED"
+  J8=(env -u USER_SLUG -u HIMMEL_RELEASE_STATE_DIR JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak" --comment)
+  rc=0; "${J8[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  has "J8 a test's leaks --comment with no release root at all is refused" "$TMP/j.out" "REFUSED"
 else
   echo "SKIP - J rows: no bun or no scripts/jira/node_modules here; release.test.ts holds the door row and S4 the chief's guard call"
 fi
@@ -373,6 +403,18 @@ watch_env bash "$TMP/watch-run.sh" "$MBA"
 eq "M6 a test's route to a real bridge appends nothing" "$(wc -c <"$CHIEF_INBOX" | tr -d ' ')" 0
 watch_env "$CLAUDE_STUB" bash "$TMP/watch-run.sh" "$MBA"
 has "M7 a real route to the bridge appends" "$CHIEF_INBOX" "[merge-watch o/r#2]"
+# M8: a refused send is not a delivered one. The test's refusal leaves no sentinel, so a real alert for the same head still goes.
+mkdir -p "$TMP/sent-m8" "$TMP/sent-m8w"
+reset
+alert_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8" bash "$TMP/alert-run.sh" "$MBA"
+eq "M8 a test's refused alert leaves no sentinel" "$(find "$TMP/sent-m8" -type f | wc -l | tr -d ' ')" 0
+alert_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8" "$CLAUDE_STUB" bash "$TMP/alert-run.sh" "$MBA"
+eq "M8 a real alert for the same head after a refusal still sends" "$(calls bun)" 1
+: >"$CHIEF_INBOX"
+watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" bash "$TMP/watch-run.sh" "$MBA"
+eq "M8 a test's refused chief route leaves no sentinel" "$(find "$TMP/sent-m8w" -type f | wc -l | tr -d ' ')" 0
+watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" "$CLAUDE_STUB" bash "$TMP/watch-run.sh" "$MBA"
+has "M8 a real route for the same head after a refusal still appends" "$CHIEF_INBOX" "[merge-watch o/r#2]"
 
 echo "== cadence inbox doors"
 CH="$root/scripts/eval/cache-health-cadence.sh"
