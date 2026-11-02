@@ -55,4 +55,29 @@ The model arms are billed: `HIMMEL_BILLED_OK=1`, `bank-preflight` must print `PR
 
 ## Result
 
-(filled in after the billed run)
+Run 2026-11-02: 18 billed calls (Sonnet 9, Haiku 9) plus the two unbilled arms; fixtures are synthetic.
+
+| option | messages | pass rate | cost-eq cold/msg | cost-eq warm/msg | USD/msg | warm vs sonnet | USD vs sonnet |
+|---|---|---|---|---|---|---|---|
+| sonnet | 9 | 100% | 6810 | 2023 | 0.01986 | 100% | 100% |
+| haiku | 9 | 100% | 9198 | 4386 | 0.00123 | 217% | 6% |
+| script | 9 | 100% | 0 | 0 | 0.00000 | 0% | 0% |
+| path | 9 | 100% | 0 | 0 | 0.00000 | 0% | 0% |
+
+Per kind (succession, GO, ruling): every option passed 3 of 3 in each. The path option is free on the sender
+side but costs the receiver one extra `Read` turn, median 16,728 cost-eq (median cache read 167,280 over
+5,118 worker turns, `relay_cost.py turn-price`). That is about 8 times the warm Sonnet relay per message, so
+`path` is not cheaper end to end; an inline message is only about 115 to 290 tokens.
+
+Haiku is 6% of Sonnet in USD but 217% in warm cost-eq, because a cold Haiku call reads its whole prefix
+uncached; priced in dollars it is cheaper, and it held 9 of 9.
+
+**Decision: `script`, no model.** It is the cheapest option that holds (100%, zero model cost). A succession
+relay is the real `relay-batch.sh`; a GO or ruling is the chief's own text sent verbatim, which needs no
+relaying session at all. The negative control that proves the check can fail: a stub model that paraphrases
+fails all 9 through `run.sh`, and a wrong target, a changed word, a truncated message, appended text and
+another worker's token each FAIL in `test-relay-cost.sh`.
+
+Limit: the fixtures test delivery fidelity of text the chief already wrote. They do not test the judgment a
+relay session adds (classifying an event as an escalation, polling a leg doc), so this result covers the
+delivery step only.
