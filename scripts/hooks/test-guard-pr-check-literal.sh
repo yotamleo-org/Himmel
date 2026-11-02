@@ -613,10 +613,11 @@ followed "merge-on-green" "$MOG" scripts/handover/merge-on-green.sh "--go /g"
 followed "himmel-gate" 'bash scripts/handover/chief-kit/himmel-gate.sh' scripts/handover/chief-kit/himmel-gate.sh "--x"
 
 # The walk: every scripts/cr TARGET the hook declares is either followed, or sits
-# in one of the two declared exclusion lists, each with its own assertion.
-#   EXCL_FENCE  remedy is the canonical fence / step-0 spelling, not an anchored line
+# in one of the two declared exclusion lists.
+#   EXCL_FENCE  remedy is the canonical fence / step-0 spelling, not an anchored
+#               line; skipped here, and each is asserted a declared TARGET below
 #   EXCL_NORULE only a relative exact rule exists, so no anchored spelling can match;
-#               the remedy must say the classifier judges it
+#               the remedy must say the classifier judges it (asserted in the walk)
 EXCL_FENCE="pr-check-context.sh pr-check-env.sh"
 EXCL_NORULE="known-findings.sh doc-freshness-advisory.sh"
 for ex in $EXCL_FENCE $EXCL_NORULE; do
@@ -630,7 +631,7 @@ for t in $declared; do
             need_in_err "TARGET $t remedy says the classifier judges it" "classifier judges it"
             while IFS= read -r line; do
                 [ -n "$line" ] || continue
-                printed_matches "TARGET $t anchored line matches no rule (declared)" nomatch "${line//<args>/--x}"
+                printed_matches "TARGET $t anchored line matches no rule (declared)" nomatch "${line//<args>/--diff}"
             done <<<"$(printed_bash_lines)"
             restore_tree "scripts/cr/$t" ;;
         *) followed "TARGET $t" "bash scripts/cr/$t" "scripts/cr/$t" "--x" ;;
@@ -640,30 +641,92 @@ done
 # The kit writers print their own script's path (a wrong directory or a
 # re-quoting mutant would show here); go/write-verdict/chief-wait have no anchored
 # rule yet, which the follow-up ticket for them owns.
-for h in chief-kit/go.sh chief-kit/write-verdict.sh chief-kit/chief-wait.sh chief-kit/himmel-gate.sh; do
+hdeclared=$(sed -n "/^HTARGETS='/,/'\$/p" "$HOOK" | sed "s/^HTARGETS=//; s/'//g" | tr ' ' '\n' | grep '^scripts/handover/chief-kit/' | sed 's|^scripts/handover/||')
+if [ -n "$hdeclared" ]; then echo "PASS chief-kit HTARGETS derived ($(printf '%s\n' "$hdeclared" | wc -l | tr -d ' '))"; else echo "FAIL no chief-kit HTARGETS derived"; FAILED=$((FAILED + 1)); fi
+for h in $hdeclared; do
     drifted "kit writer $h" "bash scripts/handover/$h" "scripts/handover/$h"
     printed_now="$(printed_bash_lines)"
     if grep -qF "scripts/handover/$h" <<<"$printed_now"; then echo "PASS kit writer $h remedy names its own script"; else echo "FAIL kit writer $h remedy does not name scripts/handover/$h: $ERR_OF"; FAILED=$((FAILED + 1)); fi
     restore_tree "scripts/handover/$h"
 done
 
-# What the remedy prints is HIMMEL_REPO's own path, never step 0's himmel_dir (the
-# worktree on the himmel lane): a value the rule generator would refuse prints a
-# quoted placeholder that names no path at all.
-mkdir -p "$TMP/wtv/.claude/worktrees/w" "$TMP/sp ace"
-for bad in "$TMP/wtv/.claude/worktrees/w" "$TMP/sp ace"; do
-    run "unsafe HIMMEL_REPO [$bad]: quoted arg on the anchored spelling -> deny" 2 \
-        "$(payload "bash scripts/handover/merge-on-green.sh --branch 'x'" "$WT")" "HIMMEL_REPO=$bad"
-    if grep -qF 'bash "<anchor>/scripts/handover/merge-on-green.sh"' <<<"$LAST_ERR" && ! grep -q '^bash /' <<<"$LAST_ERR"; then
-        echo "PASS unsafe HIMMEL_REPO [$bad]: quoted placeholder, no path printed"
+# What the remedy prints is the anchor's physical path, never step 0's himmel_dir
+# (the worktree on the himmel lane). A HIMMEL_REPO value the rule generator would
+# not emit a rule for is never printed as a path: an absolute anchor directory
+# gets the guard-exempt "$HIMMEL_REPO/..." spelling (proven allowed below), and
+# anything else (unset, relative, a worktree) gets no runnable line.
+CRQ="bash scripts/cr/write-verdicts.sh"
+CRF=scripts/cr/write-verdicts.sh
+bash_lines_of_err() { grep '^bash ' <<<"$LAST_ERR" || true; }
+# denied_under <label> <trigger> <file under the tree> <HIMMEL_REPO value or ->: edit
+# the tree's copy so the trigger is denied, whatever the anchor; leaves the deny in
+# LAST_ERR. The caller restores the file.
+denied_under() {
+    echo ': edited' >>"$WT/$3"
+    if [ "$4" = - ]; then run "$1: edited tree -> deny" 2 "$(payload "$2" "$WT")"
+    else run "$1: edited tree -> deny" 2 "$(payload "$2" "$WT")" "HIMMEL_REPO=$4"; fi
+}
+# remedy_exempt <label> <trigger> <file> <HIMMEL_REPO value>: the denied trigger prints
+# the exempt spelling and no path line; the printed line, filled, is allowed by the hook.
+remedy_exempt() {
+    local label="$1" trig="$2" hr="$4" line cmd n=0
+    denied_under "$label" "$trig" "$3" "$hr"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        n=$((n + 1))
+        # shellcheck disable=SC2016 # the literal printed text
+        case "$line" in
+            'bash "$HIMMEL_REPO/'*) ;;
+            *) echo "FAIL $label: printed line is not the exempt spelling: $line"; FAILED=$((FAILED + 1)) ;;
+        esac
+        cmd="${line//<unquoted-args>/--go /g}"
+        run "$label: printed line [$cmd] is allowed" 0 "$(payload "$cmd" "$WT")" "HIMMEL_REPO=$hr"
+    done <<<"$(bash_lines_of_err)"
+    if [ "$n" -eq 0 ]; then echo "FAIL $label: the deny printed no exempt line: $LAST_ERR"; FAILED=$((FAILED + 1)); fi
+    restore_tree "$3"
+}
+# remedy_none <label> <trigger> <file> <HIMMEL_REPO value or ->: no runnable line, and
+# the deny points at the launching shell.
+remedy_none() {
+    denied_under "$1" "$2" "$3" "$4"
+    if [ -z "$(bash_lines_of_err)" ] && grep -qF 'launching shell' <<<"$LAST_ERR"; then
+        echo "PASS $1: no runnable line, points at the launching shell"
     else
-        echo "FAIL unsafe HIMMEL_REPO [$bad]: expected the quoted placeholder only: $LAST_ERR"; FAILED=$((FAILED + 1))
+        echo "FAIL $1: expected no ^bash line and a launching-shell pointer: $LAST_ERR"; FAILED=$((FAILED + 1))
     fi
-done
-# a worktree path the generator cannot tell apart by name prints, and matches no rule
-run 'HIMMEL_REPO is a plain worktree path: its printed line matches no held rule' 2 \
-    "$(payload "bash scripts/handover/merge-on-green.sh --branch 'x'" "$WT")" "HIMMEL_REPO=$WT"
-printed_matches 'control: a printed worktree path matches no rule' nomatch "bash $WT/scripts/handover/merge-on-green.sh --go /g"
+    restore_tree "$3"
+}
+
+mkdir -p "$TMP/wtv/.claude/worktrees/w"
+g clone -q "$ORIGIN" "$TMP/sp ace"
+remedy_exempt "space anchor" "$CRQ" $CRF "$TMP/sp ace"
+remedy_exempt "anchor with .. in the middle" "$CRQ" $CRF "$PRIMARY/../himmel"
+remedy_exempt "anchor ending in .." "$CRQ" $CRF "$PRIMARY/scripts/.."
+remedy_none "unset HIMMEL_REPO" "$CRQ" $CRF -
+remedy_none "plain worktree as HIMMEL_REPO" "$CRQ" $CRF "$WT"
+remedy_none "worktree-named dir (no .git) as HIMMEL_REPO" "$CRQ" $CRF "$TMP/wtv/.claude/worktrees/w"
+# a relative value resolves from the hook's cwd, so it must be run from $TMP
+HERE_DIR="$PWD"
+cd "$TMP" && remedy_none "relative HIMMEL_REPO" "$CRQ" $CRF "himmel"; cd "$HERE_DIR" || exit 1
+# the same unsafe value on the merge-on-green remedy
+remedy_exempt "merge-on-green, space anchor" "bash scripts/handover/merge-on-green.sh --branch 'x'" scripts/handover/merge-on-green.sh "$TMP/sp ace"
+
+# a symlinked anchor: the printed path is the physical one, which is what the rule holds
+ln -s "$PRIMARY" "$TMP/anchor-link"
+denied_under "symlinked anchor" "$CRQ" $CRF "$TMP/anchor-link"
+n=0
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    n=$((n + 1))
+    cmd="${line//<args>/--go /g}"
+    case "$cmd" in
+        *anchor-link*) echo "FAIL symlinked anchor: printed line names the symlink: $cmd"; FAILED=$((FAILED + 1)) ;;
+    esac
+    printed_matches "symlinked anchor: printed line [$cmd] matches a held allow rule" match "$cmd"
+done <<<"$(bash_lines_of_err)"
+if [ "$n" -eq 0 ]; then echo "FAIL symlinked anchor: the deny printed no bash line: $LAST_ERR"; FAILED=$((FAILED + 1)); fi
+restore_tree $CRF
+printed_matches 'control: a printed worktree path matches no rule' nomatch "bash $WT/scripts/cr/write-verdicts.sh --go /g"
 
 # negative controls: a quote or a variable in the path still matches no rule
 printed_matches 'control: quoted anchor path matches no rule' nomatch "bash \"$PRIMARY/scripts/handover/merge-on-green.sh\" --go /g"

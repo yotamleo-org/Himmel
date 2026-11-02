@@ -111,31 +111,47 @@ fi'
 # shellcheck disable=SC2016 # a regex, matched as text
 FENCE_RE='^if himmel_repo=\$\(printenv HIMMEL_REPO \| grep \.\) ?;? then bash "\$himmel_repo/scripts/cr/pr-check-context\.sh" ?;? else echo "[^"$`\\]*" >&2 ?;? exit 2 ?;? fi ?;?$'
 
-# The anchor's path as a remedy prints it: HIMMEL_REPO's own value, and only when
-# the rule generator (plugin-profiles.mjs validatedAnchorPath) would emit a rule
-# for it - absolute, no `..`, no worktree, and nothing the matcher could read as
-# syntax. Step 0's himmel_dir is the WORKTREE on the himmel lane, so the remedy
-# never names it. Fails when HIMMEL_REPO is unset or unsafe.
+# The anchor's path as a remedy prints it: the PHYSICAL path of HIMMEL_REPO (the
+# rule generator emits its rule from the git common-dir's parent, never from a
+# symlink), and only when the rule generator (plugin-profiles.mjs
+# validatedAnchorPath) would emit a rule for it - no `..`, no worktree, nothing
+# the matcher could read as syntax. Step 0's himmel_dir is the WORKTREE on the
+# himmel lane, so the remedy never names it.
+# rc 0 prints the path. rc 1: no usable anchor directory (unset, relative, or no
+# .git DIRECTORY - a worktree's .git is a file). rc 2: a real anchor directory
+# whose path cannot be printed unquoted.
 anchor_remedy_dir() {
-    local a="${HIMMEL_REPO:-}"
+    local a="${HIMMEL_REPO:-}" r
     while [ "${a%/}" != "$a" ]; do a="${a%/}"; done
     case "$a" in /*) ;; *) return 1 ;; esac
-    case "$a" in
-        *[!A-Za-z0-9._/+-]* | */../* | */.. | */.claude/worktrees/*) return 1 ;;
+    [ -d "$a/.git" ] || return 1
+    case "$a" in */../* | */..) return 2 ;; esac
+    r=$(cd -P "$a" 2>/dev/null && pwd -P) || return 1 # swallow-ok: a failed cd is rc 1, no usable anchor
+    case "$r" in
+        *[!A-Za-z0-9._/+-]* | */.claude/worktrees/*) return 2 ;;
     esac
-    printf '%s' "$a"
+    printf '%s' "$r"
 }
-# remedy_cmd <repo-relative script> <args placeholder>: the unquoted anchored
-# spelling, which the generated `bash <anchor>/scripts/...:*` rules match. With no
-# safe anchor to print it is a quoted placeholder, which matches no rule.
+# remedy_cmd <repo-relative script> <args placeholder> [exempt-printed]: the unquoted
+# anchored spelling, which the generated `bash <anchor>/scripts/...:*` rules match.
+# When the anchor's path cannot be printed that way, an absolute anchor directory
+# gets the guard-exempt "$HIMMEL_REPO/..." spelling (unquoted args only; omitted
+# when the caller printed it already), and anything else gets no runnable line.
 remedy_cmd() {
-    local d
-    if d=$(anchor_remedy_dir); then
-        echo "bash $d/$1 $2"
-    else
-        echo "bash \"<anchor>/$1\" $2"
-        echo "(<anchor> is HIMMEL_REPO's value, unusable unquoted here; no allow rule matches this spelling, so the classifier judges it)"
-    fi
+    local d rc=0
+    d=$(anchor_remedy_dir) || rc=$?
+    case "$rc" in
+        0) echo "bash $d/$1 $2" ;;
+        2)
+            if [ -z "${3:-}" ]; then
+                echo "bash \"\$HIMMEL_REPO/$1\" <unquoted-args>"
+            fi
+            echo "(HIMMEL_REPO's path cannot be printed unquoted, so no allow rule matches an anchored path here; the exempt spelling has none either, so the classifier judges it)"
+            ;;
+        *)
+            echo "(HIMMEL_REPO is unset, relative, or not a primary checkout - a worktree is not one - so no runnable line can be printed: export HIMMEL_REPO to himmel's primary checkout in your launching shell)"
+            ;;
+    esac
 }
 
 shown=""
@@ -174,7 +190,7 @@ deny() {
                 echo "If an argument genuinely needs quoting, use the anchor's copy by HIMMEL_REPO's"
                 echo "own path (not step 0's himmel_dir, which is this worktree), as its own command:"
                 echo
-                remedy_cmd scripts/handover/merge-on-green.sh '<args>'
+                remedy_cmd scripts/handover/merge-on-green.sh '<args>' exempt-printed
                 ;;
             *console-kit/himmel-gate* | *chief-kit/himmel-gate*)
                 echo "Run the anchored spelling instead - EVERY argument must be unquoted:"
