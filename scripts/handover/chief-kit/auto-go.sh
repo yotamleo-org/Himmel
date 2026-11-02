@@ -480,6 +480,8 @@ else
                 [ -n "$jh" ] && [ "$jh" != "$SHA" ] || continue
                 go_trust_verdict "$ROOT" "$q" "$jh" "$ANCHOR" "$PR" >/dev/null || continue
                 may_carry "$q" "$jh" || { LAST_WHY="$NOGO_WHY"; continue; }
+                # a no-op record is never the head a carry starts from: write-verdict.sh --delta-noop refuses it, so only a real GO head is tried
+                real_go "$q" "$jh" || continue
                 DC=$(cd "$ANCHOR" && bash "$HERE/delta-class.sh" --qid "$q" "$jh" "$SHA" 2>/dev/null) || DC=trust  # swallow-ok: a failed classifier reads trust, which refuses, below
                 LAST_DC="$DC"
                 if [ "$DC" = none ]; then GO_QID="$q"; CARRY_FROM="$jh"; break 2; fi
