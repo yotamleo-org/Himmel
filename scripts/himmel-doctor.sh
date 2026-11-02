@@ -2725,6 +2725,17 @@ _c33_alert_delivery() {
     emit WARN C33-alert-delivery "a cadence failure alert could not be delivered to Telegram (last: $what) -- a failed worker may have gone unannounced" "check the Telegram sender (scripts/luna/vault-stall-alert.sh), then rm $mark"
 }
 
+# The default handover root is the git toplevel of the working directory (handover-path.sh), so a
+# doctor launched from elsewhere would judge another checkout; resolve it from the judged checkout.
+# An explicit HANDOVER_DIR is used as given. PURE, like handover_root.
+doctor_handover_root() {
+    if [ -n "${HANDOVER_DIR:-}" ]; then
+        handover_root 2>/dev/null
+    else
+        (cd "$REPO_ROOT" 2>/dev/null && handover_root 2>/dev/null)
+    fi
+}
+
 check_c33_graph_stale() {
     local root ledger
     _c33_alert_delivery
@@ -2732,7 +2743,7 @@ check_c33_graph_stale() {
     # read-only and must not create the handover dir as a side effect of a
     # diagnostic pass.
     load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
-    if ! root="$(handover_root 2>/dev/null)" || [ -z "$root" ]; then
+    if ! root="$(doctor_handover_root)" || [ -z "$root" ]; then
         emit WARN C33-graph-stale "graph-cadence: handover root is broken (HANDOVER_DIR unresolvable) — graph-cadence.sh refuses to run against it, so no ledger can be written and staleness cannot be determined (this is NOT the same as healthy, nor the same as not yet armed)" "fix HANDOVER_DIR (see /handover-setup), then: bash scripts/graphify/graph-cadence.sh"
         return
     fi
@@ -3389,6 +3400,105 @@ check_c83_qmd_embed_backlog() {
     esac
     emit WARN C83-qmd-embed-backlog "the last qmd reindex${ts:+ ($ts)} ended with its embed incomplete: $remaining; last provider error: ${err:-none}" \
         "bash scripts/luna/qmd-reindex.sh   # resumes the embed; the cause is in ~/.claude/qmd-cadence/qmd-reindex.log"
+}
+
+# --- C84-release-queue: a declared release the chief cannot wake the manager for ---
+# The tick wakes the release manager only from the newest chief doc's `release:` line, and
+# prints rm-queue=off when a release is declared but that line or the declaration is unusable.
+# WARN when a release is declared (<handover>/<slug>/himmel/release/<R>/release.json) and the
+# newest <slug>/himmel/*-chief.md has no `release:` line, names a release with no non-empty
+# declaration, or there is no chief doc at all; INFO when nothing is declared or the chief doc
+# says `release: none` (disabled on purpose); OK otherwise. The release.json is HMAC-signed, so
+# for the release the chief names the check also reads `jira release state <R> --json` (the same
+# read the tick makes) and WARNs unless its status is OK; it cannot judge that when the jira CLI,
+# JIRA_PROJECT_KEY or jq is missing, and says so on the OK row.
+# Test seams: HIMMEL_RELEASE_STATE_DIR (the release root; the chief docs sit beside it) and
+# HIMMEL_DOCTOR_RM_STATE_PROBE (a script standing in for `jira release state <R> --json`).
+# ponytail: the newest chief doc by mtime stands in for the live chief, upgrade by reading the
+# chief fleet registry.
+_c84_release_state() {
+    local rel="$1" cli json="" rc=0 pk node_bin
+    command -v jq >/dev/null 2>&1 || return 0  # prints nothing: the state cannot be judged here
+    if [ -n "${HIMMEL_DOCTOR_RM_STATE_PROBE:-}" ]; then
+        json="$(bash "$HIMMEL_DOCTOR_RM_STATE_PROBE" "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    else
+        load_dotenv --root "$REPO_ROOT" JIRA_PROJECT_KEY >/dev/null 2>&1 || true
+        pk="${JIRA_PROJECT_KEY:-}"
+        cli="$REPO_ROOT/scripts/jira/dist/index.js"
+        [ -f "$cli" ] || cli="$STATION_ROOT/scripts/jira/dist/index.js"
+        node_bin="$(resolve_node 2>/dev/null)" || return 0
+        { [ -n "$pk" ] && [ -f "$cli" ]; } || return 0
+        json="$(JIRA_PROJECT_KEY="$pk" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} "$node_bin" "$cli" release state "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    fi
+    # The read ran: any failure is a state the tick also reads as rm-queue=off, never a pass.
+    # Exit 3 is the CLI's not-OK status and still prints the state.
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+        printf 'UNREADABLE\tjira release state exited %s\n' "$rc"
+        return 0
+    fi
+    jq -r '"\(.status // "UNKNOWN")\t\((.integrity // [])[0] // "")"' <<< "$json" 2>/dev/null \
+        || printf 'UNREADABLE\tjira release state printed no readable JSON\n'
+}
+
+check_c84_release_queue() {
+    local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep="" st note unread=0
+    if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
+        roots="$HIMMEL_RELEASE_STATE_DIR"
+    else
+        load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
+        hroot="$(doctor_handover_root)" || hroot=""
+        [ -z "$hroot" ] || roots="$(ls -d "$hroot"/*/himmel/release 2>/dev/null)"  # swallow-ok: no release dir means no declaration to judge
+    fi
+    while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        declared=""
+        for f in "$root"/*/release.json; do
+            [ -e "$f" ] || continue
+            f="${f%/release.json}"; declared="$declared${declared:+, }${f##*/}"
+            if [ ! -s "$f/release.json" ]; then
+                bad="$bad$sep${f##*/} has an empty release.json"; sep="; "
+            fi
+        done
+        [ -n "$declared" ] || continue
+        any=1
+        cdir="${root%/*}"
+        # shellcheck disable=SC2012  # chief doc names are plain; the newest by mtime is wanted
+        # no pipe into head: under pipefail its early exit SIGPIPEs ls and the lookup reads as empty
+        doc="$(ls -t "$cdir"/*-chief.md 2>/dev/null)" || doc=""
+        doc="${doc%%$'\n'*}"
+        if [ -z "$doc" ]; then
+            bad="$bad$sep""release $declared is declared but there is no chief doc beside $root"; sep="; "
+            continue
+        fi
+        rel="$(sed -n 's/^release:[[:space:]]*//p' "$doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads as no release: line
+        case "$rel" in
+            '') bad="$bad$sep${doc##*/} has no release: line for declared release $declared, so the tick shows rm-queue=off"; sep="; " ;;
+            none) none=1 ;;
+            *) if [ ! -s "$root/$rel/release.json" ]; then
+                   bad="$bad$sep${doc##*/} names release $rel but $root/$rel/release.json is missing (declared: $declared), so the tick shows rm-queue=off"; sep="; "
+               else
+                   st="$(_c84_release_state "$rel")"
+                   case "$st" in
+                       '') unread=1 ;;
+                       OK$'\t'*) ;;
+                       *) note="${st#*$'\t'}"
+                          bad="$bad${sep}release state for $rel reads ${st%%$'\t'*}${note:+ ($note)}, so the tick shows rm-queue=off"; sep="; " ;;
+                   esac
+               fi ;;
+        esac
+    done <<< "$roots"
+    if [ -n "$bad" ]; then
+        emit WARN C84-release-queue "the release manager cannot be woken: $bad" \
+            "add 'release: <R>' to the chief doc's ## Live state (chief.sh next seeds it from a single declaration), or 'release: none' to turn the queue off on purpose"
+    elif [ "$any" = 0 ]; then
+        emit INFO C84-release-queue "no release declared — the release manager queue is not in use"
+    elif [ "$none" = 1 ]; then
+        emit INFO C84-release-queue "the chief doc says release: none — the release manager is not woken on purpose"
+    elif [ "$unread" = 1 ]; then
+        emit OK C84-release-queue "the chief doc names a declared release (its signed state was not read: needs the jira CLI build, JIRA_PROJECT_KEY and jq)"
+    else
+        emit OK C84-release-queue "the chief doc names a declared release with a verified state, so the tick can wake the release manager"
+    fi
 }
 
 # --- C72-design-mcp-auth: design profile MCP logins ---
@@ -4971,7 +5081,7 @@ check_c80_status_drift() {
     node_bin="$(resolve_node 2>/dev/null)" || return 0
     if [ -z "$file" ]; then
         load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
-        if root="$(handover_root 2>/dev/null)" && [ -n "$root" ]; then
+        if root="$(doctor_handover_root)" && [ -n "$root" ]; then
             # shellcheck disable=SC2012  # the paths are <slug>/himmel/focus-drift.txt under the handover root
             file="$(ls -t "$root"/*/himmel/focus-drift.txt 2>/dev/null | head -n 1)" || file=""
         fi
@@ -5260,6 +5370,7 @@ run_check C80 check_c80_status_drift
 run_check C81 check_c81_hook_layers
 run_check C82 check_c82_mcp_sources
 run_check C83 check_c83_qmd_embed_backlog
+run_check C84 check_c84_release_queue
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
