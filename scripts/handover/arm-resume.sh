@@ -247,6 +247,10 @@
 #      replay of a (handover, reset) pair whose arm already FIRED is NOT an
 #      error: it exits 0 without arming (the limit-resume key). A pair whose
 #      arm never fired (cancelled, reaped) re-arms.
+#   77 test-run refused — a test on the station tried to install a real crontab
+#      entry or at job (scripts/lib/test-run-guard, exit 77); nothing was
+#      scheduled. Run the suite on a test VM, or put a stub crontab/at on PATH.
+#      --dry-run is exempt.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
