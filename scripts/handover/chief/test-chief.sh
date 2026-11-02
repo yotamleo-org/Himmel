@@ -3377,6 +3377,75 @@ hist94e="$root/tester/trim94edst/specs/history/chief-live-state-DEMO-nextleg-${t
 check "94e the earlier history survives next" "$(grep -c '^EARLIER-HISTORY-94$' "$hist94e" 2>/dev/null)" "1"
 check "94e next appends the trimmed Live state after it" "$(grep -cF 'C20:nonce-closed-20:lock-closed-20:20' "$hist94e" 2>/dev/null)" "1"
 
+# --- 94g: `next` refuses to seed `workers: none` while the fleet
+# manifest holds open workers with a held queue lock; it names each worker and the
+# live-state.sh command. Nothing is seeded and the predecessor doc is untouched.
+# Control rows: an empty or absent manifest, rows without a held lock, lockless
+# rows, a `<...>` placeholder and a line that already lists spans seed as before.
+# mk94g <bucket> <workers line> <none|empty|locked|unlocked|lockless>: a fresh chief doc
+# whose workers: line and fleet manifest are set, then `next` run; rc/stderr in rc94g/err94g.
+mk94g() {
+    local b="$1" workers="$2" kind="$3" tok A w1 w2 t1="" t2="" rows
+    tok="$(token_of "$(chief new --bucket "$b")")"
+    A="$root/tester/$b/DEMO-nextleg-${today}A-chief.md"
+    w1="$root/tester/$b/DEMO-g94-N1-worker.md"; w2="$root/tester/$b/DEMO-g94-N2-worker.md"
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' | tee "$w1" > "$w2"
+    awk -v workers="$workers" '/^workers:/ { print workers; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
+    rows="{\"label\":\"N1\",\"doc\":\"$w1\"},{\"label\":\"N2\",\"doc\":\"$w2\"}"
+    case "$kind" in
+        none) rm -f "${A%.md}.fleet.json" ;;
+        empty) printf '{"workers":[]}\n' > "${A%.md}.fleet.json" ;;
+        lockless) printf '{"workers":[{"label":"N1","doc":"%s","lockless":true},{"label":"N2","doc":"%s","lockless":true}]}\n' "$w1" "$w2" > "${A%.md}.fleet.json" ;;
+        *) printf '{"workers":[%s]}\n' "$rows" > "${A%.md}.fleet.json" ;;
+    esac
+    case "$kind" in locked|lockless)
+        t1="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$w1" 2>/dev/null)")"
+        t2="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$w2" 2>/dev/null)")" ;;
+    esac
+    sum94g="$(cksum < "$A")"
+    rc94g=0
+    err94g="$(chief next --bucket "${b}dst" --doc "$A" 2>&1 >/dev/null)" || rc94g=$?
+    sumafter94g="$(cksum < "$A")"
+    [ -z "$t1" ] || HANDOVER_DIR="$root" bash "$QL" release "$w1" "$t1" >/dev/null 2>&1
+    [ -z "$t2" ] || HANDOVER_DIR="$root" bash "$QL" release "$w2" "$t2" >/dev/null 2>&1
+    HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
+}
+# shellcheck disable=SC2016  # literal fixture text
+mk94g refuse94g 'workers: none' locked
+doc94gB="$root/tester/refuse94gdst/DEMO-nextleg-${today}B-chief.md"
+check "94g next refuses (non-zero) a workers: none line over two open locked workers" "$([ "$rc94g" -ne 0 ] && echo refused || echo "rc=$rc94g")" "refused"
+check "94g the refusal names worker N1 and its doc stem" "$(printf '%s\n' "$err94g" | grep -c 'N1.*DEMO-g94-N1-worker')" "1"
+check "94g the refusal names worker N2 and its doc stem" "$(printf '%s\n' "$err94g" | grep -c 'N2.*DEMO-g94-N2-worker')" "1"
+check "94g the refusal names the live-state.sh command with --nonce per worker" "$(printf '%s\n' "$err94g" | grep -cE 'live-state\.sh .*--nonce N1=<nonce> --nonce N2=<nonce>')" "1"
+check "94g no successor doc is seeded" "$([ -e "$doc94gB" ] && echo yes || echo no)" "no"
+check "94g no successor manifest is copied" "$([ -e "${doc94gB%.md}.fleet.json" ] && echo yes || echo no)" "no"
+check "94g the predecessor doc is untouched" "$sumafter94g" "$sum94g"
+check "94g no HANDOFF is written" "$([ -e "$root/tester/refuse94g/DEMO-nextleg-${today}A-chief-HANDOFF.md" ] && echo yes || echo no)" "no"
+
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gnone 'workers: none' none
+check "94g control: no manifest seeds as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gempty 'workers: none' empty
+check "94g control: an empty manifest seeds as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gunl 'workers: none' unlocked
+check "94g control: open rows holding no lock seed as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gll 'workers: none' lockless
+check "94g control: lockless rows seed as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gph 'workers: <none yet — filled by live-state.sh>' locked
+check "94g control: the <...> placeholder line seeds as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gpop 'workers: `N1:nonce-g1:lock-g1:11` `N2:nonce-g2:lock-g2:22`' locked
+check "94g control: a line that already lists spans seeds as today" "$rc94g" "0"
+# a partial entry (label only) is not a worker span: the open workers are still missing
+# shellcheck disable=SC2016  # literal fixture text
+mk94g refuse94gpart 'workers: `N1:`' locked
+check "94g next refuses a line whose only entry is a partial span" "$([ "$rc94g" -ne 0 ] && echo refused || echo "rc=$rc94g")" "refused"
+check "94g the partial-span refusal names worker N2" "$(printf '%s\n' "$err94g" | grep -c 'N2.*DEMO-g94-N2-worker')" "1"
+
 # --- 95: the HANDOFF's in-flight section: one pointer line per item from the
 # file names under specs/, capped, absent when empty, never a body, fail-open.
 hours_ago95() { date -d "$1 hours ago" '+%Y%m%d%H%M' 2>/dev/null || date -v-"$1"H '+%Y%m%d%H%M'; }  # gnu-ok: GNU date -d is paired with BSD date -v on this line

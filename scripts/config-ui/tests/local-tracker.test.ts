@@ -98,6 +98,14 @@ test("the Kanban draws local cards writable, with their id and their backend", a
   expect(html).not.toContain("HIMMEL-2");
 });
 
+test("a local drop is refused, and the store untouched, when only the project's .env says the tracker is none", async () => {
+  const s = scratch({ tracker: "" }); // the process env names no tracker, and the store is populated
+  writeFileSync(join(s.d, ".env"), "TRACKER=none\n");
+  const r = await s.post({ key: "LOCAL-1", backend: "local", status: "prog" });
+  expect(r.status).toBe(403);
+  expect(s.file(1)).toContain("\nstatus: To Do\n");
+});
+
 test("a drop on a local card moves it through the seam (back too), audited, and neither Jira CLI is run", async () => {
   const s = scratch();
   const r = await s.post({ key: "LOCAL-1", backend: "local", status: "prog" });

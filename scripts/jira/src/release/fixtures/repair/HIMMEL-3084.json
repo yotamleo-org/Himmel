@@ -1,0 +1,365 @@
+{
+  "key": "HIMMEL-3084",
+  "source": "jira history --json read once on 2026-11-02, scrubbed by allowlist; changelog entries, from and to are real",
+  "journalSynthesized": true,
+  "journal": [
+    {
+      "ts": "2026-10-13T17:37:55.209+0200",
+      "key": "HIMMEL-3084",
+      "from": [
+        "v1.1.2"
+      ],
+      "to": [
+        "v1.1.1",
+        "v1.1.2"
+      ],
+      "mechanism": "hand",
+      "entry": "57627"
+    },
+    {
+      "ts": "2026-10-13T17:38:06.689+0200",
+      "key": "HIMMEL-3084",
+      "from": [
+        "v1.1.1",
+        "v1.1.2"
+      ],
+      "to": [
+        "v1.1.1"
+      ],
+      "mechanism": "hand",
+      "entry": "57628"
+    }
+  ],
+  "changelog": [
+    {
+      "id": "35836",
+      "created": "2026-09-24T20:33:05.618+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.0"
+        }
+      ]
+    },
+    {
+      "id": "36196",
+      "created": "2026-09-25T03:48:17.802+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "36778",
+      "created": "2026-09-26T15:49:32.469+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.1"
+        }
+      ]
+    },
+    {
+      "id": "36779",
+      "created": "2026-09-26T15:49:32.948+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.0",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "38622",
+      "created": "2026-09-30T16:52:45.560+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.1",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "38623",
+      "created": "2026-09-30T16:52:46.170+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.23"
+        }
+      ]
+    },
+    {
+      "id": "39406",
+      "created": "2026-09-30T17:52:46.072+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.23",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "39407",
+      "created": "2026-09-30T17:52:46.752+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.24"
+        }
+      ]
+    },
+    {
+      "id": "42538",
+      "created": "2026-09-30T21:37:04.529+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.24",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "42539",
+      "created": "2026-09-30T21:37:05.097+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.25"
+        }
+      ]
+    },
+    {
+      "id": "44430",
+      "created": "2026-09-30T23:06:48.318+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "45311",
+      "created": "2026-09-30T23:12:58.016+0200",
+      "items": [
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "45312",
+      "created": "2026-09-30T23:12:58.598+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "46370",
+      "created": "2026-10-01T01:08:28.105+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.25",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "46371",
+      "created": "2026-10-01T01:08:28.718+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.26"
+        }
+      ]
+    },
+    {
+      "id": "46986",
+      "created": "2026-10-01T01:13:26.888+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "47949",
+      "created": "2026-10-01T01:45:41.867+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "50096",
+      "created": "2026-10-04T03:03:02.572+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.26",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "51984",
+      "created": "2026-10-06T03:57:17.922+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.2"
+        }
+      ]
+    },
+    {
+      "id": "52179",
+      "created": "2026-10-06T15:23:11.164+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.2b"
+        }
+      ]
+    },
+    {
+      "id": "52180",
+      "created": "2026-10-06T15:23:11.889+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.2",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "52510",
+      "created": "2026-10-06T18:56:12.576+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.0.2c"
+        }
+      ]
+    },
+    {
+      "id": "52511",
+      "created": "2026-10-06T18:56:13.299+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.0.2b",
+          "toString": null
+        }
+      ]
+    },
+    {
+      "id": "54867",
+      "created": "2026-10-10T11:06:57.425+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.1.1",
+          "toString": null
+        },
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.1.2"
+        }
+      ]
+    },
+    {
+      "id": "55387",
+      "created": "2026-10-11T20:33:19.320+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "55406",
+      "created": "2026-10-11T21:49:26.421+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "55428",
+      "created": "2026-10-11T22:55:59.291+0200",
+      "items": [
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "57627",
+      "created": "2026-10-13T17:37:55.209+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.1.1"
+        }
+      ]
+    },
+    {
+      "id": "57628",
+      "created": "2026-10-13T17:38:06.689+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.1.2",
+          "toString": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{"pr": 4502, "origin": "#1129", "class": "design-gap", "reason": "measured what a .command body inherits and assumed an app started by open -a behaves the same; the platform assumption was wrong"}
+{"pr": 4503, "origin": "#3390", "class": "test-gap", "reason": "the suite leaves its shared scratch root open to other suites; only one shard order shows the collision"}
+{"pr": 4459, "origin": "#3795", "class": "review-miss:panel", "reason": "the new reader takes the last merge row, while another writer already appends rows under that event with no such contract; the defect sits across two files"}
+{"pr": 4460, "origin": "#2549", "class": "design-gap", "reason": "the reap path frees a dead lock as its ticket asked; nobody asked it to record a halt for the session it freed"}
+{"pr": 4458, "origin": "#4327", "class": "test-gap", "reason": "the vendored tree moved after the pin was reviewed; no check compared the tree digest to the pin"}
+{"pr": 4450, "origin": "#3130", "class": "design-gap", "reason": "cut the open-PR list to a pointer to keep the handoff small as asked; the requirement left no reader of those PRs"}
+{"pr": 4436, "origin": "#4428", "class": "review-miss:judge", "reason": "CodeRabbit raised stale refs on the close check; the judge confirmed it as an over-refusal only and let it ship"}
+{"pr": 4325, "origin": "unknown", "class": "unknown", "reason": "the npx call dates to the initial public release, so no PR or review sits behind it"}
+{"pr": 4432, "origin": "#1700", "class": "test-gap", "reason": "a fixed 15 second row timeout starves on a loaded shard; only a run under load shows it"}
+{"pr": 4428, "origin": "#4403", "class": "design-gap", "reason": "exempted only the per-session scratchpad as its ticket asked; the scratchpad dies at session end while fork work waits for consent"}
+{"pr": 4402, "origin": "unknown", "class": "unknown", "reason": "no PR is known to have removed the config; the cause was never found because nothing logged config writes"}
+{"pr": 4411, "origin": "#1576", "class": "design-gap", "reason": "the successor gets a one-time copy of the fleet manifest while the old dispatcher keeps its own; the design left nothing to dedup a worker across the two"}
+{"pr": 4403, "origin": "unknown", "class": "unknown", "reason": "the feature-branch refusal dates to the public re-baseline, so no PR or review sits behind it"}
+{"pr": 4407, "origin": "#751", "class": "review-miss:cr", "reason": "an audit whose stated job is catching forgery shape-matches one field order, so a reordered forged bullet is never audited"}
+{"pr": 4406, "origin": "#239", "class": "design-gap", "reason": "re-granting a lease on expiry was the design; it gave no renew path for a job that outlives the lease and no claimant check on complete"}
+{"pr": 4380, "origin": "#1637", "class": "design-gap", "reason": "the check assumed every lane may run git fetch; the claudex lane forbids it"}
+{"pr": 4364, "origin": "#4271", "class": "review-miss:cr", "reason": "the digit-run pattern allows spaces and hyphens, so any bot reply holding six split digits is held; nameable from the hunk"}
+{"pr": 4343, "origin": "#3378", "class": "design-gap", "reason": "the placement gate covers Bugs only as its ticket asked; versionless Tasks and Stories fill the pool unseen"}
+{"pr": 4358, "origin": "#3366", "class": "test-gap", "reason": "the test pins an exact scroll position while scroll anchoring moves it with caption height; main CI runs no e2e"}
+{"pr": 4357, "origin": "#3392", "class": "design-gap", "reason": "only an operator-authority rule could supersede, so a rule citing a newer operator record was refused as designed"}

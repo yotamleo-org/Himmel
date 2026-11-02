@@ -1,6 +1,6 @@
-// trackerSources() per source: the rail offers Roadmap and Kanban only when the UI can read a tracker.
+// trackerSources() per source: the rail offers the Board (it replaced Roadmap and Kanban) only when the UI can read a tracker.
 // Jira only, local only (an empty store: nothing to read), GitHub only, none (listed, so both pages can say no tracker is
-// configured); a direct #/kanban with TRACKER=none says so in plain words.
+// configured); a direct landing on the old Kanban route (it lands on the Board) with TRACKER=none says so in plain words.
 import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness, type TrackerKind } from "./fixtures";
 
@@ -9,7 +9,7 @@ test.afterEach(async () => { await h?.stop(); });
 
 const RAIL = (tracker: TrackerKind) => tracker === "local"
   ? ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Workflow", "Docs"]
-  : ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"];
+  : ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"];
 
 // landing: a chief page id opened straight from the landing fragment (#t=<token>&page=<id>), as a bookmark would.
 async function open(page: Page, tracker: TrackerKind, landing = "") {
@@ -34,6 +34,6 @@ test("TRACKER=none: a direct landing on Kanban shows the plain-words no-tracker 
 test("github tracker: Kanban shows the issue cards read-only", async ({ page }) => {
   await open(page, "github", "kanban");
   await expect(page.locator(".rm-card", { hasText: "#21" })).toBeVisible();
-  await expect(page.locator("#rm-kanban")).toContainText("read-only");
+  await expect(page.locator("#rm-lanes")).toContainText("read-only"); // the Board's lanes section (was #rm-kanban)
   await expect(page.locator(".rm-card[draggable]")).toHaveCount(0);
 });

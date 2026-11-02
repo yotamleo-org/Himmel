@@ -1,18 +1,14 @@
 import type { Admission } from '../commands/admissions-ledger.js';
+import { admits } from './admits.js';
 import type { JiraPort } from './engine.js';
 import { terminalOf } from './reducer.js';
 import type { IssueSnap } from './types.js';
 
+export { admits };
+
 // A frozen version's leaks: the tickets open in it that are neither in its
 // frozen set nor ruled in by a ledger row. Jira UI and MCP writes cannot be
 // gated, so this diff is what catches them.
-
-const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
-
-// The key's latest row decides: a deferral or removal after an admission withdraws it.
-// A row keyed by a check id (a version-ready override) is not an admission.
-export const admits = (row: Admission | undefined): boolean =>
-  row !== undefined && row.kind !== 'deferral' && row.kind !== 'rm-remove' && KEY.test(row.key);
 
 /** Open tickets carrying `version`, minus the frozen keys and the keys the ledger admits. Sorted. */
 export function leakDiff(

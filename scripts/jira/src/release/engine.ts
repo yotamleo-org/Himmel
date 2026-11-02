@@ -8,7 +8,7 @@ import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
 import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
-import { appendAdmission, assertAdmissionsWritable, readAdmissions } from '../commands/admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable, readAdmissions, type Admission } from '../commands/admissions-ledger.js';
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
@@ -186,8 +186,18 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
 function reduceLoaded(l: Loaded, mirror: ReturnType<typeof readMirror>): ReleaseState {
   return reduce({
     decl: l.decl, baselines: l.baselines, rulings: l.rulings, operator: l.operator, events: l.events,
-    issues: mirror.issues, mirrorSync: mirror.sync,
+    issues: mirror.issues, mirrorSync: mirror.sync, admissions: admissionsOrNull(),
   });
+}
+
+// A bad ledger line (or no ledger location) reads UNKNOWN for the reducer's admissions input only: the overall
+// status stays OK, so rm-queue and rm-run keep working on one bad line in an unsigned, lock-free ledger.
+function admissionsOrNull(): Admission[] | null {
+  try {
+    return readAdmissions();
+  } catch {
+    return null;
+  }
 }
 
 function readLease(ctx: Ctx, k: Buffer): Lease {
