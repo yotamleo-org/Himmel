@@ -227,6 +227,9 @@ function residualGateRank(i: RankedIssue, ledger: Admission[]): number {
     (i.fields.labels ?? []).includes(`gate-${g}`) || gate === g ? index + 1 : 0));
 }
 
+/** True when the release manager's latest row for the key admitted it: its version is ruled and only the release manager moves it. */
+const ruledByRm = (key: string, ledger: Admission[]): boolean => ledger.filter((r) => r.key === key).pop()?.kind === 'rm-admit';
+
 /** Read all rank fields while retaining the shared search helper's pagination. */
 async function rankIssues(jql: string): Promise<RankedIssue[]> {
   const fields = ['labels', 'status', 'priority', 'created', 'fixVersions', 'issuelinks', 'parent', sectorField()].filter(Boolean).join(',');
@@ -281,7 +284,7 @@ async function competeForSlot(
   };
   const newcomer = rank({ key: '', fields: { labels, priority: { name: o.priority ?? 'Medium' }, created: new Date().toISOString() } },
     newcomerLinks, GATE_RANK.indexOf(o.gate?.split(':')[0] ?? '') + 1, o.sector);
-  const candidates = residents.filter((i) => i.fields?.status?.name === 'To Do' && residualGateRank(i, ledger) === 0)
+  const candidates = residents.filter((i) => i.fields?.status?.name === 'To Do' && residualGateRank(i, ledger) === 0 && !ruledByRm(i.key, ledger))
     .map((i) => ({ key: i.key, tuple: rank(i, links(i), 0, sectorOf(i)) }))
     .sort((a, b) => compareRank(a.tuple, b.tuple) || a.key.localeCompare(b.key));
   const lowest = candidates[0];
@@ -548,12 +551,7 @@ interface IntakeOptions {
   type: string;
   proposedVersion?: string;
   why?: string;
-  residualOf?: string;
-  followUpOf?: string;
 }
-
-/** A residual or follow-up routes itself, so its INTAKE stays best effort; every other unversioned filing must be able to queue one. */
-const intakeStrict = (o: IntakeOptions): boolean => o.residualOf === undefined && o.followUpOf === undefined;
 
 class NoReleaseDeclared extends Error {
   constructor() {
@@ -581,16 +579,16 @@ export function assertIntakeQueueable(why: string): void {
   refuseRequest(ctxFor(intakeRelease()), { verb: 'INTAKE', key: 'NEW', from_v: null, why });
 }
 
-/** Refuses an unversioned Bug, Task or Story whose INTAKE could not be queued; runs before the POST. */
+/** Refuses an unversioned Bug, Task or Story (a follow-up or residual too) whose INTAKE could not be queued; runs before the POST. */
 function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, title: string): void {
-  if (intakeOwed(o.type, fields) && intakeStrict(o)) assertIntakeQueueable(intakeWhy(o, title));
+  if (intakeOwed(o.type, fields)) assertIntakeQueueable(intakeWhy(o, title));
 }
 
 function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
   if (!intakeOwed(o.type, fields)) return;
   const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
   try {
-    queueBacklogIntake(key, intakeWhy(o, title), toVersion, intakeStrict(o));
+    queueBacklogIntake(key, intakeWhy(o, title), toVersion, true);
   } catch (e) {
     console.error(`Created ${key} but INTAKE not queued: ${(e as Error).message}`);
     process.exitCode = 1;
@@ -600,8 +598,8 @@ function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, 
 /**
  * A ticket filed with no version waits in the backlog for the release
  * manager: queue an INTAKE request to the one declared release. Lenient
- * callers (a residual, edit's depth-2 drop) only warn, and stay quiet when no
- * release is declared; strict ones rethrow so the caller can fail the run.
+ * callers (edit's depth-2 drop) only warn, also when no release is declared;
+ * strict ones rethrow so the caller can fail the run.
  */
 export function queueBacklogIntake(key: string, why: string, toVersion: string | null = null, strict = false): void {
   let release: string | undefined;
@@ -615,7 +613,6 @@ export function queueBacklogIntake(key: string, why: string, toVersion: string |
     console.error(`jira: INTAKE queued for ${key} as REQ ${r.req} (release ${release})`);
   } catch (e) {
     if (strict) throw e;
-    if (e instanceof NoReleaseDeclared) return;
     console.error(`jira: warning: INTAKE not queued for ${key} (release ${release ?? 'unknown'}): ${(e as Error).message}`);
   }
 }
@@ -688,8 +685,9 @@ async function displaceResidual(residual: ResidualPlan | undefined, newcomer: st
   const displaced = residual.displaced;
   const resident = await request<RankedIssue>('GET', `/issue/${displaced.key}?fields=labels,status,fixVersions`);
   const source = residual.fixVersion!;
+  const ledger = readAdmissions(source);
   if (!resident.fields.fixVersions?.some((v) => v.name === source) ||
-      resident.fields.status?.name !== 'To Do' || residualGateRank(resident, readAdmissions(source)) !== 0) {
+      resident.fields.status?.name !== 'To Do' || residualGateRank(resident, ledger) !== 0 || ruledByRm(displaced.key, ledger)) {
     await request('PUT', `/issue/${newcomer}`, {
       fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
       update: { labels: [{ add: 'residual-displaced' }] },
