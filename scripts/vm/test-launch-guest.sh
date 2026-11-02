@@ -420,6 +420,48 @@ for bad in 'himmel' '/x; id' '/x y' '/a/../b' '~/../b' '$(id)' '/a`id`'; do
     check "G2 bad override [$bad]: no ssh" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
 done
 
+# a guest quota or login error stops the launch: the account is named, "quota, not retried" is said, the
+# run keeps its one ledger row, and exactly one ssh attempt was made (operator ruling 10-30: no retry).
+# the ssh stub answers like a guest claude -p --output-format json whose result is an error
+for qerr in "Claude AI usage limit reached|1762099200" "Not logged in - Please run /login" "OAuth session expired"; do
+    printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\nprintf "%%s\\n" "$QERR_JSON"\nexit "${QERR_RC:-1}"\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"
+    export QERR_JSON="{\"type\":\"result\",\"is_error\":true,\"result\":\"$qerr\",\"total_cost_usd\":0}"
+    fresh; rm -f "$LEDGER"
+    rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q1.err")" || rc=$?
+    check "Q1 [$qerr]: exit is non-zero" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+    contains "Q1 [$qerr]: the message names the account label" "$(cat "$tmp/q1.err")" "acct-x"
+    contains "Q1 [$qerr]: the message says quota, not retried" "$(cat "$tmp/q1.err")" "quota, not retried"
+    check "Q1 [$qerr]: exactly one ssh attempt" "$(wc -l < "$SSH_LOG" | tr -d ' ')" "1"
+    check "Q1 [$qerr]: exactly one ledger row" "$(rows)" "1"
+    check "Q1 [$qerr]: stdout is still the guest result" "$out" "$QERR_JSON"
+done
+# a quota error under a guest that exited 0 still stops with a non-zero exit
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\nprintf "%%s\\n" "$QERR_JSON"\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q2.err")" || rc=$?
+check "Q2 quota error with guest rc 0: exit 1" "$rc" "1"
+contains "Q2 quota error with guest rc 0: says quota, not retried" "$(cat "$tmp/q2.err")" "quota, not retried"
+
+# the negative control: a healthy guest result still launches and returns 0, with no quota message
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\nprintf "%%s\\n" "$GOOD_JSON"\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q3.err")" || rc=$?
+check "Q3 healthy guest: exit 0" "$rc" "0"
+lacks "Q3 healthy guest: no quota message" "$(cat "$tmp/q3.err")" "quota, not retried"
+check "Q3 healthy guest: one ssh attempt and one row" "$(wc -l < "$SSH_LOG" | tr -d ' ')$(rows)" "11"
+# an error that is not a quota or login error (the guest ran, a tool failed) is not a quota stop
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\necho "{\\"type\\":\\"result\\",\\"is_error\\":true,\\"result\\":\\"Prompt is too long\\"}"\nexit 1\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q4.err")" || rc=$?
+check "Q4 other guest error: the guest's exit passes through" "$rc" "1"
+lacks "Q4 other guest error: no quota message" "$(cat "$tmp/q4.err")" "quota, not retried"
+# a successful result whose text merely mentions quota is not a quota stop
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\necho "{\\"type\\":\\"result\\",\\"is_error\\":false,\\"result\\":\\"I read about the usage limit and quota handling\\",\\"total_cost_usd\\":0.5}"\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q5.err")" || rc=$?
+check "Q5 is_error false mentioning quota: exit 0" "$rc" "0"
+lacks "Q5 is_error false mentioning quota: no quota message" "$(cat "$tmp/q5.err")" "quota, not retried"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
 echo "FAIL - test-launch-guest.sh ($fails failure(s))"; exit 1
