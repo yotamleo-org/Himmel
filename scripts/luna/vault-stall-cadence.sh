@@ -400,6 +400,10 @@ cmd_run() {
         || { echo "ERR vault-stall: not a git repo: $vault" >&2; return 2; }
     vault="$(cd "$vault" && pwd -P)" || return 2   # later steps cd into it
     if [ "$dry" -eq 0 ]; then
+        # A test on the station never edits or commits into the real vault or writes its state; only exit 77 refuses.
+        local door_rc=0
+        bash "$SCRIPT_DIR/../lib/test-run-guard" check vault-stall-cadence-run "$vault" "$STATE_DIR" || door_rc=$?
+        [ "$door_rc" -ne 77 ] || return 77
         mkdir -p "$STATE_DIR" || return 2
         command -v flock >/dev/null 2>&1 || { echo "ERR vault-stall: flock not on PATH (needed to serialize runs)" >&2; return 2; }
         exec 9>"$STATE_DIR/run.lock"

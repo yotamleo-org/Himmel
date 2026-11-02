@@ -111,7 +111,8 @@ SCORECARD_TSV="$td/bad.tsv" bash "$tool" run --date 2026-10-21 >/dev/null 2>&1; 
 check "foreign header is refused" "$rc" 1
 
 printf '#!/usr/bin/env bash\ncase "$1" in -l) [ -f "%s/tab" ] && cat "%s/tab" || { echo "no crontab for x" >&2; exit 1; };; -) cat >"%s/tab";; esac\n' "$td" "$td" "$td" >"$td/crontab"
-export SCORECARD_CRONTAB="bash $td/crontab" SCORECARD_RUNNER_DIR="$td/runner"
+chmod +x "$td/crontab"
+export SCORECARD_CRONTAB="$td/crontab" SCORECARD_RUNNER_DIR="$td/runner"
 HANDOVER_DIR="$td/ho" USER_SLUG=tester bash "$tool" arm --dry-run | grep -q "HIMMEL-StabilityScorecard" && ok "arm --dry-run names the task" || bad "arm --dry-run names the task"
 [ ! -f "$td/tab" ] && ok "dry-run installs nothing" || bad "dry-run installs nothing"
 

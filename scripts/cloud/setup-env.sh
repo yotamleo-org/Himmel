@@ -74,7 +74,7 @@ TMO=timeout   # gnu-ok: runs only on the Ubuntu 24.04 cloud VM (GNU coreutils, a
 # is a VM, so the guard lets it through. A missing or crashing guard lets the setup run, as in the other doors.
 if [ "$DRY" -eq 0 ]; then
   door_rc=0
-  bash "$ROOT/scripts/lib/test-run-guard" check --tool qmd setup-env "$ROOT/graphify-out" >&2 || door_rc=$?
+  PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/test-run-guard" check --tool qmd setup-env "$ROOT/graphify-out" >&2 || door_rc=$?
   if [ "$door_rc" -eq 77 ]; then echo "setup-env: refused, nothing was set up" >&2; exit 77; fi
 fi
 
