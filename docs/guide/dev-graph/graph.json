@@ -2211,7 +2211,7 @@
       "to": "o.ruling",
       "kind": "refusal",
       "exit": 22,
-      "condition": "main's CI state cannot be established (a red main only warns)",
+      "condition": "main's CI state cannot be read (an unreadable run list, a full window with no completed run, an unreadable re-run attempt); a red main only warns",
       "sources": [
         {
           "file": "scripts/handover/merge-on-green.sh",
