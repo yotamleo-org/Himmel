@@ -656,6 +656,27 @@ check "3b (HIMMEL-8834): the first key gets its row, and a keyless title adds no
 reset "To Do"; touch "$FX/pr-merged.fail"
 drift
 check "3b (HIMMEL-8834): an unreadable merged-PR list is a HEALTH row, never MERGED-NO-ROW" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 0/1
+# The merged list is a 14-day window read in one call, not the newest 30 (a hand-merged PR stays visible for days).
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
+drift
+contains "3b (HIMMEL-8834): the merged list is a date window" "$(grep -- '--state merged' "$STUB_LOG")" "--search merged:>="
+contains "3b (HIMMEL-8834): and reads up to 1000 PRs in that one call" "$(grep -- '--state merged' "$STUB_LOG")" "--limit 1000"
+check "3b (HIMMEL-8834): and makes exactly one merged-PR call" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 1
+# A merge row is compared by PR: an older merged PR's row does not hide a later hand-merged PR of the same key.
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"; logrow merge "$K" moved 70 yes
+drift
+contains "3b (HIMMEL-8834): an older PR's merge row does not hide a later hand-merged PR" "$(drows MERGED-NO-ROW)" "MERGED-NO-ROW $K PR #77"
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"},{\"number\":70,\"title\":\"fix: [$K] first\"}]"; logrow merge "$K" moved 70 yes
+drift
+check "3b (HIMMEL-8834): one row per ticket, naming the newest unrecorded PR" "$(dcount MERGED-NO-ROW)" 1
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"; logrow merge "$K" moved "" yes
+drift
+check "3b (HIMMEL-8834): a merge row with no PR number covers every PR of its key" "$(dcount MERGED-NO-ROW)" 0
+# The Jira reads of the class are capped per run; the rest is one HEALTH row.
+reset "To Do"; mergedpr "$(jq -nc '[range(0; 42) | {number: (9100 + .), title: ("fix: [HIMMEL-" + ((9100 + .) | tostring) + "] x")}]')"
+drift
+check "3b (HIMMEL-8834): at most 40 keys are read per run" "$(dcount MERGED-NO-ROW)" 40
+contains "3b (HIMMEL-8834): and the rest is one HEALTH row" "$(drows HEALTH)" "2 more merged PRs not checked"
 
 reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
 drift

@@ -44,7 +44,8 @@
 #   D5  no PR, an owner not provably ended       In Progress
 #   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
 #       or, a wrapped owner and no merge row at all, a merged PR whose first [KEY] is the
-#       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list keeps D6
+#       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
+#       filter is no-write + miss
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
 #       and no other recorded worker holds its lock
 #   D7  no PR, never owned                       no-write
@@ -360,8 +361,8 @@ ts_has_merge_row() {
 # ts_merged_no_row <KEY> — rc 0 when a PR whose title's first [KEY] is <KEY> merged and no merge row
 # records it (the caller has checked ts_has_merge_row): TS_MERGED_PR = its number. The funnel logs
 # the find as stage=merged-no-row, and a logged find answers without a gh call, so the sweep's
-# snapshot (open PRs only) needs no merged-PR read. Fail soft: an unreadable list is rc 1,
-# which keeps D6.
+# snapshot (open PRs only) needs no merged-PR read. rc 0 = found, 1 = none (or a snapshot
+# derive with nothing logged), 2 = the merged list is unreadable (no-write + miss, never a move).
 ts_merged_no_row() {
     local log json rows num title k
     TS_MERGED_PR=""
@@ -372,8 +373,8 @@ ts_merged_no_row() {
     fi
     [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
     json=$(gh pr list --state merged --search "$1 in:title" --limit "${TICKET_STATUS_PR_LIMIT:-50}" \
-        --json number,title 2>/dev/null) || return 1
-    rows=$(jq -r 'sort_by(.number) | reverse | .[] | [.number, .title] | @tsv' <<<"$json" 2>/dev/null) || return 1
+        --json number,title 2>/dev/null) || return 2
+    rows=$(jq -r 'sort_by(.number) | reverse | .[] | [.number, .title] | @tsv' <<<"$json" 2>/dev/null) || return 2
     while IFS=$'\t' read -r num title; do
         [ -n "$num" ] || continue
         k=$(ticket_key_from_title "$title") || continue
@@ -471,7 +472,13 @@ ts_derive() {
             # No partial row: a ticket with no merge row at all may still have shipped a PR merged
             # outside merge-on-green; that is a partial too.
             rc=0; ts_has_merge_row "$key" || rc=$?
-            if [ "$rc" -eq 1 ] && ts_merged_no_row "$key"; then TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
+            if [ "$rc" -eq 1 ]; then
+                rc=0; ts_merged_no_row "$key" || rc=$?
+                if [ "$rc" -eq 0 ]; then TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
+                elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" gh
+                else TS_DERIVED="To Do"; TS_RULE=D6
+                fi
+            elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
             else TS_DERIVED="To Do"; TS_RULE=D6
             fi
         fi

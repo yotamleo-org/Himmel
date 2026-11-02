@@ -403,6 +403,8 @@ printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":
 bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
 check "D5c merged-no-row: a first sweep moves the ticket to In Progress, never To Do" "$(moved)" "transition $K In Progress"
 check "D5c merged-no-row: and logs the stage for the next derive" "$(row stage)/$(row merged_pr)" merged-no-row/81
+# The sweep's snapshot derive never reads the merged list: only the funnel's live derive does (one call).
+check "D5c merged-no-row: a snapshot derive makes no merged-PR gh call (the funnel makes the only one)" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 1
 # No other rule's row changes: a D5 noop row carries no stage or merged_pr.
 reset "In Progress"; owned LIVE 11 0
 fn "$K" --event live --doc "$DOC"
@@ -423,7 +425,8 @@ check "D6 merged-no-row: a merged PR whose FIRST key is another ticket is not th
 reset "In Review"; owned WRAPPED 0
 touch "$FX/pr-merged.fail"
 fn "$K" --event wrapped --doc "$DOC"
-check "D6 merged-no-row: an unreadable merged-PR list keeps D6 (fail soft, no refusal)" "$(row rule)/$(row result)" D6/moved
+check "merged-no-row: an unreadable merged-PR list is no-write + miss stage=gh, never a move to To Do" "$(row result)/$(row stage)" miss/gh
+check "merged-no-row: and no transition is made" "$(ntrans)" 0
 reset "In Review"; owned WRAPPED 0
 merged "[{\"number\":79,\"title\":\"fix: [$K] shipped\"}]"
 printf '{"ts":"t","event":"merge","key":"%s","pr":"79","contract":"yes","result":"moved"}\n' "$K" >> "$LOG"

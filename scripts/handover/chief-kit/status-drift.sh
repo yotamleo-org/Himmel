@@ -17,8 +17,9 @@
 #   DERIVE-MISMATCH   Jira differs from derive(now); names the D rule and direction
 #   MERGE-MISMATCH    a contract-yes merge row, but the ticket is not Done
 #   DONE-WITH-OPEN-PR Done, but a PR whose title's first [KEY] is the key is open
-#   MERGED-NO-ROW    a recent merged PR with no merge row, its first [KEY] still open (not Done, not an
-#                     Epic); the fix is to close the ticket or record the remainder
+#   MERGED-NO-ROW    a PR merged in the last 14 days with no merge row of its own (compared by PR number),
+#                     its first [KEY] still open (not Done, not an Epic); the fix is to close the ticket
+#                     or record the remainder
 #   MISSED            a miss with no later moved or noop row for the same key and PR,
 #                     unless a derive now settles the key (Done or off the ladder, or
 #                     Jira already at the derived status)
@@ -305,29 +306,52 @@ done <<<"$keys"
 
 # --- merged PRs with no merge row ------------------------------------
 # A PR merged by hand, or by any route that writes no merge row, leaves its ticket reading
-# unfinished with no word of the merge. The 30 newest merged PRs are read once; one row per
-# open ticket (not Done, not an Epic) whose newest merged PR the log has no merge row for.
+# unfinished with no word of the merge. The PRs merged in the last 14 days (the newest 1000 at
+# most) are compared by PR number with the merge rows of the log, which are read once; a row
+# that carries no PR number covers every PR of its key. One row per open ticket (not Done, not
+# an Epic), naming its newest PR with no merge row.
+# Cost per run: one gh list (about ten paged calls, 7 s for 1000 PRs), one pass over the log, and
+# one Jira get per distinct key with an unrecorded PR, at most MNR_CAP; the 90 s budget bounds the run.
 # swallow-ok: an unreadable merged list becomes a HEALTH row below, never a plausible count
-mprs=$(bounded 30 gh pr list --state merged --limit 30 --json number,title 2>/dev/null) || mprs=""
+msince=$(date -u -d '14 days ago' +%Y-%m-%d 2>/dev/null || date -u -v-14d +%Y-%m-%d 2>/dev/null) # swallow-ok: no date is the unreadable case the next line turns into a HEALTH row
+mprs=""
+if [ -n "$msince" ]; then
+    mprs=$(bounded 30 gh pr list --state merged --search "merged:>=$msince" --limit 1000 --json number,title 2>/dev/null) || mprs="" # swallow-ok: an unreadable merged list becomes a HEALTH row below
+fi
 nmp=$(jq 'length' <<<"$mprs" 2>/dev/null) # swallow-ok: a non-numeric count is the unreadable case the next line turns into a HEALTH row
+mrows=""
+mlog=ok
+if [ -r "$LOG" ]; then
+    # swallow-ok: an unreadable log becomes a HEALTH row below, never a row for every merged PR
+    mr=$(ts_merge_rows "$LOG" 2>/dev/null) && mrows=$(jq -R -r 'fromjson? | select(.event == "merge" and has("contract")) | "\(.key)\t\(.pr // "")"' <<<"$mr" 2>/dev/null) || mlog=unreadable
+fi
+MNR_CAP=40
 case "$nmp" in
     ''|*[!0-9]*) add HEALTH - "gh: the merged-PR list is unreadable" gh "gh auth status; then rerun this check" ;;
     *)
+        if [ "$mlog" != ok ]; then
+            add HEALTH - "log: the merge rows are unreadable" - "check $LOG"
+            nmp=0
+        fi
         mseen=""
+        mreads=0
+        mskipped=0
         while IFS=$'\t' read -r n title; do
             [ -n "$n" ] || continue
             k=$(ticket_key_from_title "$title") || continue
             case " $mseen " in *" $k "*) continue ;; esac
+            case $'\n'"$mrows"$'\n' in *$'\n'"$k"$'\t'"$n"$'\n'*|*$'\n'"$k"$'\t\n'*) continue ;; esac
+            if [ "$mreads" -ge "$MNR_CAP" ]; then mskipped=$((mskipped + 1)); continue; fi
             mseen="$mseen $k"
-            mrc=0; ts_has_merge_row "$k" || mrc=$?
-            [ "$mrc" -eq 1 ] || continue
+            mreads=$((mreads + 1))
             if ts_read_jira "$k"; then
                 [ "$TS_J_TYPE" != Epic ] && [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || continue
                 add MERGED-NO-ROW "$k" "PR #$n merged with no merge row and the ticket is $TS_J_STATUS: close the ticket or record the remainder" "merge-on-green.sh" "jira transition $k Done (work finished), or record the remainder as a partial"
             else
                 add HEALTH "$k" "status unknown (stage=get)" jira "$SWEEP_FIX"
             fi
-        done <<<"$(jq -r '.[] | [.number, .title] | @tsv' <<<"$mprs")"
+        done <<<"$([ "$nmp" -gt 0 ] && jq -r '.[] | [.number, .title] | @tsv' <<<"$mprs")"
+        [ "$mskipped" -eq 0 ] || add HEALTH - "merged-no-row: $mskipped more merged PRs not checked (cap $MNR_CAP Jira reads per run)" - "rerun after closing the listed tickets"
         ;;
 esac
 

@@ -209,6 +209,7 @@ case "\$1" in
     */dist/index.js)
         echo "\$*" >> "$jiralog"
         if [ "\$2" = "get" ]; then
+            if [ "\${STUB_JIRA_GET_EMPTY:-0}" = "1" ]; then echo '{}'; exit 0; fi
             printf '{"fields":{"issuetype":{"name":"%s"}}}\n' "\${STUB_JIRA_ISSUE_TYPE:-Task}"
             exit 0
         fi
@@ -568,6 +569,11 @@ fi
 if STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_case "handover/HIMMEL-374-jira-transition" 0 "merge row: failed transition" -- --jira-transition; then
     assert_merge_row "HIMMEL-374/42/abc123/yes/miss" "a failed transition leaves a contract=yes miss row (done-pending, never To Do)"
+fi
+if STUB_JIRA_BUILD=1 STUB_JIRA_GET_EMPTY=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_case "handover/HIMMEL-374-jira-transition" 0 "merge row: unverifiable issue type" -- --jira-transition; then
+    assert_merge_row "HIMMEL-374/42/abc123/yes/miss" "a merge whose ticket type cannot be read leaves a contract=yes miss row (done-pending, never To Do)"
+    assert_jira_log_lacks "transition" "and makes no jira transition call"
 fi
 if STUB_PR_TITLE="chore: tidy things up" run_case "handover/x-slug" 0 "merge row: no ticket key"; then
     assert_merge_row "////" "a merge with no ticket key writes no row"
