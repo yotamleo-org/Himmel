@@ -39,7 +39,7 @@ test("the old Roadmap and Kanban routes land on the Board page", async ({ page }
   await page.goto("about:blank"); // a fragment-only change would not reload the page, and the landing is read at load
   await page.goto(`${h.url}&page=kanban`);
   await expect(page.locator("#main h1")).toHaveText("Board");
-  expect(await page.evaluate(() => location.hash)).toBe("#/board");
+  expect(await page.evaluate(() => location.hash)).toBe("#/board?v=all");
 });
 
 test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes, and the three tabs", async ({ page }) => {

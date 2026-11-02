@@ -178,7 +178,7 @@ function roadmapHtml(data, ui) {
 const TABS = [["roadmap", "Roadmap"], ["chains", "Chains"], ["tidy", "Tidy up"]];
 const query = (o) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v) p.set(k, v); const s = p.toString(); return s ? "?" + s : ""; };
 const boardHref = (o) => esc("#/board" + query(o));
-const driftOk = (dr) => !!(dr && dr.counts && dr.file);
+const driftOk = (dr) => !!(dr && dr.counts && dr.file && dr.file.exists && !dr.unknown);
 const noChains = (ch) => (ch && ch.reason) || "no chain registry: set HIMMEL_CHAIN_REGISTRY to a himmel.chain-registry/1 file";
 
 // The version asked for: an index, -1 for every version, -2 for a name the mirror does not have. No version asked = the running one.
@@ -273,7 +273,7 @@ function driftRow(r) {
   return `<tr><td><code>${esc(r.class)}</code></td><td>${esc(r.key)}</td><td>${esc(says)}</td><td>${esc(get("writer"))}</td><td>${fix ? `<code>${esc(fix)}</code> <button class="btn" data-act="copy" data-cmd="${esc(fix)}">copy</button>` : ""}</td></tr>`;
 }
 function statusDriftHtml(dr) {
-  if (!driftOk(dr) || !dr.file.exists) return `<div class="nodata">${dr && dr.file && !dr.file.exists ? "no saved drift run yet" : "status drift not read" + (dr && dr.reason ? ` (${esc(dr.reason)})` : "")}</div>`;
+  if (!driftOk(dr)) return `<div class="nodata">${dr && dr.file && !dr.file.exists ? "no saved drift run yet" : dr && dr.counts && dr.unknown ? "the saved drift run's result is unknown" : "status drift not read" + (dr && dr.reason ? ` (${esc(dr.reason)})` : "")}</div>`;
   const grp = (title, rows) => rows && rows.length ? `<tr class="grp"><td colspan="5">${esc(title)} · ${rows.length}</td></tr>${rows.map(driftRow).join("")}` : "";
   const body = grp("Real drift · counted", dr.real) + grp("Known checker bug · listed, not counted", dr.known) + grp("Transient · listed, not counted", dr.transient);
   return `<div class="kv">real ${dr.counts.real} · known checker bug ${dr.counts.known} · transient ${dr.counts.transient} · ${esc(dr.mode)} mode · saved run ${esc(dr.file.writtenHm || "unknown")}</div>`

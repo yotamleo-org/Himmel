@@ -19,7 +19,7 @@ let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the
 // links here as #t=<token>&page=<id>, landing on that page.
 const landing = parseLanding(location.hash);
 const token = landing ? landing.token : "";
-if (landing) history.replaceState(null, "", location.pathname + location.search + "#/" + landing.page + (landing.tile ? "?tile=" + landing.tile : ""));
+if (landing) history.replaceState(null, "", location.pathname + location.search + "#/" + landing.page + (landing.tile ? "?tile=" + landing.tile : landing.q ? "?" + landing.q : ""));
 // the Fleet link's status dot, read on load and on each page change (never polled: an open
 // chief must still let the server idle out).
 let fleet = { data: null, error: null };

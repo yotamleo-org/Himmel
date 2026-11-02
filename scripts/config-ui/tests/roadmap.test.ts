@@ -219,7 +219,7 @@ test("the rail lists one Board entry after Configure, and Board is a console rou
   expect(labels.slice(labels.indexOf("Fleet"))).toEqual(["Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"]);
   expect(parseLanding(`#t=${TOKEN}&page=board`)).toEqual({ token: TOKEN, page: "board" });
   expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "board" });
-  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "board" });
+  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "board", q: "v=all" });
 });
 
 const driftOk = (real: { class: string; key: string; line: string }[] = [], known = 0, transient = 0) => ({
@@ -286,6 +286,9 @@ test("Board: the drift banner and the Tidy up table come from the saved drift ru
   }
   const stale = renderBoard(r, { version: null, theme: null }, { drift: { ...driftOk(), stale: true }, chains: null });
   expect(stale).toContain("older than");
+  for (const bad of [{ ...driftOk(), unknown: true }, { ...driftOk(), file: { exists: false } }]) {
+    expect(renderBoard(r, { version: null, theme: null }, { drift: bad, chains: null })).not.toMatch(/\d+ drift</);
+  }
 });
 
 test("Board: chain badges, the waits-for-you card and the Chains tab come from the chain read; absent shows a notice, never a count", () => {

@@ -18,7 +18,7 @@ const CHIEF = ["shift", "report", "config", "health", "toolhealth", "board", "wo
 // the same way: tests/slow.test.ts runs it without this file's exports.)
 export const TILES = ["secrets", "review", "tracker", "scope"];
 // Roadmap and Kanban became the one Board page: their old ids land on it.
-const OLD_PAGE = { setup: { id: "config", tile: "secrets" }, configure: { id: "config" }, roadmap: { id: "board" }, kanban: { id: "board" } };
+const OLD_PAGE = { setup: { id: "config", tile: "secrets" }, configure: { id: "config" }, roadmap: { id: "board" }, kanban: { id: "board", q: "v=all" } };
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
@@ -55,7 +55,7 @@ export function parseLanding(hash) {
   const token = p.get("t");
   if (!token || !/^[0-9a-f]+$/.test(token)) return null;
   const old = OLD_PAGE[p.get("page")];
-  if (old) return { token, page: old.id, ...(old.tile ? { tile: old.tile } : {}) };
+  if (old) return { token, page: old.id, ...(old.tile ? { tile: old.tile } : {}), ...(old.q ? { q: old.q } : {}) };
   return { token, page: CHIEF.includes(p.get("page")) ? p.get("page") : "config" };
 }
 

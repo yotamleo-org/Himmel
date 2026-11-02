@@ -154,6 +154,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   const env: Record<string, string | undefined> = {
     ...process.env, HOME: home, CONFIG_UI_HIMMELCTL: join(__dirname, "e2e-stub.js"), CONFIG_UI_IDLE_MS: "300000",
     HIMMEL_REPORT_CADENCE_ROOT: cad, E2E_FEED: feed, STUB_ARGV: argv, STUB_STATE: state,
+    HIMMEL_FOCUS_DRIFT: undefined, TRACKER_HANDOVERS_DIR: undefined, HIMMEL_CHAIN_REGISTRY: undefined, // the launching shell's own never reach the Board
     ...boardEnv, TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL", ...(tracker === "github" ? { GH_CMD: gh } : {}), ...(tracker === "local" ? { TRACKER_STORE: store } : {}),
     HANDOVER_DIR: hroot, HIMMEL_PROMETHEUS_URL: promUrl, HIMMEL_FLOW_EXPORTER_PORT: "1", E2E_FEED_DELAY_MS: String(o.feedDelayMs ?? 0),
   };

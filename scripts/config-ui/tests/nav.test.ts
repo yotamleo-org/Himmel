@@ -39,7 +39,7 @@ test("the rail has one Board entry and no separate Roadmap or Kanban entry", () 
 
 test("the old Roadmap and Kanban landings from the AG-UI rail resolve to the Board page", () => {
   expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "board" });
-  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "board" });
+  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "board", q: "v=all" });
   expect(parseLanding(`#t=${TOKEN}&page=board`)).toEqual({ token: TOKEN, page: "board" });
 });
 
