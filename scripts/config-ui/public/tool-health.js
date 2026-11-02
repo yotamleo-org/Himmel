@@ -184,19 +184,31 @@ function shiftDays(shift) {
   for (let t = Date.UTC(new Date(a).getUTCFullYear(), new Date(a).getUTCMonth(), new Date(a).getUTCDate()); t <= b; t += 86400000) out.add(new Date(t).toISOString().slice(0, 10));
   return out;
 }
+function chartTop(max, kind) {
+  if (kind === "bar") return max <= 4 ? 4 : Math.ceil(max / 10) * 10;
+  if (!(max > 0)) return 0.02;
+  const p = 10 ** Math.floor(Math.log10(max));
+  return [1, 2, 4, 5, 10].map((k) => k * p).find((t) => t >= max) || 10 * p;
+}
+// mockup v9 geometry: a fixed 480x180 plot, scaled uniformly so dots stay round
 function chart(rows, value, max, label, kind) {
-  const w = 24, h = 64, top = max > 0 ? max : 1;
-  const marks = rows.map((r, i) => {
-    const v = value(r), x = i * w + 4;
-    if (!isNum(v)) return `<text x="${x + 8}" y="${h - 2}" class="gap">·</text>`;
-    const y = h - 12 - (v / top) * (h - 20);
-    return kind === "bar" ? `<rect x="${x}" y="${y}" width="${w - 8}" height="${h - 12 - y}" class="fb"><title>${esc(r.day)}: ${esc(label(v))}</title></rect>` : `<circle cx="${x + 8}" cy="${y}" r="3" class="dot"><title>${esc(r.day)}: ${esc(label(v))}</title></circle>`;
-  }).join("");
-  let line = "", seg = [];
-  rows.forEach((r, i) => { const v = value(r); if (isNum(v)) seg.push(`${i * w + 12},${h - 12 - (v / top) * (h - 20)}`); else { if (seg.length > 1) line += `<polyline points="${seg.join(" ")}" class="line"/>`; seg = []; } });
-  if (kind !== "bar" && seg.length > 1) line += `<polyline points="${seg.join(" ")}" class="line"/>`;
-  const marker = rows.map((r, i) => (r.shift ? `<rect x="${i * w}" y="0" width="${w}" height="${h - 10}" class="shiftband"><title>AFK shift</title></rect>` : "")).join("");
-  return `<svg class="thchart" viewBox="0 0 ${rows.length * w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(kind === "bar" ? "Failures per day; exact values in the table" : "Failure rate per day; gaps have no calls recorded")}">${marker}${marks}${line}</svg>`;
+  const W = 480, H = 180, left = 40, right = 470, base = 146, plot = 116, step = (right - left) / (rows.length || 1);
+  const top = chartTop(max, kind), bar = kind === "bar";
+  const X = (i) => left + (i + 0.5) * step, Y = (v) => base - (v / top) * plot;
+  const grid = [0, 1, 2].map((i) => `<line x1="${left}" y1="${base - (plot * i) / 2}" x2="${right}" y2="${base - (plot * i) / 2}" class="grid"/><text class="ax" x="34" y="${base - (plot * i) / 2 + 4}" text-anchor="end">${esc(label((top * i) / 2))}</text>`).join("");
+  const band = rows.map((r, i) => (r.shift ? `<rect x="${left + i * step}" y="${base - plot}" width="${step}" height="${plot}" class="shiftband"><title>AFK shift</title></rect>` : "")).join("");
+  const dl = rows.map((r, i) => `<text class="dl" x="${X(i)}" y="168" text-anchor="middle"${rows.length > 14 ? ' font-size="8"' : ""}>${esc(String(Number(r.day.slice(8, 10))))}</text>`).join("");
+  let marks = "", line = "", prev = null;
+  rows.forEach((r, i) => {
+    const v = value(r), x = X(i);
+    if (!isNum(v)) { prev = null; if (!bar) marks += `<text x="${x}" y="${base - 4}" class="gap" text-anchor="middle">·</text>`; return; }
+    const y = Y(v), tip = `<title>${esc(r.day)}: ${esc(label(v))}</title>`;
+    if (bar) { marks += `<rect x="${x - step * 0.3}" y="${y}" width="${step * 0.6}" height="${base - y}" class="fb">${tip}</rect>`; return; }
+    if (prev) line += `<line x1="${prev[0]}" y1="${prev[1]}" x2="${x}" y2="${y}" class="line"/>`;
+    marks += `<circle cx="${x}" cy="${y}" r="4" class="dot">${tip}</circle>`;
+    prev = [x, y];
+  });
+  return `<svg class="thchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(bar ? "Failures per day; exact values in the table" : "Failure rate per day; gaps have no calls recorded")}">${band}${grid}${line}${marks}${dl}</svg>`;
 }
 function dailyPanel(data, st) {
   const rows = dailyRows(data), today = new Date(st.loadedAt || Date.now()).toISOString().slice(0, 10), shift = shiftDays(st.shift);

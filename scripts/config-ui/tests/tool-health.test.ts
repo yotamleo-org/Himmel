@@ -1156,3 +1156,41 @@ test("a tool whose events fall outside the newest ones does not read as having n
   chmodSync(worktrees, 0o444); // listable, but its entries cannot be inspected
   try { expect(run()).toMatchObject({ state: "partial", worktrees_unreadable: true }); } finally { chmodSync(worktrees, 0o755); }
 });
+
+const svgs = (html: string) => [...html.matchAll(/<svg class="thchart"[\s\S]*?<\/svg>/g)].map((m) => m[0]);
+const count = (s: string, re: RegExp) => (s.match(re) || []).length;
+const chartCases: [string, any, string, number][] = [
+  ["overview", {}, "data-day", 2],
+  ["bash", { tool: "Bash" }, "data-trend-day", 1],
+  ["guard", { guard: "denied/read-clamp" }, "data-guard-day", 1],
+];
+for (const [name, ui, attr, n] of chartCases) {
+  test(`chart-${name}-has-scale-and-one-day-label-per-day`, async () => {
+    const html = await page(readP(seedP()), ui);
+    const charts = svgs(html);
+    expect(charts.length).toBeGreaterThanOrEqual(n);
+    const days = count(html, new RegExp(`<tr ${attr}=`, "g"));
+    expect(days).toBeGreaterThan(0);
+    for (const c of charts.slice(0, n)) {
+      expect(count(c, /<text class="ax"/g)).toBe(3);
+      expect(count(c, /<text class="dl"/g)).toBe(days);
+    }
+  });
+  test(`chart-${name}-markers-are-not-stretched`, async () => {
+    for (const c of svgs(await page(readP(seedP()), ui))) expect(c).not.toContain('preserveAspectRatio="none"');
+  });
+}
+test("chart-bars-have-no-line-or-stray-gap-mark", async () => {
+  for (const ui of [{}, { guard: "denied/read-clamp" }]) {
+    const html = await page(readP(seedP()), ui);
+    expect(html).toMatch(/<rect[^>]*class="fb"/);
+    const bar = svgs(html)[0];
+    expect(bar).not.toContain("<polyline");
+    expect(bar).not.toContain('class="gap"');
+  }
+});
+test("chart-bars-use-the-failure-colour-token", () => {
+  const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
+  expect(css).toMatch(/\.thchart \.fb\{[^}]*fill:var\(--crit\)/);
+  expect(css).toMatch(/\.thchart\{[^}]*height:auto/);
+});
