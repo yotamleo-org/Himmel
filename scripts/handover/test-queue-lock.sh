@@ -3773,9 +3773,11 @@ if h_wait_file "$H_GATE_P.reached"; then kill -TERM "$H_PID_P" 2>/dev/null; fi
 wait "$H_PID_P" 2>/dev/null; H_RC_P=$?
 rm -f "$H_GATE_P"
 H_CLAIM_P="$([ -d "$H_LK_P.claim" ] && echo leaked || echo gone)"
+# read-sink-ok: H_OUT_P is this test's own scratch file under TMPDIR_ROOT
 if [ "$H_RC_P" -eq 7 ] && [ "$H_CLAIM_P" = gone ] && [ "$(tr '\n' ' ' < "$H_OUT_P" 2>/dev/null)" = "caller-term caller-exit " ]; then
     pass "T8541p: a signal during a forced release in a sourcing caller frees the claim and hands the signal to the caller's own TERM and EXIT traps"
 else
+    # read-sink-ok: H_OUT_P is this test's own scratch file under TMPDIR_ROOT
     fail "T8541p: sourcing caller (rc=$H_RC_P claim=$H_CLAIM_P trap-out=$(tr '\n' ' ' < "$H_OUT_P" 2>/dev/null))"
 fi
 # r: a caller whose own TERM handler RETURNS instead of exiting: the release stops at its next checkpoint (rc 143), the lock is left alone and no HALTED is written
@@ -3795,10 +3797,12 @@ if h_wait_file "$H_GATE_R.reached"; then kill -TERM "$H_PID_R" 2>/dev/null; fi
 sleep 0.5
 rm -f "$H_GATE_R"
 wait "$H_PID_R" 2>/dev/null
+# read-sink-ok: these are this test's own scratch files under TMPDIR_ROOT
 if [ "$(cat "$H_RC_FILE_R" 2>/dev/null)" = 143 ] && [ "$(cat "$H_OUT_R" 2>/dev/null)" = caller-term ] && [ -d "$H_LK_R" ] && [ ! -d "$H_LK_R.claim" ] \
     && [ "$(h_tail "$H_DOC_R")" = "- 10:00 LIVE — working" ]; then
     pass "T8541r: a caller handler that returns after a signal stops the forced release with rc 143 and leaves the lock and the doc alone"
 else
+    # read-sink-ok: these are this test's own scratch files under TMPDIR_ROOT
     fail "T8541r: returning caller handler (rc=$(cat "$H_RC_FILE_R" 2>/dev/null) out=$(cat "$H_OUT_R" 2>/dev/null) lock=$([ -d "$H_LK_R" ] && echo kept || echo gone) claim=$([ -d "$H_LK_R.claim" ] && echo leaked || echo gone)) tail: $(h_tail "$H_DOC_R")"
 fi
 # q: the forced release's EXIT handler frees its claim and then runs the EXIT action the caller had, with the exit status the caller would have seen (an exit inside the window, not a signal)
