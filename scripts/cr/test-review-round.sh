@@ -103,7 +103,7 @@ promote() {
     err="$(cat "$tmp/err")"
     after="$(cksum < "$ledger")"
 }
-refused() { # label: the last promote refused, named the id, said blank head, wrote nothing
+refused() { # label: the last promote exited 1, said blank head, wrote nothing (callers check the id)
     assert_eq "$rc" "1" "$1: promote refuses"
     assert_has "$err" "blank head" "$1: the refusal says blank head"
     assert_eq "$before" "$after" "$1: a refused promote writes nothing"
@@ -229,13 +229,20 @@ real_row rr-ghost 0123456789012345678901234567890123456789 cov-14b deferred
 promote rr-ghost
 refused "twin at a commit-shaped head that is not a commit here"
 
-# (14c) a spec row headed by a document id cannot rescue a blank row (pins the shape rule).
+# (14c) a spec row headed by a document id cannot rescue a blank row (a document id is no commit either).
 BL_ART=spec TW_ART=spec
 blank_row rr-spec cov-14c deferred
 real_row rr-spec design-doc-1 cov-14c deferred
 shapes
 promote rr-spec
 refused "spec row whose twin is headed by a document id"
+
+# (14d) a ref name that resolves to a commit is not a commit-shaped head: ledger-append writes any
+# non-hex head verbatim, and HEAD resolves here, so only the shape rule keeps it from rescuing a blank row.
+blank_row rr-refname cov-14d deferred
+real_row rr-refname HEAD cov-14d deferred
+promote rr-refname
+refused "twin headed by a ref name that resolves to a commit"
 
 # (15) two blank rows of one id do not vouch for each other.
 blank_row rr-two cov-15 deferred
