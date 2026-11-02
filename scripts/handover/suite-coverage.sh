@@ -71,7 +71,10 @@ cap_arms="$(awk '
   /^[ \t]*#/ { next }
   /^    [][A-Za-z0-9_.\/*?|-]+\)$/ {
     if (arm) fail("an arm is missing its body")
-    pat = $0; sub(/^    /, "", pat); sub(/\)$/, "", pat); arm = 1; next
+    pat = $0; sub(/^    /, "", pat); sub(/\)$/, "", pat); arm = 1
+    na = split(pat, q, "|")
+    for (i = 1; i <= na; i++) if (q[i] == "" || pat ~ /\|$/) fail("empty alternative in the pattern list: " pat)
+    next
   }
   { b = $0; sub(/ ;;[ \t]*#.*$/, " ;;", b) }
   arm && b ~ /^      printf \047[0-9]+\047 ;;$/ { v = b; sub(/^      printf \047/, "", v); sub(/\047.*$/, "", v); done_arm(v + 0); next }
