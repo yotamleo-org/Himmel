@@ -311,11 +311,13 @@ MBA="$root/scripts/lib/merge-block-alert.sh"
 printf '{"allowFrom":["555"]}\n' >"$TMP/access.json"
 cat >"$TMP/alert-run.sh" <<'EOF'
 #!/usr/bin/env bash
+# read-sink-ok: $1 is the lib under test, named by this suite and never outside input
 . "$1"
 merge_block_alert o/r 1 abc123def "a rule"
 EOF
 cat >"$TMP/watch-run.sh" <<'EOF'
 #!/usr/bin/env bash
+# read-sink-ok: $1 is the lib under test, named by this suite and never outside input
 . "$1"
 merge_watch_alert o/r 2 fed456abc "a rule"
 EOF
@@ -349,6 +351,7 @@ eq "MOG0 merge-on-green still sources the alert and defines block_alert" "$(wc -
 cat >"$TMP/mog-run.sh" <<'EOF'
 #!/usr/bin/env bash
 himmel_repo="$1"; nwo=o/r; pr_num=3; sha=cafe0123456789
+# read-sink-ok: $2 is the two lines this suite took from merge-on-green, never outside input
 . "$2"
 block_alert "GitHub refused the merge: a rule"
 EOF
