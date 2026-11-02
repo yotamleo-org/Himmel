@@ -157,6 +157,54 @@ eq "F2 failed reads in a real session do not refuse" "$(PATH="$NOBIN" "$CLAUDE_S
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$TMP/orphan.rc" ] && break; sleep 0.2; done
 eq "F3 an orphan with no markers and no ancestor is allowed: the pinned residual" "$(cat "$TMP/orphan.rc" 2>/dev/null)" 0
 
+echo "== detector gaps (HIMMEL-8819)"
+# A passwd home that is a symlink: the stub getent is the suite's seam, the guard asks getent by name.
+GE="$TMP/getent-bin"
+mkdir -p "$GE" "$TMP/realhome-target/.himmel"
+ln -s "$TMP/realhome-target" "$TMP/homelink"
+cat >"$GE/getent" <<EOF
+#!/usr/bin/env bash
+echo "tester:x:1000:1000::$TMP/homelink:/bin/bash"
+EOF
+chmod +x "$GE/getent"
+eq "H1 a path under a symlinked passwd home is real" "$(PATH="$GE:$PATH" check h1 "$TMP/homelink/.himmel/x")" 77
+eq "H2 the resolved path under a symlinked passwd home is real" "$(PATH="$GE:$PATH" check h2 "$TMP/realhome-target/.himmel/x")" 77
+eq "H3 negative control: a fixture home outside the symlinked passwd home is allowed" "$(PATH="$GE:$PATH" check h3 "$TMP/scratch/x")" 0
+
+# A runner the list did not name: the process name or argv is the only fact the guard reads.
+cp "$TMP/real-tool.sh" "$TMP/pkg.test"
+eq "U1 mocha is a runner" "$(as_session bash -c "exec -a mocha bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 77
+eq "U2 playwright is a runner" "$(as_session bash -c "exec -a playwright bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 77
+eq "U3 a go test binary named pkg.test is a test" "$(as_session bash "$TMP/pkg.test" >/dev/null 2>&1; echo $?)" 77
+eq "U4 go test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a go bash test' >/dev/null 2>&1; echo $?)" 77
+eq "U5 npm test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash test' >/dev/null 2>&1; echo $?)" 77
+eq "U6 negative control: go with a non-test argument is not a runner" "$(as_session bash -c "exec -a go bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
+
+# The refusal names a command that runs: a repo-relative suite path, and the after-report usage as printed.
+WR="$TMP/wrepo"
+mkdir -p "$WR/scripts"
+git -C "$WR" init -q
+cp "$TMP/real-tool.sh" "$WR/scripts/test-w.sh"
+(cd "$WR" && as_session bash scripts/test-w.sh >"$TMP/w.out" 2>&1)
+has "W1 a relative suite path is named repo-relative" "$TMP/w.out" "-- bash scripts/test-w.sh"
+(cd "$TMP" && as_session bash "$WR/scripts/test-w.sh" >"$TMP/w.out" 2>&1)
+has "W1 an absolute suite path is named repo-relative" "$TMP/w.out" "-- bash scripts/test-w.sh"
+has "W2 the after-report line names its usage exactly" "$TMP/w.out" "bash scripts/vm/after-report.sh <branch> <pr>"
+bash "$root/scripts/vm/after-report.sh" >"$TMP/ar.out" 2>&1
+has "W2 after-report.sh's own usage reads the same" "$TMP/ar.out" "usage: scripts/vm/after-report.sh <branch> <pr>"
+
+# A detached test that is still alive keeps its test ancestor, so it is refused.
+( setsid bash -c "bash '$TMP/test-inner.sh' >/dev/null 2>&1; echo \$? >'$TMP/orphan2.rc'" >/dev/null 2>&1 & )
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$TMP/orphan2.rc" ] && break; sleep 0.2; done
+eq "D1 a detached test with a live test ancestor is refused" "$(cat "$TMP/orphan2.rc" 2>/dev/null)" 77
+
+# Pinned residuals: no door runs for these, so the guard is never asked. Closing them needs a sandbox.
+printf x >"$FAKE_REAL/redirect-out"
+if [ -s "$FAKE_REAL/redirect-out" ]; then pass "X1 residual: a plain redirect from a test reaches the file, no door runs"; else fail "X1 residual pin"; fi
+reset
+secret-tool store test-8819 >/dev/null 2>&1 <<<x
+eq "X2 residual: a direct keyring tool call reaches the tool, no door runs" "$(calls 'secret-tool store')" 1
+
 echo "== the VM check"
 (
   unset HIMMEL_REAL_STATE_ASSUME_STATION
