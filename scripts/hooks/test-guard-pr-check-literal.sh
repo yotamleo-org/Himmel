@@ -600,6 +600,10 @@ follow_printed() { # follow_printed <label> <relative command> <path under the t
     echo ': edited' >>"$WT/$3"
     run "$1: relative spelling on a drifted tree -> deny" 2 "$(payload "$2" "$WT")" "$HR"
     cmd="$(grep -m1 '^bash <himmel_dir>' <<<"$LAST_ERR")"
+    if [ -z "$cmd" ]; then
+        echo "FAIL $1 - the deny printed no 'bash <himmel_dir>' line, so there is no advice to follow: $LAST_ERR"
+        FAILED=$((FAILED + 1))
+    fi
     cmd="${cmd//<himmel_dir>/$PRIMARY}"
     cmd="${cmd//<args>/$4}"
     run "$1: printed spelling [$cmd] -> allow" 0 "$(payload "$cmd" "$WT")" "$HR"
