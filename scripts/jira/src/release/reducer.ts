@@ -1,3 +1,5 @@
+import type { Admission } from '../commands/admissions-ledger.js';
+import { admits } from './admits.js';
 import { canonical, type Chain } from './ledger.js';
 import type { Baseline, Declaration, EventRow, IssueSnap, OpKind, OperatorRow, RulingRow } from './types.js';
 
@@ -35,7 +37,7 @@ export interface ReleaseState {
   release: string;
   mode: Declaration['mode'] | null;
   versions: string[];
-  inputs: { mirror: InputState; ledger: InputState; operator: InputState; events: InputState };
+  inputs: { mirror: InputState; ledger: InputState; operator: InputState; events: InputState; admissions: InputState };
   records: KeyRecord[];
   leaks: { unauthorized: string[]; ruled_in_non_member: string[] };
   integrity: string[];
@@ -51,6 +53,8 @@ export interface ReduceInput {
   events: Chain<EventRow>;
   issues: Map<string, IssueSnap> | null;
   mirrorSync: string | null;
+  // The admissions ledger: null means it could not be read (UNKNOWN). Absent reads as no rows.
+  admissions?: Admission[] | null;
 }
 
 export const baselineId = (b: Pick<Baseline, 'version' | 'gen'>): string => `baseline-${b.version}-g${b.gen}`;
@@ -84,7 +88,7 @@ const core = (r: RulingRow) => canonical({ key: r.key, verb: r.verb, outcome: r.
 
 export const unknownState = (release: string, why: string): ReleaseState => ({
   status: 'UNKNOWN', release, mode: null, versions: [],
-  inputs: { mirror: 'UNKNOWN', ledger: 'UNKNOWN', operator: 'UNKNOWN', events: 'UNKNOWN' },
+  inputs: { mirror: 'UNKNOWN', ledger: 'UNKNOWN', operator: 'UNKNOWN', events: 'UNKNOWN', admissions: 'UNKNOWN' },
   records: [], leaks: { unauthorized: [], ruled_in_non_member: [] }, integrity: [why], burndown: {}, trend: {},
 });
 
@@ -188,6 +192,16 @@ function placementOf(c: VersionCtx, key: string, live: Live[]): Placement {
   return live[0]?.effect ?? 'out';
 }
 
+// The admission kinds the reducer counts (decision 434): a typed override and the RM's own record. Gate rows are asked, not read.
+const COUNTED = new Set(['override', 'rm-admit']);
+
+// The latest row for the (key, version) decides, as leaks.ts does: apply() writes rm-admit on to_v and then
+// rm-remove on from_v, so a key-wide latest row would cancel every RM move's admission.
+function admissionOf(rows: Admission[], key: string, v: string): string | null {
+  const last = rows.filter((r) => r.version === v && r.key === key).pop();
+  return admits(last, COUNTED) ? `admission:${last?.kind}` : null;
+}
+
 function bookkeepingOf(events: EventRow[], key: string, v: string, terminal: KeyRecord['terminal']): string | null {
   const fold = [...events].reverse().find((e) => e.key === key && (e.kind === 'fold' || e.kind === 'reopen'));
   return fold?.kind === 'fold' && fold.to === v && terminal === 'Done' ? `fold:${fold.pr}` : null;
@@ -219,7 +233,7 @@ function recordFor(c: VersionCtx, key: string): { rec: KeyRecord; isIn: boolean;
     op: known ? settled?.r?.op ?? null : null,
     expected_member: placement === 'in' ? true : placement === 'out' ? false : null,
     actual_member: !issue || c.staleKeys.has(key) ? 'unknown' : issue.fixVersions.includes(v),
-    bookkeeping: bookkeepingOf(inp.events.verified, key, v, terminal),
+    bookkeeping: bookkeepingOf(inp.events.verified, key, v, terminal) ?? admissionOf(inp.admissions ?? [], key, v),
     emergency: settled?.r?.authority.ref === `O-${inp.decl.release}-emergency`,
     discharged: settled?.r?.op.kind === 'discharge',
     terminal,
@@ -280,7 +294,7 @@ export function reduce(inp: ReduceInput): ReleaseState {
   const fresh = (bad: string[]): InputState => (bad.length ? 'UNKNOWN' : 'FRESH');
   return {
     status: 'OK', release: decl.release, mode: decl.mode, versions: decl.versions,
-    inputs: { mirror, ledger: fresh(inp.rulings.bad), operator: fresh(inp.operator.bad), events: fresh(inp.events.bad) },
+    inputs: { mirror, ledger: fresh(inp.rulings.bad), operator: fresh(inp.operator.bad), events: fresh(inp.events.bad), admissions: inp.admissions === null ? 'UNKNOWN' : 'FRESH' },
     records, leaks, integrity, burndown, trend: trendOf(decl, inp.events.verified),
   };
 }

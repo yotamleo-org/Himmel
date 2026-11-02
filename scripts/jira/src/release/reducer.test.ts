@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { chainLine, parseChain, sha256, GENESIS } from './ledger.js';
 import { reduce, authorizes, recordOf, type ReduceInput } from './reducer.js';
+import type { Admission } from '../commands/admissions-ledger.js';
 import type { Baseline, Declaration, EventRow, IssueSnap, OperatorRow, RulingRow } from './types.js';
 
 const KEY = Buffer.alloc(32, 7);
@@ -255,5 +256,64 @@ describe('release reducer (HIMMEL-6796)', () => {
       issueList: [issue('K-1', ['v1'], 'Done'), issue('K-2', ['v1'])],
     }));
     expect(s.burndown.v1).toEqual({ baseline: 1, baseline_open: 0, admitted_open: 1, emergency_open: 0, deferred_out: 0 });
+  });
+});
+
+describe('admission rows clear unauthorized (HIMMEL-8724 S1)', () => {
+  const adm = (key: string, version: string, kind?: Admission['kind'], extra: Partial<Admission> = {}): Admission =>
+    ({ ts: TS, version, key, actor: 'someone', ...(kind ? { kind } : {}), ...extra });
+  const members = [issue('K-1', ['v1']), issue('K-2', ['v1']), issue('K-3', ['v1']), issue('K-4', ['v1'])];
+
+  it('override and rm-admit clear unauthorized', () => {
+    const admissions = [adm('K-2', 'v1', 'override', { reason: 'chief override' }), adm('K-3', 'v1', 'rm-admit', { ruling: 'R-9', by: 'rm' })];
+    const s = reduce(input({ issueList: members, admissions }));
+    expect(s.leaks.unauthorized).toEqual(['K-4@v1']);
+    expect(recordOf(s, 'K-2', 'v1')).toMatchObject({ placement: 'out', expected_member: false, actual_member: true });
+    expect(s.inputs.admissions).toBe('FRESH');
+  });
+
+  it('gate row alone never clears a verdict', () => {
+    const s = reduce(input({ issueList: members, admissions: [adm('K-2', 'v1', undefined, { gate: 'critical' })] }));
+    expect(s.leaks.unauthorized).toEqual(['K-2@v1', 'K-3@v1', 'K-4@v1']);
+  });
+
+  it('deferral after an override withdraws it', () => {
+    const s = reduce(input({ issueList: members, admissions: [adm('K-2', 'v1', 'override'), adm('K-2', 'v1', 'deferral')] }));
+    expect(s.leaks.unauthorized).toContain('K-2@v1');
+  });
+
+  it('rm-remove after an rm-admit withdraws it', () => {
+    const s = reduce(input({ issueList: members, admissions: [adm('K-2', 'v1', 'rm-admit'), adm('K-2', 'v1', 'rm-remove')] }));
+    expect(s.leaks.unauthorized).toContain('K-2@v1');
+  });
+
+  it("move's rm-admit on to_v survives its rm-remove on from_v", () => {
+    const s = reduce(input({
+      issueList: [issue('K-1', ['v1']), issue('K-2', ['v2'])],
+      admissions: [adm('K-2', 'v2', 'rm-admit', { ruling: 'R-9' }), adm('K-2', 'v1', 'rm-remove', { ruling: 'R-9' })],
+    }));
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('override in v2 does not clear v1', () => {
+    const s = reduce(input({ issueList: [issue('K-1', ['v1']), issue('K-2', ['v1'])], admissions: [adm('K-2', 'v2', 'override')] }));
+    expect(s.leaks.unauthorized).toEqual(['K-2@v1']);
+  });
+
+  it('a row with a key that is not a ticket key admits nothing', () => {
+    const s = reduce(input({ issueList: [issue('K-1', ['v1']), issue('K-2', ['v1'])], admissions: [adm('version-ready', 'v1', 'override')] }));
+    expect(s.leaks.unauthorized).toEqual(['K-2@v1']);
+  });
+
+  it('placement is unchanged: an admitted key is still not expected', () => {
+    const s = reduce(input({ issueList: members, admissions: [adm('K-2', 'v1', 'override')] }));
+    expect(recordOf(s, 'K-2', 'v1')).toMatchObject({ placement: 'out', obligation: 'none', bookkeeping: 'admission:override' });
+  });
+
+  it('null admissions read UNKNOWN and clear nothing', () => {
+    const s = reduce(input({ issueList: members, admissions: null }));
+    expect(s.inputs.admissions).toBe('UNKNOWN');
+    expect(s.status).toBe('OK');
+    expect(s.leaks.unauthorized).toEqual(['K-2@v1', 'K-3@v1', 'K-4@v1']);
   });
 });
