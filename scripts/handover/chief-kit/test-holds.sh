@@ -97,8 +97,9 @@ cat > "$W/bin/ql-rc1" <<'STUB'
 #!/usr/bin/env bash
 exit 1
 STUB
-cat > "$W/bin/ql-free" <<'STUB'
+cat > "$W/bin/ql-free" <<STUB
 #!/usr/bin/env bash
+echo "\$*" >> "$W/ql-free-calls"
 exit 0
 STUB
 cat > "$W/bin/ql-count" <<STUB
@@ -507,9 +508,9 @@ R2="$W/repo2"
 mkdir -p "$R2/scripts/lib" "$R2/scripts/ci"
 printf 'scripts/oldci\tscripts/ci\tdirectory\tfail\tx\tx\nscripts/oldx\tscripts/newx\tdirectory\tfail\tx\tx\n' > "$R2/scripts/lib/rename-aliases.tsv"
 echo seed > "$R2/seed.txt"
-git -C "$R2" init -q -b main
-git -C "$R2" add -A
-git -C "$R2" commit -q -m base
+git -C "$R2" init -q -b main || exit 1
+git -C "$R2" add -A || exit 1
+git -C "$R2" commit -q -m base || exit 1
 run hp grant --key $K2 --repo "$R2" scripts/oldci/suite-tiers.tsv
 same "F3 a grant on a trust path spelt by its old directory name exits 1" "$RC" 1
 same "F3 ... and writes no grant" "$(find "$(slugdir "$R2")" -name '*.grant.*' 2>/dev/null | wc -l | tr -d ' ')" 0
@@ -556,11 +557,13 @@ same "F6 a doc that is gone, its lock still held: alive, refused" "$RC" 1
 GR="$(mkdoc HIMMEL-9323-case.md)"
 put_row scripts/m3.sh HIMMEL-9323 alpha "$GR"
 mkdir -p "$W/nogit"
+: > "$W/ql-free-calls"
 before="$(ev_count)"
 run bash -c 'cd "$1" && ql="$2" && shift 2 && exec env -u HANDOVER_DIR HOLDS_QUEUE_LOCK="$ql" python3 -I "$@"' _ "$W/nogit" "$W/bin/ql-free" "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m3.sh
 same "F6 a handover root that cannot be resolved passes (a fault)" "$RC" 0
 same "F6 ... the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/m3.sh)")" HIMMEL-9323
 same "F6 ... one events.log line" "$(( $(ev_count) - before ))" 1
+same "F6 ... and the lock was asked for the holder's doc" "$(grep -cxF -- "status $GR" "$W/ql-free-calls")" 1
 
 # ---- F6b: a gone RESUME-named doc with a free lock is dead, not unknown
 GRS="$HANDOVER_DIR/u/r/HIMMEL-9340-N1-RESUME.md"
@@ -582,7 +585,7 @@ same "F1 ... and leaves one events.log line" "$(( $(ev_count) - before ))" 1
 # ---- finding 7: read --keys does not drop a row it cannot read
 R4="$W/repo4"
 mkdir -p "$R4"
-git -C "$R4" init -q -b main
+git -C "$R4" init -q -b main || exit 1
 run hp claim --key HIMMEL-9330 --label lab --doc "$DB" --repo "$R4" scripts/z1.sh
 run hp read --repo "$R4" --keys
 same "F7 read --keys over readable rows exits 0" "$RC" 0
