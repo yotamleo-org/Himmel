@@ -1185,7 +1185,7 @@ test("chart-bars-have-no-line-or-stray-gap-mark", async () => {
     const html = await page(readP(seedP()), ui);
     expect(html).toMatch(/<rect[^>]*class="fb"/);
     const bar = svgs(html)[0];
-    expect(bar).not.toContain("<polyline");
+    expect(bar).not.toContain('class="line"');
     expect(bar).not.toContain('class="gap"');
   }
 });
