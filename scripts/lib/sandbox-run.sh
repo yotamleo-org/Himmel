@@ -11,19 +11,19 @@ set -uo pipefail
 # Namespace/profile rules do not revoke an already-open host file or socket.
 # Close caller descriptors in a child, preserving this shell's script/trap fds.
 closed_fds_exec() (
-    [ -d /dev/fd ] && [ -r /dev/fd ] || exit 125
+    [ -d /dev/fd ] && [ -r /dev/fd ] || { printf 'sandbox-run: /dev/fd is unreadable; cannot close caller descriptors\n' >&2; exit 125; }
     for fd in /dev/fd/*; do
         fd=${fd##*/}
         case "$fd" in
             0|1|2) continue ;;
-            ''|*[!0-9]*) exit 125 ;;
+            ''|*[!0-9]*) printf 'sandbox-run: unexpected /dev/fd entry: %s\n' "$fd" >&2; exit 125 ;;
         esac
-        eval "exec ${fd}>&-" || exit 125
+        eval "exec ${fd}>&-" || { printf 'sandbox-run: cannot close caller descriptor %s\n' "$fd" >&2; exit 125; }
     done
     exec "$@"
 )
 
-platform=$(uname -s) || exit 125
+platform=$(uname -s) || { printf 'sandbox-run: uname failed\n' >&2; exit 125; }
 case "$platform" in
     Darwin)
         sandbox_exec=$(command -v sandbox-exec) || {
@@ -43,7 +43,7 @@ case "$platform" in
         ;;
     *) printf 'sandbox-run: Linux or Darwin confinement is required\n' >&2; exit 125 ;;
 esac
-ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)" || exit 125
+ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)" || { printf 'sandbox-run: cannot resolve the checkout root\n' >&2; exit 125; }
 canary=''
 write_mask=''
 inputs=("$ROOT")
@@ -52,15 +52,15 @@ while [ "$#" -gt 0 ]; do
         --canary)
             canary="${2:-}"
             case "$canary" in /*) ;; *) printf 'sandbox-run: canary must be an absolute absent path\n' >&2; exit 125 ;; esac
-            [ "$#" -ge 2 ] || exit 125
+            [ "$#" -ge 2 ] || { printf 'sandbox-run: --canary needs a path\n' >&2; exit 125; }
             shift 2 ;;
         --read-only)
-            [ "$#" -ge 2 ] || exit 125
+            [ "$#" -ge 2 ] || { printf 'sandbox-run: --read-only needs a path\n' >&2; exit 125; }
             if [ "$platform" = Darwin ]; then
-                input=$(python3 -I -c 'import os,sys; p=os.path.realpath(sys.argv[1]); assert os.path.exists(p); print(p)' "$2") || exit 125
+                input=$(python3 -I -c 'import os,sys; p=os.path.realpath(sys.argv[1]); assert os.path.exists(p); print(p)' "$2") || { printf 'sandbox-run: input does not exist: %s\n' "$2" >&2; exit 125; }
             else
                 # prim-ok: realpath -e resolves a file or a directory; canon_path cd's into its argument and fails for a file input
-                input=$(realpath -e -- "$2") || exit 125
+                input=$(realpath -e -- "$2") || { printf 'sandbox-run: input does not exist: %s\n' "$2" >&2; exit 125; }
             fi
             case "$input" in
                 /|/tmp|/var|/var/tmp|/home|/run|/run/*|/var/run|/var/run/*|/proc|/proc/*|/dev|/dev/*|/etc|/usr|/bin|/sbin|/lib|/lib64|/sandbox|/sandbox/*)
@@ -69,7 +69,7 @@ while [ "$#" -gt 0 ]; do
             inputs+=("$input")
             shift 2 ;;
         --write-mask-list)
-            [ "$#" -ge 2 ] || exit 125
+            [ "$#" -ge 2 ] || { printf 'sandbox-run: --write-mask-list needs a file\n' >&2; exit 125; }
             write_mask="$2"
             shift 2 ;;
         --) shift; break ;;
@@ -82,8 +82,31 @@ if [ "$#" -eq 0 ] && [ -z "$write_mask" ]; then
 fi
 
 # prim-ok: the scratch root is pinned to /tmp, never TMPDIR, because it is bind-mounted into the sandbox; tmpdir would honour a caller-set TMPDIR
-scratch_root=$(mktemp -d /tmp/himmel-sandbox.XXXXXX) || exit 125
+scratch_root=$(mktemp -d /tmp/himmel-sandbox.XXXXXX) || { printf 'sandbox-run: cannot create the scratch directory under /tmp\n' >&2; exit 125; }
 trap 'rm -rf "$scratch_root"' EXIT
+
+# find over a tree other suites may be changing: an entry that vanishes mid-walk
+# makes find exit 1 with only "No such file or directory", which is a race and not
+# a verdict. Any other failure (unreadable entry, bad argument) refuses with find's
+# own words, because an unscanned tree is never assumed safe. Output goes to a file.
+find_tolerant() {
+    local out=$1 what=$2 errf="$scratch_root/find-err" rc=0
+    shift 2
+    find "$@" > "$out" 2> "$errf" || rc=$?
+    [ "$rc" -eq 0 ] && return 0
+    if [ -s "$errf" ] && ! grep -qv 'No such file or directory' "$errf"; then
+        return 0
+    fi
+    printf 'sandbox-run: %s failed (find exit %s): %s\n' "$what" "$rc" "$(head -c 400 "$errf")" >&2
+    return 1
+}
+# first socket/device/FIFO under an input, left in $special; empty when none.
+first_special() {
+    local list="$scratch_root/special-first"
+    find_tolerant "$list" "special-file scan of $1" "$1" ! -type f ! -type d ! -type l -print -quit || return 1
+    IFS= read -r special < "$list" || special=''
+    return 0
+}
 canary="${canary:-$scratch_root/canary}"
 if [ -e "$canary" ] || [ -L "$canary" ]; then
     printf 'sandbox-run: canary already exists; refusing replay\n' >&2
@@ -93,16 +116,16 @@ fi
 if [ "$platform" = Darwin ]; then
     [ -z "$write_mask" ] || { printf 'sandbox-run: --write-mask-list is Linux only\n' >&2; exit 125; }
     for input in "${inputs[@]}"; do
-        special=$(find "$input" ! -type f ! -type d ! -type l -print -quit) || exit 125
+        first_special "$input" || exit 125
         if [ -n "$special" ]; then
             printf 'sandbox-run: refusing socket/device/FIFO input: %s\n' "$special" >&2
             exit 125
         fi
     done
     # Seatbelt filters use the canonical scratch path as DATA, never SBPL text.
-    scratch_root=$(cd "$scratch_root" && pwd -P) || exit 125
+    scratch_root=$(cd "$scratch_root" && pwd -P) || { printf 'sandbox-run: cannot resolve the scratch directory\n' >&2; exit 125; }
     writable_root="$scratch_root/work"
-    mkdir -p "$writable_root/home" "$writable_root/tmp" || exit 125
+    mkdir -p "$writable_root/home" "$writable_root/tmp" || { printf 'sandbox-run: cannot create the scratch home\n' >&2; exit 125; }
     profile="$scratch_root/profile.sb"
     # Apple bash 3.2 writes here-document temp files to /private/var/tmp and ignores
     # TMPDIR; the one regex allow below is that directory plus the sh-thd names in it
@@ -115,7 +138,7 @@ if [ "$platform" = Darwin ]; then
 (allow file-write* (subpath (param "SCRATCH")) (literal "/dev/null"))
 (allow file-write* (regex #"^/private/var/tmp(/+sh-thd[-._0-9A-Za-z]*)?$"))
 PROFILE
-    [ -s "$profile" ] || exit 125
+    [ -s "$profile" ] || { printf 'sandbox-run: sandbox-exec profile was not written\n' >&2; exit 125; }
     darwin_env=(/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin LANG=C.UTF-8
         "HOME=$writable_root/home" "TMPDIR=$writable_root/tmp" "SANDBOX_CANARY=$canary")
     # Profile/setup errors must be rc125, not confused with a hook's denial.
@@ -146,9 +169,9 @@ done
 # whose contents cannot be inspected; never assume an unreadable tree is safe.
 mask_list="$scratch_root/runtime-masks"
 walk_masks() {
-    find "${runtime_inputs[@]}" \
+    find_tolerant "$1" "runtime mask walk" "${runtime_inputs[@]}" \
         \( -type d \( ! -readable -o ! -executable \) -printf 'd\0%p\0' -prune \) \
-        -o \( ! -type f ! -type d ! -type l -printf 'f\0%p\0' \) > "$1"
+        -o \( ! -type f ! -type d ! -type l -printf 'f\0%p\0' \)
 }
 # the full walk dominates a corpus run. A list is reused only when
 # it is ours (regular file, this uid, no group/other write), covers these roots,
@@ -192,13 +215,13 @@ if [ -n "$write_mask" ]; then
     # certified as current.
     build_fp=$(mask_fingerprint)
     walk_masks "$mask_list" || exit 125
-    tmp_out=$(mktemp "$write_mask.XXXXXX") || exit 125
-    chmod 600 "$tmp_out" || exit 125
-    nul=$(tr -cd '\0' < "$mask_list" | wc -c) || exit 125
+    tmp_out=$(mktemp "$write_mask.XXXXXX") || { printf 'sandbox-run: cannot create a file beside %s\n' "$write_mask" >&2; exit 125; }
+    chmod 600 "$tmp_out" || { printf 'sandbox-run: cannot chmod %s\n' "$tmp_out" >&2; exit 125; }
+    nul=$(tr -cd '\0' < "$mask_list" | wc -c) || { printf 'sandbox-run: cannot count the mask list\n' >&2; exit 125; }
     { printf 'himmel-mask-list-v1 %s %s %s %s %s\n' "$(date +%s)" "$(id -u)" "$mask_roots" "$build_fp" "$((nul / 2))"
-      cat "$mask_list"; } > "$tmp_out" || { rm -f "$tmp_out"; exit 125; }
+      cat "$mask_list"; } > "$tmp_out" || { rm -f "$tmp_out"; printf 'sandbox-run: cannot write %s\n' "$tmp_out" >&2; exit 125; }
     # prim-ok: tmp_out is already a same-directory 0600 mktemp file renamed into place, which is what atomic_write does; this sandbox tool sources no lib and keeps its exit-125 contract
-    mv -f "$tmp_out" "$write_mask" || exit 125
+    mv -f "$tmp_out" "$write_mask" || { printf 'sandbox-run: cannot move the mask list to %s\n' "$write_mask" >&2; exit 125; }
     exit 0
 fi
 if ! mask_list_trusted; then
@@ -208,16 +231,31 @@ while IFS= read -r -d '' kind && IFS= read -r -d '' input; do
     case "$kind" in
         d) runtime_masks+=(--tmpfs "$input" --remount-ro "$input") ;;
         f) runtime_masks+=(--ro-bind /dev/null "$input") ;;
-        *) exit 125 ;;
+        *) printf 'sandbox-run: corrupt runtime mask list entry kind: %s\n' "$kind" >&2; exit 125 ;;
     esac
 done < "$mask_list"
+# ROOT is bound whole (the hooks under test resolve repo-relative siblings and
+# fixtures all over it) and other suites create and delete files in it while a
+# launch runs, so a socket/FIFO/device under ROOT is masked like a runtime special
+# node instead of refusing the launch. An explicit --read-only input is a replay
+# fixture: a special node in one of those is still refused.
+root_specials="$scratch_root/root-specials"
+find_tolerant "$root_specials" "special-file scan of $ROOT" "$ROOT" ! -type f ! -type d ! -type l -print0 || exit 125
+while IFS= read -r -d '' special; do
+    # A node removed since the scan has nothing to mask, and bwrap cannot mount over it.
+    if [ -e "$special" ] || [ -L "$special" ]; then
+        runtime_masks+=(--ro-bind /dev/null "$special")
+    fi
+done < "$root_specials"
 for input in "${inputs[@]}"; do
-    # Read-only sockets still accept connections. Never expose one via fixtures
-    # or the worktree; also reject devices/FIFOs, which are not replay inputs.
-    special=$(find "$input" ! -type f ! -type d ! -type l -print -quit) || exit 125
-    if [ -n "$special" ]; then
-        printf 'sandbox-run: refusing socket/device/FIFO input: %s\n' "$special" >&2
-        exit 125
+    if [ "$input" != "$ROOT" ]; then
+        # Read-only sockets still accept connections. Never expose one via fixtures;
+        # also reject devices/FIFOs, which are not replay inputs.
+        first_special "$input" || exit 125
+        if [ -n "$special" ]; then
+            printf 'sandbox-run: refusing socket/device/FIFO input: %s\n' "$special" >&2
+            exit 125
+        fi
     fi
     binds+=(--ro-bind "$input" "$input")
 done
