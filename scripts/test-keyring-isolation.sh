@@ -174,5 +174,16 @@ fi
 want "$(d_stores '{"HIMMEL_SECRETS_KEYRING":"off"}')" 0 "D2 a store whose env map pins the keyring off records zero stores"
 want "$(d_stores '{"NODE_ENV":"test"}')" 0 "D3 under NODE_ENV=test with no stub named, a store records zero stores"
 
+# F: a bare `bash test-x.sh` with no env marker calling himmel-secrets, a door of its own. The
+#    recorder stays the only secret-tool; the guard's add-only seam makes it count as the real one.
+if [ "$(uname -s)" = Linux ]; then
+  kreset
+  rc=0
+  printf 'value' | env HIMMEL_REAL_STATE_ASSUME_STATION=1 HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$KBIN" \
+    bash "$root/scripts/lib/himmel-secrets" put --stdin K8752 >"$TMP/f.out" 2>&1 || rc=$?
+  want "$(stores)" 0 "F1 a bare test shell's himmel-secrets put records zero stores"
+  if [ "$rc" = 77 ]; then pass "F2 the put is refused, exit 77"; else fail "F2 the put is refused (got rc $rc, want 77)"; fi
+fi
+
 echo
 if [ "$fails" = 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
