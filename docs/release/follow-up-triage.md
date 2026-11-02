@@ -108,15 +108,15 @@ row wins. "Next" means the earliest unreleased version after the current one.
 | b | `--fu-class polish` | backlog |
 | c | `--gate critical\|regression\|must:<ref>\|receipt` is given | current. The intake gate records the admission. |
 | d | `--fu-class escape` | current if current is not frozen; **next** if it is frozen |
-| e | `--fu-class hardening` with a chain: the parent, or the `--blocks` target, is open in version V | V if V is unfrozen; **next** if V is the frozen current |
-| f | `--fu-class hardening` with no chain, priority High or above | next |
+| e | `--fu-class hardening` with a dependency chain: the parent, or the `--blocks` target, is open in version V | V if V is unfrozen; **next** if V is the frozen current |
+| f | `--fu-class hardening` with no dependency chain, priority High or above | next |
 | g | anything else | backlog |
 
 - **Row d.** An escape that is a must under ruling 104 (Critical, data loss, a
   broken operator flow, a regression in the frozen set) is filed with `--gate`
   and lands by row c. Row d's "next" covers only escapes that are not musts.
-- **Row e.** The `--residual-of` parent forms a chain only while it is open. A
-  follow-up filed after its parent's PR merged chains only through `--blocks`.
+- **Row e.** The `--residual-of` parent forms a dependency chain only while it is open. A
+  follow-up filed after its parent's PR merged joins a dependency chain only through `--blocks`.
 - A frozen version admits only through row c, so the frozen set stays fixed.
 - The release manager can override any placement later with a REVERSION. The
   verb's class is a default, not a gate.

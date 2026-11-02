@@ -78,7 +78,7 @@ test("J3. a switch on Configure still previews its dry-run first and runs nothin
   expect(h.argv().every((l) => l.endsWith("--dry-run")), h.argv().join("\n")).toBe(true);
 });
 
-for (const [tracker, shown] of [["none", false], ["local", false], ["jira", true]] as [TrackerKind, boolean][]) {
+for (const [tracker, shown] of [["none", true], ["local", false], ["jira", true]] as [TrackerKind, boolean][]) {
   test(`J3. with the ${tracker} tracker the rail ${shown ? "shows" : "hides"} Roadmap and Kanban`, async ({ page }) => {
     await open(page, tracker);
     const rail = page.locator("nav.pages a");

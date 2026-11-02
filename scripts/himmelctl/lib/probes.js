@@ -737,10 +737,10 @@ function verifyPluginSet(enabledPlugins, ctx, settings) {
 
 // ── settings-key ─────────────────────────────────────────────────────────
 
-// The Jira CLI reads these two from ~/.himmel/himmel.conf.local, then
+// The Jira CLI reads these three from ~/.himmel/himmel.conf.local, then
 // himmel.conf, before it reads .env (scripts/jira/src/client.ts CONFIG_KEYS),
 // so a `.env` probe must look in the same files.
-const HIMMEL_CONF_KEYS = ['JIRA_EMAIL', 'JIRA_PROJECT_KEY'];
+const HIMMEL_CONF_KEYS = ['JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_PROJECT_KEY'];
 
 function overlayHimmelConf(data, ctx) {
   const home = (ctx.env && ctx.env.HOME) || os.homedir();

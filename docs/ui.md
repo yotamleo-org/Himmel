@@ -81,6 +81,10 @@ page only, so press run again any time to re-check. It is `POST /api/setup/verif
 The Roadmap and Kanban boards also write to Jira: dragging a card to another column
 transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
 through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card where it was.
+With `TRACKER=local` the boards read the local tracker store instead and need no Jira: cards keep
+their `LOCAL-<n>` ids, and a drop or a Sector select is written to the store through the tracker
+seam (`scripts/lib/tracker.sh`), with the same token gate, lock and audit. With `TRACKER=none`
+both pages say no tracker is configured rather than showing an empty board.
 
 Session switches and Your install answers are shown, never written:
 session switches are set when you start Claude.
@@ -98,7 +102,7 @@ This is the full set, each mapped to the code that handles it:
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
 | Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
-| Kanban move, card theme | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` |
+| Kanban move, card theme | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute`, `scripts/config-ui/local-tracker.ts`) |
 
 ```bash
 node scripts/himmelctl/bin.js ui              # prints ONE URL carrying the token
@@ -168,7 +172,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   switches to another registered project or to **All my projects**, where the Shared problems (the machine, not a
   project) show once above each project worst first; a legacy Inventory stays below until its tests move), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
-  librarian, live from the Jira mirror; click a version for its kanban at
+  librarian, live from the Jira mirror, or releases and librarian from the local tracker store; click a version for its kanban at
   `#/roadmap/<version>`), `#/kanban` (one board across all versions, Done
   hideable), `#/workflow` (the development graph and its guided walkthroughs,
   the same graph as the docs page), and **Fleet** at `/agui/`.
