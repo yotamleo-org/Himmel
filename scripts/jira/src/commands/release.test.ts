@@ -486,7 +486,7 @@ describe.skipIf(process.platform !== 'linux')('jira release posting verbs from a
 
   it('lets apply and rm-run past the door against a loopback Jira', async () => {
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
-    expect(await failure('apply', 'R1', 'RU-1')).not.toMatch(/nothing was posted/);
-    expect(await failure('rm-run', 'R1')).not.toMatch(/nothing was posted/);
+    expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release R1 is UNKNOWN/);
+    expect(await failure('rm-run', 'R1')).toMatch(/release R1 is UNKNOWN/);
   });
 });
