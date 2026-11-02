@@ -15,7 +15,7 @@ import { formatTransitions } from './commands/transitions.js';
 import { buildEditFields } from './commands/edit.js';
 import { parseLabels } from './commands/labels.js';
 import { uploadAll } from './commands/attach-helper.js';
-import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleVerdict } from './plain-block.js';
+import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleSector, titleVerdict } from './plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './commands/sector.js';
 import type {
   JiraIssue,
@@ -156,8 +156,14 @@ export function createTools(): JiraTool[] {
         // Sectors are opt-in: with JIRA_SECTOR_FIELD unset there is no Sector check and none is sent.
         const sectorId = sectorField();
         const sectors = sectorId ? await sectorOptions(deps.request) : undefined;
-        const sector =
+        let sector =
           args.sector !== undefined && sectors ? resolveSector(args.sector as string, sectors) : undefined;
+        if (args.sector === undefined && sectors) {
+          // No sector: a valid "<Sector>: " title prefix supplies it, an unknown one is refused.
+          const derived = titleSector(args.type as string, args.title as string, sectors);
+          if (derived.refuse) throw new Error(derived.refuse);
+          sector = derived.sector;
+        }
         const labels = args.labels !== undefined ? parseLabels(args.labels as string) : undefined;
         const home = homeVerdict(args.type as string, { sector, parent: args.parent as string | undefined, labels }, sectors);
         if (home.action === 'refuse') throw new Error(home.message);

@@ -425,6 +425,28 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
     expect(errText()).toMatch(/no Sector.*--sector.*Ship loop.*sector setup --opt-out/s);
   });
 
+  const FILE = ['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--parent', 'HIMMEL-9'];
+
+  it('files a Task titled "Visibility: x" with no --sector under the Sector Visibility (HIMMEL-8659)', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--title', 'Visibility: x', '--desc', PLAIN, ...FILE]);
+    const body = posted()![2] as { fields: Record<string, unknown> };
+    expect(body.fields['customfield_10212']).toEqual({ value: 'Visibility' });
+  });
+
+  it('refuses a Task whose title prefix names no live Sector, listing the options (HIMMEL-8659)', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await expect(
+      p.parseAsync(['node', 'jira', 'create', '--title', 'Billing: x', '--desc', PLAIN, ...FILE]),
+    ).rejects.toThrow(/exit 1/);
+    expect(posted()).toBeUndefined();
+    expect(errText()).toMatch(/refused.*"Billing:".*not a Sector.*Ship loop/s);
+  });
+
   it('with JIRA_SECTOR_FIELD unset, files a Task without --sector and sends no Sector field', async () => {
     delete process.env.JIRA_SECTOR_FIELD;
     await run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--parent', 'HIMMEL-9']);
