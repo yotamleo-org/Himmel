@@ -53,7 +53,8 @@
 #   deny          the one refusal
 #   retry_allowed a closed-list sweep after the refusal, no qmd between (no conversion)
 #   qmd_clear     first qmd call of the session; had_deny=true is a conversion
-# Each row: ts, session_id, event, tool, root (the vault directory only), cwd, had_deny.
+# Each row: ts, session_id, event, tool, root (a fixed label: luna or clippings, or empty; never a
+# path), cwd, had_deny.
 # No row carries the command or the pattern; classify a refusal as true or false by reading
 # the command from the session journal by session_id and ts.
 #
@@ -98,14 +99,14 @@ mkdir -p "$DIR" 2>/dev/null || exit 0
 
 # No row carries the command or the pattern: the salus test cannot be proven to catch every
 # spelling of a PHI path, so the log is safe whether or not it did. A refusal is classified
-# by hand from the session journal, by session_id and ts. The root is cut to the vault
-# directory itself, never the rest of the path the command named.
+# by hand from the session journal, by session_id and ts. The root is a fixed label, never a
+# path: a directory above the vault folder can carry a name.
 log_row() { # EVENT ROOT
     local vroot="" r
     for r in "${2:-}" "$cwd"; do # a relative root is the cwd's vault directory
-        case "$r" in
-            *"/Documents/luna"*) vroot="${r%%/Documents/luna*}/Documents/luna" ;;
-            *"/Clippings"*) vroot="${r%%/Clippings*}/Clippings" ;;
+        case "/$r" in
+            *"/Documents/luna"*) vroot=luna ;;
+            *"/Clippings"*) vroot=clippings ;;
         esac
         [ -n "$vroot" ] && break
     done

@@ -207,6 +207,8 @@ vcall v17 Bash "grep -rl notes specs" "" "$VAULT"
 a=$rc
 vcall v17b Bash "cd /home/u/Documents/github/himmel; grep -rl notes specs" "" "$VAULT"
 if [ "$a" = 2 ] && [ "$rc" = 0 ]; then pass "a relative root in a vault cwd is denied, but not after a cd in the command"; else fail "relative root vs cd (plain=$a cd=$rc)"; fi
+vcall v17c Bash "pushd /home/u/Documents/github/himmel; grep -rl notes specs" "" "$VAULT"
+if [ "$rc" = 0 ]; then pass "a relative root is not read after a pushd in the command"; else fail "relative root vs pushd (rc=$rc)"; fi
 vcall v3 Grep "meeting notes" "/home/u/Documents/github/himmel/scripts"
 if [ "$rc" = 0 ]; then pass "Grep tool over a repo path is allowed"; else fail "Grep repo path allowed (rc=$rc)"; fi
 
@@ -238,6 +240,8 @@ vcall v7 Bash "$S"
 vcall v7 Bash 'qmd query -c luna "meeting notes"'
 vcall v7 Bash "$S"
 if [ "$rc" = 0 ]; then pass "a qmd call after the refusal keeps later sweeps allowed"; else fail "qmd after refusal (rc=$rc)"; fi
+vcall v7 Bash 'qmd query -c luna "again"'
+if [ "$(jq -s '[.[] | select(.session_id == "v7" and .event == "qmd_clear")] | length' "$VLOG")" = 1 ]; then pass "only the first qmd call of a session is logged"; else fail "a second qmd call logged again"; fi
 
 # 15. Off by default, the launching-shell bypass, and silence in a salus session.
 VON='' vcall v8 Bash "$S"
@@ -279,7 +283,9 @@ for i in 1 2 3 4 5 6; do
     ( vcall v21 Bash "$S"; echo "$rc" >"$TMP/par.$i" ) &
 done
 wait
-if [ "$(cat "$TMP"/par.* | grep -c '^2$')" = 1 ] && [ "$(cat "$TMP"/par.* | grep -c '^0$')" = 5 ]; then pass "six concurrent sweeps on one key: exactly one refusal"; else fail "concurrent sweeps: $(cat "$TMP"/par.* | tr '\n' ' ')"; fi
+if [ "$(cat "$TMP"/par.* | grep -c '^2$')" = 1 ] && [ "$(cat "$TMP"/par.* | grep -c '^0$')" = 5 ] \
+    && [ "$(jq -s '[.[] | select(.session_id == "v21" and .event == "deny")] | length' "$VLOG")" = 1 ] \
+    && [ "$(jq -s '[.[] | select(.session_id == "v21" and .event == "retry_allowed")] | length' "$VLOG")" = 5 ]; then pass "six concurrent sweeps on one key: exactly one refusal, and the other five are logged as the retry"; else fail "concurrent sweeps: $(cat "$TMP"/par.* | tr '\n' ' ')"; fi
 
 # 16c. A qmd call in a salus session is never logged (its query text is PHI-path content); a quoted
 # qmd helper path with a space still counts as a qmd call; an option value and a separated
@@ -372,19 +378,53 @@ ln -s "$TMP/phi/app" "$TMP/home2/Documents/luna"
 printf '%s\n' "$TMP/phi" >"$CG/phi-roots"
 vcall v56 Grep "Alice Smith" "$TMP/home2/Documents/luna"
 if [ "$rc" = 0 ] && ! logged v56 && [ ! -e "$TMP/vstate/v56.denied" ] && ! grep -q 'Alice' "$VLOG"; then pass "Grep with a plain pattern and a symlink path into a listed root: silent, nothing logged"; else fail "Grep symlink path into a listed root (rc=$rc)"; fi
-# whatever the fence catches, no row carries the text: a listed root named as $HOME/<root>, a relative root after
-# a cd, and a .salus-marked tree the fence cannot see all leave no "Alice" in the log
+# whatever the fence catches, no row carries the text: a listed root named as $HOME/<root> (the fence reads the
+# literal $HOME, so it misses and the sweep is refused and logged), a relative root after a cd, and a
+# .salus-marked tree the fence cannot see all leave no "Alice" in the log
 printf '%s\n' "$TMP/vhome/phiroot" >"$CG/phi-roots"
 mkdir -p "$TMP/vhome/phiroot/app"
-vcall v57 Bash "grep -rl \"Alice Smith\" $TMP/vhome/phiroot/app $VAULT"
+vcall v57 Bash "grep -rl \"Alice Smith\" \$HOME/phiroot/app $VAULT"
 a=$rc
 printf '%s\n' "$TMP/phi" >"$CG/phi-roots"
 vcall v58 Bash "cd $TMP && grep -rl \"Alice Smith\" phi/app $VAULT"
 b=$rc
 vcall v59 Bash "grep -rl \"Alice Smith\" $TMP/marked/sub $VAULT"
 c=$rc
-if [ "$a" = 0 ] && [ "$b" = 2 ] && [ "$c" = 2 ] && ! grep -q 'Alice' "$VLOG" && logged v58 && logged v59; then pass "sweeps naming a listed root, a root after a cd and a .salus-marked tree: no query text in the log, whichever the fence caught"; else fail "sweeps leave no text (listed=$a cd=$b marked=$c)"; fi
+if [ "$a" = 2 ] && [ "$b" = 2 ] && [ "$c" = 2 ] && ! grep -q 'Alice' "$VLOG" && logged v57 && logged v58 && logged v59; then pass "sweeps naming a listed root, a root after a cd and a .salus-marked tree: no query text in the log, whichever the fence caught"; else fail "sweeps leave no text (listed=$a cd=$b marked=$c)"; fi
 rm -f "$CG/phi-roots"
+# a name above the vault folder never reaches the log: the root is a fixed label, not a path prefix
+vcall v60 Bash "grep -rl notes \"\$HOME/phi/Alice Smith/Clippings\""
+a=$rc
+vcall v61 Bash "grep -rl notes \"/x/Alice Smith/Documents/luna\""
+b=$rc
+vcall v62 Bash "grep -rl notes /home/u/Clippings/Alice"
+c=$rc
+if [ "$a" = 2 ] && [ "$b" = 2 ] && [ "$c" = 2 ] && ! grep -q 'Alice' "$VLOG" && logged v60 && logged v61 && logged v62 \
+    && [ "$(jq -r 'select(.session_id == "v60" or .session_id == "v62") | .root' "$VLOG" | sort -u | tr '\n' ' ')" = "clippings " ] \
+    && [ "$(jq -r 'select(.session_id == "v61") | .root' "$VLOG")" = luna ]; then pass "a name above a vault folder: logged with a fixed label (luna or clippings) and no name"; else fail "name above the vault folder (a=$a b=$b c=$c)"; fi
+vcall v63 Bash "grep -rl notes Clippings" "" /x/proj
+if [ "$rc" = 2 ] && [ "$(jq -r 'select(.session_id == "v63") | .root' "$VLOG")" = clippings ]; then pass "a bare relative Clippings root gets the clippings label"; else fail "bare relative Clippings (rc=$rc)"; fi
+# a payload with no cwd cannot be placed, so it reads as salus: silent, nothing logged
+vraw() { # SID COMMAND
+    local payload
+    payload="$(jq -cn --arg s "$1" --arg c "$2" '{session_id: $s, hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: {command: $c}}')"
+    env HIMMEL_VAULT_SWEEP_DENY=1 HIMMEL_VAULT_SWEEP_DIR="$TMP/vstate" HIMMEL_VAULT_SWEEP_LOG="$VLOG" \
+        CLAUDE_PROJECT_DIR= HIMMEL_REPO="$ROOT" HOME="$TMP/vhome" bash "$VHOOK" <<<"$payload" >"$TMP/out" 2>"$TMP/err"
+    rc=$?
+}
+vraw v65 "$S"
+if [ "$rc" = 0 ] && ! logged v65 && [ ! -e "$TMP/vstate/v65.denied" ]; then pass "a payload with no cwd: silent, nothing logged"; else fail "no cwd (rc=$rc)"; fi
+# a cwd that does not exist under a .salus-profile tree is still found by walking the path as given
+salus_row "a missing cwd under a .salus-profile tree: silent, nothing logged" v66 "$TMP/prof/sub/missing"
+# CLAUDE_PROJECT_DIR is asked of the fence too: under a listed root while the cwd is elsewhere
+printf '%s\n' "$TMP/phi" >"$CG/phi-roots"
+VPROJ="$TMP/phi/app" salus_row "CLAUDE_PROJECT_DIR under a listed root while the cwd is elsewhere: silent, nothing logged" v67
+rm -f "$CG/phi-roots"
+# the session id is a file name: it is sanitised, and an empty one allows
+vcall "../vesc" Bash "$S"
+if [ "$rc" = 2 ] && [ ! -e "$TMP/vesc.denied" ] && [ -e "$TMP/vstate/___vesc.denied" ]; then pass "a session id with path characters is sanitised into the state dir"; else fail "session id sanitiser (rc=$rc)"; fi
+vcall "" Bash "$S"
+if [ "$rc" = 0 ] && ! logged ""; then pass "an empty session id allows and logs nothing"; else fail "empty session id (rc=$rc)"; fi
 # an oracle that passes the canary but crashes on the real question is cannot-tell
 mkdir -p "$TMP/stub4"
 cp "$VHOOK" "$TMP/stub4/block-vault-sweep.sh"
@@ -437,9 +477,10 @@ if jq -e -s '
     | ([.[] | select(.event == "qmd_clear" and .had_deny == false)] | length) as $n
     | $d >= 5 and $r >= 2 and $c == 1 and $n >= 3
       and all(.[]; has("ts") and has("session_id") and has("event") and has("tool"))
-      and all(.[]; (.cmd // "") == "")
-      and all(.[] | select(.event == "deny"); has("cwd") and (.root | test("(/Documents/luna|/Clippings)$")))' "$VLOG" >/dev/null 2>&1; then
-    pass "log rows: deny/retry_allowed/qmd_clear with had_deny; no row carries a command, and the root is the vault directory only"
+      and all(.[]; keys == ["cwd","event","had_deny","root","session_id","tool","ts"])
+      and all(.[]; .root | IN("luna","clippings",""))
+      and all(.[] | select(.event == "deny" or .event == "retry_allowed"); .root | IN("luna","clippings"))' "$VLOG" >/dev/null 2>&1; then
+    pass "log rows: deny/retry_allowed/qmd_clear with had_deny; exactly the seven keys on every row (no command, no pattern), and the root is a fixed label"
 else
     fail "log rows"
 fi
