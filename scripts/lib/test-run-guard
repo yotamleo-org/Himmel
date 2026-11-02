@@ -135,7 +135,8 @@ argv_runs_test() {
             -e|--eval|-p|--print) case "$a0" in node|bun|tsx|deno) return 1 ;; esac ;;
             -m) case "${2:-}" in pytest|unittest) return 0 ;; esac; return 1 ;;
             --test) return 0 ;;
-            -C|-w|-F|--cwd|--prefix|--filter|--workspace|--dir) case "$a0" in go|cargo|npm|pnpm|yarn) shift ;; esac ;;
+            -C|-F|--cwd|--prefix|--filter|--workspace|--dir) case "$a0" in go|cargo|npm|pnpm|yarn) shift ;; esac ;;
+            -w) [ "$a0" = npm ] && shift ;;
             -r) case "$a0" in npm|pnpm|yarn) ;; *) shift ;; esac ;;
             -o|-O|+O|--rcfile|--init-file|-W|-X|--require|--import|--loader) shift ;;
             -*|+*) ;;
@@ -146,7 +147,8 @@ argv_runs_test() {
                     shift
                     while [ $# -gt 0 ]; do
                         case "$1" in
-                            -C|-w|-F|--cwd|--prefix|--filter|--workspace|--dir) shift ;;
+                            -C|-F|--cwd|--prefix|--filter|--workspace|--dir) shift ;;
+                            -w) [ "$a0" = npm ] && shift ;;
                             -*) ;;
                             test|test:*) return 0 ;;
                             *) return 1 ;;
@@ -188,7 +190,9 @@ ancestor_runs_test() {
         argv=()
         { while IFS= read -r -d '' arg; do argv+=("$arg"); done <"/proc/$pid/cmdline"; } 2>/dev/null || return 1
         # A package manager retitles itself, so its whole command line is ONE string ("npm test").
-        case "${argv[0]:-}" in *" "*) read -ra argv <<<"${argv[0]}" ;; esac
+        case "${argv[0]:-}" in
+            npm\ *|pnpm\ *|yarn\ *) read -ra argv <<<"${argv[0]}" ;;
+        esac
         if [ "${#argv[@]}" -gt 0 ] && argv_runs_test "${argv[@]}"; then suite_repo_path "$pid"; return 0; fi
         { read -r stat <"/proc/$pid/stat"; } 2>/dev/null || return 1
         read -r _ ppid _ <<<"${stat##*) }"

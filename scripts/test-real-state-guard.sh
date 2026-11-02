@@ -178,6 +178,8 @@ eq "U2 playwright is a runner" "$(as_session bash -c "exec -a playwright bash '$
 eq "U2b a playwright-prefixed tool that is not the runner is not a runner" "$(as_session bash -c "exec -a playwright-crawl-youtube.mjs bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
 eq "U3 a go test binary named pkg.test is a test" "$(as_session bash "$TMP/pkg.test" >/dev/null 2>&1; echo $?)" 77
 eq "U4 go test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a go bash test' >/dev/null 2>&1; echo $?)" 77
+mkdir -p "$TMP/dir with space"
+eq "U15 an interpreter path with a space still finds the test file after it" "$(as_session bash -c "exec -a '$TMP/dir with space/bash' bash '$TMP/test-inner.sh'" >/dev/null 2>&1; echo $?)" 77
 cp "$TMP/real-tool.sh" "$TMP/dir"
 eq "U4b go -C dir test is a runner: the option value is skipped" "$(cd "$TMP" && as_session bash -c 'exec -a go bash -C dir test' >/dev/null 2>&1; echo $?)" 77
 eq "U6 negative control: go with a non-test argument is not a runner" "$(as_session bash -c "exec -a go bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
@@ -196,6 +198,7 @@ if [ -x "$REAL_NODE" ]; then
   eq "U10 a retitled npm run --workspace web test is a runner: the option value is skipped" "$(titled 'npm run --workspace web test')" 77
   eq "U11 a retitled pnpm run --filter web test is a runner" "$(titled 'pnpm run --filter web test')" 77
   eq "U12 a retitled pnpm -r test is a runner: -r takes no value here" "$(titled 'pnpm -r test')" 77
+  eq "U14 a retitled pnpm -w test is a runner: -w is a flag for pnpm, a value option only for npm" "$(titled 'pnpm -w test')" 77
   eq "U8 negative control: a retitled npm run build is not a runner" "$(titled 'npm run build')" 0
   eq "U13 negative control: a retitled npm --prefix test run build is not a runner" "$(titled 'npm --prefix test run build')" 0
 else
