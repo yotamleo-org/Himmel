@@ -349,5 +349,15 @@ check "11d: a noop that names another noop as its judged head fails closed -> tr
 mknoop "$N11d" ""
 check "11e: a noop record with no delta-judged line fails closed -> trust" "$(dcls "$N11d" "$N11d")" trust
 
+# 11f: write-verdict.sh refuses a no-op as the judged head on its own check, not through the classifier
+printf 'last\n' >> docs/c.md; N11x=$(step docs11x)
+check "11f: the classifier alone calls the delta from a noop-recorded head none" "$(dcls "$Nq" "$N11x")" none
+err11=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q11 GO "$N11x" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" --delta-noop "$Nq" 2>&1 >/dev/null)
+rc11=$?
+check "11f: ...yet --delta-noop naming that no-op head is refused rc 2" "$rc11" 2
+check "11f: ...by the no-op check, not the classifier" "$(printf '%s\n' "$err11" | grep -c 'is itself a no-op record')" 1
+check "11f: ...and nothing is written" "$([ -e "$dir11/delta-noop-$N11x.md" ] && echo yes || echo no)" no
+
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"
