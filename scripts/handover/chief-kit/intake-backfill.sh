@@ -2,19 +2,21 @@
 # intake-backfill.sh: the one-time backfill of open tickets that carry no fixVersion. It reads the Jira
 # mirror and PRINTS a proposed version for each one; it files nothing and writes nothing.
 #
-# USAGE  intake-backfill.sh [--mirror DIR] [--commands]
+# USAGE  intake-backfill.sh [--mirror DIR] [--commands --release R] [--batch N]
 #   --mirror DIR  the mirror directory (default: $NEXT_DISPATCH_MIRROR or ~/.himmel/state/jira-mirror/HIMMEL);
 #                 DIR.versions.tsv beside it lists the versions (name, released, date, archived)
-#   --commands    after the plan, print for each row the two commands that file it: `jira edit <KEY>
-#                 --add-labels proposed-<v>` and `jira release request <current> --verb INTAKE --key <KEY>
-#                 --to <v>`, for ONE rm-run. The chief runs them; this script never does.
+#   --commands    print label and reasoned INTAKE commands for at most 20 keys; never execute them
+#   --release R   the chief's declared release identifier (required for commands; never guessed from a version)
+#   --batch N     one-based command batch (default 1). Keep the same mirror snapshot for stable offsets;
+#                 drain one batch through the tick's RM before filing the next. No guard override.
 #
 # Output: `<KEY>\t<proposed>\t<basis>` rows (proposed is an open version or `backlog`), then `# counts` lines:
 # the total, the count per proposed version, the count per basis and the open tickets that already carry a
-# proposed-<v> label (skipped: their INTAKE is queued). Open means statusCategory To Do or In Progress; a
+# proposed-<v> label (no longer skipped: a label does not prove an INTAKE was queued). Open means statusCategory To Do or In Progress; a
 # Sub-task is skipped (it follows its parent). The current version is the first open one in the versions file.
 #
 # Basis, first match wins:
+#   proposed-label     an existing proposed-<v> for an open version or backlog       -> v
 #   scope-label        carries scope-<v> for an open version v                      -> v
 #   operator-directed  carries the operator-directed label                           -> current
 #   high-bug           a Bug at High or Highest                                      -> current
@@ -28,19 +30,29 @@ set -u
 
 mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
 commands=0
+release=""
+batch=1
 while [ $# -gt 0 ]; do
     case "$1" in
-        --mirror) [ $# -ge 2 ] || { echo "usage: intake-backfill.sh [--mirror DIR] [--commands]" >&2; exit 2; }; mirror="$2"; shift 2 ;;
+        --mirror) [ $# -ge 2 ] || { echo "usage: intake-backfill.sh [--mirror DIR] [--commands --release R] [--batch N]" >&2; exit 2; }; mirror="$2"; shift 2 ;;
         --commands) commands=1; shift ;;
-        *) echo "usage: intake-backfill.sh [--mirror DIR] [--commands]" >&2; exit 2 ;;
+        --release) [ $# -ge 2 ] || exit 2; release="$2"; shift 2 ;;
+        --batch) [ $# -ge 2 ] || exit 2; batch="$2"; shift 2 ;;
+        *) echo "usage: intake-backfill.sh [--mirror DIR] [--commands --release R] [--batch N]" >&2; exit 2 ;;
     esac
 done
 [ -d "$mirror" ] || { echo "intake-backfill: no mirror directory at $mirror" >&2; exit 1; }
 
-IB_MIRROR="$mirror" IB_COMMANDS="$commands" python3 -I - <<'PY'
+IB_MIRROR="$mirror" IB_COMMANDS="$commands" IB_RELEASE="$release" IB_BATCH="$batch" python3 -I - <<'PY'
 import glob, json, os, re, shlex, sys
 
 mirror = os.environ['IB_MIRROR'].rstrip('/')
+release = os.environ['IB_RELEASE']
+if os.environ['IB_COMMANDS'] == '1' and not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', release):
+    sys.exit('intake-backfill: --commands requires --release <declared release>, not a guessed version')
+if not re.fullmatch(r'[1-9][0-9]*', os.environ['IB_BATCH']):
+    sys.exit('intake-backfill: --batch must be a positive integer')
+batch = int(os.environ['IB_BATCH'])
 open_versions = []
 try:
     for line in open(mirror + '.versions.tsv'):
@@ -91,12 +103,14 @@ LOW = re.compile(r'^(backlog|unscheduled|residual.*|stale|needs-standard|fu-.*|c
 rows, skipped = [], 0
 for t in sorted((t for t in tickets if is_open(t) and not t['ver'] and t['type'] != 'Sub-task'), key=lambda t: int(t['key'].split('-')[1])):
     ls = t['labels']
-    if any(l.startswith('proposed-') for l in ls):
-        skipped += 1
-        continue
+    # A label is not queue provenance. Reprint its reasoned request; the CLI deduplicates
+    # a matching pending key/verb/destination, including one already claimed by the RM.
+    proposed = [l[9:] for l in ls if l.startswith('proposed-') and l[9:] in [*open_versions, 'backlog']]
     scoped = [l[6:] for l in ls if l.startswith('scope-') and l[6:] in open_versions]
     low = [l for l in ls if LOW.match(l)]
-    if scoped:
+    if proposed:
+        r = (proposed[0], 'proposed-label')
+    elif scoped:
         r = (scoped[0], 'scope-label')
     elif 'operator-directed' in ls:
         r = (current or 'backlog', 'operator-directed')
@@ -123,7 +137,10 @@ print('# counts total=%d already-proposed-skipped=%d current=%s' % (len(rows), s
 print('# counts by proposed: %s' % (fmt(by_ver) or 'none'))
 print('# counts by basis: %s' % (fmt(by_basis) or 'none'))
 if os.environ['IB_COMMANDS'] == '1':
-    for k, v, b in rows:
+    # The RM admits at most 20 current-version moves per run. Print one bounded batch,
+    # not an executable loop or an override; the chief waits for it to drain before the next.
+    print('# commands batch=%d/%d max-keys=20; drain this batch before filing the next; keep this mirror snapshot for stable offsets' % (batch, max(1, (len(rows) + 19) // 20)))
+    for k, v, b in rows[(batch - 1) * 20:batch * 20]:
         print('jira edit %s --add-labels %s' % (k, shlex.quote('proposed-' + v)))
-        print('jira release request %s --verb INTAKE --key %s --to %s --why "backfill: %s"' % (shlex.quote(current), k, shlex.quote(v), b))
+        print('jira release request %s --verb INTAKE --key %s --to %s --why "backfill: %s"' % (shlex.quote(release), k, shlex.quote(v), b))
 PY

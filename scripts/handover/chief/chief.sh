@@ -1504,7 +1504,8 @@ cmd_new() {
         BOARD_URL "none yet — render it locally at ACTION ZERO step 12" \
         TRACKER_URL "none" \
         CARRIED_LIVE_STATE "epics: none
-decisions: none" \
+decisions: none
+$(declared_release_line)" \
         CARRIED_DIRECTION "Chain order: none yet (first console of the chain). In work: nothing. Waits on the operator: nothing." \
         MODEL "$model" \
         PROJECT "$project_doc_value"
@@ -1815,6 +1816,20 @@ spill_decisions() {
     fi
 }
 
+# Match the Jira CLI's declaration root, never the chief's arbitrary --bucket.
+# Ambiguous or invalid names stay unseeded; tick/doctor report the disabled wiring.
+declared_release_line() {
+    local release_root="${HIMMEL_RELEASE_STATE_DIR:-$root/$slug/${repo##*/}/release}" path name="" count=0
+    for path in "$release_root"/*/release.json; do
+        [ -f "$path" ] || continue
+        count=$((count + 1))
+        name="${path%/release.json}"; name="${name##*/}"
+    done
+    [ "$count" -eq 1 ] || return 0
+    case "$name" in ''|*[!A-Za-z0-9._-]*|[!A-Za-z0-9]*) return 0 ;; esac
+    printf 'release: %s\n' "$name"
+}
+
 # The shift-spanning Live-state lines `next` copies verbatim into the
 # successor doc; `epics:` and `decisions:` fall back to `none`, and an
 # oversize `decisions:` line is spilled (spill_decisions).
@@ -1823,7 +1838,10 @@ carried_live_state() {
     local live="$1" field line
     for field in epics decisions priority versions tracker-plan release rm focus-version focus-plan; do
         line="$(printf '%s\n' "$live" | grep -m 1 "^$field:")" || line=""
-        case "$field" in epics|decisions) [ -n "$line" ] || line="$field: none" ;; esac
+        case "$field" in
+            epics|decisions) [ -n "$line" ] || line="$field: none" ;;
+            release) [ -n "$line" ] || line="$(declared_release_line)" ;;
+        esac
         [ "$field" != decisions ] || line="$(spill_decisions "$line" "$2" "$3")"
         [ -z "$line" ] || printf '%s\n' "$line"
     done

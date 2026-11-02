@@ -95,7 +95,12 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `release: <R>` (a declared release, `chief-sections/release-manager.md`) adds
 > a `Release manager <R>` panel from one `jira release state <R> --json` call: M4
 > burn-down per version, the leaks and the M1 trend for the last 7 days; a failing
-> CLI reads `unavailable`. `rm: <session> <doc> epoch=<n>` names the live RM.
+> CLI reads `unavailable`. `new` and `next` seed a missing release line from the
+> unique declaration in the primary repo's canonical release root, not `--bucket`;
+> an explicit line (including `release: none`) wins. With multiple declarations,
+> choose a release explicitly. The tick reports `rm-queue=off` for declared but
+> unusable wiring/state; an unreadable doc or explicit none still elides it.
+> `rm: <session> <doc> epoch=<n>` names the live RM.
 > `focus-version: <v>|auto|none` picks the FOCUS tracker page's version
 > (`chief-sections/board-tracker.md`): `auto`, or no line beside `release: <R>`,
 > follows R's current version.

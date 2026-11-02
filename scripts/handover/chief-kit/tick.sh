@@ -32,7 +32,7 @@ GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
-if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
+if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR USER_SLUG 2>/dev/null || true; fi
 # shellcheck source=../../lib/handover-path.sh
 . "$HERE/../../lib/handover-path.sh"
 # shellcheck source=../../lib/worker-identity.sh
@@ -2106,18 +2106,33 @@ fi
 # TICK_RMRUN_MIN minutes old (default 30), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
 # (default 600), the tick launches ONE detached `jira release rm-run <R>` (it runs a model call, far past this
 # tick's budget; its lines go to $TICK_STATE_DIR/tick-rm-run.log) and appends `,run`. rm-run takes the lease itself,
-# so a run in flight blocks a second one. 0 = nothing open, ? = the read failed, skip = no `release:` line.
+# so a run in flight blocks a second one. 0 = nothing open, off = unusable wiring/state,
+# skip = no declaration or explicit release: none.
 # Not in chief-wait's wake key.
 rm_queue=skip
 rm_rel=""
-if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
+# The CLI and default declaration bucket belong to this script's primary checkout, not --repo.
+# shellcheck source=../../lib/git-clean.sh
+rm_anchor="$(cd "$HERE/../../.." && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || rm_anchor=""  # swallow-ok: no anchor leaves the default declaration root unavailable
+if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
     rm_rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc shows no rm-queue field
-    case "$rm_rel" in none*) rm_rel="" ;; esac
+    case "$rm_rel" in
+        none*) rm_rel="" ;;
+        *)
+            rm_root="${HIMMEL_RELEASE_STATE_DIR:-}"
+            if [ -z "$rm_root" ] && [ -n "$rm_anchor" ] && [ -n "${USER_SLUG:-}" ] && [ -n "$root" ]; then
+                rm_repo="${rm_anchor%/.git}"
+                rm_root="$root/$USER_SLUG/${rm_repo##*/}/release"
+            fi
+            if [ -n "$rm_root" ]; then
+                for rm_decl in "$rm_root"/*/release.json; do
+                    [ ! -f "$rm_decl" ] || rm_queue=off
+                done
+            fi
+            ;;
+    esac
 fi
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    # The CLI lives in the himmel primary checkout that holds this script, whatever --repo names.
-    # shellcheck source=../../lib/git-clean.sh
-    rm_anchor="$(cd "$HERE/../../.." && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || rm_anchor=""  # swallow-ok: no anchor reads ? below
     rm_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
     rm_pk="${nd_mirror##*/}"
     rm_rc=0 rm_json=""
@@ -2143,10 +2158,10 @@ if n and r.get("oldest_open"):
     age = max(0, int((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() // 60))
 ls = d.get("lease")
 print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN")
-' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads ?
+' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads off
     fi
     case "$rm_n" in
-        '' | *[!0-9]*) rm_queue='?' ;;
+        '' | *[!0-9]*) rm_queue=off ;;
         0) rm_queue=0 ;;
         *)
             rm_queue="$rm_n,${rm_age}m"

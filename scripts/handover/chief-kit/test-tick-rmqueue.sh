@@ -61,6 +61,8 @@ export HANDOVER_DIR="$W/handover" REPO="$W/repo" TICK_TMPDIR="$W" PS_FIXTURE="$W
 export TICK_BANK_CACHE_FILE="$W/bank.json" TICK_STATE_DIR="$W/state" CLAUDE_SESSIONS_PROC="$W/proc"
 export TICK_LAUNCH_DIR="$W/chief-work" TICK_PROJECTS_DIR="$W/projects"
 export TOKEN=t WORKERS=''
+export HIMMEL_RELEASE_STATE_DIR="$W/releases" USER_SLUG=tester
+mkdir -p "$HIMMEL_RELEASE_STATE_DIR"
 
 # the state read: `release state <R> --json`, its body is $W/state.json; the rm-run logs its argv and stops.
 printf '#!/bin/sh\necho "$@" >> "%s/state-asked"\ncat "%s/state.json"\n' "$W" "$W" > "$W/rmq-probe.sh"
@@ -125,6 +127,27 @@ out="$(tick)"
 sleep 1
 check 'a chief doc with no release: line shows no rm-queue field' '' "$(field rm-queue "$out")"
 check 'and asks no state and runs no rm-run' '' "$([ -e "$W/rmrun-ran" ] || [ -e "$W/state-asked" ] && echo ran)"
+
+# A real declaration with no usable chief line is broken wiring, not an empty queue.
+mkdir -p "$HIMMEL_RELEASE_STATE_DIR/R1"
+printf '{}\n' > "$HIMMEL_RELEASE_STATE_DIR/R1/release.json"
+reset
+out="$(tick)"
+check 'declared release without a line reports off' 'off' "$(field rm-queue "$out")"
+check 'off never reads state or launches a run' '' "$([ -e "$W/rmrun-ran" ] || [ -e "$W/state-asked" ] && echo ran)"
+mkdoc 'bad/name'
+out="$(tick)"
+check 'declared release with an invalid line reports off' 'off' "$(field rm-queue "$out")"
+mkdoc none
+out="$(tick)"
+check 'explicit none still elides the field despite a declaration' '' "$(field rm-queue "$out")"
+mkdoc R1
+printf 'broken\n' > "$W/state.json"
+out="$(tick)"
+check 'an unreadable state reports off instead of silently disabling the RM' 'off' "$(field rm-queue "$out")"
+rm -f "$W/handover/chief.md"
+out="$(tick)"
+check 'a missing chief doc still elides the field' '' "$(field rm-queue "$out")"
 
 mkdoc R1
 reset; state '["Q-1"]' "\"$(ago 45)\"" null
