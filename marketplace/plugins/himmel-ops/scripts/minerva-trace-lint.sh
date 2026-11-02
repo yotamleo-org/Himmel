@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
-# minerva-trace-lint.sh <spec.md> <plan.md> — minerva's terminal
+# minerva-trace-lint.sh <spec.md> <plan.md> [<alt-root>] — minerva's terminal
 # step runs this before the execute hand-off; a non-zero exit sends the run back
 # to the spec or plan stage. Rules:
-#   1. A surface-shaped spec (its H1 or first H2 section names status, report,
-#      doctor, health, probe, check or inventory) carries a `## Fact ownership`
-#      table with an owner column. Each row's existing-surfaces cell (column 2)
-#      cites backticked repo-relative paths that exist, or reads `none (grep: <pattern>)`
-#      — the grep is the mechanical inventory step, which self-answer mode
-#      cannot skip.
+#   1. A surface-shaped spec (its H1 or any H2 heading names status, report,
+#      doctor, health, probe, check or inventory) or any spec that carries a
+#      `## Fact ownership` section has that section checked: a table with an owner
+#      column. Each row's existing-surfaces cell (column 2) cites backticked
+#      repo-relative paths that exist, or reads `none (grep: <pattern>)` — the grep
+#      is the mechanical inventory step, which self-answer mode cannot skip. A
+#      backticked word that is not path-shaped (no `/`, no extension, no glob
+#      character: a flag, an identifier) is not a path and is not looked up.
 #   2. Every spec carries `## Invariants`: `none`, or lines opening with I<n>
 #      (an indented continuation line may follow one).
 #   3. Every I<n> appears in plan.md on a line that names a test (`test-`,
 #      `.test.` or `Test:`).
-# Paths resolve against the cwd's git top level. Every miss is named on stderr.
+# Paths resolve against the cwd's git top level, or <alt-root> when given (a spec kept
+# in another repo, e.g. the state repo, cites paths of either). Every miss is named on stderr.
 # Exit 0 ok, 1 refused, 2 usage. bash 3.2-safe.
 set -u
 set -f  # backticked cells are split into words below; never glob them
 
-spec="${1:-}"; plan="${2:-}"
+spec="${1:-}"; plan="${2:-}"; alt="${3:-}"  # alt: the spec's own repo root, a second place a cited path may exist
 if [ ! -f "$spec" ] || [ ! -f "$plan" ]; then
   echo "minerva-trace-lint: usage: minerva-trace-lint.sh <spec.md> <plan.md> (both must exist)" >&2
   exit 2
@@ -39,8 +42,10 @@ section(){
 }
 
 surface_words='status|report|doctor|health|probe|check|inventory'
-head_text="$(awk '/^#[[:space:]]/ { print; next } /^##[[:space:]]/ { n++; if (n > 1) exit; print; next } n == 1 { print }' "$spec")"
-if printf '%s\n' "$head_text" | grep -qiwE "$surface_words"; then
+# the trigger reads headings only, so moving a section never switches the check off
+head_text="$(grep -E '^##?[[:space:]]' "$spec")"
+if printf '%s\n' "$head_text" | grep -qiwE "$surface_words" \
+   || printf '%s\n' "$head_text" | grep -qiE '^##[[:space:]]+fact ownership[[:space:]]*$'; then
   fo="$(section 'Fact ownership')"
   # one "fact<TAB>surfaces" line per data row under a header carrying an owner column
   rows="$(printf '%s\n' "$fo" | awk -F'|' '
@@ -64,12 +69,17 @@ if printf '%s\n' "$head_text" | grep -qiwE "$surface_words"; then
         add "fact ownership: row '$fact' cites no backticked existing path and no 'none (grep: <pattern>)' record"
         continue
       fi
+      npaths=0
       for t in $toks; do
         case "$t" in /*|..|../*|*/..|*/../*)
-          add "fact ownership: row '$fact' cites $t, which is not a path inside the repo"; continue;;
+          npaths=$((npaths+1)); add "fact ownership: row '$fact' cites $t, which is not a path inside the repo"; continue;;
         esac
-        [ -e "$root/$t" ] || add "fact ownership: row '$fact' cites $t, which does not exist under $root"
+        case "$t" in -*) continue;; */*|*.*|*[*?[]*) ;; *) continue;; esac  # a flag or identifier is no path
+        npaths=$((npaths+1))
+        [ -e "$root/$t" ] || { [ -n "$alt" ] && [ -e "$alt/$t" ]; } \
+          || add "fact ownership: row '$fact' cites $t, which does not exist under $root${alt:+ or $alt}"
       done
+      [ "$npaths" -gt 0 ] || add "fact ownership: row '$fact' cites no backticked existing path and no 'none (grep: <pattern>)' record"
     done <<EOF
 $rows
 EOF

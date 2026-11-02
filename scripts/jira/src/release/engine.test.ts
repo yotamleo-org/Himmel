@@ -1373,6 +1373,48 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     expect(readOperatorRecords('spec', specEnv())).toEqual([]);
   });
 
+  // A spec kept outside the checkout (the state repo bucket) with a Fact ownership matrix and invariants.
+  function bucketSpec(cited: string): { spec: string; plan: string } {
+    const p = spec('K-1-bucket-2026-11-02.md', join(root, 'bucket', 'designs'));
+    writeFileSync(p, [
+      '# K-1: a status feed', '', 'Estimate record: est.json', '',
+      '## Alternatives considered', '', '- none better.', '', '## Definition of done', '', '- the fixture signs.', '',
+      '## Fact ownership', '',
+      '| Fact | Existing surfaces | Owner after | Non-owners |', '|---|---|---|---|',
+      `| item status | \`${cited}\` (\`--held\`, \`ROW_REGISTRIES\`) | the feed | n/a |`, '',
+      '## Invariants', '', '- I1 — one fact is one row.', '',
+    ].join('\n'));
+    const plan = join(root, 'bucket', 'plans', 'K-1-bucket-plan-2026-11-02.md');
+    mkdirSync(join(root, 'bucket', 'plans'), { recursive: true });
+    writeFileSync(plan, 'plan\n\n- Task 1: I1 — Test: `scripts/test-feed.sh` feeds a fact from two real sources.\n');
+    return { spec: p, plan };
+  }
+
+  it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
+    declared();
+    const { spec: p, plan } = bucketSpec('marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh');
+    const r = sign(sctx(), ['K-1'], p, { plan });
+    expect(r.keys).toEqual(['K-1']);
+    expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+  });
+
+  it('a bucket spec naming a truly missing path is still refused, and so is one whose plan names no test', () => {
+    declared();
+    const bad = bucketSpec('scripts/no-such-file.sh');
+    expect(() => sign(sctx(), ['K-1'], bad.spec, { plan: bad.plan })).toThrow(/cites scripts\/no-such-file\.sh, which does not exist/);
+    const ok = bucketSpec('marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh');
+    writeFileSync(ok.plan, 'plan\n\n- Task 1: I1 is covered somewhere.\n');
+    expect(() => sign(sctx(), ['K-1'], ok.spec, { plan: ok.plan })).toThrow(/I1 has no plan line naming its acceptance test/);
+    expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+  });
+
+  it('a missing plan file is refused at signing', () => {
+    declared();
+    const { spec: p } = bucketSpec('marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh');
+    expect(() => sign(sctx(), ['K-1'], p, { plan: join(root, 'bucket', 'plans', 'absent.md') }))
+      .toThrow(/release operator spec: plan not found: .*absent\.md/);
+  });
+
   it('a missing spec file is refused at signing and reads SPEC-STALE once signed', () => {
     declared();
     expect(() => sign(sctx(), ['K-1'], join(root, 'specs', 'absent.md'), { verdicts: [] }))

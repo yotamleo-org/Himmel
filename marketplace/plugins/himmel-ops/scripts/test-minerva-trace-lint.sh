@@ -111,6 +111,34 @@ expect_refuse "incomplete grep record" "cadence state" "$td/half-grep.md" "$td/p
 printf '# Rename a flag\n\n## 1. Goal\n\nRename the flag.\n\n## Invariants\n\nnone\n' >"$td/plain.md"
 expect_pass "non-surface spec with Invariants: none passes" "$td/plain.md" "$td/plan.md"
 
+# a backticked word that is not a path (a flag, an identifier) is not a missing file
+sed "s#\`$repo_path\`#\`$repo_path\` (\`--held\`, \`ROW_REGISTRIES\`)#" "$td/green.md" >"$td/words.md"
+expect_pass "non-path backticked words beside a real path pass" "$td/words.md" "$td/plan.md"
+# ...but a cell citing only such words cites no path and no grep record
+sed "s#\`$repo_path\`#\`--held\` \`ROW_REGISTRIES\`#" "$td/green.md" >"$td/words-only.md"
+expect_refuse "cell of only non-path words is refused" "item health" "$td/words-only.md" "$td/plan.md"
+# a bare name with an extension is still a path, so a missing one is refused
+sed "s#\`$repo_path\`#\`no-such-top.sh\`#" "$td/green.md" >"$td/top-missing.md"
+expect_refuse "missing top-level file refused" "no-such-top.sh" "$td/top-missing.md" "$td/plan.md"
+
+# an optional third argument names the spec's own repo; a path counts if it exists under either root
+mkdir -p "$td/own/notes" && printf 'x\n' >"$td/own/notes/only-here.md"
+sed "s#\`$repo_path\`#\`notes/only-here.md\`#" "$td/green.md" >"$td/own-path.md"
+expect_refuse "path only in the spec's own repo, no second root" "notes/only-here.md" "$td/own-path.md" "$td/plan.md"
+out="$(bash "$lint" "$td/own-path.md" "$td/plan.md" "$td/own" 2>&1)" && ok "path in the second root passes" || bad "path in the second root: $out"
+out="$(bash "$lint" "$td/dangling.md" "$td/plan.md" "$td/own" 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && ok "path in neither root: exit 1" || bad "path in neither root: expected exit 1, got $rc: $out"
+
+# moving a section cannot switch the check off.
+# (a) the surface word sits in a later H2 heading, not the first: still surface-shaped
+printf '# Feed rework\n\n## Goal\n\nRework it.\n\n## Health\n\nMore.\n\n## Invariants\n\nnone\n' >"$td/later-h2.md"
+expect_refuse "surface word in a later H2 heading" "fact ownership" "$td/later-h2.md" "$td/plan.md"
+# (b) a spec that carries a Fact ownership section is checked even with no surface word in its headings
+{ printf '# Rename a flag\n\n## 1. Goal\n\nRename the flag.\n\n'; printf '%s\n' "$fact_ok"; printf '%s\n' "$inv_ok"; } >"$td/plain-fo.md"
+expect_pass "plain spec with a valid Fact ownership section passes" "$td/plain-fo.md" "$td/plan.md"
+sed "s#$repo_path#scripts/no-such-file.sh#" "$td/plain-fo.md" >"$td/plain-fo-bad.md"
+expect_refuse "Fact ownership section on a plain spec is still checked" "no-such-file" "$td/plain-fo-bad.md" "$td/plan.md"
+
 # usage errors exit 2
 bash "$lint" "$td/absent.md" "$td/plan.md" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "missing spec: exit 2" || bad "missing spec: expected exit 2, got $rc"

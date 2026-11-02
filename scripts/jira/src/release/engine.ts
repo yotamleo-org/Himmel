@@ -357,12 +357,14 @@ export function readOperatorRecords(kind: OperatorRow['kind'], env: Record<strin
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
-// The minerva scripts of the primary checkout, found from this module, not the caller's cwd.
-function minervaScript(name: string): string {
+// The primary checkout, found from this module, not the caller's cwd.
+function checkoutRoot(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const common = execFileSync('git', ['-C', here, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
-  return join(dirname(common), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
+  return dirname(common);
 }
+
+const minervaScript = (name: string): string => join(checkoutRoot(), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
 
 function runMinerva(name: string, args: string[], cwd: string): void {
   try {
@@ -415,18 +417,27 @@ function checkResiduals(specText: string, residuals: number): void {
 }
 
 export function signSpec(ctx: Ctx, o: {
-  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string;
+  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string;
 }): OperatorRow {
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
   const spec = resolve(o.spec);
   if (!existsSync(spec)) throw new Error(`release operator spec: spec not found: ${spec}`);
+  // The plan carries the invariants' acceptance tests; with no --plan the spec stands in for it.
+  const plan = o.plan ? resolve(o.plan) : spec;
+  if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
   const { verdicts, residuals } = readVerdicts(o.verdicts);
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   checkResiduals(bytes.toString('utf8'), residuals);
   runMinerva('minerva-spec-gate.sh', [spec], dirname(spec));
-  runMinerva('minerva-trace-lint.sh', [spec, spec], dirname(spec));
+  // The lint resolves cited paths against its cwd's repo, so it runs from the checkout, whichever repo holds the
+  // spec; the spec's own repo (the state repo) is the second place a cited path may exist.
+  let own: string[] = [];
+  try {
+    own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
+  } catch { /* a spec outside any repo has no second root */ }
+  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot());
   // The record signs the bytes the checks read: a spec or verdict edited meanwhile refuses.
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)) {
     throw new Error('release operator spec: the spec or a verdict file changed while it was checked; sign again');

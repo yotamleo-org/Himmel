@@ -1,4 +1,4 @@
-# EXAMPLE-1 — settings dashboard: design spec
+# EXAMPLE-1 — settings health dashboard: design spec
 
 Synthetic RED fixture for minerva-trace-lint.sh (HIMMEL-4375). It reproduces the
 shape of a real spec that shipped one fact as two findings: a surface-shaped
