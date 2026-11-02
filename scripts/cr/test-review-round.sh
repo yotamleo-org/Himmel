@@ -63,7 +63,7 @@ RR="$fx/scripts/cr/review-round.sh"
 # The shape of a row: model, severity, file, artifact. A scenario sets these for the real-head
 # row (TW_*) and the blank-head row (BL_*); shapes() puts both back to the same default.
 shapes() {
-    TW_MODEL=stub TW_SEV=sug TW_FILE=f.txt TW_ART=diff
+    TW_MODEL=stub TW_SEV=sug TW_FILE=f.txt TW_ART=diff TW_PERSP=off
     BL_MODEL=stub BL_SEV=sug BL_FILE=f.txt BL_ART=diff BL_HEAD=""
 }
 shapes
@@ -78,11 +78,13 @@ real_row() { # branch head id verdict [text]
     if [ -n "${5:-}" ]; then
         # shellcheck disable=SC2086  # $x is a fixed list of one-word flags and values
         CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model "$TW_MODEL" --id "$3" \
-            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" --text "$5" $x
+            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" \
+            --perspective "$TW_PERSP" --text "$5" $x || fail "fixture write failed: $3"
     else
         # shellcheck disable=SC2086
         CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model "$TW_MODEL" --id "$3" \
-            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" $x
+            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" \
+            --perspective "$TW_PERSP" $x || fail "fixture write failed: $3"
     fi
 }
 # The defect: a finding row written with no real head, which ledger-append can no longer write.
@@ -138,7 +140,7 @@ assert_has "$out" "skip-blank-head cov-3" "the blank-head row is still skipped, 
 blank_row rr-reraise cov-4 ""
 real_row rr-reraise "$head_a" cov-4 "" "tidy the cov-4 fixture"
 CR_LEDGER="$ledger" bash "$LA" amend --branch rr-reraise --head "$head_a" --id cov-4 \
-    --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null
+    --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null || fail "fixture amend failed: cov-4"
 real_row rr-reraise "$head_b" cov-4b "" "tidy the cov-4 fixture"
 promote rr-reraise
 assert_eq "$rc" "3" "a blank-head row whose twin is re-raised does not let promote pass"
@@ -148,7 +150,7 @@ assert_has "$out" "still-open cov-4@" "the re-raised twin is reported still-open
 blank_row rr-promote cov-5 ""
 real_row rr-promote "$head_a" cov-5 "" "tidy the cov-5 fixture"
 CR_LEDGER="$ledger" bash "$LA" amend --branch rr-promote --head "$head_a" --id cov-5 \
-    --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null
+    --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null || fail "fixture amend failed: cov-5"
 promote rr-promote
 assert_eq "$rc" "0" "a blank-head row beside a promotable twin lets promote exit 0"
 assert_has "$out" "promoted cov-5@" "the twin is promoted"
@@ -163,8 +165,9 @@ assert_has "$err" "cov-6" "twin on another branch: the refusal names the id"
 
 # (7) a twin must share the perspective.
 blank_row rr-persp cov-7 deferred off
-CR_LEDGER="$ledger" bash "$LA" finding --branch rr-persp --head "$head_a" --model stub --id cov-7 \
-    --severity sug --file f.txt --line 1 --verdict deferred --perspective on --fu-class polish --deferred-to HIMMEL-9001
+TW_PERSP=on
+real_row rr-persp "$head_a" cov-7 deferred
+shapes
 promote rr-persp
 refused "twin under another perspective"
 
@@ -219,6 +222,20 @@ blank_row rr-shape cov-14 deferred
 real_row rr-shape not-a-commit cov-14 deferred
 promote rr-shape
 refused "twin at a head that is not commit-shaped"
+
+# (14b) a twin must carry a head that names a commit here, not only one shaped like a commit.
+blank_row rr-ghost cov-14b deferred
+real_row rr-ghost 0123456789012345678901234567890123456789 cov-14b deferred
+promote rr-ghost
+refused "twin at a commit-shaped head that is not a commit here"
+
+# (14c) a spec row headed by a document id cannot rescue a blank row (pins the shape rule).
+BL_ART=spec TW_ART=spec
+blank_row rr-spec cov-14c deferred
+real_row rr-spec design-doc-1 cov-14c deferred
+shapes
+promote rr-spec
+refused "spec row whose twin is headed by a document id"
 
 # (15) two blank rows of one id do not vouch for each other.
 blank_row rr-two cov-15 deferred
