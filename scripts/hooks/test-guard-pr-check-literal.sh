@@ -545,10 +545,10 @@ need_in_err "remedy offers the anchor's own path as the fallback" "bash $PRIMARY
 # anchored at the fixture primary - what a leg actually holds.
 PCLI="$(cd "$(dirname "$0")/../lanes" && pwd)/plugin-profiles.mjs"
 mkdir -p "$TMP/rules-home"
-RULES="$(cd "$WT" && env HIMMEL_REPO="$WT" HOME="$TMP/rules-home" USERPROFILE="$TMP/rules-home" node "$PCLI" worker-impl 2>/dev/null | jq -r '.permissions.allow[]' 2>/dev/null)"
+GEN_RULES="$(cd "$WT" && env HIMMEL_REPO="$WT" HOME="$TMP/rules-home" USERPROFILE="$TMP/rules-home" node "$PCLI" worker-impl 2>/dev/null | jq -r '.permissions.allow[]' 2>/dev/null)"
 # plus the project rules every session in this repo holds
 SETTINGS_ALLOW="$(jq -r '.permissions.allow[]' "$(cd "$(dirname "$0")/../.." && pwd)/.claude/settings.json" 2>/dev/null)"
-RULES="$RULES
+RULES="$GEN_RULES
 $SETTINGS_ALLOW"
 
 # printed_matches <label> <match|nomatch> <command>
@@ -607,7 +607,8 @@ followed() {
     restore_tree "$3"
 }
 
-if [ -n "$RULES" ]; then echo "PASS worker-impl allow rules generated"; else echo "FAIL could not generate worker-impl allow rules"; FAILED=$((FAILED + 1)); fi
+if grep -qxF "Bash(bash $PRIMARY/scripts/handover/merge-on-green.sh:*)" <<<"$GEN_RULES"; then echo "PASS worker-impl allow rules generated, anchored at the primary"; else echo "FAIL the generated worker-impl rules lack the primary's merge-on-green rule: $GEN_RULES"; FAILED=$((FAILED + 1)); fi
+if [ -n "$SETTINGS_ALLOW" ]; then echo "PASS project allow rules read"; else echo "FAIL could not read the project allow rules"; FAILED=$((FAILED + 1)); fi
 followed "merge-on-green" "$MOG" scripts/handover/merge-on-green.sh "--go /g"
 followed "himmel-gate" 'bash scripts/handover/chief-kit/himmel-gate.sh' scripts/handover/chief-kit/himmel-gate.sh "--x"
 
