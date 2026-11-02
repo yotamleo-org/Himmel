@@ -106,14 +106,27 @@ bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 # Every generated brief tells its worker to run the named notes search and graph lookup and cite them
 for b in "$D1" "$D2"; do
     BD="$(tr '\n' ' ' < "$b" | tr -s ' ')"
-    has "$(basename "$b") carries the notes-search directive" "$BD" "scripts/lib/qmd-bounded.sh query -c jira-himmel"
+    has "$(basename "$b") carries the jira-himmel notes search" "$BD" "scripts/lib/qmd-bounded.sh query -c jira-himmel"
+    has "$(basename "$b") carries the luna notes search" "$BD" "scripts/lib/qmd-bounded.sh query -c luna"
     has "$(basename "$b") carries the graph-lookup directive" "$BD" "scripts/graphify/worker-graph.sh explain"
     has "$(basename "$b") names the graph-qmd: Results bullet" "$BD" "graph-qmd: <what each returned and whether used>"
+    lacks "$(basename "$b") leaves no <topic> placeholder" "$BD" "<topic>"
+    lacks "$(basename "$b") leaves no <symbol> placeholder" "$BD" "<symbol>"
 done
-python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["prior"]="related work exists, see the ticket"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/vague.json"
-vout="$(python3 "$SUT" "$WORK/vague.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/vague-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wv" --deadline 1791475000 2>&1)"; rc=$?
-bash "$HERE/brief-lint.sh" "$WORK/vague-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/lintv.err"; lrc=$?
-{ [ "$rc" = 0 ] && [ "$lrc" = 0 ]; } && pass "a generated brief whose prior cites nothing still passes, on the directive" || fail "vague-prior generation rc=$rc lint rc=$lrc: $vout $(cat "$WORK/lintv.err")"
+# the directive names the leg's own query and symbol: the title and first Writes path by default, search_query/search_symbol when set
+has "brief 1 defaults the notes query to the title" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" 'query -c luna "a plain fix"'
+has "brief 1 defaults the graph symbol to the first Writes path" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" 'worker-graph.sh explain "scripts/x/"'
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["search_query"]="brief prior art cite duty"; l[0]["search_symbol"]="brief-lint.sh"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/named.json"
+nout="$(python3 "$SUT" "$WORK/named.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/named-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wn" --deadline 1791475000 2>&1)"; rc=$?
+NB="$(tr '\n' ' ' < "$WORK/named-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" | tr -s ' ')"
+bash "$HERE/brief-lint.sh" "$WORK/named-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/lintn.err"; lrc=$?
+{ [ "$rc" = 0 ] && [ "$lrc" = 0 ]; } && pass "a leg that names its search_query and search_symbol generates and lints" || fail "named-search generation rc=$rc lint rc=$lrc: $nout $(cat "$WORK/lintn.err")"
+has "the named notes query reaches both collections" "$NB" 'query -c jira-himmel "brief prior art cite duty"'
+has "the named notes query reaches the luna collection" "$NB" 'query -c luna "brief prior art cite duty"'
+has "the named graph symbol reaches the directive" "$NB" 'worker-graph.sh explain "brief-lint.sh"'
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["search_query"]="has <topic> in it"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/badq.json"
+python3 "$SUT" "$WORK/badq.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/badq-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wq" --deadline 1791475000 >/dev/null 2>&1; rc=$?
+[ "$rc" = 1 ] && pass "a search_query with an angle bracket is refused (rc 1)" || fail "bad search_query rc=$rc"
 
 # every brief pre-authorizes a new suite's own tier + duration row
 has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"

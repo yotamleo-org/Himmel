@@ -90,7 +90,7 @@ template_version: 3
 > `graphify query` when code structure matters. If the search found nothing,
 > write `none found (<the query you ran>)`; a bare `none`, an empty line or this
 > placeholder is refused at arming by `brief-lint.sh`.>
-> Before you design, run `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel "<topic>"` and `bash scripts/graphify/worker-graph.sh explain "<symbol>"`, and cite what each returned (or `none found (<the query you ran>)`). Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, or `graph-qmd: n/a, shipping` on a resume that only ships. Keep this line as written: `brief-lint.sh` refuses a worker brief whose Prior art cites no result and lacks it.
+> Before you design, run `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel "<topic>"` (tickets and PRs) and `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna "<topic>"` (specs, audits and decisions), and `bash scripts/graphify/worker-graph.sh explain "<symbol>"`, and cite what each returned, or write none found with the query you ran. Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, or `graph-qmd: n/a, shipping` on a resume that only ships. Put the notes query and the graph symbol for THIS ticket where the two quoted placeholders stand, and keep the rest as written: `brief-lint.sh` refuses a worker brief without this line or with either placeholder left in, whatever the Prior art line above cites.
 
 > **Exemplar (optional):** <one in-repo path — a gate, a suite, a script — that
 > shows the paved path for this change, and what to copy from it. Omit the line

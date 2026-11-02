@@ -8,9 +8,9 @@
 # runs once and every worker inherits it. This is the structural half: a brief
 # whose field is missing, empty, an unfilled `<placeholder>`, or a bare `none`
 # fails. `none found (<query>)` passes - it names the query that came up empty.
-# A worker brief (not --judge, not a doc that has run) must also cite a result (a
-# ticket key, a #PR, `none found (<query>)`) or carry the search directive (the
-# qmd-bounded.sh and worker-graph.sh commands plus the `graph-qmd:` Results bullet).
+# A worker brief (a `> **Contract:**` line; not --judge, not a doc that has run) must also carry the
+# search directive in that field: the qmd-bounded.sh query over jira-himmel and luna, the worker-graph.sh
+# lookup, both named, and the `graph-qmd:` Results bullet. A ticket key or #PR does not replace it.
 #
 # The field is the `> **Prior art:**` line plus any directly following `> `
 # continuation lines (up to the next `> **Field:**`, a non-blockquote line, or
@@ -302,20 +302,22 @@ if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; t
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
 fi
 
-# A worker brief tells its worker to search the notes and the graph before it designs and to report
-# what each returned, or its Prior art line already cites a result. Merely mentioning the graph moved little in the
-# audit; naming the two scripts and the Results bullet did. A judge brief writes nothing and is not held to it, and a
-# doc whose Results already holds a bullet has run (a resume that only ships) and is not made to fail.
-if [ "$judge" -eq 0 ] && ! worker_doc_has_run "$doc"; then
+# A worker brief (one with a `> **Contract:**` line) tells its worker to search the notes (both collections) and the
+# graph before it designs, with the query and symbol named, and to report what each returned. A cited ticket key or
+# #PR does not stand in for it: naming the query is what moved use in the audit, a bare mention moved little. A judge
+# brief writes nothing and is not held to it, and a doc whose Results already holds a bullet has run (a resume that
+# only ships) and is not made to fail.
+if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
     has_directive=1
-    for token in qmd-bounded.sh worker-graph.sh 'graph-qmd:'; do
+    for token in qmd-bounded.sh worker-graph.sh 'graph-qmd:' '-c jira-himmel' '-c luna'; do
         case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
     done
-    if [ "$has_directive" -eq 0 ] \
-        && ! grep -Eq '(^|[^A-Za-z0-9])([A-Z][A-Z0-9]*-[0-9]+|#[0-9]+)([^0-9]|$)' <<< "$flat" \
-        && ! grep -Eq 'none found \([^)[:space:]][^)]*\)' <<< "$lower"; then
-        fail "'> **Prior art:**' cites no result and carries no search directive: cite a ticket key, a #PR or 'none found (<query>)', or add the directive as a continuation line: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; see docs/handover/worker-brief-template.md"
+    if [ "$has_directive" -eq 0 ]; then
+        fail "'> **Prior art:**' lacks the search directive (a ticket key or #PR does not replace it): add it as a continuation line naming the query and symbol: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and the same with '-c luna', and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; see docs/handover/worker-brief-template.md"
     fi
+    case "$flat" in
+        *"<topic>"*|*"<symbol>"*) fail "'> **Prior art:**' directive still carries the literal <topic> or <symbol> placeholder: name the query and the graph symbol this worker should search" ;;
+    esac
 fi
 
 core_rule
