@@ -770,6 +770,17 @@ out="$(c27_row "$t")"
 if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'cannot be read'; then pass "C27 -> FAIL (neutral dir is a file)"; else fail "C27 neutral-file -> $out"; fi
 rm -rf "$t"
 
+echo "== C27: a locked parent of the neutral dir and no old dir -> FAIL, never skipped =="
+t="$(c27_fixture)"; rm -rf "$t/home/.config/claude-glm"; rmdir "$t/home/.config/himmel/phi"
+if chmod 000 "$t/home/.config/himmel" 2>/dev/null && [ ! -x "$t/home/.config/himmel" ]; then
+    out="$(c27_row "$t")"
+    if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'cannot be read'; then pass "C27 -> FAIL (locked parent of the neutral dir)"; else fail "C27 locked-parent -> $out"; fi
+else
+    echo "  SKIP  C27 locked-parent case (chmod 000 did not deny access on this fs/user)"
+fi
+chmod 755 "$t/home/.config/himmel" 2>/dev/null
+rm -rf "$t"
+
 echo "== C6: bare-interpreter MCP server -> WARN =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"
 cat > "$t/claude/settings.json" <<'EOF'

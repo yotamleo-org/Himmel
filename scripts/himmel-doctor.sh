@@ -1812,10 +1812,9 @@ check_c26() {
 # declared here is a normal skip, same stance as C3/C26.
 #
 # The neutral dir ~/.config/himmel/phi: NO GUARD READS IT YET. A root listed
-# there and not under the old path has
-# no guard behind it, which is a live PHI fail-open, so that row is a FAIL and
-# not a WARN; nothing creates the neutral dir today, so it cannot fire on a
-# station nobody touched. The old-only WARN never says to move or remove a list:
+# there and not under the old path has no guard behind it, which is a live PHI
+# fail-open, so that row is a FAIL and not a WARN; nothing creates the neutral
+# dir today, so it cannot fire on a station nobody touched. The old-only WARN never says to move or remove a list:
 # obeying that would cause the very fail-open this check exists to catch.
 check_c27() {
     local cfgdir="${CLAUDE_GLM_CONFIG_DIR:-${HOME:-}/.config/claude-glm}"
@@ -1828,7 +1827,16 @@ check_c27() {
     for d in "${dirs[@]}" "$neutral"; do
         [ -d "$d" ] && any_dir=1
     done
-    if [ "$any_dir" -eq 0 ] && [ ! -e "$neutral" ] && [ ! -L "$neutral" ]; then
+    # [ -e ] is also false on EACCES, so a locked parent of the neutral dir (rc 1)
+    # is not a skip. Only rc 1 counts: a lib without the function gives 127.
+    local prc=0
+    if [ -f "$lib" ]; then
+        # shellcheck source=guardrails/phi-egress-lib.sh
+        # shellcheck disable=SC1091
+        . "$lib"
+        _guard_phi_dir_provable "$neutral" 2>/dev/null || prc=$?
+    fi
+    if [ "$any_dir" -eq 0 ] && [ ! -e "$neutral" ] && [ ! -L "$neutral" ] && [ "$prc" -ne 1 ]; then
         emit OK C27-guard-signals "no ${dirs[*]} (no phi-roots/egress-denylist declared here — skipped)"
         return
     fi
@@ -1836,9 +1844,6 @@ check_c27() {
         emit WARN C27-guard-signals "$lib not found — cannot verify phi-roots/egress-denylist readability" "restore scripts/guardrails/phi-egress-lib.sh"
         return
     fi
-    # shellcheck source=guardrails/phi-egress-lib.sh
-    # shellcheck disable=SC1091
-    . "$lib"
     local name path bad="" unenforced urc=0
     unenforced="$(_guard_phi_unenforced_roots 2>/dev/null)" || urc=$?
     if [ "$urc" -eq 2 ]; then
