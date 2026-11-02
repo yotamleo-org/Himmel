@@ -1329,6 +1329,20 @@ assert "Test26: apply never gives the fresh clip derived fields" "no" "$(grep -q
 t26_after="$(sha256sum "$t26_links" | cut -d' ' -f1)"
 node "$PLAN" --vault "$t26_vault" --apply >"$tmpdir/t26-apply2.out" 2>&1
 assert "Test26: a second apply is idempotent" "$t26_after" "$(sha256sum "$t26_links" | cut -d' ' -f1)"
+assert "Test26: a re-plan after apply still keeps the link clip (derived fields are not 'already in the clip')" "yes" \
+    "$(node "$PLAN" --vault "$t26_vault" | grep -q 'links.md.*kept.*new-links' && echo yes || echo no)"
+mkdir -p "$tmpdir/vault-t26b/Clippings"
+printf -- '---\nsource: https://notx.com/jack/status/1?u=twitter.com\nprocessed: true\n---\n# t\n' >"$tmpdir/vault-t26b/Clippings/other.md"
+if [ "$(id -u)" != "0" ]; then
+    mkdir -p "$tmpdir/vault-t26b/Clippings/locked"
+    chmod 000 "$tmpdir/vault-t26b/Clippings/locked"
+    node "$PLAN" --vault "$tmpdir/vault-t26b" >/dev/null 2>"$tmpdir/t26-locked.err"; t26_rc=$?
+    chmod 755 "$tmpdir/vault-t26b/Clippings/locked"
+    assert "Test26: an unreadable directory exits 3 and is named, never a silently partial plan" "3 yes" \
+        "$t26_rc $(grep -q 'locked' "$tmpdir/t26-locked.err" && echo yes || echo no)"
+fi
+assert "Test26: a look-alike host is not an X clip" "summary: seen=0 kept=0 skipped=0 triage-skipped=0 synthesised=0" \
+    "$(node "$PLAN" --vault "$tmpdir/vault-t26b" | grep '^summary:')"
 
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))

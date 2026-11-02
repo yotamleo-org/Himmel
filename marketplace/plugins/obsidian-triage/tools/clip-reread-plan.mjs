@@ -66,9 +66,10 @@ for (let i = 0; i < argv.length; i++) {
 if (!args.vault) usage(1);
 if (!existsSync(join(args.vault, "Clippings"))) { console.error(`clip-reread-plan: no Clippings/ dir under ${args.vault}`); process.exit(1); }
 
+const walkErrors = [];
 function findClips(dir, out = []) {
   let entries;
-  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch (e) { walkErrors.push(`${dir}: ${e.code || e.message}`); return out; }
   for (const e of entries) {
     const p = join(dir, e.name);
     if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) findClips(p, out); }
@@ -106,15 +107,19 @@ function parseThread(section, clippedId) {
   return posts.filter((p) => p.id !== clippedId).map((p) => ({ ...p, text: p.text.join("\n").trim() }));
 }
 
+function isXSource(src) {
+  try { return /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/.test(new URL(src.replace(/^"|"$/g, "")).hostname); } catch { return false; }
+}
+
 function classify(text) {
   const parts = split(text);
-  if (!parts || !/x\.com|twitter\.com/.test(parts.fm.source || "")) return null; // not an X clip
+  if (!parts || !isXSource(parts.fm.source || "")) return null; // not an X clip
   const triaged = /^true$/.test((parts.fm.processed || "").replace(/^"|"$/g, ""));
   const m = parts.body.match(THREAD_RE);
   if (!triaged) return { verdict: "kept", reason: "fresh", triageSkip: false, parts };
   if (!m) return { verdict: "skipped", reason: "no-thread", triageSkip: false, parts };
   const clippedId = ((parts.fm.source || "").match(/status\/(\d+)/) || [])[1] || "";
-  const rest = parts.fmRaw + "\n" + parts.body.replace(THREAD_RE, "");
+  const rest = withoutDerived(parts.fmRaw).join("\n") + "\n" + parts.body.replace(THREAD_RE, "");
   const haystack = norm(rest);
   const fresh = parseThread(m[0], clippedId).filter((p) => p.text && !haystack.includes(norm(p.text)));
   const restUrls = new Set(urlsOf(rest));
@@ -131,30 +136,36 @@ function classify(text) {
   };
 }
 
-/** Add thread_links / thread_handles to the frontmatter (replacing earlier copies); nothing else changes. */
-function deriveFields(text, links, handles) {
-  const t = text.replace(/\r\n/g, "\n");
-  const end = t.indexOf("\n---\n", 4);
+/** The frontmatter lines without the two fields this tool derives. */
+function withoutDerived(fmRaw) {
   const kept = [];
   let skipping = false;
-  for (const line of t.slice(4, end).split("\n")) {
+  for (const line of fmRaw.split("\n")) {
     const key = (line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):/) || [])[1];
     if (key) skipping = DERIVED_KEYS.includes(key);
     else if (skipping && /^\s+-\s|^\s*$/.test(line)) continue;
     else skipping = false;
     if (!skipping) kept.push(line);
   }
+  return kept;
+}
+
+/** Add thread_links / thread_handles to the frontmatter (replacing earlier copies); nothing else changes. */
+function deriveFields(text, links, handles) {
+  const t = text.replace(/\r\n/g, "\n");
+  const end = t.indexOf("\n---\n", 4);
+  const kept = withoutDerived(t.slice(4, end));
   const block = (k, vs) => (vs.length ? [`${k}:`, ...vs.map((v) => `  - ${JSON.stringify(v)}`)] : []);
   return `---\n${[...kept, ...block("thread_links", links), ...block("thread_handles", handles)].join("\n")}${t.slice(end)}`;
 }
 
 const rows = [];
-let seen = 0, kept = 0, skipped = 0, triageSkipped = 0;
+let seen = 0, kept = 0, skipped = 0, triageSkipped = 0, unreadable = 0;
 const clips = findClips(join(args.vault, "Clippings")).map((p) => ({ p, rel: relative(args.vault, p).split(sep).join("/") })).sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 for (const { p, rel } of clips) {
   if (args.limit > 0 && seen >= args.limit) break;
   let text;
-  try { text = readFileSync(p, "utf-8"); } catch { continue; }
+  try { text = readFileSync(p, "utf-8"); } catch (e) { unreadable++; console.error(`${rel}\tunreadable\t${e.code || e.message}`); continue; }
   const c = classify(text);
   if (!c) continue;
   seen++;
@@ -173,4 +184,6 @@ if (args.keptFile) writeFileSync(args.keptFile, rows.map((r) => r + "\n").join("
 const kf = args.keptFile || "<kept-file>";
 console.log(`synthesis-batch: claude --model claude-sonnet-5-5 "Run /synthesize-clips ${args.vault} once, over exactly the clips listed in ${kf}"`);
 console.log(`mode: ${args.apply ? "apply" : "dry-run"}`);
-console.log(`summary: seen=${seen} kept=${kept} skipped=${skipped} triage-skipped=${triageSkipped} synthesised=${kept}`);
+console.log(`summary: seen=${seen} kept=${kept} skipped=${skipped} triage-skipped=${triageSkipped} synthesised=${kept}${unreadable ? ` unreadable=${unreadable}` : ""}`);
+for (const w of walkErrors) console.error(`unreadable directory (its clips were NOT seen): ${w}`);
+process.exit(unreadable || walkErrors.length ? 3 : 0);
