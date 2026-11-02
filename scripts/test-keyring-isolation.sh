@@ -104,6 +104,38 @@ export KR_ROOT="$root"
 bun_row "B1 a new bun test file that omits the pin, from scripts/config-ui, records zero keyring stores" "$root/scripts/config-ui" "$probe"
 bun_row "B2 a new bun test file that omits the pin, from the repo root, records zero keyring stores" "$root" "$probe"
 
+# E: the UI login door. writeLogin spawns himmel-secrets itself (login.ts, not the resolver module), so it needs
+#    its own fail-closed. E1/E2 an env map that names no stub (PATH and HOME only), E3/E4 the default env
+#    (as readLogin/migrate and the setup route use it). The map-only case must not even search.
+lprobe="$TMP/login-probe.test.ts"
+cat >"$lprobe" <<'TS'
+import { test, expect } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+test("probe: writeLogin with an unstubbed env never reaches a keyring", async () => {
+  if (!process.env.KR_LOG) throw new Error("the probe refuses to run without the recording keyring");
+  const { writeLogin } = await import(join(process.env.KR_ROOT!, "scripts/config-ui/login.ts"));
+  const dir = mkdtempSync(join(tmpdir(), "login-probe-"));
+  const map = process.env.KR_MAP === "1" ? { PATH: process.env.PATH, HOME: join(dir, "home"), DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS, KR_LOG: process.env.KR_LOG } : undefined;
+  try { writeLogin(join(dir, "login"), "operator", "correct-horse-battery", map ? { env: map } : {}); } catch { /* a closed keyring refuses; only the recorder counts */ }
+  expect(true).toBe(true);
+});
+TS
+searches() { grep -c '^secret-tool' "$KR_LOG" || true; }
+# login_row <label> <cwd> <map 0|1> <0 = also expect zero searches>
+login_row() {
+  kreset
+  local rc=0
+  (cd "$2" && KR_MAP="$3" bun test "$lprobe") >"$TMP/bun.out" 2>&1 || rc=$?
+  want "$(stores)" 0 "$1" "$rc"
+  if [ "$4" = 0 ] && [ "$rc" = 0 ] && [ "$(searches)" != 0 ]; then fail "$1 (the keyring was searched $(searches) time(s), want 0)"; fi
+}
+login_row "E1 writeLogin with an unstubbed env map, from scripts/config-ui, stores and searches nothing" "$root/scripts/config-ui" 1 0
+login_row "E2 writeLogin with an unstubbed env map, from the repo root, stores and searches nothing" "$root" 1 0
+login_row "E3 writeLogin with the default env, from scripts/config-ui, records zero keyring stores" "$root/scripts/config-ui" 0 -
+login_row "E4 writeLogin with the default env, from the repo root, records zero keyring stores" "$root" 0 -
+
 # C: the wizard secrets suite run directly (no suite label), the pin unset.
 kreset
 rc=0

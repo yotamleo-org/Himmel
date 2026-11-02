@@ -16,11 +16,18 @@ const TIMEOUT_MS = 10000;
 // `env` is the caller's own environment choice (a test's env map, the UI server's env). It is laid over
 // the process's environment, so a pin the process carries (HIMMEL_SECRETS_KEYRING=off) survives a map
 // that omits it, and a name the map sets wins. Omitted, the child inherits as before.
-// Fail closed under a test runner: bun and vitest set NODE_ENV=test, and a test that names no stub
-// keyring (KSTUB_STORE) never reaches a real one, whatever its cwd, bunfig or env map.
+// Fail closed under a test runner: bun and vitest set NODE_ENV=test in the process, and a test that names no
+// stub keyring (KSTUB_STORE) never reaches a real one, whatever its cwd, bunfig or env map. The process marker
+// counts even when the map sets another NODE_ENV. Exported so the other door to himmel-secrets,
+// scripts/config-ui/login.ts, shares the one rule.
+export function testKeyringOff(env) {
+  const e = { ...process.env, ...(env || {}) };
+  return (process.env.NODE_ENV === 'test' || e.NODE_ENV === 'test') && !e.KSTUB_STORE;
+}
+
 function childEnv(env) {
   const e = { ...process.env, ...(env || {}) };
-  if (e.NODE_ENV === 'test' && !e.KSTUB_STORE) e.HIMMEL_SECRETS_KEYRING = 'off';
+  if (testKeyringOff(env)) e.HIMMEL_SECRETS_KEYRING = 'off';
   return e;
 }
 
