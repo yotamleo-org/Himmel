@@ -120,6 +120,6 @@ test("a phone map that still shows its grid is reported", async ({ page }) => {
   h = await boot();
   await page.setViewportSize({ width: 390, height: 900 });
   await open(page, "#/toolhealth/map", ".thmap");
-  await page.addStyleTag({ content: ".thmap{display:grid !important}" });
+  await page.evaluate(() => document.querySelector<HTMLElement>(".thmap")!.style.setProperty("display", "grid", "important"));
   await expect(expect(page.locator(".thmap")).toBeHidden({ timeout: 1000 })).rejects.toThrow();
 });
