@@ -57,6 +57,13 @@ trap cleanup EXIT
 
 BIN="$ROOT/bin"
 mkdir -p "$BIN"
+# check-ci reads through the second token and gh-read.sh retries a refused
+# read on the main one, which would swallow the stub's one-shot rate limits (cases 5, 6).
+# No read token is visible here (an empty .env root, keyring off), as on CI; the row that
+# needs one (7i) brings its own.
+mkdir -p "$ROOT/emptyroot"; : > "$ROOT/emptyroot/.env"
+export GH_READ_ENV_ROOT="$ROOT/emptyroot" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
 # gh stub for test-gh-graphql-budget.sh. State dir: $GHB_STUB_DIR.
@@ -64,6 +71,10 @@ cat > "$BIN/gh" <<'EOF'
 #   exhausted   — presence = budget exhausted until $D/woke exists; content = reset epoch
 #   calls.log   — "<fake-clock> <graphql-points> <args...>", one line per call
 D="$GHB_STUB_DIR"
+# GHB_STUB_MAIN_SPENT=1 fails every call on any token but the fixture read token
+if [ "${GHB_STUB_MAIN_SPENT:-}" = 1 ] && [ "${GH_TOKEN:-}" != ghp_GHBREADTOKEN ]; then
+    echo "gh: HTTP 403: API rate limit exceeded for user" >&2; exit 1
+fi
 clock=$(cat "$D/clock" 2>/dev/null); clock=${clock:-0}
 log() { local pts="$1"; shift; echo "$clock $pts $*" >> "$D/calls.log"; }
 exhaust() { echo "$(( $(date +%s) + ${1:-60} ))" > "$D/exhausted"; rm -f "$D/woke"; }
@@ -287,6 +298,15 @@ else
         i=$((i+1))
     done
     if [ "$worst" -le 55 ]; then pass "7h wait + jitter clamped to the 55 s bound (worst=$worst)"; else fail "7h clamp" "worst total sleep $worst > 55"; fi
+
+    # with gh-read.sh sourced the probe rides the read token, so a spent main
+    # token (HTTP 403 on it) still yields the real budget. In a subshell: the router's
+    # loaded-token state must not leak into the rows above or below.
+    new_case
+    mkdir -p "$ROOT/ghr-root"
+    printf 'himmel_github_token_vm2=%s\n' ghp_GHBREADTOKEN > "$ROOT/ghr-root/.env"
+    got=$( . "$SCRIPT_DIR/gh-read.sh"; export GHB_STUB_MAIN_SPENT=1 GH_READ_ENV_ROOT="$ROOT/ghr-root" HIMMEL_SECRETS_KEYRING=off PATH="$BIN:$PATH" GHB_STUB_DIR="$CASE_DIR"; unset GH_TOKEN GITHUB_TOKEN; GHB_STUB_REMAINING=4321 ghb_read; echo "rc=$? rem=$GHB_REMAINING" )
+    if [ "$got" = "rc=0 rem=4321" ]; then pass "7i main token spent: the budget probe reads through the read token"; else fail "7i read-token probe" "got [$got]"; fi
 fi
 
 echo

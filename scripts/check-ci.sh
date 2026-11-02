@@ -539,15 +539,12 @@ if [ "$CR_ARMED" -eq 1 ]; then
     . "$(cd "$(dirname "$0")" && pwd)/lib/review-ledger-evidence.sh"
 fi
 
-# The check-rollup read lives on the forge seam (_gh_pr_checks in
-# forge-github.sh, the same `gh pr checks [<selector>] <args>` call, args
-# verbatim); the github backend is called directly, so no forge detection runs
-# here.
-# shellcheck source=scripts/lib/forge-github.sh
-# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-. "$(cd "$(dirname "$0")" && pwd)/lib/forge-github.sh"
+# The check-rollup read: `gh pr checks [<selector>] <args>`, args verbatim, on the
+# read-only token so a spent main token does not stop the wait. A
+# refused read token falls back to the main one inside gh_read. Not the forge
+# seam's _gh_pr_checks, which runs bare `gh`.
 pr_checks() {
-    _gh_pr_checks "$selector" "$@"
+    if [ -n "$selector" ]; then gh_read pr checks "$selector" "$@"; else gh_read pr checks "$@"; fi
 }
 
 pr_view() {
@@ -1022,8 +1019,17 @@ watch_round() {
                 exec env CHECK_CI_WATCH_INTERVAL="$WATCH_INTERVAL" CHECK_CI_WATCH_INTERVAL_MAX="$WATCH_INTERVAL_MAX" \
                     CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 \
                     bash "$(cd "$(dirname "$0")" && pwd)/lib/check-ci-watch.sh" ${selector:+"$selector"}
-            elif [ -n "$selector" ]; then exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
-            else exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
+            elif [ -n "$selector" ]; then
+                # the watch is a read; it rides the read-only token when one
+                # loaded (gh_read_init above). The token goes to this one exec'd gh as
+                # GH_TOKEN, never in argv. gh_read itself cannot be exec'd (it forks, and
+                # $! must stay gh's real pid), so a refused read token is not retried on
+                # the main one here; the cache-backed loop above is the default path.
+                [ -z "${_GHR_TOK:-}" ] || GH_TOKEN="$_GHR_TOK" exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
+                exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
+            else
+                [ -z "${_GHR_TOK:-}" ] || GH_TOKEN="$_GHR_TOK" exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
+                exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
         gh_pid=$!

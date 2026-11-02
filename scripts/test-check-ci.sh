@@ -77,6 +77,15 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK
 # between cases.
 export CHECK_CI_CACHE=0
 
+# check-ci reads through the second token, and gh-read.sh retries a refused
+# read on the main one, which would swallow the stub's one-shot rate limits and 404s. No
+# read token is visible here (an empty .env root, keyring off, ambient tokens unset), as
+# on CI; the 8644 case at the end brings its own.
+_NO_READ_TOKEN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/check-ci-noread.XXXXXX") || { echo "FATAL: mktemp -d failed"; exit 1; }
+: > "$_NO_READ_TOKEN_ROOT/.env"
+export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/check-ci.sh"
 # shellcheck source=scripts/lib/timeout-bin.sh
@@ -86,6 +95,7 @@ PASS=0; FAIL=0; COUNT=0; STUBDIR=""
 
 # shellcheck disable=SC2329,SC2317
 cleanup() {
+    if [ -n "$_NO_READ_TOKEN_ROOT" ] && [ -d "$_NO_READ_TOKEN_ROOT" ]; then rm -rf "$_NO_READ_TOKEN_ROOT" 2>/dev/null || true; fi
     if [ -n "$STUBDIR" ] && [ -d "$STUBDIR" ]; then rm -rf "$STUBDIR" 2>/dev/null || true; fi
 }
 trap cleanup EXIT
@@ -112,6 +122,14 @@ cat > "$STUBDIR/gh" <<'EOF'
 # echoed in the script's parsed shape: "<count> <hasNextPage> <endCursor>".
 # Args are logged to GH_STUB_ARGS.
 echo "$*" >> "$GH_STUB_ARGS"
+# GH_STUB_TOKLOG records which token each call carried; GH_STUB_MAIN_SPENT=1
+# makes every call on any token but the fixture read token fail as a spent main token.
+if [ "${GH_TOKEN:-}" = ghp_CHECKCIREADTOKEN ]; then _tok=read; else _tok=main; fi
+[ -z "${GH_STUB_TOKLOG:-}" ] || printf '%s %s\n' "$_tok" "$*" >> "$GH_STUB_TOKLOG"
+if [ "${GH_STUB_MAIN_SPENT:-}" = 1 ] && [ "$_tok" = main ]; then
+    echo "gh: HTTP 403: API rate limit exceeded for user" >&2
+    exit 1
+fi
 # the value of the --jq flag among the args ("" if none).
 _jq_arg() { while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then printf '%s' "${2:-}"; return; fi; shift; done; }
 cmd="${1:-}"
@@ -2973,7 +2991,26 @@ run cr-completed --threads-only
 check_eq "6430-b --threads-only never calls the funnel" "0" "$(wc -c < "$STUBDIR/jira.log" | tr -d ' ')"
 unset TICKET_STATUS_FUNNEL STUBDIR_JIRA_LOG GH_STUB_TITLE WORKER_SESSION_JIRA_STATUS
 
+# 8644 — the main token's REST limit is spent (every call on it is HTTP 403). The rollup
+# probe, the --watch and the PR/thread/protection reads of check-ci.sh and its cache lib
+# ride the second, read-only token: none of them touches the main one. The three gate reads
+# of the sourced libs (ci-green-gate, coderabbit-body-findings/-signal, cr-first-release)
+# still use the main token and are tracked in a follow-up ticket, so the run itself may still end
+# non-zero here: the row pins the reads, not the verdict.
+mkdir -p "$STUBDIR/ghr-root"
+printf 'himmel_github_token_vm2=%s\n' ghp_CHECKCIREADTOKEN > "$STUBDIR/ghr-root/.env"
+: > "$STUBDIR/toklog"
+export GH_STUB_MAIN_SPENT=1 GH_STUB_TOKLOG="$STUBDIR/toklog" GH_READ_ENV_ROOT="$STUBDIR/ghr-root"
+# a protected base (a classic rule that exists): a missing rule is a 404, which the router
+# retries on the main token, and that is the spent one
+CLASSIC_OVERRIDE="ctx:unit-tests"
+run cr-completed --grace 30
+unset GH_STUB_MAIN_SPENT GH_STUB_TOKLOG
+export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"
+check_eq "8644 main token spent: no check-ci read ran on the main token" "" "$(grep '^main ' "$STUBDIR/toklog" | grep -v -e 'statuses?per_page=100' -e 'variable get CI_GO_GATE' -e '/reviews --paginate' | cut -c1-120 | head -5 | tr '\n' ';')"
+check_eq "8644 main token spent: the --watch ran on the read token" "yes" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 211 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 211"; exit 1; fi
+if [ "$COUNT" -ne 212 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 212"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

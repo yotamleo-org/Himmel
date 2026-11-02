@@ -854,7 +854,10 @@ if [ "${_SKIP_LEDGER:-0}" != "1" ]; then
     export CR_TARGET_HEAD="$REVIEW_HEAD" CR_TARGET_BRANCH="$REVIEW_BRANCH" CR_LEDGER="$PANEL_LEDGER"
     # the reviewed branch's open PR keys the critic's launch record; none yet leaves it empty.
     if [ -z "${CR_TARGET_PR:-}" ]; then
-        CR_TARGET_PR="$(gh pr list --state open --head "$REVIEW_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)"  # swallow-ok: no PR (or no gh) leaves the key empty
+        # a read, so it rides the second token (scripts/lib/gh-read.sh, executed form);
+        # a copy without the lib keeps plain gh.
+        if [ -f "$SCRIPT_DIR/../lib/gh-read.sh" ]; then _cp_gh=(bash "$SCRIPT_DIR/../lib/gh-read.sh"); else _cp_gh=(gh); fi
+        CR_TARGET_PR="$("${_cp_gh[@]}" pr list --state open --head "$REVIEW_BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)"  # swallow-ok: no PR (or no gh) leaves the key empty
     fi
     export CR_TARGET_PR
 fi
