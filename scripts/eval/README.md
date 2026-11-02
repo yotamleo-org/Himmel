@@ -508,6 +508,31 @@ calls issued alone, with n, and it labels the figure "time to result (includes
 waiting and hooks)", never a run time. A call without a result shows a dash,
 never 0; a digest written before the times were kept leaves its calls unknown.
 
+Graph and qmd use: a Bash call's head is the tool behind any leading `cd X &&`, `bash -c`,
+env assignment or `rtk` wrapper, and `worker-graph.sh`, `leg-graph.sh` and `qmd-bounded.sh`
+(by bash, sh or their own path) read as `graphify` and `qmd`, so those rows count calls by
+tool, approximately (the `qmd` row holds every verb, not only searches; a quoted mention
+or a here-doc line that begins like a call also counts).
+`bash scripts/eval/worker-digest/graph-use-report.sh [--days N] [--until-epoch EPOCH] [--min-tools N] [--root PROJECTS_DIR]... [--handovers DIR]` is
+read-only: it scans the journals changed in the last N days (default 7) under every
+`~/.claude*/projects` (one lane each: claude, codex, ...), session journals and subagent
+journals apart, and prints per scope (all projects, himmel projects), lane, kind and role
+(console, leg, judge, sub, other, from the session name or the subagent type) two tables.
+The graph table has the journals, those with a graph call and those with an answered one
+(`with_graph_ok`, `graph_ok_pct`: a failed or refused call is a call but not an answer; a
+wrapper miss is an answer), the calls per form (`query`,
+`explain`, `path`, `mcp`), bare versus wrapper calls with their failures (a wrapper call that exits 3 or 4, no match or
+ambiguous, is a `wrapper_miss`, an honest no-answer, not a `wrapper_fail`), and `searched`
+(journals with a grep, rg, Grep or Glob mention, a count of mentions, not of use; `searched_no_graph`
+rests on answered graph calls). The qmd
+table has the journals with a qmd call, with a qmd search and with an answered one (`with_search_ok`,
+`search_ok_pct`, the decision numbers), and the calls split into search
+verbs (`query`, `search`, `vsearch`, `deep_search`) against every other verb, shell against mcp. A third
+table reads the `graph-qmd:` Results bullets of the handover docs under `--handovers` (default
+`$HANDOVER_DIR`) per role: used or cited, called only, none found, n/a shipping, and docs with
+no bullet as no data, not zero. `--until-epoch EPOCH` ends the N-day window at that instant (to re-run a past window); `--min-tools N` keeps journals that ran at least N tools. The
+`counted:`, `bullets:` and `not counted:` lines it prints say where it over- or undercounts.
+
 Why a guard refused: the page joins each counted refusal to its hook-chain row
 by call id. The reason rows count only refusals with such a row; the rest are
 "recorded before reasons were logged" (the refusal ended before the first
