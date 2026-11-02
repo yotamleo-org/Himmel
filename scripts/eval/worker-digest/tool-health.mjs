@@ -264,11 +264,12 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     class_rates.set(c.class, rate(n, calls));
   }
   // Per profile: the same tool roll-up over that profile's sessions, joined to its listing cost. A listed tool no
-  // session called reads 0 calls (null when a session's denominators are unknown); cost over 0 and 0 calls is a
-  // drop-from-default candidate. Proposal only, nothing here changes a profile.
+  // session called reads 0 calls, but null when any session of the profile (also one left out of the roll-up for having
+  // no tool_health) has unknown denominators: it may have called the tool. Cost over 0 and 0 calls is a drop-from-default
+  // candidate. Proposal only, nothing here changes a profile.
   const byProfile = [...new Set(filtered.map((s) => s.profile))].sort().map((profile) => {
     const list = filtered.filter((s) => s.profile === profile), a = aggregate(list), costs = listing[profile] || {};
-    const unknown = list.some((s) => !s.known || s.incomplete), seen = new Set(a.tools.map((t) => t.tool));
+    const unknown = list.some((s) => !s.known || s.incomplete) || everySlot.some((s) => !s.known && s.profile === profile && matches(s)), seen = new Set(a.tools.map((t) => t.tool));
     const cost = (tool) => num(costs[tool]) ? costs[tool] : null;
     const verdict = (calls, tokens) => calls === 0 && tokens > 0 ? 'drop-candidate' : 'keep';
     const tools = [...a.tools.map((t) => ({ ...t, listing_tokens: cost(t.tool), verdict: verdict(t.calls, cost(t.tool)) })),

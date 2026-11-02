@@ -54,6 +54,9 @@ NOW=2026-10-07T12:00:00Z
 DAY=2026-10-07
 
 STUB="$TMP/stub"; mkdir -p "$STUB"
+# A cadence run digests sessions first; no case reads the real ~/.claude/projects or writes the real state dir.
+printf '#!/usr/bin/env bash\nexit 0\n' >"$STUB/backfill-noop"; chmod +x "$STUB/backfill-noop"
+export FAILURE_REVIEW_BACKFILL="$STUB/backfill-noop"
 cat >"$STUB/jira" <<'EOF'
 #!/usr/bin/env bash
 d="$(dirname "$0")"
@@ -300,6 +303,23 @@ FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" H
   HIMMEL_FAILURE_ROUTES_STATE="$C8/state.json" timeout "$BOUND" bash "$CAD" run >"$C8/run2.out" 2>&1; rc=$?
 hung "$rc" "cadence run (proceed)"
 check "a PROCEED preflight runs the review dry-run" '[ "$rc" = 0 ] && ls "$C8/out"/failure-review-*.md >/dev/null 2>&1 && [ ! -e "$C8/state.json" ]'
+# the daily pass first digests the last week's undigested sessions; a failing digest never stops the review.
+BFLOG="$TMP/bf.log"; printf '#!/usr/bin/env bash\necho "$*" >>%q\n' "$BFLOG" >"$STUB/backfill"; chmod +x "$STUB/backfill"
+C8d="$TMP/c8d"; mkdir -p "$C8d"
+FAILURE_REVIEW_BACKFILL="$STUB/backfill" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8d/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8d/state.json" timeout "$BOUND" bash "$CAD" run >"$C8d/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (session digest)"
+check "a run digests the last seven days of sessions before the review" '[ "$rc" = 0 ] && [ "$(cat "$BFLOG")" = "backfill --since $(date -u -d "7 days ago" +%F)" ] && ls "$C8d/out"/failure-review-*.md >/dev/null 2>&1'
+printf '#!/usr/bin/env bash\nexit 5\n' >"$STUB/backfill-fail"; chmod +x "$STUB/backfill-fail"
+C8e="$TMP/c8e"; mkdir -p "$C8e"
+FAILURE_REVIEW_BACKFILL="$STUB/backfill-fail" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8e/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8e/state.json" timeout "$BOUND" bash "$CAD" run >"$C8e/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (session digest fails)"
+check "a failed session digest is logged and the review still runs" '[ "$rc" = 0 ] && grep -q "session digest failed (exit 5)" "$C8e/run.out" && ls "$C8e/out"/failure-review-*.md >/dev/null 2>&1'
+printf '#!/usr/bin/env bash\necho SKIPPED-BANK\n' >"$STUB/preflight-skip"; chmod +x "$STUB/preflight-skip"
+: >"$BFLOG"
+FAILURE_REVIEW_BACKFILL="$STUB/backfill" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight-skip" timeout "$BOUND" bash "$CAD" run >/dev/null 2>&1
+check "a SKIPPED-BANK night digests nothing either" '[ ! -s "$BFLOG" ]'
 # a failed Telegram send (rc 3) leaves the digest written: the alert says only the send failed.
 C8n="$TMP/c8n"; mkdir -p "$C8n"; row "$C8n/ledger.jsonl" N900 error/Notify 0 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" FAILURE_REVIEW_NOTIFY_CMD="$STUB/notify-fail" HIMMEL_FAILURE_REVIEW_DIR="$C8n/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C8n/ledger.jsonl" \

@@ -118,6 +118,8 @@ B5=4670b000-0000-4000-8000-000000000005
 cat "$FX/classes.jsonl" >"$P/-home-x-himmel/$B2.jsonl"
 B6=4670b000-0000-4000-8000-000000000006
 { title chief-roadmap "$B6"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$P/-home-x-himmel/$B6.jsonl"
+B7=4670b000-0000-4000-8000-000000000007
+sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl" >"$P/-home-x-himmel/$B7.jsonl"
 { title HIMMEL-1-N9-old "$B3"; sed 's/2026-10-06T/2026-09-01T/g' "$FX/classes.jsonl"; } >"$P/-home-x-himmel/$B3.jsonl"
 mkdir -p "$TMP/salus-root" && : >"$TMP/salus-root/.salus"
 { title HIMMEL-2-N8-phi "$B4"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/salus-root/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$P/-home-x-other/$B4.jsonl"
@@ -126,15 +128,16 @@ mkdir -p "$P/-home-x-himmel/$B1/subagents"
 BF="$TMP/bf-fail.jsonl"; BE="$TMP/bf-eval.jsonl"; BS="$TMP/bf-state"
 bf() { python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$BF" --eval-ledger "$BE" --state-dir "$BS"; }
 bf >"$TMP/bf1.out" 2>&1 || bad "backfill exits 0: $(head -c 300 "$TMP/bf1.out")"
-check "backfill digests the worker-titled and the non-worker main journal from the window, not the old one" '[ "$(jq -r .run_id "$BE" | tr "\n" " ")" = "$B1 $B6 " ]'
+check "backfill digests the worker-titled, the titled non-worker and the titleless main journal from the window, not the old one" '[ "$(jq -r .run_id "$BE" | sort | tr "\n" " ")" = "$B1 $B6 $B7 " ]'
+check "a titleless session with a cwd is digested with no launch name, and does not stop the run" 'jq -e "select(.run_id == \"$B7\") | .meta.leg == null and .meta.backfill == true" "$BE" >/dev/null'
 check "a non-worker session is digested with no worker or ticket, marked backfill" 'jq -e "select(.run_id == \"$B6\") | .meta.leg == null and .meta.ticket == null and .meta.backfill == true" "$BE" >/dev/null'
 check "the worker and ticket come from the title, marked backfill" 'jq -e "select(.run_id == \"$B1\") | .meta.leg == \"N1365\" and .meta.ticket == \"HIMMEL-4670\" and .meta.backfill == true and .meta.observational == true" "$BE" >/dev/null'
 check "the salus-rooted and the cwd-less journals are refused and counted" 'grep -q "salus=3" "$TMP/bf1.out" && absent "$B4" "$BF" "$BE" && absent "$B5" "$BF" "$BE" && absent "$B2" "$BF" "$BE"'
-check "backfill reports its row counts" 'grep -qE "^backfill: .*workers=1 others=1 .*failures\+=[1-9][0-9]* eval\+=2" "$TMP/bf1.out"'
+check "backfill reports its row counts" 'grep -qE "^backfill: .*workers=1 others=2 .*failures\+=[1-9][0-9]* eval\+=3" "$TMP/bf1.out"'
 check "both backfill ledgers validate" 'python3 "$LL" validate "$BF" >/dev/null && python3 "$EVR" validate "$BE" >/dev/null'
 n1="$(lines "$BF")"
 bf >"$TMP/bf2.out" 2>&1
-check "a second backfill appends 0 rows" '[ "$(lines "$BE")" = 2 ] && [ "$(lines "$BF")" = "$n1" ] && grep -qE "failures\+=0 eval\+=0" "$TMP/bf2.out"'
+check "a second backfill appends 0 rows" '[ "$(lines "$BE")" = 3 ] && [ "$(lines "$BF")" = "$n1" ] && grep -qE "failures\+=0 eval\+=0" "$TMP/bf2.out"'
 mkdir -p "$TMP/h/.config/claude-glm/phi-roots"
 HOME="$TMP/h" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bf3-f.jsonl" --eval-ledger "$TMP/bf3-e.jsonl" --state-dir "$TMP/bf3-s" >"$TMP/bf3.out" 2>&1; rc3=$?
 check "an unreadable PHI-roots file fails closed: nonzero, nothing written" '[ "$rc3" != 0 ] && [ ! -s "$TMP/bf3-e.jsonl" ]'

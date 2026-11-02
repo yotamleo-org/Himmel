@@ -258,6 +258,23 @@ test("the payload carries a per-profile table, listing cost and drop candidates;
   expect(read(seed()).drop_candidates).toEqual([]);
 });
 
+test("a profile whose other sessions have no tool_health never reads a listed tool as unused", () => {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  const [withData, bare] = rows;
+  withData.meta.profile = "worker-impl"; for (const h of withData.meta.tool_health) h.profile = "worker-impl";
+  bare.meta.profile = "worker-impl"; delete bare.meta.tool_health;
+  const nine = Array.from({ length: 9 }, (_, i) => ({ ...structuredClone(bare), run_id: `48160000-0000-4000-8000-00000000010${i}` }));
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, [withData, ...nine].map((r) => JSON.stringify(r)).join("\n") + "\n");
+  const listing = join(dirs[dirs.length - 1], "listing.json");
+  writeFileSync(listing, JSON.stringify({ "worker-impl": { Bash: 0, mcp__qmd__query: 900 } }));
+  const data = read({ ...env, HIMMEL_PROFILE_LISTING: listing }, new URLSearchParams({ days: "30" }));
+  const profile = data.profiles.find((p: any) => p.profile === "worker-impl");
+  expect(data.coverage).toMatchObject({ sessions: 1, without_tool_health: 9 });
+  expect(profile.tools.find((t: any) => t.tool === "mcp__qmd__query")).toMatchObject({ calls: null, verdict: "keep" });
+  expect(data.drop_candidates).toEqual([]);
+});
+
 test("the default path prices the Skill listing of the real worker-impl, console-judge and chief profiles without a file or a claude run", async () => {
   const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
   const registry = loadRegistry(), profiles = ["worker-impl", "console-judge", "chief"];

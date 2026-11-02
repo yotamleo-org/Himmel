@@ -585,8 +585,11 @@ python3 scripts/eval/worker-digest/worker_ledger.py validate ~/.himmel/leg-failu
 ```
 
 `backfill` digests every main journal whose first timestamp is on or after
-`--since` and whose `customTitle` names a worker (`<TICKET>-N<n>-...`), reading
-the journals only. It refuses a journal whose cwd sits under a salus root (a
+`--since` (a worker, a chief, a judge or an interactive session; the worker and
+ticket come from a `customTitle` of the form `<TICKET>-N<n>-...`, when there is
+one), reading the journals only. The daily `failure-review-cadence.sh run` calls
+it for the last seven days before it reviews, so those sessions are digested
+without a new schedule; a session already digested is skipped. It refuses a journal whose cwd sits under a salus root (a
 `.salus` marker on an ancestor, or a root in `~/.config/claude-glm/phi-roots`
 or `egress-denylist`). Every ledger and the state directory take a flag, so a
 trial backfill can write to scratch copies.

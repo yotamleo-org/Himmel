@@ -193,6 +193,19 @@ test("a hook that skips itself under the project layer reads single, a declared 
   expect(rows("real-twin.sh").map((h: any) => h.runs_twice)).toEqual([true, true]);
 });
 
+test("only the declared dual is named: another hook wired in the project and the plugin reads double, a declared dual wired once reads single", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const env = layered(), ops = join(dirname(env.HOME), "ops");
+  const hook = (event: string, matcher: string, command: string) => ({ [event]: [{ matcher, hooks: [{ type: "command", command }] }] });
+  const rows = (name: string) => scanToolInventory(env, 0).hooks.filter((h: any) => h.name === name);
+  json(join(env.HIMMEL_REPO, ".claude", "settings.json"), { hooks: hook("PreToolUse", "WebFetch", 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/ops-twin.sh"') });
+  json(join(ops, "hooks", "hooks.json"), { hooks: hook("PreToolUse", "WebFetch", 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ops-twin.sh"') });
+  expect(rows("ops-twin.sh").map((h: any) => [h.source, h.runs_twice, h.declared_dual])).toEqual([["himmel-ops@himmel", true, undefined], ["project", true, undefined]]);
+  json(join(env.HIMMEL_REPO, ".claude", "settings.json"), { hooks: hook("PreToolUse", "WebFetch", 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh"') });
+  json(join(ops, "hooks", "hooks.json"), { hooks: {} });
+  expect(rows("redirect-webfetch-walled-hosts.sh").map((h: any) => [h.source, h.runs_twice, h.declared_dual])).toEqual([["project", false, undefined]]);
+});
+
 test("a third wiring of the declared dual, or a command that only names the project settings, still reads double", async () => {
   const { scanToolInventory } = await import("../tool-inventory");
   const env = layered();

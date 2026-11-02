@@ -42,6 +42,17 @@ resolve_primary() {
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
 }
 
+# Digest the last week's sessions that no worker close digested (chiefs, judges, interactive) before the review reads the
+# ledgers. A session already digested is skipped, so a daily pass only does the new ones; a failure here never stops the review.
+digest_sessions() {
+    local since bf=(python3 "$SCRIPT_DIR/worker_ledger.py")
+    [ -z "${FAILURE_REVIEW_BACKFILL:-}" ] || bf=("$FAILURE_REVIEW_BACKFILL")
+    since="$(date -u -d '7 days ago' +%F 2>/dev/null || date -u -v-7d +%F 2>/dev/null)"
+    [ -n "$since" ] || { echo "failure-review-cadence: session digest skipped, no date for the window"; return 0; }
+    "${bf[@]}" backfill --since "$since" || echo "failure-review-cadence: session digest failed (exit $?), the review goes on"
+    return 0
+}
+
 # cmd_run takes failure_review.py's own flags (the runner passes --vault and, when armed so, --live).
 cmd_run() {
     local verdict rc
@@ -51,6 +62,7 @@ cmd_run() {
         echo "failure-review-cadence: SKIPPED-BANK, no run tonight"
         return 0
     fi
+    digest_sessions
     python3 "$SCRIPT_DIR/failure_review.py" "$@"; rc=$?
     if [ "$rc" -eq 3 ]; then
         bash "$ROOT/scripts/luna/cadence-alert.sh" fail failure-review "the daily failure review ran, but its Telegram message was not delivered (exit $rc)" "$RUNNER_DIR/failure-review-cadence.log" \
