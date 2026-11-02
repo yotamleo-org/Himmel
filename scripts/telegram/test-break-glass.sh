@@ -143,6 +143,20 @@ first_primary=$(printf '%s\n' "$out" | grep -n '^primary ' | cut -d: -f1); first
 assert_contains "S14 a nameless census row is labelled" "(unnamed)" "$out"
 assert_not_contains "S15 no blank census row" "  12	" "$out"
 rm -f "$PRIMARY/scripts/telegram/chief-census.sh"; rm -rf "$BRIDGE_ROOT"
+# --- /station-status VM spend line: a fixture ledger, never the real one ------------
+export LAUNCH_GUEST_COST_LEDGER="$TMP/vm-cost.jsonl"
+TODAY="$(date -u +%Y-%m-%d)"
+printf '{"ticket":"H-1","vm":"v","account":"acct-a","seconds":5,"usd":1.5,"usd_source":"x","ts":"%sT01:00:00Z"}\n{"ticket":"H-2","vm":"v","account":"acct-a","seconds":5,"usd":0.25,"usd_source":"x","ts":"%sT02:00:00Z"}\n{"ticket":"H-3","vm":"v","account":"acct-b","seconds":5,"usd":9,"usd_source":"x","ts":"2000-01-01T00:00:00Z"}\n' "$TODAY" "$TODAY" > "$LAUNCH_GUEST_COST_LEDGER"
+out=$(bg station-status - -)
+assert_contains "VS1 station-status shows today's VM spend per account on one line" "vm spend today: acct-a:1.75usd/2runs" "$out"
+assert_not_contains "VS2 an account with no row today is not listed" "acct-b" "$out"
+printf '{"ticket":"H-3","vm":"v","account":"acct-b","seconds":5,"usd":9,"usd_source":"x","ts":"2000-01-01T00:00:00Z"}\n' > "$LAUNCH_GUEST_COST_LEDGER"
+out=$(bg station-status - -)
+assert_not_contains "VS3 no row for today prints no VM spend line" "vm spend" "$out"
+rm -f "$LAUNCH_GUEST_COST_LEDGER"
+out=$(bg station-status - -)
+assert_not_contains "VS4 no ledger prints no VM spend line" "vm spend" "$out"
+unset LAUNCH_GUEST_COST_LEDGER
 # --- /repin-hooks ------------------------------------------------------------
 git -C "$PRIMARY" checkout -q -b side
 bg repin-hooks - - >/dev/null; assert_rc "R1 primary off the default branch is left alone" 21 "$?"

@@ -160,7 +160,7 @@ sync_primary() {
 }
 
 op_station_status() {
-    local f bank now hb st age live=0 stale=0 oldest=0 lines=""
+    local f bank vmspend now hb st age live=0 stale=0 oldest=0 lines=""
     echo "host $(hostname 2>/dev/null) up $(cut -d' ' -f1 /proc/uptime 2>/dev/null)s"
     echo "load $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
     echo "mem $(awk '/^MemAvailable:/{printf "%d MiB available", $2/1024}' /proc/meminfo 2>/dev/null)"
@@ -173,6 +173,10 @@ op_station_status() {
     echo "bank:"
     # shellcheck disable=SC2086 # the seam is a command line by design
     timeout 20 $bank 2>&1 | head -n 8 | sed 's/^/  /' # gnu-ok: the bridge runs only on the Linux station
+    # Today's VM test spend per account, the same line the chief tick shows: a local
+    # ledger read through vm-cost.sh, no network; nothing printed when no row is from today.
+    vmspend="$(bash "$SCRIPT_DIR/../vm/vm-cost.sh" --today 2>/dev/null)" || vmspend=""
+    [ -z "$vmspend" ] || echo "vm spend today: $vmspend"
     echo "chiefs:"
     # A row with no session name is labelled, never printed blank.
     bash "$PRIMARY/scripts/telegram/chief-census.sh" 2>/dev/null | head -n 10 \

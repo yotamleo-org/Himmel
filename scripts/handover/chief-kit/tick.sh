@@ -2547,6 +2547,11 @@ else
 fi
 bank="5h${fh}/wk${wk}/codex=${codex}"
 
+# vmspend=<account>:<usd>usd/<n>runs,... -- today's VM test spend per account, read from
+# the ledger through the code vm-cost.sh already sums with. A local file read, no network. Absent when
+# no ledger row is from today or the ledger cannot be read.
+vmspend="$(bash "$REPO/scripts/vm/vm-cost.sh" --today 2>/dev/null)" || vmspend=""
+
 # spare=<pct>@<h>h -- weekly quota the current burn leaves unspent
 # at the reset (usage-monitor.sh --spare). Shown only when the spare is >=
 # TICK_SPARE_MIN percent (default 10) and the reset is <= TICK_SPARE_HOURS hours
@@ -3372,6 +3377,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'ext-prs: %s\n' "$ext_prs"
     [ "$dispatch_summary" = none ] || printf 'dispatch: %s\n' "$dispatch_summary"
     printf 'subscription usage budget: %s\n' "$bank"
+    [ -z "$vmspend" ] || printf 'vm spend today: %s\n' "$vmspend"
     printf 'fill: %s\n' "$fill"
     printf 'worker-session tails: %s\n' "$tails_summary"
     [ -z "$descs_summary" ] || printf 'worker-session descriptions: %s\n' "$descs_summary"
@@ -3469,6 +3475,7 @@ else
     compact_field ext-prs "$ext_prs"
     compact_field dispatch "$dispatch_summary"
     compact_field usage "$bank"
+    compact_field vmspend "$vmspend"
     compact_field fill "$fill"
     compact_field tails "$tails_summary"
     compact_field cachettl "$cachettl_summary"
