@@ -1,2 +1,3 @@
 {"type": "user", "message": {"role": "user", "content": "go"}}
 {"type": "assistant", "message": {"id": "m", "role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "git grep \"graphify query\""}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "fine"}]}}
