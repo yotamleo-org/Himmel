@@ -6,7 +6,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { stubKeyring } from "./keyring-stub";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const TOKEN = "t".repeat(64);
@@ -15,13 +14,13 @@ afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
 const canary = () => "e2e-canary-" + randomBytes(12).toString("hex");
 
-function boot(extra: { noIdle?: boolean } = {}, envExtra: Record<string, string> = {}) {
+function boot(extra: { noIdle?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "setup-secret-"));
   const home = join(dir, "home"), root = join(dir, "root"), project = join(dir, "project");
   for (const d of [home, root, project]) mkdirSync(d);
   const s = startServer({
     port: 0, token: TOKEN, root, projectRoot: project, ...extra,
-    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HIMMEL_SECRETS_KEYRING: "off", ...envExtra },
+    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HIMMEL_SECRETS_KEYRING: "off" },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const auditFile = join(home, ".himmel", "state", "config-ui", "actions.jsonl");
@@ -120,19 +119,4 @@ test("a store that git does not ignore inside a work tree is refused and the val
   expect(r.status).toBe(409);
   expect(await r.text()).not.toContain(v);
   expect(existsSync(join(b.project, ".env"))).toBe(false);
-});
-
-test("a secret the Setup page stores is masked from the next response, not after the reused list expires (HIMMEL-8565)", async () => {
-  const kdir = mkdtempSync(join(tmpdir(), "setup-secret-kr-"));
-  cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
-  const kr = "kr-only-" + "q7x2".repeat(2); // no token shape: only the literal list masks it
-  const k = stubKeyring(kdir);
-  const b = boot({}, { ...k.env, HIMMEL_SECRETS_KEYRING: "", HIMMELCTL_SUDO_PASSWORD: "", STUB_LEAK: kr });
-  const feed = async () => JSON.stringify(await (await fetch(`http://127.0.0.1:${b.s.port}/api/feed`, { headers: { "x-himmel-token": TOKEN } })).json());
-  expect(await feed()).toContain("stub-row-one"); // reads the list while the keyring holds nothing; the stub's rows carry kr
-  k.put("HIMMELCTL_SUDO_PASSWORD", kr); // stands for what the write stores (a name the write itself leaves alone)
-  expect((await b.post({ name: "JIRA_API_TOKEN", value: canary(), op: "set" })).status).toBe(200);
-  const after = await feed();
-  expect(after).toContain("stub-row-one");
-  expect(after).not.toContain(kr);
 });

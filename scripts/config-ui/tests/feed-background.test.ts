@@ -191,3 +191,24 @@ test("a keyring-only value in a report is masked in the body served and in the c
   expect(files.length).toBe(1);
   expect(readFileSync(join(feeds, files[0]), "utf8")).not.toContain(kr);
 });
+
+// The Setup page's write drops the report and the reused list: the next report is masked with a fresh read, not after the 5 s expire.
+test("a secret the Setup page stores is masked from the next report, not after the reused list expires (HIMMEL-8565)", async () => {
+  const kr = "kr-only-" + "q7x2".repeat(2);
+  const kdir = mkdtempSync(join(tmpdir(), "cfgui-bg-kr-"));
+  dirs.push(kdir);
+  const root = join(kdir, "root"), project = join(kdir, "project");
+  for (const d of [root, project]) mkdirSync(d);
+  const k = stubKeyring(kdir);
+  const { port } = boot({ ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "", HIMMELCTL_SUDO_PASSWORD: "", STUB_LEAK: kr }, { feedWaitMs: 5000, root, projectRoot: project });
+  expect(JSON.stringify((await untilFeed(port)).j)).toContain("stub-row-one"); // reads the list while the keyring holds nothing
+  k.put("HIMMELCTL_SUDO_PASSWORD", kr); // stands for what the write stores (a name the write itself leaves alone)
+  const w = await fetch(`http://127.0.0.1:${port}/api/setup/secret`, {
+    method: "POST", headers: { ...H, "content-type": "application/json", origin: `http://127.0.0.1:${port}` },
+    body: JSON.stringify({ name: "JIRA_API_TOKEN", value: "e2e-canary-" + "a1b2".repeat(4), op: "set" }),
+  });
+  expect(w.status).toBe(200);
+  const after = JSON.stringify((await untilFeed(port)).j);
+  expect(after).toContain("stub-row-one");
+  expect(after).not.toContain(kr);
+});
