@@ -384,8 +384,12 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
   ($f // {}) as $ff |
   # Only primaries with utilization qualify. Fetched keys win (including
   # explicit null); absent keys fall back to the same-account prior window.
-  (if (($ff.five_hour.utilization // null) != null) then $ff.five_hour else null end) as $fh |
-  (if (($ff.seven_day.utilization // null) != null) then $ff.seven_day else null end) as $sd |
+  # A window whose utilization is not a JSON number (a string, a boolean) is
+  # dropped here, so the merge below carries the cached window instead of
+  # overwriting it under the carried stamp. Out-of-range numbers still mirror
+  # and never stamp; the preflight reads over 100 as spent and refuses a negative.
+  (if (($ff.five_hour.utilization | type) == "number") then $ff.five_hour else null end) as $fh |
+  (if (($ff.seven_day.utilization | type) == "number") then $ff.seven_day else null end) as $sd |
   def okpct: type == "number" and . >= 0 and . <= 100;
   # The API answers "no active 5-hour window" with a five_hour that
   # is null or carries no utilization. That is an empty window, not a malformed
