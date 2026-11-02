@@ -20,8 +20,9 @@ const TIMEOUT_MS = 10000;
 // stub keyring (KSTUB_STORE) never reaches a real one, whatever its cwd, bunfig or env map. The process marker
 // counts even when the map sets another NODE_ENV. Exported so the other door to himmel-secrets,
 // scripts/config-ui/login.ts, shares the one rule.
-export function testKeyringOff(env) {
-  const e = { ...process.env, ...(env || {}) };
+// `childOnly`: the child gets `env` alone (login.ts), so a stub the process names but the map omits is no stub.
+export function testKeyringOff(env, childOnly) {
+  const e = { ...(childOnly ? {} : process.env), ...(env || {}) };
   return (process.env.NODE_ENV === 'test' || e.NODE_ENV === 'test') && !e.KSTUB_STORE;
 }
 

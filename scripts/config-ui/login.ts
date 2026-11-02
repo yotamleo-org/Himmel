@@ -25,7 +25,7 @@ function childEnv(env: Env, drop: string[] = []): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) if (v !== undefined && !drop.includes(k)) out[k] = v;
   // this door spawns himmel-secrets itself, so it carries the resolver module's fail-closed under a test runner.
-  if (testKeyringOff(env)) out.HIMMEL_SECRETS_KEYRING = "off";
+  if (testKeyringOff(env, true)) out.HIMMEL_SECRETS_KEYRING = "off";
   return out;
 }
 
@@ -36,7 +36,7 @@ const CWD = "/";
 // The resolver reads a lookup error, a timeout and no match alike as "exit 1, nothing printed". `secret-tool search` tells
 // them apart: it exits 0 on no match, so a clean search that names no item is the only proof the keyring holds no login.
 function keyringHoldsItem(env: Env): boolean {
-  if (env.HIMMEL_SECRETS_KEYRING === "off" || testKeyringOff(env)) return false;
+  if (env.HIMMEL_SECRETS_KEYRING === "off" || testKeyringOff(env, true)) return false;
   const r = spawnSync("secret-tool", ["search", "--all", "service", "himmel", "key", KEY, "scope", "user"], { env: childEnv(env), cwd: CWD, encoding: "utf8", timeout: 5_000 });
   if ((r.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return false; // no keyring tooling at all: nothing to hide a login in
   // some secret-tool builds exit 1 with nothing printed on no match; any other nonzero exit, a kill, or an error message is a failure.

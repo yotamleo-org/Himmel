@@ -125,11 +125,11 @@ test("probe: writeLogin with an unstubbed env never reaches a keyring", async ()
 });
 TS
 searches() { grep -c '^secret-tool' "$KR_LOG" || true; }
-# login_row <label> <cwd> <map 0|1> <0 = also expect zero searches>
+# login_row <label> <cwd> <map 0|1|2> <0 = also expect zero searches> [stub: a KSTUB_STORE value the PROCESS carries, never the map]
 login_row() {
   kreset
   local rc=0
-  (cd "$2" && KR_MAP="$3" bun test "$lprobe") >"$TMP/bun.out" 2>&1 || rc=$?
+  (cd "$2" && env ${5:+KSTUB_STORE="$5"} KR_MAP="$3" bun test "$lprobe") >"$TMP/bun.out" 2>&1 || rc=$?
   want "$(stores)" 0 "$1" "$rc"
   if [ "$4" = 0 ] && [ "$rc" = 0 ] && [ "$(searches)" != 0 ]; then fail "$1 (the keyring was searched $(searches) time(s), want 0)"; fi
 }
@@ -137,8 +137,10 @@ login_row "E1 writeLogin with an unstubbed env map, from scripts/config-ui, stor
 login_row "E2 writeLogin with an unstubbed env map, from the repo root, stores and searches nothing" "$root" 1 0
 login_row "E5 writeLogin with a map that sets NODE_ENV=development, from scripts/config-ui, stores and searches nothing" "$root/scripts/config-ui" 2 0
 login_row "E6 writeLogin with a map that sets NODE_ENV=development, from the repo root, stores and searches nothing" "$root" 2 0
-login_row "E3 writeLogin with the default env, from scripts/config-ui, records zero keyring stores" "$root/scripts/config-ui" 0 -
-login_row "E4 writeLogin with the default env, from the repo root, records zero keyring stores" "$root" 0 -
+login_row "E3 writeLogin with the default env, from scripts/config-ui, stores and searches nothing" "$root/scripts/config-ui" 0 0
+login_row "E4 writeLogin with the default env, from the repo root, stores and searches nothing" "$root" 0 0
+login_row "E7 writeLogin with a map that omits the stub the process names, from the repo root, stores and searches nothing" "$root" 1 0 named
+login_row "E8 the same, from scripts/config-ui, stores and searches nothing" "$root/scripts/config-ui" 1 0 named
 
 # C: the wizard secrets suite run directly (no suite label), the pin unset.
 kreset
