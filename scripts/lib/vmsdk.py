@@ -26,7 +26,7 @@ scripts/lib/load-dotenv.sh).
 
 CLI: python scripts/lib/vmsdk.py <vm> <up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|
                                       baseline NAME|clone [REF]|provision|e2e|
-                                      push FILE [DEST]|
+                                      push FILE [DEST]|usage|
                                       trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>
 """
 import datetime
@@ -51,6 +51,10 @@ OWNER_REPO = "yotamleo-org/Himmel"  # leak-allow: hostname the actual private re
 # First present wins; either key is a valid clone credential.
 PAT_ENVS = ("himmel_github_token_vm", "himmel_github_token_vm2")
 _REGISTRY = Path(__file__).resolve().parent / "vms.json"
+# the guest statusline's usage cache (the file scripts/lib/usage-preflight.sh reads on the
+# station) and how old its primaries stamp may be before the figure is not trusted
+GUEST_USAGE_CACHE = "/tmp/claude/statusline-usage-cache.json"
+GUEST_USAGE_MAX_AGE = 600
 
 # basename globs that must never cross host->guest (the
 # gitignored-but-present secret set). One boundary with two spellings — keep in
@@ -497,6 +501,40 @@ class VM:
         _in, out, err = client.exec_command(cmd, timeout=timeout)
         text = out.read().decode(errors="replace") + err.read().decode(errors="replace")
         return out.channel.recv_exit_status(), text
+
+    def guest_usage_percent(self):
+        """The guest account's usage percentage, or "unknown".
+
+        Reads the usage cache the guest's own statusline writes
+        (GUEST_USAGE_CACHE): the higher of its five_hour and seven_day
+        utilization. "unknown" whenever the guest does not expose a fresh, sane
+        figure (no cache, stale or unstamped, malformed, guest unreachable): never
+        a guess, and never a credential file. Goes through guest_exec, so the
+        target is proven a test VM first.
+        """
+        try:
+            rc, out = self.guest_exec("cat " + GUEST_USAGE_CACHE, timeout=20)
+        except Exception:
+            return "unknown"
+        if rc != 0:
+            return "unknown"
+        try:
+            cache = json.loads(out)
+            stamp = cache["primaries_refreshed_at"]
+            age = datetime.datetime.now(datetime.timezone.utc).timestamp() - stamp
+            if isinstance(stamp, bool) or not 0 <= age <= GUEST_USAGE_MAX_AGE:
+                return "unknown"
+            figures = []
+            for window in ("five_hour", "seven_day"):
+                u = (cache.get(window) or {}).get("utilization")
+                if u is None:
+                    continue
+                if isinstance(u, bool) or not isinstance(u, (int, float)) or not 0 <= u < float("inf"):
+                    return "unknown"
+                figures.append(u)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return "unknown"
+        return max(figures) if figures else "unknown"
 
     def _assert_test_vm(self):
         """Prove this entry is a himmel test VM before a command reaches it.
@@ -1143,7 +1181,7 @@ class VM:
 
 _USAGE = ("usage: vmsdk.py <vm> "
           "<up|down|snapshot NAME [--no-secret-scan]|restore NAME|audit-base NAME|baseline NAME|clone [REF]|provision|e2e|"
-          "push FILE [DEST]|"
+          "push FILE [DEST]|usage|"
           "exec [--sudo] [--timeout N] -- CMD...|"
           "trigger HANDOVER [--at TIME] [--cwd DIR] [--long-gap] [--timeout N]>")
 
@@ -1212,6 +1250,10 @@ def main(argv):
     try:
         vm = VM(name)
     except VMError as e:
+        if cmd == "usage":   # a caller branching on the answer treats a VM it cannot open as unknown
+            print(e, file=sys.stderr)
+            print("unknown")
+            return 0
         print(e, file=sys.stderr)
         return 2
 
@@ -1239,6 +1281,8 @@ def main(argv):
         elif cmd == "push" and rest:
             dest = rest[1] if len(rest) > 1 else f"~/handover-inbox/{Path(rest[0]).name}"
             print(vm.push_file(rest[0], dest))
+        elif cmd == "usage":
+            print(vm.guest_usage_percent())
         elif cmd == "exec":
             try:
                 guest_cmd, kw = _parse_exec_args(rest)
