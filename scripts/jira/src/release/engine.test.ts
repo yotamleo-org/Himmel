@@ -21,7 +21,7 @@ vi.mock('node:child_process', async (orig) => {
   }) as typeof m.execFileSync;
   return { ...m, execFileSync };
 });
-import type { IssueSnap, OperatorRow, RequestRow, RulingRow } from './types.js';
+import type { EventRow, IssueSnap, OperatorRow, RequestRow, RulingRow } from './types.js';
 import { appendAdmission, readAdmissions } from '../commands/admissions-ledger.js';
 import { appendChain, breakStaleLock, loadKey, readChain, withLockAsync } from './ledger.js';
 
@@ -1717,6 +1717,8 @@ describe('version-repair entry check and held state', () => {
   const requests = () => readChain<RequestRow>(join(ctx().dir, 'requests.jsonl'), loadKey(ctx().keyPath)).verified;
   const latestReq = (req: string) => requests().filter((r) => r.req === req).at(-1);
   const phases = () => rulings().map((r) => r.phase);
+  const mismatches = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.readback === 'mismatch').length;
+  const placementAt = (version: string) => state(ctx()).records.find((x) => x.key === 'K-1' && x.version === version)?.placement;
   const next = { ...rmEnv, HIMMEL_RM_DOC: '/abs/b.md' };
   const newEpoch = () => {
     leaseRelease(ctx(rmEnv));
@@ -1736,26 +1738,34 @@ describe('version-repair entry check and held state', () => {
   it('entry-moved goes to withdrawn', async () => {
     const { q, r } = await ruledMove();
     jira.entries.set('K-1', '100');
+    expect(placementAt('v2')).toBe('pending');
     const got = await apply(ctx(rmEnv), r.id);
     expect(got.phase).toBe('void');
     expect(jira.writes).toBe(0);
     expect(jira.posted).toBe(0);
     expect(phases()).toContain('void');
-    expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
+    expect(latestReq(q.req)?.state).toBe('withdrawn:repair');
     expect(latestReq(q.req)?.reason).toBe('entry-moved');
+    // A second run finds nothing to claim or apply, and the key reads settled, not pending or reopened.
     expect(claim(ctx(rmEnv))).toEqual([]);
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('void');
+    expect(placementAt('v2')).not.toBe('pending');
     expect(state(ctx()).requests.open).toEqual([]);
+    expect(jira.writes).toBe(0);
   });
 
   it('older epoch untouched withdraws, never reopens', async () => {
     const { q, r } = await ruledMove();
     newEpoch();
+    expect(placementAt('v2')).toBe('pending');
     const got = await apply(ctx(next), r.id);
     expect(got.phase).toBe('void');
-    expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
+    expect(latestReq(q.req)?.state).toBe('withdrawn:repair');
     expect(latestReq(q.req)?.reason).toBe('never-landed');
     expect(jira.entryCalls).toBe(0);
     expect(claim(ctx(next))).toEqual([]);
+    expect((await apply(ctx(next), r.id)).phase).toBe('void');
+    expect(placementAt('v2')).not.toBe('pending');
     expect(state(ctx()).requests.open).toEqual([]);
   });
 
@@ -1765,6 +1775,7 @@ describe('version-repair entry check and held state', () => {
     newEpoch();
     await expect(apply(ctx(next), r.id)).rejects.toThrow(/partly applied/);
     expect(phases()).toEqual(['intent']);
+    expect(mismatches()).toBe(1);
     expect(jira.entryCalls).toBe(0);
   });
 
@@ -1793,6 +1804,21 @@ describe('version-repair entry check and held state', () => {
     await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow(/partly applied/);
     expect(jira.writes).toBe(0);
     expect(phases()).toEqual(['intent']);
+    expect(mismatches()).toBe(1);
+  });
+
+  // A repair request is filed with the entry it was built for (`create` when the key has none). One that names none
+  // cannot be shown current, so it writes nothing and is withdrawn like a moved entry; a refile names the entry.
+  it.each([
+    ['absent', { rule: 'version-repair' }],
+    ['non-string', { rule: 'version-repair', entry: 99 }],
+  ])('a request whose entry is %s withdraws with no write', async (_name, evidence) => {
+    const { q, r } = await ruledMove(evidence);
+    jira.entries.set('K-1', '99');
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('void');
+    expect(jira.writes).toBe(0);
+    expect(latestReq(q.req)?.state).toBe('withdrawn:repair');
+    expect(latestReq(q.req)?.reason).toBe('entry-moved');
   });
 
   it('a matching entry applies as today', async () => {
@@ -1808,7 +1834,7 @@ describe('version-repair entry check and held state', () => {
       ...ctx(rmEnv),
       jira: { fixVersions: (k: string) => jira.fixVersions(k), setFixVersion: jira.setFixVersion.bind(jira), findComment: jira.findComment.bind(jira), addComment: jira.addComment.bind(jira) },
     } as unknown as Ctx;
-    await expect(apply(bare, r.id)).rejects.toThrow(/newestFixVersionEntry/);
+    await expect(apply(bare, r.id)).rejects.toThrow(/has no newestFixVersionEntry/);
     expect(jira.writes).toBe(0);
     expect(phases()).toEqual(['intent']);
   });
@@ -1881,9 +1907,12 @@ describe('version-repair entry check and held state', () => {
       const q = repairAsk({ rule: 'version-repair', entry: '5' });
       await rmRun(ctx(), holdAll);
       expect(latestReq(q.req)?.state).toBe('held');
-      let calls = 0;
-      await rmRun(ctx(), async (input) => { calls++; return holdAll(input); });
-      expect(calls).toBe(0);
+      // A second run reaches claim() because a sibling is open, and asks the judge about the sibling only.
+      const sibling = request(ctx(), { verb: 'INTAKE', key: 'K-3', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      const asked: string[] = [];
+      await rmRun(ctx(), async (input) => { asked.push(...input.requests.map((x) => x.req)); return holdAll(input); });
+      expect(asked).toEqual([sibling.req]);
+      expect(latestReq(q.req)?.state).toBe('held');
     });
 
     it('HOLD on a chief-filed request stays claimed', async () => {
@@ -1896,7 +1925,7 @@ describe('version-repair entry check and held state', () => {
       const q = repairAsk({ rule: 'version-repair', entry: '5' });
       await rmRun(ctx(), holdAll);
       withdraw(ctx(), { req: q.req, reason: 'entry moved' });
-      expect(latestReq(q.req)?.state).toMatch(/^withdrawn:/);
+      expect(latestReq(q.req)?.state).toBe('withdrawn:console');
     });
 
     it('contradicting operator decision withdraws a held request', async () => {

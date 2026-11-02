@@ -322,7 +322,7 @@ function appendWithdrawal(ctx: Ctx, k: Buffer, r: RequestRow, by: string, reason
   return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, ts: ts(ctx), state: `withdrawn:${by}`, reason });
 }
 
-// The chief retires an open or claimed request with a reason; --by cites the
+// The chief retires an open, claimed or held request with a reason; --by cites the
 // operator decision that settles it, which must cover the request's key.
 export function withdraw(ctx: Ctx, o: { req: string; reason: string; by?: string }): RequestRow {
   operatorFence(ctx);
@@ -959,7 +959,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
         appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch: lease.epoch }));
         if (req && isRepair(req)) {
-          appendWithdrawal(ctx, l.k, req, id, 'never-landed');
+          appendWithdrawal(ctx, l.k, req, 'repair', 'never-landed');
           return { phase: 'void', line: `VOID ${id} (epoch ${last.epoch} intent never reached Jira; ${last.req} withdrawn)` };
         }
         if (req) {
@@ -984,7 +984,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
             throw new Error(`release apply: ${id} is partly applied in Jira; ${k} needs a hand fix before it is re-ruled`);
           }
           appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', {}));
-          appendWithdrawal(ctx, l.k, req, id, 'entry-moved');
+          appendWithdrawal(ctx, l.k, req, 'repair', 'entry-moved');
           return { phase: 'void', line: `VOID ${id} (${k} Fix Version entry moved since ${last.req} was filed; ${last.req} withdrawn)` };
         }
       }
@@ -1092,7 +1092,7 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
 
 // --- rm-run: the release manager as one on-demand batch -------------------------------
 
-// The judge cannot rule the request: only req and reason count, nothing is ruled and the request stays claimed.
+// The judge cannot rule the request: only req and reason count, nothing is ruled and the request stays claimed (a version-repair request becomes held).
 export interface HoldDecision {
   req: string;
   outcome: 'HOLD';
