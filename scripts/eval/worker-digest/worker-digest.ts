@@ -31,14 +31,38 @@ const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_-]{1,160}$/.tes
 // Split keys: Skill:<plugin>:<skill> and Agent:<subagent_type>, each part through a bounded name check.
 const SPLIT_PART = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$/;
 const splitName = (v: unknown) => typeof v === "string" && /^[^:]+(:[^:]+)?$/.test(v) && v.split(":").every((p) => SPLIT_PART.test(p)) ? v : null;
-// The first command word past env assignments and an rtk wrapper, never more of the command.
+// The first command word past a leading `cd X &&`, `bash -c '...'`, env assignments and an rtk wrapper, never more
+// of the command. A graphify, qmd or rtk call keeps its own name however it is wrapped; any other
+// word is read as before. ponytail: only the leading cd/bash -c/env/rtk shapes peel, a tool after a pipe or a later
+// `;` still reads as the first word; upgrade = lastStages-style splitting if the report undershoots.
 const HEAD = /^[a-z][a-z0-9_.+-]{0,40}$/;
+const COUNTED = new Set(["graphify", "qmd", "rtk"]);
+const GRAPH_WRAPPER = /(?:^|\/)scripts\/graphify\/(?:leg|worker)-graph\.sh$/;
+// rtk's own commands; any other `rtk <word>` is a wrapper around <word>.
+const RTK_OWN = new Set(["gain", "proxy", "recall", "discover", "session", "cc-economics", "config", "init", "pipeline", "methods", "plugins", "tasks"]);
+const CD_PREFIX = /^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
+const SHELL_C = /^(?:ba|z)?sh\s+-[a-z]*c\s+(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*$/;
 const commandHead = (cmd: string) => {
-  const w = cmd.trim().split(/\s+/);
+  let s = cmd.trim();
+  for (let n = 0; n < 4; n++) {
+    const next = s.replace(CD_PREFIX, "");
+    const sh = SHELL_C.exec(next);
+    const inner = sh ? (sh[1] ?? sh[2]).trim() : next;
+    if (inner === s) break;
+    s = inner;
+  }
+  const w = s.split(/\s+/);
   let i = 0;
   while (i < w.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[i])) i++;
-  if (w[i] === "rtk") i++;
-  return HEAD.test(w[i] ?? "") ? w[i] : "other";
+  if (w[i] === "rtk") {
+    if (RTK_OWN.has(w[i + 1] ?? "") || i + 1 >= w.length) return "rtk";
+    i++;
+  }
+  const word = w[i] ?? "";
+  const base = word.slice(word.lastIndexOf("/") + 1);
+  if (GRAPH_WRAPPER.test(word) || ((word === "bash" || word === "sh") && GRAPH_WRAPPER.test(w[i + 1] ?? ""))) return "graphify";
+  if (COUNTED.has(base)) return base;
+  return HEAD.test(word) ? word : "other";
 };
 // Who broke a failed Bash call, from its failure class.
 const bashCause = (cls: string) => cls.startsWith("error/") || cls.startsWith("suite/") ? "command"

@@ -298,6 +298,7 @@ scripts/eval/lib/test-wilson.sh	pr	static-gate
 scripts/eval/worker-digest/test-failure-review.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-worker-digest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/worker-digest/test-graph-use-report.sh	local	behaviour suite, new HIMMEL-8707; the report it covers is on-demand
 scripts/eval/worker-digest/test-worker-ledger.sh	pr	static-gate
 scripts/eval/worker-digest/test-pdd-share.sh	local	behaviour suite, new HIMMEL-7128; the reader it covers is on-demand
 scripts/eval/mcp-tasks-probe/test-probe.sh	local	behaviour suite, new HIMMEL-7304; the probe it covers is on-demand and billed

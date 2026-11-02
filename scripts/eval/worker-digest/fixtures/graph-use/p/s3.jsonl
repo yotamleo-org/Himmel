@@ -1,0 +1,2 @@
+{"type": "user", "message": {"role": "user", "content": "go"}}
+{"type": "assistant", "message": {"id": "m", "role": "assistant", "content": [{"type": "tool_use", "id": "t1", "name": "mcp__graphify__query_graph", "input": {}}]}}

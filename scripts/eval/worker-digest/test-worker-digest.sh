@@ -267,5 +267,16 @@ check "a batched call keeps its time to result in the batched list, apart from t
 check "a call with no result has no time, counted as missing and never 0" '[ "$(ctt Grep)" = "{\"single\":[],\"batched\":[],\"missing\":1}" ]'
 check "no call text reaches the timing" 'absent -E "/x/|ls|pattern" <<<"$(jq -c "[.tool_health[].timing]" "$TMP/ct.json")"'
 
+echo "16. a tool behind bash -c, cd, env and rtk is counted under its own name (HIMMEL-8707)"
+# fixtures/graph-heads.jsonl: 14 Bash calls, ids toolu_<g|q|r|k><n>.
+S16=8707c1a5-0000-4000-8000-000000000001
+cp "$FX/graph-heads.jsonl" "$TMP/$S16.jsonl"
+digest "$TMP/$S16.jsonl" >"$TMP/gh.json" 2>"$TMP/gh.err" || bad "digest of graph-heads.jsonl exits 0: $(head -c 300 "$TMP/gh.err")"
+gh() { jq -r --arg id "toolu_$1" '[.tool_health[] | select(.tool == "Bash") | .bash_calls[] | select(.[0] == $id)] | .[0][1]' "$TMP/gh.json"; }
+check "graphify behind bash -c, cd, env+rtk, the worker-graph.sh wrapper and a nested bash -c counts as graphify" '[ "$(gh g1)$(gh g2)$(gh g3)$(gh g4)$(gh g5)" = graphifygraphifygraphifygraphifygraphify ]'
+check "qmd behind bash -c and cd+rtk counts as qmd" '[ "$(gh q1)$(gh q2)" = qmdqmd ]'
+check "rtk own commands (gain, proxy, recall), bare or behind bash -c and cd, count as rtk" '[ "$(gh r1)$(gh r2)$(gh r3)" = rtkrtkrtk ]'
+check "a real unknown stays under its own first word, other heads read as before" '[ "$(gh k1)" = weirdtool ] && [ "$(gh k2)" = bash ] && [ "$(gh k3)" = git ] && [ "$(gh k4)" = other ]'
+
 echo "test-worker-digest: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
