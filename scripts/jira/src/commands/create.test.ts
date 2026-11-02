@@ -1098,6 +1098,13 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(created().labels).toContain('residual-displaced');
   });
 
+  it('RED 8723 ii: a ledger that turns unreadable after creation steps the newcomer down instead of failing', async () => {
+    afterCreate = () => writeFileSync(join(dir, 'admissions-ledger.jsonl'), 'not json\n');
+    await file('--fu-class', 'escape');
+    expect(putTo('HIMMEL-900')).toBe(false);
+    displacedOnly('HIMMEL-77');
+  });
+
   it('RED 8723 ii: a resident ruled after creation, with no version to step down to, queues the newcomer INTAKE', async () => {
     frozen = true;
     for (const r of residents) r.fields.fixVersions = [{ name: 'v1.1.4' }];

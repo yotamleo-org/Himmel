@@ -712,8 +712,8 @@ async function displaceResidual(
   const resident = await request<RankedIssue>('GET', `/issue/${displaced.key}?fields=labels,status,fixVersions`);
   const source = residual.fixVersion!;
   const ruled = rulingsOf(source);
-  if (!resident.fields.fixVersions?.some((v) => v.name === source) || resident.fields.status?.name !== 'To Do' ||
-      residualGateRank(resident, readAdmissions(source)) !== 0 || ruled === undefined || ruled(displaced.key)) {
+  if (ruled === undefined || ruled(displaced.key) || !resident.fields.fixVersions?.some((v) => v.name === source) ||
+      resident.fields.status?.name !== 'To Do' || residualGateRank(resident, readAdmissions(source)) !== 0) {
     await request('PUT', `/issue/${newcomer}`, {
       fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
       update: { labels: [{ add: 'residual-displaced' }] },
