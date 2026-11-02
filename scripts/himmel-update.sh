@@ -1313,7 +1313,7 @@ run_cron_runner_migration() {
     command -v "$cron_bin" >/dev/null 2>&1 || return 0
 
     local line baked vault key live=0 old new moved="" kind rest entry hh mm out rc=0
-    line="$(grep -F 'failure-review-cadence.sh' "$runner" | grep -F ' run --vault ' | head -1)"
+    line="$(grep -F 'failure-review-cadence.sh' "$runner" | grep -F ' run --vault ' | head -1)" || true
     [ -n "$line" ] || return 0
     # The runner line is: <bash> <script> run --vault <vault>[ --live] >> "$log" 2>&1, paths printf %q-escaped.
     rest="${line#* }"
@@ -1332,12 +1332,13 @@ run_cron_runner_migration() {
     done < <(grep -v '^#' "$aliases")
     [ -n "$moved" ] || return 0
 
-    entry="$(LC_ALL=C "$cron_bin" -l 2>/dev/null | grep -F '# HIMMEL-FailureReview' | head -1)"
+    entry="$(LC_ALL=C "$cron_bin" -l 2>/dev/null | grep -F '# HIMMEL-FailureReview' | head -1)" || true
     [ -n "$entry" ] || return 0
     mm="${entry%% *}"; rest="${entry#* }"; hh="${rest%% *}"
     [[ "$mm" =~ ^[0-5]?[0-9]$ && "$hh" =~ ^([01]?[0-9]|2[0-3])$ ]] || return 0
     local when; when="$(printf '%02d:%02d' "$((10#$hh))" "$((10#$mm))")"
-    local modename=dry-run; [ "$live" -eq 1 ] && modename=live
+    local modename=dry-run
+    if [ "$live" -eq 1 ]; then modename=live; fi
 
     echo ""
     echo "==> cron runner migration"
@@ -1348,7 +1349,8 @@ run_cron_runner_migration() {
     fi
     key=""
     if [ "$live" -eq 1 ]; then
-        key="$(grep -m1 '^JIRA_PROJECT_KEY=' "$runner" 2>/dev/null)"; key="${key#JIRA_PROJECT_KEY=}"
+        key="$(grep -m1 '^JIRA_PROJECT_KEY=' "$runner" 2>/dev/null)" || true
+        key="${key#JIRA_PROJECT_KEY=}"
         if ! [[ "$key" =~ ^[A-Z][A-Z0-9]+$ ]]; then
             STATUS_cron_runner_migration="failed"; DETAIL_cron_runner_migration="live runner has no readable JIRA_PROJECT_KEY; re-arm by hand with arm --force --live"
             return 1
