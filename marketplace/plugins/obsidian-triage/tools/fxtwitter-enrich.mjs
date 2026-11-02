@@ -475,7 +475,7 @@ async function fetchThreadAny(canon, rel, opts = {}) {
 function isLinkBearing(post) {
   if (/https?:\/\/\S+/i.test(post.text || "")) return true;
   const facets = post.raw_text?.facets;
-  return Array.isArray(facets) && facets.some((f) => f && (f.type === "url" || f.original || f.replacement));
+  return Array.isArray(facets) && facets.some((f) => f && f.type === "url");
 }
 
 /**

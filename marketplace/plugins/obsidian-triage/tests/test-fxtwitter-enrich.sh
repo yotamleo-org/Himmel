@@ -1002,6 +1002,19 @@ t23c=no; grep -q "third post that arrived later" "$t23_vault/Clippings/a.md" 2>/
 assert "Test23C: a status link inside a kept post's text does not block a later, fuller thread" "yes" "$t23c"
 node "$BACKFILL" --vault "$t23_vault" --resume-after >"$tmpdir/t23d.out" 2>&1
 assert "Test23D: --resume-after without a value is a usage error (exit 1)" "1" "$?"
+mk_x_clip "$t23_vault" f.md alice 110
+cat >"$t23_fx/110.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "110", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "111", "author": { "screen_name": "alice" }, "text": "continuation of the point" },
+  { "id": "112", "author": { "screen_name": "bob" }, "text": "hey @carol nice one", "raw_text": { "facets": [ { "type": "mention", "original": "@carol", "replacement": "@carol" } ] } },
+  { "id": "113", "author": { "screen_name": "dave" }, "text": "docs are here", "raw_text": { "facets": [ { "type": "url", "original": "t.co/x", "replacement": "https://example.com/docs" } ] } }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t23_fx" node "$BACKFILL" --vault "$t23_vault" --apply >"$tmpdir/t23e.out" 2>&1
+t23e=no; f="$t23_vault/Clippings/f.md"
+grep -q "docs are here" "$f" && ! grep -q "hey @carol nice one" "$f" && t23e=yes
+assert "Test23E: a reply is kept for a url facet, not for a mention facet" "yes" "$t23e"
 
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
