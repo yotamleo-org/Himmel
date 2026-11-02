@@ -218,8 +218,24 @@ test("off by default: a bare six-digit message stays ordinary text without the h
 test("bare-code hold does not consume ordinary numbers or numbers sent as text", () => {
   const { deps } = fake();
   const gate = makeAfkSudoGate(deps);
-  for (const text of ["12345", "1234567", "123 456", "123-456", "text: 123456", "number 123456"]) {
+  for (const text of ["12345", "12345678", "text: 123456", "number 123456", "do 8276 8277 next", "ticket 123-456 is done"]) {
     expect(gate(dm(text))).toBe(false);
+  }
+});
+
+test("HIMMEL-8375: a spaced or hyphenated six or seven digit code sent as a new message with no prompt is held, never forwarded", () => {
+  for (const text of ["123 456", "123-456", " 12 34 56 ", "123 - 456", "1234 567", "123-4567", "1234567", "\t123\n456\n", "123‐456", "123‑456"]) {
+    const { deps, calls, replies, logs } = fake();
+    expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(true);
+    expect(calls).toEqual([]);
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toContain("held");
+    expect([...replies, ...logs].join("\n")).not.toContain("456");
+  }
+  // Fail closed only on what is wholly a code: words, other characters or a different digit count pass.
+  for (const text of ["123 45", "123 456 78 9", "123_456", "123.456", "do 123 456", "123 456 ok"]) {
+    const { deps } = fake();
+    expect(makeAfkSudoGate(deps, makeAfkSudoPrompts())(dm(text))).toBe(false);
   }
 });
 
@@ -389,9 +405,14 @@ test("button: with no installed helper a tap is not consumed", () => {
   expect(off(tapOf("afk:approve:abcdefgh"))).toBe(false);
 });
 
-test("button: a six-digit reply to an unknown message is ordinary text, not consumed", async () => {
+test("button: HIMMEL-8375 a code-only reply to a message that is not the bot's is held, not forwarded; other replies stay ordinary text", async () => {
+  for (const text of ["123456", "123 456", "123-456"]) {
+    const none = buttons();
+    expect(none.gate(reply(text, 77))).toBe(true);
+    expect(none.replies.at(-1)).toContain("held");
+    expect([...none.replies, ...none.logs].join("\n")).not.toContain("456");
+  }
   const b = buttons();
-  expect(b.gate(reply("123456", 77))).toBe(false);
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
   expect(b.gate(reply("hello", 78))).toBe(false);
@@ -504,7 +525,7 @@ test("button: a six-digit reply to a bot message with no known prompt is consume
   expect(b.replies).toEqual(["⚠️ afk-sudo: that code prompt expired, tap Approve again"]);
   expect(b.logs.join("\n")).not.toContain("123456");
   // other shapes of a reply to the bot stay ordinary text
-  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99), reply("123456", 99, { reply_to_bot: true, forwarded: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
+  for (const msg of [reply("hello", 99, { reply_to_bot: true }), reply("123456", 99, { reply_to_bot: true, forwarded: true }), reply("123456", 99, { reply_to_bot: true, from: 999, chat_id: 999 })]) {
     expect(buttons().gate(msg)).toBe(false);
   }
 });
@@ -561,11 +582,25 @@ test("button: a reply that is forwarded, from another chat or from another sende
   }
 });
 
+test("button: HIMMEL-8375 a spaced or hyphenated code replying to a live prompt is still answered by the prompt, never held", async () => {
+  for (const text of ["123 456", "123-456"]) {
+    const b = buttons();
+    b.tap(tapOf("afk:approve:abcdefgh"));
+    await settle();
+    expect(b.gate(reply(text, 77))).toBe(true);
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.replies.at(-1)).toContain("nonce");
+    expect(b.replies.at(-1)).not.toContain("held");
+  }
+});
+
 test("button: when the prompt cannot be sent nothing is remembered", async () => {
   const b = buttons({ promptId: null });
   b.tap(tapOf("afk:approve:abcdefgh"));
   await settle();
-  expect(b.gate(reply("123456", 77))).toBe(false);
+  expect(b.gate(reply("123456", 77))).toBe(true);
+  expect(b.replies.at(-1)).toContain("held");
   expect(b.calls).toEqual([]);
 });
 
