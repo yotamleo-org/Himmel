@@ -17,6 +17,9 @@
 #   DERIVE-MISMATCH   Jira differs from derive(now); names the D rule and direction
 #   MERGE-MISMATCH    a contract-yes merge row, but the ticket is not Done
 #   DONE-WITH-OPEN-PR Done, but a PR whose title's first [KEY] is the key is open
+#   MERGED-NO-ROW    a PR merged in the last 14 days with no merge row of its own (compared by PR number),
+#                     its first [KEY] still open (not Done, not an Epic); the fix is to close the ticket
+#                     or record the remainder
 #   MISSED            a miss with no later moved or noop row for the same key and PR,
 #                     unless a derive now settles the key (Done or off the ladder, or
 #                     Jira already at the derived status)
@@ -318,6 +321,80 @@ while IFS= read -r key; do
         fi
     fi
 done <<<"$keys"
+
+# --- merged PRs with no merge row ------------------------------------
+# A PR merged by hand, or by any route that writes no merge row, leaves its ticket reading
+# unfinished with no word of the merge. The PRs merged in the last 14 days are read in two 7-day
+# slices (a GitHub list returns at most MNR_LIMIT PRs, and one 14-day read filled it) and compared by
+# PR number with the merge rows of the log, which are read once; a row that carries no PR number
+# covers every PR of its key. A slice that reaches MNR_LIMIT is one HEALTH row: its older merges are
+# not checked. One row per open ticket (not Done, not an Epic), naming its newest PR with no merge row.
+# Cost per run: two gh lists (about 4 s per 700 PRs), one pass over the log, and one Jira get per
+# distinct key with an unrecorded PR, newest first, until the read budget is spent: MNR_BUDGET seconds
+# (default 40) or the time left in the pass less 25 s for the classes after this one, whichever is
+# less. A Done ticket costs a read, so once the budget is spent open tickets may be among the PRs left
+# unread; they are one HEALTH row naming the first keys. A cut-off pass loses every row.
+MNR_LIMIT="${TICKET_STATUS_DRIFT_MNR_LIMIT:-1000}"
+case "$MNR_LIMIT" in ''|*[!0-9]*) MNR_LIMIT=1000 ;; esac
+mday() { date -u -d "$1 days ago" +%Y-%m-%d 2>/dev/null || date -u -v-"$1"d +%Y-%m-%d 2>/dev/null; } # swallow-ok: no date is the unreadable case the merged list check turns into a HEALTH row
+mlist() { bounded 20 gh pr list --state merged --search "$1" --limit "$MNR_LIMIT" --json number,title 2>/dev/null; }
+md14=$(mday 14) md8=$(mday 8) md7=$(mday 7) # swallow-ok: an empty date is an unreadable list below
+mprs=""
+if [ -n "$md14" ] && [ -n "$md8" ] && [ -n "$md7" ] && m1=$(mlist "merged:$md14..$md8") && m2=$(mlist "merged:>=$md7"); then
+    n1=$(jq 'length' <<<"$m1" 2>/dev/null) n2=$(jq 'length' <<<"$m2" 2>/dev/null) # swallow-ok: a non-numeric count is the unreadable case below
+    mprs=$(jq -s 'add | sort_by(.number) | reverse' <<<"$m1"$'\n'"$m2" 2>/dev/null) # swallow-ok: an unparsable list is the unreadable case below
+    case "$n1$n2" in *[!0-9]*) mprs="" ;; esac
+    if [ -n "$mprs" ] && { [ "$n1" -ge "$MNR_LIMIT" ] || [ "$n2" -ge "$MNR_LIMIT" ]; }; then
+        add HEALTH - "merged-no-row: a 7-day merged-PR slice reached the $MNR_LIMIT-PR limit, so its older merges are not checked" gh "narrow the slice or raise TICKET_STATUS_DRIFT_MNR_LIMIT"
+    fi
+fi
+nmp=$(jq 'length' <<<"$mprs" 2>/dev/null) # swallow-ok: a non-numeric count is the unreadable case the next line turns into a HEALTH row
+mrows=""
+mlog=ok
+if [ -e "$LOG" ] && [ ! -r "$LOG" ]; then
+    mlog=unreadable
+elif [ -r "$LOG" ]; then
+    # swallow-ok: an unreadable log becomes a HEALTH row below, never a row for every merged PR
+    mr=$(ts_merge_rows "$LOG" 2>/dev/null) && mrows=$(jq -R -r 'fromjson? | select(.event == "merge" and has("contract")) | "\(.key)\t\(.pr // "")"' <<<"$mr" 2>/dev/null) || mlog=unreadable
+fi
+MNR_BUDGET="${TICKET_STATUS_DRIFT_MNR_BUDGET:-40}"
+case "$MNR_BUDGET" in ''|*[!0-9]*) MNR_BUDGET=40 ;; esac
+case "$nmp" in
+    ''|*[!0-9]*) add HEALTH - "gh: the merged-PR list is unreadable" gh "gh auth status; then rerun this check" ;;
+    *)
+        if [ "$mlog" != ok ]; then
+            add HEALTH - "log: the merge rows are unreadable" - "check $LOG"
+            nmp=0
+        fi
+        mseen=""
+        mstart=$SECONDS
+        mlimit=$MNR_BUDGET
+        mrest=$((BUDGET - SECONDS - 25))
+        [ "$mrest" -ge "$mlimit" ] || mlimit=$mrest
+        mskipped=0
+        mskeys=""
+        mnskeys=0
+        while IFS=$'\t' read -r n title; do
+            [ -n "$n" ] || continue
+            k=$(ticket_key_from_title "$title") || continue
+            case " $mseen " in *" $k "*) continue ;; esac
+            case $'\n'"$mrows"$'\n' in *$'\n'"$k"$'\t'"$n"$'\n'*|*$'\n'"$k"$'\t\n'*) continue ;; esac
+            if [ $((SECONDS - mstart)) -ge "$mlimit" ]; then
+                mskipped=$((mskipped + 1))
+                case " $mskeys " in *" $k "*) ;; *) if [ "$mnskeys" -lt 10 ]; then mskeys="$mskeys $k"; mnskeys=$((mnskeys + 1)); fi ;; esac
+                continue
+            fi
+            mseen="$mseen $k"
+            if ts_read_jira "$k"; then
+                [ "$TS_J_TYPE" != Epic ] && [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || continue
+                add MERGED-NO-ROW "$k" "PR #$n merged with no merge row and the ticket is $TS_J_STATUS: close the ticket or record the remainder" "merge-on-green.sh" "jira transition $k Done (work finished), or record the remainder as a partial"
+            else
+                add HEALTH "$k" "status unknown (stage=get)" jira "$SWEEP_FIX"
+            fi
+        done <<<"$([ "$nmp" -gt 0 ] && jq -r '.[] | [.number, .title] | @tsv' <<<"$mprs")"
+        [ "$mskipped" -eq 0 ] || add HEALTH - "merged-no-row: $mskipped merged PRs not checked, the ${mlimit}s read budget was spent; open tickets may be among them, first keys:$mskeys" - "check the listed tickets with jira get; the newest unrecorded PRs are read first"
+        ;;
+esac
 
 # --- version drift -----------------------------------------------------------------
 # A Done or worked ticket held only in a later unreleased version than the current one (the earliest
