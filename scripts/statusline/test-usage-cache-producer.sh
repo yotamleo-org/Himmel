@@ -664,7 +664,8 @@ run_test "(11d) HIMMEL-8827 control: stdin windows out of range or one-sided kee
     "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":-1}}" \
     "{\"five_hour\":{\"utilization\":\"10\"},\"seven_day\":{\"utilization\":43}}" \
     "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":\"43\"}}" \
-    "{\"five_hour\":null,\"seven_day\":{\"utilization\":\"43\"}}"; do
+    "{\"five_hour\":null,\"seven_day\":{\"utilization\":\"43\"}}" \
+    "{\"five_hour\":{\"used_percentage\":false},\"seven_day\":{\"utilization\":43}}"; do
     printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
     printf "%s" "{\"rate_limits\":$rl}" | bash "$PRODUCER" || exit 1;
     jq -e ".derived_at != null" "$CLAUDE_USAGE_CACHE" >/dev/null || { echo "no cache written for: $rl" >&2; exit 1; };
@@ -691,6 +692,36 @@ run_test "(11e) HIMMEL-8827: a fetch with an empty five_hour and numeric seven_d
         CADENCE_USAGE_WORKER=test8827 FLEET_PS_CMD="$noflt" bash "$STATUSLINE_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n1);
     [ "$v" = "$2" ] || { echo "seven_day $1: verdict $v, wanted $2" >&2; exit 1; };
   done;
+  export USAGE_CACHE_TTL=0; unset USAGE_OAUTH_CMD;
+  . "$STATUSLINE_DIR/../lib/usage-cache-identity.sh"; want=$(current_account_hash); [ -n "$want" ] || exit 1;
+  for c in "10 100 10 \"100\"" "100 10 \"100\" 10"; do
+    set -- $c;
+    printf "%s" "{\"five_hour\":{\"utilization\":$1},\"seven_day\":{\"utilization\":$2},\"account\":\"$want\",\"primaries_refreshed_at\":$(date +%s)}" > "$CLAUDE_USAGE_CACHE";
+    printf "%s" "{\"rate_limits\":{\"five_hour\":{\"utilization\":$3},\"seven_day\":{\"utilization\":$4}}}" | bash "$PRODUCER" || exit 1;
+    v=$(CADENCE_USAGE_CACHE="$CLAUDE_USAGE_CACHE" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/ledger.jsonl" \
+        CADENCE_USAGE_WORKER=test8827 FLEET_PS_CMD="$noflt" bash "$STATUSLINE_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n1);
+    [ "$v" = "SKIPPED-BANK" ] || { echo "stdin five_hour $3 seven_day $4 over a fresh stamp ($1/$2): verdict $v, wanted SKIPPED-BANK" >&2; exit 1; };
+  done;
+'
+
+run_test "(11g) HIMMEL-8827: the real stdin shape, used_percentage, stamps fresh and mirrors the numbers" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-11g.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  unset USAGE_OAUTH_CMD; export USAGE_CACHE_TTL=0;
+  for c in \
+    "{\"five_hour\":{\"used_percentage\":42,\"resets_at\":1783339200},\"seven_day\":{\"used_percentage\":68,\"resets_at\":1783900800}}|42|68" \
+    "{\"five_hour\":{\"used_percentage\":95},\"seven_day\":{\"utilization\":43}}|95|43" \
+    "{\"five_hour\":null,\"seven_day\":{\"used_percentage\":43}}|null|43"; do
+    rl=${c%%|*}; rest=${c#*|}; fh=${rest%%|*}; sd=${rest#*|};
+    printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+    printf "%s" "{\"rate_limits\":$rl}" | bash "$PRODUCER" || exit 1;
+    [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" -gt 1234567890 ] || { echo "no fresh stamp for: $rl" >&2; exit 1; };
+    [ "$(jq -r ".seven_day.utilization" "$CLAUDE_USAGE_CACHE")" = "$sd" ] || { echo "seven_day not mirrored for: $rl" >&2; exit 1; };
+    [ "$(jq -r ".five_hour.utilization // \"null\"" "$CLAUDE_USAGE_CACHE")" = "$fh" ] || { echo "five_hour not mirrored for: $rl" >&2; exit 1; };
+  done;
+  printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+  printf "%s" "{\"rate_limits\":{\"five_hour\":{\"used_percentage\":42,\"resets_at\":1783339200},\"seven_day\":{\"used_percentage\":68,\"resets_at\":1783900800}}}" | bash "$PRODUCER" || exit 1;
+  jq -e ".five_hour.resets_at != null and .seven_day.resets_at != null" "$CLAUDE_USAGE_CACHE" >/dev/null || exit 1;
 '
 
 run_test "(11f) HIMMEL-8827: fully spent or fully free windows stamp fresh on both branches (0 and 100 are valid)" '

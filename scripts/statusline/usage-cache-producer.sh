@@ -255,9 +255,10 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
     (($shn != null and ($shn | okpct)) and $fhGood) as $stamp |
     {
       five_hour: (if $fh == "" then (if $stamp then {} else ($carry.five_hour // {}) end)
+                  elif $fhn == null then ($carry.five_hour // {})
                   else { utilization: $fhn,
                          resets_at: (if $fhr == "" then null else $fhr end) } end),
-      seven_day: (if $sh == "" then ($carry.seven_day // {})
+      seven_day: (if ($sh == "" or $shn == null) then ($carry.seven_day // {})
                   else { utilization: $shn,
                          resets_at: (if $shr == "" then null else $shr end) } end),
       extra_usage: ($carry.extra_usage // {}),
