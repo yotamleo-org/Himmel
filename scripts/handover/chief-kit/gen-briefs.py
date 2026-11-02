@@ -932,6 +932,7 @@ def render_rm_brief(l, ctx):
 
 
 REMAINING_RE = re.compile(r'^[ \t]*remaining:[ \t]*(.*\S)', re.I | re.M)
+HEADING_RE = re.compile(r'^(#{1,6})[ \t]+\S')
 COVERAGE_HEAD_RE = re.compile(r'^#{2}[ \t]+ticket coverage[ \t]*$', re.I)
 DEFERRED_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[ \t]*(.*)$', re.I)
 TICKET_KEY_RE = re.compile(r'\b[A-Za-z][A-Za-z0-9]*-\d+\b')
@@ -952,8 +953,13 @@ def pr_remainder(body, own_keys=()):
     in_coverage = False
     for raw in body.splitlines():
         line = raw.strip()
-        if line.startswith('#'):
-            in_coverage = bool(COVERAGE_HEAD_RE.match(line))
+        heading = HEADING_RE.match(line)
+        if heading:
+            # the coverage section runs to the next heading of level two or higher; a `###` inside it stays in scope
+            if COVERAGE_HEAD_RE.match(line):
+                in_coverage = True
+            elif len(heading.group(1)) <= 2:
+                in_coverage = False
             continue
         if not in_coverage:
             continue
@@ -967,7 +973,7 @@ def pr_remainder(body, own_keys=()):
         handed.extend(k for k in keys if k not in handed)
     if not remaining and not deferred:
         return ('none', [], '')
-    text = '; '.join(p for p in (' '.join(remaining), '; '.join(deferred)) if p)
+    text = re.sub(r'[\t\r\n]+', ' ', '; '.join(p for p in (' '.join(remaining), '; '.join(deferred)) if p))  # the answer line is tab-separated
     if not remaining and whole:
         return ('handed-off', handed, text)
     return ('remaining', [], text)

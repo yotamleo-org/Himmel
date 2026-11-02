@@ -1876,7 +1876,11 @@ printf '## Ticket coverage\n- slice one: done\n- slice two: done\n' > "$PR_BODY_
 printf '## Ticket coverage\n- rest: deferred → HIMMEL-9, HIMMEL-10\n\n## Notes\n- not a coverage line: deferred → HIMMEL-77\n' > "$PR_BODY_DIR/5105"
 printf '## Ticket coverage\n- rest: deferred → HIMMEL-9\n' > "$PR_BODY_DIR/5106"
 printf 'Remaining: the half no one took\n' > "$PR_BODY_DIR/5107"
+printf '## Ticket coverage\n- slice one: done\n\n### Handed on\n- rest: deferred → HIMMEL-9\n' > "$PR_BODY_DIR/5108"
+printf 'Remaining: the reader\tand the writer\n' > "$PR_BODY_DIR/5109"
 M_SAVE="$M"; M="$MPMC"
+mk HIMMEL-126 "In Progress" Medium '[]' '[]' '[]' "a deferred line under a level-three heading inside the coverage" "Edit scripts/lib/pc7.sh."
+mk HIMMEL-127 "In Progress" Medium '[]' '[]' '[]' "a Remaining line holding a tab" "Edit scripts/lib/pc8.sh."
 mk HIMMEL-120 "In Progress" Medium '[]' '[]' '[]' "coverage hands the whole remainder to HIMMEL-9" "Edit scripts/lib/pc1.sh."
 mk HIMMEL-121 "In Progress" Medium '[]' '[]' '[]' "coverage defers to the ticket itself" "Edit scripts/lib/pc2.sh."
 mk HIMMEL-122 "In Progress" Medium '[]' '[]' '[]' "a Remaining line beside a deferred line" "Edit scripts/lib/pc3.sh."
@@ -1892,6 +1896,8 @@ cat > "$PMC_STATE/status-events.jsonl" <<'EOF'
 {"ts":"t","event":"merge","key":"HIMMEL-124","pr":"5105","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-125","pr":"5106","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-125","pr":"5107","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-126","pr":"5108","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-127","pr":"5109","contract":"no","result":"noop"}
 EOF
 pmc="$(NEXT_DISPATCH_MIRROR="$MPMC" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --workers-dir "$PMC_STATE/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
 has "a coverage-only partial PR handing its remainder to another ticket is HANDED-OFF" "$pmc" "HANDED-OFF HIMMEL-120: remainder on HIMMEL-9"
@@ -1910,6 +1916,8 @@ lacks "a deferred line outside ## Ticket coverage is not read" "$pmc" "HIMMEL-77
 has "a ticket with one handed-off and one remaining partial PR is a RESUME row" "$pmc" "RESUME	HIMMEL-125"
 has "and its RESUME row carries both PRs" "$(printf '%s\n' "$pmc" | grep 'HIMMEL-125	')" "partial=PR #5107 merged, Remaining: the half no one took"
 lacks "a ticket with a remaining partial PR is not HANDED-OFF" "$pmc" "HANDED-OFF HIMMEL-125"
+has "a deferred line under a ### heading inside the coverage section is still read" "$pmc" "HANDED-OFF HIMMEL-126: remainder on HIMMEL-9"
+has "a tab inside a Remaining: line does not break the reader's answer line" "$(printf '%s\n' "$pmc" | grep 'HIMMEL-127	')" "partial=PR #5109 merged, Remaining: the reader and the writer"
 
 # The LATEST contract-bearing merge row of a key decides: a contract=yes row followed by a newer contract=no merge is a
 # partial again (RESUME), a contract=no row followed by a contract=yes row is done-pending.
