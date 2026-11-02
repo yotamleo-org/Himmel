@@ -422,6 +422,50 @@ contains "repo identity: read from the primary shows the worktree's row" "$OUT" 
 run hp claim --key HIMMEL-9192 --label lab --doc "$DB" --repo "$R" scripts/w1.sh
 same "repo identity: the primary sees the same claim" "$RC" 1
 
+# ---- an absolute path inside a linked worktree is the same row as its repo-relative spelling
+run hp claim --key HIMMEL-9210 --label lab --doc "$(mkdoc HIMMEL-9210-case.md)" --repo "$W/wt" "$W/wt/scripts/a1.sh"
+same "abs path in a worktree: the claim exits 0" "$RC" 0
+same "abs path in a worktree: the row sits under the repo-relative name" "$([ -e "$(rowf scripts/a1.sh)" ] && echo row || echo none)" row
+run hp claim --key HIMMEL-9211 --label lab --doc "$DB" --repo "$R" scripts/a1.sh
+same "abs path in a worktree: the repo-relative claim by another key is refused" "$RC" 1
+
+# ---- an absolute bucket path outside the repo: seeded, held against a rival, and released with the launch
+ABSF="$W/h/u/r/specs/abs-case.md"
+DAB1="$(mkdoc HIMMEL-9212-case.md "> **Writes:** $ABSF")"
+DAB2="$(mkdoc HIMMEL-9213-case.md "> **Writes:** $ABSF")"
+run hp seed --key HIMMEL-9212 --label lab --doc "$DAB1" --repo "$R"
+same "abs bucket path: the first seed passes" "$RC" 0
+run hp seed --key HIMMEL-9213 --label lab --doc "$DAB2" --repo "$R"
+same "abs bucket path: a rival seed is refused" "$RC" 1
+run hp release --key HIMMEL-9212 --repo "$R" --doc "$DAB1"
+run hp seed --key HIMMEL-9213 --label lab --doc "$DAB2" --repo "$R"
+same "abs bucket path: release frees the row, so the rival seed passes" "$RC" 0
+
+# ---- a key that is not a ticket key is a usage error and makes no row
+run hp claim --key not-a-key --label lab --doc "$DB" --repo "$R" scripts/k1.sh
+same "bad key: claim exits 2" "$RC" 2
+same "bad key: claim makes no row" "$([ -e "$(rowf scripts/k1.sh)" ] && echo row || echo none)" none
+run hp seed --key not-a-key --label lab --doc "$DAB1" --repo "$R"
+same "bad key: seed exits 2" "$RC" 2
+
+# ---- a real file whose name looks like a grant sibling is never held (it would read as a grant)
+run hp claim --key HIMMEL-9214 --label lab --doc "$DB" --repo "$R" scripts/x6.sh.grant.HIMMEL-42
+same "grant-looking name: the claim passes" "$RC" 0
+same "grant-looking name: no row is made" "$([ -e "$(rowf scripts/x6.sh.grant.HIMMEL-42)" ] && echo row || echo none)" none
+
+# ---- an unreadable part of the bucket is a fault (unknown), never read as "no successor doc"
+if [ "$(id -u)" != 0 ]; then
+    put_row scripts/f9.sh HIMMEL-9220 alpha "$(mkdoc HIMMEL-9220-case.md)"
+    mkdir -p "$HANDOVER_DIR/u/r/locked9"
+    chmod 000 "$HANDOVER_DIR/u/r/locked9"
+    before="$(ev_count)"
+    run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/f9.sh
+    chmod 755 "$HANDOVER_DIR/u/r/locked9"
+    same "unreadable bucket subdir: the claim passes" "$RC" 0
+    same "unreadable bucket subdir: the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/f9.sh)")" HIMMEL-9220
+    same "unreadable bucket subdir: one events.log line" "$(( $(ev_count) - before ))" 1
+fi
+
 # ---- the real register was never touched
 same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"
 

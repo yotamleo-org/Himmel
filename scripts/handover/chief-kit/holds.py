@@ -176,6 +176,8 @@ def fault(reason, path='', key=''):
     log_event('fault', path, key, reason)
 
 
+ALT_ROOTS = set()  # linked-worktree roots named by --repo, longest matched first by normalize()
+
 # the variables that redirect git to another repository; a hook or a wrapper may have exported any of them
 GIT_SCRUB = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
              'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_PREFIX', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE',
@@ -191,7 +193,10 @@ def primary_of(repo):
                            capture_output=True, text=True, timeout=10, env=env)
         d = r.stdout.strip()
         if r.returncode == 0 and d:
-            return d[:-len('/.git')] if d.endswith('/.git') else d
+            primary = d[:-len('/.git')] if d.endswith('/.git') else d
+            # the checkout the caller named, when it is a linked worktree: an absolute path under it is a path of the primary
+            ALT_ROOTS.update(x for x in (repo, os.path.realpath(repo)) if x != primary)
+            return primary
     except (OSError, subprocess.SubprocessError):
         pass  # swallow-ok: not a git repo or no git; the path as given is the identity
     return repo
@@ -218,9 +223,10 @@ def normalize(repo, p):
     if not p or p.endswith('/'):
         return None
     if os.path.isabs(p):
-        prefix = repo.rstrip('/') + '/'
-        if p.startswith(prefix):
-            return escape(repo), canon(os.path.normpath(p[len(prefix):]), repo)
+        for root in sorted(ALT_ROOTS, key=len, reverse=True) + [repo]:  # a worktree sits inside the primary: match it first
+            prefix = root.rstrip('/') + '/'
+            if p.startswith(prefix):
+                return escape(repo), canon(os.path.normpath(p[len(prefix):]), repo)
         return '_abs', os.path.normpath(p)
     return escape(repo), canon(os.path.normpath(p), repo)
 
@@ -297,6 +303,7 @@ class Judge:
     def __init__(self, repo):
         self.repo = repo
         self.ql_cache, self.pr_cache, self.scan_cache = {}, {}, {}
+        self.scan_faulted = set()
         self.root = None
 
     def lock_state(self, doc):
@@ -349,7 +356,12 @@ class Judge:
         rx = re.compile(r'(?<![A-Za-z0-9])' + re.escape(key) + r'(?!\d)')
         found = []
         base_depth = bucket.rstrip('/').count('/')
-        for dirpath, dirs, files in os.walk(bucket):
+
+        def walk_error(e):
+            if not isinstance(e, FileNotFoundError):
+                self.scan_faulted.add(ck)  # an unreadable subtree may hold a live successor doc: unknown, not dead
+
+        for dirpath, dirs, files in os.walk(bucket, onerror=walk_error):
             if dirpath.count('/') - base_depth >= 2:
                 dirs[:] = []
             else:
@@ -384,7 +396,9 @@ class Judge:
         faulted = False
         docs = []
         if doc:
-            docs = list(self.scan(self.bucket_of(doc), key))
+            bucket = self.bucket_of(doc)
+            docs = list(self.scan(bucket, key))
+            faulted = (bucket, key) in self.scan_faulted
             if os.path.isfile(doc) and doc not in docs:
                 docs.append(doc)
         r = self.resume_alive(docs)
@@ -422,6 +436,9 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
     name = escape(rel)
     if len(name.encode('utf-8')) > MAX_NAME:
         fault('path name over %d bytes' % MAX_NAME, rel, key)
+        return 'fault'
+    if GRANT_RE.search(name):
+        fault('path name looks like a grant sibling', rel, key)  # a row by that name would read as a grant
         return 'fault'
     d = slug_dir(repo, slug)
     try:
@@ -496,7 +513,16 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
     return 'fault'
 
 
+def bad_key(key):
+    if KEY_RE.match(key):
+        return False
+    sys.stderr.write('holds: %r is not a ticket key (PROJECT-123)\n' % key)
+    return True
+
+
 def op_claim(a):
+    if bad_key(a.key):
+        return 2
     repo = primary_of(a.repo)
     judge = Judge(repo)
     refused = []
@@ -510,6 +536,8 @@ def op_claim(a):
 
 
 def op_seed(a):
+    if bad_key(a.key):
+        return 2
     repo = primary_of(a.repo)
     try:
         text = open(a.doc, encoding='utf-8', errors='replace').read()
@@ -555,6 +583,8 @@ def op_grant(a):
     if worker_session():
         sys.stderr.write('holds: grant is refused for a worker session (HIMMEL_CONSOLE_LEG is set); only the chief grants\n')
         return 1
+    if bad_key(a.key):
+        return 2
     repo = primary_of(a.repo)
     p = a.path
     if (not p.strip() or p != p.strip() or BAD_CHAR_RE.search(p) or os.path.isabs(p) or p != os.path.normpath(p) or p == '.'
@@ -615,23 +645,23 @@ def op_on(a):
 
 def op_release(a):
     repo = primary_of(a.repo)
-    d = slug_dir(repo)
-    try:
-        names = os.listdir(d)
-    except FileNotFoundError:
-        return 0
-    except OSError as e:
-        sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
-        return 3
-    for n in names:
-        if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+    for d in (slug_dir(repo), slug_dir(repo, '_abs')):  # _abs holds the rows a seed made for bucket files
+        try:
+            names = os.listdir(d)
+        except FileNotFoundError:
             continue
-        st, f = read_row(os.path.join(d, n))
-        if st == 'ok' and f[0] == a.key and f[2] == a.doc and f[3] == 'brief':
-            try:
-                os.unlink(os.path.join(d, n))
-            except OSError:
-                pass  # swallow-ok: already removed
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
+            return 3
+        for n in names:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            st, f = read_row(os.path.join(d, n))
+            if st == 'ok' and f[0] == a.key and f[2] == a.doc and f[3] == 'brief':
+                try:
+                    os.unlink(os.path.join(d, n))
+                except OSError:
+                    pass  # swallow-ok: already removed
     return 0
 
 
