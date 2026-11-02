@@ -4,7 +4,7 @@ HIMMEL-6925 running eval): joins the persisted verdict records to PR state, main
 and appends one `judge-accuracy` row to the eval-runs ledger (scripts/eval/lib/eval_runs.py).
 
   judge_accuracy.py run   --verdicts DIR --prs FILE [--main-runs FILE] [--mirror DIR] [--queue FILE]
-                          [--until ISO] [--days N] [--ledger P | --no-ledger]
+                          [--until ISO] [--days N] [--ledger P | --no-ledger] [--class C [--bug-origin-dir DIR]]
   judge_accuracy.py queue [--queue FILE]
   judge_accuracy.py rule  <id> <S|P|N> --evidence TEXT [--by NAME] [--queue FILE]
 
@@ -31,6 +31,10 @@ escape_rate with a Wilson 95 % interval, and escape_excess = the interval's low 
 rate, above 0 only when the class is worse than the whole. A row is partial while a candidate in its
 window is unruled, so the feedback step (eval_feedback.py) never takes it as a baseline.
 
+--class C counts only the escapes whose fix PR has class C in the bug-origin ledger (C or a family: review-miss
+matches review-miss:cr); a class with no rows counts none, and a failed main run (no fix row) counts for no class.
+The ledger is --bug-origin-dir, else <HANDOVER_DIR>/<user>/<project bucket>/bug-origin; none to read is refused.
+
 QUEUE ROW (v 1, append-only): v, ts, kind "candidate" | "ruling", id, then
   candidate  pr, signal "bug" | "red-main" | "nogo", ref, question
   ruling     ruling "S" | "P" | "N", by, evidence
@@ -45,6 +49,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -154,6 +159,108 @@ def load_bugs(mirror):
                      "caused_by": cb.group(1).lower() if cb else None,
                      "cites": {int(n) for n in CITE.findall(body)}})
     return bugs
+
+
+# The bug-origin ledger: one markdown file per fix PR, <handover root>/<user>/<project bucket>/bug-origin/<pr>.md,
+# front matter of one JSON value per key and one plain body line a search can find. It is written by
+# bug-origin-report.py; the readers are here because escapes.py and that report already import this module.
+LEDGER_SUBDIR = "bug-origin"
+LEDGER_ROW = re.compile(r"[0-9]+\.md\Z")
+
+
+def primary_checkout(repo="."):
+    """The primary checkout of the repo (the git common dir minus /.git, so a worktree resolves to its main tree)."""
+    r = subprocess.run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       capture_output=True, text=True)
+    common = r.stdout.strip() if r.returncode == 0 else ""
+    return os.path.dirname(common) if os.path.basename(common) == ".git" else os.path.abspath(repo)
+
+
+def ledger_dir(repo=".", env=None):
+    """The ledger directory of the project that owns `repo`, or None when no handover root is configured.
+
+    Root: HANDOVER_DIR. User and bucket: the handover registry entry whose path is the repo's primary checkout
+    (its user and bucket_name), else USER_SLUG and the checkout's own name, so no project name is hard-coded."""
+    env = os.environ if env is None else env
+    root = env.get("HANDOVER_DIR")
+    if not root or not os.path.isdir(root):
+        return None
+    top = primary_checkout(repo)
+    user = env.get("USER_SLUG") or env.get("USER") or "unknown"
+    bucket = None
+    try:
+        with open(env.get("HANDOVER_REGISTRY") or os.path.expanduser("~/.claude/handover/registry.json"), encoding="utf-8") as fh:
+            repos = json.load(fh).get("repos") or {}
+    except (OSError, ValueError, AttributeError):
+        repos = {}
+    for name, entry in repos.items():
+        if isinstance(entry, dict) and entry.get("path") and os.path.realpath(entry["path"]) == os.path.realpath(top):
+            user, bucket = entry.get("user") or user, entry.get("bucket_name") or name
+            break
+    bucket = bucket or re.sub(r"[^a-z0-9._-]+", "-", os.path.basename(top).lower()).strip("-")
+    return os.path.join(root, user, bucket, LEDGER_SUBDIR)
+
+
+def parse_row(text):
+    """A ledger row's front matter as a dict, or None when the file is not a row."""
+    lines = text.split("\n")
+    if lines[0] != "---":
+        return None
+    row = {}
+    for ln in lines[1:]:
+        if ln == "---":
+            break
+        key, sep, val = ln.partition(": ")
+        if not sep:
+            return None
+        try:
+            row[key] = json.loads(val)
+        except ValueError:
+            return None
+    else:
+        return None
+    if type(row.get("pr")) is not int or not all(isinstance(row.get(k), str) for k in ("origin", "class", "reason")):
+        return None
+    return row
+
+
+def load_ledger(path):
+    """{fix PR: row} of a ledger directory; a missing directory is an empty ledger, a file that is no row is skipped."""
+    rows = {}
+    if not path or not os.path.isdir(path):
+        return rows
+    for f in sorted(os.listdir(path)):
+        if not LEDGER_ROW.match(f):
+            continue
+        try:
+            with open(os.path.join(path, f), encoding="utf-8") as fh:
+                row = parse_row(fh.read())
+        except OSError:
+            continue
+        if row:
+            rows[row["pr"]] = row
+    return rows
+
+
+def ledger_classes(rows):
+    """{"pr": {fix PR: class}, "key": {bug key: class}} of ledger rows."""
+    return {"pr": {n: r["class"] for n, r in rows.items()},
+            "key": {r["bug_key"]: r["class"] for r in rows.values() if isinstance(r.get("bug_key"), str)}}
+
+
+def class_match(want, have):
+    """True when a row's class `have` is `want` or lies under it (review-miss matches review-miss:cr)."""
+    return bool(have) and (have == want or have.startswith(want + ":"))
+
+
+def class_filter(cls, directory):
+    """None for no filter; else the ledger's classes. A filter with no ledger to read is refused, never read as all."""
+    if cls is None:
+        return None
+    path = directory or ledger_dir()
+    if not path or not os.path.isdir(path):
+        raise ValueError("--class needs the bug-origin ledger: set HANDOVER_DIR or pass --bug-origin-dir (none at %s)" % path)
+    return ledger_classes(load_ledger(path))
 
 
 def read_queue(path):
@@ -345,6 +452,11 @@ def cmd_run(a):
     prs = {p["number"]: p for p in pr_rows}
     runs = load_json(a.main_runs, "main-run snapshot")
     bugs = load_bugs(a.mirror)
+    classes = class_filter(a.cls, a.bug_origin_dir)
+    if classes is not None:
+        # a bug counts when its fix row has the class; a failed main run has no fix row, so no class
+        bugs = [b for b in bugs if class_match(a.cls, classes["key"].get(b["key"]))]
+        runs = []
     qpath = queue_path(a.queue)
     os.makedirs(os.path.dirname(os.path.abspath(qpath)), exist_ok=True)
     with open(qpath + ".lock", "a") as lock:
@@ -418,6 +530,8 @@ def main(argv=None):
     r.add_argument("--days", type=int, default=DAYS)
     r.add_argument("--ledger")
     r.add_argument("--no-ledger", action="store_true")
+    r.add_argument("--class", dest="cls")
+    r.add_argument("--bug-origin-dir")
     q = sub.add_parser("queue")
     q.add_argument("--queue")
     u = sub.add_parser("rule")

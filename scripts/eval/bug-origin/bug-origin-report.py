@@ -5,10 +5,22 @@ A bug fix's PR body carries one line, the record of how the bug got in:
 
   bug-origin: <#pr|sha|unknown> <class> — <reason>
 
-  class: test-gap, design-gap, review-miss:cr, review-miss:judge, review-miss:panel, unknown
+  class: test-gap, design-gap, review-deferred, unknown, review-miss:<layers> (cr, judge, panel, comma-separated),
+         residual:<token>, trigger:<token>, commit:<hex sha>
 
-The class is the fixer's reading and the report never re-classifies it. For each review-miss row it shows what
-each review layer has on record for the introducing PR:
+The class is the fixer's reading and the report never re-classifies it. The report counts review-miss:cr, :judge
+and :panel, review-miss:multi (two or three layers), review-deferred, residual, trigger, commit and unknown.
+
+The ledger (HIMMEL-8868): `ingest` writes one markdown file per fix PR whose body (else the seed) carries the line, at
+<HANDOVER_DIR>/<user>/<project bucket>/bug-origin/<pr>.md (the user and bucket from the handover registry entry of this
+checkout, else USER_SLUG and the checkout's name; --ledger-dir overrides). The row is front matter plus one plain line
+a search finds; it is the source of truth and needs no tracker. `report` reads a PR's ledger row first, then its body,
+then the seed. `sync` comments each unsynced row's line on its Bug ticket once, when JIRA_PROJECT_KEY is set and a
+Jira CLI exists; otherwise it prints `jira sync skipped: not configured` and exits 0, and a Jira error warns and leaves
+the row for the next run. Rows land only when `ingest` runs. `report --class C` keeps the rows of class C (or a family:
+review-miss matches review-miss:cr); a class with no rows reports none.
+
+For each review-miss row the report shows what each review layer has on record for the introducing PR:
 
   on record: <names>                a review row or a GO verdict from before the merge
   not read                          the source was not given or could not be read, which is no evidence
@@ -16,6 +28,11 @@ each review layer has on record for the introducing PR:
   not on record                     the source was read and shows no review (CodeRabbit leaves no row on a clean pass)
 
   report --prs FILE [--seed FILE] [--cr-ledger FILE] [--verdicts DIR]... [--mirror DIR] [--days N] [--record] [--ledger FILE]
+         [--ledger-dir DIR] [--class C]
+
+  ingest --prs FILE [--seed FILE] [--ledger-dir DIR]
+
+  sync [--ledger-dir DIR] [--jira-cmd PATH]
 
   trace --base REF --head REF [--prs FILE] [--cr-ledger FILE] [--verdicts DIR]...
 
@@ -25,7 +42,7 @@ trace blames, at the merge base, the lines base..head changes and prints up to t
 when only an add-only hunk's neighbours point at it, and the evidence above. It leaves out tests, fixtures and data
 files unless nothing else changed, and defaults --cr-ledger to <git-common-dir>/cr-critic-scores.jsonl. Read the
 candidates and choose: blame points at the last hand on a line, which a rename or a sweep can hide.
-Without --record nothing is written. Exit 0 done; 1 a seed PR outside the snapshot; 2 refused input.
+report and trace write nothing without --record; ingest writes ledger rows and sync marks them. Exit 0 done; 1 a seed PR outside the snapshot; 2 refused input.
 Stdlib plus git only; no network, no model call.
 """
 import argparse
@@ -36,6 +53,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -49,15 +67,22 @@ import judge_accuracy  # noqa: E402
 
 EVAL_ID = "bug-origin"
 SOURCE = "scripts/eval/bug-origin/bug-origin-report.py"
-CLASSES = ("test-gap", "design-gap", "review-miss:cr", "review-miss:judge", "review-miss:panel", "unknown")
+# What the report counts: a many-layer review-miss counts under review-miss:multi, a payload class under its prefix.
+CLASSES = ("test-gap", "design-gap", "review-miss:cr", "review-miss:judge", "review-miss:panel", "review-miss:multi",
+           "review-deferred", "residual", "trigger", "commit", "unknown")
 LAYERS = ("cr", "panel", "judge")
 CLEAN_PASS = " (a clean pass leaves no row)"
 REPORT_FIELDS = ("number", "title", "body", "mergedAt", "headRefName", "headRefOid", "mergeCommit")
 
-# The ERE of ready-check.sh's bug_origin_state; line-table.tsv runs through both.
+# The ERE of ready-check.sh's bug_origin_state; line-table.tsv runs through both. Classes: test-gap, design-gap,
+# review-deferred, unknown, review-miss:<layers> (cr, judge, panel, comma-separated), residual:<token>, trigger:<token>
+# and commit:<hex sha>. The payload forms are the chief's reading of the operator's R3 list, which gives no payloads.
 # ponytail: one class per fix, upgrade path repeatable lines counted per class
-LINE = re.compile(r"^bug-origin:[ \t]+(?:(#[0-9]+|[0-9a-f]{7,40})[ \t]+(test-gap|design-gap|review-miss:(?:cr|judge|panel)|unknown)"
+LINE = re.compile(r"^bug-origin:[ \t]+(?:(#[0-9]+|[0-9a-f]{7,40})[ \t]+(test-gap|design-gap|review-deferred|unknown"
+                  r"|review-miss:(?:cr|judge|panel)(?:,(?:cr|judge|panel))*"
+                  r"|(?:residual|trigger):[A-Za-z0-9][A-Za-z0-9._/#-]*|commit:[0-9a-f]{7,40})"
                   r"|(unknown)[ \t]+(unknown))[ \t]+(?:—|-)[ \t]+([^ \t].*)$")
+JIRA_TIMEOUT = 60
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 KEY = re.compile(r"\[([A-Za-z][A-Za-z0-9]*-[0-9]+)\]")
 SUBJECT_PR = re.compile(r"\(#(\d+)\)\s*$")
@@ -92,6 +117,14 @@ def parse_body(body):
         return "duplicate", None
     g = parsed[0].groups()
     return "ok", {"origin": g[0] or g[2], "class": g[1] or g[3], "reason": g[4].rstrip()}
+
+
+def family(cls):
+    """The key the report counts a class under: review-miss with several layers is review-miss:multi, a payload class its prefix."""
+    if cls.startswith("review-miss:"):
+        return "review-miss:multi" if "," in cls else cls
+    head = cls.split(":", 1)[0]
+    return head if head in ("residual", "trigger", "commit") else cls
 
 
 def layer_of(critic):
@@ -209,10 +242,16 @@ def origin_pr(row, merged, repo="."):
     return n if n in merged else None
 
 
-def collect(merged, seed, days):
-    """(rows {pr: row}, unparsed [pr], outside [pr], window start or None)."""
+def collect(merged, seed, days, ledger=None):
+    """(rows {pr: row}, unparsed [pr], outside [pr], window start or None).
+
+    The ledger row is read first, then the PR body, then the seed."""
     rows, unparsed = {}, []
+    ledger = ledger or {}
     for n, p in merged.items():
+        if n in ledger:
+            rows[n] = {k: ledger[n][k] for k in ("origin", "class", "reason")}
+            continue
         state, got = parse_body(p.get("body"))
         if state == "ok":
             rows[n] = got
@@ -243,7 +282,7 @@ def report(merged, rows, unparsed, outside, start, s, bugs, has_seed):
         print("seed PR outside snapshot: " + ", ".join("#%d" % n for n in outside))
     print("\n## Counts")
     print("rows: %d" % len(rows))
-    count = collections.Counter(r["class"] for r in rows.values())
+    count = collections.Counter(family(r["class"]) for r in rows.values())
     for c in CLASSES:
         print("%s: %d" % (c, count[c]))
         m["class." + c] = count[c]
@@ -256,6 +295,7 @@ def report(merged, rows, unparsed, outside, start, s, bugs, has_seed):
         if not r["class"].startswith("review-miss:"):
             continue
         claimed = r["class"].split(":", 1)[1]
+        layers = claimed.split(",")
         o = origin_pr(r, merged)
         head = "fix #%d %s origin %s claimed %s" % (n, title_key(merged[n].get("title")) or "no-key", r["origin"], claimed)
         if o is None:
@@ -265,8 +305,9 @@ def report(merged, rows, unparsed, outside, start, s, bugs, has_seed):
         for layer in LAYERS:
             credit[layer] += e[layer].startswith("on record")
         line = head + ": " + "; ".join("%s=%s" % (layer, e[layer]) for layer in LAYERS)
-        if e[claimed].startswith("not on record"):
-            line += "; claimed layer " + e[claimed]
+        missed = [layer for layer in layers if e[layer].startswith("not on record")]
+        if missed:
+            line += "; claimed layer " + (e[missed[0]] if len(layers) == 1 else ", ".join("%s %s" % (layer, e[layer]) for layer in missed))
         lines.append(line)
     print("\n## Credit (a row seen by three layers counts in all three, so this may sum above the row count)")
     for layer in LAYERS:
@@ -321,6 +362,127 @@ def report(merged, rows, unparsed, outside, start, s, bugs, has_seed):
     return m
 
 
+def load_rows(path):
+    """({pr: row} of a ledger directory with the rows off the line grammar left out, how many were left out)."""
+    rows, off = {}, 0
+    for n, r in judge_accuracy.load_ledger(path).items():
+        got = {k: r[k] for k in ("origin", "class", "reason")}
+        state, parsed = parse_body("bug-origin: %(origin)s %(class)s — %(reason)s" % got)
+        if state == "ok" and parsed == got:
+            rows[n] = r
+        else:
+            off += 1
+    return rows, off
+
+
+def body_line(n, key, got):
+    """The one plain line of a ledger row, which a search finds whether or not the index reads front matter."""
+    return "PR #%d%s bug-origin: %s %s — %s" % (n, " (%s)" % key if key else "", got["origin"], got["class"], got["reason"])
+
+
+def row_text(n, key, got, source):
+    front = [("pr", n), ("bug_key", key), ("origin", got["origin"]), ("class", got["class"]), ("reason", got["reason"]),
+             ("source", source), ("ingested", stamp(datetime.datetime.now(datetime.timezone.utc))), ("synced", False)]
+    lines = ["---"] + ["%s: %s" % (k, json.dumps(v, ensure_ascii=False)) for k, v in front] + ["---", body_line(n, key, got)]
+    return "\n".join(lines) + "\n"
+
+
+def write_file(path, text):
+    """Write by a temp file in the same directory and rename, so a reader never sees half a row."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = "%s.tmp-%d" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
+
+def cmd_ingest(a):
+    """Write one ledger row per merged PR whose body (else the seed) carries a bug-origin line; a PR with a row is kept as it is.
+
+    ponytail: rows are write-once, so a body edited after its ingest is not re-read; upgrade path an --update flag."""
+    path = a.ledger_dir or judge_accuracy.ledger_dir()
+    if not path:
+        print("bug-origin-report: refused: no ledger directory: set HANDOVER_DIR or pass --ledger-dir", file=sys.stderr)
+        return 2
+    try:
+        merged = load_prs(a.prs, REPORT_FIELDS)
+        seed = load_seed(a.seed) if a.seed else {}
+    except ValueError as e:
+        print("bug-origin-report: refused: %s" % e, file=sys.stderr)
+        return 2
+    wrote = kept = 0
+    unparsed = []
+    for n in sorted(merged):
+        p = merged[n]
+        state, got = parse_body(p.get("body"))
+        source = "body"
+        if state != "ok":
+            if n not in seed:
+                if state != "none":
+                    unparsed.append(n)
+                continue
+            got, source = seed[n], "seed"
+        row = os.path.join(path, "%d.md" % n)
+        if os.path.exists(row):
+            kept += 1
+            continue
+        write_file(row, row_text(n, title_key(p.get("title")), got, source))
+        wrote += 1
+    print("ingest: wrote %d, kept %d" % (wrote, kept))
+    for n in unparsed:
+        print("unparsed: #%d" % n)
+    outside = sorted(n for n in seed if n not in merged)
+    if outside:
+        print("seed PR outside snapshot: " + ", ".join("#%d" % n for n in outside))
+    return 1 if outside else 0
+
+
+def jira_command(explicit):
+    """The Jira CLI argv, or None when there is none to run."""
+    if explicit:
+        return [explicit] if os.access(explicit, os.X_OK) else None
+    index = os.path.join(judge_accuracy.primary_checkout(), "scripts", "jira", "dist", "index.js")
+    return ["node", index] if os.path.isfile(index) else None
+
+
+def cmd_sync(a):
+    """Comment each unsynced row's line on its Bug ticket, once. No Jira configured is a skip; a Jira error warns, leaves the row unsynced and the next run retries it."""
+    path = a.ledger_dir or judge_accuracy.ledger_dir()
+    if not path:
+        print("bug-origin-report: refused: no ledger directory: set HANDOVER_DIR or pass --ledger-dir", file=sys.stderr)
+        return 2
+    cmd = jira_command(a.jira_cmd)
+    if not os.environ.get("JIRA_PROJECT_KEY") or cmd is None:
+        print("jira sync skipped: not configured")
+        return 0
+    updated = failed = 0
+    for n, row in sorted(judge_accuracy.load_ledger(path).items()):
+        key = row.get("bug_key")
+        if not isinstance(key, str) or row.get("synced") is True:
+            continue
+        fd, comment = tempfile.mkstemp(suffix=".md")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(body_line(n, key, row) + "\n")
+            ok = subprocess.run(cmd + ["comment", key, "--comment-file", comment], capture_output=True,
+                                timeout=JIRA_TIMEOUT).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            ok = False
+        finally:
+            os.unlink(comment)
+        if not ok:
+            failed += 1
+            print("warn: jira comment on %s failed; the row stays unsynced" % key, file=sys.stderr)
+            continue
+        file = os.path.join(path, "%d.md" % n)
+        with open(file, encoding="utf-8") as fh:
+            text = fh.read()
+        write_file(file, text.replace("\nsynced: false\n", "\nsynced: true\n", 1))
+        updated += 1
+    print("jira sync: %d updated%s" % (updated, ", %d failed, retried on the next run" % failed if failed else ""))
+    return 0
+
+
 def cmd_report(a):
     try:
         merged = load_prs(a.prs, REPORT_FIELDS)
@@ -332,7 +494,14 @@ def cmd_report(a):
         bugs = judge_accuracy.load_bugs(a.mirror) if a.mirror else None
     except (OSError, ValueError):
         bugs = None
-    rows, unparsed, outside, start = collect(merged, seed, a.days)
+    ledger, off = load_rows(a.ledger_dir or judge_accuracy.ledger_dir())
+    rows, unparsed, outside, start = collect(merged, seed, a.days, ledger)
+    if off:
+        print("ledger rows off the grammar: %d" % off)
+    if a.cls is not None:
+        print("class filter: " + a.cls)
+        rows = {n: r for n, r in rows.items() if judge_accuracy.class_match(a.cls, r["class"])}
+        unparsed = []
     s = load_sources(a.cr_ledger, a.verdicts or [])
     m = report(merged, rows, unparsed, outside, start, s, bugs, bool(a.seed))
     if a.record:
@@ -459,7 +628,18 @@ def main(argv=None):
     r.add_argument("--days", type=int)
     r.add_argument("--record", action="store_true")
     r.add_argument("--ledger")
+    r.add_argument("--ledger-dir")
+    r.add_argument("--class", dest="cls")
     r.set_defaults(func=cmd_report)
+    i = sub.add_parser("ingest")
+    i.add_argument("--prs", required=True)
+    i.add_argument("--seed")
+    i.add_argument("--ledger-dir")
+    i.set_defaults(func=cmd_ingest)
+    y = sub.add_parser("sync")
+    y.add_argument("--ledger-dir")
+    y.add_argument("--jira-cmd")
+    y.set_defaults(func=cmd_sync)
     a = ap.parse_args(argv)
     return a.func(a)
 

@@ -12,6 +12,8 @@ trap 'rm -rf "$TMP"' EXIT
 # Never the live files, whatever a case forgets to pass.
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-runs.jsonl"
 export HIMMEL_JUDGE_ADJUDICATION="$TMP/never-queue.jsonl"
+# the bug-origin ledger resolves through these; neither exists, so no case reads the real bucket or registry
+export HANDOVER_DIR="$TMP/never-handover" HANDOVER_REGISTRY="$TMP/never-registry.json"
 
 PASS=0; FAIL=0
 pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
@@ -192,6 +194,18 @@ python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/str-number.json" --mirror "
 eq "a PR snapshot row without an integer number is refused" "$?" "2"
 python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/not-rows.json" --mirror "$TMP/mirror" --queue "$Q" --no-ledger >/dev/null 2>&1
 eq "a main-run snapshot row that is not an object is refused" "$?" "2"
+
+# --- a class filter on the escapes, by the bug's fix row in the bug-origin ledger ------------
+mkdir -p "$TMP/ledj"
+printf -- '---\npr: 9100\nbug_key: "HIMMEL-9001"\norigin: "#101"\nclass: "test-gap"\nreason: "x"\nsource: "body"\ningested: "2026-11-02T00:00:00Z"\nsynced: false\n---\nPR #9100 (HIMMEL-9001) bug-origin: #101 test-gap — x\n' > "$TMP/ledj/9100.md"
+jac() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
+  --queue "$TMP/q-class.jsonl" --until 2026-10-21T00:00:00Z --days 28 --no-ledger "$@" 2>&1 | grep '^judge-accuracy: escapes=' ; }
+eq "class filter: unfiltered, the caused-by bug is an escape" "$(jac)" "judge-accuracy: escapes=1"
+eq "class filter: the bug's class keeps it" "$(jac --bug-origin-dir "$TMP/ledj" --class test-gap)" "judge-accuracy: escapes=1"
+eq "class filter: a row of another class is excluded" "$(jac --bug-origin-dir "$TMP/ledj" --class design-gap)" "judge-accuracy: escapes=0"
+eq "negative control: a class with no rows returns none, not all" "$(jac --bug-origin-dir "$TMP/ledj" --class residual)" "judge-accuracy: escapes=0"
+python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --mirror "$TMP/mirror" --queue "$TMP/q-class.jsonl" --no-ledger --class test-gap >/dev/null 2>&1
+eq "a class filter with no ledger to read is refused" "$?" "2"
 
 # --- Jira's +0200 offset, which fromisoformat reads only from 3.11 on ----------------------------------
 eq "a +0200 stamp parses where fromisoformat reads only +HH:MM" "$(python3 -I -c '

@@ -9,6 +9,8 @@ REPORT="$HERE/bug-origin-report.py"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/bug-origin-test.XXXXXX")" || { echo "test-bug-origin-report: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-runs.jsonl"
+# the ledger resolves through these two; neither exists, so no test reads the real bucket or the real registry
+export HANDOVER_DIR="$TMP/never-handover" HANDOVER_REGISTRY="$TMP/never-registry.json"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 FIX="$TMP/fix"
 mkdir -p "$FIX/verdicts/q1" "$FIX/verdicts-early/q2" "$FIX/mirror"
@@ -483,6 +485,198 @@ cat "$TMP/seed.out"
 PASS=$((PASS + $(grep -c '^PASS ' "$TMP/seed.out")))
 FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/seed.out")))
 eq "seed validator: ran to its end" "$seed_rc" "0"
+
+# --- the Luna ledger, the further classes and the class filter. Every path below is under $TMP;
+# the real bucket, the real index, the real registry and Jira are never touched (the fake jira only logs).
+mkdir -p "$TMP/nojira-bin"
+printf '#!/bin/sh\necho called >> "%s/jira-called"\nexit 0\n' "$TMP" > "$TMP/nojira-bin/node"
+chmod +x "$TMP/nojira-bin/node"
+FAKEJIRA="$TMP/fakejira.sh"
+# shellcheck disable=SC2016  # the fake script expands its own variables
+printf '#!/bin/sh\necho "$1 $2" >> "$FAKE_JIRA_LOG"\ncat "$4" >> "$FAKE_JIRA_LOG"\n[ -z "${FAKE_JIRA_FAIL:-}" ] || exit 1\nexit 0\n' > "$FAKEJIRA"
+chmod +x "$FAKEJIRA"
+LED="$TMP/ledger-root"
+ing() { PATH="$TMP/nojira-bin:$PATH" python3 "$REPORT" ingest --prs "$FIX/prs.json" --ledger-dir "$@" 2>&1; }
+# the ledger's resolution: configured root, user and bucket from the registry, never a literal project name
+rm -f "$TMP/res.out"
+python3 -I - "$REPORT" "$TMP" > "$TMP/res.out" 2>&1 <<'PY'
+import importlib.util, json, os, subprocess, sys
+path, tmp = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("bug_origin_report", path)
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+def eq(name, got, want):
+    print(("PASS " + name) if got == want else "FAIL %s: expected %r, got %r" % (name, want, got))
+root = os.path.join(tmp, "hroot"); os.makedirs(root)
+repo = os.path.join(tmp, "my-project"); os.makedirs(repo)
+subprocess.run(["git", "-C", repo, "init", "-q", "-b", "main"], check=True)
+reg = os.path.join(tmp, "registry.json")
+json.dump({"repos": {"mine": {"path": repo, "bucket_name": "mybucket", "user": "ann"}}}, open(reg, "w"))
+env = {"HANDOVER_DIR": root, "USER_SLUG": "zed", "HANDOVER_REGISTRY": reg}
+eq("resolve: root, registry user and bucket", r.judge_accuracy.ledger_dir(repo, env), os.path.join(root, "ann", "mybucket", "bug-origin"))
+json.dump({"repos": {}}, open(reg, "w"))
+eq("resolve: no registry entry falls back to USER_SLUG and the project's own name", r.judge_accuracy.ledger_dir(repo, env), os.path.join(root, "zed", "my-project", "bug-origin"))
+eq("resolve: no HANDOVER_DIR is no ledger", r.judge_accuracy.ledger_dir(repo, {"USER_SLUG": "zed"}), None)
+eq("resolve: a HANDOVER_DIR that is no directory is no ledger", r.judge_accuracy.ledger_dir(repo, {"HANDOVER_DIR": os.path.join(tmp, "nope")}), None)
+PY
+cat "$TMP/res.out"
+PASS=$((PASS + $(grep -c '^PASS ' "$TMP/res.out")))
+FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/res.out")))
+eq "resolve: ran to its end" "$(grep -c '^PASS resolve' "$TMP/res.out")" "4"
+
+# R1: a row is written and read with no Jira call
+rc=0; out="$(ing "$LED" --seed "$FIX/seed.jsonl")" || rc=$?
+eq "ingest: exit 0" "$rc" "0"
+has "ingest: ten rows written" "$out" "ingest: wrote 10"
+count_files() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
+eq "ingest: one file per row" "$(count_files "$LED"/*.md)" "10"
+row20="$(cat "$LED/20.md")"
+has "row: front matter class" "$row20" 'class: "review-miss:cr"'
+has "row: front matter bug key" "$row20" 'bug_key: "HIMMEL-20"'
+has "row: front matter source" "$row20" 'source: "body"'
+has "row: starts unsynced" "$row20" 'synced: false'
+has "row: one plain body line a search finds without the front matter" "$row20" 'PR #20 (HIMMEL-20) bug-origin: #10 review-miss:cr — dropped exit code'
+has "row: the seed row is marked seed" "$(cat "$LED/24.md")" 'source: "seed"'
+has "row: the body wins over the seed" "$(cat "$LED/23.md")" 'class: "design-gap"'
+eq "ingest: no temp file is left behind" "$(count_files "$LED"/*tmp* "$LED"/.*tmp*)" "0"
+eq "ingest: the Jira stand-in was never called" "$([ -e "$TMP/jira-called" ] && echo called || echo never)" "never"
+sum1="$(cat "$LED"/*.md | cksum)"
+out="$(ing "$LED" --seed "$FIX/seed.jsonl")"
+has "ingest: a second run writes nothing" "$out" "ingest: wrote 0"
+eq "ingest: a second run changes no file" "$(cat "$LED"/*.md | cksum)" "$sum1"
+# a PR snapshot with no bodies: the rows come from the ledger alone, and the Jira mirror is unreachable
+python3 -I - "$FIX/prs.json" "$FIX/prs-nobody.json" <<'PY'
+import json, sys
+prs = json.load(open(sys.argv[1]))
+for p in prs:
+    p["body"] = ""
+json.dump(prs, open(sys.argv[2], "w"))
+PY
+rc=0; out="$(PATH="$TMP/nojira-bin:$PATH" python3 "$REPORT" report --prs "$FIX/prs-nobody.json" --ledger-dir "$LED" --mirror "$TMP/no-such-mirror" 2>&1)" || rc=$?
+eq "ledger only, Jira unreachable: exit 0" "$rc" "0"
+eq "ledger only, Jira unreachable: the rows" "$(line_of 'rows: ' "$out")" "rows: 10"
+has "ledger only, Jira unreachable: class counts" "$out" "review-miss:cr: 2"
+has "ledger only, Jira unreachable: test-gap" "$out" "test-gap: 4"
+eq "ledger only: the Jira stand-in was never called" "$([ -e "$TMP/jira-called" ] && echo called || echo never)" "never"
+out="$(python3 "$REPORT" report --prs "$FIX/prs-nobody.json" 2>&1)"
+eq "no ledger dir and no bodies: no rows" "$(line_of 'rows: ' "$out")" "rows: 0"
+# the ledger is read first: a row that disagrees with the body wins
+mkdir -p "$TMP/led-first"
+sed 's/review-miss:cr/test-gap/g' "$LED/20.md" > "$TMP/led-first/20.md"
+out="$(python3 "$REPORT" report --prs "$FIX/prs.json" --ledger-dir "$TMP/led-first" 2>&1)"
+has "ledger first: the row's class counts with the three body test-gaps" "$out" "test-gap: 4"
+has "ledger first: the body of another PR still counts" "$out" "review-miss:cr: 1"
+hasnt "ledger first: #20 is no review-miss row" "$out" "fix #20 "
+
+# R1: the Jira sync
+sy() { JIRA_PROJECT_KEY=HIMMEL FAKE_JIRA_LOG="$2" python3 "$REPORT" sync --ledger-dir "$1" --jira-cmd "$FAKEJIRA" 2>&1; }
+rc=0; out="$(sy "$LED" "$TMP/jira1.log")" || rc=$?
+eq "sync configured: exit 0" "$rc" "0"
+has "sync configured: ten rows updated" "$out" "jira sync: 10 updated"
+eq "sync configured: a comment per key" "$(grep -c '^comment HIMMEL-' "$TMP/jira1.log")" "10"
+has "sync configured: the comment carries the line" "$(cat "$TMP/jira1.log")" "bug-origin: #10 review-miss:cr — dropped exit code"
+has "sync configured: the row is marked synced" "$(cat "$LED/20.md")" "synced: true"
+rc=0; out="$(sy "$LED" "$TMP/jira1.log")" || rc=$?
+has "sync re-run: nothing to update" "$out" "jira sync: 0 updated"
+eq "sync re-run: no second comment" "$(grep -c '^comment HIMMEL-' "$TMP/jira1.log")" "10"
+# a Jira error warns, leaves the row unsynced, and the next sync retries it
+ing "$TMP/led-fail" >/dev/null
+rc=0; out="$(JIRA_PROJECT_KEY=HIMMEL FAKE_JIRA_FAIL=1 FAKE_JIRA_LOG="$TMP/jira2.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-fail" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
+eq "sync Jira error: exit 0" "$rc" "0"
+has "sync Jira error: warns" "$out" "warn: jira comment on HIMMEL-20 failed"
+has "sync Jira error: the row stays unsynced" "$(cat "$TMP/led-fail/20.md")" "synced: false"
+out="$(sy "$TMP/led-fail" "$TMP/jira2.log")"
+has "sync retry: the next run updates it" "$out" "jira sync: 9 updated"
+has "sync retry: the row is now synced" "$(cat "$TMP/led-fail/20.md")" "synced: true"
+eq "sync retry: HIMMEL-20 was tried twice, once failed and once sent" "$(grep -c '^comment HIMMEL-20' "$TMP/jira2.log")" "2"
+# no Jira configured: skipped with no error, the rows untouched
+ing "$TMP/led-nojira" >/dev/null
+rc=0; out="$(env -u JIRA_PROJECT_KEY FAKE_JIRA_LOG="$TMP/jira3.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-nojira" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
+eq "sync not configured: exit 0" "$rc" "0"
+has "sync not configured: says skipped" "$out" "jira sync skipped: not configured"
+eq "sync not configured: nothing sent" "$([ -e "$TMP/jira3.log" ] && echo sent || echo none)" "none"
+has "sync not configured: the row stays unsynced" "$(cat "$TMP/led-nojira/20.md")" "synced: false"
+
+# R3: the further classes parse, are counted in the report and are written to the ledger
+python3 -I - "$FIX/prs.json" "$FIX/prs-r3.json" <<'PY'
+import json, sys
+prs = json.load(open(sys.argv[1]))
+base = [p for p in prs if p["number"] == 10]
+def pr(n, body):
+    return {"number": n, "title": "fix(a): [HIMMEL-%d] x" % n, "body": body, "mergedAt": "2026-10-%02dT12:00:00Z" % (n - 30),
+            "headRefName": "b%d" % n, "headRefOid": "%040x" % n, "mergeCommit": {"oid": "%040x" % (n + 1000)}}
+bodies = ["#10 review-deferred — the finding was deferred", "#10 residual:HIMMEL-8802 — a partly done finding",
+          "#10 trigger:cron — only the weekly run shows it", "#10 commit:abcdef1 — the commit is the origin",
+          "#10 review-miss:cr,judge — two layers saw it", "#10 review-miss:panel — one layer saw it"]
+json.dump(base + [pr(50 + i, "bug-origin: " + b) for i, b in enumerate(bodies)], open(sys.argv[2], "w"))
+PY
+rep3() { python3 "$REPORT" report --prs "$FIX/prs-r3.json" "$@" 2>&1; }
+out="$(rep3 --record --ledger "$TMP/r3-runs.jsonl")"
+eq "R3: six rows" "$(line_of 'rows: ' "$out")" "rows: 6"
+has "R3: review-deferred counted" "$out" "review-deferred: 1"
+has "R3: residual counted" "$out" "residual: 1"
+has "R3: trigger counted" "$out" "trigger: 1"
+has "R3: commit counted" "$out" "commit: 1"
+has "R3: a one-layer review-miss counts under its layer" "$out" "review-miss:panel: 1"
+has "R3: a many-layer review-miss counts apart" "$out" "review-miss:multi: 1"
+has "R3: the review-miss subtotal counts both" "$out" "review-miss: 2"
+has "R3: the many-layer row names its claimed layers" "$(line_of 'fix #54 ' "$out")" "claimed cr,judge"
+eq "R3: the eval-runs row carries the class count" "$(python3 -I -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"]["class.residual"])' "$TMP/r3-runs.jsonl")" "1"
+ing "$TMP/led-r3" >/dev/null
+rc=0; out="$(PATH="$TMP/nojira-bin:$PATH" python3 "$REPORT" ingest --prs "$FIX/prs-r3.json" --ledger-dir "$TMP/led-r3" 2>&1)" || rc=$?
+has "R3: ingest writes the six" "$out" "ingest: wrote 6"
+has "R3: a payload class is kept whole in the row" "$(cat "$TMP/led-r3/51.md")" 'class: "residual:HIMMEL-8802"'
+
+# R4: the class filter in the report, on a family and on an exact class
+out="$(rep --seed "$FIX/seed.jsonl" --class test-gap)"
+eq "filter test-gap: rows" "$(line_of 'rows: ' "$out")" "rows: 4"
+has "filter test-gap: counts the class" "$out" "test-gap: 4"
+has "filter test-gap: another class is excluded" "$out" "design-gap: 0"
+has "filter test-gap: review-miss is excluded" "$out" "review-miss: 0"
+out="$(rep --seed "$FIX/seed.jsonl" --class review-miss)"
+eq "filter family review-miss: rows" "$(line_of 'rows: ' "$out")" "rows: 4"
+out="$(rep3 --class residual:HIMMEL-8802)"
+eq "filter exact payload class: rows" "$(line_of 'rows: ' "$out")" "rows: 1"
+out="$(rep3 --class residual:nope)"
+eq "negative control: a class with no rows returns none, not all" "$(line_of 'rows: ' "$out")" "rows: 0"
+out="$(rep3 --class bogus)"
+eq "negative control: an unknown class returns none, not all" "$(line_of 'rows: ' "$out")" "rows: 0"
+
+# R4: the class filter in escapes.signals, by a fix PR's class and by a bug's key
+mkdir -p "$TMP/esc/mirror" "$TMP/led-esc"
+python3 -I - "$TMP/esc" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+def pr(n, title, day):
+    return {"number": n, "title": title, "body": "", "mergedAt": "2026-10-%02dT12:00:00Z" % day,
+            "headRefName": "b%d" % n, "headRefOid": "%040x" % n, "mergeCommit": {"oid": "%040x" % (n + 1000)}}
+json.dump([pr(1, "feat(a): [K-1] target one", 1), pr(2, "fix(a): [K-2] later fix (#1)", 2),
+           pr(3, "feat(a): [K-3] target two", 1), pr(4, 'Revert "target two" (#3)', 3)], open(os.path.join(d, "prs.json"), "w"))
+open(os.path.join(d, "mirror", "HIMMEL-9.md"), "w").write('---\ntype: "Bug"\nlabels: []\ncreated: "2026-10-20T09:00:00.000+0200"\n---\ncaused-by: #1\n')
+open(os.path.join(d, "cr.jsonl"), "w").close()
+PY
+lrow() { printf -- '---\npr: %s\nbug_key: "%s"\norigin: "#1"\nclass: "%s"\nreason: "x"\nsource: "body"\ningested: "2026-11-02T00:00:00Z"\nsynced: false\n---\nPR #%s bug-origin: #1 %s — x\n' "$1" "$2" "$3" "$1" "$3" > "$TMP/led-esc/$1.md"; }
+lrow 2 K-2 test-gap
+lrow 4 K-4 design-gap
+lrow 90 HIMMEL-9 design-gap
+esc() { python3 "$HERE/../escapes.py" --prs "$TMP/esc/prs.json" --mirror "$TMP/esc/mirror" --cr-ledger "$TMP/esc/cr.jsonl" "$@" 2>&1 \
+  | python3 -I -c 'import json,sys; m=json.load(sys.stdin)["metrics"]; print(m["escapes"], m["escapes_plausible"])'; }
+eq "escapes unfiltered: sure and plausible" "$(esc)" "2 2"
+eq "escapes class test-gap: only the test-gap fix's escape, plausible" "$(esc --bug-origin-dir "$TMP/led-esc" --class test-gap)" "0 1"
+eq "escapes class design-gap: the revert and the bug" "$(esc --bug-origin-dir "$TMP/led-esc" --class design-gap)" "2 2"
+eq "negative control: escapes class with no rows counts none" "$(esc --bug-origin-dir "$TMP/led-esc" --class residual)" "0 0"
+rc=0; python3 "$HERE/../escapes.py" --prs "$TMP/esc/prs.json" --mirror "$TMP/esc/mirror" --cr-ledger "$TMP/esc/cr.jsonl" --class test-gap >/dev/null 2>&1 || rc=$?
+eq "escapes class with no ledger to read is refused" "$rc" "2"
+eq "escapes.signals takes the filter directly" "$(python3 -I - "$HERE/.." <<'PY'
+import importlib.util, json, sys
+sys.path[:0] = [sys.argv[1] + "/lib", sys.argv[1] + "/cr-ledger", sys.argv[1] + "/judge-accuracy", sys.argv[1]]
+import escapes
+prs = [{"number": 1, "title": "x", "mergedAt": "2026-10-01T00:00:00Z"},
+       {"number": 2, "title": "fix(a): later (#1)", "mergedAt": "2026-10-02T00:00:00Z"}]
+classes = {"pr": {2: "test-gap"}, "key": {}}
+print(sorted(escapes.signals(prs, [], "test-gap", classes)[1]), sorted(escapes.signals(prs, [], "design-gap", classes)[1]))
+PY
+)" "[1] []"
 
 # --- the template's Ship step
 TEMPLATE="$(cat "$HERE/../../../docs/handover/worker-brief-template.md")"

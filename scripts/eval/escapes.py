@@ -18,10 +18,14 @@ GO verdict record on the PR at its merged head and before its merge, chief GOs l
 and escape_rate.
 
   escapes.py --prs FILE [--cr-ledger P] [--mirror DIR] [--verdicts DIR] [--until TS] [--record] [--ledger P]
+             [--class C [--bug-origin-dir DIR]]
 
 --prs is `gh pr list --state merged --limit 5000 --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit`.
 --until cuts the sample as of TS: PRs merged after it, Bugs created after it and CR-ledger rows after it
 are left out.
+--class C counts only the signals whose fix PR (revert, fix-forward) or Bug has class C in the bug-origin ledger (C or
+a family: review-miss matches review-miss:cr); the rates stay over all merged PRs. A class with no rows counts none,
+and no ledger to read (--bug-origin-dir, else <HANDOVER_DIR>/<user>/<project bucket>/bug-origin) is refused.
 Without --verdicts there are no judge numbers. Without --record the eval-runs row is printed, not appended.
 A PR merged recently has had less time to show an escape, so its rate reads low.
 Exit 0 done; 2 refused input. Stdlib only; no network, no model call.
@@ -49,8 +53,15 @@ REVERTS_PR = re.compile(r"\breverts?\s+(?:[\w.-]+/[\w.-]+)?#(\d+)", re.I)
 REVERTS_SHA = re.compile(r"\breverts?\s+(?:commit\s+)?`?([0-9a-f]{7,40})\b", re.I)
 
 
-def signals(prs, bugs):
-    """{pr: {(kind, level), ...}} for every merged PR a later signal points at."""
+def signals(prs, bugs, cls=None, classes=None):
+    """{pr: {(kind, level), ...}} for every merged PR a later signal points at.
+
+    With cls, only a signal whose fix has that class in the bug-origin ledger counts (`classes` is
+    judge_accuracy.ledger_classes: the fix PR's class for a revert or fix-forward, the Bug's key for caused-by).
+    A fix with no row has no class, so a class with no rows counts none."""
+    def keep(have):
+        return cls is None or judge_accuracy.class_match(cls, have)
+    classes = classes or {"pr": {}, "key": {}}
     merged = {p["number"]: p for p in prs if p.get("mergedAt")}
     by_sha = {(p.get("mergeCommit") or {}).get("oid") or "": n for n, p in merged.items()}
     out = collections.defaultdict(set)
@@ -68,12 +79,14 @@ def signals(prs, bugs):
             kind, level = "fix-forward", "P"
         else:
             continue
+        if not keep(classes["pr"].get(n)):
+            continue
         for t in {t for t in named if t != n and t in merged and merged[t]["mergedAt"] < p["mergedAt"]}:
             out[t].add((kind, level))
             count[kind] += 1
     for b in bugs:
         t = merged.get(int(b["caused_by"])) if b["caused_by"] and b["caused_by"].isdigit() else None
-        if t and (not b["created"] or b["created"] > judge_accuracy.when(t["mergedAt"])):
+        if t and keep(classes["key"].get(b["key"])) and (not b["created"] or b["created"] > judge_accuracy.when(t["mergedAt"])):
             out[t["number"]].add(("caused-by", "S"))
             count["caused-by"] += 1
     return merged, out, count
@@ -121,8 +134,8 @@ def tally(m, ci, prefix, prs, sig):
         ci[prefix + "escape_rate"] = b
 
 
-def build(prs, rows, bugs, recs, until=None):
-    merged, sig, count = signals(prs, bugs)
+def build(prs, rows, bugs, recs, until=None, cls=None, classes=None):
+    merged, sig, count = signals(prs, bugs, cls, classes)
     m, ci = {"merged": len(merged)}, {}
     m["escapes"] = sum(1 for n in merged if any(lv == "S" for _, lv in sig.get(n, ())))
     m["escapes_plausible"] = sum(1 for n in merged if sig.get(n))
@@ -150,7 +163,7 @@ def build(prs, rows, bugs, recs, until=None):
                 per[j].append(n)
         for j in sorted(per):
             tally(m, ci, "judge." + j + ".", per[j], sig)
-    return eval_runs.make_row(EVAL_ID, SOURCE, {"escapes_v": 1, "judges": recs is not None, "until": until}, m, n=len(merged),
+    return eval_runs.make_row(EVAL_ID, SOURCE, {"escapes_v": 1, "judges": recs is not None, "until": until, "class": cls}, m, n=len(merged),
                               ci=ci, ci_level=0.95 if ci else None, ci_method="wilson" if ci else None)
 
 
@@ -163,11 +176,14 @@ def main(argv=None):
     ap.add_argument("--until")
     ap.add_argument("--record", action="store_true")
     ap.add_argument("--ledger")
+    ap.add_argument("--class", dest="cls")
+    ap.add_argument("--bug-origin-dir")
     a = ap.parse_args(argv)
     try:
         prs = judge_accuracy.load_json(a.prs, "--prs")
         bugs = judge_accuracy.load_bugs(a.mirror)
         recs = judge_accuracy.load_verdicts(a.verdicts)[0] if a.verdicts else None
+        classes = judge_accuracy.class_filter(a.cls, a.bug_origin_dir)
     except ValueError as e:
         print("escapes: refused: %s" % e, file=sys.stderr)
         return 2
@@ -176,7 +192,7 @@ def main(argv=None):
         cut = judge_accuracy.when(a.until)
         prs = [p for p in prs if p.get("mergedAt") and judge_accuracy.when(p["mergedAt"]) <= cut]
         bugs = [b for b in bugs if not b["created"] or b["created"] <= cut]
-    row = build(prs, rows, bugs, recs, a.until)
+    row = build(prs, rows, bugs, recs, a.until, a.cls, classes)
     if a.record:
         eval_runs.append_safe(row, a.ledger, who=EVAL_ID)
     else:
