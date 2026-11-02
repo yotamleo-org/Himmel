@@ -19,6 +19,7 @@ import { registerRelease } from './release.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { SECTORS, resetSectorCache } from './sector.js';
+import { releaseKeyPath } from '../release/paths.js';
 
 // A body that satisfies the plain-block rule.
 const PLAIN = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
@@ -1103,6 +1104,22 @@ describe('HIMMEL-6924 residual rank slots', () => {
     await file('--fu-class', 'escape');
     expect(putTo('HIMMEL-900')).toBe(false);
     displacedOnly('HIMMEL-77');
+  });
+
+  it('RED 8723 ii: a ledger that is unreadable before filing steps the newcomer down instead of refusing it', async () => {
+    ledger('not json');
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] !== '/issue/HIMMEL-77')).toBe(false);
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(created().labels).toContain('residual-displaced');
+  });
+
+  it('RED 8723 ii: a declared release whose signing key cannot be loaded leaves nobody displaced', async () => {
+    await decide('O-1', 'HIMMEL-900', 'keep', 'v1.1.3', 'v1.1.3');
+    rmSync(releaseKeyPath('R1'));
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] !== '/issue/HIMMEL-77')).toBe(false);
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
   });
 
   it('RED 8723 ii: a resident ruled after creation, with no version to step down to, queues the newcomer INTAKE', async () => {

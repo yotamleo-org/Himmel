@@ -20,7 +20,8 @@ import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsV
 import { ctxFor, refuseRequest } from './release.js';
 import { placementOf, readOperatorRecords, request as releaseRequest } from '../release/engine.js';
 import { admits } from '../release/leaks.js';
-import { releaseRoot } from '../release/paths.js';
+import { loadKey } from '../release/ledger.js';
+import { releaseKeyPath, releaseRoot } from '../release/paths.js';
 
 function collect(value: string, prev: string[]): string[] {
   return [...prev, value];
@@ -238,6 +239,11 @@ function rulingsOf(version: string): ((key: string) => boolean) | undefined {
   try {
     if (!admissionsLedgerExists()) throw new Error('the admissions ledger does not exist');
     const rows = readAdmissions(version);
+    // readOperatorRecords skips a declared release whose key cannot be loaded, so check every key first.
+    const root = releaseRoot();
+    for (const release of existsSync(root) ? readdirSync(root) : []) {
+      if (existsSync(join(root, release, 'release.json'))) loadKey(releaseKeyPath(release));
+    }
     const decisions = readOperatorRecords('decision')
       .filter((d) => d.keys !== undefined && placementOf(d) !== undefined)
       .sort((a, b) => a.ts.localeCompare(b.ts));
@@ -295,7 +301,6 @@ async function competeForSlot(
   const sectorId = sectorField();
   const sectorOf = (i: RankedIssue) => sectorId ? (i.fields[sectorId] as { value?: string } | undefined)?.value : undefined;
   const sharedSectors = new Set(headKeys.map(openHead).filter((i) => i !== undefined).map(sectorOf).filter(Boolean));
-  const ledger = readAdmissions(version);
   const rank = (i: RankedIssue, targets: string[], gate: number, sector: string | undefined): number[] => {
     const ls = i.fields.labels ?? [];
     const created = Date.parse(i.fields.created ?? '');
@@ -306,7 +311,9 @@ async function competeForSlot(
   };
   const newcomer = rank({ key: '', fields: { labels, priority: { name: o.priority ?? 'Medium' }, created: new Date().toISOString() } },
     newcomerLinks, GATE_RANK.indexOf(o.gate?.split(':')[0] ?? '') + 1, o.sector);
+  // With the rulings unreadable nobody is displaced, and the ledger is not read again.
   const ruled = rulingsOf(version);
+  const ledger = ruled === undefined ? [] : readAdmissions(version);
   const candidates = residents.filter((i) => ruled !== undefined && i.fields?.status?.name === 'To Do'
       && residualGateRank(i, ledger) === 0 && !ruled(i.key))
     .map((i) => ({ key: i.key, tuple: rank(i, links(i), 0, sectorOf(i)) }))

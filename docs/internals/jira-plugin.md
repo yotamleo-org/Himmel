@@ -312,7 +312,7 @@ declared, the state unreadable, or a placeholder why); an INTAKE that fails afte
 says `Created <KEY> but INTAKE not queued` and exits 1. `edit`'s depth-2 drop only warns, and says so when no release is declared.
 A residual that wins a full version's slot displaces the lowest-ranked To Do resident, never a ruled one: a key whose latest
 admissions-ledger row admits it (an `rm-admit` or an override) or whose latest signed operator decision places it there. When the
-rulings cannot be read (no ledger file, an unreadable operator chain) nobody is displaced and the newcomer steps down; a
+rulings cannot be read (no ledger file, a malformed ledger, or a declared release whose signing key cannot be loaded) nobody is displaced and the newcomer steps down; a
 newcomer left with no version, including by a ruling that lands after it was filed, queues its INTAKE.
 `next-dispatchable.sh` counts the open versionless operator-directed, High+ Bug, `scope-<version>`, `proposed-<earliest version>`
 and worker-held tickets and prints `# pool=<n>/<top>,INTAKE:<m>` (never a bare LOW) with a
