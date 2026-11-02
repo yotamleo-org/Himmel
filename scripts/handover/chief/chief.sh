@@ -1976,6 +1976,37 @@ $out
     mv "$doc.az" "$doc"
 }
 
+# The HANDOFF's "Start, plan and design in flight" section: one pointer line per
+# item, built from the listing alone, so no item is ever opened and the cost stays flat.
+# Nothing listed (or nothing readable) writes nothing, not even the heading.
+# ponytail: one source, recently changed *.md names directly in the specs/ design, plan and proposal directories; a chat-only grill, a subdirectory, an .html item or an item older than the window is invisible, and a finished item stays listed until it ages out. Upgrade path: a registry the Start and Plan steps write.
+inflight_rows() { # <directory holding specs/> <days>: mtime TAB path; always runs in a pipeline, so the cd stays local
+    cd "$1/specs" 2>/dev/null || return 0  # swallow-ok: an unreadable source lists nothing
+    # find exits 1 on an absent directory; whatever it did list still counts
+    find designs design plans plan proposals proposal -maxdepth 1 -type f -name '*.md' ! -name '*.md.*' -mtime "-$2" 2>/dev/null |  # gnu-ok: BSD find has -maxdepth too
+        while IFS= read -r path; do printf '%s\t%s\n' "$(date -r "$path" '+%Y-%m-%d %H:%M')" "$path"; done
+}
+inflight_section() { # <directory holding specs/>
+    local cap="${CHIEF_INFLIGHT_CAP:-10}" days="${CHIEF_INFLIGHT_DAYS:-2}" rows total stamp path kind key
+    rows="$(inflight_rows "$1" "$days" | sort -r)"
+    [ -n "$rows" ] || return 0
+    total="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
+    printf '## Start, plan and design in flight\n\n'
+    # shellcheck disable=SC2016  # the backticks are literal markdown code spans
+    printf 'Files under `specs/` beside this note, changed in the last %s days, newest first.\n\n' "$days"
+    printf '%s\n' "$rows" | sed -n "1,${cap}p" | while IFS="$(printf '\t')" read -r stamp path; do
+        case "$path" in
+            design*) kind=design ;;
+            plan*) kind=plan ;;
+            *) kind=start ;;
+        esac
+        key="no ticket key"
+        if [[ "${path##*/}" =~ [A-Z][A-Z0-9]+-[0-9]+ ]]; then key="${BASH_REMATCH[0]}"; fi
+        printf -- '- specs/%s — %s, %s, changed %s\n' "$path" "$kind" "$key" "$stamp"
+    done
+    [ "$total" -le "$cap" ] || printf '+%s more\n' "$((total - cap))"
+}
+
 cmd_next() {
     [ -f "$console_template" ] || { err "missing template $console_template"; exit 2; }
     [ -f "$handoff_template" ] || { err "missing template $handoff_template"; exit 2; }
@@ -2203,7 +2234,7 @@ cmd_next() {
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
-        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_chain hf_direction hf_lastgo
+        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_inflight hf_inflight_bytes hf_chain hf_direction hf_lastgo
         hf_chain="$(chain_order_line "$predecessor_dir")"
         # The direction block is already carried into the successor doc; the HANDOFF points at it.
         hf_direction="${hf_chain:+$hf_chain
@@ -2212,6 +2243,9 @@ cmd_next() {
         hf_lastgo="$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")"
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c | tr -d ' ')"
+        hf_inflight="$(inflight_section "$predecessor_dir")" || hf_inflight=""  # swallow-ok: the listing fails open, it never stops a hand-over
+        hf_inflight_bytes=0
+        [ -z "$hf_inflight" ] || hf_inflight_bytes="$(printf '\n%s\n' "$hf_inflight" | wc -c | tr -d ' ')"
         while :; do
             render_template "$handoff_template" "$predecessor_handoff" \
                 CURRENT_DIRECTION "$hf_direction" \
@@ -2233,7 +2267,7 @@ cmd_next() {
                 LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`${LS_HISTORY_REF:+; the closed workers, prior GOs and shift notes left out of that seed are kept verbatim in \`$LS_HISTORY_REF\`}"
             # Over budget: the bulky fact sections (all re-derivable) become
             # pointers; the rulings stay inline.
-            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes )) -gt "$hf_budget" ] || break
+            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes + hf_inflight_bytes )) -gt "$hf_budget" ] || break
             hf_pass=2
             hf_legs="over the HANDOFF size budget — run: bash $facts workers $predecessor_doc --repo $repo"
             hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')" || hf_slug=""  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
@@ -2242,12 +2276,13 @@ cmd_next() {
             hf_lastgo="over the HANDOFF size budget — read \`last GO:\` in the Live state of \`$successor_doc_ref\`"
         done
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
+        [ -z "$hf_inflight" ] || printf '\n%s\n' "$hf_inflight" >> "$predecessor_handoff"
         [ -z "$orphan_gate_note" ] || printf '\n> %s\n' "$orphan_gate_note" >> "$predecessor_handoff"
-        # Still over budget after the pointer pass: the remainder is the rulings
-        # and the wrapped-PR list, which are never trimmed — say so loudly.
+        # Still over budget after the pointer pass: the remainder is the rulings,
+        # the wrapped-PR list and the capped pointers, never trimmed — say so loudly.
         hf_total="$(wc -c < "$predecessor_handoff" | tr -d ' ')"
         if [ "$hf_total" -gt "$hf_budget" ]; then
-            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); wrapped-PR list $hf_wrapped_bytes bytes"
+            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); wrapped-PR list $hf_wrapped_bytes bytes${hf_inflight:+, in-flight pointers $hf_inflight_bytes bytes}"
             printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
             err "warning: $hf_note"
         fi
