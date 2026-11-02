@@ -62,7 +62,21 @@ st="$(field state)"; wt="$(field worktree)"; ibr="$(field branch)"; cut="$(field
 [ -n "$cut" ] && [ -n "$wip" ] && [ -n "$ibr" ] || refuse "item $KEY has no recorded branch, cut_from or wip"
 status="$(git -C "$wt" status --porcelain)" || fail "git status failed in $wt"   # a git failure is never read as clean
 [ -z "$status" ] || refuse "item $KEY worktree is dirty: commit it and run series-next.sh commit first ($wt)"
+sid="$(top sid)"
+pub="series-pub/$sid/$KEY"
 head="$(git -C "$wt" rev-parse HEAD)" || fail "cannot read HEAD of $wt"
+# the lines that finish a publish whose ledger write failed; never `series-next.sh commit`, which would overwrite wip
+record_lines() {
+    echo "series-publish: $pub is pushed at $1 but the ledger does not say so. Run these two lines, nothing else:" >&2
+    echo "python3 -I $LEDGER_PY set --ledger $LEDGER --key $KEY publish_branch=$pub published_head=$1 state=published" >&2
+    echo "git -C $wt worktree unlock $wt" >&2
+    echo "do NOT run series-next.sh commit: it would overwrite wip with the publish head" >&2
+}
+cur="$(git -C "$wt" symbolic-ref --quiet --short HEAD)" || cur=""   # swallow-ok: a detached HEAD reads as no branch and refuses below
+if [ "$cur" != "$ibr" ]; then
+    [ "$cur" != "$pub" ] || record_lines "$head"
+    refuse "item $KEY worktree is on '${cur:-a detached HEAD}', not on the item branch $ibr; nothing moved"
+fi
 if [ "$head" != "$wip" ]; then
     echo "SERIES-DRIFT $KEY wip"
     refuse "item $KEY worktree HEAD is not the recorded wip; run series-next.sh commit first"
@@ -70,8 +84,6 @@ fi
 ahead="$(git -C "$wt" rev-list --count "$cut..$wip")" || fail "cannot count $cut..$wip in $wt"
 [ "$ahead" -gt 0 ] || refuse "item $KEY has no commits in $cut..$wip"
 
-sid="$(top sid)"
-pub="series-pub/$sid/$KEY"
 git -C "$wt" show-ref --verify --quiet "refs/heads/$pub" && refuse "local branch $pub already exists"
 
 def="$(git -C "$wt" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)" || def=""   # swallow-ok: no origin/HEAD falls back to origin/main
@@ -95,8 +107,8 @@ if ! git -C "$wt" push -q -u origin "$pub"; then
     back || echo "series-publish: $wt could not be returned to $ibr; fix it by hand" >&2
     fail "git push of $pub failed; ledger unchanged"
 fi
-pubhead="$(git -C "$wt" rev-parse HEAD)" || fail "cannot read HEAD of $wt after the push; $pub is pushed, ledger not updated"
+pubhead="$(git -C "$wt" rev-parse HEAD)" || fail "cannot read HEAD of $wt after the push; $pub is pushed, the ledger and the worktree lock are unchanged"
 python3 -I "$LEDGER_PY" set --ledger "$LEDGER" --key "$KEY" publish_branch="$pub" published_head="$pubhead" state=published \
-    || fail "series-ledger.py set failed; $pub is pushed at $pubhead, record it by hand"
+    || { record_lines "$pubhead"; exit 1; }
 git -C "$wt" worktree unlock "$wt" 2>/dev/null || echo "series-publish: WARN worktree unlock failed for $wt" >&2
 echo "PUBLISHED-BRANCH $KEY $pub"
