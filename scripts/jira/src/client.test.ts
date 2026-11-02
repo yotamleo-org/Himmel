@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile } from './client.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile, request, requestAt } from './client.js';
+import { readVersionWrites } from './release/version-writes.js';
+
+// Records every git call the path lookups make, passing each through.
+vi.mock('node:child_process', async (orig) => {
+  const m = await orig<typeof import('node:child_process')>();
+  return { ...m, execFileSync: vi.fn(m.execFileSync) };
+});
 
 describe('uploadAttachment', () => {
   let dir: string;
@@ -417,5 +425,331 @@ describe('loadEnvFile', () => {
     process.env.JIRA_BASE_URL = 'https://live.example';
     loadEnvFile(file);
     expect(process.env.JIRA_BASE_URL).toBe('https://live.example');
+  });
+});
+
+// --- the version-write journal hook ---------------------------------------------
+// Every test points HIMMEL_VERSION_WRITES at a temp file (or leaves the hook off), stubs fetch, and
+// stubs the Jira credentials, so none of them can reach the real journal or the real Jira token.
+
+type Item = { field: string; fromString?: string | null; toString?: string | null };
+type Entry = { id: string; created: string; items: Item[] };
+interface FakeJira {
+  key: string;
+  set: string[];
+  entries: Entry[];
+  calls: Array<{ method: string; path: string; body?: unknown }>;
+  onWrite?: (f: FakeJira, body: unknown) => void;
+  getStatus?: number;
+  hangGets?: boolean;
+  failWrite?: boolean;
+}
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'release', 'fixtures', 'repair');
+const realEntries = (n: number): Entry[] => (JSON.parse(readFileSync(join(FIXTURES, `HIMMEL-${n}.json`), 'utf8')) as { changelog: Entry[] }).changelog;
+const entryNo = (all: Entry[], id: string): Entry => all.find((e) => e.id === id) as Entry;
+const fv = (id: string, from: string | null, to: string | null): Entry => ({ id, created: '2026-11-02T10:00:00.000+0100', items: [{ field: 'Fix Version', fromString: from, toString: to }] });
+
+function fakeJira(over: Partial<FakeJira>): FakeJira {
+  const f: FakeJira = { key: 'HIMMEL-9', set: [], entries: [], calls: [], ...over };
+  const reply = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => (body === undefined ? '' : JSON.stringify(body)) });
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit = {}) => {
+    const method = init.method ?? 'GET';
+    const path = url.replace('https://example.atlassian.net', '').replace('/rest/api/3', '');
+    f.calls.push({ method, path, ...(init.body ? { body: JSON.parse(String(init.body)) } : {}) });
+    if (method === 'GET') {
+      if (f.hangGets) return new Promise(() => undefined);
+      if (f.getStatus) return reply(f.getStatus, { errorMessages: ['boom'] });
+      const u = new URL(url);
+      if (u.pathname.endsWith(`/issue/${f.key}/changelog`)) {
+        const start = Number(u.searchParams.get('startAt'));
+        return reply(200, { startAt: start, maxResults: 100, total: f.entries.length, values: f.entries.slice(start, start + 100) });
+      }
+      if (u.pathname.endsWith(`/issue/${f.key}`)) return reply(200, { fields: { fixVersions: f.set.map((name) => ({ name })) } });
+      return reply(404, {});
+    }
+    if (f.failWrite) return reply(400, { errorMessages: ['refused'] });
+    f.onWrite?.(f, init.body ? JSON.parse(String(init.body)) : undefined);
+    return method === 'POST' ? reply(201, { id: '10', key: f.key }) : reply(204, undefined);
+  }));
+  return f;
+}
+
+describe('version-write journal hook (HIMMEL-8724 S2)', () => {
+  let dir: string;
+  let journal: string;
+  const rows = () => readVersionWrites(journal);
+  const puts = (f: FakeJira) => f.calls.filter((c) => c.method !== 'GET');
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'version-writes-'));
+    journal = join(dir, 'version-writes.jsonl');
+    vi.stubEnv('JIRA_BASE_URL', 'https://example.atlassian.net');
+    vi.stubEnv('JIRA_EMAIL', 'u@example.com');
+    vi.stubEnv('JIRA_API_TOKEN', 'not-a-real-token');
+    vi.stubEnv('HIMMEL_VERSION_WRITES', journal);
+    vi.stubEnv('HIMMEL_VERSION_WRITER', '');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // The displacement of one real ticket: v1.1.4 removed by entry 85466.
+  const displacement = () => {
+    const all = realEntries(8231);
+    return fakeJira({
+      key: 'HIMMEL-8231', set: ['v1.1.4'], entries: all.filter((e) => Number(e.id) < 85466),
+      onWrite: (f) => { f.entries.push(entryNo(all, '85466')); f.set = []; },
+    });
+  };
+  const removeBody = { update: { fixVersions: [{ remove: { name: 'v1.1.4' } }] } };
+
+  it('machine PUT writes a bound row', async () => {
+    const f = displacement();
+    await request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual');
+    expect(rows()).toMatchObject([{ key: 'HIMMEL-8231', from: ['v1.1.4'], to: [], mechanism: 'displace-residual', entry: '85466' }]);
+    expect(puts(f)).toHaveLength(1);
+  });
+
+  it('no-op PUT writes no row (I11)', async () => {
+    const f = fakeJira({ key: 'HIMMEL-8231', set: ['v1.1.4'], entries: [fv('85399', null, 'v1.1.4')] });
+    await request('PUT', '/issue/HIMMEL-8231', { update: { fixVersions: [{ add: { name: 'v1.1.4' } }] } }, 'create-residual');
+    expect(rows()).toEqual([]);
+    expect(puts(f)).toHaveLength(1);
+  });
+
+  it('a change that adds no entry binds nothing, so an operator\'s earlier entry is never bound (I11)', async () => {
+    fakeJira({ key: 'HIMMEL-9', set: ['v1.1.4'], entries: [fv('500', 'v1.1.3', 'v1.1.4')], onWrite: (f) => { f.set = []; } });
+    await request('PUT', '/issue/HIMMEL-9', removeBody, 'transition-stamp');
+    expect(rows()).toEqual([]);
+  });
+
+  it('UI edit between reads writes no row (I11)', async () => {
+    fakeJira({
+      key: 'HIMMEL-9', set: ['v1.1.4', 'v1.1.3'], entries: [fv('500', null, 'v1.1.4'), fv('501', null, 'v1.1.3')],
+      onWrite: (f) => { f.entries.push(fv('502', 'v1.1.4', null), fv('503', 'v1.1.3', null)); f.set = []; },
+    });
+    await request('PUT', '/issue/HIMMEL-9', removeBody, 'transition-stamp');
+    expect(rows()).toEqual([]);
+  });
+
+  it('a later add-then-remove by someone else is not bound as the machine write (I11)', async () => {
+    fakeJira({
+      key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('500', null, 'v1.1.3')],
+      onWrite: (f) => { f.entries.push(fv('501', null, 'v1.1.4'), fv('502', null, 'v1.1.5'), fv('503', 'v1.1.5', null)); f.set = ['v1.1.3', 'v1.1.4']; },
+    });
+    await request('PUT', '/issue/HIMMEL-9', { update: { fixVersions: [{ add: { name: 'v1.1.4' } }] } }, 'merge-stamp');
+    expect(rows()).toEqual([]);
+  });
+
+  it('one entry with two items binds (54867)', async () => {
+    const all = realEntries(3084);
+    fakeJira({
+      key: 'HIMMEL-3084', set: ['v1.1.1'], entries: all.filter((e) => Number(e.id) < 54867),
+      onWrite: (f) => { f.entries.push(entryNo(all, '54867')); f.set = ['v1.1.2']; },
+    });
+    await request('PUT', '/issue/HIMMEL-3084', { fields: { fixVersions: [{ name: 'v1.1.2' }] } }, 'merge-stamp');
+    expect(rows()).toMatchObject([{ key: 'HIMMEL-3084', from: ['v1.1.1'], to: ['v1.1.2'], mechanism: 'merge-stamp', entry: '54867' }]);
+  });
+
+  it('two entries for one move bind (57627, 57628)', async () => {
+    const all = realEntries(3084);
+    fakeJira({
+      key: 'HIMMEL-3084', set: ['v1.1.2'], entries: all.filter((e) => Number(e.id) < 57627),
+      onWrite: (f) => { f.entries.push(entryNo(all, '57627'), entryNo(all, '57628')); f.set = ['v1.1.1']; },
+    });
+    await request('PUT', '/issue/HIMMEL-3084', { update: { fixVersions: [{ add: { name: 'v1.1.1' } }, { remove: { name: 'v1.1.2' } }] } }, 'merge-stamp');
+    expect(rows()).toMatchObject([{ from: ['v1.1.2'], to: ['v1.1.1'], entry: '57628' }]);
+  });
+
+  it('POST with fixVersions writes a create row', async () => {
+    const f = fakeJira({ key: 'HIMMEL-12', onWrite: (g) => { g.set = ['v1.1.4']; } });
+    await request('POST', '/issue', { fields: { summary: 's', fixVersions: [{ name: 'v1.1.4' }] } }, 'create-residual');
+    expect(rows()).toMatchObject([{ key: 'HIMMEL-12', from: [], to: ['v1.1.4'], mechanism: 'create-residual', entry: 'create' }]);
+    expect(puts(f)).toHaveLength(1);
+  });
+
+  it('POST without fixVersions writes none and makes no extra request', async () => {
+    const f = fakeJira({ key: 'HIMMEL-12' });
+    await request('POST', '/issue', { fields: { summary: 's' } });
+    expect(rows()).toEqual([]);
+    expect(f.calls.map((c) => c.method)).toEqual(['POST']);
+  });
+
+  it('journal failure leaves the write intact (I7)', async () => {
+    writeFileSync(join(dir, 'blocker'), 'a file, not a directory');
+    vi.stubEnv('HIMMEL_VERSION_WRITES', join(dir, 'blocker', 'version-writes.jsonl'));
+    const f = displacement();
+    await expect(request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual')).resolves.toEqual({});
+    expect(puts(f)).toHaveLength(1);
+  });
+
+  it('pre-read 500 still PUTs, no row (I7)', async () => {
+    const f = displacement();
+    f.getStatus = 500;
+    await expect(request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual')).resolves.toEqual({});
+    expect(puts(f)).toHaveLength(1);
+    expect(rows()).toEqual([]);
+  });
+
+  it('post-read 500 resolves, no row (I7)', async () => {
+    const f = displacement();
+    const write = f.onWrite;
+    f.onWrite = (g, b) => { write?.(g, b); g.getStatus = 500; };
+    await expect(request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual')).resolves.toEqual({});
+    expect(rows()).toEqual([]);
+  });
+
+  it('failed PUT writes no row (I7)', async () => {
+    const f = displacement();
+    f.failWrite = true;
+    await expect(request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual')).rejects.toThrow('HTTP 400');
+    expect(rows()).toEqual([]);
+  });
+
+  it('bad journal line is skipped', async () => {
+    writeFileSync(journal, 'not json\n{"key":1}\n');
+    displacement();
+    await request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual');
+    expect(readFileSync(journal, 'utf8').split('\n').filter(Boolean)).toHaveLength(3);
+    expect(rows()).toMatchObject([{ key: 'HIMMEL-8231', entry: '85466' }]);
+  });
+
+  it('unset writer is hand', async () => {
+    displacement();
+    await request('PUT', '/issue/HIMMEL-8231', removeBody);
+    expect(rows()[0].mechanism).toBe('hand');
+  });
+
+  it('explicit machine writer wins over the variable', async () => {
+    vi.stubEnv('HIMMEL_VERSION_WRITER', 'merge-stamp');
+    displacement();
+    await request('PUT', '/issue/HIMMEL-8231', removeBody, 'create-stepdown');
+    expect(rows()[0].mechanism).toBe('create-stepdown');
+  });
+
+  it('hand path reads the variable', async () => {
+    vi.stubEnv('HIMMEL_VERSION_WRITER', 'merge-stamp');
+    displacement();
+    await request('PUT', '/issue/HIMMEL-8231', removeBody);
+    expect(rows()[0].mechanism).toBe('merge-stamp');
+  });
+
+  it('hook GET does not recurse', async () => {
+    const f = displacement();
+    await request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual');
+    expect(f.calls.map((c) => `${c.method} ${c.path.split('?')[0]}`)).toEqual([
+      'GET /issue/HIMMEL-8231', 'GET /issue/HIMMEL-8231/changelog', 'PUT /issue/HIMMEL-8231',
+      'GET /issue/HIMMEL-8231', 'GET /issue/HIMMEL-8231/changelog',
+    ]);
+  });
+
+  it('hook off when NODE_ENV is test makes no extra request', async () => {
+    vi.stubEnv('HIMMEL_VERSION_WRITES', '');
+    const f = displacement();
+    await request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual');
+    expect(f.calls.map((c) => c.method)).toEqual(['PUT']);
+    vi.stubEnv('HIMMEL_VERSION_WRITES', '/var/lib/real-station/version-writes.jsonl');
+    f.calls.length = 0;
+    await request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual');
+    expect(f.calls.map((c) => c.method)).toEqual(['PUT']);
+  });
+
+  it('hung hook GET does not hang the write (I7)', async () => {
+    vi.useFakeTimers();
+    const f = displacement();
+    f.hangGets = true;
+    const done = request('PUT', '/issue/HIMMEL-8231', removeBody, 'displace-residual');
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(done).resolves.toEqual({});
+    expect(puts(f)).toHaveLength(1);
+    expect(rows()).toEqual([]);
+  });
+
+  it('ids compare numerically', async () => {
+    fakeJira({
+      key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('9999', null, 'v1.1.3')],
+      onWrite: (f) => { f.entries.push(fv('10000', 'v1.1.3', 'v1.1.4')); f.set = ['v1.1.4']; },
+    });
+    await request('PUT', '/issue/HIMMEL-9', { fields: { fixVersions: [{ name: 'v1.1.4' }] } }, 'merge-stamp');
+    expect(rows()).toMatchObject([{ entry: '10000', from: ['v1.1.3'], to: ['v1.1.4'] }]);
+  });
+
+  it('changelog over two pages binds the newest', async () => {
+    const other = (n: number): Entry => ({ id: String(100 + n), created: '2026-10-01T00:00:00.000+0100', items: [{ field: 'other' }] });
+    const old = Array.from({ length: 110 }, (_, n) => other(n));
+    old[3] = fv('500', null, 'v1.1.3');
+    fakeJira({
+      key: 'HIMMEL-9', set: ['v1.1.3'], entries: old,
+      onWrite: (f) => { f.entries.push(fv('501', 'v1.1.3', 'v1.1.4')); f.set = ['v1.1.4']; },
+    });
+    await request('PUT', '/issue/HIMMEL-9', { fields: { fixVersions: [{ name: 'v1.1.4' }] } }, 'merge-stamp');
+    expect(rows()).toMatchObject([{ entry: '501' }]);
+  });
+
+  describe.each([
+    ['update add', { update: { fixVersions: [{ add: { name: 'v1.1.4' } }] } }, ['v1.1.3'], ['v1.1.3', 'v1.1.4'], fv('601', null, 'v1.1.4')],
+    ['update remove', { update: { fixVersions: [{ remove: { name: 'v1.1.3' } }] } }, ['v1.1.3', 'v1.1.4'], ['v1.1.4'], fv('601', 'v1.1.3', null)],
+    ['fields replace', { fields: { fixVersions: [{ name: 'v1.1.4' }] } }, ['v1.1.3'], ['v1.1.4'], fv('601', 'v1.1.3', 'v1.1.4')],
+    ['fields empty writes to []', { fields: { fixVersions: [] } }, ['v1.1.3'], [], fv('601', 'v1.1.3', null)],
+  ] as const)('%s', (_name, body, before, after, entry) => {
+    it('binds a row with the set read before and after', async () => {
+      fakeJira({ key: 'HIMMEL-9', set: [...before], entries: [fv('600', null, 'v1.1.3')], onWrite: (f) => { f.entries.push(entry as Entry); f.set = [...after]; } });
+      await request('PUT', '/issue/HIMMEL-9', body, 'transition-stamp');
+      expect(rows()).toMatchObject([{ from: [...before], to: [...after], entry: '601' }]);
+    });
+  });
+
+  it('agile and confluence paths are ignored', async () => {
+    const f = fakeJira({ key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('600', null, 'v1.1.3')] });
+    const body = { fields: { fixVersions: [{ name: 'v1.1.4' }] } };
+    await requestAt('/rest/agile/1.0', 'PUT', '/issue/HIMMEL-9', body);
+    await requestAt('/wiki/api/v2', 'PUT', '/issue/HIMMEL-9', body);
+    await request('PUT', '/issue/HIMMEL-9/properties/x', body);
+    expect(f.calls.map((c) => c.method)).toEqual(['PUT', 'PUT', 'PUT']);
+    expect(rows()).toEqual([]);
+  });
+
+  describe('journal path failure outside a repo is quiet, write intact (I7)', () => {
+    const gitCalls = () => vi.mocked(execFileSync).mock.calls.filter((c) => c[0] === 'git');
+    let away: string;
+    let was: string;
+
+    beforeEach(() => {
+      away = mkdtempSync(join(tmpdir(), 'not-a-repo-'));
+      was = process.cwd();
+      process.chdir(away);
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('HIMMEL_VERSION_WRITES', '');
+      vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '');
+      vi.stubEnv('HANDOVER_DIR', dir);
+      vi.mocked(execFileSync).mockClear();
+    });
+
+    afterEach(() => {
+      process.chdir(was);
+      rmSync(away, { recursive: true, force: true });
+    });
+
+    it.each([['set', 'someone'], ['unset', '']])('with the state keys %s', async (_label, slug) => {
+      vi.stubEnv('USER_SLUG', slug);
+      const f = fakeJira({ key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('600', null, 'v1.1.3')] });
+      await expect(request('PUT', '/issue/HIMMEL-9', { fields: { fixVersions: [{ name: 'v1.1.4' }] } }, 'merge-stamp')).resolves.toEqual({});
+      expect(f.calls.map((c) => c.method)).toEqual(['PUT']);
+      const asked = gitCalls().filter((c) => (c[1] as string[]).includes('--git-common-dir'));
+      expect(asked.length).toBeGreaterThan(0);
+      for (const c of asked) expect((c[2] as { stdio: unknown[] }).stdio[2]).toBe('ignore');
+    });
+  });
+
+  it('version-writes does not import history', () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'release', 'version-writes.ts'), 'utf8');
+    const imports = src.split('\n').filter((l) => /^import\b/.test(l)).join('\n');
+    expect(imports).not.toMatch(/history/);
+    expect(imports).not.toMatch(/client\.js/);
   });
 });

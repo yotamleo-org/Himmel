@@ -30,8 +30,9 @@ import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
+import { readBoardExtras } from "./board";
 import { legSync, readRoadmap } from "./roadmap";
-import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSetting, trackerSources } from "./tracker-sources";
+import { ISSUE_LIMIT, jiraMirrorDir, mergedSettings, readGithubIssues, settingsEnv, trackerSetting, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { optsOf, readReports, writeReports } from "./report-settings";
 import { DAY as REPORT_DAY, listReports, readReport, soFar } from "./reports";
@@ -300,6 +301,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const projectRoot = opts.projectRoot ?? process.cwd();
   // the tracker (its git config, its default-bucket store) is the project's, never the checkout the UI is served from
   const trackerRoot = opts.projectRoot ?? opts.root ?? process.cwd();
+  // env with the tracker and Jira-mirror settings read from the project's .env (its anchor: the repo top behind a subdirectory or a
+  // worktree, never the himmel checkout the UI is served from) and himmel.conf too, per call so an edit shows at once
+  const senv = () => settingsEnv(stationRoot(trackerRoot), env);
   const setupOpts = { env, home: env.HOME || homedir(), himmelRoot: root, projectRoot };
   const himmelctl = himmelctlBin(env);
   const stateDir = join(env.HOME || homedir(), ".himmel", "state", "config-ui");
@@ -394,7 +398,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   async function localWriteRoute(b: Record<string, unknown>): Promise<Response> {
     const req = parseLocalWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
-    if (!(await trackerSources(env, trackerRoot)).includes("local")) return json({ error: "the local tracker is not this project's tracker" }, 403);
+    if (!(await trackerSources(senv(), trackerRoot)).includes("local")) return json({ error: "the local tracker is not this project's tracker" }, 403);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     let res: WriteResult | undefined;
@@ -415,15 +419,16 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const req = parseWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
     // GitHub cards are read-only in the page; the server holds the same contract, before the write lock is taken.
-    const first = (await trackerSources(env, trackerRoot))[0], setting = trackerSetting(env, trackerRoot);
+    const wenv = senv();
+    const first = (await trackerSources(wenv, trackerRoot))[0], setting = trackerSetting(wenv, trackerRoot);
     if (first === "github") return json({ error: "GitHub roadmap is read-only" }, 403);
     // a Jira write needs a Jira project: a local or none project, or any other non-empty setting (a typo, TRACKER=Local, github
     // with gh logged out), never writes Jira, whatever mirror is lying around
     if (first === "local" || first === "none" || (setting !== "" && setting !== "jira")) return json({ error: "this project's tracker is not Jira" }, 403);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
-    const mirrorDir = env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
-    const childEnv = { ...env, JIRA_PROJECT_KEY: env.JIRA_PROJECT_KEY || "HIMMEL" };
+    const mirrorDir = jiraMirrorDir(wenv); // the mirror the cards read: a drop refreshes that one
+    const childEnv = { ...wenv, JIRA_PROJECT_KEY: wenv.JIRA_PROJECT_KEY || "HIMMEL" };
     let res: WriteResult | undefined;
     try {
       res = await applyWrite(req, { bin: jiraBin(env), mirrorDir,
@@ -601,7 +606,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         ]);
         let raw = "";
         try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-        return json(redactOut({ bank, workers, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) }) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
+        return json(redactOut({ bank, workers, monitoring, mode: readMode(root, mergedSettings(root, env)) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
       }
       // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
       if (path === "/api/bank") {
@@ -667,20 +672,21 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readReviewers(env)));
       }
-      // the tracker sources the rail gates Roadmap and Kanban on.
+      // the tracker sources the rail gates the Board on.
       if (path === "/api/sources") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        return json({ sources: await trackerSources(env, trackerRoot) });
+        return json({ sources: await trackerSources(senv(), trackerRoot) });
       }
       // the roadmap, read live from the Jira mirror, the plan dir, the drift log and the workers on every request, or from the
       // GitHub issues or the local tracker store when that is the first source. Read-only: the sync list is a plan the chief kit
       // executes, never run here.
       if (path === "/api/roadmap") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        const mirrorDir = jiraMirrorDir(env);
-        const first = (await trackerSources(env, trackerRoot))[0];
+        const renv = senv();
+        const mirrorDir = jiraMirrorDir(renv);
+        const first = (await trackerSources(renv, trackerRoot))[0];
         if (first === "none") return json(redactOut({ ...readRoadmap({ mirrorDir, none: true, workers: { state: "absent" } }), sync: [] }));
-        if (first === "local" || (!first && trackerSetting(env, trackerRoot) === "local")) {
+        if (first === "local" || (!first && trackerSetting(renv, trackerRoot) === "local")) {
           const items = await readLocalItems(env, trackerRoot);
           const r = readRoadmap({ mirrorDir, local: items ?? [], workers: { state: "absent" } });
           return json(redactOut({ ...r, ...(items ? {} : { reason: "the local tracker store could not be read" }), sync: [] }));
@@ -694,6 +700,24 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
         const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers });
         return json(redactOut({ ...r, sync: legSync(r.tickets) }));
+      }
+      // the Board page's two extra reads: the saved status-drift summary and the chain read. Read-only; each is absent, with the
+      // reason, unless its input is found: named in the settings (the checkout's .env, himmel.conf, the non-empty process env
+      // winning, as /api/health reads them) or the newest file of that name under the handover root (board.ts).
+      if (path === "/api/board") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        // the extras read the Jira mirror: on another active tracker's Board they would show Jira's drift and chains beside its cards
+        const benv = senv();
+        const first = (await trackerSources(benv, trackerRoot))[0];
+        if (first === "none" || first === "local" || first === "github" || (!first && trackerSetting(benv, trackerRoot) === "local")) {
+          const why = "the active tracker is not Jira";
+          return json({ drift: { state: "absent", reason: `no saved drift run: ${why}` }, chains: { state: "absent", reason: `no chain registry: ${why}` } });
+        }
+        // the handover paths come from the settings as /api/health reads them; the mirror is the project's alone, the one the cards
+        // read: the checkout's own mirror and key are dropped, so a project that names none gets the default, as the cards do
+        const { HIMMEL_JIRA_MIRROR: _checkoutMirror, JIRA_PROJECT_KEY: _checkoutKey, ...handover } = mergedSettings(root, env);
+        const mirror = Object.fromEntries(["HIMMEL_JIRA_MIRROR", "JIRA_PROJECT_KEY"].filter((k) => benv[k]).map((k) => [k, benv[k]]));
+        return json(redactOut(await readBoardExtras({ ...handover, ...mirror })));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {

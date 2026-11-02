@@ -8,7 +8,7 @@ import { behaviourKey, handoverRoot } from '../handover-root.js';
 // whole root for tests and for a session outside a launcher.
 
 function primaryRepoName(): string {
-  const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
+  const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   return basename(dirname(common));
 }
 

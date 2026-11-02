@@ -1,0 +1,65 @@
+{
+  "key": "HIMMEL-7044",
+  "source": "jira history --json read once on 2026-11-02, scrubbed by allowlist; changelog entries, from and to are real",
+  "journalSynthesized": false,
+  "journal": [],
+  "changelog": [
+    {
+      "id": "73855",
+      "created": "2026-10-22T05:24:57.388+0200",
+      "items": [
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "74660",
+      "created": "2026-10-23T01:16:29.950+0200",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.1.4"
+        }
+      ]
+    },
+    {
+      "id": "77082",
+      "created": "2026-10-25T02:11:44.306+0100",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": "v1.1.4",
+          "toString": null
+        },
+        {
+          "field": "other"
+        }
+      ]
+    },
+    {
+      "id": "77932",
+      "created": "2026-10-25T19:26:35.728+0100",
+      "items": [
+        {
+          "field": "Fix Version",
+          "fromString": null,
+          "toString": "v1.1.3"
+        }
+      ]
+    },
+    {
+      "id": "77933",
+      "created": "2026-10-25T19:26:36.329+0100",
+      "items": [
+        {
+          "field": "other"
+        },
+        {
+          "field": "other"
+        }
+      ]
+    }
+  ]
+}
