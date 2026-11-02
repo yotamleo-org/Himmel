@@ -299,7 +299,12 @@ so it recurs. After such a run, re-apply himmel's hook pricing with
 restores the stock four-tool, no-timeout entries. The section is therefore **upstream-owned**: himmel keeps exactly
 what the installer writes, unmodified, so a reinstall or upgrade is a no-op
 (or a clean upstream text bump), never a conflict. himmel's own rules live
-entirely OUTSIDE the section; where they conflict, the RULES above it win. The budget gate
+entirely OUTSIDE the section; where they conflict, the RULES above it win. The stock
+section teaches the bare `graphify` command, which failed 35 of 58 times from a
+worktree (HIMMEL-8759); the verbatim claim stays true because the section is not
+edited. The fix is the Retrieval routing rule above it, which names
+`bash scripts/graphify/worker-graph.sh`, and `scripts/ci/check-taught-search-forms.sh`
+keeps every other taught file on a working form. The budget gate
 (`scripts/ci/check-claude-md-budget.sh`) counts ONLY himmel's bytes (it
 excludes the section using the installer's own boundary rule) and asserts
 exactly one section (zero = anchor deleted, hint to reinstall; duplicates never
@@ -310,7 +315,7 @@ one section, gate green.
 
 **Behavioural half: not yet run.** Fewer bytes is only half the claim; the
 other half is that a fresh session still refuses to commit on main, still routes
-Jira through the CLI, still reaches for `graphify query` on a structure
+Jira through the CLI, still reaches for the graph (`worker-graph.sh query`) on a structure
 question. The with/without recipe (arms, probes, metrics, acceptance) is in
 [`docs/internals/token-economy-bench.md`](internals/token-economy-bench.md); it
 needs a quiet subscription usage budget window, so it runs post-merge and its numbers land here.

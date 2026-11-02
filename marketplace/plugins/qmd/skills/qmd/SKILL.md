@@ -134,12 +134,16 @@ Measured on a 38-query golden set with `scripts/eval/qmd-quality/qmd-quality.sh`
 
 ## CLI
 
+A himmel session runs the search verbs (`query`, `search`, `vsearch`) through
+`scripts/lib/qmd-bounded.sh`, which kills the whole process group on a timeout;
+a bare call is refused by the `block-bare-qmd-query` hook. The other verbs run
+as they are.
+
 ```bash
-qmd query "question"              # Auto-expand + rerank
-qmd query $'lex: X\nvec: Y'       # Structured
-qmd query $'expand: question'     # Explicit expand
-qmd query --json --explain "q"    # Show score traces (RRF + rerank blend)
-qmd search "keywords"             # BM25 only (no LLM)
+bash scripts/lib/qmd-bounded.sh query -c luna "question"              # Auto-expand + rerank
+bash scripts/lib/qmd-bounded.sh query -c luna $'lex: X\nvec: Y'       # Structured
+bash scripts/lib/qmd-bounded.sh query -c luna $'expand: question'     # Explicit expand
+bash scripts/lib/qmd-bounded.sh search -c luna "keywords"             # BM25 only (no LLM)
 qmd get "#abc123"                 # By docid
 qmd multi-get "journals/2026-*.md" -l 40  # Batch pull snippets by glob
 qmd multi-get notes/foo.md,notes/bar.md   # Comma-separated list, preserves order

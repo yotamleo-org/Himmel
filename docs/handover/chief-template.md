@@ -145,7 +145,14 @@ bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
 ## Dispatching a worker
 
 1. Write the brief from `{{REPO}}/docs/handover/worker-brief-template.md` into
-   `{{STATE_DIR}}`; a child inherits **nothing**, so brief it fully.
+   `{{STATE_DIR}}`; a child inherits **nothing**, so brief it fully. **Search
+   before you write its Prior art line** (a worker and a judge brief both inherit
+   it): `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c jira-himmel "<ticket topic>"`
+   for tickets and PRs, the same with `-c luna` for specs, audits and decisions,
+   and `bash {{REPO}}/scripts/graphify/worker-graph.sh explain "<symbol>"` for
+   structure. Cite pointers with their source, never your conclusion; nothing
+   found is `none found (<the query you ran>)`, and a miss is unproven.
+   A bare `qmd` search is refused and a bare `graphify` call fails in a worktree.
 2. **Collision check:** queued workers' files must be disjoint (**single-writer**).
 3. **Name an explicit model**; raise *effort* before tier.
 4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl
