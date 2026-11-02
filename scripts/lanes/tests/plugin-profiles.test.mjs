@@ -2132,7 +2132,7 @@ test('himmel-guard is on by default in the starter install and the user profile 
 
 // A bare tool name in permissions.deny removes the definition from the request
 // payload (a scoped rule only blocks calls); disableWorkflows drops Workflow.
-const TRIM_DENY = ['NotebookEdit', 'DesignSync', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'ReportFindings', 'RemoteTrigger', 'Artifact'];
+const TRIM_DENY = ['NotebookEdit', 'DesignSync', 'CronCreate', 'CronDelete', 'CronList', 'ScheduleWakeup', 'ReportFindings', 'RemoteTrigger', 'Artifact', 'AskUserQuestion', 'SendFeedback'];
 const TRIM_NEVER = ['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent'];
 
 for (const name of BUS_PROFILES) {
