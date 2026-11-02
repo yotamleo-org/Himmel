@@ -44,7 +44,7 @@ if [ -n "$HDIR" ] && [ ! -d "$HDIR" ]; then
 fi
 command -v jq >/dev/null || { echo "graph-use-report: jq is required" >&2; exit 2; }
 # The window: the last DAYS days by mtime, or with --until-epoch (GNU find) the DAYS days that end at that instant, to re-run a past window.
-if [ -n "$UNTIL" ]; then WIN=(-newermt "@$((UNTIL - 10#$DAYS * 86400))" ! -newermt "@$UNTIL"); else WIN=(-mtime "-$((10#$DAYS))"); fi
+if [ -n "$UNTIL" ]; then WIN=(-newermt "@$((10#$UNTIL - 10#$DAYS * 86400))" ! -newermt "@$((10#$UNTIL))"); else WIN=(-mtime "-$((10#$DAYS))"); fi
 
 # One row per journal: tools search query explain path mcp bare bare_fail wrapper wrapper_fail wrapper_miss. A bad journal LINE is
 # skipped by fromjson?; a journal jq cannot read at all fails the program and is counted by the caller.
