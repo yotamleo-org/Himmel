@@ -195,7 +195,8 @@ test("runReader: a default call hands execFile a 10 second limit", async () => {
   const ok = join(s.d, "ok.mjs");
   writeFileSync(ok, "console.log(JSON.stringify({ fine: true }));\n");
   const seen: unknown[] = [];
-  mock.module("node:child_process", () => ({ ...childProcess, execFile: (...a: unknown[]) => { seen.push((a[2] as { timeout?: number }).timeout); return (childProcess.execFile as (...x: unknown[]) => unknown)(...a); } }));
+  const realExecFile = childProcess.execFile as (...x: unknown[]) => unknown; // captured before the mock, which Bun may rebind through childProcess
+  mock.module("node:child_process", () => ({ ...childProcess, execFile: (...a: unknown[]) => { seen.push((a[2] as { timeout?: number }).timeout); return realExecFile(...a); } }));
   const fresh = await import("../board?default-limit"); // a copy of board.ts bound to the spy
   expect(await fresh.runReader(ok, [], { PATH: process.env.PATH }, "the test reader")).toEqual({ fine: true });
   expect(seen).toEqual([10_000]);
