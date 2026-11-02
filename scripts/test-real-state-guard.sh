@@ -763,6 +763,10 @@ reset
 rc="$(env SCORECARD_CRONTAB="env crontab" SCORECARD_RUNNER_DIR="$TMP/hermetic-runner-ssm" SCORECARD_STATE_DIR="$TMP/cad-state-ssm" bash "$root/scripts/eval/stability-scorecard.sh" arm >"$TMP/cad.out" 2>&1; echo $?)"
 eq "SSM a multi-word crontab command with a temp runner dir is refused" "$rc" 77
 eq "SSM and installs nothing" "$(calls_exact 'crontab -')" 0
+reset
+rc="$(env SCORECARD_CRONTAB="env crontab" SCORECARD_RUNNER_DIR="$TMP/hermetic-runner-ssm" SCORECARD_STATE_DIR="$TMP/cad-state-ssm" CRON_LIST="$TMP/cron-list-SS" bash "$root/scripts/eval/stability-scorecard.sh" disarm >"$TMP/cad.out" 2>&1; echo $?)"
+eq "SSM a multi-word crontab command with a temp runner dir is refused on disarm" "$rc" 77
+eq "SSM and rewrites no crontab on disarm" "$(calls_exact 'crontab -')" 0
 
 # ---- the vault, config and index writer doors ----
 echo "== vault, config and index writer doors (HIMMEL-8852)"
@@ -960,7 +964,16 @@ for mode in missing crash; do
     env "${pfx}_RUNNER_DIR=$FAKE_REAL/fo-runner-$id" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" bash "$M/$script" arm $armargs >"$TMP/fo.out" 2>&1 || rc=$?
     if [ "$rc" = 77 ]; then fail "FO the guard $mode refused ${id} arm"; else pass "FO the guard $mode does not refuse ${id} arm"; fi
     eq "FO the guard $mode lets ${id} arm install its entry" "$(calls_exact 'crontab -')" 1
+    reset
+    rc=0
+    env "${pfx}_RUNNER_DIR=$FAKE_REAL/fo-runner-$id" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" CRON_LIST="$TMP/cron-list-$id" bash "$M/$script" disarm >"$TMP/fo.out" 2>&1 || rc=$?
+    if [ "$rc" = 77 ]; then fail "FO the guard $mode refused ${id} disarm"; else pass "FO the guard $mode does not refuse ${id} disarm"; fi
+    eq "FO the guard $mode lets ${id} disarm rewrite the crontab" "$(calls_exact 'crontab -')" 1
   done
+  # The arm-resume removal door: the functions run against the mirror dir, so the guard is the missing or crashing one.
+  reset
+  bash "$TMP/del-run.sh" "$M/scripts/handover" "$TMP/del.lib" at-job-7 soft >"$TMP/fo.out" 2>&1
+  eq "FO the guard $mode lets the arm-resume removal door run atrm" "$(calls_exact 'atrm 7')" 1
   for s in "${FO_SCRIPTS[@]}"; do
     rc=0
     case "$s" in
