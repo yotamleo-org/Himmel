@@ -107,5 +107,5 @@ test("with no drift file and no chain registry the Board says so in words and sh
   await expect(page.locator(".rm-link").first()).toContainText("waits for you: not read");
   await expect(page.locator(".rm-chain")).toHaveCount(0);
   await page.getByRole("tab", { name: /^Chains/ }).click();
-  await expect(page.locator("#main .nodata")).toContainText("no chain registry");
+  await expect(page.locator("#rm-chains .nodata")).toContainText("no chain registry");
 });
