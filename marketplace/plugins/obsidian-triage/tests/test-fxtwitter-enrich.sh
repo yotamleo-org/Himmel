@@ -1265,6 +1265,71 @@ assert "Test25: the inline call did not use the Scrapling fallback" "no" "$t25a"
 t25b=no; grep -q "needs_thread: true" "$t25_vault/Clippings/a.md" 2>/dev/null && grep -q "enrichment_status: partial" "$t25_vault/Clippings/a.md" 2>/dev/null && t25b=yes
 assert "Test25: and the clip reads partial + needs_thread, left for the backfill" "yes" "$t25b"
 
+# -- Test 26: clip-reread-plan.mjs pre-filters a reread and triage-skips triaged clips --
+echo "Test 26: clip-reread-plan pre-filters already-triaged clips with appended thread text"
+PLAN="$TOOLS_DIR/clip-reread-plan.mjs"
+t26_vault="$tmpdir/vault-t26"
+mkdir -p "$t26_vault/Clippings/_evidence"
+mk_t26() {  # <file> <processed line or empty> <thread body or empty>
+    {
+        echo "---"
+        echo "source: https://x.com/jack/status/26"
+        echo "tags:"
+        echo "  - ai"
+        [ -n "$2" ] && echo "$2"
+        echo "---"
+        echo "# tweet"
+        echo ""
+        echo "## The Idea"
+        echo "original idea text"
+        if [ -n "$3" ]; then
+            echo ""
+            echo "## Thread"
+            echo "<!-- fxtwitter thread -->"
+            printf '%s\n' "$3"
+        fi
+    } >"$t26_vault/Clippings/_evidence/$1"
+}
+t26_author="$(printf 'x%.0s' $(seq 1 400))"
+mk_t26 links.md "processed: true" "
+**@jack** (author) https://x.com/jack/status/27
+
+> see https://example.com/paper for details"
+mk_t26 author-text.md "processed: true" "
+**@jack** (author) https://x.com/jack/status/28
+
+> $t26_author"
+mk_t26 tiny.md "processed: true" "
+**@jack** (author) https://x.com/jack/status/29
+
+> thanks"
+mk_t26 nothread.md "processed: true" ""
+mk_t26 fresh.md "" "
+**@jack** (author) https://x.com/jack/status/30
+
+> $t26_author"
+t26_tiny_sum="$(sha256sum "$t26_vault/Clippings/_evidence/tiny.md" | cut -d' ' -f1)"
+t26_before="$(sha256sum "$t26_vault/Clippings/_evidence/links.md" | cut -d' ' -f1)"
+node "$PLAN" --vault "$t26_vault" --kept-file "$tmpdir/t26-kept.txt" >"$tmpdir/t26-dry.out" 2>&1
+assert "Test26: dry run reports seen, kept, skipped, triage-skipped, synthesised" \
+    "summary: seen=5 kept=3 skipped=2 triage-skipped=2 synthesised=3" "$(grep '^summary:' "$tmpdir/t26-dry.out")"
+assert "Test26: dry run writes nothing" "$t26_before" "$(sha256sum "$t26_vault/Clippings/_evidence/links.md" | cut -d' ' -f1)"
+assert "Test26: a tiny reply is skipped with its reason" "yes" "$(grep -q 'tiny.md.*skipped.*below-threshold' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: a clip with no thread is skipped with its reason" "yes" "$(grep -q 'nothread.md.*skipped.*no-thread' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: a new link keeps the clip" "yes" "$(grep -q 'links.md.*kept.*new-links' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: a fresh clip is kept for its normal first triage, not triage-skipped" "yes" "$(grep -q 'fresh.md.*kept.*fresh' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: the kept file lists the three kept clips" "3" "$(wc -l <"$tmpdir/t26-kept.txt" | tr -d ' ')"
+node "$PLAN" --vault "$t26_vault" --apply --kept-file "$tmpdir/t26-kept.txt" >"$tmpdir/t26-apply.out" 2>&1
+t26_links="$t26_vault/Clippings/_evidence/links.md"
+assert "Test26: apply keeps the triage fields (processed stays true)" "yes" "$(grep -q '^processed: true$' "$t26_links" && echo yes || echo no)"
+assert "Test26: apply keeps the existing tags" "yes" "$(grep -q '^  - ai$' "$t26_links" && echo yes || echo no)"
+assert "Test26: apply derives thread_links in code" "yes" "$(grep -q 'https://example.com/paper' "$t26_links" && grep -q '^thread_links:' "$t26_links" && echo yes || echo no)"
+assert "Test26: apply leaves a skipped clip byte-identical" "$t26_tiny_sum" "$(sha256sum "$t26_vault/Clippings/_evidence/tiny.md" | cut -d' ' -f1)"
+assert "Test26: apply never gives the fresh clip derived fields" "no" "$(grep -q '^thread_links:' "$t26_vault/Clippings/_evidence/fresh.md" && echo yes || echo no)"
+t26_after="$(sha256sum "$t26_links" | cut -d' ' -f1)"
+node "$PLAN" --vault "$t26_vault" --apply >"$tmpdir/t26-apply2.out" 2>&1
+assert "Test26: a second apply is idempotent" "$t26_after" "$(sha256sum "$t26_links" | cut -d' ' -f1)"
+
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
 echo ""

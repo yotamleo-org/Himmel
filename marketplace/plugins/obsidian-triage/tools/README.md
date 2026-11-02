@@ -208,6 +208,25 @@ clip has (never shrunk), and only the author's own continuation clears a
 was reverted or a directory was unreadable (its clips were not seen). It does not run
 triage, synthesis, digest or embedding: those are a separate, paid rerun.
 
+### Pre-filtering a reread (`clip-reread-plan.mjs`)
+
+Before a paid reread, code picks the X clips that matter. No LLM, no network;
+dry run unless `--apply`:
+
+```bash
+node clip-reread-plan.mjs --vault ~/Documents/luna [--min-chars 280] [--kept-file kept.txt] [--apply]
+```
+
+Per clip: `<path>\t<kept|skipped>\t<reason>`. A triaged (`processed: true`) clip with
+no `## Thread` is skipped `no-thread`; one whose thread adds no new URL and under
+`--min-chars` new text is skipped `below-threshold`; otherwise it is kept for
+`new-links`, `new-author-text` or `new-text`. A kept triaged clip is
+**triage-skipped**: its triage fields stay, and `--apply` adds only the rule-derived
+`thread_links` and `thread_handles`. An untriaged clip is kept as `fresh` and gets
+its normal first triage, unchanged. The run ends with the one batched synthesis
+command over `--kept-file` and
+`summary: seen=N kept=K skipped=S triage-skipped=T synthesised=K`.
+
 ### Re-flagging historical silent partials (`harvest-clip-body-batch.py --reflag-silent-partials`)
 
 Clippings stamped ok over a partial capture before HIMMEL-6933 stay ok until
