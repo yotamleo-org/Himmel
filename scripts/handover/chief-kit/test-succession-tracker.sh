@@ -248,5 +248,18 @@ eq "with HIMMEL_LEGACY_NAMES=0 an old legs manifest cannot be cross-checked (rc 
 has "and says the manifest is unreadable" "$out" "unreadable"
 : "$before"
 
+# A replaced worker is not a silent inherited worker, even if its old row remains.
+OLD="$WORK/HIMMEL-9-N80-demo-2026-01-01.md"
+NEXT="$WORK/HIMMEL-9-N80b-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$NEXT" > "$OLD"
+printf '# successor\n\n## Results\n\n- 10:01 LIVE - working\n' > "$NEXT"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N1:Y-N1-aa:lockA:11` `N80:Y-N80-bb:lockB:12`\n' > "$CDOC"
+printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{"doc":"%s","label":"N80","lane":"claudex"}]}\n' "$WORK" "$OLD" > "$MAN"
+out="$(run)"; rc=$?
+eq "a replaced predecessor does not keep succession incomplete" "$rc" 0
+has "the tally counts only the active inherited worker" "$out" "COMPLETE 1/1"
+lacks "a replaced predecessor is never waiting on a quote-back" "$out" "N80 missing"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

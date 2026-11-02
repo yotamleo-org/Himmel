@@ -152,6 +152,10 @@ for needle in "90 %" "$DIR/HIMMEL-9-N77b-thing-2026-10-06-RESUME.md" T-chief \
         *) bad "deny text lacks '$needle' - got: $reason" ;;
     esac
 done
+case "$reason" in
+    *'"WRAPPED — context hand-off to <path>"'*) ok "handoff ends with a closable marker naming its successor" ;;
+    *) bad "handoff must name its successor in the final WRAPPED marker" ;;
+esac
 check "bypass WORKER_SESSION_CONTEXT_HANDOFF_OK=1 -> allow" allow "$LS" WORKER_SESSION_CONTEXT_HANDOFF_OK=1
 
 echo "== the worker-session names =="
