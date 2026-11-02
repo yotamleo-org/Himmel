@@ -447,6 +447,19 @@ fi
 # must call the delta none. It runs in the caller's cwd (the repo under review) and
 # only as the anchor's own copy; anything it prints but `none`, or any failure, refuses.
 if [ -n "$DNOOP" ]; then
+    # A no-op is never itself a judged head. This is checked here, not left to delta-class.sh,
+    # which reads a head recorded by a no-op through to the real judged head.
+    dn_noop=0 dn_real=0
+    for dn_f in "$ROOT/$SCOPE/verdicts/$QID"/*.md; do
+        [ -f "$dn_f" ] || continue
+        # shellcheck disable=SC2016  # the backticks are literal verdict-line text
+        grep -qxF -- '**GO** for head `'"$DNOOP"'`.' "$dn_f" 2>/dev/null || continue
+        if grep -qx 'delta: no-op' "$dn_f" 2>/dev/null; then dn_noop=1; else dn_real=1; fi
+    done
+    if [ "$dn_noop" -eq 1 ] && [ "$dn_real" -eq 0 ]; then
+        echo "write-verdict: --delta-noop refused - $DNOOP is itself a no-op record under $QID; a no-op is never a judged head, give the real judged head it rests on; nothing written" >&2
+        exit 2
+    fi
     declare -F go_trust_verdict >/dev/null 2>&1 || { echo "write-verdict: cannot load go_trust_verdict from scripts/lib/go-gate.sh - refusing" >&2; exit 3; }
     if ! dn_why=$(go_trust_verdict "$ROOT" "$QID" "$DNOOP" "$ANCHOR" "$PR" "$VREPO"); then
         echo "write-verdict: --delta-noop refused - the judged head has no GO from $QID: $dn_why" >&2

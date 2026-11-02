@@ -206,6 +206,15 @@ while :; do
     j3n=$((j3n + 1))
 done
 printf 'c\n' >> "$READY_REPO/docs/j3.md"; rgit add -A && rgit commit -qm j3c; J3C=$(rgit rev-parse HEAD)
+# HB: a docs push on JUDGED whose sha sorts BEFORE JUDGED's (so the carry meets a no-op record resting on JUDGED first), HBN a docs push on it
+hbn=0
+while :; do
+    rgit checkout -q -B hbh "$JUDGED"
+    printf 'hb %s\n' "$hbn" > "$READY_REPO/docs/hb.md"; rgit add -A && rgit commit -qm "hb $hbn"; HB=$(rgit rev-parse HEAD)
+    [[ "$HB" < "$JUDGED" ]] && break
+    hbn=$((hbn + 1))
+done
+printf 'c\n' >> "$READY_REPO/docs/hb.md"; rgit add -A && rgit commit -qm hbn; HBN=$(rgit rev-parse HEAD)
 rgit checkout -q "$RB"
 # ASIB (on NDOC) and ASIDE (on NDOC2): docs pushes only the anchor checkout holds, never the cwd
 SIDE="$tmp/side"
@@ -217,7 +226,7 @@ git -C "$ANCHOR" fetch -q "$READY_REPO" '+refs/heads/*:refs/ready/*'
 git -C "$ANCHOR" fetch -q "$SIDE" '+refs/heads/*:refs/side/*'
 git -C "$ANCHOR" update-ref refs/remotes/origin/main "$JUDGED"
 ln -s "$LEDGER" "$(git -C "$ANCHOR" rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
-ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2" "${CH[@]}" "$PSIB" "$PX" "$J3" "$J3C" "$ASIB" "$ASIDE"
+ready_pass_ledger "$READY_REPO" "$SHA" "$SHA2" "$JUDGED" "$NDOC" "$NTRUST" "$NDOC2" "${CH[@]}" "$PSIB" "$PX" "$J3" "$J3C" "$HB" "$HBN" "$ASIB" "$ASIDE"
 cp "$LEDGER" "$tmp/ledger.base"
 
 CHIEF="$tmp/chief.md"
@@ -579,8 +588,8 @@ rm -f "$VDIR/qj/judge-qj.md"; rm -f "$AUDIT"
 STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$NDOC2 READY_STUB_HEAD=$NDOC2 run 77 "$NDOC2";  esc "A1b a NO-GO at the judged head refuses a carry whose only record is the no-op" 5
 contains "A1b a carry whose only record is the no-op: the refusal names the NO-GO" "$OUT" "holds a NO-GO"
 # a chain of no-op records: a record's judged head may itself rest on a no-op record, and the NO-GO check follows the chain to the root
-# (write-verdict.sh refuses to chain: delta-class.sh reads a judged head with only a no-op record as trust. The rows write signed
-# records by hand, since go_trust_verdict itself would accept one.)
+# (write-verdict.sh refuses to chain by its own check: --delta-noop names a head that is itself a no-op record, rc 2. The rows
+# write signed records by hand, since go_trust_verdict itself would accept one.)
 noop() { # <head> <judged head>: a signed no-op record in write-verdict.sh's layout
     local nvf="$VDIR/qj/delta-noop-$1.md" nmac
     mkdir -p "$VDIR/qj"
@@ -620,8 +629,8 @@ sent() { # <label> <head> <qid>
     check "$1: exit 0" "$RC" "0"
     check "$1: GO-SENT" "$OUT" "GO-SENT 77 $2 to N1 bus=#7 qid=$3"
 }
-# the dry run, for rows go.sh would refuse on grounds of its own (it reads a no-op's delta from the cwd and
-# refuses a no-op whose judged head holds only a no-op): check 5 is what these rows prove
+# the dry run, for rows go.sh would refuse on grounds of its own (it reads a no-op's delta from the cwd, and
+# a chain of hand-written no-op records is not one write-verdict.sh produces): check 5 is what these rows prove
 drun() { STUB_FILE=scripts/ci/x.sh STUB_PR_HEAD=$1 READY_STUB_HEAD=$1 run --dry-run 77 "$1"; }
 would() { # <label> <head>
     check "$1: exit 0" "$RC" "0"
@@ -675,6 +684,12 @@ hrun "$NDOC"; esc "8478 a no-op chain whose root holds only a no-op record" 5
 contains "8478 a root with no real GO: the refusal says so" "$OUT" "no real"
 gofresh; verdict qj "**GO** for head \`$JUDGED\`." 77 judge-qj 0; noop "$NDOC" "$JUDGED"
 hrun "$NDOC"; esc "8478 a no-op chain whose root GO is unsigned" 5
+# a carry never starts from a no-op record: HB sorts before JUDGED and rests on it, a later push HBN carries from the real GO,
+# in the dry run and in the real run alike
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; noop "$HB" "$JUDGED"
+drun "$HBN"; would "8717 a no-op head that sorts before the real GO head does not take the carry (dry run)" "$HBN"
+gofresh; verdict qj "**GO** for head \`$JUDGED\`."; noop "$HB" "$JUDGED"
+hrun "$HBN"; sent "8717 a no-op head that sorts before the real GO head does not take the carry (real run)" "$HBN" qj
 # usage names --dry-run as optional
 rawrun; contains "8478 usage shows [--dry-run]" "$OUT" "[--dry-run] <pr-number>"
 
