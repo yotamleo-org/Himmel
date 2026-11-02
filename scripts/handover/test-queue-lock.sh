@@ -3245,11 +3245,53 @@ else
 fi
 bad_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" wrong-token 2>&1)"; bad_rc=$?
 none_out="$(env -u QUEUE_LOCK_SESSION_SCOPE -u CLAUDE_CODE_SESSION_ID bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; none_rc=$?
-if [ "$bad_rc" -eq 2 ] && [ "$none_rc" -eq 2 ] && [ "$(a_hb "$B_LK")" = "$OLD_HB" ]; then
-    pass "T95c: adopt refuses a wrong token and a missing session scope (rc 2), registering nothing"
+# the session's registration dir under the token dir: the scope digest is the
+# only thing the hook reads, so "registered nothing" means this dir is absent or empty.
+t95_digest() { if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | cut -d' ' -f1; else printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; fi; }
+t95_sdir() { printf '%s/xdg/himmel-queue-lock/scope.%s' "$TMPDIR_ROOT" "$(t95_digest "$1")"; }
+t95_count() { local n=0 f; for f in "$@"; do [ -f "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
+t95_registered() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
+printf '{"session_id":"scope-owner","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" self-heartbeat >/dev/null 2>&1
+if [ "$bad_rc" -eq 2 ] && [ "$none_rc" -eq 2 ] && [ "$(a_hb "$B_LK")" = "$OLD_HB" ] \
+    && ! t95_registered "$(t95_sdir scope-owner)" && [ ! -f "$B_LK/liveness" ]; then
+    pass "T95c: adopt refuses a wrong token and a missing session scope (rc 2), registering nothing (no sidecar, no token file, no liveness marker, the owner's hook still cannot refresh)"
 else
-    fail "T95c: adopt refusals (wrong rc=$bad_rc out=$bad_out; no-scope rc=$none_rc out=$none_out)"
+    fail "T95c: adopt refusals (wrong rc=$bad_rc out=$bad_out; no-scope rc=$none_rc out=$none_out; registered=$(ls -A "$(t95_sdir scope-owner)" 2>/dev/null))"
 fi
+
+# T95e: adopt must not report success when the registration could not be
+# written: here the token dir path is occupied by a regular file.
+T95E_XDG="$TMPDIR_ROOT/xdg-blocked-95e"; mkdir -p "$T95E_XDG"; chmod 700 "$T95E_XDG"; : > "$T95E_XDG/himmel-queue-lock"
+e_out="$(XDG_RUNTIME_DIR="$T95E_XDG" QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; e_rc=$?
+if [ "$e_rc" -eq 1 ] && ! grepq "$e_out" 'adopted' && grepq "$e_out" 'nothing registered'; then
+    pass "T95e: adopt exits 1 and prints no success line when the registration cannot be written"
+else
+    fail "T95e: adopt reported success without registering (rc=$e_rc out=$e_out)"
+fi
+
+# T95f: the 40b092df4 fix. adopt persists the token it VALIDATED, never a
+# second read of owner.json: frozen between the check and the write (the
+# _ql_test_pause seam), a takeover by another holder must leave NOTHING
+# registered for the adopter -- neither the old token nor the new holder's --
+# and the new holder's lock must carry no liveness marker from the adopter.
+F95_DOC="$A_HO/adopt-race.md"; : > "$F95_DOC"; F95_LK="$(a_lockdir adopt-race)"
+QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$F95_DOC" adoptA95 >/dev/null 2>&1
+F95_P="$TMPDIR_ROOT/pause-t95f"; : > "$F95_P"
+F95_CFG="$TMPDIR_ROOT/cfg-95f"; mkdir -p "$F95_CFG/projects/p"; : > "$F95_CFG/projects/p/racer95.jsonl"
+( CLAUDE_CONFIG_DIR="$F95_CFG" CLAUDE_CODE_SESSION_ID=racer95 QUEUE_LOCK_SESSION_SCOPE=scope-racer QUEUE_LOCK_TEST_PAUSE_AT=adopt-verified QUEUE_LOCK_TEST_PAUSE_FILE="$F95_P" \
+    bash "$LIB" adopt "$F95_DOC" adoptA95 > "$F95_P.out" 2>&1; echo $? > "$F95_P.rc" ) &
+f_wait_reached "$F95_P" || fail "T95f: adopt never reached the pause point"
+QUEUE_LOCK_TAKEOVER=1 CLAUDE_CODE_SESSION_ID="" bash "$LIB" acquire "$F95_DOC" adoptB95 >/dev/null 2>&1
+rm -f "$F95_P"; wait
+f_rc="$(cat "$F95_P.rc" 2>/dev/null)"
+if [ "$f_rc" = 2 ] && ! t95_registered "$(t95_sdir scope-racer)" \
+    && [ ! -f "$F95_LK/liveness" ] && grep -q '"session":"adoptB95"' "$F95_LK/owner.json" 2>/dev/null; then
+    pass "T95f: an adopt frozen across a takeover registers nothing for either holder and leaves the new holder's lock untouched"
+else
+    fail "T95f: adopt across takeover (rc=$f_rc out=$(cat "$F95_P.out" 2>/dev/null) registered=$(ls -A "$(t95_sdir scope-racer)" 2>/dev/null))"
+fi
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$F95_DOC" >/dev/null 2>&1
 ad_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; ad_rc=$?
 printf '{"session_id":"scope-invoker","transcript_path":"%s"}' "$B_TR" \
     | QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$LIB" self-heartbeat >/dev/null 2>&1
@@ -3263,6 +3305,72 @@ else
     fail "T95d: adopt binding (rc=$ad_rc out=$ad_out invoker-hb=$inv_hb owner-hb=$(a_hb "$B_LK"))"
 fi
 bash "$LIB" release "$B_DOC" behalf95 >/dev/null 2>&1
+
+# T95g: the hook's digest spawn count does not depend on how many OTHER
+# sessions' sidecars sit in the token dir (a flat layout hashed every foreign
+# sidecar on every tool call). A sha256sum
+# shim on PATH counts the digests; the same self-heartbeat runs with no foreign
+# sidecars and with thousands, flat and in other sessions' scope dirs.
+G_DOC="$A_HO/spawn-count.md"; : > "$G_DOC"
+QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" acquire "$G_DOC" spawn95 >/dev/null 2>&1
+G_SHIM="$TMPDIR_ROOT/shim-95g"; mkdir -p "$G_SHIM"; G_LOG="$TMPDIR_ROOT/shim-95g.log"
+G_REAL_SHA="$(command -v sha256sum 2>/dev/null)"
+printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "$@"\n' "$G_LOG" "${G_REAL_SHA:-/nonexistent}" > "$G_SHIM/sha256sum"
+chmod +x "$G_SHIM/sha256sum"
+g_count() {
+    : > "$G_LOG"
+    printf '{"session_id":"scope-spawn"}' \
+        | PATH="$G_SHIM:$PATH" QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" self-heartbeat >/dev/null 2>&1
+    wc -l < "$G_LOG" | tr -d ' '
+}
+G_TOK="$TMPDIR_ROOT/xdg/himmel-queue-lock"
+g_before="$(g_count)"
+g_i=0
+while [ "$g_i" -lt 2000 ]; do
+    printf 'x\ny\n' > "$G_TOK/foreign-flat-$g_i.doc"
+    g_i=$((g_i + 1))
+done
+g_d=0
+while [ "$g_d" -lt 20 ]; do
+    mkdir -p "$G_TOK/scope.foreign-$g_d"
+    g_i=0
+    while [ "$g_i" -lt 100 ]; do
+        printf 'x\ny\n' > "$G_TOK/scope.foreign-$g_d/f$g_i.doc"
+        g_i=$((g_i + 1))
+    done
+    g_d=$((g_d + 1))
+done
+g_after="$(g_count)"
+rm -rf "$G_TOK"/foreign-flat-*.doc "$G_TOK"/scope.foreign-*
+if [ -n "$G_REAL_SHA" ] && [ "$g_before" -ge 1 ] && [ "$g_before" = "$g_after" ]; then
+    pass "T95g: self-heartbeat runs $g_before digest(s) with 0 foreign sidecars and $g_after with 4000 (constant)"
+else
+    fail "T95g: digest spawns grew with foreign sidecars (before=$g_before after=$g_after real=$G_REAL_SHA)"
+fi
+QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" release "$G_DOC" spawn95 >/dev/null 2>&1
+
+# T95h: the hook drops a registration whose lock dir is gone (token file and
+# sidecar), keeps one whose lock is still held, and never touches another
+# session's registrations.
+H_DOC1="$A_HO/prune-1.md"; : > "$H_DOC1"; H_LK1="$(a_lockdir prune-1)"
+H_DOC2="$A_HO/prune-2.md"; : > "$H_DOC2"; H_LK2="$(a_lockdir prune-2)"
+QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC1" prune95a >/dev/null 2>&1
+QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC2" prune95b >/dev/null 2>&1
+H_SD="$(t95_sdir scope-prune)"
+mkdir -p "$G_TOK/scope.foreign-keep"; printf 'x\ny\n' > "$G_TOK/scope.foreign-keep/keep.doc"
+h_regs_before="$(t95_count "$H_SD"/*.doc)"
+rm -rf "$H_LK1"
+printf '{"session_id":"scope-prune"}' | QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" self-heartbeat >/dev/null 2>&1
+h_regs_after="$(t95_count "$H_SD"/*.doc)"
+h_toks="$(t95_count "$G_TOK/$(t95_digest "scope-prune|$H_DOC1")".*)"
+if [ "$h_regs_before" = 2 ] && [ "$h_regs_after" = 1 ] && [ "$h_toks" = 0 ] \
+    && [ -d "$H_LK2" ] && [ -f "$G_TOK/scope.foreign-keep/keep.doc" ]; then
+    pass "T95h: the hook prunes a registration whose lock dir is gone, keeps a held one, and leaves foreign sidecars alone"
+else
+    fail "T95h: prune (regs $h_regs_before -> $h_regs_after, leftover token files for the dead lock: $h_toks, held lock present: $([ -d "$H_LK2" ] && echo y || echo n))"
+fi
+rm -rf "$G_TOK/scope.foreign-keep"
+QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" release "$H_DOC2" prune95b >/dev/null 2>&1
 
 # --- T96-T102: a lock past its TTL whose owner is PROVABLY dead
 # reads STALE-DEAD and `status --sweep --reap-dead` releases only such locks.
