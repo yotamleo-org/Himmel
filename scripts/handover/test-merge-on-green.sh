@@ -4764,6 +4764,7 @@ assert_merge_has "5115-a: the merge ran" "--squash"
 # 5115-b — green main (cancelled pushes over a success) is allowed.
 run_mog 0 "5115-b: green main (cancelled newer, success behind) → merged"
 assert_gh_has "5115-b: main's runs were read" "run list"
+assert_audit_lacks "5115-b: green-main merge is not an advisory" "via=advisory"
 
 # 5115-c — cancelled and in-progress runs are skipped: fall back to the
 # previous COMPLETED run, which is red.
@@ -4870,6 +4871,7 @@ STUB_RUN_LIST_JSON='[{"databaseId":400,"status":"completed","conclusion":"succes
 assert_err_has "5115-s: the red run is the schedule run" "300"
 STUB_RUN_LIST_JSON='[{"databaseId":400,"status":"completed","conclusion":"failure","event":"pull_request_target","headSha":"dddddddddddd4444444444444444444444444444"},{"databaseId":300,"status":"completed","conclusion":"success","event":"schedule","headSha":"aaaaaaaaaaaa1111111111111111111111111111"}]' \
     run_mog 0 "5115-s2: red fork pull_request_target run does not block a green main → merged"
+assert_audit_lacks "5115-s2: green-main merge is not an advisory" "via=advisory"
 
 # 5115-j — an unreadable run list is unverified: refuse (fail closed).
 STUB_RUN_LIST_FAIL=1 run_mog 22 "5115-j: run list read fails → exit 22"
@@ -4887,6 +4889,7 @@ assert_err_has "5115-k: the dry run prints the advisory" "MAIN-RED advisory:"
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "8675-a: red main, PR's own CI green → merged as advisory"
 assert_audit_has "8675-a: audited as an advisory merge" "via=advisory"
 assert_audit_has "8675-a: audit names the red run id" "run=37964772913"
+assert_audit_lacks "8675-a: a readable commit list is not flagged unreadable" "commits=unreadable"
 assert_audit_lacks "8675-a: not a refusal" "REFUSED reason=main-red"
 assert_err_has "8675-a: prints the MAIN-RED advisory" "MAIN-RED advisory:"
 assert_err_has "8675-a: the advisory names the red run" "37964772913"
@@ -4899,6 +4902,7 @@ assert_audit_lacks "8675-b: never reaches the main-red advisory" "via=advisory"
 # 8675-c — an unreadable commit list only leaves a declaration unverified: an advisory merge.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_COMMITS_FAIL=1 run_mog 0 "8675-c: red main, commit list unreadable → merged as advisory"
 assert_audit_has "8675-c: audited as an advisory merge" "via=advisory"
+assert_audit_has "8675-c: the audit says the commits were not read" "commits=unreadable"
 assert_merge_has "8675-c: the merge ran" "--squash"
 rm -f "$MOG_RUN_LOG"
 
@@ -5003,6 +5007,7 @@ assert_merge_has "7656-a: the merge ran" "--squash"
 # 7656-b — the previous attempt of the re-run was green: main is green.
 STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=success \
     run_mog 0 "7656-b: re-run of a green attempt → merged"
+assert_audit_lacks "7656-b: green-main merge is not an advisory" "via=advisory"
 # 7656-c — a FRESH run in progress (attempt 1) is not a re-run: the older
 # completed green run still decides, as before.
 STUB_RUN_LIST_JSON='[{"attempt":1,"conclusion":"","createdAt":"2026-10-25T19:37:01Z","databaseId":40226871918,"event":"workflow_dispatch","headSha":"be152579752f51ff26575c459654b1245d0f5abd","status":"in_progress"},{"attempt":1,"conclusion":"success","createdAt":"2026-10-25T15:45:05Z","databaseId":40208416958,"event":"schedule","headSha":"3f196bdadad920756c87caec0838ece0205b863c","status":"completed"}]' \
@@ -5022,6 +5027,7 @@ assert_audit_has "7656-e: audited as the declared fix" "main-red-declared"
 # completed run decides, as for a cancelled completed run.
 STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=cancelled \
     run_mog 0 "7656-f: re-run of a cancelled attempt falls back to the older green run → merged"
+assert_audit_lacks "7656-f: green-main merge is not an advisory" "via=advisory"
 
 # ── a cap-timeout-only red in suites the PR does not reach passes ──
 # The real failed log (gh run view --log-failed, 2026-10-25) of run 40226871918:

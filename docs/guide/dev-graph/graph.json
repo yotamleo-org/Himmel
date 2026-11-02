@@ -2211,7 +2211,7 @@
       "to": "o.ruling",
       "kind": "refusal",
       "exit": 22,
-      "condition": "main is red; needs Fixes-main-red or go.sh --fix-main-red",
+      "condition": "main's CI state cannot be established (a red main only warns)",
       "sources": [
         {
           "file": "scripts/handover/merge-on-green.sh",
@@ -2223,7 +2223,7 @@
       },
       "move": {
         "lead": "stops if",
-        "say": "main is red: your decision (phase 3, Assign)"
+        "say": "main's CI state is unknown: retry, or your decision (phase 3, Assign)"
       }
     },
     {

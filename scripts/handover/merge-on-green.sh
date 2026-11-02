@@ -185,8 +185,9 @@
 #       for a trust-path PR, the anchor behind origin and unable to
 #       fast-forward to it (an anchor that can is pulled and the gate re-runs). Checked after the
 #       chief-GO gate, before any mutation, on --dry-run too.
-#   22  main-red gate: main's CI state cannot be established: the run list
-#       of the CI workflow on the default branch cannot be read, or its full
+#   22  main-red gate: the newest COMPLETED, non-cancelled run
+#       of the CI workflow on the default branch cannot be established: its run list
+#       cannot be read, or its full
 #       --limit 50 window holds no completed non-cancelled run (a shorter list
 #       with none is audited `main-red=no-completed-run` and proceeds), or a run
 #       being re-run has an unreadable previous attempt. A RED main no longer
@@ -1226,9 +1227,9 @@ esac
 #     --log-failed` — the whole job name or its matrix base name, never a
 #     fragment — or, when it ends in .sh, appear on a `##[error]` line). The
 #     line is read from the commit subject or body.
-#     Verified against the run, never trusted: an unrelated name is refused.
+#     Verified against the run, never trusted: an unrelated name is no declaration, so the merge is audited as an advisory instead. The declaration is an audit label only.
 #     After the merge, main_recheck_dispatch queues one `ci.yml` run on the
-#     default branch (also after a fix-GO) and prints `MAIN-RECHECK dispatched
+#     default branch (also after a fix-GO or an advisory) and prints `MAIN-RECHECK dispatched
 #     run=<id>`; a failed dispatch is a WARN, never a failed merge.
 #   - red and undeclared: the failed log is classified (main_red_classify). A cap-only
 #     red (every failed suite hit the runner's cap with assertions passing, in
@@ -1242,7 +1243,7 @@ esac
 #     red was observed, so proceed and audit `main-red=no-completed-run` —
 #     unless the list hit its --limit 50 cap, which proves nothing → exit 22.
 #   - a chief-written FIX-GO (`go.sh --fix-main-red <run> <pr>
-#     <head>`) is the second way through: .locks/go/fix-main-red.<pr>.<head>.<run>,
+#     <head>`) is the second audit label, not a gate: .locks/go/fix-main-red.<pr>.<head>.<run>,
 #     signed over repo, PR, head and run id (go-gate.sh's go_fixred_gate). It
 #     counts only when <run> is the CURRENT red run and the head is the one
 #     certified here, so a GO for an older red run, another PR or another head
@@ -1416,7 +1417,8 @@ elif [ "$mr_conc" != success ]; then
     fi
     # An unreadable commit list only means no declaration can be
     # verified; the PR is green (the check-ci gate above), so it merges as advisory.
-    [ "$mr_rc" -eq 0 ] || mr_msgs=""
+    mr_cread=""
+    [ "$mr_rc" -eq 0 ] || { mr_msgs=""; mr_cread=" commits=unreadable"; }
     while IFS= read -r mr_line; do
         mr_line=${mr_line%$'\r'}
         case "$mr_line" in "Fixes-main-red:"*) ;; *) continue ;; esac
@@ -1458,7 +1460,7 @@ elif [ "$mr_conc" != success ]; then
             # The PR's own checks passed (check-ci gate above), so a red
             # main it did not cause no longer blocks it: it merges, loudly audited.
             echo "MAIN-RED advisory: $mr_what (covers $mr_range${mr_list:+; failed suites: ${mr_list//,/, }}) — PR #$pr_num's own CI is green, so main's red does not block it; a green merge onto a red main still means fix main first" >&2
-            audit "MAIN-RED main-red-advisory repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=advisory${mr_cls:+ class=$mr_cls}${mr_list:+ suites=$mr_list}${mr_att:+ attempt=$mr_att}"
+            audit "MAIN-RED main-red-advisory repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=advisory${mr_cls:+ class=$mr_cls}${mr_list:+ suites=$mr_list}${mr_att:+ attempt=$mr_att}${mr_cread}"
         fi
         mr_fix=1
     fi
