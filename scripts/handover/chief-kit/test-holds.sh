@@ -570,7 +570,8 @@ GRS="$HANDOVER_DIR/u/r/HIMMEL-9340-N1-RESUME.md"
 put_row scripts/rs1.sh HIMMEL-9340 alpha "$GRS"
 before="$(ev_count)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/rs1.sh
-same "F6 a gone RESUME-named doc, lock free: the holder is dead, the claim takes over" "$(cut -f1 "$(rowf scripts/rs1.sh)")" "$K2"
+same "F6 a gone RESUME-named doc, lock free: the claim exits 0" "$RC" 0
+same "F6 ... the holder is dead, the claim takes over" "$(cut -f1 "$(rowf scripts/rs1.sh)")" "$K2"
 same "F6 ... as a takeover, not a fault" "$(tail -n +$((before + 1)) "$EVENTS" | cut -f2 | tr '\n' ' ')" "takeover "
 run hp alive --repo "$R" scripts/rs1.sh
 same "F6 ... and alive says the row is the taker's, never unknown" "$OUT" alive
@@ -591,11 +592,13 @@ run hp read --repo "$R4" --keys
 same "F7 read --keys over readable rows exits 0" "$RC" 0
 printf 'not a row\n' > "$(rowf scripts/z2.sh "$R4")"
 printf 'HIMMEL-9331\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z3.sh "$R4")"
-touch -d '2 hours ago' "$(rowf scripts/z2.sh "$R4")" "$(rowf scripts/z3.sh "$R4")"
+printf 'HIMMEL-9332\tlab\t\377\tbrief\t\n' > "$(rowf scripts/z5.sh "$R4")"
+touch -d '2 hours ago' "$(rowf scripts/z2.sh "$R4")" "$(rowf scripts/z3.sh "$R4")" "$(rowf scripts/z5.sh "$R4")"
 run hp read --repo "$R4" --keys
 same "F7 read --keys with unreadable rows still exits 0 (one junk row must not fault the whole read)" "$RC" 0
 contains "F7 ... names the rows on stderr" "$ERR" scripts/z2.sh
 contains "F7 ... a row with a recoverable key reads that key unknown, never free" "$OUT" "$(printf 'HIMMEL-9331\tunknown\t1')"
+contains "F7 ... invalid UTF-8 after the key still reads that key unknown" "$OUT" "$(printf 'HIMMEL-9332\tunknown\t1')"
 contains "F7 ... a row with no recoverable key reads ? unknown" "$OUT" "$(printf '?\tunknown\t1')"
 contains "F7 ... and still lists the readable holder" "$OUT" HIMMEL-9330
 rm -f "$(rowf scripts/z3.sh "$R4")"

@@ -708,8 +708,8 @@ def op_alive(a):
 def row_key(path):
     """The key of a row that does not parse, when its first field is still a ticket key; else '?'."""
     try:
-        with open(path, encoding='utf-8') as f:
-            first = f.read().split('\t')[0]
+        with open(path, 'rb') as f:
+            first = f.read().split(b'\t')[0].decode('utf-8')  # only the first field is decoded: junk after it keeps the key
     except (OSError, UnicodeDecodeError):
         return '?'
     return first if KEY_RE.fullmatch(first) else '?'
@@ -718,7 +718,8 @@ def row_key(path):
 def op_read(a):
     """TSV path key label source pr state. state is alive, dead, unknown or unparseable; only dead reads as free.
     --keys prints key state rows per holder instead, whatever --paths-from says; a row it cannot read counts
-    its key (? when the key is unreadable too) as unknown and is named on stderr, never dropped and never free. Exit 3 when unreadable."""
+    its key (? when the key is unreadable too) as unknown and is named on stderr, never dropped and never free (exit 0).
+    Exit 3 when the register directory or the --paths-from file cannot be read."""
     repo = primary_of(a.repo)
     d = slug_dir(repo)
     try:
