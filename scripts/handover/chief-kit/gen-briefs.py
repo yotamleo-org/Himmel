@@ -646,9 +646,24 @@ def core_worker_gate(l, ctx):
         groups.setdefault(os.path.abspath(mirror_dir(k)), []).append(k)  # absolute: the CLI runs from its own checkout
     wp = write_paths(l.get('writes', '')).split()
     paths = [] if wp in ([], ['none', 'named']) else wp
+    # core-check refuses an absolute path: one under the handover root is a non-core Writes path, sent as a relative stand-in
+    # (a .md reads as docs); any other absolute token names no path and keeps the leg off the design bypass. Same mapping as brief-lint.sh.
+    hroot = os.path.realpath(ctx['hroot']) if ctx.get('hroot') else ''
+    stray_absolute = False
+    for tok in re.findall(r'[\w.+@/-]+', _writes_scope(l.get('writes', ''))):
+        tok = tok.rstrip('.,;:)]')
+        if not tok.startswith('/'):
+            continue
+        if hroot and os.path.normpath(tok) == tok.rstrip('/') and os.path.commonpath((hroot, os.path.realpath(tok))) == hroot:
+            q = 'state/' + os.path.basename(tok.rstrip('/'))
+            if q not in paths:
+                paths.append(q)
+        else:
+            stray_absolute = True
+    design = docs_only(l.get('writes', '')) and not stray_absolute
     verdict = {}
     for mdir, ks in groups.items():
-        r, why = run_jira(cli, ['release', 'core-check', '--paths', ','.join(paths)] + (['--docs-only'] if docs_only(l.get('writes', '')) else []) + ['--mirror', mdir, '--key'] + ks)
+        r, why = run_jira(cli, ['release', 'core-check', '--paths', ','.join(paths)] + (['--docs-only'] if design else []) + ['--mirror', mdir, '--key'] + ks)
         if r is None or r.returncode != 0:
             failed(why or 'core-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:300]), keys)
         got = per_key_lines(r.stdout, ks)

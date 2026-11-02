@@ -54,8 +54,16 @@ fail() { echo "brief-lint: $doc: $1" >&2; exit 1; }
 # alone: NOT-CORE and BYPASS pass, UNKNOWN refuses, CORE needs `release spec-check` to answer SPEC ok.
 # No line the brief writes itself can pass a key. BRIEF_LINT_JIRA_CLI and BRIEF_LINT_MIRROR are test seams.
 core_rule() {
-    local cli common core_err core_rc=0
+    local cli common core_err core_rc=0 core_state_root=""
     [ "$judge" -eq 0 ] || return 0
+    # The handover root turns an absolute Writes path under it into a non-core stand-in; without a resolvable root no absolute path counts.
+    # shellcheck source=../../lib/load-dotenv.sh
+    . "$(dirname "$0")/../../lib/load-dotenv.sh"
+    # shellcheck source=../../lib/handover-path.sh
+    . "$(dirname "$0")/../../lib/handover-path.sh"
+    if load_dotenv HANDOVER_DIR 2>/dev/null; then
+        core_state_root="$(handover_root 2>/dev/null)" || core_state_root=""  # swallow-ok: no root means no absolute Writes path counts, which can only refuse more
+    fi
     cli="${BRIEF_LINT_JIRA_CLI:-}"
     if [ -z "$cli" ]; then
         # shellcheck source=../../lib/git-clean.sh
@@ -64,7 +72,7 @@ core_rule() {
         if [ -z "$common" ]; then common="$(dirname "$0")/../../../.git"; fi
         cli="$(dirname "$common")/scripts/jira/dist/index.js"
     fi
-    core_err="$(python3 -I - "$doc" "$cli" <<'PY'
+    core_err="$(python3 -I - "$doc" "$cli" "$core_state_root" <<'PY'
 import json, os, re, subprocess, sys
 from datetime import datetime
 
@@ -74,23 +82,50 @@ title = next((l for l in lines if l.startswith('# ')), '')
 keys = list(dict.fromkeys(re.findall(r'\b[A-Z][A-Z0-9]*-[0-9]+\b', title)))
 if not keys:
     sys.exit(0)
-ROOT_FILES = {'CLAUDE.md', 'AGENTS.md', 'README.md', 'package.json', 'package-lock.json', 'bun.lock', 'uv.lock', 'pyproject.toml', '.gitignore', '.pre-commit-config.yaml'}
-paths = []
+doc_state_root = os.path.realpath(sys.argv[3]) if sys.argv[3] else ''
+# The ticket's own file mentions, read the way next-dispatchable.sh reads them: a relative Writes token is a path only when it reads as one of these.
+FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
+DOCS_FILLER = {'writes', 'write', 'and', 'or', 'plus', 'also', 'the', 'a', 'an', 'only', 'new', 'edit', 'update', 'add', 'in', 'under', 'of', 'to', 'doc', 'docs', 'file', 'files', 'section', 'sections'}
+
+def allowed_absolute(p):
+    # the test of the Writes validation below: normalized, and under the resolved handover root
+    return (bool(doc_state_root) and os.path.normpath(p) == p.rstrip('/') and
+            os.path.commonpath((doc_state_root, os.path.realpath(p))) == doc_state_root)
+
+text = ''
 for i, line in enumerate(lines):
     if line.startswith('> **Writes:**'):
-        text = line[len('> **Writes:**'):]
+        text += ' ' + line[len('> **Writes:**'):]
         for nxt in lines[i + 1:]:
             if not nxt.startswith('> ') or nxt.startswith('> **'):
                 break
             text += ' ' + nxt[2:]
-        for p in re.split(r'[\s,`]+', text.strip()):
-            # a token that is not a path (prose, a version, a dot segment) names nothing: a path has a slash or is a named root file
-            if p and re.fullmatch(r'[\w.+@/-]+', p) and ('/' in p or p in ROOT_FILES) \
-                    and not any(part in ('.', '..') for part in p.split('/')) and p not in paths:
-                paths.append(p)
+tokens = [p for p in re.split(r'[\s,`]+', text.strip()) if p]
+paths, stray_absolute = [], False
+for p in tokens:
+    if p.startswith('/'):
+        # core-check refuses an absolute path: a token under the handover root is sent as a relative non-core stand-in (a .md reads as docs)
+        if not allowed_absolute(p):
+            stray_absolute = True
+            continue
+        q = 'state/' + os.path.basename(p.rstrip('/'))
+    elif FILE_RE.fullmatch(p) and not any(part in ('.', '..') for part in p.split('/')):
+        q = p
+    else:
+        continue  # prose, a version, n/a, and/or: names no path
+    if q not in paths:
+        paths.append(q)
 
-# The ticket's own file mentions, read the way next-dispatchable.sh reads them: the paths a brief with no usable Writes line classifies by.
-FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
+def raw_docs_only(scope):
+    # gen-briefs.py docs_only: true only when every token of the Writes text is positively docs or a connector word
+    toks = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', scope)]
+    toks = [t for t in toks if t.strip('.-')]
+    if not toks or not any(t.startswith('docs/') or t.endswith('.md') for t in toks):
+        return False
+    return all(t.startswith('docs/') or t.endswith('.md') or t.lower() in DOCS_FILLER for t in toks)
+
+# a design leg is read from the brief's own Writes tokens only: never from a filtered list or the ticket's paths
+docs_only = bool(paths) and not stray_absolute and raw_docs_only(text) and all(q.startswith('docs/') or q.endswith('.md') for q in paths)
 
 def ticket_paths(mirror, key):
     try:
@@ -137,11 +172,10 @@ for k in keys:
     mirror = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + k.split('-')[0])
     mirror = os.path.abspath(mirror)
     # no usable Writes path: classify by the paths the ticket itself names
-    groups.setdefault((mirror, tuple(paths or ticket_paths(mirror, k))), []).append(k)
+    groups.setdefault((mirror, tuple(paths or ticket_paths(mirror, k)), docs_only and bool(paths)), []).append(k)
 verdict, spec = {}, {}
-for (mirror, kpaths), ks in groups.items():
-    docs_only = bool(kpaths) and all(p.startswith('docs/') or p.endswith('.md') for p in kpaths)
-    r = run(['release', 'core-check', '--paths', ','.join(kpaths)] + (['--docs-only'] if docs_only else []) + ['--mirror', mirror, '--key'] + ks)
+for (mirror, kpaths, design), ks in groups.items():
+    r = run(['release', 'core-check', '--paths', ','.join(kpaths)] + (['--docs-only'] if design else []) + ['--mirror', mirror, '--key'] + ks)
     if r.returncode != 0:
         failed('core-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:200]))
     got = per_key(r.stdout, ks)
@@ -173,7 +207,8 @@ for k in keys:
                         worker=os.path.basename(brief)[:-3], brief=brief, matched=None, outcome='bypass',
                         bypass=t[2], spec_check=verdict[k], chief='')) + '\n')
         except OSError as e:
-            print('brief-lint: WARN core-gate.jsonl not written (%s)' % e, file=sys.stderr)  # the bypass still stands: it came from core-check
+            # a bypass with no record is refused, as gen-briefs core_log refuses it (spec I3: a bypass is logged)
+            refusals.append('core brief %s bypass=%s was not recorded: core-gate.jsonl not written (%s); fix the bucket directory, then re-run' % (k, t[2], e))
     if t[0] == 'UNKNOWN':
         refusals.append('core brief %s is not in the Jira mirror, so neither core nor a bypass can be proven; refresh the mirror, then re-run' % k)
     elif t[0] == 'CORE' and not spec[k].startswith('SPEC ok'):

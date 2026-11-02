@@ -228,6 +228,7 @@ cg_ticket HIMMEL-9414 Bug Medium    # a Bug: core-check answers BYPASS
 printf -- '---\nkey: "HIMMEL-9415"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: ["core"]\n---\n# HIMMEL-9415: t\n' > "$tmp/cg-mirror/HIMMEL-9415.md"   # core by its label
 printf -- '---\nkey: "HIMMEL-9416"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-9416: t\n\nEdit scripts/handover/chief-kit/go.sh to change the GO path.\n' > "$tmp/cg-mirror/HIMMEL-9416.md"   # core by the path its own body names
 cg_ticket HIMMEL-9417 Task Medium   # names no path
+printf -- '---\nkey: "HIMMEL-9418"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: ["core"]\n---\n# HIMMEL-9418: t\n\nWrite the design in docs/x.md only.\n' > "$tmp/cg-mirror/HIMMEL-9418.md"   # core by label, its body names only a docs path
 printf '/state/specs/spec.md O-R1-9413\n' > "$tmp/cg-signed/HIMMEL-9413"
 cat > "$tmp/cg-stub/index.js" <<'STUBEOF'
 const fs = require('fs');
@@ -241,13 +242,17 @@ const ticket = (k) => {
   return { type: f('type'), labels: f('labels') };
 };
 if (a[0] === 'release' && a[1] === 'core-check') {
-  const hit = (opt('--paths') || '').split(',').filter(Boolean).find((p) => /^(scripts\/handover\/|marketplace\/plugins\/himmel-bus\/)/.test(p));
+  const paths = (opt('--paths') || '').split(',').filter(Boolean);
+  const abs = paths.find((p) => p.startsWith('/'));
+  if (abs) { console.error('release core-check: --paths takes repository-relative paths; ' + abs + ' is absolute'); process.exit(1); }
+  const hit = paths.find((p) => /^(scripts\/handover\/|marketplace\/plugins\/himmel-bus\/)/.test(p));
+  const design = a.includes('--docs-only') && paths.length > 0 && paths.every((p) => p.startsWith('docs/') || p.endsWith('.md'));
   for (const k of a.slice(a.indexOf('--key') + 1)) {
     const t = ticket(k);
     if (!t) console.log('UNKNOWN ' + k);
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
-    else if (t.labels.includes('core')) console.log('CORE ' + k + ' label core');
+    else if (t.labels.includes('core')) console.log(design ? 'BYPASS ' + k + ' design core by label only, docs-only leg' : 'CORE ' + k + ' label core');
     else console.log('NOT-CORE ' + k);
   }
 } else if (a[0] === 'release' && a[1] === 'spec-check') {
@@ -314,6 +319,44 @@ rc=0; bash "$LINT" --core-only "$tmp/nw_dot.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 3 ] && ok "8h14 prose with a dot ('ticket.', 'v1.2') is no path and falls back to the ticket's paths" || bad "8h14 dotted prose Writes (rc=$rc)"
 rc=0; bash "$LINT" --core-only "$tmp/nw_ticket.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 3 ] && ok "8h12 --core-only resolves the same paths" || bad "8h12 --core-only no Writes (rc=$rc)"
+# an absolute handover-root Writes path is a non-core Writes path, never an argument to the CLI (core.ts refuses absolute --paths)
+mk abs_plain '# HIMMEL-9417 — absolute state Writes' "$PA" '> **Contract:** y' "> **Writes:** $tmp/state/specs/design.md" '## Results (newest at the bottom)'
+mk abs_design '# HIMMEL-9415 — a design leg by label' "$PA" '> **Contract:** y' "> **Writes:** $tmp/state/specs/design.md" '## Results (newest at the bottom)'
+mk abs_core '# HIMMEL-9411 — absolute state plus a core path' "$PA" '> **Contract:** y' "> **Writes:** $tmp/state/specs/design.md scripts/handover/chief-kit/next-dispatchable.sh" '## Results (newest at the bottom)'
+mk abs_outside '# HIMMEL-9416 — an absolute path outside the root is no path' "$PA" '> **Contract:** y' '> **Writes:** /etc/passwd' '## Results (newest at the bottom)'
+HANDOVER_DIR="$tmp/state" expect_rc "8m1 a keyed brief with an absolute handover-root Writes path passes on an unlabelled ticket" 0 "$tmp/abs_plain.md"
+HANDOVER_DIR="$tmp/state" expect_rc "8m2 an absolute .md under the root on a core-labelled ticket is a design leg (rc 0)" 0 "$tmp/abs_design.md"
+err="$(HANDOVER_DIR="$tmp/state" bash "$LINT" "$tmp/abs_design.md" 2>&1 >/dev/null)"
+grep -Fq 'bypass=design' <<< "$err" && ok "8m3 the design bypass is printed" || bad "8m3 design bypass: $err"
+HANDOVER_DIR="$tmp/state" expect_rc "8m4 an absolute path beside a core repo path gives a core refusal" 3 "$tmp/abs_core.md"
+err="$(HANDOVER_DIR="$tmp/state" bash "$LINT" "$tmp/abs_core.md" 2>&1 >/dev/null)"
+{ grep -Fq 'is core' <<< "$err" && ! grep -Fq 'CORE-CHECK-FAILED' <<< "$err"; } && ok "8m5 the refusal says core, not CORE-CHECK-FAILED" || bad "8m5 refusal text: $err"
+rc=0; HANDOVER_DIR="$tmp/state" bash "$LINT" --core-only "$tmp/abs_outside.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "8m6 --core-only: an absolute path outside the root is no path, the ticket's own paths decide (core)" || bad "8m6 outside absolute (rc=$rc)"
+rc=0; HANDOVER_DIR="$tmp/state" bash "$LINT" --core-only "$tmp/abs_design.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "8m7 --core-only resolves the handover root too" || bad "8m7 --core-only absolute Writes (rc=$rc)"
+# docs_only comes from the brief's raw Writes tokens only: never from a filtered or ticket-derived path list
+mk dn_ticket '# HIMMEL-9418 — core by label, no Writes line, body names only docs/x.md' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
+mk dn_unknown '# HIMMEL-9415 — core by label, a code file beside a docs path' "$PA" '> **Contract:** y' '> **Writes:** docs/a.md setup.py' '## Results (newest at the bottom)'
+mk dn_docs '# HIMMEL-9415 — core by label, a docs-only leg' "$PA" '> **Contract:** y' '> **Writes:** docs/a.md' '## Results (newest at the bottom)'
+expect_rc "8n1 no Writes line on a core-labelled ticket naming only docs/x.md is not a design leg" 3 "$tmp/dn_ticket.md"
+expect_rc "8n2 'docs/a.md setup.py' on a core-labelled ticket is not a design leg" 3 "$tmp/dn_unknown.md"
+expect_rc "8n3 a docs-only Writes line on a core-labelled ticket is a design leg (control)" 0 "$tmp/dn_docs.md"
+# a relative token is a path only when it reads as a repo file: n/a and and/or name nothing
+mk na '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** n/a' '## Results (newest at the bottom)'
+mk andor '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** and/or' '## Results (newest at the bottom)'
+expect_rc "8o1 'Writes: n/a' falls back to the ticket's paths (core)" 3 "$tmp/na.md"
+expect_rc "8o2 'Writes: and/or' falls back to the ticket's paths (core)" 3 "$tmp/andor.md"
+# a BYPASS that cannot be recorded is a refusal, and the launcher shows the bypass it passes
+mkdir -p "$tmp/unwritable"
+mk unwritable '# HIMMEL-9414 — a bug fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+cp "$tmp/unwritable.md" "$tmp/unwritable/unwritable.md"; mkdir -p "$tmp/unwritable/core-gate.jsonl"
+expect_rc "8p1 a bypass row that cannot be written is a refusal (rc 3)" 3 "$tmp/unwritable/unwritable.md"
+rc=0; out="$(run_worker "$tmp/unwritable/unwritable.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'not written' <<< "$out"; } && ok "8p2 the launcher refuses a bypass it cannot record" || bad "8p2 launcher unwritable log (rc=$rc): $out"
+mk byp_l '# HIMMEL-9414 — a bug fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+rc=0; out="$(run_worker "$tmp/byp_l.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 0 ] && grep -Fq 'bypass=bug' <<< "$out"; } && ok "8p3 the launcher shows the bypass= line at rc 0" || bad "8p3 launcher bypass echo (rc=$rc): $out"
 # a BYPASS is printed and logged beside the brief, once
 mk byp '# HIMMEL-9414 — a bug fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
 rm -f "$tmp/core-gate.jsonl"

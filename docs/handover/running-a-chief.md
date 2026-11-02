@@ -321,8 +321,13 @@ effort guidance, including the chief's own wake-up budget, is in
   the prior-art check) refuses any brief whose title names a key that `core-check`
   answers `CORE` for without a `SPEC ok` from `spec-check`. `core-check` classifies
   by the brief's `Writes:` paths (every Writes line is read); a brief with no usable
-  path is classified by the file paths its ticket names in the Jira mirror, and
-  a ticket carrying the core label stays `CORE` either way. A line written into
+  path is classified by the file paths its ticket names in the Jira mirror. A
+  ticket carrying the core label stays `CORE` unless the brief's own `Writes:` line
+  names only docs paths (a design leg, `BYPASS design`); a ticket-derived path never
+  makes one. An absolute path under the handover root counts as a docs-or-state
+  path, never as a core path. A judge brief launched with `--judge` skips the rule
+  (it writes nothing); a judge brief without the flag is gated like any keyed
+  brief. A line written into
   the brief itself passes nothing, and a Results bullet exempts nothing: an
   in-flight key passes only through the `core-snapshot` record. A `BYPASS` key
   is printed as `bypass=<class>` and logged to `core-gate.jsonl` beside the

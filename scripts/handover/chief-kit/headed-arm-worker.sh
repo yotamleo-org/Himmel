@@ -824,6 +824,9 @@ if [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
     elif [ "$lint_rc" -ne 0 ]; then
         echo "headed-arm-worker: refusing launch: $prior_art_err (fill the Prior art line, or pass --no-prior-art-check to launch without it)" >&2
         exit 2
+    else
+        # a passed core bypass is shown at launch, as gen-briefs shows it (brief-lint logged the row beside the brief)
+        grep -F 'bypass=' <<< "$prior_art_err" >&2 || true  # swallow-ok: no bypass line means nothing to show
     fi
 fi
 

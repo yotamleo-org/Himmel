@@ -54,11 +54,13 @@ const ticket = (k) => {
 };
 if (a[0] === 'release' && a[1] === 'core-check') {
   const paths = (opt('--paths') || '').split(',').filter(Boolean);
-  const hit = paths.find((p) => /^(scripts\/handover\/|marketplace\/plugins\/himmel-bus\/)/.test(p));
+  const abs = paths.find((p) => p.startsWith('/'));  // the real CLI throws on an absolute --paths (core.ts expandPaths)
+  if (abs) { console.error('release core-check: --paths takes repository-relative paths; ' + abs + ' is absolute'); process.exit(1); }
+  const hit =paths.find((p) => /^(scripts\/handover\/|marketplace\/plugins\/himmel-bus\/)/.test(p));
   for (const k of a.slice(a.indexOf('--key') + 1)) {
     const t = ticket(k);
     if (!t) console.log((fs.existsSync(process.env.CG_STUB_UNKNOWN + '/' + k) ? 'UNKNOWN ' : 'NOT-CORE ') + k);  // only a key the suite marks is a mirror miss
-    else if (t.labels.includes('core') && !hit && a.includes('--docs-only')) console.log('BYPASS ' + k + ' design label-only core ticket, docs-only Writes');
+    else if (t.labels.includes('core') && !hit && a.includes('--docs-only') && paths.length > 0 && paths.every((p) => p.startsWith('docs/') || p.endsWith('.md'))) console.log('BYPASS ' + k + ' design label-only core ticket, docs-only Writes');
     else if (t.type === 'Bug' && /^(Highest|Blocker)$/.test(t.prio)) console.log('BYPASS ' + k + ' emergency Bug at ' + t.prio);
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
@@ -1138,6 +1140,13 @@ cgo="$(cgrun design)"; rc=$?
 [ "$rc" = 0 ] && pass "a label-only design leg (docs-only Writes) passes (rc 0)" || fail "design rc=$rc: $cgo"
 has "the design leg's brief carries a Core gate bypass=design line" "$(cat "$(cg_brief design)" 2>/dev/null)" "> **Core gate:** HIMMEL-9413 bypass=design"
 [ "$(cg_rows design HIMMEL-9413)" = 1 ] && [ "$(cg_field design HIMMEL-9413 outcome)" = bypass ] && [ "$(cg_field design HIMMEL-9413 bypass)" = design ] && pass "the design leg appends one bypass row of kind design" || fail "design row: $(cat "$(cg_log design)" 2>/dev/null)"
+
+# an absolute Writes path under the handover root is a relative non-core stand-in, never a --paths argument (the CLI refuses absolute ones)
+cg_mirror HIMMEL-9440 Task Medium '["core"]'
+cg_workers absdesign HIMMEL-9440 "$WORK/handovers/specs/core-gate-fixture.md" ''
+cgo="$(cgrun absdesign)"; rc=$?
+[ "$rc" = 0 ] && pass "a label-only leg writing an absolute handover-root .md is a design leg (rc 0)" || fail "absolute design rc=$rc: $cgo"
+[ "$(cg_field absdesign HIMMEL-9440 bypass)" = design ] && pass "the absolute-path design leg appends one bypass row of kind design" || fail "absolute design row: $(cat "$(cg_log absdesign)" 2>/dev/null)"
 
 cg_mirror HIMMEL-9414 Bug Medium '[]'
 cg_workers bug HIMMEL-9414 "$CORE_WRITES" ''
