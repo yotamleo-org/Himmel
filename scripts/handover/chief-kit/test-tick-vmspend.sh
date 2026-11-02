@@ -51,6 +51,7 @@ case "$(bash "$SUT" --verbose 2>/dev/null)" in *'vm spend'*) fail 'tick --verbos
 rm -f "$LEDGER"
 same 'tick: no ledger prints no vmspend=' "$(vmspend_of)" ''
 mkdir "$LEDGER"
+[ -d "$LEDGER" ] && pass 'fixture: the unreadable ledger is a directory' || fail 'fixture: the ledger directory was not created'
 bash "$COST" --today >/dev/null 2>&1; rc=$?
 same 'vm-cost --today: an unreadable ledger (a directory) is not an empty report: nonzero' "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
 same 'tick: an unreadable ledger prints no vmspend=' "$(vmspend_of)" ''
