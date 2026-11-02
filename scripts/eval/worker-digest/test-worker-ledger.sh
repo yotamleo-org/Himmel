@@ -287,6 +287,16 @@ echo "14. a refusal_line canary is not forwarded (HIMMEL-8575)"
 export JIRA_PROJECT_KEY=HIMMEL
 FRT="$HERE/failure_router.py"; FRV="$HERE/failure_review.py"; TH="$HERE/tool-health.mjs"
 PIN="$TMP/pin"; mkdir -p "$PIN/stub"
+# Hermetic seams, the same as test-failure-review.sh: the review's router child takes its notifier from the environment
+# (the review forwards none), so without these a live review files a real INTAKE and writes a real chief inbox line.
+export TZ=UTC
+export FAILURE_ROUTER_NOTIFY_CMD="$PIN/stub/route-notify"
+export FAILURE_REVIEW_FRICTION_CMD=""
+export HIMMEL_EVAL_CHANGES_LEDGER="$PIN/never-changes.jsonl"
+export HIMMEL_FAILURE_ROUTES_LOG="$PIN/never-log.jsonl" HIMMEL_FAILURE_ROUTES_STATE="$PIN/never-state.json" HIMMEL_FAILURE_INBOX="$PIN/never-inbox.md" HIMMEL_FAILURE_REVIEW_DIR="$PIN/never-review"
+# Tripwires behind the notifier's own seams: if the stubbed notifier were ever bypassed and the real one ran, these record it.
+export FAILURE_ROUTE_SWEEP_CMD="$PIN/stub/tripwire" FAILURE_ROUTE_INBOX_SEND="$PIN/stub/tripwire" FAILURE_ROUTE_JIRA="$PIN/stub/tripwire"
+export CADENCE_ALERT_FILE="$PIN/cadence-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$PIN/alert-sent" CADENCE_ALERT_SEND_CMD="$PIN/stub/tripwire" CADENCE_ALERT_SEND_FAILED_MARK="$PIN/alert-send-failed"
 cat >"$PIN/stub/jira" <<'EOF'
 #!/usr/bin/env bash
 d="$(dirname "$0")"
@@ -299,7 +309,15 @@ cat >"$PIN/stub/notify" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$(dirname "$0")/notify.log"
 EOF
-chmod +x "$PIN/stub/jira" "$PIN/stub/notify"
+cat >"$PIN/stub/route-notify" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$(dirname "$0")/route-notify.log"
+EOF
+cat >"$PIN/stub/tripwire" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$0 $*" >>"$(dirname "$0")/../tripwire.log"
+EOF
+chmod +x "$PIN/stub/jira" "$PIN/stub/notify" "$PIN/stub/route-notify" "$PIN/stub/tripwire"
 PNOW=2026-10-07T12:00:00Z
 # pinrows <ledger> <class> <refusal_line json>: two distinct workers, an identical retry each, so the class fires.
 pinrows() {
@@ -326,6 +344,7 @@ pinrows "$PIN/green/ledger.jsonl" denied/guard-pr-check-literal '"CANARY8575fw"'
 jq -c 'select(.failure == "denied") | .refusal_line = "CANARY8575fw"' "$RF" >"$PIN/green/th-fail.jsonl"
 pinrun green
 check "precondition: the router filed, the review ran live and sent its line, and the tool-health reader returned the denied class" '[ -s "$PIN/stub/calls.log" ] && grep -q "^create " "$PIN/stub/calls.log" && [ -s "$PIN/stub/notify.log" ] && [ -s "$PIN/green/rv/out/failure-review-2026-10-07.md" ] && grep -q "denied/block-read-secrets" "$PIN/green/tool-health.json"'
+check "the review's router lines reach the stub notifier (chief line and INTAKE), and no real notifier seam, alert or friction scan ran" '[ -s "$PIN/stub/route-notify.log" ] && grep -q "^chief failure-router: " "$PIN/stub/route-notify.log" && grep -q "^intake HIMMEL-9001 " "$PIN/stub/route-notify.log" && [ ! -e "$PIN/tripwire.log" ] && [ ! -e "$PIN/never-changes.jsonl" ] && [ ! -e "$PIN/cadence-alerts.log" ]'
 check "precondition: the ledger rows under test do carry the canary" 'grep -qi CANARY8575fw "$PIN/green/ledger.jsonl" && grep -qi CANARY8575fw "$PIN/green/th-fail.jsonl"'
 check "canary in refusal_line: absent from the Jira stub arguments and bodies, the review file, the notifier lines and the tool-health output" '[ -z "$(pinleaks green CANARY8575fw)" ]'
 # RED control: the same assertion fails when the canary rides in a field the router does send (the class).
@@ -336,19 +355,36 @@ pinrun red
 check "RED control: the same canary in the class is found in the Jira stub, the review and the notifier output, so the pin is not vacuous" '[ -n "$(pinleaks red CANARY8575fw)" ] && grep -qi canary8575fw "$PIN/stub/calls.log"'
 
 echo "15. a salus-rooted session records no refusal_line (HIMMEL-8575)"
-# Pinned: the digest reads only this checkout's chain logs, so a deny row in a salus root's own log never reaches the
-# digest, the ledger or the marker. NOT pinned: a himmel-cwd session that names a salus path (it stays host-only), and there is
-# no wrap-path gate on salus; both are the follow-up ticket's work.
+# Pinned, with the chain-log overrides CLEARED so the digest resolves its logs by default: the digest reads only the chain logs
+# of the checkout it runs from (its own REPO), never a log at the session's cwd. So a deny row in a salus root's own log never
+# reaches the digest, the ledger or the marker. The pin is the root the digest runs from: a copy of the digest rooted at the
+# salus root (the RED control) does read that log. NOT pinned: a himmel-cwd session that names a salus path (it stays
+# host-only), and there is no wrap-path gate on salus; both are the follow-up ticket's work.
 SR="$TMP/salus-root"; mkdir -p "$SR/.claude/logs"
 SS=8575c1a5-0000-4000-8000-0000000000a1
 sed 's#"sessionId"#"cwd": "'"$SR"'/w", "sessionId"#; s#8575c1a5-0000-4000-8000-000000000001#'"$SS"'#g' "$CR/journal.jsonl" >"$TMP/$SS.jsonl"
-cat >"$SR/.claude/logs/hook-runs.jsonl" <<'EOF'
-{"ts":"2026-11-02T12:00:09.000Z","v":1,"origin":"production","event":"PreToolUse","session":"sess-8575","callId":"toolu_sec1","tool":"Bash","invocation":"000000000c01","exit":2,"elapsed":20,"members":[{"member":"block-read-secrets.sh","occurrence":1,"outcome":"deny","reason":"RULE","elapsed":11,"denyLine":"refused: SALUSCANARY8575ph"}]}
-EOF
+# mklayout <root>: a checkout layout whose own copy of the digest takes REPO = <root> (import.meta.dir is the copy's directory).
+mklayout() {
+  mkdir -p "$1/scripts/eval/worker-digest" "$1/.claude/logs" || return 1
+  cp "$HERE/worker-digest.ts" "$HERE/chain-incidents.mjs" "$1/scripts/eval/worker-digest/" || return 1
+  ln -s "$HERE/../../config-ui" "$1/scripts/config-ui" && ln -s "$HERE/../../hooks" "$1/scripts/hooks" && ln -s "$HERE/../../observability" "$1/scripts/observability" && ln -s "$HERE/../lane-quality" "$1/scripts/eval/lane-quality"
+}
+# chainrow <call id> <member> <deny line>: one production hook-runs row.
+chainrow() { jq -cn --arg c "$1" --arg m "$2" --arg l "$3" '{ts:"2026-11-02T12:00:09.000Z",v:1,origin:"production",event:"PreToolUse",session:"sess-8575",callId:$c,tool:"Bash",invocation:"000000000c01",exit:2,elapsed:20,members:[{member:$m,occurrence:1,outcome:"deny",reason:"RULE",elapsed:11,denyLine:$l}]}'; }
+# layout_digest <root>: the layout's digest of the salus-rooted journal, both overrides cleared.
+layout_digest() { env -u RUN_HOOK_CHAIN_SKIP_LOG -u RUN_HOOK_CHAIN_RUN_LOG bun "$1/scripts/eval/worker-digest/worker-digest.ts" --transcript "$TMP/$SS.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" 2>/dev/null; }
+ISO="$TMP/iso-checkout"; ISO2="$TMP/iso-checkout-2"
+if ! { mklayout "$ISO" && mklayout "$ISO2" && mklayout "$SR"; }; then bad "the checkout layouts build"; fi
+chainrow toolu_unrelated9 block-git-stash.sh "refused: HIMMELUNRELATED8575" >"$ISO/.claude/logs/hook-runs.jsonl"
+chainrow toolu_sec1 block-read-secrets.sh "refused: HIMMELCANARY8575ix" >"$ISO2/.claude/logs/hook-runs.jsonl"
+chainrow toolu_sec1 block-read-secrets.sh "refused: SALUSCANARY8575ph" >"$SR/.claude/logs/hook-runs.jsonl"
 check "precondition: the salus root's own log holds the canary deny row, and the journal is under that root" 'grep -q SALUSCANARY8575ph "$SR/.claude/logs/hook-runs.jsonl" && grep -q "\"cwd\": \"$SR/w\"" "$TMP/$SS.jsonl"'
-bun "$DIG" --transcript "$TMP/$SS.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" >"$TMP/salus-digest.json" 2>/dev/null || bad "the digest of the salus-rooted journal exits 0"
-RUN_HOOK_CHAIN_RUN_LOG="$SR/.claude/logs/hook-runs.jsonl" bun "$DIG" --transcript "$TMP/$SS.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" >"$TMP/salus-ctl.json" 2>/dev/null
-check "control: pointed at the salus root's own log the same digest does carry the canary, so the null above is the log location" 'grep -q SALUSCANARY8575ph "$TMP/salus-ctl.json"'
+layout_digest "$ISO" >"$TMP/salus-digest.json" || bad "the himmel-side layout digest of the salus-rooted journal exits 0"
+layout_digest "$ISO2" >"$TMP/salus-ctl-himmel.json"
+layout_digest "$SR" >"$TMP/salus-ctl.json"
+check "control: default resolution is live, a layout whose own log holds the call's row carries that row's line" '[ "$(jq -r ".failures[] | select(.class == \"denied/block-read-secrets\") | .refusal_line" "$TMP/salus-ctl-himmel.json")" = "refused: HIMMELCANARY8575ix" ]'
+check "RED control: the same digest rooted at the salus root reads the log of that root and carries the canary, so the null below is the root the digest runs from" 'grep -q SALUSCANARY8575ph "$TMP/salus-ctl.json"'
+check "the himmel-side digest of the salus-rooted journal carries a null line for the call and no salus canary" '[ "$(jq -r ".failures[] | select(.class == \"denied/block-read-secrets\") | .refusal_line" "$TMP/salus-digest.json")" = null ] && absent SALUSCANARY8575ph "$TMP/salus-digest.json"'
 SF="$TMP/salus-fail.jsonl"
 python3 "$LL" record --failures-ledger "$SF" --eval-ledger "$TMP/salus-eval.jsonl" --state-dir "$TMP/salus-state" --digest "$TMP/salus-digest.json" --worker N1 >"$TMP/salus-rec.out" 2>&1 || bad "record of the salus-rooted digest exits 0: $(head -c 300 "$TMP/salus-rec.out")"
 check "the salus-rooted session's denied rows carry a null refusal_line, and the canary is in no digest, ledger, marker or eval row" '[ "$(jq -s "map(select(.failure == \"denied\")) | length" "$SF")" -gt 0 ] && [ "$(jq -s "map(select(.failure == \"denied\" and .refusal_line != null)) | length" "$SF")" = 0 ] && absent SALUSCANARY8575ph "$TMP/salus-digest.json" "$SF" "$TMP/salus-eval.jsonl" "$TMP/salus-state/$SS.json"'
