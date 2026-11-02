@@ -111,6 +111,33 @@ fi'
 # shellcheck disable=SC2016 # a regex, matched as text
 FENCE_RE='^if himmel_repo=\$\(printenv HIMMEL_REPO \| grep \.\) ?;? then bash "\$himmel_repo/scripts/cr/pr-check-context\.sh" ?;? else echo "[^"$`\\]*" >&2 ?;? exit 2 ?;? fi ?;?$'
 
+# The anchor's path as a remedy prints it: HIMMEL_REPO's own value, and only when
+# the rule generator (plugin-profiles.mjs validatedAnchorPath) would emit a rule
+# for it - absolute, no `..`, no worktree, and nothing the matcher could read as
+# syntax. Step 0's himmel_dir is the WORKTREE on the himmel lane, so the remedy
+# never names it. Fails when HIMMEL_REPO is unset or unsafe.
+anchor_remedy_dir() {
+    local a="${HIMMEL_REPO:-}"
+    while [ "${a%/}" != "$a" ]; do a="${a%/}"; done
+    case "$a" in /*) ;; *) return 1 ;; esac
+    case "$a" in
+        *[!A-Za-z0-9._/+-]* | */../* | */.. | */.claude/worktrees/*) return 1 ;;
+    esac
+    printf '%s' "$a"
+}
+# remedy_cmd <repo-relative script> <args placeholder>: the unquoted anchored
+# spelling, which the generated `bash <anchor>/scripts/...:*` rules match. With no
+# safe anchor to print it is a quoted placeholder, which matches no rule.
+remedy_cmd() {
+    local d
+    if d=$(anchor_remedy_dir); then
+        echo "bash $d/$1 $2"
+    else
+        echo "bash \"<anchor>/$1\" $2"
+        echo "(<anchor> is HIMMEL_REPO's value, unusable unquoted here; no allow rule matches this spelling, so the classifier judges it)"
+    fi
+}
+
 shown=""
 flat=""
 deny() {
@@ -144,10 +171,16 @@ deny() {
                 # shellcheck disable=SC2016 # printed verbatim, never expanded
                 echo 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh" <unquoted-args>'
                 echo
-                echo "If an argument genuinely needs quoting, use the anchor's copy by step 0's"
-                echo "printed himmel_dir instead, as its own command:"
+                echo "If an argument genuinely needs quoting, use the anchor's copy by HIMMEL_REPO's"
+                echo "own path (not step 0's himmel_dir, which is this worktree), as its own command:"
                 echo
-                echo "bash <himmel_dir>/scripts/handover/merge-on-green.sh <args>"
+                remedy_cmd scripts/handover/merge-on-green.sh '<args>'
+                ;;
+            *console-kit/himmel-gate* | *chief-kit/himmel-gate*)
+                echo "Run the anchored spelling instead - EVERY argument must be unquoted:"
+                echo
+                # shellcheck disable=SC2016 # printed verbatim, never expanded
+                echo 'bash "$HIMMEL_REPO/scripts/handover/chief-kit/himmel-gate.sh" <unquoted-args>'
                 ;;
             *console-kit/go* | *chief-kit/go*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
@@ -165,14 +198,21 @@ deny() {
                 echo "bash \"<himmel_dir>/scripts/handover/chief-kit/chief-wait.sh\" <args>"
                 ;;
             *)
-                echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
+                echo "Run the anchor's copy by HIMMEL_REPO's own path (not step 0's himmel_dir, which is"
+                echo "this worktree on the himmel lane), as its own command:"
                 echo
-                # The path is unquoted on purpose: the worker's allow rule for the
-                # anchor's copy is `bash <anchor>/scripts/cr/<x>.sh:*`, which a
-                # quoted path or a literal $HIMMEL_REPO never matches.
+                # The path is unquoted on purpose: the allow rule for the anchor's
+                # copy is `bash <anchor>/scripts/cr/<x>.sh:*`, which a quoted path or a
+                # literal $HIMMEL_REPO never matches. It exists for the wildcard-tail
+                # writers only; known-findings.sh and doc-freshness-advisory.sh hold
+                # a relative exact rule and have none, so the classifier judges them.
                 case "${entries:-}" in
-                    ' '*' '*|'') echo "bash <himmel_dir>/scripts/cr/<script>.sh <args>" ;;
-                    *) echo "bash <himmel_dir>/scripts/cr/${entries# } <args>" ;;
+                    ' '*' '*|'') remedy_cmd 'scripts/cr/<script>.sh' '<args>' ;;
+                    *) remedy_cmd "scripts/cr/${entries# }" '<args>' ;;
+                esac
+                case "${entries:-}" in
+                    ' known-findings.sh' | ' doc-freshness-advisory.sh')
+                        echo "(no allow rule covers the anchored spelling of this script, so the classifier judges it)" ;;
                 esac
                 ;;
         esac

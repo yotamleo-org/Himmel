@@ -535,7 +535,7 @@ run 'traversal plus a second $ after the prefix -> deny' 2 \
 run 'quoted arg on the anchored spelling -> deny (would loop without the fix)' 2 \
     "$(payload "bash \"\$HIMMEL_REPO/scripts/handover/merge-on-green.sh\" --branch 'x'" "$WT")" "$HR"
 need_in_err "remedy says args must be unquoted" "unquoted"
-need_in_err "remedy offers the himmel_dir fallback" "<himmel_dir>/scripts/handover/merge-on-green.sh"
+need_in_err "remedy offers the anchor's own path as the fallback" "bash $PRIMARY/scripts/handover/merge-on-green.sh <args>"
 
 # ---- every spelling the remedy prints must match an allow rule -------------
 # A worker that follows a printed line is spared the auto-mode classifier only
@@ -546,6 +546,10 @@ need_in_err "remedy offers the himmel_dir fallback" "<himmel_dir>/scripts/handov
 PCLI="$(cd "$(dirname "$0")/../lanes" && pwd)/plugin-profiles.mjs"
 mkdir -p "$TMP/rules-home"
 RULES="$(cd "$WT" && env HIMMEL_REPO="$WT" HOME="$TMP/rules-home" USERPROFILE="$TMP/rules-home" node "$PCLI" worker-impl 2>/dev/null | jq -r '.permissions.allow[]' 2>/dev/null)"
+# plus the project rules every session in this repo holds
+SETTINGS_ALLOW="$(jq -r '.permissions.allow[]' "$(cd "$(dirname "$0")/../.." && pwd)/.claude/settings.json" 2>/dev/null)"
+RULES="$RULES
+$SETTINGS_ALLOW"
 
 # printed_matches <label> <match|nomatch> <command>
 printed_matches() {
@@ -569,52 +573,100 @@ printed_matches() {
     fi
 }
 
-# printed_lines_match <label>: every `bash ...` line of the last deny, with the
-# step-0 placeholders filled in (the anchor for <himmel_dir>), must match a rule.
-printed_lines_match() {
-    local line n=0 cmd
+# drifted <label> <relative command> <path under the tree>: edit the tree's copy,
+# run the relative spelling (denied), and leave the deny text in ERR_OF.
+# The tree is restored by the caller via restore_tree.
+restore_tree() { g -C "$WT" checkout -q -- "$1"; }
+drifted() {
+    echo ': edited' >>"$WT/$3"
+    run "$1: relative spelling on a drifted tree -> deny" 2 "$(payload "$2" "$WT")" "$HR"
+    ERR_OF="$LAST_ERR"
+}
+
+# printed_bash_lines: the `bash ...` lines of ERR_OF, one per line.
+printed_bash_lines() { grep '^bash ' <<<"$ERR_OF" || true; }
+
+# followed <label> <relative command> <path under the tree> <args>: a worker that
+# follows each printed `bash` line is neither re-denied by this hook nor sent to
+# the classifier (a held rule matches it), and no printed line names the worktree.
+followed() {
+    local line cmd n=0
+    drifted "$1" "$2" "$3"
     while IFS= read -r line; do
-        case "$line" in 'bash '*) ;; *) continue ;; esac
-        cmd="${line//<himmel_dir>/$PRIMARY}"
-        cmd="${cmd//<unquoted-args>/--go /g}"
-        cmd="${cmd//<args>/--go /g}"
+        [ -n "$line" ] || continue
+        cmd="${line//<unquoted-args>/$4}"
+        cmd="${cmd//<args>/$4}"
         n=$((n + 1))
-        printed_matches "$1 line $n [$line]" match "$cmd"
-    done <<<"$LAST_ERR"
-    if [ "$n" -eq 0 ]; then echo "FAIL $1 - no printed bash line: $LAST_ERR"; FAILED=$((FAILED + 1)); fi
+        case "$cmd" in
+            *"$WT"*) echo "FAIL $1 printed line $n names the worktree: $cmd"; FAILED=$((FAILED + 1)) ;;
+        esac
+        printed_matches "$1 printed line $n [$cmd] matches a held allow rule" match "$cmd"
+        run "$1 printed line $n is allowed by this hook" 0 "$(payload "$cmd" "$WT")" "$HR"
+    done <<<"$(printed_bash_lines)"
+    if [ "$n" -eq 0 ]; then echo "FAIL $1 - the deny printed no bash line to follow: $ERR_OF"; FAILED=$((FAILED + 1)); fi
+    restore_tree "$3"
 }
 
 if [ -n "$RULES" ]; then echo "PASS worker-impl allow rules generated"; else echo "FAIL could not generate worker-impl allow rules"; FAILED=$((FAILED + 1)); fi
-# shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
-run 'merge-on-green deny, for the printed-spelling rows' 2 \
-    "$(payload "bash \"\$HIMMEL_REPO/scripts/handover/merge-on-green.sh\" --branch 'x'" "$WT")" "$HR"
-printed_lines_match "merge-on-green remedy"
-run 'a gated scripts/cr writer from a non-himmel root, for the printed-spelling rows' 2 \
-    "$(payload 'bash scripts/cr/write-verdicts.sh' "$OTHER")" "$HR"
-printed_lines_match "scripts/cr writer remedy"
-# Following the advice: from a tree whose copy differs from the anchor's, the
-# relative spelling is denied, and the printed anchor spelling (placeholders
-# filled in) must pass this same hook, so the call reaches the script.
-follow_printed() { # follow_printed <label> <relative command> <path under the tree> <args>
-    local cmd
-    echo ': edited' >>"$WT/$3"
-    run "$1: relative spelling on a drifted tree -> deny" 2 "$(payload "$2" "$WT")" "$HR"
-    cmd="$(grep -m1 '^bash <himmel_dir>' <<<"$LAST_ERR")"
-    if [ -z "$cmd" ]; then
-        echo "FAIL $1 - the deny printed no 'bash <himmel_dir>' line, so there is no advice to follow: $LAST_ERR"
-        FAILED=$((FAILED + 1))
+followed "merge-on-green" "$MOG" scripts/handover/merge-on-green.sh "--go /g"
+followed "himmel-gate" 'bash scripts/handover/chief-kit/himmel-gate.sh' scripts/handover/chief-kit/himmel-gate.sh "--x"
+
+# The walk: every scripts/cr TARGET the hook declares is either followed, or sits
+# in one of the two declared exclusion lists, each with its own assertion.
+#   EXCL_FENCE  remedy is the canonical fence / step-0 spelling, not an anchored line
+#   EXCL_NORULE only a relative exact rule exists, so no anchored spelling can match;
+#               the remedy must say the classifier judges it
+EXCL_FENCE="pr-check-context.sh pr-check-env.sh"
+EXCL_NORULE="known-findings.sh doc-freshness-advisory.sh"
+for ex in $EXCL_FENCE $EXCL_NORULE; do
+    if grep -qx "$ex" <<<"$declared"; then echo "PASS exclusion $ex is a declared TARGET"; else echo "FAIL exclusion $ex is not a declared TARGET"; FAILED=$((FAILED + 1)); fi
+done
+for t in $declared; do
+    case " $EXCL_FENCE " in *" $t "*) continue ;; esac
+    case " $EXCL_NORULE " in
+        *" $t "*)
+            drifted "TARGET $t" "bash scripts/cr/$t" "scripts/cr/$t"
+            need_in_err "TARGET $t remedy says the classifier judges it" "classifier judges it"
+            while IFS= read -r line; do
+                [ -n "$line" ] || continue
+                printed_matches "TARGET $t anchored line matches no rule (declared)" nomatch "${line//<args>/--x}"
+            done <<<"$(printed_bash_lines)"
+            restore_tree "scripts/cr/$t" ;;
+        *) followed "TARGET $t" "bash scripts/cr/$t" "scripts/cr/$t" "--x" ;;
+    esac
+done
+
+# The kit writers print their own script's path (a wrong directory or a
+# re-quoting mutant would show here); go/write-verdict/chief-wait have no anchored
+# rule yet, which the follow-up ticket for them owns.
+for h in chief-kit/go.sh chief-kit/write-verdict.sh chief-kit/chief-wait.sh chief-kit/himmel-gate.sh; do
+    drifted "kit writer $h" "bash scripts/handover/$h" "scripts/handover/$h"
+    if printed_bash_lines | grep -qF "scripts/handover/$h"; then echo "PASS kit writer $h remedy names its own script"; else echo "FAIL kit writer $h remedy does not name scripts/handover/$h: $ERR_OF"; FAILED=$((FAILED + 1)); fi
+    restore_tree "scripts/handover/$h"
+done
+
+# What the remedy prints is HIMMEL_REPO's own path, never step 0's himmel_dir (the
+# worktree on the himmel lane): a value the rule generator would refuse prints a
+# quoted placeholder that names no path at all.
+mkdir -p "$TMP/wtv/.claude/worktrees/w" "$TMP/sp ace"
+for bad in "$TMP/wtv/.claude/worktrees/w" "$TMP/sp ace"; do
+    run "unsafe HIMMEL_REPO [$bad]: quoted arg on the anchored spelling -> deny" 2 \
+        "$(payload "bash scripts/handover/merge-on-green.sh --branch 'x'" "$WT")" "HIMMEL_REPO=$bad"
+    if grep -qF 'bash "<anchor>/scripts/handover/merge-on-green.sh"' <<<"$LAST_ERR" && ! grep -q '^bash /' <<<"$LAST_ERR"; then
+        echo "PASS unsafe HIMMEL_REPO [$bad]: quoted placeholder, no path printed"
+    else
+        echo "FAIL unsafe HIMMEL_REPO [$bad]: expected the quoted placeholder only: $LAST_ERR"; FAILED=$((FAILED + 1))
     fi
-    cmd="${cmd//<himmel_dir>/$PRIMARY}"
-    cmd="${cmd//<args>/$4}"
-    run "$1: printed spelling [$cmd] -> allow" 0 "$(payload "$cmd" "$WT")" "$HR"
-    g -C "$WT" checkout -q -- "$3"
-}
-follow_printed "merge-on-green" "$MOG" scripts/handover/merge-on-green.sh "--go /g"
-follow_printed "scripts/cr writer" 'bash scripts/cr/write-verdicts.sh' scripts/cr/write-verdicts.sh "--from-file /f"
+done
+# a worktree path the generator cannot tell apart by name prints, and matches no rule
+run 'HIMMEL_REPO is a plain worktree path: its printed line matches no held rule' 2 \
+    "$(payload "bash scripts/handover/merge-on-green.sh --branch 'x'" "$WT")" "HIMMEL_REPO=$WT"
+printed_matches 'control: a printed worktree path matches no rule' nomatch "bash $WT/scripts/handover/merge-on-green.sh --go /g"
+
 # negative controls: a quote or a variable in the path still matches no rule
 printed_matches 'control: quoted anchor path matches no rule' nomatch "bash \"$PRIMARY/scripts/handover/merge-on-green.sh\" --go /g"
 # shellcheck disable=SC2016 # the literal text
-printed_matches 'control: variable path matches no rule' nomatch 'bash $HOME/scripts/handover/merge-on-green.sh --go /g'
+printed_matches 'control: unquoted variable path matches no rule' nomatch 'bash $HIMMEL_REPO/scripts/handover/merge-on-green.sh --go /g'
 
 # ---- chief-O NO-GO finding 2: go.sh's own sibling-sourced libs -------------
 # go.sh sources scripts/lib/go-gate.sh and scripts/lib/handover-path.sh via a
@@ -2566,7 +2618,7 @@ run "behind main, two untouched writers in one call -> deny (not one simple comm
     "$(payload 'bash scripts/cr/write-verdicts.sh; bash scripts/handover/merge-on-green.sh' "$WT")" "$HR"
 run "behind main, untouched writer whose merge-base copy skips the hand-off -> deny" 2 \
     "$(payload 'bash scripts/cr/review-round.sh' "$WT")" "$HR"
-need_in_err "deny names the anchored spelling" "bash <himmel_dir>/scripts/cr/review-round.sh"
+need_in_err "deny names the anchored spelling" "bash $PRIMARY/scripts/cr/review-round.sh <args>"
 run "behind main, pr-check-context.sh keeps the whole-tree equality -> deny" 2 "$(payload "$LITERAL" "$WT")" "$HR"
 echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh"
 run "behind main, dirty scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
@@ -2589,7 +2641,7 @@ g -C "$PRIMARY" commit -qam 'main moves the hand-off'
 run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
 run "behind main, hand-off moved on main, scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
-need_in_err "deny names the anchored spelling" "bash <himmel_dir>/scripts/cr/write-verdicts.sh"
+need_in_err "deny names the anchored spelling" "bash $PRIMARY/scripts/cr/write-verdicts.sh <args>"
 g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 # main moved to a child that restores its bytes, so the merge-base is a commit
