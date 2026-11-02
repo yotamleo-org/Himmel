@@ -551,8 +551,10 @@ cat >"$tmpdir/fixture-thread-multi.json" <<'EOF'
 EOF
 FXT_FIXTURE="$tmpdir/fixture-unmarked-status.json" FXT_THREAD_FIXTURE="$tmpdir/fixture-thread-multi.json" \
     node "$SCRIPT" --vault "$unmarked_vault" --limit 1 >"$tmpdir/t14a.out" 2>&1
-t14a_flag=no; grep -q "needs_thread: true" "$unmarked_vault/Clippings/unmarked-clip.md" 2>/dev/null && t14a_flag=yes
-assert "Test14A: no-text-signal + thread API multi-post -> needs_thread:true" "yes" "$t14a_flag"
+# A multi-post self-thread is CAPTURED under ## Thread, so nothing is missing
+# and the clip carries no needs_thread.
+t14a_flag=no; grep -q "post 2" "$unmarked_vault/Clippings/unmarked-clip.md" 2>/dev/null && ! grep -q "needs_thread:" "$unmarked_vault/Clippings/unmarked-clip.md" 2>/dev/null && t14a_flag=yes
+assert "Test14A: no-text-signal + thread API multi-post -> captured under ## Thread, no needs_thread" "yes" "$t14a_flag"
 if [ "$t14a_flag" != "yes" ]; then
     echo "  (debug out=$(cat "$tmpdir/t14a.out" 2>/dev/null))"
 fi
@@ -580,8 +582,7 @@ assert "Test14B: thread API single-post -> needs_thread NOT set" "no" "$t14b_fla
 t14b_ok=no; grep -q "enrichment_status: ok" "$unmarked_vault_b/Clippings/unmarked-clip-b.md" 2>/dev/null && t14b_ok=yes
 assert "Test14B: clip still enriches normally on single-post thread" "yes" "$t14b_ok"
 
-# Case C: thread API errors -> fail open (no needs_thread, no crash, clip still
-# enriched normally).
+# Case C: thread API errors on a tweet with replies -> partial, never ok.
 unmarked_vault_c="$tmpdir/vault-unmarked-c"
 mkdir -p "$unmarked_vault_c/Clippings"
 cat >"$unmarked_vault_c/Clippings/unmarked-clip-c.md" <<'EOF'
@@ -599,10 +600,12 @@ cat >"$tmpdir/fixture-thread-error.json" <<'EOF'
 EOF
 FXT_FIXTURE="$tmpdir/fixture-unmarked-status.json" FXT_THREAD_FIXTURE="$tmpdir/fixture-thread-error.json" \
     node "$SCRIPT" --vault "$unmarked_vault_c" --limit 1 >"$tmpdir/t14c.out" 2>&1
-t14c_flag=no; grep -q "needs_thread:" "$unmarked_vault_c/Clippings/unmarked-clip-c.md" 2>/dev/null && t14c_flag=yes
-assert "Test14C: thread API error fails open (no needs_thread)" "no" "$t14c_flag"
+# A failed thread check on a tweet with replies does not fail open: it is
+# stamped needs_thread + partial, never ok.
+t14c_flag=no; grep -q "needs_thread: true" "$unmarked_vault_c/Clippings/unmarked-clip-c.md" 2>/dev/null && t14c_flag=yes
+assert "Test14C: thread API error on a tweet with replies -> needs_thread true" "yes" "$t14c_flag"
 t14c_ok=no; grep -q "enrichment_status: ok" "$unmarked_vault_c/Clippings/unmarked-clip-c.md" 2>/dev/null && t14c_ok=yes
-assert "Test14C: clip still enriches normally on thread-API error" "yes" "$t14c_ok"
+assert "Test14C: thread API error on a tweet with replies is never ok" "no" "$t14c_ok"
 
 # -- Test 15: --reflag surfaces the same unmarked-self-thread miss --
 echo "Test 15: --reflag backfill catches an unmarked self-thread via the thread API"
@@ -691,6 +694,190 @@ assert "Test16b: zero-failure (all-skipped) run still exits 0" "0" "$t16b_rc"
 if [ "$t16b_rc" != "0" ]; then
     echo "  (debug out=$(cat "$tmpdir/t16b.out" 2>/dev/null))"
 fi
+
+# -- Tests 17-21: the author's self-thread is kept ----------------------
+BACKFILL="$TOOLS_DIR/x-thread-backfill.mjs"
+THEO_FX="$SCRIPT_DIR/fixtures/x-thread/theo-thread.json"
+
+mk_x_clip() {  # <dir> <file> <user> <id>
+    mkdir -p "$1/Clippings"
+    cat >"$1/Clippings/$2" <<EOF
+---
+source: https://x.com/$3/status/$4
+processed: true
+---
+# tweet from x.com/$3/status/$4
+
+## The Idea
+
+## Source
+https://x.com/$3/status/$4
+EOF
+}
+line_of() { grep -n -F -- "$1" "$2" 2>/dev/null | head -1 | cut -d: -f1; }
+
+# -- Test 17: the Theo fixture (the real endpoint answer, trimmed) -------
+echo "Test 17: author self-reply is kept under ## Thread (Theo fixture)"
+t17_vault="$tmpdir/vault-t17"
+mk_x_clip "$t17_vault" theo.md theo 2114653423937507555
+cat >"$tmpdir/t17-status.json" <<'EOF'
+{ "code": 200, "tweet": { "text": "I got a set of Sonos speakers a few months ago.", "replies": 230, "author": { "screen_name": "theo" } } }
+EOF
+FXT_FIXTURE="$tmpdir/t17-status.json" FXT_THREAD_FIXTURE="$THEO_FX" \
+    node "$SCRIPT" --vault "$t17_vault" --limit 1 >"$tmpdir/t17.out" 2>&1
+t17_clip="$t17_vault/Clippings/theo.md"
+t17_has=no; grep -q "Wild world we live in" "$t17_clip" 2>/dev/null && t17_has=yes
+assert "Test17: reply 2114653762619068547 text is in the clip" "yes" "$t17_has"
+t17_head=no; grep -q "^## Thread$" "$t17_clip" 2>/dev/null && t17_head=yes
+assert "Test17: clip has a ## Thread section" "yes" "$t17_head"
+t17_ok=no; grep -q "enrichment_status: ok" "$t17_clip" 2>/dev/null && ! grep -q "needs_thread:" "$t17_clip" 2>/dev/null && t17_ok=yes
+assert "Test17: captured thread reads ok with no needs_thread" "yes" "$t17_ok"
+
+# -- Test 18: author posts kept in order, other authors only when link-bearing
+echo "Test 18: author posts in order; other authors only when link-bearing"
+cat >"$tmpdir/t18-status.json" <<'EOF'
+{ "code": 200, "tweet": { "text": "alpha one", "replies": 3, "author": { "screen_name": "alice" } } }
+EOF
+cat >"$tmpdir/t18-nolink.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "60", "author": { "screen_name": "alice" }, "text": "alpha one" },
+  { "id": "61", "author": { "screen_name": "bob" }, "text": "bob chatter without a link" },
+  { "id": "62", "author": { "screen_name": "alice" }, "text": "alpha two" }
+] }
+EOF
+cat >"$tmpdir/t18-link.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "60", "author": { "screen_name": "alice" }, "text": "alpha one" },
+  { "id": "61", "author": { "screen_name": "bob" }, "text": "the repo: https://github.com/example/repo" },
+  { "id": "62", "author": { "screen_name": "alice" }, "text": "alpha two" }
+] }
+EOF
+t18a_vault="$tmpdir/vault-t18a"; mk_x_clip "$t18a_vault" a.md alice 60
+FXT_FIXTURE="$tmpdir/t18-status.json" FXT_THREAD_FIXTURE="$tmpdir/t18-nolink.json" \
+    node "$SCRIPT" --vault "$t18a_vault" --limit 1 >"$tmpdir/t18a.out" 2>&1
+t18a="$t18a_vault/Clippings/a.md"
+l1="$(line_of "alpha one" "$t18a")"; l2="$(line_of "alpha two" "$t18a")"
+t18a_order=no; [ -n "$l1" ] && [ -n "$l2" ] && [ "$l1" -lt "$l2" ] && t18a_order=yes
+assert "Test18A: both author posts present, in order" "yes" "$t18a_order"
+t18a_bob=no; grep -q "bob chatter" "$t18a" 2>/dev/null && t18a_bob=yes
+assert "Test18A: a non-link reply by another author is NOT captured" "no" "$t18a_bob"
+t18b_vault="$tmpdir/vault-t18b"; mk_x_clip "$t18b_vault" b.md alice 60
+FXT_FIXTURE="$tmpdir/t18-status.json" FXT_THREAD_FIXTURE="$tmpdir/t18-link.json" \
+    node "$SCRIPT" --vault "$t18b_vault" --limit 1 >"$tmpdir/t18b.out" 2>&1
+t18b="$t18b_vault/Clippings/b.md"
+t18b_link=no; grep -q "github.com/example/repo" "$t18b" 2>/dev/null && t18b_link=yes
+assert "Test18B: a link-bearing reply by another author is captured" "yes" "$t18b_link"
+t18b_label=no; grep -q "@bob" "$t18b" 2>/dev/null && grep -q "@alice" "$t18b" 2>/dev/null && t18b_label=yes
+assert "Test18B: every captured post is labelled with its author handle" "yes" "$t18b_label"
+
+# -- Test 19: a failed thread check never reads ok (fail-open regression) --
+echo "Test 19: failed thread check on a tweet with replies reads partial, not ok"
+cat >"$tmpdir/t19-err.json" <<'EOF'
+{ "code": 500, "message": "boom" }
+EOF
+cat >"$tmpdir/t19-replies.json" <<'EOF'
+{ "code": 200, "tweet": { "text": "a plain statement", "replies": 5, "author": { "screen_name": "jack" } } }
+EOF
+cat >"$tmpdir/t19-noreplies.json" <<'EOF'
+{ "code": 200, "tweet": { "text": "a plain statement", "replies": 0, "author": { "screen_name": "jack" } } }
+EOF
+t19a_vault="$tmpdir/vault-t19a"; mk_x_clip "$t19a_vault" a.md jack 90
+FXT_FIXTURE="$tmpdir/t19-replies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.json" \
+    node "$SCRIPT" --vault "$t19a_vault" --limit 1 >"$tmpdir/t19a.out" 2>&1
+t19a="$t19a_vault/Clippings/a.md"
+t19a_p=no; grep -q "enrichment_status: partial" "$t19a" 2>/dev/null && t19a_p=yes
+assert "Test19A: replies>0 + thread error -> enrichment_status partial" "yes" "$t19a_p"
+t19a_n=no; grep -q "needs_thread: true" "$t19a" 2>/dev/null && t19a_n=yes
+assert "Test19A: replies>0 + thread error -> needs_thread true" "yes" "$t19a_n"
+t19a_e=no; grep -q "last_error: thread_not_captured" "$t19a" 2>/dev/null && t19a_e=yes
+assert "Test19A: replies>0 + thread error -> last_error thread_not_captured" "yes" "$t19a_e"
+t19a_ok=no; grep -q "enrichment_status: ok" "$t19a" 2>/dev/null && t19a_ok=yes
+assert "Test19A: replies>0 + thread error is never ok" "no" "$t19a_ok"
+# Negative control: replies == 0 with the same erroring endpoint stays ok.
+t19b_vault="$tmpdir/vault-t19b"; mk_x_clip "$t19b_vault" b.md jack 91
+FXT_FIXTURE="$tmpdir/t19-noreplies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.json" \
+    node "$SCRIPT" --vault "$t19b_vault" --limit 1 >"$tmpdir/t19b.out" 2>&1
+t19b="$t19b_vault/Clippings/b.md"
+t19b_ok=no; grep -q "enrichment_status: ok" "$t19b" 2>/dev/null && ! grep -q "needs_thread:" "$t19b" 2>/dev/null && t19b_ok=yes
+assert "Test19B (control): replies==0 + thread error stays ok, no needs_thread" "yes" "$t19b_ok"
+
+# -- Test 20: Scrapling fallback is reached when the endpoint fails -------
+echo "Test 20: Scrapling fallback (stubbed) is reached when the thread endpoint fails"
+cat >"$tmpdir/t20-scrapling.json" <<'EOF'
+{ "status": "ok", "posts": [
+  { "id": "95", "author": { "screen_name": "jack" }, "text": "a plain statement" },
+  { "id": "96", "author": { "screen_name": "jack" }, "text": "scrapling recovered continuation" }
+] }
+EOF
+t20_vault="$tmpdir/vault-t20"; mk_x_clip "$t20_vault" a.md jack 95
+FXT_FIXTURE="$tmpdir/t19-replies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.json" FXT_SCRAPLING_FIXTURE="$tmpdir/t20-scrapling.json" \
+    node "$SCRIPT" --vault "$t20_vault" --limit 1 >"$tmpdir/t20.out" 2>&1
+t20="$t20_vault/Clippings/a.md"
+t20_has=no; grep -q "scrapling recovered continuation" "$t20" 2>/dev/null && t20_has=yes
+assert "Test20: continuation from the Scrapling fallback is in ## Thread" "yes" "$t20_has"
+t20_ok=no; grep -q "enrichment_status: ok" "$t20" 2>/dev/null && t20_ok=yes
+assert "Test20: a captured fallback thread reads ok" "yes" "$t20_ok"
+
+# -- Test 21: x-thread-backfill.mjs -------------------------------------
+echo "Test 21: x-thread-backfill (dry-run default, --apply, idempotent)"
+bf_vault="$tmpdir/vault-bf"
+bf_fx="$tmpdir/bf-fixtures"
+mkdir -p "$bf_fx"
+mk_x_clip "$bf_vault" theo.md theo 2114653423937507555
+cp "$THEO_FX" "$bf_fx/2114653423937507555.json"
+mk_x_clip "$bf_vault" single.md solo 81
+cat >"$bf_fx/81.json" <<'EOF'
+{ "code": 200, "thread": [ { "id": "81", "author": { "screen_name": "solo" }, "text": "only post" } ] }
+EOF
+mk_x_clip "$bf_vault" broken.md gone 82
+cat >"$bf_vault/Clippings/flagged.md" <<'EOF'
+---
+source: https://x.com/theo/status/2114653423937507555
+processed: true
+enriched_at: 2026-06-01
+enrichment_status: partial
+needs_thread: true
+last_error: thread_not_captured
+---
+## The Idea
+post one only
+
+## Source
+https://x.com/theo/status/2114653423937507555
+EOF
+cat >"$bf_vault/Clippings/notx.md" <<'EOF'
+---
+source: https://example.com/article
+processed: true
+---
+## The Idea
+not an x clip
+EOF
+vault_sum() { (cd "$1" && find . -type f | sort | xargs sha256sum | sha256sum | cut -d' ' -f1); }
+sum0="$(vault_sum "$bf_vault")"
+notx0="$(sha256sum "$bf_vault/Clippings/notx.md" | cut -d' ' -f1)"
+FXT_THREAD_FIXTURE_DIR="$bf_fx" node "$BACKFILL" --vault "$bf_vault" >"$tmpdir/t21-dry.out" 2>&1
+t21_rc=$?
+assert "Test21: dry-run exits 0" "0" "$t21_rc"
+assert "Test21: dry-run writes nothing (vault checksum unchanged)" "$sum0" "$(vault_sum "$bf_vault")"
+assert "Test21: dry-run summary carries the four counts" \
+    "summary: seen=4 adds-text=2 no-new-text=1 fetch-failed=1" \
+    "$(grep '^summary:' "$tmpdir/t21-dry.out")"
+t21_per=no; grep -q "theo.md.*adds-text" "$tmpdir/t21-dry.out" && grep -q "broken.md.*fetch-failed" "$tmpdir/t21-dry.out" && grep -q "single.md.*no-new-text" "$tmpdir/t21-dry.out" && t21_per=yes
+assert "Test21: dry-run prints a verdict per clip" "yes" "$t21_per"
+FXT_THREAD_FIXTURE_DIR="$bf_fx" node "$BACKFILL" --vault "$bf_vault" --apply >"$tmpdir/t21-apply.out" 2>&1
+t21_add=no; grep -q "Wild world we live in" "$bf_vault/Clippings/theo.md" 2>/dev/null && t21_add=yes
+assert "Test21: --apply adds the thread section" "yes" "$t21_add"
+t21_fl=no; f="$bf_vault/Clippings/flagged.md"
+grep -q "Wild world we live in" "$f" && grep -q "enrichment_status: ok" "$f" && ! grep -q "needs_thread:" "$f" && ! grep -q "last_error: thread_not_captured" "$f" && grep -q "enriched_at: 2026-06-01" "$f" && t21_fl=yes
+assert "Test21: --apply clears the flag a captured thread resolves, enriched_at untouched" "yes" "$t21_fl"
+assert "Test21: a clip that is not an X clip is untouched" "$notx0" "$(sha256sum "$bf_vault/Clippings/notx.md" | cut -d' ' -f1)"
+sum1="$(vault_sum "$bf_vault")"
+FXT_THREAD_FIXTURE_DIR="$bf_fx" node "$BACKFILL" --vault "$bf_vault" --apply >"$tmpdir/t21-apply2.out" 2>&1
+assert "Test21: a second --apply is a byte-identical no-op" "$sum1" "$(vault_sum "$bf_vault")"
+assert "Test21: second run reports nothing left to add" \
+    "summary: seen=4 adds-text=0 no-new-text=3 fetch-failed=1" \
+    "$(grep '^summary:' "$tmpdir/t21-apply2.out")"
 
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
