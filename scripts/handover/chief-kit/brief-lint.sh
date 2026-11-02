@@ -8,6 +8,10 @@
 # runs once and every worker inherits it. This is the structural half: a brief
 # whose field is missing, empty, an unfilled `<placeholder>`, or a bare `none`
 # fails. `none found (<query>)` passes - it names the query that came up empty.
+# A worker brief (a `> **Contract:**` line; not --judge, not a doc that has run) must also carry the
+# search directive in that field: the qmd-bounded.sh query over jira-himmel and luna, the worker-graph.sh
+# lookup, both named, and the `graph-qmd:` Results bullet ("no Jira mirror" and "no graph lookup" stand in for
+# the first and the second where the repo or the leg has none). A ticket key or #PR does not replace it.
 #
 # The field is the `> **Prior art:**` line plus any directly following `> `
 # continuation lines (up to the next `> **Field:**`, a non-blockquote line, or
@@ -17,7 +21,8 @@
 # title; --core-only runs it alone, for a launch that skips the prior-art check.
 # --judge skips it: a judge brief writes nothing, so no spec stands behind it.
 #
-# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 core-gate refusal.
+# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, a salus-marked
+# brief that names a search, or a resume_cwd the classifier cannot answer for.
 set -u
 
 core_only=0
@@ -224,6 +229,43 @@ PY
     fi
 }
 
+# The directory the worker starts in, read the way headed-arm-worker.sh reads it: the front-matter line, trimmed, quotes
+# stripped, a leading ~ expanded. This block is the launcher's, line for line (test-brief-lint.sh compares them).
+cwd="$(awk '
+    /^---[[:space:]]*$/ { fm++; if (fm == 2) exit; next }
+    fm == 1 && /^resume_cwd:[[:space:]]*/ { sub(/^resume_cwd:[[:space:]]*/, ""); print; exit }
+' "$doc" 2>/dev/null)"
+cwd="${cwd%"${cwd##*[![:space:]]}"}"
+cwd="${cwd#\'}"; cwd="${cwd%\'}"
+cwd="${cwd#\"}"; cwd="${cwd%\"}"
+case "$cwd" in \~|\~/*) cwd="${HOME:-}${cwd#\~}" ;; esac
+
+# Classify a directory: salus-marked or an adopted repo. salus_marked.py answers 0 (yes) or 10 (no); a missing or crashing
+# classifier answers neither, and the brief is refused (exit 3, which no flag clears) rather than read as not marked.
+classify() { # salus|adapter dir; returns 0 yes, 10 no
+    local rc=0
+    python3 -I "$(dirname "$0")/salus_marked.py" "$1" "$2" >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0|10) return "$rc" ;;
+        *) echo "brief-lint: $doc: cannot classify resume_cwd '$2' (salus_marked.py exited $rc): refusing rather than reading it as not salus-marked" >&2; exit 3 ;;
+    esac
+}
+
+# A salus-marked directory searches nothing, because a query would send text off this machine: its brief names no search
+# command anywhere (judge and resumed docs included, --core-only too), and a worker brief says so in words below. This runs
+# before the --core-only exit, so --no-prior-art-check cannot clear it, and it exits 3 so the launcher's refusal offers no
+# flag. A relative resume_cwd is classified as written (the launcher resolves it against its own directory); the Contract
+# check below still refuses it for a fresh worker brief.
+is_salus=0
+if [ -n "$cwd" ]; then
+    rc=0; classify salus "$cwd" || rc=$?
+    [ "$rc" -eq 0 ] && is_salus=1
+fi
+if [ "$is_salus" -eq 1 ] && grep -Eq -- 'qmd-bounded|worker-graph|graphify|-c[[:space:]]+(luna|jira-himmel)' "$doc"; then
+    echo "brief-lint: $doc: resume_cwd '$cwd' is salus-marked: this brief must search nothing (a query would send text off this machine). Remove every notes-search and graph-lookup command and say 'no notes search and no graph lookup' instead" >&2
+    exit 3
+fi
+
 if [ "$core_only" -eq 1 ]; then
     core_rule
     exit 0
@@ -297,6 +339,57 @@ fi
 . "$(dirname "$0")/../../lib/worker-identity.sh"
 if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; then
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
+fi
+
+# A worker brief (one with a `> **Contract:**` line) tells its worker to search the notes (both collections) and the
+# graph before it designs, with the query and symbol named, and to report what each returned. A cited ticket key or
+# #PR does not stand in for it: naming the query is what moved use in the audit, a bare mention moved little. A judge
+# brief writes nothing and is not held to it, and a doc whose Results already holds a bullet has run (a resume that
+# only ships) and is not made to fail.
+# Each of the words "no notes search", "no Jira mirror" and "no graph lookup" stands in for its command only when it is true,
+# judged from the brief's own resume_cwd: a salus-marked directory searches nothing, an adopted repo has no Jira mirror and
+# no himmel graph, and a leg whose Writes line says none named has no symbol to look up.
+if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
+    [ "${cwd#/}" != "$cwd" ] || fail "no absolute front-matter 'resume_cwd:' line (got '${cwd:-nothing}'): a fresh worker brief names the directory its worker starts in, which decides whether it searches the notes and the graph"
+    is_adapter=0; none_named=0
+    rc=0; classify adapter "$cwd" || rc=$?
+    [ "$rc" -eq 0 ] && is_adapter=1
+    grep -Eiq '^> \*\*Writes:\*\*.*none named' "$doc" && none_named=1
+    has_directive=1
+    if [ "$is_salus" -eq 1 ]; then
+        [[ "$flat" == *"no notes search"* ]] || fail "resume_cwd '$cwd' is salus-marked: this brief must search nothing, because a query would send text off this machine. Say 'no notes search and no graph lookup' in the '> **Prior art:**' field and report 'graph-qmd: n/a, salus-marked repo' in Results"
+    else
+        [[ "$flat" == *"no notes search"* ]] && fail "'> **Prior art:**' says 'no notes search' but resume_cwd is not a salus-marked directory: a brief searches the notes unless the repo is salus-marked"
+        for token in qmd-bounded.sh 'graph-qmd:' '-c luna'; do
+            case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
+        done
+        jira_ok=0; graph_ok=0
+        { [ "$is_adapter" -eq 1 ] && [[ "$flat" == *"no Jira mirror"* ]]; } && jira_ok=1
+        { { [ "$is_adapter" -eq 1 ] || [ "$none_named" -eq 1 ]; } && [[ "$flat" == *"no graph lookup"* ]]; } && graph_ok=1
+        case "$flat" in *"-c jira-himmel"*) ;; *) [ "$jira_ok" -eq 1 ] || has_directive=0 ;; esac
+        case "$flat" in *worker-graph.sh*) ;; *) [ "$graph_ok" -eq 1 ] || has_directive=0 ;; esac
+        if [ "$has_directive" -eq 0 ]; then
+            fail "'> **Prior art:**' lacks the search directive (a ticket key or #PR does not replace it): add it as a continuation line naming the query and symbol: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and the same with '-c luna', and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; a salus-marked repo says 'no notes search and no graph lookup' instead, an adopted repo 'no Jira mirror' and 'no graph lookup', and the words count only where true; see docs/handover/worker-brief-template.md"
+        fi
+        # No angle-bracket placeholder anywhere in the directive (the graph-qmd bullet's own <what ...> excepted), and no
+        # shell expansion character inside a quoted argument.
+        chk="$(sed -E 's/graph-qmd: <[^>]*>//g' <<< "$flat")"
+        case "$chk" in *"Before you design"*) chk="${chk#*Before you design}" ;; esac
+        if [[ "$chk" =~ \<[^\>]*\> ]]; then
+            fail "'> **Prior art:**' directive still carries an angle-bracket placeholder (${BASH_REMATCH[0]}): name the query and the graph symbol this worker should search, and write the primary checkout path out"
+        fi
+        # shellcheck disable=SC2016
+        if grep -Eo -- '(-c (luna|jira-himmel)|explain) "[^"]*"' <<< "$flat" | grep -Eq '[`$\\!]'; then
+            fail "'> **Prior art:**' directive has a quoted query or symbol with a shell expansion character (backtick, dollar sign, backslash or exclamation mark): use plain words and paths"
+        fi
+        # Each command that stands carries a quoted argument that names something: not empty, not blank.
+        arg='"[^"[:space:]][^"]*"'
+        bad_arg=0
+        grep -Eq -- "-c luna $arg" <<< "$flat" || bad_arg=1
+        case "$flat" in *"-c jira-himmel"*) grep -Eq -- "-c jira-himmel $arg" <<< "$flat" || bad_arg=1 ;; esac
+        case "$flat" in *worker-graph.sh*) grep -Eq -- "worker-graph\.sh explain $arg" <<< "$flat" || bad_arg=1 ;; esac
+        [ "$bad_arg" -eq 0 ] || fail "'> **Prior art:**' directive has an empty or blank quoted query or symbol: name the query and the graph symbol this worker should search"
+    fi
 fi
 
 core_rule

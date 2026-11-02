@@ -12,7 +12,11 @@ runs itself. Ported from the BX/BY session-scratchpad generators.
 
 workers.json is a list of objects. Required keys per worker: label (N<k>), keys
 (ticket keys, first is the doc's), slug, branch (type/slug), title, desc, why,
-prior, scope, scope_short, commit. Optional: writes (a string copied from the ticket's Writes text;
+prior, scope, scope_short, commit. Optional: search_query and search_symbol (the notes query and the graph
+symbol the brief's search directive names for the worker to run; defaults: the title, and the first Writes path;
+a leg whose Writes is `none named` and sets no search_symbol gets no graph lookup, and neither does a leg in an
+adopted repo, which also gets no jira-himmel search),
+writes (a string copied from the ticket's Writes text;
 ONLY this field supplies the brief's Writes paths, never scope or prior. Missing writes leaves an
 empty Writes line the chief must fill before brief-lint allows launch; `none named` explicitly
 means no writes. scope and prior also appear on Writes note, which holds nothing), hook (true: the launcher exports
@@ -106,6 +110,8 @@ Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it);
 """
 import argparse, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from salus_marked import salus_marked, is_adapter  # noqa: E402
 
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
@@ -185,6 +191,51 @@ def load_trust_res():
         die('cannot read the trust paths from %s; a grant cannot be checked against them' % TRUST_PATHS, 2)
 MERGE_AT_READY_LINE = ("Stop at READY and never run a merge command: the chief merges (it runs the gate checks, writes the GO and merges "
                       "from the primary checkout), then sends you `MERGED #<pr> → <sha>`. Hold for that message; then `cd` out, WRAPPED, release the lock,")
+# The search directive every generated brief carries as a continuation of its Prior art field; brief-lint.sh
+# refuses a worker brief without it (the qmd-bounded.sh query over luna and jira-himmel, the worker-graph.sh lookup,
+# graph-qmd:) and refuses its <topic>/<symbol> placeholders. An adopter repo has no Jira mirror collection and no himmel
+# graph, and a leg that writes no code names no symbol: each says so in words ("no Jira mirror", "no graph lookup"), which
+# the lint accepts in place of that command.
+# The query and symbol sit inside double quotes the worker runs: no quote, backtick, backslash, `$` or `!` (so no expansion), no angle bracket (a placeholder), one line.
+SEARCH_BAD_RE = re.compile(r'["`<>\\$!\r\n]')
+
+
+def search_fields(worker):
+    # The notes query and the graph symbol named in the directive: the leg's own keys, else its title and its first Writes
+    # path. A leg with no Writes path (`none named`) and no search_symbol has no symbol: None.
+    q = worker.get('search_query')
+    if q is None:
+        q = ' '.join(SEARCH_BAD_RE.sub(' ', worker['title']).split())
+    s = worker.get('search_symbol')
+    if s is None:
+        first = (str(worker.get('writes') or '').split() or [worker['scope_short']])[0].strip('`,')
+        s = None if worker.get('writes') and first.lower() == 'none' else ' '.join(SEARCH_BAD_RE.sub(' ', first).split())
+    return q, (s or None)
+
+
+def search_directive(worker, ctx):
+    if ctx.get('salus') or (worker.get('wt') and salus_marked(worker['wt'])):
+        # A query leaves the machine (embedding and rerank send the text to a provider), which scripts/guardrails/egress-matrix.json denies for a salus path.
+        return ('This repo is salus-marked (PHI): no notes search and no graph lookup, because a query would send text off this machine. '
+                'Your Results carry a `graph-qmd: n/a, salus-marked repo` bullet saying so.')
+    q, s = search_fields(worker)
+    qmd = shlex.quote(ctx['kit'] + '/scripts/lib/qmd-bounded.sh')
+    notes = '`bash %s query -c luna "%s"` (specs, audits and decisions' % (qmd, q)
+    if ctx['adapter']:
+        notes += '; this repo has no Jira mirror, so no ticket search'
+    else:
+        notes = '`bash %s query -c jira-himmel "%s"` (tickets and PRs) and %s' % (qmd, q, notes)
+    notes += ')'
+    if ctx['adapter'] or s is None:
+        why = 'an adopter repo has no himmel graph' if ctx['adapter'] else 'it names no code path to look up'
+        return ('Before you design, run %s, and cite what each returned, or write none found with the query you ran. '
+                'This leg has no graph lookup (%s). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
+                % (notes, why))
+    return ('Before you design, run %s, and `bash scripts/graphify/worker-graph.sh explain "%s"`, and cite what each returned, or write none found with the query you ran. '
+            'Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, '
+            'or `graph-qmd: n/a, shipping` on a resume that only ships.' % (notes, s))
+
+
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
@@ -370,6 +421,11 @@ def validate(worker, i, repo):
             die('worker %s: %s names a dropped platform (%r); Windows and WSL are dropped, so only a removal worker may touch them (platform_removal true plus a remove/drop/delete/retire/sweep/clean title)' % (worker['label'], k, m.group(0)))
     if re.search(r'<[^<>\s]+>', worker['prior']) or worker['prior'].strip().lower().rstrip('.') == 'none':
         die('worker %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % worker['label'])
+    for k in ('search_query', 'search_symbol'):
+        if k in worker and (not isinstance(worker[k], str) or not worker[k].strip() or SEARCH_BAD_RE.search(worker[k])):
+            die('worker %s: %s must be a non-blank one-line string with no quote, backtick, backslash, dollar sign, exclamation mark or angle bracket (it is pasted inside double quotes into the search directive)' % (worker['label'], k))
+    if not search_fields(worker)[0]:
+        die('worker %s: the search query is empty; set search_query' % worker['label'])
     if 'grants' in worker:
         validate_grants(worker, repo)
     if 'inherited' in worker:
@@ -962,6 +1018,7 @@ template_version: 3
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
+> {search}
 
 {partialblock}> **Contract:**
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
@@ -982,7 +1039,7 @@ template_version: 3
 ## Results (newest at the bottom)
 """.format(wt=l['wt'], desc=l['desc'], keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
            branch=l['branch'], base=ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
-           hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
+           hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'], search=search_directive(l, ctx),
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], scope_line=write_paths(l.get('writes', '')), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())
@@ -993,11 +1050,6 @@ template_version: 3
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
-
-
-def is_adapter(repo):
-    # An adopted repo is a git checkout with no chief-kit of its own: himmel's scripts must run for it.
-    return os.path.exists(os.path.join(repo, '.git')) and not os.path.exists(os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'headed-arm-worker.sh'))
 
 
 def new_worktree_argv(ctx, branch):
@@ -1130,7 +1182,7 @@ def main():
     deadline = a.deadline or str(int(datetime.now().timestamp()) + 43200)
     adapter = is_adapter(a.repo)
     kit = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..')) if adapter else a.repo
-    ctx = dict(repo=a.repo, kit=kit, adapter=adapter, base=a.base, chief=a.chief, date=a.date, hroot=a.handover_root, work_dir=work_dir,
+    ctx = dict(repo=a.repo, kit=kit, adapter=adapter, salus=salus_marked(a.repo), base=a.base, chief=a.chief, date=a.date, hroot=a.handover_root, work_dir=work_dir,
                deadline=deadline, workers=workers, also_live=a.also_live,
                manifest=os.path.abspath(a.manifest) if a.manifest else None)
     a.bucket = resolve_bucket(a.bucket, a.handover_root, a.repo)
