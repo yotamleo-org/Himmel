@@ -123,6 +123,11 @@ describe('jira release (HIMMEL-6796)', () => {
 });
 
 describe('jira release rm-run (HIMMEL-7201)', () => {
+  beforeEach(() => {
+    // rm-run posts to Jira; a loopback Jira is a stub, so the post door stays open.
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+  });
+
   it('prints nothing pending on an empty queue and makes no judge call', async () => {
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
     await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));

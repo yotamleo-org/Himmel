@@ -474,6 +474,110 @@ printf '# doc\n\n## Chief Rulings (newest at the bottom)\n' >"$TDOC"
 HIMMEL_CONSOLE_RUNDIR="$TMP/rundir" HANDOVER_DIR="$TMP/hermetic-handovers" bash "$SEND" HIMMEL-1-chief "mirror hermetic" --doc "$TDOC" >/dev/null 2>&1
 has "D3 a send with a temp doc stays local" "$TDOC" "mirror hermetic"
 
+# ---- the scheduler, the second Telegram sender and the Jira post doors ----
+# Every tool is a recorder first on PATH (asserted below), so a door that fails to refuse reaches a
+# recorder, never the real crontab, atd or Telegram. SCH rows: arm-resume's crontab and at writes.
+# CAS rows: the config-audit alert's chief-route sender. JP rows: release apply, release rm-run and jira
+# create, each against a Jira host that never resolves, so a run past the door shows as a host lookup.
+echo "== scheduler, config-audit sender and Jira post doors (HIMMEL-8818)"
+cat >"$BIN/sched-recorder" <<'STUB'
+#!/usr/bin/env bash
+t="${0##*/}"
+printf '%s %s\n' "$t" "$*" >>"$REC"
+case "$t:${1:-}" in
+  crontab:-l) exit 1 ;;
+  crontab:-|at:*) cat >/dev/null ;;
+esac
+exit 0
+STUB
+chmod +x "$BIN/sched-recorder"
+for t in crontab at atrm atq; do ln -sf sched-recorder "$BIN/$t"; done
+for tool in crontab at atrm atq; do
+  [ "$(command -v "$tool")" = "$BIN/$tool" ] || { echo "FAIL - suite guard: $tool does not resolve to the recorder"; exit 1; }
+done
+calls_exact() { grep -c -x -- "$1" "$REC" || true; }
+
+ARM="$root/scripts/handover/arm-resume.sh"
+ARMBIN="$TMP/armbin"
+mkdir -p "$ARMBIN" "$TMP/arm-dotenv" "$TMP/arm-work" "$TMP/arm-docs/handovers"
+git init -q "$TMP/arm-work"
+git init -q "$TMP/arm-docs"
+# shellcheck disable=SC2016 # the stub's own $1, expanded when it runs
+printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "2.1.296 (Claude Code)"; exit 0; fi\nexit 0\n' >"$ARMBIN/claude"
+chmod +x "$ARMBIN/claude"
+# arm-resume resolves its plugin profile with node, so the arm gets the real one; no scheduler tool is behind it.
+REAL_NODE="$(PATH="${PATH#"$BIN":}" command -v node || true)"
+[ -n "$REAL_NODE" ] && ln -sf "$REAL_NODE" "$ARMBIN/node"
+printf '%s' '{"oauthAccount":{"accountUuid":"uuid-real-state-guard"}}' >"$TMP/claude-account.json"
+ARM_DOC="$TMP/arm-docs/handovers/handover-s1.md"
+printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n# Test handover\n' "$TMP/arm-work" >"$ARM_DOC"
+ARM_TIME="$(python3 -c 'import datetime; print((datetime.datetime.now()+datetime.timedelta(minutes=30)).strftime("%H:%M"))')"
+ARM_ENV=(env PATH="$ARMBIN:$PATH" FLEET_CAP_OK=1 ARM_WITH_LIVE_WORKERS=1 ARM_TERMINAL_APP=none ARM_TEMP_CWD_OK=1
+  ARM_RESUME_DOTENV_ROOT="$TMP/arm-dotenv" ARM_RESUME_LOG_DIR="$TMP/arm-logs" ARM_RUNNER_DIR="$TMP/arm-runners"
+  HIMMEL_FLEET_SLOTS="$TMP/fleet-slots" SKILL_TELEMETRY_DIR="$TMP/telemetry" WORKER_BRIDGE_ROOT="$TMP/worker-bridge"
+  WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json" HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
+  CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
+  CLAUDE_ACCOUNT_CONFIG="$TMP/claude-account.json" HANDOVER_DIR="$TMP/arm-docs/handovers")
+
+# SCH1/SCH2: the crontab install (the macOS shape and the Linux fallback), forced with OSTYPE.
+reset
+rc=0; "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH1 a test's crontab arm exits 77" "$rc" 77
+eq "SCH1 a test's crontab arm installs nothing" "$(calls_exact 'crontab -')" 0
+reset
+as_session "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1
+eq "SCH2 a real session's crontab arm installs its entry" "$(calls_exact 'crontab -')" 1
+# SCH3/SCH4: the at job.
+reset
+rc=0; "${ARM_ENV[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH3 a test's at arm exits 77" "$rc" 77
+eq "SCH3 a test's at arm schedules no job" "$(calls at)" 0
+reset
+as_session "${ARM_ENV[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1
+eq "SCH4 a real session's at arm schedules its job" "$(calls at)" 1
+
+# CAS1/CAS2: the config-audit alert's Telegram sender is the chief-route bun call.
+CA_ACCESS="$TMP/ca-access.json"
+printf '{"allowFrom":["12345"]}\n' >"$CA_ACCESS"
+# shellcheck disable=SC2016 # the inline script's own $1, expanded by the child bash
+CA_ALERT=(env TELEGRAM_ACCESS_PATH="$CA_ACCESS" BRIDGE_ROOT="$TMP/ca-bridge" HIMMEL_CONFIG_ALERT_CMD= HIMMEL_CONFIG_AUDIT_DIR="$TMP/ca-state"
+  bash -c '. "$1"; _ca_alert "config alert"' _ "$root/scripts/lib/config-audit.sh")
+reset
+"${CA_ALERT[@]}" >/dev/null 2>&1
+eq "CAS1 a test's config alert sends no Telegram message" "$(calls bun)" 0
+reset
+as_session "${CA_ALERT[@]}" >/dev/null 2>&1
+eq "CAS2 a real session's config alert sends its Telegram message" "$(calls bun)" 1
+
+# JP rows: release apply, release rm-run and jira create post to Jira.
+if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; then
+  J="$root/scripts/jira/src/index.ts"
+  VENV=(env HIMMEL_RELEASE_STATE_DIR="$TMP/v-queue" JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token JIRA_PROJECT_KEY=HIMMEL)
+  V_BODY="$(printf '## Impact\nx\n\n## What\nx\n\n## Why\nx\n\n## Plan\n- x\n\n## DoD\n- x\n\n## Agent detail\nx\n')"
+  V_CREATE=("$REAL_BUN" "$J" create --type Task --title "from a test" --desc "$V_BODY" --labels standalone --backlog --proposed-version backlog --why "a test must not file this")
+  v_refused() { # <label> <cmd...>
+    local label="$1" vrc=0
+    shift
+    "$@" >"$TMP/v.out" 2>&1 || vrc=$?
+    if [ "$vrc" != 0 ]; then pass "$label exits non-zero"; else fail "$label exits non-zero"; fi
+    has "$label is refused at the door" "$TMP/v.out" "refused, nothing was posted"
+    if grep -q 'ENOTFOUND' "$TMP/v.out"; then fail "$label reached the Jira host lookup"; else pass "$label never looked up the Jira host"; fi
+  }
+  v_open() { # <label> <cmd...>
+    local label="$1"
+    shift
+    "$@" >"$TMP/v.out" 2>&1
+    if grep -q 'nothing was posted' "$TMP/v.out"; then fail "$label was refused"; else pass "$label is not refused"; fi
+  }
+  v_refused "JP1 a test's release apply" "${VENV[@]}" "$REAL_BUN" "$J" release apply R8818 RU-1
+  v_refused "JP2 a test's release rm-run" "${VENV[@]}" "$REAL_BUN" "$J" release rm-run R8818
+  v_open "JP3 a real session's release apply" as_session "${VENV[@]}" "$REAL_BUN" "$J" release apply R8818 RU-1
+  v_refused "JP4 a test's jira create" "${VENV[@]}" "${V_CREATE[@]}"
+  v_open "JP5 a real session's jira create" as_session "${VENV[@]}" "${V_CREATE[@]}"
+else
+  echo "SKIP - JP rows: no bun or no scripts/jira/node_modules here; release.test.ts and create.test.ts hold the door rows"
+fi
+
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS - test-real-state-guard: all rows"; exit 0; fi
 echo "FAIL - test-real-state-guard: $fails row(s)"

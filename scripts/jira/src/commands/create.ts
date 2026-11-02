@@ -17,7 +17,7 @@ import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link
 import { admissionsLedgerExists, appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
-import { ctxFor, refuseRequest } from './release.js';
+import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
 import { placementOf, readOperatorRecords, request as releaseRequest } from '../release/engine.js';
 import { admits } from '../release/leaks.js';
 import { loadKey } from '../release/ledger.js';
@@ -852,6 +852,8 @@ export function registerCreate(program: Command): void {
           console.log(PLAIN_BLOCK_TEMPLATE);
           return;
         }
+        // Everything below can file, comment on or re-rank a real ticket: a test on the station stops here.
+        refuseTestJiraPost('create');
         if (options.followUpOf !== undefined && options.residualOf !== undefined) {
           throw new Error('--follow-up-of cannot be combined with --residual-of (a residual is already linked to its parent)');
         }
