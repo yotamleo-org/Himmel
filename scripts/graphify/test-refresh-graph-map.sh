@@ -1533,6 +1533,91 @@ assert "notes/cache.md" in d
 assert "graphify_native" not in d
 PY
 
+# --- T22d: a run over an UNCHANGED corpus with a populated cache
+# queues zero files. The stub models graphify's cache rule: a file is queued
+# only when the scratch copy's seeded cache holds no entry for it, and a queued
+# file gets its entry written. Run 1 over an unseeded corpus queues all three;
+# run 2 over the same corpus must find them in the cache the runner carried
+# across the promote and seeded back. REGRESSION GUARD, not a RED proof: the
+# cache round trip already works on main (T22a/T22b); what emptied the weekly
+# run was a cache that was never filled (4.6 percent coverage), not a lost one.
+# Scratch fixture and stubbed extraction only: no vault, no claude. ---
+QCORPUS="$WS/queuecorpus"; QMAPS="$WS/queuemaps"; QBIN="$WS/queuebin"; QLOG="$WS/queue.log"
+mkdir -p "$QCORPUS/notes" "$QMAPS" "$QBIN"
+for n in a b c; do printf '# %s\ncontent %s\n' "$n" "$n" > "$QCORPUS/notes/$n.md"; done
+: > "$QLOG"
+cat > "$QBIN/graphify" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then printf 'graphify 0.0.0\n'; exit 0; fi
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; fi
+if [ "\$1" != "cluster-only" ] && [ "\$2" = "--update" ]; then
+  queued=0
+  mkdir -p "\$target/graphify-out/cache/semantic"
+  for f in "\$target"/notes/*.md; do
+    key="\$(basename "\$f" .md)"
+    if [ ! -f "\$target/graphify-out/cache/semantic/\$key.json" ]; then
+      queued=\$((queued + 1))
+      printf '{"nodes":[]}' > "\$target/graphify-out/cache/semantic/\$key.json"
+    fi
+  done
+  printf 'queued=%s\n' "\$queued" >> "$QLOG"
+fi
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+chmod +x "$QBIN/graphify"
+for q_run in 1 2; do
+  out=$( GRAPHIFY_MAP_BIN="$QBIN/graphify" PATH="$QBIN:$PATH" \
+    bash "$SCRIPT" --name queuetest --corpus-root "$QCORPUS" --backend claude-cli \
+    --maps-dir "$QMAPS" --title "Queue Map" --slug queue-map --corpus-tag queue 2>&1 ); rc=$?
+  [ "$rc" -eq 0 ] || fail "T22d run $q_run exit 0 (got $rc): $out"
+done
+[ "$(sed -n 1p "$QLOG")" = "queued=3" ] \
+  && pass "T22d first run over an unseeded corpus queues every file (queued=3)" \
+  || fail "T22d first run should queue 3 files: $(cat "$QLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+[ "$(sed -n 2p "$QLOG")" = "queued=0" ] \
+  && pass "T22d second run over the unchanged corpus queues zero files" \
+  || fail "T22d second run over an unchanged corpus should queue 0 files: $(cat "$QLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+
+# --- T22e: a `handovers` line in the corpus-root .graphify-corpus-ignore keeps
+# every handovers/ file out of the scratch copy graphify extracts from, while
+# the other notes stay. REGRESSION GUARD, not a RED proof: the exclusion
+# mechanism already honours any directory line; the vault's own file lives
+# outside this repo. Scratch fixture only: no vault content. ---
+HXCORPUS="$WS/hxcorpus"; HXMAPS="$WS/hxmaps"; HXBIN="$WS/hxbin"; HXLOG="$WS/hx.log"
+mkdir -p "$HXCORPUS/notes" "$HXCORPUS/handovers/team/repo" "$HXMAPS" "$HXBIN"
+printf '# n\n' > "$HXCORPUS/notes/n.md"
+printf '# h\n' > "$HXCORPUS/handovers/team/repo/h.md"
+printf 'handovers\n' > "$HXCORPUS/.graphify-corpus-ignore"
+: > "$HXLOG"
+cat > "$HXBIN/graphify" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then printf 'graphify 0.0.0\n'; exit 0; fi
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; fi
+if [ "\$1" != "cluster-only" ] && [ "\$2" = "--update" ]; then
+  (cd "\$target" && find . -name '*.md' -not -path './graphify-out/*' | sort) >> "$HXLOG"
+fi
+mkdir -p "\$target/graphify-out"
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+chmod +x "$HXBIN/graphify"
+out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify" PATH="$HXBIN:$PATH" \
+  bash "$SCRIPT" --name hxtest --corpus-root "$HXCORPUS" --backend claude-cli \
+  --maps-dir "$HXMAPS" --title "Hx Map" --slug hx-map --corpus-tag hx 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T22e exit 0 (got $rc): $out"
+{ grep -qx './notes/n.md' "$HXLOG" && ! grep -q 'handovers' "$HXLOG"; } \
+  && pass "T22e a handovers line in .graphify-corpus-ignore keeps handovers/ out of the scratch copy" \
+  || fail "T22e scratch copy should hold notes/n.md and no handovers/ file: $(cat "$HXLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+
 # --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
 # `if !`, no error message, no controlled exit). This script runs under
