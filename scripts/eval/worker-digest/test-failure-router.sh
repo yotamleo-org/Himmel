@@ -55,8 +55,9 @@ case "$op" in
   create) grab "$@"
         # What the real CLI refuses: a body without the six sections (a real Plan and DoD line), a Task with neither
         # a parent nor the standalone label, a missing Sector.
-        f=""; lbl=""; sec=""
-        while [ $# -gt 0 ]; do case "$1" in --desc-file) f="$2"; shift 2 ;; --labels) lbl="$2"; shift 2 ;; --sector) sec="$2"; shift 2 ;; *) shift ;; esac; done
+        f=""; lbl=""; sec=""; ttl=""; all="$*"
+        while [ $# -gt 0 ]; do case "$1" in --desc-file) f="$2"; shift 2 ;; --labels) lbl="$2"; shift 2 ;; --sector) sec="$2"; shift 2 ;; --title) ttl="$2"; shift 2 ;; *) shift ;; esac; done
+        printf '%s\n' "$ttl" >>"$d/titles.log"
         [ -f "$d/create.err" ] && { cat "$d/create.err" >&2; exit 1; }
         for h in Impact What Why Plan DoD "Agent detail"; do
           grep -q "^## $h\$" "$f" || { echo "jira: refused: ticket body lacks the ticket shape: missing \"## $h\"" >&2; exit 1; }
@@ -67,7 +68,13 @@ case "$op" in
         done
         case ",$lbl," in *,standalone,*) ;; *) echo "jira: refused: a Task needs --parent or --labels standalone" >&2; exit 1 ;; esac
         [ -n "$sec" ] || { echo "jira: refused: no Sector, pass --sector" >&2; exit 1; }
+        # What the real CLI refuses: a Task with no placement (create.ts placeAtFiling), after the title warning.
+        case " $all " in
+          *" --proposed-version "*|*" --fix-version "*) ;;
+          *) printf 'jira: warning: title does not fit the template: it is too long (99 characters, keep it at most 90) (filing anyway)\nTicket title (system or user-facing):\n  system:       <Sector>: <the result>\nA Task needs a placement (sector: %s): pass --proposed-version <v> to file it with a proposed version\n' "$sec" >&2; exit 1 ;;
+        esac
         printf '%s\n' "$sec" >>"$d/sectors.log"
+        printf '%s\n' "$all" >>"$d/creates.log"
         [ "$(wc -c <"$f")" -gt 8000 ] && { echo "HTTP 400: The entered text is too long. It exceeds the allowed limit" >&2; exit 1; }
         n=$(( $(cat "$d/n" 2>/dev/null || echo 9000) + 1 )); echo "$n" >"$d/n"; echo "Created HIMMEL-$n" ;;
   comment) grab "$@"; echo "Comment added to $1" ;;
@@ -469,6 +476,23 @@ python3 "$FR" route --ledger "$F19/l.jsonl" --state "$F19/s.json" --log "$F19/lo
 check "HIMMEL-7420: the class with 1500 tickets and PRs files, not skipped:jira-error" '[ "$(decs "$F19/log" | jq -r "select(.class == \"error/Bash\") | .decision")" = filed ]'
 b19="$(ls -t "$STUB"/body.create.* | head -n 1)"
 check "HIMMEL-7420: the body lists 200 tickets and 200 PRs, counts the rest, and passes the alphabet" '[ "$(grep "^- tickets: " "$b19" | tr -cd H | wc -c)" -eq 200 ] && [ "$(grep "^- PRs: " "$b19" | tr -cd "#" | wc -c)" -eq 200 ] && grep -q "^- not listed: 2600 more tickets or PRs, see the digest$" "$b19" && python3 "$FR" check-body "$b19" >/dev/null'
+
+echo "HIMMEL-8734: a filing carries a placement, a template-fit title, and a refusal is logged by its own line"
+F20="$TMP/f20"; mkdir -p "$F20"
+SAVE="$LED"; LED="$F20/l.jsonl"
+row N1 error/Bash:usage:check-host-file-read-sinks; row N2 error/Bash:usage:check-host-file-read-sinks; row N3 error/Bash:usage:check-host-file-read-sinks
+LED="$SAVE"
+: >"$STUB/titles.log"; : >"$STUB/creates.log"
+python3 "$FR" route --ledger "$F20/l.jsonl" --state "$F20/s.json" --log "$F20/log" --inbox "$F20/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F20/out" 2>&1
+check "HIMMEL-8734: a Task the CLI would refuse for placement is filed with one" '[ "$(decs "$F20/log" | jq -r "select(.class == \"error/Bash:usage:check-host-file-read-sinks\") | .decision")" = filed ] && grep -q -- "--proposed-version backlog" "$STUB/creates.log" && grep -q -- "--backlog" "$STUB/creates.log" && grep -q -- "--why [^-]" "$STUB/creates.log"'
+t20="$(head -n 1 "$STUB/titles.log")"
+check "HIMMEL-8734: the title opens with the Sector, is at most 90 characters and has no internal name" '[ -n "$t20" ] && [ "${#t20}" -le 90 ] && case "$t20" in "Quality & proof: "*) true ;; *) false ;; esac && ! printf %s "$t20" | grep -Eq "Bash:|[a-z]+_[a-z_]+|--[a-z]|\.(sh|py|ts|md)\b"'
+F21="$TMP/f21"; mkdir -p "$F21"
+SAVE="$LED"; LED="$F21/l.jsonl"; row N1 denied/guard-twelve 1; row N2 denied/guard-twelve 1; LED="$SAVE"
+printf 'jira: warning: title does not fit the template: it is too long (99 characters, keep it at most 90) (filing anyway)\nTicket title (system or user-facing):\n  system:       <Sector>: <the result>\nSectors: A, B\nLeave out commit prefixes.\nA Task needs a placement (sector: Quality & proof): pass --proposed-version <v>\n' >"$STUB/create.err"
+python3 "$FR" route --ledger "$F21/l.jsonl" --state "$F21/s.json" --log "$F21/log" --inbox "$F21/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$F21/out" 2>&1
+rm -f "$STUB/create.err"
+check "HIMMEL-8734: a warning followed by a refusal logs the refusal, not the warning" 'grep -q "^failure-router: denied/guard-twelve reason: A Task needs a placement" "$F21/out" && ! grep -q "reason: jira: warning" "$F21/out"'
 
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'
