@@ -12,7 +12,8 @@
 #                                              the monolith is reported uncovered
 #   nightly only (extended tier, cap Ns)       SUITE_TIER_DEFAULT "extended"
 #   runs in PR CI (cap Ns)                     everything else
-# The cap is the runner's own _suite_timeout_for answer, evaluated, not parsed.
+# The cap is read from the runner's _suite_timeout_for case table as data (Linux
+# caps); the runner's shell is never executed.
 # Exit 0 = every suite classified, 2 = usage / unreadable or unintelligible
 # runner, 3 = at least one suite is unknown (printed as such).
 set -uo pipefail
@@ -42,20 +43,47 @@ if ! skip_list="$(table SKIP_LIST)" || ! tier_list="$(table SUITE_TIER_DEFAULT)"
   exit 2
 fi
 
-# cap <suite> — evaluate the runner's own per-suite timeout function.
-cap_fn="$(awk '/^_suite_timeout_for\(\) \{/ {on=1} on {print} on && /^}/ {exit}' "$runner")"
-if [ -z "$skip_list" ] || [ -z "$tier_list" ] || [ -z "$cap_fn" ]; then
-  echo "suite-coverage.sh: $runner has no SKIP_LIST / SUITE_TIER_DEFAULT table or _suite_timeout_for — not a run-shell-tests.sh this helper understands" >&2
+if [ -z "$skip_list" ] || [ -z "$tier_list" ]; then
+  echo "suite-coverage.sh: $runner has no SKIP_LIST / SUITE_TIER_DEFAULT table — not a run-shell-tests.sh this helper understands" >&2
   exit 2
 fi
+
+# cap <suite> — the runner's per-suite timeout, READ AS DATA: the
+# runner's shell is never sourced or eval'd. cap_arms holds "<glob-list><TAB><N>"
+# per arm of the function's Linux `case "${1#./}"`; the `*)` arm is the default.
+# A conditional arm with several literal printf values takes the largest (the
+# runner's unset-environment branch). An arm with no literal number prints "?"
+# and fails visibly rather than guessing a cap.
+cap_arms="$(awk '
+  /^_suite_timeout_for\(\) \{/ {fn=1}
+  fn && /^  case "\$\{1#\.\/\}" in$/ {on=1; next}
+  on && /^  esac/ {exit}
+  on && /^    [^ #].*\)$/ {pat=$0; sub(/^    /, "", pat); sub(/\)$/, "", pat); n=0; arm=1; next}
+  on && arm && /printf \047[0-9]+\047/ {l=$0; sub(/.*printf \047/, "", l); sub(/\047.*/, "", l); if (l+0 > n) n=l+0}
+  on && arm && /;;/ {print pat "\t" (n ? n : "?"); arm=0}
+' "$runner")"
 # shellcheck disable=SC2016 # a literal pattern for the runner's own source line
-default_line="$(grep -m1 '^SUITE_TIMEOUT=\$(_suite_num SUITE_TIMEOUT ' "$runner")"
+default_cap="$(grep -m1 -o '^SUITE_TIMEOUT=\$(_suite_num SUITE_TIMEOUT "\${SUITE_TIMEOUT:-[0-9][0-9]*}" [0-9][0-9]*)$' "$runner" | sed 's/.*:-\([0-9]*\)}.*/\1/')"
+if [ -z "$cap_arms" ] || [ -z "$default_cap" ]; then
+  echo "suite-coverage.sh: $runner has no readable _suite_timeout_for case table or SUITE_TIMEOUT default — not a run-shell-tests.sh this helper understands" >&2
+  exit 2
+fi
 cap() {
-  # shellcheck disable=SC2317,SC2329,SC2034 # _suite_num and the vars are read by the eval'd runner code
-  ( _suite_num() { printf '%s' "$2"; }
-    SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIMEOUT=''
-    [ -n "$default_line" ] && eval "$default_line"   # the runner's own default, its single source
-    eval "$cap_fn"; _suite_timeout_for "$1" ) 2>/dev/null
+  local line pats n pat rest s="${1#./}"
+  while IFS= read -r line; do
+    pats="${line%%$'\t'*}"; n="${line##*$'\t'}"
+    if [ "$pats" = '*' ]; then printf '%s' "$default_cap"; return 0; fi
+    rest="$pats|"
+    while [ -n "$rest" ]; do
+      pat="${rest%%|*}"; rest="${rest#*|}"
+      # shellcheck disable=SC2053 # $pat is a glob on purpose; [[ == ]] matches it without evaluating anything
+      if [[ "$s" == $pat ]]; then
+        case "$n" in ''|*[!0-9]*) return 1 ;; esac
+        printf '%s' "$n"; return 0
+      fi
+    done
+  done <<< "$cap_arms"
+  return 1
 }
 
 # entry_for <table> <suite> — the table line designating the suite (full-path

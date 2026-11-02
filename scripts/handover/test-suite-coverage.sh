@@ -95,6 +95,36 @@ bash "$SC" --runner "$tmp/junk.sh" scripts/x/test-x.sh >/dev/null 2>&1
 rc=$?
 if [ "$rc" -eq 2 ]; then pass "incompatible runner exits 2"; else bad "incompatible runner exits 2 (rc=$rc)"; fi
 
+# The runner is data, never executed. Hostile shell in the cap function
+# body or the default line must not run, and the cap still comes from the data.
+cat > "$tmp/hostile.sh" <<EOF
+SUITE_TIMEOUT=\$(_suite_num SUITE_TIMEOUT "\${SUITE_TIMEOUT:-600}" 600)
+_suite_timeout_for() {
+  touch "$tmp/pwned-body"
+  case "\${1#./}" in
+    scripts/slow/test-slow.sh|*/scripts/slow/test-slow.sh)
+      printf '1700' ;;
+    *)
+      printf '%s' "\$SUITE_TIMEOUT" ;;
+  esac
+}
+$(sed -n '/^SKIP_LIST="/,$p' "$tmp/runner.sh")
+EOF
+out=$(bash "$SC" --runner "$tmp/hostile.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
+if [ -e "$tmp/pwned-body" ]; then bad "runner function body is never executed"; else pass "runner function body is never executed"; fi
+expect "hostile body still yields the data cap" 'nightly only.*1700' "$out" 0
+sed "s|^SUITE_TIMEOUT=.*|SUITE_TIMEOUT=\$(touch \"$tmp/pwned-default\"; _suite_num SUITE_TIMEOUT \"\${SUITE_TIMEOUT:-600}\" 600)|" "$tmp/runner.sh" > "$tmp/hostile-default.sh"
+out=$(bash "$SC" --runner "$tmp/hostile-default.sh" scripts/plain/test-plain.sh 2>&1); rc=$?
+if [ -e "$tmp/pwned-default" ]; then bad "runner default line is never executed"; else pass "runner default line is never executed"; fi
+# an unrecognised default line or arm shape fails visibly, never a guessed cap
+# shellcheck disable=SC2016 # a literal replacement line for the fixture runner
+sed 's|^SUITE_TIMEOUT=.*|SUITE_TIMEOUT=$(whatever)|' "$tmp/runner.sh" > "$tmp/bad-default.sh"
+out=$(bash "$SC" --runner "$tmp/bad-default.sh" scripts/plain/test-plain.sh 2>&1); rc=$?
+expect "unparseable default timeout exits 2" 'could not|not a run-shell-tests' "$out" 2
+sed "s|printf '1700' ;;|printf '%s' \"\$(id -u)\" ;;|" "$tmp/runner.sh" > "$tmp/bad-arm.sh"
+out=$(bash "$SC" --runner "$tmp/bad-arm.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
+expect "unparseable cap arm exits 2" 'could not' "$out" 2
+
 out=$(bash "$SC" --runner "$REAL" scripts/test-install-symmetry-vm.sh 2>&1); rc=$?
 expect "real: install-symmetry-vm not run in CI" 'not run in CI' "$out" 0
 out=$(bash "$SC" --runner "$REAL" scripts/handover/test-arm-resume.sh 2>&1); rc=$?
