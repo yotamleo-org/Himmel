@@ -531,6 +531,10 @@ imports, so its suite runs in CI without an install.
 - Visual tokens e2e (`visual-tokens.e2e.ts`, same opt-in suite): every computed
   colour on every config-ui page, light and dark, is a tokens.css value or a mix
   of two; `E2E_BREAK=colour` plants an off-token colour and the suite must fail.
+- Tool health tables e2e (`tool-health-tables.e2e.ts`, same opt-in suite): the Hook wiring, Tools,
+  guards, Station sources and Refused by tool tables, read at 1280 and 390 px over stubbed
+  `/api/tool-health` and `/api/tool-inventory` responses, never break a word inside a header or a
+  short value, and a table wider than its panel scrolls inside its own box.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
   default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
@@ -582,6 +586,10 @@ imports, so its suite runs in CI without an install.
   inline style proves the detector fires). `/dev-graph/` serves only the
   `.json`/`.js`/`.css` files of `docs/guide/dev-graph/`: traversal, a path
   outside the directory, the directory itself and a POST are refused.
+- Fleet page e2e (`fleet-console.e2e.ts`, same opt-in suite, needs `agui-web/dist`): the fleet landing loads with no
+  console error and no `securitypolicyviolation` at 1280 and 390 px, light and dark, under the server's
+  `default-src 'self'`. `agui-web/src/zod-jitless.ts` is imported first so zod skips its `new Function` probe, which the
+  policy would otherwise report as a `script-src` eval violation.
 
 ## Manual pass (the same 7 items)
 
