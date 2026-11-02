@@ -97,6 +97,10 @@ cat > "$W/bin/ql-rc1" <<'STUB'
 #!/usr/bin/env bash
 exit 1
 STUB
+cat > "$W/bin/ql-free" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
 cat > "$W/bin/ql-count" <<STUB
 #!/usr/bin/env bash
 echo "\$*" >> "$W/ql-calls"
@@ -472,6 +476,104 @@ if [ "$(id -u)" != 0 ]; then
     same "unreadable bucket subdir: the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/f9.sh)")" HIMMEL-9220
     same "unreadable bucket subdir: one events.log line" "$(( $(ev_count) - before ))" 1
 fi
+
+# ---- F1: a crash is a fault (exit 2 and an events.log line), never a refusal (exit 1)
+before="$(ev_count)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" $'scripts/\xff-crash.sh'  # a lone surrogate: name.encode('utf-8') raises
+same "F1 a crash exits 2, never 1 (1 means refused)" "$RC" 2
+same "F1 ... and leaves one events.log line" "$(( $(ev_count) - before ))" 1
+contains "F1 ... a fault line" "$(tail -n 1 "$EVENTS")" fault
+if [ -n "$ERR" ]; then pass "F1 ... and says so on stderr"; else fail "F1 ... and says so on stderr"; fi
+
+# ---- finding 2: git failing for a linked worktree is a fault, never a second slug
+mkdir -p "$W/gitfail"
+printf '#!/usr/bin/env bash\nexit 128\n' > "$W/gitfail/git"
+chmod +x "$W/gitfail/git"
+before="$(ev_count)"
+run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" claim --key HIMMEL-9301 --label lab --doc "$DB" --repo "$W/wt" scripts/g1.sh
+same "F2 claim, git failing, --repo a linked worktree: fault, exit 2" "$RC" 2
+same "F2 ... no row under the worktree's own slug" "$([ -e "$(rowf scripts/g1.sh "$W/wt")" ] && echo row || echo none)" none
+same "F2 ... one events.log line" "$(( $(ev_count) - before ))" 1
+run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" read --repo "$W/wt"
+same "F2 read, git failing, a linked worktree: exit 2, not an empty register" "$RC" 2
+run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" alive --repo "$W/wt" scripts/w1.sh
+same "F2 alive, git failing, a linked worktree: exit 2, not dead" "$RC:$OUT" "2:"
+run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" claim --key HIMMEL-9302 --label lab --doc "$DB" --repo "$R" scripts/g2.sh
+same "F2 git failing, --repo the primary checkout: the path as given is its identity, exit 0" "$RC" 0
+same "F2 ... the row sits in the primary's directory" "$([ -e "$(rowf scripts/g2.sh)" ] && echo row || echo none)" row
+
+# ---- findings 3 and 4: a rename alias is folded before the trust test, and an empty registry folds nothing
+R2="$W/repo2"
+mkdir -p "$R2/scripts/lib" "$R2/scripts/ci"
+printf 'scripts/oldci\tscripts/ci\tdirectory\tfail\tx\tx\nscripts/oldx\tscripts/newx\tdirectory\tfail\tx\tx\n' > "$R2/scripts/lib/rename-aliases.tsv"
+echo seed > "$R2/seed.txt"
+git -C "$R2" init -q -b main
+git -C "$R2" add -A
+git -C "$R2" commit -q -m base
+run hp grant --key $K2 --repo "$R2" scripts/oldci/suite-tiers.tsv
+same "F3 a grant on a trust path spelt by its old directory name exits 1" "$RC" 1
+same "F3 ... and writes no grant" "$(find "$(slugdir "$R2")" -name '*.grant.*' 2>/dev/null | wc -l | tr -d ' ')" 0
+run hp grant --key $K2 --repo "$R2" scripts/oldx/a.sh
+same "F4 a grant on an aliased non-trust path exits 0" "$RC" 0
+same "F4 ... and sits under the new spelling" "$([ -e "$(rowf scripts/newx/a.sh "$R2").grant.$K2" ] && echo grant || echo none)" grant
+run hp claim --key HIMMEL-9303 --label lab --doc "$DB" --repo "$R2" scripts/oldx/b.sh
+same "F4 a claim by the old spelling exits 0" "$RC" 0
+same "F4 ... and the row sits under the new spelling" "$([ -e "$(rowf scripts/newx/b.sh "$R2")" ] && echo row || echo none)" row
+run hp claim --key HIMMEL-9304 --label lab --doc "$DB" --repo "$R2" scripts/newx/b.sh
+same "F4 the new spelling is the same file: refused" "$RC" 1
+run hp claim --key HIMMEL-9303 --label lab --doc "$DB" --repo "$R" scripts/oldx/b.sh
+same "F4 an empty registry: the claim exits 0" "$RC" 0
+same "F4 ... and the path stays as written" "$([ -e "$(rowf scripts/oldx/b.sh)" ] && echo row || echo none)" row
+run hp claim --key HIMMEL-9304 --label lab --doc "$DB" --repo "$R" scripts/newx/b.sh
+same "F4 an empty registry: the new spelling is another file" "$RC" 0
+
+# ---- finding 5: a path is normalised before it is matched against the repo
+run hp claim --key HIMMEL-9310 --label lab --doc "$DB" --repo "$R" "$R/scripts/../../esc1.sh"
+same "F5 a path that climbs out of the repo is not read as inside it" "$([ -e "$(rowf ../esc1.sh)" ] && echo row || echo none)" none
+same "F5 ... it is an absolute path, under _abs" "$([ -e "$REG/_abs/$(esc "$W/esc1.sh")" ] && echo row || echo none)" row
+run hp claim --key HIMMEL-9311 --label lab --doc "$DB" --repo "$R" "$R/../repo/scripts/esc2.sh"
+same "F5 a path that leaves and re-enters the repo is inside it" "$([ -e "$(rowf scripts/esc2.sh)" ] && echo row || echo none)" row
+
+# ---- finding 6: a doc that cannot be found, or a root that cannot be resolved, is put to the lock or reads unknown
+run bash -c 'cd "$1" && shift && exec python3 -I "$@"' _ "$HANDOVER_DIR/u/r" "$SUT" claim --key HIMMEL-9320 --label lab --doc HIMMEL-9320-rel.md --repo "$R" scripts/m0.sh
+same "F6 --doc is made absolute" "$(cut -f3 "$(rowf scripts/m0.sh)")" "$HANDOVER_DIR/u/r/HIMMEL-9320-rel.md"
+GONE="$HANDOVER_DIR/u/r/HIMMEL-9321-gone.md"
+put_row scripts/m1.sh HIMMEL-9321 alpha "$GONE"
+: > "$W/ql-calls"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m1.sh
+same "F6 a doc that is gone is still put to the lock" "$(grep -c 'HIMMEL-9321-gone.md' "$W/ql-calls")" 1
+NOB="$W/nobucket/HIMMEL-9322-case.md"
+put_row scripts/m2.sh HIMMEL-9322 alpha "$NOB"
+: > "$W/ql-calls"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m2.sh
+same "F6 a doc whose bucket is gone is still put to the lock" "$(grep -c 'HIMMEL-9322-case.md' "$W/ql-calls")" 1
+GL="$(mkdoc HIMMEL-9324-case.md)"
+lock_hold "$GL"
+rm -f "$GL"
+put_row scripts/m4.sh HIMMEL-9324 alpha "$GL"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m4.sh
+same "F6 a doc that is gone, its lock still held: alive, refused" "$RC" 1
+GR="$(mkdoc HIMMEL-9323-case.md)"
+put_row scripts/m3.sh HIMMEL-9323 alpha "$GR"
+mkdir -p "$W/nogit"
+before="$(ev_count)"
+run bash -c 'cd "$1" && ql="$2" && shift 2 && exec env -u HANDOVER_DIR HOLDS_QUEUE_LOCK="$ql" python3 -I "$@"' _ "$W/nogit" "$W/bin/ql-free" "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m3.sh
+same "F6 a handover root that cannot be resolved passes (a fault)" "$RC" 0
+same "F6 ... the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/m3.sh)")" HIMMEL-9323
+same "F6 ... one events.log line" "$(( $(ev_count) - before ))" 1
+
+# ---- finding 7: read --keys does not drop a row it cannot read and say 0
+R4="$W/repo4"
+mkdir -p "$R4"
+git -C "$R4" init -q -b main
+run hp claim --key HIMMEL-9330 --label lab --doc "$DB" --repo "$R4" scripts/z1.sh
+run hp read --repo "$R4" --keys
+same "F7 read --keys over readable rows exits 0" "$RC" 0
+printf 'not a row\n' > "$(rowf scripts/z2.sh "$R4")"
+run hp read --repo "$R4" --keys
+same "F7 read --keys with an unreadable row exits 3" "$RC" 3
+contains "F7 ... names the row on stderr" "$ERR" scripts/z2.sh
+contains "F7 ... and still lists the readable holder" "$OUT" HIMMEL-9330
 
 # ---- the real register was never touched
 same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"
