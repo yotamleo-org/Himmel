@@ -125,6 +125,11 @@ sed "s|printf '1700' ;;|printf '%s' \"\$(id -u)\" ;;|" "$tmp/runner.sh" > "$tmp/
 out=$(bash "$SC" --runner "$tmp/bad-arm.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
 expect "unparseable cap arm exits 2" 'could not' "$out" 2
 
+# a one-line conditional arm takes the largest literal whatever its order
+sed "s|printf '1700' ;;|if [ -n \"\${X:-}\" ]; then printf '9000'; else printf '1700'; fi ;;|" "$tmp/runner.sh" > "$tmp/cond-arm.sh"
+out=$(bash "$SC" --runner "$tmp/cond-arm.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
+expect "one-line conditional arm takes the largest printf" 'nightly only.*9000' "$out" 0
+
 out=$(bash "$SC" --runner "$REAL" scripts/test-install-symmetry-vm.sh 2>&1); rc=$?
 expect "real: install-symmetry-vm not run in CI" 'not run in CI' "$out" 0
 out=$(bash "$SC" --runner "$REAL" scripts/handover/test-arm-resume.sh 2>&1); rc=$?

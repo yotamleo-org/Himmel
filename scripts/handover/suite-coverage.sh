@@ -59,7 +59,7 @@ cap_arms="$(awk '
   fn && /^  case "\$\{1#\.\/\}" in$/ {on=1; next}
   on && /^  esac/ {exit}
   on && /^    [^ #].*\)$/ {pat=$0; sub(/^    /, "", pat); sub(/\)$/, "", pat); n=0; arm=1; next}
-  on && arm && /printf \047[0-9]+\047/ {l=$0; sub(/.*printf \047/, "", l); sub(/\047.*/, "", l); if (l+0 > n) n=l+0}
+  on && arm {l=$0; while (match(l, /printf \047[0-9]+\047/)) {v=substr(l, RSTART+8, RLENGTH-9); if (v+0 > n) n=v+0; l=substr(l, RSTART+RLENGTH)}}
   on && arm && /;;/ {print pat "\t" (n ? n : "?"); arm=0}
 ' "$runner")"
 # shellcheck disable=SC2016 # a literal pattern for the runner's own source line
