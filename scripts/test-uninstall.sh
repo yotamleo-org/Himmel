@@ -1268,6 +1268,16 @@ printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none fo
 # defaults itself, HIMMEL_INITIATIVE it never reads - those need no scrub.
 mkdir -p "$SUITE_HOME/.himmel/eval/worker-wt"
 export HEADED_ARM_REPO="$SUITE_HOME/.himmel/eval/worker-wt"
+# Control: the same launch WITHOUT the scrub does pre-trust. Without it, the
+# missing-file check below would also pass when the launcher never reached the
+# pre-trust step for some other reason.
+mkdir -p "$LLD/ctl-cache"
+HIMMEL_FLEET_SLOTS="$LLD/slots-ctl" HEADED_ARM_WORKER_TARGET="$LLD/target.sh" HEADED_ARM_WORKER_PREFLIGHT="$LLD/preflight.sh" \
+    HIMMELCTL_CACHE_DIR="$LLD/ctl-cache" \
+    bash "$WORKER_SESSION_SH" --no-profile HIMMEL-3270-ctl "$LLD/doc.md" "$LLD/sig" 99999999999 "$LLD/log" claude-sonnet-5 >/dev/null 2>&1 || true
+if [ -e "$SUITE_HOME/.claude.json" ]; then echo "PASS control: an unscrubbed worker-session HEADED_ARM_REPO makes the launcher pre-trust into HOME"
+else echo "FAIL control: the unscrubbed launch did not pre-trust, so the scrub check below proves nothing"; FAILED=$((FAILED + 1)); fi
+rm -f "$SUITE_HOME/.claude.json"
 HIMMEL_FLEET_SLOTS="$LLD/slots" HEADED_ARM_WORKER_TARGET="$LLD/target.sh" HEADED_ARM_WORKER_PREFLIGHT="$LLD/preflight.sh" \
     HIMMELCTL_CACHE_DIR="$CACHE" env -u HEADED_ARM_REPO -u WORKER_SESSION_REPO \
     bash "$WORKER_SESSION_SH" --no-profile HIMMEL-3270-u1 "$LLD/doc.md" "$LLD/sig" 99999999999 "$LLD/log" claude-sonnet-5 >/dev/null 2>&1 || true
