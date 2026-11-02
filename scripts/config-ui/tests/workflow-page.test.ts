@@ -168,7 +168,7 @@ test("Workflow: the story map has a drill-in link per phase, the legend, the alw
     expect(ph).toContain(`<a class="wf-to wf-open" href="#/workflow?phase=${id}">Open the drill-in ›</a>`);
   });
   expect(html).toContain('aria-label="Key"');
-  for (const k of ["a step (worker)", "a step (chief)", "a step (you)", "an automatic check", "a way back", "planned, pilot, or only sometimes", "what passes to the next phase"]) expect(html).toContain(k);
+  for (const k of ["a step (worker, check or judge)", "a step (chief)", "a step (you)", "an automatic check", "a way back", "planned, pilot, or only sometimes", "what passes to the next phase"]) expect(html).toContain(k);
   expect(html).toContain("Always on, under every phase:");
   expect(html).toContain("each tool call meets himmel's guards first");
   expect(html).toContain("Each phase shows one number: a 7-day measurement from the fleet's own records, not live state.");

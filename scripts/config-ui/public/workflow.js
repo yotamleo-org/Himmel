@@ -113,7 +113,7 @@ function storyMap(model, ix, stats, open) {
 
 // what each mark on the story map's lines means, the always-on note, and what the numbers are (Frame 1 of the approved design)
 const KEY = [
-  ['wf-g wf-s', "a step (worker)"], ['wf-g wf-s chief', "a step (chief)"], ['wf-g wf-s you', "a step (you)"],
+  ['wf-g wf-s', "a step (worker, check or judge)"], ['wf-g wf-s chief', "a step (chief)"], ['wf-g wf-s you', "a step (you)"],
   ['wf-g wf-k', "an automatic check"], ['wf-g wf-w', "a way back", "↶"], ['wf-g wf-k wf-pl', "dotted, dashed or italic: planned, pilot, or only sometimes"],
 ];
 function mapNotes() {
