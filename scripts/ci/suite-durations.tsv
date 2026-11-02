@@ -455,7 +455,7 @@ scripts/handover/chief-kit/test-tick-holds.sh	3
 scripts/handover/chief-kit/test-tick-nolive.sh	13
 scripts/handover/chief-kit/test-tick-pool-stale.sh	2
 scripts/handover/chief-kit/test-tick-rmqueue.sh	12
-scripts/handover/chief-kit/test-tick.sh	200
+scripts/handover/chief-kit/test-tick.sh	339
 scripts/handover/chief-kit/test-tracker.sh	14
 scripts/handover/chief-kit/test-vault-status.sh	3
 scripts/handover/chief-kit/test-verdict-go.sh	0
