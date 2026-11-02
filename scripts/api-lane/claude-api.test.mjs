@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -764,6 +764,63 @@ test('HIMMEL-5093: --effort, in both spellings, and the positional prompt still 
     const r = f.run([...f.good, ...bad]);
     assert.equal(r.status, 2, bad.join(' '));
   }
+});
+
+test('HIMMEL-8410: --append-system-prompt-file, in both spellings, takes a readable regular file and reaches claude unchanged', () => {
+  const FLAG = '--append-system-prompt-file';
+  const probe = fixture();
+  const file = join(probe.dir, 'system.txt');
+  writeFileSync(file, 'fixed instructions\n');
+  const link = join(probe.dir, 'system-link.txt');
+  symlinkSync(file, link);
+  for (const [spelled, seen] of [[[FLAG, file], file], [[`${FLAG}=${file}`], file], [[FLAG, link], link]]) {
+    const ok = fixture();
+    const r = ok.run([...ok.good, ...spelled]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(readFileSync(ok.paths.env, 'utf8').includes(`${FLAG} ${seen} `), spelled.join(' '));
+  }
+  const fb = fixture();
+  const r = fb.run([...fb.good, FLAG, file], { ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy', CLAUDECODE: '1' }, { argv0: SESSION_ARGV0 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fbArgs(fb).join(' ').includes(`${FLAG} ${file}`), 'the subscription fallback carries the same system prompt');
+});
+
+test('HIMMEL-8410: --append-system-prompt-file refuses anything but a readable regular file, with no spawn or reservation', () => {
+  const FLAG = '--append-system-prompt-file';
+  const f = fixture();
+  const dir = join(f.dir, 'a-dir');
+  mkdirSync(dir);
+  const fifo = join(f.dir, 'a-fifo');
+  assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+  const dirLink = join(f.dir, 'dir-link');
+  symlinkSync(dir, dirLink);
+  const dangling = join(f.dir, 'dangling-link');
+  symlinkSync(join(f.dir, 'gone'), dangling);
+  const unreadable = join(f.dir, 'unreadable.txt');
+  writeFileSync(unreadable, 'x', { mode: 0o000 });
+  // a real file named as a flag: its value would read as an option, so a dash-led value is refused like --model and --effort
+  writeFileSync(join(f.dir, '--dangerously-skip-permissions'), 'x');
+  const bad = [[FLAG, join(f.dir, 'missing.txt')], [`${FLAG}=${join(f.dir, 'missing.txt')}`], [FLAG, dir], [`${FLAG}=${dir}`], [FLAG, fifo],
+    [FLAG, '/dev/null'], [FLAG, dirLink], [FLAG, dangling], [FLAG, ''], [`${FLAG}=`], [FLAG],
+    [FLAG, '--dangerously-skip-permissions'], [`${FLAG}=--dangerously-skip-permissions`]];
+  if (process.getuid() !== 0) bad.push([FLAG, unreadable]); // root reads a mode-000 file
+  for (const spelled of bad) {
+    const r = f.run([...f.good, ...spelled], {}, { cwd: f.dir });
+    assert.equal(r.status, 2, spelled.join(' '));
+    assert.match(r.stderr, /--append-system-prompt-file/, spelled.join(' '));
+  }
+  // negative control: the neighbours stay closed even with a readable regular file behind them
+  const file = join(f.dir, 'system.txt');
+  writeFileSync(file, 'fixed instructions\n');
+  for (const flag of ['--append-system-prompt', '--system-prompt-file', `${FLAG}-x`, '--APPEND-SYSTEM-PROMPT-FILE']) {
+    for (const spelled of [[flag, file], [`${flag}=${file}`]]) {
+      const r = f.run([...f.good, ...spelled]);
+      assert.equal(r.status, 2, spelled.join(' '));
+      assert.match(r.stderr, /not allowed/, spelled.join(' '));
+    }
+  }
+  assert.equal(f.called(), false);
+  assert.equal(f.status().reserved_usd, '0.000000');
 });
 
 test('HIMMEL-5097: --model and --permission-mode refuse dash-led values and the mode is an allowlist, in both spellings', () => {

@@ -62,6 +62,11 @@
 # go on; only the API refusing for lack of credit stops a chunk, and the finished chunks still merge. The run
 # row carries the summed cost (`cost_usd`), the backend and the cap.
 #
+# GRAPHIFY_API_SYSTEM_PROMPT=1 (synchronous lane path only, default off) moves graphify's fixed instructions and
+# those requirements into one per-run --append-system-prompt-file, removed with the run's scratch dir, leaving the
+# "Now extract" line and the chunk on stdin, so the fixed text caches across chunks (docs/internals/prompt-cache.md).
+# ponytail: opt-in until the paid quality proof after 2026-11-05, upgrade path = flip the default once the proof passes
+#
 # claude-api goes through the Message Batches API at half price (GRAPHIFY_API_BATCH=0 keeps the synchronous lane
 # path). Nothing waits on a graph refresh, so a run is two-phase: graphify extract runs once with the record shim
 # (semantic-batch-shim.mjs as `claude`), semantic-batch.mjs submits the recorded chunk prompts as ONE batch, and
@@ -450,12 +455,24 @@ cat > "$in" || { rm -f "$in"; echo "claude-api shim: could not capture the promp
 # The addendum is fixed text, so it goes ahead of the chunk, right after graphify's instructions, where every call
 # shares it; when graphify's "Now extract" line is not found it is appended at the end as before.
 mark="$(grep -n -m1 '^Now extract the knowledge graph from the following source file' "$in" | cut -d: -f1)"
-if [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
+# Opt-in: the fixed text becomes a system prompt, its own cached block. Calls run in parallel, so the first publishes
+# the run's one file atomically; a call whose fixed text differs stays inline, so the file never changes.
+system_args=()
+if [ "${GRAPHIFY_API_SYSTEM_PROMPT:-}" = 1 ] && [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
+  system="$here/lane-system.txt"
+  candidate="$here/lane-system.$$"
+  { head -n $((mark - 1)) "$in"; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; } > "$candidate" && { ln "$candidate" "$system" 2>/dev/null; cmp -s "$candidate" "$system"; } \
+    && system_args=(--append-system-prompt-file "$system")
+  rm -f "$candidate"
+fi
+if [ "${#system_args[@]}" -gt 0 ]; then
+  tail -n +"$mark" "$in"
+elif [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
   { head -n $((mark - 1)) "$in"; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; printf '\n\n---\n'; tail -n +"$mark" "$in"; }
 else
   { cat "$in"; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; }
 fi | HIMMEL_API_KIND=graphify "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
-  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out" 2> "$err"
+  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" ${system_args[@]+"${system_args[@]}"} > "$out" 2> "$err"
 rc=${PIPESTATUS[1]}
 cat "$err" >&2
 # A call without a verified cost (a failure) may still have been billed: reserve its per-call budget against the

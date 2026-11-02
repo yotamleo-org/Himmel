@@ -6,7 +6,8 @@
 # removes the other credential sources itself instead of pinning native auth.
 #
 # Usage: claude-api.sh -p [prompt] --model M --permission-mode default|plan|acceptEdits|dontAsk|auto \
-#                      --max-budget-usd N [--output-format json] [--effort E]  (no other flags)
+#                      --max-budget-usd N [--output-format json] [--effort E]
+#                      [--append-system-prompt-file F]  (no other flags)
 # Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
@@ -225,7 +226,8 @@ PRINT=0 MODE="" MODEL="" BUDGET="" FORMAT="" PARSE_ERR="" HAS_PROMPT=0
 ARGS=()
 while [ "$#" -gt 0 ] && [ -z "$PARSE_ERR" ]; do
   a="$1"; shift
-  # Allowlist: only -p/--print, --model, --permission-mode, --max-budget-usd, --output-format, --effort and a positional
+  # Allowlist: only -p/--print, --model, --permission-mode, --max-budget-usd, --output-format, --effort,
+  # --append-system-prompt-file and a positional
   # prompt reach claude (the launcher adds its own --tools/--allowedTools). Any other argument starting with a dash is
   # refused whatever its spelling or attached =value, so a flag claude adds later is closed by default. A @file
   # argument is an args file, which could carry any flag.
@@ -233,10 +235,10 @@ while [ "$#" -gt 0 ] && [ -z "$PARSE_ERR" ]; do
   case "$a" in
     -p|--print) PRINT=1; ARGS+=("$a"); continue ;;
     --) PARSE_ERR="the -- argument terminator would turn the enforced options into positionals"; continue ;;
-    --permission-mode|--model|--max-budget-usd|--output-format|--effort)
+    --permission-mode|--model|--max-budget-usd|--output-format|--effort|--append-system-prompt-file)
       [ "$#" -gt 0 ] || { PARSE_ERR="$a needs a value"; continue; }
       val="$1"; shift ;;
-    --permission-mode=*|--model=*|--max-budget-usd=*|--output-format=*|--effort=*)
+    --permission-mode=*|--model=*|--max-budget-usd=*|--output-format=*|--effort=*|--append-system-prompt-file=*)
       val="${a#*=}"; a="${a%%=*}" ;;
     -*) PARSE_ERR="flag ${a%%=*} is not allowed on the api lane"; continue ;;
     *) ARGS+=("$a"); HAS_PROMPT=1; continue ;;
@@ -252,6 +254,9 @@ while [ "$#" -gt 0 ] && [ -z "$PARSE_ERR" ]; do
     --output-format) FORMAT="$val" ;;
     --effort) case "$val" in ""|-*|*[!A-Za-z0-9._-]*) PARSE_ERR="--effort needs a value of [A-Za-z0-9._-] not starting with a dash"; continue ;; esac
               ARGS+=(--effort "$val") ;;
+    --append-system-prompt-file)
+              { [[ "$val" != -* ]] && [ -f "$val" ] && [ -r "$val" ]; } || { PARSE_ERR="--append-system-prompt-file needs a readable regular file not starting with a dash"; continue; }
+              ARGS+=(--append-system-prompt-file "$val") ;;
   esac
 done
 if [ -z "$PARSE_ERR" ]; then
