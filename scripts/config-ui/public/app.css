@@ -337,6 +337,11 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .mc.sel{outline:2px solid var(--accent)}.mc:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .th-sort{all:unset;cursor:pointer}.th-sort:focus-visible{outline:1px solid var(--accent)}
 @media (max-width:760px){.th-charts,.th-cols{grid-template-columns:minmax(0,1fr)}}
+/* Tool health tables (HIMMEL-8680): the box wraps anywhere, which squeezes every column to one letter. A short value and a header keep each
+   word whole; a column that holds free text takes the wrapping (td.wrap) with a floor; a table wider than its panel scrolls inside .scroll */
+.data.thtab th,.data.thtab td{overflow-wrap:normal}
+.data.thtab th{white-space:nowrap}
+.data.thtab td.wrap{overflow-wrap:anywhere;min-width:16ch}
 @media (max-width:560px){.thmap{grid-template-columns:minmax(0,1fr)}.thmap .mh{display:none}.thmap .mr{padding-top:var(--s2)}.mc.none{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Workflow page (workflow.js): the story map, phase drill-ins, step cards, Walk a route and the Eval tables */
 .wf-tabs{display:flex;gap:var(--s1);margin:0 0 var(--s3);border-bottom:1px solid var(--rule)}
@@ -469,3 +474,19 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
   .wf-art,.wf-ph:last-child .wf-art{position:absolute;left:-2px;right:auto;top:auto;bottom:-14px;transform:translateX(-50%)}
   .wf-to{white-space:normal}
 }
+/* the Board page (roadmap.js renderBoard): version strip, the two links, chain badges, the drift group rows.
+   One block, so the UI tickets that follow merge beside it. Spacing and colour come from tokens.css. */
+.rm-fresh{margin:0}
+.rm-vstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--s2)}
+.rm-vt{display:grid;gap:var(--s1);align-content:start;border:1px solid var(--rule);border-radius:10px;background:var(--surface);padding:var(--s2) var(--s3);min-width:0;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.rm-vt.sel{border-color:var(--accent)}
+.rm-vt:focus-visible,.rm-chain:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rm-vt progress{width:100%;height:var(--s2);accent-color:var(--accent)}
+.rm-vt .pill{white-space:normal}
+.rm-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--s2)}
+.rm-link{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:var(--s1) var(--s3);border:1px solid var(--rule);border-radius:8px;background:var(--bg);padding:var(--s2) var(--s3)}
+.rm-chains{display:flex;flex-wrap:wrap;gap:var(--s1);margin:var(--s1) 0}
+.rm-chain{font:600 var(--fs-xs) var(--font-mono);border:1px solid var(--rule-strong);border-radius:6px;padding:0 var(--s2);color:var(--ink);text-decoration:none}
+.rm-at{outline:2px solid var(--accent);outline-offset:-2px}
+.data tr.grp td{font:600 var(--fs-xs) var(--font-mono);color:var(--muted);background:var(--bg)}
+@media (max-width:760px){.rm-vstrip,.rm-links{grid-template-columns:minmax(0,1fr)}}

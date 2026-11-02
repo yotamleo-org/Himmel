@@ -22,7 +22,7 @@ All misses in a batch share one aliased GraphQL query. Commits, check contexts a
 
 A settled, one-page ready-check (TTL 0, so it always reads the PR fresh) uses **2 GraphQL calls instead of 7**: repository resolution and the snapshot. Files remain a paginated REST read, and freshness checks use REST. Cache hits use only repository resolution in GraphQL. Existing UNKNOWN merge-state retries force fresh snapshots; retries and continuation pages necessarily add calls.
 
-`ready-check.sh --only 7` retains its body-only lint path, without requiring unrelated CI/commit/thread data. The full ready-check consumes the shared snapshot for checks 1, 2, 3, 5, 6 and 7. An unreadable snapshot fails all those checks. CR-ledger check 4 remains local.
+`ready-check.sh --only 7` retains its body-only lint path, without requiring unrelated CI/commit/thread data: it runs check 7 plus the warn-only check 14. The full ready-check consumes the shared snapshot for checks 1, 2, 3, 5, 6, 7 and 14. An unreadable snapshot fails all those checks. CR-ledger check 4 remains local.
 
 Tick and board migration is a separate follow-up slice: their open/recent-merged/epic discovery queries and historical worker PR-state lookups need a shared or REST-backed discovery strategy. `merge-on-green.sh`, `go.sh`, `chief-wait.sh`, `gh-ci-cache.sh`, and `check-ci-watch.sh` are unchanged.
 

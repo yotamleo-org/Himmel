@@ -357,20 +357,27 @@ function jiraIsLoopback(): boolean {
   }
 }
 
-/** A test on the station never posts a real Jira comment, whatever its release root. Only exit 77 refuses. */
-function refuseTestJiraPost(verb: string): void {
+/**
+ * A test on the station never posts to the real Jira, whatever its release root. `what` names the
+ * command in the refusal ("release leaks", "create"). Only exit 77 refuses.
+ */
+export function refuseTestJiraPost(what: string): void {
   if (jiraIsLoopback()) return;
-  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', '--real', `jira-release-${verb}-comment`], { stdio: ['ignore', 'inherit', 'inherit'] });
-  if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was posted`);
+  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', '--real', `jira-${what.replace(/ /g, '-')}-comment`], { stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status === 77) throw new Error(`${what}: refused, nothing was posted`);
 }
+
+/** The release verbs that write to Jira: apply sets fix versions and posts the receipt; rm-run applies. */
+const JIRA_POSTING_VERBS = new Set(['apply', 'rm-run']);
 
 export function registerRelease(program: Command): void {
   const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
   rel.hook('preAction', (_release, action) => {
     // leaks reads unless --comment is set: that posts a real Jira comment and updates the breadcrumb state.
     const verb = action.name();
-    const postsToJira = action.parent === rel && verb === 'leaks' && Boolean(action.opts().comment);
-    if (postsToJira) refuseTestJiraPost(verb);
+    const postsToJira = action.parent === rel
+      && ((verb === 'leaks' && Boolean(action.opts().comment)) || JIRA_POSTING_VERBS.has(verb));
+    if (postsToJira) refuseTestJiraPost(`release ${verb}`);
     const readOnly = action.parent === rel && READ_ONLY_VERBS.has(verb) && !postsToJira;
     if (!readOnly) refuseTestWrite(verb);
   });

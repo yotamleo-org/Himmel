@@ -247,6 +247,10 @@
 #      replay of a (handover, reset) pair whose arm already FIRED is NOT an
 #      error: it exits 0 without arming (the limit-resume key). A pair whose
 #      arm never fired (cancelled, reaped) re-arms.
+#   77 test-run refused — a test on the station tried to install a real crontab
+#      entry or at job (scripts/lib/test-run-guard, exit 77); nothing was
+#      scheduled. Run the suite on a test VM, or put a stub crontab/at on PATH.
+#      --dry-run is exempt.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
@@ -1069,6 +1073,18 @@ _arm_require_worker_autocompact_argv() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# _scheduler_door <tool>: a test on the station never installs a real crontab entry or at job.
+# Only exit 77 refuses; a missing or crashing guard lets the arm through. Called after the dry-run
+# return and before the first scheduler write.
+_scheduler_door() {
+    local rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$1" "arm-resume-$1" >&2 || rc=$?
+    if [ "$rc" -eq 77 ]; then
+        echo "ERR arm-resume: refused, nothing was scheduled" >&2
+        exit 77
+    fi
+}
 
 # python3 hang armor: the Windows Store python3 stub can wedge
 # (ignores SIGTERM, orphan child holds the $() pipe). The auto-arm-on-cap
@@ -4675,6 +4691,7 @@ $launch_body"
         return 0
     fi
 
+    _scheduler_door crontab
     mkdir -p "$runner_dir" || {
         echo "ERR arm-resume: failed to create runner dir $runner_dir" >&2
         exit 4
@@ -5031,6 +5048,7 @@ exit \"\$_flow_rc\""
                     echo "    CMD"
                     return 0
                 fi
+                _scheduler_door at
                 local err_file
                 err_file=$(mktemp -t arm-resume.err.XXXXXX)
                 # at -t takes an exact [[CC]YY]MMDDhhmm datetime, so we pass the
