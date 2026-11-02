@@ -3,8 +3,12 @@
 # first. handover_root reads only the live env, so a caller that skips
 # load_dotenv resolves the <repo>/handovers stub (or fails closed) when .env is
 # the only source. Each probe runs the script from a non-git cwd with
-# HANDOVER_DIR unset and the .env in a fixture HIMMELCTL_CACHE_DIR (the loader
-# reads it first, so the operator's real .env is never touched).
+# HANDOVER_DIR unset and the .env in a fixture HIMMELCTL_CACHE_DIR. The loader
+# reads the config layer (<config dir>/himmel.conf) BEFORE any .env, so every
+# probe also gets HIMMEL_CONFIG_DIR pointing at an empty fixture dir: without it
+# the station's ~/.himmel/himmel.conf names the real root and the probes
+# (breadcrumb write, artifact-sync record) write fake data into it. Before any
+# probe runs, the suite resolves the root and aborts unless it is the fixture.
 # shellcheck disable=SC2015
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -16,20 +20,26 @@ check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; f
 has()   { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails+1)) ;; esac; }
 lacks() { case "$2" in *"$3"*) echo "FAIL - $1: [$2] has [$3]"; fails=$((fails+1)) ;; *) echo "ok - $1" ;; esac; }
 
-HO="$tmp/ho"; mkdir -p "$tmp/cache" "$HO" "$tmp/work"
+HO="$tmp/ho"; mkdir -p "$tmp/cache" "$HO" "$tmp/work" "$tmp/conf"
 printf 'HANDOVER_DIR=%s\n' "$HO" > "$tmp/cache/.env"
 cd "$tmp/work" || exit 1
-# probe <cmd...>: stdout+stderr, HANDOVER_DIR unset, .env only in the cache dir.
+# probe <cmd...>: stdout+stderr, HANDOVER_DIR unset, .env only in the cache dir,
+# no himmel.conf (HIMMEL_CONFIG_DIR is an empty fixture dir).
 # A probe that cannot run at all (rc 126/127) would pass every "lacks" check, so
 # it is logged to $tmp/unrunnable and fails the suite at the end.
 probe() {
     local o rc
-    o="$(env -u HANDOVER_DIR HIMMELCTL_CACHE_DIR="$tmp/cache" "$@" 2>&1 </dev/null)"; rc=$?
+    o="$(env -u HANDOVER_DIR HIMMEL_CONFIG_DIR="$tmp/conf" HIMMELCTL_CACHE_DIR="$tmp/cache" "$@" 2>&1 </dev/null)"; rc=$?
     case "$rc" in 126|127) echo "rc=$rc: $*" >> "$tmp/unrunnable" ;; esac
     printf '%s' "$o"
 }
 
+# Abort before any probe can write: the resolved root must be the fixture.
 out="$(probe bash "$SCRIPTS/handover-link.sh")"
+case "$out" in
+    *"root:       $HO"*) ;;
+    *) echo "FAIL - the resolved handover root is not the fixture $HO, so no probe runs: [$out]"; exit 1 ;;
+esac
 has "handover-link: resolves the .env root" "$out" "root:       $HO"
 
 out="$(probe bash "$SCRIPTS/handover/bugs-dashboard.sh")"
@@ -79,7 +89,7 @@ probe bash "$SCRIPTS/handover/artifact-sync.sh" record "https://claude.ai/artifa
 check "artifact-sync: registry under the .env root" "$([ -f "$HO/.artifacts/registry.jsonl" ] && echo yes || echo no)" "yes"
 
 : > "$tmp/review-rounds-empty.txt"
-out="$(printf 'HIMMEL-1\tfeat/x\t1\tdone\tok\n' | env -u HANDOVER_DIR HIMMELCTL_CACHE_DIR="$tmp/cache" REVIEW_ROUNDS_TXT="$tmp/review-rounds-empty.txt" bash "$SCRIPTS/afk/morning-report.sh" --dry-run 2>&1)"
+out="$(printf 'HIMMEL-1\tfeat/x\t1\tdone\tok\n' | env -u HANDOVER_DIR HIMMEL_CONFIG_DIR="$tmp/conf" HIMMELCTL_CACHE_DIR="$tmp/cache" REVIEW_ROUNDS_TXT="$tmp/review-rounds-empty.txt" bash "$SCRIPTS/afk/morning-report.sh" --dry-run 2>&1)"
 has "morning-report: output path under the .env root" "$out" "$HO/overnight-report-"
 
 mkdir -p "$HO/breadcrumbs"; printf '{}\n' > "$HO/breadcrumbs/HIMMEL-1.json"
@@ -118,7 +128,7 @@ fi
 
 # A live value still wins over .env (load_dotenv fills only an absent key).
 other="$tmp/other"; mkdir -p "$other"
-out="$(env HANDOVER_DIR="$other" HIMMELCTL_CACHE_DIR="$tmp/cache" bash "$SCRIPTS/handover-link.sh" 2>&1 </dev/null)"
+out="$(env HANDOVER_DIR="$other" HIMMEL_CONFIG_DIR="$tmp/conf" HIMMELCTL_CACHE_DIR="$tmp/cache" bash "$SCRIPTS/handover-link.sh" 2>&1 </dev/null)"
 has "handover-link: a live HANDOVER_DIR wins over .env" "$out" "root:       $other"
 
 [ -s "$tmp/unrunnable" ] && { echo "FAIL - unrunnable probe(s):"; cat "$tmp/unrunnable"; fails=$((fails+1)); }

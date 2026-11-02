@@ -739,7 +739,7 @@ printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old\n' "$((CADENCE_R
 out=$(PIPELINE_BAT_DIR="$tmp/cad-empty" \
   GRAPHMAP_BAT_DIR="$tmp/cad-graphmap-stale" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 check "stale graphmap cadence nudged (message)" "graphmap-cadence runners are STALE" "$out"
-check "stale graphmap cadence nudged (rearm hint)" "bash scripts/luna/graphmap-cadence.sh arm --force" "$out"
+check "stale graphmap cadence nudged (rearm hint)" "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed" "$out"
 
 # Case 10: pipeline-only runner stamped at the current version → no nudge and
 # empty graphmap dirs do not false-positive.

@@ -30,6 +30,45 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # through gh-read.sh; plain gh when the helper is absent.
 GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+
+# tick_bound <seconds>: a probe's cap, cut to what is left of TICK_DEADLINE_SEC (default 90,
+# from the tick's start). The waiter kills a tick at 120 s and discards its output, so a slow
+# tick must spend its last probes' caps, not lose the worker state. The floor is 1 s because
+# `timeout 0` means no timeout.
+# ponytail: a probe past the deadline still costs 1 s plus its kill grace; about 20 of them
+# fit in the 30 s left. Upgrade path: skip the probe outright past the deadline.
+tick_deadline="${TICK_DEADLINE_SEC:-90}"
+case "$tick_deadline" in '' | *[!0-9]*) tick_deadline=90 ;; esac
+tick_bound() {
+    local left=$((tick_deadline - SECONDS))
+    [ "$left" -ge 1 ] || left=1
+    if [ "$1" -lt "$left" ]; then printf '%s\n' "$1"; else printf '%s\n' "$left"; fi
+}
+
+# tick_section_refresh <base> <min-secs> <script> <args...>: run <script> detached, so the
+# waiter's timeout kills the tick's process group and never the refresh, at most once per
+# <min-secs> whether it succeeded or not ($base.tried), one at a time per <base> ($base.lock).
+# It waits TICK_SECTION_WAIT seconds (default 3) so a fast refresh lands in this tick.
+tick_section_refresh() {
+    local base="$1" gap="$2" tried wait_s pid end
+    shift 2
+    mkdir -p "${base%/*}" 2>/dev/null || return 0
+    tried="$(stat -c %Y "$base.tried" 2>/dev/null)" || tried=0  # gnu-ok: chief kit is Linux-only; swallow-ok: never tried reads old
+    [ $(( $(date +%s) - ${tried:-0} )) -ge "$gap" ] || return 0
+    touch "$base.tried"
+    setsid -w flock -n -E 75 "$base.lock" bash -c "$@" </dev/null >/dev/null 2>&1 &  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the cache; gnu-ok: chief kit is Linux-only
+    pid=$!
+    wait_s="${TICK_SECTION_WAIT:-3}"; case "$wait_s" in '' | *[!0-9]*) wait_s=3 ;; esac
+    end=$(( $(date +%s) + wait_s ))
+    while kill -0 "$pid" 2>/dev/null && [ "$(date +%s)" -lt "$end" ]; do sleep 0.05; done
+}
+
+# tick_cache_age <file>: its age in seconds; nothing when it cannot be read.
+tick_cache_age() {
+    local m
+    m="$(stat -c %Y "$1" 2>/dev/null)" || return 0  # gnu-ok: chief kit is Linux-only; swallow-ok: no cache has no age
+    printf '%s\n' "$(( $(date +%s) - m ))"
+}
 # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
 # shellcheck disable=SC1091
 if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR USER_SLUG 2>/dev/null || true; fi
@@ -328,13 +367,26 @@ clears. ciq=unknown = the probe failed, timed out or is missing; it neither
 sets nor clears the saturation state ($TICK_STATE_DIR/tick-ciq-last, default
 ~/.himmel/state). Not part of chief-wait's wake key.
 
-ciguard=ok|OVER:<metric>[,<metric>]|unknown (HIMMEL-6733) is one ci-guardrail.sh read
-per tick (TICK_CIGUARD_PROBE seam, bounded by TICK_CIQ_TIMEOUT), shown always. Each
-`ALERT <metric>=<count>><line> (<where>)` line it prints is a NEW crossing and becomes one
-`ACTION ci-guardrail <metric>=<count>><line> (<where>): …` line after the TICK line; the
-script remembers what it alerted ($TICK_STATE_DIR/tick-ciguard-state), so the next tick of
-the same crossing prints ciguard=OVER:… and no ACTION. unknown = the script is missing,
-timed out or printed no status line. Not part of chief-wait's wake key.
+ciguard=ok|OVER:<metric>[,<metric>]|unknown (HIMMEL-6733) is the last ci-guardrail.sh read
+(TICK_CIGUARD_PROBE seam), shown always, from a cache a detached refresh fills
+(HIMMEL-8735): at most once per TICK_CIGUARD_MIN_SECS (default 600), bound
+TICK_CIGUARD_TIMEOUT (default 300), so a tick never waits on it past TICK_SECTION_WAIT
+(default 3). ciguard-age=<n>s is the read's age; it is absent when no read exists. Each
+`ALERT <metric>=<count>><line> (<where>)` line a refresh gets is a NEW crossing and becomes one
+`ACTION ci-guardrail <metric>=<count>><line> (<where>): …` line after the TICK line of the next
+tick; the script remembers what it alerted ($TICK_STATE_DIR/tick-ciguard-state), so later ticks
+of the same crossing print ciguard=OVER:… and no ACTION. unknown = the script is missing, or the
+cache is missing, corrupt or past TICK_CIGUARD_TTL (default 1800). A refresh is about 67 REST
+calls, so about 400 an hour at most. Not part of chief-wait's wake key.
+
+orphans-wip-age=<n>s (HIMMEL-8735) is the age of the resume scan orphans-wip= read: a detached
+refresh fills that cache at most once per TICK_ORPHANS_MIN_SECS (default 300). A missing or
+corrupt cache, or one past TICK_ORPHANS_TTL (default 1800), reads orphans-wip=?, never an
+all-clear. Not part of chief-wait's wake key, so a new age alone wakes nothing.
+
+deadline-over=<n>s (HIMMEL-8735): the tick passed TICK_DEADLINE_SEC (default 90) by <n> s. Every later
+probe's cap was cut to what was left, so its unknown, ? or skip may only mean it ran out of
+time. Absent on a tick inside the deadline. Not part of chief-wait's wake key.
 
 versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
@@ -739,6 +791,7 @@ ready_mismatch_scan() {
     grep -vE '^[[:space:]]*(#|$)' "$tp" > "$pats"
     cap="${TICK_READY_BUDGET_SEC:-30}"
     case "$cap" in ''|*[!0-9]*) cap=30 ;; esac
+    cap="$(tick_bound "$cap")"
     t0=$SECONDS
     # verdict index, one `<pr> <head> GO|NO-GO` row per record: judges file by qid
     # (verdicts/<qid>/<name>.md) and name the PR on a `pr:` line inside
@@ -1725,7 +1778,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     doc_project="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$console_doc" | head -n 1)"
     case "$doc_project" in /*) pr_repo="$doc_project" ;; esac
 fi
-pr_out="$(cd "$pr_repo" 2>/dev/null && "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
+pr_out="$(cd "$pr_repo" 2>/dev/null && timeout -k 2 "$(tick_bound 30)" "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
 # no worker this tick reads holds (a held or lockless lock), and no recent cloud session
@@ -1779,7 +1832,7 @@ done <<< "$pr_out"
 [ -n "$unowned_prs" ] || unowned_prs=none
 [ -n "$ext_prs" ] || ext_prs=none
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
-[ -z "${pr_read_failed:-}" ] || { unowned_prs='?'; ext_prs='?'; }
+[ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
 
 # dispatch=<run>:<worker>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
 # an in-flight workflow_dispatch run on a worker's branch (a run a worker started by hand never shows on
@@ -1797,7 +1850,7 @@ dispatch_summary=none
 dispatch_alerts=""
 # shellcheck source=../../lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
-dispatch_runs="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} "$GH_READ_BIN" api 'repos/{owner}/{repo}/actions/runs?event=workflow_dispatch&status=in_progress&per_page=100' --jq '.workflow_runs[] | [.id, .path, .head_branch, .head_sha, .run_started_at] | @tsv' 2>/dev/null)" || dispatch_summary='?'  # swallow-ok: an unreadable runs list renders as dispatch=?
+dispatch_runs="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$GH_READ_BIN" api 'repos/{owner}/{repo}/actions/runs?event=workflow_dispatch&status=in_progress&per_page=100' --jq '.workflow_runs[] | [.id, .path, .head_branch, .head_sha, .run_started_at] | @tsv' 2>/dev/null)" || dispatch_summary='?'  # swallow-ok: an unreadable runs list renders as dispatch=?
 if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     # oldest first: under the cap the longest-running (likeliest hung) runs are read, not the newest
     dispatch_runs="$(printf '%s\n' "$dispatch_runs" | sort -t $'\t' -k5,5)"
@@ -1832,7 +1885,7 @@ if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
         d_el=$(( (d_now - d_at) / 60 ))
         d_to="$(awk '/^    timeout-minutes:[[:space:]]*[0-9]+/ { n = $2 + 0; if (n > m) m = n } END { print m + 0 }' "$pr_repo/$d_path" 2>/dev/null)"  # swallow-ok: an unreadable workflow file falls back to the GitHub default below
         case "$d_to" in ''|*[!0-9]*|0) d_to=360 ;; esac
-        d_jobs_row="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} "$GH_READ_BIN" api "repos/{owner}/{repo}/actions/runs/$d_run/jobs?per_page=100" --jq '[(.jobs | length), ([.jobs[] | select(.status == "completed")] | length), ([.jobs[] | .started_at, .completed_at] | map(select(. != null)) | max // "")] | @tsv' 2>/dev/null)" || d_jobs_row=""  # swallow-ok: an unreadable jobs read leaves the counts ? and skips the idle test
+        d_jobs_row="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 20)"} "$GH_READ_BIN" api "repos/{owner}/{repo}/actions/runs/$d_run/jobs?per_page=100" --jq '[(.jobs | length), ([.jobs[] | select(.status == "completed")] | length), ([.jobs[] | .started_at, .completed_at] | map(select(. != null)) | max // "")] | @tsv' 2>/dev/null)" || d_jobs_row=""  # swallow-ok: an unreadable jobs read leaves the counts ? and skips the idle test
         IFS=$'\t' read -r d_total d_done d_last <<< "$d_jobs_row"
         d_flags=""; d_reasons=""
         if [ $(( d_el * 100 )) -ge $(( d_to * 80 )) ]; then d_flags="$d_flags:late"; d_reasons="$d_reasons late"; fi
@@ -1960,7 +2013,7 @@ fi
 # skip, never a failed tick. The 60 s bound sits inside the waiter's tick timeout.
 cloud_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -f "${console_doc%/*}/cloud-sessions.tsv" ] && command -v node >/dev/null 2>&1; then
-    cloud_summary="$(timeout -k 5 60 node "$HERE/cloud-liveness.mjs" --bucket "${console_doc%/*}" --repo "$pr_repo" 2>/dev/null)" || cloud_summary=skip  # gnu-ok: console kit is Linux-only
+    cloud_summary="$(timeout -k 5 "$(tick_bound 60)" node "$HERE/cloud-liveness.mjs" --bucket "${console_doc%/*}" --repo "$pr_repo" 2>/dev/null)" || cloud_summary=skip  # gnu-ok: console kit is Linux-only
     case "$cloud_summary" in ok|skip|STALL:*) ;; *) cloud_summary=skip ;; esac
 fi
 
@@ -1968,20 +2021,38 @@ fi
 # worker, cloud session or open PR holding them (an IN CI one a merged PR cites counts too). next-dispatchable.sh --resume-only owns the
 # derivation from the Jira mirror (one `gh pr list`, no per-PR diff). Keys are named for
 # n <= 5. A failed PR read is `?` (not an all-clear); no mirror or helper reads skip.
+# The scan takes 35 s on a busy fleet, so a detached refresh fills a cache every
+# TICK_ORPHANS_MIN_SECS (default 300) and the tick reads it with orphans-wip-age=<n>s. A missing
+# or corrupt cache, or one past TICK_ORPHANS_TTL (default 1800), is `?`. A ticket a worker took
+# since the scan is dropped at read time, so a fresh dispatch never reads as an orphan.
 orphans_wip=skip
+orphans_wip_age=""
 nd_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
-    if nd_out="$(timeout -k 5 60 bash "$HERE/next-dispatchable.sh" --resume-only --top 1000 --owners "$owner_keys" 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only
-        case "$nd_out" in
-            *'open PRs unknown'*|*'live workers unknown'*|*'merged PRs unknown'*) orphans_wip='?' ;;
-            *)
-                nd_keys="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" || $1 == "MERGED-NOT-CLOSED" { print $2 }' | paste -sd, -)"
-                nd_n="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" || $1 == "MERGED-NOT-CLOSED"' | wc -l | tr -d ' ')"
-                if [ "$nd_n" -eq 0 ]; then orphans_wip=0
-                elif [ "$nd_n" -le 5 ]; then orphans_wip="$nd_n:$nd_keys"
-                else orphans_wip="$nd_n"; fi
-                ;;
-        esac
+    orphans_wip='?'
+    ow_base="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-resume-$(printf '%s\n%s' "$console_doc" "$nd_mirror" | cksum | cut -d' ' -f1)"
+    ow_gap="${TICK_ORPHANS_MIN_SECS:-300}"; case "$ow_gap" in '' | *[!0-9]*) ow_gap=300 ;; esac
+    ow_ttl="${TICK_ORPHANS_TTL:-1800}"; case "$ow_ttl" in '' | *[!0-9]*) ow_ttl=1800 ;; esac
+    # shellcheck disable=SC2016  # the inner script expands its own positional arguments
+    # swallow-ok: a failed scan leaves the cache to age, and past its TTL it reads ?
+    tick_section_refresh "$ow_base" "$ow_gap" 'out="$(timeout -k 5 300 bash "$2" --resume-only --top 1000 --owners "$3" 2>/dev/null)" || exit 0; { printf "# tick-resume-scan ok\n"; printf "%s\n" "$out"; } >"$1.rows.$$" && mv -f "$1.rows.$$" "$1.rows"; rm -f "$1.rows.$$"' _ "$ow_base" "$HERE/next-dispatchable.sh" "$owner_keys"
+    if [ "$(sed -n 1p "$ow_base.rows" 2>/dev/null)" = '# tick-resume-scan ok' ]; then  # swallow-ok: no cache reads ?
+        ow_age="$(tick_cache_age "$ow_base.rows")"
+        [ -z "$ow_age" ] || orphans_wip_age="${ow_age}s"
+        if [ -n "$ow_age" ] && [ "$ow_age" -lt "$ow_ttl" ]; then
+            nd_out="$(sed 1d "$ow_base.rows")"
+            case "$nd_out" in
+                *'open PRs unknown'*|*'live workers unknown'*|*'merged PRs unknown'*) orphans_wip='?' ;;
+                *)
+                    nd_rows="$(printf '%s\n' "$nd_out" | awk -F'\t' -v owners="$owner_keys" '($1 == "RESUME" || $1 == "MERGED-NOT-CLOSED") && index(owners, " " $2 " ") == 0')"
+                    nd_keys="$(printf '%s\n' "$nd_rows" | awk -F'\t' 'NF { print $2 }' | paste -sd, -)"
+                    nd_n="$(printf '%s\n' "$nd_rows" | awk -F'\t' 'NF' | wc -l | tr -d ' ')"
+                    if [ "$nd_n" -eq 0 ]; then orphans_wip=0
+                    elif [ "$nd_n" -le 5 ]; then orphans_wip="$nd_n:$nd_keys"
+                    else orphans_wip="$nd_n"; fi
+                    ;;
+            esac
+        fi
     fi
 fi
 
@@ -1991,7 +2062,7 @@ fi
 vdone_summary=skip
 vdone_probe="${TICK_VERSIONLESS_DONE_PROBE:-$HERE/versionless-done.sh}"
 if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" ]; then
-    vdone_out="$(timeout -k 2 30 bash "$vdone_probe" 2>/dev/null)" || vdone_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read falls through to versionless-done=unknown
+    vdone_out="$(timeout -k 2 "$(tick_bound 30)" bash "$vdone_probe" 2>/dev/null)" || vdone_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read falls through to versionless-done=unknown
     case "${vdone_out%+}" in
         ''|*[!0-9]*) vdone_summary=unknown ;;
         *) vdone_summary="$vdone_out" ;;
@@ -2008,7 +2079,7 @@ if [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
     vm_owners="${owner_keys# }"
     [ -n "${vm_owners// }" ] || vm_owners=NONE-0  # the audit reads an empty owner list as ownership unknown
     vm_rc=0
-    vm_out="$(timeout -k 2 "${TICK_VMISMATCH_TIMEOUT:-30}" bash "$vm_probe" --mirror "$nd_mirror" --owners "$vm_owners" 2>/dev/null)" || vm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in vm_rc and read below
+    vm_out="$(timeout -k 2 "$(tick_bound "${TICK_VMISMATCH_TIMEOUT:-30}")" bash "$vm_probe" --mirror "$nd_mirror" --owners "$vm_owners" 2>/dev/null)" || vm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in vm_rc and read below
     if printf '%s\n' "$vm_out" | grep -q '^vmismatch=[0-9][0-9]*$' && ! printf '%s\n' "$vm_out" | grep -q "$(printf '\tUNKNOWN$')"; then
         vmismatch_summary="$(printf '%s\n' "$vm_out" | grep -c "$(printf '\tRESET$')")" || true  # swallow-ok: grep -c exits 1 and prints 0 on no match
         # exit 1 = RESET rows; any other non-zero exit is a scan that skipped files, so a zero count is not proof
@@ -2035,10 +2106,10 @@ if [ -n "$leaks_version" ]; then
     lk_cli="${lk_anchor%/.git}/scripts/jira/dist/index.js"
     lk_rc=0
     if [ -n "${TICK_LEAKS_PROBE:-}" ]; then
-        lk_out="$(timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" bash "$TICK_LEAKS_PROBE" "$leaks_version" "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+        lk_out="$(timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" bash "$TICK_LEAKS_PROBE" "$leaks_version" "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
     else
         if [ -n "$lk_anchor" ] && [ -f "$lk_cli" ]; then
-            lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "${TICK_LEAKS_TIMEOUT:-30}" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
+            lk_out="$(JIRA_PROJECT_KEY="${nd_mirror##*/}" timeout -k 2 "$(tick_bound "${TICK_LEAKS_TIMEOUT:-30}")" node "$lk_cli" release leaks "$leaks_version" --mirror-root "$nd_mirror" 2>&1)" || lk_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in lk_rc and read below
         else
             lk_rc=-1
         fi
@@ -2060,7 +2131,7 @@ fi
 # read. In chief-wait's wake key whole: a version crossing the cap or its count moving wakes once.
 cap_summary=""
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
-    cap_summary="$(CAP_MIRROR="$nd_mirror" timeout -k 2 30 python3 -I -c '
+    cap_summary="$(CAP_MIRROR="$nd_mirror" timeout -k 2 "$(tick_bound 30)" python3 -I -c '
 import json, os, re
 d = os.environ["CAP_MIRROR"]
 released = set()
@@ -2138,9 +2209,9 @@ if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     rm_pk="${nd_mirror##*/}"
     rm_rc=0 rm_json=""
     if [ -n "${TICK_RMQ_PROBE:-}" ]; then
-        rm_json="$(timeout -k 2 "${TICK_RMQ_TIMEOUT:-30}" bash "$TICK_RMQ_PROBE" "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
+        rm_json="$(timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" bash "$TICK_RMQ_PROBE" "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
     elif [ -n "$rm_anchor" ] && [ -f "$rm_cli" ]; then
-        rm_json="$(JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "${TICK_RMQ_TIMEOUT:-30}" node "$rm_cli" release state "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
+        rm_json="$(JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" node "$rm_cli" release state "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
     else
         rm_rc=-1
     fi
@@ -2256,6 +2327,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         setsid -w flock -n -E 75 "$pd_base.lock" bash -c 'timeout -k 2 300 bash "$1" "${@:3}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2"; rm -f "$2.$$"' _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "${pd_args[@]}" </dev/null >/dev/null 2>&1 &  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_pid=$!
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
+        pd_wait="$(tick_bound "$pd_wait")"
         pd_end=$(( $(date +%s) + pd_wait ))
         while kill -0 "$pd_pid" 2>/dev/null && [ "$(date +%s)" -lt "$pd_end" ]; do sleep 0.2; done
         pd_m="$(stat -c %Y "$pd_base.rows" 2>/dev/null)" || pd_m=""  # gnu-ok: chief kit is Linux-only; swallow-ok: no snapshot reads old
@@ -2276,7 +2348,7 @@ fi
 # the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in chief-wait's wake key.
 pool_closed=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    pool_closed="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
+    pool_closed="$(timeout -k 2 "$(tick_bound 30)" bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
 fi
 
 # prio=<open>/<total> and prio-stale=WARN:<low|KEY@VER>,...: the same line read by priority-prune.sh --stale
@@ -2284,7 +2356,7 @@ fi
 prio_summary=skip
 prio_stale=""
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    prio_out="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --stale 2>/dev/null)" || prio_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
+    prio_out="$(timeout -k 2 "$(tick_bound 30)" bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --stale 2>/dev/null)" || prio_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
     if [ -n "$prio_out" ]; then
         prio_summary="${prio_out%% *}"
         prio_rest=""
@@ -2299,7 +2371,7 @@ fi
 pool_stale=skip
 residual_unversioned=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    ps_out="$(timeout -k 2 40 bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
+    ps_out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$console_doc" --repo "$pr_repo" 2>/dev/null)" || ps_out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
     pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
     residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
 fi
@@ -2331,7 +2403,7 @@ if [ -f "$REPO/scripts/worktree.sh" ]; then
         flock -n 8 || exit 0  # prim-ok: Linux-only nonblocking sweep; with_lock would block the snapshot
         if [ -e "$wts_stamp" ] && [ -n "$(find "$wts_stamp" -mmin -60)" ]; then exit 0; fi
         touch "$wts_stamp" || exit 0
-        if timeout -k 2 60 bash "$REPO/scripts/worktree.sh" prune >/dev/null 2>&1; then  # gnu-ok: console kit is Linux-only
+        if timeout -k 2 "$(tick_bound 60)" bash "$REPO/scripts/worktree.sh" prune >/dev/null 2>&1; then  # gnu-ok: console kit is Linux-only
             rm -f "$wto_cache"
         fi
     ) 2>/dev/null || true  # swallow-ok: an unavailable state directory or lock skips this attempt
@@ -2357,7 +2429,7 @@ if [ -f "$wto_probe" ]; then
         if [ "$wto_timeout" -le 0 ]; then
             wto_rc=2; wto_out=""
         else
-            wto_out="$(cd "$REPO" && timeout -k 2 "$wto_timeout" bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
+            wto_out="$(cd "$REPO" && timeout -k 2 "$(tick_bound "$wto_timeout")" bash "$wto_probe" prune --orphans 2>/dev/null)" || wto_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the rc is kept and a failure reads wt-orphans=unknown
         fi
         # rc 1 means alarms were printed; rc 1 with none is an errexit failure.
         if [ "$wto_rc" -gt 1 ] || { [ "$wto_rc" -eq 1 ] && ! grep -qE '^(ORPHAN|CEILING|SWEEP-ERROR) ' <<<"$wto_out"; }; then
@@ -2683,7 +2755,7 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     # swallow-ok: an unreadable cache reads as stale and the probe runs
     [ "$stall_ttl" -gt 0 ] && [ -f "$stall_cache" ] && [ -n "$(find "$stall_cache" -mmin "-$stall_ttl" 2>/dev/null)" ] && stall_fresh=1
     if [ -z "$stall_fresh" ]; then
-        if stall_rows="$(timeout -k 2 60 bash "$stall_probe" ${WORKERS_FROM:+--manifest "$WORKERS_FROM"} 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only; swallow-ok: a failed probe keeps the last cached value
+        if stall_rows="$(timeout -k 2 "$(tick_bound 60)" bash "$stall_probe" ${WORKERS_FROM:+--manifest "$WORKERS_FROM"} 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only; swallow-ok: a failed probe keeps the last cached value
             stall_val="$(printf '%s\n' "$stall_rows" | awk '$1 == "STALL" && $2 ~ /^[0-9]+$/ && $3 ~ /^[a-z-]+$/ { printf "%s%s:%s", sep, $2, $3; sep = "," }')"
         fi
         if [ "$stall_ttl" -gt 0 ]; then
@@ -2765,7 +2837,7 @@ crfirst_tail=""
 crfirst_alerts=""
 if [ -n "$crfirst_rows" ] && [ -z "${pr_read_failed:-}" ] && [ "$pr_repo" = "$REPO" ] && [ -f "$HERE/../../lib/cr-first-release.sh" ]; then
     # shellcheck disable=SC2016
-    cf_out="$(cd "$pr_repo" 2>/dev/null && printf '%s' "$crfirst_rows" | timeout -k 2 120 bash -c '. "$1" || exit 0; HIMMEL_CONSOLE_DOC=$2; export HIMMEL_CONSOLE_DOC; cr_first_sweep "$(_cmg_local_nwo)"' _ "$HERE/../../lib/cr-first-release.sh" "$console_doc" 2>/dev/null)" || cf_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed sweep leaves the tick line without crfirst=
+    cf_out="$(cd "$pr_repo" 2>/dev/null && printf '%s' "$crfirst_rows" | timeout -k 2 "$(tick_bound 120)" bash -c '. "$1" || exit 0; HIMMEL_CONSOLE_DOC=$2; export HIMMEL_CONSOLE_DOC; cr_first_sweep "$(_cmg_local_nwo)"' _ "$HERE/../../lib/cr-first-release.sh" "$console_doc" 2>/dev/null)" || cf_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed sweep leaves the tick line without crfirst=
     cf_val="$(printf '%s\n' "$cf_out" | sed -n 's/^crfirst=//p' | head -n 1)"
     case "$cf_val" in ""|*[!0-9A-Za-z:,._#-]*) ;; *) crfirst_tail=" crfirst=$cf_val" ;; esac
     crfirst_alerts="$(printf '%s\n' "$cf_out" | sed -n 's/^ALERT //p')"
@@ -3128,7 +3200,7 @@ if [ -f "$ciq_probe" ]; then
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
     ciq_bound="${TICK_CIQ_TIMEOUT:-45}"
     case "$ciq_bound" in ''|*[!0-9]*) ciq_bound=45 ;; esac
-    ciq_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$ciq_bound"} bash "$ciq_probe" 2>/dev/null)" || ciq_out=""
+    ciq_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound "$ciq_bound")"} bash "$ciq_probe" 2>/dev/null)" || ciq_out=""
     ciq_nums="$(printf '%s\n' "$ciq_out" | sed -n 's#^ci-queue: jobs_in_progress=\([0-9][0-9]*\)/\([0-9][0-9]*\) macos=\([0-9][0-9]*\)/\([0-9][0-9]*\) queued=\([0-9][0-9]*\) oldest_wait=\([0-9][0-9]*\)m$#\1 \2 \3 \4 \5 \6#p' | head -n 1)"
     if [ -n "$ciq_nums" ]; then
         read -r ciq_ip ciq_cap ciq_mac ciq_macmax ciq_q ciq_wait <<< "$ciq_nums"
@@ -3146,25 +3218,36 @@ if [ -f "$ciq_probe" ]; then
     fi
 fi
 
-# ciguard=ok|OVER:<metric>[,<metric>]|unknown: one ci-guardrail.sh read per
-# tick, in the ciq probe slot, bounded by the same TICK_CIQ_TIMEOUT. The script keeps the
-# once-per-crossing memory ($TICK_STATE_DIR/tick-ciguard-state), so each "ALERT ..." line it
-# prints is a NEW crossing and becomes one ACTION line below; ciguard=OVER alone repeats for
-# as long as the metric stays over. No status line = unknown, and its ALERT lines are dropped.
-# chief-wait.sh's wake key does not carry ciguard: the ACTION line is what the chief reads.
+# ciguard=ok|OVER:<metric>[,<metric>]|unknown: the last ci-guardrail.sh read, from a cache a
+# detached refresh fills every TICK_CIGUARD_MIN_SECS (default 600), with ciguard-age=<n>s. A full
+# read takes over 60 s, past any bound a tick can afford, and needs a slice limit wider than the
+# guardrail's own 25 s default. The script keeps the once-per-crossing memory
+# ($TICK_STATE_DIR/tick-ciguard-state), so each "ALERT ..." line it prints is a NEW crossing: the
+# refresh queues it in tick-ciguard-last.alerts and the next tick to print claims the file, so it
+# becomes one ACTION line below; ciguard=OVER alone repeats for as long as the metric stays over.
+# Only a read that exits 0 with a status line replaces the cache. A missing or corrupt cache, or
+# one past TICK_CIGUARD_TTL (default 1800), is unknown. chief-wait.sh's wake key does not carry
+# ciguard, and the waiter keeps only the TICK line: ciguard=OVER there is what a wake shows.
 ciguard_summary=unknown
+ciguard_age=""
 ciguard_alerts=""
+ciguard_base=""
 ciguard_probe="${TICK_CIGUARD_PROBE:-$HERE/ci-guardrail.sh}"
 if [ -f "$ciguard_probe" ]; then
-    # shellcheck source=../../lib/timeout-bin.sh
-    . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
-    ciguard_bound="${TICK_CIQ_TIMEOUT:-45}"
-    case "$ciguard_bound" in ''|*[!0-9]*) ciguard_bound=45 ;; esac
-    ciguard_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$ciguard_bound"} bash "$ciguard_probe" 2>/dev/null)" || ciguard_out=""  # swallow-ok: a failed or timed-out read leaves ciguard=unknown
-    ciguard_status="$(printf '%s\n' "$ciguard_out" | sed -n 's#^ciguard=\(ok\|unknown\|OVER:[a-z0-9,-]*\)$#\1#p' | head -n 1)"
+    ciguard_base="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-ciguard-last"
+    ciguard_gap="${TICK_CIGUARD_MIN_SECS:-600}"; case "$ciguard_gap" in '' | *[!0-9]*) ciguard_gap=600 ;; esac
+    ciguard_ttl="${TICK_CIGUARD_TTL:-1800}"; case "$ciguard_ttl" in '' | *[!0-9]*) ciguard_ttl=1800 ;; esac
+    ciguard_bound="${TICK_CIGUARD_TIMEOUT:-300}"; case "$ciguard_bound" in '' | *[!0-9]*) ciguard_bound=300 ;; esac
+    # shellcheck disable=SC2016  # the inner script expands its own positional arguments
+    # swallow-ok: a failed refresh leaves the cache to age, and past its TTL it reads unknown
+    tick_section_refresh "$ciguard_base" "$ciguard_gap" 'out="$(CIGUARD_SLICE_TIMEOUT=120 timeout -k 2 "$2" bash "$3" 2>/dev/null)" || exit 0; status="$(printf "%s\n" "$out" | grep -E "^ciguard=(ok|unknown|OVER:[a-z0-9,-]*)\$" | head -n 1)"; [ -n "$status" ] || exit 0; printf "%s\n" "$out" | grep "^ALERT [a-z0-9-]*=" >>"$1.alerts"; printf "%s\n" "$status" >"$1.$$" && mv -f "$1.$$" "$1"; rm -f "$1.$$"' _ "$ciguard_base" "$ciguard_bound" "$ciguard_probe"
+    ciguard_status="$(sed -n '1s#^ciguard=\(ok\|unknown\|OVER:[a-z0-9,-]*\)$#\1#p' "$ciguard_base" 2>/dev/null)"  # swallow-ok: no cache reads unknown
     if [ -n "$ciguard_status" ]; then
-        ciguard_summary="$ciguard_status"
-        ciguard_alerts="$(printf '%s\n' "$ciguard_out" | grep '^ALERT [a-z0-9-]*=' || true)"  # swallow-ok: no ALERT line is the normal quiet read
+        ciguard_read_age="$(tick_cache_age "$ciguard_base")"
+        [ -z "$ciguard_read_age" ] || ciguard_age="${ciguard_read_age}s"
+        if [ -n "$ciguard_read_age" ] && [ "$ciguard_read_age" -lt "$ciguard_ttl" ]; then
+            ciguard_summary="$ciguard_status"
+        fi
     fi
 fi
 
@@ -3178,7 +3261,7 @@ cired_summary=unknown
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
 cired_bound="${TICK_CIRED_TIMEOUT:-15}"
 case "$cired_bound" in [1-9]|1[0-5]) ;; *) cired_bound=15 ;; esac
-cired_out="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$cired_bound"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
+cired_out="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound "$cired_bound")"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
 case "$cired_out" in ''|*[!0-9]*) ;; 1000) cired_summary='1000+' ;; *) cired_summary="$cired_out" ;; esac
 
 # vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
@@ -3197,7 +3280,7 @@ vmrun_probe="${HIMMEL_VMRUN_PROBE:-$HERE/vm-runner.sh}"
 if [ -f "$vmrun_probe" ]; then
     # shellcheck source=../../lib/timeout-bin.sh
     . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
-    vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 30} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
+    vmrun_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 30)"} bash "$vmrun_probe" status --tick 2>/dev/null)" || vmrun_out=""
     case "$vmrun_out" in
         off|DEAD|STUCK|FAILING|DISAGREE:[0-9]*/[0-9]*,online=[0-9]*|ok:[0-9]*/[0-9]*,busy=[0-9]*) vmrun_summary="$vmrun_out" ;;
     esac
@@ -3260,6 +3343,18 @@ if [ "$burn" -eq 1 ]; then
     [ -n "$burn_summary" ] || burn_summary=none
 fi
 
+# Claimed by rename right before printing, so two ticks can never both print one crossing, and
+# under the refresh's lock, so a refresh still appending keeps the queue for the next tick.
+if [ -n "$ciguard_base" ] && flock -n "$ciguard_base.lock" mv -f "$ciguard_base.alerts" "$ciguard_base.alerts.$$" 2>/dev/null; then  # prim-ok: nonblocking, a held lock only delays the queue a tick; gnu-ok: chief kit is Linux-only; swallow-ok: nothing queued is the normal quiet tick
+    ciguard_alerts="$(grep '^ALERT [a-z0-9-]*=' "$ciguard_base.alerts.$$" || true)"  # swallow-ok: an empty queue prints nothing
+    rm -f "$ciguard_base.alerts.$$"
+fi
+
+# deadline-over=<n>s: this tick passed TICK_DEADLINE_SEC by <n> s, so a probe that read unknown,
+# ? or skip may only have run out of time. Absent on a tick inside the deadline.
+deadline_over=""
+[ "$SECONDS" -lt "$tick_deadline" ] || deadline_over="$((SECONDS - tick_deadline))s"
+
 if [ "$verbose" -eq 1 ]; then
     printf 'TICK %s\n' "$clock"
     printf 'heartbeat: %s\n' "$hb"
@@ -3303,7 +3398,8 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
     printf 'denials: %s\n' "$denials_summary"
     printf 'ci queue: %s\n' "$ciq_summary"
-    printf 'ci guardrail: %s\n' "$ciguard_summary"
+    printf 'ci guardrail: %s%s\n' "$ciguard_summary" "${ciguard_age:+ (read $ciguard_age ago)}"
+    [ -z "$deadline_over" ] || printf 'deadline over: %s\n' "$deadline_over"
     [ -z "$ciguard_alerts" ] || printf '%s\n' "$ciguard_alerts"
     printf 'plan-index: %s\n' "$plan_index_summary"
     printf 'OpenRouter: %s\n' "$openrouter"
@@ -3326,7 +3422,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$wakerstate_tail" ] || printf 'bus wakers: %s\n' "${wakerstate_tail# wakerstate=}"
     printf 'vault: %s\n' "$vault_summary"
     printf 'cloud: %s\n' "$cloud_summary"
-    printf 'orphans-wip: %s\n' "$orphans_wip"
+    printf 'orphans-wip: %s%s\n' "$orphans_wip" "${orphans_wip_age:+ (read $orphans_wip_age ago)}"
     printf 'pool: %s\n' "$pool_summary"
     printf 'pool-closed: %s\n' "$pool_closed"
     printf 'prio: %s\n' "$prio_summary"
@@ -3393,6 +3489,7 @@ else
     compact_field vault "$vault_summary"
     compact_field cloud "$cloud_summary"
     compact_field orphans-wip "$orphans_wip"
+    compact_field orphans-wip-age "$orphans_wip_age"
     compact_field pool "$pool_summary"
     compact_field pool-closed "$pool_closed"
     compact_field prio "$prio_summary"
@@ -3404,6 +3501,8 @@ else
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
     compact_field ciguard "$ciguard_summary"
+    compact_field ciguard-age "$ciguard_age"
+    compact_field deadline-over "$deadline_over"
     compact_field cired "$cired_summary"
     compact_field plan-index "$plan_index_summary"
     compact_field or "$openrouter"

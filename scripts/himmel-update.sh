@@ -825,7 +825,7 @@ report_cadence_stale() {
         echo "        $rearm"
     done <<EOF
 pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/luna/pipeline-cadence.sh arm --force
-graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --force
+graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
 EOF

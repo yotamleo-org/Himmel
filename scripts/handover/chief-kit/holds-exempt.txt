@@ -1,0 +1,6 @@
+# holds-exempt.txt: one-row-per-key registries that anyone may append to. holds.py never holds them
+# (HIMMEL-8725 invariant I10), and chain-graph.py reads ROW_REGISTRIES from here, so the two cannot disagree.
+# One repo-relative path per line; a line starting # is a comment. This file is a trust path
+# (scripts/ci/ci-trust-paths.txt): a line added here loosens the barrier and the merge-order check together.
+scripts/ci/suite-tiers.tsv
+scripts/ci/suite-durations.tsv

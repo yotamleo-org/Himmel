@@ -162,6 +162,7 @@ fi
 # gh pr list --json ... --jq emits one TSV row per PR: number, head branch, isDraft,
 # author login, isCrossRepository, updatedAt. STUB_PR_ROWS (a printf %b string) replaces
 # the default pair of drafts, which tick.sh lists in prs= but never flags as unowned.
+[ -z "${STUB_PR_SLEEP:-}" ] || sleep "$STUB_PR_SLEEP"
 [ -z "${STUB_PR_FAIL:-}" ] || exit 1
 printf '%b' "${STUB_PR_ROWS-2247\\tfeat/x\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n2250\\tfeat/y\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\n}"
 STUB
@@ -238,6 +239,13 @@ export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
 export TICK_STATE_DIR="$W/state"
 # ciguard= runs this probe; the default is a missing one (ciguard=unknown), never a live fetch.
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
+# A fixture mirror must not send a tick to live Jira: versionless-done= reads this probe (a missing
+# one reads skip) and leaks= this one (empty output reads 0). Rows on those fields set their own.
+# A fixture tracker render reads its parity line unavailable through a missing CLI.
+export TICK_VERSIONLESS_DONE_PROBE="$W/no-vd-probe" TICK_LEAKS_PROBE=/dev/null TRACKER_JIRA="$W/no-jira-cli"
+# ciguard= and orphans-wip= read a cache a detached refresh fills. Rows here refresh on every
+# tick and wait for the refresh, unless a row sets its own cadence or wait.
+export TICK_CIGUARD_MIN_SECS=0 TICK_ORPHANS_MIN_SECS=0 TICK_SECTION_WAIT=60
 export TICK_BUS_PEERS_DIR="$W/no-bus-peers"
 # fails= reads these three ledgers; never the real ~/.himmel ones.
 export HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$W/leg-failures.jsonl"
@@ -648,7 +656,7 @@ printf '%s\n' '> the repo you ship from is **`x`**. The project this console is 
 proj_out="$(TOKEN='' GH_STUB_CWD="$W/project" bash "$SUT" --doc "$W/handover/chief-project.md")"
 contains 'a foreign chief lists its project PRs (gh runs in the project)' "$proj_out" ' prs=#2247,#2250 '
 proj_out="$(TOKEN='' bash "$SUT" --doc "$W/handover/chief-project.md")"
-contains 'a foreign chief never lists the himmel REPO PRs' "$proj_out" ' prs=none '
+contains 'a foreign chief never lists the himmel REPO PRs' "$proj_out" ' prs=? '
 # shellcheck disable=SC2016  # backtick spans, literal fixture text
 printf '%s\n' '> The project this console is FOR is **`none — this console runs in the himmel checkout itself`** — you' \
     > "$W/handover/chief-himmel.md"
@@ -677,6 +685,17 @@ contains 'a fork PR is listed in ext-prs' "$own_out" 'ext-prs=#3005'
 contains 'a worker whose lock is free still owns nothing, so its PR is flagged' "$own_out" '#3006:300m'
 contains 'prs= still lists every open PR' "$own_out" 'prs=#3001,#3002,#3003,#3004,#3005,#3006 '
 contains 'a failed gh read is unowned-prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" 'unowned-prs=? ext-prs=?'
+contains 'a failed gh read is prs=?, not an all-clear (HIMMEL-8735)' "$(STUB_PR_FAIL=1 bash "$SUT")" ' prs=? '
+if [ -n "$_TIMEOUT_BIN" ]; then
+    # The deadline cuts the list to its 1 s floor. Without that bound the stub answers after 5 s with its rows.
+    printf '#!/usr/bin/env bash\necho STALL 42 no-ci\n' > "$W/pr-hung-stall"
+    pr_hung="$(STUB_PR_SLEEP=5 TICK_DEADLINE_SEC=1 TICK_STALL_PROBE="$W/pr-hung-stall" TICK_STALL_CACHE="$W/pr-hung-stall.cache" bash "$SUT" 2>/dev/null)"
+    contains 'a hung gh list reads prs=?, not an all-clear (HIMMEL-8735)' "$pr_hung" ' prs=? '
+    contains 'a hung gh list still yields the worker state (HIMMEL-8735)' "$pr_hung" ' workers=N61:FRESH'
+    contains 'a hung gh list does not skip the stall probe (HIMMEL-8735)' "$pr_hung" ' stall=42:no-ci'
+else
+    skip 'hung gh list rows: no timeout binary'
+fi
 contains '--verbose names unowned PRs' "$(STUB_PR_ROWS="$rows_5542" bash "$SUT" --verbose)" 'unowned-prs: #3002:125m'
 # --- an orphan PR with a failed check is dispatch-owed: red CI has no other owner.
 # The 7th gh row field is the failed-check count; a pending/green orphan, an owned
@@ -2648,6 +2667,7 @@ mkdir -p "$W/vd-mirror"
 cat > "$W/ciguard-probe.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'x\n' >> "${STUB_CIG_CALLS:-/dev/null}"
+[ -z "${STUB_CIG_ENV:-}" ] || printf '%s\n' "${CIGUARD_SLICE_TIMEOUT:-}" > "$STUB_CIG_ENV"
 n="$(wc -l < "${STUB_CIG_CALLS:-/dev/null}" | tr -d '[:space:]')"  # read-sink-ok: test stub counting its own call file
 if [ "${n:-1}" -le 1 ]; then printf '%s\n' "$STUB_CIG_OUT"; else printf '%s\n' "${STUB_CIG_OUT2:-$STUB_CIG_OUT}"; fi
 [ -z "${STUB_CIG_SLEEP:-}" ] || sleep "$STUB_CIG_SLEEP"
@@ -2681,18 +2701,79 @@ contains 'output with no status line reads ciguard=unknown (HIMMEL-6733)' "$cig_
 not_contains 'an ALERT with no status line prints no ACTION (HIMMEL-6733)' "$cig_junk" 'ACTION ci-guardrail'
 cig_miss="$(TICK_CIGUARD_PROBE="$W/no-such-probe" bash "$SUT" 2>/dev/null)"
 contains 'a missing guardrail script reads ciguard=unknown (HIMMEL-6733)' "$cig_miss" ' ciguard=unknown'
-if [ -n "$_TIMEOUT_BIN" ]; then
-    t0="$(date +%s)"
-    cig_hung="$(STUB_CIG_SLEEP=30 TICK_CIQ_TIMEOUT=1 TICK_CIGUARD_PROBE="$W/ciguard-probe.sh" STUB_CIG_CALLS="$cig_calls" STUB_CIG_OUT="$cig_alert" bash "$SUT" 2>/dev/null)"
-    t1="$(date +%s)"
-    contains 'a hung guardrail reads ciguard=unknown (HIMMEL-6733)' "$cig_hung" ' ciguard=unknown'
-    if [ $((t1 - t0)) -lt 15 ]; then pass 'a hung guardrail is cut off inside the bound (HIMMEL-6733)'; else fail "hung guardrail took $((t1 - t0))s"; fi
-else
-    skip 'guardrail timeout rows: no timeout binary'
-fi
 cig_verbose="$(cig_tick "$cig_alert" --verbose)"
 contains 'verbose output names the ci guardrail reading (HIMMEL-6733)' "$cig_verbose" 'ci guardrail: OVER:runs-h'
 contains 'verbose output keeps the new ALERT line (HIMMEL-6733)' "$cig_verbose" 'ALERT runs-h=160>150 (14:00)'
+
+# --- the guardrail reads through a cache a detached refresh fills.
+# A refresh still running would write into the next row's fixture, so each row waits it out.
+bud_fresh() { [ ! -e "$W/bud/tick-ciguard-last.lock" ] || flock "$W/bud/tick-ciguard-last.lock" true; rm -rf "$W/bud"; mkdir -p "$W/bud"; : > "$cig_calls"; }
+bud_tick() { TICK_STATE_DIR="$W/bud" TICK_CIGUARD_PROBE="$W/ciguard-probe.sh" STUB_CIG_CALLS="$cig_calls" bash "$SUT" 2>/dev/null; }
+if [ -n "$_TIMEOUT_BIN" ]; then
+    bud_fresh
+    t0="$(date +%s)"
+    bud_hung="$(TICK_CIGUARD_TIMEOUT=2 STUB_CIG_SLEEP=30 TICK_SECTION_WAIT=1 STUB_CIG_OUT="$cig_alert" bud_tick)"
+    t1="$(date +%s)"
+    if [ $((t1 - t0)) -lt 15 ]; then pass 'a hung guardrail costs the tick only its short wait (HIMMEL-8735)'; else fail "a hung guardrail held the tick $((t1 - t0))s (HIMMEL-8735)"; fi
+    contains 'a hung guardrail still yields the worker state (HIMMEL-8735)' "$bud_hung" ' workers=N61:FRESH'
+    contains 'a hung guardrail with no cache reads ciguard=unknown (HIMMEL-8735)' "$bud_hung" ' ciguard=unknown'
+    not_contains 'no cache means no ciguard-age field (HIMMEL-8735)' "$bud_hung" 'ciguard-age='
+
+    bud_fresh
+    bud_kill="$(TICK_CIGUARD_TIMEOUT=1 STUB_CIG_SLEEP=30 STUB_CIG_OUT="$cig_alert" bud_tick)"
+    contains 'a refresh past its bound leaves ciguard=unknown (HIMMEL-8735)' "$bud_kill" ' ciguard=unknown'
+    bud_kill2="$(TICK_CIGUARD_MIN_SECS=3600 STUB_CIG_OUT="$cig_alert" bud_tick)"
+    same 'a failed refresh is not retried inside the cadence (HIMMEL-8735)' "$(wc -l < "$cig_calls" | tr -d '[:space:]')" 1
+    contains 'a failed refresh still reads ciguard=unknown on the next tick (HIMMEL-8735)' "$bud_kill2" ' ciguard=unknown'
+
+    bud_fresh
+    bud_late="$(TICK_SECTION_WAIT=0 STUB_CIG_SLEEP=2 STUB_CIG_OUT="$cig_alert" bud_tick)"
+    not_contains 'a refresh still running shows no ACTION yet (HIMMEL-8735)' "$bud_late" 'ACTION ci-guardrail'
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$W/bud/tick-ciguard-last" ] && break; sleep 0.5; done
+    bud_after="$(TICK_CIGUARD_MIN_SECS=3600 STUB_CIG_OUT='ciguard=ok' bud_tick)"
+    contains 'a refresh outlives the tick that launched it (HIMMEL-8735)' "$bud_after" ' ciguard=OVER:runs-h'
+    contains 'the late refresh delivers its ALERT on the next tick (HIMMEL-8735)' "$bud_after" 'ACTION ci-guardrail runs-h=160>150 (14:00): '
+else
+    skip 'guardrail refresh timing rows: no timeout binary'
+fi
+
+bud_fresh
+bud_a="$(STUB_CIG_ENV="$W/bud-slice" STUB_CIG_OUT="$cig_alert" bud_tick)"
+same 'the refresh widens the guardrail slice limit to 120 s (HIMMEL-8735)' "$(cat "$W/bud-slice")" 120
+case "$(printf '%s\n' "$bud_a" | grep -c '^ACTION ci-guardrail')" in 1) pass 'the refreshing tick prints the crossing once (HIMMEL-8735)' ;; *) fail 'the refreshing tick prints the crossing once (HIMMEL-8735)' ;; esac
+contains 'OVER shows in the TICK line the waiter reads (HIMMEL-8735)' "$(printf '%s\n' "$bud_a" | grep '^TICK ')" ' ciguard=OVER:runs-h'
+contains 'a served guardrail result carries its age (HIMMEL-8735)' "$bud_a" ' ciguard-age='
+touch -d '5 minutes ago' "$W/bud/tick-ciguard-last"  # gnu-ok: chief kit is Linux-only
+bud_b="$(TICK_CIGUARD_MIN_SECS=3600 STUB_CIG_OUT='ciguard=ok' bud_tick)"
+contains 'a tick inside the cadence serves the cached read (HIMMEL-8735)' "$bud_b" ' ciguard=OVER:runs-h ciguard-age=30'
+not_contains 'a cached read never repeats its ALERT (HIMMEL-8735)' "$bud_b" 'ACTION ci-guardrail'
+same 'a tick inside the cadence reads no guardrail (HIMMEL-8735)' "$(wc -l < "$cig_calls" | tr -d '[:space:]')" 1
+bud_junk="$(STUB_CIG_OUT='not a status line' bud_tick)"
+contains 'a junk refresh keeps the last good read and its age (HIMMEL-8735)' "$bud_junk" ' ciguard=OVER:runs-h ciguard-age=30'
+touch -d '2 hours ago' "$W/bud/tick-ciguard-last"  # gnu-ok: chief kit is Linux-only
+printf 'ALERT runs-h=160>150 (14:00)\n' > "$W/bud/tick-ciguard-last.alerts"
+bud_old="$(TICK_CIGUARD_MIN_SECS=86400 TICK_STATE_DIR="$W/bud" TICK_CIGUARD_PROBE="$W/ciguard-probe.sh" STUB_CIG_CALLS="$cig_calls" flock -o "$W/bud/tick-ciguard-last.lock" bash "$SUT" 2>/dev/null)"
+contains 'a cache past its TTL reads ciguard=unknown and shows its age (HIMMEL-8735)' "$bud_old" ' ciguard=unknown ciguard-age=72'
+not_contains 'a tick leaves the ALERT queue alone while a refresh holds the lock (HIMMEL-8735)' "$bud_old" 'ACTION ci-guardrail'
+printf 'garbage\n' > "$W/bud/tick-ciguard-last"
+bud_bad="$(TICK_CIGUARD_MIN_SECS=86400 bud_tick)"
+contains 'a corrupt cache reads ciguard=unknown (HIMMEL-8735)' "$bud_bad" ' ciguard=unknown'
+contains 'the next tick delivers the queued ALERT (HIMMEL-8735)' "$bud_bad" 'ACTION ci-guardrail runs-h=160>150 (14:00): '
+not_contains 'a corrupt cache carries no age (HIMMEL-8735)' "$bud_bad" 'ciguard-age='
+
+# --- a tick past its deadline shortens the probes left, so it still answers.
+printf '#!/bin/sh\nsleep 30\n' > "$W/hung-probe.sh"
+if [ -n "$_TIMEOUT_BIN" ]; then
+    t0="$(date +%s)"
+    bud_dl="$(TICK_DEADLINE_SEC=1 HIMMEL_VMRUN_PROBE="$W/hung-probe.sh" NEXT_DISPATCH_MIRROR="$W/vd-mirror" TICK_VERSIONLESS_DONE_PROBE="$W/hung-probe.sh" bash "$SUT" 2>/dev/null)"
+    t1="$(date +%s)"
+    if [ $((t1 - t0)) -lt 15 ]; then pass 'two hung sections past the deadline still return a tick (HIMMEL-8735)'; else fail "two hung sections held the tick $((t1 - t0))s (HIMMEL-8735)"; fi
+    contains 'a deadline tick keeps the worker state (HIMMEL-8735)' "$bud_dl" ' workers=N61:FRESH'
+    contains 'a section cut by the deadline reads its failure value (HIMMEL-8735)' "$bud_dl" ' vmrun=unknown'
+    contains 'a tick past its deadline says so (HIMMEL-8735)' "$bud_dl" ' deadline-over='
+else
+    skip 'deadline rows: no timeout binary'
+fi
 
 printf '#!/bin/sh\necho 3\n' > "$W/vd-probe-3.sh"
 printf '#!/bin/sh\necho 0\n' > "$W/vd-probe-0.sh"
@@ -3173,6 +3254,51 @@ owj="$(ow_of "$(OW_MERGED_ROWS="$OW_MERGED_ROWS" OW_PR_ROWS='4401\tfix: [HIMMEL-
 owk="$(ow_of "$(OW_MERGED_FAIL=1 ow_tick)")"
 [ "$owk" = "?" ] && pass 'orphans-wip= is ? when the merged-PR read fails, not an all-clear' || fail "orphans-wip= on merged read failure is '$owk'"
 OW="$OW_SAVE"
+
+# --- orphans-wip= reads through a cache a detached refresh fills.
+cat > "$W/ow-gh-hung" <<'STUB'
+#!/usr/bin/env bash
+sleep 3
+STUB
+chmod +x "$W/ow-gh-hung"
+# A scan still running would write into the next row's fixture, so each row waits it out.
+owc_fresh() { for l in "$W"/owc/tick-resume-*.lock; do [ ! -e "$l" ] || flock "$l" true; done; rm -rf "$W/owc"; mkdir -p "$W/owc"; }
+owc_tick() { TICK_POOL_WAIT=0 TICK_STATE_DIR="$W/owc" NEXT_DISPATCH_MIRROR="$OW" NEXT_DISPATCH_GH_CMD="$W/ow-gh" bash "$SUT" 2>/dev/null; }
+owc_age() { printf '%s\n' "$1" | tr ' ' '\n' | sed -n 's/^orphans-wip-age=//p'; }
+if [ -n "$_TIMEOUT_BIN" ]; then
+    owc_fresh
+    t0="$(date +%s)"
+    owh="$(TICK_POOL_WAIT=0 TICK_SECTION_WAIT=1 NEXT_DISPATCH_GH_CMD="$W/ow-gh-hung" TICK_STATE_DIR="$W/owc" NEXT_DISPATCH_MIRROR="$OW" bash "$SUT" 2>/dev/null)"
+    t1="$(date +%s)"
+    if [ $((t1 - t0)) -lt 15 ]; then pass 'a hung resume scan costs the tick only its short wait (HIMMEL-8735)'; else fail "a hung resume scan held the tick $((t1 - t0))s (HIMMEL-8735)"; fi
+    contains 'a hung resume scan still yields the worker state (HIMMEL-8735)' "$owh" ' workers=N61:FRESH'
+    same 'a hung resume scan with no cache reads ?, never an all-clear (HIMMEL-8735)' "$(ow_of "$owh")" '?'
+    same 'no scan cache means no orphans-wip-age field (HIMMEL-8735)' "$(owc_age "$owh")" ''
+else
+    skip 'resume scan timing rows: no timeout binary'
+fi
+owc_fresh
+owf="$(owc_tick)"
+same 'a finished scan serves its count (HIMMEL-8735)' "$(ow_of "$owf")" 6
+case "$(owc_age "$owf")" in [0-9]*s) pass 'a served scan carries its age (HIMMEL-8735)' ;; *) fail "orphans-wip-age is '$(owc_age "$owf")' (HIMMEL-8735)" ;; esac
+owc_rows="$(ls "$W"/owc/tick-resume-*.rows)"
+touch -d '5 minutes ago' "$owc_rows"  # gnu-ok: chief kit is Linux-only
+owg="$(TICK_ORPHANS_MIN_SECS=3600 OW_GH_FAIL=1 owc_tick)"
+same 'a tick inside the cadence serves the cached scan (HIMMEL-8735)' "$(ow_of "$owg")" 6
+case "$(owc_age "$owg")" in 30[0-9]s) pass 'the cached scan reports its true age (HIMMEL-8735)' ;; *) fail "cached orphans-wip-age is '$(owc_age "$owg")' (HIMMEL-8735)" ;; esac
+# The first ticket in this row is the one the suite's FRESH worker N61 holds.
+printf '# tick-resume-scan ok\nRESUME\tHIMMEL-111\tMedium\t-\tt\nRESUME\tHIMMEL-901\tMedium\t-\tt\nRESUME\tHIMMEL-902\tMedium\t-\tt\n' > "$owc_rows"
+same 'cached rows name their keys, minus a ticket a worker took since the scan (HIMMEL-8735)' "$(ow_of "$(TICK_ORPHANS_MIN_SECS=3600 owc_tick)")" '2:HIMMEL-901,HIMMEL-902'
+touch -d '2 hours ago' "$owc_rows"  # gnu-ok: chief kit is Linux-only
+owl="$(TICK_ORPHANS_MIN_SECS=86400 owc_tick)"
+same 'a scan past its TTL reads ?, never an all-clear (HIMMEL-8735)' "$(ow_of "$owl")" '?'
+case "$(owc_age "$owl")" in 72[0-9][0-9]s) pass 'an expired scan still shows how old it is (HIMMEL-8735)' ;; *) fail "expired orphans-wip-age is '$(owc_age "$owl")' (HIMMEL-8735)" ;; esac
+printf 'RESUME\tHIMMEL-901\n' > "$owc_rows"
+owm="$(TICK_ORPHANS_MIN_SECS=86400 owc_tick)"
+same 'a corrupt scan cache reads ?, never an all-clear (HIMMEL-8735)' "$(ow_of "$owm")" '?'
+same 'a corrupt scan cache carries no age (HIMMEL-8735)' "$(owc_age "$owm")" ''
+printf '# tick-resume-scan ok\n' > "$owc_rows"
+same 'a scan that found nothing reads 0 (HIMMEL-8735)' "$(ow_of "$(TICK_ORPHANS_MIN_SECS=86400 owc_tick)")" 0
 
 # The same read-only interpreter serves the tick field and the waiter's wake.
 pd_doc="$W/handover/pool-chief.md"

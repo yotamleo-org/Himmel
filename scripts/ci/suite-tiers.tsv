@@ -1216,3 +1216,4 @@ scripts/eval/test-chief-wake-classes.sh	local	new, behaviour suite for the chief
 marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	local	behaviour suite, new (HIMMEL-8416)
 scripts/station-ops/test-station-ops.sh	pr	guard
 scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new for HIMMEL-8349 (series-next.sh, slice S2b)
+scripts/handover/chief-kit/test-holds.sh	pr	trust-path

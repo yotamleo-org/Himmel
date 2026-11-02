@@ -473,7 +473,8 @@ def render(d):
         "counts as agreed. A precision proxy, not precision: the one who rules is also the one who has to fix. "
         "%s |" % REVIEW_METHOD,
         "| **Planted-bug catch** | Bugs planted in test changes with a hidden answer key, and the share the reviewer "
-        "found. It measures what real PRs cannot: the bugs nobody flagged. %s |" % PLANTED_METHOD,
+        "found. It measures what real PRs cannot: the bugs nobody flagged. The set also holds real review escapes, "
+        "each with a clean twin. %s |" % PLANTED_METHOD,
         "| **Wilson range** | The 95 percent range the true share most likely sits in, given how many findings were "
         "ruled. It treats every finding as independent of the others. |",
         "| **Range by PR** | A bootstrap that resamples whole PRs, not single findings. Findings on one PR share an "

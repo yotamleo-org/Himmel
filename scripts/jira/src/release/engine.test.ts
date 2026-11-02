@@ -1527,3 +1527,44 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     }
   });
 });
+
+describe('admission rows enter the reducer through reduceLoaded (HIMMEL-8724 S1)', () => {
+  // HIMMEL_ADMISSIONS_LEDGER is a temp path (beforeEach), so none of these reads the operator's ledger.
+  const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
+  const row = (key: string, kind: string) => JSON.stringify({ ts: '2026-10-21T09:30:00.000Z', version: 'v1', key, kind, actor: 'someone' });
+  const admitAllRows: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+
+  it('an override row in the ledger clears the unauthorized flag through state()', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'] }, { key: 'K-4', fixVersions: ['v1'] }]);
+    expect(state(ctx()).leaks.unauthorized).toEqual(['K-3@v1', 'K-4@v1']);
+    writeFileSync(ledger(), [row('K-3', 'override'), row('K-4', 'rm-admit')].join('\n') + '\n');
+    const s = state(ctx());
+    expect(s.inputs.admissions).toBe('FRESH');
+    expect(s.leaks.unauthorized).toEqual([]);
+  });
+
+  it('bad admissions line reads UNKNOWN and status stays OK', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-3', fixVersions: ['v1'] }]);
+    writeFileSync(ledger(), [row('K-3', 'override'), 'not json at all'].join('\n') + '\n');
+    const s = state(ctx());
+    expect(s.inputs.admissions).toBe('UNKNOWN');
+    expect(s.status).toBe('OK');
+    expect(s.leaks.unauthorized).toEqual(['K-3@v1']);
+  });
+
+  it('bad admissions line: rule() and rmRun still run', async () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }]);
+    writeFileSync(ledger(), 'not json at all\n');
+    request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+    // rmRun's own reduceLoaded and rule()'s did not throw on the bad line: the run completes and the intent row is on disk.
+    // (apply()'s separate ledger read is unchanged by S1 and still reports the ruling PENDING.)
+    const lines = await rmRun(ctx(), admitAllRows);
+    expect(lines.join('\n')).toContain('R-R1-0001');
+    expect(readFileSync(join(ctx().dir, 'rulings.jsonl'), 'utf8')).toContain('"phase":"intent"');
+  });
+});
