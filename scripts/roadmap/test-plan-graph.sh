@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# test-plan-graph.sh — hermetic tests for the graph.json that
+# plan-index.sh --refresh emits next to the qmd docs: schema + the four typed
+# edges (pure python, always run), a graphify explain/query fixture (SKIPs when the
+# graphify binary is absent), the egress hook allowing the no-backend run, a failed
+# emit failing the whole refresh before the fingerprint moves, and the source plan
+# dir / any graphify-out left untouched. Fixture plan dir + stub qmd + temp out dir;
+# graphify is only ever pointed at the temp graph by absolute --graph, from a temp cwd.
+#
 # PLATFORM GUARD: operator-side roadmap tooling (Linux);
 # this suite needs bash + python3.
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail
@@ -108,6 +116,7 @@ fi
 [ "$(find "$plan" -type f | wc -l)" -eq 3 ] && pass "no file added to the plan dir" || fail "plan dir gained files"
 [ -z "$(find "$plan" "$out" -name graphify-out)" ] && pass "no graphify-out under plan or out" || fail "graphify-out appeared"
 
+# a failed graph emit fails the whole refresh and the fingerprint does not move
 cp "$out/.fp" "$W/fp.keep"; rm -f "$g"; mkdir "$g"; echo x > "$g/blocker"
 echo bump >> "$plan/stage3/meta.json"
 r="$(run --refresh 2>&1)"; rc=$?

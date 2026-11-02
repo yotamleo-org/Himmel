@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# test-plan-index.sh — Hermetic tests for plan-index.sh: a lookup by
+# ticket key returns its version/theme/goal, no change = no rebuild, a change =
+# rebuild, the source plan dir is never written, a failing/missing qmd fails the
+# refresh and leaves the fingerprint unadvanced. Fixture plan dir + stub qmd +
+# temp out dir in a scratch tempdir; never the real qmd, plan dir or ~/.himmel/state.
+#
 # PLATFORM GUARD: the roadmap tooling is operator-side
 # (the chief kit it pairs with is Linux-only); this suite needs bash + python3.
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail, so A && B || C is if-then-else here
@@ -118,6 +124,7 @@ ROADMAP_QMD_BIN="$W/qmd" bash "$SUT" --refresh --plan-dir "$W/plan4" --out "$W/p
 [ "$rc2" != 0 ] && pass "out overlapping the plan dir: refresh non-zero" || fail "overlapping out rc=0"
 [ "$before4" = "$(cd "$W/plan4" && find . -type f | sort | xargs sha256sum | sha256sum)" ] && pass "overlapping out: plan dir intact" || fail "overlapping out destroyed the plan dir"
 
+# every path the build replaces is guarded: a plan dir that is the docs dir, or a docs.new-named dir under out
 for rel in docs docs.new; do
     mkdir -p "$W/pg-o-$rel"; cp -r "$plan" "$W/pg-o-$rel/$rel"
     pb="$(cd "$W/pg-o-$rel/$rel" && find . -type f | sort | xargs sha256sum | sha256sum)"
