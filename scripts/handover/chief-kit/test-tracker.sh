@@ -762,7 +762,7 @@ render --plan-dir "$W/plan4" --mirror-dir "$cu" >/dev/null
 cuhtml="$(cat "$out" 2>/dev/null)"
 contains 'a released version is not the plan blocks current version (HIMMEL-5217)' "$cuhtml" '"CUR":1,'
 # Item 1: a worker listed in a chief's fleet manifest is live without a held queue lock.
-printf '{"schema":1,"workers":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md" > "$bk/test-console.fleet.json"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md" > "$bk/test-console.fleet.json"
 render >/dev/null
 fmhtml="$(cat "$out" 2>/dev/null)"
 rm -f "$bk/test-console.fleet.json"

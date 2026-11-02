@@ -97,7 +97,7 @@ if [ "${1:-}" = --one ]; then
         rm -f "$j" "$j.html" "$j.json"
         ;;
     fleet-chief)
-        printf 'fleet-workers\t%s\t%s\n' "$base" "$(node "$CK/fleet.mjs" --doc "$doc" --json 2>/dev/null | jq -r '[.workers[].label] | unique | join(",")' 2>/dev/null || echo '?')"
+        printf 'fleet-workers\t%s\t%s\n' "$base" "$(node "$CK/fleet.mjs" --doc "$doc" --json 2>/dev/null | jq -r '[(.workers // .legs)[].label] | unique | join(",")' 2>/dev/null || echo '?')"
         ;;
     tail-worker)
         # Exercise the shared parser directly as well as its tick/close consumers.
