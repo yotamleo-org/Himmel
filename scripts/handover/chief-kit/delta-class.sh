@@ -23,9 +23,13 @@
 # Findings come from two places, both at the judged head's line numbers:
 #   - a line `finding: <path>[:<line>[-<line>]]` in each prior verdict file
 #     (--verdict-file, or with --qid every non-no-op verdicts/<qid>/*.md that
-#     rules on the judged head); no line means the whole file;
+#     rules on the judged head); no line means the whole file. A judged head that only
+#     a `delta: no-op` record rules on is read through that record's `delta-judged:`
+#     line to the real judged head (one hop; a no-op is never itself a judged head),
+#     and the delta runs from that real head;
 #   - every `kind":"finding` row of the CR ledger whose head is the judged head
 #     (default <git-common-dir>/cr-critic-scores.jsonl): its file and line.
+# A fail-closed or path-match trust prints its reason on stderr; stdout stays one word.
 # A NO-GO verdict that names no `finding:` line classifies finding, never none:
 # its findings exist only as prose, so any delta needs a judge.
 #
@@ -33,7 +37,8 @@
 set -u
 
 fin() { printf '%s\n' "$1"; exit 0; }
-trust() { fin trust; }
+# trust [reason...]: print trust; a reason goes to stderr so a fail-closed fallback is not read as a path match
+trust() { [ "$#" -eq 0 ] || printf 'delta-class: trust: %s\n' "$*" >&2; fin trust; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/git-clean.sh
@@ -51,15 +56,15 @@ while [ "$#" -gt 0 ]; do
         *) break ;;
     esac
 done
-[ "$#" -eq 2 ] || trust
+[ "$#" -eq 2 ] || trust "expected exactly two heads, the judged head and the new head"
 J=$1 N=$2
 for h in "$J" "$N"; do
-    case "$h" in *[!0123456789abcdef]*) trust ;; esac
-    [ "${#h}" -eq 40 ] || trust
-    git cat-file -e "$h^{commit}" 2>/dev/null || trust
+    case "$h" in *[!0123456789abcdef]*) trust "head '$h' is not lowercase hex" ;; esac
+    [ "${#h}" -eq 40 ] || trust "head '$h' is not a full 40-char sha"
+    git cat-file -e "$h^{commit}" 2>/dev/null || trust "head $h is not a commit in this checkout"
 done
-command -v jq >/dev/null 2>&1 || trust
-[ -n "$QID" ] || [ "${#VFILES[@]}" -gt 0 ] || trust
+command -v jq >/dev/null 2>&1 || trust "jq is not installed"
+[ -n "$QID" ] || [ "${#VFILES[@]}" -gt 0 ] || trust "no --qid or --verdict-file given"
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/delta-class.XXXXXX") || trust # prim-ok: a read-only classifier's scratch dir, removed by the EXIT trap
 trap 'rm -rf "$work"' EXIT
@@ -83,14 +88,34 @@ if [ -n "$QID" ]; then
     anchor="$(cd "$HERE/../../.." && pwd)"
     root=$(go_resolve_root "$anchor") || trust
     scope=$(go_verdict_scope "$anchor" "$VREPO") || trust
+    # A judged head that only a delta-noop record rules on is read through that record to the
+    # real judged head it rests on (`delta-judged:`), so the delta stays cumulative from the
+    # last real judge. The no-op itself never counts as a judged head: its target must carry a
+    # real verdict, so a no-op that names another no-op ends in trust below.
+    JR=""
     for f in "$root/$scope/verdicts/$QID"/*.md; do
         [ -f "$f" ] || continue
-        [ -r "$f" ] || trust
+        [ -r "$f" ] || trust "verdict file $f is unreadable"
+        grep -qx 'delta: no-op' "$f" || continue
+        [ "$(verdict_head "$f")" = "$J" ] || continue
+        [ "$(verdict_word "$f")" = GO ] || trust "delta-noop record $f is not a GO"
+        d=$(tr -d '\r' < "$f" | sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p') # read-sink-ok: the path is a verdict file in the qid's dir; the classifier only parses it
+        [ -n "$d" ] && [ "$(printf '%s\n' "$d" | wc -l)" -eq 1 ] || trust "delta-noop record $f names no single delta-judged head"
+        [ -z "$JR" ] || [ "$JR" = "$d" ] || trust "delta-noop records for $J name different judged heads"
+        JR=$d
+    done
+    if [ -n "$JR" ]; then
+        git cat-file -e "$JR^{commit}" 2>/dev/null || trust "delta-judged head $JR is not a commit in this checkout"
+        J=$JR
+    fi
+    for f in "$root/$scope/verdicts/$QID"/*.md; do
+        [ -f "$f" ] || continue
+        [ -r "$f" ] || trust "verdict file $f is unreadable"
         grep -qx 'delta: no-op' "$f" && continue
         [ "$(verdict_head "$f")" = "$J" ] || continue
         VFILES+=("$f")
     done
-    [ "${#VFILES[@]}" -gt 0 ] || trust
+    [ "${#VFILES[@]}" -gt 0 ] || trust "no real verdict under qid $QID rules on judged head $J"
 fi
 
 # Trust list: origin/main's copy unless a file is named.
@@ -117,7 +142,7 @@ cp "$work/names.txt" "$work/trust-names.txt" || trust
 anc=0
 if git merge-base --is-ancestor "$J" "$N" 2>/dev/null; then anc=1; else [ "$?" -eq 1 ] || trust; fi
 # a new head that does not descend from the judged head (a rewritten history) is no delta of it
-[ "$anc" -eq 1 ] || trust
+[ "$anc" -eq 1 ] || trust "new head $N does not descend from judged head $J"
 if [ "$anc" -eq 1 ]; then
     git rev-list --merges "$J..$N" > "$work/merges.txt" 2>/dev/null || trust
     if [ -s "$work/merges.txt" ]; then
@@ -156,7 +181,7 @@ fi
 
 while IFS= read -r pat; do
     grep -Eq -e "$pat" "$work/trust-names.txt" 2>/dev/null
-    case $? in 0|2) trust ;; esac
+    case $? in 0) trust "a changed path matches trust pattern $pat" ;; 2) trust "trust pattern $pat is not a valid regex" ;; esac
 done < "$work/patterns.txt"
 
 # Findings, as <path><TAB><first line><TAB><last line>; the lines are empty for a whole file.

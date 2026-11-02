@@ -315,5 +315,39 @@ hcls() { HANDOVER_DIR="$tmp/root" USER_SLUG=u bash "$SCRIPT" --qid Q9h --ledger 
 check "9: a harness-bucket verdict is found without --repo -> none" "$(hcls)" none
 check "9: an empty --repo never falls back to the harness bucket -> trust" "$(hcls --repo '')" trust
 
+# 11: --qid classifies against a head a delta-noop recorded, through the real judged head
+env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q11 GO "$Jq" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" >/dev/null 2>&1 \
+    || { echo "FAIL: cannot write the delta-noop fixture's real verdict"; fails=$((fails+1)); }
+real11=$(find "$tmp/root" -path '*/verdicts/Q11/judge.md' | head -n 1)
+dir11=$(dirname "$real11")
+# a delta-noop record for $Nq: the real verdict's text with the head swapped and the delta header added
+mknoop() {  # <noop head> <delta-judged line value> [file name]
+    awk -v h="$1" -v dj="$2" '
+        /^\*\*GO\*\* for head `/ { print "**GO** for head `" h "`."; next }
+        /^pr: / { print; print "delta: no-op"; if (dj != "") print "delta-judged: " dj; print "delta-class: none"; next }
+        { print }' "$real11" > "$dir11/${3:-delta-noop-$1}.md"
+}
+mknoop "$Nq" "$Jq"
+printf 'again\n' >> docs/c.md; N11=$(step docs11)
+printf 'more again\n' >> docs/c.md; N11d=$(step docs11d)
+git reset -q --hard "$N11"
+echo "x3" > scripts/ci/x.sh; N11t=$(step trust11)
+git reset -q --hard "$N11d"
+dcls() {  # <judged> <new> [extra args]
+    local j="$1" n="$2"; shift 2
+    HANDOVER_DIR="$tmp/root" USER_SLUG=u bash "$SCRIPT" --qid Q11 --ledger "$ledger" --trust-file "$trustf" "$@" "$j" "$n"
+}
+check "11a: a head recorded by a delta-noop and a delta outside the trust list -> none" "$(dcls "$Nq" "$N11")" none
+check "11b: the same head with a delta on a trust path -> trust" "$(dcls "$Nq" "$N11t")" trust
+check "11c: a short sha -> trust" "$(dcls "${Nq%????????}" "$N11")" trust
+check "11c: an unknown 40-hex sha -> trust" "$(dcls 2222222222222222222222222222222222222222 "$N11")" trust
+check "11c: a short sha gives its reason on stderr, stdout stays one word" "$(dcls "${Nq%????????}" "$N11" 2>&1 >/dev/null | grep -c 'not a full 40-char sha')" 1
+check "11b: a trust-path match gives its pattern on stderr" "$(dcls "$Nq" "$N11t" 2>&1 >/dev/null | grep -c 'matches trust pattern')" 1
+mknoop "$N11" "$Nq"
+check "11d: a noop that names another noop as its judged head fails closed -> trust" "$(dcls "$N11" "$N11d")" trust
+mknoop "$N11d" ""
+check "11e: a noop record with no delta-judged line fails closed -> trust" "$(dcls "$N11d" "$N11d")" trust
+
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"
