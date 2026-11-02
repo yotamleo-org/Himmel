@@ -185,7 +185,7 @@ function workflowTab(model, ix, ui, stats) {
   const open = hl ? ix.stageOf(hl) : ui.phase;
   const above = model.stages.flatMap((s) => s.steps).filter((id) => ix.node.get(id).step.place.startsWith("above")).map((id) => ix.num.get(id));
   return `<p class="wf-tabq"><b>Workflow tab:</b> the system, explained. It shows the path every change takes, with one measured number per phase. It is not a live monitor: nothing here shows what is running right now.</p>`
-    + `<div class="wf-band"><span class="wf-ring" aria-hidden="true"></span><div><b>Above the line: the chief's loop.</b> It is not one change, and it runs all the time: wait, read the fleet, pick, brief, start a worker. Each worker it starts enters the line at phase 3. When its shift ends, a new chief takes over the whole fleet; handing over the start and plan work still in flight is planned, not built yet. Its steps are ${above.join(", ")}, in phase 3's drill-in.</div></div>`
+    + `<div class="wf-band"><span class="wf-ring" aria-hidden="true"></span><div><b>Above the line: the chief's loop.</b> It is not one change, and it runs all the time: wait, read the fleet, pick, brief, start a worker. Each worker it starts enters the line at phase 3. When its shift ends, a new chief takes over the whole fleet. The hand-over lists the newest ten files of start, plan and design work changed in the last two days (saved grill notes, specs and plans), as short pointers only, and counts the rest. A grill that was never saved to a file does not appear. Its steps are ${above.join(", ")}, in phase 3's drill-in.</div></div>`
     + storyMap(model, ix, stats, open)
     + mapNotes()
     + walkPanel(model, ix, ui)
