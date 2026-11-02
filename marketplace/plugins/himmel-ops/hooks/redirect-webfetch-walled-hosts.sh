@@ -118,22 +118,29 @@ fi
 if [ "$log" != /dev/null ] && [ "$logok" = 1 ] && mkdir -p "$(dirname "$log")" 2>/dev/null; then
     # The project shim and the plugin lane both run this file for one deny; the
     # first to claim the deny's tool_use_id writes the row, so one deny is one row
-    # whichever lanes fire. No claim directory or no id: write (never lose a row).
+    # whichever lanes fire. No id, or a claim that cannot be made for a reason
+    # other than "already claimed": write (never lose a row). A failed append
+    # releases the claim so the other lane can still write.
     claimed=1
+    claimfile=""
     case "$callid" in
         "" | *[!A-Za-z0-9_-]*) ;;
         *)
             claims="$(dirname "$log")/.claims"
             if mkdir -p "$claims" 2>/dev/null; then
                 find "$claims" -type f -mmin +60 -delete 2>/dev/null || true
-                (set -C; : >"$claims/$callid") 2>/dev/null || claimed=0
+                if (set -C; : >"$claims/$callid") 2>/dev/null; then
+                    claimfile="$claims/$callid"
+                elif [ -e "$claims/$callid" ]; then
+                    claimed=0
+                fi
             fi
             ;;
     esac
     if [ "$claimed" = 1 ]; then
         jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg session_id "$session" --arg host "$host" \
             '{ts: $ts, session_id: $session_id, decision: "deny", host: $host}' \
-            >>"$log" 2>/dev/null || true
+            >>"$log" 2>/dev/null || { [ -z "$claimfile" ] || rm -f "$claimfile" 2>/dev/null; }
     fi
 fi
 

@@ -285,6 +285,22 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     run_shim "$(wft toolu_both3)"
     run_plugin_keep "$(wft toolu_both3)"
     assert_eq "both lanes, a second deny: its own row" 2 "$(rows)"
+
+    # An unwritable claim directory is not "already claimed": the row is written.
+    if [ "$(id -u)" != 0 ]; then
+        rm -rf "$LOG" "$TMP/.claims"
+        if ! { mkdir -p "$TMP/.claims" && chmod 555 "$TMP/.claims"; }; then setup_fail "$TMP/.claims"; fi
+        run_shim "$(wft toolu_ro1)"
+        assert_eq "unwritable claim dir: the deny still writes its row" 1 "$(rows)"
+        chmod 755 "$TMP/.claims"
+    fi
+
+    # A failed append releases the claim, so the other lane can still write.
+    rm -rf "$LOG" "$TMP/.claims"
+    mkdir "$LOG" || setup_fail "$LOG"
+    run_shim "$(wft toolu_fail1)"
+    assert_eq "failed append: the claim is released" 0 "$(find "$TMP/.claims" -type f 2>/dev/null | wc -l | tr -d ' ')"
+    rmdir "$LOG"
 else
     echo "SKIP himmel chain: no fetch-url.sh at $HIMMEL_ROOT/scripts/web"
 fi
