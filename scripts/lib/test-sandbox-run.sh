@@ -261,7 +261,8 @@ cp "$RUNNER" "$STAGE/scripts/lib/sandbox-run.sh"
 SRUNNER="$STAGE/scripts/lib/sandbox-run.sh"
 RACE="$STAGE/race"; mkdir -p "$RACE"
 staged() { (cd "$STAGE" && "$@"); }
-mkfifo "$RACE/pipe"
+# an absent path also reads as not-a-FIFO and fails to read, so the fixture must exist first.
+if ! mkfifo "$RACE/pipe" || [ ! -p "$RACE/pipe" ]; then bad 'FIFO fixture could not be created under the staged ROOT'; fi
 # shellcheck disable=SC2016  # the hook body's variables expand inside the sandbox
 OUT=$(staged bash "$SRUNNER" -- bash -c 'echo RAN; if test -p "$1"; then echo FIFO_VISIBLE; else echo FIFO_MASKED; fi; timeout 5 cat "$1" >/dev/null; echo "READ_RC=$?"' _ "$RACE/pipe" 2>&1); RC=$?
 rm -f "$RACE/pipe"
