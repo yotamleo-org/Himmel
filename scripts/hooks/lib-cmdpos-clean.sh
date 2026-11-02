@@ -109,101 +109,6 @@ short_cluster_has_O() { # short_cluster_has_O <word> <subcommand or ''>
     done
     return 1
 }
-ST_SAFE_RE='^[A-Za-z0-9_./:@+,%=][A-Za-z0-9_./:@+,%=-]*$'
-ST_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
-st_bound() {
-    local n=$1 use=$2 s=0 k=0 a b c v depth=0 bound=0 ok=0 i pb r
-    local -a fb
-    ST_BV=()
-    case "$n" in
-        [a-z]*) ;;
-        BASH* | COMP* | EPOCH* | RANDOM | SRANDOM | SECONDS | LINENO | HISTCMD | \
-            FUNCNAME | GROUPS | DIRSTACK | PIPESTATUS | PWD | OLDPWD | IFS | OPTIND | OPTARG | REPLY) return 1 ;;
-        [A-Z]*) ;;
-        *) return 1 ;;
-    esac
-    [ "$ST_SUBST" = 0 ] || return 1
-    while [ "$s" -lt "$ST_NSEG" ]; do
-        case "${ST_SEP[s]}" in ';' | nl | '&&' | '||' | '|' | '') ;; *) return 1 ;; esac
-        a=$k
-        while [ "$k" -lt "$ST_N" ] && [ "${ST_S[k]}" = "$s" ]; do k=$((k + 1)); done
-        b=$k c=$a
-        while [ "$c" -lt "$b" ] && [ -n "${ST_RO[c]}" ]; do c=$((c + 1)); done
-        if [ "$c" -lt "$b" ] && [ "${ST_W[c]}${ST_Q[c]}" = do0 ]; then
-            [ "$depth" -gt 0 ] || return 1
-            c=$((c + 1))
-        fi
-        # VAR= words, each checked; a segment of nothing else binds the name
-        i=$c pb=0
-        while [ "$i" -lt "$b" ] && { [ -n "${ST_RO[i]}" ] || [ "${ST_A[i]}" = 1 ]; }; do
-            if [ "${ST_A[i]}" = 1 ]; then
-                v=${ST_W[i]#*=}
-                case "${ST_W[i]%%=*}" in
-                    IFS) return 1 ;;
-                    "$n") [ "${ST_X[i]}${ST_G[i]}" = 00 ] && [[ $v =~ $ST_SAFE_RE ]] || return 1
-                        ST_BV+=("$v")
-                        if [ "$c" = "$a" ] && [ "$depth" = 0 ] && [ "${ST_SEP[s]}" != '|' ] && [ "$s" -lt "$use" ] \
-                            && { [ "$s" = 0 ] || [ "${ST_SEP[s - 1]}" = ';' ] || [ "${ST_SEP[s - 1]}" = nl ]; }; then
-                            pb=1
-                        fi ;;
-                esac
-            fi
-            i=$((i + 1))
-        done
-        # a redirect on the binding segment can fail, and zsh then skips the
-        # assignment (bash does not): the proof must hold under both, so a
-        # segment with any redirect word binds nothing
-        r=$a
-        while [ "$r" -lt "$b" ] && [ -z "${ST_RO[r]}" ]; do r=$((r + 1)); done
-        [ "$r" -ge "$b" ] || pb=0
-        [ "$i" -lt "$b" ] || [ "$pb" = 0 ] || bound=1
-        [ "$i" -lt "$b" ] && c=$i || c=-1
-        if [ "$c" -ge 0 ]; then
-            [ "${ST_Q[c]}${ST_X[c]}${ST_G[c]}" = 000 ] || return 1
-            case "${ST_W[c]}" in
-                for)
-                    [ "$((c + 3))" -lt "$b" ] && [ "${ST_W[c + 2]}${ST_Q[c + 2]}" = in0 ] || return 1
-                    case "${ST_SEP[s]}" in ';' | nl) ;; *) return 1 ;; esac
-                    [[ ${ST_W[c + 1]} =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] && [ "${ST_Q[c + 1]}" = 0 ] || return 1
-                    [ "${ST_W[c + 1]}" != IFS ] || return 1
-                    fb[depth]=0
-                    if [ "${ST_W[c + 1]}" = "$n" ]; then
-                        fb[depth]=1
-                        i=$((c + 3))
-                        while [ "$i" -lt "$b" ]; do
-                            [ -z "${ST_RO[i]}" ] && [ "${ST_X[i]}${ST_G[i]}" = 00 ] && [[ ${ST_W[i]} =~ $ST_SAFE_RE ]] || return 1
-                            ST_BV+=("${ST_W[i]}")
-                            i=$((i + 1))
-                        done
-                    fi
-                    depth=$((depth + 1)) ;;
-                done) [ "$depth" -gt 0 ] || return 1; depth=$((depth - 1)) ;;
-                git | echo) ;;
-                *) case "$PR_READERS" in *" ${ST_W[c]} "*) ;; *) return 1 ;; esac ;;
-            esac
-        fi
-        if [ "$s" = "$use" ]; then
-            ok=$bound i=0
-            while [ "$i" -lt "$depth" ]; do [ "${fb[i]}" = 0 ] || ok=1; i=$((i + 1)); done
-        fi
-        s=$((s + 1))
-    done
-    [ "$depth" = 0 ] && [ "$ok" = 1 ]
-}
-st_bound_word() {
-    local t=${ST_W[$1]} r p q v i
-    [ "${ST_G[$1]}" = 0 ] || return 1
-    case "${ST_W[$1 - 1]:-}" in -c | --config-env) return 1 ;; esac
-    while [[ $t =~ $ST_REF_RE ]]; do
-        r=${BASH_REMATCH[2]#\{} p=${BASH_REMATCH[1]} q=${BASH_REMATCH[3]}
-        st_bound "${r%\}}" "${ST_S[$1]}" || return 1
-        v=${ST_BV[0]}
-        for i in "${ST_BV[@]}"; do [ "$i" = "$v" ] || [ "${2:-0}" = 1 ] || return 1; done
-        t="$p$v$q"
-    done
-    case "$t" in *'$'*) return 1 ;; esac
-    REPLY=$t
-}
 st_procsub_only() {
     local s=0 h k w n=0
     [ "$ST_SUBST$ST_HEREDOC" = 10 ] || return 1
@@ -236,11 +141,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
     while [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; do
         w=${ST_W[j]}
         if [ -n "${ST_RO[j]}" ]; then j=$((j + 1)); continue; fi
-        # a $NAME the command bound to safe literals reads as its value; any
-        # of several values reads alike only as a -C directory (dir=1)
-        if [ "${ST_X[j]}${ST_G[j]}" = 10 ] && st_bound_word "$j" "$dir"; then
-            w=$REPLY
-        elif [ "${ST_X[j]}${ST_G[j]}" != 00 ]; then
+        if [ "${ST_X[j]}${ST_G[j]}" != 00 ]; then
             # an expanded word that can begin with `-` may become
             # an exec-capable option (`-O{bash,x}`, `{-O,x}bash`, `--ext-d?ff`).
             # After --, words are pathspec operands, not options.
