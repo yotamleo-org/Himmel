@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readRoadmap } from "../roadmap";
-import { renderKanban, renderRoadmap } from "../public/roadmap.js";
+import { renderBoard, renderKanban, renderRoadmap } from "../public/roadmap.js";
 import { navLinks } from "../public/nav.js";
 import { startServer } from "../server";
 import { ISSUE_LIMIT, trackerSources } from "../tracker-sources";
@@ -115,12 +115,11 @@ test("trackerSources: an explicit TRACKER=local with an empty store and a Jira m
   expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d)).toEqual([]);
 });
 
-test("trackerSources: TRACKER=none is listed as none, so the rail keeps Roadmap and Kanban and they can say so", async () => {
+test("trackerSources: TRACKER=none is listed as none, so the rail keeps the Board and it can say so", async () => {
   const s = scratch();
   expect(await trackerSources({ ...s.env, TRACKER: "none" }, s.d)).toEqual(["none"]);
   const labels = navLinks({ here: "console", token: TOKEN, current: "config", sources: ["none"] }).map((l: { label: string }) => l.label);
-  expect(labels).toContain("Kanban");
-  expect(labels).toContain("Roadmap");
+  expect(labels).toContain("Board");
 });
 
 test("TRACKER=none: /api/roadmap and both pages show the explicit no-tracker state, not an empty board", async () => {
@@ -129,7 +128,7 @@ test("TRACKER=none: /api/roadmap and both pages show the explicit no-tracker sta
   const r = await get("/api/roadmap");
   expect(r.source).toBe("none");
   expect(r.tickets).toEqual([]);
-  for (const html of [renderKanban(r, { hideDone: false, writes: true }), renderRoadmap(r, { writes: true })]) {
+  for (const html of [renderKanban(r, { hideDone: false, writes: true }), renderRoadmap(r, { writes: true }), renderBoard(r, { writes: true }, null)]) {
     expect(html).toContain("No tracker is configured");
     expect(html).not.toContain("rm-board");
     expect(html).not.toContain("Jira mirror");
@@ -189,12 +188,12 @@ test("the Roadmap page says when the issue list is truncated, as the Kanban does
   expect(renderRoadmap({ ...r, truncated: false }, { writes: false })).not.toContain("older ones are missing");
 });
 
-test("the rail hides Roadmap and Kanban when the sources are empty, keeps them otherwise or while unknown", () => {
+test("the rail hides the Board when the sources are empty, keeps it otherwise or while unknown", () => {
   const labels = (sources?: string[]) => navLinks({ here: "console", token: TOKEN, current: "config", sources }).map((l: { label: string }) => l.label);
   expect(labels([])).toEqual(["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Workflow", "Docs"]);
-  expect(labels(["github"])).toContain("Kanban");
-  expect(labels(["jira"])).toContain("Roadmap");
-  expect(labels(undefined)).toContain("Roadmap");
+  expect(labels(["github"])).toContain("Board");
+  expect(labels(["jira"])).toContain("Board");
+  expect(labels(undefined)).toContain("Board");
 });
 
 test("GitHub issues map to the roadmap: state and labels to columns, milestone to version, theme- label to theme, #number ids", () => {

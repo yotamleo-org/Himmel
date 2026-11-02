@@ -8,17 +8,17 @@ export const PAGES = [
   { id: "health", label: "Health" },
   { id: "toolhealth", label: "Tool health" },
   { id: "config", label: "Configure" },
-  { id: "roadmap", label: "Roadmap" },
-  { id: "kanban", label: "Kanban" },
+  { id: "board", label: "Board" },
   { id: "workflow", label: "Workflow" },
 ];
-const CHIEF = ["shift", "report", "config", "health", "toolhealth", "roadmap", "kanban", "workflow"];
+const CHIEF = ["shift", "report", "config", "health", "toolhealth", "board", "workflow"];
 
 // Settings and Setup became one Configure page. The old ids (and the himmelctl install hand-off's page=setup) still land
 // on it: Setup with the Secrets tile picked. TILES are the Configure page's four groups. (app.js maps the #/setup route
 // the same way: tests/slow.test.ts runs it without this file's exports.)
 export const TILES = ["secrets", "review", "tracker", "scope"];
-const OLD_PAGE = { setup: { id: "config", tile: "secrets" }, configure: { id: "config" } };
+// Roadmap and Kanban became the one Board page: their old ids land on it.
+const OLD_PAGE = { setup: { id: "config", tile: "secrets" }, configure: { id: "config" }, roadmap: { id: "board" }, kanban: { id: "board" } };
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
@@ -35,8 +35,8 @@ export function pageHref({ here, token, id, run }) {
   return here === "console" ? "#/" + id : "/" + frag({ t: token, page: id });
 }
 
-// Roadmap and Kanban read a tracker; with none the UI can read they are not offered.
-const TRACKER_PAGES = ["roadmap", "kanban"];
+// The Board reads a tracker; with none the UI can read it is not offered.
+const TRACKER_PAGES = ["board"];
 
 // run: the session the run page shows, which adds a Run entry.
 // sources: GET /api/sources; an empty list hides the tracker pages, and not knowing it yet (undefined) hides nothing.

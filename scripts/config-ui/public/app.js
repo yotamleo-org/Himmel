@@ -2,7 +2,7 @@
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
-import { renderKanban, renderRoadmap } from "/roadmap.js";
+import { renderBoard } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
@@ -56,9 +56,11 @@ let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commi
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
-const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
-let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides Roadmap and Kanban
-const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no roadmap or board to show. Roadmap and Kanban read the local tracker store (TRACKER=local, once it holds an item), a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
+let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains }, null until read
+// writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, tab: null, v: null, at: null, chain: null };
+let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides the Board
+const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no board to show. The Board reads the local tracker store (TRACKER=local, once it holds an item), a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 let shift = null, shiftGen = 0, shiftAt = 0; // GET /api/shift, null until read; shiftAt throttles the rail badge's reads
 const shiftUi = { id: null, all: false }; // from the route: #/shift/<id>?all=1
@@ -68,8 +70,7 @@ const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
-  { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
-  { id: "kanban", label: "Kanban", needsFeed: false, render: trackerPage(() => renderKanban(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
+  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
@@ -90,7 +91,16 @@ function route() {
     const q = u.step ? "step=" + encodeURIComponent(u.step) : u.phase ? "phase=" + u.phase : "";
     history.replaceState(null, "", location.pathname + "#/workflow" + (q ? "?" + q : ""));
   }
-  const m = /^#\/(\w+)(?:\/([^/?#]+))?(?:\?([^#]*))?/.exec(location.hash) || [];
+  // Roadmap and Kanban became the Board page: their routes land on it, #/roadmap/<v> keeping the version, #/kanban every version.
+  let hash = location.hash;
+  const alias = /^#\/(roadmap|kanban)(?:\/([^/?#]+))?/.exec(hash);
+  if (alias) {
+    let v = alias[1] === "kanban" ? "all" : null;
+    if (alias[2]) { try { v = decodeURIComponent(alias[2]); } catch (_) { v = alias[2]; } }
+    hash = "#/board" + (v ? "?v=" + encodeURIComponent(v) : "");
+    history.replaceState(null, "", location.pathname + location.search + hash);
+  }
+  const m = /^#\/(\w+)(?:\/([^/?#]+))?(?:\?([^#]*))?/.exec(hash) || [];
   const old = Object.hasOwn(OLD_ROUTES, m[1]);
   const id = old ? "config" : m[1];
   currentPage = PAGES.find((p) => p.id === id) || PAGES[0];
@@ -111,9 +121,8 @@ function route() {
     if (healthView.project !== was) { otherFeed = null; otherGen++; } // never show the last project's rows under this one's name
   }
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
-  let ver = null;
-  if (currentPage.id === "roadmap" && m[2]) { try { ver = decodeURIComponent(m[2]); } catch (_) { ver = m[2]; } }
-  roadmapUi.ver = ver;
+  const bq = new URLSearchParams(currentPage.id === "board" ? m[3] || "" : "");
+  roadmapUi.tab = bq.get("tab"); roadmapUi.v = bq.get("v"); roadmapUi.at = bq.get("at");
   shiftUi.id = null;
   shiftUi.all = new URLSearchParams(m[3] || "").get("all") === "1";
   const asked_day = new URLSearchParams(m[3] || "").get("day");
@@ -207,7 +216,7 @@ async function loadSources() {
     if (r.ok) sources = (await r.json()).sources;
   } catch (_) { /* unknown stays unknown: nothing is hidden */ }
   renderPages();
-  if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
+  if (currentPage.id === "board") paint();
 }
 
 async function loadFleet() {
@@ -561,7 +570,19 @@ async function loadRoadmap() {
   if (gen !== roadmapGen) return;
   roadmap = data;
   roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
-  if (currentPage.id === "roadmap" || currentPage.id === "kanban") paint();
+  if (currentPage.id === "board") paint();
+}
+// the Board's drift summary and chain read: each part absent on its own, so a missing registry never hides the lanes.
+async function loadBoard() {
+  const gen = ++boardGen;
+  let data;
+  try {
+    const r = await fetch("/api/board", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    data = r.ok ? await r.json() : null;
+  } catch (_) { data = null; }
+  if (gen !== boardGen) return;
+  boardExtras = data || { drift: { state: "absent", reason: "the board read failed" }, chains: { state: "absent", reason: "the board read failed" } };
+  if (currentPage.id === "board") paint();
 }
 // a drop or a Sector select goes to Jira, or to the local tracker store for a local card, through the server. The board is
 // redrawn from the server's data either way: on a refusal nothing local changed, so the card is back where it was and the
@@ -628,6 +649,7 @@ document.addEventListener("change", (e) => {
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
   if (e.target.dataset.rs === "report_day" && state.reports && state.reports.draft) { state.reports.draft.report_day = e.target.value; state.reports.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
+  if (e.target.dataset.rmChain !== undefined) { roadmapUi.chain = e.target.value || null; return paint(); }
   const f = e.target.dataset.rmFilter;
   if (f) { roadmapUi[f] = e.target.value === "" ? null : Number(e.target.value); return paint(); }
   const th = e.target.dataset.th;
@@ -700,7 +722,7 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth(true);
   if (b.dataset.act && b.dataset.act.startsWith("th-")) return void toolHealthClick(b);
-  if (b.dataset.act === "refresh-roadmap") return void loadRoadmap();
+  if (b.dataset.act === "refresh-roadmap") return void (loadRoadmap(), loadBoard());
   if (b.dataset.act === "refresh-shift") return void loadShift();
   if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "reports-save") return void saveReportSettings();

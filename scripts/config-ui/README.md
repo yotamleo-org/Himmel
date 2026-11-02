@@ -170,13 +170,26 @@ validated, saved through `luna-config.js`): `report_day` (`local` or `utc`), `sh
 `20:00`) and `shift_min_run_h` (4). A new `report_day` applies from the next report on; past reports keep the window they
 were made with. A closed shift also stores its Waiting rows as they stood at a clock cut.
 
-## Roadmap page (`#/roadmap`)
+## Board page (`#/board`)
 
-The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
-request: no static render, no republish. The page draws release panels, the drift counts and trend, the worker to Jira
-sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<version>`, that version's kanban (filter by
-Sector); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
-hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
+The Board page (HIMMEL-8678) replaced the Roadmap and Kanban pages; the rail has the one Board entry, and the old
+routes land on it: `#/roadmap` is `#/board`, `#/roadmap/<version>` is `#/board?v=<version>`, `#/kanban` is
+`#/board?v=all`, and the AG-UI rail's `page=roadmap|kanban` landings open it. `GET /api/roadmap` (token-gated, GET only)
+reads its sources live on every request: no static render, no republish. The page draws a drift banner, a version strip
+(one tile per version: done, in flight and to do counts, what is still open on a released version), a "waits for you"
+link and a "shipped" link, and three tabs (`?tab=roadmap|chains|tidy`). **Roadmap** is the status lanes for the running
+version (`?v=<version>` picks another, `?v=all` every version) with the Sector, Chain and Hide Done filters; dragging a
+card and the Sector select write as before (see Writes). **Chains** lists each chain of the chain registry with its steps
+and each ticket's state. **Tidy up** carries the saved status-drift rows, then the Drift, Worker to Jira sync and
+Librarian sections unchanged. An absent mirror shows its reason instead of a board.
+
+`GET /api/board` (token-gated, GET only, read-only, `board.ts`) adds the two reads the Board needs beside `/api/roadmap`:
+the saved status-drift summary (`chief-kit/drift-summary.mjs` over `focus-drift.txt`, named by `HIMMEL_FOCUS_DRIFT` or
+`$TRACKER_HANDOVERS_DIR/focus-drift.txt`) and the chain read (`chief-kit/chain-state.mjs`, over the registry
+`HIMMEL_CHAIN_REGISTRY` names, a `himmel.chain-registry/1` file). A script is started only when its input is named;
+otherwise that part answers `{state: "absent", reason}` and the page says so in words (drift: not read, waits for you:
+not read, no Chains tab content): it never shows a made-up count. Not on the Board yet: the ticket drawer, hold writes,
+keyboard moves, the No-version lane, the Chains map and Why panel, and the Refresh button for the drift run.
 
 The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
 `graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files
@@ -191,8 +204,8 @@ route, `#/workflow&w=<id>&s=<n>`.
 - **tracker.py** stays the CLI/offline renderer until the page reaches parity; the semantics here are a port of it.
 - **Sync plan.** `legSync` lists the Jira CLI commands that mirror each worker marker onto its ticket (flag and comment
   a stuck worker, clear the flag on resume, note READY/WRAPPED once). The chief kit is the one writer; workers never
-  write Jira and the sync plan never does; only the Kanban writes below change Jira from this page.
-- **Writes (HIMMEL-5491).** The Kanban boards are writable: dragging a card to another column transitions the ticket in
+  write Jira and the sync plan never does; only the lane writes below change Jira from this page.
+- **Writes (HIMMEL-5491).** The Board's lanes are writable: dragging a card to another column transitions the ticket in
   Jira, and the per-card Sector select sets its Sector with `jira edit <key> --sector` (the CLI checks the name against
   the live option list and has no way to clear one, so "no sector" is not offered as a write). Both go through
   `POST /api/roadmap/write` (token gate, same-origin and JSON checks, the machine write lock, one audit row per write),
@@ -201,7 +214,7 @@ route, `#/workflow&w=<id>&s=<n>`.
   incremental `jira mirror` so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
   card back and shows the reason above the board.
 - **Local tracker (HIMMEL-5495).** With `TRACKER=local` (or no `TRACKER` and no `JIRA_PROJECT_KEY`, as the resolver
-  `project-mode.mjs` decides), Roadmap and Kanban read the local tracker store through the tracker seam
+  `project-mode.mjs` decides), the Board reads the local tracker store through the tracker seam
   (`local-tracker.ts` runs `scripts/lib/tracker.sh` as an argv child, never a shell string; the store is `TRACKER_STORE`,
   else `<handover root>/<user>/<repo>/tracker`). Cards keep their generated `LOCAL-<n>` id, `fix_version` is the version
   (`(no version)` for none) and the item's `sector:` line the Sector; there is no plan, drift or worker sync. A drop posts
@@ -209,13 +222,13 @@ route, `#/workflow&w=<id>&s=<n>`.
   "new sector…" option) posts `{key, backend: "local", sector}` and runs `tracker_sector <id> <name>`. Same token gate,
   write lock and audit row as a Jira write (`action: tracker-transition|tracker-sector`); no Jira CLI runs. The seam
   refuses a status off its ladder (400, the reason in `output`), an absent item answers 404, and a move the seam will
-  not make (out of Done) answers 409. An empty store is not a source, so the rail hides both pages. The tracker is read
+  not make (out of Done) answers 409. An empty store is not a source, so the rail hides the Board. The tracker is read
   from the project the server was started in (its working directory), not the checkout the UI is served from. A Jira write
   (`{key, status|sector}` without `backend: "local"`) answers 403 unless the project's tracker is Jira: a local or none
   project, or any other non-empty `TRACKER` (a typo, `Local`, `github` with gh logged out), is refused whatever Jira
   mirror is lying around.
-- **No tracker.** With `TRACKER=none`, `GET /api/sources` lists `none`: the rail keeps Roadmap and Kanban and both pages
-  say no tracker is configured instead of drawing an empty board.
+- **No tracker.** With `TRACKER=none`, `GET /api/sources` lists `none`: the rail keeps the Board and it says no tracker
+  is configured instead of drawing an empty board.
 - **Sector grouping (HIMMEL-8379).** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
   fallback, then the plan overlay; a ticket with none is under "(no sector)". The wire keys (`themes`, `theme`, `unthemed`)
   keep their names, the page shows Sector.
@@ -518,8 +531,8 @@ imports, so its suite runs in CI without an install.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
   default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
-  The rail lists Roadmap and Kanban for `jira`, `github` and `none`, not for an
-  empty `local` store; with `none` a direct landing on Kanban says no tracker is
+  The rail lists the Board for `jira`, `github` and `none`, not for an
+  empty `local` store; with `none` a direct landing on the old Kanban route (it lands on the Board) says no tracker is
   configured, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
@@ -533,8 +546,8 @@ imports, so its suite runs in CI without an install.
   in order, one open at a time, and the Check this install strip under them (hidden while a tile is open).
   Every Project scope row shows its command, when it takes effect and a Learn
   more link to the docs site, the Tracker tile points commit rules at
-  `~/.himmel/himmel.conf`, a switch previews its dry-run first, and Roadmap and
-  Kanban follow the tracker source. Triage and the inventory render on Health.
+  `~/.himmel/himmel.conf`, a switch previews its dry-run first, and the Board
+  follows the tracker source. Triage and the inventory render on Health.
 - Fleet cap and reviewer settings (`fleet-cap.ts`, `review-gate.ts`; `GET` and `POST
   /api/fleet-cap`, `/api/review-gate`): the cap goes to the station `.env`, a reviewer's
   model and effort to the `critics.local.json` overlay only. Tests:

@@ -30,6 +30,7 @@ import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
+import { readBoardExtras } from "./board";
 import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSetting, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
@@ -667,7 +668,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json(redactOut(readReviewers(env)));
       }
-      // the tracker sources the rail gates Roadmap and Kanban on.
+      // the tracker sources the rail gates the Board on.
       if (path === "/api/sources") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json({ sources: await trackerSources(env, trackerRoot) });
@@ -694,6 +695,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
         const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers });
         return json(redactOut({ ...r, sync: legSync(r.tickets) }));
+      }
+      // the Board page's two extra reads: the saved status-drift summary and the chain read. Read-only; each is absent, with the
+      // reason, unless its input is named in the environment (board.ts).
+      if (path === "/api/board") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return json(redactOut(await readBoardExtras(env)));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {

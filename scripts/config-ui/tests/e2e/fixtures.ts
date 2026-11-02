@@ -65,10 +65,36 @@ export type Alert = { labels: Record<string, string>; annotations: Record<string
 // Seams. ledger: rows written to $HOME/.himmel/cadence-ledger.jsonl. handover: a temp root
 // with one fleet manifest + one worker doc ending in the given bullet. prom: a loopback stub of /api/v1/alerts
 // (absent: an unused port, so Prometheus is refused). feedDelayMs: the feed stub sleeps before answering.
-// tracker: the source Roadmap and Kanban read. "jira" (default) seeds a one-ticket Jira mirror, "github" a gh stub answering fake
+// tracker: the source the Board reads. "jira" (default) seeds a one-ticket Jira mirror, "github" a gh stub answering fake
 // issues, "local" and "none" neither; TRACKER is always set so the operator's own git config never decides.
 export type TrackerKind = "jira" | "local" | "github" | "none";
-export type BootOpts = { ledger?: object[]; handover?: { bullet: string }; prom?: { alerts: Alert[] }; feedDelayMs?: number; tracker?: TrackerKind };
+// board: seeds the Board page's sources on top of the jira tracker: a populated mirror over three versions, one chain
+// (the first ticket blocks the second), and a saved drift run with one real and one transient row. Never touches a real path.
+export type BootOpts = { ledger?: object[]; handover?: { bullet: string }; prom?: { alerts: Alert[] }; feedDelayMs?: number; tracker?: TrackerKind; board?: boolean };
+const boardIssue = (n: number, status: string, cat: string, fv: string, title: string, blockedBy: string[] = [], sector = "") =>
+  ["---", `key: "HIMMEL-${n}"`, `type: "Task"`, `status: ${JSON.stringify(status)}`, `statusCategory: ${JSON.stringify(cat)}`, `priority: "Medium"`, `labels: []`,
+    `fixVersions: [${JSON.stringify(fv)}]`, `parent: null`, ...(sector ? [`sector: ${JSON.stringify(sector)}`] : []), `created: "2026-10-01T00:00:00.000+0000"`,
+    `updated: "2026-10-0${Math.min(n, 9)}T10:00:00.000+0000"`, `resolution: null`, "links:", "  blocks: []", `  blocked_by: ${JSON.stringify(blockedBy)}`, "  relates: []",
+    "---", "", `# HIMMEL-${n}: ${title}`, "", "## Description", "", "x", "", "## Comments", "", "_(none)_", ""].join("\n");
+function seedBoard(dir: string, mirror: string): Record<string, string> {
+  const put = (n: number, ...a: [string, string, string, string, string[]?, string?]) => writeFileSync(join(mirror, `HIMMEL-${n}.md`), boardIssue(n, ...a));
+  put(11, "Done", "Done", "v1.1.2", "Old shipped work");
+  put(12, "To Do", "To Do", "v1.1.2", "Left open on a released version");
+  put(1, "Done", "Done", "v1.1.3", "First chain step", [], "Visibility");
+  put(2, "To Do", "To Do", "v1.1.3", "Second chain step", ["HIMMEL-1"], "Visibility");
+  put(3, "In Progress", "In Progress", "v1.1.3", "Work in flight", [], "Safety");
+  put(4, "In Review", "In Progress", "v1.1.3", "Waiting for review", [], "Safety");
+  put(5, "To Do", "To Do", "v1.1.3", "Not in any chain");
+  put(21, "To Do", "To Do", "v1.1.4", "Next version work");
+  writeFileSync(mirror + ".versions.tsv", "v1.1.2\ttrue\t2026-10-19\nv1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
+  const registry = join(dir, "chain-registry.json"), drift = join(dir, "focus-drift.txt"), known = join(dir, "known-checker-bugs.tsv"), conf = join(dir, "himmel-conf");
+  mkdirSync(conf, { recursive: true });
+  writeFileSync(registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }] }));
+  writeFileSync(drift, "VERSION-DRIFT HIMMEL-12 Open on released v1.1.2 | writer=release-manager | fix=jira release request v1.1.3 --verb INTAKE --key HIMMEL-12\n"
+    + "WORKER-COMMENT HIMMEL-3 the record hash differs from its class hash | writer=sweep | fix=none\nsdrift=2:abc\n");
+  writeFileSync(known, "# checker\tclass\tkey\tedited-at\n");
+  return { HIMMEL_FOCUS_DRIFT: drift, HIMMEL_CHAIN_REGISTRY: registry, DRIFT_SUMMARY_KNOWN: known, HIMMEL_CONFIG_DIR: conf };
+}
 export const GH_ISSUES = [
   { number: 21, title: "Open gh issue", state: "OPEN", stateReason: "", labels: [], milestone: { number: 1, title: "m1" }, updatedAt: "2026-10-01T00:00:00Z" },
   { number: 22, title: "Closed gh issue", state: "CLOSED", stateReason: "COMPLETED", labels: [], milestone: { number: 1, title: "m1" }, updatedAt: "2026-10-02T00:00:00Z" },
@@ -103,6 +129,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   const tracker = o.tracker ?? "jira", mirror = join(dir, "mirror"), gh = join(dir, "gh");
   mkdirSync(mirror, { recursive: true });
   if (tracker === "jira") writeFileSync(join(mirror, "HIMMEL-1.md"), '---\nkey: "HIMMEL-1"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: []\nfixVersions: ["v1.1.3"]\nupdated: "2026-10-01T00:00:00.000+0000"\nresolution: null\n---\n\n# HIMMEL-1: e2e ticket\n');
+  const boardEnv = o.board ? seedBoard(dir, mirror) : {};
   const store = join(dir, "tracker-store"); // the local backend reads an empty store here; without it the seam needs a user slug, which CI lacks
   if (tracker === "local") mkdirSync(store, { recursive: true });
   if (tracker === "github") {
@@ -127,7 +154,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   const env: Record<string, string | undefined> = {
     ...process.env, HOME: home, CONFIG_UI_HIMMELCTL: join(__dirname, "e2e-stub.js"), CONFIG_UI_IDLE_MS: "300000",
     HIMMEL_REPORT_CADENCE_ROOT: cad, E2E_FEED: feed, STUB_ARGV: argv, STUB_STATE: state,
-    TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL", ...(tracker === "github" ? { GH_CMD: gh } : {}), ...(tracker === "local" ? { TRACKER_STORE: store } : {}),
+    ...boardEnv, TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL", ...(tracker === "github" ? { GH_CMD: gh } : {}), ...(tracker === "local" ? { TRACKER_STORE: store } : {}),
     HANDOVER_DIR: hroot, HIMMEL_PROMETHEUS_URL: promUrl, HIMMEL_FLOW_EXPORTER_PORT: "1", E2E_FEED_DELAY_MS: String(o.feedDelayMs ?? 0),
   };
   if (!env.KSTUB_STORE) env.HIMMEL_SECRETS_KEYRING = "off"; // no spec reads the operator's keyring; the Setup account spec brings its own stub
