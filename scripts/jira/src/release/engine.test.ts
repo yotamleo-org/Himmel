@@ -1392,7 +1392,7 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
 
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
     declared();
-    const { spec: p, plan } = bucketSpec('marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh');
+    const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
     const r = sign(sctx(), ['K-1'], p, { plan });
     expect(r.keys).toEqual(['K-1']);
     expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
@@ -1402,7 +1402,7 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     declared();
     const bad = bucketSpec('scripts/no-such-file.sh');
     expect(() => sign(sctx(), ['K-1'], bad.spec, { plan: bad.plan })).toThrow(/cites scripts\/no-such-file\.sh, which does not exist/);
-    const ok = bucketSpec('marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh');
+    const ok = bucketSpec('docs/handover/running-a-chief.md');
     writeFileSync(ok.plan, 'plan\n\n- Task 1: I1 is covered somewhere.\n');
     expect(() => sign(sctx(), ['K-1'], ok.spec, { plan: ok.plan })).toThrow(/I1 has no plan line naming its acceptance test/);
     expect(readOperatorRecords('spec', specEnv())).toEqual([]);
@@ -1410,7 +1410,7 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
 
   it('a missing plan file is refused at signing', () => {
     declared();
-    const { spec: p } = bucketSpec('marketplace/plugins/himmel-ops/scripts/minerva-spec-gate.sh');
+    const { spec: p } = bucketSpec('docs/handover/running-a-chief.md');
     expect(() => sign(sctx(), ['K-1'], p, { plan: join(root, 'bucket', 'plans', 'absent.md') }))
       .toThrow(/release operator spec: plan not found: .*absent\.md/);
   });
