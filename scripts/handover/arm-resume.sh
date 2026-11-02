@@ -248,9 +248,11 @@
 #      error: it exits 0 without arming (the limit-resume key). A pair whose
 #      arm never fired (cancelled, reaped) re-arms.
 #   77 test-run refused — a test on the station tried to install a real crontab
-#      entry or at job (scripts/lib/test-run-guard, exit 77); nothing was
-#      scheduled. Run the suite on a test VM, or put a stub crontab/at on PATH.
-#      --dry-run is exempt.
+#      entry or at job, or (hard removal only) to remove a superseded one
+#      (scripts/lib/test-run-guard, exit 77); nothing was scheduled or removed.
+#      A soft removal, run after the new arm stands, refuses with a WARN and
+#      leaves the old entry in place instead of exiting. Run the suite on a
+#      test VM, or put a stub crontab/at on PATH. --dry-run is exempt.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
