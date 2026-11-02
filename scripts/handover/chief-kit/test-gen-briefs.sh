@@ -699,6 +699,22 @@ lacks "the adopter brief names no jira-himmel search" "$AB" "-c jira-himmel"
 lacks "the adopter brief names no worker-graph lookup" "$AB" "worker-graph.sh"
 bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-adp.err"; rc=$?
 [ "$rc" = 0 ] && pass "the adopter brief passes brief-lint.sh" || fail "adopter brief brief-lint rc=$rc: $(cat "$WORK/lint-adp.err")"
+# A salus-marked repo (a .salus marker, or a phi-roots entry) searches nothing: a query would send the ticket title off the machine.
+SAL="$WORK/salus-repo"; git init -q "$SAL"; : > "$SAL/.salus"
+rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/sal" --repo "$SAL" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/sal.out" 2>"$WORK/sal.err" || rc=$?
+[ "$rc" = 0 ] && pass "a .salus-marked repo generates (rc 0)" || fail "salus repo rc=$rc: $(cat "$WORK/sal.err")"
+SB="$(tr '\n' ' ' < "$WORK"/hr/tester/sal/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null | tr -s ' ')"
+lacks "the salus brief names no luna search" "$SB" "query -c luna"
+lacks "the salus brief names no jira-himmel search" "$SB" "-c jira-himmel"
+lacks "the salus brief names no worker-graph lookup" "$SB" "worker-graph.sh"
+has "the salus brief says in words that it searches nothing" "$SB" "no notes search"
+bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/sal/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-sal.err"; rc=$?
+[ "$rc" = 0 ] && pass "the salus brief passes brief-lint.sh" || fail "salus brief brief-lint rc=$rc: $(cat "$WORK/lint-sal.err")"
+PHI="$WORK/phi-repo"; git init -q "$PHI"; mkdir -p "$WORK/home/.config/claude-codex"; printf '%s\n' "$PHI" > "$WORK/home/.config/claude-codex/phi-roots"
+rc=0; HOME="$WORK/home" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/phi" --repo "$PHI" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/phi.out" 2>"$WORK/phi.err" || rc=$?
+PB="$(tr '\n' ' ' < "$WORK"/hr/tester/phi/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+has "a phi-roots repo says it searches nothing" "$PB" "no notes search"
+lacks "and names no luna search" "$PB" "query -c luna"
 ADP2="$WORK/adapter2"; git init -q "$ADP2"
 rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp2" --repo "$ADP2" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp2.err") || rc=$?
 has "an adopter --no-worktree refusal prints himmel's _new-worktree.sh line, not a worktree.sh the adopter lacks" "$(cat "$WORK/adp2.err")" "$KIT/scripts/_new-worktree.sh fix/himmel-9001-plain-fix --no-install"

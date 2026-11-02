@@ -212,6 +212,10 @@ def search_fields(worker):
 
 
 def search_directive(worker, ctx):
+    if ctx.get('salus'):
+        # A query leaves the machine (embedding and rerank send the text to a provider), which scripts/guardrails/egress-matrix.json denies for a salus path.
+        return ('This repo is salus-marked (PHI): no notes search and no graph lookup, because a query would send text off this machine. '
+                'Your Results carry a `graph-qmd: n/a, salus-marked repo` bullet saying so.')
     q, s = search_fields(worker)
     qmd = shlex.quote(ctx['kit'] + '/scripts/lib/qmd-bounded.sh')
     notes = '`bash %s query -c luna "%s"` (specs, audits and decisions' % (qmd, q)
@@ -1046,6 +1050,32 @@ template_version: 3
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
 
+def salus_marked(repo):
+    # The check scripts/claude-codex runs: a .salus or .salus-profile marker on the repo or an ancestor, or a repo inside (or holding) a phi-roots entry.
+    d = os.path.realpath(repo)
+    top = d
+    while True:
+        if os.path.lexists(os.path.join(top, '.salus')) or os.path.lexists(os.path.join(top, '.salus-profile')):
+            return True
+        up = os.path.dirname(top)
+        if up == top:
+            break
+        top = up
+    for cfg in ('claude-codex', 'claude-glm'):
+        try:
+            lines = open(os.path.join(os.path.expanduser('~'), '.config', cfg, 'phi-roots')).read().splitlines()
+        except OSError:
+            continue
+        for root in lines:
+            root = root.strip().rstrip('/')
+            if not root:
+                continue
+            root = os.path.realpath(root).rstrip('/')
+            if root and ((d + '/').startswith(root + '/') or (root + '/').startswith(d + '/')):
+                return True
+    return False
+
+
 def is_adapter(repo):
     # An adopted repo is a git checkout with no chief-kit of its own: himmel's scripts must run for it.
     return os.path.exists(os.path.join(repo, '.git')) and not os.path.exists(os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'headed-arm-worker.sh'))
@@ -1181,7 +1211,7 @@ def main():
     deadline = a.deadline or str(int(datetime.now().timestamp()) + 43200)
     adapter = is_adapter(a.repo)
     kit = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..')) if adapter else a.repo
-    ctx = dict(repo=a.repo, kit=kit, adapter=adapter, base=a.base, chief=a.chief, date=a.date, hroot=a.handover_root, work_dir=work_dir,
+    ctx = dict(repo=a.repo, kit=kit, adapter=adapter, salus=salus_marked(a.repo), base=a.base, chief=a.chief, date=a.date, hroot=a.handover_root, work_dir=work_dir,
                deadline=deadline, workers=workers, also_live=a.also_live,
                manifest=os.path.abspath(a.manifest) if a.manifest else None)
     a.bucket = resolve_bucket(a.bucket, a.handover_root, a.repo)

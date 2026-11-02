@@ -308,7 +308,8 @@ fi
 # #PR does not stand in for it: naming the query is what moved use in the audit, a bare mention moved little. A judge
 # brief writes nothing and is not held to it, and a doc whose Results already holds a bullet has run (a resume that
 # only ships) and is not made to fail.
-if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
+# A salus-marked repo searches nothing and says "no notes search" in words, which stands in for the whole directive.
+if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc" && ! grep -q 'no notes search' <<< "$flat"; then
     has_directive=1
     for token in qmd-bounded.sh 'graph-qmd:' '-c luna'; do
         case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
