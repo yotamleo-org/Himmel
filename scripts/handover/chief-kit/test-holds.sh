@@ -562,7 +562,24 @@ same "F6 a handover root that cannot be resolved passes (a fault)" "$RC" 0
 same "F6 ... the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/m3.sh)")" HIMMEL-9323
 same "F6 ... one events.log line" "$(( $(ev_count) - before ))" 1
 
-# ---- finding 7: read --keys does not drop a row it cannot read and say 0
+# ---- F6b: a gone RESUME-named doc with a free lock is dead, not unknown
+GRS="$HANDOVER_DIR/u/r/HIMMEL-9340-N1-RESUME.md"
+put_row scripts/rs1.sh HIMMEL-9340 alpha "$GRS"
+before="$(ev_count)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/rs1.sh
+same "F6 a gone RESUME-named doc, lock free: the holder is dead, the claim takes over" "$(cut -f1 "$(rowf scripts/rs1.sh)")" "$K2"
+same "F6 ... as a takeover, not a fault" "$(tail -n +$((before + 1)) "$EVENTS" | cut -f2 | tr '\n' ' ')" "takeover "
+run hp alive --repo "$R" scripts/rs1.sh
+same "F6 ... and alive says the row is the taker's, never unknown" "$OUT" alive
+
+# ---- F1b: argument parsing is inside the fault path too
+mkdir -p "$W/gonecwd"
+before="$(ev_count)"
+run bash -c 'mkdir -p "$1" && cd "$1" && rmdir "$1" && shift && exec python3 -I "$@"' _ "$W/gonecwd" "$SUT" claim --key $K2 --label beta --doc rel.md --repo "$R" scripts/gc1.sh
+same "F1 a removed cwd with a relative --doc exits 2, never 1" "$RC" 2
+same "F1 ... and leaves one events.log line" "$(( $(ev_count) - before ))" 1
+
+# ---- finding 7: read --keys does not drop a row it cannot read
 R4="$W/repo4"
 mkdir -p "$R4"
 git -C "$R4" init -q -b main
@@ -570,10 +587,18 @@ run hp claim --key HIMMEL-9330 --label lab --doc "$DB" --repo "$R4" scripts/z1.s
 run hp read --repo "$R4" --keys
 same "F7 read --keys over readable rows exits 0" "$RC" 0
 printf 'not a row\n' > "$(rowf scripts/z2.sh "$R4")"
+printf 'HIMMEL-9331\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z3.sh "$R4")"
+touch -d '2 hours ago' "$(rowf scripts/z2.sh "$R4")" "$(rowf scripts/z3.sh "$R4")"
 run hp read --repo "$R4" --keys
-same "F7 read --keys with an unreadable row exits 3" "$RC" 3
-contains "F7 ... names the row on stderr" "$ERR" scripts/z2.sh
+same "F7 read --keys with unreadable rows still exits 0 (one junk row must not fault the whole read)" "$RC" 0
+contains "F7 ... names the rows on stderr" "$ERR" scripts/z2.sh
+contains "F7 ... a row with a recoverable key reads that key unknown, never free" "$OUT" "$(printf 'HIMMEL-9331\tunknown\t1')"
+contains "F7 ... a row with no recoverable key reads ? unknown" "$OUT" "$(printf '?\tunknown\t1')"
 contains "F7 ... and still lists the readable holder" "$OUT" HIMMEL-9330
+rm -f "$(rowf scripts/z3.sh "$R4")"
+printf 'HIMMEL-9330\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z4.sh "$R4")"
+run hp read --repo "$R4" --keys
+contains "F7 an unreadable row never frees its key: alive stays alive, the count includes the junk row" "$OUT" "$(printf 'HIMMEL-9330\talive\t2')"
 
 # ---- the real register was never touched
 same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"

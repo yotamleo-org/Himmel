@@ -209,7 +209,7 @@ def primary_of(repo):
     # git gave no answer. The path as given is the identity only when it is a primary checkout's root (a .git
     # directory there) or sits in no checkout at all; a linked worktree or a subdirectory would get a second slug.
     top = repo
-    while True:
+    while top:
         dot = os.path.join(top, '.git')
         if os.path.lexists(dot):
             if top == repo and os.path.isdir(dot):
@@ -219,6 +219,7 @@ def primary_of(repo):
         if parent == top:
             return repo
         top = parent
+    return repo
 
 
 def slug_dir(repo, slug=None):
@@ -401,6 +402,8 @@ class Judge:
             try:
                 age = time.time() - os.path.getmtime(d)
                 marks = [m.group(1) for m in (MARKER_RE.match(l) for l in open(d, encoding='utf-8', errors='replace').read().splitlines()) if m]
+            except FileNotFoundError:
+                continue  # a doc that is gone holds nothing; its lock is still asked by row_state
             except OSError:
                 res = 'fault'
                 continue
@@ -702,10 +705,20 @@ def op_alive(a):
     return 0
 
 
+def row_key(path):
+    """The key of a row that does not parse, when its first field is still a ticket key; else '?'."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            first = f.read().split('\t')[0]
+    except (OSError, UnicodeDecodeError):
+        return '?'
+    return first if KEY_RE.fullmatch(first) else '?'
+
+
 def op_read(a):
     """TSV path key label source pr state. state is alive, dead, unknown or unparseable; only dead reads as free.
-    --keys prints key state rows per holder instead, whatever --paths-from says. Exit 3 when unreadable,
-    --keys included when a row cannot be read (the readable holders are still printed)."""
+    --keys prints key state rows per holder instead, whatever --paths-from says; a row it cannot read counts
+    its key (? when the key is unreadable too) as unknown and is named on stderr, never dropped and never free. Exit 3 when unreadable."""
     repo = primary_of(a.repo)
     d = slug_dir(repo)
     try:
@@ -744,7 +757,10 @@ def op_read(a):
             if not a.keys:
                 print('\t'.join([path, '?', '?', '?', '', 'unparseable']))
             else:
-                unreadable.append(path)  # its key is unknown, so --keys cannot count it: say so, never drop it
+                unreadable.append(path)  # never dropped and never free: its key (or ?) reads unknown
+                cur = keys.setdefault(row_key(full), ['unknown', 0])
+                cur[1] += 1
+                cur[0] = 'unknown' if cur[0] == 'dead' else cur[0]
             continue
         try:
             state = judge.row_state(f, os.path.getmtime(full))
@@ -761,8 +777,7 @@ def op_read(a):
     for k in sorted(keys):
         print('\t'.join([k, keys[k][0], str(keys[k][1])]))
     if unreadable:
-        sys.stderr.write('holds: %d row(s) cannot be read: %s\n' % (len(unreadable), ', '.join(unreadable)))
-        return 3
+        sys.stderr.write('holds: %d row(s) cannot be read, counted unknown: %s\n' % (len(unreadable), ', '.join(unreadable)))
     return 0
 
 
@@ -824,8 +839,8 @@ def build_parser():
 
 
 def main(argv=None):
-    a = build_parser().parse_args(argv)
     try:
+        a = build_parser().parse_args(argv)  # inside the fault path: a type function (abs_doc) can raise too
         return a.fn(a)
     except BrokenPipeError:
         return 0
