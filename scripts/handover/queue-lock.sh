@@ -1682,18 +1682,22 @@ _ql_force_trap_reset() {
 
 # _ql_force_on_signal <SIG> -- free the claim, give the caller its traps back, then raise the signal again so the caller's own handling (or the default) applies.
 _ql_force_on_signal() {
-    local sig="$1"
+    local sig="$1" code=0
+    case "$sig" in INT) code=130 ;; TERM) code=143 ;; HUP) code=129 ;; esac
     _ql_force_claim_cleanup
     _ql_force_trap_reset "${_QL_FORCE_PREV:-}"
+    # the claim is gone, so if the caller's own handler returns instead of exiting the release must stop at its next checkpoint, not carry on unguarded
+    _QL_FORCE_ABORT="$code"
     kill -s "$sig" "${BASHPID:-$$}"
 }
 
-# _ql_force_on_exit -- free the claim, then run the EXIT action the caller had before the forced release replaced it.
+# _ql_force_on_exit -- free the claim, then run the EXIT action the caller had before the forced release replaced it, with the exit status it would have seen.
 _ql_force_on_exit() {
-    local prev_exit="${_QL_FORCE_PREV_EXIT:-}"
+    local rc=$? prev_exit="${_QL_FORCE_PREV_EXIT:-}"
     _ql_force_claim_cleanup
     [ -n "$prev_exit" ] || return 0
     eval "set -- $prev_exit"
+    (exit "$rc")
     eval "${3:-}"
 }
 
@@ -2398,6 +2402,7 @@ queue_lock_release() {
         # a release claim never expires, so a signal while it is held would wedge the doc: the trap frees it, then the caller's own traps come back (the suite sources this file)
         local f_claim_token="release-pid$$-r$RANDOM" f_prev_traps="" f_rc=0
         f_prev_traps=$(trap -p EXIT INT TERM HUP)
+        _QL_FORCE_ABORT=""
         _QL_FORCE_PREV="$f_prev_traps" _QL_FORCE_PREV_EXIT=$(trap -p EXIT)
         _QL_FORCE_CLAIM="${lockdir}.claim" _QL_FORCE_TOKEN="$f_claim_token"
         trap '_ql_force_on_exit' EXIT
@@ -2419,10 +2424,12 @@ queue_lock_release() {
             f_raw=$(cat "$lockdir/owner.json" 2>/dev/null) || f_raw=""  # swallow-ok: an unreadable owner.json leaves f_raw empty, so the re-check below writes no HALTED
         fi
         _ql_test_pause forced-proved
+        [ -z "$_QL_FORCE_ABORT" ] || return "$_QL_FORCE_ABORT"
         # written while the dead holder still owns the lock and we hold the claim, so a successor's LIVE cannot precede it;
         # re-read owner.json anyway and write nothing when it changed
         [ "$(cat "$lockdir/owner.json" 2>/dev/null)" = "$f_raw" ] || f_doc=""  # swallow-ok: an unreadable owner.json differs from f_raw, so no HALTED is written
         _ql_halted_marker "$f_doc" "$f_session" "a forced release (QUEUE_LOCK_FORCE_RELEASE=1)"
+        [ -z "$_QL_FORCE_ABORT" ] || return "$_QL_FORCE_ABORT"
         _ql_release_remove "$lockdir" "" "" 1 "$f_claim_token" || f_rc=$?
         _ql_force_trap_reset "$f_prev_traps"
         [ "$f_rc" -eq 0 ] || return "$f_rc"

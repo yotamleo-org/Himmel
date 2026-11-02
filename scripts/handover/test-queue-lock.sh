@@ -3778,20 +3778,43 @@ if [ "$H_RC_P" -eq 7 ] && [ "$H_CLAIM_P" = gone ] && [ "$(tr '\n' ' ' < "$H_OUT_
 else
     fail "T8541p: sourcing caller (rc=$H_RC_P claim=$H_CLAIM_P trap-out=$(tr '\n' ' ' < "$H_OUT_P" 2>/dev/null))"
 fi
-# q: the forced release's EXIT handler frees its claim and then runs the EXIT action the caller had (an exit inside the window, not a signal)
+# r: a caller whose own TERM handler RETURNS instead of exiting: the release stops at its next checkpoint (rc 143), the lock is left alone and no HALTED is written
+H_DOC_R="$(h_doc halted-caller-returns 'LIVE — working')"
+H_LK_R="$(h_hold "$H_DOC_R" "$H_HOST-pid$H_PID" "$H_HOST")"
+H_GATE_R="$TMPDIR_ROOT/t8541r-gate"; H_RC_FILE_R="$TMPDIR_ROOT/t8541r-rc"; H_OUT_R="$TMPDIR_ROOT/t8541r-out"; : > "$H_GATE_R"; rm -f "$H_GATE_R.reached" "$H_RC_FILE_R" "$H_OUT_R"
+(
+    # shellcheck source=queue-lock.sh
+    . "$LIB"
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-term >> '$H_OUT_R'" TERM
+    QUEUE_LOCK_TEST_PAUSE_AT=forced-proved QUEUE_LOCK_TEST_PAUSE_FILE="$H_GATE_R" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" queue_lock_release "$H_DOC_R"
+    echo "$?" > "$H_RC_FILE_R"
+) >/dev/null 2>&1 &
+H_PID_R=$!
+if h_wait_file "$H_GATE_R.reached"; then kill -TERM "$H_PID_R" 2>/dev/null; fi
+sleep 0.5
+rm -f "$H_GATE_R"
+wait "$H_PID_R" 2>/dev/null
+if [ "$(cat "$H_RC_FILE_R" 2>/dev/null)" = 143 ] && [ "$(cat "$H_OUT_R" 2>/dev/null)" = caller-term ] && [ -d "$H_LK_R" ] && [ ! -d "$H_LK_R.claim" ] \
+    && [ "$(h_tail "$H_DOC_R")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541r: a caller handler that returns after a signal stops the forced release with rc 143 and leaves the lock and the doc alone"
+else
+    fail "T8541r: returning caller handler (rc=$(cat "$H_RC_FILE_R" 2>/dev/null) out=$(cat "$H_OUT_R" 2>/dev/null) lock=$([ -d "$H_LK_R" ] && echo kept || echo gone) claim=$([ -d "$H_LK_R.claim" ] && echo leaked || echo gone)) tail: $(h_tail "$H_DOC_R")"
+fi
+# q: the forced release's EXIT handler frees its claim and then runs the EXIT action the caller had, with the exit status the caller would have seen (an exit inside the window, not a signal)
 H_OUT_Q="$TMPDIR_ROOT/t8541q-out"; H_CLAIM_Q="$TMPDIR_ROOT/t8541q.claim"; rm -f "$H_OUT_Q"; mkdir -p "$H_CLAIM_Q"; printf '%s' "release-pidq" > "$H_CLAIM_Q/owner"
 (
     # shellcheck source=queue-lock.sh
     . "$LIB"
     # shellcheck disable=SC2064  # the path is meant to be expanded now
-    trap "echo caller-exit > '$H_OUT_Q'" EXIT
+    trap "echo caller-exit rc=\$? > '$H_OUT_Q'" EXIT
     _QL_FORCE_PREV_EXIT=$(trap -p EXIT)
     _QL_FORCE_CLAIM="$H_CLAIM_Q" _QL_FORCE_TOKEN="release-pidq"
     trap '_ql_force_on_exit' EXIT
-    exit 0
+    exit 5
 ) >/dev/null 2>&1
-if [ ! -d "$H_CLAIM_Q" ] && [ "$(cat "$H_OUT_Q" 2>/dev/null)" = caller-exit ]; then
-    pass "T8541q: an exit inside a forced release frees its claim and still runs the caller's own EXIT action"
+if [ ! -d "$H_CLAIM_Q" ] && [ "$(cat "$H_OUT_Q" 2>/dev/null)" = "caller-exit rc=5" ]; then
+    pass "T8541q: an exit inside a forced release frees its claim and runs the caller's own EXIT action with the original exit status"
 else
     fail "T8541q: exit handler (claim-present=$([ -d "$H_CLAIM_Q" ] && echo yes || echo no) out=$(cat "$H_OUT_Q" 2>/dev/null))"
 fi
