@@ -4423,6 +4423,16 @@ n=$(mg_count "$MGC/graphify-out/graph.json")
 [ "$(mg_has "$MGC/graphify-out/graph.json" old-sem-0)" = 0 ] && pass "T-merge re-extracted file's stale semantic node is replaced" || fail "T-merge old-sem-0 still present"
 [ -f "$MGC/graphify-out/semantic-manifest.json" ] && pass "T-merge semantic manifest stamped" || fail "T-merge semantic-manifest.json missing"
 
+# a markdown file under a skipped dir (fixtures/) is extracted from the scratch copy but is not in the
+# plan's batch: its nodes must not enter the live graph (they would never be owned or replaced)
+mkdir -p "$MGC/fixtures"; printf '# fx\n' > "$MGC/fixtures/x.md"; git -C "$MGC" add fixtures/x.md >/dev/null 2>&1
+git -C "$MGC" -c core.hooksPath=/dev/null commit -qm fixtures >/dev/null 2>&1
+out=$(mg_run mgt "$MGC" --merge-into-live); rc=$?
+out2=$(mg_run mgt "$MGC" --merge-into-live); rc2=$?
+[ "$(mg_has "$MGC/graphify-out/graph.json" sem-fixtures/x.md)" = 0 ] \
+  && pass "T-merge a skip-dir file's node does not enter the live graph (two runs)" \
+  || fail "T-merge fixtures node landed in the live graph (rc=$rc/$rc2): $out $out2"
+
 # control: the vault shape (no flag, no AST graph) still promotes the extraction as before
 MGV="$WS/mg-vault"; mkdir -p "$MGV/notes"; printf '# n\n' > "$MGV/notes/a.md"
 out=$(mg_run mgv "$MGV"); rc=$?

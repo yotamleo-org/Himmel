@@ -128,7 +128,10 @@
 # v25: the himmel graphmap semantic runner passes --merge-into-live, so its
 # markdown-only extraction merges into the live graph (which keeps the code nodes)
 # instead of promoting over it. An armed v24 himmel runner is refused by the promote
-# shrink guard on every fire. Re-arm with `graphmap-cadence.sh arm --force`.
+# shrink guard only while the graphify version is unchanged; on a version change that
+# guard is skipped and the v24 runner flat-promotes the docs over the live graph.
+# Re-arm with `graphmap-cadence.sh arm --rewrite-armed`, which rewrites the runner
+# files already on disk and touches no crontab row.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
 CADENCE_RUNNER_FORMAT_VERSION=25
 
