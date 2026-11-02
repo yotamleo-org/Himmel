@@ -39,8 +39,20 @@ RANK = {'independent': 0, 'S1': 1, 'S2': 2, 'H2': 3, 'H1': 4}
 KEY_RE = re.compile(r'HIMMEL-\d+')
 # registries a gate reads: a clean shared edit is S2, not S1 (D6)
 GATE_REGISTRIES = ('scripts/ci/suite-tiers.tsv', 'scripts/ci/suite-durations.tsv', '.claude/settings.json')
-# one-row-per-key registries on a trust path: pure disjoint row additions from both sides are S2, not H2
-ROW_REGISTRIES = ('scripts/ci/suite-tiers.tsv', 'scripts/ci/suite-durations.tsv')
+# one-row-per-key registries on a trust path: pure disjoint row additions from both sides are S2, not H2.
+# Read from holds-exempt.txt, the one list the holds register also uses. An unreadable list is empty: every shared
+# trust-path file then reads H2, the stricter answer.
+def load_row_registries():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'holds-exempt.txt')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return tuple(l.strip() for l in f if l.strip() and not l.startswith('#'))
+    except OSError as e:
+        sys.stderr.write('chain-graph: cannot read %s (%s); no row registry is exempt\n' % (path, e.strerror or e))
+        return ()
+
+
+ROW_REGISTRIES = load_row_registries()
 VOCAB_REGISTRY = 'scripts/lib/rename-aliases.tsv'
 SYM_RE = re.compile(r'^\s*(?:async\s+function|function|def|class)\s+([A-Za-z_]\w{7,})|^([A-Za-z_]\w{7,})\(\)\s*\{')
 CACHE_VERSION = 'v6'

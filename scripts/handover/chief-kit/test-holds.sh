@@ -1,0 +1,433 @@
+#!/usr/bin/env bash
+# test-holds.sh — hermetic tests for holds.py, the single-writer holds register and its CLI.
+#
+# HOME, HANDOVER_DIR and the queue-lock runtime dirs are pinned to a temp dir at the top, so no row, event or
+# lock ever lands in the real ~/.himmel/state/holds or the live release queue; a row at the end asserts the real
+# register is unchanged. Locks are real queue-lock.sh locks under the temp handover root. gh and a
+# counting/failing queue-lock are stubs. Races use 2 real processes.
+#
+# PLATFORM GUARD: the chief kit is Linux-only; GNU touch -d is used to age rows.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SUT="${HOLDS_SUT:-$HERE/holds.py}"
+QL="$HERE/../queue-lock.sh"
+if ! command -v python3 >/dev/null 2>&1 || ! command -v git >/dev/null 2>&1; then
+    printf 'SKIP - test-holds.sh (python3 or git not installed)\n'
+    exit 0
+fi
+
+REAL_HOME="$HOME"
+real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }
+REAL_BEFORE="$(real_register)"
+
+W="$(mktemp -d "${TMPDIR:-/tmp}/holds-test.XXXXXX")" || exit 1
+W="$(cd "$W" && pwd -P)"
+trap 'chmod -R u+rwx "$W" 2>/dev/null; rm -rf "$W"' EXIT  # restore modes first: a chmod 000 row would block the cleanup
+
+export HOME="$W/home" HANDOVER_DIR="$W/h" XDG_RUNTIME_DIR="$W/xdg" HIMMELCTL_CACHE_DIR="$W/cache" HIMMEL_CONFIG_DIR="$W/cfg"
+mkdir -p "$HOME" "$HANDOVER_DIR/u/r/sub" "$XDG_RUNTIME_DIR" "$HIMMELCTL_CACHE_DIR" "$HIMMEL_CONFIG_DIR" "$W/bin"
+chmod 700 "$XDG_RUNTIME_DIR"
+: > "$HIMMELCTL_CACHE_DIR/.env"
+unset HIMMEL_CONSOLE_LEG HIMMEL_HOLD_KEY WRITE_HOLD_OK HOLDS_QUEUE_LOCK HOLDS_GH QUEUE_LOCK_TTL_SECONDS
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+
+fails=0
+total=0
+pass() { total=$((total + 1)); printf 'ok - %s\n' "$1"; }
+fail() { total=$((total + 1)); printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
+same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
+contains() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (missing '$3' in '$2')" ;; esac; }
+# owner_set <lock dir> <field> <value>: rewrite one field of a lock's owner.json (portable, no sed -i)
+owner_set() {
+    python3 -I -c "
+import json, sys
+p = sys.argv[1] + '/owner.json'
+d = json.load(open(p)); d[sys.argv[2]] = sys.argv[3]
+json.dump(d, open(p, 'w'), separators=(',', ':'))" "$1" "$2" "$3"
+}
+
+hp() { python3 -I "$SUT" "$@"; }
+RC=0 OUT="" ERR=""
+run() { OUT=$("$@" 2>"$W/err"); RC=$?; ERR=$(<"$W/err"); }
+
+R="$W/repo"
+mkdir -p "$R"
+git -C "$R" init -q -b main
+mkdir -p "$R/scripts/lib" "$R/scripts/ci"
+: > "$R/scripts/lib/rename-aliases.tsv"
+echo seed > "$R/seed.txt"
+git -C "$R" add -A
+git -C "$R" commit -q -m base
+
+REG="$HOME/.himmel/state/holds"
+EVENTS="$REG/events.log"
+esc() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
+slugdir() { printf '%s/%s' "$REG" "$(esc "${1:-$R}")"; }
+rowf() { printf '%s/%s' "$(slugdir "${2:-$R}")" "$(esc "$1")"; }
+ev_count() { if [ -f "$EVENTS" ]; then wc -l < "$EVENTS" | tr -d ' '; else echo 0; fi; }
+# put_row <path> <key> <label> <doc> [source] [pr]: a row written by hand, aged past the grace
+put_row() {
+    local f
+    f="$(rowf "$1")"
+    mkdir -p "$(dirname "$f")"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$3" "$4" "${5:-brief}" "${6:-}" > "$f"
+    touch -d '2 hours ago' "$f"
+}
+mkdoc() { local f="$HANDOVER_DIR/u/r/$1"; mkdir -p "$(dirname "$f")"; printf '%s\n' "${2:-# doc}" > "$f"; printf '%s' "$f"; }
+lock_hold() { bash "$QL" acquire "$1" "${2:-sess-$(basename "$1")}" > /dev/null 2>&1; }
+lock_host() { sed -n 's/.*"host":"\([^"]*\)".*/\1/p' "$1/owner.json" | head -n 1; }
+lock_dir_of() { printf '%s/.locks/queue/u__r__%s.lock' "$HANDOVER_DIR" "$(basename "$1" .md)"; }
+
+# stubs
+cat > "$W/bin/gh-open" <<'STUB'
+#!/usr/bin/env bash
+echo OPEN
+STUB
+cat > "$W/bin/gh-merged" <<'STUB'
+#!/usr/bin/env bash
+echo MERGED
+STUB
+cat > "$W/bin/gh-hang" <<'STUB'
+#!/usr/bin/env bash
+exec sleep 30
+STUB
+cat > "$W/bin/ql-rc1" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+cat > "$W/bin/ql-count" <<STUB
+#!/usr/bin/env bash
+echo "\$*" >> "$W/ql-calls"
+exec bash "$QL" "\$@"
+STUB
+chmod +x "$W/bin/"*
+
+K1=HIMMEL-9101 K2=HIMMEL-9102
+
+# ---- no module yet: the whole suite is RED until holds.py exists
+if [ ! -f "$SUT" ]; then
+    fail "holds.py exists ($SUT)"
+fi
+
+# ---- I1: a second claim is refused and names the holder; a grant lets it through
+D01="$(mkdoc HIMMEL-9101-case.md)"
+lock_hold "$D01"
+put_row scripts/c01.sh $K1 alpha "$D01"
+run hp claim --key $K2 --label beta --doc "$(mkdoc HIMMEL-9102-case.md)" --repo "$R" scripts/c01.sh
+same "I1 second claim on a live holder's file exits 1" "$RC" 1
+contains "I1 the refusal names the holder" "$ERR" "$K1"
+run hp grant --key $K2 --repo "$R" scripts/c01.sh
+same "I1 grant exits 0" "$RC" 0
+run hp claim --key $K2 --label beta --doc "$(mkdoc HIMMEL-9102-case.md)" --repo "$R" scripts/c01.sh
+same "I1 the granted key claims the file" "$RC" 0
+same "I1 the holder's row is untouched by the grant" "$(cut -f1 "$(rowf scripts/c01.sh)")" "$K1"
+
+# ---- I4 and I3: liveness goes by key
+DB="$(mkdoc HIMMEL-9102-case.md)"
+put_row scripts/c02.sh HIMMEL-9112 alpha "$(mkdoc HIMMEL-9112-case.md)"
+touch "$(rowf scripts/c02.sh)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c02.sh
+same "I4 a row inside the arm grace is alive (lock free)" "$RC" 1
+
+put_row scripts/c03.sh HIMMEL-9113 alpha "$(mkdoc HIMMEL-9113-case.md)"
+touch -d '1 hour' "$(rowf scripts/c03.sh)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c03.sh
+same "I4 a future mtime counts as inside the grace" "$RC" 1
+
+D04A="$(mkdoc HIMMEL-9114-case.md)"
+D04B="$(mkdoc sub/HIMMEL-9114-second.md)"
+lock_hold "$D04B"
+put_row scripts/c04.sh HIMMEL-9114 alpha "$D04A"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c04.sh
+same "I4 a second doc of the key, one level down, held keeps the row alive" "$RC" 1
+
+put_row scripts/c05.sh HIMMEL-9115 alpha "$(mkdoc HIMMEL-9115-case.md)" pr 77
+run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c05.sh
+same "I4 an open PR keeps the row alive" "$RC" 1
+
+put_row scripts/c06.sh HIMMEL-9116 alpha "$(mkdoc HIMMEL-9116-case.md)"
+before="$(ev_count)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c06.sh
+same "I4 a dead holder never blocks (no lock, no PR, no RESUME doc)" "$RC" 0
+same "I4 the row is now the taker's" "$(cut -f1 "$(rowf scripts/c06.sh)")" "$K2"
+contains "I4 the takeover is in events.log" "$(tail -n +$((before + 1)) "$EVENTS")" takeover
+
+D07="$(mkdoc HIMMEL-9117-case.md '- 10:00 WRAPPED — done')"
+mkdoc HIMMEL-9117-N1-RESUME.md '# resume doc' > /dev/null
+put_row scripts/c07.sh HIMMEL-9117 alpha "$D07"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c07.sh
+same "I3 a wrapped worker with an unwrapped RESUME doc under 24 h keeps its rows" "$RC" 1
+
+mkdoc HIMMEL-9118-N1-RESUME.md '# resume doc' > /dev/null
+touch -d '25 hours ago' "$HANDOVER_DIR/u/r/HIMMEL-9118-N1-RESUME.md"
+put_row scripts/c08.sh HIMMEL-9118 alpha "$(mkdoc HIMMEL-9118-case.md)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c08.sh
+same "I3 a RESUME doc over 24 h no longer holds the rows (taken over)" "$RC" 0
+# and the late launch is refused, naming the new holder
+run hp seed --key HIMMEL-9118 --label alpha --doc "$(mkdoc HIMMEL-9118-seed.md '> **Writes:** scripts/c08.sh')" --repo "$R"
+same "I3 the late launch is refused" "$RC" 1
+contains "I3 the late launch names the new holder" "$ERR" "$K2"
+
+mkdoc HIMMEL-9119-N1-RESUME.md '- 09:00 WRAPPED — done' > /dev/null
+put_row scripts/c09.sh HIMMEL-9119 alpha "$(mkdoc HIMMEL-9119-case.md)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c09.sh
+same "I3 a WRAPPED RESUME doc holds nothing" "$RC" 0
+
+# real queue-lock states: CORRUPT blocks, plain STALE blocks, STALE-DEAD passes, another host's token blocks
+D10="$(mkdoc HIMMEL-9120-case.md)"
+mkdir -p "$(lock_dir_of "$D10")"
+put_row scripts/c10.sh HIMMEL-9120 alpha "$D10"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c10.sh
+same "I4 a CORRUPT lock blocks" "$RC" 1
+
+D11="$(mkdoc HIMMEL-9121-case.md)"
+lock_hold "$D11" "sess-live-$$"
+host="$(lock_host "$(lock_dir_of "$D11")")"
+owner_set "$(lock_dir_of "$D11")" session "${host}-pid1"
+put_row scripts/c11.sh HIMMEL-9121 alpha "$D11"
+run env QUEUE_LOCK_TTL_SECONDS=0 python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c11.sh
+same "I4 a plain STALE lock (death not proven) blocks" "$RC" 1
+
+D12="$(mkdoc HIMMEL-9122-case.md)"
+lock_hold "$D12" "sess-x"
+sleep 0 & deadpid=$!
+wait "$deadpid"
+owner_set "$(lock_dir_of "$D12")" session "${host}-pid${deadpid}"
+put_row scripts/c12.sh HIMMEL-9122 alpha "$D12"
+run env QUEUE_LOCK_TTL_SECONDS=0 python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c12.sh
+same "I4 a STALE-DEAD lock passes (taken over)" "$RC" 0
+
+D13="$(mkdoc HIMMEL-9123-case.md)"
+lock_hold "$D13" "sess-y"
+owner_set "$(lock_dir_of "$D13")" host some-other-host
+put_row scripts/c13.sh HIMMEL-9123 alpha "$D13"
+run env QUEUE_LOCK_TTL_SECONDS=0 python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c13.sh
+same "I4 another host's token (death not proven) blocks" "$RC" 1
+
+# Review Focus 5: a merged PR's row is freed lazily
+put_row scripts/c14.sh PR-88 branch:x "" pr 88
+run env HOLDS_GH="$W/bin/gh-merged" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c14.sh
+same "RF5 a merged PR row is dead, claim passes" "$RC" 0
+
+# ---- I11: parallel claims, parallel takers, refused seed
+hp claim --key HIMMEL-9131 --label p1 --doc "$(mkdoc HIMMEL-9131-case.md)" --repo "$R" scripts/c20.sh > "$W/o1" 2> "$W/e1" &
+p1=$!
+hp claim --key HIMMEL-9132 --label p2 --doc "$(mkdoc HIMMEL-9132-case.md)" --repo "$R" scripts/c20.sh > "$W/o2" 2> "$W/e2" &
+p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+same "I11 2 claims on one path: one exit 0, one exit 1" "$(printf '%s%s' "$(( r1 < r2 ? r1 : r2 ))" "$(( r1 > r2 ? r1 : r2 ))")" 01
+same "I11 2 claims on one path leave one row" "$(find "$(slugdir)" -name "$(esc scripts/c20.sh)*" | wc -l | tr -d ' ')" 1
+
+put_row scripts/c21.sh HIMMEL-9133 alpha "$(mkdoc HIMMEL-9133-case.md)"
+hp claim --key HIMMEL-9134 --label t1 --doc "$(mkdoc HIMMEL-9134-case.md)" --repo "$R" scripts/c21.sh > /dev/null 2>&1 &
+p1=$!
+hp claim --key HIMMEL-9135 --label t2 --doc "$(mkdoc HIMMEL-9135-case.md)" --repo "$R" scripts/c21.sh > /dev/null 2>&1 &
+p2=$!
+wait "$p1"; r1=$?
+wait "$p2"; r2=$?
+same "I11 2 takers of one dead row: one winner" "$(printf '%s%s' "$(( r1 < r2 ? r1 : r2 ))" "$(( r1 > r2 ? r1 : r2 ))")" 01
+same "I11 2 takers leave one row, no leftover temp or moved file" "$(find "$(slugdir)" -name "*c21.sh*" -o -name '%00*' | wc -l | tr -d ' ')" 1
+
+D22="$(mkdoc HIMMEL-9136-case.md)"
+lock_hold "$D22"
+put_row scripts/c22c.sh HIMMEL-9136 alpha "$D22"
+DS="$(mkdoc HIMMEL-9137-case.md '> **Writes:** scripts/c22a.sh scripts/c22b.sh scripts/c22c.sh')"
+run hp seed --key HIMMEL-9137 --label seeder --doc "$DS" --repo "$R"
+same "I11 a seed refused on its third file exits 1" "$RC" 1
+same "I11 a refused seed leaves no row (first file)" "$([ -e "$(rowf scripts/c22a.sh)" ] && echo row || echo none)" none
+same "I11 a refused seed leaves no row (second file)" "$([ -e "$(rowf scripts/c22b.sh)" ] && echo row || echo none)" none
+
+# seed with one file granted passes it; an ungranted file in the same seed is refused
+D23="$(mkdoc HIMMEL-9138-case.md)"
+lock_hold "$D23"
+put_row scripts/c23x.sh HIMMEL-9138 alpha "$D23"
+put_row scripts/c23z.sh HIMMEL-9138 alpha "$D23"
+hp grant --key HIMMEL-9139 --repo "$R" scripts/c23x.sh > /dev/null 2>&1
+DS2="$(mkdoc HIMMEL-9139-case.md '> **Writes:** scripts/c23x.sh scripts/c23y.sh')"
+run hp seed --key HIMMEL-9139 --label seeder --doc "$DS2" --repo "$R"
+same "I11 a seed passes a file granted to its key" "$RC" 0
+same "I11 the seed row for the free file is published" "$(cut -f1,4 "$(rowf scripts/c23y.sh)" | tr '\t' ' ')" "HIMMEL-9139 brief"
+DS3="$(mkdoc HIMMEL-9140-case.md '> **Writes:** scripts/c23x.sh scripts/c23w.sh scripts/c23z.sh')"
+run hp seed --key HIMMEL-9140 --label seeder --doc "$DS3" --repo "$R"
+same "I11 an ungranted file in the same seed is refused" "$RC" 1
+same "I11 ... and its earlier row is rolled back" "$([ -e "$(rowf scripts/c23w.sh)" ] && echo row || echo none)" none
+
+# ---- I5: every fault passes, one events.log line (stderr when the log itself cannot be written)
+fault_case() {  # fault_case <name> <path> <env-prefix...> ; the row at <path> must already exist
+    local name="$1" path="$2" before; shift 2
+    before="$(ev_count)"
+    run env "$@" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" "$path"
+    same "I5 $name passes" "$RC" 0
+    same "I5 $name leaves one events.log line" "$(( $(ev_count) - before ))" 1
+}
+put_row scripts/f2.sh HIMMEL-9150 alpha "$(mkdoc HIMMEL-9150-case.md)"
+printf 'not a row\n' > "$(rowf scripts/f2.sh)"
+touch -d '2 hours ago' "$(rowf scripts/f2.sh)"
+fault_case "a corrupt row" scripts/f2.sh X=1
+same "I5 the corrupt row is left in place" "$(cat "$(rowf scripts/f2.sh)")" "not a row"
+put_row scripts/f3.sh HIMMEL-9151 alpha "$(mkdoc HIMMEL-9151-case.md)"
+fault_case "a queue-lock that returns rc 1" scripts/f3.sh HOLDS_QUEUE_LOCK="$W/bin/ql-rc1"
+same "I5 ... and the row stays the holder's" "$(cut -f1 "$(rowf scripts/f3.sh)")" HIMMEL-9151
+put_row scripts/f4.sh HIMMEL-9152 alpha "$(mkdoc HIMMEL-9152-case.md)"
+fault_case "a missing queue-lock.sh" scripts/f4.sh HOLDS_QUEUE_LOCK="$W/bin/no-such-queue-lock"
+put_row scripts/f5.sh PR-99 branch:x "$(mkdoc HIMMEL-9153-case.md)" pr 99
+t0=$(date +%s)
+fault_case "a gh that hangs past 5 s" scripts/f5.sh HOLDS_GH="$W/bin/gh-hang"
+t1=$(date +%s)
+if [ $((t1 - t0)) -lt 15 ]; then pass "I5 the hung gh is cut off (took $((t1 - t0)) s)"; else fail "I5 the hung gh is cut off (took $((t1 - t0)) s)"; fi
+put_row scripts/f6.sh HIMMEL-9154 alpha "$(mkdoc HIMMEL-9154-case.md)"
+mkdir -p "$W/long"
+long="scripts/$(printf 'a%.0s' $(seq 300)).sh"
+before="$(ev_count)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" "$long"
+same "RF4 a path of 300 bytes passes" "$RC" 0
+same "RF4 ... and holds no row" "$(find "$(slugdir)" -name 'aaaa*' | wc -l | tr -d ' ')" 0
+same "RF4 ... leaving one events.log line" "$(( $(ev_count) - before ))" 1
+
+if [ "$(id -u)" != 0 ]; then
+    chmod 000 "$REG"
+    run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/f7.sh
+    chmod 755 "$REG"
+    same "I5 an unreadable register passes" "$RC" 0
+    if [ -n "$ERR" ]; then pass "I5 ... and says so on stderr (the log cannot be written)"; else fail "I5 ... and says so on stderr"; fi
+    HOME_RO="$W/home-ro"
+    mkdir -p "$HOME_RO/.himmel/state/holds"
+    chmod 555 "$HOME_RO/.himmel/state/holds"
+    run env HOME="$HOME_RO" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/f8.sh
+    same "I5 a read-only register dir (disk full) passes" "$RC" 0
+    if [ -n "$ERR" ]; then pass "I5 ... with a stderr line, since events.log cannot be written"; else fail "I5 ... with a stderr line"; fi
+    chmod 755 "$HOME_RO/.himmel/state/holds"
+else
+    pass "I5 (root: unreadable-register rows skipped)"
+fi
+
+# off: the sentinel passes a claim of a held path
+D30="$(mkdoc HIMMEL-9160-case.md)"
+lock_hold "$D30"
+put_row scripts/c30.sh HIMMEL-9160 alpha "$D30"
+run hp off --reason "test fold"
+same "off writes the sentinel" "$RC" 0
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c30.sh
+same "I5 with the sentinel on, a claim of a held path passes" "$RC" 0
+run hp on
+same "on removes the sentinel" "$RC" 0
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c30.sh
+same "with the sentinel off again, the held path is refused" "$RC" 1
+
+# ---- I9: a worker (HIMMEL_CONSOLE_LEG=1) can neither grant nor switch the barrier off
+run env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key $K2 --repo "$R" scripts/c30.sh
+same "I9 grant under HIMMEL_CONSOLE_LEG=1 exits 1" "$RC" 1
+run env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" off --reason sneaky
+same "I9 off under HIMMEL_CONSOLE_LEG=1 exits 1" "$RC" 1
+same "I9 ... and wrote no sentinel" "$([ -e "$REG/OFF" ] && echo OFF || echo none)" none
+run env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" on
+same "I9 on under HIMMEL_CONSOLE_LEG=1 exits 1" "$RC" 1
+run hp grant --key $K2 --repo "$R" .claude/settings.json
+same "I9 a grant on .claude/settings.json exits 1" "$RC" 1
+contains "I9 ... and says only the operator can" "$ERR" operator
+run hp grant --key $K2 --repo "$R" scripts/ci/suite-tiers.tsv
+same "I9 a grant on a trust path exits 1" "$RC" 1
+run hp grant --key $K2 --repo "$R" scripts/handover/chief-kit/holds-exempt.txt
+same "I9 a grant on the exempt list (itself a trust path) exits 1" "$RC" 1
+
+# ---- I10: an exempt file is never held; a file off the list always can be
+D31="$(mkdoc HIMMEL-9161-case.md)"
+lock_hold "$D31"
+put_row scripts/ci/suite-tiers.tsv HIMMEL-9161 alpha "$D31"
+rm -f "$(rowf scripts/ci/suite-tiers.tsv)"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/ci/suite-tiers.tsv
+same "I10 a claim on an exempt path exits 0" "$RC" 0
+same "I10 ... and makes no row" "$([ -e "$(rowf scripts/ci/suite-tiers.tsv)" ] && echo row || echo none)" none
+run hp claim --key HIMMEL-9161 --label alpha --doc "$D31" --repo "$R" scripts/c31.sh
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c31.sh
+same "I10 a file off the list can be held" "$RC" 1
+
+# ---- parse
+DP="$(mkdoc HIMMEL-9170-parse.md '# t
+> **Writes:** scripts/p1.sh scripts/ptree/ (read only: docs/x.md) scripts/p2.py
+> scripts/p3.sh
+> **Writes note:** scripts/ignored.sh
+> **Other:** scripts/not-writes.sh')"
+want="$(printf 'file\tscripts/p1.sh\ntree\tscripts/ptree/\nfile\tscripts/p2.py\nfile\tscripts/p3.sh')"
+run hp parse "$DP" --repo "$R"
+same "parse: files, trees, parentheses removed, continuation line, Writes note ignored" "$OUT" "$want"
+DN="$(mkdoc HIMMEL-9171-parse.md '> **Writes:** none named')"
+run hp parse "$DN" --repo "$R"
+same "parse: none named yields no lines" "$OUT" ""
+DW="$(mkdoc HIMMEL-9172-parse.md '> **Writes note:** scripts/ignored.sh')"
+run hp parse "$DW" --repo "$R"
+same "parse: a Writes note line yields no lines" "$OUT" ""
+mkdir -p "$R/scripts/real-dir"
+DT="$(mkdoc HIMMEL-9173-parse.md '> **Writes:** scripts/real-dir scripts/newfile.sh')"
+run hp parse "$DT" --repo "$R"
+same "parse: an existing directory is a tree, an unwritten file a file" "$OUT" "$(printf 'tree\tscripts/real-dir/\nfile\tscripts/newfile.sh')"
+run python3 -I -c "
+import importlib.util, sys
+s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+print(m.parse_text('> **Writes:** scripts/q1.sh', '$R'))"
+same "parse_text is importable" "$OUT" "[('file', 'scripts/q1.sh')]"
+
+# ---- read and release
+DR="$(mkdoc HIMMEL-9180-case.md)"
+put_row scripts/r1.sh HIMMEL-9180 lab "$DR"
+put_row scripts/r2.sh HIMMEL-9180 lab "$DR"
+put_row scripts/r3.sh HIMMEL-9180 lab "$DR"
+put_row scripts/r4.sh HIMMEL-9181 other "$(mkdoc HIMMEL-9181-case.md)"
+printf 'scripts/r1.sh\nscripts/r2.sh\nscripts/r3.sh\n' > "$W/paths"
+: > "$W/ql-calls"
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths"
+same "read --paths-from keeps only the listed paths" "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" 3
+same "read prints path key label source pr state" "$(printf '%s\n' "$OUT" | head -n 1)" "$(printf 'scripts/r1.sh\tHIMMEL-9180\tlab\tbrief\t\tdead')"
+same "read judges a doc once for 3 of its rows" "$(wc -l < "$W/ql-calls" | tr -d ' ')" 1
+run env HOLDS_QUEUE_LOCK="$W/bin/ql-rc1" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths"
+contains "read: a failed proof reads state unknown, never free" "$OUT" "$(printf 'lab\tbrief\t\tunknown')"
+run hp read --repo "$R" --keys
+contains "read --keys lists every holder key, whatever the paths" "$OUT" HIMMEL-9181
+run hp read --repo "$W/no-such-repo-register"
+same "read: a repo with no register directory is empty, exit 0" "$RC:$OUT" "0:"
+if [ "$(id -u)" != 0 ]; then
+    chmod 000 "$(slugdir)"
+    run hp read --repo "$R"
+    chmod 755 "$(slugdir)"
+    same "read: an unreadable register directory exits 3" "$RC" 3
+fi
+
+put_row scripts/rel1.sh HIMMEL-9182 lab "$DR"
+hp claim --key HIMMEL-9182 --label lab --doc "$(mkdoc HIMMEL-9182-case.md)" --repo "$R" --source brief scripts/rel2.sh > /dev/null 2>&1
+hp claim --key HIMMEL-9182 --label lab --doc "$(mkdoc HIMMEL-9182-case.md)" --repo "$R" --source claim scripts/rel3.sh > /dev/null 2>&1
+printf 'HIMMEL-9182\tlab\t%s\tbrief\t\n' "$(mkdoc HIMMEL-9182-case.md)" > "$(rowf scripts/rel4.sh)"
+run hp release --key HIMMEL-9182 --repo "$R" --doc "$(mkdoc HIMMEL-9182-case.md)"
+same "release exits 0" "$RC" 0
+same "release removes this doc's brief row" "$([ -e "$(rowf scripts/rel2.sh)" ] && echo row || echo none)" none
+same "release removes the other brief row of this doc" "$([ -e "$(rowf scripts/rel4.sh)" ] && echo row || echo none)" none
+same "release leaves this doc's claim row" "$([ -e "$(rowf scripts/rel3.sh)" ] && echo row || echo none)" row
+same "release leaves another doc's brief row" "$([ -e "$(rowf scripts/rel1.sh)" ] && echo row || echo none)" row
+
+# ---- Review Focus 4: spaces and % round-trip through read
+run hp claim --key HIMMEL-9190 --label lab --doc "$(mkdoc HIMMEL-9190-case.md)" --repo "$R" 'scripts/a b%c.sh'
+same "RF4 a path with a space and % is claimed" "$RC" 0
+run hp read --repo "$R"
+contains "RF4 ... and round-trips through read" "$OUT" "$(printf 'scripts/a b%%c.sh\tHIMMEL-9190')"
+
+# ---- repo identity: a linked worktree and its primary share one row
+git -C "$R" worktree add -q "$W/wt" -b wt-branch
+run hp claim --key HIMMEL-9191 --label lab --doc "$(mkdoc HIMMEL-9191-case.md)" --repo "$W/wt" scripts/w1.sh
+same "repo identity: claim from a linked worktree exits 0" "$RC" 0
+same "repo identity: the row sits in the primary's directory" "$([ -e "$(rowf scripts/w1.sh)" ] && echo row || echo none)" row
+run hp read --repo "$R" --paths-from <(printf 'scripts/w1.sh\n')
+contains "repo identity: read from the primary shows the worktree's row" "$OUT" HIMMEL-9191
+run hp claim --key HIMMEL-9192 --label lab --doc "$DB" --repo "$R" scripts/w1.sh
+same "repo identity: the primary sees the same claim" "$RC" 1
+
+# ---- the real register was never touched
+same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"
+
+if [ "$fails" -eq 0 ]; then
+    printf 'test-holds: %d passed, 0 failed\n' "$total"
+    exit 0
+fi
+printf 'test-holds: %d passed, %d failed\n' "$((total - fails))" "$fails"
+exit 1
