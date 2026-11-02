@@ -498,7 +498,8 @@ export function registerRelease(program: Command): void {
         doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o),
       });
       for (const l of lines) console.log(l);
-      console.log(rmRunSummary(release, lines));
+      const summary = rmRunSummary(release, lines);
+      if (summary) console.log(summary);
       if (lines.some((l) => /^(REFUSED|PENDING) /.test(l))) process.exitCode = 2;
     });
 

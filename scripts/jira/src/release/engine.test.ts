@@ -805,7 +805,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     ask('K-2');
     const refused = await rmRun(ctx(), async () => []);
     expect(rmRunSummary('R1', refused)).toBe('RM-RUN R1 summary: 1 refused');
-    expect(rmRunSummary('R1', ['RULING R-R1-0001 Q-R1-0001 x', 'PENDING R-R1-0002: y'])).toBe('RM-RUN R1 summary: 0 refused');
+    expect(rmRunSummary('R1', ['RULING R-R1-0001 Q-R1-0001 x', 'PENDING R-R1-0002: y'])).toBeNull();
   });
 
   it('a request the judge leaves out is reported and stays claimed for the next run', async () => {

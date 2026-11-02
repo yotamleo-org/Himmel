@@ -1187,9 +1187,12 @@ export interface RmRunOptions {
   chiefOverride?: string;
 }
 
-// The last line of an rm-run: how many requests the engine refused, so a refusal is not only buried in the lines above.
-export const rmRunSummary = (release: string, lines: string[]): string =>
-  `RM-RUN ${release} summary: ${lines.filter((x) => /^REFUSED /.test(x)).length} refused`;
+// The last line of an rm-run that refused anything: how many requests the engine refused, so a refusal is not
+// only buried in the lines above. A run with no refusal prints none and keeps its output.
+export function rmRunSummary(release: string, lines: string[]): string | null {
+  const n = lines.filter((x) => /^REFUSED /.test(x)).length;
+  return n ? `RM-RUN ${release} summary: ${n} refused` : null;
+}
 
 export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promise<string[]> {
   const ruling = o.ruling?.trim();
