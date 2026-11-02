@@ -3364,15 +3364,19 @@ H_FSD="$(t95_sdir scope-foreign)"; H_FKEEP="$H_FSD/$(t95_digest "scope-foreign|$
 mkdir -p "$H_FSD"; printf 'x\n%s\n' "$(dirname "$H_LK2")/foreign-gone.lock" > "$H_FKEEP"
 h_regs_before="$(t95_count "$H_SD"/*.doc)"
 h_toks_before="$(t95_count "$G_TOK/$(t95_digest "scope-prune|$H_DOC1")".*)"
+h_dead_before="$(t95_count "$H_SD/$(t95_digest "scope-prune|$H_DOC1")".*.doc)"
 rm -rf "$H_LK1"
 printf '{"session_id":"scope-prune"}' | QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" self-heartbeat >/dev/null 2>&1
 h_regs_after="$(t95_count "$H_SD"/*.doc)"
+h_dead_after="$(t95_count "$H_SD/$(t95_digest "scope-prune|$H_DOC1")".*.doc)"
+h_held_after="$(t95_count "$H_SD/$(t95_digest "scope-prune|$H_DOC2")".*.doc)"
 h_toks="$(t95_count "$G_TOK/$(t95_digest "scope-prune|$H_DOC1")".*)"
 if [ "$h_regs_before" = 2 ] && [ "$h_regs_after" = 1 ] && [ "$h_toks_before" = 1 ] && [ "$h_toks" = 0 ] \
+    && [ "$h_dead_before" = 1 ] && [ "$h_dead_after" = 0 ] && [ "$h_held_after" = 1 ] \
     && [ -d "$H_LK2" ] && [ -f "$H_FKEEP" ]; then
     pass "T95h: the hook prunes a registration whose lock dir is gone, keeps a held one, and leaves foreign sidecars alone"
 else
-    fail "T95h: prune (regs $h_regs_before -> $h_regs_after, token files for the dead lock before/after: $h_toks_before/$h_toks, held lock present: $([ -d "$H_LK2" ] && echo y || echo n), foreign sidecar kept: $([ -f "$H_FKEEP" ] && echo y || echo n))"
+    fail "T95h: prune (regs $h_regs_before -> $h_regs_after, token files for the dead lock before/after: $h_toks_before/$h_toks, dead sidecar before/after: $h_dead_before/$h_dead_after, held sidecar after: $h_held_after, held lock present: $([ -d "$H_LK2" ] && echo y || echo n), foreign sidecar kept: $([ -f "$H_FKEEP" ] && echo y || echo n))"
 fi
 rm -rf "$H_FSD"
 QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" release "$H_DOC2" prune95b >/dev/null 2>&1
