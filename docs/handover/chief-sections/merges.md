@@ -59,21 +59,19 @@ reviewed merge, the worker sends `BLOCKED`; do not run the denied merge for it
 (that launders the denial) and do not loosen any rule. The fallback is the
 claudex path above, tracked as a follow-up.
 
-**A red main and the merge gate.** `merge-on-green.sh` exits 22 while the
-newest `CI` run on main is red, and a run that is being re-run counts as red
-until its new attempt completes. It prints `main-red: <class> (<suites>)` on
-every red it classifies. A red whose every failed suite hit the runner's cap
-timeout with assertions passing (`cap-only`), in suites the PR does not reach
-(`scripts/cr/impacted-suites.sh`), passes on its own: no FIX-GO. For the PR
-that fixes the red, with no `Fixes-main-red:` line, you still write a FIX-GO
-with `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>` (beside the
-ordinary GO) whenever the gate prints another class: `assertion` (a suite
-failed an assertion), `cap-overlap` (a cap-timed-out suite is one the PR
-reaches), `cap-unverified` (the gate could not read the PR's reach) or
-`unclassified` (a red job that is not a shell-unit job, a shard that failed
-for more than its suite rows such as a honeytoken leak or a shard with no
-rows, a job that never ran or was cancelled so its log is empty, or a log or
-job list the gate could not parse). After a merge on the declared-fix or fix-GO path the script
+**A red main and the merge gate.** A red main no longer stops a PR whose own CI
+passed (HIMMEL-8675): `merge-on-green.sh` prints one `MAIN-RED advisory:` line,
+audits `main-red-advisory ... via=advisory run=<red run id>` with the class and
+failed suites, and merges. A run that is being re-run counts as red until its new
+attempt completes. It prints `main-red: <class> (<suites>)` on every red it
+classifies (`cap-only`, `assertion`, `cap-overlap`, `cap-unverified`,
+`unclassified`: see [`main-red.md`](main-red.md)). Exit 22 is left for an
+unreadable run list or run window. The gate is advisory, so the HOLD on a real
+blocker is yours: withhold the GO of every PR while main is genuinely broken, and
+read the `MAIN-RED advisory:` lines of the merges that did land. The fix PR's
+`Fixes-main-red:` line and `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>`
+are now audit labels only (`via=<declaration>`), not required. After an advisory
+merge, or one on the declared-fix or fix-GO path, the script
 dispatches one `ci.yml` run on main and prints `MAIN-RECHECK dispatched
 run=<id>` (`run=unknown` when the new run is not listed yet; a failed dispatch
 is a WARN, the merge stands): read that run's `headSha` and `conclusion` before

@@ -33,13 +33,19 @@ occasionally and is handled by the next section, not by tightening the gate.
 ## Main red after a green merge
 
 Main-red must stay rare and be fixed fast. The merge gate backs this up:
-`merge-on-green.sh` refuses (exit 22) while the newest completed `CI` run on main is red,
-unless the PR is the declared fix (`Fixes-main-red:` line or a fix-GO; see the
-[stuck-playbook](stuck-playbook.md)). A run that is being re-run counts by its previous
-attempt, so a red under re-run still blocks. The gate reads the failed log and prints
+`merge-on-green.sh` no longer refuses a PR whose own checks passed because the newest
+completed `CI` run on main is red (HIMMEL-8675): the merge proceeds and prints one
+`MAIN-RED advisory:` line. Its audit line reads `MAIN-RED main-red-advisory ... via=advisory
+run=<red run id> class=<class> suites=<failed suites>`; a PR that declares the fix
+(`Fixes-main-red:` line or a fix-GO; see the [stuck-playbook](stuck-playbook.md)) is
+audited `via=<declaration>` and a cap-only red `via=cap-only`, as labels only. A red PR is
+still refused by the PR-green gate (exit 14), and the run list, a run being re-run whose
+previous attempt cannot be read, or a window with no completed run at its `--limit 50` cap
+still exit 22, because main's state is then unknown. A run that is being re-run counts by its previous
+attempt. The gate reads the failed log and prints
 `main-red: <class> (<suites>)`; a red made only of runner cap timeouts with assertions
 passing (`cap-only`), in suites the PR does not reach per `scripts/cr/impacted-suites.sh`,
-passes. Every failed job must be a shell-unit job, and no job may fail in more than one
+is `cap-only`. Every failed job must be a shell-unit job, and no job may fail in more than one
 step. A shard must fail only through the runner: its `Failed suites:` rows, then
 `home-canary: FAIL runner exited rc=1`. The rollup job may fail only in its shard-result
 step. Every job of the run that did not succeed or skip (`gh run view --json jobs`) must also show in the
@@ -48,18 +54,20 @@ honeytoken leak or read, a timeout, a shard with no rows, a failed lint job, a j
 failed in a second step, a rollup that failed in another step, the runner's
 `ERROR: run budget` or `STOPPED:` line, a job missing from the failed log and a job list
 that cannot be read are `unclassified`. An
-`assertion`, `cap-overlap`, `cap-unverified` or `unclassified` red still blocks.
-After a merge on the declared-fix or fix-GO path the script dispatches one `ci.yml` run on
+`assertion`, `cap-overlap`, `cap-unverified` or `unclassified` red is an advisory merge,
+not a block. A green merge onto a red main still means fix main first: the chief triages
+it below.
+After an advisory merge, or a merge on the declared-fix or fix-GO path, the script dispatches one `ci.yml` run on
 main (`gh workflow run ci.yml --ref main`) and prints `MAIN-RECHECK dispatched run=<id>`,
 because there is no push trigger to re-check main at the fix; a failed dispatch is a WARN
-and never fails the merge. An ordinary merge, and a cap-only pass, dispatch nothing.
+and never fails the merge. An ordinary merge onto a green main, and a cap-only pass, dispatch nothing.
 
 First classify the red, then act:
 
 | Class | Example | Action |
 |---|---|---|
 | **Test only** | a flaky, racy or skewed test case; no product breakage | **Quarantine at once** (next section) with a ticket so the fleet keeps merging, then fix it ASAP, usually the same shift. |
-| **Real blocker** | product breakage, a guard or invariant regression, a broken install or ship path | **HOLD the fleet.** Freeze GOs and merges until main is fixed. Dispatch the fix. |
+| **Real blocker** | product breakage, a guard or invariant regression, a broken install or ship path | **HOLD the fleet.** Freeze GOs and merges until main is fixed (the merge gate only advises now, so the chief's withheld GO is the hold). Dispatch the fix. |
 | **Complex fix** | the cause or the fix is beyond the worker that found it | **Escalate** to a higher tier, a judge or the operator. Never leave it skipped and forgotten. |
 
 <!-- mem:a79804f5adf1 -->
