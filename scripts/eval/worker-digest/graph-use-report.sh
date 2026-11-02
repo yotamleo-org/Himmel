@@ -57,10 +57,15 @@ JQ='
   | @tsv'
 
 TAB="$(printf '\t')"
-rows=""; njournals=0; unread=0
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/graph-use-report.XXXXXX")" || { echo "graph-use-report: mktemp failed" >&2; exit 2; } # prim-ok: a standalone read-only report, one scratch directory, no sourced lib
+trap 'rm -rf "$WORK"' EXIT
+rows=""; njournals=0; unread=0; unwalked=0
 for root in "${ROOTS[@]}"; do
   root="${root%/}"
   lane="$(basename "$(dirname "$root")")"; lane="${lane#.}"; lane="${lane#claude-}"
+  # find's own errors (a directory it cannot read) are kept, one line each, and reported below
+  find "$root" -type f -name '*.jsonl' -mtime "-$DAYS" -print0 >"$WORK/list" 2>"$WORK/err"
+  unwalked=$((unwalked + $(grep -c . "$WORK/err")))
   while IFS= read -r -d '' f; do
     rel="${f#"$root"/}"
     case "$rel" in
@@ -77,13 +82,14 @@ for root in "${ROOTS[@]}"; do
     else
       unread=$((unread + 1))
     fi
-  done < <(find "$root" -type f -name '*.jsonl' -mtime "-$DAYS" -print0 2>/dev/null)
+  done <"$WORK/list"
 done
 
 echo "graph-use-report: window ${DAYS}d, $njournals journals in ${#ROOTS[@]} roots"
 echo "counted: a Bash call whose command leads with graphify, worker-graph.sh or leg-graph.sh then query, explain or path (also after cd, env, timeout N, rtk, rtk proxy, bash, bash -c or -lc, a newline, ; && |, \$( ), do or then), and every mcp__graphify__ tool call. A call failed when its tool_result has is_error. Main = a session journal, sub = a subagent journal. Scope himmel = a project directory whose name contains himmel; graph_pct = journals with a graph call over journals that ran any tool."
-echo "not counted: a call behind any other wrapper (xargs, env -i, sudo, a function), a call whose command is not a string, and a call that only a pipe or a here-doc builds, so those are missed; a quoted mention such as echo \"x; graphify query y\" is counted by mistake, so the number is approximate, not a floor."
+echo "not counted: a call behind any other wrapper (xargs, env -i, sudo, a function), a call whose command is not a string, a call that only a pipe or a here-doc builds, and the second graph call of a command that holds two (one command counts once, a bare call before a wrapper call), so those are missed; a quoted mention such as echo \"x; graphify query y\" is counted by mistake, so the number is approximate, not a floor."
 [ "$unread" -gt 0 ] && echo "journals that could not be read, left out of every number: $unread"
+[ "$unwalked" -gt 0 ] && echo "directories that could not be walked, journals under them left out of every number: $unwalked"
 printf 'scope\tlane\tkind\tjournals\twith_tools\twith_graph\tgraph_pct\tcalls\tquery\texplain\tpath\tmcp\tbare\tbare_fail\twrapper\twrapper_fail\tsearched\tsearched_no_graph\n'
 printf '%s' "$rows" | awk -F'\t' '
   NF == 13 {

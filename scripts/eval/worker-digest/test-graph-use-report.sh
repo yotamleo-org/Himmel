@@ -51,6 +51,11 @@ mkdir -p "$UNREAD/claude/projects/-x-himmel" && cp "$FX/claude/projects/-x-himme
 URPT="$(bash "$RPT" --days 36500 --root "$UNREAD/claude/projects" 2>&1)"
 check "a journal jq cannot read is counted and reported, not dropped silently (skipped when the files stay readable, e.g. root)" '[ -r "$UNREAD/claude/projects/-x-himmel/locked.jsonl" ] || { grep -q "could not be read.*: 1" <<<"$URPT" && grep -q " 1 journals in 1 roots" <<<"$URPT"; }'
 
+mkdir "$UNREAD/claude/projects/-x-himmel/walled" && chmod 000 "$UNREAD/claude/projects/-x-himmel/walled"
+# shellcheck disable=SC2034
+WRPT="$(bash "$RPT" --days 36500 --root "$UNREAD/claude/projects" 2>&1)"
+check "a directory find cannot walk is counted and reported, not dropped silently (skipped when it stays readable, e.g. root)" '[ -r "$UNREAD/claude/projects/-x-himmel/walled" ] || grep -q "directories that could not be walked.*: 1" <<<"$WRPT"'
+
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
 
