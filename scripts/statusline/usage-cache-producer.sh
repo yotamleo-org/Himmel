@@ -197,9 +197,11 @@ if [ -f "$CACHE_FILE" ]; then
 fi
 
 # stdin rate_limits (utilization, falling back to used_percentage).
-stdin_five=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.utilization // .rate_limits.five_hour.used_percentage // empty' 2>/dev/null)
+# A value that is not a JSON number is passed on as "malformed", never as its text:
+# jq -r would flatten the string "43" to 43 and let it stamp.
+stdin_five=$(printf '%s' "$input" | jq -r '(.rate_limits.five_hour.utilization // .rate_limits.five_hour.used_percentage // empty) | if type == "number" then tostring else "malformed" end' 2>/dev/null)
 stdin_five_reset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
-stdin_seven=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.utilization // .rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
+stdin_seven=$(printf '%s' "$input" | jq -r '(.rate_limits.seven_day.utilization // .rate_limits.seven_day.used_percentage // empty) | if type == "number" then tostring else "malformed" end' 2>/dev/null)
 stdin_seven_reset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
 # A five_hour PRESENT in rate_limits as null or an object with no utilization is
 # the source saying "no active 5-hour window". It is read from the raw JSON: a

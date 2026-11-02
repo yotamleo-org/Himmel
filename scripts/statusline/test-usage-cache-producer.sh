@@ -597,7 +597,7 @@ run_test "(11a) HIMMEL-8827 oauth: API-empty five_hour + numeric seven_day stamp
     stub="$W/stub.sh";
     printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":$empty,\"seven_day\":{\"utilization\":43,\"resets_at\":\"R7\"}}" "JSON" > "$stub";
     chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
-    before=$(date +%s); bash "$PRODUCER" </dev/null;
+    before=$(date +%s); bash "$PRODUCER" </dev/null || exit 1;
     stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
     [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
     jq -e ".five_hour == {} and .seven_day.utilization == 43" "$CLAUDE_USAGE_CACHE" || exit 1;
@@ -611,7 +611,7 @@ run_test "(11b) HIMMEL-8827 stdin: rate_limits with an empty five_hour + numeric
   for empty in "null" "{}"; do
     printf "%s" "{\"five_hour\":{\"utilization\":90},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
     before=$(date +%s);
-    printf "%s" "{\"rate_limits\":{\"five_hour\":$empty,\"seven_day\":{\"utilization\":43}}}" | bash "$PRODUCER";
+    printf "%s" "{\"rate_limits\":{\"five_hour\":$empty,\"seven_day\":{\"utilization\":43}}}" | bash "$PRODUCER" || exit 1;
     stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
     [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
     jq -e ".five_hour == {} and .seven_day.utilization == 43" "$CLAUDE_USAGE_CACHE" || exit 1;
@@ -661,14 +661,17 @@ run_test "(11d) HIMMEL-8827 control: stdin windows out of range or one-sided kee
     "{\"five_hour\":null,\"seven_day\":{\"utilization\":\"x\"}}" \
     "{\"five_hour\":{\"utilization\":10},\"seven_day\":null}" \
     "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":\"x\"}}" \
-    "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":-1}}"; do
+    "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":-1}}" \
+    "{\"five_hour\":{\"utilization\":\"10\"},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":\"43\"}}" \
+    "{\"five_hour\":null,\"seven_day\":{\"utilization\":\"43\"}}"; do
     printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
     printf "%s" "{\"rate_limits\":$rl}" | bash "$PRODUCER" || exit 1;
     jq -e ".derived_at != null" "$CLAUDE_USAGE_CACHE" >/dev/null || { echo "no cache written for: $rl" >&2; exit 1; };
     [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" = "1234567890" ] || { echo "stamped on: $rl" >&2; exit 1; };
   done;
   printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
-  printf "%s" "{\"rate_limits\":{\"five_hour\":{\"utilization\":0},\"seven_day\":{\"utilization\":100}}}" | bash "$PRODUCER";
+  printf "%s" "{\"rate_limits\":{\"five_hour\":{\"utilization\":0},\"seven_day\":{\"utilization\":100}}}" | bash "$PRODUCER" || exit 1;
   [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" -gt 1234567890 ] || exit 1;
 '
 
