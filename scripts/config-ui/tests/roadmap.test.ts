@@ -459,6 +459,24 @@ test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the e
   expect((await fetch(`http://127.0.0.1:${srv.port}/roadmap.js`)).status).toBe(200);
 });
 
+test("GET /api/roadmap: the default payload has no ticket with no fixVersion; ?nv=1 serves those tickets only", async () => {
+  const s = withNoVersion(station());
+  const home = join(s.d, "home"); mkdirSync(home);
+  const srv = startServer({
+    port: 0, token: TOKEN, legsScript: join(s.d, "no-workers.sh"),
+    env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
+      HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_ROADMAP_PLAN_DIR: s.plan, HIMMEL_ROADMAP_DRIFT_LOG: s.drift },
+  });
+  cleanups.push(() => srv.stop());
+  const get = async (q: string) => (await fetch(`http://127.0.0.1:${srv.port}/api/roadmap${q}`, { headers: { "X-Himmel-Token": TOKEN } })).json();
+  const d = await get(""), n = await get("?nv=1");
+  expect(d.tickets.length).toBe(7);
+  expect(d.noVersionCount).toBe(1);
+  expect(JSON.stringify(d)).not.toContain("Loose ticket");
+  expect(n.tickets.map((t: { k: number }) => t.k)).toEqual([8]);
+  expect(n.sync).toEqual([]);
+});
+
 test("local-store items render as cards keyed by their generated LOCAL-<n> id, never as HIMMEL-<n>", () => {
   const local = [
     { id: "LOCAL-1", title: "First", status: "To Do", type: "Task", fix_version: "", epic: "", sector: "" },
@@ -473,9 +491,9 @@ test("local-store items render as cards keyed by their generated LOCAL-<n> id, n
 
 // ---- the Board's No version lane, folded Done column, Jira line per column, find box, and Project, Theme and Only filters ----
 const withNoVersion = (s: ReturnType<typeof station>) => { writeFileSync(join(s.mirror, "HIMMEL-8.md"), issue(8, "To Do", "To Do", [], "Loose ticket")); return s; };
-// the columns of the Board's version lanes (before the No version lane): [bucket, the number in the heading, the cards drawn, the Jira line]
+// the columns of a Board tab: [bucket, the number in the heading, the cards drawn, the Jira line]
 const cols = (html: string) => {
-  const main = html.split('id="rm-nv"')[0], parts = main.split('data-rm-col="').slice(1);
+  const parts = html.split('data-rm-col="').slice(1);
   return parts.map((p) => [p.slice(0, p.indexOf('"')), Number(/class="ro rm-n">(\d+)</.exec(p)?.[1]), (p.match(/class="rm-card"/g) || []).length, /class="ro rm-jira">([^<]*)</.exec(p)?.[1]] as const);
 };
 const optIdx = (html: string, name: string, label: string) => {
@@ -484,39 +502,75 @@ const optIdx = (html: string, name: string, label: string) => {
 };
 const board = (r: ReturnType<typeof readRoadmap>, ui: Record<string, unknown> = {}, extras: unknown = null) => renderBoard(r, { version: null, theme: null, v: "all", ...ui }, extras);
 
-test("a ticket with no fixVersion stays in the read, marked, and no version counts it; a versioned ticket is not marked", () => {
-  const r = read(withNoVersion(station()));
-  const t = byKey(r);
-  expect(t[8].noVersion).toBe(true);
-  expect(t[8].v).toBe(-1);
-  expect(t[1].noVersion).toBeUndefined();
-  expect(r.versions[1].counts).toEqual({ todo: 1, prog: 2, rev: 1, ci: 0, done: 0, wont: 0 });
-  expect(r.librarian.releasedOpen.some((p) => p.k === 8)).toBe(false);
-});
-
-test("open tickets with no fixVersion stay out of the Tidy up counts and lists (no sector, stale In Progress, duplicates); the lane still draws them", () => {
-  const s = withNoVersion(station());
+// ---- the No version board: its tickets are left out of the default read and fetched only when that board opens ----
+const withNv = (s: ReturnType<typeof station>) => { // adds HIMMEL-9, In Progress with no fixVersion, to withNoVersion's HIMMEL-8
   writeFileSync(join(s.mirror, "HIMMEL-9.md"), issue(9, "In Progress", "In Progress", [], "Loose ticket"));
+  return s;
+};
+const nvRead = (s: ReturnType<typeof station>) => read(s, { noVersion: true });
+
+test("the default read carries no ticket with no fixVersion, only their count, and changes no version, count or Tidy up list", () => {
   const before = read(station());
-  const r = read(s);
-  expect(r.drift.now.unthemed).toBe(before.drift.now.unthemed);
-  expect(r.librarian.unthemed.map((p) => p.k)).toEqual(before.librarian.unthemed.map((p) => p.k));
-  expect(r.librarian.staleInProgress.map((p) => p.k)).toEqual(before.librarian.staleInProgress.map((p) => p.k));
-  expect(r.librarian.duplicates).toEqual(before.librarian.duplicates);
-  expect(board(r).split('id="rm-nv"')[1]).toContain("2 active tickets with no fixVersion");
+  const r = read(withNv(withNoVersion(station())));
+  expect(r.tickets.map((t) => t.k)).toEqual(before.tickets.map((t) => t.k));
+  expect(JSON.stringify(r)).not.toContain("Loose ticket");
+  expect(r.noVersionCount).toBe(2);
+  expect(before.noVersionCount).toBe(0);
+  expect(r.versions).toEqual(before.versions);
+  expect(r.drift).toEqual(before.drift);
+  expect(r.librarian).toEqual(before.librarian);
+  expect([r.cur, r.next]).toEqual([before.cur, before.next]);
 });
 
-test("Board: a ticket with no fixVersion is in the No version lane and in no version's column; a versioned ticket is not in the lane", () => {
+test("the No version read carries those tickets only, marked, and no versioned ticket", () => {
+  const r = nvRead(withNv(withNoVersion(station())));
+  expect(r.tickets.map((t) => t.k)).toEqual([8, 9]);
+  for (const t of r.tickets) { expect(t.noVersion).toBe(true); expect(t.v).toBe(-1); }
+  expect(r.noVersionCount).toBe(2);
+  expect(JSON.stringify(r)).not.toContain("Roadmap in the ui"); // negative control: HIMMEL-1 has a fixVersion
+  expect(r.librarian).toEqual({ staleInProgress: [], drift: [], unthemed: [], releasedOpen: [], duplicates: [] });
+  expect(nvRead(station()).tickets).toEqual([]); // nothing without a version: nothing to fetch
+});
+
+test("a ticket with no fixVersion that the plan placed reads in both modes without throwing, and drifts nowhere", () => {
+  const s = withNoVersion(station());
+  writeFileSync(join(s.plan, "stage3", "placement.tsv"), "key\tversion\tlayer\nHIMMEL-1\tv1.1.2\tfeatures\nHIMMEL-8\tv1.1.2\tfeatures\n");
+  const r = read(s), n = nvRead(s);
+  expect(r.tickets.some((t) => t.k === 8)).toBe(false);
+  expect(r.librarian.drift.some((p) => p.k === 8)).toBe(false);
+  expect(n.tickets.map((t) => [t.k, t.drift])).toEqual([[8, 0]]);
+  expect(n.drift.now).toEqual({ drift: 0, unplanned: 0, unthemed: 0 });
+});
+
+test("Board: the default page has no No version lane and no ticket for it; its tab says how many, and fetches nothing", () => {
   const r = read(withNoVersion(station()));
-  for (const v of ["all", "v1.1.2"]) {
-    const [main, nv] = board(r, { v }).split('id="rm-nv"');
-    expect(nv).toContain("Loose ticket");
-    expect(nv).toContain("1 active ticket with no fixVersion");
-    expect(nv).not.toContain("Roadmap in the ui"); // negative control: HIMMEL-1 has a fixVersion
-    expect(main).not.toContain("Loose ticket");
-  }
-  expect(board(read(station()))).not.toContain('id="rm-nv"'); // no such ticket, no lane
+  const html = board(r);
+  expect(html).not.toContain('id="rm-nv"');
+  expect(html).not.toContain("Loose ticket");
+  expect(html).toMatch(/>No version <span class="ro">1<\/span><\/a>/);
+  expect(board(read(station()))).not.toContain(">No version"); // no such ticket, no tab
+  // the tab with nothing read yet says so; nothing is drawn from the default read
+  const wait = board(r, { tab: "nv" });
+  expect(wait).toContain("loading");
+  expect(wait).not.toContain("Loose ticket");
   expect(renderKanban(r, { version: null, theme: null })).not.toContain("Loose ticket"); // the old pages are unchanged
+});
+
+test("Board: the No version tab draws the fetched tickets in columns with a Jira line, and finds and filters work there; a versioned ticket is not drawn", () => {
+  const s = withNv(withNoVersion(station()));
+  const r = read(s), nv = nvRead(s);
+  const html = board(r, { tab: "nv", nv });
+  expect(html).toContain('id="rm-nv"');
+  expect(html).toContain("Loose ticket");
+  expect(html).not.toContain("Roadmap in the ui");
+  const c = cols(html);
+  expect(c.map((x) => [x[0], x[1], x[2], x[3]])).toEqual([["todo", 1, 1, "Jira 1 matches"], ["prog", 1, 1, "Jira 1 matches"], ["rev", 0, 0, "Jira 0 matches"], ["ci", 0, 0, "Jira 0 matches"], ["done", 0, 0, "Jira 0 matches"]]);
+  expect(html).toContain("data-rm-find");
+  const found = board(r, { tab: "nv", nv, find: "himmel-9" });
+  expect(cols(found).reduce((a, x) => a + x[2], 0)).toBe(1);
+  expect(cols(found).map((x) => x[3])).toEqual(["Jira 1 · 0 shown", "Jira 1 matches", "Jira 0 matches", "Jira 0 matches", "Jira 0 matches"]);
+  expect(board(r, { tab: "nv", nv, find: "no such ticket" })).toContain("No tickets match");
+  expect(board(r, { tab: "nv", nv: { state: "error", reason: "roadmap failed (500)" } })).toContain("roadmap failed (500)");
 });
 
 test("Board: Done is a folded column, open while a find is set, and each column's number is the cards drawn with a Jira line that says so", () => {

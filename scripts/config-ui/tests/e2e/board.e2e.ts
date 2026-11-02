@@ -87,7 +87,7 @@ test("dragging a card to another column sends its new status", async ({ page }) 
   await go(page, "#/board");
   const sent: string[] = [];
   await page.route("**/api/roadmap/write", async (route) => { sent.push(route.request().postData() || ""); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }); });
-  await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('#rm-lanes [data-rm-drop="prog"]'));
+  await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]'));
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
 });
@@ -101,15 +101,24 @@ test("the Chain filter narrows the lanes to that chain's tickets", async ({ page
   await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeVisible();
 });
 
-test("a ticket with no fixVersion sits in the No version lane, and a versioned ticket does not", async ({ page }) => {
+test("a ticket with no fixVersion is on its own No version tab, fetched only when the tab opens; no version board has it", async ({ page }) => {
   const errs = consoleErrors(page);
+  const reads: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("/api/roadmap")) reads.push(r.url()); });
   await open(page);
   await go(page, "#/board");
-  await expect(page.locator("#rm-nv")).toContainText("1 active ticket with no fixVersion");
+  await expect(page.locator(".rm-card", { hasText: "Work in flight" })).toBeVisible();
+  await expect(page.locator(".rm-card", { hasText: "Standing ticket with no version" })).toHaveCount(0);
+  await expect(page.locator("#rm-nv")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^No version/ })).toContainText("1");
+  expect(reads.every((u) => !u.includes("nv=1"))).toBe(true); // the default read did not ask for them
+  await page.getByRole("tab", { name: /^No version/ }).click();
   await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
   await expect(page.locator("#rm-nv .rm-card", { hasText: "Work in flight" })).toHaveCount(0);
-  await expect(page.locator("#rm-lanes .rm-card", { hasText: "Standing ticket with no version" })).toHaveCount(0);
-  await shot(page, "board-nv-lane");
+  expect(reads.filter((u) => u.includes("nv=1"))).toHaveLength(1);
+  await shot(page, "board-nv-tab");
+  await go(page, "#/board");
+  await expect(page.locator(".rm-card", { hasText: "Standing ticket with no version" })).toHaveCount(0);
   expect(errs).toEqual([]);
 });
 
