@@ -22,6 +22,7 @@ fs.writeFileSync(process.env.STUB_ARGS, process.argv.slice(2).join('\n'));
 if (process.env.STUB_FAIL) process.exit(1);
 if (process.env.STUB_ROWS) console.log(process.env.STUB_ROWS);
 JS
+unset STUB_FAIL STUB_ROWS
 export JIRA_CLI="$WORK/stub.js" STUB_ARGS="$WORK/args" JIRA_PROJECT_KEY=HIMMEL
 
 out="$(STUB_ROWS="$(printf 'HIMMEL-1\tTask\tTo Do\tone\nHIMMEL-2\tBug\tIn Progress\ttwo')" bash "$SUT" 2>&1)"; rc=$?
@@ -40,6 +41,12 @@ check "none -> only the count line" "# empty-sector open=0" "$out"
 
 out="$(bash "$SUT" --limit 7 2>&1)"
 has "--limit reaches the CLI" "$(cat "$WORK/args")" "7"
+
+out="$(STUB_ROWS="$(printf 'HIMMEL-1\tTask\tTo Do\tone\nHIMMEL-2\tBug\tIn Progress\ttwo')" bash "$SUT" --limit 2 2>&1)"; rc=$?
+check "limit reached -> exit 1" 1 "$rc"
+has "limit reached -> count marked as a lower bound" "$out" "# empty-sector open>=2"
+out="$(bash "$SUT" --limit 0 2>&1)"; rc=$?
+check "--limit 0 -> exit 2" 2 "$rc"
 
 out="$(STUB_FAIL=1 bash "$SUT" 2>&1)"; rc=$?
 check "CLI failure -> exit 2, not a clean pass" 2 "$rc"
