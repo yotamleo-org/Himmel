@@ -848,16 +848,20 @@ else fail "staged-copy: drifted from the tracked files:$DRIFT"; fi
 # RED control: the failure mode this staging exists for. A FIFO anywhere in the sandbox ROOT makes
 # sandbox-run.sh exit 125 (diff: ODD-RC, exit 3); with it gone the same row is clean (exit 0). Only
 # the private staged ROOT is touched, never the shared checkout.
-if mkfifo "$STAGE/scripts/planted.fifo" 2>/dev/null; then
-  python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
-          --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC18A=$?
-  rm -f "$STAGE/scripts/planted.fifo"
-  python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
-          --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC18B=$?
-  if [ "$RC18A" = "3" ]; then pass "staged-root-control: a FIFO in the sandbox ROOT makes the row rc 125 (exit 3)"
-  else fail "staged-root-control: expected exit 3 with a FIFO in ROOT, got $RC18A"; fi
-  if [ "$RC18B" = "0" ]; then pass "staged-root-control: the same row is clean once the FIFO is gone (exit 0)"
-  else fail "staged-root-control: expected exit 0 without the FIFO, got $RC18B"; fi
+if command -v mkfifo >/dev/null 2>&1; then
+  if mkfifo "$STAGE/scripts/planted.fifo" 2>/dev/null; then
+    OUT18A=$(python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
+            --corpus "$TMP/hid-row.jsonl" --jobs 1 2>&1); RC18A=$?
+    rm -f "$STAGE/scripts/planted.fifo"
+    python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
+            --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC18B=$?
+    if [ "$RC18A" = "3" ]; then pass "staged-root-control: a FIFO in the sandbox ROOT makes the row exit 3"
+    else fail "staged-root-control: expected exit 3 with a FIFO in ROOT, got $RC18A"; fi
+    # exit 3 is any odd rc or a timeout: name the rc, so a refusal that became exit 1 cannot pass
+    has "staged-root-control: both sides read rc 125" "$OUT18A" "rb=125 rh=125"
+    if [ "$RC18B" = "0" ]; then pass "staged-root-control: the same row is clean once the FIFO is gone (exit 0)"
+    else fail "staged-root-control: expected exit 0 without the FIFO, got $RC18B"; fi
+  else fail "staged-root-control: mkfifo exists but could not create the FIFO"; fi
 else echo "SKIP (no mkfifo on this host): 18 staged-root FIFO control"; fi
 
 echo "----"
