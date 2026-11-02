@@ -775,7 +775,7 @@ case "$GH_STUB_MODE" in
         if [ "$is_watch" -eq 1 ]; then
             w=$(cat "$GH_STUB_WATCH" 2>/dev/null); w=${w:-0}
             echo $((w+1)) > "$GH_STUB_WATCH"
-            if [ "$w" -eq 0 ]; then sleep 3; fi
+            if [ "$w" -eq 0 ]; then sleep 8; fi
             echo "All checks were successful"; exit 0
         fi
         exit 8 ;;
@@ -2089,7 +2089,7 @@ fi
 # extension (the first wait hits the cap with the check still running; the second —
 # the extension — resolves green). Today this is rc 2; after the fix rc 0,
 # with the WAITING notice naming the count and the still-pending job.
-run blocking-cap-extend --max-wait 2
+run blocking-cap-extend --max-wait 5
 assert_rc 0 "2907-a a slow-but-healthy shard resolves after the one-time extension"
 assert_err_has "WAITING 1 pending (unit-tests) — extending once" "2907-a WAITING notice names the pending count and job"
 assert_out_has "all checks green + all review threads resolved" "2907-a eventual green verdict"
