@@ -50,7 +50,7 @@ JQ='
     def n($k): $g | map(select(.k == $k)) | length;
     def form($f): $g | map(select(.f == $f)) | length;
     [ ($t | length),
-      ($t | map(select(.n == "Grep" or .n == "Glob" or (.n == "Bash" and (.c | test("(^|[;&|([:space:]])(git[[:space:]]+grep|grep|egrep|fgrep|rg|ugrep)[[:space:]]")))) ) | length),
+      ($t | map(select(.n == "Grep" or .n == "Glob" or (.n == "Bash" and (.c | test("(^|[;&|([:space:]\"'"'"'])(git[[:space:]]+grep|grep|egrep|fgrep|rg|ugrep)[[:space:]]")))) ) | length),
       form("query"), form("explain"), form("path"),
       ($t | map(select(.n | test("^mcp__graphify__"))) | length),
       n("bare"), failed("bare"), n("wrap"), failed("wrap") ]

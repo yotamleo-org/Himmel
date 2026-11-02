@@ -41,11 +41,12 @@ const GRAPH_WRAPPER = /(?:^|\/)scripts\/graphify\/(?:leg|worker)-graph\.sh$/;
 // rtk's own commands; any other `rtk <word>` is a wrapper around <word>.
 const RTK_OWN = new Set(["gain", "proxy", "recall", "discover", "session", "cc-economics", "config", "init", "pipeline", "methods", "plugins", "tasks"]);
 const CD_PREFIX = /^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
+const ENV_PREFIX = /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+(?=(?:ba|z)?sh\s)/;
 const SHELL_C = /^(?:ba|z)?sh\s+-[a-z]*c\s+(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*$/;
 const commandHead = (cmd: string) => {
   let s = cmd.trim();
   for (let n = 0; n < 4; n++) {
-    const next = s.replace(CD_PREFIX, "");
+    const next = s.replace(CD_PREFIX, "").replace(ENV_PREFIX, "");
     const sh = SHELL_C.exec(next);
     const inner = sh ? (sh[1] ?? sh[2]).trim() : next;
     if (inner === s) break;

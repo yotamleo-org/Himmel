@@ -17,6 +17,9 @@ bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 
 OUT="$(bash "$RPT" --days 36500 --root "$FX/claude/projects" --root "$FX/claude-codex/projects" 2>&1)"
+# shellcheck disable=SC2034
+OUTRC=$?
+check "the report over the fixtures exits 0" '[ "$OUTRC" = 0 ]'
 # cell <scope> <lane> <kind> <column name>: one cell of the table
 cell() { printf '%s\n' "$OUT" | awk -F'\t' -v s="$1" -v l="$2" -v k="$3" -v c="$4" '
   $1 == "scope" { for (i = 1; i <= NF; i++) if ($i == c) col = i }
@@ -49,12 +52,21 @@ trap 'chmod -R u+rw "$UNREAD" 2>/dev/null; rm -rf "$UNREAD"' EXIT
 mkdir -p "$UNREAD/claude/projects/-x-himmel" && cp "$FX/claude/projects/-x-himmel/s1.jsonl" "$UNREAD/claude/projects/-x-himmel/ok.jsonl" && cp "$FX/claude/projects/-x-himmel/s2.jsonl" "$UNREAD/claude/projects/-x-himmel/locked.jsonl" && chmod 000 "$UNREAD/claude/projects/-x-himmel/locked.jsonl"
 # shellcheck disable=SC2034
 URPT="$(bash "$RPT" --days 36500 --root "$UNREAD/claude/projects" 2>&1)"
+# shellcheck disable=SC2034
+URPTRC=$?
+check "the report over a root with an unreadable journal still exits 0" '[ "$URPTRC" = 0 ]'
 check "a journal jq cannot read is counted and reported, not dropped silently (skipped when the files stay readable, e.g. root)" '[ -r "$UNREAD/claude/projects/-x-himmel/locked.jsonl" ] || { grep -q "could not be read.*: 1" <<<"$URPT" && grep -q " 1 journals in 1 roots" <<<"$URPT"; }'
 
 mkdir "$UNREAD/claude/projects/-x-himmel/walled" && chmod 000 "$UNREAD/claude/projects/-x-himmel/walled"
 # shellcheck disable=SC2034
 WRPT="$(bash "$RPT" --days 36500 --root "$UNREAD/claude/projects" 2>&1)"
 check "a directory find cannot walk is counted and reported, not dropped silently (skipped when it stays readable, e.g. root)" '[ -r "$UNREAD/claude/projects/-x-himmel/walled" ] || grep -q "directories that could not be walked.*: 1" <<<"$WRPT"'
+
+mkdir -p "$UNREAD/q/claude/projects/-x-himmel"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash -c \"rg foo\""}},{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls"}}]}}' >"$UNREAD/q/claude/projects/-x-himmel/q.jsonl"
+# shellcheck disable=SC2034
+QRPT="$(bash "$RPT" --days 36500 --root "$UNREAD/q/claude/projects" 2>&1)"
+check "a search behind bash -c with a quote before it counts: 1 journal searched, never called the graph" '[ "$(OUT="$QRPT" cells all claude main searched searched_no_graph)" = 1/1 ]'
 
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
