@@ -16,8 +16,10 @@
 # the context fill line, finished) would otherwise be re-woken every --rewake seconds
 # for hours at full context cost. At the cap the waker stops typing,
 # keeps polling, and says so once on stderr and in <state dir>/<name> as `capped`
-# (the chief tick reads it). A set ends when the unread count changes (a new message
-# raises it, a read lowers it) or falls to 0: the count restarts and `capped` clears.
+# (the chief tick reads it). A set ends when the unread count changes (an inbox line
+# raises it, a read lowers it), falls to 0, or, once capped, the newest bus record
+# number (`bus tip`) moves, because `bus unread` is a 0/1 flag and cannot show a
+# second bus message: the count restarts and `capped` clears.
 # Before every wake the screen (getAllDisplayedText) must show the idle input
 # box: a `❯` line between two `─` rules. A permission dialog or any menu
 # replaces that box, and Enter there would confirm its highlighted option, so
@@ -181,7 +183,7 @@ at_prompt() { # the screen shows the idle, empty input box (a bare ❯ line betw
         }'
 }
 
-since=0 last=0 polls=0 wakes=0 capped=0 prev_n=-1
+since=0 last=0 polls=0 wakes=0 prev_n=-1 cap_tip=""
 while :; do
     polls=$((polls + 1))
     if [ -n "$PID" ] && ! kill -0 "$PID" 2>/dev/null; then
@@ -191,8 +193,13 @@ while :; do
     n="$(unread)"
     now="$(date +%s.%N)"
     if [ "${n:-0}" -gt 0 ]; then
-        if [ "$n" != "$prev_n" ]; then wakes=0 capped=0; clear_capped; fi
+        if [ "$n" != "$prev_n" ]; then wakes=0; clear_capped; fi
         prev_n="$n"
+        # `bus unread` is a 0/1 presence flag, so a second bus message leaves n at 1: once capped, the newest bus record number tells a new message from the old set.
+        if [ "$wakes" -ge "$MAX_WAKES" ] && [ -n "$cap_tip" ]; then
+            tip_now="$("$BUS" tip "$NAME" 2>/dev/null)" # swallow-ok: an unreadable tip keeps the set capped, never wakes on a guess
+            if num "$tip_now" && [ "$tip_now" != "$cap_tip" ]; then wakes=0; clear_capped; fi
+        fi
         [ "$since" = 0 ] && since="$now"
         waited="$(awk -v a="$now" -v b="$since" 'BEGIN{printf "%d", (a-b)*1000}')"
         gap="$(awk -v a="$now" -v b="$last" 'BEGIN{printf "%d", (a-b)*1000}')"
@@ -205,15 +212,16 @@ while :; do
                 konsole sendText "You have unread himmel messages: read them now."$'\r'
                 last="$now"
                 wakes=$((wakes + 1))
-                if [ "$wakes" -ge "$MAX_WAKES" ] && [ "$capped" = 0 ]; then
-                    capped=1
-                    echo "bus-idle-waker: rewake cap reached ($MAX_WAKES wakes for the same unread mail), no more wakes until the unread count changes: $NAME" >&2
+                if [ "$wakes" -ge "$MAX_WAKES" ]; then
+                    cap_tip="$("$BUS" tip "$NAME" 2>/dev/null)" # swallow-ok: an unreadable tip leaves cap_tip empty, so only the count can end the set
+                    num "$cap_tip" || cap_tip=""
+                    echo "bus-idle-waker: rewake cap reached ($MAX_WAKES wakes for the same unread mail), no more wakes until a new message arrives or the unread count changes: $NAME" >&2
                     { mkdir -p "$STATE_DIR" && printf '%s\n' capped > "$STATE_DIR/$NAME"; } 2>/dev/null || true # swallow-ok: the state file is advisory, the stderr line above still reports
                 fi
             fi
         fi
     else
-        since=0 last=0 wakes=0 capped=0 prev_n=0
+        since=0 last=0 wakes=0 prev_n=0
         clear_capped
     fi
     [ "$MAX" -gt 0 ] && [ "$polls" -ge "$MAX" ] && exit 0

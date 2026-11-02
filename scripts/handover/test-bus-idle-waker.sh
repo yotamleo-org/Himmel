@@ -36,12 +36,20 @@ esac
 EOF
 cat > "$tmp/bus" <<'EOF'
 #!/usr/bin/env bash
-[ "$1" = unread ] || exit 0
-# BUS_AFTER_CALLS=<k> BUS_N_AFTER=<m>: the count turns into m after k unread calls (a new message, or a read).
-if [ -n "${BUS_AFTER_CALLS:-}" ]; then
+case "$1" in unread|tip) ;; *) exit 0 ;; esac
+# BUS_AFTER_CALLS=<k> BUS_N_AFTER=<m> BUS_TIP_AFTER=<t>: after k unread calls the count turns into m and the
+# newest record number into t (a read, an inbox line, or a new bus message). BUS_AFTER2_CALLS=<k2> BUS_N_AFTER2=<m2>
+# turns the count into m2 after k2 calls (a read to 0, then a new message).
+if [ "$1" = unread ] && [ -n "${BUS_AFTER_CALLS:-}" ]; then
   c=$(cat "$QLOG.busn" 2>/dev/null || echo 0); c=$((c + 1)); printf '%s' "$c" > "$QLOG.busn"
-  [ "$c" -gt "$BUS_AFTER_CALLS" ] && { printf '%s\n' "${BUS_N_AFTER:-0}"; exit 0; }
 fi
+c=$(cat "$QLOG.busn" 2>/dev/null || echo 0)
+if [ "$1" = tip ]; then
+  if [ -n "${BUS_AFTER_CALLS:-}" ] && [ "$c" -gt "$BUS_AFTER_CALLS" ]; then printf '%s\n' "${BUS_TIP_AFTER:-0}"; else printf '%s\n' "${BUS_TIP:-0}"; fi
+  exit 0
+fi
+if [ -n "${BUS_AFTER2_CALLS:-}" ] && [ "$c" -gt "$BUS_AFTER2_CALLS" ]; then printf '%s\n' "${BUS_N_AFTER2:-0}"; exit 0; fi
+if [ -n "${BUS_AFTER_CALLS:-}" ] && [ "$c" -gt "$BUS_AFTER_CALLS" ]; then printf '%s\n' "${BUS_N_AFTER:-0}"; exit 0; fi
 printf '%s\n' "${BUS_N:-0}"
 EOF
 chmod +x "$tmp/qdbus" "$tmp/bus"
@@ -186,6 +194,20 @@ BUS_N=2 BUS_AFTER_CALLS=6 BUS_N_AFTER=3 run 14 0 --rewake 0 --max-wakes 2
 rm -rf "$BUS_WAKER_STATE_DIR"
 BUS_N=2 BUS_AFTER_CALLS=6 BUS_N_AFTER=0 run 14 0 --rewake 0 --max-wakes 2
 [ "$(sends)" -eq 2 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "mail read after the cap clears the capped state" || fail "read after cap: $(sends) wakes, state '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+# The real `bus unread` is a 0/1 presence flag: a second bus message leaves it at 1, so the newest record number (`bus tip`) is what moves.
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=1 BUS_TIP=5 BUS_AFTER_CALLS=6 BUS_N_AFTER=1 BUS_TIP_AFTER=6 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 4 ] && pass "a second bus message after the cap (unread stays the flag 1, tip moves) wakes again" || fail "flag 1 to 1, tip 5 to 6: wanted 4 wakes, got $(sends)"
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=1 BUS_TIP=5 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 2 ] && [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = capped ] && pass "the same bus mail (flag 1, tip unchanged) stays capped at 2 wakes" || fail "flag 1, tip 5: wanted 2 wakes and capped, got $(sends) / '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+# Survivors of the first review: the count falling to a smaller non-zero value ends the set and clears the state, and 2 to 0 to 2 starts a new one.
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=3 BUS_AFTER_CALLS=6 BUS_N_AFTER=2 run 7 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 3 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "a count falling from 3 to 2 after the cap ends the set: a wake, and the capped state cleared" || fail "3 to 2: wanted 3 wakes and no state, got $(sends) / '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=2 BUS_AFTER_CALLS=6 BUS_N_AFTER=0 BUS_AFTER2_CALLS=8 BUS_N_AFTER2=2 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 4 ] && pass "mail read after the cap (2 to 0) and then new mail (0 to 2) wakes again" || fail "2 to 0 to 2: wanted 4 wakes, got $(sends)"
 bash "$WAKER" --name legX --service s --session /S --max-wakes 0 >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 64 ] && pass "--max-wakes 0 is refused (rc=64)" || fail "--max-wakes 0: expected rc=64, got rc=$rc"
