@@ -628,6 +628,16 @@ sal_rc "10v a directory whose .git git cannot read reads as marked" 0 "$H_NONE" 
 sal_rc "10v2 a subdirectory of it reads as marked" 0 "$H_NONE" "$GB/sub"
 sal_rc "10v3 a directory with no .git at all is not marked" 10 "$H_NONE" "$tmp/not-a-repo-at-all"
 sal_rc "10v4 a directory not made yet inside an unmarked repo is not marked" 10 "$H_NONE" "$CW_HIM/not/made/yet"
+# The walk up the parent chain, with no git in play (a plain directory tree), and the same rows against a walk that stops at the directory itself.
+MP="$tmp/marked-plain"; mkdir -p "$MP/a/b" "$tmp/marked-profile/a"; : > "$MP/.salus"; : > "$tmp/marked-profile/.salus-profile"
+sal_rc "10v5 a .salus two levels up marks a directory below it" 0 "$H_NONE" "$MP/a/b"
+sal_rc "10v6 a .salus-profile one level up marks a directory below it" 0 "$H_NONE" "$tmp/marked-profile/a"
+mkdir -p "$tmp/walk-mut"; sed 's/^    return \[d\] + .*/    return [d]/' "$HERE/salus_marked.py" > "$tmp/walk-mut/salus_marked.py"
+{ ! cmp -s "$HERE/salus_marked.py" "$tmp/walk-mut/salus_marked.py"; } && ok "10v7 the walk mutant differs from the classifier" || bad "10v7 the walk mutant did not apply"
+rc=0; env HOME="$H_NONE" python3 -I "$tmp/walk-mut/salus_marked.py" salus "$MP/a/b" || rc=$?
+[ "$rc" = 10 ] && ok "10v8 a walk that stops at the directory misses the marker two levels up (10v5 goes RED)" || bad "10v8 walk mutant rc=$rc (want 10)"
+rc=0; env HOME="$H_NONE" python3 -I "$tmp/walk-mut/salus_marked.py" salus "$GB/sub" || rc=$?
+[ "$rc" = 10 ] && ok "10v9 a walk that stops at the directory misses the .git one level up (10v2 goes RED)" || bad "10v9 walk mutant on .git rc=$rc (want 10)"
 GR="$tmp/repo-with-root"; git init -q "$GR"; mkdir -p "$GR/src" "$GR/vault"
 H_R="$tmp/home-holds-root"; mkdir -p "$H_R/.config/claude-codex"; printf '%s\n' "$GR/vault" > "$H_R/.config/claude-codex/phi-roots"
 sal_rc "10w a repo that holds a listed root is marked from a directory beside the root" 0 "$H_R" "$GR/src"
