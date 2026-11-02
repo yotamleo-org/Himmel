@@ -13,7 +13,9 @@ runs itself. Ported from the BX/BY session-scratchpad generators.
 workers.json is a list of objects. Required keys per worker: label (N<k>), keys
 (ticket keys, first is the doc's), slug, branch (type/slug), title, desc, why,
 prior, scope, scope_short, commit. Optional: search_query and search_symbol (the notes query and the graph
-symbol the brief's search directive names for the worker to run; defaults: the title, and the first Writes path),
+symbol the brief's search directive names for the worker to run; defaults: the title, and the first Writes path;
+a leg whose Writes is `none named` and sets no search_symbol gets no graph lookup, and neither does a leg in an
+adopted repo, which also gets no jira-himmel search),
 writes (a string copied from the ticket's Writes text;
 ONLY this field supplies the brief's Writes paths, never scope or prior. Missing writes leaves an
 empty Writes line the chief must fill before brief-lint allows launch; `none named` explicitly
@@ -188,25 +190,45 @@ def load_trust_res():
 MERGE_AT_READY_LINE = ("Stop at READY and never run a merge command: the chief merges (it runs the gate checks, writes the GO and merges "
                       "from the primary checkout), then sends you `MERGED #<pr> → <sha>`. Hold for that message; then `cd` out, WRAPPED, release the lock,")
 # The search directive every generated brief carries as a continuation of its Prior art field; brief-lint.sh
-# refuses a worker brief without it (both scripts, both collections, graph-qmd:) and refuses its <topic>/<symbol> placeholders.
-SEARCH_DIRECTIVE = ("Before you design, run `bash {qmd} query -c jira-himmel \"{query}\"` (tickets and PRs) and "
-                    "`bash {qmd} query -c luna \"{query}\"` (specs, audits and decisions), and "
-                    "`bash scripts/graphify/worker-graph.sh explain \"{symbol}\"`, and cite what each returned, or write none found with the query you ran. "
-                    "Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, "
-                    "or `graph-qmd: n/a, shipping` on a resume that only ships.")
-SEARCH_BAD_RE = re.compile(r'["`<>\\\r\n]')
+# refuses a worker brief without it (the qmd-bounded.sh query over luna and jira-himmel, the worker-graph.sh lookup,
+# graph-qmd:) and refuses its <topic>/<symbol> placeholders. An adopter repo has no Jira mirror collection and no himmel
+# graph, and a leg that writes no code names no symbol: each says so in words ("no Jira mirror", "no graph lookup"), which
+# the lint accepts in place of that command.
+# The query and symbol sit inside double quotes the worker runs: no quote, backtick, backslash, `$` or `!` (so no expansion), no angle bracket (a placeholder), one line.
+SEARCH_BAD_RE = re.compile(r'["`<>\\$!\r\n]')
 
 
 def search_fields(worker):
-    # The notes query and the graph symbol named in the directive: the leg's own keys, else its title and its first Writes path.
+    # The notes query and the graph symbol named in the directive: the leg's own keys, else its title and its first Writes
+    # path. A leg with no Writes path (`none named`) and no search_symbol has no symbol: None.
     q = worker.get('search_query')
     if q is None:
         q = ' '.join(SEARCH_BAD_RE.sub(' ', worker['title']).split())
     s = worker.get('search_symbol')
     if s is None:
-        first = (str(worker.get('writes') or '').split() or [worker['scope_short']])[0]
-        s = ' '.join(SEARCH_BAD_RE.sub(' ', first.strip('`,')).split())
+        first = (str(worker.get('writes') or '').split() or [worker['scope_short']])[0].strip('`,')
+        s = ' '.join(SEARCH_BAD_RE.sub(' ', first).split()) if re.search(r'[/.]', first) or not worker.get('writes') else None
     return q, s
+
+
+def search_directive(worker, ctx):
+    q, s = search_fields(worker)
+    qmd = shlex.quote(ctx['kit'] + '/scripts/lib/qmd-bounded.sh')
+    notes = '`bash %s query -c luna "%s"` (specs, audits and decisions' % (qmd, q)
+    if ctx['adapter']:
+        notes += '; this repo has no Jira mirror, so no ticket search'
+    else:
+        notes = '`bash %s query -c jira-himmel "%s"` (tickets and PRs) and %s' % (qmd, q, notes)
+    notes += ')'
+    if ctx['adapter'] or s is None:
+        why = 'an adopter repo has no himmel graph' if ctx['adapter'] else 'it names no code path to look up'
+        return ('Before you design, run %s, and cite what each returned, or write none found with the query you ran. '
+                'This leg has no graph lookup (%s). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
+                % (notes, why))
+    return ('Before you design, run %s, and `bash scripts/graphify/worker-graph.sh explain "%s"`, and cite what each returned, or write none found with the query you ran. '
+            'Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, '
+            'or `graph-qmd: n/a, shipping` on a resume that only ships.' % (notes, s))
+
 
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
@@ -395,9 +417,9 @@ def validate(worker, i, repo):
         die('worker %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % worker['label'])
     for k in ('search_query', 'search_symbol'):
         if k in worker and (not isinstance(worker[k], str) or not worker[k].strip() or SEARCH_BAD_RE.search(worker[k])):
-            die('worker %s: %s must be a non-blank one-line string with no quote, backtick, backslash or angle bracket (it is pasted into the search directive)' % (worker['label'], k))
-    if not all(search_fields(worker)):
-        die('worker %s: the search query or graph symbol is empty; set search_query and search_symbol' % worker['label'])
+            die('worker %s: %s must be a non-blank one-line string with no quote, backtick, backslash, dollar sign, exclamation mark or angle bracket (it is pasted inside double quotes into the search directive)' % (worker['label'], k))
+    if not search_fields(worker)[0]:
+        die('worker %s: the search query is empty; set search_query' % worker['label'])
     if 'grants' in worker:
         validate_grants(worker, repo)
     if 'inherited' in worker:
@@ -1011,7 +1033,7 @@ template_version: 3
 ## Results (newest at the bottom)
 """.format(wt=l['wt'], desc=l['desc'], keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
            branch=l['branch'], base=ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
-           hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'], search=SEARCH_DIRECTIVE.format(qmd=shlex.quote(ctx['kit'] + '/scripts/lib/qmd-bounded.sh'), query=search_fields(l)[0], symbol=search_fields(l)[1]),
+           hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'], search=search_directive(l, ctx),
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], scope_line=write_paths(l.get('writes', '')), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())

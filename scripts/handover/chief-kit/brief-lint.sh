@@ -10,7 +10,8 @@
 # fails. `none found (<query>)` passes - it names the query that came up empty.
 # A worker brief (a `> **Contract:**` line; not --judge, not a doc that has run) must also carry the
 # search directive in that field: the qmd-bounded.sh query over jira-himmel and luna, the worker-graph.sh
-# lookup, both named, and the `graph-qmd:` Results bullet. A ticket key or #PR does not replace it.
+# lookup, both named, and the `graph-qmd:` Results bullet ("no Jira mirror" and "no graph lookup" stand in for
+# the first and the second where the repo or the leg has none). A ticket key or #PR does not replace it.
 #
 # The field is the `> **Prior art:**` line plus any directly following `> `
 # continuation lines (up to the next `> **Field:**`, a non-blockquote line, or
@@ -309,14 +310,19 @@ fi
 # only ships) and is not made to fail.
 if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
     has_directive=1
-    for token in qmd-bounded.sh worker-graph.sh 'graph-qmd:' '-c jira-himmel' '-c luna'; do
+    for token in qmd-bounded.sh 'graph-qmd:' '-c luna'; do
         case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
     done
+    # An adopter repo has no Jira mirror and no himmel graph, and a leg that writes no code names no symbol: each says so
+    # in words in place of that command.
+    case "$flat" in *"-c jira-himmel"*|*"no Jira mirror"*) ;; *) has_directive=0 ;; esac
+    case "$flat" in *worker-graph.sh*|*"no graph lookup"*) ;; *) has_directive=0 ;; esac
     if [ "$has_directive" -eq 0 ]; then
         fail "'> **Prior art:**' lacks the search directive (a ticket key or #PR does not replace it): add it as a continuation line naming the query and symbol: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and the same with '-c luna', and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; see docs/handover/worker-brief-template.md"
     fi
     case "$flat" in
         *"<topic>"*|*"<symbol>"*) fail "'> **Prior art:**' directive still carries the literal <topic> or <symbol> placeholder: name the query and the graph symbol this worker should search" ;;
+        *'""'*) fail "'> **Prior art:**' directive has an empty quoted query or symbol: name the query and the graph symbol this worker should search" ;;
     esac
 fi
 

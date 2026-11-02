@@ -124,9 +124,29 @@ bash "$HERE/brief-lint.sh" "$WORK/named-bucket/HIMMEL-9001-N901-plain-fix-2026-1
 has "the named notes query reaches both collections" "$NB" 'query -c jira-himmel "brief prior art cite duty"'
 has "the named notes query reaches the luna collection" "$NB" 'query -c luna "brief prior art cite duty"'
 has "the named graph symbol reaches the directive" "$NB" 'worker-graph.sh explain "brief-lint.sh"'
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="none named"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/nowrites.json"
+python3 "$SUT" "$WORK/nowrites.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/nowrites-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wnw" --deadline 1791475000 >/dev/null 2>&1; rc=$?
+NW="$(tr '\n' ' ' < "$WORK/nowrites-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null | tr -s ' ')"
+bash "$HERE/brief-lint.sh" "$WORK/nowrites-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/lint-nw.err"; lrc=$?
+{ [ "$rc" = 0 ] && [ "$lrc" = 0 ]; } && pass "a no-writes leg generates and lints" || fail "no-writes rc=$rc lint rc=$lrc: $(cat "$WORK/lint-nw.err")"
+has "a no-writes leg says it has no graph lookup" "$NW" "no graph lookup"
+lacks "a no-writes leg never asks the graph to explain none" "$NW" 'explain "none"'
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="none named"; l[0]["search_symbol"]="gen-briefs.py"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/nowrites-sym.json"
+python3 "$SUT" "$WORK/nowrites-sym.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/nwsym-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wns" --deadline 1791475000 >/dev/null 2>&1
+has "a no-writes leg that names a search_symbol gets the graph lookup" "$(tr '\n' ' ' < "$WORK/nwsym-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)" 'worker-graph.sh explain "gen-briefs.py"'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["search_query"]="has <topic> in it"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/badq.json"
 python3 "$SUT" "$WORK/badq.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/badq-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wq" --deadline 1791475000 >/dev/null 2>&1; rc=$?
 [ "$rc" = 1 ] && pass "a search_query with an angle bracket is refused (rc 1)" || fail "bad search_query rc=$rc"
+# shellcheck disable=SC2016  # the command substitution must stay literal text in the fixture
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["search_symbol"]="$(touch /tmp/x)"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/subst.json"
+python3 "$SUT" "$WORK/subst.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/subst-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/ws" --deadline 1791475000 >/dev/null 2>&1; rc=$?
+[ "$rc" = 1 ] && pass "a search_symbol with a command substitution is refused (rc 1)" || fail "command-substitution search_symbol rc=$rc"
+# shellcheck disable=SC2016  # literal command substitution and backticks in the fixture title
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["title"]="fix $(touch /tmp/x) and `id`"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/dtitle.json"
+python3 "$SUT" "$WORK/dtitle.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/dtitle-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wd" --deadline 1791475000 >/dev/null 2>&1; rc=$?
+DT="$(tr '\n' ' ' < "$WORK/dtitle-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)"
+{ [ "$rc" = 0 ] && case "$DT" in *'query -c luna "fix (touch /tmp/x) and id"'*) true ;; *) false ;; esac; } \
+    && pass "a title with command substitution is sanitized in the default query, never pasted live" || fail "title substitution rc=$rc: $DT"
 
 # every brief pre-authorizes a new suite's own tier + duration row
 has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"
@@ -668,6 +688,14 @@ has "the adopter launcher exports the adopter worktree as WORKER_SESSION_REPO" "
 has "the adopter launcher's manifest add uses himmel's fleet-manifest.sh" "$al" "$KIT/scripts/handover/chief-kit/fleet-manifest.sh add"
 has "the adopter brief's ticket-read line uses himmel's jira CLI" "$(cat "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "node $KIT/scripts/jira/dist/index.js get HIMMEL-9001"
 lacks "RED control: a himmel-repo launcher exports no WORKER_SESSION_REPO" "$l1" "WORKER_SESSION_REPO"
+AB="$(tr '\n' ' ' < "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md | tr -s ' ')"
+has "the adopter brief searches luna" "$AB" 'query -c luna "a plain fix"'
+has "the adopter brief says it has no Jira mirror" "$AB" "no Jira mirror"
+has "the adopter brief says it has no graph lookup" "$AB" "no graph lookup"
+lacks "the adopter brief names no jira-himmel search" "$AB" "-c jira-himmel"
+lacks "the adopter brief names no worker-graph lookup" "$AB" "worker-graph.sh"
+bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/adp/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-adp.err"; rc=$?
+[ "$rc" = 0 ] && pass "the adopter brief passes brief-lint.sh" || fail "adopter brief brief-lint rc=$rc: $(cat "$WORK/lint-adp.err")"
 ADP2="$WORK/adapter2"; git init -q "$ADP2"
 rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp2" --repo "$ADP2" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp2.err") || rc=$?
 has "an adopter --no-worktree refusal prints himmel's _new-worktree.sh line, not a worktree.sh the adopter lacks" "$(cat "$WORK/adp2.err")" "$KIT/scripts/_new-worktree.sh fix/himmel-9001-plain-fix --no-install"

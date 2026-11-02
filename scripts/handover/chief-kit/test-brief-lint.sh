@@ -419,6 +419,16 @@ mk s_noluna '# brief' "$VAGUE" "${DIR_LINE//-c luna/-c vault}" '' '> **Contract:
 mk s_nojira '# brief' "$VAGUE" "${DIR_LINE//-c jira-himmel/-c tickets}" '' '> **Contract:** y' "$RES"
 mk s_topic '# brief' "$VAGUE" "${DIR_LINE//\"lint\"/\"<topic>\"}" '' '> **Contract:** y' "$RES"
 mk s_symbol '# brief' "$VAGUE" "${DIR_LINE//\"brief-lint\"/\"<symbol>\"}" '' '> **Contract:** y' "$RES"
+mk s_emptyq '# brief' "$VAGUE" "${DIR_LINE//\"lint\"/\"\"}" '' '> **Contract:** y' "$RES"
+mk s_emptysym '# brief' "$VAGUE" "${DIR_LINE//\"brief-lint\"/\"\"}" '' '> **Contract:** y' "$RES"
+# a leg that writes no code names no symbol, and an adopter repo has no Jira mirror and no himmel graph: each says so
+# shellcheck disable=SC2016  # the backticks are literal brief text, not command substitution
+NOGRAPH_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query -c jira-himmel "lint"` (tickets and PRs) and `bash /x/scripts/lib/qmd-bounded.sh query -c luna "lint"` (specs, audits and decisions), and cite what each returned. This leg has no graph lookup (it names no code path). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
+# shellcheck disable=SC2016  # literal backticks again
+ADAPTER_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query -c luna "lint"` (specs, audits and decisions; this repo has no Jira mirror, so no ticket search), and cite what each returned. This leg has no graph lookup (an adopter repo has no himmel graph). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
+mk s_nogl '# brief' "$VAGUE" "$NOGRAPH_LINE" '' '> **Contract:** y' "$RES"
+mk s_adapter '# brief' "$VAGUE" "$ADAPTER_LINE" '' '> **Contract:** y' "$RES"
+mk s_adapter_noluna '# brief' "$VAGUE" "${ADAPTER_LINE//-c luna/-c vault}" '' '> **Contract:** y' "$RES"
 expect_rc "9a a worker brief with no directive is refused" 1 "$tmp/s_vague.md"
 err="$(bash "$LINT" "$tmp/s_vague.md" 2>&1 >/dev/null)"
 { grep -Fq 'qmd-bounded.sh' <<< "$err" && grep -Fq 'worker-graph.sh' <<< "$err" && grep -Fq 'graph-qmd:' <<< "$err" && grep -Fq -- '-c luna' <<< "$err"; } \
@@ -437,6 +447,11 @@ expect_rc "9n a directive that searches only jira-himmel is refused" 1 "$tmp/s_n
 expect_rc "9n2 a directive that searches only luna is refused" 1 "$tmp/s_nojira.md"
 expect_rc "9o a directive that still says <topic> is refused" 1 "$tmp/s_topic.md"
 expect_rc "9p a directive that still says <symbol> is refused" 1 "$tmp/s_symbol.md"
+expect_rc "9s a leg with no code path says it has no graph lookup in place of the command" 0 "$tmp/s_nogl.md"
+expect_rc "9t an adopter-repo directive (luna only, no Jira mirror, no graph lookup) passes" 0 "$tmp/s_adapter.md"
+expect_rc "9t2 an adopter-repo directive still has to search luna" 1 "$tmp/s_adapter_noluna.md"
+expect_rc "9q a directive with an empty quoted query is refused" 1 "$tmp/s_emptyq.md"
+expect_rc "9r a directive with an empty quoted symbol is refused" 1 "$tmp/s_emptysym.md"
 err="$(bash "$LINT" "$tmp/s_topic.md" 2>&1 >/dev/null)"
 grep -Fq 'placeholder' <<< "$err" && ok "9o2 the placeholder refusal says placeholder" || bad "9o2 refusal text: $err"
 rc=0; out="$(run_worker "$tmp/s_vague.md" --profile worker-impl)" || rc=$?
