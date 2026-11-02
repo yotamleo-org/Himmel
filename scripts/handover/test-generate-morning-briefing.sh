@@ -919,12 +919,12 @@ check "no root: exit 1" "got rc=$GEN_RC" rc_is 1
 assert_contains "no root: stderr names HANDOVER_DIR" "HANDOVER_DIR" "$GEN_ERR"
 assert_contains "no root: stderr says no report was written" "no report was written" "$GEN_ERR"
 assert_contains "no root: stderr prints the command shape" "HANDOVER_DIR=<root> bash scripts/handover/generate-morning-briefing.sh" "$GEN_ERR"
-check "no root: nothing created in the checkout" "found: $(find "$HIM_REPO/handovers" -type f 2>/dev/null)" gone "$HIM_REPO/handovers"
+check "no root: nothing created in the checkout" "handovers/ exists" gone "$HIM_REPO/handovers"
 
 echo "TEST: a himmel checkout with a HANDOVER_DIR that is not a directory refuses too"
 gen_in "$HIM_REPO" env HANDOVER_DIR="$RT_DIR/typo" bash "$SCRIPT"
 check "typo root: exit 1" "got rc=$GEN_RC" rc_is 1
-check "typo root: nothing created in the checkout" "found: $(find "$HIM_REPO/handovers" -type f 2>/dev/null)" gone "$HIM_REPO/handovers"
+check "typo root: nothing created in the checkout" "handovers/ exists" gone "$HIM_REPO/handovers"
 
 echo "TEST: controls — HANDOVER_DIR, --out and an adopter checkout still write"
 mkdir -p "$RT_DIR/root"
