@@ -1723,8 +1723,7 @@ queue_lock_acquire() {
                 return 1
             fi
             _ql_write_root_marker "$lockdir" "$lock_root"
-            _ql_token_persist "$ho" "$session" "$lockdir"
-            _ql_acquire_liveness "$lockdir"
+            _ql_register_owner "$ho" "$session" "$lockdir"
             echo "queue-lock: acquired (session=$session host=$host)"
             _ql_arms_retire_both "$ho" "$ho_raw" "$_QL_ROOT"
             echo "release-token: \`$session\`"
@@ -1961,8 +1960,7 @@ queue_lock_acquire() {
                 "$now" "$o_session" "$o_host" "$o_started" "$o_heartbeat" "$reason" "$session" "$host" \
                 >> "$lockdir/takeovers.log"
             _ql_write_root_marker "$lockdir" "$lock_root"
-            _ql_token_persist "$ho" "$session" "$lockdir"
-            _ql_acquire_liveness "$lockdir"
+            _ql_register_owner "$ho" "$session" "$lockdir"
             _ql_takeover_claim_release "$claim" "$claim_token" || true
             echo "queue-lock: took over ($reason) -- previous holder: session=$o_session host=$o_host" >&2
             echo "queue-lock: acquired (session=$session host=$host)"
@@ -2133,6 +2131,52 @@ _ql_acquire_liveness() {
         break
     done
     return 0
+}
+
+# _ql_register_owner <doc> <token> <lockdir> -- bind a fresh acquisition to the
+# CALLING session: its token file, its .doc sidecar (what self-heartbeat
+# enumerates) and its transcript as the liveness marker. A caller that acquires
+# FOR ANOTHER session (a chief launching its successor) sets
+# QUEUE_LOCK_ON_BEHALF=1: nothing is registered, because the invoker's hook
+# would otherwise keep the successor's lock fresh for as long as the invoker
+# works and blind the sweep's idle detection. The owner binds it itself with
+# `adopt`. A session's own acquire never sets the flag and is unchanged.
+_ql_register_owner() {
+    if [ "${QUEUE_LOCK_ON_BEHALF:-}" = "1" ]; then
+        echo "queue-lock: acquired on behalf of another session: not registered for this session's self-heartbeat; the owner binds it with 'queue-lock.sh adopt <handover-path> <token>'" >&2
+        return 0
+    fi
+    _ql_token_persist "$1" "$2" "$3"
+    _ql_acquire_liveness "$3"
+}
+
+# queue_lock_adopt <doc> <token> -- the owner of a lock that was acquired on its
+# behalf binds it to ITS OWN session: after the token is proved against
+# owner.json, the token file, .doc sidecar and liveness marker are registered
+# under the caller's scope, so the caller's self-heartbeat keeps it fresh. rc 2
+# for a token that is not the holder's or a caller with no session scope; it
+# writes nothing in either case and never touches the lock itself.
+queue_lock_adopt() {
+    local ho="${1:-}" session="${2:-}" lockdir o_session
+    if [ -z "$ho" ] || [ -z "$session" ]; then
+        echo "usage: queue-lock.sh adopt <handover-path> <session-token>" >&2
+        return 1
+    fi
+    _ql_enter "$ho" "queue-lock: could not resolve handover root" || return 1
+    lockdir="$_QL_LOCKDIR"
+    ho="$_QL_DOC"
+    if ! _ql_session_scope >/dev/null 2>&1; then
+        echo "queue-lock: adopt needs a session scope (CLAUDE_CODE_SESSION_ID or QUEUE_LOCK_SESSION_SCOPE); nothing registered" >&2
+        return 2
+    fi
+    if ! _ql_owner_matches "$lockdir" "$session"; then
+        echo "queue-lock: adopt refused -- no lock for this queue is held by that token; nothing registered" >&2
+        return 2
+    fi
+    o_session=$(_ql_json_field "$lockdir/owner.json" session)
+    _ql_token_persist "$ho" "$o_session" "$lockdir"
+    _ql_acquire_liveness "$lockdir"
+    echo "queue-lock: adopted (session=$o_session): this session's self-heartbeat now keeps it fresh"
 }
 
 # queue_lock_self_heartbeat -- the PostToolUse hook verb. Reads
@@ -2901,6 +2945,7 @@ _ql_main() {
     case "$verb" in
         acquire)   queue_lock_acquire "$@" ;;
         heartbeat) queue_lock_heartbeat "$@" ;;
+        adopt)     queue_lock_adopt "$@" ;;
         release)   queue_lock_release "$@" ;;
         status)    queue_lock_status "$@" ;;
         preflight) queue_lock_preflight "$@" ;;

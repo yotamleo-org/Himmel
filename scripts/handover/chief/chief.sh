@@ -1467,7 +1467,7 @@ cmd_new() {
     # in the same position this contract has always used, so nothing is
     # silently swallowed.
     local lock_out release_token
-    if ! lock_out="$(HANDOVER_DIR="$root" bash "$repo/scripts/handover/queue-lock.sh" acquire "$doc")"; then
+    if ! lock_out="$(HANDOVER_DIR="$root" QUEUE_LOCK_ON_BEHALF=1 bash "$repo/scripts/handover/queue-lock.sh" acquire "$doc")"; then
         err "WARNING queue-lock acquire failed for $doc — refusing to launch without the lock (doc left in place)"
         exit 1
     fi

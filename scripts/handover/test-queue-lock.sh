@@ -3220,6 +3220,50 @@ else
     fail "T95: idle self-heartbeat (rc=$rc out=$out rc2=$rc2 out2=$out2)"
 fi
 
+# T95a-d: a lock acquired ON BEHALF of another session (QUEUE_LOCK_ON_BEHALF=1)
+# is never kept live by the invoker's self-heartbeat, so the sweep still sees it
+# idle; the real owner binds it with `adopt`, after which the OWNER's hook keeps
+# it fresh and the invoker's still cannot.
+B_DOC="$A_HO/on-behalf.md"; : > "$B_DOC"; B_LK="$(a_lockdir on-behalf)"
+B_TR="$TMPDIR_ROOT/transcript-95a.jsonl"; : > "$B_TR"
+b_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$B_DOC" behalf95 2>/dev/null)"; b_rc=$?
+a_backdate "$B_LK" "$OLD_HB"
+printf '{"session_id":"scope-invoker","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$LIB" self-heartbeat >/dev/null 2>&1
+# shellcheck disable=SC2016  # the backticks are literal in the token line
+if [ "$b_rc" -eq 0 ] && grepq "$b_out" 'release-token: `behalf95`' \
+    && [ "$(a_hb "$B_LK")" = "$OLD_HB" ] && [ ! -f "$B_LK/liveness" ]; then
+    pass "T95a: an on-behalf lock is not refreshed by the invoker's self-heartbeat and carries no liveness marker"
+else
+    fail "T95a: invoker kept an on-behalf lock alive (rc=$b_rc hb=$(a_hb "$B_LK") liveness=$(cat "$B_LK/liveness" 2>/dev/null || echo none))"
+fi
+bash "$LIB" status "$B_DOC" >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 12 ]; then
+    pass "T95b: the on-behalf lock reads STALE (rc 12), so the sweep's idle detection still fires"
+else
+    fail "T95b: on-behalf lock status rc=$rc (want 12)"
+fi
+bad_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" wrong-token 2>&1)"; bad_rc=$?
+none_out="$(env -u QUEUE_LOCK_SESSION_SCOPE -u CLAUDE_CODE_SESSION_ID bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; none_rc=$?
+if [ "$bad_rc" -eq 2 ] && [ "$none_rc" -eq 2 ] && [ "$(a_hb "$B_LK")" = "$OLD_HB" ]; then
+    pass "T95c: adopt refuses a wrong token and a missing session scope (rc 2), registering nothing"
+else
+    fail "T95c: adopt refusals (wrong rc=$bad_rc out=$bad_out; no-scope rc=$none_rc out=$none_out)"
+fi
+ad_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; ad_rc=$?
+printf '{"session_id":"scope-invoker","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$LIB" self-heartbeat >/dev/null 2>&1
+inv_hb="$(a_hb "$B_LK")"
+printf '{"session_id":"scope-owner","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" self-heartbeat >/dev/null 2>&1
+if [ "$ad_rc" -eq 0 ] && [ "$inv_hb" = "$OLD_HB" ] && [ "$(a_hb "$B_LK")" != "$OLD_HB" ] \
+    && grep -qF "transcript=$B_TR" "$B_LK/liveness" 2>/dev/null; then
+    pass "T95d: after adopt the owner's self-heartbeat refreshes the lock and records its transcript; the invoker's still does not"
+else
+    fail "T95d: adopt binding (rc=$ad_rc out=$ad_out invoker-hb=$inv_hb owner-hb=$(a_hb "$B_LK"))"
+fi
+bash "$LIB" release "$B_DOC" behalf95 >/dev/null 2>&1
+
 # --- T96-T102: a lock past its TTL whose owner is PROVABLY dead
 # reads STALE-DEAD and `status --sweep --reap-dead` releases only such locks.
 # Provably dead = owner host is this host, the session token is <host>-pid<N>
