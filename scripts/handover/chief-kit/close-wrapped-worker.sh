@@ -101,8 +101,10 @@
 #      also refused while its -RESUME sibling has a last marker-bullet that is not WRAPPED; and
 #      both docs of a pair are refused while the -RESUME doc has no marker-bullet and the
 #      original's Results hold no successor LIVE (new release token) then WRAPPED after the
-#      hand-off WRAPPED (no hand-off evidence)
-#   5  refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
+#      hand-off WRAPPED (no hand-off evidence); and a named hand-off whose predecessor session
+#      is gone is refused unless the predecessor is WRAPPED with completed successor evidence
+#      and the successor's own last marker-bullet is WRAPPED
+#   5 refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
 #      doc has multiple successor -RESUME docs with no explicitly named hand-off
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
