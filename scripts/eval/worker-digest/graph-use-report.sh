@@ -39,17 +39,18 @@ JQ='
         + ($b | map(select(test("(^|[;&|([:space:]])(git[[:space:]]+grep|grep|egrep|fgrep|rg|ugrep)[[:space:]]"))) | length)) ]
   | @tsv'
 
-rows=""
+rows=""; unread=0
 for f in "$ROOT"/*/*.jsonl; do
   [ -f "$f" ] || continue
   [ -n "$(find "$f" -mtime "-$DAYS" -print 2>/dev/null)" ] || continue
-  rows="$rows$(jq -nrR "$JQ" "$f" 2>/dev/null)"$'\n'
+  # a bad journal LINE is skipped inside jq; a journal jq cannot read at all is counted and reported
+  if one="$(jq -nrR "$JQ" "$f" 2>/dev/null)"; then rows="$rows$one"$'\n'; else unread=$((unread + 1)); fi
 done
 
-printf '%s\n' "$rows" | awk -F'\t' -v days="$DAYS" '
+printf '%s\n' "$rows" | awk -F'\t' -v days="$DAYS" -v unread="$unread" '
+  BEGIN { split("query explain path mcp", name, " ") }
   NF == 5 {
     n++
-    split("query explain path mcp", name, " ")
     any = 0
     for (i = 1; i <= 4; i++) { calls[i] += $i; if ($i > 0) { sess[i]++; any = 1 } }
     if (any) { users++; total += $1 + $2 + $3 + $4 }
@@ -62,4 +63,5 @@ printf '%s\n' "$rows" | awk -F'\t' -v days="$DAYS" '
     printf "any\t%d\t%d\n", total, users
     printf "sessions that searched code: %d, of which never called the graph: %d (%s)\n", searched, blind, searched ? sprintf("%.0f%%", 100 * blind / searched) : "n/a"
     printf "graph calls per graph-using session: %s\n", users ? sprintf("%.2f", total / users) : "n/a"
+    if (unread > 0) printf "journals that could not be read, left out of every number above: %d\n", unread
   }'
