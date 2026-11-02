@@ -68,6 +68,10 @@ printf 'then `graphify explain "concept"` for structure\n' >"$T/bare-graph.md"
 expect "a planted bare graphify explain fails" 1 "$(run "$T/bare-graph.md")"
 printf 'graphify path "A" "B"\n' >"$T/bare-path.md"
 expect "a planted bare graphify path fails" 1 "$(run "$T/bare-path.md")"
+printf 'qmd \\\n  query -c luna "x"\n' >"$T/bare-continued.md"
+expect "a bare qmd query split over a shell line continuation fails" 1 "$(run "$T/bare-continued.md")"
+printf 'bash scripts/lib/qmd-bounded.sh \\\n  query -c luna "x"\n' >"$T/ok-continued.md"
+expect "the wrapper form split over a shell line continuation passes" 0 "$(run "$T/ok-continued.md")"
 
 # The working forms, an MCP tool name, a sourced-script call and a marked mention pass.
 printf 'bash scripts/lib/qmd-bounded.sh query -c luna "question"\n' >"$T/ok-wrapper.md"

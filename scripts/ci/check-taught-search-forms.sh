@@ -51,6 +51,8 @@ scan() {
             body=$(printf '%s\n' "$body" | awk '/^## graphify[[:space:]]*$/ { skip = 1; next } /^## / { skip = 0 } !skip')
             ;;
     esac
+    # the shell reads `qmd \<newline> query` as one command, so join continuations before matching
+    body=$(printf '%s\n' "$body" | awk '{ if (sub(/\\$/, "")) { buf = buf $0; next } print buf $0; buf = "" } END { if (buf != "") print buf }')
     local line seen=0
     while IFS= read -r line; do
         [ -z "$filter" ] || [[ $line == *"$filter"* ]] || continue

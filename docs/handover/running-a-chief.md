@@ -268,8 +268,8 @@ the graph in 7 % (the HIMMEL-8749 baseline). Run `bash scripts/lib/qmd-bounded.s
 `bash scripts/graphify/worker-graph.sh explain "<symbol>"` (structure); a bare
 `qmd` search is refused and a bare `graphify` call fails in a worktree. Cite
 pointers with their source, never your conclusion; nothing found is
-`none found (<the query you ran>)`, and a miss is unproven. The same step is in
-`chief-template.md` under Dispatching a worker.
+`none found (<the query you ran>)`, and a miss is unproven. `chief-template.md` names the
+`-c luna` search under Dispatching a worker.
 
 The chief writes a brief from
 [`worker-brief-template.md`](worker-brief-template.md) and launches it headed:
