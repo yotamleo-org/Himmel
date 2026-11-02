@@ -271,6 +271,7 @@ describe('loadEnvFile', () => {
     chmodSync(join(bin, 'busctl'), 0o755);
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
     vi.stubEnv('HIMMEL_SECRETS_KEYRING', '');
+    vi.stubEnv('KSTUB_STORE', join(dir, 'keyring.tsv')); // names the stub keyring: the resolver keeps it on under NODE_ENV=test
     writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
     loadEnvFile(file);
     expect(baseUrl()).toBe('https://from-dotenv.example');

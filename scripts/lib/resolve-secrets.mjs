@@ -16,12 +16,20 @@ const TIMEOUT_MS = 10000;
 // `env` is the caller's own environment choice (a test's env map, the UI server's env). It is laid over
 // the process's environment, so a pin the process carries (HIMMEL_SECRETS_KEYRING=off) survives a map
 // that omits it, and a name the map sets wins. Omitted, the child inherits as before.
+// Fail closed under a test runner: bun and vitest set NODE_ENV=test, and a test that names no stub
+// keyring (KSTUB_STORE) never reaches a real one, whatever its cwd, bunfig or env map.
+function childEnv(env) {
+  const e = { ...process.env, ...(env || {}) };
+  if (e.NODE_ENV === 'test' && !e.KSTUB_STORE) e.HIMMEL_SECRETS_KEYRING = 'off';
+  return e;
+}
+
 function run(args, input, env) {
   if (!existsSync(RESOLVER)) return { status: 2, stdout: '' };
   try {
     const stdout = execFileSync('bash', [RESOLVER, ...args], {
       encoding: 'utf8', input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'], timeout: TIMEOUT_MS,
-      ...(env ? { env: { ...process.env, ...env } } : {}),
+      env: childEnv(env),
     });
     return { status: 0, stdout: String(stdout ?? '') };
   } catch (e) {
