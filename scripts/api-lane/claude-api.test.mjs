@@ -24,6 +24,10 @@ const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 const STUB = `#!/bin/bash
 FB=""; [ -n "\${ANTHROPIC_API_KEY:-}" ] || FB=.fb
 echo called >> "$STUB_LOG$FB"
+if [ -n "\${STUB_STDIN:-}" ]; then
+  cat > "$STUB_STDIN$FB"
+  for p in "$TMPDIR"/claude-api-prompt.*; do [ -e "$p" ] && { stat -c %a "$p" 2>/dev/null || stat -f %Lp "$p"; } >> "$STUB_STDIN$FB.mode"; done
+fi
 if [ -n "$FB" ]; then env > "$STUB_ENV.fb.full"; printf '%s\\n' "$@" > "$STUB_ENV.fb.args"; fi
 { echo "key_present=$([ -n "\${ANTHROPIC_API_KEY:-}" ] && echo 1 || echo 0)"
   echo "base_url=\${ANTHROPIC_BASE_URL:-}"; echo "oauth=\${CLAUDE_CODE_OAUTH_TOKEN:-}"
@@ -337,7 +341,7 @@ test('a failed alert send writes no stamp, so the next failure inside the hour a
   assert.equal(alerts(f).length, 2, 'a failed send muted the next alert');
 });
 
-test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed request or a spent stdin prompt never falls back', () => {
+test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed request never falls back', () => {
   const f = fixture();
   const r = f.run(f.good, { HIMMEL_API_LANE: '' });
   assert.equal(r.status, 2);
@@ -357,11 +361,108 @@ test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed req
     assert.equal(fbCalls(m), 0, JSON.stringify(env));
     assert.match(alertText(m), /fallback: not run: the request itself was refused/);
   }
-  const h = fixture();
-  const stdinOnly = ['-p', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
-  assert.equal(h.run(stdinOnly, { ...FB_ON, STUB_OUT: CALL_FAIL, STUB_RC: '1' }).status, 1);
-  assert.equal(fbCalls(h), 0);
-  assert.match(alertText(h), /fallback: not run/);
+});
+
+// a prompt on stdin is kept in a mode-600 scratch file, so the fallback can replay it
+const STDIN_ONLY = ['-p', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
+const PROMPT = 'the-secret-prompt-bytes\nsecond line\n';
+const promptFiles = (f) => readdirSync(f.dir).filter((n) => n.startsWith('claude-api-prompt.'));
+const seenStdin = (f, fb = '') => readFileSync(join(f.dir, `stdin.seen${fb}`), 'utf8');
+const seenModes = (f, fb = '') => readFileSync(join(f.dir, `stdin.seen${fb}.mode`), 'utf8').trim().split('\n');
+const withStdin = (f) => ({ ...FB_ON, STUB_STDIN: join(f.dir, 'stdin.seen') });
+// the prompt appears in no output and no file the run left, argv of the fallback included
+function promptNowhere(f, r) {
+  assert.ok(!r.stdout.includes('the-secret-prompt') && !r.stderr.includes('the-secret-prompt'), 'prompt in launcher output');
+  const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+  for (const p of walk(f.dir)) if (!p.includes('stdin.seen')) assert.ok(!readFileSync(p, 'utf8').includes('the-secret-prompt'), `prompt in ${p}`);
+}
+
+test('HIMMEL-8649: a stdin prompt whose API call failed is replayed byte for byte on the subscription fallback', () => {
+  const f = fixture();
+  const r = f.run(STDIN_ONLY, { ...withStdin(f), STUB_OUT: CREDIT_LOW, STUB_RC: '1', STUB_FB_OUT: FB_OK }, { input: PROMPT });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, FB_OK);
+  assert.equal(fbCalls(f), 1);
+  assert.equal(seenStdin(f), PROMPT, 'the API call did not get the prompt');
+  assert.equal(seenStdin(f, '.fb'), PROMPT, 'the fallback did not get the same prompt bytes');
+  assert.deepEqual(seenModes(f), ['600']);
+  assert.deepEqual(seenModes(f, '.fb'), ['600']);
+  assert.deepEqual(promptFiles(f), []);
+  assert.match(alertText(f), /fallback: running on the subscription/);
+  assert.doesNotMatch(alertText(f), /not run: the prompt came on stdin/);
+  promptNowhere(f, r);
+  keyNowhere(f, r);
+});
+
+test('HIMMEL-8649: the scratch prompt file is gone after success, a refusal before and after the buffer, and an ordinary failure', () => {
+  const ok = fixture();
+  const a = ok.run(STDIN_ONLY, withStdin(ok), { input: PROMPT });
+  assert.equal(a.status, 0, a.stderr);
+  assert.equal(seenStdin(ok), PROMPT);
+  assert.deepEqual(seenModes(ok), ['600']);
+  assert.deepEqual(promptFiles(ok), [], 'left behind after success');
+  assert.equal(fbCalls(ok), 0);
+
+  // lane off: refused before stdin is read, the fallback still gets the unread prompt
+  const early = fixture();
+  const b = early.run(STDIN_ONLY, { ...withStdin(early), HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK }, { input: PROMPT });
+  assert.equal(b.status, 0, b.stderr);
+  assert.equal(early.called(), false, 'the API call must not run');
+  assert.equal(seenStdin(early, '.fb'), PROMPT);
+  assert.deepEqual(promptFiles(early), []);
+
+  // a budget the account cannot cover: refused at the reservation, after the prompt was buffered
+  const late = fixture();
+  const big = [...STDIN_ONLY.slice(0, -1), '50'];
+  const c = late.run(big, { ...withStdin(late), STUB_FB_OUT: FB_OK }, { input: PROMPT });
+  assert.equal(c.status, 0, c.stderr);
+  assert.match(c.stderr, /reservation refused/);
+  assert.equal(late.called(), false, 'the API call must not run');
+  assert.equal(seenStdin(late, '.fb'), PROMPT);
+  assert.deepEqual(seenModes(late, '.fb'), ['600']);
+  assert.deepEqual(promptFiles(late), []);
+
+  // a failure that no fallback follows (switched off)
+  const off = fixture();
+  const d = off.run(STDIN_ONLY, { STUB_STDIN: join(off.dir, 'stdin.seen'), STUB_OUT: CALL_FAIL, STUB_RC: '1' }, { input: PROMPT });
+  assert.equal(d.status, 1);
+  assert.equal(fbCalls(off), 0);
+  assert.deepEqual(promptFiles(off), []);
+});
+
+test('HIMMEL-8649: a stdin prompt on a Bash-granted call that ran is still never replayed; a prompt in argv is untouched', () => {
+  const f = fixture();
+  const r = f.run(STDIN_ONLY, { ...withStdin(f), HIMMEL_API_TOOLS: 'Bash', STUB_OUT: CALL_FAIL, STUB_RC: '1' }, { input: PROMPT });
+  assert.equal(r.status, 1);
+  assert.equal(fbCalls(f), 0);
+  assert.match(alertText(f), /the call could change files/);
+  assert.deepEqual(promptFiles(f), []);
+  const g = fixture();
+  const h = g.run(g.good, { ...FB_ON, STUB_STDIN: join(g.dir, 'stdin.seen'), STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(h.status, 0, h.stderr);
+  assert.equal(fbCalls(g), 1);
+  assert.deepEqual(promptFiles(g), [], 'an argv prompt buffered a scratch file');
+  assert.equal(existsSync(join(g.dir, 'stdin.seen.mode')), false);
+});
+
+test('HIMMEL-8649: the scratch prompt file is gone after the launcher is terminated mid-call', async () => {
+  const f = fixture();
+  const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
+  const first = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f), STUB_HOLD: hold }, stdio: ['pipe', 'ignore', 'ignore'] });
+  first.stdin.end(PROMPT);
+  const done = new Promise((resolve) => first.on('close', resolve));
+  let stub = 0;
+  try {
+    const until = Date.now() + 15000;
+    const ready = () => existsSync(f.paths.env) && /^resv_pid=\d+$/m.test(readFileSync(f.paths.env, 'utf8'));
+    while (!ready() && Date.now() < until) await new Promise((r) => setTimeout(r, 50));
+    stub = Number(/^stub_pid=(\d+)$/m.exec(readFileSync(f.paths.env, 'utf8'))[1]);
+    assert.equal(promptFiles(f).length, 1, 'no scratch file while the call runs');
+    first.kill('SIGTERM');
+    await Promise.race([done, new Promise((r) => setTimeout(r, 10000))]);
+    assert.equal(alive(stub), false, 'the call outlived its terminated launcher');
+    assert.deepEqual(promptFiles(f), [], 'left behind after a signal stop');
+  } finally { rmSync(hold, { force: true }); if (stub && alive(stub)) process.kill(stub, 'SIGKILL'); }
 });
 
 test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free default, no --allowedTools, no MCP)', () => {
