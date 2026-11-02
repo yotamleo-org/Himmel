@@ -43,7 +43,9 @@ common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ||
 primary="$(dirname "$common")"
 out="$primary/graphify-out"
 if [ ! -f "$out/graph.json" ]; then
-  echo "worker-graph: no graph at $out/graph.json. The graph covers code repos, not notes: to search notes run: bash scripts/lib/qmd-bounded.sh query -c <name> \"<question>\". In a code repo, build the graph from its primary checkout (/graph-refresh), then run: bash scripts/graphify/worker-graph.sh query|explain|path \"<q>\"" >&2
+  # absolute paths: the reader may stand in a vault, where a repo-relative scripts/ path does not exist
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  echo "worker-graph: no graph at $out/graph.json. The graph covers code repos, not notes: to search notes run: bash $(dirname "$here")/lib/qmd-bounded.sh query -c <name> \"<question>\". In a code repo, build the graph from its primary checkout (/graph-refresh), then run: bash $here/worker-graph.sh query|explain|path \"<q>\"" >&2
   exit 2
 fi
 

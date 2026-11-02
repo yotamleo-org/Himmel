@@ -263,13 +263,16 @@ non-conforming trailer reaches the pre-push gate.
 
 **Search before you write the brief's Prior art line (HIMMEL-8758).** Workers and
 judges inherit that line, and chiefs searched the notes in 19 % of sessions and
-the graph in 7 % (the HIMMEL-8749 baseline). Run `bash scripts/lib/qmd-bounded.sh query -c jira-himmel "<ticket topic>"`
-(tickets and PRs), the same with `-c luna` (specs, audits, decisions) and
-`bash scripts/graphify/worker-graph.sh explain "<symbol>"` (structure); a bare
+the graph in 7 % (the HIMMEL-8749 baseline). Run `bash scripts/lib/qmd-bounded.sh query -c jira-himmel "worker brief Prior art"`
+(tickets and PRs), the same with -c luna (specs, audits, decisions) and
+`bash scripts/graphify/worker-graph.sh explain "worker-graph.sh"` (structure); a bare
 `qmd` search is refused and a bare `graphify` call fails in a worktree. Cite
 pointers with their source, never your conclusion; nothing found is
 `none found (<the query you ran>)`, and a miss is unproven. `chief-template.md` names the
-`-c luna` search under Dispatching a worker.
+search under Dispatching a worker. Name the same route in the brief of any
+subagent you send looking for knowledge (for example
+bash scripts/lib/qmd-bounded.sh query -c luna "worker brief Prior art"): a subagent inherits no
+search step and has hit a missing tool error on the connected route.
 
 The chief writes a brief from
 [`worker-brief-template.md`](worker-brief-template.md) and launches it headed:

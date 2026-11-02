@@ -145,8 +145,8 @@ bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
 ## Dispatching a worker
 
 1. Write the brief from `{{REPO}}/docs/handover/worker-brief-template.md` into
-   `{{STATE_DIR}}`; a child inherits **nothing**, so brief it fully. Search first:
-   `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "<topic>"`.
+   `{{STATE_DIR}}`; a child inherits **nothing**; brief it fully. Search first:
+   `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "prior art"`.
 2. **Collision check:** queued workers' files must be disjoint (**single-writer**).
 3. **Name an explicit model**; raise *effort* before tier.
 4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl
