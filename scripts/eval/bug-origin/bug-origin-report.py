@@ -43,11 +43,12 @@ when only an add-only hunk's neighbours point at it, and the evidence above. It 
 files unless nothing else changed, and defaults --cr-ledger to <git-common-dir>/cr-critic-scores.jsonl. Read the
 candidates and choose: blame points at the last hand on a line, which a rename or a sweep can hide.
 report and trace write nothing without --record; ingest writes ledger rows and sync marks them. Exit 0 done; 1 a seed PR outside the snapshot; 2 refused input.
-Stdlib plus git only; no network, no model call.
+Stdlib plus git only; no model call, and no network except the Jira comments of `sync`.
 """
 import argparse
 import collections
 import datetime
+import fcntl
 import json
 import os
 import re
@@ -122,7 +123,8 @@ def parse_body(body):
 def family(cls):
     """The key the report counts a class under: review-miss with several layers is review-miss:multi, a payload class its prefix."""
     if cls.startswith("review-miss:"):
-        return "review-miss:multi" if "," in cls else cls
+        layers = sorted(set(cls.split(":", 1)[1].split(",")))
+        return "review-miss:multi" if len(layers) > 1 else "review-miss:" + layers[0]
     head = cls.split(":", 1)[0]
     return head if head in ("residual", "trigger", "commit") else cls
 
@@ -295,7 +297,7 @@ def report(merged, rows, unparsed, outside, start, s, bugs, has_seed):
         if not r["class"].startswith("review-miss:"):
             continue
         claimed = r["class"].split(":", 1)[1]
-        layers = claimed.split(",")
+        layers = list(dict.fromkeys(claimed.split(",")))
         o = origin_pr(r, merged)
         head = "fix #%d %s origin %s claimed %s" % (n, title_key(merged[n].get("title")) or "no-key", r["origin"], claimed)
         if o is None:
@@ -455,30 +457,43 @@ def cmd_sync(a):
     if not os.environ.get("JIRA_PROJECT_KEY") or cmd is None:
         print("jira sync skipped: not configured")
         return 0
+    if not os.path.isdir(path):
+        print("jira sync: 0 updated")
+        return 0
     updated = failed = 0
-    for n, row in sorted(judge_accuracy.load_ledger(path).items()):
-        key = row.get("bug_key")
-        if not isinstance(key, str) or row.get("synced") is True:
-            continue
-        fd, comment = tempfile.mkstemp(suffix=".md")
+    with open(os.path.join(path, ".sync.lock"), "a") as lock:
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(body_line(n, key, row) + "\n")
-            ok = subprocess.run(cmd + ["comment", key, "--comment-file", comment], capture_output=True,
-                                timeout=JIRA_TIMEOUT).returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            ok = False
-        finally:
-            os.unlink(comment)
-        if not ok:
-            failed += 1
-            print("warn: jira comment on %s failed; the row stays unsynced" % key, file=sys.stderr)
-            continue
-        file = os.path.join(path, "%d.md" % n)
-        with open(file, encoding="utf-8") as fh:
-            text = fh.read()
-        write_file(file, text.replace("\nsynced: false\n", "\nsynced: true\n", 1))
-        updated += 1
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print("jira sync skipped: another sync holds the ledger")
+            return 0
+        for n, row in sorted(judge_accuracy.load_ledger(path).items()):
+            key = row.get("bug_key")
+            if not isinstance(key, str) or row.get("synced") is True:
+                continue
+            fd, comment = tempfile.mkstemp(suffix=".md")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    fh.write(body_line(n, key, row) + "\n")
+                ok = subprocess.run(cmd + ["comment", key, "--comment-file", comment], capture_output=True,
+                                    timeout=JIRA_TIMEOUT).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+            finally:
+                os.unlink(comment)
+            if not ok:
+                failed += 1
+                print("warn: jira comment on %s failed; the row stays unsynced" % key, file=sys.stderr)
+                continue
+            file = os.path.join(path, "%d.md" % n)
+            with open(file, encoding="utf-8") as fh:
+                text = fh.read()
+            marked = text.replace("\nsynced: false\n", "\nsynced: true\n", 1)
+            if marked == text:  # a row with no synced line: add one before the closing delimiter
+                end = text.find("\n---\n", 3)
+                marked = text[:end] + "\nsynced: true" + text[end:]
+            write_file(file, marked)
+            updated += 1
     print("jira sync: %d updated%s" % (updated, ", %d failed, retried on the next run" % failed if failed else ""))
     return 0
 

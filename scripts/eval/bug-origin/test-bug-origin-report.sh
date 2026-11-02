@@ -518,6 +518,9 @@ json.dump({"repos": {}}, open(reg, "w"))
 eq("resolve: no registry entry falls back to USER_SLUG and the project's own name", r.judge_accuracy.ledger_dir(repo, env), os.path.join(root, "zed", "my-project", "bug-origin"))
 eq("resolve: no HANDOVER_DIR is no ledger", r.judge_accuracy.ledger_dir(repo, {"USER_SLUG": "zed"}), None)
 eq("resolve: a HANDOVER_DIR that is no directory is no ledger", r.judge_accuracy.ledger_dir(repo, {"HANDOVER_DIR": os.path.join(tmp, "nope")}), None)
+eq("family: a repeated layer is one layer", r.family("review-miss:cr,cr"), "review-miss:cr")
+eq("family: two layers are multi", r.family("review-miss:cr,judge"), "review-miss:multi")
+eq("family: a payload class is its prefix", r.family("residual:HIMMEL-1"), "residual")
 PY
 cat "$TMP/res.out"
 PASS=$((PASS + $(grep -c '^PASS ' "$TMP/res.out")))
@@ -589,6 +592,26 @@ out="$(sy "$TMP/led-fail" "$TMP/jira2.log")"
 has "sync retry: the next run updates it" "$out" "jira sync: 9 updated"
 has "sync retry: the row is now synced" "$(cat "$TMP/led-fail/20.md")" "synced: true"
 eq "sync retry: HIMMEL-20 was tried twice, once failed and once sent" "$(grep -c '^comment HIMMEL-20' "$TMP/jira2.log")" "2"
+# a row with no synced line is marked synced all the same, so it is commented once
+ing "$TMP/led-nosync" >/dev/null
+grep -v '^synced:' "$TMP/led-nosync/20.md" > "$TMP/led-nosync/20.md.new" && mv "$TMP/led-nosync/20.md.new" "$TMP/led-nosync/20.md"
+sy "$TMP/led-nosync" "$TMP/jira5.log" >/dev/null
+sy "$TMP/led-nosync" "$TMP/jira5.log" >/dev/null
+eq "sync: a row with no synced line is commented once" "$(grep -c '^comment HIMMEL-20' "$TMP/jira5.log")" "1"
+# a sync that finds the ledger held by another sync comments nothing
+ing "$TMP/led-lock" >/dev/null
+out="$(python3 -I - "$REPORT" "$TMP/led-lock" "$FAKEJIRA" "$TMP/jira4.log" <<'PY'
+import fcntl, os, subprocess, sys
+report, led, fake, log = sys.argv[1:5]
+fh = open(os.path.join(led, ".sync.lock"), "a")
+fcntl.flock(fh, fcntl.LOCK_EX)
+env = dict(os.environ, JIRA_PROJECT_KEY="HIMMEL", FAKE_JIRA_LOG=log)
+print(subprocess.run([sys.executable, report, "sync", "--ledger-dir", led, "--jira-cmd", fake],
+                     capture_output=True, text=True, env=env).stdout)
+PY
+)"
+has "sync: a held ledger is skipped" "$out" "jira sync skipped: another sync holds the ledger"
+eq "sync: a held ledger gets no comment" "$([ -e "$TMP/jira4.log" ] && echo sent || echo none)" "none"
 # no Jira configured: skipped with no error, the rows untouched
 ing "$TMP/led-nojira" >/dev/null
 rc=0; out="$(env -u JIRA_PROJECT_KEY FAKE_JIRA_LOG="$TMP/jira3.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-nojira" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
