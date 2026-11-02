@@ -515,6 +515,10 @@ imports, so its suite runs in CI without an install.
 - Visual tokens e2e (`visual-tokens.e2e.ts`, same opt-in suite): every computed
   colour on every config-ui page, light and dark, is a tokens.css value or a mix
   of two; `E2E_BREAK=colour` plants an off-token colour and the suite must fail.
+- Tool health tables e2e (`tool-health-tables.e2e.ts`, same opt-in suite): the Hook wiring, Tools,
+  guards, Station sources and Refused by tool tables, read at 1280 and 390 px over stubbed
+  `/api/tool-health` and `/api/tool-inventory` responses, never break a word inside a header or a
+  short value, and a table wider than its panel scrolls inside its own box.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
   default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
