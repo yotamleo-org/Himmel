@@ -24,6 +24,7 @@ fails=0
 pass() { echo "PASS - $1"; }
 fail() { echo "FAIL - $1"; fails=$((fails + 1)); }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
+# read-sink-ok: the path is this suite's own output file under its temp dir, never outside input
 has() { if grep -qF -- "$3" "$2"; then pass "$1"; else fail "$1 (no '$3' in: $(head -c 400 "$2"))"; fi; }
 
 REAL_BUN="$(command -v bun || true)"
