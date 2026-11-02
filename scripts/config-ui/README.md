@@ -582,6 +582,10 @@ imports, so its suite runs in CI without an install.
   inline style proves the detector fires). `/dev-graph/` serves only the
   `.json`/`.js`/`.css` files of `docs/guide/dev-graph/`: traversal, a path
   outside the directory, the directory itself and a POST are refused.
+- Fleet page e2e (`fleet-console.e2e.ts`, same opt-in suite, needs `agui-web/dist`): the fleet landing loads with no
+  console error and no `securitypolicyviolation` at 1280 and 390 px, light and dark, under the server's
+  `default-src 'self'`. `agui-web/src/zod-jitless.ts` is imported first so zod skips its `new Function` probe, which the
+  policy would otherwise report as a `script-src` eval violation.
 
 ## Manual pass (the same 7 items)
 
