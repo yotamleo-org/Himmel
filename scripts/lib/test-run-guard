@@ -141,7 +141,8 @@ argv_runs_test() {
             -o|-O|+O|--rcfile|--init-file|-W|-X|--require|--import|--loader) shift ;;
             -*|+*) ;;
             test) case "$a0" in bun|deno|go|cargo|npm|pnpm|yarn) return 0 ;; esac; return 1 ;;
-            run) case "$a0" in
+            t|tst) case "$a0" in npm|pnpm|yarn) return 0 ;; esac; return 1 ;;
+            run|run-script|rum|urn) case "$a0" in
                 bun|deno) ;;
                 npm|pnpm|yarn)
                     shift
@@ -150,7 +151,7 @@ argv_runs_test() {
                             -C|-F|--cwd|--prefix|--filter|--workspace|--dir) shift ;;
                             -w) [ "$a0" = npm ] && shift ;;
                             -*) ;;
-                            test|test:*) return 0 ;;
+                            test|t|tst|test:*) return 0 ;;
                             *) return 1 ;;
                         esac
                         shift
@@ -178,8 +179,10 @@ suite_repo_path() {
     case "$abs" in /*) ;; *) abs="$(readlink "/proc/$1/cwd" 2>/dev/null)/$abs" ;; esac
     abs="$(realpath -m -- "$abs" 2>/dev/null)" || return 0
     case "$abs" in *.sh) ;; *) suite=""; return 0 ;; esac
-    top="$(git -C "${abs%/*}" rev-parse --show-toplevel 2>/dev/null)" || return 0
-    case "$abs" in "$top"/*) suite="${abs#"$top"/}" ;; esac
+    top="$(git -C "${abs%/*}" rev-parse --show-toplevel 2>/dev/null)" || top=""
+    case "${top:+$abs}" in "$top"/*) suite="${abs#"$top"/}" ;; *) suite="" ;; esac
+    # The line is a command to paste: only a plain repo-relative path is printed.
+    case "$suite" in ""|/*|*[!A-Za-z0-9._/-]*) suite="" ;; esac
 }
 ancestor_runs_test() {
     local pid="$PPID" comm stat ppid arg n=0 argv=()
@@ -230,11 +233,12 @@ fi
 
 if [ "$quiet" != 1 ]; then
     branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" || branch=""
+    [ "$branch" = HEAD ] && branch=""
     {
         printf 'REFUSED %s: a test on the station cannot write real station state (%s). Test signal: %s. Nothing was written.\n' \
             "$label" "${*:-${tool:-the live service}}" "$signal"
         if [ -n "$suite" ]; then
-            printf 'Run this suite on a test VM: bash scripts/vm/guest-exec.sh himmel-ar-1 -- bash -c '"'"'cd ~/himmel && bash %s'"'"'\n' "$suite"
+            printf 'Run this suite on a test VM: bash scripts/vm/guest-exec.sh himmel-ar-1 -- env -C himmel bash %s\n' "$suite"
             printf 'The VM must be on and its checkout must hold this branch first: uv run scripts/lib/vmsdk.py himmel-ar-1 up, then uv run scripts/lib/vmsdk.py himmel-ar-1 clone %s\n' "${branch:-<branch>}"
         fi
         printf 'Run the whole changed set on a test VM: bash scripts/vm/after-report.sh %s <pr>\n' "${branch:-<branch>}"

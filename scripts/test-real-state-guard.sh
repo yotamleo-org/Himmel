@@ -29,6 +29,7 @@ eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')";
 has() { if grep -qF -- "$3" "$2"; then pass "$1"; else fail "$1 (no '$3' in: $(head -c 400 "$2"))"; fi; }
 
 REAL_BUN="$(command -v bun || true)"
+TITLE_NODE="$(command -v node || true)"
 
 BIN="$TMP/bin"
 mkdir -p "$BIN"
@@ -85,7 +86,7 @@ session_check() { as_session bash "$GUARD" check "$@" >"$TMP/g.out" 2>&1; echo $
 real_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
 echo "== detector"
 eq "G1 a test ancestor plus a real target is refused" "$(check g1 "$FAKE_REAL/x")" 77
-has "G1 the refusal names the exact VM command for this suite" "$TMP/g.out" "bash scripts/vm/guest-exec.sh himmel-ar-1 -- bash"
+has "G1 the refusal names the exact VM command for this suite" "$TMP/g.out" "bash scripts/vm/guest-exec.sh himmel-ar-1 -- env -C himmel bash"
 has "G1 the refusal names this suite" "$TMP/g.out" "test-real-state-guard.sh"
 has "G1 the refusal names the after-report command" "$TMP/g.out" "bash scripts/vm/after-report.sh "
 eq "G2 a test ancestor with a temp target is allowed: hermetic stays local" "$(check g2 "$TMP/scratch/x")" 0
@@ -186,12 +187,11 @@ eq "U6 negative control: go with a non-test argument is not a runner" "$(as_sess
 
 # A real package manager retitles itself, so /proc/<pid>/cmdline is ONE string ("npm test"), not an argv.
 # titled <title>: a real node process retitled that way, with real-tool.sh running below it.
-REAL_NODE=/usr/bin/node
 titled() {
-  as_session "$REAL_NODE" -e "process.title = process.argv[1]; process.exitCode = require('child_process').spawnSync('bash', [process.argv[2]], { stdio: 'ignore' }).status" "$1" "$TMP/real-tool.sh" >/dev/null 2>&1
+  as_session "$TITLE_NODE" -e "process.title = process.argv[1]; process.exitCode = require('child_process').spawnSync('bash', [process.argv[2]], { stdio: 'ignore' }).status" "$1" "$TMP/real-tool.sh" >/dev/null 2>&1
   echo $?
 }
-if [ -x "$REAL_NODE" ]; then
+if [ -n "$TITLE_NODE" ] && [ -x "$TITLE_NODE" ]; then
   eq "U5 a retitled npm test is a runner" "$(titled 'npm test')" 77
   eq "U7 a retitled npm run test is a runner" "$(titled 'npm run test')" 77
   eq "U9 a retitled npm run with an option before test is a runner" "$(titled 'npm run --silent test')" 77
@@ -199,35 +199,64 @@ if [ -x "$REAL_NODE" ]; then
   eq "U11 a retitled pnpm run --filter web test is a runner" "$(titled 'pnpm run --filter web test')" 77
   eq "U12 a retitled pnpm -r test is a runner: -r takes no value here" "$(titled 'pnpm -r test')" 77
   eq "U14 a retitled pnpm -w test is a runner: -w is a flag for pnpm, a value option only for npm" "$(titled 'pnpm -w test')" 77
+  eq "U16 a retitled pnpm --filter web test is a runner" "$(titled 'pnpm --filter web test')" 77
+  eq "U17 a retitled npm -w web test is a runner: -w takes a value for npm" "$(titled 'npm -w web test')" 77
+  eq "U18 a retitled pnpm -F web test is a runner" "$(titled 'pnpm -F web test')" 77
+  eq "U19 a retitled npm --prefix web test is a runner" "$(titled 'npm --prefix web test')" 77
+  eq "U20 a retitled yarn --cwd web test is a runner" "$(titled 'yarn --cwd web test')" 77
+  eq "U21 a retitled pnpm --dir web test is a runner" "$(titled 'pnpm --dir web test')" 77
+  eq "U22 a retitled npm t is a runner" "$(titled 'npm t')" 77
+  eq "U23 a retitled npm tst is a runner" "$(titled 'npm tst')" 77
+  eq "U24 a retitled pnpm t is a runner" "$(titled 'pnpm t')" 77
+  eq "U25 a retitled npm run-script test is a runner" "$(titled 'npm run-script test')" 77
+  eq "U26 a retitled npm rum test is a runner" "$(titled 'npm rum test')" 77
+  eq "U27 a retitled npm urn test is a runner" "$(titled 'npm urn test')" 77
   eq "U8 negative control: a retitled npm run build is not a runner" "$(titled 'npm run build')" 0
   eq "U13 negative control: a retitled npm --prefix test run build is not a runner" "$(titled 'npm --prefix test run build')" 0
+  eq "U28 negative control: a retitled npm install t is not a runner" "$(titled 'npm install t')" 0
 else
-  pass "U5 to U13 SKIP: no real node at $REAL_NODE"
+  echo "SKIP - U5 to U28: no real node on PATH before the recorder dir"
 fi
 
-# The refusal names a command that runs: the suite from the guest checkout, the VM may be off, the guest holds origin/main.
+# The refusal names a command that runs. The guest line is run through guest-exec.sh with a stub SDK that
+# joins argv with a space and hands it to bash -c in the fixture guest home, as vmsdk.py's exec does.
+cat >"$TMP/vmsdk-stub.py" <<'PY'
+import os, subprocess, sys
+rest = sys.argv[3:]
+cmd = " ".join(rest[rest.index("--") + 1:])
+sys.exit(subprocess.run(["bash", "-c", cmd], cwd=os.environ["HOME"]).returncode)
+PY
 WR="$TMP/wrepo"
 mkdir -p "$WR/scripts"
 git -C "$WR" init -q
 cp "$TMP/real-tool.sh" "$WR/scripts/test-w.sh"
 (cd "$WR" && as_session bash scripts/test-w.sh >"$TMP/w.out" 2>&1)
-has "W1 a relative suite path is run from the guest checkout" "$TMP/w.out" "-- bash -c 'cd ~/himmel && bash scripts/test-w.sh'"
+has "W1 a relative suite path is run from the guest checkout" "$TMP/w.out" "-- env -C himmel bash scripts/test-w.sh"
+printed="$(grep -F 'guest-exec.sh' "$TMP/w.out" | head -1)"
+printed="${printed#*: }"
 (cd "$TMP" && as_session bash "$WR/scripts/test-w.sh" >"$TMP/w.out" 2>&1)
-has "W1 an absolute suite path is run from the guest checkout" "$TMP/w.out" "-- bash -c 'cd ~/himmel && bash scripts/test-w.sh'"
+has "W1 an absolute suite path is run from the guest checkout" "$TMP/w.out" "-- env -C himmel bash scripts/test-w.sh"
 has "W1 the refusal says the VM must be on and the guest holds origin/main" "$TMP/w.out" "vmsdk.py himmel-ar-1 up"
 has "W2 the after-report line names its usage exactly" "$TMP/w.out" "bash scripts/vm/after-report.sh <branch> <pr>"
 bash "$root/scripts/vm/after-report.sh" >"$TMP/ar.out" 2>&1
 has "W2 after-report.sh's own usage reads the same" "$TMP/ar.out" "usage: scripts/vm/after-report.sh <branch> <pr>"
-# W3: the printed guest command, run in a fixture guest home, reaches the suite (the guard refuses it, rc 77), not 'no such file'.
 mkdir -p "$HOME/himmel"
 cp -R "$WR/scripts" "$HOME/himmel/scripts"
-printed="$(grep -F 'guest-exec.sh' "$TMP/w.out" | head -1)"
-inner="${printed#*-- bash -c \'}"
-inner="${inner%\'*}"
-eq "W3 the printed guest command reaches the suite" "$(as_session bash -c "$inner" >/dev/null 2>&1; echo $?)" 77
+eq "W3 the printed line, run through guest-exec.sh and the argv join, reaches the suite" "$(cd "$root" && HIMMEL_VMSDK="$TMP/vmsdk-stub.py" as_session bash -c "$printed" >/dev/null 2>&1; echo $?)" 77
+rc="$(cd "$root" && HIMMEL_VMSDK="$TMP/vmsdk-stub.py" as_session bash -c "bash scripts/vm/guest-exec.sh himmel-ar-1 -- bash -c 'cd ~/himmel && bash scripts/test-w.sh'" >/dev/null 2>&1; echo $?)"
+if [ "$rc" != 77 ]; then pass "W3b the bash -c spelling loses its quoting in the argv join and never reaches the suite (rc $rc)"; else fail "W3b the stub does not model the argv join"; fi
 cp "$TMP/real-tool.sh" "$WR/scripts/test_w.py"
 (cd "$WR" && as_session bash -c "exec -a python3 bash scripts/test_w.py" >"$TMP/w.out" 2>&1)
+has "W4 a python suite is still refused" "$TMP/w.out" "REFUSED"
 if grep -qF 'guest-exec.sh' "$TMP/w.out"; then fail "W4 a python suite is not printed as a bash command"; else pass "W4 a python suite is not printed as a bash command"; fi
+cp "$TMP/real-tool.sh" "$WR/scripts/test-w x.sh"
+(cd "$WR" && as_session bash "scripts/test-w x.sh" >"$TMP/w.out" 2>&1)
+has "W5 a suite path with a space is still refused" "$TMP/w.out" "REFUSED"
+if grep -qF 'guest-exec.sh' "$TMP/w.out"; then fail "W5 a path outside [A-Za-z0-9._/-] is not printed"; else pass "W5 a path outside [A-Za-z0-9._/-] is not printed"; fi
+git -C "$WR" -c user.email=t@t -c user.name=t commit -q --allow-empty -m w
+git -C "$WR" checkout -q --detach
+(cd "$WR" && as_session bash scripts/test-w.sh >"$TMP/w.out" 2>&1)
+has "W6 a detached HEAD prints the <branch> placeholder" "$TMP/w.out" "himmel-ar-1 clone <branch>"
 
 # A detached test that is still alive keeps its test ancestor, so it is refused.
 ( setsid bash -c "bash '$TMP/test-inner.sh' >/dev/null 2>&1; echo \$? >'$TMP/orphan2.rc'" >/dev/null 2>&1 & )
