@@ -1664,6 +1664,22 @@ _ql_takeover_claim_release() {
     return 0
 }
 
+# _ql_force_claim_cleanup -- trap body of the forced release: drop its release claim while the brand still names it (idempotent).
+# ponytail: SIGKILL cannot be trapped, so it still leaks the claim until a manual rm -rf, upgrade path: an expiry on the release brand
+_ql_force_claim_cleanup() {
+    [ -n "${_QL_FORCE_CLAIM:-}" ] || return 0
+    _ql_takeover_claim_release "$_QL_FORCE_CLAIM" "${_QL_FORCE_TOKEN:-}" || true  # swallow-ok: a brand that no longer names us means the claim is already gone or another taker's, which is not ours to remove
+    return 0
+}
+
+# _ql_force_trap_reset <saved-traps> -- forget the forced release's claim and put back the traps the caller had (trap -p output).
+_ql_force_trap_reset() {
+    _QL_FORCE_CLAIM="" _QL_FORCE_TOKEN=""
+    trap - EXIT INT TERM HUP
+    [ -z "$1" ] || eval "$1"
+    return 0
+}
+
 # _ql_release_claim_take <lockdir> <token> -- take and brand the release claim; rc 2 (stderr says why) when a contender holds it.
 _ql_release_claim_take() {
     local lockdir="$1" claim_token="$2"
@@ -2362,8 +2378,18 @@ queue_lock_release() {
             return 0
         fi
         # the release claim is taken before the proof and kept through the append and the removal, so a contender holding it stops us before any HALTED is written
-        local f_claim_token="release-pid$$-r$RANDOM"
-        _ql_release_claim_take "$lockdir" "$f_claim_token" || return 2
+        # a release claim never expires, so a signal while it is held would wedge the doc: the trap frees it, then the caller's own traps come back (the suite sources this file)
+        local f_claim_token="release-pid$$-r$RANDOM" f_prev_traps="" f_rc=0
+        f_prev_traps=$(trap -p EXIT INT TERM HUP)
+        _QL_FORCE_CLAIM="${lockdir}.claim" _QL_FORCE_TOKEN="$f_claim_token"
+        trap '_ql_force_claim_cleanup' EXIT
+        trap '_ql_force_claim_cleanup; exit 130' INT
+        trap '_ql_force_claim_cleanup; exit 143' TERM
+        trap '_ql_force_claim_cleanup; exit 129' HUP
+        if ! _ql_release_claim_take "$lockdir" "$f_claim_token"; then
+            _ql_force_trap_reset "$f_prev_traps"
+            return 2
+        fi
         local f_session f_host
         f_session=$(_ql_json_field "$lockdir/owner.json" session)
         f_host=$(_ql_json_field "$lockdir/owner.json" host)
@@ -2374,11 +2400,14 @@ queue_lock_release() {
             f_doc=$(_ql_json_field "$lockdir/owner.json" handover)
             f_raw=$(cat "$lockdir/owner.json" 2>/dev/null) || f_raw=""  # swallow-ok: an unreadable owner.json leaves f_raw empty, so the re-check below writes no HALTED
         fi
+        _ql_test_pause forced-proved
         # written while the dead holder still owns the lock and we hold the claim, so a successor's LIVE cannot precede it;
         # re-read owner.json anyway and write nothing when it changed
         [ "$(cat "$lockdir/owner.json" 2>/dev/null)" = "$f_raw" ] || f_doc=""  # swallow-ok: an unreadable owner.json differs from f_raw, so no HALTED is written
         _ql_halted_marker "$f_doc" "$f_session" "a forced release (QUEUE_LOCK_FORCE_RELEASE=1)"
-        _ql_release_remove "$lockdir" "" "" 1 "$f_claim_token" || return "$?"
+        _ql_release_remove "$lockdir" "" "" 1 "$f_claim_token" || f_rc=$?
+        _ql_force_trap_reset "$f_prev_traps"
+        [ "$f_rc" -eq 0 ] || return "$f_rc"
         printf '%s FORCED RELEASE of session=%s host=%s lock=%s (QUEUE_LOCK_FORCE_RELEASE=1, by pid=%s on host=%s)\n' \
             "$(_ql_now_iso)" "${f_session:-unknown}" "${f_host:-unknown}" "$lockdir" "$$" "$(_ql_hostname)" \
             >> "$(dirname "$lockdir")/takeovers.log" 2>/dev/null || true
