@@ -86,7 +86,7 @@ test("Workflow: no ticket ID, file path, script name or WAKE key in the visible 
     const { text } = await parse(tab(ui));
     expect(text.match(FORBIDDEN)).toBeNull();
   }
-  for (const stats of statsStates()) {
+  for (const stats of [...statsStates(), null, { error: "server unreachable" }]) {
     expect((await parse(renderWorkflow(MODEL, { tab: "eval" }, stats))).text.match(FORBIDDEN)).toBeNull();
     expect((await parse(renderWorkflow(MODEL, { tab: "workflow", phase: null, step: null, walk: null, at: 0 }, stats))).text.match(FORBIDDEN)).toBeNull();
   }
@@ -152,7 +152,7 @@ const STATS = {
   cost: { state: "nodata", say: "no data yet" },
 };
 
-// Every Eval branch, in the words the server sends: phase-stats.ts's own counts and cost text over the numbers above.
+// Each loaded Eval branch, in the words the server sends: phase-stats.ts's own counts and cost text over the numbers above.
 // The state directory does not exist, so no fleet record is read.
 function statsStates() {
   const real = readPhaseStats({ TICKET_STATUS_STATE_DIR: "/nonexistent/workflow-page-test" }, "", Date.parse(STATS.to));
