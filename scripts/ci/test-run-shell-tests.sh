@@ -3376,4 +3376,44 @@ fi
 rm -rf "$sb33"
 fi
 
+# --------------------------------------------------------------------------
+# Case 34: a retry that exits 0 through a SKIP line the FIRST attempt also
+# printed is evidence of a flake; one whose SKIP is new on the retry is not.
+# The stop-guard suite prints a constant RED-control SKIP on every run.
+# --------------------------------------------------------------------------
+echo "== Case 34: a SKIP that also fired on the first attempt does not defeat the retry =="
+sb34=$(mktemp -d "${TMPDIR:-/tmp}/rst-case34.XXXXXX") || { fail "34: mktemp failed"; sb34=""; }
+if [ -n "$sb34" ]; then
+mkdir -p "$sb34/constdir" "$sb34/newdir"
+# Fails on its first attempt after printing the same SKIP the retry prints, then exits 0.
+cat > "$sb34/constdir/test-constskip.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$C34_DIR/const.runs"
+echo "  SKIP could not extract the pre-fix hook - RED control skipped"
+[ "$(wc -l < "$C34_DIR/const.runs")" -ge 2 ] && exit 0
+exit 1
+SHEOF
+# Fails quietly on its first attempt and exits 0 through a SKIP on the second.
+cat > "$sb34/newdir/test-newskip.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$C34_DIR/new.runs"
+[ "$(wc -l < "$C34_DIR/new.runs")" -ge 2 ] && { echo "  SKIP nothing to run here"; exit 0; }
+exit 1
+SHEOF
+chmod +x "$sb34/constdir/test-constskip.sh" "$sb34/newdir/test-newskip.sh"
+out34a=$(C34_DIR="$sb34" SUITE_FLAKE_LEDGER="$sb34/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb34/constdir" 2>&1); rc34a=$?
+if [ "$rc34a" -eq 0 ] && grepq "$out34a" '\[FLAKE\] .*test-constskip\.sh' && ! grepq "$out34a" -F '[RETRY-SKIP]'; then
+  pass "34a: a retry whose only SKIP also fired on the first attempt counts as a FLAKE, rc 0"
+else
+  fail "34a: rc=$rc34a (want rc 0, a [FLAKE] line, no [RETRY-SKIP]) output: $out34a"
+fi
+out34b=$(C34_DIR="$sb34" SUITE_FLAKE_LEDGER="$sb34/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb34/newdir" 2>&1); rc34b=$?
+if [ "$rc34b" -eq 1 ] && grepq "$out34b" '\[RETRY-SKIP\] .*test-newskip\.sh'; then
+  pass "34b: a retry that SKIPs only the second time keeps the first failure"
+else
+  fail "34b: rc=$rc34b (want rc 1 and a [RETRY-SKIP] line) output: $out34b"
+fi
+rm -rf "$sb34"
+fi
+
 rst_tally

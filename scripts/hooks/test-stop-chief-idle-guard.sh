@@ -429,6 +429,36 @@ else
     bad "(x) COLUMNS=20 in the hook env -> census read native=$cols_n against native=$base_n without it"
 fi
 
+# --- (x2) a matching process that exits between the two reads ---
+# The census is a live process list. A second matching process alive for the
+# plain read and gone for the COLUMNS=20 read (a worker from another case on a
+# loaded runner) made the two reads disagree by one, and (x) failed with
+# "native=1 against native=2" on code that was fine.
+FAKE2="$TMP/claude2"
+cp "$(command -v bash)" "$FAKE2" 2>/dev/null
+"$FAKE2" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-8701 </dev/null >/dev/null 2>&1 &
+FAKE2_PID=$!
+cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
+"$FAKE_CLAUDE" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-7430 </dev/null >/dev/null 2>&1 &
+FAKE_PID=$!
+sleep 1
+base_out="$(run_guard "$CHIEF_PAYLOAD")"
+pkill -P "$FAKE2_PID" 2>/dev/null
+kill "$FAKE2_PID" 2>/dev/null
+wait "$FAKE2_PID" 2>/dev/null
+out="$(run_guard "$CHIEF_PAYLOAD" COLUMNS=20)"
+pkill -P "$FAKE_PID" 2>/dev/null
+kill "$FAKE_PID" 2>/dev/null
+wait "$FAKE_PID" 2>/dev/null
+rm -f "$FAKE2" "$FAKE_CLAUDE" 2>/dev/null
+base_n="$(printf '%s\n' "$base_out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+cols_n="$(printf '%s\n' "$out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+if [ -n "$base_n" ] && [ -n "$cols_n" ] && [ "$cols_n" -ge "$base_n" ]; then
+    ok "(x2) a matching process gone between the two reads -> still the same census (native=$cols_n vs $base_n)"
+else
+    bad "(x2) a matching process gone between the two reads -> native=$cols_n against native=$base_n"
+fi
+
 # --- (y) a chief-named doc gets the same verdict as a console-named one -----
 CHIEF_NAMED_DOC="$HANDOVER_DIR/FIXTURE-nextleg-roadmap-chief.md"
 printf 'fixture chief doc\n' > "$CHIEF_NAMED_DOC"
