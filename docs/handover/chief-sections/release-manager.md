@@ -11,9 +11,10 @@ release is declared (`jira release state <R>` prints a status other than
   prints `REQ <id>`; a duplicate of an open request returns the open one. Then
   `jira release rm-run <R>` rules every pending request and exits. It takes
   the lease, finishes any older ruling, claims, makes one bounded model call
-  (through `scripts/api-lane/claude-api.sh`, so it bills API credit and never the
-  subscription: lane on and account `auto` unless you set them, no tools, one
-  turn, JSON out, a refusal is final), rules
+  (through `scripts/api-lane/claude-api.sh`, so it bills API credit: lane on and
+  account `auto` unless you set them, no tools, one turn, JSON out; a refusal
+  sends one Telegram alert and re-runs once on the subscription behind the usage
+  preflight, unless `HIMMEL_API_FALLBACK=off`, see `docs/internals/api-lane.md`), rules
   and applies each request through the engine, releases the lease, and prints
   one line per request. An empty queue prints `RM-RUN <R>: nothing pending`
   and writes nothing.

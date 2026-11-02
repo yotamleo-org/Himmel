@@ -171,8 +171,14 @@ if [ -n "$_node" ]; then
     # Every entry is added only if absent (never duplicated), and an empty
     # inherited PATH yields no stray empty segment (an empty segment means
     # "search the cwd", which for a hook is the repo under review).
+    #
+    # ~/.bun/bin is in the default because on macOS /bin/sh is bash 3.2 and
+    # `command -p sh` hands the child its built-in default PATH
+    # (/usr/bin:/bin:/usr/sbin:/sbin), so the caller's real PATH never reaches
+    # a hook and bun-backed probes would otherwise fail closed.
+    # ponytail: other per-user tool dirs (outside this list) are still dropped from hook PATH on macOS, upgrade path: stop wiring hooks through `command -p`
     _node_dir="${_node%/*}"
-    _extra_dirs="${RUN_NODE_EXTRA_PATH_DIRS-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${HOME:-}/.local/bin}"
+    _extra_dirs="${RUN_NODE_EXTRA_PATH_DIRS-/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${HOME:-}/.local/bin:${HOME:-}/.bun/bin}"
     _old_ifs="$IFS"
     IFS=:
     set -f

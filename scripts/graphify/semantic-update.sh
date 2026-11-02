@@ -33,8 +33,12 @@
 # this script never reads or handles a key). A scratch `claude` shim first on
 # PATH adapts graphify's call to the lane's flag allowlist. It needs
 # HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto in the launching shell,
-# refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise: it
-# never falls back to the subscription claude-cli. Spend is bounded by
+# refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise,
+# before any call: it never switches itself to the claude-cli backend. Each
+# chunk call then follows the lane's own failure rule: a refusal before any
+# request alerts and re-runs the chunk once on the subscription unless
+# HIMMEL_API_FALLBACK=off; a call that ran spent its stdin prompt and is not
+# replayed (docs/internals/api-lane.md). Spend is bounded by
 # --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
 # 1.00) and the batch is sized to the run cap; the lane's own credit answer is the
 # hard stop. The plan's estimate line prints before any call, and --dry-run stops

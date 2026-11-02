@@ -336,8 +336,8 @@ if [ "$kind" = "amend" ]; then
       # RECORD was wrong — a different field. Without this key, the deferral
       # path clear-cr-marker itself recommends is a dead end for any finding
       # originally recorded without a reason, which is most of them.
-      severity=*|head=*|verdict=*|deferred_to=*|fu_class=*|fu_why=*|class=*|reason=*|file=*|line=*) ;;
-      *=*) echo "ledger-append.sh: amend cannot set '${_pair%%=*}' (allowed: severity, head, verdict, deferred_to, fu_class, fu_why, class, reason, file, line)" >&2; exit 2;;
+      severity=*|head=*|verdict=*|deferred_to=*|fu_class=*|fu_why=*|class=*|reason=*|file=*|line=*|pre_existing=*) ;;
+      *=*) echo "ledger-append.sh: amend cannot set '${_pair%%=*}' (allowed: severity, head, verdict, deferred_to, fu_class, fu_why, class, reason, file, line, pre_existing)" >&2; exit 2;;
       *)   echo "ledger-append.sh: --set expects <key>=<value> (got '$_pair')" >&2; exit 2;;
     esac
     # Same eager validation as --deferred-to (glm-5): otherwise a typo'd ticket
@@ -363,6 +363,14 @@ if [ "$kind" = "amend" ]; then
       fu_class=*)
         if ! valid_fu_class "${_pair#fu_class=}"; then
           echo "ledger-append.sh: --set fu_class= must be escape|hardening|polish (got '${_pair#fu_class=}')" >&2
+          exit 2
+        fi ;;
+      pre_existing=*)
+        # The field critic-pre-existing-tag.py sets after git blame places the
+        # cited line before the PR; review-round.sh defer reads it. Only true:
+        # any other value would read as "not pre-existing" and do nothing.
+        if [ "${_pair#pre_existing=}" != true ]; then
+          echo "ledger-append.sh: --set pre_existing= must be true (got '${_pair#pre_existing=}')" >&2
           exit 2
         fi ;;
       fu_why=*)
@@ -1111,6 +1119,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
       let v=p.slice(i+1);
       const k=p.slice(0,i);
       if(k==="line") v=Number(v)||v;
+      if(k==="pre_existing") v=(v==="true");
       if(k==="reason") v=cleanFree(v);
       set[k]=v;
     }
