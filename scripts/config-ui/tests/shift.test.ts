@@ -509,6 +509,12 @@ test("a shipped title with no commit prefix or key keeps its text and shows no k
   expect(shipped).not.toContain('<a href="#/roadmap">');
 });
 
+test("a shipped title whose prefix is not a commit type keeps the whole prefix", () => {
+  const html = renderShift(pageView({ shipped: [{ number: 9, title: "Authentication: reject expired tokens", mergedAt: "2026-10-27T09:00:00Z", chief: null }] }), {});
+  const from = html.indexOf('id="sh-shipped"');
+  expect(html.slice(from, html.indexOf("</section>", from))).toContain("<b>Authentication: reject expired tokens</b>");
+});
+
 test("the chief strip labels a segment with its doc's run letters, the full name stays in the hover", () => {
   const html = renderShift(busyView(), {});
   const chiefs = html.slice(html.indexOf('id="sh-chiefs"'), html.indexOf('id="sh-waiting"'));

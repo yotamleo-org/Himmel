@@ -22,7 +22,7 @@ const chiefLabel = (n) => { const m = /\d{4}-\d{2}-\d{2}([A-Z]{1,3})-/.exec(Stri
 const plainTitle = (raw) => {
   let t = String(raw || "");
   const k = /\[([A-Z][A-Z0-9]*-\d+)\]/.exec(t);
-  t = t.replace(/^[a-z]+(?:\([^)]*\))?!?:\s*/i, "");
+  t = t.replace(/^(?:feat|fix|chore|docs|refactor|test|perf|ci|build|style|revert)(?:\([^)]*\))?!?:\s*/i, "");
   if (k) t = t.replace(`[${k[1]}]`, "").replace(/\s{2,}/g, " ");
   return { key: k ? k[1] : "", title: t.trim() };
 };
