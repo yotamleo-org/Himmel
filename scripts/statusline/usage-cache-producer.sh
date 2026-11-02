@@ -387,7 +387,7 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
   # The API answers "no active 5-hour window" with a five_hour that
   # is null or carries no utilization. That is an empty window, not a malformed
   # one (string / negative / over 100) and not a window the fetch left out.
-  ($ff | has("five_hour") and (.five_hour | if type == "null" then true elif type == "object" then .utilization == null else false end)) as $fhEmpty |
+  ($ff | has("five_hour") and (.five_hour | if type == "null" then true elif type == "object" then (.utilization == null and .used_percentage == null) else false end)) as $fhEmpty |
   (($sd != null and ($sd.utilization | okpct)) and (($fh != null and ($fh.utilization | okpct)) or $fhEmpty)) as $stamp |
   {
     five_hour:   (if ($stamp and $fhEmpty) then {}
