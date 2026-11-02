@@ -276,6 +276,8 @@ would blank) and `failure` (one of four words).
 **Journal roots.** A session launched with its own `CLAUDE_CONFIG_DIR` opens
 in the run view from a direct link: a run that no root holds runs the live census
 once and retries, so no Fleet poll is needed first, also after a server restart.
+The census reads each session's launch environment from `/proc/<pid>/environ`, so
+where `/proc` has none (macOS) a custom-root run can still be `404`.
 A journal root is a Claude config directory
 whose `projects/` holds session journals. `resolveJournal` searches two
 built-in roots, `~/.claude` (native) and `~/.claude-codex` (claudex, the lane

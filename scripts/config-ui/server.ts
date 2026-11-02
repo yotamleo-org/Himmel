@@ -718,7 +718,13 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         let found = await resolveJournal(env.HOME || homedir(), run);
         // A miss: the live census registers each session's own config root (as a Fleet poll does), then one retry.
         // The run id is the only request input; no parameter names a root.
-        if ("status" in found && found.status === 404) { await fleetOnce().catch(() => undefined); found = await resolveJournal(env.HOME || homedir(), run); }
+        // A read already in flight may predate this session, so a still-missing run gets one fresh read.
+        if ("status" in found && found.status === 404) {
+          const joined = fleetRun !== null;
+          await fleetOnce().catch(() => undefined);
+          found = await resolveJournal(env.HOME || homedir(), run);
+          if (joined && "status" in found && found.status === 404) { await fleetOnce().catch(() => undefined); found = await resolveJournal(env.HOME || homedir(), run); }
+        }
         if ("status" in found) return new Response(found.status === 400 ? "bad run id" : found.status === 404 ? "no such run" : "run id is ambiguous", { status: found.status });
         // Secrets in the transcript pass the same redactor as every other output; literals read once per stream.
         let raw = "";
