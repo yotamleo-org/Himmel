@@ -86,6 +86,25 @@ user_settings "$(jq -cn --arg c "$(raw_cmd block-edit-on-main.sh)" '{PreToolUse:
 out="$(doctor)"
 has "C81 WARN names guardrail-block-global" "$out" "accept guardrail-block-global"
 
+# --- doctor C85: the queue lock's self-heartbeat hook must be wired ---------------------------
+hb_doctor() { HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$1" --only C85 --no-color 2>&1; }
+echo "== C85: project settings without the self-heartbeat hook -> FAIL naming the wiring script =="
+out="$(hb_doctor "$PROJ")"
+has "C85 hook unwired -> FAIL row" "$out" "FAIL C85-self-heartbeat"
+has "C85 names the wiring script" "$out" "wire-session-telemetry-hooks.mjs"
+echo "== C85: the canonical entry the wiring script writes -> OK =="
+HBPROJ="$WORK/hb-root"
+mkdir -p "$HBPROJ/.claude"
+ln -s "$ROOT/scripts" "$HBPROJ/scripts"
+jq -n '{hooks:{}}' > "$HBPROJ/.claude/settings.json"
+node "$ROOT/scripts/observability/wire-session-telemetry-hooks.mjs" "$HBPROJ/.claude/settings.json" >/dev/null 2>&1
+out="$(hb_doctor "$HBPROJ")"
+has "C85 hook wired by the wiring script -> OK row" "$out" "OK   C85-self-heartbeat"
+echo "== C85: wired, then removed (--off) -> FAIL again =="
+node "$ROOT/scripts/observability/wire-session-telemetry-hooks.mjs" --off "$HBPROJ/.claude/settings.json" >/dev/null 2>&1
+out="$(hb_doctor "$HBPROJ")"
+has "C85 hook removed -> FAIL row" "$out" "FAIL C85-self-heartbeat"
+
 # --- himmelctl: user-scope install keeps the trio unless a self-skipping owner is there ------
 export INSTALL_ENGINE_LIB="$ROOT/scripts/himmelctl/lib/install-engine.js"
 export PROBES_LIB="$ROOT/scripts/himmelctl/lib/probes.js"
