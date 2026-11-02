@@ -285,7 +285,8 @@ export function renderHealth(feed, health, view = {}) {
   // mockup v2: the strip, the tiles and the open tile's panel sit straight in the main-column grid (app.css .pg), unboxed
   return `<div class="pg">${[
     `<header class="ph"><h1>Health · ${esc(name)}</h1><p>Is himmel working here, what is broken and who fixes it, from the doctor feed and the monitoring tier.</p></header>`,
-    section("verdict", "Is this project working right now?", "One word, from the doctor feed and any firing alerts. A tile opens its panel.", verdictHtml(feed, own, view.now ?? Date.now()) + tilesHtml(feed, own, open), "sec"),
+    // the approved v2 mockup draws no heading over the strip; the section keeps its name for screen readers
+    `<section id="verdict" class="sec" aria-label="Is this project working right now?">${verdictHtml(feed, own, view.now ?? Date.now())}${tilesHtml(feed, own, open)}</section>`,
     panel ? panel() : "",
     section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health), "sec"),
   ].join("\n")}</div>`;

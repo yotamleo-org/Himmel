@@ -113,7 +113,7 @@ case "$sub" in
     key="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = --comment-file ] && cat "$2" >>"$JLOG"; shift; done ;; # read-sink-ok: the comment file is the script's own mktemp body in this suite's sandbox
   fix-version)
     [ "${JIRA_FIXVER_FAIL:-}" = 1 ] && { echo "boom" >&2; exit 1; }
-    : ;;
+    echo "${HIMMEL_VERSION_WRITER:-unset}" >>"$JSTATE/fixver-writer" ;;
   get)
     printf '%s\nFix versions: v1.1.3\n' "$1" ;;
   *) : ;;
@@ -194,6 +194,7 @@ assert_contains "link residual 2" "$log" "link TST-202 TST-100"
 assert_contains "label residual 1" "$log" "edit TST-201 --add-labels folded-into-TST-100"
 assert_contains "backlog residual 1 (fixVersion removed)" "$log" "fix-version TST-201 --remove v1.1.3"
 assert_contains "backlog residual 2 (fixVersion removed)" "$log" "fix-version TST-202 --remove v1.1.3"
+assert_eq "each fixVersion removal names class-recurrence" "class-recurrence class-recurrence" "$(tr '\n' ' ' <"$JSTATE/fixver-writer" | sed 's/ $//')"
 assert_not_contains "already-folded residual untouched" "$log" "TST-203 TST-100"
 body=$(cat "$JSTATE/body-TST-100" 2>/dev/null || true)
 assert_contains "RED row for residual 1 in the body" "$body" "RED: TST-201"

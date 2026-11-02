@@ -26,8 +26,11 @@
 # Each deny appends one JSONL row (ts, session_id, decision, host) to
 # WEBFETCH_WALLED_LOG (default ~/.claude/webfetch-walled/denials.jsonl),
 # best-effort; the URL is never logged (it can carry a token). Setting
-# WEBFETCH_WALLED_LOG=/dev/null turns the row off (the himmel shim does, so one
-# deny is one row).
+# WEBFETCH_WALLED_LOG=/dev/null turns the row off. With HOME unset the log is
+# ${TMPDIR:-/tmp}/himmel-webfetch-walled-<uid>/denials.jsonl instead of nowhere.
+# The himmel shim runs this same file, so a session with the plugin disabled or
+# cached at an older version still logs its deny; when both lanes fire, the first
+# to claim the deny's tool_use_id (a file under <log dir>/.claims) writes the one row.
 #
 # Workflow convenience, not a security fence (scripts/hooks/CLAUDE.md
 # "Fail-open vs fail-closed"): fails OPEN on anything it cannot parse (missing
@@ -46,10 +49,12 @@ command -v jq >/dev/null 2>&1 || exit 0
 WALLED_HOSTS="x.com twitter.com mobile.twitter.com instagram.com reddit.com redd.it"
 
 input=$(cat 2>/dev/null) || exit 0
-fields=$(printf '%s' "$input" | jq -r '(.tool_name // "") + "\n" + (.session_id // "") + "\n" + (.tool_input.url // empty | strings)' 2>/dev/null) || exit 0
+fields=$(printf '%s' "$input" | jq -r '(.tool_name // "") + "\n" + (.session_id // "") + "\n" + ((.tool_use_id // "") | if type == "string" and length > 0 and length <= 128 and (explode | all(. == 45 or . == 95 or (. >= 48 and . <= 57) or (. >= 65 and . <= 90) or (. >= 97 and . <= 122))) then . else "" end) + "\n" + (.tool_input.url // empty | strings)' 2>/dev/null) || exit 0
 tool=${fields%%$'\n'*}
 rest=${fields#*$'\n'}
 session=${rest%%$'\n'*}
+rest=${rest#*$'\n'}
+callid=${rest%%$'\n'*}
 url=${rest#*$'\n'}
 [ "$tool" = "WebFetch" ] || exit 0
 [ -n "$url" ] || exit 0
@@ -97,11 +102,46 @@ else
     deny_msg="WebFetch is walled on $host (HTTP 402/login wall) and will not return the page. Use a browser-capable tool if one is configured, or ask the operator to paste the text (bypass: HIMMEL_WEBFETCH_WALLED_OK=1 in the launching shell)"
 fi
 
-log=${WEBFETCH_WALLED_LOG:-${HOME:-}/.claude/webfetch-walled/denials.jsonl}
-if [ "$log" != /dev/null ] && mkdir -p "$(dirname "$log")" 2>/dev/null; then
-    jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg session_id "$session" --arg host "$host" \
-        '{ts: $ts, session_id: $session_id, decision: "deny", host: $host}' \
-        >>"$log" 2>/dev/null || true
+log=${WEBFETCH_WALLED_LOG:-}
+logok=1
+if [ -z "$log" ]; then
+    if [ -n "${HOME:-}" ]; then
+        log=$HOME/.claude/webfetch-walled/denials.jsonl
+    else
+        # No HOME: a per-user temp-dir log, so the deny is still counted.
+        fbdir=${TMPDIR:-/tmp}/himmel-webfetch-walled-$(id -u)
+        log=$fbdir/denials.jsonl
+        mkdir -m 700 "$fbdir" 2>/dev/null
+        { [ -d "$fbdir" ] && [ -O "$fbdir" ] && [ ! -L "$fbdir" ]; } || logok=0
+    fi
+fi
+if [ "$log" != /dev/null ] && [ "$logok" = 1 ] && mkdir -p "$(dirname "$log")" 2>/dev/null; then
+    # The project shim and the plugin lane both run this file for one deny; the
+    # first to claim the deny's tool_use_id writes the row, so one deny is one row
+    # whichever lanes fire. No id, or a claim that cannot be made for a reason
+    # other than "already claimed": write (never lose a row). A failed append
+    # releases the claim so the other lane can still write.
+    claimed=1
+    claimfile=""
+    case "$callid" in
+        "" | *[!A-Za-z0-9_-]*) ;;
+        *)
+            claims="$(dirname "$log")/.claims"
+            if mkdir -p "$claims" 2>/dev/null; then
+                find "$claims" -type f -mmin +60 -delete 2>/dev/null || true
+                if (set -C; : >"$claims/$callid") 2>/dev/null; then
+                    claimfile="$claims/$callid"
+                elif [ -e "$claims/$callid" ]; then
+                    claimed=0
+                fi
+            fi
+            ;;
+    esac
+    if [ "$claimed" = 1 ]; then
+        jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg session_id "$session" --arg host "$host" \
+            '{ts: $ts, session_id: $session_id, decision: "deny", host: $host}' \
+            >>"$log" 2>/dev/null || { [ -z "$claimfile" ] || rm -f "$claimfile" 2>/dev/null; }
+    fi
 fi
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \

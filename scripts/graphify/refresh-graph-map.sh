@@ -702,6 +702,12 @@ if { [ "$GRAPHIFY_OUT_NAME" != "graphify-out" ] || [ "$OUT_OF_CORPUS" -eq 1 ]; }
 fi
 REPORT="$OUT_DIR/GRAPH_REPORT.md"
 
+# A test on the station never rewrites a real graph or publishes into a real maps dir; only exit 77 refuses.
+_door_rc=0
+# The guard's own tools (realpath, getent) are found even when a caller scrubbed PATH to hide python3 or graphify.
+PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-guard" check refresh-graph-map "$OUT_DIR" ${MAPS_DIR:+"$MAPS_DIR"} || _door_rc=$?
+[ "$_door_rc" -ne 77 ] || exit 77
+
 # Exclusive per-out-dir promote lock. Two overlapping refreshes
 # of the SAME out dir (a scheduler firing twice, an operator re-running
 # while a prior run is still in flight, ...) would otherwise have no

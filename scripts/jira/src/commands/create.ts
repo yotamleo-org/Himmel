@@ -741,7 +741,7 @@ async function displaceResidual(
     await request('PUT', `/issue/${newcomer}`, {
       fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
       update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'create-stepdown');
     console.error(`jira: ${displaced.key} is no longer displaceable; ${newcomer} moved to ${displaced.fixVersion ?? 'the backlog'}`);
     // With no version to step down to the newcomer is versionless: it waits in the backlog for an INTAKE.
     if (!displaced.fixVersion) {
@@ -756,10 +756,23 @@ async function displaceResidual(
   await request('PUT', `/issue/${displaced.key}`, {
     fields: { fixVersions },
     update: { labels: [{ add: 'residual-displaced' }] },
-  });
+  }, 'displace-residual');
   await request('POST', `/issue/${displaced.key}/comment`, {
     body: markdownToAdf(`Displaced by higher-ranked residual ${newcomer}; moved to ${displaced.fixVersion ?? 'the backlog'}.`),
   });
+}
+
+/** The journal name of the code path that chose a new ticket's Fix Version; undefined (hand) when the caller typed it or none was set. */
+function createWriterOf(
+  options: { fixVersion?: string; residualOf?: string; followUpOf?: string },
+  chose: { placed: boolean; inherited: string | undefined; residual: ResidualPlan | undefined; bugDefault: boolean },
+): string | undefined {
+  if (!chose.placed || options.fixVersion !== undefined) return undefined;
+  if (chose.inherited !== undefined) {
+    return options.residualOf !== undefined ? 'create-residual' : options.followUpOf !== undefined ? 'create-followup' : 'create-blocker-inherit';
+  }
+  if (chose.residual) return chose.residual.labels.includes('residual-displaced') ? 'create-stepdown' : 'create-residual';
+  return chose.bugDefault ? 'create-bug-default' : undefined;
 }
 
 export function registerCreate(program: Command): void {
@@ -978,7 +991,8 @@ export function registerCreate(program: Command): void {
         await checkExistingBlocker(options.project ?? projectKey(), fields['fixVersions'], options);
         preflightIntake(options, fields, resolveTitle(options));
 
-        const result = await request<CreateIssueResponse>('POST', '/issue', { fields });
+        const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault: placed.bugDefault });
+        const result = await request<CreateIssueResponse>('POST', '/issue', { fields }, writer);
         // Breadcrumb BEFORE attachments (same rationale as comment): the issue
         // exists even if a later attachment upload fails.
         writeJiraBreadcrumb(result.key);

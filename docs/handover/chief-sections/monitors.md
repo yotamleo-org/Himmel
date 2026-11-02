@@ -64,10 +64,16 @@ adopted) has no edge to the live chief. It is
 absent when every held worker has a record naming this chief or the bus has no peers dir, and
 `chief-wait.sh` does not wake on it, so read it at the next tick.
 
-`wakerstate=<label>:rc3|rc4[,...]` is conditional the same way: a held worker whose
+`wakerstate=<label>:rc3|rc4|capped[,...]` is conditional the same way: a held worker whose
 `bus-idle-waker` ended on rc 3 (konsole refuses sendText: the window predates
 `EnableSecuritySensitiveDBusAPI`, relaunch it) or rc 4 (the session is not the
-named claude). Its mail wakes nothing. Absent when no waker left a state file.
+named claude). Its mail wakes nothing. `capped` is different: the waker is still
+running but typed its wake 5 times (`--max-wakes`) for the same unread mail and nobody
+read it, so it types no more until a new message arrives. The worker is finished, stuck
+or over its context fill line and cannot read: check its newest Results bullet, then send
+it what it needs (a new bus message wakes it once more), relaunch it from its RESUME doc,
+or close it. The chief is not woken by it; read it at the next tick. Absent when no waker
+left a state file.
 
 `chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
 

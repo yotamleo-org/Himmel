@@ -450,6 +450,7 @@ scripts/handover/chief-kit/test-tick-holds.sh	local	new, behaviour suite for tic
 scripts/handover/chief-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-pool-stale.sh	local	new, behaviour suite for tick.sh pool-stale= and residual-unversioned= (HIMMEL-6604)
 scripts/handover/chief-kit/test-tick-rmqueue.sh	local	new, behaviour suite for tick.sh rm-queue= and the auto rm-run (HIMMEL-7641)
+scripts/handover/chief-kit/test-tick-vmspend.sh	local	new, behaviour suite for the tick vmspend= field (HIMMEL-8663)
 scripts/handover/chief-kit/test-tick.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tracker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-vault-status.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1220,5 +1221,6 @@ marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	local	behavi
 scripts/station-ops/test-station-ops.sh	pr	guard
 scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new for HIMMEL-8349 (series-next.sh, slice S2b)
 scripts/handover/chief-kit/test-holds.sh	pr	trust-path
+scripts/handover/chief-kit/test-series-publish.sh	local	behaviour suite, new for HIMMEL-8603 (series-publish.sh, slice S2c)
 scripts/jira/test-empty-sector-check.sh	local	behaviour suite, new for HIMMEL-8659 (empty-sector-check.sh)
 scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new for HIMMEL-6992 (relay-cost eval checker, pricing, runner)

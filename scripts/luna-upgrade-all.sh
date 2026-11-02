@@ -29,6 +29,14 @@ set -uo pipefail
 # explicit --template-dir about which himmel the caller meant.
 SELF_REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# _vault_door <label> <target...>: a test on the station never rewrites a real vault or its backups.
+# Only exit 77 refuses; a missing or crashing guard lets the run through.
+_vault_door() {
+    local rc=0
+    bash "$SELF_REPO_ROOT/scripts/lib/test-run-guard" check "$@" >&2 || rc=$?
+    [ "$rc" -ne 77 ] || exit 77
+}
+
 # ---------------------------------------------------------------------------
 # Manifest header field parser — BSD/macOS-sed-safe.
 # GNU sed treats \t in bracket-classes as TAB, but BSD sed treats it literally,
@@ -743,6 +751,7 @@ cmd_apply() {
         echo "apply: vault path does not exist: $VAULT_PATH" >&2
         exit 2
     fi
+    _vault_door luna-upgrade-apply "$vault" "${HOME:-}/.claude/luna-upgrade-backups"
 
     # Classify
     local class; class="$(classify_vault "$vault")"
@@ -856,6 +865,7 @@ cmd_restore() {
 
     local slug; slug="$(basename "$vault" | sed 's/[^A-Za-z0-9._-]/_/g')"
     local backup_base; backup_base="${HOME:-}/.claude/luna-upgrade-backups/$slug"
+    [ "$LIST_ONLY" = 1 ] || _vault_door luna-upgrade-restore "$vault" "$backup_base"
 
     # --list: print matching backups and exit
     if [ "$LIST_ONLY" = 1 ]; then

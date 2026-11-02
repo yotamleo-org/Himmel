@@ -457,6 +457,7 @@ scripts/handover/chief-kit/test-tick-holds.sh	3
 scripts/handover/chief-kit/test-tick-nolive.sh	13
 scripts/handover/chief-kit/test-tick-pool-stale.sh	2
 scripts/handover/chief-kit/test-tick-rmqueue.sh	12
+scripts/handover/chief-kit/test-tick-vmspend.sh	4
 scripts/handover/chief-kit/test-tick.sh	339
 scripts/handover/chief-kit/test-tracker.sh	14
 scripts/handover/chief-kit/test-vault-status.sh	3
@@ -1234,5 +1235,6 @@ marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	1
 scripts/station-ops/test-station-ops.sh	3
 scripts/handover/chief-kit/test-series-next.sh	8
 scripts/handover/chief-kit/test-holds.sh	11
+scripts/handover/chief-kit/test-series-publish.sh	13
 scripts/jira/test-empty-sector-check.sh	1
 scripts/eval/relay-cost/test-relay-cost.sh	8

@@ -111,6 +111,49 @@ fi'
 # shellcheck disable=SC2016 # a regex, matched as text
 FENCE_RE='^if himmel_repo=\$\(printenv HIMMEL_REPO \| grep \.\) ?;? then bash "\$himmel_repo/scripts/cr/pr-check-context\.sh" ?;? else echo "[^"$`\\]*" >&2 ?;? exit 2 ?;? fi ?;?$'
 
+# The anchor's path as a remedy prints it: the PHYSICAL path of HIMMEL_REPO (the
+# rule generator emits its rule from the git common-dir's parent, never from a
+# symlink), and only when the rule generator (plugin-profiles.mjs
+# validatedAnchorPath) would emit a rule for it - no `..`, no worktree, nothing
+# the matcher could read as syntax. Step 0's himmel_dir is the WORKTREE on the
+# himmel lane, so the remedy never names it.
+# rc 0 prints the path. rc 1: no usable anchor directory (unset, relative, or no
+# .git DIRECTORY - a worktree's .git is a file). rc 2: a real anchor directory
+# whose path cannot be printed unquoted.
+anchor_remedy_dir() {
+    local a="${HIMMEL_REPO:-}" r
+    while [ "${a%/}" != "$a" ]; do a="${a%/}"; done
+    case "$a" in /*) ;; *) return 1 ;; esac
+    [ -d "$a/.git" ] || return 1
+    case "$a" in */../* | */..) return 2 ;; esac
+    r=$(cd -P "$a" 2>/dev/null && pwd -P) || return 1 # swallow-ok: a failed cd is rc 1, no usable anchor
+    case "$r" in
+        *[!A-Za-z0-9._/+-]* | */.claude/worktrees/*) return 2 ;;
+    esac
+    printf '%s' "$r"
+}
+# remedy_cmd <repo-relative script> <args placeholder> [exempt-printed]: the unquoted
+# anchored spelling, which the generated `bash <anchor>/scripts/...:*` rules match.
+# When the anchor's path cannot be printed that way, an absolute anchor directory
+# gets the guard-exempt "$HIMMEL_REPO/..." spelling (unquoted args only; omitted
+# when the caller printed it already), and anything else gets no runnable line.
+remedy_cmd() {
+    local d rc=0
+    d=$(anchor_remedy_dir) || rc=$?
+    case "$rc" in
+        0) echo "bash $d/$1 $2" ;;
+        2)
+            if [ -z "${3:-}" ]; then
+                echo "bash \"\$HIMMEL_REPO/$1\" <unquoted-args>"
+            fi
+            echo "(HIMMEL_REPO's path cannot be printed unquoted, so no allow rule matches an anchored path here; the exempt spelling has none either, so the classifier judges it)"
+            ;;
+        *)
+            echo "(HIMMEL_REPO is unset, relative, or not a primary checkout - a worktree is not one - so no runnable line can be printed: export HIMMEL_REPO to himmel's primary checkout in your launching shell)"
+            ;;
+    esac
+}
+
 shown=""
 flat=""
 deny() {
@@ -144,10 +187,16 @@ deny() {
                 # shellcheck disable=SC2016 # printed verbatim, never expanded
                 echo 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh" <unquoted-args>'
                 echo
-                echo "If an argument genuinely needs quoting, use the anchor's copy by step 0's"
-                echo "printed himmel_dir instead, as its own command:"
+                echo "If an argument genuinely needs quoting, use the anchor's copy by HIMMEL_REPO's"
+                echo "own path (not step 0's himmel_dir, which is this worktree), as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/merge-on-green.sh\" <args>"
+                remedy_cmd scripts/handover/merge-on-green.sh '<args>' exempt-printed
+                ;;
+            *console-kit/himmel-gate* | *chief-kit/himmel-gate*)
+                echo "Run the anchored spelling instead - EVERY argument must be unquoted:"
+                echo
+                # shellcheck disable=SC2016 # printed verbatim, never expanded
+                echo 'bash "$HIMMEL_REPO/scripts/handover/chief-kit/himmel-gate.sh" <unquoted-args>'
                 ;;
             *console-kit/go* | *chief-kit/go*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
@@ -165,12 +214,21 @@ deny() {
                 echo "bash \"<himmel_dir>/scripts/handover/chief-kit/chief-wait.sh\" <args>"
                 ;;
             *)
-                echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
+                echo "Run the anchor's copy by HIMMEL_REPO's own path (not step 0's himmel_dir, which is"
+                echo "this worktree on the himmel lane), as its own command:"
                 echo
-                # shellcheck disable=SC2016 # printed verbatim, never expanded
+                # The path is unquoted on purpose: the allow rule for the anchor's
+                # copy is `bash <anchor>/scripts/cr/<x>.sh:*`, which a quoted path or a
+                # literal $HIMMEL_REPO never matches. It exists for the wildcard-tail
+                # writers only; known-findings.sh and doc-freshness-advisory.sh hold
+                # a relative exact rule and have none, so the classifier judges them.
                 case "${entries:-}" in
-                    ' '*' '*|'') echo "bash \"<himmel_dir>/scripts/cr/<script>.sh\" <args>" ;;
-                    *) echo 'bash "$HIMMEL_REPO/scripts/cr/'"${entries# }"'" <args>' ;;
+                    ' '*' '*|'') remedy_cmd 'scripts/cr/<script>.sh' '<args>' ;;
+                    *) remedy_cmd "scripts/cr/${entries# }" '<args>' ;;
+                esac
+                case "${entries:-}" in
+                    ' known-findings.sh' | ' doc-freshness-advisory.sh')
+                        echo "(no allow rule covers the anchored spelling of this script, so the classifier judges it)" ;;
                 esac
                 ;;
         esac

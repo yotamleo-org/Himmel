@@ -34,7 +34,7 @@ export const liveJira: JiraPort = {
     return (got.fields?.fixVersions ?? []).map((v) => v.name ?? '');
   },
   async setFixVersion(key, op, version) {
-    await setFixVersion(key, op, version);
+    await setFixVersion(key, op, version, 'rm-apply');
     writeJiraBreadcrumb(key);
   },
   async findComment(key, marker) {
