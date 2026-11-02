@@ -74,8 +74,9 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
 
 - **Do the work yourself** unless the brief says otherwise; never spawn a
   subagent to verify your own work. **No unrequested features, tests or files.** [prose]
-- **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob tool. Structure
-  questions: `bash scripts/graphify/worker-graph.sh query|explain|path "<q>"` first.
+- **Search with Bash** (`git grep`, `git ls-files`), no Grep/Glob. Structure:
+  `bash scripts/graphify/worker-graph.sh explain "<symbol>"` / `path "<a>" "<b>"`;
+  `query` on a sentence is noise.
   Pasted x.com/instagram.com links: `scripts/web/fetch-url.sh '<url>'`. [prose]
 - **Pre-check a bucket file** with `bash scripts/handover/chief-kit/bucket-gitleaks.sh <file>`
   before writing it; a real credential goes to the chief, never reworded. [prose]

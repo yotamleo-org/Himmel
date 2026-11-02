@@ -508,6 +508,17 @@ calls issued alone, with n, and it labels the figure "time to result (includes
 waiting and hooks)", never a run time. A call without a result shows a dash,
 never 0; a digest written before the times were kept leaves its calls unknown.
 
+Graph use: a Bash call's head is the tool behind any leading `cd X &&`, `bash -c`,
+env assignment or `rtk` wrapper, so `graphify`, `qmd` and `rtk` rows are real counts.
+`bash scripts/eval/worker-digest/graph-use-report.sh [--days N] [--root PROJECTS_DIR]...` is
+read-only: it scans the journals changed in the last N days (default 7) under every
+`~/.claude*/projects` (one lane each: claude, codex, ...), session journals and subagent
+journals apart, and prints per scope (all projects, himmel projects), lane and kind the
+journals, those with a graph call, the calls per form (`query`, `explain`, `path`, `mcp`),
+bare versus wrapper calls with their failures, and how many journals that searched code
+never called the graph. The `counted:` and `not counted:` lines it prints say where it
+over- or undercounts.
+
 Why a guard refused: the page joins each counted refusal to its hook-chain row
 by call id. The reason rows count only refusals with such a row; the rest are
 "recorded before reasons were logged" (the refusal ended before the first
