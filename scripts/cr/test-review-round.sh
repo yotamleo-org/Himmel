@@ -155,8 +155,8 @@ assert_has "$out" "promoted cov-5@" "the twin is promoted"
 assert_has "$out" "skip-blank-head cov-5" "the blank-head row is skipped"
 
 # (6) a twin must be on the same branch.
-real_row rr-other "$head_a" cov-6 deferred
 blank_row rr-elsewhere cov-6 deferred
+real_row rr-other "$head_a" cov-6 deferred
 promote rr-elsewhere
 refused "twin on another branch"
 assert_has "$err" "cov-6" "twin on another branch: the refusal names the id"
