@@ -3315,9 +3315,10 @@ bash "$LIB" release "$B_DOC" behalf95 >/dev/null 2>&1
 G_DOC="$A_HO/spawn-count.md"; : > "$G_DOC"
 QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" acquire "$G_DOC" spawn95 >/dev/null 2>&1
 G_SHIM="$TMPDIR_ROOT/shim-95g"; mkdir -p "$G_SHIM"; G_LOG="$TMPDIR_ROOT/shim-95g.log"
-G_REAL_SHA="$(command -v sha256sum 2>/dev/null)"
-printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "$@"\n' "$G_LOG" "${G_REAL_SHA:-/nonexistent}" > "$G_SHIM/sha256sum"
-chmod +x "$G_SHIM/sha256sum"
+G_SHA_NAME=sha256sum; command -v sha256sum >/dev/null 2>&1 || G_SHA_NAME=shasum
+G_REAL_SHA="$(command -v "$G_SHA_NAME" 2>/dev/null)"
+printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "$@"\n' "$G_LOG" "${G_REAL_SHA:-/nonexistent}" > "$G_SHIM/$G_SHA_NAME"
+chmod +x "$G_SHIM/$G_SHA_NAME"
 g_count() {
     : > "$G_LOG"
     printf '{"session_id":"scope-spawn"}' \
@@ -3359,19 +3360,21 @@ H_DOC2="$A_HO/prune-2.md"; : > "$H_DOC2"; H_LK2="$(a_lockdir prune-2)"
 QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC1" prune95a >/dev/null 2>&1
 QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC2" prune95b >/dev/null 2>&1
 H_SD="$(t95_sdir scope-prune)"
-mkdir -p "$G_TOK/scope.foreign-keep"; printf 'x\n%s\n' "$(dirname "$H_LK2")/foreign-gone.lock" > "$G_TOK/scope.foreign-keep/keep.doc"
+H_FSD="$(t95_sdir scope-foreign)"; H_FKEEP="$H_FSD/$(t95_digest "scope-foreign|$H_DOC2").foreign95.doc"
+mkdir -p "$H_FSD"; printf 'x\n%s\n' "$(dirname "$H_LK2")/foreign-gone.lock" > "$H_FKEEP"
 h_regs_before="$(t95_count "$H_SD"/*.doc)"
+h_toks_before="$(t95_count "$G_TOK/$(t95_digest "scope-prune|$H_DOC1")".*)"
 rm -rf "$H_LK1"
 printf '{"session_id":"scope-prune"}' | QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" self-heartbeat >/dev/null 2>&1
 h_regs_after="$(t95_count "$H_SD"/*.doc)"
 h_toks="$(t95_count "$G_TOK/$(t95_digest "scope-prune|$H_DOC1")".*)"
-if [ "$h_regs_before" = 2 ] && [ "$h_regs_after" = 1 ] && [ "$h_toks" = 0 ] \
-    && [ -d "$H_LK2" ] && [ -f "$G_TOK/scope.foreign-keep/keep.doc" ]; then
+if [ "$h_regs_before" = 2 ] && [ "$h_regs_after" = 1 ] && [ "$h_toks_before" = 1 ] && [ "$h_toks" = 0 ] \
+    && [ -d "$H_LK2" ] && [ -f "$H_FKEEP" ]; then
     pass "T95h: the hook prunes a registration whose lock dir is gone, keeps a held one, and leaves foreign sidecars alone"
 else
-    fail "T95h: prune (regs $h_regs_before -> $h_regs_after, leftover token files for the dead lock: $h_toks, held lock present: $([ -d "$H_LK2" ] && echo y || echo n))"
+    fail "T95h: prune (regs $h_regs_before -> $h_regs_after, token files for the dead lock before/after: $h_toks_before/$h_toks, held lock present: $([ -d "$H_LK2" ] && echo y || echo n), foreign sidecar kept: $([ -f "$H_FKEEP" ] && echo y || echo n))"
 fi
-rm -rf "$G_TOK/scope.foreign-keep"
+rm -rf "$H_FSD"
 QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" release "$H_DOC2" prune95b >/dev/null 2>&1
 
 # T95i: a registration whose lock's PARENT dir is missing (an unmounted or
@@ -3393,14 +3396,14 @@ rm -f "$I_SD/orphan-parent-95i.doc" "$I_TOK"
 # scope.<digest> path is occupied by a regular file): rc 1, no success line,
 # and the token file it wrote is taken back.
 J_DOC="$A_HO/occupied.md"; : > "$J_DOC"
-QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$J_DOC" occupied95 >/dev/null 2>&1
+QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$J_DOC" occupied95 >/dev/null 2>&1; j_arc=$?
 : > "$(t95_sdir scope-occupied)"
 j_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-occupied bash "$LIB" adopt "$J_DOC" occupied95 2>&1)"; j_rc=$?
-if [ "$j_rc" -eq 1 ] && ! grepq "$j_out" 'adopted' && grepq "$j_out" 'nothing registered' \
+if [ "$j_arc" -eq 0 ] && [ "$j_rc" -eq 1 ] && ! grepq "$j_out" 'adopted' && grepq "$j_out" 'nothing registered' \
     && [ "$(t95_count "$G_TOK/$(t95_digest "scope-occupied|$J_DOC")".*)" = 0 ]; then
     pass "T95j: adopt exits 1, prints no success line and leaves no token file when the sidecar cannot be written"
 else
-    fail "T95j: adopt with an occupied registration dir (rc=$j_rc out=$j_out)"
+    fail "T95j: adopt with an occupied registration dir (acquire rc=$j_arc adopt rc=$j_rc out=$j_out)"
 fi
 rm -f "$(t95_sdir scope-occupied)"
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$J_DOC" >/dev/null 2>&1

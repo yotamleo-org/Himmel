@@ -200,11 +200,18 @@ ownerOB="$(grep -l -F "$docOB" "$root"/.locks/queue/*/owner.json 2>/dev/null | h
 if [ -n "$ownerOB" ]; then
     sed -i.bak 's/"heartbeat":"[^"]*"/"heartbeat":"2020-01-01T00:00:00Z"/' "$ownerOB" && rm -f "$ownerOB.bak"
 fi
-printf '{"session_id":"scope-invoker"}' | XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" self-heartbeat >/dev/null 2>&1
+rc_hbOB=0
+printf '{"session_id":"scope-invoker"}' | XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" self-heartbeat >/dev/null 2>&1 || rc_hbOB=$?
+check "3b the invoker's self-heartbeat command itself succeeds" "$rc_hbOB" "0"
 check "3b the invoker's self-heartbeat leaves a chief-launched lock's heartbeat untouched" "$(grep -c '"heartbeat":"2020-01-01T00:00:00Z"' "$ownerOB" 2>/dev/null)" "1"
 rc_idle=0
 HANDOVER_DIR="$root" bash "$QL" status "$docOB" >/dev/null 2>&1 || rc_idle=$?
 check "3b a chief-launched lock goes STALE (rc 12), so the sweep shows it idle" "$rc_idle" "12"
+# control: once the invoker ADOPTS the lock, the same self-heartbeat DOES refresh
+# it, so the untouched result above is the missing registration, not a no-op hook.
+HANDOVER_DIR="$root" XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" adopt "$docOB" "$tokenOB" >/dev/null 2>&1
+printf '{"session_id":"scope-invoker"}' | XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" self-heartbeat >/dev/null 2>&1
+check "3b control: an adopted chief-launched lock IS refreshed by the invoker's self-heartbeat" "$(grep -c '"heartbeat":"2020-01-01T00:00:00Z"' "$ownerOB" 2>/dev/null)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$docOB" "$tokenOB" >/dev/null 2>&1
 
 sumA_before="$(cksum < "$docA")"
