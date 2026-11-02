@@ -44,7 +44,7 @@ if [ -n "$HDIR" ] && [ ! -d "$HDIR" ]; then
 fi
 command -v jq >/dev/null || { echo "graph-use-report: jq is required" >&2; exit 2; }
 # The window: the last DAYS days by mtime, or with --until-epoch (GNU find) the DAYS days that end at that instant, to re-run a past window.
-if [ -n "$UNTIL" ]; then WIN=(-newermt "@$((UNTIL - DAYS * 86400))" ! -newermt "@$UNTIL"); else WIN=(-mtime "-$DAYS"); fi
+if [ -n "$UNTIL" ]; then WIN=(-newermt "@$((UNTIL - 10#$DAYS * 86400))" ! -newermt "@$UNTIL"); else WIN=(-mtime "-$((10#$DAYS))"); fi
 
 # One row per journal: tools search query explain path mcp bare bare_fail wrapper wrapper_fail wrapper_miss. A bad journal LINE is
 # skipped by fromjson?; a journal jq cannot read at all fails the program and is counted by the caller.
@@ -209,7 +209,9 @@ if [ -n "$HDIR" ]; then
       }
       END { print best + 0 }' "$d" 2>/dev/null)"
     hrows="$hrows$role$TAB${st:-0}"$'\n'
-  done < <(find "$HDIR" -type f -name '*.md' "${WIN[@]}" -not -path '*/specs/*' -not -path '*/verdicts/*' -print0 2>/dev/null)
+  done < <(find "$HDIR" -type f -name '*.md' "${WIN[@]}" -not -path '*/specs/*' -not -path '*/verdicts/*' -print0 2>"$WORK/herr")
+  hunwalked=$(grep -c . "$WORK/herr")
+  [ "$hunwalked" -gt 0 ] && echo "handover directories that could not be walked, docs under them left out of the bullets table: $hunwalked"
   echo "== bullets =="
   printf 'role\tdocs\twith_bullet\tused_or_cited\tcalled_only\tnone_found\tna_shipping\tno_data\n'
   printf '%s' "$hrows" | awk -F'\t' '

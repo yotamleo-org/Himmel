@@ -121,6 +121,8 @@ check "a search behind bash -c with a quote before it counts and a lone ls does 
 MISS="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-miss/claude/projects" 2>&1)"
 check "a wrapper call that exits 3 or 4 is a miss, exit 1 is a fail, a bare graphify exit 3 stays a bare fail: 4 wrapper, 1 fail, 2 miss, 1 bare, 1 bare fail" '[ "$(OUT="$MISS" cells all claude main wrapper wrapper_fail wrapper_miss bare bare_fail)" = 4/1/2/1/1 ]'
 
+check "--days 08 with --until-epoch is decimal, not octal: exits 0" 'bash "$RPT" --days 08 --until-epoch 1000000000 --root "$FX/claude/projects" >/dev/null 2>&1; [ $? = 0 ]'
+
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
 

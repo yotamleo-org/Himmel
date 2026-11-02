@@ -513,7 +513,7 @@ env assignment or `rtk` wrapper, and `worker-graph.sh`, `leg-graph.sh` and `qmd-
 (by bash, sh or their own path) read as `graphify` and `qmd`, so those rows count calls by
 tool, approximately (the `qmd` row holds every verb, not only searches; a quoted mention
 or a here-doc line that begins like a call also counts).
-`bash scripts/eval/worker-digest/graph-use-report.sh [--days N] [--min-tools N] [--root PROJECTS_DIR]... [--handovers DIR]` is
+`bash scripts/eval/worker-digest/graph-use-report.sh [--days N] [--until-epoch EPOCH] [--min-tools N] [--root PROJECTS_DIR]... [--handovers DIR]` is
 read-only: it scans the journals changed in the last N days (default 7) under every
 `~/.claude*/projects` (one lane each: claude, codex, ...), session journals and subagent
 journals apart, and prints per scope (all projects, himmel projects), lane, kind and role
@@ -523,10 +523,10 @@ The graph table has the journals, those with a graph call, the calls per form (`
 ambiguous, is a `wrapper_miss`, an honest no-answer, not a `wrapper_fail`), and `searched`
 (journals with a grep, rg, Grep or Glob mention, a count of mentions, not of use). The qmd
 table has the journals with a qmd call and with a qmd search, and the calls split into search
-verbs (`query`, `search`, `vsearch`) against every other verb, shell against mcp. A third
+verbs (`query`, `search`, `vsearch`, `deep_search`) against every other verb, shell against mcp. A third
 table reads the `graph-qmd:` Results bullets of the handover docs under `--handovers` (default
 `$HANDOVER_DIR`) per role: used or cited, called only, none found, n/a shipping, and docs with
-no bullet as no data, not zero. `--min-tools N` keeps journals that ran at least N tools. The
+no bullet as no data, not zero. `--until-epoch EPOCH` ends the N-day window at that instant (to re-run a past window); `--min-tools N` keeps journals that ran at least N tools. The
 `counted:`, `bullets:` and `not counted:` lines it prints say where it over- or undercounts.
 
 Why a guard refused: the page joins each counted refusal to its hook-chain row
