@@ -659,6 +659,18 @@ same "T2 repoint: the key's first row has the new doc and label" "$(cut -f2,3 "$
 same "T2 repoint: the key's second row too" "$(cut -f2 "$(rowf scripts/t2rp2.sh)")" newlabel
 same "T2 repoint: another key's row is left alone" "$(cat "$(rowf scripts/t2rp3.sh)")" "$other_before"
 
+put_row scripts/t2rp4.sh HIMMEL-9409 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9409-old.md"
+rp4="$(rowf scripts/t2rp4.sh)"; rp4_before="$(cat "$rp4")"
+run python3 -I -c "
+import importlib.util, os
+s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+def boom(d, name, text): raise OSError(28, 'No space left on device')
+m.publish = boom
+print(m.repoint_row(os.path.dirname('$rp4'), os.path.basename('$rp4'), 'HIMMEL-9409', 'newlabel', 'new.md'))
+"
+same "T2 repoint: a failed write reports a fault" "$OUT" fault
+same "T2 repoint: ... and the original row is still there" "$(cat "$rp4" 2>/dev/null)" "$rp4_before"
+
 DT4="$(mkdoc HIMMEL-9406-case.md '> **Writes:** scripts/t2fr.sh scripts/t2h1.sh scripts/t2h2.sh')"
 put_row scripts/t2h1.sh HIMMEL-9407 holder1 "$(mkdoc HIMMEL-9407-case.md)"
 put_row scripts/t2h2.sh HIMMEL-9408 holder2 "$(mkdoc HIMMEL-9408-case.md)"

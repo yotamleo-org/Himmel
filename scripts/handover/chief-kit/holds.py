@@ -655,6 +655,10 @@ def repoint_row(d, n, key, label, doc):
         except OSError as e:
             fault('repoint write: %s' % (e.strerror or e), unescape(n), key)
             res = 'fault'
+            try:
+                os.link(moved, target)  # keep the old row: a failed write must not erase the hold
+            except OSError:
+                pass  # swallow-ok: a fresher holder published meanwhile and keeps its row
     else:
         try:
             os.link(moved, target)  # the row moved was not the one judged (another key's): put it back
