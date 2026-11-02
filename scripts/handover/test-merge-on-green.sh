@@ -4330,7 +4330,7 @@ STUB_JIRA_BUILD=1 STUB_JIRA_ADD_FIX_FAIL_ONCE=1 STUB_JIRA_FIXVERSIONS='{"name":"
     run_mog 0 "jira: a re-add that fails once is retried" -- --jira-transition
 assert_audit_has "jira: the retried re-add leaves the fold ok" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=v1.1.3"
 # The replace, the failed re-add and its retry are three edits, and every one is named.
-if [ "$(grep -c '^edit-writer: merge-stamp$' "$LAST_JIRA_LOG")" = 3 ]; then pass; else fail "8823: retry after a failed add still carries merge-stamp (jira log: $(cat "$LAST_JIRA_LOG" 2>/dev/null))"; fi
+if [ "$(grep -c '^edit-writer: merge-stamp$' "$LAST_JIRA_LOG")" = 3 ]; then pass; else fail "8823: retry after a failed add still carries merge-stamp (jira log: $(cat "$LAST_JIRA_LOG" 2>/dev/null))"; fi  # read-sink-ok: LAST_JIRA_LOG is this suite's own stub log inside its sandbox
 assert_jira_log_lacks "8823: no retry edit goes out unnamed" "edit-writer: unset"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n' STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
