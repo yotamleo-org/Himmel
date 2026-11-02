@@ -3,7 +3,8 @@
 # on login-walled hosts. The suite is the spec.
 #
 # Every plugin case runs the INSTALLED hooks.json command with CLAUDE_PLUGIN_ROOT
-# on this plugin dir and CLAUDE_PROJECT_DIR on a fixture repo that is not himmel,
+# on a copy in a plugin-cache-shaped fixture config dir (as a real install has it)
+# and CLAUDE_PROJECT_DIR on a fixture repo that is not himmel,
 # so a wiring that points at $CLAUDE_PROJECT_DIR/scripts/hooks/ (an --optional
 # no-op outside himmel) reads as allow and fails the deny rows.
 #
@@ -18,18 +19,45 @@ command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required and not on PATH"; 
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/walled-host.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
-git init -q "$TMP/repo"
+git init -q "$TMP/repo" || exit 1
 LOG="$TMP/deny.jsonl"
+
+# A fixture that did not get written would let a case pass without testing what
+# it names, so setup stops the suite: put <file> <text with \n escapes> makes the
+# parent dir and writes the file; setup_fail reports a failed write.
+setup_fail() { echo "FAIL fixture setup: $*"; exit 1; }
+put() {
+    if ! { mkdir -p "$(dirname "$1")" && printf '%b' "$2" >"$1"; }; then setup_fail "$1"; fi
+}
+
+# The layout of a real install: the plugin runs from a copy in the plugin cache
+# under the config dir, not from a checkout, and the himmel checkout is found from
+# the user-scope marketplace record in that config dir. record <marketplace dir>
+# writes it; record none removes it (the adopter default).
+CFG="$TMP/home/.claude"
+CACHE_DIR="$CFG/plugins/cache/himmel/himmel-ops/0.0.0"
+mkdir -p "$CACHE_DIR" && cp -R "$PLUGIN_DIR/hooks" "$CACHE_DIR/hooks" || exit 1
+record() {
+    if [ "$1" = none ]; then
+        rm -f "$CFG/plugins/known_marketplaces.json"
+    else
+        if ! { mkdir -p "$CFG/plugins" && jq -n --arg p "$1" '{himmel:{source:{source:"directory",path:$p},installLocation:$p}}' \
+            >"$CFG/plugins/known_marketplaces.json"; }; then setup_fail "marketplace record for $1"; fi
+    fi
+}
 
 plugin_cmd=$(jq -r '.hooks.PreToolUse[].hooks[].command | select(contains("redirect-webfetch-walled-hosts.sh"))' "$PLUGIN_DIR/hooks/hooks.json")
 
 wf() { jq -nc --arg u "$1" '{session_id:"s-walled",tool_name:"WebFetch",tool_input:{url:$u,prompt:"p"}}'; }
 
-# run_case <payload> <project dir> [VAR=value]: sets RC, ERR and OUT.
+# run_case <payload> <project dir> [VAR=value]: sets RC, ERR and OUT. The config
+# dir is CLAUDE_CONFIG_DIR=$CFG; CFG_ASSIGN=X_UNUSED=1 leaves it unset so the
+# hook takes its default, $HOME/.claude, with HOME on the fixture home.
 run_case() {
     rm -f "$LOG"
     ERR="$TMP/err"
-    OUT=$(cd "$2" && printf '%s' "$1" | env -u WALLED_TOOLING_DIR CLAUDE_PLUGIN_ROOT="$PLUGIN_DIR" \
+    OUT=$(cd "$2" && printf '%s' "$1" | env -u WALLED_TOOLING_DIR -u CLAUDE_CONFIG_DIR HOME="$TMP/home" \
+        CLAUDE_PLUGIN_ROOT="$CACHE_DIR" "${CFG_ASSIGN:-CLAUDE_CONFIG_DIR=$CFG}" \
         CLAUDE_PROJECT_DIR="$2" WEBFETCH_WALLED_LOG="$LOG" HIMMEL_WEBFETCH_WALLED_OK=0 ${3:+"$3"} \
         sh -c "${plugin_cmd:-exit 0}" 2>"$ERR")
     RC=$?
@@ -73,6 +101,48 @@ assert_eq "adopter: one JSONL row with the session_id and host" 1 "$n"
 assert_eq "adopter: the row carries no url" 0 \
     "$(jq -c 'select(has("url"))' "$LOG" 2>/dev/null | wc -l | tr -d ' ')"
 
+# Files the PROJECT owns cannot pick the mode or the host list. An
+# adopter repo carrying its own scripts/web/fetch-url.sh and an empty (or
+# different) walled-hosts.conf still gets the embedded list and the adopter deny.
+put "$TMP/owned/scripts/web/fetch-url.sh" '#!/bin/sh\nexit 0\n'
+put "$TMP/owned/scripts/web/walled-hosts.conf" '\n'
+run_case "$(wf 'https://x.com/a/status/1')" "$TMP/owned"
+assert_eq "project-owned fetcher + empty conf: walled host still denied" 2 "$RC"
+case "$ERR" in
+    *fetch-url*) echo "FAIL project-owned files: deny names the project fetcher: $ERR"
+                 FAILED=$((FAILED + 1)) ;;
+    *) echo "PASS project-owned files: deny names no project script" ;;
+esac
+put "$TMP/owned/scripts/web/walled-hosts.conf" 'example.org\n'
+run_case "$(wf 'https://x.com/a/status/1')" "$TMP/owned"
+assert_eq "project-owned conf naming another host: x.com still denied" 2 "$RC"
+run_case "$(wf 'https://example.org/a')" "$TMP/owned"
+assert_eq "project-owned conf naming another host: that host not walled" 0 "$RC"
+
+# The recorded himmel checkout's conf: an empty or blank first line keeps the
+# embedded list (the guard must not go silent), a real line is the host list.
+mkdir -p "$TMP/fx/marketplace" || setup_fail "$TMP/fx/marketplace"
+put "$TMP/fx/scripts/web/fetch-url.sh" '#!/bin/sh\nexit 0\n'
+record "$TMP/fx/marketplace"
+for blank in '' '   '; do
+    put "$TMP/fx/scripts/web/walled-hosts.conf" "$blank\\n"
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+    assert_eq "recorded checkout, blank conf line '$blank': walled host still denied" 2 "$RC"
+    case "$ERR" in
+        *fetch-url*) echo "FAIL recorded checkout, blank conf: deny names the fetcher: $ERR"
+                     FAILED=$((FAILED + 1)) ;;
+        *) echo "PASS recorded checkout, blank conf: embedded list and adopter deny" ;;
+    esac
+done
+put "$TMP/fx/scripts/web/walled-hosts.conf" 'example.org\n'
+run_case "$(wf 'https://example.org/a')" "$TMP/repo"
+assert_eq "recorded checkout, conf example.org: that host denied" 2 "$RC"
+assert_contains "recorded checkout, conf example.org: deny names the recorded fetcher" \
+    "'$TMP/fx/scripts/web/fetch-url.sh' 'https://example.org/a'" "$ERR"
+run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+assert_eq "recorded checkout, conf example.org: the conf line is the list" 0 "$RC"
+record none
+
 for u in 'https://twitter.com/a/status/1' 'https://mobile.twitter.com/a/status/1' \
          'https://www.instagram.com/p/ABC/' 'https://WWW.X.COM/a/status/1' \
          'https://old.reddit.com/r/a' 'https://redd.it/abc' 'https://u:p@x.com:443/a?q=1'; do
@@ -108,11 +178,63 @@ fi
 
 # A himmel session keeps the paste-ready fetcher command and writes one row.
 if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
+    record "$HIMMEL_ROOT/marketplace"
     run_case "$(wf 'https://x.com/a/status/1')" "$HIMMEL_ROOT"
     assert_eq "himmel: plugin hook denies" 2 "$RC"
     assert_contains "himmel: deny names the fetcher with the quoted url" \
         "fetch-url.sh' 'https://x.com/a/status/1'" "$ERR"
     assert_eq "himmel: plugin writes one row" 1 "$(rows)"
+
+    # The mode comes from the user-scope record, never from the project: with the
+    # record, an adopter project dir still gets himmel mode, and a project-owned
+    # fetcher beside it is ignored.
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/owned"
+    assert_eq "himmel record, adopter project: denies" 2 "$RC"
+    assert_contains "himmel record, adopter project: names the checkout fetcher" \
+        "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+    run_case "$(wf 'https://docs.python.org/3/')" "$HIMMEL_ROOT"
+    assert_eq "himmel record: non-walled host allowed" 0 "$RC"
+
+    # CLAUDE_CONFIG_DIR wins over HOME: with HOME on another dir the record is
+    # still read from CLAUDE_CONFIG_DIR (HOME and the config dir are one path in
+    # every other case, so only this row tells them apart).
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo" HOME="$TMP/elsewhere"
+    assert_eq "CLAUDE_CONFIG_DIR over HOME: the record is found, denies" 2 "$RC"
+    assert_contains "CLAUDE_CONFIG_DIR over HOME: names the recorded checkout's fetcher" \
+        "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+
+    # The default config dir ($HOME/.claude, CLAUDE_CONFIG_DIR unset), a record
+    # path with a trailing slash, and a record that does not parse.
+    CFG_ASSIGN=X_UNUSED=1
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+    assert_eq "default config dir: the record is found, denies" 2 "$RC"
+    assert_contains "default config dir: names the recorded checkout's fetcher" \
+        "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+    CFG_ASSIGN=""
+    record "$HIMMEL_ROOT/marketplace/"
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+    assert_eq "trailing-slash record: denies" 2 "$RC"
+    assert_contains "trailing-slash record: names the recorded checkout's fetcher" \
+        "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+    # The project owns a fetcher and a conf naming x.com, both beside the project
+    # dir and at a relative path a non-string location (42) would resolve to, so
+    # reading the project dir, or trusting a non-string location, shows up as a
+    # deny that names a fetcher.
+    put "$TMP/owned/scripts/web/walled-hosts.conf" 'x.com\n'
+    put "$TMP/owned/42/scripts/web/fetch-url.sh" '#!/bin/sh\nexit 0\n'
+    put "$TMP/owned/42/scripts/web/walled-hosts.conf" 'x.com\n'
+    for bad in '{not json\n' '{"himmel":{"installLocation":42}}\n' '[]\n'; do
+        put "$CFG/plugins/known_marketplaces.json" "$bad"
+        run_case "$(wf 'https://x.com/a/status/1')" "$TMP/owned"
+        assert_eq "unusable record $bad: walled host still denied" 2 "$RC"
+        assert_contains "unusable record $bad: the adopter message" "will not return the page" "$ERR"
+        case "$ERR" in
+            *fetch-url*) echo "FAIL unusable record: deny names a fetcher: $ERR"
+                         FAILED=$((FAILED + 1)) ;;
+            *) echo "PASS unusable record: embedded list and adopter deny" ;;
+        esac
+    done
+    record none
 
     # The project-lane copy delegates to the plugin source, so the rule has one
     # source; it must not log, or a himmel deny would write two rows.
