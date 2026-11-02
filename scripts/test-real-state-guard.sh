@@ -33,7 +33,7 @@ REAL_BUN="$(command -v bun || true)"
 BIN="$TMP/bin"
 mkdir -p "$BIN"
 export REC="$TMP/calls.log"
-for t in bun qmd node; do
+for t in bun qmd node graphify; do
   # shellcheck disable=SC2016
   printf '#!/usr/bin/env bash\nprintf "%s %%s\\n" "$*" >>"$REC"\nexit 0\n' "$t" >"$BIN/$t"
 done
@@ -63,7 +63,7 @@ export TELEGRAM_ACCESS_PATH="$TMP/no-access.json"
 unset HIMMEL_CONSOLE_LEG HIMMEL_RELEASE_MANAGER HIMMEL_TEST_FIXTURE NODE_ENV HIMMEL_SECRETS_KEYRING CREDENTIALS_DIRECTORY KSTUB_STORE KSTUB_LOG \
   FAILURE_ROUTE_INBOX_SEND FAILURE_ROUTE_JIRA FAILURE_ROUTE_SWEEP_CMD ROADMAP_QMD_BIN
 
-for tool in secret-tool busctl bun qmd node; do
+for tool in secret-tool busctl bun qmd node graphify; do
   [ "$(command -v "$tool")" = "$BIN/$tool" ] || { echo "FAIL - suite guard: $tool does not resolve to the recorder"; exit 1; }
 done
 
@@ -76,7 +76,7 @@ chmod +x "$CLAUDE_STUB"
 # as_session <cmd...>: run it the way a real session does, below a process named claude.
 as_session() { "$CLAUDE_STUB" "$@"; }
 
-reset() { : >"$REC"; }
+reset() { : >"$REC"; : >"$REC.atbody"; }
 calls() { grep -c "^$1 " "$REC" || true; }
 check() { bash "$GUARD" check "$@" >"$TMP/g.out" 2>&1; echo $?; }
 session_check() { as_session bash "$GUARD" check "$@" >"$TMP/g.out" 2>&1; echo $?; }
@@ -480,13 +480,15 @@ has "D3 a send with a temp doc stays local" "$TDOC" "mirror hermetic"
 # CAS rows: the config-audit alert's chief-route sender. JP rows: release apply, release rm-run and jira
 # create, each against a Jira host that never resolves, so a run past the door shows as a host lookup.
 echo "== scheduler, config-audit sender and Jira post doors (HIMMEL-8818)"
+unset CRON_LIST
 cat >"$BIN/sched-recorder" <<'STUB'
 #!/usr/bin/env bash
 t="${0##*/}"
 printf '%s %s\n' "$t" "$*" >>"$REC"
 case "$t:${1:-}" in
-  crontab:-l) exit 1 ;;
-  crontab:-|at:*) cat >/dev/null ;;
+  crontab:-l) [ -z "${CRON_LIST:-}" ] || { cat "$CRON_LIST"; exit 0; }; echo "no crontab for tester" >&2; exit 1 ;;
+  crontab:-) cat >/dev/null ;;
+  at:*) cat >>"$REC.atbody" ;;
 esac
 exit 0
 STUB
@@ -496,6 +498,8 @@ for tool in crontab at atrm atq; do
   [ "$(command -v "$tool")" = "$BIN/$tool" ] || { echo "FAIL - suite guard: $tool does not resolve to the recorder"; exit 1; }
 done
 calls_exact() { grep -c -x -- "$1" "$REC" || true; }
+# at_jobs: at -t submissions with a timestamp, so a changed scheduling call does not count.
+at_jobs() { grep -c -E '^at -t [0-9]{8,12}$' "$REC" || true; }
 
 ARM="$root/scripts/handover/arm-resume.sh"
 ARMBIN="$TMP/armbin"
@@ -524,6 +528,8 @@ reset
 rc=0; "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
 eq "SCH1 a test's crontab arm exits 77" "$rc" 77
 eq "SCH1 a test's crontab arm installs nothing" "$(calls_exact 'crontab -')" 0
+# A door that refuses late (after the runner dir or the runner script) would pass the row above.
+if [ -e "$TMP/arm-runners" ]; then fail "SCH1 a refused arm created the runner dir"; else pass "SCH1 a refused arm left the runner dir uncreated"; fi
 reset
 as_session "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1
 eq "SCH2 a real session's crontab arm installs its entry" "$(calls_exact 'crontab -')" 1
@@ -531,10 +537,11 @@ eq "SCH2 a real session's crontab arm installs its entry" "$(calls_exact 'cronta
 reset
 rc=0; "${ARM_ENV[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
 eq "SCH3 a test's at arm exits 77" "$rc" 77
-eq "SCH3 a test's at arm schedules no job" "$(calls at)" 0
+eq "SCH3 a test's at arm schedules no job" "$(at_jobs)" 0
 reset
 as_session "${ARM_ENV[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1
-eq "SCH4 a real session's at arm schedules its job" "$(calls at)" 1
+eq "SCH4 a real session's at arm schedules its job" "$(at_jobs)" 1
+has "SCH4 the job body carries the resume marker" "$REC.atbody" "# HIMMEL-Resume-"
 
 # CAS1/CAS2: the config-audit alert's Telegram sender is the chief-route bun call.
 CA_ACCESS="$TMP/ca-access.json"
@@ -546,8 +553,12 @@ reset
 "${CA_ALERT[@]}" >/dev/null 2>&1
 eq "CAS1 a test's config alert sends no Telegram message" "$(calls bun)" 0
 reset
-as_session "${CA_ALERT[@]}" >/dev/null 2>&1
+# The real node comes first so the operator chat id is read from the access file; the recorded call must carry it.
+mkdir -p "$TMP/node-only"
+ln -sf "$(PATH="${PATH#"$BIN":}" command -v node)" "$TMP/node-only/node"
+as_session env PATH="$TMP/node-only:$PATH" "${CA_ALERT[@]}" >/dev/null 2>&1
 eq "CAS2 a real session's config alert sends its Telegram message" "$(calls bun)" 1
+has "CAS2 the sender is told the operator chat" "$REC" "reply 12345"
 
 # JP rows: release apply, release rm-run and jira create post to Jira.
 if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; then
@@ -597,12 +608,16 @@ mk_mirror() { # <dir> <missing|crash>
 }
 mk_mirror "$TMP/mir-missing" missing
 mk_mirror "$TMP/mir-crash" crash
+# The fail-open rows below mean nothing unless the mirror's guard really is missing or really crashes with 1.
+if [ -e "$TMP/mir-missing/scripts/lib/test-run-guard" ]; then fail "MIR the missing-guard mirror holds a guard"; else pass "MIR the missing-guard mirror has no guard"; fi
+rc=0; bash "$TMP/mir-crash/scripts/lib/test-run-guard" check mir "$FAKE_REAL/x" >/dev/null 2>&1 || rc=$?
+eq "MIR the crash mirror's guard exits 1" "$rc" 1
 for mode in missing crash; do
   M="$TMP/mir-$mode"
   [ "$mode" = missing ] && n_at=SCH5 n_cr=SCH6 n_ca=CAS3 || n_at=SCH7 n_cr=SCH8 n_ca=CAS4
   reset
   rc=0; "${ARM_ENV[@]}" bash "$M/scripts/handover/arm-resume.sh" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
-  eq "$n_at a test's at arm still schedules with the guard $mode" "$(calls at)" 1
+  eq "$n_at a test's at arm still schedules with the guard $mode" "$(at_jobs)" 1
   if [ "$rc" = 77 ]; then fail "$n_at the at arm was refused with the guard $mode"; else pass "$n_at the at arm is not refused with the guard $mode"; fi
   reset
   rc=0; "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$M/scripts/handover/arm-resume.sh" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
@@ -622,11 +637,359 @@ eq "SCH9 the stub at resolves to the stub dir" "$(PATH="$TMP/stubtools:$PATH" co
 reset
 rc=0; "${STUB_ARM[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
 eq "SCH9 a test's at arm with a stub at is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
-eq "SCH9 the stub at was reached" "$(calls at)" 1
+eq "SCH9 the stub at was reached" "$(at_jobs)" 1
 reset
 rc=0; "${STUB_ARM[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
 eq "SCH10 a test's crontab arm with a stub crontab is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
 eq "SCH10 the stub crontab was reached" "$(calls_exact 'crontab -')" 1
+
+# SCH11/SCH12: a stub crontab does not open the door when the runner dir is a real path: the runner script and
+# the log dir are real writes whatever scheduler follows.
+reset
+rc=0; "${STUB_ARM[@]}" OSTYPE=darwin23 ARM_RUNNER_DIR="$FAKE_REAL/arm-runners-real" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH11 a test's crontab arm with a stub crontab and a real runner dir exits 77" "$rc" 77
+if [ -e "$FAKE_REAL/arm-runners-real" ]; then fail "SCH11 the real runner dir was created"; else pass "SCH11 the real runner dir was not created"; fi
+eq "SCH11 the stub crontab was not reached" "$(calls_exact 'crontab -')" 0
+reset
+as_session "${STUB_ARM[@]}" OSTYPE=darwin23 ARM_RUNNER_DIR="$FAKE_REAL/arm-runners-real" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1
+eq "SCH12 a real session's arm with a real runner dir installs" "$(calls_exact 'crontab -')" 1
+rm -rf "$FAKE_REAL/arm-runners-real"
+
+# ARD rows: the superseded-arm removal. The functions are taken from arm-resume.sh, not copied, and run as the
+# script runs them (soft, after the new arm stands). A stub at lets the new arm through while atrm or crontab is real.
+awk '/^(_scheduler_remove_door|_crontab_delete|delete_existing)\(\) \{/ { p = 1 } p { print } /^\}/ { p = 0 }' "$ARM" >"$TMP/del.lib"
+eq "ARD0 the removal functions were taken from arm-resume.sh" "$(grep -c '^[a-z_]*() {' "$TMP/del.lib")" 3
+cat >"$TMP/del-run.sh" <<'EOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="$1" PLATFORM=linux
+# read-sink-ok: $2 is the three functions this suite took from arm-resume.sh, never outside input
+. "$2"
+delete_existing "$3" "$4"
+echo "rc=$?"
+EOF
+printf '0 7 * * * run.sh # HIMMEL-Resume-ard\n' >"$TMP/cron-ard"
+ARD_DIR="$root/scripts/handover"
+reset
+bash "$TMP/del-run.sh" "$ARD_DIR" "$TMP/del.lib" at-job-7 soft >"$TMP/ard.out" 2>&1
+eq "ARD1 a test's soft removal of an at job runs no atrm" "$(calls atrm)" 0
+has "ARD1 the soft refusal is a WARN and a non-zero return" "$TMP/ard.out" "rc=1"
+has "ARD1 the soft refusal prints a WARN" "$TMP/ard.out" "WARN"
+reset
+rc=0; bash "$TMP/del-run.sh" "$ARD_DIR" "$TMP/del.lib" at-job-7 hard >"$TMP/ard.out" 2>&1 || rc=$?
+eq "ARD2 a test's hard removal of an at job exits 77" "$rc" 77
+eq "ARD2 and runs no atrm" "$(calls atrm)" 0
+reset
+CRON_LIST="$TMP/cron-ard" bash "$TMP/del-run.sh" "$ARD_DIR" "$TMP/del.lib" '0 7 * * * run.sh # HIMMEL-Resume-ard' soft >"$TMP/ard.out" 2>&1
+eq "ARD3 a test's removal of a crontab line touches no crontab" "$(calls crontab)" 0
+reset
+as_session bash "$TMP/del-run.sh" "$ARD_DIR" "$TMP/del.lib" at-job-7 soft >"$TMP/ard.out" 2>&1
+eq "ARD4 a real session's removal of an at job runs atrm" "$(calls_exact 'atrm 7')" 1
+reset
+CRON_LIST="$TMP/cron-ard" as_session bash "$TMP/del-run.sh" "$ARD_DIR" "$TMP/del.lib" '0 7 * * * run.sh # HIMMEL-Resume-ard' soft >"$TMP/ard.out" 2>&1
+eq "ARD5 a real session's removal of a crontab line rewrites the crontab" "$(calls_exact 'crontab -')" 1
+
+# ---- the cadence crontab doors ----
+# Each cadence script arms and disarms through its own crontab writer. XA: a test's arm installs nothing and writes
+# no runner; XB: a real session's arm installs and writes its runner; XC/XD: the same for disarm of a seeded
+# entry; XE: a stub crontab with a temp runner dir stays local. The recorder crontab answers `-l` from $CRON_LIST.
+echo "== cadence crontab doors (HIMMEL-8852)"
+CADENCE_ROWS=(
+  "SC|scripts/cleanup/steering-cull-cadence.sh|STEERING_CULL|HIMMEL-SteeringCull|--proposal-dir $TMP/cad-prop"
+  "DC|scripts/doctor-cadence.sh|DOCTORCAD|HIMMEL-Doctor|"
+  "JA|scripts/eval/judge-accuracy/judge-accuracy-cadence.sh|JUDGEACC|HIMMEL-JudgeAccuracy|--verdicts $TMP/cad-verdicts"
+  "QQ|scripts/eval/qmd-quality/qmd-quality-cadence.sh|QMDQUAL|HIMMEL-Qmd-Quality|--golden $TMP/cad-golden.json --index $TMP/cad-index.sqlite"
+  "SS|scripts/eval/stability-scorecard.sh|SCORECARD|HIMMEL-StabilityScorecard|"
+  "FR|scripts/eval/worker-digest/failure-review-cadence.sh|FAILREV|HIMMEL-FailureReview|--vault $TMP/cad-vault"
+  "VS|scripts/luna/vault-stall-cadence.sh|VAULT_STALL|HIMMEL-VaultStall|--vault $TMP/cad-vault"
+)
+mkdir -p "$TMP/cad-prop" "$TMP/cad-verdicts"
+git init -q "$TMP/cad-vault"
+export LUNA_VAULT_PATH="$TMP/cad-vault"
+printf '{}\n' >"$TMP/cad-golden.json"
+: >"$TMP/cad-index.sqlite"
+for row in "${CADENCE_ROWS[@]}"; do
+  IFS='|' read -r id script pfx task armargs <<<"$row"
+  S="$root/$script"
+  RD="$FAKE_REAL/runner-$id"
+  printf '0 7 * * 1 %s/old.sh # %s\n' "$RD" "$task" >"$TMP/cron-list-$id"
+  # shellcheck disable=SC2086 # armargs is a word list built above
+  cad() { local rc=0; env "${pfx}_RUNNER_DIR=$RD" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" "$@" >"$TMP/cad.out" 2>&1 || rc=$?; echo "$rc"; }
+  reset
+  # shellcheck disable=SC2086
+  rc="$(cad bash "$S" arm $armargs)"
+  eq "${id}A a test's arm exits 77" "$rc" 77
+  eq "${id}A a test's arm installs nothing" "$(calls_exact 'crontab -')" 0
+  if [ -e "$RD" ]; then fail "${id}A a test's arm wrote a runner under the real root"; else pass "${id}A a test's arm wrote no runner"; fi
+  has "${id}A the refusal names the VM command" "$TMP/cad.out" "scripts/vm/"
+  reset
+  # shellcheck disable=SC2086
+  rc="$(cad "$CLAUDE_STUB" bash "$S" arm $armargs)"
+  eq "${id}B a real session's arm exits 0" "$rc" 0
+  eq "${id}B a real session's arm installs its entry" "$(calls_exact 'crontab -')" 1
+  rm -rf "$RD"
+  reset
+  rc="$(cad env CRON_LIST="$TMP/cron-list-$id" bash "$S" disarm)"
+  eq "${id}C a test's disarm exits 77" "$rc" 77
+  eq "${id}C a test's disarm rewrites no crontab" "$(calls_exact 'crontab -')" 0
+  reset
+  rc="$(cad env CRON_LIST="$TMP/cron-list-$id" "$CLAUDE_STUB" bash "$S" disarm)"
+  eq "${id}D a real session's disarm exits 0" "$rc" 0
+  eq "${id}D a real session's disarm rewrites the crontab" "$(calls_exact 'crontab -')" 1
+  reset
+  HD="$TMP/hermetic-runner-$id"
+  # shellcheck disable=SC2086
+  rc="$(env "${pfx}_CRONTAB=$TMP/stubtools/crontab" "${pfx}_RUNNER_DIR=$HD" "${pfx}_STATE_DIR=$TMP/cad-state-$id" bash "$S" arm $armargs >"$TMP/cad.out" 2>&1; echo $?)"
+  eq "${id}E a stub crontab with a temp runner dir is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+  eq "${id}E the stub crontab was reached" "$(calls_exact 'crontab -')" 1
+  # XF/XG: each target decides alone. XF a real crontab with a temp runner dir; XG a stub crontab with a real runner dir.
+  reset
+  HF="$TMP/hermetic-runner-f-$id"
+  # shellcheck disable=SC2086
+  rc="$(env "${pfx}_RUNNER_DIR=$HF" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" bash "$S" arm $armargs >"$TMP/cad.out" 2>&1; echo $?)"
+  eq "${id}F a real crontab with a temp runner dir is refused" "$rc" 77
+  eq "${id}F and installs nothing" "$(calls_exact 'crontab -')" 0
+  reset
+  # shellcheck disable=SC2086
+  rc="$(env "${pfx}_CRONTAB=$TMP/stubtools/crontab" "${pfx}_RUNNER_DIR=$RD" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" bash "$S" arm $armargs >"$TMP/cad.out" 2>&1; echo $?)"
+  eq "${id}G a stub crontab with a real runner dir is refused" "$rc" 77
+  if [ -e "$RD" ]; then fail "${id}G a refused arm wrote the real runner dir"; else pass "${id}G a refused arm wrote no runner dir"; fi
+  reset
+  rc="$(env "${pfx}_RUNNER_DIR=$HF" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" CRON_LIST="$TMP/cron-list-$id" bash "$S" disarm >"$TMP/cad.out" 2>&1; echo $?)"
+  eq "${id}H a real crontab with a temp runner dir is refused on disarm" "$rc" 77
+  reset
+  rc="$(env "${pfx}_CRONTAB=$TMP/stubtools/crontab" "${pfx}_RUNNER_DIR=$RD" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" CRON_LIST="$TMP/cron-list-$id" bash "$S" disarm >"$TMP/cad.out" 2>&1; echo $?)"
+  eq "${id}I a stub crontab with a real runner dir is refused on disarm" "$rc" 77
+done
+# A multi-word crontab command is judged by its first word: "env crontab" is a system tool, not a stub.
+reset
+rc="$(env SCORECARD_CRONTAB="env crontab" SCORECARD_RUNNER_DIR="$TMP/hermetic-runner-ssm" SCORECARD_STATE_DIR="$TMP/cad-state-ssm" bash "$root/scripts/eval/stability-scorecard.sh" arm >"$TMP/cad.out" 2>&1; echo $?)"
+eq "SSM a multi-word crontab command with a temp runner dir is refused" "$rc" 77
+eq "SSM and installs nothing" "$(calls_exact 'crontab -')" 0
+reset
+rc="$(env SCORECARD_CRONTAB="env crontab" SCORECARD_RUNNER_DIR="$TMP/hermetic-runner-ssm" SCORECARD_STATE_DIR="$TMP/cad-state-ssm" CRON_LIST="$TMP/cron-list-SS" bash "$root/scripts/eval/stability-scorecard.sh" disarm >"$TMP/cad.out" 2>&1; echo $?)"
+eq "SSM a multi-word crontab command with a temp runner dir is refused on disarm" "$rc" 77
+eq "SSM and rewrites no crontab on disarm" "$(calls_exact 'crontab -')" 0
+
+# ---- the vault, config and index writer doors ----
+echo "== vault, config and index writer doors (HIMMEL-8852)"
+# LU rows: luna-upgrade-all apply and restore. The door sits before the vault is classified, so a vault with only
+# .obsidian/ is enough: a run past the door stops at "unstamped", and a refused run says nothing of the sort.
+LU="$root/scripts/luna-upgrade-all.sh"
+mkdir -p "$FAKE_REAL/lu-vault/.obsidian"
+rc=0; bash "$LU" apply --vault "$FAKE_REAL/lu-vault" >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU1 a test's apply on a real vault exits 77" "$rc" 77
+if grep -q 'unstamped' "$TMP/lu.out"; then fail "LU1 a test's apply got past the door"; else pass "LU1 a test's apply stopped at the door"; fi
+rc=0; as_session bash "$LU" apply --vault "$FAKE_REAL/lu-vault" >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU2 a real session's apply gets past the door" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+has "LU2 a real session's apply reaches the vault classification" "$TMP/lu.out" "unstamped"
+rc=0; bash "$LU" restore --vault "$FAKE_REAL/lu-vault" >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU3 a test's restore on a real vault exits 77" "$rc" 77
+rc=0; bash "$LU" restore --vault "$FAKE_REAL/lu-vault" --list >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU4 a test's restore --list only reads, so it is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+rc=0; as_session bash "$LU" restore --vault "$FAKE_REAL/lu-vault" >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU5 a real session's restore gets past the door" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+mkdir -p "$TMP/lu-hermetic/.obsidian"
+rc=0; bash "$LU" apply --vault "$TMP/lu-hermetic" >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU6 a test's apply on a temp vault stays local" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+
+# ME rows: migrate-env-config writes ~/.himmel/himmel.conf and a vault's .himmel.
+ME="$root/scripts/setup/migrate-env-config.sh"
+printf 'HIMMEL_INITIATIVE=prcheck\n' >"$TMP/me.env"
+MHOME="$FAKE_REAL/mhome"
+rc=0; env HOME="$MHOME" bash "$ME" --env "$TMP/me.env" >"$TMP/me.out" 2>&1 || rc=$?
+eq "ME1 a test's migrate into a real himmel.conf exits 77" "$rc" 77
+if [ -e "$MHOME/.himmel/himmel.conf" ]; then fail "ME1 a test wrote the real himmel.conf"; else pass "ME1 a test wrote no himmel.conf"; fi
+rc=0; env HOME="$MHOME" "$CLAUDE_STUB" bash "$ME" --env "$TMP/me.env" >"$TMP/me.out" 2>&1 || rc=$?
+eq "ME2 a real session's migrate exits 0" "$rc" 0
+has "ME2 a real session's migrate writes the key" "$MHOME/.himmel/himmel.conf" "HIMMEL_INITIATIVE"
+rc=0; env HOME="$TMP/me-hermetic-home" bash "$ME" --env "$TMP/me.env" >"$TMP/me.out" 2>&1 || rc=$?
+eq "ME3 a test's migrate into a temp home stays local" "$rc" 0
+has "ME3 and writes the key there" "$TMP/me-hermetic-home/.himmel/himmel.conf" "HIMMEL_INITIATIVE"
+rc=0; env HOME="$TMP/me-hermetic-home2" bash "$ME" --env "$TMP/me.env" --vault "$FAKE_REAL/me-vault" >"$TMP/me.out" 2>&1 || rc=$?
+eq "ME4 a test's --vault link into a real vault exits 77" "$rc" 77
+if [ -e "$FAKE_REAL/me-vault" ]; then fail "ME4 a test created the real vault dir"; else pass "ME4 a test created no vault dir"; fi
+
+# AU rows: ast-update rebuilds <corpus>/graphify-out. graphify is a recorder.
+AU="$root/scripts/graphify/ast-update.sh"
+mkdir -p "$FAKE_REAL/au-corpus"
+reset
+rc=0; bash "$AU" "$FAKE_REAL/au-corpus" >"$TMP/au.out" 2>&1 || rc=$?
+eq "AU1 a test's ast-update on a real corpus exits 77" "$rc" 77
+eq "AU1 graphify never ran" "$(calls 'graphify update')" 0
+if [ -e "$FAKE_REAL/au-corpus/graphify-out" ]; then fail "AU1 the real graphify-out was created"; else pass "AU1 the real graphify-out was not created"; fi
+reset
+as_session bash "$AU" "$FAKE_REAL/au-corpus" >"$TMP/au.out" 2>&1
+has "AU2 a real session's ast-update runs graphify" "$REC" "graphify update"
+mkdir -p "$TMP/au-hermetic"
+reset
+bash "$AU" "$TMP/au-hermetic" >"$TMP/au.out" 2>&1
+has "AU3 a test's ast-update on a temp corpus stays local" "$REC" "graphify update"
+
+# GC rows: graph-cadence. Every worker script is a recorder and the repo is empty, so a run past the door
+# fails at its first git step; the proof is what it wrote before that.
+GCS="$root/scripts/graphify/graph-cadence.sh"
+git init -q "$FAKE_REAL/gc-himmel"
+GC_ENV=(env GRAPH_CADENCE_HIMMEL_ROOT="$FAKE_REAL/gc-himmel" GRAPH_CADENCE_DOTENV_ROOT="$TMP/gc-dotenv" GRAPH_CADENCE_LEDGER_ROOT="$FAKE_REAL/gc-ledger"
+  GRAPH_CADENCE_WORKTREE_DIR="$FAKE_REAL/gc-wt" GRAPH_CADENCE_AST_UPDATE="$BIN/qmd" GRAPH_CADENCE_GRAPH_PUBLISH="$BIN/qmd" GRAPH_CADENCE_MERGE_ON_GREEN="$BIN/qmd")
+reset
+rc=0; "${GC_ENV[@]}" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC1 a test's graph-cadence on a real worktree exits 77" "$rc" 77
+if [ -e "$FAKE_REAL/gc-ledger" ] || [ -e "$FAKE_REAL/gc-wt.log" ]; then fail "GC1 a test's graph-cadence wrote its ledger or log"; else pass "GC1 a test's graph-cadence wrote nothing"; fi
+rc=0; "${GC_ENV[@]}" "$CLAUDE_STUB" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC2 a real session's graph-cadence is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+if [ -d "$FAKE_REAL/gc-ledger/.graph-cadence" ]; then pass "GC2 a real session's graph-cadence writes its ledger"; else fail "GC2 a real session's graph-cadence writes its ledger ($(head -c 300 "$TMP/gc.out"))"; fi
+# GC3/GC4: temp worktree and corpus, so the first door passes; only the ledger root decides.
+git init -q "$TMP/gc-himmel-t"
+GC_T_ENV=(env GRAPH_CADENCE_HIMMEL_ROOT="$TMP/gc-himmel-t" GRAPH_CADENCE_DOTENV_ROOT="$TMP/gc-dotenv" GRAPH_CADENCE_WORKTREE_DIR="$TMP/gc-wt-t"
+  GRAPH_CADENCE_AST_UPDATE="$BIN/qmd" GRAPH_CADENCE_GRAPH_PUBLISH="$BIN/qmd" GRAPH_CADENCE_MERGE_ON_GREEN="$BIN/qmd")
+reset
+rc=0; "${GC_T_ENV[@]}" GRAPH_CADENCE_LEDGER_ROOT="$FAKE_REAL/gc-ledger3" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC3 a test's graph-cadence with a real ledger root exits 77" "$rc" 77
+if [ -e "$FAKE_REAL/gc-ledger3" ]; then fail "GC3 a test's graph-cadence wrote a real ledger root"; else pass "GC3 a test's graph-cadence wrote no real ledger root"; fi
+rc=0; "${GC_T_ENV[@]}" GRAPH_CADENCE_LEDGER_ROOT="$TMP/gc-ledger4" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC4 a test's graph-cadence with a temp ledger root is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+
+# RG rows: refresh-graph-map. --no-update, so no extraction runs; the proof is the out dir and the lock it takes.
+RG="$root/scripts/graphify/refresh-graph-map.sh"
+mkdir -p "$FAKE_REAL/rg-corpus"
+RG_ARGS=(--name t --corpus-root "$FAKE_REAL/rg-corpus" --maps-dir "$FAKE_REAL/rg-maps" --title T --slug s --no-update)
+rc=0; bash "$RG" "${RG_ARGS[@]}" >"$TMP/rg.out" 2>&1 || rc=$?
+eq "RG1 a test's refresh of a real corpus exits 77" "$rc" 77
+if [ -e "$FAKE_REAL/rg-corpus/graphify-out" ] || [ -e "$FAKE_REAL/rg-maps" ]; then fail "RG1 a test's refresh wrote a real out or maps dir"; else pass "RG1 a test's refresh wrote nothing"; fi
+rc=0; as_session bash "$RG" "${RG_ARGS[@]}" >"$TMP/rg.out" 2>&1 || rc=$?
+eq "RG2 a real session's refresh is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+mkdir -p "$TMP/rg-hermetic"
+rc=0; bash "$RG" --name t --corpus-root "$TMP/rg-hermetic" --maps-dir "$TMP/rg-hermetic-maps" --title T --slug s --no-update >"$TMP/rg.out" 2>&1 || rc=$?
+eq "RG3 a test's refresh of a temp corpus stays local" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+
+# SE rows: cloud/setup-env.sh. Every earlier step finds its tool present (recorders on PATH) and the root has no
+# repo, so the writers left are the graphify rebuild and the qmd index, which is qmd-bounded.sh, a recorder here.
+SE="$root/scripts/cloud/setup-env.sh"
+SE_ROOT="$FAKE_REAL/cloud-root"
+mkdir -p "$TMP/cloudbin" "$TMP/stubq"
+cp "$BIN/qmd" "$TMP/stubq/qmd"
+mk_se_root() { # <dir>: a cloud root with no guard of its own; the script finds the guard beside itself
+  mkdir -p "$1/scripts/lib" "$1/scripts/jira/dist"
+  : >"$1/scripts/jira/dist/index.js"
+  # shellcheck disable=SC2016 # the recorder's own $* and $REC, expanded when it runs
+  printf '#!/usr/bin/env bash\nprintf "qmdb %%s\\n" "$*" >>"$REC"\n' >"$1/scripts/lib/qmd-bounded.sh"
+  chmod +x "$1/scripts/lib/qmd-bounded.sh"
+}
+mk_se_root "$SE_ROOT"
+for t in shellcheck pre-commit gitleaks; do printf '#!/usr/bin/env bash\nexit 0\n' >"$TMP/cloudbin/$t"; done
+chmod +x "$TMP/cloudbin"/*
+SE_ENV=(env PATH="$TMP/cloudbin:$PATH" HIMMEL_CLOUD_ROOT="$SE_ROOT")
+reset
+rc=0; "${SE_ENV[@]}" bash "$SE" >"$TMP/se.out" 2>&1 || rc=$?
+eq "SE1 a test's setup-env on the station exits 77" "$rc" 77
+eq "SE1 graphify never ran" "$(calls 'graphify update')" 0
+eq "SE1 the qmd index was never touched" "$(calls qmdb)" 0
+reset
+rc=0; "${SE_ENV[@]}" "$CLAUDE_STUB" bash "$SE" >"$TMP/se.out" 2>&1 || rc=$?
+eq "SE2 a real session's setup-env exits 0" "$rc" 0
+has "SE2 a real session's setup-env rebuilds the graph" "$REC" "graphify update"
+has "SE2 a real session's setup-env indexes qmd" "$REC" "qmdb collection add"
+reset
+"${SE_ENV[@]}" bash "$SE" --dry-run >"$TMP/se.out" 2>&1
+eq "SE3 a test's --dry-run changes nothing and is not refused" "$(calls 'graphify update')" 0
+has "SE3 the dry run prints its plan" "$TMP/se.out" "step=graphify-graph"
+# SE4/SE5/SE6: each of the two targets decides alone (the real qmd tool, the real graph dir).
+mk_se_root "$TMP/cloud-root-t"
+reset
+rc=0; env PATH="$TMP/cloudbin:$PATH" HIMMEL_CLOUD_ROOT="$TMP/cloud-root-t" bash "$SE" >"$TMP/se.out" 2>&1 || rc=$?
+eq "SE4 a real qmd with a temp root is refused" "$rc" 77
+eq "SE4 the qmd index was never touched" "$(calls qmdb)" 0
+reset
+rc=0; env PATH="$TMP/stubq:$TMP/cloudbin:$PATH" HIMMEL_CLOUD_ROOT="$SE_ROOT" bash "$SE" >"$TMP/se.out" 2>&1 || rc=$?
+eq "SE5 a stub qmd with a real root is refused" "$rc" 77
+rc=0; env PATH="$TMP/stubq:$TMP/cloudbin:$PATH" HIMMEL_CLOUD_ROOT="$TMP/cloud-root-t" bash "$SE" >"$TMP/se.out" 2>&1 || rc=$?
+eq "SE6 a stub qmd with a temp root is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+
+# GC5/GC6, RG4/RG5, LU7/LU8, SCH13: the second target of each two-target door decides alone.
+reset
+rc=0; "${GC_T_ENV[@]}" GRAPH_CADENCE_WORKTREE_DIR="$FAKE_REAL/gc-wt5" GRAPH_CADENCE_LEDGER_ROOT="$TMP/gc-ledger5" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC5 a real worktree with a temp corpus is refused" "$rc" 77
+rc=0; "${GC_T_ENV[@]}" GRAPH_CADENCE_HIMMEL_ROOT="$FAKE_REAL/gc-himmel" GRAPH_CADENCE_LEDGER_ROOT="$TMP/gc-ledger6" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC6 a temp worktree with a real corpus is refused" "$rc" 77
+rc=0; bash "$RG" --name t --corpus-root "$TMP/rg-hermetic" --maps-dir "$FAKE_REAL/rg-maps4" --title T --slug s --no-update >"$TMP/rg.out" 2>&1 || rc=$?
+eq "RG4 a temp corpus with a real maps dir is refused" "$rc" 77
+rc=0; bash "$RG" --name t --corpus-root "$FAKE_REAL/rg-corpus" --maps-dir "$TMP/rg-hermetic-maps5" --title T --slug s --no-update >"$TMP/rg.out" 2>&1 || rc=$?
+eq "RG5 a real corpus with a temp maps dir is refused" "$rc" 77
+rc=0; env HOME="$FAKE_REAL/lu-home" bash "$LU" apply --vault "$TMP/lu-hermetic" >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU7 a temp vault with real backups is refused on apply" "$rc" 77
+rc=0; env HOME="$FAKE_REAL/lu-home" bash "$LU" restore --vault "$TMP/lu-hermetic" >"$TMP/lu.out" 2>&1 || rc=$?
+eq "LU8 a temp vault with real backups is refused on restore" "$rc" 77
+reset
+rc=0; "${STUB_ARM[@]}" OSTYPE=darwin23 ARM_RESUME_LOG_DIR="$FAKE_REAL/arm-logs-real" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH13 a stub crontab with a real log dir is refused" "$rc" 77
+if [ -e "$FAKE_REAL/arm-logs-real" ]; then fail "SCH13 the real log dir was created"; else pass "SCH13 the real log dir was not created"; fi
+
+# VR rows: vault-stall run. The vault and its state dir each decide alone.
+VSC="$root/scripts/luna/vault-stall-cadence.sh"
+git init -q "$FAKE_REAL/vs-vault"
+rc=0; env VAULT_STALL_STATE_DIR="$TMP/vs-state1" bash "$VSC" run --vault "$FAKE_REAL/vs-vault" >"$TMP/vs.out" 2>&1 || rc=$?
+eq "VR1 a test's run on a real vault exits 77" "$rc" 77
+if [ -e "$TMP/vs-state1" ]; then fail "VR1 a refused run created its state dir"; else pass "VR1 a refused run created nothing"; fi
+rc=0; env VAULT_STALL_STATE_DIR="$FAKE_REAL/vs-state2" bash "$VSC" run --vault "$TMP/cad-vault" >"$TMP/vs.out" 2>&1 || rc=$?
+eq "VR2 a test's run with a real state dir exits 77" "$rc" 77
+if [ -e "$FAKE_REAL/vs-state2" ]; then fail "VR2 the real state dir was created"; else pass "VR2 the real state dir was not created"; fi
+rc=0; env VAULT_STALL_STATE_DIR="$TMP/vs-state3" bash "$VSC" run --vault "$TMP/cad-vault" >"$TMP/vs.out" 2>&1 || rc=$?
+eq "VR3 a test's run on a temp vault stays local" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+rc=0; env VAULT_STALL_STATE_DIR="$TMP/vs-state4" "$CLAUDE_STUB" bash "$VSC" run --vault "$FAKE_REAL/vs-vault" >"$TMP/vs.out" 2>&1 || rc=$?
+eq "VR4 a real session's run on a real vault is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+
+# FO rows: a missing or crashing guard lets every new door through (only exit 77 refuses). The mirror holds a real
+# copy of the script under test and no guard, or a guard that exits 1.
+shadow() { # <mirror> <repo-relative script>: real directories down to the script, then a copy of it
+  local d="$1" rest="$2" cur="" part e
+  while [[ "$rest" == */* ]]; do
+    part="${rest%%/*}"; rest="${rest#*/}"; cur="${cur:+$cur/}$part"
+    if [ -L "$d/$cur" ]; then
+      rm "$d/$cur"; mkdir "$d/$cur"
+      for e in "$root/$cur"/* "$root/$cur"/.[!.]*; do [ -e "$e" ] && ln -s "$e" "$d/$cur/${e##*/}"; done
+    fi
+  done
+  rm -f "$d/$2"; cp "$root/$2" "$d/$2"
+}
+FO_SCRIPTS=(scripts/luna/vault-stall-cadence.sh scripts/luna-upgrade-all.sh scripts/setup/migrate-env-config.sh scripts/graphify/ast-update.sh
+  scripts/graphify/graph-cadence.sh scripts/graphify/refresh-graph-map.sh scripts/cloud/setup-env.sh)
+for mode in missing crash; do
+  M="$TMP/fo-$mode"
+  mk_mirror "$M" "$mode"
+  for s in "${FO_SCRIPTS[@]}"; do shadow "$M" "$s"; done
+  for row in "${CADENCE_ROWS[@]}"; do
+    IFS='|' read -r id script pfx task armargs <<<"$row"
+    shadow "$M" "$script"
+    reset
+    rc=0
+    # shellcheck disable=SC2086
+    env "${pfx}_RUNNER_DIR=$FAKE_REAL/fo-runner-$id" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" bash "$M/$script" arm $armargs >"$TMP/fo.out" 2>&1 || rc=$?
+    if [ "$rc" = 77 ]; then fail "FO the guard $mode refused ${id} arm"; else pass "FO the guard $mode does not refuse ${id} arm"; fi
+    eq "FO the guard $mode lets ${id} arm install its entry" "$(calls_exact 'crontab -')" 1
+    reset
+    rc=0
+    env "${pfx}_RUNNER_DIR=$FAKE_REAL/fo-runner-$id" "${pfx}_STATE_DIR=$TMP/cad-state-$id" HIMMEL_DOCTOR_STATE_DIR="$TMP/cad-state-$id" CRON_LIST="$TMP/cron-list-$id" bash "$M/$script" disarm >"$TMP/fo.out" 2>&1 || rc=$?
+    if [ "$rc" = 77 ]; then fail "FO the guard $mode refused ${id} disarm"; else pass "FO the guard $mode does not refuse ${id} disarm"; fi
+    eq "FO the guard $mode lets ${id} disarm rewrite the crontab" "$(calls_exact 'crontab -')" 1
+  done
+  # The arm-resume removal door: the functions run against the mirror dir, so the guard is the missing or crashing one.
+  reset
+  bash "$TMP/del-run.sh" "$M/scripts/handover" "$TMP/del.lib" at-job-7 soft >"$TMP/fo.out" 2>&1
+  eq "FO the guard $mode lets the arm-resume removal door run atrm" "$(calls_exact 'atrm 7')" 1
+  for s in "${FO_SCRIPTS[@]}"; do
+    rc=0
+    case "$s" in
+      */vault-stall-cadence.sh) env VAULT_STALL_STATE_DIR="$FAKE_REAL/fo-state" bash "$M/$s" run --vault "$FAKE_REAL/vs-vault" >"$TMP/fo.out" 2>&1 || rc=$? ;;
+      */luna-upgrade-all.sh) bash "$M/$s" apply --vault "$FAKE_REAL/lu-vault" >"$TMP/fo.out" 2>&1 || rc=$? ;;
+      */migrate-env-config.sh) env HOME="$FAKE_REAL/fo-home" bash "$M/$s" --env "$TMP/me.env" >"$TMP/fo.out" 2>&1 || rc=$? ;;
+      */ast-update.sh) bash "$M/$s" "$FAKE_REAL/au-corpus" >"$TMP/fo.out" 2>&1 || rc=$? ;;
+      */graph-cadence.sh) "${GC_ENV[@]}" bash "$M/$s" >"$TMP/fo.out" 2>&1 || rc=$? ;;
+      */refresh-graph-map.sh) bash "$M/$s" "${RG_ARGS[@]}" >"$TMP/fo.out" 2>&1 || rc=$? ;;
+      */setup-env.sh) env PATH="$TMP/cloudbin:$PATH" HIMMEL_CLOUD_ROOT="$SE_ROOT" bash "$M/$s" >"$TMP/fo.out" 2>&1 || rc=$? ;;
+    esac
+    if [ "$rc" = 77 ]; then fail "FO the guard $mode refused ${s##*/}"; else pass "FO the guard $mode does not refuse ${s##*/}"; fi
+  done
+done
 
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS - test-real-state-guard: all rows"; exit 0; fi
