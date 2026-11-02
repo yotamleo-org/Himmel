@@ -312,8 +312,8 @@ if [ "$judge" -eq 0 ] && ! worker_doc_has_run "$doc"; then
         case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
     done
     if [ "$has_directive" -eq 0 ] \
-        && ! printf '%s' "$flat" | grep -Eq '(^|[^A-Za-z0-9])([A-Z][A-Z0-9]*-[0-9]+|#[0-9]+)([^0-9]|$)' \
-        && ! printf '%s' "$lower" | grep -Eq 'none found \([^)[:space:]][^)]*\)'; then
+        && ! grep -Eq '(^|[^A-Za-z0-9])([A-Z][A-Z0-9]*-[0-9]+|#[0-9]+)([^0-9]|$)' <<< "$flat" \
+        && ! grep -Eq 'none found \([^)[:space:]][^)]*\)' <<< "$lower"; then
         fail "'> **Prior art:**' cites no result and carries no search directive: cite a ticket key, a #PR or 'none found (<query>)', or add the directive as a continuation line: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; see docs/handover/worker-brief-template.md"
     fi
 fi
