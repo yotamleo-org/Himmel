@@ -971,6 +971,8 @@ cat > "$WORK/pm-state/status-events.jsonl" <<'EOF'
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4320","head":"bbb","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4340","head":"eee","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4350","head":"fff","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4375","head":"h75","contract":"no","result":"noop"}
+{"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4376","head":"h76","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4330","head":"ccc","contract":"yes","result":"moved"}
 {"ts":"t","event":"merge","key":"HIMMEL-9102","pr":"4399","head":"ddd","contract":"no","result":"noop"}
 {"ts":"t","event":"merge","key":"HIMMEL-9101","pr":"4360","head":"g60","contract":"no","result":"pending","stage":"pre-merge"}
@@ -996,6 +998,8 @@ case "$3" in
     4313) printf 'Slice C1a of the thing.\n\nRemaining: slices C1b and C4 (the {brace} readers)\n' ;;
     4320) printf 'No remaining line here.\n' ;;
     4340) printf 'Remaining:\n\nAn unrelated section follows.\n' ;;
+    4375) printf '## Summary\nslice one\n\n## Ticket coverage\n- slice one: done\n- rest: deferred \xe2\x86\x92 HIMMEL-9\n' ;;
+    4376) printf '## Ticket coverage\n- slice one: done\n' ;;
     *) exit 1 ;;
 esac
 EOF
@@ -1011,6 +1015,8 @@ has "the brief names the merged contract=no PR and its Remaining: text" "$PM1" "
 has "a partial PR whose body has no Remaining: line is marked as needing a chief note" "$PM1" "PR \`#4320\`: needs a chief note"
 has "an empty Remaining: line does not borrow the text of the next line" "$PM1" "PR \`#4340\`: needs a chief note"
 has "a PR whose body gh cannot read says so, not that it has no Remaining: line" "$PM1" "PR \`#4350\`: needs a chief note (its body could not be read)"
+has "a coverage-only partial PR carries its deferred line as the remainder" "$PM1" "PR \`#4375\`: Remaining: rest: deferred → HIMMEL-9"
+has "a partial PR whose coverage has only done lines is marked as needing a chief note and names the missing line" "$PM1" "PR \`#4376\`: needs a chief note (its body has no \`Remaining:\` line and no \`deferred -> <KEY>\` line under \`## Ticket coverage\`)"
 lacks "a contract=yes merge row is not listed as a partial" "$PM1" '#4330'
 has "a pre-merge row whose PR GitHub reports MERGED is named (a kill after the merge keeps the record)" "$PM1" "PR \`#4370\`: Remaining: the kill-after-merge slice"
 lacks "a pre-merge row whose PR is still open is not named" "$PM1" '#4360'

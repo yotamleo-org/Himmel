@@ -932,6 +932,45 @@ def render_rm_brief(l, ctx):
 
 
 REMAINING_RE = re.compile(r'^[ \t]*remaining:[ \t]*(.*\S)', re.I | re.M)
+COVERAGE_HEAD_RE = re.compile(r'^#{2}[ \t]+ticket coverage[ \t]*$', re.I)
+DEFERRED_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[ \t]*(.*)$', re.I)
+TICKET_KEY_RE = re.compile(r'\b[A-Za-z][A-Za-z0-9]*-\d+\b')
+
+
+def pr_remainder(body, own_keys=()):
+    """The ONE reader of a partial PR's remainder: next-dispatchable.sh, merge-on-green.sh (both through
+    `gen-briefs.py --pr-remainder`) and the brief's Already merged block all call it.
+    A remainder is a `Remaining:` line, or a `deferred -> <KEY>` line under `## Ticket coverage` (the form ready-check.sh makes
+    workers write; `->` and the arrow are both read). Returns (kind, handed_keys, text):
+      ('none', [], '')                no remainder recorded in either form
+      ('remaining', [], text)         the remainder stays on the ticket
+      ('handed-off', [keys], text)    no Remaining: line, and every deferred line names only other tickets
+    own_keys are the ticket's own keys: a deferred line naming one is not a hand-off."""
+    own = {k.upper() for k in own_keys}
+    remaining = [m.strip() for m in REMAINING_RE.findall(body)]
+    deferred, handed, whole = [], [], True
+    in_coverage = False
+    for raw in body.splitlines():
+        line = raw.strip()
+        if line.startswith('#'):
+            in_coverage = bool(COVERAGE_HEAD_RE.match(line))
+            continue
+        if not in_coverage:
+            continue
+        m = DEFERRED_RE.search(line)
+        if not m:
+            continue
+        keys = [k.upper() for k in TICKET_KEY_RE.findall(m.group(1))]
+        deferred.append(re.sub(r'^[-*+][ \t]+', '', line))
+        if not keys or own.intersection(keys):
+            whole = False
+        handed.extend(k for k in keys if k not in handed)
+    if not remaining and not deferred:
+        return ('none', [], '')
+    text = '; '.join(p for p in (' '.join(remaining), '; '.join(deferred)) if p)
+    if not remaining and whole:
+        return ('handed-off', handed, text)
+    return ('remaining', [], text)
 
 
 def partial_merge_prs(keys):
@@ -968,9 +1007,10 @@ def partial_merge_prs(keys):
     return prs
 
 
-def pr_remaining(pr, repo):
-    """The `Remaining:` text of PR <pr>'s body (the line merge-on-green.sh reads): '' when the body has none, None when the body
-    could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as `$CMD pr view <pr> --json body -q .body`."""
+def pr_remaining(pr, repo, own_keys=()):
+    """The remainder text of PR <pr>'s body (see pr_remainder; a `Remaining:` line or the deferred coverage lines): '' when the
+    body records none, None when the body could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as
+    `$CMD pr view <pr> --json body -q .body`."""
     gh = os.environ.get('GEN_BRIEFS_GH_CMD') or 'gh'
     try:
         r = subprocess.run([gh, 'pr', 'view', pr, '--json', 'body', '-q', '.body'], cwd=repo, capture_output=True, text=True, timeout=30)
@@ -978,16 +1018,16 @@ def pr_remaining(pr, repo):
         return None
     if r.returncode != 0:
         return None
-    return ' '.join(m.strip() for m in REMAINING_RE.findall(r.stdout))
+    return pr_remainder(r.stdout, own_keys)[2]
 
 
 def partial_merge_block(keys, repo):
-    """The brief's `Already merged` block: every merged contract=no PR of the ticket and its Remaining: text, so a worker
-    never redoes merged work. A PR whose body has no Remaining: line is flagged for a chief note. No such PR, no block."""
+    """The brief's `Already merged` block: every merged contract=no PR of the ticket and its remainder text, so a worker
+    never redoes merged work. A PR whose body records no remainder is flagged for a chief note. No such PR, no block."""
     lines = []
     for pr in partial_merge_prs(keys):
-        rem = pr_remaining(pr, repo)
-        why = 'its body could not be read' if rem is None else 'its body has no `Remaining:` line'
+        rem = pr_remaining(pr, repo, keys)
+        why = 'its body could not be read' if rem is None else 'its body has no `Remaining:` line and no `deferred -> <KEY>` line under `## Ticket coverage`'
         lines.append('PR `#%s`: %s' % (pr, 'Remaining: ' + rem if rem else 'needs a chief note (%s); do not guess the remaining work' % why))
     if not lines:
         return ''
@@ -1276,5 +1316,17 @@ def main():
         print('launch with: ' + '; '.join('bash %s/launch-%s.sh' % (a.bucket, l['label']) for l in workers))
 
 
+def pr_remainder_cli(own_keys):
+    """`gen-briefs.py --pr-remainder KEY[,KEY...]`: a PR body on stdin, one tab-separated answer line on stdout:
+    `none`, `remaining<TAB>text` or `handed-off<TAB>KEY, KEY<TAB>text`. The bash readers call this, never re-implement it."""
+    body = sys.stdin.buffer.read().decode('utf-8', 'replace')
+    kind, handed, text = pr_remainder(body, [k for k in own_keys.split(',') if k])
+    out = kind if kind == 'none' else '\t'.join([kind] + ([', '.join(handed)] if kind == 'handed-off' else []) + [text])
+    sys.stdout.buffer.write((out + '\n').encode('utf-8'))
+
+
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) == 3 and sys.argv[1] == '--pr-remainder':
+        pr_remainder_cli(sys.argv[2])
+    else:
+        main()

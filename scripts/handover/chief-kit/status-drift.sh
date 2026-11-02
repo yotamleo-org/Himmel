@@ -290,7 +290,16 @@ while IFS= read -r key; do
     [ "$nown" -lt 2 ] || add TWO-OWNERS "$key" "$nown live docs claim it" - "wrap or halt all but one worker doc"
 
     if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ] && [ "$standing" = 0 ] && [ "$xrepo" = 0 ]; then
-        case "$wstate" in none|wrapped) add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX" ;; esac
+        case "$wstate" in none|wrapped)
+            # rule D5c leaves a partly merged ticket here: name the partial PR the ticket's latest merge row records
+            # swallow-ok: an unparsable window names no PR and the generic fix stands
+            ppr=$(jq -rs --arg k "$key" '[.[] | select(.event == "merge" and .key == $k and has("contract") and .contract != "")] | last | select(.contract == "no") | .pr // empty' <<<"$logtail" 2>/dev/null)
+            if [ -n "$ppr" ]; then
+                add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR #$ppr" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names, or close $key by hand when it says HANDED-OFF (the remainder is on other tickets)"
+            else
+                add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX"
+            fi ;;
+        esac
     fi
 
     if [ "$jstatus" != Done ] && { [ -n "$open_prs" ] || is_owner_state "$wstate"; }; then

@@ -259,6 +259,8 @@ mog_build_fixture() {
     # The PARTIAL report appends to the chief doc through this sibling.
     mkdir -p "$tmp/scripts/handover/chief-kit"
     cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
+    # The partial-merge remainder reader and the module it imports.
+    cp "$SCRIPT_DIR/chief-kit/gen-briefs.py" "$SCRIPT_DIR/chief-kit/salus_marked.py" "$SCRIPT_DIR/chief-kit/platform-dropped.re" "$tmp/scripts/handover/chief-kit/"
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
@@ -422,7 +424,9 @@ case "$verb" in
                 printf '%s|https://github.com/%s/pull/%s|%s|%s|%s|%s' \
                     "${STUB_STATE-OPEN}" "$nwo" "${STUB_NUM:-77}" "${STUB_NUM:-77}" "${STUB_SHA-abc123def456}" "${STUB_BASE-main}" "${STUB_HEAD_BRANCH-feat/stub-head}" ;;
             body)
-                printf '%s' "${STUB_PR_BODY-}" ;;
+                # Defaults to a body that records a remainder: a partial (bare) merge of a ticket-tagged PR
+                # whose body records none is refused (exit 26), and most cases are bare merges.
+                printf '%s' "${STUB_PR_BODY-Remaining: the next slice}" ;;
             "mergeStateStatus,reviewDecision")
                 [ "${STUB_POLICY_FAIL:-0}" = "1" ] && { echo "gh: policy query failed" >&2; exit 1; }
                 printf '%s|%s' "${STUB_MERGE_STATE-CLEAN}" "${STUB_REVIEW_DECISION-}" ;;
@@ -3979,11 +3983,23 @@ assert_jira_log_has "jira: Remaining text is quoted in the comment" "comment-bod
 assert_jira_log_lacks "jira: partial merge on a Remaining body makes no transition" "index.js transition"
 assert_audit_has "jira: partial merge audit records the unchanged status and comment" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged comment=ok"
 
-# No Remaining line in the body: still dispatchable, and the comment says so.
+# A partial (contract=no) merge whose body records no remainder is REFUSED before it lands (exit 26), and the
+# refusal names the missing line; nothing is merged, commented or transitioned.
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
-    run_mog 0 "jira: partial merge with no Remaining line in the body"
-assert_jira_log_lacks "jira: no-note partial merge makes no transition" "index.js transition"
-assert_jira_log_has "jira: no-note comment names the gap" "comment-body: Remaining: not recorded"
+    run_mog 26 "8673: partial merge with no remainder in the body is refused"
+assert_err_has "8673: the refusal names the missing Remaining: line" "has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\`"
+assert_audit_has "8673: the refusal is audited" "REFUSED reason=partial-remainder-missing"
+assert_jira_log_lacks "8673: a refused partial merge posts no comment" "comment-body"
+# a completing PR's coverage holds only done lines: run without --jira-transition it is refused, so the caller must choose
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n- slice two: done\n' \
+    run_mog 26 "8673: a coverage of done lines only is refused without --jira-transition"
+# the remainder recorded only as a deferred line under ## Ticket coverage merges, and the breadcrumb posts it
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Summary\nslice one\n\n## Ticket coverage\n- slice one: done\n- rest: deferred \xe2\x86\x92 HIMMEL-9\n' \
+    run_mog 0 "8673: a deferred coverage line is a recorded remainder"
+assert_jira_log_has "8673: the breadcrumb posts the deferred line" "comment-body: Remaining: rest: deferred → HIMMEL-9"
+# a completing merge (--jira-transition) is not a partial one: no remainder is asked of it
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n' \
+    run_mog 0 "8673: a completing merge needs no remainder" -- --jira-transition
 
 # A ticket already Done is left alone by a partial merge; an Epic never moves.
 # A bare merge never transitions, so the next three rows (Done, Epic, failed

@@ -688,6 +688,14 @@ wipe_docs
 reset "In Progress"; jl "$K" "In Progress"
 drift
 contains "3b: started, no open PR and no owner is UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+# The row of a ticket a partial merge left In Progress (rule D5c) names that PR and the one action that clears it
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no
+drift
+contains "3b (HIMMEL-8673): the UNOWNED row of a partly merged ticket names its partial PR" "$(drows UNOWNED)" "partial merge PR #4480"
+contains "3b (HIMMEL-8673): and the action: dispatch the RESUME row or close it on HANDED-OFF" "$(drows UNOWNED)" "next-dispatchable.sh"
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no; logrow merge "$K" moved 4481 yes
+drift
+check "3b (HIMMEL-8673): a completing merge after the partial one names no partial PR" "$(drows UNOWNED | grep -c 'partial merge PR')" 0
 reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
 drift
 check "3b: a live owner means not UNOWNED" "$(dcount UNOWNED)" 0
