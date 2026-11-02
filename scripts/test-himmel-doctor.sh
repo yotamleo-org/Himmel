@@ -965,7 +965,7 @@ out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" 
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
 if grepq "$out" 'WARN C8-cadence: graphmap-cadence runners are stale' \
-    && grepq "$out" 'bash scripts/luna/graphmap-cadence.sh arm --force'; then
+    && grepq "$out" 'bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed'; then
     pass "C8 -> WARN (stale graphmap runner)"
 else
     fail "C8 -> $(printf '%s' "$out" | grep C8)"

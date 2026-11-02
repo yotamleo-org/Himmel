@@ -61,6 +61,13 @@ _mba_send() {
         return 0
     fi
     command -v bun >/dev/null 2>&1 || return 1
+    # A test on the station never pages the operator. Only exit 77 stops the send: a missing or
+    # crashing guard must never cost a real alert.
+    local guard_rc=0
+    bash "$_MBA_LIB_DIR/test-run-guard" check --quiet --tool bun merge-block-alert || guard_rc=$?
+    # Refused, not delivered. The return stays 0 so every other caller of this sender keeps its exit
+    # code; the flag lets merge_block_alert drop its sentinel.
+    [ "$guard_rc" != 77 ] || { _MBA_REFUSED=1; return 0; }
     # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
     $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1
 }
@@ -92,9 +99,15 @@ merge_block_alert() {
         echo "merge-block-alert: no operator chat id readable — DM not sent (the line above is the only alert)" >&2
         return 0
     fi
-    if ! _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}"; then
+    local send_rc=0
+    _MBA_REFUSED=0
+    _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}" || send_rc=$?
+    if [ "$send_rc" != 0 ]; then
         rm -f "$dir/$key" 2>/dev/null
         echo "merge-block-alert: DM delivery failed — exit code unchanged" >&2
+    elif [ "${_MBA_REFUSED:-0}" = 1 ]; then
+        rm -f "$dir/$key" 2>/dev/null
+        echo "merge-block-alert: refused by the test guard, nothing sent" >&2
     fi
     return 0
 }
@@ -200,6 +213,10 @@ _mba_route_chief() {
         return 0
     fi
     root="${MERGE_WATCH_ALERT_BRIDGE_ROOT:-${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}}"
+    # A test on the station never writes a real bridge inbox; only exit 77 stops the route.
+    local guard_rc=0
+    bash "$_MBA_LIB_DIR/test-run-guard" check --quiet merge-watch-route "$root" || guard_rc=$?
+    [ "$guard_rc" != 77 ] || return 1   # refused, not delivered: merge_watch_alert drops its sentinel and falls through
     file=$(_mba_chief_inbox_path "$root" "$name") || return 1
     local folded
     folded=$(printf '%s' "$text" | tr '\n' ' ')
