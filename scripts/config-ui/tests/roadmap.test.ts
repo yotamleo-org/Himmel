@@ -276,6 +276,13 @@ test("Board: one filter bar and refresh above every tab, a version tile keeps th
   expect(renderBoard(r, { version: null, theme: null }, null)).toMatch(/class="ro pill fail">\d+ still open: HIMMEL-4/);
 });
 
+test("Board: a chain badge keeps the selected version in its link, and has none when no version is selected", () => {
+  const r = read(station());
+  const withV = renderBoard(r, { version: null, theme: null, v: "all" }, { drift: null, chains: chainsOk() });
+  expect(withV).toMatch(/class="rm-chain" href="#\/board\?tab=chains&amp;v=all&amp;at=HIMMEL-1"/);
+  expect(renderBoard(r, { version: null, theme: null }, { drift: null, chains: chainsOk() })).toMatch(/class="rm-chain" href="#\/board\?tab=chains&amp;at=HIMMEL-1"/);
+});
+
 test("Board: Tidy up covers every version by default and narrows only when the route names one", () => {
   const r = read(station());
   const sections = (html: string) => html.slice(html.indexOf('id="rm-sync"'));

@@ -41,32 +41,32 @@ const GLYPH = { done: "✓", "in flight": "●", "can launch": "▷", blocked: "
 const glyph = (s) => GLYPH[s] || (/^waits on step/.test(s) ? "…" : /^done/.test(s) ? "✓" : "");
 // A chain badge under the card title: chain id, the ticket's step of the chain's steps, and its state as a glyph and a word,
 // so it reads without colour (at most two badges, then +N). A ticket in no chain, or no chain read at all, has none.
-function chainBadge(t, ch) {
+function chainBadge(t, ch, v) {
   const ct = chainOk(ch) ? ch.tickets[idOf(t)] : null;
   if (!ct || !Array.isArray(ct.badges) || !ct.badges.length) return "";
   const at = encodeURIComponent(idOf(t));
   const parts = ct.badges.map((id) => ct.chains.find((c) => c.id === id)).filter(Boolean).map((c) =>
-    `<a class="rm-chain" href="#/board?tab=chains&amp;at=${esc(at)}" title="Open the ${esc(c.id)} chain on the Chains tab"><span aria-hidden="true">${glyph(c.state)}</span> ${esc(c.id)} ${esc(String(c.step))}/${esc(String(c.steps))} · ${esc(c.state)}</a>`);
+    `<a class="rm-chain" href="#/board?tab=chains${v ? `&amp;v=${esc(encodeURIComponent(v))}` : ""}&amp;at=${esc(at)}" title="Open the ${esc(c.id)} chain on the Chains tab"><span aria-hidden="true">${glyph(c.state)}</span> ${esc(c.id)} ${esc(String(c.step))}/${esc(String(c.steps))} · ${esc(c.state)}</a>`);
   return `<div class="rm-chains">${parts.join("")}${ct.more ? ` <span class="ro">+${esc(String(ct.more))}</span>` : ""}</div>`;
 }
 
-function cardHtml(t, d, showVersion, w, ch) {
+function cardHtml(t, d, showVersion, w, ch, v) {
   const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
   const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   const theme = w ? sectorPick(t, d) : esc(d.themes[t.theme]);
   const local = t.backend === "local";
   const attrs = w ? ` draggable="true" data-rm-card="${t.k}"${local ? ` data-rm-id="${esc(t.id)}" data-rm-backend="local"` : ""}` : "";
-  return `<div class="rm-card"${attrs}><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>${chainBadge(t, ch)}
+  return `<div class="rm-card"${attrs}><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>${chainBadge(t, ch, v)}
     <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
 }
 
 // One board: a column per status over the given tickets. Won't and CI stay hidden while empty so a quiet board stays short.
 // With w every column is a drop target, Won't included: a writable board must be able to receive it.
-function boardHtml(d, tickets, showVersion, w, ch) {
+function boardHtml(d, tickets, showVersion, w, ch, v) {
   return `<div class="rm-board">${COLS.filter(([b]) => w || b !== "wont" || tickets.some((t) => t.b === b)).map(([b, l]) => {
     const cards = tickets.filter((t) => t.b === b);
-    return `<div class="rm-col"${w ? ` data-rm-drop="${b}"` : ""}><h4>${esc(l)} <span class="ro">${cards.length}</span></h4>${cards.map((t) => cardHtml(t, d, showVersion, w, ch)).join("")}</div>`;
+    return `<div class="rm-col"${w ? ` data-rm-drop="${b}"` : ""}><h4>${esc(l)} <span class="ro">${cards.length}</span></h4>${cards.map((t) => cardHtml(t, d, showVersion, w, ch, v)).join("")}</div>`;
   }).join("")}</div>`;
 }
 
@@ -252,7 +252,7 @@ function lanesHtml(d, ui, sel, ch) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v) : `<div class="empty">No tickets match.</div>`);
 }
 
 function chainsTab(ui, ch) {

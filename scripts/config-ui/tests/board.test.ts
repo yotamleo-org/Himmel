@@ -114,6 +114,17 @@ test("GET /api/board: a missing drift file reports exists=false, and a bad regis
   expect(r.chains.reason).toContain("the chain read failed");
 });
 
+test("GET /api/board: on a tracker other than Jira the Jira-backed extras are absent even when their inputs are set", async () => {
+  for (const tracker of ["none", "local"]) {
+    const s = scratch();
+    const r = await get(serve({ TRACKER: tracker, TRACKER_STORE: join(s.d, "store"), HIMMEL_FOCUS_DRIFT: s.drift, HIMMEL_CHAIN_REGISTRY: s.registry }, s));
+    expect(r.drift.state).toBe("absent");
+    expect(r.drift.reason).toContain("not Jira");
+    expect(r.chains.state).toBe("absent");
+    expect(r.chains.reason).toContain("no chain registry");
+  }
+});
+
 test("GET /api/board: a secret-bearing value in a drift row never reaches the page", async () => {
   const s = scratch();
   writeFileSync(s.drift, "VERSION-DRIFT HIMMEL-6691 says x | writer=release-manager | fix=PLANTED_SECRET=zz-planted-not-real-0000\nsdrift=1:abc\n"); // gitleaks:allow

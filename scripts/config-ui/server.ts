@@ -700,6 +700,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // reason, unless its input is named in the environment (board.ts).
       if (path === "/api/board") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        // the extras read the Jira mirror: on another active tracker's Board they would show Jira's drift and chains beside its cards
+        const first = (await trackerSources(env, trackerRoot))[0];
+        if (first === "none" || first === "local" || first === "github" || (!first && trackerSetting(env, trackerRoot) === "local")) {
+          const why = "the active tracker is not Jira";
+          return json({ drift: { state: "absent", reason: `no saved drift run: ${why}` }, chains: { state: "absent", reason: `no chain registry: ${why}` } });
+        }
         return json(redactOut(await readBoardExtras(env)));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
