@@ -1810,17 +1810,25 @@ check_c26() {
 # never reads when the override is set and differs — check the scheduled
 # guard's hard-coded location too whenever it diverges. Neither directory
 # declared here is a normal skip, same stance as C3/C26.
+#
+# The neutral dir ~/.config/himmel/phi: NO GUARD READS IT YET. A root listed
+# there and not under the old path has
+# no guard behind it, which is a live PHI fail-open, so that row is a FAIL and
+# not a WARN; nothing creates the neutral dir today, so it cannot fire on a
+# station nobody touched. The old-only WARN never says to move or remove a list:
+# obeying that would cause the very fail-open this check exists to catch.
 check_c27() {
     local cfgdir="${CLAUDE_GLM_CONFIG_DIR:-${HOME:-}/.config/claude-glm}"
     local sched_cfgdir="${HOME:-}/.config/claude-glm"
+    local neutral="${HOME:-}/.config/himmel/phi"
     local lib="$REPO_ROOT/scripts/guardrails/phi-egress-lib.sh"
     local -a dirs=("$cfgdir")
     [ "$sched_cfgdir" != "$cfgdir" ] && dirs+=("$sched_cfgdir")
     local d any_dir=0
-    for d in "${dirs[@]}"; do
+    for d in "${dirs[@]}" "$neutral"; do
         [ -d "$d" ] && any_dir=1
     done
-    if [ "$any_dir" -eq 0 ]; then
+    if [ "$any_dir" -eq 0 ] && [ ! -e "$neutral" ] && [ ! -L "$neutral" ]; then
         emit OK C27-guard-signals "no ${dirs[*]} (no phi-roots/egress-denylist declared here — skipped)"
         return
     fi
@@ -1831,7 +1839,20 @@ check_c27() {
     # shellcheck source=guardrails/phi-egress-lib.sh
     # shellcheck disable=SC1091
     . "$lib"
-    local name path bad=""
+    local name path bad="" unenforced urc=0
+    unenforced="$(_guard_phi_unenforced_roots 2>/dev/null)" || urc=$?
+    if [ "$urc" -eq 2 ]; then
+        emit FAIL C27-guard-signals \
+            "a PHI list under $neutral cannot be read, so it may name a root no guard enforces (no guard reads that dir yet)" \
+            "make it a readable regular file, and keep every root in the old list under ${cfgdir}, the only list the guards read"
+        return
+    fi
+    if [ -n "$unenforced" ]; then
+        emit FAIL C27-guard-signals \
+            "PHI root(s) under $neutral are NOT enforced, because no guard reads that dir yet and the old list does not cover them: $(printf '%s' "$unenforced" | tr '\n' ' ')" \
+            "add each root to the old list under ${cfgdir} as well, and keep it there: the guards read only that list"
+        return
+    fi
     for d in "${dirs[@]}"; do
         [ -d "$d" ] || continue
         for name in phi-roots egress-denylist; do
@@ -1844,6 +1865,19 @@ check_c27() {
         emit WARN C27-guard-signals \
             "PHI guard signal exists but is not a readable regular file:$bad — the guard fails closed on this (denies every corpus), but is inert as a SALUS-classification signal until fixed" \
             "make the listed path(s) a readable regular file (e.g. chmod +r, or replace a directory/special file with a plain text file)"
+        return
+    fi
+    local old_only=""
+    for name in phi-roots egress-denylist; do
+        [ -e "$neutral/$name" ] && continue
+        for d in "${dirs[@]}"; do
+            [ -n "$(_guard_phi_list_entries "$d/$name" 2>/dev/null)" ] && old_only="$old_only $d/$name"
+        done
+    done
+    if [ -n "$old_only" ]; then
+        emit WARN C27-guard-signals \
+            "PHI list(s) exist only under the old path:$old_only — the old path stays authoritative: every guard reads it and no guard reads $neutral yet. Do NOT move or remove it" \
+            "nothing to fix for enforcement. To clear this warning, copy the list into $neutral and keep the old file (docs/internals/egress-matrix.md)"
         return
     fi
     emit OK C27-guard-signals "phi-roots/egress-denylist under ${dirs[*]} (where present) are readable regular files"
