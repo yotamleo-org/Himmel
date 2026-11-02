@@ -1030,6 +1030,43 @@ mkdir -p "$WORK/pm-state-bad/status-events.jsonl"
 pm_bad="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state-bad" GEN_BRIEFS_GH_CMD="$WORK/gh-stub.sh" python3 "$SUT" "$WORK/pm.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/pm-bucket2" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/pmw2" --deadline 1791475000 2>&1)"
 has "an unreadable status log is warned about, not silently read as empty" "$pm_bad" "status-events.jsonl is unreadable"
 
+# The shared reader itself (scripts/lib/pr_remainder.py): one answer line per body, in ready-check.sh's grammar
+# (the key follows the arrow and ends the line; anything else stays remaining work).
+RDR="$HERE/../../lib/pr_remainder.py"
+T=$'\t'
+rdr() { printf '%b' "$2" | python3 -I "$RDR" "$1"; }
+same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
+H=$'## Ticket coverage\n'
+same "reader: a body with neither form is none" "$(rdr HIMMEL-1 'just a summary')" "none"
+same "reader: a Remaining: line stays remaining" "$(rdr HIMMEL-1 'Remaining: slice 2')" "remaining${T}slice 2"
+same "reader: Remaining: is read in any case, indented" "$(rdr HIMMEL-1 '  remaining: slice 2')" "remaining${T}slice 2"
+same "reader: an empty Remaining: line records nothing" "$(rdr HIMMEL-1 'Remaining:\n\nnot this')" "none"
+same "reader: a deferred arrow line hands off" "$(rdr HIMMEL-1 "$H- rest: deferred → HIMMEL-9")" "handed-off${T}HIMMEL-9${T}rest: deferred → HIMMEL-9"
+same "reader: the ascii arrow and a trailing period hand off" "$(rdr HIMMEL-1 "$H- rest: deferred -> HIMMEL-9.")" "handed-off${T}HIMMEL-9${T}rest: deferred -> HIMMEL-9."
+same "reader: a deferred line with no key stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> later")" "remaining${T}rest: deferred -> later"
+same "reader: a key that is not last stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> after HIMMEL-9 merges, stays here")" "remaining${T}rest: deferred -> after HIMMEL-9 merges, stays here"
+same "reader: a key that is not first stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> slice-2 then HIMMEL-9 too")" "remaining${T}rest: deferred -> slice-2 then HIMMEL-9 too"
+same "reader: two keys on one line stay remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> HIMMEL-9, HIMMEL-10")" "remaining${T}rest: deferred -> HIMMEL-9, HIMMEL-10"
+same "reader: a deferral to the ticket itself stays remaining" "$(rdr HIMMEL-1 "$H- rest: deferred -> HIMMEL-1")" "remaining${T}rest: deferred -> HIMMEL-1"
+same "reader: the own key is compared upper-cased" "$(rdr himmel-1 "$H- rest: deferred -> HIMMEL-1")" "remaining${T}rest: deferred -> HIMMEL-1"
+same "reader: a lower-case key in the body is named upper-cased" "$(rdr HIMMEL-1 "$H- rest: deferred -> himmel-9")" "handed-off${T}HIMMEL-9${T}rest: deferred -> himmel-9"
+same "reader: two lines naming one ticket name it once" "$(rdr HIMMEL-1 "$H- a: deferred -> HIMMEL-9\n- b: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: deferred -> HIMMEL-9; b: deferred -> HIMMEL-9"
+same "reader: two lines naming two tickets name both in order" "$(rdr HIMMEL-1 "$H- a: deferred -> HIMMEL-9\n- b: deferred -> HIMMEL-10")" "handed-off${T}HIMMEL-9, HIMMEL-10${T}a: deferred -> HIMMEL-9; b: deferred -> HIMMEL-10"
+same "reader: one handed-off line and one keyless line stay remaining" "$(rdr HIMMEL-1 "$H- a: deferred -> HIMMEL-9\n- b: deferred -> later")" "remaining${T}a: deferred -> HIMMEL-9; b: deferred -> later"
+same "reader: a Remaining: line beside a handed-off line stays remaining" "$(rdr HIMMEL-1 "Remaining: x\n$H- a: deferred -> HIMMEL-9")" "remaining${T}x; a: deferred -> HIMMEL-9"
+same "reader: a * bullet is read and its marker dropped" "$(rdr HIMMEL-1 "$H* a: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: deferred -> HIMMEL-9"
+same "reader: a + bullet is read and its marker dropped" "$(rdr HIMMEL-1 "$H+ a: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: deferred -> HIMMEL-9"
+same "reader: the coverage heading and the word deferred match in any case" "$(rdr HIMMEL-1 "## TICKET COVERAGE\n- a: DEFERRED -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}a: DEFERRED -> HIMMEL-9"
+same "reader: a deferred line outside the coverage section is not read" "$(rdr HIMMEL-1 '- a: deferred -> HIMMEL-9')" "none"
+same "reader: a level-one heading ends the coverage section" "$(rdr HIMMEL-1 "$H- a: done\n# Other\n- b: deferred -> HIMMEL-9")" "none"
+same "reader: a level-two heading ends the coverage section" "$(rdr HIMMEL-1 "$H- a: done\n## Other\n- b: deferred -> HIMMEL-9")" "none"
+same "reader: a level-three heading stays inside the coverage section" "$(rdr HIMMEL-1 "$H### Sub\n- b: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}b: deferred -> HIMMEL-9"
+same "reader: an empty heading ends the coverage section" "$(rdr HIMMEL-1 "$H##\n- b: deferred -> HIMMEL-9")" "none"
+same "reader: a #123 reference line is not a heading" "$(rdr HIMMEL-1 "$H#4587 merged\n- b: deferred -> HIMMEL-9")" "handed-off${T}HIMMEL-9${T}b: deferred -> HIMMEL-9"
+same "reader: a tab inside the text does not split the answer line" "$(rdr HIMMEL-1 'Remaining: a\tb')" "remaining${T}a b"
+if python3 -I "$RDR" >/dev/null 2>&1 </dev/null; then fail "reader: no key argument is a usage error"; else pass "reader: no key argument is a usage error"; fi
+if python3 -I "$RDR" HIMMEL-1 extra >/dev/null 2>&1 </dev/null; then fail "reader: a second argument is a usage error"; else pass "reader: a second argument is a usage error"; fi
+
 # ---- the PR size projection (own block) ----
 # A Writes list that expands to more than the hard max of scripts/ci/pr-size-bands.tsv (40 files) is refused with
 # pr_size_gate on, unless the worker carries bulk: mechanical; flag off, or past only the soft max (20), is a warning.

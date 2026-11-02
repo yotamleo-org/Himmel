@@ -49,7 +49,7 @@
 # `merged PRs unknown` header and no IN CI row.
 #
 # Partial-merge rows: a ticket with a merged contract=no PR reads that PR's remainder, a `Remaining:` line or the
-# `deferred -> <KEY>` lines under `## Ticket coverage` (gen-briefs.py --pr-remainder, the one reader merge-on-green.sh and
+# `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
 # handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
 # umbrella by hand); a body with neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it.
@@ -142,7 +142,8 @@
 # Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`),
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
-# NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default).
+# NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
+# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> <KEY>`).
 #
 # Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable.
 # PLATFORM GUARD: the chief kit is Linux-only.
@@ -1123,18 +1124,18 @@ if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
         merged_unknown = True
 
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
-# (gen-briefs.py --pr-remainder): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
+# (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
 # Returns (kind, handed_keys, text), kind none | remaining | handed-off. A body gh cannot read, or a reader that fails, is
 # recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
 remainder_cache = {}
 unread_prs = set()
-reader = os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'gen-briefs.py')
+reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
 def remainder_of(pr, key):
     if (pr, key) not in remainder_cache:
         ans = ('none', [], '')
         try:
             body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
-            out = subprocess.run([sys.executable, '-I', reader, '--pr-remainder', key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
+            out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
             if out[0] == 'remaining' and len(out) == 2:
                 ans = ('remaining', [], out[1])
             elif out[0] == 'handed-off' and len(out) == 3:

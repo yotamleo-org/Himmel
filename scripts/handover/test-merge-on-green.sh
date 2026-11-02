@@ -259,8 +259,8 @@ mog_build_fixture() {
     # The PARTIAL report appends to the chief doc through this sibling.
     mkdir -p "$tmp/scripts/handover/chief-kit"
     cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
-    # The partial-merge remainder reader and the module it imports.
-    cp "$SCRIPT_DIR/chief-kit/gen-briefs.py" "$SCRIPT_DIR/chief-kit/salus_marked.py" "$SCRIPT_DIR/chief-kit/platform-dropped.re" "$tmp/scripts/handover/chief-kit/"
+    # The partial-merge remainder reader, read from the anchor's scripts/lib.
+    cp "$SCRIPT_DIR/../lib/pr_remainder.py" "$tmp/scripts/lib/pr_remainder.py"
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
@@ -426,7 +426,8 @@ case "$verb" in
             body)
                 # Defaults to a body that records a remainder: a partial (bare) merge of a ticket-tagged PR
                 # whose body records none is refused (exit 26), and most cases are bare merges.
-                printf '%s' "${STUB_PR_BODY-Remaining: the next slice}" ;;
+                printf '%s' "${STUB_PR_BODY-Remaining: the next slice}"
+                exit "${STUB_BODY_RC:-0}" ;;
             "mergeStateStatus,reviewDecision")
                 [ "${STUB_POLICY_FAIL:-0}" = "1" ] && { echo "gh: policy query failed" >&2; exit 1; }
                 printf '%s|%s' "${STUB_MERGE_STATE-CLEAN}" "${STUB_REVIEW_DECISION-}" ;;
@@ -931,6 +932,14 @@ run_mog() {
     # sets it EMPTY and MOG_UNSET_HIMMEL_REPO=1 removes it from the child's
     # environment (env -u) — the two refusal paths of control (b).
     local himmel_repo_dir="${MOG_HIMMEL_REPO:-$tmp}"
+    # MOG_ANCHOR_READER=<file|ABSENT> builds a DISTINCT anchor tree whose scripts/lib/pr_remainder.py is that file (or missing),
+    # while the worktree keeps its own copy: the anchor's reader must be the one that decides the partial-merge gate.
+    if [ -n "${MOG_ANCHOR_READER:-}" ]; then
+        himmel_repo_dir="$tmp/anchor"
+        mkdir -p "$himmel_repo_dir"
+        mog_build_fixture "$himmel_repo_dir"
+        if [ "$MOG_ANCHOR_READER" = ABSENT ]; then rm -f "$himmel_repo_dir/scripts/lib/pr_remainder.py"; else cp "$MOG_ANCHOR_READER" "$himmel_repo_dir/scripts/lib/pr_remainder.py"; fi
+    fi
     [ "${MOG_NO_HIMMEL_REPO:-0}" = "1" ] && himmel_repo_dir=""
     # cwd matters: the post-merge prune reads `git worktree
     # list` from the checkout the script runs in. Default to the (non-repo)
@@ -4000,6 +4009,72 @@ assert_jira_log_has "8673: the breadcrumb posts the deferred line" "comment-body
 # a completing merge (--jira-transition) is not a partial one: no remainder is asked of it
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n' \
     run_mog 0 "8673: a completing merge needs no remainder" -- --jira-transition
+
+# The gate's reader is the ANCHOR's scripts/lib/pr_remainder.py, never the worktree's copy, and every refusal lands before
+# any merge call (also on --dry-run). Each refusal row asserts it merged nothing.
+mog_rdr=$(mktemp -d "${TMPDIR:-/tmp}/mog-reader.XXXXXX")
+if [ -z "$mog_rdr" ] || [ ! -d "$mog_rdr" ]; then
+    fail "8673 setup: mktemp -d produced no sandbox for the stub readers"
+else
+    printf 'import sys\nprint("none")\n' > "$mog_rdr/says-none.py"
+    printf 'import sys\n' > "$mog_rdr/says-nothing.py"
+    printf 'import sys\nprint("remaining\\tslice 2")\nsys.exit(5)\n' > "$mog_rdr/fails-with-answer.py"
+    # a distinct anchor whose reader says `none` refuses a body the worktree's own reader would accept
+    MOG_ANCHOR_READER="$mog_rdr/says-none.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: the anchor's reader decides, not the worktree's"
+    assert_audit_has "8673: the anchor's none is the audited reason" "REFUSED reason=partial-remainder-missing"
+    assert_gh_lacks "8673: the anchor's none merged nothing" "pr merge"
+    # and a branch-poisoned worktree reader never runs while the anchor's real reader accepts the body
+    MOG_POISON=lib/pr_remainder.py MOG_ANCHOR_READER="$SCRIPT_DIR/../lib/pr_remainder.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 0 "8673: a poisoned worktree reader is not run, the anchor's decides"
+    if [ -e "$LAST_TMP/poison.ran" ]; then fail "8673: the worktree's own reader ran inside the gate"; else pass; fi
+    assert_gh_has "8673: the anchor's reader accepted, the merge happened" "pr merge"
+    # a broken anchor refuses: no reader, no answer, or a reader that fails after answering
+    MOG_ANCHOR_READER=ABSENT STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: an anchor without the reader refuses"
+    assert_audit_has "8673: a missing reader is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+    assert_gh_lacks "8673: a missing reader merged nothing" "pr merge"
+    MOG_ANCHOR_READER="$mog_rdr/says-nothing.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: a reader that answers nothing refuses"
+    assert_audit_has "8673: an empty answer is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+    assert_gh_lacks "8673: an empty answer merged nothing" "pr merge"
+    MOG_ANCHOR_READER="$mog_rdr/fails-with-answer.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "8673: a reader that exits non-zero refuses even with an answer"
+    assert_audit_has "8673: a failing reader is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+    assert_gh_lacks "8673: a failing reader merged nothing" "pr merge"
+    rm -rf "$mog_rdr"
+fi
+# a body read where gh exits 3 (the old reader-absent code) is a refused read, never a skipped check
+STUB_BODY_RC=3 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 26 "8673: a body read where gh exits 3 is refused"
+assert_audit_has "8673: the failed read is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
+assert_gh_lacks "8673: the failed read merged nothing" "pr merge"
+STUB_BODY_RC=1 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+    run_mog 26 "8673: a body read where gh exits 1 is refused"
+assert_gh_lacks "8673: the exit-1 read merged nothing" "pr merge"
+# the refusals name the missing line and merge nothing, on a real merge and on --dry-run
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 26 "8673: no remainder refuses before the merge call"
+assert_gh_lacks "8673: the refused partial merge never called pr merge" "pr merge"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 26 "8673: no remainder refuses on --dry-run too" -- --dry-run
+assert_audit_has "8673: the dry-run refusal is audited" "REFUSED reason=partial-remainder-missing"
+assert_audit_lacks "8673: the dry-run refusal wrote no would-merge line" "DRYRUN would-merge"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'## Ticket coverage\n- slice one: done\n' \
+    run_mog 26 "8673: a coverage of done lines refuses before the merge call"
+assert_gh_lacks "8673: the done-only refusal never called pr merge" "pr merge"
+# the brief's completes-ticket: no binds even when --jira-transition is given
+printf '# worker\n\n> **Completes ticket:** no\n\n## Results\n' > "$LAST_TMP/worker-no-8673.md"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="just a summary" \
+    run_mog 26 "8673: a brief that says no is a partial merge even with --jira-transition" -- --jira-transition --worker-doc "$LAST_TMP/worker-no-8673.md"
+assert_gh_lacks "8673: the brief-no refusal never called pr merge" "pr merge"
+# a title naming no ticket is not a partial merge of one: no remainder is asked of it
+STUB_PR_BODY="just a summary" run_mog 0 "8673: a title with no ticket key asks for no remainder"
+assert_gh_has "8673: the keyless title merged" "pr merge"
+# the breadcrumb posts what the reader found
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'slice 1\nRemaining: slice 2\n\n## Ticket coverage\n- rest: deferred -> HIMMEL-9\n' \
+    run_mog 0 "8673: a Remaining line beside a deferred line is one remainder"
+assert_jira_log_has "8673: the breadcrumb posts both" "comment-body: Remaining: slice 2; rest: deferred -> HIMMEL-9"
 
 # A ticket already Done is left alone by a partial merge; an Epic never moves.
 # A bare merge never transitions, so the next three rows (Done, Epic, failed

@@ -233,7 +233,8 @@
 #   26  partial-merge remainder: the merge is contract=no (no
 #       --jira-transition, or the brief says completes-ticket: no) on a ticket-tagged
 #       PR whose body has neither a `Remaining:` line nor a `<ask>: deferred -> <KEY>`
-#       line under `## Ticket coverage`, or whose body cannot be read. The
+#       line under `## Ticket coverage`, or whose body cannot be read, or when the
+#       anchor's scripts/lib/pr_remainder.py is missing or prints no answer. The
 #       refusal names the missing line. Checked after the title gate, before
 #       the audit preflight, on --dry-run too.
 #
@@ -1930,14 +1931,15 @@ _merge_contract() {
 # 3d. A partial (contract=no) merge must record what remains. The dispatcher, the brief generator and the
 # Jira breadcrumb all read the PR body for it; a body with neither a `Remaining:` line nor a `deferred -> <KEY>` line under
 # `## Ticket coverage` strands the ticket In Progress with nobody to resume it, so the merge is refused before it lands. The
-# ONE reader is `gen-briefs.py --pr-remainder` (a body on stdin, one tab-separated answer line). A completing merge run
-# without --jira-transition also stops here: its coverage holds only done lines, so the caller must choose. The refusal only
-# adds a stop: no other gate is loosened and the PR body is data, never executed. An anchor without the reader (an adopted
-# project's tree) skips the check and says so in the audit.
+# ONE reader is the anchor's `scripts/lib/pr_remainder.py` (a body on stdin, one tab-separated answer line), run from
+# $himmel_repo like every other helper the gate runs, never from the branch under review: its answer decides the merge. A
+# completing merge run without --jira-transition also stops here: its coverage holds only done lines, so the caller must
+# choose. The refusal only adds a stop: no other gate is loosened and the PR body is data, never executed. A reader that is
+# missing or answers nothing is a broken anchor, so it refuses too.
 _pr_remainder_answer() { # <ticket key> <PR body> -> the reader's answer line on stdout; rc 3 when the reader is absent, else the reader's own rc
-    local reader="$_csg_dir/chief-kit/gen-briefs.py"
+    local reader="$himmel_repo/scripts/lib/pr_remainder.py"
     [ -f "$reader" ] || return 3
-    printf '%s' "$2" | python3 -I "$reader" --pr-remainder "$1" 2>/dev/null
+    printf '%s' "$2" | python3 -I "$reader" "$1" 2>/dev/null
 }
 partial_key=""
 if declare -F ticket_key_from_title >/dev/null; then partial_key=$(ticket_key_from_title "$fresh_title") || partial_key=""; fi
@@ -1945,19 +1947,19 @@ if [ -n "$partial_key" ]; then
     _merge_contract
     if [ "$MERGE_ROW_CONTRACT" = no ]; then
         partial_body=""
-        partial_rc=0
-        # swallow-ok: a failed read sets partial_rc, which refuses below (exit 26), so no plausible value reaches the decision
-        partial_body=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null) || partial_rc=$?
+        partial_gh_rc=0
+        partial_reader_rc=0
+        # swallow-ok: a failed read sets partial_gh_rc, which refuses below (exit 26), so no plausible value reaches the decision
+        partial_body=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null) || partial_gh_rc=$?
         partial_ans=""
-        if [ "$partial_rc" -eq 0 ]; then partial_ans=$(_pr_remainder_answer "$partial_key" "$partial_body") || partial_rc=$?; fi
-        if [ "$partial_rc" -eq 3 ]; then
-            audit "PARTIAL-REMAINDER skipped reason=reader-absent repo=$nwo pr=#$pr_num key=$partial_key" || true
-        elif [ "$partial_rc" -ne 0 ] || [ -z "$partial_ans" ]; then
-            echo "merge-on-green: cannot read PR #$pr_num's body for the remainder of partial merge $partial_key right before merging — refusing. Re-run." >&2
+        if [ "$partial_gh_rc" -eq 0 ]; then partial_ans=$(_pr_remainder_answer "$partial_key" "$partial_body") || partial_reader_rc=$?; fi
+        # a failed read never reaches the reader, so it leaves no answer and refuses here too
+        if [ "$partial_reader_rc" -ne 0 ] || [ -z "$partial_ans" ]; then
+            echo "merge-on-green: cannot read PR #$pr_num's body, or the anchor's scripts/lib/pr_remainder.py gave no answer, for the remainder of partial merge $partial_key right before merging — refusing. Re-run." >&2
             audit "REFUSED reason=partial-remainder-unreadable repo=$nwo pr=#$pr_num key=$partial_key"
             exit 26
         elif [ "${partial_ans%%$'\t'*}" = none ]; then
-            echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but its body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — refusing. Add one of them to the PR body (gh pr edit $pr_num --body-file <file>); if this merge completes $partial_key, re-run with --jira-transition." >&2
+            echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but its body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — refusing. Add one of them to the PR body (gh pr edit $pr_num --body-file <file>)." >&2
             audit "REFUSED reason=partial-remainder-missing repo=$nwo pr=#$pr_num key=$partial_key"
             exit 26
         fi
@@ -2656,16 +2658,11 @@ _jira_close_on_merge() {
         # is posted as a comment so the next slice is findable.
         local remaining todo
         # The shared reader's text: the Remaining: line(s) and the deferred lines under ## Ticket coverage.
-        # A tree without the reader (an adopted project's) keeps the Remaining: line extraction it always had.
-        local pr_body ans_rc=0
+        local pr_body
         # swallow-ok: the merge already landed; an unreadable body makes the breadcrumb say "not recorded", it decides nothing
         pr_body=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null)
-        remaining=$(_pr_remainder_answer "$key" "$pr_body") || ans_rc=$?
-        if [ "$ans_rc" -eq 3 ]; then
-            remaining=$(printf '%s\n' "$pr_body" | sed -nE 's/^[[:space:]]*[Rr]emaining:[[:space:]]*/Remaining: /p')
-        else
-            remaining=$(printf '%s\n' "$remaining" | awk -F'\t' '$1 != "none" && NF { print "Remaining: " $NF }')
-        fi
+        # swallow-ok: the merge already landed; a reader that fails makes the breadcrumb say "not recorded", it decides nothing
+        remaining=$(_pr_remainder_answer "$key" "$pr_body" | awk -F'\t' 'NF > 1 { print "Remaining: " $NF }') || remaining=""
         [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
         todo=$(_jira_breadcrumb "$repo_root" "$key" "$issue_type_json" \
             "PR #$pr_num ($nwo) merged @ $pr_sha as a partial merge; the ticket is not complete.
