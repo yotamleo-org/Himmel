@@ -66,6 +66,13 @@ export GIT_NO_REPLACE_OBJECTS=1
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# every read-only GitHub call below rides the second, read-only token
+# (scripts/lib/gh-read.sh) so a spent main token does not stop a review round; a
+# refused or missing read token falls back to the main one inside the router. The
+# executed form, not the function: these calls sit behind `timeout`, which cannot
+# run a shell function. A copy without the lib (a fixture) keeps plain gh. Writes
+# never go through here.
+if [ -f "$HIMMEL_ROOT/scripts/lib/gh-read.sh" ]; then _RR_GH=(bash "$HIMMEL_ROOT/scripts/lib/gh-read.sh"); else _RR_GH=(gh); fi
 
 usage() {
     echo "usage: review-round.sh start --branch <name> [--head <sha> [--base-sha <sha>]]" >&2
@@ -289,7 +296,7 @@ if [ -n "$base_sha" ]; then
         exit 8
     fi
     _vb_got="$(git rev-parse --verify --quiet "$base_sha^{commit}" 2>/dev/null)" || _vb_got=""
-    _vb_def="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}" --jq .default_branch 2>/dev/null)" || _vb_def=""
+    _vb_def="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" api "repos/{owner}/{repo}" --jq .default_branch 2>/dev/null)" || _vb_def=""
     case "$_vb_def" in
         ''|*[!A-Za-z0-9._/-]*) _vb_def="" ;;
     esac
@@ -297,7 +304,7 @@ if [ -n "$base_sha" ]; then
         echo "review-round: --base-sha '$base_sha' cannot be verified (unresolvable commit or unreadable remote default branch) - refused" >&2
         exit 8
     fi
-    _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
+    _vb_status="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" api "repos/{owner}/{repo}/compare/$_vb_got...$_vb_def" --jq .status 2>/dev/null)" || _vb_status=""
     case "$_vb_status" in
         identical|ahead) base_sha="$_vb_got" ;;
         *)
@@ -634,7 +641,7 @@ record_binds() {
         # shellcheck disable=SC1091
         . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
         _rb_rc=0
-        pr_want="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+        pr_want="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" pr list --head "$branch" --state open \
             --json number -q '.[].number' 2>/dev/null)" || _rb_rc=1
         if [ "$_rb_rc" -ne 0 ]; then pr_want=""; fi
         if [ "$_rb_rc" -eq 0 ] && [ -z "$pr_want" ]; then pr_none=1; fi
@@ -1098,7 +1105,7 @@ ci_red_unlock() {
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
     ci_red_names=""
-    _cr_rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh api --paginate "repos/{owner}/{repo}/commits/$1/check-runs" \
+    _cr_rows="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" api --paginate "repos/{owner}/{repo}/commits/$1/check-runs" \
         --jq '.check_runs[] | [.status, (.conclusion // ""), .name] | @tsv' 2>/dev/null)" || {
         echo "review-round: cannot read the check-runs of $1 (gh api) - no CI-red unlock" >&2
         return 1
@@ -1962,12 +1969,12 @@ if [ "$round" -lt 4 ]; then
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
-    early_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+    early_pr="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" pr list --head "$branch" --state open \
         --json number -q 'if length == 1 then .[0].number else "" end' 2>/dev/null)" || early_pr=""
     case "$early_pr" in
         ''|*[!0-9]*) early_pr="" ;;
     esac
-    early_repo="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh repo view --json owner,name,defaultBranchRef \
+    early_repo="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" repo view --json owner,name,defaultBranchRef \
         --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)" || early_repo=""
     early_nwo="${early_repo%% *}"
     early_default="${early_repo#* }"
@@ -2242,7 +2249,7 @@ if [ "$pending_count" -gt 0 ] && ! printf '%s' "$defer_to" | grep -qE '^[A-Z][A-
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
-    pr_title="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} gh pr list --head "$branch" --state open \
+    pr_title="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 30} "${_RR_GH[@]}" pr list --head "$branch" --state open \
         --json title -q 'if length == 1 then .[0].title else "" end' 2>/dev/null)" || pr_title=""
     residual_parent="$(printf '%s\n' "$pr_title" | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | sed -n '1p')" || residual_parent=""
     # An early close usually has no PR yet: the conventional-commit hook puts

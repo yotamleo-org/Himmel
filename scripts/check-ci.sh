@@ -539,15 +539,12 @@ if [ "$CR_ARMED" -eq 1 ]; then
     . "$(cd "$(dirname "$0")" && pwd)/lib/review-ledger-evidence.sh"
 fi
 
-# The check-rollup read lives on the forge seam (_gh_pr_checks in
-# forge-github.sh, the same `gh pr checks [<selector>] <args>` call, args
-# verbatim); the github backend is called directly, so no forge detection runs
-# here.
-# shellcheck source=scripts/lib/forge-github.sh
-# shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
-. "$(cd "$(dirname "$0")" && pwd)/lib/forge-github.sh"
+# The check-rollup read: `gh pr checks [<selector>] <args>`, args verbatim, on the
+# read-only token so a spent main token does not stop the wait. A
+# refused read token falls back to the main one inside gh_read. Not the forge
+# seam's _gh_pr_checks, which runs bare `gh`.
 pr_checks() {
-    _gh_pr_checks "$selector" "$@"
+    if [ -n "$selector" ]; then gh_read pr checks "$selector" "$@"; else gh_read pr checks "$@"; fi
 }
 
 pr_view() {
@@ -646,7 +643,8 @@ _alert() { merge_watch_alert "${owner:-?}/${repo:-?}" "${num:-?}" "${head0:-}" "
 # checks) and classic branch protection. A failed read returns 1: the caller
 # fails CLOSED — an unreadable set must never be mistaken for an empty one. Only
 # a 404 on the classic endpoint ("Branch not protected" / "Required status
-# checks not enabled") means "no classic rule".
+# checks not enabled") means "no classic rule". A classic read that fails as rate
+# limited returns 3 (not 1) so the pre-watch gate can defer it; it is still unread.
 #
 # ponytail: a token without admin cannot read the classic endpoint (403), so it
 # reads as unreadable and refuses every merge (exit 5) rather than guessing —
@@ -660,7 +658,7 @@ required_set() {
         --jq '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' 2>&1) || return 1
     if ! classic=$(GH_READ_QUIET=1 gh_read api "repos/$owner/$repo/branches/$base/protection/required_status_checks" \
         --jq '((.contexts // [])[] | "\(.)\t"), ((.checks // [])[]? | "\(.context)\t\(.app_id // "")")' 2>&1); then
-        case "$classic" in *"(HTTP 404)"*) classic="" ;; *) return 1 ;; esac
+        case "$classic" in *"(HTTP 404)"*) classic="" ;; *) ghb_is_rate_limited "$classic" && return 3; return 1 ;; esac
     fi
     printf '%s\n%s\n' "$rules" "$classic" | sed '/^$/d' | sort -u | _required_normalize
 }
@@ -752,7 +750,16 @@ required_gate() {
     # Backstop beside the SECONDS bound: a no-op sleep seam (CHECK_CI_SLEEP_CMD=:)
     # or a POLL of 0 must not turn the bounded wait into a spin.
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
-    if ! reqs=$(required_set); then
+    local rs_rc=0
+    reqs=$(required_set) || rs_rc=$?
+    if [ "$rs_rc" -eq 3 ] && [ "$wait_ok" -eq 1 ]; then
+        # The classic protection read is admin-only: the read token is refused and the router retries it on
+        # the main token, which is rate limited. Not a verdict: leave it to the post-settle call (wait 0),
+        # which re-reads and stays fail-closed.
+        echo "check-ci: the branch-protection read was rate limited; deferring the required-check gate until after the watch (it refuses then if still unreadable)" >&2
+        return 0
+    fi
+    if [ "$rs_rc" -ne 0 ]; then
         echo "check-ci: BLOCKED — required-set unreadable: could not list the checks GitHub requires on this PR's base branch (rules/branches or branch-protection read failed). Refusing rather than treating it as an empty set; re-run once gh/API access recovers (exit 5)" >&2
         _alert "required-set unreadable — the required-check list for the base branch could not be read; nothing was assumed"
         exit 5
@@ -1022,8 +1029,17 @@ watch_round() {
                 exec env CHECK_CI_WATCH_INTERVAL="$WATCH_INTERVAL" CHECK_CI_WATCH_INTERVAL_MAX="$WATCH_INTERVAL_MAX" \
                     CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 \
                     bash "$(cd "$(dirname "$0")" && pwd)/lib/check-ci-watch.sh" ${selector:+"$selector"}
-            elif [ -n "$selector" ]; then exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
-            else exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
+            elif [ -n "$selector" ]; then
+                # the watch is a read; it rides the read-only token when one
+                # loaded (gh_read_init above). The token goes to this one exec'd gh as
+                # GH_TOKEN, never in argv. gh_read itself cannot be exec'd (it forks, and
+                # $! must stay gh's real pid), so a refused read token is not retried on
+                # the main one here; the cache-backed loop above is the default path.
+                [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
+                exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
+            else
+                [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
+                exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
         gh_pid=$!

@@ -51,6 +51,13 @@ trap cleanup EXIT
 
 BIN="$ROOT/bin"
 mkdir -p "$BIN"
+# the cache reads go through the second token, and gh-read.sh retries a refused
+# read on the main one, which would swallow the stub's one-shot rate limit (case 5). No read
+# token is visible here (an empty .env root, keyring off), as on CI; row 14 brings its own.
+mkdir -p "$ROOT/emptyroot" "$ROOT/ghr-root"; : > "$ROOT/emptyroot/.env"
+printf 'himmel_github_token_vm2=%s\n' ghp_CACHEREADTOKEN > "$ROOT/ghr-root/.env"
+export GH_READ_ENV_ROOT="$ROOT/emptyroot" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 cat > "$BIN/gh" <<'EOF'
 #!/usr/bin/env bash
 # gh stub for test-check-ci-cache.sh. State dir: $GHC_DIR.
@@ -68,6 +75,12 @@ cat > "$BIN/gh" <<'EOF'
 #   calls.log   every gh call, one line
 D="$GHC_DIR"
 echo "$*" >> "$D/calls.log"
+# toks.log records which token each call carried; a main_spent file makes every
+# call on any token but the fixture read token fail as a spent main token.
+if [ "${GH_TOKEN:-}" = ghp_CACHEREADTOKEN ]; then echo read >> "$D/toks.log"; else echo main >> "$D/toks.log"; fi
+if [ -f "$D/main_spent" ] && [ "${GH_TOKEN:-}" != ghp_CACHEREADTOKEN ]; then
+    echo "HTTP 403: API rate limit exceeded for user ID 1." >&2; exit 1
+fi
 clock=$(cat "$D/clock" 2>/dev/null); clock=${clock:-1000000000}
 mode=$(cat "$D/mode" 2>/dev/null)
 cmd="${1:-}"
@@ -465,6 +478,15 @@ new_case
 printf 'pending\tsecurity/snyk (yotamleo)\npass\tunit-tests\n' > "$CASE_DIR/rows"
 run_ci "$CASE_DIR/n4" 42 --max-wait 900
 if [ "$(cat "$CASE_DIR/n4.rc")" -eq 0 ]; then pass "13d a pending listed context does not block -> rc 0"; else fail "13d listed pending" "rc=$(cat "$CASE_DIR/n4.rc") err=$(cat "$CASE_DIR/n4.err")"; fi
+
+# 14 — the main token is spent (every call on it is HTTP 403). The budget probe,
+# the PR head read and the rollup fetch all ride the read token, so the snapshot still reads.
+# A fresh process: the router loads its token once per process.
+new_case
+: > "$CASE_DIR/main_spent"; : > "$CASE_DIR/toks.log"
+got=$(GH_READ_ENV_ROOT="$ROOT/ghr-root" bash -c '. "$1"; cic_init "" && cic_get 60; echo "rc=$? rows=$(printf "%s" "$CIC_ROWS" | tr "\n\t" ",_")"' _ "$LIB" 2>/dev/null)
+if [ "$got" = "rc=0 rows=pending_unit-tests,pass_lint" ]; then pass "14 main token spent: the snapshot reads through the read token"; else fail "14 spent main" "got [$got] err=[$CIC_ERR]"; fi
+if [ "$(grep -c '^main$' "$CASE_DIR/toks.log")" -eq 0 ] && [ "$(grep -c '^read$' "$CASE_DIR/toks.log")" -ge 1 ]; then pass "14b no cache read ran on the main token"; else fail "14b tokens" "$(tr '\n' ' ' < "$CASE_DIR/toks.log")"; fi
 
 echo
 echo "check-ci-cache: $PASS passed, $FAIL failed"
