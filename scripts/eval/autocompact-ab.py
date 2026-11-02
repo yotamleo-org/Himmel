@@ -20,7 +20,7 @@
 # Per worker: arm, compactions (count + the token level at each, `preTokens` of the
 # compact_boundary row), handoffs (RESUME docs beside the worker doc), input tokens
 # split cache_read / cache_create / uncached, price-weighted cost (the same
-# weights as scripts/lanes/lib/burn-weights.sh, same WORKER_SESSION_BURN_W_* overrides),
+# weights as scripts/lanes/lib/burn-weights.sh, cache reads priced per model, same WORKER_SESSION_BURN_W_* overrides),
 # wall-clock (first to last row timestamp), PR outcome and mean output tokens
 # per assistant turn. Assistant rows are deduped by message id: a transcript
 # writes one row per content block.
@@ -34,8 +34,9 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 from env_alias import legacy_names_on
+from burn_weights import cache_read_weight
 
-W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", "0.1"))
+W_CR = cache_read_weight(None)  # the unknown-model default, for importers (compaction-defects.py)
 W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", "1.25"))
 W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", "1"))
 W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", "5"))
@@ -135,7 +136,7 @@ def parse_transcripts(paths):
                 continue
             mid = msg.get("id") or "row-%d-%s" % (len(calls), path)
             c = (u.get("input_tokens") or 0, u.get("cache_read_input_tokens") or 0,
-                 u.get("cache_creation_input_tokens") or 0, u.get("output_tokens") or 0)
+                 u.get("cache_creation_input_tokens") or 0, u.get("output_tokens") or 0, msg.get("model"))
             calls[mid] = c
             last_ctx = c[0] + c[1] + c[2]
     inp = sum(c[0] for c in calls.values())
@@ -144,7 +145,7 @@ def parse_transcripts(paths):
     out = sum(c[3] for c in calls.values())
     wall = int(max(stamps) - min(stamps)) if len(stamps) > 1 else 0
     return {"calls": len(calls), "uncached": inp, "cache_read": cr, "cache_create": cc,
-            "out": out, "cost_eq": round(inp * W_IN + cr * W_CR + cc * W_CC + out * W_OUT),
+            "out": out, "cost_eq": round(inp * W_IN + sum(c[1] * cache_read_weight(c[4]) for c in calls.values()) + cc * W_CC + out * W_OUT),
             "compactions": comps, "wall_s": wall,
             "mean_out_per_turn": round(out / len(calls), 1) if calls else 0}
 

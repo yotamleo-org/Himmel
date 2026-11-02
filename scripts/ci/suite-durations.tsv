@@ -808,6 +808,7 @@ scripts/lanes/test-worker-cost-report.sh	0
 scripts/lanes/test-worker-pr-open.sh	10
 scripts/lanes/test-profile-settings.sh	1
 scripts/lanes/test-plugin-profiles-automode.sh	1
+scripts/lanes/tests/test-cache-read-weights.sh	1
 scripts/lanes/tests/test-worker-burn.sh	1
 scripts/lanes/tests/test-stop-worker.sh	21
 scripts/lib/test-api-credit-state.sh	12

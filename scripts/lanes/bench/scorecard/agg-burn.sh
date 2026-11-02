@@ -96,7 +96,7 @@ while IFS= read -r f; do
 
     line=$(bash "$WORKER_SESSION_BURN" --raw "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov worker-burn-failed; continue; }
     sc_cov parsed
-    calls=$(printf '%s' "$line" | grep -o 'calls=[0-9]*' | cut -d= -f2)
+    calls=$(printf '%s' "$line" | grep -o ' calls=[0-9]*' | cut -d= -f2)
     avg=$(printf '%s' "$line" | grep -o 'avg-ctx=[^ ]*' | cut -d= -f2)
     first=$(printf '%s' "$line" | grep -o 'first-turn=[^ ]*' | cut -d= -f2)
     comp=$(printf '%s' "$line" | grep -o 'compactions=[0-9]*' | cut -d= -f2)
@@ -105,6 +105,7 @@ while IFS= read -r f; do
     cr=$(printf '%s' "$line" | grep -o 'cache-read=[^ ]*' | cut -d= -f2)
     cc=$(printf '%s' "$line" | grep -o 'cache-create=[^ ]*' | cut -d= -f2)
     inp=$(printf '%s' "$line" | grep -o 'input=[^ ]*' | cut -d= -f2)
+    ceq=$(printf '%s' "$line" | grep -o 'cost-eq=[^ ]*' | cut -d= -f2)
     model=$(grep -o '"model":"claude-[^"]*"' "$f" | sort | uniq -c | sort -rn | head -1 | sed 's/.*"model":"//; s/"$//')
 
     case "$f" in
@@ -115,9 +116,9 @@ while IFS= read -r f; do
         *)
             name=$(title_of "$f"); role=$(role_of "$name"); prole=- ;;
     esac
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$role" "$prole" "${model:-unknown}" "$calls" "$(kn "$avg")" "$(kn "$first")" "$comp" "$txt" \
-        "${out:-0}" "${cr:-0}" "${cc:-0}" "${inp:-0}" >> "$ROWS"
+        "${out:-0}" "${cr:-0}" "${cc:-0}" "${inp:-0}" "${ceq:-0}" >> "$ROWS"
 done < "$FILES"
 
 if [ -s "$UNREADABLE" ]; then
@@ -135,14 +136,13 @@ END{
 }' "$ROWS" | sort
 
 # Price-weighted TOTAL, over every row regardless of role/model.
-# Columns 9-12 are the exact integer counters worker-burn.sh
+# Columns 9-13 are the exact counters and the exact per-model cost-eq worker-burn.sh
 # --raw prints (no per-session 0.1k rounding to compound); this awk sums the
 # raw counts and divides by 1000 ONCE for display, rather than summing
 # per-session kn() roundings.
-awk -F'\t' -v wi="$WORKER_SESSION_BURN_W_INPUT" -v wcr="$WORKER_SESSION_BURN_W_CACHE_READ" -v wcc="$WORKER_SESSION_BURN_W_CACHE_CREATE" -v wo="$WORKER_SESSION_BURN_W_OUTPUT" '
-{ out+=$9; cr+=$10; cc+=$11; inp+=$12 }
+awk -F'\t' '
+{ out+=$9; cr+=$10; cc+=$11; inp+=$12; costeq+=$13 }
 END{
-  costeq = inp*wi + cr*wcr + cc*wcc + out*wo
   printf "TOTAL cache-read=%.1fk cache-create=%.1fk input=%.1fk output=%.1fk cost-eq=%.1fk\n", cr/1000, cc/1000, inp/1000, out/1000, costeq/1000
 }' "$ROWS"
 
