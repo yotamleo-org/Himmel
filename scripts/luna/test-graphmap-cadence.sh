@@ -630,6 +630,8 @@ for k_file in luna himmel; do
     sed "s@$TMP_ROOT/bin/bash@$REAL_BASH@" "$CRON_DIR/graphmap-$k_file.sh" > "$scr/runner-src.sh"
     cadence_exec_runner "$scr/runner-src.sh" "$HIMMEL_ROOT_EXP/scripts/graphify/refresh-graph-map.sh" 4 "$scr" || true
     alerts=$(cat "$scr/alerts" 2>/dev/null || true)
+    assert_contains "$k_file chunk-cap exit 4 reached the outcome handling (skipped flow-run row)" \
+        '"exit_code":4,"outcome":"skipped"' "$(cat "$scr/flow-runs.jsonl" 2>/dev/null || true)"
     assert_not_contains "$k_file chunk-cap exit 4 does not page" "fail " "$alerts"
     assert_not_contains "$k_file chunk-cap exit 4 does not clear an open alert" "clear " "$alerts"
 done
