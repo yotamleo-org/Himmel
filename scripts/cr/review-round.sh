@@ -1435,15 +1435,21 @@ fi
 
 # from: print the reviewed head the current round started from (.from), only
 # when .round holds 2 or 3 at call time; in the first round and the delta
-# round (which has its own .delta) it prints nothing. Read-only. Exit 0, or 5 on an
-# unreadable counter.
+# round (which has its own .delta) it prints nothing. Read-only, but it reads the
+# round and .from under the counter lock start and abort write under, so it
+# never sees a round start has half written. Exit 0, or 5 on an unreadable
+# counter or a counter lock it cannot take.
 if [ "$verb" = "from" ]; then
-    read_round || exit 5
-    if [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; then
+    counter_lock || exit 5
+    from_rc=0
+    read_round || from_rc=5
+    if [ "$from_rc" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then
         # swallow-ok: an empty, missing or invalid .from prints nothing
         state_sha "$from_state" || true
     fi
-    exit 0
+    SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+        bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    exit "$from_rc"
 fi
 
 # abort: a round whose panel aborted after start (panel-first-pass exit 7, or
@@ -1997,6 +2003,10 @@ fi
 cap_reason='Suggestion deferred after the three-round /pr-check cap.'
 delta_reason='Finding deferred in the one delta round after the three-round /pr-check cap.'
 early_reason='Suggestion deferred: a Suggestions-only round 2 or later closes the review loop on a PR that touches no CI trust path.'
+# An Important deferred in the second or third round because its ledger row
+# carries the structured pre_existing field (an amend row critic-pre-existing-tag.py
+# wrote after git blame placed the cited line before the PR). Never read from text.
+pre_reason='Important finding deferred: the cited code is older than this PR (tagged pre-existing).'
 # --head is the head the one delta round reviewed.
 delta_mode=0
 if [ "$round" -ge 4 ] && [ -f "$delta_state" ]; then
@@ -2016,7 +2026,11 @@ else
     round_label="round $round"
 fi
 
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+# The pre_existing field counts only at the rounds the tagger runs in (2 and 3),
+# and never in the delta round, where an Important is classified by an amend.
+pre_ok=0
+if [ "$delta_mode" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then pre_ok=1; fi
+analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
@@ -2084,7 +2098,29 @@ for (const o of findings.values()) {
     else if (!resolved && verdict !== "fixed") blocking.push(id);
     continue;
   }
-  if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
+  // I1: a Critical is never deferred by the pre_existing field. Only the
+  // boolean true on the effective row counts, never a [pre-existing] in text.
+  const preExisting = e.PRE_OK === "1" && severity === "imp" && o.pre_existing === true;
+  // The finding keeps its own class and none is forced: an escape-class Important
+  // is fixed in the PR, and one with no class cannot be told from it, so only a
+  // hardening or polish class from the adjudicator defers it.
+  const preClass = typeof o.fu_class === "string" ? o.fu_class.trim() : "";
+  if (preExisting && !resolved && (!verdict || verdict === "agreed")) {
+    if (preClass === "hardening" || preClass === "polish") pending.push({
+      id,
+      artifact: o.artifact || "diff",
+      perspective: o.perspective || "off",
+      fu_class: preClass,
+      fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
+      reason: e.PRE_REASON,
+      class: typeof o.class === "string" ? o.class.trim() : "",
+      text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
+    });
+    else if (preClass === "escape") blocking.push(id);
+    else unclassified.push(id);
+  }
+  else if (preExisting && trackedDeferred && reason === e.PRE_REASON) capDeferred.push({id, ticket});
+  else if ((severity === "crit" || severity === "imp") && !resolved) blocking.push(id);
   else if (!verdict && (severity === "sug" || severity === "nit")) pending.push({
     id,
     artifact: o.artifact || "diff",
@@ -2122,6 +2158,10 @@ if [ -n "$blocking" ] && [ "$delta_mode" -eq 1 ]; then
     exit 4
 fi
 unclassified="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).unclassified.join(" ")))' 2>/dev/null)" || unclassified=""
+if [ -n "$unclassified" ] && [ "$delta_mode" -eq 0 ]; then
+    echo "review-round: pre-existing Important finding(s) need an explicit fu_class amend before they can be deferred: $unclassified - amend each with --set fu_class=escape (fix it in this PR), --set fu_class=hardening (with its fu_why) or --set fu_class=polish, then re-run defer" >&2
+    exit 4
+fi
 if [ -n "$unclassified" ]; then
     echo "review-round: Important finding(s) in the delta round need an explicit fu_class amend before they can be deferred: $unclassified - amend each with --set fu_class=escape (fix it in this PR) or --set fu_class=hardening (exactly; polish or any other class does not qualify), then re-run defer" >&2
     exit 4
@@ -2132,6 +2172,21 @@ if [ -n "$blocking" ]; then
 fi
 if [ "$pending_count" -eq 0 ] && [ "$cap_deferred_count" -eq 0 ]; then
     exit 0
+fi
+
+# Every pending hardening finding needs a valid reason of its own or the
+# supplied --fu-why, checked once before anything is commented, filed or
+# amended, so a refused run leaves nothing behind for a retry to repeat.
+hardening_unreasoned="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const ok=/^(unseen-failure|no-check|vacuous-check|no-recovery|silent-rot)$/;process.stdout.write(JSON.parse(s).pending.filter(f=>f.fu_class==="hardening"&&!ok.test(f.fu_why||"")).map(f=>f.id).join(" "))})')" || exit 5
+if [ -n "$hardening_unreasoned" ]; then
+    case "$fu_why_arg" in
+        unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) ;;
+        *)
+            echo "review-round: hardening finding(s) with no valid fu_why: $hardening_unreasoned; marker remains pending" >&2
+            echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2
+            exit 6
+            ;;
+    esac
 fi
 
 # defer_to is a single small ticket-key string (well under the pipe
@@ -2211,14 +2266,36 @@ if [ "$auto_defer" -eq 1 ] && [ "$round" -lt 4 ]; then
         rm -f "$batch_body"
         exit 5
     fi
-    # ponytail: only Suggestions and nits reach an early close, and the
-    # analysis classes each one polish, so polish is the batch's most severe
-    # class. Upgrade: when a batch can hold other classes, pass the most
-    # severe of them (escape over hardening over polish).
+    # The batch takes the most severe class it holds. Suggestions and nits are
+    # polish; a pre-existing Important may be hardening (escape never reaches a
+    # deferral), and a hardening batch needs a valid reason, taken from its first
+    # hardening finding or from --fu-why.
+    if ! batch_why="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).pending.filter(f=>f.fu_class==="hardening");const ok=h.map(f=>f.fu_why).find(w=>/^(unseen-failure|no-check|vacuous-check|no-recovery|silent-rot)$/.test(w));process.stdout.write(h.length?(ok||"invalid"):"")})')"; then
+        rm -f "$batch_body"
+        exit 5
+    fi
+    batch_class=polish
+    batch_why_args=()
+    if [ -n "$batch_why" ]; then
+        batch_class=hardening
+        if [ "$batch_why" = invalid ]; then batch_why="$fu_why_arg"; fi
+        case "$batch_why" in
+            unseen-failure|no-check|vacuous-check|no-recovery|silent-rot) batch_why_args=(--fu-why "$batch_why") ;;
+            *)
+                rm -f "$batch_body"
+                echo "review-round: the batch holds a hardening finding but none has a valid fu_why; marker remains pending" >&2
+                echo "review-round: supply --fu-why <unseen-failure|no-check|vacuous-check|no-recovery|silent-rot> to recover without rerunning the panel" >&2
+                exit 6
+                ;;
+        esac
+    fi
+    # ponytail: a batch that already exists keeps the class it was filed with
+    # and only gains a comment. Upgrade: read that ticket's class and file a
+    # hardening finding on its own when the batch is polish.
     create_rc=0
     created="$(JIRA_PROJECT_KEY=${residual_parent%%-*} node "$primary_root/scripts/jira/dist/index.js" create \
         --type Task --title "Review follow-ups for $branch" --sector 'Ship loop' --labels standalone \
-        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class polish)" || create_rc=$?
+        --desc-file "$batch_body" --residual-of "$residual_parent" --fu-class "$batch_class" ${batch_why_args[@]+"${batch_why_args[@]}"})" || create_rc=$?
     rm -f "$batch_body"
     defer_to="$(printf '%s\n' "$created" | sed -nE 's/^Created ([A-Z][A-Z0-9]*-[0-9]+)$/\1/p')"
     if [ "$create_rc" -ne 0 ] || ! [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
@@ -2251,6 +2328,9 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
     artifact="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).artifact))' 2>/dev/null)" || artifact=""
     perspective="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).perspective))' 2>/dev/null)" || perspective=""
     fu_class="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).fu_class))' 2>/dev/null)" || fu_class=""
+    # A finding may carry its own deferral reason (a pre-existing Important);
+    # the rest take the round's.
+    finding_reason="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).reason||""))' 2>/dev/null)" || finding_reason=""   # swallow-ok: an empty reason takes the round's reason
     if [ -z "$finding_id" ] || [ -z "$artifact" ] || [ -z "$perspective" ] || [ -z "$fu_class" ]; then
         amend_rc=5
         break
@@ -2324,7 +2404,7 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         --branch "$branch" --head "$full_head" --id "$finding_id" \
         --artifact "$artifact" --perspective "$perspective" \
         --set verdict=deferred --set "deferred_to=$defer_to" --set "fu_class=$fu_class" ${fu_why:+--set "fu_why=$fu_why"} \
-        --set class=unattributed --set "reason=$defer_reason" \
+        --set class=unattributed --set "reason=${finding_reason:-$defer_reason}" \
         --reason "$amend_why"; then
         amend_rc=5
         break

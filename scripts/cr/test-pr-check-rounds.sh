@@ -35,7 +35,7 @@ cp "$HERE/ledger-append.sh" "$fx/scripts/cr/ledger-append.sh"
 cp "$HERE/write-verdicts.sh" "$fx/scripts/cr/write-verdicts.sh"
 cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
 cp "$HERE/ledger-amend-auth.js" "$fx/scripts/cr/ledger-amend-auth.js"
-cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$fx/scripts/cr/"
+cp "$HERE/known-findings.sh" "$HERE/known-findings.json" "$HERE/critic-pre-existing-tag.py" "$fx/scripts/cr/"
 # Every chokepoint fails closed without its seam-guard lib.
 cp "$HERE/../lib/chokepoint-seam-guard.sh" "$fx/scripts/lib/chokepoint-seam-guard.sh"
 cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
@@ -511,6 +511,125 @@ assert_has "$rl1_out" 'remain blocking at round 1' "8425 the round-1 Critical re
 assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8425 an open Critical at round 1 writes no deferred row"
 assert_eq "$(rl1_marker)" kept "8425 an open Critical at round 1 keeps the marker"
 
+# I1 and I4: only the structured pre_existing field (an amend row
+# the tagger writes) lets defer defer an Important, at rounds 2 and 3, to the
+# branch's batch residual. A Critical never is, and an Important whose text
+# merely says [pre-existing] still blocks.
+rl1_pre_reason='Important finding deferred: the cited code is older than this PR (tagged pre-existing).'
+rl1_pre_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-8","severity":"imp","class":"reader-allowlist","text":"- [critic-8]: old helper ignores errors [docs/guide/x.md:1]"}
+'
+rl1_pre_amend() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"pre_existing":true}}\n' "$1"; }
+# The adjudicator's own class for the finding (and, for hardening, its fu_why).
+# The leading newline keeps it a row of its own after a $(...) that lost its last one.
+rl1_class_amend() { printf '\n{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{"fu_class":"%s"%s}}\n' "$1" "$2" "${3:+,\"fu_why\":\"$3\"}"; }
+rl1_text_imp='{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"critic-9","severity":"imp","class":"reader-allowlist","text":"- [critic-9]: [pre-existing] old helper ignores errors [pre-existing] [docs/guide/x.md:1]"}
+'
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
+assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 2 is deferred, not blocking ($rl1_out)"
+assert_has "$rl1_ledger" '"verdict":"deferred"' "8429 the pre-existing Important gets a deferred amend row"
+assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-9500"' "8429 it is deferred to the branch's batch residual"
+rl1_deferral="$(printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"')"
+assert_has "$rl1_deferral" '"fu_class":"polish"' "8429 it keeps the polish class its adjudicator gave it"
+assert_has "$rl1_ledger" "\"reason\":\"$rl1_pre_reason\"" "8429 the deferral says why: the code predates the PR"
+assert_has "$rl1_ledger" '"severity":"imp"' "8429 the finding keeps severity imp (I4)"
+assert_lacks "$rl1_ledger" '"severity":"sug"' "8429 nothing lowers the finding to a Suggestion (I4)"
+assert_eq "$(rl1_marker)" cleared "8429 the pre-existing deferral clears the marker"
+rl1_run feat/rl1 3 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
+assert_eq "$rl1_rc" 0 "8429 a pre-existing Important at round 3 is deferred ($rl1_out)"
+# The finding's own class decides; none is forced. Hardening is kept, escape-class
+# is fixed in the PR (it blocks), and no class at all cannot be told from escape.
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+assert_eq "$rl1_rc" 0 "8429 a pre-existing hardening Important is deferred ($rl1_out)"
+rl1_deferral="$(printf '%s\n' "$rl1_ledger" | grep '"verdict":"deferred"')"
+assert_has "$rl1_deferral" '"fu_class":"hardening"' "8429 the deferral keeps the hardening class, it is not forced to polish"
+assert_lacks "$rl1_deferral" '"fu_class":"polish"' "8429 the deferral of a hardening Important is not polish"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 escape)"
+assert_eq "$rl1_rc" 4 "8429 a pre-existing escape-class Important still blocks ($rl1_out)"
+assert_has "$rl1_out" 'critic-8' "8429 the blocking escape-class Important is named"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 an escape-class Important is never deferred by the pre_existing field"
+assert_eq "$(rl1_marker)" kept "8429 an escape-class pre-existing Important keeps the marker"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 4 "8429 a pre-existing Important with no class of its own is not deferred ($rl1_out)"
+assert_has "$rl1_out" 'fu_class' "8429 the refusal asks for a fu_class amend"
+assert_has "$rl1_out" 'critic-8' "8429 the unclassified Important is named"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 an unclassified pre-existing Important defers nothing"
+rl1_run feat/rl1 2 "$rl1_crit$(rl1_pre_amend critic-3)"
+assert_eq "$rl1_rc" 4 "8429 a Critical carrying the pre_existing field still blocks (I1) ($rl1_out)"
+assert_has "$rl1_out" 'critic-3' "8429 the blocking Critical is named"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a Critical is never deferred by the pre_existing field (I1)"
+assert_eq "$(rl1_marker)" kept "8429 an open Critical keeps the marker"
+rl1_run feat/rl1 2 "$rl1_text_imp"
+assert_eq "$rl1_rc" 4 "8429 an Important whose text merely says [pre-existing] still blocks ($rl1_out)"
+assert_has "$rl1_out" 'critic-9' "8429 the text-only Important is named as blocking"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a [pre-existing] in the text defers nothing"
+rl1_run feat/rl1 2 "$rl1_pre_imp$rl1_text_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 polish)"
+assert_eq "$rl1_rc" 4 "8429 a text-only Important beside a pre-existing one still blocks ($rl1_out)"
+assert_lacks "$rl1_out" 'critic-8' "8429 only the untagged Important blocks"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 nothing is deferred while an untagged Important is open"
+rl1_run feat/rl1 1 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 4 "8429 the field defers nothing at round 1 (the tagger runs at rounds 2 and 3 only) ($rl1_out)"
+rl1_run feat/rl1 4 "$rl1_pre_imp$(rl1_pre_amend critic-8)"
+assert_eq "$rl1_rc" 4 "8429 the field defers nothing at round 4 ($rl1_out)"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 rounds 1 and 4 write no deferral for a pre_existing Important"
+
+# A batch that holds a hardening finding is filed with that class and its reason,
+# not as polish. One with no valid reason files nothing and keeps the marker.
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"
+assert_eq "$rl1_rc" 0 "8429 a new batch holding a hardening Important is filed ($rl1_out)"
+rl1_args="$(tail -n 1 "$rl1_log")"
+assert_has "$rl1_args" '"--title","Review follow-ups for feat/rl1"' "8429 the batch with a hardening Important is the branch's batch residual"
+assert_has "$rl1_args" '"--fu-class","hardening"' "8429 a batch holding a hardening Important is filed as hardening, not polish"
+assert_has "$rl1_args" '"--fu-why","no-check"' "8429 the hardening batch carries the finding's fu_why"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_creates_before="$(rl1_creates)"
+rl1_run feat/rl1 2 "$rl1_pre_imp$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening)"
+assert_eq "$rl1_rc" 6 "8429 a hardening Important with no fu_why fails closed ($rl1_out)"
+assert_has "$rl1_out" '--fu-why <' "8429 the refusal names the --fu-why recovery"
+assert_eq "$(rl1_creates)" "$rl1_creates_before" "8429 a hardening batch with no fu_why files no ticket"
+assert_eq "$(rl1_marker)" kept "8429 a hardening batch with no fu_why keeps the marker"
+# One hardening finding with a valid reason beside one with none: nothing is
+# filed or commented before the second is refused, so a retry repeats nothing.
+rl1_pre_imp10="$(printf '%s' "$rl1_pre_imp" | sed 's/critic-8/critic-10/g')"$'\n'
+rl1_mixed="$rl1_pre_imp$rl1_pre_imp10$(rl1_pre_amend critic-8)$(rl1_class_amend critic-8 hardening no-check)"$'\n'"$(rl1_pre_amend critic-10)$(rl1_class_amend critic-10 hardening)"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+rl1_creates_before="$(rl1_creates)"
+rl1_run feat/rl1 2 "$rl1_mixed"
+assert_eq "$rl1_rc" 6 "8429 a mixed hardening batch with one finding lacking a fu_why fails closed ($rl1_out)"
+assert_has "$rl1_out" 'critic-10' "8429 the hardening finding with no fu_why is named"
+assert_eq "$(rl1_creates)" "$rl1_creates_before" "8429 a mixed hardening batch files no ticket before it is refused"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a mixed hardening batch defers none of its findings"
+assert_eq "$(rl1_marker)" kept "8429 a mixed hardening batch keeps the marker"
+printf 'HIMMEL-9500\n' > "$rl1_git/cr-review-rounds/feat/rl1.deferred-to" || fail "8429 the reused-ticket setup could not write the remembered key"
+assert_eq "$(rl1_key)" HIMMEL-9500 "8429 the reuse rows start from a remembered batch ticket"
+rl1_comments_before="$(grep -c '"comment"' "$rl1_log" | tr -d ' ')"
+rl1_run feat/rl1 2 "$rl1_mixed"
+assert_eq "$rl1_rc" 6 "8429 a mixed hardening batch on a reused ticket fails closed ($rl1_out)"
+assert_eq "$(grep -c '"comment"' "$rl1_log" | tr -d ' ')" "$rl1_comments_before" "8429 a mixed hardening batch adds no comment to the reused ticket before it is refused"
+assert_lacks "$rl1_ledger" '"verdict":"deferred"' "8429 a mixed hardening batch on a reused ticket defers none of its findings"
+printf 'HIMMEL-9500\n' > "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+
+# `from` reads the round and its start point
+# under the counter lock, so it never reads a round start has half written.
+# Hold the lock as another process would: from waits, then refuses (exit 5)
+# and prints no start point; once the lock is free it prints it, and a leaked
+# lock would make that second call wait again.
+mkdir -p "$rl1_git/cr-review-rounds/feat"
+rl1_from_head="$(git -C "$rl1_repo" rev-parse feat/rl1)"
+printf '3\n' > "$rl1_git/cr-review-rounds/feat/rl1.round"
+printf '%s\n' "$rl1_from_head" > "$rl1_git/cr-review-rounds/feat/rl1.from"
+SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$fx/scripts/lib/shared-branch-lock.sh" acquire "$rl1_repo" feat/rl1 test-holder >/dev/null 2>&1 \
+    || fail "8429 the test could not take the counter lock"
+rl1_from_rc=0
+rl1_from_out="$(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" from --branch feat/rl1 2>"$tmp/rl1-from.err")" || rl1_from_rc=$?
+SHARED_BRANCH_LOCK_NS=himmel-cr-review-round bash "$fx/scripts/lib/shared-branch-lock.sh" release "$rl1_repo" feat/rl1 >/dev/null 2>&1 \
+    || fail "8429 the test could not release the counter lock"
+assert_eq "$rl1_from_rc" 5 "8429 from refuses while the counter lock stays held"
+assert_eq "$rl1_from_out" "" "8429 from prints no start point while the counter lock is held"
+assert_has "$(cat "$tmp/rl1-from.err")" 'counter lock' "8429 from says it could not take the counter lock"
+assert_eq "$(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" from --branch feat/rl1 2>&1)" "$rl1_from_head" "8429 from prints the start point once the lock is free"
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.from"
+
 # S5: a reset moves the key aside, so the next early close files a new batch.
 cat > "$tmp/bin/rl1-reset-gh" <<'STUB'
 #!/usr/bin/env bash
@@ -523,7 +642,7 @@ assert_has "$rl1_reset_out" '.deferred-to' "8425 cr-reset moves .deferred-to asi
 assert_eq "$(rl1_key)" "" "8425 after cr-reset the branch has no remembered key"
 rl1_run feat/rl1 1 "$rl1_sug"
 assert_eq "$rl1_rc" 0 "8425 the first early close after a reset succeeds ($rl1_out)"
-assert_eq "$(rl1_creates)" 2 "8425 after a reset the next early close files a new batch residual"
+assert_eq "$(rl1_creates)" 3 "8425 after a reset the next early close files a new batch residual"
 
 # S5: a round-1 start removes the key.
 assert_eq "$(rl1_key)" HIMMEL-9500 "8425 the post-reset close remembers its new key"

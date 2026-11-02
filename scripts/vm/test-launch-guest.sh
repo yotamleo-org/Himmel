@@ -33,7 +33,10 @@ J
 P="$tmp/repo/prompt.txt"
 # no launch in this suite may write the operator's real cost ledger
 export LAUNCH_GUEST_COST_LEDGER="$tmp/default-ledger.jsonl"
-unset LAUNCH_GUEST_TICKET LAUNCH_GUEST_ACCOUNT
+# nor may any launch ask a real guest for its usage: the default guest answer is a healthy 10 percent
+printf '#!/bin/sh\necho 10\n' > "$tmp/usage-default.sh"; chmod +x "$tmp/usage-default.sh"
+export LAUNCH_GUEST_USAGE="$tmp/usage-default.sh"
+unset LAUNCH_GUEST_TICKET LAUNCH_GUEST_ACCOUNT HIMMEL_GUEST_REPO LAUNCH_GUEST_WARN_PCT
 run() { (cd "$tmp/repo" && LAUNCH_GUEST_VMS_JSON="$tmp/vms.json" bash "$SCRIPT" "$@" 2>&1); }
 
 rc=0; out="$(run)" || rc=$?
@@ -309,6 +312,113 @@ rc=0; out="$(runo "$tmp/ledger-is-a-dir" ubuntu_new "$P" 2>"$tmp/c8.err")" || rc
 check "C8 unwritable ledger: the guest's exit code is unchanged" "$rc" "3"
 check "C8 unwritable ledger: stdout is exactly the guest answer" "$out" '{"total_cost_usd":0.5}'
 contains "C8 unwritable ledger: says the row was not written" "$(cat "$tmp/c8.err")" "could not write the cost ledger row"
+
+# --- the launch checks the GUEST account, warns before it runs out, and the row carries model + tokens ---
+# the usage stub answers like `vmsdk.py <vm> usage`: one line, a percent or "unknown"
+GOOD='{"type":"result","total_cost_usd":1.25,"usage":{"input_tokens":120,"output_tokens":45,"cache_creation_input_tokens":300,"cache_read_input_tokens":4000},"modelUsage":{"claude-haiku-5-5":{"costUSD":0.05},"claude-sonnet-5-5":{"costUSD":1.2}}}'
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$USAGE_LOG"\necho "${USAGE_ANS:-10}"\n' > "$tmp/usage-stub.sh"; chmod +x "$tmp/usage-stub.sh"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\nprintf "%%s\\n" "$GOOD_JSON"\n' > "$tmp/bin/ssh"; chmod +x "$tmp/bin/ssh"
+export USAGE_LOG="$tmp/usage.log" GOOD_JSON="$GOOD"
+unset USAGE_ANS LAUNCH_GUEST_WARN_PCT
+# usage_run <percent-or-word> [args...]: runo with a stubbed guest answer and the account label acct-x
+usage_run() { _a="$1"; shift; rm -f "$USAGE_LOG"; LAUNCH_GUEST_USAGE="$tmp/usage-stub.sh" USAGE_ANS="$_a" LAUNCH_GUEST_ACCOUNT=acct-x runo "$LEDGER" "$@"; }
+
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 100 ubuntu_new "$P" 2>"$tmp/e1.err")" || rc=$?
+check "E1 exhausted guest account: exit 2" "$rc" "2"
+contains "E1 exhausted guest account: the message names the account label" "$(cat "$tmp/e1.err")" "acct-x"
+contains "E1 exhausted guest account: the message says exhausted" "$(cat "$tmp/e1.err")" "exhausted"
+check "E1 exhausted guest account: no ssh session" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
+check "E1 exhausted guest account: nothing on stdout" "$out" ""
+check "E1 exhausted guest account: no ledger row" "$(rows)" "0"
+check "E1 the usage check was asked about this vm" "$(cat "$USAGE_LOG" 2>/dev/null)" "ubuntu_new usage"
+
+# the negative control: a healthy guest account launches and writes exactly one row
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 30 ubuntu_new "$P" 2>"$tmp/e2.err")" || rc=$?
+check "E2 healthy guest account: exit 0" "$rc" "0"
+check "E2 healthy guest account: the ssh session ran" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "ran"
+check "E2 healthy guest account: one ledger row" "$(rows)" "1"
+lacks "E2 healthy guest account: no WARN" "$(cat "$tmp/e2.err")" "WARN"
+
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 85 ubuntu_new "$P" 2>"$tmp/e3.err")" || rc=$?
+check "E3 near-limit guest account: still launches" "$rc" "0"
+contains "E3 near-limit: WARN names the account" "$(cat "$tmp/e3.err")" "WARN"
+contains "E3 near-limit: WARN names the account label" "$(cat "$tmp/e3.err")" "acct-x"
+contains "E3 near-limit: WARN carries the percent" "$(cat "$tmp/e3.err")" "85%"
+check "E3 near-limit: one ledger row" "$(rows)" "1"
+check "E3 near-limit: stdout is exactly the guest result" "$out" "$GOOD"
+
+for ans in unknown garbage; do
+    fresh; rm -f "$LEDGER"
+    rc=0; out="$(usage_run "$ans" ubuntu_new "$P" 2>"$tmp/e4.err")" || rc=$?
+    check "E4 [$ans] guest account: still launches" "$rc" "0"
+    contains "E4 [$ans]: WARN names the account label" "$(cat "$tmp/e4.err")" "acct-x"
+    contains "E4 [$ans]: WARN says unknown" "$(cat "$tmp/e4.err")" "unknown"
+    check "E4 [$ans]: one ledger row" "$(rows)" "1"
+done
+
+# the warn share is one knob; a value that is not a number is refused before any ssh
+fresh; rm -f "$LEDGER"
+rc=0; out="$(LAUNCH_GUEST_WARN_PCT=90 usage_run 85 ubuntu_new "$P" 2>"$tmp/e5.err")" || rc=$?
+lacks "E5 warn knob 90: 85% does not warn" "$(cat "$tmp/e5.err")" "WARN"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(LAUNCH_GUEST_WARN_PCT=50 usage_run 60 ubuntu_new "$P" 2>"$tmp/e5.err")" || rc=$?
+contains "E5 warn knob 50: 60% warns" "$(cat "$tmp/e5.err")" "60%"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(LAUNCH_GUEST_WARN_PCT=lots usage_run 10 ubuntu_new "$P" 2>"$tmp/e5.err")" || rc=$?
+check "E5 bad warn knob: exit 2" "$rc" "2"
+check "E5 bad warn knob: no ssh" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
+
+# a dry-run starts nothing, so it asks the guest nothing
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 100 --dry-run ubuntu_new "$P" 2>&1)" || rc=$?
+check "E6 dry-run on an exhausted account: exit 0" "$rc" "0"
+check "E6 dry-run: the guest account was not asked" "$([ -e "$USAGE_LOG" ] && echo asked || echo none)" "none"
+
+# the row carries the model and the token counts from the guest json
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>/dev/null)" || rc=$?
+row="$(cat "$LEDGER" 2>/dev/null)"
+check "E7 row: the model that cost the most" "$(printf '%s' "$row" | jq -r .model 2>/dev/null)" "claude-sonnet-5-5"
+check "E7 row: input tokens" "$(printf '%s' "$row" | jq -r .tokens_in 2>/dev/null)" "120"
+check "E7 row: output tokens" "$(printf '%s' "$row" | jq -r .tokens_out 2>/dev/null)" "45"
+check "E7 row: cache tokens (creation + read)" "$(printf '%s' "$row" | jq -r .tokens_cache 2>/dev/null)" "4300"
+check "E7 row: the existing fields are unchanged" "$(printf '%s' "$row" | jq -r '[.ticket, .vm, .account, .usd, .usd_source] | join(" ")' 2>/dev/null)" "HIMMEL-1 ubuntu_new acct-x 1.25 guest-json"
+check "E7 row: the credential-free key set" "$(printf '%s' "$row" | jq -r 'keys | join(",")' 2>/dev/null)" "account,model,seconds,ticket,tokens_cache,tokens_in,tokens_out,ts,usd,usd_source,vm"
+rc=0; sum="$(LAUNCH_GUEST_COST_LEDGER="$LEDGER" bash "$COST" 2>&1)" || rc=$?
+check "E7 vm-cost.sh still sums a row with the new fields" "$sum" "$(printf 'ticket\tHIMMEL-1\t1\t%s\t1.25\t0\naccount\tacct-x\t1\t%s\t1.25\t0' "$(jq -r .seconds "$LEDGER")" "$(jq -r .seconds "$LEDGER")")"
+
+# a guest answer with no model or token detail records null for each
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\necho "{\\"type\\":\\"result\\",\\"total_cost_usd\\":1.25}"\n' > "$tmp/bin/ssh"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>/dev/null)" || rc=$?
+row="$(cat "$LEDGER" 2>/dev/null)"
+check "E8 no detail: one row" "$(rows)" "1"
+check "E8 no detail: model null" "$(printf '%s' "$row" | jq -r '.model | type' 2>/dev/null)" "null"
+check "E8 no detail: all three token counts null" "$(printf '%s' "$row" | jq -r '[.tokens_in, .tokens_out, .tokens_cache | type] | join(",")' 2>/dev/null)" "null,null,null"
+check "E8 no detail: usd is still read" "$(printf '%s' "$row" | jq -r .usd 2>/dev/null)" "1.25"
+printf '#!/bin/sh\necho NOT-JSON\n' > "$tmp/bin/ssh"
+fresh; rm -f "$LEDGER"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>/dev/null)" || rc=$?
+check "E8 non-json answer: still one row, model null" "$(rows)$(jq -r '.model | type' "$LEDGER" 2>/dev/null)" "1null"
+
+# the guest checkout path is one override, a closed shape because it is spliced into the guest shell
+rc=0; out="$(run --dry-run ubuntu_new "$P")" || rc=$?
+contains "G1 default guest repo is unchanged" "$out" 'cd ~/Documents/github/himmel &&'
+rc=0; out="$(HIMMEL_GUEST_REPO=/srv/guest-checkout/himmel run --dry-run ubuntu_new "$P")" || rc=$?
+check "G1 absolute override: exit 0" "$rc" "0"
+contains "G1 absolute override: the guest cd uses it" "$out" 'cd /srv/guest-checkout/himmel &&'
+lacks "G1 absolute override: the default is gone" "$out" "Documents/github/himmel"
+rc=0; out="$(HIMMEL_GUEST_REPO='~/himmel' run --dry-run ubuntu_new "$P")" || rc=$?
+contains "G1 ~/ override stays a literal tilde for the guest shell" "$out" 'cd ~/himmel &&'
+for bad in 'himmel' '/x; id' '/x y' '/a/../b' '~/../b' '$(id)' '/a`id`'; do
+    fresh; rc=0; out="$(HIMMEL_GUEST_REPO="$bad" runv ubuntu_new "$P")" || rc=$?
+    check "G2 bad override [$bad]: exit 2" "$rc" "2"
+    contains "G2 bad override [$bad]: says so" "$out" "HIMMEL_GUEST_REPO must be"
+    check "G2 bad override [$bad]: no ssh" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
+done
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi

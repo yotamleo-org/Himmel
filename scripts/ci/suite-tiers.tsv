@@ -229,6 +229,7 @@ scripts/cr/test-critic-panel-instrumentation.sh	pr	trust-path
 scripts/cr/test-critic-panel-registry.sh	pr	static-gate
 scripts/cr/test-critic-panel-triviality.sh	pr	trust-path
 scripts/cr/test-critic-panel.sh	pr	trust-path
+scripts/cr/test-critic-pre-existing-tag.sh	pr	trust-path
 scripts/cr/test-dependabot-go.sh	pr	trust-path
 scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -828,6 +829,7 @@ scripts/lib/test-claude-headless.sh	pr	trust-path
 scripts/lib/test-claude-lane.sh	pr	trust-path
 scripts/lib/test-claude-version.sh	pr	trust-path
 scripts/lib/test-clean-sandbox.sh	pr	guard
+scripts/lib/test-clear-stale-claude-marker.sh	pr	trust-path
 scripts/lib/test-commit-class.sh	pr	trust-path
 scripts/lib/test-compute-duration.sh	pr	trust-path
 scripts/lib/test-cr-available.sh	pr	trust-path

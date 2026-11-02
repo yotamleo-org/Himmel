@@ -136,8 +136,12 @@
 set -u
 
 usage() {
+    local rc_primary
+    rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
+    case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
     echo "usage: ready-check.sh <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
+    echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 ONLY7=0
@@ -338,7 +342,11 @@ elif [ "$head_now" = "$SHA" ] && [ "$mss" = "CLEAN" ]; then
 elif [ "$head_now" = "$SHA" ] && [ "$mss" = "UNSTABLE" ] && [ "$gated" -gt 0 ] && [ -z "$bad" ] && [ -n "$skipped" ]; then
     echo "[PASS] 1. head=$head_now matches, mergeStateStatus=UNSTABLE with only non-gating checks not green ($skipped)"
 else
-    echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN)"
+    if [ "$mss" = "BEHIND" ]; then
+        echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN) — behind main: git fetch origin && git merge origin/main into the branch, push, then re-run with the new head sha (nothing to do when mergeStateStatus is CLEAN and the head matches)"
+    else
+        echo "[FAIL] 1. head=$head_now (want $SHA), mergeStateStatus=$mss (want CLEAN)"
+    fi
     mark_fail
 fi
 
@@ -1308,6 +1316,9 @@ else
 fi
 if [ "$tp_rc" -ne 0 ]; then
     echo "[FAIL] 12. trust path: refused ${tp_out:-trust_path_check exited $tp_rc with no reason}"
+    case "$tp_out" in
+        *anchor*) echo "       hint: run ready-check.sh from the primary checkout (pulled to origin's tip), not from a worktree" ;;
+    esac
     mark_fail
 else
     echo "[PASS] 12. trust path: $tp_out"
