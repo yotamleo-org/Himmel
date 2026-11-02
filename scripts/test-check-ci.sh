@@ -1415,7 +1415,11 @@ git -C "$CR_YAML_UNARMED_REPO" -c user.email=t@t -c user.name=t commit --quiet -
 # mechanism needed evidence to certify. It is advisory on its own now.
 run_in_repo "$EMPTY_LEDGER_REPO" cr-ratelimited
 assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evidence needed (HIMMEL-3360)"
-assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34e rate-limited (state=skipped) prints the advisory NOTE"
+assert_err_has "check-ci: NOTE — CodeRabbit rate-limited on head" "34e rate-limited status is named rate-limited (HIMMEL-8880)"
+assert_err_has "NO review at this head" "34e the rate-limited NOTE says no review was posted"
+assert_err_has "@coderabbitai review" "34e the rate-limited NOTE carries the re-request hint"
+assert_err_lacks "34e rate-limited is no longer printed as skipped" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
+assert_err_lacks "34e rate-limited is never read as reviewed" "reviewed NOTE present" -F -- "CodeRabbit success"
 
 # 34f — the structural half: a wording NOBODY enumerated. Under the retired
 # allow-list this failed closed; an earlier change made the status advisory

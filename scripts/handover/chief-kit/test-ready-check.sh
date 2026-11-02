@@ -123,6 +123,10 @@ case "$args" in
         printf '%s\n' "${STUB_FILES:-README.md}"
         [ -z "${STUB_FILES_PARTIAL:-}" ] || exit 1  # a --paginate that died after its first page
         ;;
+    "api repos/"*"/commits/"*"/statuses"*)
+        # check 15: the CodeRabbit commit status; STUB_CR_DESC unset = unreadable
+        [ -n "${STUB_CR_DESC+x}" ] || exit 1
+        jq -n --arg d "$STUB_CR_DESC" '[{context:"CodeRabbit",state:"success",description:$d,created_at:"2026-11-02T18:44:07Z",creator:{id:136622811,login:"coderabbitai[bot]",type:"Bot"}}]' ;;
     *)
         echo "gh-stub: unhandled args: $args" >&2
         exit 1 ;;
@@ -3259,6 +3263,25 @@ while IFS=$'\t' read -r bo_want bo_body <&3; do
     contains "bug-origin line table row $bo_n ($bo_want)" "$out" "$bo_expect"
 done 3< "$BO_TABLE"
 check "bug-origin line table: has its rows" "$([ "$bo_n" -ge 50 ] && echo yes || echo "only $bo_n")" "yes"
+
+# --- 15. CodeRabbit rate-limited at the head: warn only, never the verdict
+reset_stubs
+CR_RC_ctl=0; CR_OUT_ctl="$(STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run)" || CR_RC_ctl=$?
+# the real status description from PR 4589 @ 69b7bd20
+CR_RC_rl=0; CR_OUT_rl="$(STUB_CR_DESC='Review rate limited' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run)" || CR_RC_rl=$?
+contains "cr rate-limited: names the state" "$CR_OUT_rl" '[WARN] 15. CodeRabbit rate-limited at head'
+contains "cr rate-limited: says no review" "$CR_OUT_rl" 'NO CodeRabbit review here'
+notcontains "cr rate-limited: no FAIL word on the line" "$(printf '%s\n' "$CR_OUT_rl" | grep -F '] 15. ' | tr '[:upper:]' '[:lower:]')" "fail"
+check "cr rate-limited: exit code unmoved" "$CR_RC_rl" "$CR_RC_ctl"
+check "cr rate-limited: last line unmoved" "$(last_line "$CR_OUT_rl")" "$(last_line "$CR_OUT_ctl")"
+# negative controls: a real review at the head, an unreadable status, no status
+CR_OUT_ok="$(STUB_CR_DESC='Review completed' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run || true)"
+notcontains "cr control: a completed review prints no row 15" "$CR_OUT_ok" '] 15. '
+CR_OUT_dis="$(STUB_CR_DESC='Review skipped: automatic reviews are disabled' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run || true)"
+notcontains "cr control: auto-reviews-disabled is not rate-limited" "$CR_OUT_dis" '] 15. '
+notcontains "cr control: an unreadable status prints no row 15" "$CR_OUT_ctl" '] 15. '
+CR_OUT_rl7="$(STUB_CR_DESC='Review rate limited' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run7 || true)"
+notcontains "cr rate-limited: --only 7 does not run row 15" "$CR_OUT_rl7" '] 15. '
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
