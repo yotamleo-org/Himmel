@@ -117,6 +117,10 @@ QRPTRC=$?
 check "the report over the quoted-search journal exits 0" '[ "$QRPTRC" = 0 ]'
 check "a search behind bash -c with a quote before it counts and a lone ls does not: 2 journals, 1 searched, 1 never called the graph" '[ "$(OUT="$QRPT" cells all claude main journals searched searched_no_graph)" = 2/1/1 ]'
 
+# shellcheck disable=SC2034
+MISS="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-miss/claude/projects" 2>&1)"
+check "a wrapper call that exits 3 or 4 is a miss, exit 1 is a fail, a bare graphify exit 3 stays a bare fail: 4 wrapper, 1 fail, 2 miss, 1 bare, 1 bare fail" '[ "$(OUT="$MISS" cells all claude main wrapper wrapper_fail wrapper_miss bare bare_fail)" = 4/1/2/1/1 ]'
+
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
 

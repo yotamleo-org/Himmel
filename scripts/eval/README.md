@@ -519,7 +519,8 @@ read-only: it scans the journals changed in the last N days (default 7) under ev
 journals apart, and prints per scope (all projects, himmel projects), lane, kind and role
 (console, leg, judge, sub, other, from the session name or the subagent type) two tables.
 The graph table has the journals, those with a graph call, the calls per form (`query`,
-`explain`, `path`, `mcp`), bare versus wrapper calls with their failures, and `searched`
+`explain`, `path`, `mcp`), bare versus wrapper calls with their failures (a wrapper call that exits 3 or 4, no match or
+ambiguous, is a `wrapper_miss`, an honest no-answer, not a `wrapper_fail`), and `searched`
 (journals with a grep, rg, Grep or Glob mention, a count of mentions, not of use). The qmd
 table has the journals with a qmd call and with a qmd search, and the calls split into search
 verbs (`query`, `search`, `vsearch`) against every other verb, shell against mcp. A third

@@ -46,7 +46,7 @@ command -v jq >/dev/null || { echo "graph-use-report: jq is required" >&2; exit 
 # The window: the last DAYS days by mtime, or with --until-epoch (GNU find) the DAYS days that end at that instant, to re-run a past window.
 if [ -n "$UNTIL" ]; then WIN=(-newermt "@$((UNTIL - DAYS * 86400))" ! -newermt "@$UNTIL"); else WIN=(-mtime "-$DAYS"); fi
 
-# One row per journal: tools search query explain path mcp bare bare_fail wrapper wrapper_fail. A bad journal LINE is
+# One row per journal: tools search query explain path mcp bare bare_fail wrapper wrapper_fail wrapper_miss. A bad journal LINE is
 # skipped by fromjson?; a journal jq cannot read at all fails the program and is counted by the caller.
 # shellcheck disable=SC2016  # jq program, $x, $t, $g and $errs are jq variables
 JQ='
@@ -64,14 +64,16 @@ JQ='
       else empty end;
   [inputs | fromjson? | select(type == "object") | .message.content? | arrays | .[] | select(type == "object")
     | if .type == "tool_use" then {u: .id, n: (.name // ""), c: ((.input.command? // "") | if type == "string" then . else "" end)}
-      elif .type == "tool_result" and .is_error == true then {e: .tool_use_id}
+      elif .type == "tool_result" and .is_error == true then {e: .tool_use_id, m: ((.content // "") | if type == "string" then . elif type == "array" then (map(.text? // "") | join("")) else "" end | test("^Exit code [34]([^0-9]|$)"))}
       else empty end] as $x
   | ($x | map(select(has("e")) | .e)) as $errs
+  | ($x | map(select(has("e") and .m) | .e)) as $misses
   | ($x | map(select(has("u")))) as $t
   | ($t | map(select(.n == "Bash") | . as $b | ($b.c | hit) as $h | {id: $b.u, k: $h.k, f: $h.f})) as $g
   | ($t | map(select(.n == "Bash") | . as $b | ($b.c | qhit) as $h | {id: $b.u, k: $h.k, s: ($h.v | qsearch)})) as $q
   | ($t | map(select(.n | test("^mcp__(plugin_qmd_)?qmd__")) | {s: (.n | sub("^mcp__(plugin_qmd_)?qmd__"; "") | qsearch)})) as $m
-  | def failed($k): $g | map(select(.k == $k and (.id as $i | any($errs[]; . == $i)))) | length;
+  | def failed($k): $g | map(select(.k == $k and (.id as $i | any($errs[]; . == $i)) and (.k == "bare" or (.id as $i | all($misses[]; . != $i))))) | length;
+    def missed($k): $g | map(select(.k == $k and (.id as $i | any($misses[]; . == $i)))) | length;
     def n($k): $g | map(select(.k == $k)) | length;
     def form($f): $g | map(select(.f == $f)) | length;
     def qfailed($k): $q | map(select(.k == $k and (.id as $i | any($errs[]; . == $i)))) | length;
@@ -80,7 +82,7 @@ JQ='
       ($t | map(select(.n == "Grep" or .n == "Glob" or (.n == "Bash" and (.c | test("(^|[;&|([:space:]\"'"'"'])(git[[:space:]]+grep|grep|egrep|fgrep|rg|ugrep)[[:space:]]")))) ) | length),
       form("query"), form("explain"), form("path"),
       ($t | map(select(.n | test("^mcp__graphify__"))) | length),
-      n("bare"), failed("bare"), n("wrap"), failed("wrap"),
+      n("bare"), failed("bare"), n("wrap"), failed("wrap"), missed("wrap"),
       ($q | map(select(.s)) | length), ($q | map(select(.s | not)) | length),
       ($m | map(select(.s)) | length), ($m | map(select(.s | not)) | length),
       qn("bare"), qfailed("bare"), qn("wrap"), qfailed("wrap") ]
@@ -130,17 +132,17 @@ for root in "${ROOTS[@]}"; do
 done
 
 echo "graph-use-report: window ${DAYS}d${UNTIL:+ ending at epoch $UNTIL}, $njournals journals in ${#ROOTS[@]} roots"
-echo "counted: a Bash call whose command leads with graphify, worker-graph.sh or leg-graph.sh then query, explain or path, and every mcp__graphify__ tool call (graph); a Bash call whose command leads with qmd or qmd-bounded.sh then a verb, and every mcp__qmd__ or mcp__plugin_qmd_qmd__ tool call (qmd), with the search verbs query, search, vsearch and deep_search apart from every other verb (status, update, embed, get, multi_get and the rest). A command leads when it starts or follows cd, env, timeout N, rtk, rtk proxy, bash, sh, bash -c or -lc, a newline, ; && |, \$( ), do or then. A path that only names a script (cat, ls or git log of scripts/lib/qmd-bounded.sh) is not a call. A call failed when its tool_result has is_error. Main = a session journal, sub = a subagent journal. Role: a main journal whose recorded name ends in -chief is console, one named HIMMEL-<key>-N<n>... is leg, any other or no name is other; a subagent journal whose .meta.json agentType is judge or judge-ro is judge, any other subagent is sub. Scope himmel = a project directory whose name contains himmel. graph_pct and qmd_pct = journals with a call over journals that ran any tool; search_pct = journals with a qmd search call over the same. searched = journals with a Grep or Glob call or a Bash command that has grep, rg or ugrep after a command boundary or a quote, so it counts mentions, not use (echo use grep here counts)."
+echo "counted: a Bash call whose command leads with graphify, worker-graph.sh or leg-graph.sh then query, explain or path, and every mcp__graphify__ tool call (graph); a Bash call whose command leads with qmd or qmd-bounded.sh then a verb, and every mcp__qmd__ or mcp__plugin_qmd_qmd__ tool call (qmd), with the search verbs query, search, vsearch and deep_search apart from every other verb (status, update, embed, get, multi_get and the rest). A command leads when it starts or follows cd, env, timeout N, rtk, rtk proxy, bash, sh, bash -c or -lc, a newline, ; && |, \$( ), do or then. A path that only names a script (cat, ls or git log of scripts/lib/qmd-bounded.sh) is not a call. A call failed when its tool_result has is_error, except that an exit 3 or exit 4 of worker-graph.sh or leg-graph.sh (no match, ambiguous) is a miss, an honest no-answer, not a failure (wrapper_miss; a bare graphify keeps bare_fail, and a qmd call is unchanged). Main = a session journal, sub = a subagent journal. Role: a main journal whose recorded name ends in -chief is console, one named HIMMEL-<key>-N<n>... is leg, any other or no name is other; a subagent journal whose .meta.json agentType is judge or judge-ro is judge, any other subagent is sub. Scope himmel = a project directory whose name contains himmel. graph_pct and qmd_pct = journals with a call over journals that ran any tool; search_pct = journals with a qmd search call over the same. searched = journals with a Grep or Glob call or a Bash command that has grep, rg or ugrep after a command boundary or a quote, so it counts mentions, not use (echo use grep here counts)."
 echo "bullets: one row per role over the handover docs under --handovers (default \$HANDOVER_DIR) changed in the window that have a ## Results heading; role by file name: *-chief* is console, HIMMEL-<key>-N<n>... is leg, any other is other. A doc's graph-qmd: bullet is used_or_cited when it says used or cited (and not not used), called_only when it names results without that, none_found for none found, na_shipping for n/a; a doc with no bullet is no_data, not a zero. The words are the worker's own claim, not a check. --min-tools N keeps only journals that ran at least N tools (the audit's population is 5)."
 echo "not counted: a call behind any other wrapper (xargs, env -i, sudo, a function), a call whose command is not a string, a call that only a pipe builds, and the second graph call (or second qmd call) of a command that holds two (one command counts once per tool, a bare call before a wrapper call), so those are missed; a quoted mention such as echo \"x; graphify query y\" and a line inside a here-doc that begins like a call are counted by mistake, so the numbers are approximate, not a floor."
 [ "$unread" -gt 0 ] && echo "journals that could not be read, left out of every number: $unread"
 [ "$unwalked" -gt 0 ] && echo "directories that could not be walked, journals under them left out of every number: $unwalked"
-# A journal row is: lane kind himmel role, then tools searched query explain path mcp bare bare_fail wrapper wrapper_fail,
+# A journal row is: lane kind himmel role, then tools searched query explain path mcp bare bare_fail wrapper wrapper_fail wrapper_miss,
 # then qmd shell_search shell_other mcp_search mcp_other bare bare_fail wrapper wrapper_fail.
 echo "== graph =="
-printf 'scope\tlane\tkind\trole\tjournals\twith_tools\twith_graph\tgraph_pct\tcalls\tquery\texplain\tpath\tmcp\tbare\tbare_fail\twrapper\twrapper_fail\tsearched\tsearched_no_graph\n'
+printf 'scope\tlane\tkind\trole\tjournals\twith_tools\twith_graph\tgraph_pct\tcalls\tquery\texplain\tpath\tmcp\tbare\tbare_fail\twrapper\twrapper_fail\twrapper_miss\tsearched\tsearched_no_graph\n'
 printf '%s' "$rows" | awk -F'\t' -v mt="$MINTOOLS" '
-  NF == 22 && $5 >= mt {
+  NF == 23 && $5 >= mt {
     calls = $7 + $8 + $9 + $10
     for (s = 0; s < 2; s++) {
       if (s == 1 && $3 != 1) continue
@@ -149,21 +151,21 @@ printf '%s' "$rows" | awk -F'\t' -v mt="$MINTOOLS" '
       if ($5 > 0) wt[k]++
       if (calls > 0) wg[k]++
       c[k] += calls; q[k] += $7; e[k] += $8; p[k] += $9; m[k] += $10
-      b[k] += $11; bf[k] += $12; w[k] += $13; wf[k] += $14
+      b[k] += $11; bf[k] += $12; w[k] += $13; wf[k] += $14; wm[k] += $15
       if ($6 > 0) { se[k]++; if (calls == 0) sn[k]++ }
     }
   }
   END {
     for (k in seen)
-      printf "%s\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", k, j[k], wt[k], wg[k],
-        wt[k] ? sprintf("%.0f%%", 100 * wg[k] / wt[k]) : "n/a", c[k], q[k], e[k], p[k], m[k], b[k], bf[k], w[k], wf[k], se[k], sn[k]
+      printf "%s\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n", k, j[k], wt[k], wg[k],
+        wt[k] ? sprintf("%.0f%%", 100 * wg[k] / wt[k]) : "n/a", c[k], q[k], e[k], p[k], m[k], b[k], bf[k], w[k], wf[k], wm[k], se[k], sn[k]
   }' | sort -t "$TAB" -k1,1 -k2,2 -k3,3 -k4,4
 echo "== qmd =="
 printf 'scope\tlane\tkind\trole\tjournals\twith_tools\twith_qmd\tqmd_pct\twith_search\tsearch_pct\tcalls\tsearch_shell\tsearch_mcp\tother_shell\tother_mcp\tbare\tbare_fail\twrapper\twrapper_fail\n'
 printf '%s' "$rows" | awk -F'\t' -v mt="$MINTOOLS" '
-  NF == 22 && $5 >= mt {
-    calls = $15 + $16 + $17 + $18
-    srch = $15 + $17
+  NF == 23 && $5 >= mt {
+    calls = $16 + $17 + $18 + $19
+    srch = $16 + $18
     for (s = 0; s < 2; s++) {
       if (s == 1 && $3 != 1) continue
       k = (s ? "himmel" : "all") "\t" $1 "\t" $2 "\t" $4
@@ -171,8 +173,8 @@ printf '%s' "$rows" | awk -F'\t' -v mt="$MINTOOLS" '
       if ($5 > 0) wt[k]++
       if (calls > 0) wq[k]++
       if (srch > 0) ws[k]++
-      c[k] += calls; ss[k] += $15; so[k] += $16; ms[k] += $17; mo[k] += $18
-      b[k] += $19; bf[k] += $20; w[k] += $21; wf[k] += $22
+      c[k] += calls; ss[k] += $16; so[k] += $17; ms[k] += $18; mo[k] += $19
+      b[k] += $20; bf[k] += $21; w[k] += $22; wf[k] += $23
     }
   }
   END {
