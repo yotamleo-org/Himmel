@@ -5162,17 +5162,23 @@ $(_c81_rows "plugin:$name" "$f")"
 # is takeable meanwhile. FAIL when no PostToolUse hook in the project settings, the project's
 # settings.local.json or the user settings runs scripts/handover/queue-lock.sh self-heartbeat from a
 # group that fires after every tool (no matcher, or "*"; a matcher such as "Agent" runs it only for
-# that tool); FAIL too when any of those layers sets disableAllHooks, which switches the hook off.
+# that tool); FAIL too when the effective disableAllHooks is true, which switches the hook off.
 # OK otherwise. The remedy is the sanctioned writer, which himmel-update.sh runs on every update.
 check_c85_self_heartbeat() {
     command -v jq >/dev/null 2>&1 || { emit INFO C85-self-heartbeat "jq not on PATH -- self-heartbeat hook scan skipped"; return 0; }
-    local f layers="" found="" off=""
+    local f layers="" found="" off="" v=""
+    # disableAllHooks takes the value of the highest-precedence layer that sets it
+    # (project local, then project, then user), so a user-level true that a higher layer sets to false is not off.
+    for f in "$REPO_ROOT/.claude/settings.local.json" "$REPO_ROOT/.claude/settings.json" "$SETTINGS"; do
+        [ -r "$f" ] || continue
+        v="$(jq -r 'if has("disableAllHooks") then (.disableAllHooks | tostring) else "unset" end' "$f" 2>/dev/null)" || continue
+        [ "$v" = unset ] && continue
+        [ "$v" = true ] && off="$f"
+        break
+    done
     for f in "$REPO_ROOT/.claude/settings.json" "$REPO_ROOT/.claude/settings.local.json" "$SETTINGS"; do
         [ -r "$f" ] || continue
         layers="$layers $f"
-        if [ -z "$off" ] && jq -e '.disableAllHooks == true' "$f" >/dev/null 2>&1; then
-            off="$f"
-        fi
         if [ -z "$found" ] && jq -e '[(.hooks.PostToolUse // [])[]? | select(((.matcher // "") == "") or .matcher == "*") | (.hooks // [])[]? | (.command // "") | select(contains("queue-lock.sh") and contains("self-heartbeat"))] | length > 0' "$f" >/dev/null 2>&1; then
             found="$f"
         fi
