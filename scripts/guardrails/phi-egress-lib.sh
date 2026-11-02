@@ -58,7 +58,7 @@ _guard_endpoint_host() {
 }
 
 # --- The PHI config dir ------------------------------------------------------
-# ~/.config/himmel/phi is the neutral home of phi-roots / egress-denylist;
+# ~/.config/himmel/phi is the neutral dir for phi-roots / egress-denylist;
 # ~/.config/claude-glm (or $CLAUDE_GLM_CONFIG_DIR, which replaces only that dir)
 # is the old one. NO GUARD READS THE NEUTRAL DIR YET: only the doctor calls the
 # functions below, until a later change re-points the readers. Until then the old
@@ -99,12 +99,17 @@ _guard_phi_list_paths() {
 
 # _guard_phi_list_entries <file> -> prints each root, trimmed, comments and
 # blanks dropped, backslashes folded, trailing slashes removed (an entry of only
-# slashes prints as /). rc 2 when the file cannot be read: the slurp comes first
-# so a read error cannot pass for a short list.
+# slashes prints as /). rc 2 when the file cannot be read or is not named as one
+# of the two lists: the slurp comes first so a read error cannot pass for a short
+# list.
 _guard_phi_list_entries() {
     local content line
+    case "${1##*/}" in
+        phi-roots | egress-denylist) ;;
+        *) return 2 ;;
+    esac
     _guard_file_readable "$1" || return 2
-    # read-sink-ok: every caller passes a phi-roots or egress-denylist path under the PHI config dirs, never user input
+    # read-sink-ok: the case above admits only the two list names; the dir can come from an env override and the file can be a symlink, and the content is only compared, never printed by the doctor
     content="$(cat -- "$1")" || return 2
     while IFS= read -r line || [ -n "$line" ]; do
         line="${line#"${line%%[![:space:]]*}"}"

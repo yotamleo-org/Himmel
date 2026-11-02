@@ -15,7 +15,7 @@
     "note": "embedding, rerank, and vision-embedding send FULL content (text or images) to the provider — they are content egress, not metadata egress."
   },
   "corpora": {
-    "salus": "any path under a `.salus`-marked root, or under a root listed in ~/.config/claude-glm/phi-roots or ~/.config/claude-glm/egress-denylist (the shared glm-guard.ts / parity_guard.py primitives). ~/.config/himmel/phi/ is the new home of these lists but no guard reads it yet (HIMMEL-7898; HIMMEL-8915 re-points them), so a root listed only there is NOT enforced",
+    "salus": "any path under a `.salus`-marked root, or under a root listed in ~/.config/claude-glm/phi-roots or ~/.config/claude-glm/egress-denylist (the shared glm-guard.ts / parity_guard.py primitives). No guard reads ~/.config/himmel/phi/ yet (HIMMEL-7898; HIMMEL-8915 re-points them), so a root listed only there is NOT enforced",
     "luna-personal": "the luna vault root EXCLUDING Clippings/ (journals, maps, sessions, notes)",
     "luna-clippings": "<luna-root>/Clippings/ (clipped public web content)",
     "handover-state": "the handover state repo root (HANDOVER_DIR; work artifacts, specs, session notes). Kept for Mode-B EXTERNAL state repos after the HIMMEL-343 fold: a HANDOVER_DIR nested INSIDE a vault classifies as that vault's corpus instead (fence precedence checks vault roots first — more restrictive; pinned by test, HIMMEL-817)",

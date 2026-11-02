@@ -156,6 +156,14 @@ else
     echo "  SKIP  unreadable-dir case (chmod 000 did not deny access on this fs/user)"
 fi
 
+echo "== _guard_phi_list_entries =="
+# Only the two list names are read, whichever dir the path comes from.
+H="$(phi_home entries)"; printf '/synthetic/phi\n' > "$H/.config/claude-glm/phi-roots"; printf '/synthetic/phi\n' > "$H/.config/claude-glm/other-file"
+got="$(_guard_phi_list_entries "$H/.config/claude-glm/phi-roots")"; rc=$?
+expect_paths "a list name is read" "0:/synthetic/phi" "$rc:$got"
+got="$(_guard_phi_list_entries "$H/.config/claude-glm/other-file")"; rc=$?
+expect_paths "any other file name is refused, rc 2 and nothing printed" "2:" "$rc:$got"
+
 echo "== _guard_phi_decision =="
 # The egress decision, not the path: rc 0 clear, 1 listed (deny), 2 unreadable
 # (deny), 3 none declared.

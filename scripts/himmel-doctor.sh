@@ -1848,13 +1848,13 @@ check_c27() {
     unenforced="$(_guard_phi_unenforced_roots 2>/dev/null)" || urc=$?
     if [ "$urc" -eq 2 ]; then
         emit FAIL C27-guard-signals \
-            "a PHI list under $neutral cannot be read, so it may name a root no guard enforces (no guard reads that dir yet)" \
+            "$neutral, a parent of it or a PHI list in it cannot be read, so it may name a root no guard enforces (no guard reads that dir yet)" \
             "make it a readable regular file, and keep every root in the old list under ${cfgdir}, the only list the guards read"
         return
     fi
     if [ -n "$unenforced" ]; then
         emit FAIL C27-guard-signals \
-            "PHI root(s) under $neutral are NOT enforced, because no guard reads that dir yet and the old list does not cover them: $(printf '%s' "$unenforced" | tr '\n' ' ')" \
+            "$(printf '%s\n' "$unenforced" | grep -c .) PHI root(s) under $neutral are NOT enforced, because no guard reads that dir yet and the old list does not cover them" \
             "add each root to the old list under ${cfgdir} as well, and keep it there: the guards read only that list"
         return
     fi
@@ -1882,7 +1882,7 @@ check_c27() {
     if [ -n "$old_only" ]; then
         emit WARN C27-guard-signals \
             "PHI list(s) exist only under the old path:$old_only — the old path stays authoritative: every guard reads it and no guard reads $neutral yet. Do NOT move or remove it" \
-            "nothing to fix for enforcement. To clear this warning, copy the list into $neutral and keep the old file (docs/internals/egress-matrix.md)"
+            "no action is needed until HIMMEL-8915 re-points the guards (docs/internals/egress-matrix.md)"
         return
     fi
     emit OK C27-guard-signals "phi-roots/egress-denylist under ${dirs[*]} (where present) are readable regular files"

@@ -138,17 +138,16 @@ already use: `.salus` root markers and the
 plus vault/state roots from env or config — never hardcoded absolute paths.
 The matrix defines *policy*; membership resolution stays with the guards.
 
-**The neutral dir (HIMMEL-7898): no guard reads it yet.** `~/.config/himmel/phi/`
-is the new home of these two lists, and the old path above stays authoritative:
-every guard reads the old path and none reads the new one until HIMMEL-8915
-re-points them. A root listed only under the new dir is therefore **not
-enforced**, so `himmel-doctor` C27 reports it as a FAIL. Migration note: **copy,
-never move.** Keep every root in the old list; a copy in the new dir clears
-C27's old-only WARN and changes no egress decision. Removing or moving an old
-list drops its roots from every guard. `_guard_phi_decision` in
-`scripts/guardrails/phi-egress-lib.sh` already gives the final rule, a union
-where a list under either dir counts and an unreadable dir denies, but only its
-own tests call it so far.
+**The neutral dir (HIMMEL-7898): no guard reads it yet.** The old path above
+stays authoritative: every guard reads it and none reads `~/.config/himmel/phi/`
+until HIMMEL-8915 re-points them. No PHI list leaves the old path, and no action
+is needed until then. Removing or moving an old list drops its roots from every
+guard. A root listed only under the neutral dir is **not enforced**, so
+`himmel-doctor` C27 reports it as a FAIL, with a count and never the entries.
+`_guard_phi_decision` in `scripts/guardrails/phi-egress-lib.sh` is a union where
+a list under either dir counts and an unreadable dir denies, but only its own
+tests call it so far, and HIMMEL-8915 settles its open cases before any guard
+does.
 
 List files are read line by line with surrounding whitespace (and a CRLF `\r`)
 trimmed and whole-line `#` comments skipped — in `graphify-fence.sh`

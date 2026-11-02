@@ -737,19 +737,25 @@ c27_fixture() {
 echo "== C27: a root only under the old path -> WARN that forbids removing it =="
 t="$(c27_fixture)"; rmdir "$t/home/.config/himmel/phi"; printf '/synthetic/phi\n' > "$t/home/.config/claude-glm/phi-roots"
 out="$(c27_row "$t")"
-if grepq "$out" 'WARN C27-guard-signals' && grepq "$out" 'stays authoritative' && grepq "$out" 'Do NOT move or remove' && grepq "$out" 'keep the old file'; then pass "C27 -> WARN (old only, keep it)"; else fail "C27 old-only -> $out"; fi
+if grepq "$out" 'WARN C27-guard-signals' && grepq "$out" 'stays authoritative' && grepq "$out" 'Do NOT move or remove' && grepq "$out" 'no action is needed' && ! grepq "$out" -i 'copy'; then pass "C27 -> WARN (old only, keep it, no copy advice)"; else fail "C27 old-only -> $out"; fi
 rm -rf "$t"
 
 echo "== C27: a root only under the neutral dir -> FAIL, not enforced =="
 t="$(c27_fixture)"; printf '/synthetic/phi\n' > "$t/home/.config/himmel/phi/phi-roots"
 out="$(c27_row "$t")"
-if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'NOT enforced' && grepq "$out" '/synthetic/phi'; then pass "C27 -> FAIL (neutral only)"; else fail "C27 neutral-only -> $out"; fi
+if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'NOT enforced' && grepq "$out" '1 PHI root'; then pass "C27 -> FAIL (neutral only)"; else fail "C27 neutral-only -> $out"; fi
 rm -rf "$t"
 
-echo "== C27: both dirs but the neutral list has an extra root -> FAIL names that root =="
+echo "== C27: both dirs but the neutral list has an extra root -> FAIL counts it =="
 t="$(c27_fixture)"; printf '/synthetic/phi\n/synthetic/extra\n' > "$t/home/.config/himmel/phi/phi-roots"; printf '/synthetic/phi\n' > "$t/home/.config/claude-glm/phi-roots"
 out="$(c27_row "$t")"
-if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" '/synthetic/extra'; then pass "C27 -> FAIL (extra neutral root)"; else fail "C27 extra-root -> $out"; fi
+if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" '1 PHI root'; then pass "C27 -> FAIL (extra neutral root)"; else fail "C27 extra-root -> $out"; fi
+rm -rf "$t"
+
+echo "== C27: no list entry appears anywhere in the doctor's output (--file-issue can post it) =="
+t="$(c27_fixture)"; printf '/synthetic/phi\n/synthetic/extra\n' > "$t/home/.config/himmel/phi/phi-roots"; printf '/synthetic/phi\n' > "$t/home/.config/claude-glm/phi-roots"
+out="$(HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'FAIL C27-guard-signals' && ! grepq "$out" '/synthetic/'; then pass "C27 -> no list entry in the output"; else fail "C27 entry-leak -> $(printf '%s' "$out" | grep -A1 C27)"; fi
 rm -rf "$t"
 
 echo "== C27: both dirs hold the same roots -> OK =="
