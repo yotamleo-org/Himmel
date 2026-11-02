@@ -254,9 +254,10 @@ classify() { # salus|adapter dir; returns 0 yes, 10 no
 # A salus-marked directory searches nothing, because a query would send text off this machine: its brief names no search
 # command anywhere (judge and resumed docs included, --core-only too), and a worker brief says so in words below. This runs
 # before the --core-only exit, so --no-prior-art-check cannot clear it, and it exits 3 so the launcher's refusal offers no
-# flag. A directory that is not absolute is left to the Contract check below.
+# flag. A relative resume_cwd is classified as written (the launcher resolves it against its own directory); the Contract
+# check below still refuses it for a fresh worker brief.
 is_salus=0
-if [ "${cwd#/}" != "$cwd" ]; then
+if [ -n "$cwd" ]; then
     rc=0; classify salus "$cwd" || rc=$?
     [ "$rc" -eq 0 ] && is_salus=1
 fi

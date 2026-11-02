@@ -550,6 +550,22 @@ rc=0; out="$(PATH="$FAKEBIN:$PATH" run_worker "$tmp/s_kit_ok.md" --profile worke
 { [ "$rc" -eq 2 ] && grep -Fq 'cannot classify' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
     && ok "10m6 a crashing classifier is refused by the launcher with the flag, and names no flag" || bad "10m6 launcher with a crashing classifier (rc=$rc): $out"
 
+# A relative resume_cwd is resolved by the launcher against its own directory, so the salus check runs on it as written.
+mkc s_rel_salus "." '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+mkc s_rel_salus_nc "." '# brief' "$VAGUE" "$DIR_LINE" '' '> **Why:** x'
+rc=0; (cd "$CW_SAL" && bash "$LINT" --core-only "$tmp/s_rel_salus.md") >/dev/null 2>&1 || rc=$?
+[ "$rc" = 3 ] && ok "10m7 --core-only refuses a relative resume_cwd that resolves into a salus-marked directory" || bad "10m7 --core-only relative salus rc=$rc"
+rc=0; (cd "$CW_SAL" && bash "$LINT" --core-only "$tmp/s_rel_salus_nc.md") >/dev/null 2>&1 || rc=$?
+[ "$rc" = 3 ] && ok "10m8 the same for a doc with no Contract line" || bad "10m8 relative salus, no Contract line, rc=$rc"
+rc=0; out="$(cd "$CW_SAL" && run_worker "$tmp/s_rel_salus.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'salus-marked' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "10m9 the launcher with the flag refuses a relative salus resume_cwd and names no flag" || bad "10m9 launcher, relative salus, flag (rc=$rc): $out"
+rc=0; out="$(cd "$CW_SAL" && run_worker "$tmp/s_rel_salus_nc.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'salus-marked' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "10m10 the launcher refuses a relative salus resume_cwd on a doc with no Contract line" || bad "10m10 launcher, relative salus, no Contract (rc=$rc): $out"
+rc=0; (cd "$CW_HIM" && bash "$LINT" --core-only "$tmp/s_rel_salus.md") >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] && ok "10m11 a relative resume_cwd that resolves outside any salus-marked directory still passes --core-only" || bad "10m11 relative non-salus --core-only rc=$rc"
+
 # The lint reads resume_cwd with a copy of the launcher's parse: pin the two blocks together.
 # shellcheck disable=SC2016  # the sed patterns match literal $ in the two scripts' text
 parse_block() { # file lint|launcher: the resume_cwd parse, the launcher's names mapped to the lint's
