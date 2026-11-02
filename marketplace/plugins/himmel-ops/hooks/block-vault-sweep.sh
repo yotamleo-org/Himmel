@@ -33,10 +33,10 @@
 #
 # Silent (exit 0) in a salus session: the replacement sends text to
 # `qmd query -c luna` (OpenRouter), which scripts/guardrails/egress-matrix.json
-# hard-denies for salus. Salus signals (a trimmed copy of
-# block-agent-native-egress.sh): "salus" in the cwd, the command or the path, in
-# the cwd's git toplevel or any remote URL, or a .salus marker on the cwd or an
-# ancestor.
+# hard-denies for salus. The salus test asks the sibling block-agent-native-egress.sh
+# (see is_salus below), so every signal that fence holds applies, plus
+# CLAUDE_PROJECT_DIR and .salus-profile. A salus session, or one the hook cannot
+# classify, gets no refusal and no log row.
 #
 # ponytail: catches named sweep shapes over known roots, a wrapped or scripted
 # sweep passes; upgrade path is the read-tool route (a backlog follow-up). A heredoc
@@ -109,21 +109,56 @@ log_row() { # EVENT ROOT
 
 lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
-# Is this a salus session? The hook is silent there, and writes no log row for any call.
-is_salus() {
-    case "$(lc "$cwd|$cmd|$gpath|$gpattern")" in *salus*) return 0 ;; esac
-    if command -v git >/dev/null 2>&1 && [ -n "$cwd" ] && [ -d "$cwd" ]; then
-        unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
-        case "$(lc "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null; git -C "$cwd" remote -v 2>/dev/null)")" in *salus*) return 0 ;; esac
-    fi
-    local d=$cwd parent
-    while [ -n "$d" ]; do
-        [ -e "$d/.salus" ] && return 0
+# Is this a salus session? The hook is silent there, writes no log row for any call, and
+# when it cannot tell it answers yes. The salus signals (phi-roots, egress-denylist, the
+# canonical cwd, the git toplevel, common dir and remotes, a .salus marker) live in the
+# sibling block-agent-native-egress.sh, which a salus session cannot be without; it is asked
+# here with a synthetic payload that names only higgsfield, so none of the user's text
+# reaches it. Its exit 2 is salus. It answers "not salus" (0) for any payload that does not
+# name higgsfield, so a canary that names higgsfield and salus must exit 2 first: if it does
+# not, the oracle's trigger changed or it is not the script this expects, and nothing can be
+# trusted. The two signals the oracle lacks are added: CLAUDE_PROJECT_DIR (a salus session
+# that cd'd out) and a .salus-profile marker.
+# ponytail: this hook is coupled to block-agent-native-egress.sh's higgsfield trigger and exit
+# code; the canary turns a change there into "cannot tell", which is silent and writes nothing.
+# Upgrade path: a shared salus-session library both hooks source.
+ORACLE=$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)/block-agent-native-egress.sh
+
+oracle_rc() { # CWD WORD -> the oracle's exit code (9 when no payload could be built)
+    local payload rc
+    payload=$(jq -cn --arg c "$1" --arg w "$2" '{tool_name: "Bash", cwd: $c, tool_input: {command: $w}}' 2>/dev/null) || return 9
+    bash "$ORACLE" <<<"$payload" >/dev/null 2>&1
+    rc=$?
+    return "$rc"
+}
+
+salus_marker_walk() { # DIR: a .salus or .salus-profile marker on DIR or an ancestor
+    local d=$1 parent
+    [ -n "$d" ] || return 1
+    while :; do
+        if [ -e "$d/.salus" ] || [ -e "$d/.salus-profile" ]; then return 0; fi
         parent=${d%/*}
         [ "$parent" = "$d" ] && break
         d=$parent
+        [ -n "$d" ] || { [ -e "/.salus" ] || [ -e "/.salus-profile" ]; return; }
     done
-    [ -e "/.salus" ] && return 0
+    return 1
+}
+
+is_salus() {
+    local dir canon
+    case "$(lc "$cwd|$cmd|$gpath|$gpattern")" in *salus*) return 0 ;; esac
+    [ -f "$ORACLE" ] || return 0
+    oracle_rc / "higgsfield salus"
+    [ "$?" = 2 ] || return 0
+    for dir in "$cwd" "${CLAUDE_PROJECT_DIR:-}"; do
+        [ -n "$dir" ] || continue
+        oracle_rc "$dir" higgsfield || return 0
+        canon=$(cd -P -- "$dir" 2>/dev/null && pwd -P) || canon=""
+        salus_marker_walk "$dir" && return 0
+        salus_marker_walk "$canon" && return 0
+    done
+    [ -n "$cwd" ] || return 0
     return 1
 }
 
@@ -139,7 +174,7 @@ case "$tool" in
         flat=$(printf '%s' "$cmd" | sed -E -e "s/'[^']*qmd-bounded\.sh'/qmd-bounded.sh/g" -e 's/"[^"]*qmd-bounded\.sh"/qmd-bounded.sh/g' -e "s/'[^']*'/Q/g; s/\"([^\"\\\\]|\\\\.)*\"/Q/g" | tr ';|&' '\n')
         while IFS= read -r seg; do
             seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//; s/^((timeout[[:space:]]+[^[:space:]]+|rtk([[:space:]]+proxy)?|env|command|bash|sh)[[:space:]]+)+//')
-            if grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)' <<<"$seg"; then
+            if grep -Eq '^([^[:space:]]*/)?qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)' <<<"$seg"; then
                 is_qmd=1
                 break
             fi
@@ -147,8 +182,8 @@ case "$tool" in
         ;;
 esac
 if [ "$is_qmd" = 1 ]; then
-    is_salus && exit 0
     if [ ! -e "$DIR/$sid.clear" ]; then
+        is_salus && exit 0
         : >"$DIR/$sid.clear" 2>/dev/null && log_row qmd_clear ""
     fi
     exit 0
@@ -238,6 +273,7 @@ segment_matches() {
             -e | -f | --regexp | --regexp=* | --file | --file=* | -e* | -f*) return 1 ;;
             --recursive | --dereference-recursive) recursive=1 ;;
             -A | -B | -C | -m | -d | --include | --exclude | --exclude-dir | --max-count | --context | --after-context | --before-context | -g | -t | -T | -j | -M | --glob | --iglob | --type | --type-not | --threads | --max-depth | --max-columns | --sort | --sortr) skip=1 ;;
+            --color | --colour) [ "$kind" = rg ] && skip=1 ;;  # rg takes the value as the next word, grep does not
             --*) ;;
             -?*) case "$t" in -*[rR]*) [ "$kind" = grep ] && [[ "$t" =~ ^-[A-Za-z]*[rR][A-Za-z]*$ ]] && recursive=1 ;; esac ;;
             *)

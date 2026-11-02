@@ -116,10 +116,10 @@ if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "empty stdin exits 0 silently
 # plain temp dir (no git, no salus). Unlike the rows above, a deny here is the
 # expected result (exit 2).
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-VHOOK="$ROOT/marketplace/plugins/himmel-ops/hooks/block-vault-sweep.sh"
+VHOOK="${VSWEEP_HOOK_UNDER_TEST:-$ROOT/marketplace/plugins/himmel-ops/hooks/block-vault-sweep.sh}"
 VLOG="$TMP/vlog.jsonl"
 VAULT=/home/u/Documents/luna
-mkdir -p "$TMP/work"
+mkdir -p "$TMP/work" "$TMP/vhome/.config/claude-glm"
 
 # vcall SID TOOL COMMAND-OR-PATTERN [PATH] [CWD] -> rc in $rc, stderr in $TMP/err
 # Overridable per call: VON, VBYP, VDIR, VREPO.
@@ -137,7 +137,8 @@ vcall() {
         '{session_id: $s, cwd: $d, hook_event_name: "PreToolUse", tool_name: $t, tool_input: $i}')"
     env HIMMEL_VAULT_SWEEP_DENY="${VON-1}" HIMMEL_VAULT_SWEEP_BYPASS="${VBYP-}" \
         HIMMEL_VAULT_SWEEP_DIR="${VDIR-$TMP/vstate}" HIMMEL_VAULT_SWEEP_LOG="$VLOG" \
-        HIMMEL_REPO="${VREPO-$ROOT}" HOME="${VHOME-$HOME}" bash "$VHOOK" <<<"$payload" >"$TMP/out" 2>"$TMP/err"
+        CLAUDE_PROJECT_DIR="${VPROJ-}" \
+        HIMMEL_REPO="${VREPO-$ROOT}" HOME="${VHOME-$TMP/vhome}" bash "${VHOOK_ALT:-$VHOOK}" <<<"$payload" >"$TMP/out" 2>"$TMP/err"
     rc=$?
 }
 # vrows DESC-PREFIX WANT-RC SID-PREFIX CMD...: one fresh session per command
@@ -298,6 +299,80 @@ vrows 0 operand \
     "rg --sortr modified HIMMEL-8847 $VAULT" \
     "rg notes . > $VAULT/output" \
     "grep -rl notes . 2> $VAULT/err"
+
+# 16d. The salus test asks the sibling egress fence: each signal below, planted in a fixture
+# HOME or tree, keeps a session silent AND writes no log row, no state and no stderr text, for
+# both a qmd call and a closed-list sweep. A failing or absent oracle is "cannot tell", also silent.
+logged() { grep -q "\"session_id\":\"$1\"" "$VLOG"; }
+QMDQ='qmd query -c luna "Alice Smith"'
+CG="$TMP/vhome/.config/claude-glm"
+salus_row() { # DESC SID [CWD]
+    local desc="$1" sid="$2" cwd="${3:-$TMP/work}" a b
+    vcall "$sid" Bash "$QMDQ" "" "$cwd"; a=$rc
+    vcall "${sid}s" Bash "$S" "" "$cwd"; b=$rc
+    if [ "$a" = 0 ] && [ "$b" = 0 ] && [ ! -s "$TMP/err" ] && ! logged "$sid" && ! logged "${sid}s" \
+        && ! grep -q 'Alice' "$VLOG" && [ ! -e "$TMP/vstate/$sid.clear" ] && [ ! -e "$TMP/vstate/${sid}s.denied" ]; then
+        pass "$desc"
+    else
+        fail "$desc (qmd=$a sweep=$b)"
+    fi
+}
+mkdir -p "$TMP/phi/app" "$TMP/prof/sub"
+printf '%s\n' "$TMP/phi" >"$CG/phi-roots"
+salus_row "cwd under a phi-roots root: silent, nothing logged" v30 "$TMP/phi/app"
+rm -f "$CG/phi-roots"
+printf '# list\n%s/\n' "$TMP/phi" >"$CG/egress-denylist"
+salus_row "cwd under an egress-denylist root: silent, nothing logged" v31 "$TMP/phi/app"
+rm -f "$CG/egress-denylist"
+: >"$TMP/prof/.salus-profile"
+salus_row "a .salus-profile marker on an ancestor: silent, nothing logged" v32 "$TMP/prof/sub"
+ln -s "$TMP/marked/sub" "$TMP/linkcwd"
+salus_row "a cwd that is a symlink into a .salus tree: silent, nothing logged" v33 "$TMP/linkcwd"
+mkdir -p "$TMP/g1"
+git -C "$TMP/g1" init -q 2>/dev/null
+git -C "$TMP/g1" remote add origin https://example.test/org/salus-app.git
+salus_row "a git remote naming salus: silent, nothing logged" v34 "$TMP/g1"
+mkdir -p "$TMP/mainsalus"
+git -C "$TMP/mainsalus" init -q 2>/dev/null
+git -C "$TMP/mainsalus" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q --allow-empty -m x 2>/dev/null
+git -C "$TMP/mainsalus" worktree add -q "$TMP/wtree" 2>/dev/null
+salus_row "a worktree whose git common dir names salus: silent, nothing logged" v35 "$TMP/wtree"
+VPROJ="$TMP/marked/sub" salus_row "CLAUDE_PROJECT_DIR in a salus tree while the cwd is elsewhere: silent, nothing logged" v36
+mkdir -p "$TMP/stub1" "$TMP/stub2" "$TMP/stub3"
+for d in stub1 stub2 stub3; do cp "$VHOOK" "$TMP/$d/block-vault-sweep.sh"; done
+printf '#!/bin/sh\nexit 0\n' >"$TMP/stub1/block-agent-native-egress.sh"
+printf '#!/bin/sh\nexit 1\n' >"$TMP/stub3/block-agent-native-egress.sh"
+VHOOK_ALT="$TMP/stub1/block-vault-sweep.sh" salus_row "an oracle that always allows fails the canary: silent, nothing logged" v37
+VHOOK_ALT="$TMP/stub2/block-vault-sweep.sh" salus_row "an absent oracle is cannot-tell: silent, nothing logged" v38
+VHOOK_ALT="$TMP/stub3/block-vault-sweep.sh" salus_row "a crashing oracle is cannot-tell: silent, nothing logged" v39
+# the hook is not inert: a clean session with lists planted elsewhere still logs and is refused
+printf '%s\n' "$TMP/elsewhere" >"$CG/phi-roots"
+printf '%s\n' "$TMP/elsewhere2" >"$CG/egress-denylist"
+vcall v40 Bash "$S"
+a=$rc
+vcall v40q Bash 'qmd query -c luna "meeting notes"'
+if [ "$a" = 2 ] && jq -e -s 'any(.[]; .session_id == "v40" and .event == "deny") and any(.[]; .session_id == "v40q" and .event == "qmd_clear")' "$VLOG" >/dev/null 2>&1; then pass "a non-salus session with PHI lists planted elsewhere is still refused and logged"; else fail "non-salus still refused/logged (sweep=$a)"; fi
+rm -f "$CG/phi-roots" "$CG/egress-denylist"
+
+# 16e. Reading the helper is not a qmd call: only a real invocation clears the deny and counts as a conversion.
+vcall v24 Bash "$S"
+a=$rc
+vcall v24 Bash "cat $ROOT/scripts/lib/qmd-bounded.sh"
+vcall v24b Bash "echo qmd-bounded.sh; cat $ROOT/scripts/lib/qmd-bounded.sh"
+vcall v24b Bash "$S"
+if [ "$a" = 2 ] && [ "$rc" = 2 ] && ! jq -e -s 'any(.[]; (.session_id == "v24" or .session_id == "v24b") and .event == "qmd_clear")' "$VLOG" >/dev/null 2>&1; then pass "cat or echo of qmd-bounded.sh is no qmd call: no conversion, the deny stands"; else fail "qmd-bounded.sh named but not run (first=$a later=$rc)"; fi
+
+# 16f. rg --color takes a value; grep --color does not. And the hooks.json matcher covers every tool the hook reads.
+vrows 0 color "rg --color never HIMMEL-8847 $VAULT"
+vrows 2 color2 "rg --color never notes $VAULT" "grep -rn --color notes $VAULT"
+HJ="$ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json"
+vm=$(jq -r '[.hooks.PreToolUse[] | select(any(.hooks[]; (.command // "") | contains("block-vault-sweep.sh"))) | .matcher] | if length == 1 then .[0] else "" end' "$HJ" 2>/dev/null)
+mok=1
+[ -n "$vm" ] || mok=0
+mre="^($vm)\$"
+for t in Bash Grep mcp__qmd__query mcp__plugin_qmd_qmd__query; do [[ "$t" =~ $mre ]] || mok=0; done
+for t in Read Edit WebFetch; do [[ "$t" =~ $mre ]] && mok=0; done
+if [ "$mok" = 1 ]; then pass "hooks.json: one block-vault-sweep.sh entry whose matcher covers Bash, Grep and both qmd MCP names and nothing else"; else fail "hooks.json matcher pin (matcher='$vm')"; fi
 
 # 17. Known residual: a heredoc line that is itself a vault sweep is refused (counted as a false refusal), once.
 vcall v14 Bash $'cat > note.md <<EOF\ngrep -r notes '"$VAULT"$'\nEOF'
