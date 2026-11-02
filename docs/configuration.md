@@ -592,7 +592,7 @@ sites are changed here.
 | OpenRouter launcher, `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
 | CR critic panel | `CLIPROXY_API_KEY` when the critic registry holds a Codex critic |
 | CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |
-| Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/workers, statusline, lane-cost rows | `HANDOVER_DIR`; hop, worker-timeline, auto-action and worker-relaunch additionally `USER_SLUG`; chief additionally `JIRA_PROJECT_KEY` |
+| Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/workers, statusline, lane-cost rows | `HANDOVER_DIR`; hop, worker-timeline and worker-relaunch additionally `USER_SLUG`; chief additionally `JIRA_PROJECT_KEY` |
 | GO gate, user-slug setup probe | `USER_SLUG` (GO gate separately reads `HANDOVER_DIR`) |
 | Chief ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` |
 | Commit-message hook | `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`, `JIRA_PROJECT_KEY`, `TRACKER` |
