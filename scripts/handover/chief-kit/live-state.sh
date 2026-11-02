@@ -139,7 +139,7 @@ rows="$(jq -r "$JQ_W"'W[] | [.label, .doc, ((.lane // "") | if . == "" then "unk
     || { echo "live-state: unreadable fleet manifest: $manifest" >&2; exit 1; }
 old_block="$(awk -v k="$live_key" "$block_awk" "$doc")"
 if [ -z "$old_block" ]; then
-    # Another render may have replaced legs: with workers: since the key was picked: start over before refusing.
+    # Another render may have replaced pre-rename legs: with workers: since the key was picked: start over before refusing.
     [ "$(pick_live_key)" = "$live_key" ] || exec bash "$HERE/live-state.sh" "${orig_args[@]}"
     echo "live-state: no workers: line under '## Live state' in $doc" >&2
     exit 1
@@ -208,7 +208,7 @@ fi
 # shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
 . "$HERE/worker-doc-lock.sh"
 doc_lock "$doc" live-state || true
-# Another render may have replaced the legs: block with workers: while this one waited: start over on the new key.
+# Another render may have replaced the pre-rename legs: block with workers: while this one waited: start over on the new key.
 if [ "$(pick_live_key)" != "$live_key" ]; then
     doc_unlock
     exec bash "$HERE/live-state.sh" "${orig_args[@]}"

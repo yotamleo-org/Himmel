@@ -45,7 +45,7 @@ cat > "$DOC" <<'EOF'
 
 ## Live state
 
-legs: `N7:n1:t1:11` `N8:n2:t2:22`
+workers: `N7:n1:t1:11` `N8:n2:t2:22`
 queue: HIMMEL-9, HIMMEL-10
 last GO: `12:abc`
 board: none
@@ -55,7 +55,7 @@ board: none
 - 08:10 RESOLVED — two
 - 08:20 LIVE — three
 EOF
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N7","added":"x"},{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG1" "$LEG2" > "${DOC%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N7","added":"x"},{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG1" "$LEG2" > "${DOC%.md}.fleet.json"
 
 BANK="$WORK/bank.sh"
 printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown five_hour=9.0 seven_day=91.0 extra_usage=n/a"\necho PROCEED\n' > "$BANK"
@@ -78,13 +78,13 @@ check "workers strips backtick spans" "0" "$(printf '%s' "$workers" | grep -c 's
 # RED control (pre-fix handoff-facts.sh): the line shows only the SUCCESSION bullet.
 LEG3="$WORK/DEMO-3-N9-gamma.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — started' '- 10:30 READY 12 abc GREEN — pr is up' '- 10:40 SUCCESSION accepted — relay' > "$LEG3"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N9","added":"x"}]}\n' "$LEG3" > "${DOC%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N9","added":"x"}]}\n' "$LEG3" > "${DOC%.md}.fleet.json"
 has "workers names a READY a later SUCCESSION bullet buries (6292)" "actionable: READY 12 abc GREEN" "$(run workers)"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG2" > "${DOC%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG2" > "${DOC%.md}.fleet.json"
 check "workers adds no actionable note for a worker with none (6292)" "0" "$(run workers | grep -c 'actionable:')"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N7","added":"x"}]}\n' "$LEG1" > "${DOC%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N7","added":"x"}]}\n' "$LEG1" > "${DOC%.md}.fleet.json"
 check "workers adds no actionable note when the last bullet is it (6292)" "0" "$(run workers | grep -c 'actionable:')"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N7","added":"x"},{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG1" "$LEG2" > "${DOC%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N7","added":"x"},{"doc":"%s","label":"N8","added":"x"}]}\n' "$LEG1" "$LEG2" > "${DOC%.md}.fleet.json"
 has "prs prints the open PR" "#5 [HIMMEL-1]" "$(run prs)"
 has "summary carries the newest bullet" "three" "$(run summary)"
 has "queue copies the Live state line" "HIMMEL-9, HIMMEL-10" "$(run queue)"

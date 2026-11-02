@@ -55,7 +55,7 @@ mkdir -p "$WORK/docs"
 DOC="$WORK/docs/HIMMEL-5969-N2362-succession-wake-once-2026-10-16.md"
 printf '# worker\n- PR: feat/himmel-5969-succession-wake-once-b\n' > "$DOC"
 MAN="$WORK/fleet.json"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N2362"}]}\n' "$DOC" > "$MAN"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N2362"}]}\n' "$DOC" > "$MAN"
 
 export PATH="$WORK/bin:$PATH"
 export STUB_FIX="$FIX" STUB_SENT_LOG="$WORK/sent.log"

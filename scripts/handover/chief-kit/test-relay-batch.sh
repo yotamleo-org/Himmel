@@ -28,14 +28,14 @@ cat > "$DOC" <<'EOF'
 
 ## Live state
 
-legs: `N7:tok-seven:lock7:11` `N8:tok-eight:lock8:22`
+workers: `N7:tok-seven:lock7:11` `N8:tok-eight:lock8:22`
 `N9:tok-nine:lock9:33` extra prose
 queue: none
 last GO: none
 
 ## Results
 EOF
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N7","added":"x","lane":"native"},{"doc":"%s","label":"N8","added":"x","lane":"claudex"}]}\n' "$LEG1" "$LEG2" > "${DOC%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N7","added":"x","lane":"native"},{"doc":"%s","label":"N8","added":"x","lane":"claudex"}]}\n' "$LEG1" "$LEG2" > "${DOC%.md}.fleet.json"
 
 SEND="$WORK/send.sh"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/send.log"\n' "$WORK" > "$SEND"
@@ -103,7 +103,7 @@ check "a stalled bus send does not fail the run" "0" "$rcs"
 DOC9="$WORK/DEMO-nextleg-2026-10-08E-chief.md"
 # shellcheck disable=SC2016  # the backticks are literal Live state markers
 printf '# chief\n\n## Live state\n\nlegs: `N50:tok-a:l:1` `N51:tok-b:l:2` `N52:tok-c:l:3` `N53:tok-d:l:4`\nqueue: none\n\n## Results\n' > "$DOC9"
-printf '{"schema":1,"legs":[' > "${DOC9%.md}.fleet.json"
+printf '{"schema":1,"workers":[' > "${DOC9%.md}.fleet.json"
 for n in 50 51 52 53; do
     : > "$WORK/DEMO-$n-N$n-four.md"
     [ "$n" = 50 ] || printf ',' >> "${DOC9%.md}.fleet.json"
@@ -148,7 +148,7 @@ cat > "$DOC2" <<'EOF2'
 
 ## Live state
 
-legs: `N10:tok-ten:lock10:1` `N11:tok-eleven:lock11:2` `N12:tok-twelve:lock12:3`
+workers: `N10:tok-ten:lock10:1` `N11:tok-eleven:lock11:2` `N12:tok-twelve:lock12:3`
 `N13:tok-thirteen:lock13:4` `N14:tok-fourteen:lock14:5`
 queue: none
 
@@ -156,7 +156,7 @@ queue: none
 EOF2
 # the lane lives in the manifest. mk_fm2 <lane> gives N10-N12 (and N.0) that
 # lane; N13/N14 stay native, since a claudex worker skips the census these two exercise.
-mk_fm2() { printf '{"schema":1,"legs":[{"doc":"%s","label":"N10","lane":"%s"},{"doc":"%s","label":"N11","lane":"%s"},{"doc":"%s","label":"N12","lane":"%s"},{"doc":"%s","label":"N13","lane":"native"},{"doc":"%s","label":"N14","lane":"native"},{"doc":"%s","label":"N.0","lane":"%s"}]}\n' "$LEG3" "$1" "$LEG4" "$1" "$LEG5" "$1" "$LEG6" "$LEG7" "$LEG5" "$1" > "${DOC2%.md}.fleet.json"; }
+mk_fm2() { printf '{"schema":1,"workers":[{"doc":"%s","label":"N10","lane":"%s"},{"doc":"%s","label":"N11","lane":"%s"},{"doc":"%s","label":"N12","lane":"%s"},{"doc":"%s","label":"N13","lane":"native"},{"doc":"%s","label":"N14","lane":"native"},{"doc":"%s","label":"N.0","lane":"%s"}]}\n' "$LEG3" "$1" "$LEG4" "$1" "$LEG5" "$1" "$LEG6" "$LEG7" "$LEG5" "$1" > "${DOC2%.md}.fleet.json"; }
 mk_fm2 claudex
 census DEMO-3-N10-gamma-2026-10-08 DEMO-4-N11-delta-2026-10-08-RESUME DEMO-5-N12-eps DEMO-7-N14-zeta DEMO-7-N14-zeta-2026-10-08 DEMO-unrelated
 : > "$WORK/send.log"
@@ -192,13 +192,13 @@ cat > "$DOC4" <<'EOF4'
 
 ## Live state
 
-legs: `N20:tok-twenty:lock20:1` `N21:tok-twentyone:lock21:2` `N22:tok-twentytwo:lock22:3`
+workers: `N20:tok-twenty:lock20:1` `N21:tok-twentyone:lock21:2` `N22:tok-twentytwo:lock22:3`
 queue: none
 
 ## Results
 EOF4
 FM4="${DOC4%.md}.fleet.json"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N20","lane":"claudex"},{"doc":"%s","label":"N21","lane":"native"},{"doc":"%s","label":"N22","lane":"unknown"},{"doc":"%s","label":"P01","lane":"deepseek","lockless":true}]}\n' "$LEGC" "$LEGN" "$LEGU" "$LEGP" > "$FM4"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N20","lane":"claudex"},{"doc":"%s","label":"N21","lane":"native"},{"doc":"%s","label":"N22","lane":"unknown"},{"doc":"%s","label":"P01","lane":"deepseek","lockless":true}]}\n' "$LEGC" "$LEGN" "$LEGU" "$LEGP" > "$FM4"
 # the claudex worker is not a `claude -n` process: no census entry for it at all.
 census DEMO-9-N21-nat-2026-10-09
 : > "$WORK/send.log"
@@ -228,14 +228,14 @@ check "the refusal names the disagreement" "1" "$(printf '%s\n' "$out7" | grep -
 DOC6="$WORK/DEMO-nextleg-2026-10-09C-chief.md"
 # shellcheck disable=SC2016  # the backticks are literal Live state markers
 printf '# chief\n\n## Live state\n\nlegs: `N30:tok-thirty:lock30:1`\nqueue: none\n\n## Results\n' > "$DOC6"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N30","lane":"deepseek"}]}\n' "$LEGN" > "${DOC6%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N30","lane":"deepseek"}]}\n' "$LEGN" > "${DOC6%.md}.fleet.json"
 out9="$(bash "$RB" "$DOC6" --successor S6 2>&1)"
 check "an unsupported lane is UNRESOLVED-LANE" "1" "$(printf '%s\n' "$out9" | grep -c '^UNRESOLVED-LANE N30 (lane deepseek')"
 check "an unsupported lane is never printed as a SendMessage" "0" "$(printf '%s\n' "$out9" | grep -c '^SENDMESSAGE')"
 # a chief whose Live state lists no workers but whose manifest has a lockless row still reports it
 DOC5="$WORK/DEMO-nextleg-2026-10-09B-chief.md"
 printf '# chief\n\n## Live state\n\nlegs: none\nqueue: none\n\n## Results\n' > "$DOC5"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"P01","lane":"deepseek","lockless":true}]}\n' "$LEGP" > "${DOC5%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"P01","lane":"deepseek","lockless":true}]}\n' "$LEGP" > "${DOC5%.md}.fleet.json"
 out8="$(bash "$RB" "$DOC5" --successor S5 2>&1)"; rc8=$?
 check "lockless-only chief still lists the lockless row" "1" "$(printf '%s\n' "$out8" | grep -c '^LOCKLESS P01 lane=deepseek')"
 check "lockless-only chief exits 0" "0" "$rc8"
@@ -245,27 +245,27 @@ check "lockless-only chief exits 0" "0" "$rc8"
 DOC7="$WORK/DEMO-nextleg-2026-10-09D-chief.md"
 # shellcheck disable=SC2016  # the backticks are literal Live state markers
 printf '# chief\n\n## Live state\n\nlegs: `N21:tok-twentyone:lock21:2`\nqueue: none\n\n## Results\n' > "$DOC7"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N21","lane":"deepseek","lockless":true},{"doc":"%s","label":"N21","lane":"native"}]}\n' "$LEGP" "$LEGN" > "${DOC7%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N21","lane":"deepseek","lockless":true},{"doc":"%s","label":"N21","lane":"native"}]}\n' "$LEGP" "$LEGN" > "${DOC7%.md}.fleet.json"
 census DEMO-9-N21-nat-2026-10-09
 out10="$(bash "$RB" "$DOC7" --successor S7 2>&1)"
 check "B1: a locked worker behind a same-label lockless row is still relayed" "1" "$(printf '%s\n' "$out10" | grep -c '^SENDMESSAGE to=DEMO-9-N21-nat-2026-10-09 ::')"
 # two locked rows under one label are ambiguous: UNRESOLVED, nothing sent
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N21","lane":"native"},{"doc":"%s","label":"N21","lane":"claudex"}]}\n' "$LEGN" "$LEGC" > "${DOC7%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N21","lane":"native"},{"doc":"%s","label":"N21","lane":"claudex"}]}\n' "$LEGN" "$LEGC" > "${DOC7%.md}.fleet.json"
 : > "$WORK/send.log"
 out11="$(bash "$RB" "$DOC7" --successor S7 2>&1)"
 check "B1: two locked rows with one label print UNRESOLVED" "1" "$(printf '%s\n' "$out11" | grep -c '^UNRESOLVED N21 (2 manifest rows')"
 check "B1: an ambiguous label sends nothing" "0 sendlog-bytes=0" "$(printf '%s\n' "$out11" | grep -c '^SENDMESSAGE\|^SENT-INBOX') sendlog-bytes=$(wc -c < "$WORK/send.log" | tr -d ' ')"
 # a live entry whose only manifest row is lockless is reported, not skipped silently
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N21","lane":"deepseek","lockless":true}]}\n' "$LEGP" > "${DOC7%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N21","lane":"deepseek","lockless":true}]}\n' "$LEGP" > "${DOC7%.md}.fleet.json"
 out12="$(bash "$RB" "$DOC7" --successor S7 2>&1)"
 check "B1: a live worker whose only row is lockless prints UNRESOLVED" "1" "$(printf '%s\n' "$out12" | grep -c '^UNRESOLVED N21 ')"
 # B1b: only the boolean true is lockless; the string "true" stays a visible, relayed row
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N21","lane":"native","lockless":"true"}]}\n' "$LEGN" > "${DOC7%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N21","lane":"native","lockless":"true"}]}\n' "$LEGN" > "${DOC7%.md}.fleet.json"
 out13="$(bash "$RB" "$DOC7" --successor S7 2>&1)"
 check "B1b: a string true is not lockless: the worker is relayed" "1" "$(printf '%s\n' "$out13" | grep -c '^SENDMESSAGE to=DEMO-9-N21-nat-2026-10-09 ::')"
 check "B1b: a string true is not listed as LOCKLESS" "0" "$(printf '%s\n' "$out13" | grep -c '^LOCKLESS')"
 # N3: an empty lane is unknown, not the next field
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N21","lane":""},{"doc":"%s","label":"P01","lane":"","lockless":true}]}\n' "$LEGN" "$LEGP" > "${DOC7%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N21","lane":""},{"doc":"%s","label":"P01","lane":"","lockless":true}]}\n' "$LEGN" "$LEGP" > "${DOC7%.md}.fleet.json"
 out14="$(bash "$RB" "$DOC7" --successor S7 2>&1)"
 check "N3: an empty lane prints UNRESOLVED-LANE unknown" "1" "$(printf '%s\n' "$out14" | grep -c '^UNRESOLVED-LANE N21 (manifest lane unknown')"
 check "N3: an empty lockless lane lists as unknown" "1" "$(printf '%s\n' "$out14" | grep -c '^LOCKLESS P01 lane=unknown ')"
@@ -278,7 +278,7 @@ printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n' > "$LEGL"
 printf '# worker\n\n## Results\n\n- 10:00 LIVE - x\n- 10:30 WRAPPED - done\n' > "$LEGX"
 # shellcheck disable=SC2016  # the backticks are literal Live state markers
 printf '# chief\n\n## Live state\n\nlegs: `N40:tok-forty:lock40:1` `N41:tok-fortyone:lock41:2`\nqueue: none\n\n## Results\n' > "$DOC8"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N40","lane":"native"},{"doc":"%s","label":"N41","lane":"native"},{"doc":"%s","label":"N42","lane":"native"}]}\n' "$LEGW" "$LEGL" "$LEGX" > "${DOC8%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N40","lane":"native"},{"doc":"%s","label":"N41","lane":"native"},{"doc":"%s","label":"N42","lane":"native"}]}\n' "$LEGW" "$LEGL" "$LEGX" > "${DOC8%.md}.fleet.json"
 census DEMO-12-N40-wrapped-2026-10-20 DEMO-13-N41-live-2026-10-20
 out15="$(bash "$RB" "$DOC8" --successor S8 2>&1)"; rc15=$?
 check "the wrapped-worker relay exits 0" "0" "$rc15"
@@ -297,7 +297,7 @@ LEGA="$WORK/DEMO-15-N60-in-2026-10-24.md"; LEGB="$WORK/DEMO-16-N61-off-2026-10-2
 : > "$LEGA"; : > "$LEGB"; : > "$LEGG"
 # shellcheck disable=SC2016  # the backticks are literal Live state markers
 printf '# chief\n\n## Live state\n\nlegs: `N60:tok-sixty:lock60:1`\nqueue: none\n\n## Results\n' > "$DOC10"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N61","lane":"native"},{"doc":"%s","label":"N62","lane":"native"}]}\n' "$LEGA" "$LEGB" "$LEGG" > "${DOC10%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N61","lane":"native"},{"doc":"%s","label":"N62","lane":"native"}]}\n' "$LEGA" "$LEGB" "$LEGG" > "${DOC10%.md}.fleet.json"
 census DEMO-15-N60-in-2026-10-24 DEMO-16-N61-off-2026-10-24
 printf '%s\n' "$LOGBUS" > "$BUS"
 : > "$WORK/bus.log"; : > "$WORK/bus.body"
@@ -320,13 +320,13 @@ check "an off-Live-state worker is never printed a token-less SendMessage" "0" "
 check "the fallback tally counts only the printed relay" "1" "$(printf '%s\n' "$out18" | grep -c '^RELAYED 1 of 3$')"
 # a manifest row with no lane keeps its doc in the doc field (tab-separated empty fields do not collapse)
 LEGL="$WORK/DEMO-18-N63-nolane-2026-10-24.md"; : > "$LEGL"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N63"}]}\n' "$LEGA" "$LEGL" > "${DOC10%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N63"}]}\n' "$LEGA" "$LEGL" > "${DOC10%.md}.fleet.json"
 out19="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-chief bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-chief 2>&1)"; rc19=$?
 check "a relay with a lane-less manifest worker exits 0" "0" "$rc19"
 check "a lane-less off-Live-state worker is reported with its own doc" "1" "$(printf '%s\n' "$out19" | grep -cF "NOT-IN-LIVE-STATE N63 ($LEGL)")"
 # a live claudex worker missing from Live state gets no bus relay: its relay is the inbox, which needs its token
 LEGC="$WORK/DEMO-19-N64-cdx-2026-10-24.md"; : > "$LEGC"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N64","lane":"claudex"}]}\n' "$LEGA" "$LEGC" > "${DOC10%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N60","lane":"native"},{"doc":"%s","label":"N64","lane":"claudex"}]}\n' "$LEGA" "$LEGC" > "${DOC10%.md}.fleet.json"
 census DEMO-15-N60-in-2026-10-24 DEMO-19-N64-cdx-2026-10-24
 printf '%s\n' "$LOGBUS" > "$BUS"; : > "$WORK/bus.log"
 out20="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24A-chief bash "$RB" "$DOC10" --successor DEMO-nextleg-2026-10-24B-chief 2>&1)"; rc20=$?
@@ -336,7 +336,7 @@ check "an off-Live-state claudex worker is left for a hand relay" "1" "$(printf 
 # a Live state that lists no worker still relays the manifest's locked workers
 DOC11="$WORK/DEMO-nextleg-2026-10-24C-chief.md"
 printf '# chief\n\n## Live state\n\nlegs: none\nqueue: none\n\n## Results\n' > "$DOC11"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N61","lane":"native"}]}\n' "$LEGB" > "${DOC11%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N61","lane":"native"}]}\n' "$LEGB" > "${DOC11%.md}.fleet.json"
 census DEMO-16-N61-off-2026-10-24
 : > "$WORK/bus.log"
 out21="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-24C-chief bash "$RB" "$DOC11" --successor DEMO-nextleg-2026-10-24D-chief 2>&1)"; rc21=$?
@@ -375,7 +375,7 @@ LEGQ1="$WORK/DEMO-20-N70-cdxa-2026-10-27.md"; LEGQ2="$WORK/DEMO-21-N71-cdxb-2026
 DOC12="$WORK/DEMO-nextleg-2026-10-27A-chief.md"
 # shellcheck disable=SC2016  # the backticks are literal Live state markers
 printf '# chief\n\n## Live state\n\nlegs: `N70:tok-a:l:1` `N71:tok-b:l:2`\nqueue: none\n\n## Results\n' > "$DOC12"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N70","lane":"claudex"},{"doc":"%s","label":"N71","lane":"claudex"}]}\n' "$LEGQ1" "$LEGQ2" > "${DOC12%.md}.fleet.json"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N70","lane":"claudex"},{"doc":"%s","label":"N71","lane":"claudex"}]}\n' "$LEGQ1" "$LEGQ2" > "${DOC12%.md}.fleet.json"
 INBOX_SEND="$OSEND" RELAY_BATCH_BUS="$OBUS" HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-27A-chief bash "$RB" "$DOC12" --successor S9 >/dev/null 2>&1
 check "a claudex bus record is sent right after its inbox relay, before the next worker" "inbox DEMO-20-N70-cdxa-2026-10-27 bus DEMO-20-N70-cdxa-2026-10-27 inbox DEMO-21-N71-cdxb-2026-10-27 bus DEMO-21-N71-cdxb-2026-10-27" "$(tr '\n' ' ' < "$ORDER" | sed 's/ $//')"
 # a stalled bus store spends the shared deadline once: later notices are skipped, not each given a second
