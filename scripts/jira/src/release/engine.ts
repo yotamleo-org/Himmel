@@ -293,7 +293,7 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
 }
 
 // Where an operator decision puts its keys; undefined for an op that places nothing.
-function placementOf(o: { op?: string; from_v?: string | null; to_v?: string | null }): string | null | undefined {
+export function placementOf(o: { op?: string; from_v?: string | null; to_v?: string | null }): string | null | undefined {
   if (o.op === 'keep' || o.op === 'discharge') return o.from_v ?? null;
   if (o.op === 'remove') return null;
   if (o.op === 'add' || o.op === 'move') return o.to_v ?? null;
