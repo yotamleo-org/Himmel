@@ -29,6 +29,7 @@ eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')";
 has() { if grep -qF -- "$3" "$2"; then pass "$1"; else fail "$1 (no '$3' in: $(head -c 400 "$2"))"; fi; }
 
 REAL_BUN="$(command -v bun || true)"
+TITLE_NODE="$(command -v node || true)"
 
 BIN="$TMP/bin"
 mkdir -p "$BIN"
@@ -85,7 +86,7 @@ session_check() { as_session bash "$GUARD" check "$@" >"$TMP/g.out" 2>&1; echo $
 real_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
 echo "== detector"
 eq "G1 a test ancestor plus a real target is refused" "$(check g1 "$FAKE_REAL/x")" 77
-has "G1 the refusal names the exact VM command for this suite" "$TMP/g.out" "bash scripts/vm/guest-exec.sh himmel-ar-1 -- bash"
+has "G1 the refusal names the exact VM command for this suite" "$TMP/g.out" "bash scripts/vm/guest-exec.sh himmel-ar-1 -- env -C himmel bash"
 has "G1 the refusal names this suite" "$TMP/g.out" "test-real-state-guard.sh"
 has "G1 the refusal names the after-report command" "$TMP/g.out" "bash scripts/vm/after-report.sh "
 eq "G2 a test ancestor with a temp target is allowed: hermetic stays local" "$(check g2 "$TMP/scratch/x")" 0
@@ -156,6 +157,118 @@ eq "F2 failed reads in a real session do not refuse" "$(PATH="$NOBIN" "$CLAUDE_S
 ( setsid bash -c "bash '$GUARD' check orphan '$FAKE_REAL/x'; echo \$? >'$TMP/orphan.rc'" >/dev/null 2>&1 & )
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$TMP/orphan.rc" ] && break; sleep 0.2; done
 eq "F3 an orphan with no markers and no ancestor is allowed: the pinned residual" "$(cat "$TMP/orphan.rc" 2>/dev/null)" 0
+
+echo "== detector gaps (HIMMEL-8819)"
+# A passwd home that is a symlink: the stub getent is the suite's seam, the guard asks getent by name.
+GE="$TMP/getent-bin"
+mkdir -p "$GE" "$TMP/realhome-target/.himmel"
+ln -s "$TMP/realhome-target" "$TMP/homelink"
+cat >"$GE/getent" <<EOF
+#!/usr/bin/env bash
+echo "tester:x:1000:1000::$TMP/homelink:/bin/bash"
+EOF
+chmod +x "$GE/getent"
+eq "H1 a path under a symlinked passwd home is real" "$(PATH="$GE:$PATH" check h1 "$TMP/homelink/.himmel/x")" 77
+eq "H2 the resolved path under a symlinked passwd home is real" "$(PATH="$GE:$PATH" check h2 "$TMP/realhome-target/.himmel/x")" 77
+eq "H3 negative control: a fixture home outside the symlinked passwd home is allowed" "$(PATH="$GE:$PATH" check h3 "$TMP/scratch/x")" 0
+
+# A runner the list did not name: the process name or argv is the only fact the guard reads.
+cp "$TMP/real-tool.sh" "$TMP/pkg.test"
+eq "U1 mocha is a runner" "$(as_session bash -c "exec -a mocha bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 77
+eq "U2 playwright is a runner" "$(as_session bash -c "exec -a playwright bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 77
+eq "U2b a playwright-prefixed tool that is not the runner is not a runner" "$(as_session bash -c "exec -a playwright-crawl-youtube.mjs bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
+eq "U3 a go test binary named pkg.test is a test" "$(as_session bash "$TMP/pkg.test" >/dev/null 2>&1; echo $?)" 77
+eq "U4 go test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a go bash test' >/dev/null 2>&1; echo $?)" 77
+mkdir -p "$TMP/dir with space"
+eq "U15 an interpreter path with a space still finds the test file after it" "$(as_session bash -c "exec -a '$TMP/dir with space/bash' bash '$TMP/test-inner.sh'" >/dev/null 2>&1; echo $?)" 77
+cp "$TMP/real-tool.sh" "$TMP/dir"
+eq "U4b go -C dir test is a runner: the option value is skipped" "$(cd "$TMP" && as_session bash -c 'exec -a go bash -C dir test' >/dev/null 2>&1; echo $?)" 77
+eq "U6 negative control: go with a non-test argument is not a runner" "$(as_session bash -c "exec -a go bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
+
+# A real package manager retitles itself, so /proc/<pid>/cmdline is ONE string ("npm test"), not an argv.
+# titled <title>: a real node process retitled that way, with real-tool.sh running below it.
+titled() {
+  as_session "$TITLE_NODE" -e "process.title = process.argv[1]; process.exitCode = require('child_process').spawnSync('bash', [process.argv[2]], { stdio: 'ignore' }).status" "$1" "$TMP/real-tool.sh" >/dev/null 2>&1
+  echo $?
+}
+if [ -n "$TITLE_NODE" ] && [ -x "$TITLE_NODE" ]; then
+  eq "U5 a retitled npm test is a runner" "$(titled 'npm test')" 77
+  eq "U7 a retitled npm run test is a runner" "$(titled 'npm run test')" 77
+  eq "U9 a retitled npm run with an option before test is a runner" "$(titled 'npm run --silent test')" 77
+  eq "U10 a retitled npm run --workspace web test is a runner: the option value is skipped" "$(titled 'npm run --workspace web test')" 77
+  eq "U11 a retitled pnpm run --filter web test is a runner" "$(titled 'pnpm run --filter web test')" 77
+  eq "U12 a retitled pnpm -r test is a runner: -r takes no value here" "$(titled 'pnpm -r test')" 77
+  eq "U14 a retitled pnpm -w test is a runner: -w is a flag for pnpm, a value option only for npm" "$(titled 'pnpm -w test')" 77
+  eq "U16 a retitled pnpm --filter web test is a runner" "$(titled 'pnpm --filter web test')" 77
+  eq "U17 a retitled npm -w web test is a runner: -w takes a value for npm" "$(titled 'npm -w web test')" 77
+  eq "U18 a retitled pnpm -F web test is a runner" "$(titled 'pnpm -F web test')" 77
+  eq "U19 a retitled npm --prefix web test is a runner" "$(titled 'npm --prefix web test')" 77
+  eq "U20 a retitled yarn --cwd web test is a runner" "$(titled 'yarn --cwd web test')" 77
+  eq "U21 a retitled pnpm --dir web test is a runner" "$(titled 'pnpm --dir web test')" 77
+  eq "U22 a retitled npm t is a runner" "$(titled 'npm t')" 77
+  eq "U23 a retitled npm tst is a runner" "$(titled 'npm tst')" 77
+  eq "U24 a retitled pnpm t is a runner" "$(titled 'pnpm t')" 77
+  eq "U25 a retitled npm run-script test is a runner" "$(titled 'npm run-script test')" 77
+  eq "U26 a retitled npm rum test is a runner" "$(titled 'npm rum test')" 77
+  eq "U27 a retitled npm urn test is a runner" "$(titled 'npm urn test')" 77
+  eq "U8 negative control: a retitled npm run build is not a runner" "$(titled 'npm run build')" 0
+  eq "U13 negative control: a retitled npm --prefix test run build is not a runner" "$(titled 'npm --prefix test run build')" 0
+  eq "U28 negative control: a retitled npm install t is not a runner" "$(titled 'npm install t')" 0
+else
+  echo "SKIP - U5 to U28: no real node on PATH before the recorder dir"
+fi
+
+# The refusal names a command that runs. The guest line is run through guest-exec.sh with a stub SDK that
+# joins argv with a space and hands it to bash -c in the fixture guest home, as vmsdk.py's exec does.
+cat >"$TMP/vmsdk-stub.py" <<'PY'
+import os, subprocess, sys
+rest = sys.argv[3:]
+cmd = " ".join(rest[rest.index("--") + 1:])
+sys.exit(subprocess.run(["bash", "-c", cmd], cwd=os.environ["HOME"]).returncode)
+PY
+WR="$TMP/wrepo"
+mkdir -p "$WR/scripts"
+git -C "$WR" init -q
+cp "$TMP/real-tool.sh" "$WR/scripts/test-w.sh"
+(cd "$WR" && as_session bash scripts/test-w.sh >"$TMP/w.out" 2>&1)
+has "W1 a relative suite path is run from the guest checkout" "$TMP/w.out" "-- env -C himmel bash scripts/test-w.sh"
+printed="$(grep -F 'guest-exec.sh' "$TMP/w.out" | head -1)"
+printed="${printed#*: }"
+(cd "$TMP" && as_session bash "$WR/scripts/test-w.sh" >"$TMP/w.out" 2>&1)
+has "W1 an absolute suite path is run from the guest checkout" "$TMP/w.out" "-- env -C himmel bash scripts/test-w.sh"
+has "W1 the refusal says the VM must be on and the guest holds origin/main" "$TMP/w.out" "vmsdk.py himmel-ar-1 up"
+has "W2 the after-report line names its usage exactly" "$TMP/w.out" "bash scripts/vm/after-report.sh <branch> <pr>"
+bash "$root/scripts/vm/after-report.sh" >"$TMP/ar.out" 2>&1
+has "W2 after-report.sh's own usage reads the same" "$TMP/ar.out" "usage: scripts/vm/after-report.sh <branch> <pr>"
+mkdir -p "$HOME/himmel"
+cp -R "$WR/scripts" "$HOME/himmel/scripts"
+eq "W3 the printed line, run through guest-exec.sh and the argv join, reaches the suite" "$(cd "$root" && HIMMEL_VMSDK="$TMP/vmsdk-stub.py" as_session bash -c "$printed" >/dev/null 2>&1; echo $?)" 77
+rc="$(cd "$root" && HIMMEL_VMSDK="$TMP/vmsdk-stub.py" as_session bash -c "bash scripts/vm/guest-exec.sh himmel-ar-1 -- bash -c 'cd ~/himmel && bash scripts/test-w.sh'" >/dev/null 2>&1; echo $?)"
+if [ "$rc" != 77 ]; then pass "W3b the bash -c spelling loses its quoting in the argv join and never reaches the suite (rc $rc)"; else fail "W3b the stub does not model the argv join"; fi
+cp "$TMP/real-tool.sh" "$WR/scripts/test_w.py"
+(cd "$WR" && as_session bash -c "exec -a python3 bash scripts/test_w.py" >"$TMP/w.out" 2>&1)
+has "W4 a python suite is still refused" "$TMP/w.out" "REFUSED"
+if grep -qF 'guest-exec.sh' "$TMP/w.out"; then fail "W4 a python suite is not printed as a bash command"; else pass "W4 a python suite is not printed as a bash command"; fi
+cp "$TMP/real-tool.sh" "$WR/scripts/test-w x.sh"
+(cd "$WR" && as_session bash "scripts/test-w x.sh" >"$TMP/w.out" 2>&1)
+has "W5 a suite path with a space is still refused" "$TMP/w.out" "REFUSED"
+if grep -qF 'guest-exec.sh' "$TMP/w.out"; then fail "W5 a path outside [A-Za-z0-9._/-] is not printed"; else pass "W5 a path outside [A-Za-z0-9._/-] is not printed"; fi
+git -C "$WR" -c user.email=t@t -c user.name=t commit -q --allow-empty -m w
+git -C "$WR" checkout -q --detach
+(cd "$WR" && as_session bash scripts/test-w.sh >"$TMP/w.out" 2>&1)
+has "W6 a detached HEAD prints the <branch> placeholder" "$TMP/w.out" "himmel-ar-1 clone <branch>"
+
+# A detached test that is still alive keeps its test ancestor, so it is refused.
+( setsid bash -c "bash '$TMP/test-inner.sh' >/dev/null 2>&1; echo \$? >'$TMP/orphan2.rc'" >/dev/null 2>&1 & )
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$TMP/orphan2.rc" ] && break; sleep 0.2; done
+eq "D1 a detached test with a live test ancestor is refused" "$(cat "$TMP/orphan2.rc" 2>/dev/null)" 77
+
+# Pinned residuals: no door runs for these, so the guard is never asked. Closing them needs a sandbox.
+printf x >"$FAKE_REAL/redirect-out"
+if [ -s "$FAKE_REAL/redirect-out" ]; then pass "X1 residual: a plain redirect from a test reaches the file, no door runs"; else fail "X1 residual pin"; fi
+reset
+secret-tool store test-8819 >/dev/null 2>&1 <<<x
+eq "X2 residual: a direct keyring tool call reaches the tool, no door runs" "$(calls 'secret-tool store')" 1
 
 echo "== the VM check"
 (

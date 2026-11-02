@@ -131,6 +131,11 @@
 #      or Jira read failed or timed out, an empty type, a missing lib, no timeout
 #      binary). One bounded Jira read; `--only 7` adds one bounded gh pr view.
 #
+# 15. CodeRabbit rate-limited, WARN only: a head whose CodeRabbit status
+#      is success + "Review rate limited" prints one [WARN] line saying no review was
+#      posted. Never a FAIL, never the marker or the exit code; nothing prints for any
+#      other state or an unreadable status. Not part of `--only 7`.
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
 # ledger rows, no GO files, no PR comments.
@@ -1446,6 +1451,35 @@ check_bug_origin() {
     echo "        see the Ship step of docs/handover/worker-brief-template.md"
 }
 check_bug_origin
+
+# --- 15. CodeRabbit rate-limited at the head: WARN only, never mark_fail.
+# CodeRabbit posts success + "Review rate limited" and reviews nothing, so the green
+# status is not a review. Same reader as check-ci (scripts/lib/coderabbit-signal.sh):
+# prints only on a positive match; a repo without CodeRabbit, a reviewed head and an
+# unreadable status print nothing (nothing here ever claims a head was reviewed).
+check_cr_rate_limited() {
+    local cr_dir cr_lib cr_out
+    [ "$ONLY7" -eq 0 ] || return 0
+    cr_dir="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the -f tests below, which print nothing
+    cr_lib="$cr_dir/coderabbit-signal.sh"
+    [ -f "$cr_lib" ] || return 0
+    _TIMEOUT_BIN=""
+    # shellcheck source=/dev/null
+    [ ! -f "$cr_dir/timeout-bin.sh" ] || . "$cr_dir/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN skips this advisory row just below
+    [ -n "$_TIMEOUT_BIN" ] || return 0
+    # Both status reads run in one child under a deadline: a stalled gh costs this
+    # advisory row, never the verdict line.
+    # shellcheck disable=SC2016  # the body expands in the child shell
+    cr_out=$(GH_CMD="$GH" "$_TIMEOUT_BIN" -k 5 20 bash -c '
+        . "$1" 2>/dev/null || exit 0  # read-sink-ok: $1 is the own lib path built from dirname of this script, never user input
+        [ "$(cr_signal_state "$2" "$3" "$4" 2>/dev/null)" = skipped ] || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
+        d=$(cr_signal_description "$2" "$3" "$4" 2>/dev/null) || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
+        ! grep -qiE "rate.?limit" <<< "$d" || echo rl' _ "$cr_lib" "$owner" "$repo" "$SHA") || cr_out=""  # swallow-ok: advisory, a timeout or an unreadable status prints nothing
+    if [ "$cr_out" = rl ]; then
+        echo "[WARN] 15. CodeRabbit rate-limited at head ${SHA:0:8}: NO CodeRabbit review here (the green status is not a review); not gating, a posted finding still blocks. Re-request once when capacity returns: \`@coderabbitai review\`"
+    fi
+}
+check_cr_rate_limited
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi

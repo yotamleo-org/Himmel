@@ -257,6 +257,9 @@ if [ "$cmd" = "api" ]; then
                 # printed "all checks green" + "verdict exit=0" on a head that
                 # had no review at all.
                 cr-ratelimited) echo '[{"context":"CodeRabbit","state":"success","description":"Review rate limited","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+                # rate-limit wording on a state that is NOT success: only a skipped
+                # success is named rate-limited, a failure stays a failure.
+                cr-failure-ratelimited) echo '[{"context":"CodeRabbit","state":"failure","description":"Review rate limited","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
                 # a wording NOBODY has enumerated, in either list.
                 # Under the old deny-list this passed as clean by default; under
                 # the allow-list it fails CLOSED. This is the structural point of
@@ -738,7 +741,7 @@ case "$GH_STUB_MODE" in
     watch-error)
         if [ "$is_watch" -eq 1 ]; then echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2; exit 1; fi
         exit 8 ;;
-    cr-absent|cr-pending|cr-failure|cr-spoofed|cr-query-error|cr-paged|cr-skipped|cr-desc-error|cr-completed|cr-nearmiss|cr-ratelimited|cr-unknownword|cr-substrmatch|cr-nodesc|cr-nulldesc|cr-emptydesc)
+    cr-absent|cr-pending|cr-failure|cr-spoofed|cr-query-error|cr-paged|cr-skipped|cr-desc-error|cr-completed|cr-nearmiss|cr-ratelimited|cr-failure-ratelimited|cr-unknownword|cr-substrmatch|cr-nodesc|cr-nulldesc|cr-emptydesc)
         # Checks are GREEN and threads are clean in every one of these — the
         # verdict must turn entirely on CodeRabbit's status.
         if [ "$is_watch" -eq 1 ]; then echo "All checks were successful"; exit 0; fi
@@ -1415,7 +1418,23 @@ git -C "$CR_YAML_UNARMED_REPO" -c user.email=t@t -c user.name=t commit --quiet -
 # mechanism needed evidence to certify. It is advisory on its own now.
 run_in_repo "$EMPTY_LEDGER_REPO" cr-ratelimited
 assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evidence needed (HIMMEL-3360)"
-assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34e rate-limited (state=skipped) prints the advisory NOTE"
+assert_err_has "check-ci: NOTE — CodeRabbit rate-limited on head" "34e rate-limited status is named rate-limited (HIMMEL-8880)"
+assert_err_has "NO review at this head" "34e the rate-limited NOTE says no review was posted"
+# shellcheck disable=SC2016  # the backticks are literal text in the NOTE
+assert_err_has 'Re-request once when capacity returns: comment `@coderabbitai review`' "34e the rate-limited NOTE tells the user to re-request after capacity returns"
+assert_err_lacks "34e rate-limited is no longer printed as skipped" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
+assert_err_lacks "34e rate-limited is never read as reviewed" "reviewed NOTE present" -F -- "CodeRabbit success"
+# 34e2 - the description read fails after the state read said skipped: no
+# description to name it rate-limited, so it stays skipped (never reviewed).
+run cr-desc-error
+assert_rc 0 "34e2 an unreadable description keeps the skipped reading and stays advisory"
+assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34e2 unreadable description reads as skipped"
+assert_err_lacks "34e2 unreadable description is not named rate-limited" "rate-limited NOTE present" -F -- "CodeRabbit rate-limited on head"
+# 34e3 - rate-limit wording on a failure state is a failure, not rate-limited
+run cr-failure-ratelimited
+assert_rc 0 "34e3 a failure with rate-limit wording is advisory only"
+assert_err_has "check-ci: NOTE — CodeRabbit failure on head" "34e3 a failure state keeps its own name"
+assert_err_lacks "34e3 only a skipped success is named rate-limited" "rate-limited NOTE present" -F -- "CodeRabbit rate-limited on head"
 
 # 34f — the structural half: a wording NOBODY enumerated. Under the retired
 # allow-list this failed closed; an earlier change made the status advisory
@@ -3030,5 +3049,5 @@ CLASSIC_OVERRIDE=none
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 213 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 213"; exit 1; fi
+if [ "$COUNT" -ne 215 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 215"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1
