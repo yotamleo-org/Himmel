@@ -429,7 +429,10 @@ qstub() {
     printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\ncat > "$SSH_IN"\nprintf "%%s\\n" "$QSTUB_JSON"\nexit %s\n' "$1" > "$tmp/bin/ssh" && chmod +x "$tmp/bin/ssh" \
         || { echo "FAIL - qstub setup for rc $1"; fails=$((fails+1)); }
 }
-qin() { check "$1: the guest received the prompt on stdin" "$(cat "$SSH_IN" 2>/dev/null)" "do the thing"; }
+qin() {
+    check "$1: the guest received the prompt on stdin" "$(cat "$SSH_IN" 2>/dev/null)" "do the thing"
+    check "$1: the one ssh call is the exact native claude -p argv" "$(cat "$SSH_LOG" 2>/dev/null)" "$NATIVE_WANT"
+}
 for qerr in "Claude AI usage limit reached|1762099200" "Not logged in - Please run /login" "OAuth session expired"; do
     qstub 7
     export QSTUB_JSON="{\"type\":\"result\",\"is_error\":true,\"result\":\"$qerr\",\"total_cost_usd\":0}"
