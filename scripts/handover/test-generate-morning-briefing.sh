@@ -948,6 +948,11 @@ rm -f "$RT_DIR/envroot/morning-report-2026-10-29.md"
 gen_in "$ENV_REPO" env HIMMELCTL_CACHE_DIR="$RT_DIR/cache-nokey" bash "$SCRIPT"
 check "cache .env without the key: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
 check "cache .env without the key: the checkout .env root is read" "missing or empty" has_text "$RT_DIR/envroot/morning-report-2026-10-29.md" "Morning Report"
+rm -f "$RT_DIR/envroot/morning-report-2026-10-29.md"
+git -C "$ENV_REPO" worktree add -q -b env-wt "$RT_DIR/env-wt" >/dev/null 2>&1
+gen_in "$RT_DIR/env-wt" env HIMMELCTL_CACHE_DIR="$RT_DIR/cache-nokey" bash "$SCRIPT"
+check "linked worktree: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
+check "linked worktree: the primary checkout .env root is read" "missing or empty" has_text "$RT_DIR/envroot/morning-report-2026-10-29.md" "Morning Report"
 gen_in "$ADOPT_REPO" bash "$SCRIPT"
 check "adopter checkout: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
 check "adopter checkout: Mode A still writes" "missing or empty" has_text "$ADOPT_REPO/handovers/morning-report-2026-10-29.md" "Morning Report"
