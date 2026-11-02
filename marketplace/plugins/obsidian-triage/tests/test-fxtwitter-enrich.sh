@@ -883,6 +883,16 @@ assert "Test21: a second --apply is a byte-identical no-op" "$sum1" "$(vault_sum
 assert "Test21: second run reports nothing left to add" \
     "summary: seen=6 adds-text=0 no-new-text=5 fetch-failed=1" \
     "$(grep '^summary:' "$tmpdir/t21-apply2.out")"
+FXT_THREAD_FIXTURE_DIR="$bf_fx" node "$BACKFILL" --vault "$bf_vault" --limit 1 >"$tmpdir/t21-limit.out" 2>&1
+assert "Test21: --limit stops after N clips" \
+    "summary: seen=1 adds-text=0 no-new-text=1 fetch-failed=0" \
+    "$(grep '^summary:' "$tmpdir/t21-limit.out")"
+FXT_THREAD_FIXTURE_DIR="$bf_fx" node "$BACKFILL" --vault "$bf_vault" --resume-after "Clippings/_done/2026-05/deep-theo.md" >"$tmpdir/t21-resume.out" 2>&1
+assert "Test21: --resume-after skips every clip up to that path" \
+    "summary: seen=4 adds-text=0 no-new-text=3 fetch-failed=1" \
+    "$(grep '^summary:' "$tmpdir/t21-resume.out")"
+assert "Test21: --help names the rate and the 25 minute estimate" "yes" \
+    "$(node "$BACKFILL" --help 2>&1 | grep -q '25 minutes' && echo yes || echo no)"
 
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
