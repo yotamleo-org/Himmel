@@ -486,10 +486,13 @@ cat "$err" >&2
 # cap, but keep it out of the spend file so the run row reports only verified cost. A call the lane refused
 # before any API request (exit 2, nothing on stdout, its own refusal line) was never billed: it counts for nothing,
 # and neither does a credit or key rejection (exit 6), which is also what stops the next dispatch.
-# A call the lane replayed on the subscription (it says so on stderr) is not API spend: its cost, and the cost of a
-# failed replay, go in neither file, so the run row's cost_usd stays what the API was charged.
+# A call the lane replayed on the subscription (it says so on stderr) is not API spend: the replay's cost, and the
+# cost of a failed replay, go in neither file, so the run row's cost_usd stays what the API was charged. The API
+# attempt before the replay may still have been billed (a timeout, a budget stop), so its per-call budget is
+# reserved unless it was refused or rejected before any billable work.
 cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
-if grep -q '^claude-api: fallback: running on the subscription' "$err"; then :
+if grep -q '^claude-api: fallback: running on the subscription' "$err"; then
+  grep -Eq '^claude-api: (refused: |account .* (credit exhausted|API key rejected))' "$err" || echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"
 elif [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
 elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
 elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi

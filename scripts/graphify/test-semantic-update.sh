@@ -724,6 +724,10 @@ real_lane_on() {
 cat > /dev/null
 if [ -n "\${ANTHROPIC_API_KEY:-}" ]; then
   echo api >> "$WS/rl-calls.log"
+  if [ -n "\${RL_STUB_FAIL:-}" ]; then
+    echo '{"type":"result","subtype":"error_max_budget_usd","is_error":true}'
+    exit 1
+  fi
   if [ -n "\${RL_STUB_REJECT:-}" ]; then
     echo '{"type":"result","is_error":true,"result":"API Error: 400 Your credit balance is too low to access the Anthropic API."}'
     exit 1
@@ -758,10 +762,20 @@ real_lane_off
 echo "T68d: through the real launcher, a rejection replayed on the subscription adds nothing to the API spend, and the breaker stays open"
 real_lane_on
 C68D="$WS/c68d"; new_corpus "$C68D"
-out=$(RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68d --corpus-root "$C68D" --corpus-class himmel-code --backend claude-api); rc=$?
+out=$(RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68d --corpus-root "$C68D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
+grep -q 'past the planned cap' "$WS/claude.out" && fail "T68d a rejected (unbilled) attempt reserved against the run cap: $(cat "$WS/claude.out")" || pass "T68d a rejected attempt reserves nothing"
 [ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68d all three chunks ran on the subscription" || fail "T68d lane calls: $(tr '\n' ' ' < "$WS/rl-calls.log") (rc=$rc): $out"
 [ "$(grep -c '^claude-shim-rc=' "$WS/calls.log")" -eq 0 ] && pass "T68d no chunk failed: the fallback's exit replaced the rejection" || fail "T68d shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
 [ "$(lastrun "$C68D" cost_usd)" = "0.0" ] && pass "T68d the API spend is 0 (the subscription's 0.31 per chunk is not API spend)" || fail "T68d row: $(tail -1 "$C68D/graphify-out/semantic-runs.jsonl" 2>&1)"
+real_lane_off
+
+echo "T68f: through the real launcher, a failed API attempt replayed on the subscription still reserves its per-call budget"
+real_lane_on
+C68F="$WS/c68f"; new_corpus "$C68F"
+out=$(RL_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68f --corpus-root "$C68F" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
+[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68f all three chunks ran on the subscription" || fail "T68f lane calls: $(tr "\n" " " < "$WS/rl-calls.log") (rc=$rc): $(head -c 900 "$WS/claude.out")"
+[ "$(lastrun "$C68F" cost_usd)" = "0.0" ] && pass "T68f the API spend stays 0" || fail "T68f row: $(tail -1 "$C68F/graphify-out/semantic-runs.jsonl" 2>&1)"
+grep -q 'past the planned cap' "$WS/claude.out" && pass "T68f the failed attempts' reserve (1.00 each) passes the 1.50 cap" || fail "T68f no cap WARN: $(head -c 900 "$WS/claude.out")"
 real_lane_off
 
 echo "T68e: through the real launcher, an API call that succeeds still adds its cost to the spend"
