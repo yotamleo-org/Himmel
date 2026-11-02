@@ -8,6 +8,8 @@
 # the number of sessions that used it, then the share of sessions that searched code (Grep/Glob or a grep, rg, ugrep,
 # git grep command) and never called the graph. A form counts only when it leads a command (past cd, env, rtk,
 # bash, bash -c), so `git grep "graphify query"` is a search, not a graph call. Nothing is written.
+# ponytail: a regex lead-match, not scripts/hooks/lib/shell-tokenize.sh; a graph call after a pipe or inside $(...) is
+# missed, so the numbers undercount. Upgrade = run each command through the tokenizer.
 set -u
 
 DAYS=7
@@ -37,8 +39,12 @@ JQ='
         + ($b | map(select(test("(^|[;&|([:space:]])(git[[:space:]]+grep|grep|egrep|fgrep|rg|ugrep)[[:space:]]"))) | length)) ]
   | @tsv'
 
-rows="$(find "$ROOT" -maxdepth 2 -name '*.jsonl' -mtime "-$DAYS" -print0 2>/dev/null \
-  | while IFS= read -r -d '' f; do jq -nrR "$JQ" "$f" 2>/dev/null; done)"
+rows=""
+for f in "$ROOT"/*/*.jsonl; do
+  [ -f "$f" ] || continue
+  [ -n "$(find "$f" -mtime "-$DAYS" -print 2>/dev/null)" ] || continue
+  rows="$rows$(jq -nrR "$JQ" "$f" 2>/dev/null)"$'\n'
+done
 
 printf '%s\n' "$rows" | awk -F'\t' -v days="$DAYS" '
   NF == 5 {
