@@ -50,6 +50,21 @@ expect "a qmd_bounded call in a sourced script passes" 0 "$(run "$T/ok-sourced.m
 printf 'the refused form is qmd query x <!-- taught-form-ok -->\n' >"$T/ok-marked.md"
 expect "a marked mention of the refused form passes" 0 "$(run "$T/ok-marked.md")"
 
+# An exempt token hides only itself: a bare form on the same line still fails.
+printf 'use mcp__qmd__query or qmd query x\n' >"$T/mixed-mcp.md"
+expect "a bare form beside an MCP tool name fails" 1 "$(run "$T/mixed-mcp.md")"
+printf 'qmd_bounded 60 qmd query x, then qmd search y\n' >"$T/mixed-sourced.md"
+expect "a bare form beside a qmd_bounded call fails" 1 "$(run "$T/mixed-sourced.md")"
+
+# An unreadable file cannot be evaluated.
+printf 'x\n' >"$T/unreadable.md"
+chmod 000 "$T/unreadable.md"
+if [ -r "$T/unreadable.md" ]; then
+    echo "SKIP an unreadable file fails closed (this user reads mode 000 files)"
+else
+    expect "an unreadable file fails closed" 2 "$(run "$T/unreadable.md")"
+fi
+
 # In CLAUDE.md the installer-owned graphify section is not scanned; the rest is.
 mkdir -p "$T/section"
 printf '# P\n\nsee the wrapper\n\n## graphify\n\n- first run `graphify query "q"`\n' >"$T/section/CLAUDE.md"

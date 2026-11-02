@@ -34,24 +34,28 @@ scripts/hooks/block-graphify-egress.sh|for read-only queries use:'
 
 BARE='(^|[^A-Za-z0-9_./-])(qmd[[:space:]]+(query|search|vsearch)|graphify[[:space:]]+(query|explain|path))([^A-Za-z0-9_-]|$)'
 
+# an MCP tool name, and the qmd_bounded call of a sourced script (qmd is its argument there, not the program)
+EXEMPT='mcp__[A-Za-z0-9_]*|qmd_bounded[[:space:]]+[0-9]+[[:space:]]+qmd[[:space:]]+(query|search|vsearch)'
+
 hits=0
 
 # scan FILE FILTER — print a hit per line of FILE (filter: only lines holding it; empty: all lines)
 scan() {
     local file=$1 filter=$2 body
     [ -f "$file" ] || { echo "check-taught-search-forms: no such file: $file" >&2; exit 2; }
-    body=$(cat "$file")
+    body=$(cat "$file") || { echo "check-taught-search-forms: cannot read: $file" >&2; exit 2; }
     case "${file##*/}" in
         CLAUDE.md)
             # the installer's own boundary rule: a line that is exactly `## graphify` up to the next column-zero `## `
             body=$(printf '%s\n' "$body" | awk '/^## graphify[[:space:]]*$/ { skip = 1; next } /^## / { skip = 0 } !skip')
             ;;
     esac
-    local n=0 line
+    local line
     while IFS= read -r line; do
-        n=$((n + 1))
         [ -z "$filter" ] || [[ $line == *"$filter"* ]] || continue
-        [[ $line == *taught-form-ok* || $line == *qmd_bounded* || $line == *mcp__* ]] && continue
+        [[ $line == *taught-form-ok* ]] && continue
+        # drop the exempt tokens, not the whole line: a bare form beside an MCP tool name still hits
+        while [[ $line =~ $EXEMPT ]]; do line=${line/"${BASH_REMATCH[0]}"/}; done
         if [[ $line =~ $BARE ]]; then
             printf '%s: a bare taught search form: %s\n' "$file" "${line:0:160}"
             hits=$((hits + 1))
