@@ -846,6 +846,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     for (const k of env) { saved[k] = process.env[k]; delete process.env[k]; }
     dir = mkdtempSync(join(tmpdir(), 'rank-slots-'));
     process.env.HANDOVER_DIR = dir;
+    writeFileSync(join(dir, 'admissions-ledger.jsonl'), '');
     resetSectorCache();
     frozen = false;
     afterCreate = () => {};
@@ -1012,7 +1013,22 @@ describe('HIMMEL-6924 residual rank slots', () => {
   });
 
   // A ticket the release manager admitted must keep its version when a residual displaces another.
-  const admit = (key: string, kind: string) => JSON.stringify({ ts: '2026-11-01T19:56:00Z', key, version: 'v1.1.3', kind, ruling: 'R-v1.1.3-1727', actor: 'rm' });
+  const admit = (key: string, kind: string, version = 'v1.1.3') => JSON.stringify({ ts: '2026-11-01T19:56:00Z', key, version, kind, ruling: 'R-v1.1.3-1727', actor: 'rm' });
+  const ledger = (...rows: string[]) => writeFileSync(join(dir, 'admissions-ledger.jsonl'), rows.join('\n') + '\n');
+  const putTo = (key: string) => mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] === `/issue/${key}`);
+  const stderrLines = () => (console.error as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+  // A signed operator decision, as the chief records it, naming the key and where it goes.
+  const decide = async (id: string, key: string, op: string, from: string, to: string) => {
+    writeFileSync(join(baseRoot, 'decision.txt'), `${id} ${op} ${key}\n`);
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', 'operator', 'decision', 'R1', '--decision', id, '--keys', key, '--op', op,
+      '--from', from, '--to', to, '--verbatim-file', join(baseRoot, 'decision.txt')]);
+  };
+  const displacedOnly = (key: string) => expect(mockRequest).toHaveBeenCalledWith('PUT', `/issue/${key}`, {
+    fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
+  });
 
   it('RED 8723 ii: a resident the release manager admitted keeps its version; the next candidate is displaced', async () => {
     writeFileSync(join(dir, 'admissions-ledger.jsonl'), admit('HIMMEL-900', 'rm-admit') + '\n');
@@ -1044,6 +1060,54 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-77', {
       fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
     });
+  });
+
+  it('RED 8723 ii: a key in a signed operator keep record is ruled and keeps its version', async () => {
+    await decide('O-1', 'HIMMEL-900', 'keep', 'v1.1.3', 'v1.1.3');
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(putTo('HIMMEL-900')).toBe(false);
+    displacedOnly('HIMMEL-901');
+  });
+
+  it('RED 8723 ii: a chief override admission is ruled and keeps its version', async () => {
+    ledger(admit('HIMMEL-900', 'override'));
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(putTo('HIMMEL-900')).toBe(false);
+    displacedOnly('HIMMEL-901');
+  });
+
+  it('RED 8723 ii: an rm-admit followed by an override stays ruled', async () => {
+    ledger(admit('HIMMEL-900', 'rm-admit'), admit('HIMMEL-900', 'override'));
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(putTo('HIMMEL-900')).toBe(false);
+    displacedOnly('HIMMEL-901');
+  });
+
+  it('8723 ii control: a keep record later replaced by a removal no longer rules the key', async () => {
+    await decide('O-1', 'HIMMEL-900', 'keep', 'v1.1.3', 'v1.1.3');
+    await decide('O-2', 'HIMMEL-900', 'remove', 'v1.1.3', 'backlog');
+    await file('--fu-class', 'escape', '--priority', 'High');
+    displacedOnly('HIMMEL-900');
+  });
+
+  it('RED 8723 ii: with no ledger file the rulings are unknown, so nobody is displaced and the newcomer steps down', async () => {
+    rmSync(join(dir, 'admissions-ledger.jsonl'));
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] !== '/issue/HIMMEL-77')).toBe(false);
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(created().labels).toContain('residual-displaced');
+  });
+
+  it('RED 8723 ii: a resident ruled after creation, with no version to step down to, queues the newcomer INTAKE', async () => {
+    frozen = true;
+    for (const r of residents) r.fields.fixVersions = [{ name: 'v1.1.4' }];
+    afterCreate = () => ledger(admit('HIMMEL-900', 'rm-admit', 'v1.1.4'));
+    await file('--fu-class', 'escape');
+    expect(putTo('HIMMEL-900')).toBe(false);
+    expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-77', {
+      fields: { fixVersions: [] }, update: { labels: [{ add: 'residual-displaced' }] },
+    });
+    expect(stderrLines().some((e) => /INTAKE queued for HIMMEL-77 as REQ/.test(e))).toBe(true);
   });
 });
 
@@ -1081,7 +1145,7 @@ describe('create — unplaced follow-up (HIMMEL-8723)', () => {
     expect(posted()).toBe(false);
   });
 
-  it('RED 8723 i: with a release declared, a follow-up with no version queues its INTAKE and exits clean', async () => {
+  it('8723 i: with a release declared, a follow-up with no version queues its INTAKE and exits clean', async () => {
     await file('--follow-up-of', 'HIMMEL-5');
     expect(posted()).toBe(true);
     expect(errs.some((e) => /INTAKE queued for HIMMEL-77 as REQ/.test(e))).toBe(true);

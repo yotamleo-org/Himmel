@@ -14,11 +14,12 @@ import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titl
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
-import { appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
+import { admissionsLedgerExists, appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 import { ctxFor, refuseRequest } from './release.js';
-import { request as releaseRequest } from '../release/engine.js';
+import { placementOf, readOperatorRecords, request as releaseRequest } from '../release/engine.js';
+import { admits } from '../release/leaks.js';
 import { releaseRoot } from '../release/paths.js';
 
 function collect(value: string, prev: string[]): string[] {
@@ -227,8 +228,29 @@ function residualGateRank(i: RankedIssue, ledger: Admission[]): number {
     (i.fields.labels ?? []).includes(`gate-${g}`) || gate === g ? index + 1 : 0));
 }
 
-/** True when the release manager's latest row for the key admitted it: its version is ruled and only the release manager moves it. */
-const ruledByRm = (key: string, ledger: Admission[]): boolean => ledger.filter((r) => r.key === key).pop()?.kind === 'rm-admit';
+/**
+ * Says whether a key's place in `version` is ruled: its latest ledger row admits it
+ * (an rm-admit or an override, as the release leak diff reads it), or the latest signed
+ * operator decision naming it puts it there. A ruled key is moved only by the release
+ * manager. Undefined when the rulings cannot be read, so the caller displaces nobody.
+ */
+function rulingsOf(version: string): ((key: string) => boolean) | undefined {
+  try {
+    if (!admissionsLedgerExists()) throw new Error('the admissions ledger does not exist');
+    const rows = readAdmissions(version);
+    const decisions = readOperatorRecords('decision')
+      .filter((d) => d.keys !== undefined && placementOf(d) !== undefined)
+      .sort((a, b) => a.ts.localeCompare(b.ts));
+    return (key) => {
+      if (admits(rows.filter((r) => r.key === key).pop())) return true;
+      const latest = decisions.filter((d) => d.keys!.includes(key)).pop();
+      return latest !== undefined && placementOf(latest) === version;
+    };
+  } catch (e) {
+    console.error(`jira: warning: the rulings on ${version} cannot be read (${(e as Error).message}); no resident is displaced`);
+    return undefined;
+  }
+}
 
 /** Read all rank fields while retaining the shared search helper's pagination. */
 async function rankIssues(jql: string): Promise<RankedIssue[]> {
@@ -284,7 +306,9 @@ async function competeForSlot(
   };
   const newcomer = rank({ key: '', fields: { labels, priority: { name: o.priority ?? 'Medium' }, created: new Date().toISOString() } },
     newcomerLinks, GATE_RANK.indexOf(o.gate?.split(':')[0] ?? '') + 1, o.sector);
-  const candidates = residents.filter((i) => i.fields?.status?.name === 'To Do' && residualGateRank(i, ledger) === 0 && !ruledByRm(i.key, ledger))
+  const ruled = rulingsOf(version);
+  const candidates = residents.filter((i) => ruled !== undefined && i.fields?.status?.name === 'To Do'
+      && residualGateRank(i, ledger) === 0 && !ruled(i.key))
     .map((i) => ({ key: i.key, tuple: rank(i, links(i), 0, sectorOf(i)) }))
     .sort((a, b) => compareRank(a.tuple, b.tuple) || a.key.localeCompare(b.key));
   const lowest = candidates[0];
@@ -680,19 +704,27 @@ async function residualInheritedVersion(
   return residual && inherited && o.gate === undefined && residual.frozen.includes(inherited) ? undefined : inherited;
 }
 
-async function displaceResidual(residual: ResidualPlan | undefined, newcomer: string): Promise<void> {
+async function displaceResidual(
+  residual: ResidualPlan | undefined, newcomer: string, filed: { type: string; title: string },
+): Promise<void> {
   if (!residual?.displaced) return;
   const displaced = residual.displaced;
   const resident = await request<RankedIssue>('GET', `/issue/${displaced.key}?fields=labels,status,fixVersions`);
   const source = residual.fixVersion!;
-  const ledger = readAdmissions(source);
-  if (!resident.fields.fixVersions?.some((v) => v.name === source) ||
-      resident.fields.status?.name !== 'To Do' || residualGateRank(resident, ledger) !== 0 || ruledByRm(displaced.key, ledger)) {
+  const ruled = rulingsOf(source);
+  if (!resident.fields.fixVersions?.some((v) => v.name === source) || resident.fields.status?.name !== 'To Do' ||
+      residualGateRank(resident, readAdmissions(source)) !== 0 || ruled === undefined || ruled(displaced.key)) {
     await request('PUT', `/issue/${newcomer}`, {
       fields: { fixVersions: displaced.fixVersion ? [{ name: displaced.fixVersion }] : [] },
       update: { labels: [{ add: 'residual-displaced' }] },
     });
     console.error(`jira: ${displaced.key} is no longer displaceable; ${newcomer} moved to ${displaced.fixVersion ?? 'the backlog'}`);
+    // With no version to step down to the newcomer is versionless: it waits in the backlog for an INTAKE.
+    if (!displaced.fixVersion) {
+      queueIntakeIfUnversioned(newcomer, {}, filed.title, {
+        type: filed.type, why: `lost its ${source} slot to a ruled ticket and has no version to step down to: ${filed.title}`,
+      });
+    }
     return;
   }
   const fixVersions = resident.fields.fixVersions.filter((v) => v.name !== source);
@@ -939,7 +971,7 @@ export function registerCreate(program: Command): void {
           recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
         }
         if (admission) recordAdmission(result.key, admission);
-        await displaceResidual(residual, result.key);
+        await displaceResidual(residual, result.key, { type: options.type, title: resolveTitle(options) });
         // The reason is recorded first so a failed link cannot leave an over-cap ticket unexplained.
         if (overCapReason) {
           try {
