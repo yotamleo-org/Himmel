@@ -421,6 +421,22 @@ rc=0; out="$(tr_ --base no-such-ref --head top)" || rc=$?
 eq "a bad ref: exit 2" "$rc" "2"
 hasnt "a bad ref: no traceback" "$out" "Traceback"
 
+# a failed git read refuses; it never reads as a diff that changes nothing
+SHIM="$TMP/shim"
+mkdir -p "$SHIM"
+# shellcheck disable=SC2016  # the shim's own "$@" and "$a" expand when it runs
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = "$FAIL_ON" ] && exit 1; done\nexec "%s" "$@"\n' "$(command -v git)" > "$SHIM/git"
+chmod +x "$SHIM/git"
+rc=0; out="$(cd "$R" && FAIL_ON=no-such-arg PATH="$SHIM:$PATH" python3 "$REPORT" trace --base fork --head top 2>&1)" || rc=$?
+eq "failed git control: exit 0" "$rc" "0"
+has "failed git control: a candidate" "$out" "$(s12 "$c1")"
+for step in --name-status -U0 blame; do
+    rc=0; out="$(cd "$R" && FAIL_ON="$step" PATH="$SHIM:$PATH" python3 "$REPORT" trace --base fork --head top 2>&1)" || rc=$?
+    eq "failed git $step: exit 2" "$rc" "2"
+    has "failed git $step: refused" "$out" "refused"
+    hasnt "failed git $step: no false claim" "$out" "no candidate"
+done
+
 # evidence
 GCD="$(g rev-parse --path-format=absolute --git-common-dir)"
 printf '[{"number":2,"mergedAt":"2026-10-10T00:00:00Z","headRefName":"b2","headRefOid":"h2","mergeCommit":{"oid":"%s"}}]\n' "$c2" > "$TMP/bodyless.json"

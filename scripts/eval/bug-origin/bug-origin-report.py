@@ -58,7 +58,7 @@ REPORT_FIELDS = ("number", "title", "body", "mergedAt", "headRefName", "headRefO
 # ponytail: one class per fix, upgrade path repeatable lines counted per class
 LINE = re.compile(r"^bug-origin:[ \t]+(?:(#[0-9]+|[0-9a-f]{7,40})[ \t]+(test-gap|design-gap|review-miss:(?:cr|judge|panel)|unknown)"
                   r"|(unknown)[ \t]+(unknown))[ \t]+(?:—|-)[ \t]+([^ \t].*)$")
-FENCE = re.compile(r"^ {0,3}(```|~~~)")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 KEY = re.compile(r"\[([A-Za-z][A-Za-z0-9]*-[0-9]+)\]")
 SUBJECT_PR = re.compile(r"\(#(\d+)\)\s*$")
 
@@ -77,10 +77,10 @@ def parse_body(body):
     for line in (body or "").replace("\r", "").split("\n"):
         m = FENCE.match(line)
         if fence:
-            if m and m.group(1)[0] == fence:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2).strip(" \t"):
                 fence = None
-        elif m:
-            fence = m.group(1)[0]
+        elif m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+            fence = m.group(1)
         elif line.startswith("bug-origin:"):
             lines.append(line)
     if not lines:
@@ -347,9 +347,17 @@ def git(*args, repo="."):
     return r.stdout if r.returncode == 0 else None
 
 
+def read_git(*args, repo="."):
+    """A git command's stdout; a failure refuses, so a failed read never looks like a diff that changes nothing."""
+    out = git(*args, repo=repo)
+    if out is None:
+        raise ValueError("git %s failed" % args[0])
+    return out
+
+
 def changed_paths(base, head, repo="."):
     """[(status, base path, head path)] of a diff, renames followed; tests and data left out unless nothing else changed."""
-    fields = (git("diff", "-M", "--name-status", "-z", base, head, repo=repo) or "").split("\0")
+    fields = read_git("diff", "-M", "--name-status", "-z", base, head, repo=repo).split("\0")
     out, i = [], 0
     while i < len(fields) and fields[i]:
         status = fields[i][0]
@@ -366,7 +374,7 @@ def changed_paths(base, head, repo="."):
 def touched_lines(base, head, old, new, repo="."):
     """(lines the diff changes, lines beside an add-only hunk), numbered at the base."""
     changed, adjacent = set(), set()
-    for line in (git("diff", "-M", "-U0", base, head, "--", old, new, repo=repo) or "").split("\n"):
+    for line in read_git("diff", "-M", "-U0", base, head, "--", old, new, repo=repo).split("\n"):
         m = HUNK.match(line)
         if not m:
             continue
@@ -388,9 +396,7 @@ def trace(base, head, merged, s, repo="."):
     for status, old, new in changed_paths(fork, head, repo):
         if status == "A":
             continue
-        blame = git("blame", "-w", "-s", "-l", "--root", fork, "--", old, repo=repo)
-        if blame is None:
-            continue
+        blame = read_git("blame", "-w", "-s", "-l", "--root", fork, "--", old, repo=repo)
         shas = [line.split(" ", 1)[0] for line in blame.split("\n") if line]
         changed, adjacent = touched_lines(fork, head, old, new, repo)
         for lines, slot in ((changed, 0), (adjacent, 1)):

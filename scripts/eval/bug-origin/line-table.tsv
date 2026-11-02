@@ -48,3 +48,9 @@ ok	    ```\nbug-origin: #12 test-gap — x
 duplicate	bug-origin: #12 test-gap — x\nbug-origin: #13 design-gap — y
 malformed	bug-origin: #12 test-gap — x\nbug-origin: nonsense
 ok	bug-origin: #12 test-gap — reverted by #13
+none	````\n```\nbug-origin: #12 test-gap — x\n````
+none	~~~~\n~~~\nbug-origin: #12 test-gap — x\n~~~~
+none	```\n``` not a close\nbug-origin: #12 test-gap — x\n```
+ok	``` a`b\nbug-origin: #12 test-gap — x
+ok	```\nan example\n```  \nbug-origin: #12 test-gap — x
+ok	````\nan example\n`````\nbug-origin: #12 test-gap — x

@@ -1364,10 +1364,9 @@ fi  # ONLY7 == 0: check 13
 bug_origin_state() {
     local lines good bad
     lines=$(printf '%s\n' "$1" | tr -d '\r' | awk '
-        fence == "`" { if ($0 ~ /^ ? ? ?```/) fence = ""; next }
-        fence == "~" { if ($0 ~ /^ ? ? ?~~~/) fence = ""; next }
-        /^ ? ? ?```/ { fence = "`"; next }
-        /^ ? ? ?~~~/ { fence = "~"; next }
+        { s = $0; sub(/^ ? ? ?/, "", s); n = match(s, /^(```+|~~~+)/) ? RLENGTH : 0; c = substr(s, 1, 1); rest = substr(s, n + 1) }
+        flen { if (n >= flen && c == fch && rest ~ /^[ \t]*$/) flen = 0; next }
+        n && !(c == "`" && index(rest, "`")) { flen = n; fch = c; next }
         /^bug-origin:/ { print }
     ')
     if [ -z "$lines" ]; then echo none; return 0; fi
