@@ -176,7 +176,9 @@ if [ "$SWEEP_MODE" -eq 1 ]; then
         case "$sw_rc" in
             0) sw_closed=$((sw_closed + 1))
                if [ "$CHECK_MODE" -eq 1 ]; then echo "sweep: would close $sw_doc"; else echo "sweep: closed $sw_doc"; fi ;;
-            3|4) sw_skipped=$((sw_skipped + 1)) ;;
+            3|4) sw_skipped=$((sw_skipped + 1))
+                 # a doc that reads WRAPPED further down but whose Results tail is not would strand its window silently
+                 case "$sw_out" in *"not the worker's tail"*) echo "sweep: skipped $sw_doc (rc=$sw_rc): $(printf '%s\n' "$sw_out" | tail -n 1)" ;; esac ;;
             *) sw_refused=$((sw_refused + 1)); echo "sweep: refused $sw_doc (rc=$sw_rc): $(printf '%s\n' "$sw_out" | tail -n 1)" ;;
         esac
     done <<EOF
@@ -269,7 +271,8 @@ resume_evidence() {
     local stem
     stem=$(basename "$2" .md)
     awk -v stem="$stem" '
-        /^## / { inres = ($0 ~ /^## Results( |$)/); next }
+        /^## Results( |$)/ { seen = 1; inres = 1; next }
+        /^## / { inres = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
         !inres || !/^- / { next }
         {
             mk = ""; tok = ""
@@ -289,15 +292,17 @@ resume_evidence() {
         END { exit !(wrapped && tailmk == "WRAPPED") }' "$1"
 }
 
-# results_tail_status <doc>: the doc's tail status read from its `## Results` section alone, through the
-# one marker parser (worker_tail_status), so a bullet in a later section (a ## Notes line that mentions
-# WRAPPED) never reads as the worker's tail. Prints `nosection` for a doc with no such heading (a legacy
-# doc: the whole-file tail stands). Returns 1 when the section cannot be copied.
+# results_tail_status <doc>: the doc's tail status read from its `## Results` section and the ruling sections
+# the writers add after it (`## Chief Rulings`, `## Console Rulings`), through the one marker parser
+# (worker_tail_status). append-results.sh appends at the end of the file, so once inbox-send adds a ruling
+# section the worker's later bullets sit below it and still count; a bullet in any other later section (a
+# `## Notes` line that mentions WRAPPED) never reads as the worker's tail. Prints `nosection` for a doc with
+# no Results heading (a legacy doc: the whole-file tail stands). Returns 1 when the text cannot be copied.
 results_tail_status() {
     local tmp out
     if ! grep -qE '^## Results( |$)' "$1" 2>/dev/null; then printf 'nosection'; return 0; fi
     tmp=$(mktemp "${TMPDIR:-/tmp}/cww-results.XXXXXX") || return 1
-    if ! awk '/^## / { inres = ($0 ~ /^## Results( |$)/); next } inres' "$1" > "$tmp"; then rm -f "$tmp"; return 1; fi
+    if ! awk '/^## Results( |$)/ { seen = 1; keep = 1; next } /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next } keep' "$1" > "$tmp"; then rm -f "$tmp"; return 1; fi
     out=$(worker_tail_status "$tmp"); rm -f "$tmp"
     printf '%s' "$out"
 }
@@ -337,7 +342,7 @@ for rt_doc in "$tail_doc" ${res_chk:+"$res_chk"}; do
         exit 4
     fi
     if [ "$rt" != nosection ] && [ "$rt" != WRAPPED ]; then
-        echo "close-wrapped-worker: refusing - the ## Results section of $rt_doc ends with '${rt:-<none>}', not WRAPPED (a WRAPPED further down the doc is not the worker's tail)" >&2
+        echo "close-wrapped-worker: refusing - the ## Results tail of $rt_doc (with its Chief/Console Rulings sections) ends with '${rt:-<none>}', not WRAPPED: a WRAPPED in any other later section is not the worker's tail" >&2
         exit 4
     fi
 done

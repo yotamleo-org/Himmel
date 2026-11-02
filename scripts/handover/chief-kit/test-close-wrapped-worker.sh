@@ -1704,6 +1704,24 @@ for d in "$RESL" "$ORIGL"; do
     check "8424: hand-off, new-token LIVE, WRAPPED done, $(basename "$d") -> rc 0" "$rc" "0"
     exact_count "8424: new-token evidence, $(basename "$d"): the N18b session TERMed once" "$(cat "$CALLS")" "kill -TERM 340" "1"
 done
+# positive: the writers append at the end of the file, so after a ruling section arrives (## Chief Rulings is added
+# at the end by inbox-send) the successor's LIVE and WRAPPED sit below it; both docs still close
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n\n## Chief Rulings\n\n- 10:30 ruling: carry on\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n' "$TK1" "$(basename "$RESL")" "$TK2" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: successor LIVE and WRAPPED appended below ## Chief Rulings, $(basename "$d") -> rc 0" "$rc" "0"
+    exact_count "8424: end-of-file append layout, $(basename "$d"): the N18b session TERMed once" "$(cat "$CALLS")" "kill -TERM 340" "1"
+done
+# negative: the original is WRAPPED but its -RESUME sibling carries markers of its own whose Results tail is LIVE
+# while a ## Notes bullet names WRAPPED (the sibling's whole-file tail reads WRAPPED): refuses, nothing signaled
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - done\n' "$TK1" > "$ORIGL"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 11:00 LIVE - resumed, release-token %s\n\n## Notes\n\n- 12:00 WRAPPED - a note about the wrap\n' "$TK2" > "$RESL"
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: RESUME sibling with its own markers, Results tail LIVE behind a Notes WRAPPED -> rc 4" "$rc" "4"
+check "8424: RESUME sibling Notes-bullet WRAPPED: nothing signaled" "$(cat "$CALLS")" ""
+printf '# worker\n\n## Results (newest at the bottom)\n' > "$RESL"
 # negative: two successor RESUME docs for one original is refused, not guessed
 RESL2="$W/HIMMEL-9-N18c-demo-2026-01-01-RESUME.md"
 printf '# worker\n' > "$RESL2"
@@ -1727,6 +1745,15 @@ reset_calls
 rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
 check "8424: plain doc with a WRAPPED Results tail and a later Notes section -> rc 0" "$rc" "0"
 exact_count "8424: plain doc control: the N18 session TERMed once" "$(cat "$CALLS")" "kill -TERM 341" "1"
+# the real layout of a worker that got a ruling: Results tail LIVE, then ## Chief Rulings, then the worker's own
+# WRAPPED appended at the end of the file (append-results.sh) -> closes; the same under ## Console Rulings
+for sec in "Chief Rulings" "Console Rulings"; do
+    printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n\n## %s\n\n- 10:30 ruling: carry on\n- 12:00 WRAPPED - done\n' "$TK1" "$sec" > "$ORIGL"
+    reset_calls
+    rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+    check "8424: plain doc, WRAPPED appended below ## $sec -> rc 0" "$rc" "0"
+    exact_count "8424: plain doc below ## $sec: the N18 session TERMed once" "$(cat "$CALLS")" "kill -TERM 341" "1"
+done
 
 # --- cause 2: a judge session's doc stem is not an N<k> worker stem ---------------
 rm -rf "$W/proc"; mkdir -p "$W/proc"
@@ -1783,6 +1810,19 @@ not_contains "sweep: the held WRAPPED worker is never signaled" "$(cat "$CALLS")
 contains "sweep: summary names the counts" "$out" "sweep: closed=2 refused=0 skipped=2"
 check "sweep: held and live workers stay in the manifest" "$(printf '%s\n%s' "$SW_HELD" "$SW_C")" "$(jq -r '.workers[].doc' "$sweep_manifest")"
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$SW_HELD" "$token" >/dev/null 2>&1
+# a doc that reads WRAPPED further down the file but whose Results tail is not is skipped WITH its reason (a silent skip
+# would strand the window)
+SW_D="$W/HIMMEL-9-N35-notes-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n\n## Notes\n\n- 10:00 WRAPPED - a note about the wrap\n' > "$SW_D"
+sweep_manifest2="$W/sweep-fleet2.json"
+rm -f "$sweep_manifest2"
+bash "$HERE/fleet-manifest.sh" add "$sweep_manifest2" "$SW_D"
+reset_calls
+rc=0; out=$(run --sweep --fleet "$sweep_manifest2" 2>&1) || rc=$?
+check "sweep: a Results tail that is not WRAPPED: rc 0" "$rc" "0"
+contains "sweep: the skipped doc names its reason" "$out" "sweep: skipped $SW_D (rc=4):"
+contains "sweep: the reason says the WRAPPED is not the worker's tail" "$out" "not the worker's tail"
+contains "sweep: summary counts it skipped" "$out" "sweep: closed=0 refused=0 skipped=1"
 # a sweep without a manifest is a usage error
 rc=0; run --sweep >/dev/null 2>&1 || rc=$?
 check "sweep: no --fleet manifest -> rc 2" "$rc" "2"
