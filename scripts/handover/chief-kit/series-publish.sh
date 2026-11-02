@@ -67,14 +67,20 @@ pub="series-pub/$sid/$KEY"
 head="$(git -C "$wt" rev-parse HEAD)" || fail "cannot read HEAD of $wt"
 # the lines that finish a publish whose ledger write failed; never `series-next.sh commit`, which would overwrite wip
 record_lines() {
+    local q_py q_led q_key q_set q_wt
+    printf -v q_py '%q' "$LEDGER_PY"; printf -v q_led '%q' "$LEDGER"; printf -v q_key '%q' "$KEY"; printf -v q_wt '%q' "$wt"
+    printf -v q_set '%q' "publish_branch=$pub"
     echo "series-publish: $pub is pushed at $1 but the ledger does not say so. Run these two lines, nothing else:" >&2
-    echo "python3 -I $LEDGER_PY set --ledger $LEDGER --key $KEY publish_branch=$pub published_head=$1 state=published" >&2
-    echo "git -C $wt worktree unlock $wt" >&2
+    echo "python3 -I $q_py set --ledger $q_led --key $q_key $q_set published_head=$1 state=published" >&2
+    echo "git -C $q_wt worktree unlock $q_wt" >&2
     echo "do NOT run series-next.sh commit: it would overwrite wip with the publish head" >&2
 }
 cur="$(git -C "$wt" symbolic-ref --quiet --short HEAD)" || cur=""   # swallow-ok: a detached HEAD reads as no branch and refuses below
 if [ "$cur" != "$ibr" ]; then
-    [ "$cur" != "$pub" ] || record_lines "$head"
+    if [ "$cur" = "$pub" ]; then   # the recovery lines are only true when origin holds this exact head
+        remote="$(git -C "$wt" ls-remote origin "refs/heads/$pub")" || fail "git ls-remote origin failed; cannot tell whether $pub was pushed"
+        if [ "${remote%%[[:space:]]*}" = "$head" ]; then record_lines "$head"; else echo "series-publish: $pub is not on origin at $head; push it, or check out $ibr" >&2; fi
+    fi
     refuse "item $KEY worktree is on '${cur:-a detached HEAD}', not on the item branch $ibr; nothing moved"
 fi
 if [ "$head" != "$wip" ]; then

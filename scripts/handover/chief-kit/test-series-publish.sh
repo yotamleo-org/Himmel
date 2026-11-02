@@ -129,6 +129,13 @@ contains "1: the branch refusal names the item branch" "$out" "not on the item b
 lacks "1: the branch refusal is not a conflict" "$out" "PUBLISH-CONFLICT"
 git -C "$W2" checkout -q series/s1/K2
 git -C "$W2" branch -q -D side-s1
+git -C "$W2" checkout -q -b series-pub/s1/K2   # a local publish branch that origin does not hold
+sp --ledger "$L1" --doc "$B" K2
+check "1: the publish branch with no origin copy refuses rc 2" "$rc" 2
+contains "1: it says the head is not on origin" "$out" "is not on origin"
+lacks "1: it prints no recovery line for an unpushed head" "$out" "published_head="
+git -C "$W2" checkout -q series/s1/K2
+git -C "$W2" branch -q -D series-pub/s1/K2
 L9="$tmp/ledgers/s9.json"
 mk "$L9" "$A" P1 || exit 1
 sp --ledger "$L9" --doc "$A" P1
@@ -229,17 +236,18 @@ check "5b: the retry after the push is accepted publishes rc 0" "$rc" 0
 contains "5b: the retry prints PUBLISHED-BRANCH" "$out" "PUBLISHED-BRANCH K2 series-pub/s4/K2"
 
 # --- 5c. a failed ledger write prints the exact recovery, and following it works -------------------------------------
-mkdir -p "$tmp/ledgers-ro"
-L5="$tmp/ledgers-ro/s5.json"
-stack s5 "$tmp/ledgers-ro"
+RO="$tmp/ledgers ro"   # a space in the path: the printed lines must be shell-quoted
+mkdir -p "$RO"
+L5="$RO/s5.json"
+stack s5 "$RO"
 land_k1 s5
 W2="$(wtp s5 K2)"
 K2WIP="$(jget "$L5" 'd["items"][1]["wip"]')"
-chmod a-w "$tmp/ledgers-ro"   # the ledger cannot be replaced: series-ledger.py set fails after the push
+chmod a-w "$RO"   # the ledger cannot be replaced: series-ledger.py set fails after the push
 sp --ledger "$L5" --doc "$B" K2
-chmod u+w "$tmp/ledgers-ro"
+chmod u+w "$RO"
 PUBHEAD="$(git -C "$W2" rev-parse HEAD)"
-SETLINE="python3 -I $LEDGER_PY set --ledger $L5 --key K2 publish_branch=series-pub/s5/K2 published_head=$PUBHEAD state=published"
+printf -v SETLINE 'python3 -I %q set --ledger %q --key K2 publish_branch=series-pub/s5/K2 published_head=%s state=published' "$LEDGER_PY" "$L5" "$PUBHEAD"
 check "5c: a failed ledger write exits 1" "$rc" 1
 check "5c: the branch was pushed" "$(git -C "$REPO" ls-remote --heads origin series-pub/s5/K2 | wc -l | tr -d ' ')" 1
 check "5c: the ledger still says committed at wip" "$(jget "$L5" 'd["items"][1]["state"]') $(jget "$L5" 'd["items"][1]["wip"]')" "committed $K2WIP"
@@ -250,7 +258,7 @@ sp --ledger "$L5" --doc "$B" K2
 check "5c: a second publish from the publish branch refuses rc 2" "$rc" 2
 contains "5c: the branch refusal prints the same ledger line" "$out" "$SETLINE"
 contains "5c: the branch refusal prints the same unlock line" "$out" "git -C $W2 worktree unlock $W2"
-$SETLINE && git -C "$W2" worktree unlock "$W2"
+eval "$SETLINE" && git -C "$W2" worktree unlock "$W2"
 check "5c: following the printed lines publishes the item" "$(jget "$L5" 'd["items"][1]["state"]') $(jget "$L5" 'd["items"][1]["published_head"]')" "published $PUBHEAD"
 check "5c: following the printed lines unlocks the worktree" "$(islocked "$W2" && echo locked || echo free)" free
 
