@@ -74,6 +74,10 @@ function unwire(text) {
       commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-busy-loop.sh"';
       continue;
     }
+    if (command.includes('/hooks/block-vault-sweep.sh')) {
+      commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/block-vault-sweep.sh"';
+      continue;
+    }
     if (command.includes('/hooks/redirect-webfetch-walled-hosts.sh')) {
       commandHook.command = 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh"';
       continue;
