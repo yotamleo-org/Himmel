@@ -25,6 +25,37 @@ run() { bash "$CHECK" "$@" >/dev/null 2>&1; echo $?; }
 
 # The taught files in this repo pass.
 expect "the taught files pass" 0 "$(run)"
+# CLAUDE.md's Retrieval routing line teaches both wrapper commands. This pins it now that the steering-cull
+# suite no longer pins the old l71-qmd-graphify span (that line was rewritten on purpose).
+REPO="$(cd "$(dirname "$CHECK")/../.." && pwd)"
+expect "CLAUDE.md teaches the qmd wrapper form" 0 "$(grep -q -F 'bash scripts/lib/qmd-bounded.sh query -c' "$REPO/CLAUDE.md"; echo $?)"
+expect "CLAUDE.md teaches the graph wrapper form" 0 "$(grep -q -F 'bash scripts/graphify/worker-graph.sh query|explain|path' "$REPO/CLAUDE.md"; echo $?)"
+
+# Default mode scans the listed files, and a listed file or filter that yields no line cannot be evaluated.
+# A copy of the check sits in a fake repo root whose listed files this test writes.
+fake_root() {
+    local r=$1 f
+    mkdir -p "$r/scripts/ci" "$r/scripts/hooks" "$r/docs/handover" "$r/marketplace/plugins/qmd/skills/qmd"
+    cp "$CHECK" "$r/scripts/ci/check-taught-search-forms.sh"
+    for f in CLAUDE.md docs/token-economy.md docs/handover/chief-template.md docs/handover/running-a-chief.md \
+        docs/handover/worker-brief-template.md marketplace/plugins/qmd/skills/qmd/SKILL.md; do
+        printf 'bash scripts/lib/qmd-bounded.sh query -c luna "x"\n' >"$r/$f"
+    done
+    printf 'echo "Retrieval nudge: bash scripts/lib/qmd-bounded.sh query -c luna x"\n' >"$r/scripts/hooks/retrieval-nudge.sh"
+    printf 'echo "for read-only queries use: bash scripts/graphify/worker-graph.sh query x"\n' >"$r/scripts/hooks/block-graphify-egress.sh"
+}
+run_fake() { bash "$1/scripts/ci/check-taught-search-forms.sh" >/dev/null 2>&1; echo $?; }
+fake_root "$T/fake-ok"
+expect "default mode: a clean fake root passes" 0 "$(run_fake "$T/fake-ok")"
+fake_root "$T/fake-bare"
+printf 'qmd query "x"\n' >"$T/fake-bare/docs/token-economy.md"
+expect "default mode: a bare form in a listed file fails" 1 "$(run_fake "$T/fake-bare")"
+fake_root "$T/fake-nofilter"
+printf 'echo "the nudge line was reworded"\n' >"$T/fake-nofilter/scripts/hooks/retrieval-nudge.sh"
+expect "default mode: a filter that matches no line cannot be evaluated" 2 "$(run_fake "$T/fake-nofilter")"
+fake_root "$T/fake-empty"
+: >"$T/fake-empty/docs/handover/running-a-chief.md"
+expect "default mode: an emptied listed file cannot be evaluated" 2 "$(run_fake "$T/fake-empty")"
 
 # A planted bare form is refused, in each of the forms a session copies.
 printf 'Search with:\n\nqmd query "question"\n' >"$T/bare-query.md"

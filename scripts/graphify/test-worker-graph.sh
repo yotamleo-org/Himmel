@@ -88,6 +88,9 @@ mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
 run query q >/dev/null; rc=$?
 if [ "$rc" = 2 ] && grep -q 'no graph' "$T/err"; then pass "T5 missing graph is loud"
 else fail "T5 rc=$rc err=$(cat "$T/err")"; fi
+# T5b: the message says the graph covers code and points a notes search at qmd, not at a vault graph.
+if grep -q 'covers code repos' "$T/err" && grep -q 'qmd-bounded.sh query' "$T/err"; then pass "T5b missing-graph message points notes at qmd"
+else fail "T5b err=$(cat "$T/err")"; fi
 
 # T6: a larger default --budget is passed; an explicit --budget wins.
 mv "$P/graphify-out/graph.json.x" "$P/graphify-out/graph.json"

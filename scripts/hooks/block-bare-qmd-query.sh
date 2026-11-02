@@ -1992,8 +1992,9 @@ def posv($men):
     elif datascript then "allow"
     elif findreader then "allow"
     elif (.opaque != null) or (interp and (.body == null)) then "legacy"
+    elif inpipe and plainfilter then "allow"
     elif mention then "legacy"
-    elif $men and inpipe then (if plainfilter then "allow" else "legacy" end)
+    elif $men and inpipe then "legacy"
     else "allow" end;
 ([.[] | select(runq == null and mention)] | length > 0) as $men
 | [.[] | posv($men)] as $v
@@ -2052,6 +2053,7 @@ if [ "$deny" = 1 ]; then
     # bare search; say its shape was unreadable, not that a bare qmd was typed.
     cmd_nowrap=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]')
     cmd_nowrap=${cmd_nowrap//qmd-bounded.sh/}
+    cmd_nowrap=${cmd_nowrap//qmd:\/\//}
     if [[ $cmd == *qmd-bounded.sh* && $cmd_nowrap != *qmd* ]]; then
         cat >&2 <<DENY
 block-bare-qmd-query: this command names the sanctioned qmd-bounded.sh wrapper, but its shape could not be read as safe, so it is refused (it is not a bare qmd call).

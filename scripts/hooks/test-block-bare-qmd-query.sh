@@ -1267,6 +1267,9 @@ allow 'git log --grep="qmd query" --oneline'
 allow "$BQ | grep -E 'HIMMEL-[0-9]+|^Title' | cut -c1-150 | head -8"
 allow "$BQ | grep -E 'a|b'"
 allow "$BQ 2>&1 | egrep 'x|y' | head -3"
+# the observed command: the filter's own pattern names qmd
+allow "$BQ | grep -E \"^qmd://|^Title\" | head -30"
+allow "$BQ | grep -E 'qmd://' | head -5"
 # (b) a pattern naming qmd inside grep run by find, the pattern holding `|`
 allow 'find /x -name "*.jsonl" -exec grep -c -E "qmd-bounded|qmd query|qmd search" {} +'
 allow "find /x -name '*.md' -execdir grep -l 'a|qmd search' {} \\;"
@@ -1284,6 +1287,9 @@ deny "bash /h/scripts/other-script.sh /x.md 'a; qmd search b'"
 deny "$BQ | grep -E 'a|b' | sh"
 deny "$BQ | grep -E 'a|b' | xargs sh -c 'qmd query y'"
 deny "$BQ | grep --pre=sh x"
+deny "$BQ | grep -E \"^qmd://|^Title\" | sh"
+deny "qmd search -c luna x | grep -E \"^qmd://|^Title\" | head -30"
+deny "$BQ | grep -E 'qmd://' | xargs sh -c 'qmd query y'"
 deny "find /x -name '*.md' -exec sh -c 'qmd query y' {} +"
 deny "find /x -exec grep --pre=sh 'a|qmd query' {} +"
 deny "find /x -exec grep -l 'a|qmd search' {} \\; -exec sh -c 'qmd query y' \\;"
@@ -1295,6 +1301,12 @@ case "$msg" in
     *"bare qmd query"*) echo "FAIL wrapper-shaped deny text claims a bare qmd search: $msg"; FAILED=$((FAILED + 1)) ;;
     *qmd-bounded.sh*QMD_UNBOUNDED_OK*) echo "PASS wrapper-shaped deny text names the wrapper and the bypass, not a bare search" ;;
     *) echo "FAIL wrapper-shaped deny text lacks the wrapper or the bypass: $msg"; FAILED=$((FAILED + 1)) ;;
+esac
+msg=$(printf '%s' "$(j_bash "$BQ | grep -E \"^qmd://|^Title\" | sh")" | env -u QMD_UNBOUNDED_OK bash "$HOOK" 2>&1 >/dev/null)
+case "$msg" in
+    *"bare qmd query"*) echo "FAIL a qmd:// filter beside the wrapper claims a bare qmd search: $msg"; FAILED=$((FAILED + 1)) ;;
+    *qmd-bounded.sh*QMD_UNBOUNDED_OK*) echo "PASS a qmd:// filter beside the wrapper keeps the wrapper-shaped deny text" ;;
+    *) echo "FAIL a qmd:// filter beside the wrapper lacks the wrapper or the bypass: $msg"; FAILED=$((FAILED + 1)) ;;
 esac
 msg=$(printf '%s' "$(j_bash "qmd query y; $BQ")" | env -u QMD_UNBOUNDED_OK bash "$HOOK" 2>&1 >/dev/null)
 case "$msg" in

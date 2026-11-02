@@ -13,7 +13,8 @@
 # A deliberate mention of the refused form carries the marker `taught-form-ok` on the same line.
 # In CLAUDE.md the `## graphify` section is installer-owned (docs/token-economy.md) and is not scanned;
 # himmel's own rules above it name the wrapper and win where they differ.
-# Exit: 0 clean, 1 a bare taught form, 2 cannot evaluate (a listed file is missing).
+# Exit: 0 clean, 1 a bare taught form, 2 cannot evaluate (a listed file is missing or unreadable, or a file
+# or its line filter yields no line to scan).
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -50,9 +51,11 @@ scan() {
             body=$(printf '%s\n' "$body" | awk '/^## graphify[[:space:]]*$/ { skip = 1; next } /^## / { skip = 0 } !skip')
             ;;
     esac
-    local line
+    local line seen=0
     while IFS= read -r line; do
         [ -z "$filter" ] || [[ $line == *"$filter"* ]] || continue
+        [ -n "$line" ] || continue
+        seen=$((seen + 1))
         [[ $line == *taught-form-ok* ]] && continue
         # drop the exempt tokens, not the whole line: a bare form beside an MCP tool name still hits
         while [[ $line =~ $EXEMPT ]]; do line=${line/"${BASH_REMATCH[0]}"/}; done
@@ -61,6 +64,8 @@ scan() {
             hits=$((hits + 1))
         fi
     done <<<"$body"
+    # a filter that matches no line, or an empty body, scanned nothing: that is no clean pass
+    [ "$seen" -gt 0 ] || { echo "check-taught-search-forms: scanned no line of $file${filter:+ (filter: $filter)}" >&2; exit 2; }
 }
 
 if [ "$#" -gt 0 ]; then
