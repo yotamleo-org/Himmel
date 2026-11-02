@@ -222,5 +222,18 @@ contains '--pair: the graph carries generated_at (UTC)' "$pj" '"generated_at": "
 same 'control: the same pair read against the merged main is not S2' "$(edge 11 12 --base merged11 --head "11=$(g rev-parse ra)")" 'H2 D3 #11 #12'
 if pair "11" 12 >/dev/null; then fail '--pair without @<sha> must exit 2'; else pass '--pair without @<sha> exits non-zero'; fi
 
+# ROW_REGISTRIES is read from holds-exempt.txt beside the script, the one list the holds register shares
+reg_of() { python3 -I -c "
+import importlib.util
+s = importlib.util.spec_from_file_location('cg', '$1/chain-graph.py'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+print(','.join(m.ROW_REGISTRIES))" 2>"$W/err"; }
+mkdir -p "$W/cg-a" "$W/cg-b"
+cp "$SUT" "$W/cg-a/chain-graph.py"; cp "$SUT" "$W/cg-b/chain-graph.py"
+printf '# a comment\nscripts/ci/suite-tiers.tsv\nscripts/ci/extra-registry.tsv\n' > "$W/cg-a/holds-exempt.txt"
+same 'ROW_REGISTRIES is the list in holds-exempt.txt, comments skipped' "$(reg_of "$W/cg-a")" 'scripts/ci/suite-tiers.tsv,scripts/ci/extra-registry.tsv'
+same 'ROW_REGISTRIES is empty when the list is missing (the stricter answer)' "$(reg_of "$W/cg-b")" ''
+contains 'a missing holds-exempt.txt is said on stderr' "$(cat "$W/err")" 'cannot read'
+same 'the shipped holds-exempt.txt lists both gate registries' "$(reg_of "$(dirname "$SUT")")" 'scripts/ci/suite-tiers.tsv,scripts/ci/suite-durations.tsv'
+
 [ "$fails" -eq 0 ] && printf 'PASS - test-chain-graph.sh\n' || printf 'FAIL - test-chain-graph.sh (%d)\n' "$fails"
 [ "$fails" -eq 0 ]
