@@ -392,6 +392,15 @@ RANK = {"approve": 0, "pass": 1, "ask": 2, "deny": 3}
 _MASK = {"path": None, "built": 0.0, "dir": None, "off": False}
 _MASK_LOCK = threading.Lock()
 MASK_REFRESH_S = 300
+# stderr kept per launch for the ODD-RC row, and printed per side.
+ERR_KEEP_BYTES = 2000
+ERR_SHOW_CHARS = 300
+
+
+def _err_text(err):
+    """One printable line of a launch's stderr, for an ODD-RC row."""
+    text = " ".join(err.decode("utf-8", "replace").split())
+    return text[:ERR_SHOW_CHARS] + ("..." if len(text) > ERR_SHOW_CHARS else "")
 
 
 def _mask_list_path(runner):
@@ -419,8 +428,8 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
                  handover, timeout_run, context=None):
     """Pipe a JSON payload to the hook on stdin.
 
-    Returns (rc, stdout, wall_seconds); rc is the hook's exit code, or the
-    string 'TIMEOUT'. Nothing from the payload is ever executed; the hook
+    Returns (rc, stdout, wall_seconds, stderr); rc is the hook's exit code, or
+    the string 'TIMEOUT'. Nothing from the payload is ever executed; the hook
     launches through the fail-closed sandbox runner.
     """
     body = {
@@ -477,9 +486,12 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
     # process holding the write end, so a hook that backgrounds a child would
     # read as TIMEOUT. The hook's own exit ends the row; the
     # group is then killed so the child never outlives the row.
-    with tempfile.TemporaryFile() as outf:
+    # stderr is kept for the ODD-RC row (only the first ERR_KEEP_BYTES are read; the
+    # file's size is bounded by the row timeout, like the stdout file): the runner
+    # prints why it refused, and a bare rc 125 reads as a hook verdict.
+    with tempfile.TemporaryFile() as outf, tempfile.TemporaryFile() as errf:
         p = subprocess.Popen(["bash", runner] + argv, stdin=subprocess.PIPE,
-                             stdout=outf, stderr=subprocess.DEVNULL,
+                             stdout=outf, stderr=errf,
                              start_new_session=True, cwd=cwd, env=launch_env)
         try:
             p.communicate(payload.encode("utf-8", "surrogateescape"),
@@ -494,7 +506,9 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
         p.wait()
         outf.seek(0)
         out = outf.read()
-    return rc, out, time.time() - t0
+        errf.seek(0)
+        err = errf.read(ERR_KEEP_BYTES)
+    return rc, out, time.time() - t0, err
 
 
 def _record_run(args, rc, results, metrics):
@@ -685,20 +699,21 @@ def main(argv):
                     mapping[WT_PLACEHOLDER] = cwd
                 tin = _subst(row["tool_input"], mapping)
                 ctx = {k: row[k] for k in CONTEXT_KEYS if k in row}
-                rc, out, wall = run_one_hook(
+                rc, out, wall, err = run_one_hook(
                     hook, row.get("tool_name", "Bash"), tin, cwd, prim, home,
                     handover, args.timeout_run, ctx)
-                return rc, decision(rc, out), wall
+                return rc, decision(rc, out), wall, err
             finally:
                 shutil.rmtree(sand, ignore_errors=True)
 
         def one(idx_row):
             idx, row = idx_row
-            rb, db, tb = _run_side(base_hook, row)
-            rh, dh, th = _run_side(head_hook, row)
+            rb, db, tb, eb = _run_side(base_hook, row)
+            rh, dh, th, eh = _run_side(head_hook, row)
             return dict(idx=idx, family=row.get("family"),
                         transform=row.get("transform"), expect=row.get("expect"),
-                        rb=rb, rh=rh, base=db, head=dh, tb=tb, th=th)
+                        rb=rb, rh=rh, base=db, head=dh, tb=tb, th=th,
+                        eb=eb, eh=eh)
 
         # Every sandbox launch used to walk the runtime tree (sandbox-run.sh
         # runtime masks); on a cold CI disk the first parallel batch spent its
@@ -773,8 +788,12 @@ def main(argv):
                   % (r["idx"], r["family"], r["transform"]))
         print("  rc not in {0,2}: %d" % len(odd))
         for r in odd[:50]:
-            print("    ODD-RC idx=%d base=%s head=%s rb=%s rh=%s tb=%.1fs th=%.1fs"
-                  % (r["idx"], r["base"], r["head"], r["rb"], r["rh"], r["tb"], r["th"]))
+            # the side that went odd says why (the runner prints its reason on stderr)
+            why = "".join(" %s-stderr=%r" % (side, _err_text(r[key]))
+                          for side, key, d in (("base", "eb", r["base"]), ("head", "eh", r["head"]))
+                          if d not in RANK and r[key].strip())
+            print("    ODD-RC idx=%d base=%s head=%s rb=%s rh=%s tb=%.1fs th=%.1fs%s"
+                  % (r["idx"], r["base"], r["head"], r["rb"], r["rh"], r["tb"], r["th"], why))
         print("  TIMEOUT RISK (>= %.1fs): %d" % (args.timeout_warn, len(slow)))
         for r in slow[:50]:
             print("    TIMEOUT-RISK idx=%d tb=%.2f th=%.2f transform=%s"

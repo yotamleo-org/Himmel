@@ -55,11 +55,14 @@ Invoke `bash scripts/lib/sandbox-run.sh -- <command> [args...]`: Linux bubblewra
 namespaces, read-only runtime directories and worktree, fresh tmpfs HOME and
 scratch, runtime IPC masks and network isolation, and address-space/CPU/process limits.
 Additional immutable fixtures use repeatable `--read-only <path>` arguments;
-socket/device/FIFO inputs and broad namespace paths are refused. Runtime special
-nodes are masked with null-device overlays; unreadable runtime directories become
-read-only empty tmpfs. A runtime scan error refuses execution, as do fixture scan
-errors. There is no wholesale host-root bind: read-only socket inodes would still
-permit IPC. Missing
+a socket, device or FIFO inside one of them and broad namespace paths are refused.
+Special nodes under the runtime directories and under the checkout (other suites
+create and delete files there while a launch runs) are masked with null-device
+overlays, so a read of one fails; unreadable runtime directories become read-only
+empty tmpfs. A scan error refuses execution with find's own words, except an entry
+that vanished mid-walk (find exit 1 and only "No such file or directory" lines), which
+is a race. Every refusal prints its reason on stderr. There is no wholesale host-root
+bind: read-only socket inodes would still permit IPC. Missing
 bubblewrap, prlimit, or namespace support refuses execution, never falls back to
 the host.
 On Darwin, the same runner uses `sandbox-exec`: a parameterized Seatbelt

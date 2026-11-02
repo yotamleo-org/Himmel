@@ -23,11 +23,12 @@ export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # HIMMEL-4647: never the
 # a loaded CI shard starved a sandbox launch past diff's 15s default (TIMEOUT => ODD-RC, exit 3)
 export GUARD_CORPUS_TIMEOUT_RUN=120
 
-# sandbox-run.sh scans its ROOT (the checkout it lives in) with `find` on every
-# launch and exits 125 when an entry vanishes mid-scan or a FIFO/socket is present. On a CI
-# shard four suites mutate the shared checkout at once, so replay rows came back rc 125 at
-# random indexes. diff therefore runs from a private staged copy (byte-identical to the
-# tracked files, verified below and again at the end), so its ROOT is this suite's own $TMP.
+# sandbox-run.sh scans its ROOT (the checkout it lives in) with `find` on every launch. On
+# Linux a FIFO/socket found there is masked and a vanished entry is tolerated; on Darwin a
+# FIFO/socket under ROOT is still refused (rc 125). On a CI shard four suites mutate the shared
+# checkout at once, so the scan was once a source of random rc 125 rows. diff therefore runs
+# from a private staged copy (byte-identical to the tracked files, verified below and again at
+# the end), so its ROOT is this suite's own $TMP.
 # The hooks under test are not staged: diff still materialises the real ones itself.
 STAGE="$TMP/stage"
 STAGED_PAIRS=("$HERE/diff:$STAGE/scripts/eval/guard-corpus/diff"
@@ -845,9 +846,10 @@ done
 DRIFT="$(staged_drift)"
 if [ -z "$DRIFT" ]; then pass "staged-copy: diff/gen/eval_runs/sandbox-run are byte-identical to the tracked files"
 else fail "staged-copy: drifted from the tracked files:$DRIFT"; fi
-# RED control: the failure mode this staging exists for. A FIFO anywhere in the sandbox ROOT makes
-# sandbox-run.sh exit 125 (diff: ODD-RC, exit 3); with it gone the same row is clean (exit 0). Only
-# the private staged ROOT is touched, never the shared checkout.
+# Control: the failure mode this staging was made for. The runner masks a FIFO anywhere in its
+# ROOT instead of refusing the launch, so a FIFO planted in the private staged ROOT leaves the row
+# clean (exit 0, no ODD-RC) and so does the same row once it is gone. Only the private staged ROOT
+# is touched, never the shared checkout.
 if command -v mkfifo >/dev/null 2>&1; then
   if mkfifo "$STAGE/scripts/planted.fifo" 2>/dev/null; then
     OUT18A=$(python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
@@ -855,10 +857,17 @@ if command -v mkfifo >/dev/null 2>&1; then
     rm -f "$STAGE/scripts/planted.fifo"
     python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
             --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC18B=$?
-    if [ "$RC18A" = "3" ]; then pass "staged-root-control: a FIFO in the sandbox ROOT makes the row exit 3"
-    else fail "staged-root-control: expected exit 3 with a FIFO in ROOT, got $RC18A"; fi
-    # exit 3 is any odd rc or a timeout: name the rc, so a refusal that became exit 1 cannot pass
-    has "staged-root-control: both sides read rc 125" "$OUT18A" "rb=125 rh=125"
+    if [ "$(uname -s)" = "Darwin" ]; then
+      # Darwin has no mask: it refuses a FIFO under a --read-only input (rc 125), which the diff reports as ODD-RC
+      if [ "$RC18A" = "3" ]; then pass "staged-root-control: Darwin refuses a FIFO in the sandbox ROOT (exit 3)"
+      else fail "staged-root-control: Darwin expected exit 3 with a FIFO in ROOT, got $RC18A"; fi
+      has "staged-root-control: Darwin names the refusal" "$OUT18A" "ODD-RC"
+    else
+      if [ "$RC18A" = "0" ]; then pass "staged-root-control: a FIFO in the sandbox ROOT is masked and the row is clean (exit 0)"
+      else fail "staged-root-control: expected exit 0 with a FIFO in ROOT, got $RC18A"; fi
+      # a refusal that came back (rc 125) or any odd rc must name itself, not pass as a clean row
+      hasnt "staged-root-control: no odd rc with a FIFO in ROOT" "$OUT18A" "ODD-RC"
+    fi
     if [ "$RC18B" = "0" ]; then pass "staged-root-control: the same row is clean once the FIFO is gone (exit 0)"
     else fail "staged-root-control: expected exit 0 without the FIFO, got $RC18B"; fi
   else fail "staged-root-control: mkfifo exists but could not create the FIFO"; fi
