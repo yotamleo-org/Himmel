@@ -442,6 +442,38 @@ PY
 rc=0; out="$(tr_ --base main --head moved --prs "$TMP/tooshort.json")" || rc=$?
 eq "a snapshot too short for trace: exit 2" "$rc" "2"
 
+# --- the seed file, on the real rows
+rm -f "$TMP/seed.out"
+python3 -I - "$REPORT" "$HERE/seed.jsonl" > "$TMP/seed.out" 2>&1 <<'PY'
+import importlib.util, json, sys
+path, seed = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("bug_origin_report", path)
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+def eq(name, got, want):
+    print(("PASS " + name) if got == want else "FAIL %s: expected %r, got %r" % (name, want, got))
+FROZEN = [4502, 4503, 4459, 4460, 4458, 4450, 4436, 4325, 4432, 4428, 4402, 4411, 4403, 4407, 4406, 4380, 4364, 4343, 4358, 4357]
+rows = [json.loads(l) for l in open(seed, encoding="utf-8") if l.strip()]
+eq("seed validator: the frozen 20 PRs", sorted(x["pr"] for x in rows), sorted(FROZEN))
+for x in rows:
+    state, got = r.parse_body("bug-origin: %s %s — %s" % (x["origin"], x["class"], x["reason"]))
+    eq("seed validator: #%d re-rendered parses" % x["pr"], state, "ok")
+    eq("seed validator: #%d has a reason" % x["pr"], bool(x["reason"].strip()), True)
+    eq("seed validator: #%d does not name itself" % x["pr"], x["origin"] == "#%d" % x["pr"], False)
+eq("seed validator: at most 6 unknown", sum(x["class"] == "unknown" for x in rows) <= 6, True)
+PY
+seed_rc=$?
+cat "$TMP/seed.out"
+PASS=$((PASS + $(grep -c '^PASS ' "$TMP/seed.out")))
+FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/seed.out")))
+eq "seed validator: ran to its end" "$seed_rc" "0"
+
+# --- the template's Ship step
+TEMPLATE="$(cat "$HERE/../../../docs/handover/worker-brief-template.md")"
+has "template names the line" "$TEMPLATE" 'bug-origin: <#pr|sha|unknown> <class> — <reason>'
+has "template names the snapshot command" "$TEMPLATE" 'gh pr list --state merged --limit 10000 --json number,mergedAt,headRefName,headRefOid,mergeCommit'
+has "template names the trace command" "$TEMPLATE" 'bug-origin-report.py trace --base origin/main --head HEAD --prs'
+
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -eq 0 ]; then echo "ALL PASS"; else echo "$FAIL FAILED"; exit 1; fi

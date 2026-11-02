@@ -39,6 +39,7 @@ planted-bug precision	<critic>.precision	scripts/eval/review-panel/score.py	"pre
 false-alarm rate	<critic>.fp_rate	scripts/eval/review-panel/score.py	"fp_rate": (	first
 detection floor	paired	scripts/eval/eval-compare	detection floor %s	any
 escape rate	escape_rate	scripts/eval/escapes.py	m["escape_rate"] =	first
+bug-origin class count	class.<class>	scripts/eval/bug-origin/bug-origin-report.py	m["class." + c] =	first
 proof-first share (self-reported)	pdd.pct	scripts/eval/worker-digest/pdd_share.py	(("pdd",	first
 Wilson interval	ci_method	scripts/eval/worker-digest/pdd_share.py	ci_method="wilson"	any
 review precision	precision_pct	scripts/cr/evals-page-gen.py	"precision_pct": pct1(	first
