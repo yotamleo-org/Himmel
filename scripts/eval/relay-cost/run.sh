@@ -113,6 +113,7 @@ script_arm() {
     mkdir -p "$d"
     local bus="$scratch/bus.sh" log="$scratch/bus.log"
     # shellcheck disable=SC2016  # $2 and $3 expand in the stub, not here
+    # read-sink-ok: the stub only reads the body file this runner wrote under its own scratch dir
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$2" > "%s"; cat "$3" >> "%s"\n' "$log" "$log" > "$bus"
     for id in $ids; do
         [ -f "$d/$id.result.json" ] && continue
