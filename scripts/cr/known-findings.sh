@@ -37,19 +37,13 @@
 #   (human->prompt, prompt->advisory, advisory->gate) with a hosting suggestion. Proposals are printed
 #   only; no rung, gate, hook or setting is ever changed.
 # Env: KNOWN_FINDINGS_PROMOTE_N / KNOWN_FINDINGS_PROMOTE_M (defaults for the flags above),
-#      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json),
+#      KNOWN_FINDINGS_FILE (default: <this dir>/known-findings.json; --refresh instead defaults to the current git tree's scripts/cr/known-findings.json and exits 2 when it has none),
 #      CR_LEDGER (default: $(git rev-parse --git-common-dir)/cr-critic-scores.jsonl)
 # Exit: 0 (advisory — a match is NOT a failure), 2 usage / missing input / unknown detector type, 3 (--diff --area only) an open hit.
 set -uo pipefail
 # a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
 . "$_ah_d/anchor-handoff.sh" || exit 2
-# Reached through the hand-off this is the anchor's copy, but the catalogue is still the CALLER's
-# (the cwd tree, as for every gate writer): without this --refresh rewrites the primary's JSON.
-if [ -n "${CR_ANCHOR_HANDED_OFF:-}" ] && [ -z "${KNOWN_FINDINGS_FILE:-}" ]; then
-  _kf_top="$(git rev-parse --show-toplevel 2>/dev/null)" || _kf_top=""  # swallow-ok: no cwd tree falls back to this copy's own catalogue
-  [ -f "$_kf_top/scripts/cr/known-findings.json" ] && KNOWN_FINDINGS_FILE="$_kf_top/scripts/cr/known-findings.json"
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KF="${KNOWN_FINDINGS_FILE:-$SCRIPT_DIR/known-findings.json}"
@@ -80,6 +74,13 @@ done
 case "$PROMO_N" in *[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
 case "$PROMO_M" in *[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
 [ "$AREA" = 0 ] || [ "$MODE" = diff ] || { echo "known-findings.sh: --area is valid only with --diff" >&2; exit 2; }
+# --refresh writes the catalogue, so it targets the caller's tree however this copy was entered
+# (relative hand-off or the absolute anchor spelling); an explicit KNOWN_FINDINGS_FILE wins.
+if [ "$MODE" = refresh ] && [ -z "${KNOWN_FINDINGS_FILE:-}" ]; then
+  _kf_top="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git rev-parse --show-toplevel 2>/dev/null)" || _kf_top=""  # swallow-ok: no git tree is reported just below
+  KF="$_kf_top/scripts/cr/known-findings.json"
+  [ -n "$_kf_top" ] && [ -f "$KF" ] || { echo "known-findings.sh: --refresh needs scripts/cr/known-findings.json in the current git tree (or KNOWN_FINDINGS_FILE)" >&2; exit 2; }
+fi
 [ -f "$KF" ] || { echo "known-findings.sh: not found: $KF" >&2; exit 2; }
 command -v node >/dev/null 2>&1 || { echo "known-findings.sh: node is required" >&2; exit 2; }
 
