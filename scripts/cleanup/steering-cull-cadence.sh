@@ -199,6 +199,12 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
     fi
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
     inbox="$root/consoles/$chief.md"
+    # A test on the station never writes a real bridge inbox; only exit 77 refuses.
+    guard_rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check steering-cull-inbox "$inbox" || guard_rc=$?
+    if [ "$guard_rc" = 77 ]; then
+        return 1
+    fi
     if [ -f "$inbox" ] && printf -- '- %s [steering-cull] proposal %s: %s low, %s escalated\n' "$(date +%H:%M)" "$doc" "$low" "$esc" >> "$inbox"; then
         bash "$ALERT" clear steering-cull
         return 0

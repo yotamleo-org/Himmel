@@ -349,7 +349,9 @@ function refuseTestWrite(verb: string): void {
 export function registerRelease(program: Command): void {
   const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
   rel.hook('preAction', (_release, action) => {
-    if (!(action.parent === rel && READ_ONLY_VERBS.has(action.name()))) refuseTestWrite(action.name());
+    // leaks reads unless --comment is set: that posts a real Jira comment and updates the breadcrumb state.
+    const readOnly = action.parent === rel && READ_ONLY_VERBS.has(action.name()) && !(action.name() === 'leaks' && action.opts().comment);
+    if (!readOnly) refuseTestWrite(action.name());
   });
 
   rel.command('state <release>')

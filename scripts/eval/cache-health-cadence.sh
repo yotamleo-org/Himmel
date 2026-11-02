@@ -73,7 +73,12 @@ cmd_notify() {
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
     if [ -n "$chief" ]; then
         inbox="$root/consoles/$chief.md"
-        if [ -f "$inbox" ] && printf -- '- %s [cache-health] %s\n' "$(date +%H:%M)" "$(printf '%s' "$msg" | tr '\n' ' ')" >> "$inbox"; then
+        # A test on the station never writes a real bridge inbox; only exit 77 refuses.
+        guard_rc=0
+        bash "$SCRIPT_DIR/../lib/test-run-guard" check cache-health-inbox "$inbox" || guard_rc=$?
+        if [ "$guard_rc" = 77 ]; then
+            :
+        elif [ -f "$inbox" ] && printf -- '- %s [cache-health] %s\n' "$(date +%H:%M)" "$(printf '%s' "$msg" | tr '\n' ' ')" >> "$inbox"; then
             ok=0
         else
             echo "cache-health: no inbox for chief $chief" >&2

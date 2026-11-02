@@ -61,6 +61,11 @@ _mba_send() {
         return 0
     fi
     command -v bun >/dev/null 2>&1 || return 1
+    # A test on the station never pages the operator. Only exit 77 stops the send: a missing or
+    # crashing guard must never cost a real alert.
+    local guard_rc=0
+    bash "$_MBA_LIB_DIR/test-run-guard" check --quiet --tool bun merge-block-alert || guard_rc=$?
+    [ "$guard_rc" != 77 ] || return 0
     # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
     $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1
 }
@@ -200,6 +205,10 @@ _mba_route_chief() {
         return 0
     fi
     root="${MERGE_WATCH_ALERT_BRIDGE_ROOT:-${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}}"
+    # A test on the station never writes a real bridge inbox; only exit 77 stops the route.
+    local guard_rc=0
+    bash "$_MBA_LIB_DIR/test-run-guard" check --quiet merge-watch-route "$root" || guard_rc=$?
+    [ "$guard_rc" != 77 ] || return 0
     file=$(_mba_chief_inbox_path "$root" "$name") || return 1
     local folded
     folded=$(printf '%s' "$text" | tr '\n' ' ')
