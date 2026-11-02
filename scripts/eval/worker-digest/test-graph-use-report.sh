@@ -128,16 +128,17 @@ check "--until-epoch 08 is decimal too: exits 0" 'bash "$RPT" --days 3 --until-e
 check "--days 08 with --until-epoch is decimal, not octal: exits 0" 'bash "$RPT" --days 08 --until-epoch 1000000000 --root "$FX/claude/projects" >/dev/null 2>&1; [ $? = 0 ]'
 
 # ok columns: fixtures/graph-use-ok holds r1 a refused graph call and a rg, r2 a graph wrapper miss only, r3 a refused qmd query only,
-# r4 grep -c and git grep -c that merely quote graphify query and qmd query.
+# r4 grep -c and git grep -c that merely quote graphify query and qmd query, r5 a refused mcp qmd query (array content), r6 a refused
+# mcp graphify call (string content), r7 an answered mcp qmd query and graphify call, r8 a graph wrapper call and a qmd query with no tool_result.
 # shellcheck disable=SC2034
 OKOUT="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-ok/claude/projects" 2>&1)"
 # shellcheck disable=SC2034
 OKRC=$?
 check "the report over the ok fixture exits 0" '[ "$OKRC" = 0 ]'
-check "a refused graph call is a call but not an answered one; a wrapper miss is answered; grep -c is no call: 4 journals, 2 with a graph call, 1 with an answered one, 25%" '[ "$(OUT="$OKOUT" cells all claude main journals with_graph with_graph_ok graph_ok_pct)" = 4/2/1/25% ]'
+check "a refused graph call (shell or mcp) and a call with no result are calls but not answered ones; a wrapper miss and an answered mcp call are answered; grep -c is no call: 8 journals, 5 with a graph call, 2 with an answered one, 25%" '[ "$(OUT="$OKOUT" cells all claude main journals with_graph with_graph_ok graph_ok_pct)" = 8/5/2/25% ]'
 check "searched_no_graph rests on answered calls: the refused-only journal and the grep -c journal both count" '[ "$(OUT="$OKOUT" cells all claude main searched searched_no_graph)" = 2/2 ]'
-check "a refused qmd query is a search but not an answered one: 1 with a search, 0 answered, 0%" '[ "$(OUT="$OKOUT" SEC=qmd cells all claude main with_search with_search_ok search_ok_pct)" = 1/0/0% ]'
-check "the counted line states the ok rule" 'grep -q "^counted:.*answered" <<<"$OKOUT"'
+check "a refused qmd query (shell or mcp, array content) and one with no result are searches but not answered ones: 4 with a search, 1 answered" '[ "$(OUT="$OKOUT" SEC=qmd cells all claude main with_search with_search_ok)" = 4/1 ]'
+check "the counted line states the ok rule and the no-result case" 'grep -q "^counted:.*answered" <<<"$OKOUT" && grep -q "^counted:.*no tool_result" <<<"$OKOUT"'
 
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
