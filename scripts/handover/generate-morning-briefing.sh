@@ -90,7 +90,10 @@ Optional:
                            inclusive.
   --out PATH               Output path. Default:
                            $HANDOVER_DIR/morning-report-$(date +%F).md
-                           (Mode B) or $repo/handovers/... (Mode A).
+                           (Mode B) or $repo/handovers/... (Mode A). A himmel
+                           checkout (scripts/handover/chief-kit/ exists)
+                           with no HANDOVER_DIR and no --out exits 1 and
+                           writes nothing.
   --jira-limit N           Max rows per jira status query. Default 200.
   --backlog-limit N        Max To-Do rows rendered in Backlog. Default 40.
   --llm                    Enrich TL;DR + Suggested order + Backlog clustering
@@ -180,7 +183,18 @@ next_day=$(date -d "$today + 1 day" +%F 2>/dev/null || date -j -v+1d -f %F "$tod
 [ -z "$SINCE_DATE" ] && SINCE_DATE="$today"
 
 # Resolve --out when not passed.
+# A himmel checkout (it ships scripts/handover/chief-kit/) never keeps a report: its handovers/ is a
+# stub, so a run without a handover root would leave the report where the operator does not look.
+refuse_no_root() {
+    echo "ERR briefing: $1; no report was written." >&2
+    echo "Set the handover root and run it again: HANDOVER_DIR=<root> bash scripts/handover/generate-morning-briefing.sh" >&2
+    exit 1
+}
+himmel_checkout=0
+[ -d "$repo_root/scripts/handover/chief-kit" ] && himmel_checkout=1
+
 if [ -z "$OUT_FILE" ]; then
+    [ "$himmel_checkout" -eq 1 ] && [ -z "${HANDOVER_DIR:-}" ] && refuse_no_root "HANDOVER_DIR is not set in a himmel checkout"
     # _ensure: this script WRITES the report to OUT_FILE, so we need the Mode A
     # inline dir to exist. Stderr is NOT suppressed: a broken HANDOVER_DIR (Mode
     # B typo) must surface so the operator notices the silent fallback to
@@ -188,6 +202,7 @@ if [ -z "$OUT_FILE" ]; then
     if root=$(handover_root_ensure); then
         OUT_FILE="$root/morning-report-$today.md"
     else
+        [ "$himmel_checkout" -eq 1 ] && refuse_no_root "HANDOVER_DIR='${HANDOVER_DIR:-}' is not a usable handover root"
         echo "WARNING: handover_root_ensure failed — falling back to $repo_root/handovers/" >&2
         OUT_FILE="$repo_root/handovers/morning-report-$today.md"
     fi
@@ -488,7 +503,13 @@ else
     fi
     if [ ${#shift_helper[@]} -gt 0 ] && [ "$DRY_RUN" -eq 0 ]; then
         # swallow-ok: a failed helper leaves the record as it is, and the report reads what was already written
-        SHIFTS_FILE="$shifts_file" "${shift_helper[@]}" >/dev/null 2>&1 || echo "WARNING: briefing: the shift helper failed — the shift record may be missing the newest shift" >&2
+        helper_rc=0
+        helper_err=$(SHIFTS_FILE="$shifts_file" "${shift_helper[@]}" 2>&1 >/dev/null) || helper_rc=$?
+        if [ "$helper_rc" -ne 0 ]; then
+            helper_why="exit $helper_rc"
+            [ -n "$helper_err" ] && helper_why="$helper_why: ${helper_err%%$'\n'*}"
+            echo "WARNING: briefing: the shift helper failed ($helper_why) — the shift record may be missing the newest shift" >&2
+        fi
     fi
     if [ ! -f "$shifts_file" ]; then
         shifts_why="no shifts.jsonl yet"

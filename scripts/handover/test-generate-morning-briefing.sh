@@ -891,6 +891,63 @@ printf '%s\n%s\n' "$WAIT_CUT" "$WAIT_IDLE" > "$SH_FILE4"
 SHIFTS_FILE="$SH_FILE4" MORNING_TODAY=2026-10-29 run_script --since "$MARKER" --out "$SH_DIR/wait.md" >/dev/null
 assert_contains "waiting snapshot: the cut's row is shown" "ship the thing" "$(cat "$SH_DIR/wait.md")"
 
+# The report is written to the handover root or not at all ----------------
+
+# mk_fixture <dir> [himmel]: a one-commit git repo; "himmel" adds scripts/handover/chief-kit/ (the himmel-checkout marker).
+mk_fixture() {
+    git init -q --initial-branch=main "$1" 2>/dev/null || git init -q "$1"
+    git -C "$1" -c user.email=t@test.com -c user.name=test commit -q --allow-empty -m "init"
+    if [ "${2:-}" = himmel ]; then mkdir -p "$1/scripts/handover/chief-kit"; fi
+}
+# gen_in <dir> <args...>: run the generator in <dir> with HANDOVER_DIR unset (a caller sets it with env); rc in $GEN_RC, stderr in $GEN_ERR.
+gen_in() {
+    local dir="$1"; shift
+    GEN_RC=0
+    GEN_ERR=$(cd "$dir" && env -u HANDOVER_DIR GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-10-29 "$@" 2>&1 >/dev/null) || GEN_RC=$?
+}
+# check <name> <detail> <command...>: pass when the command succeeds.
+check() { local name="$1" detail="$2"; shift 2; if "$@"; then pass "$name"; else fail "$name" "$detail"; fi; }
+rc_is() { [ "$GEN_RC" -eq "$1" ]; }
+gone() { [ ! -e "$1" ]; }
+RT_DIR="$TMP_ROOT/root-fixtures"; mkdir -p "$RT_DIR"
+HIM_REPO="$RT_DIR/himmel"; mk_fixture "$HIM_REPO" himmel
+ADOPT_REPO="$RT_DIR/adopter"; mk_fixture "$ADOPT_REPO"
+
+echo "TEST: a himmel checkout with no handover root refuses and writes nothing"
+gen_in "$HIM_REPO" bash "$SCRIPT"
+check "no root: exit 1" "got rc=$GEN_RC" rc_is 1
+assert_contains "no root: stderr names HANDOVER_DIR" "HANDOVER_DIR" "$GEN_ERR"
+assert_contains "no root: stderr says no report was written" "no report was written" "$GEN_ERR"
+assert_contains "no root: stderr prints the command shape" "HANDOVER_DIR=<root> bash scripts/handover/generate-morning-briefing.sh" "$GEN_ERR"
+check "no root: nothing created in the checkout" "found: $(find "$HIM_REPO/handovers" -type f 2>/dev/null)" gone "$HIM_REPO/handovers"
+
+echo "TEST: a himmel checkout with a HANDOVER_DIR that is not a directory refuses too"
+gen_in "$HIM_REPO" env HANDOVER_DIR="$RT_DIR/typo" bash "$SCRIPT"
+check "typo root: exit 1" "got rc=$GEN_RC" rc_is 1
+check "typo root: nothing created in the checkout" "found: $(find "$HIM_REPO/handovers" -type f 2>/dev/null)" gone "$HIM_REPO/handovers"
+
+echo "TEST: controls — HANDOVER_DIR, --out and an adopter checkout still write"
+mkdir -p "$RT_DIR/root"
+gen_in "$HIM_REPO" env HANDOVER_DIR="$RT_DIR/root" bash "$SCRIPT"
+check "HANDOVER_DIR set: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
+check "HANDOVER_DIR set: report under the root" "missing" test -f "$RT_DIR/root/morning-report-2026-10-29.md"
+gen_in "$HIM_REPO" bash "$SCRIPT" --out "$RT_DIR/explicit.md"
+check "--out with no root: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
+check "--out with no root: report at --out" "missing" test -f "$RT_DIR/explicit.md"
+check "--out with no root: nothing in the checkout" "handovers/ exists" gone "$HIM_REPO/handovers"
+gen_in "$ADOPT_REPO" bash "$SCRIPT"
+check "adopter checkout: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
+check "adopter checkout: Mode A still writes" "missing" test -f "$ADOPT_REPO/handovers/morning-report-2026-10-29.md"
+
+echo "TEST: a failing shift helper is named with its exit code and first stderr line"
+FAKE_SHIFT_FAIL="$TMP_ROOT/shift-fail.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo "shift-cli: no handover root is set (HANDOVER_DIR)" >&2' 'echo "second line" >&2' 'exit 2' > "$FAKE_SHIFT_FAIL"
+chmod +x "$FAKE_SHIFT_FAIL"
+gen_in "$ADOPT_REPO" env SHIFTS_FILE="$RT_DIR/shifts.jsonl" MORNING_SHIFT_CMD="$FAKE_SHIFT_FAIL" bash "$SCRIPT" --out "$RT_DIR/helper.md"
+assert_contains "helper failure: WARNING carries the exit code" "exit 2" "$GEN_ERR"
+assert_contains "helper failure: WARNING carries the first stderr line" "shift-cli: no handover root is set (HANDOVER_DIR)" "$GEN_ERR"
+if grepq "$GEN_ERR" -F -- "second line"; then fail "helper failure: only the first stderr line"; else pass "helper failure: only the first stderr line"; fi
+
 # Summary --------------------------------------------------------------
 
 echo
