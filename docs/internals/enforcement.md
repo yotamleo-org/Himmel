@@ -4068,9 +4068,14 @@ tool, so there is no `.codex/hooks.json` twin.
 in the himmel-ops `hooks.json` as
 `${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh`, so an adopter
 repo gets it too. The file has two modes, by whether the himmel fetcher is
-reachable under `WALLED_TOOLING_DIR` (default: the checkout the plugin file sits
-in, `$CLAUDE_PLUGIN_ROOT/../../../scripts/web`; files under `$CLAUDE_PROJECT_DIR`
-are never read, so a project cannot reroute or empty the guard, HIMMEL-8560):
+reachable under `WALLED_TOOLING_DIR` (default: the checkout of the user-scope
+`himmel` marketplace, read from `installLocation` in
+`<config dir>/plugins/known_marketplaces.json`, since an installed plugin sits in
+the plugin cache and not in the checkout; files under `$CLAUDE_PROJECT_DIR` are
+never read, so a project file cannot reroute or empty the guard, HIMMEL-8560).
+`WALLED_TOOLING_DIR` itself is read from the environment, as the shim needs, so
+a project `settings.json` `env` block can still set it, as it can already set
+`HIMMEL_WEBFETCH_WALLED_OK=1`:
 
 - **himmel** (`fetch-url.sh` and `walled-hosts.conf` both there): the host list
   is the one line of `scripts/web/walled-hosts.conf` (an empty line keeps the

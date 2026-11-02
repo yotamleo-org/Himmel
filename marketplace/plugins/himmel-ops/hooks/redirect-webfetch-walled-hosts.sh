@@ -11,12 +11,14 @@
 #
 # Two modes, by whether the himmel fetcher is reachable:
 #  - himmel: scripts/web/fetch-url.sh and walled-hosts.conf exist under
-#    WALLED_TOOLING_DIR (default: the himmel checkout this plugin file sits in,
-#    $CLAUDE_PLUGIN_ROOT/../../../scripts/web). The host list is the one line of
-#    that conf and the deny names the paste-ready, quoted `bash <fetcher> '<url>'`.
-#    Files under the PROJECT ($CLAUDE_PROJECT_DIR) are never read: a guard a
-#    project file can reroute or empty is a hole. An empty conf
-#    line keeps the embedded list.
+#    WALLED_TOOLING_DIR (default: the checkout of the user-scope "himmel"
+#    marketplace, installLocation in <config>/plugins/known_marketplaces.json,
+#    minus its last path part). The host list is the one line of that conf and
+#    the deny names the paste-ready, quoted `bash <fetcher> '<url>'`. An
+#    installed plugin sits in the plugin cache, not the checkout, so the checkout
+#    is found from that record. Files under the PROJECT ($CLAUDE_PROJECT_DIR) are
+#    never read: a guard a project file can reroute or empty is a hole. An empty
+#    conf line keeps the embedded list.
 #  - adopter: no such files. The host list is the embedded WALLED_HOSTS below
 #    (kept equal to the conf line by this plugin's suite) and the deny names no
 #    himmel script, only the bypass.
@@ -53,7 +55,14 @@ url=${rest#*$'\n'}
 [ -n "$url" ] || exit 0
 case "$url$session" in *[[:cntrl:]]*) exit 0 ;; esac
 
-tooling=${WALLED_TOOLING_DIR:-${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/../../../scripts/web}}
+tooling=${WALLED_TOOLING_DIR:-}
+if [ -z "$tooling" ]; then
+    cfg=${CLAUDE_CONFIG_DIR:-${HOME:+$HOME/.claude}}
+    mk=""
+    [ -n "$cfg" ] && mk=$(jq -r '.himmel.installLocation // empty | strings' "$cfg/plugins/known_marketplaces.json" 2>/dev/null)
+    mk=${mk%/}
+    [ -n "$mk" ] && tooling="${mk%/*}/scripts/web"
+fi
 fetcher=""
 hosts=$WALLED_HOSTS
 if [ -n "$tooling" ] && [ -f "$tooling/fetch-url.sh" ] && [ -r "$tooling/walled-hosts.conf" ]; then
