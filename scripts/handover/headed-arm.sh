@@ -1483,13 +1483,17 @@ fi
 #
 # The scan below is a check-then-launch, so it runs under an atomic ticket-scoped claim
 # ($LOCKDIR/ticket-<KEY>.lock: the name claim's mkdir, stamp and stale rule). The claim is held from before the scan
-# until this process exits, which is after the launched session is visible to pgrep (the post-launch poll below),
-# so a second arm either finds the claim held or, once it is released, finds the first session in its own scan.
+# until the post-launch poll below ends (the launched session is then visible to pgrep, or the budget is spent),
+# where it is released together with the name claim, so a second arm either finds the claim held or, once it is
+# released, finds the first session in its own scan. It is not held through the bus bind that follows.
 # A held claim whose holder is another lineage refuses at once (exit 16, the 8436 message); a holder of the SAME N
-# (workers b/c of one N) is waited out for the session-visibility budget, then the arm gives up as exit 6 like an
-# exhausted name claim. A different ticket key is a different claim. An EXIT trap releases it on every exit path.
+# (workers b/c of one N) is waited out for the session-visibility budget plus a margin for the launch itself, then
+# the arm gives up as exit 6 like an exhausted name claim. A different ticket key is a different claim. An EXIT trap
+# releases it on every exit path before the poll ends.
 # ponytail: a claim left by a kill -9 blocks that ticket until STALE_LOCK_SECS, the same ceiling as the name claim.
 TICKET_LOCK=""
+# the holder keeps the claim through its launch (settle plus the visibility poll), so wait that budget plus 2s
+TICKET_WAIT_ITERS=$((SESSION_VISIBLE_RETRY_ITERS + 40))
 if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
     TICKET_KEY="${BASH_REMATCH[1]}"; TICKET_N="${BASH_REMATCH[2]}"
     TICKET_RIVAL=""
@@ -1498,7 +1502,7 @@ if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z]
     while :; do
         if claim_lock "$ticket_claim"; then
             TICKET_LOCK="$ticket_claim"
-            trap 'rm -rf "$TICKET_LOCK" 2>/dev/null' EXIT
+            trap '[ -z "$TICKET_LOCK" ] || rm -rf "$TICKET_LOCK" 2>/dev/null' EXIT
             printf '%s\n' "$NAME" > "$TICKET_LOCK/holder" 2>/dev/null  # swallow-ok: the holder name only decorates a refusal; an unreadable one is retried as same-lineage
             break
         fi
@@ -1507,7 +1511,7 @@ if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z]
             TICKET_RIVAL="$t_holder"; break
         fi
         t_n=$((t_n+1))
-        if [ "$t_n" -ge "$SESSION_VISIBLE_RETRY_ITERS" ]; then
+        if [ "$t_n" -ge "$TICKET_WAIT_ITERS" ]; then
             echo "$(date +%F_%T) UNRESOLVED: the launch claim for $TICKET_KEY is still held after waiting - the armed successor $NAME may be lost" >> "$LOG"
             rm -rf "$LOCK" 2>/dev/null
             exit 6
@@ -1573,9 +1577,10 @@ fi
 # choosing and may never be executed by BSD script at all (every existing
 # --lane claudex case passes a recording stub), so refusing there would
 # break a launch that works.
-# The lock is already CLAIMED by this point, and this script has no EXIT
-# trap - every other refusal past the claim releases it by hand (the two
-# session_confirmed branches and the `cd "$REPO"` guard just above all do).
+# The lock is already CLAIMED by this point, and the EXIT trap releases only
+# the ticket claim - every other refusal past the claim releases this name
+# claim by hand (the two session_confirmed branches, the ticket refusal and
+# the `cd "$REPO"` guard just above all do).
 # Without the release here the refusal holds $LOCK for STALE_LOCK_SECS, so
 # the re-arm that follows it -- and on a Mac --lane claudex refuses EVERY
 # time, so there always is one -- dies in the claim-retry loop as exit 6
@@ -1869,7 +1874,10 @@ done
 # should already be exec'd is genuinely suspicious, not routine, so
 # treating it as confirmed-failure is the correct default, not an
 # overreaction.
+# The ticket claim goes with the name claim: the bus bind and the waker below can
+# outlast a sibling's wait, and the session is already visible to its scan.
 rm -rf "$LOCK" 2>/dev/null
+if [ -n "$TICKET_LOCK" ]; then rm -rf "$TICKET_LOCK" 2>/dev/null; TICKET_LOCK=""; fi
 if [ "$sv_indeterminate" -eq 1 ]; then
     echo "headed-arm: pgrep scan failed confirming the post-launch session for $NAME - refusing to report an indeterminate scan as either success or failure" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed confirming $NAME after launch" >> "$LOG"

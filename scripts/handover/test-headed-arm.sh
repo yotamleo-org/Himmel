@@ -2604,5 +2604,33 @@ check "8464f a fresh ticket claim held by another lineage refuses (exit 16)" "$t
 contains "8464g the refusal names the holder" "$tpout" "HIMMEL-8464-N9-live-2026-11-02"
 check "8464h the refused arm launched no konsole" "$([ -e "$tp5/record" ] && echo launched || echo none)" "none"
 check "8464i the refused arm left no name claim behind" "$(compgen -G "$tp5/locks/*.lock" | grep -c .)" "1"
+# a fresh same-lineage claim that is never released: the arm waits out the visibility budget, then gives up (exit 6)
+tp6="$tmp/tp6"; mk_pair "$tp6" "HIMMEL-8464-N7-first-2026-11-02" "HIMMEL-8464-N7b-second-2026-11-02"
+mkdir -p "$tp6/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp6/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N7-first-2026-11-02" > "$tp6/locks/ticket-HIMMEL-8464.lock/holder"
+tp6_t0=$(date +%s)
+run_headed_arm "$tp6" "$REPO" "HIMMEL-8464-N7b-second-2026-11-02" "doc8464.md" "$tp6/signal-never" "$PAST" >/dev/null 2>&1; tprc6=$?
+tp6_t1=$(date +%s)
+check "8464j a same-lineage claim that is never released ends the arm with exit 6" "$tprc6" "6"
+check "8464k that arm launched no konsole" "$([ -e "$tp6/record" ] && echo launched || echo none)" "none"
+check "8464l that arm's own name claim is gone" "$(compgen -G "$tp6/locks/HIMMEL-8464-N7b-*.lock" | grep -c .)" "0"
+check "8464m the held ticket claim is untouched" "$(cat "$tp6/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N7-first-2026-11-02"
+check "8464n the wait is bounded (under 20s)" "$([ $((tp6_t1 - tp6_t0)) -lt 20 ] && echo yes || echo no)" "yes"
+# the ticket claim is released once the session is visible, not held through the slow bus bind
+tp7="$tmp/tp7"; mk_pair "$tp7" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
+cat > "$tp7/bus" <<'BUS_EOF'
+#!/usr/bin/env bash
+: > "$(dirname "$0")/bind-started"
+exec sleep 30
+BUS_EOF
+chmod 755 "$tp7/bus"
+HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$tp7/bus" HEADED_ARM_BUS_BIND_SECS=3 \
+  run_headed_arm "$tp7" "$REPO" "HIMMEL-8464-N1-first-2026-11-02" "doc8464.md" "$tp7/signal-never" "$PAST" >/dev/null 2>&1 &
+tp7_pid=$!
+tp7_n=0
+while [ ! -e "$tp7/bind-started" ] && [ "$tp7_n" -lt 100 ]; do sleep 0.05; tp7_n=$((tp7_n+1)); done
+tp7_held="$(compgen -G "$tp7/locks/ticket-*" | grep -c .)"
+tp7_alive="$(kill -0 "$tp7_pid" 2>/dev/null && echo yes || echo no)"
+check "8464o the ticket claim is gone while the bus bind still runs" "$tp7_held|$tp7_alive" "0|yes"
+wait "$tp7_pid" 2>/dev/null; pkill -f "$tp7/bus" 2>/dev/null || true
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
