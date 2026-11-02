@@ -138,6 +138,12 @@ out="$(HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 dry10 worker-impl "$T/doc10.md" cl
 contains "W10 a share set in the launching shell is scrubbed: the profile's wins" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
 out="$(HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
 contains "W10 control: a launching-shell share does not reach a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+out="$(HEADED_ARM_LAUNCHER_ENV='HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 KEEP_ME=1' dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 a stale launcher share token is replaced by the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+not_contains "W10 the stale launcher share token is gone" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50"
+out="$(HEADED_ARM_LAUNCHER_ENV='HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 KEEP_ME=1' dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 control: a stale launcher share token does not reach a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+not_contains "W10 control: the stale launcher share token is removed for a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50"
 for bad10 in 0 101 73.5 '"73"'; do
     printf '%s\n' '{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,' \
         "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"sonnetAutocompact\":450000,\"sonnetContextGuard\":\"handoff\",\"sonnetContextShare\":$bad10}}}" >"$T/bad-share.json"
