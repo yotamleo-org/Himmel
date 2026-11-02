@@ -25,7 +25,9 @@
 #        once as a subscription `claude -p`: native auth (every API-key variable removed), the same model,
 #        permission mode, tool grant and budget cap, --output-format json. The fallback runs only when the native
 #        usage preflight says PROCEED, BANK-STALE or BANK-UNKNOWN; SKIPPED-BANK or SKIPPED-FLEET skips it and the
-#        alert says so. A malformed request, or a call whose prompt came on stdin, never falls back. A call granted
+#        alert says so. A prompt on stdin is kept in a mode-600 scratch file (removed on every exit) that the API call
+#        reads and the fallback replays byte for byte; it is never printed, logged or put in an argv. A malformed request
+#        never falls back. A call granted
 #        Edit, Write or Bash falls back only from a refusal before any request (exit 2), never from a run that started
 #        (exit 6 included), which may have half-done its edits. The fallback writes its own launch record row (lane sub-fallback).
 # Exit: the call's own code; 2 a refusal before any request; 6 the provider answered "Credit balance is too low" or
@@ -37,7 +39,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 
 # --- failure path state: set before any refusal can fire ---
-KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" NO_FB="" FAILING_OVER=0 STOPPED=0
+KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" PROMPT_FILE="" NO_FB="" FAILING_OVER=0 STOPPED=0
 KIND_SAFE="${HIMMEL_API_KIND:-other}"
 case "$KIND_SAFE" in ""|*[!A-Za-z0-9._-]*) KIND_SAFE=other ;; esac
 JOB_SAFE="${HIMMEL_API_JOB_ID:-}"
@@ -63,7 +65,7 @@ release_slot() {
   done
   return 0
 }
-trap 'rm -f "$OUT" "$FB_OUT" ${OUT:+"$OUT.timeout"}; release_slot' EXIT
+trap 'rm -f "$OUT" "$FB_OUT" "$PROMPT_FILE" ${OUT:+"$OUT.timeout"}; release_slot' EXIT
 
 # one line for the alert: the key (ours or any the caller holds) and anything key-shaped become [key], no control characters
 redact() {
@@ -168,10 +170,14 @@ run_fallback() {
     exec "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
       "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$FB_OUT"
   }
-  # a refusal has not read stdin, so a piped prompt still reaches the fallback; after a call it is spent
-  if [ "$class" = refused ]; then fallback_child <&0 & else fallback_child </dev/null & fi
+  # a stdin prompt that was buffered replays from the scratch file; a refusal before the buffer has not read stdin, so
+  # a piped prompt still reaches the fallback; an argv prompt needs no stdin
+  if [ -n "$PROMPT_FILE" ]; then fallback_child <"$PROMPT_FILE" 3<&- &
+  elif [ "$class" = refused ]; then fallback_child <&0 3<&- &
+  else fallback_child </dev/null 3<&- & fi
   fb_pid=$!
-  trap 'kill -TERM "$fb_pid" 2>/dev/null; wait "$fb_pid" 2>/dev/null; exit 143' TERM INT HUP
+  # a stop during the fallback still leaves its launch record: the subscription run may have drawn usage
+  trap 'kill -TERM "$fb_pid" 2>/dev/null; wait "$fb_pid" 2>/dev/null; record_fallback "$class" "$api_rc" 143; exit 143' TERM INT HUP
   wait "$fb_pid"
   fb_rc=$?
   trap '' TERM INT HUP
@@ -189,8 +195,6 @@ fail_over() {
     decision="off (HIMMEL_API_FALLBACK=off)"
   elif [ -n "$NO_FB" ]; then
     decision="not run: $NO_FB"
-  elif [ "$class" != refused ] && [ "$HAS_PROMPT" != 1 ]; then
-    decision="not run: the prompt came on stdin and the call spent it"
   elif [ "$class" != refused ] && [[ ",$ALLOWED_TOOLS," =~ ,(Edit|Write|Bash), ]]; then
     # a run that started may have half-done its edits (a rejection can come on a later turn); only a refusal precedes it
     decision="not run: the call could change files ($ALLOWED_TOOLS), so a run that started is never replayed"
@@ -396,6 +400,36 @@ done
 
 OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch file"
 
+# A prompt on stdin is kept in a mode-600 scratch file (removed by the EXIT trap on every exit path) so the call reads
+# it from there and the subscription fallback can replay the same bytes. Everything above refuses before stdin is read.
+# The read is bounded by a watchdog at the call timeout on every host, as the call's own stdin read was by its watchdog,
+# and a terminal is refused (nobody types a prompt into a one-shot launcher).
+# ponytail: a SIGKILL or an OOM kill leaves the mode-600 prompt file in TMPDIR (the EXIT trap cannot run), upgrade path: sweep claude-api-prompt.* files older than the call timeout at launch
+CALL_TIMEOUT_S="${HIMMEL_API_CALL_TIMEOUT_S:-3600}"
+[[ "$CALL_TIMEOUT_S" =~ ^[1-9][0-9]{0,8}$ ]] || CALL_TIMEOUT_S=3600
+if [ "$HAS_PROMPT" != 1 ]; then
+  [ ! -t 0 ] || { NO_FB="there is no prompt to keep"; refuse "the prompt must be an argument or piped on stdin; stdin is a terminal"; }
+  PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
+  chmod 600 "$PROMPT_FILE"
+  # a background job gets /dev/null for stdin, so the read names fd 0; a half-read stdin cannot be replayed whole
+  # at most 8 MiB plus one byte: a longer stream is refused below, so a runaway producer cannot fill TMPDIR
+  head -c 8388609 <&0 >"$PROMPT_FILE" &
+  READ_PID=$!
+  ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
+    sleep "$CALL_TIMEOUT_S" & wait $!; kill "$READ_PID" 2>/dev/null ) 3<&- &
+  READ_WD=$!
+  trap 'kill "$READ_PID" "$READ_WD" 2>/dev/null; exit 143' TERM INT HUP
+  wait "$READ_PID" || { kill "$READ_WD" 2>/dev/null; NO_FB="the prompt could not be kept"
+    refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
+  kill "$READ_WD" 2>/dev/null
+  trap - TERM INT HUP
+  [ "$(wc -c <"$PROMPT_FILE")" -le 8388608 ] || { NO_FB="the prompt could not be kept"; refuse "the stdin prompt is over 8 MiB"; }
+  exec 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not reopen the stdin prompt"; }
+else
+  # a closed stdin becomes /dev/null: the call then starts as it would have with an empty stdin (the idiom of scripts/lib/qmd-bounded.sh)
+  { exec 3<&0; } 2>/dev/null || exec 3</dev/null
+fi
+
 # Runs a command with TERM, INT and HUP ignored. This protects only a non-node wrapper that keeps the inherited
 # SIG_IGN; real node resets the disposition at startup, so a tree cancel that lands mid-settle can still cut a node step.
 immune() { ( trap '' TERM INT HUP; exec "$@" ); }
@@ -409,8 +443,6 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 # The call runs in the background so a signal reaches this shell at once: the handler stops the call before it
 # settles, and a watchdog stops it at HIMMEL_API_CALL_TIMEOUT_S, the age at which the credit-state sweep
 # releases a reservation. A launcher killed hard leaves its reservation to that sweep.
-CALL_TIMEOUT_S="${HIMMEL_API_CALL_TIMEOUT_S:-3600}"
-[[ "$CALL_TIMEOUT_S" =~ ^[1-9][0-9]{0,8}$ ]] || CALL_TIMEOUT_S=3600
 CALL_PID=""
 WATCHDOG_PID=""
 DEAD_SETTLED=0
@@ -466,11 +498,11 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
   ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \
   "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
-  "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT" <&0 &
+  "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$OUT" <&3 3<&- &
 CALL_PID=$!
 # the watchdog's own sleep is ended with it, so no timer outlives the call
 ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
-  sleep "$CALL_TIMEOUT_S" & wait $!; : >"$OUT.timeout"; stop_call ) &
+  sleep "$CALL_TIMEOUT_S" & wait $!; : >"$OUT.timeout"; stop_call ) 3<&- &
 WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?
