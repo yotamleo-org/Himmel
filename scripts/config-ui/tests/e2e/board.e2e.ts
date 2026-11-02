@@ -122,6 +122,30 @@ test("a ticket with no fixVersion is on its own No version tab, fetched only whe
   expect(errs).toEqual([]);
 });
 
+test("reloading on the No version tab starts its read without a page error", async ({ page }) => {
+  const errs: string[] = [];
+  page.on("pageerror", (e) => errs.push(e.message));
+  await open(page);
+  await go(page, "#/board?tab=nv");
+  await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
+  // the token lives in memory only, so the reloaded page is refused (401) and draws no card; the proof is that route() reaches loadNoVersion() at load without a ReferenceError
+  const asked = page.waitForRequest((r) => r.url().includes("/api/roadmap?nv=1"));
+  await page.reload();
+  await asked;
+  await expect(page.locator("#main")).toContainText("roadmap failed (401)");
+  expect(errs).toEqual([]);
+});
+
+test("dragging a card on the No version tab sends its new status", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=nv");
+  const sent: string[] = [];
+  await page.route("**/api/roadmap/write", async (route) => { sent.push(route.request().postData() || ""); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }); });
+  await page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" }).dragTo(page.locator('[data-rm-drop="todo"]'));
+  await expect.poll(() => sent.length).toBe(1);
+  expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-31", status: "todo" });
+});
+
 test("the find box narrows the lanes by title or id on Enter, the columns say how many Jira has, and Done is folded", async ({ page }) => {
   await open(page);
   await go(page, "#/board");

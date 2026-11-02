@@ -55,7 +55,7 @@ let thQuery = null, thReturn = null; // thReturn: the tool whose drill-in was ju
 let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
-let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
+let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains }, null until read
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, tab: null, v: null, at: null, chain: null, nv: null };
@@ -573,7 +573,6 @@ async function loadRoadmap() {
   if (currentPage.id === "board") paint();
 }
 // the Board's No version tab: those tickets are not in the default read, so they are fetched when the tab opens (and again on refresh).
-let nvGen = 0;
 async function loadNoVersion() {
   const gen = ++nvGen;
   let data;

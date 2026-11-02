@@ -459,11 +459,16 @@ test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the e
   expect((await fetch(`http://127.0.0.1:${srv.port}/roadmap.js`)).status).toBe(200);
 });
 
-test("GET /api/roadmap: the default payload has no ticket with no fixVersion; ?nv=1 serves those tickets only", async () => {
+test("GET /api/roadmap: the default payload has no ticket with no fixVersion; ?nv=1 serves those tickets only, with no sync row even for a ticket that has a worker", async () => {
   const s = withNoVersion(station());
   const home = join(s.d, "home"); mkdirSync(home);
+  // a BLOCKED worker on the no-version ticket: planned over its ticket, legSync would flag it in Jira
+  const doc = join(s.d, "HIMMEL-8-N9-loose-RESUME.md");
+  writeFileSync(doc, "## Results\n- 04:00 BLOCKED — stuck on the loose ticket\n");
+  const legs = join(s.d, "workers-8.sh");
+  writeFileSync(legs, `#!/usr/bin/env bash\nprintf '%s' '${JSON.stringify({ manifest: join(s.d, "x.fleet.json"), workers: [{ doc, status: "BLOCKED" }] })}'\n`);
   const srv = startServer({
-    port: 0, token: TOKEN, legsScript: join(s.d, "no-workers.sh"),
+    port: 0, token: TOKEN, legsScript: legs,
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_ROADMAP_PLAN_DIR: s.plan, HIMMEL_ROADMAP_DRIFT_LOG: s.drift },
   });
@@ -474,7 +479,10 @@ test("GET /api/roadmap: the default payload has no ticket with no fixVersion; ?n
   expect(d.noVersionCount).toBe(1);
   expect(JSON.stringify(d)).not.toContain("Loose ticket");
   expect(n.tickets.map((t: { k: number }) => t.k)).toEqual([8]);
-  expect(n.sync).toEqual([]);
+  expect(n.tickets[0].worker).toMatchObject({ label: "N9", marker: "BLOCKED" }); // the worker is on the ticket, so legSync over it is not empty:
+  expect(legSync(n.tickets).length).toBeGreaterThan(0);
+  expect(n.sync).toEqual([]); // the nv read plans nothing; a sync planned over it would flag HIMMEL-8 in Jira
+  expect(d.sync.some((o: { k: number }) => o.k === 8)).toBe(false); // and the default read's plan never names it
 });
 
 test("local-store items render as cards keyed by their generated LOCAL-<n> id, never as HIMMEL-<n>", () => {
@@ -489,7 +497,7 @@ test("local-store items render as cards keyed by their generated LOCAL-<n> id, n
   expect(html).not.toContain("HIMMEL-7");
 });
 
-// ---- the Board's No version lane, folded Done column, Jira line per column, find box, and Project, Theme and Only filters ----
+// ---- the Board's folded Done column, Jira line per column, find box, and Project, Theme and Only filters ----
 const withNoVersion = (s: ReturnType<typeof station>) => { writeFileSync(join(s.mirror, "HIMMEL-8.md"), issue(8, "To Do", "To Do", [], "Loose ticket")); return s; };
 // the columns of a Board tab: [bucket, the number in the heading, the cards drawn, the Jira line]
 const cols = (html: string) => {
@@ -549,10 +557,12 @@ test("Board: the default page has no No version lane and no ticket for it; its t
   expect(html).not.toContain("Loose ticket");
   expect(html).toMatch(/>No version <span class="ro">1<\/span><\/a>/);
   expect(board(read(station()))).not.toContain(">No version"); // no such ticket, no tab
-  // the tab with nothing read yet says so; nothing is drawn from the default read
+  // the tab with nothing read yet says so, and draws nothing even from a default read that held those tickets
   const wait = board(r, { tab: "nv" });
   expect(wait).toContain("loading");
-  expect(wait).not.toContain("Loose ticket");
+  const leaked = { ...r, tickets: [...r.tickets, ...nvRead(withNoVersion(station())).tickets] };
+  expect(board(leaked)).toContain("Loose ticket"); // the version board draws whatever the default read carries, so this proves the leak is real
+  expect(board(leaked, { tab: "nv" })).not.toContain("Loose ticket");
   expect(renderKanban(r, { version: null, theme: null })).not.toContain("Loose ticket"); // the old pages are unchanged
 });
 
@@ -615,7 +625,7 @@ test("Board: the find box matches a title or a ticket id, ignoring case, and its
   expect(shown({ find: "  " })).toBe(shown({}));
 });
 
-test("Board: the Project, Theme and Only filters narrow the lanes, and are on the Roadmap tab only", () => {
+test("Board: the Project, Theme and Only filters narrow the lanes, and are on the Roadmap and No version tabs only", () => {
   const r = read(station());
   const moved = { ...r, tickets: r.tickets.map((t) => (t.k === 1 ? { ...t, id: "LOC-1" } : t)) };
   const proj = board(moved);

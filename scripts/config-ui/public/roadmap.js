@@ -179,7 +179,8 @@ function roadmapHtml(data, ui) {
 
 // ---- the Board page: the one per-version page that replaced the Roadmap and Kanban pages --------------------------------
 // renderBoard(data, ui, extras) → HTML. data = GET /api/roadmap; extras = { drift, chains } from GET /api/board (null until read).
-// ui: { tab: roadmap|chains|tidy, v: a version name | "all" | null (the running version), theme, chain, hideDone, writes, writeError, at }.
+// ui: { tab: roadmap|nv|chains|tidy, v: a version name | "all" | null (the running version), theme, chain, hideDone, writes, writeError, at,
+// project, planTheme, only, find (the lane filters), nv (GET /api/roadmap?nv=1, null until the No version tab has read it) }.
 // A field whose source is not there is shown as absent in words, never as a number: no drift file, no chain registry.
 // renderRoadmap and renderKanban above stay exported: the design-layer and tracker tests pin their markup.
 const TABS = [["roadmap", "Roadmap"], ["chains", "Chains"], ["tidy", "Tidy up"], ["nv", "No version"]];
