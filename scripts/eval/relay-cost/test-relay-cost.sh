@@ -3,6 +3,8 @@
 # No model call: `claude` is a stub (RELAY_COST_CLAUDE) and bank-preflight a stub (RELAY_COST_PREFLIGHT).
 # Run: bash scripts/eval/relay-cost/test-relay-cost.sh
 set -u
+# an opted-in or re-weighted invoking shell must not change what the suite asserts
+unset HIMMEL_BILLED_OK WORKER_SESSION_BURN_W_INPUT WORKER_SESSION_BURN_W_CACHE_READ WORKER_SESSION_BURN_W_CACHE_CREATE WORKER_SESSION_BURN_W_OUTPUT
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PY="$HERE/relay_cost.py"
 RUN="$HERE/run.sh"
