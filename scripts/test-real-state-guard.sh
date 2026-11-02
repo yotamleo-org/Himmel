@@ -178,6 +178,9 @@ eq "U2 playwright is a runner" "$(as_session bash -c "exec -a playwright bash '$
 eq "U3 a go test binary named pkg.test is a test" "$(as_session bash "$TMP/pkg.test" >/dev/null 2>&1; echo $?)" 77
 eq "U4 go test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a go bash test' >/dev/null 2>&1; echo $?)" 77
 eq "U5 npm test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash test' >/dev/null 2>&1; echo $?)" 77
+cp "$TMP/real-tool.sh" "$TMP/run"
+eq "U7 npm run test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run test' >/dev/null 2>&1; echo $?)" 77
+eq "U8 negative control: npm run build is not a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run build' >/dev/null 2>&1; echo $?)" 0
 eq "U6 negative control: go with a non-test argument is not a runner" "$(as_session bash -c "exec -a go bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
 
 # The refusal names a command that runs: a repo-relative suite path, and the after-report usage as printed.
