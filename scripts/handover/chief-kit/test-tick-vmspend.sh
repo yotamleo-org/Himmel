@@ -18,13 +18,12 @@ same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')
 
 # VM_COST_SUT overrides the script under test (RED control: a mutated copy must fail a row below).
 COST="${VM_COST_SUT:-$HERE/../../vm/vm-cost.sh}"
-mkdir -p "$W/repo/scripts/vm"
-cp "$COST" "$W/repo/scripts/vm/vm-cost.sh"
 LEDGER="$W/vm-cost.jsonl"
 export LAUNCH_GUEST_COST_LEDGER="$LEDGER"
 today="$(date -u +%Y-%m-%d)"
 row() { printf '{"ticket":"%s","vm":"v","account":"%s","seconds":10,"usd":%s,"usd_source":"x","ts":"%sT01:02:03Z"}\n' "$1" "$2" "$3" "$4"; }
 vmspend_of() { bash "$SUT" 2>/dev/null | sed -n -E 's/.* vmspend=([^ ]*).*/\1/p'; }
+tick_rc() { bash "$SUT" >/dev/null 2>&1; echo "$?"; }
 
 # --- vm-cost.sh --today -----------------------------------------------------
 {
@@ -65,14 +64,17 @@ same 'vm-cost --today: an odd account label cannot split or spoof a tick field' 
 row HIMMEL-5 acct-c 9 2000-01-01 > "$LEDGER"
 same 'vm-cost --today: only old rows prints nothing' "$(bash "$COST" --today 2>/dev/null)" ''
 same 'tick: only old rows prints no vmspend=' "$(vmspend_of)" ''
+same 'tick: only old rows still completes (exit 0)' "$(tick_rc)" 0
 case "$(bash "$SUT" --verbose 2>/dev/null)" in *'vm spend'*) fail 'tick --verbose: only old rows still printed a vm spend line' ;; *) pass 'tick --verbose: only old rows prints no vm spend line' ;; esac
 rm -f "$LEDGER"
 same 'tick: no ledger prints no vmspend=' "$(vmspend_of)" ''
+same 'tick: no ledger still completes (exit 0)' "$(tick_rc)" 0
 mkdir "$LEDGER"
 [ -d "$LEDGER" ] && pass 'fixture: the unreadable ledger is a directory' || fail 'fixture: the ledger directory was not created'
 bash "$COST" --today >/dev/null 2>&1; rc=$?
 same 'vm-cost --today: an unreadable ledger (a directory) is not an empty report: nonzero' "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
 same 'tick: an unreadable ledger prints no vmspend=' "$(vmspend_of)" ''
+same 'tick: an unreadable ledger still completes (exit 0)' "$(tick_rc)" 0
 rmdir "$LEDGER"
 
 [ "$fails" -eq 0 ] || { printf '%s failed\n' "$fails"; exit 1; }

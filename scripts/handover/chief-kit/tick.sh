@@ -2555,7 +2555,7 @@ bank="5h${fh}/wk${wk}/codex=${codex}"
 # vmspend=<account>:<usd>usd/<n>runs,... -- today's VM test spend per account, read from
 # the ledger through the code vm-cost.sh already sums with. A local file read, no network. Absent when
 # no ledger row is from today or the ledger cannot be read.
-vmspend="$(bash "$REPO/scripts/vm/vm-cost.sh" --today 2>/dev/null)" || vmspend=""
+vmspend="$(bash "$HERE/../../vm/vm-cost.sh" --today 2>/dev/null)" || vmspend=""
 
 # spare=<pct>@<h>h -- weekly quota the current burn leaves unspent
 # at the reset (usage-monitor.sh --spare). Shown only when the spare is >=

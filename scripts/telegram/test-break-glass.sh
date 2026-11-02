@@ -158,10 +158,12 @@ out=$(bg station-status - -)
 assert_contains "VS1 station-status shows today's VM spend per account on one line" "vm spend today: acct-a:1.75usd/2runs" "$out"
 assert_not_contains "VS2 an account with no row today is not listed" "acct-b" "$out"
 printf '{"ticket":"H-3","vm":"v","account":"acct-b","seconds":5,"usd":9,"usd_source":"x","ts":"2000-01-01T00:00:00Z"}\n' > "$LAUNCH_GUEST_COST_LEDGER"
-out=$(bg station-status - -)
+out=$(bg station-status - -); rc=$?
+assert_rc "VS3 old rows only: station-status still succeeds" 0 "$rc"
 assert_not_contains "VS3 no row for today prints no VM spend line" "vm spend" "$out"
 rm -f "$LAUNCH_GUEST_COST_LEDGER"
-out=$(bg station-status - -)
+out=$(bg station-status - -); rc=$?
+assert_rc "VS4 no ledger: station-status still succeeds" 0 "$rc"
 assert_not_contains "VS4 no ledger prints no VM spend line" "vm spend" "$out"
 export LAUNCH_GUEST_COST_LEDGER="$TMP/no-vm-cost.jsonl"
 # --- /repin-hooks ------------------------------------------------------------
