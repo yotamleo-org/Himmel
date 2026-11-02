@@ -40,7 +40,7 @@ KEY_RE = re.compile(r'HIMMEL-\d+')
 # registries a gate reads: a clean shared edit is S2, not S1 (D6)
 GATE_REGISTRIES = ('scripts/ci/suite-tiers.tsv', 'scripts/ci/suite-durations.tsv', '.claude/settings.json')
 # one-row-per-key registries on a trust path: pure disjoint row additions from both sides are S2, not H2.
-# Read from holds-exempt.txt, the one list the holds register also uses. An unreadable list is empty: every shared
+# Read from holds-exempt.txt, the one list holds.py (the holds register) also uses. An unreadable list is empty: every shared
 # trust-path file then reads H2, the stricter answer.
 def load_row_registries():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'holds-exempt.txt')
