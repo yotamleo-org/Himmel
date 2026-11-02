@@ -6402,7 +6402,13 @@ rm -rf "$c83_t"
 # Seam: HIMMEL_RELEASE_STATE_DIR (the same override the tick and chief.sh honour).
 c84_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c84.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c84_t/home" "$c84_t/claude" "$c84_t/h/release/R1"
-c84_run() { HIMMEL_RELEASE_STATE_DIR="$c84_t/h/release" CLAUDE_DIR="$c84_t/claude" HOME="$c84_t/home" bash "$DOC" --only C84 --no-color 2>&1; }
+# The probe stands in for `jira release state <R> --json`, whose status is OK only when release.json verifies.
+cat > "$c84_t/probe" <<'EOF'
+#!/usr/bin/env bash
+printf '{"status":"%s","integrity":["release.json for %s is missing or does not verify"]}\n' "${C84_STATUS:-OK}" "$1"
+[ "${C84_STATUS:-OK}" = OK ] || exit 3
+EOF
+c84_run() { HIMMEL_DOCTOR_RM_STATE_PROBE="$c84_t/probe" HIMMEL_RELEASE_STATE_DIR="$c84_t/h/release" CLAUDE_DIR="$c84_t/claude" HOME="$c84_t/home" bash "$DOC" --only C84 --no-color 2>&1; }
 c84_doc() { rm -f "$c84_t/h/"*-chief.md; [ "$#" -eq 0 ] || printf '# chief\n## Live state\n%s\n' "$1" > "$c84_t/h/X-chief.md"; }
 printf '{"name":"R1"}\n' > "$c84_t/h/release/R1/release.json"
 echo "== C84-release-queue: a declared release and a chief doc with no release: line -> WARN =="
@@ -6431,6 +6437,18 @@ echo "== C84-release-queue: healthy control (line names the declared release) ->
 c84_doc "release: R1"
 out="$(c84_run)"
 if grepq "$out" 'OK   C84-release-queue' && ! grepq "$out" 'WARN C84-release-queue'; then pass "C84 healthy -> OK"; else fail "C84 healthy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: the declaration does not verify (release state is not OK) -> WARN =="
+c84_doc "release: R1"
+out="$(C84_STATUS=UNKNOWN c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'UNKNOWN' && grepq "$out" -F 'does not verify'; then pass "C84 unverifiable declaration -> WARN naming the state and the integrity reason"; else fail "C84 unverified -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: the default handover root comes from --root, not the working directory =="
+c84_p="$c84_t/proj"; mkdir -p "$c84_p/handovers/u/himmel/release/R1" "$c84_t/elsewhere"
+git init -q "$c84_p"
+ln -s "$REPO_ROOT/scripts" "$c84_p/scripts"  # the doctor sources its libs from the --root checkout
+printf '{"name":"R1"}\n' > "$c84_p/handovers/u/himmel/release/R1/release.json"
+printf '# chief\n## Live state\nrelease: R1\n' > "$c84_p/handovers/u/himmel/X-chief.md"
+out="$(cd "$c84_t/elsewhere" && env -u HANDOVER_DIR -u HIMMEL_RELEASE_STATE_DIR HIMMEL_DOCTOR_RM_STATE_PROBE="$c84_t/probe" CLAUDE_DIR="$c84_t/claude" HOME="$c84_t/home" bash "$DOC" --root "$c84_p" --only C84 --no-color 2>&1)"
+if grepq "$out" 'OK   C84-release-queue'; then pass "C84 finds the --root checkout's declaration from a non-git working directory"; else fail "C84 --root default -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C84-release-queue: disabled controls (release: none; nothing declared) -> INFO, never WARN =="
 c84_doc "release: none"
 out="$(c84_run)"
