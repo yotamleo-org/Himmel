@@ -1123,7 +1123,7 @@ same '--json: the worker-wording render exits 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$W/n5-board.json" 2>/dev/null)"
 jcheck '--json: a BLOCKED worker need reads clear the BLOCKED worker, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N7" && n.action === "clear the BLOCKED worker")'
 jcheck '--json: a still-open WRAPPED worker need reads close the worker window, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N5" && n.action === "close the worker window")'
-jcheck '--json: the health line counts workers, never workers (HIMMEL-8309)' '/workers? need you/.test(M.cards.health.recommendation) && !/\bleg/.test(M.cards.health.recommendation)'
+jcheck '--json: the health line counts workers, never the pre-rename word (HIMMEL-8309)' '/workers? need you/.test(M.cards.health.recommendation) && !/\bleg/.test(M.cards.health.recommendation)'
 
 # --- chief cost and the succession eval come from session transcripts: line 1 names
 # the session (custom-title = chief doc stem), assistant lines carry message.usage,
