@@ -415,6 +415,12 @@ watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" bash "$TMP/watch-run.sh" "$MBA"
 eq "M8 a test's refused chief route leaves no sentinel" "$(find "$TMP/sent-m8w" -type f | wc -l | tr -d ' ')" 0
 watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" "$CLAUDE_STUB" bash "$TMP/watch-run.sh" "$MBA"
 has "M8 a real route for the same head after a refusal still appends" "$CHIEF_INBOX" "[merge-watch o/r#2]"
+# M9: the other callers of the sender keep their exit code. vault-stall-alert.sh exiting non-zero on a refusal
+# would make cadence-alert.sh write its send-failed marker under the real state dir, and doctor warn on it.
+reset
+rc=0; env TELEGRAM_ACCESS_PATH="$TMP/access.json" bash "$root/scripts/luna/vault-stall-alert.sh" "from a test" >/dev/null 2>&1 || rc=$?
+eq "M9 a test's refused vault-stall alert still exits 0 for its caller" "$rc" 0
+eq "M9 and it sent nothing" "$(calls bun)" 0
 
 echo "== cadence inbox doors"
 CH="$root/scripts/eval/cache-health-cadence.sh"
