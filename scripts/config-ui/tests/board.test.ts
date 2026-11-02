@@ -1,8 +1,9 @@
 // GET /api/board: the Board page's saved status-drift summary and chain read. Both are read-only chief-kit
 // scripts, started only when their input is found: named in the settings (environment, himmel.conf, the checkout's .env)
 // or the newest file of that name under the handover root. Everything here lives in a scratch directory, the checkout root included.
-import { test, expect, afterEach } from "bun:test";
+import { test, expect, afterEach, mock } from "bun:test";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import childProcess from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
@@ -114,6 +115,17 @@ test("GET /api/board: with several slugs under the handover root the newest file
   expect((await get(serve({ HANDOVER_DIR: root }, s))).drift.counts.real).toBe(2);
 });
 
+test("GET /api/board: the newest file wins whichever of two slugs readdir lists first (the mtimes swapped)", async () => {
+  const s = scratch();
+  const root = join(s.d, "handovers");
+  slugWithDrift(root, "older", 1, new Date("2026-11-02T10:00:00Z"));
+  slugWithDrift(root, "newer", 2, new Date("2026-10-01T10:00:00Z"));
+  expect((await get(serve({ HANDOVER_DIR: root }, s))).drift.counts.real).toBe(1); // "older" is the newer file here
+  slugWithDrift(root, "older", 1, new Date("2026-10-01T10:00:00Z"));
+  slugWithDrift(root, "newer", 2, new Date("2026-11-02T10:00:00Z"));
+  expect((await get(serve({ HANDOVER_DIR: root }, s))).drift.counts.real).toBe(2);
+});
+
 test("GET /api/board: an explicit HIMMEL_FOCUS_DRIFT wins over the handover root's file", async () => {
   const s = scratch();
   const root = join(s.d, "handovers");
@@ -138,12 +150,16 @@ test("GET /api/board: a bare launch finds the handover root in himmel.conf or th
   expect((await get(serve({ HANDOVER_DIR: viaEnv }, s))).drift.counts.real).toBe(3); // the process env beats both
 });
 
-test("runReader: the default limit is 10 seconds", async () => {
+test("runReader: a default call hands execFile a 10 second limit", async () => {
   expect(TIMEOUT_MS).toBe(10_000);
   const s = scratch();
   const ok = join(s.d, "ok.mjs");
   writeFileSync(ok, "console.log(JSON.stringify({ fine: true }));\n");
-  expect(await runReader(ok, [], { PATH: process.env.PATH }, "the test reader")).toEqual({ fine: true });
+  const seen: unknown[] = [];
+  mock.module("node:child_process", () => ({ ...childProcess, execFile: (...a: unknown[]) => { seen.push((a[2] as { timeout?: number }).timeout); return (childProcess.execFile as (...x: unknown[]) => unknown)(...a); } }));
+  const fresh = await import("../board?default-limit"); // a copy of board.ts bound to the spy
+  expect(await fresh.runReader(ok, [], { PATH: process.env.PATH }, "the test reader")).toEqual({ fine: true });
+  expect(seen).toEqual([10_000]);
 });
 
 test("GET /api/board: an explicit HIMMEL_CHAIN_REGISTRY wins over the handover root's file", async () => {
