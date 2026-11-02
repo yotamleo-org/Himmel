@@ -3334,7 +3334,7 @@ check "94e next appends the trimmed Live state after it" "$(grep -cF 'C20:nonce-
 
 # --- 95: the HANDOFF's in-flight section: one pointer line per item from the
 # file names under specs/, capped, absent when empty, never a body, fail-open.
-hours_ago95() { date -d "$1 hours ago" '+%Y%m%d%H%M' 2>/dev/null || date -v-"$1"H '+%Y%m%d%H%M'; }
+hours_ago95() { date -d "$1 hours ago" '+%Y%m%d%H%M' 2>/dev/null || date -v-"$1"H '+%Y%m%d%H%M'; }  # gnu-ok: GNU date -d is paired with BSD date -v on this line
 item95() { # <bucket> <path under specs/> [hours old]
     local f="$root/tester/$1/specs/$2"
     mkdir -p "$(dirname "$f")"

@@ -1983,8 +1983,8 @@ $out
 inflight_rows() { # <directory holding specs/> <days>: mtime TAB path; always runs in a pipeline, so the cd stays local
     cd "$1/specs" 2>/dev/null || return 0  # swallow-ok: an unreadable source lists nothing
     # find exits 1 on an absent directory; whatever it did list still counts
-    find designs design plans plan proposals proposal -maxdepth 1 -type f -name '*.md' ! -name '*.md.*' -mtime "-$2" 2>/dev/null \
-        | while IFS= read -r path; do printf '%s\t%s\n' "$(date -r "$path" '+%Y-%m-%d %H:%M')" "$path"; done
+    find designs design plans plan proposals proposal -maxdepth 1 -type f -name '*.md' ! -name '*.md.*' -mtime "-$2" 2>/dev/null |  # gnu-ok: BSD find has -maxdepth too
+        while IFS= read -r path; do printf '%s\t%s\n' "$(date -r "$path" '+%Y-%m-%d %H:%M')" "$path"; done
 }
 inflight_section() { # <directory holding specs/>
     local cap="${CHIEF_INFLIGHT_CAP:-10}" days="${CHIEF_INFLIGHT_DAYS:-2}" rows total stamp path kind key
