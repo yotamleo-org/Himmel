@@ -50,11 +50,14 @@ plugin_cmd=$(jq -r '.hooks.PreToolUse[].hooks[].command | select(contains("redir
 
 wf() { jq -nc --arg u "$1" '{session_id:"s-walled",tool_name:"WebFetch",tool_input:{url:$u,prompt:"p"}}'; }
 
-# run_case <payload> <project dir> [VAR=value]: sets RC, ERR and OUT.
+# run_case <payload> <project dir> [VAR=value]: sets RC, ERR and OUT. The config
+# dir is CLAUDE_CONFIG_DIR=$CFG; CFG_ASSIGN=X_UNUSED=1 leaves it unset so the
+# hook takes its default, $HOME/.claude, with HOME on the fixture home.
 run_case() {
     rm -f "$LOG"
     ERR="$TMP/err"
-    OUT=$(cd "$2" && printf '%s' "$1" | env -u WALLED_TOOLING_DIR CLAUDE_PLUGIN_ROOT="$CACHE_DIR" CLAUDE_CONFIG_DIR="$CFG" \
+    OUT=$(cd "$2" && printf '%s' "$1" | env -u WALLED_TOOLING_DIR -u CLAUDE_CONFIG_DIR HOME="$TMP/home" \
+        CLAUDE_PLUGIN_ROOT="$CACHE_DIR" "${CFG_ASSIGN:-CLAUDE_CONFIG_DIR=$CFG}" \
         CLAUDE_PROJECT_DIR="$2" WEBFETCH_WALLED_LOG="$LOG" HIMMEL_WEBFETCH_WALLED_OK=0 ${3:+"$3"} \
         sh -c "${plugin_cmd:-exit 0}" 2>"$ERR")
     RC=$?
@@ -191,6 +194,29 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
         "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
     run_case "$(wf 'https://docs.python.org/3/')" "$HIMMEL_ROOT"
     assert_eq "himmel record: non-walled host allowed" 0 "$RC"
+
+    # The default config dir ($HOME/.claude, CLAUDE_CONFIG_DIR unset), a record
+    # path with a trailing slash, and a record that does not parse.
+    CFG_ASSIGN=X_UNUSED=1
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+    assert_eq "default config dir: the record is found, denies" 2 "$RC"
+    assert_contains "default config dir: names the recorded checkout's fetcher" \
+        "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+    CFG_ASSIGN=""
+    record "$HIMMEL_ROOT/marketplace/"
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+    assert_contains "trailing-slash record: names the recorded checkout's fetcher" \
+        "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+    for bad in '{not json\n' '{"himmel":{"installLocation":42}}\n' '[]\n'; do
+        put "$CFG/plugins/known_marketplaces.json" "$bad"
+        run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+        assert_eq "unusable record $bad: walled host still denied" 2 "$RC"
+        case "$ERR" in
+            *fetch-url*) echo "FAIL unusable record: deny names a fetcher: $ERR"
+                         FAILED=$((FAILED + 1)) ;;
+            *) echo "PASS unusable record: embedded list and adopter deny" ;;
+        esac
+    done
     record none
 
     # The project-lane copy delegates to the plugin source, so the rule has one
