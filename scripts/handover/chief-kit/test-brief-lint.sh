@@ -500,15 +500,15 @@ cp "$LINT" "$KIT/scripts/handover/chief-kit/"; cp "$HERE/../../lib/"*.sh "$KIT/s
 mkc s_kit_ok "$CW_HIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
 KLINT="$KIT/scripts/handover/chief-kit/brief-lint.sh"
 rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 1 ] && ok "10b the lint copy with no classifier beside it is refused" || bad "10b missing classifier gave rc=$rc"
+[ "$rc" = 3 ] && ok "10b the lint copy with no classifier beside it is refused" || bad "10b missing classifier gave rc=$rc"
 for code in 1 7 127; do
     printf 'import sys\nsys.exit(%s)\n' "$code" > "$KIT/scripts/handover/chief-kit/salus_marked.py"
     rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
-    [ "$rc" = 1 ] && ok "10c a classifier that exits $code is refused, not read as not-marked" || bad "10c classifier exit $code gave rc=$rc"
+    [ "$rc" = 3 ] && ok "10c a classifier that exits $code is refused, not read as not-marked" || bad "10c classifier exit $code gave rc=$rc"
 done
 printf 'raise RuntimeError("boom")\n' > "$KIT/scripts/handover/chief-kit/salus_marked.py"
 rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 1 ] && ok "10d a classifier that raises is refused" || bad "10d raising classifier gave rc=$rc"
+[ "$rc" = 3 ] && ok "10d a classifier that raises is refused" || bad "10d raising classifier gave rc=$rc"
 printf 'import sys\nsys.exit(10)\n' > "$KIT/scripts/handover/chief-kit/salus_marked.py"
 rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 0 ] && ok "10e a classifier that answers no (10) passes a brief that carries the directive" || bad "10e answer-no classifier gave rc=$rc"
@@ -521,16 +521,64 @@ mkc s_salus_nocontract "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" "$DIR_LINE" ''
 mkc s_salus_ran "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" "$DIR_LINE" '' '> **Contract:** y' "$RES" '- 10:00 LIVE — started'
 mkc s_salus_graphify "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" 'Then run graphify query "x".' '' '> **Contract:** y' "$RES"
 mkc s_salus_cflag "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" 'Try qmd query -c luna later.' '' '> **Contract:** y' "$RES"
-expect_rc "10f a salus-marked brief that names the whole directive is refused" 1 "$tmp/s_salus_dir.md"
-expect_rc "10g the words plus the commands are refused too" 1 "$tmp/s_salus_both.md"
+expect_rc "10f a salus-marked brief that names the whole directive is refused" 3 "$tmp/s_salus_dir.md"
+expect_rc "10g the words plus the commands are refused too" 3 "$tmp/s_salus_both.md"
 expect_rc "10h a salus-marked brief without the words is refused" 1 "$tmp/s_salus_nowords.md"
-expect_rc "10i a salus-marked doc with no Contract line is held to it too" 1 "$tmp/s_salus_nocontract.md"
-expect_rc "10j a salus-marked doc that has run is held to it too" 1 "$tmp/s_salus_ran.md"
-expect_rc "10k a graphify command in a salus-marked brief is refused" 1 "$tmp/s_salus_graphify.md"
-expect_rc "10l a '-c luna' command in a salus-marked brief is refused" 1 "$tmp/s_salus_cflag.md"
+expect_rc "10i a salus-marked doc with no Contract line is held to it too" 3 "$tmp/s_salus_nocontract.md"
+expect_rc "10j a salus-marked doc that has run is held to it too" 3 "$tmp/s_salus_ran.md"
+expect_rc "10k a graphify command in a salus-marked brief is refused" 3 "$tmp/s_salus_graphify.md"
+expect_rc "10l a '-c luna' command in a salus-marked brief is refused" 3 "$tmp/s_salus_cflag.md"
 err="$(bash "$LINT" "$tmp/s_salus_both.md" 2>&1 >/dev/null)"
 { grep -Fq 'salus-marked' <<< "$err" && ! grep -Fq 'worker-graph.sh' <<< "$err" && ! grep -Fq 'qmd-bounded.sh' <<< "$err"; } \
     && ok "10m the salus refusal states only the salus rule" || bad "10m salus refusal text: $err"
+
+# --no-prior-art-check (the lint's --core-only) cannot clear the salus refusal or a classifier crash, and the launcher's
+# refusal for either offers no flag. A python3 stand-in that fails only for salus_marked.py makes the classifier crash.
+FAKEBIN="$tmp/fakebin"; mkdir -p "$FAKEBIN"; REAL_PY="$(command -v python3)"
+printf '#!/bin/sh\ncase "$*" in *salus_marked.py*) exit 7 ;; esac\nexec %s "$@"\n' "$REAL_PY" > "$FAKEBIN/python3"; chmod +x "$FAKEBIN/python3"
+rc=0; bash "$LINT" --core-only "$tmp/s_salus_both.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 3 ] && ok "10m2 --core-only still refuses a salus-marked brief that names a search" || bad "10m2 --core-only on a salus brief with the search rc=$rc"
+rc=0; PATH="$FAKEBIN:$PATH" bash "$LINT" --core-only "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 3 ] && ok "10m3 --core-only refuses when the classifier crashes" || bad "10m3 --core-only with a crashing classifier rc=$rc"
+rc=0; out="$(run_worker "$tmp/s_salus_both.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'salus-marked' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "10m4 the launcher refuses a salus-marked brief with a search and names no flag" || bad "10m4 launcher salus refusal (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/s_salus_both.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'salus-marked' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "10m5 --no-prior-art-check does not clear the salus refusal" || bad "10m5 launcher salus refusal with the flag (rc=$rc): $out"
+rc=0; out="$(PATH="$FAKEBIN:$PATH" run_worker "$tmp/s_kit_ok.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'cannot classify' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "10m6 a crashing classifier is refused by the launcher with the flag, and names no flag" || bad "10m6 launcher with a crashing classifier (rc=$rc): $out"
+
+# The lint reads resume_cwd with a copy of the launcher's parse: pin the two blocks together.
+# shellcheck disable=SC2016  # the sed patterns match literal $ in the two scripts' text
+parse_block() { # file lint|launcher: the resume_cwd parse, the launcher's names mapped to the lint's
+    case "$2" in
+        lint) sed -n '/^cwd="\$(awk/,/^case "\$cwd" in/p' "$1" ;;
+        launcher) sed -n '/^_worker_rcwd="\$(awk/,/^case "\$_worker_rcwd" in/p' "$1" | sed 's/_worker_rcwd/cwd/g; s/"\$DOC"/"$doc"/' ;;
+    esac
+}
+PB_LINT="$(parse_block "$LINT" lint)"; PB_LAUNCH="$(parse_block "$WORKER" launcher)"
+{ [ "$(wc -l <<< "$PB_LINT")" -ge 8 ] && [ "$PB_LINT" = "$PB_LAUNCH" ]; } \
+    && ok "10z the lint's resume_cwd parse is the launcher's, line for line" || bad "10z the two resume_cwd parses differ (lint $(wc -l <<< "$PB_LINT") lines, launcher $(wc -l <<< "$PB_LAUNCH")): $(diff <(echo "$PB_LINT") <(echo "$PB_LAUNCH") | head -5)"
+sed 's/fm == 1 \&\&/fm >= 1 \&\&/' "$WORKER" > "$tmp/worker-mut1.sh"
+sed 's/\\~|\\~\/\*/\\~/' "$WORKER" > "$tmp/worker-mut2.sh"
+sed 's/_worker_rcwd#\\"/_worker_rcwd#x/' "$WORKER" > "$tmp/worker-mut3.sh"
+for m in 1 2 3; do
+    [ "$(parse_block "$tmp/worker-mut$m.sh" launcher)" != "$PB_LINT" ] && ok "10z$m a changed launcher parse (mutation $m) no longer matches the lint's" || bad "10z$m mutation $m of the launcher parse went unnoticed"
+done
+
+# A list line that is a comment, relative, or ~-based is read as such, and a git that is not on PATH reads a repo as marked.
+H_C="$tmp/home-comment"; mkdir -p "$H_C/.config/claude-codex"; printf '# phi roots\nrelative/phi\n\n' > "$H_C/.config/claude-codex/phi-roots"
+rc=0; (cd "$CW_HIM" && env HOME="$H_C" python3 -I "$HERE/salus_marked.py" salus "$CW_HIM") || rc=$?
+[ "$rc" = 10 ] && ok "11a a comment or relative list line marks nothing" || bad "11a comment/relative list line rc=$rc (want 10)"
+H_TL="$tmp/home-tilde-list"; mkdir -p "$H_TL/.config/claude-codex" "$H_TL/phi"
+# shellcheck disable=SC2088  # the literal ~ is the list line under test
+printf '~/phi\n' > "$H_TL/.config/claude-codex/phi-roots"
+sal_rc "11b a ~/ list line is expanded against HOME" 0 "$H_TL" "$H_TL/phi"
+NOGIT="$tmp/nogit-bin"; mkdir -p "$NOGIT"; ln -s "$REAL_PY" "$NOGIT/python3"
+sal_rc "11c with no git on PATH a repo reads as marked" 0 "$H_NONE" "$CW_HIM" PATH="$NOGIT"
+sal_rc "11d with no git on PATH a directory outside any repo is still not marked" 10 "$H_NONE" "$tmp/not-a-repo-at-all" PATH="$NOGIT"
 
 # resume_cwd is read the way the launcher reads it, and a fresh worker brief must carry an absolute one.
 mk_raw s_nocwd '---' 'description: Check the lint on a test brief' '---' '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
@@ -569,7 +617,7 @@ sal_rc "10w a repo that holds a listed root is marked from a directory beside th
 mkc s_holds_dir "$GR/src" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
 mkc s_holds_words "$GR/src" '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
 rc=0; HOME="$H_R" bash "$LINT" "$tmp/s_holds_dir.md" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 1 ] && ok "10w2 the lint refuses the directive there" || bad "10w2 lint on a repo holding a listed root rc=$rc"
+[ "$rc" = 3 ] && ok "10w2 the lint refuses the directive there" || bad "10w2 lint on a repo holding a listed root rc=$rc"
 rc=0; HOME="$H_R" bash "$LINT" "$tmp/s_holds_words.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 0 ] && ok "10w3 the lint accepts the salus words there" || bad "10w3 lint on a repo holding a listed root rc=$rc"
 

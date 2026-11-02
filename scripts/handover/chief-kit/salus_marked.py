@@ -39,9 +39,12 @@ def _dir_marked(d):
         except Exception:
             return True
         for root in lines:
-            root = root.strip().rstrip('/')
-            if not root:
+            root = root.strip()
+            if not root or root.startswith('#'):
                 continue
+            root = os.path.expanduser(root)
+            if not os.path.isabs(root):
+                continue  # a relative line would resolve against whatever directory the classifier runs in
             root = os.path.realpath(root).rstrip('/')
             if root and ((d + '/').startswith(root + '/') or (root + '/').startswith(d + '/')):
                 return True

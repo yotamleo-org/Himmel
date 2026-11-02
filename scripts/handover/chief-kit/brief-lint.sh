@@ -21,7 +21,8 @@
 # title; --core-only runs it alone, for a launch that skips the prior-art check.
 # --judge skips it: a judge brief writes nothing, so no spec stands behind it.
 #
-# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 core-gate refusal.
+# Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, a salus-marked
+# brief that names a search, or a resume_cwd the classifier cannot answer for.
 set -u
 
 core_only=0
@@ -228,6 +229,42 @@ PY
     fi
 }
 
+# The directory the worker starts in, read the way headed-arm-worker.sh reads it: the front-matter line, trimmed, quotes
+# stripped, a leading ~ expanded. This block is the launcher's, line for line (test-brief-lint.sh compares them).
+cwd="$(awk '
+    /^---[[:space:]]*$/ { fm++; if (fm == 2) exit; next }
+    fm == 1 && /^resume_cwd:[[:space:]]*/ { sub(/^resume_cwd:[[:space:]]*/, ""); print; exit }
+' "$doc" 2>/dev/null)"
+cwd="${cwd%"${cwd##*[![:space:]]}"}"
+cwd="${cwd#\'}"; cwd="${cwd%\'}"
+cwd="${cwd#\"}"; cwd="${cwd%\"}"
+case "$cwd" in \~|\~/*) cwd="${HOME:-}${cwd#\~}" ;; esac
+
+# Classify a directory: salus-marked or an adopted repo. salus_marked.py answers 0 (yes) or 10 (no); a missing or crashing
+# classifier answers neither, and the brief is refused (exit 3, which no flag clears) rather than read as not marked.
+classify() { # salus|adapter dir; returns 0 yes, 10 no
+    local rc=0
+    python3 -I "$(dirname "$0")/salus_marked.py" "$1" "$2" >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0|10) return "$rc" ;;
+        *) echo "brief-lint: $doc: cannot classify resume_cwd '$2' (salus_marked.py exited $rc): refusing rather than reading it as not salus-marked" >&2; exit 3 ;;
+    esac
+}
+
+# A salus-marked directory searches nothing, because a query would send text off this machine: its brief names no search
+# command anywhere (judge and resumed docs included, --core-only too), and a worker brief says so in words below. This runs
+# before the --core-only exit, so --no-prior-art-check cannot clear it, and it exits 3 so the launcher's refusal offers no
+# flag. A directory that is not absolute is left to the Contract check below.
+is_salus=0
+if [ "${cwd#/}" != "$cwd" ]; then
+    rc=0; classify salus "$cwd" || rc=$?
+    [ "$rc" -eq 0 ] && is_salus=1
+fi
+if [ "$is_salus" -eq 1 ] && grep -Eq -- 'qmd-bounded|worker-graph|graphify|-c[[:space:]]+(luna|jira-himmel)' "$doc"; then
+    echo "brief-lint: $doc: resume_cwd '$cwd' is salus-marked: this brief must search nothing (a query would send text off this machine). Remove every notes-search and graph-lookup command and say 'no notes search and no graph lookup' instead" >&2
+    exit 3
+fi
+
 if [ "$core_only" -eq 1 ]; then
     core_rule
     exit 0
@@ -301,40 +338,6 @@ fi
 . "$(dirname "$0")/../../lib/worker-identity.sh"
 if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; then
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
-fi
-
-# The directory the worker starts in, read the way headed-arm-worker.sh reads it: the front-matter line, trimmed, quotes
-# stripped, a leading ~ expanded.
-cwd="$(awk '
-    /^---[[:space:]]*$/ { fm++; if (fm == 2) exit; next }
-    fm == 1 && /^resume_cwd:[[:space:]]*/ { sub(/^resume_cwd:[[:space:]]*/, ""); print; exit }
-' "$doc" 2>/dev/null)"
-cwd="${cwd%"${cwd##*[![:space:]]}"}"
-cwd="${cwd#\'}"; cwd="${cwd%\'}"
-cwd="${cwd#\"}"; cwd="${cwd%\"}"
-case "$cwd" in \~|\~/*) cwd="${HOME:-}${cwd#\~}" ;; esac
-
-# Classify a directory: salus-marked or an adopted repo. salus_marked.py answers 0 (yes) or 10 (no); a missing or crashing
-# classifier answers neither, and the brief is refused rather than read as not marked.
-classify() { # salus|adapter dir; returns 0 yes, 10 no
-    local rc=0
-    python3 -I "$(dirname "$0")/salus_marked.py" "$1" "$2" >/dev/null 2>&1 || rc=$?
-    case "$rc" in
-        0|10) return "$rc" ;;
-        *) fail "cannot classify resume_cwd '$2' (salus_marked.py exited $rc): refusing rather than reading it as not salus-marked" ;;
-    esac
-}
-
-# A salus-marked directory searches nothing, because a query would send text off this machine: its brief names no search
-# command anywhere (judge and resumed docs included), and a worker brief says so in words. A directory that is not
-# absolute is left to the Contract check below.
-is_salus=0
-if [ "${cwd#/}" != "$cwd" ]; then
-    rc=0; classify salus "$cwd" || rc=$?
-    [ "$rc" -eq 0 ] && is_salus=1
-fi
-if [ "$is_salus" -eq 1 ] && grep -Eq -- 'qmd-bounded|worker-graph|graphify|-c[[:space:]]+(luna|jira-himmel)' "$doc"; then
-    fail "resume_cwd '$cwd' is salus-marked: this brief must search nothing (a query would send text off this machine). Remove every notes-search and graph-lookup command and say 'no notes search and no graph lookup' instead"
 fi
 
 # A worker brief (one with a `> **Contract:**` line) tells its worker to search the notes (both collections) and the
