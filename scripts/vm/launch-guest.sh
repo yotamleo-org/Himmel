@@ -29,7 +29,13 @@
 #   on a refused argument.
 # Env: LAUNCH_GUEST_VMS_JSON (registry path; default scripts/lib/vms.json),
 #      LAUNCH_GUEST_PREFLIGHT (bank preflight script; default scripts/lib/usage-preflight.sh),
-#      LAUNCH_GUEST_TIMEOUT (seconds above 0, default 1800).
+#      LAUNCH_GUEST_TIMEOUT (seconds above 0, default 1800),
+#      LAUNCH_GUEST_TICKET (cost ledger ticket; default the HIMMEL-n of the branch, else unknown),
+#      LAUNCH_GUEST_ACCOUNT (cost ledger account label, never a token; default the VM name),
+#      LAUNCH_GUEST_COST_LEDGER (ledger path; default <handover root>/.ledger/vm-cost.jsonl).
+# Cost: every launched run (not a dry-run, not a refusal) appends one row to the ledger
+#   with the guest result's total_cost_usd, or a null usd when it cannot be read;
+#   scripts/vm/vm-cost.sh sums the ledger per ticket and per account.
 # Platform: POSIX bash 3.2+, node, ssh with key auth to the guest.
 # launch-profile-ok-file: the claude runs on the guest's own login and config, where no host profile applies
 set -u
@@ -73,6 +79,15 @@ elif [ -n "$CMODEL$DEBUG" ]; then
 fi
 case "$VM" in ''|*[!A-Za-z0-9_-]*) echo "launch-guest: '$VM' is not a registered test VM name" >&2; exit 2 ;; esac
 case "$TIMEOUT" in ''|*[!0-9]*|0*) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds above 0, no leading zero" >&2; exit 2 ;; esac
+# the cost ledger row carries labels only: the account is a label for the guest's login, never a token
+ACCOUNT="${LAUNCH_GUEST_ACCOUNT:-$VM}"
+case "$ACCOUNT" in ''|*[!A-Za-z0-9._-]*|[Ss][Kk]-*) echo "launch-guest: LAUNCH_GUEST_ACCOUNT must match [A-Za-z0-9._-]+ and not start with sk- (a label, never a token)" >&2; exit 2 ;; esac
+TICKET="${LAUNCH_GUEST_TICKET:-}"
+if [ -z "$TICKET" ]; then
+    TICKET="$(git rev-parse --abbrev-ref HEAD 2>/dev/null | grep -io 'himmel-[0-9][0-9]*' | head -n 1 | tr '[:lower:]' '[:upper:]')" || TICKET=""
+fi
+[ -n "$TICKET" ] || TICKET=unknown
+case "$TICKET" in *[!A-Za-z0-9-]*) echo "launch-guest: LAUNCH_GUEST_TICKET must match [A-Za-z0-9-]+" >&2; exit 2 ;; esac
 [ -f "$PROMPT" ] || { echo "launch-guest: prompt file '$PROMPT' not found" >&2; exit 2; }
 # the prompt is read on the host and its answer comes back, so it is confined to
 # the cwd's git worktree or the session scratchpad, after resolving symlinks and
@@ -146,4 +161,34 @@ else
         SKIPPED-*) echo "launch-guest: bank preflight said $VERDICT - not launching a guest session" >&2; exit 2 ;;
     esac
 fi
-exec "${CMD[@]}" < "$PROMPT"
+# the run is launched: record one cost ledger row. The guest's
+# --output-format json result carries total_cost_usd; anything else records a null usd.
+# The row is best-effort and never changes the run's stdout or exit code.
+OUT="$(mktemp "${TMPDIR:-/tmp}/launch-guest-out.XXXXXX")" || exit 1
+trap 'rm -f "$OUT"' EXIT
+T0="$(date +%s)"
+# the launcher is the ssh's parent now (it was exec), so a signal to it ends the child and is
+# waited out, and the row still records the run that was cut short. A background child of a
+# non-interactive bash starts with SIGINT and SIGQUIT ignored and ssh keeps that, so those two
+# are sent on as TERM; HUP is forwarded as itself.
+"${CMD[@]}" < "$PROMPT" > "$OUT" &
+CPID=$!
+trap 'kill -TERM "$CPID" 2>/dev/null' TERM INT QUIT
+trap 'kill -HUP "$CPID" 2>/dev/null' HUP
+RC=0
+wait "$CPID" || RC=$?
+while kill -0 "$CPID" 2>/dev/null; do wait "$CPID" || RC=$?; done
+T1="$(date +%s)"
+cat "$OUT"
+if LEDGER="$(bash "$HERE/vm-cost.sh" --path 2>/dev/null)" && command -v jq >/dev/null 2>&1; then
+    USD="$(jq -r 'if type == "object" and (.total_cost_usd | type) == "number" then .total_cost_usd else "" end' "$OUT" 2>/dev/null | tail -n 1)"
+    SRC=guest-json; [ -n "$USD" ] || { USD=null; SRC=unknown; }
+    mkdir -p "$(dirname "$LEDGER")" 2>/dev/null \
+        && jq -nc --arg ticket "$TICKET" --arg vm "$VM" --arg account "$ACCOUNT" --argjson seconds "$((T1 - T0))" \
+            --argjson usd "$USD" --arg src "$SRC" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{ticket: $ticket, vm: $vm, account: $account, seconds: $seconds, usd: $usd, usd_source: $src, ts: $ts}' >> "$LEDGER" 2>/dev/null \
+        || echo "launch-guest: could not write the cost ledger row" >&2
+else
+    echo "launch-guest: cost ledger unavailable (no handover root or no jq) - no row written" >&2
+fi
+exit "$RC"

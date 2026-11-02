@@ -1883,6 +1883,36 @@ lacks "and it is not an ordinary row either" "$pm2" "LOCAL	HIMMEL-87"
 has "a partial after a completing merge is a RESUME row naming only the new partial" "$(printf '%s\n' "$pm2" | grep 'HIMMEL-89	')" "Remaining: the new half"
 lacks "and a partial PR a later contract=yes row completed is not named" "$(printf '%s\n' "$pm2" | grep 'HIMMEL-89	')" "the old half"
 
+# A merge row written BEFORE the merge call (stage pre-merge) counts only once GitHub reports its PR MERGED
+# at that head, or a later row of the same PR does; a row followed by result=not-merged, or whose PR is still open, is ignored.
+mkdir -p "$WORK/pm3/workers"
+cat > "$WORK/pm3/mrgh" <<'EOF'
+#!/usr/bin/env bash
+# the merge-rows filter's gh seam: `pr view <n> --json state,headRefOid --jq ...`; PR 5022 answers MERGED, so only its not-merged row keeps it out
+case "$3" in
+    5020) echo "OPEN h20" ;;
+    5021) echo "MERGED h21" ;;
+    5022) echo "MERGED h22" ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/pm3/mrgh"
+M="$MPM"
+mk HIMMEL-91 "To Do" Medium '[]' '[]' '[]' "pre-merge row, PR still open" "Edit scripts/lib/pm11.sh."
+mk HIMMEL-92 "To Do" Medium '[]' '[]' '[]' "pre-merge row, PR merged on GitHub" "Edit scripts/lib/pm12.sh."
+mk HIMMEL-93 "To Do" Medium '[]' '[]' '[]' "pre-merge row retired by a not-merged row" "Edit scripts/lib/pm13.sh."
+M="$M_SAVE"
+cat > "$WORK/pm3/status-events.jsonl" <<'EOF'
+{"ts":"t","event":"merge","key":"HIMMEL-91","pr":"5020","head":"h20","contract":"yes","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-92","pr":"5021","head":"h21","contract":"yes","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-93","pr":"5022","head":"h22","contract":"yes","result":"pending","stage":"pre-merge"}
+{"ts":"t","event":"merge","key":"HIMMEL-93","pr":"5022","head":"h22","result":"not-merged","stage":"merge-failed"}
+EOF
+pm3="$(MERGE_ROWS_GH="$WORK/pm3/mrgh" NEXT_DISPATCH_MIRROR="$MPM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 50 --workers-dir "$WORK/pm3/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+has "a pre-merge row whose PR is still open is not done-pending" "$pm3" "HIMMEL-91	"
+lacks "a pre-merge row whose PR GitHub reports MERGED is done-pending (a kill after the merge keeps the record)" "$pm3" "HIMMEL-92	"
+has "a pre-merge row retired by a not-merged row is not done-pending" "$pm3" "HIMMEL-93	"
+
 # An unreadable status log withholds only a To Do candidate whose key already has a merge on the main ref (git log grep
 # "[KEY]"), prints one WARN naming them, and keeps every other candidate.
 PMG="$WORK/pm-git"; mkdir -p "$PMG"

@@ -132,7 +132,7 @@ elif [ ! -e "$LOG" ] && [ -d "$STATE" ] && [ ! -w "$STATE" ]; then
 fi
 logtail=""
 if [ -f "$LOG" ]; then
-    logtail=$(tail -n 500 "$LOG" 2>/dev/null | jq -Rc 'fromjson? // empty' 2>/dev/null) # swallow-ok: an unreadable log leaves the log-based classes empty and the health row above stands
+    logtail=$(tail -n 500 "$LOG" 2>/dev/null | ts_merge_rows 2>/dev/null | jq -Rc 'fromjson? // empty' 2>/dev/null) # swallow-ok: an unreadable log leaves the log-based classes empty and the health row above stands
 fi
 if [ -n "$logtail" ] && [ -n "$(jq -r 'select(.result == "disabled") | 1' <<<"$logtail" | head -n 1)" ]; then
     add HEALTH - "log: a disabled row in the last 500 rows (the funnel was off, so this sample is not clean)" - "unset WORKER_SESSION_JIRA_STATUS (0 disables the funnel)"
