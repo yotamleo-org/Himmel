@@ -954,6 +954,8 @@ check "a diff citation is never tagged [context]" "$(grep -cF -e '[context] [foo
 ctx_pp="$(printf '%s' "$DIFF" | bash "$CFP" --model gpt-5.5 --print-prompt --context-file "$ctx" 2>/dev/null)"
 check "context file rides in a <context> block" "$(grep -c '^<context>$' <<< "$ctx_pp")" "1"
 check "context block carries the file text" "$(grep -c '^function helper() {$' <<< "$ctx_pp")" "1"
+# The delta sentence rides with a context file and is absent without one.
+check "RL5 delta sentence present with a context file, absent without" "$(grep -c '^Review the changes in <diff>\. <context> is the whole PR, for reference\.' <<< "$ctx_pp"),$(printf '%s' "$DIFF" | bash "$CFP" --model gpt-5.5 --print-prompt 2>/dev/null | grep -c 'is the whole PR, for reference')" "1,0"
 # score.py's bullet parser still reads a [context]-tagged bullet (A28).
 tagged_line="$(grep -F '[context]' <<< "$ctx_out")"
 check "score.py BULLET parses a [context]-tagged bullet" "$(L="$tagged_line" python3 -I -c 'import os,re,sys

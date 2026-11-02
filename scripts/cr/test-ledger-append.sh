@@ -838,6 +838,19 @@ check "  ...and the amend carries fu_why" "$(L="$FU" node -e 'const rs=require("
 CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set reason=updated --reason x
 check "control: amending only the reason needs no fu_class" "$?" "0"
 
+# An amend can set pre_existing=true, the structured field the
+# pre-existing tagger writes and `review-round.sh defer` reads. Only the value
+# true; a typo or false would read as "not pre-existing" and silently do nothing.
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set pre_existing=true --reason x 2>/dev/null
+check "amend accepts pre_existing=true" "$?" "0"
+check "  ...and stores it as the boolean true" "$(L="$FU" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="amend");console.log(rs[rs.length-1].set.pre_existing===true)')" "true"
+FU_N=$(wc -l <"$FU" | tr -d ' ')
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set pre_existing=false --reason x 2>/dev/null
+check "amend rejects pre_existing=false" "$?" "2"
+CR_LEDGER="$FU" bash "$LA" amend --branch b --head FU2 --id fu-2 --set pre_existing=yes --reason x 2>/dev/null
+check "amend rejects a pre_existing value other than true" "$?" "2"
+check "  ...and nothing was written" "$(wc -l <"$FU" | tr -d ' ')" "$FU_N"
+
 # ── `attempt` kind — per-invocation timing, NEVER deduped ──────
 AT="$tmp/attempt.jsonl"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH1 --model glm --responding-model glm-5.2 --status timeout --attempt 1 --duration-secs 451 --detail "rc=124"
