@@ -24,8 +24,8 @@ Classes, two seeded cases each: `logic`, `quoting`, `fail-open`, `toctou`,
 
 ## Running a sweep (chief only: draws codex usage)
 
-Every fixture is one paid panel call (the codex row, `tier: paid`), so a sweep
-is 24 calls; workers never run it. From the primary checkout, after
+Every case in the key is one paid panel call (the codex row, `tier: paid`), so a
+sweep is 94 calls; workers never run it. From the primary checkout, after
 `bash scripts/lib/usage-preflight.sh` says PROCEED and with the codex
 `used_percent` noted:
 
@@ -235,8 +235,9 @@ sweep rows run on the 24 synthetic cases only.
 The two baseline sweeps over the grown corpus are the chief's; their
 `results.jsonl` rows (runs `2026-11-01-8427-mw1` and `-mw2`) are committed with the
 remainder PR. Both are `status=partial`: delta-06 is unscored in each because the
-citation guard drops its finding, and the gate ignores partial rows, so RL4 reads no
-ok row until that case scores (HIMMEL-8570).
+citation guard drops its finding, and the gate ignores partial rows. Later sweeps of
+the same corpus score every case: rows `8429-head-b` and `8429-head-e` are `status=ok`
+and are the baseline rows. delta-06 can still go unscored in a sweep (HIMMEL-8570).
 
 ### Delta cases (`delta-*`, HIMMEL-8429)
 

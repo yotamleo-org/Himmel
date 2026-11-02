@@ -194,6 +194,7 @@ eq "render: bottom line first, then the current setup, then history" \
   "$(grep -E '^## ' "$R" | head -4 | tr '\n' '|')" "## Bottom line|## Current setup|## History and what we learned|## Proof-first share and test-first adherence|"
 has "render: bottom line gives the planted-bug catch" "$(cat "$R")" "**75.0%**: \`beta\` caught 9 of 12 planted bugs"
 has "render: planted-bug sample" "$(cat "$R")" "as of 2026-10-24, n = 12 planted bugs in 24 test changes"
+has "render: the planted-bug row says the set holds real escapes" "$(grep -F '| **Planted-bug catch** |' "$R")" "The set also holds real review escapes, each with a clean twin."
 has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right |"
 has "render: bottom line says the pooled figure is not the headline" "$(cat "$R")" "not the all-reviewers pooled figure"
 has "render: current setup row with its role" "$(cat "$R")" "| \`beta\` | required: must pass before every merge | **90.0%** | 78.6 to 95.7 |"
