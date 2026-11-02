@@ -160,6 +160,11 @@ signal=""
 if [ -n "$temp_source" ]; then
     src="$(realpath -m -- "$temp_source" 2>/dev/null)" || src="$temp_source"
     case "$src" in /tmp/*|/var/tmp/*|/dev/shm/*) signal="its source is the temp dir $src" ;; esac
+    # A TMPDIR that holds the home would turn every real plan into a temp one, so it does not count.
+    tmp_env="$(realpath -m -- "${TMPDIR:-/tmp}" 2>/dev/null)" || tmp_env=/tmp
+    if under "$src" "$tmp_env" && ! under "${home:-/}" "$tmp_env"; then
+        signal="its source is the temp dir $src"
+    fi
 fi
 if ancestor_runs_test; then
     signal="${signal:+$signal, }a test runner is an ancestor of this process"

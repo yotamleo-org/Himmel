@@ -15,7 +15,8 @@ set -uo pipefail
 
 root="$(git rev-parse --show-toplevel)"
 GUARD="$root/scripts/lib/test-run-guard"
-TMP="$(mktemp -d -t real-state-guard.XXXXXX)" || exit 1
+# Pinned to /tmp, not $TMPDIR: a TMPDIR under the home would make every hermetic target here count as real.
+TMP="$(mktemp -d /tmp/real-state-guard.XXXXXX)" || exit 1
 TMP="$(realpath "$TMP")"
 trap 'rm -rf "$TMP"' EXIT
 export TMPDIR="$TMP"
@@ -139,6 +140,9 @@ echo "== the temp-source rule"
 eq "P1 a temp source with a real target is refused with no test signal" "$(session_check --temp-source "$TMP/plan" p1 "$FAKE_REAL/out")" 77
 eq "P2 a temp source with a temp target passes" "$(session_check --temp-source "$TMP/plan" p2 "$TMP/out")" 0
 eq "P3 a non-temp source with a real target passes" "$(session_check --temp-source /usr/share p3 "$FAKE_REAL/out")" 0
+eq "P4 a source under a custom TMPDIR is a temp source" "$(TMPDIR=/custom-tmp session_check --temp-source /custom-tmp/plan p4 "$FAKE_REAL/out")" 77
+passwd_home="$(getent passwd "$(id -u)" | cut -d: -f6)"
+eq "P5 a TMPDIR holding the home does not make a real plan a temp one" "$(TMPDIR="$passwd_home" session_check --temp-source "$passwd_home/plan" p5 "$FAKE_REAL/out")" 0
 
 echo "== failure directions"
 NOBIN="$TMP/nobin"
