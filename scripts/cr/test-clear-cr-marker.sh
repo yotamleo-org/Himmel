@@ -3071,10 +3071,11 @@ printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -P -e 'echo a
 run_clear "$tmp" 0 "8z-cost a short -P pattern still clears -> exit 0" --check-sweeps "$tmp/cand.txt" feat/x
 rm -rf "$tmp"
 
-# 8aa-8ab. An agreed spec or plan finding (design skill, written
-# with --head <spec-id> --artifact spec|plan, a head that is not a commit) edits
-# a document outside the tree, so it has no code class to sweep: gate 4d
-# collects artifact diff only.
+# 8aa-8ad. A spec or plan finding written by the design skill (--head <spec-id>
+# --artifact spec|plan, a head that is not a commit) edits a document outside the
+# tree, so it has no code class to sweep: gate 4d skips a row only when its
+# artifact is exactly spec or plan AND its head is not a commit hex. Every other
+# row (no artifact, a misspelled one, a spec row at a commit head) is collected.
 # 8aa. fixed spec and plan rows at non-commit heads, no diff row -> clears.
 make_repo || exit 1
 write_marker "$tmp" "$sha"
