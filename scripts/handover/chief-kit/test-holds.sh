@@ -682,7 +682,9 @@ same "T2 seed: ... inside 120 s" "$([ "$((t1 - t0))" -lt 120 ] && echo yes || ec
 same "T2 seed: ... the row made before the deadline is kept" "$(cut -f1 "$(rowf scripts/t2fr.sh)")" HIMMEL-9406
 
 # a deadline that passes inside the LAST claim (or the last repointed row) is still a passed deadline: exit 3
-put_row scripts/t2dl.sh HIMMEL-9413 slowrp "$HANDOVER_DIR/u/r/HIMMEL-9413-old.md"
+R2="$W/repo-last-row"; mkdir -p "$R2"; git -C "$R2" init -q -b main  # its own register: exactly one row, so only the check after the last row can fire
+mkdir -p "$(slugdir "$R2")"
+printf '%s\t%s\t%s\t%s\t%s\n' HIMMEL-9413 slowrp "$HANDOVER_DIR/u/r/HIMMEL-9413-old.md" brief '' > "$(rowf scripts/t2dl.sh "$R2")"
 run python3 -I -c "
 import importlib.util, time, argparse
 s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
@@ -692,7 +694,7 @@ print(m.seed_rows('$R', m.Judge('$R'), 'HIMMEL-9414', 'N1', 'd.md', '> **Writes:
 real_rp = m.repoint_row
 def slow_rp(*a, **k): time.sleep(1.2); return real_rp(*a, **k)
 m.repoint_row = slow_rp
-print(m.op_repoint(argparse.Namespace(key='HIMMEL-9413', label='n', doc='d.md', repo='$R', deadline=time.time() + 1)))
+print(m.op_repoint(argparse.Namespace(key='HIMMEL-9413', label='n', doc='d.md', repo='$R2', deadline=time.time() + 1)))
 "
 same "T2 seed and repoint: a deadline passed inside the last claim or row exits 3" "$OUT" "$(printf '3\n3')"
 
