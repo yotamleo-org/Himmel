@@ -1819,6 +1819,7 @@ spill_decisions() {
 # Match the Jira CLI's declaration root, never the chief's arbitrary --bucket.
 # Ambiguous or invalid names stay unseeded; tick/doctor report the disabled wiring.
 declared_release_line() {
+    [ -z "$project_dir" ] || return 0
     local release_root="${HIMMEL_RELEASE_STATE_DIR:-$root/$slug/${repo##*/}/release}" path name="" count=0
     for path in "$release_root"/*/release.json; do
         [ -f "$path" ] || continue

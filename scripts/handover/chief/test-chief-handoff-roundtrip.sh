@@ -177,4 +177,12 @@ unset HIMMEL_RELEASE_STATE_DIR
 chief new --bucket foreign >/dev/null 2>&1
 check "3 new finds the canonical primary repo release, not --bucket" "$(live_state "$root/tester/foreign/DEMO-nextleg-${today}A-chief.md" | grep '^release:')" "release: R3"
 
+mkdir -p "$tmp/foreign-project"
+chief new --project "$tmp/foreign-project" --bucket foreign-project --prefix DEMO >/dev/null 2>&1
+foreignA="$root/tester/foreign-project/DEMO-nextleg-${today}A-chief.md"
+check "4 foreign new never seeds the primary checkout's release" "$(live_state "$foreignA" | grep '^release:')" ""
+grep -v '^release:' "$foreignA" > "$foreignA.new" && mv "$foreignA.new" "$foreignA"
+chief next --bucket foreign-project --prefix DEMO --doc "$foreignA" >/dev/null 2>&1
+check "4 foreign next never seeds the primary checkout's release" "$(live_state "$root/tester/foreign-project/DEMO-nextleg-${today}B-chief.md" | grep '^release:')" ""
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

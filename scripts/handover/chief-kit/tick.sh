@@ -109,8 +109,8 @@ focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift lin
 last good refresh. focus=ok and sdrift=0:* are elided; --verbose prints both. Read from
 the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
 
-rm-queue=<n>,<oldest age>m[,run] (HIMMEL-7641) follows leaks= and is ABSENT unless the console doc has a
-`release:` line and a request is open (0 and skip are elided; ? = the state read failed). An oldest open
+rm-queue=<n>,<oldest age>m[,claimed=<n>][,run] follows leaks=. Empty open-and-claimed queues, no declaration,
+explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure. An oldest open
 request past TICK_RMRUN_MIN minutes (default 30) with the lease free launches one detached `jira release
 rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run`; its output goes to
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
@@ -2124,7 +2124,7 @@ if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
                 rm_repo="${rm_anchor%/.git}"
                 rm_root="$root/$USER_SLUG/${rm_repo##*/}/release"
             fi
-            if [ -n "$rm_root" ]; then
+            if [ -n "$rm_root" ] && [[ "${doc_project:-}" != /* ]]; then
                 for rm_decl in "$rm_root"/*/release.json; do
                     [ ! -f "$rm_decl" ] || rm_queue=off
                 done
@@ -2143,11 +2143,11 @@ if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     else
         rm_rc=-1
     fi
-    rm_n="" rm_age="" rm_lease="" rm_status=""
+    rm_n="" rm_age="" rm_lease="" rm_status="" rm_claimed=""
     # exit 3 is the CLI's not-OK status and still prints the state
     if [ "$rm_rc" -eq 0 ] || [ "$rm_rc" -eq 3 ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
-        read -r rm_n rm_age rm_lease rm_status < <(printf '%s' "$rm_json" | python3 -I -c '
+        read -r rm_n rm_age rm_lease rm_status rm_claimed < <(printf '%s' "$rm_json" | python3 -I -c '
 import datetime, json, sys
 d = json.load(sys.stdin)
 r = d["requests"]
@@ -2157,14 +2157,19 @@ if n and r.get("oldest_open"):
     t = datetime.datetime.fromisoformat(r["oldest_open"].replace("Z", "+00:00"))
     age = max(0, int((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() // 60))
 ls = d.get("lease")
-print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN")
+print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN", len(r.get("claimed", [])))
 ' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads off
     fi
+    [ "$rm_status" = OK ] || rm_n=""
     case "$rm_n" in
         '' | *[!0-9]*) rm_queue=off ;;
-        0) rm_queue=0 ;;
+        0)
+            rm_queue=0
+            [ "$rm_claimed" -eq 0 ] || rm_queue="0,0m,claimed=$rm_claimed"
+            ;;
         *)
             rm_queue="$rm_n,${rm_age}m"
+            [ "$rm_claimed" -eq 0 ] || rm_queue="$rm_queue,claimed=$rm_claimed"
             rm_min="${TICK_RMRUN_MIN:-30}"
             case "$rm_min" in '' | *[!0-9]*) rm_min=30 ;; esac
             rm_gap="${TICK_RMRUN_MIN_SECS:-600}"

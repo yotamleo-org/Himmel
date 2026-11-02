@@ -65,7 +65,7 @@ export HIMMEL_RELEASE_STATE_DIR="$W/releases" USER_SLUG=tester
 mkdir -p "$HIMMEL_RELEASE_STATE_DIR"
 
 # the state read: `release state <R> --json`, its body is $W/state.json; the rm-run logs its argv and stops.
-printf '#!/bin/sh\necho "$@" >> "%s/state-asked"\ncat "%s/state.json"\n' "$W" "$W" > "$W/rmq-probe.sh"
+printf '#!/bin/sh\necho "$@" >> "%s/state-asked"\ncat "%s/state.json"\nexit "${TICK_RMQ_EXIT:-0}"\n' "$W" "$W" > "$W/rmq-probe.sh"
 printf '#!/bin/sh\necho "$@" >> "%s/rmrun-ran"\n' "$W" > "$W/rmrun-probe.sh"
 export TICK_RMQ_PROBE="$W/rmq-probe.sh" TICK_RMRUN_PROBE="$W/rmrun-probe.sh" TICK_RMRUN_LAUNCHER=env
 
@@ -145,6 +145,39 @@ mkdoc R1
 printf 'broken\n' > "$W/state.json"
 out="$(tick)"
 check 'an unreadable state reports off instead of silently disabling the RM' 'off' "$(field rm-queue "$out")"
+for status in UNKNOWN STALE; do
+    reset
+    printf '{"status":"%s","requests":{"open":[],"claimed":[]}}\n' "$status" > "$W/state.json"
+    out="$(TICK_RMQ_EXIT=3 tick)"
+    check "$status state is off even with an empty request list" off "$(field rm-queue "$out")"
+    check "$status never launches an RM" '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+done
+reset
+printf '{"status":"OK","requests":{"open":[],"claimed":["Q-held"]}}\n' > "$W/state.json"
+out="$(tick)"
+sleep 1
+check 'claimed-only requests remain visible' '0,0m,claimed=1' "$(field rm-queue "$out")"
+check 'claimed-only requests never re-bill the held request' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+reset
+printf '{"status":"OK","requests":{"open":["Q-new"],"claimed":["Q-held"],"oldest_open":"%s"}}\n' "$(ago 45)" > "$W/state.json"
+out="$(tick)"
+check 'open requests still wake while claimed work is visible' '1,45m,claimed=1,run' "$(field rm-queue "$out")"
+check 'mixed queue launches just one run' 1 "$(ran)"
+
+# No override: the declaration belongs to the primary checkout, not the chief bucket.
+unset HIMMEL_RELEASE_STATE_DIR
+checkout="$(git rev-parse --path-format=absolute --git-common-dir)"
+checkout="${checkout%/.git}"
+mkdir -p "$HANDOVER_DIR/$USER_SLUG/${checkout##*/}/release/Rcanonical"
+printf '{}\n' > "$HANDOVER_DIR/$USER_SLUG/${checkout##*/}/release/Rcanonical/release.json"
+printf '# chief\n' > "$W/handover/chief.md"
+reset
+out="$(tick)"
+check 'canonical declaration with override unset reports missing wiring' off "$(field rm-queue "$out")"
+check 'canonical missing wiring never probes or runs' '' "$([ -e "$W/rmrun-ran" ] || [ -e "$W/state-asked" ] && echo ran)"
+printf '> The project this console is FOR is **`%s`**.\n' "$W/projects/p" >> "$W/handover/chief.md"
+out="$(tick)"
+check 'foreign project never inherits the primary declaration warning' '' "$(field rm-queue "$out")"
 rm -f "$W/handover/chief.md"
 out="$(tick)"
 check 'a missing chief doc still elides the field' '' "$(field rm-queue "$out")"
