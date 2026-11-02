@@ -22,6 +22,7 @@
 #      fresh template-shaped launch with no description, --no-prior-art-check
 #      or not, and still resumes a doc that has run.
 set -u
+unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every row
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LINT="$HERE/brief-lint.sh"
 WORKER="$HERE/headed-arm-worker.sh"

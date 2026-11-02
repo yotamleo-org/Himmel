@@ -10,6 +10,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-gen-briefs.sh
 set -u
+unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every salus row
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${GEN_BRIEFS:-$HERE/gen-briefs.py}"
 
