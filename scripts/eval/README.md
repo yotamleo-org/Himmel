@@ -562,8 +562,10 @@ itself. A rate over several days sums the counts first: 1/10 and 9/30 are
 
 1. one `worker-failures` row per digest failures row
    (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
-   row carries closed-list categories only; unknown keys are refused, so no
-   journal text can ride in;
+   row carries closed-list categories, plus on a denied row one redacted
+   `refusal_line`, which is redacted for secrets only and can still echo
+   command or path text. It stays on this host: the failure router sends
+   only named fields and refuses any other body text;
 2. one eval-runs row, `eval: leg-trajectory`, `run_id` = the session uuid,
    `meta.observational: true`;
 3. the digest at `~/.himmel/state/leg-digest/<session>.json`, last, as the
