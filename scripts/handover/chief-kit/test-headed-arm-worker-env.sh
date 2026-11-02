@@ -130,8 +130,14 @@ contains "W10 control: impl on a non-native lane keeps the 200000 ceiling" "$out
 contains "W10 control: impl on a non-native lane exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-4-6)"
 contains "W10 control: impl on an older Sonnet exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
+fx10 '> **Context:** 1m — operator-ruling: HIMMEL-8825 fixture 1m worker' >"$T/onem-doc10.md"
+out="$(WORKER_SESSION_CONTEXT=1m dry10 worker-impl "$T/onem-doc10.md" claude-sonnet-5-5)"
+contains "W10 control: impl on Sonnet with a sanctioned 1m override resolves auto, not the 450000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=auto"
+contains "W10 control: impl on Sonnet with a sanctioned 1m override exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 out="$(HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)"
-contains "W10 a share the caller already set wins" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50"
+contains "W10 a share set in the launching shell is scrubbed: the profile's wins" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
+out="$(HIMMEL_WORKER_SESSION_CONTEXT_SHARE=50 dry10 worker-docs "$T/doc10.md" claude-sonnet-5-5)"
+contains "W10 control: a launching-shell share does not reach a profile without one" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 for bad10 in 0 101 73.5 '"73"'; do
     printf '%s\n' '{"floor":["qmd@himmel"],"catalog":["qmd@himmel"],"profiles":{"operator":null,' \
         "\"worker-impl\":{\"enable\":[],\"contextBudget\":50000,\"contextMode\":\"standard\",\"autocompact\":200000,\"sonnetAutocompact\":450000,\"sonnetContextGuard\":\"handoff\",\"sonnetContextShare\":$bad10}}}" >"$T/bad-share.json"

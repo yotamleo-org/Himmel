@@ -1616,9 +1616,10 @@ unset -v CONTEXT_GUARD
 worker_env_drop_token HIMMEL_WORKER_SESSION_AUTOCOMPACT
 worker_propagate_env HIMMEL_WORKER_SESSION_AUTOCOMPACT "$RESOLVED_AUTOCOMPACT"
 # The share goes only with the Sonnet ceiling it was calibrated against
-# (a 1m override or A/B arm has cleared SONNET_CEILING); a share the caller already
-# set is theirs and wins (worker_propagate_env keeps a caller-preset token).
-if [ "$SONNET_CEILING" = "1" ] && [ -n "$SONNET_SHARE" ] && [ -z "${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-}" ]; then
+# (a 1m override clears SONNET_CEILING; an A/B arm refuses on a Sonnet launch). The
+# launching shell's own share was scrubbed above with the rest of the chief-context
+# env, so only the profile's value reaches the worker.
+if [ "$SONNET_CEILING" = "1" ] && [ -n "$SONNET_SHARE" ]; then
     worker_propagate_env HIMMEL_WORKER_SESSION_CONTEXT_SHARE "$SONNET_SHARE"
 fi
 # HIMMEL_READ_CLAMP_LINES: raises read-clamp.sh's

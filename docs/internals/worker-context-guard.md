@@ -68,12 +68,14 @@ model window.
 
   The result is clamped to the window.
 - **Threshold % of the window.** It is `ceil(share × ceiling / window)`.
-- **Share.** The share is `HIMMEL_WORKER_SESSION_CONTEXT_SHARE`, from the launch env only.
+- **Share.** The share is `HIMMEL_WORKER_SESSION_CONTEXT_SHARE`, read from the worker's env.
   Any value other than 1-100 gives 75. A Sonnet launch on a profile that sets
   `sonnetContextShare` (`worker-impl` and `worker-eval`: 73) gets it exported by the
   launcher, under the same native-lane Sonnet 5.5 gate as the 450000 ceiling, so
-  `WORKER_SESSION_CONTEXT=1m`, Opus, other lanes and `worker-docs` export none. A
-  share already set in the launching shell wins. The `--dry-run` report prints the
+  `WORKER_SESSION_CONTEXT=1m`, Opus, other lanes and `worker-docs` export none. The
+  launcher scrubs the name from the launching shell (it is in the chief-context
+  strip list), so the launcher no longer takes a launch-env override of the share;
+  the profile is the only source. The `--dry-run` report prints the
   value (`HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>` when none).
 
 A worked example: an opus worker pinned at `--autocompact 200000` reports a
