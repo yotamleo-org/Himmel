@@ -4108,8 +4108,10 @@ Each deny appends one row (`ts`, `session_id`, `decision`, `host`) to
 `HOME` unset, `${TMPDIR:-/tmp}/himmel-webfetch-walled-<uid>/denials.jsonl`, used
 only when that dir is owned by the caller and is not a symlink). The claim is an
 exclusive file named by the `tool_use_id` under `.claims` beside the log, swept
-after an hour; an id that is not a plain id string (`A-Za-z0-9_-`) is treated as
-absent, so each lane writes and the deny never depends on the id. A claim that
+after an hour; an id that is not a plain id string (1 to 128 characters of
+`A-Za-z0-9_-`, checked without a regex that could error) is treated as absent, so
+each lane writes and the deny never depends on the id. A refused fallback dir
+leaves no row and no incompleteness mark. A claim that
 cannot be made, or an append that fails, never suppresses the other lane's row.
 A cached plugin from the versions that wrote a row without a claim (0.4.143 to
 0.4.147) next to the new shim can write two rows for one deny until it updates.

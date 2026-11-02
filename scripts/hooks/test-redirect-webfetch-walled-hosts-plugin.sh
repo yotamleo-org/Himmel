@@ -323,6 +323,13 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     assert_eq "stale claim is swept: its deny writes a row" 1 "$(rows)"
     run_shim "$(wft toolu_fresh1)"
     assert_eq "fresh claim is kept: its deny writes no second row" 1 "$(rows)"
+    # The sweep reaches only the claims dir: a stale file beside the log, and the
+    # log itself when it is stale, survive.
+    if ! { : >"$TMP/stale-sibling" && touch -t 202001010000 "$TMP/stale-sibling" "$LOG"; }; then setup_fail "$TMP/stale-sibling"; fi
+    run_shim "$(wft toolu_sib1)"
+    [ -e "$TMP/stale-sibling" ] && present=yes || present=no
+    assert_eq "sweep leaves a stale sibling of the log alone" yes "$present"
+    assert_eq "sweep leaves a stale log's rows alone" 2 "$(rows)"
 
     # A tool_use_id that is not a plain id string never changes the decision: the
     # deny holds and the row is written (no claim) for each.
@@ -332,6 +339,13 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
         assert_eq "tool_use_id $idjson: the plugin command still denies" 2 "$?"
         assert_eq "tool_use_id $idjson: one row" 1 "$(rows)"
     done
+    # An id over 10 MB (built inside jq) must not be able to error the id check:
+    # the filter's error path is an allow.
+    big=$(jq -nc '{session_id:"s-walled",tool_use_id:("a" * 10100000 + "."),tool_name:"WebFetch",tool_input:{url:"https://x.com/a/status/1",prompt:"p"}}') || setup_fail "10.1M id payload"
+    rm -rf "$LOG" "$TMP/.claims"
+    run_plugin_keep "$big"
+    assert_eq "10.1M-character tool_use_id: the plugin command still denies" 2 "$?"
+    assert_eq "10.1M-character tool_use_id: one row" 1 "$(rows)"
 else
     echo "SKIP himmel chain: no fetch-url.sh at $HIMMEL_ROOT/scripts/web"
 fi
