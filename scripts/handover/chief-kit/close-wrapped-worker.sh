@@ -217,11 +217,16 @@ if ! . "$HERE/../../lib/worker-identity.sh"; then
     echo "close-wrapped-worker: cannot load scripts/lib/worker-identity.sh" >&2
     exit 1
 fi
+# shellcheck source=scripts/lib/worker-successor.sh
+. "$HERE/../../lib/worker-successor.sh"
+NAMED_SUCCESSOR=$(worker_named_successor "$DOC") || exit 1
 SIB_DOC=""
 sib_dir="$(dirname "$DOC")"
 sib_base="$(basename "$DOC" .md)"
 sib_label="$(worker_label "$DOC")"
-if [[ $DOC == *-RESUME.md ]]; then
+if [ -n "$NAMED_SUCCESSOR" ]; then
+    SIB_DOC="$NAMED_SUCCESSOR"
+elif [[ $DOC == *-RESUME.md ]]; then
     sib_stem="${sib_base%-RESUME}"
     sib_cands="$sib_dir/$sib_stem.md"
     if [[ $sib_label =~ ^(N[0-9]+)[a-z]+$ ]]; then
@@ -250,7 +255,7 @@ else
         SIB_DOC="$sib_found"
     fi
 fi
-if [ -n "$SIB_DOC" ] && ! bash "$HERE/../queue-lock.sh" status "$SIB_DOC" >/dev/null 2>&1; then
+if [ -n "$SIB_DOC" ] && [ "$SIB_DOC" != "$NAMED_SUCCESSOR" ] && ! bash "$HERE/../queue-lock.sh" status "$SIB_DOC" >/dev/null 2>&1; then
     echo "close-wrapped-worker: refusing - the queue lock on its sibling doc $SIB_DOC is not free" >&2
     exit 3
 fi
@@ -282,9 +287,12 @@ resume_evidence() {
                 sub(/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?/, "", mk)
                 sub(/[^A-Za-z0-9_]$/, "", mk)
             }
-            if (mk == "LIVE" && match($0, /`[^`]*-pid[0-9]+`/)) tok = substr($0, RSTART + 1, RLENGTH - 2)
+            if (mk == "LIVE" && match($0, /release-token[: \t]+`?[A-Za-z0-9_.-]+-pid[0-9]+`?/)) {
+                tok = substr($0, RSTART, RLENGTH)
+                sub(/^release-token[: \t]+/, "", tok); gsub(/`/, "", tok)
+            }
             if (!named && index($0, stem)) named = 1
-            if (named && !hand && mk == "WRAPPED") { hand = 1; next }
+            if (named && !hand && (mk == "WRAPPED" || (mk == "BLOCKED" && $0 ~ /([Hh]and-?off|RESUME written:)/))) { hand = 1; next }
             if (!hand) { if (tok != "") pred = tok; next }
             if (!live && tok != "" && tok != pred) { live = 1; next }
             if (live && mk != "") tailmk = mk
@@ -321,7 +329,11 @@ if ! last_marker=$(doc_tail_status "$DOC"); then
     exit 4
 fi
 tail_doc="$DOC"   # the doc last_marker is read from
-if [ -n "$SIB_DOC" ]; then
+PREDECESSOR=0
+if [ -n "$NAMED_SUCCESSOR" ]; then
+    case "$last_marker" in WRAPPED|BLOCKED) PREDECESSOR=1 ;; esac
+fi
+if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
     if [[ $DOC == *-RESUME.md ]]; then sib_res="$DOC"; sib_orig="$SIB_DOC"; else sib_res="$SIB_DOC"; sib_orig="$DOC"; fi
     if ! res_marker=$(doc_tail_status "$sib_res"); then
         echo "close-wrapped-worker: refusing - cannot read the ## Results section of $sib_res" >&2
@@ -348,7 +360,7 @@ if [ -n "$SIB_DOC" ]; then
         exit 4
     fi
 fi
-if [ "$last_marker" != "WRAPPED" ]; then
+if [ "$last_marker" != "WRAPPED" ] && [ "$PREDECESSOR" -eq 0 ]; then
     # the whole-file tail can still read WRAPPED: a bullet in a section after Results that is not a ruling section
     # (a ## Notes line naming WRAPPED) is no worker tail, and a sweep must say so rather than strand the window
     if [ "$(worker_tail_status "$tail_doc")" = WRAPPED ]; then
@@ -492,7 +504,7 @@ names=",${ident#*$'\t'},${doc_stem},"
 # the suffix dropped from its worker token (the -legN3731c form too); a live N3731b session
 # keeps its own name and never matches, and only a RESUME doc claims its predecessor's window.
 orig_names=""
-if [[ $DOC == *-RESUME.md && ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
+if [ "$PREDECESSOR" -eq 0 ] && [[ $DOC == *-RESUME.md && ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
     orig_label="${BASH_REMATCH[1]}"
     set -f
     for resume_name in ${names//,/ }; do
@@ -503,13 +515,13 @@ if [[ $DOC == *-RESUME.md && ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
 fi
 # the resumed worker's window is named <stem>-RESUME (the original doc's stem plus
 # -RESUME), or carries the sibling doc's own names (its b-suffixed label included).
-if [[ $DOC != *-RESUME.md ]]; then
+if [ "$PREDECESSOR" -eq 0 ] && [[ $DOC != *-RESUME.md ]]; then
     ident_names="${ident#*$'\t'}"
     set -f
     for ident_name in ${ident_names//,/ }; do names="$names${ident_name}-RESUME,"; done
     set +f
 fi
-if [ -n "$SIB_DOC" ]; then
+if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
     sib_ident=$(worker_identity "$SIB_DOC")
     names="$names${sib_ident#*$'\t'},$(basename "$SIB_DOC" .md),"
 fi
@@ -521,26 +533,44 @@ if [ "$census_rc" -gt 1 ]; then
     exit 1
 fi
 
-matched=""
-matched_name=""
-match_count=0
-while IFS=$'\t' read -r pid name _model _ac; do
-    [ -n "$pid" ] || continue
-    case "$name" in
-        '#'*) continue ;;
-    esac
-    # a relaunched worker runs as <name>-r<N>; the original and its relaunch both
-    # live is an ambiguity the exactly-one rule below refuses
-    base_name=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
-    case "$names" in
-        *",${name},"*|*",${base_name},"*)
-            matched="$pid"
-            matched_name="$name"
-            match_count=$((match_count + 1)) ;;
-    esac
-done <<EOF
+match_sessions() {
+    matched=""; matched_name=""; match_count=0
+    while IFS=$'\t' read -r pid name _model _ac; do
+        [ -n "$pid" ] || continue
+        case "$name" in '#'*) continue ;; esac
+        # An original and its -r<N> relaunch both alive remain ambiguous.
+        base_name=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
+        case "$names" in
+            *",${name},"*|*",${base_name},"*)
+                matched="$pid"; matched_name="$name"
+                match_count=$((match_count + 1)) ;;
+        esac
+    done <<EOF
 $sessions
 EOF
+}
+match_sessions
+# A named hand-off closes the predecessor by its OWN names, never the successor's.
+# If only a legacy resumed window remains, its completed run must be proven before
+# broadening the names. A hand-off alone never signals a booting/live successor.
+if [ "$PREDECESSOR" -eq 1 ] && [ "$match_count" -eq 0 ]; then
+    if [ "$last_marker" != WRAPPED ] || ! resume_evidence "$DOC" "$NAMED_SUCCESSOR"; then
+        echo "close-wrapped-worker: refusing - no predecessor session and no completed successor evidence" >&2
+        exit 4
+    fi
+    if ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; then
+        echo "close-wrapped-worker: refusing - the successor queue lock is not free" >&2
+        exit 3
+    fi
+    res_marker=$(doc_tail_status "$NAMED_SUCCESSOR") || exit 4
+    if [ -n "$res_marker" ] && [ "$res_marker" != WRAPPED ]; then
+        echo "close-wrapped-worker: refusing - the successor is not WRAPPED" >&2
+        exit 4
+    fi
+    sib_ident=$(worker_identity "$NAMED_SUCCESSOR")
+    names=",${sib_ident#*$'\t'},$(basename "$NAMED_SUCCESSOR" .md),"
+    match_sessions
+fi
 
 # The lock is free and the tail says WRAPPED (both proven above), and no session
 # runs under any of the worker's names: the window already exited. That is a close, not a

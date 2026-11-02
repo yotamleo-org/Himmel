@@ -90,8 +90,13 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 . "$HERE/../../lib/worker-tail-status.sh"
 # shellcheck source=../../lib/prim.sh
 . "$HERE/../../lib/prim.sh"
-# wrapped <worker doc>: lock free and newest marker WRAPPED (close-wrapped-worker.sh's gate).
-wrapped() { bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(worker_tail_status "$1")" = WRAPPED ]; }
+# shellcheck source=../../lib/worker-successor.sh
+. "$HERE/../../lib/worker-successor.sh"
+# Finished and explicitly replaced workers receive no further succession relays.
+wrapped() {
+    [ -n "$(worker_named_successor "$1")" ] && return 0
+    bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(worker_tail_status "$1")" = WRAPPED ]
+}
 manifest="${doc%.md}.fleet.json"
 bus="${RELAY_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
 # fresh_for <label>: sets ftok to the label's --fresh token ("" when none) and marks it used.
