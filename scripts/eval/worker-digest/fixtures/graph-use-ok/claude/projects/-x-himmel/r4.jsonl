@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"d1","name":"Bash","input":{"command":"grep -c \"graphify query\" notes.txt"}},{"type":"tool_use","id":"d2","name":"Bash","input":{"command":"git grep -c \"qmd query x\" -- docs"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"d1","content":"3"},{"type":"tool_result","tool_use_id":"d2","content":"2"}]}}

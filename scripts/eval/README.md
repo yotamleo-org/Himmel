@@ -518,11 +518,15 @@ read-only: it scans the journals changed in the last N days (default 7) under ev
 `~/.claude*/projects` (one lane each: claude, codex, ...), session journals and subagent
 journals apart, and prints per scope (all projects, himmel projects), lane, kind and role
 (console, leg, judge, sub, other, from the session name or the subagent type) two tables.
-The graph table has the journals, those with a graph call, the calls per form (`query`,
+The graph table has the journals, those with a graph call and those with an answered one
+(`with_graph_ok`, `graph_ok_pct`: a failed or refused call is a call but not an answer; a
+wrapper miss is an answer), the calls per form (`query`,
 `explain`, `path`, `mcp`), bare versus wrapper calls with their failures (a wrapper call that exits 3 or 4, no match or
 ambiguous, is a `wrapper_miss`, an honest no-answer, not a `wrapper_fail`), and `searched`
-(journals with a grep, rg, Grep or Glob mention, a count of mentions, not of use). The qmd
-table has the journals with a qmd call and with a qmd search, and the calls split into search
+(journals with a grep, rg, Grep or Glob mention, a count of mentions, not of use; `searched_no_graph`
+rests on answered graph calls). The qmd
+table has the journals with a qmd call, with a qmd search and with an answered one (`with_search_ok`,
+`search_ok_pct`, the decision numbers), and the calls split into search
 verbs (`query`, `search`, `vsearch`, `deep_search`) against every other verb, shell against mcp. A third
 table reads the `graph-qmd:` Results bullets of the handover docs under `--handovers` (default
 `$HANDOVER_DIR`) per role: used or cited, called only, none found, n/a shipping, and docs with

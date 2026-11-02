@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c1","name":"Bash","input":{"command":"qmd query a"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"c1","is_error":true,"content":"refused"}]}}

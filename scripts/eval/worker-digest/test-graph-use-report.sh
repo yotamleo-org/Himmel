@@ -41,7 +41,7 @@ check "the subagent journal is its own row: 1 journal, 1 call, 1 explain" '[ "$(
 check "the second root is its own lane: 2 journals, 1 with a tool, 2 wrapper calls, 1 failed" '[ "$(cells all codex main journals with_tools calls wrapper wrapper_fail)" = 2/1/2/2/1 ]'
 check "himmel projects get their own rows: claude main 5 journals, 4 with a graph call, 12 calls" '[ "$(cells himmel claude main journals with_graph calls)" = 5/4/12 ]'
 check "himmel projects leave out the other project: claude main query/explain/path/mcp = 4/5/2/1" '[ "$(cells himmel claude main query explain path mcp)" = 4/5/2/1 ]'
-check "the share of tool-using himmel claude main journals that called the graph is 80%" '[ "$(cell himmel claude main graph_pct)" = "80%" ]'
+check "the share of tool-using himmel claude main journals that called the graph is 80%, and that got an answer 80% (the failed path call sits beside an answered explain)" '[ "$(cells himmel claude main graph_pct graph_ok_pct)" = "80%/80%" ]'
 check "the report states what is counted and what is not" 'grep -q "^counted:" <<<"$OUT" && grep -q "^not counted:" <<<"$OUT"'
 
 # qmd: fixtures/graph-use-qmd holds a console, a leg, two unnamed journals (one outside himmel), a judge and an Explore subagent.
@@ -72,7 +72,7 @@ check "the bullets table counts 5 leg docs: 1 used or cited, 1 called only, 1 no
 check "a doc with no bullet is no_data and not a zero: with_bullet is 4 of 5 for leg" '[ "$(brow leg with_bullet)" = 4 ]'
 check "the chief doc is role console, its bullet cites the audit" '[ "$(brow console docs)/$(brow console used_or_cited)" = 1/1 ]'
 check "a doc without a Results heading is not counted and has no role row" '[ -z "$(brow other docs)" ]'
-check "a bullet is read only inside a Results section" '! grep -q "used everything" <<<"$(printf "%s" "$BOUT" | awk "/^== bullets/,0")"'
+check "a bullet before the Results heading is not read: the leg doc that has one stays no_data, used_or_cited stays 1" '[ "$(brow leg no_data)/$(brow leg used_or_cited)" = 1/1 ]'
 check "--handovers with a missing directory exits 2" 'bash "$RPT" --handovers "$FX/no-such-dir" >/dev/null 2>&1; [ $? = 2 ]'
 # shellcheck disable=SC2034
 MOUT="$(bash "$RPT" --days 36500 --min-tools 5 --root "$FX/../graph-use-qmd/claude/projects" 2>&1)"
@@ -122,6 +122,15 @@ MISS="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-miss/claude/pr
 check "a wrapper call that exits 3 or 4 is a miss, exit 1 is a fail, a bare graphify exit 3 stays a bare fail: 4 wrapper, 1 fail, 2 miss, 1 bare, 1 bare fail" '[ "$(OUT="$MISS" cells all claude main wrapper wrapper_fail wrapper_miss bare bare_fail)" = 4/1/2/1/1 ]'
 
 check "--days 08 with --until-epoch is decimal, not octal: exits 0" 'bash "$RPT" --days 08 --until-epoch 1000000000 --root "$FX/claude/projects" >/dev/null 2>&1; [ $? = 0 ]'
+
+# ok columns: fixtures/graph-use-ok holds r1 a refused graph call and a rg, r2 a graph wrapper miss only, r3 a refused qmd query only,
+# r4 grep -c and git grep -c that merely quote graphify query and qmd query.
+# shellcheck disable=SC2034
+OKOUT="$(bash "$RPT" --days 36500 --root "$HERE/fixtures/graph-use-ok/claude/projects" 2>&1)"
+check "a refused graph call is a call but not an answered one; a wrapper miss is answered; grep -c is no call: 4 journals, 2 with a graph call, 1 with an answered one, 25%" '[ "$(OUT="$OKOUT" cells all claude main journals with_graph with_graph_ok graph_ok_pct)" = 4/2/1/25% ]'
+check "searched_no_graph rests on answered calls: the refused-only journal and the grep -c journal both count" '[ "$(OUT="$OKOUT" cells all claude main searched searched_no_graph)" = 2/2 ]'
+check "a refused qmd query is a search but not an answered one: 1 with a search, 0 answered, 0%" '[ "$(OUT="$OKOUT" SEC=qmd cells all claude main with_search with_search_ok search_ok_pct)" = 1/0/0% ]'
+check "the counted line states the ok rule" 'grep -q "^counted:.*answered" <<<"$OKOUT"'
 
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'

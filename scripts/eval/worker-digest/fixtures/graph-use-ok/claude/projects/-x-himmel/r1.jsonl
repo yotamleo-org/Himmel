@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a1","name":"Bash","input":{"command":"bash scripts/graphify/worker-graph.sh query x"}},{"type":"tool_use","id":"a2","name":"Bash","input":{"command":"rg foo src"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a1","is_error":true,"content":"Exit code 1\nrefused"},{"type":"tool_result","tool_use_id":"a2","content":"fine"}]}}
