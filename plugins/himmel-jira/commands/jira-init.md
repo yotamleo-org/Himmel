@@ -1,11 +1,11 @@
 ---
 allowed-tools: Bash(node:*), AskUserQuestion
-description: "Bootstrap Jira auth (.env) + metadata cache ($XDG_CACHE_HOME or ~/.cache, then himmel-cli/jira/metadata.json). Run once per machine."
+description: "Bootstrap Jira auth (keyring or .env) + metadata cache ($XDG_CACHE_HOME or ~/.cache, then himmel-cli/jira/metadata.json). Run once per machine."
 ---
 
 ## Context
 
-- Current `.env` keys (existence only): !`node $CLAUDE_PROJECT_DIR/plugins/himmel-jira/lib/check-env.mjs 2>&1 || true`
+- Jira keys still missing from the environment, keyring, himmel.conf and `.env` (names only): !`node $CLAUDE_PROJECT_DIR/plugins/himmel-jira/lib/check-env.mjs 2>&1 || true`
 
 ## Your task
 

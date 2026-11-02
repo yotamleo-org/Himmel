@@ -206,12 +206,23 @@ describe('credentials held only in the keyring (HIMMEL-8471)', () => {
     for (const [k, v] of Object.entries(kr.env)) vi.stubEnv(k, v);
     for (const k of ['JIRA_EMAIL', 'JIRA_API_TOKEN', 'CREDENTIALS_DIRECTORY', 'HIMMEL_SECRETS_KEYRING']) vi.stubEnv(k, undefined);
     vi.stubEnv('JIRA_BASE_URL', 'https://example.atlassian.net');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', join(tmp, 'conf'));
   });
 
   afterEach(() => {
     globalThis.fetch = origFetch;
     vi.unstubAllEnvs();
     rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('jiraFetch on a migrated station: the email from himmel.conf, the token from the keyring', async () => {
+    mkdirSync(join(tmp, 'conf'));
+    writeFileSync(join(tmp, 'conf', 'himmel.conf'), 'JIRA_EMAIL=conf@example.invalid\n');
+    writeFileSync(process.env.KSTUB_STORE, 'service=himmel key=JIRA_API_TOKEN scope=user\tkeyring-fixture-token\n');
+    let headers;
+    globalThis.fetch = vi.fn(async (url, init) => { headers = init.headers; return { ok: true, text: async () => '{}' }; });
+    await jiraFetch('GET', '/myself');
+    expect(headers.Authorization).toBe('Basic ' + Buffer.from('conf@example.invalid:keyring-fixture-token').toString('base64'));
   });
 
   it('jiraFetch serves a token and email that only the keyring holds', async () => {

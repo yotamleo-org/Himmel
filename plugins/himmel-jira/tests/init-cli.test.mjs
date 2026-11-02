@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -39,8 +39,9 @@ describe('init-cli --discover project resolution (portability)', () => {
 
 // The shared stub keyring (secret-tool + busctl first on PATH): no row here reaches a real keyring.
 const KEYRING_STUB = resolve(__dirname, '..', '..', '..', 'scripts', 'lib', 'fixtures', 'keyring-stub.sh');
-function stubbedRun(args, items = {}, locked = false) {
+function stubbedRun(args, items = {}, locked = false, conf = '') {
   const dir = mkdtempSync(join(tmpdir(), 'himmel-initcli-kr-'));
+  if (conf) { mkdirSync(join(dir, 'conf')); writeFileSync(join(dir, 'conf', 'himmel.conf'), conf); }
   expect(spawnSync('bash', ['-c', 'TMP="$1"; . "$2"', '_', dir, KEYRING_STUB], { encoding: 'utf8' }).status).toBe(0);
   const store = join(dir, 'keyring.tsv');
   writeFileSync(store, Object.entries(items).map(([k, v]) => `service=himmel key=${k} scope=user\t${v}\n`).join(''));
@@ -61,11 +62,19 @@ describe('init-cli with credentials in the keyring (HIMMEL-8471)', () => {
     expect(existsSync(envFile)).toBe(false);
   });
 
-  it('--write-env with the keyring unlocked stores the token there and adds no token .env line', () => {
+  it('--check passes on a migrated station: the email only in himmel.conf, the token only in the keyring, an empty .env', () => {
+    const { r, envFile } = stubbedRun(['--check'], { JIRA_API_TOKEN: 'keyring-fixture-token' }, false,
+      'JIRA_EMAIL=conf@example.invalid\nJIRA_BASE_URL=https://fixture.invalid\n');
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe('env-ok');
+    expect(existsSync(envFile)).toBe(false);
+  });
+
+  it('--write-env with the keyring unlocked stores the token there, adds no token .env line, and keeps the email in .env', () => {
     const { r, store, envFile } = stubbedRun(['--write-env', '--email', 'new@example.invalid', '--token', 'new-fixture-token', '--base-url', 'https://fixture.invalid']);
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).not.toContain('new-fixture-token');
-    expect(readFileSync(envFile, 'utf8')).toBe('JIRA_BASE_URL=https://fixture.invalid\n');
+    expect(readFileSync(envFile, 'utf8')).toBe('JIRA_EMAIL=new@example.invalid\nJIRA_BASE_URL=https://fixture.invalid\n');
     expect(readFileSync(store, 'utf8')).toContain('service=himmel key=JIRA_API_TOKEN scope=user\tnew-fixture-token');
   });
 

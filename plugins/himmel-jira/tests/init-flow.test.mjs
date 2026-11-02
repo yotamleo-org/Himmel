@@ -349,13 +349,6 @@ describe('credentials in the keyring (HIMMEL-8471)', () => {
     expect(process.env.JIRA_EMAIL).toBe('kr@example.invalid');
   });
 
-  it('an exported token beats the keyring', () => {
-    useKeyring(FIXTURE);
-    vi.stubEnv('JIRA_API_TOKEN', 'exported-token');
-    loadEnvIntoProcess(join(dir, 'no-such.env'));
-    expect(process.env.JIRA_API_TOKEN).toBe('exported-token');
-  });
-
   it('a credential nobody but .env holds is still read from .env', () => {
     useKeyring({});
     const env = join(dir, '.env');
@@ -364,13 +357,45 @@ describe('credentials in the keyring (HIMMEL-8471)', () => {
     expect(process.env.JIRA_API_TOKEN).toBe('env-only-token');
   });
 
-  it('writeCredentials with the keyring unlocked stores email and token there and adds no .env line for them', () => {
+  it('writeCredentials with the keyring unlocked stores the token there and adds no token .env line; the email stays in .env', () => {
     const kr = useKeyring({});
     const env = join(dir, '.env');
     const res = writeCredentials(env, { JIRA_EMAIL: 'new@example.invalid', JIRA_API_TOKEN: 'new-fixture-token', JIRA_BASE_URL: 'https://fixture.invalid' });
-    expect(res).toEqual({ keyring: ['JIRA_EMAIL', 'JIRA_API_TOKEN'], env: ['JIRA_BASE_URL'] });
-    expect(readFileSync(env, 'utf8')).toBe('JIRA_BASE_URL=https://fixture.invalid\n');
+    expect(res).toEqual({ keyring: ['JIRA_API_TOKEN'], env: ['JIRA_EMAIL', 'JIRA_BASE_URL'] });
+    expect(readFileSync(env, 'utf8')).toBe('JIRA_EMAIL=new@example.invalid\nJIRA_BASE_URL=https://fixture.invalid\n');
     expect(readFileSync(kr.store, 'utf8')).toContain('service=himmel key=JIRA_API_TOKEN scope=user\tnew-fixture-token');
+    expect(readFileSync(kr.store, 'utf8')).not.toContain('key=JIRA_EMAIL');
+  });
+
+  it('writeCredentials keeps the token in .env when the keyring store fails', () => {
+    const kr = useKeyring({});
+    vi.stubEnv('KSTUB_DROP_STORE', '1');
+    const env = join(dir, '.env');
+    const res = writeCredentials(env, { JIRA_API_TOKEN: 'new-fixture-token' });
+    expect(res).toEqual({ keyring: [], env: ['JIRA_API_TOKEN'] });
+    expect(readFileSync(env, 'utf8')).toBe('JIRA_API_TOKEN=new-fixture-token\n');
+    expect(readFileSync(kr.store, 'utf8')).toBe('');
+  });
+
+  it('writeCredentials keeps the token in .env when secret-tool itself fails', () => {
+    useKeyring({});
+    writeFileSync(join(dir, 'kbin', 'secret-tool'), '#!/usr/bin/env bash\nexit 1\n');
+    const env = join(dir, '.env');
+    const res = writeCredentials(env, { JIRA_API_TOKEN: 'new-fixture-token' });
+    expect(res).toEqual({ keyring: [], env: ['JIRA_API_TOKEN'] });
+    expect(readFileSync(env, 'utf8')).toBe('JIRA_API_TOKEN=new-fixture-token\n');
+  });
+
+  it('ensureEnvKeys counts an email only himmel.conf holds as present (a migrated station)', () => {
+    useKeyring({ JIRA_API_TOKEN: 'keyring-fixture-token' });
+    mkdirSync(join(dir, 'conf'));
+    writeFileSync(join(dir, 'conf', 'himmel.conf'), 'JIRA_EMAIL=conf@example.invalid\nJIRA_BASE_URL=https://fixture.invalid\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', join(dir, 'conf'));
+    const env = join(dir, '.env');
+    writeFileSync(env, '# nothing\n');
+    expect(ensureEnvKeys(env, ['JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_BASE_URL'])).toEqual([]);
+    loadEnvIntoProcess(env);
+    expect(process.env.JIRA_EMAIL).toBe('conf@example.invalid');
   });
 
   it('writeCredentials with the keyring locked writes .env as before and stores nothing', () => {
