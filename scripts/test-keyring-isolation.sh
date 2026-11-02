@@ -10,13 +10,20 @@ set -uo pipefail
 
 root="$(git rev-parse --show-toplevel)"
 TMP="$(mktemp -d -t keyring-isolation.XXXXXX)" || exit 1
-probe="$root/scripts/config-ui/tests/zz-keyring-guard-probe.test.ts"
+probe="$root/scripts/config-ui/tests/zz-keyring-guard-probe-$$.test.ts"
 trap 'rm -rf "$TMP" "$probe"' EXIT
+# Every temp dir a child makes (the probe's, the wizard suite's) lands under the one dir the trap removes.
+export TMPDIR="$TMP"
 fails=0
 pass() { echo "PASS - $1"; }
 fail() { echo "FAIL - $1"; fails=$((fails + 1)); }
-# want <got> <want-count> <label>: the recorded store-call count is the one expected.
-want() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got $1 store call(s), want $2)"; fi; }
+# want <got> <want-count> <label> [child-rc]: the recorded store-call count is the one expected AND the
+# child ran to success, so a missing bun or a crashed child cannot pass as "zero stores".
+want() {
+  if [ "${4:-0}" != 0 ]; then fail "$3 (the child exited $4, so a zero count proves nothing)"
+  elif [ "$1" = "$2" ]; then pass "$3"
+  else fail "$3 (got $1 store call(s), want $2)"; fi
+}
 
 # shellcheck source=scripts/lib/fixtures/keyring-stub.sh
 . "$root/scripts/lib/fixtures/keyring-stub.sh"
@@ -29,9 +36,10 @@ stores() { grep -c '^secret-tool store' "$KSTUB_LOG" || true; }
 
 # A: a bare `bun test` of the setup-secret test, the pin unset (the stub unsets it).
 kreset
-(cd "$root/scripts/config-ui" && bun test tests/setup-secret.test.ts) >"$TMP/a.out" 2>&1
+rc=0
+(cd "$root/scripts/config-ui" && bun test tests/setup-secret.test.ts) >"$TMP/a.out" 2>&1 || rc=$?
 n="$(stores)"
-want "$n" 0 "A bare bun test of setup-secret.test.ts records zero keyring stores"
+want "$n" 0 "A bare bun test of setup-secret.test.ts records zero keyring stores" "$rc"
 
 # B: a new test file that boots the server with an env map and never mentions the pin.
 cat >"$probe" <<'TS'
@@ -55,23 +63,26 @@ test("probe: a file with no pin posts a secret", async () => {
 });
 TS
 kreset
-(cd "$root/scripts/config-ui" && bun test tests/zz-keyring-guard-probe.test.ts) >"$TMP/b.out" 2>&1
+rc=0
+(cd "$root/scripts/config-ui" && bun test "tests/${probe##*/}") >"$TMP/b.out" 2>&1 || rc=$?
 n="$(stores)"
-want "$n" 0 "B a new bun test file that omits the pin records zero keyring stores"
+want "$n" 0 "B a new bun test file that omits the pin records zero keyring stores" "$rc"
 rm -f "$probe"
 
 # C: the wizard secrets suite run directly (no suite label), the pin unset.
 kreset
-bash "$root/scripts/himmelctl/test/test-wizard-secrets-step.sh" >"$TMP/c.out" 2>&1
+rc=0
+bash "$root/scripts/himmelctl/test/test-wizard-secrets-step.sh" >"$TMP/c.out" 2>&1 || rc=$?
 n="$(stores)"
-want "$n" 0 "C test-wizard-secrets-step.sh run directly records zero keyring stores"
+want "$n" 0 "C test-wizard-secrets-step.sh run directly records zero keyring stores" "$rc"
 
 # D: production still works: a store call whose env map leaves the keyring on reaches the keyring (the stub);
 #    one whose env map pins it off does not.
 d_stores() {
   kreset
   mkdir -p "$TMP/d/home" "$TMP/d/himmel"
-  KR_ROOT="$root" KR_DIR="$TMP/d" KR_ENV="$1" node - <<'NODE' >/dev/null 2>&1
+  # A node that fails to run prints "node-failed" instead of a count, which matches neither D row.
+  KR_ROOT="$root" KR_DIR="$TMP/d" KR_ENV="$1" node - <<'NODE' >/dev/null 2>&1 || { echo node-failed; return; }
 const store = require(process.env.KR_ROOT + '/scripts/himmelctl/lib/secret-store.js');
 const d = process.env.KR_DIR;
 store.write('JIRA_API_TOKEN', 'e2e-canary-d', { home: d + '/home', himmelRoot: d + '/himmel', projectRoot: d + '/himmel', env: JSON.parse(process.env.KR_ENV), gitCheckIgnore: () => true });
