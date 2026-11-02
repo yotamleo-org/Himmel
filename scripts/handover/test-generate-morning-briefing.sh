@@ -951,6 +951,8 @@ FAKE_SHIFT_FAIL="$TMP_ROOT/shift-fail.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'echo "shift-cli: no handover root is set (HANDOVER_DIR)" >&2' 'echo "second line" >&2' 'exit 2' > "$FAKE_SHIFT_FAIL"
 chmod +x "$FAKE_SHIFT_FAIL"
 gen_in "$ADOPT_REPO" env SHIFTS_FILE="$RT_DIR/shifts.jsonl" MORNING_SHIFT_CMD="$FAKE_SHIFT_FAIL" bash "$SCRIPT" --out "$RT_DIR/helper.md"
+check "helper failure: the run still exits 0" "got rc=$GEN_RC" rc_is 0
+check "helper failure: the report is still written" "missing helper.md" test -f "$RT_DIR/helper.md"
 assert_contains "helper failure: WARNING carries the exit code" "exit 2" "$GEN_ERR"
 assert_contains "helper failure: WARNING carries the first stderr line" "shift-cli: no handover root is set (HANDOVER_DIR)" "$GEN_ERR"
 if grepq "$GEN_ERR" -F -- "second line"; then fail "helper failure: only the first stderr line"; else pass "helper failure: only the first stderr line"; fi
