@@ -364,5 +364,24 @@ awk -v h="$Nq" '/^\*\*GO\*\* for head `/ { print "**GO** for head `" h "`."; nex
 edit 'NR==2 { $0 = "two" } 1' src/b.txt; N11y=$(step edit11y)
 check "11g: a real verdict at a head that also has a no-op record keeps its finding -> finding" "$(dcls "$Nq" "$N11y")" finding
 
+# 11h: a no-op record worded NO-GO is no redirect; 11i: two no-op records for one head naming different targets fail closed
+printf 'z1\n' >> docs/c.md; Nz1=$(step docs11z1)
+printf 'z2\n' >> docs/c.md; Nz2=$(step docs11z2)
+printf 'zf\n' >> docs/c.md; NzF=$(step docs11zf)
+awk -v h="$Nz1" -v dj="$Jq" '
+    /^\*\*GO\*\* for head `/ { print "**NO-GO** for head `" h "`."; next }
+    /^pr: / { print; print "delta: no-op"; print "delta-judged: " dj; print "delta-class: none"; next }
+    { print }' "$real11" > "$dir11/delta-noop-$Nz1.md"
+check "11h: a NO-GO-worded no-op record names no judged head -> trust" "$(dcls "$Nz1" "$NzF")" trust
+check "11h: ...and says why on stderr" "$(dcls "$Nz1" "$NzF" 2>&1 >/dev/null | grep -c 'is not a GO')" 1
+mknoop "$Nz2" "$Jq"
+mknoop "$Nz2" "$Nq" "delta-noop-$Nz2-b"
+check "11i: two no-op records for one head naming different targets -> trust" "$(dcls "$Nz2" "$NzF")" trust
+check "11i: ...and says why on stderr" "$(dcls "$Nz2" "$NzF" 2>&1 >/dev/null | grep -c 'name different judged heads')" 1
+# 11j: write-verdict.sh refuses only a head that holds a no-op record and no real one: $Nq holds both
+err11j=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q11 GO "$NzF" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" --delta-noop "$Nq" 2>&1 >/dev/null)
+check "11j: a judged head with a real record beside its no-op record is not refused as a no-op" "$(printf '%s\n' "$err11j" | grep -c 'is itself a no-op record')" 0
+
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"
