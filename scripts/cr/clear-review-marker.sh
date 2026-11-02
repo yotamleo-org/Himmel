@@ -742,7 +742,11 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
       // RESOLVE (to a commit, unambiguously) and to the SAME commit.
       // The verdict is compared lowercase, so a raw row spelled
       // Agreed or Fixed still needs its record.
-      if (o.kind === "finding" && e.BRANCH && o.branch === e.BRANCH) {
+      // Only artifact diff (a row with no artifact is diff) is collected: a
+      // spec or plan finding edits a document outside the tree, has no code
+      // class to sweep, and its head (a spec id) can never match SWEEP_RE.
+      if (o.kind === "finding" && e.BRANCH && o.branch === e.BRANCH &&
+          (o.artifact || "diff") === "diff") {
           const sh = String(o.head || "").toLowerCase();
           const rest = [o.finding_id || "?", o.artifact || "diff", o.perspective || "off"].join(SEP);
           if (isHex(sh)) {
