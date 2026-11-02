@@ -620,6 +620,19 @@ for kind in "luna:graphmap-luna:refresh-graph-map.sh:3" "himmel:graphmap-himmel:
         esac
     done
 done
+# refresh-graph-map.sh exit 4 = stopped at the chunk cap, finished
+# chunks kept, the next run resumes. That is partial progress, never a failure,
+# so the weekly runners treat it like the bank skip: neither page nor clear.
+echo "TEST: refresh runners treat exit 4 (chunk cap, resumable) as partial progress"
+for k_file in luna himmel; do
+    scr="$TMP_ROOT/emit-$k_file-cap"
+    mkdir -p "$scr"
+    sed "s@$TMP_ROOT/bin/bash@$REAL_BASH@" "$CRON_DIR/graphmap-$k_file.sh" > "$scr/runner-src.sh"
+    cadence_exec_runner "$scr/runner-src.sh" "$HIMMEL_ROOT_EXP/scripts/graphify/refresh-graph-map.sh" 4 "$scr" || true
+    alerts=$(cat "$scr/alerts" 2>/dev/null || true)
+    assert_not_contains "$k_file chunk-cap exit 4 does not page" "fail " "$alerts"
+    assert_not_contains "$k_file chunk-cap exit 4 does not clear an open alert" "clear " "$alerts"
+done
 echo "TEST: AST runner .sh fires ast-update.sh by absolute path (free, no bank, no claude)"
 ast_luna_sh=$(cat "$CRON_DIR/graphmap-ast-luna.sh" 2>/dev/null || echo MISSING)
 ast_himmel_sh=$(cat "$CRON_DIR/graphmap-ast-himmel.sh" 2>/dev/null || echo MISSING)
@@ -724,6 +737,25 @@ if [ "$storm_lines" = "1" ]; then
     pass "storm marker only on the storm log"
 else
     fail "storm marker only on the storm log" "expected 1 storm line, got $storm_lines"
+fi
+rm -f "$CRON_DIR/graphmap-luna.log" "$CRON_DIR/graphmap-himmel.log" "$CRON_DIR/graphmap-ast-luna.log"
+
+# Test C5b2: a refresh run that stopped at the chunk cap ends with
+# `[exit rc=4]`. Status names that as partial progress on the two refresh logs
+# only; structural rc 4 (promote lock busy) on the AST log is a different thing.
+echo "TEST: cron status reads a chunk-cap exit 4 as partial progress, not a failure"
+printf 'refresh-graph-map: chunk cap 55 reached -- graphify-out left unpromoted, resumable (exit 4)\n[exit rc=4]\n' \
+    > "$CRON_DIR/graphmap-luna.log"
+printf '[exit rc=0]\n' > "$CRON_DIR/graphmap-himmel.log"
+printf '[exit rc=4]\n' > "$CRON_DIR/graphmap-ast-luna.log"
+out=$(run_cron status)
+assert_contains "chunk-cap exit 4 is reported as partial progress" "run outcome: partial progress" "$out"
+assert_contains "partial progress says the next run resumes" "resumes from the kept cache" "$out"
+partial_lines=$(grep -c -F 'run outcome: partial progress' <<< "$out" || true)
+if [ "$partial_lines" = "1" ]; then
+    pass "partial progress only on the refresh log that hit the cap"
+else
+    fail "partial progress only on the refresh log that hit the cap" "expected 1 partial-progress line, got $partial_lines"
 fi
 rm -f "$CRON_DIR/graphmap-luna.log" "$CRON_DIR/graphmap-himmel.log" "$CRON_DIR/graphmap-ast-luna.log"
 
