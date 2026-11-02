@@ -18,7 +18,8 @@ GUARD="$root/scripts/lib/test-run-guard"
 # Pinned to /tmp, not $TMPDIR: a TMPDIR under the home would make every hermetic target here count as real.
 TMP="$(mktemp -d /tmp/real-state-guard.XXXXXX)" || exit 1
 TMP="$(realpath "$TMP")"
-trap '[ -z "${SRV:-}" ] || kill "$SRV" 2>/dev/null; rm -rf "$TMP"' EXIT
+SRV=""
+trap '[ -z "$SRV" ] || kill "$SRV" 2>/dev/null; rm -rf "$TMP"' EXIT
 export TMPDIR="$TMP"
 fails=0
 pass() { echo "PASS - $1"; }
