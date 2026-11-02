@@ -125,8 +125,12 @@
 # cannot read, so an armed v23 runner fails "Not logged in" on every fire. Re-arm
 # with `pipeline-cadence.sh|graphmap-cadence.sh|drift-fix-cadence.sh arm --force`
 # (claude workers only; the setup steps are in docs/setup/new-machine.md).
+# v25: the himmel graphmap semantic runner passes --merge-into-live, so its
+# markdown-only extraction merges into the live graph (which keeps the code nodes)
+# instead of promoting over it. An armed v24 himmel runner is refused by the promote
+# shrink guard on every fire. Re-arm with `graphmap-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
-CADENCE_RUNNER_FORMAT_VERSION=24
+CADENCE_RUNNER_FORMAT_VERSION=25
 
 # Marker line stamped into each generated runner: `# <marker> N`.
 CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"

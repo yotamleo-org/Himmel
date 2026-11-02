@@ -1467,6 +1467,13 @@ assert_not_contains "cron_payload omits --out-root when unset" "--out-root" "$cp
 cp_with_root=$(run_cp bash script.sh luna corpus maps title slug tag /out/root)
 assert_contains "cron_payload appends --out-root when set" "--out-root /out/root" "$cp_with_root"
 
+# The himmel live graph is AST-heavy, so its weekly refresh merges the docs-only
+# extraction into it; the vault graph is docs-only and keeps the plain promote.
+cp_himmel=$(run_cp bash script.sh himmel corpus maps title slug tag)
+assert_contains "cron_payload merges the himmel refresh into the live graph" "--merge-into-live" "$cp_himmel"
+assert_not_contains "cron_payload keeps the plain promote for luna" "--merge-into-live" "$cp_no_root"
+assert_not_contains "cron_payload keeps the plain promote for luna with an out-root" "--merge-into-live" "$cp_with_root"
+
 acp_no_dir=$(run_acp bash script.sh corpus)
 assert_not_contains "ast_cron_payload omits GRAPHIFY_OUT= when unset" "GRAPHIFY_OUT=" "$acp_no_dir"
 acp_with_dir=$(run_acp bash script.sh corpus /out/root/graphify-out)

@@ -928,6 +928,10 @@ cron_payload() {
     printf '%s %s --name %s --corpus-root %s --maps-dir %s --title %s --slug %s --backend %s --corpus-tag %s' \
         "$q_bash" "$q_script" "$name" "$q_corpus" "$q_maps" "$q_title" "$slug" "$BACKEND" "$tag"
     if [ -n "$q_out_root" ]; then printf ' --out-root %s' "$q_out_root"; fi
+    # himmel's live graph is mostly AST code nodes the hourly structural worker
+    # keeps; this refresh extracts markdown only, so it must merge into the live
+    # graph, not promote over it (the shrink guard refuses a plain promote).
+    if [ "$name" = himmel ]; then printf ' --merge-into-live'; fi
 }
 
 # Structural (AST) payload builder, POSIX form (routed
