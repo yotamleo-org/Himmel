@@ -141,14 +141,21 @@ function learningsFeed(rows) {
   try { repoFull = require("child_process").execFileSync("git", ["remote", "get-url", "origin"], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().replace(/\.git$/, "").split(/[/:]/).slice(-2).join("/").toLowerCase(); } catch (e) { repoFull = ""; }
   const sameRepo = (repo) => { const r = repo.toLowerCase(); return !!repoFull && !!r && (r.includes("/") ? r === repoFull : r === repoFull.split("/").pop()); };
   const lines = [], stale = [], live = [], short = (t) => t.slice(0, 80);
+  // every reason except the platform one, first hit wins; a file under the renamed console-kit dir is looked up as chief-kit
+  const otherReason = (r) => {
+    if (/\bglm\b/i.test(r.text)) return "glm";
+    if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) return "private-repo-propagation";
+    const file = r.file.replace(/^\.?\//, "");
+    if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(file) && !tracked.has(file.replace(/(^|\/)console-kit\//, "$1chief-kit/"))) return "file-gone";
+    return null;
+  };
+  // a rule that rejects the platform ("not <os>", "<os> support dropped") states current policy, not a claim about it
+  const rejectsPlatform = /\b(?:not|no|never|without)\s+(?:\w+\s+){0,3}windows\b|\bwindows\b[^.;]{0,60}\b(?:dropped|unsupported|not supported|no longer|removed|retired)\b/i;
   for (const r of rows) {
     let reason = null;
-    // a rule that REJECTS Windows ("not Windows", "Windows support dropped") states current policy, not a Windows claim
-    const rejectsWindows = /\b(?:not|no|never|without)\s+(?:\w+\s+){0,3}windows\b|\bwindows\b[^.;]{0,60}\b(?:dropped|unsupported|not supported|no longer|removed|retired)\b/i.test(r.text);
-    if (!rejectsWindows && /\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
-    else if (/\bglm\b/i.test(r.text)) reason = "glm";
-    else if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) reason = "private-repo-propagation";
-    else if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, "")) && !tracked.has(r.file.replace(/^\.?\//, "").replace(/(^|\/)console-kit\//, "$1chief-kit/"))) reason = "file-gone"; // console-kit was renamed chief-kit
+    if (/\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
+    else reason = otherReason(r);
+    if (reason === "windows" && rejectsPlatform.test(r.text)) reason = otherReason(r);
     const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
     if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
       const st = ticketStatus(key);

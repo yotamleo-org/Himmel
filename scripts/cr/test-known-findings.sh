@@ -465,6 +465,8 @@ contains "feed: a console-kit path with no chief-kit counterpart is still file-g
 lnw="$(lrun nowin "$tmp/l-nowin.csv")"
 not_contains "feed: a rule that says Windows is dropped is not STALE" "$lnw" "STALE row=1 "
 not_contains "feed: a rule that says not Windows is not STALE" "$lnw" "STALE row=2 "
+{ echo "$LHDR"; lrow 'Himmel supports Linux and macOS, not Windows, in the zonkdrift wrapper.' 'scripts/cr/no-such-file-zz.sh' 2; } > "$tmp/l-nowingone.csv"
+contains "feed: a rule that says not Windows still reaches the file-gone check" "$(lrun nowingone "$tmp/l-nowingone.csv")" "STALE row=1 uses=2 reason=file-gone"
 
 # --refresh run from a linked worktree writes the WORKTREE's catalogue, never the anchor's
 awt="$tmp/anchor-repo"; wwt="$tmp/anchor-wt"; mkdir -p "$awt/scripts/cr"
