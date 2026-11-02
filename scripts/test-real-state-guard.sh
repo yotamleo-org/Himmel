@@ -696,10 +696,11 @@ CADENCE_ROWS=(
   "JA|scripts/eval/judge-accuracy/judge-accuracy-cadence.sh|JUDGEACC|HIMMEL-JudgeAccuracy|--verdicts $TMP/cad-verdicts"
   "QQ|scripts/eval/qmd-quality/qmd-quality-cadence.sh|QMDQUAL|HIMMEL-Qmd-Quality|--golden $TMP/cad-golden.json --index $TMP/cad-index.sqlite"
   "SS|scripts/eval/stability-scorecard.sh|SCORECARD|HIMMEL-StabilityScorecard|"
-  "FR|scripts/eval/worker-digest/failure-review-cadence.sh|FAILREV|HIMMEL-FailureReview|"
-  "VS|scripts/luna/vault-stall-cadence.sh|VAULT_STALL|HIMMEL-VaultStall|"
+  "FR|scripts/eval/worker-digest/failure-review-cadence.sh|FAILREV|HIMMEL-FailureReview|--vault $TMP/cad-vault"
+  "VS|scripts/luna/vault-stall-cadence.sh|VAULT_STALL|HIMMEL-VaultStall|--vault $TMP/cad-vault"
 )
 mkdir -p "$TMP/cad-prop" "$TMP/cad-verdicts"
+git init -q "$TMP/cad-vault"
 printf '{}\n' >"$TMP/cad-golden.json"
 : >"$TMP/cad-index.sqlite"
 for row in "${CADENCE_ROWS[@]}"; do
