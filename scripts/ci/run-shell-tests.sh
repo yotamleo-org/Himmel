@@ -3567,6 +3567,18 @@ skipped_ran=0
 _log_has_skip_line() {
   awk '/^[ \t]*SKIP([ \t:\r]|$)/ && !/^[ \t]*SKIP:[ \t]*[0-9]+[ \t\r]*$/ { found = 1; exit } END { exit !found }' "$1" 2>/dev/null
 }
+# _log_has_new_skip_line <first-attempt log> <retry log> — succeeds when the
+# retry printed a SKIP line (same definition as above) that the first attempt
+# did not print verbatim. A SKIP both attempts print is a constant of the
+# suite, not something the retry took to avoid the assertions that failed.
+_log_has_new_skip_line() {
+  awk '
+    function is_skip(l) { return (l ~ /^[ \t]*SKIP([ \t:\r]|$)/ && l !~ /^[ \t]*SKIP:[ \t]*[0-9]+[ \t\r]*$/) }
+    FILENAME == ARGV[1] { if (is_skip($0)) seen[$0] = 1; next }
+    is_skip($0) && !($0 in seen) { found = 1; exit }
+    END { exit !found }
+  ' "$1" "$2" 2>/dev/null
+}
 # Counts run-eligible suites (post every skip filter) for the --shard split
 # below; advances for every one of them regardless of which shard claims it
 run_index=0
@@ -4589,8 +4601,9 @@ _suite_account() {
   dur=$(( suite_end - start ))
   # A retry that exits 0 through the suite's own SKIP path ran none of the
   # assertions that failed the first time, so it is no evidence of a flake: the
-  # suite stays FAIL with the first attempt's status.
-  if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ] && _log_has_skip_line "$log"; then
+  # suite stays FAIL with the first attempt's status. A SKIP the first attempt
+  # printed too is a constant of the suite and does not count against the retry.
+  if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ] && _log_has_new_skip_line "$first_log" "$log"; then
     printf '[RETRY-SKIP] %s retry exited 0 only through a SKIP line; keeping the first failure (rc=%s)\n' "$suite" "$first_rc"
     rc=$first_rc
     if [ "$first_capped" -eq 1 ]; then
