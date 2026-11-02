@@ -306,10 +306,10 @@ vrows 0 operand \
 logged() { grep -q "\"session_id\":\"$1\"" "$VLOG"; }
 QMDQ='qmd query -c luna "Alice Smith"'
 CG="$TMP/vhome/.config/claude-glm"
-salus_row() { # DESC SID [CWD]
-    local desc="$1" sid="$2" cwd="${3:-$TMP/work}" a b
-    vcall "$sid" Bash "$QMDQ" "" "$cwd"; a=$rc
-    vcall "${sid}s" Bash "$S" "" "$cwd"; b=$rc
+salus_row() { # DESC SID [CWD] [QMD-COMMAND] [SWEEP-COMMAND]
+    local desc="$1" sid="$2" cwd="${3:-$TMP/work}" qc="${4:-$QMDQ}" sc="${5:-$S}" a b
+    vcall "$sid" Bash "$qc" "" "$cwd"; a=$rc
+    vcall "${sid}s" Bash "$sc" "" "$cwd"; b=$rc
     if [ "$a" = 0 ] && [ "$b" = 0 ] && [ ! -s "$TMP/err" ] && ! logged "$sid" && ! logged "${sid}s" \
         && ! grep -q 'Alice' "$VLOG" && [ ! -e "$TMP/vstate/$sid.clear" ] && [ ! -e "$TMP/vstate/${sid}s.denied" ]; then
         pass "$desc"
@@ -345,6 +345,32 @@ printf '#!/bin/sh\nexit 1\n' >"$TMP/stub3/block-agent-native-egress.sh"
 VHOOK_ALT="$TMP/stub1/block-vault-sweep.sh" salus_row "an oracle that always allows fails the canary: silent, nothing logged" v37
 VHOOK_ALT="$TMP/stub2/block-vault-sweep.sh" salus_row "an absent oracle is cannot-tell: silent, nothing logged" v38
 VHOOK_ALT="$TMP/stub3/block-vault-sweep.sh" salus_row "a crashing oracle is cannot-tell: silent, nothing logged" v39
+# the fence also sees the command: a listed root, or a symlink alias into one or into a salus-named tree,
+# named from an outside cwd keeps the session silent, with no query text in the log
+mkdir -p "$TMP/salus-tree/app"
+ln -s "$TMP/phi/app" "$TMP/alias-phi"
+ln -s "$TMP/salus-tree/app" "$TMP/alias-st"
+printf '%s\n' "$TMP/phi" >"$CG/phi-roots"
+salus_row "a listed root named in the command from an outside cwd: silent, nothing logged" v50 "$TMP/work" \
+    "cd $TMP/phi/app && $QMDQ" "grep -rl \"meeting notes\" $TMP/phi/app $VAULT"
+salus_row "a symlink alias into a listed root named in the command: silent, nothing logged" v51 "$TMP/work" \
+    "cd $TMP/alias-phi && $QMDQ" "grep -rl \"meeting notes\" $TMP/alias-phi $VAULT"
+rm -f "$CG/phi-roots"
+salus_row "a symlink alias into a salus-named tree named in the command: silent, nothing logged" v52 "$TMP/work" \
+    "cd $TMP/alias-st && $QMDQ" "grep -rl \"meeting notes\" $TMP/alias-st $VAULT"
+ln -s "$TMP/prof/sub" "$TMP/proflink"
+salus_row "a cwd that is a symlink into a .salus-profile-only tree: silent, nothing logged" v53 "$TMP/proflink"
+# the Grep tool: salus named in the pattern or the path is silent, with nothing logged
+vcall v54 Grep "salus notes" "" "$VAULT"
+a=$rc
+vcall v54b Grep "meeting notes" "$VAULT/salus-docs"
+if [ "$a" = 0 ] && [ "$rc" = 0 ] && ! logged v54 && ! logged v54b && [ ! -e "$TMP/vstate/v54.denied" ] && [ ! -e "$TMP/vstate/v54b.denied" ]; then pass "Grep naming salus in the pattern or the path: silent, nothing logged"; else fail "Grep naming salus (pattern=$a path=$rc)"; fi
+# an oracle that passes the canary but crashes on the real question is cannot-tell
+mkdir -p "$TMP/stub4"
+cp "$VHOOK" "$TMP/stub4/block-vault-sweep.sh"
+# shellcheck disable=SC2016  # the stub's own $(cat) and $in, written literally
+printf '#!/bin/sh\nin=$(cat)\ncase "$in" in *"\\"command\\":\\"higgsfield salus\\""*) exit 2 ;; esac\nexit 1\n' >"$TMP/stub4/block-agent-native-egress.sh"
+VHOOK_ALT="$TMP/stub4/block-vault-sweep.sh" salus_row "an oracle that passes the canary and crashes on the real question: silent, nothing logged" v55
 # the hook is not inert: a clean session with lists planted elsewhere still logs and is refused
 printf '%s\n' "$TMP/elsewhere" >"$CG/phi-roots"
 printf '%s\n' "$TMP/elsewhere2" >"$CG/egress-denylist"
@@ -392,6 +418,7 @@ if jq -e -s '
     | $d >= 5 and $r >= 2 and $c == 1 and $n >= 3
       and all(.[]; has("ts") and has("session_id") and has("event") and has("tool"))
       and all(.[] | select(.event == "deny"); (.cmd | length) <= 200 and has("root") and has("cwd"))
+      and all(.[] | select(.event == "qmd_clear"); .cmd == "")
       and ([.[] | select(.session_id == "v15" and .event == "deny")][0].cmd | length) == 200
       and ([.[] | select(.session_id == "v16" and .event == "deny")][0].cmd | test("ABCDEFGHIJKLMNOPQRSTUVWXYZ") | not)' "$VLOG" >/dev/null 2>&1; then
     pass "log rows: deny/retry_allowed/qmd_clear with had_deny, cmd cut to 200, token-shaped runs masked"

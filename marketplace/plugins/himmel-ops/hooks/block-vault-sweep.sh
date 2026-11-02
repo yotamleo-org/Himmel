@@ -96,9 +96,12 @@ mkdir -p "$DIR" 2>/dev/null || exit 0
 [ -d "$DIR" ] && [ -w "$DIR" ] || exit 0
 
 log_row() { # EVENT ROOT
-    local shown
-    shown=$(printf '%s' "$cmd$gpattern" | tr -d '[:cntrl:]' | cut -c1-200 \
-        | sed -E 's/[A-Za-z0-9_-]{24,}/<masked>/g; s/=[^[:space:]]+/=<masked>/g')
+    local shown=""
+    # a conversion count never needs the query text, so a qmd_clear row carries none
+    if [ "$1" != qmd_clear ]; then
+        shown=$(printf '%s' "$cmd$gpattern" | tr -d '[:cntrl:]' | cut -c1-200 \
+            | sed -E 's/[A-Za-z0-9_-]{24,}/<masked>/g; s/=[^[:space:]]+/=<masked>/g')
+    fi
     mkdir -p "$(dirname "$LOG")" 2>/dev/null || return 0
     jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sid "$sid" --arg ev "$1" \
         --arg tool "$tool" --arg root "${2:-}" --arg cmd "$shown" --arg cwd "$cwd" \
@@ -112,21 +115,23 @@ lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 # Is this a salus session? The hook is silent there, writes no log row for any call, and
 # when it cannot tell it answers yes. The salus signals (phi-roots, egress-denylist, the
 # canonical cwd, the git toplevel, common dir and remotes, a .salus marker) live in the
-# sibling block-agent-native-egress.sh, which a salus session cannot be without; it is asked
-# here with a synthetic payload that names only higgsfield, so none of the user's text
-# reaches it. Its exit 2 is salus. It answers "not salus" (0) for any payload that does not
-# name higgsfield, so a canary that names higgsfield and salus must exit 2 first: if it does
-# not, the oracle's trigger changed or it is not the script this expects, and nothing can be
-# trusted. The two signals the oracle lacks are added: CLAUDE_PROJECT_DIR (a salus session
-# that cd'd out) and a .salus-profile marker.
+# sibling block-agent-native-egress.sh, which a salus session cannot be without. It is asked
+# with a payload "higgsfield <command> <Grep path> <Grep pattern>" so its payload signals
+# (a listed root or a path that resolves to salus, named in the command) see the call too; the
+# text goes to it locally and its output is discarded. Its exit 2 is salus. It answers "not
+# salus" (0) for any payload that does not name higgsfield, so a canary that names higgsfield
+# and salus must exit 2 first: if it does not, the oracle's trigger changed or it is not the
+# script this expects, and nothing can be trusted. The two signals the oracle lacks are added:
+# CLAUDE_PROJECT_DIR (a salus session that cd'd out) and a .salus-profile marker. The canary
+# proves the payload-names-salus signal only.
 # ponytail: this hook is coupled to block-agent-native-egress.sh's higgsfield trigger and exit
 # code; the canary turns a change there into "cannot tell", which is silent and writes nothing.
 # Upgrade path: a shared salus-session library both hooks source.
 ORACLE=$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)/block-agent-native-egress.sh
 
-oracle_rc() { # CWD WORD -> the oracle's exit code (9 when no payload could be built)
+oracle_rc() { # CWD TEXT -> the oracle's exit code (9 when no payload could be built)
     local payload rc
-    payload=$(jq -cn --arg c "$1" --arg w "$2" '{tool_name: "Bash", cwd: $c, tool_input: {command: $w}}' 2>/dev/null) || return 9
+    payload=$(jq -cn --arg c "$1" --arg w "higgsfield $2" '{tool_name: "Bash", cwd: $c, tool_input: {command: $w}}' 2>/dev/null) || return 9
     bash "$ORACLE" <<<"$payload" >/dev/null 2>&1
     rc=$?
     return "$rc"
@@ -146,14 +151,14 @@ salus_marker_walk() { # DIR: a .salus or .salus-profile marker on DIR or an ance
 }
 
 is_salus() {
-    local dir canon
+    local dir canon text="$cmd $gpath $gpattern"
     case "$(lc "$cwd|$cmd|$gpath|$gpattern")" in *salus*) return 0 ;; esac
     [ -f "$ORACLE" ] || return 0
-    oracle_rc / "higgsfield salus"
+    oracle_rc / "salus"
     [ "$?" = 2 ] || return 0
     for dir in "$cwd" "${CLAUDE_PROJECT_DIR:-}"; do
         [ -n "$dir" ] || continue
-        oracle_rc "$dir" higgsfield || return 0
+        oracle_rc "$dir" "$text" || return 0
         canon=$(cd -P -- "$dir" 2>/dev/null && pwd -P) || canon=""
         salus_marker_walk "$dir" && return 0
         salus_marker_walk "$canon" && return 0
