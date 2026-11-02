@@ -151,9 +151,10 @@ Entities: `LINK` → `[text](url)`. Other entity types pass through as text.
   (keyless; a logged-out page shows only some posts). A thread that could not
   be read on a tweet with `replies > 0` is `needs_thread: true`,
   `enrichment_status: partial`, `last_error: thread_not_captured`, never `ok`
-  (HIMMEL-6933); a tweet with `replies == 0` is not fetched. A captured thread
-  clears the flag; a flag from the text heuristic (`1/5`, `🧵`) stays when the
-  endpoint finds no continuation.
+  (HIMMEL-6933); a tweet with `replies == 0` is not fetched. The author's own
+  captured continuation clears the flag; a flag from the text heuristic (`1/5`,
+  `🧵`) stays when no author continuation was found, and so does a Scrapling
+  answer without one (a logged-out page proves nothing about what is missing).
 - **No video/STT/keyframes** — same as playwright path.
 - **Rate-limit is 1s per call** — fxtwitter is forgiving but be polite.
   145 clips ≈ 2-3 minutes wall-clock.
@@ -185,7 +186,7 @@ thread of **every** X clip under `Clippings/` at any depth (archived clips in
 ```bash
 node x-thread-backfill.mjs --vault ~/Documents/luna                 # dry run: fetch + report, writes nothing
 node x-thread-backfill.mjs --vault ~/Documents/luna --apply         # write
-node x-thread-backfill.mjs --vault ~/Documents/luna --resume-after Clippings/<last printed path>
+node x-thread-backfill.mjs --vault ~/Documents/luna --resume-after <last printed path, as printed>   # e.g. Clippings/_done/2026-05/x.md
 ```
 
 Dry run is the default and writes nothing. Per clip it prints
@@ -195,8 +196,14 @@ only the `## Thread` section and the fields it owns: `needs_thread` is dropped,
 and `enrichment_status`/`last_error` only when they were just the
 `thread_not_captured` stamp; `enriched_at` and the rest of the body are
 untouched. A second `--apply` is a no-op (the identical section is detected).
-One request per clip at 1 s: **about 25 minutes for 1383 clips**. A failed
-fetch leaves the clip as it was and never aborts the run. It does not run
+One request per clip at 1 s: **about 25 minutes for 1383 clips** when the
+endpoint answers; each clip the endpoint fails on (a deleted tweet) adds a
+Scrapling attempt of up to 90 s, so an endpoint outage stretches the run to
+hours. A failed fetch leaves the clip as it was and never aborts the run. A
+thread already in the clip is only replaced by one that holds every post the
+clip has (never shrunk), and only the author's own continuation clears a
+`needs_thread` flag. `--limit` takes a positive integer. Exit 3 means a write
+was reverted or a directory was unreadable (its clips were not seen). It does not run
 triage, synthesis, digest or embedding: those are a separate, paid rerun.
 
 ### Re-flagging historical silent partials (`harvest-clip-body-batch.py --reflag-silent-partials`)

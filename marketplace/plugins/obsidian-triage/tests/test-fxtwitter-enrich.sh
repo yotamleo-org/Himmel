@@ -895,6 +895,54 @@ t21_help="$(node "$BACKFILL" --help 2>&1)"
 t21_help_ok=no; case "$t21_help" in *"25 minutes"*) t21_help_ok=yes ;; esac
 assert "Test21: --help names the rate and the 25 minute estimate" "yes" "$t21_help_ok"
 
+# -- Test 22: what clears a needs_thread flag, and what a rewrite may drop --
+echo "Test 22: only the author's own continuation clears needs_thread; a thread is never shrunk"
+cat >"$tmpdir/t22-status.json" <<'EOF'
+{ "code": 200, "tweet": { "text": "deep dive\n\n1/3 the first point", "replies": 3, "author": { "screen_name": "alice" } } }
+EOF
+cat >"$tmpdir/t22-linkonly.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "100", "author": { "screen_name": "alice" }, "text": "deep dive 1/3 the first point" },
+  { "id": "101", "author": { "screen_name": "bob" }, "text": "code is here https://github.com/example/repo" }
+] }
+EOF
+t22a_vault="$tmpdir/vault-t22a"; mk_x_clip "$t22a_vault" a.md alice 100
+FXT_FIXTURE="$tmpdir/t22-status.json" FXT_THREAD_FIXTURE="$tmpdir/t22-linkonly.json" \
+    node "$SCRIPT" --vault "$t22a_vault" --limit 1 >"$tmpdir/t22a.out" 2>&1
+t22a="$t22a_vault/Clippings/a.md"
+t22a_flag=no; grep -q "needs_thread: true" "$t22a" 2>/dev/null && grep -q "enrichment_status: partial" "$t22a" 2>/dev/null && t22a_flag=yes
+assert "Test22A: a link reply by another author does not clear a heuristic needs_thread" "yes" "$t22a_flag"
+t22a_link=no; grep -q "github.com/example/repo" "$t22a" 2>/dev/null && t22a_link=yes
+assert "Test22A: the link reply is still kept under ## Thread" "yes" "$t22a_link"
+cat >"$tmpdir/t22-scrapling-only-post1.json" <<'EOF'
+{ "status": "ok", "posts": [ { "id": "97", "author": { "screen_name": "jack" }, "text": "a plain statement" } ] }
+EOF
+t22b_vault="$tmpdir/vault-t22b"; mk_x_clip "$t22b_vault" b.md jack 97
+FXT_FIXTURE="$tmpdir/t19-replies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.json" FXT_SCRAPLING_FIXTURE="$tmpdir/t22-scrapling-only-post1.json" \
+    node "$SCRIPT" --vault "$t22b_vault" --limit 1 >"$tmpdir/t22b.out" 2>&1
+t22b="$t22b_vault/Clippings/b.md"
+t22b_flag=no; grep -q "needs_thread: true" "$t22b" 2>/dev/null && grep -q "enrichment_status: partial" "$t22b" 2>/dev/null && t22b_flag=yes
+assert "Test22B: a Scrapling page showing only post 1 on a tweet with replies reads partial, not ok" "yes" "$t22b_flag"
+# A shorter answer never shrinks a thread the clip already holds.
+t22c_vault="$tmpdir/vault-t22c"; t22c_fx="$tmpdir/t22c-fixtures"; mkdir -p "$t22c_fx"
+mk_x_clip "$t22c_vault" theo.md theo 2114653423937507555
+cp "$THEO_FX" "$t22c_fx/2114653423937507555.json"
+FXT_THREAD_FIXTURE_DIR="$t22c_fx" node "$BACKFILL" --vault "$t22c_vault" --apply >"$tmpdir/t22c1.out" 2>&1
+t22c_sum="$(vault_sum "$t22c_vault")"
+cat >"$t22c_fx/2114653423937507555.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "2114653423937507555", "author": { "screen_name": "theo" }, "text": "the first post" },
+  { "id": "999", "author": { "screen_name": "bob" }, "text": "see https://example.com/x" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t22c_fx" node "$BACKFILL" --vault "$t22c_vault" --apply >"$tmpdir/t22c2.out" 2>&1
+assert "Test22C: a shorter thread answer leaves the fuller section in place" "$t22c_sum" "$(vault_sum "$t22c_vault")"
+node "$BACKFILL" --vault "$t22c_vault" --limit abc >"$tmpdir/t22d.out" 2>&1
+assert "Test22D: --limit with a non-number is a usage error (exit 1)" "1" "$?"
+mkdir -p "$tmpdir/vault-with-no-clippings"
+node "$BACKFILL" --vault "$tmpdir/vault-with-no-clippings" >"$tmpdir/t22e.out" 2>&1
+assert "Test22E: a vault with no Clippings/ is an error (exit 1)" "1" "$?"
+
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
 echo ""

@@ -25,7 +25,8 @@
  * already applied reports no-new-text and is not rewritten. One failed clip
  * never aborts the run.
  *
- * Exit: 0 done, 1 bad usage, 3 at least one guarded write was reverted.
+ * Exit: 0 done, 1 bad usage, 3 a guarded write was reverted or a directory was
+ * unreadable (its clips were not seen).
  */
 import { existsSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -34,9 +35,13 @@ import { rethreadClip } from "./fxtwitter-enrich.mjs";
 // Every .md under Clippings/ at any depth (archived clips live in _done/YYYY-MM/).
 // _media holds downloaded media and _synthesis holds notes, not clips.
 const SKIP_DIRS = new Set(["_media", "_synthesis"]);
+const walkErrors = [];
 function findAllClips(dir, out = []) {
   let entries;
-  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch (e) {
+    walkErrors.push(`${dir}: ${e.code || e.message}`);
+    return out;
+  }
   for (const e of entries) {
     const p = join(dir, e.name);
     if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) findAllClips(p, out); }
@@ -61,7 +66,11 @@ for (let i = 0; i < argv.length; i++) {
   if (a === "--vault") args.vault = argv[++i];
   else if (a === "--apply") args.apply = true;
   else if (a === "--dry-run") args.apply = false;
-  else if (a === "--limit") args.limit = parseInt(argv[++i] || "0", 10) || 0;
+  else if (a === "--limit") {
+    const v = argv[++i] || "";
+    if (!/^[1-9][0-9]*$/.test(v)) { console.error(`--limit needs a positive integer, got '${v}'`); usage(1); }
+    args.limit = parseInt(v, 10);
+  }
   else if (a === "--resume-after") args.resumeAfter = argv[++i];
   else if (a === "-h" || a === "--help") usage(0);
   else { console.error(`unknown arg: ${a}`); usage(1); }
@@ -69,19 +78,22 @@ for (let i = 0; i < argv.length; i++) {
 if (!args.vault) usage(1);
 if (!existsSync(args.vault)) { console.error(`x-thread-backfill: vault not found: ${args.vault}`); process.exit(1); }
 
+if (!existsSync(join(args.vault, "Clippings"))) { console.error(`x-thread-backfill: no Clippings/ dir under ${args.vault}`); process.exit(1); }
+
 const counts = { seen: 0, "adds-text": 0, "no-new-text": 0, "fetch-failed": 0 };
 let writeFailed = 0;
 let skippedNonX = 0;
 let done = 0;
-for (const clip of findAllClips(join(args.vault, "Clippings")).sort()) {
-  const rel = relative(args.vault, clip).split(sep).join("/");
+const relOf = (p) => relative(args.vault, p).split(sep).join("/");
+const clips = findAllClips(join(args.vault, "Clippings")).map((p) => ({ p, rel: relOf(p) })).sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+for (const { p: clip, rel } of clips) {
   if (args.resumeAfter && rel <= args.resumeAfter) continue;
   if (args.limit > 0 && done >= args.limit) break;
   let res;
   try {
     res = await rethreadClip(clip, args.vault, args.apply);
   } catch (e) {
-    res = { kind: "fetch-failed", chars: 0, message: `${rel} -- ${e.message}` };
+    res = { kind: args.apply ? "write-failed" : "fetch-failed", chars: 0, message: `${rel} -- ${e.message}` };
   }
   if (res.kind === "skip") { skippedNonX++; continue; }
   done++;
@@ -92,6 +104,7 @@ for (const clip of findAllClips(join(args.vault, "Clippings")).sort()) {
 }
 console.log(`non-x skipped: ${skippedNonX}`);
 if (writeFailed) console.log(`write-failed: ${writeFailed}`);
+for (const w of walkErrors) console.error(`unreadable directory (its clips were NOT seen): ${w}`);
 console.log(`mode: ${args.apply ? "apply" : "dry-run"}`);
 console.log(`summary: seen=${counts.seen} adds-text=${counts["adds-text"]} no-new-text=${counts["no-new-text"]} fetch-failed=${counts["fetch-failed"]}`);
-process.exit(writeFailed ? 3 : 0);
+process.exit(writeFailed || walkErrors.length ? 3 : 0);

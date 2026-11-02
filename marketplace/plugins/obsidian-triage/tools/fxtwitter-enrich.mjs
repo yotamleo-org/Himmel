@@ -469,7 +469,7 @@ async function fetchThreadAny(canon, rel, opts = {}) {
   console.error(`${rel} -- thread endpoint failed (${res.error}); trying Scrapling`);
   const fb = fetchThreadViaScrapling(canon);
   if (!fb.ok) console.error(`${rel} -- thread not captured: ${fb.error}`);
-  return fb;
+  return { ...fb, via: "scrapling" };
 }
 
 function isLinkBearing(post) {
@@ -482,10 +482,14 @@ function isLinkBearing(post) {
  * Pick what to keep from a thread answer. Pure. Keeps, in answer order, EVERY
  * post by the clipped author (not only a run from post 1) and, capped at
  * THREAD_MAX_LINKED_REPLIES, posts by anyone else that carry a URL. Returns
- * { posts, extraChars }: extraChars counts the text beyond the clipped post.
+ * { posts, extraChars, authorExtraChars }: the text beyond the clipped post
+ * that `bodyText` (the clip body, when given) does not already hold, in total
+ * and by the clipped author alone.
  */
-export function extractThreadPosts(thread, clippedId, authorHandle) {
-  if (!Array.isArray(thread) || !authorHandle) return { posts: [], extraChars: 0 };
+export function extractThreadPosts(thread, clippedId, authorHandle, bodyText = "") {
+  if (!Array.isArray(thread) || !authorHandle) return { posts: [], extraChars: 0, authorExtraChars: 0 };
+  const norm = (s) => s.replace(/\s+/g, " ").trim();
+  const haystack = norm(bodyText);
   const me = authorHandle.toLowerCase();
   const seen = new Set();
   const posts = [];
@@ -501,8 +505,9 @@ export function extractThreadPosts(thread, clippedId, authorHandle) {
     seen.add(String(p.id));
     posts.push({ id: String(p.id), handle, mine, text: String(p.text).trim() });
   }
-  const extraChars = posts.filter((p) => p.id !== String(clippedId)).reduce((n, p) => n + p.text.length, 0);
-  return { posts, extraChars };
+  const fresh = posts.filter((p) => p.id !== String(clippedId) && !(haystack && haystack.includes(norm(p.text))));
+  const chars = (ps) => ps.reduce((n, p) => n + p.text.length, 0);
+  return { posts, extraChars: chars(fresh), authorExtraChars: chars(fresh.filter((p) => p.mine)) };
 }
 
 /**
@@ -528,6 +533,9 @@ function statusIdOf(canon) {
  * Thread capture for one clipped tweet (normal enrich path). Never reads ok
  * on a failed check: replies > 0 and neither the endpoint nor Scrapling gave
  * an answer -> needsThread true. A tweet with replies == 0 is not fetched.
+ * Only the clipped author's own continuation clears the heuristic flag: a
+ * link-bearing reply by someone else does not, and a Scrapling page that shows
+ * no continuation proves nothing (a logged-out page lists only some posts).
  * Returns { section, needsThread }.
  */
 async function captureThread(tweet, canon, rel, opts = {}) {
@@ -536,9 +544,13 @@ async function captureThread(tweet, canon, rel, opts = {}) {
   if (replies <= 0) return { section: null, needsThread: heuristic };
   const res = await fetchThreadAny(canon, rel, opts);
   if (!res.ok) return { section: null, needsThread: true };
-  const cap = extractThreadPosts(res.thread, statusIdOf(canon), tweet.author?.screen_name);
-  if (cap.extraChars > 0) return { section: renderThreadSection(cap.posts), needsThread: false };
-  return { section: null, needsThread: heuristic };
+  const id = statusIdOf(canon);
+  const clipped = Array.isArray(res.thread) ? res.thread.find((p) => p && String(p.id) === id) : null;
+  const handle = tweet.author?.screen_name || clipped?.author?.screen_name || "";
+  const cap = extractThreadPosts(res.thread, id, handle);
+  const section = cap.extraChars > 0 ? renderThreadSection(cap.posts) : null;
+  if (cap.authorExtraChars > 0) return { section, needsThread: false };
+  return { section, needsThread: res.via === "scrapling" || heuristic };
 }
 
 // ---------------------------------------------------------------------------
@@ -1233,9 +1245,9 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
       bodyFill.title = tweet.text.replace(/\s+/g, " ").trim().slice(0, 80);
     }
   }
-  // Plain tweets + note tweets: frontmatter-only enrichment.
+  // Plain tweets + note tweets add no section here; a captured thread below
+  // may still add `## Thread`.
 
-  // Signal whether this clip needs the authenticated thread/reply escalation.
   // Keep the posts the thread endpoint returns (## Thread). A
   // thread that could not be read (endpoint and Scrapling both failed) on a
   // tweet with replies is needs_thread, never ok.
@@ -1445,21 +1457,31 @@ export async function rethreadClip(clipPath, vault, apply, opts = {}) {
   const id = statusIdOf(canon);
   const clipped = Array.isArray(res.thread) ? res.thread.find((p) => p && String(p.id) === id) : null;
   const handle = clipped?.author?.screen_name || res.status?.author?.screen_name || (canon.match(/x\.com\/([^/]+)\//) || [])[1];
-  const cap = extractThreadPosts(res.thread, id, handle && handle !== "i" ? handle : "");
+  const existing = body.match(THREAD_SECTION_RE);
+  // Text the clip already holds outside its thread section is not "new".
+  const cap = extractThreadPosts(res.thread, id, handle && handle !== "i" ? handle : "", body.replace(THREAD_SECTION_RE, ""));
   if (cap.extraChars <= 0) return { kind: "no-new-text", chars: 0, message: `${rel} -- no more text in the thread` };
 
   const section = renderThreadSection(cap.posts);
-  const existing = body.match(THREAD_SECTION_RE);
-  if (existing && existing[0].trimEnd() === `\n${section}`) return { kind: "no-new-text", chars: 0, message: `${rel} -- thread already in the clip` };
+  if (existing) {
+    if (existing[0].trimEnd() === `\n${section}`) return { kind: "no-new-text", chars: 0, message: `${rel} -- thread already in the clip` };
+    // Never lose a post an earlier fetch kept: replace only with a superset.
+    const want = new Set(cap.posts.map((p) => p.id));
+    const lost = [...existing[0].matchAll(/\/status\/(\d+)/g)].some((m) => !want.has(m[1]));
+    if (lost) return { kind: "no-new-text", chars: 0, message: `${rel} -- kept the fuller thread already in the clip` };
+  }
   const out = { kind: "adds-text", chars: cap.extraChars, message: `${rel} -- thread adds ${cap.extraChars} chars` };
   if (!apply) return out;
 
-  // The thread is captured now: drop the flag it was stamped with.
+  // Only the author's own continuation counts as the thread being captured:
+  // drop the flag it was stamped with then, never for a link reply alone.
   const markers = {};
-  if (/^needs_thread:/m.test(fmRaw)) markers.needs_thread = null;
-  if (/^last_error:\s*"?thread_not_captured"?\s*$/m.test(fmRaw)) {
-    markers.last_error = null;
-    if (/^enrichment_status:\s*"?partial"?\s*$/m.test(fmRaw)) markers.enrichment_status = "ok";
+  if (cap.posts.some((p) => p.mine && p.id !== id)) {
+    if (/^needs_thread:/m.test(fmRaw)) markers.needs_thread = null;
+    if (/^last_error:\s*"?thread_not_captured"?\s*$/m.test(fmRaw)) {
+      markers.last_error = null;
+      if (/^enrichment_status:\s*"?partial"?\s*$/m.test(fmRaw)) markers.enrichment_status = "ok";
+    }
   }
   const w = await writeEnrichment({
     clipPath, rel, text, baselineSha: sha256(text), fmRaw, body, markers,
@@ -1469,15 +1491,21 @@ export async function rethreadClip(clipPath, vault, apply, opts = {}) {
   // Thread text is untrusted tweet text: flag-only re-screen, as body-fill does.
   const flag = rescreenInjection(clipPath);
   if (flag) {
+    // Fail closed as body-fill does: if the flag cannot be written, put the
+    // clip back as it was so the next run re-fetches and re-screens it.
+    const revert = (why) => {
+      writeFileSync(clipPath, text, { encoding: "utf-8" });
+      return { kind: "write-failed", chars: 0, message: `${rel} -- injection flag-write failed (${why}); reverted` };
+    };
     const t2 = readFileSync(clipPath, "utf-8");
     const p2 = parseFrontmatter(t2);
-    if (p2.present) {
-      await writeEnrichment({
-        clipPath, rel, text: t2, baselineSha: sha256(t2), fmRaw: p2.fmRaw, body: p2.body,
-        markers: { harvest_flag: "injection-suspect", harvest_flag_detail: flag.detail },
-        section: null, resetTriage: false, statusGlyph: "v", statusMsg: "flagged",
-      });
-    }
+    if (!p2.present) return revert("no frontmatter on re-read");
+    const fw = await writeEnrichment({
+      clipPath, rel, text: t2, baselineSha: sha256(t2), fmRaw: p2.fmRaw, body: p2.body,
+      markers: { harvest_flag: "injection-suspect", harvest_flag_detail: flag.detail },
+      section: null, resetTriage: false, statusGlyph: "v", statusMsg: "flagged",
+    });
+    if (fw.glyph !== "v") return revert(fw.message);
   }
   return out;
 }
