@@ -3332,4 +3332,94 @@ hist94e="$root/tester/trim94edst/specs/history/chief-live-state-DEMO-nextleg-${t
 check "94e the earlier history survives next" "$(grep -c '^EARLIER-HISTORY-94$' "$hist94e" 2>/dev/null)" "1"
 check "94e next appends the trimmed Live state after it" "$(grep -cF 'C20:nonce-closed-20:lock-closed-20:20' "$hist94e" 2>/dev/null)" "1"
 
+# --- 95: the HANDOFF's in-flight section: one pointer line per item from the
+# file names under specs/, capped, absent when empty, never a body, fail-open.
+hours_ago95() { date -d "$1 hours ago" '+%Y%m%d%H%M' 2>/dev/null || date -v-"$1"H '+%Y%m%d%H%M'; }
+item95() { # <bucket> <path under specs/> [hours old]
+    local f="$root/tester/$1/specs/$2"
+    mkdir -p "$(dirname "$f")"
+    printf '# MARKER95 heading\n\nMARKER95 body\n' > "$f"
+    [ -z "${3:-}" ] || touch -t "$(hours_ago95 "$3")" "$f"
+}
+next95() { chief next --bucket "${1}dst" --doc "$root/tester/$1/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1; }
+handoff95() { printf '%s' "$root/tester/$1/DEMO-nextleg-${today}A-chief-HANDOFF.md"; }
+heading95='^## Start, plan and design in flight$'
+stamp95='changed [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$'
+
+# 95a: two items give two pointer lines, each with its path and status, newest first.
+chief new --bucket inf95a >/dev/null
+item95 inf95a designs/DEMO-951-alpha-design.md 3
+item95 inf95a plan/2026-01-01-beta-plan.md
+next95 inf95a
+h95="$(handoff95 inf95a)"
+check "95a one section heading" "$(grep -c "$heading95" "$h95")" "1"
+check "95a two pointer lines" "$(grep -c '^- specs/' "$h95")" "2"
+check "95a a design line carries its path, kind and key" "$(grep -cE "^- specs/designs/DEMO-951-alpha-design\.md — design, DEMO-951, $stamp95" "$h95")" "1"
+check "95a a name with no key says so" "$(grep -cE "^- specs/plan/2026-01-01-beta-plan\.md — plan, no ticket key, $stamp95" "$h95")" "1"
+check "95a the newest item comes first" "$(grep -m 1 '^- specs/' "$h95" | grep -c 'beta-plan')" "1"
+check "95a no count line under the cap" "$(grep -c '^+[0-9]* more$' "$h95")" "0"
+check "95a the note tells the successor to open an item only when it acts" "$(grep -c 'open an item only when you act on it' "$h95")" "1"
+
+# 95b: an item past the cap is a count, not a line; the oldest is the one dropped.
+chief new --bucket inf95b >/dev/null
+item95 inf95b proposals/DEMO-952-oldest-grill.md 5
+item95 inf95b designs/DEMO-953-middle-design.md 3
+item95 inf95b plans/DEMO-954-newest-plan.md
+CHIEF_INFLIGHT_CAP=2 next95 inf95b
+h95="$(handoff95 inf95b)"
+check "95b two pointer lines at a cap of two" "$(grep -c '^- specs/' "$h95")" "2"
+check "95b the third item is one count line" "$(grep -c '^+1 more$' "$h95")" "1"
+check "95b the third item has no line of its own" "$(grep -c 'DEMO-952-oldest-grill' "$h95")" "0"
+
+# 95c: no items, no section: no specs at all, then only what is not an item.
+chief new --bucket inf95c >/dev/null
+next95 inf95c
+check "95c no specs directory writes no heading" "$(grep -c "$heading95" "$(handoff95 inf95c)")" "0"
+chief new --bucket inf95d >/dev/null
+item95 inf95d designs/DEMO-955-side.md.critic-plan-r1.md
+item95 inf95d designs/DEMO-955-side.estimate.json
+item95 inf95d plan/DEMO-956/nested.md
+item95 inf95d specs-other/DEMO-957-elsewhere.md
+item95 inf95d decisions/DEMO-958-ruling.md
+item95 inf95d designs/DEMO-959-stale.md
+touch -t 202001010000 "$root/tester/inf95d/specs/designs/DEMO-959-stale.md"
+next95 inf95d
+h95="$(handoff95 inf95d)"
+check "95c sidecars, nested files, other directories and stale items write no heading" "$(grep -c "$heading95" "$h95")" "0"
+check "95c and no pointer line" "$(grep -c '^- specs/' "$h95")" "0"
+check "95c and no count line" "$(grep -c '^+[0-9]* more$' "$h95")" "0"
+
+# 95d: an item's heading and body never reach the HANDOFF or the successor doc.
+h95="$(handoff95 inf95a)"
+check "95d the item is listed" "$(grep -c 'DEMO-951-alpha-design' "$h95")" "1"
+check "95d no item body or heading in the HANDOFF" "$(grep -c 'MARKER95' "$h95")" "0"
+check "95d no item body or heading in the successor doc" "$(grep -c 'MARKER95' "$root/tester/inf95adst/DEMO-nextleg-${today}B-chief.md")" "0"
+
+# 95e: an unreadable source writes nothing and never stops the hand-over.
+chief new --bucket inf95e >/dev/null
+printf 'not a directory\n' > "$root/tester/inf95e/specs"
+rc95=0; next95 inf95e || rc95=$?
+check "95e a source that cannot be read: next exits 0" "$rc95" "0"
+check "95e and writes no heading" "$(grep -c "$heading95" "$(handoff95 inf95e)")" "0"
+chief new --bucket inf95f >/dev/null
+item95 inf95f plans/DEMO-960-readable.md
+mkdir -p "$root/tester/inf95f/specs/designs"
+chmod 000 "$root/tester/inf95f/specs/designs"
+rc95=0; next95 inf95f || rc95=$?
+chmod 755 "$root/tester/inf95f/specs/designs"
+check "95e one unreadable directory: next exits 0" "$rc95" "0"
+check "95e and the readable directories are still listed" "$(grep -c 'DEMO-960-readable' "$(handoff95 inf95f)")" "1"
+
+# 95f: the pointer bytes count toward the budget. Same-length buckets; the budget is
+# the empty fixture's final size, so only the pointers tip the second one over.
+chief new --bucket inf95x >/dev/null
+chief new --bucket inf95y >/dev/null
+item95 inf95y designs/DEMO-961-budget.md
+next95 inf95x
+HANDOFF_BUDGET_BYTES="$(wc -c < "$(handoff95 inf95x)")" next95 inf95y
+h95="$(handoff95 inf95y)"
+check "95f the pointer bytes tip the note into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$h95")" "1"
+check "95f the pointer is still listed" "$(grep -c 'DEMO-961-budget' "$h95")" "1"
+check "95f the over-budget note names the pointer bytes" "$(grep -cE '^> HANDOFF over budget: .*in-flight pointers [0-9]+ bytes' "$h95")" "1"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }
