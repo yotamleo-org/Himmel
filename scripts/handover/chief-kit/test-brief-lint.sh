@@ -300,6 +300,7 @@ mk nw_label '# HIMMEL-9415 — core by label' "$PA" '> **Contract:** y' '## Resu
 mk nw_ticket '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
 mk nw_none '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** none named' '## Results (newest at the bottom)'
 mk nw_prose '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** see the ticket' '## Results (newest at the bottom)'
+mk nw_dot '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** see ticket. v1.2' '## Results (newest at the bottom)'
 mk nw_clean '# HIMMEL-9417 — names no path' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
 mk nw_two '# HIMMEL-9411 — a second Writes line holds the core path' "$PA" '> **Contract:** y' '> **Writes:** docs/handover/running-a-chief.md' '> **Writes:** scripts/handover/chief-kit/next-dispatchable.sh' '## Results (newest at the bottom)'
 expect_rc "8h6 a core-labelled key with no Writes line is a core refusal" 3 "$tmp/nw_label.md"
@@ -309,6 +310,8 @@ rc=0; bash "$LINT" --core-only "$tmp/nw_prose.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 3 ] && ok "8h9 --core-only: a prose Writes line falls back to the ticket's paths" || bad "8h9 --core-only prose Writes (rc=$rc)"
 expect_rc "8h10 a key that names no core path passes without a Writes line" 0 "$tmp/nw_clean.md"
 expect_rc "8h11 every Writes line is read, not the first" 3 "$tmp/nw_two.md"
+rc=0; bash "$LINT" --core-only "$tmp/nw_dot.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "8h14 prose with a dot ('ticket.', 'v1.2') is no path and falls back to the ticket's paths" || bad "8h14 dotted prose Writes (rc=$rc)"
 rc=0; bash "$LINT" --core-only "$tmp/nw_ticket.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 3 ] && ok "8h12 --core-only resolves the same paths" || bad "8h12 --core-only no Writes (rc=$rc)"
 # a BYPASS is printed and logged beside the brief, once

@@ -74,6 +74,7 @@ title = next((l for l in lines if l.startswith('# ')), '')
 keys = list(dict.fromkeys(re.findall(r'\b[A-Z][A-Z0-9]*-[0-9]+\b', title)))
 if not keys:
     sys.exit(0)
+ROOT_FILES = {'CLAUDE.md', 'AGENTS.md', 'README.md', 'package.json', 'package-lock.json', 'bun.lock', 'uv.lock', 'pyproject.toml', '.gitignore', '.pre-commit-config.yaml'}
 paths = []
 for i, line in enumerate(lines):
     if line.startswith('> **Writes:**'):
@@ -83,8 +84,8 @@ for i, line in enumerate(lines):
                 break
             text += ' ' + nxt[2:]
         for p in re.split(r'[\s,`]+', text.strip()):
-            # a token that is not a path (prose, a dot segment) names nothing
-            if p and re.fullmatch(r'[\w.+@/-]+', p) and ('/' in p or '.' in p) \
+            # a token that is not a path (prose, a version, a dot segment) names nothing: a path has a slash or is a named root file
+            if p and re.fullmatch(r'[\w.+@/-]+', p) and ('/' in p or p in ROOT_FILES) \
                     and not any(part in ('.', '..') for part in p.split('/')) and p not in paths:
                 paths.append(p)
 
