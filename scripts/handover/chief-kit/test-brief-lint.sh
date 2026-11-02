@@ -395,5 +395,35 @@ BRIEF_LINT_JIRA_CLI="$tmp/junk-spec.js" expect_rc "8k2 a spec-check that prints 
 BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js" expect_rc "8l a brief with no ticket key in its title never asks the CLI" 0 "$tmp/tmpl_ok.md"
 unset BRIEF_LINT_MIRROR BRIEF_LINT_JIRA_CLI BRIEF_LINT_TEST_SIGNED
 
+# 9. A worker brief tells its worker to search the notes and the graph and cite the result, or its Prior art
+# line already cites one. A filled line that cites nothing (no ticket key, #PR or `none found (<query>)`) is refused.
+# shellcheck disable=SC2016  # the backticks are literal brief text, not command substitution
+DIR_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query -c jira-himmel "topic"` and `bash scripts/graphify/worker-graph.sh explain "sym"`, and cite what each returned. Your Results carry `graph-qmd: <what each returned and whether used>`, or `graph-qmd: n/a, shipping` on a resume that only ships.'
+VAGUE='> **Prior art:** related work exists, see the ticket'
+mk s_vague '# brief' "$VAGUE" '' '> **Contract:** y' '## Results (newest at the bottom)'
+mk s_vague_dir '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' '## Results (newest at the bottom)'
+# shellcheck disable=SC2016  # literal backticks again
+mk s_vague_part '# brief' "$VAGUE" '> Run `bash /x/scripts/lib/qmd-bounded.sh query -c jira-himmel "t"` and `bash scripts/graphify/worker-graph.sh explain "s"`.' '' '> **Contract:** y' '## Results (newest at the bottom)'
+mk s_vague_ran '# brief' "$VAGUE" '' '> **Contract:** y' '## Results (newest at the bottom)' '- 10:00 LIVE — started'
+mk s_key '# brief' '> **Prior art:** HIMMEL-8707 counts graph and qmd use' '' '> **Contract:** y' '## Results (newest at the bottom)'
+mk s_pr '# brief' '> **Prior art:** fixed in #4534' '' '> **Contract:** y' '## Results (newest at the bottom)'
+mk s_judge '# brief' "$VAGUE" '' '> **Completion condition:** z' '## Results (newest at the bottom)'
+expect_rc "9a a filled Prior art line that cites nothing and carries no directive is refused" 1 "$tmp/s_vague.md"
+err="$(bash "$LINT" "$tmp/s_vague.md" 2>&1 >/dev/null)"
+{ grep -Fq 'qmd-bounded.sh' <<< "$err" && grep -Fq 'worker-graph.sh' <<< "$err" && grep -Fq 'graph-qmd:' <<< "$err"; } \
+    && ok "9b the refusal names both search scripts and the graph-qmd: Results bullet" || bad "9b refusal text: $err"
+expect_rc "9c the directive in the Prior art field passes a line that cites nothing" 0 "$tmp/s_vague_dir.md"
+expect_rc "9d only the two scripts, without the graph-qmd: duty, is still refused" 1 "$tmp/s_vague_part.md"
+expect_rc "9e a resume (Results already holds a bullet) is not made to fail" 0 "$tmp/s_vague_ran.md"
+expect_rc "9f a cited ticket key passes without the directive" 0 "$tmp/s_key.md"
+expect_rc "9g a cited #PR passes without the directive" 0 "$tmp/s_pr.md"
+rc=0; bash "$LINT" --judge "$tmp/s_judge.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "9h a judge brief is not held to the worker directive" || bad "9h --judge on a citeless line (rc=$rc)"
+rc=0; out="$(run_worker "$tmp/s_vague.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -ne 0 ] && grep -Fq 'graph-qmd:' <<< "$out"; } && ok "9i the launcher refuses it too" || bad "9i launcher on a citeless line (rc=$rc): $out"
+for t in qmd-bounded.sh worker-graph.sh 'graph-qmd:'; do
+    grep -Fq -- "$t" "$tmp/filled_worker.md" && ok "9j the worker brief template carries $t" || bad "9j the worker brief template lacks $t"
+done
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

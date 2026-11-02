@@ -185,6 +185,13 @@ def load_trust_res():
         die('cannot read the trust paths from %s; a grant cannot be checked against them' % TRUST_PATHS, 2)
 MERGE_AT_READY_LINE = ("Stop at READY and never run a merge command: the chief merges (it runs the gate checks, writes the GO and merges "
                       "from the primary checkout), then sends you `MERGED #<pr> → <sha>`. Hold for that message; then `cd` out, WRAPPED, release the lock,")
+# The search directive every generated brief carries as a continuation of its Prior art field; brief-lint.sh
+# accepts a worker brief with a Prior art line that cites nothing only when this wording (both scripts and graph-qmd:) is there.
+SEARCH_DIRECTIVE = ("Before you design, run `bash {qmd} query -c jira-himmel \"<topic>\"` and "
+                    "`bash scripts/graphify/worker-graph.sh explain \"<symbol>\"`, and cite what each returned (or `none found (<the query you ran>)`). "
+                    "Your Results carry a `graph-qmd: <what each returned and whether used>` bullet, "
+                    "or `graph-qmd: n/a, shipping` on a resume that only ships.")
+
 TRUST_LINE = "If your diff touches a pattern in `scripts/ci/ci-trust-paths.txt`, say so in READY (trust-reviewed GO)."
 
 
@@ -962,6 +969,7 @@ template_version: 3
 > **Why (read the ticket(s) first, including comments: {gets}):** {why}
 
 > **Prior art:** {prior}
+> {search}
 
 {partialblock}> **Contract:**
 > 1. LIVE; paste `git log -1 --format=%H` + base-ancestor check via `append-results.sh` (never `>` in a bullet).
@@ -982,7 +990,7 @@ template_version: 3
 ## Results (newest at the bottom)
 """.format(wt=l['wt'], desc=l['desc'], keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
            branch=l['branch'], base=ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
-           hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
+           hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'], search=SEARCH_DIRECTIVE.format(qmd=shlex.quote(ctx['kit'] + '/scripts/lib/qmd-bounded.sh')),
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], scope_line=write_paths(l.get('writes', '')), others=others, also=also,
            tierline=('\n> **Tier:** %s — %s: %s\n' % (tier_gate(l['model']), l['tier']['category'], l['tier']['reason'].strip())

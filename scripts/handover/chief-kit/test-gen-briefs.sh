@@ -103,6 +103,18 @@ bash "$HERE/brief-lint.sh" "$D1" 2>"$WORK/lint1.err"; rc=$?
 bash "$HERE/brief-lint.sh" "$D2" 2>"$WORK/lint2.err"; rc=$?
 [ "$rc" = 0 ] && pass "brief 2 (none found (<query>) prior art) passes brief-lint.sh" || fail "brief 2 brief-lint rc=$rc: $(cat "$WORK/lint2.err")"
 
+# Every generated brief tells its worker to run the named notes search and graph lookup and cite them
+for b in "$D1" "$D2"; do
+    BD="$(tr '\n' ' ' < "$b" | tr -s ' ')"
+    has "$(basename "$b") carries the notes-search directive" "$BD" "scripts/lib/qmd-bounded.sh query -c jira-himmel"
+    has "$(basename "$b") carries the graph-lookup directive" "$BD" "scripts/graphify/worker-graph.sh explain"
+    has "$(basename "$b") names the graph-qmd: Results bullet" "$BD" "graph-qmd: <what each returned and whether used>"
+done
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["prior"]="related work exists, see the ticket"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/vague.json"
+vout="$(python3 "$SUT" "$WORK/vague.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/vague-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wv" --deadline 1791475000 2>&1)"; rc=$?
+bash "$HERE/brief-lint.sh" "$WORK/vague-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>"$WORK/lintv.err"; lrc=$?
+{ [ "$rc" = 0 ] && [ "$lrc" = 0 ]; } && pass "a generated brief whose prior cites nothing still passes, on the directive" || fail "vague-prior generation rc=$rc lint rc=$lrc: $vout $(cat "$WORK/lintv.err")"
+
 # every brief pre-authorizes a new suite's own tier + duration row
 has "brief 1 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D1" | tr -s ' ')" "A new test suite may add exactly one row for itself to scripts/ci/suite-tiers.tsv and scripts/ci/suite-durations.tsv"
 has "brief 2 pre-authorizes the new suite's own tier and duration rows" "$(tr '\n' ' ' < "$D2" | tr -s ' ')" "name the rows in READY"

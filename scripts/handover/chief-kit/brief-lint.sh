@@ -8,6 +8,9 @@
 # runs once and every worker inherits it. This is the structural half: a brief
 # whose field is missing, empty, an unfilled `<placeholder>`, or a bare `none`
 # fails. `none found (<query>)` passes - it names the query that came up empty.
+# A worker brief (not --judge, not a doc that has run) must also cite a result (a
+# ticket key, a #PR, `none found (<query>)`) or carry the search directive (the
+# qmd-bounded.sh and worker-graph.sh commands plus the `graph-qmd:` Results bullet).
 #
 # The field is the `> **Prior art:**` line plus any directly following `> `
 # continuation lines (up to the next `> **Field:**`, a non-blockquote line, or
@@ -297,6 +300,22 @@ fi
 . "$(dirname "$0")/../../lib/worker-identity.sh"
 if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; then
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
+fi
+
+# A worker brief tells its worker to search the notes and the graph before it designs and to report
+# what each returned, or its Prior art line already cites a result. Merely mentioning the graph moved little in the
+# audit; naming the two scripts and the Results bullet did. A judge brief writes nothing and is not held to it, and a
+# doc whose Results already holds a bullet has run (a resume that only ships) and is not made to fail.
+if [ "$judge" -eq 0 ] && ! worker_doc_has_run "$doc"; then
+    has_directive=1
+    for token in qmd-bounded.sh worker-graph.sh 'graph-qmd:'; do
+        case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
+    done
+    if [ "$has_directive" -eq 0 ] \
+        && ! printf '%s' "$flat" | grep -Eq '(^|[^A-Za-z0-9])([A-Z][A-Z0-9]*-[0-9]+|#[0-9]+)([^0-9]|$)' \
+        && ! printf '%s' "$lower" | grep -Eq 'none found \([^)[:space:]][^)]*\)'; then
+        fail "'> **Prior art:**' cites no result and carries no search directive: cite a ticket key, a #PR or 'none found (<query>)', or add the directive as a continuation line: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; see docs/handover/worker-brief-template.md"
+    fi
 fi
 
 core_rule

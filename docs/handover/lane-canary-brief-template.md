@@ -6,7 +6,7 @@ template_version: 3
 
 # Lane canary — @LANE@ @STAMP@
 
-> **Prior art:** lane canary; no-op by design, rendered by `scripts/lanes/lane-canary.sh`.
+> **Prior art:** none found (no-op canary, nothing to search); rendered by `scripts/lanes/lane-canary.sh`.
 > **Chief:** none. Nobody reads this worker: send no messages, ask no questions, open no PR.
 
 **You are a lane canary worker on the @LANE@ lane.** Do exactly the three steps below,
