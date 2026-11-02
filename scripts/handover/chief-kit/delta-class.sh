@@ -88,33 +88,39 @@ if [ -n "$QID" ]; then
     anchor="$(cd "$HERE/../../.." && pwd)"
     root=$(go_resolve_root "$anchor") || trust
     scope=$(go_verdict_scope "$anchor" "$VREPO") || trust
-    # A judged head that only a delta-noop record rules on is read through that record to the
-    # real judged head it rests on (`delta-judged:`), so the delta stays cumulative from the
-    # last real judge. The no-op itself never counts as a judged head: its target must carry a
-    # real verdict, so a no-op that names another no-op ends in trust below.
-    JR=""
-    for f in "$root/$scope/verdicts/$QID"/*.md; do
-        [ -f "$f" ] || continue
-        [ -r "$f" ] || trust "verdict file $f is unreadable"
-        grep -qx 'delta: no-op' "$f" || continue
-        [ "$(verdict_head "$f")" = "$J" ] || continue
-        [ "$(verdict_word "$f")" = GO ] || trust "delta-noop record $f is not a GO"
-        d=$(tr -d '\r' < "$f" | sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p') # read-sink-ok: the path is a verdict file in the qid's dir; the classifier only parses it
-        [ -n "$d" ] && [ "$(printf '%s\n' "$d" | wc -l)" -eq 1 ] || trust "delta-noop record $f names no single delta-judged head"
-        [ -z "$JR" ] || [ "$JR" = "$d" ] || trust "delta-noop records for $J name different judged heads"
-        JR=$d
-    done
-    if [ -n "$JR" ]; then
-        git cat-file -e "$JR^{commit}" 2>/dev/null || trust "delta-judged head $JR is not a commit in this checkout"
-        J=$JR
+    collect_real() {
+        for f in "$root/$scope/verdicts/$QID"/*.md; do
+            [ -f "$f" ] || continue
+            [ -r "$f" ] || trust "verdict file $f is unreadable"
+            grep -qx 'delta: no-op' "$f" && continue
+            [ "$(verdict_head "$f")" = "$J" ] || continue
+            VFILES+=("$f")
+        done
+    }
+    n0=${#VFILES[@]}
+    collect_real
+    # A judged head that only a delta-noop record rules on (no real verdict does) is read through
+    # that record to the real judged head it rests on (`delta-judged:`), so the delta stays
+    # cumulative from the last real judge. The no-op itself never counts as a judged head: its
+    # target must carry a real verdict, so a no-op that names another no-op ends in trust below.
+    if [ "${#VFILES[@]}" -eq "$n0" ]; then
+        JR=""
+        for f in "$root/$scope/verdicts/$QID"/*.md; do
+            [ -f "$f" ] || continue
+            grep -qx 'delta: no-op' "$f" || continue
+            [ "$(verdict_head "$f")" = "$J" ] || continue
+            [ "$(verdict_word "$f")" = GO ] || trust "delta-noop record $f is not a GO"
+            d=$(tr -d '\r' < "$f" | sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p') # read-sink-ok: the path is a verdict file in the qid's dir; the classifier only parses it
+            [ -n "$d" ] && [ "$(printf '%s\n' "$d" | wc -l)" -eq 1 ] || trust "delta-noop record $f names no single delta-judged head"
+            [ -z "$JR" ] || [ "$JR" = "$d" ] || trust "delta-noop records for $J name different judged heads"
+            JR=$d
+        done
+        if [ -n "$JR" ]; then
+            git cat-file -e "$JR^{commit}" 2>/dev/null || trust "delta-judged head $JR is not a commit in this checkout"
+            J=$JR
+            collect_real
+        fi
     fi
-    for f in "$root/$scope/verdicts/$QID"/*.md; do
-        [ -f "$f" ] || continue
-        [ -r "$f" ] || trust "verdict file $f is unreadable"
-        grep -qx 'delta: no-op' "$f" && continue
-        [ "$(verdict_head "$f")" = "$J" ] || continue
-        VFILES+=("$f")
-    done
     [ "${#VFILES[@]}" -gt 0 ] || trust "no real verdict under qid $QID rules on judged head $J"
 fi
 

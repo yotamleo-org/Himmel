@@ -359,5 +359,10 @@ check "11f: ...yet --delta-noop naming that no-op head is refused rc 2" "$rc11" 
 check "11f: ...by the no-op check, not the classifier" "$(printf '%s\n' "$err11" | grep -c 'is itself a no-op record')" 1
 check "11f: ...and nothing is written" "$([ -e "$dir11/delta-noop-$N11x.md" ] && echo yes || echo no)" no
 
+# 11g: a head that a real verdict also rules on keeps that verdict's findings; the no-op record does not redirect past it
+awk -v h="$Nq" '/^\*\*GO\*\* for head `/ { print "**GO** for head `" h "`."; next } /^finding: / { print "finding: src/b.txt:2"; next } { print }' "$real11" > "$dir11/judge2.md"
+edit 'NR==2 { $0 = "two" } 1' src/b.txt; N11y=$(step edit11y)
+check "11g: a real verdict at a head that also has a no-op record keeps its finding -> finding" "$(dcls "$Nq" "$N11y")" finding
+
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"
