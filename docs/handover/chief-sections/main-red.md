@@ -2,16 +2,22 @@
 
 Read on demand: the CI row of `monitors.md` names this file when a main run
 completes red, and a worker's `MAIN-RED` message lands here too. A red main
-blocks every merge, so classify it first, using steps 1-3 below:
+is the chief's first job, so classify it first, using steps 1-3 below. The merge
+script no longer refuses a PR whose own CI is green (HIMMEL-8675): it merges with a
+`MAIN-RED advisory:` line and an audit `via=advisory run=<id>`, so the HOLD below
+is the chief's to enforce by withholding GOs:
 
 - **Test-only red** (a flake, a cap timeout, a fragile case; the code under
   test is fine): quarantine the case and file its ticket at once. The fleet
   keeps merging. A cap timeout with assertions passing, in suites a PR does
-  not reach, already lets that PR through the merge gate (`main-red: cap-only`);
+  not reach, prints `main-red: cap-only` and is audited `main-red-cap-only ... via=cap-only`;
   the ticket and the fix are still owed.
 - **Real blocker** (main's code is broken): HOLD merges until the fix lands.
-  The fix's merge queues the recheck itself: `merge-on-green.sh` dispatches one
-  `ci.yml` run on main after a `Fixes-main-red:` or fix-GO merge and prints
+  Withhold new GOs and delete any GO file already written for an open PR: a GO
+  written before main went red stays valid and the script will still merge on it.
+  A merge onto the red main, advisory or fix (a cap-only pass queues none), queues the recheck itself:
+  `merge-on-green.sh` dispatches one
+  `ci.yml` run on main and prints
   `MAIN-RECHECK dispatched run=<id>`. Watch that run; lift the HOLD when it is
   green at the fix's head.
 - **Complex** (no clear class, or more than one cause): escalate to a

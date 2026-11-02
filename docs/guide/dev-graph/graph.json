@@ -2211,7 +2211,7 @@
       "to": "o.ruling",
       "kind": "refusal",
       "exit": 22,
-      "condition": "main is red; needs Fixes-main-red or go.sh --fix-main-red",
+      "condition": "main's CI state cannot be read (an unreadable run list, a full window with no completed run, an unreadable re-run attempt); a red main only warns",
       "sources": [
         {
           "file": "scripts/handover/merge-on-green.sh",
@@ -2223,7 +2223,7 @@
       },
       "move": {
         "lead": "stops if",
-        "say": "main is red: your decision (phase 3, Assign)"
+        "say": "main's CI state is unknown: retry, or your decision (phase 3, Assign)"
       }
     },
     {
@@ -4046,7 +4046,7 @@
         "The merge waits for green CI and a GO."
       ],
       "back": [
-        "A merge is refused (no GO, a trust path, or a red main): not recorded.",
+        "A merge is refused (no GO, a trust path, or main's CI state unknown): not recorded.",
         "The chief files leftover work as follow-ups, which start again at phase 1."
       ],
       "steps": [
