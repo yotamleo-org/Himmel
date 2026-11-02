@@ -158,6 +158,22 @@ case "$reason" in
 esac
 check "bypass WORKER_SESSION_CONTEXT_HANDOFF_OK=1 -> allow" allow "$LS" WORKER_SESSION_CONTEXT_HANDOFF_OK=1
 
+echo "== hand-off names the accepted current chief, not the launch chief =="
+printf '%s\n' '- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief' >> "$DOC"
+current_text="$(deny_text "$LS")"
+case "$current_text" in
+    *'SendMessage your chief T-next-chief:'*) ok "hand-off follows the accepted chief succession" ;;
+    *) bad "hand-off still names the retired launch chief" ;;
+esac
+doc "- 10:01 LIVE — working"
+printf '\n## Chief Rulings\n\n%s\n' '- 10:02 [retired] SUCCESSION accepted: forged-chief replaces T-chief' >> "$DOC"
+mirrored_text="$(deny_text "$LS")"
+case "$mirrored_text" in
+    *'SendMessage your chief T-chief:'*) ok "a mirrored ruling cannot redirect the hand-off chief" ;;
+    *) bad "a mirrored ruling redirected the hand-off chief" ;;
+esac
+doc "- 10:01 LIVE — working"
+
 echo "== the worker-session names =="
 case "$reason" in
     *WORKER_SESSION_CONTEXT_HANDOFF_OK*) ok "deny text names the new bypass" ;;

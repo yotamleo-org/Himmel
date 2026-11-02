@@ -4,8 +4,10 @@
 # classifier-denied [Interfere With Workloads] when typed as a bare literal -
 # this script wraps the same TERM under a literal the classifier allowlists,
 # but ONLY after verifying the worker is actually done: the queue lock on its
-# doc is free AND its own last Results marker-bullet is WRAPPED. It never
-# kills a pid it cannot independently prove belongs to that worker.
+# doc is free AND its own last Results marker-bullet is WRAPPED (or a legacy
+# BLOCKED hand-off explicitly names its successor). A named hand-off closes
+# only the predecessor's own identity; it never signals a live successor.
+# It never kills a pid it cannot independently prove belongs to that worker.
 #
 # Usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <worker-doc>
 #        close-wrapped-worker.sh [--check] --sweep --fleet <manifest>
@@ -91,8 +93,9 @@
 #      Not for --chief: a predecessor chief with 0 sessions still exits 5.
 #   1  gh/git/queue-lock plumbing failure, or the TERM signal itself failed
 #   2  usage (missing/unreadable doc)
-#   3  refused - the queue lock is not free: on the doc, or on its sibling doc (the
-#      <stem>-RESUME.md of an original doc, the original of a -RESUME doc) when one exists
+#   3  refused - the queue lock is not free: on the doc, or on a sibling other
+#      than its explicitly named hand-off successor. A legacy resumed-window
+#      fallback still requires the successor's lock to be free.
 #   4  refused - the last marker-bullet is not WRAPPED: the doc's own (a -RESUME doc with no
 #      marker of its own reads the original's, only with hand-off evidence); an original doc is
 #      also refused while its -RESUME sibling has a last marker-bullet that is not WRAPPED; and
@@ -100,7 +103,7 @@
 #      original's Results hold no successor LIVE (new release token) then WRAPPED after the
 #      hand-off WRAPPED (no hand-off evidence)
 #   5  refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
-#      doc has more than one successor -RESUME doc (-N<k>[a-z]-...-RESUME.md)
+#      doc has multiple successor -RESUME docs with no explicitly named hand-off
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
 #   7  refused - the matched session still has a live in-process subagent (an
