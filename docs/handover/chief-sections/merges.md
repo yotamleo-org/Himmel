@@ -66,8 +66,9 @@ failed suites, and merges. A run that is being re-run counts by its previous
 attempt. It prints `main-red: <class> (<suites>)` on every red it
 classifies (`cap-only`, `assertion`, `cap-overlap`, `cap-unverified`,
 `unclassified`: defined in [`ci-merge-flow.md`](../../internals/ci-merge-flow.md),
-section "Main red after a green merge"). Exit 22 is left for an
-unreadable run list or run window. The gate is advisory, so the HOLD on a real
+section "Main red after a green merge"). Exit 22 is left for main's CI state
+being unknown: an unreadable run list, a full 50-run window with no completed
+run, or a re-run whose previous attempt cannot be read. The gate is advisory, so the HOLD on a real
 blocker is yours: withhold the GO of every PR while main is genuinely broken
 (a GO file written before main went red stays valid until you delete it), and
 read the `MAIN-RED advisory:` lines of the merges that did land. The fix PR's

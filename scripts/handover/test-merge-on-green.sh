@@ -4779,6 +4779,7 @@ assert_audit_has "5115-d: audited as the declared fix" "main-red-declared"
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: run=12345')" \
     run_mog 0 "5115-e: forged run id → merged as advisory"
 assert_audit_has "5115-e: audited as an advisory merge" "via=advisory"
+assert_audit_lacks "5115-e: and never as a declared fix" "main-red-declared"
 
 # 5115-f — declared by suite, verified against the red run's failed log.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG" \
@@ -4877,6 +4878,7 @@ assert_audit_has "5115-j: audited" "REFUSED reason=main-red"
 # 5115-k — the dry run reports the same advisory and makes no merge call.
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 0 "5115-k: dry-run on red main → advisory reported" -- --dry-run
 no_merge_call "5115-k: a dry run makes no merge call"
+assert_gh_lacks "5115-k: a dry run queues no re-check" "workflow run ci.yml"
 assert_err_has "5115-k: the dry run prints the advisory" "MAIN-RED advisory:"
 
 # 8675-a (RED, real window) — a red main no longer blocks a PR whose own CI is
@@ -4894,6 +4896,10 @@ assert_gh_has "8675-a: main is re-checked after the merge" "workflow run ci.yml"
 STUB_CI_RC=1 STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 14 "8675-b: red PR on a red main → exit 14"
 no_merge_call "8675-b: no merge call"
 assert_audit_lacks "8675-b: never reaches the main-red advisory" "via=advisory"
+# 8675-c — an unreadable commit list only leaves a declaration unverified: an advisory merge.
+STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_COMMITS_FAIL=1 run_mog 0 "8675-c: red main, commit list unreadable → merged as advisory"
+assert_audit_has "8675-c: audited as an advisory merge" "via=advisory"
+assert_merge_has "8675-c: the merge ran" "--squash"
 rm -f "$MOG_RUN_LOG"
 
 # ── chief-written fix-GO is the second way through the gate ───
@@ -4934,6 +4940,7 @@ rm -f "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913.bak" "$MOG_FX_
 rm -f "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37999999999"
 mog5134_run 0 "5134-d: fix-GO edited to the red run id (mac signs another) → merged as advisory"
 assert_audit_has "5134-d: audited as an advisory merge" "via=advisory"
+assert_audit_lacks "5134-d: and never as a declared fix" "main-red-declared"
 
 # 5134-e — unsigned: a hand-written file with the right fields and no mac.
 printf 'pr=77\nhead=%s\nfix-main-red-run=37964772913\nby=worker\nat=2026-10-10T00:00:00Z\n' "$GO_SHA" \
@@ -4942,8 +4949,8 @@ mog5134_run 0 "5134-e: unsigned fix-GO → merged as advisory"
 assert_audit_has "5134-e: a rejected declaration is audited as an advisory" "via=advisory"
 assert_audit_lacks "5134-e: and never as a declared fix" "main-red-declared"
 
-# 5134-f — a fix-GO for a different PR (78) does not unblock PR 77, even
-# renamed onto PR 77's path (the mac binds the PR number).
+# 5134-f — a fix-GO for a different PR (78) is not a declaration for PR 77, even
+# renamed onto PR 77's path (the mac binds the PR number): an advisory merge.
 go_write "$MOG_FX_ROOT" --fix-main-red 37964772913 78 "$GO_SHA"
 cp "$MOG_FX_ROOT/.locks/go/fix-main-red.78.$GO_SHA.37964772913" "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913"
 mog5134_run 0 "5134-f: a fix-GO signed for PR 78 → merged as advisory"

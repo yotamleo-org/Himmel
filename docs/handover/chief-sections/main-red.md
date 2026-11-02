@@ -13,6 +13,8 @@ is the chief's to enforce by withholding GOs:
   not reach, prints `main-red: cap-only` and is audited `main-red-cap-only ... via=cap-only`;
   the ticket and the fix are still owed.
 - **Real blocker** (main's code is broken): HOLD merges until the fix lands.
+  Withhold new GOs and delete any GO file already written for an open PR: a GO
+  written before main went red stays valid and the script will still merge on it.
   A merge onto the red main, advisory or fix (a cap-only pass queues none), queues the recheck itself:
   `merge-on-green.sh` dispatches one
   `ci.yml` run on main and prints
