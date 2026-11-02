@@ -111,6 +111,11 @@ case "$1 $2" in
             if [ -e "$FX/head-$3" ]; then cat "$FX/head-$3"; else jq -r --argjson n "$3" '.[] | select(.number == $n) | .headRefOid' "$FX/pr-list.json"; fi
         elif [ -e "$FX/view-$3.json" ]; then jq -r .title "$FX/view-$3.json"; else echo "no pull requests found" >&2; exit 1; fi ;;
     "pr list")
+        case " $* " in *" merged "*)
+            [ -e "$FX/pr-merged.fail" ] && { echo "HTTP 502" >&2; exit 1; }
+            if [ -e "$FX/pr-merged.json" ]; then cat "$FX/pr-merged.json"; else echo '[]'; fi
+            exit 0 ;;
+        esac
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
         cat "$FX/pr-list.json" ;;
     "pr checks")
@@ -629,6 +634,28 @@ reset "In Review"; prerow 8602 h2
 printf '{"ts":"2026-10-21T10:00:01Z","event":"merge","key":"%s","pr":"8602","head":"h2","result":"not-merged","stage":"merge-failed"}\n' "$K" >> "$LOG"
 MERGE_ROWS_GH="$tmp/mrgh" drift
 check "3b (HIMMEL-8616): a not-merged row after the pre-merge row retires it" "$(dcount MERGE-MISMATCH)" 0
+
+# A recent merged PR with no merge row whose first key is still open (report only).
+mergedpr() { printf '%s\n' "$1" > "$FX/pr-merged.json"; }
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
+drift
+contains "3b (HIMMEL-8834): a merged PR with no merge row and an open ticket is MERGED-NO-ROW" "$(drows MERGED-NO-ROW)" "MERGED-NO-ROW $K"
+contains "3b (HIMMEL-8834): the row names the PR" "$(drows MERGED-NO-ROW)" "PR #77"
+contains "3b (HIMMEL-8834): the row names the action" "$(drows MERGED-NO-ROW)" "close the ticket or record the remainder"
+check "3b (HIMMEL-8834): the class is report-only" "$(nwrites)" 0
+reset "Done"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
+drift
+check "3b (HIMMEL-8834): a Done ticket is not MERGED-NO-ROW" "$(dcount MERGED-NO-ROW)" 0
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"; logrow merge "$K" moved 77 no
+drift
+check "3b (HIMMEL-8834): a PR with a merge row is not MERGED-NO-ROW" "$(dcount MERGED-NO-ROW)" 0
+reset "To Do"; mergedpr "[{\"number\":78,\"title\":\"fix: [HIMMEL-90019] y follows [$K]\"},{\"number\":79,\"title\":\"chore: no key\"}]"
+drift
+check "3b (HIMMEL-8834): only the first [KEY] of a merged title counts (a later key gets no row)" "$(drows MERGED-NO-ROW | grep -c "MERGED-NO-ROW $K ")" 0
+check "3b (HIMMEL-8834): the first key gets its row, and a keyless title adds none" "$(dcount MERGED-NO-ROW)" 1
+reset "To Do"; touch "$FX/pr-merged.fail"
+drift
+check "3b (HIMMEL-8834): an unreadable merged-PR list is a HEALTH row, never MERGED-NO-ROW" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 0/1
 
 reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
 drift

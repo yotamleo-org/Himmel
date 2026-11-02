@@ -17,6 +17,8 @@
 #   DERIVE-MISMATCH   Jira differs from derive(now); names the D rule and direction
 #   MERGE-MISMATCH    a contract-yes merge row, but the ticket is not Done
 #   DONE-WITH-OPEN-PR Done, but a PR whose title's first [KEY] is the key is open
+#   MERGED-NO-ROW    a recent merged PR with no merge row, its first [KEY] still open (not Done, not an
+#                     Epic); the fix is to close the ticket or record the remainder
 #   MISSED            a miss with no later moved or noop row for the same key and PR,
 #                     unless a derive now settles the key (Done or off the ladder, or
 #                     Jira already at the derived status)
@@ -300,6 +302,34 @@ while IFS= read -r key; do
         fi
     fi
 done <<<"$keys"
+
+# --- merged PRs with no merge row ------------------------------------
+# A PR merged by hand, or by any route that writes no merge row, leaves its ticket reading
+# unfinished with no word of the merge. The 30 newest merged PRs are read once; one row per
+# open ticket (not Done, not an Epic) whose newest merged PR the log has no merge row for.
+# swallow-ok: an unreadable merged list becomes a HEALTH row below, never a plausible count
+mprs=$(bounded 30 gh pr list --state merged --limit 30 --json number,title 2>/dev/null) || mprs=""
+nmp=$(jq 'length' <<<"$mprs" 2>/dev/null) # swallow-ok: a non-numeric count is the unreadable case the next line turns into a HEALTH row
+case "$nmp" in
+    ''|*[!0-9]*) add HEALTH - "gh: the merged-PR list is unreadable" gh "gh auth status; then rerun this check" ;;
+    *)
+        mseen=""
+        while IFS=$'\t' read -r n title; do
+            [ -n "$n" ] || continue
+            k=$(ticket_key_from_title "$title") || continue
+            case " $mseen " in *" $k "*) continue ;; esac
+            mseen="$mseen $k"
+            mrc=0; ts_has_merge_row "$k" || mrc=$?
+            [ "$mrc" -eq 1 ] || continue
+            if ts_read_jira "$k"; then
+                [ "$TS_J_TYPE" != Epic ] && [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || continue
+                add MERGED-NO-ROW "$k" "PR #$n merged with no merge row and the ticket is $TS_J_STATUS: close the ticket or record the remainder" "merge-on-green.sh" "jira transition $k Done (work finished), or record the remainder as a partial"
+            else
+                add HEALTH "$k" "status unknown (stage=get)" jira "$SWEEP_FIX"
+            fi
+        done <<<"$(jq -r '.[] | [.number, .title] | @tsv' <<<"$mprs")"
+        ;;
+esac
 
 # --- version drift -----------------------------------------------------------------
 # A Done or worked ticket held only in a later unreleased version than the current one (the earliest

@@ -273,6 +273,7 @@ STUBNODE
         GH_LOG="$ghlog" \
             MERGE_BLOCK_ALERT_DIR="$tmp/alerts" MERGE_BLOCK_ALERT_CMD="$tmp/bin/alert-sender" \
             TELEGRAM_ACCESS_PATH="$tmp/access.json" \
+            TICKET_STATUS_STATE_DIR="$tmp/state" \
             PATH="$tmp/bin:$PATH" GH_CMD=gh \
             bash "$PR_MERGE" "$@" >"$tmp/out" 2>"$tmp/err"
     )
@@ -287,6 +288,8 @@ STUBNODE
     cp "$tmp/err" "$keep/err" 2>/dev/null
     cp "$jiralog" "$keep/jira.log" 2>/dev/null || : > "$keep/jira.log"
     cp "$tmp/alerts.log" "$keep/alerts.log" 2>/dev/null || : > "$keep/alerts.log"
+    cp "$tmp/state/status-events.jsonl" "$keep/status-events.jsonl" 2>/dev/null || : > "$keep/status-events.jsonl"
+    LAST_STATUS_LOG="$keep/status-events.jsonl"
     LAST_ALERT_LOG="$keep/alerts.log"
     LAST_GH_LOG="$keep/gh.log"
     LAST_OUT="$keep/out"
@@ -333,6 +336,14 @@ assert_jira_log_has() {
 }
 assert_jira_log_lacks() {
     if grep -qF -- "$1" "$LAST_JIRA_LOG"; then fail "$2 (jira log: $(cat "$LAST_JIRA_LOG"))"; else pass; fi
+}
+# The last merge row in the sandbox's status-events log, as "<key>/<pr>/<head>/<contract>/<result>".
+last_merge_row() {
+    jq -rs '[.[] | select(.event == "merge")] | last // {} | "\(.key // "")/\(.pr // "")/\(.head // "")/\(.contract // "")/\(.result // "")"' "$LAST_STATUS_LOG" 2>/dev/null
+}
+assert_merge_row() {
+    local got; got=$(last_merge_row)
+    if [ "$got" = "$1" ]; then pass; else fail "$2 (merge row: $got, want $1)"; fi
 }
 
 echo "test-pr-merge.sh"
@@ -542,6 +553,24 @@ if STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     else
         fail "comment precedes transition (comment@${comment_ln:-none} transition@${transition_ln:-none})"
     fi
+fi
+
+# The merge writes the merge row merge-on-green writes (event=merge, contract, pr,
+# head), so a merge made here is never a merged PR with no row.
+if STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_case "handover/HIMMEL-374-jira-transition" 0 "merge row: --jira-transition merge" -- --jira-transition; then
+    assert_merge_row "HIMMEL-374/42/abc123/yes/moved" "a --jira-transition merge writes a contract=yes row with the PR, head and result"
+fi
+if STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_case "handover/HIMMEL-374-jira-transition" 0 "merge row: default merge"; then
+    assert_merge_row "HIMMEL-374/42/abc123/no/noop" "a default merge writes a contract=no row (the partial)"
+fi
+if STUB_JIRA_BUILD=1 STUB_JIRA_TRANSITION_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_case "handover/HIMMEL-374-jira-transition" 0 "merge row: failed transition" -- --jira-transition; then
+    assert_merge_row "HIMMEL-374/42/abc123/yes/miss" "a failed transition leaves a contract=yes miss row (done-pending, never To Do)"
+fi
+if STUB_PR_TITLE="chore: tidy things up" run_case "handover/x-slug" 0 "merge row: no ticket key"; then
+    assert_merge_row "////" "a merge with no ticket key writes no row"
 fi
 
 # A failing Jira transition must never fail the merge itself (best-effort),
