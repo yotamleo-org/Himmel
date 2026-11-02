@@ -1673,6 +1673,24 @@ for d in "$RESL" "$ORIGL"; do
     check "8424: new-token LIVE + WRAPPED only under ## Notes, $(basename "$d") -> rc 4" "$rc" "4"
     check "8424: ## Notes evidence, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
 done
+# negative: the Results tail is not a WRAPPED. A WRAPPED of the successor sits in Results, then the worker
+# is relocked (a later LIVE); a bullet mentioning WRAPPED in a later ## Notes section makes the whole-file tail
+# read WRAPPED, so the close must read the terminal marker of ## Results alone. Both docs refuse, nothing signaled.
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n- 12:30 LIVE - relocked, release-token %s\n\n## Notes\n\n- 13:00 WRAPPED - a note about the wrap\n' "$TK1" "$(basename "$RESL")" "$TK2" "$TK2" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: a WRAPPED bullet in ## Notes behind a LIVE Results tail, $(basename "$d") -> rc 4" "$rc" "4"
+    check "8424: Notes-bullet WRAPPED, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
+done
+# negative: a LIVE follows the WRAPPED used as evidence, inside Results itself
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n- 12:00 WRAPPED - done\n- 12:30 LIVE - relocked, release-token %s\n' "$TK1" "$(basename "$RESL")" "$TK2" "$TK2" > "$ORIGL"
+for d in "$RESL" "$ORIGL"; do
+    reset_calls
+    rc=0; out=$(run "$d" 2>&1) || rc=$?
+    check "8424: a LIVE after the evidence WRAPPED in Results, $(basename "$d") -> rc 4" "$rc" "4"
+    check "8424: LIVE after WRAPPED, $(basename "$d"): nothing signaled" "$(cat "$CALLS")" ""
+done
 # negative: a successor LIVE with a new token but no WRAPPED after it (still going)
 printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - hand-off to %s\n- 11:00 LIVE - resumed, release-token %s\n' "$TK1" "$(basename "$RESL")" "$TK2" > "$ORIGL"
 reset_calls
@@ -1694,6 +1712,21 @@ rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
 check "8424: two successor RESUME docs -> rc 5" "$rc" "5"
 check "8424: two successors: nothing signaled" "$(cat "$CALLS")" ""
 rm -f "$RESL2" "$RESL"
+# a plain doc (no -RESUME sibling) reads its Results tail alone too: a WRAPPED bullet in a later ## Notes section
+# behind a LIVE Results tail refuses; the same doc without the LIVE tail and the Notes section closes (control)
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 341 claude -n HIMMEL-9-N18-demo-2026-01-01 work
+pgrep_x_stub 341
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - done\n- 10:30 LIVE - relocked, release-token %s\n\n## Notes\n\n- 11:00 WRAPPED - a note about the wrap\n' "$TK1" "$TK2" > "$ORIGL"
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: plain doc, WRAPPED bullet in ## Notes behind a LIVE Results tail -> rc 4" "$rc" "4"
+check "8424: plain doc Notes-bullet WRAPPED: nothing signaled" "$(cat "$CALLS")" ""
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go, release-token %s\n- 10:00 WRAPPED - done\n\n## Notes\n\n- 11:00 a note\n' "$TK1" > "$ORIGL"
+reset_calls
+rc=0; out=$(run "$ORIGL" 2>&1) || rc=$?
+check "8424: plain doc with a WRAPPED Results tail and a later Notes section -> rc 0" "$rc" "0"
+exact_count "8424: plain doc control: the N18 session TERMed once" "$(cat "$CALLS")" "kill -TERM 341" "1"
 
 # --- cause 2: a judge session's doc stem is not an N<k> worker stem ---------------
 rm -rf "$W/proc"; mkdir -p "$W/proc"

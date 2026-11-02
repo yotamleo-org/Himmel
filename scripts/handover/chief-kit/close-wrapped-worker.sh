@@ -30,7 +30,8 @@
 #   - `queue-lock.sh status <worker-doc>` reports free (rc=0);
 #   - the doc's last `## Results` marker-bullet (one of LIVE/FINDING/
 #     RESOLVED/READY/BLOCKED/HALTED/WRAPPED, leading token of the newest
-#     such bullet) is WRAPPED; a -RESUME doc with no marker-bullet of its own reads the original's
+#     such bullet) is WRAPPED, read from the Results section alone (a bullet in a later section, a
+#     `## Notes` line naming WRAPPED, is no tail); a -RESUME doc with no marker-bullet of its own reads the original's
 #     (a resumed worker's WRAPPED lands on the original doc) only when the original's Results hold,
 #     after the hand-off WRAPPED naming the -RESUME doc, a LIVE with a new release token and then a
 #     WRAPPED, and the sibling's queue lock must be free too;
@@ -282,14 +283,28 @@ resume_evidence() {
             if (named && !hand && mk == "WRAPPED") { hand = 1; next }
             if (!hand) { if (tok != "") pred = tok; next }
             if (!live && tok != "" && tok != pred) { live = 1; next }
-            # defence in depth: the worker_tail_status check on the original (last marker is WRAPPED) already
-            # refuses a WRAPPED that is not the tail, so a WRAPPED-after-LIVE gate cannot be pinned by a row
+            if (live && mk != "") tailmk = mk
             if (live && mk == "WRAPPED") wrapped = 1
         }
-        END { exit !wrapped }' "$1"
+        END { exit !(wrapped && tailmk == "WRAPPED") }' "$1"
+}
+
+# results_tail_status <doc>: the doc's tail status read from its `## Results` section alone, through the
+# one marker parser (worker_tail_status), so a bullet in a later section (a ## Notes line that mentions
+# WRAPPED) never reads as the worker's tail. Prints `nosection` for a doc with no such heading (a legacy
+# doc: the whole-file tail stands). Returns 1 when the section cannot be copied.
+results_tail_status() {
+    local tmp out
+    if ! grep -qE '^## Results( |$)' "$1" 2>/dev/null; then printf 'nosection'; return 0; fi
+    tmp=$(mktemp "${TMPDIR:-/tmp}/cww-results.XXXXXX") || return 1
+    if ! awk '/^## / { inres = ($0 ~ /^## Results( |$)/); next } inres' "$1" > "$tmp"; then rm -f "$tmp"; return 1; fi
+    out=$(worker_tail_status "$tmp"); rm -f "$tmp"
+    printf '%s' "$out"
 }
 
 last_marker=$(worker_tail_status "$DOC")
+tail_doc="$DOC"   # the doc last_marker is read from
+res_chk=""        # a resumed pair's own RESUME doc, whose Results tail must be WRAPPED too when it reports one
 if [ -n "$SIB_DOC" ]; then
     if [[ $DOC == *-RESUME.md ]]; then sib_res="$DOC"; sib_orig="$SIB_DOC"; else sib_res="$SIB_DOC"; sib_orig="$DOC"; fi
     res_marker=$(worker_tail_status "$sib_res")
@@ -301,17 +316,31 @@ if [ -n "$SIB_DOC" ]; then
             echo "close-wrapped-worker: refusing - $sib_res has no marker-bullet of its own and $sib_orig holds no successor LIVE (new release token) then WRAPPED after the hand-off (no hand-off evidence)" >&2
             exit 4
         fi
-        if [[ $DOC == *-RESUME.md ]]; then last_marker=$(worker_tail_status "$sib_orig"); fi
+        if [[ $DOC == *-RESUME.md ]]; then last_marker=$(worker_tail_status "$sib_orig"); tail_doc="$sib_orig"; fi
     elif [ "$res_marker" != "WRAPPED" ] && [[ $DOC != *-RESUME.md ]]; then
         # an original doc's WRAPPED is stale once its -RESUME doc reports anything newer than WRAPPED
         echo "close-wrapped-worker: refusing - the sibling doc $SIB_DOC last Results marker-bullet is '$res_marker', not WRAPPED" >&2
         exit 4
+    elif [[ $DOC != *-RESUME.md ]]; then
+        res_chk="$sib_res"
     fi
 fi
 if [ "$last_marker" != "WRAPPED" ]; then
     echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
 fi
+# the whole-file tail above also reads a bullet in a section after Results (a ## Notes line that mentions
+# WRAPPED): the completion evidence is the terminal marker of the ## Results section alone
+for rt_doc in "$tail_doc" ${res_chk:+"$res_chk"}; do
+    if ! rt=$(results_tail_status "$rt_doc"); then
+        echo "close-wrapped-worker: refusing - cannot read the ## Results section of $rt_doc" >&2
+        exit 4
+    fi
+    if [ "$rt" != nosection ] && [ "$rt" != WRAPPED ]; then
+        echo "close-wrapped-worker: refusing - the ## Results section of $rt_doc ends with '${rt:-<none>}', not WRAPPED (a WRAPPED further down the doc is not the worker's tail)" >&2
+        exit 4
+    fi
+done
 
 # git-env-ok: every git call below goes through sc_git, which runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
 # (the remote refresh inlines the same scrub because it also runs under timeout, and
