@@ -8,10 +8,11 @@ import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness } from "./fixtures";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 // the real rollup builds the response, so the fixture has the shape the server sends; it is an ES module and the
 // Playwright runner loads specs as CommonJS, so a child node runs it
-const ROLLUP = join(__dirname, "../../../eval/worker-digest/tool-health.mjs");
+const ROLLUP = pathToFileURL(join(__dirname, "../../../eval/worker-digest/tool-health.mjs")).href;
 const rollupToolHealth = (evals: object[], failures: object[], now: number, opts: object) => JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e",
   `import { rollupToolHealth } from ${JSON.stringify(ROLLUP)}; const [e, f, n, o] = JSON.parse(process.argv[1]); process.stdout.write(JSON.stringify(rollupToolHealth(e, f, new URLSearchParams(), n, {}, o)));`,
   JSON.stringify([evals, failures, now, opts])], { encoding: "utf8" }));
