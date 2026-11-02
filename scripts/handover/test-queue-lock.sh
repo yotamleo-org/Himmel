@@ -3633,15 +3633,40 @@ fi
 if [ -n "$_TIMEOUT_BIN" ] && command -v flock >/dev/null 2>&1; then
     H_DOC_F="$(h_doc halted-locked 'LIVE — working')"
     H_LK_F="$(h_hold "$H_DOC_F" "$H_HOST-pid$H_PID" "$H_HOST")"
-    ( . "$SCRIPT_DIR/chief-kit/worker-doc-lock.sh"; doc_lock "$H_DOC_F" t8541 && exec sleep 60 ) &
-    H_HOLD_PID=$!
-    sleep 1
-    H_OUT_F="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=1 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 30 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_F=$?
+    # h_hold_doc <doc> <ready-file> -- a background holder of the doc's write lock; the ready file appears only once it holds it.
+    h_hold_doc() {
+        rm -f "$2"
+        ( . "$SCRIPT_DIR/chief-kit/worker-doc-lock.sh"; doc_lock "$1" t8541 && { : > "$2"; exec sleep 60; } ) &
+        H_HOLD_PID=$!
+        local i=0
+        while [ ! -e "$2" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+        [ -e "$2" ]
+    }
+    H_READY_F="$TMPDIR_ROOT/t8541f-ready"
+    if h_hold_doc "$H_DOC_F" "$H_READY_F"; then
+        H_OUT_F="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=1 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 30 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_F=$?
+    else
+        H_OUT_F="the background holder never took the doc lock"; H_RC_F=-1
+    fi
     kill "$H_HOLD_PID" 2>/dev/null; wait "$H_HOLD_PID" 2>/dev/null
-    if [ "$H_RC_F" -ne 124 ] && [ -n "$H_LK_F" ] && [ ! -d "$H_LK_F" ] && grepq "$H_OUT_F" "could not append the HALTED bullet"; then
+    if [ "$H_RC_F" -eq 0 ] && [ -n "$H_LK_F" ] && [ ! -d "$H_LK_F" ] && grepq "$H_OUT_F" "could not append the HALTED bullet"; then
         pass "T8541f: a held doc lock times the HALTED append out with a WARN and the lock is still freed"
     else
         fail "T8541f: held doc lock (rc=$H_RC_F lock=$H_LK_F) out: $H_OUT_F"
+    fi
+    # i: a zero limit is treated as unset (default 10 s), so the append stays bounded and the lock is still freed
+    H_DOC_I="$(h_doc halted-locked-zero 'LIVE — working')"
+    H_LK_I="$(h_hold "$H_DOC_I" "$H_HOST-pid$H_PID" "$H_HOST")"
+    if h_hold_doc "$H_DOC_I" "$TMPDIR_ROOT/t8541i-ready"; then
+        H_OUT_I="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=0 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 25 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_I=$?
+    else
+        H_OUT_I="the background holder never took the doc lock"; H_RC_I=-1
+    fi
+    kill "$H_HOLD_PID" 2>/dev/null; wait "$H_HOLD_PID" 2>/dev/null
+    if [ "$H_RC_I" -eq 0 ] && [ -n "$H_LK_I" ] && [ ! -d "$H_LK_I" ] && grepq "$H_OUT_I" "could not append the HALTED bullet"; then
+        pass "T8541i: a zero HALTED timeout falls back to the default bound and the lock is still freed"
+    else
+        fail "T8541i: zero limit (rc=$H_RC_I lock=$H_LK_I) out: $H_OUT_I"
     fi
 else
     pass "T8541f: skipped, needs GNU timeout and flock"
@@ -3659,13 +3684,26 @@ else
 fi
 # h: a forced takeover (QUEUE_LOCK_TAKEOVER=1) over a LIVE holder is not a dead worker
 H_DOC_H="$(h_doc halted-takeover-live 'LIVE — working')"
-h_hold "$H_DOC_H" "$H_HOST-pid$$" "$H_HOST" >/dev/null
+H_LK_H="$(h_hold "$H_DOC_H" "$H_HOST-pid$$" "$H_HOST")"
+H_LIVE_SETUP_H=no; [ -n "$H_LK_H" ] && [ -f "$H_LK_H/owner.json" ] && H_LIVE_SETUP_H=yes
 QUEUE_LOCK_TAKEOVER=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_H" taker-live-fixture >/dev/null 2>&1; H_RC_H=$?
-if [ "$H_RC_H" -eq 0 ] && [ "$(h_tail "$H_DOC_H")" = "- 10:00 LIVE — working" ]; then
+if [ "$H_LIVE_SETUP_H" = yes ] && [ "$H_RC_H" -eq 0 ] && grepq "$(cat "$H_LK_H/owner.json" 2>/dev/null)" '"session":"taker-live-fixture"' \
+    && [ "$(h_tail "$H_DOC_H")" = "- 10:00 LIVE — working" ]; then
     pass "T8541h: a forced takeover over a live holder writes no HALTED bullet"
 else
-    fail "T8541h: live takeover (rc=$H_RC_H) tail: $(h_tail "$H_DOC_H")"
+    fail "T8541h: live takeover (setup=$H_LIVE_SETUP_H lock=$H_LK_H rc=$H_RC_H) tail: $(h_tail "$H_DOC_H")"
 fi
+# j: a forced release takes the release claim before the proof, so a contender holding it stops the release before any HALTED is written
+H_DOC_J="$(h_doc halted-claimed 'LIVE — working')"
+H_LK_J="$(h_hold "$H_DOC_J" "$H_HOST-pid$H_PID" "$H_HOST")"
+mkdir "$H_LK_J.claim" && printf '%s' "release-pid1-r1" > "$H_LK_J.claim/owner"
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_J" >/dev/null 2>&1; H_RC_J=$?
+if [ "$H_RC_J" -eq 2 ] && [ -d "$H_LK_J" ] && [ "$(h_tail "$H_DOC_J")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541j: a forced release refused on a held release claim writes no HALTED bullet and frees nothing"
+else
+    fail "T8541j: claimed forced release (rc=$H_RC_J lock=$H_LK_J) tail: $(h_tail "$H_DOC_J")"
+fi
+rm -rf "$H_LK_J.claim"
 
 # --- T104: preflight warns when a declared file overlaps another live session's edits
 P_ROOT="$TMPDIR_ROOT/pf-handovers"; P_REPO="$TMPDIR_ROOT/pf-repo"
