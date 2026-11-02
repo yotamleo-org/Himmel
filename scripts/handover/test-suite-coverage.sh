@@ -113,22 +113,60 @@ EOF
 out=$(bash "$SC" --runner "$tmp/hostile.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
 if [ -e "$tmp/pwned-body" ]; then bad "runner function body is never executed"; else pass "runner function body is never executed"; fi
 expect "hostile body still yields the data cap" 'nightly only.*1700' "$out" 0
-sed "s|^SUITE_TIMEOUT=.*|SUITE_TIMEOUT=\$(touch \"$tmp/pwned-default\"; _suite_num SUITE_TIMEOUT \"\${SUITE_TIMEOUT:-600}\" 600)|" "$tmp/runner.sh" > "$tmp/hostile-default.sh"
+# the shape the old helper really evaluated: the default line, with a command substitution
+sed "s|^SUITE_TIMEOUT=.*|SUITE_TIMEOUT=\$(_suite_num SUITE_TIMEOUT \"\$(touch $tmp/pwned-default)\" 600)|" "$tmp/runner.sh" > "$tmp/hostile-default.sh"
 out=$(bash "$SC" --runner "$tmp/hostile-default.sh" scripts/plain/test-plain.sh 2>&1); rc=$?
 if [ -e "$tmp/pwned-default" ]; then bad "runner default line is never executed"; else pass "runner default line is never executed"; fi
+expect "hostile default line is unreadable, exit 2" 'no readable' "$out" 2
 # an unrecognised default line or arm shape fails visibly, never a guessed cap
 # shellcheck disable=SC2016 # a literal replacement line for the fixture runner
 sed 's|^SUITE_TIMEOUT=.*|SUITE_TIMEOUT=$(whatever)|' "$tmp/runner.sh" > "$tmp/bad-default.sh"
 out=$(bash "$SC" --runner "$tmp/bad-default.sh" scripts/plain/test-plain.sh 2>&1); rc=$?
-expect "unparseable default timeout exits 2" 'could not|not a run-shell-tests' "$out" 2
+expect "unparseable default timeout exits 2" 'no readable' "$out" 2
 sed "s|printf '1700' ;;|printf '%s' \"\$(id -u)\" ;;|" "$tmp/runner.sh" > "$tmp/bad-arm.sh"
 out=$(bash "$SC" --runner "$tmp/bad-arm.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
-expect "unparseable cap arm exits 2" 'could not' "$out" 2
+expect "unparseable cap arm exits 2" 'unrecognised line' "$out" 2
 
-# a one-line conditional arm takes the largest literal whatever its order
-sed "s|printf '1700' ;;|if [ -n \"\${X:-}\" ]; then printf '9000'; else printf '1700'; fi ;;|" "$tmp/runner.sh" > "$tmp/cond-arm.sh"
-out=$(bash "$SC" --runner "$tmp/cond-arm.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
-expect "one-line conditional arm takes the largest printf" 'nightly only.*9000' "$out" 0
+# mk_runner <file> <case-body>: a fixture runner whose Linux case holds exactly <case-body>.
+# shellcheck disable=SC2016 # literal runner source lines
+mk_runner() {
+  { echo 'SUITE_TIMEOUT=$(_suite_num SUITE_TIMEOUT "${SUITE_TIMEOUT:-600}" 600)'
+    echo '_suite_timeout_for() {'; echo '  case "${1#./}" in'; printf '%s\n' "$2"; echo '  esac'; echo '}'
+    sed -n '/^SKIP_LIST="/,$p' "$tmp/runner.sh"; } > "$1"
+}
+H='    scripts/slow/test-slow.sh|*/scripts/slow/test-slow.sh)'
+B="      printf '1700' ;;"
+# shellcheck disable=SC2016
+STAR=$'    *)\n      printf \'%s\' "$SUITE_TIMEOUT" ;;'
+# rejects <desc> <case-body>: the helper must exit 2 and never answer a cap
+rejects() {
+  mk_runner "$tmp/shape.sh" "$2"
+  out=$(bash "$SC" --runner "$tmp/shape.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
+  if [ "$rc" -eq 2 ] && ! grep -q 'cap [0-9]' <<< "$out"; then pass "$1"; else bad "$1 (rc=$rc)" "$out"; fi
+}
+# accepts <desc> <ere> <case-body>
+accepts() {
+  mk_runner "$tmp/shape.sh" "$3"
+  out=$(bash "$SC" --runner "$tmp/shape.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
+  expect "$1" "$2" "$out" 0
+}
+rejects "one-line arm fails, not the default" "$H printf '1700' ;;"$'\n'"$STAR"
+rejects "header with a trailing comment fails" "$H  # why"$'\n'"$B"$'\n'"$STAR"
+rejects "header at other indentation fails" "      scripts/slow/test-slow.sh|*/scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
+rejects "continued pattern list fails" "    scripts/slow/test-slow.sh|"$'\n'"    */scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
+rejects "quoted arm pattern fails" '    "scripts/slow/test-slow.sh")'$'\n'"$B"$'\n'"$STAR"
+rejects "leading-paren arm fails" "    (scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
+rejects "spaced alternation fails" "    scripts/slow/test-slow.sh | */scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
+rejects "an arm with an extra body command fails" "$H"$'\n'"      sleep 1"$'\n'"$B"$'\n'"$STAR"
+rejects "a * arm with another body fails" "$H"$'\n'"$B"$'\n'"    *)"$'\n'"      printf '%s' \"\$FOO\" ;;"
+rejects "a non-* arm answering SUITE_TIMEOUT fails" "$H"$'\n'"      printf '%s' \"\$SUITE_TIMEOUT\" ;;"$'\n'"$STAR"
+rejects "a case with no * arm fails" "$H"$'\n'"$B"
+rejects "an unsupported conditional fails" "$H"$'\n'"      if [ -n \"\${X:-}\" ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
+accepts "a * arm literal is read" 'cap 777s' "    scripts/other/test-other.sh)"$'\n'"      printf '5' ;;"$'\n'"    *)"$'\n'"      printf '777' ;;"
+accepts "conditional true by default takes its then branch" 'cap 9000s' "$H"$'\n'"      if [ \"\${X:-fast}\" = fast ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
+accepts "conditional false by default takes the smaller else branch" 'cap 1700s' "$H"$'\n'"      if [ \"\${X:-all}\" = fast ] || [ \"\${Y:-}\" = fast ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
+accepts "a comment mentioning printf is skipped" 'cap 1700s' "$H"$'\n'"      # was printf '9999' once"$'\n'"$B"$'\n'"$STAR"
+accepts "a trailing comment after ;; is read" 'cap 1700s' "$H"$'\n'"      printf '1700' ;;  # measured"$'\n'"$STAR"
 
 out=$(bash "$SC" --runner "$REAL" scripts/test-install-symmetry-vm.sh 2>&1); rc=$?
 expect "real: install-symmetry-vm not run in CI" 'not run in CI' "$out" 0
@@ -136,6 +174,12 @@ out=$(bash "$SC" --runner "$REAL" scripts/handover/test-arm-resume.sh 2>&1); rc=
 expect "real: arm-resume superseded by both wrappers" 'superseded by .*test-arm-resume-fast.sh.*test-arm-resume-1879.sh' "$out" 0
 out=$(bash "$SC" --runner "$REAL" scripts/handover/test-arm-resume-1879.sh 2>&1); rc=$?
 expect "real: arm-resume-1879 runs with a 1700s cap" '1700' "$out" 0
+out=$(bash "$SC" --runner "$REAL" scripts/eval/guard-corpus/test-guard-corpus.sh 2>&1); rc=$?
+expect "real: guard-corpus takes the unset-environment branch, 10800s" 'cap 10800s' "$out" 0
+out=$(bash "$SC" --runner "$REAL" scripts/handover/test-suite-coverage.sh 2>&1); rc=$?
+expect "real: an unlisted suite gets the runner's 600s default" 'runs in PR CI \(cap 600s\)' "$out" 0
+out=$(bash "$SC" --runner "$REAL" scripts/hooks/test-block-destructive-commands-b.sh 2>&1); rc=$?
+expect "real: the [abcd] bracket glob matches, 1200s" 'cap 1200s' "$out" 0
 
 [ "$fail" -eq 0 ] && echo "PASS: suite-coverage" || echo "FAIL: suite-coverage"
 exit "$fail"
