@@ -213,6 +213,7 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     CFG_ASSIGN=""
     record "$HIMMEL_ROOT/marketplace/"
     run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+    assert_eq "trailing-slash record: denies" 2 "$RC"
     assert_contains "trailing-slash record: names the recorded checkout's fetcher" \
         "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
     # The project owns a fetcher and a conf naming x.com, both beside the project
