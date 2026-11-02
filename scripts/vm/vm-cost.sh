@@ -10,7 +10,9 @@
 #   --path  print the ledger path and exit (launch-guest.sh writes there).
 #   --today print ONE space-free line of today's (UTC) spend per account, for the chief tick and
 #           the Telegram station-status: <account>:<usd>usd[?]/<n>runs joined by commas, the ?
-#           marking a total that leaves out a null-cost row. No output when no row is from today.
+#           marking a total that leaves out a null-cost row. An account label is printed with every
+#           character outside A-Za-z0-9._- as _, so it cannot split or spoof a tick field.
+#           No output when no row is from today.
 # Ledger: <handover root>/.ledger/vm-cost.jsonl (override: LAUNCH_GUEST_COST_LEDGER),
 #   one row per launched VM test run, written by launch-guest.sh:
 #   {ticket, vm, account, seconds, usd, usd_source, ts}. The account is a label, never a token.
@@ -53,7 +55,7 @@ if [ "$MODE" = today ]; then
             [.[] | select((.ts | type) == "string" and (.ts | startswith($today)))]
             | if length == 0 then empty else
                 group_by(.account // "unknown")
-                | map("\(.[0].account // "unknown"):\(map(if (.usd | type) == "number" then .usd else 0 end) | add | usd2)usd\(if any(.[]; (.usd | type) != "number") then "?" else "" end)/\(length)runs")
+                | map("\(.[0].account // "unknown" | tostring | gsub("[^A-Za-z0-9._-]"; "_")):\(map(if (.usd | type) == "number" then .usd else 0 end) | add | usd2)usd\(if any(.[]; (.usd | type) != "number") then "?" else "" end)/\(length)runs")
                 | join(",")
               end'
     exit $?

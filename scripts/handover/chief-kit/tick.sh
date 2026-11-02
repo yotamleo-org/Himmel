@@ -388,6 +388,11 @@ deadline-over=<n>s (HIMMEL-8735): the tick passed TICK_DEADLINE_SEC (default 90)
 probe's cap was cut to what was left, so its unknown, ? or skip may only mean it ran out of
 time. Absent on a tick inside the deadline. Not part of chief-wait's wake key.
 
+vmspend=<account>:<usd>usd[?]/<n>runs[,...] is today's (UTC) VM test spend per account, read from the
+VM cost ledger by `vm-cost.sh --today` (a local file read, no network). The ? marks a total that leaves
+out a row whose cost could not be read. Absent when no ledger row is from today or the ledger cannot be
+read. Sits right after usage=; verbose prints it as `vm spend today:`. Not part of chief-wait's wake key.
+
 versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
 mirror on this machine). `versionless-done.sh --backfill` lists the fix; it never auto-writes.

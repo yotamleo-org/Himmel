@@ -9,8 +9,10 @@
 # an unconfirmed mutating request from the bridge.
 #
 # Ops (arg "-" means none):
-#   station-status    -        read-only snapshot: load, memory, bank, chiefs,
-#                              last tick, waiter heartbeats, primary state
+#   station-status    -        read-only snapshot: load, memory, bank, today's
+#                              VM test spend per account (UTC day, only when the
+#                              ledger has a row for it), chiefs, last tick,
+#                              waiter heartbeats, primary state
 #   revert-main       <pr>     open GitHub's revert PR for the PR that is the
 #                              default branch's HEAD, merge it with --admin
 #                              (break-glass: operator-initiated, confirm-coded,

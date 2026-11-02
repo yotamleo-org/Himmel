@@ -94,6 +94,8 @@ fi
 export GH_LOG="$TMP/gh.log" BREAK_GLASS_GH="$TMP/bin/gh" BREAK_GLASS_SYSTEMCTL="$TMP/bin/systemctl"
 export BREAK_GLASS_PRIMARY="$PRIMARY" BREAK_GLASS_MERGE_SLEEP=0 BREAK_GLASS_MERGE_TRIES=2
 export BREAK_GLASS_BANK_CMD="echo BANK-STUB"
+# station-status reads the VM cost ledger: point it at an absent fixture path for the whole suite
+export LAUNCH_GUEST_COST_LEDGER="$TMP/no-vm-cost.jsonl"
 export OTHER_GUARD_OK=1 TELEGRAM_BOT_TOKEN=secret-token-fixture
 
 bg() { (unset CLAUDECODE; bash "$SUT" "$@") 2>"$TMP/err"; }
@@ -114,6 +116,11 @@ out=$(bg station-status - -); rc=$?
 assert_rc "S1 station-status succeeds" 0 "$rc"
 assert_contains "S2 it reports load" "load " "$out"
 assert_contains "S3 it relays the bank preflight" "BANK-STUB" "$out"
+# A handover root that does carry a ledger row for today: the suite must not read any ledger but its own fixture.
+mkdir -p "$TMP/hd/.ledger"
+printf '{"ticket":"H-9","vm":"v","account":"decoy","seconds":1,"usd":1,"usd_source":"x","ts":"%sT00:00:01Z"}\n' "$(date -u +%Y-%m-%d)" > "$TMP/hd/.ledger/vm-cost.jsonl"
+out=$(HANDOVER_DIR="$TMP/hd" bg station-status - -)
+assert_not_contains "S3b station-status reads no ledger but the suite's fixture" "decoy" "$out"
 assert_contains "S4 it reports the primary branch and cleanliness" "primary main" "$out"
 assert_contains "S5 it reports the last tick age" "last tick:" "$out"
 [ "$(git -C "$PRIMARY" rev-parse HEAD)" = "$before" ] && echo "PASS S6 station-status changes nothing" || { echo "FAIL S6 station-status moved the primary"; FAILED=$((FAILED + 1)); }
@@ -156,7 +163,7 @@ assert_not_contains "VS3 no row for today prints no VM spend line" "vm spend" "$
 rm -f "$LAUNCH_GUEST_COST_LEDGER"
 out=$(bg station-status - -)
 assert_not_contains "VS4 no ledger prints no VM spend line" "vm spend" "$out"
-unset LAUNCH_GUEST_COST_LEDGER
+export LAUNCH_GUEST_COST_LEDGER="$TMP/no-vm-cost.jsonl"
 # --- /repin-hooks ------------------------------------------------------------
 git -C "$PRIMARY" checkout -q -b side
 bg repin-hooks - - >/dev/null; assert_rc "R1 primary off the default branch is left alone" 21 "$?"

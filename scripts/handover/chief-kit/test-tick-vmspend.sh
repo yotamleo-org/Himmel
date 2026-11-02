@@ -16,7 +16,8 @@ if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 
 fi
 same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
 
-COST="$HERE/../../vm/vm-cost.sh"
+# VM_COST_SUT overrides the script under test (RED control: a mutated copy must fail a row below).
+COST="${VM_COST_SUT:-$HERE/../../vm/vm-cost.sh}"
 mkdir -p "$W/repo/scripts/vm"
 cp "$COST" "$W/repo/scripts/vm/vm-cost.sh"
 LEDGER="$W/vm-cost.jsonl"
@@ -42,6 +43,23 @@ same 'vm-cost --today: one line, per account, today only, an unknown cost marked
 same 'tick: vmspend= carries the same per-account line' "$(vmspend_of)" 'acct-a:1.75usd/2runs,acct-b:2.25usd?/2runs'
 verbose="$(bash "$SUT" --verbose 2>/dev/null)"
 case "$verbose" in *$'\n''vm spend today: acct-a:1.75usd/2runs,acct-b:2.25usd?/2runs'$'\n'*) pass 'tick --verbose: one vm spend today line' ;; *) fail "tick --verbose: no vm spend today line in '$verbose'" ;; esac
+
+# --- the line's own logic: money format, row guards, the UTC day, the account label ----------
+row HIMMEL-1 acct-p 1.05 "$today" > "$LEDGER"
+same 'vm-cost --today: a 1.05 cost keeps its zero pad' "$(bash "$COST" --today 2>/dev/null)" 'acct-p:1.05usd/1runs'
+{ printf '{"ticket":"HIMMEL-2","account":"acct-q","usd":1}\n'; row HIMMEL-3 acct-r 2 "$today"; } > "$LEDGER"
+out="$(bash "$COST" --today 2>/dev/null)"; rc=$?
+same 'vm-cost --today: a row with no ts is skipped and the rest still print' "$out" 'acct-r:2.00usd/1runs'
+same 'vm-cost --today: a row with no ts leaves exit 0' "$rc" 0
+{ printf '5\n'; row HIMMEL-3 acct-r 2 "$today"; } > "$LEDGER"
+out="$(bash "$COST" --today 2>/dev/null)"; rc=$?
+same 'vm-cost --today: a bare 5 line is skipped and the rest still print' "$out" 'acct-r:2.00usd/1runs'
+same 'vm-cost --today: a bare 5 line leaves exit 0' "$rc" 0
+row HIMMEL-1 acct-a 1.5 "$today" > "$LEDGER"
+same 'vm-cost --today: a clock ahead of UTC (TZ=Etc/GMT-14) still reads the UTC day' "$(TZ=Etc/GMT-14 bash "$COST" --today 2>/dev/null)" 'acct-a:1.50usd/1runs'
+same 'vm-cost --today: a clock behind UTC (TZ=Etc/GMT+12) still reads the UTC day' "$(TZ=Etc/GMT+12 bash "$COST" --today 2>/dev/null)" 'acct-a:1.50usd/1runs'
+row HIMMEL-1 'a b,c:d=e' 1 "$today" > "$LEDGER"
+same 'vm-cost --today: an odd account label cannot split or spoof a tick field' "$(bash "$COST" --today 2>/dev/null)" 'a_b_c_d_e:1.00usd/1runs'
 
 # --- negative controls: no row for today means no line ----------------------
 row HIMMEL-5 acct-c 9 2000-01-01 > "$LEDGER"
