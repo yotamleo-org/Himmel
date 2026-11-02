@@ -1265,6 +1265,125 @@ assert "Test25: the inline call did not use the Scrapling fallback" "no" "$t25a"
 t25b=no; grep -q "needs_thread: true" "$t25_vault/Clippings/a.md" 2>/dev/null && grep -q "enrichment_status: partial" "$t25_vault/Clippings/a.md" 2>/dev/null && t25b=yes
 assert "Test25: and the clip reads partial + needs_thread, left for the backfill" "yes" "$t25b"
 
+# -- Test 26: clip-reread-plan.mjs pre-filters a reread and triage-skips triaged clips --
+echo "Test 26: clip-reread-plan pre-filters already-triaged clips with appended thread text"
+PLAN="$TOOLS_DIR/clip-reread-plan.mjs"
+t26_vault="$tmpdir/vault-t26"
+mkdir -p "$t26_vault/Clippings/_evidence"
+mk_t26() {  # <file> <processed line or empty> <thread body or empty>
+    {
+        echo "---"
+        echo "source: https://x.com/jack/status/26"
+        echo "tags:"
+        echo "  - ai"
+        [ -n "$2" ] && echo "$2"
+        echo "---"
+        echo "# tweet"
+        echo ""
+        echo "## The Idea"
+        echo "original idea text"
+        if [ -n "$3" ]; then
+            echo ""
+            echo "## Thread"
+            echo "<!-- fxtwitter thread -->"
+            printf '%s\n' "$3"
+        fi
+    } >"$t26_vault/Clippings/_evidence/$1"
+}
+t26_author="$(printf 'x%.0s' $(seq 1 400))"
+mk_t26 links.md "processed: true" "
+**@jack** (author) https://x.com/jack/status/27
+
+> see https://example.com/paper for details"
+mk_t26 author-text.md "processed: true" "
+**@jack** (author) https://x.com/jack/status/28
+
+> $t26_author"
+mk_t26 tiny.md "processed: true" "
+**@jack** (author) https://x.com/jack/status/29
+
+> thanks"
+mk_t26 nothread.md "processed: true" ""
+mk_t26 fresh.md "" "
+**@jack** (author) https://x.com/jack/status/30
+
+> $t26_author"
+t26_tiny_sum="$(sha256sum "$t26_vault/Clippings/_evidence/tiny.md" | cut -d' ' -f1)"
+t26_before="$(sha256sum "$t26_vault/Clippings/_evidence/links.md" | cut -d' ' -f1)"
+node "$PLAN" --vault "$t26_vault" --kept-file "$tmpdir/t26-kept.txt" >"$tmpdir/t26-dry.out" 2>&1
+assert "Test26: dry run reports seen, kept, skipped, fresh, triage-skipped, to-synthesise" \
+    "summary: seen=5 kept=2 skipped=2 fresh=1 triage-skipped=2 to-synthesise=2" "$(grep '^summary:' "$tmpdir/t26-dry.out")"
+assert "Test26: dry run writes nothing" "$t26_before" "$(sha256sum "$t26_vault/Clippings/_evidence/links.md" | cut -d' ' -f1)"
+assert "Test26: a tiny reply is skipped with its reason" "yes" "$(grep -q 'tiny.md.*skipped.*below-threshold' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: a clip with no thread is skipped with its reason" "yes" "$(grep -q 'nothread.md.*skipped.*no-thread' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: a new link keeps the clip" "yes" "$(grep -q 'links.md.*kept.*new-links' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: a fresh clip is left for its normal first triage, not triage-skipped" "yes" "$(grep -q 'fresh.md.*fresh.*first-triage' "$tmpdir/t26-dry.out" && ! grep 'fresh.md' "$tmpdir/t26-dry.out" | grep -q triage-skipped && echo yes || echo no)"
+assert "Test26: the kept file lists the two kept triaged clips, never the fresh one" "2 no" "$(wc -l <"$tmpdir/t26-kept.txt" | tr -d ' ') $(grep -q 'fresh.md' "$tmpdir/t26-kept.txt" && echo yes || echo no)"
+assert "Test26: the batched command is printed when a kept file was written" "yes" "$(grep -q '^synthesis-batch:.*t26-kept.txt' "$tmpdir/t26-dry.out" && echo yes || echo no)"
+assert "Test26: no batched command is printed without a kept file" "no" "$(node "$PLAN" --vault "$t26_vault" | grep -q '^synthesis-batch:' && echo yes || echo no)"
+node "$PLAN" --vault "$t26_vault" --apply --kept-file "$tmpdir/t26-kept.txt" >"$tmpdir/t26-apply.out" 2>&1
+t26_links="$t26_vault/Clippings/_evidence/links.md"
+assert "Test26: apply keeps the triage fields (processed stays true)" "yes" "$(grep -q '^processed: true$' "$t26_links" && echo yes || echo no)"
+assert "Test26: apply keeps the existing tags" "yes" "$(grep -q '^  - ai$' "$t26_links" && echo yes || echo no)"
+assert "Test26: apply derives thread_links in code" "yes" "$(grep -q 'https://example.com/paper' "$t26_links" && grep -q '^thread_links:' "$t26_links" && echo yes || echo no)"
+assert "Test26: apply leaves a skipped clip byte-identical" "$t26_tiny_sum" "$(sha256sum "$t26_vault/Clippings/_evidence/tiny.md" | cut -d' ' -f1)"
+assert "Test26: apply never gives the fresh clip derived fields" "no" "$(grep -q '^thread_links:' "$t26_vault/Clippings/_evidence/fresh.md" && echo yes || echo no)"
+t26_after="$(sha256sum "$t26_links" | cut -d' ' -f1)"
+node "$PLAN" --vault "$t26_vault" --apply >"$tmpdir/t26-apply2.out" 2>&1
+assert "Test26: a second apply is idempotent" "$t26_after" "$(sha256sum "$t26_links" | cut -d' ' -f1)"
+assert "Test26: a re-plan after apply still keeps the link clip (derived fields are not 'already in the clip')" "yes" \
+    "$(node "$PLAN" --vault "$t26_vault" | grep -q 'links.md.*kept.*new-links' && echo yes || echo no)"
+mkdir -p "$tmpdir/vault-t26b/Clippings"
+printf -- '---\nsource: https://notx.com/jack/status/1?u=twitter.com\nprocessed: true\n---\n# t\n' >"$tmpdir/vault-t26b/Clippings/other.md"
+mkdir -p "$tmpdir/vault-t26c/Clippings"
+printf -- "---\nsource: 'https://x.com/jack/status/31'\nprocessed: 'true'\n---\n# t\n" >"$tmpdir/vault-t26c/Clippings/quoted.md"
+assert "Test26: single-quoted source and processed values are read like unquoted ones" "yes" \
+    "$(node "$PLAN" --vault "$tmpdir/vault-t26c" | grep -q 'quoted.md.*skipped.*no-thread' && echo yes || echo no)"
+if [ "$(id -u)" != "0" ]; then
+    mkdir -p "$tmpdir/vault-t26b/Clippings/locked"
+    chmod 000 "$tmpdir/vault-t26b/Clippings/locked"
+    node "$PLAN" --vault "$tmpdir/vault-t26b" >/dev/null 2>"$tmpdir/t26-locked.err"; t26_rc=$?
+    assert "Test26: an unreadable directory exits 3 and is named, never a silently partial plan" "3 yes" \
+        "$t26_rc $(grep -q 'locked' "$tmpdir/t26-locked.err" && echo yes || echo no)"
+    node "$PLAN" --vault "$tmpdir/vault-t26b" --kept-file "$tmpdir/t26-partial-kept.txt" >"$tmpdir/t26-partial.out" 2>/dev/null
+    assert "Test26: a partial plan withholds the batched command" "yes no" \
+        "$(grep -q '^synthesis-batch: withheld (plan incomplete)' "$tmpdir/t26-partial.out" && echo yes || echo no) $(grep -q 'claude --model' "$tmpdir/t26-partial.out" && echo yes || echo no)"
+    assert "Test26: a partial plan counts the unreadable directory in the summary" "yes" \
+        "$(grep '^summary:' "$tmpdir/t26-partial.out" | grep -q 'unreadable-dirs=1' && echo yes || echo no)"
+    chmod 755 "$tmpdir/vault-t26b/Clippings/locked"
+fi
+node "$PLAN" --vault "$t26_vault" --kept-file >/dev/null 2>&1; t26_nov=$?
+assert "Test26: --kept-file with no value is refused" "1" "$t26_nov"
+assert "Test26: the printed command says it is paid and held by HIMMEL-8686" "yes" "$(grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'paid' && grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'HIMMEL-8686' && echo yes || echo no)"
+assert "Test26: a look-alike host is not an X clip" "summary: seen=0 kept=0 skipped=0 fresh=0 triage-skipped=0 to-synthesise=0" \
+    "$(node "$PLAN" --vault "$tmpdir/vault-t26b" | grep '^summary:')"
+t26d="$tmpdir/vault-t26d/Clippings"
+mkdir -p "$t26d/_done/2026-05"
+t26_thread='
+## Thread
+<!-- fxtwitter thread -->
+
+**@jack** (author) https://x.com/jack/status/41
+
+> see https://example.com/new for details'
+printf -- '---\nsource: https://x.com/jack/status/40\nprocessed: true\n---\n# t\n%s\n' "$t26_thread" >"$t26d/_done/2026-05/archived.md"
+printf -- '---\nsource: https://x.com/jack/status/42\nprocessed: true\n---\n# t\n%s\n' "$t26_thread" >"$t26d/_deferred.md"
+printf -- '---\nsource: https://x.com/jack/status/43 # clipped\nprocessed: true # reviewed\n---\n# t\n%s\n' "$t26_thread" >"$t26d/commented.md"
+node "$PLAN" --vault "$tmpdir/vault-t26d" >"$tmpdir/t26d.out" 2>&1
+assert "Test26: archived (_done) and _deferred.md clips are never planned" "no" "$(grep -q 'archived.md\|_deferred' "$tmpdir/t26d.out" && echo yes || echo no)"
+assert "Test26: a trailing YAML comment on processed and source does not hide the clip" "yes" "$(grep -q 'commented.md.*kept.*new-links' "$tmpdir/t26d.out" && echo yes || echo no)"
+node "$PLAN" --vault "$tmpdir/vault-t26d" --apply >/dev/null 2>&1
+printf -- '---\r\nsource: https://x.com/jack/status/45\r\nprocessed: true\r\n---\r\n# t\r\n\r\n## Thread\r\n<!-- fxtwitter thread -->\r\n\r\n**@jack** (author) https://x.com/jack/status/46\r\n\r\n> see https://example.com/crlf\r\n' >"$t26d/crlf2.md"
+t26_crlf2_tail="$(tail -c 60 "$t26d/crlf2.md" | sha256sum | cut -d' ' -f1)"
+chmod 640 "$t26d/crlf2.md"
+ln "$t26d/crlf2.md" "$tmpdir/t26-crlf2.orig"
+node "$PLAN" --vault "$tmpdir/vault-t26d" --apply >/dev/null 2>&1
+assert "Test26: apply replaces the file by rename (new inode) and keeps its mode" "changed 640" \
+    "$([ ! "$t26d/crlf2.md" -ef "$tmpdir/t26-crlf2.orig" ] && echo changed || echo same) $([ -n "$(find "$t26d/crlf2.md" -perm 640)" ] && echo 640 || echo other)"
+assert "Test26: apply edits only the frontmatter of a CRLF clip and keeps its CRLF endings" "$t26_crlf2_tail yes" \
+    "$(tail -c 60 "$t26d/crlf2.md" | sha256sum | cut -d' ' -f1) $(grep -c $'\r' "$t26d/crlf2.md" | awk '{print ($1 > 5) ? "yes" : "no"}')"
+assert "Test26: apply leaves no temp file behind" "0" "$(find "$t26d" -name '*.reread-plan.tmp' | wc -l | tr -d ' ')"
+
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
 echo ""
