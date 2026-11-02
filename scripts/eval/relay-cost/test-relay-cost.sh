@@ -60,15 +60,15 @@ check "script arm: the real relay-batch.sh and the verbatim send pass all 9 fixt
 check "path arm: all 9 fixtures pass" "9" "$(grep -c '^path PASS' "$WORK/o1.log")"
 check "no model arm, no cost" "0" "$(python3 -I -c 'import json,glob,sys; print(sum(json.load(open(p))["cost_eq_cold"] for p in glob.glob(sys.argv[1] + "/*/*.result.json")))' "$WORK/o1")"
 check "report names the options with percentages" "1" "$(python3 -I "$PY" report --runs "$WORK/o1" --fixtures "$FX" | grep -c '^| script | 9 | 100% |')"
-check "a model arm without HIMMEL_BILLED_OK exits 2" "2" "$(bash "$RUN" --out "$WORK/o2" --fixtures "$FX" --arms haiku >/dev/null 2>&1; echo $?)"
 
-# --- run.sh: the model arms against a stub claude
+# --- the stub claude, installed before any model-arm row so a regressed opt-in guard can never reach the real binary
 CL="$WORK/claude"; STUB="$WORK/stub.py"
 printf '#!/usr/bin/env bash\nexec python3 -I "%s" "$@"\n' "$STUB" >"$CL"
 cat >"$STUB" <<'EOF'
 import json, os, sys
 sys.path.insert(0, os.environ["RELAY_COST_DIR"])
 import relay_cost
+open(os.environ["STUB_ARGS"], "a").write(json.dumps(sys.argv[1:]) + "\n")
 prompt = sys.argv[sys.argv.index("-p") + 1]
 if prompt.startswith("SUCCESSION-RELAY"):
     f = dict(p.split("=", 1) for p in prompt.split()[1:])
@@ -83,12 +83,19 @@ print(json.dumps({"type": "result", "is_error": False, "total_cost_usd": 0.001, 
                   "usage": {"input_tokens": 10, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 200, "output_tokens": 20}}))
 EOF
 chmod +x "$CL"
-export RELAY_COST_CLAUDE="$CL" RELAY_COST_DIR="$HERE" STUB_LOG="$WORK/stub.log" HIMMEL_BILLED_OK=1
-: >"$STUB_LOG"
+export RELAY_COST_CLAUDE="$CL" RELAY_COST_DIR="$HERE" STUB_LOG="$WORK/stub.log" STUB_ARGS="$WORK/stub.args"
+: >"$STUB_LOG"; : >"$STUB_ARGS"
+check "a model arm without HIMMEL_BILLED_OK exits 2 and calls nothing" "2 0" "$(bash "$RUN" --out "$WORK/o2" --fixtures "$FX" --arms haiku >/dev/null 2>&1; printf '%s ' "$?"; wc -l <"$STUB_LOG" | tr -d ' ')"
+
+# --- run.sh: the model arms against the stub claude
+export HIMMEL_BILLED_OK=1
 bash "$RUN" --out "$WORK/o3" --fixtures "$FX" --arms sonnet,haiku >"$WORK/o3.log" 2>&1
 check "model arms exit 0" "0" "$?"
 check "sonnet arm: 9 calls on claude-sonnet-5-5, all pass" "9 9" "$(grep -c '^claude-sonnet-5-5$' "$STUB_LOG") $(grep -c '^sonnet PASS' "$WORK/o3.log")"
 check "haiku arm: 9 calls on claude-haiku-5-5, all pass" "9 9" "$(grep -c '^claude-haiku-5-5$' "$STUB_LOG") $(grep -c '^haiku PASS' "$WORK/o3.log")"
+check "every model call: no tools, dontAsk, low effort, the budget cap, no session kept, and the relay prompt as the system prompt" "True dontAsk 1 low True True" "$(python3 -I -c 'import json,sys
+a = json.loads(open(sys.argv[1]).readline())
+print(a[a.index("--tools") + 1] == "", a[a.index("--permission-mode") + 1], a[a.index("--max-budget-usd") + 1], a[a.index("--effort") + 1], "--no-session-persistence" in a, a[a.index("--system-prompt") + 1].startswith("You are a message relay"))' "$STUB_ARGS")"
 check "the result row carries the priced usage" "460.0" "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["cost_eq_cold"])' "$WORK/o3/sonnet/go-1.result.json")"
 : >"$STUB_LOG"
 bash "$RUN" --out "$WORK/o3" --fixtures "$FX" --arms sonnet,haiku >/dev/null 2>&1
@@ -102,5 +109,29 @@ printf '#!/usr/bin/env bash\necho BANK-STALE\n' >"$RELAY_COST_PREFLIGHT"
 : >"$STUB_LOG"
 bash "$RUN" --out "$WORK/o6" --fixtures "$FX" --arms sonnet >/dev/null 2>&1; rc6=$?
 check "a preflight that does not print PROCEED stops before any call (exit 3)" "3 0" "$rc6 $(wc -l <"$STUB_LOG" | tr -d ' ')"
+
+# --- the path-file branches of the checker
+pto="$(fget go-1 to)"; pexp="$(fget go-1 expected)"
+printf '%s' "$pexp" >"$WORK/p.msg"; printf '%s' "$pexp changed" >"$WORK/p.bad"
+pverdict() { python3 -I "$PY" check --fixtures "$FX" --id go-1 --delivery "$(deliver x "$pto" "$1")" --path-file "$2" >/dev/null 2>&1 && echo PASS || echo FAIL; }
+check "path: a message naming the file whose bytes equal the expected text passes" PASS "$(pverdict "Read $WORK/p.msg: that is your message." "$WORK/p.msg")"
+check "path: negative control, a message that does not name the file fails" FAIL "$(pverdict "Read the file I wrote." "$WORK/p.msg")"
+check "path: negative control, a file whose bytes differ fails" FAIL "$(pverdict "Read $WORK/p.bad: that is your message." "$WORK/p.bad")"
+check "path: negative control, an unreadable file fails" FAIL "$(pverdict "Read $WORK/none.msg: that is your message." "$WORK/none.msg")"
+
+# --- the report: percentages of the Sonnet arm and the cost columns, from rows with known costs
+mkrow() { python3 -I -c 'import json,sys
+a = sys.argv
+json.dump({"id": a[2], "pass": a[3] == "1", "cost_eq_cold": float(a[4]), "cost_eq_warm": float(a[5]), "cost_usd": float(a[6])}, open(a[1], "w"))' "$@"; }
+mkdir -p "$WORK/rep/sonnet" "$WORK/rep/haiku" "$WORK/rep2/script"
+mkrow "$WORK/rep/sonnet/go-1.result.json" go-1 1 400 200 0.02
+mkrow "$WORK/rep/sonnet/go-2.result.json" go-2 1 400 200 0.02
+mkrow "$WORK/rep/haiku/go-1.result.json" go-1 1 300 100 0.002
+mkrow "$WORK/rep/haiku/go-2.result.json" go-2 0 300 100 0.002
+mkrow "$WORK/rep2/script/go-1.result.json" go-1 1 0 0 0
+rep="$(python3 -I "$PY" report --runs "$WORK/rep" --fixtures "$FX")"
+check "report: the Sonnet row is its own 100%" "1" "$(printf '%s\n' "$rep" | grep -cF '| sonnet | 2 | 100% | 400 | 200 | 0.02000 | 100% | 100% |')"
+check "report: Haiku shows its half pass rate, its costs and 50% warm, 10% USD of Sonnet" "1" "$(printf '%s\n' "$rep" | grep -cF '| haiku | 2 | 50% | 300 | 100 | 0.00200 | 50% | 10% |')"
+check "report: with no Sonnet arm the percentages read n/a" "1" "$(python3 -I "$PY" report --runs "$WORK/rep2" --fixtures "$FX" | grep -cF '| script | 1 | 100% | 0 | 0 | 0.00000 | n/a | n/a |')"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
