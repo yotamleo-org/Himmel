@@ -43,6 +43,7 @@ printf '# rtk\n' > "$HOME/.claude/RTK.md"
 cat > "$W/claude.sh" <<'SH'
 #!/usr/bin/env bash
 { printf 'cwd=%s\n' "$PWD"; printf 'arg=%s\n' "$@"; } >> "$STUB_DIR/argv"
+printf 'key=%s auth=%s orga=%s orgb=%s lq=%s\n' "${ANTHROPIC_API_KEY:-unset}" "${ANTHROPIC_AUTH_TOKEN:-unset}" "${ANTHROPIC_ORG_A_KEY:-unset}" "${ANTHROPIC_ORG_B_KEY:-unset}" "${LQ_API_KEY:-unset}" >> "$STUB_DIR/cred"
 cat "$STUB_DIR/claude.json"
 exit "$(cat "$STUB_DIR/claude.rc" 2>/dev/null || echo 0)"
 SH
@@ -57,7 +58,7 @@ export STUB_DIR="$W"
 
 export STEERING_CULL_CLAUDE="$W/claude.sh"
 export STEERING_CULL_PREFLIGHT_CMD="$W/preflight.sh"
-# claude-cli is an explicit opt-in (the default is claude-api); sections 1-7 exercise the bank path.
+# claude-cli is the default; pinned here so sections 1-7 exercise the bank path whatever the shell sets.
 export STEERING_CULL_BACKEND=claude-cli
 export STEERING_CULL_STATE_DIR="$W/state"
 export CADENCE_ALERT_FILE="$W/alerts.log"
@@ -209,16 +210,23 @@ rm -f "$W/argv" "$W/lane-argv"
 : > "$INB_B"; : > "$W/alerts.log"
 printf 'slug=u__himmel__new-chief session=s host=h age=40s status=OK\n' > "$W/sweep.txt"
 
-# no backend env at all: the default is claude-api, so a missing lane refuses and no model is called
-env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8d.out" 2>&1
-check "default backend with the lane off exits 1" 1 $?
-has "default-backend refusal is the claude-api ERR line" "ERR steering-cull: STEERING_CULL_BACKEND=claude-api needs HIMMEL_API_LANE=on" "$W/run8d.out"
-[ ! -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "default backend with the lane off calls no model, no fallback" || fail "model called for the default backend with the lane off"
+# no backend env at all: the default is claude-cli, so the run needs no API lane
+rm -f "$W/cred"
+env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_API_KEY=dummy-not-a-key ANTHROPIC_AUTH_TOKEN=dummy-not-a-token ANTHROPIC_ORG_A_KEY=dummy-not-a-key ANTHROPIC_ORG_B_KEY=dummy-not-a-key LQ_API_KEY=dummy-not-a-key bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8d.out" 2>&1
+check "default backend with the lane off exits 0" 0 $?
+[ "$(cat "$W/cred" 2>/dev/null)" = "key=unset auth=unset orga=unset orgb=unset lq=unset" ] && pass "the claude-cli launch drops an exported API key, auth token, both org keys and LQ key" || fail "the claude-cli launch inherited an API credential: $(cat "$W/cred" 2>/dev/null)"
+hasnt "the default backend never refuses on the API lane" "HIMMEL_API_LANE=on" "$W/run8d.out"
+[ -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "default backend runs the subscription claude, not the API lane" || fail "default backend did not run on the subscription"
+_argv_flat="$(tr '\n' ' ' < "$W/argv" 2>/dev/null)"
+case "$_argv_flat" in
+    *"arg=--tools arg=Read arg=--allowedTools arg=Read "*) pass "the default backend grants the Read tool only, in both --tools and --allowedTools" ;;
+    *) fail "the default backend's tool grant is not Read in both flags: $_argv_flat" ;;
+esac
+rm -f "$W/argv"
 env -u STEERING_CULL_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8e.out" 2>&1
 check "default backend with the lane on exits 0" 0 $?
-has "default backend resolves to the API lane" "acct=A" "$W/lane-argv"
-[ ! -e "$W/argv" ] && pass "default backend never runs the subscription claude" || fail "subscription claude ran on the default backend"
-rm -f "$W/lane-argv"
+[ -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "the lane being on does not move the default off the subscription" || fail "default backend reached the API lane"
+rm -f "$W/argv" "$W/lane-argv"
 
 STEERING_CULL_BACKEND=bogus bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8a.out" 2>&1
 check "unknown backend exits 1" 1 $?
@@ -252,10 +260,12 @@ has "runner bakes the backend" "STEERING_CULL_BACKEND=claude-api" "$W/runner/ste
 has "runner bakes the lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull-cadence.sh"
 has "runner bakes the account" "HIMMEL_API_ACCOUNT=B" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" >"$W/arm8c.out" 2>&1
-has "a default arm bakes claude-api" "STEERING_CULL_BACKEND=claude-api" "$W/runner/steering-cull-cadence.sh"
-has "a default arm bakes the lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull-cadence.sh"
-has "a default arm bakes the auto account" "HIMMEL_API_ACCOUNT=auto" "$W/runner/steering-cull-cadence.sh"
-hasnt "a default arm never bakes claude-cli" "claude-cli" "$W/runner/steering-cull-cadence.sh"
+check "a default arm exits 0" 0 $?
+has "a default arm bakes claude-cli" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
+hasnt "a default arm never bakes the API lane switch" "HIMMEL_API_LANE=on" "$W/runner/steering-cull-cadence.sh"
+hasnt "a default arm never bakes an API account" "HIMMEL_API_ACCOUNT" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --api-account A >"$W/arm8e.out" 2>&1
+check "a default arm with --api-account is refused" 1 $?
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm8d.out" 2>&1
 check "arm --backend claude-cli exits 0" 0 $?
 has "an explicit claude-cli arm pins the backend against an inherited env" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"

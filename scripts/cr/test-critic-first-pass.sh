@@ -31,6 +31,10 @@ export HIMMEL_FLOW_RUNS_LEDGER="$tmp/flow-runs.jsonl"
 # the ledger. Default every un-overridden case at a scratch ledger so this suite
 # never writes into the real repo's .git/cr-critic-scores.jsonl.
 export CR_LEDGER="$tmp/default-ledger.jsonl"
+# a --slug claude row takes the claude critic, whose lane-off path now runs on the subscription
+# too: both of its launchers are a failing stub here, so no row can reach a real claude.
+printf '#!/bin/sh\nexit 1\n' > "$tmp/no-claude"; chmod +x "$tmp/no-claude"
+export HIMMEL_CLAUDE_BIN="$tmp/no-claude" CFP_CLAUDE_API_LAUNCHER="$tmp/no-claude" CADENCE_USAGE_SKIP_REFRESH=1
 fails=0
 check(){ if [ "$2" = "$3" ]; then echo "ok - $1"; else echo "FAIL - $1: got [$2] want [$3]"; fails=$((fails+1)); fi; }
 
