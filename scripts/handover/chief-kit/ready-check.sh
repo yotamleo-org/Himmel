@@ -1469,7 +1469,7 @@ check_cr_rate_limited() {
     # advisory row, never the verdict line.
     # shellcheck disable=SC2016  # the body expands in the child shell
     cr_out=$(GH_CMD="$GH" "$_TIMEOUT_BIN" -k 5 20 bash -c '
-        . "$1" 2>/dev/null || exit 0
+        . "$1" 2>/dev/null || exit 0  # read-sink-ok: $1 is the own lib path built from dirname of this script, never user input
         [ "$(cr_signal_state "$2" "$3" "$4" 2>/dev/null)" = skipped ] || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
         d=$(cr_signal_description "$2" "$3" "$4" 2>/dev/null) || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
         ! grep -qiE "rate.?limit" <<< "$d" || echo rl' _ "$cr_lib" "$owner" "$repo" "$SHA") || cr_out=""  # swallow-ok: advisory, a timeout or an unreadable status prints nothing
