@@ -132,11 +132,12 @@ vcall() {
     else
         ti='{}'
     fi
-    jq -cn --arg s "$sid" --arg t "$tool" --arg d "$cwd" --argjson i "$ti" \
-        '{session_id: $s, cwd: $d, hook_event_name: "PreToolUse", tool_name: $t, tool_input: $i}' \
-        | env HIMMEL_VAULT_SWEEP_DENY="${VON-1}" HIMMEL_VAULT_SWEEP_BYPASS="${VBYP-}" \
-            HIMMEL_VAULT_SWEEP_DIR="${VDIR-$TMP/vstate}" HIMMEL_VAULT_SWEEP_LOG="$VLOG" \
-            HIMMEL_REPO="${VREPO-$ROOT}" bash "$VHOOK" >"$TMP/out" 2>"$TMP/err"
+    local payload
+    payload="$(jq -cn --arg s "$sid" --arg t "$tool" --arg d "$cwd" --argjson i "$ti" \
+        '{session_id: $s, cwd: $d, hook_event_name: "PreToolUse", tool_name: $t, tool_input: $i}')"
+    env HIMMEL_VAULT_SWEEP_DENY="${VON-1}" HIMMEL_VAULT_SWEEP_BYPASS="${VBYP-}" \
+        HIMMEL_VAULT_SWEEP_DIR="${VDIR-$TMP/vstate}" HIMMEL_VAULT_SWEEP_LOG="$VLOG" \
+        HIMMEL_REPO="${VREPO-$ROOT}" HOME="${VHOME-$HOME}" bash "$VHOOK" <<<"$payload" >"$TMP/out" 2>"$TMP/err"
     rc=$?
 }
 # vrows DESC-PREFIX WANT-RC SID-PREFIX CMD...: one fresh session per command
@@ -263,6 +264,21 @@ VREPO="$TMP/no-such-checkout" vcall v12 Bash "$S"
 if [ "$rc" = 0 ]; then pass "no resolvable checkout (cannot name the absolute path) allows"; else fail "no checkout allows (rc=$rc)"; fi
 vcall v13 Bash $'grep -rl "unterminated notes\n'"$VAULT"
 if [ "$rc" = 0 ]; then pass "unbalanced quote (unparseable) allows"; else fail "unbalanced quote allows (rc=$rc)"; fi
+
+# 16b. The checkout falls back to the canonical install, a path with a space is quoted in the
+# command the deny prints, and concurrent sweeps on one key give exactly one refusal.
+mkdir -p "$TMP/fakehome/Documents/github/himmel/scripts/lib" "$TMP/my repo/scripts/lib"
+: >"$TMP/fakehome/Documents/github/himmel/scripts/lib/qmd-bounded.sh"
+: >"$TMP/my repo/scripts/lib/qmd-bounded.sh"
+VREPO='' VHOME="$TMP/fakehome" vcall v19 Bash "$S"
+if [ "$rc" = 2 ] && grep -qF "$TMP/fakehome/Documents/github/himmel/scripts/lib/qmd-bounded.sh query" "$TMP/err"; then pass "no HIMMEL_REPO and no checkout in the cwd: the canonical install names the command"; else fail "canonical fallback (rc=$rc)"; fi
+VREPO="$TMP/my repo" vcall v20 Bash "$S"
+if [ "$rc" = 2 ] && grep -qF "bash '$TMP/my repo/scripts/lib/qmd-bounded.sh' query" "$TMP/err"; then pass "a checkout path with a space is quoted in the printed command"; else fail "space path quoted (rc=$rc)"; fi
+for i in 1 2 3 4 5 6; do
+    ( vcall v21 Bash "$S"; echo "$rc" >"$TMP/par.$i" ) &
+done
+wait
+if [ "$(cat "$TMP"/par.* | grep -c '^2$')" = 1 ] && [ "$(cat "$TMP"/par.* | grep -c '^0$')" = 5 ]; then pass "six concurrent sweeps on one key: exactly one refusal"; else fail "concurrent sweeps: $(cat "$TMP"/par.* | tr '\n' ' ')"; fi
 
 # 17. Known residual: a heredoc line that is itself a vault sweep is refused (counted as a false refusal), once.
 vcall v14 Bash $'cat > note.md <<EOF\ngrep -r notes '"$VAULT"$'\nEOF'

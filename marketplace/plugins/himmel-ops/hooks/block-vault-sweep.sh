@@ -272,23 +272,38 @@ if [ "$had_deny" = true ]; then
     exit 0
 fi
 
-# The absolute himmel checkout: HIMMEL_REPO, else the cwd's primary checkout.
+# The absolute himmel checkout, in the order workers.sh uses: HIMMEL_REPO, else the
+# cwd's primary checkout, else the canonical install. A vault session has no checkout
+# of its own, so the canonical path is what usually answers there. An explicit
+# HIMMEL_REPO that is wrong fails open rather than falling through.
 repo=${HIMMEL_REPO:-}
 if [ -z "$repo" ] && command -v git >/dev/null 2>&1 && [ -d "$cwd" ]; then
     common=$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""
     case "$common" in */.git) repo=${common%/.git} ;; esac
 fi
+if [ -z "${HIMMEL_REPO:-}" ] && [ ! -f "$repo/scripts/lib/qmd-bounded.sh" ]; then
+    repo=${HOME:-}/Documents/github/himmel
+fi
 case "$repo" in /*) ;; *) exit 0 ;; esac
-[ -f "$repo/scripts/lib/qmd-bounded.sh" ] || exit 0
+script="$repo/scripts/lib/qmd-bounded.sh"
+[ -f "$script" ] || exit 0
 case "$repo" in *[\'\"\$\`\\]*) exit 0 ;; esac
+case "$script" in *[!A-Za-z0-9_./+@:-]*) script="'$script'" ;; esac
 
-: >"$DIR/$sid.denied" 2>/dev/null || exit 0
+# Claim the one refusal atomically (noclobber is O_EXCL): of two concurrent sweeps on
+# one key, the loser reads as the allowed retry. A claim that fails with no file there
+# means the state dir is unusable, which allows.
+if ! ( set -C; : >"$DIR/$sid.denied" ) 2>/dev/null; then
+    had_deny=true
+    [ -e "$DIR/$sid.denied" ] && log_row retry_allowed "$root"
+    exit 0
+fi
 log_row deny "$root"
 
 {
     printf 'vault-sweep POC: the first hand sweep of the notes in a session is refused once.\n\n'
     printf 'Search the notes with qmd, which ranks by meaning and reaches every collection:\n'
-    printf '  bash %s/scripts/lib/qmd-bounded.sh query -c luna "<question>"\n\n' "$repo"
+    printf '  bash %s query -c luna "<question>"\n\n' "$script"
     printf 'Exactly one retry is allowed: run the same command again and it goes through, and\n'
     printf 'no chief message is needed. An exact ID or marker lookup is still a grep job.\n\n'
     printf 'Bypass: HIMMEL_VAULT_SWEEP_BYPASS=1 in the launching shell (a per-call prefix does not work).\n'
