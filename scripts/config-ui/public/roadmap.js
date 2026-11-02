@@ -179,7 +179,7 @@ const TABS = [["roadmap", "Roadmap"], ["chains", "Chains"], ["tidy", "Tidy up"]]
 const query = (o) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v) p.set(k, v); const s = p.toString(); return s ? "?" + s : ""; };
 const boardHref = (o) => esc("#/board" + query(o));
 const driftOk = (dr) => !!(dr && dr.counts && dr.file && dr.file.exists && !dr.unknown);
-const noChains = (ch) => (ch && ch.reason) || "no chain registry: set HIMMEL_CHAIN_REGISTRY to a himmel.chain-registry/1 file";
+const noChains = (ch) => (ch && ch.reason) || "no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set";
 
 // The version asked for: an index, -1 for every version, -2 for a name the mirror does not have. No version asked = the running one.
 function selIndex(d, ui) {

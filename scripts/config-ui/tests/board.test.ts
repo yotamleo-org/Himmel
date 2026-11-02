@@ -1,11 +1,12 @@
 // GET /api/board: the Board page's saved status-drift summary and chain read. Both are read-only chief-kit
-// scripts, started only when their input is named in the environment. Everything here lives in a scratch directory.
+// scripts, started only when their input is found: named in the settings (environment, himmel.conf, the checkout's .env)
+// or the newest file of that name under the handover root. Everything here lives in a scratch directory, the checkout root included.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { runReader } from "../board";
+import { runReader, TIMEOUT_MS } from "../board";
 
 const TOKEN = "a".repeat(64);
 const cleanups: (() => void)[] = [];
@@ -34,7 +35,7 @@ function scratch() {
 }
 const serve = (env: Record<string, string>, s: ReturnType<typeof scratch>) => {
   const srv = startServer({
-    port: 0, token: TOKEN, legsScript: join(s.d, "no-workers.sh"),
+    port: 0, token: TOKEN, root: s.d, legsScript: join(s.d, "no-workers.sh"), // root: the checkout's .env is read from the scratch dir, never the real one
     env: { PATH: process.env.PATH, HOME: s.home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_CONFIG_DIR: s.conf, DRIFT_SUMMARY_KNOWN: s.known, ...env },
   });
@@ -94,6 +95,55 @@ test("GET /api/board: with no override the saved drift run and chain registry co
   const none = await get(serve({ HANDOVER_DIR: empty }, s));
   expect(none.drift.state).toBe("absent");
   expect(none.chains.state).toBe("absent");
+});
+
+// a handover root with one slug holding focus-drift.txt with `rows` drift rows (the count tells which slug was read)
+function slugWithDrift(root: string, slug: string, rows: number, mtime?: Date) {
+  mkdirSync(join(root, slug, "himmel"), { recursive: true });
+  const file = join(root, slug, "himmel", "focus-drift.txt");
+  writeFileSync(file, Array.from({ length: rows }, (_, i) => `VERSION-DRIFT HIMMEL-${6000 + i} says x | writer=release-manager | fix=jira release request v1.1.3`).join("\n") + "\nsdrift=1:abc\n");
+  if (mtime) utimesSync(file, mtime, mtime);
+}
+
+test("GET /api/board: with several slugs under the handover root the newest file is read", async () => {
+  const s = scratch();
+  const root = join(s.d, "handovers");
+  slugWithDrift(root, "newer", 2, new Date("2026-11-02T10:00:00Z"));
+  slugWithDrift(root, "older", 1, new Date("2026-10-01T10:00:00Z"));
+  mkdirSync(join(root, "no-file", "himmel"), { recursive: true }); // a slug without the file is skipped
+  expect((await get(serve({ HANDOVER_DIR: root }, s))).drift.counts.real).toBe(2);
+});
+
+test("GET /api/board: an explicit HIMMEL_FOCUS_DRIFT wins over the handover root's file", async () => {
+  const s = scratch();
+  const root = join(s.d, "handovers");
+  slugWithDrift(root, "someone", 2);
+  const r = await get(serve({ HANDOVER_DIR: root, HIMMEL_FOCUS_DRIFT: s.drift }, s)); // s.drift holds one row
+  expect(r.drift.counts.real).toBe(1);
+});
+
+test("GET /api/board: a bare launch finds the handover root in himmel.conf or the checkout's .env, as /api/health does; the process env wins", async () => {
+  const s = scratch();
+  const viaConf = join(s.d, "conf-root"), viaDotenv = join(s.d, "dotenv-root"), viaEnv = join(s.d, "env-root");
+  slugWithDrift(viaConf, "someone", 1);
+  slugWithDrift(viaDotenv, "someone", 2);
+  slugWithDrift(viaEnv, "someone", 3);
+  mkdirSync(join(s.home, ".himmel"), { recursive: true });
+  writeFileSync(join(s.home, ".himmel", "himmel.conf"), `HANDOVER_DIR=${viaConf}\n`);
+  expect((await get(serve({}, s))).drift.counts.real).toBe(1); // only the conf layer names it
+  writeFileSync(join(s.home, ".himmel", "himmel.conf"), "");
+  writeFileSync(join(s.d, ".env"), `HANDOVER_DIR=${viaDotenv}\n`);
+  expect((await get(serve({}, s))).drift.counts.real).toBe(2); // only the checkout's .env names it
+  writeFileSync(join(s.home, ".himmel", "himmel.conf"), `HANDOVER_DIR=${viaConf}\n`);
+  expect((await get(serve({ HANDOVER_DIR: viaEnv }, s))).drift.counts.real).toBe(3); // the process env beats both
+});
+
+test("runReader: the default limit is 10 seconds", async () => {
+  expect(TIMEOUT_MS).toBe(10_000);
+  const s = scratch();
+  const ok = join(s.d, "ok.mjs");
+  writeFileSync(ok, "console.log(JSON.stringify({ fine: true }));\n");
+  expect(await runReader(ok, [], { PATH: process.env.PATH }, "the test reader")).toEqual({ fine: true });
 });
 
 test("GET /api/board: an explicit HIMMEL_CHAIN_REGISTRY wins over the handover root's file", async () => {

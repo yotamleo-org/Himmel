@@ -241,3 +241,22 @@ test("GET /api/roadmap: with gh unauthenticated there is no source and no board"
   expect(r.tickets).toEqual([]);
   expect(s.ghCalls().some((c) => c.startsWith("issue list"))).toBe(false);
 });
+
+test("GET /api/board: on a GitHub board or a populated local store the Jira-backed drift and chain reads are absent, whatever names their inputs", async () => {
+  for (const tracker of ["github", "local"]) {
+    const s = scratch({ mirror: true });
+    const store = join(s.d, "store");
+    mkdirSync(store);
+    writeFileSync(join(store, "LOCAL-1.md"), '---\nid: LOCAL-1\ntitle: "x"\ntype: Task\nstatus: To Do\nfix_version:\nepic:\ncreated: 2026-10-01T00:00:00Z\nlinks:\n---\n\n## Log\n');
+    const drift = join(s.d, "focus-drift.txt"), registry = join(s.d, "registry.json");
+    writeFileSync(drift, "VERSION-DRIFT HIMMEL-1 says x | writer=release-manager | fix=jira release request v1\nsdrift=1:abc\n");
+    writeFileSync(registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "c", goal: "g", members: ["HIMMEL-1"] }] }));
+    const { get } = serve({ ...s.env, TRACKER: tracker, TRACKER_STORE: store, HIMMEL_FOCUS_DRIFT: drift, HIMMEL_CHAIN_REGISTRY: registry }, s.d);
+    expect((await get("/api/sources")).sources[0]).toBe(tracker); // the active tracker really is this one
+    const r = await get("/api/board");
+    expect(r.drift.state).toBe("absent");
+    expect(r.drift.reason).toContain("not Jira");
+    expect(r.chains.state).toBe("absent");
+    expect(r.chains.reason).toContain("not Jira");
+  }
+});

@@ -14,7 +14,7 @@ export type Absent = { state: "absent"; reason: string };
 export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent };
 
 const KIT = resolve(import.meta.dir, "../handover/chief-kit");
-const TIMEOUT_MS = 10_000;
+export const TIMEOUT_MS = 10_000;
 const absent = (reason: string): Absent => ({ state: "absent", reason });
 
 // The child sees only what these readers use. HOME and HIMMEL_CONFIG_DIR matter: drift-summary reads the tracker mode from the config layers.
@@ -56,10 +56,10 @@ export async function readBoardExtras(env: Env): Promise<BoardExtras> {
   const file = driftFile(env);
   const registry = chainRegistry(env);
   const drift = file ? runReader(join(KIT, "drift-summary.mjs"), ["--json", "--drift", file, "--mirror-dir", mirror], env, "the drift summary")
-    : Promise.resolve(absent("no saved drift run: none under the handover root (HANDOVER_DIR) and HIMMEL_FOCUS_DRIFT is not set"));
+    : Promise.resolve(absent("no saved drift run: none found under the handover root, and HIMMEL_FOCUS_DRIFT is not set"));
   // the chain read's state dir (hold and merge rows) is the script's own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state
   const chains = registry ? runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror], env, "the chain read")
-    : Promise.resolve(absent("no chain registry: none under the handover root (HANDOVER_DIR) and HIMMEL_CHAIN_REGISTRY is not set"));
+    : Promise.resolve(absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set"));
   const [d, c] = await Promise.all([drift, chains]);
   return { drift: d, chains: c };
 }

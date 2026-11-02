@@ -185,9 +185,12 @@ Librarian sections unchanged. An absent mirror shows its reason instead of a boa
 
 `GET /api/board` (token-gated, GET only, read-only, `board.ts`) adds the two reads the Board needs beside `/api/roadmap`:
 the saved status-drift summary (`chief-kit/drift-summary.mjs` over `focus-drift.txt`, named by `HIMMEL_FOCUS_DRIFT` or
-`$TRACKER_HANDOVERS_DIR/focus-drift.txt`) and the chain read (`chief-kit/chain-state.mjs`, over the registry
-`HIMMEL_CHAIN_REGISTRY` names, a `himmel.chain-registry/1` file). A script is started only when its input is named;
-otherwise that part answers `{state: "absent", reason}` and the page says so in words (drift: not read, waits for you:
+`$TRACKER_HANDOVERS_DIR/focus-drift.txt`, else the newest `<handover root>/<slug>/himmel/focus-drift.txt`) and the chain
+read (`chief-kit/chain-state.mjs`, over the registry `HIMMEL_CHAIN_REGISTRY` names, else the newest
+`<handover root>/<slug>/himmel/chains.json`, a `himmel.chain-registry/1` file). The handover root and these names are read
+as `/api/health` reads its settings: the checkout's `.env`, `himmel.conf`, the non-empty process environment winning. Both
+reads are Jira-backed: with TRACKER set to none, local or GitHub they answer absent. A script is started only when its
+input is found; otherwise that part answers `{state: "absent", reason}` and the page says so in words (drift: not read, waits for you:
 not read, no Chains tab content): it never shows a made-up count. Not on the Board yet: the ticket drawer, hold writes,
 keyboard moves, the No-version lane, the Chains map and Why panel, and the Refresh button for the drift run.
 

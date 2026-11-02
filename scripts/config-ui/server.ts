@@ -697,7 +697,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         return json(redactOut({ ...r, sync: legSync(r.tickets) }));
       }
       // the Board page's two extra reads: the saved status-drift summary and the chain read. Read-only; each is absent, with the
-      // reason, unless its input is named in the environment (board.ts).
+      // reason, unless its input is found: named in the settings (the checkout's .env, himmel.conf, the non-empty process env
+      // winning, as /api/health reads them) or the newest file of that name under the handover root (board.ts).
       if (path === "/api/board") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         // the extras read the Jira mirror: on another active tracker's Board they would show Jira's drift and chains beside its cards
@@ -706,7 +707,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           const why = "the active tracker is not Jira";
           return json({ drift: { state: "absent", reason: `no saved drift run: ${why}` }, chains: { state: "absent", reason: `no chain registry: ${why}` } });
         }
-        return json(redactOut(await readBoardExtras(env)));
+        let dotenv = "";
+        try { dotenv = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
+        return json(redactOut(await readBoardExtras({ ...parseDotEnv(dotenv), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) })));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {
