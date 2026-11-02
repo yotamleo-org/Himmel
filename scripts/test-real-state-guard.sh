@@ -18,7 +18,8 @@ GUARD="$root/scripts/lib/test-run-guard"
 # Pinned to /tmp, not $TMPDIR: a TMPDIR under the home would make every hermetic target here count as real.
 TMP="$(mktemp -d /tmp/real-state-guard.XXXXXX)" || exit 1
 TMP="$(realpath "$TMP")"
-trap 'rm -rf "$TMP"' EXIT
+SRV=""
+trap '[ -z "$SRV" ] || kill "$SRV" 2>/dev/null; rm -rf "$TMP"' EXIT
 export TMPDIR="$TMP"
 fails=0
 pass() { echo "PASS - $1"; }
@@ -269,9 +270,209 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   if grep -q 'REFUSED' "$TMP/j.out"; then fail "J2 a read-only verb was refused"; else pass "J2 a read-only verb is not refused"; fi
   as_session "${DECLARE[@]}" >"$TMP/j.out" 2>&1
   if [ -e "$HIMMEL_RELEASE_STATE_DIR/R8752/release.json" ]; then pass "J3 a real jira release run by a chief writes"; else fail "J3 a real jira release run by a chief writes ($(head -c 300 "$TMP/j.out"))"; fi
+  # leaks --comment posts a real comment. Jira here is a local recorder, so a door that lets a run through shows as a request.
+  HTTPLOG="$TMP/http.log"
+  : >"$HTTPLOG"
+  cat >"$TMP/rec-server.py" <<'PY'
+import http.server, sys
+log, portfile = sys.argv[1], sys.argv[2]
+class H(http.server.BaseHTTPRequestHandler):
+    def _r(self):
+        self.rfile.read(int(self.headers.get('Content-Length') or 0))
+        open(log, 'a').write(self.command + ' ' + self.path + '\n')
+        path = self.path.split('?')[0]
+        if self.command == 'GET' and path.endswith('/versions'):
+            body = '[{"name":"v1.1.3","description":"frozen: 2026-10-20\\nfrozen-keys: K-1"}]'
+        elif self.command == 'GET' and '/comment' in path:
+            body = '{"comments":[],"total":0}'
+        elif self.command == 'POST':
+            body = '{"id":"c-1"}'
+        else:
+            body = '{}'
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(body.encode())
+    do_GET = do_POST = do_PUT = do_DELETE = _r
+    def log_message(self, *a): pass
+s = http.server.HTTPServer(('127.0.0.1', 0), H)
+open(portfile, 'w').write(str(s.server_address[1]))
+s.serve_forever()
+PY
+  python3 -I "$TMP/rec-server.py" "$HTTPLOG" "$TMP/port" >/dev/null 2>&1 &
+  SRV=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -s "$TMP/port" ] && break; sleep 0.2; done
+  # A mirror of K-1 alone (no leak) and one with K-2 too (a leak): the recorder answers, so a run that gets through shows as a POST.
+  : >"$TMP/ledger.jsonl"
+  for m in mirror-none mirror-leak; do
+    mkdir -p "$TMP/$m"
+    printf '{"lastSync":"2026-10-23T00:00:00Z"}\n' >"$TMP/$m/.cursor.json"
+  done
+  for k in K-1 K-2; do
+    printf -- '---\nkey: "%s"\nstatus: "In Progress"\ntype: "Task"\npriority: "Medium"\nfixVersions: ["v1.1.3"]\n---\n' "$k" >"$TMP/mirror-leak/$k.md"
+  done
+  cp "$TMP/mirror-leak/K-1.md" "$TMP/mirror-none/K-1.md"
+  JIRA_ENV=(env JIRA_BASE_URL="http://127.0.0.1:$(cat "$TMP/port" 2>/dev/null)" JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl")
+  LEAKS=("${JIRA_ENV[@]}" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak")
+  rc=0; "${LEAKS[@]}" --comment >"$TMP/j.out" 2>&1 || rc=$?
+  has "J4 a test's leaks --comment is refused" "$TMP/j.out" "REFUSED"
+  eq "J4 a test's leaks --comment reaches no Jira" "$(wc -l <"$HTTPLOG" | tr -d ' ')" 0
+  rc=0; "${JIRA_ENV[@]}" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-none" >"$TMP/j.out" 2>&1 || rc=$?
+  if grep -q 'REFUSED' "$TMP/j.out"; then fail "J5 leaks without --comment was refused"; else pass "J5 leaks without --comment is not refused"; fi
+  if grep -q '^GET ' "$HTTPLOG" && ! grep -qv '^GET ' "$HTTPLOG"; then pass "J5 leaks without --comment reaches the recorder with reads only"; else fail "J5 leaks without --comment reaches the recorder with reads only ($(head -c 200 "$HTTPLOG"))"; fi
+  : >"$HTTPLOG"
+  as_session "${LEAKS[@]}" --comment >"$TMP/j.out" 2>&1
+  if grep -q 'REFUSED' "$TMP/j.out"; then fail "J6 a real session's leaks --comment was refused"; else pass "J6 a real session's leaks --comment is not refused"; fi
+  if grep -q '^POST .*/issue/K-2/comment' "$HTTPLOG"; then pass "J6 a real session's leaks --comment posts its comment"; else fail "J6 a real session's leaks --comment posts its comment ($(head -c 300 "$HTTPLOG") $(head -c 300 "$TMP/j.out"))"; fi
+  # J7/J8: the door must refuse on the Jira post itself, not only on the release root. A temp root, or no root at all, leaves the root door open.
+  : >"$HTTPLOG"
+  J7=(env HIMMEL_RELEASE_STATE_DIR="$TMP/j7-queue" JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak" --comment)
+  # The guard prints REFUSED before the door acts, so the proof is the door's own message and no host lookup:
+  # a run that got past the door fails on DNS for jira.invalid, which never resolves.
+  j_post_refused() { # <label> <cmd...>
+    local label="$1" jrc=0
+    shift
+    "$@" >"$TMP/j.out" 2>&1 || jrc=$?
+    if [ "$jrc" != 0 ]; then pass "$label exits non-zero"; else fail "$label exits non-zero"; fi
+    has "$label is refused on the post itself" "$TMP/j.out" "refused, nothing was posted"
+    if grep -q 'ENOTFOUND' "$TMP/j.out"; then fail "$label reached the Jira host lookup"; else pass "$label never looked up the Jira host"; fi
+  }
+  j_post_refused "J7 a test's leaks --comment with a temp release root" "${J7[@]}"
+  J8=(env -u USER_SLUG -u HIMMEL_RELEASE_STATE_DIR JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak" --comment)
+  j_post_refused "J8 a test's leaks --comment with no release root at all" "${J8[@]}"
+  # J9: the production path. A real session posting to a non-loopback Jira is not refused and reaches the host lookup.
+  as_session "${J7[@]}" >"$TMP/j.out" 2>&1
+  if grep -q 'nothing was posted' "$TMP/j.out"; then fail "J9 a real session's leaks --comment to a non-loopback Jira was refused"; else pass "J9 a real session's leaks --comment to a non-loopback Jira is not refused"; fi
+  has "J9 a real session's leaks --comment reaches the Jira host lookup" "$TMP/j.out" "ENOTFOUND"
 else
   echo "SKIP - J rows: no bun or no scripts/jira/node_modules here; release.test.ts holds the door row and S4 the chief's guard call"
 fi
+
+echo "== merge alert door"
+MBA="$root/scripts/lib/merge-block-alert.sh"
+printf '{"allowFrom":["555"]}\n' >"$TMP/access.json"
+cat >"$TMP/alert-run.sh" <<'EOF'
+#!/usr/bin/env bash
+# read-sink-ok: $1 is the lib under test, named by this suite and never outside input
+. "$1"
+merge_block_alert o/r 1 abc123def "a rule"
+EOF
+cat >"$TMP/watch-run.sh" <<'EOF'
+#!/usr/bin/env bash
+# read-sink-ok: $1 is the lib under test, named by this suite and never outside input
+. "$1"
+merge_watch_alert o/r 2 fed456abc "a rule"
+EOF
+n=0
+# alert_env <cmd...>: the alert's own env under a fresh sentinel dir, so no row is deduped by another.
+alert_env() { n=$((n + 1)); env TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_DIR="$TMP/sent-$n" "$@" >/dev/null 2>&1; }
+reset
+alert_env bash "$TMP/alert-run.sh" "$MBA"
+eq "M1 a test's alert never reaches the real sender" "$(calls bun)" 0
+reset
+alert_env "$CLAUDE_STUB" bash "$TMP/alert-run.sh" "$MBA"
+eq "M2 a real alert reaches the sender" "$(calls bun)" 1
+has "M2 the sender is told the operator and the alert" "$REC" "reply 555 MERGE-BLOCKED o/r#1"
+reset
+alert_env MERGE_BLOCK_ALERT_CMD="$TMP/send-stub" bash "$TMP/alert-run.sh" "$MBA"
+eq "M3 a stub sender keeps working for a hermetic test" "$(calls seam)" 1
+mkdir -p "$TMP/mba-noguard" "$TMP/mba-crash"
+cp "$MBA" "$TMP/mba-noguard/merge-block-alert.sh"
+cp "$MBA" "$TMP/mba-crash/merge-block-alert.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$TMP/mba-crash/test-run-guard"
+reset
+alert_env bash "$TMP/alert-run.sh" "$TMP/mba-noguard/merge-block-alert.sh"
+eq "M4 a real alert still goes with the guard missing" "$(calls bun)" 1
+reset
+alert_env bash "$TMP/alert-run.sh" "$TMP/mba-crash/merge-block-alert.sh"
+eq "M5 a real alert still goes with the guard crashing" "$(calls bun)" 1
+# merge-on-green's own two lines (the source and block_alert), taken from the file, not copied.
+# shellcheck disable=SC2016
+grep -E '^\. "\$himmel_repo/scripts/lib/merge-block-alert\.sh"|^block_alert\(\)' "$root/scripts/handover/merge-on-green.sh" >"$TMP/mog-alert.lib"
+eq "MOG0 merge-on-green still sources the alert and defines block_alert" "$(wc -l <"$TMP/mog-alert.lib" | tr -d ' ')" 2
+cat >"$TMP/mog-run.sh" <<'EOF'
+#!/usr/bin/env bash
+himmel_repo="$1"; nwo=o/r; pr_num=3; sha=cafe0123456789
+# read-sink-ok: $2 is the two lines this suite took from merge-on-green, never outside input
+. "$2"
+block_alert "GitHub refused the merge: a rule"
+EOF
+reset
+alert_env "$CLAUDE_STUB" bash "$TMP/mog-run.sh" "$root" "$TMP/mog-alert.lib"
+eq "MOG1 merge-on-green's block alert in a real session still sends" "$(calls bun)" 1
+has "MOG1 the sender is told the operator and the merge" "$REC" "reply 555 MERGE-BLOCKED o/r#3"
+reset
+alert_env bash "$TMP/mog-run.sh" "$root" "$TMP/mog-alert.lib"
+eq "MOG2 the same alert from a test sends nothing" "$(calls bun)" 0
+BR="$FAKE_REAL/bridge"
+mkdir -p "$BR/consoles"
+CHIEF_INBOX="$BR/consoles/chiefx.md"
+# The inbox append needs a real node, so these rows leave the recorder bin off PATH.
+NODEPATH="${PATH#"$BIN":}"
+watch_env() { alert_env HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=chiefx MERGE_WATCH_POST_GO=1 MERGE_WATCH_ALERT_BRIDGE_ROOT="$BR" PATH="$NODEPATH" "$@"; }
+: >"$CHIEF_INBOX"
+watch_env bash "$TMP/watch-run.sh" "$MBA"
+eq "M6 a test's route to a real bridge appends nothing" "$(wc -c <"$CHIEF_INBOX" | tr -d ' ')" 0
+watch_env "$CLAUDE_STUB" bash "$TMP/watch-run.sh" "$MBA"
+has "M7 a real route to the bridge appends" "$CHIEF_INBOX" "[merge-watch o/r#2]"
+# M8: a refused send is not a delivered one. The test's refusal leaves no sentinel, so a real alert for the same head still goes.
+mkdir -p "$TMP/sent-m8" "$TMP/sent-m8w"
+reset
+alert_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8" bash "$TMP/alert-run.sh" "$MBA"
+eq "M8 a test's refused alert leaves no sentinel" "$(find "$TMP/sent-m8" -type f | wc -l | tr -d ' ')" 0
+alert_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8" "$CLAUDE_STUB" bash "$TMP/alert-run.sh" "$MBA"
+eq "M8 a real alert for the same head after a refusal still sends" "$(calls bun)" 1
+: >"$CHIEF_INBOX"
+watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" bash "$TMP/watch-run.sh" "$MBA"
+eq "M8 a test's refused chief route leaves no sentinel" "$(find "$TMP/sent-m8w" -type f | wc -l | tr -d ' ')" 0
+watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" "$CLAUDE_STUB" bash "$TMP/watch-run.sh" "$MBA"
+has "M8 a real route for the same head after a refusal still appends" "$CHIEF_INBOX" "[merge-watch o/r#2]"
+# M9: the other callers of the sender keep their exit code. vault-stall-alert.sh exiting non-zero on a refusal
+# would make cadence-alert.sh write its send-failed marker under the real state dir, and doctor warn on it.
+reset
+rc=0; env TELEGRAM_ACCESS_PATH="$TMP/access.json" bash "$root/scripts/luna/vault-stall-alert.sh" "from a test" >/dev/null 2>&1 || rc=$?
+eq "M9 a test's refused vault-stall alert still exits 0 for its caller" "$rc" 0
+eq "M9 and it sent nothing" "$(calls bun)" 0
+
+echo "== cadence inbox doors"
+CH="$root/scripts/eval/cache-health-cadence.sh"
+CH_INBOX="$BR/consoles/chiefc.md"
+: >"$CH_INBOX"
+ch_env() { env CACHE_HEALTH_CHIEF=chiefc CACHE_HEALTH_REPO="$TMP" CACHE_HEALTH_TELEGRAM_CMD="$BIN/qmd" BRIDGE_ROOT="$BR" PATH="$NODEPATH" "$@" >/dev/null 2>&1; }
+ch_env bash "$CH" notify "from a test"
+eq "C1 a test's cache-health notice appends nothing to a real bridge inbox" "$(wc -c <"$CH_INBOX" | tr -d ' ')" 0
+ch_env "$CLAUDE_STUB" bash "$CH" notify "from a session"
+has "C2 a real tick's cache-health notice appends" "$CH_INBOX" "[cache-health] from a session"
+SC="$root/scripts/cleanup/steering-cull-cadence.sh"
+SC_INBOX="$BR/consoles/chiefs.md"
+: >"$SC_INBOX"
+mkdir -p "$TMP/sc-repo"
+printf 'rule\n' >"$TMP/sc-repo/CLAUDE.md"
+cat >"$TMP/sc-claude" <<'EOF'
+#!/usr/bin/env bash
+echo '{"is_error":false,"result":"- [LOW] a.md:1 - x"}'
+EOF
+printf '#!/usr/bin/env bash\necho PROCEED\n' >"$TMP/sc-pre"
+chmod +x "$TMP/sc-claude" "$TMP/sc-pre"
+sc_env() { env STEERING_CULL_CLAUDE="$TMP/sc-claude" STEERING_CULL_PREFLIGHT_CMD="$TMP/sc-pre" STEERING_CULL_BACKEND=claude-cli \
+  STEERING_CULL_STATE_DIR="$TMP/sc-state" STEERING_CULL_DATE=2026-01-01 BRIDGE_ROOT="$BR" PATH="$NODEPATH" "$@" >/dev/null 2>&1; }
+sc_env bash "$SC" run --repo "$TMP/sc-repo" --proposal-dir "$TMP/sc-prop" --chief chiefs
+eq "C3 a test's steering-cull proposal appends nothing to a real bridge inbox" "$(wc -c <"$SC_INBOX" | tr -d ' ')" 0
+sc_env "$CLAUDE_STUB" bash "$SC" run --repo "$TMP/sc-repo" --proposal-dir "$TMP/sc-prop" --chief chiefs
+has "C4 a real tick's steering-cull proposal appends" "$SC_INBOX" "[steering-cull] proposal"
+
+echo "== doc mirror door"
+DOC="$FAKE_REAL/handovers/doc-d1.md"
+printf '# doc\n\n## Chief Rulings (newest at the bottom)\n' >"$DOC"
+rc=0; HIMMEL_CONSOLE_RUNDIR="$TMP/rundir" HANDOVER_DIR="$TMP/hermetic-handovers" bash "$SEND" HIMMEL-1-chief "mirror from a test" --doc "$DOC" >"$TMP/d.out" 2>&1 || rc=$?
+eq "D1 a test's send with a real doc mirror exits 77" "$rc" 77
+if grep -q 'mirror from a test' "$DOC"; then fail "D1 a test wrote the real doc mirror"; else pass "D1 a test wrote nothing to the real doc"; fi
+HIMMEL_CONSOLE_RUNDIR="$TMP/rundir" HANDOVER_DIR="$TMP/hermetic-handovers" as_session bash "$SEND" HIMMEL-1-chief "mirror from a session" --doc "$DOC" >/dev/null 2>&1
+has "D2 a real session's doc mirror is written" "$DOC" "mirror from a session"
+TDOC="$TMP/hermetic-handovers/doc-d3.md"
+printf '# doc\n\n## Chief Rulings (newest at the bottom)\n' >"$TDOC"
+HIMMEL_CONSOLE_RUNDIR="$TMP/rundir" HANDOVER_DIR="$TMP/hermetic-handovers" bash "$SEND" HIMMEL-1-chief "mirror hermetic" --doc "$TDOC" >/dev/null 2>&1
+has "D3 a send with a temp doc stays local" "$TDOC" "mirror hermetic"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS - test-real-state-guard: all rows"; exit 0; fi

@@ -84,10 +84,22 @@ ss_cmd=$(jq -r '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inje
 [ -n "$ss_cmd" ] || fail "HIMMEL-6956: core/project did not wire the inject-initiative SessionStart hook"
 mkdir -p "$work/ss-clone"
 printf 'HIMMEL_INITIATIVE=pr\n' > "$work/ss-clone/.env"
-ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
+# The config layer (himmel.conf) outranks .env, so a station's own
+# himmel.conf would beat the fixture .env. Point the config dir at an empty fixture
+# so the verdict is the same on a station as in CI; the planted-conf control proves
+# the layer WOULD win without that isolation (it is the RED row).
+mkdir -p "$work/ss-station-conf" "$work/ss-no-conf"
+printf 'HIMMEL_INITIATIVE=execute,prcheck,pr,ticket,merge,public,handover\n' > "$work/ss-station-conf/himmel.conf"
+ss_ctl=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_CONFIG_DIR="$work/ss-station-conf" HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
+grepq "$ss_ctl" 'Active steps: execute,prcheck,pr,ticket,merge,public,handover' \
+  || fail "HIMMEL-8423: the planted himmel.conf did not outrank the fixture .env, so the isolation below proves nothing (got: $ss_ctl)"
+ss_out=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_CONFIG_DIR="$work/ss-no-conf" HIMMEL_REPO="$work/ss-clone" bash -c "$ss_cmd" </dev/null)
 grepq "$ss_out" 'Active steps: pr' \
   || fail "HIMMEL-6956: the project-scope SessionStart hook did not name the active step (got: $ss_out)"
-ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
+case "$ss_out" in
+  *execute*) fail "the config layer's steps leaked into the fixture's step list (got: $ss_out)" ;;
+esac
+ss_idle=$(cd "$proj" && unset HIMMEL_INITIATIVE HIMMEL_AFK HIMMEL_INITIATIVE_AFK && HIMMEL_CONFIG_DIR="$work/ss-no-conf" HIMMEL_REPO="$work/no-such-clone" bash -c "$ss_cmd" </dev/null)
 [ -z "$ss_idle" ] || fail "HIMMEL-6956: the project-scope SessionStart hook injected with no step set: $ss_idle"
 [ "$(jq '[.hooks.SessionStart[]?.hooks[]?.command | select(contains("inject-initiative"))] | length' "$s")" = "1" ] \
   || fail "HIMMEL-6956: idempotent re-run left more than one inject-initiative hook"
