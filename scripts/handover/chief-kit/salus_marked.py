@@ -7,6 +7,7 @@
 # CLI: python3 salus_marked.py salus|adapter <dir>   exit 0 = yes, 10 = no; any other code is a crash and the caller refuses.
 # git-env-ok: _primary drops every GIT_* name from the environment it hands git
 import os
+import pathlib
 import subprocess
 import sys
 
@@ -20,15 +21,15 @@ def _lists():
     return ((codex, 'phi-roots'), (codex, 'egress-denylist'), (glm, 'phi-roots'), (glm, 'egress-denylist'))
 
 
+def _chain(d):
+    # d and each ancestor up to the root: bounded by the path's depth.
+    return [d] + [str(p) for p in pathlib.Path(d).parents]
+
+
 def _dir_marked(d):
-    top = d
-    while True:
+    for top in _chain(d):
         if os.path.lexists(os.path.join(top, '.salus')) or os.path.lexists(os.path.join(top, '.salus-profile')):
             return True
-        up = os.path.dirname(top)
-        if up == top:
-            break
-        top = up
     for cfg, name in _lists():
         f = os.path.join(cfg, name)
         if not os.path.lexists(f):
@@ -52,14 +53,7 @@ def _dir_marked(d):
 
 
 def _holds_git(d):
-    top = d
-    while True:
-        if os.path.lexists(os.path.join(top, '.git')):
-            return True
-        up = os.path.dirname(top)
-        if up == top:
-            return False
-        top = up
+    return any(os.path.lexists(os.path.join(top, '.git')) for top in _chain(d))
 
 
 def _primary(d):
