@@ -537,6 +537,15 @@ describe('version-write journal hook (HIMMEL-8724 S2)', () => {
     expect(rows()).toEqual([]);
   });
 
+  it('a later add-then-remove by someone else is not bound as the machine write (I11)', async () => {
+    fakeJira({
+      key: 'HIMMEL-9', set: ['v1.1.3'], entries: [fv('500', null, 'v1.1.3')],
+      onWrite: (f) => { f.entries.push(fv('501', null, 'v1.1.4'), fv('502', null, 'v1.1.5'), fv('503', 'v1.1.5', null)); f.set = ['v1.1.3', 'v1.1.4']; },
+    });
+    await request('PUT', '/issue/HIMMEL-9', { update: { fixVersions: [{ add: { name: 'v1.1.4' } }] } }, 'merge-stamp');
+    expect(rows()).toEqual([]);
+  });
+
   it('one entry with two items binds (54867)', async () => {
     const all = realEntries(3084);
     fakeJira({

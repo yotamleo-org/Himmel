@@ -178,16 +178,17 @@ export async function recordVersionWrite(request: WriteRequest, response: unknow
   const fresh = newer.filter((e) => pre.entry === null || e.id > pre.entry);
   if (fresh.length === 0) return;
   // Combined items of every newer entry: one move lands as one entry with two items or as two entries.
-  const added = new Set<string>();
-  const removed = new Set<string>();
+  // The items must equal the requested change as listed, not as netted: a later add-then-remove by someone
+  // else nets to nothing but is an entry this write did not produce.
+  const added: string[] = [];
+  const removed: string[] = [];
   for (const item of fresh.flatMap((e) => e.items)) {
-    if (item.toString) added.add(item.toString);
-    if (item.fromString) removed.add(item.fromString);
+    if (item.toString) added.push(item.toString);
+    if (item.fromString) removed.push(item.fromString);
   }
-  const net = (a: Set<string>, b: Set<string>): string[] => sorted([...a].filter((x) => !b.has(x)));
   const wantAdded = asked.filter((x) => !pre.set.includes(x));
   const wantRemoved = pre.set.filter((x) => !asked.includes(x));
-  if (!same(net(added, removed), sorted(wantAdded)) || !same(net(removed, added), sorted(wantRemoved))) return;
+  if (!same(added.sort(), wantAdded.sort()) || !same(removed.sort(), wantRemoved.sort())) return;
   append(pre.journal, { ts, key: pre.key, from: pre.set, to: after, mechanism: pre.mechanism, entry: String(fresh[0].id) });
 }
 
@@ -199,7 +200,8 @@ export function readVersionWrites(path: string): VersionWriteRow[] {
     if (!line.trim()) continue;
     try {
       const r = JSON.parse(line) as VersionWriteRow;
-      if (typeof r.key === 'string' && typeof r.entry === 'string' && typeof r.mechanism === 'string' && Array.isArray(r.from) && Array.isArray(r.to)) rows.push(r);
+      const names = (v: unknown): boolean => Array.isArray(v) && v.every((x) => typeof x === 'string');
+      if (typeof r.ts === 'string' && typeof r.key === 'string' && typeof r.entry === 'string' && typeof r.mechanism === 'string' && names(r.from) && names(r.to)) rows.push(r);
     } catch {
       // a bad line is skipped
     }
