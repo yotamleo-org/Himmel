@@ -641,7 +641,8 @@ done
 # rule yet, which the follow-up ticket for them owns.
 for h in chief-kit/go.sh chief-kit/write-verdict.sh chief-kit/chief-wait.sh chief-kit/himmel-gate.sh; do
     drifted "kit writer $h" "bash scripts/handover/$h" "scripts/handover/$h"
-    if printed_bash_lines | grep -qF "scripts/handover/$h"; then echo "PASS kit writer $h remedy names its own script"; else echo "FAIL kit writer $h remedy does not name scripts/handover/$h: $ERR_OF"; FAILED=$((FAILED + 1)); fi
+    printed_now="$(printed_bash_lines)"
+    if grep -qF "scripts/handover/$h" <<<"$printed_now"; then echo "PASS kit writer $h remedy names its own script"; else echo "FAIL kit writer $h remedy does not name scripts/handover/$h: $ERR_OF"; FAILED=$((FAILED + 1)); fi
     restore_tree "scripts/handover/$h"
 done
 
