@@ -383,5 +383,13 @@ err11j=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_REL
     HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q11 GO "$NzF" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" --delta-noop "$Nq" 2>&1 >/dev/null)
 check "11j: a judged head with a real record beside its no-op record is not refused as a no-op" "$(printf '%s\n' "$err11j" | grep -c 'is itself a no-op record')" 0
 
+# 11k: a new head that descends from the real judged head but not from the supplied no-op head is a rewritten history
+prev11=$(git rev-parse HEAD)
+git checkout -q -b side11 "$Nq"
+printf 'side\n' >> docs/c.md; Nside=$(step docs11side)
+check "11k: a head that does not descend from the supplied no-op head -> trust" "$(dcls "$N11" "$Nside")" trust
+check "11k: ...and says why on stderr" "$(dcls "$N11" "$Nside" 2>&1 >/dev/null | grep -c 'does not descend from the supplied')" 1
+git checkout -q "$prev11"
+
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"

@@ -117,6 +117,8 @@ if [ -n "$QID" ]; then
         done
         if [ -n "$JR" ]; then
             git cat-file -e "$JR^{commit}" 2>/dev/null || trust "delta-judged head $JR is not a commit in this checkout"
+            # the new head must still descend from the head the caller gave: a history rewritten past the no-op is no delta of it
+            git merge-base --is-ancestor "$J" "$N" 2>/dev/null || trust "new head $N does not descend from the supplied no-op head $J"
             J=$JR
             collect_real
         fi
