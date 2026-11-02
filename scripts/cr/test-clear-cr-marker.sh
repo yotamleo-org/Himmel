@@ -3221,6 +3221,19 @@ if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round' && gr
     fail "8aa-commit must refuse with reason=unadjudicated-earlier-round naming s1@$_r1: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
+# 8aa-rekey. Control: a spec row re-keyed onto a commit is at a commit head, so it
+# stays open too. The sweep gate reads the same amended head.
+sweep_fixture
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-spec","branch":"feat/x","model":"codex","finding_id":"s2","severity":"sug","file":"a.sh","line":1,"artifact":"spec","verdict":"agreed"}')" \
+    "$(avail_ok "${_tip:0:8}")"
+append_ledger "$tmp" "8aa-rekey re-key the spec row" amend --head himmel-8519-spec --id s2 --artifact spec --set "head=$_r1" --reason "the finding is about this commit"
+write_sweeps "$tmp" "SWEEP [s2@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4"
+run_clear "$tmp" 14 "8aa-rekey a spec row re-keyed onto a commit stays open -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round' && grepq "$LAST_CLEAR_OUT" -F 'still-open s2@himmel-8'; then pass; else
+    fail "8aa-rekey must refuse with reason=unadjudicated-earlier-round naming s2: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
 # 8aa-empty. Control: only an agreed row leaves the check. A spec row nobody has
 # decided still needs its decision.
 make_repo || exit 1

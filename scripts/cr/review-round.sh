@@ -1843,11 +1843,12 @@ for (const row of findingRows) {
   else if (verdict === "conflict" || verdict === "unaddressed") action = "warn-unadjudicated";
   else if (verdict === "") action = "still-open-unadjudicated";
   else if (verdict !== "agreed") continue;
-  else if ((row.artifact === "spec" || row.artifact === "plan") && row.head && !/^[0-9a-f]{7,64}$/i.test(String(row.head))) {
+  else if ((row.artifact === "spec" || row.artifact === "plan") && effective.head && !/^[0-9a-f]{7,64}$/i.test(String(effective.head))) {
     // A design-skill finding (artifact exactly spec or plan, head not a commit
     // hex) edits a document outside the tree: no later commit could fix it, so
-    // it can never be promoted. Read from the raw row, so an amend cannot
-    // relabel a code finding into this case.
+    // it can never be promoted. The head is the amended one, as in the sweep
+    // gate, so a row re-keyed onto a commit stays open. An amend cannot set the
+    // artifact, so it cannot relabel a code finding into this case.
     continue;
   } else if (resolvesToHead(row.head)) {
     // A finding raised (and agreed) AT the
