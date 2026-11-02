@@ -60,6 +60,9 @@ trap 'rm -rf "$tmp"' EXIT
 # case that forgets its own dir (38a-38l did) lands here, not in production data.
 # Cases 1e-1h still pass a per-case dir, which overrides this.
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
+# the single-writer register lives under $HOME/.himmel/state/holds: pinned, so no seed here can reach the real one
+export HOME="$tmp/pinned-home"
+mkdir -p "$HOME"
 # Headed-arm.sh mkdirs its claim-lock root `-m 0700` and then
 # validates it (owner, group/world-writable bits), and most cases below (fresh
 # lock root, 0700 readback, chmod 777 refusal) assert exactly that. On a host
@@ -2637,5 +2640,168 @@ check "8464o the ticket claim is gone while the bus bind still runs" "$tp7_held|
 mkdir -p "$tp7/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp7/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N2-second-2026-11-02" > "$tp7/locks/ticket-HIMMEL-8464.lock/holder"
 wait "$tp7_pid" 2>/dev/null; pkill -f "$tp7/bus" 2>/dev/null || true
 check "8464q the first arm's exit leaves a successor's ticket claim alone" "$(cat "$tp7/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N2-second-2026-11-02"
+
+# --- single-writer barrier: a launch seeds its exact file holds and refuses an overlap ------------------------------------
+# A worker launch carries HIMMEL_HOLD_KEY/_DOC/_LABEL (headed-arm-worker.sh sets them); headed-arm.sh seeds past the
+# duplicate-name and ticket-rival refusals. The register is under the pinned $HOME; the docs under a pinned handover root.
+HP="$HERE/chief-kit/holds.py"
+HH="$tmp/hroot"; mkdir -p "$HH/u/r"
+hp() { HIMMEL_CONSOLE_LEG='' HANDOVER_DIR="$HH" python3 -I "$HP" "$@"; }  # the chief runs grant: a worker's HIMMEL_CONSOLE_LEG would refuse it
+hdoc() { local f="$HH/u/r/$1"; shift; printf '%s\n' "$@" > "$f"; printf '%s' "$f"; }
+hrow() { local s="${2:-$REPO}"; printf '%s/.himmel/state/holds/%s/%s' "$HOME" "${s//\//%2F}" "$(printf '%s' "$1" | sed 's#/#%2F#g')"; }
+hrows() { find "$HOME/.himmel/state/holds" -type f -not -name events.log 2>/dev/null | grep -c . || true; }
+# hlaunch <stubdir> <name> <doc> [label] [repo]: run_headed_arm as a worker launch would reach it
+hlaunch() {
+  HANDOVER_DIR="$HH" HIMMEL_HOLD_KEY="$(printf '%s' "$2" | grep -oE '^[A-Z]+-[0-9]+')" HIMMEL_HOLD_DOC="$3" HIMMEL_HOLD_LABEL="${4:-N1}" \
+    run_headed_arm "$1" "${5:-$REPO}" "$2" "$3" "$1/signal-never" "$PAST"
+}
+
+# an overlap is refused: exit 2, the holder and the runnable grant line named, no row of this seed, both claims gone
+HA="$(hdoc HIMMEL-9501-N1-a.md '# a')"
+hp claim --key HIMMEL-9501 --label N1 --doc "$HA" --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
+h1_before="$(cat "$(hrow scripts/h1.sh)")"
+HB="$(hdoc HIMMEL-9502-N2-b.md '# b' '> **Writes:** scripts/h0.sh scripts/h1.sh')"
+dh1="$tmp/h1"; mk_stub "$dh1" 1 alive "HIMMEL-9502-N2-b"
+h1out="$(hlaunch "$dh1" HIMMEL-9502-N2-b "$HB" N2 2>&1)"; h1rc=$?
+check "8725a an overlapping launch is refused (exit 2)" "$h1rc" "2"
+contains "8725b the refusal names the holder" "$h1out" "HIMMEL-9501"
+contains "8725c the refusal prints the runnable grant line" "$h1out" "python3 -I "
+contains "8725d ... for the refused key and file" "$h1out" "holds.py grant --key HIMMEL-9502 --repo $REPO scripts/h1.sh"
+check "8725e the refused launch started no konsole" "$([ -e "$dh1/record" ] && echo launched || echo none)" "none"
+check "8725f the refused seed made no row on an earlier file" "$([ -e "$(hrow scripts/h0.sh)" ] && echo row || echo none)" "none"
+check "8725g the holder's row is byte-identical" "$(cat "$(hrow scripts/h1.sh)")" "$h1_before"
+check "8725h the name lock and the ticket lock are both gone" "$(compgen -G "$dh1/locks/*" | grep -c .)" "0"
+
+# a grant, then the same launch passes
+hp grant --key HIMMEL-9502 --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
+dh2="$tmp/h2"; mk_stub "$dh2" 1 alive "HIMMEL-9502-N2-b"
+hlaunch "$dh2" HIMMEL-9502-N2-b "$HB" N2 >/dev/null 2>&1; h2rc=$?
+check "8725i a launch naming a file granted to its key launches" "$h2rc" "0"
+
+# a disjoint launch seeds its rows; a tree in Writes is no row
+HC="$(hdoc HIMMEL-9503-N1-c.md '> **Writes:** scripts/h2a.sh scripts/lib/')"
+dh3="$tmp/h3"; mk_stub "$dh3" 1 alive "HIMMEL-9503-N1-c"
+hlaunch "$dh3" HIMMEL-9503-N1-c "$HC" N1 >/dev/null 2>&1; h3rc=$?
+check "8725j a disjoint launch launches" "$h3rc" "0"
+check "8725k ... its row has the key, label and doc" "$(cut -f1,2,3 "$(hrow scripts/h2a.sh)" | tr '\t' ' ')" "HIMMEL-9503 N1 $HC"
+check "8725l a tree in Writes makes no row" "$(grep -rlF HIMMEL-9503 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "1"
+
+# an absolute bucket path is a row under _abs, and a second brief on it is refused
+HD="$(hdoc HIMMEL-9504-N1-d.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md")"
+dh4="$tmp/h4"; mk_stub "$dh4" 1 alive "HIMMEL-9504-N1-d"
+hlaunch "$dh4" HIMMEL-9504-N1-d "$HD" N1 >/dev/null 2>&1
+check "8725m an absolute bucket path is a row under _abs" "$(find "$HOME/.himmel/state/holds/_abs" -type f 2>/dev/null | grep -c .)" "1"
+HE="$(hdoc HIMMEL-9505-N1-e.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md")"
+dh5="$tmp/h5"; mk_stub "$dh5" 1 alive "HIMMEL-9505-N1-e"
+hlaunch "$dh5" HIMMEL-9505-N1-e "$HE" N1 >/dev/null 2>&1; h5rc=$?
+check "8725n a second brief on that bucket file is refused (exit 2)" "$h5rc" "2"
+
+# the two earlier refusals come first: a ticket rival (exit 16) and a live duplicate name seed nothing
+HF="$(hdoc HIMMEL-9506-N2-f.md '> **Writes:** scripts/h6.sh')"
+dh6="$tmp/h6"; mk_pair "$dh6" "HIMMEL-9506-N1-first-2026-11-02" "HIMMEL-9506-N2-f"
+mkdir -p "$dh6/locks/ticket-HIMMEL-9506.lock"; date +%s > "$dh6/locks/ticket-HIMMEL-9506.lock/acquired"; echo "HIMMEL-9506-N1-first-2026-11-02" > "$dh6/locks/ticket-HIMMEL-9506.lock/holder"
+hlaunch "$dh6" HIMMEL-9506-N2-f "$HF" N2 >/dev/null 2>&1; h6rc=$?
+check "8725o a ticket-rival refusal (exit 16) seeds nothing" "$h6rc|$([ -e "$(hrow scripts/h6.sh)" ] && echo row || echo none)" "16|none"
+HG="$(hdoc HIMMEL-9507-N1-g.md '> **Writes:** scripts/h7.sh')"
+dh7="$tmp/h7"; mk_stub "$dh7" 0 alive "HIMMEL-9507-N1-g"
+hlaunch "$dh7" HIMMEL-9507-N1-g "$HG" N1 >/dev/null 2>&1; h7rc=$?
+check "8725p a live duplicate name (exit 0, no launch) seeds nothing" "$h7rc|$([ -e "$(hrow scripts/h7.sh)" ] && echo row || echo none)" "0|none"
+
+# no HIMMEL_HOLD_KEY: no seed
+HH2="$(hdoc HIMMEL-9508-N1-h.md '> **Writes:** scripts/h8.sh')"
+dh8="$tmp/h8"; mk_stub "$dh8" 1 alive "HIMMEL-9508-N1-h"
+HANDOVER_DIR="$HH" run_headed_arm "$dh8" "$REPO" HIMMEL-9508-N1-h "$HH2" "$dh8/signal-never" "$PAST" >/dev/null 2>&1; h8rc=$?
+check "8725q no HIMMEL_HOLD_KEY: launches, no row" "$h8rc|$([ -e "$(hrow scripts/h8.sh)" ] && echo row || echo none)" "0|none"
+
+# a RESUME doc with no Writes line re-points its key's rows (I3); read shows the new label
+HP1="$(hdoc HIMMEL-9510-N1-pred.md '> **Writes:** scripts/h10.sh')"
+hp seed --key HIMMEL-9510 --label N1 --doc "$HP1" --repo "$REPO" >/dev/null 2>&1
+HR="$(hdoc HIMMEL-9510-N1b-pred-RESUME.md '# resume, no Writes line')"
+dh9="$tmp/h9"; mk_stub "$dh9" 1 alive "HIMMEL-9510-N1b-pred"
+hlaunch "$dh9" HIMMEL-9510-N1b-pred "$HR" N1b >/dev/null 2>&1; h9rc=$?
+check "8725r a RESUME launch with rows re-points them to the new doc and label" "$h9rc|$(cut -f2,3 "$(hrow scripts/h10.sh)" | tr '\t' ' ')" "0|N1b $HR"
+contains "8725s holds.py read shows the new label" "$(hp read --repo "$REPO")" "N1b"
+# no rows: the newest doc of the key that carries a Writes line seeds
+hdoc HIMMEL-9511-N1-pred.md '> **Writes:** scripts/h11.sh' >/dev/null
+HR2="$(hdoc HIMMEL-9511-N1b-pred-RESUME.md '# resume, no Writes line')"
+dh10="$tmp/h10"; mk_stub "$dh10" 1 alive "HIMMEL-9511-N1b-pred"
+hlaunch "$dh10" HIMMEL-9511-N1b-pred "$HR2" N1b >/dev/null 2>&1
+check "8725t a RESUME launch with no rows seeds from the predecessor's Writes, under the new doc" "$(cut -f1,2,3 "$(hrow scripts/h11.sh)" | tr '\t' ' ')" "HIMMEL-9511 N1b $HR2"
+HR3="$(hdoc HIMMEL-9512-N1b-none-RESUME.md '# resume, no Writes anywhere')"
+dh11="$tmp/h11"; mk_stub "$dh11" 1 alive "HIMMEL-9512-N1b-none"
+hlaunch "$dh11" HIMMEL-9512-N1b-none "$HR3" N1b >/dev/null 2>&1; h11rc=$?
+check "8725u no Writes anywhere: launches, no row" "$h11rc|$(grep -rlF HIMMEL-9512 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "0|0"
+# rows taken over while the successor was parked past 24 hours: the RESUME launch is refused, naming the new holder
+HP3="$(hdoc HIMMEL-9513-N1-pred.md '> **Writes:** scripts/h13.sh')"
+hp seed --key HIMMEL-9513 --label N1 --doc "$HP3" --repo "$REPO" >/dev/null 2>&1
+touch -d '3 days ago' "$HP3" "$(hrow scripts/h13.sh)"
+HR4="$(hdoc HIMMEL-9513-N1b-pred-RESUME.md '> **Writes:** scripts/h13.sh')"
+touch -d '3 days ago' "$HR4"
+HT="$(hdoc HIMMEL-9514-N1-thief.md '# thief')"
+hp claim --key HIMMEL-9514 --label N1 --doc "$HT" --repo "$REPO" scripts/h13.sh >/dev/null 2>&1
+dh12="$tmp/h12"; mk_stub "$dh12" 1 alive "HIMMEL-9513-N1b-pred"
+h12out="$(hlaunch "$dh12" HIMMEL-9513-N1b-pred "$HR4" N1b 2>&1)"; h12rc=$?
+check "8725v a RESUME launch whose rows were taken over is refused (exit 2)" "$h12rc" "2"
+contains "8725w ... naming the new holder" "$h12out" "HIMMEL-9514"
+# an aborted RESUME launch: the rows re-pointed before the abort stay alive on the key's RESUME clause
+HP4="$(hdoc HIMMEL-9520-N1-pred.md '> **Writes:** scripts/h20a.sh')"
+hp seed --key HIMMEL-9520 --label N1 --doc "$HP4" --repo "$REPO" >/dev/null 2>&1
+hp claim --key HIMMEL-9521 --label N1 --doc "$(hdoc HIMMEL-9521-N1-x.md '# x')" --repo "$REPO" scripts/h20b.sh >/dev/null 2>&1
+HR5="$(hdoc HIMMEL-9520-N1b-pred-RESUME.md '> **Writes:** scripts/h20b.sh')"
+dh13="$tmp/h13"; mk_stub "$dh13" 1 alive "HIMMEL-9520-N1b-pred"
+hlaunch "$dh13" HIMMEL-9520-N1b-pred "$HR5" N1b >/dev/null 2>&1; h13rc=$?
+touch -d '2 hours ago' "$(hrow scripts/h20a.sh)"
+check "8725x an aborted RESUME launch (exit 2) leaves the re-pointed row on the RESUME doc" "$h13rc|$(cut -f3 "$(hrow scripts/h20a.sh)")" "2|$HR5"
+check "8725y ... and it reads alive past the grace on the RESUME clause" "$(hp alive --repo "$REPO" scripts/h20a.sh)" "alive"
+# a launch that fails after the seed keeps its rows, which read dead past the grace with no lock held
+HW="$(hdoc HIMMEL-9522-N1-w.md '> **Writes:** scripts/h22.sh')"
+dh14="$tmp/h14"; mk_stub "$dh14" 1 dying "HIMMEL-9522-N1-w"
+hlaunch "$dh14" HIMMEL-9522-N1-w "$HW" N1 >/dev/null 2>&1; h14rc=$?
+touch -d '2 hours ago' "$(hrow scripts/h22.sh)"
+check "8725z a launch that fails after the seed keeps its row, dead past the grace with no lock held" "$([ "$h14rc" -ne 0 ] && echo failed)|$(hp alive --repo "$REPO" scripts/h22.sh)" "failed|dead"
+
+# a seed fault warns and launches; a stub with no holds: line is a fault, with one it is a refusal; OFF calls neither
+HX="$(hdoc HIMMEL-9530-N1-x.md '> **Writes:** scripts/h30.sh')"
+printf 'import sys\nsys.exit(1)\n' > "$tmp/holds-stub-fault.py"
+printf 'import sys\nsys.stderr.write("holds: scripts/h30.sh is held by HIMMEL-1 (x, brief)\\n")\nsys.exit(1)\n' > "$tmp/holds-stub-refuse.py"
+printf 'open(%s, "w").write("called")\n' "'$tmp/holds-stub-called'" > "$tmp/holds-stub-mark.py"
+dh15="$tmp/h15"; mk_stub "$dh15" 1 alive "HIMMEL-9530-N1-x"
+h15out="$(HEADED_ARM_HOLDS_PY="$tmp/holds-stub-fault.py" hlaunch "$dh15" HIMMEL-9530-N1-x "$HX" N1 2>&1)"; h15rc=$?
+check "8725aa a holds.py exiting 1 with no holds: line (a crash) warns and launches" "$h15rc" "0"
+contains "8725ab ... and says so" "$h15out" "WARN holds seed"
+dh16="$tmp/h16"; mk_stub "$dh16" 1 alive "HIMMEL-9530-N1-x"
+HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh16" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h16rc=$?
+check "8725ac a holds.py exiting 1 with a holds: line refuses (exit 2)" "$h16rc" "2"
+dh17="$tmp/h17"; mk_stub "$dh17" 1 alive "HIMMEL-9530-N1-x"
+WRITE_HOLD_OK=1 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh17" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h17rc=$?
+check "8725ad WRITE_HOLD_OK=1: the same overlap warns and launches" "$h17rc" "0"
+mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"
+dh18="$tmp/h18"; mk_stub "$dh18" 1 alive "HIMMEL-9530-N1-x"
+HEADED_ARM_HOLDS_PY="$tmp/holds-stub-mark.py" hlaunch "$dh18" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h18rc=$?
+rm -f "$HOME/.himmel/state/holds/OFF"
+check "8725ae OFF present: launches and calls no holds.py" "$h18rc|$([ -e "$tmp/holds-stub-called" ] && echo called || echo none)" "0|none"
+# an unreadable register: the real seed exits 3, the launch goes ahead
+hrepo2="$tmp/hrepo2"; mkdir -p "$hrepo2" "$HOME/.himmel/state/holds"
+: > "$HOME/.himmel/state/holds/${hrepo2//\//%2F}"
+HY="$(hdoc HIMMEL-9531-N1-y.md '> **Writes:** scripts/h31.sh')"
+dh19="$tmp/h19"; mk_stub "$dh19" 1 alive "HIMMEL-9531-N1-y"
+h19out="$(hlaunch "$dh19" HIMMEL-9531-N1-y "$HY" N1 "$hrepo2" 2>&1)"; h19rc=$?
+check "8725af an unreadable register: the seed exits 3, the launch goes ahead" "$h19rc" "0"
+contains "8725ag ... warned" "$h19out" "WARN holds seed"
+# a chief launch seeds nothing and the key is gone from the child it starts
+dh20="$tmp/h20"; mk_stub "$dh20" 1 alive "HIMMEL-9532-chief"
+cat > "$dh20/konsole" <<KONSOLE_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$dh20/record"
+printf '%s\n' "\${HIMMEL_HOLD_KEY-unset}" > "$dh20/holdenv"
+: > "$dh20/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$dh20/konsole"
+HZ="$(hdoc HIMMEL-9532-chief.md '> **Writes:** scripts/h32.sh')"
+HANDOVER_DIR="$HH" HIMMEL_HOLD_KEY=HIMMEL-9532 HIMMEL_HOLD_DOC="$HZ" HIMMEL_HOLD_LABEL=N1 KONSOLE_CMD="$dh20/konsole" PGREP_CMD="$dh20/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$dh20/locks" HEADED_ARM_PROC="$dh20/proc" \
+  bash "$SCRIPT" --role chief "HIMMEL-9532-chief" "$HZ" "$dh20/signal-never" "$PAST" "$dh20/log" >/dev/null 2>&1; h20rc=$?
+wait_record "$dh20" || true
+check "8725ah a chief launch seeds nothing and the child carries no key" "$h20rc|$([ -e "$(hrow scripts/h32.sh)" ] && echo row || echo none)|$(cat "$dh20/holdenv" 2>/dev/null)" "0|none|unset"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

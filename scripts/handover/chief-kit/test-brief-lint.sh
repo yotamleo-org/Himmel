@@ -293,6 +293,9 @@ expect_rc "8b a core brief whose key spec-check answers SPEC ok passes" 0 "$tmp/
 expect_rc "8c a self-written Core gate: bypass= line passes nothing" 3 "$tmp/core_self_gate.md"
 expect_rc "8d a self-written Spec: line passes nothing when spec-check says NO-SPEC" 3 "$tmp/core_self_spec.md"
 expect_rc "8e a non-core brief (docs-only Writes) passes" 0 "$tmp/core_docs.md"
+# the path list is holds.py's parser (a parenthetical is not a write there); the shape lint stays raw, so the prose is still refused
+mk core_paren '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' '> **Writes:** scripts/handover/chief-kit/next-dispatchable.sh (see the ticket)' '## Results (newest at the bottom)'
+expect_rc "8e2 a prose token on a Writes line is still refused, whatever path list holds.py reads" 1 "$tmp/core_paren.md"
 expect_rc "8f a Results bullet does not exempt a core key" 3 "$tmp/core_ran.md"
 expect_rc "8f2 a doc that has run passes when core-check answers BYPASS for its key" 0 "$tmp/bug_ran.md"
 expect_rc "8g a judge brief naming a core key is gated too" 3 "$tmp/core_judge.md"

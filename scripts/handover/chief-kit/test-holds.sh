@@ -630,6 +630,60 @@ touch -d '2 hours ago' "$(rowf scripts/a1.sh "$R5")" "$(rowf scripts/b1.sh "$R5"
 run hp read --repo "$R5" --keys
 same "F7b read --keys: a dead row then a junk row of the same key reads that key unknown, never dead" "$OUT" "$(printf 'HIMMEL-9351\tunknown\t2')"
 
+# ---- Task 2: seed exit 3 on a claim fault, fallback doc, repoint, deadline, backfill
+mkdir -p "$(slugdir)"
+printf 'not a row\n' > "$(rowf scripts/t2bad.sh)"
+DT1="$(mkdoc HIMMEL-9401-case.md '> **Writes:** scripts/t2bad.sh scripts/t2ok.sh')"
+run hp seed --key HIMMEL-9401 --label seeder --doc "$DT1" --repo "$R"
+same "T2 seed: a claim fault exits 3" "$RC" 3
+same "T2 seed: the rows made before and after the fault are kept" "$(cut -f1 "$(rowf scripts/t2ok.sh)")" HIMMEL-9401
+
+DT2P="$(mkdoc HIMMEL-9402-N1-case.md '> **Writes:** scripts/t2fb.sh')"
+touch -d '1 hour ago' "$DT2P"
+DT2="$(mkdoc HIMMEL-9402-N1b-case-RESUME.md '# resume doc, no Writes line')"
+run hp seed --key HIMMEL-9402 --label N1b --doc "$DT2" --repo "$R"
+same "T2 seed: a doc with no Writes line falls back to the newest doc of the key that has one (exit 0)" "$RC" 0
+same "T2 seed: the fallback row carries the new doc and label" "$(cut -f1,2,3 "$(rowf scripts/t2fb.sh)" | tr '\t' ' ')" "HIMMEL-9402 N1b $DT2"
+DT3="$(mkdoc HIMMEL-9403-case-RESUME.md '# resume doc, nothing anywhere')"
+run hp seed --key HIMMEL-9403 --label N3 --doc "$DT3" --repo "$R"
+same "T2 seed: no Writes anywhere exits 0" "$RC" 0
+same "T2 seed: ... and makes no row" "$(grep -rlF "$DT3" "$(slugdir)" 2>/dev/null | wc -l | tr -d ' ')" 0
+
+put_row scripts/t2rp1.sh HIMMEL-9404 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9404-old.md"
+put_row scripts/t2rp2.sh HIMMEL-9404 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9404-old.md"
+put_row scripts/t2rp3.sh HIMMEL-9405 other "$HANDOVER_DIR/u/r/HIMMEL-9405-old.md"
+other_before="$(cat "$(rowf scripts/t2rp3.sh)")"
+run hp repoint --key HIMMEL-9404 --label newlabel --doc "$HANDOVER_DIR/u/r/HIMMEL-9404-new-RESUME.md" --repo "$R"
+same "T2 repoint exits 0" "$RC" 0
+same "T2 repoint: the key's first row has the new doc and label" "$(cut -f2,3 "$(rowf scripts/t2rp1.sh)" | tr '\t' ' ')" "newlabel $HANDOVER_DIR/u/r/HIMMEL-9404-new-RESUME.md"
+same "T2 repoint: the key's second row too" "$(cut -f2 "$(rowf scripts/t2rp2.sh)")" newlabel
+same "T2 repoint: another key's row is left alone" "$(cat "$(rowf scripts/t2rp3.sh)")" "$other_before"
+
+DT4="$(mkdoc HIMMEL-9406-case.md '> **Writes:** scripts/t2fr.sh scripts/t2h1.sh scripts/t2h2.sh')"
+put_row scripts/t2h1.sh HIMMEL-9407 holder1 "$(mkdoc HIMMEL-9407-case.md)"
+put_row scripts/t2h2.sh HIMMEL-9408 holder2 "$(mkdoc HIMMEL-9408-case.md)"
+t0="$(date +%s)"
+HOLDS_QUEUE_LOCK="$W/bin/gh-hang" run hp seed --key HIMMEL-9406 --label slow --doc "$DT4" --repo "$R" --deadline "$((t0 + 1))"
+t1="$(date +%s)"
+same "T2 seed: a hanging queue-lock stub passes the deadline, exit 3" "$RC" 3
+same "T2 seed: ... inside 120 s" "$([ "$((t1 - t0))" -lt 120 ] && echo yes || echo no)" yes
+same "T2 seed: ... the row made before the deadline is kept" "$(cut -f1 "$(rowf scripts/t2fr.sh)")" HIMMEL-9406
+
+BM="$W/fleet.json"
+BA="$(mkdoc HIMMEL-9410-N1-case.md '> **Writes:** scripts/t2ba.sh')"
+BB="$(mkdoc HIMMEL-9411-N2-case.md "$(printf '> **Writes:** scripts/t2bb.sh\n\n## Results\n- 10:00 WRAPPED — done')")"
+BC="$(mkdoc HIMMEL-9412-N3-case.md '> **Writes:** scripts/t2ba.sh')"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"},{"doc":"%s","label":"N3"}]}\n' "$BA" "$BB" "$BC" > "$BM"
+run hp backfill --manifest "$BM" --repo "$R"
+same "T2 backfill: an overlap is reported, not fatal (exit 0)" "$RC" 0
+contains "T2 backfill: the overlap is named" "$OUT" "N3 overlap"
+same "T2 backfill: a non-WRAPPED worker gets its row with its label" "$(cut -f1,2 "$(rowf scripts/t2ba.sh)" | tr '\t' ' ')" "HIMMEL-9410 N1"
+same "T2 backfill: a WRAPPED worker gets none" "$([ -e "$(rowf scripts/t2bb.sh)" ] && echo row || echo none)" none
+lock_hold "$BA"
+touch -d '2 hours ago' "$(rowf scripts/t2ba.sh)"
+run hp alive --repo "$R" scripts/t2ba.sh
+same "T2 backfill: a row past the grace with the worker's lock held reads alive" "$OUT" alive
+
 # ---- the real register was never touched
 same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"
 

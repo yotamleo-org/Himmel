@@ -112,6 +112,7 @@ import argparse, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, 
 from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
+import holds  # noqa: E402  the one parser of a Writes line, and the one grant-path rule
 
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
@@ -178,7 +179,7 @@ def load_platform_re():
 
 PLATFORM_RE = load_platform_re()
 TRUST_PATHS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ci', 'ci-trust-paths.txt')
-GRANT_PATH_REFUSED_RE = re.compile(r'(^|/)[^/]*settings[^/]*\.json$|^\.github/')
+GRANT_PATH_REFUSED_RE = holds.GRANT_PATH_REFUSED_RE
 GRANT_TEXT_REFUSED_RE = re.compile(r'--no-verify|SKIP_CR|_OK=1|\bbypass|\bamend\b|force[- ]push|--force\b|\bpush\b.*\s-f\b', re.I)
 # A grant field is rendered inside a Markdown line and a code span.
 GRANT_FIELD_BAD_CHAR_RE = re.compile(r'[\x00-\x1f\x7f`]')
@@ -471,9 +472,7 @@ def validate_grants(worker, repo):
             die('worker %s: grant %s must name its paths (a non-empty list)' % (worker['label'], gid))
         for p in paths:
             # The refused patterns are anchored, so only the normalized spelling may pass.
-            if (not isinstance(p, str) or not p.strip() or p != p.strip() or GRANT_FIELD_BAD_CHAR_RE.search(p) or os.path.isabs(p)
-                    or p != os.path.normpath(p) or p == '.' or re.search(r'[*?\[]', p) or '..' in p.split('/')
-                    or os.path.isdir(os.path.join(repo, p))):
+            if not holds.literal_repo_path(p, repo):
                 die('worker %s: grant %s path %r must be a literal repo-relative file path' % (worker['label'], gid, p))
             if GRANT_PATH_REFUSED_RE.search(p) or any(r.search(p) for r in trust):
                 die('worker %s: grant %s path %s is a settings, CI-workflow or trust path; widen scope for it by a re-brief, never a grant' % (worker['label'], gid, p))
@@ -506,8 +505,6 @@ def check_lane_reads(l, hroot):
             die('worker %s: %s points at a path under the handover root (%s), which lane %s cannot read; quote the requirements inline' % (l['label'], k, root, l['lane']))
 
 
-# kept in step with FILE_RE in next-dispatchable.sh, which reads the line this feeds
-WRITE_PATH_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
 
 
 _SENT = r'(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)'
@@ -531,9 +528,8 @@ def write_paths(scope):
     # Writes line, so prose here ("find and fix the caller in x") must never reach it.
     scope = _writes_scope(scope)
     out = []
-    for m in WRITE_PATH_RE.finditer(scope):
-        p = re.sub(r'[.,;:)\]-]+$', '', m.group(1))
-        if p and p not in out:
+    for _kind, p in holds.parse_text(holds.WRITES_LEAD + ' ' + scope):
+        if p not in out and not os.path.isabs(p):  # the line gen-briefs writes names repo paths only; an absolute bucket path is the chief's to add
             out.append(p)
     return ' '.join(out) or ('none named' if scope.strip() == 'none named' else '')
 
