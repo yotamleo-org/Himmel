@@ -125,10 +125,16 @@ store.write('JIRA_API_TOKEN', 'e2e-canary-d', { home: d + '/home', himmelRoot: d
 NODE
   stores
 }
-want "$(d_stores '{}')" 1 "D1 a store whose env map leaves the keyring on reaches the keyring"
+# The resolver skips the keyring on Darwin (himmel-secrets marks it unsupported), so the rows that need a
+# served keyring skip there; the zero-store rows hold on every platform.
+if [ "$(uname -s)" = Darwin ]; then
+  echo "SKIP - D1 and D4: the resolver skips the keyring on Darwin"
+else
+  want "$(d_stores '{}')" 1 "D1 a store whose env map leaves the keyring on reaches the keyring"
+  want "$(d_stores '{"NODE_ENV":"test","KSTUB_STORE":"named"}')" 1 "D4 under NODE_ENV=test a store that names a stub keeps the keyring on"
+fi
 want "$(d_stores '{"HIMMEL_SECRETS_KEYRING":"off"}')" 0 "D2 a store whose env map pins the keyring off records zero stores"
 want "$(d_stores '{"NODE_ENV":"test"}')" 0 "D3 under NODE_ENV=test with no stub named, a store records zero stores"
-want "$(d_stores '{"NODE_ENV":"test","KSTUB_STORE":"named"}')" 1 "D4 under NODE_ENV=test a store that names a stub keeps the keyring on"
 
 echo
 if [ "$fails" = 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
