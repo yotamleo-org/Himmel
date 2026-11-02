@@ -18,7 +18,7 @@
 # keeps polling, and says so once on stderr and in <state dir>/<name> as `capped`
 # (the chief tick reads it). A set ends when the unread count changes (an inbox line
 # raises it, a read lowers it), falls to 0, or, once capped, the newest bus record
-# number (`bus tip`) moves, because `bus unread` is a 0/1 flag and cannot show a
+# number (`bus tip`) advances (a broken log reads 0 and never resets it), because `bus unread` is a 0/1 flag and cannot show a
 # second bus message: the count restarts and `capped` clears.
 # Before every wake the screen (getAllDisplayedText) must show the idle input
 # box: a `❯` line between two `─` rules. A permission dialog or any menu
@@ -198,7 +198,7 @@ while :; do
         # `bus unread` is a 0/1 presence flag, so a second bus message leaves n at 1: once capped, the newest bus record number tells a new message from the old set.
         if [ "$wakes" -ge "$MAX_WAKES" ] && [ -n "$cap_tip" ]; then
             tip_now="$("$BUS" tip "$NAME" 2>/dev/null)" # swallow-ok: an unreadable tip keeps the set capped, never wakes on a guess
-            if num "$tip_now" && [ "$tip_now" != "$cap_tip" ]; then wakes=0; clear_capped; fi
+            if num "$tip_now" && [ "$tip_now" -gt "$cap_tip" ]; then wakes=0; clear_capped; fi
         fi
         [ "$since" = 0 ] && since="$now"
         waited="$(awk -v a="$now" -v b="$since" 'BEGIN{printf "%d", (a-b)*1000}')"

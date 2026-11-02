@@ -201,6 +201,9 @@ BUS_N=1 BUS_TIP=5 BUS_AFTER_CALLS=6 BUS_N_AFTER=1 BUS_TIP_AFTER=6 run 14 0 --rew
 rm -rf "$BUS_WAKER_STATE_DIR"
 BUS_N=1 BUS_TIP=5 run 14 0 --rewake 0 --max-wakes 2
 [ "$(sends)" -eq 2 ] && [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = capped ] && pass "the same bus mail (flag 1, tip unchanged) stays capped at 2 wakes" || fail "flag 1, tip 5: wanted 2 wakes and capped, got $(sends) / '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
+rm -rf "$BUS_WAKER_STATE_DIR"
+BUS_N=1 BUS_TIP=5 BUS_AFTER_CALLS=6 BUS_N_AFTER=1 BUS_TIP_AFTER=0 run 14 0 --rewake 0 --max-wakes 2
+[ "$(sends)" -eq 2 ] && pass "a tip that reads 0 (broken or unreadable log) does not reset the cap" || fail "tip 5 to 0: wanted 2 wakes, got $(sends)"
 # Survivors of the first review: the count falling to a smaller non-zero value ends the set and clears the state, and 2 to 0 to 2 starts a new one.
 rm -rf "$BUS_WAKER_STATE_DIR"
 BUS_N=3 BUS_AFTER_CALLS=6 BUS_N_AFTER=2 run 7 0 --rewake 0 --max-wakes 2
