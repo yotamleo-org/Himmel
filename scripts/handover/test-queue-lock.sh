@@ -3322,6 +3322,7 @@ g_count() {
     : > "$G_LOG"
     printf '{"session_id":"scope-spawn"}' \
         | PATH="$G_SHIM:$PATH" QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" self-heartbeat >/dev/null 2>&1
+    # read-sink-ok: G_LOG is this test's own scratch log under TMPDIR_ROOT
     wc -l < "$G_LOG" | tr -d ' '
 }
 G_TOK="$TMPDIR_ROOT/xdg/himmel-queue-lock"
