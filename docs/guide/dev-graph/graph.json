@@ -1517,7 +1517,7 @@
             "state": "done"
           },
           {
-            "text": "The new chief also receives the Start and Plan and design work changed in the last two days: grills, specs and plans, as short pointers only, each with a one-line status.",
+            "text": "The new chief also receives the newest ten files of Start, Plan and design work changed in the last two days (saved grill notes, specs and plans), as short pointers only, each with a one-line status, and a count of the rest.",
             "ticket": "HIMMEL-8549",
             "state": "in progress"
           }

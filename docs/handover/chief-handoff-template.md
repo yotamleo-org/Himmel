@@ -23,7 +23,7 @@ re-briefed). The tally is informational: on `WAKE succession partial` name each
 worker that did not quote back, and why, in a Results bullet; never resend LIVE.
 Then re-arm without `--succession`.
 
-If this note ends with a `## Start, plan and design in flight` section, read its
+If this note has a `## Start, plan and design in flight` section, read its
 pointers at takeover and name them in your first status; open an item only when you act on it.
 
 ## Current direction
