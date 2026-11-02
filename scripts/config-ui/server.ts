@@ -287,6 +287,16 @@ function runFeed(env: Env, timeoutMs: number, onProgress: (p: Progress) => void)
   });
 }
 
+// The env with the Jira mirror's location (HIMMEL_JIRA_MIRROR, JIRA_PROJECT_KEY) read as the CLI reads it: the checkout's .env,
+// himmel.conf, the non-empty process env winning. The cards (/api/roadmap) take the mirror from this, as the Board's extras do,
+// so a value set only in a settings file reaches both.
+function withMirrorSettings(root: string, env: Env): Env {
+  let dotenv = "";
+  try { dotenv = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
+  const s: Env = { ...parseDotEnv(dotenv), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) };
+  return { ...env, HIMMEL_JIRA_MIRROR: s.HIMMEL_JIRA_MIRROR, JIRA_PROJECT_KEY: s.JIRA_PROJECT_KEY };
+}
+
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
 export function startServer(opts: ServerOpts = {}): { server: import("bun").Server; port: number; token: string; stop: () => void } {
@@ -678,7 +688,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // executes, never run here.
       if (path === "/api/roadmap") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        const mirrorDir = jiraMirrorDir(env);
+        const mirrorDir = jiraMirrorDir(withMirrorSettings(root, env));
         const first = (await trackerSources(env, trackerRoot))[0];
         if (first === "none") return json(redactOut({ ...readRoadmap({ mirrorDir, none: true, workers: { state: "absent" } }), sync: [] }));
         if (first === "local" || (!first && trackerSetting(env, trackerRoot) === "local")) {

@@ -150,6 +150,33 @@ test("GET /api/board: a bare launch finds the handover root in himmel.conf or th
   expect((await get(serve({ HANDOVER_DIR: viaEnv }, s))).drift.counts.real).toBe(3); // the process env beats both
 });
 
+// a Jira mirror whose two cards carry `label` in their titles, at dir
+function otherMirror(dir: string, label: string) {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "HIMMEL-1.md"), mirrorIssue(1, "To Do", "To Do", [], `First card ${label}`));
+  writeFileSync(join(dir, "HIMMEL-2.md"), mirrorIssue(2, "To Do", "To Do", ["HIMMEL-1"], `Second card ${label}`));
+}
+
+// the cards (/api/roadmap) and the chains (/api/board) must come from the same mirror when the process env names none
+test("GET /api/board and /api/roadmap read the same Jira mirror when it is set only in the checkout's .env", async () => {
+  const s = scratch();
+  const other = join(s.d, "dotenv-mirror");
+  otherMirror(other, "from the .env mirror");
+  writeFileSync(join(s.d, ".env"), `HIMMEL_JIRA_MIRROR=${other}\n`);
+  const url = serve({ HIMMEL_JIRA_MIRROR: "", HIMMEL_CHAIN_REGISTRY: s.registry }, s);
+  expect((await get(url)).chains.tickets["HIMMEL-1"].title).toBe("First card from the .env mirror");
+  expect(JSON.stringify(await get(url.replace("/api/board", "/api/roadmap")))).toContain("First card from the .env mirror");
+});
+
+test("GET /api/board and /api/roadmap read the same Jira mirror when only himmel.conf sets the project key", async () => {
+  const s = scratch();
+  otherMirror(join(s.home, ".himmel", "state", "jira-mirror", "CONFKEY"), "from the conf project");
+  writeFileSync(join(s.home, ".himmel", "himmel.conf"), "JIRA_PROJECT_KEY=CONFKEY\n");
+  const url = serve({ HIMMEL_JIRA_MIRROR: "", HIMMEL_CHAIN_REGISTRY: s.registry }, s);
+  expect((await get(url)).chains.tickets["HIMMEL-1"].title).toBe("First card from the conf project");
+  expect(JSON.stringify(await get(url.replace("/api/board", "/api/roadmap")))).toContain("First card from the conf project");
+});
+
 test("runReader: a default call hands execFile a 10 second limit", async () => {
   expect(TIMEOUT_MS).toBe(10_000);
   const s = scratch();
