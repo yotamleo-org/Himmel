@@ -3395,7 +3395,7 @@ J_DOC="$A_HO/occupied.md"; : > "$J_DOC"
 QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$J_DOC" occupied95 >/dev/null 2>&1
 : > "$(t95_sdir scope-occupied)"
 j_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-occupied bash "$LIB" adopt "$J_DOC" occupied95 2>&1)"; j_rc=$?
-if [ "$j_rc" -eq 1 ] && ! grepq "$j_out" 'adopted' \
+if [ "$j_rc" -eq 1 ] && ! grepq "$j_out" 'adopted' && grepq "$j_out" 'nothing registered' \
     && [ "$(t95_count "$G_TOK/$(t95_digest "scope-occupied|$J_DOC")".*)" = 0 ]; then
     pass "T95j: adopt exits 1, prints no success line and leaves no token file when the sidecar cannot be written"
 else
