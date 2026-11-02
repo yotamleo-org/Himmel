@@ -23,6 +23,33 @@ export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # HIMMEL-4647: never the
 # a loaded CI shard starved a sandbox launch past diff's 15s default (TIMEOUT => ODD-RC, exit 3)
 export GUARD_CORPUS_TIMEOUT_RUN=120
 
+# sandbox-run.sh scans its ROOT (the checkout it lives in) with `find` on every
+# launch and exits 125 when an entry vanishes mid-scan or a FIFO/socket is present. On a CI
+# shard four suites mutate the shared checkout at once, so replay rows came back rc 125 at
+# random indexes. diff therefore runs from a private staged copy (byte-identical to the
+# tracked files, verified below and again at the end), so its ROOT is this suite's own $TMP.
+# The hooks under test are not staged: diff still materialises the real ones itself.
+STAGE="$TMP/stage"
+STAGED_PAIRS=("$HERE/diff:$STAGE/scripts/eval/guard-corpus/diff"
+              "$HERE/gen:$STAGE/scripts/eval/guard-corpus/gen"
+              "$HERE/../lib/eval_runs.py:$STAGE/scripts/eval/lib/eval_runs.py"
+              "$HERE/../../lib/sandbox-run.sh:$STAGE/scripts/lib/sandbox-run.sh")
+mkdir -p "$STAGE/scripts/eval/guard-corpus" "$STAGE/scripts/eval/lib" "$STAGE/scripts/lib" || {
+  echo "stage mkdir failed" >&2; exit 1; }
+for _pair in "${STAGED_PAIRS[@]}"; do
+  cp -p "${_pair%%:*}" "${_pair#*:}" || { echo "stage copy failed: ${_pair%%:*}" >&2; exit 1; }
+done
+GEN="$STAGE/scripts/eval/guard-corpus/gen"
+DIFF="$STAGE/scripts/eval/guard-corpus/diff"
+# names every source whose staged copy no longer matches (empty = identical)
+staged_drift() {
+  local p bad=""
+  for p in "${STAGED_PAIRS[@]}"; do
+    cmp -s "${p%%:*}" "${p#*:}" || bad="$bad ${p%%:*}"
+  done
+  printf '%s' "$bad"
+}
+
 PASS=0; FAIL=0; FAILED=()
 pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
 fail() { FAIL=$((FAIL + 1)); FAILED+=("$1"); echo "FAIL $1"; }
@@ -811,6 +838,27 @@ for BADT in nan inf abc 0; do
   if [ "$RC17C" = "2" ]; then pass "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=$BADT => usage error exit 2"
   else fail "timeout-env: GUARD_CORPUS_TIMEOUT_RUN=$BADT expected exit 2, got $RC17C"; fi
 done
+
+# --- 18. the staged ROOT is private and byte-identical to the tracked files ---
+# Drift fails the suite instead of testing stale code (checked after the whole run, so a
+# source edited mid-suite is caught too).
+DRIFT="$(staged_drift)"
+if [ -z "$DRIFT" ]; then pass "staged-copy: diff/gen/eval_runs/sandbox-run are byte-identical to the tracked files"
+else fail "staged-copy: drifted from the tracked files:$DRIFT"; fi
+# RED control: the failure mode this staging exists for. A FIFO anywhere in the sandbox ROOT makes
+# sandbox-run.sh exit 125 (diff: ODD-RC, exit 3); with it gone the same row is clean (exit 0). Only
+# the private staged ROOT is touched, never the shared checkout.
+if mkfifo "$STAGE/scripts/planted.fifo" 2>/dev/null; then
+  python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
+          --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC18A=$?
+  rm -f "$STAGE/scripts/planted.fifo"
+  python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
+          --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC18B=$?
+  if [ "$RC18A" = "3" ]; then pass "staged-root-control: a FIFO in the sandbox ROOT makes the row rc 125 (exit 3)"
+  else fail "staged-root-control: expected exit 3 with a FIFO in ROOT, got $RC18A"; fi
+  if [ "$RC18B" = "0" ]; then pass "staged-root-control: the same row is clean once the FIFO is gone (exit 0)"
+  else fail "staged-root-control: expected exit 0 without the FIFO, got $RC18B"; fi
+else echo "SKIP (no mkfifo on this host): 18 staged-root FIFO control"; fi
 
 echo "----"
 # the log tail printed by run-shell-tests.sh is 40 lines; name every failed row here so it reaches it
