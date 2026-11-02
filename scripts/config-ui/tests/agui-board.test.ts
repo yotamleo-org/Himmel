@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findDoc } from "../agui/board";
 import { startServer } from "../server";
+import { stubKeyring } from "./keyring-stub";
 
 const TOKEN = "t".repeat(64);
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
@@ -56,6 +57,27 @@ test("board: serves the model of the named console's doc, with no nonce and no l
   const text = JSON.stringify(b);
   expect(text).not.toContain(NONCE);
   expect(text).not.toContain(LOCK);
+});
+
+// The error text is the board script's last stderr line, so it can carry a credential. The value has no token shape: only the literal list masks it.
+test("board: a failed build's error text is masked with the keyring's secrets too (HIMMEL-8565)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "agui-board-kr-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const handovers = join(dir, "handovers");
+  mkdirSync(join(handovers, "op", "himmel"), { recursive: true });
+  writeFileSync(join(handovers, "op", "himmel", `${CHIEF}.md`), "# console\n");
+  const kr = "kr-only-" + "q7x2".repeat(2);
+  const script = join(dir, "board.mjs");
+  writeFileSync(script, `console.error("jira auth failed for ${kr}");\nprocess.exit(1);\n`);
+  const k = stubKeyring(dir);
+  k.put("JIRA_API_TOKEN", kr);
+  const s = startServer({ port: 0, token: TOKEN, boardScript: script, env: { PATH: process.env.PATH, ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "", CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
+  cleanups.push(() => s.stop());
+  const r = await get(s.port, `/api/agui/board?console=${CHIEF}`);
+  expect(r.status).toBe(502);
+  const text = await r.text();
+  expect(text).toContain("jira auth failed");
+  expect(text).not.toContain(kr);
 });
 
 test("board: a build still running when the TTL has passed is shared, not started twice", async () => {
