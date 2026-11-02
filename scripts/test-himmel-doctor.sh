@@ -139,6 +139,15 @@ export HIMMEL_DOCTOR_PROC="$HIMMEL_DOCTOR_PROC_BASE/no-proc"
 HIMMEL_DOCTOR_SYSTEMCTL_BASE="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-nosystemctl.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
 export HIMMEL_DOCTOR_SYSTEMCTL="$HIMMEL_DOCTOR_SYSTEMCTL_BASE/no-systemctl"
 
+# Hermeticity: C24 reads the user's crontab to walk every # HIMMEL-... row's runner and script. A real
+# crontab is read by uid, so a dead row on the dev box would turn every unrelated case red and print a
+# path into the log. Put an empty crontab first on PATH for the whole suite; dedicated C24 cases put their
+# own stub in front of it.
+DOCTOR_CRON_STUB_DIR="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-nocrontab.XXXXXX")" || { echo "FAIL: mktemp -d failed"; exit 1; }
+printf '#!/bin/sh\nexit 0\n' > "$DOCTOR_CRON_STUB_DIR/crontab"
+chmod +x "$DOCTOR_CRON_STUB_DIR/crontab"
+export PATH="$DOCTOR_CRON_STUB_DIR:$PATH"
+
 # Hermeticity: C8's runner-home defaults resolve via
 # cadence_user_home (USERPROFILE via cygpath on Windows) — per-case HOME
 # redirection does NOT cover that, so pin all four seams to empty dirs
@@ -2127,6 +2136,49 @@ if ! grepq "$out" 'FAIL C24-cadence-registry'; then
     pass "C24 -> no FAIL (live runner and script; a non-path command is skipped)"
 else
     fail "C24 live runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: the suite reads an empty stub crontab, never the real one =="
+if [ "$(command -v crontab)" = "$DOCTOR_CRON_STUB_DIR/crontab" ] && [ -z "$(crontab -l)" ]; then
+    pass "C24 -> the default crontab on PATH is the empty suite stub"
+else
+    fail "C24 hermetic crontab -> $(command -v crontab)"
+fi
+
+echo "== C24: a quoted runner path with a space is not resolved -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 quoted space: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/no such dir/runner.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (unterminated quote word is skipped, not printed as a dead path)"
+else
+    fail "C24 quoted space -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: a backslash-escaped runner path with a space is not resolved -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 escaped space: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * $t/no\\ such\\ dir/runner.sh # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (trailing-backslash word is skipped)"
+else
+    fail "C24 escaped space -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: a commented-out HIMMEL row is not a cron row -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 commented row: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "# 15 06 * * * \"$t/runner/gone.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (commented-out row is ignored)"
+else
+    fail "C24 commented row -> $(printf '%s' "$out" | grep C24)"
 fi
 rm -rf "$t"
 

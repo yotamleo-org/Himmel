@@ -1332,9 +1332,12 @@ run_cron_runner_migration() {
     done < <(grep -v '^#' "$aliases")
     [ -n "$moved" ] || return 0
 
-    entry="$(LC_ALL=C "$cron_bin" -l 2>/dev/null | grep -F '# HIMMEL-FailureReview' | head -1)" || true
+    entry="$(LC_ALL=C "$cron_bin" -l 2>/dev/null | grep -v '^[[:space:]]*#' | grep -F '# HIMMEL-FailureReview' | head -1)" || true
     [ -n "$entry" ] || return 0
-    mm="${entry%% *}"; rest="${entry#* }"; hh="${rest%% *}"
+    # arm writes a daily row (day, month, weekday all *); any other row is the operator's own schedule, which a re-arm would flatten to daily.
+    local dom mon dow
+    read -r mm hh dom mon dow _ <<< "$entry"
+    [ "$dom $mon $dow" = '* * *' ] || return 0
     [[ "$mm" =~ ^[0-5]?[0-9]$ && "$hh" =~ ^([01]?[0-9]|2[0-3])$ ]] || return 0
     local when; when="$(printf '%02d:%02d' "$((10#$hh))" "$((10#$mm))")"
     local modename=dry-run

@@ -1444,7 +1444,19 @@ _c24_cron_has_task() {
 # absolute path it runs that does not exist: the runner (its first command word), any absolute script word
 # (.sh .py .mjs .js) on the row, and the same script words inside the runner when it is a #! file. A row
 # whose command is not an absolute path (a bare `true`, an env assignment) has nothing to resolve. Read-only.
-# ponytail: split on whitespace, so a runner path with a space is not resolved; upgrade path is shlex in python.
+# ponytail: split on whitespace, so a path with a space is skipped (a word with an odd quote count or a
+# trailing backslash is never judged), and a later word of such a path that starts with / can still be
+# judged; upgrade path is shlex in python.
+# _c24_word_path <word> — prints the path a row word names with quotes and backslashes removed; rc 1 when
+# the word is one half of a quoted or escaped path that whitespace splitting cut.
+_c24_word_path() {
+    local w="$1" dq sq
+    case "$w" in *\\) return 1 ;; esac
+    dq="${w//[^\"]/}"; sq="${w//[^\']/}"
+    [ $((${#dq} % 2)) -eq 0 ] && [ $((${#sq} % 2)) -eq 0 ] || return 1
+    w="${w//\\/}"; w="${w//\"/}"; w="${w//\'/}"
+    printf '%s' "$w"
+}
 _c24_dead_cron_paths() {
     local cron line task cmd words w p runner="" rline rwords
     cron="$(crontab -l 2>/dev/null)" || return 0
@@ -1456,7 +1468,10 @@ _c24_dead_cron_paths() {
         read -r -a words <<< "$cmd"
         runner=""
         for w in ${words[@]+"${words[@]}"}; do
-            p="${w//\\/}"; p="${p//\"/}"; p="${p//\'/}"
+            if ! p="$(_c24_word_path "$w")"; then
+                [ -n "$runner" ] || runner="?"
+                continue
+            fi
             case "$p" in *=*) continue ;; esac
             if [ -z "$runner" ]; then
                 runner="$p"
@@ -1473,7 +1488,7 @@ _c24_dead_cron_paths() {
                 case "$rline" in '#'*) continue ;; esac
                 read -r -a rwords <<< "$rline"
                 for w in ${rwords[@]+"${rwords[@]}"}; do
-                    p="${w//\\/}"; p="${p//\"/}"; p="${p//\'/}"
+                    p="$(_c24_word_path "$w")" || continue
                     case "$p" in /*.sh|/*.py|/*.mjs|/*.js) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
                 done
             done < "$runner"

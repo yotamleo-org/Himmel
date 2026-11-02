@@ -236,7 +236,7 @@ RUNNER="$FAILREV_RUNNER_DIR/failure-review-cadence.sh"
 CADENCE="$ROOT/scripts/eval/worker-digest/failure-review-cadence.sh"
 # arm_old_layout <time> [--live]: arm with the real script, then point the runner back at the retired directory.
 arm_old_layout() {
-    JIRA_PROJECT_KEY=TESTPROJ bash "$CADENCE" arm --force --time "$1" --vault "$LUNA_VAULT_PATH" ${2:+"$2"} > /dev/null 2>&1
+    JIRA_PROJECT_KEY=TESTPROJ bash "$CADENCE" arm --force --time "$1" --vault "${ARM_VAULT:-$LUNA_VAULT_PATH}" ${2:+"$2"} > /dev/null 2>&1
     sed -i.bak 's#/scripts/eval/worker-digest/#/scripts/eval/leg-digest/#' "$RUNNER" && rm -f "$RUNNER.bak" # old-term-ok
 }
 arm_old_layout 07:40 --live
@@ -285,6 +285,48 @@ if grep -Fq 'worker-digest/failure-review-cadence.sh run --vault' "$RUNNER" && !
 else
     assert_fail "cron runner: dry-run runner changed mode or time ($(cat "$RUNNER"))"
 fi
+
+# Rows the migration must leave alone: no advisory, and apply leaves the runner and the crontab byte-identical.
+cron_case() {
+    local label="$1" rb cb
+    rb="$(cat "$RUNNER")"; cb="$(cat "$FAKECRON_FILE")"
+    run_check
+    if grep -Fq 'cron runner migration needed' <<< "$out"; then assert_fail "cron runner: $label: check advised a re-arm"; else assert_pass "cron runner: $label: check is silent"; fi
+    rc=0
+    out="$(bash "$ROOT/scripts/himmel-update.sh" 2>&1)" || rc=$?
+    assert_eq "cron runner: $label: apply succeeds" 0 "$rc"
+    assert_eq "cron runner: $label: runner untouched" "$rb" "$(cat "$RUNNER")"
+    assert_eq "cron runner: $label: crontab untouched" "$cb" "$(cat "$FAKECRON_FILE")"
+}
+# Rows the migration cannot re-arm: apply reports failed and leaves the runner and the crontab byte-identical.
+cron_failed_case() {
+    local label="$1" rb cb
+    rb="$(cat "$RUNNER")"; cb="$(cat "$FAKECRON_FILE")"
+    rc=0
+    out="$(bash "$ROOT/scripts/himmel-update.sh" 2>&1)" || rc=$?
+    if grep -Eq 'cron_runner +failed' <<< "$out"; then assert_pass "cron runner: $label: status reads failed"; else assert_fail "cron runner: $label: no failed status (output: $out)"; fi
+    assert_eq "cron runner: $label: runner untouched" "$rb" "$(cat "$RUNNER")"
+    assert_eq "cron runner: $label: crontab untouched" "$cb" "$(cat "$FAKECRON_FILE")"
+}
+arm_old_layout 07:40 --live
+sed -i.bak 's/^\(40 07\) \* \* \*/\1 * * 1/' "$FAKECRON_FILE" && rm -f "$FAKECRON_FILE.bak"
+cron_case 'a weekly row'
+arm_old_layout 07:40 --live
+: > "$FAKECRON_FILE"
+cron_case 'no cron row for the runner'
+arm_old_layout 07:40
+sed -i.bak 's#/scripts/eval/leg-digest/#/scripts/eval/other-dir/#' "$RUNNER" && rm -f "$RUNNER.bak" # old-term-ok
+cron_case 'a dead path with no alias'
+arm_old_layout 07:40
+sed -i.bak 's/^/# /' "$FAKECRON_FILE" && rm -f "$FAKECRON_FILE.bak"
+cron_case 'a commented-out row'
+arm_old_layout 07:40 --live
+sed -i.bak '/^JIRA_PROJECT_KEY=/d' "$RUNNER" && rm -f "$RUNNER.bak"
+cron_failed_case 'a live runner with no readable project key'
+mkdir -p "$TMP/gone-vault"
+ARM_VAULT="$TMP/gone-vault" arm_old_layout 03:20
+rmdir "$TMP/gone-vault"
+cron_failed_case 'an arm that fails (vault gone)'
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
