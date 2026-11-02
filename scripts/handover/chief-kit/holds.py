@@ -11,7 +11,7 @@ Denies, takeovers, grants and faults append one line to <holds>/events.log.
 The barrier is a coordination guard, not a security fence: it refuses only on a positive answer (a readable
 row, another key, that key alive, no grant). Every other outcome passes and leaves a record.
 
-Exit codes: 0 ok, 1 refused (the holder on stderr), 2 usage or a failure that is not a refusal, 3 unreadable.
+Exit codes: 0 ok, 1 refused (the holder on stderr), 2 usage, a crash or any failure that is not a refusal, 3 unreadable.
 Nothing in this slice wires holds.py anywhere.
 """
 import argparse
@@ -184,6 +184,10 @@ GIT_SCRUB = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GI
              'GIT_REPLACE_REF_BASE', 'GIT_SHALLOW_FILE', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT')
 
 
+class RepoFault(Exception):
+    """The repo identity cannot be derived: a fault, never a guess at another slug."""
+
+
 def primary_of(repo):
     """The primary checkout's absolute path: git-common-dir minus /.git. One derivation for every verb."""
     repo = os.path.abspath(repo)
@@ -201,7 +205,20 @@ def primary_of(repo):
             ALT_ROOTS.update(x for x in (top, os.path.realpath(top) if top else '') if x and x != primary)
             return primary
     except (OSError, subprocess.SubprocessError):
-        pass  # swallow-ok: not a git repo or no git; the path as given is the identity
+        pass  # swallow-ok: git gave no answer; the walk below decides whether the path as given can be the identity
+    # git gave no answer. The path as given is the identity only when it is a primary checkout's root (a .git
+    # directory there) or sits in no checkout at all; a linked worktree or a subdirectory would get a second slug.
+    top = repo
+    while top:
+        dot = os.path.join(top, '.git')
+        if os.path.lexists(dot):
+            if top == repo and os.path.isdir(dot):
+                return repo
+            raise RepoFault('git gave no repo identity for %s' % repo)
+        parent = os.path.dirname(top)
+        if parent == top:
+            return repo
+        top = parent
     return repo
 
 
@@ -226,11 +243,12 @@ def normalize(repo, p):
     if not p or p.endswith('/'):
         return None
     if os.path.isabs(p):
+        p = os.path.normpath(p)  # before the prefix match: a ".." must not carry a path out of (or into) the repo unseen
         for root in sorted(ALT_ROOTS, key=len, reverse=True) + [repo]:  # a worktree sits inside the primary: match it first
             prefix = root.rstrip('/') + '/'
             if p.startswith(prefix):
-                return escape(repo), canon(os.path.normpath(p[len(prefix):]), repo)
-        return '_abs', os.path.normpath(p)
+                return escape(repo), canon(p[len(prefix):], repo)
+        return '_abs', p
     return escape(repo), canon(os.path.normpath(p), repo)
 
 
@@ -384,6 +402,8 @@ class Judge:
             try:
                 age = time.time() - os.path.getmtime(d)
                 marks = [m.group(1) for m in (MARKER_RE.match(l) for l in open(d, encoding='utf-8', errors='replace').read().splitlines()) if m]
+            except FileNotFoundError:
+                continue  # a doc that is gone holds nothing; its lock is still asked by row_state
             except OSError:
                 res = 'fault'
                 continue
@@ -401,9 +421,9 @@ class Judge:
         if doc:
             bucket = self.bucket_of(doc)
             docs = list(self.scan(bucket, key))
-            faulted = (bucket, key) in self.scan_faulted
-            if os.path.isfile(doc) and doc not in docs:
-                docs.append(doc)
+            faulted = (bucket, key) in self.scan_faulted or not self.root  # no handover root: the bucket is a guess
+            if doc not in docs:
+                docs.append(doc)  # a doc that is gone still has a lock to ask
         r = self.resume_alive(docs)
         if r == 'alive':
             return 'alive'
@@ -598,10 +618,10 @@ def op_grant(a):
     if trust is None:
         sys.stderr.write('holds: cannot read the trust paths; a grant cannot be checked against them\n')
         return 2
-    if GRANT_PATH_REFUSED_RE.search(p) or any(r.search(p) for r in trust):
+    slug, rel = escape(repo), canon(p, repo)  # the grant is written on rel, so rel is what the trust test must see too
+    if any(GRANT_PATH_REFUSED_RE.search(x) or any(r.search(x) for r in trust) for x in (p, rel)):
         sys.stderr.write('holds: %s is a settings, CI-workflow or trust path; only the operator can grant it\n' % p)
         return 1
-    slug, rel = escape(repo), canon(p, repo)
     d = slug_dir(repo, slug)
     try:
         os.makedirs(d, exist_ok=True)
@@ -685,9 +705,21 @@ def op_alive(a):
     return 0
 
 
+def row_key(path):
+    """The key of a row that does not parse, when its first field is still a ticket key; else '?'."""
+    try:
+        with open(path, 'rb') as f:
+            first = f.read().split(b'\t')[0].decode('utf-8')  # only the first field is decoded: junk after it keeps the key
+    except (OSError, UnicodeDecodeError):
+        return '?'
+    return first if KEY_RE.fullmatch(first) else '?'
+
+
 def op_read(a):
     """TSV path key label source pr state. state is alive, dead, unknown or unparseable; only dead reads as free.
-    --keys prints key state rows per holder instead, whatever --paths-from says. Exit 3 when unreadable."""
+    --keys prints key state rows per holder instead, whatever --paths-from says; a row it cannot read counts
+    its key (? when the key is unreadable too) as unknown and is named on stderr, never dropped and never free (exit 0).
+    Exit 3 when the register directory or the --paths-from file cannot be read."""
     repo = primary_of(a.repo)
     d = slug_dir(repo)
     try:
@@ -711,6 +743,7 @@ def op_read(a):
             return 3
     judge = Judge(repo)
     keys = {}
+    unreadable = []
     for n in names:
         if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
             continue
@@ -724,6 +757,11 @@ def op_read(a):
         if st != 'ok':
             if not a.keys:
                 print('\t'.join([path, '?', '?', '?', '', 'unparseable']))
+            else:
+                unreadable.append(path)  # never dropped and never free: its key (or ?) reads unknown
+                cur = keys.setdefault(row_key(full), ['unknown', 0])
+                cur[1] += 1
+                cur[0] = 'unknown' if cur[0] == 'dead' else cur[0]
             continue
         try:
             state = judge.row_state(f, os.path.getmtime(full))
@@ -739,6 +777,8 @@ def op_read(a):
             print('\t'.join([path, f[0], f[1], f[3], f[4], state]))
     for k in sorted(keys):
         print('\t'.join([k, keys[k][0], str(keys[k][1])]))
+    if unreadable:
+        sys.stderr.write('holds: %d row(s) cannot be read, counted unknown: %s\n' % (len(unreadable), ', '.join(unreadable)))
     return 0
 
 
@@ -752,6 +792,10 @@ def op_parse(a):
     for kind, p in parse_text(text, repo):
         print('%s\t%s' % (kind, p))
     return 0
+
+
+def abs_doc(s):
+    return os.path.abspath(s) if s else s
 
 
 def build_parser():
@@ -768,13 +812,13 @@ def build_parser():
     sp.add_argument('--repo')
     sp = add('claim', op_claim, help='claim paths for a key; exit 1 names the holder')
     for o in ('--key', '--label', '--doc', '--repo'):
-        sp.add_argument(o, required=True)
+        sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
     sp.add_argument('--source', choices=SOURCES, default='claim')
     sp.add_argument('--pr', default='')
     sp.add_argument('paths', nargs='+', metavar='PATH')
     sp = add('seed', op_seed, help='claim every file in a doc\'s Writes lines, all or nothing')
     for o in ('--key', '--label', '--doc', '--repo'):
-        sp.add_argument(o, required=True)
+        sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
     sp = add('grant', op_grant, help='let a key write a held file (chief only)')
     sp.add_argument('--key', required=True)
     sp.add_argument('--repo', required=True)
@@ -784,7 +828,7 @@ def build_parser():
     add('on', op_on, help='remove the sentinel (chief only)')
     sp = add('release', op_release, help='remove a doc\'s brief rows, for a launch that aborts')
     for o in ('--key', '--repo', '--doc'):
-        sp.add_argument(o, required=True)
+        sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
     sp = add('alive', op_alive, help='alive, dead or unknown for the holder of a path')
     sp.add_argument('--repo', required=True)
     sp.add_argument('path', metavar='PATH')
@@ -796,11 +840,16 @@ def build_parser():
 
 
 def main(argv=None):
-    a = build_parser().parse_args(argv)
     try:
+        a = build_parser().parse_args(argv)  # inside the fault path: a type function (abs_doc) can raise too
         return a.fn(a)
     except BrokenPipeError:
         return 0
+    except Exception as e:  # a crash is a fault (2), never a refusal (1): callers pass on 2 and refuse on 1
+        reason = str(e) if isinstance(e, RepoFault) else 'crash %s: %s' % (type(e).__name__, e)
+        fault(reason)
+        sys.stderr.write('holds: fault: %s\n' % reason)
+        return 2
 
 
 if __name__ == '__main__':

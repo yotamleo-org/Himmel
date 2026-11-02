@@ -36,7 +36,10 @@ helpers (HIMMEL-437).
   `--sector` (Epic and Subtask only warn); `homeVerdict` in `src/plain-block.ts`,
   shared by the CLI and MCP `create` (HIMMEL-6223). Sector is opt-in: the field
   id is config and the options are read live, never hardcoded; `jira sector
-  setup` creates it (HIMMEL-6277).
+  setup` creates it (HIMMEL-6277). With no `--sector`, a title `<Sector>: x` naming a
+  live option supplies the Sector and an unknown prefix on a Task, Story or Bug is
+  refused (`titleSector`, same file; HIMMEL-8659). Open tickets with an empty Sector:
+  `JIRA_PROJECT_KEY=HIMMEL bash scripts/jira/empty-sector-check.sh`.
 - `create` refuses a Task, Story or Bug with no placement: `--proposed-version <v>`
   (labels `proposed-<v>` and files the INTAKE request in the same call; the backlog is
   `--backlog --proposed-version backlog --why <line>`), `--fix-version`,
