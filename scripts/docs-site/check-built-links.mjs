@@ -30,7 +30,6 @@ const unescapeHtml = (s) =>
     return code <= 0x10ffff ? String.fromCodePoint(code) : all;
   });
 
-// comments and the text inside script/style are not markup; the script/style opening tag stays
 const withoutInert = (html) => html.replace(/<!--[\s\S]*?-->/g, ' ').replace(/(<(script|style)\b[^>]*>)[\s\S]*?<\/\2\s*>/gi, '$1');
 
 const attrValue = '\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>"\']+))';

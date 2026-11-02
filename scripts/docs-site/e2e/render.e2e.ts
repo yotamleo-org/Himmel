@@ -14,7 +14,6 @@ const BASE = "/Himmel/";
 // the site ships no favicon yet; scripts/docs-site/test-site-build.sh skips it in its link sweep too.
 const NOT_SHIPPED = /favicon/;
 
-// every standalone page under docs/ (.html at any depth), as a docs-relative path.
 function standalonePages(dir = DOCS, rel = ""): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? standalonePages(join(dir, e.name), `${rel}${e.name}/`) : e.name.endsWith(".html") ? [`${rel}${e.name}`] : [],
@@ -32,7 +31,6 @@ function builtPages(dir = DIST, rel = ""): string[] {
   });
 }
 
-// the h1 text the docs/ source carries, tags stripped: the page's own key element, checked against its source.
 function sourceH1(rel: string): string {
   const m = readFileSync(join(DOCS, rel), "utf8").match(/<h1[^>]*>([\s\S]*?)<\/h1>/);
   return (m?.[1] ?? "").replace(/<[^>]+>/g, "").trim();
@@ -63,7 +61,6 @@ test.describe("render: every built page", () => {
       const res = await page.goto(p.url);
       expect(res?.status(), p.url).toBe(200);
 
-      // every same-origin asset the rendered page references must resolve, the way a browser would fetch it
       const assets = await page.$$eval("script[src], link[rel~=stylesheet][href], img[src]", (els) =>
         els.map((el) => el.getAttribute("src") ?? el.getAttribute("href") ?? ""),
       );
