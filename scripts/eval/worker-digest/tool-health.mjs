@@ -223,7 +223,11 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
       hooks: [...hooks.values()].map((h) => finish(withEligible({ ...h, calls: bashCalls }, [...tools.values()], allKnown))),
       daily_hooks: [...dailyHooks.values()].map(({ group, ...h }) => finish(withEligible({ ...h, calls: bashByGroup.get(group) }, [...daily.values()].filter((d) => `${d.day}\0${d.model}\0${d.lane}\0${d.role}` === group), !unknownGroups.has(group)))), totalCalls };
   }
-  const all = [...slots.values()].filter((s) => matches(s, false));
+  // A session with no tool_health gives no denominator. While other sessions have one it is left out of every roll-up and counted
+  // (coverage), so one missing session no longer turns the whole window into a dash. A window where none has data keeps its old view.
+  const everySlot = [...slots.values()];
+  const usable = everySlot.some((s) => s.known) ? everySlot.filter((s) => s.known) : everySlot;
+  const all = usable.filter((s) => matches(s, false));
   const filtered = all.filter((s) => matches(s));
   const result = aggregate(filtered);
   const class_counts = Object.create(null);
@@ -277,7 +281,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const drop_candidates = byProfile.flatMap((p) => p.tools.filter((t) => t.verdict === 'drop-candidate')
     .map((t) => ({ profile: p.profile, tool: t.tool, listing_tokens: t.listing_tokens, calls: t.calls, window_days: windowDays, sessions: p.sessions })));
   // Per role, over every other filter but the role itself, so the role totals add up to that fleet.
-  const teamSlots = [...slots.values()].filter((s) => matches(s, true, false));
+  const teamSlots = usable.filter((s) => matches(s, true, false));
   const teams = TEAMS.filter((t) => teamSlots.some((s) => s.team === t)).map((t) => {
     const list = teamSlots.filter((s) => s.team === t), a = aggregate(list);
     return { team: t, sessions: new Set(list.map((s) => s.session)).size, calls: a.totalCalls, failures: a.tools.reduce((n, x) => n + x.failures, 0) };
@@ -286,7 +290,21 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const chainOut = rollupChain(chain, { firstDay, lastDay, refused });
   result.hooks = result.hooks.map(({ refusals, ...h }) => ({ ...h, reason_gap: chainOut.gaps?.[memberOfGuardClass(h.class)] ?? null }));
   const { gaps, ...chainShown } = chainOut ?? {};
-  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, [...slots.values()], rtk), chain: chainOut.state === 'not-read' ? chainOut : chainShown, filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => [...slots.values()].some((s) => s.team === t)) }, selected };
+  return { state: slots.size ? 'ok' : 'absent', ...result, eligible_fingerprint: eligibleFingerprint(eligible), window_days: windowDays, first_day: firstDay, last_day: lastDay, profiles: byProfile, drop_candidates, class_rates: Object.fromEntries(class_rates), class_counts, comparison: [...comparison.values()], teams, bash: bashRollup(filtered, usable, rtk), coverage: coverageOf(everySlot.filter((s) => matches(s)), new Set(sessions.keys()), rtk, firstDay, lastDay), chain: chainOut.state === 'not-read' ? chainOut : chainShown, filters: { models: [...models].sort(), lanes: LANES, roles: [...roles].sort(), profiles: [...profiles].sort(), teams: TEAMS.filter((t) => everySlot.some((s) => s.team === t)) }, selected };
+}
+
+// What the roll-up does not see: digested sessions that carry no tool_health (left out of the rates), and the sessions and
+// Bash calls rtk's history.db saw in the window that have no digest at all. rtk.coverage(first, last) -> {state, sessions: Map<id, calls>}.
+function coverageOf(window, digested, rtk, firstDay, lastDay) {
+  const ids = (known) => new Set(window.filter((s) => s.known === known).map((s) => s.session));
+  const cov = { sessions: ids(true).size, without_tool_health: ids(false).size, rtk: { state: 'not-read', undigested_sessions: null, undigested_calls: null } };
+  if (typeof rtk?.coverage !== 'function') return cov;
+  let c;
+  try { c = rtk.coverage(firstDay, lastDay); } catch { c = { state: 'error' }; }
+  if (c?.state !== 'ok' || !(c.sessions instanceof Map)) { cov.rtk.state = c?.state === 'absent' ? 'absent' : 'error'; return cov; }
+  const missing = [...c.sessions].filter(([id]) => !digested.has(id));
+  cov.rtk = { state: 'ok', undigested_sessions: missing.length, undigested_calls: missing.reduce((n, [, calls]) => n + (num(calls) ? calls : 0), 0) };
+  return cov;
 }
 
 // Bash by command head and cause (spec 0.4 d) from the digest's bash_calls, joined to rtk's history.db by call id.
@@ -306,12 +324,16 @@ function bashRollup(filtered, every, rtk) {
     // An rtk hook refusal reaches the journal as a denied call; history.db says it was rtk's.
     return (cause === 'guard' || cause === 'other') && ok && join.byId.get(c[0])?.deny ? 'rtk_hook' : cause;
   };
-  const commands = new Map();
+  const commands = new Map(), exits = new Map();
   for (const c of mine) {
-    const r = commands.get(c[1]) || { head: c[1], calls: 0, failures: 0, cause: Object.fromEntries(CAUSES.map((k) => [k, 0])), rtk: ok ? 0 : null, bash: ok ? 0 : null };
+    const r = commands.get(c[1]) || { head: c[1], calls: 0, failures: 0, cause: Object.fromEntries(CAUSES.map((k) => [k, 0])), exit: {}, rtk: ok ? 0 : null, bash: ok ? 0 : null };
     r.calls++;
     const cause = causeOf(c);
-    if (cause) { r.failures++; r.cause[cause]++; }
+    if (cause) {
+      r.failures++; r.cause[cause]++;
+      // The exit code the command reported (the digest keeps it for command failures only), so a failure is more than "error".
+      if (num(c[3])) { r.exit[c[3]] = (r.exit[c[3]] || 0) + 1; exits.set(c[3], (exits.get(c[3]) || 0) + 1); }
+    }
     if (ok && pathOf(c[0]) === 'rtk') r.rtk++;
     if (ok && pathOf(c[0]) === 'bash') r.bash++;
     commands.set(c[1], r);
@@ -321,6 +343,7 @@ function bashRollup(filtered, every, rtk) {
   for (const c of fleet) { const p = paths[pathOf(c[0]) ?? 'unmatched']; p.calls++; if (causeOf(c)) p.failures++; }
   return {
     commands: [...commands.values()].sort((a, b) => b.calls - a.calls || a.head.localeCompare(b.head)),
+    exit_codes: [...exits].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([code, count]) => ({ code, count })),
     recorded: mine.length, unrecorded: total === null ? null : Math.max(0, total - mine.length),
     rtk: ok ? { state: 'ok', matched: fleet.filter((c) => join.byId.has(c[0])).length, unmatched: fleet.filter((c) => !join.byId.has(c[0])).length, duplicates: num(join.duplicates) ? join.duplicates : 0 }
       : { state: join ? (join.state === 'absent' ? 'absent' : 'error') : 'not-read', matched: null, unmatched: null, duplicates: null },

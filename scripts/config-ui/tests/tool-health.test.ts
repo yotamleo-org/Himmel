@@ -85,17 +85,55 @@ test("recorded worker-doc lane overrides extractor provenance and stamps every p
   expect(read({ ...env, HIMMEL_EVAL_RUNS_LEDGER: evals }).daily[0].lane).toBe("cloud");
 });
 
-test("a mixed legacy population poisons incomplete denominators, not failure counts", () => {
+test("a session with no tool_health is left out of the denominators and counted, so the window keeps its numbers", () => {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  delete rows[0].meta.tool_health;
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  const data = read(env, new URLSearchParams({ days: "30" }));
+  // Two sessions are counted (claudex 30 + native 10 Bash calls, 1 + 3 + 1 denials/errors), the third is named in the count.
+  expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: 40, failures: 5, rate: 0.125 });
+  expect(data.hooks.find((r: any) => r.class === "denied/read-clamp")).toMatchObject({ calls: 40, failures: 4, rate: 0.1 });
+  expect(data.totalCalls).toBe(50);
+  expect(data.coverage).toMatchObject({ sessions: 2, without_tool_health: 1 });
+  expect(read(seed(), new URLSearchParams({ days: "30" })).coverage).toMatchObject({ sessions: 3, without_tool_health: 0 });
+});
+
+test("Bash command failures split by the exit code the digest kept", () => {
+  const env = seed();
+  const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
+  for (const h of rows[0].meta.tool_health) if (h.tool === "Bash") h.bash_calls = [["toolu_a", "git", "command", 1], ["toolu_b", "git", "command", 2], ["toolu_c", "git", "command", 1], ["toolu_d", "cat", "guard"], ["toolu_e", "git", null]];
+  writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
+  const data = read(env, new URLSearchParams({ days: "30" }));
+  expect(data.bash.exit_codes).toEqual([{ code: 1, count: 2 }, { code: 2, count: 1 }]);
+  expect(data.bash.commands.find((c: any) => c.head === "git")).toMatchObject({ calls: 4, failures: 3, exit: { "1": 2, "2": 1 } });
+  expect(data.bash.commands.find((c: any) => c.head === "cat")).toMatchObject({ failures: 1, exit: {} });
+});
+
+test("coverage names the rtk sessions and Bash calls that no digest accounts for", () => {
+  const env = seed();
+  const digested = ["48160000-0000-4000-8000-000000000000", "48160000-0000-4000-8000-000000000001"];
+  const sessions = new Map([[digested[0], 10], [digested[1], 30], ["99990000-0000-4000-8000-000000000009", 7], ["99990000-0000-4000-8000-00000000000a", 5]]);
+  const rtk: any = () => ({ state: "absent" });
+  rtk.coverage = (first: string, last: string) => ({ state: "ok", first, last, sessions });
+  const data = (sources as any).readToolHealth(env, new URLSearchParams({ days: "30" }), Date.parse("2026-10-07T23:59:00Z"), { rtk });
+  expect(data.coverage.rtk).toEqual({ state: "ok", undigested_sessions: 2, undigested_calls: 12 });
+  expect(data.coverage.rtk.first).toBeUndefined();
+  const plain = (sources as any).readToolHealth(env, new URLSearchParams(), Date.parse("2026-10-07T23:59:00Z"), { rtk: () => ({ state: "absent" }) });
+  expect(plain.coverage.rtk).toEqual({ state: "not-read", undigested_sessions: null, undigested_calls: null });
+});
+
+test("a mixed legacy population leaves the legacy session out of every denominator and failure count", () => {
   const env = seed();
   const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
   delete rows[0].meta.tool_health;
   writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
   const data = read(env);
-  // The legacy session's denial names no tool: it leaves Bash for the unknown bucket, and the 8 failures still add up.
-  expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: null, failures: 7, rate: null });
-  expect(data.tools.find((r: any) => r.tool === "(unknown)")).toMatchObject({ calls: null, failures: 1, rate: null });
-  expect(data.tools.reduce((n: number, t: any) => n + t.failures, 0)).toBe(8);
-  expect(data.daily.find((r: any) => r.tool === "Bash" && r.lane === "native").rate).toBeNull();
+  // The legacy session is counted apart (coverage), so what is left is a clean rate over the sessions that have data.
+  expect(data.tools.find((r: any) => r.tool === "Bash")).toMatchObject({ calls: 40, failures: 5, rate: 0.125 });
+  expect(data.tools.find((r: any) => r.tool === "(unknown)")).toBeUndefined();
+  expect(data.tools.reduce((n: number, t: any) => n + t.failures, 0)).toBe(5);
+  expect(data.daily.find((r: any) => r.tool === "Bash" && r.lane === "native")).toMatchObject({ calls: 10, rate: 0.1 });
   expect(read(env, new URLSearchParams({ lane: "claudex" })).tools.find((r: any) => r.tool === "Bash").calls).toBe(30);
 });
 
@@ -322,10 +360,10 @@ test("Bash rolls up by command head and cause; rtk joins by call id and a missin
   const byId = new Map([["toolu_a", { path: "rtk", deny: false }], ["toolu_c", { path: "bash", deny: true }], ["toolu_d", { path: "bash", deny: false }]]);
   const data = readRtk(env, () => ({ state: "ok", byId, duplicates: 1 }));
   expect(data.bash.commands).toEqual([
-    { head: "git", calls: 2, failures: 1, cause: { command: 1, rtk_hook: 0, guard: 0, classifier: 0, other: 0 }, rtk: 1, bash: 0 },
-    { head: "cat", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 1, guard: 0, classifier: 0, other: 0 }, rtk: 0, bash: 1 },
-    { head: "gh", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 1, other: 0 }, rtk: 0, bash: 1 },
-    { head: "other", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 0, other: 1 }, rtk: 0, bash: 0 },
+    { head: "git", calls: 2, failures: 1, cause: { command: 1, rtk_hook: 0, guard: 0, classifier: 0, other: 0 }, exit: {}, rtk: 1, bash: 0 },
+    { head: "cat", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 1, guard: 0, classifier: 0, other: 0 }, exit: {}, rtk: 0, bash: 1 },
+    { head: "gh", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 1, other: 0 }, exit: {}, rtk: 0, bash: 1 },
+    { head: "other", calls: 1, failures: 1, cause: { command: 0, rtk_hook: 0, guard: 0, classifier: 0, other: 1 }, exit: {}, rtk: 0, bash: 0 },
   ]);
   expect(data.bash).toMatchObject({ recorded: 5, unrecorded: 45, rtk: { state: "ok", matched: 3, unmatched: 2, duplicates: 1 },
     fleet: { rtk: { calls: 1, failures: 0 }, bash: { calls: 2, failures: 2 }, unmatched: { calls: 2, failures: 2 } } });
@@ -373,8 +411,8 @@ test("overview-call-total-is-the-tool-attempt-sum", async () => {
   expect(data.tools.reduce((n: number, t: any) => n + t.calls, 0)).toBe(70);
   expect(kpi(await page(data), "calls")).toBe("70");
   const u = readP(seedP((rows) => { delete rows[0].meta.tool_health; }));
-  expect(u.totalCalls).toBeNull();
-  expect(kpi(await page(u), "calls")).toBe("—");
+  expect(u.totalCalls).toBe(50);
+  expect(u.coverage.without_tool_health).toBe(1);
 });
 
 test("overview-failure-rate-is-weighted", async () => {
@@ -692,11 +730,12 @@ test("denial-attribution-preserves-actual-tool-and-legacy-unknown", () => {
   expect(modern.tools.find((t: any) => t.tool === "Read")).toMatchObject({ calls: 5, denials: 1 });
   expect(modern.tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, denials: 0 });
   expect(guardOf(modern, "denied/read-clamp")).toMatchObject({ failures: 1, by_tool: { Read: 1 }, unattributed: 0 });
-  // Total denials survive: per guard the tool split adds up to the refusals, a legacy and a modern session together.
+  // A legacy session beside a modern one is left out and counted (coverage), so the split adds up over the sessions that have data.
   const both = roll([bEval(1), bEval(2, [bTool("Bash", 10), bTool("Read", 5, { "denied/read-clamp": 2 })])], [bFail(1, "denied/read-clamp", 1), bFail(2, "denied/read-clamp", 2)]);
   const g = guardOf(both, "denied/read-clamp");
-  expect(g.failures).toBe(3);
-  expect(g.by_tool).toEqual({ "(unknown)": 1, Read: 2 });
+  expect(g.failures).toBe(2);
+  expect(g.by_tool).toEqual({ Read: 2 });
+  expect(both.coverage).toMatchObject({ sessions: 1, without_tool_health: 1 });
 });
 
 test("a guard table row shows the option-B rate beside the legacy rate", async () => {
@@ -707,9 +746,10 @@ test("a guard table row shows the option-B rate beside the legacy rate", async (
 });
 
 test("the guard drill-in splits the refusals by tool and names the legacy-unknown bucket", async () => {
-  const data = roll([bEval(1), bEval(2, [bTool("Bash", 10), bTool("Read", 5, { "denied/read-clamp": 2 })])], [bFail(1, "denied/read-clamp", 1), bFail(2, "denied/read-clamp", 2)], { eligible: { "read-clamp": CLAMP } });
+  const modern = roll([bEval(2, [bTool("Bash", 10), bTool("Read", 5, { "denied/read-clamp": 2 })])], [bFail(2, "denied/read-clamp", 2)], { eligible: { "read-clamp": CLAMP } });
+  expect(Object.fromEntries(cells(await page(modern, { guard: "denied/read-clamp" }), "data-guard-tool").map(([k, c]: any) => [k, c.slice(1, 3)])).Read[0]).toBe("2");
+  const data = roll([bEval(1)], [bFail(1, "denied/read-clamp", 1)], { eligible: { "read-clamp": CLAMP } });
   const rows = Object.fromEntries(cells(await page(data, { guard: "denied/read-clamp" }), "data-guard-tool").map(([k, c]: any) => [k, c.slice(1, 3)]));
-  expect(rows.Read[0]).toBe("2");
   expect(rows["(unknown)"]).toEqual(["1", "tool not recorded (legacy)"]);
 });
 

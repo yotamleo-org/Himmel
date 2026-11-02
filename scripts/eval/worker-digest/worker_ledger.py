@@ -285,7 +285,7 @@ def _metrics(digest):
 def launch_lane(digest, who):
     """Only explicit launch provenance, never the model or the recorder's lane."""
     lanes = ("native", "claudex", "openrouter", "cloud", "unknown")
-    raw = who.get("lane")
+    raw = who.get("lane") or record_lane(who)
     doc = who.get("doc")
     if not raw and doc:
         path = doc if os.path.isabs(doc) else os.path.join(os.environ.get("HANDOVER_DIR", ""), doc)
@@ -313,25 +313,50 @@ def launch_lane(digest, who):
 PROFILE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
 LAUNCH_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
 LAUNCH_LINE = re.compile(r"^headed-arm-(?:worker|leg): profile=(\S+) ")
+# a chief's launch line carries a role, no profile: the role is the profile
+CHIEF_LINE = re.compile(r"^headed-arm: role=(chief|console) ")
+LINE_LANE = re.compile(r"\blane=(native|claudex|codex|openrouter|cloud)\b")
+
+
+def _launch_lines(who):
+    """The launcher's per-session launch record as (profiles, lanes) seen across its lines, else None.
+    The record is filed under the session name; a -RESUME doc's name is that name plus the suffix."""
+    name = who.get("launch_name")
+    if not name:
+        return None
+    if not LAUNCH_NAME.match(name):
+        raise ValueError("launch name %r is not a session name" % name)
+    name = re.sub(r"-RESUME$", "", name)
+    cache = os.environ.get("HIMMELCTL_CACHE_DIR") or os.path.join(os.path.expanduser("~"), ".claude", "himmel")
+    profiles, lanes = set(), set()
+    try:
+        with open(os.path.join(cache, "launch-logs", name + ".log"), encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                m = LAUNCH_LINE.match(line) or CHIEF_LINE.match(line)
+                if not m:
+                    continue
+                profiles.add(m.group(1))
+                lane = LINE_LANE.search(line)
+                if lane:
+                    lanes.add(lane.group(1))
+    except OSError:
+        return None
+    return profiles, lanes
 
 
 def launch_profile(who):
     """The profile a session was launched under, from the launcher's per-session launch record, else None.
     Never the recorder's own env: that describes the recorder, not the digested session.
     Launch lines that disagree (a refused duplicate of a live name) leave the session unattributed."""
-    name = who.get("launch_name")
-    if not name:
-        return None
-    if not LAUNCH_NAME.match(name):
-        raise ValueError("launch name %r is not a session name" % name)
-    cache = os.environ.get("HIMMELCTL_CACHE_DIR") or os.path.join(os.path.expanduser("~"), ".claude", "himmel")
-    try:
-        with open(os.path.join(cache, "launch-logs", name + ".log"), encoding="utf-8", errors="replace") as fh:
-            seen = {m.group(1) for m in map(LAUNCH_LINE.match, fh) if m}
-    except OSError:
-        return None
+    seen = (_launch_lines(who) or (set(), set()))[0]
     # the launcher writes profile=none when no profile was set: that is no attribution
     return next(iter(seen)) if len(seen) == 1 and PROFILE.match(next(iter(seen))) and next(iter(seen)) != "none" else None
+
+
+def record_lane(who):
+    """The lane the launch record names, else None; lines that disagree name none."""
+    seen = (_launch_lines(who) or (set(), set()))[1]
+    return next(iter(seen)) if len(seen) == 1 else None
 
 
 def build_rows(digest, who):
@@ -520,7 +545,7 @@ def backfill(a):
     since = datetime.strptime(a.since, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     roots = _roots("phi-roots") + _roots("egress-denylist")
     live_cut = datetime.now(timezone.utc).timestamp() - a.live_minutes * 60
-    n = workers = salus = done = live = fa = ea = 0
+    n = workers = others = salus = done = live = fa = ea = 0
     for j in sorted(glob.glob(os.path.join(a.projects, "*", "*.jsonl"))):
         session = os.path.basename(j)[:-len(".jsonl")]
         if not UUID.match(session) or os.path.getmtime(j) < since.timestamp():
@@ -534,12 +559,14 @@ def backfill(a):
             continue
         n += 1
         m = TITLE.match(title or "")
-        if not m:
-            continue
         if salus_rooted(cwd, roots):
             salus += 1
             continue
-        workers += 1
+        # A chief, judge or interactive session has no worker title but its tool calls count too.
+        if m:
+            workers += 1
+        else:
+            others += 1
         try:
             with open(os.path.join(a.state_dir, session + ".json"), encoding="utf-8") as fh:
                 if json.load(fh).get("status") == "ok":
@@ -552,9 +579,9 @@ def backfill(a):
         if journal_last_ts(j) > live_cut:
             live += 1
             continue
-        who = {"leg": m.group(2), "ticket": m.group(1), "console": None, "pr": None, "doc": None,
-               "lane": None, "state_dir": a.state_dir, "backfill": True,
-               "launch_name": title if LAUNCH_NAME.match(title) else None}
+        who = {"leg": m.group(2) if m else None, "ticket": m.group(1) if m else None, "console": None, "pr": None,
+               "doc": None, "lane": None, "state_dir": a.state_dir, "backfill": True,
+               "launch_name": title if title and LAUNCH_NAME.match(title) else None}
         try:
             f, e = record(run_digest(j, session, a.denials_ledger), who, a.failures_ledger, a.eval_ledger)
         except ValueError as err:
@@ -562,8 +589,8 @@ def backfill(a):
             continue
         fa += f
         ea += e
-    print("backfill: journals=%d workers=%d salus=%d already=%d failures+=%d eval+=%d live=%d"
-          % (n, workers, salus, done, fa, ea, live))
+    print("backfill: journals=%d workers=%d others=%d salus=%d already=%d failures+=%d eval+=%d live=%d"
+          % (n, workers, others, salus, done, fa, ea, live))
     return 0
 
 
