@@ -101,9 +101,12 @@ N4531, N4520, N4533) were denied there, as designed (last context before the den
 transcript that mentions 450000 was 343158 (then 345258, 345330, 347186 up to about
 356k), so the deny left 3158 tokens before it, under the about 7000 a commit, push and
 CHECKPOINT need. A higher share cannot help: it would put the deny past the earliest
-compaction. Share 73 gives `ceil(73 × 450000 / 1000000)` = 33 %, 330000 tokens, and about
-13000 tokens of room. This protects the hand-off from a compaction; it does not stop
-hand-offs: a worker that outgrows 33 % still relaunches, as HIMMEL-7667 designed.
+compaction. Share 73 gives `ceil(73 × 450000 / 1000000)` = 33 %, 330000 tokens, and a
+nominal 13000 tokens of room (the last context before a deny sat up to 6893 tokens past
+the threshold, and the overshoot at 73 is unmeasured). This protects the hand-off from a
+compaction; it does not stop hand-offs: a `worker-impl` worker (hand-off mode) that
+outgrows 33 % still relaunches, as HIMMEL-7667 designed, while a `worker-eval` worker
+(compact mode) checkpoints and continues.
 
 ## The autocompact A/B arm
 
