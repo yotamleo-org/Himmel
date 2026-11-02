@@ -3462,7 +3462,9 @@
         "12": "e.verify.trust",
         "13": "e.verify.fail"
       },
-      "unmapped": {}
+      "unmapped": {
+        "14": "warn only: a Bug-ticket PR with no bug-origin line, never a FAIL, so no workflow decision"
+      }
     },
     "scripts/handover/chief-kit/chief-wait.sh": {
       "table": "wake",
