@@ -188,6 +188,12 @@ next_day=$(date -d "$today + 1 day" +%F 2>/dev/null || date -j -v+1d -f %F "$tod
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/load-dotenv.sh"
 load_dotenv HANDOVER_DIR || true
+if [ -z "${HANDOVER_DIR:-}" ]; then
+    # A himmelctl cache .env without the key hides the checkout's own .env (where set-handover-dir.sh writes it).
+    # swallow-ok: no resolvable common dir means no primary .env to read
+    _gitdir=$($GIT_CMD -C "$repo_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+    if [ -n "$_gitdir" ]; then load_dotenv --root "${_gitdir%/.git}" HANDOVER_DIR || true; fi
+fi
 
 # Resolve --out when not passed.
 # A himmel checkout (it ships scripts/handover/chief-kit/) never keeps a report: its handovers/ is a

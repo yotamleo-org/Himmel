@@ -903,14 +903,16 @@ mk_fixture() {
 gen_in() {
     local dir="$1"; shift
     GEN_RC=0
-    # A scratch HOME and cache dir keep the station's own configured root out of the run.
-    GEN_ERR=$(cd "$dir" && env -u HANDOVER_DIR HOME="$RT_DIR/home" HIMMELCTL_CACHE_DIR="$RT_DIR/cache" GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-10-29 "$@" 2>&1 >/dev/null) || GEN_RC=$?
+    # A scratch HOME, config dir and cache dir keep the station's own configured root out of the run.
+    GEN_ERR=$(cd "$dir" && env -u HANDOVER_DIR HOME="$RT_DIR/home" HIMMEL_CONFIG_DIR="$RT_DIR/conf" HIMMELCTL_CACHE_DIR="$RT_DIR/cache" GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-10-29 "$@" 2>&1 >/dev/null) || GEN_RC=$?
 }
 # check <name> <detail> <command...>: pass when the command succeeds.
 check() { local name="$1" detail="$2"; shift 2; if "$@"; then pass "$name"; else fail "$name" "$detail"; fi; }
 rc_is() { [ "$GEN_RC" -eq "$1" ]; }
 gone() { [ ! -e "$1" ]; }
-RT_DIR="$TMP_ROOT/root-fixtures"; mkdir -p "$RT_DIR/home" "$RT_DIR/cache"
+has_text() { grep -qF -- "$2" "$1"; }
+RT_DIR="$TMP_ROOT/root-fixtures"; mkdir -p "$RT_DIR/home" "$RT_DIR/conf" "$RT_DIR/cache" "$RT_DIR/cache-nokey"
+printf 'UNRELATED_KEY=1\n' > "$RT_DIR/cache-nokey/.env"
 HIM_REPO="$RT_DIR/himmel"; mk_fixture "$HIM_REPO" himmel
 ENV_REPO="$RT_DIR/himmel-env"; mk_fixture "$ENV_REPO" himmel
 mkdir -p "$RT_DIR/envroot"; printf 'HANDOVER_DIR=%s\n' "$RT_DIR/envroot" > "$ENV_REPO/.env"
@@ -933,18 +935,22 @@ echo "TEST: controls — HANDOVER_DIR, --out and an adopter checkout still write
 mkdir -p "$RT_DIR/root"
 gen_in "$HIM_REPO" env HANDOVER_DIR="$RT_DIR/root" bash "$SCRIPT"
 check "HANDOVER_DIR set: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
-check "HANDOVER_DIR set: report under the root" "missing" test -f "$RT_DIR/root/morning-report-2026-10-29.md"
+check "HANDOVER_DIR set: report under the root" "missing or empty" has_text "$RT_DIR/root/morning-report-2026-10-29.md" "Morning Report"
 gen_in "$HIM_REPO" bash "$SCRIPT" --out "$RT_DIR/explicit.md"
 check "--out with no root: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
-check "--out with no root: report at --out" "missing" test -f "$RT_DIR/explicit.md"
+check "--out with no root: report at --out" "missing or empty" has_text "$RT_DIR/explicit.md" "Morning Report"
 check "--out with no root: nothing in the checkout" "handovers/ exists" gone "$HIM_REPO/handovers"
 gen_in "$ENV_REPO" bash "$SCRIPT"
 check "root in .env, not exported: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
-check "root in .env, not exported: report under that root" "missing" test -f "$RT_DIR/envroot/morning-report-2026-10-29.md"
+check "root in .env, not exported: report under that root" "missing or empty" has_text "$RT_DIR/envroot/morning-report-2026-10-29.md" "Morning Report"
 check "root in .env, not exported: nothing in the checkout" "handovers/ exists" gone "$ENV_REPO/handovers"
+rm -f "$RT_DIR/envroot/morning-report-2026-10-29.md"
+gen_in "$ENV_REPO" env HIMMELCTL_CACHE_DIR="$RT_DIR/cache-nokey" bash "$SCRIPT"
+check "cache .env without the key: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
+check "cache .env without the key: the checkout .env root is read" "missing or empty" has_text "$RT_DIR/envroot/morning-report-2026-10-29.md" "Morning Report"
 gen_in "$ADOPT_REPO" bash "$SCRIPT"
 check "adopter checkout: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
-check "adopter checkout: Mode A still writes" "missing" test -f "$ADOPT_REPO/handovers/morning-report-2026-10-29.md"
+check "adopter checkout: Mode A still writes" "missing or empty" has_text "$ADOPT_REPO/handovers/morning-report-2026-10-29.md" "Morning Report"
 
 echo "TEST: a failing shift helper is named with its exit code and first stderr line"
 FAKE_SHIFT_FAIL="$TMP_ROOT/shift-fail.sh"
@@ -952,7 +958,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'echo "shift-cli: no handover root is set (H
 chmod +x "$FAKE_SHIFT_FAIL"
 gen_in "$ADOPT_REPO" env SHIFTS_FILE="$RT_DIR/shifts.jsonl" MORNING_SHIFT_CMD="$FAKE_SHIFT_FAIL" bash "$SCRIPT" --out "$RT_DIR/helper.md"
 check "helper failure: the run still exits 0" "got rc=$GEN_RC" rc_is 0
-check "helper failure: the report is still written" "missing helper.md" test -f "$RT_DIR/helper.md"
+check "helper failure: the report is still written" "missing or empty helper.md" has_text "$RT_DIR/helper.md" "Morning Report"
 assert_contains "helper failure: WARNING carries the exit code" "exit 2" "$GEN_ERR"
 assert_contains "helper failure: WARNING carries the first stderr line" "shift-cli: no handover root is set (HANDOVER_DIR)" "$GEN_ERR"
 if grepq "$GEN_ERR" -F -- "second line"; then fail "helper failure: only the first stderr line"; else pass "helper failure: only the first stderr line"; fi
