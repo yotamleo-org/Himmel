@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, signSpec, specCheck, standing,
+  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { execFileSync } from 'node:child_process';
@@ -396,6 +396,47 @@ describe('release engine (HIMMEL-6796)', () => {
       expect(() => admit(req, { ...pull, supersedes: [prior] })).toThrow(conflict);
       expect(() => admit(req, { ...pull, supersedes: [prior], authority: { kind: 'operator', ref: move.id } })).toThrow(conflict);
     });
+
+    describe('an operator restore of a key held under an older operator record (HIMMEL-8761)', () => {
+      const restore = { outcome: 'MOVE', op: { kind: 'move' as const, from_v: null, to_v: 'v2' } };
+
+      // K-2 is placed in v2 under an operator ruling, then Jira drifts; a REVERSION to restore it is claimed.
+      async function drifted(decisions: () => void) {
+        await setup();
+        const o = decide('2026-10-21T09:00:00.000Z', 'add', null, 'v2');
+        const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+        claim(ctx(rmEnv));
+        const r = admit(q.req, { op: { kind: 'add', from_v: null, to_v: 'v2' }, authority: { kind: 'operator', ref: o.id } });
+        await apply(ctx(rmEnv), r.id);
+        jira.fv.set('K-2', []);
+        decisions();
+        const q2 = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: null, to_v: 'v2', why: 'operator restored it', evidence: {}, from: 'console' });
+        claim(ctx(rmEnv));
+        return { prior: r.id, req: q2.req };
+      }
+
+      it('lands under the newest operator record that places the key, and Jira is written', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide('2026-10-21T11:00:00.000Z', 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior] });
+        expect(r.authority).toEqual({ kind: 'operator', ref: newest.id });
+        await apply(ctx(rmEnv), r.id);
+        expect(jira.fv.get('K-2')).toEqual(['v2']);
+      });
+
+      it('lands the same when the request cites the newest record', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide('2026-10-21T11:00:00.000Z', 'add', null, 'v2'); });
+        const r = admit(req, { ...restore, supersedes: [prior], authority: { kind: 'operator', ref: newest.id } });
+        expect(r.authority).toEqual({ kind: 'operator', ref: newest.id });
+      });
+
+      it('is still refused when the newest record contradicts the restore', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => { newest = decide('2026-10-21T11:00:00.000Z', 'remove', 'v2', null); });
+        expect(() => admit(req, { ...restore, supersedes: [prior] })).toThrow(new RegExp(`CONFLICT K-2: ${newest.id} \\(newer\\) remove v2→backlog`));
+      });
+    });
   });
 
   it('keeps operator acts and requests out of the RM and of chief-spawned workers', () => {
@@ -757,6 +798,14 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(lines).toEqual([expect.stringMatching(/^REFUSED Q-R1-0001: release rule: a ruling without a sector/)]);
     expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
     expect(ask('K-2').req).toBe('Q-R1-0002');
+  });
+
+  it('the run summary counts the refused requests (HIMMEL-8761)', async () => {
+    declared();
+    ask('K-2');
+    const refused = await rmRun(ctx(), async () => []);
+    expect(rmRunSummary('R1', refused)).toBe('RM-RUN R1 summary: 1 refused');
+    expect(rmRunSummary('R1', ['RULING R-R1-0001 Q-R1-0001 x', 'PENDING R-R1-0002: y'])).toBe('RM-RUN R1 summary: 0 refused');
   });
 
   it('a request the judge leaves out is reported and stays claimed for the next run', async () => {

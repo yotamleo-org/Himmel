@@ -796,6 +796,14 @@ function checkBlockerPull(ctx: Ctx, p: {
   return true;
 }
 
+// A REVERSION can only rule a move, but an operator `add` into a version places the key there too: the restore
+// is that add, so the record covers it. Any other op stays as it is and is checked against the record.
+function restoreAsAdd(verb: Verb, op: Op, governing: OperatorRow | undefined): Op {
+  const same = verb === 'REVERSION' && op.kind === 'move' && op.from_v === null && governing?.op === 'add'
+    && (governing.from_v ?? null) === null && (governing.to_v ?? null) === op.to_v;
+  return same ? { kind: 'add', from_v: null, to_v: op.to_v } : op;
+}
+
 export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
   return locked(ctx, (l) => {
     const lease = rmFence(ctx, l);
@@ -828,6 +836,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       && [x.from_v, x.to_v].some((v) => v != null && touched.includes(v)))
       .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
     let authority = o.authority;
+    let op = o.op;
     const pulling = checkBlockerPull(ctx, { decl: l.decl, ops, governing, key: req.key, op: o.op, authority });
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
@@ -840,6 +849,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (prior?.authority.kind !== 'operator') continue;
       // The pull passed the newer-record check above, so it supersedes the operator ruling it finds.
       if (pulling) continue;
+      op = restoreAsAdd(req.verb, op, governing);
       // Only an operator decision newer than the ruling supersedes it, and only the governing one.
       const since = Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
       const cited = authority.kind === 'operator' && authority.ref ? ops.get(authority.ref) : undefined;
@@ -853,18 +863,18 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       }
       if (authority.kind === 'operator') continue;
       if (!governing || Date.parse(governing.ts) <= since) throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
-      if (!scopeOk({ authority: { kind: 'operator', ref: governing.id }, key: req.key, op: o.op }, ops, l.decl.current)) throw conflict(governing);
+      if (!scopeOk({ authority: { kind: 'operator', ref: governing.id }, key: req.key, op }, ops, l.decl.current)) throw conflict(governing);
       authority = { kind: 'operator', ref: governing.id };
     }
     if (authority.kind === 'operator') {
-      if (!scopeOk({ authority, key: req.key, op: o.op }, ops, l.decl.current)) throw new Error(`release rule: ${authority.ref ?? '(no ref)'} does not cover ${req.key} ${o.op.kind} ${o.op.from_v}→${o.op.to_v}`);
+      if (!scopeOk({ authority, key: req.key, op }, ops, l.decl.current)) throw new Error(`release rule: ${authority.ref ?? '(no ref)'} does not cover ${req.key} ${op.kind} ${op.from_v}→${op.to_v}`);
     }
     if (authority.kind === 'import' && !authority.ref) throw new Error('release rule: an import names its source in --ref');
 
     const id = seq(`R-${ctx.release}`, l.rulings.rows.map((r) => r.id));
     const row = appendChain<RulingRow>(f(ctx, 'rulings.jsonl'), l.k, {
-      id, epoch: lease.epoch, req: req.req, ts: ts(ctx), verb: req.verb, key: req.key, op: o.op, outcome: o.outcome,
-      class: classOf(l.decl, o.op), sector, ground: o.ground, reason: o.reason, supersedes: o.supersedes,
+      id, epoch: lease.epoch, req: req.req, ts: ts(ctx), verb: req.verb, key: req.key, op, outcome: o.outcome,
+      class: classOf(l.decl, op), sector, ground: o.ground, reason: o.reason, supersedes: o.supersedes,
       authority, phase: 'intent',
     });
     const { prev: _p, mac: _m, ...rest } = req;
@@ -1176,6 +1186,10 @@ export interface RmRunOptions {
   /** The chief's reason for the same, console marker only; one ledger row records it with the count. */
   chiefOverride?: string;
 }
+
+// The last line of an rm-run: how many requests the engine refused, so a refusal is not only buried in the lines above.
+export const rmRunSummary = (release: string, lines: string[]): string =>
+  `RM-RUN ${release} summary: ${lines.filter((x) => /^REFUSED /.test(x)).length} refused`;
 
 export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promise<string[]> {
   const ruling = o.ruling?.trim();
