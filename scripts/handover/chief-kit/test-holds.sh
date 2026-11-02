@@ -606,6 +606,30 @@ printf 'HIMMEL-9330\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z4.sh "$
 run hp read --repo "$R4" --keys
 contains "F7 an unreadable row never frees its key: alive stays alive, the count includes the junk row" "$OUT" "$(printf 'HIMMEL-9330\talive\t2')"
 
+# ---- F6c: a RESUME-named doc that cannot be read is a fault (unknown), never a dead holder
+if [ "$(id -u)" != 0 ]; then
+    GU="$(mkdoc HIMMEL-9350-N1-RESUME.md '# resume doc')"
+    chmod 000 "$GU"
+    put_row scripts/rs2.sh HIMMEL-9350 alpha "$GU"
+    before="$(ev_count)"
+    run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/rs2.sh
+    chmod 644 "$GU"
+    same "F6c an unreadable RESUME doc under 24 h, lock free: the claim passes (a fault)" "$RC" 0
+    same "F6c ... the holder's row is left in place" "$(cut -f1 "$(rowf scripts/rs2.sh)")" HIMMEL-9350
+    same "F6c ... one events.log line, a fault" "$(tail -n +$((before + 1)) "$EVENTS" | cut -f2 | tr '\n' ' ')" "fault "
+fi
+
+# ---- F7b: a junk row of a key makes that key unknown even when its readable row is dead
+R5="$W/repo5"
+mkdir -p "$R5"
+git -C "$R5" init -q -b main || exit 1
+mkdir -p "$(slugdir "$R5")"
+printf 'HIMMEL-9351\tlab\t%s\tbrief\t\n' "$(mkdoc HIMMEL-9351-case.md)" > "$(rowf scripts/a1.sh "$R5")"
+printf 'HIMMEL-9351\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/b1.sh "$R5")"
+touch -d '2 hours ago' "$(rowf scripts/a1.sh "$R5")" "$(rowf scripts/b1.sh "$R5")"
+run hp read --repo "$R5" --keys
+same "F7b read --keys: a dead row then a junk row of the same key reads that key unknown, never dead" "$OUT" "$(printf 'HIMMEL-9351\tunknown\t2')"
+
 # ---- the real register was never touched
 same "the real ~/.himmel/state/holds is unchanged" "$REAL_BEFORE" "$(HOME="$REAL_HOME" real_register)"
 
