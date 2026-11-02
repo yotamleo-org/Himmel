@@ -6405,6 +6405,7 @@ mkdir -p "$c84_t/home" "$c84_t/claude" "$c84_t/h/release/R1"
 # The probe stands in for `jira release state <R> --json`, whose status is OK only when release.json verifies.
 cat > "$c84_t/probe" <<'EOF'
 #!/usr/bin/env bash
+[ -z "${C84_RC:-}" ] || exit "$C84_RC"
 printf '{"status":"%s","integrity":["release.json for %s is missing or does not verify"]}\n' "${C84_STATUS:-OK}" "$1"
 [ "${C84_STATUS:-OK}" = OK ] || exit 3
 EOF
@@ -6441,6 +6442,11 @@ echo "== C84-release-queue: the declaration does not verify (release state is no
 c84_doc "release: R1"
 out="$(C84_STATUS=UNKNOWN c84_run)"
 if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'UNKNOWN' && grepq "$out" -F 'does not verify'; then pass "C84 unverifiable declaration -> WARN naming the state and the integrity reason"; else fail "C84 unverified -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: the state read fails outright (exit 1, then a timeout's 124) -> WARN, never OK =="
+for c84_rc in 1 124; do
+    out="$(C84_RC=$c84_rc c84_run)"
+    if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F "exited $c84_rc" && ! grepq "$out" 'OK   C84-release-queue'; then pass "C84 state read exit $c84_rc -> WARN naming the exit status"; else fail "C84 state read exit $c84_rc -> $(printf '%s' "$out" | head -4)"; fi
+done
 echo "== C84-release-queue: the default handover root comes from --root, not the working directory =="
 c84_p="$c84_t/proj"; mkdir -p "$c84_p/handovers/u/himmel/release/R1" "$c84_t/elsewhere"
 git init -q "$c84_p"

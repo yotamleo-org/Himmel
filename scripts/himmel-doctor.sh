@@ -3418,6 +3418,7 @@ check_c83_qmd_embed_backlog() {
 # chief fleet registry.
 _c84_release_state() {
     local rel="$1" cli json="" rc=0 pk node_bin
+    command -v jq >/dev/null 2>&1 || return 0  # prints nothing: the state cannot be judged here
     if [ -n "${HIMMEL_DOCTOR_RM_STATE_PROBE:-}" ]; then
         json="$(bash "$HIMMEL_DOCTOR_RM_STATE_PROBE" "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
     else
@@ -3429,8 +3430,14 @@ _c84_release_state() {
         { [ -n "$pk" ] && [ -f "$cli" ]; } || return 0
         json="$(JIRA_PROJECT_KEY="$pk" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} "$node_bin" "$cli" release state "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
     fi
-    { [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]; } || return 0  # exit 3 is the CLI's not-OK status and still prints the state
-    jq -r '"\(.status // "UNKNOWN")\t\((.integrity // [])[0] // "")"' <<< "$json" 2>/dev/null || return 0  # swallow-ok: unparseable state reads as not read
+    # The read ran: any failure is a state the tick also reads as rm-queue=off, never a pass.
+    # Exit 3 is the CLI's not-OK status and still prints the state.
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+        printf 'UNREADABLE\tjira release state exited %s\n' "$rc"
+        return 0
+    fi
+    jq -r '"\(.status // "UNKNOWN")\t\((.integrity // [])[0] // "")"' <<< "$json" 2>/dev/null \
+        || printf 'UNREADABLE\tjira release state printed no readable JSON\n'
 }
 
 check_c84_release_queue() {
