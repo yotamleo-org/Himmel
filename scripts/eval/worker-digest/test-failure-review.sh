@@ -309,7 +309,8 @@ C8d="$TMP/c8d"; mkdir -p "$C8d"
 FAILURE_REVIEW_BACKFILL="$STUB/backfill" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8d/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
   HIMMEL_FAILURE_ROUTES_STATE="$C8d/state.json" timeout "$BOUND" bash "$CAD" run >"$C8d/run.out" 2>&1; rc=$?
 hung "$rc" "cadence run (session digest)"
-check "a run digests the last seven days of sessions before the review" '[ "$rc" = 0 ] && [ "$(cat "$BFLOG")" = "backfill --since $(date -u -d "7 days ago" +%F)" ] && ls "$C8d/out"/failure-review-*.md >/dev/null 2>&1'
+SINCE="$(date -u -d '7 days ago' +%F 2>/dev/null || date -u -v-7d +%F)"
+check "a run digests the last seven days of sessions before the review" '[ "$rc" = 0 ] && grep -qxF "backfill --since $SINCE" "$BFLOG" && ls "$C8d/out"/failure-review-*.md >/dev/null 2>&1'
 printf '#!/usr/bin/env bash\nexit 5\n' >"$STUB/backfill-fail"; chmod +x "$STUB/backfill-fail"
 C8e="$TMP/c8e"; mkdir -p "$C8e"
 FAILURE_REVIEW_BACKFILL="$STUB/backfill-fail" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8e/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
