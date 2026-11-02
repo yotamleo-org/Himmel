@@ -24,8 +24,10 @@ and escape_rate.
 --until cuts the sample as of TS: PRs merged after it, Bugs created after it and CR-ledger rows after it
 are left out.
 --class C counts only the signals whose fix PR (revert, fix-forward) or Bug has class C in the bug-origin ledger (C or
-a family: review-miss matches review-miss:cr); the rates stay over all merged PRs. A class with no rows counts none,
-and no ledger to read (--bug-origin-dir, else <HANDOVER_DIR>/<user>/<project bucket>/bug-origin) is refused.
+a family: review-miss matches review-miss:cr; see judge_accuracy.class_match for review-miss:multi and :<layers>); the
+rates stay over all merged PRs. A class with no rows counts none, an unknown class is refused, and no ledger to read
+(--bug-origin-dir, else <HANDOVER_DIR>/<user>/<project bucket>/bug-origin) is refused. With --class and no Jira mirror
+the ledger rows give the bugs; unfiltered numbers read the mirror. A filtered row is its own series (its config carries the class).
 Without --verdicts there are no judge numbers. Without --record the eval-runs row is printed, not appended.
 A PR merged recently has had less time to show an escape, so its rate reads low.
 Exit 0 done; 2 refused input. Stdlib only; no network, no model call.
@@ -163,7 +165,10 @@ def build(prs, rows, bugs, recs, until=None, cls=None, classes=None):
                 per[j].append(n)
         for j in sorted(per):
             tally(m, ci, "judge." + j + ".", per[j], sig)
-    return eval_runs.make_row(EVAL_ID, SOURCE, {"escapes_v": 1, "judges": recs is not None, "until": until, "class": cls}, m, n=len(merged),
+    config = {"escapes_v": 1, "judges": recs is not None, "until": until}
+    if cls is not None:
+        config["class"] = cls  # a filtered row is its own series; an unfiltered one keeps the config it always had
+    return eval_runs.make_row(EVAL_ID, SOURCE, config, m, n=len(merged),
                               ci=ci, ci_level=0.95 if ci else None, ci_method="wilson" if ci else None)
 
 
@@ -181,9 +186,12 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         prs = judge_accuracy.load_json(a.prs, "--prs")
-        bugs = judge_accuracy.load_bugs(a.mirror)
+        ledger = judge_accuracy.class_filter(a.cls, a.bug_origin_dir)
+        # a class filter reads the ledger, so a project with no Jira mirror still works; unfiltered numbers need the mirror
+        bugs = (judge_accuracy.ledger_bugs(ledger) if ledger is not None and not os.path.isdir(a.mirror)
+                else judge_accuracy.load_bugs(a.mirror))
         recs = judge_accuracy.load_verdicts(a.verdicts)[0] if a.verdicts else None
-        classes = judge_accuracy.class_filter(a.cls, a.bug_origin_dir)
+        classes = judge_accuracy.ledger_classes(ledger) if ledger is not None else None
     except ValueError as e:
         print("escapes: refused: %s" % e, file=sys.stderr)
         return 2

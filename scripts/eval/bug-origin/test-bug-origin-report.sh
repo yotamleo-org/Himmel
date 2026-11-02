@@ -11,6 +11,8 @@ trap 'rm -rf "$TMP"' EXIT
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-runs.jsonl"
 # the ledger resolves through these two; neither exists, so no test reads the real bucket or the real registry
 export HANDOVER_DIR="$TMP/never-handover" HANDOVER_REGISTRY="$TMP/never-registry.json"
+# the Jira key resolves through this dir too; it holds nothing, so no test reads the real ~/.himmel
+export HIMMEL_CONFIG_DIR="$TMP/never-conf"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 FIX="$TMP/fix"
 mkdir -p "$FIX/verdicts/q1" "$FIX/verdicts-early/q2" "$FIX/mirror"
@@ -585,10 +587,11 @@ eq "sync re-run: no second comment" "$(grep -c '^comment HIMMEL-' "$TMP/jira1.lo
 # a Jira error warns, leaves the row unsynced, and the next sync retries it
 ing "$TMP/led-fail" >/dev/null
 rc=0; out="$(JIRA_PROJECT_KEY=HIMMEL FAKE_JIRA_FAIL=1 FAKE_JIRA_LOG="$TMP/jira2.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-fail" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
-eq "sync Jira error: exit 0" "$rc" "0"
+eq "sync Jira error: every comment failed, exit 1" "$rc" "1"
 has "sync Jira error: warns" "$out" "warn: jira comment on HIMMEL-20 failed"
 has "sync Jira error: the row stays unsynced" "$(cat "$TMP/led-fail/20.md")" "synced: false"
-out="$(sy "$TMP/led-fail" "$TMP/jira2.log")"
+rc=0; out="$(sy "$TMP/led-fail" "$TMP/jira2.log")" || rc=$?
+eq "sync retry: exit 0" "$rc" "0"
 has "sync retry: the next run updates it" "$out" "jira sync: 9 updated"
 has "sync retry: the row is now synced" "$(cat "$TMP/led-fail/20.md")" "synced: true"
 eq "sync retry: HIMMEL-20 was tried twice, once failed and once sent" "$(grep -c '^comment HIMMEL-20' "$TMP/jira2.log")" "2"
@@ -614,11 +617,56 @@ has "sync: a held ledger is skipped" "$out" "jira sync skipped: another sync hol
 eq "sync: a held ledger gets no comment" "$([ -e "$TMP/jira4.log" ] && echo sent || echo none)" "none"
 # no Jira configured: skipped with no error, the rows untouched
 ing "$TMP/led-nojira" >/dev/null
-rc=0; out="$(env -u JIRA_PROJECT_KEY FAKE_JIRA_LOG="$TMP/jira3.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-nojira" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
+# from a temp directory that is no checkout, with an empty config dir: the real ~/.himmel and .env are never read
+EMPTYCONF="$TMP/conf-empty"; NOGIT="$TMP/nogit-cwd"
+mkdir -p "$EMPTYCONF" "$NOGIT"
+rc=0; out="$(cd "$NOGIT" && env -u JIRA_PROJECT_KEY HIMMEL_CONFIG_DIR="$EMPTYCONF" FAKE_JIRA_LOG="$TMP/jira3.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-nojira" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
 eq "sync not configured: exit 0" "$rc" "0"
 has "sync not configured: says skipped" "$out" "jira sync skipped: not configured"
 eq "sync not configured: nothing sent" "$([ -e "$TMP/jira3.log" ] && echo sent || echo none)" "none"
 has "sync not configured: the row stays unsynced" "$(cat "$TMP/led-nojira/20.md")" "synced: false"
+# the key is read where the Jira CLI reads it. Every run below starts in a temp directory that is no git checkout,
+# so the real primary checkout's .env is never read, and HIMMEL_CONFIG_DIR points at a temp dir, so is the real ~/.himmel.
+CONF="$TMP/conf-dir"
+mkdir -p "$CONF"
+printf '# the station config\nJIRA_PROJECT_KEY=ZED  # the project\n' > "$CONF/himmel.conf"
+ing "$TMP/led-conf" >/dev/null
+rc=0; out="$(cd "$NOGIT" && env -u JIRA_PROJECT_KEY HIMMEL_CONFIG_DIR="$CONF" FAKE_JIRA_LOG="$TMP/jira6.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-conf" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
+eq "sync: a key in himmel.conf configures it, exit 0" "$rc" "0"
+has "sync: a key in himmel.conf syncs the rows" "$out" "jira sync: 9 updated"
+printf 'JIRA_PROJECT_KEY="QUX"\n' > "$CONF/himmel.conf.local"
+printf 'JIRA_PROJECT_KEY=\n' > "$EMPTYCONF/himmel.conf"
+rc=0; out="$(cd "$NOGIT" && env -u JIRA_PROJECT_KEY HIMMEL_CONFIG_DIR="$EMPTYCONF" FAKE_JIRA_LOG="$TMP/jira7.log" python3 "$REPORT" sync --ledger-dir "$TMP/led-nojira" --jira-cmd "$FAKEJIRA" 2>&1)" || rc=$?
+eq "sync: an empty key anywhere is no key, exit 0" "$rc" "0"
+has "sync: an empty key anywhere is skipped" "$out" "jira sync skipped: not configured"
+eq "sync: no key anywhere sends nothing" "$([ -e "$TMP/jira7.log" ] && echo sent || echo none)" "none"
+ing "$TMP/led-nocli" >/dev/null
+rc=0; out="$(cd "$NOGIT" && env -u JIRA_PROJECT_KEY HIMMEL_CONFIG_DIR="$CONF" python3 "$REPORT" sync --ledger-dir "$TMP/led-nocli" --jira-cmd "$TMP/no-such-jira" 2>&1)" || rc=$?
+eq "sync: a key set and a --jira-cmd that is not executable fails" "$rc" "2"
+has "sync: the failure says why" "$out" "no-such-jira"
+rc=0; out="$(cd "$NOGIT" && env -u JIRA_PROJECT_KEY HIMMEL_CONFIG_DIR="$CONF" python3 "$REPORT" sync --ledger-dir "$TMP/led-nocli" 2>&1)" || rc=$?
+eq "sync: a key set and no Jira CLI to find fails" "$rc" "2"
+has "sync: the missing CLI is named" "$out" "no Jira CLI"
+has "sync: a failed sync leaves the row unsynced" "$(cat "$TMP/led-nocli/20.md")" "synced: false"
+
+# a ledger the report cannot find is said so, and one it reads says how many rows
+out="$(python3 "$REPORT" report --prs "$FIX/prs-nobody.json" 2>&1)"
+has "report: no ledger dir says so" "$out" "ledger: none (set HANDOVER_DIR or pass --ledger-dir)"
+out="$(python3 "$REPORT" report --prs "$FIX/prs-nobody.json" --ledger-dir "$TMP/no-such-ledger" 2>&1)"
+has "report: a ledger dir that is not there says so" "$out" "ledger: none (set HANDOVER_DIR or pass --ledger-dir)"
+out="$(python3 "$REPORT" report --prs "$FIX/prs-nobody.json" --ledger-dir "$LED" 2>&1)"
+has "report: a ledger it reads says how many rows" "$out" "ledger: 10 rows from $LED"
+# rows off the grammar are left out and counted: a class off the line, a file whose name is not its pr, a reason with a trailing space
+mkdir -p "$TMP/led-off"
+offrow() { printf -- '---\npr: %s\nbug_key: "HIMMEL-%s"\norigin: "#10"\nclass: "%s"\nreason: "%s"\nsource: "body"\ningested: "2026-11-02T00:00:00Z"\nsynced: false\n---\nPR #%s x\n' "$2" "$2" "$3" "$4" "$2" > "$TMP/led-off/$1.md"; }
+offrow 20 20 bogus x
+offrow 21 22 test-gap x
+offrow 23 23 test-gap "x "
+offrow 24 24 test-gap x
+out="$(python3 "$REPORT" report --prs "$FIX/prs-nobody.json" --ledger-dir "$TMP/led-off" 2>&1)"
+has "report: three rows off the grammar are counted" "$out" "ledger rows off the grammar: 3"
+has "report: the row on the grammar is read" "$out" "ledger: 1 rows from $TMP/led-off"
+eq "report: only the row on the grammar counts" "$(line_of 'rows: ' "$out" | head -n 1)" "rows: 1"
 
 # R3: the further classes parse, are counted in the report and are written to the ledger
 python3 -I - "$FIX/prs.json" "$FIX/prs-r3.json" <<'PY'
@@ -662,8 +710,17 @@ out="$(rep3 --class residual:HIMMEL-8802)"
 eq "filter exact payload class: rows" "$(line_of 'rows: ' "$out")" "rows: 1"
 out="$(rep3 --class residual:nope)"
 eq "negative control: a class with no rows returns none, not all" "$(line_of 'rows: ' "$out")" "rows: 0"
-out="$(rep3 --class bogus)"
-eq "negative control: an unknown class returns none, not all" "$(line_of 'rows: ' "$out")" "rows: 0"
+rc=0; out="$(rep3 --class bogus)" || rc=$?
+eq "negative control: an unknown class is refused, not read as empty" "$rc" "2"
+hasnt "an unknown class prints no report" "$out" "rows: "
+out="$(rep3 --class review-miss:multi)"
+eq "filter review-miss:multi: the many-layer row" "$(line_of 'rows: ' "$out")" "rows: 1"
+out="$(rep3 --class review-miss:cr)"
+eq "filter review-miss:cr: a layer inside a many-layer row" "$(line_of 'rows: ' "$out")" "rows: 1"
+out="$(rep3 --class review-miss:judge)"
+eq "filter review-miss:judge: a layer inside a many-layer row" "$(line_of 'rows: ' "$out")" "rows: 1"
+out="$(rep3 --class review-miss:panel)"
+eq "filter review-miss:panel: only the panel row" "$(line_of 'rows: ' "$out")" "rows: 1"
 
 # R4: the class filter in escapes.signals, by a fix PR's class and by a bug's key
 mkdir -p "$TMP/esc/mirror" "$TMP/led-esc"
@@ -690,6 +747,20 @@ eq "escapes class design-gap: the revert and the bug" "$(esc --bug-origin-dir "$
 eq "negative control: escapes class with no rows counts none" "$(esc --bug-origin-dir "$TMP/led-esc" --class residual)" "0 0"
 rc=0; python3 "$HERE/../escapes.py" --prs "$TMP/esc/prs.json" --mirror "$TMP/esc/mirror" --cr-ledger "$TMP/esc/cr.jsonl" --class test-gap >/dev/null 2>&1 || rc=$?
 eq "escapes class with no ledger to read is refused" "$rc" "2"
+eq "escapes class, no Jira mirror: the ledger rows give the bug (test-gap)" "$(esc --mirror "$TMP/no-such-mirror" --bug-origin-dir "$TMP/led-esc" --class test-gap)" "1 1"
+eq "escapes class, no Jira mirror: the ledger rows give the bugs (design-gap)" "$(esc --mirror "$TMP/no-such-mirror" --bug-origin-dir "$TMP/led-esc" --class design-gap)" "2 2"
+eq "negative control: no Jira mirror, a class with no rows counts none" "$(esc --mirror "$TMP/no-such-mirror" --bug-origin-dir "$TMP/led-esc" --class residual)" "0 0"
+rc=0; python3 "$HERE/../escapes.py" --prs "$TMP/esc/prs.json" --mirror "$TMP/no-such-mirror" --cr-ledger "$TMP/esc/cr.jsonl" >/dev/null 2>&1 || rc=$?
+eq "escapes with no class and no Jira mirror is still refused" "$rc" "2"
+rc=0; python3 "$HERE/../escapes.py" --prs "$TMP/esc/prs.json" --mirror "$TMP/esc/mirror" --cr-ledger "$TMP/esc/cr.jsonl" --bug-origin-dir "$TMP/led-esc" --class bogus >/dev/null 2>&1 || rc=$?
+eq "escapes with an unknown class is refused" "$rc" "2"
+escrow() { python3 "$HERE/../escapes.py" --prs "$TMP/esc/prs.json" --mirror "$TMP/esc/mirror" --cr-ledger "$TMP/esc/cr.jsonl" "$@" 2>&1 \
+  | python3 -I -c 'import json,sys; r=json.load(sys.stdin); print(",".join(sorted(r["config"])), r["confighash"])'; }
+unfiltered="$(escrow)"
+filtered="$(escrow --bug-origin-dir "$TMP/led-esc" --class test-gap)"
+eq "series: an unfiltered escapes row's config has no class" "${unfiltered%% *}" "escapes_v,judges,until"
+eq "series: a filtered escapes row's config names the class" "${filtered%% *}" "class,escapes_v,judges,until"
+if [ "${unfiltered##* }" != "${filtered##* }" ]; then pass "series: the filtered and unfiltered escapes confighash differ"; else fail "series: the filtered and unfiltered escapes confighash differ"; fi
 eq "escapes.signals takes the filter directly" "$(python3 -I - "$HERE/.." <<'PY'
 import importlib.util, json, sys
 sys.path[:0] = [sys.argv[1] + "/lib", sys.argv[1] + "/cr-ledger", sys.argv[1] + "/judge-accuracy", sys.argv[1]]

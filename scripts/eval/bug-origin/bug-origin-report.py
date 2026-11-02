@@ -15,10 +15,16 @@ The ledger (HIMMEL-8868): `ingest` writes one markdown file per fix PR whose bod
 <HANDOVER_DIR>/<user>/<project bucket>/bug-origin/<pr>.md (the user and bucket from the handover registry entry of this
 checkout, else USER_SLUG and the checkout's name; --ledger-dir overrides). The row is front matter plus one plain line
 a search finds; it is the source of truth and needs no tracker. `report` reads a PR's ledger row first, then its body,
-then the seed. `sync` comments each unsynced row's line on its Bug ticket once, when JIRA_PROJECT_KEY is set and a
-Jira CLI exists; otherwise it prints `jira sync skipped: not configured` and exits 0, and a Jira error warns and leaves
-the row for the next run. Rows land only when `ingest` runs. `report --class C` keeps the rows of class C (or a family:
-review-miss matches review-miss:cr); a class with no rows reports none.
+then the seed, and prints `ledger: <n> rows from <dir>` (or `ledger: none (set HANDOVER_DIR or pass --ledger-dir)`) first.
+`sync` comments each unsynced row's line once on the first [KEY] of its PR title, whatever the issue type. It needs a Jira
+project key where the Jira CLI finds one (JIRA_PROJECT_KEY in the environment, else himmel.conf.local and himmel.conf in
+$HIMMEL_CONFIG_DIR or ~/.himmel, else the .env of the checkout it runs in): no key is `jira sync skipped: not
+configured`, exit 0; a key and no Jira CLI to run (--jira-cmd not executable, or no scripts/jira/dist/index.js) is
+refused, exit 2; a Jira error warns, leaves the row for the next run and exits 1. Rows land only when `ingest` runs.
+`report --class C` keeps the rows of class C (or a family: review-miss matches review-miss:cr; review-miss:multi a
+row with two or more layers; review-miss:cr a row whose layers hold cr, so it also matches review-miss:cr,judge); a
+class with no rows reports none, and a class that is none of the report's classes is refused, exit 2. A ledger row
+off the line grammar, or in a file not named for its own PR, is left out and counted.
 
 For each review-miss row the report shows what each review layer has on record for the introducing PR:
 
@@ -79,9 +85,7 @@ REPORT_FIELDS = ("number", "title", "body", "mergedAt", "headRefName", "headRefO
 # review-deferred, unknown, review-miss:<layers> (cr, judge, panel, comma-separated), residual:<token>, trigger:<token>
 # and commit:<hex sha>. The payload forms are the chief's reading of the operator's R3 list, which gives no payloads.
 # ponytail: one class per fix, upgrade path repeatable lines counted per class
-LINE = re.compile(r"^bug-origin:[ \t]+(?:(#[0-9]+|[0-9a-f]{7,40})[ \t]+(test-gap|design-gap|review-deferred|unknown"
-                  r"|review-miss:(?:cr|judge|panel)(?:,(?:cr|judge|panel))*"
-                  r"|(?:residual|trigger):[A-Za-z0-9][A-Za-z0-9._/#-]*|commit:[0-9a-f]{7,40})"
+LINE = re.compile(r"^bug-origin:[ \t]+(?:(#[0-9]+|[0-9a-f]{7,40})[ \t]+(" + judge_accuracy.CLASS_PATTERN + r")"
                   r"|(unknown)[ \t]+(unknown))[ \t]+(?:—|-)[ \t]+([^ \t].*)$")
 JIRA_TIMEOUT = 60
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -366,15 +370,9 @@ def report(merged, rows, unparsed, outside, start, s, bugs, has_seed):
 
 def load_rows(path):
     """({pr: row} of a ledger directory with the rows off the line grammar left out, how many were left out)."""
-    rows, off = {}, 0
-    for n, r in judge_accuracy.load_ledger(path).items():
-        got = {k: r[k] for k in ("origin", "class", "reason")}
-        state, parsed = parse_body("bug-origin: %(origin)s %(class)s — %(reason)s" % got)
-        if state == "ok" and parsed == got:
-            rows[n] = r
-        else:
-            off += 1
-    return rows, off
+    skipped = []
+    rows = judge_accuracy.load_ledger(path, skipped)
+    return rows, len(skipped)
 
 
 def body_line(n, key, got):
@@ -447,16 +445,56 @@ def jira_command(explicit):
     return ["node", index] if os.path.isfile(index) else None
 
 
+def conf_value(path, name):
+    """The first non-empty value of `name` in a KEY=value file, as the Jira CLI reads one (an inline ` #` comment and quotes dropped), else ''."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        return ""
+    for line in lines:
+        line = line.strip()
+        key, sep, val = line.partition("=")
+        if line.startswith("#") or not sep or key.strip() != name:
+            continue
+        val = val.strip()
+        val = val[1:].partition(val[0])[0] if val[:1] in ('"', "'") else re.split(r"[ \t]#", val, maxsplit=1)[0]
+        if val.strip():
+            return val.strip()
+    return ""
+
+
+def jira_project_key():
+    """The Jira project key where the Jira CLI finds it, or '': the environment, then himmel.conf.local and himmel.conf in
+    $HIMMEL_CONFIG_DIR (else ~/.himmel), then the .env of the git checkout this runs in and of its primary checkout."""
+    key = os.environ.get("JIRA_PROJECT_KEY")
+    if key:
+        return key
+    conf = os.environ.get("HIMMEL_CONFIG_DIR") or os.path.join(os.environ.get("HOME") or os.path.expanduser("~"), ".himmel")
+    top = git("rev-parse", "--show-toplevel")
+    files = [os.path.join(conf, "himmel.conf.local"), os.path.join(conf, "himmel.conf")]
+    files += [os.path.join(d, ".env") for d in ([top.strip()] if top and top.strip() else []) + [judge_accuracy.primary_checkout()]]
+    return next((v for v in (conf_value(f, "JIRA_PROJECT_KEY") for f in files) if v), "")
+
+
 def cmd_sync(a):
-    """Comment each unsynced row's line on its Bug ticket, once. No Jira configured is a skip; a Jira error warns, leaves the row unsynced and the next run retries it."""
+    """Comment each unsynced row's line on its Bug ticket, once.
+
+    No Jira project key anywhere is a skip. A key with no Jira CLI to run is a failure, exit 2. A Jira error warns, leaves the
+    row unsynced and exits 1 when any comment failed; the next run retries it."""
     path = a.ledger_dir or judge_accuracy.ledger_dir()
     if not path:
         print("bug-origin-report: refused: no ledger directory: set HANDOVER_DIR or pass --ledger-dir", file=sys.stderr)
         return 2
-    cmd = jira_command(a.jira_cmd)
-    if not os.environ.get("JIRA_PROJECT_KEY") or cmd is None:
+    if not jira_project_key():
         print("jira sync skipped: not configured")
         return 0
+    cmd = jira_command(a.jira_cmd)
+    if cmd is None:
+        why = ("--jira-cmd %s is not executable" % a.jira_cmd if a.jira_cmd
+               else "no Jira CLI found (scripts/jira/dist/index.js under the checkout; build it with npm run build there)")
+        print("bug-origin-report: refused: a Jira project key is set but %s" % why, file=sys.stderr)
+        return 2
     if not os.path.isdir(path):
         print("jira sync: 0 updated")
         return 0
@@ -495,7 +533,7 @@ def cmd_sync(a):
             write_file(file, marked)
             updated += 1
     print("jira sync: %d updated%s" % (updated, ", %d failed, retried on the next run" % failed if failed else ""))
-    return 0
+    return 1 if failed else 0
 
 
 def cmd_report(a):
@@ -509,8 +547,16 @@ def cmd_report(a):
         bugs = judge_accuracy.load_bugs(a.mirror) if a.mirror else None
     except (OSError, ValueError):
         bugs = None
-    ledger, off = load_rows(a.ledger_dir or judge_accuracy.ledger_dir())
+    if a.cls is not None and not judge_accuracy.valid_class(a.cls):
+        print("bug-origin-report: refused: --class %r is no class this report knows" % a.cls, file=sys.stderr)
+        return 2
+    ledger_path = a.ledger_dir or judge_accuracy.ledger_dir()
+    ledger, off = load_rows(ledger_path)
     rows, unparsed, outside, start = collect(merged, seed, a.days, ledger)
+    if ledger_path and os.path.isdir(ledger_path):
+        print("ledger: %d rows from %s" % (len(ledger), ledger_path))
+    else:
+        print("ledger: none (set HANDOVER_DIR or pass --ledger-dir)")
     if off:
         print("ledger rows off the grammar: %d" % off)
     if a.cls is not None:

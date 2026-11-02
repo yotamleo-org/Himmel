@@ -32,8 +32,11 @@ rate, above 0 only when the class is worse than the whole. A row is partial whil
 window is unruled, so the feedback step (eval_feedback.py) never takes it as a baseline.
 
 --class C counts only the escapes whose fix PR has class C in the bug-origin ledger (C or a family: review-miss
-matches review-miss:cr); a class with no rows counts none, and a failed main run (no fix row) counts for no class.
-The ledger is --bug-origin-dir, else <HANDOVER_DIR>/<user>/<project bucket>/bug-origin; none to read is refused.
+matches review-miss:cr; review-miss:multi a row with two or more layers, review-miss:cr a row whose layers hold cr); a
+class with no rows counts none, an unknown class is refused, and a failed main run (no fix row) counts for no class.
+The ledger is --bug-origin-dir, else <HANDOVER_DIR>/<user>/<project bucket>/bug-origin; none to read is refused. With
+--class and no Jira mirror the ledger rows give the bugs, so the filter works without Jira; unfiltered numbers read the
+mirror. A filtered run is its own series in the eval-runs ledger (its config carries the class).
 
 QUEUE ROW (v 1, append-only): v, ts, kind "candidate" | "ruling", id, then
   candidate  pr, signal "bug" | "red-main" | "nogo", ref, question
@@ -166,6 +169,15 @@ def load_bugs(mirror):
 # bug-origin-report.py; the readers are here because escapes.py and that report already import this module.
 LEDGER_SUBDIR = "bug-origin"
 LEDGER_ROW = re.compile(r"[0-9]+\.md\Z")
+# The grammar of the bug-origin line, which bug-origin-report.py's LINE is built from and a ledger row is checked against.
+CLASS_PATTERN = (r"test-gap|design-gap|review-deferred|unknown|review-miss:(?:cr|judge|panel)(?:,(?:cr|judge|panel))*"
+                 r"|(?:residual|trigger):[A-Za-z0-9][A-Za-z0-9._/#-]*|commit:[0-9a-f]{7,40}")
+ORIGIN_PATTERN = r"#[0-9]+|[0-9a-f]{7,40}|unknown"
+REASON_PATTERN = r"[^ \t\r\n](?:[^\r\n]*\S)?"
+# What --class accepts: a class the report counts, a family, or a payload class with or without its token.
+WANT_PATTERN = (r"test-gap|design-gap|review-deferred|unknown"
+                r"|review-miss(?::multi|:(?:cr|judge|panel)(?:,(?:cr|judge|panel))*)?"
+                r"|(?:residual|trigger|commit)(?::[A-Za-z0-9][A-Za-z0-9._/#-]*)?")
 
 
 def primary_checkout(repo="."):
@@ -179,13 +191,14 @@ def primary_checkout(repo="."):
 def ledger_dir(repo=".", env=None):
     """The ledger directory of the project that owns `repo`, or None when no handover root is configured.
 
-    Root: HANDOVER_DIR. User and bucket: the handover registry entry whose path is the repo's primary checkout
+    Root, as handover_root resolves it: HANDOVER_DIR (which must be a directory), else the checkout's own handovers/
+    directory when there is one. User and bucket: the handover registry entry whose path is the repo's primary checkout
     (its user and bucket_name), else USER_SLUG and the checkout's own name, so no project name is hard-coded."""
     env = os.environ if env is None else env
-    root = env.get("HANDOVER_DIR")
-    if not root or not os.path.isdir(root):
-        return None
     top = primary_checkout(repo)
+    root = env.get("HANDOVER_DIR") or os.path.join(top, "handovers")
+    if not os.path.isdir(root):
+        return None
     user = env.get("USER_SLUG") or env.get("USER") or "unknown"
     bucket = None
     try:
@@ -224,8 +237,18 @@ def parse_row(text):
     return row
 
 
-def load_ledger(path):
-    """{fix PR: row} of a ledger directory; a missing directory is an empty ledger, a file that is no row is skipped."""
+def row_valid(row):
+    """True when a row's origin, class and reason are what the bug-origin line grammar gives."""
+    origin, cls, reason = row["origin"], row["class"], row["reason"]
+    return (re.fullmatch(ORIGIN_PATTERN, origin) is not None and re.fullmatch(CLASS_PATTERN, cls) is not None
+            and (origin != "unknown" or cls == "unknown")
+            and re.fullmatch(REASON_PATTERN, reason) is not None and reason == reason.rstrip())
+
+
+def load_ledger(path, skipped=None):
+    """{fix PR: row} of a ledger directory; a missing directory is an empty ledger, a file that is no row is skipped.
+
+    A row off the line grammar, or in a file not named for its own pr, is left out too; `skipped` collects those names."""
     rows = {}
     if not path or not os.path.isdir(path):
         return rows
@@ -237,30 +260,72 @@ def load_ledger(path):
                 row = parse_row(fh.read())
         except OSError:
             continue
-        if row:
-            rows[row["pr"]] = row
+        if not row:
+            continue
+        if f != "%d.md" % row["pr"] or not row_valid(row):
+            if skipped is not None:
+                skipped.append(f)
+            continue
+        rows[row["pr"]] = row
     return rows
 
 
+def row_key(row):
+    """The bug key a row names, else the key of its fix PR."""
+    return row["bug_key"] if isinstance(row.get("bug_key"), str) else "PR%d" % row["pr"]
+
+
 def ledger_classes(rows):
-    """{"pr": {fix PR: class}, "key": {bug key: class}} of ledger rows."""
-    return {"pr": {n: r["class"] for n, r in rows.items()},
-            "key": {r["bug_key"]: r["class"] for r in rows.values() if isinstance(r.get("bug_key"), str)}}
+    """{"pr": {fix PR: class}, "key": {bug key: [every class a row of that bug has]}} of ledger rows."""
+    keys = {}
+    for r in rows.values():
+        keys.setdefault(row_key(r), []).append(r["class"])
+    return {"pr": {n: r["class"] for n, r in rows.items()}, "key": keys}
+
+
+def ledger_bugs(rows):
+    """Bug records (as load_bugs gives them) from the ledger alone, for a project with no Jira mirror.
+
+    A row whose origin is a PR names a bug caused by it; a row with a sha or unknown origin names none."""
+    return [{"key": row_key(r), "labels": [], "created": when(r.get("ingested") or ""), "caused_by": r["origin"][1:],
+             "cites": set()} for r in rows.values() if r["origin"].startswith("#")]
+
+
+def valid_class(want):
+    """True when `want` is a class --class can mean: one the report counts, a family, or a payload class."""
+    return re.fullmatch(WANT_PATTERN, want) is not None
 
 
 def class_match(want, have):
-    """True when a row's class `have` is `want` or lies under it (review-miss matches review-miss:cr)."""
-    return bool(have) and (have == want or have.startswith(want + ":"))
+    """True when a row's class `have` (one class, or a list or set of them) is `want` or lies under it.
+
+    A family matches its members (review-miss matches review-miss:cr); review-miss:multi matches a row with two or
+    more distinct layers and review-miss:<layers> a row whose layers hold them (review-miss:cr matches review-miss:cr,judge)."""
+    if isinstance(have, str):
+        have = [have]
+    for h in have or ():
+        if not h:
+            continue
+        if h == want or h.startswith(want + ":"):
+            return True
+        if h.startswith("review-miss:") and want.startswith("review-miss:"):
+            layers, wanted = set(h.split(":", 1)[1].split(",")), want.split(":", 1)[1]
+            if len(layers) > 1 if wanted == "multi" else set(wanted.split(",")) <= layers:
+                return True
+    return False
 
 
 def class_filter(cls, directory):
-    """None for no filter; else the ledger's classes. A filter with no ledger to read is refused, never read as all."""
+    """None for no filter; else the ledger's rows. An unknown class, or a filter with no ledger to read, is refused, never read as empty or all."""
     if cls is None:
         return None
+    if not valid_class(cls):
+        raise ValueError("--class %r is no class the bug-origin report knows (test-gap, design-gap, review-deferred, unknown, "
+                         "review-miss[:multi|:<layers>], residual, trigger, commit, with an optional :token)" % cls)
     path = directory or ledger_dir()
     if not path or not os.path.isdir(path):
         raise ValueError("--class needs the bug-origin ledger: set HANDOVER_DIR or pass --bug-origin-dir (none at %s)" % path)
-    return ledger_classes(load_ledger(path))
+    return load_ledger(path)
 
 
 def read_queue(path):
@@ -451,10 +516,12 @@ def cmd_run(a):
         raise ValueError("PR snapshot %s has a row without an integer number" % a.prs)
     prs = {p["number"]: p for p in pr_rows}
     runs = load_json(a.main_runs, "main-run snapshot")
-    bugs = load_bugs(a.mirror)
-    classes = class_filter(a.cls, a.bug_origin_dir)
-    if classes is not None:
+    ledger = class_filter(a.cls, a.bug_origin_dir)
+    # a class filter reads the ledger, so a project with no Jira mirror still works; the unfiltered numbers need the mirror
+    bugs = ledger_bugs(ledger) if ledger is not None and not os.path.isdir(a.mirror) else load_bugs(a.mirror)
+    if ledger is not None:
         # a bug counts when its fix row has the class; a failed main run has no fix row, so no class
+        classes = ledger_classes(ledger)
         bugs = [b for b in bugs if class_match(a.cls, classes["key"].get(b["key"]))]
         runs = []
     qpath = queue_path(a.queue)
@@ -472,7 +539,10 @@ def cmd_run(a):
             append(qpath, {"kind": "candidate", "id": c["id"], "pr": c["pr"],
                            "signal": c["signal"], "ref": c["ref"], "question": c["question"]})
     status = "inconclusive" if not metrics["go_merged"] else "partial" if pending else "ok"
-    row = eval_runs.make_row(EVAL_ID, SOURCE, {"judge_accuracy_v": 1, "days": a.days}, metrics,
+    config = {"judge_accuracy_v": 1, "days": a.days}
+    if a.cls is not None:
+        config["class"] = a.cls  # a filtered run is its own series, never a row of the unfiltered one
+    row = eval_runs.make_row(EVAL_ID, SOURCE, config, metrics,
                              n=metrics["go_merged"], status=status, ci=ci, ci_level=0.95 if ci else None,
                              ci_method="wilson" if ci else None, repo=os.path.join(HERE, "..", "..", ".."),
                              meta={"since": since.strftime("%Y-%m-%dT%H:%M:%SZ"),
