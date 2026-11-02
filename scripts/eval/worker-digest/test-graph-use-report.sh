@@ -66,13 +66,14 @@ check "the report over a root with an unwalkable directory still exits 0" '[ "$W
 check "a directory find cannot walk is counted and reported, not dropped silently (skipped when it stays readable, e.g. root)" '[ -r "$UNREAD/claude/projects/-x-himmel/walled" ] || grep -q "directories that could not be walked.*: 1" <<<"$WRPT"'
 
 mkdir -p "$UNREAD/q/claude/projects/-x-himmel"
-printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash -c \"rg foo\""}},{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls"}}]}}' >"$UNREAD/q/claude/projects/-x-himmel/q.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"bash -c \"rg foo\""}}]}}' >"$UNREAD/q/claude/projects/-x-himmel/q.jsonl"
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls"}}]}}' >"$UNREAD/q/claude/projects/-x-himmel/l.jsonl"
 # shellcheck disable=SC2034
 QRPT="$(bash "$RPT" --days 36500 --root "$UNREAD/q/claude/projects" 2>&1)"
 # shellcheck disable=SC2034
 QRPTRC=$?
 check "the report over the quoted-search journal exits 0" '[ "$QRPTRC" = 0 ]'
-check "a search behind bash -c with a quote before it counts: 1 journal searched, never called the graph" '[ "$(OUT="$QRPT" cells all claude main searched searched_no_graph)" = 1/1 ]'
+check "a search behind bash -c with a quote before it counts and a lone ls does not: 2 journals, 1 searched, 1 never called the graph" '[ "$(OUT="$QRPT" cells all claude main journals searched searched_no_graph)" = 2/1/1 ]'
 
 check "a bad argument exits 2" 'bash "$RPT" --days x >/dev/null 2>&1; [ $? = 2 ]'
 check "a root that does not exist exits 2" 'bash "$RPT" --root "$FX/no-such-root" >/dev/null 2>&1; [ $? = 2 ]'
