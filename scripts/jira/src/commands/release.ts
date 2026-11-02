@@ -16,7 +16,7 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rule, signSpec, specCheck, standing, state, takeover, withdraw,
+  apply, claim, coreBypass, coreSnapshot, declare, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, PULL_MAX, pull, readMirror, readOperatorRecords, reopen, request as releaseRequest, rmRun, rmRunSummary, rule, signSpec, specCheck, standing, state, takeover, withdraw,
   type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -505,6 +505,8 @@ export function registerRelease(program: Command): void {
         doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o),
       });
       for (const l of lines) console.log(l);
+      const summary = rmRunSummary(release, lines);
+      if (summary) console.log(summary);
       if (lines.some((l) => /^(REFUSED|PENDING) /.test(l))) process.exitCode = 2;
     });
 

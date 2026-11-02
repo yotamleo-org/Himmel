@@ -337,6 +337,11 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .mc.sel{outline:2px solid var(--accent)}.mc:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .th-sort{all:unset;cursor:pointer}.th-sort:focus-visible{outline:1px solid var(--accent)}
 @media (max-width:760px){.th-charts,.th-cols{grid-template-columns:minmax(0,1fr)}}
+/* Tool health tables (HIMMEL-8680): the box wraps anywhere, which squeezes every column to one letter. A short value and a header keep each
+   word whole; a column that holds free text takes the wrapping (td.wrap) with a floor; a table wider than its panel scrolls inside .scroll */
+.data.thtab th,.data.thtab td{overflow-wrap:normal}
+.data.thtab th{white-space:nowrap}
+.data.thtab td.wrap{overflow-wrap:anywhere;min-width:16ch}
 @media (max-width:560px){.thmap{grid-template-columns:minmax(0,1fr)}.thmap .mh{display:none}.thmap .mr{padding-top:var(--s2)}.mc.none{display:none}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Workflow page (workflow.js): the story map, phase drill-ins, step cards, Walk a route and the Eval tables */
 .wf-tabs{display:flex;gap:var(--s1);margin:0 0 var(--s3);border-bottom:1px solid var(--rule)}

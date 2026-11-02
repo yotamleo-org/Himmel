@@ -279,6 +279,18 @@ the opt-out. An Epic or Subtask only warns. The MCP `create` takes the same
 Rollout: the rule goes live on a station when `himmel-update` rebuilds
 `scripts/jira/dist`; until then a stale `dist/` still files without a Sector.
 
+**Sector from the title (HIMMEL-8659).** With no `--sector`, a title that opens
+with `<Sector>: ` naming a live option files under that Sector (matched
+case-insensitively, stored as the option's own label), so `Visibility: x` needs no
+flag. A Task, Story or Bug whose `<Word>: ` prefix names no live option is refused
+with the valid list; a title with no such prefix, a commit prefix (`feat(x):`), an
+Epic or Subtask, or an option list the API would not return derives nothing, and
+the no-Sector refusal above applies. An explicit `--sector` always wins. The same
+`titleSector` in `scripts/jira/src/plain-block.ts` serves the CLI and MCP `create`.
+`JIRA_PROJECT_KEY=<key> bash scripts/jira/empty-sector-check.sh` lists the open
+tickets whose Sector is empty (read-only, exit 1 while any is); backfill them with
+`edit-batch`.
+
 **Sector is opt-in (HIMMEL-6277).** The field is a custom Jira field, so its id
 is config, not code: `jira.sectorField` in `~/.himmel/config.json` (the
 `JIRA_SECTOR_FIELD` env var overrides it). Absent or `none` means no
