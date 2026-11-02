@@ -469,8 +469,8 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
 BANNED='overlord|yotamleo|luna|cachyos' # leak-pattern-allow
 leak_free() {
     local matches
-    # the exact collection flag "-c luna" (followed by a space or the line end) is a search command, not a leak # leak-pattern-allow
-    matches="$(sed 's/-c luna\( \|$\)/\1/g' "$1" 2>/dev/null | grep -niE "$BANNED" | grep -vc 'leak-pattern-allow')"
+    # the exact collection flag "-c luna" (after the line start or a space, before a space or the line end) is a search command, not a leak # leak-pattern-allow
+    matches="$(sed -E 's/(^| )-c luna( |$)/\1\2/g' "$1" 2>/dev/null | grep -niE "$BANNED" | grep -vc 'leak-pattern-allow')"
     [ "$matches" = "0" ] && echo yes || echo no
 }
 # The temp-root scan is narrowly exempted for the queue-lock RELEASE TOKEN
@@ -525,8 +525,10 @@ check "8 no leak in worker-brief-template.md" "$(leak_free "$REPO_REAL/docs/hand
 leakf8="$(mktemp "${TMPDIR:-/tmp}/leakf8.XXXXXX")" || exit 1
 printf 'run qmd query -c luna "topic" now\n' > "$leakf8" # leak-pattern-allow
 check "8 control: the collection flag alone is not a leak" "$(leak_free "$leakf8")" "yes"
-printf 'run qmd query -c luna "topic" now\nthe luna vault\n' > "$leakf8" # leak-pattern-allow
-check "8 control: a bare luna beside the flag still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'run qmd query -c luna "topic" the luna vault\n' > "$leakf8" # leak-pattern-allow
+check "8 control: a bare luna on the same line as the flag still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'run qmd query station-c luna "topic"\n' > "$leakf8" # leak-pattern-allow
+check "8 control: a flag glued to a word before it still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
 printf 'see /home/x/luna/handovers\n' > "$leakf8" # leak-pattern-allow
 check "8 control: a /luna/ path still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
 printf 'run qmd query -c lunar "topic"\n' > "$leakf8" # leak-pattern-allow
