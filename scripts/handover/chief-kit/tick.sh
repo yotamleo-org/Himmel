@@ -2865,9 +2865,11 @@ if [ -d "$bus_peers_dir" ]; then
     done <<< "$leg_candmap"
     [ -z "$busedge_val" ] || busedge_tail=" busedge=MISSING:$busedge_val"
 fi
-# wakerstate=<label>:rc3|rc4[,...]: a held worker whose bus-idle-waker ended on
+# wakerstate=<label>:rc3|rc4|capped[,...]: a held worker whose bus-idle-waker ended on
 # rc=3 (konsole refuses sendText) or rc=4 (the session is not the named claude), so
-# its mail wakes nothing. bus-idle-waker.sh leaves the state file; ABSENT when none.
+# its mail wakes nothing, or stopped re-waking at its rewake cap (`capped`: the same
+# unread mail was typed --max-wakes times and nobody read it).
+# bus-idle-waker.sh leaves the state file; ABSENT when none.
 # Env seam: TICK_BUS_WAKER_DIR.
 wakerstate_tail=""
 bus_waker_dir="${TICK_BUS_WAKER_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus-waker}"
@@ -2879,7 +2881,7 @@ if [ -d "$bus_waker_dir" ]; then
         for ws_cand in ${ws_cands//,/ }; do
             [ -f "$bus_waker_dir/$ws_cand" ] || continue
             ws_state="$(head -n 1 "$bus_waker_dir/$ws_cand" 2>/dev/null)" # swallow-ok: an unreadable state file reads as none
-            case "$ws_state" in rc3|rc4) wakerstate_val="$(csv_add "$wakerstate_val" "$ws_label:$ws_state")"; break ;; esac
+            case "$ws_state" in rc3|rc4|capped) wakerstate_val="$(csv_add "$wakerstate_val" "$ws_label:$ws_state")"; break ;; esac
         done
     done <<< "$leg_candmap"
     [ -z "$wakerstate_val" ] || wakerstate_tail=" wakerstate=$wakerstate_val"

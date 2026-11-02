@@ -251,6 +251,11 @@ if [ "$HAVE_PROC" = 1 ]; then
 as con send idler "$tmp/wbody" >/dev/null 2>&1; as con send idler "$tmp/wbody" >/dev/null 2>&1
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread flags undelivered records without consuming them"; else fail "unread: $("$BUS" unread idler 2>&1)"; fi
 if [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "unread is read-only"; else fail "unread consumed"; fi
+# tip: the newest record number, so the idle waker can tell a second message from the first while unread stays 1.
+if [ "$("$BUS" tip idler 2>&1)" = 2 ]; then pass "tip prints the newest record number"; else fail "tip: $("$BUS" tip idler 2>&1)"; fi
+as con send idler "$tmp/wbody" >/dev/null 2>&1
+if [ "$("$BUS" tip idler 2>&1)" = 3 ] && [ "$("$BUS" unread idler 2>&1)" = 1 ]; then pass "a third message moves tip while unread stays the flag 1"; else fail "tip after a third message: $("$BUS" tip idler 2>&1) / unread $("$BUS" unread idler 2>&1)"; fi
+if [ "$("$BUS" tip nobody-here 2>&1)" = 0 ]; then pass "tip of a log with no records is 0"; else fail "tip of an empty log: $("$BUS" tip nobody-here 2>&1)"; fi
 else skip_section "unread of undelivered records" "$NOPROC_WHY"; fi
 # A corrupt cursor must still reach the delivery hook's read(), which persists the halt and its notice.
 if [ "$HAVE_FLOCK" = 1 ]; then

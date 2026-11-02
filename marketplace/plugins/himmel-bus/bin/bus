@@ -17,7 +17,8 @@ const USAGE = `usage: bus register <name> --role worker|chief|judge|consult [--c
        bus bind <name> <pid> | rebind <name> <pid> | adopt <new-chief> | succeed <new-chief> | status <name> | peers
        bus send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]
        bus wait [--timeout <seconds, default 300>]   (exit 3 on timeout)
-       bus unread <name>   (count of undelivered records; read-only, for the idle waker)
+       bus unread <name>   (1 when a record is undelivered, else 0; a presence flag, read-only, for the idle waker)
+       bus tip <name>      (the newest record number, 0 for an empty log; read-only, for the idle waker)
        bus status [--unacked] [--for <chief>] | gc`;
 
 // Same limits as the MCP server's `send` (spec §4).
@@ -213,6 +214,10 @@ async function main() {
     case 'unread':
       // Read-only presence flag: store.read would persist a halt and swallow its notice, so use pending.
       console.log((await store.pending(root, need(name))) ? 1 : 0);
+      return;
+    case 'tip':
+      // Read-only: scan verifies the chain and writes nothing; a broken or unreadable log reads as 0.
+      console.log((await store.scan(root, need(name))).at(-1)?.n ?? 0);
       return;
     case 'succeed': {
       // The caller is console X by process ancestry; the successor's registered predecessor must be X.
