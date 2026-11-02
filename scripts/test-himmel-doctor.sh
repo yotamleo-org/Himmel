@@ -2195,6 +2195,32 @@ else
 fi
 rm -rf "$t"
 
+echo "== C24: an interpreter flag before a missing script on the cron row -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 interpreter flag row: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * bash -e $t/missing/s.sh # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/missing/s.sh"; then
+    pass "C24 -> FAIL (a boolean interpreter flag does not hide the missing script)"
+else
+    fail "C24 interpreter flag row -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24: an interpreter flag before a missing script inside the runner -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 interpreter flag runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/usr/bin/env bash\nbash -e %s/missing/s.sh run\n' "$t" > "$t/runner/r.sh"
+chmod +x "$t/runner/r.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/missing/s.sh"; then
+    pass "C24 -> FAIL (a boolean interpreter flag inside the runner does not hide the missing script)"
+else
+    fail "C24 interpreter flag runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
 echo "== C24: scheduler probe itself fails (access-denied/transient) -> INFO, not a false-mass-WARN (codex-1, CR round 3) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"

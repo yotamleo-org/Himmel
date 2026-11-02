@@ -1441,12 +1441,12 @@ _c24_cron_has_task() {
 }
 
 # _c24_dead_cron_paths — for each crontab row tagged "# HIMMEL-<name>", print "<name>: <path>" for every
-# absolute path it runs that does not exist: the runner (its first command word), any absolute script word
-# (.sh .py .mjs .js) on the row, and the same script words inside the runner when it is a #! file. A row
-# whose command is not an absolute path (a bare `true`, an env assignment) has nothing to resolve. Read-only.
+# absolute path the row EXECUTES that does not exist: its command, and the script an interpreter command
+# (bash sh zsh dash python python3 node bun perl ruby) runs. When the command is a readable #! file, the
+# non-comment lines of it are judged the same way. A data operand (an option's value, an argument after the
+# script) is never judged. Read-only.
 # ponytail: split on whitespace, so a path with a space is skipped (a word with an odd quote count or a
-# trailing backslash is never judged), and a later word of such a path that starts with / can still be
-# judged; upgrade path is shlex in python.
+# trailing backslash stops the judging); upgrade path is shlex in python.
 # _c24_word_path <word> — prints the path a row word names with quotes and backslashes removed; rc 1 when
 # the word is one half of a quoted or escaped path that whitespace splitting cut.
 _c24_word_path() {
@@ -1457,8 +1457,27 @@ _c24_word_path() {
     w="${w//\\/}"; w="${w//\"/}"; w="${w//\'/}"
     printf '%s' "$w"
 }
+# _c24_exec_paths <words...> — prints "C <path>" for an absolute command and "S <path>" for the absolute
+# script an interpreter command runs; leading NAME=value words are skipped.
+_c24_exec_paths() {
+    local w p cmd="" base
+    for w in "$@"; do
+        p="$(_c24_word_path "$w")" || return 0
+        if [ -z "$cmd" ]; then
+            case "$p" in *=*) continue ;; esac
+            cmd="$p"
+            case "$p" in /*) printf 'C %s\n' "$p" ;; esac
+            base="${p##*/}"
+            case "$base" in bash|sh|zsh|dash|python|python3|node|bun|perl|ruby) ;; *) return 0 ;; esac
+            continue
+        fi
+        case "$p" in -c) return 0 ;; -*) continue ;; esac
+        case "$p" in /*) printf 'S %s\n' "$p" ;; esac
+        return 0
+    done
+}
 _c24_dead_cron_paths() {
-    local cron line task cmd words w p pw prev runner="" rline rwords
+    local cron line task cmd words kind p runner rline rwords
     cron="$(crontab -l 2>/dev/null)" || return 0
     while IFS= read -r line; do
         case "$line" in '#'*) continue ;; *'# HIMMEL-'*) ;; *) continue ;; esac
@@ -1466,36 +1485,23 @@ _c24_dead_cron_paths() {
         read -r _ _ _ _ _ cmd <<< "$line"
         cmd="${cmd%% # HIMMEL-*}"
         read -r -a words <<< "$cmd"
-        runner=""; prev=""
-        for w in ${words[@]+"${words[@]}"}; do
-            pw="$prev"; prev="$w"
-            if ! p="$(_c24_word_path "$w")"; then
-                [ -n "$runner" ] || runner="?"
-                continue
-            fi
-            case "$p" in *=*) continue ;; esac
-            if [ -z "$runner" ]; then
-                runner="$p"
-                case "$p" in /*) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
-                continue
-            fi
-            case "$pw" in -*) continue ;; esac # the operand of an option flag is data, not a script
-            case "$p" in /*.sh|/*.py|/*.mjs|/*.js) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
-        done
+        runner=""
+        while read -r kind p; do
+            [ -n "$p" ] || continue
+            [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+            if [ "$kind" = C ] && [ -z "$runner" ]; then runner="$p"; fi
+        done < <(_c24_exec_paths ${words[@]+"${words[@]}"})
         # The runner is a generated #! script that names the script it runs.
-        if [ -f "$runner" ] && [ -r "$runner" ]; then
+        if [ -n "$runner" ] && [ -f "$runner" ] && [ -r "$runner" ]; then
             IFS= read -r -n 2 rline < "$runner" || true
             [ "$rline" = '#!' ] || continue
             while IFS= read -r rline; do
                 case "$rline" in '#'*) continue ;; esac
                 read -r -a rwords <<< "$rline"
-                prev=""
-                for w in ${rwords[@]+"${rwords[@]}"}; do
-                    pw="$prev"; prev="$w"
-                    case "$pw" in -*) continue ;; esac
-                    p="$(_c24_word_path "$w")" || continue
-                    case "$p" in /*.sh|/*.py|/*.mjs|/*.js) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
-                done
+                while read -r kind p; do
+                    [ -n "$p" ] || continue
+                    [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+                done < <(_c24_exec_paths ${rwords[@]+"${rwords[@]}"})
             done < "$runner"
         fi
     done <<< "$cron"
