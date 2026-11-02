@@ -1,6 +1,6 @@
 // A stub Secret Service for the himmel-secrets resolver: secret-tool and busctl first on PATH, items in a TSV file.
 // Every login test that touches the vault passes this env, so none reaches the real keyring.
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SECRET_TOOL = [
@@ -68,5 +68,6 @@ export function stubKeyring(dir: string) {
   const put = (key: string, value: string) => writeFileSync(store, `${readFileSync(store, "utf8")}service=himmel key=${key} scope=user\t${value}\n`);
   const putProject = (key: string, value: string, project: string) => writeFileSync(store, `${readFileSync(store, "utf8")}service=himmel key=${key} project=${project}\t${value}\n`);
   const lock = () => writeFileSync(`${store}.locked`, "");
-  return { env, store, get, put, putProject, lock, raw: () => readFileSync(store, "utf8") };
+  const unlock = () => rmSync(`${store}.locked`, { force: true });
+  return { env, store, get, put, putProject, lock, unlock, raw: () => readFileSync(store, "utf8") };
 }

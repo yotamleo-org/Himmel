@@ -119,3 +119,16 @@ test("the keyring mode switch's value is not a redaction literal (HIMMEL-8565)",
   const text = await (await get(port, "/api/feed?project=luna")).text();
   expect(text).toContain("48 off");
 });
+
+test("/api/projects masks a cached feed's detail and remedy with the keyring's secrets (HIMMEL-8565)", async () => {
+  const kdir = mkdtempSync(join(tmpdir(), "projects-kr-"));
+  cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
+  const kr = "kr-only-" + "q7x2".repeat(2);
+  const k = stubKeyring(kdir);
+  k.put("FIRECRAWL_API_KEY", kr);
+  const { port, feeds } = boot({ ...k.env, HIMMEL_SECRETS_KEYRING: "", FIRECRAWL_API_KEY: "" });
+  writeFileSync(join(feeds, "luna.json"), JSON.stringify({ rows: [{ ...row("lunabad", "fail", "project"), installed: { detail: `d ${kr}` }, fix: { by: "operator", remedy: `run ${kr}` } }] }));
+  const text = await (await get(port, "/api/projects")).text();
+  expect(text).toContain("lunabad");
+  expect(text).not.toContain(kr);
+});

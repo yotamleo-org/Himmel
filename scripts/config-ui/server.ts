@@ -337,16 +337,17 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing, so a value masked
   // once stays masked. A value no read ever saw (the keyring was locked throughout) cannot be masked.
   const seen = new Set<string>();
-  let literalsAt = 0, literalsMemo: string[] = [];
-  // HIMMEL_SECRETS_KEYRING matches the secret-name pattern but holds a mode ("off"), not a credential.
-  const envForLiterals = () => Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("HIMMEL_SECRETS_")));
+  let literalsAt = -Infinity, literalsMemo: string[] = [];
+  // These two match the secret-name pattern but hold a mode ("off") and a directory, not a credential. Any other name stays.
+  const NOT_SECRET_ENV = new Set(["HIMMEL_SECRETS_KEYRING", "HIMMEL_SECRETS_RUNTIME_DIR"]);
+  const envForLiterals = () => Object.fromEntries(Object.entries(env).filter(([k]) => !NOT_SECRET_ENV.has(k)));
   const secretLiterals = (): string[] => {
-    if (Date.now() - literalsAt < LITERALS_TTL_MS) return literalsMemo;
+    if (now() - literalsAt < LITERALS_TTL_MS) return literalsMemo;
     let raw = "";
     try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
     for (const v of [...envValues(raw, parseDotEnv, envForLiterals()), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))]) seen.add(v);
     literalsMemo = [...seen];
-    literalsAt = Date.now();
+    literalsAt = now();
     return literalsMemo;
   };
   // Every child output passes the same redactor as the feed, with those literals.
@@ -409,7 +410,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     catch { audit = "failed"; }
     if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
     const reprobeState = before.state !== "ok" ? before.state : after.state;
-    literalsAt = 0; // the action may have stored a secret: its output is masked with a fresh read
+    literalsAt = -Infinity; // the action may have stored a secret: its output is masked with a fresh read
     return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: shellLine(p.argv), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
   }
 
@@ -483,7 +484,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           before: null, after: null, ...(r.audit.ok ? {} : { outcome: "error" as const }) });
       } catch { /* the answer below still carries the outcome */ }
     }
-    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; literalsAt = 0; } // a stored secret is masked from the next response
+    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; literalsAt = -Infinity; } // a stored secret is masked from the next response
     return json(r.body, r.status);
   }
 
@@ -596,7 +597,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       lastSeen = now(); // and only one keeps the background refresh going
       if (req.method === "GET" && path === "/api/projects") { // never runs a doctor: each project's own cached feed, or "not checked"
         const { current, list } = projectsNow();
-        return json({ current, projects: list.map((p) => summarize(p, p.name === current, loadFeed(env, list, p.name))) });
+        return json(redactOut({ current, projects: list.map((p) => summarize(p, p.name === current, loadFeed(env, list, p.name))) })); // a saved feed may predate a secret the list has learned
       }
       const other = req.method === "GET" && path === "/api/feed" ? new URL(req.url).searchParams.get("project") : null;
       if (other && other !== projectsNow().current) { // another project: its cached feed, else not checked (the doctor runs in the project it checks)

@@ -281,12 +281,12 @@ const KEYRING_ONLY = "kr-only-" + "q7x2".repeat(2);
 const SUDO_ONLY = "sudo-pw-1"; // a station secret (not the wizard's), low entropy
 const VISIBLE = "visible-q7x2q7x2";
 const keyringEnv = (k: ReturnType<typeof stubKeyring>, leak: string) =>
-  ({ ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "", HIMMELCTL_SUDO_PASSWORD: "", STUB_LEAK: leak });
+  ({ ...k.env, HIMMEL_SECRETS_KEYRING: "", FIRECRAWL_API_KEY: "", HIMMELCTL_SUDO_PASSWORD: "", STUB_LEAK: leak });
 const armRun = async (port: number, id: string) => (await post(port, "/api/run", { previewId: id, ...ARM, consent: "graphmap" })).text();
 
 test("values only the keyring holds, a wizard secret and a station secret, are masked in a preview body (HIMMEL-8565)", async () => {
   const k = stubKeyring(dir);
-  k.put("JIRA_API_TOKEN", KEYRING_ONLY);
+  k.put("FIRECRAWL_API_KEY", KEYRING_ONLY);
   k.put("HIMMELCTL_SUDO_PASSWORD", SUDO_ONLY);
   const port = boot({ env: keyringEnv(k, `${KEYRING_ONLY} ${SUDO_ONLY}`) });
   const pt = await (await preview(port)).text();
@@ -297,7 +297,7 @@ test("values only the keyring holds, a wizard secret and a station secret, are m
 
 test("one response holding a keyring value and a value no source holds masks only the first, so the mask is not a blanket one (HIMMEL-8565)", async () => {
   const k = stubKeyring(dir);
-  k.put("JIRA_API_TOKEN", KEYRING_ONLY);
+  k.put("FIRECRAWL_API_KEY", KEYRING_ONLY);
   const port = boot({ env: keyringEnv(k, `${KEYRING_ONLY} ${VISIBLE}`) });
   const pt = await (await preview(port)).text();
   expect(pt).toContain(VISIBLE);
@@ -308,21 +308,46 @@ test("a value an action stores is masked in that action's own output, not after 
   const k = stubKeyring(dir);
   const port = boot({ env: keyringEnv(k, KEYRING_ONLY) });
   const id = await previewId(port); // the list is read here, while the keyring holds nothing
-  k.put("JIRA_API_TOKEN", KEYRING_ONLY); // what the action stores
+  k.put("FIRECRAWL_API_KEY", KEYRING_ONLY); // what the action stores
   const rt = await armRun(port, id);
   expect(JSON.parse(rt).rc).toBe(0);
+  expect(rt).toContain("plan: graphmap-cadence"); // the child's output reached the body, so the absence below is the mask's doing
   expect(rt).not.toContain(KEYRING_ONLY);
 });
 
 test("a keyring that locks after a read does not shrink the list: the value stays masked (HIMMEL-8565)", async () => {
   const k = stubKeyring(dir);
-  k.put("JIRA_API_TOKEN", KEYRING_ONLY);
+  k.put("FIRECRAWL_API_KEY", KEYRING_ONLY);
   const port = boot({ env: keyringEnv(k, KEYRING_ONLY) });
   const id = await previewId(port); // read while unlocked
   k.lock();
   const rt = await armRun(port, id); // the run drops the reused list: this read finds a locked keyring
   expect(JSON.parse(rt).rc).toBe(0);
+  expect(rt).toContain("plan: graphmap-cadence");
   expect(rt).not.toContain(KEYRING_ONLY);
+});
+
+test("a keyring locked at the first read and unlocked later is read again once the 5 s have passed (HIMMEL-8565)", async () => {
+  const k = stubKeyring(dir);
+  k.put("FIRECRAWL_API_KEY", KEYRING_ONLY);
+  k.lock();
+  let t = Date.now();
+  const port = boot({ env: keyringEnv(k, KEYRING_ONLY), now: () => t });
+  expect(await (await preview(port)).text()).toContain(KEYRING_ONLY); // a value no read saw cannot be masked: the stated ceiling
+  k.unlock();
+  t += 6_000;
+  const pt = await (await preview(port)).text();
+  expect(pt).toContain("plan: graphmap-cadence");
+  expect(pt).not.toContain(KEYRING_ONLY);
+});
+
+test("only the keyring switch and the runtime directory are exempt: another prefixed name's value is still masked (HIMMEL-8565)", async () => {
+  const k = stubKeyring(dir);
+  const port = boot({ env: { ...keyringEnv(k, `${VISIBLE} ${KEYRING_ONLY} off`), HIMMEL_SECRETS_KEYRING: "off", HIMMEL_SECRETS_TOKEN: KEYRING_ONLY } });
+  const pt = await (await preview(port)).text();
+  expect(pt).toContain(VISIBLE);
+  expect(pt).toContain(" off"); // the mode value is not a literal
+  expect(pt).not.toContain(KEYRING_ONLY);
 });
 
 test("a slow re-probe returns `re-probe timed out`", async () => {
