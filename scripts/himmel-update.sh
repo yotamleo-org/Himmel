@@ -1297,6 +1297,77 @@ run_env_migration() {
     return 0
 }
 
+# run_cron_runner_migration check|apply — the installed failure-review runner bakes the path of the
+# script it calls; the leg-to-worker rename moved that script (scripts/lib/rename-aliases.tsv, kind
+# directory), so a runner armed before it fails every night with "No such file or directory".
+# check prints one advisory; apply re-arms with failure-review-cadence.sh arm --force, keeping the
+# cron line's time and the runner's mode (live only if the old runner was). The project key is read
+# from the old runner for that one call and never printed. Seams are the cadence script's own:
+# FAILREV_CRONTAB, FAILREV_RUNNER_DIR.
+# ponytail: only the failure-review cadence, runner paths without a backslash-escaped newline; upgrade path is a per-cadence table when a second runner needs it.
+run_cron_runner_migration() {
+    local mode="$1" newscript="$ROOT/scripts/eval/worker-digest/failure-review-cadence.sh"
+    local runner="${FAILREV_RUNNER_DIR:-${HOME:-}/.claude/failure-review-cadence}/failure-review-cadence.sh"
+    local cron_bin="${FAILREV_CRONTAB:-crontab}" aliases="$ROOT/scripts/lib/rename-aliases.tsv"
+    [ -f "$newscript" ] && [ -f "$runner" ] && [ -r "$aliases" ] || return 0
+    command -v "$cron_bin" >/dev/null 2>&1 || return 0
+
+    local line baked vault key live=0 old new moved="" kind rest entry hh mm out rc=0
+    line="$(grep -F 'failure-review-cadence.sh' "$runner" | grep -F ' run --vault ' | head -1)"
+    [ -n "$line" ] || return 0
+    # The runner line is: <bash> <script> run --vault <vault>[ --live] >> "$log" 2>&1, paths printf %q-escaped.
+    rest="${line#* }"
+    baked="${rest%% run --vault *}"; baked="${baked//\\/}"
+    [ -e "$baked" ] && return 0
+    vault="${line#* run --vault }"; vault="${vault% >> \"\$log\" 2>&1}"
+    case "$vault" in *' --live') live=1; vault="${vault% --live}" ;; esac
+    vault="${vault//\\/}"
+    # The renamed path: the baked path with a moved directory (registry row kind directory) swapped.
+    while IFS=$'\t' read -r old new kind _; do
+        [ "$kind" = directory ] || continue
+        case "$baked" in *"/$old/"*) ;; *) continue ;; esac
+        moved="${baked/\/$old\//\/$new\/}"
+        [ -f "$moved" ] && break
+        moved=""
+    done < <(grep -v '^#' "$aliases")
+    [ -n "$moved" ] || return 0
+
+    entry="$(LC_ALL=C "$cron_bin" -l 2>/dev/null | grep -F '# HIMMEL-FailureReview' | head -1)"
+    [ -n "$entry" ] || return 0
+    mm="${entry%% *}"; rest="${entry#* }"; hh="${rest%% *}"
+    [[ "$mm" =~ ^[0-5]?[0-9]$ && "$hh" =~ ^([01]?[0-9]|2[0-3])$ ]] || return 0
+    local when; when="$(printf '%02d:%02d' "$((10#$hh))" "$((10#$mm))")"
+    local modename=dry-run; [ "$live" -eq 1 ] && modename=live
+
+    echo ""
+    echo "==> cron runner migration"
+    if [ "$mode" != apply ]; then
+        echo "cron runner migration needed: the failure-review runner ($when, $modename) calls a script that moved to scripts/eval/worker-digest; apply: bash scripts/himmel-update.sh"
+        STATUS_cron_runner_migration="pending"; DETAIL_cron_runner_migration="the failure review fails every night until re-armed"
+        return 0
+    fi
+    key=""
+    if [ "$live" -eq 1 ]; then
+        key="$(grep -m1 '^JIRA_PROJECT_KEY=' "$runner" 2>/dev/null)"; key="${key#JIRA_PROJECT_KEY=}"
+        if ! [[ "$key" =~ ^[A-Z][A-Z0-9]+$ ]]; then
+            STATUS_cron_runner_migration="failed"; DETAIL_cron_runner_migration="live runner has no readable JIRA_PROJECT_KEY; re-arm by hand with arm --force --live"
+            return 1
+        fi
+    fi
+    if [ "$live" -eq 1 ]; then
+        out="$(JIRA_PROJECT_KEY="$key" bash "$newscript" arm --force --time "$when" --vault "$vault" --live 2>&1)" || rc=$?
+    else
+        out="$(bash "$newscript" arm --force --time "$when" --vault "$vault" 2>&1)" || rc=$?
+    fi
+    printf '%s\n' "$out" | sed 's/^/    /'
+    if [ "$rc" -ne 0 ]; then
+        STATUS_cron_runner_migration="failed"; DETAIL_cron_runner_migration="re-arm failed (exit $rc); see the report above"
+        return 1
+    fi
+    STATUS_cron_runner_migration="updated"; DETAIL_cron_runner_migration="re-armed at $when, $modename routing"
+    return 0
+}
+
 # ─── the full dependency chain ──────────────────────────────────
 # Six MANAGED items — the things this file already updates (or, for jira/qmd/
 # luna below, already has a real recipe for elsewhere in this repo that this
@@ -1326,6 +1397,7 @@ STATUS_graphify="";                   DETAIL_graphify=""
 # The .env migration is not a chain item either: its row prints only when the
 # step ran and found a .env.
 STATUS_env_migration="";              DETAIL_env_migration=""
+STATUS_cron_runner_migration="";      DETAIL_cron_runner_migration=""
 # probe-mode station tools (rtk, ...) are advisory too.
 # Their count is registry-driven, so rows accumulate here as "name|status|detail"
 # lines (written by sync_probe_tools, read back by print_status_table) instead of
@@ -1829,6 +1901,9 @@ EOF
     fi
     if [ -n "$STATUS_env_migration" ]; then
         printf '    %-14s %-14s %s\n' "env_migration" "$STATUS_env_migration" "$DETAIL_env_migration"
+    fi
+    if [ -n "$STATUS_cron_runner_migration" ]; then
+        printf '    %-14s %-14s %s\n' "cron_runner" "$STATUS_cron_runner_migration" "$DETAIL_cron_runner_migration"
     fi
     local pt_name pt_status pt_detail
     while IFS='|' read -r pt_name pt_status pt_detail; do
@@ -3515,6 +3590,7 @@ if [ "${1:-}" = "--check" ] || [ "${1:-}" = "--dry-run" ]; then
     report_guardrail_block
     report_drift check
     run_env_migration check || true
+    run_cron_runner_migration check || true
     print_status_table
     exit 0
 fi
@@ -3620,6 +3696,7 @@ fi
 # and rebuilt. A failed migration leaves .env as it was and stays advisory.
 if [ "$chain_rc" -eq 0 ]; then
     run_env_migration apply || true
+    run_cron_runner_migration apply || true
 fi
 
 # ─── dependency-readiness advisory ─────────────────────────────

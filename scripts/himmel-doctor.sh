@@ -1440,7 +1440,53 @@ _c24_cron_has_task() {
     grep -qE "# ${task}\$" <<< "$cron"
 }
 
+# _c24_dead_cron_paths — for each crontab row tagged "# HIMMEL-<name>", print "<name>: <path>" for every
+# absolute path it runs that does not exist: the runner (its first command word), any absolute script word
+# (.sh .py .mjs .js) on the row, and the same script words inside the runner when it is a #! file. A row
+# whose command is not an absolute path (a bare `true`, an env assignment) has nothing to resolve. Read-only.
+# ponytail: split on whitespace, so a runner path with a space is not resolved; upgrade path is shlex in python.
+_c24_dead_cron_paths() {
+    local cron line task cmd words w p runner="" rline rwords
+    cron="$(crontab -l 2>/dev/null)" || return 0
+    while IFS= read -r line; do
+        case "$line" in '#'*) continue ;; *'# HIMMEL-'*) ;; *) continue ;; esac
+        task="${line##*# }"
+        read -r _ _ _ _ _ cmd <<< "$line"
+        cmd="${cmd%% # HIMMEL-*}"
+        read -r -a words <<< "$cmd"
+        runner=""
+        for w in ${words[@]+"${words[@]}"}; do
+            p="${w//\\/}"; p="${p//\"/}"; p="${p//\'/}"
+            case "$p" in *=*) continue ;; esac
+            if [ -z "$runner" ]; then
+                runner="$p"
+                case "$p" in /*) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
+                continue
+            fi
+            case "$p" in /*.sh|/*.py|/*.mjs|/*.js) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
+        done
+        # The runner is a generated #! script that names the script it runs.
+        if [ -f "$runner" ] && [ -r "$runner" ]; then
+            IFS= read -r -n 2 rline < "$runner" || true
+            [ "$rline" = '#!' ] || continue
+            while IFS= read -r rline; do
+                case "$rline" in '#'*) continue ;; esac
+                read -r -a rwords <<< "$rline"
+                for w in ${rwords[@]+"${rwords[@]}"}; do
+                    p="${w//\\/}"; p="${p//\"/}"; p="${p//\'/}"
+                    case "$p" in /*.sh|/*.py|/*.mjs|/*.js) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
+                done
+            done < "$runner"
+        fi
+    done <<< "$cron"
+}
+
 check_c24() {
+    local dead; dead="$(_c24_dead_cron_paths | sort -u)"
+    if [ -n "$dead" ]; then
+        emit FAIL C24-cadence-registry "an installed cron runner calls a path that does not exist: $(printf '%s' "$dead" | tr '\n' ';' | sed 's/;$//; s/;/; /g')" \
+            "re-arm that cadence with its script's 'arm --force' (failure review: bash scripts/eval/worker-digest/failure-review-cadence.sh arm --force --time <HH:MM> --vault <vault> [--live]); himmel-update re-arms a failure-review runner whose script moved in the rename"
+    fi
     local registry; registry="$(observability_registry_path)"
     if [ ! -f "$registry" ]; then
         emit OK C24-cadence-registry "no cadence observability registry yet (nothing expected)"

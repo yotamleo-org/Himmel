@@ -2074,6 +2074,62 @@ else
 fi
 rm -rf "$t"
 
+# ── C24: a himmel cron line whose runner or the script the runner calls is gone ──
+# fake_cron_lines <dir> <crontab-line...> — a crontab stub that prints the given lines verbatim.
+# shellcheck disable=SC2016  # $1 is emitted literally for the fake binary's own /bin/sh
+fake_cron_lines() {
+    local dir="$1" n; shift
+    mkdir -p "$dir"
+    : > "$dir/crontab.txt"
+    for n in "$@"; do printf '%s\n' "$n" >> "$dir/crontab.txt"; done
+    printf '#!/bin/sh\nif [ "$1" = "-l" ]; then cat "%s/crontab.txt"; fi\nexit 0\n' "$dir" > "$dir/crontab"
+    chmod +x "$dir/crontab"
+}
+c24_run() { # <tmp>
+    PATH="$1/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$1/none/*.mcp.json" CLAUDE_DIR="$1/claude" HOME="$1/home" bash "$DOC" --no-color 2>&1
+}
+
+echo "== C24 (HIMMEL-8640): runner exists but calls a missing script -> FAIL naming the script =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 dead script: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/usr/bin/env bash\nbash %s/scripts/eval/leg-digest/failure-review-cadence.sh run --vault %s/vault\n' "$t" "$t" > "$t/runner/failure-review-cadence.sh"
+chmod +x "$t/runner/failure-review-cadence.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/scripts/eval/leg-digest/failure-review-cadence.sh" && grepq "$out" -F 'arm --force'; then
+    pass "C24 -> FAIL (runner calls a missing script; path and re-arm remedy named)"
+else
+    fail "C24 dead script -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24 (HIMMEL-8640): the runner itself is missing -> FAIL naming the runner =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 dead runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "$t/runner/failure-review-cadence.sh"; then
+    pass "C24 -> FAIL (runner missing; path named)"
+else
+    fail "C24 dead runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
+echo "== C24 (HIMMEL-8640): runner and script both exist, plus a bare-command cron line -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 live runner: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner" "$t/scripts/eval/worker-digest"; write_settings "$t/claude" "$WRAPPER"
+: > "$t/scripts/eval/worker-digest/failure-review-cadence.sh"
+printf '#!/usr/bin/env bash\nbash %s/scripts/eval/worker-digest/failure-review-cadence.sh run --vault %s/vault\n' "$t" "$t" > "$t/runner/failure-review-cadence.sh"
+chmod +x "$t/runner/failure-review-cadence.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/failure-review-cadence.sh\" # HIMMEL-FailureReview" "0 0 * * * true # HIMMEL-Qmd-Reindex"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (live runner and script; a non-path command is skipped)"
+else
+    fail "C24 live runner -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
 echo "== C24: scheduler probe itself fails (access-denied/transient) -> INFO, not a false-mass-WARN (codex-1, CR round 3) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
