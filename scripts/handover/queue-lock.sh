@@ -1674,10 +1674,27 @@ _ql_force_claim_cleanup() {
 
 # _ql_force_trap_reset <saved-traps> -- forget the forced release's claim and put back the traps the caller had (trap -p output).
 _ql_force_trap_reset() {
-    _QL_FORCE_CLAIM="" _QL_FORCE_TOKEN=""
+    _QL_FORCE_CLAIM="" _QL_FORCE_TOKEN="" _QL_FORCE_PREV="" _QL_FORCE_PREV_EXIT=""
     trap - EXIT INT TERM HUP
     [ -z "$1" ] || eval "$1"
     return 0
+}
+
+# _ql_force_on_signal <SIG> -- free the claim, give the caller its traps back, then raise the signal again so the caller's own handling (or the default) applies.
+_ql_force_on_signal() {
+    local sig="$1"
+    _ql_force_claim_cleanup
+    _ql_force_trap_reset "${_QL_FORCE_PREV:-}"
+    kill -s "$sig" "${BASHPID:-$$}"
+}
+
+# _ql_force_on_exit -- free the claim, then run the EXIT action the caller had before the forced release replaced it.
+_ql_force_on_exit() {
+    local prev_exit="${_QL_FORCE_PREV_EXIT:-}"
+    _ql_force_claim_cleanup
+    [ -n "$prev_exit" ] || return 0
+    eval "set -- $prev_exit"
+    eval "${3:-}"
 }
 
 # _ql_release_claim_take <lockdir> <token> -- take and brand the release claim; rc 2 (stderr says why) when a contender holds it.
@@ -2381,11 +2398,12 @@ queue_lock_release() {
         # a release claim never expires, so a signal while it is held would wedge the doc: the trap frees it, then the caller's own traps come back (the suite sources this file)
         local f_claim_token="release-pid$$-r$RANDOM" f_prev_traps="" f_rc=0
         f_prev_traps=$(trap -p EXIT INT TERM HUP)
+        _QL_FORCE_PREV="$f_prev_traps" _QL_FORCE_PREV_EXIT=$(trap -p EXIT)
         _QL_FORCE_CLAIM="${lockdir}.claim" _QL_FORCE_TOKEN="$f_claim_token"
-        trap '_ql_force_claim_cleanup' EXIT
-        trap '_ql_force_claim_cleanup; exit 130' INT
-        trap '_ql_force_claim_cleanup; exit 143' TERM
-        trap '_ql_force_claim_cleanup; exit 129' HUP
+        trap '_ql_force_on_exit' EXIT
+        trap '_ql_force_on_signal INT' INT
+        trap '_ql_force_on_signal TERM' TERM
+        trap '_ql_force_on_signal HUP' HUP
         if ! _ql_release_claim_take "$lockdir" "$f_claim_token"; then
             _ql_force_trap_reset "$f_prev_traps"
             return 2

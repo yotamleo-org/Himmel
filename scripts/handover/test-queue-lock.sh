@@ -3755,6 +3755,46 @@ if [ "$H_CLAIM_KA" = held ] && [ "$H_RC_KA" -eq 143 ] && [ "$H_CLAIM_KB" = gone 
 else
     fail "T8541k: signalled forced release (claim-while-frozen=$H_CLAIM_KA rc=$H_RC_KA claim-after=$H_CLAIM_KB next-rc=$H_RC_KB lock=$H_LK_K)"
 fi
+# p: a caller that sourced the library and had its own EXIT trap still gets it run when a signal ends the forced release
+H_DOC_P="$(h_doc halted-caller-trap 'LIVE — working')"
+H_LK_P="$(h_hold "$H_DOC_P" "$H_HOST-pid$H_PID" "$H_HOST")"
+H_GATE_P="$TMPDIR_ROOT/t8541p-gate"; H_OUT_P="$TMPDIR_ROOT/t8541p-out"; : > "$H_GATE_P"; rm -f "$H_GATE_P.reached" "$H_OUT_P"
+(
+    # shellcheck source=queue-lock.sh
+    . "$LIB"
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-exit >> '$H_OUT_P'" EXIT
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-term >> '$H_OUT_P'; exit 7" TERM
+    QUEUE_LOCK_TEST_PAUSE_AT=forced-proved QUEUE_LOCK_TEST_PAUSE_FILE="$H_GATE_P" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" queue_lock_release "$H_DOC_P"
+) >/dev/null 2>&1 &
+H_PID_P=$!
+if h_wait_file "$H_GATE_P.reached"; then kill -TERM "$H_PID_P" 2>/dev/null; fi
+wait "$H_PID_P" 2>/dev/null; H_RC_P=$?
+rm -f "$H_GATE_P"
+H_CLAIM_P="$([ -d "$H_LK_P.claim" ] && echo leaked || echo gone)"
+if [ "$H_RC_P" -eq 7 ] && [ "$H_CLAIM_P" = gone ] && [ "$(tr '\n' ' ' < "$H_OUT_P" 2>/dev/null)" = "caller-term caller-exit " ]; then
+    pass "T8541p: a signal during a forced release in a sourcing caller frees the claim and hands the signal to the caller's own TERM and EXIT traps"
+else
+    fail "T8541p: sourcing caller (rc=$H_RC_P claim=$H_CLAIM_P trap-out=$(tr '\n' ' ' < "$H_OUT_P" 2>/dev/null))"
+fi
+# q: the forced release's EXIT handler frees its claim and then runs the EXIT action the caller had (an exit inside the window, not a signal)
+H_OUT_Q="$TMPDIR_ROOT/t8541q-out"; H_CLAIM_Q="$TMPDIR_ROOT/t8541q.claim"; rm -f "$H_OUT_Q"; mkdir -p "$H_CLAIM_Q"; printf '%s' "release-pidq" > "$H_CLAIM_Q/owner"
+(
+    # shellcheck source=queue-lock.sh
+    . "$LIB"
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-exit > '$H_OUT_Q'" EXIT
+    _QL_FORCE_PREV_EXIT=$(trap -p EXIT)
+    _QL_FORCE_CLAIM="$H_CLAIM_Q" _QL_FORCE_TOKEN="release-pidq"
+    trap '_ql_force_on_exit' EXIT
+    exit 0
+) >/dev/null 2>&1
+if [ ! -d "$H_CLAIM_Q" ] && [ "$(cat "$H_OUT_Q" 2>/dev/null)" = caller-exit ]; then
+    pass "T8541q: an exit inside a forced release frees its claim and still runs the caller's own EXIT action"
+else
+    fail "T8541q: exit handler (claim-present=$([ -d "$H_CLAIM_Q" ] && echo yes || echo no) out=$(cat "$H_OUT_Q" 2>/dev/null))"
+fi
 # l: the claim exists when the dead-holder proof runs (the process census is the proof's last step)
 H_REAL_PS="$(command -v ps)"
 H_STUB_L="$TMPDIR_ROOT/t8541l-stub"; mkdir -p "$H_STUB_L"
