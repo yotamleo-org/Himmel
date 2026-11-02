@@ -365,6 +365,26 @@ vcall v54 Grep "salus notes" "" "$VAULT"
 a=$rc
 vcall v54b Grep "meeting notes" "$VAULT/salus-docs"
 if [ "$a" = 0 ] && [ "$rc" = 0 ] && ! logged v54 && ! logged v54b && [ ! -e "$TMP/vstate/v54.denied" ] && [ ! -e "$TMP/vstate/v54b.denied" ]; then pass "Grep naming salus in the pattern or the path: silent, nothing logged"; else fail "Grep naming salus (pattern=$a path=$rc)"; fi
+# the Grep tool: a plain pattern and a path in the vault shape that is a symlink into a listed root, no
+# "salus" anywhere in the text: the fence must see the path, so the call is silent and logs nothing
+mkdir -p "$TMP/home2/Documents"
+ln -s "$TMP/phi/app" "$TMP/home2/Documents/luna"
+printf '%s\n' "$TMP/phi" >"$CG/phi-roots"
+vcall v56 Grep "Alice Smith" "$TMP/home2/Documents/luna"
+if [ "$rc" = 0 ] && ! logged v56 && [ ! -e "$TMP/vstate/v56.denied" ] && ! grep -q 'Alice' "$VLOG"; then pass "Grep with a plain pattern and a symlink path into a listed root: silent, nothing logged"; else fail "Grep symlink path into a listed root (rc=$rc)"; fi
+# whatever the fence catches, no row carries the text: a listed root named as $HOME/<root>, a relative root after
+# a cd, and a .salus-marked tree the fence cannot see all leave no "Alice" in the log
+printf '%s\n' "$TMP/vhome/phiroot" >"$CG/phi-roots"
+mkdir -p "$TMP/vhome/phiroot/app"
+vcall v57 Bash "grep -rl \"Alice Smith\" $TMP/vhome/phiroot/app $VAULT"
+a=$rc
+printf '%s\n' "$TMP/phi" >"$CG/phi-roots"
+vcall v58 Bash "cd $TMP && grep -rl \"Alice Smith\" phi/app $VAULT"
+b=$rc
+vcall v59 Bash "grep -rl \"Alice Smith\" $TMP/marked/sub $VAULT"
+c=$rc
+if [ "$a" = 0 ] && [ "$b" = 2 ] && [ "$c" = 2 ] && ! grep -q 'Alice' "$VLOG" && logged v58 && logged v59; then pass "sweeps naming a listed root, a root after a cd and a .salus-marked tree: no query text in the log, whichever the fence caught"; else fail "sweeps leave no text (listed=$a cd=$b marked=$c)"; fi
+rm -f "$CG/phi-roots"
 # an oracle that passes the canary but crashes on the real question is cannot-tell
 mkdir -p "$TMP/stub4"
 cp "$VHOOK" "$TMP/stub4/block-vault-sweep.sh"
@@ -417,11 +437,9 @@ if jq -e -s '
     | ([.[] | select(.event == "qmd_clear" and .had_deny == false)] | length) as $n
     | $d >= 5 and $r >= 2 and $c == 1 and $n >= 3
       and all(.[]; has("ts") and has("session_id") and has("event") and has("tool"))
-      and all(.[] | select(.event == "deny"); (.cmd | length) <= 200 and has("root") and has("cwd"))
-      and all(.[] | select(.event == "qmd_clear"); .cmd == "")
-      and ([.[] | select(.session_id == "v15" and .event == "deny")][0].cmd | length) == 200
-      and ([.[] | select(.session_id == "v16" and .event == "deny")][0].cmd | test("ABCDEFGHIJKLMNOPQRSTUVWXYZ") | not)' "$VLOG" >/dev/null 2>&1; then
-    pass "log rows: deny/retry_allowed/qmd_clear with had_deny, cmd cut to 200, token-shaped runs masked"
+      and all(.[]; (.cmd // "") == "")
+      and all(.[] | select(.event == "deny"); has("cwd") and (.root | test("(/Documents/luna|/Clippings)$")))' "$VLOG" >/dev/null 2>&1; then
+    pass "log rows: deny/retry_allowed/qmd_clear with had_deny; no row carries a command, and the root is the vault directory only"
 else
     fail "log rows"
 fi

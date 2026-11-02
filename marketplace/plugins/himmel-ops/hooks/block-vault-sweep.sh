@@ -53,8 +53,9 @@
 #   deny          the one refusal
 #   retry_allowed a closed-list sweep after the refusal, no qmd between (no conversion)
 #   qmd_clear     first qmd call of the session; had_deny=true is a conversion
-# Each row: ts, session_id, event, tool, root, cmd (first 200 chars, control
-# characters dropped, token-shaped runs and =values masked), cwd, had_deny.
+# Each row: ts, session_id, event, tool, root (the vault directory only), cwd, had_deny.
+# No row carries the command or the pattern; classify a refusal as true or false by reading
+# the command from the session journal by session_id and ts.
 #
 # Hook I/O: tool-call JSON on stdin; exit 0 allows, exit 2 denies with stderr
 # shown to Claude. bash 3.2-safe.
@@ -95,18 +96,24 @@ LOG=${HIMMEL_VAULT_SWEEP_LOG:-${HOME:-}/.claude/vault-sweep-deny/log.jsonl}
 mkdir -p "$DIR" 2>/dev/null || exit 0
 [ -d "$DIR" ] && [ -w "$DIR" ] || exit 0
 
+# No row carries the command or the pattern: the salus test cannot be proven to catch every
+# spelling of a PHI path, so the log is safe whether or not it did. A refusal is classified
+# by hand from the session journal, by session_id and ts. The root is cut to the vault
+# directory itself, never the rest of the path the command named.
 log_row() { # EVENT ROOT
-    local shown=""
-    # a conversion count never needs the query text, so a qmd_clear row carries none
-    if [ "$1" != qmd_clear ]; then
-        shown=$(printf '%s' "$cmd$gpattern" | tr -d '[:cntrl:]' | cut -c1-200 \
-            | sed -E 's/[A-Za-z0-9_-]{24,}/<masked>/g; s/=[^[:space:]]+/=<masked>/g')
-    fi
+    local vroot="" r
+    for r in "${2:-}" "$cwd"; do # a relative root is the cwd's vault directory
+        case "$r" in
+            *"/Documents/luna"*) vroot="${r%%/Documents/luna*}/Documents/luna" ;;
+            *"/Clippings"*) vroot="${r%%/Clippings*}/Clippings" ;;
+        esac
+        [ -n "$vroot" ] && break
+    done
     mkdir -p "$(dirname "$LOG")" 2>/dev/null || return 0
     jq -cn --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg sid "$sid" --arg ev "$1" \
-        --arg tool "$tool" --arg root "${2:-}" --arg cmd "$shown" --arg cwd "$cwd" \
+        --arg tool "$tool" --arg root "$vroot" --arg cwd "$cwd" \
         --argjson had "$had_deny" \
-        '{ts: $ts, session_id: $sid, event: $ev, tool: $tool, root: $root, cmd: $cmd, cwd: $cwd, had_deny: $had}' \
+        '{ts: $ts, session_id: $sid, event: $ev, tool: $tool, root: $root, cwd: $cwd, had_deny: $had}' \
         >>"$LOG" 2>/dev/null || true
 }
 
