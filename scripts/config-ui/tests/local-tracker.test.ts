@@ -128,7 +128,7 @@ test("local writes are refused with no seam call: no token, a bad id, a bad Sect
   expect((await s.post({ key: "LOCAL-1", backend: "local", status: "prog" }, null)).status).toBe(401);
   expect((await s.post({ key: "LOCAL-1; rm", backend: "local", status: "prog" })).status).toBe(400);
   expect((await s.post({ key: "LOCAL-1", backend: "local", sector: "-x" })).status).toBe(400);
-  expect((await s.post({ key: "LOCAL-1", backend: "nope", status: "prog" })).status).toBe(400);
+  expect((await s.post({ key: "HIMMEL-1", backend: "nope", status: "prog" })).status).toBe(400);
   expect((await s.post({ key: "LOCAL-9", backend: "local", status: "prog" })).status).toBe(404);
   expect(s.file(1)).toContain("\nstatus: To Do\n");
   const none = scratch({ tracker: "none" });

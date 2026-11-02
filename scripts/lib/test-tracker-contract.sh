@@ -221,6 +221,7 @@ run_cases() {
     tracker_sector "$id" "$(printf 'a\nb')" 2>/dev/null; eq "$kind C7 multiline name refused" 2 "$?"
     tracker_sector "$id" "" 2>/dev/null; eq "$kind C7 empty name refused" 2 "$?"
     tracker_sector "$id" "-x" 2>/dev/null; eq "$kind C7 option-like name refused" 2 "$?"
+    tracker_sector "$id" "$(printf 'x%.0s' $(seq 61))" 2>/dev/null; eq "$kind C7 over-long name refused" 2 "$?"
 }
 
 for kind in jira local none; do
@@ -295,11 +296,12 @@ id=$(tracker_id_new Task "edited")
 i=0
 while [ "$i" -lt 10 ]; do
     i=$((i + 1))
-    ( cd "$R/repo" && bash -c ". '$LIB'; tracker_link '$id' 'LOCAL-$((i + 100))' 2>/dev/null; tracker_transition '$id' 'In Progress' 2>/dev/null" ) &
+    ( cd "$R/repo" && bash -c ". '$LIB'; tracker_link '$id' 'LOCAL-$((i + 100))' 2>/dev/null; tracker_sector '$id' 'S$i' 2>/dev/null; tracker_transition '$id' 'In Progress' 2>/dev/null" ) &
 done
 wait
 eq "10 concurrent links all landed" 10 "$(grep -c '^  - "LOCAL-1' "$TRACKER_STORE/$id.md")"
 eq "concurrent transition landed" "In Progress" "$(status_of "$id")"
+eq "one sector line after concurrent writes" 1 "$(grep -c '^sector:' "$TRACKER_STORE/$id.md")"
 
 # a title with YAML-significant characters survives write and read
 fresh_env local

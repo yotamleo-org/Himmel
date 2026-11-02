@@ -86,6 +86,24 @@ test("trackerSources: TRACKER=local with items in the store lists local, ahead o
   expect(s.jiraCalls()).toBe(false);
 });
 
+test("TRACKER=local with a store that cannot be resolved stays local and says so; it never falls through to the Jira mirror's writable board", async () => {
+  const s = scratch({ mirror: true });
+  const env = { ...s.env, TRACKER: "local", HANDOVER_DIR: join(s.d, "missing-handover"), USER_SLUG: "x" };
+  expect(await trackerSources(env, s.d)).toEqual(["local", "jira"]);
+  const { get } = serve(env, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("local");
+  expect(r.reason).toContain("could not be read");
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("trackerSources: an explicit TRACKER=local with an empty store and a Jira mirror lists nothing, not the mirror", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d)).toEqual([]);
+});
+
 test("trackerSources: TRACKER=none is listed as none, so the rail keeps Roadmap and Kanban and they can say so", async () => {
   const s = scratch();
   expect(await trackerSources({ ...s.env, TRACKER: "none" }, s.d)).toEqual(["none"]);

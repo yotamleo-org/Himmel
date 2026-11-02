@@ -53,8 +53,13 @@ export async function trackerSources(env: Env, root: string): Promise<TrackerSou
   const out: TrackerSource[] = [];
   if (trackerSetting(env, root) === "github" && (await gh(env, root, ["auth", "status"])).ok) out.push("github");
   const backend = seamBackend(env, root);
-  if (backend === "local" && (await readLocalItems(env, root))?.length) out.push("local");
+  const explicitLocal = trackerSetting(env, root) === "local";
+  if (backend === "local") {
+    const items = await readLocalItems(env, root);
+    if (items ? items.length : explicitLocal) out.push("local"); // a failed read stays local, so /api/roadmap can say so
+  }
   if (backend === "none") out.push("none");
+  if (explicitLocal && !out.length) return out; // an explicit local project never falls back to a mirror's writable board
   try { if (readdirSync(jiraMirrorDir(env)).some((f) => /^HIMMEL-\d+\.md$/.test(f))) out.push("jira"); } catch { /* no mirror */ }
   return out;
 }
