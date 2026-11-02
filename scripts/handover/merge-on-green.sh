@@ -1281,7 +1281,7 @@ main_red_refuse() {
 # A cap-only red passes (mr_ok=cap-only) only when none of the capped suites is
 # reached by the PR's diff, per scripts/cr/impacted-suites.sh over the fetched base
 # tip and PR head (private refs, deleted again); a reached suite is cap-overlap and
-# a diff that cannot be computed is cap-unverified, both refused.
+# a diff that cannot be computed is cap-unverified, both merge as an advisory.
 # ponytail: the selector is text references and source/import closures, so a suite
 # that reaches a changed file another way is not seen; upgrade path is the
 # selector's own miss ledger (--selector-miss).

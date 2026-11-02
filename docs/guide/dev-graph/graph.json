@@ -4046,7 +4046,7 @@
         "The merge waits for green CI and a GO."
       ],
       "back": [
-        "A merge is refused (no GO, a trust path, or a red main): not recorded.",
+        "A merge is refused (no GO, a trust path, or main's CI state unknown): not recorded.",
         "The chief files leftover work as follow-ups, which start again at phase 1."
       ],
       "steps": [
