@@ -2182,6 +2182,61 @@ else
 fi
 rm -rf "$t"
 
+# c24_runner_case <label> <fail|ok> <needle> <runner line...> — a cron row calls a #! runner holding the lines
+# (@T@ stands for the scratch dir); fail expects a C24 FAIL naming <needle>, ok expects a C24 line and no FAIL.
+c24_runner_case() {
+    local label="$1" expect="$2" needle="$3" t out l; shift 3
+    t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 $label: mktemp -d failed"; exit 1; }
+    mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner" "$t/scripts/lib"; write_settings "$t/claude" "$WRAPPER"
+    : > "$t/scripts/lib/usage-preflight.sh"
+    { printf '#!/usr/bin/env bash\n'; for l in "$@"; do printf '%s\n' "${l//@T@/$t}"; done; } > "$t/runner/r.sh"
+    chmod +x "$t/runner/r.sh"
+    fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" # HIMMEL-FailureReview"
+    out="$(c24_run "$t")"
+    if [ "$expect" = fail ]; then
+        if grepq "$out" 'FAIL C24-cadence-registry' && grepq "$out" -F "${needle//@T@/$t}"; then pass "C24 $label -> FAIL naming the script"; else fail "C24 $label -> $(printf '%s' "$out" | grep C24)"; fi
+    else
+        if grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then pass "C24 $label -> no FAIL"; else fail "C24 $label -> $(printf '%s' "$out" | grep C24)"; fi
+    fi
+    rm -rf "$t"
+}
+echo "== C24: runner shapes the cadence generators write =="
+# shellcheck disable=SC2016  # the runner lines keep their $ literal
+c24_runner_case 'a $( ) capture whose assignment opens the command' ok '' \
+    '_bank=$(CADENCE_USAGE_WORKER=x @T@/scripts/lib/usage-preflight.sh) || _bank='
+# shellcheck disable=SC2016
+c24_runner_case 'a brace group around a script' ok '' \
+    '{ [ "$_o" = complete ] && @T@/scripts/lib/usage-preflight.sh --stamp .; } || true'
+# shellcheck disable=SC2016
+c24_runner_case 'a missing script after an opening parenthesis' fail '@T@/missing/q.sh' \
+    '_rc=0; ( /usr/bin/bash @T@/missing/q.sh --qmd-bin x; _m=$?; exit $_m )'
+# shellcheck disable=SC2016
+c24_runner_case 'a missing script after unset' fail '@T@/missing/a.sh' \
+    '_rc=0; unset X; /usr/bin/bash @T@/missing/a.sh'
+
+echo "== C24: the runners the real pipeline-cadence.sh arm writes walk clean =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 real arm: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/pc" "$t/vault" "$t/bin"; write_settings "$t/claude" "$WRAPPER"
+printf '#!/bin/sh\nexit 0\n' > "$t/bin/claude"; chmod +x "$t/bin/claude"
+# shellcheck disable=SC2016  # the stub's own $1 stays literal
+printf '#!/bin/sh\ncase "$1" in -l) cat "%s/state" 2>/dev/null || exit 1 ;; -) cat > "%s/state" ;; esac\n' "$t" "$t" > "$t/armcron"
+chmod +x "$t/armcron"
+if env OSTYPE=linux-gnu HOME="$t/home" PATH="$t/bin:$PATH" PIPELINE_CRONTAB="$t/armcron" PIPELINE_BAT_DIR="$t/pc" \
+    bash "$REPO_ROOT/scripts/luna/pipeline-cadence.sh" arm --vault "$t/vault" > /dev/null 2>&1 && [ -s "$t/state" ]; then
+    cp "$t/state" "$t/probe/crontab.txt"
+    # shellcheck disable=SC2016
+    printf '#!/bin/sh\nif [ "$1" = "-l" ]; then cat "%s/probe/crontab.txt"; fi\n' "$t" > "$t/probe/crontab"; chmod +x "$t/probe/crontab"
+    out="$(c24_run "$t")"
+    if [ "$(grep -c 'HIMMEL-Pipeline' "$t/probe/crontab.txt")" -eq 4 ] && grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
+        pass "C24 -> no FAIL over the four runners pipeline-cadence.sh arm writes"
+    else
+        fail "C24 real arm -> $(printf '%s' "$out" | grep C24)"
+    fi
+else
+    fail "C24 real arm: pipeline-cadence.sh arm did not install the runners"
+fi
+rm -rf "$t"
+
 echo "== C24: an indented commented-out HIMMEL row is not a cron row -> no FAIL =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 indented comment: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
