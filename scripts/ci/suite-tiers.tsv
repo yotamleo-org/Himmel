@@ -258,6 +258,7 @@ scripts/cr/test-pr-check-rounds.sh	local	behaviour suite, 0 catches in the 400-P
 scripts/cr/test-pr-check-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-pr-check-step0.sh	pr	trust-path
 scripts/cr/test-residue-scan.sh	pr	trust-path
+scripts/cr/test-review-round.sh	pr	trust-path
 scripts/cr/test-ship-tail-model-free.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-standards-cadence.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/cr/test-suite-file-selection.sh	local	independent resolver fixtures; full-property completion and nightly wiring deferred to HIMMEL-7096
