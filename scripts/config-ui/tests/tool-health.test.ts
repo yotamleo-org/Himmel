@@ -935,6 +935,33 @@ test("the recent-events table keeps a word whole in its narrow columns and lets 
   expect(css).toMatch(/\.data\.events td\.wrap\{overflow-wrap:anywhere\}/);
 });
 
+test("the five Tool health tables keep a header and a short value whole and give the wrapping to their free-text columns (HIMMEL-8680)", async () => {
+  const data = readP(seedP());
+  const wrapFlags = (html: string, row: RegExp) => [...row.exec(html)![1].matchAll(/<td( class="wrap")?>/g)].map((m) => !!m[1]);
+  const tab = (html: string) => (html.match(/<table class="data thtab">/g) || []).length;
+  // Hook wiring: [Hook, Source, Wired on, Wirings, Runs twice, Runs, Refused]; the hook name and the wiring text wrap.
+  const hooks = await page(data, { tab: "hooks" }, { inventory: INVENTORY });
+  expect(tab(hooks)).toBe(1);
+  expect(wrapFlags(hooks, /<tr>(<td[\s\S]*?)<\/tr>/)).toEqual([true, false, true, false, false, false, false]);
+  // Station sources: [Source, Reads at runtime, Found, Note]; MCP servers and CLIs share the sortable table.
+  const station = await page(data, { tab: "station" }, { inventory: INVENTORY });
+  expect(tab(station)).toBe(3);
+  expect(wrapFlags(station, /<tr>(<td[\s\S]*?)<\/tr>/)).toEqual([false, true, true, true]);
+  // Overview: the Tools table and the guards table.
+  const overview = await page(data, {}, { inventory: INVENTORY });
+  expect(tab(overview)).toBe(2);
+  expect(wrapFlags(overview, /<tr data-tool-row="[^"]*">([\s\S]*?)<\/tr>/)).toEqual([true, false, false, false, false, false, false, false]);
+  expect(wrapFlags(overview, /<tr data-guard-row="[^"]*">([\s\S]*?)<\/tr>/)).toEqual([true, false, false, true, false, true]);
+  // Guard drill-in, Refused by tool: [Tool, Refused, Note, Eligible call attempts].
+  const drill = await chainPage(chainT(), GUARD);
+  expect(tab(drill)).toBe(1);
+  expect(wrapFlags(drill, /<tr data-guard-tool="[^"]*">([\s\S]*?)<\/tr>/)).toEqual([true, false, true, false]);
+  const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
+  expect(css).toMatch(/\.data\.thtab th,\s*\.data\.thtab td\{overflow-wrap:normal\}/);
+  expect(css).toMatch(/\.data\.thtab th\{white-space:nowrap\}/);
+  expect(css).toMatch(/\.data\.thtab td\.wrap\{overflow-wrap:anywhere;min-width:16ch\}/);
+});
+
 // ---- time to result per tool (RESULT time minus START time). Hand-built digest rows, no journal.
 const timed = (tool: string, calls: number, timing: any) => ({ ...bTool(tool, calls), timing });
 const timingOf = (d: any, tool: string) => d.tools.find((t: any) => t.tool === tool).timing;

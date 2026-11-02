@@ -267,13 +267,13 @@ function listRow(r, data, ui, bad, max) {
   const srcText = r.source && r.src !== "core" ? `${SRC_LABEL[r.src]} · ${r.source}` : SRC_LABEL[r.src];
   if (r.kind === "hook") {
     const link = r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "hooks" });
-    return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(link)}">${esc(r.hook.name)}</a> ${chip}${r.hook.runs_twice ? ' <span class="tag warn">×2 runs twice</span>' : ""}`)}${td(esc(srcText))}${td(`${num(r.runs)} <span class="dim">runs ${r.runsMeasured ? "measured" : "derived"}</span>`)}${td(num(r.refused))}${td("—")}${td(num(r.refused))}${td("—")}${td("")}</tr>`;
+    return `<tr data-tool-row="${esc(r.key)}">${tdWrap(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(link)}">${esc(r.hook.name)}</a> ${chip}${r.hook.runs_twice ? ' <span class="tag warn">×2 runs twice</span>' : ""}`)}${td(esc(srcText))}${td(`${num(r.runs)} <span class="dim">runs ${r.runsMeasured ? "measured" : "derived"}</span>`)}${td(num(r.refused))}${td("—")}${td(num(r.refused))}${td("—")}${td("")}</tr>`;
   }
-  if (r.kind === "cli") return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tab: "station" }))}">${esc(r.cli.name)}</a> ${chip}`)}${td(esc(srcText))}${td(`${num(r.calls)} <span class="dim">Bash calls</span>`)}${td("—")}${td("—")}${td("—")}${td("—")}${td("")}</tr>`;
+  if (r.kind === "cli") return `<tr data-tool-row="${esc(r.key)}">${tdWrap(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tab: "station" }))}">${esc(r.cli.name)}</a> ${chip}`)}${td(esc(srcText))}${td(`${num(r.calls)} <span class="dim">Bash calls</span>`)}${td("—")}${td("—")}${td("—")}${td("—")}${td("")}</tr>`;
   const c = toolCounts(r, data), flagged = bad.has(r.key);
   const bar = isNum(c.failures) && max > 0 ? `<span class="thbar" data-w="${((c.failures / max) * 100).toFixed(1)}"></span>` : "";
   const rateCell = flagged ? '<span class="tag fail">Count check failed</span>' : `<span class="${c.rate >= 0.1 ? "bad-t" : c.rate >= 0.05 ? "warn-t" : ""}">${pct(c.rate)}</span>${isNum(c.calls) && c.calls > 0 && c.calls < 10 ? ' <span class="tag">few calls</span>' : ""}`;
-  return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tool: r.key }))}">${esc(displayName(r))}</a> ${chip}`)}${td(esc(srcText))}${td(num(c.calls))}${td(num(c.failures))}${td(num(c.errors))}${td(num(c.denials))}${td(rateCell)}${td(bar)}</tr>`;
+  return `<tr data-tool-row="${esc(r.key)}">${tdWrap(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tool: r.key }))}">${esc(displayName(r))}</a> ${chip}`)}${td(esc(srcText))}${td(num(c.calls))}${td(num(c.failures))}${td(num(c.errors))}${td(num(c.denials))}${td(rateCell)}${td(bar)}</tr>`;
 }
 function beforeSplit(data) {
   const out = new Map();
@@ -314,13 +314,13 @@ function toolList(data, inv, ui, opts = {}) {
   const empty = q ? `No tool matches “${ui.q}”` : "No tools match these filters";
   const more = !ui.all && limited.length < sorted.length ? `<button class="btn" data-act="th-all">Show all (${sorted.length})</button>` : ui.all && sorted.length > 10 ? `<button class="btn quiet" data-act="th-all">Top 10 only</button>` : "";
   const shownLine = `<p class="sub">${limited.length} of ${sorted.length} shown${bad.size ? ' · <span class="tag fail">Count check failed</span> for ' + esc([...bad].join(", ")) : ""}. Errors include a red test suite. Rows marked “before the split” were written before skills, subagents and MCP servers got their own rows.${limited.some((r) => r.kind === "hook" && r.runsMeasured) ? ` ${esc(RUNS_SCOPE)}` : ""}</p>`;
-  return `${controls}${ui.before && data ? `<p class="sub">Before split: today's rows collapsed back to Skill, Agent and mcp, for comparison.</p>${beforeSplit(data)}` : `${shownLine}${table(["Tool", "Source", "Calls", "Failed", "Errors", "Denied", "Failure rate", ""], body, empty)}${more}`}`;
+  return `${controls}${ui.before && data ? `<p class="sub">Before split: today's rows collapsed back to Skill, Agent and mcp, for comparison.</p>${beforeSplit(data)}` : `${shownLine}${table(["Tool", "Source", "Calls", "Failed", "Errors", "Denied", "Failure rate", ""], body, empty, "thtab")}${more}`}`;
 }
 
 const isClassifier = (cls) => /^denied\/classifier(:|$)/.test(cls);
 function guardsPanel(data, ui) {
   const rows = (data.hooks || []).filter((h) => !isClassifier(h.class)).sort((a, b) => b.failures - a.failures || (a.class < b.class ? -1 : 1));
-  return table(["Guard", "Refused", "Rate", "Denominator", "Bash-only rate (legacy)", "Legacy denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${td(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct2(h.eligible_rate))}${td(eligibleWords(h))}${td(pct(h.rate))}${td(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window");
+  return table(["Guard", "Refused", "Rate", "Denominator", "Bash-only rate (legacy)", "Legacy denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${tdWrap(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct2(h.eligible_rate))}${tdWrap(eligibleWords(h))}${td(pct(h.rate))}${tdWrap(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window", "thtab");
 }
 // Option B: refusals over the calls to the tools the guard is wired to check ("eligible call attempts", never "calls checked").
 const pct2 = (v) => (isNum(v) ? `${(v * 100).toFixed(2)}%` : "—");
@@ -515,8 +515,8 @@ function guardDrill(data, ui, token) {
   const wiredName = (tool) => (/^(?:Skill|Agent):/.test(tool) ? tool.slice(0, tool.indexOf(":")) : tool);
   const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, wiredName(tool)) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
   const toolRows = [...new Set([...Object.keys(byTool), ...(eligible ? Object.keys(eligible) : [])])].sort((a, b) => (byTool[b] || 0) - (byTool[a] || 0) || (a < b ? -1 : 1))
-    .map((tool) => `<tr data-guard-tool="${esc(tool)}">${td(esc(tool))}${td(num(byTool[tool] || 0))}${td(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
-  const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
+    .map((tool) => `<tr data-guard-tool="${esc(tool)}">${tdWrap(esc(tool))}${td(num(byTool[tool] || 0))}${tdWrap(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
+  const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard", "thtab")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
   return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls, and which tool did it refuse, and why?")}${stats}</section>
 ${guardWhy(data, h, token)}
 ${split}
@@ -525,10 +525,10 @@ ${box("evidence", "Evidence", "Sessions where it refused, opened in AG-UI.", evi
 }
 
 // ---- station, map, hook wiring
-const sortable = (id, head, rows, ui) => {
+const sortable = (id, head, rows, ui, wrap = []) => {
   const s = (ui.sorts || {})[id];
   const sorted = isNum(s && s.col) ? [...rows].sort((a, b) => { const x = a[s.col][0], y = b[s.col][0]; const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y)); return s.desc ? -c : c; }) : rows;
-  return table(head.map((h, i) => `<button class="th-sort" data-act="th-sort" data-table="${id}" data-col="${i}" aria-label="Sort by ${esc(h)}">${esc(h)}${s && s.col === i ? (s.desc ? " ▾" : " ▴") : ""}</button>`), sorted.map((r) => `<tr>${r.map((c) => td(c[1])).join("")}</tr>`));
+  return table(head.map((h, i) => `<button class="th-sort" data-act="th-sort" data-table="${id}" data-col="${i}" aria-label="Sort by ${esc(h)}">${esc(h)}${s && s.col === i ? (s.desc ? " ▾" : " ▴") : ""}</button>`), sorted.map((r) => `<tr>${r.map((c, i) => (wrap.includes(i) ? tdWrap(c[1]) : td(c[1]))).join("")}</tr>`), "Nothing to show", "thtab");
 };
 const sv = (v) => [isNum(v) ? v : -1, num(v)];
 const st_ = (v) => [String(v ?? ""), esc(v ?? "—")];
@@ -556,9 +556,9 @@ function stationTab(data, inv, ui) {
   const at = esc(inv.scanned_at ? stamp(Date.parse(inv.scanned_at)) : "—");
   const scan = `<div class="filters"><span>Scanned at ${at}</span>${inv.stale ? ` <span class="pill warn">Rescan failed (${esc(inv.stale)}); showing the scan from ${at}</span>` : ""}<button class="btn" data-act="th-rescan">Rescan</button></div>`;
   return `${box("station", "Station inventory", "What this station has. AG-UI reads these files and commands, then fills the map. A source it cannot find reads absent, never 0.", scan + tiles, "read-only scan")}
-${box("sources", "Where AG-UI reads each source", "Which file or command feeds each count? MCP servers are read as names only, never their arguments or environment.", sortable("sources", ["Source", "Reads at runtime", "Found", "Note"], sources, ui))}
-${box("mcp", "MCP servers", "Which servers exist, and which load in a chief session?", sortable("mcp", ["Server", "Configured in", "Loads in chief", "Tools", "Calls"], mcp, ui))}
-${box("clis", "Station CLIs", "Is every CLI the harness calls on PATH?", sortable("clis", ["CLI", "Path", "Version", "Bash calls"], clis, ui))}`;
+${box("sources", "Where AG-UI reads each source", "Which file or command feeds each count? MCP servers are read as names only, never their arguments or environment.", sortable("sources", ["Source", "Reads at runtime", "Found", "Note"], sources, ui, [1, 2, 3]))}
+${box("mcp", "MCP servers", "Which servers exist, and which load in a chief session?", sortable("mcp", ["Server", "Configured in", "Loads in chief", "Tools", "Calls"], mcp, ui, [1]))}
+${box("clis", "Station CLIs", "Is every CLI the harness calls on PATH?", sortable("clis", ["CLI", "Path", "Version", "Bash calls"], clis, ui, [1]))}`;
 }
 function mapTab(data, inv, ui) {
   const wait = invState(inv);
@@ -585,7 +585,7 @@ function hooksTab(data, inv, ui) {
   const wait = invState(inv);
   if (wait) return box("hooks", "Hook wiring", "Which hook is wired where, and which runs twice?", wait);
   const rows = hookRows(data, inv).map((r) => [[r.hook.name, `<a data-tool="${esc(r.key)}" href="${esc(r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "map" }))}">${esc(r.hook.name)}</a>`], st_(r.source), [String(r.hook.wired.map((w) => w.join(":"))), esc((r.hook.wired || []).map(([e, m]) => `${e} · ${m}`).join(", ") || "—")], sv((r.hook.wired || []).length), [r.hook.runs_twice ? 1 : 0, r.hook.runs_twice ? '<span class="tag warn">×2 runs twice</span>' : "no"], [isNum(r.runs) ? r.runs : -1, `${num(r.runs)} <span class="dim">${r.runsMeasured ? "measured" : "derived"}</span>`], sv(r.refused)]);
-  return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui), "First build");
+  return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui, [0, 2]), "First build");
 }
 
 // ---- reviewers (moved from Health): the weekly review page as written, never re-graded here.
