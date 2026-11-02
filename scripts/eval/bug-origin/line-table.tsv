@@ -54,3 +54,20 @@ none	```\n``` not a close\nbug-origin: #12 test-gap — x\n```
 ok	``` a`b\nbug-origin: #12 test-gap — x
 ok	```\nan example\n```  \nbug-origin: #12 test-gap — x
 ok	````\nan example\n`````\nbug-origin: #12 test-gap — x
+ok	bug-origin: #12 review-deferred — x
+ok	bug-origin: #12 residual:HIMMEL-8802 — x
+ok	bug-origin: #12 trigger:cron — x
+ok	bug-origin: #12 commit:abcdef1 — x
+ok	bug-origin: abcdef1 commit:0123456789abcdef0123456789abcdef01234567 — x
+ok	bug-origin: #12 review-miss:cr,judge — x
+ok	bug-origin: #12 review-miss:cr,judge,panel — x
+ok	bug-origin: #12 review-miss:panel,cr - a hyphenated reason
+malformed	bug-origin: #12 commit:xyz1234 — x
+malformed	bug-origin: #12 commit:ABCDEF1 — x
+malformed	bug-origin: #12 commit:abc — x
+malformed	bug-origin: #12 residual: — x
+malformed	bug-origin: #12 trigger — x
+malformed	bug-origin: #12 review-miss: — x
+malformed	bug-origin: #12 review-miss:cr,bot — x
+malformed	bug-origin: #12 review-miss:cr, — x
+malformed	bug-origin: unknown review-deferred — x
