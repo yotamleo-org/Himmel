@@ -82,7 +82,7 @@ cap_arms="$(awk '
     if (pat != "*") fail("only the * arm may answer the default")
     done_arm("D"); next
   }
-  arm && b ~ /^      if .*; then printf \047[0-9]+\047; else printf \047[0-9]+\047; fi ;;$/ {
+  arm && b ~ /^      if [^;]*; then printf \047[0-9]+\047; else printf \047[0-9]+\047; fi ;;$/ {
     cond = b; sub(/^      if /, "", cond); sub(/; then printf .*$/, "", cond)
     tail = b; sub(/^.*; then printf \047/, "", tail); split(tail, p, "\047")
     nt = split(cond, t, / \|\| /); hit = 0

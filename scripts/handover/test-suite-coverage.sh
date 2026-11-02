@@ -138,11 +138,11 @@ H='    scripts/slow/test-slow.sh|*/scripts/slow/test-slow.sh)'
 B="      printf '1700' ;;"
 # shellcheck disable=SC2016
 STAR=$'    *)\n      printf \'%s\' "$SUITE_TIMEOUT" ;;'
-# rejects <desc> <case-body>: the helper must exit 2 and never answer a cap
+# rejects <desc> <case-body> <message-ere>: the helper must exit 2 with THAT message and never answer a cap
 rejects() {
   mk_runner "$tmp/shape.sh" "$2"
   out=$(bash "$SC" --runner "$tmp/shape.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
-  if [ "$rc" -eq 2 ] && ! grep -q 'cap [0-9]' <<< "$out"; then pass "$1"; else bad "$1 (rc=$rc)" "$out"; fi
+  if [ "$rc" -eq 2 ] && grep -Eq -- "$3" <<< "$out" && ! grep -q 'cap [0-9]' <<< "$out"; then pass "$1"; else bad "$1 (rc=$rc)" "$out"; fi
 }
 # accepts <desc> <ere> <case-body>
 accepts() {
@@ -150,24 +150,40 @@ accepts() {
   out=$(bash "$SC" --runner "$tmp/shape.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
   expect "$1" "$2" "$out" 0
 }
-rejects "one-line arm fails, not the default" "$H printf '1700' ;;"$'\n'"$STAR"
-rejects "header with a trailing comment fails" "$H  # why"$'\n'"$B"$'\n'"$STAR"
-rejects "header at other indentation fails" "      scripts/slow/test-slow.sh|*/scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
-rejects "continued pattern list fails" "    scripts/slow/test-slow.sh|"$'\n'"    */scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
-rejects "an empty trailing alternative fails" "    scripts/slow/test-slow.sh|)"$'\n'"$B"$'\n'"$STAR"
-rejects "an empty leading alternative fails" "    |scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
-rejects "an empty middle alternative fails" "    scripts/slow/test-slow.sh||*/scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
-rejects "quoted arm pattern fails" '    "scripts/slow/test-slow.sh")'$'\n'"$B"$'\n'"$STAR"
-rejects "leading-paren arm fails" "    (scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
-rejects "spaced alternation fails" "    scripts/slow/test-slow.sh | */scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR"
-rejects "an arm with an extra body command fails" "$H"$'\n'"      sleep 1"$'\n'"$B"$'\n'"$STAR"
-rejects "a * arm with another body fails" "$H"$'\n'"$B"$'\n'"    *)"$'\n'"      printf '%s' \"\$FOO\" ;;"
-rejects "a non-* arm answering SUITE_TIMEOUT fails" "$H"$'\n'"      printf '%s' \"\$SUITE_TIMEOUT\" ;;"$'\n'"$STAR"
-rejects "a case with no * arm fails" "$H"$'\n'"$B"
-rejects "an unsupported conditional fails" "$H"$'\n'"      if [ -n \"\${X:-}\" ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
+rejects "one-line arm fails, not the default" "$H printf '1700' ;;"$'\n'"$STAR" 'unrecognised line'
+rejects "header with a trailing comment fails" "$H  # why"$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "header at other indentation fails" "      scripts/slow/test-slow.sh|*/scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "continued pattern list fails" "    scripts/slow/test-slow.sh|"$'\n'"    */scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "an empty trailing alternative fails" "    scripts/slow/test-slow.sh|)"$'\n'"$B"$'\n'"$STAR" 'empty alternative'
+rejects "an empty leading alternative fails" "    |scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR" 'empty alternative'
+rejects "an empty middle alternative fails" "    scripts/slow/test-slow.sh||*/scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR" 'empty alternative'
+rejects "quoted arm pattern fails" '    "scripts/slow/test-slow.sh")'$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "leading-paren arm fails" "    (scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "spaced alternation fails" "    scripts/slow/test-slow.sh | */scripts/slow/test-slow.sh)"$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "an arm with an extra body command fails" "$H"$'\n'"      sleep 1"$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "a * arm with another body fails" "$H"$'\n'"$B"$'\n'"    *)"$'\n'"      printf '%s' \"\$FOO\" ;;" 'unrecognised line'
+rejects "a non-* arm answering SUITE_TIMEOUT fails" "$H"$'\n'"      printf '%s' \"\$SUITE_TIMEOUT\" ;;"$'\n'"$STAR" 'only the \* arm may answer'
+rejects "a case with no * arm fails" "$H"$'\n'"$B" 'no complete case table'
+rejects "an unsupported conditional fails" "$H"$'\n'"      if [ -n \"\${X:-}\" ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR" 'unsupported condition'
+# one-line elif and a sequence of two conditionals are not the single if/else shape
+rejects "a one-line elif fails" "$H"$'\n'"      if [ \"\${X:-all}\" = fast ]; then printf '1800'; elif [ \"\${Y:-all}\" = fast ]; then printf '3600'; else printf '10800'; fi ;;"$'\n'"$STAR" 'unrecognised line'
+rejects "a sequence of two conditionals fails" "$H"$'\n'"      if [ \"\${X:-all}\" = fast ]; then printf '1800'; else printf '3600'; fi; if [ \"\${Y:-all}\" = fast ]; then printf '1'; else printf '10800'; fi ;;"$'\n'"$STAR" 'unrecognised line'
+rejects "an && condition fails" "$H"$'\n'"      if [ \"\${X:-a}\" = a ] && [ \"\${Y:-b}\" = c ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR" 'unsupported condition'
+rejects "an uppercase condition literal fails" "$H"$'\n'"      if [ \"\${X:-FAST}\" = FAST ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR" 'unsupported condition'
+rejects "a tab-indented header fails" $'\tscripts/slow/test-slow.sh)'$'\n'"$B"$'\n'"$STAR" 'unrecognised line'
+rejects "CRLF line endings fail" "$H"$'\r\n'"$B"$'\r\n'"$STAR" 'unrecognised line'
+rejects "a * header with another pattern may not answer the default" "$H"$'\n'"$B"$'\n'"    *|scripts/x/test-x.sh)"$'\n'"      printf '%s' \"\$SUITE_TIMEOUT\" ;;" 'only the \* arm may answer'
+# a case that never closes is unreadable
+mk_runner "$tmp/noesac.sh" "$H"$'\n'"$B"$'\n'"$STAR"
+sed '/^  esac$/d' "$tmp/noesac.sh" > "$tmp/noesac2.sh"
+out=$(bash "$SC" --runner "$tmp/noesac2.sh" scripts/slow/test-slow.sh 2>&1); rc=$?
+if [ "$rc" -eq 2 ] && ! grep -q 'cap [0-9]' <<< "$out"; then pass "a case with no esac fails"; else bad "a case with no esac fails (rc=$rc)" "$out"; fi
 accepts "a * arm literal is read" 'cap 777s' "    scripts/other/test-other.sh)"$'\n'"      printf '5' ;;"$'\n'"    *)"$'\n'"      printf '777' ;;"
 accepts "conditional true by default takes its then branch" 'cap 9000s' "$H"$'\n'"      if [ \"\${X:-fast}\" = fast ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
 accepts "conditional false by default takes the smaller else branch" 'cap 1700s' "$H"$'\n'"      if [ \"\${X:-all}\" = fast ] || [ \"\${Y:-}\" = fast ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
+accepts "a true later alternative makes the condition true" 'cap 9000s' "$H"$'\n'"      if [ \"\${X:-all}\" = fast ] || [ \"\${Y:-fast}\" = fast ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
+accepts "a true third alternative makes the condition true" 'cap 9000s' "$H"$'\n'"      if [ \"\${X:-a}\" = b ] || [ \"\${Y:-a}\" = c ] || [ \"\${Z:-fast}\" = fast ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
+accepts "a true first alternative stays true after a false last one" 'cap 9000s' "$H"$'\n'"      if [ \"\${X:-fast}\" = fast ] || [ \"\${Y:-all}\" = fast ]; then printf '9000'; else printf '1700'; fi ;;"$'\n'"$STAR"
 accepts "a comment mentioning printf is skipped" 'cap 1700s' "$H"$'\n'"      # was printf '9999' once"$'\n'"$B"$'\n'"$STAR"
 accepts "a trailing comment after ;; is read" 'cap 1700s' "$H"$'\n'"      printf '1700' ;;  # measured"$'\n'"$STAR"
 

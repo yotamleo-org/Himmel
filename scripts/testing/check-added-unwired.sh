@@ -224,9 +224,10 @@ judge() {  # <path> <kind> -> prints a reason when unwired
         test-*.sh)
           case "$p" in scripts/*|templates/*|marketplace/*|packaging/*) ;; *) workflow_runs "$p" && return 0; echo "outside the runner's scan roots, so run-shell-tests.sh never finds it"; return 0 ;; esac
           [ -s "$runner" ] || { echo "cannot read scripts/ci/run-shell-tests.sh at $ref"; return 0; }
-          cov=$(bash "$HERE/../handover/suite-coverage.sh" --runner "$runner" --root "$top" "$p" 2>&1)
-          printf '%s\n' "$cov" | grep -qE 'runs in PR CI|nightly only|superseded by' \
-            || echo "run-shell-tests.sh skips it (SKIP_LIST) or cannot classify it" ;;
+          crc=0; cov=$(bash "$HERE/../handover/suite-coverage.sh" --runner "$runner" --root "$top" "$p" 2>&1) || crc=$?
+          # the helper's own exit status decides: its error text can itself contain "nightly only"
+          { [ "$crc" -eq 0 ] && printf '%s\n' "$cov" | grep -qE 'runs in PR CI|nightly only|superseded by'; } \
+            || echo "run-shell-tests.sh skips it (SKIP_LIST) or cannot classify it (suite-coverage.sh rc=$crc: ${cov%%$'\n'*})" ;;
         *)
           # a node/bun test file is run by a wrapper that names it, when that wrapper is itself wired
           git grep -lIE -e "$(bn_re "$b")" "$ref" -- . ':(exclude)handovers' 2>/dev/null | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
