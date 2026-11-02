@@ -903,14 +903,17 @@ mk_fixture() {
 gen_in() {
     local dir="$1"; shift
     GEN_RC=0
-    GEN_ERR=$(cd "$dir" && env -u HANDOVER_DIR GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-10-29 "$@" 2>&1 >/dev/null) || GEN_RC=$?
+    # A scratch HOME and cache dir keep the station's own configured root out of the run.
+    GEN_ERR=$(cd "$dir" && env -u HANDOVER_DIR HOME="$RT_DIR/home" HIMMELCTL_CACHE_DIR="$RT_DIR/cache" GH_CMD="$FAKE_GH" JIRA_CMD="$FAKE_JIRA" MORNING_TODAY=2026-10-29 "$@" 2>&1 >/dev/null) || GEN_RC=$?
 }
 # check <name> <detail> <command...>: pass when the command succeeds.
 check() { local name="$1" detail="$2"; shift 2; if "$@"; then pass "$name"; else fail "$name" "$detail"; fi; }
 rc_is() { [ "$GEN_RC" -eq "$1" ]; }
 gone() { [ ! -e "$1" ]; }
-RT_DIR="$TMP_ROOT/root-fixtures"; mkdir -p "$RT_DIR"
+RT_DIR="$TMP_ROOT/root-fixtures"; mkdir -p "$RT_DIR/home" "$RT_DIR/cache"
 HIM_REPO="$RT_DIR/himmel"; mk_fixture "$HIM_REPO" himmel
+ENV_REPO="$RT_DIR/himmel-env"; mk_fixture "$ENV_REPO" himmel
+mkdir -p "$RT_DIR/envroot"; printf 'HANDOVER_DIR=%s\n' "$RT_DIR/envroot" > "$ENV_REPO/.env"
 ADOPT_REPO="$RT_DIR/adopter"; mk_fixture "$ADOPT_REPO"
 
 echo "TEST: a himmel checkout with no handover root refuses and writes nothing"
@@ -935,6 +938,10 @@ gen_in "$HIM_REPO" bash "$SCRIPT" --out "$RT_DIR/explicit.md"
 check "--out with no root: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
 check "--out with no root: report at --out" "missing" test -f "$RT_DIR/explicit.md"
 check "--out with no root: nothing in the checkout" "handovers/ exists" gone "$HIM_REPO/handovers"
+gen_in "$ENV_REPO" bash "$SCRIPT"
+check "root in .env, not exported: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
+check "root in .env, not exported: report under that root" "missing" test -f "$RT_DIR/envroot/morning-report-2026-10-29.md"
+check "root in .env, not exported: nothing in the checkout" "handovers/ exists" gone "$ENV_REPO/handovers"
 gen_in "$ADOPT_REPO" bash "$SCRIPT"
 check "adopter checkout: exit 0" "rc=$GEN_RC $GEN_ERR" rc_is 0
 check "adopter checkout: Mode A still writes" "missing" test -f "$ADOPT_REPO/handovers/morning-report-2026-10-29.md"

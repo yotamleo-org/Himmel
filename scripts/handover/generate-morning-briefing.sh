@@ -182,6 +182,13 @@ next_day=$(date -d "$today + 1 day" +%F 2>/dev/null || date -j -v+1d -f %F "$tod
 # Resolve --since-date when not passed — LOCAL day.
 [ -z "$SINCE_DATE" ] && SINCE_DATE="$today"
 
+# The handover root a station configured (/handover-setup writes HANDOVER_DIR into .env) reaches this run even
+# when the invoking shell never exported it; a value the shell did export wins. The shift helper inherits it.
+# shellcheck source=../lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/load-dotenv.sh"
+load_dotenv HANDOVER_DIR || true
+
 # Resolve --out when not passed.
 # A himmel checkout (it ships scripts/handover/chief-kit/) never keeps a report: its handovers/ is a
 # stub, so a run without a handover root would leave the report where the operator does not look.
@@ -194,7 +201,7 @@ himmel_checkout=0
 [ -d "$repo_root/scripts/handover/chief-kit" ] && himmel_checkout=1
 
 if [ -z "$OUT_FILE" ]; then
-    [ "$himmel_checkout" -eq 1 ] && [ -z "${HANDOVER_DIR:-}" ] && refuse_no_root "HANDOVER_DIR is not set in a himmel checkout"
+    [ "$himmel_checkout" -eq 1 ] && [ -z "${HANDOVER_DIR:-}" ] && refuse_no_root "HANDOVER_DIR is not set and no .env configures one, in a himmel checkout"
     # _ensure: this script WRITES the report to OUT_FILE, so we need the Mode A
     # inline dir to exist. Stderr is NOT suppressed: a broken HANDOVER_DIR (Mode
     # B typo) must surface so the operator notices the silent fallback to
@@ -210,9 +217,6 @@ fi
 
 # The tracker is the current project's: jira only when project-mode says so (a
 # JIRA_CMD override means jira). No tracker is a normal state, not an outage.
-# shellcheck source=../lib/load-dotenv.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/../lib/load-dotenv.sh"
 no_tracker=0
 no_tracker_msg="No Jira tracker configured."
 JIRA_ARGV=()
