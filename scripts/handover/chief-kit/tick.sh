@@ -1832,7 +1832,7 @@ done <<< "$pr_out"
 [ -n "$unowned_prs" ] || unowned_prs=none
 [ -n "$ext_prs" ] || ext_prs=none
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
-[ -z "${pr_read_failed:-}" ] || { unowned_prs='?'; ext_prs='?'; }
+[ -z "${pr_read_failed:-}" ] || { prs='?'; unowned_prs='?'; ext_prs='?'; }
 
 # dispatch=<run>:<worker>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
 # an in-flight workflow_dispatch run on a worker's branch (a run a worker started by hand never shows on
