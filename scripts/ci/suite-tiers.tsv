@@ -444,6 +444,7 @@ scripts/handover/chief-kit/test-model-check-report.sh	local	behaviour suite, new
 scripts/handover/chief-kit/test-succession-tracker.sh	pr	trust-path
 scripts/handover/chief-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/chief-kit/test-tick-fields.sh	local	second half of test-tick.sh (HIMMEL-8813 split), same tier as the half it came from
 scripts/handover/chief-kit/test-tick-holds.sh	local	new, behaviour suite for tick.sh holds= (HIMMEL-4949)
 scripts/handover/chief-kit/test-tick-nolive.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-pool-stale.sh	local	new, behaviour suite for tick.sh pool-stale= and residual-unversioned= (HIMMEL-6604)
