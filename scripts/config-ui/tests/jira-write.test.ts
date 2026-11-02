@@ -1,6 +1,7 @@
 // POST /api/roadmap/write — a Kanban drop transitions the ticket in Jira, a Sector select sets its Sector
 // (`edit --sector`). The Jira CLI is a stub (stub-jira.js) that records argv; nothing here reaches live Jira.
 import { test, expect, afterEach } from "bun:test";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,13 +15,13 @@ const TOKEN = "t".repeat(64);
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function boot(extra: Record<string, string> = {}, checkout?: string) {
+function boot(extra: Record<string, string> = {}, checkout?: string, project?: string) {
   const dir = mkdtempSync(join(tmpdir(), "jira-write-"));
   const home = join(dir, "home"), root = join(dir, "root"), log = join(dir, "jira.log");
   const own = join(dir, "checkout"); // hermetic: no .env of the real checkout is read
   mkdirSync(home); mkdirSync(root); mkdirSync(own);
   const s = startServer({
-    port: 0, token: TOKEN, root: checkout ?? own,
+    port: 0, token: TOKEN, root: checkout ?? own, ...(project ? { projectRoot: project } : {}),
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_JIRA_CLI: JIRA, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
       STUB_JIRA_LOG: log, ...extra },
   });
@@ -136,6 +137,35 @@ test("a drop is refused when only the project's .env says the tracker is none: t
   const r = await b.post({ key: "HIMMEL-7", status: "rev" });
   expect(r.status).toBe(403);
   expect(b.calls()).toEqual([]); // no Jira CLI call
+});
+
+// a git repo whose top holds a .env saying TRACKER=none, with one commit so a worktree can be added
+function projectRepo() {
+  const top = mkdtempSync(join(tmpdir(), "jira-write-repo-"));
+  cleanups.push(() => rmSync(top, { recursive: true, force: true }));
+  const git = (...a: string[]) => execFileSync("git", ["-C", top, "-c", "user.email=t@example.com", "-c", "user.name=t", ...a], { stdio: "ignore" });
+  git("init", "-q");
+  writeFileSync(join(top, ".env"), "TRACKER=none\n");
+  git("commit", "-q", "--allow-empty", "-m", "x");
+  return { top, git };
+}
+
+test("a drop is refused when the project is a subdirectory of the repo whose top holds the .env saying none", async () => {
+  const { top } = projectRepo();
+  mkdirSync(join(top, "sub"));
+  const b = boot({}, undefined, join(top, "sub"));
+  expect((await b.post({ key: "HIMMEL-7", status: "rev" })).status).toBe(403);
+  expect(b.calls()).toEqual([]);
+});
+
+test("a drop is refused when the project is a git worktree of the repo whose top holds the .env saying none", async () => {
+  const { top, git } = projectRepo();
+  const wt = join(top + "-wt");
+  git("worktree", "add", "-q", wt);
+  cleanups.push(() => rmSync(wt, { recursive: true, force: true }));
+  const b = boot({}, undefined, wt);
+  expect((await b.post({ key: "HIMMEL-7", status: "rev" })).status).toBe(403);
+  expect(b.calls()).toEqual([]);
 });
 
 test("the Jira child gets the project key from the .env and no other .env value", async () => {

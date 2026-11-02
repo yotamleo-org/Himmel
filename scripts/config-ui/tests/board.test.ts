@@ -178,6 +178,27 @@ test("GET /api/board: the extras are absent when only the project's .env says th
   expect(r.chains.reason).toContain("not Jira");
 });
 
+test("a project launched from another checkout: the extras and the cards read the project's mirror, and the handover root still comes from the checkout's settings", async () => {
+  const s = scratch();
+  const checkout = join(s.d, "checkout"), project = join(s.d, "project"), handovers = join(s.d, "handovers");
+  mkdirSync(checkout); mkdirSync(project);
+  slugWithDrift(handovers, "someone", 1);
+  otherMirror(join(s.d, "checkout-mirror"), "from the checkout mirror");
+  otherMirror(join(s.home, ".himmel", "state", "jira-mirror", "HIMMEL"), "from the default mirror"); // what the project, naming none, gets
+  writeFileSync(join(checkout, ".env"), `HIMMEL_JIRA_MIRROR=${join(s.d, "checkout-mirror")}\nHANDOVER_DIR=${handovers}\n`);
+  const srv = startServer({ port: 0, token: TOKEN, root: checkout, projectRoot: project, legsScript: join(s.d, "no-workers.sh"),
+    env: { PATH: process.env.PATH, HOME: s.home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
+      HIMMEL_CONFIG_DIR: s.conf, DRIFT_SUMMARY_KNOWN: s.known, HIMMEL_CHAIN_REGISTRY: s.registry } });
+  cleanups.push(() => srv.stop());
+  const base = `http://127.0.0.1:${srv.port}`;
+  const board = await get(`${base}/api/board`);
+  const roadmap = JSON.stringify(await get(`${base}/api/roadmap`));
+  expect(board.drift.counts.real).toBe(1); // the handover root: the checkout's settings, as /api/health reads them
+  expect(board.chains.tickets["HIMMEL-1"].title).toBe("First card from the default mirror");
+  expect(roadmap).toContain("First card from the default mirror"); // the cards come from the same mirror
+  expect(roadmap).not.toContain("checkout mirror");
+});
+
 test("GET /api/roadmap: a non-empty process env mirror beats the checkout's .env", async () => {
   const s = scratch();
   const other = join(s.d, "dotenv-mirror");

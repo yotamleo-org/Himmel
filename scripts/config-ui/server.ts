@@ -301,9 +301,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const projectRoot = opts.projectRoot ?? process.cwd();
   // the tracker (its git config, its default-bucket store) is the project's, never the checkout the UI is served from
   const trackerRoot = opts.projectRoot ?? opts.root ?? process.cwd();
-  // env with the tracker and Jira-mirror settings read from the project's .env (the tracker's root, never the himmel checkout the UI
-  // is served from) and himmel.conf too, per call so an edit shows at once
-  const senv = () => settingsEnv(trackerRoot, env);
+  // env with the tracker and Jira-mirror settings read from the project's .env (its anchor: the repo top behind a subdirectory or a
+  // worktree, never the himmel checkout the UI is served from) and himmel.conf too, per call so an edit shows at once
+  const senv = () => settingsEnv(stationRoot(trackerRoot), env);
   const setupOpts = { env, home: env.HOME || homedir(), himmelRoot: root, projectRoot };
   const himmelctl = himmelctlBin(env);
   const stateDir = join(env.HOME || homedir(), ".himmel", "state", "config-ui");
@@ -713,9 +713,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           const why = "the active tracker is not Jira";
           return json({ drift: { state: "absent", reason: `no saved drift run: ${why}` }, chains: { state: "absent", reason: `no chain registry: ${why}` } });
         }
-        // the handover paths come from the settings as /api/health reads them; the mirror is the project's, the one the cards read
+        // the handover paths come from the settings as /api/health reads them; the mirror is the project's alone, the one the cards
+        // read: the checkout's own mirror and key are dropped, so a project that names none gets the default, as the cards do
+        const { HIMMEL_JIRA_MIRROR: _checkoutMirror, JIRA_PROJECT_KEY: _checkoutKey, ...handover } = mergedSettings(root, env);
         const mirror = Object.fromEntries(["HIMMEL_JIRA_MIRROR", "JIRA_PROJECT_KEY"].filter((k) => benv[k]).map((k) => [k, benv[k]]));
-        return json(redactOut(await readBoardExtras({ ...mergedSettings(root, env), ...mirror })));
+        return json(redactOut(await readBoardExtras({ ...handover, ...mirror })));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {
