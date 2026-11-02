@@ -402,6 +402,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     catch { audit = "failed"; }
     if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
     const reprobeState = before.state !== "ok" ? before.state : after.state;
+    literalsAt = 0; // the action may have stored a secret: its output is masked with a fresh read
     return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: shellLine(p.argv), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
   }
 
