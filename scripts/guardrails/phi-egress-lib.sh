@@ -104,6 +104,7 @@ _guard_phi_list_paths() {
 _guard_phi_list_entries() {
     local content line
     _guard_file_readable "$1" || return 2
+    # read-sink-ok: every caller passes a phi-roots or egress-denylist path under the PHI config dirs, never user input
     content="$(cat -- "$1")" || return 2
     while IFS= read -r line || [ -n "$line" ]; do
         line="${line#"${line%%[![:space:]]*}"}"
