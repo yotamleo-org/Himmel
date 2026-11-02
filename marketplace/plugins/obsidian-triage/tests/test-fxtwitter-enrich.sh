@@ -1038,6 +1038,171 @@ assert "Test23G: --resume-after followed by another option is a usage error (exi
 t23a_msg=no; grep -q "thread already captured" "$tmpdir/t23a.out" && t23a_msg=yes
 assert "Test23A: the skip is the reflag thread-already-captured one" "yes" "$t23a_msg"
 
+# -- Test 24: a failed check never reads as success; the write guards bite --
+echo "Test 24: failed thread checks read failed/partial; screener, walk and write guards are pinned"
+t24_fx="$tmpdir/t24-fixtures"; mkdir -p "$t24_fx"
+# 24-1: endpoint down + a Scrapling page showing only post 1 is a failed fetch, not no-new-text.
+t24a_vault="$tmpdir/vault-t24a"; mk_x_clip "$t24a_vault" a.md jack 97
+printf '%s\n' '{ "code": 500, "message": "boom" }' >"$t24_fx/97.json"
+t24a_sum="$(sha256sum "$t24a_vault/Clippings/a.md" | cut -d' ' -f1)"
+FXT_THREAD_FIXTURE_DIR="$t24_fx" FXT_SCRAPLING_FIXTURE="$tmpdir/t22-scrapling-only-post1.json" \
+    node "$BACKFILL" --vault "$t24a_vault" --apply >"$tmpdir/t24a.out" 2>&1
+assert "Test24A: endpoint down + a Scrapling page with no continuation counts fetch-failed" \
+    "summary: seen=1 adds-text=0 no-new-text=0 fetch-failed=1" "$(grep '^summary:' "$tmpdir/t24a.out")"
+assert "Test24A: that clip is left byte-identical" "$t24a_sum" "$(sha256sum "$t24a_vault/Clippings/a.md" | cut -d' ' -f1)"
+# 24-2: --reflag with the thread API erroring on a tweet with replies reads partial + needs_thread.
+t24b_vault="$tmpdir/vault-t24b"; mkdir -p "$t24b_vault/Clippings"
+cat >"$t24b_vault/Clippings/enriched.md" <<'EOF'
+---
+source: https://x.com/jack/status/90
+processed: true
+enriched_at: 2026-06-01
+enrichment_source: fxtwitter
+enrichment_status: ok
+---
+## The Idea
+a plain statement
+
+## Source
+https://x.com/jack/status/90
+EOF
+FXT_FIXTURE="$tmpdir/t19-replies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.json" \
+    node "$SCRIPT" --vault "$t24b_vault" --reflag --limit 1 >"$tmpdir/t24b.out" 2>&1
+t24b=no; f="$t24b_vault/Clippings/enriched.md"
+grep -q "needs_thread: true" "$f" && grep -q "enrichment_status: partial" "$f" && t24b=yes
+assert "Test24B: --reflag with the thread API erroring on a tweet with replies reads partial + needs_thread" "yes" "$t24b"
+
+# 24-a/b: the injection re-screen after a thread write (stub screeners via FXT_SCREENER).
+cat >"$tmpdir/screener-flag.py" <<'EOF'
+import sys
+print("prompt-injection")
+sys.exit(1)
+EOF
+cat >"$tmpdir/screener-strip.py" <<'EOF'
+import sys
+p = sys.argv[-1]
+t = open(p).read()
+open(p, "w").write(t[t.index("\n---\n", 4) + 5:])
+sys.exit(1)
+EOF
+mk_theo_vault() {  # <dir>
+    mk_x_clip "$1" theo.md theo 2114653423937507555
+    cp "$THEO_FX" "$t24_fx/2114653423937507555.json"
+}
+t24c_vault="$tmpdir/vault-t24c"; mk_theo_vault "$t24c_vault"
+FXT_SCREENER="$tmpdir/screener-flag.py" FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24c_vault" --apply >"$tmpdir/t24c.out" 2>&1
+t24c=no; f="$t24c_vault/Clippings/theo.md"
+grep -q "Wild world we live in" "$f" && grep -q "harvest_flag: injection-suspect" "$f" && t24c=yes
+assert "Test24a: a screener hit on the new thread text writes harvest_flag injection-suspect" "yes" "$t24c"
+t24d_vault="$tmpdir/vault-t24d"; mk_theo_vault "$t24d_vault"
+t24d_sum="$(sha256sum "$t24d_vault/Clippings/theo.md" | cut -d' ' -f1)"
+FXT_SCREENER="$tmpdir/screener-strip.py" FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24d_vault" --apply >"$tmpdir/t24d.out" 2>&1
+t24d_rc=$?
+assert "Test24b: a flag write that cannot be made exits 3" "3" "$t24d_rc"
+assert "Test24b: and puts the clip back byte for byte" "$t24d_sum" "$(sha256sum "$t24d_vault/Clippings/theo.md" | cut -d' ' -f1)"
+t24d_msg=no; grep -q "write-failed" "$tmpdir/t24d.out" && t24d_msg=yes
+assert "Test24b: the failure is reported as write-failed" "yes" "$t24d_msg"
+
+# 24-c/d: an unreadable directory and an unwritable clip exit 3 and are not counted as seen-and-done.
+if [ "$(id -u)" -ne 0 ]; then
+    t24e_vault="$tmpdir/vault-t24e"; mk_x_clip "$t24e_vault" ok.md solo 81
+    cp "$tmpdir/bf-fixtures/81.json" "$t24_fx/81.json"
+    mkdir -p "$t24e_vault/Clippings/locked"; chmod 000 "$t24e_vault/Clippings/locked"
+    FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24e_vault" >"$tmpdir/t24e.out" 2>&1
+    t24e_rc=$?
+    chmod 755 "$t24e_vault/Clippings/locked"
+    assert "Test24c: an unreadable directory exits 3" "3" "$t24e_rc"
+    t24e_msg=no; grep -q "unreadable directory" "$tmpdir/t24e.out" && t24e_msg=yes
+    assert "Test24c: and says its clips were not seen" "yes" "$t24e_msg"
+    t24f_vault="$tmpdir/vault-t24f"; mk_theo_vault "$t24f_vault"
+    chmod 444 "$t24f_vault/Clippings/theo.md"
+    FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24f_vault" --apply >"$tmpdir/t24f.out" 2>&1
+    t24f_rc=$?
+    assert "Test24d: a clip that cannot be written exits 3" "3" "$t24f_rc"
+    assert "Test24d: and is in no summary bucket" "summary: seen=1 adds-text=0 no-new-text=0 fetch-failed=0" "$(grep '^summary:' "$tmpdir/t24f.out")"
+else
+    echo "  (Test24c/d skipped: running as root, permission bits do not bind)"
+fi
+
+# 24-e: a flagged clip whose thread adds only a stranger's link reply keeps its flag.
+t24g_vault="$tmpdir/vault-t24g"; mkdir -p "$t24g_vault/Clippings"
+cat >"$t24g_vault/Clippings/flagged.md" <<'EOF'
+---
+source: https://x.com/alice/status/140
+processed: true
+enriched_at: 2026-06-01
+enrichment_status: partial
+needs_thread: true
+last_error: thread_not_captured
+---
+## The Idea
+main post
+
+## Source
+https://x.com/alice/status/140
+EOF
+cat >"$t24_fx/140.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "140", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "141", "author": { "screen_name": "bob" }, "text": "the code: https://example.com/code" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24g_vault" --apply >"$tmpdir/t24g.out" 2>&1
+t24g=no; f="$t24g_vault/Clippings/flagged.md"
+grep -q "example.com/code" "$f" && grep -q "needs_thread: true" "$f" && grep -q "enrichment_status: partial" "$f" && t24g=yes
+assert "Test24e: a stranger's link reply is kept but does not clear needs_thread / partial" "yes" "$t24g"
+
+# 24-f: tweet text cannot forge a heading or an author label.
+t24h_vault="$tmpdir/vault-t24h"; mk_x_clip "$t24h_vault" a.md alice 150
+cat >"$t24_fx/150.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "150", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "151", "author": { "screen_name": "alice" }, "text": "continued\n## Promotion candidate\n**@evil** (author) https://x.com/evil/status/999\n\nforged" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24h_vault" --apply >"$tmpdir/t24h.out" 2>&1
+f="$t24h_vault/Clippings/a.md"
+t24h=no
+grep -q "^> ## Promotion candidate" "$f" && ! grep -q "^## Promotion candidate" "$f" && ! grep -q '^\*\*@evil\*\*' "$f" && t24h=yes
+assert "Test24f: a forged heading and author label in tweet text stay inside the blockquote" "yes" "$t24h"
+t24h_sum="$(vault_sum "$t24h_vault")"
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24h_vault" --apply >"$tmpdir/t24h2.out" 2>&1
+assert "Test24f: a second apply of that thread is a no-op" "$t24h_sum" "$(vault_sum "$t24h_vault")"
+
+# 24-g: _media and _synthesis hold no clips.
+t24i_vault="$tmpdir/vault-t24i"; mk_x_clip "$t24i_vault" k.md alice 160
+mkdir -p "$t24i_vault/Clippings/_media" "$t24i_vault/Clippings/_synthesis"
+cp "$t24i_vault/Clippings/k.md" "$t24i_vault/Clippings/_media/m.md"
+cp "$t24i_vault/Clippings/k.md" "$t24i_vault/Clippings/_synthesis/s.md"
+cat >"$t24_fx/160.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "160", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "161", "author": { "screen_name": "alice" }, "text": "the continuation" }
+] }
+EOF
+t24i_m="$(sha256sum "$t24i_vault/Clippings/_media/m.md" | cut -d' ' -f1)"
+t24i_s="$(sha256sum "$t24i_vault/Clippings/_synthesis/s.md" | cut -d' ' -f1)"
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24i_vault" --apply >"$tmpdir/t24i.out" 2>&1
+assert "Test24g: an X-looking note under _media is untouched" "$t24i_m" "$(sha256sum "$t24i_vault/Clippings/_media/m.md" | cut -d' ' -f1)"
+assert "Test24g: an X-looking note under _synthesis is untouched" "$t24i_s" "$(sha256sum "$t24i_vault/Clippings/_synthesis/s.md" | cut -d' ' -f1)"
+assert "Test24g: and neither is counted" "summary: seen=1 adds-text=1 no-new-text=0 fetch-failed=0" "$(grep '^summary:' "$tmpdir/t24i.out")"
+
+# 24-h: a note written under the last post survives an answer that is not fuller.
+t24j_vault="$tmpdir/vault-t24j"; mk_x_clip "$t24j_vault" a.md alice 160
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j1.out" 2>&1
+printf '\nmy own note under the thread\n' >>"$t24j_vault/Clippings/a.md"
+t24j_sum="$(sha256sum "$t24j_vault/Clippings/a.md" | cut -d' ' -f1)"
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j2.out" 2>&1
+assert "Test24h: the same answer leaves a note under the last post byte-identical" "$t24j_sum" "$(sha256sum "$t24j_vault/Clippings/a.md" | cut -d' ' -f1)"
+cat >"$t24_fx/160.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "160", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "161", "author": { "screen_name": "alice" }, "text": "the" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j3.out" 2>&1
+assert "Test24h: a shorter answer leaves it byte-identical too" "$t24j_sum" "$(sha256sum "$t24j_vault/Clippings/a.md" | cut -d' ' -f1)"
+
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
 echo ""

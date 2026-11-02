@@ -377,9 +377,10 @@ function threadHasMultipleByAuthor(thread, screenName) {
  * post 1 (no n/N counter, no 🧵, no reply-pointer) — replies > 0 is the only
  * hint. When the text heuristic misses and replies > 0, ask the keyless
  * /2/thread/<id> endpoint whether this status is part of a multi-post
- * self-thread. At most one extra request per clip. Fail open: a thread-API
- * error (or "no thread found") keeps today's text-only verdict and logs one
- * line — it never blocks or fails the enrichment.
+ * self-thread. At most one extra request per clip. A thread-API error is
+ * answered `true` (a possible thread, logged on one line), so the caller flags
+ * the clip needs_thread / partial rather than reading a failed check as "no
+ * thread"; "no thread found" on a good answer stays `false`.
  */
 async function detectThreadSignalWithApi(tweet, canon, rel, opts = {}) {
   const repliesCount = tweet.replies ?? 0;
@@ -390,8 +391,9 @@ async function detectThreadSignalWithApi(tweet, canon, rel, opts = {}) {
   if (!opts.skipRateLimit) await sleep(RATE_LIMIT_MS);
   const threadRes = await fetchFxtThread(threadUrl);
   if (!threadRes.ok) {
-    console.error(`${rel} -- thread-api check failed (needs_thread heuristic only): ${threadRes.error}`);
-    return false;
+    // A check that could not be made on a tweet with replies is not "no thread".
+    console.error(`${rel} -- thread-api check failed, treated as a possible thread: ${threadRes.error}`);
+    return true;
   }
   return threadHasMultipleByAuthor(threadRes.thread, tweet.author?.screen_name);
 }
@@ -1484,6 +1486,11 @@ export async function rethreadClip(clipPath, vault, apply, opts = {}) {
   const existing = body.match(THREAD_SECTION_RE);
   // Text the clip already holds outside its thread section is not "new".
   const cap = extractThreadPosts(res.thread, id, handle && handle !== "i" ? handle : "", body.replace(THREAD_SECTION_RE, ""));
+  // A logged-out Scrapling page that shows nothing past the clipped post proves
+  // nothing about the thread: it is a failed check, not "no more text".
+  if (res.via === "scrapling" && !cap.posts.some((p) => p.mine && p.id !== id)) {
+    return { kind: "fetch-failed", chars: 0, message: `${rel} -- thread not captured: the Scrapling page showed no continuation` };
+  }
   if (cap.extraChars <= 0) return { kind: "no-new-text", chars: 0, message: `${rel} -- no more text in the thread` };
 
   const section = renderThreadSection(cap.posts);
