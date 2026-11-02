@@ -2158,7 +2158,7 @@ if n and r.get("oldest_open"):
     age = max(0, int((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() // 60))
 ls = d.get("lease")
 print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN")
-' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads ?
+' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads off
     fi
     case "$rm_n" in
         '' | *[!0-9]*) rm_queue=off ;;
