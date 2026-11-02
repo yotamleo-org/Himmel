@@ -120,8 +120,8 @@ export const ENTRIES = [
 const runnerOf = (spec) => spec.runner ?? DEFAULT_RUNNER;
 const scriptOf = (spec) => spec.script ?? DEFAULT_SCRIPT;
 
-// A shell script never runs on a bare `bash` (PATH roulette: a WSL stub, a
-// 0-byte Store alias): a `routed` spec goes through run-hook-with-bash.js in
+// A shell script never runs on a bare `bash` (PATH roulette: a stub that is
+// not a real shell): a `routed` spec goes through run-hook-with-bash.js in
 // the same launcher shape wire-hook-bash.mjs writes for every other hook.
 const RUN_NODE = '$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh';
 const BASH_LAUNCHER = '$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js';
