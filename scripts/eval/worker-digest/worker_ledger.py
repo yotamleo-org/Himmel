@@ -561,7 +561,7 @@ def main(argv=None):
         s.add_argument("--state-dir", default=default_state_dir())
     r = sub.choices["record"]
     r.add_argument("--digest", required=True)
-    r.add_argument("--worker", dest="leg")
+    r.add_argument("--worker", dest="worker")
     r.add_argument("--chief", dest="console")
     for k in ("ticket", "doc", "lane", "launch-name"):
         r.add_argument("--" + k)
@@ -588,7 +588,7 @@ def main(argv=None):
     try:
         with open(a.digest, encoding="utf-8") as fh:
             digest = json.load(fh)
-        who = {"leg": a.leg, "ticket": a.ticket, "console": a.console, "pr": a.pr, "doc": a.doc,
+        who = {"leg": a.worker, "ticket": a.ticket, "console": a.console, "pr": a.pr, "doc": a.doc,
                "lane": a.lane, "state_dir": a.state_dir, "digest_error": a.digest_error,
                "launch_name": a.launch_name}
         f, e = record(digest, who, a.failures_ledger, a.eval_ledger)

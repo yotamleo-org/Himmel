@@ -59,28 +59,28 @@ reviewed merge, the worker sends `BLOCKED`; do not run the denied merge for it
 (that launders the denial) and do not loosen any rule. The fallback is the
 claudex path above, tracked as a follow-up.
 
-**A red main and the merge gate.** `merge-on-green.sh` exits 22 while the
-newest `CI` run on main is red, and a run that is being re-run counts as red
-until its new attempt completes. It prints `main-red: <class> (<suites>)` on
-every red it classifies. A red whose every failed suite hit the runner's cap
-timeout with assertions passing (`cap-only`), in suites the PR does not reach
-(`scripts/cr/impacted-suites.sh`), passes on its own: no FIX-GO. For the PR
-that fixes the red, with no `Fixes-main-red:` line, you still write a FIX-GO
-with `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>` (beside the
-ordinary GO) whenever the gate prints another class: `assertion` (a suite
-failed an assertion), `cap-overlap` (a cap-timed-out suite is one the PR
-reaches), `cap-unverified` (the gate could not read the PR's reach) or
-`unclassified` (a red job that is not a shell-unit job, a shard that failed
-for more than its suite rows such as a honeytoken leak or a shard with no
-rows, a job that never ran or was cancelled so its log is empty, or a log or
-job list the gate could not parse). After a merge on the declared-fix or fix-GO path the script
+**A red main and the merge gate.** A red main no longer stops a PR whose own CI
+passed (HIMMEL-8675): `merge-on-green.sh` prints one `MAIN-RED advisory:` line,
+audits `main-red-advisory ... via=advisory run=<red run id>` with the class and
+failed suites, and merges. A run that is being re-run counts by its previous
+attempt. It prints `main-red: <class> (<suites>)` on every red it
+classifies (`cap-only`, `assertion`, `cap-overlap`, `cap-unverified`,
+`unclassified`: defined in [`ci-merge-flow.md`](../../internals/ci-merge-flow.md),
+section "Main red after a green merge"). Exit 22 is left for main's CI state
+being unknown: an unreadable run list, a full 50-run window with no completed
+run, or a re-run whose previous attempt cannot be read. The gate is advisory, so the HOLD on a real
+blocker is yours: withhold the GO of every PR while main is genuinely broken
+(a GO file written before main went red stays valid until you delete it), and
+read the `MAIN-RED advisory:` lines of the merges that did land. The fix PR's
+`Fixes-main-red:` line and `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>`
+are now audit labels only (`via=<declaration>`), not required. After an advisory
+merge, or one on the declared-fix or fix-GO path, the script
 dispatches one `ci.yml` run on main and prints `MAIN-RECHECK dispatched
 run=<id>` (`run=unknown` when the new run is not listed yet; a failed dispatch
 is a WARN, the merge stands): read that run's `headSha` and `conclusion` before
 you lift a HOLD, and do not dispatch a second one.
 
-**Merge order for a chain.** Plan the open PRs on every merge event (the
-`chain_merge_plan` flag is gone, HIMMEL-7711; the plan is the default):
+**Merge order for a dependency chain.** Plan the open PRs on every merge event:
 `python3 scripts/handover/chief-kit/chain-graph.py --open --json > <graph>`, then
 `bash scripts/handover/chief-kit/chain-plan.sh --graph <graph> --ready <pr>,<pr>`
 (`--ready`: the PRs green and GO-able now). It prints `ORDER`, `HOLD <pr> for <pr>`
@@ -104,7 +104,7 @@ and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
   (`chain-plan-core.sh --evidence`). It needs a green PR run (a red goes through the
   inherited-red rules). It reads no flag and takes no plan file: `--chain-plan` is
   refused.
-- **Before every GO on a planned chain:** run
+- **Before every GO on a planned dependency chain:** run
   `bash scripts/handover/chief-kit/chain-plan.sh --go-check <pr> --graph <graph>`
   and GO only on `GO-CHECK OK <pr> head=<sha> graph=sha256:<hash> at=<UTC>`. It
   REFUSEs when the graph's Jira links are not `ok`, its head for the PR is not the

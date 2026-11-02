@@ -538,10 +538,10 @@ function checkProbeShape(probe, label, errors) {
       if (typeof probe.script !== 'string') errors.push(`${label}: probe type 'engine-allowlist' requires 'script' (string)`);
       if (typeof probe.envVar !== 'string') errors.push(`${label}: probe type 'engine-allowlist' requires 'envVar' (string)`);
       if (typeof probe.defaultSubdir !== 'string') errors.push(`${label}: probe type 'engine-allowlist' requires 'defaultSubdir' (string)`);
-      if (!Array.isArray(probe.legs) || probe.legs.length === 0) {
-        errors.push(`${label}: probe type 'engine-allowlist' requires 'legs' (non-empty array)`);
+      if (!Array.isArray(probe.workers) || probe.workers.length === 0) {
+        errors.push(`${label}: probe type 'engine-allowlist' requires 'workers' (non-empty array)`);
       } else {
-        probe.legs.forEach((worker, i) => {
+        probe.workers.forEach((worker, i) => {
           if (!worker || typeof worker !== 'object' || typeof worker.schedule !== 'string' || !isNonEmptyStringArray(worker.requiredSuffixes)) {
             errors.push(`${label}: probe type 'engine-allowlist' workers[${i}] must be {schedule: string, requiredSuffixes: non-empty string[]}`);
           } else {
@@ -550,7 +550,7 @@ function checkProbeShape(probe, label, errors) {
           }
         });
       }
-      reportExtra(['script', 'envVar', 'defaultSubdir', 'legs']);
+      reportExtra(['script', 'envVar', 'defaultSubdir', 'workers']);
       break;
     }
     case 'bridge-health': {

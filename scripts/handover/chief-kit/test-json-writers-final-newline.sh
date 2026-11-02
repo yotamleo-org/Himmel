@@ -31,6 +31,14 @@ echo "created worktree $1"
 EOF
 chmod +x "$WORK/wt.sh"
 export GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1
+# the core gate always asks the jira CLI (scripts/jira/dist is untracked, absent in CI): a fixture stand-in calls every key NOT-CORE
+mkdir -p "$WORK/stub-jira"
+cat > "$WORK/stub-jira/index.js" <<'STUBEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUBEOF
+export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js"
 
 cat > "$WORK/workers.json" <<'EOF'
 [

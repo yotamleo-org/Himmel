@@ -28,6 +28,15 @@ export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 # and the admissions ledger: the real one must never admit a fixture key
 export HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger-none.jsonl"
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
+# the core gate is permanent and asks the built jira CLI (scripts/jira/dist is untracked, absent in CI), so every
+# row below runs with a fixture stand-in that calls every key NOT-CORE; the C3 section at the end swaps in its own stand-in per run
+mkdir -p "$WORK/notcore-stub"
+cat > "$WORK/notcore-stub/index.js" <<'NCEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+NCEOF
+export NEXT_DISPATCH_JIRA_CLI="$WORK/notcore-stub/index.js"
 
 mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>; MK_BARE=1 leaves the body without a DoD and Proof tail
     local tail='\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n'
@@ -1932,7 +1941,7 @@ pmn="$(NEXT_DISPATCH_GIT_DIR="$PMG" NEXT_DISPATCH_MAIN_REF=no-such-ref NEXT_DISP
 lacks "an unreadable status log and a failed git read withholds a candidate (unknown fails closed)" "$pmn" "LOCAL	HIMMEL-82"
 has "and the WARN names it" "$(printf '%s\n' "$pmn" | grep '^# WARN')" "HIMMEL-82"
 
-# --- (8591, C3 of 8353) core_gate: a core To Do ticket with no signed minerva spec lists as a DESIGN row, behind the flag ---
+# --- (8591, C3 of 8353; permanent since 8592, C5) a core To Do ticket with no signed minerva spec lists as a DESIGN row ---
 # The jira CLI is a fixture stand-in (scripts/jira/dist is untracked, absent in CI): it answers from CG/core/<KEY> and
 # CG/spec/<KEY> lines and logs every call to CG/calls.log; CG/mode makes it fail (exit3, junk, spec3).
 CG="$WORK/cg"; mkdir -p "$CG/core" "$CG/spec"
@@ -1958,9 +1967,9 @@ if (a[0] === 'release' && a[1] === 'core-check') {
 } else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
 EOF
 export CG
-runcg() { # <mirror dir> <flag value> args...: the script under test with core_gate set and the stub CLI
-    local mir="$1" flag="$2"; shift 2
-    HIMMEL_FLAG_CORE_GATE="$flag" NEXT_DISPATCH_JIRA_CLI="${CG_CLI:-$WORK/cg-stub/index.js}" NEXT_DISPATCH_MIRROR="$mir" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-s" bash "$SUT" "$@" 2>/dev/null
+runcg() { # <mirror dir> args...: the script under test with no flag set and the stub CLI
+    local mir="$1"; shift
+    NEXT_DISPATCH_JIRA_CLI="${CG_CLI:-$WORK/cg-stub/index.js}" NEXT_DISPATCH_MIRROR="$mir" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-s" bash "$SUT" "$@" 2>/dev/null
 }
 newmir cg
 for n in 901 902 903 904 905 906; do mk "HIMMEL-$n" "To Do" High '[]' '["v1.0.1"]' '[]' "cg $n" "Edit scripts/lib/cg$n.sh please."; done
@@ -1970,7 +1979,7 @@ printf 'CORE HIMMEL-903 label core\n' > "$CG/core/HIMMEL-903"; printf 'SPEC ok H
 printf 'BYPASS HIMMEL-904 bug a Bug is not gated\n' > "$CG/core/HIMMEL-904"
 printf 'UNKNOWN HIMMEL-906\n' > "$CG/core/HIMMEL-906"
 CGM="$M"
-cg="$(runcg "$CGM" 1)"
+cg="$(runcg "$CGM")"
 has "(8591) a core To Do ticket with no signed spec prints DESIGN <KEY> NO-SPEC" "$cg" "DESIGN${TAB}HIMMEL-901${TAB}NO-SPEC${TAB}High${TAB}v1.0.1${TAB}cg 901${TAB}files=scripts/lib/cg901.sh"
 has "(8591) a SPEC-STALE answer prints DESIGN <KEY> SPEC-STALE" "$cg" "DESIGN${TAB}HIMMEL-902${TAB}SPEC-STALE${TAB}"
 lacks "(8591) a core ticket with a signed spec prints no DESIGN row" "$cg" "DESIGN${TAB}HIMMEL-903"
@@ -1982,7 +1991,7 @@ has "(8591) a NOT-CORE key lists as a normal row" "$cg" "LOCAL${TAB}HIMMEL-905${
 lacks "(8591) a ticket with a DESIGN row is not also a dispatch row (no-spec)" "$cg" "LOCAL${TAB}HIMMEL-901"
 lacks "(8591) a ticket with a DESIGN row is not also a dispatch row (stale)" "$cg" "LOCAL${TAB}HIMMEL-902"
 lacks "(8591) an UNKNOWN key is never listed" "$cg" "HIMMEL-906${TAB}"
-cgw="$(runcg "$CGM" 1 --why)"
+cgw="$(runcg "$CGM" --why)"
 has "(8591) an UNKNOWN key is withheld with the core-unknown drop" "$cgw" "# drop HIMMEL-906 core-unknown"
 [ "$(grep -c 'release core-check' "$CG/calls.log")" -ge 1 ] && pass "(8591) the CLI was asked core-check" || fail "(8591) core-check was never called"
 has "(8591) core-check is not told --docs-only" "$(cat "$CG/calls.log")" "release core-check --paths"
@@ -1991,10 +2000,10 @@ has "(8591) spec-check asks the core keys only" "$(grep 'release spec-check' "$C
 lacks "(8591) spec-check is not asked about a NOT-CORE key" "$(grep 'release spec-check' "$CG/calls.log")" "HIMMEL-905"
 has "(8591) the CLI runs from its own checkout" "$(cat "$CG/calls.log")" "(cwd $(cd "$WORK/cg-stub" && pwd -P))"
 # a DESIGN row takes a --top slot and holds no files
-cgt="$(runcg "$CGM" 1 --top 1)"
+cgt="$(runcg "$CGM" --top 1)"
 [ "$(printf '%s\n' "$cgt" | grep -c "^DESIGN")" = 1 ] && [ "$(printf '%s\n' "$cgt" | grep -c "^LOCAL")" = 0 ] && pass "(8591) a DESIGN row takes a --top slot" || fail "(8591) --top 1 should print exactly the DESIGN row: $cgt"
 mk HIMMEL-907 "To Do" Medium '[]' '["v1.0.1"]' '[]' "shares the DESIGN ticket's file" "Edit scripts/lib/cg901.sh please."
-cgh="$(runcg "$CGM" 1)"
+cgh="$(runcg "$CGM")"
 has "(8591) a DESIGN row holds no files against another candidate" "$cgh" "LOCAL${TAB}HIMMEL-907${TAB}"
 rm -f "$CGM/HIMMEL-907.md"
 
@@ -2006,7 +2015,7 @@ for how in missing exit3 junk spec3; do
         missing) CG_CLI="$WORK/no-such-cli.js" ;;
         *) printf '%s\n' "$how" > "$CG/mode" ;;
     esac
-    cgf="$(runcg "$CGM" 1)"
+    cgf="$(runcg "$CGM")"
     has "(8591) a CLI that cannot run ($how) prints CORE-CHECK-FAILED" "$cgf" "# WARN CORE-CHECK-FAILED"
     [ "$(printf '%s\n' "$cgf" | grep -c "CORE-CHECK-FAILED")" = 1 ] && pass "(8591) ($how) exactly one CORE-CHECK-FAILED header" || fail "(8591) ($how) CORE-CHECK-FAILED header count is not 1"
     lacks "(8591) a CLI that cannot run ($how) lists no To Do row" "$cgf" "LOCAL${TAB}HIMMEL-905"
@@ -2015,20 +2024,18 @@ for how in missing exit3 junk spec3; do
 done
 CG_CLI=""; rm -f "$CG/mode"
 
-# --resume-only lists no To Do row: flag on, it never calls the CLI
+# --resume-only lists no To Do row: it never calls the CLI
 : > "$CG/calls.log"
-runcg "$CGM" 1 --resume-only > /dev/null
+runcg "$CGM" --resume-only > /dev/null
 [ ! -s "$CG/calls.log" ] && pass "(8591) --resume-only never calls the CLI" || fail "(8591) --resume-only called the CLI: $(cat "$CG/calls.log")"
 
-# flag off: nothing runs, the output equals the default (flag unset), the stub is never called
+# no flag exists: a core ticket with no signed spec lists as a DESIGN row with nothing set, and an env var named like the old flag changes nothing
 : > "$CG/calls.log"
-cgoff="$(runcg "$CGM" 0)"
-cgdef="$(NEXT_DISPATCH_JIRA_CLI="$WORK/cg-stub/index.js" NEXT_DISPATCH_MIRROR="$CGM" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-s" bash "$SUT" 2>/dev/null)"
-[ "$cgoff" = "$cgdef" ] && pass "(8591) flag off equals the default output" || fail "(8591) flag 0 differs from the default"
-[ ! -s "$CG/calls.log" ] && pass "(8591) flag off never calls the CLI" || fail "(8591) flag off called the CLI: $(cat "$CG/calls.log")"
-lacks "(8591) flag off prints no DESIGN row" "$cgoff" "DESIGN"
-lacks "(8591) flag off prints no CORE-CHECK-FAILED header" "$cgoff" "CORE-CHECK"
-has "(8591) flag off lists a would-be DESIGN ticket as a normal row" "$cgoff" "LOCAL${TAB}HIMMEL-901${TAB}"
+cgnoflag="$(runcg "$CGM")"
+cgold="$(HIMMEL_FLAG_CORE_GATE=0 runcg "$CGM")"
+has "(8592) no flag set: a core ticket with no signed spec is a DESIGN row" "$cgnoflag" "DESIGN${TAB}HIMMEL-901${TAB}NO-SPEC${TAB}"
+[ "$cgnoflag" = "$cgold" ] && pass "(8592) the old flag variable set to 0 changes nothing (the gate is permanent)" || fail "(8592) HIMMEL_FLAG_CORE_GATE=0 changed the output"
+[ -s "$CG/calls.log" ] && pass "(8592) the CLI is asked with no flag set" || fail "(8592) the CLI was never asked with no flag set"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -186,6 +186,15 @@ export HIMMEL_DENIAL_ACK_DIR="$tmp/pinned-denial-acks"
 # pinned so no case here writes the operator's real ~/.claude.json.
 export WORKER_SESSION_PRETRUST_HOME="$tmp/pinned-pretrust-home"
 mkdir -p "$HANDOVER_DIR" "$HIMMEL_FLEET_SLOTS" "$XDG_RUNTIME_DIR" "$WORKER_SESSION_PRETRUST_HOME"
+# the arming gate's core check (brief-lint.sh) asks the jira CLI for every brief whose title names a ticket key; scripts/jira/dist
+# is untracked, absent in CI, so a fixture stand-in calls every key NOT-CORE (the refusals themselves are test-brief-lint.sh's)
+mkdir -p "$tmp/notcore-jira"
+cat > "$tmp/notcore-jira/index.js" <<'NCEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+NCEOF
+export BRIEF_LINT_JIRA_CLI="$tmp/notcore-jira/index.js"
 fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # the arming gate runs brief-lint on every brief, so a fixture brief carries

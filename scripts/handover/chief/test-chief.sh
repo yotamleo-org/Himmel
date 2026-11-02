@@ -1560,7 +1560,7 @@ check "58b next with an unresolvable chief profile: exit 2" "$rc58x" "2"
 check "58b next refusal: successor doc removed" "$([ -e "$doc58xB" ] && echo 1 || echo 0)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc58xA" "$token58x" >/dev/null 2>&1
 
-# --- 60: `next` seeds the predecessor's `legs:`, `queue:`, `last GO:` and
+# --- 60: `next` seeds the predecessor's `workers:`, `queue:`, `last GO:` and
 # `acked:` verbatim into the successor's own `## Live state`, and ONLY those
 # lines: a marker planted in the neighbouring `## Compact instructions` body
 # must NOT leak. The HANDOFF points at the seeded doc and carries no nonce, so
@@ -1602,7 +1602,7 @@ awk -v workers_line="$fixture60_workers" -v marker="$marker60" '
 
 leg60="$root/tester/livestatesrc/DEMO-leg60-N9.md"
 printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' > "$leg60"
-printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
+printf '{"workers":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60A%.md}.fleet.json"
 leg60tok="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$leg60" 2>/dev/null)")"
 
 rc60=0
@@ -1658,6 +1658,33 @@ check "60w successor Live state seeds the predecessor's workers value verbatim" 
 check "60w successor Live state keeps no placeholder workers line" \
     "$(printf '%s\n' "$live60w" | grep -c '^\(legs\|workers\): <')" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60wA" "$token60w" >/dev/null 2>&1
+
+# --- 60l: a predecessor that still says the pre-rename `legs:` over a `legs` manifest seeds its whole block too.
+out60l="$(chief new --bucket llivesrc)"
+token60l="$(token_of "$out60l")"
+doc60lA="$root/tester/llivesrc/DEMO-nextleg-${today}A-chief.md"
+doc60lB="$root/tester/llivedst/DEMO-nextleg-${today}B-chief.md"
+# shellcheck disable=SC2016  # backtick worker span, literal fixture text
+fixture60l='legs: `N9:nonce-fixture-60l:lock-fixture-60l:42424`'
+# shellcheck disable=SC2016  # backtick worker span, literal fixture text
+fixture60l2='  `N8:nonce-two-60l:lock-two-60l:42425`'
+awk -v workers_line="$fixture60l" -v workers_line2="$fixture60l2" '
+    $0 == "## Live state" { print; print ""; print workers_line; print workers_line2; print "queue: N9"; print "last GO: `#999:deadbeef00`"; print "acked: none"; skip = 1; next }
+    skip && /^## / { skip = 0 }
+    skip { next }
+    { print }
+' "$doc60lA" > "$doc60lA.new" && mv "$doc60lA.new" "$doc60lA"
+printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60lA%.md}.fleet.json"
+rc60l=0
+chief next --bucket llivedst --doc "$doc60lA" >/dev/null 2>&1 || rc60l=$?
+check "60l next succeeds against a doc with a legs: Live state line" "$rc60l" "0"
+live60l="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc60lB" 2>/dev/null)"
+# shellcheck disable=SC2016  # literal fixture text
+check "60l successor Live state seeds the predecessor's open legs block under workers:, dropping the unlisted N8" \
+    "$(printf '%s\n' "$live60l" | grep -Fxc 'workers: `N9:nonce-fixture-60l:lock-fixture-60l:42424`')" "1"
+check "60l the trimmed history keeps the wrapped continuation line of the legs block" \
+    "$(cat "$root"/tester/llivedst/specs/history/chief-live-state-*.md 2>/dev/null | grep -Fc 'N8:nonce-two-60l')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$doc60lA" "$token60l" >/dev/null 2>&1
 
 out6w="$(chief new --bucket wnextrepo)"
 token6w="$(token_of "$out6w")"
@@ -2351,9 +2378,9 @@ chief next --bucket fleet77dst2 --doc "$doc77A" >/dev/null 2>&1
 check "77 no predecessor manifest: successor gets none (no-op)" "$([ -e "$man77C" ] && echo yes || echo no)" "no"
 check "77 no predecessor manifest: step 10 names the successor's own manifest path" \
     "$(grep -Fc "$man77C" "$doc77C" 2>/dev/null)" "1"
-printf '{"schema":1,"legs":["/x/worker.md"]}\n' > "$man77A"
+printf '{"schema":1,"workers":["/x/worker.md"]}\n' > "$man77A"
 chief next --bucket fleet77dst --doc "$doc77A" >/dev/null 2>&1
-check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"legs":["/x/worker.md"]}'
+check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
 check "77 successor step 10 names the carried manifest path" "$(grep -Fc "$man77B" "$doc77B" 2>/dev/null)" "1"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
@@ -3226,15 +3253,15 @@ for i in $(seq 1 20); do legs94="$legs94 \`C$i:nonce-closed-$i:lock-closed-$i:$i
 legs94="$legs94 (KA 01:4x: SHIFT-NOTE-94 closed workers wrapped and pruned)"
 # shellcheck disable=SC2016  # literal fixture text
 go94='last GO: `94:aaaa1111` (ordinary), prior `93:bbbb2222` (PRIOR-GO-94) (prior `92:cccc3333` (older))'
-awk -v legs="$legs94" -v go="$go94" '
-    /^workers:/ { print legs; print "pool-disposition: DEMO-94 question POOL-LINE-94"; next }
+awk -v workers="$legs94" -v go="$go94" '
+    /^workers:/ { print workers; print "pool-disposition: DEMO-94 question POOL-LINE-94"; next }
     /^last GO:/ { print go; next }
     { print }' "$doc94A" > "$doc94A.new" && mv "$doc94A.new" "$doc94A"
-printf '{"legs":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
+printf '{"workers":[{"label":"N1","doc":"%s/x/N1.md"},{"label":"N2","doc":"%s/x/N2.md"}]}\n' "$root" "$root" > "${doc94A%.md}.fleet.json"
 rc94=0
 chief next --bucket trim94dst --doc "$doc94A" >/dev/null 2>&1 || rc94=$?
 live94="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc94B" 2>/dev/null)"
-check "94 next succeeds with 20 closed workers on the legs line" "$rc94" "0"
+check "94 next succeeds with 20 closed workers on the workers line" "$rc94" "0"
 check "94 the successor Live state carries 0 closed workers" "$(printf '%s\n' "$live94" | grep -c 'C[0-9]*:nonce-closed')" "0"
 check "94 the successor Live state keeps open worker N1" "$(printf '%s\n' "$live94" | grep -cF 'N1:n-one:lock-one:11')" "1"
 check "94 the successor Live state keeps open worker N2" "$(printf '%s\n' "$live94" | grep -cF 'N2:n-two:lock-two:22')" "1"
@@ -3248,42 +3275,42 @@ check "94 the history file holds the prior GOs verbatim" "$(grep -cF "$go94" "$h
 check "94 the HANDOFF names the history file" "$(grep -cF "specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md" "$handoff94A" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc94A" "$token94" >/dev/null 2>&1
 
-# 94b: with no fleet manifest the open set is unknown: the legs block is seeded whole and nothing is spilled.
+# 94b: with no fleet manifest the open set is unknown: the workers block is seeded whole and nothing is spilled.
 out94b="$(chief new --bucket trim94b)"
 token94b="$(token_of "$out94b")"
 doc94bA="$root/tester/trim94b/DEMO-nextleg-${today}A-chief.md"
 doc94bB="$root/tester/trim94bdst/DEMO-nextleg-${today}B-chief.md"
-awk -v legs="$legs94" '/^workers:/ { print legs; next } { print }' "$doc94bA" > "$doc94bA.new" && mv "$doc94bA.new" "$doc94bA"
+awk -v workers="$legs94" '/^workers:/ { print workers; next } { print }' "$doc94bA" > "$doc94bA.new" && mv "$doc94bA.new" "$doc94bA"
 rm -f "${doc94bA%.md}.fleet.json"
 chief next --bucket trim94bdst --doc "$doc94bA" >/dev/null 2>&1
 check "94b with no manifest every worker span is seeded" "$(grep -c 'C20:nonce-closed-20' "$doc94bB" 2>/dev/null)" "1"
 check "94b with no manifest no history file is written" "$([ -e "$root/tester/trim94bdst/specs/history" ] && echo yes || echo no)" "no"
 HANDOVER_DIR="$root" bash "$QL" release "$doc94bA" "$token94b" >/dev/null 2>&1
 
-# 94c-94e: seed94 <bucket> <legs line> <manifest json, or - for none> [<existing history text>] runs next on a fresh chief doc.
+# 94c-94e: seed94 <bucket> <workers line> <manifest json, or - for none> [<existing history text>] runs next on a fresh chief doc.
 seed94() {
-    local b="$1" legs="$2" man="$3" pre="${4:-}" out tok A h
+    local b="$1" workers="$2" man="$3" pre="${4:-}" out tok A h
     out="$(chief new --bucket "$b")"; tok="$(token_of "$out")"
     A="$root/tester/$b/DEMO-nextleg-${today}A-chief.md"
     h="$root/tester/${b}dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
-    awk -v legs="$legs" '/^workers:/ { print legs; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
+    awk -v workers="$workers" '/^workers:/ { print workers; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
     if [ "$man" = - ]; then rm -f "${A%.md}.fleet.json"; else printf '%s\n' "$man" > "${A%.md}.fleet.json"; fi
     if [ -n "$pre" ]; then mkdir -p "${h%/*}"; printf '%s\n' "$pre" > "$h"; fi
     if ! chief next --bucket "${b}dst" --doc "$A" >/dev/null 2>&1; then echo "FAIL - seed94 $b: chief next failed"; fails=$((fails+1)); fi
     HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
 }
-man94="{\"legs\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
+man94="{\"workers\":[{\"label\":\"N1\",\"doc\":\"$root/x/N1.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
 
 # 94c: a manifest jq cannot read leaves the block whole and spills nothing.
 seed94 trim94c "$legs94" '{not json'
 doc94cB="$root/tester/trim94cdst/DEMO-nextleg-${today}B-chief.md"
-check "94c a malformed manifest seeds the complete legs block" "$(grep -Fxc "$legs94" "$doc94cB" 2>/dev/null)" "1"
+check "94c a malformed manifest seeds the complete workers block" "$(grep -Fxc "$legs94" "$doc94cB" 2>/dev/null)" "1"
 check "94c a malformed manifest writes no history file" "$([ -e "$root/tester/trim94cdst/specs/history" ] && echo yes || echo no)" "no"
 
 # 94f: a manifest row with no label cannot be matched to its span, so the block stays whole.
-seed94 trim94f "$legs94" "{\"legs\":[{\"doc\":\"$root/x/DEMO-1-N1-worker.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
+seed94 trim94f "$legs94" "{\"workers\":[{\"doc\":\"$root/x/DEMO-1-N1-worker.md\"},{\"label\":\"N2\",\"doc\":\"$root/x/N2.md\"}]}"
 doc94fB="$root/tester/trim94fdst/DEMO-nextleg-${today}B-chief.md"
-check "94f a manifest row with no label seeds the complete legs block" "$(grep -Fxc "$legs94" "$doc94fB" 2>/dev/null)" "1"
+check "94f a manifest row with no label seeds the complete workers block" "$(grep -Fxc "$legs94" "$doc94fB" 2>/dev/null)" "1"
 
 # 94d: a malformed span of an open worker is kept (the tick reads MALFORMED), a closed worker's is dropped.
 # shellcheck disable=SC2016  # literal fixture text

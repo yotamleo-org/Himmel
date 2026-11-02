@@ -2327,6 +2327,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   _HOLLOW_STOP_AT=$((GRAPHIFY_HOLLOW_RETRY_MAX * _hollow_workers))
   _STOP_FILE="$SCRATCH/.graphify-extract-stop"
   _FAILED_FILE="$SCRATCH/.graphify-extract-failed"
+  _CKPT_FILE="$SCRATCH/.graphify-extract-ckpt-failed"
   # Seconds graphify gets to exit after the TERM that stops it at the cap or on
   # hollow retries before it is SIGKILLed (timeout -k does not cover a TERM we send).
   _STOP_KILL_GRACE="${GRAPHIFY_STOP_KILL_GRACE_SECONDS:-30}"
@@ -2345,6 +2346,10 @@ for p in sys.stdin.buffer.read().split(b"\0"):
       case "$line" in
         '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
           printf '%s\n' "$line" >> "$_FAILED_FILE" ;;
+        '[graphify] incremental cache checkpoint failed'*)
+          # graphify keeps going and still reports the chunk done, so a done
+          # chunk is not proof it was cached.
+          printf '%s\n' "$line" >> "$_CKPT_FILE" ;;
       esac
       [ -s "$_STOP_FILE" ] && continue
       case "$line" in
@@ -2379,7 +2384,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # the TERM); a leaked grandchild holding the pipe open cannot hang the run.
   _run_extract() {
     local rem fifo="$SCRATCH/.graphify-extract.fifo" gpid mpid rc=0 i stop_at="" killed=0
-    rm -f "$fifo" "$_STOP_FILE" "$_FAILED_FILE"
+    rm -f "$fifo" "$_STOP_FILE" "$_FAILED_FILE" "$_CKPT_FILE"
     rem="$(_deadline_left)"
     if [ "$rem" != unbounded ] && [ "$rem" -eq 0 ]; then
       echo "refresh-graph-map: run deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s exhausted before this stage" >&2
@@ -2420,6 +2425,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # live out dir's cache (content-keyed, so adding entries is safe) under the
   # promote lock, and leave a marker so an overridden out dir still proves it
   # is graphify's. Never promotes the graph. $1 = optional failed-chunk line.
+  _KEEP_FAILED=0
   _keep_finished_chunks() {
     local note="${1:-}"
     [ -d "$SCRATCH_OUT/cache" ] || [ -n "$note" ] || return 0
@@ -2429,6 +2435,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
        && : > "$OUT_DIR/.graphify_resume_cache"; then
       echo "refresh-graph-map: finished chunks kept in $OUT_DIR/cache (graph NOT promoted); the next run resumes from them" >&2
     else
+      _KEEP_FAILED=1
       echo "refresh-graph-map: WARN could not keep the finished chunks in $OUT_DIR/cache -- the next run restarts from the last promoted cache" >&2
     fi
     if [ -n "$note" ]; then
@@ -2459,6 +2466,10 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     cap*)
       echo "refresh-graph-map: chunk cap ${_stop#cap } reached -- graphify-out left unpromoted, resumable (exit 4)" >&2
       _keep_finished_chunks
+      if [ "$_KEEP_FAILED" -eq 1 ] || [ -s "$_CKPT_FILE" ]; then
+        echo "refresh-graph-map: the chunk cap stop is NOT resumable (finished chunks were not all kept: cache copy or graphify checkpoint failed) -- failing (exit 2)" >&2
+        exit 2
+      fi
       exit 4 ;;
     hollow*)
       read -r _ _fin _ret <<< "$_stop"

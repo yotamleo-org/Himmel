@@ -114,7 +114,7 @@ active = unreleased[0] if unreleased else None  # None: no LATER-VERSION row can
 # owners: live workers and open PRs
 owner = {}
 for k in os.environ.get('VSA_OWNERS', '').split():
-    owner.setdefault(k, 'leg:' + k)
+    owner.setdefault(k, 'worker:' + k)
 workers_from = os.environ.get('VSA_WORKERS_FROM', '')
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
 workers_unknown = (bool(workers_from) and not os.path.isfile(workers_from)) or (not workers_from and not os.environ.get('VSA_OWNERS', '').split())  # manifest named but missing, or neither manifest nor owners: ownership coverage unknown
@@ -131,7 +131,7 @@ if workers_from and os.path.isfile(workers_from):
             if marks and marks[-1] == 'WRAPPED':
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
-                owner.setdefault(k, 'leg:%s%s' % (worker.get('label', '?'), unverified))
+                owner.setdefault(k, 'worker:%s%s' % (worker.get('label', '?'), unverified))
     except (OSError, ValueError, AttributeError):
         workers_unknown = True
 gh = os.environ.get('VSA_GH_CMD', 'gh')

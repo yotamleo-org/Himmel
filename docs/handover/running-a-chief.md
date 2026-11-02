@@ -313,11 +313,25 @@ effort guidance, including the chief's own wake-up budget, is in
   `core-bypass` record (`jira release operator core-bypass <R> --keys <K,…>
   --decision <n> --verbatim-file <f>`), and a key in the in-flight snapshot
   (`jira release operator core-snapshot <R> --keys-file <f>`, written once,
-  at flag-on). Both records are read from every declared release. There is
-  no free-text bypass.
-- **Nothing enforces this yet.** Until the gen-briefs core gate lands, run
-  `jira release core-check` and `spec-check` yourself before you write a core
-  brief, and run a minerva worker for each `CORE` key without `SPEC ok`.
+  when the gate became permanent). Both records are read from every declared
+  release. There is no free-text bypass.
+- **The gate is enforced, with no flag.** `gen-briefs.py` refuses a core
+  worker with no `SPEC ok`, `next-dispatchable.sh` lists such a ticket as a
+  `DESIGN` row, and `brief-lint.sh` (run at every launch, even one that skips
+  the prior-art check) refuses any brief whose title names a key that `core-check`
+  answers `CORE` for without a `SPEC ok` from `spec-check`. `core-check` classifies
+  by the brief's `Writes:` paths (every Writes line is read); a brief with no usable
+  path is classified by the file paths its ticket names in the Jira mirror. A
+  ticket carrying the core label stays `CORE` unless the brief's own `Writes:` line
+  names only docs paths (a design leg, `BYPASS design`); a ticket-derived path never
+  makes one. An absolute path under the handover root counts as a docs-or-state
+  path, never as a core path. A judge brief launched with `--judge` skips the rule
+  (it writes nothing); a judge brief without the flag is gated like any keyed
+  brief. A line written into
+  the brief itself passes nothing, and a Results bullet exempts nothing: an
+  in-flight key passes only through the `core-snapshot` record. A `BYPASS` key
+  is printed as `bypass=<class>` and logged to `core-gate.jsonl` beside the
+  brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per

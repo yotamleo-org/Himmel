@@ -250,7 +250,7 @@ marker exists (CADENCE_ALERT_SEND_FAILED_MARK, default
 ~/.himmel/state/cadence-alert-send-failed): the newest cadence whose failure alert could
 not reach Telegram, and how long ago. A delivered alert removes the marker. Follows station=.
 
-vault=<ok|STALL:<age>,<n>|PUSH-LAG:<age>|skip|unknown> (HIMMEL-4911) is the luna
+vault=<ok|STALL:<age>,<n>[,<reason>]|PUSH-LAG:<age>|skip|unknown> (HIMMEL-4911) is the luna
 vault's commit health, from vault-status.sh (git plumbing only, fail-soft): STALL =
 <n> staged/modified files, the oldest <age> old (the vault's auto-commit is stuck;
 reproduce with the vault's pre-commit hook run, see chief-wait.sh), PUSH-LAG = local commits
@@ -1041,6 +1041,22 @@ for leg in $WORKERS_SPLIT; do
     ident="$(worker_identity "$leg")"
     label="${ident%%$'\t'*}"
     leg_cands="${ident#*$'\t'}"
+    # a worker relaunched from a -RESUME doc runs under <name>-RESUME, under the
+    # full doc stem, or under its original label (N4304 for an N4304b doc) with -RESUME kept:
+    # each is this worker's window, never an unwatched one.
+    case "$leg" in
+        *-RESUME|*-RESUME.md)
+            resume_cands=""
+            for cand in ${leg_cands//,/ }; do
+                resume_cands="$resume_cands,${cand}-RESUME"
+                if [[ $label =~ ^(N[0-9]+)[a-z]+$ ]]; then
+                    orig_cand="$(printf '%s' "$cand" | sed -E "s/-(leg)?${label}(-|\$)/-\\1${BASH_REMATCH[1]}\\2/")"
+                    resume_cands="$resume_cands,${orig_cand}-RESUME"
+                fi
+            done
+            leg_cands="$leg_cands$resume_cands"
+            ;;
+    esac
     for cand in ${leg_cands//,/ }; do
         leg_names="$(csv_add "$leg_names" "$cand")"
     done

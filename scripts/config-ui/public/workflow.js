@@ -104,9 +104,23 @@ function storyMap(model, ix, stats, open) {
       + `<div class="wf-met"><span class="wf-win">${esc(windowLabel(stats))}</span><span class="wf-v${met.none ? " wf-none" : ""}">${esc(met.v)}</span>${met.cap ? `<span class="wf-cap">${esc(met.cap)}</span>` : ""}</div>`
       + `<ol class="wf-steps">${st.map.map((x) => {
         const s = ix.node.get(x.step).step;
-        return `<li>${glyph(ix, { step: x.step }, planned)}<a class="wf-mstep" href="#/workflow?step=${esc(x.step)}">${esc(s.name)}${badge(s)}</a>${x.tag ? `<span class="wf-tag${x.planned ? " wf-pl" : ""}">${esc(x.tag)}</span>` : ""}</li>`;
-      }).join("")}</ol></li>`;
+        // the dot is inside the label's own link, so a narrow column cannot strand it on a line above the label
+        return `<li><a class="wf-mstep" href="#/workflow?step=${esc(x.step)}">${glyph(ix, { step: x.step }, planned)} ${esc(s.name)}${badge(s)}</a>${x.tag ? `<span class="wf-tag${x.planned ? " wf-pl" : ""}">${esc(x.tag)}</span>` : ""}</li>`;
+      }).join("")}</ol>`
+      + `<a class="wf-to wf-open" href="#/workflow?phase=${esc(st.id)}">Open the drill-in ›</a></li>`;
   }).join("")}</ol>`;
+}
+
+// what each mark on the story map's lines means, the always-on note, and what the numbers are (Frame 1 of the approved design)
+const KEY = [
+  ['wf-g wf-s', "a step (worker, check or judge)"], ['wf-g wf-s chief', "a step (chief)"], ['wf-g wf-s you', "a step (you)"],
+  ['wf-g wf-k', "an automatic check"], ['wf-g wf-w', "a way back", "↶"], ['wf-g wf-k wf-pl', "dotted, dashed or italic: planned, pilot, or only sometimes"],
+];
+function mapNotes() {
+  return `<ul class="wf-marks wf-key" aria-label="Key">${KEY.map(([cls, say, ch]) => `<li><span class="${cls}" aria-hidden="true">${ch || ""}</span>${say}</li>`).join("")}`
+    + `<li><code>box</code> on the line: what passes to the next phase</li></ul>`
+    + `<div class="wf-band wf-on"><div><b>Always on, under every phase:</b> each tool call meets himmel's guards first (edits on main, secrets, destructive commands, safe reads; everything else asks). The git checks do the same for every commit and push.</div></div>`
+    + `<p class="wf-tabq">Each phase shows one number: a 7-day measurement from the fleet's own records, not live state. The page reads a rolling 7 days.</p>`;
 }
 
 function outLine(ix, e) {
@@ -173,6 +187,7 @@ function workflowTab(model, ix, ui, stats) {
   return `<p class="wf-tabq"><b>Workflow tab:</b> the system, explained. It shows the path every change takes, with one measured number per phase. It is not a live monitor: nothing here shows what is running right now.</p>`
     + `<div class="wf-band"><span class="wf-ring" aria-hidden="true"></span><div><b>Above the line: the chief's loop.</b> It is not one change, and it runs all the time: wait, read the fleet, pick, brief, start a worker. Each worker it starts enters the line at phase 3. When its shift ends, a new chief takes over the whole fleet; handing over the start and plan work still in flight is planned, not built yet. Its steps are ${above.join(", ")}, in phase 3's drill-in.</div></div>`
     + storyMap(model, ix, stats, open)
+    + mapNotes()
     + walkPanel(model, ix, ui)
     + `<nav class="wf-ctl wf-picker" aria-label="Open a phase">${model.stages.map((s) => `<a class="btn" href="#/workflow?phase=${esc(s.id)}"${open === s.id ? ' aria-current="true"' : ""}>${s.n} · ${esc(s.name)}</a>`).join("")}</nav>`
     + model.stages.map((st) => panel(model, ix, st, stats, open, hl)).join("");

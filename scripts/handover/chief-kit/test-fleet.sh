@@ -40,7 +40,7 @@ mkdir -p "$B" "$LOGS" "$W/bin" "$W/proc"
 cat > "$W/q.mjs" <<'JS'
 import { readFileSync } from 'node:fs';
 const s = JSON.parse(readFileSync(0, 'utf8'));
-const L = (l) => s.legs.find((x) => x.label === l);
+const L = (l) => s.workers.find((x) => x.label === l);
 const r = eval(process.argv[2]);
 process.stdout.write(typeof r === 'string' ? r : JSON.stringify(r));
 JS
@@ -102,7 +102,7 @@ cat > "$B/HIMMEL-nextleg-2026-09-22Z-chief.md" <<'DOC'
 
 ## Live state
 
-legs: `N1:X-N1-a1a1a1a1:cachyos-x8664-pid7001:1001`
+workers: `N1:X-N1-a1a1a1a1:cachyos-x8664-pid7001:1001`
   `N2:X-N2-b2b2b2b2:cachyos-x8664-pid7002:1002`
   `N3:X-N3-c3c3c3c3:cachyos-x8664-pid7003:1003`
   `N4:X-N4-d4d4d4d4:cachyos-x8664-pid7004:1004`
@@ -243,27 +243,27 @@ run --serve --out "$W/x.html" "${COMMON[@]}" >/dev/null 2>&1; eq "--serve with -
 
 # ------------------------------------------------------------------ snapshot
 J="$(run --json "${COMMON[@]}" 2>"$W/err")"
-eq "snapshot is valid JSON with 12 worker rows (9 listed + 3 unlisted held)" "$(printf '%s' "$J" | q 's.legs.length')" "12"
+eq "snapshot is valid JSON with 12 worker rows (9 listed + 3 unlisted held)" "$(printf '%s' "$J" | q 's.workers.length')" "12"
 eq "fleet is 10/15" "$(printf '%s' "$J" | q 's.fleet.live+"/"+s.fleet.cap')" "10/15"
 eq "bank 5h/7d" "$(printf '%s' "$J" | q 's.bank.fiveHour+"/"+s.bank.sevenDay')" "28.0/61.0"
-eq "headed leg: mode" "$(printf '%s' "$J" | q 'L("N1").mode')" "headed"
-eq "headed leg: pid" "$(printf '%s' "$J" | q 'L("N1").pid')" "1001"
-eq "headed leg: model from cmdline" "$(printf '%s' "$J" | q 'L("N1").model')" "claude-opus-5[1m]"
-eq "headed leg: alive" "$(printf '%s' "$J" | q 'L("N1").alive')" "true"
-eq "headed leg: uptime from /proc (5000s up - start 1000s)" "$(printf '%s' "$J" | q 'L("N1").uptimeSec')" "4000"
-eq "headed leg: ticket" "$(printf '%s' "$J" | q 'L("N1").ticket')" "HIMMEL-9001"
-eq "headed leg: lock FRESH" "$(printf '%s' "$J" | q 'L("N1").lock.state')" "FRESH"
-eq "headed leg: status token is the newest marker bullet" "$(printf '%s' "$J" | q 'L("N1").status.token')" "LIVE"
-eq "headed leg: PR joined on the ticket in the open PR title" "$(printf '%s' "$J" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
+eq "headed worker: mode" "$(printf '%s' "$J" | q 'L("N1").mode')" "headed"
+eq "headed worker: pid" "$(printf '%s' "$J" | q 'L("N1").pid')" "1001"
+eq "headed worker: model from cmdline" "$(printf '%s' "$J" | q 'L("N1").model')" "claude-opus-5[1m]"
+eq "headed worker: alive" "$(printf '%s' "$J" | q 'L("N1").alive')" "true"
+eq "headed worker: uptime from /proc (5000s up - start 1000s)" "$(printf '%s' "$J" | q 'L("N1").uptimeSec')" "4000"
+eq "headed worker: ticket" "$(printf '%s' "$J" | q 'L("N1").ticket')" "HIMMEL-9001"
+eq "headed worker: lock FRESH" "$(printf '%s' "$J" | q 'L("N1").lock.state')" "FRESH"
+eq "headed worker: status token is the newest marker bullet" "$(printf '%s' "$J" | q 'L("N1").status.token')" "LIVE"
+eq "headed worker: PR joined on the ticket in the open PR title" "$(printf '%s' "$J" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
 eq "no-PR worker: the description field sits on the row beside the label" "$(printf '%s' "$J" | q 'L("N5").label+"|"+L("N5").description+"|"+String(L("N5").pr)')" "N5|Add a login form|null"
 contains "a worker with no field still carries a description (the H1 fallback)" "$(printf '%s' "$J" | q 'L("N4").description')" "worker"
-eq "headless leg: mode from the launch log" "$(printf '%s' "$J" | q 'L("N2").mode')" "headless"
-eq "headless leg: alive" "$(printf '%s' "$J" | q 'L("N2").alive')" "true"
-eq "headless leg: model" "$(printf '%s' "$J" | q 'L("N2").model')" "claude-sonnet-5"
-contains "headless leg: last session-log line shown" "$(printf '%s' "$J" | q 'L("N2").lastLine')" "wrote file"
+eq "headless worker: mode from the launch log" "$(printf '%s' "$J" | q 'L("N2").mode')" "headless"
+eq "headless worker: alive" "$(printf '%s' "$J" | q 'L("N2").alive')" "true"
+eq "headless worker: model" "$(printf '%s' "$J" | q 'L("N2").model')" "claude-sonnet-5"
+contains "headless worker: last session-log line shown" "$(printf '%s' "$J" | q 'L("N2").lastLine')" "wrote file"
 eq "an ACTION_REQUIRED check is not green" "$(printf '%s' "$J" | q 'L("N3").pr.number+":"+L("N3").pr.ci')" "2003:failing"
-eq "READY leg: PR from the READY bullet, CI green" "$(printf '%s' "$J" | q 'L("N6").pr.number+":"+L("N6").pr.ci')" "2001:green"
-eq "WRAPPED leg: lock state WRAPPED" "$(printf '%s' "$J" | q 'L("N7").lock.state')" "WRAPPED"
+eq "READY worker: PR from the READY bullet, CI green" "$(printf '%s' "$J" | q 'L("N6").pr.number+":"+L("N6").pr.ci')" "2001:green"
+eq "WRAPPED worker: lock state WRAPPED" "$(printf '%s' "$J" | q 'L("N7").lock.state')" "WRAPPED"
 eq "lost lock: FREE" "$(printf '%s' "$J" | q 'L("N8").lock.state')" "FREE"
 eq "unlisted held worker gets a row" "$(printf '%s' "$J" | q 'L("N9").listed')" "false"
 eq "idle-held lock still reads FRESH, flagged idle" "$(printf '%s' "$J" | q 'L("N4").lock.state+":"+L("N4").lock.idle')" "FRESH:true"
@@ -292,7 +292,7 @@ eq "N6: READY awaiting GO" "$(att N6)" "ready"
 eq "N7: WRAPPED but process alive" "$(att N7)" "wrapped-alive"
 eq "N8: lock FREE while process alive" "$(att N8)" "lock-lost"
 eq "N2 (healthy headless) needs nothing" "$(att N2)" ""
-eq "attention rows sort first" "$(printf '%s' "$J" | q 's.legs[0].attention.length>0')" "true"
+eq "attention rows sort first" "$(printf '%s' "$J" | q 's.workers[0].attention.length>0')" "true"
 
 # ------------------------------------------------------------------ safety
 H="$W/fleet.html"
@@ -312,14 +312,14 @@ eq "the snapshot page does not poll" "$(printf '%s' "$HTML" | grep -c 'const LIV
 
 # ------------------------------------------------------------------ degraded sources
 J2="$(FLEET_BANK=/nonexistent FLEET_GH=/nonexistent run --json "${COMMON[@]}" 2>/dev/null)"
-eq "dead bank + gh: still renders every row" "$(printf '%s' "$J2" | q 's.legs.length')" "12"
+eq "dead bank + gh: still renders every row" "$(printf '%s' "$J2" | q 's.workers.length')" "12"
 eq "dead bank: fleet is null, not a made-up 0" "$(printf '%s' "$J2" | q 's.fleet===null')" "true"
 eq "dead gh: warning recorded" "$(printf '%s' "$J2" | q 's.warnings.some(w=>/gh/.test(w))')" "true"
 J3="$(run --json --doc "$DOC" --logs "$W/no-such-logs" --handover-root "$ROOT" 2>/dev/null)"
-eq "absent launch-log dir tolerated" "$(printf '%s' "$J3" | q 's.legs.length')" "12"
+eq "absent launch-log dir tolerated" "$(printf '%s' "$J3" | q 's.workers.length')" "12"
 for AGCMD in /nonexistent "$W/bin/agents-bad"; do
     J4="$(FLEET_AGENTS="$AGCMD" run --json "${COMMON[@]}" 2>/dev/null)"
-    eq "agents source ($(basename "$AGCMD")): every row still renders" "$(printf '%s' "$J4" | q 's.legs.length')" "12"
+    eq "agents source ($(basename "$AGCMD")): every row still renders" "$(printf '%s' "$J4" | q 's.workers.length')" "12"
     eq "agents source ($(basename "$AGCMD")): 'agents: unavailable' warning" "$(printf '%s' "$J4" | q 's.warnings.some(w=>/^agents: unavailable/.test(w))')" "true"
     eq "agents source ($(basename "$AGCMD")): the /proc source still finds headless N2" "$(printf '%s' "$J4" | q 'L("N2").mode')" "headless"
     eq "agents source ($(basename "$AGCMD")): N10 falls back to the Live-state pid (dead, lock held)" "$(printf '%s' "$J4" | q 'L("N10").mode+":"+L("N10").alive')" "?:false"
@@ -344,7 +344,7 @@ chmod +x "$W/bin/queue-lock-partial"
 J6="$(FLEET_QUEUE_LOCK="$W/bin/queue-lock-partial" run --json "${COMMON[@]}" 2>/dev/null)"
 eq "sweep rc=1 with partial rows: sweep unavailable warning" "$(printf '%s' "$J6" | q 's.warnings.some(w=>/queue-lock sweep unavailable/.test(w))')" "true"
 eq "sweep rc=1 with partial rows: N1 lock falls back to UNKNOWN, not the partial row" "$(printf '%s' "$J6" | q 'L("N1").lock.state')" "UNKNOWN"
-eq "sweep rc=1: unlisted-held workers (need the sweep to be found) drop out" "$(printf '%s' "$J6" | q 's.legs.length')" "9"
+eq "sweep rc=1: unlisted-held workers (need the sweep to be found) drop out" "$(printf '%s' "$J6" | q 's.workers.length')" "9"
 
 # rc=20 (a flagged lock) is a COMPLETE sweep, not a failure.
 cat > "$W/bin/queue-lock-flagged" <<'STUB'
@@ -373,7 +373,7 @@ chmod +x "$W/bin/queue-lock-flagged"
 J7="$(FLEET_QUEUE_LOCK="$W/bin/queue-lock-flagged" run --json "${COMMON[@]}" 2>/dev/null)"
 eq "sweep rc=20 (flagged lock): still a complete sweep, no warning" "$(printf '%s' "$J7" | q 's.warnings.some(w=>/queue-lock sweep unavailable/.test(w))')" "false"
 eq "sweep rc=20: N1 lock resolves normally" "$(printf '%s' "$J7" | q 'L("N1").lock.state')" "FRESH"
-eq "sweep rc=20: every row still renders" "$(printf '%s' "$J7" | q 's.legs.length')" "12"
+eq "sweep rc=20: every row still renders" "$(printf '%s' "$J7" | q 's.workers.length')" "12"
 
 # ------------------------------------------------------------------ server
 cat > "$W/srv-test.mjs" <<'JS'
@@ -407,7 +407,7 @@ say(/const LIVE = true/.test(page.body), 'the served page polls');
 say(!/Z-N1-a1a1a1a1|cachyos-x8664-pid7001/.test(page.body), 'the served page holds no nonce or lock token');
 const api = await get('/api/fleet');
 let snap = null; try { snap = JSON.parse(api.body); } catch { /* reported below */ }
-say(api.status === 200 && snap && snap.legs.length === 12, 'GET /api/fleet returns the snapshot');
+say(api.status === 200 && snap && snap.workers.length === 12, 'GET /api/fleet returns the snapshot');
 say(/json/.test(api.headers['content-type'] || ''), '/api/fleet is application/json');
 say(!/Z-N1-a1a1a1a1|cachyos-x8664-pid7001|Z-N2-deadbeef/.test(api.body), '/api/fleet holds no nonce or lock token');
 say((await get('/nope')).status === 404, 'unknown path is 404');
@@ -417,7 +417,7 @@ say((await get('/api/fleet', { headers: { host: 'evil.example:' + port } })).sta
 say(/no-store/.test(api.headers['cache-control'] || ''), 'responses are no-store');
 say(/default-src 'none'/.test(page.headers['content-security-policy'] || ''), 'the page carries a locked-down CSP');
 // A brief edited after the first snapshot shows its new description once the 5 s snapshot cache lapses.
-const n5 = (s) => (s.legs.find((l) => l.label === 'N5') || {}).description;
+const n5 = (s) => (s.workers.find((l) => l.label === 'N5') || {}).description;
 say(n5(snap) === 'Add a login form', 'the first snapshot carries the N5 description');
 fs.writeFileSync(process.env.N5_DOC, fs.readFileSync(process.env.N5_DOC, 'utf8').replace('Add a login form', 'Add a signup form'));
 await new Promise((r) => setTimeout(r, 5500));

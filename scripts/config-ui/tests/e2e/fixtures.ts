@@ -103,6 +103,8 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   const tracker = o.tracker ?? "jira", mirror = join(dir, "mirror"), gh = join(dir, "gh");
   mkdirSync(mirror, { recursive: true });
   if (tracker === "jira") writeFileSync(join(mirror, "HIMMEL-1.md"), '---\nkey: "HIMMEL-1"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: []\nfixVersions: ["v1.1.3"]\nupdated: "2026-10-01T00:00:00.000+0000"\nresolution: null\n---\n\n# HIMMEL-1: e2e ticket\n');
+  const store = join(dir, "tracker-store"); // the local backend reads an empty store here; without it the seam needs a user slug, which CI lacks
+  if (tracker === "local") mkdirSync(store, { recursive: true });
   if (tracker === "github") {
     writeFileSync(gh, `#!/bin/sh\ncase "$1 $2" in\n  "issue list") cat <<'EOF'\n${JSON.stringify(GH_ISSUES)}\nEOF\n  ;;\nesac\n`);
     chmodSync(gh, 0o755);
@@ -125,7 +127,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   const env: Record<string, string | undefined> = {
     ...process.env, HOME: home, CONFIG_UI_HIMMELCTL: join(__dirname, "e2e-stub.js"), CONFIG_UI_IDLE_MS: "300000",
     HIMMEL_REPORT_CADENCE_ROOT: cad, E2E_FEED: feed, STUB_ARGV: argv, STUB_STATE: state,
-    TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL", ...(tracker === "github" ? { GH_CMD: gh } : {}),
+    TRACKER: tracker, HIMMEL_JIRA_MIRROR: mirror, JIRA_PROJECT_KEY: "HIMMEL", ...(tracker === "github" ? { GH_CMD: gh } : {}), ...(tracker === "local" ? { TRACKER_STORE: store } : {}),
     HANDOVER_DIR: hroot, HIMMEL_PROMETHEUS_URL: promUrl, HIMMEL_FLOW_EXPORTER_PORT: "1", E2E_FEED_DELAY_MS: String(o.feedDelayMs ?? 0),
   };
   if (!env.KSTUB_STORE) env.HIMMEL_SECRETS_KEYRING = "off"; // no spec reads the operator's keyring; the Setup account spec brings its own stub

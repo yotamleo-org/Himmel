@@ -1,12 +1,13 @@
 // trackerSources() per source: the rail offers Roadmap and Kanban only when the UI can read a tracker.
-// Jira only, local only, GitHub only, none; a direct #/kanban with no tracker says so in plain words.
+// Jira only, local only (an empty store: nothing to read), GitHub only, none (listed, so both pages can say no tracker is
+// configured); a direct #/kanban with TRACKER=none says so in plain words.
 import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness, type TrackerKind } from "./fixtures";
 
 let h: Harness;
 test.afterEach(async () => { await h?.stop(); });
 
-const RAIL = (tracker: TrackerKind) => tracker === "local" || tracker === "none"
+const RAIL = (tracker: TrackerKind) => tracker === "local"
   ? ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Workflow", "Docs"]
   : ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"];
 
@@ -24,9 +25,9 @@ for (const tracker of ["jira", "local", "github", "none"] as TrackerKind[]) {
   });
 }
 
-test("no tracker: a direct landing on Kanban shows the plain-words empty state, not an empty board", async ({ page }) => {
+test("TRACKER=none: a direct landing on Kanban shows the plain-words no-tracker state, not an empty board", async ({ page }) => {
   await open(page, "none", "kanban");
-  await expect(page.locator(".nodata")).toContainText("No tracker the UI can read is configured");
+  await expect(page.locator(".nodata")).toContainText("No tracker is configured (TRACKER=none)");
   await expect(page.locator(".rm-board")).toHaveCount(0);
 });
 

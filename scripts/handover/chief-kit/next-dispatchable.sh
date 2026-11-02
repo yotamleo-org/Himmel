@@ -53,7 +53,7 @@
 # for another RESUME row; the last in the full pass only), so no in-work ticket vanishes unnamed.
 # A DISPOSITION ... BLOCKED-BY comment hides nothing here: stuck-scan.sh re-checks it.
 #
-# DESIGN rows (only with the core_gate flag on; off, the default, runs nothing and changes no line):
+# DESIGN rows (always on):
 # the built jira CLI (`release core-check`, then `release spec-check` for the core keys; NEXT_DISPATCH_JIRA_CLI replaces
 # its path) says which To Do candidates are core. A core one with no signed minerva spec prints
 # `DESIGN<TAB><KEY><TAB>NO-SPEC|SPEC-STALE<TAB>prio<TAB>version<TAB>title<TAB>files=...` instead of a dispatch row: it takes a
@@ -178,9 +178,6 @@ stacked=0
 # shellcheck disable=SC1091
 if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag stacked_series 2>/dev/null; then stacked=1; fi  # swallow-ok: an unreadable registry or bad value reads as off, which is today's output
 export ND_STACKED="$stacked"
-core_gate=0
-if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag core_gate 2>/dev/null; then core_gate=1; fi  # swallow-ok: an unreadable registry or bad value reads as off, which is today's output
-export ND_CORE_GATE="$core_gate"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
@@ -793,7 +790,7 @@ next_tier = [i for i in cands if tier_of(i) > 4]
 if pool_only:
     cands = [i for i in cands if tier_of(i) <= 4]
 
-# core_gate, only with the flag on (off, the default, runs nothing and changes no line): the built jira CLI says
+# The core gate (permanent): the built jira CLI says
 # which To Do candidates are core and whether each has a signed minerva spec. A core ticket with no `SPEC ok` lists as a
 # `DESIGN <KEY> NO-SPEC|SPEC-STALE` row, not a build row. Fail closed: a check that cannot run lists no To Do row, and a key
 # the mirror lacks (UNKNOWN) is withheld.
@@ -830,7 +827,7 @@ def core_lines(out, keys, spec=False):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
-def core_gate_pass(cs):
+def core_spec_pass(cs):
     # the candidates that may still list (a DESIGN one is recorded in `design`); core-check takes ONE --paths per call, so
     # tickets naming the same files share a call (the calls run in parallel), then spec-check asks once for every CORE key
     mdir = os.path.abspath(mirror)
@@ -876,8 +873,8 @@ def core_gate_pass(cs):
                 design[k] = got[k].split()[0]
     return keep
 
-if os.environ.get('ND_CORE_GATE') == '1' and cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
-    cands = core_gate_pass(cands)
+if cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
+    cands = core_spec_pass(cands)
 
 # held files: live workers, open PRs, --held
 held = []

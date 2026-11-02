@@ -288,7 +288,7 @@ export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 // The call runs on the API lane (decision 288): the lane is on and the account auto-picked unless the caller says
 // otherwise, so an operator's HIMMEL_API_LANE=off still refuses the API call. The lane then alerts and, unless
-// HIMMEL_API_FALLBACK=off, re-runs a call refused before any request once on the subscription (docs/internals/api-lane.md).
+// HIMMEL_API_FALLBACK=off, re-runs a refused or failed call once on the subscription, replaying the stdin prompt (docs/internals/api-lane.md).
 export function apiLaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     ...judgeEnv(env),

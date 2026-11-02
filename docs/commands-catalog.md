@@ -147,7 +147,7 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 
 | Command | Description | Notes |
 |---|---|---|
-| /chief | Himmel checkout; start or hand over a chief. | A chief dispatches implementation workers as separate sessions, rules on their questions via the RETASK channel, gates merges with GO, and arms its successor at 45 % fill — it implements nothing itself. `new` writes the chief doc from the console template and acquires the queue lock on it; `next` writes the successor stub + this session's HANDOFF skeleton. Distinct from /afk-shift (one session, in-process subagents, no lock or successor). Also shipped by the himmel-ops plugin so it runs from any repo (`--project`). |
+| /chief | Himmel checkout; start or hand over a chief. | A chief dispatches implementation workers as separate sessions, rules on their questions via the RETASK channel, gates merges with GO, and arms its successor at 45 % fill — it implements nothing itself. `new` writes the chief doc from the chief template and acquires the queue lock on it; `next` writes the successor stub + this session's HANDOFF skeleton. Distinct from /afk-shift (one session, in-process subagents, no lock or successor). Also shipped by the himmel-ops plugin so it runs from any repo (`--project`). |
 | /handover-arm-resume | Schedule a timed claude relaunch on a handover. | Arm the OS scheduler to relaunch claude at the given time with the given handover. Dedup-guarded. Direct at/crontab invoke. |
 | /handover-commit | Commit *.md changes in an external handover root. |  |
 | /handover-flush | Session-end sweep across handover/* branches. |  |

@@ -540,8 +540,11 @@ log_summary() {
 
 # Surface fire-time evidence: each runner writes its output to a .log next to the
 # runner (rotated per fire), so "armed but never succeeding" is visible here.
+#
+# $2 = "partial" for the two refresh-graph-map logs: their exit 4 is the chunk cap
+# (finished chunks kept, the next run resumes), which is progress, not a failure.
 status_log() {
-    local log="$1" mtime last summary
+    local log="$1" kind="${2:-}" mtime last summary
     if [ -f "$log" ]; then
         mtime=$(date -r "$log" '+%Y-%m-%d %H:%M' 2>/dev/null \
             || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log" 2>/dev/null \
@@ -550,6 +553,9 @@ status_log() {
         echo "  run log    $log (last write: $mtime)"
         if [ -n "$last" ]; then
             echo "             last line: $last"
+        fi
+        if [ "$kind" = "partial" ] && [ "$last" = "[exit rc=4]" ]; then
+            echo "             run outcome: partial progress - stopped at the chunk cap (exit 4, not a failure); the next run resumes from the kept cache"
         fi
         summary=$(log_summary "$log")
         if [ -n "$summary" ]; then
@@ -1017,7 +1023,8 @@ emit_runner() {
     # worker and a cadence-alert fail/clear on its outcome. An empty flow name (the
     # publish worker) skips it: graph-cadence.sh alerts and writes its own rows.
     # skip_rcs are the payload's benign non-failures (semantic rc 3 = bank
-    # skip, structural rc 4 = promote lock busy): neither page nor clear.
+    # skip, structural rc 4 = promote lock busy, refresh-graph-map rc 4 = chunk
+    # cap reached with the finished chunks kept): neither page nor clear.
     local q_flow_lib q_alert_lib
     if [ -n "$flow" ]; then
         q_flow_lib=$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")
@@ -1055,7 +1062,10 @@ cmd_status() {
         else
             echo "not armed  $name$(task_summary "$name")"
         fi
-        status_log "$log"
+        case "$name" in
+            "$TASK_LUNA"|"$TASK_HIMMEL") status_log "$log" partial ;;
+            *) status_log "$log" ;;
+        esac
     done
 }
 
@@ -1235,9 +1245,9 @@ cmd_arm() {
             echo "DRY graphmap-cadence: --ast-only set; the semantic pair ($TASK_LUNA / $TASK_HIMMEL) is skipped entirely"
         else
             echo "DRY graphmap-cadence: would write $CRON_RUNNER_LUNA:"
-            emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna 3 | sed 's/^/    /'
+            emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" | sed 's/^/    /'
             echo "DRY graphmap-cadence: would write $CRON_RUNNER_HIMMEL:"
-            emit_runner "$TASK_HIMMEL" "$payload_himmel" "$q_log_himmel" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-himmel 3 | sed 's/^/    /'
+            emit_runner "$TASK_HIMMEL" "$payload_himmel" "$q_log_himmel" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-himmel "3 4" | sed 's/^/    /'
         fi
         echo "DRY graphmap-cadence: would write $CRON_RUNNER_AST_LUNA:"
         emit_runner "$TASK_AST_LUNA" "$payload_ast_luna" "$q_log_ast_luna" "$q_himmel" "" "$q_graphify_dir" 1 "" graphmap-ast-luna 4 | sed 's/^/    /'
@@ -1321,8 +1331,8 @@ cmd_arm() {
     local tmp_luna="" tmp_himmel=""
     if [ "$AST_ONLY" -eq 0 ]; then
         tmp_luna="$CRON_RUNNER_LUNA.tmp.$$"; tmp_himmel="$CRON_RUNNER_HIMMEL.tmp.$$"
-        emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna 3 > "$tmp_luna"
-        emit_runner "$TASK_HIMMEL" "$payload_himmel" "$q_log_himmel" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-himmel 3 > "$tmp_himmel"
+        emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" > "$tmp_luna"
+        emit_runner "$TASK_HIMMEL" "$payload_himmel" "$q_log_himmel" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-himmel "3 4" > "$tmp_himmel"
         chmod +x "$tmp_luna" "$tmp_himmel"
         own_match_re="(${own_match_re}|${TASK_LUNA}|${TASK_HIMMEL})"
         new_entries="$entry_luna"$'\n'"$entry_himmel"$'\n'"$new_entries"

@@ -23,9 +23,13 @@
 # Findings come from two places, both at the judged head's line numbers:
 #   - a line `finding: <path>[:<line>[-<line>]]` in each prior verdict file
 #     (--verdict-file, or with --qid every non-no-op verdicts/<qid>/*.md that
-#     rules on the judged head); no line means the whole file;
+#     rules on the judged head); no line means the whole file. A judged head that only
+#     a `delta: no-op` record rules on is read through that record's `delta-judged:`
+#     line to the real judged head (one hop; a no-op is never itself a judged head),
+#     and the delta runs from that real head;
 #   - every `kind":"finding` row of the CR ledger whose head is the judged head
 #     (default <git-common-dir>/cr-critic-scores.jsonl): its file and line.
+# A fail-closed or path-match trust prints its reason on stderr; stdout stays one word.
 # A NO-GO verdict that names no `finding:` line classifies finding, never none:
 # its findings exist only as prose, so any delta needs a judge.
 #
@@ -33,35 +37,36 @@
 set -u
 
 fin() { printf '%s\n' "$1"; exit 0; }
-trust() { fin trust; }
+# trust [reason...]: print trust; a reason goes to stderr so a fail-closed fallback is not read as a path match
+trust() { [ "$#" -eq 0 ] || printf 'delta-class: trust: %s\n' "$*" >&2; fin trust; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/git-clean.sh
 # shellcheck disable=SC1091
-. "$HERE/../../lib/git-clean.sh" 2>/dev/null || trust # swallow-ok: an unloadable scrub lib fails closed to trust on this line
+. "$HERE/../../lib/git-clean.sh" 2>/dev/null || trust "cannot load the git scrub library" # swallow-ok: an unloadable scrub lib fails closed to trust on this line
 git_env_scrub
 QID="" LEDGER="" TRUSTF="" VREPO="" VFILES=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --qid) [ "$#" -ge 2 ] || trust; QID=$2; shift 2 ;;
-        --repo) [ "$#" -ge 2 ] && [ -n "$2" ] || trust; VREPO=$2; shift 2 ;;
-        --verdict-file) [ "$#" -ge 2 ] || trust; VFILES+=("$2"); shift 2 ;;
-        --ledger) [ "$#" -ge 2 ] || trust; LEDGER=$2; shift 2 ;;
-        --trust-file) [ "$#" -ge 2 ] || trust; TRUSTF=$2; shift 2 ;;
+        --qid) [ "$#" -ge 2 ] || trust "--qid needs a value"; QID=$2; shift 2 ;;
+        --repo) [ "$#" -ge 2 ] && [ -n "$2" ] || trust "--repo needs a non-empty value"; VREPO=$2; shift 2 ;;
+        --verdict-file) [ "$#" -ge 2 ] || trust "--verdict-file needs a value"; VFILES+=("$2"); shift 2 ;;
+        --ledger) [ "$#" -ge 2 ] || trust "--ledger needs a value"; LEDGER=$2; shift 2 ;;
+        --trust-file) [ "$#" -ge 2 ] || trust "--trust-file needs a value"; TRUSTF=$2; shift 2 ;;
         *) break ;;
     esac
 done
-[ "$#" -eq 2 ] || trust
+[ "$#" -eq 2 ] || trust "expected exactly two heads, the judged head and the new head"
 J=$1 N=$2
 for h in "$J" "$N"; do
-    case "$h" in *[!0123456789abcdef]*) trust ;; esac
-    [ "${#h}" -eq 40 ] || trust
-    git cat-file -e "$h^{commit}" 2>/dev/null || trust
+    case "$h" in *[!0123456789abcdef]*) trust "head '$h' is not lowercase hex" ;; esac
+    [ "${#h}" -eq 40 ] || trust "head '$h' is not a full 40-char sha"
+    git cat-file -e "$h^{commit}" 2>/dev/null || trust "head $h is not a commit in this checkout"
 done
-command -v jq >/dev/null 2>&1 || trust
-[ -n "$QID" ] || [ "${#VFILES[@]}" -gt 0 ] || trust
+command -v jq >/dev/null 2>&1 || trust "jq is not installed"
+[ -n "$QID" ] || [ "${#VFILES[@]}" -gt 0 ] || trust "no --qid or --verdict-file given"
 
-work=$(mktemp -d "${TMPDIR:-/tmp}/delta-class.XXXXXX") || trust # prim-ok: a read-only classifier's scratch dir, removed by the EXIT trap
+work=$(mktemp -d "${TMPDIR:-/tmp}/delta-class.XXXXXX") || trust "cannot make a scratch directory" # prim-ok: a read-only classifier's scratch dir, removed by the EXIT trap
 trap 'rm -rf "$work"' EXIT
 
 # read-sink-ok: the path is a verdict file the chief names; the classifier only parses it and prints one word
@@ -73,65 +78,93 @@ verdict_head() { verdict_line "$1" | sed -nE 's/^\*\*(GO|NO-GO)\*\* for head `([
 
 # --qid: the prior verdicts are every real (non no-op) record in the qid's dir for the judged head.
 if [ -n "$QID" ]; then
-    case "$QID" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) trust ;; esac
+    case "$QID" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._-]*) trust "qid '$QID' is not a usable verdict directory name" ;; esac
     # shellcheck source=scripts/lib/go-gate.sh
     # shellcheck disable=SC1091
-    . "$HERE/../../lib/go-gate.sh" 2>/dev/null || trust
+    . "$HERE/../../lib/go-gate.sh" 2>/dev/null || trust "cannot load go-gate.sh"
     # shellcheck source=scripts/lib/handover-path.sh
     # shellcheck disable=SC1091
-    . "$HERE/../../lib/handover-path.sh" 2>/dev/null || trust
+    . "$HERE/../../lib/handover-path.sh" 2>/dev/null || trust "cannot load handover-path.sh"
     anchor="$(cd "$HERE/../../.." && pwd)"
-    root=$(go_resolve_root "$anchor") || trust
-    scope=$(go_verdict_scope "$anchor" "$VREPO") || trust
-    for f in "$root/$scope/verdicts/$QID"/*.md; do
-        [ -f "$f" ] || continue
-        [ -r "$f" ] || trust
-        grep -qx 'delta: no-op' "$f" && continue
-        [ "$(verdict_head "$f")" = "$J" ] || continue
-        VFILES+=("$f")
-    done
-    [ "${#VFILES[@]}" -gt 0 ] || trust
+    root=$(go_resolve_root "$anchor") || trust "cannot resolve the handover root"
+    scope=$(go_verdict_scope "$anchor" "$VREPO") || trust "cannot resolve the verdict scope for repo '$VREPO'"
+    collect_real() {
+        for f in "$root/$scope/verdicts/$QID"/*.md; do
+            [ -f "$f" ] || continue
+            [ -r "$f" ] || trust "verdict file $f is unreadable"
+            grep -qx 'delta: no-op' "$f" && continue
+            [ "$(verdict_head "$f")" = "$J" ] || continue
+            VFILES+=("$f")
+        done
+    }
+    n0=${#VFILES[@]}
+    collect_real
+    # A judged head that only a delta-noop record rules on (no real verdict does) is read through
+    # that record to the real judged head it rests on (`delta-judged:`), so the delta stays
+    # cumulative from the last real judge. The no-op itself never counts as a judged head: its
+    # target must carry a real verdict, so a no-op that names another no-op ends in trust below.
+    if [ "${#VFILES[@]}" -eq "$n0" ]; then
+        JR=""
+        for f in "$root/$scope/verdicts/$QID"/*.md; do
+            [ -f "$f" ] || continue
+            grep -qx 'delta: no-op' "$f" || continue
+            [ "$(verdict_head "$f")" = "$J" ] || continue
+            [ "$(verdict_word "$f")" = GO ] || trust "delta-noop record $f is not a GO"
+            d=$(tr -d '\r' < "$f" | sed -nE 's/^delta-judged: ([0-9a-f]{40})$/\1/p') # read-sink-ok: the path is a verdict file in the qid's dir; the classifier only parses it
+            [ -n "$d" ] && [ "$(printf '%s\n' "$d" | wc -l)" -eq 1 ] || trust "delta-noop record $f names no single delta-judged head"
+            [ -z "$JR" ] || [ "$JR" = "$d" ] || trust "delta-noop records for $J name different judged heads"
+            JR=$d
+        done
+        if [ -n "$JR" ]; then
+            git cat-file -e "$JR^{commit}" 2>/dev/null || trust "delta-judged head $JR is not a commit in this checkout"
+            # the new head must still descend from the head the caller gave: a history rewritten past the no-op is no delta of it
+            git merge-base --is-ancestor "$J" "$N" 2>/dev/null || trust "new head $N does not descend from the supplied no-op head $J"
+            J=$JR
+            collect_real
+        fi
+    fi
+    [ "${#VFILES[@]}" -gt 0 ] || trust "no real verdict under qid $QID rules on judged head $J"
 fi
 
 # Trust list: origin/main's copy unless a file is named.
 if [ -z "$TRUSTF" ]; then
     TRUSTF="$work/trust.txt"
-    git show origin/main:scripts/ci/ci-trust-paths.txt > "$TRUSTF" 2>/dev/null || trust
+    git show origin/main:scripts/ci/ci-trust-paths.txt > "$TRUSTF" 2>/dev/null || trust "cannot read scripts/ci/ci-trust-paths.txt from origin/main"
 fi
-[ -r "$TRUSTF" ] || trust
+[ -r "$TRUSTF" ] || trust "trust list $TRUSTF is unreadable"
 grep -vE '^[[:space:]]*(#|$)' "$TRUSTF" > "$work/patterns.txt" 2>/dev/null
-[ -s "$work/patterns.txt" ] || trust
+[ -s "$work/patterns.txt" ] || trust "trust list $TRUSTF holds no pattern"
 
 # Changed paths (renames as delete + add, so both names are listed), one per line.
-git diff --name-only -z --no-renames --no-ext-diff --no-relative "$J" "$N" -- >"$work/names.z" 2>/dev/null || trust
+git diff --name-only -z --no-renames --no-ext-diff --no-relative "$J" "$N" -- >"$work/names.z" 2>/dev/null || trust "cannot list the changed paths of $J..$N"
 : > "$work/names.txt"
 while IFS= read -r -d '' p; do
-    case "$p" in *$'\n'*) trust ;; esac
+    case "$p" in *$'\n'*) trust "a changed path holds a newline" ;; esac
     printf '%s\n' "$p" >> "$work/names.txt"
 done < "$work/names.z"
 
 # Trust check list: when the delta holds a merge-forward, a path only main changed is
 # not the PR's change (its blob equals origin/main's at both heads), unless a merge's
 # remerge-diff names it (a conflict resolution is PR-authored).
-cp "$work/names.txt" "$work/trust-names.txt" || trust
+cp "$work/names.txt" "$work/trust-names.txt" || trust "cannot copy the changed path list"
 anc=0
-if git merge-base --is-ancestor "$J" "$N" 2>/dev/null; then anc=1; else [ "$?" -eq 1 ] || trust; fi
+if git merge-base --is-ancestor "$J" "$N" 2>/dev/null; then anc=1; else [ "$?" -eq 1 ] || trust "cannot tell whether $N descends from $J"; fi
 # a new head that does not descend from the judged head (a rewritten history) is no delta of it
-[ "$anc" -eq 1 ] || trust
+[ "$anc" -eq 1 ] || trust "new head $N does not descend from judged head $J"
 if [ "$anc" -eq 1 ]; then
-    git rev-list --merges "$J..$N" > "$work/merges.txt" 2>/dev/null || trust
+    git rev-list --merges "$J..$N" > "$work/merges.txt" 2>/dev/null || trust "cannot list the merges of $J..$N"
     if [ -s "$work/merges.txt" ]; then
-        mbN=$(git merge-base origin/main "$N" 2>/dev/null) || trust # swallow-ok: no merge base fails closed to trust on this line
-        mbJ=$(git merge-base origin/main "$J" 2>/dev/null) || trust # swallow-ok: no merge base fails closed to trust on this line
+        mbN=$(git merge-base origin/main "$N" 2>/dev/null) || trust "no merge base of origin/main and $N" # swallow-ok: no merge base fails closed to trust on this line
+        mbJ=$(git merge-base origin/main "$J" 2>/dev/null) || trust "no merge base of origin/main and $J" # swallow-ok: no merge base fails closed to trust on this line
         : > "$work/authored.txt"
         while IFS= read -r m; do
             # remerge-diff skips an octopus merge without failing, so only a two-parent merge is read
-            mline=$(git rev-list --parents -n 1 "$m" 2>/dev/null) || trust # swallow-ok: an unreadable merge fails closed to trust on this line
+            mline=$(git rev-list --parents -n 1 "$m" 2>/dev/null) || trust "cannot read merge $m" # swallow-ok: an unreadable merge fails closed to trust on this line
             read -r -a mparts <<< "$mline"
-            [ "${#mparts[@]}" -eq 3 ] || trust
-            git show --remerge-diff --name-only -z --format= --no-ext-diff --no-relative "$m" > "$work/remerge.z" 2>/dev/null || trust
+            [ "${#mparts[@]}" -eq 3 ] || trust "merge $m is not a two-parent merge"
+            git show --remerge-diff --name-only -z --format= --no-ext-diff --no-relative "$m" > "$work/remerge.z" 2>/dev/null || trust "cannot read the remerge diff of merge $m"
             while IFS= read -r -d '' p; do
-                case "$p" in *$'\n'*) trust ;; esac
+                case "$p" in *$'\n'*) trust "a remerge path holds a newline" ;; esac
                 printf '%s\n' "$p" >> "$work/authored.txt"
             done < "$work/remerge.z"
         done < "$work/merges.txt"
@@ -141,12 +174,12 @@ if [ "$anc" -eq 1 ]; then
         while IFS= read -r p; do
             grep -qxF -- "$p" "$work/authored.txt" 2>/dev/null
             g=$?
-            [ "$g" -le 1 ] || trust
+            [ "$g" -le 1 ] || trust "cannot read the list of PR-authored paths"
             if [ "$g" -eq 1 ]; then
-                bn=$(blob_of "$N" "$p") || trust
-                bmn=$(blob_of "$mbN" "$p") || trust
-                bj=$(blob_of "$J" "$p") || trust
-                bmj=$(blob_of "$mbJ" "$p") || trust
+                bn=$(blob_of "$N" "$p") || trust "cannot read the tree entry of $p at $N"
+                bmn=$(blob_of "$mbN" "$p") || trust "cannot read the tree entry of $p at the merge base of origin/main and $N"
+                bj=$(blob_of "$J" "$p") || trust "cannot read the tree entry of $p at $J"
+                bmj=$(blob_of "$mbJ" "$p") || trust "cannot read the tree entry of $p at the merge base of origin/main and $J"
                 if [ "$bn" = "$bmn" ] && [ "$bj" = "$bmj" ]; then continue; fi
             fi
             printf '%s\n' "$p" >> "$work/trust-names.txt"
@@ -156,7 +189,7 @@ fi
 
 while IFS= read -r pat; do
     grep -Eq -e "$pat" "$work/trust-names.txt" 2>/dev/null
-    case $? in 0|2) trust ;; esac
+    case $? in 0) trust "a changed path matches trust pattern $pat" ;; 2) trust "trust pattern $pat is not a valid regex" ;; esac
 done < "$work/patterns.txt"
 
 # Findings, as <path><TAB><first line><TAB><last line>; the lines are empty for a whole file.
@@ -164,9 +197,9 @@ done < "$work/patterns.txt"
 nogo_prose=0
 re='^finding:[[:space:]]+([^[:space:]:]+)(:([0-9]+)(-([0-9]+))?)?[[:space:]]*$'
 for f in "${VFILES[@]}"; do
-    [ -r "$f" ] || trust
-    [ -n "$(verdict_word "$f")" ] || trust
-    [ "$(verdict_head "$f")" = "$J" ] || trust
+    [ -r "$f" ] || trust "verdict file $f is unreadable"
+    [ -n "$(verdict_word "$f")" ] || trust "verdict file $f has no GO or NO-GO verdict line"
+    [ "$(verdict_head "$f")" = "$J" ] || trust "verdict file $f rules on another head than $J"
     n=0
     while IFS= read -r line || [ -n "$line" ]; do
         line=${line%$'\r'}
@@ -175,29 +208,29 @@ for f in "${VFILES[@]}"; do
             printf '%s\t%s\t%s\n' "${BASH_REMATCH[1]}" "$lo" "$hi" >> "$work/findings.tsv"
             n=$((n + 1))
         else
-            case $line in finding:*) trust ;; esac
+            case $line in finding:*) trust "a finding line in $f does not parse" ;; esac
         fi
     done < "$f"
     [ "$n" -gt 0 ] || [ "$(verdict_word "$f")" != NO-GO ] || nogo_prose=1
 done
 
 if [ -z "$LEDGER" ]; then
-    common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || trust # swallow-ok: no git dir fails closed to trust on this line
+    common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || trust "cannot find the git common dir" # swallow-ok: no git dir fails closed to trust on this line
     LEDGER="$common/cr-critic-scores.jsonl"
 fi
-[ -r "$LEDGER" ] || trust
+[ -r "$LEDGER" ] || trust "ledger $LEDGER is unreadable"
 grep -F -- "$J" "$LEDGER" > "$work/rows.jsonl" 2>/dev/null
-[ $? -le 1 ] || trust
+[ $? -le 1 ] || trust "cannot search ledger $LEDGER"
 jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") != ""))
     | [.file, ((.line // "") | tostring | if test("^[0-9]+$") then . else "" end)] | "\(.[0])\t\(.[1])\t\(.[1])"' \
-    "$work/rows.jsonl" >> "$work/findings.tsv" 2>/dev/null || trust
+    "$work/rows.jsonl" >> "$work/findings.tsv" 2>/dev/null || trust "cannot read the finding rows of ledger $LEDGER"
 
 [ "$nogo_prose" -eq 0 ] || fin finding
 # a ledger finding that names no file cannot be matched to any hunk, so it needs a judge
 [ -z "$(jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") == "")) | "x"' "$work/rows.jsonl")" ] || fin finding
 
 # Old-side line ranges the delta rewrites; an insertion counts as touching the line it follows and the next.
-git -c core.quotePath=false diff -U0 --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust
+git -c core.quotePath=false diff -U0 --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust "cannot diff $J..$N"
 awk '
     /^diff --git / { inh = 1; path = ""; next }
     inh && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); if (p ~ /^"/) bad = 1; if (p == "/dev/null") path = ""; else { sub(/^a\//, "", p); path = p }; next }
@@ -211,10 +244,10 @@ awk '
         if (b == 0) { s = a; e = a + 1 } else { s = a; e = a + b - 1 }
         print path "\t" s "\t" e
     }
-    END { exit bad ? 3 : 0 }' "$work/patch.txt" > "$work/hunks.tsv" || trust
+    END { exit bad ? 3 : 0 }' "$work/patch.txt" > "$work/hunks.tsv" || trust "the patch of $J..$N holds a quoted path"
 
 # A binary change has no hunks, so a finding on a path git reports as binary counts as touched.
-git -c core.quotePath=false diff --numstat -z --no-renames --no-ext-diff --no-textconv --no-relative "$J" "$N" -- > "$work/numstat.z" 2>/dev/null || trust
+git -c core.quotePath=false diff --numstat -z --no-renames --no-ext-diff --no-textconv --no-relative "$J" "$N" -- > "$work/numstat.z" 2>/dev/null || trust "cannot read the numstat of $J..$N"
 : > "$work/binary.txt"
 while IFS= read -r -d '' rec; do
     case "$rec" in
@@ -226,8 +259,8 @@ while IFS=$'\t' read -r fp lo hi; do
     [ -n "$fp" ] || continue
     # a finding must name a repo-root file the judged head holds: any other spelling
     # (absolute, dot segment, directory, absent path) cannot be matched to a hunk
-    case "/$fp/" in */./*|*/../*|//*) trust ;; esac
-    [ "$(git cat-file -t "$J:$fp" 2>/dev/null)" = blob ] || trust # swallow-ok: an unreadable path fails closed to trust on this line
+    case "/$fp/" in */./*|*/../*|//*) trust "finding path '$fp' is not a plain repo-root path" ;; esac
+    [ "$(git cat-file -t "$J:$fp" 2>/dev/null)" = blob ] || trust "finding path '$fp' is not a file at $J" # swallow-ok: an unreadable path fails closed to trust on this line
     if [ -z "$lo" ]; then
         grep -qxF -- "$fp" "$work/names.txt" && fin finding
     fi

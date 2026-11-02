@@ -1440,7 +1440,85 @@ _c24_cron_has_task() {
     grep -qE "# ${task}\$" <<< "$cron"
 }
 
+# _c24_dead_cron_paths — for each uncommented crontab row tagged "# HIMMEL-<name>", print "<name>: <path>"
+# for every absolute path that does not exist: the row's command word, and every absolute script path
+# (.sh .py .mjs .cjs .js .ts) on the row or on a line of its runner when the command is a readable #! file.
+# Lines are read word by word with shell punctuation stripped, not parsed as shell, so a script is found after
+# a separator, inside $( ) or ( ), or behind an interpreter flag. A word that follows a --long option is
+# data, not a script; a word that whitespace splitting cut is skipped. A path that never reaches such a word
+# (inside ${X:-/p}, behind a variable, with a space) is not judged. Read-only.
+# ponytail: word split plus a script-extension filter, so a script with another extension is missed and a
+# generated data file with a script extension that does not exist yet would read as dead; upgrade path is
+# bash -n tokenising or shlex in python.
+# _c24_word_path <word> — sets _c24_p to the path a word names with quotes and backslashes removed; rc 1
+# when the word is one half of a quoted or escaped path that whitespace splitting cut.
+_c24_word_path() {
+    local w="$1" dq sq
+    _c24_p=""
+    case "$w" in *\\) return 1 ;; esac
+    dq="${w//[^\"]/}"; sq="${w//[^\']/}"
+    [ $((${#dq} % 2)) -eq 0 ] && [ $((${#sq} % 2)) -eq 0 ] || return 1
+    w="${w//\\/}"; w="${w//\"/}"; w="${w//\'/}"
+    _c24_p="$w"
+}
+# _c24_line_paths <words...> — prints each absolute script path a line of words names.
+_c24_line_paths() {
+    local w prev="" before
+    for w in "$@"; do
+        before="$prev"; prev="$w"
+        _c24_word_path "$w" || continue
+        while :; do
+            case "$_c24_p" in '$'*|'('*|'{'*|'<'*|'>'*|'&'*|'|'*|'!'*|'`'*) _c24_p="${_c24_p:1}" ;; *) break ;; esac
+        done
+        while :; do
+            case "$_c24_p" in *')'|*'}'|*';'|*'|'|*'&'|*'`') _c24_p="${_c24_p%?}" ;; *) break ;; esac
+        done
+        case "$before" in --*) continue ;; esac
+        case "$_c24_p" in /*.sh|/*.py|/*.mjs|/*.cjs|/*.js|/*.ts) printf '%s\n' "$_c24_p" ;; esac
+    done
+}
+_c24_dead_cron_paths() {
+    local cron line task cmd words w p runner rline rwords
+    cron="$(crontab -l 2>/dev/null)" || return 0
+    while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in '#'*) continue ;; *'# HIMMEL-'*) ;; *) continue ;; esac
+        task="${line##*# }"
+        read -r _ _ _ _ _ cmd <<< "$line"
+        cmd="${cmd%% # HIMMEL-*}"
+        read -r -a words <<< "$cmd"
+        runner=""
+        for w in ${words[@]+"${words[@]}"}; do
+            _c24_word_path "$w" || break
+            case "$_c24_p" in *=*) continue ;; esac
+            case "$_c24_p" in /*) runner="$_c24_p"; [ -e "$runner" ] || printf '%s: %s\n' "$task" "$runner" ;; esac
+            break
+        done
+        while IFS= read -r p; do
+            [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+        done < <(_c24_line_paths ${words[@]+"${words[@]}"})
+        # The runner is a generated #! script that names the scripts it runs.
+        if [ -n "$runner" ] && [ -f "$runner" ] && [ -r "$runner" ]; then
+            IFS= read -r -n 2 rline < "$runner" || true
+            [ "$rline" = '#!' ] || continue
+            while IFS= read -r rline; do
+                rline="${rline#"${rline%%[![:space:]]*}"}"
+                case "$rline" in '#'*) continue ;; esac
+                read -r -a rwords <<< "$rline"
+                while IFS= read -r p; do
+                    [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+                done < <(_c24_line_paths ${rwords[@]+"${rwords[@]}"})
+            done < "$runner"
+        fi
+    done <<< "$cron"
+}
+
 check_c24() {
+    local dead; dead="$(_c24_dead_cron_paths | sort -u)"
+    if [ -n "$dead" ]; then
+        emit FAIL C24-cadence-registry "an installed cron runner calls a path that does not exist: $(printf '%s' "$dead" | tr '\n' ';' | sed 's/;$//; s/;/; /g')" \
+            "re-arm that cadence with its script's 'arm --force' (failure review: bash scripts/eval/worker-digest/failure-review-cadence.sh arm --force --time <HH:MM> --vault <vault> [--live]); himmel-update re-arms a failure-review runner whose script moved in the rename"
+    fi
     local registry; registry="$(observability_registry_path)"
     if [ ! -f "$registry" ]; then
         emit OK C24-cadence-registry "no cadence observability registry yet (nothing expected)"

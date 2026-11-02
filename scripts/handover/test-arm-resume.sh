@@ -4445,7 +4445,7 @@ assert_rc "LTA cron sweep preserves the entry" 0 "$rc"
 fi
 
 # ---------------------------------------------------------------------------
-# one file per leg: arming the second half of a split worker is
+# one file per worker: arming the second half of a split worker is
 # refused (rc 17).
 #
 # The 2026-08-17 incident: one worker wrote session-25 (state) AND session-26

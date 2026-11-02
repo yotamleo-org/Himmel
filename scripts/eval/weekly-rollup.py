@@ -27,7 +27,7 @@ Sources, none of them a new pipeline:
   chief_pool_cost_eq           the per-ticket usage store (usage-compute.sh records,
                                HIMMEL_USAGE_STORE, default ~/.himmel/state/usage) for the
                                tickets merged in the window. Start = chief sessions titled
-                               with the ticket key (totals.console); build = legs + judges;
+                               with the ticket key (totals.console); build = workers + judges;
                                cost-eq uses the burn weights, subagents included.
                                start_share_pct is the share spent before the build;
                                ticket_costs lists {ticket,start,build} per ticket. Chief
@@ -229,7 +229,7 @@ def kind_cost(r, *kinds):
 
 
 def usage_cols(tickets, recs):
-    """Start (chief sessions titled with the ticket) and build (legs and judges) per ticket.
+    """Start (chief sessions titled with the ticket) and build (workers and judges) per ticket.
     The _chief pool is chief cost tied to no ticket: listed, never allocated."""
     cols = {"start_cost_eq": None, "build_cost_eq": None, "start_share_pct": None,
             "cost_per_ticket_median": None, "ticket_costs": None, "chief_pool_cost_eq": None}
@@ -283,7 +283,7 @@ def build_row(kind, key, t0, t1, a):
         "red_main": sr["red_main"] if sr else None,
         "cost_eq": num(cost) if workers else None,
         "cost_eq_per_ticket": num(ticket_cost / n_t) if n_t else None,
-        "legs": workers,
+        "workers": workers,
         **ucols,
         "cache_hit_pct": cache,
         "flake_rows": flakes,
@@ -427,7 +427,7 @@ def cmd_review(a):
         sfmt(r["merges"]), dfmt(d["merges"], plain), vs, sfmt(r["tickets"]), dfmt(d["tickets"], plain),
         sfmt(r["fix_share_pct"], "%"), dfmt(d["fix_share_pct"], plain), sfmt(r["days"], "d")))
     print("cost: cost-eq=%s workers=%s per-ticket=%s (%s%s)" % (
-        kfmt(r["cost_eq"]), r["legs"], kfmt(r["cost_eq_per_ticket"]), dfmt(d["cost_eq_per_ticket"], kfmt), vs))
+        kfmt(r["cost_eq"]), r.get("workers", r.get("legs")), kfmt(r["cost_eq_per_ticket"]), dfmt(d["cost_eq_per_ticket"], kfmt), vs))
     print("health: red-main=%s (%s) cache-hit=%s (%s) flakes=%s (%s); failure and denial rates: no source yet" % (
         sfmt(r["red_main"]), dfmt(d["red_main"], plain), sfmt(r["cache_hit_pct"], "%"), dfmt(d["cache_hit_pct"], plain),
         sfmt(r["flake_rows"]), dfmt(d["flake_rows"], plain)))

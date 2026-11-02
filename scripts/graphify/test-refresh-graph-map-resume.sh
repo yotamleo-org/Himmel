@@ -127,6 +127,8 @@ for i in "${todo[@]}"; do
       '[graphify] chunk of 38 still hollow after 3 attempt(s) — giving up on this chunk. Its files are marked for re-extraction on the next run.' >&2
     wait_for_stop
   fi
+  # Like graphify, a failed incremental checkpoint is announced and the chunk still reports done.
+  [ "${STUB_CKPT_FAIL_AT:-0}" != "$k" ] || echo "[graphify] incremental cache checkpoint failed: stub" >&2
   echo "[graphify extract] chunk $index/$m done" >&2
   [ "${STUB_WAIT_CHUNK:-0}" != "$k" ] || wait_for_stop
   [ "${STUB_DIE_AFTER:-0}" = "$k" ] && exit 137
@@ -196,6 +198,23 @@ out=$( STUB_CHUNKS=6 GRAPHIFY_MAX_CHUNKS_PER_RUN=3 run_refresh 2>&1 ); rc=$?
 calls=$(tr '\n' ' ' < "$STUB_CALLS" 2>/dev/null)
 [ "$calls" = "c4 c5 c6 " ] && pass "R3 only the uncached chunks were called" || fail "R3 should call only c4 c5 c6, called: $calls"
 [ -f "$OUTD/graph.json" ] && pass "R3 the graph is promoted" || fail "R3 graph.json was not promoted"
+
+# --- R2b: a capped run whose finished chunks cannot be kept is NOT resumable,
+# so it must fail (rc 2), never exit the resumable rc 4. ---
+echo "R2b: a chunk-cap stop that cannot keep its chunks exits 2, not 4"
+reset
+mkdir -p "$OUTD"; : > "$OUTD/cache"
+out=$( STUB_CHUNKS=6 STUB_WAIT_CHUNK=3 GRAPHIFY_MAX_CHUNKS_PER_RUN=3 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && pass "R2b exits 2 (cap reached, chunks not kept)" || fail "R2b should exit 2 (got $rc): $out"
+echo "$out" | grep -q 'could not keep the finished chunks' && pass "R2b the keep failure is reported" || fail "R2b stderr should report the keep failure: $out"
+
+# --- R2c: graphify announces a failed incremental checkpoint and still reports
+# the chunk done; a cap stop after that is not trustworthy progress (rc 2). ---
+echo "R2c: a chunk-cap stop after a failed checkpoint exits 2, not 4"
+reset
+out=$( STUB_CHUNKS=6 STUB_WAIT_CHUNK=3 STUB_CKPT_FAIL_AT=2 GRAPHIFY_MAX_CHUNKS_PER_RUN=3 run_refresh 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && pass "R2c exits 2 (cap reached after a failed checkpoint)" || fail "R2c should exit 2 (got $rc): $out"
+echo "$out" | grep -q 'checkpoint failed' && pass "R2c the checkpoint failure is reported" || fail "R2c stderr should report the checkpoint failure: $out"
 
 # --- R4: the default cap derives from the deadline over seconds-per-chunk. ---
 echo "R4: the cap is the run deadline divided by the seconds per chunk"

@@ -1,11 +1,13 @@
-// roadmap.ts — the read-side behind GET /api/roadmap. The Jira mirror, the plan dir, the drift log and the
-// workers are read LIVE on every request; nothing here writes or executes anything. Semantics are a port of
+// roadmap.ts — the read-side behind GET /api/roadmap. The Jira mirror (or the GitHub issues, or the local tracker store's
+// items, read by the caller), the plan dir, the drift log and the workers are read LIVE on every request; nothing here
+// writes or executes anything. Semantics are a port of
 // scripts/handover/chief-kit/tracker.py (read_mirror, read_versions, bucket, jira_view, drift_log), which stays the
 // CLI/offline renderer and the drift log's only writer. legSync only PLANS Jira CLI argv: the chief kit is the one writer.
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, readSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Section } from "./health-sources";
 import type { GhIssue } from "./tracker-sources";
+import type { LocalItem } from "./local-tracker";
 
 export const SYNC_LABEL = "worker-blocked";
 // read-only: tickets flagged and noted under the old names still count; writers emit only the new names
@@ -28,15 +30,17 @@ const SHIPPED = new Set(["", "done", "fixed"]); // a Done ticket resolved any ot
 export type Bucket = "todo" | "prog" | "rev" | "ci" | "done" | "wont";
 export type Worker = { label: string; marker: string; reason: string };
 export type Ticket = {
-  k: number; id?: string; t: string; s: string; b: Bucket; v: number; theme: number; pv: string | null; drift: 0 | 1 | 2; // id: the shown id when it is not HIMMEL-<k> (a GitHub issue's #<k>)
+  k: number; id?: string; t: string; s: string; b: Bucket; v: number; theme: number; pv: string | null; drift: 0 | 1 | 2; // id: the shown id when it is not HIMMEL-<k> (a GitHub issue's #<k>, a local item's LOCAL-<n>)
   labels: string[]; worker: Worker | null; noted?: string; // noted: the mirror body, for the sync dedupe; non-enumerable, never shipped
+  backend: Source; epic?: string; // backend: where a write for this card goes; epic: a local item's parent id
 };
+type Source = "jira" | "github" | "local";
 export type Version = { n: string; rel: boolean; date: string; counts: Record<Bucket, number>; open: number[] };
 export type Proposal = { k: number; title: string; proposal: string; needsApproval: true };
 export type DupProposal = { keys: number[]; title: string; proposal: string; needsApproval: true };
 export type SyncOp = { k: number; marker: string; argv: string[]; why: string };
 export type Roadmap = {
-  state: "ok" | "absent"; reason?: string; source: "jira" | "github";
+  state: "ok" | "absent"; reason?: string; source: Source | "none";
   mirror: { dir: string; count: number; newest: string };
   releaseUnknown: boolean; versions: Version[]; tickets: Ticket[]; themes: string[]; // themes: the Sector groups (wire key kept), "(no sector)" for none
   plan: { state: "ok" | "absent"; reason?: string; dir?: string };
@@ -44,8 +48,9 @@ export type Roadmap = {
   drift: { now: { drift: number; unplanned: number; unthemed: number }; trend: [string, number, number, number][] };
   librarian: { staleInProgress: Proposal[]; drift: Proposal[]; unthemed: Proposal[]; releasedOpen: Proposal[]; duplicates: DupProposal[] };
 };
-type Opts = { mirrorDir: string; versionsFile?: string; planDir?: string; driftLog?: string; workers: Section; github?: GhIssue[] };
-type M = { k: number; sn: string; cat: string; res: string; fv: string[]; labels: string[]; sector: string; upd: string; title: string; body: string };
+// local: the local tracker store's items (TRACKER=local); none: TRACKER=none, no tracker at all
+type Opts = { mirrorDir: string; versionsFile?: string; planDir?: string; driftLog?: string; workers: Section; github?: GhIssue[]; local?: LocalItem[]; none?: boolean };
+type M = { k: number; sn: string; cat: string; res: string; fv: string[]; labels: string[]; sector: string; upd: string; title: string; body: string; id?: string; epic?: string };
 
 const text = (f: string) => { try { return readFileSync(f, "utf8"); } catch { return ""; } };
 const json = <T>(s: string | undefined, d: T): T => { try { return s === undefined ? d : JSON.parse(s); } catch { return d; } };
@@ -104,6 +109,21 @@ function ghVersions(issues: GhIssue[]): { n: string; rel: boolean; date: string 
   for (const i of issues) if (i.milestone) ms.set(i.milestone.title, i.milestone.number);
   const names = [...ms].sort((a, b) => a[1] - b[1]).map(([n]) => n);
   if (issues.some((i) => !i.milestone)) names.push(NO_MILESTONE);
+  return names.map((n) => ({ n, rel: false, date: "" }));
+}
+
+// Local store items as mirror rows: the generated id is kept as shown, its number orders the cards; the seam's ladder names
+// are the bucket names already; the fix_version is the version and the item's sector the theme.
+const NO_VERSION = "(no version)";
+function fromLocal(items: LocalItem[]): M[] {
+  return items.flatMap((i) => {
+    const m = /^[A-Z][A-Z0-9]*-(\d+)$/.exec(i.id);
+    return m ? [{ k: Number(m[1]), id: i.id, epic: i.epic, sn: i.status, cat: "", res: "", fv: [i.fix_version || NO_VERSION], labels: [], sector: i.sector.trim(), upd: "", title: i.title, body: "" }] : [];
+  });
+}
+function localVersions(items: LocalItem[]): { n: string; rel: boolean; date: string }[] {
+  const names = [...new Set(items.map((i) => i.fix_version).filter(Boolean))].sort((a, b) => verCmp(a, b) || a.localeCompare(b, undefined, { numeric: true }));
+  if (items.some((i) => !i.fix_version)) names.push(NO_VERSION);
   return names.map((n) => ({ n, rel: false, date: "" }));
 }
 
@@ -167,15 +187,20 @@ function readTrend(f: string): [string, number, number, number][] {
 const normTitle = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
 export function readRoadmap(o: Opts): Roadmap {
-  const gh = o.github;
-  const mir = gh ? fromIssues(gh) : readMirror(o.mirrorDir);
-  const source = gh ? "github" : "jira";
-  const empty: Roadmap = { state: "absent", source, mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_SECTOR],
+  const gh = o.github, local = o.local;
+  const mir = o.none ? [] : gh ? fromIssues(gh) : local ? fromLocal(local) : readMirror(o.mirrorDir);
+  const source: Source = gh ? "github" : local ? "local" : "jira";
+  const empty: Roadmap = { state: "absent", source: o.none ? "none" : source, mirror: { dir: o.mirrorDir, count: 0, newest: "" }, releaseUnknown: false, versions: [], tickets: [], themes: [NO_SECTOR],
     plan: { state: "absent" }, cur: -1, next: -1, drift: { now: { drift: 0, unplanned: 0, unthemed: 0 }, trend: [] },
     librarian: { staleInProgress: [], drift: [], unthemed: [], releasedOpen: [], duplicates: [] } };
-  if (!mir.length) return { ...empty, reason: gh ? "no issues in this GitHub repository" : `no Jira mirror at ${o.mirrorDir}; build one with: node scripts/jira/dist/index.js mirror` };
+  if (o.none) return { ...empty, reason: "no tracker is configured (TRACKER=none)" };
+  if (!mir.length) {
+    return { ...empty, reason: gh ? "no issues in this GitHub repository" : local ? "no items in the local tracker store"
+      : `no Jira mirror at ${o.mirrorDir}; build one with: node scripts/jira/dist/index.js mirror` };
+  }
 
-  const { list, unknown } = gh ? { list: ghVersions(gh), unknown: false } : readVersions(o.versionsFile ?? o.mirrorDir + ".versions.tsv", mir);
+  const { list, unknown } = gh ? { list: ghVersions(gh), unknown: false } : local ? { list: localVersions(local), unknown: false }
+    : readVersions(o.versionsFile ?? o.mirrorDir + ".versions.tsv", mir);
   const vi = new Map(list.map((v, i) => [v.n, i]));
 
   // Plan: placement.tsv (version per ticket) and the themes; absent plan = every drift 0.
@@ -197,7 +222,8 @@ export function readRoadmap(o: Opts): Roadmap {
 
   // Workers: ticket number -> the last worker listed for it.
   const workers = new Map<number, Worker>();
-  if (o.workers.state === "ok" && Array.isArray(o.workers.workers)) {
+  // worker docs are named by Jira key, so only a Jira roadmap matches them
+  if (source === "jira" && o.workers.state === "ok" && Array.isArray(o.workers.workers)) {
     for (const l of o.workers.workers as { doc: string; status: string }[]) {
       const m = /^HIMMEL-(\d+)-(N\d+[a-z]?)-.*\.md$/.exec(basename(String(l.doc)));
       if (m) workers.set(Number(m[1]), { label: m[2], marker: String(l.status), reason: legReason(String(l.doc), String(l.status)) });
@@ -212,8 +238,8 @@ export function readRoadmap(o: Opts): Roadmap {
     const v = un.length ? un.reduce((a, b) => (vi.get(b)! < vi.get(a)! ? b : a)) : hit.reduce((a, b) => (vi.get(b)! > vi.get(a)! ? b : a));
     const b = bucketOf(m), pv = place?.get(m.k) ?? null;
     const drift = !place ? 0 : pv !== null ? (pv !== v ? 1 : 0) : isOpen(b) ? 2 : 0;
-    const t: Ticket = { k: m.k, ...(gh ? { id: `#${m.k}` } : {}), t: clip(m.title, 90), s: m.sn || m.cat, b, v: vi.get(v)!, theme: themes.indexOf(themeOf.get(m.k) ?? NO_SECTOR), pv, drift: drift as 0 | 1 | 2,
-      labels: m.labels, worker: isOpen(b) ? workers.get(m.k) ?? null : null };
+    const t: Ticket = { k: m.k, ...(gh ? { id: `#${m.k}` } : m.id ? { id: m.id } : {}), t: clip(m.title, 90), s: m.sn || m.cat, b, v: vi.get(v)!, theme: themes.indexOf(themeOf.get(m.k) ?? NO_SECTOR), pv, drift: drift as 0 | 1 | 2,
+      labels: m.labels, worker: isOpen(b) ? workers.get(m.k) ?? null : null, backend: source, ...(m.epic ? { epic: m.epic } : {}) };
     Object.defineProperty(t, "noted", { value: m.body, enumerable: false });
     tickets.push(t);
   }
@@ -243,7 +269,8 @@ export function readRoadmap(o: Opts): Roadmap {
     drift: tickets.filter((t) => t.drift === 1).map((t) => prop(t, `Jira says ${versions[t.v].n}, the plan says ${t.pv}: move fixVersion to ${t.pv} or re-plan`)),
     unthemed: unthemed.map((t) => prop(t, source === "github"
       ? "assign a theme in the plan (stage1 overlay)"
-      : `assign a Sector: jira edit HIMMEL-${t.k} --sector "<sector>"`)),
+      : source === "local" ? "assign a Sector with the card's Sector select on the Kanban"
+        : `assign a Sector: jira edit HIMMEL-${t.k} --sector "<sector>"`)),
     releasedOpen: open.filter((t) => versions[t.v].rel).map((t) => prop(t, `${versions[t.v].n} is released but this is still open: move to ${run ?? "the running version"}`)),
     duplicates: [...byTitle.values()].filter((g) => g.length > 1).map((g) => ({ keys: g.map((t) => t.k).sort((a, b) => a - b), title: g[0].t,
       proposal: "same title: close all but one, linking the rest to it", needsApproval: true as const })).sort((a, b) => a.keys[0] - b.keys[0]),

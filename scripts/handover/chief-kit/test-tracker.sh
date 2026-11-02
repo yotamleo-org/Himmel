@@ -149,7 +149,7 @@ contains 'readiness reads in words (HIMMEL-3990)' "$html" '"fix named, not yet c
 contains 'impact is a secondary 5-dot tag (HIMMEL-3990)' "$html" '"impact "+n+" of 5"'
 contains 'the notes list is labelled vault notes (HIMMEL-3990)' "$html" 'Vault notes that mention it:'
 # Ask 2: the terms name every scale.
-for s in 'Status' 'Leg chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
+for s in 'Status' 'Worker chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
     contains "the terms name $s (HIMMEL-3990)" "$html" "[\"$s\","
 done
 contains 'the size scale comes from the plan (HIMMEL-3957)' "$html" 'XS 0.44 · S 1 · M 2.2 · L 5 · XL 11.1'
@@ -198,7 +198,7 @@ contains 'caps are tested by null, never truthiness: a cap of 0 is a cap (HIMMEL
 not_contains 'the page has no column chart (HIMMEL-3990)' "$html" 'renderChart'
 contains 'the status legend names the five Jira statuses (HIMMEL-3990)' "$html" '["todo","To Do"],["prog","In Progress"],["rev","In Review"],["ci","IN CI"],["done","Done"]'
 not_contains 'the steer panel waits for the UI phase (HIMMEL-3990)' "$html" 'renderSteer'
-contains 'the estimate-vs-actual fold shows each size against what finished work took (HIMMEL-3990)' "$html" 'fmtMin(x.med)+" · "+pl(x.legs,"leg","legs")'
+contains 'the estimate-vs-actual fold shows each size against what finished work took (HIMMEL-3990)' "$html" 'fmtMin(x.med)+" · "+pl(x.workers,"worker","workers")'
 not_contains 'no Plan decisions section (HIMMEL-6483)' "$html" 'Plan decisions that need your input'
 not_contains 'no What users gained section (HIMMEL-6483)' "$html" 'What users gained'
 not_contains 'no Plan vs Jira section (HIMMEL-6483)' "$html" 'Plan vs Jira'
@@ -266,6 +266,7 @@ stdout6="$(render)"
 html6="$(cat "$out" 2>/dev/null)"
 cp "$out" "$W/workers.html"
 contains 'a held-lock worker doc marks its ticket live with label, phase and PR (HIMMEL-3990)' "$html6" '"WORKER":{"1":["N55","LIVE",1525]'
+contains 'a Jira row carries its live worker under the worker key the page reads (HIMMEL-8638)' "$html6" '"worker":["N55","LIVE",1525]'
 not_contains 'a WRAPPED worker is not live even while its lock lingers (HIMMEL-3990)' "$html6" '"6":["N56"'
 not_contains 'a worker doc with no held lock is not live (HIMMEL-3990)' "$html6" '"7":["N57"'
 contains 'a marker-shaped brief bullet above Results sets neither phase nor PR (HIMMEL-3990)' "$html6" '"9":["N59","LIVE",null]'
@@ -566,7 +567,7 @@ bmk 106 'To Do' '[]' 'operator follow-up' '[]' '[]' 'A follow-up from HIMMEL-105
 bmk 107 'To Do' '["v1.0.1"]' 'nobody claims me' '[]' '[]'
 bmk 108 'To Do' '[]' 'linked follow-up' '[]' '["HIMMEL-100"]'
 bmk 109 'To Do' '["v1.0.1"]' 'named by a ruling' '[]' '[]' 'Mentions HIMMEL-200 which is newer, never an origin.'
-# A multi-day leg: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
+# A multi-day worker: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
 printf '%s\n' '# worker' '## Results' '- 22:00 LIVE — started' '- 23:30 LIVE — PR 1 open' '- 01:00 READY 1 abc GREEN' \
     '- 23:00 WRAPPED — merged' > "$bh/HIMMEL-100-N90-planned-origin-2026-10-01.md"
 # A note after WRAPPED and a later section's bullet are past the measured span; a later section's filing is not the worker's.

@@ -125,8 +125,8 @@ sleep 0.5
 check "5a append-results.sh waits while the lock is held" "$(grep -c 'MERGED held' "$d5")" "0"
 : > "$tmp/release"; wait "$hp"; wait "$ap"
 check "5b append-results.sh writes once it is released" "$(grep -c 'MERGED held' "$d5")" "1"
-# live-state.sh with an empty fleet manifest rewrites `legs: old` to `legs: none old`.
-printf '{"legs":[]}\n' > "${d5%.md}.fleet.json"
+# live-state.sh with an empty fleet manifest rewrites `workers: old` to `workers: none old`.
+printf '{"workers":[]}\n' > "${d5%.md}.fleet.json"
 printf '# chief\n\n## Live state\nlegs: old\n\n## Results\n' > "$d5"
 rm -f "$tmp/held" "$tmp/release"; hold "$d5"; hp=$!
 wait_held

@@ -978,7 +978,7 @@ fi
 # Dedup layer 1b: one worker per TICKET, across chiefs. Layer 1 dedups by session name only, so two
 # chiefs on one chain could each arm a worker (different N numbers) on the same ticket. A worker name is
 # <KEY>-N<digits>[letter]-...: refuse while another live claude session carries the same <KEY>-N prefix with different
-# digits (legs b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
+# digits (workers b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
 # allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
 # ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
 if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then

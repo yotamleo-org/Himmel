@@ -414,20 +414,62 @@ cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
 FAKE_PID=$!
 sleep 1
 kill -0 "$FAKE_PID" 2>/dev/null || bad "(x) fixture worker did not start; the count below would not prove the fix"
-base_out="$(run_guard "$CHIEF_PAYLOAD")"
-out="$(run_guard "$CHIEF_PAYLOAD" COLUMNS=20)"
+census_n() {   # census_n [ENV=val ...] -> the FLEET native= count of ONE hook read
+    run_guard "$CHIEF_PAYLOAD" "$@" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1
+}
+# The census is a live process list, so a plain read before and one after
+# bracket the COLUMNS=20 read: a process that starts or exits between reads
+# moves the bracket with it, while a truncated read (native below both) stays
+# below it.
+census_verdict() {   # census_verdict <label> <before> <cols> <after>
+    local label="$1" before="$2" cols="$3" after="$4" floor
+    if [ -z "$before" ] || [ -z "$cols" ] || [ -z "$after" ]; then
+        bad "$label no FLEET native= line in the reason: before=$before cols=$cols after=$after"
+        return
+    fi
+    floor="$before"; [ "$after" -lt "$floor" ] && floor="$after"
+    if [ "$floor" -ge 1 ] && [ "$cols" -ge "$floor" ]; then
+        ok "$label COLUMNS=20 in the hook env -> census counts the same live workers as without it (native=$cols vs $before/$after)"
+    else
+        bad "$label COLUMNS=20 in the hook env -> census read native=$cols against native=$before/$after without it"
+    fi
+}
+before_n="$(census_n)"
+cols_n="$(census_n COLUMNS=20)"
+after_n="$(census_n)"
 pkill -P "$FAKE_PID" 2>/dev/null
 kill "$FAKE_PID" 2>/dev/null
 rm -f "$FAKE_CLAUDE" 2>/dev/null
-base_n="$(printf '%s\n' "$base_out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
-cols_n="$(printf '%s\n' "$out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
-if [ -z "$cols_n" ] || [ -z "$base_n" ]; then
-    bad "(x) no FLEET native= line in the reason: base=$base_out cols=$out"
-elif [ "$base_n" -ge 1 ] && [ "$cols_n" -ge "$base_n" ]; then
-    ok "(x) COLUMNS=20 in the hook env -> census counts the same live workers as without it (native=$cols_n vs $base_n)"
-else
-    bad "(x) COLUMNS=20 in the hook env -> census read native=$cols_n against native=$base_n without it"
+census_verdict "(x)" "$before_n" "$cols_n" "$after_n"
+
+# --- (x2) a matching process that exits between the two reads ---
+# The census is a live process list. A second matching process alive for the
+# plain read and gone for the COLUMNS=20 read (a worker from another case on a
+# loaded runner) made the two reads disagree by one, and (x) failed with
+# "native=1 against native=2" on code that was fine.
+mkdir -p "$TMP/two"
+FAKE2="$TMP/two/claude"
+cp "$(command -v bash)" "$FAKE2" 2>/dev/null
+"$FAKE2" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-8701 </dev/null >/dev/null 2>&1 &
+FAKE2_PID=$!
+cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
+"$FAKE_CLAUDE" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-7430 </dev/null >/dev/null 2>&1 &
+FAKE_PID=$!
+sleep 1
+if ! kill -0 "$FAKE2_PID" 2>/dev/null || ! kill -0 "$FAKE_PID" 2>/dev/null; then
+    bad "(x2) a fixture worker did not start; the count below would not prove the fix"
 fi
+before_n="$(census_n)"
+pkill -P "$FAKE2_PID" 2>/dev/null
+kill "$FAKE2_PID" 2>/dev/null
+wait "$FAKE2_PID" 2>/dev/null
+cols_n="$(census_n COLUMNS=20)"
+after_n="$(census_n)"
+pkill -P "$FAKE_PID" 2>/dev/null
+kill "$FAKE_PID" 2>/dev/null
+wait "$FAKE_PID" 2>/dev/null
+rm -f "$FAKE2" "$FAKE_CLAUDE" 2>/dev/null
+census_verdict "(x2) a matching process gone between the reads:" "$before_n" "$cols_n" "$after_n"
 
 # --- (y) a chief-named doc gets the same verdict as a console-named one -----
 CHIEF_NAMED_DOC="$HANDOVER_DIR/FIXTURE-nextleg-roadmap-chief.md"

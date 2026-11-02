@@ -1055,14 +1055,14 @@
               "q": "Is main itself red?",
               "by": "the merge",
               "outcome": {
-                "kind": "refuse",
-                "text": "Refuse"
+                "kind": "allow",
+                "text": "Allow, with a warning"
               },
-              "next": "Only a change that declares itself the fix goes through: a `Fixes-main-red:` line in a commit, or the chief's fix approval.",
+              "next": "A red main does not stop a change whose own checks passed: the merge goes ahead with a `MAIN-RED` warning and an audit line naming the red run (a change that declares the fix, or a red made only of runner timeouts, is audited without the warning), and the chief fixes main first. If main's state cannot be read at all, the merge refuses and can be retried.",
               "source": {
                 "file": "scripts/handover/merge-on-green.sh",
-                "line": 1248,
-                "text": "main-red gate: $1 — not merging."
+                "line": 1462,
+                "text": "echo \"MAIN-RED advisory:"
               },
               "reach": {
                 "kind": "project",

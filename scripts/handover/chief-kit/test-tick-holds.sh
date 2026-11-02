@@ -77,7 +77,7 @@ manifest() {
     local m="$W/handover/chief.fleet.json" workers="" d t
     t="$(/bin/date -u -d "60 minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
     for d in "$@"; do workers="$workers${workers:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\"}"; done
-    printf '{"schema":1,"legs":[%s]}\n' "$workers" > "$m"
+    printf '{"schema":1,"workers":[%s]}\n' "$workers" > "$m"
     printf '%s' "$m"
 }
 field() { # <field> <tick output>

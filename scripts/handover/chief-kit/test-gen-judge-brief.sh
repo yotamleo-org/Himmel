@@ -24,6 +24,15 @@ BUCKET="$WORK/bucket"
 HEAD40="0123456789abcdef0123456789abcdef01234567"
 CHIEF="HIMMEL-nextleg-2026-10-13Z-roadmap-chief"
 
+# brief-lint's core gate asks the jira CLI for every key in the title (scripts/jira/dist is untracked, absent in CI): a fixture stand-in calls every key NOT-CORE
+mkdir -p "$WORK/stub-jira"
+cat > "$WORK/stub-jira/index.js" <<'STUBEOF'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
+STUBEOF
+export BRIEF_LINT_JIRA_CLI="$WORK/stub-jira/index.js"
+
 cat > "$WORK/spec.json" <<EOF
 {"qid": "j2599a", "ticket": "HIMMEL-3746", "pr": 2599, "head": "$HEAD40",
  "tickets": ["HIMMEL-3746", "HIMMEL-3254"],

@@ -72,7 +72,7 @@ case "$1" in
   status)
     # a held chief lock prints its owner.json (started = the shift start).
     case "$2" in *chief-fails*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-07T03:00:00Z","heartbeat":"2026-10-07T03:10:00Z"}' 'status: FRESH'; exit 11 ;; esac
-    case "$2" in *N61*|*-N1-*|*-N2-*|*-N191-*|*-leg192-*|*-legN194-*|*odd-name*|*-N301-*|*-N302-*|*-N303-*) printf '%s\n' 'status: FRESH'; exit 11 ;;
+    case "$2" in *N61*|*-N1-*|*-N2-*|*-N191-*|*-leg192-*|*-legN194-*|*odd-name*|*-N301-*|*-N302-*|*-N303-*|*-N4304b-*) printf '%s\n' 'status: FRESH'; exit 11 ;;
     *-N390-*) printf '%s\n' '{"session":"s","host":"h","handover":"x","started":"2026-10-01T00:00:00Z","heartbeat":"2026-10-01T00:00:00Z"}' 'status: STALE-DEAD (age 99999s >= ttl 21600s; owner pid gone, no live claude session names this doc)'; exit 12 ;;
     *-N380-*) printf '%s\n' 'held -- UNVERIFIED lock: /r/.locks/queue/x.lock is named for this doc but records /elsewhere/x.md, which does not resolve here'; exit 11 ;; *) printf '%s\n' free; exit 0 ;; esac ;;
 esac
@@ -1767,6 +1767,30 @@ contains 'an arm that agrees with Live state reads workerset=ok (HIMMEL-3293)' "
 contains 'an agreeing arm still surfaces the live workers outside it (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'procs=1,unwatched=N302+N303 '
 printf '%s\n' '# chief' '' 'no Live state section in this doc at all' > "$W/handover/chief.md"
 contains 'a chief doc with no Live state section reads workerset=unknown (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'workerset=unknown'
+
+# --- a live -RESUME session is the watched process of its worker ----
+# The resumed worker's doc is N4304b-...-RESUME; its window runs under the original label
+# (N4304) with -RESUME kept, or under the full doc stem. Either joins to the worker, never unwatched.
+r8424="HIMMEL-8304-N4304b-resumed-2026-10-31-RESUME"
+printf '%s\n' '# worker' '- 12:00 LIVE — working' > "$W/handover/$r8424.md"
+printf '%s\n' '# chief' '' 'no Live state section in this doc at all' > "$W/handover/chief.md"
+mkcmdline 140 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-8304-N4304-resumed-2026-10-31-RESUME work
+mk_pgrep_x "$W/bin-8424" 140
+o8424="$(PATH="$W/bin-8424:$PATH" bash "$SUT" --workers "$W/handover/$r8424.md")"
+contains '8424: a live <orig label>-RESUME session counts as the worker process (procs=1)' "$o8424" ' procs=1 '
+contains '8424: the resumed worker reads FRESH' "$o8424" 'workers=N4304b:FRESH '
+rm -rf "$W/proc/140"
+mkcmdline 141 claude --model claude-sonnet-5 --autocompact 200000 -n "$r8424" work
+mk_pgrep_x "$W/bin-8424" 141
+o8424="$(PATH="$W/bin-8424:$PATH" bash "$SUT" --workers "$W/handover/$r8424.md")"
+contains '8424: a live full-doc-stem session counts as the worker process (procs=1)' "$o8424" ' procs=1 '
+rm -rf "$W/proc/141"
+# negative control: an unrelated -RESUME session is still unwatched
+mkcmdline 142 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-8304-N4399-other-2026-10-31-RESUME work
+mk_pgrep_x "$W/bin-8424" 142
+o8424="$(PATH="$W/bin-8424:$PATH" bash "$SUT" --workers "$W/handover/$r8424.md")"
+contains '8424: an unrelated -RESUME session stays unwatched' "$o8424" 'unwatched=N4399'
+rm -rf "$W/proc/142"
 
 # --- unwatched= is scoped to THIS chief. The worker's environ carries
 # HIMMEL_CONSOLE_NAME (its launching chief); the chief's name is its doc stem. N302 belongs

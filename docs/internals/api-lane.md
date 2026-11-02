@@ -12,7 +12,7 @@ full argument and environment contract.
 |---|---|---|
 | `scripts/api-lane/judge-call.sh` | API lane | always (a chief's verdict question) |
 | `scripts/api-lane/bulk-call.sh` | API lane | always |
-| `jira release rm-run` (release manager) | API lane | always; the prompt goes on stdin |
+| `jira release rm-run` (release manager) | API lane | always; the prompt goes on stdin and is replayed on the fallback |
 | `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
 | `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|auto` |
@@ -38,7 +38,6 @@ it stops is a failed call and takes the path below. Then the launcher:
    |---|---|
    | `HIMMEL_API_FALLBACK=off` | no fallback |
    | the request itself was refused (bad argument, run kind, cache TTL, job id or tool grant) | no fallback |
-   | the call ran and its prompt came on stdin (the call spent it) | no fallback |
    | the call was granted `Edit`, `Write` or `Bash` and ran (it may have half-done its edits; a rejected account can answer on a later turn) | no fallback; only a refusal before any request (exit 2) falls back |
    | the native usage preflight says `PROCEED`, `BANK-STALE` or `BANK-UNKNOWN` | **runs the fallback** |
    | the preflight says `SKIPPED-BANK` or `SKIPPED-FLEET` (or nothing) | no fallback |
@@ -73,8 +72,13 @@ it stops is a failed call and takes the path below. Then the launcher:
      `LQ_API_*` variable removed, and `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`. The
      launch is refused if any API-key name or the key's value is still in its
      environment.
-   - A refusal has not read stdin yet, so a piped prompt still reaches the
-     fallback.
+   - A prompt on stdin is kept in a mode-600 scratch file
+     (`claude-api-prompt.*` under `TMPDIR`) that the API call reads and the
+     fallback replays byte for byte; the file is removed on every trapped exit
+     path. A terminal on stdin is refused, the read is cut at
+     `HIMMEL_API_CALL_TIMEOUT_S` on every host, and a prompt over 8 MiB is
+     refused with no fallback. A refusal before the prompt is
+     buffered has not read stdin, so a piped prompt still reaches the fallback.
    - The fallback's stdout is the launcher's stdout, and its exit code replaces
      the API exit code. A caller sees an ordinary result (judge-call records the
      verdict, bulk-call writes `OK`) when the fallback succeeds.
@@ -113,7 +117,7 @@ The API call's own row and its reservation are settled as before.
 
 ## Known limits
 
-- ponytail: a caller that sends its prompt on stdin (`jira release rm-run`) gets the fallback only after a refusal, which happens before stdin is read, such as an account already marked empty; a call that ran and failed has spent stdin, so the alert says the fallback did not run, upgrade path: buffer a stdin prompt to a mode-600 scratch file so the fallback can replay it.
+- ponytail: a SIGKILL or an OOM kill of the launcher leaves the mode-600 stdin prompt file in `TMPDIR`, because the EXIT trap cannot run, upgrade path: sweep `claude-api-prompt.*` files older than the call timeout at launch.
 - ponytail: two failures of the same kind and class at the same moment can both send an alert (the stamp is checked, then written after the send, up to 30 seconds later), upgrade path: an atomic `mkdir` lock if duplicate alerts show up.
 - ponytail: the fallback has no watchdog of its own; it is bounded by the caller's timeout (judge-call's `--timeout`) and its budget cap, upgrade path: reuse the launcher's watchdog for the fallback.
 - ponytail: a looping caller (bulk) continues item by item on the subscription after the API account is marked, one alert per hour, upgrade path: a per-run circuit breaker if the subscription draw becomes a problem.

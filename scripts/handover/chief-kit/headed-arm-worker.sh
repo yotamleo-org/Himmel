@@ -806,10 +806,27 @@ fi
 # gated on every brief, not only a template-shaped one (a
 # `> **Contract:**` or `> **Completion condition:**` line), so a brief that drops
 # both fields cannot escape it. Relay and consult briefs are not worker/judge briefs.
-if [ "$NO_PRIOR_ART_CHECK" -eq 0 ] && [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
-    if ! prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" "$DOC" 2>&1)"; then
+# --no-prior-art-check skips the prior-art check only: the core gate (brief-lint.sh --core-only)
+# still runs, and its refusal (exit 3) never suggests the flag, since the flag cannot clear it.
+if [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
+    lint_core_only=""
+    [ "$NO_PRIOR_ART_CHECK" -eq 1 ] && lint_core_only="--core-only"
+    lint_judge=""
+    [ "$JUDGE" -eq 1 ] && lint_judge="--judge"
+    lint_rc=0
+    prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" ${lint_core_only:+"$lint_core_only"} ${lint_judge:+"$lint_judge"} "$DOC" 2>&1)" || lint_rc=$?
+    if [ "$lint_rc" -eq 3 ] || { [ "$lint_rc" -ne 0 ] && [ "$NO_PRIOR_ART_CHECK" -eq 1 ]; }; then
+        echo "headed-arm-worker: refusing launch: $prior_art_err" >&2
+        exit 2
+    elif [ "$lint_rc" -ne 0 ] && case "$prior_art_err" in *'Writes'*) true ;; *) false ;; esac; then
+        echo "headed-arm-worker: refusing launch: $prior_art_err" >&2
+        exit 2
+    elif [ "$lint_rc" -ne 0 ]; then
         echo "headed-arm-worker: refusing launch: $prior_art_err (fill the Prior art line, or pass --no-prior-art-check to launch without it)" >&2
         exit 2
+    else
+        # a passed core bypass is shown at launch, as gen-briefs shows it (brief-lint logged the row beside the brief)
+        grep -F 'bypass=' <<< "$prior_art_err" >&2 || true  # swallow-ok: no bypass line means nothing to show
     fi
 fi
 

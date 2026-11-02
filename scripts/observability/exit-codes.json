@@ -42,7 +42,7 @@
         "17": { "class": "refusal", "meaning": "chief-GO gate: no GO file for this head, or go-gate lib missing" },
         "19": { "class": "refusal", "meaning": "anchor unreadable: fails closed" },
         "21": { "class": "result", "meaning": "trust-path gate: PR touches a trust path or cannot be proven not to; routed to the chief" },
-        "22": { "class": "refusal", "meaning": "main-red gate: main's latest completed CI run is red (or unreadable) and the PR does not declare itself the fix (commit declaration or a chief fix-GO for the current red run)" }
+        "22": { "class": "refusal", "meaning": "main-red gate: main's CI state cannot be established (run list unreadable, a full window with no completed run, or a re-run whose previous attempt is unreadable); a red main alone no longer refuses a PR whose own CI passed" }
       }
     },
     "scripts/handover/queue-lock.sh": {

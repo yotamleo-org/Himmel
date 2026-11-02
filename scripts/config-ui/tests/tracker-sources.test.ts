@@ -68,13 +68,73 @@ test("trackerSources: the Jira mirror, once it holds tickets, is a source", asyn
   expect(await trackerSources(scratch({ mirror: true }).env, "/")).toEqual(["jira"]);
 });
 
-test("trackerSources: a configured source the UI cannot read is not listed (missing mirror, TRACKER=local, unauthenticated gh)", async () => {
+test("trackerSources: a configured source the UI cannot read is not listed (missing mirror, an empty local store, unauthenticated gh)", async () => {
   const s = scratch();
   expect(await trackerSources({ ...s.env, HIMMEL_JIRA_MIRROR: join(s.d, "nope") }, s.d)).toEqual([]);
-  expect(await trackerSources({ ...s.env, TRACKER: "local" }, s.d)).toEqual([]);
+  expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: join(s.d, "no-store") }, s.d)).toEqual([]);
   const unauth = scratch({ ghAuth: false });
   expect(await trackerSources({ ...unauth.env, TRACKER: "github" }, unauth.d)).toEqual([]);
   expect(unauth.ghCalls()).toEqual(["auth status"]);
+});
+
+test("trackerSources: TRACKER=local with items in the store lists local, ahead of a Jira mirror", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  writeFileSync(join(store, "LOCAL-1.md"), '---\nid: LOCAL-1\ntitle: "x"\ntype: Task\nstatus: To Do\nfix_version:\nepic:\ncreated: 2026-10-01T00:00:00Z\nlinks:\n---\n\n## Log\n');
+  expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d)).toEqual(["local", "jira"]);
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("TRACKER=local with a store that cannot be resolved stays local and says so; it never falls through to the Jira mirror's writable board", async () => {
+  const s = scratch({ mirror: true });
+  const env = { ...s.env, TRACKER: "local", HANDOVER_DIR: join(s.d, "missing-handover"), USER_SLUG: "x" };
+  expect(await trackerSources(env, s.d)).toEqual(["local", "jira"]);
+  const { get } = serve(env, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("local");
+  expect(r.reason).toContain("could not be read");
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("GET /api/roadmap: an explicit local project with an empty store and a Jira mirror answers source local with no tickets, not the mirror's board", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  const { get } = serve({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("local");
+  expect(r.tickets).toEqual([]);
+  expect(s.jiraCalls()).toBe(false);
+});
+
+test("trackerSources: an explicit TRACKER=local with an empty store and a Jira mirror lists nothing, not the mirror", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  expect(await trackerSources({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d)).toEqual([]);
+});
+
+test("trackerSources: TRACKER=none is listed as none, so the rail keeps Roadmap and Kanban and they can say so", async () => {
+  const s = scratch();
+  expect(await trackerSources({ ...s.env, TRACKER: "none" }, s.d)).toEqual(["none"]);
+  const labels = navLinks({ here: "console", token: TOKEN, current: "config", sources: ["none"] }).map((l: { label: string }) => l.label);
+  expect(labels).toContain("Kanban");
+  expect(labels).toContain("Roadmap");
+});
+
+test("TRACKER=none: /api/roadmap and both pages show the explicit no-tracker state, not an empty board", async () => {
+  const s = scratch();
+  const { get } = serve({ ...s.env, TRACKER: "none" }, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("none");
+  expect(r.tickets).toEqual([]);
+  for (const html of [renderKanban(r, { hideDone: false, writes: true }), renderRoadmap(r, { writes: true })]) {
+    expect(html).toContain("No tracker is configured");
+    expect(html).not.toContain("rm-board");
+    expect(html).not.toContain("Jira mirror");
+  }
+  expect(s.jiraCalls()).toBe(false);
 });
 
 test("trackerSources: TRACKER=github with gh authenticated lists github", async () => {
