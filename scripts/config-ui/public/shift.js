@@ -16,6 +16,22 @@ const ticketLink = (k) => (k ? `<a href="#/roadmap">${esc(k)}</a>` : "");
 const fleetOf = (ui) => esc((ui && ui.fleet) || "/agui/");
 const prRef = (n, ui) => (n === null || n === undefined ? "" : `<a class="ro" href="${fleetOf(ui)}">#${esc(n)}</a>`);
 const none = (what) => `<div class="empty">${esc(what)}</div>`;
+// the mockup's segment label: a chief doc's run letters ("…-2026-11-01AB-roadmap-chief" → "AB"); any other name stays whole
+const chiefLabel = (n) => { const m = /\d{4}-\d{2}-\d{2}([A-Z]{1,3})-/.exec(String(n)); return m ? m[1] : String(n); };
+// a shipped PR title as the mockup shows it: the ticket key apart, the commit prefix gone ("fix(ui): [ABC-12] x" → ABC-12, "x")
+const plainTitle = (raw) => {
+  let t = String(raw || "");
+  const k = /\[([A-Z][A-Z0-9]*-\d+)\]/.exec(t);
+  t = t.replace(/^[a-z]+(?:\([^)]*\))?!?:\s*/i, "");
+  if (k) t = t.replace(`[${k[1]}]`, "").replace(/\s{2,}/g, " ");
+  return { key: k ? k[1] : "", title: t.trim() };
+};
+// "now" on the shift's own clock: the server's elapsed minutes from the open, in the zone the shift opened in
+const updatedAt = (s) => {
+  const z = /^([+-])(\d\d):(\d\d)$/.exec(String(s.zone || ""));
+  const ms = Date.parse(s.opened) + s.minutes * 60000 + (z ? (z[1] === "-" ? -1 : 1) * (Number(z[2]) * 60 + Number(z[3])) * 60000 : 0);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(11, 16) : "";
+};
 
 function pager(v) {
   const p = v.pager || {};
@@ -64,7 +80,7 @@ function chainHtml(chiefs, v) {
       said.push(`hand-over gap ${clock(cursorIso)} to ${clock(c.span.start)}`);
     }
     const to = c.span.end ? clock(c.span.end) : live ? "now" : clock(s.closed);
-    cells.push(`<td class="cseg${live ? " now" : ""}" colspan="${units(stop - start)}" title="${esc(c.name)}: ${esc(clock(c.span.start))} to ${esc(to)}${c.span.approx ? " (approx: no LIVE bullet, the span starts at the predecessor's end)" : ""}">${c.span.approx ? "≈" : ""}${esc(c.name)}<small>${c.prs.length}</small></td>`);
+    cells.push(`<td class="cseg${live ? " now" : ""}" colspan="${units(stop - start)}" title="${esc(c.name)}: ${esc(clock(c.span.start))} to ${esc(to)}${c.span.approx ? " (approx: no LIVE bullet, the span starts at the predecessor's end)" : ""}">${c.span.approx ? "≈" : ""}${esc(chiefLabel(c.name))}<small>${c.prs.length}</small></td>`);
     said.push(`${c.span.approx ? "approximately " : ""}${c.name} ${clock(c.span.start)} to ${to}, ${c.prs.length} PR${c.prs.length === 1 ? "" : "s"}`);
     if (stop > cursor) { cursor = stop; cursorIso = c.span.end || ""; }
   }
@@ -108,7 +124,7 @@ function shippedHtml(v, ui) {
   const all = ui && ui.all;
   const rows = all ? v.shipped : v.shipped.slice(0, SHOWN);
   const more = v.shipped.length > SHOWN ? `<p><a href="#/shift${v.shift && v.shift.closed ? "/" + encodeURIComponent(v.shift.id) : ""}${all ? "" : "?all=1"}">${all ? "show fewer" : `show all ${v.shipped.length}`}</a></p>` : "";
-  return `<ul class="sh-list">${rows.map((p) => `<li><a class="ro" href="${fleetOf(ui)}">#${esc(p.number)}</a> ${esc(p.title)} <span class="ro">${esc(clock(p.mergedAt))}${p.chief ? ` · ${esc(p.chief)}` : ""}</span></li>`).join("")}</ul>${more}`;
+  return `<ul class="sh-list">${rows.map((p) => { const t = plainTitle(p.title); return `<li class="sh-ship"><span>${ticketLink(t.key)} <b>${esc(t.title)}</b></span><span class="sh-sub"><a class="ro" href="${fleetOf(ui)}">PR #${esc(p.number)}</a><span class="ro">merged ${esc(clock(p.mergedAt))}</span></span></li>`; }).join("")}</ul>${more}`;
 }
 
 function carriedHtml(v, ui) {
@@ -128,15 +144,17 @@ export function renderShift(v, ui) {
     return pg(page + `<section id="sh-none" class="p"><h2>No shift is open</h2><p class="sub">A shift opens when a chief goes live.</p><p>${line}</p></section>${links(ui)}`);
   }
   const closed = v.shift.closed !== null;
+  const shipped = sec("sh-shipped", "g-ship", closed ? "Shipped" : "Shipped this shift", v.mergedUnread ? null : v.shipped.length, shippedHtml(v, ui));
+  const foot = `<p class="foot"><b>Not here, on purpose:</b> worker names, lanes, the phase ladder, failure classes, the usage budget and spend. Workers are on Fleet; spend per shift is in the Morning report.</p>`;
   // mockup v3 order: the shift line and pager, the chiefs panel, the tiles, then one panel per list
-  const head = `<div class="sh-head">${header(v)}${pager(v)}</div>`;
+  const head = `<div class="sh-head">${header(v)}<div class="sh-side">${closed ? "" : `<span class="pill ok">● shift open</span>`}${pager(v)}${closed ? "" : `<span class="ro">updated ${esc(updatedAt(v.shift))}</span>`}</div></div>`;
   const body = [
     sec("sh-chiefs", "g-chief", closed ? "Chiefs" : "Chiefs this shift", v.chiefs.length, chiefsHtml(v)),
     tiles(v),
     closed ? "" : sec("sh-waiting", "g-wait need", "Waiting on you", v.waiting.length, waitingHtml(v, ui)),
-    closed ? "" : sec("sh-running", "g-run", "Running now", v.running.length, runningHtml(v, ui)),
-    sec("sh-shipped", "g-ship", closed ? "Shipped" : "Shipped this shift", v.mergedUnread ? null : v.shipped.length, shippedHtml(v, ui)),
+    closed ? "" : `<div class="sh-cols">${sec("sh-running", "g-run", "Running now", v.running.length, runningHtml(v, ui))}${shipped}</div>`,
+    closed ? shipped : "",
     closed ? sec("sh-carried", "g-carry", "Carried to the next shift", v.carried.length, carriedHtml(v, ui)) : "",
   ].join("");
-  return pg(page + head + body + links(ui, v));
+  return pg(page + head + body + links(ui, v) + foot);
 }
