@@ -37,7 +37,8 @@
 #
 # The active keys are the open-PR keys, the keys of records that are not
 # wrapped, and the keys the Jira search finds in a ladder status. Log-based
-# classes look at the last 500 rows only. The whole pass is cut off at
+# classes look at the last 500 rows only, except the partial PRs an UNOWNED row names: those come from
+# the whole log, read once per pass. The whole pass is cut off at
 # TICKET_STATUS_DRIFT_BUDGET seconds (default 90).
 #
 # ponytail: without --snapshot the derive reads gh live per key that has a ladder
@@ -133,6 +134,15 @@ fi
 logtail=""
 if [ -f "$LOG" ]; then
     logtail=$(tail -n 500 "$LOG" 2>/dev/null | ts_merge_rows 2>/dev/null | jq -Rc 'fromjson? // empty' 2>/dev/null) # swallow-ok: an unreadable log leaves the log-based classes empty and the health row above stands
+fi
+partials=""
+if [ -f "$LOG" ]; then
+    # Every key whose latest merge row carrying a contract is partial (contract=no), with its partial PRs, read once from the
+    # WHOLE log: the last 500 rows hold about five hours, so a ticket a partial merge left days ago would name no PR there.
+    # swallow-ok: an unreadable log names no partial PR and the generic fix stands
+    partials=$(ts_merge_rows "$LOG" 2>/dev/null | jq -Rrs '[split("\n")[] | fromjson? | select(type == "object" and .event == "merge" and .key != null and has("contract") and .contract != "")]
+        | group_by(.key)[] | select(last.contract == "no")
+        | [.[0].key, ("#" + ([.[] | select(.contract == "no") | .pr // empty | tostring] | reduce .[] as $p ([]; if index([$p]) then . else . + [$p] end) | join(", #")))] | @tsv' 2>/dev/null)
 fi
 if [ -n "$logtail" ] && [ -n "$(jq -r 'select(.result == "disabled") | 1' <<<"$logtail" | head -n 1)" ]; then
     add HEALTH - "log: a disabled row in the last 500 rows (the funnel was off, so this sample is not clean)" - "unset WORKER_SESSION_JIRA_STATUS (0 disables the funnel)"
@@ -290,7 +300,15 @@ while IFS= read -r key; do
     [ "$nown" -lt 2 ] || add TWO-OWNERS "$key" "$nown live docs claim it" - "wrap or halt all but one worker doc"
 
     if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ] && [ "$standing" = 0 ] && [ "$xrepo" = 0 ]; then
-        case "$wstate" in none|wrapped) add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX" ;; esac
+        case "$wstate" in none|wrapped)
+            # rule D5c leaves a partly merged ticket here: name the partial PRs the ticket's merge rows record
+            ppr=$(awk -F'\t' -v k="$key" '$1 == k { print $2 }' <<<"$partials")
+            if [ -n "$ppr" ]; then
+                add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR $ppr" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names; close $key by hand when it says HANDED-OFF (the remainder is on other tickets); or, when it says NEEDS-CHIEF-NOTE, add the remainder to the partial PR's body or close $key by hand if nothing remains"
+            else
+                add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX"
+            fi ;;
+        esac
     fi
 
     if [ "$jstatus" != Done ] && { [ -n "$open_prs" ] || is_owner_state "$wstate"; }; then

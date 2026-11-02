@@ -688,6 +688,40 @@ wipe_docs
 reset "In Progress"; jl "$K" "In Progress"
 drift
 contains "3b: started, no open PR and no owner is UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
+# The row of a ticket a partial merge left In Progress (rule D5c) names that PR and the one action that clears it
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no
+drift
+contains "3b (HIMMEL-8673): the UNOWNED row of a partly merged ticket names its partial PR" "$(drows UNOWNED)" "partial merge PR #4480"
+contains "3b (HIMMEL-8673): and the action: dispatch the RESUME row or close it on HANDED-OFF" "$(drows UNOWNED)" "next-dispatchable.sh"
+contains "3b (HIMMEL-8673): and the third case: NEEDS-CHIEF-NOTE is cleared in the partial PR's body" "$(drows UNOWNED)" "NEEDS-CHIEF-NOTE, add the remainder to the partial PR's body"
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no; logrow merge "$K" moved 4481 yes
+drift
+check "3b (HIMMEL-8673): a completing merge after the partial one names no partial PR" "$(drows UNOWNED | grep -c 'partial merge PR')" 0
+# the partial PR is read from the WHOLE log, not the last 500 rows: a partial merge more than 500 rows old is still named
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no
+for _ in $(seq 650); do printf '{"ts":"2026-10-21T10:00:00Z","event":"derive","key":"HIMMEL-90001","result":"noop","pr":"1"}\n' >> "$LOG"; done
+drift
+contains "3b (HIMMEL-8673): a partial merge older than the last 500 rows is still named" "$(drows UNOWNED)" "partial merge PR #4480"
+# every partial PR of the ticket is named once, oldest first
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no; logrow merge "$K" noop 4481 no; logrow merge "$K" noop 4480 no
+drift
+contains "3b (HIMMEL-8673): every partial PR is named, a repeated one once" "$(drows UNOWNED)" "partial merge PR #4480, #4481 |"
+# another ticket's partial merge, or this ticket's non-merge row, names no PR
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "HIMMEL-90001" noop 4490 no; logrow derive "$K" moved 4491 no
+drift
+check "3b (HIMMEL-8673): another key's partial merge and a derive row name no PR" "$(drows UNOWNED | grep -c 'partial merge PR')" 0
+# a later merge row with no contract field (an older funnel's) does not undo the partial
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no
+printf '{"ts":"2026-10-21T10:00:01Z","event":"merge","key":"%s","result":"moved","pr":"4482"}\n' "$K" >> "$LOG"
+drift
+contains "3b (HIMMEL-8673): a contract-less merge row after the partial one leaves it named" "$(drows UNOWNED)" "partial merge PR #4480 |"
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no; logrow merge "$K" moved 4483
+drift
+contains "3b (HIMMEL-8673): a merge row with an empty contract after the partial one leaves it named" "$(drows UNOWNED)" "partial merge PR #4480 |"
+# only the contract=no rows' PRs are named: an earlier completing merge's PR is not
+reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" moved 4481 yes; logrow merge "$K" noop 4480 no
+drift
+contains "3b (HIMMEL-8673): a completing merge before the partial one is not named" "$(drows UNOWNED)" "partial merge PR #4480 |"
 reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
 drift
 check "3b: a live owner means not UNOWNED" "$(dcount UNOWNED)" 0
