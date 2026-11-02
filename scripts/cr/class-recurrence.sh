@@ -227,7 +227,7 @@ fold_residual() {  # <residual key> <restructure key>
     sed -n 's/^Fix versions: //p' "$W/get.txt" | tr ',' '\n' | sed 's/^ *//;s/ *$//' >"$W/versions.txt"
     while IFS= read -r v; do
         [ -n "$v" ] || continue
-        if ! jira_run fix-version "$r" --remove "$v" >/dev/null 2>"$W/err"; then
+        if ! HIMMEL_VERSION_WRITER=class-recurrence jira_run fix-version "$r" --remove "$v" >/dev/null 2>"$W/err"; then
             echo "  FAILED backlog $r (fix-version --remove $v): $(cat "$W/err")" >&2; failed=$((failed+1)); return
         fi
     done <"$W/versions.txt"

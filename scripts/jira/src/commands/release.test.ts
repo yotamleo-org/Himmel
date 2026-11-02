@@ -17,7 +17,7 @@ vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { apiLaneEnv, judgeEnv, judgePrompt, parseDecisions, registerRelease, renderState } from './release.js';
+import { apiLaneEnv, judgeEnv, judgePrompt, liveJira, parseDecisions, registerRelease, renderState } from './release.js';
 
 let out: string[];
 let root: string;
@@ -511,5 +511,15 @@ describe.skipIf(process.platform !== 'linux')('jira release posting verbs from a
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release R1 is UNKNOWN/);
     expect(await failure('rm-run', 'R1')).toMatch(/release R1 is UNKNOWN/);
+  });
+});
+
+describe('RM apply names its writer (HIMMEL-8823 S3)', () => {
+  it('RM apply names rm-apply', async () => {
+    vi.mocked(request).mockImplementation((async (method: string) =>
+      method === 'GET' ? { fields: { fixVersions: [{ name: 'v1' }] } } : {}) as never);
+    await liveJira.setFixVersion('HIMMEL-1', 'add', 'v1');
+    const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
+    expect(put?.[3]).toBe('rm-apply');
   });
 });

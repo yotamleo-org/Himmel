@@ -455,6 +455,59 @@ not_contains "feed: a missing file in ANOTHER repository is not file-gone" "$(lr
 { echo "$LHDR"; printf '"Check the zonkdrift wrapper handles empty input.",someone/Himmel,scripts/no-such-file-zz.sh,1,,u,"2","x","y","z"\n'; printf '"Check the quuxfold wrapper handles empty input.",,scripts/no-such-file-zz.sh,1,,u,"2","x","y","z"\n'; } > "$tmp/l-ident.csv"  # leak-allow: fixture rows with a foreign owner and an unknown repository
 not_contains "feed: a same-basename repository under another owner or an unknown repository is not file-gone" "$(lrun ident "$tmp/l-ident.csv")" "reason=file-gone"
 
+# the console-kit dir was renamed chief-kit; a row naming the old path is judged by the new one
+{ echo "$LHDR"; lrow 'Check the zonkdrift relay handles empty input.' 'scripts/handover/console-kit/relay-batch.sh' 2; lrow 'Check the quuxfold relay handles empty input.' 'scripts/handover/console-kit/no-such-file-zz.sh' 2; } > "$tmp/l-ck.csv"
+lck="$(lrun ck "$tmp/l-ck.csv")"
+not_contains "feed: a console-kit path whose chief-kit file exists is not STALE" "$lck" "STALE row=1 "
+contains "feed: a console-kit path with no chief-kit counterpart is still file-gone" "$lck" "STALE row=2 uses=2 reason=file-gone"
+# a rule that rejects Windows is current policy, not a Windows claim
+{ echo "$LHDR"; lrow 'Himmel supports Linux and macOS host platforms only; Windows host support has been dropped here.' "$LFILE" 1; lrow 'Himmel supports Linux and macOS, not Windows. Do not require Windows path handling in this file.' "$LFILE" 1; } > "$tmp/l-nowin.csv"
+lnw="$(lrun nowin "$tmp/l-nowin.csv")"
+not_contains "feed: a rule that says Windows is dropped is not STALE" "$lnw" "STALE row=1 "
+not_contains "feed: a rule that says not Windows is not STALE" "$lnw" "STALE row=2 "
+{ echo "$LHDR"; lrow 'Himmel supports Linux and macOS, not Windows, in the zonkdrift wrapper.' 'scripts/cr/no-such-file-zz.sh' 2; } > "$tmp/l-nowingone.csv"
+contains "feed: a rule that says not Windows still reaches the file-gone check" "$(lrun nowingone "$tmp/l-nowingone.csv")" "STALE row=1 uses=2 reason=file-gone"
+
+# --refresh run from a linked worktree writes the WORKTREE's catalogue, never the anchor's
+awt="$tmp/anchor-repo"; wwt="$tmp/anchor-wt"; mkdir -p "$awt/scripts/cr"
+cp "$HERE/known-findings.sh" "$HERE/anchor-handoff.sh" "$awt/scripts/cr/"
+node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));j.refreshed_at="2000-01-01";fs.writeFileSync(process.argv[2],JSON.stringify(j,null,2)+"\n")' "$HERE/known-findings.json" "$awt/scripts/cr/known-findings.json"
+: > "$tmp/wt-ledger.jsonl"
+( cd "$awt" && git init -q . && git config user.email t@t && git config user.name t && git config commit.gpgsign false && git add -A && git commit -qm base && git worktree add -q -b wt-branch "$wwt" ) || { echo "FAIL - anchor/worktree fixture"; fails=$((fails+1)); }
+awt_before="$(cksum < "$awt/scripts/cr/known-findings.json")"
+wt_out="$(cd "$wwt" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$awt" CR_LEDGER="$tmp/wt-ledger.jsonl" bash scripts/cr/known-findings.sh --refresh 2>&1)"; wt_rc=$?
+check "worktree refresh: exit 0" "$wt_rc" "0"
+contains "worktree refresh: the entry really handed off to the anchor" "$wt_out" "handing off to the anchor"
+check "worktree refresh: the worktree's catalogue was rewritten" "$(node -e 'console.log(require(process.argv[1]).refreshed_at!=="2000-01-01")' "$wwt/scripts/cr/known-findings.json")" "true"
+check "worktree refresh: the anchor's catalogue is untouched" "$(cksum < "$awt/scripts/cr/known-findings.json")" "$awt_before"
+
+# fixtures back to a known state, then four more entry shapes of the same refresh
+kf_reset() { for _kf in "$awt" "$wwt"; do node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));j.refreshed_at="2000-01-01";fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n")' "$_kf/scripts/cr/known-findings.json"; done; }
+kf_reset
+awt_before="$(cksum < "$awt/scripts/cr/known-findings.json")"; wwt_before="$(cksum < "$wwt/scripts/cr/known-findings.json")"
+# (a) an explicit KNOWN_FINDINGS_FILE survives the hand-off and is the only file written
+cp "$wwt/scripts/cr/known-findings.json" "$tmp/kf-explicit.json"; explicit_before="$(cksum < "$tmp/kf-explicit.json")"
+( cd "$wwt" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$awt" CR_LEDGER="$tmp/wt-ledger.jsonl" KNOWN_FINDINGS_FILE="$tmp/kf-explicit.json" bash scripts/cr/known-findings.sh --refresh >/dev/null 2>&1 ); ex_rc=$?
+check "explicit file refresh: exit 0" "$ex_rc" "0"
+check "explicit file refresh: the named copy was rewritten" "$([ "$(cksum < "$tmp/kf-explicit.json")" != "$explicit_before" ] && echo changed || echo same)" "changed"
+check "explicit file refresh: the worktree's catalogue is untouched" "$(cksum < "$wwt/scripts/cr/known-findings.json")" "$wwt_before"
+check "explicit file refresh: the anchor's catalogue is untouched" "$(cksum < "$awt/scripts/cr/known-findings.json")" "$awt_before"
+# (b) a mode that only reads keeps reading the anchor's catalogue after the hand-off
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));j.classes=j.classes.slice(1);fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n")' "$wwt/scripts/cr/known-findings.json"
+dropped_id="$(node -e 'console.log(require(process.argv[1]).classes[0].id)' "$awt/scripts/cr/known-findings.json")"
+contains "handed-off --list reads the anchor's catalogue, not the worktree's" "$(cd "$wwt" && env -u CR_ANCHOR_HANDED_OFF HIMMEL_REPO="$awt" bash scripts/cr/known-findings.sh --list 2>/dev/null)" "$dropped_id"
+kf_reset; wwt_before="$(cksum < "$wwt/scripts/cr/known-findings.json")"
+# (c) the absolute spelling of the anchor's copy, run from the worktree, still refreshes the worktree's catalogue
+( cd "$wwt" && env -u CR_ANCHOR_HANDED_OFF CR_LEDGER="$tmp/wt-ledger.jsonl" bash "$awt/scripts/cr/known-findings.sh" --refresh >/dev/null 2>&1 ); abs_rc=$?
+check "absolute-spelled refresh: exit 0" "$abs_rc" "0"
+check "absolute-spelled refresh: the worktree's catalogue was rewritten" "$([ "$(cksum < "$wwt/scripts/cr/known-findings.json")" != "$wwt_before" ] && echo changed || echo same)" "changed"
+check "absolute-spelled refresh: the anchor's catalogue is untouched" "$(cksum < "$awt/scripts/cr/known-findings.json")" "$awt_before"
+# (d) a refresh from a git tree with no catalogue refuses instead of writing the anchor's
+nokf_out="$(cd "$repo" && env -u CR_ANCHOR_HANDED_OFF -u KNOWN_FINDINGS_FILE CR_LEDGER="$tmp/wt-ledger.jsonl" bash "$awt/scripts/cr/known-findings.sh" --refresh 2>&1)"; nokf_rc=$?
+check "refresh in a tree with no catalogue: exit 2" "$nokf_rc" "2"
+contains "refresh in a tree with no catalogue: says what is missing" "$nokf_out" "--refresh needs scripts/cr/known-findings.json in the current git tree"
+check "refresh in a tree with no catalogue: the anchor's catalogue is untouched" "$(cksum < "$awt/scripts/cr/known-findings.json")" "$awt_before"
+
 printf 'HIMMEL-7001\tIn Progress\nHIMMEL-7002\tDone\n' > "$tmp/status.tsv"
 { echo "$LHDR"; lrow 'Defer the snarfle cache fix to HIMMEL-7001 until later.' "$LFILE" 2; lrow 'Defer the gizmo rewrite to HIMMEL-7002 for now.' "$LFILE" 2; } > "$tmp/l-defer.csv"
 ld="$(lrun defer "$tmp/l-defer.csv" "$tmp/status.tsv")"

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -13,6 +13,7 @@ import {
   runSync,
   checkNotTruncated,
   isShallowClone,
+  makeJira,
 } from './sync-versions.mjs';
 
 // I/O-boundary functions this file does NOT cover (loadReleases, loadPrs,
@@ -468,6 +469,28 @@ describe('CLI option-value validation', () => {
     } catch (e) {
       expect(e.status).not.toBe(0);
       expect(e.stderr.toString()).toMatch(/--repo/);
+    }
+  });
+});
+
+describe('makeJira names its writer (HIMMEL-8823 S3)', () => {
+  it('sync-versions names itself on the fix-version write, over an inherited variable', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sync-writer-'));
+    const before = { SYNC_OUT: process.env.SYNC_OUT, HIMMEL_VERSION_WRITER: process.env.HIMMEL_VERSION_WRITER };
+    try {
+      const cli = join(dir, 'cli.mjs');
+      const out = join(dir, 'out.txt');
+      writeFileSync(cli, "import { appendFileSync } from 'node:fs';\nappendFileSync(process.env.SYNC_OUT, process.argv.slice(2).join(' ') + '|' + process.env.HIMMEL_VERSION_WRITER + '\\n');\n");
+      process.env.SYNC_OUT = out;
+      process.env.HIMMEL_VERSION_WRITER = 'merge-stamp';
+      await makeJira(cli, 'HIMMEL').fixVersion('HIMMEL-1', 'v1.1.3');
+      expect(readFileSync(out, 'utf8')).toBe('fix-version HIMMEL-1 --add v1.1.3|sync-versions\n');
+    } finally {
+      for (const [name, value] of Object.entries(before)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
