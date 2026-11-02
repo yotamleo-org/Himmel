@@ -4068,11 +4068,13 @@ tool, so there is no `.codex/hooks.json` twin.
 in the himmel-ops `hooks.json` as
 `${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh`, so an adopter
 repo gets it too. The file has two modes, by whether the himmel fetcher is
-reachable under `WALLED_TOOLING_DIR` (default
-`$CLAUDE_PROJECT_DIR/scripts/web`):
+reachable under `WALLED_TOOLING_DIR` (default: the checkout the plugin file sits
+in, `$CLAUDE_PLUGIN_ROOT/../../../scripts/web`; files under `$CLAUDE_PROJECT_DIR`
+are never read, so a project cannot reroute or empty the guard, HIMMEL-8560):
 
 - **himmel** (`fetch-url.sh` and `walled-hosts.conf` both there): the host list
-  is the one line of `scripts/web/walled-hosts.conf` and the deny carries the
+  is the one line of `scripts/web/walled-hosts.conf` (an empty line keeps the
+  embedded list, as in adopter mode) and the deny carries the
   paste-ready, shell-quoted `bash <scripts/web/fetch-url.sh> '<url>'`; the
   Scrapling stealth fetcher returns the page where WebFetch gets HTTP 402.
 - **adopter** (no such files): the host list is the `WALLED_HOSTS` string in the
