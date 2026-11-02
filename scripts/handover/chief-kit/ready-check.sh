@@ -12,8 +12,9 @@
 #
 # Usage: ready-check.sh <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
-#   --only 7 runs ONLY check 7 — a worker's own pre-READY lint of its
-#   PR body, the same code the chief runs. Prints COVERAGE-LINT PASS|FAIL.
+#   --only 7 runs check 7 — a worker's own pre-READY lint of its PR body, the
+#   same code the chief runs — plus the warn-only check 14. Prints
+#   COVERAGE-LINT PASS|FAIL.
 #
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
@@ -123,6 +124,13 @@
 #      *.md/*.txt, docs/**, handovers/**) and a Dependabot dependency-only PR. An
 #      unreadable file list FAILs. Not part of `--only 7`.
 #
+# 14. bug-origin line, WARN only: never a FAIL, never the marker or the exit code.
+#      A PR whose title's first [KEY] is a Jira Bug carries one column-one line
+#      outside any fence: bug-origin: <#pr|sha|unknown> <class> — <reason>. Prints
+#      [PASS], [WARN] (none, malformed, duplicate), or [WARN] not checked (the title
+#      or Jira read failed or timed out, an empty type, a missing lib, no timeout
+#      binary). One bounded Jira read; `--only 7` adds one bounded gh pr view.
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
 # ledger rows, no GO files, no PR comments.
@@ -148,7 +156,7 @@ ONLY7=0
 if [ "${1:-}" = "--only" ]; then
     if [ "$#" -ne 3 ] || [ "$2" != "7" ]; then
         usage
-        echo "ready-check: --only takes exactly '7 <pr-number>' (the only check a worker can run alone)" >&2
+        echo "ready-check: --only takes exactly '7 <pr-number>' (the one lint a worker can run alone)" >&2
         exit 2
     fi
     ONLY7=1
@@ -1349,6 +1357,94 @@ else
     mark_fail
 fi
 fi  # ONLY7 == 0: check 13
+
+# --- 14. bug-origin line (warn only: never mark_fail, never the marker or exit code)
+# bug_origin_state <body>: prints none, malformed, duplicate or ok. A column-one
+# bug-origin: line outside a fence is the record; malformed beats duplicate.
+bug_origin_state() {
+    local lines good bad
+    lines=$(printf '%s\n' "$1" | tr -d '\r' | awk '
+        fence == "`" { if ($0 ~ /^ ? ? ?```/) fence = ""; next }
+        fence == "~" { if ($0 ~ /^ ? ? ?~~~/) fence = ""; next }
+        /^ ? ? ?```/ { fence = "`"; next }
+        /^ ? ? ?~~~/ { fence = "~"; next }
+        /^bug-origin:/ { print }
+    ')
+    if [ -z "$lines" ]; then echo none; return 0; fi
+    good=$(printf '%s\n' "$lines" | LC_ALL=C grep -cE '^bug-origin:[[:blank:]]+((#[0-9]+|[0-9a-f]{7,40})[[:blank:]]+(test-gap|design-gap|review-miss:(cr|judge|panel)|unknown)|unknown[[:blank:]]+unknown)[[:blank:]]+(—|-)[[:blank:]]+[^[:blank:]]')
+    bad=$(printf '%s\n' "$lines" | LC_ALL=C grep -cvE '^bug-origin:[[:blank:]]+((#[0-9]+|[0-9a-f]{7,40})[[:blank:]]+(test-gap|design-gap|review-miss:(cr|judge|panel)|unknown)|unknown[[:blank:]]+unknown)[[:blank:]]+(—|-)[[:blank:]]+[^[:blank:]]')
+    if [ "$bad" -gt 0 ]; then echo malformed
+    elif [ "$good" -gt 1 ]; then echo duplicate
+    else echo ok
+    fi
+}
+
+# check_bug_origin: prints check 14's lines, quoting no PR or Jira text. Nothing
+# here touches RESULT, so a missing lib or a slow Jira costs a warn line at most.
+check_bug_origin() {
+    local bo_lib bo_title bo_key bo_rc bo_reply bo_type bo_state
+    bo_lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the two -f tests below, which warn
+    _TIMEOUT_BIN=""
+    # shellcheck source=/dev/null
+    [ ! -f "$bo_lib/timeout-bin.sh" ] || . "$bo_lib/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN warns just below
+    if [ -z "$_TIMEOUT_BIN" ]; then
+        echo "[WARN] 14. bug-origin not checked: timeout"
+        return 0
+    fi
+    if [ "$ONLY7" -eq 1 ]; then
+        bo_title=$("$_TIMEOUT_BIN" -k 5 15 "$GH" pr view "$PR" --repo "$nwo" --json title --jq '.title' 2>/dev/null) || bo_title=""  # swallow-ok: an unreadable title warns just below
+    else
+        bo_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || bo_title=""  # swallow-ok: an unreadable title warns just below
+    fi
+    if [ -z "$bo_title" ]; then
+        echo "[WARN] 14. bug-origin not checked: title"
+        return 0
+    fi
+    if [ ! -f "$bo_lib/ticket-status.sh" ]; then
+        echo "[WARN] 14. bug-origin not checked: lib"
+        return 0
+    fi
+    # A subshell: that lib sources three more into this trust-path script.
+    bo_key=$(
+        # shellcheck source=/dev/null
+        . "$bo_lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides, rc 70 warns
+        declare -F ticket_key_from_title >/dev/null || exit 70
+        ticket_key_from_title "$bo_title"
+    )
+    bo_rc=$?
+    if [ "$bo_rc" -eq 1 ]; then
+        echo "[PASS] 14. bug-origin: not a Bug-ticket PR"
+        return 0
+    elif [ "$bo_rc" -ne 0 ] || [ -z "$bo_key" ]; then
+        echo "[WARN] 14. bug-origin not checked: lib"
+        return 0
+    fi
+    bo_reply=$(
+        export -f jira_run jira_get
+        # shellcheck disable=SC2016  # $1 expands in the child shell
+        "$_TIMEOUT_BIN" -k 5 15 bash -c 'jira_get "$1"' "$0" "$bo_key"
+    ) || {
+        echo "[WARN] 14. bug-origin not checked: jira"
+        return 0
+    }
+    bo_type=$(printf '%s' "$bo_reply" | jq -r '.fields.issuetype.name // empty' 2>/dev/null) || bo_type=""  # swallow-ok: an unreadable reply warns just below
+    if [ -z "$bo_type" ]; then
+        echo "[WARN] 14. bug-origin not checked: type"
+        return 0
+    elif [ "$bo_type" != "Bug" ]; then
+        echo "[PASS] 14. bug-origin: not a Bug-ticket PR"
+        return 0
+    fi
+    bo_state=$(bug_origin_state "$cov_body")
+    if [ "$bo_state" = ok ]; then
+        echo "[PASS] 14. bug-origin line present"
+        return 0
+    fi
+    echo "[WARN] 14. bug-origin: $bo_state"
+    echo "        accepted: bug-origin: <#pr|sha|unknown> <test-gap|design-gap|review-miss:cr|review-miss:judge|review-miss:panel|unknown> — <reason>"
+    echo "        see the Ship step of docs/handover/worker-brief-template.md"
+}
+check_bug_origin
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi
