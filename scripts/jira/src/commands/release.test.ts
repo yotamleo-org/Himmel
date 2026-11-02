@@ -4,6 +4,14 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// The judge's launcher call returns this envelope while it is set; every other child process runs for real.
+const judgeReply = vi.hoisted(() => ({ out: null as string | null }));
+vi.mock('node:child_process', async (orig) => {
+  const m = await orig<typeof import('node:child_process')>();
+  const execFileSync = ((...a: Parameters<typeof m.execFileSync>) =>
+    judgeReply.out !== null && String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('claude-api.sh') ? judgeReply.out : m.execFileSync(...a)) as typeof m.execFileSync;
+  return { ...m, execFileSync };
+});
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL') }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
@@ -34,6 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  judgeReply.out = null;
 });
 
 describe.skipIf(process.platform !== 'linux')('jira release from a test on the station', () => {
@@ -132,6 +141,20 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
     await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
     expect(out.at(-1)).toBe('RM-RUN R1: nothing pending');
+    expect(out.some((l) => /summary/.test(l))).toBe(false);
+  });
+
+  it('a run that refused a request ends with the refusal count (HIMMEL-8761)', async () => {
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
+    await run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'found work');
+    const other = { req: 'Q-R1-0099', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    judgeReply.out = JSON.stringify({ is_error: false, result: JSON.stringify([other]) });
+    out = [];
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    expect(out.at(-2)).toMatch(/^REFUSED Q-R1-0001: /);
+    expect(out.at(-1)).toBe('RM-RUN R1 summary: 1 refused');
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
   });
 
   it('rm-run takes --ruling and --chief-override; the override needs a reason and the console marker, and the old --console-override is an unknown option (HIMMEL-6778)', async () => {
