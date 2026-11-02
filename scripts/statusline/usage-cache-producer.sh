@@ -201,6 +201,10 @@ stdin_five=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.utilization //
 stdin_five_reset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
 stdin_seven=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.utilization // .rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
 stdin_seven_reset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
+# A five_hour PRESENT in rate_limits but carrying no number is the
+# source saying "no active 5-hour window"; a five_hour key that is simply absent
+# says nothing and stays a partial payload.
+stdin_five_present=$(printf '%s' "$input" | jq -r 'if ((.rate_limits | type) == "object") and (.rate_limits | has("five_hour")) then "1" else "" end' 2>/dev/null)
 
 # ── Branch A: stdin carries rate_limits — mirror into both files ─────────────
 # Either window qualifies (CR codex-1: a seven_day-only payload must still be
@@ -225,7 +229,7 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
 
   new_cache=$(jq -n --argjson prev "$prev" --argjson ts "$now_epoch" \
     --arg fh "$stdin_five" --arg fhr "$stdin_five_reset" \
-    --arg sh "$stdin_seven" --arg shr "$stdin_seven_reset" \
+    --arg sh "$stdin_seven" --arg shr "$stdin_seven_reset" --arg fhp "$stdin_five_present" \
     --arg acct "$account_hash" --arg pby "$produced_by" '
     ($prev // {}) as $p |
     # a
@@ -240,8 +244,14 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
     (if $mismatch then {} else $p end) as $carry |
     (if $fh == "" then null else ($fh | tonumber? // null) end) as $fhn |
     (if $sh == "" then null else ($sh | tonumber? // null) end) as $shn |
+    def okpct: type == "number" and . >= 0 and . <= 100;
+    # "valid" is a number in 0..100 (string/negative/over 100 is
+    # malformed and never stamps); "empty" is a five_hour the source sent
+    # carrying no number.
+    (($fhn != null and ($fhn | okpct)) or ($fh == "" and $fhp == "1")) as $fhGood |
+    (($shn != null and ($shn | okpct)) and $fhGood) as $stamp |
     {
-      five_hour: (if $fh == "" then ($carry.five_hour // {})
+      five_hour: (if $fh == "" then (if $stamp then {} else ($carry.five_hour // {}) end)
                   else { utilization: $fhn,
                          resets_at: (if $fhr == "" then null else $fhr end) } end),
       seven_day: (if $sh == "" then ($carry.seven_day // {})
@@ -253,10 +263,13 @@ if [ -n "$stdin_five" ] || [ -n "$stdin_seven" ]; then
       derived_at: $ts,
       produced_by: $pby
     }
-    # same provenance rule as Branch B — stamp only when BOTH
-    # stdin windows carry a numeric utilization; a one-window payload carries
-    # the prior stamp so the carried-forward window keeps aging honestly.
-    + (if ($fhn != null and $shn != null) then {primaries_refreshed_at: $ts}
+    # same provenance rule as Branch B — stamp only when every window the
+    # source sent is a valid number and seven_day is one of them; a one-window
+    # payload (or a malformed window) carries the prior stamp so the
+    # carried-forward window keeps aging honestly. An empty five_hour (no active
+    # window) is not a carried-forward window: it is dropped above,
+    # so nothing stale can ride a fresh stamp.
+    + (if $stamp then {primaries_refreshed_at: $ts}
        elif ($carry.primaries_refreshed_at != null) then {primaries_refreshed_at: $carry.primaries_refreshed_at}
        else {} end)
     ' 2>/dev/null)
@@ -369,8 +382,15 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
   # explicit null); absent keys fall back to the same-account prior window.
   (if (($ff.five_hour.utilization // null) != null) then $ff.five_hour else null end) as $fh |
   (if (($ff.seven_day.utilization // null) != null) then $ff.seven_day else null end) as $sd |
+  def okpct: type == "number" and . >= 0 and . <= 100;
+  # The API answers "no active 5-hour window" with a five_hour that
+  # is null or carries no utilization. That is an empty window, not a malformed
+  # one (string / negative / over 100) and not a window the fetch left out.
+  ($ff | has("five_hour") and (.five_hour | if type == "null" then true elif type == "object" then .utilization == null else false end)) as $fhEmpty |
+  (($sd != null and ($sd.utilization | okpct)) and (($fh != null and ($fh.utilization | okpct)) or $fhEmpty)) as $stamp |
   {
-    five_hour:   ((if ($carry.five_hour | type) == "object" then $carry.five_hour else {} end) + ($fh // {})),
+    five_hour:   (if ($stamp and $fhEmpty) then {}
+                  else ((if ($carry.five_hour | type) == "object" then $carry.five_hour else {} end) + ($fh // {})) end),
     seven_day:   ((if ($carry.seven_day | type) == "object" then $carry.seven_day else {} end) + ($sd // {})),
     extra_usage: ($ff.extra_usage // $carry.extra_usage // {}),
     oauth_checked_at: $ts,
@@ -378,10 +398,13 @@ new_cache=$(jq -n --argjson prev "$prev" --argjson f "$fetched" --argjson ts "$n
     derived_at: $ts,
     produced_by: $pby
   }
-  # Provenance: refresh the aggregate stamp ONLY when both fetched primaries
-  # were taken. A partial fetch preserves the prior stamp so a carried-forward
-  # window continues to age honestly; oauth_checked_at cannot prove this.
-  + (if ($fh != null and $sd != null) then {primaries_refreshed_at: $ts}
+  # Provenance: refresh the aggregate stamp ONLY when every window the fetch
+  # returned is a valid number and seven_day is among them. A partial fetch (a
+  # window left out) or a malformed window preserves the prior stamp so a
+  # carried-forward window continues to age honestly; oauth_checked_at cannot
+  # prove this. An API-empty five_hour (no active window) is dropped above
+  # rather than carried, so no stale window rides the fresh stamp.
+  + (if $stamp then {primaries_refreshed_at: $ts}
      elif ($carry.primaries_refreshed_at != null) then {primaries_refreshed_at: $carry.primaries_refreshed_at}
      else {} end)
   ' 2>/dev/null)

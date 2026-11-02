@@ -589,6 +589,90 @@ run_test "(24) HIMMEL-3846: a real account switch STILL reads as a mismatch, an 
   usage_cache_account_mismatch "$CLAUDE_USAGE_CACHE" || exit 1;
 '
 
+run_test "(11a) HIMMEL-8827 oauth: API-empty five_hour + numeric seven_day stamps, and drops the stale carried five_hour" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-11a.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  for empty in "{\"utilization\":null,\"resets_at\":\"R\"}" "{}" "null"; do
+    printf "%s" "{\"five_hour\":{\"utilization\":90,\"resets_at\":\"old\"},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+    stub="$W/stub.sh";
+    printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":$empty,\"seven_day\":{\"utilization\":43,\"resets_at\":\"R7\"}}" "JSON" > "$stub";
+    chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+    before=$(date +%s); bash "$PRODUCER" </dev/null;
+    stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
+    [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
+    jq -e ".five_hour == {} and .seven_day.utilization == 43" "$CLAUDE_USAGE_CACHE" || exit 1;
+  done;
+'
+
+run_test "(11b) HIMMEL-8827 stdin: rate_limits with an empty five_hour + numeric seven_day stamps, and drops the stale carried five_hour" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-11b.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  unset USAGE_OAUTH_CMD; export USAGE_CACHE_TTL=0;
+  for empty in "null" "{}"; do
+    printf "%s" "{\"five_hour\":{\"utilization\":90},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+    before=$(date +%s);
+    printf "%s" "{\"rate_limits\":{\"five_hour\":$empty,\"seven_day\":{\"utilization\":43}}}" | bash "$PRODUCER";
+    stamp=$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE");
+    [ "$stamp" -ge "$before" ] && [ "$stamp" -le "$(date +%s)" ] || exit 1;
+    jq -e ".five_hour == {} and .seven_day.utilization == 43" "$CLAUDE_USAGE_CACHE" || exit 1;
+  done;
+'
+
+run_test "(11c) HIMMEL-8827 control: a malformed oauth five_hour, a missing seven_day, or a missing five_hour key keeps the prior stamp" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-11c.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  stub="$W/stub.sh"; : > "$stub"; chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  for payload in \
+    "{\"five_hour\":{\"utilization\":\"x\"},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":-1},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":101},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":false},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":\"x\"}}" \
+    "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":150}}" \
+    "{\"five_hour\":{\"utilization\":null},\"seven_day\":{\"utilization\":null}}" \
+    "{\"five_hour\":{\"utilization\":10}}" \
+    "{\"seven_day\":{\"utilization\":43}}"; do
+    printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+    printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "$payload" "JSON" > "$stub";
+    bash "$PRODUCER" </dev/null;
+    [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" = "1234567890" ] || { echo "stamped on: $payload" >&2; exit 1; };
+  done;
+'
+
+run_test "(11d) HIMMEL-8827 control: stdin windows out of range or one-sided keep the prior stamp; both numeric still stamp" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-11d.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  unset USAGE_OAUTH_CMD; export USAGE_CACHE_TTL=0;
+  for rl in \
+    "{\"five_hour\":{\"utilization\":101},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":-5},\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":101}}" \
+    "{\"five_hour\":{\"utilization\":10}}" \
+    "{\"seven_day\":{\"utilization\":43}}" \
+    "{\"five_hour\":null}"; do
+    printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+    printf "%s" "{\"rate_limits\":$rl}" | bash "$PRODUCER";
+    [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" = "1234567890" ] || { echo "stamped on: $rl" >&2; exit 1; };
+  done;
+  printf "%s" "{\"five_hour\":{\"utilization\":40},\"seven_day\":{\"utilization\":8},\"primaries_refreshed_at\":1234567890}" > "$CLAUDE_USAGE_CACHE";
+  printf "%s" "{\"rate_limits\":{\"five_hour\":{\"utilization\":0},\"seven_day\":{\"utilization\":100}}}" | bash "$PRODUCER";
+  [ "$(jq -r ".primaries_refreshed_at" "$CLAUDE_USAGE_CACHE")" -gt 1234567890 ] || exit 1;
+'
+
+run_test "(11e) HIMMEL-8827: a fetch with an empty five_hour and numeric seven_day gives a bank verdict other than BANK-STALE" '
+  W=$(mktemp -d "${TMPDIR:-/tmp}/usage-cache-producer-11e.XXXXXX") || exit 1; export HOME="$W/home"; mkdir -p "$HOME";
+  printf "%s" "{\"oauthAccount\":{\"accountUuid\":\"uuid-11e\"}}" > "$HOME/.claude.json";
+  export CLAUDE_USAGE_CACHE="$W/cache.json"; export HUD_USAGE_SNAPSHOT="$W/hud.json";
+  stub="$W/stub.sh";
+  printf "%s\n" "#!/usr/bin/env bash" "cat <<JSON" "{\"five_hour\":{\"utilization\":null,\"resets_at\":null},\"seven_day\":{\"utilization\":43,\"resets_at\":\"R7\"}}" "JSON" > "$stub";
+  chmod +x "$stub"; export USAGE_OAUTH_CMD="$stub";
+  bash "$PRODUCER" </dev/null;
+  noflt="$W/no-fleet-ps.sh"; printf "%s\n" "#!/usr/bin/env bash" "true" > "$noflt"; chmod +x "$noflt";
+  v=$(CADENCE_USAGE_CACHE="$CLAUDE_USAGE_CACHE" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_LEDGER="$W/ledger.jsonl" \
+      CADENCE_USAGE_WORKER=test8827 FLEET_PS_CMD="$noflt" bash "$STATUSLINE_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n1);
+  [ "$v" = "PROCEED" ] || { echo "verdict: $v" >&2; exit 1; };
+'
+
 # --- summary ------------------------------------------------------------------
 if [ "$_failures" -eq 0 ]; then
   echo "OK: all cases passed"
