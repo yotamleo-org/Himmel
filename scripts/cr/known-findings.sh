@@ -43,6 +43,9 @@
 set -uo pipefail
 # a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
+# The catalogue is the CALLER's copy: pin it before the hand-off, because the anchor's copy
+# would otherwise default to its own scripts/cr/known-findings.json and rewrite the primary.
+: "${KNOWN_FINDINGS_FILE:=$(cd "$_ah_d" && pwd)/known-findings.json}"; export KNOWN_FINDINGS_FILE
 . "$_ah_d/anchor-handoff.sh" || exit 2
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -137,10 +140,12 @@ function learningsFeed(rows) {
   const lines = [], stale = [], live = [], short = (t) => t.slice(0, 80);
   for (const r of rows) {
     let reason = null;
-    if (/\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
+    // a rule that REJECTS Windows ("not Windows", "Windows support dropped") states current policy, not a Windows claim
+    const rejectsWindows = /\b(?:not|no|never|without)\s+(?:\w+\s+){0,3}windows\b|\bwindows\b[^.;]{0,60}\b(?:dropped|unsupported|not supported|no longer|removed|retired)\b/i.test(r.text);
+    if (!rejectsWindows && /\bwindows\b|\.ps1\b|powershell|\bpwsh\b|git.?bash|\bmsys2?\b|cygwin/i.test(r.text)) reason = "windows";
     else if (/\bglm\b/i.test(r.text)) reason = "glm";
     else if (/propagat\w*[^.]*\bprivate\b|\bprivate\b[^.]*propagat/i.test(r.text)) reason = "private-repo-propagation";
-    else if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, ""))) reason = "file-gone";
+    else if (tracked && tracked.size && r.file && sameRepo(r.repo) && !/[*?\[]/.test(r.file) && !tracked.has(r.file.replace(/^\.?\//, "")) && !tracked.has(r.file.replace(/^\.?\//, "").replace(/(^|\/)console-kit\//, "$1chief-kit/"))) reason = "file-gone"; // console-kit was renamed chief-kit
     const key = (r.text.match(/\bHIMMEL-\d+\b/) || [])[0];
     if (!reason && key && /defer|follow.?up|tracked|until|pending|revisit|ponytail/i.test(r.text)) {
       const st = ticketStatus(key);
