@@ -153,8 +153,8 @@ for needle in "90 %" "$DIR/HIMMEL-9-N77b-thing-2026-10-06-RESUME.md" T-chief \
     esac
 done
 case "$reason" in
-    *'"WRAPPED — context hand-off to <path>"'*) ok "handoff ends with a closable marker naming its successor" ;;
-    *) bad "handoff must name its successor in the final WRAPPED marker" ;;
+    *'"BLOCKED — context 90 %, RESUME written: <path>"'*) ok "handoff ends with a BLOCKED marker naming its successor, which keeps the lock" ;;
+    *) bad "handoff must name its successor in a final BLOCKED marker, not a WRAPPED that frees every tool" ;;
 esac
 check "bypass WORKER_SESSION_CONTEXT_HANDOFF_OK=1 -> allow" allow "$LS" WORKER_SESSION_CONTEXT_HANDOFF_OK=1
 

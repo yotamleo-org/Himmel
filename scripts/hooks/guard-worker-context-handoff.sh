@@ -441,7 +441,7 @@ else
     else
         write_to="${want}"
     fi
-    deny_msg="worker context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your chief ${current_chief}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"WRAPPED — context hand-off to <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
+    deny_msg="worker context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your chief ${current_chief}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
 fi
 
 if [ "$event" = "PreCompact" ]; then
