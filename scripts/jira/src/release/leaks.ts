@@ -11,7 +11,7 @@ const KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 
 // The key's latest row decides: a deferral or removal after an admission withdraws it.
 // A row keyed by a check id (a version-ready override) is not an admission.
-const admits = (row: Admission | undefined): boolean =>
+export const admits = (row: Admission | undefined): boolean =>
   row !== undefined && row.kind !== 'deferral' && row.kind !== 'rm-remove' && KEY.test(row.key);
 
 /** Open tickets carrying `version`, minus the frozen keys and the keys the ledger admits. Sorted. */
