@@ -227,6 +227,10 @@ trap '_promote_lock_release' EXIT
 # misread as "lock held" -> exit 4 forever, hiding a real, permanent,
 # operator-actionable path/permission failure behind the benign-skip code.
 # Check it explicitly and fail LOUDLY with a DISTINCT code (see header).
+# A test on the station never rewrites the real graph; only exit 77 refuses.
+_door_rc=0
+bash "$(dirname "${BASH_SOURCE[0]}")/../lib/test-run-guard" check ast-update "$OUT_DIR" || _door_rc=$?
+[ "$_door_rc" -ne 77 ] || exit 77
 if ! _out_err=$(mkdir -p "$OUT_DIR" 2>&1 1>/dev/null); then
   echo "ast-update: FAILED to create OUT_DIR=$OUT_DIR (resolved from GRAPHIFY_OUT=${GRAPHIFY_OUT:-<default: graphify-out>}) -- $_out_err -- this is a real filesystem failure, NOT a lock-held skip; exiting 3, not 4" >&2
   exit 3

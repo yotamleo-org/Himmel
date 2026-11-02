@@ -70,6 +70,14 @@ ROOT="${HIMMEL_CLOUD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 failed=0
 TMO=timeout   # gnu-ok: runs only on the Ubuntu 24.04 cloud VM (GNU coreutils, apt)
 
+# A test on the station never rebuilds the real graph or the real qmd index; only exit 77 refuses. The cloud VM
+# is a VM, so the guard lets it through. A missing or crashing guard lets the setup run, as in the other doors.
+if [ "$DRY" -eq 0 ]; then
+  door_rc=0
+  bash "$ROOT/scripts/lib/test-run-guard" check --tool qmd setup-env "$ROOT/graphify-out" >&2 || door_rc=$?
+  if [ "$door_rc" -eq 77 ]; then echo "setup-env: refused, nothing was set up" >&2; exit 77; fi
+fi
+
 have() { command -v "$1" >/dev/null 2>&1; }
 plan() { echo "step=$1 action=$2${3:+ $3}"; }
 

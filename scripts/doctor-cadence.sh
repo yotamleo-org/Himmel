@@ -236,6 +236,10 @@ cmd_arm() {
         echo "DRY doctor-cadence: would write $runner and install: $entry"
         return 0
     fi
+    # A test on the station never writes the real crontab or a runner under the real home; only exit 77 refuses.
+    local guard_rc=0
+    bash "$SCRIPT_DIR/lib/test-run-guard" check --tool "$CRONTAB_BIN" doctor-cadence-arm "$RUNNER_DIR" || guard_rc=$?
+    [ "$guard_rc" -ne 77 ] || return 77
     mkdir -p "$RUNNER_DIR" || return 4
     # shellcheck disable=SC2016  # the runner's own $log must stay literal
     {
@@ -293,6 +297,10 @@ cmd_disarm() {
     cron_read || return 4
     if [ -z "$(cron_entry)" ]; then echo "doctor-cadence: nothing armed — disarm is a no-op"; return 0; fi
     if [ "$dry" -eq 1 ]; then echo "DRY doctor-cadence: would remove the $TASK_NAME crontab entry"; return 0; fi
+    # A test on the station never writes the real crontab or a runner under the real home; only exit 77 refuses.
+    local guard_rc=0
+    bash "$SCRIPT_DIR/lib/test-run-guard" check --tool "$CRONTAB_BIN" doctor-cadence-disarm "$RUNNER_DIR" || guard_rc=$?
+    [ "$guard_rc" -ne 77 ] || return 77
     { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
     rm -f "$RUNNER_DIR/doctor-cadence.sh"
     echo "doctor-cadence: disarmed"
