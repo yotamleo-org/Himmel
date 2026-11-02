@@ -19,8 +19,16 @@ command -v jq >/dev/null 2>&1 || { echo "FAIL: jq is required and not on PATH"; 
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/walled-host.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
-git init -q "$TMP/repo"
+git init -q "$TMP/repo" || exit 1
 LOG="$TMP/deny.jsonl"
+
+# A fixture that did not get written would let a case pass without testing what
+# it names, so setup stops the suite: put <file> <text with \n escapes> makes the
+# parent dir and writes the file; setup_fail reports a failed write.
+setup_fail() { echo "FAIL fixture setup: $*"; exit 1; }
+put() {
+    if ! { mkdir -p "$(dirname "$1")" && printf '%b' "$2" >"$1"; }; then setup_fail "$1"; fi
+}
 
 # The layout of a real install: the plugin runs from a copy in the plugin cache
 # under the config dir, not from a checkout, and the himmel checkout is found from
@@ -33,8 +41,8 @@ record() {
     if [ "$1" = none ]; then
         rm -f "$CFG/plugins/known_marketplaces.json"
     else
-        jq -n --arg p "$1" '{himmel:{source:{source:"directory",path:$p},installLocation:$p}}' \
-            >"$CFG/plugins/known_marketplaces.json"
+        if ! { mkdir -p "$CFG/plugins" && jq -n --arg p "$1" '{himmel:{source:{source:"directory",path:$p},installLocation:$p}}' \
+            >"$CFG/plugins/known_marketplaces.json"; }; then setup_fail "marketplace record for $1"; fi
     fi
 }
 
@@ -93,9 +101,8 @@ assert_eq "adopter: the row carries no url" 0 \
 # Files the PROJECT owns cannot pick the mode or the host list. An
 # adopter repo carrying its own scripts/web/fetch-url.sh and an empty (or
 # different) walled-hosts.conf still gets the embedded list and the adopter deny.
-mkdir -p "$TMP/owned/scripts/web"
-printf '#!/bin/sh\nexit 0\n' >"$TMP/owned/scripts/web/fetch-url.sh"
-printf '\n' >"$TMP/owned/scripts/web/walled-hosts.conf"
+put "$TMP/owned/scripts/web/fetch-url.sh" '#!/bin/sh\nexit 0\n'
+put "$TMP/owned/scripts/web/walled-hosts.conf" '\n'
 run_case "$(wf 'https://x.com/a/status/1')" "$TMP/owned"
 assert_eq "project-owned fetcher + empty conf: walled host still denied" 2 "$RC"
 case "$ERR" in
@@ -103,7 +110,7 @@ case "$ERR" in
                  FAILED=$((FAILED + 1)) ;;
     *) echo "PASS project-owned files: deny names no project script" ;;
 esac
-printf 'example.org\n' >"$TMP/owned/scripts/web/walled-hosts.conf"
+put "$TMP/owned/scripts/web/walled-hosts.conf" 'example.org\n'
 run_case "$(wf 'https://x.com/a/status/1')" "$TMP/owned"
 assert_eq "project-owned conf naming another host: x.com still denied" 2 "$RC"
 run_case "$(wf 'https://example.org/a')" "$TMP/owned"
@@ -111,11 +118,11 @@ assert_eq "project-owned conf naming another host: that host not walled" 0 "$RC"
 
 # The recorded himmel checkout's conf: an empty or blank first line keeps the
 # embedded list (the guard must not go silent), a real line is the host list.
-mkdir -p "$TMP/fx/marketplace" "$TMP/fx/scripts/web"
-printf '#!/bin/sh\nexit 0\n' >"$TMP/fx/scripts/web/fetch-url.sh"
+mkdir -p "$TMP/fx/marketplace" || setup_fail "$TMP/fx/marketplace"
+put "$TMP/fx/scripts/web/fetch-url.sh" '#!/bin/sh\nexit 0\n'
 record "$TMP/fx/marketplace"
 for blank in '' '   '; do
-    printf '%s\n' "$blank" >"$TMP/fx/scripts/web/walled-hosts.conf"
+    put "$TMP/fx/scripts/web/walled-hosts.conf" "$blank\\n"
     run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
     assert_eq "recorded checkout, blank conf line '$blank': walled host still denied" 2 "$RC"
     case "$ERR" in
@@ -124,7 +131,7 @@ for blank in '' '   '; do
         *) echo "PASS recorded checkout, blank conf: embedded list and adopter deny" ;;
     esac
 done
-printf 'example.org\n' >"$TMP/fx/scripts/web/walled-hosts.conf"
+put "$TMP/fx/scripts/web/walled-hosts.conf" 'example.org\n'
 run_case "$(wf 'https://example.org/a')" "$TMP/repo"
 assert_eq "recorded checkout, conf example.org: that host denied" 2 "$RC"
 assert_contains "recorded checkout, conf example.org: deny names the recorded fetcher" \
