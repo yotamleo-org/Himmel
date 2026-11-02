@@ -1095,7 +1095,8 @@ scripts/test-himmel-update-tools.sh	local	behaviour suite, 0 catches in the 400-
 scripts/test-himmel-update-versions.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update.sh	local	new since the audit, behaviour suite
 scripts/test-install-symmetry-vm.sh	local	new since the audit, behaviour suite
-scripts/test-lane-mirror-seed.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-keyring-isolation.sh	pr	guard
+scripts/test-lane-mirror-seed.sh	localbehaviour suite, 0 catches in the 400-PR audit window
 scripts/test-luna-upgrade-all.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-luna-upgrade-vm.sh	local	new since the audit, behaviour suite
 scripts/test-merge-public-on-green.sh	local	behaviour suite, 0 catches in the 400-PR audit window
