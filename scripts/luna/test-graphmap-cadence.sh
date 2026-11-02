@@ -753,11 +753,11 @@ printf '[exit rc=4]\n' > "$CRON_DIR/graphmap-ast-luna.log"
 out=$(run_cron status)
 assert_contains "chunk-cap exit 4 is reported as partial progress" "run outcome: partial progress" "$out"
 assert_contains "partial progress says the next run resumes" "resumes from the kept cache" "$out"
-partial_lines=$(grep -c -F 'run outcome: partial progress' <<< "$out" || true)
-if [ "$partial_lines" = "1" ]; then
+partial_tasks=$(awk '/^(ARMED|UNHEALTHY|not armed)/ { if (match($0, /HIMMEL-GraphMap[A-Za-z-]*/)) task = substr($0, RSTART, RLENGTH) } /run outcome: partial progress/ { print task }' <<< "$out" | tr '\n' ' ')
+if [ "$partial_tasks" = "HIMMEL-GraphMap-Luna " ]; then
     pass "partial progress only on the refresh log that hit the cap"
 else
-    fail "partial progress only on the refresh log that hit the cap" "expected 1 partial-progress line, got $partial_lines"
+    fail "partial progress only on the refresh log that hit the cap" "expected exactly the Luna task, got: $partial_tasks"
 fi
 rm -f "$CRON_DIR/graphmap-luna.log" "$CRON_DIR/graphmap-himmel.log" "$CRON_DIR/graphmap-ast-luna.log"
 

@@ -2420,6 +2420,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # live out dir's cache (content-keyed, so adding entries is safe) under the
   # promote lock, and leave a marker so an overridden out dir still proves it
   # is graphify's. Never promotes the graph. $1 = optional failed-chunk line.
+  _KEEP_FAILED=0
   _keep_finished_chunks() {
     local note="${1:-}"
     [ -d "$SCRATCH_OUT/cache" ] || [ -n "$note" ] || return 0
@@ -2429,6 +2430,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
        && : > "$OUT_DIR/.graphify_resume_cache"; then
       echo "refresh-graph-map: finished chunks kept in $OUT_DIR/cache (graph NOT promoted); the next run resumes from them" >&2
     else
+      _KEEP_FAILED=1
       echo "refresh-graph-map: WARN could not keep the finished chunks in $OUT_DIR/cache -- the next run restarts from the last promoted cache" >&2
     fi
     if [ -n "$note" ]; then
@@ -2459,6 +2461,10 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     cap*)
       echo "refresh-graph-map: chunk cap ${_stop#cap } reached -- graphify-out left unpromoted, resumable (exit 4)" >&2
       _keep_finished_chunks
+      if [ "$_KEEP_FAILED" -eq 1 ]; then
+        echo "refresh-graph-map: the chunk cap stop is NOT resumable (the finished chunks could not be kept) -- failing (exit 2)" >&2
+        exit 2
+      fi
       exit 4 ;;
     hollow*)
       read -r _ _fin _ret <<< "$_stop"
