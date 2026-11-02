@@ -108,5 +108,169 @@ if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "malformed JSON exits 0 silen
 bash "$HOOK" </dev/null >"$TMP/out" 2>/dev/null; rc=$?
 if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ]; then pass "empty stdin exits 0 silently"; else fail "empty stdin (rc=$rc)"; fi
 
+# ---------------------------------------------------------------------------
+# Vault sweep POC: marketplace/plugins/himmel-ops/hooks/block-vault-sweep.sh,
+# the opt-in PreToolUse deny that refuses the first hand sweep of the notes
+# once and names the qmd search. Hermetic: the vault paths below are strings
+# the hook never opens, its state dir and log live under $TMP, and the cwd is a
+# plain temp dir (no git, no salus). Unlike the rows above, a deny here is the
+# expected result (exit 2).
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+VHOOK="$ROOT/marketplace/plugins/himmel-ops/hooks/block-vault-sweep.sh"
+VLOG="$TMP/vlog.jsonl"
+VAULT=/home/u/Documents/luna
+mkdir -p "$TMP/work"
+
+# vcall SID TOOL COMMAND-OR-PATTERN [PATH] [CWD] -> rc in $rc, stderr in $TMP/err
+# Overridable per call: VON, VBYP, VDIR, VREPO.
+vcall() {
+    local sid="$1" tool="$2" cmd="${3:-}" path="${4:-}" cwd="${5:-$TMP/work}" ti
+    if [ "$tool" = Grep ]; then
+        ti="$(jq -cn --arg p "$cmd" --arg d "$path" '{pattern: $p} + (if $d == "" then {} else {path: $d} end)')"
+    elif [ -n "$cmd" ]; then
+        ti="$(jq -cn --arg c "$cmd" '{command: $c}')"
+    else
+        ti='{}'
+    fi
+    jq -cn --arg s "$sid" --arg t "$tool" --arg d "$cwd" --argjson i "$ti" \
+        '{session_id: $s, cwd: $d, hook_event_name: "PreToolUse", tool_name: $t, tool_input: $i}' \
+        | env HIMMEL_VAULT_SWEEP_DENY="${VON-1}" HIMMEL_VAULT_SWEEP_BYPASS="${VBYP-}" \
+            HIMMEL_VAULT_SWEEP_DIR="${VDIR-$TMP/vstate}" HIMMEL_VAULT_SWEEP_LOG="$VLOG" \
+            HIMMEL_REPO="${VREPO-$ROOT}" bash "$VHOOK" >"$TMP/out" 2>"$TMP/err"
+    rc=$?
+}
+# vrows DESC-PREFIX WANT-RC SID-PREFIX CMD...: one fresh session per command
+vrows() {
+    local want="$1" label="$2" c n=0
+    shift 2
+    for c in "$@"; do
+        n=$((n + 1))
+        vcall "vr-$label-$n" Bash "$c"
+        [ "$rc" = "$want" ] || fail "$label: want rc=$want got rc=$rc for: $c"
+    done
+}
+
+# 10. A vault sweep is denied once, naming the absolute qmd command, then allowed.
+S="grep -rl \"meeting notes\" $VAULT"
+vcall v1 Bash "$S"
+if [ "$rc" = 2 ] && grep -q "$ROOT/scripts/lib/qmd-bounded.sh query -c luna" "$TMP/err" \
+    && grep -q 'one retry' "$TMP/err" && grep -q 'no chief message' "$TMP/err" \
+    && grep -q 'HIMMEL_VAULT_SWEEP_BYPASS=1' "$TMP/err"; then pass "first vault sweep is denied with the absolute qmd command, one retry and the bypass named"; else fail "first vault sweep denied (rc=$rc)"; fi
+vcall v1 Bash "$S"
+if [ "$rc" = 0 ]; then pass "the retry of the same sweep is allowed"; else fail "retry allowed (rc=$rc)"; fi
+vcall v1 Bash "rg -n other $VAULT/handovers"
+if [ "$rc" = 0 ]; then pass "later sweeps in the same session stay allowed"; else fail "later sweep allowed (rc=$rc)"; fi
+vcall v1b Bash "rg -n notes $VAULT/handovers"
+if [ "$rc" = 2 ]; then pass "a second session is denied on its own"; else fail "second session denied (rc=$rc)"; fi
+
+# 11. The other closed-list shapes: the Grep tool, rg, a recursive flag in any option token, a Clippings root.
+vcall v2 Grep "meeting notes" "$VAULT/handovers"
+if [ "$rc" = 2 ]; then pass "Grep tool over a vault path is denied"; else fail "Grep tool denied (rc=$rc)"; fi
+vcall v2g Grep "meeting notes" "" "$VAULT"
+if [ "$rc" = 2 ]; then pass "Grep tool with no path, cwd in the vault, is denied"; else fail "Grep tool cwd vault denied (rc=$rc)"; fi
+vrows 2 shape \
+    "rg -n notes $VAULT" \
+    "grep -n -r notes $VAULT" \
+    "grep -Rli notes /home/u/Clippings" \
+    "cd /x && grep -rn \"plain words\" $VAULT/specs" \
+    "grep --recursive notes $VAULT"
+
+# 12. Never denied: a repo grep, a named file, find -name, a listing, a quoted mention.
+vrows 0 allow \
+    "grep -rn notes /home/u/Documents/github/himmel/scripts" \
+    "grep -rn notes src" \
+    "grep -n notes $VAULT/handovers/one.md" \
+    "grep -rn notes" \
+    "find $VAULT -name \"*.md\"" \
+    "ls $VAULT" \
+    "git status" \
+    "echo \"grep -r notes $VAULT\"" \
+    "git commit -m \"grep -r notes $VAULT\"" \
+    "git grep -n notes" \
+    "grep -e notes -r $VAULT"
+vcall v3 Grep "meeting notes" "/home/u/Documents/github/himmel/scripts"
+if [ "$rc" = 0 ]; then pass "Grep tool over a repo path is allowed"; else fail "Grep repo path allowed (rc=$rc)"; fi
+
+# 13. A ticket key, a number, a session name or a marker in the pattern is never denied.
+vrows 0 id \
+    "grep -rl HIMMEL-8748 $VAULT" \
+    "grep -rl \"HIMMEL 8748\" $VAULT" \
+    "grep -rl 3972 $VAULT" \
+    "grep -rl 2112300408550867318 $VAULT" \
+    "grep -rl '\\b344\\b' $VAULT" \
+    "grep -rl harvest-clips $VAULT" \
+    "grep -rl KN-j4295-1 $VAULT" \
+    "grep -rl '#3972' $VAULT" \
+    "rg -l 'a|b' $VAULT"
+vcall v4 Grep "HIMMEL-8748" "$VAULT"
+if [ "$rc" = 0 ]; then pass "Grep tool with a ticket key is allowed"; else fail "Grep ticket key allowed (rc=$rc)"; fi
+
+# 14. A qmd call clears the deny, whether it comes before or after the refusal.
+vcall v5 Bash "bash $ROOT/scripts/lib/qmd-bounded.sh query -c luna \"meeting notes\""
+vcall v5 Bash "$S"
+if [ "$rc" = 0 ]; then pass "a qmd-bounded.sh call before the sweep clears the deny"; else fail "qmd-bounded clears (rc=$rc)"; fi
+vcall v6 mcp__qmd__query
+vcall v6 Bash "$S"
+if [ "$rc" = 0 ]; then pass "a qmd MCP call before the sweep clears the deny"; else fail "qmd mcp clears (rc=$rc)"; fi
+vcall v6p mcp__plugin_qmd_qmd__query
+vcall v6p Bash "$S"
+if [ "$rc" = 0 ]; then pass "a plugin-named qmd MCP call clears the deny"; else fail "plugin qmd clears (rc=$rc)"; fi
+vcall v7 Bash "$S"
+vcall v7 Bash 'qmd query -c luna "meeting notes"'
+vcall v7 Bash "$S"
+if [ "$rc" = 0 ]; then pass "a qmd call after the refusal keeps later sweeps allowed"; else fail "qmd after refusal (rc=$rc)"; fi
+
+# 15. Off by default, the launching-shell bypass, and silence in a salus session.
+VON='' vcall v8 Bash "$S"
+if [ "$rc" = 0 ]; then pass "switch unset: the hook is a no-op"; else fail "switch unset (rc=$rc)"; fi
+VBYP=1 vcall v9 Bash "$S"
+if [ "$rc" = 0 ]; then pass "HIMMEL_VAULT_SWEEP_BYPASS=1 allows"; else fail "bypass allows (rc=$rc)"; fi
+mkdir -p "$TMP/salus-app" "$TMP/marked/sub"
+: >"$TMP/marked/.salus"
+vcall v10 Bash "$S" "" "$TMP/salus-app"
+a=$rc
+vcall v10b Bash "$S" "" "$TMP/marked/sub"
+if [ "$a" = 0 ] && [ "$rc" = 0 ]; then pass "salus cwd path and .salus marker: silent"; else fail "salus silent (path=$a marker=$rc)"; fi
+vcall v10c Bash "grep -rl notes /home/u/salus-app/docs $VAULT"
+if [ "$rc" = 0 ]; then pass "a command naming salus: silent"; else fail "salus in command silent (rc=$rc)"; fi
+
+# 16. Fail open on its own problems.
+printf 'not json' | HIMMEL_VAULT_SWEEP_DENY=1 bash "$VHOOK" >"$TMP/out" 2>"$TMP/err"; rc=$?
+if [ "$rc" = 0 ] && [ ! -s "$TMP/out" ] && [ ! -s "$TMP/err" ]; then pass "vault hook: malformed JSON exits 0 silently"; else fail "vault hook malformed JSON (rc=$rc)"; fi
+HIMMEL_VAULT_SWEEP_DENY=1 bash "$VHOOK" </dev/null >"$TMP/out" 2>"$TMP/err"; rc=$?
+if [ "$rc" = 0 ] && [ ! -s "$TMP/err" ]; then pass "vault hook: empty stdin exits 0"; else fail "vault hook empty stdin (rc=$rc)"; fi
+: >"$TMP/afile"
+VDIR="$TMP/afile/state" vcall v11 Bash "$S"
+if [ "$rc" = 0 ]; then pass "unwritable state dir allows"; else fail "unwritable state dir (rc=$rc)"; fi
+VREPO="$TMP/no-such-checkout" vcall v12 Bash "$S"
+if [ "$rc" = 0 ]; then pass "no resolvable checkout (cannot name the absolute path) allows"; else fail "no checkout allows (rc=$rc)"; fi
+vcall v13 Bash $'grep -rl "unterminated notes\n'"$VAULT"
+if [ "$rc" = 0 ]; then pass "unbalanced quote (unparseable) allows"; else fail "unbalanced quote allows (rc=$rc)"; fi
+
+# 17. Known residual: a heredoc line that is itself a vault sweep is refused (counted as a false refusal), once.
+vcall v14 Bash $'cat > note.md <<EOF\ngrep -r notes '"$VAULT"$'\nEOF'
+a=$rc
+vcall v14 Bash $'cat > note.md <<EOF\ngrep -r notes '"$VAULT"$'\nEOF'
+if [ "$a" = 2 ] && [ "$rc" = 0 ]; then pass "heredoc sweep line: refused once, then the retry passes (bounded false refusal)"; else fail "heredoc residual (first=$a retry=$rc)"; fi
+
+# 18. The log carries enough to classify a refusal and to count conversions.
+long="grep -rl notes $VAULT$(printf ' word%.0s' $(seq 1 60))"
+vcall v15 Bash "$long"
+vcall v16 Bash "grep -rl notes $VAULT --include=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef"
+if jq -e -s '
+    ([.[] | select(.event == "deny")] | length) as $d
+    | ([.[] | select(.event == "retry_allowed")] | length) as $r
+    | ([.[] | select(.event == "qmd_clear" and .had_deny == true)] | length) as $c
+    | ([.[] | select(.event == "qmd_clear" and .had_deny == false)] | length) as $n
+    | $d >= 5 and $r >= 2 and $c == 1 and $n >= 3
+      and all(.[]; has("ts") and has("session_id") and has("event") and has("tool"))
+      and all(.[] | select(.event == "deny"); (.cmd | length) <= 200 and has("root") and has("cwd"))
+      and ([.[] | select(.session_id == "v15" and .event == "deny")][0].cmd | length) == 200
+      and ([.[] | select(.session_id == "v16" and .event == "deny")][0].cmd | test("ABCDEFGHIJKLMNOPQRSTUVWXYZ") | not)' "$VLOG" >/dev/null 2>&1; then
+    pass "log rows: deny/retry_allowed/qmd_clear with had_deny, cmd cut to 200, token-shaped runs masked"
+else
+    fail "log rows"
+fi
+
 if [ "$FAILED" -gt 0 ]; then echo "$FAILED failed"; exit 1; fi
 echo "all passed"
