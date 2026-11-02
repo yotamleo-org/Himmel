@@ -267,7 +267,7 @@ VDIR="$TMP/afile/state" vcall v11 Bash "$S"
 if [ "$rc" = 0 ]; then pass "unwritable state dir allows"; else fail "unwritable state dir (rc=$rc)"; fi
 VREPO="$TMP/no-such-checkout" vcall v12 Bash "$S"
 if [ "$rc" = 0 ]; then pass "no resolvable checkout (cannot name the absolute path) allows"; else fail "no checkout allows (rc=$rc)"; fi
-vcall v13 Bash $'grep -rl "unterminated notes\n'"$VAULT"
+vcall v13 Bash "grep -rl notes $VAULT \"unterminated"
 if [ "$rc" = 0 ]; then pass "unbalanced quote (unparseable) allows"; else fail "unbalanced quote allows (rc=$rc)"; fi
 
 # 16b. The checkout falls back to the canonical install, a path with a space is quoted in the
