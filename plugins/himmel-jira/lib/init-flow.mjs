@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { jiraFetch, envFilePath } from './jira-fetch.mjs';
+import { jiraFetch, envFilePath, SECRET_KEYS, fillFromKeyring, resolveFromKeyring, storeInKeyring } from './jira-fetch.mjs';
 import { writeMetadata } from './metadata.mjs';
 
 function loadEnvFile(path) {
@@ -46,6 +46,8 @@ function loadConfIntoProcess() {
 
 export function loadEnvIntoProcess(envPath) {
   loadConfIntoProcess();
+  // Keyring before .env: a keyring value beats a .env line; an exported value beats both.
+  fillFromKeyring();
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const t = line.trim();
@@ -62,7 +64,8 @@ export function loadEnvIntoProcess(envPath) {
 export function ensureEnvKeys(envPath, keys) {
   loadConfIntoProcess();
   const current = loadEnvFile(envPath);
-  return keys.filter((k) => !current[k] && !(CONF_KEYS.includes(k) && process.env[k]));
+  const served = resolveFromKeyring(keys.filter((k) => SECRET_KEYS.includes(k) && !current[k]));
+  return keys.filter((k) => !current[k] && !served[k] && !(CONF_KEYS.includes(k) && process.env[k]));
 }
 
 // Resolve the project key(s) to discover, in precedence order:
@@ -97,6 +100,15 @@ export function appendEnvKeys(envPath, kvs) {
   } catch (e) {
     process.stderr.write(`[jira-init] warning: chmod 600 failed on ${envPath}: ${e.message}\n`);
   }
+}
+
+// The setup flow's write: the email and token go to the keyring when it is unlocked (no .env line),
+// everything else, and any credential the keyring did not take, to .env as before.
+export function writeCredentials(envPath, kvs) {
+  const stored = storeInKeyring(kvs);
+  const rest = Object.fromEntries(Object.entries(kvs).filter(([k]) => !stored.includes(k)));
+  if (Object.keys(rest).length) appendEnvKeys(envPath, rest);
+  return { keyring: stored, env: Object.keys(rest) };
 }
 
 export async function checkAuth() {
