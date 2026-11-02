@@ -2516,6 +2516,7 @@ tdout="$(run_headed_arm "$td1" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-
 check "8436a a second worker on a ticket with a live worker is refused (exit 16)" "$tdrc" "16"
 contains "8436b the refusal names the ticket and the live session" "$tdout" "HIMMEL-8436-N4000-first-worker-2026-10-31"
 check "8436c the refused arm launched no konsole" "$([ -e "$td1/record" ] && echo launched || echo none)" "none"
+check "8464p a scan refusal releases the ticket claim" "$(compgen -G "$td1/locks/ticket-*" | grep -c .)" "0"
 td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-worker-2026-10-31" "HIMMEL-8436-N4332b-second-worker-2026-10-31"
 run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-worker-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
 check "8436d a second worker of the same worker lineage (same N) still launches" "$tdrc2" "0"
@@ -2585,7 +2586,7 @@ run_pair() {
 tp1="$tmp/tp1"; mk_pair "$tp1" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
 check "8464a two arms for one ticket started together: one launches (exit 0), one is refused (exit 16), one session" \
   "$(run_pair "$tp1" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02")" "0 16 |1"
-check "8464b the ticket claim is released on every exit path (launch and refusal)" "$(compgen -G "$tp1/locks/ticket-*" | grep -c .)" "0"
+check "8464b the ticket claim is released after a launch and after a claim-held refusal" "$(compgen -G "$tp1/locks/ticket-*" | grep -c .)" "0"
 tp2="$tmp/tp2"; mk_pair "$tp2" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8465-N2-second-2026-11-02"
 check "8464c two arms for different tickets both launch" \
   "$(run_pair "$tp2" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8465-N2-second-2026-11-02")" "0 0 |2"
@@ -2630,7 +2631,11 @@ tp7_n=0
 while [ ! -e "$tp7/bind-started" ] && [ "$tp7_n" -lt 100 ]; do sleep 0.05; tp7_n=$((tp7_n+1)); done
 tp7_held="$(compgen -G "$tp7/locks/ticket-*" | grep -c .)"
 tp7_alive="$(kill -0 "$tp7_pid" 2>/dev/null && echo yes || echo no)"
-check "8464o the ticket claim is gone while the bus bind still runs" "$tp7_held|$tp7_alive" "0|yes"
+tp7_started="$([ -e "$tp7/bind-started" ] && echo yes || echo no)"
+check "8464o the ticket claim is gone while the bus bind still runs" "$tp7_held|$tp7_alive|$tp7_started" "0|yes|yes"
+# a successor takes the ticket after the release: the first arm's exit must not delete the successor's claim
+mkdir -p "$tp7/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp7/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N2-second-2026-11-02" > "$tp7/locks/ticket-HIMMEL-8464.lock/holder"
 wait "$tp7_pid" 2>/dev/null; pkill -f "$tp7/bus" 2>/dev/null || true
+check "8464q the first arm's exit leaves a successor's ticket claim alone" "$(cat "$tp7/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N2-second-2026-11-02"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
