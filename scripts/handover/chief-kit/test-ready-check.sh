@@ -123,10 +123,10 @@ case "$args" in
         printf '%s\n' "${STUB_FILES:-README.md}"
         [ -z "${STUB_FILES_PARTIAL:-}" ] || exit 1  # a --paginate that died after its first page
         ;;
-    "api repos/"*"/commits/"*"/statuses"*)
-        # check 15: the CodeRabbit commit status; STUB_CR_DESC unset = unreadable
+    "api repos/${STUB_NWO:-acme/repo}/commits/${STUB_HEAD:-no-head}/statuses"*)
+        # check 15: the CodeRabbit commit status of THIS repo and head only; STUB_CR_DESC unset = unreadable
         [ -n "${STUB_CR_DESC+x}" ] || exit 1
-        jq -n --arg d "$STUB_CR_DESC" '[{context:"CodeRabbit",state:"success",description:$d,created_at:"2026-11-02T18:44:07Z",creator:{id:136622811,login:"coderabbitai[bot]",type:"Bot"}}]' ;;
+        jq -n --arg d "$STUB_CR_DESC" --arg st "${STUB_CR_STATE:-success}" '[{context:"CodeRabbit",state:$st,description:$d,created_at:"2026-11-02T18:44:07Z",creator:{id:136622811,login:"coderabbitai[bot]",type:"Bot"}}]' ;;
     *)
         echo "gh-stub: unhandled args: $args" >&2
         exit 1 ;;
@@ -3280,8 +3280,15 @@ notcontains "cr control: a completed review prints no row 15" "$CR_OUT_ok" '] 15
 CR_OUT_dis="$(STUB_CR_DESC='Review skipped: automatic reviews are disabled' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run || true)"
 notcontains "cr control: auto-reviews-disabled is not rate-limited" "$CR_OUT_dis" '] 15. '
 notcontains "cr control: an unreadable status prints no row 15" "$CR_OUT_ctl" '] 15. '
+CR_OUT_fail="$(STUB_CR_STATE=failure STUB_CR_DESC='Review rate limited' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run || true)"
+notcontains "cr control: rate-limit wording on a failure state prints no row 15" "$CR_OUT_fail" '] 15. '
 CR_OUT_rl7="$(STUB_CR_DESC='Review rate limited' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run7 || true)"
 notcontains "cr rate-limited: --only 7 does not run row 15" "$CR_OUT_rl7" '] 15. '
+# the stub answers only for the fixture repository and head, so a read of any other one cannot pass row 15
+cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited' GH_LOG="$GH_LOG" "$tmp/bin/gh" api "repos/$NWO/commits/${SHA%?}0/statuses?per_page=100" >/dev/null 2>&1 || cr_stub_rc=$?
+check "cr stub: a read of another head is refused" "$cr_stub_rc" "1"
+cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited' GH_LOG="$GH_LOG" "$tmp/bin/gh" api "repos/other/repo/commits/$SHA/statuses?per_page=100" >/dev/null 2>&1 || cr_stub_rc=$?
+check "cr stub: a read of another repository is refused" "$cr_stub_rc" "1"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
