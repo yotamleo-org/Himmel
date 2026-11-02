@@ -1583,6 +1583,41 @@ done
   && pass "T22d second run over the unchanged corpus queues zero files" \
   || fail "T22d second run over an unchanged corpus should queue 0 files: $(cat "$QLOG")"
 
+# --- T22e: a `handovers` line in the corpus-root .graphify-corpus-ignore keeps
+# every handovers/ file out of the scratch copy graphify extracts from, while
+# the other notes stay. REGRESSION GUARD, not a RED proof: the exclusion
+# mechanism already honours any directory line; the vault's own file lives
+# outside this repo. Scratch fixture only: no vault content. ---
+HXCORPUS="$WS/hxcorpus"; HXMAPS="$WS/hxmaps"; HXBIN="$WS/hxbin"; HXLOG="$WS/hx.log"
+mkdir -p "$HXCORPUS/notes" "$HXCORPUS/handovers/team/repo" "$HXMAPS" "$HXBIN"
+printf '# n\n' > "$HXCORPUS/notes/n.md"
+printf '# h\n' > "$HXCORPUS/handovers/team/repo/h.md"
+printf 'handovers\n' > "$HXCORPUS/.graphify-corpus-ignore"
+: > "$HXLOG"
+cat > "$HXBIN/graphify" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "--version" ]; then printf 'graphify 0.0.0\n'; exit 0; fi
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; fi
+if [ "\$1" != "cluster-only" ] && [ "\$2" = "--update" ]; then
+  (cd "\$target" && find . -name '*.md' -not -path './graphify-out/*' | sort) >> "$HXLOG"
+fi
+mkdir -p "\$target/graphify-out"
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+chmod +x "$HXBIN/graphify"
+out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify" PATH="$HXBIN:$PATH" \
+  bash "$SCRIPT" --name hxtest --corpus-root "$HXCORPUS" --backend claude-cli \
+  --maps-dir "$HXMAPS" --title "Hx Map" --slug hx-map --corpus-tag hx 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T22e exit 0 (got $rc): $out"
+{ grep -qx './notes/n.md' "$HXLOG" && ! grep -q 'handovers' "$HXLOG"; } \
+  && pass "T22e a handovers line in .graphify-corpus-ignore keeps handovers/ out of the scratch copy" \
+  || fail "T22e scratch copy should hold notes/n.md and no handovers/ file: $(cat "$HXLOG")"
+
 # --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
 # `if !`, no error message, no controlled exit). This script runs under
