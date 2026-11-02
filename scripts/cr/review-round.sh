@@ -1725,10 +1725,11 @@ fi
 # Exit 0 = no still-open findings; exit 3 = one or more rows are still-open
 # (the caller's round was not actually clean for that finding, whether it was
 # left agreed or never adjudicated at all); exit 1 = a malformed ledger row
-# or a ledger write failure, or a finding row with a BLANK head and no row for
-# the same finding id (same branch, artifact, perspective) at a real head
-# (with such a row the blank one is skipped and counted, and that
-# row decides); exit 2 = --head does not resolve to a commit;
+# or a ledger write failure, or a finding row with a BLANK head and no later row
+# that looks like its retry (same branch, finding id, model, severity, file,
+# artifact and perspective, at a commit-shaped head). With such a row the blank
+# one is skipped and counted and that row decides; the match is a heuristic and
+# can pass a blank row that was not a retry; exit 2 = --head does not resolve to a commit;
 # exit 5 = the CR ledger file itself is missing.
 if [ "$verb" = "promote" ]; then
     if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
@@ -1838,17 +1839,22 @@ for (const o of atHead) {
 }
 const outLines = [];
 const blankRefused = [];
-for (const row of findingRows) {
+for (let ri = 0; ri < findingRows.length; ri++) {
+  const row = findingRows[ri];
   if (!String(row.head || "").trim()) {
     // A row written with no head cannot be amended (amend finds a
     // row by head) and no later commit relates to it. It is skipped only when
-    // the same finding is recorded at a real head on this branch, same artifact
-    // and perspective: that row is judged on its own below, so a skipped row
-    // never lets an open finding through. With no such row there is nothing to
-    // judge it by, and promote refuses rather than guess.
-    const hasTwin = !!row.finding_id && findingRows.some((t) => t !== row && String(t.head || "").trim() &&
+    // a row that looks like its retry exists: written later in the ledger, on
+    // this branch, at a commit-shaped head, with the same finding id, model,
+    // severity, file, artifact and perspective. That row is judged on its own
+    // below. Finding ids recur across PRs, so the id alone proves nothing, and
+    // even this match is a heuristic: it can pass a blank row that was not a
+    // retry. With no such row there is nothing to judge it by, and promote
+    // refuses rather than guess.
+    const hasTwin = !!row.finding_id && findingRows.some((t, ti) => ti > ri && /^[0-9a-f]{7,64}$/i.test(String(t.head || "")) &&
       t.finding_id === row.finding_id && (t.artifact || "diff") === (row.artifact || "diff") &&
-      (t.perspective || "off") === (row.perspective || "off"));
+      (t.perspective || "off") === (row.perspective || "off") && (t.model || "") === (row.model || "") &&
+      (t.severity || "") === (row.severity || "") && (t.file || "") === (row.file || ""));
     if (hasTwin) outLines.push(JSON.stringify({action: "skip-blank-head", id: row.finding_id, head: "", branch: row.branch}));
     else blankRefused.push(row.finding_id || "(no id)");
     continue;
@@ -1914,7 +1920,7 @@ process.stdout.write(JSON.stringify({malformed: 0, blank: blankRefused.join(", "
     fi
     if [ -n "$blank_refused" ]; then
         rm -f "$decisions_tmp"
-        echo "review-round: finding row(s) with a blank head and no row for the same finding id at a real head on $branch: $blank_refused - the ledger is append-only, so record each again with ledger-append.sh finding --head <sha>; nothing was promoted" >&2
+        echo "review-round: finding row(s) with a blank head and no later row on $branch that looks like their retry (same finding id, model, severity, file, artifact and perspective, at a commit-shaped head): $blank_refused - the ledger is append-only, so record each again with ledger-append.sh finding --head <sha>; nothing was promoted" >&2
         exit 1
     fi
     head8="$(printf '%s' "$full_head" | cut -c1-8)"

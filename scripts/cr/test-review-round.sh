@@ -60,24 +60,37 @@ ledger="$git_dir/cr-critic-scores.jsonl"
 LA="$fx/scripts/cr/ledger-append.sh"
 RR="$fx/scripts/cr/review-round.sh"
 
-# A finding the way the production writer shaped it, at a real head.
+# The shape of a row: model, severity, file, artifact. A scenario sets these for the real-head
+# row (TW_*) and the blank-head row (BL_*); shapes() puts both back to the same default.
+shapes() {
+    TW_MODEL=stub TW_SEV=sug TW_FILE=f.txt TW_ART=diff
+    BL_MODEL=stub BL_SEV=sug BL_FILE=f.txt BL_ART=diff BL_HEAD=""
+}
+shapes
+
+# A finding the way the production writer shapes it, at a head.
 real_row() { # branch head id verdict [text]
-    if [ "$4" = deferred ]; then
-        CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model stub --id "$3" \
-            --severity sug --file f.txt --line 1 --verdict deferred --deferred-to HIMMEL-9001 \
-            --fu-class polish --reason "tracked in the fixture"
-    elif [ -n "${5:-}" ]; then
-        CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model stub --id "$3" \
-            --severity sug --file f.txt --line 1 --verdict "$4" --text "$5"
+    local x=""
+    case "$4" in
+        deferred) x="--deferred-to HIMMEL-9001 --fu-class polish --reason tracked" ;;
+        disproved) x="--reason disproved" ;;
+    esac
+    if [ -n "${5:-}" ]; then
+        # shellcheck disable=SC2086  # $x is a fixed list of one-word flags and values
+        CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model "$TW_MODEL" --id "$3" \
+            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" --text "$5" $x
     else
-        CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model stub --id "$3" \
-            --severity sug --file f.txt --line 1 --verdict "$4"
+        # shellcheck disable=SC2086
+        CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model "$TW_MODEL" --id "$3" \
+            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" $x
     fi
 }
-# The defect: a finding row written with head "", which ledger-append can no longer write.
+# The defect: a finding row written with no real head, which ledger-append can no longer write.
 blank_row() { # branch id verdict [perspective]
-    printf '{"kind":"finding","ts":"2026-11-02T17:20:47Z","branch":"%s","head":"","model":"coverage-deferral","finding_id":"%s","severity":"sug","file":"","line":"","verdict":"%s","artifact":"diff","perspective":"%s"}\n' \
-        "$1" "$2" "$3" "${4:-off}" >> "$ledger"
+    local extra=""
+    [ "$3" != deferred ] || extra=',"deferred_to":"HIMMEL-9001","fu_class":"polish"'
+    printf '{"kind":"finding","ts":"2026-11-02T17:20:47Z","branch":"%s","head":"%s","model":"%s","finding_id":"%s","severity":"%s","file":"%s","line":"","verdict":"%s","artifact":"%s","perspective":"%s"%s}\n' \
+        "$1" "$BL_HEAD" "$BL_MODEL" "$2" "$BL_SEV" "$BL_FILE" "$3" "$BL_ART" "${4:-off}" "$extra" >> "$ledger"
 }
 # promote <branch>: sets out, err, rc; the ledger is read before and after.
 promote() {
@@ -88,73 +101,148 @@ promote() {
     err="$(cat "$tmp/err")"
     after="$(cksum < "$ledger")"
 }
+refused() { # label: the last promote refused, named the id, said blank head, wrote nothing
+    assert_eq "$rc" "1" "$1: promote refuses"
+    assert_has "$err" "blank head" "$1: the refusal says blank head"
+    assert_eq "$before" "$after" "$1: a refused promote writes nothing"
+}
 
-# (1) a blank-head row whose finding id is also recorded at a real head on the branch
-# is skipped and counted; the twin is judged on its own row.
-real_row rr-twin "$head_a" cov-1 deferred
-blank_row rr-twin cov-1 deferred
+# (1) five blank-head rows shaped like the ones on PR 4582 (model coverage-deferral, sug, deferred,
+# empty file), their rows at a real head written later: all five are skipped and counted.
+TW_MODEL=coverage-deferral TW_FILE="" BL_MODEL=coverage-deferral BL_FILE=""
+for n in 8830 8859 8864 8865 8866; do blank_row rr-twin "cov-$n" deferred; done
+for n in 8830 8859 8864 8865 8866; do real_row rr-twin "$head_a" "cov-$n" deferred; done
+shapes
 promote rr-twin
-assert_eq "$rc" "0" "a blank-head row with a twin lets promote exit 0"
-assert_has "$out" "skip-blank-head cov-1" "the skipped blank-head row is named"
-assert_has "$out" "1 blank-head skipped" "the summary line counts the skipped blank-head row"
-assert_eq "$before" "$after" "skipping a blank-head row rewrites and deletes nothing"
+assert_eq "$rc" "0" "five PR-4582-shaped blank rows with later twins let promote exit 0"
+assert_has "$out" "skip-blank-head cov-8866" "a skipped blank-head row is named"
+assert_has "$out" "5 blank-head skipped" "the summary line counts the skipped blank-head rows"
+assert_eq "$before" "$after" "skipping blank-head rows rewrites and deletes nothing"
 
 # (2) no twin: promote refuses, names the id, and says blank head, not write failure.
 blank_row rr-notwin cov-2 deferred
 promote rr-notwin
-assert_eq "$rc" "1" "a blank-head row with no twin refuses promote"
-assert_has "$err" "cov-2" "the refusal names the finding id"
-assert_has "$err" "blank head" "the refusal says blank head"
-assert_lacks "$err" "ledger write failed" "the refusal is not reported as a write failure"
-assert_eq "$before" "$after" "a refused promote writes nothing"
+refused "no twin"
+assert_has "$err" "cov-2" "no twin: the refusal names the finding id"
+assert_lacks "$err" "ledger write failed" "no twin: the refusal is not reported as a write failure"
 
 # (3) the twin decides: an unadjudicated twin keeps promote from passing.
-real_row rr-open "$head_a" cov-3 ""
 blank_row rr-open cov-3 deferred
+real_row rr-open "$head_a" cov-3 ""
 promote rr-open
 assert_eq "$rc" "3" "a blank-head row whose twin is still open does not let promote pass"
 assert_has "$out" "still-open cov-3@" "the twin is reported still-open"
 assert_has "$out" "skip-blank-head cov-3" "the blank-head row is still skipped, not judged"
 
 # (4) the twin decides: an agreed twin re-raised at the clean head stays open.
+blank_row rr-reraise cov-4 ""
 real_row rr-reraise "$head_a" cov-4 "" "tidy the cov-4 fixture"
 CR_LEDGER="$ledger" bash "$LA" amend --branch rr-reraise --head "$head_a" --id cov-4 \
     --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null
 real_row rr-reraise "$head_b" cov-4b "" "tidy the cov-4 fixture"
-blank_row rr-reraise cov-4 ""
 promote rr-reraise
 assert_eq "$rc" "3" "a blank-head row whose twin is re-raised does not let promote pass"
 assert_has "$out" "still-open cov-4@" "the re-raised twin is reported still-open"
 
 # (5) an agreed twin that was not re-raised is promoted as usual; the blank row adds nothing.
+blank_row rr-promote cov-5 ""
 real_row rr-promote "$head_a" cov-5 "" "tidy the cov-5 fixture"
 CR_LEDGER="$ledger" bash "$LA" amend --branch rr-promote --head "$head_a" --id cov-5 \
     --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null
-blank_row rr-promote cov-5 ""
 promote rr-promote
 assert_eq "$rc" "0" "a blank-head row beside a promotable twin lets promote exit 0"
 assert_has "$out" "promoted cov-5@" "the twin is promoted"
 assert_has "$out" "skip-blank-head cov-5" "the blank-head row is skipped"
 
-# (6) a twin must be on the same branch: a row of that id on another branch is no twin.
+# (6) a twin must be on the same branch.
 real_row rr-other "$head_a" cov-6 deferred
 blank_row rr-elsewhere cov-6 deferred
 promote rr-elsewhere
-assert_eq "$rc" "1" "a twin on another branch does not count"
-assert_has "$err" "cov-6" "the cross-branch refusal names the id"
+refused "twin on another branch"
+assert_has "$err" "cov-6" "twin on another branch: the refusal names the id"
 
-# (7) a twin must share the perspective: the same id under another perspective is no twin.
+# (7) a twin must share the perspective.
+blank_row rr-persp cov-7 deferred off
 CR_LEDGER="$ledger" bash "$LA" finding --branch rr-persp --head "$head_a" --model stub --id cov-7 \
     --severity sug --file f.txt --line 1 --verdict deferred --perspective on --fu-class polish --deferred-to HIMMEL-9001
-blank_row rr-persp cov-7 deferred off
 promote rr-persp
-assert_eq "$rc" "1" "a twin under another perspective does not count"
+refused "twin under another perspective"
 
 # (8) an empty finding id cannot have a twin.
 blank_row rr-noid "" deferred
+BL_HEAD="$head_a"
+blank_row rr-noid "" deferred
+shapes
 promote rr-noid
-assert_eq "$rc" "1" "a blank-head row with no finding id refuses promote"
-assert_has "$err" "blank head" "the no-id refusal says blank head"
+refused "no finding id, even beside a later row that has none either"
+
+# (9) a twin must share the artifact.
+BL_ART=diff TW_ART=spec
+blank_row rr-art cov-9 deferred
+real_row rr-art "$head_a" cov-9 deferred
+shapes
+promote rr-art
+refused "twin under another artifact"
+
+# (10) a twin must share the model.
+TW_MODEL=other-critic
+blank_row rr-model cov-10 deferred
+real_row rr-model "$head_a" cov-10 deferred
+shapes
+promote rr-model
+refused "twin from another model"
+
+# (11) a twin must share the severity: a Critical blank row beside a sug row of that id.
+BL_SEV=crit
+blank_row rr-sev cov-11 ""
+real_row rr-sev "$head_a" cov-11 deferred
+shapes
+promote rr-sev
+refused "twin with another severity"
+
+# (12) a twin must share the file.
+TW_FILE=z.sh
+blank_row rr-file cov-12 deferred
+real_row rr-file "$head_a" cov-12 deferred
+shapes
+promote rr-file
+refused "twin on another file"
+
+# (13) a twin must come after the blank row in the ledger: an older row is not its retry.
+real_row rr-order "$head_a" cov-13 deferred
+blank_row rr-order cov-13 deferred
+promote rr-order
+refused "twin earlier in the file"
+
+# (14) a twin must carry a commit-shaped head.
+blank_row rr-shape cov-14 deferred
+real_row rr-shape not-a-commit cov-14 deferred
+promote rr-shape
+refused "twin at a head that is not commit-shaped"
+
+# (15) two blank rows of one id do not vouch for each other.
+blank_row rr-two cov-15 deferred
+blank_row rr-two cov-15 deferred
+promote rr-two
+refused "two blank rows and no real head"
+
+# (16) a Critical blank row beside an older, disproved sug row of the same id (ids recur across PRs):
+# the case that would otherwise pass promote with an open Critical in the ledger.
+real_row rr-recur "$head_a" codex-1 disproved
+BL_MODEL=claude-floor BL_SEV=crit BL_FILE=z.sh
+blank_row rr-recur codex-1 ""
+shapes
+promote rr-recur
+refused "Critical blank row beside an older disproved row of that id"
+
+# (17) a head of only spaces is blank, and a twin rescues it like any blank row.
+BL_HEAD="  "
+blank_row rr-space cov-17 deferred
+shapes
+real_row rr-space "$head_a" cov-17 deferred
+promote rr-space
+assert_eq "$rc" "0" "a whitespace-only head row beside a later twin lets promote exit 0"
+assert_has "$out" "skip-blank-head cov-17" "the whitespace-only head row is skipped like a blank one"
 
 git -C "$repo" checkout -q main 2>/dev/null
 
