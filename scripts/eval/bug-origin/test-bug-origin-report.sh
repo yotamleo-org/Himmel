@@ -350,6 +350,98 @@ eq "empty window: exit 0" "$rc" "0"
 has "empty window: zero rows" "$out3" "rows: 0"
 hasnt "empty window: no traceback" "$out3" "Traceback"
 
+# --- trace, on a throwaway repo
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+R="$TMP/trace-repo"
+mkdir -p "$R"
+g() { git -C "$R" -c user.name=t -c user.email=t@t "$@"; }
+commit() { g add -A && g commit -q -m "$1" && g rev-parse HEAD; }
+edit_line() { awk -v k="$2" -v t="$3" 'NR==k{print t;next}{print}' "$R/$1" > "$R/$1.new" && mv "$R/$1.new" "$R/$1"; }
+insert_at() { awk -v k="$2" -v t="$3" 'NR==k{print t}{print}' "$R/$1" > "$R/$1.new" && mv "$R/$1.new" "$R/$1"; }
+tr_() { (cd "$R" && python3 "$REPORT" trace "$@" 2>&1); }
+s12() { printf '%s' "$1" | cut -c1-12; }
+g init -q -b main
+seq 1 12 | sed 's/^/script line /' > "$R/script.sh"
+c1="$(commit 'feat: the script (#1)')"
+edit_line script.sh 5 'script line five'
+c2="$(commit 'fix: line five (#2)')"
+seq 1 6 | sed 's/^/test line /' > "$R/test-a.sh"
+ct="$(commit 'test: the suite (#4)')"
+g branch fork
+edit_line script.sh 10 'script line ten'
+c3="$(commit 'fix: main moved on (#3)')"
+
+g checkout -q -b moved fork
+edit_line script.sh 5 'script line five again'
+commit 'fix: on the branch' >/dev/null
+out="$(tr_ --base main --head moved)"
+has "main moved: blames the branch's line" "$out" "$(s12 "$c2") "
+hasnt "main moved: not main's later commit" "$out" "$(s12 "$c3")"
+has "main moved: the count" "$out" "lines=1"
+has "main moved: the PR of the subject" "$out" "PR #2"
+hasnt "main moved: a changed line is not adjacent" "$out" "adjacent"
+
+g checkout -q -b addonly fork
+insert_at script.sh 5 'a new line'
+commit 'fix: add a line' >/dev/null
+out="$(tr_ --base fork --head addonly)"
+has "add-only reads adjacent: the line before" "$(line_of "$(s12 "$c1")" "$out")" "adjacent"
+has "add-only reads adjacent: the line after" "$(line_of "$(s12 "$c2")" "$out")" "adjacent"
+
+g checkout -q -b both fork
+edit_line script.sh 1 'script line one'
+edit_line test-a.sh 1 'test line one'
+commit 'fix: both' >/dev/null
+out="$(tr_ --base fork --head both)"
+has "tests left out unless alone: the script" "$out" "$(s12 "$c1") "
+hasnt "tests left out unless alone: not the test" "$out" "$(s12 "$ct")"
+g checkout -q -b onlytest fork
+edit_line test-a.sh 1 'test line one'
+commit 'test: only' >/dev/null
+has "tests left out unless alone: alone, the test" "$(tr_ --base fork --head onlytest)" "$(s12 "$ct") "
+
+g checkout -q -b newfile fork
+printf 'new\n' > "$R/brand-new.sh"
+commit 'feat: new' >/dev/null
+out="$(tr_ --base fork --head newfile)"
+has "new, renamed, top of file: new at head has no candidate" "$out" "no candidate"
+hasnt "new, renamed, top of file: new at head, no traceback" "$out" "Traceback"
+g checkout -q -b renamed fork
+g mv script.sh tool.sh
+edit_line tool.sh 5 'script line five renamed'
+commit 'fix: rename' >/dev/null
+out="$(tr_ --base fork --head renamed)"
+has "new, renamed, top of file: a rename blames the old path" "$out" "$(s12 "$c2") "
+hasnt "new, renamed, top of file: a rename, no traceback" "$out" "Traceback"
+g checkout -q -b top fork
+insert_at script.sh 1 'a first line'
+commit 'fix: top' >/dev/null
+has "new, renamed, top of file: add-only at line 1 is adjacent" "$(line_of "$(s12 "$c1")" "$(tr_ --base fork --head top)")" "adjacent"
+rc=0; out="$(tr_ --base no-such-ref --head top)" || rc=$?
+eq "a bad ref: exit 2" "$rc" "2"
+hasnt "a bad ref: no traceback" "$out" "Traceback"
+
+# evidence
+GCD="$(g rev-parse --path-format=absolute --git-common-dir)"
+printf '[{"number":2,"mergedAt":"2026-10-10T00:00:00Z","headRefName":"b2","headRefOid":"h2","mergeCommit":{"oid":"%s"}}]\n' "$c2" > "$TMP/bodyless.json"
+rm -f "$GCD/cr-critic-scores.jsonl"
+out="$(tr_ --base main --head moved)"
+has "no prs reads not read" "$out" "cr=not read; panel=not read; judge=not read"
+out="$(tr_ --base main --head moved --prs "$TMP/bodyless.json")"
+has "body-less snapshot: the PR from the snapshot" "$out" "PR #2"
+has "default ledger: a missing file reads not read" "$out" "panel=not read"
+printf '{"kind":"avail","ts":"2026-10-09T00:00:00Z","branch":"b2","head":"h2","model":"codex","status":"ok","artifact":"diff","perspective":"off"}\n' > "$GCD/cr-critic-scores.jsonl"
+out="$(tr_ --base main --head moved --prs "$TMP/bodyless.json")"
+has "default ledger: read from the git common dir" "$out" "panel=on record: codex"
+has "default ledger: judge still needs its tree" "$out" "judge=not read"
+has "no prs reads not read, ledger or no ledger" "$(tr_ --base main --head moved)" "panel=not read"
+python3 -I - "$TMP" <<'PY'
+import json, os, sys
+json.dump([{"number": 2, "mergedAt": "2026-10-10T00:00:00Z"}], open(os.path.join(sys.argv[1], "tooshort.json"), "w"))
+PY
+rc=0; out="$(tr_ --base main --head moved --prs "$TMP/tooshort.json")" || rc=$?
+eq "a snapshot too short for trace: exit 2" "$rc" "2"
+
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
 if [ "$FAIL" -eq 0 ]; then echo "ALL PASS"; else echo "$FAIL FAILED"; exit 1; fi

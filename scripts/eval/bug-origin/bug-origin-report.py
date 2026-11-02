@@ -17,8 +17,15 @@ each review layer has on record for the introducing PR:
 
   report --prs FILE [--seed FILE] [--cr-ledger FILE] [--verdicts DIR]... [--mirror DIR] [--days N] [--record] [--ledger FILE]
 
---prs is `gh pr list --state merged --limit 10000 --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit`.
-Without --record it writes nothing. Exit 0 done; 1 a seed PR outside the snapshot; 2 refused input.
+  trace --base REF --head REF [--prs FILE] [--cr-ledger FILE] [--verdicts DIR]...
+
+--prs is `gh pr list --state merged --limit 10000 --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit`;
+trace needs only number,mergedAt,headRefName,headRefOid,mergeCommit.
+trace blames, at the merge base, the lines base..head changes and prints up to three commits with their PR, `adjacent`
+when only an add-only hunk's neighbours point at it, and the evidence above. It leaves out tests, fixtures and data
+files unless nothing else changed, and defaults --cr-ledger to <git-common-dir>/cr-critic-scores.jsonl. Read the
+candidates and choose: blame points at the last hand on a line, which a rename or a sweep can hide.
+Without --record nothing is written. Exit 0 done; 1 a seed PR outside the snapshot; 2 refused input.
 Stdlib plus git only; no network, no model call.
 """
 import argparse
@@ -55,7 +62,13 @@ FENCE = re.compile(r"^ {0,3}(```|~~~)")
 KEY = re.compile(r"\[([A-Za-z][A-Za-z0-9]*-[0-9]+)\]")
 SUBJECT_PR = re.compile(r"\(#(\d+)\)\s*$")
 
+TRACE_FIELDS = ("number", "mergedAt", "headRefName", "headRefOid", "mergeCommit")
+HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+")
+NOT_CODE = re.compile(r"(^|/)(test-[^/]*|test_[^/]*|[^/]*\.test\.[^/]*|[^/]*_test\.[^/]*)$"
+                      r"|(^|/)(tests?|fixtures?|testdata)/|\.(tsv|jsonl|json|csv|lock)$")
+
 Sources = collections.namedtuple("Sources", "rev recs ledger_read ledger_first verdicts_read verdicts_first")
+Candidate = collections.namedtuple("Candidate", "sha count pr adjacent evidence")
 
 
 def parse_body(body):
@@ -328,9 +341,109 @@ def cmd_report(a):
     return 1 if outside else 0
 
 
+def git(*args, repo="."):
+    """A git command's stdout, or None when it fails."""
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, errors="replace")
+    return r.stdout if r.returncode == 0 else None
+
+
+def changed_paths(base, head, repo="."):
+    """[(status, base path, head path)] of a diff, renames followed; tests and data left out unless nothing else changed."""
+    fields = (git("diff", "-M", "--name-status", "-z", base, head, repo=repo) or "").split("\0")
+    out, i = [], 0
+    while i < len(fields) and fields[i]:
+        status = fields[i][0]
+        if status in "RC":
+            out.append((status, fields[i + 1], fields[i + 2]))
+            i += 3
+        else:
+            out.append((status, fields[i + 1], fields[i + 1]))
+            i += 2
+    kept = [c for c in out if not NOT_CODE.search(c[2])]
+    return kept or out
+
+
+def touched_lines(base, head, old, new, repo="."):
+    """(lines the diff changes, lines beside an add-only hunk), numbered at the base."""
+    changed, adjacent = set(), set()
+    for line in (git("diff", "-M", "-U0", base, head, "--", old, new, repo=repo) or "").split("\n"):
+        m = HUNK.match(line)
+        if not m:
+            continue
+        start, n = int(m.group(1)), int(m.group(2) or 1)
+        if n:
+            changed.update(range(start, start + n))
+        else:
+            adjacent.update({max(start, 1), start + 1})
+    return changed, adjacent - changed
+
+
+def trace(base, head, merged, s, repo="."):
+    """Up to three candidates for the commit that introduced what base..head changes, blamed at their merge base."""
+    fork = git("merge-base", base, head, repo=repo)
+    if fork is None:
+        raise ValueError("no merge base of %s and %s" % (base, head))
+    fork = fork.strip()
+    tally = collections.defaultdict(lambda: [0, 0])
+    for status, old, new in changed_paths(fork, head, repo):
+        if status == "A":
+            continue
+        blame = git("blame", "-w", "-s", "-l", "--root", fork, "--", old, repo=repo)
+        if blame is None:
+            continue
+        shas = [line.split(" ", 1)[0] for line in blame.split("\n") if line]
+        changed, adjacent = touched_lines(fork, head, old, new, repo)
+        for lines, slot in ((changed, 0), (adjacent, 1)):
+            for nr in lines:
+                if nr <= len(shas):
+                    tally[shas[nr - 1]][slot] += 1
+    top = sorted(tally.items(), key=lambda kv: (-kv[1][0], -kv[1][1], kv[0]))[:3]
+    out = []
+    for sha, (changed, adjacent) in top:
+        n = commit_to_pr(sha, merged or {}, repo)
+        e = None
+        if n is not None:
+            e = evidence(merged[n], merged, s) if merged and n in merged else dict.fromkeys(LAYERS, "not read")
+        out.append(Candidate(sha, changed + adjacent, n, not changed, e))
+    return out
+
+
+def cmd_trace(a):
+    try:
+        merged = load_prs(a.prs, TRACE_FIELDS) if a.prs else None
+    except ValueError as e:
+        print("bug-origin-report: refused: %s" % e, file=sys.stderr)
+        return 2
+    ledger = a.cr_ledger
+    if not ledger:
+        common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+        ledger = os.path.join(common.strip(), "cr-critic-scores.jsonl") if common else None
+    try:
+        found = trace(a.base, a.head, merged, load_sources(ledger, a.verdicts or []))
+    except ValueError as e:
+        print("bug-origin-report: refused: %s" % e, file=sys.stderr)
+        return 2
+    if not found:
+        print("no candidate: the diff changes no line that exists at the base")
+    for c in found:
+        pr = "PR #%d" % c.pr if c.pr is not None else "no PR"
+        line = "%s lines=%d %s%s" % (c.sha[:12], c.count, pr, " adjacent" if c.adjacent else "")
+        if c.evidence:
+            line += ": " + "; ".join("%s=%s" % (layer, c.evidence[layer]) for layer in LAYERS)
+        print(line)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    t = sub.add_parser("trace")
+    t.add_argument("--base", required=True)
+    t.add_argument("--head", required=True)
+    t.add_argument("--prs")
+    t.add_argument("--cr-ledger")
+    t.add_argument("--verdicts", action="append")
+    t.set_defaults(func=cmd_trace)
     r = sub.add_parser("report")
     r.add_argument("--prs", required=True)
     r.add_argument("--seed")
