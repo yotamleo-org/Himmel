@@ -207,8 +207,8 @@ def search_fields(worker):
     s = worker.get('search_symbol')
     if s is None:
         first = (str(worker.get('writes') or '').split() or [worker['scope_short']])[0].strip('`,')
-        s = ' '.join(SEARCH_BAD_RE.sub(' ', first).split()) if re.search(r'[/.]', first) or not worker.get('writes') else None
-    return q, s
+        s = None if worker.get('writes') and first.lower() == 'none' else ' '.join(SEARCH_BAD_RE.sub(' ', first).split())
+    return q, (s or None)
 
 
 def search_directive(worker, ctx):

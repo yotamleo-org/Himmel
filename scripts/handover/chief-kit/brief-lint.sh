@@ -322,8 +322,14 @@ if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_
     fi
     case "$flat" in
         *"<topic>"*|*"<symbol>"*) fail "'> **Prior art:**' directive still carries the literal <topic> or <symbol> placeholder: name the query and the graph symbol this worker should search" ;;
-        *'""'*) fail "'> **Prior art:**' directive has an empty quoted query or symbol: name the query and the graph symbol this worker should search" ;;
     esac
+    # Each command that stands carries a quoted argument that names something: not empty, not blank.
+    arg='"[^"[:space:]][^"]*"'
+    bad_arg=0
+    grep -Eq -- "-c luna $arg" <<< "$flat" || bad_arg=1
+    case "$flat" in *"no Jira mirror"*) ;; *) grep -Eq -- "-c jira-himmel $arg" <<< "$flat" || bad_arg=1 ;; esac
+    case "$flat" in *"no graph lookup"*) ;; *) grep -Eq -- "worker-graph\.sh explain $arg" <<< "$flat" || bad_arg=1 ;; esac
+    [ "$bad_arg" -eq 0 ] || fail "'> **Prior art:**' directive has an empty or blank quoted query or symbol: name the query and the graph symbol this worker should search"
 fi
 
 core_rule

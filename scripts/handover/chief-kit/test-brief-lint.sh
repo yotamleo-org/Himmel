@@ -421,6 +421,9 @@ mk s_topic '# brief' "$VAGUE" "${DIR_LINE//\"lint\"/\"<topic>\"}" '' '> **Contra
 mk s_symbol '# brief' "$VAGUE" "${DIR_LINE//\"brief-lint\"/\"<symbol>\"}" '' '> **Contract:** y' "$RES"
 mk s_emptyq '# brief' "$VAGUE" "${DIR_LINE//\"lint\"/\"\"}" '' '> **Contract:** y' "$RES"
 mk s_emptysym '# brief' "$VAGUE" "${DIR_LINE//\"brief-lint\"/\"\"}" '' '> **Contract:** y' "$RES"
+mk s_blankq '# brief' "$VAGUE" "${DIR_LINE//\"lint\"/\"  \"}" '' '> **Contract:** y' "$RES"
+mk s_blanksym '# brief' "$VAGUE" "${DIR_LINE//\"brief-lint\"/\"  \"}" '' '> **Contract:** y' "$RES"
+mk s_noarg '# brief' "$VAGUE" "${DIR_LINE//explain \"brief-lint\"/explain}" '' '> **Contract:** y' "$RES"
 # a leg that writes no code names no symbol, and an adopter repo has no Jira mirror and no himmel graph: each says so
 # shellcheck disable=SC2016  # the backticks are literal brief text, not command substitution
 NOGRAPH_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query -c jira-himmel "lint"` (tickets and PRs) and `bash /x/scripts/lib/qmd-bounded.sh query -c luna "lint"` (specs, audits and decisions), and cite what each returned. This leg has no graph lookup (it names no code path). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
@@ -452,6 +455,9 @@ expect_rc "9t an adopter-repo directive (luna only, no Jira mirror, no graph loo
 expect_rc "9t2 an adopter-repo directive still has to search luna" 1 "$tmp/s_adapter_noluna.md"
 expect_rc "9q a directive with an empty quoted query is refused" 1 "$tmp/s_emptyq.md"
 expect_rc "9r a directive with an empty quoted symbol is refused" 1 "$tmp/s_emptysym.md"
+expect_rc "9q2 a directive with a blank (whitespace-only) quoted query is refused" 1 "$tmp/s_blankq.md"
+expect_rc "9r2 a directive with a blank (whitespace-only) quoted symbol is refused" 1 "$tmp/s_blanksym.md"
+expect_rc "9r3 a graph lookup with no quoted argument at all is refused" 1 "$tmp/s_noarg.md"
 err="$(bash "$LINT" "$tmp/s_topic.md" 2>&1 >/dev/null)"
 grep -Fq 'placeholder' <<< "$err" && ok "9o2 the placeholder refusal says placeholder" || bad "9o2 refusal text: $err"
 rc=0; out="$(run_worker "$tmp/s_vague.md" --profile worker-impl)" || rc=$?

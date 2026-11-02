@@ -131,6 +131,9 @@ bash "$HERE/brief-lint.sh" "$WORK/nowrites-bucket/HIMMEL-9001-N901-plain-fix-202
 { [ "$rc" = 0 ] && [ "$lrc" = 0 ]; } && pass "a no-writes leg generates and lints" || fail "no-writes rc=$rc lint rc=$lrc: $(cat "$WORK/lint-nw.err")"
 has "a no-writes leg says it has no graph lookup" "$NW" "no graph lookup"
 lacks "a no-writes leg never asks the graph to explain none" "$NW" 'explain "none"'
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="Makefile"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/rootfile.json"
+python3 "$SUT" "$WORK/rootfile.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rootfile-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wrf" --deadline 1791475000 >/dev/null 2>&1
+has "a root-level Writes file (no slash, no dot) still gets the graph lookup" "$(tr '\n' ' ' < "$WORK/rootfile-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)" 'worker-graph.sh explain "Makefile"'
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; l[0]["writes"]="none named"; l[0]["search_symbol"]="gen-briefs.py"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/nowrites-sym.json"
 python3 "$SUT" "$WORK/nowrites-sym.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/nwsym-bucket" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/wns" --deadline 1791475000 >/dev/null 2>&1
 has "a no-writes leg that names a search_symbol gets the graph lookup" "$(tr '\n' ' ' < "$WORK/nwsym-bucket/HIMMEL-9001-N901-plain-fix-2026-10-08.md" 2>/dev/null)" 'worker-graph.sh explain "gen-briefs.py"'
