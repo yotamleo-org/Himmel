@@ -145,19 +145,13 @@ bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
 ## Dispatching a worker
 
 1. Write the brief from `{{REPO}}/docs/handover/worker-brief-template.md` into
-   `{{STATE_DIR}}`; a child inherits **nothing**, so brief it fully. **Search
-   before you write its Prior art line** (a worker and a judge brief both inherit
-   it): `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c jira-himmel "<ticket topic>"`
-   for tickets and PRs, the same with `-c luna` for specs, audits and decisions,
-   and `bash {{REPO}}/scripts/graphify/worker-graph.sh explain "<symbol>"` for
-   structure. Cite pointers with their source, never your conclusion; nothing
-   found is `none found (<the query you ran>)`, and a miss is unproven.
-   A bare `qmd` search is refused and a bare `graphify` call fails in a worktree.
+   `{{STATE_DIR}}`; a child inherits **nothing**, so brief it fully. Search first:
+   `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "<topic>"`.
 2. **Collision check:** queued workers' files must be disjoint (**single-writer**).
 3. **Name an explicit model**; raise *effort* before tier.
 4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl
    <session-name> "<brief>" <signal-file> <deadline-epoch> <log> <model>
-   >/dev/null 2>&1 &` — headed (no TTY exits at the first idle message);
+   >/dev/null 2>&1 &` — headed;
    `--profile` is required (else exit 2; `--no-profile` when the brief
    pastes the preface). The launcher exports
    `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) to route alerts here.
@@ -176,7 +170,7 @@ rule; batch rulings per decision point.
 
 ## Merges — READY → GO → merge
 
-A worker reports `READY <pr> <head> GREEN`. Verify independently with
+A worker reports `READY <pr> <head> GREEN`. Verify with
 `chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 90 bash`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `chief-kit/go.sh <pr> <head>`: that write IS the GO
