@@ -60,8 +60,6 @@ st="$(field state)"; wt="$(field worktree)"; ibr="$(field branch)"; cut="$(field
 # shellcheck disable=SC2015  # refuse exits, so C running after a failed A or B is the intent
 [ -n "$wt" ] && [ -d "$wt" ] && git -C "$wt" rev-parse --git-dir >/dev/null 2>&1 || refuse "item $KEY has no usable worktree ($wt)"
 [ -n "$cut" ] && [ -n "$wip" ] && [ -n "$ibr" ] || refuse "item $KEY has no recorded branch, cut_from or wip"
-status="$(git -C "$wt" status --porcelain)" || fail "git status failed in $wt"   # a git failure is never read as clean
-[ -z "$status" ] || refuse "item $KEY worktree is dirty: commit it and run series-next.sh commit first ($wt)"
 sid="$(top sid)"
 pub="series-pub/$sid/$KEY"
 head="$(git -C "$wt" rev-parse HEAD)" || fail "cannot read HEAD of $wt"
@@ -83,6 +81,9 @@ if [ "$cur" != "$ibr" ]; then
     fi
     refuse "item $KEY worktree is on '${cur:-a detached HEAD}', not on the item branch $ibr; nothing moved"
 fi
+# after the branch guard: on the publish branch the advice is the recovery lines, never "commit first" (that would overwrite wip)
+status="$(git -C "$wt" status --porcelain)" || fail "git status failed in $wt"   # a git failure is never read as clean
+[ -z "$status" ] || refuse "item $KEY worktree is dirty: commit it and run series-next.sh commit first ($wt)"
 if [ "$head" != "$wip" ]; then
     echo "SERIES-DRIFT $KEY wip"
     refuse "item $KEY worktree HEAD is not the recorded wip; run series-next.sh commit first"
@@ -96,7 +97,12 @@ def="$(git -C "$wt" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev
 [ -n "$def" ] || def="origin/main"
 git -C "$wt" fetch --quiet origin "${def#origin/}" || fail "git fetch origin ${def#origin/} failed; publishing needs the current main"
 base="$(git -C "$wt" rev-parse --verify --quiet "$def^{commit}")" || fail "cannot resolve $def"
-git -C "$wt" ls-remote --exit-code --heads origin "$pub" >/dev/null 2>&1 && refuse "$pub already exists on origin"   # swallow-ok: exit 2 (absent) is the expected case
+git -C "$wt" ls-remote --exit-code --heads origin "$pub" >/dev/null 2>&1; lsrc=$?   # swallow-ok: the rc is read below
+case "$lsrc" in
+    0) refuse "$pub already exists on origin" ;;
+    2) ;;   # no such branch: the expected case
+    *) fail "git ls-remote origin failed (rc $lsrc); cannot tell whether $pub exists" ;;
+esac
 
 # restore: the item branch checked out at wip, the half-made publish branch gone
 back() { git -C "$wt" checkout -q "$ibr" && git -C "$wt" branch -D "$pub" >/dev/null 2>&1; }

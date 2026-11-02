@@ -134,6 +134,12 @@ sp --ledger "$L1" --doc "$B" K2
 check "1: the publish branch with no origin copy refuses rc 2" "$rc" 2
 contains "1: it says the head is not on origin" "$out" "is not on origin"
 lacks "1: it prints no recovery line for an unpushed head" "$out" "published_head="
+git -C "$W2" push -q origin "HEAD~1:refs/heads/series-pub/s1/K2"   # origin holds the branch, but at a different head
+sp --ledger "$L1" --doc "$B" K2
+check "1: the publish branch with origin at another head refuses rc 2" "$rc" 2
+contains "1: it says the head is not on origin when origin holds another head" "$out" "is not on origin"
+lacks "1: it prints no recovery line when origin holds another head" "$out" "published_head="
+git -C "$W2" push -q origin --delete series-pub/s1/K2
 git -C "$W2" checkout -q series/s1/K2
 git -C "$W2" branch -q -D series-pub/s1/K2
 L9="$tmp/ledgers/s9.json"
@@ -213,7 +219,8 @@ sp --ledger "$L3" --doc "$B" K2
 check "5: F10 publish with an abandoned parent rc 0" "$rc" 0
 git -C "$REPO" fetch -q origin
 check "5: F10 the pushed commits are K2's own and none of K1's" "$(git -C "$REPO" log --format=%s origin/main..origin/series-pub/s3/K2 | tr '\n' '|')" "K2 only work|"
-check "5: F10 K1's file is not on the pushed branch" "$(git -C "$REPO" ls-tree --name-only origin/series-pub/s3/K2 | grep -c 'k1-s3' || true)" 0
+check "5: F10 K1's file is not on the pushed branch" "$(git -C "$REPO" cat-file -e origin/series-pub/s3/K2:k1-s3.txt 2>/dev/null && echo present || echo absent)" absent
+check "5: F10 K2's own file is on the pushed branch (control)" "$(git -C "$REPO" cat-file -e origin/series-pub/s3/K2:k2-s3.txt 2>/dev/null && echo present || echo absent)" present
 
 # --- 5b. a failed push moves nothing, and the retry works ------------------------------------------------------------
 L4="$tmp/ledgers/s4.json"
@@ -246,6 +253,10 @@ land_k1 s5
 W2="$(wtp s5 K2)"
 K2WIP="$(jget "$L5" 'd["items"][1]["wip"]')"
 chmod a-w "$RO"   # the ledger cannot be replaced: series-ledger.py set fails after the push
+if [ -w "$RO" ]; then   # root ignores directory permissions, so no ledger write can fail this way
+    chmod u+w "$RO"
+    echo "skip - 5c: this user can write to a read-only directory (root): the failed-ledger rows need a normal user"
+else
 sp --ledger "$L5" --doc "$B" K2
 chmod u+w "$RO"
 PUBHEAD="$(git -C "$W2" rev-parse HEAD)"
@@ -256,13 +267,65 @@ check "5c: the ledger still says committed at wip" "$(jget "$L5" 'd["items"][1][
 contains "5c: the exact ledger line is printed" "$out" "$SETLINE"
 contains "5c: the exact unlock line is printed" "$out" "git -C $W2 worktree unlock $W2"
 contains "5c: it warns against series-next.sh commit" "$out" "do NOT run series-next.sh commit"
+printf 'x\n' > "$W2/untracked-5c.txt"   # a dirty tree on the publish branch must still get the recovery lines, never "commit first"
 sp --ledger "$L5" --doc "$B" K2
+rm -f "$W2/untracked-5c.txt"
 check "5c: a second publish from the publish branch refuses rc 2" "$rc" 2
 contains "5c: the branch refusal prints the same ledger line" "$out" "$SETLINE"
 contains "5c: the branch refusal prints the same unlock line" "$out" "git -C $W2 worktree unlock $W2"
+lacks "5c: a dirty tree on the publish branch is not told to commit first" "$out" "commit it and run series-next.sh commit first"
 eval "$SETLINE" && git -C "$W2" worktree unlock "$W2"
 check "5c: following the printed lines publishes the item" "$(jget "$L5" 'd["items"][1]["state"]') $(jget "$L5" 'd["items"][1]["published_head"]')" "published $PUBHEAD"
 check "5c: following the printed lines unlocks the worktree" "$(islocked "$W2" && echo locked || echo free)" free
+fi
+
+# --- 5d. an origin branch that already exists is never overwritten: each layer has its own row ------------------------
+# stack s6 with the item worktree HEAD pushed to origin's publish ref, so origin holds a branch the script must not touch.
+L6="$tmp/ledgers/s6.json"
+stack s6
+land_k1 s6
+W2="$(wtp s6 K2)"
+K2WIP="$(jget "$L6" 'd["items"][1]["wip"]')"
+# an unrelated commit is used because a copy of the item's own commits equals the cherry-picks when both fall in one second, and that push would succeed
+OTHER="$(git -C "$W2" commit-tree -m 'an unrelated commit already on origin' 'HEAD^{tree}')"
+git -C "$W2" push -q origin "$OTHER:refs/heads/series-pub/s6/K2"
+OSHA="$(git -C "$REPO" ls-remote origin refs/heads/series-pub/s6/K2 | cut -f1)"
+before="$(cat "$L6")"
+# a: the pre-check sees the branch and refuses
+sp --ledger "$L6" --doc "$B" K2
+check "5d.a: an existing origin publish branch refuses rc 2" "$rc" 2
+contains "5d.a: it says the branch already exists on origin" "$out" "already exists on origin"
+check "5d.a: origin's branch is untouched" "$(git -C "$REPO" ls-remote origin refs/heads/series-pub/s6/K2 | cut -f1)" "$OSHA"
+check "5d.a: the worktree is on the item branch at wip" "$(git -C "$W2" rev-parse --abbrev-ref HEAD) $(git -C "$W2" rev-parse HEAD)" "series/s6/K2 $K2WIP"
+check "5d.a: the ledger is byte-equal" "$(cat "$L6")" "$before"
+# b, c: a git that answers the pre-check wrongly. b: rc 2 (absent) while the branch exists, so the push is the last layer;
+# c: rc 128 (origin unreadable), which must fail closed rather than read as absent.
+REALGIT="$(command -v git)"
+mkdir -p "$tmp/gitshim"
+# shellcheck disable=SC2016  # the shim's own $* and $@ must stay literal
+printf '#!/bin/sh\ncase "$*" in *ls-remote*--exit-code*) exit "$(cat "$GITSHIM_RC")" ;; esac\nexec "%s" "$@"\n' "$REALGIT" > "$tmp/gitshim/git"
+chmod +x "$tmp/gitshim/git"
+export GITSHIM_RC="$tmp/gitshim.rc"
+ORIGPATH="$PATH"
+printf '2\n' > "$GITSHIM_RC"
+PATH="$tmp/gitshim:$ORIGPATH"
+sp --ledger "$L6" --doc "$B" K2
+PATH="$ORIGPATH"
+check "5d.b: control: the shim is the git the script ran" "$(PATH="$tmp/gitshim:$ORIGPATH" git ls-remote --exit-code --heads origin x >/dev/null 2>&1; echo $?)" 2
+check "5d.b: a pre-check that wrongly says absent ends in a refused push, rc 1" "$rc" 1
+contains "5d.b: it names the push" "$out" "git push of series-pub/s6/K2 failed"
+check "5d.b: origin's branch is still untouched" "$(git -C "$REPO" ls-remote origin refs/heads/series-pub/s6/K2 | cut -f1)" "$OSHA"
+check "5d.b: no local publish branch is left" "$(git -C "$REPO" branch --list 'series-pub/s6/*' | wc -l | tr -d ' ')" 0
+check "5d.b: the worktree is back on the item branch at wip" "$(git -C "$W2" rev-parse --abbrev-ref HEAD) $(git -C "$W2" rev-parse HEAD)" "series/s6/K2 $K2WIP"
+check "5d.b: the ledger is byte-equal" "$(cat "$L6")" "$before"
+printf '128\n' > "$GITSHIM_RC"
+PATH="$tmp/gitshim:$ORIGPATH"
+sp --ledger "$L6" --doc "$B" K2
+PATH="$ORIGPATH"
+check "5d.c: an unreadable origin (rc 128) fails closed, rc 1" "$rc" 1
+contains "5d.c: it names the ls-remote failure" "$out" "git ls-remote origin failed (rc 128)"
+check "5d.c: nothing was cherry-picked: no local publish branch" "$(git -C "$REPO" branch --list 'series-pub/s6/*' | wc -l | tr -d ' ')" 0
+check "5d.c: the ledger is byte-equal" "$(cat "$L6")" "$before"
 
 # --- 6. no PR -------------------------------------------------------------------------------------------------------
 contains "6: control: the shim is the gh on PATH and logs what it is given" "$(cat "$GH_LOG")" "--shim-control"
