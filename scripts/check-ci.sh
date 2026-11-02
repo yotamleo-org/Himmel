@@ -1035,10 +1035,10 @@ watch_round() {
                 # GH_TOKEN, never in argv. gh_read itself cannot be exec'd (it forks, and
                 # $! must stay gh's real pid), so a refused read token is not retried on
                 # the main one here; the cache-backed loop above is the default path.
-                [ -z "${_GHR_TOK:-}" ] || GH_TOKEN="$_GHR_TOK" exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
+                [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
                 exec gh pr checks "$selector" --watch --fail-fast --interval "$WATCH_INTERVAL"
             else
-                [ -z "${_GHR_TOK:-}" ] || GH_TOKEN="$_GHR_TOK" exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
+                [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
                 exec gh pr checks --watch --fail-fast --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
