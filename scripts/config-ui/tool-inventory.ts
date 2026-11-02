@@ -22,7 +22,7 @@ const SCRIPT = /^[\w.-]+\.(?:sh|bash|js|mjs|cjs|py|ts)$/;
 const NAME = /^[\w.:-]{1,120}$/;
 // A wiring that skips itself when the project layer covers the script (the user-level guardrail-skip-in-himmel.js wrapper,
 // or a plugin entry that greps the project's .claude/settings.json) never runs twice; same rule as doctor C81.
-const SKIPS = /guardrail-skip-in-himmel|CLAUDE_PROJECT_DIR\/\.claude\/settings\.json/;
+const SKIPS = /guardrail-skip-in-himmel|grep -qs [^;]*CLAUDE_PROJECT_DIR\/\.claude\/settings\.json"?; then exit 0/;
 // Wired in the project AND the himmel-ops plugin on purpose: a deny still fires and logs with the plugin
 // disabled or cached older, and the tool_use_id claim writes one row. A declared dual, not a double.
 const DECLARED_DUALS = new Set(["redirect-webfetch-walled-hosts.sh"]);
@@ -186,7 +186,8 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   const hooks = [...hookRows.values()], counts = (h: InvHook) => !skipping.get(`${h.source}\0${h.name}`);
   for (const h of hooks) {
     const peer = hooks.some((x) => x.name === h.name && x.source !== h.source && counts(x));
-    if (DECLARED_DUALS.has(h.name) && peer) h.declared_dual = true;
+    const pair = hooks.filter((x) => x.name === h.name && counts(x)).every((x) => x.source === "project" || x.source.startsWith("himmel-ops@"));
+    if (DECLARED_DUALS.has(h.name) && peer && pair) h.declared_dual = true;
     else h.runs_twice = counts(h) && peer;
   }
   const state: State = sources.some((s) => s.state === "ok") ? "ok" : sources.some((s) => s.state === "error") ? "error" : "absent";

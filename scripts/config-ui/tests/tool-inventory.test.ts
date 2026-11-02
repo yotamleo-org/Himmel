@@ -192,3 +192,16 @@ test("a hook that skips itself under the project layer reads single, a declared 
   expect(rows("redirect-webfetch-walled-hosts.sh").map((h: any) => [h.source, h.runs_twice, h.declared_dual])).toEqual([["himmel-ops@himmel", false, true], ["project", false, true]]);
   expect(rows("real-twin.sh").map((h: any) => h.runs_twice)).toEqual([true, true]);
 });
+
+test("a third wiring of the declared dual, or a command that only names the project settings, still reads double", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const env = layered();
+  const cmd = (c: string, matcher = "Bash") => ({ matcher, hooks: [{ type: "command", command: c }] });
+  json(join(env.HOME, ".claude", "settings.json"), { enabledPlugins: { "himmel-ops@himmel": true }, hooks: { PreToolUse: [
+    cmd('bash "$HOME/h/scripts/hooks/redirect-webfetch-walled-hosts.sh"', "WebFetch"),
+    cmd('echo "$CLAUDE_PROJECT_DIR/.claude/settings.json" >/dev/null; bash "$HOME/h/scripts/hooks/real-twin.sh"'),
+  ] } });
+  const rows = (name: string) => scanToolInventory(env, 0).hooks.filter((h: any) => h.name === name);
+  expect(rows("redirect-webfetch-walled-hosts.sh").map((h: any) => [h.runs_twice, h.declared_dual])).toEqual([[true, undefined], [true, undefined], [true, undefined]]);
+  expect(rows("real-twin.sh").map((h: any) => h.runs_twice)).toEqual([true, true]);
+});
