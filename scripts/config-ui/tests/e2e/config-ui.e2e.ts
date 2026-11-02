@@ -161,7 +161,8 @@ const LEDGER = [
 const PAGE_ALERT = { labels: { alertname: "E2EPageAlert", severity: "page" }, annotations: { summary: "e2e-page-alert-summary" } };
 // the strip, the one open tile panel, then trends; Checks opens by itself only when something is wrong (Q5).
 // The reviewers panel lives on Tool health's Reviewers tab, not here.
-const SECTIONS = ["Checks", "Trends"]; // the strip carries no heading, as the approved mockup has noneconst SECTIONS_CALM = SECTIONS.filter((s) => s !== "Checks");
+const SECTIONS = ["Checks", "Trends"]; // the strip carries no heading, as the approved mockup has none
+const SECTIONS_CALM = SECTIONS.filter((s) => s !== "Checks");
 
 async function openHealth(page: Page, v: Variant = {}, o: BootOpts = {}) {
   await open(page, v, o);
