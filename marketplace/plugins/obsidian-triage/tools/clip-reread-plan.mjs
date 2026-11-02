@@ -28,14 +28,18 @@
  *
  * --kept-file writes the kept clips' relative paths, one per line, for the one
  * batched synthesis session; the last stdout lines are
- *   synthesis-batch: <the one command>   (only when --kept-file wrote the list)
+ *   synthesis-batch: <the one command>   (only when --kept-file wrote a complete list;
+ *                                         "withheld (plan incomplete)" when a file or directory was unreadable)
  *   mode: apply | dry-run
- *   summary: seen=N kept=K skipped=S fresh=F triage-skipped=T synthesised=K
+ *   summary: seen=N kept=K skipped=S fresh=F triage-skipped=T to-synthesise=K
+ *            (+ unreadable=U unreadable-dirs=D when nonzero)
+ * The counts are a PLAN: this tool runs no synthesis. The printed command is paid
+ * and held by the ticket that owns the paid rerun; nothing here runs it.
  *
  * ponytail: tags are not re-derived from thread text (a guess is judgement),
  * upgrade path: a vault-tag-set matcher once a sample shows it is safe.
  */
-import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 
 const SKIP_DIRS = new Set(["_media", "_synthesis", "_done"]);
@@ -61,7 +65,11 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--dry-run") args.apply = false;
   else if (a === "--min-chars") args.minChars = posInt(argv[++i], a);
   else if (a === "--limit") args.limit = posInt(argv[++i], a);
-  else if (a === "--kept-file") args.keptFile = argv[++i];
+  else if (a === "--kept-file") {
+    const v = argv[++i];
+    if (!v || v.startsWith("--")) { console.error(`--kept-file needs a path, got '${v || ""}'`); usage(1); }
+    args.keptFile = v;
+  }
   else if (a === "-h" || a === "--help") usage(0);
   else { console.error(`unknown arg: ${a}`); usage(1); }
 }
@@ -173,7 +181,9 @@ function deriveFields(text, links, handles) {
 /** Replace a clip atomically: write beside it, then rename over it. */
 function writeAtomic(p, out) {
   const tmp = join(dirname(p), `.${basename(p)}.reread-plan.tmp`);
+  const mode = statSync(p).mode & 0o7777;
   writeFileSync(tmp, out, { encoding: "utf-8" });
+  chmodSync(tmp, mode);
   renameSync(tmp, p);
 }
 
@@ -198,9 +208,15 @@ for (const { p, rel } of clips) {
   if (c.verdict === "kept") rows.push(rel);
   console.log(`${rel}\t${c.verdict}\t${c.reason}${c.triageSkip ? "\ttriage-skipped" : ""}`);
 }
-if (args.keptFile) writeFileSync(args.keptFile, rows.map((r) => r + "\n").join(""), { encoding: "utf-8" });
-if (args.keptFile) console.log(`synthesis-batch: claude --model claude-sonnet-5-5 "Run /synthesize-clips ${args.vault} once, over exactly the clips listed in ${args.keptFile}"`);
+const shq = (v) => `'${String(v).replace(/'/g, "'\\''")}'`;
+const incomplete = unreadable > 0 || walkErrors.length > 0;
+if (args.keptFile) {
+  writeFileSync(args.keptFile, rows.map((r) => r + "\n").join(""), { encoding: "utf-8" });
+  console.log(incomplete
+    ? "synthesis-batch: withheld (plan incomplete)"
+    : `synthesis-batch: [paid, held by HIMMEL-8686, not run by this tool] claude --model claude-sonnet-5-5 ${shq(`Run /synthesize-clips ${args.vault} once, over exactly the clips listed in ${args.keptFile}`)}`);
+}
 console.log(`mode: ${args.apply ? "apply" : "dry-run"}`);
-console.log(`summary: seen=${seen} kept=${kept} skipped=${skipped} fresh=${fresh} triage-skipped=${triageSkipped} synthesised=${kept}${unreadable ? ` unreadable=${unreadable}` : ""}`);
+console.log(`summary: seen=${seen} kept=${kept} skipped=${skipped} fresh=${fresh} triage-skipped=${triageSkipped} to-synthesise=${kept}${unreadable ? ` unreadable=${unreadable}` : ""}${walkErrors.length ? ` unreadable-dirs=${walkErrors.length}` : ""}`);
 for (const w of walkErrors) console.error(`unreadable directory (its clips were NOT seen): ${w}`);
 process.exit(unreadable || walkErrors.length ? 3 : 0);

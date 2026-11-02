@@ -1311,8 +1311,8 @@ mk_t26 fresh.md "" "
 t26_tiny_sum="$(sha256sum "$t26_vault/Clippings/_evidence/tiny.md" | cut -d' ' -f1)"
 t26_before="$(sha256sum "$t26_vault/Clippings/_evidence/links.md" | cut -d' ' -f1)"
 node "$PLAN" --vault "$t26_vault" --kept-file "$tmpdir/t26-kept.txt" >"$tmpdir/t26-dry.out" 2>&1
-assert "Test26: dry run reports seen, kept, skipped, fresh, triage-skipped, synthesised" \
-    "summary: seen=5 kept=2 skipped=2 fresh=1 triage-skipped=2 synthesised=2" "$(grep '^summary:' "$tmpdir/t26-dry.out")"
+assert "Test26: dry run reports seen, kept, skipped, fresh, triage-skipped, to-synthesise" \
+    "summary: seen=5 kept=2 skipped=2 fresh=1 triage-skipped=2 to-synthesise=2" "$(grep '^summary:' "$tmpdir/t26-dry.out")"
 assert "Test26: dry run writes nothing" "$t26_before" "$(sha256sum "$t26_vault/Clippings/_evidence/links.md" | cut -d' ' -f1)"
 assert "Test26: a tiny reply is skipped with its reason" "yes" "$(grep -q 'tiny.md.*skipped.*below-threshold' "$tmpdir/t26-dry.out" && echo yes || echo no)"
 assert "Test26: a clip with no thread is skipped with its reason" "yes" "$(grep -q 'nothread.md.*skipped.*no-thread' "$tmpdir/t26-dry.out" && echo yes || echo no)"
@@ -1343,11 +1343,19 @@ if [ "$(id -u)" != "0" ]; then
     mkdir -p "$tmpdir/vault-t26b/Clippings/locked"
     chmod 000 "$tmpdir/vault-t26b/Clippings/locked"
     node "$PLAN" --vault "$tmpdir/vault-t26b" >/dev/null 2>"$tmpdir/t26-locked.err"; t26_rc=$?
-    chmod 755 "$tmpdir/vault-t26b/Clippings/locked"
     assert "Test26: an unreadable directory exits 3 and is named, never a silently partial plan" "3 yes" \
         "$t26_rc $(grep -q 'locked' "$tmpdir/t26-locked.err" && echo yes || echo no)"
+    node "$PLAN" --vault "$tmpdir/vault-t26b" --kept-file "$tmpdir/t26-partial-kept.txt" >"$tmpdir/t26-partial.out" 2>/dev/null
+    assert "Test26: a partial plan withholds the batched command" "yes no" \
+        "$(grep -q '^synthesis-batch: withheld (plan incomplete)' "$tmpdir/t26-partial.out" && echo yes || echo no) $(grep -q 'claude --model' "$tmpdir/t26-partial.out" && echo yes || echo no)"
+    assert "Test26: a partial plan counts the unreadable directory in the summary" "yes" \
+        "$(grep '^summary:' "$tmpdir/t26-partial.out" | grep -q 'unreadable-dirs=1' && echo yes || echo no)"
+    chmod 755 "$tmpdir/vault-t26b/Clippings/locked"
 fi
-assert "Test26: a look-alike host is not an X clip" "summary: seen=0 kept=0 skipped=0 fresh=0 triage-skipped=0 synthesised=0" \
+node "$PLAN" --vault "$t26_vault" --kept-file >/dev/null 2>&1; t26_nov=$?
+assert "Test26: --kept-file with no value is refused" "1" "$t26_nov"
+assert "Test26: the printed command says it is paid and held by HIMMEL-8686" "yes" "$(grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'paid' && grep '^synthesis-batch:' "$tmpdir/t26-dry.out" | grep -q 'HIMMEL-8686' && echo yes || echo no)"
+assert "Test26: a look-alike host is not an X clip" "summary: seen=0 kept=0 skipped=0 fresh=0 triage-skipped=0 to-synthesise=0" \
     "$(node "$PLAN" --vault "$tmpdir/vault-t26b" | grep '^summary:')"
 t26d="$tmpdir/vault-t26d/Clippings"
 mkdir -p "$t26d/_done/2026-05"
@@ -1367,7 +1375,11 @@ assert "Test26: a trailing YAML comment on processed and source does not hide th
 node "$PLAN" --vault "$tmpdir/vault-t26d" --apply >/dev/null 2>&1
 printf -- '---\r\nsource: https://x.com/jack/status/45\r\nprocessed: true\r\n---\r\n# t\r\n\r\n## Thread\r\n<!-- fxtwitter thread -->\r\n\r\n**@jack** (author) https://x.com/jack/status/46\r\n\r\n> see https://example.com/crlf\r\n' >"$t26d/crlf2.md"
 t26_crlf2_tail="$(tail -c 60 "$t26d/crlf2.md" | sha256sum | cut -d' ' -f1)"
+chmod 640 "$t26d/crlf2.md"
+ln "$t26d/crlf2.md" "$tmpdir/t26-crlf2.orig"
 node "$PLAN" --vault "$tmpdir/vault-t26d" --apply >/dev/null 2>&1
+assert "Test26: apply replaces the file by rename (new inode) and keeps its mode" "changed 640" \
+    "$([ ! "$t26d/crlf2.md" -ef "$tmpdir/t26-crlf2.orig" ] && echo changed || echo same) $([ -n "$(find "$t26d/crlf2.md" -perm 640)" ] && echo 640 || echo other)"
 assert "Test26: apply edits only the frontmatter of a CRLF clip and keeps its CRLF endings" "$t26_crlf2_tail yes" \
     "$(tail -c 60 "$t26d/crlf2.md" | sha256sum | cut -d' ' -f1) $(grep -c $'\r' "$t26d/crlf2.md" | awk '{print ($1 > 5) ? "yes" : "no"}')"
 assert "Test26: apply leaves no temp file behind" "0" "$(find "$t26d" -name '*.reread-plan.tmp' | wc -l | tr -d ' ')"

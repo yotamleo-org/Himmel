@@ -227,7 +227,7 @@ atomically). An untriaged clip is reported `fresh`: it gets its normal first tri
 unchanged, and is never in the synthesis batch. `_done/` and `_deferred.md` are not
 planned, as synthesis never takes them. Pass `--kept-file` to get the kept list and
 the one batched synthesis command over it (no command is printed without it). The run
-ends with `summary: seen=N kept=K skipped=S fresh=F triage-skipped=T synthesised=K`.
+ends with `summary: seen=N kept=K skipped=S fresh=F triage-skipped=T to-synthesise=K`. These counts are a plan: this tool runs no synthesis, and the printed command is paid and held by the ticket that owns the paid rerun. If a file or directory was unreadable the run exits 3, adds `unreadable=` / `unreadable-dirs=` to the summary and withholds the command.
 
 ### Re-flagging historical silent partials (`harvest-clip-body-batch.py --reflag-silent-partials`)
 
