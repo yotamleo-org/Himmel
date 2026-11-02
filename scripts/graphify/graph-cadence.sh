@@ -518,6 +518,12 @@ else
     _fr_emit_append_end "$FLOW_NAME" "$RUN_ID" "" 2 error "" "$_msg"
     exit 2
 fi
+_door_rc=0
+bash "$REPO_ROOT/scripts/lib/test-run-guard" check graph-cadence "$LEDGER_ROOT" || _door_rc=$?
+if [ "$_door_rc" -eq 77 ]; then
+    _fr_emit_append_end "$FLOW_NAME" "$RUN_ID" "" 77 error "" "refused: a test on the station would write the real ledger root"
+    exit 77
+fi
 LEDGER_DIR="$LEDGER_ROOT/.graph-cadence"
 if ! mkdir -p "$LEDGER_DIR"; then
     _msg="could not create $LEDGER_DIR"

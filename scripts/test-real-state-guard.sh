@@ -480,6 +480,7 @@ has "D3 a send with a temp doc stays local" "$TDOC" "mirror hermetic"
 # CAS rows: the config-audit alert's chief-route sender. JP rows: release apply, release rm-run and jira
 # create, each against a Jira host that never resolves, so a run past the door shows as a host lookup.
 echo "== scheduler, config-audit sender and Jira post doors (HIMMEL-8818)"
+unset CRON_LIST
 cat >"$BIN/sched-recorder" <<'STUB'
 #!/usr/bin/env bash
 t="${0##*/}"
@@ -805,6 +806,16 @@ if [ -e "$FAKE_REAL/gc-ledger" ] || [ -e "$FAKE_REAL/gc-wt.log" ]; then fail "GC
 rc=0; "${GC_ENV[@]}" "$CLAUDE_STUB" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
 eq "GC2 a real session's graph-cadence is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
 if [ -d "$FAKE_REAL/gc-ledger/.graph-cadence" ]; then pass "GC2 a real session's graph-cadence writes its ledger"; else fail "GC2 a real session's graph-cadence writes its ledger ($(head -c 300 "$TMP/gc.out"))"; fi
+# GC3/GC4: temp worktree and corpus, so the first door passes; only the ledger root decides.
+git init -q "$TMP/gc-himmel-t"
+GC_T_ENV=(env GRAPH_CADENCE_HIMMEL_ROOT="$TMP/gc-himmel-t" GRAPH_CADENCE_DOTENV_ROOT="$TMP/gc-dotenv" GRAPH_CADENCE_WORKTREE_DIR="$TMP/gc-wt-t"
+  GRAPH_CADENCE_AST_UPDATE="$BIN/qmd" GRAPH_CADENCE_GRAPH_PUBLISH="$BIN/qmd" GRAPH_CADENCE_MERGE_ON_GREEN="$BIN/qmd")
+reset
+rc=0; "${GC_T_ENV[@]}" GRAPH_CADENCE_LEDGER_ROOT="$FAKE_REAL/gc-ledger3" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC3 a test's graph-cadence with a real ledger root exits 77" "$rc" 77
+if [ -e "$FAKE_REAL/gc-ledger3" ]; then fail "GC3 a test's graph-cadence wrote a real ledger root"; else pass "GC3 a test's graph-cadence wrote no real ledger root"; fi
+rc=0; "${GC_T_ENV[@]}" GRAPH_CADENCE_LEDGER_ROOT="$TMP/gc-ledger4" bash "$GCS" >"$TMP/gc.out" 2>&1 || rc=$?
+eq "GC4 a test's graph-cadence with a temp ledger root is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
 
 # RG rows: refresh-graph-map. --no-update, so no extraction runs; the proof is the out dir and the lock it takes.
 RG="$root/scripts/graphify/refresh-graph-map.sh"
