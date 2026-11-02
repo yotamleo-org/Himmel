@@ -69,7 +69,12 @@ model window.
   The result is clamped to the window.
 - **Threshold % of the window.** It is `ceil(share × ceiling / window)`.
 - **Share.** The share is `HIMMEL_WORKER_SESSION_CONTEXT_SHARE`, from the launch env only.
-  Any value other than 1-100 gives 75.
+  Any value other than 1-100 gives 75. A Sonnet launch on a profile that sets
+  `sonnetContextShare` (`worker-impl` and `worker-eval`: 73) gets it exported by the
+  launcher, under the same native-lane Sonnet 5.5 gate as the 450000 ceiling, so
+  `WORKER_SESSION_CONTEXT=1m`, Opus, other lanes and `worker-docs` export none. A
+  share already set in the launching shell wins. The `--dry-run` report prints the
+  value (`HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>` when none).
 
 A worked example: an opus worker pinned at `--autocompact 200000` reports a
 1000000-token window. Its ceiling is 20 % fill, and 75 % of it is **150000
@@ -85,6 +90,18 @@ The deny must land before the earliest compaction. A higher share, such as
 earlier 65 % (130000) left 27000 tokens of room but stopped every opus worker at
 13 % fill. If a worker needs more headroom than 7000 tokens, raise the launcher
 ceiling; that is an operator decision.
+
+**Why 73 on a Sonnet profile (HIMMEL-8825).** At the 450000 ceiling the threshold is
+`ceil(75 × 450000 / 1000000)` = `ceil(33.75)` = 34 % of the window, which is **340000
+tokens**, not the nominal 337500. Four `worker-impl` Sonnet workers on 2026-11-02 (N4523,
+N4531, N4520, N4533) were denied there, as designed (last context before the deny 337229,
+337180, 346893, 343339; none compacted). The earliest auto compaction seen in a Sonnet 5.5
+transcript that mentions 450000 was 343158 (then 345258, 345330, 347186 up to about
+356k), so the deny left 3158 tokens before it, under the about 7000 a commit, push and
+CHECKPOINT need. A higher share cannot help: it would put the deny past the earliest
+compaction. Share 73 gives `ceil(73 × 450000 / 1000000)` = 33 %, 330000 tokens, and about
+13000 tokens of room. This protects the hand-off from a compaction; it does not stop
+hand-offs: a worker that outgrows 33 % still relaunches, as HIMMEL-7667 designed.
 
 ## The autocompact A/B arm
 
