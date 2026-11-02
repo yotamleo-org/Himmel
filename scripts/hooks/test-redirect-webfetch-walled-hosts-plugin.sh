@@ -195,6 +195,14 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     run_case "$(wf 'https://docs.python.org/3/')" "$HIMMEL_ROOT"
     assert_eq "himmel record: non-walled host allowed" 0 "$RC"
 
+    # CLAUDE_CONFIG_DIR wins over HOME: with HOME on another dir the record is
+    # still read from CLAUDE_CONFIG_DIR (HOME and the config dir are one path in
+    # every other case, so only this row tells them apart).
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo" HOME="$TMP/elsewhere"
+    assert_eq "CLAUDE_CONFIG_DIR over HOME: the record is found, denies" 2 "$RC"
+    assert_contains "CLAUDE_CONFIG_DIR over HOME: names the recorded checkout's fetcher" \
+        "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+
     # The default config dir ($HOME/.claude, CLAUDE_CONFIG_DIR unset), a record
     # path with a trailing slash, and a record that does not parse.
     CFG_ASSIGN=X_UNUSED=1
@@ -207,10 +215,18 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
     assert_contains "trailing-slash record: names the recorded checkout's fetcher" \
         "'$HIMMEL_ROOT/scripts/web/fetch-url.sh' 'https://x.com" "$ERR"
+    # The project owns a fetcher and a conf naming x.com, both beside the project
+    # dir and at a relative path a non-string location (42) would resolve to, so
+    # reading the project dir, or trusting a non-string location, shows up as a
+    # deny that names a fetcher.
+    put "$TMP/owned/scripts/web/walled-hosts.conf" 'x.com\n'
+    put "$TMP/owned/42/scripts/web/fetch-url.sh" '#!/bin/sh\nexit 0\n'
+    put "$TMP/owned/42/scripts/web/walled-hosts.conf" 'x.com\n'
     for bad in '{not json\n' '{"himmel":{"installLocation":42}}\n' '[]\n'; do
         put "$CFG/plugins/known_marketplaces.json" "$bad"
-        run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
+        run_case "$(wf 'https://x.com/a/status/1')" "$TMP/owned"
         assert_eq "unusable record $bad: walled host still denied" 2 "$RC"
+        assert_contains "unusable record $bad: the adopter message" "will not return the page" "$ERR"
         case "$ERR" in
             *fetch-url*) echo "FAIL unusable record: deny names a fetcher: $ERR"
                          FAILED=$((FAILED + 1)) ;;
