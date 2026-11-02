@@ -1193,4 +1193,5 @@ test("chart-bars-use-the-failure-colour-token", () => {
   const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
   expect(css).toMatch(/\.thchart \.fb\{[^}]*fill:var\(--crit\)/);
   expect(css).toMatch(/\.thchart\{[^}]*height:auto/);
+  expect(css).toMatch(/\.thchart\{[^}]*max-width:480px/);
 });
