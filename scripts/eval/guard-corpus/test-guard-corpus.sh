@@ -856,10 +856,17 @@ if command -v mkfifo >/dev/null 2>&1; then
     rm -f "$STAGE/scripts/planted.fifo"
     python3 "$DIFF" --base "$TMP/base-hook.sh" --head "$TMP/base-hook.sh" \
             --corpus "$TMP/hid-row.jsonl" --jobs 1 >/dev/null 2>&1; RC18B=$?
-    if [ "$RC18A" = "0" ]; then pass "staged-root-control: a FIFO in the sandbox ROOT is masked and the row is clean (exit 0)"
-    else fail "staged-root-control: expected exit 0 with a FIFO in ROOT, got $RC18A"; fi
-    # a refusal that came back (rc 125) or any odd rc must name itself, not pass as a clean row
-    hasnt "staged-root-control: no odd rc with a FIFO in ROOT" "$OUT18A" "ODD-RC"
+    if [ "$(uname -s)" = "Darwin" ]; then
+      # Darwin has no mask: it refuses a FIFO under a --read-only input (rc 125), which the diff reports as ODD-RC
+      if [ "$RC18A" = "3" ]; then pass "staged-root-control: Darwin refuses a FIFO in the sandbox ROOT (exit 3)"
+      else fail "staged-root-control: Darwin expected exit 3 with a FIFO in ROOT, got $RC18A"; fi
+      has "staged-root-control: Darwin names the refusal" "$OUT18A" "ODD-RC"
+    else
+      if [ "$RC18A" = "0" ]; then pass "staged-root-control: a FIFO in the sandbox ROOT is masked and the row is clean (exit 0)"
+      else fail "staged-root-control: expected exit 0 with a FIFO in ROOT, got $RC18A"; fi
+      # a refusal that came back (rc 125) or any odd rc must name itself, not pass as a clean row
+      hasnt "staged-root-control: no odd rc with a FIFO in ROOT" "$OUT18A" "ODD-RC"
+    fi
     if [ "$RC18B" = "0" ]; then pass "staged-root-control: the same row is clean once the FIFO is gone (exit 0)"
     else fail "staged-root-control: expected exit 0 without the FIFO, got $RC18B"; fi
   else fail "staged-root-control: mkfifo exists but could not create the FIFO"; fi
