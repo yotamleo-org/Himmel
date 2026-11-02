@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# test-run-guard — the one answer to "is a test about to write real station state?"
+#
+# WHY: tests run on the station damaged the Jira token in the keyring, the roadmap
+# plan index and the live release queue. Each writer calls this at its
+# door, from bash or TypeScript, so a suite that needs real state goes to a test VM while hermetic
+# suites stay local and real sessions and ticks write as before.
+#
+#   test-run-guard check [--quiet] [--real] [--tool NAME] [--temp-source DIR] <label> [target...]
+#
+# Exit 77 = refuse (the reason and the VM command go to stderr). 0 = go ahead. 2 = usage.
+# Refused means all three: a real target, a test signal, and not a VM or container.
+#
+# A real target: a path under the passwd home ($HOME is not trusted, a fixture sets it) outside any
+# worktree; --real (no path, e.g. the live notifier); or --tool NAME resolving to a system dir or under the home.
+# A tool found anywhere else is a stub. A tool found nowhere has nothing to reach.
+# A test signal: HIMMEL_TEST_FIXTURE=1, NODE_ENV=test, a test runner among this process's ancestors,
+# or --temp-source DIR under a temp root (a real target fed from a temp dir is a test, even detached).
+# The ancestor walk stops at a process named claude: what is above it is not this run, so a real
+# session descended from a test shell still writes.
+#
+# Failure direction: a failed read never refuses by itself. Unresolvable home or path: the target
+# counts as real, so it refuses only beside a test signal. Unreadable /proc: no ancestor signal.
+# No VM detector: not a VM, so again it refuses only beside a real target and a signal.
+#
+# Seams only ever add what counts as real, so none of them can open the guard:
+# HIMMEL_REAL_STATE_EXTRA_ROOTS, HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS (colon lists) and
+# HIMMEL_REAL_STATE_ASSUME_STATION=1 (skip the VM check).
+#
+# ponytail: macOS has no station and no /proc, so the guard does not run there. Upgrade path: a
+# `ps -o ppid=,command=` walk if a Mac ever holds real state.
+set -uo pipefail
+set -f
+
+[ "$(uname -s 2>/dev/null)" = Darwin ] && exit 0
+
+usage() { echo "usage: test-run-guard check [--quiet] [--real] [--tool NAME] [--temp-source DIR] <label> [target...]" >&2; exit 2; }
+
+[ "${1:-}" = check ] || usage
+shift
+quiet=0 force_real=0 tool="" temp_source=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --quiet) quiet=1 ;;
+        --real) force_real=1 ;;
+        --tool) [ $# -ge 2 ] || usage; tool="$2"; shift ;;
+        --temp-source) [ $# -ge 2 ] || usage; temp_source="$2"; shift ;;
+        -*) usage ;;
+        *) break ;;
+    esac
+    shift
+done
+[ $# -ge 1 ] || usage
+label="$1"
+shift
+
+home="$(getent passwd "$(id -u 2>/dev/null)" 2>/dev/null | cut -d: -f6 2>/dev/null)"
+
+under() { case "$1/" in "${2%/}"/*) return 0 ;; esac; return 1; }
+
+# in_list <path> <colon list>
+in_list() {
+    local p="$1" r IFS=:
+    for r in $2; do
+        [ -n "$r" ] || continue
+        r="$(realpath -m -- "$r" 2>/dev/null)" || r=""
+        [ -n "$r" ] && under "$p" "$r" && return 0
+    done
+    return 1
+}
+
+real_path() {
+    local p
+    # gnu-ok: this script exits on Darwin above, and a missing realpath lands on the real branch.
+    p="$(realpath -m -- "$1" 2>/dev/null)" || return 0
+    [ -n "$p" ] || return 0
+    in_list "$p" "${HIMMEL_REAL_STATE_EXTRA_ROOTS:-}" && return 0
+    [ -n "$home" ] || return 0
+    case "$p" in */.claude/worktrees/*) return 1 ;; esac
+    under "$p" "$home"
+}
+
+real_tool() {
+    local t
+    t="$(command -v -- "$1" 2>/dev/null)" || return 1
+    t="$(realpath -m -- "$t" 2>/dev/null)" || return 0
+    [ -n "$t" ] || return 0
+    in_list "$t" "${HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS:-}" && return 0
+    case "$t" in /usr/*|/bin/*|/sbin/*|/opt/*|/snap/*|/nix/*) return 0 ;; esac
+    real_path "$t"
+}
+
+any_real() {
+    local t
+    [ "$force_real" = 1 ] && return 0
+    if [ -n "$tool" ] && real_tool "$tool"; then return 0; fi
+    for t in "${targets[@]+"${targets[@]}"}"; do
+        real_path "$t" && return 0
+    done
+    return 1
+}
+
+targets=("$@")
+any_real || exit 0
+
+is_test_name() { case "${1##*/}" in test-*|test_*|*.test.*|*_test.*) return 0 ;; esac; return 1; }
+is_runner_name() { case "${1##*/}" in vitest*|pytest*|py.test|jest*|bats) return 0 ;; esac; return 1; }
+
+# argv_runs_test <argv...>: a test in script position, never a mention. An inline -c body, a later
+# argument and a session name all leave it unmatched. Sets suite when it knows the file.
+argv_runs_test() {
+    local a0="${1##*/}"
+    shift
+    is_runner_name "$a0" && return 0
+    if is_test_name "$a0"; then suite="$a0"; return 0; fi
+    case "$a0" in
+        bash|sh|zsh|dash|ksh|python|python[0-9]*|pypy*|node|bun|tsx|deno) ;;
+        *) return 1 ;;
+    esac
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -[a-zA-Z]*c*|-c) return 1 ;;
+            -e|--eval|-p|--print) case "$a0" in node|bun|tsx|deno) return 1 ;; esac ;;
+            -m) case "${2:-}" in pytest|unittest) return 0 ;; esac; return 1 ;;
+            --test) return 0 ;;
+            -o|-O|+O|--rcfile|--init-file|-W|-X|-r|--require|--import|--loader) shift ;;
+            -*|+*) ;;
+            test) case "$a0" in bun|deno) return 0 ;; esac; return 1 ;;
+            run) case "$a0" in bun|deno) ;; *) return 1 ;; esac ;;
+            *)
+                is_runner_name "$1" && return 0
+                if is_test_name "$1"; then suite="$1"; return 0; fi
+                return 1 ;;
+        esac
+        shift
+    done
+    return 1
+}
+
+suite=""
+ancestor_runs_test() {
+    local pid="$PPID" comm stat ppid arg n=0 argv=()
+    while [ "$pid" -gt 1 ] 2>/dev/null && [ "$n" -lt 64 ]; do
+        n=$((n + 1))
+        { read -r comm <"/proc/$pid/comm"; } 2>/dev/null || return 1
+        [ "$comm" = claude ] && return 1
+        argv=()
+        { while IFS= read -r -d '' arg; do argv+=("$arg"); done <"/proc/$pid/cmdline"; } 2>/dev/null || return 1
+        if [ "${#argv[@]}" -gt 0 ] && argv_runs_test "${argv[@]}"; then return 0; fi
+        { read -r stat <"/proc/$pid/stat"; } 2>/dev/null || return 1
+        read -r _ ppid _ <<<"${stat##*) }"
+        pid="${ppid:-0}"
+    done
+    return 1
+}
+
+signal=""
+[ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && signal="HIMMEL_TEST_FIXTURE=1"
+[ "${NODE_ENV:-}" = test ] && signal="NODE_ENV=test"
+if [ -n "$temp_source" ]; then
+    src="$(realpath -m -- "$temp_source" 2>/dev/null)" || src="$temp_source"
+    case "$src" in /tmp/*|/var/tmp/*|/dev/shm/*) signal="its source is the temp dir $src" ;; esac
+    # A TMPDIR that holds the home would turn every real plan into a temp one, so it does not count.
+    tmp_env="$(realpath -m -- "${TMPDIR:-/tmp}" 2>/dev/null)" || tmp_env=/tmp
+    if under "$src" "$tmp_env" && ! under "${home:-/}" "$tmp_env"; then
+        signal="its source is the temp dir $src"
+    fi
+fi
+if ancestor_runs_test; then
+    signal="${signal:+$signal, }a test runner is an ancestor of this process"
+fi
+[ -n "$signal" ] || exit 0
+
+if [ "${HIMMEL_REAL_STATE_ASSUME_STATION:-}" != 1 ]; then
+    for d in /usr/bin/systemd-detect-virt /bin/systemd-detect-virt; do
+        [ -x "$d" ] || continue
+        "$d" --quiet --vm && exit 0
+        "$d" --quiet --container && exit 0
+        break
+    done
+    { [ -e /.dockerenv ] || [ -e /run/.containerenv ]; } && exit 0
+fi
+
+if [ "$quiet" != 1 ]; then
+    branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" || branch=""
+    {
+        printf 'REFUSED %s: a test on the station cannot write real station state (%s). Test signal: %s. Nothing was written.\n' \
+            "$label" "${*:-${tool:-the live service}}" "$signal"
+        if [ -n "$suite" ]; then
+            printf 'Run this suite on a test VM: bash scripts/vm/guest-exec.sh himmel-ar-1 -- bash %s\n' "$suite"
+        fi
+        printf 'Run the whole changed set on a test VM: bash scripts/vm/after-report.sh %s <pr>\n' "${branch:-<branch>}"
+        printf 'A hermetic test stays local: point this write at a temp dir or a stub.\n'
+    } >&2
+fi
+exit 77

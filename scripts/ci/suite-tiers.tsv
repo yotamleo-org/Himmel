@@ -1109,6 +1109,7 @@ scripts/test-plugin-eval-preflight.sh	local	behaviour suite, 0 catches in the 40
 scripts/test-plugin-test.sh	local	new since the audit, behaviour suite
 scripts/test-preflight-adopter.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-quiet-run.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-real-state-guard.sh	pr	guard
 scripts/test-retitle.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-sessions-reindex.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-sweep-health.sh	local	behaviour suite, 0 catches in the 400-PR audit window

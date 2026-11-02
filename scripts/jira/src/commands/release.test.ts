@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -34,6 +34,21 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+describe.skipIf(process.platform !== 'linux')('jira release from a test on the station', () => {
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
+    vi.stubEnv('HIMMEL_REAL_STATE_EXTRA_ROOTS', root);
+  });
+
+  it('refuses every write verb, reads still run', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', vf)).rejects.toThrow(/refused/);
+    await expect(run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'x')).rejects.toThrow(/refused/);
+    expect(existsSync(join(root, 'state', 'R1'))).toBe(false);
+    await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
+  });
 });
 
 describe('jira release (HIMMEL-6796)', () => {

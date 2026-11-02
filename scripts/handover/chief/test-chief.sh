@@ -192,6 +192,35 @@ rc_freed=0
 HANDOVER_DIR="$root" bash "$QL" status "$docA" >/dev/null 2>&1 || rc_freed=$?
 check "3 lock freed after release" "$rc_freed" "0"
 
+# --- 3b: `chief new` acquires FOR the chief it launches, from inside the
+# invoking session. That session's self-heartbeat must not keep the launched
+# chief's lock fresh (it would blind the sweep's idle detection), so the lock
+# stays STALE once its own heartbeat ages out. A worker's own acquire is
+# unchanged (test-queue-lock.sh T90).
+xdg3b="$tmp/xdg3b"; mkdir -p "$xdg3b"; chmod 700 "$xdg3b"
+docOB="$root/tester/onbehalf/DEMO-nextleg-${today}A-chief.md"
+outOB="$(XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker chief new --bucket onbehalf 2>/dev/null)"
+tokenOB="$(token_of "$outOB")"
+ownerOB="$(grep -l -F "$docOB" "$root"/.locks/queue/*/owner.json 2>/dev/null | head -1)"
+if [ -n "$ownerOB" ]; then
+    sed -i.bak 's/"heartbeat":"[^"]*"/"heartbeat":"2020-01-01T00:00:00Z"/' "$ownerOB" && rm -f "$ownerOB.bak"
+fi
+rc_hbOB=0
+printf '{"session_id":"scope-invoker"}' | XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" self-heartbeat >/dev/null 2>&1 || rc_hbOB=$?
+check "3b the invoker's self-heartbeat command itself succeeds" "$rc_hbOB" "0"
+check "3b the invoker's self-heartbeat leaves a chief-launched lock's heartbeat untouched" "$(grep -c '"heartbeat":"2020-01-01T00:00:00Z"' "$ownerOB" 2>/dev/null)" "1"
+rc_idle=0
+HANDOVER_DIR="$root" bash "$QL" status "$docOB" >/dev/null 2>&1 || rc_idle=$?
+check "3b a chief-launched lock goes STALE (rc 12), so the sweep shows it idle" "$rc_idle" "12"
+# control: once the invoker ADOPTS the lock, the same self-heartbeat DOES refresh
+# it, so the untouched result above is the missing registration, not a no-op hook.
+rc_adoptOB=0
+HANDOVER_DIR="$root" XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" adopt "$docOB" "$tokenOB" >/dev/null 2>&1 || rc_adoptOB=$?
+check "3b control: adopt registers the lock and exits 0" "$rc_adoptOB" "0"
+printf '{"session_id":"scope-invoker"}' | XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" self-heartbeat >/dev/null 2>&1
+check "3b control: an adopted chief-launched lock IS refreshed by the invoker's self-heartbeat" "$(grep -c '"heartbeat":"2020-01-01T00:00:00Z"' "$ownerOB" 2>/dev/null)" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$docOB" "$tokenOB" >/dev/null 2>&1
+
 sumA_before="$(cksum < "$docA")"
 t4_start=$SECONDS
 out4="$(chief new --bucket demorepo)"
@@ -495,7 +524,7 @@ leak_free() {
 # every such line must carry a token this run actually saw `new` print — an
 # unrelated
 # leak, or a line that merely LOOKS token-shaped, still fails loudly.
-known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox")
+known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox" "$tokenOB")
 token_residual() {
     local token
     for token in "$@"; do

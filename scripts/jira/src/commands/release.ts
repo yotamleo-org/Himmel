@@ -1,5 +1,5 @@
 // billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -21,7 +21,7 @@ import {
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
-import { releaseDir, releaseKeyPath } from '../release/paths.js';
+import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
 import type { Authority, Op, Verb } from '../release/types.js';
 
@@ -331,8 +331,26 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check']);
+
+/** A test on the station never writes the live release queue. Only exit 77 refuses. */
+function refuseTestWrite(verb: string): void {
+  let root: string;
+  try {
+    root = releaseRoot();
+  } catch {
+    return; // the verb reports the unset state itself
+  }
+  const guard = join(dirname(fileURLToPath(import.meta.url)), '../../../lib/test-run-guard');
+  const r = spawnSync('bash', [guard, 'check', `jira-release-${verb}`, root], { stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status === 77) throw new Error(`release ${verb}: refused, nothing was written`);
+}
+
 export function registerRelease(program: Command): void {
   const rel = program.command('release').description('Release ledger: placement rulings, lease and burn-down state (HIMMEL-6796)');
+  rel.hook('preAction', (_release, action) => {
+    if (!(action.parent === rel && READ_ONLY_VERBS.has(action.name()))) refuseTestWrite(action.name());
+  });
 
   rel.command('state <release>')
     .description('Effective release state from the one reducer (never a clean result on unknown input)')
