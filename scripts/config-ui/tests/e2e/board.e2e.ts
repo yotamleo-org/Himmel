@@ -85,7 +85,7 @@ test("dragging a card to another column sends its new status", async ({ page }) 
   await go(page, "#/board");
   const sent: string[] = [];
   await page.route("**/api/roadmap/write", async (route) => { sent.push(route.request().postData() || ""); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }); });
-  await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]'));
+  await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('#rm-lanes [data-rm-drop="prog"]'));
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
 });
@@ -97,6 +97,33 @@ test("the Chain filter narrows the lanes to that chain's tickets", async ({ page
   await page.locator("select[data-rm-chain]").selectOption("memory");
   await expect(page.locator(".rm-card", { hasText: "Not in any chain" })).toHaveCount(0);
   await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeVisible();
+});
+
+test("a ticket with no fixVersion sits in the No version lane, and a versioned ticket does not", async ({ page }) => {
+  const errs = consoleErrors(page);
+  await open(page);
+  await go(page, "#/board");
+  await expect(page.locator("#rm-nv")).toContainText("1 active ticket with no fixVersion");
+  await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
+  await expect(page.locator("#rm-nv .rm-card", { hasText: "Work in flight" })).toHaveCount(0);
+  await expect(page.locator("#rm-lanes .rm-card", { hasText: "Standing ticket with no version" })).toHaveCount(0);
+  await shot(page, "board-nv-lane");
+  expect(errs).toEqual([]);
+});
+
+test("the find box narrows the lanes by title or id on Enter, the columns say how many Jira has, and Done is folded", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  const todo = page.locator('#rm-lanes [data-rm-col="todo"]');
+  await expect(todo.locator(".rm-jira")).toHaveText("Jira 2 matches");
+  await expect(page.locator("#rm-lanes details.rm-done")).not.toHaveAttribute("open", "");
+  await page.locator("input[data-rm-find]").fill("second chain");
+  await page.locator("input[data-rm-find]").press("Enter");
+  await expect(page.locator("#rm-lanes .rm-card")).toHaveCount(1);
+  await expect(todo.locator(".rm-n")).toHaveText("1");
+  await expect(todo.locator(".rm-jira")).toHaveText("Jira 2 · 1 shown");
+  await expect(page.locator("input[data-rm-find]")).toHaveValue("second chain");
+  await shot(page, "board-find");
 });
 
 test("every tab carries the one filter bar and refresh, and Tidy up lists every version by default", async ({ page }) => {

@@ -650,6 +650,7 @@ document.addEventListener("change", (e) => {
   if (e.target.dataset.rs === "report_day" && state.reports && state.reports.draft) { state.reports.draft.report_day = e.target.value; state.reports.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   if (e.target.dataset.rmChain !== undefined) { roadmapUi.chain = e.target.value || null; return paint(); }
+  if (e.target.dataset.rmFind !== undefined) { roadmapUi.find = e.target.value.trim() || null; return paint(); } // a text box commits on Enter or blur, so typing is never repainted under the cursor
   const f = e.target.dataset.rmFilter;
   if (f) { roadmapUi[f] = e.target.value === "" ? null : Number(e.target.value); return paint(); }
   const th = e.target.dataset.th;

@@ -73,7 +73,7 @@ export type TrackerKind = "jira" | "local" | "github" | "none";
 export type BootOpts = { ledger?: object[]; handover?: { bullet: string }; prom?: { alerts: Alert[] }; feedDelayMs?: number; tracker?: TrackerKind; board?: boolean };
 const boardIssue = (n: number, status: string, cat: string, fv: string, title: string, blockedBy: string[] = [], sector = "") =>
   ["---", `key: "HIMMEL-${n}"`, `type: "Task"`, `status: ${JSON.stringify(status)}`, `statusCategory: ${JSON.stringify(cat)}`, `priority: "Medium"`, `labels: []`,
-    `fixVersions: [${JSON.stringify(fv)}]`, `parent: null`, ...(sector ? [`sector: ${JSON.stringify(sector)}`] : []), `created: "2026-10-01T00:00:00.000+0000"`,
+    `fixVersions: ${fv ? `[${JSON.stringify(fv)}]` : "[]"}`, `parent: null`, ...(sector ? [`sector: ${JSON.stringify(sector)}`] : []), `created: "2026-10-01T00:00:00.000+0000"`,
     `updated: "2026-10-0${Math.min(n, 9)}T10:00:00.000+0000"`, `resolution: null`, "links:", "  blocks: []", `  blocked_by: ${JSON.stringify(blockedBy)}`, "  relates: []",
     "---", "", `# HIMMEL-${n}: ${title}`, "", "## Description", "", "x", "", "## Comments", "", "_(none)_", ""].join("\n");
 function seedBoard(dir: string, mirror: string): Record<string, string> {
@@ -86,6 +86,7 @@ function seedBoard(dir: string, mirror: string): Record<string, string> {
   put(4, "In Review", "In Progress", "v1.1.3", "Waiting for review", [], "Safety");
   put(5, "To Do", "To Do", "v1.1.3", "Not in any chain");
   put(21, "To Do", "To Do", "v1.1.4", "Next version work");
+  put(31, "In Progress", "In Progress", "", "Standing ticket with no version");
   writeFileSync(mirror + ".versions.tsv", "v1.1.2\ttrue\t2026-10-19\nv1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
   const registry = join(dir, "chain-registry.json"), drift = join(dir, "focus-drift.txt"), known = join(dir, "known-checker-bugs.tsv"), conf = join(dir, "himmel-conf");
   mkdirSync(conf, { recursive: true });
