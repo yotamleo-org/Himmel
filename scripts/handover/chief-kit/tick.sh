@@ -384,7 +384,7 @@ refresh fills that cache at most once per TICK_ORPHANS_MIN_SECS (default 300). A
 corrupt cache, or one past TICK_ORPHANS_TTL (default 1800), reads orphans-wip=?, never an
 all-clear. Not part of chief-wait's wake key, so a new age alone wakes nothing.
 
-deadline-over=<n>s (HIMMEL-8735): the tick passed TICK_DEADLINE_SEC (default 90). Every later
+deadline-over=<n>s (HIMMEL-8735): the tick passed TICK_DEADLINE_SEC (default 90) by <n> s. Every later
 probe's cap was cut to what was left, so its unknown, ? or skip may only mean it ran out of
 time. Absent on a tick inside the deadline. Not part of chief-wait's wake key.
 
@@ -3343,16 +3343,17 @@ if [ "$burn" -eq 1 ]; then
     [ -n "$burn_summary" ] || burn_summary=none
 fi
 
-# Claimed by rename right before printing, so two ticks can never both print one crossing.
-if [ -n "$ciguard_base" ] && mv -f "$ciguard_base.alerts" "$ciguard_base.alerts.$$" 2>/dev/null; then  # swallow-ok: nothing queued is the normal quiet tick
+# Claimed by rename right before printing, so two ticks can never both print one crossing, and
+# under the refresh's lock, so a refresh still appending keeps the queue for the next tick.
+if [ -n "$ciguard_base" ] && flock -n "$ciguard_base.lock" mv -f "$ciguard_base.alerts" "$ciguard_base.alerts.$$" 2>/dev/null; then  # prim-ok: nonblocking, a held lock only delays the queue a tick; gnu-ok: chief kit is Linux-only; swallow-ok: nothing queued is the normal quiet tick
     ciguard_alerts="$(grep '^ALERT [a-z0-9-]*=' "$ciguard_base.alerts.$$" || true)"  # swallow-ok: an empty queue prints nothing
     rm -f "$ciguard_base.alerts.$$"
 fi
 
-# deadline-over=<n>s: this tick passed TICK_DEADLINE_SEC, so a probe that read unknown, ? or skip
-# may only have run out of time. Absent on a tick inside the deadline.
+# deadline-over=<n>s: this tick passed TICK_DEADLINE_SEC by <n> s, so a probe that read unknown,
+# ? or skip may only have run out of time. Absent on a tick inside the deadline.
 deadline_over=""
-[ "$SECONDS" -lt "$tick_deadline" ] || deadline_over="${SECONDS}s"
+[ "$SECONDS" -lt "$tick_deadline" ] || deadline_over="$((SECONDS - tick_deadline))s"
 
 if [ "$verbose" -eq 1 ]; then
     printf 'TICK %s\n' "$clock"

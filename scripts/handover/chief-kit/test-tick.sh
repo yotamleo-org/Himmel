@@ -238,6 +238,10 @@ export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
 export TICK_STATE_DIR="$W/state"
 # ciguard= runs this probe; the default is a missing one (ciguard=unknown), never a live fetch.
 export TICK_CIGUARD_PROBE="$W/no-ciguard-probe"
+# A fixture mirror must not send a tick to live Jira: versionless-done= reads this probe (a missing
+# one reads skip) and leaks= this one (empty output reads 0). Rows on those fields set their own.
+# A fixture tracker render reads its parity line unavailable through a missing CLI.
+export TICK_VERSIONLESS_DONE_PROBE="$W/no-vd-probe" TICK_LEAKS_PROBE=/dev/null TRACKER_JIRA="$W/no-jira-cli"
 # ciguard= and orphans-wip= read a cache a detached refresh fills. Rows here refresh on every
 # tick and wait for the refresh, unless a row sets its own cadence or wait.
 export TICK_CIGUARD_MIN_SECS=0 TICK_ORPHANS_MIN_SECS=0 TICK_SECTION_WAIT=60
@@ -2734,11 +2738,14 @@ same 'a tick inside the cadence reads no guardrail (HIMMEL-8735)' "$(wc -l < "$c
 bud_junk="$(STUB_CIG_OUT='not a status line' bud_tick)"
 contains 'a junk refresh keeps the last good read and its age (HIMMEL-8735)' "$bud_junk" ' ciguard=OVER:runs-h ciguard-age=30'
 touch -d '2 hours ago' "$W/bud/tick-ciguard-last"  # gnu-ok: chief kit is Linux-only
-bud_old="$(TICK_CIGUARD_MIN_SECS=86400 bud_tick)"
+printf 'ALERT runs-h=160>150 (14:00)\n' > "$W/bud/tick-ciguard-last.alerts"
+bud_old="$(TICK_CIGUARD_MIN_SECS=86400 TICK_STATE_DIR="$W/bud" TICK_CIGUARD_PROBE="$W/ciguard-probe.sh" STUB_CIG_CALLS="$cig_calls" flock -o "$W/bud/tick-ciguard-last.lock" bash "$SUT" 2>/dev/null)"
 contains 'a cache past its TTL reads ciguard=unknown and shows its age (HIMMEL-8735)' "$bud_old" ' ciguard=unknown ciguard-age=72'
+not_contains 'a tick leaves the ALERT queue alone while a refresh holds the lock (HIMMEL-8735)' "$bud_old" 'ACTION ci-guardrail'
 printf 'garbage\n' > "$W/bud/tick-ciguard-last"
 bud_bad="$(TICK_CIGUARD_MIN_SECS=86400 bud_tick)"
 contains 'a corrupt cache reads ciguard=unknown (HIMMEL-8735)' "$bud_bad" ' ciguard=unknown'
+contains 'the next tick delivers the queued ALERT (HIMMEL-8735)' "$bud_bad" 'ACTION ci-guardrail runs-h=160>150 (14:00): '
 not_contains 'a corrupt cache carries no age (HIMMEL-8735)' "$bud_bad" 'ciguard-age='
 
 # --- a tick past its deadline shortens the probes left, so it still answers.
