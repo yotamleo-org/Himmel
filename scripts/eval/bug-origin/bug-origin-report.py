@@ -13,7 +13,9 @@ and :panel, review-miss:multi (two or three layers), review-deferred, residual, 
 
 The ledger (HIMMEL-8868): `ingest` writes one markdown file per fix PR whose body (else the seed) carries the line, at
 <HANDOVER_DIR>/<user>/<project bucket>/bug-origin/<pr>.md (the user and bucket from the handover registry entry of this
-checkout, else USER_SLUG and the checkout's name; --ledger-dir overrides). The row is front matter plus one plain line
+checkout, else USER_SLUG and the checkout's name; --ledger-dir overrides; the root is found as the shell tooling finds it:
+HANDOVER_DIR in the environment, else the config files, else the primary checkout's .env, else its handovers/
+directory). The row is front matter (with the PR's merge time, `merged`) plus one plain line
 a search finds; it is the source of truth and needs no tracker. `report` reads a PR's ledger row first, then its body,
 then the seed, and prints `ledger: <n> rows from <dir>` (or `ledger: none (set HANDOVER_DIR or pass --ledger-dir)`) first.
 `sync` comments each unsynced row's line once on the first [KEY] of its PR title, whatever the issue type. It needs a Jira
@@ -380,9 +382,10 @@ def body_line(n, key, got):
     return "PR #%d%s bug-origin: %s %s — %s" % (n, " (%s)" % key if key else "", got["origin"], got["class"], got["reason"])
 
 
-def row_text(n, key, got, source):
+def row_text(n, key, got, source, merged):
     front = [("pr", n), ("bug_key", key), ("origin", got["origin"]), ("class", got["class"]), ("reason", got["reason"]),
-             ("source", source), ("ingested", stamp(datetime.datetime.now(datetime.timezone.utc))), ("synced", False)]
+             ("source", source), ("ingested", stamp(datetime.datetime.now(datetime.timezone.utc))), ("merged", merged),
+             ("synced", False)]
     lines = ["---"] + ["%s: %s" % (k, json.dumps(v, ensure_ascii=False)) for k, v in front] + ["---", body_line(n, key, got)]
     return "\n".join(lines) + "\n"
 
@@ -426,7 +429,7 @@ def cmd_ingest(a):
         if os.path.exists(row):
             kept += 1
             continue
-        write_file(row, row_text(n, title_key(p.get("title")), got, source))
+        write_file(row, row_text(n, title_key(p.get("title")), got, source, p["mergedAt"]))
         wrote += 1
     print("ingest: wrote %d, kept %d" % (wrote, kept))
     for n in unparsed:
@@ -445,25 +448,6 @@ def jira_command(explicit):
     return ["node", index] if os.path.isfile(index) else None
 
 
-def conf_value(path, name):
-    """The first non-empty value of `name` in a KEY=value file, as the Jira CLI reads one (an inline ` #` comment and quotes dropped), else ''."""
-    try:
-        with open(path, encoding="utf-8") as fh:
-            lines = fh.read().split("\n")
-    except OSError:
-        return ""
-    for line in lines:
-        line = line.strip()
-        key, sep, val = line.partition("=")
-        if line.startswith("#") or not sep or key.strip() != name:
-            continue
-        val = val.strip()
-        val = val[1:].partition(val[0])[0] if val[:1] in ('"', "'") else re.split(r"[ \t]#", val, maxsplit=1)[0]
-        if val.strip():
-            return val.strip()
-    return ""
-
-
 def jira_project_key():
     """The Jira project key where the Jira CLI finds it, or '': the environment, then himmel.conf.local and himmel.conf in
     $HIMMEL_CONFIG_DIR (else ~/.himmel), then the .env of the git checkout this runs in and of its primary checkout."""
@@ -474,7 +458,7 @@ def jira_project_key():
     top = git("rev-parse", "--show-toplevel")
     files = [os.path.join(conf, "himmel.conf.local"), os.path.join(conf, "himmel.conf")]
     files += [os.path.join(d, ".env") for d in ([top.strip()] if top and top.strip() else []) + [judge_accuracy.primary_checkout()]]
-    return next((v for v in (conf_value(f, "JIRA_PROJECT_KEY") for f in files) if v), "")
+    return next((v for v in (judge_accuracy.conf_value(f, "JIRA_PROJECT_KEY") for f in files) if v), "")
 
 
 def cmd_sync(a):

@@ -34,9 +34,12 @@ window is unruled, so the feedback step (eval_feedback.py) never takes it as a b
 --class C counts only the escapes whose fix PR has class C in the bug-origin ledger (C or a family: review-miss
 matches review-miss:cr; review-miss:multi a row with two or more layers, review-miss:cr a row whose layers hold cr); a
 class with no rows counts none, an unknown class is refused, and a failed main run (no fix row) counts for no class.
-The ledger is --bug-origin-dir, else <HANDOVER_DIR>/<user>/<project bucket>/bug-origin; none to read is refused. With
+The ledger is --bug-origin-dir, else <root>/<user>/<project bucket>/bug-origin, the root being what the shell tooling
+finds (the live HANDOVER_DIR, else the config files in $HIMMEL_CONFIG_DIR or ~/.himmel, else the primary checkout's
+.env, else its handovers/ directory); none to read is refused. With
 --class and no Jira mirror the ledger rows give the bugs, so the filter works without Jira; unfiltered numbers read the
-mirror. A filtered run is its own series in the eval-runs ledger (its config carries the class).
+mirror. A filtered run is not a row of the real ledger's series: with --class, --ledger P or --no-ledger is required (exit 2
+otherwise), and the row in an explicit ledger carries the class in its config.
 
 QUEUE ROW (v 1, append-only): v, ts, kind "candidate" | "ruling", id, then
   candidate  pr, signal "bug" | "red-main" | "nogo", ref, question
@@ -188,15 +191,45 @@ def primary_checkout(repo="."):
     return os.path.dirname(common) if os.path.basename(common) == ".git" else os.path.abspath(repo)
 
 
+def conf_value(path, name):
+    """The first non-empty value of `name` in a KEY=value file, as the Jira CLI reads one (an inline ` #` comment and quotes dropped), else ''."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        return ""
+    for line in lines:
+        line = line.strip()
+        key, sep, val = line.partition("=")
+        if line.startswith("#") or not sep or key.strip() != name:
+            continue
+        val = val.strip()
+        val = val[1:].partition(val[0])[0] if val[:1] in ('"', "'") else re.split(r"[ \t]#", val, maxsplit=1)[0]
+        if val.strip():
+            return val.strip()
+    return ""
+
+
+def handover_root(top, env):
+    """The handover root, as go_resolve_root finds it: the live HANDOVER_DIR, else himmel.conf.local and himmel.conf in
+    $HIMMEL_CONFIG_DIR (else ~/.himmel), else the primary checkout's .env, else its own handovers/ directory."""
+    live = env.get("HANDOVER_DIR")
+    if live:
+        return live
+    conf = env.get("HIMMEL_CONFIG_DIR") or os.path.join(env.get("HOME") or os.path.expanduser("~"), ".himmel")
+    files = [os.path.join(conf, "himmel.conf.local"), os.path.join(conf, "himmel.conf"), os.path.join(top, ".env")]
+    return next((v for v in (conf_value(f, "HANDOVER_DIR") for f in files) if v), os.path.join(top, "handovers"))
+
+
 def ledger_dir(repo=".", env=None):
     """The ledger directory of the project that owns `repo`, or None when no handover root is configured.
 
-    Root, as handover_root resolves it: HANDOVER_DIR (which must be a directory), else the checkout's own handovers/
-    directory when there is one. User and bucket: the handover registry entry whose path is the repo's primary checkout
+    Root, as go_resolve_root resolves it (see handover_root): it must be a directory, else there is no ledger. User and
+    bucket: the handover registry entry whose path is the repo's primary checkout
     (its user and bucket_name), else USER_SLUG and the checkout's own name, so no project name is hard-coded."""
     env = os.environ if env is None else env
     top = primary_checkout(repo)
-    root = env.get("HANDOVER_DIR") or os.path.join(top, "handovers")
+    root = handover_root(top, env)
     if not os.path.isdir(root):
         return None
     user = env.get("USER_SLUG") or env.get("USER") or "unknown"
@@ -286,8 +319,9 @@ def ledger_classes(rows):
 def ledger_bugs(rows):
     """Bug records (as load_bugs gives them) from the ledger alone, for a project with no Jira mirror.
 
-    A row whose origin is a PR names a bug caused by it; a row with a sha or unknown origin names none."""
-    return [{"key": row_key(r), "labels": [], "created": when(r.get("ingested") or ""), "caused_by": r["origin"][1:],
+    A row whose origin is a PR names a bug caused by it; a row with a sha or unknown origin names none. A bug is created
+    when its fix PR merged (the row's `merged`), else, for a row written before that key, when the row was ingested."""
+    return [{"key": row_key(r), "labels": [], "created": when(r["merged"] if isinstance(r.get("merged"), str) else r.get("ingested") or ""), "caused_by": r["origin"][1:],
              "cites": set()} for r in rows.values() if r["origin"].startswith("#")]
 
 
@@ -516,6 +550,8 @@ def cmd_run(a):
         raise ValueError("PR snapshot %s has a row without an integer number" % a.prs)
     prs = {p["number"]: p for p in pr_rows}
     runs = load_json(a.main_runs, "main-run snapshot")
+    if a.cls is not None and not a.ledger and not a.no_ledger:
+        raise ValueError("--class needs --ledger P or --no-ledger: a filtered run is not a row of the real ledger's series")
     ledger = class_filter(a.cls, a.bug_origin_dir)
     # a class filter reads the ledger, so a project with no Jira mirror still works; the unfiltered numbers need the mirror
     bugs = ledger_bugs(ledger) if ledger is not None and not os.path.isdir(a.mirror) else load_bugs(a.mirror)

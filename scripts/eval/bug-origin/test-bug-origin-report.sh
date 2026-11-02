@@ -13,6 +13,8 @@ export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-runs.jsonl"
 export HANDOVER_DIR="$TMP/never-handover" HANDOVER_REGISTRY="$TMP/never-registry.json"
 # the Jira key resolves through this dir too; it holds nothing, so no test reads the real ~/.himmel
 export HIMMEL_CONFIG_DIR="$TMP/never-conf"
+mkdir -p "$TMP/home"
+export HOME="$TMP/home"
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 FIX="$TMP/fix"
 mkdir -p "$FIX/verdicts/q1" "$FIX/verdicts-early/q2" "$FIX/mirror"
@@ -549,6 +551,57 @@ sum1="$(cat "$LED"/*.md | cksum)"
 out="$(ing "$LED" --seed "$FIX/seed.jsonl")"
 has "ingest: a second run writes nothing" "$out" "ingest: wrote 0"
 eq "ingest: a second run changes no file" "$(cat "$LED"/*.md | cksum)" "$sum1"
+has "ingest: a row carries the PR's merge time" "$row20" 'merged: "2026-10-20T12:00:00Z"'
+# the Jira key is read where the Jira CLI reads it, in its order: the environment, himmel.conf.local, himmel.conf, the .env of the
+# git checkout this runs in, then the .env of its primary checkout. Temp repos, temp config dirs: no real file is read.
+rm -f "$TMP/jk.out"
+python3 -I - "$REPORT" "$TMP" > "$TMP/jk.out" 2>&1 <<'PY'
+import importlib.util, os, subprocess, sys
+path, tmp = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("bug_origin_report", path)
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+def eq(name, got, want):
+    print(("PASS " + name) if got == want else "FAIL %s: expected %r, got %r" % (name, want, got))
+def write(p, text):
+    with open(p, "w") as fh:
+        fh.write(text)
+def sh(*cmd, cwd):
+    subprocess.run(cmd, cwd=cwd, check=True, capture_output=True)
+prim, wt, plain = (os.path.join(tmp, n) for n in ("jk-prim", "jk-wt", "jk-plain"))
+conf = os.path.join(tmp, "jk-conf")
+for d in (prim, plain, conf):
+    os.makedirs(d)
+sh("git", "init", "-q", "-b", "main", cwd=prim)
+sh("git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x", cwd=prim)
+sh("git", "worktree", "add", "-q", wt, cwd=prim)
+write(os.path.join(prim, ".env"), "JIRA_PROJECT_KEY=PRIMENV\n")
+os.environ.pop("JIRA_PROJECT_KEY", None)
+os.environ["HIMMEL_CONFIG_DIR"] = conf
+def key(cwd):
+    os.chdir(cwd)
+    return r.jira_project_key()
+eq("jira key: none anywhere is none", key(plain), "")
+eq("jira key: the primary checkout's .env, from a worktree with no .env", key(wt), "PRIMENV")
+write(os.path.join(wt, ".env"), "JIRA_PROJECT_KEY=TOPENV\n")
+eq("jira key: the .env of the git checkout beats the primary checkout's", key(wt), "TOPENV")
+write(os.path.join(conf, "himmel.conf"), "JIRA_PROJECT_KEY=ZED # the project\n")
+eq("jira key: himmel.conf beats a .env", key(wt), "ZED")
+eq("jira key: himmel.conf configures it from a directory that is no checkout", key(plain), "ZED")
+write(os.path.join(conf, "himmel.conf.local"), 'JIRA_PROJECT_KEY="QUX"\n')
+eq("jira key: himmel.conf.local beats himmel.conf", key(wt), "QUX")
+os.remove(os.path.join(conf, "himmel.conf"))
+eq("jira key: a key only in himmel.conf.local configures it", key(plain), "QUX")
+write(os.path.join(conf, "himmel.conf.local"), "JIRA_PROJECT_KEY=\n")
+write(os.path.join(conf, "himmel.conf"), "JIRA_PROJECT_KEY=ZED\n")
+eq("jira key: an empty himmel.conf.local falls to himmel.conf", key(plain), "ZED")
+os.environ["JIRA_PROJECT_KEY"] = "ENVKEY"
+eq("jira key: the environment beats every file", key(wt), "ENVKEY")
+PY
+cat "$TMP/jk.out"
+PASS=$((PASS + $(grep -c '^PASS ' "$TMP/jk.out")))
+FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/jk.out")))
+eq "jira key: ran to its end" "$(grep -c '^PASS jira key' "$TMP/jk.out")" "9"
 # a PR snapshot with no bodies: the rows come from the ledger alone, and the Jira mirror is unreachable
 python3 -I - "$FIX/prs.json" "$FIX/prs-nobody.json" <<'PY'
 import json, sys
