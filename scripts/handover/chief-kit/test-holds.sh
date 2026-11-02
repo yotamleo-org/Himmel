@@ -429,6 +429,11 @@ same "abs path in a worktree: the row sits under the repo-relative name" "$([ -e
 run hp claim --key HIMMEL-9211 --label lab --doc "$DB" --repo "$R" scripts/a1.sh
 same "abs path in a worktree: the repo-relative claim by another key is refused" "$RC" 1
 
+# ---- --repo naming a plain subdirectory of the checkout is not a worktree root
+run hp claim --key HIMMEL-9215 --label lab --doc "$(mkdoc HIMMEL-9215-case.md)" --repo "$R/scripts" "$R/scripts/sub1.sh"
+same "repo subdirectory: the claim exits 0" "$RC" 0
+same "repo subdirectory: the row keeps its full repo-relative name" "$([ -e "$(rowf scripts/sub1.sh)" ] && echo row || echo none)" row
+
 # ---- an absolute bucket path outside the repo: seeded, held against a rival, and released with the launch
 ABSF="$W/h/u/r/specs/abs-case.md"
 DAB1="$(mkdoc HIMMEL-9212-case.md "> **Writes:** $ABSF")"
@@ -447,6 +452,8 @@ same "bad key: claim exits 2" "$RC" 2
 same "bad key: claim makes no row" "$([ -e "$(rowf scripts/k1.sh)" ] && echo row || echo none)" none
 run hp seed --key not-a-key --label lab --doc "$DAB1" --repo "$R"
 same "bad key: seed exits 2" "$RC" 2
+run hp claim --key $'HIMMEL-9216\n' --label lab --doc "$DB" --repo "$R" scripts/k2.sh
+same "bad key: a trailing newline is refused too" "$RC" 2
 
 # ---- a real file whose name looks like a grant sibling is never held (it would read as a grant)
 run hp claim --key HIMMEL-9214 --label lab --doc "$DB" --repo "$R" scripts/x6.sh.grant.HIMMEL-42

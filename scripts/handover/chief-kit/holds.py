@@ -189,13 +189,16 @@ def primary_of(repo):
     repo = os.path.abspath(repo)
     env = {k: v for k, v in os.environ.items() if k not in GIT_SCRUB}
     try:
-        r = subprocess.run(['git', '-C', repo, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+        r = subprocess.run(['git', '-C', repo, 'rev-parse', '--path-format=absolute', '--git-common-dir', '--show-toplevel'],
                            capture_output=True, text=True, timeout=10, env=env)
-        d = r.stdout.strip()
+        out = r.stdout.split('\n')
+        d = out[0].strip()
         if r.returncode == 0 and d:
             primary = d[:-len('/.git')] if d.endswith('/.git') else d
-            # the checkout the caller named, when it is a linked worktree: an absolute path under it is a path of the primary
-            ALT_ROOTS.update(x for x in (repo, os.path.realpath(repo)) if x != primary)
+            top = out[1].strip() if len(out) > 1 else ''
+            # the top of the checkout the caller named, when it is a linked worktree (never a plain subdirectory of
+            # a checkout): an absolute path under it is a path of the primary
+            ALT_ROOTS.update(x for x in (top, os.path.realpath(top) if top else '') if x and x != primary)
             return primary
     except (OSError, subprocess.SubprocessError):
         pass  # swallow-ok: not a git repo or no git; the path as given is the identity
@@ -241,7 +244,7 @@ def read_row(path):
     except (OSError, UnicodeDecodeError) as e:
         return 'err', e
     fields = text.rstrip('\n').split('\t')
-    if text.count('\n') > 1 or len(fields) != 5 or not KEY_RE.match(fields[0]) or fields[3] not in SOURCES:
+    if text.count('\n') > 1 or len(fields) != 5 or not KEY_RE.fullmatch(fields[0]) or fields[3] not in SOURCES:
         return 'bad', None
     return 'ok', fields
 
@@ -514,7 +517,7 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
 
 
 def bad_key(key):
-    if KEY_RE.match(key):
+    if KEY_RE.fullmatch(key):
         return False
     sys.stderr.write('holds: %r is not a ticket key (PROJECT-123)\n' % key)
     return True
