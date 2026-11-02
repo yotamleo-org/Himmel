@@ -208,6 +208,19 @@ describe('MCP tool happy-path routing', () => {
     expect(request.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
   });
 
+  it('create takes the Sector from a valid title prefix, and refuses an unknown one (HIMMEL-8659)', async () => {
+    const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
+    await tool('create').handler(
+      { type: 'Task', title: 'Ship loop: x', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' },
+      deps,
+    );
+    const body = (request.mock.calls.find((c) => c[0] === 'POST') as unknown[])[2] as { fields: Record<string, unknown> };
+    expect(body.fields['customfield_10212']).toEqual({ value: 'Ship loop' });
+    await expect(
+      tool('create').handler({ type: 'Task', title: 'Billing: x', desc: PLAIN_FILLED, project: 'ABC', parent: 'ABC-1' }, deps),
+    ).rejects.toThrow(/"Billing:".*not a Sector/s);
+  });
+
   it('create with JIRA_SECTOR_FIELD unset files without a Sector and sends no Sector field (HIMMEL-6277)', async () => {
     delete process.env.JIRA_SECTOR_FIELD;
     const { deps, request } = mockDeps({ key: 'HIMMEL-9', id: '1' });
