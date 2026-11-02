@@ -38,10 +38,11 @@ mk_raw() { # name lines...
     local f="$tmp/$1.md"; shift
     printf '%s\n' "$@" > "$f"
 }
-# A template brief opens with front matter carrying its description.
+# A template brief opens with front matter carrying its description and the absolute directory its worker starts in.
+CW_HIM="$tmp/cwd-himmel"; git init -q "$CW_HIM"; mkdir -p "$CW_HIM/scripts/handover/chief-kit"; : > "$CW_HIM/scripts/handover/chief-kit/headed-arm-worker.sh"
 mk() { # name lines...
     local n="$1"; shift
-    mk_raw "$n" '---' 'description: Check the lint on a test brief' '---' "$@"
+    mk_raw "$n" '---' 'description: Check the lint on a test brief' "resume_cwd: $CW_HIM" '---' "$@"
 }
 
 # A worker brief (a `> **Contract:**` line) carries the search directive as a continuation of its Prior art field.
@@ -155,7 +156,7 @@ rc=0; out="$(run_worker "$tmp/desc_none.md" --relay)" || rc=$?
 DOCS="$HERE/../../../docs/handover"
 fill_template() { # template out
     awk '/^```markdown$/ { inb = 1; next } inb && /^```$/ { exit } inb' "$1" \
-        | sed -E 's/<[^>]*>/filled/g; s/<[^>]*$/filled/; s/^> \*\*Writes:\*\*.*/> **Writes:** scripts\/fixture.sh/' > "$2"
+        | sed -E 's/<[^>]*>/filled/g; s/<[^>]*$/filled/; s/^> \*\*Writes:\*\*.*/> **Writes:** scripts\/fixture.sh/; s|^resume_cwd: filled$|resume_cwd: '"$CW_HIM"'|' > "$2"
 }
 fill_template "$DOCS/worker-brief-template.md" "$tmp/filled_worker.md"
 fill_template "$DOCS/judge-brief-template.md" "$tmp/filled_judge.md"
@@ -432,7 +433,6 @@ ADAPTER_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query
 # The three "no ..." phrases count only where true, judged from resume_cwd and the Writes line.
 CW_ADP="$tmp/cwd-adapter"; git init -q "$CW_ADP"
 CW_SAL="$tmp/cwd-salus"; git init -q "$CW_SAL"; : > "$CW_SAL/.salus"
-CW_HIM="$tmp/cwd-himmel"; git init -q "$CW_HIM"; mkdir -p "$CW_HIM/scripts/handover/chief-kit"; : > "$CW_HIM/scripts/handover/chief-kit/headed-arm-worker.sh"
 mkc() { # name cwd lines...
     local n="$1" cw="$2"; shift 2
     mk_raw "$n" '---' 'description: Check the lint on a test brief' "resume_cwd: $cw" '---' "$@"
@@ -484,7 +484,104 @@ H_BAD="$tmp/home-bad"; mkdir -p "$H_BAD/.config/claude-glm/phi-roots"; H_NONE="$
 HOME="$H_BAD" python3 -I "$HERE/salus_marked.py" salus "$CW_HIM"; rc=$?
 [ "$rc" = 0 ] && ok "9y an unreadable phi-roots list reads as salus-marked" || bad "9y unreadable phi-roots rc=$rc"
 HOME="$H_NONE" python3 -I "$HERE/salus_marked.py" salus "$CW_HIM"; rc=$?
-[ "$rc" = 1 ] && ok "9y2 an absent list reads as not marked" || bad "9y2 absent list rc=$rc"
+[ "$rc" = 10 ] && ok "9y2 an absent list reads as not marked (exit 10, a code a crash cannot produce)" || bad "9y2 absent list rc=$rc"
+
+# The classifier answers yes (0) or no (10); anything else is a crash and the lint refuses.
+sal_rc() { # label want-rc home cwd [env assignments...]
+    local label="$1" want="$2" home="$3" cwd="$4" rc=0; shift 4
+    env HOME="$home" "$@" python3 -I "$HERE/salus_marked.py" salus "$cwd" || rc=$?
+    if [ "$rc" = "$want" ]; then ok "$label"; else bad "$label (rc=$rc want $want)"; fi
+}
+unset CLAUDE_GLM_CONFIG_DIR
+H_BADB="$tmp/home-badbytes"; mkdir -p "$H_BADB/.config/claude-codex"; printf '\377\376\000bad\n' > "$H_BADB/.config/claude-codex/phi-roots"
+sal_rc "10a a phi-roots list with bad bytes reads as salus-marked, not as a crash" 0 "$H_BADB" "$CW_HIM"
+KIT="$tmp/kit"; mkdir -p "$KIT/scripts/handover/chief-kit" "$KIT/scripts/lib"
+cp "$LINT" "$KIT/scripts/handover/chief-kit/"; cp "$HERE/../../lib/"*.sh "$KIT/scripts/lib/"
+mkc s_kit_ok "$CW_HIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+KLINT="$KIT/scripts/handover/chief-kit/brief-lint.sh"
+rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 1 ] && ok "10b the lint copy with no classifier beside it is refused" || bad "10b missing classifier gave rc=$rc"
+for code in 1 7 127; do
+    printf 'import sys\nsys.exit(%s)\n' "$code" > "$KIT/scripts/handover/chief-kit/salus_marked.py"
+    rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
+    [ "$rc" = 1 ] && ok "10c a classifier that exits $code is refused, not read as not-marked" || bad "10c classifier exit $code gave rc=$rc"
+done
+printf 'raise RuntimeError("boom")\n' > "$KIT/scripts/handover/chief-kit/salus_marked.py"
+rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 1 ] && ok "10d a classifier that raises is refused" || bad "10d raising classifier gave rc=$rc"
+printf 'import sys\nsys.exit(10)\n' > "$KIT/scripts/handover/chief-kit/salus_marked.py"
+rc=0; bash "$KLINT" "$tmp/s_kit_ok.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] && ok "10e a classifier that answers no (10) passes a brief that carries the directive" || bad "10e answer-no classifier gave rc=$rc"
+
+# A salus-marked brief names none of the search, anywhere, and says it searches nothing.
+mkc s_salus_dir "$CW_SAL" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+mkc s_salus_both "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+mkc s_salus_nowords "$CW_SAL" '# brief' "$VAGUE" '' '> **Contract:** y' "$RES"
+mkc s_salus_nocontract "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" "$DIR_LINE" '' '> **Why:** x'
+mkc s_salus_ran "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" "$DIR_LINE" '' '> **Contract:** y' "$RES" '- 10:00 LIVE — started'
+mkc s_salus_graphify "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" 'Then run graphify query "x".' '' '> **Contract:** y' "$RES"
+mkc s_salus_cflag "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" 'Try qmd query -c luna later.' '' '> **Contract:** y' "$RES"
+expect_rc "10f a salus-marked brief that names the whole directive is refused" 1 "$tmp/s_salus_dir.md"
+expect_rc "10g the words plus the commands are refused too" 1 "$tmp/s_salus_both.md"
+expect_rc "10h a salus-marked brief without the words is refused" 1 "$tmp/s_salus_nowords.md"
+expect_rc "10i a salus-marked doc with no Contract line is held to it too" 1 "$tmp/s_salus_nocontract.md"
+expect_rc "10j a salus-marked doc that has run is held to it too" 1 "$tmp/s_salus_ran.md"
+expect_rc "10k a graphify command in a salus-marked brief is refused" 1 "$tmp/s_salus_graphify.md"
+expect_rc "10l a '-c luna' command in a salus-marked brief is refused" 1 "$tmp/s_salus_cflag.md"
+err="$(bash "$LINT" "$tmp/s_salus_both.md" 2>&1 >/dev/null)"
+{ grep -Fq 'salus-marked' <<< "$err" && ! grep -Fq 'worker-graph.sh' <<< "$err" && ! grep -Fq 'qmd-bounded.sh' <<< "$err"; } \
+    && ok "10m the salus refusal states only the salus rule" || bad "10m salus refusal text: $err"
+
+# resume_cwd is read the way the launcher reads it, and a fresh worker brief must carry an absolute one.
+mk_raw s_nocwd '---' 'description: Check the lint on a test brief' '---' '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+mk_raw s_relcwd '---' 'description: Check the lint on a test brief' 'resume_cwd: some/where' '---' '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+mk_raw s_bodycwd '---' 'description: Check the lint on a test brief' '---' '# brief' "$VAGUE" "$DIR_LINE" "resume_cwd: $CW_HIM" '' '> **Contract:** y' "$RES"
+mk_raw s_nocwd_ran '---' 'description: Check the lint on a test brief' '---' '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES" '- 10:00 LIVE — started'
+mk_raw s_quotedcwd '---' 'description: Check the lint on a test brief' "resume_cwd: \"$CW_SAL\"  " '---' '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
+mk_raw s_squotedcwd '---' 'description: Check the lint on a test brief' "resume_cwd: '$CW_SAL'" '---' '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
+H_T="$tmp/home-tilde"; mkdir -p "$H_T/proj"; : > "$H_T/proj/.salus"
+mk_raw s_tildecwd '---' 'description: Check the lint on a test brief' 'resume_cwd: ~/proj' '---' '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
+expect_rc "10n a fresh worker brief with no resume_cwd is refused" 1 "$tmp/s_nocwd.md"
+expect_rc "10o a relative resume_cwd is refused" 1 "$tmp/s_relcwd.md"
+expect_rc "10p a resume_cwd line outside the front matter is not read" 1 "$tmp/s_bodycwd.md"
+expect_rc "10q a doc that has run is not made to fail for a missing resume_cwd" 0 "$tmp/s_nocwd_ran.md"
+expect_rc "10r a double-quoted resume_cwd with trailing spaces is read as the launcher reads it" 0 "$tmp/s_quotedcwd.md"
+expect_rc "10s a single-quoted resume_cwd is read as the launcher reads it" 0 "$tmp/s_squotedcwd.md"
+rc=0; HOME="$H_T" bash "$LINT" "$tmp/s_tildecwd.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] && ok "10t a ~/ resume_cwd is expanded against HOME" || bad "10t tilde resume_cwd rc=$rc"
+
+# A linked worktree outside a marked primary, a repo that holds a listed root, GIT_* in the env, a failing git.
+GP="$tmp/primary-marked"; git init -q "$GP"; : > "$GP/.salus"
+git -C "$GP" -c user.name=t -c user.email=t@example.com -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q --allow-empty -m init
+git -C "$GP" worktree add -q "$tmp/outside-wt" -b outside-wt; mkdir -p "$tmp/outside-wt/sub"
+sal_rc "10u a linked worktree outside a salus-marked primary reads as marked" 0 "$H_NONE" "$tmp/outside-wt"
+sal_rc "10u2 a subdirectory of that worktree reads as marked" 0 "$H_NONE" "$tmp/outside-wt/sub"
+sal_rc "10u3 a stray GIT_DIR in the environment does not hide the primary" 0 "$H_NONE" "$tmp/outside-wt" GIT_DIR="$CW_HIM/.git"
+sal_rc "10u4 an unmarked repo in a GIT_DIR environment is still not marked" 10 "$H_NONE" "$CW_HIM" GIT_DIR="$GP/.git"
+GB="$tmp/badgit"; mkdir -p "$GB/sub"; printf 'gitdir: /nonexistent/gitdir\n' > "$GB/.git"
+sal_rc "10v a directory whose .git git cannot read reads as marked" 0 "$H_NONE" "$GB"
+sal_rc "10v2 a subdirectory of it reads as marked" 0 "$H_NONE" "$GB/sub"
+sal_rc "10v3 a directory with no .git at all is not marked" 10 "$H_NONE" "$tmp/not-a-repo-at-all"
+sal_rc "10v4 a directory not made yet inside an unmarked repo is not marked" 10 "$H_NONE" "$CW_HIM/not/made/yet"
+GR="$tmp/repo-with-root"; git init -q "$GR"; mkdir -p "$GR/src" "$GR/vault"
+H_R="$tmp/home-holds-root"; mkdir -p "$H_R/.config/claude-codex"; printf '%s\n' "$GR/vault" > "$H_R/.config/claude-codex/phi-roots"
+sal_rc "10w a repo that holds a listed root is marked from a directory beside the root" 0 "$H_R" "$GR/src"
+mkc s_holds_dir "$GR/src" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+mkc s_holds_words "$GR/src" '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
+rc=0; HOME="$H_R" bash "$LINT" "$tmp/s_holds_dir.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 1 ] && ok "10w2 the lint refuses the directive there" || bad "10w2 lint on a repo holding a listed root rc=$rc"
+rc=0; HOME="$H_R" bash "$LINT" "$tmp/s_holds_words.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] && ok "10w3 the lint accepts the salus words there" || bad "10w3 lint on a repo holding a listed root rc=$rc"
+
+# Every list the lanes read: claude-codex's egress-denylist, and claude-glm's directory from CLAUDE_GLM_CONFIG_DIR.
+H_D="$tmp/home-codex-deny"; mkdir -p "$H_D/.config/claude-codex"; printf '%s\n' "$CW_HIM" > "$H_D/.config/claude-codex/egress-denylist"
+sal_rc "10x a claude-codex egress-denylist root reads as marked" 0 "$H_D" "$CW_HIM"
+G_D="$tmp/glm-dir"; mkdir -p "$G_D"; printf '%s\n' "$CW_HIM" > "$G_D/phi-roots"
+sal_rc "10y CLAUDE_GLM_CONFIG_DIR is read for phi-roots" 0 "$H_NONE" "$CW_HIM" CLAUDE_GLM_CONFIG_DIR="$G_D"
+G_E="$tmp/glm-dir-empty"; mkdir -p "$G_E"
+H_G="$tmp/home-glm-default"; mkdir -p "$H_G/.config/claude-glm"; printf '%s\n' "$CW_HIM" > "$H_G/.config/claude-glm/phi-roots"
+sal_rc "10y2 CLAUDE_GLM_CONFIG_DIR replaces the default claude-glm directory" 10 "$H_G" "$CW_HIM" CLAUDE_GLM_CONFIG_DIR="$G_E"
+sal_rc "10y3 with it unset the default claude-glm directory is read" 0 "$H_G" "$CW_HIM"
 expect_rc "9q a directive with an empty quoted query is refused" 1 "$tmp/s_emptyq.md"
 expect_rc "9r a directive with an empty quoted symbol is refused" 1 "$tmp/s_emptysym.md"
 expect_rc "9q2 a directive with a blank (whitespace-only) quoted query is refused" 1 "$tmp/s_blankq.md"

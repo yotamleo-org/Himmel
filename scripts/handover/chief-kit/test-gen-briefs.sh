@@ -177,9 +177,9 @@ has "the worker preface's HALT/WRAP step passes --queue-doc" "$(tr '\n' ' ' < "$
 
 # the arming gate lints every brief, so a generated brief must also
 # arm through the launcher itself (dry-run reaches the gate before it exits).
-# (a copy without resume_cwd: the worktree check is a later gate and the copy leaves D1 alone)
+# (a copy whose resume_cwd is a plain directory: the worktree check is a later gate and the copy leaves D1 alone; the lint needs an absolute one)
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
-mkdir -p "$WORK/arm"; grep -v '^resume_cwd:' "$D1" > "$WORK/arm/HIMMEL-9001-N901-copy.md"
+mkdir -p "$WORK/arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$D1" > "$WORK/arm/HIMMEL-9001-N901-copy.md"
 rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl HIMMEL-9001-N901 "$WORK/arm/HIMMEL-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "a generated brief arms through headed-arm-worker.sh (brief-lint gate)" || fail "generated brief refused by headed-arm-worker.sh rc=$rc: $arm_out"
 
@@ -385,7 +385,7 @@ python3 "$SUT" "$WORK/opus-ok.json" --base 4ccb59d --chief BZ --bucket "$WORK/b1
 TD="$(find "$WORK/b12" -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | head -n 1)"
 has "the opus brief carries the Tier line" "$(cat "$TD" 2>/dev/null)" "> **Tier:** opus — design: multi-step design: the gate shape is open"
 # the launcher's own gate is the check: a copy without resume_cwd (as in the arming row above) arms, not refused.
-mkdir -p "$WORK/tier-arm"; grep -v '^resume_cwd:' "$TD" > "$WORK/tier-arm/HIMMEL-9001-N901-copy.md"
+mkdir -p "$WORK/tier-arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$TD" > "$WORK/tier-arm/HIMMEL-9001-N901-copy.md"
 rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile worker-impl HIMMEL-9001-N901 "$WORK/tier-arm/HIMMEL-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "headed-arm-worker.sh's Tier gate accepts the generated opus brief" || fail "opus brief refused by headed-arm-worker.sh rc=$rc: $tier_out"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"cheap","reason":"x"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/tier-badcat.json"
@@ -434,7 +434,7 @@ has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMM
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lane-astra.json"
 python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --chief BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
 has "a claudex worker with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-worker.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
-mkdir -p "$WORK/astra-arm"; grep -v '^resume_cwd:' "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
+mkdir -p "$WORK/astra-arm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
 rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --lane claudex --profile worker-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-worker.sh rc=$rc: $astra_out"
 has "and the named model reaches the worker as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
@@ -721,6 +721,20 @@ has "a marker on the worker's own worktree (the repo unmarked) makes that worker
 DEN="$WORK/deny-repo"; git init -q "$DEN"; mkdir -p "$WORK/home2/.config/claude-glm"; printf '%s\n' "$DEN" > "$WORK/home2/.config/claude-glm/egress-denylist"
 rc=0; HOME="$WORK/home2" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/den" --repo "$DEN" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/den.out" 2>"$WORK/den.err" || rc=$?
 has "an egress-denylist repo says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/den/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
+# The generator and the lint share one classifier, so they agree on a linked worktree outside a marked primary and on a repo that holds a listed root.
+GPR="$WORK/marked-primary"; git init -q "$GPR"; : > "$GPR/.salus"; git -C "$GPR" -c user.name=t -c user.email=t@t -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q --allow-empty -m init
+git -C "$GPR" worktree add -q "$WORK/outside-wt" -b outside-wt
+rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/owt" --repo "$WORK/outside-wt" --handover-root "$WORK/hr" >/dev/null 2>"$WORK/owt.err" || rc=$?
+OB="$(tr '\n' ' ' < "$WORK"/hr/tester/owt/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
+has "a linked worktree outside a marked primary: the brief says it searches nothing" "$OB" "no notes search"
+lacks "and names no luna search" "$OB" "query -c luna"
+bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/owt/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-owt.err"; rc=$?
+[ "$rc" = 0 ] && pass "and the lint agrees (passes it)" || fail "outside-worktree brief brief-lint rc=$rc: $(cat "$WORK/lint-owt.err")"
+HLR="$WORK/holds-root"; git init -q "$HLR"; mkdir -p "$HLR/vault" "$WORK/home3/.config/claude-codex"; printf '%s\n' "$HLR/vault" > "$WORK/home3/.config/claude-codex/phi-roots"
+rc=0; HOME="$WORK/home3" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/hlr" --repo "$HLR" --handover-root "$WORK/hr" >/dev/null 2>"$WORK/hlr.err" || rc=$?
+has "a repo that holds a listed root: the brief says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/hlr/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
+HOME="$WORK/home3" bash "$HERE/brief-lint.sh" "$WORK"/hr/tester/hlr/HIMMEL-9001-N901-plain-fix-*.md 2>"$WORK/lint-hlr.err"; rc=$?
+[ "$rc" = 0 ] && pass "and the lint agrees (passes it)" || fail "holds-root brief brief-lint rc=$rc: $(cat "$WORK/lint-hlr.err")"
 ADP2="$WORK/adapter2"; git init -q "$ADP2"
 rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/adp2" --repo "$ADP2" --handover-root "$WORK/hr" --no-worktree >/dev/null 2>"$WORK/adp2.err") || rc=$?
 has "an adopter --no-worktree refusal prints himmel's _new-worktree.sh line, not a worktree.sh the adopter lacks" "$(cat "$WORK/adp2.err")" "$KIT/scripts/_new-worktree.sh fix/himmel-9001-plain-fix --no-install"
@@ -899,7 +913,7 @@ json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ui.json" "$1" "$
     ui_launch="$(cat "$WORK/ui"/launch-N901.sh 2>/dev/null)"; ui_brief="$(cat "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
 }
 ui_mcp() { # the mcp= field a dry-run launch with <profile> reports for the generated brief
-    mkdir -p "$WORK/uiarm"; grep -v '^resume_cwd:' "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md > "$WORK/uiarm/HIMMEL-9001-N901-copy.md"
+    mkdir -p "$WORK/uiarm"; sed "s|^resume_cwd:.*|resume_cwd: $WORK|" "$WORK/ui"/HIMMEL-9001-N901-plain-fix-*.md > "$WORK/uiarm/HIMMEL-9001-N901-copy.md"
     HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile "$1" HIMMEL-9001-N901 "$WORK/uiarm/HIMMEL-9001-N901-copy.md" "$WORK/uiarm/signal" 9999999999 "$WORK/uiarm/log" claude-sonnet-5-5 2>&1 | grep -o ' mcp=[^ ]*'
 }
 ui_gen "Writes scripts/config-ui/page.ts." -

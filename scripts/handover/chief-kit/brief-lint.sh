@@ -303,6 +303,40 @@ if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; t
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
 fi
 
+# The directory the worker starts in, read the way headed-arm-worker.sh reads it: the front-matter line, trimmed, quotes
+# stripped, a leading ~ expanded.
+cwd="$(awk '
+    /^---[[:space:]]*$/ { fm++; if (fm == 2) exit; next }
+    fm == 1 && /^resume_cwd:[[:space:]]*/ { sub(/^resume_cwd:[[:space:]]*/, ""); print; exit }
+' "$doc" 2>/dev/null)"
+cwd="${cwd%"${cwd##*[![:space:]]}"}"
+cwd="${cwd#\'}"; cwd="${cwd%\'}"
+cwd="${cwd#\"}"; cwd="${cwd%\"}"
+case "$cwd" in \~|\~/*) cwd="${HOME:-}${cwd#\~}" ;; esac
+
+# Classify a directory: salus-marked or an adopted repo. salus_marked.py answers 0 (yes) or 10 (no); a missing or crashing
+# classifier answers neither, and the brief is refused rather than read as not marked.
+classify() { # salus|adapter dir; returns 0 yes, 10 no
+    local rc=0
+    python3 -I "$(dirname "$0")/salus_marked.py" "$1" "$2" >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        0|10) return "$rc" ;;
+        *) fail "cannot classify resume_cwd '$2' (salus_marked.py exited $rc): refusing rather than reading it as not salus-marked" ;;
+    esac
+}
+
+# A salus-marked directory searches nothing, because a query would send text off this machine: its brief names no search
+# command anywhere (judge and resumed docs included), and a worker brief says so in words. A directory that is not
+# absolute is left to the Contract check below.
+is_salus=0
+if [ "${cwd#/}" != "$cwd" ]; then
+    rc=0; classify salus "$cwd" || rc=$?
+    [ "$rc" -eq 0 ] && is_salus=1
+fi
+if [ "$is_salus" -eq 1 ] && grep -Eq -- 'qmd-bounded|worker-graph|graphify|-c[[:space:]]+(luna|jira-himmel)' "$doc"; then
+    fail "resume_cwd '$cwd' is salus-marked: this brief must search nothing (a query would send text off this machine). Remove every notes-search and graph-lookup command and say 'no notes search and no graph lookup' instead"
+fi
+
 # A worker brief (one with a `> **Contract:**` line) tells its worker to search the notes (both collections) and the
 # graph before it designs, with the query and symbol named, and to report what each returned. A cited ticket key or
 # #PR does not stand in for it: naming the query is what moved use in the audit, a bare mention moved little. A judge
@@ -312,16 +346,14 @@ fi
 # judged from the brief's own resume_cwd: a salus-marked directory searches nothing, an adopted repo has no Jira mirror and
 # no himmel graph, and a leg whose Writes line says none named has no symbol to look up.
 if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
-    cwd="$(sed -n 's/^resume_cwd:[[:space:]]*//p' "$doc" | head -1)"
-    is_salus=0; is_adapter=0; none_named=0
-    if [ -n "$cwd" ]; then
-        python3 -I "$(dirname "$0")/salus_marked.py" salus "$cwd" && is_salus=1
-        python3 -I "$(dirname "$0")/salus_marked.py" adapter "$cwd" && is_adapter=1
-    fi
+    [ "${cwd#/}" != "$cwd" ] || fail "no absolute front-matter 'resume_cwd:' line (got '${cwd:-nothing}'): a fresh worker brief names the directory its worker starts in, which decides whether it searches the notes and the graph"
+    is_adapter=0; none_named=0
+    rc=0; classify adapter "$cwd" || rc=$?
+    [ "$rc" -eq 0 ] && is_adapter=1
     grep -Eiq '^> \*\*Writes:\*\*.*none named' "$doc" && none_named=1
     has_directive=1
-    if [ "$is_salus" -eq 1 ] && [[ "$flat" == *"no notes search"* ]]; then
-        : # a salus-marked directory: the words stand in for the whole directive
+    if [ "$is_salus" -eq 1 ]; then
+        [[ "$flat" == *"no notes search"* ]] || fail "resume_cwd '$cwd' is salus-marked: this brief must search nothing, because a query would send text off this machine. Say 'no notes search and no graph lookup' in the '> **Prior art:**' field and report 'graph-qmd: n/a, salus-marked repo' in Results"
     else
         [[ "$flat" == *"no notes search"* ]] && fail "'> **Prior art:**' says 'no notes search' but resume_cwd is not a salus-marked directory: a brief searches the notes unless the repo is salus-marked"
         for token in qmd-bounded.sh 'graph-qmd:' '-c luna'; do
