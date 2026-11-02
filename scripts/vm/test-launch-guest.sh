@@ -420,6 +420,67 @@ for bad in 'himmel' '/x; id' '/x y' '/a/../b' '~/../b' '$(id)' '/a`id`'; do
     check "G2 bad override [$bad]: no ssh" "$([ -e "$SSH_LOG" ] && echo ran || echo none)" "none"
 done
 
+# a guest quota or login error stops the launch: the account is named, "quota, not retried" is said, the
+# run keeps its one ledger row, and exactly one ssh attempt was made (operator ruling 10-30: no retry).
+# qstub <guest rc>: an ssh stub that answers like a guest claude -p --output-format json (it prints $QSTUB_JSON),
+# logs its argv, saves the prompt it received on stdin and exits with the given rc. qin asserts the prompt arrived.
+export SSH_IN="$tmp/ssh-in.txt"
+qstub() {
+    printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$SSH_LOG"\ncat > "$SSH_IN"\nprintf "%%s\\n" "$QSTUB_JSON"\nexit %s\n' "$1" > "$tmp/bin/ssh" && chmod +x "$tmp/bin/ssh" \
+        || { echo "FAIL - qstub setup for rc $1"; fails=$((fails+1)); }
+}
+qin() {
+    check "$1: the guest received the prompt on stdin" "$(cat "$SSH_IN" 2>/dev/null)" "do the thing"
+    check "$1: the one ssh call is the exact native claude -p argv" "$(cat "$SSH_LOG" 2>/dev/null)" "$NATIVE_WANT"
+}
+for qerr in "Claude AI usage limit reached|1762099200" "Not logged in - Please run /login" "OAuth session expired"; do
+    qstub 7
+    export QSTUB_JSON="{\"type\":\"result\",\"is_error\":true,\"result\":\"$qerr\",\"total_cost_usd\":0}"
+    fresh; rm -f "$LEDGER" "$SSH_IN"
+    rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q1.err")" || rc=$?
+    check "Q1 [$qerr]: the guest's own non-zero exit (7) is kept" "$rc" "7"
+    contains "Q1 [$qerr]: the message names the account label" "$(cat "$tmp/q1.err")" "acct-x"
+    contains "Q1 [$qerr]: the message says quota, not retried" "$(cat "$tmp/q1.err")" "quota, not retried"
+    check "Q1 [$qerr]: exactly one ssh attempt" "$(wc -l < "$SSH_LOG" | tr -d ' ')" "1"
+    check "Q1 [$qerr]: exactly one ledger row" "$(rows)" "1"
+    check "Q1 [$qerr]: stdout is still the guest result" "$out" "$QSTUB_JSON"
+    qin "Q1 [$qerr]"
+done
+# a quota error under a guest that exited 0 still stops with a non-zero exit
+qstub 0
+export QSTUB_JSON="{\"type\":\"result\",\"is_error\":true,\"result\":\"Claude AI usage limit reached|1762099200\",\"total_cost_usd\":0}"
+fresh; rm -f "$LEDGER" "$SSH_IN"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q2.err")" || rc=$?
+check "Q2 quota error with guest rc 0: exit 1" "$rc" "1"
+contains "Q2 quota error with guest rc 0: says quota, not retried" "$(cat "$tmp/q2.err")" "quota, not retried"
+qin "Q2"
+
+# the negative control: a healthy guest result still launches and returns 0, with no quota message
+qstub 0
+export QSTUB_JSON="$GOOD_JSON"
+fresh; rm -f "$LEDGER" "$SSH_IN"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q3.err")" || rc=$?
+check "Q3 healthy guest: exit 0" "$rc" "0"
+lacks "Q3 healthy guest: no quota message" "$(cat "$tmp/q3.err")" "quota, not retried"
+check "Q3 healthy guest: one ssh attempt and one row" "$(wc -l < "$SSH_LOG" | tr -d ' ')$(rows)" "11"
+qin "Q3"
+# an error that is not a quota or login error (the guest ran, a tool failed) is not a quota stop
+qstub 7
+export QSTUB_JSON='{"type":"result","is_error":true,"result":"Prompt is too long"}'
+fresh; rm -f "$LEDGER" "$SSH_IN"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q4.err")" || rc=$?
+check "Q4 other guest error: the guest's exit (7) passes through" "$rc" "7"
+lacks "Q4 other guest error: no quota message" "$(cat "$tmp/q4.err")" "quota, not retried"
+qin "Q4"
+# a successful result whose text merely mentions quota is not a quota stop
+qstub 0
+export QSTUB_JSON='{"type":"result","is_error":false,"result":"I read about the usage limit and quota handling","total_cost_usd":0.5}'
+fresh; rm -f "$LEDGER" "$SSH_IN"
+rc=0; out="$(usage_run 10 ubuntu_new "$P" 2>"$tmp/q5.err")" || rc=$?
+check "Q5 is_error false mentioning quota: exit 0" "$rc" "0"
+lacks "Q5 is_error false mentioning quota: no quota message" "$(cat "$tmp/q5.err")" "quota, not retried"
+qin "Q5"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-launch-guest.sh"; exit 0; fi
 echo "FAIL - test-launch-guest.sh ($fails failure(s))"; exit 1
