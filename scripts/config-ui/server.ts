@@ -13,6 +13,8 @@ import { scrubProviderKeys } from "./scrub-provider-keys";
 // redact.js is the shared CommonJS redactor (P2); imported, not copied.
 import { redactDeep, envValues } from "../himmelctl/lib/redact.js";
 import { parseDotEnv } from "../himmelctl/lib/probes.js";
+import { resolveSecrets } from "../lib/resolve-secrets.mjs";
+import secretsManifest from "../himmelctl/lib/secrets-manifest.json";
 import { ActionError, buildTable, loadRegistries, resolveAction, type Resolved } from "./actions";
 // @ts-ignore plain browser ES module, no types
 import { shellLine } from "./public/render.js";
@@ -56,6 +58,8 @@ const DEFAULT_IDLE_MS = 30 * 60 * 1000;
 const FEED_TIMEOUT_MS = 300_000;
 const FEED_WAIT_MS = 8_000;
 const FEED_CACHE_MS = 30_000;
+const LITERALS_TTL_MS = 5_000;
+const SECRET_NAMES = secretsManifest.secrets.map((s: { name: string }) => s.name);
 // with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
 // while the chief is in use (an authenticated request within the last FEED_REFRESH_MS), so a closed UI idles out.
 const FEED_REFRESH_MS = 10 * 60 * 1000;
@@ -326,13 +330,20 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     throw new Error(`config-ui: idleTimeout ${IDLE_TIMEOUT_S}s does not cover the worst route budget ${worstRouteMs}ms plus ${IDLE_MARGIN_S}s`);
   }
 
-  // Every child output passes the same redactor as the feed, with the
-  // checkout's .env values and the server env's secret values as literals.
-  const redactOut = <T>(v: T): T => {
+  // The redaction literals: the secrets resolver's values for the manifest's names (environment, credentials directory,
+  // keyring), the checkout's .env values as the last fallback, and the server env's secret values. The resolver spawns a
+  // child, so a read is reused for 5 s (a response, a poll). Never logged, never on argv.
+  let literalsAt = 0, literalsMemo: string[] = [];
+  const secretLiterals = (): string[] => {
+    if (Date.now() - literalsAt < LITERALS_TTL_MS) return literalsMemo;
     let raw = "";
     try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-    return redactDeep(v, { literals: envValues(raw, parseDotEnv, env) });
+    literalsMemo = [...envValues(raw, parseDotEnv, env), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))];
+    literalsAt = Date.now();
+    return literalsMemo;
   };
+  // Every child output passes the same redactor as the feed, with those literals.
+  const redactOut = <T>(v: T): T => redactDeep(v, { literals: secretLiterals() });
   // The child's process group is recorded in the lock, so the lock outlives a server crash while it runs.
   // `config set` writes .env and lanes.local.json under himmelctl's repo root; the feed and the live hooks read the
   // station anchor, so a worktree-served chief points the config children there (an operator override wins).
@@ -554,9 +565,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   let fleetRun: ReturnType<typeof readFleet> | null = null;
   // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
   function fleetOnce(): ReturnType<typeof readFleet> {
-    let raw = "";
-    try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-    const literals = envValues(raw, parseDotEnv, env);
+    const literals = secretLiterals();
     return fleetRun ??= readFleet({
       script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
       redact: (v) => String(redactDeep(v, { literals })),
@@ -604,8 +613,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs),
           readMonitoring(env),
         ]);
-        let raw = "";
-        try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
         return json(redactOut({ bank, workers, monitoring, mode: readMode(root, mergedSettings(root, env)) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
       }
       // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
@@ -751,9 +758,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         }
         if ("status" in found) return new Response(found.status === 400 ? "bad run id" : found.status === 404 ? "no such run" : "run id is ambiguous", { status: found.status });
         // Secrets in the transcript pass the same redactor as every other output; literals read once per stream.
-        let raw = "";
-        try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-        const literals = envValues(raw, parseDotEnv, env);
+        const literals = secretLiterals();
         active++; // an open stream keeps the idle timer from shutting the server down
         const body = journalStream(found.path, {
           threadId: run, pollMs: opts.aguiPollMs ?? AGUI_POLL_MS, idleMs: opts.aguiIdleMs ?? AGUI_IDLE_MS, maxMs: opts.aguiMaxMs ?? AGUI_MAX_MS,

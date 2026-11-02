@@ -4,6 +4,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
+import { stubKeyring } from "./keyring-stub";
 
 // Seams: CONFIG_UI_HIMMELCTL (stub-recorder.js), HIMMEL_REPORT_CADENCE_ROOT (a
 // scratch tree of stub-cadence.sh copies), HOME (scratch: lock + audit), and the
@@ -271,6 +272,25 @@ test("a canary printed by a child is absent from preview, run and error bodies",
   const ft = await (await preview(failing)).text();
   expect(ft).toContain("err: graphmap-cadence");
   expect(ft).not.toContain(CANARY);
+});
+
+// A secret only the keyring holds (no .env, not in the server env) is a redaction literal too.
+// The value has no token shape, so only the literal list can mask it. The env map unpins the preload's keyring-off.
+const KEYRING_ONLY = "kr-only-" + "q7x2".repeat(2);
+test("a value only the keyring holds is masked in a preview body (HIMMEL-8565)", async () => {
+  const k = stubKeyring(dir);
+  k.put("JIRA_API_TOKEN", KEYRING_ONLY);
+  const port = boot({ env: { ...k.env, HIMMEL_SECRETS_KEYRING: "", STUB_LEAK: KEYRING_ONLY } });
+  const pt = await (await preview(port)).text();
+  expect(pt).toContain("plan: graphmap-cadence");
+  expect(pt).not.toContain(KEYRING_ONLY);
+});
+
+test("a value held by no secret source is shown unchanged, so the mask is not a blanket one (HIMMEL-8565)", async () => {
+  const k = stubKeyring(dir);
+  k.put("JIRA_API_TOKEN", KEYRING_ONLY);
+  const port = boot({ env: { ...k.env, HIMMEL_SECRETS_KEYRING: "", STUB_LEAK: "visible-q7x2q7x2" } });
+  expect(await (await preview(port)).text()).toContain("visible-q7x2q7x2");
 });
 
 test("a slow re-probe returns `re-probe timed out`", async () => {
