@@ -279,4 +279,4 @@ export function denyLinesByCall(chain) {
   return (callId, member) => lines.get(`${callId}\0${member}`) ?? null;
 }
 
-export const memberOfGuardClass =(cls) => typeof cls === 'string' && cls.startsWith('denied/') ? `${cls.slice(7)}.sh` : null;
+export const memberOfGuardClass = (cls) => typeof cls === 'string' && cls.startsWith('denied/') ? `${cls.slice(7)}.sh` : null;

@@ -10,7 +10,7 @@ Turns one P1 digest (worker-digest.ts) into two ledger writes, then a marker:
 
   Path: $HIMMEL_WORKER_SESSION_FAILURES_LEDGER, else ~/.himmel/leg-failures.jsonl.
 
-WORKER-FAILURES ROW (v 1) -- closed-list categories only, never journal text:
+WORKER-FAILURES ROW (v 1) -- closed-list categories, plus on a denied row one redacted refusal line:
   v, ts, host, source, kind "leg-failure"       registry envelope
   session     the worker's session uuid
   worker, chief, ticket, pr                      who the row belongs to, or null
@@ -23,7 +23,11 @@ WORKER-FAILURES ROW (v 1) -- closed-list categories only, never journal text:
   refusal_line  denied rows only, optional: the guard's already-redacted first refusal line from the
               hook-chain log (the first refused call that has one), at most 240 code points on one line,
               or null when none was recorded; older rows lack the key
-Unknown keys are refused, so a field carrying free text cannot ride in.
+Unknown keys are refused, but refusal_line is free text: it is redacted for secrets only and can still echo
+command or path text. It stays on this host (the ledger, the marker and the leg-digest state file are never sent);
+the egress guard is the failure router's named-field pick and its check_body alphabet check, which never take it.
+A salus-rooted session records no refusal_line (its chain log is not the himmel one); a session whose cwd is a
+himmel checkout but that names a salus path stays local, in the ledger and the marker, and is never sent.
 
 IDEMPOTENCE (spec 5.3), all under a per-session flock at <state-dir>/<session>.lock:
   marker present with status ok          -> append nothing
