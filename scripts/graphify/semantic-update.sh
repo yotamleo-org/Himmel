@@ -65,7 +65,8 @@
 # GRAPHIFY_API_SYSTEM_PROMPT=1 (synchronous lane path only, default off) moves graphify's fixed instructions and
 # those requirements into one per-run --append-system-prompt-file, removed with the run's scratch dir, leaving the
 # "Now extract" line and the chunk on stdin, so the fixed text caches across chunks (docs/internals/prompt-cache.md).
-# ponytail: opt-in until the paid quality proof after 2026-11-05, upgrade path = flip the default once the proof passes
+# Its extraction cache is kept apart too (cache/semantic-r1-system), so neither mode replays the other's answers.
+# ponytail: opt-in until the paid quality proof, upgrade path = flip the default once the proof passes
 #
 # claude-api goes through the Message Batches API at half price (GRAPHIFY_API_BATCH=0 keeps the synchronous lane
 # path). Nothing waits on a graph refresh, so a run is two-phase: graphify extract runs once with the record shim
@@ -505,6 +506,8 @@ ADD
   # The claude-api prompt differs from graphify's own, whose cache stamp would not notice: keep its entries apart.
   CACHE_SUB="semantic"
   if [ "$BACKEND" = "claude-api" ]; then CACHE_SUB="semantic-r1"; fi
+  # The system-prompt opt-in changes the request but not graphify's key: its unproven answers stay apart as well.
+  if [ "$BACKEND" = "claude-api" ] && [ "$BATCH_MODE" -eq 0 ] && [ "${GRAPHIFY_API_SYSTEM_PROMPT:-}" = 1 ]; then CACHE_SUB="semantic-r1-system"; fi
   # A resumed batch extracts from the scratch frozen when it was submitted, so its chunk prompts hash identically.
   if [ "$RESUME" -eq 0 ]; then
     # No batch.json means nothing was submitted: whatever an interrupted run left here is garbage.

@@ -773,7 +773,9 @@ test('HIMMEL-8410: --append-system-prompt-file, in both spellings, takes a reada
   writeFileSync(file, 'fixed instructions\n');
   const link = join(probe.dir, 'system-link.txt');
   symlinkSync(file, link);
-  for (const [spelled, seen] of [[[FLAG, file], file], [[`${FLAG}=${file}`], file], [[FLAG, link], link]]) {
+  const spaced = join(probe.dir, 'system prompt.txt');
+  writeFileSync(spaced, 'fixed instructions\n');
+  for (const [spelled, seen] of [[[FLAG, file], file], [[`${FLAG}=${file}`], file], [[FLAG, link], link], [[FLAG, spaced], spaced], [[`${FLAG}=${spaced}`], spaced]]) {
     const ok = fixture();
     const r = ok.run([...ok.good, ...spelled]);
     assert.equal(r.status, 0, r.stderr);

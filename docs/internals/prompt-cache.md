@@ -256,14 +256,18 @@ across calls.
   "Now extract ..." line and the chunk on stdin. A prompt without that line, or
   whose fixed text differs from the run's file, is sent whole, as it is with the
   knob unset.
+- **Extraction cache.** The knob's runs keep their answers in
+  `cache/semantic-r1-system`, because graphify's cache key cannot see the knob. Neither
+  mode replays the other's answers, so a failed proof leaves nothing in the default
+  cache.
 
 It is off by default because it is unproven: graphify's own source records that a
 system prompt once made the CLI answer conversationally, and that answer parses to
-nothing. The proof needs paid calls and API credit, which returns on 2026-11-05, so
-no live number exists yet and the 3 % above is still this path's reading.
+nothing. The proof needs paid calls, so no live number exists yet and the 3 % above
+is still this path's reading.
 
-`ponytail:` opt-in until the paid quality proof after 2026-11-05. Upgrade path: flip
-the default once the proof passes.
+`ponytail:` opt-in until the paid quality proof. Upgrade path: flip the default once
+the proof passes.
 
 ## Re-run
 
