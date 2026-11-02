@@ -52,6 +52,13 @@ The chief writes the request and sends `REQ <id>`. Then:
    for the key and version, `--supersedes` must name it; the error names it.
    An operator ruling cites the chief's `O-` record, which must cover the
    exact key, op and versions; a bare decision number authorizes nothing.
+   A REVERSION restoring a key to a version rules `MOVE` with `--op move
+   --from backlog --to <v>`. Only for a key whose current ruling carries
+   operator authority: when the key's newest operator decision is the
+   `add backlog→<v>` that places it, the engine files that ruling as the add
+   under that record, and any newer operator word on the key, in any version,
+   keeps the restore refused. A key whose current ruling is an RM ruling is
+   moved as an ordinary RM move.
 3. `release apply <R> <R-id>` — writes Jira, reads it back, records `applied`,
    posts the receipt comment, records `receipted`, and prints the RULING line.
    Re-run it after any failure: it is idempotent and never posts twice.
