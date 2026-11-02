@@ -1370,8 +1370,10 @@ bug_origin_state() {
         /^bug-origin:/ { print }
     ')
     if [ -z "$lines" ]; then echo none; return 0; fi
-    good=$(printf '%s\n' "$lines" | LC_ALL=C grep -cE '^bug-origin:[[:blank:]]+((#[0-9]+|[0-9a-f]{7,40})[[:blank:]]+(test-gap|design-gap|review-miss:(cr|judge|panel)|unknown)|unknown[[:blank:]]+unknown)[[:blank:]]+(—|-)[[:blank:]]+[^[:blank:]]')
-    bad=$(printf '%s\n' "$lines" | LC_ALL=C grep -cvE '^bug-origin:[[:blank:]]+((#[0-9]+|[0-9a-f]{7,40})[[:blank:]]+(test-gap|design-gap|review-miss:(cr|judge|panel)|unknown)|unknown[[:blank:]]+unknown)[[:blank:]]+(—|-)[[:blank:]]+[^[:blank:]]')
+    # The class list is bug-origin-report.py's LINE; scripts/eval/bug-origin/line-table.tsv runs through both.
+    local ere='^bug-origin:[[:blank:]]+((#[0-9]+|[0-9a-f]{7,40})[[:blank:]]+(test-gap|design-gap|review-deferred|unknown|review-miss:(cr|judge|panel)(,(cr|judge|panel))*|(residual|trigger):[A-Za-z0-9][A-Za-z0-9._/#-]*|commit:[0-9a-f]{7,40})|unknown[[:blank:]]+unknown)[[:blank:]]+(—|-)[[:blank:]]+[^[:blank:]]'
+    good=$(printf '%s\n' "$lines" | LC_ALL=C grep -cE "$ere")
+    bad=$(printf '%s\n' "$lines" | LC_ALL=C grep -cvE "$ere")
     if [ "$bad" -gt 0 ]; then echo malformed
     elif [ "$good" -gt 1 ]; then echo duplicate
     else echo ok
@@ -1440,7 +1442,7 @@ check_bug_origin() {
         return 0
     fi
     echo "[WARN] 14. bug-origin: $bo_state"
-    echo "        accepted: bug-origin: <#pr|sha|unknown> <test-gap|design-gap|review-miss:cr|review-miss:judge|review-miss:panel|unknown> — <reason>"
+    echo "        accepted: bug-origin: <#pr|sha|unknown> <test-gap|design-gap|review-deferred|review-miss:<cr,judge,panel>|residual:<token>|trigger:<token>|commit:<sha>|unknown> — <reason>"
     echo "        see the Ship step of docs/handover/worker-brief-template.md"
 }
 check_bug_origin

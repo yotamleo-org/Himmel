@@ -12,6 +12,11 @@ trap 'rm -rf "$TMP"' EXIT
 # Never the live files, whatever a case forgets to pass.
 export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never-runs.jsonl"
 export HIMMEL_JUDGE_ADJUDICATION="$TMP/never-queue.jsonl"
+# the bug-origin ledger resolves through these; neither exists, so no case reads the real bucket or registry
+export HANDOVER_DIR="$TMP/never-handover" HANDOVER_REGISTRY="$TMP/never-registry.json"
+# ...and so does the root's own fallback chain (himmel.conf under HIMMEL_CONFIG_DIR, else ~/.himmel): neither holds anything
+mkdir -p "$TMP/home"
+export HOME="$TMP/home" HIMMEL_CONFIG_DIR="$TMP/never-conf"
 
 PASS=0; FAIL=0
 pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
@@ -192,6 +197,177 @@ python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/str-number.json" --mirror "
 eq "a PR snapshot row without an integer number is refused" "$?" "2"
 python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/not-rows.json" --mirror "$TMP/mirror" --queue "$Q" --no-ledger >/dev/null 2>&1
 eq "a main-run snapshot row that is not an object is refused" "$?" "2"
+
+# --- a class filter on the escapes, by the bug's fix row in the bug-origin ledger ------------
+mkdir -p "$TMP/ledj"
+printf -- '---\npr: 9100\nbug_key: "HIMMEL-9001"\norigin: "#101"\nclass: "test-gap"\nreason: "x"\nsource: "body"\ningested: "2026-11-02T00:00:00Z"\nsynced: false\n---\nPR #9100 (HIMMEL-9001) bug-origin: #101 test-gap — x\n' > "$TMP/ledj/9100.md"
+jac() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
+  --queue "$TMP/q-class.jsonl" --until 2026-10-21T00:00:00Z --days 28 --no-ledger "$@" 2>&1 | grep '^judge-accuracy: escapes=' ; }
+eq "class filter: unfiltered, the caused-by bug is an escape" "$(jac)" "judge-accuracy: escapes=1"
+eq "class filter: the bug's class keeps it" "$(jac --bug-origin-dir "$TMP/ledj" --class test-gap)" "judge-accuracy: escapes=1"
+eq "class filter: a row of another class is excluded" "$(jac --bug-origin-dir "$TMP/ledj" --class design-gap)" "judge-accuracy: escapes=0"
+eq "negative control: a class with no rows returns none, not all" "$(jac --bug-origin-dir "$TMP/ledj" --class residual)" "judge-accuracy: escapes=0"
+python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --mirror "$TMP/mirror" --queue "$TMP/q-class.jsonl" --no-ledger --class test-gap >/dev/null 2>&1
+eq "a class filter with no ledger to read is refused" "$?" "2"
+
+# --- a filtered run is its own series, never the unfiltered one
+LC="$TMP/class-runs.jsonl"
+jal() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
+  --queue "$TMP/q-class.jsonl" --until 2026-10-21T00:00:00Z --days 28 --ledger "$LC" "$@" >/dev/null 2>&1; }
+jal
+jal --bug-origin-dir "$TMP/ledj" --class test-gap
+eq "series: an unfiltered row's config is the one it always had" "$(field "$LC" 0 config)" '{"judge_accuracy_v": 1, "days": 28}'
+eq "series: a filtered row's config names the class" "$(field "$LC" 1 config)" '{"judge_accuracy_v": 1, "days": 28, "class": "test-gap"}'
+eq "series: a filtered run to an explicit ledger leaves the default ledger untouched" "$([ -e "$HIMMEL_EVAL_RUNS_LEDGER" ] && echo written || echo absent)" "absent"
+rc=0; out="$(python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
+  --queue "$TMP/q-class.jsonl" --until 2026-10-21T00:00:00Z --days 28 --bug-origin-dir "$TMP/ledj" --class test-gap 2>&1)" || rc=$?
+eq "series: a filtered run with no --ledger and no --no-ledger is refused" "$rc" "2"
+has "series: the refusal says why" "$out" "--class"
+eq "series: the refused filtered run wrote nothing to the default ledger" "$([ -e "$HIMMEL_EVAL_RUNS_LEDGER" ] && echo written || echo absent)" "absent"
+if [ "$(field "$LC" 0 confighash)" != "$(field "$LC" 1 confighash)" ]; then pass "series: the filtered and unfiltered confighash differ"; else fail "series: the filtered and unfiltered confighash differ"; fi
+
+# --- a bug with two ledger rows stays in both classes
+mkdir -p "$TMP/ledm"
+ledm_row() { printf -- '---\npr: %s\nbug_key: "HIMMEL-9001"\norigin: "#101"\nclass: "%s"\nreason: "x"\nsource: "body"\ningested: "2026-11-02T00:00:00Z"\nsynced: false\n---\nPR #%s bug-origin: #101 %s — x\n' "$1" "$2" "$1" "$2" > "$TMP/ledm/$1.md"; }
+ledm_row 9100 test-gap
+ledm_row 9101 design-gap
+eq "two rows on a bug: the first row's class keeps it" "$(jac --bug-origin-dir "$TMP/ledm" --class test-gap)" "judge-accuracy: escapes=1"
+eq "two rows on a bug: the later row's class keeps it" "$(jac --bug-origin-dir "$TMP/ledm" --class design-gap)" "judge-accuracy: escapes=1"
+
+# a red main run has no fix row, so no class: with the ruled queue (501 ruled S) it still counts for no class
+jaq() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/mirror" \
+  --queue "$Q" --until 2026-10-21T00:00:00Z --days 28 --no-ledger "$@" 2>&1 | grep '^judge-accuracy: escapes=' ; }
+eq "unfiltered, with the ruled queue: the S-ruled red main run is an escape" "$(jaq)" "judge-accuracy: escapes=2"
+eq "class filter: a ruled red main run counts for no class" "$(jaq --bug-origin-dir "$TMP/ledj" --class design-gap)" "judge-accuracy: escapes=0"
+
+# --- a class no row can have is refused, not read as empty
+rc=0; python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --mirror "$TMP/mirror" --queue "$TMP/q-class.jsonl" --no-ledger \
+  --bug-origin-dir "$TMP/ledj" --class bogus >/dev/null 2>&1 || rc=$?
+eq "an unknown --class is refused" "$rc" "2"
+
+# --- a class filter needs no Jira mirror: the ledger rows give the bugs
+mkdir -p "$TMP/ledb"
+printf -- '---\npr: 9200\nbug_key: "HIMMEL-9001"\norigin: "#101"\nclass: "test-gap"\nreason: "x"\nsource: "body"\ningested: "2026-10-16T09:00:00Z"\nsynced: false\n---\nPR #9200 (HIMMEL-9001) bug-origin: #101 test-gap — x\n' > "$TMP/ledb/9200.md"
+jacn() { python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --main-runs "$TMP/runs.json" --mirror "$TMP/no-such-mirror" \
+  --queue "$TMP/q-class.jsonl" --until 2026-10-21T00:00:00Z --days 28 --no-ledger "$@" 2>&1 | grep '^judge-accuracy: escapes=' ; }
+eq "no mirror: the ledger row's escape counts" "$(jacn --bug-origin-dir "$TMP/ledb" --class test-gap)" "judge-accuracy: escapes=1"
+eq "negative control: no mirror, another class counts none" "$(jacn --bug-origin-dir "$TMP/ledb" --class design-gap)" "judge-accuracy: escapes=0"
+# a backfilled row (ingested after --until, the PR merged before) counts by its merge time; an old row with no merge time falls to its ingest time
+mkdir -p "$TMP/ledbk" "$TMP/ledbo"
+printf -- '---\npr: 9200\nbug_key: "HIMMEL-9001"\norigin: "#101"\nclass: "test-gap"\nreason: "x"\nsource: "body"\ningested: "2026-11-02T00:00:00Z"\nmerged: "2026-10-16T09:00:00Z"\nsynced: false\n---\nPR #9200 (HIMMEL-9001) bug-origin: #101 test-gap — x\n' > "$TMP/ledbk/9200.md"
+printf -- '---\npr: 9200\nbug_key: "HIMMEL-9001"\norigin: "#101"\nclass: "test-gap"\nreason: "x"\nsource: "body"\ningested: "2026-11-02T00:00:00Z"\nsynced: false\n---\nPR #9200 (HIMMEL-9001) bug-origin: #101 test-gap — x\n' > "$TMP/ledbo/9200.md"
+eq "backfill: a row ingested after --until, merged before, counts in the earlier run" "$(jacn --bug-origin-dir "$TMP/ledbk" --class test-gap)" "judge-accuracy: escapes=1"
+eq "backfill: negative control, an old row with no merge time counts by its ingest time" "$(jacn --bug-origin-dir "$TMP/ledbo" --class test-gap)" "judge-accuracy: escapes=0"
+rc=0; python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" --mirror "$TMP/no-such-mirror" --queue "$TMP/q-class.jsonl" --no-ledger >/dev/null 2>&1 || rc=$?
+eq "no mirror and no class filter is still refused" "$rc" "2"
+
+# --- the shared ledger readers
+rm -f "$TMP/units.out"
+python3 -I - "$HERE" "$TMP" > "$TMP/units.out" 2>&1 <<'PY'
+import os, subprocess, sys
+here, tmp = sys.argv[1:3]
+sys.path.insert(0, here)
+import judge_accuracy as j
+def eq(name, got, want):
+    print(("PASS " + name) if got == want else "FAIL %s: expected %r, got %r" % (name, want, got))
+cm = j.class_match
+for name, got, want in [
+        ("match: exact", cm("test-gap", "test-gap"), True),
+        ("match: another class", cm("test-gap", "design-gap"), False),
+        ("match: a family", cm("review-miss", "review-miss:cr,judge"), True),
+        ("match: a prefix with no colon is no family", cm("test", "test-gap"), False),
+        ("match: an empty class never matches", cm("", ""), False),
+        ("match: no class never matches", cm("test-gap", None), False),
+        ("match: a wanted layer inside a many-layer row", cm("review-miss:cr", "review-miss:cr,judge"), True),
+        ("match: a wanted layer the row lacks", cm("review-miss:panel", "review-miss:cr,judge"), False),
+        ("match: multi matches two layers", cm("review-miss:multi", "review-miss:cr,judge"), True),
+        ("match: multi is not one layer", cm("review-miss:multi", "review-miss:cr"), False),
+        ("match: multi is not one layer said twice", cm("review-miss:multi", "review-miss:cr,cr"), False),
+        ("match: a list matches on any member", cm("test-gap", ["design-gap", "test-gap"]), True),
+        ("match: an empty list matches nothing", cm("test-gap", []), False),
+        ("match: a set of other classes", cm("design-gap", {"test-gap"}), False)]:
+    eq(name, got, want)
+for c in ("test-gap", "design-gap", "review-deferred", "unknown", "review-miss", "review-miss:multi", "review-miss:cr",
+          "review-miss:cr,judge", "residual", "residual:HIMMEL-1", "trigger", "trigger:cron", "commit", "commit:abcdef1"):
+    eq("valid class %s" % c, j.valid_class(c), True)
+for c in ("bogus", "", "test", "review-miss:foo", "review-miss:", "residual:", "test-gap:x"):
+    eq("invalid class %r" % c, j.valid_class(c), False)
+ok = {"origin": "#10", "class": "test-gap", "reason": "x"}
+for name, row, want in [("row ok", ok, True), ("row: a class off the grammar", dict(ok, **{"class": "bogus"}), False),
+                        ("row: an origin off the grammar", dict(ok, origin="10"), False),
+                        ("row: origin unknown with another class", dict(ok, origin="unknown"), False),
+                        ("row: origin unknown with class unknown", dict(ok, origin="unknown", **{"class": "unknown"}), True),
+                        ("row: a blank reason", dict(ok, reason="  "), False),
+                        ("row: a reason that starts with a space", dict(ok, reason=" x"), False),
+                        ("row: a reason that ends with a space", dict(ok, reason="x "), False),
+                        ("row: a reason of two lines", dict(ok, reason="a\nb"), False)]:
+    eq(name, j.row_valid(row), want)
+d = os.path.join(tmp, "lg")
+os.makedirs(d)
+def put(name, pr, cls="test-gap", reason="x", origin="#1"):
+    with open(os.path.join(d, name), "w") as fh:
+        fh.write('---\npr: %d\norigin: "%s"\nclass: "%s"\nreason: "%s"\n---\nx\n' % (pr, origin, cls, reason))
+put("5.md", 5)
+put("6.md", 7)
+put("8.md", 8, cls="bogus")
+put("9.md", 9)
+skipped = []
+got = j.load_ledger(d, skipped)
+eq("ledger: the rows on the grammar, named for their own pr", sorted(got), [5, 9])
+eq("ledger: a misnamed file and an off-grammar file are named as skipped", sorted(skipped), ["6.md", "8.md"])
+eq("ledger: no skipped list is no error", sorted(j.load_ledger(d)), [5, 9])
+eq("ledger classes: a bug key keeps every class", j.ledger_classes(
+    {1: {"pr": 1, "class": "test-gap", "bug_key": "K-1"}, 2: {"pr": 2, "class": "design-gap", "bug_key": "K-1"}})["key"],
+   {"K-1": ["test-gap", "design-gap"]})
+eq("ledger classes: a row with no bug key is keyed by its fix PR", j.ledger_classes({2: {"pr": 2, "class": "test-gap"}})["key"], {"PR2": ["test-gap"]})
+rows = {1: {"pr": 1, "bug_key": "K-1", "origin": "#5", "ingested": "2026-10-16T09:00:00Z"},
+        2: {"pr": 2, "origin": "#6", "ingested": "2026-10-17T09:00:00Z"},
+        3: {"pr": 3, "origin": "abcdef1", "ingested": "2026-10-16T09:00:00Z"},
+        4: {"pr": 4, "origin": "unknown", "ingested": "2026-10-16T09:00:00Z"}}
+bugs = j.ledger_bugs(rows)
+eq("ledger bugs: a #N origin, keyed by the bug or by the fix PR", sorted((b["key"], b["caused_by"]) for b in bugs), [("K-1", "5"), ("PR2", "6")])
+eq("ledger bugs: created is the row's ingest time", sorted(b["created"] for b in bugs), [j.when("2026-10-16T09:00:00Z"), j.when("2026-10-17T09:00:00Z")])
+eq("ledger bugs: created is the merge time when the row has one", [b["created"] for b in j.ledger_bugs(
+    {7: {"pr": 7, "origin": "#5", "ingested": "2026-11-02T00:00:00Z", "merged": "2026-10-12T00:00:00Z"}})], [j.when("2026-10-12T00:00:00Z")])
+eq("ledger bugs: a merge time that is no string falls to the ingest time", [b["created"] for b in j.ledger_bugs(
+    {7: {"pr": 7, "origin": "#5", "ingested": "2026-11-02T00:00:00Z", "merged": 5}})], [j.when("2026-11-02T00:00:00Z")])
+inline = os.path.join(tmp, "inline")
+os.makedirs(os.path.join(inline, "handovers"))
+subprocess.run(["git", "-C", inline, "init", "-q", "-b", "main"], check=True)
+top = os.path.realpath(inline)
+env = {"USER_SLUG": "zed", "HANDOVER_REGISTRY": os.path.join(tmp, "no-registry.json")}
+eq("ledger dir: the inline handovers directory is the default root", j.ledger_dir(inline, env), os.path.join(top, "handovers", "zed", "inline", "bug-origin"))
+eq("ledger dir: a HANDOVER_DIR that is no directory beats the inline default", j.ledger_dir(inline, dict(env, HANDOVER_DIR=os.path.join(tmp, "nope"))), None)
+# the root as the shell tooling resolves it: env, then himmel.conf.local, himmel.conf, the primary checkout's .env, then inline
+conf = os.path.join(tmp, "conf"); empty = os.path.join(tmp, "conf-empty")
+croot, lroot, eroot = (os.path.join(tmp, n) for n in ("croot", "lroot", "eroot"))
+for d in (conf, empty, croot, lroot, eroot):
+    os.makedirs(d)
+cenv = dict(env, HIMMEL_CONFIG_DIR=conf)
+with open(os.path.join(conf, "himmel.conf"), "w") as fh:
+    fh.write("# station\nHANDOVER_DIR=%s  # the root\n" % croot)
+eq("ledger dir: himmel.conf names the root, an inline handovers/ notwithstanding", j.ledger_dir(inline, cenv), os.path.join(croot, "zed", "inline", "bug-origin"))
+eq("ledger dir: the live environment beats himmel.conf", j.ledger_dir(inline, dict(cenv, HANDOVER_DIR=lroot)), os.path.join(lroot, "zed", "inline", "bug-origin"))
+with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
+    fh.write('HANDOVER_DIR="%s"\n' % lroot)
+eq("ledger dir: himmel.conf.local beats himmel.conf", j.ledger_dir(inline, cenv), os.path.join(lroot, "zed", "inline", "bug-origin"))
+with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
+    fh.write("HANDOVER_DIR=%s\n" % os.path.join(tmp, "nope"))
+eq("ledger dir: a root named in a config file that is no directory is no ledger", j.ledger_dir(inline, cenv), None)
+with open(os.path.join(inline, ".env"), "w") as fh:
+    fh.write("HANDOVER_DIR=%s\n" % eroot)
+eq("ledger dir: the primary checkout's .env names the root when no config file does", j.ledger_dir(inline, dict(env, HIMMEL_CONFIG_DIR=empty)), os.path.join(eroot, "zed", "inline", "bug-origin"))
+os.remove(os.path.join(inline, ".env"))
+eq("ledger dir: nothing named anywhere falls to the inline default", j.ledger_dir(inline, dict(env, HIMMEL_CONFIG_DIR=empty)), os.path.join(top, "handovers", "zed", "inline", "bug-origin"))
+home = os.path.join(tmp, "home2"); os.makedirs(os.path.join(home, ".himmel"))
+with open(os.path.join(home, ".himmel", "himmel.conf"), "w") as fh:
+    fh.write("HANDOVER_DIR=%s\n" % croot)
+eq("ledger dir: no HIMMEL_CONFIG_DIR reads ~/.himmel/himmel.conf", j.ledger_dir(inline, dict(env, HOME=home)), os.path.join(croot, "zed", "inline", "bug-origin"))
+PY
+cat "$TMP/units.out"
+PASS=$((PASS + $(grep -c '^PASS ' "$TMP/units.out")))
+FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/units.out")))
+eq "readers: ran to its end" "$(grep -c '^PASS ledger dir: a HANDOVER_DIR' "$TMP/units.out")" "1"
 
 # --- Jira's +0200 offset, which fromisoformat reads only from 3.11 on ----------------------------------
 eq "a +0200 stamp parses where fromisoformat reads only +HH:MM" "$(python3 -I -c '
