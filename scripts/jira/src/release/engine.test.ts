@@ -1395,7 +1395,16 @@ describe('signed minerva specs (HIMMEL-8353 C1a)', () => {
     const { spec: p, plan } = bucketSpec('docs/handover/running-a-chief.md');
     const r = sign(sctx(), ['K-1'], p, { plan });
     expect(r.keys).toEqual(['K-1']);
+    expect(readOperatorRecords('spec', specEnv())[0].plan_path).toBe(plan);
     expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+  });
+
+  it('a spec with invariants cannot be signed without its plan, nor with itself as the plan', () => {
+    declared();
+    const { spec: p } = bucketSpec('docs/handover/running-a-chief.md');
+    expect(() => sign(sctx(), ['K-1'], p)).toThrow(/the plan is the spec/);
+    expect(() => sign(sctx(), ['K-1'], p, { plan: p })).toThrow(/the plan is the spec/);
+    expect(readOperatorRecords('spec', specEnv())).toEqual([]);
   });
 
   it('a bucket spec naming a truly missing path is still refused, and so is one whose plan names no test', () => {

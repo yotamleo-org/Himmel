@@ -139,6 +139,27 @@ expect_pass "plain spec with a valid Fact ownership section passes" "$td/plain-f
 sed "s#$repo_path#scripts/no-such-file.sh#" "$td/plain-fo.md" >"$td/plain-fo-bad.md"
 expect_refuse "Fact ownership section on a plain spec is still checked" "no-such-file" "$td/plain-fo-bad.md" "$td/plan.md"
 
+# a heading inside a fenced code block is example text, not a section of the spec
+printf '# Rename a flag\n\n## 1. Goal\n\nRename.\n\n```\n## Health\n```\n\n## Invariants\n\nnone\n' >"$td/fenced.md"
+expect_pass "surface word in a fenced example heading passes" "$td/fenced.md" "$td/plan.md"
+# a heading with optional closing hashes is still the Fact ownership section
+sed 's/^## Fact ownership$/## Fact ownership ##/' "$td/plain-fo-bad.md" >"$td/closing-hashes.md"
+expect_refuse "closing-hash Fact ownership heading is checked" "no-such-file" "$td/closing-hashes.md" "$td/plan.md"
+
+# a numbered Fact ownership heading is the section too
+sed 's/^## Fact ownership$/## 3. Fact ownership/' "$td/plain-fo-bad.md" >"$td/numbered.md"
+expect_refuse "numbered Fact ownership heading is checked" "no-such-file" "$td/numbered.md" "$td/plan.md"
+# a surface word in ANY section body triggers the check, wherever the section sits
+printf '# Rename a flag\n\n## 1. Goal\n\nRename.\n\n## 2. Notes\n\nThe doctor reads it.\n\n## Invariants\n\nnone\n' >"$td/late-body.md"
+expect_refuse "surface word in a later section body" "fact ownership" "$td/late-body.md" "$td/plan.md"
+# ...but not one inside a code fence
+printf '# Rename a flag\n\n## 1. Goal\n\nRename.\n\n```\nthe doctor reads it\n```\n\n## Invariants\n\nnone\n' >"$td/fenced-body.md"
+expect_pass "surface word inside a code fence does not trigger" "$td/fenced-body.md" "$td/plan.md"
+
+# a spec with I<n> lines cannot stand in for its own plan
+expect_refuse "spec given as its own plan" "the plan is the spec" "$td/green.md" "$td/green.md"
+expect_pass "spec with Invariants: none may stand in for its plan" "$td/plain.md" "$td/plain.md"
+
 # usage errors exit 2
 bash "$lint" "$td/absent.md" "$td/plan.md" >/dev/null 2>&1; rc=$?
 [ "$rc" -eq 2 ] && ok "missing spec: exit 2" || bad "missing spec: expected exit 2, got $rc"

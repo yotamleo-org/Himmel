@@ -458,7 +458,7 @@ export function signSpec(ctx: Ctx, o: {
       throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
     }
     return appendOperator(ctx, l.k, {
-      kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, verdicts,
+      kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha, plan_path: o.plan ? plan : null, verdicts,
       supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
     });
   });
