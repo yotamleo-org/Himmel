@@ -49,6 +49,19 @@
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/gh-graphql-budget.sh"
 
+# every read below rides the second, read-only token (gh-read.sh) so a
+# spent main token does not stop a CI watch; a refused or missing read token falls
+# back to the main one inside the router. Sourced only when the caller has not
+# (check-ci.sh already did: a second source would reset its loaded token).
+# shellcheck source=scripts/lib/gh-read.sh
+# shellcheck disable=SC1091
+declare -F gh_read >/dev/null 2>&1 || . "$(dirname "${BASH_SOURCE[0]}")/gh-read.sh"
+# the executed form, for calls behind `timeout` (_cic_run_command), which cannot run a function
+_CIC_GHR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gh-read.sh"
+# stderr is this file's error channel (any text there fails the read), so the router's
+# one-line warning stays off it.
+_cic_gh_read() { GH_READ_QUIET=1 gh_read "$@"; }
+
 CIC_ROWS=""
 CIC_ERR=""
 CIC_SELECTOR=""
@@ -104,7 +117,7 @@ _cic_run_command() {
 _cic_fetch_run_raw() {
     local ef raw rc
     ef=$(mktemp "${TMPDIR:-/tmp}/cic-run-err.XXXXXX") || { CIC_ERR="mktemp failed"; return 1; }
-    raw=$(_cic_run_command gh run view "$CIC_RUN_ID" --repo "$CIC_RUN_REPO" --json databaseId,status,conclusion,jobs 2>"$ef"); rc=$?
+    raw=$(GH_READ_QUIET=1 _cic_run_command bash "$_CIC_GHR" run view "$CIC_RUN_ID" --repo "$CIC_RUN_REPO" --json databaseId,status,conclusion,jobs 2>"$ef"); rc=$?
     CIC_ERR=$(tr '\n' ' ' < "$ef"); rm -f "$ef"
     if [ "$rc" -ne 0 ]; then
         if [ "$rc" -eq 124 ] || { [ "$rc" -eq 137 ] && [ "${CIC_DEADLINE:-0}" -gt 0 ] && [ "$SECONDS" -ge "$CIC_DEADLINE" ]; }; then CIC_DEADLINE_HIT=1; fi
@@ -144,7 +157,7 @@ cic_now() {
 
 _cic_gh() {   # _cic_gh <gh pr subcommand> args… — appends the selector when set
     local sub="$1"; shift
-    if [ -n "$CIC_SELECTOR" ]; then gh pr "$sub" "$CIC_SELECTOR" "$@"; else gh pr "$sub" "$@"; fi
+    if [ -n "$CIC_SELECTOR" ]; then _cic_gh_read pr "$sub" "$CIC_SELECTOR" "$@"; else _cic_gh_read pr "$sub" "$@"; fi
 }
 
 _cic_head_now() { _cic_gh view --json headRefOid --jq .headRefOid 2>/dev/null; }
@@ -284,7 +297,7 @@ _cic_rest_endpoint() {
     old=$(printf '%s\n' "$CIC_REST_DATA" | jq -c --arg k "$kind" '.[$k] // {}' 2>/dev/null)
     etag=$(printf '%s\n' "$old" | jq -r '.etag // empty' 2>/dev/null)
     ef=$(mktemp "${TMPDIR:-/tmp}/cic-rest-err.XXXXXX") || return 1
-    set -- gh api --method GET --include "$endpoint"
+    set -- _cic_gh_read api --method GET --include "$endpoint"
     [ -z "$etag" ] || set -- "$@" -H "If-None-Match: $etag"
     response=$("$@" 2>"$ef"); rc=$?
     CIC_ERR=$(tr '\n' ' ' < "$ef"); rm -f "$ef"
@@ -373,7 +386,7 @@ _cic_fetch_pr() {
     CIC_REST_DATA=''
     case "$floor" in ''|*[!0-9]*) floor=300 ;; esac
     if [ "$floor" -gt 0 ]; then
-        budget=$(gh api rate_limit --jq '.resources | "\(.core.remaining) \(.core.reset) \(.graphql.remaining) \(.graphql.reset)"' 2>/dev/null) || budget=''
+        budget=$(_cic_gh_read api rate_limit --jq '.resources | "\(.core.remaining) \(.core.reset) \(.graphql.remaining) \(.graphql.reset)"' 2>/dev/null) || budget=''
         read -r core core_reset gql gql_reset <<EOF
 $budget
 EOF
@@ -422,7 +435,7 @@ _cic_budget_wait() {
         if [ "$max" -le 0 ]; then CIC_ERR="run budget deadline exhausted"; CIC_DEADLINE_HIT=1; return 2; fi
     fi
     if [ -n "$CIC_RUN_ID" ]; then
-        out=$(_cic_run_command gh api --hostname "${CIC_RUN_REPO%%/*}" rate_limit --jq '.resources | "\(.core.remaining) \(.core.reset) \(.graphql.remaining) \(.graphql.reset)"' 2>&1) || {
+        out=$(GH_READ_QUIET=1 _cic_run_command bash "$_CIC_GHR" api --hostname "${CIC_RUN_REPO%%/*}" rate_limit --jq '.resources | "\(.core.remaining) \(.core.reset) \(.graphql.remaining) \(.graphql.reset)"' 2>&1) || {
             rc=$?; if [ "$rc" -eq 124 ] || { [ "$rc" -eq 137 ] && [ "${CIC_DEADLINE:-0}" -gt 0 ] && [ "$SECONDS" -ge "$CIC_DEADLINE" ]; }; then CIC_DEADLINE_HIT=1; fi
             CIC_ERR="cannot read REST core budget: $out"; return 2
         }
@@ -433,7 +446,7 @@ _cic_budget_wait() {
             if [ "$max" -le 0 ]; then CIC_ERR="run budget deadline exhausted"; CIC_DEADLINE_HIT=1; return 2; fi
         fi
     else
-        out=$(gh api rate_limit --jq '.resources | "\(.core.remaining) \(.core.reset) \(.graphql.remaining) \(.graphql.reset)"' 2>/dev/null) || out=""
+        out=$(_cic_gh_read api rate_limit --jq '.resources | "\(.core.remaining) \(.core.reset) \(.graphql.remaining) \(.graphql.reset)"' 2>/dev/null) || out=""
     fi
     # shellcheck disable=SC2086
     set -- $out

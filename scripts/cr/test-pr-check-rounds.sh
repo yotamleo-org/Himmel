@@ -42,6 +42,13 @@ cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
 cp "$HERE/../lib/load-dotenv.sh" "$fx/scripts/lib/load-dotenv.sh"
 cp "$HERE/../lib/shared-branch-lock.sh" "$fx/scripts/lib/shared-branch-lock.sh"
 cp "$HERE/../lib/go-gate.sh" "$fx/scripts/lib/go-gate.sh"
+# review-round reads GitHub through the second, read-only token. The
+# fixture carries the router and a fixture .env root; only that token is visible.
+cp "$HERE/../lib/gh-read.sh" "$fx/scripts/lib/gh-read.sh"
+mkdir -p "$tmp/ghr-root"
+printf 'himmel_github_token_vm2=%s\n' ghp_ROUNDSREADTOKEN > "$tmp/ghr-root/.env"
+export GH_READ_ENV_ROOT="$tmp/ghr-root" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 chmod +x "$fx/scripts/cr/panel-first-pass.sh" "$fx/scripts/cr/ledger-append.sh" "$fx/scripts/cr/clear-review-marker.sh"
 SCRIPT="$fx/scripts/cr/panel-first-pass.sh"
 
@@ -103,6 +110,14 @@ STUB
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
+# GH_CALL_LOG records which token each call carried; GH_MAIN_SPENT=1
+# makes every call on any token but the fixture read token fail as a spent main token.
+if [ "${GH_TOKEN:-}" = ghp_ROUNDSREADTOKEN ]; then _tok=read; else _tok=main; fi
+[ -z "${GH_CALL_LOG:-}" ] || printf '%s %s\n' "$_tok" "$*" >> "$GH_CALL_LOG"
+if [ "${GH_MAIN_SPENT:-}" = 1 ] && [ "$_tok" = main ]; then
+    echo "gh: HTTP 403: API rate limit exceeded for user" >&2
+    exit 1
+fi
 # review-round.sh resolves the branch's PR by --head to bind a
 # judge record (`--json number`; clear-cr-marker asks for number,headRefOid).
 if [ "${1:-}" = pr ] && [ "${2:-}" = list ] && [ "${3:-}" = --head ]; then
@@ -360,6 +375,19 @@ for early_round in 2 3; do
     assert_has "$early_ledger" "\"reason\":\"$early_reason\"" "7345 round $early_round early close records the early-close reason"
     assert_eq "$(early_marker)" cleared "7345 round $early_round early close clears the marker"
 done
+# the early close reads the PR (gh pr list --head) and the repo; with the main
+# token spent both ride the read token. The trust list read inside lib/go-gate.sh
+# (trust_path_check, `api .../contents/scripts/ci/ci-trust-paths.txt`) is the merge gate's
+# own and still uses the main token (a follow-up ticket), so the close itself may end refused here:
+# the row pins review-round's reads, not the verdict.
+spent_log="$tmp/spent-early.log"
+: > "$spent_log"
+GH_CALL_LOG="$spent_log"; export GH_CALL_LOG
+early_run 2 'docs/guide/x.md' "$early_sug" GH_MAIN_SPENT=1
+unset GH_CALL_LOG
+assert_has "$(cat "$spent_log")" 'read pr list --head recovery' "8644 the early close resolves the PR on the read token"
+assert_has "$(cat "$spent_log")" 'read repo view' "8644 the early close reads the repo on the read token"
+assert_eq "$(grep '^main ' "$spent_log" | grep -v 'ci-trust-paths.txt' | cut -c1-120 | tr '\n' ';')" "" "8644 no early-close read of review-round ran on the main token"
 # trust_path_check answers a hit only from an anchor checkout at its origin's
 # HEAD, so the fixture anchor is one for this row.
 git -C "$fx" -c init.defaultBranch=main init -q
@@ -3231,6 +3259,21 @@ real_base="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
 cired_out="$(cd "$repo" && GH_DEFAULT_RC=1 bash "$fx/scripts/cr/review-round.sh" start --branch ciredoff --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
 assert_eq "$cired_rc" "8" "an unreadable remote default branch refuses the base round ($cired_out)"
 assert_has "$cired_out" "cannot be verified" "the offline refusal says the base cannot be verified"
+
+# the main token is spent (every call on it is HTTP 403). The default
+# branch read, the remote compare and the check-runs read of the CI-red unlock
+# ride the read token, so the same round the control above grants still grants.
+postcap_setup ciredspent suggestion
+cired_rows "$RED"
+postcap_fix ciredspent
+real_base="$(git -C "$repo" rev-parse refs/remotes/origin/main)"
+spent_log="$tmp/spent-calls.log"
+: > "$spent_log"
+cired_out="$(cd "$repo" && GH_MAIN_SPENT=1 GH_CALL_LOG="$spent_log" bash "$fx/scripts/cr/review-round.sh" start --branch ciredspent --head "$postcap_f_head" --base-sha "$real_base" 2>&1)"; cired_rc=$?
+assert_eq "$cired_rc" "0" "8644 a spent main token: the base check and the CI-red unlock still grant ($cired_out)"
+assert_has "$(cat "$spent_log")" 'read api repos/{owner}/{repo} --jq .default_branch' "8644 the default-branch read rides the read token"
+assert_has "$(cat "$spent_log")" '/check-runs' "8644 the check-runs read happened"
+assert_eq "$(grep -c '^main ' "$spent_log")" "0" "8644 no review-round read ran on the main token"
 
 # RED: a worker retargets refs/remotes/origin/HEAD at its own pushed PR
 # branch. The old code read the default branch name from that local ref, so the
