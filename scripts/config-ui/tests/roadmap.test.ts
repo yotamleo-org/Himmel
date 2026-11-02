@@ -494,6 +494,18 @@ test("a ticket with no fixVersion stays in the read, marked, and no version coun
   expect(r.librarian.releasedOpen.some((p) => p.k === 8)).toBe(false);
 });
 
+test("open tickets with no fixVersion stay out of the Tidy up counts and lists (no sector, stale In Progress, duplicates); the lane still draws them", () => {
+  const s = withNoVersion(station());
+  writeFileSync(join(s.mirror, "HIMMEL-9.md"), issue(9, "In Progress", "In Progress", [], "Loose ticket"));
+  const before = read(station());
+  const r = read(s);
+  expect(r.drift.now.unthemed).toBe(before.drift.now.unthemed);
+  expect(r.librarian.unthemed.map((p) => p.k)).toEqual(before.librarian.unthemed.map((p) => p.k));
+  expect(r.librarian.staleInProgress.map((p) => p.k)).toEqual(before.librarian.staleInProgress.map((p) => p.k));
+  expect(r.librarian.duplicates).toEqual(before.librarian.duplicates);
+  expect(board(r).split('id="rm-nv"')[1]).toContain("2 active tickets with no fixVersion");
+});
+
 test("Board: a ticket with no fixVersion is in the No version lane and in no version's column; a versioned ticket is not in the lane", () => {
   const r = read(withNoVersion(station()));
   for (const v of ["all", "v1.1.2"]) {

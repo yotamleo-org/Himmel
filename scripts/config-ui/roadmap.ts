@@ -262,7 +262,7 @@ export function readRoadmap(o: Opts): Roadmap {
   const cur = versions.findIndex((v, i) => !v.rel && tickets.some((t) => t.v === i && isOpen(t.b)));
   const next = versions.findIndex((v, i) => i > cur && !v.rel && tickets.some((t) => t.v === i));
 
-  const open = tickets.filter((t) => isOpen(t.b));
+  const open = tickets.filter((t) => isOpen(t.b) && !t.noVersion); // the Tidy up lists and counts are the train's; the No version lane is the Board's
   const unthemed = open.filter((t) => themes[t.theme] === NO_SECTOR);
   const now = { drift: tickets.filter((t) => t.drift === 1).length, unplanned: open.filter((t) => t.drift === 2).length, unthemed: unthemed.length };
 
@@ -272,7 +272,7 @@ export function readRoadmap(o: Opts): Roadmap {
   const byTitle = new Map<string, Ticket[]>();
   for (const t of open) { const n = normTitle(t.t); if (n) byTitle.set(n, [...(byTitle.get(n) ?? []), t]); }
   const librarian = {
-    staleInProgress: tickets.filter((t) => ["prog", "rev", "ci"].includes(t.b) && (!t.worker || t.worker.marker === "WRAPPED" || t.worker.marker === "HALTED"))
+    staleInProgress: tickets.filter((t) => !t.noVersion && ["prog", "rev", "ci"].includes(t.b) && (!t.worker || t.worker.marker === "WRAPPED" || t.worker.marker === "HALTED"))
       .map((t) => prop(t, t.worker ? `${t.s} but its worker is ${t.worker.marker}: confirm the state, then move it back to To Do or close it` : `${t.s} with no worker: confirm someone is on it, else move it back to To Do`)),
     drift: tickets.filter((t) => t.drift === 1).map((t) => prop(t, `Jira says ${versions[t.v].n}, the plan says ${t.pv}: move fixVersion to ${t.pv} or re-plan`)),
     unthemed: unthemed.map((t) => prop(t, source === "github"
