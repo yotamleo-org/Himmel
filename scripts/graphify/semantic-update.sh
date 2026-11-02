@@ -37,12 +37,13 @@
 # before any call: it never switches itself to the claude-cli backend. Each
 # chunk call then follows the lane's own failure rule: a refusal or a failed
 # call alerts and re-runs the chunk once on the subscription, replaying its
-# stdin prompt, unless HIMMEL_API_FALLBACK=off (docs/internals/api-lane.md).
-# Spend is bounded by
+# stdin prompt, unless HIMMEL_API_FALLBACK=off (docs/internals/api-lane.md). When
+# the credit runs out mid-run the run therefore carries on chunk by chunk on the
+# subscription, gated only by the lane's per-call usage preflight; that cost is
+# never added to the API spend or reserve files (it is not API spend). Spend is bounded by
 # --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
-# 1.00) and the batch is sized to the run cap; the lane's own credit answer is the
-# hard stop. The plan's estimate line prints before any call, and --dry-run stops
-# right after it.
+# 1.00) and the batch is sized to the run cap. The plan's estimate line prints
+# before any call, and --dry-run stops right after it.
 #
 # claude-api runs the extraction at GRAPHIFY_API_EFFORT (default high; low,
 # medium, high, xhigh or max, what `claude --effort` accepts). A/B 2026-10-16:
@@ -94,8 +95,10 @@
 #
 # Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
 # 3 bank at/over threshold (nothing touched); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
-# files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection, which also stops
-# dispatching the remaining chunks (one rejection on a pinned account, two on auto routing). Do not rerun until fixed.
+# files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection that the
+# subscription fallback did not replay (fallback off, or its usage preflight skipped it), which also stops
+# dispatching the remaining chunks (one rejection on a pinned account, two on auto routing). A rejection the fallback
+# does replay is not exit 6: the chunk runs on the subscription and the run goes on. Do not rerun until fixed.
 # graph-cadence.sh --semantic treats 3 and 4 as benign skips (the next fire
 # retries, nothing was touched) and alerts on every other non-zero rc.
 set -euo pipefail
@@ -433,8 +436,11 @@ IFS=: read -ra parts <<< "$PATH"
 for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$d"; done
 export PATH="$newpath"
 cd "$here" || exit 2
-# The lane exits 6 when the provider rejects the account's credit or key. That account would answer every
-# remaining chunk the same way, so dispatch stops: one rejection on a pinned account, two on auto (one per account).
+# The lane exits 6 when the provider rejects the account's credit or key and the subscription fallback does not
+# replay the chunk (HIMMEL_API_FALLBACK=off, or the fallback's usage preflight skipped it). That account would answer
+# every remaining chunk the same way, so dispatch stops: one rejection on a pinned account, two on auto (one per
+# account). When the fallback does run, the lane exits with its own code, not 6, so this breaker never trips and the
+# remaining chunks go on on the subscription.
 limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit=2
 if [ "$(cat "$here/rejected" 2>/dev/null | wc -l)" -ge "$limit" ]; then
   echo "claude-api shim: the lane has rejected the account's credit or key $limit time(s) this run; not dispatching this chunk" >&2
@@ -480,8 +486,14 @@ cat "$err" >&2
 # cap, but keep it out of the spend file so the run row reports only verified cost. A call the lane refused
 # before any API request (exit 2, nothing on stdout, its own refusal line) was never billed: it counts for nothing,
 # and neither does a credit or key rejection (exit 6), which is also what stops the next dispatch.
+# A call the lane replayed on the subscription (it says so on stderr) is not API spend: the replay's cost, and the
+# cost of a failed replay, go in neither file, so the run row's cost_usd stays what the API was charged. The API
+# attempt before the replay may still have been billed (a timeout, a budget stop), so its per-call budget is
+# reserved unless it was refused or rejected before any billable work.
 cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
-if [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
+if grep -q '^claude-api: fallback: running on the subscription' "$err"; then
+  grep -Eq '^claude-api: (refused: |account .* (credit exhausted|API key rejected))' "$err" || echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"
+elif [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
 elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
 elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2

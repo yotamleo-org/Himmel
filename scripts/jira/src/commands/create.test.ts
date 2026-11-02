@@ -35,6 +35,8 @@ beforeEach(async () => {
   vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(baseRoot, 'keys'));
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+  // create posts to Jira; a loopback Jira is a stub, so the post door stays open.
+  vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
   writeFileSync(join(baseRoot, 'verbatim.txt'), 'R1 = v1.1.3\n');
   const p = new Command();
   p.exitOverride();
@@ -421,6 +423,28 @@ describe('create — Sector and home rule (HIMMEL-6223, HIMMEL-6277)', () => {
     await expect(run(['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--parent', 'HIMMEL-9'])).rejects.toThrow(/exit 1/);
     expect(posted()).toBeUndefined();
     expect(errText()).toMatch(/no Sector.*--sector.*Ship loop.*sector setup --opt-out/s);
+  });
+
+  const FILE = ['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', '--parent', 'HIMMEL-9'];
+
+  it('files a Task titled "Visibility: x" with no --sector under the Sector Visibility (HIMMEL-8659)', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--title', 'Visibility: x', '--desc', PLAIN, ...FILE]);
+    const body = posted()![2] as { fields: Record<string, unknown> };
+    expect(body.fields['customfield_10212']).toEqual({ value: 'Visibility' });
+  });
+
+  it('refuses a Task whose title prefix names no live Sector, listing the options (HIMMEL-8659)', async () => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await expect(
+      p.parseAsync(['node', 'jira', 'create', '--title', 'Billing: x', '--desc', PLAIN, ...FILE]),
+    ).rejects.toThrow(/exit 1/);
+    expect(posted()).toBeUndefined();
+    expect(errText()).toMatch(/refused.*"Billing:".*not a Sector.*Ship loop/s);
   });
 
   it('with JIRA_SECTOR_FIELD unset, files a Task without --sector and sends no Sector field', async () => {
@@ -2107,5 +2131,44 @@ describe('create — core label from the Agent detail (HIMMEL-8353)', () => {
     await file('Edits docs/internals/enforcement.md only.');
     expect(labels()).not.toContain('core');
     expect(out.filter((l) => l.startsWith('core'))).toEqual([]);
+  });
+});
+
+// The post door: a test on the station never files, comments on or re-ranks a real ticket. The
+// station is forced with the guard's add-only seam so CI (a VM) sees the same refusal.
+describe.skipIf(process.platform !== 'linux')('create — post door (a test on the station)', () => {
+  const failure = async (): Promise<string> => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    try {
+      await p.parseAsync([
+        'node', 'jira', 'create', '--desc', PLAIN, '--type', 'Task', '--title', 't',
+        '--backlog', '--proposed-version', 'backlog', '--why', 'filed by the test', ...HOME,
+      ]);
+      return '';
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockRequest.mockResolvedValue({ key: 'HIMMEL-1' });
+    vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
+  });
+
+  it('refuses against a real Jira host and sends nothing', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://jira.invalid');
+    expect(await failure()).toMatch(/create: refused, nothing was posted/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('files against a loopback Jira', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    expect(await failure()).not.toMatch(/nothing was posted/);
+    expect(mockRequest).toHaveBeenCalled();
   });
 });

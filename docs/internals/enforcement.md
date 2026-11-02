@@ -4068,13 +4068,23 @@ tool, so there is no `.codex/hooks.json` twin.
 in the himmel-ops `hooks.json` as
 `${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh`, so an adopter
 repo gets it too. The file has two modes, by whether the himmel fetcher is
-reachable under `WALLED_TOOLING_DIR` (default
-`$CLAUDE_PROJECT_DIR/scripts/web`):
+reachable under `WALLED_TOOLING_DIR` (default: the checkout of the user-scope
+`himmel` marketplace, read from `installLocation` in
+`<config dir>/plugins/known_marketplaces.json`, since an installed plugin sits in
+the plugin cache and not in the checkout; files under `$CLAUDE_PROJECT_DIR` are
+never read, so a project file cannot reroute or empty the guard, HIMMEL-8560).
+`WALLED_TOOLING_DIR` itself is read from the environment, as the shim needs: the
+himmel project-lane shim sets it to its own checkout's `scripts/web`, and a
+project `settings.json` `env` block can still set it, as it can already set
+`HIMMEL_WEBFETCH_WALLED_OK=1`. The default is never derived from the project dir:
 
 - **himmel** (`fetch-url.sh` and `walled-hosts.conf` both there): the host list
   is the one line of `scripts/web/walled-hosts.conf` and the deny carries the
   paste-ready, shell-quoted `bash <scripts/web/fetch-url.sh> '<url>'`; the
-  Scrapling stealth fetcher returns the page where WebFetch gets HTTP 402.
+  Scrapling stealth fetcher returns the page where WebFetch gets HTTP 402. A
+  blank first line is the exception: the hook keeps the embedded list and gives
+  the adopter deny below, with no paste-ready command, so the guard never goes
+  silent on an empty conf.
 - **adopter** (no such files): the host list is the `WALLED_HOSTS` string in the
   hook, which the suite pins equal to the conf line, and the deny names no
   himmel script. It says to use a browser-capable tool or ask the operator to

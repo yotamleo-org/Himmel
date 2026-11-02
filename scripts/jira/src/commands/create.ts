@@ -10,14 +10,14 @@ import type { CreateIssueResponse } from '../types.js';
 import { uploadAll } from './attach-helper.js';
 import { readBodyFile } from './body-file.js';
 import { parseLabels } from './labels.js';
-import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
+import { homeVerdict, lintPlainBlock, lintPlainBlockAdf, plainBlockVerdict, titleSector, titleVerdict, PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
 import { admissionsLedgerExists, appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
 import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
-import { ctxFor, refuseRequest } from './release.js';
+import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
 import { placementOf, readOperatorRecords, request as releaseRequest } from '../release/engine.js';
 import { admits } from '../release/leaks.js';
 import { loadKey } from '../release/ledger.js';
@@ -111,6 +111,23 @@ export function resolveTitle(opts: { title?: string; summary?: string }): string
     throw new Error('Create requires --title (or --summary)');
   }
   return title;
+}
+
+/** The Sector to file under: the typed --sector, else a live "<Sector>: " title prefix; an unknown prefix exits 1. */
+function sectorForCreate(
+  type: string,
+  title: string,
+  given: string | undefined,
+  sectors: readonly string[] | undefined,
+): string | undefined {
+  if (!sectors) return undefined;
+  if (given !== undefined) return resolveSector(given, sectors);
+  const derived = titleSector(type, title, sectors);
+  if (derived.refuse) {
+    console.error(derived.refuse);
+    process.exit(1);
+  }
+  return derived.sector;
 }
 
 const FU_CLASSES = ['polish', 'escape', 'hardening'];
@@ -852,6 +869,8 @@ export function registerCreate(program: Command): void {
           console.log(PLAIN_BLOCK_TEMPLATE);
           return;
         }
+        // Everything below can file, comment on or re-rank a real ticket: a test on the station stops here.
+        refuseTestJiraPost('create');
         if (options.followUpOf !== undefined && options.residualOf !== undefined) {
           throw new Error('--follow-up-of cannot be combined with --residual-of (a residual is already linked to its parent)');
         }
@@ -906,8 +925,7 @@ export function registerCreate(program: Command): void {
         if (options.sector !== undefined && !sectors) {
           console.error('jira: warning: --sector ignored, Sector is not configured (run `jira sector setup`)');
         }
-        const sector =
-          options.sector !== undefined && sectors ? resolveSector(options.sector, sectors) : undefined;
+        const sector = sectorForCreate(options.type, resolveTitle(options), options.sector, sectors);
         let labels = options.labels !== undefined ? parseLabels(options.labels) : undefined;
         let residual: ResidualPlan | undefined;
         if (options.residualOf !== undefined) {
