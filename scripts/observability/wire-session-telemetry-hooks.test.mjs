@@ -352,7 +352,11 @@ describe('the queue-lock self-heartbeat entry (HIMMEL-2318)', () => {
     assert.equal('matcher' in group, false, 'no matcher key: it must fire after every tool');
     assert.equal(group.hooks.length, 1, 'it gets its own dedicated group');
     assert.equal(hook.timeout, 10);
-    assert.equal(hook.command, 'bash "$CLAUDE_PROJECT_DIR/scripts/handover/queue-lock.sh" self-heartbeat');
+    assert.equal(
+      hook.command,
+      'if [ -f "$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh" ]; then command -p sh "$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh" "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js" "$CLAUDE_PROJECT_DIR/scripts/handover/queue-lock.sh" self-heartbeat; else node "$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js" "$CLAUDE_PROJECT_DIR/scripts/handover/queue-lock.sh" self-heartbeat; fi',
+    );
+    assert.doesNotMatch(hook.command, /(^|\s)bash(\s|$)/, 'never a bare bash: it routes through run-hook-with-bash.js');
   });
 
   test('the pre-existing Agent group is left byte-identical beside it', () => {
@@ -387,6 +391,35 @@ describe('the queue-lock self-heartbeat entry (HIMMEL-2318)', () => {
     assert.equal(r.status, 1);
     assert.match(r.stderr, /no writer at .*queue-lock\.sh/);
     assert.equal(fs.readFileSync(f, 'utf8'), original, 'nothing is written');
+  });
+});
+
+describe('the stop-queue-wrapped session-end is a canonical variant (HIMMEL-8726)', () => {
+  // The tracked .claude/settings.json runs session-end through the durable
+  // stop-queue; a plain install must not read that as drift and rewrite it.
+  const WRAPPED = {
+    type: 'command',
+    command: 'node "$CLAUDE_PROJECT_DIR/scripts/hooks/stop-queue.mjs" enqueue --key session-run-end -- bun "$CLAUDE_PROJECT_DIR/scripts/observability/session-run-hook.ts" session-end',
+    timeout: 10,
+  };
+  const withWrapped = () => {
+    const s = structuredClone(BASE);
+    s.hooks.SessionEnd = [{ hooks: [structuredClone(WRAPPED)] }];
+    return s;
+  };
+
+  test('statusOf counts it wired, and install leaves it byte-identical', () => {
+    const s = withWrapped();
+    assert.equal(statusOf(s).wired, 1, 'only session-end is wired in the bare fixture');
+    const { settings } = install(s);
+    assert.equal(statusOf(settings).wired, 5);
+    assert.deepEqual(settings.hooks.SessionEnd, s.hooks.SessionEnd, 'wrapper kept, not rewritten to the plain form');
+    assert.equal(settings.hooks.SessionEnd.flatMap((g) => g.hooks).length, 1, 'no duplicate session-end');
+  });
+
+  test('--off still strips the wrapped form', () => {
+    const { settings } = remove(install(withWrapped()).settings);
+    assert.equal(settings.hooks.SessionEnd, undefined);
   });
 });
 

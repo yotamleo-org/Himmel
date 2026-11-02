@@ -18,6 +18,7 @@
 #   bash queue-lock.sh release   <handover-path> <session-token>
 #   bash queue-lock.sh status    <handover-path>
 #   bash queue-lock.sh status --sweep [<handover-dir>]
+#   bash queue-lock.sh adopt     <handover-path> <session-token>
 #   bash queue-lock.sh self-heartbeat        (hook verb; hook JSON on stdin)
 #
 # TOKEN CONTRACT: `acquire` records a session token in
@@ -94,8 +95,10 @@
 # driven by the harness rather than by the worker remembering anything:
 #   - `self-heartbeat` runs as a PostToolUse hook (wired by
 #     scripts/observability/wire-session-telemetry-hooks.mjs). It finds the
-#     locks THIS session acquired (the .doc sidecars next to the
-#     per-session token files, scoped by the session digest), refreshes any whose heartbeat
+#     locks THIS session acquired (the .doc sidecars in this session's own
+#     scope.<digest>/ directory under the token dir -- the hook reads only
+#     that directory, so other sessions' sidecars cost it nothing, and it
+#     drops a registration whose lock dir is gone), refreshes any whose heartbeat
 #     is older than QUEUE_LOCK_SELF_HEARTBEAT_SECONDS (default 300), and
 #     records the hook payload's transcript_path in <lock>/liveness. It is
 #     silent and always exits 0 -- a hook must never block a tool call.
@@ -167,6 +170,14 @@
 #              12 held, STALE -- eligible for takeover (owner.json printed);
 #                 `status: STALE-DEAD` is the same rc 12 when
 #                 the owner is PROVABLY dead (see _ql_owner_provably_dead)
+#   adopt:     0  registered: this session's self-heartbeat now keeps the
+#                 lock fresh (token, sidecar and liveness marker written)
+#              1  usage error / environment failure (incl. the token dir or
+#                 the registration could not be written: nothing registered,
+#                 and no "adopted" line is printed)
+#              2  nothing registered: the token is not the holder's, no
+#                 session scope exists, or the lock changed hands while
+#                 adopt ran
 #   self-heartbeat: ALWAYS 0, and silent on stdout and stderr --
 #              it is a hook, so every failure (no scope, no registered lock,
 #              a refused heartbeat, garbage stdin) degrades to a no-op
@@ -248,7 +259,15 @@ Usage: queue-lock.sh acquire   <handover-path> [session-id]
        queue-lock.sh status    <handover-path>
        queue-lock.sh status --sweep [<handover-dir>]
        queue-lock.sh preflight <handover-path> [file...]
+       queue-lock.sh adopt     <handover-path> <session-token>
        queue-lock.sh self-heartbeat   (PostToolUse hook; reads hook JSON on stdin)
+
+adopt binds a lock that was acquired ON BEHALF of this session
+(QUEUE_LOCK_ON_BEHALF=1, e.g. by a chief launching its successor) to the
+calling session, after proving the token against owner.json, so this session's
+self-heartbeat keeps it fresh. rc 2 and nothing registered for a token that is
+not the holder's or a caller with no session scope; rc 1 if the registration
+could not be written.
 
 preflight is read-only: it prints `COLLISION file=<f> slug=<s>
 session=<id>` for each file you declare (or have changed) that another live
@@ -1201,18 +1220,35 @@ _ql_token_file() {
 # which by then holds a valid lock releasable with the printed token exactly as
 # before. with <lockdir> it also writes a `<file>.doc` sidecar
 # (line 1 the canonical doc path, line 2 the lock dir) -- the registration
-# `self-heartbeat` enumerates to find the locks this session holds. Same
-# directory, same 0600, same session digest in the filename, so another
-# session's hook never sees it as its own.
+# `self-heartbeat` enumerates to find the locks this session holds.
+# The sidecar lives in the session's OWN scope.<digest-of-scope>/ directory
+# under the token dir (_ql_sidecar_dir), so `self-heartbeat` reads exactly this
+# session's registrations and never has to hash another session's: its cost
+# does not grow with the number of sessions that ever ran on the host.
+# rc 0 = everything asked for was written; rc 1 = something was not (no
+# token dir, no scope, a failed write). The acquire path ignores the rc on
+# purpose (see _ql_register_owner); `adopt` reports it.
 _ql_token_persist() {
-    local f
-    _ql_token_dir_ensure "$(_ql_token_dir)" || return 0
-    f=$(_ql_token_file "$1" "$2") || return 0
-    ( umask 077; printf '%s\n' "$2" > "$f" ) 2>/dev/null || true
+    local f sdir
+    _ql_token_dir_ensure "$(_ql_token_dir)" || return 1
+    f=$(_ql_token_file "$1" "$2") || return 1
+    ( umask 077; printf '%s\n' "$2" > "$f" ) 2>/dev/null || return 1
     if [ -n "${3:-}" ]; then
-        ( umask 077; printf '%s\n%s\n' "$1" "$3" > "$f.doc" ) 2>/dev/null || true
+        sdir=$(_ql_sidecar_dir) || return 1
+        ( umask 077; mkdir -p "$sdir" && printf '%s\n%s\n' "$1" "$3" > "$sdir/${f##*/}.doc" ) 2>/dev/null || return 1
     fi
     return 0
+}
+
+# _ql_sidecar_dir -- this session's registration directory, or rc 1 with no
+# scope. One digest of the scope alone; the filenames inside are the token
+# file names, so forget addresses exactly the sidecar persist wrote.
+_ql_sidecar_dir() {
+    local s sd
+    s=$(_ql_session_scope) || return 1
+    sd=$(_ql_digest_of "$s") || return 1
+    [ -n "$sd" ] || return 1
+    printf '%s/scope.%s' "$(_ql_token_dir)" "$sd"
 }
 
 # _ql_token_recall <handover-path> -- print the persisted token (rc 0) or
@@ -1250,9 +1286,10 @@ _ql_token_recall() {
 # same window (this runs AFTER the lock dir is
 # removed) persists to ITS OWN file under ITS OWN token, never this one.
 _ql_token_forget() {
-    local f
+    local f sdir
     f=$(_ql_token_file "$1" "$2") || return 0
-    rm -f "$f" "$f.doc" 2>/dev/null || true
+    rm -f "$f" 2>/dev/null || true
+    sdir=$(_ql_sidecar_dir) && rm -f "$sdir/${f##*/}.doc" 2>/dev/null
     return 0
 }
 
@@ -1723,8 +1760,7 @@ queue_lock_acquire() {
                 return 1
             fi
             _ql_write_root_marker "$lockdir" "$lock_root"
-            _ql_token_persist "$ho" "$session" "$lockdir"
-            _ql_acquire_liveness "$lockdir"
+            _ql_register_owner "$ho" "$session" "$lockdir"
             echo "queue-lock: acquired (session=$session host=$host)"
             _ql_arms_retire_both "$ho" "$ho_raw" "$_QL_ROOT"
             echo "release-token: \`$session\`"
@@ -1961,8 +1997,7 @@ queue_lock_acquire() {
                 "$now" "$o_session" "$o_host" "$o_started" "$o_heartbeat" "$reason" "$session" "$host" \
                 >> "$lockdir/takeovers.log"
             _ql_write_root_marker "$lockdir" "$lock_root"
-            _ql_token_persist "$ho" "$session" "$lockdir"
-            _ql_acquire_liveness "$lockdir"
+            _ql_register_owner "$ho" "$session" "$lockdir"
             _ql_takeover_claim_release "$claim" "$claim_token" || true
             echo "queue-lock: took over ($reason) -- previous holder: session=$o_session host=$o_host" >&2
             echo "queue-lock: acquired (session=$session host=$host)"
@@ -2116,7 +2151,7 @@ _ql_write_liveness() {
     return 0
 }
 
-# _ql_acquire_liveness <lockdir> -- on acquire, record the
+# _ql_acquire_liveness <lockdir> [<token>] -- on acquire, record the
 # acquiring session's own transcript as the liveness marker when it can be
 # found: the first ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/*/<session>.jsonl.
 # Cheap (one glob), silent, best-effort; the PostToolUse self-heartbeat hook
@@ -2129,10 +2164,76 @@ _ql_acquire_liveness() {
     case "$sid" in *[!A-Za-z0-9_-]*) return 0 ;; esac
     for cand in "${CLAUDE_CONFIG_DIR:-${HOME:-/nonexistent}/.claude}"/projects/*/"$sid".jsonl; do
         [ -f "$cand" ] || continue
+        # With <token> (adopt) the marker is written only while that token still
+        # holds the lock, checked right before the write; a takeover landing
+        # between this check and the write is the same window the hook's own
+        # liveness write has, and the next hook call overwrites it.
+        [ -z "${2:-}" ] || _ql_owner_matches "$1" "$2" || return 0
         _ql_write_liveness "$1" "$cand"
         break
     done
     return 0
+}
+
+# _ql_register_owner <doc> <token> <lockdir> -- bind a fresh acquisition to the
+# CALLING session: its token file, its .doc sidecar (what self-heartbeat
+# enumerates) and its transcript as the liveness marker. A caller that acquires
+# FOR ANOTHER session (a chief launching its successor) sets
+# QUEUE_LOCK_ON_BEHALF=1: nothing is registered, because the invoker's hook
+# would otherwise keep the successor's lock fresh for as long as the invoker
+# works and blind the sweep's idle detection. The owner binds it itself with
+# `adopt`. A session's own acquire never sets the flag and is unchanged.
+_ql_register_owner() {
+    if [ "${QUEUE_LOCK_ON_BEHALF:-}" = "1" ]; then
+        echo "queue-lock: acquired on behalf of another session: not registered for this session's self-heartbeat; the owner binds it with 'queue-lock.sh adopt <handover-path> <token>'" >&2
+        return 0
+    fi
+    # best-effort on purpose: a failed registration costs the safety net, never the acquire
+    _ql_token_persist "$1" "$2" "$3" || true
+    _ql_acquire_liveness "$3"
+}
+
+# queue_lock_adopt <doc> <token> -- the owner of a lock that was acquired on its
+# behalf binds it to ITS OWN session: after the token is proved against
+# owner.json, the token file, .doc sidecar and liveness marker are registered
+# under the caller's scope, so the caller's self-heartbeat keeps it fresh. rc 2
+# for a token that is not the holder's or a caller with no session scope; it
+# writes nothing in either case and never touches the lock itself.
+queue_lock_adopt() {
+    local ho="${1:-}" session="${2:-}" lockdir o_session
+    if [ -z "$ho" ] || [ -z "$session" ]; then
+        echo "usage: queue-lock.sh adopt <handover-path> <session-token>" >&2
+        return 1
+    fi
+    _ql_enter "$ho" "queue-lock: could not resolve handover root" || return 1
+    lockdir="$_QL_LOCKDIR"
+    ho="$_QL_DOC"
+    if ! _ql_session_scope >/dev/null 2>&1; then
+        echo "queue-lock: adopt needs a session scope (CLAUDE_CODE_SESSION_ID or QUEUE_LOCK_SESSION_SCOPE); nothing registered" >&2
+        return 2
+    fi
+    o_session=""
+    [ -f "$lockdir/owner.json" ] && o_session=$(_ql_json_field "$lockdir/owner.json" session)
+    if [ -z "$o_session" ] || ! _ql_token_matches "$session" "$o_session"; then
+        echo "queue-lock: adopt refused -- no lock for this queue is held by that token; nothing registered" >&2
+        return 2
+    fi
+    _ql_test_pause adopt-verified
+    if ! _ql_token_persist "$ho" "$o_session" "$lockdir"; then
+        _ql_token_forget "$ho" "$o_session"
+        echo "queue-lock: adopt failed -- the registration could not be written (token dir unusable or not writable); nothing registered" >&2
+        return 1
+    fi
+    # The lock may have changed hands since the check above: then what was just
+    # written names a holder that is gone. Take it back and say so, rather
+    # than leave a registration (or a liveness marker in the new holder's lock).
+    if ! _ql_owner_matches "$lockdir" "$o_session"; then
+        _ql_token_forget "$ho" "$o_session"
+        echo "queue-lock: adopt refused -- the lock changed hands while adopting; nothing registered" >&2
+        return 2
+    fi
+    _ql_acquire_liveness "$lockdir" "$o_session"
+    echo "queue-lock: adopted (session=$o_session): this session's self-heartbeat now keeps it fresh"
 }
 
 # queue_lock_self_heartbeat -- the PostToolUse hook verb. Reads
@@ -2142,17 +2243,18 @@ _ql_acquire_liveness() {
 # silent and fail-open; every failure path is a plain `return 0`.
 #
 # Which locks are "ours": acquire registered each one as a `<token file>.doc`
-# sidecar (see _ql_token_persist) under a filename that starts with the
-# session-scoped digest of the doc path. A sidecar whose name does not start
-# with the digest computed from THIS session's scope belongs to another
-# session and is skipped, and the token inside is checked against owner.json
+# sidecar (see _ql_token_persist) in this session's own scope.<digest>/
+# directory (_ql_sidecar_dir). The hook reads only that directory, so it never
+# opens, let alone hashes, another session's registrations, whatever their
+# number (a flat layout cost ~7 spawns per foreign sidecar on every tool
+# call). The token inside is checked against owner.json
 # (_ql_owner_matches) before anything is written -- the same ownership proof a
 # manual heartbeat needs. The heartbeat itself is the unchanged
 # queue_lock_heartbeat, run in a subshell with HANDOVER_DIR pinned to the
 # lock's root so its generation fence and cross-root search behave exactly as
 # for a manual call.
 queue_lock_self_heartbeat() {
-    local raw="" session_id="" transcript="" dir sidecar doc lk tokfile h token
+    local raw="" session_id="" transcript="" dir sdir sidecar doc lk tokfile token
     local iv="${QUEUE_LOCK_SELF_HEARTBEAT_SECONDS:-300}" age root
     case "$iv" in ''|*[!0-9]*) iv=300 ;; esac
     [ -t 0 ] || raw=$(cat 2>/dev/null) || raw=""
@@ -2168,17 +2270,26 @@ queue_lock_self_heartbeat() {
     _ql_session_scope >/dev/null 2>&1 || return 0
     dir=$(_ql_token_dir)
     _ql_token_dir_ensure "$dir" || return 0
-    for sidecar in "$dir"/*.doc; do
+    sdir=$(_ql_sidecar_dir) || return 0
+    [ -d "$sdir" ] || return 0
+    for sidecar in "$sdir"/*.doc; do
         [ -f "$sidecar" ] || continue
-        doc=$(sed -n 1p "$sidecar" 2>/dev/null) || continue
-        lk=$(sed -n 2p "$sidecar" 2>/dev/null) || continue
+        doc=""; lk=""
+        { IFS= read -r doc; IFS= read -r lk; } < "$sidecar" 2>/dev/null
         [ -n "$doc" ] || continue
         [ -n "$lk" ] || continue
-        tokfile="${sidecar%.doc}"
-        h=$(_ql_token_digest "$doc") || continue
-        [ -n "$h" ] || continue
-        case "${tokfile##*/}" in "$h".*) ;; *) continue ;; esac
-        token=$(cat "$tokfile" 2>/dev/null) || continue
+        tokfile="$dir/${sidecar##*/}"
+        tokfile="${tokfile%.doc}"
+        # A registration whose lock dir is gone (released by another path,
+        # reaped, taken over and released) is dead weight: drop it. Only when
+        # the queue's lock directory itself is readable, so an unmounted
+        # handover root never reads as "every lock is gone".
+        if [ ! -d "$lk" ]; then
+            [ -d "${lk%/*}" ] && rm -f "$sidecar" "$tokfile" 2>/dev/null
+            continue
+        fi
+        token=""
+        IFS= read -r token < "$tokfile" 2>/dev/null
         [ -n "$token" ] || continue
         _ql_owner_matches "$lk" "$token" || continue
         [ -z "$transcript" ] || _ql_write_liveness "$lk" "$transcript"
@@ -2901,6 +3012,7 @@ _ql_main() {
     case "$verb" in
         acquire)   queue_lock_acquire "$@" ;;
         heartbeat) queue_lock_heartbeat "$@" ;;
+        adopt)     queue_lock_adopt "$@" ;;
         release)   queue_lock_release "$@" ;;
         status)    queue_lock_status "$@" ;;
         preflight) queue_lock_preflight "$@" ;;
