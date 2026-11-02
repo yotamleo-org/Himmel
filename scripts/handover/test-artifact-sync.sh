@@ -198,6 +198,48 @@ else
     fail "check: --registry with no value fails fast (exit 2), never loops" "rc=$rc (124 = timed out / looped) $(cat "$TMP_ROOT/check6.err")"
 fi
 
+echo "=== a test never writes a real root ==="
+# RREAL is a temp dir the guard is told to treat as the real handover root
+# (add-only seams), so a refused write lands nowhere real. The guard does not
+# run on Darwin.
+if [ "$(uname -s)" = Linux ]; then
+    RREAL="$TMP_ROOT/real-root"; mkdir -p "$RREAL" "$TMP_ROOT/boundary"
+    RREG="$RREAL/.artifacts/registry.jsonl"
+    STUB="$TMP_ROOT/boundary/claude"
+    printf '#!/bin/bash\n"$@"\n' > "$STUB"; chmod +x "$STUB"
+    GUARD_ENV=(HANDOVER_DIR="$RREAL" HIMMEL_REAL_STATE_EXTRA_ROOTS="$RREAL" HIMMEL_REAL_STATE_ASSUME_STATION=1)
+    printf '<html>guard</html>\n' > "$TMP_ROOT/guard.html"
+
+    rc=0
+    env "${GUARD_ENV[@]}" HIMMEL_TEST_FIXTURE=1 bash "$SCRIPT" record "https://claude.ai/artifact/guard-a" "$TMP_ROOT/guard.html" >"$TMP_ROOT/guard-a.out" 2>&1 || rc=$?
+    if [ "$rc" -eq 77 ] && grep -qF "REFUSED artifact-sync" "$TMP_ROOT/guard-a.out"; then
+        pass "record: a test is refused a write to a real root (rc 77)"
+    else
+        fail "record: a test is refused a write to a real root (rc 77)" "rc=$rc $(cat "$TMP_ROOT/guard-a.out")"
+    fi
+    if [ -e "$RREAL/.artifacts" ]; then fail "record: the refused write created .artifacts"; else pass "record: the refused write created nothing"; fi
+
+    rc=0
+    env -u HIMMEL_TEST_FIXTURE -u NODE_ENV "${GUARD_ENV[@]}" "$STUB" bash "$SCRIPT" record "https://claude.ai/artifact/guard-b" "$TMP_ROOT/guard.html" >"$TMP_ROOT/guard-b.out" 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ] && grep -qF "guard-b" "$RREG" 2>/dev/null; then
+        pass "record: a real session (claude ancestor) still writes"
+    else
+        fail "record: a real session (claude ancestor) still writes" "rc=$rc $(cat "$TMP_ROOT/guard-b.out")"
+    fi
+
+    if command -v setsid >/dev/null 2>&1; then
+        ( env -u HIMMEL_TEST_FIXTURE -u NODE_ENV "${GUARD_ENV[@]}" setsid bash "$SCRIPT" record "https://claude.ai/artifact/guard-c" "$TMP_ROOT/guard.html" >/dev/null 2>&1 & )
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do grep -qF "guard-c" "$RREG" 2>/dev/null && break; sleep 0.2; done
+        if grep -qF "guard-c" "$RREG" 2>/dev/null; then
+            pass "record: a detached caller (cron or tick shape, no test ancestor) still writes"
+        else
+            fail "record: a detached caller (cron or tick shape, no test ancestor) still writes"
+        fi
+    else
+        echo "  SKIP: setsid missing, detached-caller row not run"
+    fi
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ]
