@@ -1217,3 +1217,4 @@ marketplace/plugins/obsidian-triage/tests/test-validate-ai-first.sh	local	behavi
 scripts/station-ops/test-station-ops.sh	pr	guard
 scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new for HIMMEL-8349 (series-next.sh, slice S2b)
 scripts/handover/chief-kit/test-holds.sh	pr	trust-path
+scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new for HIMMEL-6992 (relay-cost eval checker, pricing, runner)
