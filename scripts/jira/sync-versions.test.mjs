@@ -476,6 +476,7 @@ describe('CLI option-value validation', () => {
 describe('makeJira names its writer (HIMMEL-8823 S3)', () => {
   it('sync-versions names itself on the fix-version write, over an inherited variable', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'sync-writer-'));
+    const before = { SYNC_OUT: process.env.SYNC_OUT, HIMMEL_VERSION_WRITER: process.env.HIMMEL_VERSION_WRITER };
     try {
       const cli = join(dir, 'cli.mjs');
       const out = join(dir, 'out.txt');
@@ -485,8 +486,10 @@ describe('makeJira names its writer (HIMMEL-8823 S3)', () => {
       await makeJira(cli, 'HIMMEL').fixVersion('HIMMEL-1', 'v1.1.3');
       expect(readFileSync(out, 'utf8')).toBe('fix-version HIMMEL-1 --add v1.1.3|sync-versions\n');
     } finally {
-      delete process.env.SYNC_OUT;
-      delete process.env.HIMMEL_VERSION_WRITER;
+      for (const [name, value] of Object.entries(before)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
       rmSync(dir, { recursive: true, force: true });
     }
   });
