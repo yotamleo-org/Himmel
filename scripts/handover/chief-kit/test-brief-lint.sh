@@ -429,9 +429,27 @@ mk s_noarg '# brief' "$VAGUE" "${DIR_LINE//explain \"brief-lint\"/explain}" '' '
 NOGRAPH_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query -c jira-himmel "lint"` (tickets and PRs) and `bash /x/scripts/lib/qmd-bounded.sh query -c luna "lint"` (specs, audits and decisions), and cite what each returned. This leg has no graph lookup (it names no code path). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
 # shellcheck disable=SC2016  # literal backticks again
 ADAPTER_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query -c luna "lint"` (specs, audits and decisions; this repo has no Jira mirror, so no ticket search), and cite what each returned. This leg has no graph lookup (an adopter repo has no himmel graph). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
-mk s_nogl '# brief' "$VAGUE" "$NOGRAPH_LINE" '' '> **Contract:** y' "$RES"
-mk s_adapter '# brief' "$VAGUE" "$ADAPTER_LINE" '' '> **Contract:** y' "$RES"
-mk s_adapter_noluna '# brief' "$VAGUE" "${ADAPTER_LINE//-c luna/-c vault}" '' '> **Contract:** y' "$RES"
+# The three "no ..." phrases count only where true, judged from resume_cwd and the Writes line.
+CW_ADP="$tmp/cwd-adapter"; git init -q "$CW_ADP"
+CW_SAL="$tmp/cwd-salus"; git init -q "$CW_SAL"; : > "$CW_SAL/.salus"
+CW_HIM="$tmp/cwd-himmel"; git init -q "$CW_HIM"; mkdir -p "$CW_HIM/scripts/handover/chief-kit"; : > "$CW_HIM/scripts/handover/chief-kit/headed-arm-worker.sh"
+mkc() { # name cwd lines...
+    local n="$1" cw="$2"; shift 2
+    mk_raw "$n" '---' 'description: Check the lint on a test brief' "resume_cwd: $cw" '---' "$@"
+}
+mkc s_nogl "$CW_HIM" '# brief' "$VAGUE" "$NOGRAPH_LINE" '' '> **Writes:** none named' '> **Contract:** y' "$RES"
+mkc s_nogl_false "$CW_HIM" '# brief' "$VAGUE" "$NOGRAPH_LINE" '' '> **Writes:** scripts/x.sh' '> **Contract:** y' "$RES"
+mkc s_adapter "$CW_ADP" '# brief' "$VAGUE" "$ADAPTER_LINE" '' '> **Contract:** y' "$RES"
+mkc s_adapter_false "$CW_HIM" '# brief' "$VAGUE" "$ADAPTER_LINE" '' '> **Contract:** y' "$RES"
+mkc s_adapter_noluna "$CW_ADP" '# brief' "$VAGUE" "${ADAPTER_LINE//-c luna/-c vault}" '' '> **Contract:** y' "$RES"
+# shellcheck disable=SC2016  # literal backticks again
+SALUS_LINE='> This repo is salus-marked (PHI): no notes search and no graph lookup, because a query would send text off this machine. Your Results carry a `graph-qmd: n/a, salus-marked repo` bullet saying so.'
+mkc s_salus "$CW_SAL" '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
+mkc s_salus_false "$CW_HIM" '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
+mkc s_primary "$CW_HIM" '# brief' "$VAGUE" "${DIR_LINE//bash \/x/bash <primary checkout>}" '' '> **Contract:** y' "$RES"
+mkc s_query_ph "$CW_HIM" '# brief' "$VAGUE" "${DIR_LINE//\"lint\"/\"<query>\"}" '' '> **Contract:** y' "$RES"
+mkc s_expand "$CW_HIM" '# brief' "$VAGUE" "${DIR_LINE//\"lint\"/\"\$(touch /tmp/x)\"}" '' '> **Contract:** y' "$RES"
+mkc s_tick "$CW_HIM" '# brief' "$VAGUE" "${DIR_LINE//\"brief-lint\"/\"a\`b\"}" '' '> **Contract:** y' "$RES"
 expect_rc "9a a worker brief with no directive is refused" 1 "$tmp/s_vague.md"
 err="$(bash "$LINT" "$tmp/s_vague.md" 2>&1 >/dev/null)"
 { grep -Fq 'qmd-bounded.sh' <<< "$err" && grep -Fq 'worker-graph.sh' <<< "$err" && grep -Fq 'graph-qmd:' <<< "$err" && grep -Fq -- '-c luna' <<< "$err"; } \
@@ -453,6 +471,20 @@ expect_rc "9p a directive that still says <symbol> is refused" 1 "$tmp/s_symbol.
 expect_rc "9s a leg with no code path says it has no graph lookup in place of the command" 0 "$tmp/s_nogl.md"
 expect_rc "9t an adopter-repo directive (luna only, no Jira mirror, no graph lookup) passes" 0 "$tmp/s_adapter.md"
 expect_rc "9t2 an adopter-repo directive still has to search luna" 1 "$tmp/s_adapter_noluna.md"
+expect_rc "9u 'no graph lookup' is refused when the leg names a code path" 1 "$tmp/s_nogl_false.md"
+expect_rc "9u2 'no Jira mirror' is refused when resume_cwd is a himmel checkout" 1 "$tmp/s_adapter_false.md"
+expect_rc "9v a salus-marked resume_cwd may say it searches nothing" 0 "$tmp/s_salus.md"
+expect_rc "9v2 'no notes search' is refused when resume_cwd is not salus-marked" 1 "$tmp/s_salus_false.md"
+expect_rc "9w the template's <primary checkout> placeholder is refused" 1 "$tmp/s_primary.md"
+expect_rc "9w2 any angle-bracket placeholder, not just <topic>, is refused" 1 "$tmp/s_query_ph.md"
+expect_rc "9x a quoted query with \$(...) is refused" 1 "$tmp/s_expand.md"
+expect_rc "9x2 a quoted symbol with a backtick is refused" 1 "$tmp/s_tick.md"
+# An unreadable guard list fails closed (marked); a missing one reads as not marked.
+H_BAD="$tmp/home-bad"; mkdir -p "$H_BAD/.config/claude-glm/phi-roots"; H_NONE="$tmp/home-none"; mkdir -p "$H_NONE"
+HOME="$H_BAD" python3 -I "$HERE/salus_marked.py" salus "$CW_HIM"; rc=$?
+[ "$rc" = 0 ] && ok "9y an unreadable phi-roots list reads as salus-marked" || bad "9y unreadable phi-roots rc=$rc"
+HOME="$H_NONE" python3 -I "$HERE/salus_marked.py" salus "$CW_HIM"; rc=$?
+[ "$rc" = 1 ] && ok "9y2 an absent list reads as not marked" || bad "9y2 absent list rc=$rc"
 expect_rc "9q a directive with an empty quoted query is refused" 1 "$tmp/s_emptyq.md"
 expect_rc "9r a directive with an empty quoted symbol is refused" 1 "$tmp/s_emptysym.md"
 expect_rc "9q2 a directive with a blank (whitespace-only) quoted query is refused" 1 "$tmp/s_blankq.md"

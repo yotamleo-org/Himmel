@@ -601,7 +601,7 @@ for ok in 'Close WRAPPED chief windows' 'Stop worker windows piling up' 'Spread 
     [ "$rc" = 0 ] && pl_complete && pass "'$ok' is chief wording, not the OS" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
 done
 # Fail closed: with the pattern file gone the script exits 2 rather than briefing unfiltered.
-NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"
+NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"; cp "$HERE/salus_marked.py" "$NF/"
 python3 "$NF/gen-briefs.py" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$rc"
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
@@ -668,7 +668,7 @@ rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 
 # adopter worktree as WORKER_SESSION_REPO (headed-arm.sh starts the session in that dir) ---
 KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
 mkdir -p "$KIT/scripts/ci"
-cp "$SUT" "$HERE/platform-dropped.re" "$KIT/scripts/handover/chief-kit/"
+cp "$SUT" "$HERE/salus_marked.py" "$HERE/platform-dropped.re" "$KIT/scripts/handover/chief-kit/"
 cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
 mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$KIT/scripts/lib/"
 export ADP_WT_LOG="$WORK/adp-wt.log"
@@ -715,6 +715,9 @@ rc=0; HOME="$WORK/home" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_C
 PB="$(tr '\n' ' ' < "$WORK"/hr/tester/phi/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
 has "a phi-roots repo says it searches nothing" "$PB" "no notes search"
 lacks "and names no luna search" "$PB" "query -c luna"
+WTR="$WORK/wt-marked-repo"; git init -q "$WTR"; mkdir -p "$WTR/.claude/worktrees/fix+himmel-9001-plain-fix"; : > "$WTR/.claude/worktrees/fix+himmel-9001-plain-fix/.salus"
+rc=0; GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/wtm" --repo "$WTR" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/wtm.out" 2>"$WORK/wtm.err" || rc=$?
+has "a marker on the worker's own worktree (the repo unmarked) makes that worker's brief search nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/wtm/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"
 DEN="$WORK/deny-repo"; git init -q "$DEN"; mkdir -p "$WORK/home2/.config/claude-glm"; printf '%s\n' "$DEN" > "$WORK/home2/.config/claude-glm/egress-denylist"
 rc=0; HOME="$WORK/home2" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$KIT/scripts/handover/chief-kit/gen-briefs.py" "$WORK/workers.json" --base "$ADPBASE" --chief BZ --bucket "$WORK/hr/tester/den" --repo "$DEN" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >"$WORK/den.out" 2>"$WORK/den.err" || rc=$?
 has "an egress-denylist repo says it searches nothing" "$(tr '\n' ' ' < "$WORK"/hr/tester/den/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)" "no notes search"

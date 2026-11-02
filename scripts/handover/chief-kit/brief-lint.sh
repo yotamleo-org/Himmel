@@ -308,29 +308,52 @@ fi
 # #PR does not stand in for it: naming the query is what moved use in the audit, a bare mention moved little. A judge
 # brief writes nothing and is not held to it, and a doc whose Results already holds a bullet has run (a resume that
 # only ships) and is not made to fail.
-# A salus-marked repo searches nothing and says "no notes search" in words, which stands in for the whole directive.
-if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc" && ! grep -q 'no notes search' <<< "$flat"; then
-    has_directive=1
-    for token in qmd-bounded.sh 'graph-qmd:' '-c luna'; do
-        case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
-    done
-    # An adopter repo has no Jira mirror and no himmel graph, and a leg that writes no code names no symbol: each says so
-    # in words in place of that command.
-    case "$flat" in *"-c jira-himmel"*|*"no Jira mirror"*) ;; *) has_directive=0 ;; esac
-    case "$flat" in *worker-graph.sh*|*"no graph lookup"*) ;; *) has_directive=0 ;; esac
-    if [ "$has_directive" -eq 0 ]; then
-        fail "'> **Prior art:**' lacks the search directive (a ticket key or #PR does not replace it): add it as a continuation line naming the query and symbol: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and the same with '-c luna', and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; see docs/handover/worker-brief-template.md"
+# Each of the words "no notes search", "no Jira mirror" and "no graph lookup" stands in for its command only when it is true,
+# judged from the brief's own resume_cwd: a salus-marked directory searches nothing, an adopted repo has no Jira mirror and
+# no himmel graph, and a leg whose Writes line says none named has no symbol to look up.
+if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
+    cwd="$(sed -n 's/^resume_cwd:[[:space:]]*//p' "$doc" | head -1)"
+    is_salus=0; is_adapter=0; none_named=0
+    if [ -n "$cwd" ]; then
+        python3 -I "$(dirname "$0")/salus_marked.py" salus "$cwd" && is_salus=1
+        python3 -I "$(dirname "$0")/salus_marked.py" adapter "$cwd" && is_adapter=1
     fi
-    case "$flat" in
-        *"<topic>"*|*"<symbol>"*) fail "'> **Prior art:**' directive still carries the literal <topic> or <symbol> placeholder: name the query and the graph symbol this worker should search" ;;
-    esac
-    # Each command that stands carries a quoted argument that names something: not empty, not blank.
-    arg='"[^"[:space:]][^"]*"'
-    bad_arg=0
-    grep -Eq -- "-c luna $arg" <<< "$flat" || bad_arg=1
-    case "$flat" in *"no Jira mirror"*) ;; *) grep -Eq -- "-c jira-himmel $arg" <<< "$flat" || bad_arg=1 ;; esac
-    case "$flat" in *"no graph lookup"*) ;; *) grep -Eq -- "worker-graph\.sh explain $arg" <<< "$flat" || bad_arg=1 ;; esac
-    [ "$bad_arg" -eq 0 ] || fail "'> **Prior art:**' directive has an empty or blank quoted query or symbol: name the query and the graph symbol this worker should search"
+    grep -Eiq '^> \*\*Writes:\*\*.*none named' "$doc" && none_named=1
+    has_directive=1
+    if [ "$is_salus" -eq 1 ] && [[ "$flat" == *"no notes search"* ]]; then
+        : # a salus-marked directory: the words stand in for the whole directive
+    else
+        [[ "$flat" == *"no notes search"* ]] && fail "'> **Prior art:**' says 'no notes search' but resume_cwd is not a salus-marked directory: a brief searches the notes unless the repo is salus-marked"
+        for token in qmd-bounded.sh 'graph-qmd:' '-c luna'; do
+            case "$flat" in *"$token"*) ;; *) has_directive=0 ;; esac
+        done
+        jira_ok=0; graph_ok=0
+        { [ "$is_adapter" -eq 1 ] && [[ "$flat" == *"no Jira mirror"* ]]; } && jira_ok=1
+        { { [ "$is_adapter" -eq 1 ] || [ "$none_named" -eq 1 ]; } && [[ "$flat" == *"no graph lookup"* ]]; } && graph_ok=1
+        case "$flat" in *"-c jira-himmel"*) ;; *) [ "$jira_ok" -eq 1 ] || has_directive=0 ;; esac
+        case "$flat" in *worker-graph.sh*) ;; *) [ "$graph_ok" -eq 1 ] || has_directive=0 ;; esac
+        if [ "$has_directive" -eq 0 ]; then
+            fail "'> **Prior art:**' lacks the search directive (a ticket key or #PR does not replace it): add it as a continuation line naming the query and symbol: run 'bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel \"<topic>\"' and the same with '-c luna', and 'bash scripts/graphify/worker-graph.sh explain \"<symbol>\"' before designing, and report 'graph-qmd: <what each returned and whether used>' (or 'graph-qmd: n/a, shipping' on a resume that only ships) in Results; a salus-marked repo says 'no notes search and no graph lookup' instead, an adopted repo 'no Jira mirror' and 'no graph lookup', and the words count only where true; see docs/handover/worker-brief-template.md"
+        fi
+        # No angle-bracket placeholder anywhere in the directive (the graph-qmd bullet's own <what ...> excepted), and no
+        # shell expansion character inside a quoted argument.
+        chk="$(sed -E 's/graph-qmd: <[^>]*>//g' <<< "$flat")"
+        case "$chk" in *"Before you design"*) chk="${chk#*Before you design}" ;; esac
+        if [[ "$chk" =~ \<[^\>]*\> ]]; then
+            fail "'> **Prior art:**' directive still carries an angle-bracket placeholder (${BASH_REMATCH[0]}): name the query and the graph symbol this worker should search, and write the primary checkout path out"
+        fi
+        # shellcheck disable=SC2016
+        if grep -Eo -- '(-c (luna|jira-himmel)|explain) "[^"]*"' <<< "$flat" | grep -Eq '[`$\\!]'; then
+            fail "'> **Prior art:**' directive has a quoted query or symbol with a shell expansion character (backtick, dollar sign, backslash or exclamation mark): use plain words and paths"
+        fi
+        # Each command that stands carries a quoted argument that names something: not empty, not blank.
+        arg='"[^"[:space:]][^"]*"'
+        bad_arg=0
+        grep -Eq -- "-c luna $arg" <<< "$flat" || bad_arg=1
+        case "$flat" in *"-c jira-himmel"*) grep -Eq -- "-c jira-himmel $arg" <<< "$flat" || bad_arg=1 ;; esac
+        case "$flat" in *worker-graph.sh*) grep -Eq -- "worker-graph\.sh explain $arg" <<< "$flat" || bad_arg=1 ;; esac
+        [ "$bad_arg" -eq 0 ] || fail "'> **Prior art:**' directive has an empty or blank quoted query or symbol: name the query and the graph symbol this worker should search"
+    fi
 fi
 
 core_rule

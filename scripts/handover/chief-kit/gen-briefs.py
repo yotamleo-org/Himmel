@@ -110,6 +110,8 @@ Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it);
 """
 import argparse, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from salus_marked import salus_marked, is_adapter  # noqa: E402
 
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
@@ -212,7 +214,7 @@ def search_fields(worker):
 
 
 def search_directive(worker, ctx):
-    if ctx.get('salus'):
+    if ctx.get('salus') or (worker.get('wt') and salus_marked(worker['wt'])):
         # A query leaves the machine (embedding and rerank send the text to a provider), which scripts/guardrails/egress-matrix.json denies for a salus path.
         return ('This repo is salus-marked (PHI): no notes search and no graph lookup, because a query would send text off this machine. '
                 'Your Results carry a `graph-qmd: n/a, salus-marked repo` bullet saying so.')
@@ -1048,37 +1050,6 @@ template_version: 3
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
-
-
-def salus_marked(repo):
-    # The check scripts/claude-codex runs: a .salus or .salus-profile marker on the repo or an ancestor, or a repo inside (or holding) a phi-roots or egress-denylist entry.
-    d = os.path.realpath(repo)
-    top = d
-    while True:
-        if os.path.lexists(os.path.join(top, '.salus')) or os.path.lexists(os.path.join(top, '.salus-profile')):
-            return True
-        up = os.path.dirname(top)
-        if up == top:
-            break
-        top = up
-    for cfg, name in (('claude-codex', 'phi-roots'), ('claude-glm', 'phi-roots'), ('claude-glm', 'egress-denylist')):
-        try:
-            lines = open(os.path.join(os.path.expanduser('~'), '.config', cfg, name)).read().splitlines()
-        except OSError:
-            continue
-        for root in lines:
-            root = root.strip().rstrip('/')
-            if not root:
-                continue
-            root = os.path.realpath(root).rstrip('/')
-            if root and ((d + '/').startswith(root + '/') or (root + '/').startswith(d + '/')):
-                return True
-    return False
-
-
-def is_adapter(repo):
-    # An adopted repo is a git checkout with no chief-kit of its own: himmel's scripts must run for it.
-    return os.path.exists(os.path.join(repo, '.git')) and not os.path.exists(os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'headed-arm-worker.sh'))
 
 
 def new_worktree_argv(ctx, branch):
