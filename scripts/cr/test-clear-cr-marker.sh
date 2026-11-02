@@ -3071,6 +3071,83 @@ printf "SWEEP [r1@%s] class=typo :: single-site search=git grep -n -P -e 'echo a
 run_clear "$tmp" 0 "8z-cost a short -P pattern still clears -> exit 0" --check-sweeps "$tmp/cand.txt" feat/x
 rm -rf "$tmp"
 
+# 8aa-8ad. A spec or plan finding written by the design skill (--head <spec-id>
+# --artifact spec|plan, a head that is not a commit) edits a document outside the
+# tree, so it has no code class to sweep: gate 4d skips a row only when its
+# artifact is exactly spec or plan AND its head is not a commit hex. Every other
+# row (no artifact, a misspelled one, a spec row at a commit head) is collected.
+# 8aa. fixed spec and plan rows at non-commit heads, no diff row -> clears.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-spec","branch":"feat/x","model":"codex","finding_id":"codex-1","severity":"imp","file":"","line":0,"artifact":"spec","verdict":"fixed"}')" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-plan","branch":"feat/x","model":"claude","finding_id":"claude-18","severity":"imp","file":"","line":0,"artifact":"plan","verdict":"fixed"}')" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "8aa fixed spec and plan rows at non-commit heads need no variant-sweep record -> exit 0"
+if marker_exists "$tmp"; then fail "8aa: marker should be GONE"; else pass; fi
+rm -rf "$tmp"
+
+# 8aa-agreed. The same rows still `agreed` clear the sweep gate; gate 4c
+# (review-round promote) is a separate gate and still holds them.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-spec","branch":"feat/x","model":"codex","finding_id":"codex-1","severity":"imp","file":"","line":0,"artifact":"spec","verdict":"agreed"}')" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-plan","branch":"feat/x","model":"claude","finding_id":"claude-18","severity":"imp","file":"","line":0,"artifact":"plan","verdict":"agreed"}')" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8aa-agreed agreed spec and plan rows reach gate 4c, not the sweep gate -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'reason=missing-variant-sweep'; then
+    fail "8aa-agreed spec and plan rows must not be refused for a missing variant-sweep: $LAST_CLEAR_OUT"; else pass; fi
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round'; then pass; else
+    fail "8aa-agreed must be held by gate 4c with reason=unadjudicated-earlier-round: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# 8ab. Control: the same spec and plan rows plus an agreed DIFF finding with no
+# sweep record -> still refused, naming only the diff row.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-spec","branch":"feat/x","model":"codex","finding_id":"codex-1","severity":"imp","file":"","line":0,"artifact":"spec","verdict":"agreed"}')" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-plan","branch":"feat/x","model":"claude","finding_id":"claude-18","severity":"imp","file":"","line":0,"artifact":"plan","verdict":"agreed"}')" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"d1","severity":"sug","file":"a.sh","line":1,"verdict":"agreed"}' "${sha:0:8}")" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8ab an agreed diff finding with no sweep record is still refused beside spec and plan rows -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep' && grepq "$LAST_CLEAR_OUT" -F "d1@${sha:0:8}"; then pass; else
+    fail "8ab must refuse missing-variant-sweep naming d1@${sha:0:8}: $LAST_CLEAR_OUT"; fi
+if grepq "$LAST_CLEAR_OUT" -F 'himmel-8519-spec' || grepq "$LAST_CLEAR_OUT" -F 'himmel-8519-plan'; then
+    fail "8ab must not name the spec or plan rows: $LAST_CLEAR_OUT"; else pass; fi
+if marker_exists "$tmp"; then pass; else fail "8ab: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 8ac. Fail closed: only an artifact of exactly spec or plan skips the sweep. A
+# fixed row spelled "Diff" is still a code finding and needs its record.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"d2","severity":"sug","file":"a.sh","line":1,"artifact":"Diff","verdict":"fixed"}' "${sha:0:8}")" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8ac a fixed row with artifact Diff and no sweep record is refused -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep' && grepq "$LAST_CLEAR_OUT" -F "d2@${sha:0:8}"; then pass; else
+    fail "8ac must refuse missing-variant-sweep naming d2@${sha:0:8}: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# 8ad. A spec row at a real commit head is not a document finding the design skill
+# wrote: it still needs its sweep record.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"s1","severity":"sug","file":"a.sh","line":1,"artifact":"spec","verdict":"fixed"}' "${sha:0:8}")" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8ad a fixed spec row at a commit head and no sweep record is refused -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep' && grepq "$LAST_CLEAR_OUT" -F "s1@${sha:0:8}"; then pass; else
+    fail "8ad must refuse missing-variant-sweep naming s1@${sha:0:8}: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
 # 5a-5e. CR_FLOOR_FALLBACK=claude-only gate-3b escape. All five
 # cases require cross-model (else gate 3b never runs) and a Claude avail-ok row
 # (the floor). The fallback fires ONLY when every non-Claude lane that recorded
