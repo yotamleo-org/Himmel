@@ -4539,6 +4539,7 @@ for p in "${todo[@]}"; do
   echo "$p" >> "$STUB_CALLS"
   printf '{}' > "$target/graphify-out/cache/${p//\//__}.json"
   k=$((k+1))
+  case "$target" in *graphify-recent-*) [ -z "${STUB_CKPT_FAIL:-}" ] || echo "[graphify] incremental cache checkpoint failed: stub" >&2 ;; esac
   echo "[graphify extract] chunk $k/$m done" >&2
 done
 printf '{"nodes":[],"links":[]}' > "$target/graphify-out/graph.json"
@@ -4593,6 +4594,12 @@ mkdir -p "$RCORPUS/graphify-out/cache"; printf '{}' > "$RCORPUS/graphify-out/cac
 out=$(recent_run 1); rc=$?
 [ "$(recent_calls)" = "notes/a.md " ] \
   && pass "T-recent control a cached changed note is not served again; the backlog goes on" || fail "T-recent control expected notes/a.md alone, got: $(recent_calls)"
+
+echo "T-recent ckpt: a failed checkpoint in the pre-pass keeps the later cap stop from reading as resumable"
+recent_corpus "z"
+out=$(STUB_CKPT_FAIL=1 recent_run 2); rc=$?
+[ "$rc" -eq 2 ] && grep -q 'NOT resumable' <<<"$out" \
+  && pass "T-recent ckpt the cap stop fails (exit 2) instead of claiming the pre-pass chunks were kept" || fail "T-recent ckpt expected exit 2 with NOT resumable (got $rc): $out"
 
 echo "T-recent cap: both passes count against the one cap"
 recent_corpus "y z"

@@ -2335,6 +2335,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   _DONE_FILE="$SCRATCH/.graphify-extract-done"
   _CAP_LEFT="$GRAPHIFY_MAX_CHUNKS_PER_RUN"
   _PRE_DONE=0
+  _PRE_CKPT_FAILED=0
   _PRE_SCRATCH=""
   # Seconds graphify gets to exit after the TERM that stops it at the cap or on
   # hollow retries before it is SIGKILLed (timeout -k does not cover a TERM we send).
@@ -2506,6 +2507,8 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     _rc=0
     _run_extract "$GRAPHIFY_MAP" "$pre" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
     [ ! -s "$_DONE_FILE" ] || _PRE_DONE="$(cat "$_DONE_FILE")"
+    # The full run deletes $_CKPT_FILE, so keep a pre-pass checkpoint failure.
+    [ ! -s "$_CKPT_FILE" ] || _PRE_CKPT_FAILED=1
     if [ -d "$pre/$GRAPHIFY_OUT_NAME/cache" ]; then
       { mkdir -p "$SCRATCH_OUT/cache" && cp -R "$pre/$GRAPHIFY_OUT_NAME/cache/." "$SCRATCH_OUT/cache/"; } \
         || { echo "refresh-graph-map: could not merge the pre-pass cache" >&2; exit 2; }
@@ -2536,7 +2539,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     cap*)
       echo "refresh-graph-map: chunk cap ${_stop#cap } reached -- graphify-out left unpromoted, resumable (exit 4)" >&2
       _keep_finished_chunks
-      if [ "$_KEEP_FAILED" -eq 1 ] || [ -s "$_CKPT_FILE" ]; then
+      if [ "$_KEEP_FAILED" -eq 1 ] || [ -s "$_CKPT_FILE" ] || [ "$_PRE_CKPT_FAILED" -eq 1 ]; then
         echo "refresh-graph-map: the chunk cap stop is NOT resumable (finished chunks were not all kept: cache copy or graphify checkpoint failed) -- failing (exit 2)" >&2
         exit 2
       fi
