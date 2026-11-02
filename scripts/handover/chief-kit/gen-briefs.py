@@ -931,9 +931,6 @@ def render_rm_brief(l, ctx):
     return out + '\n'
 
 
-REMAINING_RE = re.compile(r'^[ \t]*remaining:[ \t]*(.*\S)', re.I | re.M)
-
-
 def partial_merge_prs(keys):
     """The PR numbers of every merged contract=no (partial) merge row of these keys, oldest first.
     The rows are written by merge-on-green.sh; the funnel's own rows carry no contract and never match."""
@@ -968,9 +965,10 @@ def partial_merge_prs(keys):
     return prs
 
 
-def pr_remaining(pr, repo):
-    """The `Remaining:` text of PR <pr>'s body (the line merge-on-green.sh reads): '' when the body has none, None when the body
-    could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as `$CMD pr view <pr> --json body -q .body`."""
+def pr_remaining(pr, repo, own_keys=()):
+    """The remainder text of PR <pr>'s body (see pr_remainder; a `Remaining:` line or the deferred coverage lines): '' when the
+    body records none, None when the body could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as
+    `$CMD pr view <pr> --json body -q .body`."""
     gh = os.environ.get('GEN_BRIEFS_GH_CMD') or 'gh'
     try:
         r = subprocess.run([gh, 'pr', 'view', pr, '--json', 'body', '-q', '.body'], cwd=repo, capture_output=True, text=True, timeout=30)
@@ -978,16 +976,19 @@ def pr_remaining(pr, repo):
         return None
     if r.returncode != 0:
         return None
-    return ' '.join(m.strip() for m in REMAINING_RE.findall(r.stdout))
+    # the ONE reader, scripts/lib/pr_remainder.py: merge-on-green.sh and next-dispatchable.sh run the same file
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+    from pr_remainder import pr_remainder
+    return pr_remainder(r.stdout, own_keys)[2]
 
 
 def partial_merge_block(keys, repo):
-    """The brief's `Already merged` block: every merged contract=no PR of the ticket and its Remaining: text, so a worker
-    never redoes merged work. A PR whose body has no Remaining: line is flagged for a chief note. No such PR, no block."""
+    """The brief's `Already merged` block: every merged contract=no PR of the ticket and its remainder text, so a worker
+    never redoes merged work. A PR whose body records no remainder is flagged for a chief note. No such PR, no block."""
     lines = []
     for pr in partial_merge_prs(keys):
-        rem = pr_remaining(pr, repo)
-        why = 'its body could not be read' if rem is None else 'its body has no `Remaining:` line'
+        rem = pr_remaining(pr, repo, keys)
+        why = 'its body could not be read' if rem is None else 'its body has no `Remaining:` line and no `deferred -> <KEY>` line under `## Ticket coverage`'
         lines.append('PR `#%s`: %s' % (pr, 'Remaining: ' + rem if rem else 'needs a chief note (%s); do not guess the remaining work' % why))
     if not lines:
         return ''

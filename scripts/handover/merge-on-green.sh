@@ -62,8 +62,10 @@
 #   --jira-transition  opt IN to auto-transitioning the ticket on this merge
 #                      (see "Jira auto-transition is opt-in"
 #                      below; default is a PARTIAL merge: the ticket status is
-#                      left unchanged, and the PR body's `Remaining:` line is
-#                      posted to it as a comment, never Done)
+#                      left unchanged, and the PR body's remainder (a `Remaining:`
+#                      line or the deferred lines under `## Ticket coverage`) is
+#                      posted to it as a comment, never Done; a body with
+#                      neither is refused, exit 26)
 #   --go GOFILE        the chief's GO file, <handover root>/.locks/go/<pr>.<head>.
 #                      A chief worker MUST pass it, so the merge command itself names
 #                      the review it relies on; it must be the file for THIS PR at
@@ -228,6 +230,13 @@
 #       HEAD carries commits the PR head does not (`git rev-list <head>..HEAD`
 #       non-empty), or whose HEAD cannot be compared with the PR head. Checked
 #       right after the PR metadata read, before any gate, on --dry-run too.
+#   26  partial-merge remainder: the merge is contract=no (no
+#       --jira-transition, or the brief says completes-ticket: no) on a ticket-tagged
+#       PR whose body has neither a `Remaining:` line nor a `<ask>: deferred -> <KEY>`
+#       line under `## Ticket coverage`, or whose body cannot be read, or when the
+#       anchor's scripts/lib/pr_remainder.py is missing or prints no answer. The
+#       refusal names the missing line. Checked after the title gate, before
+#       the audit preflight, on --dry-run too.
 #
 # Environment:
 #   ARMAUTOMERGE           Must be truthy (1/true/on/yes) to enable at all.
@@ -1907,6 +1916,56 @@ if ! title_err=$(TICKET_ID_AUTHOR="$fresh_title_author" TICKET_ID_TRUSTED_AUTHOR
     exit 20
 fi
 
+# _merge_contract — MERGE_ROW_CONTRACT: yes when this merge completes the ticket, else no. --jira-transition
+# opts in; a brief that says `Completes ticket: no` overrides it. Shared by every merge row.
+_merge_contract() {
+    local brief=""
+    MERGE_ROW_CONTRACT=no
+    if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then MERGE_ROW_CONTRACT=yes; fi
+    if [ -n "${WORKER_SESSION_DOC:-}" ] && [ -r "$WORKER_SESSION_DOC" ]; then
+        brief=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
+    fi
+    [ "$brief" != no ] || MERGE_ROW_CONTRACT=no
+}
+
+# 3d. A partial (contract=no) merge must record what remains. The dispatcher, the brief generator and the
+# Jira breadcrumb all read the PR body for it; a body with neither a `Remaining:` line nor a `deferred -> <KEY>` line under
+# `## Ticket coverage` strands the ticket In Progress with nobody to resume it, so the merge is refused before it lands. The
+# ONE reader is the anchor's `scripts/lib/pr_remainder.py` (a body on stdin, one tab-separated answer line), run from
+# $himmel_repo like every other helper the gate runs, never from the branch under review: its answer decides the merge. A
+# completing merge run without --jira-transition also stops here: its coverage holds only done lines, so the caller must
+# choose. The refusal only adds a stop: no other gate is loosened and the PR body is data, never executed. A reader that is
+# missing or answers nothing is a broken anchor, so it refuses too.
+_pr_remainder_answer() { # <ticket key> <PR body> -> the reader's answer line on stdout; rc 3 when the reader is absent, else the reader's own rc
+    local reader="$himmel_repo/scripts/lib/pr_remainder.py"
+    [ -f "$reader" ] || return 3
+    printf '%s' "$2" | python3 -I "$reader" "$1" 2>/dev/null
+}
+partial_key=""
+if declare -F ticket_key_from_title >/dev/null; then partial_key=$(ticket_key_from_title "$fresh_title") || partial_key=""; fi
+if [ -n "$partial_key" ]; then
+    _merge_contract
+    if [ "$MERGE_ROW_CONTRACT" = no ]; then
+        partial_body=""
+        partial_gh_rc=0
+        partial_reader_rc=0
+        # swallow-ok: a failed read sets partial_gh_rc, which refuses below (exit 26), so no plausible value reaches the decision
+        partial_body=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null) || partial_gh_rc=$?
+        partial_ans=""
+        if [ "$partial_gh_rc" -eq 0 ]; then partial_ans=$(_pr_remainder_answer "$partial_key" "$partial_body") || partial_reader_rc=$?; fi
+        # a failed read never reaches the reader, so it leaves no answer and refuses here too
+        if [ "$partial_reader_rc" -ne 0 ] || [ -z "$partial_ans" ]; then
+            echo "merge-on-green: cannot read PR #$pr_num's body, or the anchor's scripts/lib/pr_remainder.py gave no answer, for the remainder of partial merge $partial_key right before merging — refusing. Re-run." >&2
+            audit "REFUSED reason=partial-remainder-unreadable repo=$nwo pr=#$pr_num key=$partial_key"
+            exit 26
+        elif [ "${partial_ans%%$'\t'*}" = none ]; then
+            echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key (contract=no) but its body has no \`Remaining:\` line and no \`<ask>: deferred -> <KEY>\` line under \`## Ticket coverage\` — refusing. Add one of them to the PR body (gh pr edit $pr_num --body-file <file>)." >&2
+            audit "REFUSED reason=partial-remainder-missing repo=$nwo pr=#$pr_num key=$partial_key"
+            exit 26
+        fi
+    fi
+fi
+
 local_commit_guard
 
 # Audit-sink preflight — an unauditable merge must not proceed. Runs after the
@@ -1937,18 +1996,6 @@ if ! audit "MERGING repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 cr=$CR_STATE$
     echo "merge-on-green: could not record the MERGING audit record at $(_audit_sink) — refusing (an unauditable merge must not proceed)." >&2
     exit 16
 fi
-
-# _merge_contract — MERGE_ROW_CONTRACT: yes when this merge completes the ticket, else no. --jira-transition
-# opts in; a brief that says `Completes ticket: no` overrides it. Shared by every merge row.
-_merge_contract() {
-    local brief=""
-    MERGE_ROW_CONTRACT=no
-    if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then MERGE_ROW_CONTRACT=yes; fi
-    if [ -n "${WORKER_SESSION_DOC:-}" ] && [ -r "$WORKER_SESSION_DOC" ]; then
-        brief=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
-    fi
-    [ "$brief" != no ] || MERGE_ROW_CONTRACT=no
-}
 
 # The contract row goes down BEFORE the merge call, so a run killed right after GitHub
 # merges still leaves the record. stage=pre-merge marks it as written before the outcome was known; a reader
@@ -2610,8 +2657,12 @@ _jira_close_on_merge() {
         # The ticket keeps whatever status it has; the PR body's `Remaining:` line
         # is posted as a comment so the next slice is findable.
         local remaining todo
-        remaining=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null \
-            | sed -nE 's/^[[:space:]]*[Rr]emaining:[[:space:]]*/Remaining: /p')
+        # The shared reader's text: the Remaining: line(s) and the deferred lines under ## Ticket coverage.
+        local pr_body
+        # swallow-ok: the merge already landed; an unreadable body makes the breadcrumb say "not recorded", it decides nothing
+        pr_body=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null)
+        # swallow-ok: the merge already landed; a reader that fails makes the breadcrumb say "not recorded", it decides nothing
+        remaining=$(_pr_remainder_answer "$key" "$pr_body" | awk -F'\t' 'NF > 1 { print "Remaining: " $NF }') || remaining=""
         [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
         todo=$(_jira_breadcrumb "$repo_root" "$key" "$issue_type_json" \
             "PR #$pr_num ($nwo) merged @ $pr_sha as a partial merge; the ticket is not complete.

@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+# review-round.sh promote over a finding row with a blank head.
+# Scratch repo and scratch ledger only; the real ledger is never touched.
+# Bash 3.2-safe; no network.
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../lib/fixture-tempdir.sh
+# shellcheck disable=SC1091
+. "$HERE/../lib/fixture-tempdir.sh"
+tmp="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$tmp"' EXIT
+fails=0
+pass() { printf 'ok - %s\n' "$1"; }
+fail() { printf 'FAIL - %s\n' "$1" >&2; fails=$((fails + 1)); }
+assert_eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1', want '$2')"; fi; }
+assert_has() { case "$1" in *"$2"*) pass "$3" ;; *) fail "$3 (missing '$2'; got: $1)" ;; esac; }
+assert_lacks() { case "$1" in *"$2"*) fail "$3 (unexpected '$2'; got: $1)" ;; *) pass "$3" ;; esac; }
+
+fx="$tmp/fx"
+mkdir -p "$fx/scripts/cr" "$fx/scripts/guardrails" "$fx/scripts/lib"
+for f in anchor-handoff.sh base-resolver.sh review-round.sh ledger-append.sh ledger-amend-auth.js \
+         known-findings.sh known-findings.json critic-pre-existing-tag.py; do
+    cp "$HERE/$f" "$fx/scripts/cr/$f"
+done
+for f in chokepoint-seam-guard.sh load-dotenv.sh shared-branch-lock.sh go-gate.sh gh-read.sh; do
+    cp "$HERE/../lib/$f" "$fx/scripts/lib/$f"
+done
+cp "$HERE/../guardrails/lib.sh" "$fx/scripts/guardrails/lib.sh"
+mkdir -p "$tmp/ghr-root"
+printf 'himmel_github_token_vm2=%s\n' ghp_ROUNDSREADTOKEN > "$tmp/ghr-root/.env"
+export GH_READ_ENV_ROOT="$tmp/ghr-root" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+export HOME="$tmp/home"
+mkdir -p "$HOME/.config/himmel"
+printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
+chmod 600 "$HOME/.config/himmel/go-hmac.key"
+
+repo="$tmp/repo"
+mkdir -p "$repo"
+(
+    fixture_enter_git_init_dir "$repo" || exit 1
+    git -c init.defaultBranch=main init -q
+    git config user.email t@t.test
+    git config user.name tester
+    git config commit.gpgsign false
+    printf 'base\n' > f.txt
+    git add f.txt
+    git commit -q -m base
+    printf 'a\n' >> f.txt
+    git commit -q -am head-a
+    printf 'b\n' >> f.txt
+    git commit -q -am head-b
+) || { printf 'FAIL - fixture setup\n' >&2; exit 1; }
+head_a="$(git -C "$repo" rev-parse HEAD~1)"
+head_b="$(git -C "$repo" rev-parse HEAD)"
+git_dir="$(cd "$repo" && cd "$(git rev-parse --git-common-dir)" && pwd)"
+ledger="$git_dir/cr-critic-scores.jsonl"
+: > "$ledger"
+LA="$fx/scripts/cr/ledger-append.sh"
+RR="$fx/scripts/cr/review-round.sh"
+
+# The shape of a row: model, severity, file, artifact. A scenario sets these for the real-head
+# row (TW_*) and the blank-head row (BL_*); shapes() puts both back to the same default.
+shapes() {
+    TW_MODEL=stub TW_SEV=sug TW_FILE=f.txt TW_ART=diff TW_PERSP=off
+    BL_MODEL=stub BL_SEV=sug BL_FILE=f.txt BL_ART=diff BL_HEAD=""
+}
+shapes
+
+# A finding the way the production writer shapes it, at a head.
+real_row() { # branch head id verdict [text]
+    local x=""
+    case "$4" in
+        deferred) x="--deferred-to HIMMEL-9001 --fu-class polish --reason tracked" ;;
+        disproved) x="--reason disproved" ;;
+    esac
+    if [ -n "${5:-}" ]; then
+        # shellcheck disable=SC2086  # $x is a fixed list of one-word flags and values
+        CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model "$TW_MODEL" --id "$3" \
+            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" \
+            --perspective "$TW_PERSP" --text "$5" $x || fail "fixture write failed: $3"
+    else
+        # shellcheck disable=SC2086
+        CR_LEDGER="$ledger" bash "$LA" finding --branch "$1" --head "$2" --model "$TW_MODEL" --id "$3" \
+            --severity "$TW_SEV" --file "$TW_FILE" --line 1 --verdict "$4" --artifact "$TW_ART" \
+            --perspective "$TW_PERSP" $x || fail "fixture write failed: $3"
+    fi
+}
+# The defect: a finding row written with no real head, which ledger-append can no longer write.
+blank_row() { # branch id verdict [perspective]
+    local extra=""
+    [ "$3" != deferred ] || extra=',"deferred_to":"HIMMEL-9001","fu_class":"polish"'
+    printf '{"kind":"finding","ts":"2026-11-02T17:20:47Z","branch":"%s","head":"%s","model":"%s","finding_id":"%s","severity":"%s","file":"%s","line":"","verdict":"%s","artifact":"%s","perspective":"%s"%s}\n' \
+        "$1" "$BL_HEAD" "$BL_MODEL" "$2" "$BL_SEV" "$BL_FILE" "$3" "$BL_ART" "${4:-off}" "$extra" >> "$ledger"
+}
+# promote <branch>: sets out, err, rc; the ledger is read before and after.
+promote() {
+    git -C "$repo" branch -f "$1" "$head_b" >/dev/null 2>&1
+    git -C "$repo" checkout -q "$1"
+    before="$(cksum < "$ledger")"
+    out="$(cd "$repo" && bash "$RR" promote --branch "$1" --head "$head_b" 2>"$tmp/err")"; rc=$?
+    err="$(cat "$tmp/err")"
+    after="$(cksum < "$ledger")"
+}
+refused() { # label: the last promote exited 1, said blank head, wrote nothing (callers check the id)
+    assert_eq "$rc" "1" "$1: promote refuses"
+    assert_has "$err" "blank head" "$1: the refusal says blank head"
+    assert_eq "$before" "$after" "$1: a refused promote writes nothing"
+}
+
+# (1) five blank-head rows shaped like the ones on PR 4582 (model coverage-deferral, sug, deferred,
+# empty file), their rows at a real head written later: all five are skipped and counted.
+TW_MODEL=coverage-deferral TW_FILE="" BL_MODEL=coverage-deferral BL_FILE=""
+for n in 8830 8859 8864 8865 8866; do blank_row rr-twin "cov-$n" deferred; done
+for n in 8830 8859 8864 8865 8866; do real_row rr-twin "$head_a" "cov-$n" deferred; done
+shapes
+promote rr-twin
+assert_eq "$rc" "0" "five PR-4582-shaped blank rows with later twins let promote exit 0"
+assert_has "$out" "skip-blank-head cov-8866" "a skipped blank-head row is named"
+assert_has "$out" "5 blank-head skipped" "the summary line counts the skipped blank-head rows"
+assert_eq "$before" "$after" "skipping blank-head rows rewrites and deletes nothing"
+
+# (2) no twin: promote refuses, names the id, and says blank head, not write failure.
+blank_row rr-notwin cov-2 deferred
+promote rr-notwin
+refused "no twin"
+assert_has "$err" "cov-2" "no twin: the refusal names the finding id"
+assert_lacks "$err" "ledger write failed" "no twin: the refusal is not reported as a write failure"
+
+# (3) the twin decides: an unadjudicated twin keeps promote from passing.
+blank_row rr-open cov-3 deferred
+real_row rr-open "$head_a" cov-3 ""
+promote rr-open
+assert_eq "$rc" "3" "a blank-head row whose twin is still open does not let promote pass"
+assert_has "$out" "still-open cov-3@" "the twin is reported still-open"
+assert_has "$out" "skip-blank-head cov-3" "the blank-head row is still skipped, not judged"
+
+# (4) the twin decides: an agreed twin re-raised at the clean head stays open.
+blank_row rr-reraise cov-4 ""
+real_row rr-reraise "$head_a" cov-4 "" "tidy the cov-4 fixture"
+CR_LEDGER="$ledger" bash "$LA" amend --branch rr-reraise --head "$head_a" --id cov-4 \
+    --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null || fail "fixture amend failed: cov-4"
+real_row rr-reraise "$head_b" cov-4b "" "tidy the cov-4 fixture"
+promote rr-reraise
+assert_eq "$rc" "3" "a blank-head row whose twin is re-raised does not let promote pass"
+assert_has "$out" "still-open cov-4@" "the re-raised twin is reported still-open"
+
+# (5) an agreed twin that was not re-raised is promoted as usual; the blank row adds nothing.
+blank_row rr-promote cov-5 ""
+real_row rr-promote "$head_a" cov-5 "" "tidy the cov-5 fixture"
+CR_LEDGER="$ledger" bash "$LA" amend --branch rr-promote --head "$head_a" --id cov-5 \
+    --set verdict=agreed --reason "agreed in the fixture" 2>/dev/null || fail "fixture amend failed: cov-5"
+promote rr-promote
+assert_eq "$rc" "0" "a blank-head row beside a promotable twin lets promote exit 0"
+assert_has "$out" "promoted cov-5@" "the twin is promoted"
+assert_has "$out" "skip-blank-head cov-5" "the blank-head row is skipped"
+
+# (6) a twin must be on the same branch.
+blank_row rr-elsewhere cov-6 deferred
+real_row rr-other "$head_a" cov-6 deferred
+promote rr-elsewhere
+refused "twin on another branch"
+assert_has "$err" "cov-6" "twin on another branch: the refusal names the id"
+
+# (7) a twin must share the perspective.
+blank_row rr-persp cov-7 deferred off
+TW_PERSP=on
+real_row rr-persp "$head_a" cov-7 deferred
+shapes
+promote rr-persp
+refused "twin under another perspective"
+
+# (8) an empty finding id cannot have a twin.
+blank_row rr-noid "" deferred
+BL_HEAD="$head_a"
+blank_row rr-noid "" deferred
+shapes
+promote rr-noid
+refused "no finding id, even beside a later row that has none either"
+
+# (9) a twin must share the artifact.
+BL_ART=diff TW_ART=spec
+blank_row rr-art cov-9 deferred
+real_row rr-art "$head_a" cov-9 deferred
+shapes
+promote rr-art
+refused "twin under another artifact"
+
+# (10) a twin must share the model.
+TW_MODEL=other-critic
+blank_row rr-model cov-10 deferred
+real_row rr-model "$head_a" cov-10 deferred
+shapes
+promote rr-model
+refused "twin from another model"
+
+# (11) a twin must share the severity: a Critical blank row beside a sug row of that id.
+BL_SEV=crit
+blank_row rr-sev cov-11 ""
+real_row rr-sev "$head_a" cov-11 deferred
+shapes
+promote rr-sev
+refused "twin with another severity"
+
+# (12) a twin must share the file.
+TW_FILE=z.sh
+blank_row rr-file cov-12 deferred
+real_row rr-file "$head_a" cov-12 deferred
+shapes
+promote rr-file
+refused "twin on another file"
+
+# (13) a twin must come after the blank row in the ledger: an older row is not its retry.
+real_row rr-order "$head_a" cov-13 deferred
+blank_row rr-order cov-13 deferred
+promote rr-order
+refused "twin earlier in the file"
+
+# (14) a twin must carry a commit-shaped head.
+blank_row rr-shape cov-14 deferred
+real_row rr-shape not-a-commit cov-14 deferred
+promote rr-shape
+refused "twin at a head that is not commit-shaped"
+
+# (14b) a twin must carry a head that names a commit here, not only one shaped like a commit.
+blank_row rr-ghost cov-14b deferred
+real_row rr-ghost 0123456789012345678901234567890123456789 cov-14b deferred
+promote rr-ghost
+refused "twin at a commit-shaped head that is not a commit here"
+
+# (14c) a spec row headed by a document id cannot rescue a blank row (a document id is no commit either).
+BL_ART=spec TW_ART=spec
+blank_row rr-spec cov-14c deferred
+real_row rr-spec design-doc-1 cov-14c deferred
+shapes
+promote rr-spec
+refused "spec row whose twin is headed by a document id"
+
+# (14d) a ref name that resolves to a commit is not a commit-shaped head: ledger-append writes any
+# non-hex head verbatim, and HEAD resolves here, so only the shape rule keeps it from rescuing a blank row.
+blank_row rr-refname cov-14d deferred
+real_row rr-refname HEAD cov-14d deferred
+promote rr-refname
+refused "twin headed by a ref name that resolves to a commit"
+
+# (15) two blank rows of one id do not vouch for each other.
+blank_row rr-two cov-15 deferred
+blank_row rr-two cov-15 deferred
+promote rr-two
+refused "two blank rows and no real head"
+
+# (16) a Critical blank row beside an older, disproved sug row of the same id (ids recur across PRs):
+# the case that would otherwise pass promote with an open Critical in the ledger.
+real_row rr-recur "$head_a" codex-1 disproved
+BL_MODEL=claude-floor BL_SEV=crit BL_FILE=z.sh
+blank_row rr-recur codex-1 ""
+shapes
+promote rr-recur
+refused "Critical blank row beside an older disproved row of that id"
+
+# (17) a head of only spaces is blank, and a twin rescues it like any blank row.
+BL_HEAD="  "
+blank_row rr-space cov-17 deferred
+shapes
+real_row rr-space "$head_a" cov-17 deferred
+promote rr-space
+assert_eq "$rc" "0" "a whitespace-only head row beside a later twin lets promote exit 0"
+assert_has "$out" "skip-blank-head cov-17" "the whitespace-only head row is skipped like a blank one"
+
+git -C "$repo" checkout -q main 2>/dev/null
+
+if [ "$fails" -gt 0 ]; then
+    printf 'FAIL test-review-round (%s failures)\n' "$fails" >&2
+    exit 1
+fi
+printf 'PASS test-review-round\n'

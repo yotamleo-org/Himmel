@@ -364,6 +364,7 @@ async function page(data: any, ui: any = {}, extra: any = {}) {
 }
 const kpi = (html: string, id: string) => (new RegExp(`data-kpi="${id}"[^>]*>[\\s\\S]*?<b class="kv">([^<]*)</b>`).exec(html) || [])[1];
 const kpiSub = (html: string, id: string) => (new RegExp(`data-kpi="${id}"[^>]*>[\\s\\S]*?<span class="ks">([^<]*)</span>`).exec(html) || [])[1];
+const recoveryNote = (html: string) => (/<p class="sub" data-note="recovery">([^<]*)</.exec(html) || [])[1] || "";
 const cells = (html: string, attr: string) => [...html.matchAll(new RegExp(`<tr ${attr}="([^"]*)"[^>]*>([\\s\\S]*?)</tr>`, "g"))].map((m) => [m[1], [...m[2].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1].replace(/<[^>]*>/g, ""))]);
 
 test("overview-call-total-is-the-tool-attempt-sum", async () => {
@@ -386,7 +387,7 @@ test("overview-failure-rate-is-weighted", async () => {
 
 test("denied-attempts-are-not-hooks-plus-tools", async () => {
   const data = readP(seedP());
-  expect(kpi(await page(data), "denied")).toBe("5");
+  expect(kpiSub(await page(data), "failed")).toContain("5 denied");
   data.tools.find((t: any) => t.tool === "Bash").denials = 60;
   const bad = await page(data);
   expect(bad).toContain("Count check failed");
@@ -397,10 +398,9 @@ test("denied-attempts-are-not-hooks-plus-tools", async () => {
 test("overview-recovery-keeps-unknown-class-outcomes-out", async () => {
   const data = readP(seedP());
   const html = await page(data);
-  expect(kpi(html, "recovery")).toBe("25.0%");
-  expect(kpiSub(html, "recovery")).toContain("1 of 4 known · 4 unclassified");
+  expect(recoveryNote(html)).toContain("25.0% (1 of 4 known · 4 unclassified)");
   for (const t of data.tools) { t.known = 0; t.recovered = 0; }
-  expect(kpi(await page(data), "recovery")).toBe("—");
+  expect(recoveryNote(await page(data))).toContain("Recovery —");
 });
 
 test("overview-daily-failures-reconcile", async () => {
@@ -1237,4 +1237,91 @@ test("chart-bars-use-the-failure-colour-token", () => {
   expect(css).toMatch(/\.thchart \.fb\{[^}]*fill:var\(--crit\)/);
   expect(css).toMatch(/\.thchart\{[^}]*height:auto/);
   expect(css).toMatch(/\.thchart\{[^}]*max-width:480px/);
+});
+
+// The tiles, names and Tool map columns match mockup v9 (the facts stay the same).
+const SHAPE_INV = {
+  ...INVENTORY,
+  sources: [
+    { id: "hooks-project", reads: "the project hooks", state: "ok", found: { wirings: 4, scripts: 3 } },
+    { id: "hooks-user", reads: "the user hooks", state: "ok", found: { wirings: 2, scripts: 2 } },
+    { id: "plugins", reads: "installed_plugins.json", state: "ok", found: { on: 2, installed: 9 } },
+    { id: "plugin-items", reads: "<installPath>/skills", state: "ok", found: { skills: 1, commands: 0, agents: 0, hook_wirings: 3 } },
+    { id: "mcp-user", reads: "~/.claude.json", state: "ok", found: { servers: 1, off_here: 0 } },
+    { id: "mcp-runtime", reads: "a live session", state: "absent", reason: "source unknown", found: null },
+    { id: "core", reads: "a recorded session", state: "absent", reason: "needs a session record", found: null },
+    { id: "rtk-history", reads: "history.db", state: "ok", found: { bytes: 5 } },
+  ],
+  hooks: [...INVENTORY.hooks, { kind: "hook", source: "user", name: "read-clamp.sh", wired: [["PreToolUse", "Bash"]], runs_twice: true }, { kind: "hook", source: "project", name: "other.sh", wired: [["Stop", "*"]], runs_twice: false }],
+};
+const tile = (html: string, id: string) => ({ value: (new RegExp(`data-tile="${id}"[^>]*>[\\s\\S]*?<b class="kv">([^<]*)</b>`).exec(html) || [])[1], sub: (new RegExp(`data-tile="${id}"[^>]*>[\\s\\S]*?<span class="ks">([^<]*)</span>`).exec(html) || [])[1] });
+const mapLabels = (html: string) => [...html.matchAll(/<span class="mr">(?:<button[^>]*>)?([^<]*)</g)].map((m) => m[1]);
+
+test("the tab row is the mockup's plain text row with the active tab bold and underlined", () => {
+  const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
+  const block = css.slice(css.indexOf("/* HIMMEL-8681"));
+  expect(block).toMatch(/\.tabs \.tab\{[^}]*font-size:\.85rem/);
+  expect(block).toMatch(/\.tabs \.tab\[aria-selected="true"\]\{[^}]*font-weight:700[^}]*text-decoration:underline/);
+});
+
+test("the overview shows the mockup's four cards: Calls, Failed, Failure rate, Highest rate", async () => {
+  const html = await page(readP(seedP()));
+  expect([...html.matchAll(/data-kpi="([a-z]+)"/g)].map((m) => m[1])).toEqual(["calls", "failed", "rate", "highest"]);
+  expect(kpi(html, "highest")).toBe("16.0%");
+  expect(kpiSub(html, "highest")).toContain("Bash");
+  expect(kpiSub(html, "highest")).toContain("8 of 50 calls");
+  const few = readP(seedP());
+  few.tools = few.tools.filter((t: any) => t.tool !== "Bash");
+  expect(kpi(await page(few), "highest")).toBe("—");
+});
+
+test("the Station tiles are Plugins, Skills, MCP servers, Hook wirings, Runs twice and CLIs", async () => {
+  const html = await page(readP(seedP()), { tab: "station" }, { inventory: SHAPE_INV });
+  expect([...html.matchAll(/data-tile="([a-z]+)"/g)].map((m) => m[1])).toEqual(["plugins", "skills", "mcp", "wirings", "twice", "clis"]);
+  expect(tile(html, "plugins")).toMatchObject({ value: "2 / 9", sub: "on / installed" });
+  expect(tile(html, "skills").value).toBe("1");
+  expect(tile(html, "mcp").value).toBe("1");
+  expect(tile(html, "wirings")).toMatchObject({ value: "9", sub: "2 scripts" });
+  expect(tile(html, "twice").value).toBe("1");
+  expect(tile(html, "clis")).toMatchObject({ value: "1 / 2", sub: "on PATH" });
+  const absent = await page(readP(seedP()), { tab: "station" }, { inventory: { ...SHAPE_INV, sources: SHAPE_INV.sources.map((s) => (s.id === "plugins" || s.id.startsWith("hooks-") ? { ...s, state: "absent", found: null } : s)) } });
+  expect(tile(absent, "plugins").value).toBe("—");
+  expect(tile(absent, "wirings").value).toBe("—");
+  expect(tile(absent, "twice").value).toBe("—");
+});
+
+test("the Station sources read with the mockup's human names, not the machine ids", async () => {
+  const html = await page(readP(seedP()), { tab: "station" }, { inventory: SHAPE_INV });
+  for (const name of ["Hooks · project", "Hooks · user", "Plugins", "Plugin items", "MCP · user config", "MCP · runtime", "Core tools", "rtk history"]) expect(html).toContain(`<td>${name}</td>`);
+  expect(html).not.toContain("<td>hooks-project</td>");
+  expect(html).not.toContain("<td>mcp-runtime</td>");
+});
+
+test("the Tool map has every kind as a column, an All column and row, sort headers, a loaded-never-used mark and phone source cards", async () => {
+  const data = readP(seedP());
+  const html = await page(data, { tab: "map" }, { inventory: SHAPE_INV });
+  expect(html).toMatch(/class="thmap" data-cols="10"/);
+  const heads = [...html.matchAll(/data-act="th-sort" data-table="map" data-col="(\d+)"[^>]*>([^<▴▾]*)/g)].map((m) => [m[1], m[2].trim()]);
+  expect(heads).toEqual([["0", "Source"], ["1", "built-in"], ["2", "MCP"], ["3", "MCP resource"], ["4", "skill"], ["5", "command"], ["6", "subagent"], ["7", "workflow"], ["8", "hook"], ["9", "CLI"], ["10", "All"]]);
+  expect(html).not.toMatch(/data-kind="res"/);
+  expect(html).toContain("All sources");
+  expect(html).toMatch(/data-act="th-pick" data-src="himmel" data-kind=""/);
+  expect(html).toMatch(/data-src="himmel" data-kind="skill"[^>]*><b>1 skill<\/b>[\s\S]*?○ 1/);
+  expect(html).toContain("loaded, never used");
+  expect((html.match(/class="thcard"/g) || []).length).toBe(mapLabels(html).length);
+  const labels = mapLabels(html);
+  const desc = mapLabels(await page(data, { tab: "map", sorts: { map: { col: 0, desc: true } } }, { inventory: SHAPE_INV }));
+  expect(desc).toEqual([...labels].sort((a, b) => b.localeCompare(a)));
+  const css = readFileSync(resolve(import.meta.dir, "../public/app.css"), "utf8");
+  expect(css.slice(css.indexOf("/* HIMMEL-8681"))).toMatch(/\.thcards\{display:none\}/);
+});
+
+test("the guard drill-in shows the This week cards: Refused, rate over eligible attempts, Busiest day, Days with none", async () => {
+  const html = await page(readP(seedP()), { guard: "denied/read-clamp" });
+  expect(html).toContain("<h3>This week</h3>");
+  expect(stat(html, "refused")).toBe("5");
+  expect(stat(html, "busiest")).toBe("27 Oct · 3");
+  expect(stat(html, "none")).toBe("0");
+  expect(html).toContain("Rate ÷ eligible call attempts");
+  for (const id of ["rate", "eligible", "legacy-rate", "bash", "recovery"]) expect(html).toContain(`data-stat="${id}"`);
 });

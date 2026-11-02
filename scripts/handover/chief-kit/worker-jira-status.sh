@@ -270,9 +270,13 @@ while :; do
         row result=skip rule="$TS_RULE" from="${TS_J_STATUS:-}"
         finish
     fi
+    # A D5c found through a merged PR with no merge row names that PR in its row, so a later
+    # derive answers D5c from the log with no gh call. No other rule's row changes.
+    mnr_stage="" mnr_pr=""
+    if [ "$TS_RULE" = D5c ] && [ "$TS_STAGE" = merged-no-row ]; then mnr_stage=merged-no-row mnr_pr=$TS_MERGED_PR; fi
     if [ "$TS_DERIVED" = "$TS_J_STATUS" ]; then
         update_record "$TS_J_STATUS"
-        row result=noop rule="$TS_RULE" from="$TS_J_STATUS"
+        row result=noop rule="$TS_RULE" from="$TS_J_STATUS" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"}
         finish
     fi
     seen_j="$TS_J_STATUS" seen_heads="$TS_HEADS"
@@ -298,7 +302,7 @@ if ! ts_read_jira "$KEY" || [ "$TS_J_STATUS" != "$to" ]; then
     warn "$KEY reads '${TS_J_STATUS:-?}' after the move to '$to'"
 fi
 update_record "$to" "$from -> $to"
-row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir"
+row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"}
 mark_focus_dirty
 echo "worker-jira-status: $KEY $from -> $to ($TS_RULE)"
 finish

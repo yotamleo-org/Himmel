@@ -1725,7 +1725,11 @@ fi
 # Exit 0 = no still-open findings; exit 3 = one or more rows are still-open
 # (the caller's round was not actually clean for that finding, whether it was
 # left agreed or never adjudicated at all); exit 1 = a malformed ledger row
-# or a ledger write failure; exit 2 = --head does not resolve to a commit;
+# or a ledger write failure, or a finding row with a BLANK head and no later row
+# that looks like its retry (same branch, finding id, model, severity, file,
+# artifact and perspective, at a head that names a commit here). With such a row the blank
+# one is skipped and counted and that row decides; the match is a heuristic and
+# can pass a blank row that was not a retry; exit 2 = --head does not resolve to a commit;
 # exit 5 = the CR ledger file itself is missing.
 if [ "$verb" = "promote" ]; then
     if ! full_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$full_head" ]; then
@@ -1752,6 +1756,19 @@ for (const line of lines) {
 if (malformed !== 0) {
   process.stdout.write(JSON.stringify({malformed}));
   process.exit(0);
+}
+const commitCache = new Map();
+function isCommit(value) {
+  const h = String(value || "");
+  if (!commitCache.has(h)) {
+    let ok = false;
+    try {
+      cp.execFileSync("git", ["rev-parse", "--verify", "--quiet", h + "^{commit}"], {stdio: "ignore"});
+      ok = true;
+    } catch { ok = false; }
+    commitCache.set(h, ok);
+  }
+  return commitCache.get(h);
 }
 const resolveCache = new Map();
 function resolvesToHead(value) {
@@ -1834,7 +1851,27 @@ for (const o of atHead) {
   fpAtHead.get(o.fingerprint).add(idKey);
 }
 const outLines = [];
-for (const row of findingRows) {
+const blankRefused = [];
+for (let ri = 0; ri < findingRows.length; ri++) {
+  const row = findingRows[ri];
+  if (!String(row.head || "").trim()) {
+    // A row written with no head cannot be amended (amend finds a
+    // row by head) and no later commit relates to it. It is skipped only when
+    // a row that looks like its retry exists: written later in the ledger, on
+    // this branch, at a head that names a commit here, with the same finding id, model,
+    // severity, file, artifact and perspective. That row is judged on its own
+    // below. Finding ids recur across PRs, so the id alone proves nothing, and
+    // even this match is a heuristic: it can pass a blank row that was not a
+    // retry. With no such row there is nothing to judge it by, and promote
+    // refuses rather than guess.
+    const hasTwin = !!row.finding_id && findingRows.some((t, ti) => ti > ri && /^[0-9a-f]{7,64}$/i.test(String(t.head || "")) && isCommit(t.head) &&
+      t.finding_id === row.finding_id && (t.artifact || "diff") === (row.artifact || "diff") &&
+      (t.perspective || "off") === (row.perspective || "off") && (t.model || "") === (row.model || "") &&
+      (t.severity || "") === (row.severity || "") && (t.file || "") === (row.file || ""));
+    if (hasTwin) outLines.push(JSON.stringify({action: "skip-blank-head", id: row.finding_id, head: "", branch: row.branch}));
+    else blankRefused.push(row.finding_id || "(no id)");
+    continue;
+  }
   const idKey = [row.head, row.finding_id, row.artifact || "diff", row.perspective || "off"].join(SEP);
   const effective = Object.assign({}, row, amendSetFor(row.branch || "", row.head, row.finding_id, row.artifact || "diff", row.perspective || "off") || {});
   const verdict = String(effective.verdict || "").trim();
@@ -1875,7 +1912,7 @@ for (const row of findingRows) {
   }));
 }
 fs.writeFileSync(e.DECISIONS_FILE, outLines.length ? outLines.join("\n") + "\n" : "");
-process.stdout.write(JSON.stringify({malformed: 0}));
+process.stdout.write(JSON.stringify({malformed: 0, blank: blankRefused.join(", ")}));
 ' 2>/dev/null)"
     node_rc=$?
     malformed="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).malformed)))' 2>/dev/null)" || malformed=""
@@ -1889,8 +1926,18 @@ process.stdout.write(JSON.stringify({malformed: 0}));
         echo "review-round: malformed CR ledger row(s) — refusing automatic promotion" >&2
         exit 1
     fi
+    if ! blank_refused="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).blank||"")))')"; then
+        rm -f "$decisions_tmp"
+        echo "review-round: could not evaluate the ledger for promotion" >&2
+        exit 1
+    fi
+    if [ -n "$blank_refused" ]; then
+        rm -f "$decisions_tmp"
+        echo "review-round: finding row(s) with a blank head and no later row on $branch that looks like their retry (same finding id, model, severity, file, artifact and perspective, at a commit that exists here): $blank_refused - the ledger is append-only, so record each again with ledger-append.sh finding --head <sha>; nothing was promoted" >&2
+        exit 1
+    fi
     head8="$(printf '%s' "$full_head" | cut -c1-8)"
-    promoted=0 still_open=0 skip_terminal=0 warn_count=0 write_fail=0
+    promoted=0 still_open=0 skip_terminal=0 warn_count=0 blank_skipped=0 write_fail=0
     while IFS= read -r decision || [ -n "$decision" ]; do
         [ -n "$decision" ] || continue
         action="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).action))' 2>/dev/null)" || action=""
@@ -1900,6 +1947,11 @@ process.stdout.write(JSON.stringify({malformed: 0}));
         row_artifact="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).artifact))' 2>/dev/null)" || row_artifact=""
         row_perspective="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).perspective))' 2>/dev/null)" || row_perspective=""
         row_verdict="$(printf '%s' "$decision" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).verdict))' 2>/dev/null)" || row_verdict=""
+        if [ "$action" = "skip-blank-head" ] && [ -n "$id" ]; then
+            echo "skip-blank-head ${id} (blank head; the row at a real head decides)"
+            blank_skipped=$((blank_skipped + 1))
+            continue
+        fi
         if [ -z "$action" ] || [ -z "$id" ] || [ -z "$row_head" ]; then
             write_fail=1
             break
@@ -1941,7 +1993,7 @@ process.stdout.write(JSON.stringify({malformed: 0}));
         echo "review-round: ledger write failed during promotion" >&2
         exit 1
     fi
-    echo "review-round promote: $promoted promoted, $still_open still-open, $skip_terminal skip-terminal, $warn_count warn (head $head8)"
+    echo "review-round promote: $promoted promoted, $still_open still-open, $skip_terminal skip-terminal, $warn_count warn, $blank_skipped blank-head skipped (head $head8)"
     [ "$still_open" -eq 0 ] || exit 3
     exit 0
 fi

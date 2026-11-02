@@ -235,6 +235,12 @@ if [ "$kind" = "finding" ] && [ -z "$batch_file" ]; then
     echo "ledger-append.sh: finding needs --branch (no current branch to stamp: detached HEAD or not a repo) - NOTHING was written" >&2
     exit 2
   fi
+  # A row with no head can be neither promoted (review-round.sh) nor amended
+  # (amend looks a row up by head), so it would sit in the ledger for good.
+  if [ -z "${head//[[:space:]]/}" ]; then
+    echo "ledger-append.sh: finding needs --head <sha> (a row with no head can be neither promoted nor amended) - NOTHING was written" >&2
+    exit 2
+  fi
 fi
 
 # The evidentiary bar for `disproved`. A wrong `agreed` costs a
