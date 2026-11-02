@@ -308,3 +308,15 @@ test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the e
   expect(r2.tickets.length).toBe(8);
   expect((await fetch(`http://127.0.0.1:${srv.port}/roadmap.js`)).status).toBe(200);
 });
+
+test("local-store items render as cards keyed by their generated LOCAL-<n> id, never as HIMMEL-<n>", () => {
+  const local = [
+    { id: "LOCAL-1", title: "First", status: "To Do", type: "Task", fix_version: "", epic: "", sector: "" },
+    { id: "LOCAL-7", title: "Seventh", status: "In Review", type: "Task", fix_version: "", epic: "LOCAL-1", sector: "" },
+  ];
+  const r = { ...readRoadmap({ mirrorDir: "", local, workers: { state: "absent" } }), sync: [] };
+  expect(r.tickets.map((t) => [t.k, t.id, t.b])).toEqual([[1, "LOCAL-1", "todo"], [7, "LOCAL-7", "rev"]]);
+  const html = renderKanban(r, { hideDone: false, writes: true });
+  expect(html).toContain("<b>LOCAL-7</b>");
+  expect(html).not.toContain("HIMMEL-7");
+});

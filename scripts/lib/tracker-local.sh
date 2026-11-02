@@ -5,7 +5,8 @@
 # Store: $TRACKER_STORE, else <handover root>/<user>/<bucket>/tracker/ (never a
 # hardcoded path). It holds `next-id` (one integer) and one <PREFIX>-<n>.md per
 # item: YAML front matter (id, title, type, status, fix_version, epic, created,
-# links) then a markdown body ending in a `## Log` section. Prefix: git config
+# links, and `sector` once tracker_sector set one) then a markdown body ending in
+# a `## Log` section. Prefix: git config
 # himmel.trackerPrefix, default LOCAL.
 #
 # Minting is atomic: a mkdir lock on <store>/.lock holding the owner pid in
@@ -245,6 +246,24 @@ _tracker_local_link() {
     _tracker_local_lock "$store" || return 1
     LINK="$link" awk '
         /^---$/ { n++; if (n == 2) print "  - \"" ENVIRON["LINK"] "\"" }
+        { print }
+    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f" || rc=1
+    _tracker_local_unlock "$store"
+    return $rc
+}
+
+# _tracker_local_sector <id> <name> — set the `sector:` line (tracker.sh has validated the name), replacing
+# one that is there, else inserted above `links:` so the links list stays the last key.
+_tracker_local_sector() {
+    local f store rc=0 v
+    f=$(_tracker_local_item "$1") || return $?
+    v=$(printf '%s' "$2" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    store=$(dirname "$f")
+    _tracker_local_lock "$store" || return 1
+    SECTOR="sector: \"$v\"" awk '
+        /^---$/ { n++; if (n == 2 && !done) { print ENVIRON["SECTOR"]; done = 1 } print; next }
+        n == 1 && /^sector:( |$)/ { if (!done) print ENVIRON["SECTOR"]; done = 1; next }
+        n == 1 && !done && /^links:( |$)/ { print ENVIRON["SECTOR"]; done = 1 }
         { print }
     ' "$f" > "$f.tmp" && mv "$f.tmp" "$f" || rc=1
     _tracker_local_unlock "$store"
