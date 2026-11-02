@@ -3,7 +3,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { mapFile } from "../agui/journal-mapper.ts";
+import { mapFile, mapJournal } from "../agui/journal-mapper.ts";
 import { journalStream, resolveJournal } from "../agui/sse.ts";
 import { readFleet } from "../agui/fleet.ts";
 import { customConfig, fleetFixture, FLEET } from "./agui-fleet-fixture";
@@ -364,6 +364,46 @@ test("a value only the keyring holds is masked in the stream (HIMMEL-8565)", asy
   const text = await (await get(port, RUN)).text();
   // the message text passes the server's redactor; the agent name the mapper derives from the prompt does not (it only shapes tokens)
   expect(text).toContain("List ‹redacted› files.");
+  // the whole response, the agent name included: the keyring value appears nowhere
+  expect(text).not.toContain(kr);
+});
+
+test("a keyring value holding a quote and a backslash is masked in a tool call's arguments (HIMMEL-8907)", async () => {
+  const h = home();
+  const kr = 'kr"only\\q7x2';
+  const k = stubKeyring(h);
+  k.put("JIRA_API_TOKEN", kr);
+  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace('"command":"ls"', `"command":${JSON.stringify("echo " + kr)}`);
+  journal(h, "-proj", RUN, body);
+  const { port } = boot(h, { env: { ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "" } });
+  const text = await (await get(port, RUN)).text();
+  const args = parse(text).find((e) => e.type === "TOOL_CALL_ARGS" && (e as any).toolCallId === "toolu_ls") as any;
+  expect(JSON.parse(args.delta).command).toBe("echo ‹redacted›");
+  expect(text).not.toContain("q7x2");
+});
+
+// a secret-named server env value is a redaction literal as a whole, a newline included (the keyring resolver skips multi-line values)
+test("a server env secret holding a quote, a backslash and a newline is masked in a tool call's arguments (HIMMEL-8907)", async () => {
+  const h = home();
+  const kr = 'kr"only\\q7x2\nq7x2-tail';
+  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace('"command":"ls"', `"command":${JSON.stringify("echo " + kr)}`);
+  journal(h, "-proj", RUN, body);
+  const { port } = boot(h, { env: { HIMMEL_TEST_SECRET: kr } });
+  const text = await (await get(port, RUN)).text();
+  const args = parse(text).find((e) => e.type === "TOOL_CALL_ARGS" && (e as any).toolCallId === "toolu_ls") as any;
+  expect(JSON.parse(args.delta).command).toBe("echo ‹redacted›");
+  expect(text).not.toContain("q7x2");
+});
+
+// the stub keyring is one line per item, so the newline row masks at the mapper with a literal-replacing redactor
+test("the mapper masks a tool call's argument holding a quote, a backslash and a newline as a parsed value (HIMMEL-8907)", () => {
+  const kr = 'kr"only\\q7x2\nq7x2-tail';
+  const line = JSON.stringify({ type: "assistant", uuid: "a-1", timestamp: "2026-10-06T10:00:00.000Z", sessionId: "s",
+    message: { id: "m1", role: "assistant", content: [{ type: "tool_use", id: "toolu_x", name: "Bash", input: { command: "echo " + kr, nested: [kr] } }] } });
+  const redact = (v: unknown) => (typeof v === "string" ? v.split(kr).join("‹redacted›") : v);
+  const args = mapJournal(line + "\n", { threadId: RUN, redact }).events.find((e) => e.type === "TOOL_CALL_ARGS") as any;
+  expect(JSON.parse(args.delta)).toEqual({ command: "echo ‹redacted›", nested: ["‹redacted›"] });
+  expect(args.delta).not.toContain("q7x2");
 });
 
 // a subagent writes its own transcript beside the journal; the stream follows it too.

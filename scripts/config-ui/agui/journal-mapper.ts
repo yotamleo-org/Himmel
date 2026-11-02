@@ -77,7 +77,9 @@ export type MapperStats = {
 };
 
 // `lane` stamps every RUN_STARTED with metadata { lane } (the journal's config dir says which lane wrote it).
-export type MapperOptions = { threadId?: string; lane?: string };
+// `redact` masks a value the stream's id-field exemption would pass unmasked (the session's own agent name) or that
+// stringifying would escape (a tool call's input: a quote, a backslash or a newline no longer matches its literal).
+export type MapperOptions = { threadId?: string; lane?: string; redact?: (value: unknown) => unknown };
 
 export type JournalMapper = {
   pushLine(line: string): AguiEvent[];
@@ -204,6 +206,15 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
     Object.fromEntries(Object.entries(a).filter(([k, v]) => v !== undefined && k !== "prompt")) as AgentInfo;
 
   // The agent a record belongs to, learning what the record says about it.
+  // Masks the parsed values, before JSON.stringify escapes them.
+  function maskValues(v: unknown): unknown {
+    if (!opts.redact) return v;
+    if (typeof v === "string") return String(opts.redact(v));
+    if (Array.isArray(v)) return v.map(maskValues);
+    if (isObject(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, maskValues(x)]));
+    return v;
+  }
+
   function agentOf(rec: Rec): AgentInfo {
     const model = isObject(rec.message) ? str(rec.message.model) : undefined;
     const known = model && model !== "<synthetic>" ? model : undefined;
@@ -454,7 +465,7 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
             model: str(input.model), parentToolCallId: toolCallId, prompt: str(input.prompt),
           });
         }
-        out.push({ type: "TOOL_CALL_ARGS", toolCallId, delta: JSON.stringify(block.input ?? {}), ...ts });
+        out.push({ type: "TOOL_CALL_ARGS", toolCallId, delta: JSON.stringify(maskValues(block.input ?? {})), ...ts });
         out.push({ type: "TOOL_CALL_END", toolCallId, ...ts });
         pending.set(toolCallId, reviewEffect(toolCallName, block.input));
         mapped = true;
@@ -481,7 +492,7 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
     const name = [branch && !/^(main|master|HEAD)$/.test(branch) ? tidy(branch) : undefined, tidy(cwd), tidy(prompt, 40)].find(Boolean);
     if (!name) return;
     named = true;
-    main = { ...main, name };
+    main = { ...main, name: opts.redact ? String(opts.redact(name)) : name };
   }
 
   function mapRecord(rec: Rec, out: AguiEvent[]): void {

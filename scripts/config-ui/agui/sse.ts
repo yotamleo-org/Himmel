@@ -121,7 +121,7 @@ async function openVerified(path: string): Promise<FileHandle> {
 }
 
 export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8Array> {
-  const mapper = createJournalMapper({ threadId: o.threadId, lane: laneOfJournal(path) === "native" ? undefined : laneOfJournal(path) }); // a non-native stream carries its lane (native is the unmarked default)
+  const mapper = createJournalMapper({ threadId: o.threadId, redact: o.redact, lane: laneOfJournal(path) === "native" ? undefined : laneOfJournal(path) }); // a non-native stream carries its lane (native is the unmarked default)
   const enc = new TextEncoder();
   const started = Date.now();
   const src = (p: string): Source => ({ path: p, offset: 0, size: 0, tail: "", utf8: new TextDecoder(), last: { ts: -Infinity } });
