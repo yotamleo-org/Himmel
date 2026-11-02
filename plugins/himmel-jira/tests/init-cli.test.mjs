@@ -48,7 +48,7 @@ function stubbedRun(args, items = {}, locked = false, conf = '') {
   const envFile = join(dir, '.env');
   const env = { ...process.env, PATH: `${join(dir, 'kbin')}:${process.env.PATH}`, KSTUB_STORE: store, KSTUB_LOG: join(dir, 'keyring.log'),
     KSTUB_LOCKED: String(locked), DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(dir, 'stub-bus')}`, HIMMEL_CONFIG_DIR: join(dir, 'conf') };
-  for (const k of ['JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_BASE_URL', 'CREDENTIALS_DIRECTORY', 'HIMMEL_SECRETS_KEYRING']) delete env[k];
+  for (const k of ['JIRA_EMAIL', 'JIRA_API_TOKEN', 'JIRA_BASE_URL', 'JIRA_PROJECT_KEY', 'JIRA_PROJECTS', 'CREDENTIALS_DIRECTORY', 'HIMMEL_SECRETS_KEYRING']) delete env[k];
   const r = spawnSync(process.execPath, [initCli, ...args, '--env-path', envFile], { encoding: 'utf8', env });
   return { r, store, envFile };
 }
@@ -68,6 +68,19 @@ describe('init-cli with credentials in the keyring (HIMMEL-8471)', () => {
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout.trim()).toBe('env-ok');
     expect(existsSync(envFile)).toBe(false);
+  });
+
+  it('--discover finds the project in himmel.conf on a migrated station (empty .env) instead of exiting 2', () => {
+    const { r } = stubbedRun(['--discover'], { JIRA_API_TOKEN: 'keyring-fixture-token' }, false,
+      'JIRA_PROJECT_KEY=FIXT\nJIRA_EMAIL=conf@example.invalid\nJIRA_BASE_URL=https://fixture.invalid\n');
+    expect(r.stderr).not.toContain('no project configured');
+    expect(r.status).not.toBe(2);
+  });
+
+  it('--discover names himmel.conf in its no-project hint', () => {
+    const { r } = stubbedRun(['--discover']);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('himmel.conf');
   });
 
   it('--write-env with the keyring unlocked stores the token there, adds no token .env line, and keeps the email in .env', () => {

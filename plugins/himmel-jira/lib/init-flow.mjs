@@ -61,8 +61,8 @@ export function appendEnvKeys(envPath, kvs) {
   }
 }
 
-// The setup flow's write: the email and token go to the keyring when it is unlocked (no .env line),
-// everything else, and any credential the keyring did not take, to .env as before.
+// The setup flow's write: the token goes to the keyring when it is unlocked (no .env line). The email,
+// the base URL and a token the keyring did not take go to .env as before.
 export function writeCredentials(envPath, kvs) {
   const stored = storeInKeyring(kvs);
   const rest = Object.fromEntries(Object.entries(kvs).filter(([k]) => !stored.includes(k)));

@@ -47,7 +47,7 @@ if (args.discover) {
   // configured → fail loud, never silently default to HIMMEL.
   const projects = resolveProjects({ rawArg: args.projects, env: process.env });
   if (!projects.length) {
-    console.error('no project configured: set JIRA_PROJECT_KEY (or JIRA_PROJECTS=A,B for several) in your .env, then re-run');
+    console.error('no project configured: set JIRA_PROJECT_KEY (or JIRA_PROJECTS=A,B for several) in ~/.himmel/himmel.conf or your .env, then re-run');
     process.exit(2);
   }
   try {

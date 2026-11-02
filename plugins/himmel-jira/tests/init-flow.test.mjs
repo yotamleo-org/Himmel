@@ -377,6 +377,29 @@ describe('credentials in the keyring (HIMMEL-8471)', () => {
     expect(readFileSync(kr.store, 'utf8')).toBe('');
   });
 
+  it('writeCredentials does not count an identical exported token or a credentials directory as the keyring storing it', () => {
+    const kr = useKeyring({});
+    vi.stubEnv('KSTUB_DROP_STORE', '1');
+    vi.stubEnv('JIRA_API_TOKEN', 'new-fixture-token');
+    mkdirSync(join(dir, 'creds'));
+    writeFileSync(join(dir, 'creds', 'JIRA_API_TOKEN'), 'new-fixture-token');
+    vi.stubEnv('CREDENTIALS_DIRECTORY', join(dir, 'creds'));
+    const env = join(dir, '.env');
+    const res = writeCredentials(env, { JIRA_API_TOKEN: 'new-fixture-token' });
+    expect(res).toEqual({ keyring: [], env: ['JIRA_API_TOKEN'] });
+    expect(readFileSync(kr.store, 'utf8')).toBe('');
+  });
+
+  it('a conf email beats a different keyring email', () => {
+    useKeyring({ JIRA_EMAIL: 'stale-keyring@example.invalid', JIRA_API_TOKEN: 'keyring-fixture-token' });
+    mkdirSync(join(dir, 'conf'));
+    writeFileSync(join(dir, 'conf', 'himmel.conf'), 'JIRA_EMAIL=conf@example.invalid\n');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', join(dir, 'conf'));
+    loadEnvIntoProcess(join(dir, 'no-such.env'));
+    expect(process.env.JIRA_EMAIL).toBe('conf@example.invalid');
+    expect(process.env.JIRA_API_TOKEN).toBe('keyring-fixture-token');
+  });
+
   it('writeCredentials keeps the token in .env when secret-tool itself fails', () => {
     useKeyring({});
     writeFileSync(join(dir, 'kbin', 'secret-tool'), '#!/usr/bin/env bash\nexit 1\n');

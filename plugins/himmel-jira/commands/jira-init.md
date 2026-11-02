@@ -15,5 +15,5 @@ description: "Bootstrap Jira auth (keyring or .env) + metadata cache ($XDG_CACHE
      - `JIRA_API_TOKEN` — your Atlassian API token (do NOT echo back to the user).
      - `JIRA_BASE_URL` — your Jira cloud base URL, e.g. `https://<your-org>.atlassian.net` (no trailing slash).
    - Then run `node plugins/himmel-jira/lib/init-cli.mjs --write-env --email <e> --token <t> --base-url <url>` with whichever flags correspond to missing keys.
-2. Re-run `node plugins/himmel-jira/lib/init-cli.mjs --discover`. This discovers the project(s) from `JIRA_PROJECT_KEY` (or `JIRA_PROJECTS=A,B` in `.env` to cache several) and writes the metadata cache. If no project is configured it exits 2 with a hint — set the key and re-run.
+2. Re-run `node plugins/himmel-jira/lib/init-cli.mjs --discover`. This discovers the project(s) from `JIRA_PROJECT_KEY` (or `JIRA_PROJECTS=A,B` in `~/.himmel/himmel.conf` or `.env` to cache several) and writes the metadata cache. If no project is configured it exits 2 with a hint — set the key and re-run.
 3. Output the single one-line summary the command prints. Do NOT add commentary.

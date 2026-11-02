@@ -28,7 +28,8 @@ export function loadEnvFile(path) {
 // line, an empty value reads as unset, and the process env wins over both.
 // The selected station profile supplies only the URL, below the local override.
 // JIRA_EMAIL is config class: after a migration it lives here, not in .env.
-export const CONF_KEYS = ['JIRA_PROJECTS', 'JIRA_BASE_URL', 'JIRA_EMAIL'];
+// JIRA_PROJECT_KEY and JIRA_PROJECTS are config class too.
+export const CONF_KEYS = ['JIRA_PROJECTS', 'JIRA_PROJECT_KEY', 'JIRA_BASE_URL', 'JIRA_EMAIL'];
 
 // `only` narrows the keys read (jiraFetch asks for the email alone).
 export function loadConfIntoProcess(only = CONF_KEYS) {
@@ -86,8 +87,8 @@ async function loadResolver() {
 const resolver = await loadResolver();
 
 /** The names the keyring path serves (environment, credentials directory, keyring); {} without the resolver. */
-export function resolveFromKeyring(names) {
-  return resolver ? resolver.mod.resolveSecrets(resolver.root, names) : {};
+export function resolveFromKeyring(names, env) {
+  return resolver ? resolver.mod.resolveSecrets(resolver.root, names, env) : {};
 }
 
 /** Set any credential still missing from the process environment from the keyring path. */
@@ -98,15 +99,17 @@ export function fillFromKeyring() {
 
 /**
  * Store the token in kvs in the keyring when it is unlocked; returns the names stored. A store counts
- * only when the keyring then serves that value back, so a put that exits 0 but keeps nothing (or an
- * exported value masking it) leaves the value for the .env write instead of losing it.
+ * only when the keyring itself then serves that value back: the read-back blanks the exported name and
+ * CREDENTIALS_DIRECTORY, so neither can make a put that exits 0 but keeps nothing look stored. Anything
+ * not stored is left for the .env write instead of being lost.
  */
 export function storeInKeyring(kvs) {
   const stored = [];
   if (!resolver || !resolver.mod.keyringUnlocked(resolver.root)) return stored;
   for (const [k, v] of Object.entries(kvs)) {
     if (!KEYRING_WRITE_KEYS.includes(k)) continue;
-    if (resolver.mod.putSecret(resolver.root, k, v) && resolveFromKeyring([k])[k] === v) stored.push(k);
+    const keyringOnly = { [k]: '', CREDENTIALS_DIRECTORY: '' };
+    if (resolver.mod.putSecret(resolver.root, k, v) && resolveFromKeyring([k], keyringOnly)[k] === v) stored.push(k);
   }
   return stored;
 }
