@@ -1665,5 +1665,14 @@ rc=0; out=$(run_rw arm --vault "$VAULT" --rewrite-armed --dry-run 2>&1) || rc=$?
 assert_rc "arm --rewrite-armed --dry-run exits 0" 0 "$rc"
 assert_not_contains "dry-run writes no runner" "format: $RW_VER" "$(cat "$RWDIR/graphmap-himmel.sh")"
 assert_contains "dry-run names the runner it would rewrite" "graphmap-himmel.sh" "$out"
+# a runner that cannot be replaced fails the run (rc 4) and keeps the old file, never "rewrote"
+if [ "$(id -u)" != 0 ]; then
+    chmod a-w "$RWDIR"
+    rc=0; out=$(run_rw arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+    chmod u+w "$RWDIR"
+    assert_rc "arm --rewrite-armed with an unwritable runner dir exits 4" 4 "$rc"
+    assert_not_contains "a failed rewrite is not reported as rewrote" "rewrote $RWDIR" "$out"
+    assert_not_contains "a failed rewrite keeps the old himmel runner" "format: $RW_VER" "$(cat "$RWDIR/graphmap-himmel.sh")"
+fi
 
 summary

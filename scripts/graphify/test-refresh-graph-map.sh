@@ -4429,7 +4429,7 @@ mkdir -p "$MGC/fixtures"; printf '# fx\n' > "$MGC/fixtures/x.md"; git -C "$MGC" 
 git -C "$MGC" -c core.hooksPath=/dev/null commit -qm fixtures >/dev/null 2>&1
 out=$(mg_run mgt "$MGC" --merge-into-live); rc=$?
 out2=$(mg_run mgt "$MGC" --merge-into-live); rc2=$?
-[ "$(mg_has "$MGC/graphify-out/graph.json" sem-fixtures/x.md)" = 0 ] \
+{ [ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && [ "$(mg_has "$MGC/graphify-out/graph.json" sem-fixtures/x.md)" = 0 ]; } \
   && pass "T-merge a skip-dir file's node does not enter the live graph (two runs)" \
   || fail "T-merge fixtures node landed in the live graph (rc=$rc/$rc2): $out $out2"
 

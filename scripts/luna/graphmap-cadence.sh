@@ -354,7 +354,9 @@ Flags (arm only, except --dry-run):
   --rewrite-armed        Regenerate ONLY the runner files that already exist, at the
                          current runner format. Touches no crontab row (nothing is
                          added, removed or rescheduled) and creates no runner. Use it
-                         to pick up a runner-format bump on an armed station. Refused
+                         to pick up a runner-format bump on an armed station. Pass the
+                         same --vault as when it was armed (the runners are rebuilt from
+                         this invocation, as with arm --force). Refused
                          with --force, --ast-only, --with-publish, --publish-semantic,
                          --with-luna-semantic, --semantic-active, --publish-every-hours.
   --dry-run              Print what would happen, touch nothing
@@ -1253,6 +1255,7 @@ cmd_arm() {
                 continue
             fi
             rw_tmp="$rw_runner.tmp.$$"
+            if ! {
             case "$rw_name" in
                 luna)           emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" > "$rw_tmp" ;;
                 himmel)         emit_runner "$TASK_HIMMEL" "$payload_himmel" "$q_log_himmel" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-himmel "3 4" > "$rw_tmp" ;;
@@ -1261,8 +1264,11 @@ cmd_arm() {
                 publish-himmel) emit_runner "$TASK_PUBLISH_HIMMEL" "$payload_publish_himmel" "$q_log_publish_himmel" "$q_himmel" "" "$q_graphify_dir" > "$rw_tmp" ;;
                 semantic-luna)  emit_runner "$TASK_SEMANTIC_LUNA" "$payload_semantic_luna" "$q_log_semantic_luna" "$q_himmel" "" "$q_graphify_dir" 0 "" graphmap-semantic-luna "3 4" > "$rw_tmp" ;;
             esac
-            chmod +x "$rw_tmp"
-            mv -f "$rw_tmp" "$rw_runner"  # prim-ok: same temp-then-mv promote as the normal arm path above
+            } || ! chmod +x "$rw_tmp" || ! mv -f "$rw_tmp" "$rw_runner"; then  # prim-ok: same temp-then-mv promote as the normal arm path above
+                rm -f "$rw_tmp"
+                echo "ERR graphmap-cadence: could not rewrite $rw_runner; the existing runner is left as it was" >&2
+                exit 4
+            fi
             echo "graphmap-cadence: rewrote $rw_runner"
             rw_n=$((rw_n + 1))
         done
