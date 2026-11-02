@@ -1,10 +1,11 @@
 // the feed's probe progress, background loading and stale-while-revalidate, over the real server
 // with the stub reports (stub-himmelctl.js for the feed, stub-recorder.js + stub-cadence.sh for an action).
 import { test, expect, afterEach } from "bun:test";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer, type ServerOpts } from "../server";
+import { stubKeyring } from "./keyring-stub";
 
 const TOKEN = "t".repeat(64);
 const H = { "X-Himmel-Token": TOKEN };
@@ -22,7 +23,7 @@ function boot(env: Record<string, string>, x: Partial<ServerOpts> & Record<strin
   const s = startServer({ port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: join(dir, "home"), CONFIG_UI_IDLE_MS: "60000", CONFIG_UI_HIMMELCTL: STUB, STUB_FEED_COUNT: count, ...env }, ...x } as never);
   stops.push(() => s.stop());
   const runs = () => { try { return readFileSync(count, "utf8").split("\n").filter(Boolean).length; } catch { return 0; } };
-  return { port: s.port, runs };
+  return { port: s.port, runs, home: join(dir, "home") };
 }
 const feed = (port: number) => fetch(`http://127.0.0.1:${port}/api/feed`, { headers: H });
 async function timed(port: number) {
@@ -173,3 +174,20 @@ test("?refresh=1 never joins a probe already in flight: it starts its own and th
   expect((await get()).status).toBe(200);
   expect((await (await get()).json()).stubRun).toBe(2);
 }, 20_000);
+
+// A value only the keyring holds, with no token shape: only the literal list masks it, in the report a run serves and in the copy it saves.
+test("a keyring-only value in a report is masked in the body served and in the cache file saved (HIMMEL-8565)", async () => {
+  const kr = "kr-only-" + "q7x2".repeat(2);
+  const kdir = mkdtempSync(join(tmpdir(), "cfgui-bg-kr-"));
+  dirs.push(kdir);
+  const k = stubKeyring(kdir);
+  k.put("JIRA_API_TOKEN", kr);
+  const { port, home } = boot({ ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "", STUB_LEAK: kr }, { feedWaitMs: 5000 });
+  const served = JSON.stringify((await untilFeed(port)).j);
+  expect(served).toContain("stub-row-one");
+  expect(served).not.toContain(kr);
+  const feeds = join(home, ".himmel", "state", "config-ui", "feeds");
+  const files = readdirSync(feeds);
+  expect(files.length).toBe(1);
+  expect(readFileSync(join(feeds, files[0]), "utf8")).not.toContain(kr);
+});

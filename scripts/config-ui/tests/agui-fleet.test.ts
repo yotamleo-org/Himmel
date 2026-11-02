@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { startServer } from "../server";
 import { filterCount, NO_FILTERS } from "../agui-web/src/fleet-model";
 import { CLOUD, customConfig, fleetFixture, FLEET, PRIOR_CHIEF } from "./agui-fleet-fixture";
+import { stubKeyring } from "./keyring-stub";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const TOKEN = "t".repeat(64);
@@ -234,6 +235,19 @@ test("a secret straddling the summary cut is redacted whole, not left as a fragm
   const b = await (await fleet(s.port)).json();
   const c = b.sessions.find((x: any) => x.name === FLEET.console.name);
   expect(c.activity.summary).not.toContain(secret.slice(0, 20));
+});
+
+test("a value only the keyring holds is masked in the census (HIMMEL-8565)", async () => {
+  const kdir = mkdtempSync(join(tmpdir(), "agui-fleet-kr-"));
+  cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
+  const kr = "kr-only-" + "q7x2".repeat(2);
+  const k = stubKeyring(kdir);
+  k.put("JIRA_API_TOKEN", kr);
+  const s = boot({ ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "" });
+  s.append(FLEET.console, { type: "assistant", message: { id: "m-k", role: "assistant", stop_reason: "tool_use", content: [{ type: "tool_use", id: "toolu_k", name: "Bash", input: { command: `echo ${kr}` } }] } });
+  const raw = await (await fleet(s.port)).text();
+  expect(raw).toContain("Bash");
+  expect(raw).not.toContain(kr);
 });
 
 test("runtime uses the launch record, freezes a wrapped session and excludes Chrome helpers", async () => {

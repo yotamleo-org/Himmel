@@ -7,6 +7,7 @@ import { mapFile } from "../agui/journal-mapper.ts";
 import { journalStream, resolveJournal } from "../agui/sse.ts";
 import { readFleet } from "../agui/fleet.ts";
 import { customConfig, fleetFixture, FLEET } from "./agui-fleet-fixture";
+import { stubKeyring } from "./keyring-stub";
 
 // GET /api/agui/<run> streams a session journal as AG-UI over SSE.
 // seams: env.HOME (a temp HOME whose ~/.claude/projects holds the fixture journals),
@@ -350,6 +351,19 @@ test("secret-shaped strings in the journal are redacted before they leave the se
   const text = await (await get(port, RUN)).text();
   expect(text).toContain("List ");
   expect(text).not.toContain(canary);
+});
+
+test("a value only the keyring holds is masked in the stream (HIMMEL-8565)", async () => {
+  const h = home();
+  const kr = "kr-only-" + "q7x2".repeat(2);
+  const k = stubKeyring(h);
+  k.put("JIRA_API_TOKEN", kr);
+  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace("List the files in the repo root.", `List ${kr} files.`);
+  journal(h, "-proj", RUN, body);
+  const { port } = boot(h, { env: { ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "" } });
+  const text = await (await get(port, RUN)).text();
+  // the message text passes the server's redactor; the agent name the mapper derives from the prompt does not (it only shapes tokens)
+  expect(text).toContain("List ‹redacted› files.");
 });
 
 // a subagent writes its own transcript beside the journal; the stream follows it too.

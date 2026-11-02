@@ -59,7 +59,8 @@ const FEED_TIMEOUT_MS = 300_000;
 const FEED_WAIT_MS = 8_000;
 const FEED_CACHE_MS = 30_000;
 const LITERALS_TTL_MS = 5_000;
-const SECRET_NAMES = secretsManifest.secrets.map((s: { name: string }) => s.name);
+// every credential the manifest names: the wizard's and the station scripts' (the redactor keeps the secret-named ones)
+const SECRET_NAMES = [...secretsManifest.secrets, ...secretsManifest.stationSecrets].map((s: { name: string }) => s.name);
 // with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
 // while the chief is in use (an authenticated request within the last FEED_REFRESH_MS), so a closed UI idles out.
 const FEED_REFRESH_MS = 10 * 60 * 1000;
@@ -274,12 +275,12 @@ export function parseProbeLine(line: string): Progress | null {
 }
 
 // the report runs under probe-progress.cjs, whose stderr steps reach onProgress.
-function runFeed(env: Env, timeoutMs: number, onProgress: (p: Progress) => void): Promise<string> {
+function runFeed(env: Env, timeoutMs: number, onProgress: (p: Progress) => void, redact: (v: unknown) => unknown): Promise<string> {
   return new Promise((ok, fail) => {
     const argv = ["--require", join(import.meta.dir, "probe-progress.cjs"), himmelctlBin(env), "report", "--json"];
     const child = execFile("node", argv, { env: env as NodeJS.ProcessEnv, timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }, (err, stdout) => {
       if (err) return fail(err);
-      try { ok(JSON.stringify(redactDeep(JSON.parse(stdout)))); } catch (e) { fail(e); }
+      try { ok(JSON.stringify(redact(JSON.parse(stdout)))); } catch (e) { fail(e); }
     });
     let buf = "";
     child.stderr?.on("data", (d: Buffer | string) => {
@@ -333,12 +334,16 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // The redaction literals: the secrets resolver's values for the manifest's names (environment, credentials directory,
   // keyring), the checkout's .env values as the last fallback, and the server env's secret values. The resolver spawns a
   // child, so a read is reused for 5 s (a response, a poll). Never logged, never on argv.
+  // The list only grows: a locked keyring, a timeout or a partial read adds nothing and drops nothing, so a value masked
+  // once stays masked. A value no read ever saw (the keyring was locked throughout) cannot be masked.
+  const seen = new Set<string>();
   let literalsAt = 0, literalsMemo: string[] = [];
   const secretLiterals = (): string[] => {
     if (Date.now() - literalsAt < LITERALS_TTL_MS) return literalsMemo;
     let raw = "";
     try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-    literalsMemo = [...envValues(raw, parseDotEnv, env), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))];
+    for (const v of [...envValues(raw, parseDotEnv, env), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))]) seen.add(v);
+    literalsMemo = [...seen];
     literalsAt = Date.now();
     return literalsMemo;
   };
@@ -476,7 +481,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           before: null, after: null, ...(r.audit.ok ? {} : { outcome: "error" as const }) });
       } catch { /* the answer below still carries the outcome */ }
     }
-    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; }
+    if (r.status === 200) { feedRun = null; feedLast = null; feedEpoch++; literalsAt = 0; } // a stored secret is masked from the next response
     return json(r.body, r.status);
   }
 
@@ -540,12 +545,17 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const run: FeedRun = { startedAt: now(), done: false, at: 0, promise: Promise.resolve(), epoch: feedEpoch, progress: null, waiters: [] };
     active++; // a running report keeps the idle timer from shutting the server down
     const onProgress = (p: Progress) => { if (!run.progress || p.i > run.progress.i) { run.progress = p; wake(run); } };
-    run.promise = runFeed(env, opts.feedTimeoutMs ?? FEED_TIMEOUT_MS, onProgress)
+    run.promise = runFeed(env, opts.feedTimeoutMs ?? FEED_TIMEOUT_MS, onProgress, redactOut) // masked before it is cached or saved
       .then((b) => { run.body = b; if (run.epoch === feedEpoch) { feedLast = { body: b, at: now() }; saveFeed(env, projectsNow().current, b); } }, () => { run.error = "himmelctl report --json failed or timed out"; })
       .finally(() => { run.done = true; run.at = now(); wake(run); active--; if (deferred && active === 0) { deferred = false; bump(); } });
     return feedRun = run;
   }
-  const feedBody = (body: string) => new Response(body, { headers: { "content-type": "application/json", "cache-control": "no-store" } });
+  // Masked again on every read: a cached or saved body may predate a secret the list has learned since.
+  const maskFeed = (body: string): string => {
+    const literals = secretLiterals();
+    try { return JSON.stringify(redactDeep(JSON.parse(body), { literals })); } catch { return String(redactDeep(body, { literals })); }
+  };
+  const feedBody = (body: string) => new Response(maskFeed(body), { headers: { "content-type": "application/json", "cache-control": "no-store" } });
   async function feedRoute(): Promise<Response> {
     const last = feedLast;
     const run = feedStart(); // an expired cache starts a refresh here
@@ -566,10 +576,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   let fleetRun: ReturnType<typeof readFleet> | null = null;
   // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
   function fleetOnce(): ReturnType<typeof readFleet> {
-    const literals = secretLiterals();
     return fleetRun ??= readFleet({
       script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
-      redact: (v) => String(redactDeep(v, { literals })),
+      redact: (v) => String(redactOut(v)),
     }).finally(() => { fleetRun = null; });
   }
   async function route(req: Request): Promise<Response> {
@@ -742,7 +751,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (!doc) return new Response("no such doc", { status: 404 });
         if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
         const r = (await readBoardFile(doc)) ?? await readBoard({ script: opts.boardScript ?? join(CHECKOUT, "scripts/handover/chief-kit/board.mjs"), doc, checkout: CHECKOUT, env: { ...env }, now: now() });
-        return "error" in r ? json({ error: "the board could not be built", detail: String(scrub(r.error)) }, 502) : json(scrub(r.body, (v) => redactOut(v)));
+        return "error" in r ? json({ error: "the board could not be built", detail: String(scrub(r.error, (v) => redactOut(v))) }, 502) : json(scrub(r.body, (v) => redactOut(v)));
       }
       if (path.startsWith("/api/agui/")) {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
@@ -758,12 +767,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           if (joined && "status" in found && found.status === 404) { await fleetOnce().catch(() => undefined); found = await resolveJournal(env.HOME || homedir(), run); }
         }
         if ("status" in found) return new Response(found.status === 400 ? "bad run id" : found.status === 404 ? "no such run" : "run id is ambiguous", { status: found.status });
-        // Secrets in the transcript pass the same redactor as every other output; literals read once per stream.
-        const literals = secretLiterals();
+        // Secrets in the transcript pass the same redactor as every other output, with the list as it is now (the stream is long-lived).
         active++; // an open stream keeps the idle timer from shutting the server down
         const body = journalStream(found.path, {
           threadId: run, pollMs: opts.aguiPollMs ?? AGUI_POLL_MS, idleMs: opts.aguiIdleMs ?? AGUI_IDLE_MS, maxMs: opts.aguiMaxMs ?? AGUI_MAX_MS,
-          redact: (v) => redactDeep(v, { literals }),
+          redact: (v) => redactOut(v),
           busRoot: busRootOf(env, env.HOME || homedir()),
           onClose: () => { active--; if (deferred && active === 0) { deferred = false; bump(); } },
         });

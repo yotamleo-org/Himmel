@@ -275,22 +275,54 @@ test("a canary printed by a child is absent from preview, run and error bodies",
 });
 
 // A secret only the keyring holds (no .env, not in the server env) is a redaction literal too.
-// The value has no token shape, so only the literal list can mask it. The env map unpins the preload's keyring-off.
+// The values have no token shape, so only the literal list can mask them. The env map unpins the preload's keyring-off
+// and empties the names the resolver reads, so a runner that exports one of them cannot decide a row.
 const KEYRING_ONLY = "kr-only-" + "q7x2".repeat(2);
-test("a value only the keyring holds is masked in a preview body (HIMMEL-8565)", async () => {
+const SUDO_ONLY = "sudo-pw-1"; // a station secret (not the wizard's), low entropy
+const VISIBLE = "visible-q7x2q7x2";
+const keyringEnv = (k: ReturnType<typeof stubKeyring>, leak: string) =>
+  ({ ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "", HIMMELCTL_SUDO_PASSWORD: "", STUB_LEAK: leak });
+const armRun = async (port: number, id: string) => (await post(port, "/api/run", { previewId: id, ...ARM, consent: "graphmap" })).text();
+
+test("values only the keyring holds, a wizard secret and a station secret, are masked in a preview body (HIMMEL-8565)", async () => {
   const k = stubKeyring(dir);
   k.put("JIRA_API_TOKEN", KEYRING_ONLY);
-  const port = boot({ env: { ...k.env, HIMMEL_SECRETS_KEYRING: "", STUB_LEAK: KEYRING_ONLY } });
+  k.put("HIMMELCTL_SUDO_PASSWORD", SUDO_ONLY);
+  const port = boot({ env: keyringEnv(k, `${KEYRING_ONLY} ${SUDO_ONLY}`) });
   const pt = await (await preview(port)).text();
   expect(pt).toContain("plan: graphmap-cadence");
   expect(pt).not.toContain(KEYRING_ONLY);
+  expect(pt).not.toContain(SUDO_ONLY);
 });
 
-test("a value held by no secret source is shown unchanged, so the mask is not a blanket one (HIMMEL-8565)", async () => {
+test("one response holding a keyring value and a value no source holds masks only the first, so the mask is not a blanket one (HIMMEL-8565)", async () => {
   const k = stubKeyring(dir);
   k.put("JIRA_API_TOKEN", KEYRING_ONLY);
-  const port = boot({ env: { ...k.env, HIMMEL_SECRETS_KEYRING: "", STUB_LEAK: "visible-q7x2q7x2" } });
-  expect(await (await preview(port)).text()).toContain("visible-q7x2q7x2");
+  const port = boot({ env: keyringEnv(k, `${KEYRING_ONLY} ${VISIBLE}`) });
+  const pt = await (await preview(port)).text();
+  expect(pt).toContain(VISIBLE);
+  expect(pt).not.toContain(KEYRING_ONLY);
+});
+
+test("a value an action stores is masked in that action's own output, not after the 5 s the list is reused (HIMMEL-8565)", async () => {
+  const k = stubKeyring(dir);
+  const port = boot({ env: keyringEnv(k, KEYRING_ONLY) });
+  const id = await previewId(port); // the list is read here, while the keyring holds nothing
+  k.put("JIRA_API_TOKEN", KEYRING_ONLY); // what the action stores
+  const rt = await armRun(port, id);
+  expect(JSON.parse(rt).rc).toBe(0);
+  expect(rt).not.toContain(KEYRING_ONLY);
+});
+
+test("a keyring that locks after a read does not shrink the list: the value stays masked (HIMMEL-8565)", async () => {
+  const k = stubKeyring(dir);
+  k.put("JIRA_API_TOKEN", KEYRING_ONLY);
+  const port = boot({ env: keyringEnv(k, KEYRING_ONLY) });
+  const id = await previewId(port); // read while unlocked
+  k.lock();
+  const rt = await armRun(port, id); // the run drops the reused list: this read finds a locked keyring
+  expect(JSON.parse(rt).rc).toBe(0);
+  expect(rt).not.toContain(KEYRING_ONLY);
 });
 
 test("a slow re-probe returns `re-probe timed out`", async () => {

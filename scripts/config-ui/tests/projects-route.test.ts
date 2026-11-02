@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
 import { readProjects } from "../projects";
+import { stubKeyring } from "./keyring-stub";
 
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
 const TOKEN = "t".repeat(64);
@@ -15,7 +16,7 @@ afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 const row = (id: string, health: string, scope: string, fix: object = { by: "chief" }) => ({ id, source: "doctor", health, scope, installed: { detail: `d-${id}` }, fix });
 const shared = row("doctor:C12-gh-auth", "fail", "shared", { by: "operator", remedy: "gh auth login" });
 
-function boot() {
+function boot(extraEnv: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), "projects-route-"));
   const home = join(dir, "home"), root = join(dir, "root"), here = join(dir, "himmel");
   for (const d of [home, root, here]) mkdirSync(d, { recursive: true });
@@ -29,10 +30,10 @@ function boot() {
   cache("luna", [shared, row("lunabad", "fail", "project", { by: "configure", tile: "tracker" })]);
   const s = startServer({
     port: 0, token: TOKEN, projectRoot: here,
-    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, HIMMEL_PROMETHEUS_URL: "http://127.0.0.1:1", HIMMEL_FLOW_EXPORTER_PORT: "1" },
+    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root, HIMMEL_PROMETHEUS_URL: "http://127.0.0.1:1", HIMMEL_FLOW_EXPORTER_PORT: "1", ...extraEnv },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
-  return Object.assign(s, { feeds });
+  return Object.assign(s, { feeds, dir });
 }
 const get = (port: number, path: string, headers: Record<string, string> = { "X-Himmel-Token": TOKEN }) => fetch(`http://127.0.0.1:${port}${path}`, { headers });
 
@@ -95,4 +96,17 @@ test("/api/feed?project= answers another project from its cache, else not-checke
   expect(salus.status).toBe(404);
   expect(await salus.json()).toMatchObject({ state: "not-checked" });
   expect((await get(port, "/api/feed?project=" + encodeURIComponent("../../../etc/passwd"))).status).toBe(404);
+});
+
+test("a cached feed saved before a value was stored is masked when it is served (HIMMEL-8565)", async () => {
+  const kdir = mkdtempSync(join(tmpdir(), "projects-kr-"));
+  cleanups.push(() => rmSync(kdir, { recursive: true, force: true }));
+  const kr = "kr-only-" + "q7x2".repeat(2);
+  const k = stubKeyring(kdir);
+  k.put("JIRA_API_TOKEN", kr);
+  const { port, feeds } = boot({ ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "" });
+  writeFileSync(join(feeds, "luna.json"), JSON.stringify({ rows: [row("lunabad", "fail", "project")].map((r) => ({ ...r, installed: { detail: `d ${kr}` } })) }));
+  const text = await (await get(port, "/api/feed?project=luna")).text();
+  expect(text).toContain("lunabad");
+  expect(text).not.toContain(kr);
 });
