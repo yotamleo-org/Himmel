@@ -592,6 +592,21 @@ printed_lines_match "merge-on-green remedy"
 run 'a gated scripts/cr writer from a non-himmel root, for the printed-spelling rows' 2 \
     "$(payload 'bash scripts/cr/write-verdicts.sh' "$OTHER")" "$HR"
 printed_lines_match "scripts/cr writer remedy"
+# Following the advice: from a tree whose copy differs from the anchor's, the
+# relative spelling is denied, and the printed anchor spelling (placeholders
+# filled in) must pass this same hook, so the call reaches the script.
+follow_printed() { # follow_printed <label> <relative command> <path under the tree> <args>
+    local cmd
+    echo ': edited' >>"$WT/$3"
+    run "$1: relative spelling on a drifted tree -> deny" 2 "$(payload "$2" "$WT")" "$HR"
+    cmd="$(grep -m1 '^bash <himmel_dir>' <<<"$LAST_ERR")"
+    cmd="${cmd//<himmel_dir>/$PRIMARY}"
+    cmd="${cmd//<args>/$4}"
+    run "$1: printed spelling [$cmd] -> allow" 0 "$(payload "$cmd" "$WT")" "$HR"
+    g -C "$WT" checkout -q -- "$3"
+}
+follow_printed "merge-on-green" "$MOG" scripts/handover/merge-on-green.sh "--go /g"
+follow_printed "scripts/cr writer" 'bash scripts/cr/write-verdicts.sh' scripts/cr/write-verdicts.sh "--from-file /f"
 # negative controls: a quote or a variable in the path still matches no rule
 printed_matches 'control: quoted anchor path matches no rule' nomatch "bash \"$PRIMARY/scripts/handover/merge-on-green.sh\" --go /g"
 # shellcheck disable=SC2016 # the literal text
