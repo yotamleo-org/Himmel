@@ -291,9 +291,9 @@ mkdir -p "$TMP/cr/j"
 cp "$CR/journal.jsonl" "$TMP/cr/j/$S17.jsonl"
 bash "$CR/make-chain-log.sh" "$TMP/cr" >"$TMP/cr/make.out" 2>&1 || bad "the chain log builds: $(head -c 300 "$TMP/cr/make.out")"
 cd17() { bun "$DIG" --transcript "$TMP/cr/j/$S17.jsonl" --denials-ledger "$FX/classifier-denials.jsonl"; }
-T0="$(date +%s%N)"
+T0=$SECONDS
 RUN_HOOK_CHAIN_SKIP_LOG="$TMP/cr/no-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$TMP/cr/hook-runs.jsonl" cd17 >"$TMP/cr/with.json" 2>"$TMP/cr/with.err" || bad "the digest with a chain log exits 0: $(head -c 300 "$TMP/cr/with.err")"
-T1="$(date +%s%N)"
+T1=$SECONDS
 cd17 >"$TMP/cr/without.json" 2>/dev/null || bad "the digest with no chain log exits 0"
 crow() { jq -c --arg k "$1" '[.failures[] | select(.class == $k)] | .[0] // empty' "$2"; }
 cline() { crow "$1" "$TMP/cr/with.json" | jq -c 'if has("refusal_line") then .refusal_line else "ABSENT" end'; }
@@ -307,7 +307,7 @@ check "a classifier denial and a permission prompt carry null" '[ "$(cline denie
 check "no denied row carries an empty string, and the key is present on every denied row" '[ "$(jq "[.failures[] | select(.failure == \"denied\" and (has(\"refusal_line\") | not))] | length" "$TMP/cr/with.json")" = 0 ] && [ "$(jq "[.failures[] | select(.refusal_line == \"\")] | length" "$TMP/cr/with.json")" = 0 ]'
 check "the field is absent on every other failure kind" '[ "$(jq "[.failures[] | select(.failure != \"denied\" and has(\"refusal_line\"))] | length" "$TMP/cr/with.json")" = 0 ]'
 check "a huge identifier-like run through the real launcher is a line of at most 240 code points" '[ "$(cline denied/block-destructive-commands | jq -r "length <= 240 and length > 0")" = true ]'
-check "a 2 MB identifier-like denyLine written into a production row is cut to 240, and the digest finishes in under 5 s" '[ "$(cline denied/block-git-stash | jq length)" = 240 ] && [ "$(( (T1 - T0) / 1000000 ))" -lt 5000 ]'
+check "a 2 MB identifier-like denyLine written into a production row is cut to 240, and the digest finishes in under 5 s" '[ "$(cline denied/block-git-stash | jq length)" = 240 ] && [ "$((T1 - T0))" -lt 5 ]'
 check "canary: the journal text never reaches the new field (the line comes from the chain log)" 'absent -e CANARY8575zq -e TESTORIGIN8575 -e WRONGMEMBER8575 "$TMP/cr/with.json" "$TMP/cr/without.json"'
 check "a missing chain log is null on every denied row, never an error, and the status is unchanged" 'jq -e "([.failures[] | select(.failure == \"denied\") | if has(\"refusal_line\") then .refusal_line else \"ABSENT\" end] | all(. == null)) and .status == \"ok\"" "$TMP/cr/without.json" >/dev/null && [ "$(jq -r .status "$TMP/cr/with.json")" = ok ]'
 check "control: apart from refusal_line the digest is the same with and without a chain log" '[ "$(jq -S "del(.failures[].refusal_line)" "$TMP/cr/with.json")" = "$(jq -S "del(.failures[].refusal_line)" "$TMP/cr/without.json")" ]'
