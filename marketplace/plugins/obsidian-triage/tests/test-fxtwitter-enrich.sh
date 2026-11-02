@@ -1187,11 +1187,16 @@ assert "Test24g: an X-looking note under _media is untouched" "$t24i_m" "$(sha25
 assert "Test24g: an X-looking note under _synthesis is untouched" "$t24i_s" "$(sha256sum "$t24i_vault/Clippings/_synthesis/s.md" | cut -d' ' -f1)"
 assert "Test24g: and neither is counted" "summary: seen=1 adds-text=1 no-new-text=0 fetch-failed=0" "$(grep '^summary:' "$tmpdir/t24i.out")"
 
-# 24-h: a note written under the last post survives an answer that is not fuller.
+# 24-h: a note written under the last post, inside the thread section (above ## Source), survives every answer.
 t24j_vault="$tmpdir/vault-t24j"; mk_x_clip "$t24j_vault" a.md alice 160
 FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j1.out" 2>&1
-printf '\nmy own note under the thread\n' >>"$t24j_vault/Clippings/a.md"
-t24j_sum="$(sha256sum "$t24j_vault/Clippings/a.md" | cut -d' ' -f1)"
+t24j="$t24j_vault/Clippings/a.md"
+awk '/^## Source$/ && !done { print "my own note under the thread\n"; done = 1 } { print }' "$t24j" >"$tmpdir/t24j-note.md"
+cp "$tmpdir/t24j-note.md" "$t24j"
+l_thread="$(line_of "## Thread" "$t24j")"; l_note="$(line_of "my own note under the thread" "$t24j")"; l_src="$(line_of "## Source" "$t24j")"
+t24j_pos=no; [ -n "$l_thread" ] && [ -n "$l_note" ] && [ -n "$l_src" ] && [ "$l_thread" -lt "$l_note" ] && [ "$l_note" -lt "$l_src" ] && t24j_pos=yes
+assert "Test24h: setup puts the note below the thread's last post and above ## Source" "yes" "$t24j_pos"
+t24j_sum="$(sha256sum "$t24j" | cut -d' ' -f1)"
 FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j2.out" 2>&1
 assert "Test24h: the same answer leaves a note under the last post byte-identical" "$t24j_sum" "$(sha256sum "$t24j_vault/Clippings/a.md" | cut -d' ' -f1)"
 cat >"$t24_fx/160.json" <<'EOF'
@@ -1202,6 +1207,52 @@ cat >"$t24_fx/160.json" <<'EOF'
 EOF
 FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j3.out" 2>&1
 assert "Test24h: a shorter answer leaves it byte-identical too" "$t24j_sum" "$(sha256sum "$t24j_vault/Clippings/a.md" | cut -d' ' -f1)"
+cat >"$t24_fx/160.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "160", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "161", "author": { "screen_name": "alice" }, "text": "the continuation, now with more words in it" },
+  { "id": "162", "author": { "screen_name": "alice" }, "text": "and a third post that arrived later" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j4.out" 2>&1
+t24j_full=no; grep -q "and a third post that arrived later" "$t24j" && t24j_full=yes
+assert "Test24h: a fuller answer is written" "yes" "$t24j_full"
+t24j_kept=no; grep -q "my own note under the thread" "$t24j" && t24j_kept=yes
+assert "Test24h: and the note under the last post is still in the clip" "yes" "$t24j_kept"
+t24j_sum2="$(sha256sum "$t24j" | cut -d' ' -f1)"
+FXT_THREAD_FIXTURE_DIR="$t24_fx" node "$BACKFILL" --vault "$t24j_vault" --apply >"$tmpdir/t24j5.out" 2>&1
+assert "Test24h: a second apply of the fuller answer is a byte-identical no-op" "$t24j_sum2" "$(sha256sum "$t24j" | cut -d' ' -f1)"
+l_note="$(line_of "my own note under the thread" "$t24j")"; l_last="$(line_of "and a third post that arrived later" "$t24j")"; l_src="$(line_of "## Source" "$t24j")"
+t24j_ord=no; [ -n "$l_last" ] && [ -n "$l_note" ] && [ -n "$l_src" ] && [ "$l_last" -lt "$l_note" ] && [ "$l_note" -lt "$l_src" ] && t24j_ord=yes
+assert "Test24h: the note sits below the new last post and above ## Source" "yes" "$t24j_ord"
+
+# 24-1/2 controls: a real Scrapling continuation still adds text; zero replies + API error stays ok on --reflag.
+t24k_vault="$tmpdir/vault-t24k"; mk_x_clip "$t24k_vault" a.md jack 95
+printf '%s\n' '{ "code": 500, "message": "boom" }' >"$t24_fx/95.json"
+FXT_THREAD_FIXTURE_DIR="$t24_fx" FXT_SCRAPLING_FIXTURE="$tmpdir/t20-scrapling.json" \
+    node "$BACKFILL" --vault "$t24k_vault" --apply >"$tmpdir/t24k.out" 2>&1
+t24k=no; grep -q "scrapling recovered continuation" "$t24k_vault/Clippings/a.md" && t24k=yes
+assert "Test24A (control): endpoint down + a Scrapling page with the author's continuation still adds text" "yes" "$t24k"
+assert "Test24A (control): and counts adds-text" "summary: seen=1 adds-text=1 no-new-text=0 fetch-failed=0" "$(grep '^summary:' "$tmpdir/t24k.out")"
+t24l_vault="$tmpdir/vault-t24l"; mkdir -p "$t24l_vault/Clippings"
+cat >"$t24l_vault/Clippings/enriched.md" <<'EOF'
+---
+source: https://x.com/jack/status/90
+processed: true
+enriched_at: 2026-06-01
+enrichment_source: fxtwitter
+enrichment_status: ok
+---
+## The Idea
+a plain statement
+
+## Source
+https://x.com/jack/status/90
+EOF
+t24l_sum="$(sha256sum "$t24l_vault/Clippings/enriched.md" | cut -d' ' -f1)"
+FXT_FIXTURE="$tmpdir/t19-noreplies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.json" \
+    node "$SCRIPT" --vault "$t24l_vault" --reflag --limit 1 >"$tmpdir/t24l.out" 2>&1
+assert "Test24B (control): --reflag with a tweet that has no replies and an API error leaves the clip untouched" "$t24l_sum" "$(sha256sum "$t24l_vault/Clippings/enriched.md" | cut -d' ' -f1)"
 
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))

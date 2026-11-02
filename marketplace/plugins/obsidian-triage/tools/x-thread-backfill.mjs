@@ -16,7 +16,8 @@
  * Per clip it prints  <rel path>\t<verdict>\t<chars>  with verdict one of
  *   adds-text    the thread holds text the clip lacks (chars = how much)
  *   no-new-text  fetched fine, nothing to add (also: already applied)
- *   fetch-failed endpoint and Scrapling both failed; the clip is left as is
+ *   fetch-failed endpoint and Scrapling both failed, or only Scrapling answered
+ *                and showed no continuation; the clip is left as is
  * A guarded write that was reverted, or an injection flag that could not be
  * written because someone else edited the clip (left as is, NOT reverted: check
  * it by hand), prints  <rel path>\twrite-failed\t0\t<why>  on stderr; those

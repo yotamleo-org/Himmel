@@ -533,6 +533,19 @@ export function renderThreadSection(posts) {
  * is shorter in it. Only the per-post label lines start a post, so a status
  * link inside a post's own text is not a post.
  */
+/**
+ * Split a held `## Thread` section into the captured posts (up to the last
+ * quoted line) and whatever someone wrote below them, which is theirs and is
+ * neither compared nor dropped by a rewrite.
+ */
+function splitThreadTail(section) {
+  const lines = section.split("\n");
+  let last = -1;
+  lines.forEach((l, i) => { if (l.startsWith(">")) last = i; });
+  if (last < 0) return { head: section, tail: "" };
+  return { head: lines.slice(0, last + 1).join("\n"), tail: lines.slice(last + 1).join("\n").trim() };
+}
+
 function threadWouldShrink(existing, section) {
   const label = /^\*\*@\w+\*\* \([^)]*\) https:\/\/x\.com\/\w+\/status\/(\d+)\n/;
   const sizes = (s) => {
@@ -1355,7 +1368,11 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
 async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body: bodyIn, markers, section, threadSection = null, resetTriage = false, stripQuoteSection = false, statusGlyph, statusMsg }) {
   // A thread already in the clip is never shrunk by a shorter answer.
   const held = bodyIn.match(THREAD_SECTION_RE);
-  if (threadSection && held && threadWouldShrink(held[0], threadSection)) threadSection = null;
+  if (threadSection && held) {
+    const { head, tail } = splitThreadTail(held[0]);
+    if (threadWouldShrink(head, threadSection)) threadSection = null;
+    else if (tail) threadSection = `${threadSection}\n\n${tail}`;
+  }
   // A rewritten thread replaces the one already in the clip, so the G-3
   // single-section-add identity is checked against the body without it.
   const body = threadSection ? bodyIn.replace(THREAD_SECTION_RE, "") : bodyIn;
@@ -1462,7 +1479,8 @@ async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body: 
  *   skip         not an X clip (not counted)
  *   adds-text    the thread holds text the clip lacks (chars = how much)
  *   no-new-text  fetched fine, nothing to add (also: already applied)
- *   fetch-failed endpoint and Scrapling both failed; the clip is left as is
+ *   fetch-failed endpoint and Scrapling both failed, or only Scrapling answered
+ *                and showed no continuation; the clip is left as is
  *   write-failed a guarded write was reverted
  * Idempotent: a second apply finds the identical section and reports
  * no-new-text without writing.
@@ -1495,9 +1513,10 @@ export async function rethreadClip(clipPath, vault, apply, opts = {}) {
 
   const section = renderThreadSection(cap.posts);
   if (existing) {
-    if (existing[0].trimEnd() === `\n${section}`) return { kind: "no-new-text", chars: 0, message: `${rel} -- thread already in the clip` };
+    const { head } = splitThreadTail(existing[0]);
+    if (head.trimEnd() === `\n${section}`) return { kind: "no-new-text", chars: 0, message: `${rel} -- thread already in the clip` };
     // Never lose a post an earlier fetch kept: replace only with a superset.
-    if (threadWouldShrink(existing[0], section)) return { kind: "no-new-text", chars: 0, message: `${rel} -- kept the fuller thread already in the clip` };
+    if (threadWouldShrink(head, section)) return { kind: "no-new-text", chars: 0, message: `${rel} -- kept the fuller thread already in the clip` };
   }
   const out = { kind: "adds-text", chars: cap.extraChars, message: `${rel} -- thread adds ${cap.extraChars} chars` };
   if (!apply) return out;
