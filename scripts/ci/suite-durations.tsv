@@ -1235,3 +1235,4 @@ scripts/station-ops/test-station-ops.sh	3
 scripts/handover/chief-kit/test-series-next.sh	8
 scripts/handover/chief-kit/test-holds.sh	11
 scripts/jira/test-empty-sector-check.sh	1
+scripts/eval/relay-cost/test-relay-cost.sh	8

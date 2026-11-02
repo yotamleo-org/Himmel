@@ -1221,3 +1221,4 @@ scripts/station-ops/test-station-ops.sh	pr	guard
 scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new for HIMMEL-8349 (series-next.sh, slice S2b)
 scripts/handover/chief-kit/test-holds.sh	pr	trust-path
 scripts/jira/test-empty-sector-check.sh	local	behaviour suite, new for HIMMEL-8659 (empty-sector-check.sh)
+scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new for HIMMEL-6992 (relay-cost eval checker, pricing, runner)
