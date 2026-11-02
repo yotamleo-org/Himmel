@@ -445,6 +445,22 @@ test('HIMMEL-8649: a stdin prompt on a Bash-granted call that ran is still never
   assert.equal(existsSync(join(g.dir, 'stdin.seen.mode')), false);
 });
 
+test('HIMMEL-8649: a stdin that never closes is cut at the call timeout, refused with no fallback, and leaves no scratch file', async (t) => {
+  if (spawnSync('sh', ['-c', 'command -v timeout']).status !== 0) { t.skip('no timeout binary on this host'); return; }
+  const f = fixture();
+  const child = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f), HIMMEL_API_CALL_TIMEOUT_S: '1', STUB_FB_OUT: FB_OK }, stdio: ['pipe', 'pipe', 'pipe'] });
+  child.stdin.write('half a prompt');
+  let err = '';
+  child.stderr.on('data', (d) => { err += d; });
+  const code = await Promise.race([new Promise((r) => child.on('close', r)), new Promise((r) => setTimeout(() => r('hung'), 10000))]);
+  if (code === 'hung') child.kill('SIGKILL');
+  assert.equal(code, 2, `the launcher hung on an open stdin: ${err}`);
+  assert.match(err, /could not buffer the stdin prompt/);
+  assert.equal(f.called(), false);
+  assert.equal(fbCalls(f), 0);
+  assert.deepEqual(promptFiles(f), []);
+});
+
 test('HIMMEL-8649: the scratch prompt file is gone after the launcher is terminated mid-call', async () => {
   const f = fixture();
   const hold = join(f.dir, 'hold'); writeFileSync(hold, '');

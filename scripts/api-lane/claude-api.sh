@@ -401,12 +401,16 @@ OUT="$(mktemp "${TMPDIR:-/tmp}/claude-api-out.XXXXXX")" || refuse "no scratch fi
 
 # A prompt on stdin is kept in a mode-600 scratch file (removed by the EXIT trap on every exit path) so the call reads
 # it from there and the subscription fallback can replay the same bytes. Everything above refuses before stdin is read.
+# The read is bounded by the call timeout (where `timeout` exists), as the call's own stdin read was by its watchdog.
+CALL_TIMEOUT_S="${HIMMEL_API_CALL_TIMEOUT_S:-3600}"
+[[ "$CALL_TIMEOUT_S" =~ ^[1-9][0-9]{0,8}$ ]] || CALL_TIMEOUT_S=3600
 if [ "$HAS_PROMPT" != 1 ]; then
   PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
   chmod 600 "$PROMPT_FILE"
   # a half-read stdin cannot be replayed whole
-  cat >"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not buffer the stdin prompt"; }
-  exec 3<"$PROMPT_FILE"
+  if command -v timeout >/dev/null 2>&1; then timeout "$CALL_TIMEOUT_S" cat >"$PROMPT_FILE"; else cat >"$PROMPT_FILE"; fi ||
+    { NO_FB="the prompt could not be kept"; refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
+  exec 3<"$PROMPT_FILE" || refuse "could not reopen the stdin prompt"
 else
   exec 3<&0
 fi
@@ -424,8 +428,6 @@ case "$RESERVED" in *'"verdict":"PROCEED"'*) ;; *) refuse "reservation refused: 
 # The call runs in the background so a signal reaches this shell at once: the handler stops the call before it
 # settles, and a watchdog stops it at HIMMEL_API_CALL_TIMEOUT_S, the age at which the credit-state sweep
 # releases a reservation. A launcher killed hard leaves its reservation to that sweep.
-CALL_TIMEOUT_S="${HIMMEL_API_CALL_TIMEOUT_S:-3600}"
-[[ "$CALL_TIMEOUT_S" =~ ^[1-9][0-9]{0,8}$ ]] || CALL_TIMEOUT_S=3600
 CALL_PID=""
 WATCHDOG_PID=""
 DEAD_SETTLED=0
@@ -485,7 +487,7 @@ ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u 
 CALL_PID=$!
 # the watchdog's own sleep is ended with it, so no timer outlives the call
 ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
-  sleep "$CALL_TIMEOUT_S" & wait $!; : >"$OUT.timeout"; stop_call ) &
+  sleep "$CALL_TIMEOUT_S" & wait $!; : >"$OUT.timeout"; stop_call ) 3<&- &
 WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?
