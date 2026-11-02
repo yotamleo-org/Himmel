@@ -528,13 +528,21 @@ export function renderThreadSection(posts) {
 /**
  * True when replacing the `## Thread` section `existing` with `section` would
  * lose captured text: a post that was kept is missing from the new answer, or
- * the new section is shorter. Only the per-post label lines count as posts, so
- * a status link inside a post's own text is not a post.
+ * is shorter in it. Only the per-post label lines start a post, so a status
+ * link inside a post's own text is not a post.
  */
 function threadWouldShrink(existing, section) {
-  const ids = (s) => new Set([...s.matchAll(/^\*\*@\w+\*\* \([^)]*\) https:\/\/x\.com\/\w+\/status\/(\d+)$/gm)].map((m) => m[1]));
-  const want = ids(section);
-  return [...ids(existing)].some((id) => !want.has(id)) || section.length < existing.trim().length;
+  const label = /^\*\*@\w+\*\* \([^)]*\) https:\/\/x\.com\/\w+\/status\/(\d+)\n/;
+  const sizes = (s) => {
+    const out = new Map();
+    for (const part of s.split(/^(?=\*\*@\w+\*\* \([^)]*\) https:\/\/x\.com\/\w+\/status\/\d+$)/m)) {
+      const m = part.match(label);
+      if (m) out.set(m[1], part.trim().length);
+    }
+    return out;
+  };
+  const want = sizes(section);
+  return [...sizes(existing)].some(([id, n]) => !want.has(id) || want.get(id) < n);
 }
 
 function statusIdOf(canon) {
@@ -1507,21 +1515,26 @@ export async function rethreadClip(clipPath, vault, apply, opts = {}) {
   if (flag) {
     // Fail closed as body-fill does: if the flag cannot be written, put the
     // clip back as it was so the next run re-fetches and re-screens it.
+    // (Except when the clip changed under us: see below.)
     const revert = (why) => {
       writeFileSync(clipPath, text, { encoding: "utf-8" });
       return { kind: "write-failed", chars: 0, message: `${rel} -- injection flag-write failed (${why}); reverted` };
     };
-    const t2 = readFileSync(clipPath, "utf-8");
-    const p2 = parseFrontmatter(t2);
-    if (!p2.present) return revert("no frontmatter on re-read");
-    const fw = await writeEnrichment({
-      clipPath, rel, text: t2, baselineSha: sha256(t2), fmRaw: p2.fmRaw, body: p2.body,
-      markers: { harvest_flag: "injection-suspect", harvest_flag_detail: flag.detail },
-      section: null, resetTriage: false, statusGlyph: "v", statusMsg: "flagged",
-    });
-    // A stale-read refusal means someone else edited the clip meanwhile: their
-    // file is not ours to overwrite with the pre-thread copy.
-    if (fw.glyph === "~") return { kind: "write-failed", chars: 0, message: `${rel} -- injection flag-write refused (${fw.message}); clip NOT reverted, review it by hand` };
+    const flagOnce = async () => {
+      const t2 = readFileSync(clipPath, "utf-8");
+      const p2 = parseFrontmatter(t2);
+      if (!p2.present) return { glyph: "x", message: "no frontmatter on re-read" };
+      return writeEnrichment({
+        clipPath, rel, text: t2, baselineSha: sha256(t2), fmRaw: p2.fmRaw, body: p2.body,
+        markers: { harvest_flag: "injection-suspect", harvest_flag_detail: flag.detail },
+        section: null, resetTriage: false, statusGlyph: "v", statusMsg: "flagged",
+      });
+    };
+    let fw = await flagOnce();
+    // A stale-read refusal means someone else edited the clip meanwhile: flag
+    // their version once more, and never overwrite it with the pre-thread copy.
+    if (fw.glyph === "~") fw = await flagOnce();
+    if (fw.glyph === "~") return { kind: "write-failed", chars: 0, message: `${rel} -- injection flag-write refused (${fw.message}); clip NOT reverted and NOT flagged, review it by hand` };
     if (fw.glyph !== "v") return revert(fw.message);
   }
   return out;

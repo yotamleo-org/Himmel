@@ -1015,6 +1015,28 @@ FXT_THREAD_FIXTURE_DIR="$t23_fx" node "$BACKFILL" --vault "$t23_vault" --apply >
 t23e=no; f="$t23_vault/Clippings/f.md"
 grep -q "docs are here" "$f" && ! grep -q "hey @carol nice one" "$f" && t23e=yes
 assert "Test23E: a reply is kept for a url facet, not for a mention facet" "yes" "$t23e"
+mk_x_clip "$t23_vault" g.md alice 120
+cat >"$t23_fx/120.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "120", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "121", "author": { "screen_name": "alice" }, "text": "a long continuation that explains the point in full detail" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t23_fx" node "$BACKFILL" --vault "$t23_vault" --apply >"$tmpdir/t23f1.out" 2>&1
+t23f_sum="$(sha256sum "$t23_vault/Clippings/g.md" | cut -d' ' -f1)"
+cat >"$t23_fx/120.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "120", "author": { "screen_name": "alice" }, "text": "main post" },
+  { "id": "121", "author": { "screen_name": "alice" }, "text": "a long" },
+  { "id": "122", "author": { "screen_name": "alice" }, "text": "a brand new post that is longer than everything the truncated one lost, so the total only grows" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t23_fx" node "$BACKFILL" --vault "$t23_vault" --apply >"$tmpdir/t23f2.out" 2>&1
+assert "Test23F: one post truncated while another is added still leaves the fuller text in place" "$t23f_sum" "$(sha256sum "$t23_vault/Clippings/g.md" | cut -d' ' -f1)"
+node "$BACKFILL" --vault "$t23_vault" --resume-after --apply >"$tmpdir/t23g.out" 2>&1
+assert "Test23G: --resume-after followed by another option is a usage error (exit 1)" "1" "$?"
+t23a_msg=no; grep -q "thread already captured" "$tmpdir/t23a.out" && t23a_msg=yes
+assert "Test23A: the skip is the reflag thread-already-captured one" "yes" "$t23a_msg"
 
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))

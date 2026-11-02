@@ -17,8 +17,10 @@
  *   adds-text    the thread holds text the clip lacks (chars = how much)
  *   no-new-text  fetched fine, nothing to add (also: already applied)
  *   fetch-failed endpoint and Scrapling both failed; the clip is left as is
- * A guarded write that was reverted prints  <rel path>\twrite-failed\t0\t<why>
- * on stderr; those clips count in neither bucket below. The run ends with
+ * A guarded write that was reverted, or an injection flag that could not be
+ * written because someone else edited the clip (left as is, NOT reverted: check
+ * it by hand), prints  <rel path>\twrite-failed\t0\t<why>  on stderr; those
+ * clips count in neither bucket below. The run ends with
  *   non-x skipped: N
  *   write-failed: W          (only when W is not 0)
  *   mode: apply | dry-run
@@ -79,7 +81,7 @@ for (let i = 0; i < argv.length; i++) {
   }
   else if (a === "--resume-after") {
     const v = argv[++i];
-    if (!v) { console.error("--resume-after needs a path"); usage(1); }
+    if (!v || v.startsWith("--")) { console.error(`--resume-after needs a path, got '${v || ""}'`); usage(1); }
     args.resumeAfter = v;
   }
   else if (a === "-h" || a === "--help") usage(0);
