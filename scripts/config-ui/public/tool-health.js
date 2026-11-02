@@ -192,10 +192,12 @@ function chartTop(max, kind) {
 }
 // mockup v9 geometry: a fixed 480x180 plot, scaled uniformly so dots stay round
 function chart(rows, value, max, label, kind) {
-  const W = 480, H = 180, left = 40, right = 470, base = 146, plot = 116, step = (right - left) / (rows.length || 1);
+  const W = 480, H = 180, left = 48, right = 470, base = 146, plot = 116, step = (right - left) / (rows.length || 1);
   const top = chartTop(max, kind), bar = kind === "bar";
   const X = (i) => left + (i + 0.5) * step, Y = (v) => base - (v / top) * plot;
-  const grid = [0, 1, 2].map((i) => `<line x1="${left}" y1="${base - (plot * i) / 2}" x2="${right}" y2="${base - (plot * i) / 2}" class="grid"/><text class="ax" x="34" y="${base - (plot * i) / 2 + 4}" text-anchor="end">${esc(label((top * i) / 2))}</text>`).join("");
+  // a rate tick keeps enough decimals that the three ticks stay distinct for a tiny top
+  const tick = (v) => (bar ? label(v) : `${(v * 100).toFixed(Math.max(1, Math.ceil(-Math.log10(top * 50))))}%`);
+  const grid = [0, 1, 2].map((i) => `<line x1="${left}" y1="${base - (plot * i) / 2}" x2="${right}" y2="${base - (plot * i) / 2}" class="grid"/><text class="ax" x="${left - 6}" y="${base - (plot * i) / 2 + 4}" text-anchor="end">${esc(tick((top * i) / 2))}</text>`).join("");
   const band = rows.map((r, i) => (r.shift ? `<rect x="${left + i * step}" y="${base - plot}" width="${step}" height="${plot}" class="shiftband"><title>AFK shift</title></rect>` : "")).join("");
   const dl = rows.map((r, i) => `<text class="dl" x="${X(i)}" y="168" text-anchor="middle"${rows.length > 14 ? " data-dense" : ""}>${esc(String(Number(r.day.slice(8, 10))))}</text>`).join("");
   let marks = "", line = "", prev = null;

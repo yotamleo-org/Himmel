@@ -1180,6 +1180,22 @@ for (const [name, ui, attr, n] of chartCases) {
     for (const c of svgs(await page(readP(seedP()), ui))) expect(c).not.toContain('preserveAspectRatio="none"');
   });
 }
+const rateTicks = async (calls: number, failures: number) => {
+  const data = readP(seedP());
+  data.daily = [{ day: "2026-10-28", calls, failures }];
+  const rate = svgs(await page(data))[1];
+  return [...rate.matchAll(/<text class="ax" x="([^"]*)"[^>]*>([^<]*)<\/text>/g)].map((m) => ({ x: Number(m[1]), text: m[2] }));
+};
+test("chart-rate-ticks-stay-distinct-for-a-tiny-rate", async () => {
+  const ticks = (await rateTicks(5000, 1)).map((t) => t.text);
+  expect(ticks).toHaveLength(3);
+  expect(new Set(ticks).size).toBe(3);
+});
+test("chart-rate-ticks-fit-the-left-margin-at-one-hundred-percent", async () => {
+  const ticks = await rateTicks(1, 1);
+  expect(ticks.map((t) => t.text)).toContain("100.0%");
+  for (const t of ticks) expect(t.x - t.text.length * 6.7).toBeGreaterThanOrEqual(0);
+});
 test("chart-bars-have-no-line-or-stray-gap-mark", async () => {
   for (const ui of [{}, { guard: "denied/read-clamp" }]) {
     const html = await page(readP(seedP()), ui);
