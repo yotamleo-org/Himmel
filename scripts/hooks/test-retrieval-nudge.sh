@@ -187,7 +187,24 @@ vrows 0 allow \
     "echo \"grep -r notes $VAULT\"" \
     "git commit -m \"grep -r notes $VAULT\"" \
     "git grep -n notes" \
-    "grep -e notes -r $VAULT"
+    "grep -e notes -r $VAULT" \
+    "grep -rn matrix $VAULT/handovers/one.md" \
+    "grep -rn matrix $VAULT/handovers/one.md $VAULT/handovers/two.md" \
+    "cd $VAULT/handovers; grep -rl notes specs" \
+    "cd /home/u/Documents/github/himmel && rg -n notes scripts" \
+    "R=$VAULT; grep -rn notes \$R/specs" \
+    "grep -rn notes \$(pwd)/specs"
+vrows 2 shape2 \
+    "grep -rli notes $VAULT/handovers/*.md" \
+    "grep -rl notes \$HOME/Documents/luna"
+vcall v18 Bash "grep -rl notes 2>/dev/null" "" "$VAULT"
+a=$rc
+vcall v18b Bash "grep -rn ssh \$(find $VAULT/specs -name x.md)" "" "$VAULT"
+if [ "$a" = 0 ] && [ "$rc" = 0 ]; then pass "a redirection or a command substitution is never read as a vault root"; else fail "redirection/substitution roots (redir=$a subst=$rc)"; fi
+vcall v17 Bash "grep -rl notes specs" "" "$VAULT"
+a=$rc
+vcall v17b Bash "cd /home/u/Documents/github/himmel; grep -rl notes specs" "" "$VAULT"
+if [ "$a" = 2 ] && [ "$rc" = 0 ]; then pass "a relative root in a vault cwd is denied, but not after a cd in the command"; else fail "relative root vs cd (plain=$a cd=$rc)"; fi
 vcall v3 Grep "meeting notes" "/home/u/Documents/github/himmel/scripts"
 if [ "$rc" = 0 ]; then pass "Grep tool over a repo path is allowed"; else fail "Grep repo path allowed (rc=$rc)"; fi
 

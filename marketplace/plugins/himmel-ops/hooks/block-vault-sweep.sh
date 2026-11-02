@@ -14,8 +14,11 @@
 #   1. the tool is the Grep tool, or a Bash segment that is a recursive `grep`
 #      or an `rg` (a leading env assignment / timeout / rtk / env / command
 #      prefix is skipped; bash -c "..." and other wrappers are not unwrapped);
-#   2. a root argument is a literal known vault path (.../Documents/luna or
-#      .../Clippings; a relative root is joined to the cwd first);
+#   2. a root argument is a literal known vault directory or glob
+#      (.../Documents/luna or .../Clippings). A relative root is joined to the
+#      cwd, and only when the command has no cd/pushd (the cwd the hook sees is
+#      then not where the root points). A root with a variable or substitution,
+#      or one that names a single file (ends in .ext), is not a sweep;
 #   3. the pattern is plain words: ^[A-Za-z][A-Za-z ]*$. A ticket key, a
 #      number, a session name, a marker or any regex metacharacter is an exact
 #      lookup, which is grep's job;
@@ -132,16 +135,34 @@ fi
 
 lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
+# A cd/pushd anywhere in the command: the cwd the journal reports is no longer where a relative root points.
+has_cd=0
+[[ "$cmd" =~ (^|[\;\&\|[:space:]])(cd|pushd)[[:space:]] ]] && has_cd=1
+
 # Is $1 (absolute, or joined to the cwd) a literal known vault path?
 is_vault_path() {
     local p="$1"
     # shellcheck disable=SC2016,SC2088  # the literal text ~ and $HOME in a command word
     case "$p" in
+        '$HOME'|'$HOME/'*|'${HOME}'|'${HOME}/'*) ;;
+        *[\$\`\(\{]*) return 1 ;;  # a variable or substitution: not a literal path
+    esac
+    # shellcheck disable=SC2016,SC2088
+    case "$p" in
         "~"|"~/"*) p="${HOME:-}${p#\~}" ;;
         '$HOME'|'$HOME/'*) p="${HOME:-}${p#\$HOME}" ;;
         '${HOME}'|'${HOME}/'*) p="${HOME:-}${p#\$\{HOME\}}" ;;
         /*) ;;
-        *) [ -n "$cwd" ] || return 1; p="$cwd/$p" ;;
+        *)
+            # a relative root is joined to the cwd, which a `cd` earlier in the command has moved
+            [ -n "$cwd" ] && [ "$has_cd" = 0 ] || return 1
+            p="$cwd/$p"
+            ;;
+    esac
+    # a root that names one file (no glob, ends in .ext) is a lookup in that file, not a sweep
+    case "$p" in
+        *\** | *\?*) ;;
+        *) [[ "${p##*/}" =~ \.[A-Za-z0-9]{1,6}$ ]] && return 1 ;;
     esac
     case "$p" in
         */Documents/luna | */Documents/luna/* | */Clippings | */Clippings/*) return 0 ;;
@@ -178,6 +199,8 @@ segment_matches() {
     local seg="$1" first kind="" t skip=0 pattern="" havepat=0 recursive=0 r
     local roots=()
     seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//; s/^((timeout[[:space:]]+[^[:space:]]+|rtk([[:space:]]+proxy)?|env|command)[[:space:]]+)+//')
+    # a command substitution or backtick builds words this parse cannot read
+    case "$seg" in *\$\(* | *\`*) return 1 ;; esac
     tokenize "$seg" || return 1
     [ "${#toks[@]}" -ge 3 ] || return 1
     first=${toks[0]}
@@ -189,6 +212,7 @@ segment_matches() {
     for t in "${toks[@]:1}"; do
         if [ "$skip" = 1 ]; then skip=0; continue; fi
         case "$t" in
+            [0-9][\<\>]* | [\<\>]* | '&>'*) ;;  # a redirection, not a pattern or a root
             -e | -f | --regexp | --regexp=* | --file | --file=* | -e* | -f*) return 1 ;;
             --recursive | --dereference-recursive) recursive=1 ;;
             -A | -B | -C | -m | -d | --include | --exclude | --exclude-dir | --max-count | --context | --after-context | --before-context | -g | -t | -T | -j | -M | --glob | --iglob | --type | --type-not | --threads | --max-depth | --max-columns) skip=1 ;;
