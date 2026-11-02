@@ -967,7 +967,7 @@ ST_SAFE_RE='^[A-Za-z0-9_./:@+,%=][A-Za-z0-9_./:@+,%=-]*$'
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
 ST_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
 st_bound() {
-    local n=$1 use=$2 s=0 k=0 a b c v depth=0 bound=0 ok=0 i pb
+    local n=$1 use=$2 s=0 k=0 a b c v depth=0 bound=0 ok=0 i pb r
     local -a fb
     ST_BV=()
     case "$n" in
@@ -1005,6 +1005,12 @@ st_bound() {
             fi
             i=$((i + 1))
         done
+        # a redirect on the binding segment can fail, and zsh then skips the
+        # assignment (bash does not): the proof must hold under both, so a
+        # segment with any redirect word binds nothing
+        r=$a
+        while [ "$r" -lt "$b" ] && [ -z "${ST_RO[r]}" ]; do r=$((r + 1)); done
+        [ "$r" -ge "$b" ] || pb=0
         [ "$i" -lt "$b" ] || [ "$pb" = 0 ] || bound=1
         [ "$i" -lt "$b" ] && c=$i || c=-1
         if [ "$c" -ge 0 ]; then
