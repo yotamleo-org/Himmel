@@ -2022,6 +2022,20 @@ MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
     run_mog 0 "merged from inside the worktree → deferred, exit 0"
 if [ -d "$P_WT" ]; then pass; else fail "11j: the caller's own cwd was removed"; fi
 assert_audit_has "11j: audit records the deferral" "prune=own-cwd-deferred"
+# 11j2. The deferral prints ONE hint on stderr (where every other
+# post-merge note goes) saying the worktree was KEPT because the merge ran from
+# inside it, with the exact prune command.
+assert_err_has "11j2: hint says the worktree was kept" "KEPT worktree '$P_WT'"
+assert_err_has "11j2: hint says why (the merge ran from inside it)" "merge ran from inside it"
+assert_err_has "11j2: hint carries the prune command" "git -C '$P_REPO' worktree remove '$P_WT' && git -C '$P_REPO' branch -D 'feat/mog-prune'"
+if [ "$(grep -cF 'KEPT worktree' <<< "$LAST_ERR")" = "1" ]; then pass; else fail "11j2: expected exactly one keep hint (err: $LAST_ERR)"; fi
+# 11j3. Negative control: a merge NOT from inside the worktree prunes it and
+# prints no keep hint.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 0 "11j3: merged from the primary checkout → pruned, exit 0"
+assert_audit_has "11j3: audit records the prune" "prune=removed"
+if grepq "$LAST_ERR" -F 'KEPT worktree'; then fail "11j3: a pruning merge printed the keep hint (err: $LAST_ERR)"; else pass; fi
 
 # 11k. A commit pushed after the squash merge (tip != certified sha) keeps the
 # tree — clean-garden's exact-head-match rule, and what makes the branch -D
