@@ -37,8 +37,8 @@
 // wire-hook-bash.mjs owns PreToolUse/PostToolUse/
 // SessionStart, but only commands matching its own `scripts/hooks/*.sh`
 // routing pattern — a `bun .../session-run-hook.ts` command (and the
-// `bash .../scripts/handover/queue-lock.sh` one, which is not under
-// scripts/hooks/ either) never matches that pattern, so there is no ownership
+// queue-lock.sh one, whose script is not under scripts/hooks/ either) never
+// matches that pattern, so there is no ownership
 // collision and both stay invisible to wire-hook-bash's owned-inventory count
 // and the two writers never
 // disagree about it. wire-trust-hooks.mjs owns its own `shadow-ledger.mjs`
@@ -94,20 +94,44 @@ const DEFAULT_SCRIPT = 'scripts/observability/session-run-hook.ts';
 // a gap. The fifth is the queue lock's self-heartbeat: a
 // matcher-less PostToolUse hook, because the lock must be refreshed whatever
 // tool the worker is busy with.
+//
+// `alsoCanonical` lists extra exact command shapes that count as wired and are
+// never rewritten. SessionEnd's is the durable stop-queue wrapper the tracked
+// .claude/settings.json uses, so a plain install does not read it as drift and
+// strip the queue out from under it. A fresh install still emits the plain
+// command.
 export const ENTRIES = [
   { event: 'SessionStart', matcher: null, verb: 'session-start' },
-  { event: 'SessionEnd', matcher: null, verb: 'session-end' },
+  {
+    event: 'SessionEnd',
+    matcher: null,
+    verb: 'session-end',
+    alsoCanonical: [
+      'node "$CLAUDE_PROJECT_DIR/scripts/hooks/stop-queue.mjs" enqueue --key session-run-end -- bun "$CLAUDE_PROJECT_DIR/scripts/observability/session-run-hook.ts" session-end',
+    ],
+  },
   { event: 'PreToolUse', matcher: 'Agent', verb: 'subagent-start' },
   { event: 'PostToolUse', matcher: 'Agent', verb: 'subagent-end' },
   {
-    event: 'PostToolUse', matcher: null, verb: 'self-heartbeat', runner: 'bash', script: 'scripts/handover/queue-lock.sh',
+    event: 'PostToolUse', matcher: null, verb: 'self-heartbeat', routed: true, script: 'scripts/handover/queue-lock.sh',
   },
 ];
 
 const runnerOf = (spec) => spec.runner ?? DEFAULT_RUNNER;
 const scriptOf = (spec) => spec.script ?? DEFAULT_SCRIPT;
 
-const commandFor = (spec) => `${runnerOf(spec)} "$CLAUDE_PROJECT_DIR/${scriptOf(spec)}" ${spec.verb}`;
+// A shell script never runs on a bare `bash` (PATH roulette: a WSL stub, a
+// 0-byte Store alias): a `routed` spec goes through run-hook-with-bash.js in
+// the same launcher shape wire-hook-bash.mjs writes for every other hook.
+const RUN_NODE = '$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh';
+const BASH_LAUNCHER = '$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js';
+
+function commandFor(spec) {
+  const script = `"$CLAUDE_PROJECT_DIR/${scriptOf(spec)}" ${spec.verb}`;
+  if (!spec.routed) return `${runnerOf(spec)} ${script}`;
+  const args = `"${BASH_LAUNCHER}" ${script}`;
+  return `if [ -f "${RUN_NODE}" ]; then command -p sh "${RUN_NODE}" ${args}; else node ${args}; fi`;
+}
 
 function hookFor(spec) {
   return { type: 'command', command: commandFor(spec), timeout: TIMEOUT };
@@ -134,7 +158,7 @@ const isWriterCommand = (cmd, spec) => typeof cmd === 'string' && cmd.includes(`
 // a canonical check: a near-variant shape still counts as ours.
 function isOurs(hook, spec) {
   if (!hook || !isWriterCommand(hook.command, spec)) return false;
-  return hook.command.trim().split(/\s+/).includes(spec.verb);
+  return hook.command.trim().split(/\s+/).map((token) => token.replace(/;$/, '')).includes(spec.verb);
 }
 
 // Does this hook object match the canonical wiring EXACTLY — command AND
@@ -142,7 +166,8 @@ function isOurs(hook, spec) {
 // hand-pasted entry could carry the right command with NO timeout, and a
 // command hook defaults to 600 seconds.
 function matchesCanonical(hook, spec) {
-  return JSON.stringify(hook) === JSON.stringify(hookFor(spec));
+  const shapes = [hookFor(spec), ...(spec.alsoCanonical ?? []).map((command) => ({ type: 'command', command, timeout: TIMEOUT }))];
+  return shapes.some((shape) => JSON.stringify(hook) === JSON.stringify(shape));
 }
 
 // A group "matches" a spec's matcher if its `matcher` key equals the spec's
