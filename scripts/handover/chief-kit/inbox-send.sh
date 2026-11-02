@@ -161,6 +161,10 @@ root="$(handover_root_ensure)" || { printf 'inbox-send: cannot resolve handover 
 [ -z "$doc" ] || [ -f "$doc" ] || { printf 'inbox-send: --doc target not found: %s\n' "$doc" >&2; exit 2; }
 
 inbox_dir="$root/inbox"
+# A test on the station never writes a real inbox; any other guard failure sends.
+guard_rc=0
+bash "$HERE/../../lib/test-run-guard" check inbox-send "$inbox_dir/$session.md" || guard_rc=$?
+[ "$guard_rc" != 77 ] || exit 77
 mkdir -p "$inbox_dir" || exit 2
 inbox="$inbox_dir/$session.md"
 
