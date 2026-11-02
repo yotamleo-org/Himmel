@@ -166,6 +166,17 @@ test("GET /api/board and /api/roadmap read the same Jira mirror when it is set o
   const url = serve({ HIMMEL_JIRA_MIRROR: "", HIMMEL_CHAIN_REGISTRY: s.registry }, s);
   expect((await get(url)).chains.tickets["HIMMEL-1"].title).toBe("First card from the .env mirror");
   expect(JSON.stringify(await get(url.replace("/api/board", "/api/roadmap")))).toContain("First card from the .env mirror");
+  expect((await get(url.replace("/api/board", "/api/sources"))).sources).toEqual(["jira"]); // the rail stays lit
+});
+
+test("GET /api/roadmap: a non-empty process env mirror beats the checkout's .env", async () => {
+  const s = scratch();
+  const other = join(s.d, "dotenv-mirror");
+  otherMirror(other, "from the .env mirror");
+  writeFileSync(join(s.d, ".env"), `HIMMEL_JIRA_MIRROR=${other}\n`);
+  const roadmap = JSON.stringify(await get(serve({}, s).replace("/api/board", "/api/roadmap"))); // serve() puts s.mirror in the process env
+  expect(roadmap).toContain("First step");
+  expect(roadmap).not.toContain("from the .env mirror");
 });
 
 test("GET /api/board and /api/roadmap read the same Jira mirror when only himmel.conf sets the project key", async () => {
@@ -175,6 +186,7 @@ test("GET /api/board and /api/roadmap read the same Jira mirror when only himmel
   const url = serve({ HIMMEL_JIRA_MIRROR: "", HIMMEL_CHAIN_REGISTRY: s.registry }, s);
   expect((await get(url)).chains.tickets["HIMMEL-1"].title).toBe("First card from the conf project");
   expect(JSON.stringify(await get(url.replace("/api/board", "/api/roadmap")))).toContain("First card from the conf project");
+  expect((await get(url.replace("/api/board", "/api/sources"))).sources).toEqual(["jira"]); // the rail stays lit
 });
 
 test("runReader: a default call hands execFile a 10 second limit", async () => {

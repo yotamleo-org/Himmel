@@ -14,12 +14,12 @@ const TOKEN = "t".repeat(64);
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function boot(extra: Record<string, string> = {}) {
+function boot(extra: Record<string, string> = {}, checkout?: string) {
   const dir = mkdtempSync(join(tmpdir(), "jira-write-"));
   const home = join(dir, "home"), root = join(dir, "root"), log = join(dir, "jira.log");
   mkdirSync(home); mkdirSync(root);
   const s = startServer({
-    port: 0, token: TOKEN,
+    port: 0, token: TOKEN, ...(checkout ? { root: checkout } : {}),
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_JIRA_CLI: JIRA, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
       STUB_JIRA_LOG: log, ...extra },
   });
@@ -108,6 +108,19 @@ test("after a write the mirror is refreshed for the board", async () => {
 const issue = (n: number, labels: string[]) =>
   ["---", `key: "HIMMEL-${n}"`, `type: "Story"`, `status: "To Do"`, `statusCategory: "To Do"`, `labels: ${JSON.stringify(labels)}`,
     `fixVersions: ["v1.1.2"]`, `updated: "2026-10-09T10:00:00.000+0000"`, "---", "", `# HIMMEL-${n}: t${n}`, ""].join("\n");
+
+test("a drop refreshes, and reads before and after from, the mirror the cards read when only the checkout's .env names it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "jira-write-env-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const mirror = join(dir, "env-mirror");
+  mkdirSync(mirror);
+  writeFileSync(join(mirror, "HIMMEL-7.md"), issue(7, []));
+  writeFileSync(join(dir, ".env"), `HIMMEL_JIRA_MIRROR=${mirror}\n`);
+  const b = boot({ HIMMEL_JIRA_MIRROR: "" }, dir); // the process env names no mirror
+  expect((await b.post({ key: "HIMMEL-7", status: "rev" })).status).toBe(200);
+  expect(b.calls().find((c) => c[0] === "mirror")).toEqual(["mirror", "--root", mirror]);
+  expect(b.audit()[0].before).toEqual({ status: "To Do" }); // read from that mirror, not the default directory
+});
 
 test("roadmap.ts falls back to the Jira theme label over the plan theme, and maps a matching slug to the plan's name", () => {
   const d = mkdtempSync(join(tmpdir(), "jira-theme-"));
