@@ -42,6 +42,7 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 statusf() { if [ -e "$FX/status.$1" ]; then echo "$FX/status.$1"; else echo "$FX/status.cur"; fi; }
 case "$1" in
     get)
+        [ -e "$FX/get.sleep" ] && sleep "$(cat "$FX/get.sleep")"
         [ -e "$FX/get.nolabels" ] && { printf '{"fields":{"status":{"name":"To Do"}}}\n'; exit 0; }
         printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"Task"},"labels":%s}}\n' "$(cat "$(statusf "$2")")" \
             "$(cat "$FX/labels.$2" 2>/dev/null | jq -Rsc 'split("\n") | map(select(length > 0))')" ;;
@@ -113,7 +114,11 @@ case "$1 $2" in
     "pr list")
         case " $* " in *" merged "*)
             [ -e "$FX/pr-merged.fail" ] && { echo "HTTP 502" >&2; exit 1; }
-            if [ -e "$FX/pr-merged.json" ]; then cat "$FX/pr-merged.json"; else echo '[]'; fi
+            # the older 7-day slice (a bounded date range) reads its own list; the newer slice reads pr-merged.json
+            case " $* " in
+                *" merged:"*..*) if [ -e "$FX/pr-merged.old.json" ]; then cat "$FX/pr-merged.old.json"; else echo '[]'; fi ;;
+                *) if [ -e "$FX/pr-merged.json" ]; then cat "$FX/pr-merged.json"; else echo '[]'; fi ;;
+            esac
             exit 0 ;;
         esac
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
@@ -656,12 +661,33 @@ check "3b (HIMMEL-8834): the first key gets its row, and a keyless title adds no
 reset "To Do"; touch "$FX/pr-merged.fail"
 drift
 check "3b (HIMMEL-8834): an unreadable merged-PR list is a HEALTH row, never MERGED-NO-ROW" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 0/1
-# The merged list is a 14-day window read in one call, not the newest 30 (a hand-merged PR stays visible for days).
+# The merged list is a 14-day window read in two 7-day slices (one 14-day read filled the 1000-PR limit), not the newest 30.
+dago() { date -u -d "$1 days ago" +%Y-%m-%d 2>/dev/null || date -u -v-"$1"d +%Y-%m-%d; }
 reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
 drift
-contains "3b (HIMMEL-8834): the merged list is a date window" "$(grep -- '--state merged' "$STUB_LOG")" "--search merged:>="
-contains "3b (HIMMEL-8834): and reads up to 1000 PRs in that one call" "$(grep -- '--state merged' "$STUB_LOG")" "--limit 1000"
-check "3b (HIMMEL-8834): and makes exactly one merged-PR call" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 1
+contains "3b (HIMMEL-8834): the older 7-day slice is a bounded date range from 14 to 8 days ago" "$(grep -- '--state merged' "$STUB_LOG")" "--search merged:$(dago 14)..$(dago 8)"
+contains "3b (HIMMEL-8834): the newer slice starts 7 days ago" "$(grep -- '--state merged' "$STUB_LOG")" "--search merged:>=$(dago 7)"
+contains "3b (HIMMEL-8834): and each slice reads up to 1000 PRs" "$(grep -- '--state merged' "$STUB_LOG")" "--limit 1000"
+check "3b (HIMMEL-8834): and makes exactly two merged-PR calls" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 2
+check "3b (HIMMEL-8834): slices under the limit raise no HEALTH row" "$(dcount HEALTH)" 0
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"; printf '%s\n' '[{"number":60,"title":"fix: [HIMMEL-9002] older slice"}]' > "$FX/pr-merged.old.json"
+drift
+contains "3b (HIMMEL-8834): a PR of the older slice is checked too" "$(drows MERGED-NO-ROW)" "MERGED-NO-ROW HIMMEL-9002 PR #60"
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] a\"},{\"number\":78,\"title\":\"fix: [$K] b\"}]"
+TICKET_STATUS_DRIFT_MNR_LIMIT=2 drift
+contains "3b (HIMMEL-8834): a slice that reaches its limit is a HEALTH row, not a silent cut" "$(drows HEALTH)" "reached the 2-PR limit"
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] a\"},{\"number\":78,\"title\":\"fix: [$K] b\"}]"
+drift
+check "3b (HIMMEL-8834): two unrecorded PRs of one key give one row, naming the newest" "$(dcount MERGED-NO-ROW)/$(drows MERGED-NO-ROW | grep -c 'PR #78')" 1/1
+reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] a\"}]"; mkdir -p "$TICKET_STATUS_STATE_DIR"; mkdir "$LOG"
+drift
+check "3b (HIMMEL-8834): an unreadable merge log is a HEALTH row, never MERGED-NO-ROW for every merged PR" "$(dcount MERGED-NO-ROW)/$(drows HEALTH | grep -c 'merge rows are unreadable')" 0/1
+if [ "$(id -u)" != 0 ]; then
+    reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] a\"}]"; logrow merge HIMMEL-1 moved 1 yes; chmod 000 "$LOG"
+    drift
+    check "3b (HIMMEL-8834): a merge log the pass cannot read is the same HEALTH row" "$(dcount MERGED-NO-ROW)/$(drows HEALTH | grep -c 'merge rows are unreadable')" 0/1
+    chmod 600 "$LOG"
+fi
 # A merge row is compared by PR: an older merged PR's row does not hide a later hand-merged PR of the same key.
 reset "To Do"; mergedpr "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"; logrow merge "$K" moved 70 yes
 drift
@@ -681,7 +707,22 @@ check "3b (HIMMEL-8834): 42 Done tickets with unrecorded PRs are all read, none 
 reset "To Do"; mergedpr "$(jq -nc "$manypr")"
 TICKET_STATUS_DRIFT_MNR_BUDGET=0 drift
 check "3b (HIMMEL-8834): a spent read budget reads no more keys" "$(dcount MERGED-NO-ROW)" 0
-contains "3b (HIMMEL-8834): and the unread PRs are one HEALTH row" "$(drows HEALTH)" "42 more merged PRs not checked"
+contains "3b (HIMMEL-8834): and the unread PRs are one HEALTH row" "$(drows HEALTH)" "42 merged PRs not checked"
+contains "3b (HIMMEL-8834): that says open tickets may be among them" "$(drows HEALTH)" "open tickets may be among them"
+contains "3b (HIMMEL-8834): and names the first keys" "$(drows HEALTH)" "first keys: HIMMEL-9141 HIMMEL-9140"
+# The read budget is tied to the time left in the pass: a pass budget with less than the 25 s kept for the later classes leaves none.
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"
+TICKET_STATUS_DRIFT_BUDGET=20 drift
+check "3b (HIMMEL-8834): a pass with no time left reads no keys" "$(dcount MERGED-NO-ROW)" 0
+contains "3b (HIMMEL-8834): and says so in one HEALTH row" "$(drows HEALTH)" "42 merged PRs not checked"
+# The default budget (40 s) and an invalid override fit three 1-second reads.
+three='[{"number":9201,"title":"fix: [HIMMEL-9201] x"},{"number":9202,"title":"fix: [HIMMEL-9202] x"},{"number":9203,"title":"fix: [HIMMEL-9203] x"}]'
+reset "To Do"; mergedpr "$three"; printf '1\n' > "$FX/get.sleep"
+drift
+check "3b (HIMMEL-8834): the default read budget covers three 1-second reads" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 3/0
+reset "To Do"; mergedpr "$three"; printf '1\n' > "$FX/get.sleep"
+TICKET_STATUS_DRIFT_MNR_BUDGET=abc drift
+check "3b (HIMMEL-8834): an invalid read budget falls back to the default" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 3/0
 
 reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
 drift

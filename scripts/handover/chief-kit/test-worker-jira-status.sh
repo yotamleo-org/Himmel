@@ -428,6 +428,10 @@ fn "$K" --event wrapped --doc "$DOC"
 check "merged-no-row: an unreadable merged-PR list is no-write + miss stage=gh, never a move to To Do" "$(row result)/$(row stage)" miss/gh
 check "merged-no-row: and no transition is made" "$(ntrans)" 0
 reset "In Review"; owned WRAPPED 0
+rm -f "$FX/pr-merged.fail"; merged 'not json'
+fn "$K" --event wrapped --doc "$DOC"
+check "merged-no-row: a merged-PR list that is not JSON is no-write + miss stage=gh too" "$(row result)/$(row stage)/$(ntrans)" miss/gh/0
+reset "In Review"; owned WRAPPED 0
 merged "[{\"number\":79,\"title\":\"fix: [$K] shipped\"}]"
 printf '{"ts":"t","event":"merge","key":"%s","pr":"79","contract":"yes","result":"moved"}\n' "$K" >> "$LOG"
 fn "$K" --event wrapped --doc "$DOC"
