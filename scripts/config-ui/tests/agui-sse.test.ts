@@ -32,10 +32,10 @@ function journal(h: string, slug: string, run: string, body: string): string {
   writeFileSync(p, body);
   return p;
 }
-type Extra = { aguiIdleMs?: number; aguiMaxMs?: number; aguiPollMs?: number; onIdle?: () => void; idleMs?: string };
+type Extra = { aguiIdleMs?: number; aguiMaxMs?: number; aguiPollMs?: number; onIdle?: () => void; idleMs?: string; env?: Record<string, string> };
 function boot(h: string, extra: Extra = {}) {
   const s = startServer({
-    port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: h, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: extra.idleMs ?? "60000" },
+    port: 0, token: TOKEN, env: { PATH: process.env.PATH, HOME: h, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: extra.idleMs ?? "60000", ...extra.env },
     aguiPollMs: extra.aguiPollMs ?? 20, aguiIdleMs: extra.aguiIdleMs ?? 200, aguiMaxMs: extra.aguiMaxMs ?? 10_000, onIdle: extra.onIdle,
   });
   cleanup.push(() => s.stop());
@@ -89,9 +89,9 @@ for (const bad of ["not-a-uuid", "%2e%2e%2f%2e%2e%2fetc%2fpasswd", "..%2fsecret"
   });
 }
 
-function customRoot() {
+function customRoot(seams = false) {
   const fx = fleetFixture(join(home(), "fleet"));
-  const config = customConfig(fx), s = boot(fx.home);
+  const config = customConfig(fx), s = boot(fx.home, seams ? { env: fx.env } : {});
   const census = () => readFleet({ script: join(import.meta.dir, "../fleet.sh"), env: { PATH: process.env.PATH, ...fx.env }, home: fx.home, now: Date.now(), redact: (v) => v });
   return { ...fx, ...s, config, census };
 }
@@ -112,6 +112,30 @@ test("a custom config run streams only after the live census discovers its root"
   const { reader, events } = await readUntil(r, (ev) => ev.some((e) => e.type === "TOOL_CALL_START"));
   await reader.cancel();
   expect(events.some((e) => e.type === "TOOL_CALL_START")).toBe(true);
+});
+
+// A miss runs the live census once and retries, with no Fleet poll first. The registry is
+// process-wide, so each row uses its own fixture root: a root no earlier row registered is a fresh registry.
+test("a run link to a custom config session opens with no Fleet poll first", async () => {
+  const s = customRoot(true);
+  const r = await get(s.port, FLEET.worker.run);
+  expect(r.status).toBe(200);
+  const { reader, events } = await readUntil(r, (ev) => ev.some((e) => e.type === "TOOL_CALL_START"));
+  await reader.cancel();
+  expect(events.some((e) => e.type === "TOOL_CALL_START")).toBe(true);
+});
+
+test("a run id outside every live root still 404s after the census retry", async () => {
+  const s = customRoot(true);
+  expect((await get(s.port, "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5c")).status).toBe(404);
+});
+
+test("a custom config projects symlink escaping the root is not served on the retry either", async () => {
+  const s = customRoot(true);
+  const projects = join(s.config, "projects"), outside = join(s.dir, "outside");
+  renameSync(projects, outside);
+  symlinkSync(outside, projects);
+  expect((await get(s.port, FLEET.worker.run)).status).toBe(404);
 });
 
 test("a custom config UUID colliding with the native root is ambiguous", async () => {
