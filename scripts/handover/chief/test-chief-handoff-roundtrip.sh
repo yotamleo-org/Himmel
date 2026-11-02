@@ -167,8 +167,12 @@ chief next --bucket disabled --doc "$seedA" >/dev/null 2>&1
 check "3 next preserves explicit none" "$(live_state "$root/tester/disabled/DEMO-nextleg-${today}B-chief.md" | grep '^release:')" "release: none"
 mkdir -p "$HIMMEL_RELEASE_STATE_DIR/R2"
 printf '{}\n' > "$HIMMEL_RELEASE_STATE_DIR/R2/release.json"
-chief new --bucket ambiguous >/dev/null 2>&1
-check "3 new never chooses among multiple declarations" "$(live_state "$root/tester/ambiguous/DEMO-nextleg-${today}A-chief.md" | grep '^release:')" ""
+rc=0
+chief new --bucket ambiguous >/dev/null 2>&1 || rc=$?
+check "3 ambiguous new succeeds" "$rc" "0"
+ambiguousA="$root/tester/ambiguous/DEMO-nextleg-${today}A-chief.md"
+check "3 ambiguous new writes a nonempty doc" "$([ -s "$ambiguousA" ] && echo yes)" "yes"
+check "3 new never chooses among multiple declarations" "$(live_state "$ambiguousA" | grep '^release:')" ""
 rm -rf "$HIMMEL_RELEASE_STATE_DIR/R1" "$HIMMEL_RELEASE_STATE_DIR/R2"
 # Without an override the canonical repo bucket is repo, even with --bucket foreign.
 mkdir -p "$root/tester/repo/release/R3"
@@ -178,11 +182,18 @@ chief new --bucket foreign >/dev/null 2>&1
 check "3 new finds the canonical primary repo release, not --bucket" "$(live_state "$root/tester/foreign/DEMO-nextleg-${today}A-chief.md" | grep '^release:')" "release: R3"
 
 mkdir -p "$tmp/foreign-project"
-chief new --project "$tmp/foreign-project" --bucket foreign-project --prefix DEMO >/dev/null 2>&1
+rc=0
+chief new --project "$tmp/foreign-project" --bucket foreign-project --prefix DEMO >/dev/null 2>&1 || rc=$?
+check "4 foreign new succeeds" "$rc" "0"
 foreignA="$root/tester/foreign-project/DEMO-nextleg-${today}A-chief.md"
+check "4 foreign new writes a nonempty doc" "$([ -s "$foreignA" ] && echo yes)" "yes"
 check "4 foreign new never seeds the primary checkout's release" "$(live_state "$foreignA" | grep '^release:')" ""
 grep -v '^release:' "$foreignA" > "$foreignA.new" && mv "$foreignA.new" "$foreignA"
-chief next --bucket foreign-project --prefix DEMO --doc "$foreignA" >/dev/null 2>&1
-check "4 foreign next never seeds the primary checkout's release" "$(live_state "$root/tester/foreign-project/DEMO-nextleg-${today}B-chief.md" | grep '^release:')" ""
+rc=0
+chief next --bucket foreign-project --prefix DEMO --doc "$foreignA" >/dev/null 2>&1 || rc=$?
+check "4 foreign next succeeds" "$rc" "0"
+foreignB="$root/tester/foreign-project/DEMO-nextleg-${today}B-chief.md"
+check "4 foreign next writes a nonempty doc" "$([ -s "$foreignB" ] && echo yes)" "yes"
+check "4 foreign next never seeds the primary checkout's release" "$(live_state "$foreignB" | grep '^release:')" ""
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

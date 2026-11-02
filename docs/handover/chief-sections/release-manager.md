@@ -88,8 +88,10 @@ release is declared (`jira release state <R>` prints a status other than
   tick's RM drain it, checking both open and claimed requests before the next batch;
   a claimed request can be held, not completed. `proposed-*` is not proof of a request:
   those keys remain candidates; the request CLI deduplicates matching pending
-  requests. The RM still decides version versus backlog; no fixVersion is written
-  by this tool and there is no bulk override.
+  requests, not ruled ones. Review request/ruling history before running printed
+  commands: an already-ruled BACKLOG key can reappear in this mirror-only plan.
+  The RM still decides version versus backlog; no fixVersion is written by this
+  tool and there is no bulk override.
 - **STATUS, BURN-DOWN and READY** remain release-manager verbs, run by an
   on-demand session armed from `docs/handover/rm-brief-template.md` only when
   you need one of them. That session does the verb, reports, releases the

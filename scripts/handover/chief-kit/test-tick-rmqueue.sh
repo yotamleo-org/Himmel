@@ -139,8 +139,15 @@ mkdoc 'bad/name'
 out="$(tick)"
 check 'declared release with an invalid line reports off' 'off' "$(field rm-queue "$out")"
 mkdoc none
-out="$(tick)"
+rc=0; out="$(tick)" || rc=$?
+check 'explicit none tick succeeds' 0 "$rc"
 check 'explicit none still elides the field despite a declaration' '' "$(field rm-queue "$out")"
+mkdoc none-test
+reset; state '["Q-none"]' "\"$(ago 45)\"" null
+rc=0; out="$(tick)" || rc=$?
+check 'none-prefixed release tick succeeds' 0 "$rc"
+check 'a valid none-prefixed release wakes normally' '1,45m,run' "$(field rm-queue "$out")"
+check 'none-prefixed release is probed verbatim' 'none-test --json' "$(sed -n 1p "$W/state-asked" 2>/dev/null)"
 mkdoc R1
 printf 'broken\n' > "$W/state.json"
 out="$(tick)"
@@ -179,8 +186,24 @@ printf '> The project this console is FOR is **`%s`**.\n' "$W/projects/p" >> "$W
 out="$(tick)"
 check 'foreign project never inherits the primary declaration warning' '' "$(field rm-queue "$out")"
 rm -f "$W/handover/chief.md"
-out="$(tick)"
+rc=0; out="$(tick)" || rc=$?
+check 'missing chief doc tick succeeds' 0 "$rc"
 check 'a missing chief doc still elides the field' '' "$(field rm-queue "$out")"
+
+# Inline handovers belong to the script's primary checkout, not the observed --repo.
+inline="$W/anchor"
+mkdir -p "$inline/scripts/handover/chief-kit" "$inline/scripts/lanes" "$inline/handovers/tester/anchor/release/Rinline"
+cp "$SUT" "$inline/scripts/handover/chief-kit/tick.sh"
+cp -R "$HERE/../../lib" "$inline/scripts/lib"
+cp -R "$HERE/../../lanes/lib" "$inline/scripts/lanes/lib"
+git init -q "$inline"
+printf '{}\n' > "$inline/handovers/tester/anchor/release/Rinline/release.json"
+printf '# chief\n' > "$W/handover/chief.md"
+reset
+rc=0
+out="$(unset HANDOVER_DIR HIMMEL_REPO; cd "$inline" && bash scripts/handover/chief-kit/tick.sh --repo "$W/repo" --doc "$W/handover/chief.md" 2>/dev/null)" || rc=$?
+check 'inline primary-root tick succeeds with another observed repo' 0 "$rc"
+check 'inline declaration reports off from the primary checkout' off "$(field rm-queue "$out")"
 
 mkdoc R1
 reset; state '["Q-1"]' "\"$(ago 45)\"" null

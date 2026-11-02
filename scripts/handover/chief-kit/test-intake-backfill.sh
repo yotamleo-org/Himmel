@@ -64,6 +64,8 @@ check "the dry run writes nothing to the mirror" "$before" "$(cat "$M"/*.md | ck
 
 rc=0; cmds="$(bash "$SUT" --mirror "$M" --commands --release R-fixture 2>&1)" || rc=$?
 check "--commands exits 0" "0" "$rc"
+has "commands warn that ruled BACKLOG keys can reappear" "$cmds" 'already-ruled BACKLOG key can reappear'
+has "commands require history review before execution" "$cmds" 'review release request/ruling history before running'
 has "--commands prints the label command" "$cmds" "jira edit HIMMEL-701 --add-labels proposed-v1.0.1"
 has "--commands prints the INTAKE request for the proposed version" "$cmds" 'jira release request R-fixture --verb INTAKE --key HIMMEL-703 --to v1.2.0 --why "backfill: scope-label"'
 has "--commands prints a backlog proposal too" "$cmds" "jira edit HIMMEL-708 --add-labels proposed-backlog"

@@ -2117,12 +2117,13 @@ rm_anchor="$(cd "$HERE/../../.." && . "$HERE/../../lib/git-clean.sh" && git_env_
 if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
     rm_rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc shows no rm-queue field
     case "$rm_rel" in
-        none*) rm_rel="" ;;
+        none) rm_rel="" ;;
         *)
             rm_root="${HIMMEL_RELEASE_STATE_DIR:-}"
-            if [ -z "$rm_root" ] && [ -n "$rm_anchor" ] && [ -n "${USER_SLUG:-}" ] && [ -n "$root" ]; then
+            if [ -z "$rm_root" ] && [ -n "$rm_anchor" ] && [ -n "${USER_SLUG:-}" ]; then
                 rm_repo="${rm_anchor%/.git}"
-                rm_root="$root/$USER_SLUG/${rm_repo##*/}/release"
+                rm_handover="$(cd "$rm_repo" && handover_root 2>/dev/null)" || rm_handover=""  # swallow-ok: unreadable primary root leaves declaration discovery unavailable
+                [ -z "$rm_handover" ] || rm_root="$rm_handover/$USER_SLUG/${rm_repo##*/}/release"
             fi
             if [ -n "$rm_root" ] && [[ "${doc_project:-}" != /* ]]; then
                 for rm_decl in "$rm_root"/*/release.json; do

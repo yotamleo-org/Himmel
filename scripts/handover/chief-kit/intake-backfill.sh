@@ -139,6 +139,7 @@ print('# counts by basis: %s' % (fmt(by_basis) or 'none'))
 if os.environ['IB_COMMANDS'] == '1':
     # The RM admits at most 20 current-version moves per run. Print one bounded batch,
     # not an executable loop or an override; the chief waits for it to drain before the next.
+    print('# review release request/ruling history before running: an already-ruled BACKLOG key can reappear; mirror-only planning does not check signed history')
     print('# commands batch=%d/%d max-keys=20; drain this batch before filing the next; keep this mirror snapshot for stable offsets' % (batch, max(1, (len(rows) + 19) // 20)))
     for k, v, b in rows[(batch - 1) * 20:batch * 20]:
         print('jira edit %s --add-labels %s' % (k, shlex.quote('proposed-' + v)))
