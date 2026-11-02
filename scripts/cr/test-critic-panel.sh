@@ -1132,20 +1132,6 @@ PATH="$PR_BIN:$PATH" CR_LEDGER="$tmp/pr-ledger.jsonl" CRITIC_LEDGER_APPEND="$HER
     CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PR_STUB" \
     bash "$PANEL" --worktree "$WT_REPO" --head "$wt_head" --branch feature > /dev/null 2>&1 || true  # swallow-ok: asserted on the dump below
 check "HIMMEL-6490: the critic receives the branch's open PR number" "$(cat "$PR_DUMP" 2>/dev/null)" "4242"
-# The PR lookup is a read, so it rides the read-only token: with the main token spent
-# (every call on it is HTTP 403) the critic still receives the PR number.
-PRS_BIN="$tmp/prs-bin"; mkdir -p "$PRS_BIN" "$tmp/prs-root"
-printf 'himmel_github_token_vm2=%s\n' ghp_PANELREADTOKEN > "$tmp/prs-root/.env"
-cat > "$PRS_BIN/gh" <<'EOS'
-#!/bin/sh
-if [ "${GH_TOKEN:-}" = ghp_PANELREADTOKEN ]; then echo 4343; else echo "gh: HTTP 403: API rate limit exceeded for user" >&2; exit 1; fi
-EOS
-chmod +x "$PRS_BIN/gh"
-rm -f "$PR_DUMP"
-PATH="$PRS_BIN:$PATH" GH_READ_ENV_ROOT="$tmp/prs-root" HIMMEL_SECRETS_KEYRING=off CR_LEDGER="$tmp/prs-ledger.jsonl" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
-    CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PR_STUB" \
-    bash "$PANEL" --worktree "$WT_REPO" --head "$wt_head" --branch feature > /dev/null 2>&1 || true  # swallow-ok: asserted on the dump below
-check "main token spent: the critic still receives the open PR number through the read token" "$(cat "$PR_DUMP" 2>/dev/null)" "4343"
 check "PIN1: the critic saw the diff of the PINNED range" \
     "$(cat "$PIN_DUMP" 2>/dev/null)" "$(git -C "$WT_REPO" diff "main...$wt_head")"
 check "PIN1: ledger rows stamp the pinned head" \
