@@ -62,6 +62,22 @@ for f in "$@"; do
 done
 exit "$rc"
 EOF
+# A second hook standing in for the gitleaks scan: refuses a browser-profile
+# Preferences / Local State file or a note named leak-*.md, and prints the same
+# `File:  <path>` lines gitleaks does.
+cat >"$V/refuse-secret.sh" <<'EOF'
+#!/usr/bin/env bash
+rc=0
+for f in "$@"; do
+  case "$f" in
+    Preferences | */Preferences | "Local State" | */"Local State" | leak-*.md | */leak-*.md | *-journal)
+      printf 'Finding:     token\nFile:        %s\n\n' "$f"
+      rc=1
+      ;;
+  esac
+done
+exit "$rc"
+EOF
 cat >"$V/.pre-commit-config.yaml" <<'EOF'
 repos:
   - repo: local
@@ -71,7 +87,12 @@ repos:
         entry: bash refuse-bad.sh
         language: system
         files: '\.sh$'
+      - id: fake-gitleaks
+        name: fake-gitleaks
+        entry: bash refuse-secret.sh
+        language: system
 EOF
+export LUNA_VAULT_QUARANTINE_DIR="$TMP/quarantine"
 : >"$V/.gitignore"
 printf '%s\n' 'seed' >"$V/seed.md"
 git -C "$V" add -A
@@ -158,6 +179,86 @@ assert_eq "S7b no sink configured: no alert delivered" "3" "$(alert_count)"
 THRESHOLD=08 run_sync
 assert_eq "S8 threshold 08: alert delivered, no arithmetic abort" "4" "$(alert_count)"
 assert_has "S8b alert names the file" "bad-fourth.sh" "$(tail -n 1 "$ALERTS")"
+
+# --- S9: a staged browser profile is quarantined outside the vault, the rest commits
+rm -f "$V/handovers/x/logs/bad-fourth.sh"
+run_sync
+P="$V/specs/shots/chrome"
+mkdir -p "$P/Default/Cache" "$P/Default/Network"
+printf '{"token":"synthetic"}\n' >"$P/Default/Preferences"
+printf '{"os_crypt":"synthetic"}\n' >"$P/Local State"
+printf 'blob\n' >"$P/Default/Cache/data_0"
+printf 'j\n' >"$P/Default/History-journal"
+printf 'ordinary note\n' >"$V/note-after-profile.md"
+run_sync
+tracked="$(git -C "$V" ls-files)"
+case "$tracked" in *Preferences* | *"Local State"* | *Cache/data_0* | *History-journal*) fail "S9 profile files are not committed" "tracked: $tracked" ;; *) pass "S9 profile files are not committed" ;; esac
+assert_has "S9b the rest of the tree commits" "note-after-profile.md" "$tracked"
+assert_eq "S9c working tree is clean after the heal" "" "$(git -C "$V" status --porcelain)"
+qpath="$(find "$TMP/quarantine" -path '*specs/shots/chrome/Default/Preferences' 2>/dev/null | head -n1)"
+assert_eq "S9d Preferences moved to the quarantine folder" "yes" "$([ -n "$qpath" ] && echo yes || echo no)"
+assert_eq "S9e the profile is gone from the vault" "no" "$([ -e "$P/Default/Preferences" ] && echo yes || echo no)"
+assert_eq "S9f nothing left in the stall state" "no" "$([ -e "$STATE" ] && echo yes || echo no)"
+assert_eq "S9g pushed to the remote" "$(git -C "$V" rev-parse HEAD)" "$(git -C "$BARE" rev-parse main)"
+
+# --- S10: a secret-shaped note is NOT healed; the stall names the path -------
+mkdir -p "$V/handovers/n"
+printf 'secret\n' >"$V/handovers/n/leak-note.md"
+run_sync
+assert_eq "S10 secret note stays in the vault" "yes" "$([ -e "$V/handovers/n/leak-note.md" ] && echo yes || echo no)"
+assert_eq "S10b nothing quarantined for it" "" "$(find "$TMP/quarantine" -name 'leak-note.md')"
+assert_eq "S10c stall reason names hook and path" "fake-gitleaks:handovers/n/leak-note.md" "$(cat "$V/.git/vault-autosync-reason" 2>/dev/null)"
+
+# --- S11: tool state mixed with a real secret: nothing is moved (all or nothing)
+mkdir -p "$V/specs/shots2/Default"
+printf 'p\n' >"$V/specs/shots2/Default/Preferences"
+run_sync
+assert_eq "S11 mixed refusal: tool state not quarantined" "yes" "$([ -e "$V/specs/shots2/Default/Preferences" ] && echo yes || echo no)"
+
+# --- S12: recovery clears the reason ----------------------------------------
+rm -f "$V/handovers/n/leak-note.md"
+rm -rf "$V/specs/shots2"
+run_sync
+assert_eq "S12 recovery: reason cleared" "no" "$([ -e "$V/.git/vault-autosync-reason" ] && echo yes || echo no)"
+
+# --- S12b: a TRACKED tool-state file is never quarantined (its deletion would be committed)
+mkdir -p "$V/x/Default"
+printf 'v1\n' >"$V/x/Default/Preferences"
+git -C "$V" add -A
+git -C "$V" commit -q -m "track a preferences file" --no-verify
+printf 'v2\n' >"$V/x/Default/Preferences"
+head_before="$(git -C "$V" rev-parse HEAD)"
+run_sync
+assert_eq "S12a the hooks refused it: no commit landed" "$head_before" "$(git -C "$V" rev-parse HEAD)"
+assert_eq "S12a2 the stall names the refused file" "fake-gitleaks:x/Default/Preferences" "$(cat "$V/.git/vault-autosync-reason" 2>/dev/null)"
+assert_eq "S12b tracked tool-state file stays in the vault" "yes" "$([ -e "$V/x/Default/Preferences" ] && echo yes || echo no)"
+assert_eq "S12c it stays tracked" "x/Default/Preferences" "$(git -C "$V" ls-files -- x/Default/Preferences)"
+assert_eq "S12d it is not quarantined" "" "$(find "$TMP/quarantine" -path '*x/Default/Preferences')"
+git -C "$V" checkout -q -- x/Default/Preferences
+run_sync
+
+# --- S12e: a refused file named like a journal OUTSIDE a browser profile is not tool state
+mkdir -p "$V/notes"
+printf 'diary\n' >"$V/notes/dev-journal"
+head_before="$(git -C "$V" rev-parse HEAD)"
+run_sync
+assert_eq "S12e0 the hooks refused it: no commit landed" "$head_before" "$(git -C "$V" rev-parse HEAD)"
+assert_eq "S12e1 the stall names the refused file" "fake-gitleaks:notes/dev-journal" "$(cat "$V/.git/vault-autosync-reason" 2>/dev/null)"
+assert_eq "S12e journal-named file outside a profile stays in the vault" "yes" "$([ -e "$V/notes/dev-journal" ] && echo yes || echo no)"
+assert_eq "S12f it is not quarantined" "" "$(find "$TMP/quarantine" -name 'dev-journal')"
+rm -f "$V/notes/dev-journal"
+run_sync
+
+# --- S13: the template .gitignore hides tool state, not ordinary notes -------
+G="$TMP/gi"
+git init -q -b main "$G"
+cp "$HERE/../.gitignore" "$G/.gitignore"
+for p in "a/chrome/Default/Preferences" "a/chrome/Local State" "a/chrome/Default/Cache/data_0" "a/chrome/Default/History-journal" "a/chrome/Default/Network/Cookies-journal"; do
+  if git -C "$G" check-ignore -q -- "$p"; then pass "S13 ignored: $p"; else fail "S13 ignored: $p" "not ignored"; fi
+done
+for p in "notes/Preferences.md" "Local State.md" "notes/Default.md" "daily-journal.md" "daily-journal/note.md" "dev-journal" "notes/Cache.md" "Default/notes.md"; do
+  if git -C "$G" check-ignore -q -- "$p"; then fail "S13 note kept: $p" "ignored"; else pass "S13 note kept: $p"; fi
+done
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then

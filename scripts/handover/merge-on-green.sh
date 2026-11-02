@@ -1924,6 +1924,39 @@ if ! audit "MERGING repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 cr=$CR_STATE$
     exit 16
 fi
 
+# _merge_contract — MERGE_ROW_CONTRACT: yes when this merge completes the ticket, else no. --jira-transition
+# opts in; a brief that says `Completes ticket: no` overrides it. Shared by every merge row.
+_merge_contract() {
+    local brief=""
+    MERGE_ROW_CONTRACT=no
+    if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then MERGE_ROW_CONTRACT=yes; fi
+    if [ -n "${WORKER_SESSION_DOC:-}" ] && [ -r "$WORKER_SESSION_DOC" ]; then
+        brief=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
+    fi
+    [ "$brief" != no ] || MERGE_ROW_CONTRACT=no
+}
+
+# The contract row goes down BEFORE the merge call, so a run killed right after GitHub
+# merges still leaves the record. stage=pre-merge marks it as written before the outcome was known; a reader
+# trusts it only once a later row for the same PR and head, or GitHub itself, confirms the merge (a row for a PR
+# that never merged is marked result=not-merged below). Local append only: it runs after the base re-verification
+# and adds no network call, and a write failure only warns (status_event), never blocks or alters the merge.
+MERGE_INTENT_KEY=""
+_merge_intent_row() {
+    declare -F status_event >/dev/null && declare -F ticket_key_from_title >/dev/null || return 0
+    MERGE_INTENT_KEY=$(ticket_key_from_title "$fresh_title") || { MERGE_INTENT_KEY=""; return 0; }
+    [ -n "$MERGE_INTENT_KEY" ] || return 0
+    _merge_contract
+    status_event event=merge key="$MERGE_INTENT_KEY" pr="$pr_num" head="$sha" repo="$nwo" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-merge || true
+}
+# _merge_not_merged_row <reason> — this run learned for certain that PR #pr_num did not merge at $sha. The row
+# carries no contract, so no reader takes it for a merge outcome; it only retires the pre-merge row above.
+_merge_not_merged_row() {
+    [ -n "$MERGE_INTENT_KEY" ] || return 0
+    status_event event=merge key="$MERGE_INTENT_KEY" pr="$pr_num" head="$sha" result=not-merged stage="$1" || true
+}
+_merge_intent_row
+
 # Re-query state TOGETHER with headRefOid + baseRefName: shared by BOTH the failure-recovery path AND the success-path
 # confirmation poll below. Callers decide whether an API failure means
 # unconfirmed or indeterminate; do not collapse it into an empty state,
@@ -2187,10 +2220,15 @@ worktree_has_live_suite_run() {
 
 PRUNE_RESULT="not-attempted"
 PRUNE_BRANCH="kept"
+# The one keep hint for an own-cwd-deferred worktree. Set by
+# prune_merged_worktree, printed by the two MERGED paths as the last line of
+# the run (stderr, like every other post-merge note).
+PRUNE_KEEP_HINT=""
 prune_merged_worktree() {
     local branch="$1" merged_sha="$2"
     PRUNE_RESULT="not-found"
     PRUNE_BRANCH="kept"
+    PRUNE_KEEP_HINT=""
     [ -n "$branch" ] || { PRUNE_RESULT="no-head-branch"; return 0; }
 
     local common primary
@@ -2242,7 +2280,7 @@ prune_merged_worktree() {
     [ -n "$here" ] && here=$(cd "$here" 2>/dev/null && pwd)
     if [ -n "$here" ] && [ "$here" = "$path_norm" ]; then
         PRUNE_RESULT="own-cwd-deferred"
-        echo "merge-on-green: this run's cwd IS the merged worktree — not removing it out from under the caller. Prune it from the primary checkout with: git -C '$primary' worktree remove '$path_norm' && git -C '$primary' branch -D '$branch'   (or just run: bash '$primary/scripts/clean.sh')"
+        PRUNE_KEEP_HINT="merge-on-green: KEPT worktree '$path_norm' — this merge ran from inside it, so it was not removed out from under the caller. Prune it from the primary checkout with: git -C '$primary' worktree remove '$path_norm' && git -C '$primary' branch -D '$branch'   (or just run: bash '$primary/scripts/clean.sh')"
         return 0
     fi
 
@@ -2663,22 +2701,19 @@ $remaining")
     return 0
 }
 
-# _merge_pre_row <nwo> <pr> <sha> — one status-events row (result=pending) for the merge, written
-# once gh reports it MERGED and before any Jira call, so a run killed in the Jira step still
+# _merge_pre_row <nwo> <pr> <sha> — one status-events row (result=pending, stage=pre-jira) for the merge,
+# written once gh reports it MERGED and before any Jira call, so a run killed in the Jira step still
 # leaves the record that this PR merged and whether it completes the ticket. The row after the
-# Jira step supersedes it. Best-effort: no key, no title or no log writes nothing.
+# Jira step supersedes it. Best-effort: no key, no title or no log writes nothing. (The earlier
+# stage=pre-merge row, written before the merge call, is _merge_intent_row above.)
 _merge_pre_row() {
-    local title key brief="" contract=no
+    local title key
     declare -F status_event >/dev/null && declare -F ticket_key_from_title >/dev/null || return 0
     title=$("$GH" pr view "$2" --repo "$1" --json title -q .title 2>/dev/null) || return 0  # swallow-ok: an unread title writes no pre-Jira row; the row after the Jira step still records the merge
     key=$(ticket_key_from_title "$title") || return 0
     [ -n "$key" ] || return 0
-    if _truthy "${JIRA_TRANSITION_OPT_IN:-}"; then contract=yes; fi
-    if [ -n "${WORKER_SESSION_DOC:-}" ] && [ -r "$WORKER_SESSION_DOC" ]; then
-        brief=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
-    fi
-    [ "$brief" != no ] || contract=no
-    status_event event=merge key="$key" pr="$2" head="$3" contract="$contract" result=pending stage=pre-jira
+    _merge_contract
+    status_event event=merge key="$key" pr="$2" head="$3" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-jira
 }
 
 # jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
@@ -2766,6 +2801,7 @@ if [ "$merge_rc" -ne 0 ] && { [[ "$merge_out" == *"base branch policy prohibits 
         || [[ "$merge_out" == *"Repository rule violations"* ]] \
         || [[ "$merge_out" == *"approving review is required"* ]]; }; then
     echo "merge-on-green: GitHub refused PR #$pr_num (gh: $merge_out). Leave the PR open; an unsatisfiable review or check rule requires a human admin action, never an automated bypass." >&2
+    _merge_not_merged_row policy-refused
     block_alert "GitHub refused the merge: $(printf '%s' "$merge_out" | tr '\n' ' ' | cut -c1-200)"
     audit "REFUSED reason=policy-refused phase=merge rule=github-refusal gh_rc=$merge_rc repo=$nwo pr=#$pr_num sha=$sha"
     exit 18
@@ -2798,6 +2834,7 @@ if [ "$merge_rc" -ne 0 ]; then
         # gh's own merge call FAILED, so --match-head-commit never confirmed
         # $sha — the MERGED state belongs to a commit a concurrent actor
         # merged in the gap before this re-query. Do not attribute it to $sha.
+        _merge_not_merged_row head-mismatch
         echo "merge-on-green: PR is MERGED but the merged head ($post_head) does not match the certified sha ($sha) — a different commit merged concurrently; NOT crediting this run. Check the PR manually." >&2
         audit "REFUSED reason=merge-state-head-mismatch repo=$nwo pr=#$pr_num sha=$sha merged_head=$post_head gh_rc=$merge_rc"
         exit 15
@@ -2820,6 +2857,7 @@ if [ "$merge_rc" -ne 0 ]; then
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
+        [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
         exit 0
     fi
     if [ "$post_state" = "OPEN" ]; then
@@ -2875,6 +2913,7 @@ if [ "$merge_rc" -eq 0 ]; then
         # gh's own merge call ACCEPTED $sha (queue admission), but the queue's
         # actual merge landed a different head — a concurrent actor merged in
         # the gap while this run was queued. Do not attribute it to $sha.
+        _merge_not_merged_row head-mismatch
         echo "merge-on-green: PR #$pr_num reached MERGED but the merged head ($final_head) does not match the certified sha ($sha) — a different commit merged concurrently while queued; NOT crediting this run. Check the PR manually." >&2
         audit "REFUSED reason=merge-state-head-mismatch repo=$nwo pr=#$pr_num sha=$sha merged_head=$final_head"
         exit 15
@@ -2896,6 +2935,7 @@ if [ "$merge_rc" -eq 0 ]; then
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
+        [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
         exit 0
     fi
     echo "merge-on-green: gh accepted the merge but PR #$pr_num is '${final_state:-<unreadable>}' (not MERGED) after polling — refusing to report an unconfirmed merge. Check the PR; do NOT retry via a different command path." >&2
@@ -2906,6 +2946,8 @@ fi
 # A non-zero merge rc includes a --match-head-commit abort (head moved since the
 # gate) — that is the safe path, not an error to route around. Do NOT retry via
 # another command path (the classifier flags that as evasion).
+# Only a re-query that read CLOSED proves the PR did not merge (any other state is unproven).
+[ "${post_state:-}" != CLOSED ] || _merge_not_merged_row merge-failed
 echo "merge-on-green: merge failed (gh rc=$merge_rc): ${merge_out:-<no output>}" >&2
 echo "merge-on-green: if the head moved since the gate, this is the --match-head-commit safeguard — re-run the armed cycle; do NOT retry via a different command path." >&2
 audit "REFUSED reason=merge-failed gh_rc=$merge_rc repo=$nwo pr=#$pr_num sha=$sha"

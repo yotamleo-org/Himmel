@@ -252,6 +252,7 @@ scripts/cr/test-critic-panel-instrumentation.sh	2
 scripts/cr/test-critic-panel-registry.sh	3
 scripts/cr/test-critic-panel-triviality.sh	2
 scripts/cr/test-critic-panel.sh	68
+scripts/cr/test-critic-pre-existing-tag.sh	1
 scripts/cr/test-dependabot-go.sh	8
 scripts/cr/test-doc-freshness-advisory.sh	1
 scripts/cr/test-docs-audit-panel.sh	1

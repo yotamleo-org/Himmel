@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,8 +20,11 @@ const T = mkdtempSync(join(tmpdir(), 'claude-api-'));
 process.on('exit', () => rmSync(T, { recursive: true, force: true }));
 const DUMMY = 'sk-ant-dummy-not-a-real-key-0000';
 
+// A run with no API key is the subscription fallback: it logs to the .fb files and answers STUB_FB_OUT / STUB_FB_RC.
 const STUB = `#!/bin/bash
-echo called >> "$STUB_LOG"
+FB=""; [ -n "\${ANTHROPIC_API_KEY:-}" ] || FB=.fb
+echo called >> "$STUB_LOG$FB"
+if [ -n "$FB" ]; then env > "$STUB_ENV.fb.full"; printf '%s\\n' "$@" > "$STUB_ENV.fb.args"; fi
 { echo "key_present=$([ -n "\${ANTHROPIC_API_KEY:-}" ] && echo 1 || echo 0)"
   echo "base_url=\${ANTHROPIC_BASE_URL:-}"; echo "oauth=\${CLAUDE_CODE_OAUTH_TOKEN:-}"
   echo "use_bedrock=\${CLAUDE_CODE_USE_BEDROCK:-}"; echo "auth_token=\${ANTHROPIC_AUTH_TOKEN:-}"
@@ -29,12 +33,14 @@ echo called >> "$STUB_LOG"
   echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_\\(SUBPROCESS_ENV_SCRUB\\|PROMPT_CACHE_TTL\\)=')"
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
   echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
-  echo "args=$*"; } > "$STUB_ENV"
+  echo "args=$*"; } > "$STUB_ENV$FB"
+if [ -n "$FB" ]; then printf '%s' "\${STUB_FB_OUT:-$STUB_OUT}"; exit "\${STUB_FB_RC:-0}"; fi
 [ -z "\${STUB_IGNORE_TERM:-}" ] || trap '' TERM
 [ -z "\${STUB_CHILD:-}" ] || { sleep 300 & echo "child_pid=$!" >> "$STUB_ENV"; }
 while [ -n "\${STUB_HOLD:-}" ] && [ -e "$STUB_HOLD" ]; do sleep 0.05; done
 printf '%s' "$STUB_OUT"
 [ -z "\${STUB_DIE:-}" ] || kill -9 $$
+[ -z "\${STUB_TERM:-}" ] || { ( sleep 0.05; kill -TERM "$PPID" ) </dev/null >/dev/null 2>&1 & kill -TERM $$; }
 exit "\${STUB_RC:-0}"
 `;
 
@@ -58,13 +64,16 @@ function fixture() {
     source: 'operator-console-snapshot', exclusive_org: true, discrepancy: false,
   }])) };
   const paths = { config: join(dir, 'config.json'), snapshot: join(dir, 'snapshot.json'), state,
-    stub: join(dir, 'claude-stub'), log: join(dir, 'stub.log'), env: join(dir, 'stub.env'), ps: join(dir, 'ps') };
+    stub: join(dir, 'claude-stub'), log: join(dir, 'stub.log'), env: join(dir, 'stub.env'), ps: join(dir, 'ps'),
+    alert: join(dir, 'alert-stub'), alertLog: join(dir, 'alert.log') };
   const save = () => {
     writeFileSync(paths.config, JSON.stringify(config));
     writeFileSync(paths.snapshot, JSON.stringify(snapshot));
   };
   save();
   writeFileSync(paths.stub, STUB, { mode: 0o700 });
+  // the alert sender is always this stub: no fixture can reach the real Telegram sender
+  writeFileSync(paths.alert, `#!/bin/bash\n{ echo "type=$TG_NOTIFICATION_TYPE"; echo "msg=$TG_MESSAGE"; echo "repo=$TG_REPO_NAME"; echo "args=$*"; } >> '${paths.alertLog}'\nenv >> '${paths.alertLog}.env'\n[ -z "\${ALERT_TERM_PARENT:-}" ] || kill -TERM "$PPID"\nexit "\${ALERT_RC:-0}"\n`, { mode: 0o700 });
   writeFileSync(paths.ps, '#!/bin/bash\nexit 0\n', { mode: 0o700 });
   const ok = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.012345, result: 'hi' });
   const env = { PATH: process.env.PATH, HOME: dir, TMPDIR: dir,
@@ -74,10 +83,11 @@ function fixture() {
     HIMMEL_API_JOB_ID: 'job-1', STUB_LOG: paths.log, STUB_ENV: paths.env, STUB_OUT: ok,
     HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: paths.ps, FLEET_PROC: dir,
     CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
-    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json') };
+    CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
+    HIMMEL_API_FALLBACK: 'off', HIMMEL_API_ALERT_CMD: paths.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
   writeFileSync(env.CADENCE_USAGE_CACHE, JSON.stringify({ five_hour: { utilization: 100 }, seven_day: { utilization: 100 } }));
   const good = ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
-  const run = (args = good, extra = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
+  const run = (args = good, extra = {}, opts = {}) => spawnSync('bash', [LAUNCH, ...args], { env: { ...env, ...extra }, encoding: 'utf8', ...opts });
   const status = (account = 'A') => {
     const r = spawnSync(process.execPath, [STATE, 'status'], { env: { ...env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
     return JSON.parse(r.stdout);
@@ -132,6 +142,226 @@ test('judge j2229c: the harness hand-off names (LQ_API_*) never reach claude', (
   const r = f.run(f.good, { LQ_API_KEY: DUMMY, LQ_API_ACCOUNT: 'B', LQ_API_KEY_ID: 'key-b', LQ_API_LANE: 'on' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(readFileSync(f.paths.env, 'utf8'), /^lq_api=0$/m);
+});
+
+// --- a failed API-lane call alerts once and falls back to the subscription ---
+const FB_ON = { HIMMEL_API_FALLBACK: 'on' };
+const FB_OK = JSON.stringify({ type: 'result', is_error: false, total_cost_usd: 0.5, result: 'from-sub' });
+const CREDIT_LOW = JSON.stringify({ type: 'result', is_error: true, result: 'Credit balance is too low to access the API' });
+const CALL_FAIL = JSON.stringify({ type: 'result', is_error: true, subtype: 'error_during_execution', result: 'boom' });
+const alerts = (f) => (existsSync(f.paths.alertLog) ? readFileSync(f.paths.alertLog, 'utf8') : '')
+  .split('\n').filter((l) => l.startsWith('type='));
+const alertText = (f) => (existsSync(f.paths.alertLog) ? readFileSync(f.paths.alertLog, 'utf8') : '');
+const fbCalls = (f) => (existsSync(`${f.paths.log}.fb`) ? readFileSync(`${f.paths.log}.fb`, 'utf8').trim().split('\n').length : 0);
+const fbArgs = (f) => readFileSync(`${f.paths.env}.fb.args`, 'utf8').trim().split('\n');
+const rows = (f) => (existsSync(join(f.dir, 'launches.jsonl')) ? f.record().trim().split('\n').map((l) => JSON.parse(l)) : []);
+// a native bank reading the subscription preflight trusts: the cache carries this home's account hash
+function native(f, util) {
+  writeFileSync(join(f.dir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'u-test' } }));
+  writeFileSync(f.env.CADENCE_USAGE_CACHE, JSON.stringify({ account: createHash('sha256').update('u-test').digest('hex').slice(0, 16),
+    primaries_refreshed_at: Math.floor(Date.now() / 1000), five_hour: { utilization: util }, seven_day: { utilization: util } }));
+}
+// the key appears in no output, no file the run left (alert, fallback env and argv, records, ledgers)
+function keyNowhere(f, r) {
+  assert.ok(!r.stdout.includes(DUMMY) && !r.stderr.includes(DUMMY), 'key in launcher output');
+  const walk = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+  for (const p of walk(f.dir)) assert.ok(!readFileSync(p, 'utf8').includes(DUMMY), `key in ${p}`);
+}
+
+test('a refused call (lane off) sends one alert and re-runs the prompt once on the subscription, native auth, no key', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK, CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy',
+    ANTHROPIC_BASE_URL: 'https://evil.example', ANTHROPIC_ORG_A_KEY: DUMMY, LQ_API_KEY: DUMMY, CLAUDECODE: '1' },
+  { argv0: SESSION_ARGV0 }); // a marker needs a `claude` ancestor, or the subscription preflight's seam guard refuses on CI's primary checkout
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /api lane is OFF/);
+  assert.equal(r.stdout, FB_OK);
+  assert.equal(f.called(), false, 'the API call must not run');
+  assert.equal(fbCalls(f), 1);
+  const seen = readFileSync(`${f.paths.env}.fb`, 'utf8');
+  for (const want of [/^key_present=0$/m, /^base_url=$/m, /^oauth=oauth-dummy$/m, /^org_keys=0$/m, /^lq_api=0$/m])
+    assert.match(seen, want);
+  const full = readFileSync(`${f.paths.env}.fb.full`, 'utf8');
+  assert.ok(!/^(ANTHROPIC_|HIMMEL_API_|LQ_API_|CLAUDECODE=)/m.test(full), 'an API, lane or session var reached the fallback');
+  // native auth keeps only its own token; every other session marker is dropped
+  assert.deepEqual(full.match(/^CLAUDE_CODE_[A-Z0-9_]+(?==)/gm).sort(), ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB']);
+  const args = fbArgs(f);
+  assert.deepEqual(args.slice(0, 6), ['-p', 'say hi', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan']);
+  assert.ok(args.join(' ').includes('--max-budget-usd 0.10') && args.join(' ').includes('--output-format json'), args.join(' '));
+  assert.ok(!args.includes('bypassPermissions'));
+  const a = alerts(f);
+  assert.equal(a.length, 1);
+  assert.match(alertText(f), /refused/);
+  assert.match(alertText(f), /api lane is OFF/);
+  assert.match(alertText(f), /fallback: running on the subscription/);
+  const fb = rows(f).at(-1);
+  assert.equal(fb.lane, 'sub-fallback');
+  assert.equal(fb.outcome, 'sub-fallback');
+  assert.equal(fb.api_class, 'refused');
+  assert.equal(fb.api_rc, 2);
+  assert.equal(fb.rc, 0);
+  assert.equal(fb.cost_usd, '');
+  assert.equal(fb.sub_cost_usd, '0.500000');
+  keyNowhere(f, r);
+});
+
+test('a credit-low answer (exit 6) alerts once and falls back; the API row and the fallback row are both recorded', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ...FB_ON, STUB_OUT: CREDIT_LOW, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /credit exhausted/);
+  assert.equal(r.stdout, FB_OK);
+  assert.equal(f.called(), true);
+  assert.equal(fbCalls(f), 1);
+  assert.match(readFileSync(`${f.paths.env}.fb`, 'utf8'), /^key_present=0$/m);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /rejected/);
+  assert.match(alertText(f), /account A/);
+  const [api, fb] = rows(f);
+  assert.equal(api.outcome, 'exhausted');
+  assert.equal(fb.lane, 'sub-fallback');
+  assert.equal(fb.api_rc, 6);
+  assert.equal(fb.api_class, 'rejected');
+  keyNowhere(f, r);
+});
+
+test('a failed call alerts once and falls back; a failing fallback returns its own code', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ...FB_ON, STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fbCalls(f), 1);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /call-failed/);
+  assert.ok(!alertText(f).includes('boom'), 'the call result text reached the alert');
+  assert.equal(rows(f).at(-1).api_class, 'call-failed');
+  keyNowhere(f, r);
+  const g = fixture();
+  const bad = g.run(g.good, { ...FB_ON, STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: CALL_FAIL, STUB_FB_RC: '3' });
+  assert.equal(bad.status, 3);
+  assert.equal(rows(g).at(-1).outcome, 'sub-fallback-failed');
+});
+
+test('a call granted Edit, Write or Bash re-runs only after a refusal before any request; a run that started is never replayed', () => {
+  for (const tools of ['Read,Edit', 'Write', 'Read,Grep,Bash']) {
+    const f = fixture();
+    const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK });
+    assert.equal(r.status, 1, tools);
+    assert.equal(fbCalls(f), 0, `${tools}: a failed run that may have changed files was replayed`);
+    assert.equal(alerts(f).length, 1, tools);
+    assert.match(alertText(f), /fallback: not run: the call could change files/, tools);
+    const g = fixture();
+    assert.equal(g.run(g.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, STUB_OUT: CREDIT_LOW, STUB_RC: '1', STUB_FB_OUT: FB_OK }).status, 6, tools);
+    assert.equal(fbCalls(g), 0, `${tools}: a rejection on a later turn could follow an edit, so exit 6 is not replayed`);
+    assert.match(alertText(g), /fallback: not run: the call could change files/, tools);
+    const h = fixture();
+    assert.equal(h.run(h.good, { ...FB_ON, HIMMEL_API_TOOLS: tools, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK }).status, 0, tools);
+    assert.equal(fbCalls(h), 1, `${tools}: a refusal (exit 2) re-runs`);
+  }
+  const k = fixture();
+  assert.equal(k.run(k.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK }).status, 0);
+  assert.equal(fbCalls(k), 1, 'a read-only grant keeps the fallback on a failed run');
+});
+
+// bulk-call --cancel TERMs the call and the launcher together; here the call ends first and the launcher's TERM
+// lands after it, while the launcher is settling.
+test('a TERM to the launcher after its call ended is a caller stop: no alert, no subscription replay, even read-only', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_TERM: '1', STUB_FB_OUT: FB_OK });
+  assert.equal(r.status, 143, r.stderr);
+  assert.equal(fbCalls(f), 0, 'a stopped call was replayed on the subscription');
+  assert.deepEqual(alerts(f), [], 'a stop raised an alert');
+  assert.equal(f.status().reserved_usd, '0.000000', 'the reservation is still held');
+});
+
+// the alert stub TERMs the launcher mid failure path: the alert was already sent, the fallback must not start
+test('a stop that lands while the alert is sent ends the failure path before the fallback runs', () => {
+  const f = fixture();
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_OUT: CALL_FAIL, STUB_RC: '1', STUB_FB_OUT: FB_OK, ALERT_TERM_PARENT: '1' });
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /stopped by its caller; the fallback was not run/);
+  assert.equal(fbCalls(f), 0, 'the fallback ran after a stop');
+  assert.equal(alerts(f).length, 1);
+});
+
+test('the call watchdog ending a hung read-only call is a failed call: one alert, one subscription re-run', () => {
+  const f = fixture();
+  const hold = join(f.dir, 'hold'); writeFileSync(hold, '');
+  try {
+    const r = f.run(f.good, { ...FB_ON, HIMMEL_API_TOOLS: 'Read,Glob,Grep', STUB_HOLD: hold, HIMMEL_API_CALL_TIMEOUT_S: '1', STUB_FB_OUT: FB_OK });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, FB_OK);
+    assert.match(r.stderr, /the call hit the call timeout/);
+    assert.equal(fbCalls(f), 1);
+    assert.equal(alerts(f).length, 1);
+    assert.match(alertText(f), /call timeout/);
+    assert.equal(f.status().reserved_usd, '0.000000');
+  } finally { rmSync(hold, { force: true }); }
+});
+
+test('a subscription preflight refusal runs no fallback, the alert names it and the original code stands', () => {
+  const f = fixture();
+  native(f, 100);
+  const r = f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' });
+  assert.equal(r.status, 2);
+  assert.equal(fbCalls(f), 0);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /SKIPPED-BANK/);
+  const g = fixture();
+  native(g, 100);
+  const six = g.run(g.good, { ...FB_ON, STUB_OUT: CREDIT_LOW, STUB_RC: '1' });
+  assert.equal(six.status, 6);
+  assert.equal(fbCalls(g), 0);
+  const h = fixture();
+  native(h, 10);
+  assert.equal(h.run(h.good, { ...FB_ON, HIMMEL_API_LANE: '', STUB_FB_OUT: FB_OK }).status, 0);
+  assert.equal(fbCalls(h), 1, 'PROCEED runs the fallback');
+});
+
+test('one alert per kind and class per hour; a new class or an hour later alerts again', () => {
+  const f = fixture();
+  for (let i = 0; i < 2; i++) assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' }).status, 0);
+  assert.equal(alerts(f).length, 1, 'the second refusal within the hour alerted again');
+  assert.equal(fbCalls(f), 2, 'the rate limit holds the alert, never the fallback');
+  assert.equal(f.run(f.good, { ...FB_ON, STUB_OUT: CREDIT_LOW, STUB_RC: '1' }).status, 0);
+  assert.equal(alerts(f).length, 2);
+  const old = (Date.now() - 2 * 3600 * 1000) / 1000;
+  for (const s of readdirSync(join(f.dir, 'alerts'))) utimesSync(join(f.dir, 'alerts', s), old, old);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' }).status, 0);
+  assert.equal(alerts(f).length, 3);
+});
+
+test('a failed alert send writes no stamp, so the next failure inside the hour alerts again', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '', ALERT_RC: '1' }).status, 0);
+  assert.equal(f.run(f.good, { ...FB_ON, HIMMEL_API_LANE: '' }).status, 0);
+  assert.equal(alerts(f).length, 2, 'a failed send muted the next alert');
+});
+
+test('HIMMEL_API_FALLBACK=off still alerts but runs no fallback; a malformed request or a spent stdin prompt never falls back', () => {
+  const f = fixture();
+  const r = f.run(f.good, { HIMMEL_API_LANE: '' });
+  assert.equal(r.status, 2);
+  assert.equal(fbCalls(f), 0);
+  assert.equal(alerts(f).length, 1);
+  assert.match(alertText(f), /fallback: off/);
+  const g = fixture();
+  assert.equal(g.run([...g.good, '--bogus'], FB_ON).status, 2);
+  assert.equal(fbCalls(g), 0);
+  assert.equal(alerts(g).length, 1);
+  // the lane-off refusal comes first, yet a malformed request still never reaches the subscription
+  const noPrint = ['--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10', 'hi'];
+  for (const [args, env] of [[noPrint, {}], [null, { HIMMEL_API_KIND: 'bad kind' }], [null, { HIMMEL_API_CACHE_TTL: '9h' }],
+    [null, { HIMMEL_API_JOB_ID: 'bad id' }], [null, { HIMMEL_API_TOOLS: 'Bash(*)' }]]) {
+    const m = fixture();
+    assert.equal(m.run(args ?? m.good, { ...FB_ON, HIMMEL_API_LANE: '', ...env }).status, 2);
+    assert.equal(fbCalls(m), 0, JSON.stringify(env));
+    assert.match(alertText(m), /fallback: not run: the request itself was refused/);
+  }
+  const h = fixture();
+  const stdinOnly = ['-p', '--model', 'claude-haiku-5-5', '--permission-mode', 'plan', '--max-budget-usd', '0.10'];
+  assert.equal(h.run(stdinOnly, { ...FB_ON, STUB_OUT: CALL_FAIL, STUB_RC: '1' }).status, 1);
+  assert.equal(fbCalls(h), 0);
+  assert.match(alertText(h), /fallback: not run/);
 });
 
 test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free default, no --allowedTools, no MCP)', () => {
@@ -410,7 +640,9 @@ test('a budget above the available credit refuses at reservation', () => {
 
 test('a non-API child is stripped of the key and every lane selector', () => {
   const f = fixture();
-  const r = spawnSync('bash', [STRIP, '--', 'env'], { env: { ...f.env, HIMMEL_API_CREDIT_FORMAT: 'bank' }, encoding: 'utf8' });
+  // the fallback switch and the alert seams are neither credentials nor lane selectors
+  const { HIMMEL_API_FALLBACK, HIMMEL_API_ALERT_CMD, HIMMEL_API_ALERT_DIR, ...lane } = f.env;
+  const r = spawnSync('bash', [STRIP, '--', 'env'], { env: { ...lane, HIMMEL_API_CREDIT_FORMAT: 'bank' }, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!r.stdout.includes('ANTHROPIC_API_KEY'));
   assert.ok(!r.stdout.includes(DUMMY));

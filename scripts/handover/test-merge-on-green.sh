@@ -262,7 +262,7 @@ mog_build_fixture() {
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
-    cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$SCRIPT_DIR/../lib/status-marker.sh" "$tmp/scripts/lib/"
+    cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$SCRIPT_DIR/../lib/status-marker.sh" "$SCRIPT_DIR/../lib/merge-rows-effective.py" "$tmp/scripts/lib/"
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/chief-kit/worker-jira-status.sh"
     # The CR thread recorder at its anchor path is a stub: it logs its argv to
@@ -548,6 +548,19 @@ case "$verb" in
         [ "${STUB_MERGE_REQUIRED_CHECK:-0}" = "1" ] && { echo "Pull request $nwo#77 is not mergeable: Required status check \"codeowner-review-gate\" is expected." >&2; exit 1; }
         [ "${STUB_MERGE_BASE_MODIFIED:-0}" = "1" ] && { echo "GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)" >&2; exit 1; }
         [ "${STUB_MERGE_FAIL:-0}" = "1" ] && { echo "merge conflict / head moved" >&2; exit 1; }
+        # STUB_MERGE_SNAPSHOT=1: copy the status-events rows as they stand when the merge call runs.
+        [ "${STUB_MERGE_SNAPSHOT:-0}" != "1" ] || cp "$TICKET_STATUS_STATE_DIR/status-events.jsonl" "$GH_LOG.rows-at-merge" 2>/dev/null || : > "$GH_LOG.rows-at-merge"
+        # STUB_MERGE_KILL=before|after: SIGKILL the outermost merge-on-green.sh before the merge lands / right after it did.
+        if [ "${STUB_MERGE_KILL:-}" = "before" ] || [ "${STUB_MERGE_KILL:-}" = "after" ]; then
+            [ "$STUB_MERGE_KILL" != "after" ] || echo "merged"
+            victim="" pid=$$
+            while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+                case "$(ps -o args= -p "$pid" 2>/dev/null)" in *scripts/handover/merge-on-green.sh*) victim=$pid ;; esac
+                pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+            done
+            [ -z "$victim" ] || kill -9 "$victim"
+            sleep 1
+        fi
         echo "merged"
         ;;
     "run list")
@@ -2009,6 +2022,20 @@ MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
     run_mog 0 "merged from inside the worktree → deferred, exit 0"
 if [ -d "$P_WT" ]; then pass; else fail "11j: the caller's own cwd was removed"; fi
 assert_audit_has "11j: audit records the deferral" "prune=own-cwd-deferred"
+# 11j2. The deferral prints ONE hint on stderr (where every other
+# post-merge note goes) saying the worktree was KEPT because the merge ran from
+# inside it, with the exact prune command.
+assert_err_has "11j2: hint says the worktree was kept" "KEPT worktree '$P_WT'"
+assert_err_has "11j2: hint says why (the merge ran from inside it)" "merge ran from inside it"
+assert_err_has "11j2: hint carries the prune command" "git -C '$P_REPO' worktree remove '$P_WT' && git -C '$P_REPO' branch -D 'feat/mog-prune'"
+if [ "$(grep -cF 'KEPT worktree' <<< "$LAST_ERR")" = "1" ]; then pass; else fail "11j2: expected exactly one keep hint (err: $LAST_ERR)"; fi
+# 11j3. Negative control: a merge NOT from inside the worktree prunes it and
+# prints no keep hint.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 0 "11j3: merged from the primary checkout → pruned, exit 0"
+assert_audit_has "11j3: audit records the prune" "prune=removed"
+if grepq "$LAST_ERR" -F 'KEPT worktree'; then fail "11j3: a pruning merge printed the keep hint (err: $LAST_ERR)"; else pass; fi
 
 # 11k. A commit pushed after the squash merge (tip != certified sha) keeps the
 # tree — clean-garden's exact-head-match rule, and what makes the branch -D
@@ -4087,6 +4114,36 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "status: a finished merge keeps both rows, the Jira outcome last" -- --jira-transition
 assert_status_row "status: a finished merge leaves the pre-Jira row too" \
     '.event == "merge" and .contract == "yes" and .result == "pending" and .stage == "pre-jira"'
+# The pending row is written BEFORE the merge call, so a run killed right after GitHub
+# merges still leaves the record. A row for a PR that did not merge is marked result=not-merged (no contract).
+w0_title="feat(jira): [HIMMEL-374] reconciler"
+STUB_JIRA_BUILD=1 STUB_MERGE_SNAPSHOT=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: the row exists when the merge call runs"
+if jq -e -s 'map(select(.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .repo == "owner/repo" and .contract == "no" and .result == "pending" and .stage == "pre-merge")) | length == 1' \
+    "$LAST_GH_LOG.rows-at-merge" >/dev/null 2>&1; then pass
+else fail "W0: the pending pre-merge row is in the log before gh pr merge runs (rows then: $(cat "$LAST_GH_LOG.rows-at-merge" 2>/dev/null))"; fi
+STUB_JIRA_BUILD=1 STUB_MERGE_SNAPSHOT=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: an opted-in merge" -- --jira-transition
+if jq -e -s 'map(select(.event == "merge" and .contract == "yes" and .result == "pending" and .stage == "pre-merge")) | length == 1' \
+    "$LAST_GH_LOG.rows-at-merge" >/dev/null 2>&1; then pass
+else fail "W0: the pre-merge row of an opted-in merge says contract=yes (rows then: $(cat "$LAST_GH_LOG.rows-at-merge" 2>/dev/null))"; fi
+STUB_JIRA_BUILD=1 STUB_MERGE_KILL=before STUB_PR_TITLE="$w0_title" run_mog 137 "W0: killed before the merge lands"
+assert_status_row "W0: a run killed before the merge leaves its pre-merge row" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .contract == "no" and .result == "pending" and .stage == "pre-merge"'
+STUB_JIRA_BUILD=1 STUB_MERGE_KILL=after STUB_PR_TITLE="$w0_title" run_mog 137 "W0: killed right after the merge landed"
+assert_status_row "W0: a run killed right after the merge still leaves its pending row" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .result == "pending" and .stage == "pre-merge"'
+STUB_MERGE_POLICY_REFUSED=1 STUB_PR_TITLE="$w0_title" run_mog 18 "W0: GitHub refused the merge"
+assert_status_row "W0: a refused merge is marked not-merged for the same pr and head, with no contract" \
+    '.event == "merge" and .key == "HIMMEL-374" and .pr == "77" and .head == "abc123def456" and .result == "not-merged" and (has("contract") | not)'
+STUB_MERGE_FAIL=1 STUB_POST_STATE=CLOSED STUB_PR_TITLE="$w0_title" run_mog 15 "W0: the merge failed and the PR is closed"
+assert_status_row "W0: a failed merge of a PR that did not merge is marked not-merged" \
+    '.event == "merge" and .pr == "77" and .head == "abc123def456" and .result == "not-merged"'
+STUB_MERGE_FAIL=1 STUB_POST_STATE=OPEN STUB_PR_TITLE="$w0_title" run_mog 15 "W0: the merge outcome is unproven"
+if jq -e -s 'map(select(.result == "not-merged")) | length == 0' "$LAST_TMP/ts/status-events.jsonl" >/dev/null 2>&1; then pass
+else fail "W0: an unproven (still OPEN) merge is not marked not-merged (rows: $(cat "$LAST_TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
+w0_file="$(mktemp "${TMPDIR:-/tmp}/mog-w0-notdir.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
+MOG_TS_DIR="$w0_file" STUB_JIRA_BUILD=1 STUB_PR_TITLE="$w0_title" run_mog 0 "W0: an unwritable status log does not block the merge"
+assert_gh_has "W0: the merge still ran with an unwritable status log" "pr merge 77"
+rm -f "$w0_file"
 # The Done write waits on the funnel's per-key lock: a held lock defers it, and
 # the deferral is a completes=yes row the derive reads as done-pending. Both
 # lock cases need a flock binary; without one (stock macOS) the write runs unlocked.

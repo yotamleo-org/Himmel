@@ -29,14 +29,38 @@
 #   on a refused argument.
 # Env: LAUNCH_GUEST_VMS_JSON (registry path; default scripts/lib/vms.json),
 #      LAUNCH_GUEST_PREFLIGHT (bank preflight script; default scripts/lib/usage-preflight.sh),
-#      LAUNCH_GUEST_TIMEOUT (seconds above 0, default 1800).
+#      LAUNCH_GUEST_TIMEOUT (seconds above 0, default 1800),
+#      LAUNCH_GUEST_TICKET (cost ledger ticket; default the HIMMEL-n of the branch, else unknown),
+#      LAUNCH_GUEST_ACCOUNT (cost ledger account label, never a token; default the VM name),
+#      LAUNCH_GUEST_COST_LEDGER (ledger path; default <handover root>/.ledger/vm-cost.jsonl),
+#      HIMMEL_GUEST_REPO (the himmel checkout on the guest, an absolute or ~/ guest path; default
+#        ~/Documents/github/himmel; a host shell expands a bare ~ in an assignment, so pass an absolute path),
+#      LAUNCH_GUEST_WARN_PCT (guest account share of its limit, a number, default 80, from which a
+#        launch prints one WARN line; an account at 100 or more is refused),
+#      LAUNCH_GUEST_USAGE (guest usage command run as `<cmd> <vm> usage`; default scripts/lib/vmsdk.py).
+# Guest account: a native launch also asks the guest for its OWN account's usage percentage (the
+#   station bank above cannot see it). 100 or more: exit 2 naming the account label, nothing sent,
+#   no row. From the warn share: one WARN line with the percent on stderr. The guest login exposing
+#   no figure ("unknown"): one WARN line naming the account, and the launch goes on, as the station
+#   preflight does for a stale or unknown bank.
+# Cost: every launched run (not a dry-run, not a refusal) appends one row to the ledger
+#   with the guest result's total_cost_usd, or a null usd when it cannot be read, and the model
+#   that cost the most plus the input, output and cache token counts (each null when absent);
+#   scripts/vm/vm-cost.sh sums the ledger per ticket and per account.
 # Platform: POSIX bash 3.2+, node, ssh with key auth to the guest.
 # launch-profile-ok-file: the claude runs on the guest's own login and config, where no host profile applies
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VMS_JSON="${LAUNCH_GUEST_VMS_JSON:-$HERE/../lib/vms.json}"
 # shellcheck disable=SC2088  # the guest shell, not this one, expands the tilde
-GUEST_REPO='~/Documents/github/himmel'
+GUEST_REPO="${HIMMEL_GUEST_REPO:-~/Documents/github/himmel}"
+# spliced into the guest shell, so an override is an absolute or ~/ guest path of a closed shape
+# shellcheck disable=SC2088  # a literal ~/ prefix of a guest path, not a host expansion
+case "$GUEST_REPO" in
+    */../*|*/..|*[!A-Za-z0-9._/~-]*) echo "launch-guest: HIMMEL_GUEST_REPO must be an absolute or ~/ guest path of [A-Za-z0-9._/-], no .." >&2; exit 2 ;;
+    '~/'*|/*) ;;
+    *) echo "launch-guest: HIMMEL_GUEST_REPO must be an absolute or ~/ guest path of [A-Za-z0-9._/-], no .." >&2; exit 2 ;;
+esac
 ALLOWED_TOOLS='Read,Grep,Glob,Edit,Write,Bash(git:*),Bash(bash scripts/*:*)'
 DRY=0; LANE=native; CMODEL=""; DEBUG=""
 USAGE="usage: launch-guest.sh [--dry-run] [--lane native|claudex] [--classifier-model <m>] [--debug-file <guest path>] <vm> <prompt-file>"
@@ -73,6 +97,17 @@ elif [ -n "$CMODEL$DEBUG" ]; then
 fi
 case "$VM" in ''|*[!A-Za-z0-9_-]*) echo "launch-guest: '$VM' is not a registered test VM name" >&2; exit 2 ;; esac
 case "$TIMEOUT" in ''|*[!0-9]*|0*) echo "launch-guest: LAUNCH_GUEST_TIMEOUT must be whole seconds above 0, no leading zero" >&2; exit 2 ;; esac
+# the cost ledger row carries labels only: the account is a label for the guest's login, never a token
+ACCOUNT="${LAUNCH_GUEST_ACCOUNT:-$VM}"
+case "$ACCOUNT" in ''|*[!A-Za-z0-9._-]*|[Ss][Kk]-*) echo "launch-guest: LAUNCH_GUEST_ACCOUNT must match [A-Za-z0-9._-]+ and not start with sk- (a label, never a token)" >&2; exit 2 ;; esac
+TICKET="${LAUNCH_GUEST_TICKET:-}"
+if [ -z "$TICKET" ]; then
+    TICKET="$(git rev-parse --abbrev-ref HEAD 2>/dev/null | grep -io 'himmel-[0-9][0-9]*' | head -n 1 | tr '[:lower:]' '[:upper:]')" || TICKET=""
+fi
+[ -n "$TICKET" ] || TICKET=unknown
+case "$TICKET" in *[!A-Za-z0-9-]*) echo "launch-guest: LAUNCH_GUEST_TICKET must match [A-Za-z0-9-]+" >&2; exit 2 ;; esac
+WARN_PCT="${LAUNCH_GUEST_WARN_PCT:-80}"
+case "$WARN_PCT" in ''|*[!0-9.]*|*.*.*|.|*.) echo "launch-guest: LAUNCH_GUEST_WARN_PCT must be a number" >&2; exit 2 ;; esac
 [ -f "$PROMPT" ] || { echo "launch-guest: prompt file '$PROMPT' not found" >&2; exit 2; }
 # the prompt is read on the host and its answer comes back, so it is confined to
 # the cwd's git worktree or the session scratchpad, after resolving symlinks and
@@ -145,5 +180,60 @@ else
     case "$VERDICT" in
         SKIPPED-*) echo "launch-guest: bank preflight said $VERDICT - not launching a guest session" >&2; exit 2 ;;
     esac
+    # the native guest session spends the GUEST's own account, which the station bank above cannot
+    # see: ask the guest for its usage percentage (a number, or "unknown" when its login exposes
+    # none) and refuse an exhausted account by name. Unknown fails open, with a warning.
+    if [ -n "${LAUNCH_GUEST_USAGE:-}" ]; then USAGE_CMD=("$LAUNCH_GUEST_USAGE")
+    elif command -v uv >/dev/null 2>&1; then USAGE_CMD=(uv run --quiet "$HERE/../lib/vmsdk.py")
+    else USAGE_CMD=(python3 "$HERE/../lib/vmsdk.py"); fi
+    PCT="$("${USAGE_CMD[@]}" "$VM" usage 2>/dev/null < /dev/null | tail -n 1)"
+    case "$PCT" in ''|*[!0-9.]*|*.*.*|.|*.) PCT=unknown ;; esac
+    if [ "$PCT" = unknown ]; then
+        echo "launch-guest: WARN guest account '$ACCOUNT' usage is unknown (the guest login exposes none) - launching anyway" >&2
+    elif awk -v p="$PCT" 'BEGIN { exit !(p >= 100) }'; then
+        echo "launch-guest: guest account '$ACCOUNT' is exhausted (${PCT}% of its limit) - not launching a guest session" >&2
+        exit 2
+    elif awk -v p="$PCT" -v w="$WARN_PCT" 'BEGIN { exit !(p >= w) }'; then
+        echo "launch-guest: WARN guest account '$ACCOUNT' is at ${PCT}% of its limit (warns from ${WARN_PCT}%)" >&2
+    fi
 fi
-exec "${CMD[@]}" < "$PROMPT"
+# the run is launched: record one cost ledger row. The guest's
+# --output-format json result carries total_cost_usd; anything else records a null usd.
+# The row is best-effort and never changes the run's stdout or exit code.
+OUT="$(mktemp "${TMPDIR:-/tmp}/launch-guest-out.XXXXXX")" || exit 1
+trap 'rm -f "$OUT"' EXIT
+T0="$(date +%s)"
+# the launcher is the ssh's parent now (it was exec), so a signal to it ends the child and is
+# waited out, and the row still records the run that was cut short. A background child of a
+# non-interactive bash starts with SIGINT and SIGQUIT ignored and ssh keeps that, so those two
+# are sent on as TERM; HUP is forwarded as itself.
+"${CMD[@]}" < "$PROMPT" > "$OUT" &
+CPID=$!
+trap 'kill -TERM "$CPID" 2>/dev/null' TERM INT QUIT
+trap 'kill -HUP "$CPID" 2>/dev/null' HUP
+RC=0
+wait "$CPID" || RC=$?
+while kill -0 "$CPID" 2>/dev/null; do wait "$CPID" || RC=$?; done
+T1="$(date +%s)"
+cat "$OUT"
+if LEDGER="$(bash "$HERE/vm-cost.sh" --path 2>/dev/null)" && command -v jq >/dev/null 2>&1; then
+    USD="$(jq -r 'if type == "object" and (.total_cost_usd | type) == "number" then .total_cost_usd else "" end' "$OUT" 2>/dev/null | tail -n 1)"
+    SRC=guest-json; [ -n "$USD" ] || { USD=null; SRC=unknown; }
+    # the model that cost the most and the token counts (cache = creation + read), each null when the
+    # guest result does not carry it; numbers and a model name only
+    DETAIL="$(jq -c 'if type == "object" then {
+            model: ((.modelUsage // {}) | if type == "object" then to_entries | map(select(.key | type == "string")) | sort_by(-((.value.costUSD // 0) | if type == "number" then . else 0 end)) | (.[0].key // null) else null end),
+            tokens_in: (.usage.input_tokens | if type == "number" then . else null end),
+            tokens_out: (.usage.output_tokens | if type == "number" then . else null end),
+            tokens_cache: ([.usage.cache_creation_input_tokens, .usage.cache_read_input_tokens] | map(select(type == "number")) | if length > 0 then add else null end)
+        } else empty end' "$OUT" 2>/dev/null | tail -n 1)"
+    [ -n "$DETAIL" ] || DETAIL='{"model":null,"tokens_in":null,"tokens_out":null,"tokens_cache":null}'
+    mkdir -p "$(dirname "$LEDGER")" 2>/dev/null \
+        && jq -nc --arg ticket "$TICKET" --arg vm "$VM" --arg account "$ACCOUNT" --argjson seconds "$((T1 - T0))" \
+            --argjson usd "$USD" --arg src "$SRC" --argjson detail "$DETAIL" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{ticket: $ticket, vm: $vm, account: $account, seconds: $seconds, usd: $usd, usd_source: $src} + $detail + {ts: $ts}' >> "$LEDGER" 2>/dev/null \
+        || echo "launch-guest: could not write the cost ledger row" >&2
+else
+    echo "launch-guest: cost ledger unavailable (no handover root or no jq) - no row written" >&2
+fi
+exit "$RC"
