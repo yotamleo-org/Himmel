@@ -668,7 +668,10 @@ validate_arm_inputs() {
     # relevant here -- requiring either would defeat the whole point of the
     # flag (arm the free workers without the semantic pair's egress/credential
     # ruling).
-    if [ "$AST_ONLY" -eq 0 ]; then
+    # --rewrite-armed rebuilds only the runners already on disk, so a station that armed no
+    # semantic runner needs neither (the same reasoning as --ast-only).
+    if [ "$AST_ONLY" -eq 0 ] && { [ "$REWRITE_ARMED" -ne 1 ] || [ -f "$CRON_RUNNER_LUNA" ] \
+            || [ -f "$CRON_RUNNER_HIMMEL" ] || [ -f "$CRON_RUNNER_SEMANTIC_LUNA" ]; }; then
         validate_backend_credential
         # FAIL FAST on a missing `claude` CLI.
         # graphify shells the local `claude` CLI
@@ -1255,6 +1258,12 @@ cmd_arm() {
                 continue
             fi
             rw_tmp="$rw_runner.tmp.$$"
+            # A publish runner armed with --publish-semantic keeps its semantic branch: the mode
+            # lives only in the runner text, so read it from the file being replaced.
+            if [ "$rw_name" = publish-himmel ] && grep -q 'GRAPH_CADENCE_SEMANTIC_BACKEND' "$rw_runner"; then
+                PUBLISH_SEMANTIC=1
+                payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
+            fi
             if ! {
             case "$rw_name" in
                 luna)           emit_runner "$TASK_LUNA" "$payload_luna" "$q_log_luna" "$q_himmel" "$q_node_dir" "$q_graphify_dir" 0 "$q_claude_dir" graphmap-luna "3 4" > "$rw_tmp" ;;

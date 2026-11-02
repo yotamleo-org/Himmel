@@ -1674,5 +1674,23 @@ if [ "$(id -u)" != 0 ]; then
     assert_not_contains "a failed rewrite is not reported as rewrote" "rewrote $RWDIR" "$out"
     assert_not_contains "a failed rewrite keeps the old himmel runner" "format: $RW_VER" "$(cat "$RWDIR/graphmap-himmel.sh")"
 fi
+# a station with only AST + publish runners needs no claude CLI, and a publish runner armed with
+# --publish-semantic keeps its semantic branch through the rewrite
+RWDIR2="$TMP_ROOT/cron-runners-rewrite-ast"; mkdir -p "$RWDIR2"
+run_rw2() {
+    env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$RWCRON" \
+        GRAPHMAP_BAT_DIR="$RWDIR2" PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:/usr/bin:/bin" \
+        "$REAL_BASH" "$SCRIPT" "$@"
+}
+if ! PATH="/usr/bin:/bin" command -v claude >/dev/null 2>&1; then
+    printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\necho old\n' > "$RWDIR2/graphmap-ast-himmel.sh"
+    printf '#!/bin/sh\n# himmel-cadence-runner-format: 24\nGRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic\n' > "$RWDIR2/graphmap-publish-himmel.sh"
+    chmod +x "$RWDIR2/graphmap-ast-himmel.sh" "$RWDIR2/graphmap-publish-himmel.sh"
+    rc=0; out=$(run_rw2 arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+    assert_rc "arm --rewrite-armed on an AST-only station needs no claude CLI" 0 "$rc"
+    assert_contains "AST-only rewrite restamps the AST runner" "himmel-cadence-runner-format: $RW_VER" "$(cat "$RWDIR2/graphmap-ast-himmel.sh")"
+    assert_contains "rewrite keeps the publish runner's semantic branch" "--semantic" "$(cat "$RWDIR2/graphmap-publish-himmel.sh")"
+    assert_contains "rewrite keeps the publish runner's api-lane env" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$(cat "$RWDIR2/graphmap-publish-himmel.sh")"
+fi
 
 summary
