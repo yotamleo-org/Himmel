@@ -394,6 +394,15 @@ bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
 check "D5c merged-no-row: the real sweep (open-PR snapshot) keeps the ticket In Progress" "$(ntrans)" 0
 check "D5c merged-no-row: and makes no merged-PR gh call" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 0
 rm -f "$FX/pr-merged.fail"
+# A first sweep over a ticket no funnel run has logged: its snapshot derive reads D6, which only
+# routes the key to the funnel; the funnel derives live and finds the merged PR, never To Do.
+reset "IN CI"; owned WRAPPED 0
+merged "[{\"number\":81,\"title\":\"fix: [$K] shipped by hand\"}]"
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+check "D5c merged-no-row: a first sweep moves the ticket to In Progress, never To Do" "$(moved)" "transition $K In Progress"
+check "D5c merged-no-row: and logs the stage for the next derive" "$(row stage)/$(row merged_pr)" merged-no-row/81
 # No other rule's row changes: a D5 noop row carries no stage or merged_pr.
 reset "In Progress"; owned LIVE 11 0
 fn "$K" --event live --doc "$DOC"
