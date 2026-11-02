@@ -3568,14 +3568,15 @@ _log_has_skip_line() {
   awk '/^[ \t]*SKIP([ \t:\r]|$)/ && !/^[ \t]*SKIP:[ \t]*[0-9]+[ \t\r]*$/ { found = 1; exit } END { exit !found }' "$1" 2>/dev/null
 }
 # _log_has_new_skip_line <first-attempt log> <retry log> — succeeds when the
-# retry printed a SKIP line (same definition as above) that the first attempt
-# did not print verbatim. A SKIP both attempts print is a constant of the
-# suite, not something the retry took to avoid the assertions that failed.
+# retry printed a SKIP line (same definition as above) more times than the
+# first attempt printed it verbatim. A SKIP both attempts print the same number
+# of times is a constant of the suite, not something the retry took to avoid
+# the assertions that failed.
 _log_has_new_skip_line() {
   awk '
     function is_skip(l) { return (l ~ /^[ \t]*SKIP([ \t:\r]|$)/ && l !~ /^[ \t]*SKIP:[ \t]*[0-9]+[ \t\r]*$/) }
-    FILENAME == ARGV[1] { if (is_skip($0)) seen[$0] = 1; next }
-    is_skip($0) && !($0 in seen) { found = 1; exit }
+    FILENAME == ARGV[1] { if (is_skip($0)) seen[$0]++; next }
+    is_skip($0) && ++used[$0] > seen[$0] { found = 1; exit }
     END { exit !found }
   ' "$1" "$2" 2>/dev/null
 }

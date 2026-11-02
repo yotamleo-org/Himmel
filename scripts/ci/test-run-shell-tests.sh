@@ -3413,6 +3413,22 @@ if [ "$rc34b" -eq 1 ] && grepq "$out34b" '\[RETRY-SKIP\] .*test-newskip\.sh'; th
 else
   fail "34b: rc=$rc34b (want rc 1 and a [RETRY-SKIP] line) output: $out34b"
 fi
+mkdir -p "$sb34/moredir"
+# Prints the same SKIP once on its first attempt and twice on the retry: the retry skipped more than the first.
+cat > "$sb34/moredir/test-moreskip.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$C34_DIR/more.runs"
+echo "  SKIP case one needs a tool"
+if [ "$(wc -l < "$C34_DIR/more.runs")" -ge 2 ]; then echo "  SKIP case one needs a tool"; exit 0; fi
+exit 1
+SHEOF
+chmod +x "$sb34/moredir/test-moreskip.sh"
+out34c=$(C34_DIR="$sb34" SUITE_FLAKE_LEDGER="$sb34/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb34/moredir" 2>&1); rc34c=$?
+if [ "$rc34c" -eq 1 ] && grepq "$out34c" '\[RETRY-SKIP\] .*test-moreskip\.sh'; then
+  pass "34c: a retry that prints the same SKIP more often than the first attempt keeps the first failure"
+else
+  fail "34c: rc=$rc34c (want rc 1 and a [RETRY-SKIP] line) output: $out34c"
+fi
 rm -rf "$sb34"
 fi
 

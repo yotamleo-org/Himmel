@@ -456,6 +456,9 @@ cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
 "$FAKE_CLAUDE" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-7430 </dev/null >/dev/null 2>&1 &
 FAKE_PID=$!
 sleep 1
+if ! kill -0 "$FAKE2_PID" 2>/dev/null || ! kill -0 "$FAKE_PID" 2>/dev/null; then
+    bad "(x2) a fixture worker did not start; the count below would not prove the fix"
+fi
 before_n="$(census_n)"
 pkill -P "$FAKE2_PID" 2>/dev/null
 kill "$FAKE2_PID" 2>/dev/null
