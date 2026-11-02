@@ -891,8 +891,9 @@ FXT_THREAD_FIXTURE_DIR="$bf_fx" node "$BACKFILL" --vault "$bf_vault" --resume-af
 assert "Test21: --resume-after skips every clip up to that path" \
     "summary: seen=4 adds-text=0 no-new-text=3 fetch-failed=1" \
     "$(grep '^summary:' "$tmpdir/t21-resume.out")"
-assert "Test21: --help names the rate and the 25 minute estimate" "yes" \
-    "$(node "$BACKFILL" --help 2>&1 | grep -q '25 minutes' && echo yes || echo no)"
+t21_help="$(node "$BACKFILL" --help 2>&1)"
+t21_help_ok=no; case "$t21_help" in *"25 minutes"*) t21_help_ok=yes ;; esac
+assert "Test21: --help names the rate and the 25 minute estimate" "yes" "$t21_help_ok"
 
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
