@@ -506,4 +506,5 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .mlgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
 .mln{all:unset;cursor:pointer;display:grid;gap:1px;padding:4px 6px;border:1px solid var(--rule);border-radius:4px;font:11px var(--font-mono);color:var(--fg)}
 .mln.sel{outline:2px solid var(--accent)}.mln .kl{color:var(--muted);font-size:10px}
+.thcard .mcard:focus-visible,.mln:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 @media (max-width:560px){.thmap{display:none}.thcards{display:grid;gap:var(--s2);margin:var(--s2) 0}}

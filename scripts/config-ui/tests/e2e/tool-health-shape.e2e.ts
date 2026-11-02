@@ -1,6 +1,6 @@
 // The Tool health tiles, names and Tool map columns match approved mockup v9. Reads the real page at 1280 and
 // 390 px for the overview, Station, Tool map and guard drill-in views; each pair of shots is attached to the test.
-// RED control: the last test removes the phone-card rule's effect (cards hidden at 390) and the check must report it.
+// RED control: the last test plants a rule that keeps the grid on a phone, and the phone assertion must fail.
 import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness } from "./fixtures";
 import { execFileSync } from "node:child_process";
@@ -53,7 +53,8 @@ async function open(page: Page, route: string, ready: string) {
   await page.route("**/api/tool-inventory*", (r) => r.fulfill({ json: INVENTORY }));
   await page.goto(`${h!.url}&page=toolhealth`);
   await page.evaluate((r) => { location.hash = r; }, route);
-  await page.locator(ready).first().waitFor();
+  // attached, not visible: the grid is hidden on a phone and the cards on a desktop
+  await page.locator(ready).first().waitFor({ state: "attached" });
   await page.waitForLoadState("networkidle");
 }
 const sideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -114,11 +115,11 @@ for (const width of [1280, 390]) {
   });
 }
 
-// the check itself: hiding the phone cards is reported, so a page with no cards cannot pass for a clean one
-test("a phone map with its cards hidden is reported", async ({ page }) => {
+// the check itself: a phone page whose grid is still shown fails the phone assertion, so a page that never hid it cannot pass
+test("a phone map that still shows its grid is reported", async ({ page }) => {
   h = await boot();
   await page.setViewportSize({ width: 390, height: 900 });
-  await open(page, "#/toolhealth/map", ".thcard");
-  await page.addStyleTag({ content: ".thcards{display:none !important}" });
-  await expect(page.locator(".thcard").first()).toBeHidden();
+  await open(page, "#/toolhealth/map", ".thmap");
+  await page.addStyleTag({ content: ".thmap{display:grid !important}" });
+  await expect(expect(page.locator(".thmap")).toBeHidden({ timeout: 1000 })).rejects.toThrow();
 });
