@@ -148,7 +148,9 @@ Entities: `LINK` → `[text](url)`. Other entity types pass through as text.
   a URL. Each post is labelled `**@handle**` (`author` or `reply with link`) and
   blockquoted, so author and non-author text never mix. Other replies are not
   kept. If the endpoint errors, Scrapling reads the public status page
-  (keyless; a logged-out page shows only some posts). A thread that could not
+  (keyless; a logged-out page shows only some posts), except on the inline
+  Telegram call, which never launches it and leaves the clip partial for the
+  backfill. A thread that could not
   be read on a tweet with `replies > 0` is `needs_thread: true`,
   `enrichment_status: partial`, `last_error: thread_not_captured`, never `ok`
   (HIMMEL-6933); a tweet with `replies == 0` is not fetched. The author's own

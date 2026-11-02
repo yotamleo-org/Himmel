@@ -459,7 +459,7 @@ function fetchThreadViaScrapling(canon) {
 
 /**
  * The thread for one status: the keyless endpoint first, Scrapling when the
- * endpoint errors. An endpoint answer with no thread is NOT an error (the
+ * endpoint errors (not on the inline call, see below). An endpoint answer with no thread is NOT an error (the
  * tweet simply has no continuation). One endpoint request per call.
  */
 async function fetchThreadAny(canon, rel, opts = {}) {
@@ -468,6 +468,13 @@ async function fetchThreadAny(canon, rel, opts = {}) {
   if (!opts.skipRateLimit) await sleep(RATE_LIMIT_MS);
   const res = await fetchFxtThread(threadUrl);
   if (res.ok) return res;
+  // The inline call (skipRateLimit) runs inside the Telegram bridge: Scrapling
+  // is a synchronous launch of up to a minute there, so it leaves the clip
+  // partial for the backfill to finish.
+  if (opts.skipRateLimit) {
+    console.error(`${rel} -- thread endpoint failed (${res.error}); inline call, no Scrapling fallback`);
+    return res;
+  }
   console.error(`${rel} -- thread endpoint failed (${res.error}); trying Scrapling`);
   const fb = fetchThreadViaScrapling(canon);
   if (!fb.ok) console.error(`${rel} -- thread not captured: ${fb.error}`);

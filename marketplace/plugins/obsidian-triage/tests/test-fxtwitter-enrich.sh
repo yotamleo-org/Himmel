@@ -1254,6 +1254,17 @@ FXT_FIXTURE="$tmpdir/t19-noreplies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.jso
     node "$SCRIPT" --vault "$t24l_vault" --reflag --limit 1 >"$tmpdir/t24l.out" 2>&1
 assert "Test24B (control): --reflag with a tweet that has no replies and an API error leaves the clip untouched" "$t24l_sum" "$(sha256sum "$t24l_vault/Clippings/enriched.md" | cut -d' ' -f1)"
 
+# -- Test 25: the inline (Telegram) call never launches the synchronous Scrapling fallback --
+echo "Test 25: an inline processClip call (skipRateLimit) with the endpoint down reads partial and never launches Scrapling"
+t25_vault="$tmpdir/vault-t25"; mk_x_clip "$t25_vault" a.md jack 95
+MOD="$SCRIPT" FXT_FIXTURE="$tmpdir/t19-replies.json" FXT_THREAD_FIXTURE="$tmpdir/t19-err.json" FXT_SCRAPLING_FIXTURE="$tmpdir/t20-scrapling.json" \
+    node --input-type=module -e 'const m = await import(process.env.MOD); await m.processClip(process.argv[1], process.argv[2], false, { skipRateLimit: true });' \
+    "$t25_vault/Clippings/a.md" "$t25_vault" >"$tmpdir/t25.out" 2>&1
+t25a=no; grep -q "scrapling recovered continuation" "$t25_vault/Clippings/a.md" 2>/dev/null && t25a=yes
+assert "Test25: the inline call did not use the Scrapling fallback" "no" "$t25a"
+t25b=no; grep -q "needs_thread: true" "$t25_vault/Clippings/a.md" 2>/dev/null && grep -q "enrichment_status: partial" "$t25_vault/Clippings/a.md" 2>/dev/null && t25b=yes
+assert "Test25: and the clip reads partial + needs_thread, left for the backfill" "yes" "$t25b"
+
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
 echo ""
