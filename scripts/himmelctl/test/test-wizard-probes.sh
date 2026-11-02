@@ -1166,6 +1166,24 @@ echo "$out" | jq -e '.actual == "absent" and (.detail | contains("JIRA_PROJECT_K
   || fail "HIMMEL-7712: a himmel.conf holding only JIRA_EMAIL must still name JIRA_PROJECT_KEY as missing (got: $out)"
 echo "ok: HIMMEL-7712 jira-env-keys reads JIRA_EMAIL and JIRA_PROJECT_KEY from ~/.himmel/himmel.conf"
 
+# JIRA_BASE_URL is a CONFIG_KEYS member in client.ts too, so the URL held only
+# in himmel.conf is a working setup; the URL nowhere is still missing.
+sk3_url_repo="$work/sk3-url-repo"; mkdir -p "$sk3_url_repo"
+printf 'JIRA_API_TOKEN=tok123\n' > "$sk3_url_repo/.env"
+sk3_url_home="$work/sk3-url-home"; mkdir -p "$sk3_url_home/.himmel"
+cat > "$sk3_url_home/.himmel/himmel.conf" <<'CONF'
+JIRA_BASE_URL=https://example.atlassian.net
+JIRA_EMAIL=me@example.com
+JIRA_PROJECT_KEY=HIMMEL
+CONF
+out=$(sk3_conf_probe "$sk3_url_repo" "$sk3_url_home")
+echo "$out" | jq -e '.actual == "present"' >/dev/null \
+  || fail "HIMMEL-8690: JIRA_BASE_URL only in ~/.himmel/himmel.conf must satisfy jira-env-keys (got: $out)"
+out=$(sk3_conf_probe "$sk3_url_repo" "$sk3_conf_home")
+echo "$out" | jq -e '.actual == "absent" and (.detail | contains("JIRA_BASE_URL"))' >/dev/null \
+  || fail "HIMMEL-8690: JIRA_BASE_URL in neither .env nor himmel.conf must still read missing (got: $out)"
+echo "ok: HIMMEL-8690 jira-env-keys reads JIRA_BASE_URL from ~/.himmel/himmel.conf; absent everywhere stays missing"
+
 # `cleanAbsence` marks a jira-env-keys that was NEVER set up (no
 # .env at all, or an .env defining none of the four keys) so status-report can
 # read it as opt-in. A half-filled .env, a key defined but empty, and an .env
