@@ -327,11 +327,23 @@ PY
   # J7/J8: the door must refuse on the Jira post itself, not only on the release root. A temp root, or no root at all, leaves the root door open.
   : >"$HTTPLOG"
   J7=(env HIMMEL_RELEASE_STATE_DIR="$TMP/j7-queue" JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak" --comment)
-  rc=0; "${J7[@]}" >"$TMP/j.out" 2>&1 || rc=$?
-  has "J7 a test's leaks --comment with a temp release root is refused" "$TMP/j.out" "REFUSED"
+  # The guard prints REFUSED before the door acts, so the proof is the door's own message and no host lookup:
+  # a run that got past the door fails on DNS for jira.invalid, which never resolves.
+  j_post_refused() { # <label> <cmd...>
+    local label="$1" jrc=0
+    shift
+    "$@" >"$TMP/j.out" 2>&1 || jrc=$?
+    if [ "$jrc" != 0 ]; then pass "$label exits non-zero"; else fail "$label exits non-zero"; fi
+    has "$label is refused on the post itself" "$TMP/j.out" "refused, nothing was posted"
+    if grep -q 'ENOTFOUND' "$TMP/j.out"; then fail "$label reached the Jira host lookup"; else pass "$label never looked up the Jira host"; fi
+  }
+  j_post_refused "J7 a test's leaks --comment with a temp release root" "${J7[@]}"
   J8=(env -u USER_SLUG -u HIMMEL_RELEASE_STATE_DIR JIRA_BASE_URL=http://jira.invalid JIRA_EMAIL=t@example.invalid JIRA_API_TOKEN=not-a-token HIMMEL_ADMISSIONS_LEDGER="$TMP/ledger.jsonl" "$REAL_BUN" "$J" release leaks v1.1.3 --mirror-root "$TMP/mirror-leak" --comment)
-  rc=0; "${J8[@]}" >"$TMP/j.out" 2>&1 || rc=$?
-  has "J8 a test's leaks --comment with no release root at all is refused" "$TMP/j.out" "REFUSED"
+  j_post_refused "J8 a test's leaks --comment with no release root at all" "${J8[@]}"
+  # J9: the production path. A real session posting to a non-loopback Jira is not refused and reaches the host lookup.
+  as_session "${J7[@]}" >"$TMP/j.out" 2>&1
+  if grep -q 'nothing was posted' "$TMP/j.out"; then fail "J9 a real session's leaks --comment to a non-loopback Jira was refused"; else pass "J9 a real session's leaks --comment to a non-loopback Jira is not refused"; fi
+  has "J9 a real session's leaks --comment reaches the Jira host lookup" "$TMP/j.out" "ENOTFOUND"
 else
   echo "SKIP - J rows: no bun or no scripts/jira/node_modules here; release.test.ts holds the door row and S4 the chief's guard call"
 fi
