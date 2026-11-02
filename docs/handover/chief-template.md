@@ -100,9 +100,8 @@ Run these, in order, and write the result as the first bullet under
 
 ## Live state
 
-> **Authority-bearing state, not a summary:** update on every dispatch, ruling, wrap and GO; a nonce changes **only after** its worker's quote-back.
-> Span `<worker>:<nonce>:<lock-token>:<pid>`; rules: `chief-sections/live-state.md`.
-> `new` and `next` seed a missing `release: <R>` from the unique declared release; an existing line (including `release: none`) is preserved. Multiple declarations require an explicit choice; `rm-queue=off` means the RM cannot wake.
+> **Authority-bearing:** update each dispatch/ruling/wrap/GO; nonce changes only after worker quote-back.
+> Span `<worker>:<nonce>:<lock-token>:<pid>`. Release seeding/preservation: `chief-sections/live-state.md`.
 
 workers: <none dispatched yet — else one entry per worker, in the format above>
 queue: <held queue-lock docs in launch order, or "none">
