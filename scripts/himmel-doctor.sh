@@ -1458,7 +1458,7 @@ _c24_word_path() {
     printf '%s' "$w"
 }
 _c24_dead_cron_paths() {
-    local cron line task cmd words w p runner="" rline rwords
+    local cron line task cmd words w p pw prev runner="" rline rwords
     cron="$(crontab -l 2>/dev/null)" || return 0
     while IFS= read -r line; do
         case "$line" in '#'*) continue ;; *'# HIMMEL-'*) ;; *) continue ;; esac
@@ -1466,8 +1466,9 @@ _c24_dead_cron_paths() {
         read -r _ _ _ _ _ cmd <<< "$line"
         cmd="${cmd%% # HIMMEL-*}"
         read -r -a words <<< "$cmd"
-        runner=""
+        runner=""; prev=""
         for w in ${words[@]+"${words[@]}"}; do
+            pw="$prev"; prev="$w"
             if ! p="$(_c24_word_path "$w")"; then
                 [ -n "$runner" ] || runner="?"
                 continue
@@ -1478,6 +1479,7 @@ _c24_dead_cron_paths() {
                 case "$p" in /*) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
                 continue
             fi
+            case "$pw" in -*) continue ;; esac # the operand of an option flag is data, not a script
             case "$p" in /*.sh|/*.py|/*.mjs|/*.js) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
         done
         # The runner is a generated #! script that names the script it runs.
@@ -1487,7 +1489,10 @@ _c24_dead_cron_paths() {
             while IFS= read -r rline; do
                 case "$rline" in '#'*) continue ;; esac
                 read -r -a rwords <<< "$rline"
+                prev=""
                 for w in ${rwords[@]+"${rwords[@]}"}; do
+                    pw="$prev"; prev="$w"
+                    case "$pw" in -*) continue ;; esac
                     p="$(_c24_word_path "$w")" || continue
                     case "$p" in /*.sh|/*.py|/*.mjs|/*.js) [ -e "$p" ] || printf '%s: %s\n' "$task" "$p" ;; esac
                 done

@@ -1332,7 +1332,7 @@ run_cron_runner_migration() {
     done < <(grep -v '^#' "$aliases")
     [ -n "$moved" ] || return 0
 
-    entry="$(LC_ALL=C "$cron_bin" -l 2>/dev/null | grep -v '^[[:space:]]*#' | grep -F '# HIMMEL-FailureReview' | head -1)" || true
+    entry="$(LC_ALL=C "$cron_bin" -l 2>/dev/null | grep -v '^[[:space:]]*#' | grep -E '# HIMMEL-FailureReview$' | head -1)" || true
     [ -n "$entry" ] || return 0
     # arm writes a daily row (day, month, weekday all *); any other row is the operator's own schedule, which a re-arm would flatten to daily.
     local dom mon dow

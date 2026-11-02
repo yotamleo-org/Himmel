@@ -321,6 +321,9 @@ arm_old_layout 07:40
 sed -i.bak 's/^/# /' "$FAKECRON_FILE" && rm -f "$FAKECRON_FILE.bak"
 cron_case 'a commented-out row'
 arm_old_layout 07:40 --live
+sed -i.bak 's/# HIMMEL-FailureReview$/# HIMMEL-FailureReviewOther/' "$FAKECRON_FILE" && rm -f "$FAKECRON_FILE.bak"
+cron_case 'a row whose tag only starts with the failure-review tag'
+arm_old_layout 07:40 --live
 sed -i.bak '/^JIRA_PROJECT_KEY=/d' "$RUNNER" && rm -f "$RUNNER.bak"
 cron_failed_case 'a live runner with no readable project key'
 mkdir -p "$TMP/gone-vault"

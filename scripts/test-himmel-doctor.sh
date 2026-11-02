@@ -2182,6 +2182,19 @@ else
 fi
 rm -rf "$t"
 
+echo "== C24: an absolute data path after an option flag is not a script -> no false FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 option operand: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
+: > "$t/runner/r.sh"; chmod +x "$t/runner/r.sh"
+fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" --output $t/out/generated.js # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (the operand of an option flag is data, not a script)"
+else
+    fail "C24 option operand -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
 echo "== C24: scheduler probe itself fails (access-denied/transient) -> INFO, not a false-mass-WARN (codex-1, CR round 3) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
 printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
