@@ -1096,6 +1096,30 @@ rewire_statusline() {
     fi
     return 0
 }
+# ─── queue-lock self-heartbeat hook wiring ─────────────────────
+# A worker's queue lock only stays fresh when the PostToolUse self-heartbeat hook is in the
+# checkout's .claude/settings.json. The sanctioned writer is idempotent (no change when the
+# entry is already there) and refuses a file it cannot round-trip byte-for-byte. Best-effort:
+# never fails the update; himmel-doctor C85 names a checkout where it is still missing.
+wire_self_heartbeat() {
+    local settings="$ROOT/.claude/settings.json"
+    local wire="$ROOT/scripts/observability/wire-session-telemetry-hooks.mjs"
+
+    echo ""
+    echo "==> queue-lock self-heartbeat hook wiring"
+    if ! command -v node >/dev/null 2>&1; then
+        echo "    skip: node not on PATH."
+        return 0
+    fi
+    if [ ! -f "$wire" ] || [ ! -f "$settings" ]; then
+        echo "    skip: wiring script or $settings not found."
+        return 0
+    fi
+    if ! node "$wire" "$settings"; then
+        echo "    warn: self-heartbeat wiring failed (non-fatal) — run node $wire $settings manually." >&2
+    fi
+    return 0
+}
 # ─── lean plugin-set reconcile ─────────────────────────────────
 # The lean plugin profile was additive-only: install-plugins
 # installs the template's `true` plugins but never writes the `false` ones, so
@@ -3786,6 +3810,7 @@ ensure_bus_state_dirs() {
 update_codex apply
 sync_agent_clis apply || true
 rewire_statusline
+wire_self_heartbeat
 sync_graphify
 # `|| true`: a failed cli-proxy roll must never abort a himmel update. The
 # function now returns non-zero so `--only cli_proxy` can report it (above);

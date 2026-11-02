@@ -294,6 +294,70 @@ else
     assert_fail "rewire idempotent second run: changed unexpectedly"
 fi
 
+# ─── wire_self_heartbeat ─────────────────────────────────────
+echo "Test 5b: wire_self_heartbeat → wires the queue-lock heartbeat entry, idempotent, skips a checkout with no settings"
+HB_ROOT="$TMP/hb-root"
+mkdir -p "$HB_ROOT/.claude" "$HB_ROOT/empty"
+ln -s "$REAL_ROOT/scripts" "$HB_ROOT/scripts"
+printf '{\n  "hooks": {}\n}\n' > "$HB_ROOT/.claude/settings.json"
+
+run_wire_self_heartbeat() {   # <root>
+    (
+        set -euo pipefail
+        # shellcheck disable=SC1090
+        HIMMEL_UPDATE_LIB=1 . "$SCRIPT"
+        # shellcheck disable=SC2034  # read by wire_self_heartbeat from the sourced script
+        ROOT="$1"
+        wire_self_heartbeat
+    )
+}
+
+# Counts only a hook whose group fires after every tool (no matcher, or "*").
+hb_count() { jq '[(.hooks.PostToolUse // [])[]? | select(((.matcher // "") == "") or .matcher == "*") | (.hooks // [])[]? | select((.command // "") | contains("queue-lock.sh") and contains("self-heartbeat"))] | length' "$1"; }
+
+assert_eq "wire_self_heartbeat: entry absent before the update step" "0" "$(hb_count "$HB_ROOT/.claude/settings.json")"
+if command -v node >/dev/null 2>&1; then
+    if run_wire_self_heartbeat "$HB_ROOT" >/dev/null 2>&1; then
+        assert_pass "wire_self_heartbeat unwired checkout: rc 0"
+    else
+        assert_fail "wire_self_heartbeat unwired checkout: rc non-zero"
+    fi
+    assert_eq "wire_self_heartbeat: entry wired for every tool after the update step" "1" "$(hb_count "$HB_ROOT/.claude/settings.json")"
+    cp "$HB_ROOT/.claude/settings.json" "$TMP/hb-settings.once"
+    if run_wire_self_heartbeat "$HB_ROOT" >/dev/null 2>&1; then
+        assert_pass "wire_self_heartbeat second run: rc 0"
+    else
+        assert_fail "wire_self_heartbeat second run: rc non-zero"
+    fi
+    if cmp -s "$TMP/hb-settings.once" "$HB_ROOT/.claude/settings.json"; then
+        assert_pass "wire_self_heartbeat second run: unchanged"
+    else
+        assert_fail "wire_self_heartbeat second run: changed unexpectedly"
+    fi
+else
+    assert_pass "wire_self_heartbeat wiring cases: skipped, node not on PATH (the step skips on such a host)"
+fi
+# A checkout that has the writer but no settings file: the step must not call node and must create nothing.
+mkdir -p "$TMP/hb-bin"
+printf '#!/bin/sh\necho called > "%s/hb-node-called"\nexit 0\n' "$TMP" > "$TMP/hb-bin/node"
+chmod +x "$TMP/hb-bin/node"
+ln -s "$REAL_ROOT/scripts" "$HB_ROOT/empty/scripts"
+if PATH="$TMP/hb-bin:$PATH" run_wire_self_heartbeat "$HB_ROOT/empty" >/dev/null 2>&1; then
+    assert_pass "wire_self_heartbeat checkout without settings: rc 0"
+else
+    assert_fail "wire_self_heartbeat checkout without settings: rc non-zero"
+fi
+if [ ! -e "$TMP/hb-node-called" ]; then
+    assert_pass "wire_self_heartbeat checkout without settings: node not invoked"
+else
+    assert_fail "wire_self_heartbeat checkout without settings: node was invoked"
+fi
+if [ ! -e "$HB_ROOT/empty/.claude" ]; then
+    assert_pass "wire_self_heartbeat checkout without settings: nothing created"
+else
+    assert_fail "wire_self_heartbeat checkout without settings: created a settings dir"
+fi
+
 # ─── update_codex ───────────────────────────────────────────
 echo "Test 6: update_codex → skips when codex absent/unprovisioned, re-syncs when provisioned"
 

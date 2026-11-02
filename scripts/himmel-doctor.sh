@@ -5157,6 +5157,45 @@ $(_c81_rows "plugin:$name" "$f")"
         "keep one owner per hook (docs/setup/install.md#hook-owner): accept guardrail-block-global with 'himmelctl ensure' (answer yes), then drop the raw user entry with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\"; for a plugin entry, disable the plugin"
 }
 
+# --- C85-self-heartbeat: the queue lock's PostToolUse self-heartbeat hook is wired ---
+# Without it a worker that holds its queue lock across a long run goes STALE after one TTL and
+# is takeable meanwhile. FAIL when no PostToolUse hook in the project settings, the project's
+# settings.local.json or the user settings runs scripts/handover/queue-lock.sh self-heartbeat from a
+# group that fires after every tool (no matcher, or "*"; a matcher such as "Agent" runs it only for
+# that tool); FAIL too when the effective disableAllHooks is true, which switches the hook off.
+# OK otherwise. The remedy is the sanctioned writer, which himmel-update.sh runs on every update.
+check_c85_self_heartbeat() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C85-self-heartbeat "jq not on PATH -- self-heartbeat hook scan skipped"; return 0; }
+    local f layers="" found="" off="" v=""
+    # disableAllHooks takes the value of the highest-precedence layer that sets it
+    # (project local, then project, then user), so a user-level true that a higher layer sets to false is not off.
+    for f in "$REPO_ROOT/.claude/settings.local.json" "$REPO_ROOT/.claude/settings.json" "$SETTINGS"; do
+        [ -r "$f" ] || continue
+        v="$(jq -r 'if has("disableAllHooks") then (.disableAllHooks | tostring) else "unset" end' "$f" 2>/dev/null)" || continue
+        [ "$v" = unset ] && continue
+        [ "$v" = true ] && off="$f"
+        break
+    done
+    for f in "$REPO_ROOT/.claude/settings.json" "$REPO_ROOT/.claude/settings.local.json" "$SETTINGS"; do
+        [ -r "$f" ] || continue
+        layers="$layers $f"
+        if [ -z "$found" ] && jq -e '[(.hooks.PostToolUse // [])[]? | select(((.matcher // "") == "") or .matcher == "*") | (.hooks // [])[]? | (.command // "") | select(contains("queue-lock.sh") and contains("self-heartbeat"))] | length > 0' "$f" >/dev/null 2>&1; then
+            found="$f"
+        fi
+    done
+    if [ -n "$off" ]; then
+        emit FAIL C85-self-heartbeat "disableAllHooks is true in $off, so the queue lock self-heartbeat hook does not run and a long worker's lock goes stale after one TTL" \
+            "remove disableAllHooks from $off"
+        return 0
+    fi
+    if [ -n "$found" ]; then
+        emit OK C85-self-heartbeat "the queue lock self-heartbeat PostToolUse hook is wired for every tool ($found)"
+        return 0
+    fi
+    emit FAIL C85-self-heartbeat "no matcher-less PostToolUse hook runs queue-lock.sh self-heartbeat (looked in:${layers:- no readable settings file}), so a long worker's queue lock goes stale after one TTL" \
+        "run bash scripts/himmel-update.sh (it wires the entry), or node \"$REPO_ROOT/scripts/observability/wire-session-telemetry-hooks.mjs\" \"$REPO_ROOT/.claude/settings.json\" (restore a missing .claude/settings.json first with git checkout -- .claude/settings.json); on an operator station wire it VM-first"
+}
+
 # --- C82-mcp-sources: every MCP server with the layer it comes from ---
 # Read only, key names only: never an env, header or argument value. Layers: user config
 # (~/.claude.json mcpServers), project .mcp.json, an enabled plugin's .mcp.json (newest
@@ -5371,6 +5410,7 @@ run_check C81 check_c81_hook_layers
 run_check C82 check_c82_mcp_sources
 run_check C83 check_c83_qmd_embed_backlog
 run_check C84 check_c84_release_queue
+run_check C85 check_c85_self_heartbeat
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
