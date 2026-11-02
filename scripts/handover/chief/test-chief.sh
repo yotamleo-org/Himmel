@@ -43,6 +43,11 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/chief-test.XXXXXX")" || { echo "test-chief: mk
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Root/slug fallback cases must not read the operator's config, and a worker's
+# launch repo must not contaminate the --arm fixture. Release discovery is fixture-only.
+export HIMMEL_CONFIG_DIR="$tmp/config" HIMMEL_RELEASE_STATE_DIR="$tmp/releases"
+unset HEADED_ARM_REPO
+
 # chief.sh records the launch context of the chief it prints a
 # launch line for, under ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs.
 # Pin that dir under $tmp for the WHOLE suite so no case can leave a fixture row
