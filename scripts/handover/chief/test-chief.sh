@@ -3440,6 +3440,11 @@ check "94g control: the <...> placeholder line seeds as today" "$rc94g" "0"
 # shellcheck disable=SC2016  # literal fixture text
 mk94g ctl94gpop 'workers: `N1:nonce-g1:lock-g1:11` `N2:nonce-g2:lock-g2:22`' locked
 check "94g control: a line that already lists spans seeds as today" "$rc94g" "0"
+# a partial entry (label only) is not a worker span: the open workers are still missing
+# shellcheck disable=SC2016  # literal fixture text
+mk94g refuse94gpart 'workers: `N1:`' locked
+check "94g next refuses a line whose only entry is a partial span" "$([ "$rc94g" -ne 0 ] && echo refused || echo "rc=$rc94g")" "refused"
+check "94g the partial-span refusal names worker N2" "$(printf '%s\n' "$err94g" | grep -c 'N2.*DEMO-g94-N2-worker')" "1"
 
 # --- 95: the HANDOFF's in-flight section: one pointer line per item from the
 # file names under specs/, capped, absent when empty, never a body, fail-open.

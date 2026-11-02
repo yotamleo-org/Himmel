@@ -1728,7 +1728,7 @@ check_workers_listed() {
     value="$(seeded_live_field "$live" "$key")"
     case "$value" in "<"*) return 0 ;; esac
     # shellcheck disable=SC2016  # the backticks in the span pattern are literal
-    printf '%s\n' "$value" | awk '/`[A-Za-z0-9_.-]+:[^` \t]*`/ { f = 1 } END { exit f }' || return 0
+    printf '%s\n' "$value" | awk '/`[A-Za-z0-9_.-]+:[^` \t:]+:[^` \t:]+:[^` \t:]+`/ { f = 1 } END { exit f }' || return 0
     [ -f "${doc%.md}.fleet.json" ] || return 0
     rows="$(jq -r "$JQ_W"'W[] | select(.lockless != true) | [.label // "", .doc // ""] | @tsv' "${doc%.md}.fleet.json" 2>/dev/null)" || return 0  # swallow-ok: an unreadable manifest leaves the open set unknown, as open_legs_block does
     while IFS=$'\t' read -r label ldoc; do
