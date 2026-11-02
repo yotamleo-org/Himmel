@@ -4091,9 +4091,11 @@ project `settings.json` `env` block can still set it, as it can already set
   paste the text, and names the bypass.
 
 `scripts/hooks/redirect-webfetch-walled-hosts.sh` stays wired in the himmel
-project lane as a shim: it points `WALLED_TOOLING_DIR` at `scripts/web`, sets
-`WEBFETCH_WALLED_LOG=/dev/null` and runs the plugin source, so a himmel session
-that fires both lanes writes one JSONL row, not two. The shim sources the plugin
+project lane as a shim: it points `WALLED_TOOLING_DIR` at `scripts/web` and runs
+the plugin source with its log row on, so a himmel session whose plugin lane does
+not fire (plugin disabled, or cached at a version without the hook) still logs the
+deny. When both lanes fire on one deny they claim it by its `tool_use_id`, and the
+first to claim it writes the row. The shim sources the plugin
 file instead of running it with `bash <file>`, because the launcher verifies a
 sourced file against the integrity pins and does not follow a `bash <file>` exec.
 `marketplace/plugins/himmel-ops/hooks` is a pinned dir (`PIN_DIRS` in both
@@ -4102,8 +4104,18 @@ edited plugin source is denied at the launcher, whether the plugin file or the
 shim is launched, and `ci-trust-paths.txt` lists the plugin source and its suite.
 
 Each deny appends one row (`ts`, `session_id`, `decision`, `host`) to
-`WEBFETCH_WALLED_LOG` (default `~/.claude/webfetch-walled/denials.jsonl`). The
-URL is not logged, since it can carry a token. Suites:
+`WEBFETCH_WALLED_LOG` (default `~/.claude/webfetch-walled/denials.jsonl`; with
+`HOME` unset, `${TMPDIR:-/tmp}/himmel-webfetch-walled-<uid>/denials.jsonl`, used
+only when that dir is owned by the caller and is not a symlink). The claim is an
+exclusive file named by the `tool_use_id` under `.claims` beside the log, swept
+after an hour; an id that is not a plain id string (`A-Za-z0-9_-`) is treated as
+absent, so each lane writes and the deny never depends on the id. A claim that
+cannot be made, or an append that fails, never suppresses the other lane's row.
+A cached plugin from the versions that wrote a row without a claim (0.4.143 to
+0.4.147) next to the new shim can write two rows for one deny until it updates.
+`WEBFETCH_WALLED_LOG=/dev/null` turns the row off; callers that only probe the
+guard (`scripts/cloud/parity-probe.sh`) set it. No reader of this log exists in
+the tree. The URL is not logged, since it can carry a token. Suites:
 `scripts/hooks/test-redirect-webfetch-walled-hosts-plugin.sh`
 (runs the installed `hooks.json` command in a non-himmel fixture repo) and
 `scripts/hooks/test-redirect-webfetch-walled-hosts.sh` (the project-lane shim).
