@@ -408,9 +408,9 @@ if [ "$HAS_PROMPT" != 1 ]; then
   PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
   chmod 600 "$PROMPT_FILE"
   # a half-read stdin cannot be replayed whole
-  if command -v timeout >/dev/null 2>&1; then timeout "$CALL_TIMEOUT_S" cat >"$PROMPT_FILE"; else cat >"$PROMPT_FILE"; fi ||
+  if command -v timeout >/dev/null 2>&1; then timeout --foreground "$CALL_TIMEOUT_S" cat >"$PROMPT_FILE"; else cat >"$PROMPT_FILE"; fi ||
     { NO_FB="the prompt could not be kept"; refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
-  exec 3<"$PROMPT_FILE" || refuse "could not reopen the stdin prompt"
+  exec 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not reopen the stdin prompt"; }
 else
   exec 3<&0
 fi

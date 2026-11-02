@@ -452,7 +452,9 @@ test('HIMMEL-8649: a stdin that never closes is cut at the call timeout, refused
   child.stdin.write('half a prompt');
   let err = '';
   child.stderr.on('data', (d) => { err += d; });
-  const code = await Promise.race([new Promise((r) => child.on('close', r)), new Promise((r) => setTimeout(() => r('hung'), 10000))]);
+  let guard;
+  const code = await Promise.race([new Promise((r) => child.on('close', r)), new Promise((r) => { guard = setTimeout(() => r('hung'), 10000); })]);
+  clearTimeout(guard);
   if (code === 'hung') child.kill('SIGKILL');
   assert.equal(code, 2, `the launcher hung on an open stdin: ${err}`);
   assert.match(err, /could not buffer the stdin prompt/);
