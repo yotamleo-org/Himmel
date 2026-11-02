@@ -535,6 +535,9 @@ imports, so its suite runs in CI without an install.
   guards, Station sources and Refused by tool tables, read at 1280 and 390 px over stubbed
   `/api/tool-health` and `/api/tool-inventory` responses, never break a word inside a header or a
   short value, and a table wider than its panel scrolls inside its own box.
+- Tool health shape e2e (`tool-health-shape.e2e.ts`, same opt-in suite): the overview cards, Station tiles and
+  source names, Tool map (grid on a desktop, one card per source on a phone) and guard This week cards,
+  read at 1280 and 390 px over the same stubbed responses, with a screenshot pair attached per view.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
   default, `github` a stub `gh` answering fake issues, `local` and `none` neither).

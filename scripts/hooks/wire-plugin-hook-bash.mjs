@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 18,
+  PreToolUse: 19,
   SessionStart: 5,
   SessionEnd: 3,
   Notification: 1,
@@ -52,6 +52,9 @@ const EXPECTED_HOOKS = Object.freeze([
   // plugin-shipped so an adopter repo gets the sleepless busy-loop deny too;
   // it names no repo script.
   { event: 'PreToolUse', script: 'block-busy-loop.sh', source: 'plugin' },
+  // plugin-shipped because a session started from the vault never loads a
+  // himmel project hook; POC, opt-in via HIMMEL_VAULT_SWEEP_DENY=1.
+  { event: 'PreToolUse', script: 'block-vault-sweep.sh', source: 'plugin' },
   // plugin-shipped so an adopter repo gets the walled-host WebFetch redirect
   // too; it names the himmel fetcher only when the checkout has one.
   { event: 'PreToolUse', script: 'redirect-webfetch-walled-hosts.sh', source: 'plugin' },

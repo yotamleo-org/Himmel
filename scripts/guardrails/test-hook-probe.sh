@@ -108,6 +108,35 @@ else
     fail "expected rc=1 PROBE DENY with stopReason; rc=$rc out=$out"
 fi
 
+echo "== a hook that exits without reading a LARGE stdin still classifies by its output (HIMMEL-8879) =="
+# 300 KB exceeds the 64 KB pipe buffer, so the parent's stdin write MUST hit EPIPE once the
+# hook (which never reads stdin) has exited: spawnSync sets result.error=EPIPE beside a real status.
+node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({tool_name:"Bash",tool_input:{command:"a".repeat(300000)}}))' "$TMP/big-payload.json"
+out=$(probe --settings "$TMP/settings-continue-false.json" --payload "$TMP/big-payload.json"); rc=$?
+if [ "$rc" -eq 1 ] && grepq "$out" '^PROBE DENY' && grepq "$out" 'halted by fixture' && ! grepq "$out" 'EPIPE'; then
+    pass "early-exit hook under a large input is classified by its output, not as an EPIPE error"
+else
+    fail "expected rc=1 PROBE DENY with stopReason and no EPIPE; rc=$rc out=$out"
+fi
+
+echo "== CONTROL: a spawn error other than a recoverable EPIPE stays an error row =="
+cat > "$TMP/classify-errors.mjs" <<EOF
+import { classify } from '$REPO_ROOT/scripts/guardrails/hook-probe.mjs';
+const r = [
+  classify({ error: { code: 'ENOENT', message: 'spawnSync x ENOENT' }, status: null, stdout: '', stderr: '' }).decision,
+  classify({ error: { code: 'EPIPE', message: 'spawnSync x EPIPE' }, status: null, stdout: '', stderr: '' }).decision,
+  classify({ error: { code: 'ENOENT', message: 'spawnSync x ENOENT' }, status: 0, stdout: '{"continue":false}', stderr: '' }).decision,
+  classify({ error: { code: 'EPIPE', message: 'spawnSync x EPIPE' }, status: 0, stdout: '{"continue":false}', stderr: '' }).decision,
+];
+process.stdout.write(JSON.stringify(r));
+EOF
+out=$(node "$TMP/classify-errors.mjs" 2>&1)
+if [ "$out" = '["error","error","error","deny"]' ]; then
+    pass "only EPIPE paired with a numeric status is recovered; the rest stay errors"
+else
+    fail "expected [\"error\",\"error\",\"error\",\"deny\"]; got $out"
+fi
+
 # The probe must fail CLOSED exactly where runChain in run-hook-with-bash.js does
 # a chain it cannot fully evaluate is a DENY, never ALLOW.
 # chain_settings <file> <member>... writes a one-entry Bash chain settings fixture.

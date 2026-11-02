@@ -48,6 +48,12 @@
 # with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
 # `merged PRs unknown` header and no IN CI row.
 #
+# Partial-merge rows: a ticket with a merged contract=no PR reads that PR's remainder, a `Remaining:` line or the
+# `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
+# the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
+# handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
+# umbrella by hand); a body with neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it.
+#
 # Held RESUME rows: an in-work ticket a file collision keeps off the list prints
 # `RESUME-HELD <KEY> by <holder>` (a live worker, the --held list, an open PR, or `listed <KEY>`
 # for another RESUME row; the last in the full pass only), so no in-work ticket vanishes unnamed.
@@ -136,7 +142,8 @@
 # Env (tests): NEXT_DISPATCH_MIRROR, NEXT_DISPATCH_GH_CMD (replaces `gh`),
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
-# NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default).
+# NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
+# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> <KEY>`).
 #
 # Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable.
 # PLATFORM GUARD: the chief kit is Linux-only.
@@ -1116,22 +1123,33 @@ if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
     except (OSError, subprocess.SubprocessError):
         merged_unknown = True
 
-# The `Remaining:` text of a merged partial PR's body (the line merge-on-green.sh reads); '' when the body has none.
-# A body gh cannot read is recorded in unread_prs and also returns '', so the ticket is never dispatched blind.
-remaining_cache = {}
+# The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
+# (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
+# Returns (kind, handed_keys, text), kind none | remaining | handed-off. A body gh cannot read, or a reader that fails, is
+# recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
+remainder_cache = {}
 unread_prs = set()
-def remaining_of(pr):
-    if pr not in remaining_cache:
+reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
+def remainder_of(pr, key):
+    if (pr, key) not in remainder_cache:
+        ans = ('none', [], '')
         try:
             body = subprocess.run([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=60, check=True).stdout
+            out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
+            if out[0] == 'remaining' and len(out) == 2:
+                ans = ('remaining', [], out[1])
+            elif out[0] == 'handed-off' and len(out) == 3:
+                ans = ('handed-off', out[1].split(', '), out[2])
+            elif out[0] != 'none':
+                raise subprocess.SubprocessError('unrecognised reader answer')
         except (OSError, subprocess.SubprocessError):
-            body = ''
             unread_prs.add(pr)
-        remaining_cache[pr] = ' '.join(m.strip() for m in re.findall(r'(?im)^[ \t]*remaining:[ \t]*(.*\S)', body))
-    return remaining_cache[pr]
+        remainder_cache[(pr, key)] = ans
+    return remainder_cache[(pr, key)]
 
 # In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
-needs_note = []  # (key, partial PR numbers with no Remaining: text) of in-work tickets that need a chief note first
+needs_note = []  # (key, partial PR numbers that record no remainder) of in-work tickets that need a chief note first
+handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
 resume = []
 resume_held = []  # (key, holder) of in-work tickets a collision keeps off the list
 for i in issues.values():
@@ -1164,9 +1182,13 @@ for i in issues.values():
     if hit:
         resume_held.append((i['key'], hit[1]))  # a held RESUME row is named, never dropped silently
         continue
-    i['partial'] = [(pr, remaining_of(pr)) for pr in partials.get(i['key'], [])] if partial_resume(i['key']) else []
-    if any(not text for _, text in i['partial']):  # a merged slice whose PR body names no remaining work: not dispatched blind
-        needs_note.append((i['key'], [pr for pr, text in i['partial'] if not text]))
+    parts = [(pr, remainder_of(pr, i['key'])) for pr in partials.get(i['key'], [])] if partial_resume(i['key']) else []
+    i['partial'] = [(pr, ans[2]) for pr, ans in parts]
+    if any(ans[0] == 'none' for _, ans in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
+        needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
+        continue
+    if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
+        handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
         continue
     resume.append(i)
 resume.sort(key=ranked if pool_only else rank)
@@ -1244,8 +1266,12 @@ print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(c
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
 for k, prs in needs_note:
-    print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched' % (k, ', '.join('#' + p for p in prs),
-          'body could not be read (gh failed)' if any(p in unread_prs for p in prs) else 'has no Remaining: line'))
+    unread = any(p in unread_prs for p in prs)
+    print('NEEDS-CHIEF-NOTE %s: merged PR %s %s, needs a chief note before it is dispatched%s' % (k, ', '.join('#' + p for p in prs),
+          'body could not be read (gh failed)' if unread else 'has no Remaining: line and no deferred line under ## Ticket coverage',
+          '' if unread else '; to clear it add one to PR %s\'s body (gh pr edit <n> --body-file), or close %s by hand if nothing remains' % (', '.join('#' + p for p in prs), k)))
+for k, keys in handed_off:
+    print('HANDED-OFF %s: remainder on %s' % (k, ', '.join(dict.fromkeys(keys))))
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, wdoc))
 
@@ -1379,7 +1405,7 @@ def drop_summary():
             if i['key'] in briefs:
                 r = 'resume-brief (a wrapped worker resumes it: RESUME row)'
             elif partial_resume(i['key']):
-                r = 'partial-merge (a merged contract=no PR: RESUME row, or needs a chief note)'
+                r = 'partial-merge (a merged contract=no PR: RESUME row, HANDED-OFF, or needs a chief note)'
             elif pool_only and tier_of(i) > 4:
                 r = 'tier 5 (outside the priority pool)'
             else:
