@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { drift } from "./design-layer.test";
-import { renderRoadmap, renderKanban } from "../public/roadmap.js";
+import { renderBoard, renderRoadmap, renderKanban } from "../public/roadmap.js";
 
 const PUBLIC = join(import.meta.dir, "../public");
 const data = {
@@ -22,6 +22,9 @@ for (const [name, render, input, ui, title] of [
   ["Kanban", renderKanban, data, {}, "Kanban"],
   ["GitHub Roadmap", renderRoadmap, { ...data, source: "github" }, {}, "Roadmap"],
   ["GitHub Kanban", renderKanban, { ...data, source: "github" }, {}, "Kanban"],
+  ["Board", renderBoard, data, {}, "Board"],
+  ["Board Tidy up", renderBoard, data, { tab: "tidy" }, "Board"],
+  ["GitHub Board", renderBoard, { ...data, source: "github" }, {}, "Board"],
 ] as const) {
   test(`${name} renders a shared page header and boxed section`, () => {
     const html = render(input, ui);
@@ -40,6 +43,15 @@ test("board statuses and drift use shared pills without losing write controls", 
   expect(html).toContain('data-rm-drop="prog"');
 });
 
+test("Board lanes use the shared pills and keep the write controls; its version strip uses status pills", () => {
+  const html = renderBoard(data, { writes: true }, null);
+  expect(html).toMatch(/class="[^"]*\bpill\b[^"]*">In Progress<\/span>/);
+  expect(html).toMatch(/class="[^"]*\bpill\b[^"]*">running<\/span>/);
+  expect(html).toContain('draggable="true" data-rm-card="8141"');
+  expect(html).toContain('data-rm-drop="prog"');
+  expect(renderBoard(data, { tab: "tidy" }, null)).toMatch(/<table class="[^"]*\bdata\b/);
+});
+
 test("Roadmap sync uses the shared data table and releases use status pills", () => {
   const html = renderRoadmap(data, {});
   expect(html).toMatch(/<table class="[^"]*\bdata\b/);
@@ -48,7 +60,7 @@ test("Roadmap sync uses the shared data table and releases use status pills", ()
 });
 
 test("loading and unavailable states keep the page identity", () => {
-  for (const [render, title] of [[renderRoadmap, "Roadmap"], [renderKanban, "Kanban"]] as const) {
+  for (const [render, title] of [[renderRoadmap, "Roadmap"], [renderKanban, "Kanban"], [renderBoard, "Board"]] as const) {
     for (const input of [null, { state: "absent", reason: "No mirror" }]) {
       expect(render(input, {})).toContain(`<h1>${title}</h1>`);
     }

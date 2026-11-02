@@ -18,10 +18,29 @@ const tokenOnlyInFragment = (href: string) => {
 };
 
 test("the rail lists Fleet first, then Health, Tool health and one Configure entry, on every page, plus Run when a run is open", () => {
-  const rail = ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Roadmap", "Kanban", "Workflow", "Docs"];
+  const rail = ["Shift", "Morning report", "Fleet", "Health", "Tool health", "Configure", "Board", "Workflow", "Docs"];
   expect(navLinks({ here: "console", token: TOKEN, current: "config" }).map((l) => l.label)).toEqual(rail);
   expect(navLinks({ here: "agui", token: TOKEN, current: "fleet" }).map((l) => l.label)).toEqual(rail);
   expect(navLinks({ here: "agui", token: TOKEN, current: "run", run: RUN }).map((l) => l.label)).toEqual([...rail.slice(0, -1), "Run", "Docs"]);
+});
+
+test("the rail has one Board entry and no separate Roadmap or Kanban entry", () => {
+  for (const here of ["console", "agui"] as const) {
+    const links = navLinks({ here, token: TOKEN, current: "board" });
+    expect(links.filter((l) => l.id === "board").map((l) => [l.label, l.current])).toEqual([["Board", true]]);
+    expect(links.map((l) => l.label)).not.toContain("Roadmap");
+    expect(links.map((l) => l.label)).not.toContain("Kanban");
+  }
+  expect(PAGES.map((p) => p.id)).not.toContain("roadmap");
+  expect(PAGES.map((p) => p.id)).not.toContain("kanban");
+  // with no tracker the UI can read, the Board is not offered either
+  expect(navLinks({ here: "console", token: TOKEN, current: "config", sources: [] }).map((l) => l.id)).not.toContain("board");
+});
+
+test("the old Roadmap and Kanban landings from the AG-UI rail resolve to the Board page", () => {
+  expect(parseLanding(`#t=${TOKEN}&page=roadmap`)).toEqual({ token: TOKEN, page: "board" });
+  expect(parseLanding(`#t=${TOKEN}&page=kanban`)).toEqual({ token: TOKEN, page: "board", q: "v=all" });
+  expect(parseLanding(`#t=${TOKEN}&page=board`)).toEqual({ token: TOKEN, page: "board" });
 });
 
 test("Settings and Setup are gone from the rail: Configure is the one entry, page id config", () => {
@@ -45,12 +64,12 @@ async function landedOn(hash: string) {
   const painted: unknown[] = [];
   const el = () => ({ textContent: "", innerHTML: "", hidden: false, focus() {}, setSelectionRange() {} });
   const g = globalThis as Record<string, unknown>;
-  const names = ["render", "renderInventory", "renderTriage", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "parseView", "projectVerdict", "renderToolHealth", "renderKanban", "renderRoadmap", "renderWorkflow",
+  const names = ["render", "renderInventory", "renderTriage", "renderHeader", "renderProbe", "reviewGateDraft", "renderHealth", "verdict", "parseView", "projectVerdict", "renderToolHealth", "renderBoard", "renderKanban", "renderRoadmap", "renderWorkflow",
     "parseLanding", "navLinks", "fleetDot", "healthDot", "document", "location", "history", "fetch", "addEventListener"];
   const saved = Object.fromEntries(names.map((n) => [n, g[n]]));
   Object.assign(g, {
     render: (_f: unknown, c: unknown) => { painted.push(c); return ""; }, renderInventory: () => "", renderTriage: () => "", renderHeader: () => "", renderProbe: () => "", reviewGateDraft: () => [],
-    renderHealth: () => "", parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "",
+    renderHealth: () => "", parseView: () => ({ mode: "project", project: null, tab: "broken", row: null }), projectVerdict: () => ({ word: "All clear" }), verdict: () => ({ cls: "off", word: "No data" }), renderToolHealth: () => "", renderBoard: () => "", renderKanban: () => "", renderRoadmap: () => "", renderWorkflow: () => "",
     parseLanding: () => null, navLinks: () => [], fleetDot: () => ({ cls: "off", title: "" }), healthDot: () => ({ cls: "off", title: "" }),
     document: { querySelector: el, querySelectorAll: () => [], getElementById: el, activeElement: null, addEventListener() {} },
     location: { hash, pathname: "/", search: "", host: "x" }, history: { replaceState: (_a: unknown, _b: unknown, u: string) => urls.push(u) },
@@ -67,6 +86,13 @@ test("the old #/setup and #/configure routes land on Configure, #/setup with the
   expect(await landedOn("#/health")).toEqual({ urls: [], tile: null });
   expect((await landedOn("#/config?tile=__proto__")).tile).toBeNull(); // an unknown tile id opens none, and Configure still paints
   expect((await landedOn("#/config?tile=nope")).tile).toBeNull();
+});
+
+test("the old #/roadmap, #/roadmap/<version> and #/kanban routes land on the Board page", async () => {
+  expect(await landedOn("#/roadmap")).toMatchObject({ urls: ["/#/board"] });
+  expect(await landedOn("#/roadmap/v1.1.3")).toMatchObject({ urls: ["/#/board?v=v1.1.3"] });
+  expect(await landedOn("#/kanban")).toMatchObject({ urls: ["/#/board?v=all"] });
+  expect(await landedOn("#/board?v=all&tab=tidy")).toMatchObject({ urls: [] }); // the Board route itself is not rewritten
 });
 
 test("from the AG-UI pages the Configure link carries the token in the fragment", () => {

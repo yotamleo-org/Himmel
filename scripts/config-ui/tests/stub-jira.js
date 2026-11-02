@@ -4,6 +4,8 @@
 const { appendFileSync } = require("node:fs");
 const argv = process.argv.slice(2);
 if (process.env.STUB_JIRA_LOG) appendFileSync(process.env.STUB_JIRA_LOG, JSON.stringify(argv) + "\n");
+// $STUB_JIRA_ENV_LOG: one JSON line per call with the child's project key and a planted secret, to see what environment the child got
+if (process.env.STUB_JIRA_ENV_LOG) appendFileSync(process.env.STUB_JIRA_ENV_LOG, JSON.stringify({ verb: argv[0], key: process.env.JIRA_PROJECT_KEY ?? null, secret: process.env.PLANTED_SECRET ?? null }) + "\n");
 if (process.env.STUB_JIRA_FAIL === argv[0]) { console.error("stub jira: refused " + argv[0]); process.exit(1); }
 if (argv[0] === "get" && process.env.STUB_JIRA_GET_RAW !== undefined) console.log(process.env.STUB_JIRA_GET_RAW);
 else if (argv[0] === "get") {

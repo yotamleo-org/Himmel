@@ -4,9 +4,10 @@
 // "none" so both pages can say no tracker is configured. Read-only: gh is only ever asked to list issues, the local store is
 // read through the tracker seam (local-tracker.ts), and the Jira CLI is never touched here.
 import { execFile, execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { parseDotEnv } from "../himmelctl/lib/probes.js";
 import { readConfLayers } from "./conf-layers";
 import { readLocalItems } from "./local-tracker";
 // @ts-ignore -- plain ESM resolver shared with project-mode.sh, no type declarations
@@ -23,6 +24,20 @@ const GH_TIMEOUT_MS = 20_000;
 // gh issue list stops at the limit with no marker, so a full page is how the board knows it may be partial.
 export const ISSUE_LIMIT = 1000;
 const ISSUE_FIELDS = "number,title,state,stateReason,labels,milestone,updatedAt";
+
+// The settings as the CLI reads them (and /api/health): the checkout's .env, then himmel.conf, the non-empty process env winning.
+export const mergedSettings = (root: string, env: Env): Env => {
+  let dotenv = "";
+  try { dotenv = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
+  return { ...parseDotEnv(dotenv), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) };
+};
+
+// env with the settings that pick the tracker and the Jira mirror taken from mergedSettings, so the rail, the cards, the Board's
+// chains and a write's refresh all read one mirror whichever file names it. Only these keys: no .env secret reaches a child process.
+export function settingsEnv(root: string, env: Env): Env {
+  const m = mergedSettings(root, env);
+  return { ...env, ...Object.fromEntries(["HIMMEL_JIRA_MIRROR", "JIRA_PROJECT_KEY", "TRACKER"].filter((k) => m[k]).map((k) => [k, m[k]])) };
+}
 
 export const jiraMirrorDir = (env: Env) => env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
 
