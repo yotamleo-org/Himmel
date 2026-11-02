@@ -326,22 +326,24 @@ def _launch_lines(who):
         return None
     if not LAUNCH_NAME.match(name):
         raise ValueError("launch name %r is not a session name" % name)
-    name = re.sub(r"-RESUME$", "", name)
     cache = os.environ.get("HIMMELCTL_CACHE_DIR") or os.path.join(os.path.expanduser("~"), ".claude", "himmel")
-    profiles, lanes = set(), set()
-    try:
-        with open(os.path.join(cache, "launch-logs", name + ".log"), encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                m = LAUNCH_LINE.match(line) or CHIEF_LINE.match(line)
-                if not m:
-                    continue
-                profiles.add(m.group(1))
-                lane = LINE_LANE.search(line)
-                if lane:
-                    lanes.add(lane.group(1))
-    except OSError:
-        return None
-    return profiles, lanes
+    # the name as given first, then without the -RESUME suffix the launcher drops from the log's name
+    for stem in dict.fromkeys((name, re.sub(r"-RESUME$", "", name))):
+        profiles, lanes = set(), set()
+        try:
+            with open(os.path.join(cache, "launch-logs", stem + ".log"), encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    m = LAUNCH_LINE.match(line) or CHIEF_LINE.match(line)
+                    if not m:
+                        continue
+                    profiles.add(m.group(1))
+                    lane = LINE_LANE.search(line)
+                    if lane:
+                        lanes.add(lane.group(1))
+        except OSError:
+            continue
+        return profiles, lanes
+    return None
 
 
 def launch_profile(who):
