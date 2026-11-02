@@ -576,8 +576,57 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   v_refused "JP4 a test's jira create" "${VENV[@]}" "${V_CREATE[@]}"
   v_open "JP5 a real session's jira create" "no release is declared" as_session "${VENV[@]}" "${V_CREATE[@]}"
 else
-  echo "SKIP - JP rows: no bun or no scripts/jira/node_modules here; release.test.ts and create.test.ts hold the door rows"
+  echo "SKIP - JP rows: no bun or no scripts/jira/node_modules here; the node-suites vitest rows in release.test.ts and create.test.ts (post door from a test on the station) gate the same doors"
 fi
+
+# SCH5-SCH8, CAS3/CAS4: a missing or crashing guard fails open, as M4/M5 do for the merge alert. The mirror is
+# the repo with every entry symlinked except the script under test (copied) and scripts/lib/test-run-guard.
+mk_mirror() { # <dir> <missing|crash>
+  local d="$1" mode="$2" e
+  mkdir -p "$d/scripts/lib" "$d/scripts/handover"
+  for e in "$root"/* "$root"/.[!.]*; do [ "${e##*/}" = scripts ] || ln -s "$e" "$d/${e##*/}"; done
+  for e in "$root"/scripts/* "$root"/scripts/.[!.]*; do
+    case "${e##*/}" in handover | lib) ;; *) ln -s "$e" "$d/scripts/${e##*/}" ;; esac
+  done
+  for e in "$root"/scripts/lib/*; do case "${e##*/}" in test-run-guard | config-audit.sh) ;; *) ln -s "$e" "$d/scripts/lib/${e##*/}" ;; esac; done
+  for e in "$root"/scripts/handover/*; do [ "${e##*/}" = arm-resume.sh ] || ln -s "$e" "$d/scripts/handover/${e##*/}"; done
+  cp "$root/scripts/handover/arm-resume.sh" "$d/scripts/handover/arm-resume.sh"
+  cp "$root/scripts/lib/config-audit.sh" "$d/scripts/lib/config-audit.sh"
+  [ "$mode" = crash ] && printf '#!/usr/bin/env bash\nexit 1\n' >"$d/scripts/lib/test-run-guard"
+  return 0
+}
+mk_mirror "$TMP/mir-missing" missing
+mk_mirror "$TMP/mir-crash" crash
+for mode in missing crash; do
+  M="$TMP/mir-$mode"
+  [ "$mode" = missing ] && n_at=SCH5 n_cr=SCH6 n_ca=CAS3 || n_at=SCH7 n_cr=SCH8 n_ca=CAS4
+  reset
+  rc=0; "${ARM_ENV[@]}" bash "$M/scripts/handover/arm-resume.sh" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+  eq "$n_at a test's at arm still schedules with the guard $mode" "$(calls at)" 1
+  if [ "$rc" = 77 ]; then fail "$n_at the at arm was refused with the guard $mode"; else pass "$n_at the at arm is not refused with the guard $mode"; fi
+  reset
+  rc=0; "${ARM_ENV[@]}" OSTYPE=darwin23 bash "$M/scripts/handover/arm-resume.sh" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+  eq "$n_cr a test's crontab arm still installs with the guard $mode" "$(calls_exact 'crontab -')" 1
+  if [ "$rc" = 77 ]; then fail "$n_cr the crontab arm was refused with the guard $mode"; else pass "$n_cr the crontab arm is not refused with the guard $mode"; fi
+  reset
+  "${CA_ALERT[@]:0:${#CA_ALERT[@]}-1}" "$M/scripts/lib/config-audit.sh" >/dev/null 2>&1
+  eq "$n_ca a test's config alert still sends with the guard $mode" "$(calls bun)" 1
+done
+
+# SCH9/SCH10: a stub crontab or at outside the real-tool dirs stays allowed for a test (the door asks --tool, not --real).
+mkdir -p "$TMP/stubtools"
+cp "$BIN/sched-recorder" "$TMP/stubtools/crontab"
+cp "$BIN/sched-recorder" "$TMP/stubtools/at"
+STUB_ARM=("${ARM_ENV[@]}" PATH="$TMP/stubtools:$ARMBIN:$PATH")
+eq "SCH9 the stub at resolves to the stub dir" "$(PATH="$TMP/stubtools:$PATH" command -v at)" "$TMP/stubtools/at"
+reset
+rc=0; "${STUB_ARM[@]}" bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH9 a test's at arm with a stub at is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+eq "SCH9 the stub at was reached" "$(calls at)" 1
+reset
+rc=0; "${STUB_ARM[@]}" OSTYPE=darwin23 bash "$ARM" --time "$ARM_TIME" --handover "$ARM_DOC" >"$TMP/s.out" 2>&1 || rc=$?
+eq "SCH10 a test's crontab arm with a stub crontab is not refused" "$([ "$rc" = 77 ] && echo refused || echo ok)" ok
+eq "SCH10 the stub crontab was reached" "$(calls_exact 'crontab -')" 1
 
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS - test-real-state-guard: all rows"; exit 0; fi

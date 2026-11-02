@@ -462,3 +462,31 @@ describe('jira release under vitest (HIMMEL-7434)', () => {
     await expect(run('state', 'R1')).rejects.toThrow(/outside the temp dir/);
   });
 });
+
+describe.skipIf(process.platform !== 'linux')('jira release posting verbs from a test on the station', () => {
+  const failure = async (...args: string[]): Promise<string> => {
+    try {
+      await run(...args);
+      return '';
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
+  });
+
+  it('refuses apply and rm-run against a real Jira host before any post', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://jira.invalid');
+    expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release apply: refused, nothing was posted/);
+    expect(await failure('rm-run', 'R1')).toMatch(/release rm-run: refused, nothing was posted/);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('lets apply and rm-run past the door against a loopback Jira', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    expect(await failure('apply', 'R1', 'RU-1')).not.toMatch(/nothing was posted/);
+    expect(await failure('rm-run', 'R1')).not.toMatch(/nothing was posted/);
+  });
+});
