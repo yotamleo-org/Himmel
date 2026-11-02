@@ -49,7 +49,7 @@ command -v jq >/dev/null 2>&1 || exit 0
 WALLED_HOSTS="x.com twitter.com mobile.twitter.com instagram.com reddit.com redd.it"
 
 input=$(cat 2>/dev/null) || exit 0
-fields=$(printf '%s' "$input" | jq -r '(.tool_name // "") + "\n" + (.session_id // "") + "\n" + ((.tool_use_id // "") | if type == "string" and test("^[A-Za-z0-9_-]+$") then . else "" end) + "\n" + (.tool_input.url // empty | strings)' 2>/dev/null) || exit 0
+fields=$(printf '%s' "$input" | jq -r '(.tool_name // "") + "\n" + (.session_id // "") + "\n" + ((.tool_use_id // "") | if type == "string" and test("\\A[A-Za-z0-9_-]+\\z") then . else "" end) + "\n" + (.tool_input.url // empty | strings)' 2>/dev/null) || exit 0
 tool=${fields%%$'\n'*}
 rest=${fields#*$'\n'}
 session=${rest%%$'\n'*}

@@ -63,7 +63,8 @@ case "$OUT9" in *$'jira-token-set\tno'*) ok "JIRA_BASE_URL alone leaves jira-tok
 # 3d. the probe writes nothing: its walled-host deny probe must not append a row to
 # the caller's real denial log (HOME on a fixture, so a leak cannot reach the real one).
 PHOME="$TMP/probe-home"; mkdir -p "$PHOME"
-HOME="$PHOME" bash "$PROBE" --no-net >/dev/null 2>&1
+OUTH="$(HOME="$PHOME" bash "$PROBE" --no-net 2>&1)"
+case "$OUTH" in *$'guard:redirect-webfetch-walled-hosts\tDENY'*) ok "the walled-host probe ran and was refused" ;; *) bad "walled-host probe row not DENY: $(printf '%s\n' "$OUTH" | grep 'redirect-webfetch')" ;; esac
 if [ ! -e "$PHOME/.claude/webfetch-walled" ]; then ok "the probe leaves no walled-host log under HOME"; else bad "probe wrote a walled-host log: $(cat "$PHOME"/.claude/webfetch-walled/denials.jsonl 2>/dev/null)"; fi
 
 # 4. an empty tree: missing guards read MISSING, not DENY, and the run survives.

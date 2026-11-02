@@ -326,7 +326,7 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
 
     # A tool_use_id that is not a plain id string never changes the decision: the
     # deny holds and the row is written (no claim) for each.
-    for idjson in 42 null '{"a":1}' '["x"]' '"a\u0001b"' '"a\nb"' '"has.dot"'; do
+    for idjson in 42 null '{"a":1}' '["x"]' '"a\u0001b"' '"a\nb"' '"a\n"' '"has.dot"'; do
         rm -rf "$LOG" "$TMP/.claims"
         run_plugin_keep "$(wftj "$idjson")"
         assert_eq "tool_use_id $idjson: the plugin command still denies" 2 "$?"
