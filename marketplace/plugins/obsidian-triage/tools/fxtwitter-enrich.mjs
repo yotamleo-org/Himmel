@@ -45,6 +45,7 @@
  */
 import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, relative, sep, dirname } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -56,6 +57,14 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const RATE_LIMIT_MS = 1000;
 const FETCH_TIMEOUT_MS = 15000;
 const FXT_BASE = "https://api.fxtwitter.com";
+// Most link-bearing replies by OTHER authors kept under ## Thread.
+// The clipped author's own posts are never capped.
+export const THREAD_MAX_LINKED_REPLIES = 5;
+const SCRAPLING_PY = join(homedir(), ".himmel", "scrapling-venv", "bin", "python");
+const SCRAPLING_TIMEOUT_MS = 90000;
+// A captured thread: heading + marker, up to the next `## ` heading or end of
+// body. Every post line is blockquoted, so tweet text can never end it early.
+const THREAD_SECTION_RE = /\n## Thread\n<!-- fxtwitter thread -->[\s\S]*?(?=\n## |\s*$)/;
 const FM_KEYS = [
   "enriched_at",
   "enrichment_source",
@@ -321,11 +330,15 @@ async function fetchFxt(url) {
  * is NOT an error, just "no thread".
  */
 async function fetchFxtThread(url) {
-  if (process.env.FXT_THREAD_FIXTURE) {
+  // Test seams: one file for every call, or <dir>/<status id>.json per tweet.
+  const statusId = (url.match(/(\d+)$/) || [])[1] || "none";
+  const fixture = process.env.FXT_THREAD_FIXTURE ||
+    (process.env.FXT_THREAD_FIXTURE_DIR ? join(process.env.FXT_THREAD_FIXTURE_DIR, statusId + ".json") : null);
+  if (fixture) {
     try {
-      const data = JSON.parse(readFileSync(process.env.FXT_THREAD_FIXTURE, "utf-8"));
+      const data = JSON.parse(readFileSync(fixture, "utf-8"));
       if (data.code !== 200) return { ok: false, error: `api_${data.code}` };
-      return { ok: true, thread: data.thread ?? null };
+      return { ok: true, thread: data.thread ?? null, status: data.status ?? null };
     } catch (e) { return { ok: false, error: `fixture_err: ${e.message}` }; }
   }
   const ctrl = new AbortController();
@@ -340,7 +353,7 @@ async function fetchFxtThread(url) {
     if (data.code !== 200) {
       return { ok: false, error: `api_${data.code || "unknown"}_${data.message || ""}`.slice(0, 80) };
     }
-    return { ok: true, thread: data.thread ?? null };
+    return { ok: true, thread: data.thread ?? null, status: data.status ?? null };
   } catch (e) {
     return { ok: false, error: `fetch_err: ${(e.message || String(e)).slice(0, 80)}` };
   } finally {
@@ -364,9 +377,10 @@ function threadHasMultipleByAuthor(thread, screenName) {
  * post 1 (no n/N counter, no 🧵, no reply-pointer) — replies > 0 is the only
  * hint. When the text heuristic misses and replies > 0, ask the keyless
  * /2/thread/<id> endpoint whether this status is part of a multi-post
- * self-thread. At most one extra request per clip. Fail open: a thread-API
- * error (or "no thread found") keeps today's text-only verdict and logs one
- * line — it never blocks or fails the enrichment.
+ * self-thread. At most one extra request per clip. A thread-API error is
+ * answered `true` (a possible thread, logged on one line), so the caller flags
+ * the clip needs_thread / partial rather than reading a failed check as "no
+ * thread"; "no thread found" on a good answer stays `false`.
  */
 async function detectThreadSignalWithApi(tweet, canon, rel, opts = {}) {
   const repliesCount = tweet.replies ?? 0;
@@ -377,10 +391,208 @@ async function detectThreadSignalWithApi(tweet, canon, rel, opts = {}) {
   if (!opts.skipRateLimit) await sleep(RATE_LIMIT_MS);
   const threadRes = await fetchFxtThread(threadUrl);
   if (!threadRes.ok) {
-    console.error(`${rel} -- thread-api check failed (needs_thread heuristic only): ${threadRes.error}`);
-    return false;
+    // A check that could not be made on a tweet with replies is not "no thread".
+    console.error(`${rel} -- thread-api check failed, treated as a possible thread: ${threadRes.error}`);
+    return true;
   }
   return threadHasMultipleByAuthor(threadRes.thread, tweet.author?.screen_name);
+}
+
+// ---------------------------------------------------------------------------
+// Keep the thread, not just a yes/no about it
+// ---------------------------------------------------------------------------
+
+// Runs under the scrapling venv python as `python -I -c <this> <status url>`.
+// A constant: the tweet URL is argv, never part of the code. Prints one JSON
+// object {status, posts:[{id, author:{screen_name}, text}]}. A logged-out X
+// page shows only a few posts; whatever it shows is kept, nothing more.
+const SCRAPLING_THREAD_PY = String.raw`
+import json, re, sys
+try:
+    from scrapling.fetchers import StealthyFetcher
+    page = StealthyFetcher.fetch(sys.argv[1], headless=True, network_idle=True, timeout=60000)
+    posts = []
+    for art in page.css('article[data-testid="tweet"]'):
+        node = art.css('[data-testid="tweetText"]')
+        text = node[0].get_all_text().strip() if node else ""
+        handle = pid = ""
+        for a in art.css("a"):
+            m = re.match(r"^/([A-Za-z0-9_]+)/status/([0-9]+)$", a.attrib.get("href", ""))
+            if m:
+                handle, pid = m.group(1), m.group(2)
+                break
+        if text and pid:
+            posts.append({"id": pid, "author": {"screen_name": handle}, "text": text})
+    print(json.dumps({"status": "ok" if posts else "no_posts", "posts": posts}))
+except Exception as e:
+    print(json.dumps({"status": "error", "detail": str(e)[:80]}))
+`;
+
+/**
+ * Fallback when /2/thread/<id> fails: read the public status page with
+ * Scrapling (keyless, no login). Returns { ok, thread, error } like
+ * fetchFxtThread. Test seam FXT_SCRAPLING_FIXTURE serves a recorded answer;
+ * in any other fixture mode the real venv is never launched.
+ */
+function fetchThreadViaScrapling(canon) {
+  if (process.env.FXT_SCRAPLING_FIXTURE) {
+    try {
+      const d = JSON.parse(readFileSync(process.env.FXT_SCRAPLING_FIXTURE, "utf-8"));
+      if (d.status !== "ok") return { ok: false, error: `scrapling_${d.status}` };
+      return { ok: true, thread: d.posts ?? null, status: null };
+    } catch (e) { return { ok: false, error: `scrapling_fixture_err: ${e.message}`.slice(0, 80) }; }
+  }
+  if (process.env.FXT_FIXTURE || process.env.FXT_THREAD_FIXTURE || process.env.FXT_THREAD_FIXTURE_DIR) {
+    return { ok: false, error: "scrapling_skipped_fixture_mode" };
+  }
+  if (!existsSync(SCRAPLING_PY)) return { ok: false, error: "scrapling_not_installed" };
+  const r = spawnSync(SCRAPLING_PY, ["-I", "-c", SCRAPLING_THREAD_PY, canon], {
+    encoding: "utf-8", timeout: SCRAPLING_TIMEOUT_MS, windowsHide: true,
+  });
+  if (r.error || r.status !== 0) return { ok: false, error: `scrapling_exit_${r.status ?? "spawn"}` };
+  try {
+    const d = JSON.parse(String(r.stdout).trim().split("\n").pop());
+    if (d.status !== "ok") return { ok: false, error: `scrapling_${d.status}${d.detail ? `: ${d.detail}` : ""}`.slice(0, 80) };
+    return { ok: true, thread: d.posts ?? null, status: null };
+  } catch { return { ok: false, error: "scrapling_bad_output" }; }
+}
+
+/**
+ * The thread for one status: the keyless endpoint first, Scrapling when the
+ * endpoint errors (not on the inline call, see below). An endpoint answer with no thread is NOT an error (the
+ * tweet simply has no continuation). One endpoint request per call.
+ */
+async function fetchThreadAny(canon, rel, opts = {}) {
+  const threadUrl = fxtThreadUrlFor(canon);
+  if (!threadUrl) return { ok: false, error: "no_thread_url" };
+  if (!opts.skipRateLimit) await sleep(RATE_LIMIT_MS);
+  const res = await fetchFxtThread(threadUrl);
+  if (res.ok) return res;
+  // The inline call (skipRateLimit) runs inside the Telegram bridge: Scrapling
+  // is a synchronous launch of up to a minute there, so it leaves the clip
+  // partial for the backfill to finish.
+  if (opts.skipRateLimit) {
+    console.error(`${rel} -- thread endpoint failed (${res.error}); inline call, no Scrapling fallback`);
+    return res;
+  }
+  console.error(`${rel} -- thread endpoint failed (${res.error}); trying Scrapling`);
+  const fb = fetchThreadViaScrapling(canon);
+  if (!fb.ok) console.error(`${rel} -- thread not captured: ${fb.error}`);
+  return { ...fb, via: "scrapling" };
+}
+
+function isLinkBearing(post) {
+  if (/https?:\/\/\S+/i.test(post.text || "")) return true;
+  const facets = post.raw_text?.facets;
+  return Array.isArray(facets) && facets.some((f) => f && f.type === "url");
+}
+
+/**
+ * Pick what to keep from a thread answer. Pure. Keeps, in answer order, EVERY
+ * post by the clipped author (not only a run from post 1) and, capped at
+ * THREAD_MAX_LINKED_REPLIES, posts by anyone else that carry a URL. Returns
+ * { posts, extraChars, authorExtraChars }: the text beyond the clipped post
+ * that `bodyText` (the clip body, when given) does not already hold, in total
+ * and by the clipped author alone.
+ */
+export function extractThreadPosts(thread, clippedId, authorHandle, bodyText = "") {
+  if (!Array.isArray(thread) || !authorHandle) return { posts: [], extraChars: 0, authorExtraChars: 0 };
+  const norm = (s) => s.replace(/\s+/g, " ").trim();
+  const haystack = norm(bodyText);
+  const me = authorHandle.toLowerCase();
+  const seen = new Set();
+  const posts = [];
+  let linked = 0;
+  for (const p of thread) {
+    if (!p || !p.id || !p.text || seen.has(String(p.id))) continue;
+    const handle = String(p.author?.screen_name || "");
+    const mine = handle.toLowerCase() === me;
+    if (!mine) {
+      if (!isLinkBearing(p) || linked >= THREAD_MAX_LINKED_REPLIES) continue;
+      linked++;
+    }
+    seen.add(String(p.id));
+    posts.push({ id: String(p.id), handle, mine, text: String(p.text).trim() });
+  }
+  const fresh = posts.filter((p) => p.id !== String(clippedId) && !(haystack && haystack.includes(norm(p.text))));
+  const chars = (ps) => ps.reduce((n, p) => n + p.text.length, 0);
+  return { posts, extraChars: chars(fresh), authorExtraChars: chars(fresh.filter((p) => p.mine)) };
+}
+
+/**
+ * Render captured posts as `## Thread`. Every post is labelled with its
+ * author handle and blockquoted, so author and non-author text never mix and
+ * tweet text can never forge a heading. Handle and id are sanitised.
+ */
+export function renderThreadSection(posts) {
+  const lines = ["## Thread", "<!-- fxtwitter thread -->"];
+  for (const p of posts) {
+    const handle = p.handle.replace(/[^A-Za-z0-9_]/g, "") || "unknown";
+    const id = p.id.replace(/\D/g, "");
+    lines.push("", `**@${handle}** (${p.mine ? "author" : "reply with link"}) https://x.com/${handle}/status/${id}`, "", toBlockquote(p.text));
+  }
+  return lines.join("\n");
+}
+
+/**
+ * True when replacing the `## Thread` section `existing` with `section` would
+ * lose captured text: a post that was kept is missing from the new answer, or
+ * is shorter in it. Only the per-post label lines start a post, so a status
+ * link inside a post's own text is not a post.
+ */
+/**
+ * Split a held `## Thread` section into the captured posts (up to the last
+ * quoted line) and whatever someone wrote below them, which is theirs and is
+ * neither compared nor dropped by a rewrite.
+ */
+function splitThreadTail(section) {
+  const lines = section.split("\n");
+  let last = -1;
+  lines.forEach((l, i) => { if (l.startsWith(">")) last = i; });
+  if (last < 0) return { head: section, tail: "" };
+  return { head: lines.slice(0, last + 1).join("\n"), tail: lines.slice(last + 1).join("\n").trim() };
+}
+
+function threadWouldShrink(existing, section) {
+  const label = /^\*\*@\w+\*\* \([^)]*\) https:\/\/x\.com\/\w+\/status\/(\d+)\n/;
+  const sizes = (s) => {
+    const out = new Map();
+    for (const part of s.split(/^(?=\*\*@\w+\*\* \([^)]*\) https:\/\/x\.com\/\w+\/status\/\d+$)/m)) {
+      const m = part.match(label);
+      if (m) out.set(m[1], part.trim().length);
+    }
+    return out;
+  };
+  const want = sizes(section);
+  return [...sizes(existing)].some(([id, n]) => !want.has(id) || want.get(id) < n);
+}
+
+function statusIdOf(canon) {
+  return (canon.match(/\/status\/(\d+)/) || [])[1] || "";
+}
+
+/**
+ * Thread capture for one clipped tweet (normal enrich path). Never reads ok
+ * on a failed check: replies > 0 and neither the endpoint nor Scrapling gave
+ * an answer -> needsThread true. A tweet with replies == 0 is not fetched.
+ * Only the clipped author's own continuation clears the heuristic flag: a
+ * link-bearing reply by someone else does not, and a Scrapling page that shows
+ * no continuation proves nothing (a logged-out page lists only some posts).
+ * Returns { section, needsThread }.
+ */
+async function captureThread(tweet, canon, rel, opts = {}) {
+  const replies = tweet.replies ?? 0;
+  const heuristic = detectThreadSignal(tweet.text || "", replies);
+  if (replies <= 0) return { section: null, needsThread: heuristic };
+  const res = await fetchThreadAny(canon, rel, opts);
+  if (!res.ok) return { section: null, needsThread: true };
+  const id = statusIdOf(canon);
+  const clipped = Array.isArray(res.thread) ? res.thread.find((p) => p && String(p.id) === id) : null;
+  const handle = tweet.author?.screen_name || clipped?.author?.screen_name || "";
+  const cap = extractThreadPosts(res.thread, id, handle);
+  const section = cap.extraChars > 0 ? renderThreadSection(cap.posts) : null;
+  if (cap.authorExtraChars > 0) return { section, needsThread: false };
+  return { section, needsThread: res.via === "scrapling" || heuristic };
 }
 
 // ---------------------------------------------------------------------------
@@ -930,6 +1142,7 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
     const src = fm.source || "";
     if (!isXSource(src)) return { glyph: "o", message: `${rel} -- skipped (reflag: not x/twitter source)` };
     if (!alreadyEnriched(fmRaw)) return { glyph: "o", message: `${rel} -- skipped (reflag: not enriched — normal enrich handles it)` };
+    if (THREAD_SECTION_RE.test(body)) return { glyph: "o", message: `${rel} -- skipped (reflag: thread already captured under ## Thread)` };
     if (/^needs_thread:\s*true\s*$/m.test(fmRaw)) return { glyph: "o", message: `${rel} -- skipped (reflag: needs_thread already set)` };
     const canon = canonicalXUrl(fm.harvest_url_canonical || src) || canonicalXUrl(src);
     const fxtUrl = canon && fxtUrlFor(canon);
@@ -1075,16 +1288,22 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
       bodyFill.title = tweet.text.replace(/\s+/g, " ").trim().slice(0, 80);
     }
   }
-  // Plain tweets + note tweets: frontmatter-only enrichment.
+  // Plain tweets + note tweets add no section here; a captured thread below
+  // may still add `## Thread`.
 
-  // Signal whether this clip needs the authenticated thread/reply escalation.
-  const needsThread = await detectThreadSignalWithApi(tweet, canon, rel, opts);
+  // Keep the posts the thread endpoint returns (## Thread). A
+  // thread that could not be read (endpoint and Scrapling both failed) on a
+  // tweet with replies is needs_thread, never ok.
+  const thread = await captureThread(tweet, canon, rel, opts);
+  const needsThread = thread.needsThread;
+  // Thread text is untrusted tweet text too: take the injection re-screen.
+  if (thread.section) didBodyFill = true;
 
   const markers = {
     enriched_at: TODAY,
     enrichment_source: "fxtwitter",
-    // fxtwitter has no replies, so a detected thread is never captured here:
-    // the enrichment is partial, not ok with the continuation silently missing.
+    // A thread that is flagged but not captured is partial, not ok with the
+    // continuation silently missing.
     enrichment_status: needsThread ? "partial" : "ok",
     tweet_stats: stats,
     tweet_is_note: isNote,
@@ -1096,6 +1315,7 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
   };
   const res = await writeEnrichment({
     clipPath, rel, text, baselineSha, fmRaw, body, markers, section,
+    threadSection: thread.section,
     // The re-triage reset is for the thin→filled transition at FIRST enrich.
     // The quote backfill is a corrective re-enrich of clips that were already
     // triaged (and mostly archived into _evidence/) — clearing processed: on
@@ -1152,7 +1372,17 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
 /**
  * Write the enriched clip with full G-3 / YAML verification and revert.
  */
-async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body, markers, section, resetTriage = false, stripQuoteSection = false, statusGlyph, statusMsg }) {
+async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body: bodyIn, markers, section, threadSection = null, resetTriage = false, stripQuoteSection = false, statusGlyph, statusMsg }) {
+  // A thread already in the clip is never shrunk by a shorter answer.
+  const held = bodyIn.match(THREAD_SECTION_RE);
+  if (threadSection && held) {
+    const { head, tail } = splitThreadTail(held[0]);
+    if (threadWouldShrink(head, threadSection)) threadSection = null;
+    else if (tail) threadSection = `${threadSection}\n\n${tail}`;
+  }
+  // A rewritten thread replaces the one already in the clip, so the G-3
+  // single-section-add identity is checked against the body without it.
+  const body = threadSection ? bodyIn.replace(THREAD_SECTION_RE, "") : bodyIn;
   // Stale-read guard.
   let nowText;
   try {
@@ -1170,6 +1400,7 @@ async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body, 
   // with exactly one `## Crawled content`.
   if (stripQuoteSection) newBody = newBody.replace(QUOTE_SECTION_RE, "");
   if (section) newBody = insertCrawledSection(newBody, section);
+  if (threadSection) newBody = insertCrawledSection(newBody, threadSection);
   let fmForMarkers = fmRaw;
   if (resetTriage) {
     // Backfill re-triage reset: strip the triage-authored promotion section
@@ -1219,8 +1450,11 @@ async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body, 
   // above, frontmatter-present check above, YAML parse-validate below) still
   // fully protect the write.
   if (!resetTriage && !stripQuoteSection) {
-    if (section) {
-      const stripped = post.body.replace(section, "").replace(/\n{3,}/g, "\n\n");
+    if (section || threadSection) {
+      let stripped = post.body;
+      if (section) stripped = stripped.replace(section, "");
+      if (threadSection) stripped = stripped.replace(threadSection, "");
+      stripped = stripped.replace(/\n{3,}/g, "\n\n");
       const origNorm = body.replace(/\n{3,}/g, "\n\n");
       if (!stripped.includes(origNorm.trim().slice(0, 200))) {
         writeFileSync(clipPath, text, { encoding: "utf-8" });
@@ -1241,6 +1475,102 @@ async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body, 
     return { glyph: "x", message: `${rel} -- failed (yaml parse; reverted): ${e.message}` };
   }
   return { glyph: statusGlyph, message: `${rel} -- ${statusMsg}` };
+}
+
+/**
+ * x-thread-backfill.mjs, one clip. Re-fetches the thread of an X clip and
+ * (only when `apply`) rewrites the `## Thread` section plus the status fields
+ * it owns (needs_thread, and enrichment_status / last_error when they were
+ * only the thread_not_captured stamp). Never touches the rest of the body or
+ * enriched_at. Returns { kind, chars, message } where kind is one of
+ *   skip         not an X clip (not counted)
+ *   adds-text    the thread holds text the clip lacks (chars = how much)
+ *   no-new-text  fetched fine, nothing to add (also: already applied)
+ *   fetch-failed endpoint and Scrapling both failed, or only Scrapling answered
+ *                and showed no continuation; the clip is left as is
+ *   write-failed a guarded write was reverted
+ * Idempotent: a second apply finds the identical section and reports
+ * no-new-text without writing.
+ */
+export async function rethreadClip(clipPath, vault, apply, opts = {}) {
+  const rel = relative(vault, clipPath).split(sep).join("/");
+  let text;
+  try { text = readFileSync(clipPath, "utf-8"); }
+  catch (e) { return { kind: "fetch-failed", chars: 0, message: `${rel} -- unreadable: ${e.message}` }; }
+  const { fm, fmRaw, body, present } = parseFrontmatter(text);
+  if (!present || !isXSource(fm.source || "")) return { kind: "skip", chars: 0, message: `${rel} -- not an X clip` };
+  const canon = canonicalXUrl(fm.harvest_url_canonical || fm.source) || canonicalXUrl(fm.source);
+  if (!canon) return { kind: "skip", chars: 0, message: `${rel} -- no canonical X url` };
+
+  const res = await fetchThreadAny(canon, rel, opts);
+  if (!res.ok) return { kind: "fetch-failed", chars: 0, message: `${rel} -- ${res.error}` };
+
+  const id = statusIdOf(canon);
+  const clipped = Array.isArray(res.thread) ? res.thread.find((p) => p && String(p.id) === id) : null;
+  const handle = clipped?.author?.screen_name || res.status?.author?.screen_name || (canon.match(/x\.com\/([^/]+)\//) || [])[1];
+  const existing = body.match(THREAD_SECTION_RE);
+  // Text the clip already holds outside its thread section is not "new".
+  const cap = extractThreadPosts(res.thread, id, handle && handle !== "i" ? handle : "", body.replace(THREAD_SECTION_RE, ""));
+  // A logged-out Scrapling page that shows nothing past the clipped post proves
+  // nothing about the thread: it is a failed check, not "no more text".
+  if (res.via === "scrapling" && !cap.posts.some((p) => p.mine && p.id !== id)) {
+    return { kind: "fetch-failed", chars: 0, message: `${rel} -- thread not captured: the Scrapling page showed no continuation` };
+  }
+  if (cap.extraChars <= 0) return { kind: "no-new-text", chars: 0, message: `${rel} -- no more text in the thread` };
+
+  const section = renderThreadSection(cap.posts);
+  if (existing) {
+    const { head } = splitThreadTail(existing[0]);
+    if (head.trimEnd() === `\n${section}`) return { kind: "no-new-text", chars: 0, message: `${rel} -- thread already in the clip` };
+    // Never lose a post an earlier fetch kept: replace only with a superset.
+    if (threadWouldShrink(head, section)) return { kind: "no-new-text", chars: 0, message: `${rel} -- kept the fuller thread already in the clip` };
+  }
+  const out = { kind: "adds-text", chars: cap.extraChars, message: `${rel} -- thread adds ${cap.extraChars} chars` };
+  if (!apply) return out;
+
+  // Only the author's own continuation counts as the thread being captured:
+  // drop the flag it was stamped with then, never for a link reply alone.
+  const markers = {};
+  if (cap.posts.some((p) => p.mine && p.id !== id)) {
+    if (/^needs_thread:/m.test(fmRaw)) markers.needs_thread = null;
+    if (/^last_error:\s*"?thread_not_captured"?\s*$/m.test(fmRaw)) {
+      markers.last_error = null;
+      if (/^enrichment_status:\s*"?partial"?\s*$/m.test(fmRaw)) markers.enrichment_status = "ok";
+    }
+  }
+  const w = await writeEnrichment({
+    clipPath, rel, text, baselineSha: sha256(text), fmRaw, body, markers,
+    section: null, threadSection: section, resetTriage: false, statusGlyph: "v", statusMsg: "thread added",
+  });
+  if (w.glyph !== "v") return { kind: "write-failed", chars: 0, message: w.message };
+  // Thread text is untrusted tweet text: flag-only re-screen, as body-fill does.
+  const flag = rescreenInjection(clipPath);
+  if (flag) {
+    // Fail closed as body-fill does: if the flag cannot be written, put the
+    // clip back as it was so the next run re-fetches and re-screens it.
+    // (Except when the clip changed under us: see below.)
+    const revert = (why) => {
+      writeFileSync(clipPath, text, { encoding: "utf-8" });
+      return { kind: "write-failed", chars: 0, message: `${rel} -- injection flag-write failed (${why}); reverted` };
+    };
+    const flagOnce = async () => {
+      const t2 = readFileSync(clipPath, "utf-8");
+      const p2 = parseFrontmatter(t2);
+      if (!p2.present) return { glyph: "x", message: "no frontmatter on re-read" };
+      return writeEnrichment({
+        clipPath, rel, text: t2, baselineSha: sha256(t2), fmRaw: p2.fmRaw, body: p2.body,
+        markers: { harvest_flag: "injection-suspect", harvest_flag_detail: flag.detail },
+        section: null, resetTriage: false, statusGlyph: "v", statusMsg: "flagged",
+      });
+    };
+    let fw = await flagOnce();
+    // A stale-read refusal means someone else edited the clip meanwhile: flag
+    // their version once more, and never overwrite it with the pre-thread copy.
+    if (fw.glyph === "~") fw = await flagOnce();
+    if (fw.glyph === "~") return { kind: "write-failed", chars: 0, message: `${rel} -- injection flag-write refused (${fw.message}); clip NOT reverted and NOT flagged, review it by hand` };
+    if (fw.glyph !== "v") return revert(fw.message);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

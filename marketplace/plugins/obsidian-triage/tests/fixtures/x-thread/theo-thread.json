@@ -1,0 +1,27 @@
+{
+  "code": 200,
+  "status": {
+    "id": "2114653423937507555",
+    "url": "https://x.com/theo/status/2114653423937507555",
+    "author": { "screen_name": "theo" },
+    "replies": 230
+  },
+  "thread": [
+    {
+      "id": "2114653423937507555",
+      "url": "https://x.com/theo/status/2114653423937507555",
+      "text": "I got a set of Sonos speakers a few months ago. I hate them. They're obnoxious, laggy, buggy, etc.\n\nMost importantly: they sound HORRIBLE.\n\nI plugged in a mic and said \"fix the sound\". Claude did it. Holy shit.",
+      "author": { "screen_name": "theo" },
+      "replies": 230,
+      "replying_to": null
+    },
+    {
+      "id": "2114653762619068547",
+      "url": "https://x.com/theo/status/2114653762619068547",
+      "text": "I fixed the software ahead of this by moving to a fork of Music Assistant I built for shared play at the office.\n\nI already had a MiniDSP UMIK-1 for this exact use case (I am an audio engineer and minidsp fanboy)\n\nWas able to recreate everything I needed from DIRAC in literally 10 minutes.\n\nWild world we live in. I paid hundreds of dollars a year for software that is WORSE than what i can build in a few minutes.",
+      "author": { "screen_name": "theo" },
+      "replies": 1,
+      "replying_to": { "screen_name": "theo", "status": "2114653423937507555" }
+    }
+  ]
+}

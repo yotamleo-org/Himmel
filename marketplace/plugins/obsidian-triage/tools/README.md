@@ -140,12 +140,23 @@ Entities: `LINK` → `[text](url)`. Other entity types pass through as text.
 
 ### Known limitations
 
-- **No replies/comments** — fxtwitter doesn't expose them (it returns a reply
-  *count* only). When you need the self-thread or the first reply, fxtwitter
-  sets `needs_thread: true`; nothing escalates those since HIMMEL-4709. A clip
-  with `needs_thread: true` is a detected-but-uncaptured thread, so it is
-  stamped `enrichment_status: partial` with `last_error: thread_not_captured`,
-  never `ok` (HIMMEL-6933).
+- **Threads are kept, replies mostly are not** (HIMMEL-8667). For a tweet with
+  `replies > 0` the enricher reads the keyless `/2/thread/<id>` answer (one
+  extra request, at the 1 s rate) and writes a `## Thread` section: EVERY post
+  by the clipped author in that thread, in order (not only a run from post 1),
+  plus up to `THREAD_MAX_LINKED_REPLIES` (5) replies by other authors that carry
+  a URL. Each post is labelled `**@handle**` (`author` or `reply with link`) and
+  blockquoted, so author and non-author text never mix. Other replies are not
+  kept. If the endpoint errors, Scrapling reads the public status page
+  (keyless; a logged-out page shows only some posts), except on the inline
+  Telegram call, which never launches it and leaves the clip partial for the
+  backfill. A thread that could not
+  be read on a tweet with `replies > 0` is `needs_thread: true`,
+  `enrichment_status: partial`, `last_error: thread_not_captured`, never `ok`
+  (HIMMEL-6933); a tweet with `replies == 0` is not fetched. The author's own
+  captured continuation clears the flag; a flag from the text heuristic (`1/5`,
+  `🧵`) stays when no author continuation was found, and so does a Scrapling
+  answer without one (a logged-out page proves nothing about what is missing).
 - **No video/STT/keyframes** — same as playwright path.
 - **Rate-limit is 1s per call** — fxtwitter is forgiving but be polite.
   145 clips ≈ 2-3 minutes wall-clock.
@@ -167,6 +178,35 @@ true` (plus `enrichment_status: partial` and, when `last_error` is empty,
 `last_error: thread_not_captured`) when it fires — no body change (body stays
 byte-identical under the no-section G-3 guard). Idempotent: a clip already
 flagged is skipped.
+
+### Backfilling the thread onto every X clip (`x-thread-backfill.mjs`)
+
+Clips enriched before HIMMEL-8667 kept only post 1. The backfill re-fetches the
+thread of **every** X clip under `Clippings/` at any depth (archived clips in
+`_done/YYYY-MM/` too; `_media/` and `_synthesis/` are skipped), not only the `needs_thread: true` ones:
+
+```bash
+node x-thread-backfill.mjs --vault ~/Documents/luna                 # dry run: fetch + report, writes nothing
+node x-thread-backfill.mjs --vault ~/Documents/luna --apply         # write
+node x-thread-backfill.mjs --vault ~/Documents/luna --resume-after <last printed path, as printed>   # e.g. Clippings/_done/2026-05/x.md
+```
+
+Dry run is the default and writes nothing. Per clip it prints
+`<path>\t<adds-text|no-new-text|fetch-failed>\t<chars the thread adds>`, then
+`summary: seen=N adds-text=A no-new-text=B fetch-failed=C`. `--apply` rewrites
+only the `## Thread` section and the fields it owns: `needs_thread` is dropped,
+and `enrichment_status`/`last_error` only when they were just the
+`thread_not_captured` stamp; `enriched_at` and the rest of the body are
+untouched. A second `--apply` is a no-op (the identical section is detected).
+One request per clip at 1 s: **about 25 minutes for 1383 clips** when the
+endpoint answers; each clip the endpoint fails on (a deleted tweet) adds a
+Scrapling attempt of up to 90 s, so an endpoint outage stretches the run to
+hours. A failed fetch leaves the clip as it was and never aborts the run. A
+thread already in the clip is only replaced by one that holds every post the
+clip has (never shrunk), and only the author's own continuation clears a
+`needs_thread` flag. `--limit` takes a positive integer. Exit 3 means a write
+was reverted or a directory was unreadable (its clips were not seen). It does not run
+triage, synthesis, digest or embedding: those are a separate, paid rerun.
 
 ### Re-flagging historical silent partials (`harvest-clip-body-batch.py --reflag-silent-partials`)
 
