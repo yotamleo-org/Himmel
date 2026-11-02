@@ -6,14 +6,16 @@
  * Usage:
  *   node clip-reread-plan.mjs --vault <dir> [--apply] [--min-chars N] [--kept-file <path>] [--limit N]
  *
- * Walks <vault>/Clippings at any depth (_media and _synthesis skipped). Only X
+ * Walks <vault>/Clippings at any depth (_media, _synthesis, _done and _deferred.md
+ * skipped: synthesis never takes archived or deferred clips). Only X
  * clips (source on x.com / twitter.com) are considered. Per clip it prints
  *   <rel path>\t<verdict>\t<reason>
  * with verdict one of
  *   kept     the reread goes on to synthesis
  *   skipped  nothing worth a paid reread changed
  * and reason one of
- *   fresh             not triaged yet: kept for its normal first triage, unchanged
+ *   first-triage      not triaged yet: verdict "fresh", left for the normal first triage,
+ *                     unchanged, and never part of the synthesis batch
  *   new-links         the ## Thread holds a URL the rest of the clip lacks
  *   new-author-text   the clipped author's thread posts add >= --min-chars new chars
  *   new-text          other kept thread posts add >= --min-chars new chars
@@ -26,17 +28,17 @@
  *
  * --kept-file writes the kept clips' relative paths, one per line, for the one
  * batched synthesis session; the last stdout lines are
- *   synthesis-batch: <the one command>
+ *   synthesis-batch: <the one command>   (only when --kept-file wrote the list)
  *   mode: apply | dry-run
- *   summary: seen=N kept=K skipped=S triage-skipped=T synthesised=K
+ *   summary: seen=N kept=K skipped=S fresh=F triage-skipped=T synthesised=K
  *
  * ponytail: tags are not re-derived from thread text (a guess is judgement),
  * upgrade path: a vault-tag-set matcher once a sample shows it is safe.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative, sep } from "node:path";
 
-const SKIP_DIRS = new Set(["_media", "_synthesis"]);
+const SKIP_DIRS = new Set(["_media", "_synthesis", "_done"]);
 const THREAD_RE = /\n## Thread\n<!-- fxtwitter thread -->[\s\S]*?(?=\n## |\s*$)/;
 const POST_LABEL = /^\*\*@(\w+)\*\* \(([^)]*)\) https:\/\/x\.com\/\w+\/status\/(\d+)$/;
 const DERIVED_KEYS = ["thread_links", "thread_handles"];
@@ -73,9 +75,17 @@ function findClips(dir, out = []) {
   for (const e of entries) {
     const p = join(dir, e.name);
     if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) findClips(p, out); }
-    else if (e.isFile() && e.name.endsWith(".md")) out.push(p);
+    else if (e.isFile() && e.name.endsWith(".md") && e.name !== "_deferred.md") out.push(p);
   }
   return out;
+}
+
+/** One YAML scalar value: quotes removed, an unquoted trailing ` # comment` dropped. */
+function scalar(raw) {
+  const v = raw.trim();
+  const q = v.match(/^(["'])(.*?)\1(?:\s+#.*)?$/);
+  if (q) return q[2];
+  return v.replace(/\s+#.*$/, "");
 }
 
 function split(text) {
@@ -87,7 +97,7 @@ function split(text) {
   const fm = {};
   for (const line of fmRaw.split("\n")) {
     const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*):(.*)$/);
-    if (m) fm[m[1]] = m[2].trim();
+    if (m) fm[m[1]] = scalar(m[2]);
   }
   return { fm, fmRaw, body: t.slice(end + 5) };
 }
@@ -108,15 +118,15 @@ function parseThread(section, clippedId) {
 }
 
 function isXSource(src) {
-  try { return /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/.test(new URL(src.replace(/^["']|["']$/g, "")).hostname); } catch { return false; }
+  try { return /^(?:www\.|mobile\.)?(?:x|twitter)\.com$/.test(new URL(src).hostname); } catch { return false; }
 }
 
 function classify(text) {
   const parts = split(text);
   if (!parts || !isXSource(parts.fm.source || "")) return null; // not an X clip
-  const triaged = /^true$/.test((parts.fm.processed || "").replace(/^["']|["']$/g, ""));
+  const triaged = /^true$/.test((parts.fm.processed || ""));
   const m = parts.body.match(THREAD_RE);
-  if (!triaged) return { verdict: "kept", reason: "fresh", triageSkip: false, parts };
+  if (!triaged) return { verdict: "fresh", reason: "first-triage", triageSkip: false, parts };
   if (!m) return { verdict: "skipped", reason: "no-thread", triageSkip: false, parts };
   const clippedId = ((parts.fm.source || "").match(/status\/(\d+)/) || [])[1] || "";
   const rest = withoutDerived(parts.fmRaw).join("\n") + "\n" + parts.body.replace(THREAD_RE, "");
@@ -150,17 +160,25 @@ function withoutDerived(fmRaw) {
   return kept;
 }
 
-/** Add thread_links / thread_handles to the frontmatter (replacing earlier copies); nothing else changes. */
+/** Add thread_links / thread_handles to the frontmatter (replacing earlier copies); the body and its line endings are untouched. */
 function deriveFields(text, links, handles) {
-  const t = text.replace(/\r\n/g, "\n");
-  const end = t.indexOf("\n---\n", 4);
-  const kept = withoutDerived(t.slice(4, end));
+  const m = text.match(/^---(\r?\n)([\s\S]*?)\r?\n---(\r?\n)/);
+  const eol = m[1];
+  const kept = withoutDerived(m[2].replace(/\r\n/g, "\n"));
   const block = (k, vs) => (vs.length ? [`${k}:`, ...vs.map((v) => `  - ${JSON.stringify(v)}`)] : []);
-  return `---\n${[...kept, ...block("thread_links", links), ...block("thread_handles", handles)].join("\n")}${t.slice(end)}`;
+  const fm = [...kept, ...block("thread_links", links), ...block("thread_handles", handles)].join(eol);
+  return `---${eol}${fm}${eol}---${m[3]}${text.slice(m[0].length)}`;
+}
+
+/** Replace a clip atomically: write beside it, then rename over it. */
+function writeAtomic(p, out) {
+  const tmp = join(dirname(p), `.${basename(p)}.reread-plan.tmp`);
+  writeFileSync(tmp, out, { encoding: "utf-8" });
+  renameSync(tmp, p);
 }
 
 const rows = [];
-let seen = 0, kept = 0, skipped = 0, triageSkipped = 0, unreadable = 0;
+let seen = 0, kept = 0, skipped = 0, fresh = 0, triageSkipped = 0, unreadable = 0;
 const clips = findClips(join(args.vault, "Clippings")).map((p) => ({ p, rel: relative(args.vault, p).split(sep).join("/") })).sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 for (const { p, rel } of clips) {
   if (args.limit > 0 && seen >= args.limit) break;
@@ -169,21 +187,20 @@ for (const { p, rel } of clips) {
   const c = classify(text);
   if (!c) continue;
   seen++;
-  if (c.verdict === "kept") kept++; else skipped++;
+  if (c.verdict === "kept") kept++; else if (c.verdict === "fresh") fresh++; else skipped++;
   if (c.triageSkip) {
     triageSkipped++;
     if (args.apply) {
       const out = deriveFields(text, c.links, c.handles);
-      if (out !== text.replace(/\r\n/g, "\n")) writeFileSync(p, out, { encoding: "utf-8" });
+      if (out !== text) writeAtomic(p, out);
     }
   }
   if (c.verdict === "kept") rows.push(rel);
   console.log(`${rel}\t${c.verdict}\t${c.reason}${c.triageSkip ? "\ttriage-skipped" : ""}`);
 }
 if (args.keptFile) writeFileSync(args.keptFile, rows.map((r) => r + "\n").join(""), { encoding: "utf-8" });
-const kf = args.keptFile || "<kept-file>";
-console.log(`synthesis-batch: claude --model claude-sonnet-5-5 "Run /synthesize-clips ${args.vault} once, over exactly the clips listed in ${kf}"`);
+if (args.keptFile) console.log(`synthesis-batch: claude --model claude-sonnet-5-5 "Run /synthesize-clips ${args.vault} once, over exactly the clips listed in ${args.keptFile}"`);
 console.log(`mode: ${args.apply ? "apply" : "dry-run"}`);
-console.log(`summary: seen=${seen} kept=${kept} skipped=${skipped} triage-skipped=${triageSkipped} synthesised=${kept}${unreadable ? ` unreadable=${unreadable}` : ""}`);
+console.log(`summary: seen=${seen} kept=${kept} skipped=${skipped} fresh=${fresh} triage-skipped=${triageSkipped} synthesised=${kept}${unreadable ? ` unreadable=${unreadable}` : ""}`);
 for (const w of walkErrors) console.error(`unreadable directory (its clips were NOT seen): ${w}`);
 process.exit(unreadable || walkErrors.length ? 3 : 0);

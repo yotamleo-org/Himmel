@@ -217,15 +217,17 @@ dry run unless `--apply`:
 node clip-reread-plan.mjs --vault ~/Documents/luna [--min-chars 280] [--kept-file kept.txt] [--apply]
 ```
 
-Per clip: `<path>\t<kept|skipped>\t<reason>`. A triaged (`processed: true`) clip with
+Per clip: `<path>\t<kept|skipped|fresh>\t<reason>`. A triaged (`processed: true`) clip with
 no `## Thread` is skipped `no-thread`; one whose thread adds no new URL and under
 `--min-chars` new text is skipped `below-threshold`; otherwise it is kept for
 `new-links`, `new-author-text` or `new-text`. A kept triaged clip is
 **triage-skipped**: its triage fields stay, and `--apply` adds only the rule-derived
-`thread_links` and `thread_handles`. An untriaged clip is kept as `fresh` and gets
-its normal first triage, unchanged. The run ends with the one batched synthesis
-command over `--kept-file` and
-`summary: seen=N kept=K skipped=S triage-skipped=T synthesised=K`.
+`thread_links` and `thread_handles` (frontmatter only, line endings kept, written
+atomically). An untriaged clip is reported `fresh`: it gets its normal first triage,
+unchanged, and is never in the synthesis batch. `_done/` and `_deferred.md` are not
+planned, as synthesis never takes them. Pass `--kept-file` to get the kept list and
+the one batched synthesis command over it (no command is printed without it). The run
+ends with `summary: seen=N kept=K skipped=S fresh=F triage-skipped=T synthesised=K`.
 
 ### Re-flagging historical silent partials (`harvest-clip-body-batch.py --reflag-silent-partials`)
 
