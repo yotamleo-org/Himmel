@@ -1,5 +1,6 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # SUT is read by the suites that source this file
+# launch-profile-ok-file: the claude words are fake /proc cmdline files for the tick's session census; nothing is launched
 # tick-test-fixture.sh — the shared fixture of test-tick.sh and test-tick-fields.sh
 # (one 490 s suite split in two so neither nears the runner's 600 s cap).
 # SOURCED, never run: it makes the temp root $W and its EXIT trap, the pass/fail/contains
