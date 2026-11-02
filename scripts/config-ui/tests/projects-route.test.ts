@@ -110,3 +110,12 @@ test("a cached feed saved before a value was stored is masked when it is served 
   expect(text).toContain("lunabad");
   expect(text).not.toContain(kr);
 });
+
+// HIMMEL_SECRETS_KEYRING matches the secret-name pattern, but its value ("off") is a mode, not a credential: masking it
+// would blank every "off" state the feed shows.
+test("the keyring mode switch's value is not a redaction literal (HIMMEL-8565)", async () => {
+  const { port, feeds } = boot({ HIMMEL_SECRETS_KEYRING: "off" });
+  writeFileSync(join(feeds, "luna.json"), JSON.stringify({ rows: [{ ...row("flag", "ok", "project"), installed: { detail: "48 off" } }] }));
+  const text = await (await get(port, "/api/feed?project=luna")).text();
+  expect(text).toContain("48 off");
+});

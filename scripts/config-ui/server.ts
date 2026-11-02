@@ -338,11 +338,13 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   // once stays masked. A value no read ever saw (the keyring was locked throughout) cannot be masked.
   const seen = new Set<string>();
   let literalsAt = 0, literalsMemo: string[] = [];
+  // HIMMEL_SECRETS_KEYRING matches the secret-name pattern but holds a mode ("off"), not a credential.
+  const envForLiterals = () => Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("HIMMEL_SECRETS_")));
   const secretLiterals = (): string[] => {
     if (Date.now() - literalsAt < LITERALS_TTL_MS) return literalsMemo;
     let raw = "";
     try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-    for (const v of [...envValues(raw, parseDotEnv, env), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))]) seen.add(v);
+    for (const v of [...envValues(raw, parseDotEnv, envForLiterals()), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))]) seen.add(v);
     literalsMemo = [...seen];
     literalsAt = Date.now();
     return literalsMemo;
