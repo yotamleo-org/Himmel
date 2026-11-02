@@ -52,20 +52,20 @@ has "a Medium ticket in an active sector has no signal and is proposed to the ba
 has "a plain ticket in a quiet sector is proposed to the backlog" "$out" "$(printf 'HIMMEL-708\tbacklog\tno-signal')"
 has "a scope label for a released version does not place the ticket there" "$out" "$(printf 'HIMMEL-713\tv1.0.1\toperator-directed')"
 has "a scope label for an archived version does not place the ticket there" "$out" "$(printf 'HIMMEL-714\tbacklog\tno-signal')"
-lacks "a ticket with a proposed-<v> label is skipped" "$(printf '%s\n' "$out" | grep -v '^#')" "HIMMEL-709"
+has "a proposed label is not proof that an INTAKE was queued" "$out" "$(printf 'HIMMEL-709\tv1.0.1\tproposed-label')"
 lacks "a Done ticket is skipped" "$out" "HIMMEL-710"
 lacks "a Sub-task is skipped" "$out" "HIMMEL-711"
 lacks "a ticket already in a version is skipped" "$(printf '%s\n' "$out" | grep -v '^#')" "HIMMEL-712"
-has "the total and the skipped proposals are counted" "$out" "# counts total=10 already-proposed-skipped=1 current=v1.0.1"
-has "the counts by proposed version" "$out" "# counts by proposed: backlog=4 v1.0.1=5 v1.2.0=1"
-has "the counts by basis" "$out" "# counts by basis: high-bug=1 in-progress=1 low-label=1 no-signal=3 operator-directed=2 scope-label=1 sector-active=1"
+has "the total and the skipped proposals are counted" "$out" "# counts total=11 already-proposed-skipped=0 current=v1.0.1"
+has "the counts by proposed version" "$out" "# counts by proposed: backlog=4 v1.0.1=6 v1.2.0=1"
+has "the counts by basis" "$out" "# counts by basis: high-bug=1 in-progress=1 low-label=1 no-signal=3 operator-directed=2 proposed-label=1 scope-label=1 sector-active=1"
 lacks "without --commands no command is printed" "$out" "jira release request"
 check "the dry run writes nothing to the mirror" "$before" "$(cat "$M"/*.md | cksum)"
 
-rc=0; cmds="$(bash "$SUT" --mirror "$M" --commands 2>&1)" || rc=$?
+rc=0; cmds="$(bash "$SUT" --mirror "$M" --commands --release R-fixture 2>&1)" || rc=$?
 check "--commands exits 0" "0" "$rc"
 has "--commands prints the label command" "$cmds" "jira edit HIMMEL-701 --add-labels proposed-v1.0.1"
-has "--commands prints the INTAKE request for the proposed version" "$cmds" 'jira release request v1.0.1 --verb INTAKE --key HIMMEL-703 --to v1.2.0 --why "backfill: scope-label"'
+has "--commands prints the INTAKE request for the proposed version" "$cmds" 'jira release request R-fixture --verb INTAKE --key HIMMEL-703 --to v1.2.0 --why "backfill: scope-label"'
 has "--commands prints a backlog proposal too" "$cmds" "jira edit HIMMEL-708 --add-labels proposed-backlog"
 
 rc=0; bash "$SUT" --bogus >/dev/null 2>&1 || rc=$?
@@ -84,9 +84,9 @@ sp="$WORK/sp/HIMMEL"; mkdir -p "$sp"; M_SAVE="$M"; M="$sp"
 mk 801 Task "To Do" Medium '["operator-directed"]' '[]' "Ship loop"
 M="$M_SAVE"
 printf 'v1.2 beta\tfalse\t\tfalse\n' > "$WORK/sp/HIMMEL.versions.tsv"
-spc="$(bash "$SUT" --mirror "$sp" --commands 2>&1)"
+spc="$(bash "$SUT" --mirror "$sp" --commands --release R-fixture 2>&1)"
 has "a version name with a space is quoted in the label command" "$spc" "jira edit HIMMEL-801 --add-labels 'proposed-v1.2 beta'"
-has "a version name with a space is quoted in the INTAKE request" "$spc" "jira release request 'v1.2 beta' --verb INTAKE --key HIMMEL-801 --to 'v1.2 beta'"
+has "a version name with a space is quoted in the INTAKE request" "$spc" "jira release request R-fixture --verb INTAKE --key HIMMEL-801 --to 'v1.2 beta'"
 
 # a ticket file that cannot be read fails the run instead of dropping out of the plan
 ur="$WORK/ur/HIMMEL"; mkdir -p "$ur"; cp "$sp"/*.md "$ur"/; cp "$WORK/sp/HIMMEL.versions.tsv" "$WORK/ur/HIMMEL.versions.tsv"
@@ -104,7 +104,7 @@ check "a ticket with unparseable labels exits 1 rather than dropping out of the 
 # with no open version there is no release to file into, so --commands refuses instead of printing a placeholder
 nov="$WORK/nov/HIMMEL"; mkdir -p "$nov"; cp "$sp"/*.md "$nov"/
 printf 'v0.9\ttrue\t2026-01-01\tfalse\n' > "$WORK/nov/HIMMEL.versions.tsv"
-rc=0; novout="$(bash "$SUT" --mirror "$nov" --commands 2>&1)" || rc=$?
+rc=0; novout="$(bash "$SUT" --mirror "$nov" --commands --release R-fixture 2>&1)" || rc=$?
 check "--commands with no open version exits 1" "1" "$rc"
 lacks "and prints no <release> placeholder command" "$novout" "<release>"
 check "the plan alone still works with no open version" "0" "$(bash "$SUT" --mirror "$nov" >/dev/null 2>&1; echo $?)"
@@ -112,7 +112,7 @@ check "the plan alone still works with no open version" "0" "$(bash "$SUT" --mir
 # a versions row with a missing or non-boolean released/archived column fails the run instead of reading as open
 bad="$WORK/bad/HIMMEL"; mkdir -p "$bad"; cp "$sp"/*.md "$bad"/
 printf 'v1.0.1\tgarbage\t\tfalse\n' > "$WORK/bad/HIMMEL.versions.tsv"
-rc=0; badout="$(bash "$SUT" --mirror "$bad" --commands 2>&1)" || rc=$?
+rc=0; badout="$(bash "$SUT" --mirror "$bad" --commands --release R-fixture 2>&1)" || rc=$?
 check "a versions row with a non-boolean released column exits 1" "1" "$rc"
 has "and names the malformed row" "$badout" "malformed"
 printf 'v1.0.1\tfalse\t\tmaybe\n' > "$WORK/bad/HIMMEL.versions.tsv"
@@ -121,6 +121,27 @@ check "a versions row with a non-boolean archived column exits 1" "1" "$rc"
 printf 'v1.0.1\n' > "$WORK/bad/HIMMEL.versions.tsv"
 rc=0; bash "$SUT" --mirror "$bad" >/dev/null 2>&1 || rc=$?
 check "a versions row with too few columns exits 1" "1" "$rc"
+
+# Never guess that the first open version is the declared release identifier.
+rc=0; missing_release="$(bash "$SUT" --mirror "$M" --commands 2>&1)" || rc=$?
+check "commands require the chief's explicit declared release" "1" "$rc"
+lacks "no requests are printed without a release" "$missing_release" "jira release request"
+# 41 proposed INTAKE candidates plus 61 residuals: all get a reason, at most 20 per command batch.
+bulk="$WORK/bulk/HIMMEL"; mkdir -p "$bulk"; M="$bulk"
+printf 'v1.0.1\tfalse\t\tfalse\n' > "$WORK/bulk/HIMMEL.versions.tsv"
+for n in $(seq 1 102); do
+    if [ "$n" -le 41 ]; then labels='["proposed-v1.0.1"]'; else labels='["residual-depth-1"]'; fi
+    mk "$((900 + n))" Task "To Do" Medium "$labels" '[]' "Ship loop"
+done
+all="$(bash "$SUT" --mirror "$bulk")"
+has "all 102 unplaced keys remain candidates" "$all" '# counts total=102'
+b1="$(bash "$SUT" --mirror "$bulk" --commands --release R-fixture --batch 1)"
+b6="$(bash "$SUT" --mirror "$bulk" --commands --release R-fixture --batch 6)"
+check "first batch prints only 20 requests" "20" "$(printf '%s\n' "$b1" | grep -c '^jira release request ')"
+check "last batch prints the remaining two" "2" "$(printf '%s\n' "$b6" | grep -c '^jira release request ')"
+has "proposed-only key gets a reasoned request" "$b1" 'HIMMEL-901 --to v1.0.1 --why "backfill: proposed-label"'
+has "residual gets a reasoned backlog request" "$b6" 'HIMMEL-1002 --to backlog --why "backfill: low-label"'
+lacks "batches never bypass RM admission" "$b1$b6" '--chief-override'
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

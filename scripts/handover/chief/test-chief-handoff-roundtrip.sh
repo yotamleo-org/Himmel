@@ -68,7 +68,8 @@ for _e in "$REPO_REAL"/scripts/* "$REPO_REAL"/docs/*; do
 done
 C="$fixture_repo/scripts/handover/chief/chief.sh"
 root="$tmp/handovers"
-mkdir -p "$root"
+export HIMMEL_RELEASE_STATE_DIR="$tmp/releases"
+mkdir -p "$root" "$HIMMEL_RELEASE_STATE_DIR"
 today="$(date +%F)"
 # chief.sh re-reads `date +%F` per call: pin it so a run crossing UTC midnight keeps one day
 datepin="$tmp/datepin"; mkdir -p "$datepin"
@@ -148,5 +149,32 @@ EOF
 check "2 HANDOFF carries no copy of a worker nonce" "$(grep -c 'AP-N[12]-' "$handoff" 2>/dev/null)" "0"
 check "2 successor doc has no placeholder decisions: none" "$(grep -Fxc 'decisions: none' "$docB" 2>/dev/null)" "0"
 check "2 successor doc has no unrendered slot" "$(grep -c '{{[A-Z_]*}}' "$docB" 2>/dev/null)" "0"
+
+# Missing seeding would leave both the first chief and a legacy successor unable to wake the RM.
+mkdir -p "$HIMMEL_RELEASE_STATE_DIR/R1"
+printf '{}\n' > "$HIMMEL_RELEASE_STATE_DIR/R1/release.json"
+chief new --bucket seeded >/dev/null 2>&1
+seedA="$root/tester/seeded/DEMO-nextleg-${today}A-chief.md"
+check "3 new seeds the unique declaration, not the bucket or version" "$(live_state "$seedA" | grep '^release:')" "release: R1"
+# Legacy docs have no line; next must repair them too.
+grep -v '^release:' "$seedA" > "$seedA.new" && mv "$seedA.new" "$seedA"
+chief next --bucket seeded --doc "$seedA" >/dev/null 2>&1
+seedB="$root/tester/seeded/DEMO-nextleg-${today}B-chief.md"
+check "3 next seeds a legacy doc's missing release" "$(live_state "$seedB" | grep '^release:')" "release: R1"
+# Explicit disable is not an absent line.
+awk '{ print; if ($0 == "## Live state") print "release: none" }' "$seedA" > "$seedA.new" && mv "$seedA.new" "$seedA"
+chief next --bucket disabled --doc "$seedA" >/dev/null 2>&1
+check "3 next preserves explicit none" "$(live_state "$root/tester/disabled/DEMO-nextleg-${today}B-chief.md" | grep '^release:')" "release: none"
+mkdir -p "$HIMMEL_RELEASE_STATE_DIR/R2"
+printf '{}\n' > "$HIMMEL_RELEASE_STATE_DIR/R2/release.json"
+chief new --bucket ambiguous >/dev/null 2>&1
+check "3 new never chooses among multiple declarations" "$(live_state "$root/tester/ambiguous/DEMO-nextleg-${today}A-chief.md" | grep '^release:')" ""
+rm -rf "$HIMMEL_RELEASE_STATE_DIR/R1" "$HIMMEL_RELEASE_STATE_DIR/R2"
+# Without an override the canonical repo bucket is repo, even with --bucket foreign.
+mkdir -p "$root/tester/repo/release/R3"
+printf '{}\n' > "$root/tester/repo/release/R3/release.json"
+unset HIMMEL_RELEASE_STATE_DIR
+chief new --bucket foreign >/dev/null 2>&1
+check "3 new finds the canonical primary repo release, not --bucket" "$(live_state "$root/tester/foreign/DEMO-nextleg-${today}A-chief.md" | grep '^release:')" "release: R3"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

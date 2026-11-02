@@ -56,7 +56,9 @@ release is declared (`jira release state <R>` prints a status other than
   the last `TICK_RMRUN_MIN_SECS` seconds (default 600), it launches one detached
   `jira release rm-run <R>` for the `release:` line of the chief's doc
   (`,run` on the field marks the launch; the log is `tick-rm-run.log` in the
-  tick state dir). A `?` is an unreadable state. An empty queue shows no field.
+  tick state dir). `rm-queue=off` means a declared release has no usable doc line,
+  or the state read failed; repair the wiring/read, not the lease. An empty queue,
+  no declaration, explicit `release: none`, or an unreadable doc shows no field.
 - **A worked ticket folds into the current version on its own.** A merge
   (`merge-on-green.sh`, any path that does not stamp the ticket) and a worker's LIVE
   bullet (`worker-jira-status.sh`) file one INTAKE request to the current
@@ -64,12 +66,25 @@ release is declared (`jira release state <R>` prints a status other than
   later unreleased version; the CLI dedups an open request, the LIVE path keeps
   one stamp per key, and the merge prints `intake=<REQ>` (or `intake=failed`) on
   its audit line. An unversioned or already-current ticket files nothing.
-- **Live state** carries `release: <R>` and the lease line. No release-manager
+- **Live state** carries `release: <R>` and the lease line. `chief.sh new` and
+  `next` seed a missing release line from the unique `release/<R>/release.json`
+  under `<handover root>/<user>/<primary repo>/` (or `HIMMEL_RELEASE_STATE_DIR`).
+  This is not the chief's arbitrary `--bucket`, nor the first open fixVersion.
+  Existing lines, including `release: none`, are preserved. Multiple declarations
+  are never guessed: choose one explicitly. No release-manager
   session waits between batches: each `rm-run` takes the lease as its own run
   record under `release/<R>/rm-runs/` and releases it, and a held lease refuses
   a second batch. A run that crashed while holding the lease needs
   `jira release operator takeover <R> --epoch <n> --doc <absolute run doc>`,
   then `jira release rm-run <R> --doc <that doc>`.
+- **Backfill unplaced tickets without bypassing the RM.**
+  `bash scripts/handover/chief-kit/intake-backfill.sh --mirror <snapshot> --commands --release <R> --batch <n>`
+  prints, never executes, reasoned INTAKE requests for at most 20 keys per batch.
+  Keep the same mirror snapshot for stable batch offsets; file one batch, let the
+  tick's RM drain it, then file the next. `proposed-*` is not proof of a request:
+  those keys remain candidates; the request CLI deduplicates matching pending
+  requests. The RM still decides version versus backlog; no fixVersion is written
+  by this tool and there is no bulk override.
 - **STATUS, BURN-DOWN and READY** remain release-manager verbs, run by an
   on-demand session armed from `docs/handover/rm-brief-template.md` only when
   you need one of them. That session does the verb, reports, releases the
