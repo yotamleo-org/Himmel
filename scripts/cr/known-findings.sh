@@ -43,10 +43,13 @@
 set -uo pipefail
 # a relative-entry copy that is not the anchor's hands off to it.
 case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac
-# The catalogue is the CALLER's copy: pin it before the hand-off, because the anchor's copy
-# would otherwise default to its own scripts/cr/known-findings.json and rewrite the primary.
-: "${KNOWN_FINDINGS_FILE:=$(cd "$_ah_d" && pwd)/known-findings.json}"; export KNOWN_FINDINGS_FILE
 . "$_ah_d/anchor-handoff.sh" || exit 2
+# Reached through the hand-off this is the anchor's copy, but the catalogue is still the CALLER's
+# (the cwd tree, as for every gate writer): without this --refresh rewrites the primary's JSON.
+if [ -n "${CR_ANCHOR_HANDED_OFF:-}" ] && [ -z "${KNOWN_FINDINGS_FILE:-}" ]; then
+  _kf_top="$(git rev-parse --show-toplevel 2>/dev/null)" || _kf_top=""  # swallow-ok: no cwd tree falls back to this copy's own catalogue
+  [ -f "$_kf_top/scripts/cr/known-findings.json" ] && KNOWN_FINDINGS_FILE="$_kf_top/scripts/cr/known-findings.json"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KF="${KNOWN_FINDINGS_FILE:-$SCRIPT_DIR/known-findings.json}"
