@@ -943,6 +943,66 @@ mkdir -p "$tmpdir/vault-with-no-clippings"
 node "$BACKFILL" --vault "$tmpdir/vault-with-no-clippings" >"$tmpdir/t22e.out" 2>&1
 assert "Test22E: a vault with no Clippings/ is an error (exit 1)" "1" "$?"
 
+# -- Test 23: reflag leaves a captured thread alone; a rewrite never loses text --
+echo "Test 23: --reflag skips a clip that holds ## Thread; a thread rewrite keeps the fuller text"
+t23a_vault="$tmpdir/vault-t23a"; mkdir -p "$t23a_vault/Clippings"
+cat >"$t23a_vault/Clippings/captured.md" <<'EOF'
+---
+source: https://x.com/claudeai/status/50
+processed: true
+enriched_at: 2026-06-01
+enrichment_source: fxtwitter
+enrichment_status: ok
+---
+## The Idea
+post one
+
+## Thread
+<!-- fxtwitter thread -->
+
+**@claudeai** (author) https://x.com/claudeai/status/51
+
+> the second post, already captured
+
+## Source
+https://x.com/claudeai/status/50
+EOF
+t23a_sum="$(sha256sum "$t23a_vault/Clippings/captured.md" | cut -d' ' -f1)"
+FXT_FIXTURE="$tmpdir/fixture-reflag-unmarked-status.json" FXT_THREAD_FIXTURE="$tmpdir/fixture-thread-multi.json" \
+    node "$SCRIPT" --vault "$t23a_vault" --reflag --limit 1 >"$tmpdir/t23a.out" 2>&1
+assert "Test23A: --reflag leaves a clip that already holds ## Thread byte-identical" "$t23a_sum" "$(sha256sum "$t23a_vault/Clippings/captured.md" | cut -d' ' -f1)"
+
+t23_vault="$tmpdir/vault-t23"; t23_fx="$tmpdir/t23-fixtures"; mkdir -p "$t23_fx"
+mk_x_clip "$t23_vault" a.md alice 100
+cat >"$t23_fx/100.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "100", "author": { "screen_name": "alice" }, "text": "first post" },
+  { "id": "101", "author": { "screen_name": "alice" }, "text": "second post with a long explanation of the point, see https://x.com/zed/status/555 for context" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t23_fx" node "$BACKFILL" --vault "$t23_vault" --apply >"$tmpdir/t23-1.out" 2>&1
+t23_sum="$(vault_sum "$t23_vault")"
+cat >"$t23_fx/100.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "100", "author": { "screen_name": "alice" }, "text": "first post" },
+  { "id": "101", "author": { "screen_name": "alice" }, "text": "second post" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t23_fx" node "$BACKFILL" --vault "$t23_vault" --apply >"$tmpdir/t23-2.out" 2>&1
+assert "Test23B: the same posts with truncated text leave the fuller section in place" "$t23_sum" "$(vault_sum "$t23_vault")"
+cat >"$t23_fx/100.json" <<'EOF'
+{ "code": 200, "thread": [
+  { "id": "100", "author": { "screen_name": "alice" }, "text": "first post" },
+  { "id": "101", "author": { "screen_name": "alice" }, "text": "second post with a long explanation of the point, see https://x.com/zed/status/555 for context" },
+  { "id": "102", "author": { "screen_name": "alice" }, "text": "third post that arrived later" }
+] }
+EOF
+FXT_THREAD_FIXTURE_DIR="$t23_fx" node "$BACKFILL" --vault "$t23_vault" --apply >"$tmpdir/t23-3.out" 2>&1
+t23c=no; grep -q "third post that arrived later" "$t23_vault/Clippings/a.md" 2>/dev/null && t23c=yes
+assert "Test23C: a status link inside a kept post's text does not block a later, fuller thread" "yes" "$t23c"
+node "$BACKFILL" --vault "$t23_vault" --resume-after >"$tmpdir/t23d.out" 2>&1
+assert "Test23D: --resume-after without a value is a usage error (exit 1)" "1" "$?"
+
 # -- Summary -----------------------------------------------------------
 total=$((pass + fail))
 echo ""

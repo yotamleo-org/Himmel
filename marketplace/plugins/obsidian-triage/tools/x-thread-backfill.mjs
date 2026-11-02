@@ -17,7 +17,13 @@
  *   adds-text    the thread holds text the clip lacks (chars = how much)
  *   no-new-text  fetched fine, nothing to add (also: already applied)
  *   fetch-failed endpoint and Scrapling both failed; the clip is left as is
- * then one line:  summary: seen=N adds-text=A no-new-text=B fetch-failed=C
+ * A guarded write that was reverted prints  <rel path>\twrite-failed\t0\t<why>
+ * on stderr; those clips count in neither bucket below. The run ends with
+ *   non-x skipped: N
+ *   write-failed: W          (only when W is not 0)
+ *   mode: apply | dry-run
+ *   summary: seen=N adds-text=A no-new-text=B fetch-failed=C
+ * where N = A + B + C + W.
  *
  * Rate: one request per clip at 1 s, so about 25 minutes for 1383 clips.
  * Resumable: a re-run skips nothing on its own, so pass --resume-after with
@@ -71,7 +77,11 @@ for (let i = 0; i < argv.length; i++) {
     if (!/^[1-9][0-9]*$/.test(v)) { console.error(`--limit needs a positive integer, got '${v}'`); usage(1); }
     args.limit = parseInt(v, 10);
   }
-  else if (a === "--resume-after") args.resumeAfter = argv[++i];
+  else if (a === "--resume-after") {
+    const v = argv[++i];
+    if (!v) { console.error("--resume-after needs a path"); usage(1); }
+    args.resumeAfter = v;
+  }
   else if (a === "-h" || a === "--help") usage(0);
   else { console.error(`unknown arg: ${a}`); usage(1); }
 }

@@ -525,6 +525,18 @@ export function renderThreadSection(posts) {
   return lines.join("\n");
 }
 
+/**
+ * True when replacing the `## Thread` section `existing` with `section` would
+ * lose captured text: a post that was kept is missing from the new answer, or
+ * the new section is shorter. Only the per-post label lines count as posts, so
+ * a status link inside a post's own text is not a post.
+ */
+function threadWouldShrink(existing, section) {
+  const ids = (s) => new Set([...s.matchAll(/^\*\*@\w+\*\* \([^)]*\) https:\/\/x\.com\/\w+\/status\/(\d+)$/gm)].map((m) => m[1]));
+  const want = ids(section);
+  return [...ids(existing)].some((id) => !want.has(id)) || section.length < existing.trim().length;
+}
+
 function statusIdOf(canon) {
   return (canon.match(/\/status\/(\d+)/) || [])[1] || "";
 }
@@ -1100,6 +1112,7 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
     const src = fm.source || "";
     if (!isXSource(src)) return { glyph: "o", message: `${rel} -- skipped (reflag: not x/twitter source)` };
     if (!alreadyEnriched(fmRaw)) return { glyph: "o", message: `${rel} -- skipped (reflag: not enriched — normal enrich handles it)` };
+    if (THREAD_SECTION_RE.test(body)) return { glyph: "o", message: `${rel} -- skipped (reflag: thread already captured under ## Thread)` };
     if (/^needs_thread:\s*true\s*$/m.test(fmRaw)) return { glyph: "o", message: `${rel} -- skipped (reflag: needs_thread already set)` };
     const canon = canonicalXUrl(fm.harvest_url_canonical || src) || canonicalXUrl(src);
     const fxtUrl = canon && fxtUrlFor(canon);
@@ -1330,6 +1343,9 @@ export async function processClip(clipPath, vault, dryRun, opts = {}) {
  * Write the enriched clip with full G-3 / YAML verification and revert.
  */
 async function writeEnrichment({ clipPath, rel, text, baselineSha, fmRaw, body: bodyIn, markers, section, threadSection = null, resetTriage = false, stripQuoteSection = false, statusGlyph, statusMsg }) {
+  // A thread already in the clip is never shrunk by a shorter answer.
+  const held = bodyIn.match(THREAD_SECTION_RE);
+  if (threadSection && held && threadWouldShrink(held[0], threadSection)) threadSection = null;
   // A rewritten thread replaces the one already in the clip, so the G-3
   // single-section-add identity is checked against the body without it.
   const body = threadSection ? bodyIn.replace(THREAD_SECTION_RE, "") : bodyIn;
@@ -1466,9 +1482,7 @@ export async function rethreadClip(clipPath, vault, apply, opts = {}) {
   if (existing) {
     if (existing[0].trimEnd() === `\n${section}`) return { kind: "no-new-text", chars: 0, message: `${rel} -- thread already in the clip` };
     // Never lose a post an earlier fetch kept: replace only with a superset.
-    const want = new Set(cap.posts.map((p) => p.id));
-    const lost = [...existing[0].matchAll(/\/status\/(\d+)/g)].some((m) => !want.has(m[1]));
-    if (lost) return { kind: "no-new-text", chars: 0, message: `${rel} -- kept the fuller thread already in the clip` };
+    if (threadWouldShrink(existing[0], section)) return { kind: "no-new-text", chars: 0, message: `${rel} -- kept the fuller thread already in the clip` };
   }
   const out = { kind: "adds-text", chars: cap.extraChars, message: `${rel} -- thread adds ${cap.extraChars} chars` };
   if (!apply) return out;
@@ -1505,6 +1519,9 @@ export async function rethreadClip(clipPath, vault, apply, opts = {}) {
       markers: { harvest_flag: "injection-suspect", harvest_flag_detail: flag.detail },
       section: null, resetTriage: false, statusGlyph: "v", statusMsg: "flagged",
     });
+    // A stale-read refusal means someone else edited the clip meanwhile: their
+    // file is not ours to overwrite with the pre-thread copy.
+    if (fw.glyph === "~") return { kind: "write-failed", chars: 0, message: `${rel} -- injection flag-write refused (${fw.message}); clip NOT reverted, review it by hand` };
     if (fw.glyph !== "v") return revert(fw.message);
   }
   return out;
