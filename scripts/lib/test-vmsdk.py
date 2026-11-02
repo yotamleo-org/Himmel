@@ -2829,6 +2829,89 @@ class TestGuestExec(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class TestGuestUsage(unittest.TestCase):
+    """guest_usage_percent: the guest account's usage percentage
+    from the usage cache the guest's own statusline writes, or "unknown" when the
+    guest does not expose a fresh one. Never a guess, never a credential file."""
+
+    def setUp(self):
+        env = mock.patch.dict(os.environ, {"ubuntu_vm_user": "u", "ubuntu_vm_pass": "p"}, clear=False)
+        env.start()
+        self.addCleanup(env.stop)
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"):
+            self.vm = vmsdk.VM("ubuntu_new")
+
+    @staticmethod
+    def _cache(five=None, seven=None, age=5):
+        import time
+        d = {"primaries_refreshed_at": int(time.time()) - age}
+        if five is not None:
+            d["five_hour"] = {"utilization": five}
+        if seven is not None:
+            d["seven_day"] = {"utilization": seven}
+        return json.dumps(d)
+
+    def _usage(self, rc=0, out=""):
+        with mock.patch.object(self.vm, "guest_exec", return_value=(rc, out)):
+            return self.vm.guest_usage_percent()
+
+    def test_returns_the_higher_of_the_two_windows(self):
+        self.assertEqual(self._usage(0, self._cache(five=74, seven=81)), 81)
+        self.assertEqual(self._usage(0, self._cache(five=92, seven=40)), 92)
+
+    def test_one_window_is_enough(self):
+        self.assertEqual(self._usage(0, self._cache(five=55)), 55)
+
+    def test_unknown_when_the_login_exposes_no_cache(self):
+        self.assertEqual(self._usage(1, "cat: /tmp/claude/statusline-usage-cache.json: No such file"), "unknown")
+
+    def test_unknown_for_a_stale_cache(self):
+        self.assertEqual(self._usage(0, self._cache(five=99, seven=99, age=100000)), "unknown")
+
+    def test_unknown_without_a_refresh_stamp(self):
+        self.assertEqual(self._usage(0, json.dumps({"five_hour": {"utilization": 10}})), "unknown")
+
+    def test_unknown_for_junk(self):
+        for out in ("", "not json", "[]", '{"five_hour": {"utilization": "high"}, "primaries_refreshed_at": 1}',
+                    self._cache(five=True), self._cache(five=-3), self._cache(five=float("nan"))):
+            with self.subTest(out=out):
+                self.assertEqual(self._usage(0, out), "unknown")
+
+    def test_an_over_limit_figure_is_kept_not_called_unknown(self):
+        self.assertEqual(self._usage(0, self._cache(five=103, seven=40)), 103)
+        self.assertEqual(self._usage(0, self._cache(five=100)), 100)
+
+    def test_a_non_finite_figure_is_unknown(self):
+        self.assertEqual(self._usage(0, self._cache(five=float("inf"))), "unknown")
+
+    def test_unknown_when_the_guest_cannot_be_reached(self):
+        with mock.patch.object(self.vm, "guest_exec", side_effect=vmsdk.VMError("not running")):
+            self.assertEqual(self.vm.guest_usage_percent(), "unknown")
+
+    def test_reads_only_the_usage_cache_file(self):
+        with mock.patch.object(self.vm, "guest_exec", return_value=(0, self._cache(five=1))) as g:
+            self.vm.guest_usage_percent()
+        cmd = g.call_args[0][0]
+        self.assertEqual(cmd, "cat " + vmsdk.GUEST_USAGE_CACHE)
+        for secret in (".credentials", ".claude.json", ".env"):
+            self.assertNotIn(secret, cmd)
+
+    def test_cli_usage_prints_the_percent(self):
+        with mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
+             mock.patch.object(vmsdk.VM, "guest_usage_percent", return_value=81):
+            with mock.patch("builtins.print") as p:
+                rc = vmsdk.main(["ubuntu_new", "usage"])
+        self.assertEqual(rc, 0)
+        p.assert_called_once_with(81)
+
+    def test_cli_usage_unreachable_vm_prints_unknown_exit_0(self):
+        with mock.patch.object(vmsdk, "VM", side_effect=vmsdk.VMError("no such vm")):
+            with mock.patch("builtins.print") as p:
+                rc = vmsdk.main(["ubuntu_new", "usage"])
+        self.assertEqual(rc, 0)
+        p.assert_called_with("unknown")   # the reason goes to stderr first; the answer is the last print
+
+
 def _ubuntu_up():
     import socket as _s
     try:
