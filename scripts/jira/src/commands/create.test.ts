@@ -1798,6 +1798,18 @@ describe('create — blocker version placement', () => {
     expect(postWriter()).toBe('create-followup');
   });
 
+  it('an explicit --fix-version on a blocker is a hand write: no writer named', async () => {
+    await file('--blocks', 'HIMMEL-6575', '--fix-version', 'v1.1.3');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(postWriter()).toBeUndefined();
+  });
+
+  it('a residual that inherits its blocker version names create-residual', async () => {
+    await file('--residual-of', 'HIMMEL-1620', '--fu-class', 'polish', '--blocks', 'HIMMEL-6575');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(postWriter()).toBe('create-residual');
+  });
+
   it('handles both 6559 dependents in one filing', async () => {
     await file('--blocks', 'HIMMEL-6575', '--blocks', 'HIMMEL-6582');
     expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
