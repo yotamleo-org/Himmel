@@ -117,9 +117,9 @@ test("probe: writeLogin with an unstubbed env never reaches a keyring", async ()
   if (!process.env.KR_LOG) throw new Error("the probe refuses to run without the recording keyring");
   const { writeLogin } = await import(join(process.env.KR_ROOT!, "scripts/config-ui/login.ts"));
   const dir = mkdtempSync(join(tmpdir(), "login-probe-"));
-  const map = process.env.KR_MAP === "1" ? { PATH: process.env.PATH, HOME: join(dir, "home"), DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS, KR_LOG: process.env.KR_LOG } : undefined;
+  const map = process.env.KR_MAP !== "0" ? { ...(process.env.KR_MAP === "2" ? { NODE_ENV: "development" } : {}), PATH: process.env.PATH, HOME: join(dir, "home"), DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS, KR_LOG: process.env.KR_LOG } : undefined;
   let err = "";
-  try { writeLogin(join(dir, "login"), "operator", "correct-horse-battery", map ? { env: map } : {}); } catch (e) { err = (e as Error).message; }
+  try { writeLogin(join(dir, "login"), "operator", "correct-horse-battery", { createOnly: true, ...(map ? { env: map } : {}) }); } catch (e) { err = (e as Error).message; }
   // the closed keyring refuses the write; any other failure (or none) means the call never reached the keyring path.
   expect(err).toMatch(/^the keyring could not be written/);
 });
@@ -135,6 +135,8 @@ login_row() {
 }
 login_row "E1 writeLogin with an unstubbed env map, from scripts/config-ui, stores and searches nothing" "$root/scripts/config-ui" 1 0
 login_row "E2 writeLogin with an unstubbed env map, from the repo root, stores and searches nothing" "$root" 1 0
+login_row "E5 writeLogin with a map that sets NODE_ENV=development, from scripts/config-ui, stores and searches nothing" "$root/scripts/config-ui" 2 0
+login_row "E6 writeLogin with a map that sets NODE_ENV=development, from the repo root, stores and searches nothing" "$root" 2 0
 login_row "E3 writeLogin with the default env, from scripts/config-ui, records zero keyring stores" "$root/scripts/config-ui" 0 -
 login_row "E4 writeLogin with the default env, from the repo root, records zero keyring stores" "$root" 0 -
 
