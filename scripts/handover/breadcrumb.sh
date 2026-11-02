@@ -115,11 +115,13 @@ cmd_write() {
     if [ -z "$out" ]; then
         local root
         root="$(handover_root_ensure)" || { echo "breadcrumb write: handover root unresolvable — pass --out" >&2; exit 2; }
-        mkdir -p "$root/breadcrumbs"
         out="$root/breadcrumbs/$ticket.json"
-    else
-        mkdir -p "$(dirname "$out")"
     fi
+    # A test on the station never writes a real breadcrumb; any other guard failure writes.
+    local guard_rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check breadcrumb "$out" || guard_rc=$?
+    [ "$guard_rc" != 77 ] || exit 77
+    mkdir -p "$(dirname "$out")"
 
     # Build JSON via node (safe escaping + array for completed). Write
     # ATOMICALLY: serialize to a temp file, round-trip-verify it parses, then

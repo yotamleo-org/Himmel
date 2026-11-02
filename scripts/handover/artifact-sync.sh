@@ -177,6 +177,10 @@ cmd_record() {
 
     local registry
     registry=$(_af_registry_path) || exit 2
+    # A test on the station never writes a real registry; any other guard failure records.
+    local guard_rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check artifact-sync "$registry" || guard_rc=$?
+    [ "$guard_rc" != 77 ] || exit 77
     mkdir -p "$(dirname "$registry")" || _af_die "record: cannot create $(dirname "$registry")"
 
     local url_esc path_esc title_esc row
