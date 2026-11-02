@@ -266,6 +266,7 @@ stdout6="$(render)"
 html6="$(cat "$out" 2>/dev/null)"
 cp "$out" "$W/workers.html"
 contains 'a held-lock worker doc marks its ticket live with label, phase and PR (HIMMEL-3990)' "$html6" '"WORKER":{"1":["N55","LIVE",1525]'
+contains 'a Jira row carries its live worker under the worker key the page reads (HIMMEL-8638)' "$html6" '"worker":["N55","LIVE",1525]'
 not_contains 'a WRAPPED worker is not live even while its lock lingers (HIMMEL-3990)' "$html6" '"6":["N56"'
 not_contains 'a worker doc with no held lock is not live (HIMMEL-3990)' "$html6" '"7":["N57"'
 contains 'a marker-shaped brief bullet above Results sets neither phase nor PR (HIMMEL-3990)' "$html6" '"9":["N59","LIVE",null]'

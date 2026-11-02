@@ -256,6 +256,10 @@ check "review cost line" "cost: cost-eq=400k workers=3 per-ticket=200k (+125k vs
   "$(sed -n 2p "$W/review.out")"
 check "review health line" "health: red-main=0 (+0) cache-hit=92% (n/a) flakes=2 (+2); failure and denial rates: no source yet" \
   "$(sed -n 3p "$W/review.out")"
+jq -c 'if has("workers") then .legs = .workers | del(.workers) else . end' "$OUT" >"$W/old-rows.jsonl"
+run review --version v1.1.0 --file "$W/old-rows.jsonl" >"$W/review-old.out" 2>&1
+check "a row stored before the rename (legs key) still reviews" "cost: cost-eq=400k workers=3 per-ticket=200k (+125k vs v1.0.0)" \
+  "$(sed -n 2p "$W/review-old.out")"
 run review --version v9.9.9 --file "$OUT" >"$W/review2.out" 2>&1
 check "an unknown version reads no data yet" "velocity: no data yet cost: no data yet health: no data yet" \
   "$(tr '\n' ' ' <"$W/review2.out" | sed 's/ $//')"

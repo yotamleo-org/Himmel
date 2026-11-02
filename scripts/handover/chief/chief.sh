@@ -1841,7 +1841,7 @@ carried_residual_must() {
 # prefix: for `workers:`, the whole block tick.sh reads (the wrapped lines up to
 # a blank, `word:`, list-marker, `>` or `#` line). Absent field -> empty.
 seeded_live_field() {
-    printf '%s\n' "$1" | awk -v k="$2:" -v block="$({ [ "$2" = workers ] || [ "$2" = workers ]; } && echo 1)" '
+    printf '%s\n' "$1" | awk -v k="$2:" -v block="$({ [ "$2" = legs ] || [ "$2" = workers ]; } && echo 1)" '
         !f && index($0, k) == 1 { f = 1; sub(/^[^:]*:[[:space:]]*/, ""); print; if (!block) exit; next }
         f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { exit }
         f { print }
@@ -1920,7 +1920,7 @@ seed_live_fields() {
         $0 == "## Live state" { f = 1; print; next }
         f && /^## / { f = 0 }
         f && /^(workers|legs|queue|last GO|acked): </ {
-            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : (name == "workers" ? "workers" : name))]
+            name = substr($0, 1, index($0, ":") - 1); v = ENVIRON["SL_" (name == "last GO" ? "last_GO" : (name == "legs" ? "workers" : name))]
             if (v != "") { print name ": " v; next }
         }
         { print }' "$doc" > "$doc.seed" || { rm -f "$doc.seed"; err "could not seed the Live state into $doc"; exit 1; }

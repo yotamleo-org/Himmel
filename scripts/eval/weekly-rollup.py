@@ -427,7 +427,7 @@ def cmd_review(a):
         sfmt(r["merges"]), dfmt(d["merges"], plain), vs, sfmt(r["tickets"]), dfmt(d["tickets"], plain),
         sfmt(r["fix_share_pct"], "%"), dfmt(d["fix_share_pct"], plain), sfmt(r["days"], "d")))
     print("cost: cost-eq=%s workers=%s per-ticket=%s (%s%s)" % (
-        kfmt(r["cost_eq"]), r["workers"], kfmt(r["cost_eq_per_ticket"]), dfmt(d["cost_eq_per_ticket"], kfmt), vs))
+        kfmt(r["cost_eq"]), r.get("workers", r.get("legs")), kfmt(r["cost_eq_per_ticket"]), dfmt(d["cost_eq_per_ticket"], kfmt), vs))
     print("health: red-main=%s (%s) cache-hit=%s (%s) flakes=%s (%s); failure and denial rates: no source yet" % (
         sfmt(r["red_main"]), dfmt(d["red_main"], plain), sfmt(r["cache_hit_pct"], "%"), dfmt(d["cache_hit_pct"], plain),
         sfmt(r["flake_rows"]), dfmt(d["flake_rows"], plain)))

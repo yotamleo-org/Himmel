@@ -1654,10 +1654,37 @@ check "60w next succeeds against a doc with a workers: Live state line" "$rc60w"
 live60w="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc60wB" 2>/dev/null)"
 # shellcheck disable=SC2016  # literal fixture text
 check "60w successor Live state seeds the predecessor's workers value verbatim" \
-    "$(printf '%s\n' "$live60w" | grep -c '^\(workers\|workers\): `N9:nonce-fixture-60w:lock-fixture-60w:42424`$')" "1"
+    "$(printf '%s\n' "$live60w" | grep -c '^\(workers\|legs\): `N9:nonce-fixture-60w:lock-fixture-60w:42424`$')" "1"
 check "60w successor Live state keeps no placeholder workers line" \
-    "$(printf '%s\n' "$live60w" | grep -c '^\(workers\|workers\): <')" "0"
+    "$(printf '%s\n' "$live60w" | grep -c '^\(legs\|workers\): <')" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60wA" "$token60w" >/dev/null 2>&1
+
+# --- 60l: a predecessor that still says the pre-rename `legs:` over a `legs` manifest seeds its whole block too.
+out60l="$(chief new --bucket llivesrc)"
+token60l="$(token_of "$out60l")"
+doc60lA="$root/tester/llivesrc/DEMO-nextleg-${today}A-chief.md"
+doc60lB="$root/tester/llivedst/DEMO-nextleg-${today}B-chief.md"
+# shellcheck disable=SC2016  # backtick worker span, literal fixture text
+fixture60l='legs: `N9:nonce-fixture-60l:lock-fixture-60l:42424`'
+# shellcheck disable=SC2016  # backtick worker span, literal fixture text
+fixture60l2='  `N8:nonce-two-60l:lock-two-60l:42425`'
+awk -v workers_line="$fixture60l" -v workers_line2="$fixture60l2" '
+    $0 == "## Live state" { print; print ""; print workers_line; print workers_line2; print "queue: N9"; print "last GO: `#999:deadbeef00`"; print "acked: none"; skip = 1; next }
+    skip && /^## / { skip = 0 }
+    skip { next }
+    { print }
+' "$doc60lA" > "$doc60lA.new" && mv "$doc60lA.new" "$doc60lA"
+printf '{"legs":[{"label":"N9","doc":"%s"}]}\n' "$leg60" > "${doc60lA%.md}.fleet.json"
+rc60l=0
+chief next --bucket llivedst --doc "$doc60lA" >/dev/null 2>&1 || rc60l=$?
+check "60l next succeeds against a doc with a legs: Live state line" "$rc60l" "0"
+live60l="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$doc60lB" 2>/dev/null)"
+# shellcheck disable=SC2016  # literal fixture text
+check "60l successor Live state seeds the predecessor's open legs block under workers:, dropping the unlisted N8" \
+    "$(printf '%s\n' "$live60l" | grep -Fxc 'workers: `N9:nonce-fixture-60l:lock-fixture-60l:42424`')" "1"
+check "60l the trimmed history keeps the wrapped continuation line of the legs block" \
+    "$(cat "$root"/tester/llivedst/specs/history/chief-live-state-*.md 2>/dev/null | grep -Fc 'N8:nonce-two-60l')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$doc60lA" "$token60l" >/dev/null 2>&1
 
 out6w="$(chief new --bucket wnextrepo)"
 token6w="$(token_of "$out6w")"

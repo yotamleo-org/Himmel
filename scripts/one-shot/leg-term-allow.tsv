@@ -78,6 +78,9 @@
 ^scripts/eval/profile-openings\.py$	\(\?:worker\|leg\)	K5 legacy launch-line read; leaves with HIMMEL-6647
 ^scripts/eval/worker-digest/worker-digest\.ts$	\(\?:leg\|worker\)-graph	K5 legacy graph-script name read; leaves with HIMMEL-6647
 ^scripts/eval/weekly-rollup\.py$	\(\?:worker\|leg\)-burn	K5 legacy burn-line read; leaves with HIMMEL-6647
+^scripts/eval/weekly-rollup\.py$	get\("legs"\)	K5 a rollup row stored before the rename keeps the legs key and still reviews; leaves with HIMMEL-6647
+^scripts/eval/test-weekly-rollup\.sh$	\.legs = |legs key	K5 pins that a rollup row stored before the rename (legs key) still reviews; leaves with HIMMEL-6647
+^scripts/handover/chief/test-chief\.sh$	fixture60l|"legs":|60l|legs: Live|whole legs block|pre-rename|workers..legs|legs..workers	K5 a predecessor that still says legs: seeds its whole block, and the assertions accept either spelling; leaves with HIMMEL-6647
 ^scripts/eval/test-autocompact-ab\.sh$	pre-rename|"legs"|legs-array	K5 test pins that an old legs-array manifest still reads and is refused with the switch off; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/board\.mjs$	pre-rename .?legs:|\^legs:|older tick\.sh|field\.legs	K5 reads the pre-rename Live state line and the older tick field; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/chief-wait\.sh$	legs=|legset=|pre-rename .?legs|\.legs\)|field legs	K5 reads the pre-rename manifest array and the older tick fields; leaves with HIMMEL-6647
@@ -90,10 +93,13 @@
 ^scripts/handover/chief-kit/tracker\.py$	pre-rename .?legs|'legs' in m|m\.get\('legs'\)	K5 reads the pre-rename manifest array; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/version-status-audit\.sh$	pre-rename .?legs|legs-only|'legs' in m|m\.get\('legs'\)	K5 reads the pre-rename manifest array; leaves with HIMMEL-6647
 ^scripts/handover/chief/chief\.sh$	pre-rename .?legs|\.legs\)|wkey=legs|workers\|legs\|queue	K5 reads the pre-rename manifest array and Live state line; leaves with HIMMEL-6647
+^scripts/handover/chief/chief\.sh$	= legs \]|name == "legs"	K5 a predecessor that still says legs: seeds its whole block under workers:; leaves with HIMMEL-6647
 ^scripts/handover/test-arm-resume-context\.sh$	--tier leg|got: leg	K5 test pins that the old --tier value is refused; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-auto-go\.sh$	"legs":\[|pre-rename|old .?legs	K5 old-format manifest fixtures pin that an old legs array still reads; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-chief-wait-b\.sh$	legs=|legset=|"legs":\[|old .?legs	K5 old-format manifest and older tick-field fixtures pin that they still read; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-board\.sh$	legs=|legset=|lacks '[^']*\(HIMMEL-8309\)'	K5 older tick-field stub, and tests pin that the old word is absent from the page; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/board\.mjs$	leg: [lm]\.|n\.leg\)|\]\.leg|r\.leg\)|legsOut	K5 board --json wire keys leg and legs, read by config-ui shift.ts and the agui board; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/test-board\.sh$	M\.legs|l\.leg |n\.leg |archive_legs|under the leg: key|leg: key stays|\(leg:, legs:\)|legs: fixture	K5 board --json wire keys leg and legs, read by config-ui shift.ts and the agui board; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-compacted-check\.sh$	legs:	K5 old-format COMPACTED bullet fixture pins that it still reads; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-doc-reader-agreement\.sh$	M1a|legs:|old legs|for form in legs|legs-output-grep|"\$fn" legs	K5 old-format chief docs and manifests pin that every reader still reads them; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-fleet-manifest\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format manifest sections pin the read, the refusal and the rewrite; leaves with HIMMEL-6647

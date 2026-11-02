@@ -675,7 +675,7 @@ def jira_view(mir, workers, vers, prows, vnames, target=None):
             lg = workers.get(num(k))
             tk.append(dict(k=num(k), t=clip(m['title'], 90), s=m['sn'] or m['cat'], b=b, v=vi[v],
                            ui=(p[9] if p else '') or '', pv=vnames[p[3]] if p else None, ln=first_sentence(m['impact']) or clip(m['title'], 160),
-                           leg=lg if b not in ('done', 'wont') else None, live=bool(lg and b == 'todo')))
+                           worker=lg if b not in ('done', 'wont') else None, live=bool(lg and b == 'todo')))
     tk.sort(key=lambda t: t['k'])
 
     def open_(t):
