@@ -95,6 +95,13 @@ describe('transition to Done stamps the current fixVersion (HIMMEL-6416)', () =>
     expect(JSON.stringify(puts()[0][2])).toContain('v1.1.3');
   });
 
+  it('stamp names transition-stamp', async () => {
+    wire([]);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0][3]).toBe('transition-stamp');
+  });
+
   it('--no-version leaves it empty', async () => {
     wire([]);
     await run('HIMMEL-1', 'Done', '--no-version');

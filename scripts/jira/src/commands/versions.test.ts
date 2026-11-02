@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { readVersionWrites } from '../release/version-writes.js';
 import {
   buildVersionCreateBody,
   buildFixVersionBody,
@@ -201,6 +205,51 @@ describe('setFixVersion', () => {
       'GET /issue/HIMMEL-374?fields=fixVersions': { fields: {} },
     });
     await expect(setFixVersion('HIMMEL-374', 'remove', 'v1.0.0')).rejects.toThrow(/was not changed/);
+  });
+});
+
+// The writer a caller names reaches the journal; a caller that names none is hand.
+describe('setFixVersion names its writer', () => {
+  let dir: string;
+  let journal: string;
+
+  // One key that has no Fix Version until the PUT lands, then carries v1.0.0 with a newer changelog entry.
+  function wire(): void {
+    let put = false;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: { method?: string } = {}) => {
+      const path = url.replace('https://x.example/rest/api/3', '');
+      const reply = (body: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
+      if ((init.method ?? 'GET') === 'PUT') { put = true; return { ok: true, status: 204, text: async () => '' }; }
+      if (path.startsWith('/issue/HIMMEL-374/changelog')) {
+        return reply({ total: put ? 1 : 0, maxResults: 100, values: put ? [{ id: '500', created: 't', items: [{ field: 'Fix Version', fromString: null, toString: 'v1.0.0' }] }] : [] });
+      }
+      return reply({ fields: { fixVersions: put ? [{ name: 'v1.0.0' }] : [] } });
+    }));
+  }
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'versions-writer-'));
+    journal = join(dir, 'version-writes.jsonl');
+    vi.stubEnv('JIRA_EMAIL', 'u@example.com');
+    vi.stubEnv('JIRA_API_TOKEN', 'not-a-real-token');
+    vi.stubEnv('HIMMEL_VERSION_WRITES', journal);
+    vi.stubEnv('HIMMEL_VERSION_WRITER', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('a named writer reaches the journal row', async () => {
+    wire();
+    await setFixVersion('HIMMEL-374', 'add', 'v1.0.0', 'transition-stamp');
+    expect(readVersionWrites(journal).map((r) => r.mechanism)).toEqual(['transition-stamp']);
+  });
+
+  it('a caller that names none stays hand', async () => {
+    wire();
+    await setFixVersion('HIMMEL-374', 'add', 'v1.0.0');
+    expect(readVersionWrites(journal).map((r) => r.mechanism)).toEqual(['hand']);
   });
 });
 
