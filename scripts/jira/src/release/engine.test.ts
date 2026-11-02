@@ -3,7 +3,7 @@ import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, op
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
+  apply, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readOperatorRecords, rmRun, rmRunSummary, signSpec, specCheck, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
@@ -439,6 +439,24 @@ describe('release engine (HIMMEL-6796)', () => {
         const r = admit(req, { ...restore, supersedes: [prior], authority: { kind: 'operator', ref: newest.id } });
         expect(r.authority).toEqual({ kind: 'operator', ref: newest.id });
         expect(r.op).toEqual({ kind: 'add', from_v: null, to_v: 'v2' });
+      });
+
+      it('lands when a newer decision names another key', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => {
+          newest = decide(T(11), 'add', null, 'v2');
+          operatorDecision(at(T(12)), { decision: '383', keys: ['K-9'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'another key' });
+        });
+        expect(admit(req, { ...restore, supersedes: [prior] }).authority).toEqual({ kind: 'operator', ref: newest.id });
+      });
+
+      it('lands when a newer core-bypass names the key, which places nothing', async () => {
+        let newest!: OperatorRow;
+        const { prior, req } = await drifted(() => {
+          newest = decide(T(11), 'add', null, 'v2');
+          coreBypass(at(T(12)), { keys: ['K-2'], decision: '451', verbatim: 'core bypass' });
+        });
+        expect(admit(req, { ...restore, supersedes: [prior] }).authority).toEqual({ kind: 'operator', ref: newest.id });
       });
 
       it('is still refused when the newest record contradicts the restore', async () => {
