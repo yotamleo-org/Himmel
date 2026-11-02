@@ -118,8 +118,10 @@ test("probe: writeLogin with an unstubbed env never reaches a keyring", async ()
   const { writeLogin } = await import(join(process.env.KR_ROOT!, "scripts/config-ui/login.ts"));
   const dir = mkdtempSync(join(tmpdir(), "login-probe-"));
   const map = process.env.KR_MAP === "1" ? { PATH: process.env.PATH, HOME: join(dir, "home"), DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS, KR_LOG: process.env.KR_LOG } : undefined;
-  try { writeLogin(join(dir, "login"), "operator", "correct-horse-battery", map ? { env: map } : {}); } catch { /* a closed keyring refuses; only the recorder counts */ }
-  expect(true).toBe(true);
+  let err = "";
+  try { writeLogin(join(dir, "login"), "operator", "correct-horse-battery", map ? { env: map } : {}); } catch (e) { err = (e as Error).message; }
+  // the closed keyring refuses the write; any other failure (or none) means the call never reached the keyring path.
+  expect(err).toMatch(/^the keyring could not be written/);
 });
 TS
 searches() { grep -c '^secret-tool' "$KR_LOG" || true; }
