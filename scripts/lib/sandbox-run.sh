@@ -4,7 +4,8 @@
 # Usage: sandbox-run.sh [--canary ABSENT_PATH] [--read-only INPUT]... -- CMD [ARG...]
 #        sandbox-run.sh --write-mask-list FILE   (Linux: walk once, write a reusable list)
 # SANDBOX_RUN_MASK_LIST=FILE reuses that list when it validates.
-# Linux binds runtime/worktree/socket-free inputs and bounds HOME/tmp in tmpfs.
+# Linux binds the runtime and the checkout (a socket, FIFO or device under either is masked
+# with a null overlay) plus socket-free --read-only inputs, and bounds HOME/tmp in tmpfs.
 # Darwin confines writes to private scratch; outputs use stdout/stderr only.
 set -uo pipefail
 
@@ -97,8 +98,12 @@ find_tolerant() {
     # those words cannot excuse an unreadable entry.
     LC_ALL=C find "$@" > "$out" 2> "$errf" || rc=$?
     [ "$rc" -eq 0 ] && return 0
-    if [ -s "$errf" ] && ! grep -qvE ': No such file or directory$' "$errf"; then
-        return 0
+    # Only find's own exit 1 can be a race: a find that was killed (137, 143) or failed
+    # another way refuses. grep -v exits 1 when no line is anything but a vanished
+    # entry; its error exit 2 must refuse too, so its status is read, never negated.
+    if [ "$rc" -eq 1 ] && [ -s "$errf" ]; then
+        grep -qvE ': No such file or directory$' "$errf"
+        [ "$?" -eq 1 ] && return 0
     fi
     printf 'sandbox-run: %s failed (find exit %s): %s\n' "$what" "$rc" "$(head -c 400 "$errf")" >&2
     return 1
