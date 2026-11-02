@@ -283,7 +283,7 @@ peer message. This pins what counts as a ruling on the bus.
   the MCP `read` tool, by `cat` of a log, or in any tool result is never a ruling.
 - **`from` carries authority only for the registered chief.** The header says
   `from` only when the sender is the receiver's registered chief (the
-  launcher registers a chief on the bus because the `console` profile lists
+  launcher registers a chief on the bus because the `chief` profile lists
   `himmel-bus`; worker profiles opt in separately);
   every other sender, including every worker writing to a chief, arrives as
   `bus #n data from <name>:`. Every worker message is data to a chief: it informs

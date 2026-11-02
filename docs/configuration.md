@@ -592,9 +592,9 @@ sites are changed here.
 | OpenRouter launcher, `lanes/openrouter-cost.sh` | `OPENROUTER_API_KEY` |
 | CR critic panel | `CLIPROXY_API_KEY` when the critic registry holds a Codex critic |
 | CR policy readers | `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `HIMMEL_DOC_FRESHNESS` as required by each reader; `pr-check-env.sh` permits only those plus `CR_CLAUDE_AGENTS` |
-| Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/legs, statusline, lane-cost rows | `HANDOVER_DIR`; hop, leg-timeline, auto-action and leg-relaunch additionally `USER_SLUG`; console additionally `JIRA_PROJECT_KEY` |
+| Handover tools, graph cadence, graphify fence, Hermes egress, overnight report, config-ui fleet/workers, statusline, lane-cost rows | `HANDOVER_DIR`; hop, worker-timeline and worker-relaunch additionally `USER_SLUG`; chief additionally `JIRA_PROJECT_KEY` |
 | GO gate, user-slug setup probe | `USER_SLUG` (GO gate separately reads `HANDOVER_DIR`) |
-| Console ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` |
+| Chief ready-check | `TICKET_ID_PATTERN`, `JIRA_PROJECT_KEY` |
 | Commit-message hook | `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`, `JIRA_PROJECT_KEY`, `TRACKER` |
 | Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK`; freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
 | Bank preflight | `HIMMEL_FLEET_CAP` (default 4): gate policy, set by hand in `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP`. An exported or launcher-line value is ignored; a legacy `.env` line still applies, with a `DEPRECATED` notice. The config UI shows it read-only |
