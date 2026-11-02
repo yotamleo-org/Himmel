@@ -31,7 +31,7 @@ import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
 import { legSync, readRoadmap } from "./roadmap";
-import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSources } from "./tracker-sources";
+import { ISSUE_LIMIT, jiraMirrorDir, readGithubIssues, trackerSetting, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
 import { optsOf, readReports, writeReports } from "./report-settings";
 import { DAY as REPORT_DAY, listReports, readReport, soFar } from "./reports";
@@ -413,7 +413,10 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const req = parseWrite(b);
     if ("error" in req) return json({ error: req.error }, 400);
     // GitHub cards are read-only in the page; the server holds the same contract, before the write lock is taken.
-    if ((await trackerSources(env, root))[0] === "github") return json({ error: "GitHub roadmap is read-only" }, 403);
+    const first = (await trackerSources(env, root))[0], setting = trackerSetting(env, root);
+    if (first === "github") return json({ error: "GitHub roadmap is read-only" }, 403);
+    // a local or none project never writes Jira, whatever mirror is lying around
+    if (first === "local" || first === "none" || setting === "local" || setting === "none") return json({ error: "this project's tracker is not Jira" }, 403);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     const mirrorDir = env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
@@ -664,7 +667,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const mirrorDir = jiraMirrorDir(env);
         const first = (await trackerSources(env, root))[0];
         if (first === "none") return json(redactOut({ ...readRoadmap({ mirrorDir, none: true, workers: { state: "absent" } }), sync: [] }));
-        if (first === "local") {
+        if (first === "local" || (!first && trackerSetting(env, root) === "local")) {
           const items = await readLocalItems(env, root);
           const r = readRoadmap({ mirrorDir, local: items ?? [], workers: { state: "absent" } });
           return json(redactOut({ ...r, ...(items ? {} : { reason: "the local tracker store could not be read" }), sync: [] }));

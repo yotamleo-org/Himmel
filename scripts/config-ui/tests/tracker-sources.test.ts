@@ -97,6 +97,17 @@ test("TRACKER=local with a store that cannot be resolved stays local and says so
   expect(s.jiraCalls()).toBe(false);
 });
 
+test("GET /api/roadmap: an explicit local project with an empty store and a Jira mirror answers source local with no tickets, not the mirror's board", async () => {
+  const s = scratch({ mirror: true });
+  const store = join(s.d, "store");
+  mkdirSync(store);
+  const { get } = serve({ ...s.env, TRACKER: "local", TRACKER_STORE: store }, s.d);
+  const r = await get("/api/roadmap");
+  expect(r.source).toBe("local");
+  expect(r.tickets).toEqual([]);
+  expect(s.jiraCalls()).toBe(false);
+});
+
 test("trackerSources: an explicit TRACKER=local with an empty store and a Jira mirror lists nothing, not the mirror", async () => {
   const s = scratch({ mirror: true });
   const store = join(s.d, "store");

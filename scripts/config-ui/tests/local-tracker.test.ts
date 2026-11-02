@@ -19,7 +19,7 @@ const item = (n: number, status: string, title: string, o: { fv?: string; epic?:
   ["---", `id: LOCAL-${n}`, `title: ${JSON.stringify(title)}`, "type: Task", `status: ${status}`, `fix_version:${o.fv ? " " + o.fv : ""}`,
     `epic:${o.epic ? " " + o.epic : ""}`, "created: 2026-10-01T00:00:00Z", ...(o.sector ? [`sector: ${JSON.stringify(o.sector)}`] : []), "links:", "---", "", "", "## Log", ""].join("\n");
 
-function scratch(o: { tracker?: string; items?: boolean } = {}) {
+function scratch(o: { tracker?: string; items?: boolean; mirror?: boolean; failedRead?: boolean } = {}) {
   const d = mkdtempSync(join(tmpdir(), "local-tracker-"));
   cleanups.push(() => rmSync(d, { recursive: true, force: true }));
   const store = join(d, "store");
@@ -31,11 +31,13 @@ function scratch(o: { tracker?: string; items?: boolean } = {}) {
     writeFileSync(join(store, "LOCAL-4.md"), item(4, "To Do", "Unversioned"));
     writeFileSync(join(store, "next-id"), "5\n");
   }
+  const mirror = join(d, "mirror");
+  if (o.mirror) { mkdirSync(mirror); writeFileSync(join(mirror, "HIMMEL-1.md"), '---\nkey: "HIMMEL-1"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: []\nfixVersions: ["v1.1.3"]\nupdated: "2026-10-01T00:00:00.000+0000"\nresolution: null\n---\n\n# HIMMEL-1: x\n'); }
   const seamLog = join(d, "seam-jira.log"), cliLog = join(d, "cli-jira.log"), seamJira = join(d, "jira-cmd");
   writeFileSync(seamJira, `#!/bin/sh\necho "$*" >> "${seamLog}"\nexit 1\n`);
   chmodSync(seamJira, 0o755);
-  const env = { PATH: process.env.PATH, HOME: d, TRACKER: o.tracker ?? "local", TRACKER_STORE: store, JIRA_CMD: seamJira,
-    HIMMEL_JIRA_MIRROR: join(d, "no-mirror"), CONFIG_UI_JIRA_CLI: join(import.meta.dir, "stub-jira.js"), STUB_JIRA_LOG: cliLog,
+  const env = { PATH: process.env.PATH, HOME: d, TRACKER: o.tracker ?? "local", ...(o.failedRead ? { HANDOVER_DIR: join(d, "missing-handover"), USER_SLUG: "x" } : { TRACKER_STORE: store }), JIRA_CMD: seamJira,
+    HIMMEL_SECRETS_KEYRING: "off", HIMMEL_JIRA_MIRROR: o.mirror ? mirror : join(d, "no-mirror"), CONFIG_UI_JIRA_CLI: join(import.meta.dir, "stub-jira.js"), STUB_JIRA_LOG: cliLog,
     CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000" } as Record<string, string>;
   const srv = startServer({ port: 0, token: TOKEN, root: d, env, legsScript: join(d, "no-workers.sh") });
   cleanups.push(() => srv.stop());
@@ -135,4 +137,13 @@ test("local writes are refused with no seam call: no token, a bad id, a bad Sect
   expect((await none.post({ key: "LOCAL-1", backend: "local", status: "prog" })).status).toBe(403);
   expect(none.file(1)).toContain("\nstatus: To Do\n");
   expect([...s.jiraCalls(), ...none.jiraCalls()]).toEqual([]);
+});
+
+test("a Jira write for a HIMMEL key is refused with 403 and no Jira call on a local or none project, whatever the store holds", async () => {
+  for (const [name, o] of [["local with items", {}], ["local, store unreadable", { failedRead: true }], ["local, empty store", { items: false }], ["none", { tracker: "none" }]] as [string, Parameters<typeof scratch>[0]][]) {
+    const s = scratch({ ...o, mirror: true });
+    const r = await s.post({ key: "HIMMEL-1", status: "prog" });
+    expect([name, r.status]).toEqual([name, 403]);
+    expect([name, s.jiraCalls()]).toEqual([name, []]);
+  }
 });

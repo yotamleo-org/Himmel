@@ -26,7 +26,7 @@ const ISSUE_FIELDS = "number,title,state,stateReason,labels,milestone,updatedAt"
 
 export const jiraMirrorDir = (env: Env) => env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
 
-function trackerSetting(env: Env, root: string): string {
+export function trackerSetting(env: Env, root: string): string {
   const fromEnv = env.TRACKER || readConfLayers(env).TRACKER;
   if (fromEnv) return fromEnv;
   try { return execFileSync("git", ["-C", root, "config", "--get", "himmel.tracker"], { encoding: "utf8", timeout: 5000, env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return ""; }
