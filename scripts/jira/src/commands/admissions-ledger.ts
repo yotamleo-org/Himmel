@@ -55,6 +55,11 @@ export function assertAdmissionsWritable(): void {
   closeSync(openSync(path, 'a'));
 }
 
+/** True when the ledger file exists; false means no ruling can be read, not that none was made. */
+export function admissionsLedgerExists(): boolean {
+  return existsSync(admissionsLedgerPath());
+}
+
 /** Every row, oldest first; with a version, only that version's rows. Throws when no ledger location is set. */
 export function readAdmissions(version?: string): Admission[] {
   const path = admissionsLedgerPath();
