@@ -3,6 +3,8 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { WRITER_TABLE } from './version-writes.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'repair');
 
@@ -61,5 +63,67 @@ describe('repair fixtures (HIMMEL-8724 S0)', () => {
     }));
     expect(authorData(dir)).toMatch(/HIMMEL-1\.json/);
     expect(outsideAllowlist(dir)).toBe('HIMMEL-1.json: entry author');
+  });
+});
+
+// Files that mention a Fix Version but never write one: readers, renderers, the hook itself, and the
+// engine (it reaches Jira only through the port whose real write is in commands/release.ts).
+const READ_ONLY = [
+  'scripts/config-ui/roadmap.ts',
+  'scripts/handover/chief-kit/board.mjs',
+  'scripts/handover/chief-kit/chain-render.py',
+  'scripts/handover/chief-kit/chain-state.mjs',
+  'scripts/handover/chief-kit/intake-backfill.sh',
+  'scripts/handover/chief-kit/next-dispatchable.sh',
+  'scripts/handover/chief-kit/priority-prune.sh',
+  'scripts/handover/chief-kit/stuck-scan.sh',
+  'scripts/handover/chief-kit/tick.sh',
+  'scripts/handover/chief-kit/tracker.py',
+  'scripts/handover/chief-kit/version-status-audit.sh',
+  'scripts/handover/chief-kit/worker-jira-status.sh',
+  'scripts/hooks/block-jira-compound-write.sh',
+  'scripts/jira/src/commands/get.ts',
+  'scripts/jira/src/commands/intake-gate.ts',
+  'scripts/jira/src/commands/link.ts',
+  'scripts/jira/src/commands/mirror.ts',
+  'scripts/jira/src/commands/roadmap.ts',
+  'scripts/jira/src/release/engine.ts',
+  'scripts/jira/src/release/leaks.ts',
+  'scripts/jira/src/release/reducer.ts',
+  'scripts/jira/src/release/types.ts',
+  'scripts/jira/src/release/version-writes.ts',
+  'scripts/lib/tracker.mjs',
+];
+
+const NOT_SOURCE = /(\.test\.|\/test-|\.md$|\.patch$|\/fixtures\/|\/tests\/)/;
+
+// Every non-test, non-doc file under scripts/ whose text names a Fix Version write.
+function writingFiles(): string[] {
+  const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dirname(fileURLToPath(import.meta.url)), encoding: 'utf8' }).trim();
+  const out = execFileSync('git', ['grep', '-lE', 'fix-version|fixVersions|setFixVersion|addFixVersionGated', '--', 'scripts/'], { cwd: root, encoding: 'utf8' });
+  return out.split('\n').filter((f) => f && !NOT_SOURCE.test(f)).sort();
+}
+
+// The files of `files` that are neither a writer in the table nor a named read-only file.
+const unlisted = (files: string[]): string[] => files.filter((f) => !WRITER_TABLE.some((w) => w.site === f) && !READ_ONLY.includes(f));
+
+describe('writer table (HIMMEL-8724 S3, I17)', () => {
+  it('every writing file is in the writer table', () => {
+    expect(unlisted(writingFiles())).toEqual([]);
+  });
+
+  it('a new writing file fails the enumeration', () => {
+    expect(unlisted([...writingFiles(), 'scripts/jira/src/commands/new-writer.ts'])).toEqual(['scripts/jira/src/commands/new-writer.ts']);
+  });
+
+  it('the machine rows are exactly the ten machine mechanisms; hand rows are not machine', () => {
+    for (const w of WRITER_TABLE) {
+      expect(w.mechanism).toMatch(/^[a-z][a-z-]*$/);
+      if (w.mechanism === 'hand') expect(w.machine).toBe(false);
+    }
+    expect(WRITER_TABLE.filter((w) => w.machine).map((w) => w.mechanism).sort()).toEqual([
+      'class-recurrence', 'create-blocker-inherit', 'create-bug-default', 'create-followup', 'create-residual',
+      'create-stepdown', 'displace-residual', 'merge-stamp', 'sync-versions', 'transition-stamp',
+    ]);
   });
 });

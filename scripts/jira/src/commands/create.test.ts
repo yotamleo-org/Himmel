@@ -183,6 +183,20 @@ describe('create — Bug default fixVersion wiring', () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/defaults to fixVersion v1\.0\.2/));
   });
 
+  const postWriter = () => mockRequest.mock.calls.find((c) => c[0] === 'POST' && c[1] === '/issue')?.[3];
+
+  it('bug default names create-bug-default', async () => {
+    withVersions(VERSIONS);
+    await createFields(['--type', 'Bug', '--priority', 'Highest']);
+    expect(postWriter()).toBe('create-bug-default');
+  });
+
+  it('explicit --fix-version is hand', async () => {
+    withVersions(VERSIONS);
+    await createFields(['--type', 'Bug', '--fix-version', 'v1.0.0']);
+    expect(postWriter()).toBeUndefined();
+  });
+
   it('lets an explicit --fix-version win over the default', async () => {
     withVersions(VERSIONS);
     await createFields(['--type', 'Bug', '--fix-version', 'v1.0.0']);
@@ -908,12 +922,41 @@ describe('HIMMEL-6924 residual rank slots', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  const writerOf = (method: string, path: string) => mockRequest.mock.calls.find((c) => c[0] === method && c[1] === path)?.[3];
+
+  it('residual names create-residual', async () => {
+    residents = [];
+    await file('--fu-class', 'escape');
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(writerOf('POST', '/issue')).toBe('create-residual');
+  });
+
+  it('displacement names displace-residual, and the newcomer that took the slot create-residual', async () => {
+    await file('--fu-class', 'escape', '--priority', 'High');
+    expect(writerOf('PUT', '/issue/HIMMEL-900')).toBe('displace-residual');
+    expect(writerOf('POST', '/issue')).toBe('create-residual');
+  });
+
+  it('step-down names create-stepdown', async () => {
+    parent.fields.status.statusCategory.key = 'done';
+    residents = residents.map((r) => residual(r.key, ['residual', 'fu-escape']));
+    await file('--fu-class', 'escape');
+    expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+    expect(writerOf('POST', '/issue')).toBe('create-stepdown');
+  });
+
+  it('the re-check newcomer step-down PUT names create-stepdown', async () => {
+    afterCreate = () => writeFileSync(join(dir, 'admissions-ledger.jsonl'), admit('HIMMEL-900', 'rm-admit') + '\n');
+    await file('--fu-class', 'escape');
+    expect(writerOf('PUT', '/issue/HIMMEL-77')).toBe('create-stepdown');
+  });
+
   it('RED a: a higher-class newcomer displaces the lowest To Do residual at 15/15', async () => {
     await file('--fu-class', 'escape', '--priority', 'High');
     expect(created().fixVersions).toEqual([{ name: 'v1.1.3' }]);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
       fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'displace-residual');
     const comment = mockRequest.mock.calls.find((c) => c[1] === '/issue/HIMMEL-900/comment');
     expect(JSON.stringify(comment?.[2])).toContain('HIMMEL-77');
     expect(created().labels).not.toContain('residual-displaced');
@@ -968,7 +1011,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
       fields: { fixVersions: [] }, update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'displace-residual');
   });
 
   it('RED a: displacement preserves unrelated fixVersion assignments', async () => {
@@ -977,7 +1020,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
       fields: { fixVersions: [{ name: 'v9.0.0' }, { name: 'v1.1.4' }] },
       update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'displace-residual');
   });
 
   it.each(['started', 'gated', 'legacy-gated', 'already-displaced'])('RED b: a resident %s after creation is unavailable and the newcomer steps down', async (change) => {
@@ -991,7 +1034,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     await file('--fu-class', 'escape');
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-77', {
       fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'create-stepdown');
     expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] === '/issue/HIMMEL-900')).toBe(false);
   });
 
@@ -1026,7 +1069,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(created().fixVersions).toEqual([{ name: 'v1.1.3' }]);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-900', {
       fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'displace-residual');
   });
 
   it('RED b: higher-ranked and started residents keep their slots; newcomer steps down labelled', async () => {
@@ -1053,7 +1096,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
   };
   const displacedOnly = (key: string) => expect(mockRequest).toHaveBeenCalledWith('PUT', `/issue/${key}`, {
     fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
-  });
+  }, key === 'HIMMEL-77' ? 'create-stepdown' : 'displace-residual');
 
   it('RED 8723 ii: a resident the release manager admitted keeps its version; the next candidate is displaced', async () => {
     writeFileSync(join(dir, 'admissions-ledger.jsonl'), admit('HIMMEL-900', 'rm-admit') + '\n');
@@ -1061,7 +1104,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] === '/issue/HIMMEL-900')).toBe(false);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-901', {
       fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'displace-residual');
   });
 
   it('RED 8723 ii: with every resident admitted, nobody is displaced and the newcomer steps down', async () => {
@@ -1084,7 +1127,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] === '/issue/HIMMEL-900')).toBe(false);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-77', {
       fields: { fixVersions: [{ name: 'v1.1.4' }] }, update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'create-stepdown');
   });
 
   it('RED 8723 ii: a key in a signed operator keep record is ruled and keeps its version', async () => {
@@ -1154,7 +1197,7 @@ describe('HIMMEL-6924 residual rank slots', () => {
     expect(putTo('HIMMEL-900')).toBe(false);
     expect(mockRequest).toHaveBeenCalledWith('PUT', '/issue/HIMMEL-77', {
       fields: { fixVersions: [] }, update: { labels: [{ add: 'residual-displaced' }] },
-    });
+    }, 'create-stepdown');
     expect(stderrLines().some((e) => /INTAKE queued for HIMMEL-77 as REQ/.test(e))).toBe(true);
   });
 });
@@ -1739,6 +1782,20 @@ describe('create — blocker version placement', () => {
     expect(mockRequest).toHaveBeenCalledWith('POST', '/issueLink', {
       type: { name: 'Blocks' }, inwardIssue: { key: 'HIMMEL-6559' }, outwardIssue: { key: target },
     });
+  });
+
+  const postWriter = () => mockRequest.mock.calls.find(([m, p]) => m === 'POST' && p === '/issue')?.[3];
+
+  it('blocker inherit names create-blocker-inherit', async () => {
+    await file('--blocks', 'HIMMEL-6575');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(postWriter()).toBe('create-blocker-inherit');
+  });
+
+  it('follow-up names create-followup', async () => {
+    await file('--follow-up-of', 'HIMMEL-1620', '--blocks', 'HIMMEL-6575');
+    expect(created()?.fixVersions).toEqual([{ name: 'v1.1.3' }]);
+    expect(postWriter()).toBe('create-followup');
   });
 
   it('handles both 6559 dependents in one filing', async () => {

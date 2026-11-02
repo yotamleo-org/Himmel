@@ -765,6 +765,8 @@ fi
 case "\$1" in
     */dist/index.js)
         echo "\$*" >> "\$JIRA_LOG"
+        # The name each edit carries into the Fix Version journal.
+        if [ "\$2" = "edit" ]; then echo "edit-writer: \${HIMMEL_VERSION_WRITER:-unset}" >> "\$JIRA_LOG"; fi
         if [ "\$2" = "comment" ] && [ "\$4" = "--comment-file" ] && [ -f "\$5" ]; then
             sed 's/^/comment-body: /' "\$5" >> "\$JIRA_LOG"
         fi
@@ -3887,6 +3889,11 @@ assert_audit_lacks "jira: default case no longer reports would-transition" "woul
 assert_jira_log_lacks "jira: partial merge makes no transition call" "index.js transition"
 assert_jira_log_lacks "jira: partial merge never transitions to Done" "transition HIMMEL-374 Done"
 assert_jira_log_has "jira: partial merge comments a Remaining line" "comment-body: Remaining:"
+# The same ticket sitting in a later version would be folded by a completing merge (the cases below); a partial one writes no stamp.
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "8823: partial merge of a ticket in a later version"
+assert_jira_log_lacks "8823: partial merge writes no stamp" "edit-writer:"
+assert_jira_log_lacks "8823: partial merge makes no edit call" "index.js edit"
 # A bare merge leaves the ticket open, so say so (stderr) and tell the chief doc.
 assert_err_has "jira: bare merge prints the PARTIAL line" "PARTIAL HIMMEL-374: next slice not dispatched"
 # A merge of a ticket held in a later unreleased version than the current one files an INTAKE
@@ -4305,6 +4312,8 @@ STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(
     run_mog 0 "jira: closed ticket in a later unreleased version is folded to the current one" -- --jira-transition
 assert_jira_log_has "jira: fold sets fixVersion to the current unreleased version" "edit HIMMEL-374 --fix-version v1.1.3"
 assert_audit_has "jira: fold is recorded on the audit line" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=v1.1.3"
+assert_jira_log_has "8823: merge stamp carries merge-stamp" "edit-writer: merge-stamp"
+assert_jira_log_lacks "8823: no merge-stamp edit goes out unnamed" "edit-writer: unset"
 
 assert_jira_log_has "jira: the versions lookup names the ticket's project" "versions --project HIMMEL"
 
@@ -4320,6 +4329,9 @@ assert_audit_has "jira: failed re-add keeps the lost version recoverable" "fixve
 STUB_JIRA_BUILD=1 STUB_JIRA_ADD_FIX_FAIL_ONCE=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.2"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: a re-add that fails once is retried" -- --jira-transition
 assert_audit_has "jira: the retried re-add leaves the fold ok" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=v1.1.3"
+# The replace, the failed re-add and its retry are three edits, and every one is named.
+if [ "$(grep -c '^edit-writer: merge-stamp$' "$LAST_JIRA_LOG")" = 3 ]; then pass; else fail "8823: retry after a failed add still carries merge-stamp (jira log: $(cat "$LAST_JIRA_LOG" 2>/dev/null))"; fi
+assert_jira_log_lacks "8823: no retry edit goes out unnamed" "edit-writer: unset"
 
 STUB_JIRA_BUILD=1 STUB_JIRA_VERSIONS='v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n' STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: with no dated version the first unreleased one is current" -- --jira-transition

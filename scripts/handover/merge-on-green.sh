@@ -2736,13 +2736,13 @@ $remaining")
             # already holds outside the unreleased ones are re-added after it.
             local fold_cur fold_keep fold_rc=0
             fold_cur=${fold_to%%$'\n'*}
-            ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --fix-version "$fold_cur" ) >/dev/null 2>&1 || fold_rc=1
+            ( cd "$repo_root" && HIMMEL_VERSION_WRITER=merge-stamp node scripts/jira/dist/index.js edit "$key" --fix-version "$fold_cur" ) >/dev/null 2>&1 || fold_rc=1
             if [ "$fold_rc" -eq 0 ] && [ "$fold_to" != "$fold_cur" ]; then
                 while IFS= read -r fold_keep; do
                     [ -n "$fold_keep" ] || continue
                     # The replace already dropped it, so one retry before giving up.
-                    ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
-                        || ( cd "$repo_root" && node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                    ( cd "$repo_root" && HIMMEL_VERSION_WRITER=merge-stamp node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
+                        || ( cd "$repo_root" && HIMMEL_VERSION_WRITER=merge-stamp node scripts/jira/dist/index.js edit "$key" --add-fix-version "$fold_keep" ) >/dev/null 2>&1 \
                         || fold_rc=1
                 done <<< "${fold_to#*$'\n'}"
             fi
