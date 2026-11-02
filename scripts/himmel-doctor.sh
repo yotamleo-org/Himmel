@@ -3391,6 +3391,67 @@ check_c83_qmd_embed_backlog() {
         "bash scripts/luna/qmd-reindex.sh   # resumes the embed; the cause is in ~/.claude/qmd-cadence/qmd-reindex.log"
 }
 
+# --- C84-release-queue: a declared release the chief cannot wake the manager for ---
+# The tick wakes the release manager only from the newest chief doc's `release:` line, and
+# prints rm-queue=off when a release is declared but that line or the declaration is unusable.
+# WARN when a release is declared (<handover>/<slug>/himmel/release/<R>/release.json) and the
+# newest <slug>/himmel/*-chief.md has no `release:` line, names a release with no non-empty
+# declaration, or there is no chief doc at all; INFO when nothing is declared or the chief doc
+# says `release: none` (disabled on purpose); OK otherwise. Reads files only, no Jira call.
+# Test seam: HIMMEL_RELEASE_STATE_DIR (the release root; the chief docs sit beside it).
+# ponytail: the newest chief doc by mtime stands in for the live chief, upgrade by reading the
+# chief fleet registry.
+check_c84_release_queue() {
+    local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep=""
+    if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
+        roots="$HIMMEL_RELEASE_STATE_DIR"
+    else
+        load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
+        hroot="$(handover_root 2>/dev/null)" || hroot=""
+        [ -z "$hroot" ] || roots="$(ls -d "$hroot"/*/himmel/release 2>/dev/null)"  # swallow-ok: no release dir means no declaration to judge
+    fi
+    while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        declared=""
+        for f in "$root"/*/release.json; do
+            [ -e "$f" ] || continue
+            f="${f%/release.json}"; declared="$declared${declared:+, }${f##*/}"
+            if [ ! -s "$f/release.json" ]; then
+                bad="$bad$sep${f##*/} has an empty release.json"; sep="; "
+            fi
+        done
+        [ -n "$declared" ] || continue
+        any=1
+        cdir="${root%/*}"
+        # shellcheck disable=SC2012  # chief doc names are plain; the newest by mtime is wanted
+        # no pipe into head: under pipefail its early exit SIGPIPEs ls and the lookup reads as empty
+        doc="$(ls -t "$cdir"/*-chief.md 2>/dev/null)" || doc=""
+        doc="${doc%%$'\n'*}"
+        if [ -z "$doc" ]; then
+            bad="$bad$sep""release $declared is declared but there is no chief doc beside $root"; sep="; "
+            continue
+        fi
+        rel="$(sed -n 's/^release:[[:space:]]*//p' "$doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads as no release: line
+        case "$rel" in
+            '') bad="$bad$sep${doc##*/} has no release: line for declared release $declared, so the tick shows rm-queue=off"; sep="; " ;;
+            none) none=1 ;;
+            *) if [ ! -s "$root/$rel/release.json" ]; then
+                   bad="$bad$sep${doc##*/} names release $rel but $root/$rel/release.json is missing (declared: $declared), so the tick shows rm-queue=off"; sep="; "
+               fi ;;
+        esac
+    done <<< "$roots"
+    if [ -n "$bad" ]; then
+        emit WARN C84-release-queue "the release manager cannot be woken: $bad" \
+            "add 'release: <R>' to the chief doc's ## Live state (chief.sh next seeds it from a single declaration), or 'release: none' to turn the queue off on purpose"
+    elif [ "$any" = 0 ]; then
+        emit INFO C84-release-queue "no release declared — the release manager queue is not in use"
+    elif [ "$none" = 1 ]; then
+        emit INFO C84-release-queue "the chief doc says release: none — the release manager is not woken on purpose"
+    else
+        emit OK C84-release-queue "the chief doc names a declared release, so the tick can wake the release manager"
+    fi
+}
+
 # --- C72-design-mcp-auth: design profile MCP logins ---
 # The design profile needs context7 and builder-visual's agent-native-dispatch
 # logged in once per machine; a worker cannot answer the OAuth prompt, so
@@ -5260,6 +5321,7 @@ run_check C80 check_c80_status_drift
 run_check C81 check_c81_hook_layers
 run_check C82 check_c82_mcp_sources
 run_check C83 check_c83_qmd_embed_backlog
+run_check C84 check_c84_release_queue
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
