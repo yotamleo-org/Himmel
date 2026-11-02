@@ -82,7 +82,7 @@ assert_contains() {
     esac
 }
 
-rows() { wc -l <"$LOG" 2>/dev/null | tr -d ' '; }
+rows() { [ -f "$LOG" ] || { echo 0; return; }; wc -l <"$LOG" | tr -d ' '; }
 
 # An adopter repo (not himmel) gets the redirect from the plugin.
 run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
@@ -237,16 +237,70 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     record none
 
     # The project-lane copy delegates to the plugin source, so the rule has one
-    # source; it must not log, or a himmel deny would write two rows.
-    rm -f "$LOG"
-    printf '%s' "$(wf 'https://x.com/a/status/1')" | env WEBFETCH_WALLED_LOG="$LOG" \
-        HIMMEL_WEBFETCH_WALLED_OK=0 bash "$HIMMEL_ROOT/scripts/hooks/redirect-webfetch-walled-hosts.sh" >/dev/null 2>&1
-    assert_eq "himmel: project-lane copy denies" 2 "$?"
-    [ -e "$LOG" ] && present=yes || present=no
-    assert_eq "himmel: project-lane copy writes no row" no "$present"
+    # source. One deny is one row: the shim and the plugin lane claim
+    # a deny by its tool_use_id, so the lane that fires alone writes the row and
+    # both lanes together write exactly one.
+    SHIM="$HIMMEL_ROOT/scripts/hooks/redirect-webfetch-walled-hosts.sh"
+    wft() { jq -nc --arg id "$1" '{session_id:"s-walled",tool_use_id:$id,tool_name:"WebFetch",tool_input:{url:"https://x.com/a/status/1",prompt:"p"}}'; }
+    run_shim() {
+        printf '%s' "$1" | env -u WALLED_TOOLING_DIR WEBFETCH_WALLED_LOG="$LOG" \
+            HIMMEL_WEBFETCH_WALLED_OK=0 bash "$SHIM" >/dev/null 2>&1
+    }
+    # Run the installed plugin command (as run_case does) without clearing the log.
+    run_plugin_keep() {
+        printf '%s' "$1" | env -u WALLED_TOOLING_DIR -u CLAUDE_CONFIG_DIR HOME="$TMP/home" \
+            CLAUDE_PLUGIN_ROOT="${2:-$CACHE_DIR}" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_PROJECT_DIR="$TMP/repo" \
+            WEBFETCH_WALLED_LOG="$LOG" HIMMEL_WEBFETCH_WALLED_OK=0 sh -c "$plugin_cmd" >/dev/null 2>&1
+    }
+
+    # Plugin disabled: only the project shim fires, and its deny still leaves a row.
+    rm -rf "$LOG" "$TMP/.claims"
+    run_shim "$(wft toolu_disabled1)"
+    assert_eq "plugin disabled: shim denies" 2 "$?"
+    assert_eq "plugin disabled: the shim writes the row" 1 "$(rows)"
+    assert_eq "plugin disabled: the row names the session and host" 1 \
+        "$(jq -c 'select(.session_id == "s-walled" and .decision == "deny" and .host == "x.com")' "$LOG" 2>/dev/null | wc -l | tr -d ' ')"
+
+    # Plugin cached at an older version without this hook: the plugin lane does not
+    # fire at all, the shim is the only writer.
+    OLD_CACHE="$CFG/plugins/cache/himmel/himmel-ops/0.0.-1"
+    if ! { mkdir -p "$OLD_CACHE/hooks" && cp "$PLUGIN_DIR/hooks/run-node.sh" "$PLUGIN_DIR/hooks/run-hook-with-bash.js" "$OLD_CACHE/hooks/"; }; then setup_fail "$OLD_CACHE"; fi
+    rm -rf "$LOG" "$TMP/.claims"
+    run_plugin_keep "$(wft toolu_older1)" "$OLD_CACHE"
+    assert_eq "older cached plugin: the plugin lane writes nothing" 0 "$(rows)"
+    run_shim "$(wft toolu_older1)"
+    assert_eq "older cached plugin: shim denies" 2 "$?"
+    assert_eq "older cached plugin: the shim writes the row" 1 "$(rows)"
+
+    # Negative control: both lanes active on one deny write exactly one row, in
+    # either order; a second deny (another tool_use_id) writes its own row.
+    rm -rf "$LOG" "$TMP/.claims"
+    run_plugin_keep "$(wft toolu_both1)"
+    run_shim "$(wft toolu_both1)"
+    assert_eq "both lanes, plugin first: one row for one deny" 1 "$(rows)"
+    rm -rf "$LOG" "$TMP/.claims"
+    run_shim "$(wft toolu_both2)"
+    run_plugin_keep "$(wft toolu_both2)"
+    assert_eq "both lanes, shim first: one row for one deny" 1 "$(rows)"
+    run_shim "$(wft toolu_both3)"
+    run_plugin_keep "$(wft toolu_both3)"
+    assert_eq "both lanes, a second deny: its own row" 2 "$(rows)"
 else
     echo "SKIP himmel chain: no fetch-url.sh at $HIMMEL_ROOT/scripts/web"
 fi
+
+# HOME unset and no log override: the row goes to a temp-dir log, not nowhere.
+FB_TMP="$TMP/fallback-tmp"
+mkdir -p "$FB_TMP" || setup_fail "$FB_TMP"
+printf '%s' "$(wf 'https://x.com/a/status/1')" | env -u HOME -u WEBFETCH_WALLED_LOG -u WALLED_TOOLING_DIR -u CLAUDE_CONFIG_DIR \
+    TMPDIR="$FB_TMP" HIMMEL_WEBFETCH_WALLED_OK=0 bash "$PLUGIN_DIR/hooks/redirect-webfetch-walled-hosts.sh" >/dev/null 2>&1
+assert_eq "HOME unset: walled host still denied" 2 "$?"
+assert_eq "HOME unset: one row in the temp-dir log" 1 \
+    "$(cat "$FB_TMP"/himmel-webfetch-walled-*/denials.jsonl 2>/dev/null | jq -c 'select(.host == "x.com" and .decision == "deny")' 2>/dev/null | wc -l | tr -d ' ')"
+printf '%s' "$(wf 'https://x.com/a/status/1')" | env -u HOME -u WEBFETCH_WALLED_LOG -u WALLED_TOOLING_DIR -u CLAUDE_CONFIG_DIR \
+    TMPDIR="$FB_TMP" HIMMEL_WEBFETCH_WALLED_OK=0 bash "$PLUGIN_DIR/hooks/redirect-webfetch-walled-hosts.sh" >/dev/null 2>&1
+assert_eq "HOME unset: a second deny appends a second row" 2 \
+    "$(cat "$FB_TMP"/himmel-webfetch-walled-*/denials.jsonl 2>/dev/null | wc -l | tr -d ' ')"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
