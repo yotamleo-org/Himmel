@@ -1521,6 +1521,79 @@ out=$(HOME="$ESW_SBR/home" LUNA_VAULT_PATH="$ESW_SBR/vault" OBSIDIAN_API_KEY="" 
 check "resume N7c: a session-note capture still closes -> rc 0" "$rc" "0"
 check "resume N7c: the original session's transcript is found and its note written" "$(find "$ESW_SBR/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
 
+# A replaced window closes independently of its successor. Every pid and lock here is a fixture.
+HP="$W/HIMMEL-9-N90-demo-2026-01-01.md"
+HS="$W/HIMMEL-9-N90b-demo-2026-01-01-RESUME.md"
+HT="$W/HIMMEL-9-N90c-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results\n' > "$HS"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 390 claude -n HIMMEL-9-N90b-demo-2026-01-01 work
+pgrep_x_stub 390
+# Legacy shared-results layout: no hand-off WRAPPED, successor token unquoted.
+# shellcheck disable=SC2016  # literal fixture token delimiters
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - release-token `fixture-pid100`\n- 10:00 BLOCKED - context hand-off to %s\n- 11:00 LIVE - resumed, release-token fixture-pid200\n- 12:00 WRAPPED - done\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(run "$HS" 2>&1) || rc=$?
+check "handoff: markerless RESUME reads completed shared Results (base rc 4)" "$rc" "0"
+exact_count "handoff: completed successor is signaled once" "$(cat "$CALLS")" "kill -TERM 390" "1"
+
+# The predecessor and successor are both visible; only the predecessor may be signaled.
+mkcmdline 389 claude -n HIMMEL-9-N90-demo-2026-01-01 work
+pgrep_x_stub 389 390
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 WRAPPED - hand-off to %s\n' "$HS" > "$HP"
+printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed\n' > "$HS"
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$HS" "cwl-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: named live successor lock permits predecessor close (base rc 3)" "$rc" "0"
+exact_count "handoff: predecessor alone is signaled" "$(cat "$CALLS")" "kill -TERM 389" "1"
+not_contains "handoff: held successor is never signaled" "$(cat "$CALLS")" "kill -TERM 390"
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
+
+# A second successor is not an ambiguity about the predecessor's own window.
+printf '# worker\n\n## Results\n' > "$HT"
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 WRAPPED - hand-off to %s\n' "$HT" > "$HP"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: newest of two successors permits predecessor close (base rc 5)" "$rc" "0"
+exact_count "handoff: multiple successors still signal only predecessor" "$(cat "$CALLS")" "kill -TERM 389" "1"
+not_contains "handoff: older successor is never signaled" "$(cat "$CALLS")" "kill -TERM 390"
+rm -f "$HT"
+
+# Existing context-guard output left BLOCKED, not WRAPPED, on the outgoing worker.
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 BLOCKED - context 34 percent, RESUME written: %s\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: final context BLOCKED naming successor closes predecessor (base rc 4)" "$rc" "0"
+exact_count "handoff: BLOCKED hand-off signals predecessor alone" "$(cat "$CALLS")" "kill -TERM 389" "1"
+not_contains "handoff: BLOCKED hand-off never signals successor" "$(cat "$CALLS")" "kill -TERM 390"
+
+# Safety controls: a named file alone and an unrelated held sibling prove no hand-off.
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - waiting for review\n' > "$HP"
+rm -f "$HS"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: BLOCKED without successor still refuses" "$rc" "4"
+check "handoff: BLOCKED without successor signals nothing" "$(cat "$CALLS")" ""
+printf '# worker\n\n## Results\n' > "$HS"
+printf '# worker\n\n## Results\n\n- 10:00 LIVE - unfinished work, next doc %s\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: unfinished LIVE naming successor still refuses" "$rc" "4"
+check "handoff: unfinished LIVE signals nothing" "$(cat "$CALLS")" ""
+printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - done, no hand-off\n' > "$HP"
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$HS" "cwl-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: true sibling lock without named hand-off still refuses" "$rc" "3"
+check "handoff: true sibling lock signals nothing" "$(cat "$CALLS")" ""
+[ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
+rm -f "$HP" "$HS"
+
 # --- a worker relaunched under <stem>-RESUME closes like any other ---
 # WRAPPED lands on the ORIGINAL doc; the live window is named <stem>-RESUME.
 # release tokens as a worker's LIVE bullet quotes them: the predecessor's (TK1) and the successor's (TK2)

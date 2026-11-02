@@ -428,4 +428,20 @@ check "with HIMMEL_LEGACY_NAMES=0 an old legs: doc relays nobody" "0" "$(printf 
 off_mix2="$(rb8204 "$D_MIX2" 0)"
 check "with HIMMEL_LEGACY_NAMES=0 an old legs manifest sends nothing (the claudex set cannot be checked)" "1" "$(printf '%s\n' "$off_mix2" | grep -c "disagrees with the fleet manifest.*nothing sent")"
 
+# A predecessor with a successor receives neither inbox nor bus relays, even while BLOCKED.
+PDOC="$WORK/DEMO-nextleg-2026-10-28A-chief.md"
+PWORK="$WORK/DEMO-30-N80-old-2026-10-28.md"
+SWORK="$WORK/DEMO-30-N80b-old-2026-10-28-RESUME.md"
+printf '# worker\n\n## Results\n' > "$SWORK"
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$SWORK" > "$PWORK"
+# shellcheck disable=SC2016  # fixture Live state delimiters
+printf '# chief\n\n## Live state\nworkers: `N80:fixture-old:lock:80`\n\n## Results\n' > "$PDOC"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N80","lane":"claudex"}]}\n' "$PWORK" > "${PDOC%.md}.fleet.json"
+: > "$WORK/send.log"; : > "$WORK/bus.log"
+outp="$(bash "$RB" "$PDOC" --successor S10 2>&1)"; rcp=$?
+check "a predecessor relay run succeeds" "0" "$rcp"
+check "a replaced claudex worker gets no inbox relay" "" "$(cat "$WORK/send.log")"
+check "a replaced worker gets no bus relay" "" "$(cat "$WORK/bus.log")"
+check "the relay tally excludes the predecessor" "1" "$(printf '%s\n' "$outp" | grep -c '^RELAYED 0 of 0$')"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
