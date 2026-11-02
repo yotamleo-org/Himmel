@@ -202,6 +202,27 @@ run_cases() {
         none) eq "$kind C6 empty" '' "$q" ;;
     esac
     tracker_query 'status=bad"quote' 2>/dev/null; eq "$kind C6 unsafe value rc" 2 "$?"
+
+    # C7 sector: local sets the item's Sector line, jira and none have no such thing (rc 4)
+    [ "$kind" != jira ] || jlog=$(cat "$STUB_STATE/log")
+    tracker_sector "$id" "Ship loop"; rc=$?
+    case "$kind" in
+        local)
+            eq "$kind C7 rc" 0 "$rc"
+            eq "$kind C7 get reads it" "Ship loop" "$(tracker_get "$id" | json_field sector)"
+            tracker_sector "$id" 'a "quoted": sector # \ one'; eq "$kind C7 replace rc" 0 "$?"
+            eq "$kind C7 replace round-trips" 'a "quoted": sector # \ one' "$(tracker_get "$id" | json_field sector)"
+            eq "$kind C7 one sector line" 1 "$(grep -c '^sector:' "$TRACKER_STORE/$id.md")"
+            has "$kind C7 links kept" "https://example.invalid/pr/1" "$(cat "$TRACKER_STORE/$id.md")"
+            tracker_sector LOCAL-404 x 2>/dev/null; eq "$kind C7 unknown id rc" 3 "$?"
+            ;;
+        *) eq "$kind C7 rc" 4 "$rc" ;;
+    esac
+    [ "$kind" != jira ] || { [ "$(cat "$STUB_STATE/log")" = "$jlog" ] && ok || bad "jira C7 called the Jira CLI"; }
+    tracker_sector "$id" "$(printf 'a\nb')" 2>/dev/null; eq "$kind C7 multiline name refused" 2 "$?"
+    tracker_sector "$id" "" 2>/dev/null; eq "$kind C7 empty name refused" 2 "$?"
+    tracker_sector "$id" "-x" 2>/dev/null; eq "$kind C7 option-like name refused" 2 "$?"
+    tracker_sector "$id" "$(printf 'x%.0s' $(seq 61))" 2>/dev/null; eq "$kind C7 over-long name refused" 2 "$?"
 }
 
 for kind in jira local none; do
@@ -276,11 +297,13 @@ id=$(tracker_id_new Task "edited")
 i=0
 while [ "$i" -lt 10 ]; do
     i=$((i + 1))
-    ( cd "$R/repo" && bash -c ". '$LIB'; tracker_link '$id' 'LOCAL-$((i + 100))' 2>/dev/null; tracker_transition '$id' 'In Progress' 2>/dev/null" ) &
+    ( cd "$R/repo" && bash -c ". '$LIB'; tracker_link '$id' 'LOCAL-$((i + 100))' 2>/dev/null; tracker_sector '$id' 'S$i' 2>/dev/null && : > '$R/sector-ok.$i'; tracker_transition '$id' 'In Progress' 2>/dev/null" ) &
 done
 wait
 eq "10 concurrent links all landed" 10 "$(grep -c '^  - "LOCAL-1' "$TRACKER_STORE/$id.md")"
 eq "concurrent transition landed" "In Progress" "$(status_of "$id")"
+eq "all 10 concurrent sector writes succeeded" 10 "$(find "$R" -name 'sector-ok.*' | wc -l | tr -d ' ')"
+eq "one sector line after concurrent writes" 1 "$(grep -c '^sector:' "$TRACKER_STORE/$id.md")"
 
 # a title with YAML-significant characters survives write and read
 fresh_env local

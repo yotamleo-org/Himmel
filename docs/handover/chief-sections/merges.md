@@ -80,8 +80,7 @@ run=<id>` (`run=unknown` when the new run is not listed yet; a failed dispatch
 is a WARN, the merge stands): read that run's `headSha` and `conclusion` before
 you lift a HOLD, and do not dispatch a second one.
 
-**Merge order for a chain.** Plan the open PRs on every merge event (the
-`chain_merge_plan` flag is gone, HIMMEL-7711; the plan is the default):
+**Merge order for a dependency chain.** Plan the open PRs on every merge event:
 `python3 scripts/handover/chief-kit/chain-graph.py --open --json > <graph>`, then
 `bash scripts/handover/chief-kit/chain-plan.sh --graph <graph> --ready <pr>,<pr>`
 (`--ready`: the PRs green and GO-able now). It prints `ORDER`, `HOLD <pr> for <pr>`
@@ -105,7 +104,7 @@ and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
   (`chain-plan-core.sh --evidence`). It needs a green PR run (a red goes through the
   inherited-red rules). It reads no flag and takes no plan file: `--chain-plan` is
   refused.
-- **Before every GO on a planned chain:** run
+- **Before every GO on a planned dependency chain:** run
   `bash scripts/handover/chief-kit/chain-plan.sh --go-check <pr> --graph <graph>`
   and GO only on `GO-CHECK OK <pr> head=<sha> graph=sha256:<hash> at=<UTC>`. It
   REFUSEs when the graph's Jira links are not `ok`, its head for the PR is not the

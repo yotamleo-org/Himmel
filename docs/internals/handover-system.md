@@ -300,7 +300,7 @@ via the file inbox hook (`scripts/hooks/claudex-inbox-hook.sh`), a native worker
 via a direct `SendMessage` — so the doc's own `## Chief Rulings` section is
 what a worker checks, not something it idle-waits or gets pasted. See
 [`lane-calibration.md`](lane-calibration.md#non-claude-lane-calibration)'s
-`claudex` supervisor session reachability note for the delivery mechanism itself.
+`claudex` chief reachability note for the delivery mechanism itself.
 
 `scripts/handover/worker-resume-brief.sh <worker-doc> [--branch <name>] [--repo <path>] [--dry-run]`
 is the chief-side half of that clause: it reconstructs everything about a

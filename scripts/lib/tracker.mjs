@@ -23,10 +23,11 @@ export function normalizeJiraIssue(d) {
 }
 
 // Front matter is flat `key: value` lines between the first two `---` lines; the
-// `links:` list under it is not part of the normalised shape.
+// `links:` list under it is not part of the normalised shape. A local item also
+// carries its `sector` (tracker_sector; '' when unset), which Jira's shape lacks.
 export function parseLocalItem(text) {
     const lines = text.split('\n');
-    const out = { id: '', title: '', status: '', type: '', fix_version: '', epic: '' };
+    const out = { id: '', title: '', status: '', type: '', fix_version: '', epic: '', sector: '' };
     if (lines[0] !== '---') return out;
     for (let i = 1; i < lines.length && lines[i] !== '---'; i++) {
         const m = /^([a-z_]+):(?: (.*))?$/.exec(lines[i]);

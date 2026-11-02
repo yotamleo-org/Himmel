@@ -1,14 +1,18 @@
 // tracker-sources.ts — which trackers the UI can read for Roadmap and Kanban, and the GitHub issues reader.
 // trackerSources() is the one predicate: the rail shows Roadmap and Kanban only when it lists something. A source
-// the UI has no reader for (TRACKER=local) or cannot read right now (no mirror, gh unauthenticated) is not listed.
-// Read-only: gh is only ever asked to list issues, and the Jira CLI is never touched here.
+// the UI cannot read right now (no mirror, an empty local store, gh unauthenticated) is not listed; TRACKER=none is listed as
+// "none" so both pages can say no tracker is configured. Read-only: gh is only ever asked to list issues, the local store is
+// read through the tracker seam (local-tracker.ts), and the Jira CLI is never touched here.
 import { execFile, execFileSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readConfLayers } from "./conf-layers";
+import { readLocalItems } from "./local-tracker";
+// @ts-ignore -- plain ESM resolver shared with project-mode.sh, no type declarations
+import { projectModeTracker } from "../lib/project-mode.mjs";
 
-export type TrackerSource = "jira" | "github";
+export type TrackerSource = "jira" | "github" | "local" | "none";
 type Env = Record<string, string | undefined>;
 export type GhIssue = {
   number: number; title: string; state: string; stateReason?: string | null; updatedAt?: string;
@@ -22,7 +26,7 @@ const ISSUE_FIELDS = "number,title,state,stateReason,labels,milestone,updatedAt"
 
 export const jiraMirrorDir = (env: Env) => env.HIMMEL_JIRA_MIRROR || join(env.HOME || homedir(), ".himmel", "state", "jira-mirror", env.JIRA_PROJECT_KEY || "HIMMEL");
 
-function trackerSetting(env: Env, root: string): string {
+export function trackerSetting(env: Env, root: string): string {
   const fromEnv = env.TRACKER || readConfLayers(env).TRACKER;
   if (fromEnv) return fromEnv;
   try { return execFileSync("git", ["-C", root, "config", "--get", "himmel.tracker"], { encoding: "utf8", timeout: 5000, env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return ""; }
@@ -35,10 +39,27 @@ function gh(env: Env, root: string, args: string[]): Promise<{ ok: boolean; out:
   });
 }
 
+// The backend the tracker seam would use (jira | local | none), from the same resolver; "" when it refuses (TRACKER=github is
+// the forge's tracker, not a seam backend).
+function seamBackend(env: Env, root: string): string {
+  const conf = readConfLayers(env);
+  const e = { ...env, TRACKER: env.TRACKER || conf.TRACKER || "", JIRA_PROJECT_KEY: env.JIRA_PROJECT_KEY || conf.JIRA_PROJECT_KEY || "" };
+  try { return projectModeTracker({ cwd: root, env: e }); } catch { return ""; }
+}
+
 // github is listed only when the tracker setting names it, so it comes first: an explicit choice beats a mirror that merely exists.
+// The local store and none come next, for the same reason; the Jira mirror is listed last whenever it holds tickets.
 export async function trackerSources(env: Env, root: string): Promise<TrackerSource[]> {
   const out: TrackerSource[] = [];
   if (trackerSetting(env, root) === "github" && (await gh(env, root, ["auth", "status"])).ok) out.push("github");
+  const backend = seamBackend(env, root);
+  const explicitLocal = trackerSetting(env, root) === "local";
+  if (backend === "local") {
+    const items = await readLocalItems(env, root);
+    if (items ? items.length : explicitLocal) out.push("local"); // a failed read stays local, so /api/roadmap can say so
+  }
+  if (backend === "none") out.push("none");
+  if (explicitLocal && !out.length) return out; // an explicit local project never falls back to a mirror's writable board
   try { if (readdirSync(jiraMirrorDir(env)).some((f) => /^HIMMEL-\d+\.md$/.test(f))) out.push("jira"); } catch { /* no mirror */ }
   return out;
 }
