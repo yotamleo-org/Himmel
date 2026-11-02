@@ -3099,6 +3099,8 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 14 "8aa-agreed agreed spec and plan rows reach gate 4c, not the sweep gate -> exit 14"
 if grepq "$LAST_CLEAR_OUT" -F 'reason=missing-variant-sweep'; then
     fail "8aa-agreed spec and plan rows must not be refused for a missing variant-sweep: $LAST_CLEAR_OUT"; else pass; fi
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round'; then pass; else
+    fail "8aa-agreed must be held by gate 4c with reason=unadjudicated-earlier-round: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
 # 8ab. Control: the same spec and plan rows plus an agreed DIFF finding with no
@@ -3117,6 +3119,32 @@ if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep' && grepq "$
 if grepq "$LAST_CLEAR_OUT" -F 'himmel-8519-spec' || grepq "$LAST_CLEAR_OUT" -F 'himmel-8519-plan'; then
     fail "8ab must not name the spec or plan rows: $LAST_CLEAR_OUT"; else pass; fi
 if marker_exists "$tmp"; then pass; else fail "8ab: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 8ac. Fail closed: only an artifact of exactly spec or plan skips the sweep. A
+# fixed row spelled "Diff" is still a code finding and needs its record.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"d2","severity":"sug","file":"a.sh","line":1,"artifact":"Diff","verdict":"fixed"}' "${sha:0:8}")" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8ac a fixed row with artifact Diff and no sweep record is refused -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep' && grepq "$LAST_CLEAR_OUT" -F "d2@${sha:0:8}"; then pass; else
+    fail "8ac must refuse missing-variant-sweep naming d2@${sha:0:8}: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# 8ad. A spec row at a real commit head is not a document finding the design skill
+# wrote: it still needs its sweep record.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"s1","severity":"sug","file":"a.sh","line":1,"artifact":"spec","verdict":"fixed"}' "${sha:0:8}")" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8ad a fixed spec row at a commit head and no sweep record is refused -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-variant-sweep' && grepq "$LAST_CLEAR_OUT" -F "s1@${sha:0:8}"; then pass; else
+    fail "8ad must refuse missing-variant-sweep naming s1@${sha:0:8}: $LAST_CLEAR_OUT"; fi
 rm -rf "$tmp"
 
 # 5a-5e. CR_FLOOR_FALLBACK=claude-only gate-3b escape. All five

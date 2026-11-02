@@ -76,7 +76,9 @@
 #   4d. Every finding stamped with this branch whose effective verdict is
 #      agreed or fixed, at ANY round head, has a variant-sweep record in
 #      <git-common-dir>/cr-class-sweeps/<branch> (written by
-#      write-verdicts.sh sweep). A legacy row with no branch stamp is exempt.
+#      write-verdicts.sh sweep). A legacy row with no branch stamp is exempt, and
+#      so is a design-skill row: artifact exactly spec or plan at a head that is
+#      not a commit hex (a document outside the tree has no code class to sweep).
 #      `--check-sweeps <file>` runs only this gate's record
 #      check over the SWEEP lines in <file>, at write time: exit 14 when the
 #      gate would refuse one, else 0; no marker, no write, no clear.
@@ -742,12 +744,15 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
       // RESOLVE (to a commit, unambiguously) and to the SAME commit.
       // The verdict is compared lowercase, so a raw row spelled
       // Agreed or Fixed still needs its record.
-      // Only artifact diff (a row with no artifact is diff) is collected: a
-      // spec or plan finding edits a document outside the tree, has no code
-      // class to sweep, and its head (a spec id) can never match SWEEP_RE.
-      if (o.kind === "finding" && e.BRANCH && o.branch === e.BRANCH &&
-          (o.artifact || "diff") === "diff") {
-          const sh = String(o.head || "").toLowerCase();
+      // Skipped: a row whose artifact is exactly spec or plan AND whose head is
+      // not a commit hex. Such a finding (written by the design skill, head = a
+      // spec id) edits a document outside the tree, has no code class to sweep, and its
+      // head can never match SWEEP_RE. Every other row is collected, so a row with
+      // no artifact, a misspelled one, or a spec row at a real commit still needs
+      // its record (fail closed).
+      const sh = String(o.head || "").toLowerCase();
+      const isDocRow = (o.artifact === "spec" || o.artifact === "plan") && !isHex(sh);
+      if (o.kind === "finding" && e.BRANCH && o.branch === e.BRANCH && !isDocRow) {
           const rest = [o.finding_id || "?", o.artifact || "diff", o.perspective || "off"].join(SEP);
           if (isHex(sh)) {
               for (const [k, w] of sweptByKey) {
@@ -1433,7 +1438,9 @@ fi
 # <git-common-dir>/cr-class-sweeps/<branch> (write-verdicts.sh sweep). A
 # deferred, disproved or unadjudicated finding needs none (gates 4/4b own
 # those), and a legacy row with no branch stamp is exempt: it cannot be tied
-# to this branch, and the same rule keeps review-round.sh promote off it.
+# to this branch, and the same rule keeps review-round.sh promote off it. A
+# design-skill row (artifact exactly spec or plan, head not a commit hex) is
+# exempt too: it changes a document outside the tree, so it has no class to sweep.
 # A record is checked against the tree, not only its shape (see
 # the node pass); a finding whose records all fail lists why after its id.
 # Read-only, so it runs under --dry-run too.
