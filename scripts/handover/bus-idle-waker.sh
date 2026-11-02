@@ -2,7 +2,7 @@
 # bus-idle-waker.sh — wake an idle headed session that has unread himmel mail.
 #
 #   bus-idle-waker.sh --name <session> --service <konsole dbus service>
-#       --session </Sessions/n> [--pid <konsole pid>] [--poll 2] [--grace 20] [--rewake 120] [--max-polls 0]
+#       --session </Sessions/n> [--pid <konsole pid>] [--poll 2] [--grace 20] [--rewake 120] [--max-wakes 5] [--max-polls 0]
 #
 # Bus and inbox delivery ride hooks, so a session with no tool call and no prompt
 # never sees a message. This watches the session's unread count (bus log via
@@ -11,7 +11,13 @@
 # sentence plus Enter into its konsole through
 # org.kde.konsole.Session.sendText. The sentence is a constant with no digit:
 # message content never reaches the terminal, so a message cannot type commands.
-# One wake per streak, again every --rewake seconds while mail stays unread.
+# One wake per streak, again every --rewake seconds while mail stays unread, at most
+# --max-wakes (default 5) per unread set: a worker that cannot read its mail (over
+# the context fill line, finished) would otherwise be re-woken every --rewake seconds
+# for hours at full context cost. At the cap the waker stops typing,
+# keeps polling, and says so once on stderr and in <state dir>/<name> as `capped`
+# (the chief tick reads it). A set ends when the unread count changes (a new message
+# raises it, a read lowers it) or falls to 0: the count restarts and `capped` clears.
 # Before every wake the screen (getAllDisplayedText) must show the idle input
 # box: a `❯` line between two `─` rules. A permission dialog or any menu
 # replaces that box, and Enter there would confirm its highlighted option, so
@@ -51,7 +57,7 @@ if . "$HERE/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>
 QDBUS="${BUS_WAKER_QDBUS:-qdbus6}"
 BUS="${BUS_WAKER_BUS:-$HERE/../../marketplace/plugins/himmel-bus/bin/bus}"
 PROC="${BUS_WAKER_PROC:-/proc}"
-NAME="" SERVICE="" SESSION="" PID="" POLL=2 GRACE=20 REWAKE=120 MAX=0
+NAME="" SERVICE="" SESSION="" PID="" POLL=2 GRACE=20 REWAKE=120 MAX=0 MAX_WAKES=5
 while [ $# -gt 0 ]; do
     [ $# -ge 2 ] || { echo "bus-idle-waker: $1 needs a value" >&2; exit 64; }
     case "$1" in
@@ -63,6 +69,7 @@ while [ $# -gt 0 ]; do
         --grace) GRACE="${2:-}"; shift 2 ;;
         --rewake) REWAKE="${2:-}"; shift 2 ;;
         --max-polls) MAX="${2:-}"; shift 2 ;;
+        --max-wakes) MAX_WAKES="${2:-}"; shift 2 ;;
         *) echo "bus-idle-waker: unknown argument: $1" >&2; exit 64 ;;
     esac
 done
@@ -72,12 +79,18 @@ for v in "$POLL" "$GRACE" "$REWAKE" "$MAX"; do
     case "$v" in ''|*[!0-9.]*|*.*.*|.) echo "bus-idle-waker: --poll, --grace, --rewake and --max-polls take a number" >&2; exit 64 ;; esac
 done
 case "$MAX" in *.*) echo "bus-idle-waker: --max-polls takes an integer" >&2; exit 64 ;; esac
+case "$MAX_WAKES" in ''|*[!0-9]*|0) echo "bus-idle-waker: --max-wakes takes a positive integer" >&2; exit 64 ;; esac
 [ "$(awk -v p="$POLL" 'BEGIN{print (p > 0)}')" = 1 ] || { echo "bus-idle-waker: --poll must be above 0" >&2; exit 64; }
 
 STATE_DIR="${BUS_WAKER_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus-waker}"
 rm -f "$STATE_DIR/$NAME" 2>/dev/null # swallow-ok: a state file that cannot be cleared only leaves a stale tick flag
 end_state() { # end_state <rc3|rc4>: leave the reason for the chief tick; the waker's log is not read by it
     { mkdir -p "$STATE_DIR" && printf '%s\n' "$1" > "$STATE_DIR/$NAME"; } 2>/dev/null || true # swallow-ok: the state file is advisory, the exit code still ends the waker
+}
+
+clear_capped() { # a read or a new message ends the capped set; an rc3/rc4 end state is left alone
+    [ "$(cat "$STATE_DIR/$NAME" 2>/dev/null)" = capped ] && rm -f "$STATE_DIR/$NAME" 2>/dev/null # swallow-ok: a stale advisory flag at worst
+    return 0
 }
 
 num() { case "$1" in ''|*[!0-9]*) return 1 ;; esac; }
@@ -166,7 +179,7 @@ at_prompt() { # the screen shows the idle, empty input box (a bare ❯ line betw
         }'
 }
 
-since=0 last=0 polls=0
+since=0 last=0 polls=0 wakes=0 capped=0 prev_n=-1
 while :; do
     polls=$((polls + 1))
     if [ -n "$PID" ] && ! kill -0 "$PID" 2>/dev/null; then
@@ -176,21 +189,30 @@ while :; do
     n="$(unread)"
     now="$(date +%s.%N)"
     if [ "${n:-0}" -gt 0 ]; then
+        if [ "$n" != "$prev_n" ]; then wakes=0 capped=0; clear_capped; fi
+        prev_n="$n"
         [ "$since" = 0 ] && since="$now"
         waited="$(awk -v a="$now" -v b="$since" 'BEGIN{printf "%d", (a-b)*1000}')"
         gap="$(awk -v a="$now" -v b="$last" 'BEGIN{printf "%d", (a-b)*1000}')"
         if [ "$waited" -ge "$(awk -v g="$GRACE" 'BEGIN{printf "%d", g*1000}')" ] \
             && { [ "$last" = 0 ] || [ "$gap" -ge "$(awk -v g="$REWAKE" 'BEGIN{printf "%d", g*1000}')" ]; } \
-            && at_prompt; then
+            && [ "$wakes" -lt "$MAX_WAKES" ] && at_prompt; then
             named_target
             # a dialog can open between the first read and the keystroke: read the screen again right before sending
             if at_prompt; then
                 konsole sendText "You have unread himmel messages: read them now."$'\r'
                 last="$now"
+                wakes=$((wakes + 1))
+                if [ "$wakes" -ge "$MAX_WAKES" ] && [ "$capped" = 0 ]; then
+                    capped=1
+                    echo "bus-idle-waker: rewake cap reached ($MAX_WAKES wakes for the same unread mail), no more wakes until the unread count changes: $NAME" >&2
+                    { mkdir -p "$STATE_DIR" && printf '%s\n' capped > "$STATE_DIR/$NAME"; } 2>/dev/null || true # swallow-ok: the state file is advisory, the stderr line above still reports
+                fi
             fi
         fi
     else
-        since=0 last=0
+        since=0 last=0 wakes=0 capped=0 prev_n=0
+        clear_capped
     fi
     [ "$MAX" -gt 0 ] && [ "$polls" -ge "$MAX" ] && exit 0
     sleep "$POLL"
