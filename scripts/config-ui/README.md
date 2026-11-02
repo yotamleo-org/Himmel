@@ -274,15 +274,17 @@ pass the same redactor as the feed; the id fields are left intact, and so are
 would blank) and `failure` (one of four words).
 
 **Journal roots.** A session launched with its own `CLAUDE_CONFIG_DIR` opens
-in the run view once a live Fleet census poll has seen it; before that, and after a
-server restart, its run is `404`. A journal root is a Claude config directory
+in the run view from a direct link: a run that no root holds runs the live census
+once and retries, so no Fleet poll is needed first, also after a server restart.
+A journal root is a Claude config directory
 whose `projects/` holds session journals. `resolveJournal` searches two
 built-in roots, `~/.claude` (native) and `~/.claude-codex` (claudex, the lane
 that runs Claude Code on Codex models), then every custom root registered so
 far.
 
 - **Where custom roots come from.** Only the live census: `readFleet`
-  (`agui/fleet.ts`, behind `GET /api/agui/fleet`) reads each live session's
+  (`agui/fleet.ts`, behind `GET /api/agui/fleet`, and run once more when
+  `GET /api/agui/<run>` misses before it answers `404`) reads each live session's
   launch environment from `/proc/<pid>/environ` and, when it carries
   `CLAUDE_CONFIG_DIR`, passes that directory to `registerConfigRoot`
   (`agui/sse.ts`). No request parameter names a root; `/api/agui/<run>` takes
@@ -294,9 +296,9 @@ far.
   searched.
 - **How long a root stays.** The registry lives in the server's memory, holds at
   most 32 roots and drops the oldest past that; registering a root again does
-  not refresh its place. A custom root is therefore searched only after a fleet
-  poll has seen a live session launched with it, until the server restarts or
-  the root is dropped.
+  not refresh its place. A custom root is therefore searched once a census run
+  (a fleet poll, or a run link that missed) has seen a live session launched
+  with it, until the server restarts or the root is dropped.
 - **Built-in versus custom.** `resolveJournal` re-checks a custom root on every
   lookup: its `projects/` must still resolve inside the config directory, or
   the root is skipped. The built-in roots skip that check, so a symlinked

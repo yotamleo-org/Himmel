@@ -547,6 +547,16 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
   const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
   let fleetRun: ReturnType<typeof readFleet> | null = null;
+  // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
+  function fleetOnce(): ReturnType<typeof readFleet> {
+    let raw = "";
+    try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
+    const literals = envValues(raw, parseDotEnv, env);
+    return fleetRun ??= readFleet({
+      script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
+      redact: (v) => String(redactDeep(v, { literals })),
+    }).finally(() => { fleetRun = null; });
+  }
   async function route(req: Request): Promise<Response> {
     const origin = `http://${LOOPBACK}:${server.port}`;
     if (req.headers.get("host") !== `${LOOPBACK}:${server.port}`) return new Response("bad host", { status: 403 });
@@ -688,15 +698,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
       if (path === "/api/agui/fleet") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        let raw = "";
-        try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-        const literals = envValues(raw, parseDotEnv, env);
-        // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
-        fleetRun ??= readFleet({
-          script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
-          redact: (v) => String(redactDeep(v, { literals })),
-        }).finally(() => { fleetRun = null; });
-        return json(await fleetRun);
+        return json(await fleetOnce());
       }
       // the chief board (board.mjs --json, schema himmel.board/1) for the Fleet page, and a worker's doc for its brief link.
       if (path === "/api/agui/board" || path === "/api/agui/brief") {
@@ -713,7 +715,10 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path.startsWith("/api/agui/")) {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         const run = path.slice("/api/agui/".length);
-        const found = await resolveJournal(env.HOME || homedir(), run);
+        let found = await resolveJournal(env.HOME || homedir(), run);
+        // A miss: the live census registers each session's own config root (as a Fleet poll does), then one retry.
+        // The run id is the only request input; no parameter names a root.
+        if ("status" in found && found.status === 404) { await fleetOnce().catch(() => undefined); found = await resolveJournal(env.HOME || homedir(), run); }
         if ("status" in found) return new Response(found.status === 400 ? "bad run id" : found.status === 404 ? "no such run" : "run id is ambiguous", { status: found.status });
         // Secrets in the transcript pass the same redactor as every other output; literals read once per stream.
         let raw = "";
