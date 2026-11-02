@@ -975,37 +975,7 @@ elif [ "$sc_rc" -eq 2 ]; then
     exit 9
 fi
 
-# Dedup layer 1b: one worker per TICKET, across chiefs. Layer 1 dedups by session name only, so two
-# chiefs on one chain could each arm a worker (different N numbers) on the same ticket. A worker name is
-# <KEY>-N<digits>[letter]-...: refuse while another live claude session carries the same <KEY>-N prefix with different
-# digits (workers b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
-# allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
-# ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
-if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
-    TICKET_KEY="${BASH_REMATCH[1]}"; TICKET_N="${BASH_REMATCH[2]}"
-    TICKET_RIVAL=""
-    rival_pids="$("$PGREP" -f "[c]laude .*-n $(ere_escape "$TICKET_KEY")-N" 2>/dev/null)" || rival_pids=""  # swallow-ok: no match or a failed scan both leave no rival named; the guard fails open
-    for rival_pid in $rival_pids; do
-        if [ -d "$PROC" ]; then
-            rival_comm="$(cat "$PROC/$rival_pid/comm" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
-            [ "$rival_comm" = claude ] || continue
-            rival_name="$(tr '\0' '\n' < "$PROC/$rival_pid/cmdline" 2>/dev/null | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
-        else
-            rival_comm="$(ps -o comm= -p "$rival_pid" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
-            [ "${rival_comm##*/}" = claude ] || continue
-            rival_name="$(ps -ww -o args= -p "$rival_pid" 2>/dev/null | tr -s ' ' '\n' | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
-        fi
-        [ "$rival_name" != "$NAME" ] || continue
-        if [[ "$rival_name" =~ ^${TICKET_KEY}-N([0-9]+) ]] && [ "${BASH_REMATCH[1]}" != "$TICKET_N" ]; then
-            TICKET_RIVAL="$rival_name"; break
-        fi
-    done
-    if [ -n "$TICKET_RIVAL" ]; then
-        echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket. Only the operator, from the shell that launches the chief, can allow a second worker on it" >&2
-        echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
-        exit 16
-    fi
-fi
+# Dedup layer 1b (one worker per TICKET, across chiefs) runs after the name claim below, under a ticket-scoped claim.
 
 # Dedup layer 2: the check above is a non-atomic check-then-launch
 # - two arms racing on the exact same NAME could both see "no match" here
@@ -1331,22 +1301,29 @@ LOCK="$LOCKDIR/$NAME.lock"
 # avoid, reached through its own bookkeeping. If the stamp write fails, do
 # not proceed holding an unstampable lock: remove it and fail loudly with
 # a distinct exit instead of silently wedging every future arm.
-stamp_or_fail_loudly() {
-    if date +%s > "$LOCK/acquired" 2>/dev/null; then
+#
+# The three helpers below take an optional lock path (default: the session-name
+# $LOCK) so the ticket-scoped claim uses the same mkdir claim and
+# stale rule, not a second lock scheme.
+stamp_or_fail_loudly() { # stamp_or_fail_loudly [lock path]
+    local lk="${1:-$LOCK}"
+    if date +%s > "$lk/acquired" 2>/dev/null; then
         return 0
     fi
-    # The failed stamp write usually means $LOCK was mkdir'd mode
+    # The failed stamp write usually means $lk was mkdir'd mode
     # 000 (umask 0777); BSD/macOS `rm -rf` cannot remove such a directory
     # (EACCES), so restore owner access to the lock this claim created first.
-    chmod -R u+rwx "$LOCK" 2>/dev/null
-    rm -rf "$LOCK" 2>/dev/null
-    echo "headed-arm: claimed the lock '$LOCK' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed" >&2
+    chmod -R u+rwx "$lk" 2>/dev/null
+    rm -rf "$lk" 2>/dev/null
+    # A ticket claim is taken while the name claim is held: do not leave that one behind.
+    [ "$lk" = "$LOCK" ] || rm -rf "$LOCK" 2>/dev/null
+    echo "headed-arm: claimed the lock '$lk' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed" >&2
     exit 8
 }
-steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
-    local expected_at="$1" victim stolen_at
-    victim="$LOCK.stale.$$.$RANDOM"
-    if ! mv "$LOCK" "$victim" 2>/dev/null; then
+steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp> [lock path]
+    local expected_at="$1" lk="${2:-$LOCK}" victim stolen_at
+    victim="$lk.stale.$$.$RANDOM"
+    if ! mv "$lk" "$victim" 2>/dev/null; then
         # Someone else already stole (or the owner released) it first -
         # this attempt lost the race; not an error, just not ours.
         return 1
@@ -1359,13 +1336,13 @@ steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
         # itself loses a race (rare), leave the orphaned $victim rather
         # than risk a second bad steal - never claim in this branch either
         # way.
-        mv "$victim" "$LOCK" 2>/dev/null
+        mv "$victim" "$lk" 2>/dev/null
         return 1
     fi
     rm -rf "$victim" 2>/dev/null
     # prim-ok: a stamped lease claimed across processes with stale-steal; with_lock is a synchronous per-process lock that fails closed on a dead owner
-    if mkdir "$LOCK" 2>/dev/null; then
-        stamp_or_fail_loudly
+    if mkdir "$lk" 2>/dev/null; then
+        stamp_or_fail_loudly "$lk"
         return 0
     fi
     # Another claimant (a fresh arm, or another reclaimer) grabbed the now-
@@ -1373,14 +1350,15 @@ steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
     # race too, not an error.
     return 1
 }
-claim_lock() {
+claim_lock() { # claim_lock [lock path]
+    local lk="${1:-$LOCK}"
     # prim-ok: a stamped lease claimed across processes with stale-steal; with_lock is a synchronous per-process lock that fails closed on a dead owner
-    if mkdir "$LOCK" 2>/dev/null; then
-        stamp_or_fail_loudly
+    if mkdir "$lk" 2>/dev/null; then
+        stamp_or_fail_loudly "$lk"
         return 0
     fi
     local held_at age
-    held_at="$(cat "$LOCK/acquired" 2>/dev/null)" || held_at=""
+    held_at="$(cat "$lk/acquired" 2>/dev/null)" || held_at=""
     case "$held_at" in
         # No readable stamp yet: either a fresh claim (the stamp write above
         # races the mkdir by a hair) or a crash between mkdir and the stamp
@@ -1390,7 +1368,7 @@ claim_lock() {
     age=$(( $(date +%s) - held_at ))
     [ "$age" -ge "$STALE_LOCK_SECS" ] || return 1
     if [ -n "${HEADED_ARM_STALE_HOOK:-}" ]; then "$HEADED_ARM_STALE_HOOK"; fi
-    steal_stale_lock "$held_at"
+    steal_stale_lock "$held_at" "$lk"
 }
 
 # A contender that found the lock held used to exit 0 IMMEDIATELY,
@@ -1492,6 +1470,72 @@ elif [ "$sc_rc" -eq 2 ]; then
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed re-checking for $NAME after claiming the lock - releasing rather than launch blind" >> "$LOG"
     rm -rf "$LOCK" 2>/dev/null
     exit 9
+fi
+
+# Dedup layer 1b: one worker per TICKET, across chiefs. Layer 1 dedups by session name only, so two
+# chiefs on one chain could each arm a worker (different N numbers) on the same ticket. A worker name is
+# <KEY>-N<digits>[letter]-...: refuse while another live claude session carries the same <KEY>-N prefix with different
+# digits (workers b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
+# allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
+# ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
+#
+# The scan below is a check-then-launch, so it runs under an atomic ticket-scoped claim
+# ($LOCKDIR/ticket-<KEY>.lock: the name claim's mkdir, stamp and stale rule). The claim is held from before the scan
+# until this process exits, which is after the launched session is visible to pgrep (the post-launch poll below),
+# so a second arm either finds the claim held or, once it is released, finds the first session in its own scan.
+# A held claim whose holder is another lineage refuses at once (exit 16, the 8436 message); a holder of the SAME N
+# (workers b/c of one N) is waited out for the session-visibility budget, then the arm gives up as exit 6 like an
+# exhausted name claim. A different ticket key is a different claim. An EXIT trap releases it on every exit path.
+# ponytail: a claim left by a kill -9 blocks that ticket until STALE_LOCK_SECS, the same ceiling as the name claim.
+TICKET_LOCK=""
+if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z][A-Z0-9]*-[0-9]+)-N([0-9]+) ]]; then
+    TICKET_KEY="${BASH_REMATCH[1]}"; TICKET_N="${BASH_REMATCH[2]}"
+    TICKET_RIVAL=""
+    ticket_claim="$LOCKDIR/ticket-$TICKET_KEY.lock"
+    t_n=0
+    while :; do
+        if claim_lock "$ticket_claim"; then
+            TICKET_LOCK="$ticket_claim"
+            trap 'rm -rf "$TICKET_LOCK" 2>/dev/null' EXIT
+            printf '%s\n' "$NAME" > "$TICKET_LOCK/holder" 2>/dev/null  # swallow-ok: the holder name only decorates a refusal; an unreadable one is retried as same-lineage
+            break
+        fi
+        t_holder="$(cat "$ticket_claim/holder" 2>/dev/null)" || t_holder=""  # swallow-ok: no readable holder yet is treated like same-lineage and retried
+        if [[ "$t_holder" =~ ^${TICKET_KEY}-N([0-9]+) ]] && [ "${BASH_REMATCH[1]}" != "$TICKET_N" ]; then
+            TICKET_RIVAL="$t_holder"; break
+        fi
+        t_n=$((t_n+1))
+        if [ "$t_n" -ge "$SESSION_VISIBLE_RETRY_ITERS" ]; then
+            echo "$(date +%F_%T) UNRESOLVED: the launch claim for $TICKET_KEY is still held after waiting - the armed successor $NAME may be lost" >> "$LOG"
+            rm -rf "$LOCK" 2>/dev/null
+            exit 6
+        fi
+        sleep "$SESSION_VISIBLE_RETRY_SLEEP"
+    done
+    if [ -z "$TICKET_RIVAL" ]; then
+        rival_pids="$("$PGREP" -f "[c]laude .*-n $(ere_escape "$TICKET_KEY")-N" 2>/dev/null)" || rival_pids=""  # swallow-ok: no match or a failed scan both leave no rival named; the guard fails open
+        for rival_pid in $rival_pids; do
+            if [ -d "$PROC" ]; then
+                rival_comm="$(cat "$PROC/$rival_pid/comm" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
+                [ "$rival_comm" = claude ] || continue
+                rival_name="$(tr '\0' '\n' < "$PROC/$rival_pid/cmdline" 2>/dev/null | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
+            else
+                rival_comm="$(ps -o comm= -p "$rival_pid" 2>/dev/null)" || continue  # swallow-ok: a pid that vanished since pgrep is no rival
+                [ "${rival_comm##*/}" = claude ] || continue
+                rival_name="$(ps -ww -o args= -p "$rival_pid" 2>/dev/null | tr -s ' ' '\n' | awk 'p { print; exit } $0 == "-n" { p = 1 }')"  # swallow-ok: an unreadable argv names no rival, the guard fails open
+            fi
+            [ "$rival_name" != "$NAME" ] || continue
+            if [[ "$rival_name" =~ ^${TICKET_KEY}-N([0-9]+) ]] && [ "${BASH_REMATCH[1]}" != "$TICKET_N" ]; then
+                TICKET_RIVAL="$rival_name"; break
+            fi
+        done
+    fi
+    if [ -n "$TICKET_RIVAL" ]; then
+        echo "headed-arm: refusing to arm $NAME: $TICKET_KEY already has a live worker session ($TICKET_RIVAL). One worker per ticket. Only the operator, from the shell that launches the chief, can allow a second worker on it" >&2
+        echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
+        rm -rf "$LOCK" 2>/dev/null
+        exit 16
+    fi
 fi
 
 cd "$REPO" || { rm -rf "$LOCK" 2>/dev/null; exit 1; }
