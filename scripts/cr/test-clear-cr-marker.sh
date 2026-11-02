@@ -1069,6 +1069,57 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "first score row predates the gate → exit 0"
 rm -rf "$tmp"
 
+# 4e-a. Only a score row at a commit this branch added counts. A design-skill
+# row at a spec id, a row at the base and a row at a commit off the branch all
+# precede the preflight; the first score at a branch commit follows it.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+_pf_main=$(git -C "$tmp" rev-parse --verify refs/heads/main)
+_pf_side=$(git -C "$tmp" commit-tree "$_pf_main^{tree}" -p "$_pf_main" -m side)
+write_ledger "$tmp" "$(_pf_score 2026-11-01T03:39:00Z himmel-8519-spec)" "$(_pf_score 2026-11-01T04:21:00Z "${_pf_main:0:8}")" \
+    "$(_pf_score 2026-11-01T05:00:00Z "${_pf_side:0:8}")" "$(_pf_row 2026-11-01T07:17:54Z "$sha")" \
+    "$(_pf_score 2026-11-01T07:19:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "4e-a score rows off the branch before the preflight do not count → exit 0"
+rm -rf "$tmp"
+
+# 4e-b. Control: a branch commit scored before any preflight is still refused,
+# and a design-skill row from before the gate shipped earns it no exemption.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(_pf_score 2026-10-01T10:00:00Z himmel-8519-spec)" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" \
+    "$(_pf_row 2026-11-01T11:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "4e-b a branch commit scored before the preflight → exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=missing-preflight'; then pass; else
+    fail "4e-b must refuse with reason=missing-preflight: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# 4e-c. Fail closed: a merge-base that cannot be read never reports ok.
+make_repo || exit 1
+write_marker "$tmp" "$sha" full .git/test-origin.git deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+write_ledger "$tmp" "$(_pf_row 2026-11-01T09:00:00Z "$sha")" "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "4e-c an unreadable merge-base fails closed → exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=preflight-unreadable'; then pass; else
+    fail "4e-c must refuse with reason=preflight-unreadable: $LAST_CLEAR_OUT"; fi
+if marker_exists "$tmp"; then pass; else fail "4e-c: marker must REMAIN"; fi
+rm -rf "$tmp"
+
+# 4e-d. Fail closed: a commit-shaped head that resolves to nothing, or a score
+# row with no head at all, might be this branch's, so neither reports ok.
+for _pf_bad in deadbeef0 ""; do
+    make_repo || exit 1
+    write_marker "$tmp" "$sha"
+    write_ledger "$tmp" "$(_pf_row 2026-11-01T09:00:00Z "$sha")" "$(_pf_score 2026-11-01T09:30:00Z "$_pf_bad")" \
+        "$(_pf_score 2026-11-01T10:00:00Z "$sha")" "$(avail_ok "${sha:0:8}")"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+    run_clear "$tmp" 14 "4e-d an unreadable score head [$_pf_bad] fails closed → exit 14"
+    if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=preflight-unreadable'; then pass; else
+        fail "4e-d [$_pf_bad] must refuse with reason=preflight-unreadable: $LAST_CLEAR_OUT"; fi
+    rm -rf "$tmp"
+done
+
 # Exempt: the docs-audit lane owes no step 2.8 pass.
 make_repo || exit 1
 write_marker "$tmp" "$sha" docs-audit
@@ -3088,8 +3139,8 @@ run_clear "$tmp" 0 "8aa fixed spec and plan rows at non-commit heads need no var
 if marker_exists "$tmp"; then fail "8aa: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
-# 8aa-agreed. The same rows still `agreed` clear the sweep gate; gate 4c
-# (review-round promote) is a separate gate and still holds them.
+# 8aa-agreed. The same rows still `agreed` clear both the sweep gate and gate 4c
+# (review-round promote): no later commit could ever fix a document outside the tree.
 make_repo || exit 1
 write_marker "$tmp" "$sha"
 write_ledger "$tmp" \
@@ -3097,11 +3148,61 @@ write_ledger "$tmp" \
     "$(printf '{"kind":"finding","head":"himmel-8519-plan","branch":"feat/x","model":"claude","finding_id":"claude-18","severity":"imp","file":"","line":0,"artifact":"plan","verdict":"agreed"}')" \
     "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 14 "8aa-agreed agreed spec and plan rows reach gate 4c, not the sweep gate -> exit 14"
-if grepq "$LAST_CLEAR_OUT" -F 'reason=missing-variant-sweep'; then
-    fail "8aa-agreed spec and plan rows must not be refused for a missing variant-sweep: $LAST_CLEAR_OUT"; else pass; fi
+run_clear "$tmp" 0 "8aa-agreed agreed spec and plan rows at non-commit heads clear the sweep gate and gate 4c -> exit 0"
+if marker_exists "$tmp"; then fail "8aa-agreed: marker should be GONE"; else pass; fi
+rm -rf "$tmp"
+
+# 8aa-diff. Control: an agreed diff finding at a superseded head on that same
+# branch, with its sweep record, is still held by gate 4c, naming only that row.
+sweep_fixture
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-spec","branch":"feat/x","model":"codex","finding_id":"codex-1","severity":"imp","file":"","line":0,"artifact":"spec","verdict":"agreed"}')" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-plan","branch":"feat/x","model":"claude","finding_id":"claude-18","severity":"imp","file":"","line":0,"artifact":"plan","verdict":"agreed"}')" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"d1","severity":"imp","file":"a.sh","line":1,"verdict":"agreed"}' "$_r1")" \
+    "$(avail_ok "${_tip:0:8}")"
+write_sweeps "$tmp" "SWEEP [d1@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4"
+run_clear "$tmp" 14 "8aa-diff an agreed diff finding at a superseded head is still held -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round' && grepq "$LAST_CLEAR_OUT" -F "still-open d1@$_r1"; then pass; else
+    fail "8aa-diff must refuse with reason=unadjudicated-earlier-round naming d1@$_r1: $LAST_CLEAR_OUT"; fi
+if grepq "$LAST_CLEAR_OUT" -F 'still-open codex-1' || grepq "$LAST_CLEAR_OUT" -F 'still-open claude-18'; then
+    fail "8aa-diff must not hold the spec or plan rows: $LAST_CLEAR_OUT"; else pass; fi
+rm -rf "$tmp"
+
+# 8aa-commit. Control: an agreed spec row at a real commit head is a code finding
+# and stays open, so a bare artifact test cannot let a mislabelled row slip through.
+sweep_fixture
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"%s","branch":"feat/x","model":"codex","finding_id":"s1","severity":"imp","file":"a.sh","line":1,"artifact":"spec","verdict":"agreed"}' "$_r1")" \
+    "$(avail_ok "${_tip:0:8}")"
+write_sweeps "$tmp" "SWEEP [s1@$_r1] class=unquoted path :: sites=a.sh:1, b.sh:4"
+run_clear "$tmp" 14 "8aa-commit an agreed spec row at a commit head stays open -> exit 14"
+if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round' && grepq "$LAST_CLEAR_OUT" -F "still-open s1@$_r1"; then pass; else
+    fail "8aa-commit must refuse with reason=unadjudicated-earlier-round naming s1@$_r1: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# 8aa-empty. Control: only an agreed row leaves the check. A spec row nobody has
+# decided still needs its decision.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"himmel-8519-spec","branch":"feat/x","model":"codex","finding_id":"codex-1","severity":"imp","file":"","line":0,"artifact":"spec","verdict":""}')" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8aa-empty an undecided spec row at a non-commit head stays open -> exit 14"
 if grepq "$LAST_CLEAR_OUT" -F 'REFUSED reason=unadjudicated-earlier-round'; then pass; else
-    fail "8aa-agreed must be held by gate 4c with reason=unadjudicated-earlier-round: $LAST_CLEAR_OUT"; fi
+    fail "8aa-empty must refuse with reason=unadjudicated-earlier-round: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+# 8aa-nohead. Control: an agreed spec row with no head at all does not leave the
+# check either; promote refuses it as it did.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" \
+    "$(printf '{"kind":"finding","head":"","branch":"feat/x","model":"codex","finding_id":"codex-1","severity":"imp","file":"","line":0,"artifact":"spec","verdict":"agreed"}')" \
+    "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 14 "8aa-nohead an agreed spec row with no head stays refused -> exit 14"
+if marker_exists "$tmp"; then pass; else fail "8aa-nohead: marker must REMAIN"; fi
 rm -rf "$tmp"
 
 # 8ab. Control: the same spec and plan rows plus an agreed DIFF finding with no
