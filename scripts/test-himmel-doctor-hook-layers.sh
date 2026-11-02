@@ -89,21 +89,37 @@ has "C81 WARN names guardrail-block-global" "$out" "accept guardrail-block-globa
 # --- doctor C85: the queue lock's self-heartbeat hook must be wired ---------------------------
 hb_doctor() { HOME="$WORK/home" CLAUDE_DIR="$WORK/claude" bash "$DOC" --root "$1" --only C85 --no-color 2>&1; }
 echo "== C85: project settings without the self-heartbeat hook -> FAIL naming the wiring script =="
-out="$(hb_doctor "$PROJ")"
+out="$(hb_doctor "$PROJ")"; rc=$?
 has "C85 hook unwired -> FAIL row" "$out" "FAIL C85-self-heartbeat"
 has "C85 names the wiring script" "$out" "wire-session-telemetry-hooks.mjs"
+[ "$rc" -ne 0 ] && pass "C85 hook unwired -> doctor exits non-zero" || fail "C85 hook unwired -> doctor exit $rc"
 echo "== C85: the canonical entry the wiring script writes -> OK =="
 HBPROJ="$WORK/hb-root"
+WIRE="$ROOT/scripts/observability/wire-session-telemetry-hooks.mjs"
 mkdir -p "$HBPROJ/.claude"
 ln -s "$ROOT/scripts" "$HBPROJ/scripts"
 jq -n '{hooks:{}}' > "$HBPROJ/.claude/settings.json"
-node "$ROOT/scripts/observability/wire-session-telemetry-hooks.mjs" "$HBPROJ/.claude/settings.json" >/dev/null 2>&1
-out="$(hb_doctor "$HBPROJ")"
+node "$WIRE" "$HBPROJ/.claude/settings.json" >/dev/null 2>&1 && pass "C85 the wiring script exits 0 on the unwired fixture" || fail "C85 the wiring script failed on the unwired fixture"
+out="$(hb_doctor "$HBPROJ")"; rc=$?
 has "C85 hook wired by the wiring script -> OK row" "$out" "OK   C85-self-heartbeat"
-echo "== C85: wired, then removed (--off) -> FAIL again =="
-node "$ROOT/scripts/observability/wire-session-telemetry-hooks.mjs" --off "$HBPROJ/.claude/settings.json" >/dev/null 2>&1
+[ "$rc" -eq 0 ] && pass "C85 hook wired -> doctor exits 0" || fail "C85 hook wired -> doctor exit $rc"
+echo "== C85: the entry moved into a matcher group that fires for one tool only -> FAIL =="
+cp "$HBPROJ/.claude/settings.json" "$WORK/hb-wired.json"
+jq '(.hooks.PostToolUse[] | select(any(.hooks[]?; (.command // "") | contains("self-heartbeat")))) += {matcher:"Agent"}' "$WORK/hb-wired.json" > "$HBPROJ/.claude/settings.json"
 out="$(hb_doctor "$HBPROJ")"
+has "C85 hook behind an Agent-only matcher -> FAIL row" "$out" "FAIL C85-self-heartbeat"
+cp "$WORK/hb-wired.json" "$HBPROJ/.claude/settings.json"
+echo "== C85: wired, but settings.local.json sets disableAllHooks -> FAIL =="
+printf '{"disableAllHooks":true}\n' > "$HBPROJ/.claude/settings.local.json"
+out="$(hb_doctor "$HBPROJ")"
+has "C85 disableAllHooks -> FAIL row" "$out" "FAIL C85-self-heartbeat"
+has "C85 names disableAllHooks" "$out" "disableAllHooks"
+rm -f "$HBPROJ/.claude/settings.local.json"
+echo "== C85: wired, then removed (--off) -> FAIL again =="
+node "$WIRE" --off "$HBPROJ/.claude/settings.json" >/dev/null 2>&1 && pass "C85 the wiring script --off exits 0" || fail "C85 the wiring script --off failed"
+out="$(hb_doctor "$HBPROJ")"; rc=$?
 has "C85 hook removed -> FAIL row" "$out" "FAIL C85-self-heartbeat"
+[ "$rc" -ne 0 ] && pass "C85 hook removed -> doctor exits non-zero" || fail "C85 hook removed -> doctor exit $rc"
 
 # --- himmelctl: user-scope install keeps the trio unless a self-skipping owner is there ------
 export INSTALL_ENGINE_LIB="$ROOT/scripts/himmelctl/lib/install-engine.js"

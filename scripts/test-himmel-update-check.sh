@@ -312,26 +312,45 @@ run_wire_self_heartbeat() {   # <root>
     )
 }
 
-hb_count() { jq '[(.hooks.PostToolUse // [])[]? | (.hooks // [])[]? | select((.command // "") | contains("queue-lock.sh") and contains("self-heartbeat"))] | length' "$1"; }
+# Counts only a hook whose group fires after every tool (no matcher, or "*").
+hb_count() { jq '[(.hooks.PostToolUse // [])[]? | select(((.matcher // "") == "") or .matcher == "*") | (.hooks // [])[]? | select((.command // "") | contains("queue-lock.sh") and contains("self-heartbeat"))] | length' "$1"; }
 
 assert_eq "wire_self_heartbeat: entry absent before the update step" "0" "$(hb_count "$HB_ROOT/.claude/settings.json")"
-if run_wire_self_heartbeat "$HB_ROOT" >/dev/null 2>&1; then
-    assert_pass "wire_self_heartbeat unwired checkout: rc 0"
+if command -v node >/dev/null 2>&1; then
+    if run_wire_self_heartbeat "$HB_ROOT" >/dev/null 2>&1; then
+        assert_pass "wire_self_heartbeat unwired checkout: rc 0"
+    else
+        assert_fail "wire_self_heartbeat unwired checkout: rc non-zero"
+    fi
+    assert_eq "wire_self_heartbeat: entry wired for every tool after the update step" "1" "$(hb_count "$HB_ROOT/.claude/settings.json")"
+    cp "$HB_ROOT/.claude/settings.json" "$TMP/hb-settings.once"
+    if run_wire_self_heartbeat "$HB_ROOT" >/dev/null 2>&1; then
+        assert_pass "wire_self_heartbeat second run: rc 0"
+    else
+        assert_fail "wire_self_heartbeat second run: rc non-zero"
+    fi
+    if cmp -s "$TMP/hb-settings.once" "$HB_ROOT/.claude/settings.json"; then
+        assert_pass "wire_self_heartbeat second run: unchanged"
+    else
+        assert_fail "wire_self_heartbeat second run: changed unexpectedly"
+    fi
 else
-    assert_fail "wire_self_heartbeat unwired checkout: rc non-zero"
+    assert_pass "wire_self_heartbeat wiring cases: skipped, node not on PATH (the step skips on such a host)"
 fi
-assert_eq "wire_self_heartbeat: entry wired after the update step" "1" "$(hb_count "$HB_ROOT/.claude/settings.json")"
-cp "$HB_ROOT/.claude/settings.json" "$TMP/hb-settings.once"
-run_wire_self_heartbeat "$HB_ROOT" >/dev/null 2>&1 || true
-if cmp -s "$TMP/hb-settings.once" "$HB_ROOT/.claude/settings.json"; then
-    assert_pass "wire_self_heartbeat second run: unchanged"
-else
-    assert_fail "wire_self_heartbeat second run: changed unexpectedly"
-fi
-if run_wire_self_heartbeat "$HB_ROOT/empty" >/dev/null 2>&1; then
+# A checkout that has the writer but no settings file: the step must not call node and must create nothing.
+mkdir -p "$TMP/hb-bin"
+printf '#!/bin/sh\necho called > "%s/hb-node-called"\nexit 0\n' "$TMP" > "$TMP/hb-bin/node"
+chmod +x "$TMP/hb-bin/node"
+ln -s "$REAL_ROOT/scripts" "$HB_ROOT/empty/scripts"
+if PATH="$TMP/hb-bin:$PATH" run_wire_self_heartbeat "$HB_ROOT/empty" >/dev/null 2>&1; then
     assert_pass "wire_self_heartbeat checkout without settings: rc 0"
 else
     assert_fail "wire_self_heartbeat checkout without settings: rc non-zero"
+fi
+if [ ! -e "$TMP/hb-node-called" ]; then
+    assert_pass "wire_self_heartbeat checkout without settings: node not invoked"
+else
+    assert_fail "wire_self_heartbeat checkout without settings: node was invoked"
 fi
 if [ ! -e "$HB_ROOT/empty/.claude" ]; then
     assert_pass "wire_self_heartbeat checkout without settings: nothing created"
