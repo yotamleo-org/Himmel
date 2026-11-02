@@ -39,7 +39,14 @@ cat > "$REPO/scripts/api-lane/claude-api.sh" <<EOF
 #!/usr/bin/env bash
 echo "lane-tools=\${HIMMEL_API_TOOLS-UNSET}" >> "$WS/calls.log"
 echo "lane-kind=\${HIMMEL_API_KIND-UNSET}" >> "$WS/calls.log"
-echo "lane \$* | stdin=\$(cat | tr '\\n' ' ') | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
+cat > "$WS/lane-stdin"
+prev=""; for a in "\$@"; do
+  if [ "\$prev" = --append-system-prompt-file ]; then
+    mkdir -p "$WS/lane-sys"; echo "\$a" >> "$WS/lane-sys-paths"; cat "\$a" > "$WS/lane-sys/\$(ls "$WS/lane-sys" | wc -l | tr -d ' ')"
+  fi
+  prev="\$a"
+done
+echo "lane \$* | stdin=\$(tr '\\n' ' ' < "$WS/lane-stdin") | cwdcorpus=\$([ -e "\$PWD/.graphify-corpus" ] && echo yes || echo no) | claude=\$(command -v claude || echo none)" >> "$WS/calls.log"
 if [ -n "\${LANE_STUB_REFUSE:-}" ]; then
   echo 'claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})' >&2
   exit 2
@@ -73,10 +80,13 @@ echo "OLLAMA_NUM_CTX=\${GRAPHIFY_OLLAMA_NUM_CTX-unset}" >> "$WS/env.log"
 echo "API_TIMEOUT=\${GRAPHIFY_API_TIMEOUT-unset}" >> "$WS/env.log"
 echo "CLAUDE_BIN=\$(command -v claude || echo none)" >> "$WS/env.log"
 echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR-unset}" >> "$WS/env.log"
-if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ]; then
+# GRAPHIFY_STUB_CACHE_HIT: a seeded entry answers the extract with no call, as graphify's cache does; graphify's
+# real key is content plus its own prompt, so it cannot see which mode wrote the entry, and neither does this one.
+if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\${GRAPHIFY_STUB_CACHE_HIT:-}" ] || [ ! -e "\$2/graphify-out/cache/semantic/new.json" ]; }; then
   claude --help > "$WS/claude-help.out" 2>&1
-  for _ in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
-    printf '%b' "\${GRAPHIFY_STUB_PROMPT:-extract this}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
+  for call_n in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
+    p="\${GRAPHIFY_STUB_PROMPT:-extract this}"
+    printf '%b' "\${p//@CALL@/\$call_n}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
       || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
   done
 fi
@@ -486,19 +496,81 @@ grep -q json-schema "$WS/claude-help.out"; h37=$?
 case "$h37" in 1) pass "T37 shim --help omits --json-schema" ;; 0) fail "T37 shim --help advertises --json-schema" ;; *) fail "T37 claude-help.out unreadable (grep rc=$h37)" ;; esac
 
 echo "T37b: the lane call is tagged kind=graphify and the fixed addendum sits between graphify's instructions and the chunk (HIMMEL-8403)"
-C37B="$WS/c37b"; new_corpus "$C37B"; : > "$WS/calls.log"; : > "$WS/claude.out"
+addendum() { sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d'; }
+reset_lane() { : > "$WS/calls.log"; : > "$WS/claude.out"; : > "$WS/lane-stdin"; : > "$WS/lane-sys-paths"; rm -rf "$WS/lane-sys"; }
+# same_bytes <label> <expected file> <got file>: a byte comparison; the flattened form is only the failure message
+same_bytes() {
+  if cmp -s "$2" "$3"; then pass "$1"
+  # read-sink-ok: both paths are this suite's own files under $WS
+  else fail "$1: got [$(tr '\n' ' ' < "$3")] want [$(tr '\n' ' ' < "$2")]"; fi
+}
+C37B="$WS/c37b"; new_corpus "$C37B"; reset_lane
 TAIL37B='Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK BODY'
 out=$(GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37B" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37b --corpus-root "$C37B" --corpus-class himmel-code --backend claude-api); rc=$?
-lane=$(grep '^lane ' "$WS/calls.log" | head -1)
 [ "$rc" -eq 0 ] && pass "T37b exit 0" || fail "T37b exit 0 (got $rc): $out"
 grep -qx 'lane-kind=graphify' "$WS/calls.log" && pass "T37b lane kind is graphify" || fail "T37b kind: $(grep lane-kind "$WS/calls.log")"
-ADD37B="$(sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d' | tr '\n' ' ')"
+ADD37B="$(addendum)"
 [ "${#ADD37B}" -gt 200 ] && pass "T37b positive control: the addendum text was read from the script" || fail "T37b addendum text not read from the script (${#ADD37B} chars)"
 # the expected prompt: instructions, "---", the whole addendum, "---", then graphify's own request and the chunk, unchanged
-EXP37B="$( { printf 'SCHEMA TEXT\n\n---\n'; sed -n "/<<'ADD'/,/^ADD\$/p" "$SCRIPT" | sed '1d;$d'; printf '\n\n---\n'; printf '%b' "$TAIL37B"; } | tr '\n' ' ')"
-GOT37B="${lane#*stdin=}"; GOT37B="${GOT37B% | cwdcorpus=*}"
-if [ "$GOT37B" = "$EXP37B" ]; then pass "T37b the lane gets exactly: instructions, whole addendum, graphify's request, chunk"
-else fail "T37b forwarded prompt differs from the expected one: got [$GOT37B] want [$EXP37B]"; fi
+{ printf 'SCHEMA TEXT\n\n---\n'; addendum; printf '\n\n---\n'; printf '%b' "$TAIL37B"; } > "$WS/exp37b"
+same_bytes "T37b the lane gets exactly: instructions, whole addendum, graphify's request, chunk" "$WS/exp37b" "$WS/lane-stdin"
+[ ! -s "$WS/lane-sys-paths" ] && pass "T37b unset opt-in: no system-prompt file" || fail "T37b unset opt-in passed a system-prompt file: $(cat "$WS/lane-sys-paths")"
+
+echo "T37c: GRAPHIFY_API_SYSTEM_PROMPT=1 sends the instructions and the addendum as ONE system file, the request and the chunk on stdin (HIMMEL-8410)"
+C37C="$WS/c37c"; new_corpus "$C37C"; reset_lane
+TAIL37C='Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK @CALL@ BODY'
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37c --corpus-root "$C37C" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && pass "T37c exit 0" || fail "T37c exit 0 (got $rc): $out"
+[ "$(wc -l < "$WS/lane-sys-paths")" -eq 2 ] && [ "$(sort -u "$WS/lane-sys-paths" | wc -l)" -eq 1 ] && pass "T37c both calls pass the same file" || fail "T37c paths: $(cat "$WS/lane-sys-paths")"
+{ printf 'SCHEMA TEXT\n\n---\n'; addendum; } > "$WS/exp37c-sys"
+same_bytes "T37c the system file is the instructions plus the whole addendum" "$WS/exp37c-sys" "$WS/lane-sys/0"
+same_bytes "T37c the second call's system file is byte-identical" "$WS/lane-sys/0" "$WS/lane-sys/1"
+printf 'Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK 2 BODY' > "$WS/exp37c-in"
+same_bytes "T37c stdin is only the request and the chunk" "$WS/exp37c-in" "$WS/lane-stdin"
+grep -q 'stdin=Now extract .*CHUNK 1 BODY' "$WS/calls.log" && pass "T37c the first call carried its own chunk" || fail "T37c first call stdin: $(grep '^lane ' "$WS/calls.log" | head -1)"
+SYS37C="$(head -1 "$WS/lane-sys-paths")"
+case "$SYS37C" in /*) pass "T37c the path is absolute" ;; *) fail "T37c relative path: $SYS37C" ;; esac
+[ ! -e "$SYS37C" ] && [ -z "$(scratch)" ] && pass "T37c the scratch file is gone after the run" || fail "T37c left behind: $SYS37C $(scratch)"
+
+echo "T37d: opt-in, a call whose instructions differ from the run's file stays inline, so the file never changes (HIMMEL-8410)"
+C37D="$WS/c37d"; new_corpus "$C37D"; reset_lane
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_PROMPT="SCHEMA @CALL@\\n\\n---\\n$TAIL37C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37d --corpus-root "$C37D" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(wc -l < "$WS/lane-sys-paths")" -eq 1 ] && pass "T37d only the first call passes the file" || fail "T37d (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+{ printf 'SCHEMA 2\n\n---\n'; addendum; printf '\n\n---\n'; printf 'Now extract the knowledge graph from the following source file(s) and output ONLY the JSON object.\n\nCHUNK 2 BODY'; } > "$WS/exp37d"
+same_bytes "T37d the differing call sends today's whole prompt" "$WS/exp37d" "$WS/lane-stdin"
+
+echo "T37e: opt-in without graphify's request line behaves as today: no file, the addendum last (HIMMEL-8410)"
+C37E="$WS/c37e"; new_corpus "$C37E"; reset_lane
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_PROMPT="no request line" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37e --corpus-root "$C37E" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ ! -s "$WS/lane-sys-paths" ] && pass "T37e no system-prompt file" || fail "T37e (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+{ printf 'no request line\n\n---\n'; addendum; } > "$WS/exp37e"
+same_bytes "T37e the prompt is unchanged" "$WS/exp37e" "$WS/lane-stdin"
+
+echo "T37f: only the value 1 opts in (HIMMEL-8410)"
+C37F="$WS/c37f"; new_corpus "$C37F"; reset_lane
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=0 GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37B" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37f --corpus-root "$C37F" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ ! -s "$WS/lane-sys-paths" ] && pass "T37f the value 0 is off" || fail "T37f (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+same_bytes "T37f the prompt is unchanged" "$WS/exp37b" "$WS/lane-stdin"
+
+echo "T37g: the opt-in keeps its own extraction cache, so a later run without it never replays its answers (HIMMEL-8410)"
+C37G="$WS/c37g"; new_corpus "$C37G"
+cache_run() { GRAPHIFY_STUB_CACHE_HIT=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37g --corpus-root "$C37G" --corpus-class himmel-code --backend claude-api; }
+reset_lane; out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 cache_run); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^lane ' "$WS/calls.log" && [ -f "$C37G/graphify-out/cache/semantic-r1-system/new.json" ] && [ ! -e "$C37G/graphify-out/cache/semantic-r1" ] \
+  && pass "T37g the on-run calls the lane and its entries land in semantic-r1-system" || fail "T37g on-run (rc=$rc): $(ls "$C37G/graphify-out/cache") $out"
+printf 'aleph\n' > "$C37G/a.md"; reset_lane; out=$(cache_run); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^lane ' "$WS/calls.log" \
+  && pass "T37g the off-run on the same corpus calls the lane" || fail "T37g off-run replayed the on-run's answers (rc=$rc): $out"
+printf 'alpha\n' > "$C37G/a.md"; reset_lane; out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 cache_run); rc=$?
+[ "$rc" -eq 0 ] && ! grep -q '^lane ' "$WS/calls.log" \
+  && pass "T37g positive control: a second on-run replays its own cache with no call" || fail "T37g second on-run (rc=$rc): $(cat "$WS/calls.log") $out"
+
+echo "T37h: opt-in, a scratch path with a space reaches the lane as one argument (HIMMEL-8410)"
+C37H="$WS/c37h"; new_corpus "$C37H"; reset_lane; mkdir -p "$WS/tmp space"
+out=$(TMPDIR="$WS/tmp space" GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_PROMPT="SCHEMA TEXT\\n\\n---\\n$TAIL37C" GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t37h --corpus-root "$C37H" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && case "$(cat "$WS/lane-sys-paths")" in *"/tmp space/"*) true ;; *) false ;; esac \
+  && pass "T37h the path holds the space" || fail "T37h (rc=$rc) paths: $(cat "$WS/lane-sys-paths"): $out"
+same_bytes "T37h the file behind that path is the system text" "$WS/exp37c-sys" "$WS/lane-sys/0"
 
 echo "T38: salus stays denied on the claude-api path (exit 2 before any copy or lane call)"
 C38="$WS/c38"; new_corpus "$C38"; touch "$C38/.salus"; : > "$WS/calls.log"
@@ -886,6 +958,14 @@ out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --co
   && pass "T72 run row: batch_id msgbatch_stub, batch_requests 1, cost_usd 0.0035" || fail "T72 row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
 [[ "$out" == *"state=merged requests=1 cost_usd=0.003500"* ]] && pass "T72 the BATCH line closes the run as merged" || fail "T72 BATCH line: $out"
 grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
+
+echo "T72b: the opt-in does not reach a batch, so a batch keeps semantic-r1 with the knob set (HIMMEL-8410)"
+C72B="$WS/c72b"; new_corpus "$C72B"; batch_reset
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t72b --corpus-root "$C72B" --corpus-class himmel-code --backend claude-api); rc=$?
+echo ended > "$WS/batch-status"
+out=$(GRAPHIFY_API_SYSTEM_PROMPT=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t72b --corpus-root "$C72B" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ -f "$C72B/graphify-out/cache/semantic-r1/new.json" ] && [ ! -e "$C72B/graphify-out/cache/semantic-r1-system" ] \
+  && pass "T72b entries land in semantic-r1" || fail "T72b (rc=$rc): $(ls "$C72B/graphify-out/cache") $out"
 
 echo "T73: a prompt the batch did not answer fails that chunk call (exit 1), so its files stay unstamped"
 C73="$WS/c73"; new_corpus "$C73"; batch_reset
