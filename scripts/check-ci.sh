@@ -72,7 +72,7 @@
 # mergeable one, so the script fails closed with exit 2 (re-run).
 #
 # CodeRabbit is best effort. Its commit STATUS (cr_signal_gate)
-# is read and printed, but pending/failure/error/absent/skipped/unrecognized
+# is read and printed, but pending/failure/error/absent/skipped/rate-limited/unrecognized
 # states are advisory ONLY — never a block, never a wait. A green verdict
 # still REQUIRES zero unresolved PR review threads (any author, CodeRabbit
 # included — review_state_gate, generic, NOT availability-gated) and zero
@@ -1546,8 +1546,18 @@ cr_signal_gate() {
     # body-findings gate (cr_body_gate) keep their own fail-closed reads and
     # are what still certify the merge.
     state=$(cr_signal_state "$owner" "$repo" "$head0") || state=unreadable
+    # A `skipped` whose description says rate limit is its own state. On the Advanced plan CodeRabbit posts success + "Review rate
+    # limited" and reviews nothing; it is named, never read as a review. An
+    # unreadable description keeps the plain `skipped` reading.
+    if [ "$state" = skipped ]; then
+        local rl_desc
+        rl_desc=$(cr_signal_description "$owner" "$repo" "$head0") || rl_desc=""
+        if grep -qiE 'rate.?limit' <<< "$rl_desc"; then state=rate-limited; fi
+    fi
     case "$state" in
         success) : ;;
+        rate-limited)
+            echo "check-ci: NOTE — CodeRabbit rate-limited on head $head0 of PR #$num: NO review at this head (not a review); best effort, not gating; thread + body-findings gates still apply. Re-request once when capacity returns: comment \`@coderabbitai review\` (costs 1 review; \`@coderabbitai rate limit\` is free and reports when)." >&2 ;;
         *)
             echo "check-ci: NOTE — CodeRabbit $state on head $head0 of PR #$num: best effort, not gating; thread + body-findings gates still apply." >&2 ;;
     esac

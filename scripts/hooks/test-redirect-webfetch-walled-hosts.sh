@@ -22,9 +22,14 @@ pass=0; fail=0
 ok()  { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
 bad() { fail=$((fail+1)); printf '  FAIL %s\n' "$1"; }
 
+# The shim logs its deny; keep the rows out of the real HOME.
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/walled-shim.XXXXXX")" || exit 1
+trap 'rm -rf "$TMP"' EXIT
+LOG="$TMP/deny.jsonl"
+
 # run <json> -> sets rc, out (stdout)
 run() {
-    out="$(printf '%s' "$1" | bash "$HOOK" 2>/dev/null)"; rc=$?
+    out="$(printf '%s' "$1" | WEBFETCH_WALLED_LOG="$LOG" bash "$HOOK" 2>/dev/null)"; rc=$?
 }
 wf() { jq -nc --arg u "$1" '{tool_name:"WebFetch",tool_input:{url:$u,prompt:"p"}}'; }
 
@@ -40,6 +45,12 @@ for u in 'https://twitter.com/a/status/1' 'https://mobile.twitter.com/a/status/1
     run "$(wf "$u")"
     [ "$rc" = 2 ] && ok "denied: $u" || bad "expected deny for $u got rc=$rc"
 done
+
+echo "== deny-logs-one-row =="
+rm -f "$LOG"
+run "$(wf 'https://x.com/a/status/1')"
+n="$(jq -c 'select(.decision == "deny" and .host == "x.com")' "$LOG" 2>/dev/null | wc -l | tr -d ' ')"
+[ "$n" = 1 ] && ok "the shim alone writes one row for a deny" || bad "expected 1 row, got ${n:-none}"
 
 echo "== other-host-allowed =="
 for u in 'https://example.com/x.com' 'https://notx.com/a' 'https://x.com.evil.example/a' 'https://docs.python.org/3/'; do

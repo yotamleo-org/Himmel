@@ -10,6 +10,34 @@ import { releaseRoot } from './paths.js';
 
 export interface VersionWriteRow { ts: string; key: string; from: string[]; to: string[]; mechanism: string; entry: string }
 
+export interface WriterRow { site: string; mechanism: string; machine: boolean }
+
+// Every file that writes a Fix Version, with the name each write carries. The classifier reads `machine`;
+// a mechanism not on this list, or a write that names nothing, is `hand`. The enumerating test
+// (version-writes.test.ts, I17) fails on a writing file missing here.
+// ponytail: file grain, so a new write inside create.ts or edit.ts passes the test and reads as hand, the
+// safe direction; upgrade path: make writer a required argument of setFixVersion and requestAt's write path.
+const CREATE = 'scripts/jira/src/commands/create.ts';
+export const WRITER_TABLE: readonly WriterRow[] = [
+  { site: CREATE, mechanism: 'create-residual', machine: true },
+  { site: CREATE, mechanism: 'create-followup', machine: true },
+  { site: CREATE, mechanism: 'create-bug-default', machine: true },
+  { site: CREATE, mechanism: 'create-blocker-inherit', machine: true },
+  { site: CREATE, mechanism: 'create-stepdown', machine: true },
+  { site: CREATE, mechanism: 'displace-residual', machine: true },
+  { site: 'scripts/jira/src/commands/transition.ts', mechanism: 'transition-stamp', machine: true },
+  { site: 'scripts/handover/merge-on-green.sh', mechanism: 'merge-stamp', machine: true },
+  { site: 'scripts/cr/class-recurrence.sh', mechanism: 'class-recurrence', machine: true },
+  { site: 'scripts/jira/sync-versions.mjs', mechanism: 'sync-versions', machine: true },
+  // Its ruling already agrees, so an RM write is never a repair input.
+  { site: 'scripts/jira/src/commands/release.ts', mechanism: 'rm-apply', machine: false },
+  { site: CREATE, mechanism: 'hand', machine: false },
+  { site: 'scripts/jira/src/commands/edit.ts', mechanism: 'hand', machine: false },
+  { site: 'scripts/jira/src/commands/versions.ts', mechanism: 'hand', machine: false },
+  { site: 'scripts/jira/src/commands/version-freeze.ts', mechanism: 'hand', machine: false },
+  { site: 'scripts/handover/chief-kit/versionless-done.sh', mechanism: 'hand', machine: false },
+];
+
 // A GET against /rest/api/3, handed in by the client (with its own deadline).
 export type Getter = <T>(path: string) => Promise<T>;
 

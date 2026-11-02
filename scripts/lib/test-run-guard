@@ -27,6 +27,12 @@
 # HIMMEL_REAL_STATE_EXTRA_ROOTS, HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS (colon lists) and
 # HIMMEL_REAL_STATE_ASSUME_STATION=1 (skip the VM check).
 #
+# Accepted residuals, none closable from process facts (HIMMEL-8819): a plain shell redirect and a
+# direct call of a keyring tool never reach a door, so this guard is never asked; and a detached
+# orphan with no test file, marker or runner in its ancestry has no signal to read.
+# ponytail: a door guards only what calls it. Upgrade path: a mount namespace or a PATH wrapper that
+# puts the real home and keyring out of reach of a test on the station.
+#
 # ponytail: macOS has no station and no /proc, so the guard does not run there. Upgrade path: a
 # `ps -o ppid=,command=` walk if a Mac ever holds real state.
 set -uo pipefail
@@ -55,6 +61,9 @@ label="$1"
 shift
 
 home="$(getent passwd "$(id -u 2>/dev/null)" 2>/dev/null | cut -d: -f6 2>/dev/null)"
+# A passwd home that is a symlink: every target below is resolved, so the home must be too.
+# gnu-ok: this script exits on Darwin above; a failed realpath keeps the raw home.
+[ -n "$home" ] && home="$(realpath -m -- "$home" 2>/dev/null || printf '%s' "$home")"
 
 under() { case "$1/" in "${2%/}"/*) return 0 ;; esac; return 1; }
 
@@ -103,18 +112,21 @@ any_real() {
 targets=("$@")
 any_real || exit 0
 
-is_test_name() { case "${1##*/}" in test-*|test_*|*.test.*|*_test.*) return 0 ;; esac; return 1; }
-is_runner_name() { case "${1##*/}" in vitest*|pytest*|py.test|jest*|bats) return 0 ;; esac; return 1; }
+is_test_name() { case "${1##*/}" in test-*|test_*|*.test.*|*.test|*_test.*) return 0 ;; esac; return 1; }
+is_runner_name() { case "${1##*/}" in vitest*|pytest*|py.test|jest*|bats|mocha*|playwright|playwright-test|ava|ctest|phpunit*|rspec*) return 0 ;; esac; return 1; }
+# ponytail: the runner names are a finite list, so an unlisted runner (a wrapper script, a make
+# target) is not seen unless a test file, HIMMEL_TEST_FIXTURE or NODE_ENV names it. Upgrade path: an
+# environment marker every himmel runner exports, if a runner outside this list ever writes real state.
 
 # argv_runs_test <argv...>: a test in script position, never a mention. An inline -c body, a later
 # argument and a session name all leave it unmatched. Sets suite when it knows the file.
 argv_runs_test() {
-    local a0="${1##*/}"
+    local a0="${1##*/}" a0path="$1"
     shift
     is_runner_name "$a0" && return 0
-    if is_test_name "$a0"; then suite="$a0"; return 0; fi
+    if is_test_name "$a0"; then suite="$a0path"; return 0; fi
     case "$a0" in
-        bash|sh|zsh|dash|ksh|python|python[0-9]*|pypy*|node|bun|tsx|deno) ;;
+        bash|sh|zsh|dash|ksh|python|python[0-9]*|pypy*|node|bun|tsx|deno|go|cargo|npm|pnpm|yarn) ;;
         *) return 1 ;;
     esac
     while [ $# -gt 0 ]; do
@@ -123,10 +135,30 @@ argv_runs_test() {
             -e|--eval|-p|--print) case "$a0" in node|bun|tsx|deno) return 1 ;; esac ;;
             -m) case "${2:-}" in pytest|unittest) return 0 ;; esac; return 1 ;;
             --test) return 0 ;;
-            -o|-O|+O|--rcfile|--init-file|-W|-X|-r|--require|--import|--loader) shift ;;
+            -C|-F|--cwd|--prefix|--filter|--workspace|--dir) case "$a0" in go|cargo|npm|pnpm|yarn) shift ;; esac ;;
+            -w) [ "$a0" = npm ] && shift ;;
+            -r) case "$a0" in npm|pnpm|yarn) ;; *) shift ;; esac ;;
+            -o|-O|+O|--rcfile|--init-file|-W|-X|--require|--import|--loader) shift ;;
             -*|+*) ;;
-            test) case "$a0" in bun|deno) return 0 ;; esac; return 1 ;;
-            run) case "$a0" in bun|deno) ;; *) return 1 ;; esac ;;
+            test) case "$a0" in bun|deno|go|cargo|npm|pnpm|yarn) return 0 ;; esac; return 1 ;;
+            t|tst) case "$a0" in npm|pnpm|yarn) return 0 ;; esac; return 1 ;;
+            run|run-script|rum|urn) case "$a0" in
+                bun|deno) ;;
+                npm|pnpm|yarn)
+                    shift
+                    while [ $# -gt 0 ]; do
+                        case "$1" in
+                            -C|-F|--cwd|--prefix|--filter|--workspace|--dir) shift ;;
+                            -w) [ "$a0" = npm ] && shift ;;
+                            -*) ;;
+                            test|t|tst|test:*) return 0 ;;
+                            *) return 1 ;;
+                        esac
+                        shift
+                    done
+                    return 1 ;;
+                *) return 1 ;;
+            esac ;;
             *)
                 is_runner_name "$1" && return 0
                 if is_test_name "$1"; then suite="$1"; return 0; fi
@@ -138,6 +170,20 @@ argv_runs_test() {
 }
 
 suite=""
+# suite_repo_path <pid>: the suite as a path the VM clone has, relative to its repo root. A path
+# that cannot be resolved stays as it was given.
+suite_repo_path() {
+    local abs top
+    [ -n "$suite" ] || return 0
+    abs="$suite"
+    case "$abs" in /*) ;; *) abs="$(readlink "/proc/$1/cwd" 2>/dev/null)/$abs" ;; esac
+    abs="$(realpath -m -- "$abs" 2>/dev/null)" || return 0
+    case "$abs" in *.sh) ;; *) suite=""; return 0 ;; esac
+    top="$(git -C "${abs%/*}" rev-parse --show-toplevel 2>/dev/null)" || top=""
+    case "${top:+$abs}" in "$top"/*) suite="${abs#"$top"/}" ;; *) suite="" ;; esac
+    # The line is a command to paste: only a plain repo-relative path is printed.
+    case "$suite" in ""|/*|*[!A-Za-z0-9._/-]*) suite="" ;; esac
+}
 ancestor_runs_test() {
     local pid="$PPID" comm stat ppid arg n=0 argv=()
     while [ "$pid" -gt 1 ] 2>/dev/null && [ "$n" -lt 64 ]; do
@@ -146,7 +192,11 @@ ancestor_runs_test() {
         [ "$comm" = claude ] && return 1
         argv=()
         { while IFS= read -r -d '' arg; do argv+=("$arg"); done <"/proc/$pid/cmdline"; } 2>/dev/null || return 1
-        if [ "${#argv[@]}" -gt 0 ] && argv_runs_test "${argv[@]}"; then return 0; fi
+        # A package manager retitles itself, so its whole command line is ONE string ("npm test").
+        case "${argv[0]:-}" in
+            npm\ *|pnpm\ *|yarn\ *) read -ra argv <<<"${argv[0]}" ;;
+        esac
+        if [ "${#argv[@]}" -gt 0 ] && argv_runs_test "${argv[@]}"; then suite_repo_path "$pid"; return 0; fi
         { read -r stat <"/proc/$pid/stat"; } 2>/dev/null || return 1
         read -r _ ppid _ <<<"${stat##*) }"
         pid="${ppid:-0}"
@@ -183,11 +233,13 @@ fi
 
 if [ "$quiet" != 1 ]; then
     branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" || branch=""
+    [ "$branch" = HEAD ] && branch=""
     {
         printf 'REFUSED %s: a test on the station cannot write real station state (%s). Test signal: %s. Nothing was written.\n' \
             "$label" "${*:-${tool:-the live service}}" "$signal"
         if [ -n "$suite" ]; then
-            printf 'Run this suite on a test VM: bash scripts/vm/guest-exec.sh himmel-ar-1 -- bash %s\n' "$suite"
+            printf 'Run this suite on a test VM: bash scripts/vm/guest-exec.sh himmel-ar-1 -- env -C himmel bash %s\n' "$suite"
+            printf 'The VM must be on and its checkout must hold this branch first: uv run scripts/lib/vmsdk.py himmel-ar-1 up, then uv run scripts/lib/vmsdk.py himmel-ar-1 clone %s\n' "${branch:-<branch>}"
         fi
         printf 'Run the whole changed set on a test VM: bash scripts/vm/after-report.sh %s <pr>\n' "${branch:-<branch>}"
         printf 'A hermetic test stays local: point this write at a temp dir or a stub.\n'

@@ -140,7 +140,7 @@ contains "R9 session argv carries --permission-mode auto" "$sess" "--permission-
 lacks "R9 session argv: no dangerously-skip-permissions" "$sess" "dangerously-skip-permissions"
 lacks "R9 session argv: no bypassPermissions" "$sess" "bypassPermissions"
 
-NATIVE_WANT="-p 2222 -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=~/.himmel/vm/known_hosts/ubuntu_new -o StrictHostKeyChecking=accept-new himmel@127.0.0.1 bash -lc \"cd ~/Documents/github/himmel && timeout --signal=KILL 1800 claude -p --permission-mode acceptEdits --allowedTools 'Read,Grep,Glob,Edit,Write,Bash(git:*),Bash(bash scripts/*:*)' --output-format json\""
+NATIVE_WANT="-p 2222 -o BatchMode=yes -o ConnectTimeout=15 -o UserKnownHostsFile=~/.himmel/vm/known_hosts/ubuntu_new -o StrictHostKeyChecking=accept-new himmel@127.0.0.1 bash -lc \"cd ~/himmel && timeout --signal=KILL 1800 claude -p --permission-mode acceptEdits --allowedTools 'Read,Grep,Glob,Edit,Write,Bash(git:*),Bash(bash scripts/*:*)' --output-format json\""
 fresh; rc=0; out="$(runv ubuntu_new "$P")" || rc=$?
 check "R10 native, no --lane: exact ssh argv" "$(cat "$SSH_LOG")" "$NATIVE_WANT"
 fresh; rc=0; out="$(runv --lane native ubuntu_new "$P")" || rc=$?
@@ -406,13 +406,14 @@ check "E8 non-json answer: still one row, model null" "$(rows)$(jq -r '.model | 
 
 # the guest checkout path is one override, a closed shape because it is spliced into the guest shell
 rc=0; out="$(run --dry-run ubuntu_new "$P")" || rc=$?
-contains "G1 default guest repo is unchanged" "$out" 'cd ~/Documents/github/himmel &&'
+contains "G1 default guest repo is the snapshot checkout ~/himmel" "$out" 'cd ~/himmel &&'
+lacks "G1 default guest repo is not the old Documents path" "$out" "Documents/github/himmel"
 rc=0; out="$(HIMMEL_GUEST_REPO=/srv/guest-checkout/himmel run --dry-run ubuntu_new "$P")" || rc=$?
 check "G1 absolute override: exit 0" "$rc" "0"
 contains "G1 absolute override: the guest cd uses it" "$out" 'cd /srv/guest-checkout/himmel &&'
 lacks "G1 absolute override: the default is gone" "$out" "Documents/github/himmel"
-rc=0; out="$(HIMMEL_GUEST_REPO='~/himmel' run --dry-run ubuntu_new "$P")" || rc=$?
-contains "G1 ~/ override stays a literal tilde for the guest shell" "$out" 'cd ~/himmel &&'
+rc=0; out="$(HIMMEL_GUEST_REPO='~/work/himmel' run --dry-run ubuntu_new "$P")" || rc=$?
+contains "G1 ~/ override stays a literal tilde for the guest shell" "$out" 'cd ~/work/himmel &&'
 for bad in 'himmel' '/x; id' '/x y' '/a/../b' '~/../b' '$(id)' '/a`id`'; do
     fresh; rc=0; out="$(HIMMEL_GUEST_REPO="$bad" runv ubuntu_new "$P")" || rc=$?
     check "G2 bad override [$bad]: exit 2" "$rc" "2"
