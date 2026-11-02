@@ -15,17 +15,19 @@
 #
 # The core rule (last section) runs on every brief that names a ticket key in its
 # title; --core-only runs it alone, for a launch that skips the prior-art check.
+# --judge skips it: a judge brief writes nothing, so no spec stands behind it.
 #
 # Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 core-gate refusal.
 set -u
 
 core_only=0
-if [ "${1:-}" = "--core-only" ]; then
-    core_only=1
+judge=0
+while [ "${1:-}" = "--core-only" ] || [ "${1:-}" = "--judge" ]; do
+    if [ "$1" = "--core-only" ]; then core_only=1; else judge=1; fi
     shift
-fi
+done
 if [ "$#" -ne 1 ]; then
-    echo "usage: brief-lint.sh [--core-only] <brief>" >&2
+    echo "usage: brief-lint.sh [--core-only] [--judge] <brief>" >&2
     exit 2
 fi
 doc="$1"
@@ -53,6 +55,7 @@ fail() { echo "brief-lint: $doc: $1" >&2; exit 1; }
 # No line the brief writes itself can pass a key. BRIEF_LINT_JIRA_CLI and BRIEF_LINT_MIRROR are test seams.
 core_rule() {
     local cli common core_err core_rc=0
+    [ "$judge" -eq 0 ] || return 0
     cli="${BRIEF_LINT_JIRA_CLI:-}"
     if [ -z "$cli" ]; then
         # shellcheck source=../../lib/git-clean.sh
@@ -62,7 +65,8 @@ core_rule() {
         cli="$(dirname "$common")/scripts/jira/dist/index.js"
     fi
     core_err="$(python3 -I - "$doc" "$cli" <<'PY'
-import os, re, subprocess, sys
+import json, os, re, subprocess, sys
+from datetime import datetime
 
 doc, cli = sys.argv[1], sys.argv[2]
 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
@@ -78,9 +82,29 @@ for i, line in enumerate(lines):
             if not nxt.startswith('> ') or nxt.startswith('> **'):
                 break
             text += ' ' + nxt[2:]
-        paths = [p for p in re.split(r'[\s,`]+', text.strip()) if p and p not in ('none', 'named')]
-        break
-docs_only = bool(paths) and all(p.startswith('docs/') or p.endswith('.md') for p in paths)
+        for p in re.split(r'[\s,`]+', text.strip()):
+            # a token that is not a path (prose, a dot segment) names nothing
+            if p and re.fullmatch(r'[\w.+@/-]+', p) and ('/' in p or '.' in p) \
+                    and not any(part in ('.', '..') for part in p.split('/')) and p not in paths:
+                paths.append(p)
+
+# The ticket's own file mentions, read the way next-dispatchable.sh reads them: the paths a brief with no usable Writes line classifies by.
+FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
+
+def ticket_paths(mirror, key):
+    try:
+        text = open(os.path.join(mirror, key + '.md'), encoding='utf-8', errors='replace').read()
+    except OSError:
+        return []
+    if text.startswith('---'):
+        text = text.split('---', 2)[-1]
+    out = []
+    for m in FILE_RE.finditer(text):
+        f = re.sub(r'[.,;:)\]-]+$', '', m.group(1))
+        if f and f not in out:
+            out.append(f)
+    return out
+
 primary = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli))))
 
 def failed(why):
@@ -110,10 +134,13 @@ def per_key(out, ks, spec=False):
 groups = {}
 for k in keys:
     mirror = os.environ.get('BRIEF_LINT_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + k.split('-')[0])
-    groups.setdefault(os.path.abspath(mirror), []).append(k)
+    mirror = os.path.abspath(mirror)
+    # no usable Writes path: classify by the paths the ticket itself names
+    groups.setdefault((mirror, tuple(paths or ticket_paths(mirror, k))), []).append(k)
 verdict, spec = {}, {}
-for mirror, ks in groups.items():
-    r = run(['release', 'core-check', '--paths', ','.join(paths)] + (['--docs-only'] if docs_only else []) + ['--mirror', mirror, '--key'] + ks)
+for (mirror, kpaths), ks in groups.items():
+    docs_only = bool(kpaths) and all(p.startswith('docs/') or p.endswith('.md') for p in kpaths)
+    r = run(['release', 'core-check', '--paths', ','.join(kpaths)] + (['--docs-only'] if docs_only else []) + ['--mirror', mirror, '--key'] + ks)
     if r.returncode != 0:
         failed('core-check exited %d: %s' % (r.returncode, (r.stderr or r.stdout).strip()[:200]))
     got = per_key(r.stdout, ks)
@@ -130,8 +157,22 @@ for mirror, ks in groups.items():
             failed('spec-check printed no parseable line for %s' % ', '.join(k for k in core if k not in sgot))
         spec.update(sgot)
 refusals = []
+log = os.path.join(os.path.dirname(os.path.abspath(doc)), 'core-gate.jsonl')
 for k in keys:
     t = verdict[k].split()
+    if t[0] == 'BYPASS':
+        # a bypass is shown and logged, as gen-briefs does; the row lands beside the brief
+        print('brief-lint: %s bypass=%s %s' % (k, t[2], ' '.join(t[3:])), file=sys.stderr)
+        brief = os.path.abspath(doc)
+        try:
+            old = open(log, encoding='utf-8').read() if os.path.exists(log) else ''
+            if not any('"key": "%s"' % k in l and json.dumps(brief) in l and '"outcome": "bypass"' in l for l in old.splitlines()):
+                with open(log, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(dict(ts=datetime.now().astimezone().isoformat(timespec='seconds'), key=k,
+                        worker=os.path.basename(brief)[:-3], brief=brief, matched=None, outcome='bypass',
+                        bypass=t[2], spec_check=verdict[k], chief='')) + '\n')
+        except OSError as e:
+            print('brief-lint: WARN core-gate.jsonl not written (%s)' % e, file=sys.stderr)  # the bypass still stands: it came from core-check
     if t[0] == 'UNKNOWN':
         refusals.append('core brief %s is not in the Jira mirror, so neither core nor a bypass can be proven; refresh the mirror, then re-run' % k)
     elif t[0] == 'CORE' and not spec[k].startswith('SPEC ok'):

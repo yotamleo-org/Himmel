@@ -225,6 +225,9 @@ cg_ticket HIMMEL-9411 Task Medium   # core Writes, no spec
 cg_ticket HIMMEL-9412 Task Medium   # core Writes, no spec (second key of a pair)
 cg_ticket HIMMEL-9413 Task Medium   # core Writes, signed
 cg_ticket HIMMEL-9414 Bug Medium    # a Bug: core-check answers BYPASS
+printf -- '---\nkey: "HIMMEL-9415"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: ["core"]\n---\n# HIMMEL-9415: t\n' > "$tmp/cg-mirror/HIMMEL-9415.md"   # core by its label
+printf -- '---\nkey: "HIMMEL-9416"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# HIMMEL-9416: t\n\nEdit scripts/handover/chief-kit/go.sh to change the GO path.\n' > "$tmp/cg-mirror/HIMMEL-9416.md"   # core by the path its own body names
+cg_ticket HIMMEL-9417 Task Medium   # names no path
 printf '/state/specs/spec.md O-R1-9413\n' > "$tmp/cg-signed/HIMMEL-9413"
 cat > "$tmp/cg-stub/index.js" <<'STUBEOF'
 const fs = require('fs');
@@ -235,7 +238,7 @@ const ticket = (k) => {
   let t;
   try { t = fs.readFileSync(mirror + '/' + k + '.md', 'utf8'); } catch (e) { return null; }
   const f = (n) => ((t.match(new RegExp('^' + n + ': (.*)$', 'm')) || [])[1] || '').replace(/"/g, '');
-  return { type: f('type') };
+  return { type: f('type'), labels: f('labels') };
 };
 if (a[0] === 'release' && a[1] === 'core-check') {
   const hit = (opt('--paths') || '').split(',').filter(Boolean).find((p) => /^(scripts\/handover\/|marketplace\/plugins\/himmel-bus\/)/.test(p));
@@ -244,6 +247,7 @@ if (a[0] === 'release' && a[1] === 'core-check') {
     if (!t) console.log('UNKNOWN ' + k);
     else if (t.type === 'Bug') console.log('BYPASS ' + k + ' bug a Bug is not gated');
     else if (hit) console.log('CORE ' + k + ' ' + hit);
+    else if (t.labels.includes('core')) console.log('CORE ' + k + ' label core');
     else console.log('NOT-CORE ' + k);
   }
 } else if (a[0] === 'release' && a[1] === 'spec-check') {
@@ -291,6 +295,28 @@ rc=0; bash "$LINT" --core-only "$tmp/core_none.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 3 ] && ok "8h4 --core-only runs the core rule" || bad "8h4 --core-only on a core brief (rc=$rc)"
 rc=0; bash "$LINT" --core-only "$tmp/none.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] && ok "8h5 --core-only skips the prior-art check" || bad "8h5 --core-only on a keyless no-prior-art brief (rc=$rc)"
+# a brief with no usable Writes path is classified by the paths its ticket names in the mirror, never as no path at all
+mk nw_label '# HIMMEL-9415 — core by label' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
+mk nw_ticket '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
+mk nw_none '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** none named' '## Results (newest at the bottom)'
+mk nw_prose '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** see the ticket' '## Results (newest at the bottom)'
+mk nw_clean '# HIMMEL-9417 — names no path' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
+mk nw_two '# HIMMEL-9411 — a second Writes line holds the core path' "$PA" '> **Contract:** y' '> **Writes:** docs/handover/running-a-chief.md' '> **Writes:** scripts/handover/chief-kit/next-dispatchable.sh' '## Results (newest at the bottom)'
+expect_rc "8h6 a core-labelled key with no Writes line is a core refusal" 3 "$tmp/nw_label.md"
+expect_rc "8h7 a key core by its ticket's own paths, no Writes line, is a core refusal" 3 "$tmp/nw_ticket.md"
+expect_rc "8h8 a 'none named' Writes line falls back to the ticket's paths" 3 "$tmp/nw_none.md"
+rc=0; bash "$LINT" --core-only "$tmp/nw_prose.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "8h9 --core-only: a prose Writes line falls back to the ticket's paths" || bad "8h9 --core-only prose Writes (rc=$rc)"
+expect_rc "8h10 a key that names no core path passes without a Writes line" 0 "$tmp/nw_clean.md"
+expect_rc "8h11 every Writes line is read, not the first" 3 "$tmp/nw_two.md"
+rc=0; bash "$LINT" --core-only "$tmp/nw_ticket.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "8h12 --core-only resolves the same paths" || bad "8h12 --core-only no Writes (rc=$rc)"
+# a BYPASS is printed and logged beside the brief, once
+mk byp '# HIMMEL-9414 — a bug fix' "$PA" '> **Contract:** y' "$CORE_W" '## Results (newest at the bottom)'
+rm -f "$tmp/core-gate.jsonl"
+err="$(bash "$LINT" "$tmp/byp.md" 2>&1 >/dev/null)"; bash "$LINT" "$tmp/byp.md" >/dev/null 2>&1
+{ grep -Fq 'bypass=bug' <<< "$err" && [ "$(grep -c '"outcome": "bypass"' "$tmp/core-gate.jsonl")" -eq 1 ] && grep -Fq '"key": "HIMMEL-9414"' "$tmp/core-gate.jsonl"; } \
+    && ok "8h13 a BYPASS prints bypass=<class> and logs one core-gate.jsonl row" || bad "8h13 bypass log: $err"
 # the launcher: --no-prior-art-check skips only the prior-art check; the core refusal stands and does not suggest the flag
 rc=0; out="$(run_worker "$tmp/core_none.md" --profile worker-impl)" || rc=$?
 { [ "$rc" -eq 2 ] && grep -Fq 'core brief HIMMEL-9411 is core' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
@@ -300,6 +326,17 @@ rc=0; out="$(run_worker "$tmp/core_none.md" --profile worker-impl --no-prior-art
     && ok "8i2 --no-prior-art-check does not skip the core gate" || bad "8i2 --no-prior-art-check skipped the core gate (rc=$rc): $out"
 rc=0; out="$(run_worker "$tmp/core_signed.md" --profile worker-impl --no-prior-art-check)" || rc=$?
 [ "$rc" -eq 0 ] && ok "8i3 --no-prior-art-check still launches a signed core brief" || bad "8i3 signed core brief with the flag (rc=$rc): $out"
+rc=0; bash "$LINT" --judge "$tmp/core_none.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "8i6 brief-lint --judge skips the core rule" || bad "8i6 --judge on a core brief (rc=$rc)"
+rc=0; out="$(run_worker "$tmp/core_none.md" --judge)" || rc=$?
+{ [ "$rc" -eq 0 ] && ! grep -Fq 'is core' <<< "$out"; } \
+    && ok "8i7 the launcher's --judge launches a judge brief naming a core key" || bad "8i7 launcher --judge on a core key (rc=$rc): $out"
+mk core_emptywrites '# HIMMEL-9417 — names no path' "$PA" '> **Contract:** y' '> **Writes:**' '## Results (newest at the bottom)'
+rc=0; out="$(run_worker "$tmp/core_emptywrites.md" --profile worker-impl)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'Writes' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "8i4 an empty Writes line refusal does not offer --no-prior-art-check" || bad "8i4 empty Writes hint (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/core_emptywrites.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+[ "$rc" -eq 0 ] && ok "8i5 --no-prior-art-check launches a keyed brief whose ticket names no core path" || bad "8i5 empty Writes with the flag (rc=$rc): $out"
 export BRIEF_LINT_JIRA_CLI="$tmp/no-dist/index.js"
 expect_rc "8j an absent dist/ is CORE-CHECK-FAILED, not a pass" 3 "$tmp/core_none.md"
 err="$(bash "$LINT" "$tmp/core_none.md" 2>&1 >/dev/null)"

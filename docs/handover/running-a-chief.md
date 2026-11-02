@@ -319,10 +319,14 @@ effort guidance, including the chief's own wake-up budget, is in
   worker with no `SPEC ok`, `next-dispatchable.sh` lists such a ticket as a
   `DESIGN` row, and `brief-lint.sh` (run at every launch, even one that skips
   the prior-art check) refuses any brief whose title names a key that `core-check`
-  answers `CORE` for without a `SPEC ok` from `spec-check`. A line written into
+  answers `CORE` for without a `SPEC ok` from `spec-check`. `core-check` classifies
+  by the brief's `Writes:` paths (every Writes line is read); a brief with no usable
+  path is classified by the file paths its ticket names in the Jira mirror, and
+  a ticket carrying the core label stays `CORE` either way. A line written into
   the brief itself passes nothing, and a Results bullet exempts nothing: an
-  in-flight key passes only through the `core-snapshot` record. Run a minerva
-  worker for each `CORE` key without `SPEC ok`.
+  in-flight key passes only through the `core-snapshot` record. A `BYPASS` key
+  is printed as `bypass=<class>` and logged to `core-gate.jsonl` beside the
+  brief. Run a minerva worker for each `CORE` key without `SPEC ok`.
 
 The chief's own helper subagents (`Agent` dispatches inside the chief session)
 follow the same policy: raise *effort* before tier, and name the model per

@@ -811,9 +811,14 @@ fi
 if [ "$RELAY" -eq 0 ] && [ "$CONSULT" -eq 0 ] && [ -f "$DOC" ]; then
     lint_core_only=""
     [ "$NO_PRIOR_ART_CHECK" -eq 1 ] && lint_core_only="--core-only"
+    lint_judge=""
+    [ "$JUDGE" -eq 1 ] && lint_judge="--judge"
     lint_rc=0
-    prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" ${lint_core_only:+"$lint_core_only"} "$DOC" 2>&1)" || lint_rc=$?
+    prior_art_err="$(bash "$(dirname "$0")/brief-lint.sh" ${lint_core_only:+"$lint_core_only"} ${lint_judge:+"$lint_judge"} "$DOC" 2>&1)" || lint_rc=$?
     if [ "$lint_rc" -eq 3 ] || { [ "$lint_rc" -ne 0 ] && [ "$NO_PRIOR_ART_CHECK" -eq 1 ]; }; then
+        echo "headed-arm-worker: refusing launch: $prior_art_err" >&2
+        exit 2
+    elif [ "$lint_rc" -ne 0 ] && case "$prior_art_err" in *'Writes'*) true ;; *) false ;; esac; then
         echo "headed-arm-worker: refusing launch: $prior_art_err" >&2
         exit 2
     elif [ "$lint_rc" -ne 0 ]; then
