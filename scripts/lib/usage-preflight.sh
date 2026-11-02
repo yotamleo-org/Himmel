@@ -1263,8 +1263,9 @@ _id_lib="$REPO/scripts/lib/usage-cache-identity.sh"
 usage_cache_account_mismatch "$CACHE" && { echo "bank-preflight: usage cache account does not match the current session" >&2; emit BANK-UNKNOWN; }
 
 # Staleness keys on primaries_refreshed_at, NOT file mtime. The producer only
-# advances this aggregate stamp when both fetched primary windows are valid;
-# partial-primary and extra_usage-only writes preserve the prior stamp.
+# advances this aggregate stamp when seven_day is valid and five_hour is either
+# valid or an empty window the source sent (no active 5-hour window); a missing
+# or malformed window and extra_usage-only writes preserve the prior stamp.
 is_int "$stamp" || { echo "bank-preflight: no usable primaries_refreshed_at" >&2; emit BANK-STALE; }
 # 10# forces base-10: a leading-zero stamp ("0123") would otherwise be read as
 # octal and a value like "089" errors outright. Not reachable from the real

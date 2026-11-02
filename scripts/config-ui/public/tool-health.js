@@ -24,6 +24,8 @@ const KIND_LABEL = { builtin: "built-in", mcp: "MCP", res: "MCP resource", skill
 const KINDS = Object.keys(KIND_LABEL);
 const SRC_LABEL = { core: "core", himmel: "himmel plugin", third: "third-party plugin", project: "project", user: "user", pkg: "MCP config", station: "station", unknown: "source unknown", before: "before the split" };
 const SRCS = Object.keys(SRC_LABEL);
+// The Station sources table names each scan source as the mockup does; an id this page does not know prints as itself.
+const SOURCE_NAME = { "hooks-project": "Hooks · project", "hooks-user": "Hooks · user", plugins: "Plugins", "plugin-items": "Plugin items", "project-claude": "Project .claude/", "user-claude": "User ~/.claude/", "mcp-user": "MCP · user config", "mcp-profiles": "MCP · launch profiles", "mcp-project": "MCP · project", "mcp-plugins": "MCP · plugins", "mcp-runtime": "MCP · runtime", core: "Core tools", clis: "Station CLIs", "rtk-history": "rtk history" };
 const CORE_AGENTS = new Set(["general-purpose", "Explore", "Plan", "statusline-setup", "claude-code-guide", "claude"]);
 const COLLAPSED = { Skill: "skill", Agent: "agent", Task: "agent", mcp: "mcp" };
 const FILTERS = ["days", "team", "lane", "profile"];
@@ -159,13 +161,15 @@ function kpis(data) {
   const calls = data ? data.totalCalls : null, failed = sum("failures"), known = sum("known"), recovered = sum("recovered");
   const rate = bad.size ? null : ratio(failed, calls);
   const tile = (id, label, value, note) => `<div class="kpi" data-kpi="${id}"><span class="k">${esc(label)}</span><b class="kv">${esc(value)}</b><span class="ks">${esc(note)}</span></div>`;
+  // mockup v9: four cards. Denied rides the Failed note; Recovery is the note under the cards, so no fact leaves the page.
+  const worst = data && !bad.size ? tools.filter((t) => isNum(t.calls) && t.calls >= 10 && isNum(t.failures)).map((t) => ({ t, r: t.failures / t.calls })).sort((a, b) => b.r - a.r || b.t.failures - a.t.failures || (a.t.tool < b.t.tool ? -1 : 1))[0] : null;
+  const recovery = data ? `<p class="sub" data-note="recovery">Recovery ${pct(ratio(recovered, known))} (${recovered} of ${known} known · ${failed - known} unclassified)</p>` : "";
   return `<div class="kpis">${[
     tile("calls", "Calls", num(calls), data ? (isNum(calls) ? "tool call attempts" : "calls not recorded for every session") : "—"),
     tile("failed", "Failed", num(failed), data ? `${sum("errors")} errors · ${sum("denials")} denied` : "—"),
     tile("rate", "Failure rate", pct(rate), data ? (bad.size ? "Count check failed: rate hidden" : `${failed} of ${num(calls)} calls`) : "—"),
-    tile("denied", "Denied", num(sum("denials")), data ? "refused attempts; a refusal can be correct" : "—"),
-    tile("recovery", "Recovery", pct(ratio(recovered, known)), data ? `${recovered} of ${known} known · ${failed - known} unclassified` : "—"),
-  ].join("")}</div>`;
+    tile("highest", "Highest rate", worst ? pct(worst.r) : "—", data ? (worst ? `${worst.t.tool} · ${worst.t.failures} of ${worst.t.calls} calls` : "no tool with 10 or more calls") : "—"),
+  ].join("")}</div>${recovery}`;
 }
 function dailyRows(data) {
   const by = new Map();
@@ -510,7 +514,10 @@ function guardDrill(data, ui, token) {
   for (const d of data.daily_hooks || []) if (d.class === h.class) by.set(d.day, (by.get(d.day) || 0) + (isNum(d.failures) ? d.failures : 0));
   const days = windowDays(data).map((day) => ({ day, n: by.has(day) ? by.get(day) : cohort.has(day) ? 0 : null }));
   const max = Math.max(0, ...days.map((d) => d.n || 0));
-  const stats = `<dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
+  // The mockup's This week cards lead; the rest of the facts stay in the second list.
+  const peak = days.reduce((b, d) => (isNum(d.n) && d.n > 0 && (!b || d.n > b.n) ? d : b), null), counted = days.filter((d) => isNum(d.n));
+  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${stat("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</dl>`;
+  const stats = `${cards}<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
   const eligible = h.eligible_by_tool && typeof h.eligible_by_tool === "object" ? h.eligible_by_tool : null, byTool = h.by_tool && typeof h.by_tool === "object" ? h.by_tool : {};
   const wiredName = (tool) => (/^(?:Skill|Agent):/.test(tool) ? tool.slice(0, tool.indexOf(":")) : tool);
   const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, wiredName(tool)) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
@@ -541,7 +548,7 @@ function stationTab(data, inv, ui) {
   const wait = invState(inv);
   if (wait) return box("station", "Station inventory", "What this station has. AG-UI reads these files and commands, then fills the map.", wait, "First build");
   const found = (s) => (s.state === "ok" && s.found ? Object.entries(s.found).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ") : s.state);
-  const sources = (inv.sources || []).map((s) => [st_(s.id), st_(s.reads), [s.state, esc(found(s))], st_(s.reason || "")]);
+  const sources = (inv.sources || []).map((s) => [st_(SOURCE_NAME[s.id] || s.id), st_(s.reads), [s.state, esc(found(s))], st_(s.reason || "")]);
   const tools = data && data.tools || [];
   const servers = new Map((inv.tools || []).filter((t) => t.kind === "mcp").map((t) => [t.name, t]));
   for (const t of tools) if (/^mcp__/.test(t.tool)) { const s = t.tool.split("__")[1]; if (!servers.has(s)) servers.set(s, null); }
@@ -552,7 +559,20 @@ function stationTab(data, inv, ui) {
   const heads = new Map((data && data.bash && data.bash.commands || []).map((c) => [c.head, c.calls]));
   const clis = (inv.clis || []).map((c) => [st_(c.name), st_(c.path || "absent"), st_(c.version || "—"), sv(heads.has(c.name) ? heads.get(c.name) : data && data.bash && data.bash.recorded ? 0 : null)]);
   const count = (kind) => (inv.tools || []).filter((t) => t.kind === kind).length;
-  const tiles = `<div class="kpis">${[["Skills", count("skill")], ["Commands", count("cmd")], ["Subagents", count("agent")], ["Workflows", count("wf")], ["MCP servers", servers.size], ["Hooks", (inv.hooks || []).length], ["CLIs on PATH", (inv.clis || []).filter((c) => c.state === "ok").length]].map(([k, v]) => `<div class="kpi"><span class="k">${esc(k)}</span><b class="kv">${num(v)}</b></div>`).join("")}</div>`;
+  // mockup v9 tiles; a source that was not read shows — (a missing file is absent, never 0)
+  const srcNum = (id, k) => { const s = (inv.sources || []).find((x) => x.id === id); return s && s.state === "ok" && s.found && isNum(s.found[k]) ? s.found[k] : null; };
+  const hookSrc = (inv.sources || []).filter((s) => s.id.startsWith("hooks-") && s.state === "ok");
+  const wirings = hookSrc.length ? hookSrc.reduce((n, s) => n + (isNum(s.found && s.found.wirings) ? s.found.wirings : 0), 0) + (srcNum("plugin-items", "hook_wirings") || 0) : null;
+  const twice = hookSrc.length ? new Set((inv.hooks || []).filter((h) => h.runs_twice).map((h) => h.name)).size : null;
+  const on = srcNum("plugins", "on"), installed = srcNum("plugins", "installed"), cliList = inv.clis || [];
+  const tiles = `<div class="kpis">${[
+    ["plugins", "Plugins", on === null || installed === null ? "—" : `${on} / ${installed}`, "on / installed", ""],
+    ["skills", "Skills", num(count("skill")), "in the scan", ""],
+    ["mcp", "MCP servers", num(servers.size), "configured or called", ""],
+    ["wirings", "Hook wirings", num(wirings), wirings === null ? "not read" : `${new Set((inv.hooks || []).map((h) => h.name)).size} scripts`, ""],
+    ["twice", "Runs twice", num(twice), "wired in two places", twice > 0 ? " warn" : ""],
+    ["clis", "CLIs", `${cliList.filter((c) => c.state === "ok").length} / ${cliList.length}`, "on PATH", ""],
+  ].map(([id, k, v, s, w]) => `<div class="kpi${w}" data-tile="${id}"><span class="k">${esc(k)}</span><b class="kv">${esc(v)}</b><span class="ks">${esc(s)}</span></div>`).join("")}</div>`;
   const at = esc(inv.scanned_at ? stamp(Date.parse(inv.scanned_at)) : "—");
   const scan = `<div class="filters"><span>Scanned at ${at}</span>${inv.stale ? ` <span class="pill warn">Rescan failed (${esc(inv.stale)}); showing the scan from ${at}</span>` : ""}<button class="btn" data-act="th-rescan">Rescan</button></div>`;
   return `${box("station", "Station inventory", "What this station has. AG-UI reads these files and commands, then fills the map. A source it cannot find reads absent, never 0.", scan + tiles, "read-only scan")}
@@ -560,26 +580,47 @@ ${box("sources", "Where AG-UI reads each source", "Which file or command feeds e
 ${box("mcp", "MCP servers", "Which servers exist, and which load in a chief session?", sortable("mcp", ["Server", "Configured in", "Loads in chief", "Tools", "Calls"], mcp, ui, [1]))}
 ${box("clis", "Station CLIs", "Is every CLI the harness calls on PATH?", sortable("clis", ["CLI", "Path", "Version", "Bash calls"], clis, ui, [1]))}`;
 }
+// The mockup's Tool map: every kind plus an All column, an All sources row, sortable headers, a loaded-never-used mark and one card per source on a phone.
+const outsideKind = (k) => k === "hook" || k === "cli";
 function mapTab(data, inv, ui) {
   const wait = invState(inv);
   const rows = [...catalogue(data, inv), ...hookRows(data, inv), ...cliRows(data, inv)];
-  const srcs = SRCS.filter((s) => rows.some((r) => r.src === s)), kinds = KINDS.filter((k) => rows.some((r) => r.kind === k));
-  const cell = (s, k) => {
-    const items = rows.filter((r) => r.src === s && r.kind === k);
+  const srcs = SRCS.filter((s) => rows.some((r) => r.src === s));
+  const itemsOf = (s, k) => rows.filter((r) => (!s || r.src === s) && (k ? r.kind === k : !outsideKind(r.kind)));
+  const sort = (ui.sorts || {}).map;
+  const sortKey = (s) => (!sort || !isNum(sort.col) || sort.col === 0 ? SRC_LABEL[s] : itemsOf(s, sort.col === KINDS.length + 1 ? "" : KINDS[sort.col - 1]).length);
+  const ordered = isNum(sort && sort.col) ? [...srcs].sort((a, b) => { const x = sortKey(a), y = sortKey(b); const c = typeof x === "number" && typeof y === "number" ? x - y || SRC_LABEL[a].localeCompare(SRC_LABEL[b]) : String(x).localeCompare(String(y)); return sort.desc ? -c : c; }) : srcs;
+  const heads = ["Source", ...KINDS.map((k) => KIND_LABEL[k]), "All"];
+  const head = heads.map((h, i) => `<span class="mh"><button class="th-sort" data-act="th-sort" data-table="map" data-col="${i}" aria-label="Sort sources by ${esc(h)}"${i === KINDS.indexOf("res") + 1 ? ` title="No scan source lists MCP resources, so this column stays empty."` : ""}>${esc(h)}${sort && sort.col === i ? (sort.desc ? " ▾" : " ▴") : ""}</button></span>`).join("");
+  const cell = (s, k, total) => {
+    const items = itemsOf(s, k);
     if (!items.length) return `<span class="mc none" aria-hidden="true"></span>`;
-    const outside = k === "hook" || k === "cli";
-    const calls = outside ? null : items.reduce((n, r) => (n === null || !isNum(toolCounts(r, data).calls) ? null : n + toolCounts(r, data).calls), 0);
-    const failed = outside ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : items.reduce((n, r) => n + (isNum(toolCounts(r, data).failures) ? toolCounts(r, data).failures : 0), 0);
+    const outside = outsideKind(k);
+    const counts = items.map((r) => toolCounts(r, data));
+    const calls = outside ? null : counts.reduce((n, c) => (n === null || !isNum(c.calls) ? null : n + c.calls), 0);
+    const failed = outside ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : counts.reduce((n, c) => n + (isNum(c.failures) ? c.failures : 0), 0);
     const rate = ratio(failed, calls);
     const tint = outside ? "" : !isNum(calls) || calls === 0 ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
     const runs = k === "hook" ? items.reduce((n, r) => (n === null || !isNum(r.runs) ? null : n + r.runs), 0) : null;
+    const unused = items.filter((r, i) => (r.kind === "hook" ? r.runs === 0 : !outsideKind(r.kind) && counts[i].calls === 0)).length;
     const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
-    return `<button class="mc${tint}${ui.src === s && ui.kind === k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${ui.src === s && ui.kind === k}"><b>${items.length} ${esc(KIND_LABEL[k])}</b><span>${esc(line)}</span></button>`;
+    const label = k ? `${items.length} ${KIND_LABEL[k]}` : `${items.length} ${items.length === 1 ? "tool" : "tools"}`;
+    const inner = `<b>${esc(label)}</b><span>${esc(line)}</span><span class="nu">${unused ? `○ ${unused}` : ""}</span>`;
+    if (total) return `<span class="mc total${tint}">${inner}</span>`;
+    const on = (ui.src || "") === s && (ui.kind || "") === k;
+    return `<button class="mc${tint}${on ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${on}">${inner}</button>`;
   };
-  const grid = `<div class="thmap" data-cols="${kinds.length}"><span class="mh"></span>${kinds.map((k) => `<span class="mh">${esc(KIND_LABEL[k])}</span>`).join("")}${srcs.map((s) => `<span class="mr">${esc(SRC_LABEL[s])}</span>${kinds.map((k) => cell(s, k)).join("")}`).join("")}</div>`;
-  const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
+  const kindCols = [...KINDS, ""];
+  const body = ordered.map((s) => `<span class="mr"><button data-act="th-pick" data-src="${s}" data-kind="">${esc(SRC_LABEL[s])}</button></span>${kindCols.map((k) => cell(s, k)).join("")}`).join("");
+  const foot = `<span class="mr mall">All sources</span>${kindCols.map((k) => cell("", k, k === "")).join("")}`;
+  const grid = `<div class="thmap" data-cols="${kindCols.length}">${head}${body}${foot}</div>`;
+  const cards = `<div class="thcards">${ordered.map((s) => {
+    const all = rows.filter((r) => r.src === s).length;
+    return `<div class="thcard"><button class="mcard" data-act="th-pick" data-src="${s}" data-kind="">${esc(SRC_LABEL[s])}<span>${all} ${all === 1 ? "tool" : "tools"}</span></button><div class="mlgrid">${KINDS.map((k) => ({ k, n: rows.filter((r) => r.src === s && r.kind === k).length })).filter((x) => x.n).map((x) => `<button class="mln${(ui.src || "") === s && (ui.kind || "") === x.k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${x.k}" aria-pressed="${(ui.src || "") === s && (ui.kind || "") === x.k}"><b>${x.n}</b><span class="kl">${esc(KIND_LABEL[x.k])}</span></button>`).join("")}</div></div>`;
+  }).join("")}</div>`;
+  const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">○ loaded, never used</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
   const picked = ui.src || ui.kind ? box("map-list", `Tools: ${[ui.src && SRC_LABEL[ui.src], ui.kind && KIND_LABEL[ui.kind]].filter(Boolean).join(" · ")}`, "The tiles you picked; each name opens its drill-in.", toolList(data, inv, ui, { withOutside: true })) : "";
-  return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are measured where the hook chain logged them; any other hook's runs are derived from matchers × matching calls.", `${wait}<p class="sub"><span class="tag">hook runs: measured or derived, as each tile says</span></p>${legend}${grid}`, "First build")}${picked}`;
+  return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are measured where the hook chain logged them; any other hook's runs are derived from matchers × matching calls.", `${wait}<p class="sub"><span class="tag">hook runs: measured or derived, as each tile says</span></p>${legend}${grid}${cards}`, "First build")}${picked}`;
 }
 function hooksTab(data, inv, ui) {
   const wait = invState(inv);
