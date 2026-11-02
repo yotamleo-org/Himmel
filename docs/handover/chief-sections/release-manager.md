@@ -16,7 +16,8 @@ release is declared (`jira release state <R>` prints a status other than
   or a failed call sends one Telegram alert and re-runs once on the subscription behind the usage
   preflight, unless `HIMMEL_API_FALLBACK=off`, see `docs/internals/api-lane.md`), rules
   and applies each request through the engine, releases the lease, and prints
-  one line per request. An empty queue prints `RM-RUN <R>: nothing pending`
+  one line per request, then `RM-RUN <R> summary: N refused` when any request
+  was refused. An empty queue prints `RM-RUN <R>: nothing pending`
   and writes nothing.
 - **The batch reads only disk.** Anything the RM must weigh goes in the
   request's `--why` or in an operator `O-` record; nothing said in a message

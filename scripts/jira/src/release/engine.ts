@@ -796,11 +796,17 @@ function checkBlockerPull(ctx: Ctx, p: {
   return true;
 }
 
+// The operator's newest decision naming the key, whatever version it touches: the key's latest word.
+const keyNewestDecision = (rows: OperatorRow[], key: string): OperatorRow | undefined =>
+  rows.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(key)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
+
 // A REVERSION can only rule a move, but an operator `add` into a version places the key there too: the restore
-// is that add, so the record covers it. Any other op stays as it is and is checked against the record.
-function restoreAsAdd(verb: Verb, op: Op, governing: OperatorRow | undefined): Op {
+// is that add, so the record covers it. Only when that add is also the key's newest decision of any kind: a newer
+// record elsewhere (another version, a keep) is the operator's latest word and the restore stays refused.
+// Any other op stays as it is and is checked against the record.
+function restoreAsAdd(verb: Verb, op: Op, governing: OperatorRow | undefined, newest: OperatorRow | undefined): Op {
   const same = verb === 'REVERSION' && op.kind === 'move' && op.from_v === null && governing?.op === 'add'
-    && (governing.from_v ?? null) === null && (governing.to_v ?? null) === op.to_v;
+    && (governing.from_v ?? null) === null && (governing.to_v ?? null) === op.to_v && newest?.id === governing.id;
   return same ? { kind: 'add', from_v: null, to_v: op.to_v } : op;
 }
 
@@ -837,6 +843,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
     let authority = o.authority;
     let op = o.op;
+    const restored = restoreAsAdd(req.verb, o.op, governing, keyNewestDecision(l.operator.verified, req.key));
     const pulling = checkBlockerPull(ctx, { decl: l.decl, ops, governing, key: req.key, op: o.op, authority });
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
@@ -849,7 +856,6 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (prior?.authority.kind !== 'operator') continue;
       // The pull passed the newer-record check above, so it supersedes the operator ruling it finds.
       if (pulling) continue;
-      op = restoreAsAdd(req.verb, op, governing);
       // Only an operator decision newer than the ruling supersedes it, and only the governing one.
       const since = Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
       const cited = authority.kind === 'operator' && authority.ref ? ops.get(authority.ref) : undefined;
@@ -859,11 +865,13 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       const conflict = (g: OperatorRow) => new Error(`release rule: CONFLICT ${req.key}: ${g.id} (newer) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} governs ${req.key}; rule under it`);
       if (cited?.kind === 'decision') {
         if (governing && governing.id !== cited.id) throw conflict(governing);
+        op = restored;
         continue;
       }
       if (authority.kind === 'operator') continue;
       if (!governing || Date.parse(governing.ts) <= since) throw new Error(`release rule: ${prior.id} carries operator authority; only an operator record supersedes it`);
-      if (!scopeOk({ authority: { kind: 'operator', ref: governing.id }, key: req.key, op }, ops, l.decl.current)) throw conflict(governing);
+      if (!scopeOk({ authority: { kind: 'operator', ref: governing.id }, key: req.key, op: restored }, ops, l.decl.current)) throw conflict(governing);
+      op = restored;
       authority = { kind: 'operator', ref: governing.id };
     }
     if (authority.kind === 'operator') {
@@ -954,7 +962,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
-      if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || ((op.kind === 'remove' || op.kind === 'move') && op.from_v)) assertAdmissionsWritable();
+      if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || (last.verb === 'REVERSION' && op.kind === 'add')
+        || ((op.kind === 'remove' || op.kind === 'move') && op.from_v)) assertAdmissionsWritable();
       const cur = await ctx.jira.fixVersions(k);
       if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
@@ -973,7 +982,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       // An RM admission is a ledger row like the chief's, so the board counts it; a replay finds the row first.
       // A REVERSION move into a version is an admission there too; readers ignore the row for an unfrozen version.
       const admitted = last.verb === 'INTAKE' && last.outcome === 'ADMIT'
-        || last.verb === 'REVERSION' && last.op.kind === 'move';
+        || last.verb === 'REVERSION' && (last.op.kind === 'move' || last.op.kind === 'add');
       if (!superseded && admitted && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
