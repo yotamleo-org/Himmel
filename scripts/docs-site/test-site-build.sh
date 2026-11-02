@@ -146,7 +146,6 @@ check "control: hit_ok fails a nonzero exit even when the text names the page" f
 check "control: hit_ok fails an empty result" fails hit_ok 0 ""
 check "control: a missing index under a stuck-playbook path fails the search, the path text is no hit" fails pf_run "$sweep_ctl/it's a stuck-playbook dist"
 
-# --- built links: scripts/docs-site/check-built-links.mjs fails on a dead route or fragment, passthrough pages included
 links_chk="$repo/scripts/docs-site/check-built-links.mjs"
 mk_site() { # mk_site <dir> <extra href for the generated page> <extra href for the passthrough page>
   mkdir -p "$1/page" "$1/guide" || return 1
@@ -258,7 +257,6 @@ route_of() { # docs-relative .md path -> dist html path (docs/README.md is the d
   if [ -z "$r" ]; then echo "$dist/index.html"; else echo "$dist/$r/index.html"; fi
 }
 
-# --- criterion 1: titles from the H1, no duplicate H1
 c1=1
 while IFS= read -r f; do
   page=$(route_of "$f")
@@ -270,7 +268,6 @@ done <<<"$allow"
 if [ "$c1" -eq 1 ]; then ok "criterion 1: titles from H1, exactly one h1 per page"; else ko "criterion 1: titles from H1, exactly one h1 per page"; fi
 check "criterion 1: only the permitted docs files are edited" docs_ok "$repo"
 
-# --- criterion 2: links
 md_pages=$(grep -rlE --include=index.html 'href="(/|\.)[^"#]*\.md["#]' "$dist"; echo "rc=$?")
 check "criterion 2: no site-local href ends in .md" test "$md_pages" = "rc=1"
 check "control: the .md scan had pages to read" test -n "$(find "$dist" -name index.html -print -quit 2>/dev/null)"
@@ -295,11 +292,9 @@ try { remarkDocs({ base: '/Himmel', allow: [], html: [] })(t, { path: '$repo/doc
 catch (e) { console.log('threw: ' + e.message); }")
 case "$broken" in threw:*broken\ link*) ok "criterion 2: a broken link fails the build ($broken)" ;; *) ko "criterion 2: a broken link fails the build (got: $broken)" ;; esac
 
-# --- criterion 3: bare <placeholder> stays visible text
 check "criterion 3: bare <name> renders as visible text" grep -qE 'Chief (&#x3C;|&lt;)name(>|&gt;) is live' "$(route_of telegram-bridge.md)"
 check "criterion 3: no <name> element swallowed into the DOM" absent 'Chief <name>' "$(route_of telegram-bridge.md)"
 
-# --- criterion 4: every diagram block reaches its page, pele draws them + byte-identical standalone HTML
 diagram_pages=0
 for f in $allow; do
   case "$f" in *.md) ;; *) continue ;; esac
@@ -336,7 +331,6 @@ check "criterion 4: the playwright binary is present" test -x "$pw"
 render() { NODE_PATH="$repo/scripts/config-ui/tests/e2e/node_modules" "$pw" test -c "$repo/scripts/docs-site/e2e/j1.config.ts" render.e2e.ts; }
 check "criterion 4: every built page and standalone docs/ page renders headless (render.e2e.ts)" render
 
-# --- IA: sidebar groups equal the F1 list and the v5 frame 1 tree, hero Home with the F2 copy and CTA
 groups=$(node --input-type=module -e "
 import fs from 'node:fs';
 const html = fs.readFileSync(process.argv[1], 'utf8');
@@ -420,10 +414,8 @@ check "IA: Home secondary CTA is How a change ships" grep -qE 'sl-link-button[^>
 check "IA: Home has exactly one h1" is "$(grep -o '<h1' "$home" | wc -l | tr -d ' ')" 1
 check "IA: the docs map is still built" test -f "$dist/docs-map/index.html"
 
-# --- built links: every local route and fragment in the built site (passthrough guides included) resolves
 check "built links: every local route and #fragment in dist resolves" built_ok "$dist"
 
-# --- J1: full site (one page per IA section, trail page, raw passthrough, search)
 for r in daily-loop handover/afk-mode glossary internals/stuck-playbook contributing; do
   check "J1: IA page /$r/ built" test -f "$dist/$r/index.html"
 done
