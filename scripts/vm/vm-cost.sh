@@ -56,7 +56,7 @@ if [ "$MODE" = today ]; then
                 | map("\(.[0].account // "unknown"):\(map(if (.usd | type) == "number" then .usd else 0 end) | add | usd2)usd\(if any(.[]; (.usd | type) != "number") then "?" else "" end)/\(length)runs")
                 | join(",")
               end'
-    exit 0
+    exit $?
 fi
 
 jq -R 'fromjson? | select(type == "object")' "$LEDGER" \

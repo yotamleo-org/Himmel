@@ -50,6 +50,11 @@ same 'tick: only old rows prints no vmspend=' "$(vmspend_of)" ''
 case "$(bash "$SUT" --verbose 2>/dev/null)" in *'vm spend'*) fail 'tick --verbose: only old rows still printed a vm spend line' ;; *) pass 'tick --verbose: only old rows prints no vm spend line' ;; esac
 rm -f "$LEDGER"
 same 'tick: no ledger prints no vmspend=' "$(vmspend_of)" ''
+mkdir "$LEDGER"
+bash "$COST" --today >/dev/null 2>&1; rc=$?
+same 'vm-cost --today: an unreadable ledger (a directory) is not an empty report: nonzero' "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
+same 'tick: an unreadable ledger prints no vmspend=' "$(vmspend_of)" ''
+rmdir "$LEDGER"
 
 [ "$fails" -eq 0 ] || { printf '%s failed\n' "$fails"; exit 1; }
 printf 'all tick vmspend rows passed\n'
