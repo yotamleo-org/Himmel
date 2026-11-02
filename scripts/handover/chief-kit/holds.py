@@ -591,6 +591,7 @@ def seed_rows(repo, judge, key, label, doc, text, deadline):
         text = fallback_text(judge, doc, key) or text  # a RESUME doc with no Writes line: the predecessor's
     created = []
     faulted = False
+    claimed = False
     for kind, p in parse_text(text, repo):
         if kind != 'file':
             continue
@@ -608,6 +609,10 @@ def seed_rows(repo, judge, key, label, doc, text, deadline):
                         pass  # swallow-ok: a row that vanished needs no removal
             return 1, r[len('refused:'):]
         faulted = faulted or r == 'fault'
+        claimed = True
+    if claimed and deadline is not None and time.time() >= deadline:
+        fault('seed deadline passed', '', key)  # the last claim ran past it
+        return 3, 'holds: the seed deadline passed during the last claim'
     return (3, 'holds: a claim faulted; see events.log') if faulted else (0, '')
 
 
@@ -677,6 +682,7 @@ def op_repoint(a):
     repo = primary_of(a.repo)
     deadline = seed_budget(a)
     rc = 0
+    repointed = False
     for d in (slug_dir(repo), slug_dir(repo, '_abs')):
         try:
             names = sorted(os.listdir(d))
@@ -694,6 +700,11 @@ def op_repoint(a):
                 return 3
             if repoint_row(d, n, a.key, a.label, a.doc) == 'fault':
                 rc = 3
+            repointed = True
+    if repointed and time.time() >= deadline:
+        fault('repoint deadline passed', '', a.key)  # the last row ran past it
+        sys.stderr.write('holds: the repoint deadline passed during the last row\n')
+        return 3
     return rc
 
 

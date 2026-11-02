@@ -681,6 +681,21 @@ same "T2 seed: a hanging queue-lock stub passes the deadline, exit 3" "$RC" 3
 same "T2 seed: ... inside 120 s" "$([ "$((t1 - t0))" -lt 120 ] && echo yes || echo no)" yes
 same "T2 seed: ... the row made before the deadline is kept" "$(cut -f1 "$(rowf scripts/t2fr.sh)")" HIMMEL-9406
 
+# a deadline that passes inside the LAST claim (or the last repointed row) is still a passed deadline: exit 3
+put_row scripts/t2dl.sh HIMMEL-9413 slowrp "$HANDOVER_DIR/u/r/HIMMEL-9413-old.md"
+run python3 -I -c "
+import importlib.util, time, argparse
+s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+def slow_claim(*a, **k): time.sleep(1.2); return 'ok'
+m.claim_one = slow_claim
+print(m.seed_rows('$R', m.Judge('$R'), 'HIMMEL-9414', 'N1', 'd.md', '> **Writes:** scripts/t2last.sh', time.time() + 1)[0])
+real_rp = m.repoint_row
+def slow_rp(*a, **k): time.sleep(1.2); return real_rp(*a, **k)
+m.repoint_row = slow_rp
+print(m.op_repoint(argparse.Namespace(key='HIMMEL-9413', label='n', doc='d.md', repo='$R', deadline=time.time() + 1)))
+"
+same "T2 seed and repoint: a deadline passed inside the last claim or row exits 3" "$OUT" "$(printf '3\n3')"
+
 BM="$W/fleet.json"
 BA="$(mkdoc HIMMEL-9410-N1-case.md '> **Writes:** scripts/t2ba.sh')"
 BB="$(mkdoc HIMMEL-9411-N2-case.md "$(printf '> **Writes:** scripts/t2bb.sh\n\n## Results\n- 10:00 WRAPPED — done')")"
