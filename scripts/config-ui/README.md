@@ -536,6 +536,12 @@ imports, so its suite runs in CI without an install.
   configured, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
+- Board page e2e (`board.e2e.ts`, same opt-in suite): `boot()` takes `board: true`, which seeds a three-version Jira
+  mirror, one chain registry and a saved drift run under the temp dir. The rail has one Board entry; `#/roadmap`,
+  `#/roadmap/<version>` and `#/kanban` land on `#/board`; the version strip, drift banner, chain badge, lanes and the
+  Chains and Tidy up tabs draw from the seeded sources; with no drift file and no registry the page says so and shows
+  no count. At 1280 and 390 px, light and dark, every tab draws with no console error and no sideways scroll;
+  `E2E_SHOTS=<dir>` saves the build-side screenshot of each frame to pair with the mockup.
 - Morning report e2e (`report.e2e.ts`, same opt-in suite): over a two-day fixture the
   Morning report page selects the newest day, switches to the earlier one and says so for a
   day with no report; the four Reports and shifts settings show their defaults on Configure,
