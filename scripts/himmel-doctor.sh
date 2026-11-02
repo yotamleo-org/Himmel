@@ -1480,6 +1480,7 @@ _c24_dead_cron_paths() {
     local cron line task cmd words kind p runner rline rwords
     cron="$(crontab -l 2>/dev/null)" || return 0
     while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"
         case "$line" in '#'*) continue ;; *'# HIMMEL-'*) ;; *) continue ;; esac
         task="${line##*# }"
         read -r _ _ _ _ _ cmd <<< "$line"

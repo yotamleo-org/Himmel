@@ -170,7 +170,7 @@ tool_dirs() {
         d="$(command -v "$t" 2>/dev/null)" && dirname "$d"
     done | sort -u | tr '\n' ':'
 }
-TOOLS_PATH="$(tool_dirs)"
+TOOLS_PATH="$DOCTOR_CRON_STUB_DIR:$(tool_dirs)"
 
 # fake uname=Linux (to exercise the non-Windows --fix path on this MINGW box)
 FAKEROOT="$(mktemp -d)"; FAKEBIN="$FAKEROOT/bin"; mkdir -p "$FAKEBIN"
@@ -2182,13 +2182,25 @@ else
 fi
 rm -rf "$t"
 
+echo "== C24: an indented commented-out HIMMEL row is not a cron row -> no FAIL =="
+t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 indented comment: mktemp -d failed"; exit 1; }
+mkdir -p "$t/claude" "$t/home" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
+fake_cron_lines "$t/probe" "  # 15 06 * * * \"$t/runner/gone.sh\" # HIMMEL-FailureReview"
+out="$(c24_run "$t")"
+if grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
+    pass "C24 -> no FAIL (an indented commented-out row is ignored)"
+else
+    fail "C24 indented comment -> $(printf '%s' "$out" | grep C24)"
+fi
+rm -rf "$t"
+
 echo "== C24: an absolute data path after an option flag is not a script -> no false FAIL =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-dead.XXXXXX")" || { fail "C24 option operand: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home" "$t/probe" "$t/runner"; write_settings "$t/claude" "$WRAPPER"
 : > "$t/runner/r.sh"; chmod +x "$t/runner/r.sh"
 fake_cron_lines "$t/probe" "15 06 * * * \"$t/runner/r.sh\" --output $t/out/generated.js # HIMMEL-FailureReview"
 out="$(c24_run "$t")"
-if ! grepq "$out" 'FAIL C24-cadence-registry'; then
+if PATH="$t/probe:$PATH" crontab -l 2>/dev/null | grep -qF '# HIMMEL-FailureReview' && grepq "$out" 'C24-cadence-registry' && ! grepq "$out" 'FAIL C24-cadence-registry'; then
     pass "C24 -> no FAIL (the operand of an option flag is data, not a script)"
 else
     fail "C24 option operand -> $(printf '%s' "$out" | grep C24)"

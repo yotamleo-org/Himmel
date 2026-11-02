@@ -230,14 +230,20 @@ cp "$SOURCE_ROOT/scripts/eval/worker-digest/failure-review-cadence.sh" "$ROOT/sc
 cp "$SOURCE_ROOT/scripts/lib/resolve-user-home.sh" "$ROOT/scripts/lib/"
 export FAKECRON_FILE="$TMP/fakecron.txt" FAILREV_CRONTAB="$TMP/fakecron" FAILREV_RUNNER_DIR="$TMP/frrunner"
 # shellcheck disable=SC2016 # the stub's own $1 and $FAKECRON_FILE stay literal
-printf '%s\n' '#!/bin/sh' 'case "$1" in' '    -l) if [ -f "$FAKECRON_FILE" ]; then cat "$FAKECRON_FILE"; else echo "no crontab for t" >&2; exit 1; fi ;;' '    -) cat > "$FAKECRON_FILE" ;;' 'esac' > "$FAILREV_CRONTAB"
+printf '%s\n' '#!/bin/sh' 'case "$1" in' '    -l) if [ -f "$FAKECRON_FILE" ]; then cat "$FAKECRON_FILE"; else echo "no crontab for t" >&2; exit 1; fi ;;' '    -) cat > "$FAKECRON_FILE" ;;' '    *) exit 2 ;;' 'esac' > "$FAILREV_CRONTAB"
 chmod +x "$FAILREV_CRONTAB"
 RUNNER="$FAILREV_RUNNER_DIR/failure-review-cadence.sh"
 CADENCE="$ROOT/scripts/eval/worker-digest/failure-review-cadence.sh"
 # arm_old_layout <time> [--live]: arm with the real script, then point the runner back at the retired directory.
 arm_old_layout() {
-    JIRA_PROJECT_KEY=TESTPROJ bash "$CADENCE" arm --force --time "$1" --vault "${ARM_VAULT:-$LUNA_VAULT_PATH}" ${2:+"$2"} > /dev/null 2>&1
+    if ! JIRA_PROJECT_KEY=TESTPROJ bash "$CADENCE" arm --force --time "$1" --vault "${ARM_VAULT:-$LUNA_VAULT_PATH}" ${2:+"$2"} > /dev/null 2>&1; then
+        assert_fail "arm_old_layout $1: the arm failed"
+        return 0
+    fi
     sed -i.bak 's#/scripts/eval/worker-digest/#/scripts/eval/leg-digest/#' "$RUNNER" && rm -f "$RUNNER.bak" # old-term-ok
+    if ! grep -Fq '/scripts/eval/leg-digest/' "$RUNNER"; then # old-term-ok
+        assert_fail "arm_old_layout $1: the runner is not on the retired path"
+    fi
 }
 arm_old_layout 07:40 --live
 runner_before="$(cat "$RUNNER")"; cron_before="$(cat "$FAKECRON_FILE")"
@@ -291,6 +297,7 @@ cron_case() {
     local label="$1" rb cb
     rb="$(cat "$RUNNER")"; cb="$(cat "$FAKECRON_FILE")"
     run_check
+    assert_eq "cron runner: $label: check succeeds" 0 "$rc"
     if grep -Fq 'cron runner migration needed' <<< "$out"; then assert_fail "cron runner: $label: check advised a re-arm"; else assert_pass "cron runner: $label: check is silent"; fi
     rc=0
     out="$(bash "$ROOT/scripts/himmel-update.sh" 2>&1)" || rc=$?
