@@ -573,6 +573,19 @@ test("Board: the No version tab draws the fetched tickets in columns with a Jira
   expect(board(r, { tab: "nv", nv: { state: "error", reason: "roadmap failed (500)" } })).toContain("roadmap failed (500)");
 });
 
+test("Board: the Sector filter on the No version tab is the Sector's name, not the index it has in the default read", () => {
+  const s = withNv(withNoVersion(station()));
+  const r = read(s), nv = nvRead(s);
+  const name = nv.themes[nv.tickets[0].theme], shown = (ui: Record<string, unknown>, p: typeof nv) => cols(board(r, { tab: "nv", nv: p, ...ui })).reduce((a, x) => a + x[2], 0);
+  // the second read lists the Sectors in another order, as two reads that completed apart can
+  const turned = { ...nv, themes: [...nv.themes].reverse(), tickets: nv.tickets.map((t) => ({ ...t, theme: nv.themes.length - 1 - t.theme })) };
+  expect(turned.themes[turned.tickets[0].theme]).toBe(name);
+  expect(shown({ theme: r.themes.indexOf(name) }, turned)).toBe(2); // RED: compared as an index it shows none
+  expect(shown({ theme: r.themes.indexOf(name) }, nv)).toBe(2);
+  expect(shown({ theme: r.themes.indexOf("tracker") }, turned)).toBe(0); // negative control: a Sector they are not in
+  expect(shown({ theme: 99 }, turned)).toBe(0); // a Sector the default read no longer lists matches none
+});
+
 test("Board: Done is a folded column, open while a find is set, and each column's number is the cards drawn with a Jira line that says so", () => {
   const r = read(station());
   const html = board(r);

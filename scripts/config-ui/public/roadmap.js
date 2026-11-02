@@ -268,12 +268,14 @@ function barHtml(d, ui, ch, tab, sel) {
     + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
 }
 
-// What a ticket must pass to be drawn: the Sector, Hide Done, Chain, Project, Theme, Only and the find box. d is the payload the filters' indexes were read from.
-const passOf = (d, ui, ch) => {
+// What a ticket must pass to be drawn: the Sector, Hide Done, Chain, Project, Theme, Only and the find box. d is the payload the tickets and the
+// Project and Theme indexes come from; the Sector select is drawn from `from` (the default read), so it is compared by name, not by index.
+const passOf = (d, ui, ch, from = d) => {
   const q = (ui.find || "").trim().toLowerCase(), only = ONLY[ui.only];
-  return (t) => (ui.theme == null || t.theme === ui.theme) && !(ui.hideDone && t.b === "done")
+  const sector = ui.theme == null ? null : from.themes[ui.theme], project = ui.project == null ? null : projectsOf(d)[ui.project];
+  return (t) => (ui.theme == null || (sector != null && d.themes[t.theme] === sector)) && !(ui.hideDone && t.b === "done")
     && (!ui.chain || !chainOk(ch) || (ch.tickets[idOf(t)] && ch.tickets[idOf(t)].chains.some((c) => c.id === ui.chain)))
-    && (ui.project == null || projectOf(t) === projectsOf(d)[ui.project]) && (ui.planTheme == null || t.pt === ui.planTheme)
+    && (ui.project == null || projectOf(t) === project) && (ui.planTheme == null || t.pt === ui.planTheme)
     && (!only || (only[2] && !chainOk(ch)) || only[1](t, chainState(t, ch)))
     && (!q || idOf(t).toLowerCase().includes(q) || t.t.toLowerCase().includes(q));
 };
@@ -291,12 +293,12 @@ function lanesHtml(d, ui, sel, ch) {
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
 // asked for when this tab opens (null until it arrives).
-function nvTab(ui, ch) {
+function nvTab(data, ui, ch) {
   const nv = ui.nv, sub = "Tickets with no fixVersion. Give one a fixVersion in Jira to put it on a version's board.";
   if (!nv) return section("rm-nv", "No version", sub, `<p class="sub" id="status">loading…</p>`);
   if (nv.state !== "ok") return section("rm-nv", "No version", sub, `<div class="nodata">${esc(nv.reason || "the tickets with no version could not be read")}</div>`);
   const writeOn = !!ui.writes && nv.source !== "github";
-  const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch));
+  const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch, data));
   return section("rm-nv", "No version", `${shown.length} ticket${shown.length === 1 ? "" : "s"}. ${sub}${writeOn ? " Drag a card to another column to change its status." : ""}`,
     shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase() }) : `<div class="empty">No tickets match.</div>`);
 }
@@ -358,6 +360,6 @@ function boardPage(data, ui, extras) {
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${esc(data.mirror.newest || "unknown")})`;
   const fresh = `<p class="ro rm-fresh">read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${esc(dr.file.writtenHm || "unknown")}` : ""}</p>`;
-  const body = tab === "chains" ? chainsTab(ui, ch) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(ui, ch) : lanesHtml(data, ui, sel, ch);
+  const body = tab === "chains" ? chainsTab(ui, ch) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch) : lanesHtml(data, ui, sel, ch);
   return [page, fresh, driftBanner(dr), stripHtml(data, sel, ch, tab), linksHtml(ch), tabsHtml(data, ui, tab, ch, dr), barHtml(data, ui, ch, tab, sel), body].join("\n");
 }
