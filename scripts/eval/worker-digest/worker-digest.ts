@@ -19,6 +19,7 @@ import { createJournalMapper, MAPPER_SCHEMA, SUITE } from "../../config-ui/agui/
 import { mergeJournalFiles, sessionFiles } from "../../config-ui/agui/journal-merge.ts";
 import { resolveJournal } from "../../config-ui/agui/sse.ts";
 import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
+import { denyLinesByCall, memberOfGuardClass, readChainLogs } from "./chain-incidents.mjs";
 
 const { spawnSync } = Bun;
 const DIGEST_SCHEMA = 2;
@@ -182,7 +183,7 @@ type Agent = { id: string; role: string; kind: string | null; model: string | nu
 type Row = {
   session: string; agent: Agent; class: string; failure: string; count: number;
   identical_retry: number | null; recovered: boolean | null;
-  first_ts: number | null; last_ts: number | null; tool_call_ids: string[]; final_red?: boolean;
+  first_ts: number | null; last_ts: number | null; tool_call_ids: string[]; final_red?: boolean; refusal_line?: string | null;
 };
 const allIds = new WeakMap<Row, string[]>(); // every tool_call_id of a row, for the trajectory join; output keeps MAX_IDS
 type Denial = { tool_call_id: string; recovered: boolean; identical: number };
@@ -568,6 +569,17 @@ async function main() {
     if (ds.length === 0) continue;
     r.identical_retry = ds.reduce((n, d) => n + d.identical, 0);
     r.recovered = ds.every((d) => d.recovered);
+  }
+  // Every guard row carries the first line its refused calls have in the hook-chain log, else null. ponytail: the line is trusted
+  // as redacted and cut by the runner at write time (denyLine), upgrade path an exported denyLine re-run on read.
+  let refusalOf: (id: string, member: string) => string | null = () => null;
+  try { refusalOf = denyLinesByCall(readChainLogs(process.env, REPO)); } catch { /* an unreadable log leaves every line null */ }
+  for (const r of rows.values()) {
+    if (r.failure !== "denied") continue;
+    r.refusal_line = null;
+    const member = r.class === "denied/other" || r.class === "denied/permission-prompt" || r.class.startsWith("denied/classifier:") ? null : memberOfGuardClass(r.class);
+    if (!member) continue;
+    for (const id of allIds.get(r) ?? []) { const line = refusalOf(id, member); if (line) { r.refusal_line = line; break; } }
   }
   const main = agents.get("main") ?? seen(agentOf(undefined));
   const bool = (v: unknown) => (v === true ? 1 : v === false ? 0 : null);

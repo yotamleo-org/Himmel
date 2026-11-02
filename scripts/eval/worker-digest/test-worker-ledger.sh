@@ -252,5 +252,29 @@ check "an unknown body key is refused (exit 2) and nothing is appended" '[ "$rcb
 thw 2026-10-18 ok w2 >/dev/null 2>&1
 check "an older day under another wiring is stored partial too, because feedback picks its newest ok row across every series" 'jq -e "select(.meta.day == \"2026-10-18\") | .status == \"partial\" and .meta.revision == \"backfill\"" "$TL" >/dev/null && [ "$(newest_ok_day)" = 2026-10-29 ]'
 
+echo "13. the ledger row carries the refusal line of a denied row only (HIMMEL-8575)"
+# The chain-refusal journal and its run log (the REAL launcher writes the secret-bearing and long rows); the ledger row is the digest row's line.
+CR="$FX/chain-refusal"; RS=8575c1a5-0000-4000-8000-000000000001
+mkdir -p "$TMP/rl/j"
+cp "$CR/journal.jsonl" "$TMP/rl/j/$RS.jsonl"
+bash "$CR/make-chain-log.sh" "$TMP/rl" >"$TMP/rl/make.out" 2>&1 || bad "the chain log builds: $(head -c 300 "$TMP/rl/make.out")"
+RUN_HOOK_CHAIN_SKIP_LOG="$TMP/rl/no-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$TMP/rl/hook-runs.jsonl" bun "$DIG" --transcript "$TMP/rl/j/$RS.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" >"$TMP/rl/digest.json" 2>/dev/null || bad "the digest of the chain-refusal journal exits 0"
+RF="$TMP/rl/fail.jsonl"
+python3 "$LL" record --failures-ledger "$RF" --eval-ledger "$TMP/rl/eval.jsonl" --state-dir "$TMP/rl/state" --digest "$TMP/rl/digest.json" --worker N1 >"$TMP/rl/rec.out" 2>&1 || bad "record of the refusal digest exits 0: $(head -c 300 "$TMP/rl/rec.out")"
+lrow() { jq -c --arg k "$1" 'select(.class == $k)' "$RF"; }
+check "a secret-bearing refusal: the ledger row carries the redacted line, and the secret is in neither the digest nor the ledger" '[ "$(lrow denied/block-read-secrets | jq -r .refusal_line)" = "refused: API_TOKEN=<redacted> was read" ] && absent SECRETVALUE8575zq "$TMP/rl/digest.json" "$RF"'
+check "a refusal longer than 240 code points is exactly 240 in the ledger row" '[ "$(lrow denied/read-clamp | jq ".refusal_line | explode | length")" = 240 ]'
+check "a call with no recorded line, a classifier denial and a permission prompt carry null, never an empty string" '[ "$(lrow denied/guard-pr-check-literal | jq -c .refusal_line)" = null ] && [ "$(lrow denied/classifier:merge-without-review | jq -c .refusal_line)" = null ] && [ "$(lrow denied/permission-prompt | jq -c .refusal_line)" = null ] && [ "$(jq "select(.refusal_line == \"\")" "$RF" | wc -c | tr -d " ")" = 0 ]'
+check "an aggregated row carries the first line its refused calls have" '[ "$(lrow denied/check-push-target | jq -r .refusal_line)" = "check-push-target: push to a remote that is not the fork is refused (agg2)" ]'
+check "the key is on denied rows only, and the ledger validates" '[ "$(jq -s "map(select(.failure != \"denied\" and has(\"refusal_line\"))) | length" "$RF")" = 0 ] && python3 "$LL" validate "$RF" >/dev/null'
+check "canary: no journal text reaches the ledger" 'absent -e CANARY8575zq -e TESTORIGIN8575 -e WRONGMEMBER8575 "$RF"'
+drow="$(lrow denied/check-push-target)"
+check "control: a denied row without the key (every row written before this change) still validates" '[ "$(jq "has(\"refusal_line\")" <<<"$(jq -c "del(.refusal_line)" <<<"$drow")")" = false ] && vrow "$(jq -c "del(.refusal_line)" <<<"$drow")"'
+srow="$(jq -c 'select(.failure == "suite")' "$FL" | head -n 1)"
+check "validate refuses a refusal_line on a suite row" '! vrow "$(jq -c ". + {refusal_line: \"x\"}" <<<"$srow")"'
+check "validate refuses an empty refusal_line, a line break, a control character, 241 code points and a non-string" '! vrow "$(jq -c ".refusal_line = \"\"" <<<"$drow")" && ! vrow "$(jq -c ".refusal_line = \"a\\nb\"" <<<"$drow")" && ! vrow "$(jq -c ".refusal_line = \"a\\u0007b\"" <<<"$drow")" && ! vrow "$(jq -c ".refusal_line = (\"x\" * 241)" <<<"$drow")" && ! vrow "$(jq -c ".refusal_line = 7" <<<"$drow")"'
+check "validate takes 240 code points and null" 'vrow "$(jq -c ".refusal_line = (\"x\" * 240)" <<<"$drow")" && vrow "$(jq -c ".refusal_line = null" <<<"$drow")"'
+check "validate still refuses a free-text key such as message beside a valid refusal_line" '! vrow "$(jq -c ". + {message: \"x\"}" <<<"$drow")"'
+
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
