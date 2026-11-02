@@ -472,6 +472,20 @@ test('HIMMEL-8649: a terminal on stdin with no argv prompt is refused with no fa
   assert.deepEqual(promptFiles(f), []);
 });
 
+test('HIMMEL-8649: a stdin prompt over 8 MiB is refused with no call, no fallback and no scratch file; 8 MiB itself is kept', () => {
+  const f = fixture();
+  const big = f.run(STDIN_ONLY, { ...withStdin(f), STUB_FB_OUT: FB_OK }, { input: Buffer.alloc(8 * 1024 * 1024 + 1, 97), maxBuffer: 1 << 26 });
+  assert.equal(big.status, 2, big.stderr);
+  assert.match(big.stderr, /over 8 MiB/);
+  assert.equal(f.called(), false);
+  assert.equal(fbCalls(f), 0);
+  assert.deepEqual(promptFiles(f), []);
+  const g = fixture();
+  const edge = g.run(STDIN_ONLY, withStdin(g), { input: Buffer.alloc(8 * 1024 * 1024, 97), maxBuffer: 1 << 26 });
+  assert.equal(edge.status, 0, edge.stderr);
+  assert.equal(readFileSync(join(g.dir, 'stdin.seen')).length, 8 * 1024 * 1024);
+});
+
 test('HIMMEL-8649: a launcher stopped while it buffers a stdin prompt removes the scratch file', async () => {
   const f = fixture();
   const child = spawn('bash', [LAUNCH, ...STDIN_ONLY], { env: { ...f.env, ...withStdin(f) }, stdio: ['pipe', 'ignore', 'ignore'] });

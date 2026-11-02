@@ -412,7 +412,8 @@ if [ "$HAS_PROMPT" != 1 ]; then
   PROMPT_FILE="$(mktemp "${TMPDIR:-/tmp}/claude-api-prompt.XXXXXX")" || { PROMPT_FILE=""; refuse "no scratch file"; }
   chmod 600 "$PROMPT_FILE"
   # a background job gets /dev/null for stdin, so the read names fd 0; a half-read stdin cannot be replayed whole
-  cat <&0 >"$PROMPT_FILE" &
+  # at most 8 MiB plus one byte: a longer stream is refused below, so a runaway producer cannot fill TMPDIR
+  head -c 8388609 <&0 >"$PROMPT_FILE" &
   READ_PID=$!
   ( trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM
     sleep "$CALL_TIMEOUT_S" & wait $!; kill "$READ_PID" 2>/dev/null ) 3<&- &
@@ -422,6 +423,7 @@ if [ "$HAS_PROMPT" != 1 ]; then
     refuse "could not buffer the stdin prompt (read failed or stdin stayed open for ${CALL_TIMEOUT_S}s)"; }
   kill "$READ_WD" 2>/dev/null
   trap - TERM INT HUP
+  [ "$(wc -c <"$PROMPT_FILE")" -le 8388608 ] || { NO_FB="the prompt could not be kept"; refuse "the stdin prompt is over 8 MiB"; }
   exec 3<"$PROMPT_FILE" || { NO_FB="the prompt could not be kept"; refuse "could not reopen the stdin prompt"; }
 else
   # a closed stdin becomes /dev/null: the call then starts as it would have with an empty stdin (the idiom of scripts/lib/qmd-bounded.sh)

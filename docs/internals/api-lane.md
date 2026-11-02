@@ -75,8 +75,9 @@ it stops is a failed call and takes the path below. Then the launcher:
    - A prompt on stdin is kept in a mode-600 scratch file
      (`claude-api-prompt.*` under `TMPDIR`) that the API call reads and the
      fallback replays byte for byte; the file is removed on every trapped exit
-     path. A terminal on stdin is refused, and the read is cut at
-     `HIMMEL_API_CALL_TIMEOUT_S` on every host. A refusal before the prompt is
+     path. A terminal on stdin is refused, the read is cut at
+     `HIMMEL_API_CALL_TIMEOUT_S` on every host, and a prompt over 8 MiB is
+     refused with no fallback. A refusal before the prompt is
      buffered has not read stdin, so a piped prompt still reaches the fallback.
    - The fallback's stdout is the launcher's stdout, and its exit code replaces
      the API exit code. A caller sees an ordinary result (judge-call records the
