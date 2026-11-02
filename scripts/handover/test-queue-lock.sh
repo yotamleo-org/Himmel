@@ -3254,7 +3254,8 @@ t95_registered() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
 printf '{"session_id":"scope-owner","transcript_path":"%s"}' "$B_TR" \
     | QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" self-heartbeat >/dev/null 2>&1
 if [ "$bad_rc" -eq 2 ] && [ "$none_rc" -eq 2 ] && [ "$(a_hb "$B_LK")" = "$OLD_HB" ] \
-    && ! t95_registered "$(t95_sdir scope-owner)" && [ ! -f "$B_LK/liveness" ]; then
+    && ! t95_registered "$(t95_sdir scope-owner)" && [ ! -f "$B_LK/liveness" ] \
+    && [ "$(t95_count "$TMPDIR_ROOT/xdg/himmel-queue-lock/$(t95_digest "scope-owner|$B_DOC")".*)" = 0 ]; then
     pass "T95c: adopt refuses a wrong token and a missing session scope (rc 2), registering nothing (no sidecar, no token file, no liveness marker, the owner's hook still cannot refresh)"
 else
     fail "T95c: adopt refusals (wrong rc=$bad_rc out=$bad_out; no-scope rc=$none_rc out=$none_out; registered=$(ls -A "$(t95_sdir scope-owner)" 2>/dev/null))"
@@ -3357,7 +3358,7 @@ H_DOC2="$A_HO/prune-2.md"; : > "$H_DOC2"; H_LK2="$(a_lockdir prune-2)"
 QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC1" prune95a >/dev/null 2>&1
 QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC2" prune95b >/dev/null 2>&1
 H_SD="$(t95_sdir scope-prune)"
-mkdir -p "$G_TOK/scope.foreign-keep"; printf 'x\ny\n' > "$G_TOK/scope.foreign-keep/keep.doc"
+mkdir -p "$G_TOK/scope.foreign-keep"; printf 'x\n%s\n' "$(dirname "$H_LK2")/foreign-gone.lock" > "$G_TOK/scope.foreign-keep/keep.doc"
 h_regs_before="$(t95_count "$H_SD"/*.doc)"
 rm -rf "$H_LK1"
 printf '{"session_id":"scope-prune"}' | QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" self-heartbeat >/dev/null 2>&1
@@ -3371,6 +3372,37 @@ else
 fi
 rm -rf "$G_TOK/scope.foreign-keep"
 QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" release "$H_DOC2" prune95b >/dev/null 2>&1
+
+# T95i: a registration whose lock's PARENT dir is missing (an unmounted or
+# moved handover root) is not "the lock is gone": the hook keeps the sidecar
+# and the token file.
+I_SD="$(t95_sdir scope-prune)"; mkdir -p "$I_SD"
+I_TOK="$G_TOK/orphan-parent-95i"
+printf 'tok95i\n' > "$I_TOK"
+printf '/some/doc.md\n%s\n' "$TMPDIR_ROOT/no-such-root/.locks/queue/x.lock" > "$I_SD/orphan-parent-95i.doc"
+printf '{"session_id":"scope-prune"}' | QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" self-heartbeat >/dev/null 2>&1
+if [ -f "$I_SD/orphan-parent-95i.doc" ] && [ -f "$I_TOK" ]; then
+    pass "T95i: the hook keeps a registration whose lock's parent dir is missing (sidecar and token file)"
+else
+    fail "T95i: hook pruned a registration under a missing root (sidecar=$([ -f "$I_SD/orphan-parent-95i.doc" ] && echo kept || echo GONE) token=$([ -f "$I_TOK" ] && echo kept || echo GONE))"
+fi
+rm -f "$I_SD/orphan-parent-95i.doc" "$I_TOK"
+
+# T95j: adopt when the session's registration dir cannot be created (the
+# scope.<digest> path is occupied by a regular file): rc 1, no success line,
+# and the token file it wrote is taken back.
+J_DOC="$A_HO/occupied.md"; : > "$J_DOC"
+QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$J_DOC" occupied95 >/dev/null 2>&1
+: > "$(t95_sdir scope-occupied)"
+j_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-occupied bash "$LIB" adopt "$J_DOC" occupied95 2>&1)"; j_rc=$?
+if [ "$j_rc" -eq 1 ] && ! grepq "$j_out" 'adopted' \
+    && [ "$(t95_count "$G_TOK/$(t95_digest "scope-occupied|$J_DOC")".*)" = 0 ]; then
+    pass "T95j: adopt exits 1, prints no success line and leaves no token file when the sidecar cannot be written"
+else
+    fail "T95j: adopt with an occupied registration dir (rc=$j_rc out=$j_out)"
+fi
+rm -f "$(t95_sdir scope-occupied)"
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$J_DOC" >/dev/null 2>&1
 
 # --- T96-T102: a lock past its TTL whose owner is PROVABLY dead
 # reads STALE-DEAD and `status --sweep --reap-dead` releases only such locks.

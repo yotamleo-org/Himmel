@@ -1220,7 +1220,7 @@ _ql_token_file() {
 # which by then holds a valid lock releasable with the printed token exactly as
 # before. with <lockdir> it also writes a `<file>.doc` sidecar
 # (line 1 the canonical doc path, line 2 the lock dir) -- the registration
-# `self-heartbeat` enumerates to find the locks this session holds. Same
+# `self-heartbeat` enumerates to find the locks this session holds.
 # The sidecar lives in the session's OWN scope.<digest-of-scope>/ directory
 # under the token dir (_ql_sidecar_dir), so `self-heartbeat` reads exactly this
 # session's registrations and never has to hash another session's: its cost
