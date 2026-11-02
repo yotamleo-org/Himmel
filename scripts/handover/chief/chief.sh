@@ -1713,6 +1713,43 @@ check_direction_real() {
     return 1
 }
 
+# Refuse a handover whose `workers:` Live-state line carries no worker span while
+# the outgoing fleet manifest holds a non-lockless worker that holds a queue lock:
+# seeding it would hand the successor `workers: none` and relay-batch.sh no entries.
+# Every such worker is named with the live-state.sh command that fills the line (the
+# nonces are the chief's: never read from a worker doc or the manifest). A `<...>`
+# placeholder, an absent `workers:` line, an absent, unreadable or empty manifest, and
+# rows without a held lock (status other than 11/12) pass.
+# Args: outgoing doc, outgoing Live state.
+check_workers_listed() {
+    local doc="$1" live="$2" key=workers value rows label ldoc rc named="" cmd="" NL=$'\n'
+    if ! printf '%s\n' "$live" | awk '/^workers:/ { f = 1 } END { exit !f }' && legacy_names_on; then key=legs; fi
+    printf '%s\n' "$live" | awk -v k="$key:" 'index($0, k) == 1 { f = 1 } END { exit !f }' || return 0
+    value="$(seeded_live_field "$live" "$key")"
+    case "$value" in "<"*) return 0 ;; esac
+    # shellcheck disable=SC2016  # the backticks in the span pattern are literal
+    printf '%s\n' "$value" | awk '/`[A-Za-z0-9_.-]+:[^` \t:]+:[^` \t:]+:[^` \t:]+`/ { f = 1 } END { exit f }' || return 0
+    [ -f "${doc%.md}.fleet.json" ] || return 0
+    rows="$(jq -r "$JQ_W"'W[] | select(.lockless != true) | [.label // "", .doc // ""] | @tsv' "${doc%.md}.fleet.json" 2>/dev/null)" || return 0  # swallow-ok: an unreadable manifest leaves the open set unknown, as open_legs_block does
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -n "$ldoc" ] || continue
+        rc=0
+        HANDOVER_DIR="$root" bash "$repo/scripts/handover/queue-lock.sh" status "$ldoc" >/dev/null 2>&1 || rc=$?
+        case "$rc" in 11|12) ;; *) continue ;; esac
+        ldoc="${ldoc##*/}"
+        named="$named  $label ${ldoc%.md}$NL"
+        cmd="$cmd --nonce $label=<nonce>"
+    done <<EOF
+$rows
+EOF
+    [ -n "$named" ] || return 0
+    err "refusing to hand over: the $key: line in $doc lists no worker, but these open workers hold a queue lock:"
+    printf '%s' "$named" >&2
+    err "  fill the line from the fleet manifest with the nonce you hold for each, then retry:"
+    err "  bash $kit/live-state.sh $doc$cmd"
+    return 1
+}
+
 # Refuse a handover while an open PR maps to no live worker record and to no hold
 # on the outgoing `queue:` line (orphan-pr-check.sh); every orphan is named. An
 # unreadable PR list (exit 3) or failed check never refuses (fail-open, no deadlock): it is
@@ -2038,6 +2075,7 @@ cmd_next() {
     check_live_line_kept priority PRIORITY-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_rulings_recorded "$predecessor_doc" "$predecessor_live_state" || exit 6
     check_direction_real "$predecessor_doc" || exit 7
+    check_workers_listed "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_no_orphan_pr "$predecessor_doc" || exit 8
     # The outgoing direction rides into the successor doc and the HANDOFF; the
     # successor's block starts as the predecessor's (a stale one is not detected).
