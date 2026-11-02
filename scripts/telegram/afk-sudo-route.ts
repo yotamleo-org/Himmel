@@ -183,7 +183,9 @@ const CODE_RUN = /(?<!\d)\d(?:[\s-]*\d){5}/u;
 // "ticket 123-456 is done") are ordinary text.
 const CODE_TOKEN = /(?<!\d)\d{6}(?!\d)/u;
 const CODE_ONLY = /^\d{6,7}$/u;
-const heldAsCode = (text: string): boolean => CODE_TOKEN.test(text) || CODE_ONLY.test(text.replace(/[\s-]/gu, ""));
+// The whole text is only a code once whitespace, hyphens and the Unicode hyphens U+2010 and U+2011 are removed.
+const wholeCode = (text: string): boolean => CODE_ONLY.test(text.replace(/[\s\-‐‑]/gu, ""));
+const heldAsCode = (text: string): boolean => CODE_TOKEN.test(text) || wholeCode(text);
 
 // A reply to a prompt this bridge issued. Always consumed, so a code (or a
 // mistyped one) never lands in a session inbox or a run prompt.
@@ -248,10 +250,12 @@ export function makeAfkSudoGate(deps: AfkSudoDeps, prompts?: AfkSudoPrompts): (m
       // Holding is not helper authorization: operator group messages, including
       // trusted anonymous admins, must not carry a bare code into an inbox either.
       // A `NONCE CODE` pair is held the same way: a session can call the helper's
-      // approve itself, so the pair must never reach an inbox.
+      // approve itself, so the pair must never reach an inbox. A text that is only six or
+      // seven digits once spaces and hyphens are removed ("123 456") is held too, whether
+      // or not it is a reply (a reply to a live prompt was answered above).
       // ponytail: ordinary bare six-digit numbers are held too; prefix with "text:".
       // Upgrade path: an explicit non-code message mode instead of guessing intent.
-      if ((msg.reply_to_message_id == null || msg.reply_to_bot === true) && (BARE_CODE.test(msg.text) || CODE_REPLY.test(msg.text))
+      if ((((msg.reply_to_message_id == null || msg.reply_to_bot === true) && (BARE_CODE.test(msg.text) || CODE_REPLY.test(msg.text))) || wholeCode(msg.text))
         && msg.forwarded === false && msg.caption === false
         && isOperatorIdentity(deps.access(), msg.from, msg.chat_id, msg.sender_chat)) {
         void deps.reply(msg.chat_id, '⚠️ afk-sudo: held a code-shaped message; nothing ran. To send a number as text, prefix it with "text:".').catch(() => deps.log("[afk-sudo] hold notice failed"));
