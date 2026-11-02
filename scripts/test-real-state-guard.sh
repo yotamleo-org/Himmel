@@ -175,27 +175,56 @@ eq "H3 negative control: a fixture home outside the symlinked passwd home is all
 cp "$TMP/real-tool.sh" "$TMP/pkg.test"
 eq "U1 mocha is a runner" "$(as_session bash -c "exec -a mocha bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 77
 eq "U2 playwright is a runner" "$(as_session bash -c "exec -a playwright bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 77
+eq "U2b a playwright-prefixed tool that is not the runner is not a runner" "$(as_session bash -c "exec -a playwright-crawl-youtube.mjs bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
 eq "U3 a go test binary named pkg.test is a test" "$(as_session bash "$TMP/pkg.test" >/dev/null 2>&1; echo $?)" 77
 eq "U4 go test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a go bash test' >/dev/null 2>&1; echo $?)" 77
-eq "U5 npm test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash test' >/dev/null 2>&1; echo $?)" 77
-cp "$TMP/real-tool.sh" "$TMP/run"
-eq "U7 npm run test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run test' >/dev/null 2>&1; echo $?)" 77
-eq "U9 npm run with an option before test is a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run --silent test' >/dev/null 2>&1; echo $?)" 77
-eq "U8 negative control: npm run build is not a runner" "$(cd "$TMP" && as_session bash -c 'exec -a npm bash run build' >/dev/null 2>&1; echo $?)" 0
+cp "$TMP/real-tool.sh" "$TMP/dir"
+eq "U4b go -C dir test is a runner: the option value is skipped" "$(cd "$TMP" && as_session bash -c 'exec -a go bash -C dir test' >/dev/null 2>&1; echo $?)" 77
 eq "U6 negative control: go with a non-test argument is not a runner" "$(as_session bash -c "exec -a go bash '$TMP/real-tool.sh'" >/dev/null 2>&1; echo $?)" 0
 
-# The refusal names a command that runs: a repo-relative suite path, and the after-report usage as printed.
+# A real package manager retitles itself, so /proc/<pid>/cmdline is ONE string ("npm test"), not an argv.
+# titled <title>: a real node process retitled that way, with real-tool.sh running below it.
+REAL_NODE=/usr/bin/node
+titled() {
+  as_session "$REAL_NODE" -e "process.title = process.argv[1]; process.exitCode = require('child_process').spawnSync('bash', [process.argv[2]], { stdio: 'ignore' }).status" "$1" "$TMP/real-tool.sh" >/dev/null 2>&1
+  echo $?
+}
+if [ -x "$REAL_NODE" ]; then
+  eq "U5 a retitled npm test is a runner" "$(titled 'npm test')" 77
+  eq "U7 a retitled npm run test is a runner" "$(titled 'npm run test')" 77
+  eq "U9 a retitled npm run with an option before test is a runner" "$(titled 'npm run --silent test')" 77
+  eq "U10 a retitled npm run --workspace web test is a runner: the option value is skipped" "$(titled 'npm run --workspace web test')" 77
+  eq "U11 a retitled pnpm run --filter web test is a runner" "$(titled 'pnpm run --filter web test')" 77
+  eq "U12 a retitled pnpm -r test is a runner: -r takes no value here" "$(titled 'pnpm -r test')" 77
+  eq "U8 negative control: a retitled npm run build is not a runner" "$(titled 'npm run build')" 0
+  eq "U13 negative control: a retitled npm --prefix test run build is not a runner" "$(titled 'npm --prefix test run build')" 0
+else
+  pass "U5 to U13 SKIP: no real node at $REAL_NODE"
+fi
+
+# The refusal names a command that runs: the suite from the guest checkout, the VM may be off, the guest holds origin/main.
 WR="$TMP/wrepo"
 mkdir -p "$WR/scripts"
 git -C "$WR" init -q
 cp "$TMP/real-tool.sh" "$WR/scripts/test-w.sh"
 (cd "$WR" && as_session bash scripts/test-w.sh >"$TMP/w.out" 2>&1)
-has "W1 a relative suite path is named repo-relative" "$TMP/w.out" "-- bash scripts/test-w.sh"
+has "W1 a relative suite path is run from the guest checkout" "$TMP/w.out" "-- bash -c 'cd ~/himmel && bash scripts/test-w.sh'"
 (cd "$TMP" && as_session bash "$WR/scripts/test-w.sh" >"$TMP/w.out" 2>&1)
-has "W1 an absolute suite path is named repo-relative" "$TMP/w.out" "-- bash scripts/test-w.sh"
+has "W1 an absolute suite path is run from the guest checkout" "$TMP/w.out" "-- bash -c 'cd ~/himmel && bash scripts/test-w.sh'"
+has "W1 the refusal says the VM must be on and the guest holds origin/main" "$TMP/w.out" "vmsdk.py himmel-ar-1 up"
 has "W2 the after-report line names its usage exactly" "$TMP/w.out" "bash scripts/vm/after-report.sh <branch> <pr>"
 bash "$root/scripts/vm/after-report.sh" >"$TMP/ar.out" 2>&1
 has "W2 after-report.sh's own usage reads the same" "$TMP/ar.out" "usage: scripts/vm/after-report.sh <branch> <pr>"
+# W3: the printed guest command, run in a fixture guest home, reaches the suite (the guard refuses it, rc 77), not 'no such file'.
+mkdir -p "$HOME/himmel"
+cp -R "$WR/scripts" "$HOME/himmel/scripts"
+printed="$(grep -F 'guest-exec.sh' "$TMP/w.out" | head -1)"
+inner="${printed#*-- bash -c \'}"
+inner="${inner%\'*}"
+eq "W3 the printed guest command reaches the suite" "$(as_session bash -c "$inner" >/dev/null 2>&1; echo $?)" 77
+cp "$TMP/real-tool.sh" "$WR/scripts/test_w.py"
+(cd "$WR" && as_session bash -c "exec -a python3 bash scripts/test_w.py" >"$TMP/w.out" 2>&1)
+if grep -qF 'guest-exec.sh' "$TMP/w.out"; then fail "W4 a python suite is not printed as a bash command"; else pass "W4 a python suite is not printed as a bash command"; fi
 
 # A detached test that is still alive keeps its test ancestor, so it is refused.
 ( setsid bash -c "bash '$TMP/test-inner.sh' >/dev/null 2>&1; echo \$? >'$TMP/orphan2.rc'" >/dev/null 2>&1 & )
