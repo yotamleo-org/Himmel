@@ -486,8 +486,9 @@ def run_one_hook(hook_path, tool_name, tool_input, cwd, anchor, home,
     # process holding the write end, so a hook that backgrounds a child would
     # read as TIMEOUT. The hook's own exit ends the row; the
     # group is then killed so the child never outlives the row.
-    # stderr is kept (bounded) for the ODD-RC row: the runner prints why it
-    # refused, and a bare rc 125 reads as a hook verdict.
+    # stderr is kept for the ODD-RC row (only the first ERR_KEEP_BYTES are read; the
+    # file's size is bounded by the row timeout, like the stdout file): the runner
+    # prints why it refused, and a bare rc 125 reads as a hook verdict.
     with tempfile.TemporaryFile() as outf, tempfile.TemporaryFile() as errf:
         p = subprocess.Popen(["bash", runner] + argv, stdin=subprocess.PIPE,
                              stdout=outf, stderr=errf,

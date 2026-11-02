@@ -92,9 +92,12 @@ trap 'rm -rf "$scratch_root"' EXIT
 find_tolerant() {
     local out=$1 what=$2 errf="$scratch_root/find-err" rc=0
     shift 2
-    find "$@" > "$out" 2> "$errf" || rc=$?
+    # LC_ALL=C pins find's diagnostics to English; a diagnostic is a race only when
+    # the whole line ends in the vanished-entry text, so a path that merely contains
+    # those words cannot excuse an unreadable entry.
+    LC_ALL=C find "$@" > "$out" 2> "$errf" || rc=$?
     [ "$rc" -eq 0 ] && return 0
-    if [ -s "$errf" ] && ! grep -qv 'No such file or directory' "$errf"; then
+    if [ -s "$errf" ] && ! grep -qvE ': No such file or directory$' "$errf"; then
         return 0
     fi
     printf 'sandbox-run: %s failed (find exit %s): %s\n' "$what" "$rc" "$(head -c 400 "$errf")" >&2

@@ -269,6 +269,10 @@ else bad "vanished entry: rc=$RC $OUT"; fi
 OUT=$(STUB_FIND_ERR="find: '$ROOT/locked': Permission denied" PATH="$STUBBIN:$PATH" bash "$RUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
 if [ "$RC" = 125 ] && [[ "$OUT" == *'Permission denied'* ]] && [[ "$OUT" != *RAN* ]]; then ok 'unreadable entry is still refused with the printed reason'
 else bad "unreadable entry: rc=$RC $OUT"; fi
+# a path that merely contains the vanished-entry words must not excuse an unreadable entry.
+OUT=$(STUB_FIND_ERR="find: '$ROOT/x: No such file or directory/y': Permission denied" PATH="$STUBBIN:$PATH" bash "$RUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+if [ "$RC" = 125 ] && [[ "$OUT" == *'Permission denied'* ]] && [[ "$OUT" != *RAN* ]]; then ok 'a path naming the vanished-entry words does not excuse an unreadable entry'
+else bad "path with the vanished-entry words: rc=$RC $OUT"; fi
 churn() { while [ ! -e "$RACE/stop" ]; do
     mkdir -p "$RACE/d/e"; touch "$RACE/d/e/f" "$RACE/d/g"; mkfifo "$RACE/d/p" 2>/dev/null
     rm -rf "$RACE/d"
