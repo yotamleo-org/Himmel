@@ -1552,7 +1552,7 @@ cr_signal_gate() {
     if [ "$state" = skipped ]; then
         local rl_desc
         rl_desc=$(cr_signal_description "$owner" "$repo" "$head0") || rl_desc=""
-        if printf '%s' "$rl_desc" | grep -qiE 'rate.?limit'; then state=rate-limited; fi
+        if grep -qiE 'rate.?limit' <<< "$rl_desc"; then state=rate-limited; fi
     fi
     case "$state" in
         success) : ;;

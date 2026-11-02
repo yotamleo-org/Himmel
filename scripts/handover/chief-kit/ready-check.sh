@@ -1465,7 +1465,8 @@ check_cr_rate_limited() {
         # shellcheck source=/dev/null
         . "$cr_lib" 2>/dev/null || exit 0  # swallow-ok: an unsourceable lib prints nothing
         [ "$(cr_signal_state "$owner" "$repo" "$SHA" 2>/dev/null)" = skipped ] || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
-        cr_signal_description "$owner" "$repo" "$SHA" 2>/dev/null | grep -qiE 'rate.?limit' && echo rl  # swallow-ok: advisory, an unreadable status prints nothing
+        cr_desc=$(cr_signal_description "$owner" "$repo" "$SHA" 2>/dev/null) || exit 0  # swallow-ok: advisory, an unreadable status prints nothing
+        ! grep -qiE 'rate.?limit' <<< "$cr_desc" || echo rl
     ) || cr_out=""
     if [ "$cr_out" = rl ]; then
         echo "[WARN] 15. CodeRabbit rate-limited at head ${SHA:0:8}: NO CodeRabbit review here (the green status is not a review); not gating, a posted finding still blocks. Re-request once when capacity returns: \`@coderabbitai review\`"
