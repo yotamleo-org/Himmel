@@ -94,6 +94,8 @@ test("dragging a card to another column sends its new status", async ({ page }) 
 });
 
 // 8832: the ticket drawer (mockup v4 frame 3), a keyboard move, and a drop on a column its event moves
+// a click on the card's title text: the middle of a wide card can be its Sector select or chain link, which do their own work and do not open the drawer
+const openCard = (page: Page, title: string) => page.locator(".rm-card", { hasText: title }).getByText(title, { exact: true }).click();
 const noWrite = async (page: Page) => { // a write that goes out is recorded; none is answered by Jira
   const sent: string[] = [];
   await page.route("**/api/roadmap/write", async (route) => {
@@ -111,7 +113,7 @@ test("a click on a card opens the drawer with its CLI argv and its stage history
   await open(page);
   await go(page, "#/board");
   expect(reads).toEqual([]); // loading the Board reads no history
-  await page.locator(".rm-card", { hasText: "Second chain step" }).click();
+  await openCard(page, "Second chain step");
   const drawer = page.locator("aside.drawer");
   await expect(drawer).toHaveAttribute("aria-label", "Ticket HIMMEL-2");
   await expect(drawer).toContainText('jira transition HIMMEL-2 "In Progress"'); // the CLI call the move makes
@@ -131,7 +133,7 @@ test("a history that cannot be read says unavailable, never an empty history", a
   await open(page);
   await go(page, "#/board");
   await page.route("**/api/roadmap/history*", (route) => route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "history unavailable" }) }));
-  await page.locator(".rm-card", { hasText: "Second chain step" }).click();
+  await openCard(page, "Second chain step");
   await expect(page.locator("aside.drawer")).toContainText("history unavailable");
   await expect(page.locator("aside.drawer")).not.toContainText("No status moves");
   await page.getByRole("button", { name: /^Close ticket/ }).click();
@@ -271,7 +273,7 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
       await page.emulateMedia({ colorScheme: scheme });
       await open(page);
       await go(page, "#/board");
-      await page.locator(".rm-card", { hasText: "Second chain step" }).click();
+      await openCard(page, "Second chain step");
       await expect(page.locator("aside.drawer .rm-tl")).toContainText("To Do → In Progress");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
       const box = await page.locator("aside.drawer").boundingBox();
