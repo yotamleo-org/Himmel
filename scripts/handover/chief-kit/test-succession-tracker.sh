@@ -276,5 +276,18 @@ has "and the held worker is reported as waiting, not replaced" "$out" "N80 missi
 lacks "and it is never called replaced" "$out" "N80 replaced"
 [ -z "$token" ] || bash "$QL" release "$OLD" "$token" >/dev/null 2>&1
 
+# An equal-label resume doc names the same live session as its predecessor, so the predecessor is
+# not replaced even with its own lock free: the quote-back is still owed.
+EQD="$WORK/HIMMEL-9-N82-demo-2026-01-01.md"
+EQR="$WORK/HIMMEL-9-N82-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$EQR" > "$EQD"
+printf '# successor\n\n## Results\n\n- 10:01 LIVE - working\n' > "$EQR"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N1:Y-N1-aa:lockA:11` `N82:Y-N82-cc:lockC:13`\n' > "$CDOC"
+printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{"doc":"%s","label":"N82","lane":"claudex"}]}\n' "$WORK" "$EQD" > "$MAN"
+out="$(run)"; rc=$?
+eq "an equal-label resume keeps succession incomplete" "$rc" 1
+has "and the shared-name worker is reported as waiting" "$out" "N82 missing"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

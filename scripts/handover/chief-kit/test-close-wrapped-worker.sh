@@ -1632,6 +1632,19 @@ rc=0; out=$(run "$HP" 2>&1) || rc=$?
 check "handoff: a later ordinary BLOCKED does not close the worker (base rc 0)" "$rc" "4"
 check "handoff: a later ordinary BLOCKED signals nothing" "$(cat "$CALLS")" ""
 
+# The worker's own final hand-off appended at EOF lands below a ruling heading and still counts.
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n\n## Chief Rulings\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: a BLOCKED hand-off appended below a ruling heading closes the predecessor" "$rc" "0"
+exact_count "handoff: that predecessor is signaled" "$(cat "$CALLS")" "kill -TERM 389" "1"
+# ...and an ordinary BLOCKED appended below a ruling heading after the hand-off is a working worker.
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n- 11:00 LIVE - working again\n\n## Chief Rulings\n\n- 12:00 BLOCKED - waiting on CI\n' "$HS" > "$HP"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: an ordinary BLOCKED below a ruling heading does not close the worker" "$rc" "4"
+check "handoff: that ordinary BLOCKED signals nothing" "$(cat "$CALLS")" ""
+
 # Closing a predecessor whose successor still runs must leave the worktree the successor works in.
 # shellcheck disable=SC2016  # literal fixture backticks around the worktree path
 printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, worktree: `%s`\n- 10:00 WRAPPED - hand-off to %s\n' "$WT/.claude/worktrees/demo" "$HS" > "$HP"

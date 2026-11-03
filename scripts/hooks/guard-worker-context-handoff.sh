@@ -424,11 +424,14 @@ fi
 # keeps a quoted or mirrored ruling from changing the hint.
 # shellcheck disable=SC2016  # literal Markdown backticks in strict handshake grammar
 current_chief=$(awk -v chief="$HIMMEL_CONSOLE_NAME" '
+    BEGIN { retired[chief] = 1 }
     /^## Results([[:space:]]|$)/ { seen = 1; next }
     seen && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted: (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/ {
         sub(/^.*SUCCESSION accepted: /, ""); gsub(/`/, "")
         split($0, words, /[[:space:]]+/)
-        if (words[3] == chief) chief = words[1]
+        # the newest acceptance wins: any name already in the chain can be replaced, so a correction
+        # overrides an earlier one and a chained replacement still resolves to the newest chief
+        if (words[3] in retired) { retired[words[1]] = 1; chief = words[1] }
     }
     END { print chief }
 ' "$doc") || current_chief="$HIMMEL_CONSOLE_NAME"

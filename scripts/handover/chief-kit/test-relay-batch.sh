@@ -463,4 +463,24 @@ check "a hand-off doc with its lock held is still relayed" "1" "$(printf '%s\n' 
 check "and it counts in the tally" "0" "$(printf '%s\n' "$outh" | grep -c '^RELAYED 0 of 0$')"
 [ -z "$token" ] || bash "$QL" release "$PWORK" "$token" >/dev/null 2>&1
 
+# An equal-label resume doc names the same live session as its predecessor: the predecessor's lock is
+# free and the resume doc holds its own, yet the shared session must still get its relay.
+EWORK="$WORK/DEMO-30-N82-old-2026-10-28.md"
+ERES="$WORK/DEMO-30-N82-old-2026-10-28-RESUME.md"
+printf '# worker\n\n## Results\n' > "$ERES"
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$ERES" > "$EWORK"
+# shellcheck disable=SC2016  # fixture Live state delimiters
+printf '# chief\n\n## Live state\nworkers: `N82:fixture-eq:lock:82`\n\n## Results\n' > "$PDOC"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N82","lane":"claudex"}]}\n' "$EWORK" > "${PDOC%.md}.fleet.json"
+acq_out="$(bash "$QL" acquire "$ERES" "relay-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+check "setup: the resume doc lock is acquired" "yes" "$([ -n "$token" ] && echo yes)"
+census DEMO-30-N82-old-2026-10-28
+: > "$WORK/send.log"; : > "$WORK/bus.log"
+oute="$(bash "$RB" "$PDOC" --successor S10 2>&1)"; rce=$?
+check "an equal-label resume relay run succeeds" "0" "$rce"
+check "an equal-label resume keeps the shared session in the relay" "1" "$(printf '%s\n' "$oute" | grep -c '^SENT-INBOX N82')"
+[ -z "$token" ] || bash "$QL" release "$ERES" "$token" >/dev/null 2>&1
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

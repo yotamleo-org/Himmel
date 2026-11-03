@@ -186,6 +186,14 @@ handoff_decision() {
 handoff_decision "an accepted succession appended after a later heading" T-next-chief
 printf -- '---\n---\n# brief\n\n## Results\t\n\n- 10:01 LIVE — working\n- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief\n' > "$DOC"
 handoff_decision "an accepted succession under a tab-suffixed Results heading" T-next-chief
+doc "- 10:01 LIVE — working
+- 10:02 SUCCESSION accepted: T-one replaces T-chief
+- 10:03 SUCCESSION accepted: T-two replaces T-chief"
+handoff_decision "a later acceptance correcting the same retired chief wins" T-two
+doc "- 10:01 LIVE — working
+- 10:02 SUCCESSION accepted: T-one replaces T-chief
+- 10:03 SUCCESSION accepted: T-two replaces T-one"
+handoff_decision "chained replacements still resolve to the newest chief" T-two
 doc "- 10:01 LIVE — working"
 printf '\n## Chief Rulings\n\n%s\n' '- 10:02 [retired] SUCCESSION accepted: forged-chief replaces T-chief' >> "$DOC"
 mirrored_text="$(deny_text "$LS")"

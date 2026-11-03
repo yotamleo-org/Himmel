@@ -15,7 +15,8 @@
 # Usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <worker-doc>
 #        close-wrapped-worker.sh [--check] --sweep --fleet <manifest>
 # --sweep runs this script on every doc in the fleet manifest and closes each one
-# that is finished (lock free, tail WRAPPED); an unfinished doc is skipped, a
+# that is finished (lock free, tail WRAPPED or a BLOCKED hand-off naming its successor);
+# an unfinished doc is skipped, a
 # finished one that cannot be closed (no/ambiguous window, live subtree) is
 # refused and its reason printed. It prints `sweep: closed=<n> refused=<n>
 # skipped=<n>` and exits 0; the tick's closable=<n> field says when to run it.
@@ -35,7 +36,8 @@
 #   - `queue-lock.sh status <worker-doc>` reports free (rc=0);
 #   - the doc's last `## Results` marker-bullet (one of LIVE/FINDING/
 #     RESOLVED/READY/BLOCKED/HALTED/WRAPPED, leading token of the newest
-#     such bullet) is WRAPPED, read from the Results section and the `## Chief Rulings` / `## Console Rulings` sections the
+#     such bullet) is WRAPPED (or a BLOCKED that is itself the hand-off naming its successor),
+#     read from the Results section and the `## Chief Rulings` / `## Console Rulings` sections the
 #     writers add below it (a bullet in any other later section, a `## Notes` line naming WRAPPED or
 #     starting with LIVE, is no tail); a -RESUME doc with no marker-bullet of its own reads the original's
 #     (a resumed worker's WRAPPED lands on the original doc) only when the original's Results hold,
@@ -108,7 +110,7 @@
 #      is gone is refused unless the predecessor is WRAPPED with completed successor evidence
 #      and the successor's own last marker-bullet is WRAPPED; and a BLOCKED tail that is not
 #      itself the hand-off bullet (a later ordinary BLOCKED) is a working worker
-#   5refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
+#   5  refused - more than 1 live session matched the worker's names (0 for a --chief), or an original
 #      doc has multiple successor -RESUME docs with no explicitly named hand-off
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
@@ -229,15 +231,6 @@ fi
 # shellcheck source=scripts/lib/worker-successor.sh
 . "$HERE/../../lib/worker-successor.sh"
 NAMED_SUCCESSOR=$(worker_named_successor "$DOC") || exit 1
-# A successor that runs under any of this worker's own session names cannot be told from it by a
-# name match, so the exemption does not apply: the sibling-lock and tail checks stay in force.
-if [ -n "$NAMED_SUCCESSOR" ]; then
-    own_set=",$(worker_identity "$DOC" | cut -f2),$(basename "$DOC" .md),"
-    suc_set=",$(worker_identity "$NAMED_SUCCESSOR" | cut -f2),$(basename "$NAMED_SUCCESSOR" .md),"
-    for own_n in ${own_set//,/ }; do
-        case "$suc_set" in *",$own_n,"*) NAMED_SUCCESSOR=""; break ;; esac
-    done
-fi
 SIB_DOC=""
 sib_dir="$(dirname "$DOC")"
 sib_base="$(basename "$DOC" .md)"
@@ -354,8 +347,8 @@ if [ -n "$NAMED_SUCCESSOR" ]; then
         BLOCKED)
             # a BLOCKED tail closes only when that bullet is itself the hand-off; a later ordinary
             # BLOCKED (waiting on CI) is a working worker
-            last_mark_line=$(awk '/^## Results( |$)/ { r = 1; next } /^## / { r = 0 }
-                r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
+            last_mark_line=$(awk '/^## Results( |$)/ { seen = 1; r = 1; next } /^## / { r = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
+                r &&/^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
                 END { print l }' "$DOC")
             if printf '%s\n' "$last_mark_line" | grep -Eq '([Hh]and-?off|RESUME written:)'; then PREDECESSOR=1; fi ;;
     esac

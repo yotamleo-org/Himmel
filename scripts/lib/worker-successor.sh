@@ -10,7 +10,7 @@ _WS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # worker_named_successor <worker doc>: print the newest explicitly named existing
 # successor in the same family and directory, or nothing. Never use file mtimes.
 worker_named_successor() {
-    local doc="$1" dir stem label base named path next_label next_stem expected
+    local doc="$1" dir stem label base named path next_label next_stem expected own_set suc_set own_n
     [ -r "$doc" ] || return 0
     dir="$(dirname "$doc")"; stem="$(basename "$doc" .md)"
     label="$(worker_label "$doc")"
@@ -44,5 +44,11 @@ worker_named_successor() {
     expected="$(printf '%s' "${stem%-RESUME}" | sed -E "s/-(leg)?${label}(-|\$)/-\\1${next_label}\\2/")-RESUME"
     next_stem="$(basename "$path" .md)"
     [ "$next_stem" = "$expected" ] || return 0
+    # A successor running under any of this worker's own session names is no distinct worker.
+    own_set=",$(worker_identity "$doc" | cut -f2),$stem,"
+    suc_set=",$(worker_identity "$path" | cut -f2),$next_stem,"
+    for own_n in ${own_set//,/ }; do
+        case "$suc_set" in *",$own_n,"*) return 0 ;; esac
+    done
     printf '%s\n' "$path"
 }
