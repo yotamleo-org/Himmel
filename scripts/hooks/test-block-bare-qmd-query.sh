@@ -1218,6 +1218,11 @@ deny 'f/() { $(cat /tmp/x); }; f/'
 # the slash-ended call denies it
 deny 'd/x/() { echo $(cat /tmp/x); }; d/x/'
 deny 'f/() { echo $(cat /tmp/x); }; f/'
+# a program word that holds a substitution or a variable and ends in `/` is not
+# a directory: the whole-word fallback is only for a literal word
+deny '$(echo x)/'
+deny '`echo x`/'
+deny 'read v; $v/'
 deny 'timeout 5 qmd que{ry,} x'
 deny 'git commit -m "x; qmd query y"'
 deny 'curl -d "a; qmd query b" http://example.invalid'

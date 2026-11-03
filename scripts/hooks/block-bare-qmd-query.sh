@@ -1720,8 +1720,11 @@ dyn_check() {
             fi
             # A word ending in `/` (e.g. `-cadence/` left after a brace split) has an
             # empty basename, which would match the lists' blank padding: look the
-            # whole word up instead, since a function may be named `f/`.
-            dk=${w##*/}; [ -n "$dk" ] || dk=$w
+            # whole word up instead, since a function may be named `f/`. A word
+            # holding a substitution or a variable keeps the empty key, which
+            # matches the lists' padding and so denies.
+            dk=${w##*/}
+            if [ -z "$dk" ] && [ -z "$subs" ] && [[ $w != *'$'* ]]; then dk=$w; fi
             case "$adang$fdang" in *" $dk "*) deny=1; return 0 ;; esac
             if [ -n "$subs" ] || [[ $w == *'$'* ]]; then
                 # The part after the last dynamic piece must be a literal path.
