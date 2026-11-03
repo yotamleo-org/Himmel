@@ -1538,14 +1538,14 @@ done
 m10k_run() { # $1 = command; prints the chain rc and elapsed ms
     local in rc=0 s e
     in=$(j_bash "$1")
-    s=$(date +%s%N)
+    s=$(now_ms)
     (
         unset RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS RUN_HOOK_CHAIN_BUDGET_MS \
             RUN_HOOK_CHAIN_ENTRY_TIMEOUT_MS RUN_HOOK_CHAIN_ENTRY_SAFETY_MARGIN_MS
         cd "$m10k_dir/HIMMEL" && printf '%s' "$in" | RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=15000 node "${HOOK%/*}/run-hook-with-bash.js" --chain "$HOOK"
     ) >/dev/null 2>"$m10k_dir/chain.err" || rc=$?
-    e=$(date +%s%N)
-    echo "$rc $(((e - s) / 1000000))"
+    e=$(now_ms)
+    echo "$rc $((e - s))"
 }
 m10k_cmds=(
     "grep -lE '^fixVersions:.*\"v1\\.1\\.3\"' $m10k_dir/HIMMEL/HIMMEL-*.md | xargs grep -h sector"
