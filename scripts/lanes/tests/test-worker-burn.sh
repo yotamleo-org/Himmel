@@ -47,7 +47,7 @@ unset HIMMEL_WORKER_SESSION_PROFILE 2>/dev/null || true
 out=$(bash "$BURN" "$FIXTURE"); rc=$?
 eq "fixture exits 0" "$rc" "0"
 eq "one line, every field, hand-computed" "$out" \
-   "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3.6k cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650"
+   "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3.6k cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650 price-model=unknown cr-weight=0.1 unknown-model-calls=4"
 
 # --- price-weighted fields ---------------------------------------------------
 has "cache-read sum" "$out" "cache-read=3.6k"
@@ -70,9 +70,9 @@ has "cache-read weight override changes cost-eq" "$out_override" "cost-eq=4.8k"
 # input are already <1000 and print the same integer either way.
 out_raw=$(bash "$BURN" --raw "$FIXTURE")
 eq "--raw: same line except the four counters are exact integers" "$out_raw" \
-   "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3600 cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650"
+   "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3600 cache-create=250 input=4 cache-health=99.9% cost-eq=1601.5 floor-share=133.7% compaction-rewarm=650 price-model=unknown cr-weight=0.1 unknown-model-calls=4"
 eq "default output matches --raw except the four k-rounded counters" "$out" \
-   "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3.6k cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650"
+   "worker-burn leg-burn-sample.jsonl: calls=4 avg-ctx=963 first-turn=1.2k out=185 compactions=2 text-only=2 cache-read=3.6k cache-create=250 input=4 cache-health=99.9% cost-eq=1.6k floor-share=133.7% compaction-rewarm=650 price-model=unknown cr-weight=0.1 unknown-model-calls=4"
 
 out_raw_env=$(WORKER_SESSION_BURN_RAW=1 bash "$BURN" "$FIXTURE")
 eq "WORKER_SESSION_BURN_RAW=1 env is equivalent to --raw" "$out_raw_env" "$out_raw"

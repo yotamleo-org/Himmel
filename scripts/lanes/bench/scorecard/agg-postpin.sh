@@ -185,7 +185,7 @@ while IFS= read -r f; do
 
     line=$(bash "$WORKER_SESSION_BURN" "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov worker-burn-failed; continue; }
     sc_cov parsed
-    calls=$(printf '%s' "$line" | grep -o 'calls=[0-9]*' | cut -d= -f2)
+    calls=$(printf '%s' "$line" | grep -o ' calls=[0-9]*' | cut -d= -f2)
     avg=$(printf '%s' "$line" | grep -o 'avg-ctx=[^ ]*' | cut -d= -f2)
     first=$(printf '%s' "$line" | grep -o 'first-turn=[^ ]*' | cut -d= -f2)
     comp=$(printf '%s' "$line" | grep -o 'compactions=[0-9]*' | cut -d= -f2)

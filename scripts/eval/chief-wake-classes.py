@@ -59,8 +59,8 @@ OPERATOR_KINDS = ("operator", "session-load", "local-command", "session-start",
                   "operator-directed-session", "waiter:telegram")
 
 
-def price(u):
-    return (u.get("input_tokens", 0) * hc.W_IN + u.get("cache_read_input_tokens", 0) * hc.W_CR
+def price(u, model=None):
+    return (u.get("input_tokens", 0) * hc.W_IN + u.get("cache_read_input_tokens", 0) * hc.cache_read_weight(model)
             + u.get("cache_creation_input_tokens", 0) * hc.W_CC + u.get("output_tokens", 0) * hc.W_OUT)
 
 
@@ -121,7 +121,7 @@ def episodes(path):
             cur["tools"] += tools
             if mid not in seen:
                 seen.add(mid)
-                p = price(msg.get("usage", {}))
+                p = price(msg.get("usage", {}), msg.get("model"))
                 cur["eq"] += p
                 cur["req"] += 1
                 cur["reqs"].append([p, tools])

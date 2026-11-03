@@ -5,9 +5,9 @@
     summarize.py ingest DIR [--transcripts ROOT]   raw/*.json -> DIR/runs.jsonl
     summarize.py report DIR [--seed N]             runs.jsonl -> markdown on stdout
 
-Per-run cost is in input-token equivalents of one Sonnet-class price ratio:
-  input + 1.25*cache_creation + 0.1*cache_read + 5*output
-(cache_read weighted x0.1 as the brief asks; output priced 5x input). Raw token
+Per-run cost is in input-token equivalents at the API price ratios:
+  input + 1.25*cache_creation + W_model*cache_read + 5*output
+(cache_read weighted per model, scripts/lanes/lib/cache-read-weights.tsv, 0.1 when the model is unknown; output priced 5x input). Raw token
 fields and the CLI's own total_cost_usd are kept next to it as a cross-check.
 
 Tool calls are counted from the run's session transcript when it can be found
@@ -26,6 +26,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import truth as T  # noqa: E402
 
+sys.path.insert(0, os.path.join(HERE, "..", "..", "lib"))
+from burn_weights import cache_read_weight, result_model  # noqa: E402
+
 # A tool call that really uses the graph: the CLI, the worker wrapper, or its output
 # dir. A bare mention of 'graphify' (e.g. grepping for graphify-bin.sh) is not use.
 GRAPH_USE = re.compile(r"(?:leg|worker)-graph\.sh|graphify-out|(^|[^-\w/.])graphify\s+(query|explain|path)\b")
@@ -36,9 +39,9 @@ def task_rules():
         return {t["id"]: t["truth"] for t in json.load(f)["tasks"]}
 
 
-def weighted(u):
+def weighted(u, model=None):
     return (u.get("input_tokens", 0) + 1.25 * u.get("cache_creation_input_tokens", 0)
-            + 0.1 * u.get("cache_read_input_tokens", 0) + 5 * u.get("output_tokens", 0))
+            + cache_read_weight(model) * u.get("cache_read_input_tokens", 0) + 5 * u.get("output_tokens", 0))
 
 
 def transcript_calls(root, cwd, sid):
@@ -91,7 +94,7 @@ def ingest(out, root):
             "input_tokens": u.get("input_tokens", 0), "output_tokens": u.get("output_tokens", 0),
             "cache_creation": u.get("cache_creation_input_tokens", 0),
             "cache_read": u.get("cache_read_input_tokens", 0),
-            "weighted_tokens": weighted(u), "cost_usd": d.get("total_cost_usd"),
+            "weighted_tokens": weighted(u, result_model(d)), "cost_usd": d.get("total_cost_usd"),
             "num_turns": d.get("num_turns"), "tool_calls": calls, "graphify_calls": gcalls,
             "contaminated": bool(arm == "B" and gcalls), "unused_graph": bool(arm == "A" and gcalls == 0),
             **{k: sc[k] for k in ("correct", "parsed", "precision", "recall")},

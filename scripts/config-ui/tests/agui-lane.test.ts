@@ -49,6 +49,12 @@ test("codex bank: the governing weekly reading; stale, reset or unparseable is n
 });
 
 const TALLY = { calls: 3, input: 30, output: 300, cacheRead: 120000, cacheCreate: 0 };
+test("a native worker's cache reads are priced at its model's rate", () => {
+  const price = (model: string) => costRowOf({ session: "s1", worker: "w", ticket: null, model, lane: "native", tally: TALLY, codexStart: null, codexNow: null }).cost_eq;
+  expect(price("claude-opus-5-5")).toBe(30 + 6000 + 1500);
+  expect(price("claude-fable-5-1")).toBe(30 + 3000 + 1500);
+  expect(price("claude-mystery-1")).toBe(30 + 12000 + 1500);
+});
 const ID = { session: "s1", worker: "HIMMEL-901-N9001-worker", ticket: "HIMMEL-901", model: "gpt-6.1-sol" };
 
 test("a claudex cost row is priced from the codex bank delta, never at Claude weights", () => {
