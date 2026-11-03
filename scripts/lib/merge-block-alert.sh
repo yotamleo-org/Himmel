@@ -34,6 +34,11 @@
 # MERGE_WATCH_ALERT_BRIDGE_ROOT/BRIDGE_ROOT — a fixture suite must not write
 # into a real chief's live bridge inbox either.
 #
+# A refused send is neither delivered nor failed. _mba_send returns 0 and sets
+# _MBA_REFUSED=1 (each call resets it): an in-process caller reads the flag right
+# after a 0 and records nothing, no sent marker and no failure. A caller that is
+# its own process carries the refusal across the boundary as exit 77.
+#
 # ponytail: "operator" is access.json's first positive allowFrom entry, the same
 # rule operatorChatId() in scripts/telegram/gate.ts applies; an access.json
 # whose first entry is not the person to page gets that person paged.
@@ -48,6 +53,7 @@ _mba_operator_chat() {
 
 _mba_send() {
     local chat="$1" text="$2"
+    _MBA_REFUSED=0
     # One 30 s bound for the seam and the bun send alike; no GNU
     # timeout (stock macOS) runs both unbounded.
     local tmo=""
@@ -58,6 +64,7 @@ _mba_send() {
         return
     fi
     if [ "${HIMMEL_TEST_FIXTURE:-}" = "1" ] && [ -z "${BRIDGE_ROOT:-}" ]; then
+        _MBA_REFUSED=1
         return 0
     fi
     command -v bun >/dev/null 2>&1 || return 1
@@ -65,8 +72,6 @@ _mba_send() {
     # crashing guard must never cost a real alert.
     local guard_rc=0
     bash "$_MBA_LIB_DIR/test-run-guard" check --quiet --tool bun merge-block-alert || guard_rc=$?
-    # Refused, not delivered. The return stays 0 so every other caller of this sender keeps its exit
-    # code; the flag lets merge_block_alert drop its sentinel.
     [ "$guard_rc" != 77 ] || { _MBA_REFUSED=1; return 0; }
     # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
     $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1
@@ -100,7 +105,6 @@ merge_block_alert() {
         return 0
     fi
     local send_rc=0
-    _MBA_REFUSED=0
     _mba_send "$chat" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}" || send_rc=$?
     if [ "$send_rc" != 0 ]; then
         rm -f "$dir/$key" 2>/dev/null

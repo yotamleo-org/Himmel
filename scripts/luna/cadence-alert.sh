@@ -20,7 +20,9 @@
 # delivered send, so a failed send means the next failure retries the DM. A
 # failed send also writes CADENCE_ALERT_SEND_FAILED_MARK (default
 # ~/.himmel/state/cadence-alert-send-failed), which himmel-doctor C33 reports
-# as a WARN until a later send is delivered.
+# as a WARN until a later send is delivered. A sender exiting 77 was refused by
+# the test guard: no sentinel, no marker, a standing marker stays, and `fail`
+# still counts it as not delivered for CADENCE_ALERT_EXIT_ON_SEND_FAIL below.
 #
 # A `qmd-reindex` `rc-5` with no <cause> quotes the `summary=` line of qmd-reindex.sh's
 # reindex-state file (the remaining hash count and the last provider error) as the
@@ -59,7 +61,7 @@ _hash() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/nul
 # Writes the sentinel only after a delivered send, so a failed send retries the
 # DM on the next failure; an unwritable sentinel still counts as delivered.
 send_then_mark() { # <sentinel> <message>
-    "$send_cmd" "$2" || return 1
+    "$send_cmd" "$2" || return $?
     : > "$1" 2>/dev/null \
         || echo "cadence-alert: could not record dedupe sentinel $1" >&2
 }
@@ -91,8 +93,13 @@ case "${1:-}" in
         # next alert. Two concurrent failures of one worker could both send; one
         # runner per worker per night makes that a harmless double DM at worst.
         if [ ! -e "$sentinel" ]; then
-            if send_then_mark "$sentinel" "$worker: $reason. Cause: $cause. Do: $todo. Log: $log"; then
+            mark_rc=0
+            send_then_mark "$sentinel" "$worker: $reason. Cause: $cause. Do: $todo. Log: $log" || mark_rc=$?
+            if [ "$mark_rc" = 0 ]; then
                 rm -f "$send_failed_mark" 2>/dev/null
+            elif [ "$mark_rc" = 77 ]; then
+                send_rc=1
+                echo "cadence-alert: refused by the test guard, nothing sent for $worker $reason" >&2
             else
                 send_rc=1
                 echo "cadence-alert: Telegram send failed for $worker $reason" >&2

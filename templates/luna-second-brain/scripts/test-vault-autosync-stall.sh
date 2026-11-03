@@ -166,6 +166,25 @@ assert_eq "S6 failing sink: no alert recorded" "2" "$(alert_count)"
 run_sync
 assert_eq "S6b next run with a working sink delivers it" "3" "$(alert_count)"
 
+# --- S6c: a sink exiting 77 was refused, not failed: logged as such, retried --
+rm -f "$V/handovers/x/logs/bad-third.sh"
+run_sync
+printf 'echo scratch-refused\n' >"$V/handovers/x/logs/bad-refused.sh"
+run_sync
+backdate
+printf '#!/usr/bin/env bash\nexit 77\n' >"$TMP/refused-sink.sh"
+# shellcheck disable=SC2016  # $1 expands when the sink runs
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >>"%s"\n' "$TMP/refused-retry.log" >"$TMP/retry-sink.sh"
+chmod +x "$TMP/refused-sink.sh" "$TMP/retry-sink.sh"
+s6c_out="$(cd "$V" && LUNA_VAULT_AUTOSYNC=1 LUNA_VAULT_ALERT_CMD="$TMP/refused-sink.sh" LUNA_VAULT_STALL_THRESHOLD_MIN=30 bash "$SCRIPT" 2>&1)"
+assert_has "S6c a refused sink is logged as refused" "alert sink refused" "$s6c_out"
+case "$s6c_out" in *"alert sink failed"*) fail "S6d a refused sink is not called failed" "$s6c_out" ;; *) pass "S6d a refused sink is not called failed" ;; esac
+case "$(cat "$STATE")" in *alerted*) fail "S6e a refused sink leaves the episode un-alerted" "$(cat "$STATE")" ;; *) pass "S6e a refused sink leaves the episode un-alerted" ;; esac
+SINK_OVERRIDE="$TMP/retry-sink.sh" run_sync
+assert_eq "S6f control: the next run with a working sink delivers" "yes" "$([ -s "$TMP/refused-retry.log" ] && echo yes || echo no)"
+rm -f "$V/handovers/x/logs/bad-refused.sh"
+run_sync
+
 # --- S7: no sink configured must not crash the sync -------------------------
 rm -f "$V/handovers/x/logs/bad-third.sh"
 run_sync

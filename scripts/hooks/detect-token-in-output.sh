@@ -166,7 +166,7 @@ sent=0
 # shellcheck disable=SC1091
 if { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
     chat=$(_mba_operator_chat) || chat=""
-    if [ -n "$chat" ] && _mba_send "$chat" "$msg" >/dev/null 2>&1; then sent=1; fi
+    if [ -n "$chat" ] && _mba_send "$chat" "$msg" >/dev/null 2>&1 && [ "${_MBA_REFUSED:-0}" != 1 ]; then sent=1; fi
 fi
 if [ "$sent" = 0 ]; then
     rm -f "${claimed[@]}" 2>/dev/null

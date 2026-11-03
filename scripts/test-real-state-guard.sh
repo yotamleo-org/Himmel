@@ -383,6 +383,19 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   if grep -q 'REFUSED' "$TMP/j.out"; then fail "J2 a read-only verb was refused"; else pass "J2 a read-only verb is not refused"; fi
   as_session "${DECLARE[@]}" >"$TMP/j.out" 2>&1
   if [ -e "$HIMMEL_RELEASE_STATE_DIR/R8752/release.json" ]; then pass "J3 a real jira release run by a chief writes"; else fail "J3 a real jira release run by a chief writes ($(head -c 300 "$TMP/j.out"))"; fi
+  # The mint has its own door: a temp ledger passes J1's, and homedir() follows a fixture HOME, so the default key path looks temp.
+  KEY_HOME="$TMP/key-home"
+  mkdir -p "$KEY_HOME"
+  rc=0; env -u HIMMEL_RELEASE_KEY_DIR HOME="$KEY_HOME" HIMMEL_RELEASE_STATE_DIR="$TMP/key-state-a" "${DECLARE[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  eq "K1 a test with no key dir mints no key" "$(find "$KEY_HOME" -name '*.key' | wc -l | tr -d ' ')" 0
+  has "K1 the refusal names the VM command" "$TMP/j.out" "scripts/vm/"
+  if [ "$rc" != 0 ]; then pass "K1 the declare failed"; else fail "K1 the declare failed"; fi
+  rc=0; HIMMEL_RELEASE_KEY_DIR="$FAKE_REAL/keys" HIMMEL_RELEASE_STATE_DIR="$TMP/key-state-b" "${DECLARE[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  if [ -e "$FAKE_REAL/keys/R8752.key" ]; then fail "K2 a test named a real key dir and minted"; else pass "K2 a test naming a real key dir mints nothing"; fi
+  rc=0; HIMMEL_RELEASE_KEY_DIR="$TMP/key-temp" HIMMEL_RELEASE_STATE_DIR="$TMP/key-state-c" "${DECLARE[@]}" >"$TMP/j.out" 2>&1 || rc=$?
+  if [ -e "$TMP/key-temp/R8752.key" ]; then pass "K3 a test naming a temp key dir still mints there"; else fail "K3 a test naming a temp key dir still mints there ($(head -c 300 "$TMP/j.out"))"; fi
+  "$CLAUDE_STUB" env -u HIMMEL_RELEASE_KEY_DIR HOME="$KEY_HOME" HIMMEL_RELEASE_STATE_DIR="$TMP/key-state-d" "${DECLARE[@]}" >"$TMP/j.out" 2>&1
+  if [ -e "$KEY_HOME/.config/himmel/release/R8752.key" ]; then pass "K4 a real session still mints the default key"; else fail "K4 a real session still mints the default key ($(head -c 300 "$TMP/j.out"))"; fi
   # leaks --comment posts a real comment. Jira here is a local recorder, so a door that lets a run through shows as a request.
   HTTPLOG="$TMP/http.log"
   : >"$HTTPLOG"
@@ -540,12 +553,20 @@ watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" bash "$TMP/watch-run.sh" "$MBA"
 eq "M8 a test's refused chief route leaves no sentinel" "$(find "$TMP/sent-m8w" -type f | wc -l | tr -d ' ')" 0
 watch_env MERGE_BLOCK_ALERT_DIR="$TMP/sent-m8w" "$CLAUDE_STUB" bash "$TMP/watch-run.sh" "$MBA"
 has "M8 a real route for the same head after a refusal still appends" "$CHIEF_INBOX" "[merge-watch o/r#2]"
-# M9: the other callers of the sender keep their exit code. vault-stall-alert.sh exiting non-zero on a refusal
-# would make cadence-alert.sh write its send-failed marker under the real state dir, and doctor warn on it.
+# M9: a refused send crosses the process boundary as exit 77. Through it cadence-alert.sh records neither a
+# delivery (the sentinel) nor a failed send (the marker doctor warns on).
 reset
 rc=0; env TELEGRAM_ACCESS_PATH="$TMP/access.json" bash "$root/scripts/luna/vault-stall-alert.sh" "from a test" >/dev/null 2>&1 || rc=$?
-eq "M9 a test's refused vault-stall alert still exits 0 for its caller" "$rc" 0
+eq "M9 a test's refused vault-stall alert exits 77" "$rc" 77
 eq "M9 and it sent nothing" "$(calls bun)" 0
+reset
+rc=0; env -u CADENCE_ALERT_SEND_CMD TELEGRAM_ACCESS_PATH="$TMP/access.json" CADENCE_ALERT_DEDUPE_DIR="$TMP/m9-sent" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/m9-failed" \
+  bash "$root/scripts/luna/cadence-alert.sh" fail m9-worker rc-1 /tmp/m9.log >"$TMP/m9.out" 2>&1 || rc=$?
+eq "M9 cadence-alert still exits 0 for its runner" "$rc" 0
+eq "M9 a refused cadence alert leaves no dedupe sentinel" "$(find "$TMP/m9-sent" -type f | wc -l | tr -d ' ')" 0
+if [ -e "$TMP/m9-failed" ]; then fail "M9 a refused cadence alert wrote the send-failed marker"; else pass "M9 a refused cadence alert writes no send-failed marker"; fi
+has "M9 it says the send was refused" "$TMP/m9.out" "refused"
+eq "M9 and the cadence alert sent nothing" "$(calls bun)" 0
 
 echo "== cadence inbox doors"
 CH="$root/scripts/eval/cache-health-cadence.sh"

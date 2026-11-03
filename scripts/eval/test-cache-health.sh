@@ -238,6 +238,20 @@ has "real run raises the shared failure alert" "cache-health" "$W/alerts.log"
 rm -f "$W/alerts.log"
 bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" >"$W/cad2.out" 2>&1
 [ ! -e "$W/tg" ] && pass "second cadence run is silent" || fail "cadence repeated the alert"
+# A send the test guard refused is no delivery: with no inbox either, notify reports undelivered. The row above is the control.
+if [ "$(uname -s)" = Linux ]; then
+    mkdir -p "$W/stub-bin"
+    printf '#!/bin/sh\necho "$*" >> "%s"\n' "$W/bun.log" > "$W/stub-bin/bun"
+    chmod +x "$W/stub-bin/bun"
+    printf '{"allowFrom":["4242"]}\n' > "$W/access.json"
+    env -u CACHE_HEALTH_TELEGRAM_CMD -u MERGE_BLOCK_ALERT_CMD -u HIMMEL_TEST_FIXTURE PATH="$W/stub-bin:$PATH" HIMMEL_REAL_STATE_ASSUME_STATION=1 \
+        HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$W/stub-bin" TELEGRAM_ACCESS_PATH="$W/access.json" CACHE_HEALTH_CHIEF=no-inbox-chief \
+        bash "$CAD" notify "from a test" >"$W/refused.out" 2>&1
+    check "a refused Telegram send with no inbox is not delivered" 1 $?
+    has "it says refused" "refused by the test guard" "$W/refused.out"
+    hasnt "it does not say the send failed" "Telegram send failed" "$W/refused.out"
+    [ ! -e "$W/bun.log" ] && pass "a refused send never runs bun" || fail "a refused send ran bun"
+fi
 
 # ---- 10. arm / status / disarm (stub crontab) --------------------------------
 cat > "$W/crontab" <<'SH'
