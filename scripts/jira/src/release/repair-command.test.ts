@@ -506,6 +506,14 @@ describe('test-version-repair apply', () => {
     expect(changedSince(before)).toEqual([]);
   });
 
+  it('a lock held by another live pid is left alone', async () => {
+    const issues = filing();
+    writeFileSync(join(releaseDir(), 'repair.lock'), `${process.ppid}\n`);
+    const before = treeOf();
+    expect(await applyRun({ get: liveGetter(issues, { 'K-2': '200' }) })).toEqual({ status: 'busy' });
+    expect(changedSince(before)).toEqual([]);
+  });
+
   it('a stale lock is taken and hand apply holds the lock while it runs', async () => {
     const issues = filing();
     const dead = spawnSync('true').pid!;
@@ -634,11 +642,21 @@ describe('test-version-repair apply', () => {
 
   it('expired no-PR is looked up again', async () => {
     const issues = folding();
-    writeFileSync(join(releaseDir(), 'repair-pr-cache.json'), JSON.stringify({ 'K-3': { pr: null, at: '2026-11-01T09:00:00.000Z' } }));
+    writeFileSync(join(releaseDir(), 'repair-pr-cache.json'), JSON.stringify({ 'K-3': { pr: null, at: '2026-11-01T09:00:00.000Z', repo: 'o/r' } }));
     const calls: string[][] = [];
     await applyRun({ get: liveGetter(issues, {}), gh: ghWith(GOOD_PR, calls) });
     expect(calls).toHaveLength(1);
     expect(readRows('events.jsonl')).toMatchObject([{ kind: 'fold', key: 'K-3', pr: 11 }]);
+  });
+
+  it('a PR cached for another repo is looked up again', async () => {
+    const issues = folding();
+    writeFileSync(join(releaseDir(), 'repair-pr-cache.json'), JSON.stringify({ 'K-3': { pr: 99, at: '2026-11-02T09:00:00.000Z', repo: 'other/repo' } }));
+    const calls: string[][] = [];
+    await applyRun({ get: liveGetter(issues, {}), gh: ghWith(GOOD_PR, calls) });
+    expect(calls).toHaveLength(1);
+    expect(readRows('events.jsonl')).toMatchObject([{ kind: 'fold', key: 'K-3', pr: 11 }]);
+    expect(JSON.parse(readFileSync(join(releaseDir(), 'repair-pr-cache.json'), 'utf8'))['K-3']).toMatchObject({ pr: 11, repo: 'o/r' });
   });
 
   it('25 expired no-PR entries keep the held signature stable', async () => {
@@ -646,7 +664,7 @@ describe('test-version-repair apply', () => {
     const keys = Array.from({ length: 25 }, (_, i) => `K-${100 + i}`);
     const issues = keys.map((k) => done(k, ['v1.1.3']));
     mirror(issues);
-    writeFileSync(join(releaseDir(), 'repair-pr-cache.json'), JSON.stringify(Object.fromEntries(keys.map((k) => [k, { pr: null, at: '2026-11-01T09:00:00.000Z' }]))));
+    writeFileSync(join(releaseDir(), 'repair-pr-cache.json'), JSON.stringify(Object.fromEntries(keys.map((k) => [k, { pr: null, at: '2026-11-01T09:00:00.000Z', repo: 'o/r' }]))));
     const calls: string[][] = [];
     const get = liveGetter(issues, {});
     const r1 = await applyRun({ get, gh: ghWith({}, calls) });

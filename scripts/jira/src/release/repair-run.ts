@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fold, operatorFence, readMirror, repairInputs, request, state, withdrawHeldRepair, type Ctx } from './engine.js';
 import {
@@ -117,7 +117,7 @@ function stopOf(ctx: Ctx, o: RepairRunOptions): { stop: RepairReport } | { s: Re
 
 // --- the PR cache: a PR is kept for good, "no PR" for 24 hours ---------------------------------
 
-type PrCache = Record<string, { pr: number | null; at: string }>;
+type PrCache = Record<string, { pr: number | null; at: string; repo: string }>;
 
 const cacheFile = (ctx: Ctx): string => join(ctx.dir, 'repair-pr-cache.json');
 
@@ -127,8 +127,8 @@ function readPrCache(ctx: Ctx): PrCache {
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const out: PrCache = {};
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      const e = v as { pr?: unknown; at?: unknown } | null;
-      if (e && typeof e.at === 'string' && (e.pr === null || (Number.isSafeInteger(e.pr) && (e.pr as number) > 0))) out[k] = { pr: e.pr as number | null, at: e.at };
+      const e = v as { pr?: unknown; at?: unknown; repo?: unknown } | null;
+      if (e && typeof e.at === 'string' && typeof e.repo === 'string' && (e.pr === null || (Number.isSafeInteger(e.pr) && (e.pr as number) > 0))) out[k] = { pr: e.pr as number | null, at: e.at, repo: e.repo };
     }
     return out;
   } catch {
@@ -209,7 +209,8 @@ async function plan(ctx: Ctx, o: RepairRunOptions): Promise<{ done: RepairReport
   let resolved = 0;
   let ghError: string | null = null;
   for (const key of need) {
-    const hit = cache[key];
+    const entry = cache[key];
+    const hit = entry?.repo === repo ? entry : undefined; // a PR number found in another repo proves nothing here
     if (hit && settled(hit, now)) {
       mergedPr.set(key, hit.pr);
       continue;
@@ -294,24 +295,51 @@ function takeLock(dir: string): (() => void) | null {
       return (e as NodeJS.ErrnoException).code === 'EPERM';
     }
   };
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      writeFileSync(path, `${process.pid}\n`, { flag: 'wx' });
-      return () => {
-        try {
-          unlinkSync(path);
-        } catch { /* already gone */ }
-      };
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      const pid = Number(readFileSync(path, 'utf8').trim());
-      if (Number.isInteger(pid) && pid > 0 && alive(pid)) return null;
+  const mine = `${path}.new-${process.pid}`;
+  const owner = (file: string): number => Number(readFileSync(file, 'utf8').trim());
+  // The pid is in the file before the lock name exists (link is atomic), so no run ever reads an empty lock as stale.
+  writeFileSync(mine, `${process.pid}\n`);
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        unlinkSync(path);
-      } catch { /* a racing run took it */ }
+        linkSync(mine, path);
+        return () => {
+          try {
+            if (owner(path) === process.pid) unlinkSync(path);
+          } catch { /* already gone */ }
+        };
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      }
+      let pid: number;
+      try {
+        pid = owner(path);
+      } catch {
+        continue; // released between the link and the read
+      }
+      if (Number.isInteger(pid) && pid > 0 && alive(pid)) return null;
+      // A stale lock is moved aside by one rename, which only one contender wins; a live lock that was grabbed by mistake goes back.
+      // ponytail: a third contender between the rename and the put-back can still start beside the owner; upgrade path: a flock(2) holder if concurrent launches ever show up.
+      const aside = `${path}.stale-${process.pid}`;
+      try {
+        renameSync(path, aside);
+      } catch {
+        continue;
+      }
+      const moved = owner(aside);
+      if (moved !== pid) {
+        try {
+          linkSync(aside, path);
+        } catch { /* another run already holds the name */ }
+        unlinkSync(aside);
+        return null;
+      }
+      unlinkSync(aside);
     }
+    return null;
+  } finally {
+    unlinkSync(mine);
   }
-  return null;
 }
 
 const rm = (path: string): void => {
@@ -368,7 +396,7 @@ async function applyRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairReport> {
   // The lookups come first on disk, so a stop later in the run does not lose them.
   if (p.answers.size) {
     const cache = readPrCache(ctx);
-    for (const [key, pr] of p.answers) cache[key] = { pr, at: now };
+    for (const [key, pr] of p.answers) cache[key] = { pr, at: now, repo: o.repo! };
     writeAtomic(cacheFile(ctx), `${JSON.stringify(cache, null, 2)}\n`);
   }
 
