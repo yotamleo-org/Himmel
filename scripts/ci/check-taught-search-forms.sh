@@ -11,24 +11,22 @@
 # A line is a hit when `qmd` is followed by query|search|vsearch, or `graphify` by query|explain|path,
 # as a command (not as part of a path, an MCP tool name or a `qmd_bounded` call inside a sourced script).
 # A deliberate mention of the refused form carries the marker `taught-form-ok` on the same line.
-# In CLAUDE.md the `## graphify` section is installer-owned (docs/token-economy.md) and is not scanned;
-# himmel's own rules above it name the wrapper and win where they differ.
-# Exit: 0 clean, 1 a bare taught form, 2 cannot evaluate (a listed file is missing or unreadable, or a file
-# or its line filter yields no line to scan).
+# In the repo's own CLAUDE.md the `## graphify` section is installer-owned (docs/token-economy.md) and is
+# not scanned; himmel's own rules above it name the wrapper and win where they differ.
+# Exit: 0 clean, 1 a bare taught form, 2 cannot evaluate (a listed file is missing or unreadable, awk failed
+# on it, or a file or its line filter yields no line to scan).
 set -uo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # file[|line-filter]: a line filter limits a hook script to its user-facing message lines, since the
 # rest of a hook is code and comments that quote the forms it refuses.
-# ponytail: the judge brief template and the two judge agent files join this list when the judge search
-# commands are rewritten (held for the blind-vs-context judge eval); until then
-# they still teach the bare graph form.
 TAUGHT='CLAUDE.md
 docs/token-economy.md
 docs/handover/chief-template.md
 docs/handover/running-a-chief.md
 docs/handover/worker-brief-template.md
+docs/handover/judge-brief-template.md
 marketplace/plugins/qmd/skills/qmd/SKILL.md
 scripts/hooks/retrieval-nudge.sh|Retrieval nudge:
 scripts/hooks/block-graphify-egress.sh|for read-only queries use:'
@@ -45,14 +43,14 @@ scan() {
     local file=$1 filter=$2 body
     [ -f "$file" ] || { echo "check-taught-search-forms: no such file: $file" >&2; exit 2; }
     body=$(cat "$file") || { echo "check-taught-search-forms: cannot read: $file" >&2; exit 2; }
-    case "${file##*/}" in
-        CLAUDE.md)
-            # the installer's own boundary rule: a line that is exactly `## graphify` up to the next column-zero `## `
-            body=$(printf '%s\n' "$body" | awk '/^## graphify[[:space:]]*$/ { skip = 1; next } /^## / { skip = 0 } !skip')
-            ;;
-    esac
+    if [ "$file" -ef "$root/CLAUDE.md" ]; then
+        # the installer's own boundary rule: a line that is exactly `## graphify` up to the next column-zero `## `
+        body=$(printf '%s\n' "$body" | awk '/^## graphify[[:space:]]*$/ { skip = 1; next } /^## / { skip = 0 } !skip') ||
+            { echo "check-taught-search-forms: awk failed on: $file" >&2; exit 2; }
+    fi
     # the shell reads `qmd \<newline> query` as one command, so join continuations before matching
-    body=$(printf '%s\n' "$body" | awk '{ if (sub(/\\$/, "")) { buf = buf $0; next } print buf $0; buf = "" } END { if (buf != "") print buf }')
+    body=$(printf '%s\n' "$body" | awk '{ if (sub(/\\$/, "")) { buf = buf $0; next } print buf $0; buf = "" } END { if (buf != "") print buf }') ||
+        { echo "check-taught-search-forms: awk failed on: $file" >&2; exit 2; }
     local line seen=0
     while IFS= read -r line; do
         [ -z "$filter" ] || [[ $line == *"$filter"* ]] || continue

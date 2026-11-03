@@ -33,16 +33,18 @@ expect "CLAUDE.md teaches the graph wrapper form" 0 "$(grep -q -F 'bash scripts/
 
 # Default mode scans the listed files, and a listed file or filter that yields no line cannot be evaluated.
 # A copy of the check sits in a fake repo root whose listed files this test writes.
+# The list as the check holds it, one file[|filter] per line.
+TAUGHT_SPECS="$(sed -n "/^TAUGHT='/,/'\$/p" "$CHECK" | sed -e "s/^TAUGHT='//" -e "s/'\$//")"
+spec_filter() { case "$1" in *'|'*) printf '%s ' "${1#*|}" ;; esac; }
 fake_root() {
-    local r=$1 f
-    mkdir -p "$r/scripts/ci" "$r/scripts/hooks" "$r/docs/handover" "$r/marketplace/plugins/qmd/skills/qmd"
+    local r=$1 spec f
+    mkdir -p "$r/scripts/ci"
     cp "$CHECK" "$r/scripts/ci/check-taught-search-forms.sh"
-    for f in CLAUDE.md docs/token-economy.md docs/handover/chief-template.md docs/handover/running-a-chief.md \
-        docs/handover/worker-brief-template.md marketplace/plugins/qmd/skills/qmd/SKILL.md; do
-        printf 'bash scripts/lib/qmd-bounded.sh query -c luna "x"\n' >"$r/$f"
-    done
-    printf 'echo "Retrieval nudge: bash scripts/lib/qmd-bounded.sh query -c luna x"\n' >"$r/scripts/hooks/retrieval-nudge.sh"
-    printf 'echo "for read-only queries use: bash scripts/graphify/worker-graph.sh query x"\n' >"$r/scripts/hooks/block-graphify-egress.sh"
+    while IFS= read -r spec; do
+        f=${spec%%|*}
+        mkdir -p "$(dirname "$r/$f")"
+        printf '%sbash scripts/lib/qmd-bounded.sh query -c luna "x"\n' "$(spec_filter "$spec")" >"$r/$f"
+    done <<<"$TAUGHT_SPECS"
 }
 run_fake() { bash "$1/scripts/ci/check-taught-search-forms.sh" >/dev/null 2>&1; echo $?; }
 fake_root "$T/fake-ok"
@@ -56,6 +58,35 @@ expect "default mode: a filter that matches no line cannot be evaluated" 2 "$(ru
 fake_root "$T/fake-empty"
 : >"$T/fake-empty/docs/handover/running-a-chief.md"
 expect "default mode: an emptied listed file cannot be evaluated" 2 "$(run_fake "$T/fake-empty")"
+
+taught_n="$(printf '%s\n' "$TAUGHT_SPECS" | grep -c .)"
+expect "the TAUGHT list was read" 0 "$(grep -q . <<<"$TAUGHT_SPECS"; echo $?)"
+expect "the judge brief template is on the TAUGHT list" 0 "$(grep -qxF docs/handover/judge-brief-template.md <<<"$TAUGHT_SPECS"; echo $?)"
+# Every listed entry is live: a bare form planted in it fails, and emptying it cannot be evaluated.
+mutated=0
+while IFS= read -r spec; do
+    f=${spec%%|*}
+    fake_root "$T/mut-bare-$mutated"
+    printf '%sqmd query "x"\n' "$(spec_filter "$spec")" >"$T/mut-bare-$mutated/$f"
+    expect "default mode: a bare form planted in $f fails" 1 "$(run_fake "$T/mut-bare-$mutated")"
+    fake_root "$T/mut-empty-$mutated"
+    : >"$T/mut-empty-$mutated/$f"
+    expect "default mode: emptying $f cannot be evaluated" 2 "$(run_fake "$T/mut-empty-$mutated")"
+    mutated=$((mutated + 1))
+done <<<"$TAUGHT_SPECS"
+expect "default mode: the control mutated every TAUGHT entry" "$taught_n" "$mutated"
+
+# awk failing after partial output cannot be evaluated: the rest of the file was never scanned.
+real_awk="$(command -v awk)"
+mkdir -p "$T/partial-awk" "$T/partial-section-awk"
+printf '#!/bin/sh\nIFS= read -r line; printf "%%s\\n" "$line"; exit 1\n' >"$T/partial-awk/awk"
+printf '#!/bin/sh\ncase "$1" in *skip*) IFS= read -r line; printf "%%s\\n" "$line"; exit 1 ;; esac\nexec "%s" "$@"\n' "$real_awk" >"$T/partial-section-awk/awk"
+chmod +x "$T/partial-awk/awk" "$T/partial-section-awk/awk"
+printf 'clean line\nqmd query "x"\n' >"$T/partial.md"
+expect "the line-join awk failing after partial output fails closed" 2 "$(PATH="$T/partial-awk:$PATH" bash "$CHECK" "$T/partial.md" >/dev/null 2>&1; echo $?)"
+fake_root "$T/fake-partial"
+printf 'clean line\nqmd query "x"\n' >"$T/fake-partial/CLAUDE.md"
+expect "the section awk failing after partial output fails closed" 2 "$(PATH="$T/partial-section-awk:$PATH" bash "$T/fake-partial/scripts/ci/check-taught-search-forms.sh" >/dev/null 2>&1; echo $?)"
 
 # A planted bare form is refused, in each of the forms a session copies.
 printf 'Search with:\n\nqmd query "question"\n' >"$T/bare-query.md"
@@ -100,10 +131,14 @@ else
     expect "an unreadable file fails closed" 2 "$(run "$T/unreadable.md")"
 fi
 
-# In CLAUDE.md the installer-owned graphify section is not scanned; the rest is.
-mkdir -p "$T/section"
+# In the repo's own CLAUDE.md the installer-owned graphify section is not scanned; the rest is.
+fake_root "$T/section"
 printf '# P\n\nsee the wrapper\n\n## graphify\n\n- first run `graphify query "q"`\n' >"$T/section/CLAUDE.md"
-expect "a bare form inside the installer-owned graphify section passes" 0 "$(run "$T/section/CLAUDE.md")"
+expect "a bare form inside the installer-owned graphify section passes" 0 "$(run_fake "$T/section")"
+# Only that file has the section: another file named CLAUDE.md is scanned whole.
+mkdir -p "$T/nested"
+printf '# P\n\nsee the wrapper\n\n## graphify\n\n- first run `graphify query "q"`\n' >"$T/nested/CLAUDE.md"
+expect "a bare form in the graphify section of another CLAUDE.md fails" 1 "$(run "$T/nested/CLAUDE.md")"
 mkdir -p "$T/outside"
 printf '# P\n\nuse `graphify query "q"`\n\n## graphify\n\n- text\n' >"$T/outside/CLAUDE.md"
 expect "a bare form outside the section in CLAUDE.md fails" 1 "$(run "$T/outside/CLAUDE.md")"

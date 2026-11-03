@@ -1293,6 +1293,38 @@ deny "$BQ | grep -E 'qmd://' | xargs sh -c 'qmd query y'"
 deny "find /x -name '*.md' -exec sh -c 'qmd query y' {} +"
 deny "find /x -exec grep --pre=sh 'a|qmd query' {} +"
 deny "find /x -exec grep -l 'a|qmd search' {} \\; -exec sh -c 'qmd query y' \\;"
+# find runs its -exec, -execdir, -ok and -okdir argv as a program, so qmd there is a bare search.
+deny 'find /x -exec qmd query y {} +'
+deny 'find /x -exec qmd search y \;'
+deny 'find /x -execdir qmd vsearch y \;'
+deny 'find /x -ok qmd query y \;'
+deny 'find /x -okdir qmd search y \;'
+deny 'find /x -exec "qmd" '\''query'\'' y \;'
+deny 'find /x -exec ~/.local/bin/qmd query y \;'
+deny 'find /x -exec qmd --json query y \;'
+deny 'find /x -exec timeout 5 qmd query y \;'
+deny 'find /x -exec bun /o/src/cli/qmd.ts query y \;'
+deny 'find /x -exec grep -l a {} \; -exec qmd query y {} +'
+# An action's own words are that program's arguments: only printf runs here.
+allow 'find /x -exec printf -exec qmd query y \;'
+deny 'find /x -exec printf \; -exec qmd query y \;'
+deny 'nice find /x -exec qmd query y \;'
+deny 'env find /x -exec qmd query y \;'
+deny "bash -c 'find /x -exec qmd query y {} +'"
+deny "eval 'find /x -exec qmd query y {} +'"
+# ...while a non-search verb, a verb past the action's own end and a mention stay allowed.
+allow 'find /x -exec qmd status {} +'
+allow 'find /x -exec qmd status \; -name query'
+allow 'find /x -name query -exec qmd status \;'
+allow "find /x -exec grep -l 'qmd query' {} +"
+allow 'echo find /x -exec qmd query y'
+# Rows from guard-corpus gen over the rows above: find is what a runner runs, or only its text.
+deny "timeout -s KILL '5' find /x -exec qmd query y {} +"
+deny "nice -n '5' find /x -exec qmd query y {} +"
+deny 'echo x | xargs -I{} find /x -exec qmd query y {} +'
+allow "timeout -s KILL '5' echo find /x -exec qmd query y"
+allow "nice -n '5' echo find /x -exec qmd query y"
+allow 'echo x | xargs -I{} echo find /x -exec qmd query y'
 
 # The deny text for a command that already names the wrapper says its shape was
 # unreadable, never that a bare qmd search was typed.

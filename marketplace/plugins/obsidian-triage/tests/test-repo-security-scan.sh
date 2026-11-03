@@ -284,7 +284,7 @@ writeFileSync(preload, `import cp from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 const original = cp.spawnSync;
 cp.spawnSync = (cmd, args, opts) => original(cmd, args, opts &&
-  ((cmd === "gh" && opts.timeout === 30000) ||
+  ((cmd === "gh" && opts.timeout === 30000 && process.env.HANG_SCAN === "gh" && String(args[1]).endsWith("/contents")) ||
    ((cmd === "python" || cmd === "python3") && opts.timeout === 20000))
     ? { ...opts, timeout: 60 } : opts);
 syncBuiltinESMExports();

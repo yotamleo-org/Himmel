@@ -96,8 +96,9 @@ template_version: 1
 > **Prior art (required):** <related tickets, prior fixes and graph
 > neighbours for THIS question, each with its source — pointers to what exists,
 > never the chief's own conclusion (the judge stays blind). The chief fills
-> it at dispatch from one qmd query over `jira-himmel` + the vault collection (lex+vec,
-> `-c <name>`), plus one `graphify query` when code structure matters. If the
+> it at dispatch from one `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c <name>`
+> search over `jira-himmel` + the vault collection (lex+vec), plus one
+> `bash <primary checkout>/scripts/graphify/worker-graph.sh query` when code structure matters. If the
 > search found nothing, write `none found (<the query you ran>)`; a bare
 > `none`, an empty line or this placeholder is refused at arming by
 > `brief-lint.sh`.>
