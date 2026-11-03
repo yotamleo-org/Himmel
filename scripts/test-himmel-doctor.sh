@@ -6473,6 +6473,7 @@ mkdir -p "$c84_t/home" "$c84_t/claude" "$c84_t/h/release/R1"
 cat > "$c84_t/probe" <<'EOF'
 #!/usr/bin/env bash
 [ -z "${C84_RC:-}" ] || exit "$C84_RC"
+[ -z "${C84_EMPTY:-}" ] || exit 0  # ran, exited 0, printed nothing
 printf '{"status":"%s","integrity":["release.json for %s is missing or does not verify"]}\n' "${C84_STATUS:-OK}" "$1"
 [ "${C84_STATUS:-OK}" = OK ] || exit 3
 EOF
@@ -6514,6 +6515,30 @@ for c84_rc in 1 124; do
     out="$(C84_RC=$c84_rc c84_run)"
     if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F "exited $c84_rc" && ! grepq "$out" 'OK   C84-release-queue'; then pass "C84 state read exit $c84_rc -> WARN naming the exit status"; else fail "C84 state read exit $c84_rc -> $(printf '%s' "$out" | head -4)"; fi
 done
+echo "== C84-release-queue: an unused release's empty declaration is not the chief doc's problem (R1 valid, R2 empty) =="
+mkdir -p "$c84_t/h/release/R2"
+: > "$c84_t/h/release/R2/release.json"
+c84_doc "release: R1"
+out="$(c84_run)"
+if grepq "$out" 'OK   C84-release-queue' && ! grepq "$out" 'WARN C84-release-queue' && ! grepq "$out" -F 'R2'; then pass "C84 chief doc names healthy R1, empty R2 unused -> OK"; else fail "C84 R2 empty, R1 named -> $(printf '%s' "$out" | head -4)"; fi
+c84_doc "release: none"
+out="$(c84_run)"
+if grepq "$out" 'INFO C84-release-queue' && ! grepq "$out" 'WARN C84-release-queue'; then pass "C84 release: none, R2 empty -> INFO"; else fail "C84 R2 empty, none -> $(printf '%s' "$out" | head -4)"; fi
+c84_doc "release: R2"
+out="$(c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'R2'; then pass "C84 chief doc names the empty R2 -> WARN"; else fail "C84 R2 named -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c84_t/h/release/R2"
+echo "== C84-release-queue: a state probe that ran (exit 0) and printed nothing -> WARN UNREADABLE =="
+c84_doc "release: R1"
+out="$(C84_EMPTY=1 c84_run)"
+if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'UNREADABLE' && ! grepq "$out" -F 'was not read'; then pass "C84 probe printed nothing -> WARN UNREADABLE"; else fail "C84 empty probe -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C84-release-queue: control, jq missing (state cannot be judged) -> OK row with its note =="
+if [ -d "${NOJQ_BIN:-}" ] && ! PATH="$NOJQ_BIN" bash -c 'command -v jq >/dev/null 2>&1'; then
+    out="$(PATH="$NOJQ_BIN" c84_run)"
+    if grepq "$out" 'OK   C84-release-queue' && grepq "$out" -F 'was not read'; then pass "C84 jq missing -> OK with the not-read note"; else fail "C84 jq missing -> $(printf '%s' "$out" | head -4)"; fi
+else
+    fail "C84 jq missing: precondition -- no jq-free PATH from the C33 case"
+fi
 echo "== C84-release-queue: the default handover root comes from --root, not the working directory =="
 c84_p="$c84_t/proj"; mkdir -p "$c84_p/handovers/u/himmel/release/R1" "$c84_t/elsewhere"
 git init -q "$c84_p"
