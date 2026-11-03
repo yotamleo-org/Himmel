@@ -249,6 +249,7 @@ eq "multi: codex found quoting only" "$(metric "$TMP/s3.json" codex.recall)" "0.
 eq "multi: glm's unavailable case leaves its denominator" "$(metric "$TMP/s3.json" glm.recall)" "1.0"
 eq "multi: glm scored on 1 seeded case" "$(metric "$TMP/s3.json" glm.seeded_scored)" "1"
 eq "multi: the panel union found both" "$(metric "$TMP/s3.json" panel.recall)" "1.0"
+eq "responded: a critic named unavailable by the stdout bullet only did not answer that case" "$(jget "$TMP/s3.json" responded/critics/glm)" "1"
 # A real skipped case: header 1/2 and no unavailable bullet (the panel drops it on most skips); only stderr names the critic.
 O3B="$TMP/out3b"; mkdir -p "$O3B"
 cp "$O3/$LA.md" "$O3B/$LA.md"
@@ -663,6 +664,32 @@ has "gate: one counted row with no roster beside rows with one is a mismatch" "$
 # every counted row without a roster keeps the normal verdict
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; ggate
 has "gate: no roster on any counted row keeps the normal verdict" "$out" "gate: loss"
+# The roster check counts the rows the verdict counts: a row the verdict drops carries another roster (codex alone,
+# against the claude+codex pair below) and must not make a mismatch. Each row is dropped by one clause only, with its
+# own run_id and bundle, so deleting that clause alone turns its row into a mismatch.
+# gextra <run_id> <b|h|x|c> <bundle> <fp_rate|null> - appends one codex-only row: at the base hash (b), the head hash
+# (h), another cbs_hash (x) or another confighash (c).
+gextra() { python3 -c 'import json,sys
+f, b, h, c, rid, side, bundle, fp = sys.argv[1:9]
+row = {"run_id": rid, "cbs_hash": b if side == "b" else ("0" * 64 if side == "x" else h),
+       "confighash": "other" if side == "c" else c, "outputs_sha256": bundle, "status": "ok",
+       "metrics": {"panel.recall_gating": 0.5, "panel.fp_rate": None if fp == "null" else float(fp)},
+       "class_recall": {"logic": 0.5}, "responded": {"scored": 24, "critics": {"codex": 24}}}
+open(f, "a").write(json.dumps(row) + "\n")' "$G/scripts/eval/review-panel/results.jsonl" "$B" "$H" "$C" "$@"
+  gg add -A; gg commit -qm extra; }
+# gdrop <label> <run_id> <side> <bundle> <fp_rate|null> - the extra row must leave the verdict a no-loss
+gdrop() {
+  grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:24,codex:24"; groster h "24;claude:24,codex:24"
+  gextra "$2" "$3" "$4" "$5"; ggate
+  has "gate: $1 is not counted by the roster check" "$out" "gate: no-loss"
+}
+gdrop "a repeated run_id" h1 h dup-of-h1-id 0.1
+gdrop "a repeated outputs bundle" h3 h h1 0.1
+gdrop "a head row repeating a baseline run_id" b1 h dup-of-b1-id 0.1
+gdrop "a head row repeating a baseline outputs bundle" h4 h b1 0.1
+gdrop "a counted-status row with a null gate metric" h5 h null-metric null
+gdrop "a row at another cbs_hash" h6 x other-hash 0.1
+gdrop "a row at another confighash" h7 c other-config 0.1
 
 # --- real cases: multi-file, context_seed, base, fix ---------------------------------------
 S="$TMP/src"; RL="$TMP/real"; RK="$TMP/real-key.json"

@@ -700,8 +700,11 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
     ponytail: two partial critics count as alike whatever their case counts, upgrade = compare per-case
     participation once a row records which cases each critic answered.
     ponytail: when every counted row has no `responded` the normal verdict stands. That is the state of the
-    HIMMEL-8430 rows today, so the unequal-panel false alarm on that pair stays until its rows are re-exported
-    (export-row cannot backfill them), upgrade = re-export or backfill the baseline rows."""
+    HIMMEL-8430 rows today, so the unequal-panel false alarm on that pair stays until the old rows are replaced in
+    results.jsonl by rows with a roster (export-row appends, and the first row of a run_id wins, so a re-exported
+    row is dropped), upgrade = replace the old baseline and head rows.
+    ponytail: side() hand-copies gate_verdict's row selection (eval_feedback.py), upgrade = one shared helper there
+    that both call."""
     def side(h, skip_ids=(), skip_bundles=()):
         # the rows gate_verdict counts for hash h: same status and metric tests, first row of a run_id or bundle
         out, ids, bundles = {}, set(skip_ids), set(skip_bundles)
@@ -913,7 +916,8 @@ def tree_main(a):
         claimed = json.loads(a.row)
         got = gate_row(repo, a.tree, a.outputs)
         # A row without a `responded` key is not held to one: verify-row cannot tell a row exported before rosters
-        # were recorded from one that dropped the key, and CI never runs verify-row. The gate names such rows.
+        # were recorded from one that dropped the key, and CI never runs verify-row. The gate names such a row only when
+        # another counted row records a roster; when every counted row lacks one the normal verdict stands.
         bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f != "responded" or f in claimed)]
         for f in bad:
             print("verify-row: %s differs: row %s, re-scored %s" % (f, json.dumps(claimed.get(f), sort_keys=True),
