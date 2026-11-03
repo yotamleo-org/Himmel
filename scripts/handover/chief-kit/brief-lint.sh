@@ -77,7 +77,7 @@ core_rule() {
         if [ -z "$common" ]; then common="$(dirname "$0")/../../../.git"; fi
         cli="$(dirname "$common")/scripts/jira/dist/index.js"
     fi
-    core_err="$(python3 -I - "$doc" "$cli" "$core_state_root" <<'PY'
+    core_err="$(python3 -I - "$doc" "$cli" "$core_state_root" "$(cd "$(dirname "$0")" && pwd)" <<'PY'
 import json, os, re, subprocess, sys
 from datetime import datetime
 
@@ -105,7 +105,14 @@ for i, line in enumerate(lines):
             if not nxt.startswith('> ') or nxt.startswith('> **'):
                 break
             text += ' ' + nxt[2:]
-tokens = [p for p in re.split(r'[\s,`]+', text.strip()) if p]
+# The path list comes from holds.py's one parser, so the single-writer barrier and this core check read a Writes line the same
+# way; `text` above stays raw, because raw_docs_only needs the prose tokens.
+sys.path.insert(0, sys.argv[4])
+try:
+    import holds  # noqa: E402
+    tokens = [p for _kind, p in holds.parse_text('\n'.join(lines), os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli)))))]
+except Exception:  # swallow-ok: a broken holds.py must not fail the core check; it falls back to the raw split of the Writes text
+    tokens = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', text)]
 paths, stray_absolute = [], False
 for p in tokens:
     if p.startswith('/'):

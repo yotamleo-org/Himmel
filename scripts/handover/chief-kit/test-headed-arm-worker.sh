@@ -179,6 +179,12 @@ export XDG_RUNTIME_DIR="$tmp/pinned-xdg-runtime"
 # ~/.claude/himmel (a suite must not touch shared state).
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 export HIMMEL_CONFIG_DIR="$tmp/pinned-himmel-config"
+# the single-writer register lives under $HOME/.himmel/state/holds; pinned, so no launch here can seed the real one.
+REAL_HOME="$HOME"
+real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }  # gnu-ok: Linux-only suite, fails closed where find has no -printf
+REAL_REGISTER_BEFORE="$(real_register)"
+export HOME="$tmp/pinned-home"
+mkdir -p "$HOME"
 # the re-dispatch refusal reads page/ack records from this dir;
 # pinned so no ambient ~/.himmel/state record can refuse (or pass) a case here.
 export HIMMEL_DENIAL_ACK_DIR="$tmp/pinned-denial-acks"
@@ -254,7 +260,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_REMOTE_CONTROL|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|HIMMEL_WORKER_SESSION_CONTEXT_SHARE|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(HIMMEL_HOLD_KEY|HIMMEL_HOLD_DOC|HIMMEL_HOLD_LABEL|WRITE_HOLD_OK|IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_REMOTE_CONTROL|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|HIMMEL_WORKER_SESSION_CONTEXT_SHARE|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -5194,6 +5200,55 @@ not_contains "48p dry-run --consult: no Remote Control" "$out" "remote-control="
 rc=0; out="$(bash "$SCRIPT" --dry-run --headless --profile worker-impl HIMMEL-8320-h some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
 check "48q dry-run --headless --profile: exit 0" "$rc" "0"
 not_contains "48q dry-run --headless --profile: no Remote Control" "$out" "remote-control="
+
+# --- 49. single-writer barrier: a worker launch carries its holder key, seeds its file holds and refuses an overlap ----
+# The wrapper sets HIMMEL_HOLD_KEY/_DOC/_LABEL for a worker that implements; headed-arm.sh seeds them (its own suite
+# proves the seed rows). Here: the env reaches the launched process, and a refusal or a pre-launch refusal leaves no row.
+HOLDS49="$HERE/holds.py"
+hold49() { HIMMEL_CONSOLE_LEG='' HANDOVER_DIR="$tmp/hroot49" python3 -I "$HOLDS49" "$@"; }
+mkdir -p "$tmp/hroot49/u/r"
+hrow49() { printf '%s/.himmel/state/holds/%s/%s' "$HOME" "${2//\//%2F}" "$(printf '%s' "$1" | sed 's#/#%2F#g')"; }
+doc49a="$tmp/HIMMEL-9601-N1-holder.md"; fx_brief '# HIMMEL-9601 holder' > "$doc49a"
+repo49="$tmp/repo49"; mkdir -p "$repo49"
+hold49 claim --key HIMMEL-9601 --label N1 --doc "$doc49a" --repo "$repo49" scripts/w49.sh >/dev/null 2>&1
+doc49b="$tmp/HIMMEL-9602-N2-rival.md"; fx_brief '# HIMMEL-9602 rival' '> **Writes:** scripts/w49a.sh scripts/w49.sh' > "$doc49b"
+d49="$tmp/c49"; mk_launch_stubs "$d49" "HIMMEL-9602-N2-rival"
+rc=0
+out49="$(HANDOVER_DIR="$tmp/hroot49" some_doc="$doc49b" RUN_WORKER_ARGS=--no-profile run_worker "$d49" "$repo49" "HIMMEL-9602-N2-rival" "claude-sonnet-5" 2>&1)" || rc=$?
+check "49a a brief naming a file another key holds is refused (exit 2)" "$rc" "2"
+contains "49b the refusal names the holder" "$out49" "HIMMEL-9601"
+contains "49c ... and prints the grant line to run" "$out49" "holds.py grant --key HIMMEL-9602 --repo $repo49 scripts/w49.sh"
+check "49d the refused launch started no konsole" "$([ -e "$d49/record" ] && echo launched || echo none)" "none"
+check "49e a refusal on a later file leaves no row of this seed" "$([ -e "$(hrow49 scripts/w49a.sh "$repo49")" ] && echo row || echo none)" "none"
+
+# the launched process carries the three names; WRITE_HOLD_OK from the launching shell reaches it past the scrub
+doc49c="$tmp/HIMMEL-9603-N3-plain.md"; fx_brief '# HIMMEL-9603 plain' '> **Writes:** scripts/w49c.sh' > "$doc49c"
+d49c="$tmp/c49c"; mk_launch_stubs "$d49c" "HIMMEL-9603-N3-plain"; mkdir -p "$tmp/repo49c"
+rc=0
+WRITE_HOLD_OK=1 some_doc="$doc49c" RUN_WORKER_ARGS=--no-profile run_worker "$d49c" "$tmp/repo49c" "HIMMEL-9603-N3-plain" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
+wait_record "$d49c" || true
+env49c="$(cat "$d49c/env-record" 2>/dev/null || true)"
+check "49f a disjoint launch launches" "$rc" "0"
+contains "49g HIMMEL_HOLD_KEY reaches the launched process" "$env49c" "HIMMEL_HOLD_KEY=HIMMEL-9603"
+contains "49h HIMMEL_HOLD_DOC is the launch doc" "$env49c" "HIMMEL_HOLD_DOC=$doc49c"
+contains "49i HIMMEL_HOLD_LABEL is the worker label" "$env49c" "HIMMEL_HOLD_LABEL=N3"
+contains "49j WRITE_HOLD_OK=1 reaches the launched process" "$env49c" "WRITE_HOLD_OK=1"
+check "49k the seed made the row, under the worker's key" "$(cut -f1,2 "$(hrow49 scripts/w49c.sh "$tmp/repo49c")" | tr '\t' ' ')" "HIMMEL-9603 N3"
+
+# a launch refused before headed-arm.sh runs seeds nothing: the fleet cap, and a SKIPPED-BANK refusal
+doc49d="$tmp/HIMMEL-9604-N1-capped.md"; fx_brief '# HIMMEL-9604 capped' '> **Writes:** scripts/w49d.sh' > "$doc49d"
+d49d="$tmp/c49d"; mk_launch_stubs "$d49d" "HIMMEL-9604-N1-capped"; mkdir -p "$tmp/repo49d"
+rc=0; some_doc="$doc49d" RUN_WORKER_ARGS=--no-profile run_worker "$d49d" "$tmp/repo49d" "HIMMEL-9604-N1-capped" "claude-sonnet-5" "$SKIPPED_FLEET_PREFLIGHT" >/dev/null 2>&1 || rc=$?
+check "49l a fleet-cap refusal seeds nothing" "$([ "$rc" -ne 0 ] && echo refused)|$([ -e "$(hrow49 scripts/w49d.sh "$tmp/repo49d")" ] && echo row || echo none)" "refused|none"
+rc=0; some_doc="$doc49d" RUN_WORKER_ARGS=--no-profile run_worker "$d49d" "$tmp/repo49d" "HIMMEL-9604-N1-capped" "claude-sonnet-5" "$SKIPPED_BANK_PREFLIGHT" >/dev/null 2>&1 || rc=$?
+check "49m a SKIPPED-BANK refusal (exit 11) seeds nothing" "$rc|$([ -e "$(hrow49 scripts/w49d.sh "$tmp/repo49d")" ] && echo row || echo none)" "11|none"
+
+# a judge and a release manager carry none, and a key inherited from the worker that armed them is dropped
+out49j="$(HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/x/y.md HIMMEL_HOLD_LABEL=N99 env -u IMPL_GUARD_OK -u INLINE_IMPL_OK bash "$SCRIPT" --dry-run --judge HIMMEL-9605-N1-j "$doc_tier_judge" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
+contains "49n a --judge launch carries no key (an inherited one is dropped)" "$out49j" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
+out49r="$(HIMMEL_HOLD_KEY=HIMMEL-1 env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIMMEL_RM_EFFORT bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-9605-N1-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
+contains "49o a release-manager launch carries no key" "$out49r" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
+check "49p the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

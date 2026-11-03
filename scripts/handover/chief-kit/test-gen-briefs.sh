@@ -602,7 +602,7 @@ for ok in 'Close WRAPPED chief windows' 'Stop worker windows piling up' 'Spread 
     [ "$rc" = 0 ] && pl_complete && pass "'$ok' is chief wording, not the OS" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
 done
 # Fail closed: with the pattern file gone the script exits 2 rather than briefing unfiltered.
-NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"; cp "$HERE/salus_marked.py" "$NF/"
+NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"; cp "$HERE/salus_marked.py" "$HERE/holds.py" "$NF/"
 python3 "$NF/gen-briefs.py" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$rc"
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
@@ -669,7 +669,7 @@ rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 
 # adopter worktree as WORKER_SESSION_REPO (headed-arm.sh starts the session in that dir) ---
 KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
 mkdir -p "$KIT/scripts/ci"
-cp "$SUT" "$HERE/salus_marked.py" "$HERE/platform-dropped.re" "$KIT/scripts/handover/chief-kit/"
+cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/platform-dropped.re" "$KIT/scripts/handover/chief-kit/"
 cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
 mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$KIT/scripts/lib/"
 export ADP_WT_LOG="$WORK/adp-wt.log"
@@ -1350,6 +1350,42 @@ cgo="$(cgrun on9421)"; rc=$?
 [ "$rc" = 0 ] && pass "the same worker with a signed spec generates (rc 0)" || fail "on9421 rc=$rc: $cgo"
 
 unset HIMMEL_CONFIG_DIR
+
+# ---- single-writer barrier: the Writes line gen-briefs writes and holds.py parse (the barrier's one parser) read the same paths
+cat > "$WORK/agree.py" <<'PYEOF'
+import importlib.util, os, sys
+here = sys.argv[1]
+sys.path.insert(0, here)
+import holds
+spec = importlib.util.spec_from_file_location('gen_briefs', os.path.join(here, 'gen-briefs.py'))
+gb = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gb)
+table = [
+    ('scripts/handover/chief-kit/holds.py scripts/lib/chief-context.sh', 'scripts/handover/chief-kit/holds.py scripts/lib/chief-context.sh'),
+    ('scripts/handover/chief-kit/ (a.sh, sub/b.sh)', 'scripts/handover/chief-kit/a.sh scripts/handover/chief-kit/sub/b.sh'),
+    ('Do not touch scripts/lib/x.sh. Edit scripts/y.sh and docs/a.md', 'scripts/y.sh docs/a.md'),
+    ('`scripts/z.sh`, CLAUDE.md, README.md', 'scripts/z.sh CLAUDE.md README.md'),
+    ('Impacted suites scripts/handover/test-x.sh. Edit scripts/q.sh', 'scripts/q.sh'),
+    # a parenthesised path (the caller's own search hint) drops from the line: scripts/lib/ is not written
+    ('find and fix the caller in scripts/c.sh (git grep -n foo scripts/lib/)', 'scripts/c.sh'),
+    ('none named', 'none named'),
+    # Writes lines taken from live briefs
+    ('.claude/settings.json scripts/hooks/retrieval-nudge.sh scripts/hooks/test-retrieval-nudge.sh', '.claude/settings.json scripts/hooks/retrieval-nudge.sh scripts/hooks/test-retrieval-nudge.sh'),
+    ('.claude/skills/ .claude/commands/ .claude/agents/ marketplace/plugins/ marketplace/.claude-plugin/marketplace.json scripts/eval/routing/ scripts/eval/README.md', '.claude/skills/ .claude/commands/ .claude/agents/ marketplace/plugins/ marketplace/.claude-plugin/marketplace.json scripts/eval/routing/ scripts/eval/README.md'),
+    ('docs/setup/user-scope-claude-md-template.md scripts/agents-md/preamble.md templates/luna-second-brain/_CLAUDE.md templates/luna-second-brain/docs/', 'docs/setup/user-scope-claude-md-template.md scripts/agents-md/preamble.md templates/luna-second-brain/_CLAUDE.md templates/luna-second-brain/docs/'),
+    ('.github/workflows/macos-cadence.yml scripts/ci/test-macos-cadence-concurrency.sh scripts/ci/suite-tiers.tsv scripts/ci/suite-durations.tsv', '.github/workflows/macos-cadence.yml scripts/ci/test-macos-cadence-concurrency.sh scripts/ci/suite-tiers.tsv scripts/ci/suite-durations.tsv'),
+]
+bad = 0
+for scope, expected in table:
+    line = gb.write_paths(scope)
+    parsed = ' '.join(p for _k, p in holds.parse_text('> **Writes:** ' + line)) if line != 'none named' else 'none named'
+    ok = line == expected and parsed == expected
+    print(('agree' if ok else 'DIFF') + ' | ' + scope + ' | want ' + expected + ' | got ' + line + ' | parsed ' + parsed)
+    bad += not ok
+sys.exit(1 if bad else 0)
+PYEOF
+agree="$(cd "$REPO" && python3 -I "$WORK/agree.py" "$HERE" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "gen-briefs write_paths and holds.py parse agree on all $(printf '%s\n' "$agree" | grep -c '^agree') real Writes lines" || fail "gen-briefs and holds.py parse disagree: $agree"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

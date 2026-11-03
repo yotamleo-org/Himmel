@@ -858,7 +858,13 @@ _graphify_backend_marker() {
 # _under_any_list <abs-path> <listfile> -> echoes hit | miss | unreadable.
 _under_any_list() {
     local p="$1" listfile="$2" root
-    [ -e "$listfile" ] || { echo miss; return; }
+    # [ -e ] is also false on EACCES (a locked dir or parent), so a miss is only
+    # confirmed when the dir holding the list can be proven; a dangling symlink
+    # counts as present.
+    if [ ! -e "$listfile" ] && [ ! -L "$listfile" ]; then
+        if _guard_phi_dir_provable "${listfile%/*}"; then echo miss; else echo unreadable; fi
+        return
+    fi
     _guard_file_readable "$listfile" || { echo unreadable; return; }
     while IFS= read -r root || [ -n "$root" ]; do
         # trim + skip whole-line `#` comments, same rules as
@@ -1510,7 +1516,7 @@ _deny_on_classify_sentinel() {
         __cross_drive__$'\t'*)
             deny "drive-relative target '${1#__cross_drive__$'\t'}' resolves against Windows' per-drive current directory, which this fence cannot read - use an absolute path (fail-closed)" ;;
         __unreadable__)
-            deny "a PHI root list under $PHI_CONFIG_DIR exists but is not readable (fail-closed)" ;;
+            deny "a PHI root list under $PHI_CONFIG_DIR is not readable or not reachable (fail-closed)" ;;
         __marker_unreadable__$'\t'*)
             deny ".graphify-corpus marker ${1#__marker_unreadable__$'\t'} exists but is not a readable regular file (fail-closed)" ;;
         __marker_bad__$'\t'*)

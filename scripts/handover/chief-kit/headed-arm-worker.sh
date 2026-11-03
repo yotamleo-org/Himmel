@@ -1306,6 +1306,8 @@ for _worker_env_scrub in $(chief_context_worker_env_unset_names); do
     case "$_worker_env_scrub" in
         HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|WORKER_SESSION_EFFORT|HEADED_ARM_UNAME) continue ;;
         HIMMEL_CONSOLE_LEG) continue ;;
+        # the operator's single-writer bypass is launch input, propagated below when set.
+        WRITE_HOLD_OK) continue ;;
         # the chief's chosen context mode is launch input, read below.
         HIMMEL_WORKER_SESSION_CONTEXT_MODE) continue ;;
         WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG) continue ;;
@@ -1509,6 +1511,26 @@ fi
 # merges only on the chief's GO file (chief-kit/go.sh), and go.sh refuses
 # to run under it.
 worker_propagate_env HIMMEL_CONSOLE_LEG 1
+# The single-writer barrier: a worker that implements carries its holder key, the doc it
+# was launched on and its label, so headed-arm.sh seeds its file holds and the hook, git and PR checks
+# know who holds what. A judge, consult, release manager or relay launch implements nothing: it carries
+# none, and a key inherited from a worker that armed it was dropped by the scrub above. A doc whose
+# basename names no ticket key has no key to hold under. WRITE_HOLD_OK rides along when the operator set it.
+# shellcheck source=../../lib/worker-identity.sh
+. "$HERE/../../lib/worker-identity.sh"
+HOLD_KEY="" HOLD_DOC="" HOLD_LABEL=""
+if [ "$RELAY" -eq 0 ] && [ "$READONLY_ROLE" -eq 0 ]; then
+    if [[ "$(basename -- "$DOC")" =~ ([A-Z][A-Z0-9]*-[0-9]+) ]]; then
+        HOLD_KEY="${BASH_REMATCH[1]}"
+        HOLD_DOC="$DOC"
+        case "$HOLD_DOC" in /*) ;; *) HOLD_DOC="$PWD/$HOLD_DOC" ;; esac
+        HOLD_LABEL="$(worker_label "$DOC")"
+        worker_propagate_env HIMMEL_HOLD_KEY "$HOLD_KEY"
+        worker_propagate_env HIMMEL_HOLD_DOC "$HOLD_DOC"
+        worker_propagate_env HIMMEL_HOLD_LABEL "$HOLD_LABEL"
+    fi
+    [ -z "${WRITE_HOLD_OK:-}" ] || worker_propagate_env WRITE_HOLD_OK "$WRITE_HOLD_OK"
+fi
 # HIMMEL_CONSOLE_JUDGE=1: guard-judge-writes.sh denies a judge
 # every push, PR, Jira, inbox and out-of-scope file write.
 [ "$JUDGE" -eq 1 ] && worker_propagate_env HIMMEL_CONSOLE_JUDGE 1
@@ -2357,11 +2379,12 @@ if [ "$DRY_RUN" -eq 1 ]; then
     # three-source resolution above ran in THIS wrapper's own process, and
     # stays <unset> when no source yielded a well-formed name.
     # the context mode and ceiling the worker's context guard reads.
-    printf 'headed-arm-worker: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s HIMMEL_WORKER_SESSION_CONTEXT_SHARE=%s\n' \
+    printf 'headed-arm-worker: env IMPL_GUARD_OK=%s INLINE_IMPL_OK=%s HIMMEL_CONSOLE_LEG=%s HEADED_ARM_REPO=%s scrub=%s CHIEF_CONTEXT=%s CR_TRIGGER_SUPPRESS=%s HANDOVER_DIR=%s HIMMEL_CONSOLE_NAME=%s HIMMEL_API_LANE=%s HIMMEL_API_ACCOUNT=%s HIMMEL_WORKER_SESSION_CONTEXT_MODE=%s HIMMEL_WORKER_SESSION_AUTOCOMPACT=%s HIMMEL_WORKER_SESSION_CONTEXT_SHARE=%s HIMMEL_HOLD_KEY=%s HIMMEL_HOLD_DOC=%s HIMMEL_HOLD_LABEL=%s WRITE_HOLD_OK=%s\n' \
         "${IMPL_GUARD_OK:-<unset>}" "${INLINE_IMPL_OK:-<unset>}" "$HIMMEL_CONSOLE_LEG" "${HEADED_ARM_REPO:-<derived by headed-arm.sh>}" \
         "$WORKER_SESSION_ENV_SCRUB" "${CHIEF_CONTEXT:-<unset>}" "${CR_TRIGGER_SUPPRESS:-<unset>}" "${HANDOVER_DIR:-<unset>}" "${HIMMEL_CONSOLE_NAME:-<unset>}" \
         "${HIMMEL_API_LANE:-<unset>}" "${HIMMEL_API_ACCOUNT:-<unset>}" \
-        "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT" "${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-<unset>}"
+        "${HIMMEL_WORKER_SESSION_CONTEXT_MODE:-<unset>}" "$HIMMEL_WORKER_SESSION_AUTOCOMPACT" "${HIMMEL_WORKER_SESSION_CONTEXT_SHARE:-<unset>}" \
+        "${HIMMEL_HOLD_KEY:-<unset>}" "${HIMMEL_HOLD_DOC:-<unset>}" "${HIMMEL_HOLD_LABEL:-<unset>}" "${WRITE_HOLD_OK:-<unset>}"
     # Printed ONLY under --relay: with the flag omitted this line is absent and
     # the dry-run report stays byte-identical to today's, same guarantee shape
     # as the --profile line below.

@@ -515,6 +515,16 @@ describe('version-write journal hook (HIMMEL-8724 S2)', () => {
     expect(puts(f)).toHaveLength(1);
   });
 
+  it('a changelog item with no toString string still binds the removal (HIMMEL-8823)', async () => {
+    // A JSON item has no own toString, so the property reads as Object.prototype.toString, a function.
+    fakeJira({
+      key: 'HIMMEL-9', set: ['v1.1.4'], entries: [fv('500', null, 'v1.1.4')],
+      onWrite: (f) => { f.entries.push({ id: '501', created: '2026-11-02T10:00:00.000+0100', items: [{ field: 'Fix Version', fromString: 'v1.1.4' }] }); f.set = []; },
+    });
+    await request('PUT', '/issue/HIMMEL-9', removeBody, 'transition-stamp');
+    expect(rows()).toMatchObject([{ key: 'HIMMEL-9', from: ['v1.1.4'], to: [], entry: '501' }]);
+  });
+
   it('no-op PUT writes no row (I11)', async () => {
     const f = fakeJira({ key: 'HIMMEL-8231', set: ['v1.1.4'], entries: [fv('85399', null, 'v1.1.4')] });
     await request('PUT', '/issue/HIMMEL-8231', { update: { fixVersions: [{ add: { name: 'v1.1.4' } }] } }, 'create-residual');

@@ -215,6 +215,10 @@ chief_context_worker_env_unset_names() {
         HIMMEL_RELEASE_MANAGER \
         HIMMEL_RM_DOC \
         HIMMEL_RM_RELEASE \
+        HIMMEL_HOLD_KEY \
+        HIMMEL_HOLD_DOC \
+        HIMMEL_HOLD_LABEL \
+        WRITE_HOLD_OK \
         HIMMEL_WORKER_SESSION_CONTEXT_MODE \
         HIMMEL_WORKER_SESSION_AUTOCOMPACT \
         HIMMEL_WORKER_SESSION_CONTEXT_SHARE \

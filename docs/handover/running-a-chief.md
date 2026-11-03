@@ -285,6 +285,13 @@ setsid nohup bash scripts/handover/chief-kit/headed-arm-worker.sh --profile work
   >/dev/null 2>&1 &
 ```
 
+A launch whose brief's `Writes:` paths overlap a live hold is refused before
+anything is armed: `headed-arm.sh` exits 2, writes the holder line and the grant
+text to the worker log, and appends a `BLOCKED launch ... refused, not armed`
+bullet to the brief, which `tick.sh` surfaces. The hand form above discards
+stderr, so read the log or the brief; the generated launcher keeps stderr in
+`<stem>.launch.out`.
+
 Two rules govern the fan-out. **Collision-check first:** list the files each
 queued worker will touch and confirm they are disjoint; **single-writer** means
 many readers but exactly one writer per artifact. And **every dispatch names an

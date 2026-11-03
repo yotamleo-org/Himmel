@@ -191,8 +191,9 @@ def primary_checkout(repo="."):
     return os.path.dirname(common) if os.path.basename(common) == ".git" else os.path.abspath(repo)
 
 
-def conf_value(path, name):
-    """The first non-empty value of `name` in a KEY=value file, as the Jira CLI reads one (an inline ` #` comment and quotes dropped), else ''."""
+def conf_value(path, name, unquote=True):
+    """The first non-empty value of `name` in a KEY=value file, as the Jira CLI reads one (an inline ` #` comment and quotes dropped), else ''.
+    With unquote=False a quoted value keeps its quotes, as the shell loader keeps them."""
     try:
         with open(path, encoding="utf-8") as fh:
             lines = fh.read().split("\n")
@@ -204,21 +205,53 @@ def conf_value(path, name):
         if line.startswith("#") or not sep or key.strip() != name:
             continue
         val = val.strip()
-        val = val[1:].partition(val[0])[0] if val[:1] in ('"', "'") else re.split(r"[ \t]#", val, maxsplit=1)[0]
+        if val[:1] not in ('"', "'"):
+            val = re.split(r"[ \t]#", val, maxsplit=1)[0]
+        elif unquote:
+            val = val[1:].partition(val[0])[0]
         if val.strip():
             return val.strip()
     return ""
 
 
-def handover_root(top, env):
-    """The handover root, as go_resolve_root finds it: the live HANDOVER_DIR, else himmel.conf.local and himmel.conf in
-    $HIMMEL_CONFIG_DIR (else ~/.himmel), else the primary checkout's .env, else its own handovers/ directory."""
+def git_common_dir(path):
+    """The git common dir of `path`, with the caller's GIT_* variables scrubbed (they would pick the repo, not `path`), or ''."""
+    scrub = {k: v for k, v in os.environ.items() if k not in
+             ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_CEILING_DIRECTORIES")}
+    r = subprocess.run(["git", "-C", path, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       capture_output=True, text=True, env=scrub)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def profile_conf(conf, env):
+    """The active station profile file, as load-dotenv.sh finds it, or None. The name is HIMMEL_PROFILE in the environment, else
+    in himmel.conf.local (never the tracked file); it must be a plain file stem. The profiles directory sits beside the file
+    himmel.conf links to, so a himmel.conf that is no link has none."""
+    name = env.get("HIMMEL_PROFILE") or conf_value(os.path.join(conf, "himmel.conf.local"), "HIMMEL_PROFILE", unquote=False)
+    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]*", name or ""):
+        return None
+    link = os.path.join(conf, "himmel.conf")
+    if not os.path.islink(link):
+        return None
+    target = os.readlink(link)
+    if not os.path.isabs(target):
+        target = os.path.join(conf, target)
+    return os.path.join(os.path.dirname(target), "profiles", name + ".conf")
+
+
+def handover_root(top, env, anchor=None):
+    """The handover root, as go_resolve_root finds it: the live HANDOVER_DIR unless it lies inside the harness repo, the
+    anchor's (its inline stub), else himmel.conf.local, the active station profile and himmel.conf in $HIMMEL_CONFIG_DIR
+    (else ~/.himmel), else the anchor's .env, else `top`'s own handovers/ directory. `anchor` defaults to `top`."""
+    anchor = anchor or top
     live = env.get("HANDOVER_DIR")
     if live:
-        return live
+        common = git_common_dir(live)
+        if not common or common != git_common_dir(anchor):
+            return live
     conf = env.get("HIMMEL_CONFIG_DIR") or os.path.join(env.get("HOME") or os.path.expanduser("~"), ".himmel")
-    files = [os.path.join(conf, "himmel.conf.local"), os.path.join(conf, "himmel.conf"), os.path.join(top, ".env")]
-    return next((v for v in (conf_value(f, "HANDOVER_DIR") for f in files) if v), os.path.join(top, "handovers"))
+    files = [os.path.join(conf, "himmel.conf.local"), profile_conf(conf, env), os.path.join(conf, "himmel.conf"), os.path.join(anchor, ".env")]
+    return next((v for v in (conf_value(f, "HANDOVER_DIR", unquote=False) for f in files if f) if v), os.path.join(top, "handovers"))
 
 
 def ledger_dir(repo=".", env=None):
@@ -229,7 +262,9 @@ def ledger_dir(repo=".", env=None):
     (its user and bucket_name), else USER_SLUG and the checkout's own name, so no project name is hard-coded."""
     env = os.environ if env is None else env
     top = primary_checkout(repo)
-    root = handover_root(top, env)
+    # the anchor is the himmel checkout this script lives in (merge-on-green exports HIMMEL_REPO), which is not the repo
+    # the merge runs in when a project other than himmel is merged
+    root = handover_root(top, env, primary_checkout(env.get("HIMMEL_REPO") or os.path.dirname(os.path.abspath(__file__))))
     if not os.path.isdir(root):
         return None
     user = env.get("USER_SLUG") or env.get("USER") or "unknown"
