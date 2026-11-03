@@ -492,30 +492,45 @@ rm -f "$CLAUDE_GLM_CONFIG_DIR/phi-roots"
 # fault into a miss (fail-OPEN). Skipped where chmod cannot drop traversal
 # (root); dirs are restored before the EXIT trap rm -rf.
 echo "TEST: unreachable PHI list refuses the vault (rc=2), absent list is a miss (HIMMEL-8923)"
+# The vault is the real $VAULT (sentinels and containment hold), and every list
+# below names it, so a miss would let the run through: rc 0 and a runner worker.
 LOCK_SELF="$TMP_ROOT/lock-self"; mkdir -p "$LOCK_SELF/cfg"
-printf '%s\n' "$PHI_ZONE" > "$LOCK_SELF/cfg/phi-roots"
+printf '%s\n' "$VAULT" > "$LOCK_SELF/cfg/phi-roots"
 LOCK_PARENT="$TMP_ROOT/lock-parent"; mkdir -p "$LOCK_PARENT/cfg"
-printf '%s\n' "$PHI_ZONE" > "$LOCK_PARENT/cfg/phi-roots"
+printf '%s\n' "$VAULT" > "$LOCK_PARENT/cfg/phi-roots"
+LIST_LINK_CFG="$TMP_ROOT/dangling-list-cfg"; mkdir -p "$LIST_LINK_CFG"
+ln -s "$TMP_ROOT/no-such-list-target" "$LIST_LINK_CFG/phi-roots"
+CFG_LINK_LOCKED="$TMP_ROOT/cfg-link-locked"; ln -s "$LOCK_SELF/cfg" "$CFG_LINK_LOCKED"
+CFG_LINK_PARENT="$TMP_ROOT/cfg-link-parent"; ln -s "$LOCK_PARENT/cfg" "$CFG_LINK_PARENT"
 chmod 000 "$LOCK_SELF/cfg" "$LOCK_PARENT"
 if [ -x "$LOCK_SELF/cfg" ] || [ -x "$LOCK_PARENT" ]; then
     skip "unreachable PHI list (chmod could not drop traversal here)"
 else
-    reset_runner_log
-    rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$LOCK_SELF/cfg" run_refresh luna --vault "$PHI_ZONE/vault" 2>&1) || rc=$?
-    assert_rc "config dir at mode 000 + listed vault -> rc 2" 2 "$rc"
-    assert_contains "config dir at mode 000 names unreadable" "unreadable" "$out"
-    assert_eq "config dir at mode 000 fired no runner worker" "" "$(cat "$RUNNER_LOG")"
-    reset_runner_log
-    rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$LOCK_PARENT/cfg" run_refresh luna --vault "$PHI_ZONE/vault" 2>&1) || rc=$?
-    assert_rc "config dir's parent at mode 000 + listed vault -> rc 2" 2 "$rc"
-    assert_contains "locked parent names unreadable" "unreadable" "$out"
-    assert_eq "locked parent fired no runner worker" "" "$(cat "$RUNNER_LOG")"
+    # refuse_row <label> <config dir>: the real vault is refused, naming the list unreadable
+    refuse_row() {
+        reset_runner_log
+        rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$2" run_refresh luna --vault "$VAULT" 2>&1) || rc=$?
+        assert_rc "$1 -> rc 2" 2 "$rc"
+        assert_contains "$1 names unreadable" "unreadable" "$out"
+        assert_eq "$1 fired no runner worker" "" "$(cat "$RUNNER_LOG")"
+    }
+    refuse_row "config dir at mode 000" "$LOCK_SELF/cfg"
+    refuse_row "config dir's parent at mode 000" "$LOCK_PARENT/cfg"
+    refuse_row "symlinked config dir whose target is at mode 000" "$CFG_LINK_LOCKED"
+    refuse_row "symlinked config dir whose target sits under a locked parent" "$CFG_LINK_PARENT"
 fi
 chmod 755 "$LOCK_SELF/cfg" "$LOCK_PARENT"
-# control: a truly absent list dir under a reachable parent is a miss
+# a dangling list symlink in a readable dir is present but unreadable: refuse (no mode change needed)
+reset_runner_log
+rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$LIST_LINK_CFG" run_refresh luna --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "dangling phi-roots symlink -> rc 2" 2 "$rc"
+assert_contains "dangling phi-roots symlink names unreadable" "unreadable" "$out"
+assert_eq "dangling phi-roots symlink fired no runner worker" "" "$(cat "$RUNNER_LOG")"
+# control: a truly absent list dir under a reachable parent is a miss, and the run goes through
 reset_runner_log
 rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$TMP_ROOT/no-such-cfg/deeper" run_refresh luna --vault "$VAULT" 2>&1) || rc=$?
-assert_rc "absent PHI config dir + unlisted vault -> rc 0 (miss)" 0 "$rc"
+assert_rc "absent PHI config dir + real vault -> rc 0 (miss)" 0 "$rc"
+assert_contains "absent PHI config dir fired the runner" "ARGS:" "$(cat "$RUNNER_LOG")"
 
 # ============================================================================
 # Test 12: vault preflight — refuse a filesystem root and the operator HOME

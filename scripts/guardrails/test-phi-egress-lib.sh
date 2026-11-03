@@ -273,6 +273,46 @@ else
     fail "rc 3 under set -euo pipefail -> the function aborted or returned another rc"
 fi
 
+echo "== _guard_phi_dir_provable =="
+# A dir that cannot be traversed (or a path that cannot be followed to an existing
+# ancestor) is unprovable: a list inside it must read as unreadable, never as a miss.
+# Skipped where chmod cannot drop traversal (root); every dir is restored before the
+# EXIT trap removes the tree.
+PV_ROOT="$WS/pv"; mkdir -p "$PV_ROOT/open" "$PV_ROOT/locked-self/cfg" "$PV_ROOT/locked-parent/cfg" "$PV_ROOT/cwd"
+printf '%s\n' "$ROOT" > "$PV_ROOT/locked-self/cfg/phi-roots"
+mkdir -p "$PV_ROOT/cwd/cfg"; printf '%s\n' "$ROOT" > "$PV_ROOT/cwd/cfg/phi-roots"
+chmod 000 "$PV_ROOT/locked-self/cfg" "$PV_ROOT/locked-parent"
+ln -s "$PV_ROOT/locked-self/cfg" "$PV_ROOT/link-to-locked"
+ln -s "$PV_ROOT/locked-parent/cfg" "$PV_ROOT/link-through-locked-parent"
+ln -s "$PV_ROOT/nowhere" "$PV_ROOT/dangling-dir"
+prov_rc() { # <dir> -> rc of _guard_phi_dir_provable, run in the working directory of the caller
+    local rc=0; _guard_phi_dir_provable "$1" || rc=$?; printf '%s' "$rc"
+}
+expect_rc "an open dir -> provable" 0 "$(prov_rc "$PV_ROOT/open")"
+expect_rc "a missing dir under an open parent -> provable (a miss is confirmed)" 0 "$(prov_rc "$PV_ROOT/open/none/deeper")"
+if [ -x "$PV_ROOT/locked-self/cfg" ] || [ -x "$PV_ROOT/locked-parent" ]; then
+    echo "  SKIP  unprovable-dir rows (chmod could not drop traversal here)"
+else
+    expect_rc "a dir at mode 000 -> unprovable" 1 "$(prov_rc "$PV_ROOT/locked-self/cfg")"
+    expect_rc "a dir under a parent at mode 000 -> unprovable" 1 "$(prov_rc "$PV_ROOT/locked-parent/cfg")"
+    expect_rc "a symlinked dir whose target is at mode 000 -> unprovable" 1 "$(prov_rc "$PV_ROOT/link-to-locked")"
+    expect_rc "a symlinked dir whose target sits under a locked parent -> unprovable" 1 "$(prov_rc "$PV_ROOT/link-through-locked-parent")"
+    expect_rc "a dangling symlinked dir -> unprovable" 1 "$(prov_rc "$PV_ROOT/dangling-dir")"
+    # relative paths end at the working directory, which is locked after the cd
+    rel_locked() { # <relative dir> -> rc, from a working directory made untraversable
+        ( cd "$PV_ROOT/cwd" && chmod 000 "$PV_ROOT/cwd" && rc=0; _guard_phi_dir_provable "$1" || rc=$?; chmod 755 "$PV_ROOT/cwd"; printf '%s' "$rc" )
+    }
+    expect_rc "a relative dir in a locked working directory -> unprovable" 1 "$(rel_locked cfg)"
+    expect_rc "a deeper relative dir in a locked working directory -> unprovable" 1 "$(rel_locked cfg/deeper)"
+    # a list the locked relative override would hold: the decision must deny, not clear
+    H="$(phi_home d-relative-locked)"
+    got="$( cd "$PV_ROOT/cwd" && chmod 000 "$PV_ROOT/cwd" && rc=0; CLAUDE_GLM_CONFIG_DIR="cfg" HOME="$H" _guard_phi_decision "$ROOT/sub" || rc=$?; chmod 755 "$PV_ROOT/cwd"; printf '%s' "$rc" )"
+    expect_rc "a relative override in a locked working directory -> unreadable, deny" 2 "$got"
+fi
+chmod 755 "$PV_ROOT/locked-self/cfg" "$PV_ROOT/locked-parent" "$PV_ROOT/cwd"
+expect_rc "a relative dir in an open working directory -> provable" 0 "$( cd "$PV_ROOT/cwd" && prov_rc cfg )"
+expect_rc "a dir whose parent is the root -> provable (the root is tested)" 0 "$(prov_rc /no-such-phi-dir-8923)"
+
 echo "== _guard_phi_unenforced_roots =="
 unenforced_of() { # <home> -> "<rc>:<roots joined by a space>"
     local out rc

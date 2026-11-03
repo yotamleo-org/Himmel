@@ -1067,16 +1067,27 @@ LOCK_SELF="$WS/lock-self"; mkdir -p "$LOCK_SELF/cfg"
 printf '%s\n' "$HIMMEL/scripts" > "$LOCK_SELF/cfg/phi-roots"
 LOCK_PARENT="$WS/lock-parent"; mkdir -p "$LOCK_PARENT/cfg"
 printf '%s\n' "$HIMMEL/scripts" > "$LOCK_PARENT/cfg/phi-roots"
+LOCK_LINK_SELF="$WS/cfg-link-locked"; ln -s "$LOCK_SELF/cfg" "$LOCK_LINK_SELF"
+LOCK_LINK_PARENT="$WS/cfg-link-parent"; ln -s "$LOCK_PARENT/cfg" "$LOCK_LINK_PARENT"
+DANGLING_CFG="$WS/dangling-list-cfg"; mkdir -p "$DANGLING_CFG"
+ln -s "$WS/no-such-list-target" "$DANGLING_CFG/phi-roots"
 chmod 000 "$LOCK_SELF/cfg" "$LOCK_PARENT"
 if [ -x "$LOCK_SELF/cfg" ] || [ -x "$LOCK_PARENT" ]; then
     printf '  SKIP  unreachable PHI list (chmod could not drop traversal here)\n'
 else
+    run_fence deny no "$HIMMEL" "symlinked config dir whose target is at mode 000 + listed root -> deny" \
+        "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_LINK_SELF"
+    run_fence deny no "$HIMMEL" "symlinked config dir whose target sits under a locked parent + listed root -> deny" \
+        "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_LINK_PARENT"
     run_fence deny no "$HIMMEL" "config dir at mode 000 + listed root -> deny (HIMMEL-8923)" \
         "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_SELF/cfg"
     run_fence deny no "$HIMMEL" "config dir's parent at mode 000 + listed root -> deny (HIMMEL-8923)" \
         "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_PARENT/cfg"
 fi
 chmod 755 "$LOCK_SELF/cfg" "$LOCK_PARENT"
+# a dangling list symlink in a readable dir is present but unreadable: deny, though a miss would allow
+run_fence deny no "$HIMMEL" "dangling phi-roots symlink -> deny (present, unreadable)" \
+    "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$DANGLING_CFG"
 # control: a truly absent list dir under a reachable parent is still a miss
 run_fence allow no "$HIMMEL" "absent PHI config dir + unlisted root -> allow (miss, HIMMEL-8923 control)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$WS/no-such-cfg/deeper"
