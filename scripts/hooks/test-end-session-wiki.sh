@@ -335,7 +335,7 @@ lane_sandbox() { # sets SB, MARK, WRAP, LOGF
     SB="$(make_sandbox)"; MARK="$SB/marker.txt"
     WRAP="$SB/wrap.sh"
     # shellcheck disable=SC2016  # the stub body is written literally; it expands when the stub runs
-    printf '#!/usr/bin/env bash\nprintf "HIMMEL_API_LANE=%%s\\nHIMMEL_API_ACCOUNT=%%s\\n" "${HIMMEL_API_LANE-<unset>}" "${HIMMEL_API_ACCOUNT-<unset>}" > "$LANE_DUMP"\nexec "%s" "$@"\n' "$STUB" > "$WRAP"
+    printf '#!/usr/bin/env bash\nprintf "HIMMEL_API_LANE=%%s\\nHIMMEL_API_ACCOUNT=%%s\\nHIMMEL_API_KIND=%%s\\n" "${HIMMEL_API_LANE-<unset>}" "${HIMMEL_API_ACCOUNT-<unset>}" "${HIMMEL_API_KIND-<unset>}" > "$LANE_DUMP"\nexec "%s" "$@"\n' "$STUB" > "$WRAP"
     chmod +x "$WRAP"
     LOGF="$(log_path_for "$SB/home" "$SB/proj")"
 }
@@ -382,6 +382,17 @@ for ACC in A auto; do
     fi
     rm -rf "$SB"
 done
+
+# 9b-2b: the backend a lane-on session uses. With the lane on and no explicit
+# CRYSTALLIZE_BACKEND the spawned crystallizer keeps the API path (the launcher sees
+# HIMMEL_API_KIND=bulk, which only that path sets), so session end never moves a lane-on
+# session to the subscription silently; an explicit CRYSTALLIZE_BACKEND=claude-cli wins.
+lane_sandbox
+LANE_DUMP="$SB/lane.txt"
+lane_run -u CRYSTALLIZE_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A LANE_DUMP="$LANE_DUMP" CRYSTALLIZE_CLAUDE_BIN="$WRAP"
+i=0; while [ ! -s "$LANE_DUMP" ] && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
+if grep -qxF 'HIMMEL_API_KIND=bulk' "$LANE_DUMP" 2>/dev/null; then pass "lane-env: a lane-on session keeps the API path at session end (backend rule)"; else fail "lane-env: a lane-on session did not use the API path"; fi
+rm -rf "$SB"
 
 # 9b-3 (regression-only: guards the stderr redirect against a naive version of it, passes on
 # main): a hook log that cannot be opened for append must not stop the crystallizer.

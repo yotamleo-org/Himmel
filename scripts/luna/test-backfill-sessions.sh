@@ -77,6 +77,14 @@ assert_not_contains() {
 
 TMP_ROOT="$(mktemp -d)"
 
+# The crystallizer's default backend is the subscription, behind a bank preflight;
+# keep the suite hermetic with a PROCEED stub (case 12c swaps in a SKIP stub).
+PF_PROCEED="$TMP_ROOT/pf-proceed.sh"; PF_SKIP="$TMP_ROOT/pf-skip.sh"
+printf '#!/usr/bin/env bash\necho PROCEED\n' > "$PF_PROCEED"
+printf '#!/usr/bin/env bash\necho "SKIP: five_hour at 97"\n' > "$PF_SKIP"
+chmod +x "$PF_PROCEED" "$PF_SKIP"
+export CRYSTALLIZE_PREFLIGHT_CMD="$PF_PROCEED"
+
 # ---------------------------------------------------------------------------
 # Shared: build a fake projects dir with fixture transcripts.
 # We create a "normal-repo" project and a "disabled-repo" project.
@@ -923,8 +931,47 @@ reheal_lane_off() { # <label> <env-assignments...>
         fail "reheal($label): note was crystallized without a usable API lane"
     fi
 }
-reheal_lane_off "lane-off" -u HIMMEL_API_LANE
+reheal_lane_off "lane-off" -u HIMMEL_API_LANE CRYSTALLIZE_BACKEND=claude-api
+# Backend rule: an explicit CRYSTALLIZE_BACKEND wins, else lane on means the API path,
+# else the subscription. So lane on with a bad account and no explicit backend is the
+# API path, unavailable, and falls back to the mechanical render.
 reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid
+
+# ============================================================================
+# Case 12c: the default backend is the subscription — a launcher and a passing
+#           preflight are enough (the API lane env is not needed); a preflight
+#           that is not PROCEED falls back to the mechanical re-render
+# ============================================================================
+echo ""
+echo "Case 12c: reheal on the subscription default (API lane off)"
+
+reheal_subscription() { # <label> <expect: crystallized|mechanical> <env-assignments...>
+    local label="$1" expect="$2"; shift 2
+    local sb="$TMP_ROOT/case12c-$label" vault proj note out
+    vault="$sb/vault"; proj="$sb/projects"
+    note="$vault/sessions/2026/06/2026-06-20-0000-testrepo.md"
+    mkdir -p "$vault" "$proj"
+    write_husk_note "$note" "reheal-sess-$label"
+    seed_named_transcript "$proj" "reheal-sess-$label" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+    out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND "$@" \
+        CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
+        CRYSTALLIZE_PID_DIR="$sb/pids" \
+        bash "$BACKFILL" --reheal \
+        --projects-dir "$proj" \
+        --luna-vault-path "$vault" \
+        --state-file "$sb/state.json" \
+        --vault-registry /dev/null \
+        2>&1)
+    assert_contains "reheal($label): healed count reported" "healed=1" "$out"
+    if [ "$expect" = "crystallized" ]; then
+        if grep -q '^crystallized: true$' "$note"; then pass "reheal($label): crystallized on the subscription default"; else fail "reheal($label): not crystallized (the API-lane gate still blocks the default)"; fi
+    else
+        if grep -q '^crystallized: false$' "$note"; then pass "reheal($label): mechanical render, stays crystallized: false"; else fail "reheal($label): crystallized without a passing preflight"; fi
+    fi
+}
+reheal_subscription "sub-default" crystallized
+reheal_subscription "sub-skip" mechanical CRYSTALLIZE_PREFLIGHT_CMD="$PF_SKIP"
+reheal_subscription "explicit-cli" crystallized CRYSTALLIZE_BACKEND=claude-cli HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=invalid
 
 # ============================================================================
 # Case 13: reheal mechanical on a tool-only transcript (no prose turn) is a
@@ -1214,6 +1261,19 @@ out19d=$(env CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE
 assert_contains "recrys(dry): both content-notes counted" "crystallized=2" "$out19d"
 if [ "$SHA19A" = "$(_file_sha256 "$N19A")" ]; then pass "recrys(dry): note byte-unchanged"; else fail "recrys(dry): --dry-run mutated a note" "$out19d"; fi
 
+# dry-run on the subscription default counts WITHOUT a preflight per note.
+PF_COUNT="$SB/pf-count.sh"; PF_COUNT_LOG="$SB/pf-count.log"
+printf '#!/usr/bin/env bash\necho call >> "%s"\necho PROCEED\n' "$PF_COUNT_LOG" > "$PF_COUNT"
+chmod +x "$PF_COUNT"
+out19p=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRYSTALLIZE_PREFLIGHT_CMD="$PF_COUNT" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$BACKFILL" --recrystallize --dry-run \
+    --projects-dir "$PROJ_ROOT19" --luna-vault-path "$VAULT19" \
+    --state-file "$STATE19" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(dry,sub): both content-notes counted" "crystallized=2" "$out19p"
+# read-sink-ok: PF_COUNT_LOG is the sandbox log this suite's own stub preflight writes, never an argv or env input
+if [ ! -s "$PF_COUNT_LOG" ]; then pass "recrys(dry,sub): no preflight run per note"; else fail "recrys(dry,sub): preflight ran $(wc -l < "$PF_COUNT_LOG" | tr -d ' ') time(s) in a dry run" "$out19p"; fi
+
 # --limit 1: only one crystallized this run.
 out19l=$(env CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
     CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_NOW="2026-06-29T00:00:00Z" \
@@ -1223,6 +1283,63 @@ out19l=$(env CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
 assert_contains "recrys(limit): --limit 1 crystallizes exactly one" "crystallized=1" "$out19l"
 _cryst_count=$(grep -l '^crystallized: true$' "$N19A" "$N19B" 2>/dev/null | wc -l | tr -d ' ')
 if [ "$_cryst_count" = "1" ]; then pass "recrys(limit): exactly one note crystallized on disk"; else fail "recrys(limit): $_cryst_count crystallized (expected 1)" "$out19l"; fi
+
+# The limit is tested BEFORE the bank preflight on a real run: each real preflight is a live usage
+# fetch, so a note past --limit must cost none. Three content notes, --limit 1: the one crystallized
+# note costs two preflights (backfill's gate plus crystallize-note.sh's own); the other two cost none.
+echo ""
+echo "Case 19b: --limit before the preflight, a refusing bank stops the loop, a bad backend says why"
+SB="$TMP_ROOT/case19b"
+VAULT19B="$SB/vault"; PROJ_ROOT19B="$SB/projects"; STATE19B="$SB/state.json"
+mkdir -p "$VAULT19B" "$PROJ_ROOT19B"
+for _n in a b c; do
+    write_content_note "$VAULT19B/sessions/2026/06/2026-06-20-0000-$_n.md" "recrys19b-$_n"
+    seed_named_transcript "$PROJ_ROOT19B" "recrys19b-$_n" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+done
+PF_B="$SB/pf-b.sh"; PF_B_LOG="$SB/pf-b.log"
+printf '#!/usr/bin/env bash\necho call >> "%s"\necho PROCEED\n' "$PF_B_LOG" > "$PF_B"
+chmod +x "$PF_B"
+out19b=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRYSTALLIZE_PREFLIGHT_CMD="$PF_B" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_NOW="2026-06-29T00:00:00Z" \
+    bash "$BACKFILL" --recrystallize --limit 1 \
+    --projects-dir "$PROJ_ROOT19B" --luna-vault-path "$VAULT19B" \
+    --state-file "$STATE19B" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(limit-pf): --limit 1 crystallizes exactly one" "crystallized=1" "$out19b"
+# read-sink-ok: PF_B_LOG is the sandbox log this suite's own stub preflight writes, never an argv or env input
+_pf_b_calls="$(wc -l < "$PF_B_LOG" 2>/dev/null | tr -d ' ')"
+if [ "$_pf_b_calls" = "2" ]; then pass "recrys(limit-pf): notes past --limit run no preflight (2 calls for the one crystallized note)"; else fail "recrys(limit-pf): $_pf_b_calls preflight calls (expected 2)" "$out19b"; fi
+
+# A refusing bank stops the loop: one preflight, not one per remaining note, and a line says why.
+SB="$TMP_ROOT/case19c"
+VAULT19C="$SB/vault"; PROJ_ROOT19C="$SB/projects"; STATE19C="$SB/state.json"
+mkdir -p "$VAULT19C" "$PROJ_ROOT19C"
+for _n in a b c; do
+    write_content_note "$VAULT19C/sessions/2026/06/2026-06-20-0000-$_n.md" "recrys19c-$_n"
+    seed_named_transcript "$PROJ_ROOT19C" "recrys19c-$_n" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+done
+PF_C="$SB/pf-c.sh"; PF_C_LOG="$SB/pf-c.log"
+printf '#!/usr/bin/env bash\necho call >> "%s"\necho "SKIP: five_hour at 97"\n' "$PF_C_LOG" > "$PF_C"
+chmod +x "$PF_C"
+out19c=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRYSTALLIZE_PREFLIGHT_CMD="$PF_C" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$BACKFILL" --recrystallize \
+    --projects-dir "$PROJ_ROOT19C" --luna-vault-path "$VAULT19C" \
+    --state-file "$STATE19C" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(bank-refused): nothing crystallized" "crystallized=0" "$out19c"
+assert_contains "recrys(bank-refused): the stop is announced" "recrystallize: stopped" "$out19c"
+# read-sink-ok: PF_C_LOG is the sandbox log this suite's own stub preflight writes, never an argv or env input
+_pf_c_calls="$(wc -l < "$PF_C_LOG" 2>/dev/null | tr -d ' ')"
+if [ "$_pf_c_calls" = "1" ]; then pass "recrys(bank-refused): one preflight, then the loop stops"; else fail "recrys(bank-refused): $_pf_c_calls preflight calls (expected 1)" "$out19c"; fi
+
+# A typo'd CRYSTALLIZE_BACKEND says why nothing is crystallized, once.
+out19t=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT CRYSTALLIZE_BACKEND=bogus CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" \
+    STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$BACKFILL" --recrystallize --dry-run \
+    --projects-dir "$PROJ_ROOT19C" --luna-vault-path "$VAULT19C" \
+    --state-file "$STATE19C" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(bad-backend): the reason is printed" "CRYSTALLIZE_BACKEND='bogus' is not accepted" "$out19t"
+_bb_lines="$(printf '%s\n' "$out19t" | grep -c "CRYSTALLIZE_BACKEND='bogus' is not accepted")"
+if [ "$_bb_lines" = "1" ]; then pass "recrys(bad-backend): the reason is printed once, not per note"; else fail "recrys(bad-backend): reason printed $_bb_lines times" "$out19t"; fi
 
 # ============================================================================
 # Case 20: progress logging — periodic heartbeat + per-note lines

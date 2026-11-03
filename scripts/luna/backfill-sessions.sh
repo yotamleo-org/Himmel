@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: no model call of its own; it sources the backend resolver to decide whether crystallize-note.sh can run, and that script makes the billed call
 # backfill-sessions.sh — Render old Claude transcripts into the luna vault.
 #
 # Usage: bash scripts/luna/backfill-sessions.sh [OPTIONS]
@@ -87,6 +88,8 @@ EXCLUDE_GLOB=""
 REHEAL=false
 RECRYSTALLIZE=false
 RECRYS_LIMIT=0
+RECRYS_STOPPED=false   # a real recrystallize run found the crystallizer unavailable: later notes skip with no preflight
+BACKEND_WARNED=false   # the unknown-backend reason is printed once per run, not per note
 REFRESH=false
 RULES_FILE=""
 
@@ -712,14 +715,50 @@ _find_transcript() { # <session_id>
     return 1
 }
 
-# Can crystallize-note.sh launch?  It needs the API lane on (it refuses without it) and
-# a launcher: the test override or a `claude` binary.
-_claude_available() {
-    [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
-    case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) return 1 ;; esac
-    [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] && return 0
-    command -v claude >/dev/null 2>&1 && return 0
-    return 1
+# Can crystallize-note.sh launch?  It follows the crystallizer's backend rule: an
+# explicit CRYSTALLIZE_BACKEND wins, else HIMMEL_API_LANE=on means claude-api, else
+# claude-cli. A launcher (the test override or a `claude` binary) is needed either way.
+# The subscription path also needs a passing bank preflight, pinned to the native bank
+# as crystallize-note.sh pins it; `--no-preflight` (a dry run only counts) skips that
+# call, so a dry run never runs one per note. claude-api needs the lane on with an account.
+_claude_available() { # [--no-preflight]
+    local backend want pf
+    [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] || command -v claude >/dev/null 2>&1 || return 1
+    # shellcheck source=../lib/llm-backend.sh
+    . "$SCRIPT_DIR/../lib/llm-backend.sh" 2>/dev/null || return 1
+    if [ -n "${CRYSTALLIZE_BACKEND:-}" ]; then want="$CRYSTALLIZE_BACKEND"
+    elif [ "${HIMMEL_API_LANE:-}" = "on" ]; then want=claude-api
+    else want=claude-cli; fi
+    backend="$(llm_backend_resolve "$want")" || {
+        if [ "$BACKEND_WARNED" != "true" ]; then
+            BACKEND_WARNED=true
+            printf "backfill: CRYSTALLIZE_BACKEND='%s' is not accepted (claude-cli or claude-api); the crystallizer is skipped\n" "$want" >&2
+        fi
+        return 1
+    }
+    case "$backend" in
+        claude-api)
+            [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
+            case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) return 1 ;; esac
+            ;;
+        claude-cli)
+            [ "${1:-}" = "--no-preflight" ] && return 0
+            if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then
+                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+                    -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
+                    CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
+                    "$CRYSTALLIZE_PREFLIGHT_CMD" </dev/null 2>/dev/null | tail -n 1)"
+            else
+                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+                    -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
+                    CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
+                    bash "$SCRIPT_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n 1)"
+            fi
+            case "$pf" in PROCEED*) ;; *) return 1 ;; esac
+            ;;
+        *) return 1 ;;
+    esac
+    return 0
 }
 
 # Mechanical re-render fallback (no claude): overwrite the husk note in place
@@ -870,20 +909,30 @@ _recrystallize_one() { # <note>
         CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))   # no salvageable content to distil
         return 0
     fi
-    if ! _claude_available; then
+    local avail_arg=""
+    if [ "$DRY_RUN" = "true" ]; then
+        avail_arg="--no-preflight"   # a dry run only counts: no preflight per note
+    else
+        # A real run tests --limit (the token-cost guard; remaining notes are recoverable
+        # on a later run) and a stopped run BEFORE the availability check, because each
+        # real preflight is a live usage fetch and a note past the limit must cost none.
+        if [ "$RECRYS_STOPPED" = "true" ] || { [ "$RECRYS_LIMIT" -gt 0 ] && [ "$CNT_RECRYS" -ge "$RECRYS_LIMIT" ]; }; then
+            CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))
+            return 0
+        fi
+    fi
+    if ! _claude_available $avail_arg; then
         CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))   # recrystallize is LLM-only
+        if [ "$DRY_RUN" != "true" ]; then
+            RECRYS_STOPPED=true   # the bank or backend said no: do not ask again for every remaining note
+            printf 'recrystallize: stopped, the crystallizer is unavailable (bank preflight, backend or launcher); the remaining notes are left for a later run\n' >&2
+        fi
         return 0
     fi
     # Dry-run reports the FULL recoverable count (limit not applied) so the operator
     # can size --limit batches against the real token cost.
     if [ "$DRY_RUN" = "true" ]; then
         CNT_RECRYS=$((CNT_RECRYS + 1))
-        return 0
-    fi
-    # --limit caps real crystallizations (token-cost guard); remaining are skipped
-    # and recoverable on a later run (idempotent).
-    if [ "$RECRYS_LIMIT" -gt 0 ] && [ "$CNT_RECRYS" -ge "$RECRYS_LIMIT" ]; then
-        CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))
         return 0
     fi
     # Synchronous (not detached): batch op, one note at a time; crystallize-note.sh
