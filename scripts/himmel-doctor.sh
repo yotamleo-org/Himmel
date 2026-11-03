@@ -3807,7 +3807,10 @@ check_c75_keyring() {
         fi
         miss="${miss:+$miss, }$setting"
     done
-    if [ -n "$miss" ]; then
+    if [ "$names_failed" -eq 1 ]; then
+        emit INFO C75-config-keys "the paired settings were not checked: the secret key list could not be read" \
+            "run: bash $hs names --class secret"
+    elif [ -n "$miss" ]; then
         emit WARN C75-config-keys "a credential is served but its setting resolves nowhere: $miss" \
             "add each to ~/.himmel/himmel.conf (or .local / the active station profile); the checkout .env remains a legacy fallback"
     else

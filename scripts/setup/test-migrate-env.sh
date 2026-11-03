@@ -840,7 +840,11 @@ out=$(bash "$TMP/update-step.sh" check 2>&1)
 has "R16 control: with a keyring a .env with nothing to move is up-to-date" "rc=0 status=up-to-date" "$out"
 
 # R17: --help prints the whole header, through the Exit block and its exit 4 line.
-out=$(bash "$SCRIPT" --help 2>&1)
+help_rc=0
+out=$(bash "$SCRIPT" --help 2>&1) || help_rc=$?
+if [ "$help_rc" -eq 0 ]; then pass "R17 --help exits 0"; else fail "R17 --help exits $help_rc"; fi
+has "R17 --help shows the usage line" "bash scripts/setup/migrate-env.sh [-y] [--env <file>]" "$out"
+has "R17 --help shows the dry-run option" "bash scripts/setup/migrate-env.sh --dry-run [--env <file>]" "$out"
 has "R17 --help reaches the exit codes" "Exit: 0 moved" "$out"
 has "R17 --help describes exit 4" "4 moved, but incomplete" "$out"
 has "R17 --help ends with the last header line" "96 a chokepoint seam differs" "$out"

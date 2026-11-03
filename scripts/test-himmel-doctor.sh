@@ -7802,6 +7802,7 @@ printf '#!/usr/bin/env bash\ncase "$1" in names) exit 1 ;; esac\nexec bash "${BA
 c75_reset
 out="$(env PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off bash "$c75_x/himmel-doctor.sh" --root "$REPO_ROOT" --no-color --only C75 2>&1)"
 if grepq "$out" -F 'INFO C75-secrets' && grepq "$out" -F 'could not be read' && ! grepq "$out" -F 'OK   C75-secrets'; then pass "C75 names failure -> INFO, not OK C75-secrets"; else fail "C75 names failure -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'INFO C75-config-keys' && ! grepq "$out" -F 'OK   C75-config-keys'; then pass "C75 names failure -> the paired-setting check reports it did not run"; else fail "C75 names failure, config keys -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c75_t"
 
 # --- C76-duplicate-plugin-installs: one plugin installed more than 3 times ---
