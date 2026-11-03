@@ -863,6 +863,58 @@ if [ "$rc" = 1 ]; then pass "R18 a failing names list stops the run (exit 1)"; e
 has "R18 the run says it could not read the secret names" "cannot read the secret names" "$out"
 if cmp -s "$TMP/st/.env" "$TMP/r18.env.orig"; then pass "R18 .env is untouched"; else fail "R18 .env changed"; fi
 
+# R19: an owed scrub is finished even when .env holds no keys (a kill after the .env rewrite) or is gone.
+fixture_env
+apply_tty y
+: > "$TMP/st/.env"
+mkdir -p "$HOME/.himmel/env-backups"
+printf 'export BITBUCKET_API_TOKEN=dummy-r19\nHIMMEL_FLEET_CAP=3\n' > "$HOME/.himmel/env-backups/env.20260103T000000Z.5"
+chmod 600 "$HOME/.himmel/env-backups/env.20260103T000000Z.5"
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "R19 the dry run on an emptied .env reports a scrub is owed" "scrub only: 1 backup file(s)" "$out"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "R19 the retry on an emptied .env exits 0"; else fail "R19 the retry on an emptied .env exited $rc: $out"; fi
+lacks "R19 the retry on an emptied .env scrubbed the backup" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.5")"
+printf 'export BITBUCKET_API_TOKEN=dummy-r19b\n' > "$HOME/.himmel/env-backups/env.20260103T000000Z.6"
+chmod 600 "$HOME/.himmel/env-backups/env.20260103T000000Z.6"
+rm -f "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "R19 the retry with no .env exits 0"; else fail "R19 the retry with no .env exited $rc: $out"; fi
+lacks "R19 the retry with no .env scrubbed the backup" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.6")"
+apply_tty y
+has "R19 a clean station with no .env still says there is nothing to migrate" "nothing to migrate" "$out"
+
+# R19c: a scrub that failed leaves an owed scrub; the retry on the now-emptied .env finishes it.
+if [ "$(id -u)" = 0 ]; then
+    echo "SKIP R19c: root reads a mode-000 file"
+else
+    fixture_env
+    printf '# station .env\nBITBUCKET_API_TOKEN=dummy-r19c\nHIMMEL_FLEET_CAP=7\n' > "$TMP/st/.env"
+    chmod 600 "$TMP/st/.env"
+    mkdir -p "$HOME/.himmel/env-backups"
+    printf 'BITBUCKET_API_TOKEN=dummy-r19c\n' > "$HOME/.himmel/env-backups/env.20260103T000000Z.7"
+    chmod 000 "$HOME/.himmel/env-backups/env.20260103T000000Z.7"
+    apply_tty y
+    if [ "$rc" = 1 ]; then pass "R19c the failed scrub exits 1"; else fail "R19c the failed scrub exited $rc: $out"; fi
+    chmod 600 "$HOME/.himmel/env-backups/env.20260103T000000Z.7"
+    apply_tty y
+    if [ "$rc" = 0 ]; then pass "R19c the retry exits 0"; else fail "R19c the retry exited $rc: $out"; fi
+    lacks "R19c the retry scrubbed the backup the first run could not" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.7")"
+fi
+
+# R20: a blank NAME= line in .env is not a copy of the key, so the only real value in a backup stays.
+fixture_env
+printf '# station .env\nJIRA_API_TOKEN=\nHIMMEL_FLEET_CAP=7\n' > "$TMP/st/.env"
+chmod 600 "$TMP/st/.env"
+mkdir -p "$HOME/.himmel/env-backups"
+printf 'JIRA_API_TOKEN=dummy-r20\n' > "$HOME/.himmel/env-backups/env.20260104T000000Z.8"
+chmod 600 "$HOME/.himmel/env-backups/env.20260104T000000Z.8"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "R20 the apply exits 0"; else fail "R20 the apply exited $rc: $out"; fi
+has "R20 the only real value of JIRA_API_TOKEN stays in the backup" "JIRA_API_TOKEN=dummy-r20" "$(cat "$HOME/.himmel/env-backups/env.20260104T000000Z.8")"
+has "R20 the report names JIRA_API_TOKEN as kept" "keeps a line for JIRA_API_TOKEN" "$out"
+lacks "R20 the report prints no value" "dummy-r20" "$out"
+
 # Two migrations started together: one wins the import lock, nothing is stored twice, .env is whole.
 fixture_env
 grep -v -E '^(HANDOVER_DIR=|USER_SLUG=|CR_|HIMMEL_FLEET_CAP=)' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"

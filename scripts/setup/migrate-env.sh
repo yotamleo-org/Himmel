@@ -30,7 +30,8 @@
 # secrets stage was allowed, every file in ~/.himmel/env-backups and the .env copy
 # in each config-audit backup (manifest checksums kept true) loses the lines of
 # a manifest-secret key that .env or the keyring still holds; a line that is the
-# only copy of its key stays and is named. A run with nothing else to move still
+# only copy of its key stays and is named; a blank NAME= line in .env is not a copy.
+# A run with nothing else to move, or with an emptied or missing .env, still
 # finishes an owed scrub. A legacy
 # ~/.config/secrets/himmel.env is imported and emptied of what it stored. The
 # secrets stage runs only with -y, at a terminal, outside an agent session, on
@@ -119,11 +120,13 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$envfile" ] || envfile=$(_load_dotenv_envfile "")
+# A missing .env still leaves any owed backup scrub to finish, so the run goes on to find out.
+no_env=0
 if [ -z "$envfile" ] || [ ! -f "$envfile" ]; then
-    echo "migrate-env: no .env found; nothing to migrate."
-    exit 0
+    no_env=1
+else
+    case "$envfile" in /*) ;; *) envfile="$(cd "$(dirname "$envfile")" && pwd)/${envfile##*/}" ;; esac
 fi
-case "$envfile" in /*) ;; *) envfile="$(cd "$(dirname "$envfile")" && pwd)/${envfile##*/}" ;; esac
 
 confdir=$(_himmel_config_dir)
 # shellcheck disable=SC2088 # shown to the user as written, never expanded
@@ -138,7 +141,8 @@ key_names() {  # <file>
         if (k ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && !(k in seen)) { seen[k] = 1; print k }
     }' "$1"
 }
-names=$(key_names "$envfile")
+names=""
+[ "$no_env" -eq 1 ] || names=$(key_names "$envfile")
 
 keep=" "
 if [ -f "$confdir/env-keep.txt" ]; then
@@ -163,10 +167,8 @@ kstate=$(bash "$hs" status 2>/dev/null | sed -n 's/^keyring: //p')
 backend_ok=0
 [ "$kstate" != unlocked ] || backend_ok=1
 # An emptied .env still has a legacy secrets file to import once the keyring is up.
-if [ -z "$names" ] && { [ "$backend_ok" -eq 0 ] || [ ! -s "$store" ]; }; then
-    echo "migrate-env: $envfile holds no keys; nothing to migrate."
-    exit 0
-fi
+empty_env=0
+if [ "$no_env" -eq 1 ] || { [ -z "$names" ] && { [ "$backend_ok" -eq 0 ] || [ ! -s "$store" ]; }; }; then empty_env=1; fi
 
 # With no keyring: readers of each secret, the first tracked file naming it, docs excluded.
 secrets=""
@@ -233,7 +235,7 @@ for key in $names; do
     esac
 done
 # A legacy secrets file moves into the keyring too, once there is one.
-if [ "$backend_ok" -eq 1 ] && [ -s "$store" ]; then
+if [ "$backend_ok" -eq 1 ] && [ "$no_env" -eq 0 ] && [ -s "$store" ]; then
     for key in $(key_names "$store"); do
         case "$keep" in *" $key "*) continue ;; esac
         case "$secret_names" in *" $key "*) ;; *) continue ;; esac
@@ -242,12 +244,14 @@ if [ "$backend_ok" -eq 1 ] && [ -s "$store" ]; then
 fi
 moving=$(( ${#config_keys[@]} + ${#policy_keys[@]} + ${#secret_keys[@]} + ${#file_keys[@]} + ${#legacy_keys[@]} ))
 
-echo "env migration for $envfile (key names only):"
-printf '%s' "$plan"
-[ -z "$stay_secrets" ] || echo "secrets stay in .env:$stay_secrets"
-if [ "$incomplete" -eq 1 ]; then
-    echo "migrate-env: WARN no keyring backend (keyring: ${kstate:-absent}); secrets cannot reach the keyring, so this run is incomplete (exit 4 on an apply)."
-    echo "unlock the keyring or install a Secret Service, then run this again."
+if [ "$empty_env" -eq 0 ]; then
+    echo "env migration for $envfile (key names only):"
+    printf '%s' "$plan"
+    [ -z "$stay_secrets" ] || echo "secrets stay in .env:$stay_secrets"
+    if [ "$incomplete" -eq 1 ]; then
+        echo "migrate-env: WARN no keyring backend (keyring: ${kstate:-absent}); secrets cannot reach the keyring, so this run is incomplete (exit 4 on an apply)."
+        echo "unlock the keyring or install a Secret Service, then run this again."
+    fi
 fi
 
 umask 077
@@ -285,10 +289,13 @@ drop_lines() {  # <set of names> <file>: the file without those keys' lines (`ex
         i && k != "" && index(set, " " k " ") { next }
         { print }' "$2" > "$work/scrub.new" && replace_file "$work/scrub.new" "$2"
 }
-lines_for() {  # <set of names> <file>: the names of the set the file has a line for (`export NAME=` too)
-    awk -v set="$1" '{ l = $0; sub(/\r$/, "", l) }
+lines_for() {  # <set of names> <file> [nonblank]: the names of the set the file has a line for (`export NAME=` too); nonblank skips an empty value
+    [ -f "$2" ] || return 0
+    awk -v set="$1" -v nb="${3:-}" '{ l = $0; sub(/\r$/, "", l) }
         l ~ /^[[:space:]]*#/ { next }
-        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k) }
+        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k)
+          v = substr(l, i + 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); q = sprintf("%c", 39)
+          if (nb != "" && (v == "" || v == "\"\"" || v == q q)) next }
         k != "" && index(set, " " k " ") && !(k in seen) { seen[k] = 1; print k }' "$2"
 }
 # A secret line leaves a backup only while the .env or the keyring still holds that key: one
@@ -296,7 +303,7 @@ lines_for() {  # <set of names> <file>: the names of the set the file has a line
 scrub_set_calc() {
     local kitems envn n
     kitems=" $(bash "$hs" status 2>/dev/null | sed -n 's/^keyring item: //p' | tr '\n' ' ')"
-    envn=" $(lines_for "$secret_names" "$envfile" | tr '\n' ' ')"
+    envn=" $(lines_for "$secret_names" "$envfile" nonblank | tr '\n' ' ')"
     scrub_set=" "
     for n in $secret_names; do
         case "$kitems$envn" in *" $n "*) scrub_set="$scrub_set$n " ;; esac
@@ -344,6 +351,8 @@ if [ "$moving" -eq 0 ]; then
     pend=0
     [ "$backend_ok" -ne 1 ] || pend=$(pending_scrub)
     if [ "$pend" -eq 0 ]; then
+        if [ "$no_env" -eq 1 ]; then echo "migrate-env: no .env found; nothing to migrate."; exit 0; fi
+        if [ "$empty_env" -eq 1 ]; then echo "migrate-env: $envfile holds no keys; nothing to migrate."; exit 0; fi
         echo "nothing to move: every key stays in .env."
         [ "$dry" -eq 1 ] || [ "$incomplete" -eq 0 ] || exit 4
         exit 0
