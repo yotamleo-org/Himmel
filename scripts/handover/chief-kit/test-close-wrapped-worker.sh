@@ -1545,6 +1545,8 @@ printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed\n' > "$HS"
 acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$HS" "cwl-test-holder" 2>&1)"
 # shellcheck disable=SC2016  # literal fixture token delimiters
 token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+check "handoff setup: successor lock acquired" "$([ -n "$token" ] && echo yes)" "yes"
+check "handoff setup: successor lock is held" "$(HANDOVER_DIR="$W/handover-root" bash "$QL" status "$HS" >/dev/null 2>&1 && echo free || echo held)" "held"
 reset_calls
 rc=0; out=$(run "$HP" 2>&1) || rc=$?
 check "handoff: named live successor lock permits predecessor close (base rc 3)" "$rc" "0"
@@ -1587,6 +1589,8 @@ printf '# worker\n\n## Results\n\n- 10:00 WRAPPED - done, no hand-off\n' > "$HP"
 acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$HS" "cwl-test-holder" 2>&1)"
 # shellcheck disable=SC2016  # literal fixture token delimiters
 token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+check "handoff setup: sibling lock acquired" "$([ -n "$token" ] && echo yes)" "yes"
+check "handoff setup: sibling lock is held" "$(HANDOVER_DIR="$W/handover-root" bash "$QL" status "$HS" >/dev/null 2>&1 && echo free || echo held)" "held"
 reset_calls
 rc=0; out=$(run "$HP" 2>&1) || rc=$?
 check "handoff: true sibling lock without named hand-off still refuses" "$rc" "3"

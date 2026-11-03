@@ -419,12 +419,13 @@ else
 fi
 
 # Display routing follows the worker's own accepted succession chain, not the
-# launch environment's retired chief. Mirrored rulings cannot change this hint.
+# launch environment's retired chief. Like succession-tracker.sh it reads Results
+# to EOF, since append-results.sh writes at EOF; the strict bullet grammar below
+# keeps a quoted or mirrored ruling from changing the hint.
 # shellcheck disable=SC2016  # literal Markdown backticks in strict handshake grammar
 current_chief=$(awk -v chief="$HIMMEL_CONSOLE_NAME" '
-    /^## Results( |$)/ { seen = 1; keep = 1; next }
-    /^## / { keep = seen && ($0 ~ /^## (Chief|Console) Rulings( |$)/); next }
-    keep && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted: (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/ {
+    /^## Results( |$)/ { seen = 1; next }
+    seen && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted: (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/ {
         sub(/^.*SUCCESSION accepted: /, ""); gsub(/`/, "")
         split($0, words, /[[:space:]]+/)
         if (words[3] == chief) chief = words[1]

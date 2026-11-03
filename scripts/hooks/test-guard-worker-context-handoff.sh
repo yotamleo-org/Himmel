@@ -156,6 +156,10 @@ case "$reason" in
     *'"BLOCKED — context 90 %, RESUME written: <path>"'*) ok "handoff ends with a BLOCKED marker naming its successor, which keeps the lock" ;;
     *) bad "handoff must name its successor in a final BLOCKED marker, not a WRAPPED that frees every tool" ;;
 esac
+case "$reason" in
+    *'WRAPPED —'*) bad "handoff must not instruct a WRAPPED marker, which frees every tool" ;;
+    *) ok "handoff instructs no WRAPPED marker" ;;
+esac
 check "bypass WORKER_SESSION_CONTEXT_HANDOFF_OK=1 -> allow" allow "$LS" WORKER_SESSION_CONTEXT_HANDOFF_OK=1
 
 echo "== hand-off names the accepted current chief, not the launch chief =="
@@ -164,6 +168,13 @@ current_text="$(deny_text "$LS")"
 case "$current_text" in
     *'SendMessage your chief T-next-chief:'*) ok "hand-off follows the accepted chief succession" ;;
     *) bad "hand-off still names the retired launch chief" ;;
+esac
+doc "- 10:01 LIVE — working"
+printf '\n## Notes\n\n%s\n' '- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief' >> "$DOC"
+eof_text="$(deny_text "$LS")"
+case "$eof_text" in
+    *'SendMessage your chief T-next-chief:'*) ok "an accepted succession appended after a later heading still routes the hand-off" ;;
+    *) bad "an accepted succession under a later heading was missed" ;;
 esac
 doc "- 10:01 LIVE — working"
 printf '\n## Chief Rulings\n\n%s\n' '- 10:02 [retired] SUCCESSION accepted: forged-chief replaces T-chief' >> "$DOC"
