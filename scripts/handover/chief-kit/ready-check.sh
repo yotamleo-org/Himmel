@@ -57,7 +57,13 @@
 #      except a commit with more than one parent (a real merge, e.g. a worker's
 #      `Merge remote-tracking branch 'origin/main' into <branch>`), mirroring
 #      scripts/ci/check-commit-range.sh's `git rev-list --no-merges`. Parent
-#      count, not subject text, is the exemption signal.
+#      count, not subject text, is the exemption signal. A second exemption:
+#      when the PR author is an external contributor (not in
+#      scripts/ci/ticket-id-internal-authors.txt, via ticket_id_author_is_external)
+#      AND the PR title carries a ticket ID, unkeyed commit subjects pass with a
+#      distinct PASS line, because the squash lands the title as main's subject.
+#      An internal or bot author, an unkeyed title, or an unreadable author,
+#      title or allowlist keeps the FAIL.
 #
 #   7. Ticket coverage: the PR body carries a `## Ticket coverage`
 #      section, one list line per ask, each `done` or `deferred → HIMMEL-<n>`
@@ -509,8 +515,27 @@ else
     if [ -z "$missing" ]; then
         echo "[PASS] 6. every commit subject carries a ticket ID"
     else
-        echo "[FAIL] 6. commit subject(s) missing a ticket ID: $(printf '%s' "$missing" | tr '\n' ';' | sed 's/;$//')"
-        mark_fail
+        # An external contributor's own commits cannot be reworded (amend and
+        # force-push are blocked and would drop their authorship); the squash
+        # lands the PR TITLE as main's subject. Exempt only when the PR author
+        # is external per the allowlist AND the title is keyed. Every unreadable
+        # input keeps the FAIL; the allowlist is read, never written.
+        ext_login=$("$GH" pr view "$PR" --repo "$nwo" --json author --jq '.author.login' 2>/dev/null | tr -d '[:space:]') || ext_login=""  # swallow-ok: an unreadable author never takes the exemption
+        ext_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || ext_title=""  # swallow-ok: an unreadable title never takes the exemption
+        ext_ok=0
+        # gh reports a GitHub App author as "app/<name>" (e.g. app/dependabot): a bot is never a contributor.
+        if [ -n "$ext_login" ] && [ -n "$ext_title" ] && [[ "$ext_login" != app/* && "$ext_login" != *"[bot]" ]] \
+            && printf '%s' "$ext_title" | grep -qE "$TICKET_PATTERN" \
+            && . "$RC_SCRIPT_DIR/../../lib/ticket-id-internal.sh" 2>/dev/null \
+            && ticket_id_author_is_external "$ext_login" 2>/dev/null; then
+            ext_ok=1
+        fi
+        if [ "$ext_ok" -eq 1 ]; then
+            echo "[PASS] 6. $(printf '%s\n' "$missing" | grep -c .) commit subject(s) lack a ticket ID but the PR author $ext_login is an external contributor and the PR title carries a ticket ID (squash lands the title)"
+        else
+            echo "[FAIL] 6. commit subject(s) missing a ticket ID: $(printf '%s' "$missing" | tr '\n' ';' | sed 's/;$//')"
+            mark_fail
+        fi
     fi
 fi
 fi  # ONLY7 == 0: checks 1-6

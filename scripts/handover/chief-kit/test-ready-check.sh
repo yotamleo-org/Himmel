@@ -64,7 +64,7 @@ case "$args" in
     *"--json headRefName"*)
         printf '%s' "${STUB_PR_BRANCH-feat/himmel-100-thing}" ;;
     *"--json author"*)
-        printf '%s\n' "${STUB_AUTHOR:-yotamleo}" ;;
+        if [ -n "${STUB_AUTHOR_EMPTY:-}" ]; then echo; else printf '%s\n' "${STUB_AUTHOR:-yotamleo}"; fi ;;
     *"contents/scripts/ci/ci-trust-paths.txt"*)
         [ -z "${STUB_TRUST_LIST_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
         cat "$STUB_TRUST_LIST_FILE" ;;
@@ -773,6 +773,56 @@ rc=0; out="$(run)" || rc=$?
 check "merge-plus-unticketed: exit 1" "$rc" "1"
 contains "merge-plus-unticketed: check 6 fails" "$out" "[FAIL] 6."
 contains "merge-plus-unticketed: names the offending subject, not the merge" "$out" "tweak with no ticket"
+
+# --- 6d. an EXTERNAL PR author's unkeyed commits pass check 6
+# when the PR title is keyed (the squash lands the title); internal, bot,
+# unkeyed-title and unreadable-input cases keep the FAIL -----------------
+EXT_ALLOW="$tmp/ticket-id-internal-authors.txt"
+printf '# test allowlist\nyotamleo\n' > "$EXT_ALLOW"
+export TICKET_ID_INTERNAL_AUTHORS_FILE="$EXT_ALLOW"
+EXT_COMMITS='[{"oid":"111111111111111111111111111111111111111a","messageHeadline":"fix(hooks): [SCRUM-1] [#4078] one","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"},{"oid":"222222222222222222222222222222222222222b","messageHeadline":"fix(hooks): [SCRUM-1] [#4078] two","messageBody":""},{"oid":"333333333333333333333333333333333333333c","messageHeadline":"test(hooks): [SCRUM-1] [#4079] three","messageBody":""}]'
+
+# (i) the 4100-shaped fixture: external author, unkeyed commits, keyed title
+reset_stubs
+STUB_AUTHOR=Goomal STUB_PR_TITLE='fix(hooks): [HIMMEL-100] thing' STUB_COMMITS="$EXT_COMMITS"
+rc=0; out="$(run)" || rc=$?
+contains "external-author keyed title: check 6 passes" "$out" "[PASS] 6."
+contains "external-author keyed title: exemption line is not silent" "$out" "external contributor and the PR title carries a ticket ID"
+contains "external-author keyed title: names the author" "$out" "PR author Goomal"
+
+# (ii) same author and commits, UNKEYED title: the title is what lands
+STUB_PR_TITLE='fix(hooks): a title with no ticket'
+rc=0; out="$(run)" || rc=$?
+contains "external-author unkeyed title: check 6 fails" "$out" "[FAIL] 6."
+
+# (iii) the worker row: internal author, unkeyed commit, keyed title
+STUB_AUTHOR=yotamleo STUB_PR_TITLE='fix(hooks): [HIMMEL-100] thing'
+rc=0; out="$(run)" || rc=$?
+contains "internal-author keyed title: check 6 fails" "$out" "[FAIL] 6."
+contains "internal-author keyed title: names the subject" "$out" "[#4078] one"
+
+# (iv) external author, a merge commit plus keyed commits: still passes
+MERGE_OID=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+STUB_AUTHOR=Goomal STUB_MERGE_OIDS="$MERGE_OID"
+STUB_COMMITS='[{"oid":"'"$MERGE_OID"'","messageHeadline":"Merge remote-tracking branch '"'"'origin/main'"'"' into fix/x","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"},{"oid":"111111111111111111111111111111111111111a","messageHeadline":"fix(x): [HIMMEL-1] tweak","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+contains "external-author merge + keyed: check 6 passes" "$out" "[PASS] 6. every commit subject carries a ticket ID"
+
+# (v) fail closed: empty author, unreadable allowlist
+STUB_COMMITS="$EXT_COMMITS"; unset STUB_MERGE_OIDS
+rc=0; out="$(STUB_AUTHOR_EMPTY=1 run)" || rc=$?
+contains "empty author: check 6 fails closed" "$out" "[FAIL] 6."
+rc=0; out="$(TICKET_ID_INTERNAL_AUTHORS_FILE="$tmp/no-such-allowlist" run)" || rc=$?
+contains "unreadable allowlist: check 6 fails closed" "$out" "[FAIL] 6."
+
+# (vi) a bot author never takes the exemption
+STUB_AUTHOR=dependabot
+rc=0; out="$(run)" || rc=$?
+contains "bot author: check 6 fails" "$out" "[FAIL] 6."
+STUB_AUTHOR=app/dependabot
+rc=0; out="$(run)" || rc=$?
+contains "app/ bot author: check 6 fails" "$out" "[FAIL] 6."
+unset TICKET_ID_INTERNAL_AUTHORS_FILE
 
 # --- 7. ticket coverage. The PR body needs a `## Ticket coverage`
 # section, one line per ask, each `done` or `deferred → <KEY>`; a deferred key
