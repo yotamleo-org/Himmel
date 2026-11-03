@@ -731,3 +731,14 @@ test("5494: each project runs its own version, and a Sector select offers only i
   expect(select("HIMMEL-1")).toContain("Visibility");
   expect(select("HIMMEL-1")).not.toContain("Intake");
 });
+
+test("5494: a card on the No version tab still offers the Sectors its project's versioned tickets use", () => {
+  const m = twoMirrors();
+  writeFileSync(join(m.root, "SALUS", "SALUS-1.md"), issueOf("SALUS", 1, ["v1.1.2"], "salus work").replace("labels:", 'sector: "Intake"\nlabels:'));
+  writeFileSync(join(m.root, "SALUS", "SALUS-3.md"), issueOf("SALUS", 3, [], "loose salus work"));
+  const projects = [{ key: "HIMMEL", dir: join(m.root, "HIMMEL") }, { key: "SALUS", dir: join(m.root, "SALUS") }];
+  const nv = readRoadmap({ mirrorDir: "", projects, noVersion: true, workers: { state: "absent" } as never });
+  expect(nv.tickets.map((t) => t.id)).toEqual(["SALUS-3"]); // only the unversioned ticket is in this read ...
+  const html = renderBoard({ ...readRoadmap({ mirrorDir: "", projects, workers: { state: "absent" } as never }) }, { tab: "nv", v: "all", writes: true, nv }, {});
+  expect(new RegExp('aria-label="Sector of SALUS-3">([\\s\\S]*?)</select>').exec(html)![1]).toContain("Intake"); // ... yet it can take its project's Sector
+});

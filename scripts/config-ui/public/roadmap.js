@@ -38,9 +38,8 @@ const idOf = (t) => t.id || "HIMMEL-" + t.k;
 // The Sector options a card offers. Each Jira project has its own option list, so with several projects a card offers only the
 // Sectors its own project's tickets use (and the no-sector placeholder), never another project's; with one project, every Sector.
 const sectorsOf = (d, t) => {
-  if (!d.projects || d.projects.length < 2 || !t.project) return { has: () => true };
-  const own = new Set(d.tickets.filter((x) => x.project === t.project).map((x) => x.theme));
-  return { has: (i) => own.has(i) || d.themes[i] === NO_SECTOR };
+  const own = d.projectThemes && t.project ? d.projectThemes[t.project] : null; // the server's read over every ticket of the project, with a version or not
+  return own ? { has: (i) => own.includes(i) || d.themes[i] === NO_SECTOR } : { has: () => true };
 };
 const projAttr =(t) => (t.project ? ` data-rm-project="${esc(t.project)}"` : ""); // with the number it names a card: two projects share numbers
 const sectorPick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}"${projAttr(t)} aria-label="Sector of ${esc(idOf(t))}">${d.themes.map((x, i) => [x, i]).filter(([, i]) => sectorsOf(d, t).has(i)).map(([x, i]) =>

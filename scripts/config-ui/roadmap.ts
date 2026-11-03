@@ -46,6 +46,7 @@ export type Roadmap = {
   state: "ok" | "absent"; reason?: string; source: Source | "none";
   mirror: { dir: string; count: number; newest: string };
   projects: string[]; // the Jira projects whose tickets are on the Board; empty for GitHub and the local store
+  projectThemes?: Record<string, number[]>; // with several projects: the indexes into themes each project's tickets use
   releaseUnknown: boolean; versions: Version[]; tickets: Ticket[]; themes: string[]; // themes: the Sector groups (wire key kept), "(no sector)" for none
   planThemes: string[]; // the plan's theme (or the retired theme- label), apart from the Sector; "(no theme)" for none
   plan: { state: "ok" | "absent"; reason?: string; dir?: string };
@@ -274,9 +275,11 @@ export function readRoadmap(o: Opts): Roadmap {
   all.sort((a, b) => (a.project ?? "").localeCompare(b.project ?? "") || a.k - b.k);
   const noVersionCount = all.filter((t) => t.noVersion).length;
   const projects = jiraGroups.map((g) => g.p);
+  // the Sectors each project's tickets use, over every ticket (with and without a version): the page offers a card only its own project's
+  const projectThemes = multi ? { projectThemes: Object.fromEntries(projects.map((p) => [p, [...new Set(all.filter((t) => t.project === p).map((t) => t.theme))]])) } : {};
   if (o.noVersion) {
     return { ...empty, state: "ok", source, mirror: { dir: o.mirrorDir, count: mir.length, newest: mir.reduce((a, m) => (m.upd > a ? m.upd : a), "") },
-      projects, releaseUnknown: unknown, tickets: all.filter((t) => t.noVersion), themes, planThemes, noVersionCount,
+      projects, ...projectThemes, releaseUnknown: unknown, tickets: all.filter((t) => t.noVersion), themes, planThemes, noVersionCount,
       plan: place ? { state: "ok", dir: o.planDir } : { state: "absent", reason: planReason } };
   }
   const tickets = all.filter((t) => !t.noVersion);
@@ -323,7 +326,7 @@ export function readRoadmap(o: Opts): Roadmap {
 
   return {
     state: "ok", source, mirror: { dir: o.mirrorDir, count: mir.length, newest: mir.reduce((a, m) => (m.upd > a ? m.upd : a), "") },
-    projects, releaseUnknown: unknown, versions, tickets, themes, planThemes, noVersionCount,
+    projects, ...projectThemes, releaseUnknown: unknown, versions, tickets, themes, planThemes, noVersionCount,
     plan: place ? { state: "ok", dir: o.planDir } : { state: "absent", reason: planReason },
     cur, next, drift: { now, trend: o.driftLog ? readTrend(o.driftLog) : [] }, librarian,
   };
