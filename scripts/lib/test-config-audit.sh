@@ -419,18 +419,57 @@ eq "10j a flapping value writes two backups, not four" 2 "$(nbk)"
 newest=$(st check | awk -F'\t' '$1 == "BACKUP" { print $2 }')
 if holds "$S10_STATE/backups/$newest/config.json" "$V2"; then pass "10j the newest backup is the current value's"; else fail "10j the newest backup is not the current value's"; fi
 
-# 10k. a dir with no manifest (a killed or failed write) is removed after the grace period, not before.
+# 10j3. move to front. Each row fails with the move deleted: the reused backup stays where it was.
+newest_id() { st check | awk -F'\t' '$1 == "BACKUP" { print $2 }'; }
+# (a) A, B, A: the newest backup is A's.
+new_station; put_station "$V1-A"; st watch 2>/dev/null
+id_a=$(newest_id)
+put_station "$V1-B"; st watch 2>/dev/null
+put_station "$V1-A"; st watch 2>/dev/null
+eq "10j3 A, B, A: the newest backup is A's" "$id_a" "$(newest_id)"
+# (b) A, B, C, A, D at KEEP=3 keeps A and evicts B.
+new_station; put_station "$V1-A"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+id_a=$(newest_id)
+put_station "$V1-B"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+id_b=$(newest_id)
+put_station "$V1-C"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+put_station "$V1-A"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+put_station "$V1-D"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+if [ -d "$S10_STATE/backups/$id_a" ]; then pass "10j3 A, B, C, A, D at KEEP=3: A's backup is kept"; else fail "10j3 A, B, C, A, D at KEEP=3: A's backup was evicted"; fi
+if [ ! -d "$S10_STATE/backups/$id_b" ]; then pass "10j3 A, B, C, A, D at KEEP=3: B's backup is evicted"; else fail "10j3 A, B, C, A, D at KEEP=3: B's backup stayed"; fi
+# (c) A, B, A, then a delete: the alert names A's backup.
+new_station; put_station "$V1-A"; st watch 2>/dev/null
+id_a=$(newest_id)
+put_station "$V1-B"; st watch 2>/dev/null
+put_station "$V1-A"; st watch 2>/dev/null
+rm -f "$S10/.himmel/config.json"
+st watch 2>/dev/null
+has "10j3 A, B, A, delete: the alert names A's backup" "newest good backup $id_a" "$(cat "$ALERTS")"
+
+# 10k. a dir whose manifest is missing or not JSON (a killed or failed write) is removed after the grace
+# period, not before; a manifest that cannot be read for another reason says nothing, so that dir stays.
 new_station; put_station "$V1"
 st watch 2>/dev/null
-mkdir -p "$S10_STATE/backups/20200101T000000Z-aaaa" "$S10_STATE/backups/20200101T000000Z-bbbb"
+mkdir -p "$S10_STATE/backups/20200101T000000Z-aaaa" "$S10_STATE/backups/20200101T000000Z-bbbb" "$S10_STATE/backups/20200101T000000Z-cccc"
 printf 'partial\n' > "$S10_STATE/backups/20200101T000000Z-aaaa/.env"
-touch -t 202001010000 "$S10_STATE/backups/20200101T000000Z-aaaa"
+printf 'not json\n' > "$S10_STATE/backups/20200101T000000Z-cccc/manifest.json"
+touch -t 202001010000 "$S10_STATE/backups/20200101T000000Z-aaaa" "$S10_STATE/backups/20200101T000000Z-cccc"
+if [ "$(id -u)" != 0 ]; then
+    mkdir -p "$S10_STATE/backups/20200101T000000Z-dddd"
+    printf '{"ts":"2020-01-01T00:00:00Z","files":{}}\n' > "$S10_STATE/backups/20200101T000000Z-dddd/manifest.json"
+    chmod 000 "$S10_STATE/backups/20200101T000000Z-dddd/manifest.json"
+    touch -t 202001010000 "$S10_STATE/backups/20200101T000000Z-dddd"
+fi
 put_station "$V2"
 st watch 2>/dev/null
 if [ ! -d "$S10_STATE/backups/20200101T000000Z-aaaa" ]; then pass "10k an old dir with no manifest is removed"; else fail "10k an old dir with no manifest stayed"; fi
+if [ ! -d "$S10_STATE/backups/20200101T000000Z-cccc" ]; then pass "10k an old dir with a manifest that is not JSON is removed"; else fail "10k an old dir with a manifest that is not JSON stayed"; fi
 if [ -d "$S10_STATE/backups/20200101T000000Z-bbbb" ]; then pass "10k a fresh dir with no manifest stays (it may be mid-write)"; else fail "10k a fresh dir with no manifest was removed"; fi
+if [ "$(id -u)" != 0 ]; then
+    if [ -d "$S10_STATE/backups/20200101T000000Z-dddd" ]; then pass "10k an old dir whose manifest cannot be read stays"; else fail "10k an old dir whose manifest cannot be read was removed"; fi
+fi
 
-# 10l. a backup that cannot be written is reported, not silent, and does not drop the alert path.
+# 10l. a backup that cannot be written is reported, not silent.
 if [ "$(id -u)" != 0 ]; then
     new_station; put_station "$V1"
     st watch 2>/dev/null
@@ -444,6 +483,23 @@ if [ "$(id -u)" != 0 ]; then
     st watch 2>/dev/null; rc=$?
     eq "10l control: the next pass, with the dir writable, exits 0" 0 "$rc"
     eq "10l control: and keeps the backup" 2 "$(nbk)"
+fi
+
+# 10l2. the id dir is made and the copy then fails (a file-size limit, EFBIG): exit 4, a WARN, no dir left.
+# The limit also cuts the first write short, so a copy is never kept truncated: that is the short-write loop.
+if [ "$(id -u)" != 0 ] && ( ulimit -f 4 ) 2>/dev/null; then
+    new_station; put_station "$V1"
+    st watch 2>/dev/null
+    big=$(head -c 20000 /dev/zero | tr '\0' x)
+    printf '{"version":1,"policy":{"HIMMEL_FLEET_CAP":"%s"}}\n' "$big" > "$S10/.himmel/config.json"
+    err=$( ( trap '' XFSZ; ulimit -f 4; st watch ) 2>&1 >/dev/null ); rc=$?
+    eq "10l2 a copy that fails after the dir is made exits 4" 4 "$rc"
+    has "10l2 and says so on stderr" "WARN: no healthy backup was kept" "$err"
+    eq "10l2 and leaves no dir behind" 1 "$(nbk)"
+    st watch 2>/dev/null; rc=$?
+    eq "10l2 control: without the limit the next pass exits 0" 0 "$rc"
+    newest=$(newest_id)
+    if cmp -s "$S10/.himmel/config.json" "$S10_STATE/backups/$newest/config.json"; then pass "10l2 control: and the kept copy is whole"; else fail "10l2 control: the kept copy differs from the file"; fi
 fi
 
 # 10m. no set member present: no backup, and check names none.
@@ -465,18 +521,25 @@ st watch 2>/dev/null
 put_station "$V2"
 st accept >/dev/null
 eq "10n accept backs the accepted set up" 2 "$(nbk)"
+# One station per case, each starting from one healthy backup: a case that took a backup reads 2.
 new_station; put_station "$V1"
 st watch 2>/dev/null
 printf '{"version":1}\n' > "$S10/.himmel/config.json"
 st watch 2>/dev/null
 eq "10n a key-losing config.json takes no backup" 1 "$(nbk)"
 has "10n and alerts" "lost keys" "$(cat "$ALERTS")"
+new_station; put_station "$V1"
+st watch 2>/dev/null
 printf '{"policy":' > "$S10/.himmel/config.json"
 st watch 2>/dev/null
 eq "10n a partial config.json takes no backup" 1 "$(nbk)"
+has "10n and alerts" "config.json truncated" "$(cat "$ALERTS")"
+new_station; put_station "$V1"
+st watch 2>/dev/null
 : > "$S10/.himmel/himmel.conf"
 st watch 2>/dev/null
 eq "10n a truncated himmel.conf takes no backup" 1 "$(nbk)"
+has "10n and alerts" "himmel.conf truncated" "$(cat "$ALERTS")"
 rm -rf "$S10"
 
 real_after=$(real_marks)

@@ -10,7 +10,8 @@
 #   config-audit.sh pre <file> [--script NAME]       back up the full set; prints the backup id
 #   config-audit.sh post <id> <file> <action> [--script NAME] [--pid N]
 #                                                    append the audit row; keep N backups
-#   config-audit.sh list                             backups, newest first, with a key-name diff
+#   config-audit.sh list                             the newest 10 backups of both groups, newest first,
+#                                                    with a key-name diff (restore by id reaches older ones)
 #   config-audit.sh scrub [--dry-run] "<names>" "<secret names>"
 #                                                    drop those names' lines from every backup's .env
 #                                                    copy, keeping the manifest sha256 and digest true;
@@ -25,7 +26,8 @@
 #   config-audit.sh denied <file> <action> [--script NAME] [--pid N]
 #                                                    log a refused write (block-himmel-config-writes.sh)
 #
-# THE SET: every backup holds the whole station config together: the .env
+# THE SET: every audited backup holds the whole station config together (a
+# watcher backup holds the config files only, never .env; see STATE): the .env
 # load_dotenv reads, ~/.himmel/himmel.conf, himmel.conf.local and config.json
 # (plus the written file when it is none of these, e.g. a settings.json). So a
 # restore brings back every key, including keys that lived in .env before the
@@ -55,7 +57,8 @@
 #                 with no manifest is removed after 10 minutes. A value change
 #                 under the same key names reads healthy: the earlier value is
 #                 the previous backup. A deleted .env restores only from an
-#                 audited backup.
+#                 audited backup; newer watcher backups push those off list, but
+#                 restore by id still reaches them.
 #   watch.json    the last healthy key snapshot of the set; an audited write
 #                 moves it, so only an unaudited loss alerts
 #   alerts.jsonl  every alert the watcher raised; alerted = the last one sent
@@ -69,7 +72,8 @@
 # by name. Backups hold values (they are copies), so they are mode 600.
 #
 # Exit: 0 ok; 1 a step failed (a writer warns and carries on: an audit fault
-# never fails a config write); 2 usage; check exits 3 when it finds a loss.
+# never fails a config write); 2 usage; check exits 3 when it finds a loss; watch
+# exits 4 when a healthy backup could not be kept (after its alerts went out).
 #
 # ponytail: the backups and this script are as writable as the files they
 # guard (same uid), so a session can plant a backup. The operator's TOTP code
@@ -262,17 +266,21 @@ function prune() {
     byTarget.set(key, l);
   }
   for (const l of byTarget.values()) for (const x of l.slice(KEEP)) fs.rmSync(x.dir, { recursive: true, force: true });
-  // A killed or failed write can leave a backup dir with no manifest, which
-  // manifests() skips and nothing else removes; it goes after a grace period.
+  // A killed or failed write can leave a backup dir whose manifest is missing or
+  // not JSON, which manifests() skips and nothing else removes; it goes after a
+  // grace period. Any other read error (a permission fault, an I/O error) says
+  // nothing about the backup, so that dir stays.
   let ids = [];
   try { ids = fs.readdirSync(BACK).filter((d) => ID.test(d)); } catch { return; }
-  const live = new Set(manifests().map((x) => x.id));
   for (const id of ids) {
-    if (live.has(id)) continue;
     const dir = path.join(BACK, id);
     try {
       const st = fs.lstatSync(dir);
-      if (st.isDirectory() && Date.now() - st.mtimeMs > ORPHAN_GRACE_MS) fs.rmSync(dir, { recursive: true, force: true });
+      if (!st.isDirectory() || Date.now() - st.mtimeMs <= ORPHAN_GRACE_MS) continue;
+      try { JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")); continue; } catch (e) {
+        if (!(e instanceof SyntaxError || (e && e.code === "ENOENT"))) continue;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
     } catch { /* gone already */ }
   }
 }
@@ -376,7 +384,7 @@ function list() {
   console.log(rows.length ? rows.join("\n") : "no config backups");
 }
 
-// What check adds to the loss rows: BACKUP <id> <age> for the newest backup, and
+// What check adds to the loss rows: BACKUP <id> <age> for the newest backup that holds a file, and
 // NOBACKUP <file> <path> for each present set file that no backup holds.
 function backupRows() {
   const ms = manifests(), live = snapshot(), rows = [];
