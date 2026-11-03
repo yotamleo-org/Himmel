@@ -13,12 +13,18 @@ vi.mock('node:child_process', async (orig) => {
     judgeReply.out !== null && String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('claude-api.sh') ? judgeReply.out : m.execFileSync(...a)) as typeof m.execFileSync;
   return { ...m, execFileSync };
 });
+// The run options the repair command hands to the repair, as the last call saw them.
+const repairSeen = vi.hoisted(() => ({ opts: null as { apply?: boolean; refuse?: unknown } | null }));
+vi.mock('../release/repair-run.js', async (orig) => {
+  const m = await orig<typeof import('../release/repair-run.js')>();
+  return { ...m, repairRun: ((c, o) => { repairSeen.opts = o; return m.repairRun(c, o); }) as typeof m.repairRun };
+});
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL') }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { apiLaneEnv, judgeEnv, judgePrompt, liveJira, parseDecisions, registerRelease, renderState } from './release.js';
+import { apiLaneEnv, judgeEnv, judgePrompt, liveJira, parseDecisions, refuseRequest, registerRelease, renderState } from './release.js';
 
 let out: string[];
 let root: string;
@@ -38,6 +44,7 @@ beforeEach(() => {
   vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
   writeFileSync(join(root, 'verbatim.txt'), 'R = v1 + v2\n');
   out = [];
+  repairSeen.opts = null;
   vi.spyOn(console, 'log').mockImplementation((s: string) => { out.push(s); });
 });
 
@@ -59,9 +66,24 @@ describe.skipIf(process.platform !== 'linux')('jira release from a test on the s
     expect(existsSync(join(root, 'state', 'R1'))).toBe(false);
     await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
   });
+
+  it('refuses repair --apply before the repair runs, and lets the dry run past the door', async () => {
+    await expect(run('repair', 'R1', '--repo', 'o/r', '--apply', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(/release repair: refused, nothing was written/);
+    expect(repairSeen.opts).toBeNull();
+    expect(existsSync(join(root, 'state', 'R1'))).toBe(false);
+    await run('repair', 'R1', '--repo', 'o/r', '--mirror-root', join(root, 'no-mirror')).catch((e: Error) => expect(e.message).not.toMatch(/refused/));
+    process.exitCode = undefined;
+    expect(repairSeen.opts).toMatchObject({ apply: undefined });
+  });
 });
 
 describe('jira release (HIMMEL-6796)', () => {
+  it('repair --apply hands the request refusal check to the repair', async () => {
+    await run('repair', 'R1', '--repo', 'o/r', '--apply', '--mirror-root', join(root, 'no-mirror')).catch(() => undefined);
+    process.exitCode = undefined;
+    expect(repairSeen.opts).toMatchObject({ apply: true, refuse: refuseRequest });
+  });
+
   it('declares, freezes, queues a request and reports the state as JSON', async () => {
     const vf = join(root, 'verbatim.txt');
     await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);

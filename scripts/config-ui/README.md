@@ -203,8 +203,19 @@ The Workflow page (`#/workflow`) draws the development graph: it mounts the docs
 are `docs/guide/dev-graph/`'s `.json`, `.js` and `.css` only). A walkthrough step rides the fragment beside the
 route, `#/workflow&w=<id>&s=<n>`.
 
-- **Sources.** The Jira mirror (`HIMMEL_JIRA_MIRROR`, else `~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY or HIMMEL>`)
-  plus its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
+- **Projects (HIMMEL-5494).** The Board covers every Jira project that has a mirror on this machine, wherever config-ui
+  is launched (the himmel checkout or an adopter repo). **The enumeration source is the mirror root,
+  `~/.himmel/state/jira-mirror/`: each directory there named by a project key (`HIMMEL/`, `SALUS/`, ...) is a project, with
+  its `<KEY>-<n>.md` tickets inside and its `<KEY>.versions.tsv` snapshot beside it.** `JIRA_PROJECT_KEY` no longer narrows
+  the Board; `HIMMEL_JIRA_MIRROR`, when set, only relocates the mirror dir of the project `JIRA_PROJECT_KEY` names (else
+  HIMMEL). Narrow it with `--project KEY` (repeatable, `bun scripts/config-ui/server.ts --project SALUS --project HIMMEL`) or its
+  env twin `HIMMEL_BOARD_PROJECTS=SALUS,HIMMEL` (`himmelctl ui` does not forward `--project` yet, so there the env twin is the way), and on the page with the Project filter. Each card shows its key
+  (`SALUS-12`); versions, Sectors and the plan stay per project: a version name two projects share is two entries in the
+  strip, shown `v1.1.3 (SALUS)` and `v1.1.3 (HIMMEL)` while more than one project is on the Board (the default view is then
+  every version, not one project's running version). The plan tables name a ticket by its full key. The chain and drift reads
+  of `GET /api/board` still read the one mirror `JIRA_PROJECT_KEY` (else HIMMEL) names. The rail's Board link is lit when any project
+  on the Board holds a ticket of its own key, whatever `JIRA_PROJECT_KEY` names. With one mirror the page is as before.
+- **Sources.** The Jira mirrors above, each with its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
   `stage1/themes-overlay.tsv`, `stage3/placement.tsv`; without it the board still renders and drift is 0); the drift
   log (`HIMMEL_ROADMAP_DRIFT_LOG`, else `$TRACKER_HANDOVERS_DIR/roadmap-drift.tsv`; read only, `tracker.py` is its
   writer); the workers from `workers.sh`. No mirror: the page says so and names `node scripts/jira/dist/index.js mirror`.
@@ -216,9 +227,11 @@ route, `#/workflow&w=<id>&s=<n>`.
   Jira, and the per-card Sector select sets its Sector with `jira edit <key> --sector` (the CLI checks the name against
   the live option list and has no way to clear one, so "no sector" is not offered as a write). Both go through
   `POST /api/roadmap/write` (token gate, same-origin and JSON checks, the machine write lock, one audit row per write),
-  body `{key, status}` or `{key, sector}`. The server validates `key` (`HIMMEL-<n>`), `status` (a board column id) and the
-  Sector name before any child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
-  incremental `jira mirror` so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
+  body `{key, status}` or `{key, sector}`. The server validates `key` (`<PROJECT>-<n>`, the project one of the enumerated
+  Board projects, else 400), `status` (a board column id) and the
+  Sector name before any child runs, shells to the Jira CLI as the card's own project (`JIRA_PROJECT_KEY` is the key's project,
+  never a default; `CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
+  incremental `jira mirror` over that project's mirror so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
   card back and shows the reason above the board.
 - **Local tracker (HIMMEL-5495).** With `TRACKER=local` (or no `TRACKER` and no `JIRA_PROJECT_KEY`, as the resolver
   `project-mode.mjs` decides), the Board reads the local tracker store through the tracker seam

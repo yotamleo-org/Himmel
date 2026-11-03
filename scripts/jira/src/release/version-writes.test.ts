@@ -91,6 +91,7 @@ const READ_ONLY = [
   'scripts/jira/src/release/engine.ts',
   'scripts/jira/src/release/leaks.ts',
   'scripts/jira/src/release/reducer.ts',
+  'scripts/jira/src/release/repair-run.ts',
   'scripts/jira/src/release/types.ts',
   'scripts/jira/src/release/version-writes.ts',
   'scripts/lib/tracker.mjs',
