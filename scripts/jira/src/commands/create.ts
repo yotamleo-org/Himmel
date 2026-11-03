@@ -599,6 +599,7 @@ interface IntakeOptions {
   type: string;
   proposedVersion?: string;
   why?: string;
+  evidence?: Record<string, unknown>;
 }
 
 class NoReleaseDeclared extends Error {
@@ -632,33 +633,59 @@ function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, titl
   if (intakeOwed(o.type, fields)) assertIntakeQueueable(intakeWhy(o, title));
 }
 
+interface ParentState {
+  fields: { project: { key: string }; status?: { name?: string; statusCategory?: { key?: string } }; fixVersions?: { name: string }[] };
+}
+
 /**
- * A follow-up holds its parent's remainder, so its INTAKE asks for the parent's
- * active version and says why; the release manager still rules.
- * Explicit wins: a version, --backlog, --proposed-version or --why keeps its
- * meaning. A parent with no active version, or one that cannot be read, leaves
- * the request as it was (the ticket is filed either way). The request never
- * writes the fixVersion, so a frozen target or the residual cap is the
- * release manager's call at admission.
+ * A follow-up of an open parent in the current version asks for that version;
+ * the why states only facts (parent, status, version), plus the parent's
+ * remainder when the caller declares it with --remainder. A Done or closed
+ * parent asks for none and the why says so. A frozen version is skipped as
+ * planResidual skips it: the next open version, else none. The residual cap is
+ * NOT checked: the request never writes the fixVersion, and the release
+ * manager is not shown the cap. Parent, status and version go in the request's
+ * evidence. Explicit wins: a version, --backlog, --proposed-version or --why
+ * keeps its meaning. A parent with no current version, or one that cannot be
+ * read, leaves the request as it was (the ticket is filed either way).
  */
-async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
+async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; remainder?: boolean; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
   if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return o;
-  let version: string | undefined;
+  const parentKey = o.followUpOf;
+  let parent: ParentState['fields'];
+  let versions: Awaited<ReturnType<typeof fetchVersions>>;
   try {
-    version = await targetFixVersion(o.followUpOf);
+    parent = (await request<ParentState>('GET', `/issue/${parentKey}?fields=project,status,fixVersions`)).fields;
+    versions = await fetchVersions(parent.project.key);
   } catch (e) {
-    console.error(`jira: warning: could not read ${o.followUpOf}'s version, so the follow-up's INTAKE names none: ${(e as Error).message}`);
+    console.error(`jira: warning: could not read ${parentKey}'s status and version, so the follow-up's INTAKE names none: ${(e as Error).message}`);
     return o;
   }
-  if (!version) return o;
-  return { ...o, proposedVersion: version, why: `follow-up of ${o.followUpOf}, which is in ${version}; this ticket holds the parent's remainder` };
+  const status = parent.status?.name ?? 'unknown';
+  const current = earliestUnreleased(versions);
+  const inCurrent = current !== undefined && parent.fixVersions?.some((v) => v.name === current) === true;
+  const evidence = {
+    follow_up_of: parentKey, parent_status: status, parent_version: inCurrent ? current : null,
+    ...(o.remainder ? { remainder: true } : {}),
+  };
+  if (parent.status?.statusCategory?.key === 'done') {
+    return { ...o, why: `follow-up of ${parentKey}, which is closed (${status})`, evidence };
+  }
+  if (!inCurrent) return o;
+  const frozen = versions.filter((v) => frozenDate(v.description) !== undefined).map((v) => v.name);
+  const next = earliestUnreleased(versions.filter((v) => v.name !== current));
+  const isFrozen = frozen.includes(current);
+  const target = isFrozen ? (next !== undefined && !frozen.includes(next) ? next : undefined) : current;
+  const facts = `follow-up of ${parentKey} (${status}), which is in ${current}${isFrozen ? ' (frozen)' : ''}`;
+  const why = o.remainder ? `${facts}; ${parentKey} cannot close without this ticket, which holds its remainder` : facts;
+  return { ...o, proposedVersion: target, why, evidence };
 }
 
 function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
   if (!intakeOwed(o.type, fields)) return;
   const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
   try {
-    queueBacklogIntake(key, intakeWhy(o, title), toVersion, true);
+    queueBacklogIntake(key, intakeWhy(o, title), toVersion, true, o.evidence);
   } catch (e) {
     console.error(`Created ${key} but INTAKE not queued: ${(e as Error).message}`);
     process.exitCode = 1;
@@ -671,14 +698,14 @@ function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, 
  * callers (edit's depth-2 drop) only warn, also when no release is declared;
  * strict ones rethrow so the caller can fail the run.
  */
-export function queueBacklogIntake(key: string, why: string, toVersion: string | null = null, strict = false): void {
+export function queueBacklogIntake(key: string, why: string, toVersion: string | null = null, strict = false, evidence: Record<string, unknown> = {}): void {
   let release: string | undefined;
   try {
     release = intakeRelease();
     const ctx = ctxFor(release);
     refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, why });
     const r = releaseRequest(ctx, {
-      verb: 'INTAKE', key, from_v: null, to_v: toVersion, why, evidence: {}, from: 'console',
+      verb: 'INTAKE', key, from_v: null, to_v: toVersion, why, evidence, from: 'console',
     });
     console.error(`jira: INTAKE queued for ${key} as REQ ${r.req} (release ${release})`);
   } catch (e) {
@@ -849,7 +876,11 @@ export function registerCreate(program: Command): void {
     )
     .option(
       '--follow-up-of <key>',
-      'File this as a follow-up of <key>: stamps the residual label and links it to <key>',
+      "File this as a follow-up of <key>: stamps the residual label and links it to <key>. With no version of its own, its INTAKE asks for <key>'s current version (an open parent; a Done parent gets none) and states parent, status and version",
+    )
+    .option(
+      '--remainder',
+      "With --follow-up-of: this ticket holds the parent's remainder (a deferred DoD row), so the INTAKE says the parent cannot close without it",
     )
     .option(
       '--over-cap <reason>',
@@ -891,6 +922,7 @@ export function registerCreate(program: Command): void {
         affectsVersion?: string;
         residualOf?: string;
         followUpOf?: string;
+        remainder?: boolean;
         overCap?: string;
         fuClass?: string;
         fuWhy?: string;
@@ -908,6 +940,9 @@ export function registerCreate(program: Command): void {
         refuseTestJiraPost('create');
         if (options.followUpOf !== undefined && options.residualOf !== undefined) {
           throw new Error('--follow-up-of cannot be combined with --residual-of (a residual is already linked to its parent)');
+        }
+        if (options.remainder && options.followUpOf === undefined) {
+          throw new Error('--remainder needs --follow-up-of <key>, the parent whose remainder this ticket holds');
         }
         if (options.overCap !== undefined && !options.overCap.trim()) {
           throw new Error('--over-cap needs a reason');

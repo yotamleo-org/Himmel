@@ -1263,56 +1263,129 @@ describe('create — unplaced follow-up (HIMMEL-8723)', () => {
     expect(posted()).toBe(true);
   });
 
-  // The request carries the parent's active version, so the release manager is told what the ticket is.
-  describe('the parent\'s version (HIMMEL-9002)', () => {
-    type Req = { to_v: string | null; why: string };
-    const queued = (): Req[] =>
-      readFileSync(join(baseRoot, 'state', 'R1', 'requests.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Req);
-    const parentIn = (versions: string[] | Error) => {
+  // The request asks for an open parent's current version and states only facts; --remainder adds the claim.
+  describe('the parent\'s version and status', () => {
+    type Req = { to_v: string | null; why: string; evidence: Record<string, unknown> };
+    const queued = (): Req[] => {
+      try {
+        return readFileSync(join(baseRoot, 'state', 'R1', 'requests.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Req);
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw e;
+      }
+    };
+    type Parent = { versions?: string[]; status?: string; done?: boolean; fail?: Error; frozen?: boolean; next?: 'open' | 'frozen' | 'none' };
+    const parentIs = (p: Parent) => {
       const base = mockRequest.getMockImplementation()!;
       mockRequest.mockImplementation(async (method: string, path: string) => {
-        if (method === 'GET' && path === '/issue/HIMMEL-5?fields=project,fixVersions') {
-          if (versions instanceof Error) throw versions;
-          return { fields: { project: { key: 'HIMMEL' }, fixVersions: versions.map((name) => ({ name })) } };
+        if (method === 'GET' && path === '/issue/HIMMEL-5?fields=project,status,fixVersions') {
+          if (p.fail) throw p.fail;
+          return {
+            fields: {
+              project: { key: 'HIMMEL' },
+              status: { name: p.status ?? 'In Progress', statusCategory: { key: p.done ? 'done' : 'indeterminate' } },
+              fixVersions: (p.versions ?? ['v1.1.3']).map((name) => ({ name })),
+            },
+          };
+        }
+        if (method === 'GET' && path.endsWith('/versions')) {
+          return [
+            { name: 'v1.1.3', released: false, description: p.frozen ? 'frozen: 2026-10-20' : '' },
+            ...(p.next === 'none' ? [] : [{ name: 'v1.1.4', released: false, description: p.next === 'frozen' ? 'frozen: 2026-10-27' : '' }]),
+          ];
+        }
+        if (method === 'GET' && path === '/issue/HIMMEL-6?fields=project,fixVersions') {
+          return { fields: { project: { key: 'HIMMEL' }, fixVersions: [{ name: 'v1.1.3' }] } };
         }
         return base(method, path);
       });
     };
+    const parentRead = () => mockRequest.mock.calls.some((x) => x[0] === 'GET' && String(x[1]).startsWith('/issue/HIMMEL-5?fields=project,status'));
     const issueBody = () => mockRequest.mock.calls.find((x) => x[0] === 'POST' && x[1] === '/issue')![2] as { fields: Record<string, unknown> };
 
-    it('RED 9002 i: a follow-up of a parent on the current version queues INTAKE to that version, naming the parent', async () => {
-      parentIn(['v1.1.3']);
+    it('RED 9002 i: an open parent on the current version: INTAKE asks for it and states only facts, no remainder claim', async () => {
+      parentIs({});
       await file('--follow-up-of', 'HIMMEL-5');
       expect(queued()).toHaveLength(1);
       expect(queued()[0]!.to_v).toBe('v1.1.3');
-      expect(queued()[0]!.why).toMatch(/HIMMEL-5.*v1\.1\.3.*remainder/s);
+      expect(queued()[0]!.why).toBe('follow-up of HIMMEL-5 (In Progress), which is in v1.1.3');
+      expect(queued()[0]!.why).not.toMatch(/remainder|cannot close/);
+      expect(queued()[0]!.evidence).toEqual({ follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: 'v1.1.3' });
       expect(issueBody().fields['fixVersions']).toBeUndefined();
     });
 
-    it('9002 i control: an explicit backlog proposal with a why stays backlog', async () => {
-      parentIn(['v1.1.3']);
-      await file('--follow-up-of', 'HIMMEL-5', '--backlog', '--proposed-version', 'backlog', '--why', 'low importance remainder, waits in the backlog');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'low importance remainder, waits in the backlog' })]);
+    it('RED 9002 remainder: --remainder says the parent cannot close without this ticket and records it', async () => {
+      parentIs({});
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(queued()[0]!.to_v).toBe('v1.1.3');
+      expect(queued()[0]!.why).toBe('follow-up of HIMMEL-5 (In Progress), which is in v1.1.3; HIMMEL-5 cannot close without this ticket, which holds its remainder');
+      expect(queued()[0]!.evidence).toEqual({ follow_up_of: 'HIMMEL-5', parent_status: 'In Progress', parent_version: 'v1.1.3', remainder: true });
+    });
+
+    it('9002 remainder: --remainder without --follow-up-of is refused before anything is filed', async () => {
+      await expect(file('--remainder')).rejects.toThrow(/--remainder needs --follow-up-of/);
+      expect(posted()).toBe(false);
+    });
+
+    it('RED 9002 done: a Done parent gets no version, and the why says the parent is closed', async () => {
+      parentIs({ status: 'Done', done: true });
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(queued()).toEqual([expect.objectContaining({
+        to_v: null,
+        why: 'follow-up of HIMMEL-5, which is closed (Done)',
+        evidence: { follow_up_of: 'HIMMEL-5', parent_status: 'Done', parent_version: 'v1.1.3', remainder: true },
+      })]);
+    });
+
+    it('RED 9002 frozen: a frozen current version is skipped as a residual skips it, to the next open version', async () => {
+      parentIs({ frozen: true });
+      await file('--follow-up-of', 'HIMMEL-5');
+      expect(queued()[0]!.to_v).toBe('v1.1.4');
+      expect(queued()[0]!.why).toBe('follow-up of HIMMEL-5 (In Progress), which is in v1.1.3 (frozen)');
+    });
+
+    it.each<[string, Parent]>([['the next version is frozen too', { frozen: true, next: 'frozen' }], ['there is no next version', { frozen: true, next: 'none' }]])(
+      '9002 frozen: names no version when %s',
+      async (_name, p) => {
+        parentIs(p);
+        await file('--follow-up-of', 'HIMMEL-5');
+        expect(queued()[0]!.to_v).toBeNull();
+      },
+    );
+
+    it('9002 i control: an explicit backlog proposal with a why stays backlog, and the parent is not read', async () => {
+      parentIs({});
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder', '--backlog', '--proposed-version', 'backlog', '--why', 'low importance remainder, waits in the backlog');
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: 'low importance remainder, waits in the backlog', evidence: {} })]);
+      expect(parentRead()).toBe(false);
     });
 
     it('9002 d: an explicit --proposed-version or --why keeps its meaning', async () => {
-      parentIn(['v1.1.3']);
+      parentIs({});
       await file('--follow-up-of', 'HIMMEL-5', '--proposed-version', 'v1.1.3', '--why', 'a caller-written reason');
       await file('--follow-up-of', 'HIMMEL-5', '--why', 'only a why');
       expect(queued().map((r) => [r.to_v, r.why])).toEqual([['v1.1.3', 'a caller-written reason'], [null, 'only a why']]);
     });
 
-    it('9002 ii: a follow-up of a parent with no active version behaves as today', async () => {
-      parentIn(['v1.1.2']);
-      await file('--follow-up-of', 'HIMMEL-5');
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/) })]);
+    it.each(['--blocks', '--split-from'])('9002 d: %s places the ticket in its own version, so no request is queued and the parent is not read', async (relation) => {
+      parentIs({});
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder', relation, 'HIMMEL-6');
+      expect(issueBody().fields['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
+      expect(queued()).toEqual([]);
+      expect(parentRead()).toBe(false);
+    });
+
+    it('9002 ii: an open parent with no current version behaves as today', async () => {
+      parentIs({ versions: ['v1.1.2'] });
+      await file('--follow-up-of', 'HIMMEL-5', '--remainder');
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, why: expect.stringMatching(/filed to the backlog/), evidence: {} })]);
     });
 
     it('9002 iii: a parent read that fails still files the ticket, with today\'s backlog request and a warning', async () => {
-      parentIn(new Error('boom'));
+      parentIs({ fail: new Error('boom') });
       await file('--follow-up-of', 'HIMMEL-5');
       expect(posted()).toBe(true);
-      expect(queued()).toEqual([expect.objectContaining({ to_v: null })]);
+      expect(queued()).toEqual([expect.objectContaining({ to_v: null, evidence: {} })]);
       expect(errs.some((e) => /HIMMEL-5.*boom/.test(e))).toBe(true);
       expect(process.exitCode).toBeUndefined();
     });
