@@ -5249,6 +5249,51 @@ check_c85_self_heartbeat() {
         "run bash scripts/himmel-update.sh (it wires the entry), or node \"$REPO_ROOT/scripts/observability/wire-session-telemetry-hooks.mjs\" \"$REPO_ROOT/.claude/settings.json\" (restore a missing .claude/settings.json first with git checkout -- .claude/settings.json); on an operator station wire it VM-first"
 }
 
+# --- C86-morning-report: the newest morning report is under 36 h old ---
+# Same rule as the Morning report page (scripts/config-ui/reports.ts): the newest
+# morning-report-YYYY-MM-DD.md by name under the handover root, aged by its mtime.
+# WARN over 36 h. INFO (never a standing WARN) with no handover root, or with no report
+# on a machine that never armed the cadence; a cadence armed over 36 h ago with still no
+# report WARNs, since the schedule has had time to fire.
+check_c86_morning_report() {
+    local root newest="" m now age cron runner rm_
+    load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
+    if ! root="$(doctor_handover_root)" || [ -z "$root" ] || [ ! -d "$root" ]; then
+        emit INFO C86-morning-report "no handover root resolved -- morning report age not checked"
+        return 0
+    fi
+    # shellcheck disable=SC2012  # names are morning-report-YYYY-MM-DD.md only
+    newest="$(ls "$root"/morning-report-????-??-??.md 2>/dev/null | sort | tail -n 1)"
+    now="$(date +%s)"
+    if [ -n "$newest" ]; then
+        m="$(stat -c %Y "$newest" 2>/dev/null || stat -f %m "$newest" 2>/dev/null)" || m=""
+        case "$m" in ''|*[!0-9]*) emit INFO C86-morning-report "cannot read the mtime of $newest"; return 0 ;; esac
+        age=$(( (now - m) / 3600 ))
+        if [ "$age" -gt 36 ]; then
+            emit WARN C86-morning-report "the newest morning report ($(basename "$newest")) is ${age} h old, over 36 h, so no report is being written" \
+                "bash scripts/handover/morning-report-cadence.sh status  (arm: bash scripts/handover/morning-report-cadence.sh arm)"
+        else
+            emit OK C86-morning-report "the newest morning report ($(basename "$newest")) is ${age} h old"
+        fi
+        return 0
+    fi
+    cron="$(LC_ALL=C "${MORNINGREPORT_CRONTAB:-crontab}" -l 2>/dev/null | grep -F '# HIMMEL-MorningReport')" || cron=""
+    if [ -z "$cron" ]; then
+        emit INFO C86-morning-report "no morning report under $root and the cadence is not armed" \
+            "bash scripts/handover/morning-report-cadence.sh arm  (himmel-update arms it)"
+        return 0
+    fi
+    runner="${MORNINGREPORT_RUNNER_DIR:-$HOME/.claude/morning-report-cadence}/morning-report-cadence.sh"
+    rm_="$(stat -c %Y "$runner" 2>/dev/null || stat -f %m "$runner" 2>/dev/null)" || rm_=""
+    case "$rm_" in ''|*[!0-9]*) rm_="$now" ;; esac
+    if [ $(( (now - rm_) / 3600 )) -gt 36 ]; then
+        emit WARN C86-morning-report "the morning-report cadence is armed but no report exists under $root" \
+            "cat ~/.claude/morning-report-cadence/morning-report-cadence.log"
+    else
+        emit INFO C86-morning-report "the morning-report cadence was armed under 36 h ago; no report yet"
+    fi
+}
+
 # --- C82-mcp-sources: every MCP server with the layer it comes from ---
 # Read only, key names only: never an env, header or argument value. Layers: user config
 # (~/.claude.json mcpServers), project .mcp.json, an enabled plugin's .mcp.json (newest
@@ -5464,6 +5509,7 @@ run_check C82 check_c82_mcp_sources
 run_check C83 check_c83_qmd_embed_backlog
 run_check C84 check_c84_release_queue
 run_check C85 check_c85_self_heartbeat
+run_check C86 check_c86_morning_report
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
