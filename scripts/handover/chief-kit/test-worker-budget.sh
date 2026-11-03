@@ -80,11 +80,17 @@ check    "5: a bad soft value falls back to the default (rc 0)" "$rc" 0
 contains "5: the bad value is named on stderr" "$out" "ignoring WORKER_COST_SOFT_K=abc"
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/soft.jsonl" WORKER_COST_SOFT_K=08 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: leading-zero 08 is decimal (rc 4 at 2000k)" "$rc" 4
+contains "5: leading-zero 08 is used, not the default" "$out" "soft=8k"
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: zero falls back to the default, not disabled (rc 0)" "$rc" 0
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=5000 WORKER_COST_HARD_K=4000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: hard below soft is refused, defaults used (rc 0)" "$rc" 0
 contains "5: hard below soft says so" "$out" "hard"
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=5000 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "5: soft above the default hard, hard unset: both fall back (rc 0)" "$rc" 0
+contains "5: that warning names the soft value in conflict" "$out" "soft=5000k and hard=4700k conflict"
+contains "5: that warning says both fell back" "$out" "both fell back"
+contains "5: the defaults are used" "$out" "soft=2000k hard=4700k"
 
 # --- 6. unreadable ---------------------------------------------------------------
 run "$tmp/nope.jsonl"
