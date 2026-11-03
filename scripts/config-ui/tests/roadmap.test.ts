@@ -730,6 +730,21 @@ test("5494: each project runs its own version, and a Sector select offers only i
   expect(select("SALUS-1")).not.toContain("Visibility");
   expect(select("HIMMEL-1")).toContain("Visibility");
   expect(select("HIMMEL-1")).not.toContain("Intake");
+  expect(html).toContain('data-rm-theme-key="1" data-rm-project="SALUS"'); // the Sector write names the card's project: two projects share the number
+  expect(html).toContain('data-rm-theme-key="1" data-rm-project="HIMMEL"');
+});
+
+test("5494: two projects with one ticket number keep their own plan version and plan theme", () => {
+  const m = twoMirrors();
+  const plan = join(m.d, "plan");
+  mkdirSync(join(plan, "stage1"), { recursive: true }); mkdirSync(join(plan, "stage3"), { recursive: true });
+  writeFileSync(join(plan, "stage3", "placement.tsv"), "key\tversion\tlayer\nHIMMEL-1\tv1.1.2\tfeatures\nSALUS-1\tv1.1.3\tfeatures\n");
+  writeFileSync(join(plan, "stage1", "C01.tsv"), "key\ttheme\nHIMMEL-1\tAlpha\nSALUS-1\tBeta\n");
+  const projects = [{ key: "HIMMEL", dir: join(m.root, "HIMMEL") }, { key: "SALUS", dir: join(m.root, "SALUS") }];
+  const r = readRoadmap({ mirrorDir: "", projects, planDir: plan, workers: { state: "absent" } as never });
+  const by = Object.fromEntries(r.tickets.map((t) => [t.id, t]));
+  expect([by["HIMMEL-1"].pv, r.planThemes[by["HIMMEL-1"].pt]]).toEqual(["v1.1.2", "Alpha"]);
+  expect([by["SALUS-1"].pv, r.planThemes[by["SALUS-1"].pt]]).toEqual(["v1.1.3", "Beta"]); // a project-blind key would give SALUS-1 HIMMEL's row
 });
 
 test("5494: a card on the No version tab still offers the Sectors its project's versioned tickets use", () => {

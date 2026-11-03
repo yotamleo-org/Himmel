@@ -218,6 +218,7 @@ test("GET /api/board and /api/roadmap read the same Jira mirror when only himmel
   const url = serve({ HIMMEL_JIRA_MIRROR: "", HIMMEL_CHAIN_REGISTRY: s.registry }, s);
   expect((await get(url)).chains.tickets["HIMMEL-1"].title).toBe("First card from the conf project");
   expect(JSON.stringify(await get(url.replace("/api/board", "/api/roadmap")))).toContain("First card from the conf project");
+  for (const n of [1, 2]) rmSync(join(s.home, ".himmel", "state", "jira-mirror", "CONFKEY", `HIMMEL-${n}.md`)); // leave only the project's own keyed ticket: the rail must not need a HIMMEL-keyed file
   expect((await get(url.replace("/api/board", "/api/sources"))).sources).toEqual(["jira"]); // the rail stays lit
 });
 

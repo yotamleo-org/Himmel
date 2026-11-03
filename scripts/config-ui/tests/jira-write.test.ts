@@ -15,14 +15,14 @@ const TOKEN = "t".repeat(64);
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function boot(extra: Record<string, string> = {}, checkout?: string, project?: string, mirrors: string[] = ["HIMMEL"]) {
+function boot(extra: Record<string, string> = {}, checkout?: string, project?: string, mirrors: string[] = ["HIMMEL"], only?: string[]) {
   const dir = mkdtempSync(join(tmpdir(), "jira-write-"));
   const home = join(dir, "home"), root = join(dir, "root"), log = join(dir, "jira.log");
   const own = join(dir, "checkout"); // hermetic: no .env of the real checkout is read
   mkdirSync(home); mkdirSync(root); mkdirSync(own);
   for (const k of mirrors) mkdirSync(join(home, ".himmel", "state", "jira-mirror", k), { recursive: true }); // a write is only for a project on the Board
   const s = startServer({
-    port: 0, token: TOKEN, root: checkout ?? own, ...(project ? { projectRoot: project } : {}),
+    port: 0, token: TOKEN, root: checkout ?? own, ...(project ? { projectRoot: project } : {}), ...(only ? { projects: only } : {}),
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_JIRA_CLI: JIRA, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
       STUB_JIRA_LOG: log, ...extra },
   });
@@ -194,6 +194,15 @@ test("5494 row 4: a drop on a SALUS card runs the CLI as SALUS, refreshes SALUS'
   expect(seen.every((x) => x.key === "SALUS")).toBe(true); // the leftover HIMMEL default would fail here
   expect((await b.post({ key: "OTHER-1", status: "prog" })).status).toBe(400); // not an enumerated project
   expect(b.calls().filter((c) => c[0] === "transition").length).toBe(1);
+});
+
+test("5494: a Board narrowed to SALUS (the --project option, then its env twin) writes SALUS cards and refuses a HIMMEL card before any CLI call", async () => {
+  for (const narrow of [{ only: ["SALUS"], extra: {} }, { only: undefined, extra: { HIMMEL_BOARD_PROJECTS: "SALUS" } }]) {
+    const b = boot(narrow.extra, undefined, undefined, ["HIMMEL", "SALUS"], narrow.only);
+    expect((await b.post({ key: "SALUS-3", status: "prog" })).status).toBe(200);
+    expect((await b.post({ key: "HIMMEL-3", status: "prog" })).status).toBe(400); // a project narrowed off the Board is not written
+    expect(b.calls().filter((c) => c[0] === "transition")).toEqual([["transition", "SALUS-3", "In Progress"]]);
+  }
 });
 
 test("roadmap.ts falls back to the Jira theme label over the plan theme, and maps a matching slug to the plan's name", () => {

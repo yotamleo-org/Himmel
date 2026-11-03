@@ -213,7 +213,8 @@ route, `#/workflow&w=<id>&s=<n>`.
   (`SALUS-12`); versions, Sectors and the plan stay per project: a version name two projects share is two entries in the
   strip, shown `v1.1.3 (SALUS)` and `v1.1.3 (HIMMEL)` while more than one project is on the Board (the default view is then
   every version, not one project's running version). The plan tables name a ticket by its full key. The chain and drift reads
-  of `GET /api/board` still read the one mirror `JIRA_PROJECT_KEY` (else HIMMEL) names. With one mirror the page is as before.
+  of `GET /api/board` still read the one mirror `JIRA_PROJECT_KEY` (else HIMMEL) names. The rail's Board link is lit when any project
+  on the Board holds a ticket of its own key, whatever `JIRA_PROJECT_KEY` names. With one mirror the page is as before.
 - **Sources.** The Jira mirrors above, each with its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
   `stage1/themes-overlay.tsv`, `stage3/placement.tsv`; without it the board still renders and drift is 0); the drift
   log (`HIMMEL_ROADMAP_DRIFT_LOG`, else `$TRACKER_HANDOVERS_DIR/roadmap-drift.tsv`; read only, `tracker.py` is its

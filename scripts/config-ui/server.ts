@@ -905,6 +905,10 @@ if (import.meta.main && process.argv.includes("--set-login")) {
   }
 }
 
+// --project KEY (repeatable, or --project=KEY): the Jira projects the Board is narrowed to; none given is every mirrored project.
+export const projectFlags = (argv: string[]): string[] =>
+  argv.flatMap((x, n, all) => (x === "--project" && all[n + 1] ? [all[n + 1]] : x.startsWith("--project=") ? [x.slice("--project=".length)] : []));
+
 if (import.meta.main) {
   const i = process.argv.indexOf("--port");
   const a = process.argv.indexOf("--agui");
@@ -922,7 +926,7 @@ if (import.meta.main) {
   }
   // the operator lands on Fleet (another page); the config report loads meanwhile.
   // --project KEY (repeatable, or --project=KEY): narrow the Board to these Jira projects; with none it covers every mirrored project.
-  const only = process.argv.flatMap((x, n, all) => (x === "--project" && all[n + 1] ? [all[n + 1]] : x.startsWith("--project=") ? [x.slice("--project=".length)] : []));
+  const only = projectFlags(process.argv);
   const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true, noIdle: service, token: fixed, ...(only.length ? { projects: only } : {}) });
   // himmelctl ui --agui [<run>]: the launcher has already resolved and validated the run id; with none, the
   // fleet landing.

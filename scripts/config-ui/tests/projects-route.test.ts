@@ -4,7 +4,7 @@ import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startServer } from "../server";
+import { startServer, projectFlags } from "../server";
 import { readProjects } from "../projects";
 import { stubKeyring } from "./keyring-stub";
 
@@ -134,6 +134,12 @@ test("/api/projects masks a cached feed's detail and remedy with the keyring's s
 });
 
 // ---- the Board default is every project with a mirror, wherever config-ui is launched ----
+test("5494: the --project flag is read repeated and as --project=KEY, and a launch with none narrows nothing", () => {
+  expect(projectFlags(["bun", "server.ts", "--project", "SALUS", "--port", "0", "--project=HIMMEL"])).toEqual(["SALUS", "HIMMEL"]);
+  expect(projectFlags(["bun", "server.ts", "--port", "0"])).toEqual([]);
+  expect(projectFlags(["bun", "server.ts", "--project"])).toEqual([]); // a flag with no value is dropped, not an empty project
+});
+
 test("5494 launch place: from an adopter repo cwd naming its own JIRA_PROJECT_KEY, /api/roadmap still lists every mirrored project", async () => {
   const dir = mkdtempSync(join(tmpdir(), "board-launch-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
@@ -152,4 +158,5 @@ test("5494 launch place: from an adopter repo cwd naming its own JIRA_PROJECT_KE
   const r = await (await get(s.port, "/api/roadmap")).json();
   expect(r.projects).toEqual(["ABC", "HIMMEL"]);
   expect(r.tickets.map((t: { id: string }) => t.id)).toEqual(["ABC-1", "HIMMEL-1"]);
+  expect((await (await get(s.port, "/api/sources")).json()).sources).toEqual(["jira"]); // the rail link: without it the page is unreachable
 });
