@@ -1,5 +1,7 @@
 # Testing — the non-guessable suite invocations
 
+<!-- HIMMEL-6575 gate proof, throwaway, do not merge -->
+
 Load-on-need reference behind `docs/internals/claude-md-detail.md`. None
 of the invocations below are discoverable by guessing the "obvious" command —
 each one has a wired reason (a per-suite cwd rule, a quiet reporter, a runner
