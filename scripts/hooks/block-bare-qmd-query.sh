@@ -1718,7 +1718,11 @@ dyn_check() {
                 if [[ $bd =~ $DYNBODY ]] || [[ $bd == *'$('* || $bd == *'`'* ]]; then fdang="$fdang$w "; fi
                 i=$j; pp=0; continue
             fi
-            case "$adang$fdang" in *" ${w##*/} "*) deny=1; return 0 ;; esac
+            # A word ending in `/` has no basename and names no program; its
+            # empty basename would match the blank padding of the lists.
+            if [ -n "${w##*/}" ]; then
+                case "$adang$fdang" in *" ${w##*/} "*) deny=1; return 0 ;; esac
+            fi
             if [ -n "$subs" ] || [[ $w == *'$'* ]]; then
                 # The part after the last dynamic piece must be a literal path.
                 if [ "$lastd" -ge 0 ]; then

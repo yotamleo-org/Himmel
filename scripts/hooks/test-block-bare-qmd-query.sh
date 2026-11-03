@@ -1201,6 +1201,16 @@ deny "ssh host bunx @tobilu/qmd search x"
 # model is never weaker than the unmodified guard.
 deny 'qmd que{ry,} x'
 deny 'qmd {query,status} x'
+deny '{qmd,x} query foo'
+deny 'qmd {query,x} foo'
+deny 'ls; {qmd,query}'
+deny '{qmd,x} {query,y} foo'
+deny 'env {qmd,x} query foo'
+# a brace word that only names qmd, in a command with no search verb, is a
+# mention: a trailing `/` leaves it no basename, which is no program
+allow 'ls ~/.claude/{pipeline,qmd}-cadence/'
+allow "grep -rl 'x' ~/.claude/{a,qmd}-c/"
+allow 'ls {qmd,x}-{a,b}/'
 deny 'timeout 5 qmd que{ry,} x'
 deny 'git commit -m "x; qmd query y"'
 deny 'curl -d "a; qmd query b" http://example.invalid'
