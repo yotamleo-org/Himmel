@@ -690,7 +690,7 @@ put_row scripts/t2h1.sh HIMMEL-9407 holder1 "$(mkdoc HIMMEL-9407-case.md)"
 put_row scripts/t2h2.sh HIMMEL-9408 holder2 "$(mkdoc HIMMEL-9408-case.md)"
 printf '#!/usr/bin/env bash\necho call >> "%s/ql-hang-calls"\nexec sleep 30\n' "$W" > "$W/bin/ql-hang-count"; chmod 755 "$W/bin/ql-hang-count"
 t0="$(date +%s)"
-HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key HIMMEL-9406 --label slow --doc "$DT4" --repo "$R" --deadline "$((t0 + 1))"
+HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key HIMMEL-9406 --label slow --doc "$DT4" --repo "$R" --deadline "$((t0 + 2))"
 t1="$(date +%s)"
 same "T2 seed: a hanging queue-lock stub passes the deadline, exit 3" "$RC" 3
 same "T2 seed: ... inside 20 s (the deadline bounds the stub call)" "$([ "$((t1 - t0))" -lt 20 ] && echo yes || echo no)" yes
