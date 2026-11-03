@@ -227,12 +227,33 @@ _salus_marked() {
     return 1
 }
 
+# _phi_dir_provable <dir> -> rc 0 iff the presence of a file in <dir> can be
+# proven either way. Mirrors _guard_phi_dir_provable in
+# scripts/guardrails/phi-egress-lib.sh: the nearest existing ancestor must be a
+# directory this process can traverse.
+_phi_dir_provable() {
+    local d="$1" up
+    while [ ! -e "$d" ] && [ ! -L "$d" ]; do
+        up="${d%/*}"
+        { [ -n "$up" ] && [ "$up" != "$d" ]; } || return 0
+        d="$up"
+    done
+    [ -d "$d" ] && [ -x "$d" ]
+}
+
 # _under_any_list <abs-path> <listfile> -> echoes hit | miss | unreadable.
-# Mirrors graphify-fence.sh: a missing list file is a miss; an UNREADABLE one is
-# "unreadable" so the caller can fail CLOSED (like the fence).
+# Mirrors graphify-fence.sh: a list file that is truly absent is a miss; an
+# UNREADABLE or UNREACHABLE one is "unreadable" so the caller can fail CLOSED
+# (like the fence).
 _under_any_list() {
     local p="$1" listfile="$2" root
-    [ -e "$listfile" ] || { echo miss; return; }
+    # [ -e ] is also false on EACCES (a locked dir or parent), so a miss is only
+    # confirmed when the dir holding the list can be proven; a dangling symlink
+    # counts as present.
+    if [ ! -e "$listfile" ] && [ ! -L "$listfile" ]; then
+        if _phi_dir_provable "${listfile%/*}"; then echo miss; else echo unreadable; fi
+        return
+    fi
     { [ -f "$listfile" ] && [ -r "$listfile" ]; } || { echo unreadable; return; }
     while IFS= read -r root || [ -n "$root" ]; do
         # kept in lockstep with graphify-fence.sh (trim + skip
@@ -419,7 +440,7 @@ preflight_vault() {
     for name in phi-roots egress-denylist; do
         rc="$(_under_any_list "$ap" "$PHI_CONFIG_DIR/$name")"
         if [ "$rc" = unreadable ]; then
-            preflight_refuse "$PHI_CONFIG_DIR/$name exists but is unreadable (fail-closed)"
+            preflight_refuse "$PHI_CONFIG_DIR/$name is unreadable or unreachable (fail-closed)"
         fi
         if [ "$rc" = hit ]; then
             preflight_refuse "vault ($VAULT -> $class_path) is under a $name entry (PHI/denylisted)"

@@ -486,6 +486,37 @@ assert_contains "indented phi-roots refuse message names the list" "phi-roots" "
 assert_eq "indented phi-roots refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 rm -f "$CLAUDE_GLM_CONFIG_DIR/phi-roots"
 
+# A PHI list the wrapper cannot REACH (the config dir, or its
+# parent, refuses traversal) is unreadable -> refuse, never "absent -> miss".
+# [ -e ] reads false on EACCES, so the old existence test turned a permission
+# fault into a miss (fail-OPEN). Skipped where chmod cannot drop traversal
+# (root); dirs are restored before the EXIT trap rm -rf.
+echo "TEST: unreachable PHI list refuses the vault (rc=2), absent list is a miss (HIMMEL-8923)"
+LOCK_SELF="$TMP_ROOT/lock-self"; mkdir -p "$LOCK_SELF/cfg"
+printf '%s\n' "$PHI_ZONE" > "$LOCK_SELF/cfg/phi-roots"
+LOCK_PARENT="$TMP_ROOT/lock-parent"; mkdir -p "$LOCK_PARENT/cfg"
+printf '%s\n' "$PHI_ZONE" > "$LOCK_PARENT/cfg/phi-roots"
+chmod 000 "$LOCK_SELF/cfg" "$LOCK_PARENT"
+if [ -x "$LOCK_SELF/cfg" ] || [ -x "$LOCK_PARENT" ]; then
+    skip "unreachable PHI list (chmod could not drop traversal here)"
+else
+    reset_runner_log
+    rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$LOCK_SELF/cfg" run_refresh luna --vault "$PHI_ZONE/vault" 2>&1) || rc=$?
+    assert_rc "config dir at mode 000 + listed vault -> rc 2" 2 "$rc"
+    assert_contains "config dir at mode 000 names unreadable" "unreadable" "$out"
+    assert_eq "config dir at mode 000 fired no runner worker" "" "$(cat "$RUNNER_LOG")"
+    reset_runner_log
+    rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$LOCK_PARENT/cfg" run_refresh luna --vault "$PHI_ZONE/vault" 2>&1) || rc=$?
+    assert_rc "config dir's parent at mode 000 + listed vault -> rc 2" 2 "$rc"
+    assert_contains "locked parent names unreadable" "unreadable" "$out"
+    assert_eq "locked parent fired no runner worker" "" "$(cat "$RUNNER_LOG")"
+fi
+chmod 755 "$LOCK_SELF/cfg" "$LOCK_PARENT"
+# control: a truly absent list dir under a reachable parent is a miss
+reset_runner_log
+rc=0; out=$(CLAUDE_GLM_CONFIG_DIR="$TMP_ROOT/no-such-cfg/deeper" run_refresh luna --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "absent PHI config dir + unlisted vault -> rc 0 (miss)" 0 "$rc"
+
 # ============================================================================
 # Test 12: vault preflight — refuse a filesystem root and the operator HOME
 # ============================================================================

@@ -1056,6 +1056,35 @@ run_fence deny no "$HIMMEL" "node absent -> rc 2 (fail-closed)" \
 run_fence deny no "$HIMMEL" "unreadable phi-roots -> rc 2" \
     "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$PHI_BADROOTS"
 
+# (9a) A PHI list the fence cannot REACH (the config dir, or a
+# parent of it, refuses traversal) is unreadable -> deny, not "absent -> miss".
+# [ -e ] reads false on EACCES, so the existence test used to run first and
+# turn a permission fault into a miss (fail-OPEN). The list names a root that
+# DOES cover the target, so a miss would allow. Skipped where chmod cannot
+# drop traversal (root); every dir is restored before the EXIT trap rm -rf.
+echo "== HIMMEL-8923: unreachable PHI list denies, absent list is a miss =="
+LOCK_SELF="$WS/lock-self"; mkdir -p "$LOCK_SELF/cfg"
+printf '%s\n' "$HIMMEL/scripts" > "$LOCK_SELF/cfg/phi-roots"
+LOCK_PARENT="$WS/lock-parent"; mkdir -p "$LOCK_PARENT/cfg"
+printf '%s\n' "$HIMMEL/scripts" > "$LOCK_PARENT/cfg/phi-roots"
+chmod 000 "$LOCK_SELF/cfg" "$LOCK_PARENT"
+if [ -x "$LOCK_SELF/cfg" ] || [ -x "$LOCK_PARENT" ]; then
+    printf '  SKIP  unreachable PHI list (chmod could not drop traversal here)\n'
+else
+    run_fence deny no "$HIMMEL" "config dir at mode 000 + listed root -> deny (HIMMEL-8923)" \
+        "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_SELF/cfg"
+    run_fence deny no "$HIMMEL" "config dir's parent at mode 000 + listed root -> deny (HIMMEL-8923)" \
+        "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_PARENT/cfg"
+fi
+chmod 755 "$LOCK_SELF/cfg" "$LOCK_PARENT"
+# control: a truly absent list dir under a reachable parent is still a miss
+run_fence allow no "$HIMMEL" "absent PHI config dir + unlisted root -> allow (miss, HIMMEL-8923 control)" \
+    "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$WS/no-such-cfg/deeper"
+# control: a reachable dir with the lists absent is a miss too
+mkdir -p "$WS/empty-cfg"
+run_fence allow no "$HIMMEL" "empty PHI config dir + unlisted root -> allow (miss, HIMMEL-8923 control)" \
+    "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$WS/empty-cfg"
+
 # (9b) the phi-roots / egress-denylist reader trims surrounding
 # whitespace and skips whole-line `#` comments, the same rules as
 # refresh-graph-map.sh's _corpus_is_salus_root guard. Untrimmed, an indented or
