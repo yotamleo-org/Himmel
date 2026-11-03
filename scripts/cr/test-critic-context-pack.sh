@@ -10,8 +10,8 @@ RUN="$HERE/../eval/review-panel/run.sh"
 
 fail=0; n=0
 eq() { n=$((n + 1)); [ "$2" = "$3" ] || { echo "FAIL: $1 - got '$2' want '$3'"; fail=1; }; }
-has() { n=$((n + 1)); printf '%s' "$2" | grep -qF -e "$3" || { echo "FAIL: $1 - missing '$3'"; fail=1; }; }
-hasnt() { n=$((n + 1)); ! printf '%s' "$2" | grep -qF -e "$3" || { echo "FAIL: $1 - unexpected '$3'"; fail=1; }; }
+has() { n=$((n + 1)); case "$2" in *"$3"*) ;; *) echo "FAIL: $1 - missing '$3'"; fail=1 ;; esac; }
+hasnt() { n=$((n + 1)); case "$2" in *"$3"*) echo "FAIL: $1 - unexpected '$3'"; fail=1 ;; esac; }
 
 tmp="$(mktemp -d -t critic-context-pack.XXXXXX)" || exit 1; trap 'rm -rf "$tmp"' EXIT
 
@@ -148,7 +148,7 @@ eq "run.sh: the critic's directory holds the diff and the context only" "$(cat "
 eq "run.sh: the diff on stdin is unchanged" "$(cmp -s "$SL/real-01.stdin" "$RL/real-01.patch" && echo same)" "same"
 eq "run.sh: a case with no intent note gets no context" "$([ -e "$SL/real-04.ctx" ] && echo ctx || echo none)" "none"
 eq "run.sh: the eval never calls Jira" "$([ -e "$tmp/node-called" ] && echo called || echo none)" "none"
-eq "run.sh: no case repo is left in the scratch" "$(find "$tmp/scratch" -name .git -maxdepth 3 | wc -l | tr -d ' ')" "0"
+eq "run.sh: no case repo is left in the scratch" "$(find "$tmp/scratch" -maxdepth 3 -name .git | wc -l | tr -d ' ')" "0"
 
 if [ "$fail" = 0 ]; then echo "test-critic-context-pack: $n checks passed"; else echo "test-critic-context-pack: FAILED ($n checks)"; fi
 exit "$fail"

@@ -49,7 +49,7 @@ case "$budget" in ''|*[!0-9]*) die "--budget must be a number" ;; esac
 [ "$budget" -ge 256 ] || die "--budget must be at least 256"
 [ -z "$intent_file" ] || [ -r "$intent_file" ] || die "--intent-file '$intent_file' is not readable"
 [ -z "$pr_body" ] || [ -r "$pr_body" ] || die "--pr-body-file '$pr_body' is not readable"
-[ -z "$ticket" ] || printf '%s' "$ticket" | grep -qE '^[A-Z][A-Z0-9]*-[0-9]+$' || die "--ticket '$ticket' is not a ticket key"
+[ -z "$ticket" ] || [[ "$ticket" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || die "--ticket '$ticket' is not a ticket key"
 top="$(git rev-parse --show-toplevel)" || die "not inside a git repo"
 cd "$top" || die "cannot enter $top"
 bsha="$(git rev-parse --verify -q "$base^{commit}")" || die "bad revision: $base"
@@ -104,12 +104,12 @@ pr_intent() {
     local sect
     [ -n "$pr_body" ] || return 1
     sect="$(awk '/^## Ticket coverage/ { on = 1; print "Ticket coverage:"; next } /^## / { on = 0 } on { print }' "$pr_body")"
-    printf '%s' "$sect" | grep -q '[^[:space:]]' || return 1
+    [ -n "${sect//[[:space:]]/}" ] || return 1
     printf '%s\n' "$sect"
 }
 if [ -n "$intent_file" ]; then intent="$(cat -- "$intent_file")"
 else intent="$(jira_intent || pr_intent)"; fi
-printf '%s' "$intent" | grep -q '[^[:space:]]' || intent="no ticket intent available"
+[ -n "${intent//[[:space:]]/}" ] || intent="no ticket intent available"
 cap=$(( budget / 2 )); [ "$cap" -le 4096 ] || cap=4096
 printf '%s\n' "$intent" | head -c "$cap" | awk 'BEGIN { print "# intent" } { printf "%d: %s\n", NR, $0 }' > "$work/piece"
 add_piece INTENT 1 "$(( $(awk 'END { print NR - 1 }' "$work/piece") ))" || die "the intent does not fit --budget $budget"
