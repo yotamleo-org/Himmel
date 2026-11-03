@@ -500,21 +500,32 @@ The step is `scripts/setup/migrate-env.sh`;
 without the rest of the update. It prints key names only, never values.
 
 An apply, from the update or run by hand, prints the plan and the backup path
-first. It moves secrets only with `-y`: the script reads no typed answer, so
-without `-y` (and without `ENV_MIGRATION_CONSENT`, which covers the behaviour
-keys alone) it moves nothing, prints the command to rerun with `-y` and exits
-3. With no terminal at all (piped input, a cron job, a hook) it also moves
-nothing and exits 3. With the consent but without `-y` or a terminal, the
-behaviour keys move and the secrets stay in `.env`. The update never passes
-`-y`, so a secrets move is always a command you start yourself:
-`bash ~/himmel/scripts/setup/migrate-env.sh -y`.
+first. The script reads no typed answer for the move, so without `-y` (and
+without `ENV_MIGRATION_CONSENT`) it moves nothing, prints the command to rerun
+with `-y` and exits 3. With no terminal at all (piped input, a cron job, a hook)
+it also moves nothing and exits 3. With the consent but without `-y` or a
+terminal, the behaviour keys move. So does a secret nothing reads when there is no
+unlocked keyring: it goes to the legacy file and leaves `.env`, even in an agent
+session. Every other secret stays in `.env`. The keyring stage and the backup scrub
+need `-y`, a terminal and no agent session. The update never passes `-y`, so
+moving secrets to the keyring is always a command you start yourself:
+`bash ~/himmel/scripts/setup/migrate-env.sh -y`. With no `--env`, `-y` acts only
+on this checkout's `.env`; inside another repository it refuses (exit 3), and
+`--env <file>` names a file on purpose.
+
+Before you run it with `-y`, delete every `NAME=""` or placeholder line from
+`.env`: it is stored in the keyring and served like any value. A real value that
+only a backup holds is safe either way: the scrub keeps that line and names the key.
 
 1. **Plan.** One `name  class  destination` line per `.env` key, never a value.
    The class is `config` (to `~/.himmel/himmel.conf`), `config (policy)` (to
    `~/.himmel/config.json` `.policy`), `secret` (to the OS keyring), or
    `unrelated` (another tool's key: `stays (not himmel's, left in place)`). A
-   secret named in `~/.himmel/env-keep.txt` reads `kept (env-keep)`. The set of
-   secrets comes from `scripts/lib/himmel-secrets names --class secret`.
+   secret named in `~/.himmel/env-keep.txt` reads `kept (env-keep)`, a blank
+   secret line reads `stays (blank in .env: nothing to move)`, and an `export
+   NAME=` line of a himmel key reads `stays (an export line: ...)`, because the
+   readers do not read it. The set of secrets comes from
+   `scripts/lib/himmel-secrets names --class secret`.
 2. **Backup.** `.env` is copied to `~/.himmel/env-backups/env.<UTC time>.<pid>`,
    mode 600, before anything else is written; the path is printed.
 3. **Copy.** Each behaviour and policy key is copied to its new place. A key
@@ -522,12 +533,15 @@ behaviour keys move and the secrets stay in `.env`. The update never passes
    one to keep ([mismatch](#the-env-split-what-moves-what-stays-and-a-mismatch)).
    Secrets go to the keyring through `himmel-secrets import-env`, which prints
    `stored`, `held` or `failed` per key after reading the value back from the
-   keyring alone. One import runs at a time per keyring scope; a second
+   keyring alone, and `shadowed` for a stored key that a project-scope item with
+   another value is served ahead of. A stored `""` or `''` holds no value, so a
+   real value replaces it. One import runs at a time per keyring scope; a second
    migration started together with the first stops with
    `another import-env ... is running` and removes nothing. A `failed` key stops
    the run with no line removed. A legacy `~/.config/secrets/himmel.env` is
-   imported the same way, but only when a `.env` exists: with no `.env` the run
-   stops at "no .env found; nothing to migrate" and leaves the legacy file alone.
+   imported the same way, but only when a `.env` exists: with no `.env` the legacy
+   file is left alone, and the run prints "no .env found; nothing to migrate", or
+   `scrub only` when a scrub is owed.
 4. **Check.** The real readers run twice, once with the keys only in `.env`
    and once with them only in their new place: the shell `load_dotenv` and
    `load_policy`, the Jira CLI's config, handover-root and release-state
@@ -536,35 +550,49 @@ behaviour keys move and the secrets stay in `.env`. The update never passes
    `MISMATCH <key> (<reader>)` (or a `verify:` line) and no line is removed
    from `.env`.
 5. **Remove.** Only after the check passes are the moved lines removed from
-   `.env`, and only a secret that came back `stored`. Comments and the keys
-   that stay (`held`, `env-keep`, another tool's) are kept byte for byte, and so
-   is the file's mode. Then the backups are scrubbed (the secrets stage ran, so
-   `-y` at a terminal outside an agent session): every file in
-   `~/.himmel/env-backups/` and the `.env` copy in each config-audit backup
-   (`~/.himmel/state/config-audit/backups`, manifest checksums kept true) loses
-   the lines of a key that `.env` or the keyring still holds, and a legacy
-   secrets file loses the lines it stored. Coverage is by key name, not by
-   value: a blank `.env` line (`NAME=`) is not a copy, and `NAME=""` or
-   `NAME=''` is not a copy only for a key that does not move (`env-keep`). A key
-   that moves is stored as those two characters, and that keyring item is a copy.
-   A `.env` line counts when its first value, as the loaders read it, is not
-   empty (a `#` starts a comment only after whitespace, so `NAME=#x`,
-   `NAME=# x` and `NAME=""#x` are values and count; a later duplicate line is
-   ignored), and so does any user-scope keyring item, a placeholder included. A
-   real value that exists only in a backup is then dropped without a name (known
-   gap, HIMMEL-8951). A backup line with no other copy of its key stays. Only a
-   scrub names that key: a run that does not scrub names no backup key, and a
-   backup-only value stays there unreported (known gap, HIMMEL-8951): nothing to
-   move or scrub, a dry run, no unlocked keyring, or a consent run without `-y`
-   at a terminal, even when other keys move. A run that moves nothing but
-   finds an owed scrub (a run killed before it, say) finishes it when you rerun
-   with `-y`; the dry run reports it as `scrub only`.
+   `.env`, and only a secret that came back `stored`. Every line of a key that
+   moves goes, a later duplicate too; the backup keeps a duplicate that holds
+   another value, and the report names the key. Comments and the keys that stay
+   (`held`, `env-keep`, another tool's) are kept byte for byte, and so is the
+   file's mode. Then the backups are scrubbed (the secrets stage ran, so `-y` at a
+   terminal outside an agent session): a file in `~/.himmel/env-backups/` or the
+   `.env` copy in a config-audit backup
+   (`~/.himmel/state/config-audit/backups`, manifest checksums kept true) loses a
+   manifest-secret key's lines only when every real value of that key there
+   equals the user-scope keyring item. `export` and duplicate lines count, an
+   empty or quoted-empty line is no value, and a project-scope item never counts.
+   `.env` is no copy for this, because a config-audit restore overwrites it from
+   the backup. An `env-keep` key never leaves. Config-audit copies share one
+   answer: a differing value in any copy keeps the key in all of them. A legacy
+   secrets file loses a key it stored only when all its lines equal the item.
+
+   Every other line stays and its key is named:
+   `<file> keeps a line for <KEY>` or `config backup <id> keeps a line for <KEY>`.
+   A config-audit backup whose manifest cannot be read is not scrubbed, and the
+   line says so. The names print on every exit once the plan is known: a dry run,
+   nothing to move, no `.env`, no keys, a refusal, or an owed scrub. A keyring
+   that is not unlocked cannot be compared, so the report gives its state,
+   `keyring: locked` for example, and the keys the backups hold lines for, not a
+   claim that they are uncovered. A run that moves nothing but finds an owed scrub
+   (a run killed before it, say) finishes it when you rerun with `-y`; the dry run
+   reports it as `scrub only`, a count of backup files holding lines that match
+   the keyring item.
+
+   These stay, on purpose. A commented-out secret and a fragment of a multi-line
+   value stay in `.env` and the backups: neither has a key the readers read. An
+   unquoted value with ` #` in it is cut there by the readers, at import too, so
+   quote it first. A kill between the two renames of a config-audit scrub leaves
+   that manifest's checksum stale until its next write. A kill of the whole run can
+   leave its mode-700 temp directory behind; a killed run's `.env.migrate.<pid>`
+   goes on the next apply.
 
 On a failed run the report ends with the restore command (`cp <backup> <your
-.env>`) and an `rm` for the backup. After a scrub the report prints no `cp`: a
-scrubbed backup no longer holds the secrets that stay in `.env` (`held`,
-`env-keep`), so copying it over `.env` would drop them. To undo a config move,
-copy back only the lines you want, then `rm` the backup once you are happy.
+.env>`) and an `rm` for the backup. After a scrub the report prints no `cp`: the
+backup no longer holds the lines the keyring also holds, and the keyring serves
+those. `held` and `env-keep` lines are still in it. To undo a config move, copy
+back only the lines you want, then `rm` the backup once you are happy. A
+config-audit restore overwrites `.env` from its copy, which keeps every line the
+keyring does not hold; the keys it lost come from the keyring.
 
 With no unlocked keyring the apply is **incomplete**: a secret nothing reads goes
 to `~/.config/secrets/himmel.env` as before, the others stay in `.env`, a `WARN`
@@ -578,10 +606,12 @@ names the situation, and it exits 4. The update shows that as `incomplete`, not
 - **Inside Claude Code** (`/himmel-update`), an agent may not write
   `~/.himmel/config.json`, so the step prints the plan and the command to run
   at your own prompt, writes nothing, and its status row reads `pending`.
-- **Secrets and the consent.** `ENV_MIGRATION_CONSENT` covers the behaviour keys
-  only. The secrets stage needs `-y`, a terminal and no agent session on every
-  path; with the consent but without them, the behaviour keys move and the
-  secrets stay in `.env` with a line saying why.
+- **Secrets and the consent.** `ENV_MIGRATION_CONSENT` covers the behaviour keys,
+  and a secret nothing reads when there is no unlocked keyring. The keyring stage
+  needs `-y`, a terminal and no agent session on every path; with the consent but
+  without them, the other secrets stay in `.env` with a line saying why. `-y` at a
+  terminal outside an agent session does not read the consent, so that command
+  moves gate-policy keys too.
 
 #### The .env split: what moves, what stays, and a mismatch
 
@@ -594,10 +624,11 @@ names the situation, and it exits 4. The update shows that as `incomplete`, not
   `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`) goes to `~/.himmel/config.json`
   `.policy`. Every himmel secret (API tokens, Telegram keys) goes to the OS
   keyring. The resolver reads a value from the process environment and the
-  credentials directory first, then the keyring, then the legacy `.env`, so an
+  credentials directory first, then the keyring (project scope, then user scope), then the legacy `.env`, so an
   exported value is not overridden by a keyring item.
 - **Stays.** Every name in `~/.himmel/env-keep.txt`, a secret whose keyring item
-  holds another value (`held`), and every other tool's key stay in `.env`. The
+  holds another value (`held`: the keyring value is the one served), a blank secret
+  line, an `export NAME=` line, and every other tool's key stay in `.env`. The
   report lists the kept secrets on a `secrets stay in .env:` line.
 - **Jira URL.** `JIRA_BASE_URL` now resolves from non-empty process env, station
   `.local`, the selected profile, then `himmel.conf`; `.env` is a one-release
@@ -607,7 +638,8 @@ names the situation, and it exits 4. The update shows that as `incomplete`, not
 - **Mismatch.** When `~/.himmel` already held a different value for a key, the
   apply prints `these keys hold different values in .env and in ~/.himmel
   (values not shown):`, then one `<KEY>: <.env path>  vs  <~/.himmel file>`
-  line per key and asks `[e/h]`. `e` writes the `.env` value to `~/.himmel`;
+  line per key and asks `[e/h]`. That typed answer stays: it picks one of two
+  values and moves nothing by consent. `e` writes the `.env` value to `~/.himmel`;
   `h` keeps the `~/.himmel` value, and the `.env` line is removed with the
   other moved lines. The check then runs again, and lines leave `.env` only
   when it passes. Any other answer, or none, prints

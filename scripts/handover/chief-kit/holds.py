@@ -15,6 +15,7 @@ Exit codes: 0 ok, 1 refused (the holder on stderr), 2 usage, a crash or any fail
 (seed and repoint also: a claim fault, or the launch deadline passed).
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -34,6 +35,9 @@ KEY_RE = re.compile(r'^[A-Za-z][A-Za-z0-9]*-\d+$')
 GRANT_RE = re.compile(r'\.grant\.[A-Za-z][A-Za-z0-9]*-\d+$')
 TMP_PREFIX = '%00'       # escaping only ever makes %25 and %2F, so a name starting %00 is never a row
 MAX_NAME = 255
+LOCK_NAME = TMP_PREFIX + 'lock'  # one per slug directory; every reader skips TMP_PREFIX
+LOCK_WAIT = 5.0          # seconds a row write waits for the directory lock before it faults
+LEG_RE = re.compile(r'-(N\d+)[a-z]*-')  # the leg number in a handover doc's name
 
 # ---- copied from next-dispatchable.sh (inline python): Task 3 removes the originals ------------------------
 FILE_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|templates|tools|\.claude|\.github|\.codex)/[\w.+@-]+(?:/[\w.+@-]+)*/?|CLAUDE\.md|AGENTS\.md|README\.md|package\.json|package-lock\.json|bun\.lock|uv\.lock|pyproject\.toml|\.gitignore|\.pre-commit-config\.yaml)")
@@ -407,12 +411,13 @@ class Judge:
     def resume_alive(self, docs):
         """'alive' | 'none' | 'fault': an unwrapped RESUME doc of the key under 24 hours old."""
         res = 'none'
-        info = []  # (doc, mtime, last mark, the line of that mark)
+        info = []  # (doc, mtime, last mark, the line of that mark, the doc's other lines)
         for d in docs:
             try:
                 mt = os.path.getmtime(d)
                 last = ('', '')
-                for l in open(d, encoding='utf-8', errors='replace').read().splitlines():
+                lines = open(d, encoding='utf-8', errors='replace').read().splitlines()
+                for l in lines:
                     m = MARKER_RE.match(l)
                     if m:
                         last = (m.group(1), l)
@@ -421,14 +426,17 @@ class Judge:
             except OSError:
                 res = 'fault'
                 continue
-            info.append((d, mt, last[0], last[1]))
-        for d, mt, mark, _line in info:
+            rest = [l for l in lines if l != last[1]]
+            info.append((d, mt, last[0], last[1], rest))
+        for d, mt, mark, _line, _rest in info:
             if 'RESUME' not in os.path.basename(d) or time.time() - mt >= RESUME_AGE or mark == 'WRAPPED':
                 continue
             # a worker that wraps writes WRAPPED into the doc it worked in, not the RESUME doc: that wrap consumes it,
-            # unless the wrap bullet hands off to this very doc
-            if any(m2 == 'WRAPPED' and mt2 > mt and os.path.basename(d) not in l2
-                   for d2, mt2, m2, l2 in info if d2 != d):
+            # when it is proven the doc's successor, and unless the wrap bullet hands off to this very doc.
+            # ponytail: a different-leg successor that never names the doc holds for up to RESUME_AGE; a recorded parent link is the upgrade path.
+            b = os.path.basename(d)
+            if any(m2 == 'WRAPPED' and mt2 > mt and b not in l2 and successor_of(b, d2, r2)
+                   for d2, mt2, m2, l2, r2 in info if d2 != d):
                 continue
             return 'alive'
         return res
@@ -463,6 +471,40 @@ class Judge:
         return 'unknown' if faulted else 'dead'
 
 
+def dir_lock(d):
+    """The directory's row-write lock as an fd, or None after LOCK_WAIT: the caller faults, it never hangs."""
+    try:
+        fd = os.open(os.path.join(d, LOCK_NAME), os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError:
+        return None
+    deadline = time.monotonic() + LOCK_WAIT
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fd
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                return None
+            time.sleep(0.02)
+        except OSError:
+            os.close(fd)
+            return None
+
+
+def dir_unlock(fd):
+    os.close(fd)  # closing the only descriptor releases the flock
+
+
+def successor_of(resume, other, rest):
+    """A newer WRAPPED doc counts against a RESUME doc only through a proven link: it names the doc off its last
+    bullet, or is the doc's stem, or shares its leg number."""
+    if any(resume in l for l in rest) or os.path.basename(other) == resume.replace('-RESUME', ''):
+        return True
+    a, b = LEG_RE.search(resume), LEG_RE.search(os.path.basename(other))
+    return bool(a and b and a.group(1) == b.group(1))
+
+
 def refusal(path, fields, key):
     return ('holds: %s is held by %s (%s, %s). Keep working on other files, and ask your chief: HOLD-ASK %s %s'
             % (path, fields[0], fields[1], fields[3], path, key))
@@ -494,11 +536,17 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
     mine = '\t'.join(clean(x) for x in (key, label, doc, source, pr)) + '\n'
     target = os.path.join(d, name)
     for _ in range(6):
+        lock = dir_lock(d)
+        if lock is None:
+            fault('register lock not free', rel, key)
+            return 'fault'
         try:
             res = publish(d, name, mine)
         except OSError as e:
             fault('register write: %s' % (e.strerror or e), rel, key)
             return 'fault'
+        finally:
+            dir_unlock(lock)
         if res == 'ok':
             if created is not None:
                 created.append((target, mine))
@@ -527,33 +575,40 @@ def claim_one(repo, judge, path, key, label, doc, source, pr, created=None):
         if state == 'unknown':
             fault('holder liveness unproven', rel, key)
             return 'fault'
-        # dead: take over by renaming the row aside, so a losing contender's rename fails
-        _tmp_n[0] += 1
-        moved = os.path.join(d, '%staken.%d.%d' % (TMP_PREFIX, os.getpid(), _tmp_n[0]))
-        try:
-            os.rename(target, moved)
-        except FileNotFoundError:
-            continue
-        except OSError as e:
-            fault('takeover rename: %s' % (e.strerror or e), rel, key)
+        # dead: take over by renaming the row aside, so a losing contender's rename fails. The judge above ran unlocked:
+        # the compare below is what proves this is the row it judged, and no row is published while the lock is held.
+        lock = dir_lock(d)
+        if lock is None:
+            fault('register lock not free', rel, key)
             return 'fault'
-        # ponytail: a third party can publish between this rename and the link-back below, in which case the moved row is dropped, upgrade path: rows carry a generation
-        st2, f2 = read_row(moved)
-        if st2 == 'ok' and f2 == fields:
+        try:
+            _tmp_n[0] += 1
+            moved = os.path.join(d, '%staken.%d.%d' % (TMP_PREFIX, os.getpid(), _tmp_n[0]))
+            try:
+                os.rename(target, moved)
+            except FileNotFoundError:
+                continue
+            except OSError as e:
+                fault('takeover rename: %s' % (e.strerror or e), rel, key)
+                return 'fault'
+            st2, f2 = read_row(moved)
+            if st2 == 'ok' and f2 == fields:
+                try:
+                    os.unlink(moved)
+                except OSError:
+                    pass  # swallow-ok: a leftover %00taken file is skipped by every reader
+                log_event('takeover', rel, key, fields[0])
+                continue
+            try:
+                os.link(moved, target)  # the row moved was not the one judged: put it back and judge again
+            except OSError:
+                pass  # swallow-ok: the next round reads what is there
             try:
                 os.unlink(moved)
             except OSError:
-                pass  # swallow-ok: a leftover %00taken file is skipped by every reader
-            log_event('takeover', rel, key, fields[0])
-            continue
-        try:
-            os.link(moved, target)  # the row moved was not the one judged: put it back and judge again
-        except OSError:
-            pass  # swallow-ok: someone published a newer row meanwhile; the next round reads it
-        try:
-            os.unlink(moved)
-        except OSError:
-            pass  # swallow-ok: as above
+                pass  # swallow-ok: as above
+        finally:
+            dir_unlock(lock)
     fault('contention did not settle', rel, key)
     return 'fault'
 
@@ -653,7 +708,18 @@ def op_seed(a):
 
 
 def repoint_row(d, n, key, label, doc):
-    """'repointed' | 'same' | 'skip' | 'fault': rewrite one row of key to doc and label by the takeover's rename-compare."""
+    """'repointed' | 'same' | 'skip' | 'fault': rewrite one row of key to doc and label, under the directory lock so a claimant cannot publish in the gap."""
+    lock = dir_lock(d)
+    if lock is None:
+        fault('register lock not free', unescape(n), key)
+        return 'fault'
+    try:
+        return repoint_locked(d, n, key, label, doc)
+    finally:
+        dir_unlock(lock)
+
+
+def repoint_locked(d, n, key, label, doc):
     target = os.path.join(d, n)
     st, f = read_row(target)
     if st == 'gone' or st == 'bad' or (st == 'ok' and f[0] != key):

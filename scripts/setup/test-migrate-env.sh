@@ -149,6 +149,8 @@ fixture_env() {  # a fresh station-shaped .env, mode 600, and no config files
     fxput "$HOME/.himmel/env-keep.txt" '# station-ops reads this one\nKEEP_ME\n'
 }
 
+fxval() { sed -n "s/^$1=//p" "$TMP/st/.env"; }  # a key's .env value, taken before an apply: a backup line that will equal the stored item
+
 # --- 2a. The apply moves nothing without a yes typed at a terminal ---
 fixture_env
 out=$(bash "$SCRIPT" --env "$TMP/st/.env" < /dev/null 2>&1)
@@ -183,12 +185,12 @@ if [ "$rc" = 0 ]; then pass "apply exits 0"; else fail "apply exited $rc: $out";
 no_canary "apply prints no value" "$out"
 # The prompt ends its line only when the answer is typed, so match mid-line.
 backup=$(printf '%s\n' "$out" | sed -n 's/.*backup: \(\/.*\) (mode 600)$/\1/p')
-grep -v -E '^(READ_SECRET|UNREAD_SECRET|KEEP_ME|BITBUCKET_API_TOKEN)=' "$TMP/st.orig" > "$TMP/st.scrubbed"
-if [ -n "$backup" ] && cmp -s "$backup" "$TMP/st.scrubbed"; then pass "the backup holds the original .env but for the secret lines"; else fail "no backup matching the original .env less its secrets (path '$backup')"; fi
+grep -v -E '^(READ_SECRET|UNREAD_SECRET|BITBUCKET_API_TOKEN)=' "$TMP/st.orig" > "$TMP/st.scrubbed"
+if [ -n "$backup" ] && cmp -s "$backup" "$TMP/st.scrubbed"; then pass "the backup holds the original .env but for the moved secret lines"; else fail "no backup matching the original .env less its secrets (path '$backup')"; fi
 if [ -n "$backup" ] && [ "$(mode_of "$backup")" = 600 ]; then pass "the backup is mode 600"; else fail "the backup mode is not 600"; fi
 case "$backup" in "$TMP/st/"*|"") fail "the backup is inside the checkout or missing" ;; *) pass "the backup is outside the checkout" ;; esac
 lacks "the scrubbed run prints no restore command that would drop the kept secrets" "restore: cp" "$out"
-has "the report says not to copy the scrubbed backup over .env" "do not copy it over $TMP/st/.env" "$out"
+has "the report says the keyring serves the lines the backup lost" "the keyring serves those" "$out"
 has "the report says the backup can be removed" "rm $backup" "$out"
 conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
 has "HANDOVER_DIR moved to himmel.conf" "HANDOVER_DIR=$TMP/handovers" "$conf"
@@ -208,11 +210,12 @@ envnow=$(cat "$TMP/st/.env")
 for k in HANDOVER_DIR USER_SLUG CR_PROFILE CR_REQUIRE_CROSS_MODEL HIMMEL_FLEET_CAP UNREAD_SECRET READ_SECRET BITBUCKET_API_TOKEN; do
     lacks "$k removed from .env" "$k=" "$envnow"
 done
-# R1/R4/R5(I5): the backup of this run holds no manifest-secret line, not even the env-keep one.
+# R1/R4/R5(I5): the backup of this run holds no moved secret line; an env-keep line stays, nothing else serves it.
 bk=$(cat "$HOME"/.himmel/env-backups/env.* 2>/dev/null)
-for k in UNREAD_SECRET READ_SECRET BITBUCKET_API_TOKEN KEEP_ME; do
+for k in UNREAD_SECRET READ_SECRET BITBUCKET_API_TOKEN; do
     lacks "R1 the backup lost the $k line" "$k=" "$bk"
 done
+has "R1 the backup keeps the env-keep line" "KEEP_ME=" "$bk"
 has "R1 the backup keeps a config line" "HIMMEL_FLEET_CAP=7" "$bk"
 # R3: no value reaches the stub's argv log.
 lacks "R3 the keyring stub's argv log holds no value" "CANARY-" "$(cat "$KSTUB_LOG")"  # read-sink-ok: KSTUB_LOG is this suite's own scratch log
@@ -682,11 +685,11 @@ fixture_env
 apply_tty "" "TMPDIR=$TMP/tmpd KSTUB_DROP_STORE=1 "
 if [ "$rc" != 0 ] && [ -z "$(ls -A "$TMP/tmpd")" ]; then pass "R3b a failed run leaves TMPDIR empty"; else fail "R3b a failed run left TMPDIR holding: $(ls -A "$TMP/tmpd") (rc $rc)"; fi
 
-# R6: an older backup holding secret lines loses them; a config line stays.
+# R6: an older backup whose secret lines equal the stored items loses them; a config line stays.
 fixture_env
 printf 'JIRA_API_TOKEN=dummy-r1\n' >> "$TMP/st/.env"
 mkdir -p "$HOME/.himmel/env-backups"
-printf 'JIRA_API_TOKEN=dummy-r1\nexport BITBUCKET_API_TOKEN=dummy-r6\nHIMMEL_FLEET_CAP=3\n' > "$HOME/.himmel/env-backups/env.20260101T000000Z.1"
+printf 'JIRA_API_TOKEN=dummy-r1\nexport BITBUCKET_API_TOKEN=%s\nHIMMEL_FLEET_CAP=3\n' "$(fxval BITBUCKET_API_TOKEN)" > "$HOME/.himmel/env-backups/env.20260101T000000Z.1"
 chmod 600 "$HOME/.himmel/env-backups/env.20260101T000000Z.1"
 apply_tty y
 old=$(cat "$HOME/.himmel/env-backups/env.20260101T000000Z.1")
@@ -771,7 +774,7 @@ lacks "R10b the legacy file lost the stored line" "UNREAD_SECRET" "$(cat "$store
 fixture_env
 apply_tty y
 lacks "R12 no restore cp after a scrub" "restore: cp" "$out"
-has "R12 the report says why" "no longer holds the secret lines another copy covers" "$out"
+has "R12 the report says why" "no longer holds the secret lines the keyring also holds" "$out"
 
 # R13: the config-audit copy of .env is scrubbed too, and its manifest still verifies.
 fixture_env
@@ -796,7 +799,7 @@ done
 # R14: an older backup that holds the only copy of a key keeps it, and the report names the key.
 fixture_env
 mkdir -p "$HOME/.himmel/env-backups"
-printf 'JIRA_API_TOKEN=dummy-r14\nBITBUCKET_API_TOKEN=dummy-r14b\n' > "$HOME/.himmel/env-backups/env.20260101T000000Z.3"
+printf 'JIRA_API_TOKEN=dummy-r14\nBITBUCKET_API_TOKEN=%s\n' "$(fxval BITBUCKET_API_TOKEN)" > "$HOME/.himmel/env-backups/env.20260101T000000Z.3"
 chmod 600 "$HOME/.himmel/env-backups/env.20260101T000000Z.3"
 apply_tty y
 old=$(cat "$HOME/.himmel/env-backups/env.20260101T000000Z.3")
@@ -813,16 +816,17 @@ has "R14b the backup of the consented run still holds READ_SECRET" "READ_SECRET=
 
 # R15: a retry finishes a scrub an earlier run left undone (a kill between the .env rewrite and the scrub).
 fixture_env
+r15v=$(fxval BITBUCKET_API_TOKEN)
 apply_tty y
 mkdir -p "$HOME/.himmel/env-backups"
-printf 'export BITBUCKET_API_TOKEN=dummy-r15\nHIMMEL_FLEET_CAP=3\n' > "$HOME/.himmel/env-backups/env.20260102T000000Z.4"
+printf 'export BITBUCKET_API_TOKEN=%s\nHIMMEL_FLEET_CAP=3\n' "$r15v" > "$HOME/.himmel/env-backups/env.20260102T000000Z.4"
 chmod 600 "$HOME/.himmel/env-backups/env.20260102T000000Z.4"
 out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
 has "R15 the dry run reports a scrub is owed" "scrub only: 1 backup file(s)" "$out"
 has "R15 the dry run maps to pending for the update" "dry run: nothing written." "$out"
 APPLY_ARGS="" apply_tty ""
 if [ "$rc" = 3 ]; then pass "R15 a retry without -y is refused"; else fail "R15 a retry without -y exited $rc: $out"; fi
-has "R15 the old backup is untouched without -y" "BITBUCKET_API_TOKEN=dummy-r15" "$(cat "$HOME/.himmel/env-backups/env.20260102T000000Z.4")"
+has "R15 the old backup is untouched without -y" "export BITBUCKET_API_TOKEN=" "$(cat "$HOME/.himmel/env-backups/env.20260102T000000Z.4")"
 apply_tty y
 if [ "$rc" = 0 ]; then pass "R15 the retry exits 0"; else fail "R15 the retry exited $rc: $out"; fi
 old=$(cat "$HOME/.himmel/env-backups/env.20260102T000000Z.4")
@@ -865,10 +869,11 @@ if cmp -s "$TMP/st/.env" "$TMP/r18.env.orig"; then pass "R18 .env is untouched";
 
 # R19: an owed scrub is finished even when .env holds no keys (a kill after the .env rewrite) or is gone.
 fixture_env
+r19v=$(fxval BITBUCKET_API_TOKEN)
 apply_tty y
 : > "$TMP/st/.env"
 mkdir -p "$HOME/.himmel/env-backups"
-printf 'export BITBUCKET_API_TOKEN=dummy-r19\nHIMMEL_FLEET_CAP=3\n' > "$HOME/.himmel/env-backups/env.20260103T000000Z.5"
+printf 'export BITBUCKET_API_TOKEN=%s\nHIMMEL_FLEET_CAP=3\n' "$r19v" > "$HOME/.himmel/env-backups/env.20260103T000000Z.5"
 chmod 600 "$HOME/.himmel/env-backups/env.20260103T000000Z.5"
 out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
 has "R19 the dry run on an emptied .env reports a scrub is owed" "scrub only: 1 backup file(s)" "$out"
@@ -876,7 +881,7 @@ apply_tty y
 if [ "$rc" = 0 ]; then pass "R19 the retry on an emptied .env exits 0"; else fail "R19 the retry on an emptied .env exited $rc: $out"; fi
 lacks "R19 the retry on an emptied .env scrubbed the backup" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.5")"
 has "R19 the scrub kept the config line of that backup" "HIMMEL_FLEET_CAP=3" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.5")"
-printf 'export BITBUCKET_API_TOKEN=dummy-r19b\n' > "$HOME/.himmel/env-backups/env.20260103T000000Z.6"
+printf 'export BITBUCKET_API_TOKEN=%s\n' "$r19v" > "$HOME/.himmel/env-backups/env.20260103T000000Z.6"
 chmod 600 "$HOME/.himmel/env-backups/env.20260103T000000Z.6"
 rm -f "$TMP/st/.env"
 apply_tty y
@@ -950,26 +955,364 @@ for r20line in 'KEEP_ME=""' "KEEP_ME=''"; do
     lacks "R20e case $r20n: the report prints no value" "dummy-r20e" "$out"
 done
 
-# R20k: KNOWN LIMIT, pinned, not a claim of safety. A line NAME="" or NAME='' (with or without a comment) that import-env
-# stored is a keyring item, and coverage is by key name, so a real value only in a backup is dropped. The class fix is a
-# value compare against the other copy, not a blank test.
-r20n=0
-for r20line in 'JIRA_API_TOKEN=""' 'JIRA_API_TOKEN="" # note' "JIRA_API_TOKEN=''" "JIRA_API_TOKEN='' # note"; do
-    r20n=$((r20n + 1))
-    fixture_env
-    fxput "$TMP/st/.env" '# station .env\n%s\nHIMMEL_FLEET_CAP=7\n' "$r20line"
-    chmod 600 "$TMP/st/.env"
+# --- 11. The value compare: a backup line leaves only when its value equals the user-scope keyring item ---
+bk_line() {  # <stem> <line>...: one mode-600 file in env-backups; sets bf and keeps a copy to compare against
+    local stem=$1
+    shift
     mkdir -p "$HOME/.himmel/env-backups"
-    r20f="$HOME/.himmel/env-backups/env.20260104T00000$r20n""Z.8"
-    fxput "$r20f" 'JIRA_API_TOKEN=dummy-r20k\n'
-    chmod 600 "$r20f"
+    bf="$HOME/.himmel/env-backups/env.$stem"
+    printf '%s\n' "$@" > "$bf" || fail "fixture write to $bf failed"
+    chmod 600 "$bf"
+    cp -p "$bf" "$TMP/bf.orig"
+}
+kept_named() {  # <label> <key>: backup bf is byte-identical, the report names the key for it, no value printed
+    if cmp -s "$bf" "$TMP/bf.orig"; then pass "$1: the backup line stays"; else fail "$1: the backup line changed or is gone"; fi
+    if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -qw "$2"; then pass "$1: the report names $2"; else fail "$1: the report does not name $2"; fi
+    no_canary "$1: no value printed" "$out"
+}
+env_only() {  # <line>: a fresh fixture whose .env holds that line and one config key
+    fixture_env
+    fxput "$TMP/st/.env" '# station .env\n%s\nHIMMEL_FLEET_CAP=7\n' "$1"
+    chmod 600 "$TMP/st/.env"
+}
+kitem() { fxadd "$KSTUB_STORE" 'service=himmel key=%s scope=user\t%s\n' "$1" "$2"; }
+fresh_backup() { find "$HOME/.himmel/env-backups" -name 'env.*' -newer "$TMP/st.orig" -type f | sort | tail -n 1; }
+
+# R20k: every shape whose .env value holds no real copy: the keyring gets those characters, a real value only in a backup stays, and the key is named.
+r20n=0
+for r20shape in '""' '"" # note' "''" "'' # note" '" "' "' '" '#' '#x' '# x' '""#x' 'your_api_token_here'; do
+    r20n=$((r20n + 1))
+    env_only "JIRA_API_TOKEN=$r20shape"
+    bk_line "20260104T0000${r20n}Z.8" "JIRA_API_TOKEN=$(canary r20k)"
     apply_tty y
-    if [ "$rc" = 0 ]; then pass "R20k case $r20n: the apply exits 0"; else fail "R20k case $r20n: the apply exited $rc: $out"; fi
-    if [ -f "$r20f" ]; then pass "R20k case $r20n: the backup file still exists"; else fail "R20k case $r20n: the backup file is gone"; fi
-    has "R20k case $r20n: the keyring holds an item for JIRA_API_TOKEN" "JIRA_API_TOKEN" "$(cut -f1 "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is this suite's own scratch keyring, attrs column only
-    lacks "R20k case $r20n: known limit: the backup line is dropped because the stored item counts as a copy" "JIRA_API_TOKEN" "$(cat "$r20f")"
-    lacks "R20k case $r20n: the report prints no value" "dummy-r20k" "$out"
+    if [ "$rc" = 0 ]; then pass "R20k shape $r20n: the apply exits 0"; else fail "R20k shape $r20n: the apply exited $rc: $out"; fi
+    has "R20k shape $r20n: the keyring holds an item for JIRA_API_TOKEN" "JIRA_API_TOKEN" "$(cut -f1 "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is this suite's own scratch keyring, attrs column only
+    kept_named "R20k shape $r20n" JIRA_API_TOKEN
 done
+
+# R30: a placeholder put back in .env after a move: a backup line that differs stays and is named, one that equals the item leaves.
+fixture_env
+fxadd "$TMP/st/.env" 'JIRA_API_TOKEN=%s\n' "$(canary r30)"
+r30v=$(fxval JIRA_API_TOKEN)
+apply_tty y
+fxadd "$TMP/st/.env" 'JIRA_API_TOKEN=your_api_token_here\n'
+fxput "$HOME/.himmel/env-backups/env.20260105T000000Z.2" 'JIRA_API_TOKEN=%s\n' "$r30v"
+bk_line 20260105T000000Z.1 "JIRA_API_TOKEN=$(canary r30b)"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "R30 the apply exits 0"; else fail "R30 the apply exited $rc: $out"; fi
+has "R30 the placeholder is held" "held JIRA_API_TOKEN" "$out"
+kept_named "R30" JIRA_API_TOKEN
+lacks "R30 the line that equals the item left" "JIRA_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260105T000000Z.2")"
+
+# R31: every line of the key in a backup must equal the item: duplicates and export lines count, a quoted-empty line blocks nothing.
+r31v=$(canary r31item)
+r31o=$(canary r31other)
+r31n=0
+for r31case in "kept|JIRA_API_TOKEN=\"\"|JIRA_API_TOKEN=$r31o" "kept|JIRA_API_TOKEN=$r31o|JIRA_API_TOKEN=\"\"" "kept|JIRA_API_TOKEN=$r31v|JIRA_API_TOKEN=$r31o" "kept|export JIRA_API_TOKEN=$r31o|" \
+    "drop|JIRA_API_TOKEN=$r31v|JIRA_API_TOKEN=$r31v" "drop|JIRA_API_TOKEN=\"\"|JIRA_API_TOKEN=$r31v" "drop|export JIRA_API_TOKEN=$r31v|"; do
+    r31n=$((r31n + 1))
+    env_only "KEEP_ME=x"
+    kitem JIRA_API_TOKEN "$r31v"
+    IFS='|' read -r r31want r31a r31b <<<"$r31case"
+    bk_line "20260106T00000${r31n}Z.1" "$r31a" "$r31b"
+    apply_tty y
+    if [ "$r31want" = kept ]; then
+        kept_named "R31 case $r31n" JIRA_API_TOKEN
+    else
+        lacks "R31 case $r31n: every line equals the item, so the key left" "JIRA_API_TOKEN" "$(cat "$bf")"
+        no_canary "R31 case $r31n: no value printed" "$out"
+    fi
+done
+
+# R32: duplicate .env lines K="" then K=real: the readers take the first, the move deletes both, and this run's backup keeps the dead real line and names it.
+env_only 'JIRA_API_TOKEN=""'
+fxadd "$TMP/st/.env" 'JIRA_API_TOKEN=%s\n' "$(canary r32)"
+apply_tty y
+bf=$(fresh_backup)
+if [ -n "$bf" ] && grep -q '^JIRA_API_TOKEN=CANARY-' "$bf"; then pass "R32 this run's backup keeps the dead real line"; else fail "R32 the dead real line is gone from this run's backup"; fi
+lacks "R32 the move deleted both lines from .env" "JIRA_API_TOKEN" "$(cat "$TMP/st/.env")"
+if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -qw JIRA_API_TOKEN; then pass "R32 the report names the key"; else fail "R32 the report does not name the key"; fi
+
+# R33: an env-keep key leaves no backup, even when its keyring item holds the same value: a restore would lose its only .env line.
+r33v=$(canary r33)
+env_only "KEEP_ME=$r33v"
+kitem KEEP_ME "$r33v"
+bk_line 20260107T000000Z.1 "KEEP_ME=$r33v"
+apply_tty y
+kept_named "R33" KEEP_ME
+
+# R34: a held key and an env-keep key stay in every backup of the run, so a restore that overwrites .env loses neither; a stored key leaves.
+fixture_env
+kitem UNREAD_SECRET "$(canary r34item)"
+apply_tty y
+bf=$(fresh_backup)
+r34b=$(sed 's/=.*//' "$bf")
+has "R34 this run's backup keeps the held key" "UNREAD_SECRET" "$r34b"
+has "R34 this run's backup keeps the env-keep key" "KEEP_ME" "$r34b"
+lacks "R34 this run's backup lost the stored key" "READ_SECRET" "$(grep -v UNREAD_SECRET <<<"$r34b")"
+r34c=$(find "$HOME/.himmel/state/config-audit/backups" -name .env -type f | head -n 1)
+r34k=$(sed 's/=.*//' "$r34c")
+has "R34 the config copy keeps the held key" "UNREAD_SECRET" "$r34k"
+has "R34 the config copy keeps the env-keep key" "KEEP_ME" "$r34k"
+if printf '%s\n' "$out" | grep 'config backup .* keeps a line for' | grep -qw UNREAD_SECRET; then pass "R34 the report names the config copy's kept key"; else fail "R34 the report does not name the config copy's kept key"; fi
+no_canary "R34 no value printed" "$out"
+
+# R35: one set covers all config copies: a differing value in one keeps the key in every copy, and each copy names it.
+env_only "JIRA_API_TOKEN=$(canary r35a)"
+r35item=$(canary r35item)
+kitem JIRA_API_TOKEN "$r35item"
+apply_tty y
+r35d=$(dirname "$(find "$HOME/.himmel/state/config-audit/backups" -name .env -type f | head -n 1)")
+r35e="$HOME/.himmel/state/config-audit/backups/20260101T000000Z-abcd"
+cp -a "$r35d" "$r35e"
+fxput "$r35e/.env" 'JIRA_API_TOKEN=%s\n' "$r35item"
+fxput "$TMP/st/.env" 'KEEP_ME=%s\n' "$(canary keep)"
+apply_tty y
+if [ "$(printf '%s\n' "$out" | grep 'config backup .* keeps a line for' | grep -cw JIRA_API_TOKEN)" = 2 ]; then pass "R35 both config copies name the key"; else fail "R35 the config copies do not both name the key"; fi
+has "R35 the copy that equals the item keeps its line too" "JIRA_API_TOKEN=" "$(cat "$r35e/.env")"
+no_canary "R35 no value printed" "$out"
+
+# R36: a legacy file with a later duplicate of another value keeps it: that file has no backup, so the dead line would be gone.
+fixture_env
+mkdir -p "$HOME/.config/secrets"
+fxput "$store" 'UNREAD_SECRET=%s\nUNREAD_SECRET=%s\n' "$(canary r36a)" "$(canary r36b)"
+chmod 600 "$store"
+grep -v '^UNREAD_SECRET=' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+apply_tty y
+if [ "$(grep -c '^UNREAD_SECRET=' "$store")" = 2 ]; then pass "R36 the legacy file keeps the key whose lines differ"; else fail "R36 the legacy file lost the key whose lines differ"; fi
+has "R36 the report names it" "keeps a line for UNREAD_SECRET" "$out"
+no_canary "R36 no value printed" "$out"
+
+# --- 12. The naming promise: every exit reports the backup-only keys, and a locked keyring says so ---
+only_bk() { bk_line 20260201T000000Z.1 "JIRA_API_TOKEN=$(canary only)"; }
+# N1: no .env.
+fixture_env
+rm -f "$TMP/st/.env"
+only_bk
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N1 no .env exits 0"; else fail "N1 no .env exited $rc: $out"; fi
+has "N1 the run says no .env" "no .env found; nothing to migrate" "$out"
+kept_named "N1" JIRA_API_TOKEN
+# N2: .env empty, the keyring lacks the key, the only value in a backup (the codex case).
+fixture_env
+: > "$TMP/st/.env"
+only_bk
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N2 an empty .env exits 0"; else fail "N2 an empty .env exited $rc: $out"; fi
+has "N2 the run says the file holds no keys" "holds no keys; nothing to migrate" "$out"
+kept_named "N2" JIRA_API_TOKEN
+# N3: nothing to move.
+fixture_env
+fxput "$TMP/st/.env" 'KEEP_ME=%s\n' "$(canary keep)"
+only_bk
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N3 nothing to move exits 0"; else fail "N3 nothing to move exited $rc: $out"; fi
+has "N3 the run says nothing moves" "nothing to move: every key stays in .env" "$out"
+kept_named "N3" JIRA_API_TOKEN
+# N4 to N6: the scrub-only path, as a dry run, refused without -y, and applied.
+n4v=$(canary n4)
+fixture_env
+fxput "$TMP/st/.env" 'KEEP_ME=%s\n' "$(canary keep)"
+kitem BITBUCKET_API_TOKEN "$n4v"
+only_bk
+fxput "$HOME/.himmel/env-backups/env.20260201T000000Z.2" 'BITBUCKET_API_TOKEN=%s\n' "$n4v"
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1); rc=$?
+if [ "$rc" = 0 ]; then pass "N4 the scrub-only dry run exits 0"; else fail "N4 the scrub-only dry run exited $rc: $out"; fi
+has "N4 the report speaks of a value match, not of copies" "scrub only: 1 backup file(s) hold secret lines whose value matches the keyring item; the scrub drops only those." "$out"
+kept_named "N4" JIRA_API_TOKEN
+APPLY_ARGS="" apply_tty ""
+if [ "$rc" = 3 ]; then pass "N5 a scrub-only run without -y is refused"; else fail "N5 exited $rc: $out"; fi
+kept_named "N5" JIRA_API_TOKEN
+apply_tty y
+if [ "$rc" = 0 ]; then pass "N6 the scrub-only apply exits 0"; else fail "N6 exited $rc: $out"; fi
+kept_named "N6" JIRA_API_TOKEN
+lacks "N6 the line that equals the item left" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260201T000000Z.2")"
+# N7: a dry run with keys moving.
+fixture_env
+only_bk
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1); rc=$?
+has "N7 the dry run still moves keys" "dry run: nothing written." "$out"
+kept_named "N7" JIRA_API_TOKEN
+# N8: no unlocked keyring with -y: coverage cannot be checked, so the report names what the backups hold.
+fixture_env
+only_bk
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+if [ "$rc" = 4 ]; then pass "N8 no keyring exits 4"; else fail "N8 no keyring exited $rc: $out"; fi
+has "N8 the report says why it cannot compare" "keyring: off, so the backups cannot be compared with it" "$out"
+if printf '%s\n' "$out" | grep -F 'cannot be compared with it' | grep -qw JIRA_API_TOKEN; then pass "N8 the report names the key"; else fail "N8 the report does not name the key"; fi
+if cmp -s "$bf" "$TMP/bf.orig"; then pass "N8 the backup line stays"; else fail "N8 the backup changed"; fi
+no_canary "N8 no value printed" "$out"
+# N9: a locked keyring says it is locked, on a no-op exit too, with no backup line to name.
+fixture_env
+fxput "$TMP/st/.env" 'KEEP_ME=%s\n' "$(canary keep)"
+apply_tty y "KSTUB_LOCKED=true "
+has "N9 a locked keyring says so when nothing moves" "keyring: locked" "$out"
+lacks "N9 a locked keyring is not called uncovered" "keeps a line for" "$out"
+only_bk
+apply_tty y "KSTUB_LOCKED=true "
+if printf '%s\n' "$out" | grep -F 'keyring: locked' | grep -qw JIRA_API_TOKEN; then pass "N9 a locked keyring names what the backups hold"; else fail "N9 a locked keyring does not name the key"; fi
+# N10: a consent run in an agent session, and with no terminal, while keys move.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+only_bk
+out=$(CLAUDECODE=1 bash "$SCRIPT" --env "$FX/.env" -y < /dev/null 2>&1); rc=$?
+if [ "$rc" = 0 ]; then pass "N10 the consented agent run exits 0"; else fail "N10 exited $rc: $out"; fi
+kept_named "N10 agent" JIRA_API_TOKEN
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+only_bk
+out=$(bash "$SCRIPT" --env "$FX/.env" -y < /dev/null 2>&1); rc=$?
+if [ "$rc" = 0 ]; then pass "N10 the consented run with no terminal exits 0"; else fail "N10 no terminal exited $rc: $out"; fi
+kept_named "N10 no terminal" JIRA_API_TOKEN
+# N11: a refusal without the consent names the key too.
+fixture_env
+only_bk
+out=$(bash "$SCRIPT" --env "$TMP/st/.env" < /dev/null 2>&1); rc=$?
+if [ "$rc" = 3 ]; then pass "N11 no terminal is refused"; else fail "N11 exited $rc: $out"; fi
+kept_named "N11" JIRA_API_TOKEN
+# N12: a config backup whose manifest does not parse is skipped by the scrub: named, for a differing and for an equal value.
+fixture_env
+fxput "$TMP/st/.env" 'KEEP_ME=%s\n' "$(canary keep)"
+n12d="$HOME/.himmel/state/config-audit/backups/20260101T000000Z-abcd"
+mkdir -p "$n12d"
+fxput "$n12d/manifest.json" 'not json\n'
+n12v=$(canary n12)
+fxput "$n12d/.env" 'JIRA_API_TOKEN=%s\nBITBUCKET_API_TOKEN=%s\n' "$(canary n12b)" "$n12v"
+kitem BITBUCKET_API_TOKEN "$n12v"
+apply_tty y
+has "N12 the differing value is named" "config backup 20260101T000000Z-abcd keeps a line for JIRA_API_TOKEN" "$out"
+has "N12 the equal value is named, with why it stays" "config backup 20260101T000000Z-abcd keeps a line for BITBUCKET_API_TOKEN: the scrub skips that backup" "$out"
+has "N12 the skipped copy is untouched" "BITBUCKET_API_TOKEN=" "$(cat "$n12d/.env")"
+no_canary "N12 no value printed" "$out"
+# N13: a failed count of the config copies is a failure, not nothing owed.
+cp "$FX/scripts/lib/config-audit.sh" "$TMP/config-audit.good.sh"
+fxput "$FX/scripts/lib/config-audit.sh" 'config_audit_pre() { :; }\nconfig_audit_post() { :; }\nconfig_audit_scrub() { return 1; }\n'
+fixture_env
+fxput "$TMP/st/.env" 'KEEP_ME=%s\n' "$(canary keep)"
+apply_tty y
+cp "$TMP/config-audit.good.sh" "$FX/scripts/lib/config-audit.sh"
+if [ "$rc" = 1 ]; then pass "N13 a failed config-backup count exits 1"; else fail "N13 exited $rc: $out"; fi
+has "N13 the report says so" "could not check the .env copies in the config backups" "$out"
+
+# --- 13. The consent and the printed command; -y outside this checkout ---
+# C1: with the consent on, -y at a terminal outside an agent session is the operator's own run: the printed command moves the policy key.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+at_tty y "bash $(printf '%q --env %q -y' "$SCRIPT" "$FX/.env")"
+if [ "$rc" = 0 ]; then pass "C1 -y at a prompt with the consent on exits 0"; else fail "C1 exited $rc: $out"; fi
+lacks "C1 the run is not the consent's" "moving without a prompt" "$out"
+lacks "C1 the policy key is not held back" "gate-policy keys move only at your own prompt" "$out"
+lacks "C1 the policy key left .env" "CR_REQUIRE_CROSS_MODEL" "$(cat "$FX/.env")"
+has "C1 the policy key is in config.json" "CR_REQUIRE_CROSS_MODEL" "$(cat "$HOME/.himmel/config.json")"
+# C2: under CLAUDECODE the consent path is unchanged, at a terminal with -y too: the policy key stays.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+at_tty y "CLAUDECODE=1 bash $(printf '%q --env %q -y' "$SCRIPT" "$FX/.env")"
+if [ "$rc" = 0 ]; then pass "C2 the agent's consented run exits 0"; else fail "C2 exited $rc: $out"; fi
+has "C2 the consent decides" "moving without a prompt" "$out"
+has "C2 the policy key is held back" "gate-policy keys move only at your own prompt" "$out"
+has "C2 the policy key stays in .env" "CR_REQUIRE_CROSS_MODEL" "$(cat "$FX/.env")"
+has "C2 the secrets stay in .env" "UNREAD_SECRET=CANARY-unread-" "$(cat "$FX/.env")"
+# Y1: -y with no --env from inside another repository acts on nothing: that repository's .env is not this checkout's.
+fixture_env
+y1="$TMP/other-repo"
+mkdir -p "$y1"
+git init -q "$y1"
+fxput "$y1/.env" 'USER_SLUG=%s\n' "$(canary y1)"
+cp -p "$y1/.env" "$TMP/y1.orig"
+at_tty "" "cd $(printf '%q' "$y1") && bash $(printf '%q' "$SCRIPT") -y"
+if [ "$rc" = 3 ]; then pass "Y1 -y on another repository's .env is refused"; else fail "Y1 exited $rc: $out"; fi
+has "Y1 the refusal names --env" "--env" "$out"
+if cmp -s "$y1/.env" "$TMP/y1.orig" && [ ! -e "$HOME/.himmel/himmel.conf" ]; then pass "Y1 nothing moved"; else fail "Y1 something moved"; fi
+no_canary "Y1 no value printed" "$out"
+# Y2: naming that file with --env is allowed, and -y with no --env from this checkout still works.
+at_tty "" "cd $(printf '%q' "$y1") && bash $(printf '%q --env %q' "$SCRIPT" "$y1/.env") -y"
+if [ "$rc" = 0 ]; then pass "Y2 --env names the file and the run goes on"; else fail "Y2 exited $rc: $out"; fi
+fixture_env
+cp -p "$TMP/st/.env" "$FX/.env"
+at_tty "" "cd $(printf '%q' "$FX") && bash $(printf '%q' "$SCRIPT") -y"
+if [ "$rc" = 0 ]; then pass "Y2 -y in this checkout needs no --env"; else fail "Y2 this checkout exited $rc: $out"; fi
+lacks "Y2 this checkout's config key moved" "HIMMEL_FLEET_CAP" "$(cat "$FX/.env")"
+rm -f "$FX/.env"
+# Y3: from a linked worktree the .env is the primary checkout's, still this checkout.
+fixture_env
+git -C "$FX" -c user.name=fx -c user.email=fx@example.invalid -c core.hooksPath=/dev/null commit -qm fx
+y3="$TMP/fx-worktree"
+git -C "$FX" worktree add -q --detach "$y3"
+cp -p "$TMP/st/.env" "$FX/.env"
+at_tty "" "cd $(printf '%q' "$y3") && bash $(printf '%q' "$y3/scripts/setup/migrate-env.sh") -y"
+if [ "$rc" = 0 ]; then pass "Y3 -y from a worktree acts on the primary's .env"; else fail "Y3 exited $rc: $out"; fi
+lacks "Y3 the primary's config key moved" "HIMMEL_FLEET_CAP" "$(cat "$FX/.env")"
+rm -f "$FX/.env"
+
+# --- 14. The plan items: loud copies, blank and export lines, the held and shadow messages, stale temp files ---
+# P1: the private secrets copy that cannot be written stops the run, nothing removed.
+mkdir -p "$TMP/failbin"
+real_awk=$(command -v awk)
+cat > "$TMP/failbin/awk" <<EOF
+#!/usr/bin/env bash
+case "\$*" in *'index(set, " " k " ") { print }'*) exit 1 ;; esac
+exec "$real_awk" "\$@"
+EOF
+chmod +x "$TMP/failbin/awk"
+fixture_env
+apply_tty y "PATH=$TMP/failbin:\$PATH "
+if [ "$rc" = 1 ]; then pass "P1 a failed secrets copy exits 1"; else fail "P1 exited $rc: $out"; fi
+has "P1 the report says so" "could not write the private copy of the secrets" "$out"
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "P1 .env is untouched"; else fail "P1 .env changed"; fi
+# P2: the verify copy that cannot be written stops the run, nothing removed.
+mkdir -p "$TMP/failcp"
+real_cp=$(command -v cp)
+cat > "$TMP/failcp/cp" <<EOF
+#!/usr/bin/env bash
+for a; do l=\$a; done
+case "\$l" in */repo/.env) exit 1 ;; esac
+exec "$real_cp" "\$@"
+EOF
+chmod +x "$TMP/failcp/cp"
+fixture_env
+apply_tty y "PATH=$TMP/failcp:\$PATH "
+if [ "$rc" = 1 ]; then pass "P2 a failed verify copy exits 1"; else fail "P2 exited $rc: $out"; fi
+has "P2 the report says so" "verify: could not copy .env into the scratch checkout" "$out"
+if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "P2 .env is untouched"; else fail "P2 .env changed"; fi
+# P3: a blank secret line is a plan row that stays, not a pending move.
+fixture_env
+fxput "$TMP/st/.env" 'UNREAD_SECRET=\nREAD_SECRET=   # note\nKEEP_ME=%s\n' "$(canary keep)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "P3 the plan names a blank line" "  UNREAD_SECRET  secret  stays (blank in .env: nothing to move)" "$out"
+has "P3 the plan names a line the readers see as blank" "  READ_SECRET  secret  stays (blank in .env: nothing to move)" "$out"
+has "P3 nothing is pending" "nothing to move" "$out"
+apply_tty y
+if [ "$rc" = 0 ] && cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "P3 the apply leaves the blank lines"; else fail "P3 exited $rc: $out"; fi
+# P4: an export line is a plan row: the readers do not read it, so it stays; a file of them is not an empty file.
+fixture_env
+fxput "$TMP/st/.env" 'export READ_SECRET=%s\nexport HANDOVER_DIR=/x\nexport NOT_HIMMELS=%s\n' "$(canary p4)" "$(canary p4b)"
+cp -p "$TMP/st/.env" "$TMP/st.orig"
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "P4 the plan names a secret export line" "  READ_SECRET  secret  stays (an export line: the readers do not read it; remove export to move it)" "$out"
+has "P4 the plan names a config export line" "  HANDOVER_DIR  config  stays (an export line: the readers do not read it; remove export to move it)" "$out"
+lacks "P4 a key that is not himmel's gets no row" "NOT_HIMMELS" "$out"
+lacks "P4 the file is not called empty" "holds no keys" "$out"
+no_canary "P4 no value printed" "$out"
+apply_tty y
+if [ "$rc" = 0 ] && cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "P4 the apply leaves the export lines"; else fail "P4 exited $rc: $out"; fi
+# P5: the held message says which value is served.
+fixture_env
+kitem UNREAD_SECRET "$(canary p5)"
+apply_tty y
+has "P5 the held message names the served value" "the keyring value is the one served" "$out"
+# P6: a project-scope item that differs shadows the moved user-scope value, and the report says so.
+fixture_env
+fxadd "$KSTUB_STORE" 'service=himmel key=UNREAD_SECRET project=%s\t%s\n' "$(cd "$FX" && pwd -P)" "$(canary p6)"
+at_tty y "cd $(printf '%q' "$FX") && bash $(printf '%q --env %q' "$SCRIPT" "$TMP/st/.env") -y"
+has "P6 the shadowed key is named" "shadowed UNREAD_SECRET" "$out"
+has "P6 the report says which is served" "a project-scope keyring item with another value is served first" "$out"
+no_canary "P6 no value printed" "$out"
+# P7: a .env.migrate.<pid> a killed run left beside .env holds secrets: the next apply removes it; a live run's stays.
+fixture_env
+p7dead=$(bash -c 'printf %s "$$"')
+fxput "$TMP/st/.env.migrate.$p7dead" 'dummy\n'
+fxput "$TMP/st/.env.migrate.$$" 'dummy\n'
+apply_tty y
+if [ ! -e "$TMP/st/.env.migrate.$p7dead" ]; then pass "P7 the dead run's copy is gone"; else fail "P7 the dead run's copy stays"; fi
+if [ -e "$TMP/st/.env.migrate.$$" ]; then pass "P7 a live run's copy stays"; else fail "P7 a live run's copy was removed"; fi
 
 # Two migrations started together: one wins the import lock, nothing is stored twice, .env is whole.
 fixture_env

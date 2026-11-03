@@ -1286,10 +1286,11 @@ report_pending_migrations() {
 # layers and secrets to the keyring (scripts/setup/migrate-env.sh: backup,
 # copy, verify with the real readers, then remove the moved lines). check
 # prints the dry-run plan; apply runs migrate-env.sh, which never gets -y from
-# here: it moves the behaviour keys only under the operator's consent, and
-# prints the one command (with -y) to apply the rest at their own prompt. Exit
-# 4 from migrate-env.sh (no keyring for the secrets) is `incomplete`, not a
-# failure. Key names only, never values.
+# here: under the operator's consent it moves the behaviour keys, and with no
+# unlocked keyring a secret nothing reads to the legacy file; it prints the one
+# command (with -y) to apply the rest at their own prompt. Exit 4 from
+# migrate-env.sh (no keyring for the secrets) is `incomplete`, not a failure.
+# Key names only, never values.
 run_env_migration() {
     local script="$ROOT/scripts/setup/migrate-env.sh" envfile="$ROOT/.env" out rc=0
     [ -f "$script" ] || return 0
@@ -1301,7 +1302,7 @@ run_env_migration() {
             # No keyring: the secrets cannot move, so the station is not up to date.
             case "$out" in
                 *"WARN no keyring backend"*)
-                    STATUS_env_migration="incomplete"; DETAIL_env_migration="no unlocked keyring: secrets not moved; see the WARN above" ;;
+                    STATUS_env_migration="incomplete"; DETAIL_env_migration="no unlocked keyring: secrets not moved to a keyring; see the WARN above" ;;
                 *) STATUS_env_migration="up-to-date" ;;
             esac ;;
         0:*"dry run: nothing written"*)
@@ -1321,7 +1322,7 @@ run_env_migration() {
     case "$rc" in
         0) STATUS_env_migration="updated"; DETAIL_env_migration="backup in ~/.himmel/env-backups; remove it once happy" ;;
         3) ;;
-        4) STATUS_env_migration="incomplete"; DETAIL_env_migration="no unlocked keyring: secrets not moved; see the WARN above" ;;
+        4) STATUS_env_migration="incomplete"; DETAIL_env_migration="no unlocked keyring: secrets not moved to a keyring; see the WARN above" ;;
         *)
             STATUS_env_migration="failed"; DETAIL_env_migration="see the report above for .env and its backup"
             return 1 ;;

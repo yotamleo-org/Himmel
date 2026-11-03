@@ -116,6 +116,84 @@ assert_eq "S5 import-env skips the manifest's config keys" "1" "$(printf '%s' "$
 assert_eq "S5 import-env stores the secret keys" "2" "$(grep -c '^service=himmel key=\(FIRECRAWL_API_KEY\|TELEGRAM_BOT_TOKEN\) scope=user' "$KSTUB_STORE")"
 assert_eq "S5 import-env stores no other key" "2" "$(grep -c . "$KSTUB_STORE")"
 
+cp "$KSTUB_STORE" "$TMP/s5-store.keep"  # S6 reads the items the rows above stored
+# S5b: a stored quoted-empty item holds nothing, so a real .env value replaces it instead of being held.
+# The real secret-tool store replaces an item of the same attributes; the stub appends, so a wrapper does the replace.
+SVBIN="$TMP/sv-bin"
+mkdir -p "$SVBIN"
+cat >"$SVBIN/secret-tool" <<'WRAP'
+#!/usr/bin/env bash
+if [ "$1" = store ]; then
+    a=("$@"); q=""; i=3
+    while [ "$i" -lt "${#a[@]}" ]; do q="$q ${a[$i]}=${a[$((i + 1))]}"; i=$((i + 2)); done
+    grep -vF "${q# }	" "$KSTUB_STORE" >"$KSTUB_STORE.new"; cat "$KSTUB_STORE.new" >"$KSTUB_STORE"; rm -f "$KSTUB_STORE.new"
+fi
+exec "$KBIN/secret-tool" "$@"
+WRAP
+chmod +x "$SVBIN/secret-tool"
+for _s5b_item in '""' "''"; do
+    kreset
+    printf 'service=himmel key=FIRECRAWL_API_KEY scope=user\t%s\n' "$_s5b_item" >"$KSTUB_STORE"
+    printf 'FIRECRAWL_API_KEY=fake-real\n' >"$TMP/in-qe.env"
+    out=$(cd "$REPO" && KBIN="$KBIN" PATH="$SVBIN:$PATH" "$HS" import-env "$TMP/in-qe.env" 2>&1)
+    assert_eq "S5b a stored $_s5b_item item does not hold a real value" "1" "$(printf '%s' "$out" | grep -c '^stored FIRECRAWL_API_KEY$')"
+    assert_eq "S5b the real value replaced the $_s5b_item item" "1 1" "$(wc -l <"$KSTUB_STORE" | tr -d ' ') $(grep -cF 'fake-real' "$KSTUB_STORE")"
+done
+kreset
+printf 'FIRECRAWL_API_KEY=""\n' >"$TMP/in-qe.env"
+out=$(cd "$REPO" && KBIN="$KBIN" PATH="$SVBIN:$PATH" "$HS" import-env "$TMP/in-qe.env" 2>&1)
+assert_eq "S5b a quoted-empty .env line is still stored as those characters" "stored FIRECRAWL_API_KEY" "$(printf '%s' "$out" | grep '^stored ')"
+kreset
+printf 'service=himmel key=FIRECRAWL_API_KEY scope=user\tfake-other\n' >"$KSTUB_STORE"
+printf 'FIRECRAWL_API_KEY=fake-real\n' >"$TMP/in-qe.env"
+out=$(cd "$REPO" && KBIN="$KBIN" PATH="$SVBIN:$PATH" "$HS" import-env "$TMP/in-qe.env" 2>&1)
+assert_eq "S5b control: another real value is still held" "held FIRECRAWL_API_KEY" "$(printf '%s' "$out" | grep -E '^(stored|held) ')"
+
+# S5c: a user-scope import names a key a differing project-scope item shadows, never a value.
+kreset
+printf 'service=himmel key=FIRECRAWL_API_KEY project=%s\tfake-proj\n' "$PROJ" >"$KSTUB_STORE"
+printf 'FIRECRAWL_API_KEY=fake-user\n' >"$TMP/in-sh.env"
+out=$(cd "$REPO" && "$HS" import-env "$TMP/in-sh.env" 2>&1)
+assert_eq "S5c a differing project item is named" "1" "$(printf '%s' "$out" | grep -c '^shadowed FIRECRAWL_API_KEY$')"
+assert_eq "S5c the import still stored it" "1" "$(printf '%s' "$out" | grep -c '^stored FIRECRAWL_API_KEY$')"
+assert_eq "S5c no value printed" "0" "$(printf '%s' "$out" | grep -c 'fake')"
+kreset
+printf 'service=himmel key=FIRECRAWL_API_KEY project=%s\tfake-user\n' "$PROJ" >"$KSTUB_STORE"
+out=$(cd "$REPO" && "$HS" import-env "$TMP/in-sh.env" 2>&1)
+assert_eq "S5c an equal project item shadows nothing" "0" "$(printf '%s' "$out" | grep -c '^shadowed ')"
+kreset
+printf 'service=himmel key=FIRECRAWL_API_KEY scope=user\tfake-other\n' >"$KSTUB_STORE"
+out=$(cd "$REPO" && "$HS" import-env --project "$TMP/in-sh.env" 2>&1)
+assert_eq "S5c a project import shadows nothing" "0" "$(printf '%s' "$out" | grep -c '^shadowed ')"
+
+# S5d: same-value reads candidates from stdin, compares them with the user-scope item, prints nothing.
+sv() {  # <stdin text> <name>: prints the exit code, then any output
+    local _sv_o _sv_rc
+    _sv_o=$(cd "$REPO" && printf '%s' "$1" | "$HS" same-value "$2" 2>&1)
+    _sv_rc=$?
+    printf '%s%s' "$_sv_rc" "$_sv_o"
+}
+kreset
+printf 'service=himmel key=FIRECRAWL_API_KEY scope=user\tfake-one\nservice=himmel key=TELEGRAM_BOT_TOKEN project=%s\tfake-proj\n' "$PROJ" >"$KSTUB_STORE"
+assert_eq "S5d one equal line" "0" "$(sv $'fake-one\n' FIRECRAWL_API_KEY)"
+assert_eq "S5d two equal lines" "0" "$(sv $'fake-one\nfake-one\n' FIRECRAWL_API_KEY)"
+assert_eq "S5d a last line with no newline counts" "1" "$(sv $'fake-one\nfake-two' FIRECRAWL_API_KEY)"
+assert_eq "S5d one line differs" "1" "$(sv $'fake-one\nfake-two\n' FIRECRAWL_API_KEY)"
+assert_eq "S5d no line, an item" "0" "$(sv '' FIRECRAWL_API_KEY)"
+assert_eq "S5d no line, no item" "1" "$(sv '' JIRA_API_TOKEN)"
+assert_eq "S5d a line, no item" "1" "$(sv $'fake-one\n' JIRA_API_TOKEN)"
+assert_eq "S5d a project-scope item is no user-scope item" "1" "$(sv $'fake-proj\n' TELEGRAM_BOT_TOKEN)"
+assert_eq "S5d no value in the stub's argv log" "0" "$(grep -c 'fake-' "$KSTUB_LOG")"
+_s5d=$(cd "$REPO" && export KSTUB_SEARCH_FAIL=1 && printf 'fake-one\n' | "$HS" same-value FIRECRAWL_API_KEY >/dev/null 2>&1; echo "rc=$?")
+assert_eq "S5d a keyring that does not answer" "rc=2" "$_s5d"
+_s5d=$(cd "$REPO" && export KSTUB_LOCKED=true && printf 'fake-one\n' | "$HS" same-value FIRECRAWL_API_KEY >/dev/null 2>&1; echo "rc=$?")
+assert_eq "S5d a locked keyring" "rc=2" "$_s5d"
+_s5d=$(cd "$REPO" && printf 'x\n' | "$HS" same-value --project FIRECRAWL_API_KEY >/dev/null 2>&1; echo "rc=$?")
+assert_eq "S5d --project is refused" "rc=2" "$_s5d"
+_s5d=$(cd "$REPO" && printf 'x\n' | "$HS" same-value 'not a name' >/dev/null 2>&1; echo "rc=$?")
+assert_eq "S5d a bad name is refused" "rc=2" "$_s5d"
+
+cp "$TMP/s5-store.keep" "$KSTUB_STORE"
 # S6: export-env writes a new 0600 file that round-trips, and refuses to
 # overwrite an existing one.
 out=$(cd "$REPO" && "$HS" export-env "$TMP/out.env" 2>&1)
@@ -347,7 +425,7 @@ assert_eq "R15 a dash-named keep file still protects its key" "skipped JIRA_API_
 
 # R16: the usage and unknown-verb lines name every verb, names included.
 got=$(cd "$REPO" && "$HS" 2>&1; "$HS" frob 2>&1)
-assert_eq "R16 the usage and unknown-verb lines name names" "2" "$(printf '%s\n' "$got" | grep -c 'import-env|export-env|names')"
+assert_eq "R16 the usage and unknown-verb lines name names" "2" "$(printf '%s\n' "$got" | grep -c 'import-env|same-value|export-env|names')"
 
 # R17: two imports into one keyring scope never overlap. The lock is per scope, not per checkout.
 printf 'JIRA_API_TOKEN=dummy-r17\n' >"$TMP/r17.env"
