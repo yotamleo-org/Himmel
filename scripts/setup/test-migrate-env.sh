@@ -214,7 +214,7 @@ for k in UNREAD_SECRET READ_SECRET BITBUCKET_API_TOKEN KEEP_ME; do
 done
 has "R1 the backup keeps a config line" "HIMMEL_FLEET_CAP=7" "$bk"
 # R3: no value reaches the stub's argv log.
-lacks "R3 the keyring stub's argv log holds no value" "CANARY-" "$(cat "$KSTUB_LOG")"
+lacks "R3 the keyring stub's argv log holds no value" "CANARY-" "$(cat "$KSTUB_LOG")"  # read-sink-ok: KSTUB_LOG is this suite's own scratch log
 # R4: an unrelated key and an env-keep secret stay in .env byte for byte.
 has "R4 an env-keep secret stays byte-identical" "$(grep '^KEEP_ME=' "$TMP/st.orig")" "$envnow"
 has "R4 an unrelated key stays byte-identical" "$(grep '^OTHER_TOOL_TOKEN=' "$TMP/st.orig")" "$envnow"
@@ -730,7 +730,7 @@ has "R9 the apply warns" "migrate-env: WARN no keyring backend" "$out"
 if grep -q '^UNREAD_SECRET=CANARY-unread-' "$store" 2>/dev/null && [ "$(mode_of "$store")" = 600 ]; then pass "R9 the unread secret went to the mode-600 legacy file"; else fail "R9 the unread secret is not in the legacy file"; fi
 has "R9 a secret something reads stays in .env" "READ_SECRET=CANARY-read-" "$(cat "$TMP/st/.env")"
 lacks "R9 the legacy-file secret left .env" "UNREAD_SECRET=" "$(cat "$TMP/st/.env")"
-lacks "R9 nothing reached the keyring stub" "secret-tool store" "$(cat "$KSTUB_LOG")"
+lacks "R9 nothing reached the keyring stub" "secret-tool store" "$(cat "$KSTUB_LOG")"  # read-sink-ok: KSTUB_LOG is this suite's own scratch log
 has "R9 the backup is not scrubbed without a keyring" "READ_SECRET=CANARY-read-" "$(cat "$HOME"/.himmel/env-backups/env.* 2>/dev/null)"
 
 # R9b: no keyring and every secret has a reader: nothing moves, and the apply is still incomplete (exit 4).
