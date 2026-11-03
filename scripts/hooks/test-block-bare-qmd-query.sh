@@ -1211,6 +1211,9 @@ deny 'env {qmd,x} query foo'
 allow 'ls ~/.claude/{pipeline,qmd}-cadence/'
 allow "grep -rl 'x' ~/.claude/{a,qmd}-c/"
 allow 'ls {qmd,x}-{a,b}/'
+# a function may be named with a trailing slash, so the whole word is looked up
+deny 'd/x/() { $(cat /tmp/x); }; d/x/'
+deny 'f/() { $(cat /tmp/x); }; f/'
 deny 'timeout 5 qmd que{ry,} x'
 deny 'git commit -m "x; qmd query y"'
 deny 'curl -d "a; qmd query b" http://example.invalid'

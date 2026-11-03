@@ -1718,11 +1718,11 @@ dyn_check() {
                 if [[ $bd =~ $DYNBODY ]] || [[ $bd == *'$('* || $bd == *'`'* ]]; then fdang="$fdang$w "; fi
                 i=$j; pp=0; continue
             fi
-            # A word ending in `/` has no basename and names no program; its
-            # empty basename would match the blank padding of the lists.
-            if [ -n "${w##*/}" ]; then
-                case "$adang$fdang" in *" ${w##*/} "*) deny=1; return 0 ;; esac
-            fi
+            # A word ending in `/` (e.g. `-cadence/` left after a brace split) has an
+            # empty basename, which would match the lists' blank padding: look the
+            # whole word up instead, since a function may be named `f/`.
+            dk=${w##*/}; [ -n "$dk" ] || dk=$w
+            case "$adang$fdang" in *" $dk "*) deny=1; return 0 ;; esac
             if [ -n "$subs" ] || [[ $w == *'$'* ]]; then
                 # The part after the last dynamic piece must be a literal path.
                 if [ "$lastd" -ge 0 ]; then
