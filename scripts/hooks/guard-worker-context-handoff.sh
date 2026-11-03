@@ -418,9 +418,27 @@ else
     resume_ok && exit 0
 fi
 
+# Display routing follows the worker's own accepted succession chain, not the
+# launch environment's retired chief. Like succession-tracker.sh it reads Results
+# to EOF, since append-results.sh writes at EOF; the strict bullet grammar below
+# keeps a quoted or mirrored ruling from changing the hint.
+# shellcheck disable=SC2016  # literal Markdown backticks in strict handshake grammar
+current_chief=$(awk -v chief="$HIMMEL_CONSOLE_NAME" '
+    BEGIN { retired[chief] = 1 }
+    /^## Results([[:space:]]|$)/ { seen = 1; next }
+    seen && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted: (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/ {
+        sub(/^.*SUCCESSION accepted: /, ""); gsub(/`/, "")
+        split($0, words, /[[:space:]]+/)
+        # the newest acceptance wins: any name already in the chain can be replaced, so a correction
+        # overrides an earlier one and a chained replacement still resolves to the newest chief
+        if (words[3] in retired) { retired[words[1]] = 1; chief = words[1] }
+    }
+    END { print chief }
+' "$doc") || current_chief="$HIMMEL_CONSOLE_NAME"
+
 allowed="SendMessage, ListAgents, ToolSearch, TaskStop, the mail reads (mcp__himmel-bus__read, ReadNotifications, FetchInboxMessage), append-results.sh, queue-lock.sh release, wrap-subtree-check.sh, context-fill.sh, git add/commit/push/status/rev-parse, a bare cd"
 commit_form='A commit is one line (a newline in the command is denied): git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trailer "Security reviewed: <token> - <what>".'
-stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your chief ${HIMMEL_CONSOLE_NAME} what blocks you, then bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
+stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your chief ${current_chief} what blocks you, then bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
 mode_note="The mode is set at launch by the chief (HIMMEL_WORKER_SESSION_CONTEXT_MODE); it cannot be changed in-session."
 bypass_note="Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 in the launching shell."
 if [ "$MODE" = "compact" ]; then
@@ -431,7 +449,7 @@ else
     else
         write_to="${want}"
     fi
-    deny_msg="worker context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your chief ${HIMMEL_CONSOLE_NAME}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
+    deny_msg="worker context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your chief ${current_chief}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
 fi
 
 if [ "$event" = "PreCompact" ]; then
