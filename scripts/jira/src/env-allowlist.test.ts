@@ -29,13 +29,15 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe('dotenv allowlist', () => {
   it('jira-cli-env-excludes-unlisted-keys', async () => {
-    await import('./client.js');
+    const client = await import('./client.js');
+    client.loadEnvFile('/fixture/.env');
     for (const key of ['TEST_ANTHROPIC_API_KEY', 'UNRELATED_API_KEY', 'HANDOVER_DIR']) {
       expect(process.env[key]).toBeUndefined();
     }
   });
   it('consumer-keys-still-load: Jira and Confluence', async () => {
     const client = await import('./client.js');
+    client.loadEnvFile('/fixture/.env');
     expect(client.baseUrl()).toBe('https://fixture.invalid');
     expect(client.projectKey()).toBe('FIXTURE');
     expect(client.severityField()).toBe('customfield_1');
@@ -46,6 +48,7 @@ describe('dotenv allowlist', () => {
   it('live values still win', async () => {
     vi.stubEnv('JIRA_PROJECT_KEY', 'LIVE');
     const client = await import('./client.js');
+    client.loadEnvFile('/fixture/.env');
     expect(client.projectKey()).toBe('LIVE');
   });
 });

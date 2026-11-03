@@ -50,11 +50,27 @@ fi
 for v in HOME HIMMEL_RELEASE_STATE_DIR HIMMEL_ADMISSIONS_LEDGER HIMMEL_SECRETS_KEYRING; do
   if grep -q "process.env.$v = " "$setup"; then pass "sandbox file sets $v"; else fail "sandbox file does not set $v"; fi
 done
-if grep -Eq "^[[:space:]]*(import|const|let|var)[^/]*(from[[:space:]]*|require\()['\"]vitest/config['\"]" "$root_cfg"; then
-  fail "root vitest.config.ts imports 'vitest/config' (unresolvable from the root: a plain-object config is required)"
+# The quoted specifier on any non-comment line: catches a multiline import, a bare or dynamic
+# import, require() and `export ... from`, which a one-line import regex misses.
+names_vitest_config() {
+  sed -E 's://.*$::; /^[[:space:]]*(\/\*|\*)/d' "$1" | grep -Eq "['\"]vitest/config['\"]"
+}
+if names_vitest_config "$root_cfg"; then
+  fail "root vitest.config.ts names 'vitest/config' (unresolvable from the root: a plain-object config is required)"
 else
   pass "root vitest.config.ts is a plain object (no 'vitest/config' import)"
 fi
+# RED controls for the static refusal: each fixture must be refused; a commented mention must not.
+sfx="$tmp/static"; mkdir -p "$sfx"
+printf "import {\n  defineConfig,\n} from\n  'vitest/config';\nexport default defineConfig({});\n" > "$sfx/multiline.ts"
+printf "import 'vitest/config';\nexport default {};\n" > "$sfx/bare.ts"
+printf "const m = await import(\"vitest/config\");\nexport default {};\n" > "$sfx/dynamic.ts"
+printf "export {\n  defineConfig,\n} from 'vitest/config';\n" > "$sfx/reexport.ts"
+printf "// import { defineConfig } from 'vitest/config'\n/* 'vitest/config' */\n * 'vitest/config'\nexport default {};\n" > "$sfx/commented.ts"
+for f in multiline bare dynamic reexport; do
+  if names_vitest_config "$sfx/$f.ts"; then pass "static check refuses a $f vitest/config import"; else fail "static check misses a $f vitest/config import"; fi
+done
+if names_vitest_config "$sfx/commented.ts"; then fail "static check refuses a commented-out vitest/config mention"; else pass "static check ignores a commented-out vitest/config mention"; fi
 
 # ---- runtime cases need the jira vitest install
 vitest="$REPO_ROOT/scripts/jira/node_modules/.bin/vitest"
@@ -107,5 +123,62 @@ printf 'export default { test: { environment: "node" } };\n' > "$tmp/nosetup.con
 seed
 (cd "$REPO_ROOT" && "$vitest" run --config "$tmp/nosetup.config.mjs" scripts/jira/src/commands/sector.test.ts >"$tmp/case4.log" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "sector.test.ts with no setup file: canary SURVIVED"; else fail "sector.test.ts with no setup file: rc=$rc canary $(canary) (log $tmp/case4.log)"; sed -n 1,30p "$tmp/case4.log"; fi
+
+# ---- case 5: importing client.ts with NO setup file reads nothing.
+# A copy of the Jira sources lives in a throwaway project, so the .env lookup anchors there and
+# no real file is read; HOME holds a seeded himmel.conf with a marker value. The keyring is not
+# probed: scripts/lib/resolve-secrets.mjs already fails closed under NODE_ENV=test.
+marker="https://marker-8977.invalid"
+mkdir -p "$HOME/.himmel"
+printf 'JIRA_BASE_URL=%s\n' "$marker" > "$HOME/.himmel/himmel.conf"
+mkdir -p "$proj/scripts/jira" "$proj/scripts/lib"
+cp -r "$REPO_ROOT/scripts/jira/src" "$proj/scripts/jira/src"
+cp "$REPO_ROOT/scripts/lib/resolve-secrets.mjs" "$proj/scripts/lib/"
+printf '{"type":"module"}\n' > "$proj/package.json"
+printf 'export default { test: { environment: "node" } };\n' > "$proj/nosetup.config.mjs"
+cat > "$proj/import.test.ts" <<'EOF'
+import { test, expect } from 'vitest';
+test('importing client.ts reads no himmel.conf', async () => {
+  delete process.env.JIRA_BASE_URL;
+  await import('./scripts/jira/src/client.ts');
+  expect(process.env.JIRA_BASE_URL).toBeUndefined();
+});
+EOF
+(cd "$proj" && "$vitest" run --config nosetup.config.mjs import.test.ts >"$tmp/case5.log" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "client.ts import with no setup file reads nothing from himmel.conf"; else fail "client.ts import with no setup file read the seeded himmel.conf (rc=$rc, log $tmp/case5.log)"; sed -n 1,30p "$tmp/case5.log"; fi
+
+# ---- case 6: an inherited HIMMEL_CONFIG_DIR / HANDOVER_DIR is not what a test sees (root config + setup).
+mkdir -p "$tmp/inh-conf" "$tmp/inh-hd"
+printf 'JIRA_BASE_URL=%s\n' "$marker" > "$tmp/inh-conf/himmel.conf"
+cat > "$proj/inherit.test.ts" <<'EOF'
+import { test, expect } from 'vitest';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+test('inherited config and handover roots are replaced', () => {
+  const c = process.env.HIMMEL_CONFIG_DIR ?? '';
+  expect(existsSync(join(c, 'himmel.conf'))).toBe(false);
+  expect(process.env.HANDOVER_DIR).not.toBe(process.env.SEEDED_HD);
+});
+EOF
+(cd "$proj" && HIMMEL_CONFIG_DIR="$tmp/inh-conf" HANDOVER_DIR="$tmp/inh-hd" SEEDED_HD="$tmp/inh-hd" "$vitest" run inherit.test.ts >"$tmp/case6.log" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "inherited HIMMEL_CONFIG_DIR and HANDOVER_DIR are not seen by a test"; else fail "an inherited HIMMEL_CONFIG_DIR or HANDOVER_DIR reached a test (rc=$rc, log $tmp/case6.log)"; sed -n 1,30p "$tmp/case6.log"; fi
+
+# ---- case 7: a run from another directory (no config of its own) pointed at the Jira package
+# with --root loads that package's own config: the canary SURVIVES.
+other="$tmp/elsewhere"; mkdir -p "$other"
+seed
+(cd "$other" && "$vitest" run --root "$REPO_ROOT/scripts/jira" src/commands/sector.test.ts >"$tmp/case7.log" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "run from another directory with --root: canary SURVIVED"; else fail "run from another directory: rc=$rc canary $(canary) (log $tmp/case7.log)"; sed -n 1,30p "$tmp/case7.log"; fi
+
+# ---- case 8: why the wizard handover cases saw the station's HANDOVER_DIR (test-wizard-probes.sh).
+# load_dotenv reads himmel.conf from HIMMEL_CONFIG_DIR or $HOME/.himmel: with neither redirected
+# the seeded HANDOVER_DIR is served; a throwaway HIMMEL_CONFIG_DIR hides it.
+hd_clean="$tmp/hd-clean"; mkdir -p "$hd_clean"; git -C "$hd_clean" init -q -b main
+printf 'HANDOVER_DIR=%s\n' "$tmp/inh-hd" > "$HOME/.himmel/himmel.conf"
+hd_load() { (cd "$hd_clean" && unset HANDOVER_DIR; . "$REPO_ROOT/scripts/lib/load-dotenv.sh" && load_dotenv HANDOVER_DIR; printf '%s' "${HANDOVER_DIR-}"); }
+mkdir -p "$tmp/empty-conf"
+got="$(HIMMEL_CONFIG_DIR="$tmp/empty-conf" hd_load 2>/dev/null)"
+if [ -z "$got" ]; then pass "load_dotenv with a throwaway HIMMEL_CONFIG_DIR serves no HANDOVER_DIR"; else fail "load_dotenv with a throwaway HIMMEL_CONFIG_DIR still served HANDOVER_DIR=$got"; fi
+if [ "$(hd_load 2>/dev/null)" = "$tmp/inh-hd" ]; then pass "control: with no HIMMEL_CONFIG_DIR load_dotenv serves HANDOVER_DIR from \$HOME/.himmel/himmel.conf"; else fail "control: load_dotenv did not serve the seeded HANDOVER_DIR from \$HOME/.himmel"; fi
 
 [ "$failures" -eq 0 ]
