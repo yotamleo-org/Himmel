@@ -41,7 +41,7 @@ import { DAY as REPORT_DAY, listReports, readReport, soFar } from "./reports";
 import { readGate, writeGate } from "./review-gate";
 import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
-import { applyWrite, parseWrite, projectKeyOf, type WriteResult } from "./jira-write";
+import { applyWrite, KEY_RE, parseWrite, projectKeyOf, type WriteResult } from "./jira-write";
 import { applyLocalWrite, parseLocalWrite, readLocalItems } from "./local-tracker";
 import { accountCreate, secretWrite, setupState, verifyDoctor, type SecretResult } from "./setup";
 import { clearedCookie, createAuth, sessionCookie, writeLogin } from "./login";
@@ -75,6 +75,7 @@ const PREVIEW_TTL_MS = 5 * 60 * 1000;
 const VERIFY_TIMEOUT_MS = 200_000;
 export const REPROBE_BUDGET_MS = 60_000;
 const MAX_BODY = 16 * 1024;
+const HISTORY_MS = 30_000; // one ticket's changelog read (the drawer's stage history)
 // GET /api/agui/<run>: poll the journal for appends every 500 ms;
 // end 2 min after a finished run's file stops growing, and after 4 h regardless.
 const AGUI_POLL_MS = 500;
@@ -470,6 +471,31 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     return json(redactOut({ ...res.body, audit }), res.status);
   }
 
+  // the Board drawer's stage history: the status moves of one ticket, read by the Jira CLI (`history <KEY> --json`, argv, no shell) as the key's own
+  // project. Read-only: no lock and no audit row. A failed read is a 502, never an empty list: the drawer says "unavailable" for that.
+  async function roadmapHistoryRoute(url: URL): Promise<Response> {
+    const keys = url.searchParams.getAll("key");
+    const key = keys.length === 1 ? keys[0] : "";
+    if (!KEY_RE.test(key)) return json({ error: "key must match <PROJECT>-<n>" }, 400);
+    const henv = senv();
+    const first = (await trackerSources(henv, trackerRoot))[0], setting = trackerSetting(henv, trackerRoot);
+    if (first === "github" || first === "local" || first === "none" || (setting !== "" && setting !== "jira")) return json({ error: "this project's tracker is not Jira" }, 403);
+    const onBoard = boardProjects(henv, opts.projects);
+    const project = onBoard.find((p) => p.key === projectKeyOf(key, onBoard.map((x) => x.key)));
+    if (!project) return json({ error: "the key's project is not on the Board" }, 400);
+    const unavailable = () => json({ error: "history unavailable" }, 502);
+    let r;
+    try { r = await runChild(["node", jiraBin(env), "history", key, "--json"], { cwd: root, env: { ...henv, JIRA_PROJECT_KEY: project.key }, timeoutMs: HISTORY_MS }); } catch { return unavailable(); }
+    if (r.rc !== 0) return unavailable();
+    let entries: unknown;
+    try { entries = JSON.parse(r.stdout); } catch { return unavailable(); }
+    if (!Array.isArray(entries)) return unavailable();
+    const events = entries.flatMap((e: { created?: unknown; author?: { displayName?: unknown }; items?: unknown }) => (Array.isArray(e?.items) ? e.items : [])
+      .filter((i: { field?: unknown }) => typeof i?.field === "string" && i.field.toLowerCase() === "status")
+      .map((i: { fromString?: unknown; toString?: unknown }) => ({ at: String(e.created ?? ""), who: String(e.author?.displayName ?? "?"), from: i.fromString == null ? "" : String(i.fromString), to: i.toString == null ? "" : String(i.toString) })));
+    return json(redactOut({ key, events }));
+  }
+
   // The Verify step: the station's doctor, read-only. A second click while a run is in flight shares it.
   let verifying: Promise<Record<string, unknown>> | null = null;
   function verifyRoute(): Promise<Response> {
@@ -728,6 +754,11 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const nv = new URL(req.url).searchParams.get("nv") === "1"; // the Board's No version tab: those tickets only, read when it opens
         const r = readRoadmap({ mirrorDir, projects: boardProjects(renv, opts.projects), planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers, noVersion: nv });
         return json(redactOut({ ...r, sync: nv ? [] : legSync(r.tickets) }));
+      }
+      // the drawer's stage history for one ticket (GET only, read-only; see roadmapHistoryRoute).
+      if (path === "/api/roadmap/history") {
+        if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
+        return roadmapHistoryRoute(new URL(req.url));
       }
       // the Board page's two extra reads: the saved status-drift summary and the chain read. Read-only; each is absent, with the
       // reason, unless its input is found: named in the settings (the checkout's .env, himmel.conf, the non-empty process env

@@ -58,7 +58,7 @@ let verify = null; // the Setup page's Verify step: null, { state: "running" } o
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains }, null until read
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
-const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, tab: null, v: null, at: null, chain: null, nv: null };
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, chain: null, nv: null };
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides the Board
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no board to show. The Board reads the local tracker store (TRACKER=local, once it holds an item), a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
@@ -122,7 +122,7 @@ function route() {
   }
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   const bq = new URLSearchParams(currentPage.id === "board" ? m[3] || "" : "");
-  roadmapUi.tab = bq.get("tab"); roadmapUi.v = bq.get("v"); roadmapUi.at = bq.get("at");
+  roadmapUi.tab = bq.get("tab"); roadmapUi.v = bq.get("v"); roadmapUi.at = bq.get("at"); roadmapUi.drawer = null; // a new route closes the drawer
   shiftUi.id = null;
   shiftUi.all = new URLSearchParams(m[3] || "").get("all") === "1";
   const asked_day = new URLSearchParams(m[3] || "").get("day");
@@ -604,10 +604,10 @@ let rmWriting = false;
 const rmTicket = (k, project) => (roadmap && roadmap.state === "ok" ? roadmap.tickets.find((x) => x.k === k && (x.project || "") === (project || "")) : undefined)
   || (roadmapUi.nv && roadmapUi.nv.state === "ok" ? roadmapUi.nv.tickets.find((x) => x.k === k && (x.project || "") === (project || "")) : undefined); // a card on the No version tab is in the second read
 async function writeRoadmap(t, change) {
-  if (rmWriting || !t) return;
+  if (rmWriting || !t || roadmapUi.drawer) return; // a write is held while the drawer is open: the board under it is inert, and this is the one place every write passes
   const local = t.backend === "local";
   const body = { key: t.id || "HIMMEL-" + t.k, ...(local ? { backend: "local" } : {}), ...change }; // the card's own key: its project is never a default
-  rmWriting = true; roadmapUi.writeError = null;
+  rmWriting = true; roadmapUi.writeError = null; roadmapUi.held = null;
   const { ok, j } = await post("/api/roadmap/write", body);
   rmWriting = false;
   if (!ok) { roadmapUi.writeError = `${body.key}: ${j.error || "write failed"}${j.output ? " (" + String(j.output).trim().slice(0, 200) + ")" : ""}`; return paint(); }
@@ -636,7 +636,60 @@ document.addEventListener("drop", (e) => {
   e.preventDefault();
   const card = rmDrag; rmDrag = null;
   const t = rmTicket(card.k, card.project);
+  if (t && EVENT_OWNED.has(col.dataset.rmDrop)) { // In review, CI and Done are moved by their event (a PR opening, CI, the merge): a drop there is held, nothing is written (ruling Q4)
+    if (t.b !== col.dataset.rmDrop) { roadmapUi.held = `${t.id || "HIMMEL-" + t.k}: ${COLS_BY_ID[col.dataset.rmDrop]} is moved by its event, not by a drop. Nothing was written.`; paint(); }
+    return;
+  }
   if (t && t.b !== col.dataset.rmDrop) writeRoadmap(t, { status: col.dataset.rmDrop });
+});
+const EVENT_OWNED = new Set(["rev", "ci", "done"]);
+const CARD_COLS = ["todo", "prog", "rev", "ci", "done", "wont"]; // the board's column order, left to right
+
+// The ticket drawer: a click, Enter or Space on a card opens it; its stage history is fetched then and only then (never per card, never on load).
+const cardSel = (k, project) => `[data-rm-open="${k}"]` + (project ? `[data-rm-project="${CSS.escape(project)}"]` : ":not([data-rm-project])");
+function openDrawer(c) {
+  const k = Number(c.dataset.rmOpen), project = c.dataset.rmProject || "", t = rmTicket(k, project);
+  if (!t) return;
+  const dr = { k, project, history: null };
+  roadmapUi.drawer = dr; roadmapUi.held = null;
+  paint();
+  const close = document.querySelector(".drawer [data-act=rm-close]");
+  if (close) close.focus();
+  if (t.backend === "jira") void loadHistory(t, dr);
+}
+async function loadHistory(t, dr) {
+  let h = { error: "history unavailable" }; // a failed read is never an empty list
+  try {
+    const r = await fetch("/api/roadmap/history?key=" + encodeURIComponent(t.id || "HIMMEL-" + t.k), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = r.ok ? await r.json().catch(() => null) : null;
+    if (j && Array.isArray(j.events)) h = { events: j.events };
+  } catch (_) { /* unavailable */ }
+  if (roadmapUi.drawer === dr) { dr.history = h; paint(); }
+}
+function closeDrawer() {
+  const dr = roadmapUi.drawer;
+  if (!dr) return;
+  roadmapUi.drawer = null;
+  paint();
+  const c = document.querySelector(cardSel(dr.k, dr.project));
+  if (c) c.focus();
+}
+// Shift+Left / Shift+Right on a focused card moves it to the next column its operator may write (To do, In progress, Won't), through the same write as a drop.
+async function moveByKey(c, dir) {
+  const k = Number(c.dataset.rmOpen), project = c.dataset.rmProject || "", t = rmTicket(k, project);
+  let j = CARD_COLS.indexOf(t && t.b) + dir;
+  while (j >= 0 && j < CARD_COLS.length && EVENT_OWNED.has(CARD_COLS[j])) j += dir;
+  if (!t || j < 0 || j >= CARD_COLS.length) return;
+  await writeRoadmap(t, { status: CARD_COLS[j] });
+  const again = document.querySelector(cardSel(k, project));
+  if (again) again.focus();
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && roadmapUi.drawer) return void closeDrawer();
+  const c = e.target.closest && e.target.closest("[data-rm-open]");
+  if (!c || e.target !== c) return; // only the focused card itself, never a select or a link inside it
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); return void openDrawer(c); }
+  if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight") && c.hasAttribute("data-rm-card")) { e.preventDefault(); void moveByKey(c, e.key === "ArrowRight" ? 1 : -1); }
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
 document.addEventListener("change", (e) => {
@@ -734,8 +787,11 @@ function toggleBundle(h) {
 }
 
 document.addEventListener("click", (e) => {
+  const card = e.target.closest && e.target.closest("[data-rm-open]");
+  if (card && !e.target.closest("a,select,button,input,summary,[data-act]")) return void openDrawer(card);
   const b = e.target.closest("[data-act],[data-f]");
   if (!b) return;
+  if (b.dataset.act === "rm-close") return void closeDrawer();
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth(true);
   if (b.dataset.act && b.dataset.act.startsWith("th-")) return void toolHealthClick(b);
   if (b.dataset.act === "refresh-roadmap") { roadmapUi.nv = null; if (roadmapUi.tab === "nv") loadNoVersion(); return void (loadRoadmap(), loadBoard()); }

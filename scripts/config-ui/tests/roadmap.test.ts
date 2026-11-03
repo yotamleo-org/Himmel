@@ -757,3 +757,50 @@ test("5494: a card on the No version tab still offers the Sectors its project's 
   const html = renderBoard({ ...readRoadmap({ mirrorDir: "", projects, workers: { state: "absent" } as never }) }, { tab: "nv", v: "all", writes: true, nv }, {});
   expect(new RegExp('aria-label="Sector of SALUS-3">([\\s\\S]*?)</select>').exec(html)![1]).toContain("Intake"); // ... yet it can take its project's Sector
 });
+
+// ---- 8832: the ticket drawer (mockup v4 frame 3): the card's CLI argv, its stage history, and a board that holds still while it is open ----
+const EVENTS = [
+  { at: "2026-10-27T09:00:00.000+0000", who: "Bot", from: "To Do", to: "In Progress" },
+  { at: "2026-10-28T08:00:00.000+0000", who: "Bot", from: "In Progress", to: "In Review" },
+];
+const drawerOf = (html: string) => /<aside class="drawer"[\s\S]*?<\/aside>/.exec(html)?.[0] ?? "";
+
+test("8832 drawer: a card opens it, and it shows the card's CLI argv and its stage history", () => {
+  const r = read(station());
+  const closed = renderBoard(r, { version: null, theme: null, writes: true, v: "all" }, null);
+  expect(closed).toContain('data-rm-open="1"'); // every card carries the hook that opens it
+  expect(drawerOf(closed)).toBe("");
+  const html = renderBoard(r, { version: null, theme: null, writes: true, v: "all", drawer: { k: 1, project: "HIMMEL", history: { events: EVENTS } } }, null);
+  const d = drawerOf(html);
+  expect(d).toContain('aria-label="Ticket HIMMEL-1"');
+  expect(d).toContain("Roadmap in the ui");
+  expect(d).toContain("jira transition HIMMEL-1 &quot;To Do&quot;"); // the argv a move to To do runs
+  expect(d).not.toContain("transition HIMMEL-1 &quot;In Progress&quot;"); // the card is in progress already: no move there
+  expect(d).toContain('jira edit HIMMEL-1 --sector'); // and the Sector write
+  expect(d).toContain("To Do → In Progress");
+  expect(d).toContain("In Progress → In Review");
+  expect(d).toContain("2026-10-27");
+  expect(html).toMatch(/class="rm-under" inert/); // the board under the drawer takes no drag, select or key
+});
+
+test("8832 drawer: history that did not load says it is unavailable, never an empty history", () => {
+  const r = read(station());
+  const ui = (history: unknown) => renderBoard(r, { version: null, theme: null, writes: true, v: "all", drawer: { k: 1, project: "HIMMEL", history } }, null);
+  expect(drawerOf(ui({ error: "history unavailable" }))).toContain("history unavailable");
+  expect(drawerOf(ui({ error: "history unavailable" }))).not.toContain("No status moves");
+  expect(drawerOf(ui(null))).toContain("loading");
+  expect(drawerOf(ui({ events: [] }))).toContain("No status moves");
+});
+
+test("8832 drawer: a card of a second project shows that project's own key in the argv, and escapes ticket text", () => {
+  const m = twoMirrors();
+  const projects = [{ key: "HIMMEL", dir: join(m.root, "HIMMEL") }, { key: "SALUS", dir: join(m.root, "SALUS") }];
+  writeFileSync(join(m.root, "SALUS", "SALUS-1.md"), issueOf("SALUS", 1, ["v1.1.2"], "salus <b>work</b>"));
+  const r = readRoadmap({ mirrorDir: "", projects, workers: { state: "absent" } as never });
+  const html = renderBoard(r, { version: null, theme: null, v: "all", writes: true, drawer: { k: 1, project: "SALUS", history: { events: [] } } }, {});
+  const d = drawerOf(html);
+  expect(d).toContain('aria-label="Ticket SALUS-1"');
+  expect(d).toContain("jira transition SALUS-1");
+  expect(d).not.toContain("HIMMEL-1");
+  expect(d).toContain("salus &lt;b&gt;work&lt;/b&gt;");
+});

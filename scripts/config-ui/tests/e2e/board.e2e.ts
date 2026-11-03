@@ -14,6 +14,7 @@ const shot = async (page: Page, name: string) => { const d = process.env.E2E_SHO
 const consoleErrors = (page: Page) => { const errs: string[] = []; page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); }); page.on("pageerror", (e) => errs.push(String(e))); return errs; };
 const go = async (page: Page, hash: string) => { await page.evaluate((x) => { location.hash = x; }, hash); await page.locator("#main h1").filter({ hasText: "Board" }).waitFor(); await page.waitForLoadState("networkidle"); };
 async function open(page: Page) {
+  process.env.CONFIG_UI_JIRA_CLI = join(__dirname, "..", "stub-jira.js"); // the drawer's stage history is read through the Jira CLI: the stub answers two status moves, never live Jira
   h = await boot({}, { tracker: "jira", board: true });
   await page.goto(h.url);
   await page.locator("nav.pages").waitFor();
@@ -90,6 +91,79 @@ test("dragging a card to another column sends its new status", async ({ page }) 
   await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]'));
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
+});
+
+// 8832: the ticket drawer (mockup v4 frame 3), a keyboard move, and a drop on a column its event moves
+const noWrite = async (page: Page) => { // a write that goes out is recorded; none is answered by Jira
+  const sent: string[] = [];
+  await page.route("**/api/roadmap/write", async (route) => {
+    const body = route.request().postData() || "";
+    sent.push(body);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, status: JSON.parse(body).status }) }); // answers as the server does: the status the card is now in
+  });
+  return sent;
+};
+
+test("a click on a card opens the drawer with its CLI argv and its stage history, read through the Jira CLI when it opens", async ({ page }) => {
+  const errs = consoleErrors(page);
+  const reads: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("/api/roadmap/history")) reads.push(r.url()); });
+  await open(page);
+  await go(page, "#/board");
+  expect(reads).toEqual([]); // loading the Board reads no history
+  await page.locator(".rm-card", { hasText: "Second chain step" }).click();
+  const drawer = page.locator("aside.drawer");
+  await expect(drawer).toHaveAttribute("aria-label", "Ticket HIMMEL-2");
+  await expect(drawer).toContainText('jira transition HIMMEL-2 "In Progress"'); // the CLI call the move makes
+  await expect(drawer.locator(".rm-tl li").first()).toContainText("To Do → In Progress"); // the stub's first status move
+  await expect(drawer.locator(".rm-tl")).toContainText("In Progress → In Review");
+  await expect(drawer.locator(".rm-tl")).not.toContainText("v1.1.3"); // the Fix Version change is not a stage move
+  expect(reads).toHaveLength(1);
+  await expect(page.locator(".rm-under")).toHaveAttribute("inert", ""); // the board under it takes nothing
+  await shot(page, "board-drawer");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeFocused();
+  expect(errs).toEqual([]);
+});
+
+test("a history that cannot be read says unavailable, never an empty history", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  await page.route("**/api/roadmap/history*", (route) => route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "history unavailable" }) }));
+  await page.locator(".rm-card", { hasText: "Second chain step" }).click();
+  await expect(page.locator("aside.drawer")).toContainText("history unavailable");
+  await expect(page.locator("aside.drawer")).not.toContainText("No status moves");
+  await page.getByRole("button", { name: /^Close ticket/ }).click();
+  await expect(page.locator("aside.drawer")).toHaveCount(0);
+});
+
+test("Shift+Right on a focused card moves it to the next column its operator may write and posts the new status", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  const sent = await noWrite(page);
+  await page.locator(".rm-card", { hasText: "Second chain step" }).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => sent.length).toBe(1);
+  expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
+  await page.locator(".rm-card", { hasText: "Second chain step" }).focus();
+  await page.keyboard.press("Shift+ArrowRight"); // from In progress the next writable column is Won't: In review, CI and Done are skipped
+  await expect.poll(() => sent.length).toBe(2);
+  expect(JSON.parse(sent[1])).toMatchObject({ key: "HIMMEL-2", status: "wont" });
+});
+
+test("a drop on a column its event moves (In review, CI, Done) writes nothing and says so", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  await page.locator("#rm-lanes details.rm-done summary").click();
+  const sent = await noWrite(page);
+  for (const col of ["rev", "ci", "done"]) {
+    await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator(`[data-rm-drop="${col}"]`));
+    await expect(page.locator("#main .alert", { hasText: "Nothing was written" })).toBeVisible();
+  }
+  expect(sent).toEqual([]); // no POST to /api/roadmap/write went out
+  await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]')); // a column the operator owns still writes
+  await expect.poll(() => sent.length).toBe(1);
 });
 
 test("the Chain filter narrows the lanes to that chain's tickets", async ({ page }) => {
@@ -184,6 +258,25 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
         await shot(page, `board-${width}-${scheme}-${tab}`);
       }
+      expect(errs).toEqual([]);
+    });
+  }
+}
+
+for (const [width, height] of [[1280, 900], [390, 844]]) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`the drawer at ${width} px, ${scheme}: it draws over the board, no console error, no sideways scroll`, async ({ page }) => {
+      const errs = consoleErrors(page);
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme: scheme });
+      await open(page);
+      await go(page, "#/board");
+      await page.locator(".rm-card", { hasText: "Second chain step" }).click();
+      await expect(page.locator("aside.drawer .rm-tl")).toContainText("To Do → In Progress");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      const box = await page.locator("aside.drawer").boundingBox();
+      expect(box && box.x >= 0 && box.x + box.width <= width + 1).toBe(true);
+      await shot(page, `board-${width}-${scheme}-drawer`);
       expect(errs).toEqual([]);
     });
   }
