@@ -54,7 +54,7 @@
 # (and eventually past) the first 60 lines of the file, the window
 # scripts/parity/test-ws5-invariants.sh's T15 check scans for one.
 #
-# Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 could not
+# Exit codes: 2 usage / bad argument, or a launch refused because its Writes paths overlap a live hold; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
 # macOS konsole shim, a distinct failure from 3 above; 16 another live worker
 # session already holds the same ticket, or another lineage's arm for that
@@ -570,6 +570,8 @@ ROLE_ENV_UNSET=""
 CHIEF_ENV=()
 if [ "$ROLE" = "chief" ]; then
     ROLE_ENV_UNSET="-u HIMMEL_CONSOLE_RELAY"
+    # a chief holds no files: a worker key inherited from the shell that armed it must not reach the chief
+    unset -v HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC HIMMEL_HOLD_LABEL WRITE_HOLD_OK
     # The `-u` above sits BEFORE $LAUNCHER_ENV in both konsole
     # branches, and `env -u FOO FOO=1` ends with FOO=1 -- so a
     # HIMMEL_CONSOLE_RELAY=<v> token carried in HEADED_ARM_LAUNCHER_ENV would
@@ -1541,6 +1543,62 @@ if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z]
         echo "$(date +%F_%T) REFUSED: $TICKET_KEY already has a live worker session $TICKET_RIVAL - not launching $NAME" >> "$LOG"
         rm -rf "$LOCK" 2>/dev/null
         exit 16
+    fi
+fi
+
+# Single-writer barrier: seed this worker's exact file holds, past the duplicate-name refusal (exit 6) and
+# the ticket-rival refusal (exit 16), so a refused launch leaves no row and a headless launch seeds under its name claim
+# alone. Only a worker launch carries HIMMEL_HOLD_KEY (headed-arm-worker.sh sets it); a chief, a judge, a consult, a
+# release manager or a relay carries none, and --dry-run exited above. The barrier folded off (the OFF sentinel) calls
+# nothing. A RESUME doc first re-points its key's rows to the new doc and label. Only holds.py exit 1 with a `holds:`
+# line on stderr is a refusal (exit 2; the EXIT trap drops the ticket claim); any other outcome warns and launches,
+# because a seed fault must never stop a launch (a SyntaxError in holds.py also exits 1, with no `holds:` line).
+# WRITE_HOLD_OK=1 (exactly 1) in the launching shell turns a refusal into a warning. repoint and seed share one 60 s deadline,
+# under the 120 s claim window (STALE_LOCK_SECS).
+# ponytail: a launch that fails after the seed keeps its rows; ceiling: a rival waits up to 15 minutes (the arm grace),
+# upgrade path: release only what that seed created, on that failure path.
+if [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] && [ "$ROLE" != chief ] && [ ! -e "${HOME:-}/.himmel/state/holds/OFF" ]; then
+    _holds_py="${HEADED_ARM_HOLDS_PY:-$(cd "$(dirname "$0")" && pwd)/chief-kit/holds.py}"
+    _holds_deadline=$(( $(date +%s) + 60 ))
+    _holds_label="${HIMMEL_HOLD_LABEL:-$NAME}"
+    case "${HIMMEL_HOLD_DOC##*/}" in
+        *RESUME*)
+            python3 -I "$_holds_py" repoint --key "$HIMMEL_HOLD_KEY" --label "$_holds_label" --doc "$HIMMEL_HOLD_DOC" --repo "$REPO" --deadline "$_holds_deadline" >/dev/null 2>&1 \
+                || echo "$(date +%F_%T) WARN holds: repoint for $HIMMEL_HOLD_KEY did not finish; launching" >> "$LOG"
+            ;;
+    esac
+    _holds_rc=0
+    _holds_err="$(python3 -I "$_holds_py" seed --key "$HIMMEL_HOLD_KEY" --label "$_holds_label" --doc "$HIMMEL_HOLD_DOC" --repo "$REPO" --deadline "$_holds_deadline" 2>&1 >/dev/null)" || _holds_rc=$?
+    if [ "$_holds_rc" -ne 0 ]; then
+        _holds_nl=$'\n'
+        _holds_refusal=0
+        case "$_holds_nl$_holds_err" in *"${_holds_nl}holds: "*) _holds_refusal=1 ;; esac
+        if [ "$_holds_rc" -eq 1 ] && [ "$_holds_refusal" -eq 1 ] && [ "${WRITE_HOLD_OK:-}" != 1 ]; then
+            # the runnable grant line names the primary checkout's holds.py by absolute path: a trust path carries no bare holds.py
+            # shellcheck source=../lib/git-clean.sh
+            . "$(dirname "$0")/../lib/git-clean.sh" 2>/dev/null || true  # swallow-ok: without the helper git_clean is undefined, the call below fails, and the script-relative path stands in
+            _holds_primary="$(git_clean -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _holds_primary=""  # swallow-ok: no git answer falls back to the script-relative checkout below
+            _holds_primary="${_holds_primary%/.git}"
+            [ -n "$_holds_primary" ] || _holds_primary="$(cd "$(dirname "$0")/../.." && pwd)"
+            echo "headed-arm: refusing to arm $NAME: its brief names a file another live worker holds:" >&2
+            printf '%s\n' "$_holds_err" | grep '^holds: ' >&2
+            _holds_path="$(printf '%s\n' "$_holds_err" | sed -n 's/^holds: \(.*\) is held by .*/\1/p' | head -n 1)"
+            _holds_line="$(printf '%s\n' "$_holds_err" | grep -m 1 '^holds: ' | tr -d '>')"
+            case "$_holds_path" in
+                /*) _holds_grant="no grant exists for a path outside the repo ($_holds_path): wait for the holder to wrap, or the operator launches with WRITE_HOLD_OK=1" ;;
+                *) _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_primary/scripts/handover/chief-kit/holds.py grant --key $HIMMEL_HOLD_KEY --repo $REPO ${_holds_path:-PATH}" ;;
+            esac
+            echo "headed-arm: $_holds_grant" >&2
+            # the chief reads neither this stderr (a generated launcher keeps it in launch.out, a hand launch sends it to /dev/null) nor
+            # the exit code: the log and a BLOCKED bullet on the brief carry the holder and the grant line, and tick surfaces the bullet
+            echo "$(date +%F_%T) REFUSED: $NAME's brief names a file held by another live worker - not launching: $_holds_line; $_holds_grant" >> "$LOG"
+            bash "$(dirname "$0")/chief-kit/append-results.sh" "$HIMMEL_HOLD_DOC" "BLOCKED launch of $NAME refused, not armed: $_holds_line; $_holds_grant" >/dev/null 2>&1 \
+                || echo "$(date +%F_%T) WARN could not append the BLOCKED bullet to $HIMMEL_HOLD_DOC" >> "$LOG"
+            rm -rf "$LOCK" 2>/dev/null
+            exit 2
+        fi
+        echo "headed-arm: WARN holds seed for $HIMMEL_HOLD_KEY exited $_holds_rc; launching anyway: $(printf '%s' "$_holds_err" | head -n 1)" >&2
+        echo "$(date +%F_%T) WARN holds seed exited $_holds_rc: $(printf '%s' "$_holds_err" | head -n 1)" >> "$LOG"
     fi
 fi
 

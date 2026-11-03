@@ -11,10 +11,11 @@ Denies, takeovers, grants and faults append one line to <holds>/events.log.
 The barrier is a coordination guard, not a security fence: it refuses only on a positive answer (a readable
 row, another key, that key alive, no grant). Every other outcome passes and leaves a record.
 
-Exit codes: 0 ok, 1 refused (the holder on stderr), 2 usage, a crash or any failure that is not a refusal, 3 unreadable.
-Nothing in this slice wires holds.py anywhere.
+Exit codes: 0 ok, 1 refused (the holder on stderr), 2 usage, a crash or any failure that is not a refusal, 3 unreadable
+(seed and repoint also: a claim fault, or the launch deadline passed).
 """
 import argparse
+import json
 import os
 import re
 import signal
@@ -25,6 +26,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 GRACE = 15 * 60          # a row this young is alive: the worker is still arming
 RESUME_AGE = 24 * 3600   # ponytail: a RESUME doc younger than this keeps its key's rows; a successor parked longer loses them, upgrade path: the chief re-points or grants
+SEED_BUDGET = 60         # seconds a launch gives repoint and seed together, under the 120 s claim window of headed-arm.sh
 GH_TIMEOUT = 5
 QL_TIMEOUT = 15
 SOURCES = ('brief', 'claim', 'pr')
@@ -321,18 +323,26 @@ class Judge:
     """Is a row's holder alive? By key: a doc of the key with a held lock, its PR open, the arm grace, or an
     unwrapped RESUME doc under 24 hours. Answers are cached per run: one queue-lock call per doc, one gh call per PR."""
 
-    def __init__(self, repo):
+    def __init__(self, repo, deadline=None):
         self.repo = repo
+        self.deadline = deadline  # epoch seconds: past it no call is spawned (answer fault), and each call is bounded by what is left
         self.ql_cache, self.pr_cache, self.scan_cache = {}, {}, {}
         self.scan_faulted = set()
         self.root = None
+
+    def left(self, timeout):
+        """The timeout for one call: its own, or what is left of the deadline; 0 once the deadline has passed."""
+        if self.deadline is None:
+            return timeout
+        return max(0, min(timeout, self.deadline - time.time()))
 
     def lock_state(self, doc):
         """'free' | 'alive' | 'fault' from the queue-lock.sh status table."""
         if doc in self.ql_cache:
             return self.ql_cache[doc]
         ql = os.environ.get('HOLDS_QUEUE_LOCK') or os.path.join(HERE, '..', 'queue-lock.sh')
-        res = run_bounded(['bash', ql, 'status', doc], QL_TIMEOUT) if os.path.isfile(ql) else None
+        t = self.left(QL_TIMEOUT)
+        res = run_bounded(['bash', ql, 'status', doc], t) if t > 0 and os.path.isfile(ql) else None
         if res is None:
             s = 'fault'
         elif res[0] == 0:
@@ -351,7 +361,8 @@ class Judge:
         if pr in self.pr_cache:
             return self.pr_cache[pr]
         gh = os.environ.get('HOLDS_GH') or 'gh'
-        res = run_bounded([gh, 'pr', 'view', pr, '--json', 'state', '-q', '.state'], GH_TIMEOUT, cwd=self.repo if os.path.isdir(self.repo) else None)
+        t = self.left(GH_TIMEOUT)
+        res = run_bounded([gh, 'pr', 'view', pr, '--json', 'state', '-q', '.state'], t, cwd=self.repo if os.path.isdir(self.repo) else None) if t > 0 else None
         if res is None or res[0] != 0:
             s = 'fault'
         else:
@@ -396,19 +407,30 @@ class Judge:
     def resume_alive(self, docs):
         """'alive' | 'none' | 'fault': an unwrapped RESUME doc of the key under 24 hours old."""
         res = 'none'
+        info = []  # (doc, mtime, last mark, the line of that mark)
         for d in docs:
-            if 'RESUME' not in os.path.basename(d):
-                continue
             try:
-                age = time.time() - os.path.getmtime(d)
-                marks = [m.group(1) for m in (MARKER_RE.match(l) for l in open(d, encoding='utf-8', errors='replace').read().splitlines()) if m]
+                mt = os.path.getmtime(d)
+                last = ('', '')
+                for l in open(d, encoding='utf-8', errors='replace').read().splitlines():
+                    m = MARKER_RE.match(l)
+                    if m:
+                        last = (m.group(1), l)
             except FileNotFoundError:
                 continue  # a doc that is gone holds nothing; its lock is still asked by row_state
             except OSError:
                 res = 'fault'
                 continue
-            if age < RESUME_AGE and not (marks and marks[-1] == 'WRAPPED'):
-                return 'alive'
+            info.append((d, mt, last[0], last[1]))
+        for d, mt, mark, _line in info:
+            if 'RESUME' not in os.path.basename(d) or time.time() - mt >= RESUME_AGE or mark == 'WRAPPED':
+                continue
+            # a worker that wraps writes WRAPPED into the doc it worked in, not the RESUME doc: that wrap consumes it,
+            # unless the wrap bullet hands off to this very doc
+            if any(m2 == 'WRAPPED' and mt2 > mt and os.path.basename(d) not in l2
+                   for d2, mt2, m2, l2 in info if d2 != d):
+                continue
+            return 'alive'
         return res
 
     def row_state(self, fields, mtime):
@@ -558,6 +580,62 @@ def op_claim(a):
     return 1 if refused else 0
 
 
+def has_writes(text):
+    return any(l.startswith(WRITES_LEAD) for l in text.splitlines())
+
+
+def fallback_text(judge, doc, key):
+    """The text of the newest doc of the key (under the bucket of doc) that carries a Writes line, else None."""
+    best = None
+    for d in judge.scan(judge.bucket_of(doc), key):
+        if d == doc:
+            continue
+        try:
+            t = open(d, encoding='utf-8', errors='replace').read()
+            m = os.path.getmtime(d)
+        except OSError:
+            continue  # swallow-ok: a doc that cannot be read is not a fallback; the next one is tried
+        if has_writes(t) and (best is None or m > best[0]):
+            best = (m, t)
+    return best[1] if best else None
+
+
+def seed_budget(a):
+    return a.deadline if getattr(a, 'deadline', None) else time.time() + SEED_BUDGET
+
+
+def seed_rows(repo, judge, key, label, doc, text, deadline):
+    """-> (0 | 1 refused | 3 fault, refusal message). Refused: no row of this seed stays. A claim fault or a
+    deadline passed: the rows made stay and the answer is 3."""
+    if not has_writes(text):
+        text = fallback_text(judge, doc, key) or text  # a RESUME doc with no Writes line: the predecessor's
+    created = []
+    faulted = False
+    claimed = False
+    for kind, p in parse_text(text, repo):
+        if kind != 'file':
+            continue
+        if deadline is not None and time.time() >= deadline:
+            fault('seed deadline passed', p, key)
+            return 3, 'holds: the seed deadline passed before %s' % p
+        r = claim_one(repo, judge, p, key, label, doc, 'brief', '', created)
+        if r.startswith('refused:'):
+            for target, mine in created:  # all or nothing: remove only the rows this seed made
+                st, f = read_row(target)
+                if st == 'ok' and '\t'.join(f) + '\n' == mine:
+                    try:
+                        os.unlink(target)
+                    except OSError:
+                        pass  # swallow-ok: a row that vanished needs no removal
+            return 1, r[len('refused:'):]
+        faulted = faulted or r == 'fault'
+        claimed = True
+    if claimed and deadline is not None and time.time() >= deadline:
+        fault('seed deadline passed', '', key)  # the last claim ran past it
+        return 3, 'holds: the seed deadline passed during the last claim'
+    return (3, 'holds: a claim faulted; see events.log') if faulted else (0, '')
+
+
 def op_seed(a):
     if bad_key(a.key):
         return 2
@@ -567,23 +645,124 @@ def op_seed(a):
     except OSError as e:
         sys.stderr.write('holds: cannot read %s: %s\n' % (a.doc, e.strerror or e))
         return 3
-    judge = Judge(repo)
-    created = []
-    for kind, p in parse_text(text, repo):
-        if kind != 'file':
+    deadline = seed_budget(a)
+    rc, msg = seed_rows(repo, Judge(repo, deadline), a.key, a.label, a.doc, text, deadline)
+    if msg:
+        sys.stderr.write(msg + '\n')
+    return rc
+
+
+def repoint_row(d, n, key, label, doc):
+    """'repointed' | 'same' | 'skip' | 'fault': rewrite one row of key to doc and label by the takeover's rename-compare."""
+    target = os.path.join(d, n)
+    st, f = read_row(target)
+    if st == 'gone' or st == 'bad' or (st == 'ok' and f[0] != key):
+        return 'skip'  # a junk row names no holder, so it is no row of this key
+    if st != 'ok':
+        fault('row unreadable', unescape(n), key)
+        return 'fault'
+    if f[1] == label and f[2] == doc:
+        return 'same'
+    _tmp_n[0] += 1
+    moved = os.path.join(d, '%smoved.%d.%d' % (TMP_PREFIX, os.getpid(), _tmp_n[0]))
+    try:
+        os.rename(target, moved)
+    except FileNotFoundError:
+        return 'skip'
+    except OSError as e:
+        fault('repoint rename: %s' % (e.strerror or e), unescape(n), key)
+        return 'fault'
+    st2, f2 = read_row(moved)
+    res = 'skip'
+    if st2 == 'ok' and f2 == f:
+        try:
+            publish(d, n, '\t'.join(clean(x) for x in (key, label, doc, f[3], f[4])) + '\n')  # 'exists': a fresher holder published in the gap and keeps its row
+            res = 'repointed'
+        except OSError as e:
+            fault('repoint write: %s' % (e.strerror or e), unescape(n), key)
+            res = 'fault'
+            try:
+                os.link(moved, target)  # keep the old row: a failed write must not erase the hold
+            except OSError:
+                pass  # swallow-ok: a fresher holder published meanwhile and keeps its row
+    else:
+        try:
+            os.link(moved, target)  # the row moved was not the one judged (another key's): put it back
+        except OSError:
+            pass  # swallow-ok: someone published a newer row meanwhile; the next reader sees it
+    try:
+        os.unlink(moved)
+    except OSError:
+        pass  # swallow-ok: a leftover %00moved file is skipped by every reader
+    return res
+
+
+def op_repoint(a):
+    if bad_key(a.key):
+        return 2
+    repo = primary_of(a.repo)
+    deadline = seed_budget(a)
+    rc = 0
+    repointed = False
+    for d in (slug_dir(repo), slug_dir(repo, '_abs')):
+        try:
+            names = sorted(os.listdir(d))
+        except FileNotFoundError:
             continue
-        r = claim_one(repo, judge, p, a.key, a.label, a.doc, 'brief', '', created)
-        if r.startswith('refused:'):
-            for target, mine in created:  # all or nothing: remove only the rows this seed made
-                st, f = read_row(target)
-                if st == 'ok' and '\t'.join(f) + '\n' == mine:
-                    try:
-                        os.unlink(target)
-                    except OSError:
-                        pass  # swallow-ok: a row that vanished needs no removal
-            sys.stderr.write(r[len('refused:'):] + '\n')
-            return 1
-    return 0
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
+            return 3
+        for n in names:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            if time.time() >= deadline:
+                fault('repoint deadline passed', '', a.key)
+                sys.stderr.write('holds: the repoint deadline passed\n')
+                return 3
+            if repoint_row(d, n, a.key, a.label, a.doc) == 'fault':
+                rc = 3
+            repointed = True
+    if repointed and time.time() >= deadline:
+        fault('repoint deadline passed', '', a.key)  # the last row ran past it
+        sys.stderr.write('holds: the repoint deadline passed during the last row\n')
+        return 3
+    return rc
+
+
+def op_backfill(a):
+    """Seed rows for every manifest worker not WRAPPED, with that worker's doc and label. One line per worker."""
+    repo = primary_of(a.repo)
+    try:
+        with open(a.manifest, encoding='utf-8') as fh:
+            m = json.load(fh)
+        workers = m.get('workers') or m.get('legs') or []
+    except (OSError, ValueError, AttributeError) as e:
+        sys.stderr.write('holds: cannot read the manifest %s: %s\n' % (a.manifest, getattr(e, 'strerror', None) or e))
+        return 3
+    judge = Judge(repo)
+    rc = 0
+    for w in workers:
+        doc, label = w.get('doc') or '', w.get('label') or ''
+        km = re.search(r'[A-Z][A-Z0-9]*-[0-9]+', os.path.basename(doc))
+        try:
+            text = open(doc, encoding='utf-8', errors='replace').read()
+        except OSError:
+            print('backfill: %s nodoc' % label)
+            continue
+        marks = [x.group(1) for x in (MARKER_RE.match(l) for l in text.splitlines()) if x]
+        if marks and marks[-1] == 'WRAPPED':
+            print('backfill: %s wrapped' % label)
+            continue
+        if not km:
+            print('backfill: %s nokey' % label)
+            continue
+        r, msg = seed_rows(repo, judge, km.group(0), label, doc, text, None)
+        print('backfill: %s %s' % (label, 'seeded' if r == 0 else 'overlap' if r == 1 else 'fault'))
+        if msg:
+            sys.stderr.write(msg + '\n')
+        if r == 3:
+            rc = 3
+    return rc
 
 
 def load_trust():
@@ -594,8 +773,15 @@ def load_trust():
         return None
 
 
-GRANT_PATH_REFUSED_RE = re.compile(r'(^|/)[^/]*settings[^/]*\.json$|^\.github/')  # copied from gen-briefs.py validate_grants; Task 2 moves it here
+GRANT_PATH_REFUSED_RE = re.compile(r'(^|/)[^/]*settings[^/]*\.json$|^\.github/')  # gen-briefs.py validate_grants reads this one
 BAD_CHAR_RE = re.compile(r'[\x00-\x1f\x7f`]')
+
+
+def literal_repo_path(p, repo):
+    """A grant path is one literal repo-relative file path, normalised: the anchored refusals below only see that spelling."""
+    return not (not isinstance(p, str) or not p.strip() or p != p.strip() or BAD_CHAR_RE.search(p) or os.path.isabs(p)
+                or p != os.path.normpath(p) or p == '.' or re.search(r'[*?\[]', p) or '..' in p.split('/')
+                or os.path.isdir(os.path.join(repo, p)))
 
 
 def worker_session():
@@ -610,8 +796,7 @@ def op_grant(a):
         return 2
     repo = primary_of(a.repo)
     p = a.path
-    if (not p.strip() or p != p.strip() or BAD_CHAR_RE.search(p) or os.path.isabs(p) or p != os.path.normpath(p) or p == '.'
-            or re.search(r'[*?\[]', p) or '..' in p.split('/') or os.path.isdir(os.path.join(repo, p))):
+    if not literal_repo_path(p, repo):
         sys.stderr.write('holds: %r must be a literal repo-relative file path\n' % p)
         return 2
     trust = load_trust()
@@ -819,6 +1004,14 @@ def build_parser():
     sp = add('seed', op_seed, help='claim every file in a doc\'s Writes lines, all or nothing')
     for o in ('--key', '--label', '--doc', '--repo'):
         sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
+    sp.add_argument('--deadline', type=float, help='epoch seconds after which the seed stops between rows (default: 60 s from now)')
+    sp = add('repoint', op_repoint, help='rewrite a key\'s rows to a new doc and label (a RESUME launch)')
+    for o in ('--key', '--label', '--doc', '--repo'):
+        sp.add_argument(o, required=True, type=abs_doc if o == '--doc' else str)
+    sp.add_argument('--deadline', type=float, help='epoch seconds after which the repoint stops between rows (default: 60 s from now)')
+    sp = add('backfill', op_backfill, help='seed rows for every manifest worker not WRAPPED')
+    sp.add_argument('--manifest', required=True)
+    sp.add_argument('--repo', required=True)
     sp = add('grant', op_grant, help='let a key write a held file (chief only)')
     sp.add_argument('--key', required=True)
     sp.add_argument('--repo', required=True)
