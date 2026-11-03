@@ -26,8 +26,12 @@
 # Secrets: import-env prints stored|held|failed|skipped per key. A key leaves
 # .env only on `stored` (the value read back from the keyring alone); `held` (the
 # keyring has another value) and keys named in ~/.himmel/env-keep.txt stay. A
-# `failed` key stops the run with no line removed. After the .env rewrite every
-# file in ~/.himmel/env-backups loses its manifest-secret lines, and a legacy
+# `failed` key stops the run with no line removed. After the .env rewrite, when the
+# secrets stage was allowed, every file in ~/.himmel/env-backups and the .env copy
+# in each config-audit backup (manifest checksums kept true) loses the lines of
+# a manifest-secret key that .env or the keyring still holds; a line that is the
+# only copy of its key stays and is named. A run with nothing else to move still
+# finishes an owed scrub. A legacy
 # ~/.config/secrets/himmel.env is imported and emptied of what it stored. The
 # secrets stage runs only with -y, at a terminal, outside an agent session, on
 # every consent path: ENV_MIGRATION_CONSENT covers the other keys alone. With no
@@ -68,7 +72,8 @@
 # backup, copy, secrets or verify step failed (no line removed from .env), or
 # the final rewrite of .env failed (restore it from the printed backup); 2
 # usage; 3 nothing written: an agent session or no terminal without the consent
-# key, or no -y; 4 moved, but incomplete: no unlocked keyring for the secrets;
+# key, or no -y (also: a scrub-only run without -y); 4 moved, but incomplete: no
+# unlocked keyring for the secrets (also when nothing else moves);
 # 96 a chokepoint seam differs from the session's launch env.
 set -uo pipefail
 
@@ -97,6 +102,7 @@ if [ -f "$ROOT/scripts/lib/config-audit.sh" ]; then
 else
     config_audit_pre() { :; }
     config_audit_post() { :; }
+    config_audit_scrub() { :; }
 fi
 
 envfile="" dry=0 yes=0
@@ -239,15 +245,120 @@ if [ "$incomplete" -eq 1 ]; then
     echo "migrate-env: WARN no keyring backend (keyring: ${kstate:-absent}); secrets cannot reach the keyring, so this run is incomplete (exit 4 on an apply)."
     echo "unlock the keyring or install a Secret Service, then run this again."
 fi
+
+umask 077
+# shellcheck source=../lib/prim.sh
+. "$ROOT/scripts/lib/prim.sh"
+work=$(tmpdir) || exit 1
+next=""
+trap 'rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"' EXIT
+trap 'exit 1' HUP INT TERM
+bdir="$confdir/env-backups"
+apply_cmd=$(printf 'bash %q --env %q -y' "$HERE/migrate-env.sh" "$envfile")
+
+# A copy beside the file (same mode) renamed over it, so a failed write leaves
+# the file whole; a symlink is followed to its target, so the link stays.
+replace_file() {  # <new content file> <dest>
+    local dest="$2" link hops=0 tmp
+    while [ -L "$dest" ]; do
+        hops=$((hops + 1)); [ "$hops" -le 40 ] || return 1
+        link=$(readlink "$dest")
+        case "$link" in /*) dest=$link ;; *) dest="${dest%/*}/$link" ;; esac
+    done
+    tmp="$dest.migrate.$$"
+    # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
+    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then return 0; fi  # read-sink-ok: $1 is always a scratch file this script built
+    rm -f "$tmp"
+    return 1
+}
+
+# --- the backups and the legacy file keep no secret line another copy does not cover ---
+final_rc=0 scrubbed=0
+drop_lines() {  # <set of names> <file>: the file without those keys' lines (`export NAME=` too); mode kept
+    awk -v set="$1" '{ l = $0; sub(/\r$/, "", l) }
+        l ~ /^[[:space:]]*#/ { print; next }
+        { i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k) }
+        i && k != "" && index(set, " " k " ") { next }
+        { print }' "$2" > "$work/scrub.new" && replace_file "$work/scrub.new" "$2"
+}
+lines_for() {  # <set of names> <file>: the names of the set the file has a line for (`export NAME=` too)
+    awk -v set="$1" '{ l = $0; sub(/\r$/, "", l) }
+        l ~ /^[[:space:]]*#/ { next }
+        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k) }
+        k != "" && index(set, " " k " ") && !(k in seen) { seen[k] = 1; print k }' "$2"
+}
+# A secret line leaves a backup only while the .env or the keyring still holds that key: one
+# copy always survives. A backup line with no other copy stays, and its key is named.
+scrub_set_calc() {
+    local kitems envn n
+    kitems=" $(bash "$hs" status 2>/dev/null | sed -n 's/^keyring item: //p' | tr '\n' ' ')"
+    envn=" $(lines_for "$secret_names" "$envfile" | tr '\n' ' ')"
+    scrub_set=" "
+    for n in $secret_names; do
+        case "$kitems$envn" in *" $n "*) scrub_set="$scrub_set$n " ;; esac
+    done
+}
+pending_scrub() {  # prints how many backup files a scrub would change
+    local n=0 f out
+    scrub_set_calc
+    for f in "$bdir"/*; do
+        [ -f "$f" ] && [ ! -L "$f" ] || continue
+        [ -z "$(lines_for "$scrub_set" "$f")" ] || n=$((n + 1))
+    done
+    out=$(config_audit_scrub --dry-run "$scrub_set" "$secret_names" 2>/dev/null)
+    n=$(( n + $(printf '%s\n' "$out" | grep -c '^would-scrub ') ))
+    echo "$n"
+}
+scrub_backups() {  # sets scrubbed=1; a failure sets final_rc=1; a kept line is named
+    local f out k
+    scrub_set_calc
+    scrubbed=1
+    for f in "$bdir"/*; do
+        [ -f "$f" ] && [ ! -L "$f" ] || continue
+        drop_lines "$scrub_set" "$f" \
+            || { echo "migrate-env: WARN could not scrub the secret lines from $f; remove that backup by hand."; final_rc=1; continue; }
+        k=$(lines_for "$secret_names" "$f" | tr '\n' ' ')
+        [ -z "$k" ] || echo "migrate-env: WARN $f keeps a line for ${k% }: no other copy of that key exists."
+    done
+    if out=$(config_audit_scrub "$scrub_set" "$secret_names" 2>&1); then
+        printf '%s\n' "$out" | sed -n 's/^kept \([^ ]*\) \(.*\)$/migrate-env: WARN config backup \1 keeps a line for \2: no other copy of that key exists./p'
+    else
+        echo "migrate-env: WARN could not scrub the .env copies in the config backups (~/.himmel/state/config-audit/backups); remove those by hand."
+        final_rc=1
+    fi
+}
+# Moving live credentials is a step a person starts (OS-1): -y, a terminal and no agent
+# session, whichever way the other keys were allowed. The consent does not stand in for them.
+secrets_gate() {  # sets secrets_refusal; empty = the secrets stage may run
+    secrets_refusal=""
+    if [ -n "${CLAUDECODE:-}" ]; then secrets_refusal="an agent session cannot move secrets"
+    elif [ ! -t 0 ]; then secrets_refusal="no terminal to move secrets at"
+    elif [ "$yes" -ne 1 ]; then secrets_refusal="moving secrets needs -y"; fi
+}
+
 if [ "$moving" -eq 0 ]; then
-    echo "nothing to move: every key stays in .env."
-    [ "$dry" -eq 1 ] || [ "$incomplete" -eq 0 ] || exit 4
+    pend=0
+    [ "$backend_ok" -ne 1 ] || pend=$(pending_scrub)
+    if [ "$pend" -eq 0 ]; then
+        echo "nothing to move: every key stays in .env."
+        [ "$dry" -eq 1 ] || [ "$incomplete" -eq 0 ] || exit 4
+        exit 0
+    fi
+    echo "scrub only: $pend backup file(s) still hold secret lines that the .env or the keyring also holds."
+    [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
+    secrets_gate
+    if [ -n "$secrets_refusal" ]; then
+        echo "migrate-env: $secrets_refusal; the backups stay as they are."
+        printf 'Run this at your own prompt:\n  %s\n' "$apply_cmd"
+        exit 3
+    fi
+    scrub_backups
+    [ "$final_rc" -eq 0 ] || exit 1
+    [ "$incomplete" -eq 0 ] || exit 4
     exit 0
 fi
-bdir="$confdir/env-backups"
 echo "backup: the apply first copies .env (mode 600) to $bdir/env.<UTC time>.<pid>"
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
-apply_cmd=$(printf 'bash %q --env %q -y' "$HERE/migrate-env.sh" "$envfile")
 poldir=$(_himmel_policy_dir) || { echo "migrate-env: cannot read this account's home from its passwd entry; nothing written." >&2; exit 1; }
 consent=0 cv=""
 if [ -f "$poldir/config.json" ] \
@@ -288,13 +399,7 @@ if [ "$consent" -eq 1 ]; then
         [ "$moving" -gt 0 ] || { echo "nothing else to move; nothing written."; exit 3; }
     fi
 fi
-# Moving live credentials into the keyring is a step a person starts (OS-1): -y, a
-# terminal and no agent session, whichever way the other keys were allowed. The
-# consent does not stand in for them.
-secrets_refusal=""
-if [ -n "${CLAUDECODE:-}" ]; then secrets_refusal="an agent session cannot move secrets"
-elif [ ! -t 0 ]; then secrets_refusal="no terminal to move secrets at"
-elif [ "$yes" -ne 1 ]; then secrets_refusal="moving secrets needs -y"; fi
+secrets_gate
 if [ "$consent" -eq 1 ] && [ -n "$secrets_refusal" ] && [ $(( ${#secret_keys[@]} + ${#legacy_keys[@]} )) -gt 0 ]; then
     echo "migrate-env: $secrets_refusal; they stay in .env: ${secret_keys[*]-} ${legacy_keys[*]-}"
     printf 'To move them, run this at your own prompt:\n  %s\n' "$apply_cmd"
@@ -308,14 +413,6 @@ if [ "$consent" -eq 0 ] && [ "$yes" -ne 1 ]; then
     exit 3
 fi
 
-umask 077
-# shellcheck source=../lib/prim.sh
-. "$ROOT/scripts/lib/prim.sh"
-work=$(tmpdir) || exit 1
-next=""
-trap 'rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"' EXIT
-trap 'exit 1' HUP INT TERM
-
 # --- backup ---
 backup="$bdir/env.$(date -u +%Y%m%dT%H%M%SZ).$$"
 if ! { mkdir -p "$bdir" && chmod 700 "$bdir" && cp "$envfile" "$backup" && chmod 600 "$backup" \
@@ -325,11 +422,11 @@ if ! { mkdir -p "$bdir" && chmod 700 "$bdir" && cp "$envfile" "$backup" && chmod
 fi
 echo "backup: $backup (mode 600)"
 restore_hint() {
-    echo "restore: cp $backup $envfile"
     if [ "${scrubbed:-0}" -eq 1 ]; then
-        echo "the backup's secret lines were scrubbed: a restore brings back your config lines but drops the secrets that stayed in .env (held, env-keep); copy those back by hand. Remove the backup once you are happy: rm $backup"
+        echo "backup $backup no longer holds the secret lines another copy covers: do not copy it over $envfile, that would drop the secrets which stay in .env. To undo a config move, copy back only the lines you want. Remove it once you are happy: rm $backup"
     else
-        echo "the backup can hold your secrets until a run ends cleanly; remove it once you are happy: rm $backup"
+        echo "restore: cp $backup $envfile"
+        echo "the backup can hold your secrets until a scrub; remove it once you are happy: rm $backup"
     fi
 }
 ca_bid=$(HIMMEL_CONFIG_AUDIT_ENV_FILE="$envfile" config_audit_pre "$poldir/config.json" migrate-env.sh)
@@ -567,21 +664,6 @@ verify_all() {  # sets bad and verified
     fi
 }
 has_bad() { [ -n "$(printf '%s' "$bad" | tr -d '\n')" ]; }
-# A copy beside the file (same mode) renamed over it, so a failed write leaves
-# the file whole; a symlink is followed to its target, so the link stays.
-replace_file() {  # <new content file> <dest>
-    local dest="$2" link hops=0 tmp
-    while [ -L "$dest" ]; do
-        hops=$((hops + 1)); [ "$hops" -le 40 ] || return 1
-        link=$(readlink "$dest")
-        case "$link" in /*) dest=$link ;; *) dest="${dest%/*}/$link" ;; esac
-    done
-    tmp="$dest.migrate.$$"
-    # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
-    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then return 0; fi  # read-sink-ok: $1 is always a scratch file this script built
-    rm -f "$tmp"
-    return 1
-}
 verify_all
 if has_bad; then
     printf '%s' "$bad" | grep .
@@ -685,26 +767,16 @@ if [ "$rewrote" -eq 0 ]; then
 fi
 ca_post "$envfile" migrate
 
-# --- scrub: the legacy file and the backups keep no line of a secret the keyring now holds ---
-final_rc=0
-drop_lines() {  # <set of names> <file>: the file without those keys' lines (`export NAME=` too); mode kept
-    awk -v set="$1" '{ l = $0; sub(/\r$/, "", l) }
-        l ~ /^[[:space:]]*#/ { print; next }
-        { i = index(l, "="); k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k) }
-        i && k != "" && index(set, " " k " ") { next }
-        { print }' "$2" > "$work/scrub.new" && replace_file "$work/scrub.new" "$2"
-}
+# --- scrub: the legacy file and the backups keep no line of a secret another copy covers ---
 if [ "${#legacy_keys[@]}" -gt 0 ] && [ "$legacy_stored" != " " ]; then
     drop_lines "$legacy_stored" "$store" \
         || { echo "migrate-env: WARN could not empty $store_rel of the keys it stored; remove those lines by hand."; final_rc=1; }
 fi
-if [ "$backend_ok" -eq 1 ]; then
-    scrubbed=1
-    for bfile in "$bdir"/*; do
-        [ -f "$bfile" ] && [ ! -L "$bfile" ] || continue
-        drop_lines "$secret_names" "$bfile" \
-            || { echo "migrate-env: WARN could not scrub the secret lines from $bfile; remove that backup by hand."; final_rc=1; }
-    done
+if [ "$backend_ok" -eq 1 ] && [ -z "$secrets_refusal" ]; then
+    scrub_backups
+elif [ "$backend_ok" -eq 1 ]; then
+    echo "migrate-env: the backups keep their secret lines ($secrets_refusal); run this at your own prompt to scrub them:"
+    printf '  %s\n' "$apply_cmd"
 fi
 
 echo "verified: $verified"

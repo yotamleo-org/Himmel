@@ -11,6 +11,10 @@
 #   config-audit.sh post <id> <file> <action> [--script NAME] [--pid N]
 #                                                    append the audit row; keep N backups
 #   config-audit.sh list                             backups, newest first, with a key-name diff
+#   config-audit.sh scrub [--dry-run] "<names>" "<secret names>"
+#                                                    drop those names' lines from every backup's .env
+#                                                    copy, keeping the manifest sha256 and digest true;
+#                                                    names only (migrate-env.sh, after a keyring move)
 #   config-audit.sh restore <id> [--script NAME]     put a backup's set back (audited, backed up)
 #   config-audit.sh watch                            alert on a deleted, truncated or key-losing file
 #   config-audit.sh check                            the same comparison, read-only (the doctor)
@@ -332,6 +336,47 @@ function restore(id) {
   console.log(`result=restored id=${id} ${out.length ? out.join("; ") : "nothing differed"}`);
 }
 
+// Drops the lines of the names in <drop> from the .env copy of every backup, then
+// rewrites the sha256 of that member and the manifest digest so a restore still
+// verifies. <secrets> only decides which remaining lines are named as kept.
+// Output: would-scrub|scrubbed <id> per changed backup, kept <id> NAME per
+// secret-named line left. Names only.
+function scrub(dry, drop, secrets) {
+  const dropSet = new Set(drop.split(/\s+/).filter(Boolean)), secSet = new Set(secrets.split(/\s+/).filter(Boolean));
+  const keyOf = (line) => {
+    const l = line.replace(/\r$/, "");
+    if (/^\s*#/.test(l)) return "";
+    const i = l.indexOf("=");
+    return i < 1 ? "" : l.slice(0, i).trim().replace(/^export\s+/, "");
+  };
+  for (const x of manifests()) {
+    const f = x.files && x.files[".env"];
+    if (!f || !f.sha256) continue;
+    const p = path.join(x.dir, ".env");
+    const b = read(p);
+    if (b === null) continue;
+    const lines = b.toString("latin1").split("\n");
+    const kept = lines.filter((l) => !dropSet.has(keyOf(l)));
+    if (kept.length !== lines.length) {
+      if (dry) console.log("would-scrub " + x.id);
+      else {
+        const nb = Buffer.from(kept.join("\n"), "latin1");
+        f.sha256 = sha(nb);
+        x.digest = sha(Buffer.from(JSON.stringify(Object.keys(x.files).map((n) => [n, x.files[n].sha256]))));
+        const { id, dir, ...man } = x;
+        const tmpEnv = p + ".scrub-" + process.pid, tmpMan = path.join(dir, "manifest.json.scrub-" + process.pid);
+        for (const t of [tmpEnv, tmpMan]) fs.rmSync(t, { force: true });
+        writeFile600(tmpEnv, nb);
+        writeFile600(tmpMan, JSON.stringify(man, null, 1) + "\n");
+        fs.renameSync(tmpEnv, p);
+        fs.renameSync(tmpMan, path.join(dir, "manifest.json"));
+        console.log("scrubbed " + id);
+      }
+    }
+    for (const k of new Set(kept.map(keyOf).filter((k) => secSet.has(k)))) console.log("kept " + x.id + " " + k);
+  }
+}
+
 function watch(readOnly) {
   const live = snapshot();
   const snap = loadWatch();
@@ -356,6 +401,7 @@ try {
   else if (verb === "post") post(argv[0], argv[1], argv[2], opt("--script", ""), opt("--pid", ""));
   else if (verb === "list") list();
   else if (verb === "restore") restore(argv[0]);
+  else if (verb === "scrub") { const dry = argv[0] === "--dry-run", a = dry ? argv.slice(1) : argv; scrub(dry, a[0] || "", a[1] || ""); }
   else if (verb === "watch") watch(false);
   else if (verb === "denied") appendRow(path.join(STATE, "audit.jsonl"), {
     ts: now(), pid: Number(opt("--pid", "")) || null, session: E.CLAUDE_SESSION_ID || E.CLAUDE_CODE_SESSION_ID || "",
@@ -512,6 +558,7 @@ config_audit_main() {
         pre) [ "$#" -eq 1 ] || _ca_usage; _ca_node pre "$1" --script "$script" ;;
         post) [ "$#" -eq 3 ] || _ca_usage; _ca_node post "$1" "$2" "$3" --script "$script" --pid "$pid" ;;
         list) _ca_node list ;;
+        scrub) _ca_node scrub "$@" ;;
         restore) [ "$#" -eq 1 ] || _ca_usage; _ca_restore "$1" "${script:-config-audit restore}" ;;
         watch) _ca_watch ;;
         accept) _ca_node accept ;;
@@ -524,6 +571,7 @@ config_audit_main() {
 # Shell writers source this file and wrap their write in these two calls.
 config_audit_pre() { config_audit_main pre "$1" --script "$2" 2>/dev/null || { echo "config-audit: WARN: no backup before writing $1" >&2; return 0; }; }
 config_audit_post() { config_audit_main post "$1" "$2" "$3" --script "$4" --pid "$$" || echo "config-audit: WARN: no audit row for $2" >&2; return 0; }
+config_audit_scrub() { config_audit_main scrub "$@"; }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     set -uo pipefail

@@ -166,8 +166,11 @@ release yet reads `n/a` and does not change the exit code. Then:
   first, or with no answer, make them agree, then run
   `bash ~/himmel/scripts/himmel-update.sh --only env_migration`. Do not empty
   `.env` to get past it.
-- **You want the old `.env` back.** Run the `restore:` command the migration
-  printed (`cp <backup> <your .env>`). After a move that passed its check,
+- **You want the old `.env` back.** After a failed run, run the `restore:`
+  command the migration printed (`cp <backup> <your .env>`). After a run that
+  scrubbed its backups there is no such command: copy back only the lines you
+  want from the backup (a plain `cp` would drop the secrets that stayed in
+  `.env`). After a move that passed its check,
   the copies in `~/.himmel` can stay: they hold the same values. After a
   `MISMATCH` on a value `~/.himmel` already held, restoring `.env` does not
   change that value: make the two agree yourself.
@@ -531,14 +534,21 @@ command you start yourself: `bash ~/himmel/scripts/setup/migrate-env.sh -y`.
 5. **Remove.** Only after the check passes are the moved lines removed from
    `.env`, and only a secret that came back `stored`. Comments and the keys
    that stay (`held`, `env-keep`, another tool's) are kept byte for byte, and so
-   is the file's mode. Then every file in `~/.himmel/env-backups/` loses its
-   secret lines, and a legacy secrets file loses the lines it stored.
+   is the file's mode. Then the backups are scrubbed (the secrets stage ran, so
+   `-y` at a terminal outside an agent session): every file in
+   `~/.himmel/env-backups/` and the `.env` copy in each config-audit backup
+   (`~/.himmel/state/config-audit/backups`, manifest checksums kept true) loses
+   the lines of a key that `.env` or the keyring still holds, and a legacy
+   secrets file loses the lines it stored. A backup line that is the only copy of
+   its key stays, and the report names the key. A run that moves nothing but
+   finds an owed scrub (a run killed before it, say) finishes it when you rerun
+   with `-y`; the dry run reports it as `scrub only`.
 
-The report ends with the restore command (`cp <backup> <your .env>`) and an
-`rm` for the backup: remove it once you are happy. The backup holds your
-secrets only until a run ends cleanly; the secret lines are then scrubbed, so a
-restore brings back your config lines but drops the secrets that stayed in
-`.env` (`held`, `env-keep`): copy those back by hand.
+On a failed run the report ends with the restore command (`cp <backup> <your
+.env>`) and an `rm` for the backup. After a scrub the report prints no `cp`: a
+scrubbed backup no longer holds the secrets that stay in `.env` (`held`,
+`env-keep`), so copying it over `.env` would drop them. To undo a config move,
+copy back only the lines you want, then `rm` the backup once you are happy.
 
 With no unlocked keyring the apply is **incomplete**: a secret nothing reads goes
 to `~/.config/secrets/himmel.env` as before, the others stay in `.env`, a `WARN`

@@ -1297,7 +1297,13 @@ run_env_migration() {
     echo "==> .env migration"
     out=$(bash "$script" --dry-run --env "$envfile" 2>&1) || rc=$?
     case "$rc:$out" in
-        0:*"nothing to move"*) STATUS_env_migration="up-to-date" ;;
+        0:*"nothing to move"*)
+            # No keyring: the secrets cannot move, so the station is not up to date.
+            case "$out" in
+                *"WARN no keyring backend"*)
+                    STATUS_env_migration="incomplete"; DETAIL_env_migration="no unlocked keyring: secrets not moved; see the WARN above" ;;
+                *) STATUS_env_migration="up-to-date" ;;
+            esac ;;
         0:*"dry run: nothing written"*)
             STATUS_env_migration="pending"; DETAIL_env_migration="apply: bash scripts/setup/migrate-env.sh -y" ;;
         0:*) ;;

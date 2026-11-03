@@ -405,8 +405,8 @@ asks `[e/h]`: `e` writes the `.env` value to `~/.himmel`, `h` keeps the
 `.env` line in place. If any failure is of another kind (a reader that
 disagrees on a key `~/.himmel` did not hold, or a `verify:` line), there is no
 prompt and nothing is removed: fix the reader or make the two files agree,
-then run the migration again. Never empty `.env` by hand to settle one; to go back, run the
-`restore:` command it printed
+then run the migration again. Never empty `.env` by hand to settle one; to go back after a
+failed run, run the `restore:` command it printed (a run that scrubbed its backups prints none)
 ([updating.md](../setup/updating.md#the-env-split-what-moves-what-stays-and-a-mismatch)).
 
 ## Example files

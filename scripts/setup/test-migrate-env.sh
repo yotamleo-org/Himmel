@@ -80,7 +80,7 @@ if ! mkdir -p "$FX/scripts/himmelctl/lib" || ! cp "$REPO/scripts/himmelctl/lib/c
     fail "fixture copy of config-keys.json failed"
 fi
 # The real resolver and its guard, over a fixture manifest naming the fixture secrets.
-cp "$REPO/scripts/lib/himmel-secrets" "$REPO/scripts/lib/test-run-guard" "$FX/scripts/lib/"
+cp "$REPO/scripts/lib/himmel-secrets" "$REPO/scripts/lib/test-run-guard" "$REPO/scripts/lib/config-audit.sh" "$FX/scripts/lib/"
 fxput "$FX/scripts/himmelctl/lib/secrets-manifest.json" '{\n  "name": "READ_SECRET",\n  "name": "UNREAD_SECRET",\n  "name": "KEEP_ME",\n  "name": "JIRA_API_TOKEN",\n  "name": "BITBUCKET_API_TOKEN"\n}\n'
 fxput "$FX/.env.example" '# READ_SECRET=\nUNREAD_SECRET=\nKEEP_ME=\nJIRA_API_TOKEN=\nBITBUCKET_API_TOKEN=\n'
 # The Jira CLI readers, from their real source with the types stripped.
@@ -187,7 +187,8 @@ grep -v -E '^(READ_SECRET|UNREAD_SECRET|KEEP_ME|BITBUCKET_API_TOKEN)=' "$TMP/st.
 if [ -n "$backup" ] && cmp -s "$backup" "$TMP/st.scrubbed"; then pass "the backup holds the original .env but for the secret lines"; else fail "no backup matching the original .env less its secrets (path '$backup')"; fi
 if [ -n "$backup" ] && [ "$(mode_of "$backup")" = 600 ]; then pass "the backup is mode 600"; else fail "the backup mode is not 600"; fi
 case "$backup" in "$TMP/st/"*|"") fail "the backup is inside the checkout or missing" ;; *) pass "the backup is outside the checkout" ;; esac
-has "the report names the restore command" "restore: cp $backup $TMP/st/.env" "$out"
+lacks "the scrubbed run prints no restore command that would drop the kept secrets" "restore: cp" "$out"
+has "the report says not to copy the scrubbed backup over .env" "do not copy it over $TMP/st/.env" "$out"
 has "the report says the backup can be removed" "rm $backup" "$out"
 conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
 has "HANDOVER_DIR moved to himmel.conf" "HANDOVER_DIR=$TMP/handovers" "$conf"
@@ -683,6 +684,7 @@ if [ "$rc" != 0 ] && [ -z "$(ls -A "$TMP/tmpd")" ]; then pass "R3b a failed run 
 
 # R6: an older backup holding secret lines loses them; a config line stays.
 fixture_env
+printf 'JIRA_API_TOKEN=dummy-r1\n' >> "$TMP/st/.env"
 mkdir -p "$HOME/.himmel/env-backups"
 printf 'JIRA_API_TOKEN=dummy-r1\nexport BITBUCKET_API_TOKEN=dummy-r6\nHIMMEL_FLEET_CAP=3\n' > "$HOME/.himmel/env-backups/env.20260101T000000Z.1"
 chmod 600 "$HOME/.himmel/env-backups/env.20260101T000000Z.1"
@@ -765,11 +767,77 @@ if [ "$rc" = 0 ]; then pass "R10b an emptied .env with a legacy file applies"; e
 has "R10b the legacy secret is in the keyring" "UNREAD_SECRET=dummy-r10b" "$("$FX/scripts/lib/himmel-secrets" get --no-dotenv UNREAD_SECRET 2>/dev/null)"
 lacks "R10b the legacy file lost the stored line" "UNREAD_SECRET" "$(cat "$store")"
 
-# R12: a run that scrubbed the backups says a restore drops the secrets that stayed in .env.
+# R12: a run that scrubbed the backups prints no cp that would drop the secrets which stay in .env.
 fixture_env
 apply_tty y
-has "R12 the report still names the restore command" "restore: cp " "$out"
-has "R12 the report says the backup was scrubbed" "the backup's secret lines were scrubbed" "$out"
+lacks "R12 no restore cp after a scrub" "restore: cp" "$out"
+has "R12 the report says why" "no longer holds the secret lines another copy covers" "$out"
+
+# R13: the config-audit copy of .env is scrubbed too, and its manifest still verifies.
+fixture_env
+printf 'JIRA_API_TOKEN=dummy-r13\n' >> "$TMP/st/.env"
+apply_tty y
+cab=$(find "$HOME/.himmel/state/config-audit/backups" -name .env -type f 2>/dev/null)
+if [ -n "$cab" ]; then pass "R13 the apply left a config-audit copy of .env"; else fail "R13 no config-audit copy of .env: the rows below would be vacuous"; fi
+cab_all=$(for f in $cab; do cat "$f"; done)  # read-sink-ok: the paths come from find over this suite's own HOME
+lacks "R13 no config-audit copy holds JIRA_API_TOKEN" "JIRA_API_TOKEN" "$cab_all"
+lacks "R13 no config-audit copy holds READ_SECRET" "READ_SECRET" "$cab_all"
+lacks "R13 no config-audit copy holds BITBUCKET_API_TOKEN" "BITBUCKET_API_TOKEN" "$cab_all"
+has "R13 a config-audit copy keeps its config line" "HANDOVER_DIR=" "$cab_all"
+for f in $cab; do
+    d=$(dirname "$f")
+    ok=$(node -e 'const fs=require("fs"),c=require("crypto"),d=process.argv[1];
+        const m=JSON.parse(fs.readFileSync(d+"/manifest.json","utf8")), h=(b)=>c.createHash("sha256").update(b).digest("hex");
+        const ok=m.files[".env"].sha256===h(fs.readFileSync(d+"/.env")) && m.digest===h(Buffer.from(JSON.stringify(Object.keys(m.files).map((n)=>[n,m.files[n].sha256]))));
+        process.stdout.write(ok?"true":"false")' "$d")
+    if [ "$ok" = true ]; then pass "R13 the manifest of $(basename "$d") matches its scrubbed .env"; else fail "R13 the manifest of $(basename "$d") no longer matches its .env"; fi
+done
+
+# R14: an older backup that holds the only copy of a key keeps it, and the report names the key.
+fixture_env
+mkdir -p "$HOME/.himmel/env-backups"
+printf 'JIRA_API_TOKEN=dummy-r14\nBITBUCKET_API_TOKEN=dummy-r14b\n' > "$HOME/.himmel/env-backups/env.20260101T000000Z.3"
+chmod 600 "$HOME/.himmel/env-backups/env.20260101T000000Z.3"
+apply_tty y
+old=$(cat "$HOME/.himmel/env-backups/env.20260101T000000Z.3")
+has "R14 the only copy of JIRA_API_TOKEN stays in the older backup" "JIRA_API_TOKEN=dummy-r14" "$old"
+lacks "R14 the key the keyring now holds left the older backup" "BITBUCKET_API_TOKEN" "$old"
+has "R14 the report names the key kept" "keeps a line for JIRA_API_TOKEN" "$out"
+lacks "R14 the report prints no value" "dummy-r14" "$out"
+
+# R14b: under the consent the secrets stage does not run, so the backups are not scrubbed.
+consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
+out=$(CLAUDECODE=1 bash "$TMP/update-step.sh" apply < /dev/null 2>&1)
+has "R14b the consented run says the backups keep their secret lines" "the backups keep their secret lines" "$out"
+has "R14b the backup of the consented run still holds READ_SECRET" "READ_SECRET=CANARY-read-" "$(cat "$HOME"/.himmel/env-backups/env.* 2>/dev/null)"
+
+# R15: a retry finishes a scrub an earlier run left undone (a kill between the .env rewrite and the scrub).
+fixture_env
+apply_tty y
+mkdir -p "$HOME/.himmel/env-backups"
+printf 'export BITBUCKET_API_TOKEN=dummy-r15\nHIMMEL_FLEET_CAP=3\n' > "$HOME/.himmel/env-backups/env.20260102T000000Z.4"
+chmod 600 "$HOME/.himmel/env-backups/env.20260102T000000Z.4"
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "R15 the dry run reports a scrub is owed" "scrub only: 1 backup file(s)" "$out"
+has "R15 the dry run maps to pending for the update" "dry run: nothing written." "$out"
+APPLY_ARGS="" apply_tty ""
+if [ "$rc" = 3 ]; then pass "R15 a retry without -y is refused"; else fail "R15 a retry without -y exited $rc: $out"; fi
+has "R15 the old backup is untouched without -y" "BITBUCKET_API_TOKEN=dummy-r15" "$(cat "$HOME/.himmel/env-backups/env.20260102T000000Z.4")"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "R15 the retry exits 0"; else fail "R15 the retry exited $rc: $out"; fi
+old=$(cat "$HOME/.himmel/env-backups/env.20260102T000000Z.4")
+lacks "R15 the retry scrubbed the older backup" "BITBUCKET_API_TOKEN" "$old"
+has "R15 the retry kept the config line" "HIMMEL_FLEET_CAP=3" "$old"
+lacks "R15 the retry is not read as nothing to do" "nothing to move" "$out"
+
+# R16: with no keyring the update marks a dry run that moves nothing incomplete; with one, up-to-date.
+fixture_env
+grep -v -E '^(HANDOVER_DIR=|USER_SLUG=|CR_|HIMMEL_FLEET_CAP=|UNREAD_SECRET=|BITBUCKET_API_TOKEN=)' "$TMP/st/.env" > "$FX/.env"
+out=$(HIMMEL_SECRETS_KEYRING=off bash "$TMP/update-step.sh" check 2>&1)
+has "R16 no keyring: the update step is incomplete, not up-to-date" "rc=0 status=incomplete" "$out"
+grep -v -E '^READ_SECRET=' "$FX/.env" > "$FX/.env.new" && mv "$FX/.env.new" "$FX/.env"
+out=$(bash "$TMP/update-step.sh" check 2>&1)
+has "R16 control: with a keyring a .env with nothing to move is up-to-date" "rc=0 status=up-to-date" "$out"
 
 # Two migrations started together: one wins the import lock, nothing is stored twice, .env is whole.
 fixture_env
