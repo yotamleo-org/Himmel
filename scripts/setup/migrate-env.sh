@@ -113,7 +113,7 @@ while [ "$#" -gt 0 ]; do
             envfile="$2"; shift 2 ;;
         --dry-run) dry=1; shift ;;
         -y) yes=1; shift ;;
-        -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,/^set -uo pipefail/{/^set -uo pipefail/!p;}' "$0"; exit 0 ;;
         *) echo "migrate-env: unknown argument: $1" >&2; exit 2 ;;
     esac
 done

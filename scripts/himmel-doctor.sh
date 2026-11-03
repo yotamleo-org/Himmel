@@ -3735,14 +3735,15 @@ EOF
 # only. No value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (shared with C74).
 check_c75_keyring() {
     local hs="$SELF_DIR/lib/himmel-secrets" envfile state names="" key layer
-    local envnames="" dot="" kr=0 other=0 unset_n=0 status_out
+    local envnames="" dot="" kr=0 other=0 unset_n=0 status_out names_failed=0
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
     if [ ! -x "$hs" ]; then
         emit WARN C75-keyring "$hs is missing or not executable" "restore it: git checkout -- scripts/lib/himmel-secrets"
         return 0
     fi
     # The secret key set has one owner: the resolver (manifest names in the secret class).
-    names=$("$hs" names --class secret 2>/dev/null | tr '\n' ' ')
+    names=$("$hs" names --class secret 2>/dev/null) || names_failed=1
+    names=$(printf '%s\n' "$names" | tr '\n' ' ')
     # shellcheck disable=SC2086 # one word per key name
     status_out="$("$hs" status --no-dotenv $names 2>/dev/null)"
     state="$(printf '%s\n' "$status_out" | sed -n 's/^keyring: //p')"
@@ -3774,7 +3775,10 @@ check_c75_keyring() {
                esac ;;
         esac
     done
-    if [ -n "$dot" ] && [ "$state" = unlocked ]; then
+    if [ "$names_failed" -eq 1 ]; then
+        emit INFO C75-secrets "the secret key list could not be read from himmel-secrets names; secrets not checked" \
+            "run: bash $hs names --class secret"
+    elif [ -n "$dot" ] && [ "$state" = unlocked ]; then
         emit WARN C75-secrets "secrets still served from .env: $dot ($kr from the keyring, $other from the environment, $unset_n unset)" \
             "the operator moves them at their own prompt: bash $hs import-env $envfile, then bash $hs status"
     elif [ -n "$dot" ]; then

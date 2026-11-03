@@ -839,6 +839,13 @@ grep -v -E '^READ_SECRET=' "$FX/.env" > "$FX/.env.new" && mv "$FX/.env.new" "$FX
 out=$(bash "$TMP/update-step.sh" check 2>&1)
 has "R16 control: with a keyring a .env with nothing to move is up-to-date" "rc=0 status=up-to-date" "$out"
 
+# R17: --help prints the whole header, through the Exit block and its exit 4 line.
+out=$(bash "$SCRIPT" --help 2>&1)
+has "R17 --help reaches the exit codes" "Exit: 0 moved" "$out"
+has "R17 --help describes exit 4" "4 moved, but incomplete" "$out"
+has "R17 --help ends with the last header line" "96 a chokepoint seam differs" "$out"
+lacks "R17 --help stops before the code" "set -uo pipefail" "$out"
+
 # Two migrations started together: one wins the import lock, nothing is stored twice, .env is whole.
 fixture_env
 grep -v -E '^(HANDOVER_DIR=|USER_SLUG=|CR_|HIMMEL_FLEET_CAP=)' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
