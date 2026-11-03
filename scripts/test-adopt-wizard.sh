@@ -17,7 +17,7 @@ set -euo pipefail
 
 
 # ── 20. himmelctl wizard + machine-setup shim suites ──────────
-# A plain `bash scripts/test-adopt-features.sh` run exercises the himmelctl install
+# A plain `bash scripts/test-adopt-wizard.sh` run exercises the himmelctl install
 # wizard + the T7/T8 bootstrap/deprecation-shim suites, so a regression in any
 # of them fails THIS harness, not just the CI shell-test sweep. Each suite runs
 # as a self-contained `bash <script>` subprocess (own `set -e` + trap + temp
