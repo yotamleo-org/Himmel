@@ -67,6 +67,13 @@ describe.skipIf(process.platform !== 'linux')('jira release from a test on the s
     await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
   });
 
+  it('refuses a key mint at the declare call site once the state dir clears the write door', async () => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', mkdtempSync(join(tmpdir(), 'release-cli-state-')));
+    await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt')))
+      .rejects.toThrow('release operator declare: refused, nothing was written');
+    expect(existsSync(join(root, 'keys'))).toBe(false);
+  });
+
   it('refuses repair --apply before the repair runs, and lets the dry run past the door', async () => {
     await expect(run('repair', 'R1', '--repo', 'o/r', '--apply', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(/release repair: refused, nothing was written/);
     expect(repairSeen.opts).toBeNull();
