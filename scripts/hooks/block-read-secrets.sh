@@ -370,10 +370,29 @@ g4_secret_path() {
     # A config-audit backup holds a copy of the .env, so its tree is matched on the
     # canonical path too: a symlink to it, or through a linked directory, is the same file.
     # A link chain that does not resolve (a loop, or past the hop cap) is refused.
-    local raw="${1//[\'\"]/}" c
+    local raw="${1//[\'\"]/}" c d
     case "$raw" in \~/*) raw="$HOME/${raw#\~/}" ;; esac
     if [ -e "$raw" ] || [ -L "$raw" ]; then
-        c=$(guard_canon_path "$raw") || return 0
+        # A glob over thousands of files hands this one parent
+        # directory thousands of times, and each canonicalisation is a fork
+        # (1.4 ms, 14 s over 10,000 names). For a regular file that is not a
+        # symlink the canonical path is the parent's canonical path plus the
+        # basename, so the parent is canonicalised once and reused while the
+        # same parent string repeats. The same case patterns then run on the
+        # same string; a parent that cannot be canonicalised still denies.
+        # Every other shape (a symlink, a directory, a missing name) takes the
+        # full canonicalisation as before.
+        if [ -f "$raw" ] && [ ! -L "$raw" ]; then
+            case "$raw" in */*) d="${raw%/*}"; [ -n "$d" ] || d=/ ;; *) d=. ;; esac
+            if [ "${_G4_CANON_DIR-}" != "$PWD|$d" ] || [ -z "${_G4_CANON_REAL-}" ]; then
+                c=$(guard_canon_path "$d") || return 0
+                _G4_CANON_DIR="$PWD|$d"
+                _G4_CANON_REAL="$c"
+            fi
+            case "$_G4_CANON_REAL" in /) c="/${raw##*/}" ;; *) c="$_G4_CANON_REAL/${raw##*/}" ;; esac
+        else
+            c=$(guard_canon_path "$raw") || return 0
+        fi
         case "$c" in */config-audit|*/config-audit/backups|*/config-audit/backups/*|*/.himmel/secrets|*/.himmel/secrets/*) return 0 ;; esac
     fi
     return 1
