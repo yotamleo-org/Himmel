@@ -39,8 +39,9 @@
 # recovers anything a backgrounded run missed.
 #
 # A claude run that exits non-zero, times out or reports is_error leaves one line on
-# stderr and the note untouched (the hash comparison below, never the exit code,
-# decides crystallized: true).
+# stderr; the hash comparison below, never the exit code, decides crystallized: true,
+# so an edit made before the failure still counts, as on the API path. The deadline
+# needs a timeout binary; without one only --max-budget-usd bounds the call.
 #
 # Test seams: CRYSTALLIZE_CLAUDE_BIN overrides the launcher (the claude binary, or
 # the API-lane launcher) with a stub and CRYSTALLIZE_PREFLIGHT_CMD overrides the
