@@ -7,7 +7,7 @@ import childProcess from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { readBoardExtras, runReader, TIMEOUT_MS } from "../board";
+import { readBoardExtras, refreshDrift, runReader, TIMEOUT_MS } from "../board";
 
 const TOKEN = "a".repeat(64);
 const cleanups: (() => void)[] = [];
@@ -49,6 +49,112 @@ const snapshot = (dir: string): string[] => readdirSync(dir, { withFileTypes: tr
   const p = join(dir, e.name);
   return e.isDirectory() ? snapshot(p) : [`${p} ${statSync(p).size} ${statSync(p).mtimeMs}`];
 }).sort();
+
+// POST /api/board/drift-refresh: the one write Tidy up makes. It runs the report-only check and replaces the saved file only on a clean last line.
+const refresh = (url: string, token = TOKEN) => fetch(`${url}/drift-refresh`, { method: "POST", headers: { "X-Himmel-Token": token, origin: new URL(url).origin, "content-type": "application/json" }, body: "{}" });
+const stubCheck = (s: ReturnType<typeof scratch>, body: string) => {
+  const check = join(s.d, "check.sh"), calls = join(s.d, "calls");
+  writeFileSync(check, `echo run >> ${JSON.stringify(calls)}\n${body}\n`);
+  return { check, runs: () => { try { return readFileSync(calls, "utf8").split("\n").filter(Boolean).length; } catch { return 0; } } };
+};
+const NEW_RUN = `echo 'UNOWNED HIMMEL-77 no owner | writer=sweep | fix=none'; echo 'sdrift=1:newrun'`;
+
+test("POST drift-refresh: with the token it runs the check once and the next read returns the new run; without it nothing runs", async () => {
+  const s = scratch();
+  const { check, runs } = stubCheck(s, NEW_RUN);
+  const url = serve({ HIMMEL_FOCUS_DRIFT: s.drift, CONFIG_UI_DRIFT_CHECK: check }, s);
+  expect((await refresh(url, "b".repeat(64))).status).toBe(401);
+  expect(runs()).toBe(0);
+  expect((await fetch(`${url}/drift-refresh`, { headers: { "X-Himmel-Token": TOKEN } })).status).toBe(405);
+  expect(runs()).toBe(0);
+  const r = await refresh(url);
+  expect(r.status).toBe(200);
+  expect(await r.json()).toEqual({ state: "ok", sdrift: "1:newrun" });
+  expect(runs()).toBe(1);
+  const after = await get(url);
+  expect(after.drift.sdrift).toBe("1:newrun");
+  expect(after.drift.real.map((x: { key: string }) => x.key)).toEqual(["HIMMEL-77"]);
+  expect(readdirSync(s.d).filter((f) => f.includes(".tmp"))).toEqual([]); // the stage file became the saved file
+});
+
+test("GET /api/board leaves the saved drift file and the check's call count unchanged", async () => {
+  const s = scratch();
+  const { check, runs } = stubCheck(s, NEW_RUN);
+  const url = serve({ HIMMEL_FOCUS_DRIFT: s.drift, CONFIG_UI_DRIFT_CHECK: check }, s);
+  const before = snapshot(s.d);
+  await get(url);
+  expect(snapshot(s.d)).toEqual(before);
+  expect(runs()).toBe(0);
+});
+
+test("POST drift-refresh: a run that does not end clean keeps the saved file byte for byte and says why", async () => {
+  for (const [body, why] of [
+    ["echo 'UNOWNED HIMMEL-77 half | writer=x | fix=y'; echo 'sdrift=unknown'", "could not read"],
+    ["echo 'UNOWNED HIMMEL-77 half | writer=x | fix=y'", "no sdrift line"],
+    ["echo 'sdrift=1:newrun'; echo boom >&2; exit 3", "boom"],
+  ]) {
+    const s = scratch();
+    const { check } = stubCheck(s, body);
+    const url = serve({ HIMMEL_FOCUS_DRIFT: s.drift, CONFIG_UI_DRIFT_CHECK: check }, s);
+    const before = snapshot(s.d).filter((l) => l.includes("focus-drift")), text = readFileSync(s.drift, "utf8");
+    const j = await (await refresh(url)).json();
+    expect(j.state).toBe("failed");
+    expect(j.reason).toContain(why);
+    expect(readFileSync(s.drift, "utf8")).toBe(text);
+    expect(snapshot(s.d).filter((l) => l.includes("focus-drift"))).toEqual(before);
+    expect(readdirSync(s.d).filter((f) => f.includes(".tmp"))).toEqual([]);
+  }
+});
+
+test("refreshDrift: a run past its limit is killed, keeps the saved file and says so", async () => {
+  const s = scratch();
+  const { check } = stubCheck(s, "sleep 30");
+  const text = readFileSync(s.drift, "utf8");
+  const r = await refreshDrift({ PATH: process.env.PATH, HOME: s.home, HIMMEL_FOCUS_DRIFT: s.drift, CONFIG_UI_DRIFT_CHECK: check }, s.d, 200);
+  expect(r).toMatchObject({ state: "failed" });
+  expect((r as { reason: string }).reason).toContain("limit");
+  expect(readFileSync(s.drift, "utf8")).toBe(text);
+});
+
+test("POST drift-refresh: a second click while a run is in flight joins it, and one audit row names the run", async () => {
+  const s = scratch();
+  const { check, runs } = stubCheck(s, `sleep 0.3; ${NEW_RUN}`);
+  const url = serve({ HIMMEL_FOCUS_DRIFT: s.drift, CONFIG_UI_DRIFT_CHECK: check }, s);
+  const [a, b] = await Promise.all([refresh(url), refresh(url)]);
+  expect(await a.json()).toEqual(await b.json());
+  expect(runs()).toBe(1);
+  const rows = readFileSync(join(s.home, ".himmel", "state", "config-ui", "actions.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((l) => l.action === "board.drift-refresh");
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ rc: 0, target: s.drift });
+});
+
+test("POST drift-refresh: refused in words, and nothing runs, on another tracker or with nowhere to save the run", async () => {
+  const s = scratch();
+  const { check, runs } = stubCheck(s, NEW_RUN);
+  const local = await refresh(serve({ TRACKER: "local", HIMMEL_FOCUS_DRIFT: s.drift, CONFIG_UI_DRIFT_CHECK: check }, s));
+  expect(local.status).toBe(403);
+  expect((await local.json()).error).toContain("not Jira");
+  const none = await refresh(serve({ CONFIG_UI_DRIFT_CHECK: check }, s));
+  expect(await none.json()).toMatchObject({ state: "failed", reason: expect.stringContaining("HIMMEL_FOCUS_DRIFT") });
+  expect(runs()).toBe(0);
+});
+
+test("GET /api/roadmap/history marks a move by himmel's Jira account and never answers with the address", async () => {
+  const s = scratch();
+  const cli = join(s.d, "jira-stub.js");
+  writeFileSync(cli, `process.stdout.write(JSON.stringify([
+    { created: "2026-10-01T10:00:00.000+0000", author: { displayName: "Hima", emailAddress: "Himmel@Example.test" }, items: [{ field: "status", fromString: "To Do", toString: "In Progress" }] },
+    { created: "2026-10-02T10:00:00.000+0000", author: { displayName: "Ana", emailAddress: "ana@example.test" }, items: [{ field: "status", fromString: "In Progress", toString: "Done" }] },
+    { created: "2026-10-03T10:00:00.000+0000", author: { displayName: "Hidden" }, items: [{ field: "status", fromString: "Done", toString: "To Do" }] },
+  ]));`);
+  const url = serve({ TRACKER: "jira", JIRA_PROJECT_KEY: "HIMMEL", JIRA_EMAIL: "himmel@example.test", CONFIG_UI_JIRA_CLI: cli }, s);
+  const r = await fetch(url.replace("/api/board", "/api/roadmap/history?key=HIMMEL-1"), { headers: { "X-Himmel-Token": TOKEN } });
+  const text = await r.text();
+  expect(r.status).toBe(200);
+  const events = JSON.parse(text).events as { who: string; himmel?: boolean }[];
+  expect(events.map((e) => [e.who, e.himmel === true])).toEqual([["Hima", true], ["Ana", false], ["Hidden", false]]);
+  expect(text).not.toContain("example.test");
+});
 
 test("GET /api/board: token-gated, GET-only; with no input named both reads are absent with the reason and nothing is spawned", async () => {
   const s = scratch();

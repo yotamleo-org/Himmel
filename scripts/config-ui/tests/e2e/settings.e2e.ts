@@ -59,6 +59,23 @@ test("J3. every Project scope row shows its command, when it takes effect and a 
   await expect(page.locator("#tile-scope .setgroup h3").filter({ hasText: /^(Plugins|Auto-ship steps|Scheduled jobs|Your install answers)$/ })).toHaveText(SCOPE_GROUPS);
 });
 
+test("J3. the Tracker tile's Team mode switch shows off when unset, previews a dry run, and writes tracker.teamMode", async ({ page }) => {
+  await open(page, "jira", "tracker");
+  const on = page.locator('button[data-action="config.tracker"][data-value="on"]');
+  await expect(page.locator("#tile-tracker")).toContainText("Board · who edits this Jira project", SETUP_WAIT);
+  await expect(page.locator('button[data-action="config.tracker"][data-value="off"]')).toHaveAttribute("aria-pressed", "true");
+  const shots = process.env.E2E_SHOTS;
+  await on.click();
+  const box = page.locator("#tile-tracker .dryrun");
+  await expect(box).toContainText("tracker.teamMode");
+  if (shots) for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.screenshot({ path: `${shots}/configure-tracker-team-mode-${scheme}.png`, fullPage: true });
+  }
+  await box.locator('[data-act="run"]').click();
+  await expect.poll(() => h.argv(), SETUP_WAIT).toContain("himmelctl config set tracker.teamMode on");
+});
+
 test("J3. the Tracker tile points commit rules at ~/.himmel/himmel.conf, not the shell profile", async ({ page }) => {
   await open(page, "jira", "tracker");
   const t = page.locator("#tile-tracker");

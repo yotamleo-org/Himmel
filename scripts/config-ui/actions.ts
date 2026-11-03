@@ -108,6 +108,12 @@ export function buildTable(ctx: Ctx): Table {
       cwd: ctx.root, timeoutMs: HIMMELCTL_TIMEOUT_MS, effect: "your next commit", bank: none,
       needsValue: true, values: (t) => (t === "tracker" ? TRACKERS : VALUES), rowIds: () => [],
     }],
+    // Tidy up links here; drift-summary.mjs and the doctor read the setting.
+    ["config.tracker", {
+      targets: ["team-mode"], argv: (_t, v) => h("config", "set", "tracker.teamMode", v as string), consent: "plain",
+      cwd: ctx.root, timeoutMs: HIMMELCTL_TIMEOUT_MS, effect: "the next Board read and the next doctor run", bank: none,
+      needsValue: true, values: () => VALUES, rowIds: () => [],
+    }],
     ["config.paths", {
       targets: Object.keys(PATH_KEYS), argv: (t, v) => h("config", "set", PATH_KEYS[t], v as string), consent: "plain",
       cwd: ctx.root, timeoutMs: HIMMELCTL_TIMEOUT_MS, effect: "next Claude launch", bank: none,

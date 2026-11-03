@@ -2,7 +2,7 @@
 import { renderInventory, renderTriage, renderHeader, renderProbe, reviewGateDraft } from "/render.js";
 import { renderHealth, verdict, parseView, projectVerdict } from "/health.js";
 import { renderToolHealth, toolHealthLoader, toolHealthHref } from "/tool-health.js";
-import { renderBoard } from "/roadmap.js";
+import { driftSince, renderBoard } from "/roadmap.js";
 import { renderWorkflow, parseWorkflowRoute } from "/workflow.js";
 import { renderConfigure as render } from "/setup.js";
 import { renderShift } from "/shift.js";
@@ -57,6 +57,7 @@ const setupMsgs = {}; // per secret name: the last save or remove outcome, never
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versionChains }, null until read
+let originsReading = false; // declared before route() runs: a reload at #/board paints, and that paint asks for Tidy up's origins
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, why: null, logOpen: [], chain: null, nv: null };
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides the Board
@@ -70,7 +71,7 @@ const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
-  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
+  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
@@ -601,6 +602,35 @@ async function loadBoard() {
   boardExtras = data || { drift: { state: "absent", reason: "the board read failed" }, chains: { state: "absent", reason: "the board read failed" } };
   if (currentPage.id === "board") paint();
 }
+// Tidy up's origin column: each drift row's ticket has its Jira history read once, one at a time, only while the tab is open. A failed read is kept as one.
+async function loadDriftOrigins() {
+  if (originsReading || roadmapUi.tab !== "tidy") return;
+  const dr = boardExtras && boardExtras.drift, seen = roadmapUi.driftOrigins || (roadmapUi.driftOrigins = {});
+  const next = dr && dr.real ? [...dr.real, ...dr.known, ...dr.transient].map((r) => r.key).find((k) => !seen[k]) : undefined;
+  if (!next) return;
+  originsReading = true;
+  let h;
+  try {
+    const r = await fetch("/api/roadmap/history?key=" + encodeURIComponent(next), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    h = r.ok ? await r.json() : { error: "history unavailable" };
+  } catch (_) { h = { error: "history unavailable" }; }
+  originsReading = false;
+  (roadmapUi.driftOrigins || {})[next] = h;
+  if (currentPage.id === "board") paint(); // the paint's afterPaint asks for the next key
+}
+// Tidy up's Refresh: the server runs the check once for every caller; the saved rows stay on screen until it answers.
+async function refreshDriftRun() {
+  if (roadmapUi.driftRun && roadmapUi.driftRun.state === "running") return;
+  const before = boardExtras && boardExtras.drift;
+  roadmapUi.driftRun = { state: "running", started: new Date().toTimeString().slice(0, 8) };
+  paint();
+  const { ok, j } = await post("/api/board/drift-refresh", {});
+  if (!ok || j.state !== "ok") { roadmapUi.driftRun = { state: "failed", reason: j.reason || j.error || "the re-run failed" }; if (currentPage.id === "board") paint(); return; }
+  await loadBoard();
+  roadmapUi.driftOrigins = {}; // a new run may name a move made since the last read
+  roadmapUi.driftRun = { state: "done", since: driftSince(before, boardExtras.drift) };
+  if (currentPage.id === "board") paint();
+}
 // a drop or a Sector select goes to Jira, or to the local tracker store for a local card, through the server. The board is
 // redrawn from the server's data either way: on a refusal nothing local changed, so the card is back where it was and the
 // reason is shown above the board.
@@ -816,6 +846,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth(true);
   if (b.dataset.act && b.dataset.act.startsWith("th-")) return void toolHealthClick(b);
   if (b.dataset.act === "refresh-roadmap") { roadmapUi.nv = null; if (roadmapUi.tab === "nv") loadNoVersion(); return void (loadRoadmap(), loadBoard()); }
+  if (b.dataset.act === "drift-refresh") return void refreshDriftRun();
   if (b.dataset.act === "refresh-shift") return void loadShift();
   if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "reports-save") return void saveReportSettings();

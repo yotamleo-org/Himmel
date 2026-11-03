@@ -27,6 +27,8 @@ const cases: [string, string, string | undefined, string[]][] = [
   ["config.commitRules", "tracker", "jira", [...H, "config", "set", "commit.tracker", "jira"]],
   ["config.commitRules", "tracker", "none", [...H, "config", "set", "commit.tracker", "none"]],
   ["config.commitRules", "ticket-id-required", "off", [...H, "config", "set", "commit.ticketIdRequired", "off"]],
+  ["config.tracker", "team-mode", "on", [...H, "config", "set", "tracker.teamMode", "on"]],
+  ["config.tracker", "team-mode", "off", [...H, "config", "set", "tracker.teamMode", "off"]],
   ["config.paths", "handover-root", "/home/me/state/handovers", [...H, "config", "set", "handover.root", "/home/me/state/handovers"]],
   ["config.paths", "luna-vault", "/home/me/My Vault", [...H, "config", "set", "luna.vaultPath", "/home/me/My Vault"]],
 ];
@@ -69,6 +71,9 @@ const refused: [string, string, string | undefined][] = [
   ["config.commitRules", "ticket-id-required", "jira"],
   ["config.commitRules", "ticketIdPattern", "^X-1$"], // the pattern is typed in the terminal, never a UI target
   ["config.commitRules", "tracker", undefined],
+  ["config.tracker", "team-mode", "maybe"],
+  ["config.tracker", "team-mode", undefined],
+  ["config.tracker", "tracker", "on"],
   ["config.paths", "forge", "/x"], // forge is shown, never set here
   ["config.paths", "handover-root", undefined],
 ];

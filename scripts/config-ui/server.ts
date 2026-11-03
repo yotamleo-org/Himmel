@@ -32,7 +32,7 @@ import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
-import { readBoardExtras } from "./board";
+import { driftCheck, driftFile, readBoardExtras, refreshDrift, type DriftRefresh } from "./board";
 import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, mergedSettings, readGithubIssues, settingsEnv, trackerSetting, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
@@ -492,10 +492,37 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     const isEntry = (e: unknown) => !!e && typeof e === "object" && typeof (e as { created?: unknown }).created === "string" && Array.isArray((e as { items?: unknown }).items)
       && (e as { items: unknown[] }).items.every((i) => !!i && typeof i === "object"); // a changelog entry: when and what changed; anything else is not the read it claims to be
     if (!Array.isArray(entries) || !entries.every(isEntry)) return unavailable();
-    const events = entries.flatMap((e: { created?: unknown; author?: { displayName?: unknown }; items?: unknown }) => (Array.isArray(e?.items) ? e.items : [])
+    // himmel: the move came from the account himmel signs in to Jira with. The address is compared here and never answered; a person on a shared login reads the same.
+    const me = String(mergedSettings(stationRoot(trackerRoot), env).JIRA_EMAIL ?? "").trim().toLowerCase();
+    const events = entries.flatMap((e: { created?: unknown; author?: { displayName?: unknown; emailAddress?: unknown }; items?: unknown }) => (Array.isArray(e?.items) ? e.items : [])
       .filter((i: { field?: unknown }) => typeof i?.field === "string" && i.field.toLowerCase() === "status")
-      .map((i: { fromString?: unknown; toString?: unknown }) => ({ at: String(e.created ?? ""), who: String(e.author?.displayName ?? "?"), from: i.fromString == null ? "" : String(i.fromString), to: i.toString == null ? "" : String(i.toString) })));
+      .map((i: { fromString?: unknown; toString?: unknown }) => ({ at: String(e.created ?? ""), who: String(e.author?.displayName ?? "?"), from: i.fromString == null ? "" : String(i.fromString), to: i.toString == null ? "" : String(i.toString), ...(me && String(e.author?.emailAddress ?? "").trim().toLowerCase() === me ? { himmel: true } : {}) })));
     return json(redactOut({ key, events }));
+  }
+
+  const boardNotJira = async (benv: Env) => {
+    const first = (await trackerSources(benv, trackerRoot))[0];
+    return first === "none" || first === "local" || first === "github" || (!first && trackerSetting(benv, trackerRoot) === "local");
+  };
+
+  // Tidy up's Refresh: the report-only drift check, its run saved over the old one when it ends clean (board.ts). No lock: nothing here
+  // races a write to Jira, and the rename is atomic. A second click, or a second tab, while a run is in flight shares it.
+  let driftRefreshing: Promise<DriftRefresh> | null = null;
+  async function driftRefreshRoute(): Promise<Response> {
+    const benv = senv();
+    if (await boardNotJira(benv)) return json({ error: "the active tracker is not Jira" }, 403);
+    driftRefreshing ??= (async () => {
+      // the drift file's settings as GET /api/board finds them, and the project's mirror and key; no other .env value reaches the child
+      const merged = mergedSettings(root, env);
+      const pick = (from: Env, keys: string[]) => Object.fromEntries(keys.filter((k) => from[k]).map((k) => [k, from[k]]));
+      const run = { ...env, ...pick(merged, ["HIMMEL_FOCUS_DRIFT", "TRACKER_HANDOVERS_DIR", "HANDOVER_DIR"]), ...pick(benv, ["HIMMEL_JIRA_MIRROR", "JIRA_PROJECT_KEY"]) };
+      const r = await refreshDrift(run, stationRoot(trackerRoot));
+      try {
+        appendAudit(auditPath, { time: new Date(now()).toISOString(), action: "board.drift-refresh", target: driftFile(run) ?? "", value: null, argv: ["bash", driftCheck(run)], rc: r.state === "ok" ? 0 : 1, before: null, after: null, ...(r.state === "ok" ? {} : { outcome: "error" as const }) });
+      } catch { /* the answer below still carries the outcome */ }
+      return r;
+    })().finally(() => { driftRefreshing = null; });
+    return driftRefreshing.then((body) => json(redactOut(body)), () => json({ state: "failed", reason: "internal error" }, 500));
   }
 
   // The Verify step: the station's doctor, read-only. A second click while a run is in flight shares it.
@@ -769,8 +796,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         // the extras read the Jira mirror: on another active tracker's Board they would show Jira's drift and chains beside its cards
         const benv = senv();
-        const first = (await trackerSources(benv, trackerRoot))[0];
-        if (first === "none" || first === "local" || first === "github" || (!first && trackerSetting(benv, trackerRoot) === "local")) {
+        if (await boardNotJira(benv)) {
           const why = "the active tracker is not Jira";
           return json({ drift: { state: "absent", reason: `no saved drift run: ${why}` }, chains: { state: "absent", reason: `no chain registry: ${why}` } });
         }
@@ -832,7 +858,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
       // the fleet cap: HIMMEL_FLEET_CAP read as gate policy (config.json .policy, then the station .env); a write is refused.
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/report-settings" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
+      if (path !== "/api/board/drift-refresh" && path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/report-settings" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -856,6 +882,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/setup/secret") return setupWriteRoute(() => secretWrite(b as Record<string, unknown>, { ...setupOpts, serviceMode: !!opts.noIdle, session }));
       if (path === "/api/setup/account") return setupWriteRoute(() => accountCreate(b as Record<string, unknown>, accountOpts));
       if (path === "/api/setup/verify") return verifyRoute();
+      if (path === "/api/board/drift-refresh") return driftRefreshRoute();
       if (path === "/api/preview") return previewRoute(b as Record<string, unknown>);
       let started = false;
       const res = await runRoute(b as Record<string, unknown>, () => { started = true; });

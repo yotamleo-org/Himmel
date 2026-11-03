@@ -14,6 +14,17 @@ const state = { plans: {}, reviewGate: { data: { reviewers: [], env: [], overlay
 const cfg = (tile: string, data = setup) => renderConfigure({ rows: [] }, { tile, setup: data, state, msgs: {} });
 const visible = (html: string) => html.replace(/<button\b[^>]*data-act="copy"[^>]*>[\s\S]*?<\/button>/g, "").replace(/<[^>]*>/g, "");
 
+test("Tracker tile: Team mode is one switch under the Board heading, off when unset, and each side previews a dry run", () => {
+  const html = cfg("tracker", { ...setup, commit: { ...setup.commit, teamMode: "off" } });
+  expect(visible(html)).toContain("Board · who edits this Jira project");
+  expect(visible(html)).toContain("Team mode");
+  for (const v of ["on", "off"]) expect(html).toContain(`data-action="config.tracker" data-target="team-mode" data-value="${v}"`);
+  expect(html).toMatch(/data-value="off" data-k="[^"]*" aria-pressed="true"/);
+  const on = cfg("tracker", { ...setup, commit: { ...setup.commit, teamMode: "on" } });
+  expect(on).toMatch(/data-action="config.tracker" data-target="team-mode" data-value="on" data-k="[^"]*" aria-pressed="true"/);
+  expect(R.settingsCommand({ action: "config.tracker", target: "team-mode" }, "~/himmel", "on")).toBe("node ~/himmel/scripts/himmelctl/bin.js config set tracker.teamMode on");
+});
+
 // Removing the shared buttons would expose shell text again, or lose the exact command to copy.
 test("Configure commands are compact copy buttons, not raw command blocks", () => {
   const html = cfg("scope");

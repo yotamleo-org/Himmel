@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
-import { renderBoard, renderKanban, renderRoadmap } from "../public/roadmap.js";
+import { driftSince, renderBoard, renderKanban, renderRoadmap } from "../public/roadmap.js";
 import { navLinks, parseLanding } from "../public/nav.js";
 import { startServer } from "../server";
 
@@ -225,6 +225,76 @@ test("the rail lists one Board entry after Configure, and Board is a console rou
 const driftOk = (real: { class: string; key: string; line: string }[] = [], known = 0, transient = 0) => ({
   file: { exists: true, writtenHm: "03:08" }, sdrift: "3:abc", unknown: false, stale: false, mode: "single-user", modeSource: "default",
   real, known: [], transient: [], checkers: [], counts: { real: real.length, known, transient } });
+// Tidy up (mockup v4 frames 5, 6): the Refresh control in its three states, where a row came from, the mode with its link.
+const driftRows = (over: Record<string, unknown> = {}) => ({ ...driftOk([{ class: "VERSION-DRIFT", key: "HIMMEL-6691", line: "VERSION-DRIFT HIMMEL-6691 Done in v1.1.4 | writer=release-manager | fix=none" }]), ...over });
+const tidy = (ui: Record<string, unknown>, dr: unknown = driftRows()) => renderBoard(read(station()), { version: null, theme: null, tab: "tidy", ...ui }, { drift: dr });
+const cellText = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+
+test("Tidy up: Refresh starts nothing on open, marks the kept rows while running, and says why a run failed", () => {
+  const saved = tidy({});
+  expect(saved).toContain('data-act="drift-refresh"');
+  expect(cellText(saved)).toContain("drift: saved run · written 03:08 · sdrift=3:abc");
+  const running = tidy({ driftRun: { state: "running", started: "05:44:39" } });
+  expect(cellText(running)).toContain("re-running the check · started 05:44:39 · up to 90 s");
+  expect(cellText(running)).toContain("from 03:08");
+  expect(running).toContain("HIMMEL-6691"); // the saved rows stay on screen
+  expect(running).toMatch(/data-act="drift-refresh"[^>]*disabled/);
+  const failed = tidy({ driftRun: { state: "failed", reason: "the check said <unknown>" } });
+  expect(failed).toContain('role="alert"');
+  expect(failed).toContain("the check said &lt;unknown&gt;");
+  expect(cellText(failed)).toContain("the saved run from 03:08 is kept");
+  const done = cellText(tidy({ driftRun: { state: "done", since: { added: ["UNOWNED HIMMEL-9 x", "VERSION-DRIFT HIMMEL-8 z"], counted: ["VERSION-DRIFT HIMMEL-8 z"], healed: ["WORKER-COMMENT HIMMEL-4 y"], same: 2 } } }));
+  expect(done).toContain("drift: re-run · written 03:08");
+  expect(done).toContain("new UNOWNED HIMMEL-9 x");
+  expect(done).toContain("new · counted VERSION-DRIFT HIMMEL-8 z");
+  for (const part of ["UNOWNED HIMMEL-9 x", "healed", "WORKER-COMMENT HIMMEL-4 y", "same", "2 rows"]) expect(done).toContain(part);
+  // a missing or unknown run still offers Refresh, and never a count
+  for (const dr of [{ file: { exists: false }, counts: { real: 0, known: 0, transient: 0 } }, driftRows({ unknown: true, sdrift: "unknown" }), { state: "absent", reason: "none found" }]) expect(tidy({}, dr)).toContain('data-act="drift-refresh"');
+});
+
+test("Tidy up: the origin column says who moved the ticket, and a read that failed never reads as nobody", () => {
+  const row = (h: unknown) => cellText(tidy({ driftOrigins: { "HIMMEL-6691": h } }));
+  expect(tidy({})).toContain("<th>origin</th>");
+  expect(tidy({})).toContain('colspan="6"');
+  const ev = (who: string, himmel?: boolean) => ({ at: "2026-10-01T10:00", who, from: "To Do", to: "Done", ...(himmel ? { himmel } : {}) });
+  expect(row({ events: [ev("Hima", true), ev("Ana")] })).toContain("moved in Jira by Ana");
+  expect(tidy({ driftOrigins: { "HIMMEL-6691": { events: [ev("Ana <x>")] } } })).toContain("Ana &lt;x&gt;");
+  const mine = row({ events: [ev("Ana"), ev("Hima", true)] }); // the newest move decides
+  expect(mine).not.toContain("moved in Jira by");
+  expect(mine).toMatch(/himmel(&#39;|')s Jira account/);
+  expect(mine).toContain("shared"); // a person on the same login reads the same
+  expect(row({ error: "history unavailable" })).toContain("origin not read");
+  expect(row({ events: [] })).toContain("no status move");
+  expect(cellText(tidy({}))).toContain("reading");
+});
+
+test("driftSince: what a re-run added, healed and kept, by the row's text", () => {
+  const rows = (...l: string[]) => ({ ...driftOk(), real: l.map((line) => ({ class: "X", key: "K", line: `${line} | writer=a | fix=b` })) });
+  expect(driftSince(rows("a", "b"), rows("b", "c"))).toEqual({ from: "03:08", added: ["c"], counted: ["c"], healed: ["a"], same: 1 });
+  expect(driftSince(rows(), { ...rows(), known: [{ class: "X", key: "K", line: "k | writer=a | fix=b" }] }).counted).toEqual([]);
+});
+
+test("Tidy up: the mode shows read-only and links to the Team mode switch on Configure", () => {
+  const off = tidy({});
+  expect(off).toContain('href="#/config?tile=tracker"');
+  expect(cellText(off)).toContain("team mode is off");
+  expect(cellText(off)).toContain("a real drift = a himmel bug");
+  const on = cellText(tidy({}, driftRows({ mode: "team" })));
+  expect(on).toContain("team mode is on");
+  expect(on).toContain("ordinary tidy-up");
+});
+
+test("Board lanes: a card with a known-checker-bug row carries the tag naming the checker, in words; a card without has none", () => {
+  const r = read(station());
+  const t = r.tickets.find((x: { v: number; b: string }) => x.v === r.cur && x.b !== "done")!;
+  const key = t.id ?? `HIMMEL-${t.k}`;
+  const dr = { ...driftOk(), known: [{ class: "UNOWNED", key, line: `UNOWNED ${key} x`, checker: "HIMMEL-7980", checkerStatus: "In Progress" }], counts: { real: 0, known: 1, transient: 0 } };
+  const html = renderBoard(r, { version: null, theme: null }, { drift: dr });
+  expect(cellText(html)).toContain("≠ checker bug HIMMEL-7980");
+  expect((html.match(/rm-kb/g) || []).length).toBe(1);
+  expect(renderBoard(r, { version: null, theme: null }, { drift: driftOk() })).not.toContain("rm-kb");
+});
+
 const chainsOk = () => ({ schema: "himmel.chains/1", chains: [{ id: "memory", name: "Memory guard rework", total: 2, done: 1, steps: 2, next: { step: 2, keys: ["HIMMEL-5"] } }],
   tickets: {
     "HIMMEL-1": { key: "HIMMEL-1", state: "in flight", chains: [{ id: "memory", step: 1, steps: 2, state: "in flight" }], badges: ["memory"], more: 0 },

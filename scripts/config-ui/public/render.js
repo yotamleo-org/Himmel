@@ -292,7 +292,7 @@ const CADENCE_PATH = {
 const EFFECT = {
   "cadence.arm": "at the next scheduled run", "cadence.disarm": "at the next scheduled run",
   "plugin.enable": "next Claude launch", "plugin.disable": "next Claude launch", "profile.set": "next Claude launch",
-  "config.lanes": "next time work is handed to a lane", "config.initiative": "next Claude launch", "config.commitRules": "your next commit",
+  "config.lanes": "next time work is handed to a lane", "config.initiative": "next Claude launch", "config.commitRules": "your next commit", "config.tracker": "the next Board read and the next doctor run",
   "config.paths": "next Claude launch",
 };
 const PATH_KEYS = { "handover-root": "handover.root", "luna-vault": "luna.vaultPath" };
@@ -308,7 +308,7 @@ export function settingsCommand({ action, target }, root = HIMMEL_HOME, value) {
   if (ns === "plugin") return shellLine([...ctl, "profile", verb, target]);
   if (action === "profile.set") return shellLine([...ctl, "profile", target]);
   if (!value) return ["on", "off"].map((v) => settingsCommand({ action, target }, root, v)).join("\n");
-  const key = action === "config.commitRules" ? (target === "tracker" ? "commit.tracker" : "commit.ticketIdRequired")
+  const key = action === "config.tracker" ? "tracker.teamMode" : action === "config.commitRules" ? (target === "tracker" ? "commit.tracker" : "commit.ticketIdRequired")
     : action === "config.paths" ? PATH_KEYS[target] : `${verb}.${target}`;
   return shellLine([...ctl, "config", "set", key, value]);
 }

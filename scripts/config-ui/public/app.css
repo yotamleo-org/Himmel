@@ -558,3 +558,12 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .mln.sel{outline:2px solid var(--accent)}.mln .kl{color:var(--muted);font-size:10px}
 .thcard .mcard:focus-visible,.mln:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 @media (max-width:560px){.thmap{display:none}.thcards{display:grid;gap:var(--s2);margin:var(--s2) 0}}
+
+/* Tidy up's Refresh bar, the mode line and the known-checker-bug tag on a lane card (mockup v4 frames 1, 5, 6) */
+.rm-driftbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2);margin-bottom:var(--s2)}
+.rm-mode{margin-bottom:var(--s2)}
+.rm-key{white-space:nowrap}
+.rm-kb{display:inline-block;margin-top:var(--s1);font-size:var(--fs-xs);border:1px dashed var(--rule-strong);border-radius:6px;padding:0 var(--s2)}
+.rm-spin{display:inline-block;width:.8em;height:.8em;border:2px solid var(--rule-strong);border-top-color:var(--accent);border-radius:50%;animation:rm-spin 1s linear infinite}
+@keyframes rm-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.rm-spin{animation:none}}

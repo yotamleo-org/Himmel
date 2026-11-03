@@ -99,8 +99,12 @@ function seedBoard(dir: string, mirror: string): Record<string, string> {
   writeFileSync(join(chainState, "chain-log.jsonl"), [{ ts: "2026-10-29T10:00:00Z", change: "hold", key: "HIMMEL-6", kind: "operator", who: "chief", reason: "waiting on the freeze" }, { ts: "2026-10-29T11:00:00Z", change: "release", key: "HIMMEL-6", who: "chief" }].map((r) => JSON.stringify(r)).join("\n") + "\n");
   writeFileSync(drift, "VERSION-DRIFT HIMMEL-12 Open on released v1.1.2 | writer=release-manager | fix=jira release request v1.1.3 --verb INTAKE --key HIMMEL-12\n"
     + "WORKER-COMMENT HIMMEL-3 the record hash differs from its class hash | writer=sweep | fix=none\nsdrift=2:abc\n");
-  writeFileSync(known, "# checker\tclass\tkey\tedited-at\n");
-  return { HIMMEL_FOCUS_DRIFT: drift, HIMMEL_CHAIN_REGISTRY: registry, TICKET_STATUS_STATE_DIR: chainState, DRIFT_SUMMARY_KNOWN: known, HIMMEL_CONFIG_DIR: conf };
+  // the pair stays idle until a re-run names the row: the seeded run has no such row
+  writeFileSync(known, "# checker\tclass\tkey\tedited-at\nHIMMEL-31\tUNOWNED\tHIMMEL-2\t2026-10-30\n");
+  // Tidy up's refresh: stands in for status-drift.sh, a second past the click so a test sees the run in flight
+  const check = join(dir, "drift-check.sh");
+  writeFileSync(check, "sleep 1\necho 'UNOWNED HIMMEL-2 In Progress, no open PR, no live owner | writer=sweep | fix=none'\necho 'VERSION-DRIFT HIMMEL-12 Open on released v1.1.2 | writer=release-manager | fix=none'\necho 'sdrift=2:newrun'\n");
+  return { CONFIG_UI_DRIFT_CHECK: check, HIMMEL_FOCUS_DRIFT: drift, HIMMEL_CHAIN_REGISTRY: registry, TICKET_STATUS_STATE_DIR: chainState, DRIFT_SUMMARY_KNOWN: known, HIMMEL_CONFIG_DIR: conf };
 }
 export const GH_ISSUES = [
   { number: 21, title: "Open gh issue", state: "OPEN", stateReason: "", labels: [], milestone: { number: 1, title: "m1" }, updatedAt: "2026-10-01T00:00:00Z" },
