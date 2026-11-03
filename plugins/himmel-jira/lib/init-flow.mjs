@@ -1,51 +1,12 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, chmodSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { jiraFetch, envFilePath } from './jira-fetch.mjs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { jiraFetch, envFilePath, SECRET_KEYS, CONF_KEYS, loadEnvFile, loadConfIntoProcess, fillFromKeyring, resolveFromKeyring, storeInKeyring } from './jira-fetch.mjs';
 import { writeMetadata } from './metadata.mjs';
-
-function loadEnvFile(path) {
-  if (!existsSync(path)) return {};
-  const out = {};
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const t = line.trim();
-    if (!t || t.startsWith('#') || !t.includes('=')) continue;
-    const [k, ...rest] = t.split('=');
-    out[k.trim()] = rest.join('=').trim();
-  }
-  return out;
-}
-
-// Behaviour keys this reader takes from ~/.himmel/himmel.conf{,.local} (config
-// class in scripts/lib/load-dotenv.sh): the conf files win over a legacy .env
-// line, an empty value reads as unset, and the process env wins over both.
-// The selected station profile supplies only the URL, below the local override.
-const CONF_KEYS = ['JIRA_PROJECTS', 'JIRA_BASE_URL'];
-
-function loadConfIntoProcess() {
-  const dir = process.env.HIMMEL_CONFIG_DIR || join(homedir(), '.himmel');
-  const local = join(dir, 'himmel.conf.local');
-  const name = (process.env.HIMMEL_PROFILE || loadEnvFile(local).HIMMEL_PROFILE || '')
-    .replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
-  const files = [[local, CONF_KEYS]];
-  if (name && !name.startsWith('.') && /^[A-Za-z0-9._-]+$/.test(name)) {
-    try {
-      const target = resolve(dir, readlinkSync(join(dir, 'himmel.conf')));
-      files.push([join(dirname(target), 'profiles', `${name}.conf`), ['JIRA_BASE_URL']]);
-    } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'EINVAL') throw e; }
-  }
-  files.push([join(dir, 'himmel.conf'), CONF_KEYS]);
-  for (const [file, keys] of files) {
-    const conf = loadEnvFile(file);
-    for (const key of keys) {
-      const value = (conf[key] ?? '').replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
-      if (value && !process.env[key]) process.env[key] = value;
-    }
-  }
-}
 
 export function loadEnvIntoProcess(envPath) {
   loadConfIntoProcess();
+  // Keyring before .env: a keyring value beats a .env line; an exported value beats both.
+  fillFromKeyring();
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const t = line.trim();
@@ -62,7 +23,8 @@ export function loadEnvIntoProcess(envPath) {
 export function ensureEnvKeys(envPath, keys) {
   loadConfIntoProcess();
   const current = loadEnvFile(envPath);
-  return keys.filter((k) => !current[k] && !(CONF_KEYS.includes(k) && process.env[k]));
+  const served = resolveFromKeyring(keys.filter((k) => SECRET_KEYS.includes(k) && !current[k]));
+  return keys.filter((k) => !current[k] && !served[k] && !(CONF_KEYS.includes(k) && process.env[k]));
 }
 
 // Resolve the project key(s) to discover, in precedence order:
@@ -97,6 +59,15 @@ export function appendEnvKeys(envPath, kvs) {
   } catch (e) {
     process.stderr.write(`[jira-init] warning: chmod 600 failed on ${envPath}: ${e.message}\n`);
   }
+}
+
+// The setup flow's write: the token goes to the keyring when it is unlocked (no .env line). The email,
+// the base URL and a token the keyring did not take go to .env as before.
+export function writeCredentials(envPath, kvs) {
+  const stored = storeInKeyring(kvs);
+  const rest = Object.fromEntries(Object.entries(kvs).filter(([k]) => !stored.includes(k)));
+  if (Object.keys(rest).length) appendEnvKeys(envPath, rest);
+  return { keyring: stored, env: Object.keys(rest) };
 }
 
 export async function checkAuth() {

@@ -40,6 +40,35 @@ test("matched, unmatched and duplicate call ids; the rtk path is a rewrite or an
   expect(JSON.stringify([...r.byId])).not.toContain("SECRET");
 });
 
+test("rtk proxy runs the raw command, so it is not the rtk path, rewritten or typed", async () => {
+  const { rtkHistory } = await import("../rtk-history");
+  const dir = home([
+    ["toolu_p1", "rtk proxy git log -1", "allow", null],
+    ["toolu_p2", "git log -1", "allow", "rtk proxy git log -1"],
+    ["toolu_p3", "git log -1", "allow", "rtk git log -1"],
+  ]);
+  const r = rtkHistory({ HOME: dir })(["toolu_p1", "toolu_p2", "toolu_p3"]);
+  expect([...r.byId].map(([id, v]) => [id, v.path])).toEqual([["toolu_p1", "bash"], ["toolu_p2", "bash"], ["toolu_p3", "rtk"]]);
+});
+
+test("coverage counts rtk's Bash calls per session inside the UTC day window, and says absent or error", async () => {
+  const { rtkHistory } = await import("../rtk-history");
+  const dir = home([["toolu_a", "ls", "allow", null], ["toolu_b", "ls", "allow", null], ["toolu_c", "ls", "allow", null], ["toolu_d", "ls", "allow", null]]);
+  const db = new Database(join(dir, ".local", "share", "rtk", "history.db"));
+  const stamp = db.prepare("UPDATE hook_decisions SET timestamp = ?, session_id = ? WHERE tool_use_id = ?");
+  stamp.run("2026-10-07T00:00:00.1+00:00", "s1", "toolu_a"); stamp.run("2026-10-07T23:59:59.9+00:00", "s1", "toolu_b");
+  stamp.run("2026-10-07T12:00:00+00:00", "s2", "toolu_c"); stamp.run("2026-10-08T00:00:00+00:00", "s3", "toolu_d");
+  db.close();
+  const r = (rtkHistory({ HOME: dir }) as any).coverage("2026-10-07", "2026-10-07");
+  expect(r.state).toBe("ok");
+  expect([...r.sessions]).toEqual([["s1", 2], ["s2", 1]]);
+  const empty = mkdtempSync(join(tmpdir(), "rtk-history-none-")); dirs.push(empty);
+  expect((rtkHistory({ HOME: empty }) as any).coverage("2026-10-07", "2026-10-07").state).toBe("absent");
+  mkdirSync(join(empty, ".local", "share", "rtk"), { recursive: true });
+  writeFileSync(join(empty, ".local", "share", "rtk", "history.db"), "not a database");
+  expect((rtkHistory({ HOME: empty }) as any).coverage("2026-10-07", "2026-10-07").state).toBe("error");
+});
+
 test("ids are queried in chunks, so a long window stays under the SQLite variable limit", async () => {
   const { rtkHistory } = await import("../rtk-history");
   const ids = Array.from({ length: 1200 }, (_, i) => `toolu_bulk${i}`);

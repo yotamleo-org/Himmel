@@ -1963,12 +1963,36 @@ def mention: ([.argv[] | wv] + [(.redirs // [])[] | ((.text // ""), (.w.raw // "
 def namesverb: words | test("qmd.*(^|[^a-z0-9_-])(query|search|vsearch)([^a-z0-9_-]|$)");
 def inpipe: any((.in // [])[]; . == "pipe");
 def viaenv: (.via // []) | any(. == "env");
+# Three shapes that only MENTION qmd, where the regex reader sees a
+# quoted `|` or `;` as a command boundary. Each is allowed on the parsed position,
+# where a quoted separator is no boundary, and only for these programs:
+#   datascript  the sanctioned wrapper or the results-bullet writer, all-literal
+#               arguments (a substitution is its own position and still read),
+#               no env, no assignment, no heredoc text
+#   findreader  find whose every -exec/-execdir/-ok/-okdir runs a plain reader
+#   plainfilter a pipe consumer that is a plain non-executing filter (no --pre)
+# ponytail: the two script names are matched by file name, not by path or content;
+# the guard prevents an orphaned GPU process, it is not a fence against a hostile
+# model. Upgrade = pin the resolved path under the primary checkout.
+def lits: [.argv[]] | all(.[]; .t == "lit");
+def plainpos: ((.assigns // []) | length) == 0 and ((.via // []) | length) == 0 and ((.redirs // []) | all(.[]; (.text // "") == ""));
+def scriptb: (if ((.prog | b) | IN("bash", "sh")) then .argv[1] else .argv[0] end) | if . == null then "" else ((.v // "") | b) end;
+def datascript: plainpos and lits and (.opaque == null) and (.body == null) and (scriptb | IN("qmd-bounded.sh", "append-results.sh"));
+def execprogs: [.argv | . as $a | range(0; length) | select($a[.].v | IN("-exec", "-execdir", "-ok", "-okdir")) | (($a[. + 1].v // "") | b)];
+def findreader: ((.prog | b) == "find") and (.opaque == "find runs a command") and plainpos and lits
+  and (execprogs | length > 0) and (execprogs | all(.[]; IN("grep", "egrep", "fgrep", "cat", "head", "tail", "wc", "ls")))
+  and ([.argv[] | .v | startswith("--pre")] | any | not);
+def plainfilter: plainpos and lits and (.opaque == null) and (.body == null) and ((.prog | b) | IN("grep", "egrep", "fgrep", "head", "tail", "wc", "cat", "cut"))
+  and ([.argv[] | .v | startswith("--pre")] | any | not);
 def posv($men):
   runq as $q
   | if viaenv then (if $q != null then qverdict($q) else "legacy" end | if . == "deny" then "deny" else "legacy" end)
     elif ((.assigns // []) | length) > 0 then "legacy"
     elif $q != null then qverdict($q)
+    elif datascript then "allow"
+    elif findreader then "allow"
     elif (.opaque != null) or (interp and (.body == null)) then "legacy"
+    elif inpipe and plainfilter then "allow"
     elif mention then "legacy"
     elif $men and inpipe then "legacy"
     else "allow" end;
@@ -2025,6 +2049,24 @@ esac
 
 if [ "$deny" = 1 ]; then
     bounded="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)/qmd-bounded.sh"
+    # A command that already runs the sanctioned wrapper was not a
+    # bare search; say its shape was unreadable, not that a bare qmd was typed.
+    cmd_nowrap=$(printf '%s' "$cmd" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+    cmd_nowrap=${cmd_nowrap//qmd-bounded.sh/}
+    cmd_nowrap=${cmd_nowrap//qmd:\/\//}
+    if [[ $cmd == *qmd-bounded.sh* && $cmd_nowrap != *qmd* ]]; then
+        cat >&2 <<DENY
+block-bare-qmd-query: this command names the sanctioned qmd-bounded.sh wrapper, but its shape could not be read as safe, so it is refused (it is not a bare qmd call).
+
+Run the wrapper alone, then filter its output in a second call or a file:
+    bash $bounded query -c <collection> "<question>" > out.txt
+    grep -E '<pattern>' out.txt
+A piped stage that runs its input (sh, xargs, an interpreter with no script) or a launcher around the wrapper is what trips this.
+
+Bypass (deliberate, session-sticky): launch with QMD_UNBOUNDED_OK=1.
+DENY
+        exit 2
+    fi
     cat >&2 <<DENY
 block-bare-qmd-query: a bare qmd query/search/vsearch is refused.
 
