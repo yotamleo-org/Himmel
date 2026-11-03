@@ -68,8 +68,8 @@ export type Alert = { labels: Record<string, string>; annotations: Record<string
 // tracker: the source the Board reads. "jira" (default) seeds a one-ticket Jira mirror, "github" a gh stub answering fake
 // issues, "local" and "none" neither; TRACKER is always set so the operator's own git config never decides.
 export type TrackerKind = "jira" | "local" | "github" | "none";
-// board: seeds the Board page's sources on top of the jira tracker: a populated mirror over three versions, one chain
-// (the first ticket blocks the second), and a saved drift run with one real and one transient row. Never touches a real path.
+// board: seeds the Board page's sources on top of the jira tracker: a populated mirror over three versions, two chains
+// (the first ticket blocks the second, one link across them, one blocker outside the version), a merge and a change log, and a saved drift run with one real and one transient row. Never touches a real path.
 export type BootOpts = { ledger?: object[]; handover?: { bullet: string }; prom?: { alerts: Alert[] }; feedDelayMs?: number; tracker?: TrackerKind; board?: boolean };
 const boardIssue = (n: number, status: string, cat: string, fv: string, title: string, blockedBy: string[] = [], sector = "") =>
   ["---", `key: "HIMMEL-${n}"`, `type: "Task"`, `status: ${JSON.stringify(status)}`, `statusCategory: ${JSON.stringify(cat)}`, `priority: "Medium"`, `labels: []`,
@@ -86,15 +86,21 @@ function seedBoard(dir: string, mirror: string): Record<string, string> {
   put(4, "In Review", "In Progress", "v1.1.3", "Waiting for review", [], "Safety");
   put(5, "To Do", "To Do", "v1.1.3", "Not in any chain");
   put(21, "To Do", "To Do", "v1.1.4", "Next version work");
+  put(6, "To Do", "To Do", "v1.1.3", "Linked across chains", ["HIMMEL-2"]);
+  put(7, "To Do", "To Do", "v1.1.3", "Blocked from the next version", ["HIMMEL-21"]);
   put(31, "In Progress", "In Progress", "", "Standing ticket with no version");
   writeFileSync(mirror + ".versions.tsv", "v1.1.2\ttrue\t2026-10-19\nv1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
   const registry = join(dir, "chain-registry.json"), drift = join(dir, "focus-drift.txt"), known = join(dir, "known-checker-bugs.tsv"), conf = join(dir, "himmel-conf");
   mkdirSync(conf, { recursive: true });
-  writeFileSync(registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }] }));
+  writeFileSync(registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }, { id: "ops", goal: "Ops cleanup chain", members: ["HIMMEL-6", "HIMMEL-7"] }] }));
+  const chainState = join(dir, "chain-state");
+  mkdirSync(chainState, { recursive: true });
+  writeFileSync(join(chainState, "status-events.jsonl"), JSON.stringify({ ts: "2026-10-30T10:00:00Z", event: "merge", key: "HIMMEL-1", pr: "7", contract: "yes", result: "moved" }) + "\n");
+  writeFileSync(join(chainState, "chain-log.jsonl"), [{ ts: "2026-10-29T10:00:00Z", change: "hold", key: "HIMMEL-6", kind: "operator", who: "chief", reason: "waiting on the freeze" }, { ts: "2026-10-29T11:00:00Z", change: "release", key: "HIMMEL-6", who: "chief" }].map((r) => JSON.stringify(r)).join("\n") + "\n");
   writeFileSync(drift, "VERSION-DRIFT HIMMEL-12 Open on released v1.1.2 | writer=release-manager | fix=jira release request v1.1.3 --verb INTAKE --key HIMMEL-12\n"
     + "WORKER-COMMENT HIMMEL-3 the record hash differs from its class hash | writer=sweep | fix=none\nsdrift=2:abc\n");
   writeFileSync(known, "# checker\tclass\tkey\tedited-at\n");
-  return { HIMMEL_FOCUS_DRIFT: drift, HIMMEL_CHAIN_REGISTRY: registry, DRIFT_SUMMARY_KNOWN: known, HIMMEL_CONFIG_DIR: conf };
+  return { HIMMEL_FOCUS_DRIFT: drift, HIMMEL_CHAIN_REGISTRY: registry, TICKET_STATUS_STATE_DIR: chainState, DRIFT_SUMMARY_KNOWN: known, HIMMEL_CONFIG_DIR: conf };
 }
 export const GH_ISSUES = [
   { number: 21, title: "Open gh issue", state: "OPEN", stateReason: "", labels: [], milestone: { number: 1, title: "m1" }, updatedAt: "2026-10-01T00:00:00Z" },

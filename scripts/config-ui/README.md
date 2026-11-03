@@ -208,7 +208,7 @@ A card opens the ticket drawer on a click, Enter or Space: the card's facts, the
 shows its `tracker_*` call), and its stage history. While a drawer is open the board under it is inert and every write is
 held. A drop on In review, CI or Done writes nothing and the Board says so (those columns are moved by their event);
 Shift+Left and Shift+Right on a focused card move it among To do, In progress and Won't through the same write. Not on the
-Board yet: the Chains map and Why panel, and the Refresh button for the drift run.
+Board yet: the Refresh button for the drift run.
 
 The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
 `graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files
