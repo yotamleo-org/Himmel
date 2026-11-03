@@ -270,6 +270,13 @@ mog_build_fixture() {
               printf 'import time\ntime.sleep(40)\n' > "$tmp/scripts/eval/bug-origin/bug-origin-report.py" ;;
         *) ln -s "$SCRIPT_DIR/../eval" "$tmp/scripts/eval" ;;
     esac
+    # MOG_TIMEOUT_SHIM=1: a `timeout` that logs the bound of the bug-origin snapshot read and ingest to timeout.log and runs
+    # neither (so nothing waits), and passes every other call to the real one.
+    if [ "${MOG_TIMEOUT_SHIM:-0}" = "1" ]; then
+        printf '#!/usr/bin/env bash\ncase "$*" in\n  *mergedAt*|*bug-origin-report*) printf "%%s\\n" "$*" >> "%s/timeout.log"; exit 0 ;;\nesac\nexec %s "$@"\n' \
+            "$tmp" "$(command -v timeout || command -v gtimeout)" > "$tmp/bin/timeout"
+        chmod +x "$tmp/bin/timeout"
+    fi
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
@@ -3045,6 +3052,21 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
         STUB_PR_BODY="$bo_line" run_mog 0 "11z-j: a hung ingest cannot hold the merge"
     if [ $((SECONDS - mog_t0)) -lt 30 ]; then pass; else fail "11z-j: the merge waited $((SECONDS - mog_t0))s on a hung ingest"; fi
     assert_audit_has "11z-j: a timed-out ingest reads as failed" "bug-origin=failed"
+    # MOG_BUG_ORIGIN_SECS can only shorten the bounds (30 s for gh, 60 s for the ingest): a zero in any spelling, a value too
+    # long to compare, and a value above a bound change nothing; the log of the shimmed `timeout` shows what each call got
+    bo_secs_row() {
+        MOG_TIMEOUT_SHIM=1 MOG_BUG_ORIGIN_SECS="$1" STUB_NUM=89 run_mog 0 "11z-n: MOG_BUG_ORIGIN_SECS=$1 bounds gh at $2 s and the ingest at $3 s"
+        if grep -q "^-k 5 $2 " "$LAST_TMP/timeout.log" 2>/dev/null && grep -q "^-k 10 $3 " "$LAST_TMP/timeout.log" 2>/dev/null; then pass
+        else fail "11z-n: MOG_BUG_ORIGIN_SECS=$1 wanted gh $2 s and ingest $3 s, got: $(cat "$LAST_TMP/timeout.log" 2>/dev/null | cut -c1-40 | tr '\n' ';')"; fi
+    }
+    bo_secs_row 00 30 60
+    bo_secs_row 0 30 60
+    bo_secs_row 99999999999999999999 30 60
+    bo_secs_row 045 30 60
+    bo_secs_row 100 30 60
+    bo_secs_row 45 30 45
+    bo_secs_row 7 7 7
+    bo_secs_row "" 30 60
     # no timeout binary: the ingest is not run (a symlink farm of the real PATH minus timeout and gtimeout)
     mog_nt_farm=$(mktemp -d "${TMPDIR:-/tmp}/mog-nt.XXXXXX") || mog_nt_farm=""
     if [ -z "$mog_nt_farm" ] || [ ! -d "$mog_nt_farm" ]; then

@@ -2501,7 +2501,7 @@ record_cr_threads() {
 # never HANDOVER_DIR read here. The reporter runs from the anchor, never the branch's copy. Best-effort — the exit code never
 # depends on it — and recorded on the MERGED audit line as `bug-origin=<result>`: wrote | kept (a row already existed) | none
 # (no line to write) | unparsed (a line the reporter could not read, with a WARN) | failed (with a WARN) | no-report | no-python
-# | no-timeout. Bounded (30 s for gh, 60 s for the ingest; MOG_BUG_ORIGIN_SECS can only shorten both); with no timeout binary it is not run. A missed row is re-run by hand: bug-origin-report.py ingest --prs <gh pr list json>.
+# | no-timeout. Bounded (30 s for gh, 60 s for the ingest; MOG_BUG_ORIGIN_SECS, 1 to 99 with no leading zero, can only shorten both; any other value is ignored); with no timeout binary it is not run. A missed row is re-run by hand: bug-origin-report.py ingest --prs <gh pr list json>.
 BUG_ORIGIN_RESULT="not-attempted"
 record_bug_origin() {
     local pr="$1" report="$himmel_repo/scripts/eval/bug-origin/bug-origin-report.py" bo_to_gh="" bo_to_ing="" snap="" view="" out="" rc=0
@@ -2509,7 +2509,7 @@ record_bug_origin() {
     BUG_ORIGIN_RESULT="not-attempted"
     [ -f "$report" ] || { BUG_ORIGIN_RESULT="no-report"; return 0; }
     command -v python3 >/dev/null 2>&1 || { BUG_ORIGIN_RESULT="no-python"; return 0; }
-    case "$bo_cap" in ""|*[!0-9]*|0) ;; *)
+    case "$bo_cap" in ""|*[!0-9]*|0*|???*) ;; *)
         [ "$bo_cap" -ge "$bo_gh_secs" ] || bo_gh_secs="$bo_cap"
         [ "$bo_cap" -ge "$bo_ing_secs" ] || bo_ing_secs="$bo_cap" ;;
     esac
