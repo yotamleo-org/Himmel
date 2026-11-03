@@ -1361,20 +1361,27 @@ spec = importlib.util.spec_from_file_location('gen_briefs', os.path.join(here, '
 gb = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gb)
 table = [
-    'scripts/handover/chief-kit/holds.py scripts/lib/chief-context.sh',
-    'scripts/handover/chief-kit/ (a.sh, sub/b.sh)',
-    'Do not touch scripts/lib/x.sh. Edit scripts/y.sh and docs/a.md',
-    '`scripts/z.sh`, CLAUDE.md, README.md',
-    'Impacted suites scripts/handover/test-x.sh. Edit scripts/q.sh',
-    'find and fix the caller in scripts/c.sh (git grep -n foo scripts/lib/)',
-    'none named',
+    ('scripts/handover/chief-kit/holds.py scripts/lib/chief-context.sh', 'scripts/handover/chief-kit/holds.py scripts/lib/chief-context.sh'),
+    ('scripts/handover/chief-kit/ (a.sh, sub/b.sh)', 'scripts/handover/chief-kit/a.sh scripts/handover/chief-kit/sub/b.sh'),
+    ('Do not touch scripts/lib/x.sh. Edit scripts/y.sh and docs/a.md', 'scripts/y.sh docs/a.md'),
+    ('`scripts/z.sh`, CLAUDE.md, README.md', 'scripts/z.sh CLAUDE.md README.md'),
+    ('Impacted suites scripts/handover/test-x.sh. Edit scripts/q.sh', 'scripts/q.sh'),
+    # a parenthesised path (the caller's own search hint) drops from the line: scripts/lib/ is not written
+    ('find and fix the caller in scripts/c.sh (git grep -n foo scripts/lib/)', 'scripts/c.sh'),
+    ('none named', 'none named'),
+    # Writes lines taken from live briefs
+    ('.claude/settings.json scripts/hooks/retrieval-nudge.sh scripts/hooks/test-retrieval-nudge.sh', '.claude/settings.json scripts/hooks/retrieval-nudge.sh scripts/hooks/test-retrieval-nudge.sh'),
+    ('.claude/skills/ .claude/commands/ .claude/agents/ marketplace/plugins/ marketplace/.claude-plugin/marketplace.json scripts/eval/routing/ scripts/eval/README.md', '.claude/skills/ .claude/commands/ .claude/agents/ marketplace/plugins/ marketplace/.claude-plugin/marketplace.json scripts/eval/routing/ scripts/eval/README.md'),
+    ('docs/setup/user-scope-claude-md-template.md scripts/agents-md/preamble.md templates/luna-second-brain/_CLAUDE.md templates/luna-second-brain/docs/', 'docs/setup/user-scope-claude-md-template.md scripts/agents-md/preamble.md templates/luna-second-brain/_CLAUDE.md templates/luna-second-brain/docs/'),
+    ('.github/workflows/macos-cadence.yml scripts/ci/test-macos-cadence-concurrency.sh scripts/ci/suite-tiers.tsv scripts/ci/suite-durations.tsv', '.github/workflows/macos-cadence.yml scripts/ci/test-macos-cadence-concurrency.sh scripts/ci/suite-tiers.tsv scripts/ci/suite-durations.tsv'),
 ]
 bad = 0
-for scope in table:
+for scope, expected in table:
     line = gb.write_paths(scope)
     parsed = ' '.join(p for _k, p in holds.parse_text('> **Writes:** ' + line)) if line != 'none named' else 'none named'
-    print(('agree' if parsed == line else 'DIFF') + ' | ' + scope + ' | ' + line + ' | ' + parsed)
-    bad += parsed != line
+    ok = line == expected and parsed == expected
+    print(('agree' if ok else 'DIFF') + ' | ' + scope + ' | want ' + expected + ' | got ' + line + ' | parsed ' + parsed)
+    bad += not ok
 sys.exit(1 if bad else 0)
 PYEOF
 agree="$(cd "$REPO" && python3 -I "$WORK/agree.py" "$HERE" 2>&1)"; rc=$?

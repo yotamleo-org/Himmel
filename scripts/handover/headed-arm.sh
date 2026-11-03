@@ -54,7 +54,7 @@
 # (and eventually past) the first 60 lines of the file, the window
 # scripts/parity/test-ws5-invariants.sh's T15 check scans for one.
 #
-# Exit codes: 2 usage / bad argument; 3 no konsole on PATH; 13 could not
+# Exit codes: 2 usage / bad argument, or a launch refused because its Writes paths overlap a live hold; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
 # macOS konsole shim, a distinct failure from 3 above; 16 another live worker
 # session already holds the same ticket, or another lineage's arm for that
@@ -1553,7 +1553,7 @@ fi
 # nothing. A RESUME doc first re-points its key's rows to the new doc and label. Only holds.py exit 1 with a `holds:`
 # line on stderr is a refusal (exit 2; the EXIT trap drops the ticket claim); any other outcome warns and launches,
 # because a seed fault must never stop a launch (a SyntaxError in holds.py also exits 1, with no `holds:` line).
-# WRITE_HOLD_OK in the launching shell turns a refusal into a warning. repoint and seed share one 60 s deadline,
+# WRITE_HOLD_OK=1 (exactly 1) in the launching shell turns a refusal into a warning. repoint and seed share one 60 s deadline,
 # under the 120 s claim window (STALE_LOCK_SECS).
 # ponytail: a launch that fails after the seed keeps its rows; ceiling: a rival waits up to 15 minutes (the arm grace),
 # upgrade path: release only what that seed created, on that failure path.
@@ -1573,7 +1573,7 @@ if [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] && [ "$ROLE" !
         _holds_nl=$'\n'
         _holds_refusal=0
         case "$_holds_nl$_holds_err" in *"${_holds_nl}holds: "*) _holds_refusal=1 ;; esac
-        if [ "$_holds_rc" -eq 1 ] && [ "$_holds_refusal" -eq 1 ] && [ -z "${WRITE_HOLD_OK:-}" ]; then
+        if [ "$_holds_rc" -eq 1 ] && [ "$_holds_refusal" -eq 1 ] && [ "${WRITE_HOLD_OK:-}" != 1 ]; then
             # the runnable grant line names the primary checkout's holds.py by absolute path: a trust path carries no bare holds.py
             # shellcheck source=../lib/git-clean.sh
             . "$(dirname "$0")/../lib/git-clean.sh" 2>/dev/null || true  # swallow-ok: without the helper git_clean is undefined, the call below fails, and the script-relative path stands in

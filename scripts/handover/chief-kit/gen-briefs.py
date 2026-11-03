@@ -1115,6 +1115,7 @@ def render_launcher(l, ctx, doc):
         'mkdir -p "$W"',
         'setsid nohup bash %s%s --profile %s --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: emitted launch line for one worker, bounded by its deadline
             q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(l['profile']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
+        # stderr stays in launch.out: a launch refused for an overlapping write hold exits 2 and prints its holder line there
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,

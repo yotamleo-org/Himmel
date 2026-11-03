@@ -108,8 +108,11 @@ for i, line in enumerate(lines):
 # The path list comes from holds.py's one parser, so the single-writer barrier and this core check read a Writes line the same
 # way; `text` above stays raw, because raw_docs_only needs the prose tokens.
 sys.path.insert(0, sys.argv[4])
-import holds  # noqa: E402
-tokens = [p for _kind, p in holds.parse_text('\n'.join(lines), os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli)))))]
+try:
+    import holds  # noqa: E402
+    tokens = [p for _kind, p in holds.parse_text('\n'.join(lines), os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(cli)))))]
+except Exception:  # swallow-ok: a broken holds.py must not fail the core check; it falls back to the raw split of the Writes text
+    tokens = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', text)]
 paths, stray_absolute = [], False
 for p in tokens:
     if p.startswith('/'):

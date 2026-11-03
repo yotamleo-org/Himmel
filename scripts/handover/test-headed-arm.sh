@@ -2675,7 +2675,7 @@ check "8725f the refused seed made no row on an earlier file" "$([ -e "$(hrow sc
 check "8725g the holder's row is byte-identical" "$(cat "$(hrow scripts/h1.sh)")" "$h1_before"
 check "8725h the name lock and the ticket lock are both gone" "$(compgen -G "$dh1/locks/*" | grep -c .)" "0"
 # the chief reads neither stderr nor the exit code (a generated launcher keeps stderr in launch.out, a hand launch discards it): the log and a BLOCKED bullet on the brief carry the refusal
-HB2="$(hdoc HIMMEL-9509-N1-b2.md '# b2' '> **Writes:** scripts/h1.sh')"
+HB2="$(hdoc HIMMEL-9509-N1-b2.md '# b2' '> **Writes:** scripts/h1.sh' '## Results (newest at the bottom)')"
 dh1b="$tmp/h1b"; mk_stub "$dh1b" 1 alive "HIMMEL-9509-N1-b2"
 hlaunch "$dh1b" HIMMEL-9509-N1-b2 "$HB2" N1 >/dev/null 2>&1; h1brc=$?
 check "8725h2 a refused launch with both streams discarded exits 2" "$h1brc" "2"
@@ -2703,7 +2703,7 @@ HD="$(hdoc HIMMEL-9504-N1-d.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md")"
 dh4="$tmp/h4"; mk_stub "$dh4" 1 alive "HIMMEL-9504-N1-d"
 hlaunch "$dh4" HIMMEL-9504-N1-d "$HD" N1 >/dev/null 2>&1
 check "8725m an absolute bucket path is a row under _abs" "$(find "$HOME/.himmel/state/holds/_abs" -type f 2>/dev/null | grep -c .)" "1"
-HE="$(hdoc HIMMEL-9505-N1-e.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md")"
+HE="$(hdoc HIMMEL-9505-N1-e.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md" '## Results (newest at the bottom)')"
 dh5="$tmp/h5"; mk_stub "$dh5" 1 alive "HIMMEL-9505-N1-e"
 h5out="$(hlaunch "$dh5" HIMMEL-9505-N1-e "$HE" N1 2>&1)"; h5rc=$?
 check "8725n a second brief on that bucket file is refused (exit 2)" "$h5rc" "2"
@@ -2800,6 +2800,9 @@ check "8725ac a holds.py exiting 1 with a holds: line refuses (exit 2)" "$h16rc"
 dh17="$tmp/h17"; mk_stub "$dh17" 1 alive "HIMMEL-9530-N1-x"
 WRITE_HOLD_OK=1 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh17" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h17rc=$?
 check "8725ad WRITE_HOLD_OK=1: the same overlap warns and launches" "$h17rc" "0"
+dh17z="$tmp/h17z"; mk_stub "$dh17z" 1 alive "HIMMEL-9530-N1-x"
+WRITE_HOLD_OK=0 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh17z" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h17zrc=$?
+check "8725ad2 WRITE_HOLD_OK=0 is not the bypass: the overlap still refuses (exit 2)" "$h17zrc" "2"
 mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"
 dh18="$tmp/h18"; mk_stub "$dh18" 1 alive "HIMMEL-9530-N1-x"
 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-mark.py" hlaunch "$dh18" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h18rc=$?
