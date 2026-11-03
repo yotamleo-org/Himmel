@@ -754,6 +754,23 @@ lacks "R10 the legacy file lost the stored line" "UNREAD_SECRET" "$(cat "$store"
 has "R10 the legacy file keeps a line the keyring did not take" "GEMINI_API_KEY=" "$(cat "$store")"
 if [ "$(mode_of "$store")" = 600 ]; then pass "R10 the legacy file stays mode 600"; else fail "R10 the legacy file changed mode"; fi
 
+# R10b: an emptied .env does not stop the legacy file moving into the keyring.
+fixture_env
+mkdir -p "$HOME/.config/secrets"
+printf 'UNREAD_SECRET=dummy-r10b\n' > "$store"
+chmod 600 "$store"
+printf '# nothing left here\n' > "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ]; then pass "R10b an emptied .env with a legacy file applies"; else fail "R10b exited $rc: $out"; fi
+has "R10b the legacy secret is in the keyring" "UNREAD_SECRET=dummy-r10b" "$("$FX/scripts/lib/himmel-secrets" get --no-dotenv UNREAD_SECRET 2>/dev/null)"
+lacks "R10b the legacy file lost the stored line" "UNREAD_SECRET" "$(cat "$store")"
+
+# R12: a run that scrubbed the backups says a restore drops the secrets that stayed in .env.
+fixture_env
+apply_tty y
+has "R12 the report still names the restore command" "restore: cp " "$out"
+has "R12 the report says the backup was scrubbed" "the backup's secret lines were scrubbed" "$out"
+
 # Two migrations started together: one wins the import lock, nothing is stored twice, .env is whole.
 fixture_env
 grep -v -E '^(HANDOVER_DIR=|USER_SLUG=|CR_|HIMMEL_FLEET_CAP=)' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"

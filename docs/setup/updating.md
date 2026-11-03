@@ -536,7 +536,9 @@ command you start yourself: `bash ~/himmel/scripts/setup/migrate-env.sh -y`.
 
 The report ends with the restore command (`cp <backup> <your .env>`) and an
 `rm` for the backup: remove it once you are happy. The backup holds your
-secrets only until a run ends cleanly; the secret lines are then scrubbed.
+secrets only until a run ends cleanly; the secret lines are then scrubbed, so a
+restore brings back your config lines but drops the secrets that stayed in
+`.env` (`held`, `env-keep`): copy those back by hand.
 
 With no unlocked keyring the apply is **incomplete**: a secret nothing reads goes
 to `~/.config/secrets/himmel.env` as before, the others stay in `.env`, a `WARN`

@@ -133,7 +133,6 @@ key_names() {  # <file>
     }' "$1"
 }
 names=$(key_names "$envfile")
-[ -n "$names" ] || { echo "migrate-env: $envfile holds no keys; nothing to migrate."; exit 0; }
 
 keep=" "
 if [ -f "$confdir/env-keep.txt" ]; then
@@ -153,6 +152,11 @@ secret_names=" $(bash "$hs" names --class secret 2>/dev/null | tr '\n' ' ')"
 kstate=$(bash "$hs" status 2>/dev/null | sed -n 's/^keyring: //p')
 backend_ok=0
 [ "$kstate" != unlocked ] || backend_ok=1
+# An emptied .env still has a legacy secrets file to import once the keyring is up.
+if [ -z "$names" ] && { [ "$backend_ok" -eq 0 ] || [ ! -s "$store" ]; }; then
+    echo "migrate-env: $envfile holds no keys; nothing to migrate."
+    exit 0
+fi
 
 # With no keyring: readers of each secret, the first tracked file naming it, docs excluded.
 secrets=""
@@ -322,7 +326,11 @@ fi
 echo "backup: $backup (mode 600)"
 restore_hint() {
     echo "restore: cp $backup $envfile"
-    echo "the backup can hold your secrets until a run ends cleanly; remove it once you are happy: rm $backup"
+    if [ "${scrubbed:-0}" -eq 1 ]; then
+        echo "the backup's secret lines were scrubbed: a restore brings back your config lines but drops the secrets that stayed in .env (held, env-keep); copy those back by hand. Remove the backup once you are happy: rm $backup"
+    else
+        echo "the backup can hold your secrets until a run ends cleanly; remove it once you are happy: rm $backup"
+    fi
 }
 ca_bid=$(HIMMEL_CONFIG_AUDIT_ENV_FILE="$envfile" config_audit_pre "$poldir/config.json" migrate-env.sh)
 ca_post() {  # <file> <action>
@@ -691,6 +699,7 @@ if [ "${#legacy_keys[@]}" -gt 0 ] && [ "$legacy_stored" != " " ]; then
         || { echo "migrate-env: WARN could not empty $store_rel of the keys it stored; remove those lines by hand."; final_rc=1; }
 fi
 if [ "$backend_ok" -eq 1 ]; then
+    scrubbed=1
     for bfile in "$bdir"/*; do
         [ -f "$bfile" ] && [ ! -L "$bfile" ] || continue
         drop_lines "$secret_names" "$bfile" \
