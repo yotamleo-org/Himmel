@@ -140,10 +140,10 @@ a bare call is refused by the `block-bare-qmd-query` hook. The other verbs run
 as they are.
 
 ```bash
-bash scripts/lib/qmd-bounded.sh query -c luna "question"              # Auto-expand + rerank
-bash scripts/lib/qmd-bounded.sh query -c luna $'lex: X\nvec: Y'       # Structured
-bash scripts/lib/qmd-bounded.sh query -c luna $'expand: question'     # Explicit expand
-bash scripts/lib/qmd-bounded.sh search -c luna "keywords"             # BM25 only (no LLM)
+bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna "question"              # Auto-expand + rerank
+bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna $'lex: X\nvec: Y'       # Structured
+bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c luna $'expand: question'     # Explicit expand
+bash <primary checkout>/scripts/lib/qmd-bounded.sh search -c luna "keywords"             # BM25 only (no LLM)
 qmd get "#abc123"                 # By docid
 qmd multi-get "journals/2026-*.md" -l 40  # Batch pull snippets by glob
 qmd multi-get notes/foo.md,notes/bar.md   # Comma-separated list, preserves order

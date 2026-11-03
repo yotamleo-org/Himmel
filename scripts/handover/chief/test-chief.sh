@@ -501,10 +501,15 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
 # to detect them; excluded below (by the same marker) when scanning THIS
 # file, so the detector's own pattern is never mistaken for a leak.
 BANNED='overlord|yotamleo|luna|cachyos' # leak-pattern-allow
+# the exact collection flag "-c luna" (after the line start or a space, before a space or the line end) is a search command, not a leak # leak-pattern-allow
+COLLECTION_FLAG_SED='s/(^| )-c luna( |$)/\1\2/g' # leak-pattern-allow
+# leak_scan [FILE] — print the lines of FILE, or of stdin, naming a banned word once the flag is stripped.
+leak_scan() {
+    sed -E "$COLLECTION_FLAG_SED" "$@" 2>/dev/null | grep -iE "$BANNED"
+}
 leak_free() {
     local matches
-    # the exact collection flag "-c luna" (after the line start or a space, before a space or the line end) is a search command, not a leak # leak-pattern-allow
-    matches="$(sed -E 's/(^| )-c luna( |$)/\1\2/g' "$1" 2>/dev/null | grep -niE "$BANNED" | grep -vc 'leak-pattern-allow')"
+    matches="$(leak_scan "$1" | grep -vc 'leak-pattern-allow')"
     [ "$matches" = "0" ] && echo yes || echo no
 }
 # The temp-root scan is narrowly exempted for the queue-lock RELEASE TOKEN
@@ -537,7 +542,7 @@ token_residual() {
 token_rc=0
 token_residual "${known_tokens[@]}" </dev/null || token_rc=$?
 check "8 every known release token was actually captured" "$token_rc" "0"
-leak_lines="$(grep -rhEi "$BANNED" "$root" 2>/dev/null | sed -E 's/(^| )-c luna( |$)/\1\2/g' | grep -Ei "$BANNED")" # the collection flag is a search command, as in leak_free # leak-pattern-allow
+leak_lines="$(grep -rhEi "$BANNED" "$root" 2>/dev/null | leak_scan)"
 leak_residual="$(printf '%s\n' "$leak_lines" | token_residual "${known_tokens[@]}")"
 check "8 no leak under the temp handover root (excluding exact release-token lines)" \
     "$(printf '%s\n' "$leak_residual" | grep -c .)" "0"
@@ -569,6 +574,17 @@ printf 'run qmd query -c lunar "topic"\n' > "$leakf8" # leak-pattern-allow
 check "8 control: -c followed by a longer word starting luna still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
 printf 'run qmd query -c luna/x "topic"\n' > "$leakf8" # leak-pattern-allow
 check "8 control: -c luna/x (a path) still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+# The scan's own control, on stdin as the temp-root scan feeds it: a widened sed goes RED here.
+scan_control() {
+    if [ "$(printf 'run -c luna now\n' | leak_scan | grep -c .)" = "0" ] && # leak-pattern-allow
+        [ "$(printf 'the luna vault\n' | leak_scan | grep -c .)" = "1" ]; then # leak-pattern-allow
+        echo ok
+    else
+        echo red
+    fi
+}
+check "8 control: the shared scan strips only the flag" "$(scan_control)" "ok"
+check "8 control: a sed widened to any luna goes RED" "$(COLLECTION_FLAG_SED='s/luna//g'; scan_control)" "red" # leak-pattern-allow
 rm -f "$leakf8"
 check "8 no leak in running-a-chief.md" "$(leak_free "$REPO_REAL/docs/handover/running-a-chief.md")" "yes"
 check "8 no leak in .claude/commands/chief.md" "$(leak_free "$REPO_REAL/.claude/commands/chief.md")" "yes"

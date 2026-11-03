@@ -91,6 +91,14 @@
 # other position naming qmd in its arguments or heredoc, an assignment, an opaque
 # position, an interpreter with no literal body, a pipe consumer beside a
 # mention, a command over 8 KiB — is left to the regex reader below.
+# find's -exec, -execdir, -ok and -okdir argv is a program, so the model reads each
+# one as its own position: those four actions are all find has that run a program.
+# ponytail: that reading needs the position, so a find action in a body the model
+# cannot read (a '\''-spliced shell body) or behind a runner's shell body falls to the
+# regex reader, which has no find position; upgrade path: bash-ast.sh reads both.
+# ponytail: a command the model allows exits before the regex reader, so a qmd-free
+# encoded launcher beside a mentioning filter is never decoded, hostile shapes only;
+# no parse of shell text closes that class, upgrade path: watch what runs, not its text.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 - allow
@@ -1958,6 +1966,24 @@ def qverdict($q):
        elif $x | isverb then "deny"
        else empty end]
   | (first // "allow");
+def findact: "-exec", "-execdir", "-ok", "-okdir";
+# An action's argv ends at `;` or at `{} +`.
+def actionargv: . as $w
+  | ([range(0; $w | length) | select($w[.].t == "lit" and ($w[.].v == ";" or ($w[.].v == "+" and . > 0 and $w[. - 1].t == "lit" and $w[. - 1].v == "{}")))] | first) as $e
+  | if $e == null then $w else $w[:$e] end;
+# A runner's program is its first word past flags, a bare flag's value, numbers,
+# assignments and other wrappers, so `nice -n 5 find` runs find and `nice echo find` does not.
+def runnerfind: .argv as $a
+  | ([range(1; $a | length) | select($a[.].t == "lit" and (($a[.].v | b) == "find"))] | first) as $f
+  | $f != null and all(range(1; $f); . as $i
+      | ($a[$i] | .t == "lit" and (.v | test("^-|^[0-9.]+[smhd]?$|=") or (b | IN(wrapper))))
+        or ($a[$i - 1] | .t == "lit" and (.v | test("^-[A-Za-z]$"))));
+# find itself, or a runner whose program is find.
+def runsfind: ((.prog | b) == "find") or (((.opaque // "") | startswith("it runs its arguments")) and runnerfind);
+def findq: .argv as $a
+  | runsfind and ([range(0; $a | length) | select($a[.].t == "lit" and ($a[.].v | IN(findact)))
+      | {argv: ($a[. + 1:] | actionargv), prog: null}
+      | runq as $q | $q != null and (qverdict($q) == "deny")] | any);
 def words: [.argv[] | wv] | join(" ") | ascii_downcase;
 def mention: ([.argv[] | wv] + [(.redirs // [])[] | ((.text // ""), (.w.raw // ""))]) | join(" ") | ascii_downcase | contains("qmd");
 def namesverb: words | test("qmd.*(^|[^a-z0-9_-])(query|search|vsearch)([^a-z0-9_-]|$)");
@@ -1986,7 +2012,8 @@ def plainfilter: plainpos and lits and (.opaque == null) and (.body == null) and
   and ([.argv[] | .v | startswith("--pre")] | any | not);
 def posv($men):
   runq as $q
-  | if viaenv then (if $q != null then qverdict($q) else "legacy" end | if . == "deny" then "deny" else "legacy" end)
+  | if findq then "deny"
+    elif viaenv then (if $q != null then qverdict($q) else "legacy" end | if . == "deny" then "deny" else "legacy" end)
     elif ((.assigns // []) | length) > 0 then "legacy"
     elif $q != null then qverdict($q)
     elif datascript then "allow"

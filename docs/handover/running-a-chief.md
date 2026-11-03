@@ -263,9 +263,9 @@ non-conforming trailer reaches the pre-push gate.
 
 **Search before you write the brief's Prior art line (HIMMEL-8758).** Workers and
 judges inherit that line, and chiefs searched the notes in 19 % of sessions and
-the graph in 7 % (the HIMMEL-8749 baseline). Run `bash scripts/lib/qmd-bounded.sh query -c jira-himmel "worker brief Prior art"`
+the graph in 7 % (the HIMMEL-8749 baseline). Run `bash <primary checkout>/scripts/lib/qmd-bounded.sh query -c jira-himmel "worker brief Prior art"`
 (tickets and PRs), the same with -c luna (specs, audits, decisions) and
-`bash scripts/graphify/worker-graph.sh explain "worker-graph.sh"` (structure). Those quoted words are an
+`bash <primary checkout>/scripts/graphify/worker-graph.sh explain "worker-graph.sh"` (structure). Those quoted words are an
 example: put this ticket's topic and symbol there. A bare
 `qmd` search is refused and a bare `graphify` call fails in a worktree. Cite
 pointers with their source, never your conclusion; nothing found is
