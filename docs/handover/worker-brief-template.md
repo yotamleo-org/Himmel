@@ -253,7 +253,9 @@ template_version: 3
 >    section, an unmarked line, or a deferral to a nonexistent or Done/Closed
 >    ticket, so file the follow-up before you write the line. **File every
 >    follow-up with `jira create --follow-up-of <KEY>`** (the ticket it follows
->    from), never a bare `jira create`. The marker is
+>    from), never a bare `jira create`; add `--remainder` only for the follow-up that
+>    holds a deferred DoD row of that ticket (the ticket cannot close without it),
+>    never for a review suggestion. The marker is
 >    LAST with nothing after it; lint it yourself before READY with
 >    `ready-check.sh --only 7 <pr>`. **The moment /pr-check marks a finding
 >    agreed or fixed, write its sweep record**: `SWEEP [<id>@<head>] class=…
