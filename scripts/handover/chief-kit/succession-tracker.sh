@@ -129,7 +129,8 @@ fi
 worker_state() {
     local ldoc="$1" line inc brief
     [ -f "$ldoc" ] || { echo missing; return; }
-    if [ -n "$(worker_named_successor "$ldoc")" ]; then echo replaced; return; fi
+    # replaced needs the doc's queue lock free: a held lock is a live session, never a replaced one
+    if [ -n "$(worker_named_successor "$ldoc")" ] && bash "$HERE/../queue-lock.sh" status "$ldoc" >/dev/null 2>&1; then echo replaced; return; fi
     brief="$(awk '/^## Results/ { exit } { print }' "$ldoc")"
     # shellcheck disable=SC2016
     if grep -Fq -- "your chief is **\`$successor\`**" <<< "$brief"; then

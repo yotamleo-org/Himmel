@@ -437,11 +437,30 @@ printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$
 # shellcheck disable=SC2016  # fixture Live state delimiters
 printf '# chief\n\n## Live state\nworkers: `N80:fixture-old:lock:80`\n\n## Results\n' > "$PDOC"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N80","lane":"claudex"}]}\n' "$PWORK" > "${PDOC%.md}.fleet.json"
+QL="$HERE/../queue-lock.sh"
+export HANDOVER_DIR="$WORK/handover-root"; mkdir -p "$HANDOVER_DIR"
+# The predecessor's window is live (its session is named by its doc stem) and the bus identity is set,
+# so a relay to it would show in both logs.
+census DEMO-30-N80-old-2026-10-28
+export HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-28A-chief
 : > "$WORK/send.log"; : > "$WORK/bus.log"
 outp="$(bash "$RB" "$PDOC" --successor S10 2>&1)"; rcp=$?
 check "a predecessor relay run succeeds" "0" "$rcp"
 check "a replaced claudex worker gets no inbox relay" "" "$(cat "$WORK/send.log")"
 check "a replaced worker gets no bus relay" "" "$(cat "$WORK/bus.log")"
 check "the relay tally excludes the predecessor" "1" "$(printf '%s\n' "$outp" | grep -c '^RELAYED 0 of 0$')"
+
+# A hand-off bullet on a doc whose lock is still held is a live session, so it is still relayed.
+acq_out="$(bash "$QL" acquire "$PWORK" "relay-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+check "setup: the hand-off doc lock is acquired" "yes" "$([ -n "$token" ] && echo yes)"
+check "setup: the hand-off doc lock is held" "held" "$(bash "$QL" status "$PWORK" >/dev/null 2>&1 && echo free || echo held)"
+: > "$WORK/send.log"; : > "$WORK/bus.log"
+outh="$(bash "$RB" "$PDOC" --successor S10 2>&1)"; rch=$?
+check "a held-lock hand-off doc relay run succeeds" "0" "$rch"
+check "a hand-off doc with its lock held is still relayed" "1" "$(printf '%s\n' "$outh" | grep -c '^SENT-INBOX N80')"
+check "and it counts in the tally" "0" "$(printf '%s\n' "$outh" | grep -c '^RELAYED 0 of 0$')"
+[ -z "$token" ] || bash "$QL" release "$PWORK" "$token" >/dev/null 2>&1
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

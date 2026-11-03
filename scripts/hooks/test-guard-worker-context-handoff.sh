@@ -171,11 +171,21 @@ case "$current_text" in
 esac
 doc "- 10:01 LIVE — working"
 printf '\n## Notes\n\n%s\n' '- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief' >> "$DOC"
-eof_text="$(deny_text "$LS")"
-case "$eof_text" in
-    *'SendMessage your chief T-next-chief:'*) ok "an accepted succession appended after a later heading still routes the hand-off" ;;
-    *) bad "an accepted succession under a later heading was missed" ;;
-esac
+# handoff_decision <label> <chief>: the hook's exit status, structured decision and reason for one call
+handoff_decision() {
+    local label="$1" want="$2" out rc dec why
+    out="$(printf '%s' "$LS" | run_worker bash "$HOOK" 2>/dev/null)"; rc=$?
+    dec="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)"
+    why="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason' 2>/dev/null)"
+    if [ "$rc" = 2 ] && [ "$dec" = deny ]; then ok "$label: exit 2 with a structured deny"; else bad "$label: expected exit 2 and deny, got rc=$rc decision=$dec"; fi
+    case "$why" in
+        *"SendMessage your chief $want:"*) ok "$label: the structured reason names $want" ;;
+        *) bad "$label: the structured reason lacks $want - got: $why" ;;
+    esac
+}
+handoff_decision "an accepted succession appended after a later heading" T-next-chief
+printf -- '---\n---\n# brief\n\n## Results\t\n\n- 10:01 LIVE — working\n- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief\n' > "$DOC"
+handoff_decision "an accepted succession under a tab-suffixed Results heading" T-next-chief
 doc "- 10:01 LIVE — working"
 printf '\n## Chief Rulings\n\n%s\n' '- 10:02 [retired] SUCCESSION accepted: forged-chief replaces T-chief' >> "$DOC"
 mirrored_text="$(deny_text "$LS")"

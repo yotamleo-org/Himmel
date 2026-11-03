@@ -424,7 +424,7 @@ fi
 # keeps a quoted or mirrored ruling from changing the hint.
 # shellcheck disable=SC2016  # literal Markdown backticks in strict handshake grammar
 current_chief=$(awk -v chief="$HIMMEL_CONSOLE_NAME" '
-    /^## Results( |$)/ { seen = 1; next }
+    /^## Results([[:space:]]|$)/ { seen = 1; next }
     seen && /^- ([0-9][0-9]:[0-9][0-9] )?(LIVE — )?SUCCESSION accepted: (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+) replaces (`[A-Za-z0-9_.-]+`|[A-Za-z0-9_.-]+)[[:space:]]*$/ {
         sub(/^.*SUCCESSION accepted: /, ""); gsub(/`/, "")
         split($0, words, /[[:space:]]+/)

@@ -4,9 +4,12 @@
 # classifier-denied [Interfere With Workloads] when typed as a bare literal -
 # this script wraps the same TERM under a literal the classifier allowlists,
 # but ONLY after verifying the worker is actually done: the queue lock on its
-# doc is free AND its own last Results marker-bullet is WRAPPED (or a legacy
-# BLOCKED hand-off explicitly names its successor). A named hand-off closes
-# only the predecessor's own identity; it never signals a live successor.
+# doc is free AND its own last Results marker-bullet is WRAPPED (or that last
+# bullet is itself a BLOCKED hand-off naming its successor; the tick counts only a
+# WRAPPED tail as closable, so such a BLOCKED hand-off closes by a sweep or by hand,
+# not through the waiter). A named hand-off closes only the predecessor's own
+# identity; it never signals a live successor, and a successor that shares any of
+# the predecessor's session names is not exempted.
 # It never kills a pid it cannot independently prove belongs to that worker.
 #
 # Usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <worker-doc>
@@ -103,8 +106,9 @@
 #      original's Results hold no successor LIVE (new release token) then WRAPPED after the
 #      hand-off WRAPPED (no hand-off evidence); and a named hand-off whose predecessor session
 #      is gone is refused unless the predecessor is WRAPPED with completed successor evidence
-#      and the successor's own last marker-bullet is WRAPPED
-#   5 refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
+#      and the successor's own last marker-bullet is WRAPPED; and a BLOCKED tail that is not
+#      itself the hand-off bullet (a later ordinary BLOCKED) is a working worker
+#   5refused - >1 live sessions matched the worker's names (0 for a --chief), or an original
 #      doc has multiple successor -RESUME docs with no explicitly named hand-off
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
@@ -225,6 +229,15 @@ fi
 # shellcheck source=scripts/lib/worker-successor.sh
 . "$HERE/../../lib/worker-successor.sh"
 NAMED_SUCCESSOR=$(worker_named_successor "$DOC") || exit 1
+# A successor that runs under any of this worker's own session names cannot be told from it by a
+# name match, so the exemption does not apply: the sibling-lock and tail checks stay in force.
+if [ -n "$NAMED_SUCCESSOR" ]; then
+    own_set=",$(worker_identity "$DOC" | cut -f2),$(basename "$DOC" .md),"
+    suc_set=",$(worker_identity "$NAMED_SUCCESSOR" | cut -f2),$(basename "$NAMED_SUCCESSOR" .md),"
+    for own_n in ${own_set//,/ }; do
+        case "$suc_set" in *",$own_n,"*) NAMED_SUCCESSOR=""; break ;; esac
+    done
+fi
 SIB_DOC=""
 sib_dir="$(dirname "$DOC")"
 sib_base="$(basename "$DOC" .md)"
@@ -336,7 +349,16 @@ fi
 tail_doc="$DOC"   # the doc last_marker is read from
 PREDECESSOR=0
 if [ -n "$NAMED_SUCCESSOR" ]; then
-    case "$last_marker" in WRAPPED|BLOCKED) PREDECESSOR=1 ;; esac
+    case "$last_marker" in
+        WRAPPED) PREDECESSOR=1 ;;
+        BLOCKED)
+            # a BLOCKED tail closes only when that bullet is itself the hand-off; a later ordinary
+            # BLOCKED (waiting on CI) is a working worker
+            last_mark_line=$(awk '/^## Results( |$)/ { r = 1; next } /^## / { r = 0 }
+                r && /^- ([0-9]?[0-9]:[0-9][0-9][ \t]+)?(\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)([^A-Za-z0-9_]|$)/ { l = $0 }
+                END { print l }' "$DOC")
+            if printf '%s\n' "$last_mark_line" | grep -Eq '([Hh]and-?off|RESUME written:)'; then PREDECESSOR=1; fi ;;
+    esac
 fi
 if [ -n "$SIB_DOC" ] && [ "$PREDECESSOR" -eq 0 ]; then
     if [[ $DOC == *-RESUME.md ]]; then sib_res="$DOC"; sib_orig="$SIB_DOC"; else sib_res="$SIB_DOC"; sib_orig="$DOC"; fi
@@ -785,6 +807,12 @@ digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT:-120}" bash "$
     | grep -m 1 '^digest=')
 echo "${digest_line:-digest=failed:step}"
 
+# A predecessor closed while its successor still holds the lock leaves the worktree alone: the
+# successor works in it, and a prune could take it before the successor's cwd lands.
+if [ "$PREDECESSOR" -eq 1 ] && ! bash "$HERE/../queue-lock.sh" status "$NAMED_SUCCESSOR" >/dev/null 2>&1; then
+    echo "close-wrapped-worker: its successor still runs - skipping the prune, the worktree stays" >&2
+    close_success
+fi
 worktrees=$(grep -oE "/[^\` ]*/\.claude/worktrees/[^\`) ]+" "$DOC" | sort -u)
 wt_count=$(printf '%s\n' "$worktrees" | grep -c . || true)
 if [ "$wt_count" -ne 1 ]; then

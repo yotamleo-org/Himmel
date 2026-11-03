@@ -1599,6 +1599,55 @@ check "handoff: true sibling lock signals nothing" "$(cat "$CALLS")" ""
 [ -n "$token" ] && HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
 rm -f "$HP" "$HS"
 
+# An equal-label hand-off (<stem>.md to <stem>-RESUME.md): the successor runs under the predecessor's
+# own session name, so a name match cannot tell them apart and the successor's lock keeps it refused.
+EP="$W/HIMMEL-9-N8-demo-2026-01-01.md"
+ES="$W/HIMMEL-9-N8-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 BLOCKED - context hand-off to %s\n' "$ES" > "$EP"
+printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed\n' > "$ES"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 331 claude -n HIMMEL-9-N8-demo-2026-01-01 work
+pgrep_x_stub 331
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$ES" "cwl-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+check "same-name handoff setup: successor lock acquired" "$([ -n "$token" ] && echo yes)" "yes"
+check "same-name handoff setup: successor lock is held" "$(HANDOVER_DIR="$W/handover-root" bash "$QL" status "$ES" >/dev/null 2>&1 && echo free || echo held)" "held"
+reset_calls
+rc=0; out=$(run "$EP" 2>&1) || rc=$?
+check "same-name handoff: a session sharing the successor's name refuses (base rc 3)" "$rc" "3"
+not_contains "same-name handoff: the successor's window is never signaled" "$(cat "$CALLS")" "kill -TERM 331"
+[ -z "$token" ] || HANDOVER_DIR="$W/handover-root" bash "$QL" release "$ES" "$token" >/dev/null 2>&1
+rm -f "$EP" "$ES"
+
+# A BLOCKED tail closes only when that bullet is the hand-off itself: hand-off, LIVE, then an
+# ordinary BLOCKED for CI is a working worker.
+printf '# worker\n\n## Results\n' > "$HS"
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started\n- 10:00 BLOCKED - context hand-off to %s\n- 11:00 LIVE - working again\n- 12:00 BLOCKED - waiting on CI\n' "$HS" > "$HP"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 389 claude -n HIMMEL-9-N90-demo-2026-01-01 work
+pgrep_x_stub 389
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff: a later ordinary BLOCKED does not close the worker (base rc 0)" "$rc" "4"
+check "handoff: a later ordinary BLOCKED signals nothing" "$(cat "$CALLS")" ""
+
+# Closing a predecessor whose successor still runs must leave the worktree the successor works in.
+# shellcheck disable=SC2016  # literal fixture backticks around the worktree path
+printf '# worker\n\n## Results\n\n- 09:00 LIVE - started, worktree: `%s`\n- 10:00 WRAPPED - hand-off to %s\n' "$WT/.claude/worktrees/demo" "$HS" > "$HP"
+printf '# worker\n\n## Results\n\n- 11:00 LIVE - resumed\n' > "$HS"
+acq_out="$(HANDOVER_DIR="$W/handover-root" bash "$QL" acquire "$HS" "cwl-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal fixture token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+check "handoff worktree setup: successor lock acquired" "$([ -n "$token" ] && echo yes)" "yes"
+reset_calls
+rc=0; out=$(run "$HP" 2>&1) || rc=$?
+check "handoff worktree: the predecessor still closes" "$rc" "0"
+exact_count "handoff worktree: the predecessor is signaled" "$(cat "$CALLS")" "kill -TERM 389" "1"
+not_contains "handoff worktree: the live successor's worktree is not pruned" "$(cat "$CALLS")" "clean.sh"
+[ -z "$token" ] || HANDOVER_DIR="$W/handover-root" bash "$QL" release "$HS" "$token" >/dev/null 2>&1
+rm -f "$HP" "$HS"
+
 # --- a worker relaunched under <stem>-RESUME closes like any other ---
 # WRAPPED lands on the ORIGINAL doc; the live window is named <stem>-RESUME.
 # release tokens as a worker's LIVE bullet quotes them: the predecessor's (TK1) and the successor's (TK2)

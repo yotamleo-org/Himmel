@@ -94,7 +94,8 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 . "$HERE/../../lib/worker-successor.sh"
 # Finished and explicitly replaced workers receive no further succession relays.
 wrapped() {
-    [ -n "$(worker_named_successor "$1")" ] && return 0
+    # replaced needs the doc's queue lock free: a held lock is a live session, never a replaced one
+    [ -n "$(worker_named_successor "$1")" ] && bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && return 0
     bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(worker_tail_status "$1")" = WRAPPED ]
 }
 manifest="${doc%.md}.fleet.json"
