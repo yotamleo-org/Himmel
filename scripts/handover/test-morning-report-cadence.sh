@@ -47,16 +47,16 @@ grep -q "^HANDOVER_DIR=" "$R" && grep -q "^PATH=" "$R" && pass "runner carries H
 bash "$CAD" arm >/dev/null 2>&1; check "second arm refuses (rc 3)" 3 "$?"
 check "second arm adds no entry" 1 "$(n_entries)"
 bash "$CAD" arm --force --time 08:00 >/dev/null; check "arm --force replaces, not duplicates" 1 "$(n_entries)"
-bash "$CAD" arm --auto | grep -q 'already armed' && pass "arm --auto is a no-op when armed" || fail "arm --auto is a no-op when armed"
+st="$(bash "$CAD" arm --auto)"; grep -q 'already armed' <<< "$st" && pass "arm --auto is a no-op when armed" || fail "arm --auto is a no-op when armed"
 check "arm --auto adds no entry" 1 "$(n_entries)"
 
 # status
-st="$(bash "$CAD" status)"; printf '%s\n' "$st" | grep -q '^ARMED' && pass "status says ARMED" || fail "status says ARMED"
+st="$(bash "$CAD" status)"; grep -q '^ARMED' <<< "$st" && pass "status says ARMED" || fail "status says ARMED"
 
 # run
 bash "$CAD" run; check "run rc 0 with the stub generator" 0 "$?"
 [ -f "$HANDOVER_DIR/morning-report-2026-11-04.md" ] && pass "run wrote the report into the temp root" || fail "run wrote the report into the temp root"
-st="$(bash "$CAD" status)"; printf '%s\n' "$st" | grep -q 'morning-report-2026-11-04.md' && pass "status names the newest report" || fail "status names the newest report"
+st="$(bash "$CAD" status)"; grep -q 'morning-report-2026-11-04.md' <<< "$st" && pass "status names the newest report" || fail "status names the newest report"
 rm -f "$HANDOVER_DIR"/morning-report-*.md
 (unset HANDOVER_DIR; bash "$CAD" run >/dev/null 2>&1); check "run with no root fails loud (rc 2)" 2 "$?"
 ls "$HANDOVER_DIR"/morning-report-*.md >/dev/null 2>&1 && fail "run with no root wrote nothing" || pass "run with no root wrote nothing"
@@ -65,8 +65,8 @@ ls "$HANDOVER_DIR"/morning-report-*.md >/dev/null 2>&1 && fail "run with no root
 bash "$CAD" disarm --dry-run >/dev/null; check "disarm --dry-run keeps the entry" 1 "$(n_entries)"
 bash "$CAD" disarm >/dev/null; check "disarm removes only its entry" 0 "$(n_entries)"
 check "disarm leaves the other cron line" 1 "$(grep -c 'HIMMEL-Other' "$TAB")"
-st="$(bash "$CAD" status)"; printf '%s\n' "$st" | grep -q '^not armed' && pass "status says not armed" || fail "status says not armed"
-bash "$CAD" arm --auto | grep -q 'operator disarmed' && pass "arm --auto respects a disarm" || fail "arm --auto respects a disarm"
+st="$(bash "$CAD" status)"; grep -q '^not armed' <<< "$st" && pass "status says not armed" || fail "status says not armed"
+st="$(bash "$CAD" arm --auto)"; grep -q 'operator disarmed' <<< "$st" && pass "arm --auto respects a disarm" || fail "arm --auto respects a disarm"
 check "arm --auto after disarm adds no entry" 0 "$(n_entries)"
 bash "$CAD" arm >/dev/null; check "a plain arm re-arms after a disarm" 1 "$(n_entries)"
 bash "$CAD" disarm >/dev/null; rm -f "$W/runner/.operator-disarmed"

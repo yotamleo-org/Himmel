@@ -20,6 +20,11 @@
 # when already armed or when the operator disarmed, so an update never re-arms what
 # the operator turned off. A plain `arm` clears the marker.
 #
+# Exit: 0 ok (arm --auto also 0 when already armed or operator-disarmed);
+# 1 usage or bad --time; 2 run: HANDOVER_DIR unset, or no cron / no checkout;
+# 3 arm: already armed (use --force); 4 crontab or runner write failed;
+# 5 arm: no handover root from the shell or the primary .env; 77 test-run guard refusal.
+#
 # Seams (tests): MORNINGREPORT_CRONTAB, MORNINGREPORT_RUNNER_DIR, MORNINGREPORT_GENERATOR.
 # Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
