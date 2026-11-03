@@ -2762,7 +2762,7 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
              (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not)
                and ($a.v | test("%[^a-zA-Z%]*[hlLqjzt]*n") | not))
          elif .prog == "gh" then
-             (.argv | length) >= 3 and all(.argv[]; lit and (.v | test("^(-[a-zA-Z]*w|--web)") | not))
+             (.argv | length) >= 3 and all(.argv[]; lit and (.v | test("^(-[a-zA-Z]*w|--w)") | not))
              and (.argv[1].v as $s | any("pr", "issue", "run"; . == $s))
              and (.argv[2].v as $s | any("view", "list", "status", "checks", "diff"; . == $s))
          elif .prog == "sort" then
