@@ -310,7 +310,8 @@ launch_subscription() {
         case "$v" in
             CLAUDE_CODE_OAUTH_TOKEN) ;;
             # the calling session's markers, plugin toggles and API-lane variables stay out of a child that reads untrusted transcripts
-            CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_*|HIMMEL_API_*|LQ_API_*) unset "$v" ;;
+            # CLAUDE_CONFIG_DIR too: the preflight read the native bank, so the call must spend that login, not another directory's
+            CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CONFIG_DIR|CLAUDE_CODE_*|HIMMEL_API_*|LQ_API_*) unset "$v" ;;
         esac
     done
     case "$secs" in ''|*[!0-9]*|0) secs=600 ;; esac

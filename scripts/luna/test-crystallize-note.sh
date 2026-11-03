@@ -230,11 +230,12 @@ if grep -qxF 'CLAUDE_CODE_OAUTH_TOKEN=oauth-keep' "$SB/fullenv.txt" 2>/dev/null;
 if grep -qxF 'arg=--strict-mcp-config' "$SB/argv.txt" 2>/dev/null; then pass "cli-isolation: argv carries --strict-mcp-config"; else fail "cli-isolation: argv missing --strict-mcp-config"; fi
 rm -rf "$SB"
 
-# (i-c2) a non-default CLAUDE_CONFIG_DIR does not defer the subscription path: the run happens and
-# the variable passes through unchanged, so claude authenticates from that directory's login.
+# (i-c2) a non-default CLAUDE_CONFIG_DIR does not defer the subscription path and does not reach
+# the child: the call must spend the same native bank the preflight just read, not another
+# directory's login.
 cli_sandbox
 cli_run "$SB" success "$PF_PROCEED" CLAUDE_CONFIG_DIR="$SB/other-config"
-if [ "$RC" = "0" ] && [ -s "$SB/marker.txt" ] && grep -qxF "CLAUDE_CONFIG_DIR=$SB/other-config" "$SB/fullenv.txt" 2>/dev/null; then pass "cli-config-dir: a non-default CLAUDE_CONFIG_DIR runs and reaches claude unchanged"; else fail "cli-config-dir: rc=$RC or the variable did not pass through"; fi
+if [ "$RC" = "0" ] && [ -s "$SB/marker.txt" ] && [ -s "$SB/fullenv.txt" ] && ! grep -q '^CLAUDE_CONFIG_DIR=' "$SB/fullenv.txt"; then pass "cli-config-dir: a non-default CLAUDE_CONFIG_DIR runs but never reaches claude"; else fail "cli-config-dir: rc=$RC or the variable reached claude"; fi
 rm -rf "$SB"
 
 # (i-d) the refusal branch: a pin that leaves an API-key variable behind refuses the launch, runs
