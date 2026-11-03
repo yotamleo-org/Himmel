@@ -133,7 +133,7 @@ if [ "$kind" = "warn" ] || [ "$kind" = "allow" ]; then
     # Warn only: additionalContext, NO permissionDecision (that would also skip a
     # permission prompt), exit 0. Allow stays silent for every other dispatch.
     warn_msg=""
-    [ "$kind" = "warn" ] && warn_msg="agent-model-warn: a helper dispatch on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for legs.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
+    [ "$kind" = "warn" ] && warn_msg="agent-model-warn: a helper dispatch on '${model}' with no TIER: line. Name the cheapest tier that can do the job (CLAUDE.md: raise effort before tier): sonnet for workers.json drafting, wave prep, ticket audits and per-page docs reviews; haiku at medium effort for a specified edit list ending in a machine check. Opus only for the one hard call: re-dispatch on a cheaper model, or add a prompt line 'TIER: <reason>' with a real reason (docs/handover/running-a-chief.md, helper table)."
     [ "$eflag" = "effort" ] && warn_msg="${warn_msg:+$warn_msg }agent-model-effort-warn: a dispatch at effort '${effort}' with no EFFORT: line. Each helper kind has a default effort (docs/handover/running-a-chief.md, helper table): drop the effort override, or add a prompt line 'EFFORT: <reason>' with a real reason."
     [ -n "$warn_msg" ] || exit 0
     jq -nc --arg ctx "$warn_msg" '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$ctx}}' 2>/dev/null

@@ -332,7 +332,7 @@ effort guidance, including the chief's own wake-up budget, is in
   `--mirror` defaults to the `JIRA_PROJECT_KEY` mirror. core-check stops
   when the list matches more than 2 % of tracked files. If core really has to grow, re-run it with
   `--widen-reason <why>`, and the reason is printed with the verdict.
-- **Bypasses.** core-check prints `BYPASS` for a design leg (core by label
+- **Bypasses.** core-check prints `BYPASS` for a design worker (core by label
   only, with `--docs-only`), an emergency (a Bug at Highest or Blocker, or a
   `red-main` or `regression` label), a Bug, a key in an operator
   `core-bypass` record (`jira release operator core-bypass <R> --keys <K,…>
@@ -348,7 +348,7 @@ effort guidance, including the chief's own wake-up budget, is in
   by the brief's `Writes:` paths (every Writes line is read); a brief with no usable
   path is classified by the file paths its ticket names in the Jira mirror. A
   ticket carrying the core label stays `CORE` unless the brief's own `Writes:` line
-  names only docs paths (a design leg, `BYPASS design`); a ticket-derived path never
+  names only docs paths (a design worker, `BYPASS design`); a ticket-derived path never
   makes one. An absolute path under the handover root counts as a docs-or-state
   path, never as a core path. A judge brief launched with `--judge` skips the rule
   (it writes nothing); a judge brief without the flag is gated like any keyed
@@ -364,7 +364,7 @@ helper kind.
 
 | Helper kind | Agent | Model | Effort |
 |---|---|---|---|
-| Worker-brief or `legs.json` drafting, wave prep | `brief-drafter` | `sonnet` | `medium` |
+| Worker-brief or `workers.json` drafting, wave prep | `brief-drafter` | `sonnet` | `medium` |
 | Ticket audit (still open, fixed or partial) | `ticket-auditor` | `sonnet` | `medium` |
 | Per-page docs review | `page-reviewer` | `sonnet` | `medium` |
 | A specified edit list ending in a machine check | `edit-runner` | `haiku` | `medium` |

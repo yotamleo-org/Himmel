@@ -109,3 +109,9 @@
 ^scripts/handover/chief-kit/test-succession-tracker\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format doc and manifest section pins the read and the refusal; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-tracker\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format manifest section pins the read and the refusal; leaves with HIMMEL-6647
 ^scripts/eval/chief-wake-classes\.py$	\(\?:leg\|worker\)|-\(\?:leg	K5 legacy script and path names read from older transcripts; leaves with HIMMEL-6647
+^scripts/hooks/chief-precompact-snapshot\.sh$	live_field legs	K5 reads the pre-rename Live state line while legacy names are on; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/denied-launch-alert\.sh$	headed-arm\(-leg\|-worker\)\?	K5 legacy launcher-name read in the denied-launch log filter; leaves with HIMMEL-6647
+^scripts/ci/test-check-doc-literals\.sh$	tick\.sh --legs	K5 test pins that the retired tick flag is refused in a doc; leaves with HIMMEL-6647
+^scripts/lib/test-override-env\.sh$	LEG\|WORKER	K5 the env scrub view still lists the old LEG_ prefix; leaves with HIMMEL-6647
+^scripts/lib/test-rename-aliases\.sh$	^leg\|worker\|prose|--legs|--leg-|render-legs|legs\.sh|initiative-legs|launch-leg	K5 test pins that each old name, flag and forwarder is still mapped, refused or removed; leaves with HIMMEL-6647
+^scripts/lib/test-worker-identity\.sh$	leg N[0-9]	K5 fixtures pin that an older leg-form H1 suffix still strips; leaves with HIMMEL-6647

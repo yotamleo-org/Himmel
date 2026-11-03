@@ -1732,8 +1732,10 @@ live60l="$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$
 # shellcheck disable=SC2016  # literal fixture text
 check "60l successor Live state seeds the predecessor's open legs block under workers:, dropping the unlisted N8" \
     "$(printf '%s\n' "$live60l" | grep -Fxc 'workers: `N9:nonce-fixture-60l:lock-fixture-60l:42424`')" "1"
-check "60l the trimmed history keeps the wrapped continuation line of the legs block" \
-    "$(cat "$root"/tester/llivedst/specs/history/chief-live-state-*.md 2>/dev/null | grep -Fc 'N8:nonce-two-60l')" "1"
+check "60l the successor Live state has no N8 entry" \
+    "$(printf '%s\n' "$live60l" | grep -Fc 'N8:')" "0"
+check "60l the trimmed history keeps the whole wrapped continuation line of the legs block" \
+    "$(cat "$root"/tester/llivedst/specs/history/chief-live-state-*.md 2>/dev/null | grep -Fxc "$fixture60l2")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60lA" "$token60l" >/dev/null 2>&1
 
 out6w="$(chief new --bucket wnextrepo)"
