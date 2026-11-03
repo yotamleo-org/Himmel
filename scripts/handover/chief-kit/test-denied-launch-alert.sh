@@ -128,19 +128,22 @@ check "(i) both concurrent scans complete" "0:0" "$rc_a:$rc_b"
 check "(i) two concurrent scans of one stale claim send once" "$((before + 1))" "$(sent)"
 
 # --- (j) a send the test guard refused records nothing, so a real scan still alerts ----
-mkdir -p "$WORK/stub-bin"
-printf '#!/usr/bin/env bash\necho "$*" >>"%s"\n' "$WORK/bun.log" > "$WORK/stub-bin/bun"
-chmod +x "$WORK/stub-bin/bun"
-export HIMMEL_DENIAL_ALERT_DIR="$WORK/refused-sentinels"
-export HIMMEL_CLASSIFIER_DENIALS_LOG="$WORK/refused-denials.jsonl"
-mkrow 2 feat+worker-j sid-j Bash 'bash scripts/handover/chief-kit/headed-arm-worker.sh' sha-j
-env -u MERGE_BLOCK_ALERT_CMD -u HIMMEL_TEST_FIXTURE PATH="$WORK/stub-bin:$PATH" HIMMEL_REAL_STATE_ASSUME_STATION=1 \
-    HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$WORK/stub-bin" bash "$SUT" >/dev/null 2>&1
-check "(j) a refused send leaves no sentinel" "0" "$(find "$HIMMEL_DENIAL_ALERT_DIR" -type f ! -name '.*' -size +0 | wc -l | tr -d ' ')"
-check "(j) and bun never ran" "no" "$([ -e "$WORK/bun.log" ] && echo yes || echo no)"
-before="$(sent)"
-bash "$SUT" >/dev/null 2>&1
-check "(j) control: the next scan with a working sender alerts" "$((before + 1))" "$(sent)"
+# The guard runs only on Linux.
+if [ "$(uname -s)" = Linux ]; then
+    mkdir -p "$WORK/stub-bin"
+    printf '#!/usr/bin/env bash\necho "$*" >>"%s"\n' "$WORK/bun.log" > "$WORK/stub-bin/bun"
+    chmod +x "$WORK/stub-bin/bun"
+    export HIMMEL_DENIAL_ALERT_DIR="$WORK/refused-sentinels"
+    export HIMMEL_CLASSIFIER_DENIALS_LOG="$WORK/refused-denials.jsonl"
+    mkrow 2 feat+worker-j sid-j Bash 'bash scripts/handover/chief-kit/headed-arm-worker.sh' sha-j
+    env -u MERGE_BLOCK_ALERT_CMD -u HIMMEL_TEST_FIXTURE PATH="$WORK/stub-bin:$PATH" HIMMEL_REAL_STATE_ASSUME_STATION=1 \
+        HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$WORK/stub-bin" bash "$SUT" >/dev/null 2>&1
+    check "(j) a refused send leaves no sentinel" "0" "$(find "$HIMMEL_DENIAL_ALERT_DIR" -type f ! -name '.*' -size +0 | wc -l | tr -d ' ')"
+    check "(j) and bun never ran" "no" "$([ -e "$WORK/bun.log" ] && echo yes || echo no)"
+    before="$(sent)"
+    bash "$SUT" >/dev/null 2>&1
+    check "(j) control: the next scan with a working sender alerts" "$((before + 1))" "$(sent)"
+fi
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1
