@@ -92,8 +92,8 @@ EOF
 
 # ---- case 2: RED control, no config
 seed
-(cd "$proj" && "$vitest" run delete.test.ts >"$tmp/case2.log" 2>&1)
-if [ "$(canary)" = DELETED ]; then pass "RED control: with no sandbox config the canary is DELETED"; else fail "RED control: expected DELETED, got $(canary) (log $tmp/case2.log)"; sed -n 1,20p "$tmp/case2.log"; fi
+(cd "$proj" && "$vitest" run delete.test.ts >"$tmp/case2.log" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ "$(canary)" = DELETED ]; then pass "RED control: with no sandbox config the canary is DELETED"; else fail "RED control: rc=$rc canary $(canary) (log $tmp/case2.log)"; sed -n 1,20p "$tmp/case2.log"; fi
 
 # ---- case 3: the real root config + real setup file
 cp "$root_cfg" "$proj/vitest.config.ts"
