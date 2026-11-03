@@ -632,6 +632,28 @@ function preflightIntake(o: IntakeOptions, fields: Record<string, unknown>, titl
   if (intakeOwed(o.type, fields)) assertIntakeQueueable(intakeWhy(o, title));
 }
 
+/**
+ * A follow-up holds its parent's remainder, so its INTAKE asks for the parent's
+ * active version and says why; the release manager still rules.
+ * Explicit wins: a version, --backlog, --proposed-version or --why keeps its
+ * meaning. A parent with no active version, or one that cannot be read, leaves
+ * the request as it was (the ticket is filed either way). The request never
+ * writes the fixVersion, so a frozen target or the residual cap is the
+ * release manager's call at admission.
+ */
+async function followUpIntake<T extends IntakeOptions & { followUpOf?: string; backlog?: boolean; fixVersion?: string }>(o: T): Promise<T> {
+  if (o.followUpOf === undefined || o.fixVersion !== undefined || o.backlog || o.proposedVersion !== undefined || o.why?.trim()) return o;
+  let version: string | undefined;
+  try {
+    version = await targetFixVersion(o.followUpOf);
+  } catch (e) {
+    console.error(`jira: warning: could not read ${o.followUpOf}'s version, so the follow-up's INTAKE names none: ${(e as Error).message}`);
+    return o;
+  }
+  if (!version) return o;
+  return { ...o, proposedVersion: version, why: `follow-up of ${o.followUpOf}, which is in ${version}; this ticket holds the parent's remainder` };
+}
+
 function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions): void {
   if (!intakeOwed(o.type, fields)) return;
   const toVersion = o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
@@ -989,7 +1011,8 @@ export function registerCreate(program: Command): void {
         });
 
         await checkExistingBlocker(options.project ?? projectKey(), fields['fixVersions'], options);
-        preflightIntake(options, fields, resolveTitle(options));
+        const intake = intakeOwed(options.type, fields) ? await followUpIntake(versionOptions) : options;
+        preflightIntake(intake, fields, resolveTitle(options));
 
         const writer = createWriterOf(options, { placed: fields['fixVersions'] !== undefined, inherited, residual, bugDefault: placed.bugDefault });
         const result = await request<CreateIssueResponse>('POST', '/issue', { fields }, writer);
@@ -1005,7 +1028,7 @@ export function registerCreate(program: Command): void {
         // attachment-failure message goes to stderr.
         console.log(`Created ${result.key}`);
         printCore(core.verdict);
-        queueIntakeIfUnversioned(result.key, fields, resolveTitle(options), options);
+        queueIntakeIfUnversioned(result.key, fields, resolveTitle(options), intake);
         if (overrideReason !== undefined) {
           recordAdmission(result.key, { version: options.fixVersion!, kind: 'override', reason: overrideReason });
         }

@@ -319,6 +319,12 @@ and a one-line `--why`, and then files the `backlog` label with no fixVersion.
 Story only, and a named version must exist and be unreleased. The same rule covers a Task or Story, so no ticket
 is filed without at least a proposed version; a residual (`--residual-of`, `--follow-up-of`) routes itself to a version
 or the backlog, and one that lands with no version is held to the same rule as any other.
+`--follow-up-of <KEY>` reads the parent's fixVersion; when it is the current (earliest unreleased) version, the
+follow-up's INTAKE asks for that version and its why names the parent, the version and that the ticket holds the
+parent's remainder (HIMMEL-9002). The ticket's own fixVersion is not written; the release manager still rules, and
+a frozen target or the residual cap is its call at admission. A parent with no current version, or one that cannot
+be read (a warning on stderr), leaves the request as before: no version, filed to the backlog. A caller's own
+`--fix-version`, `--backlog`, `--proposed-version` or `--why` wins and skips the read.
 An unversioned create, a residual or follow-up included, is refused before the POST when no release can take the INTAKE (no release declared, several
 declared, the state unreadable, or a placeholder why); an INTAKE that fails after the POST leaves the key on stdout,
 says `Created <KEY> but INTAKE not queued` and exits 1. `edit`'s depth-2 drop only warns, and says so when no release is declared.

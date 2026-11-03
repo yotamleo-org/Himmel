@@ -45,7 +45,9 @@ helpers (HIMMEL-437).
   `--backlog --proposed-version backlog --why <line>`), `--fix-version`,
   `--gate`, `--residual-of`, `--follow-up-of` or an inherited blocker version (a Bug may
   also be Highest). A ticket filed with no version queues an INTAKE request to the one
-  declared release, on stderr (`jira release request`); a Bug that blocks open work goes
+  declared release, on stderr (`jira release request`); `--follow-up-of <key>` makes that
+  request ask for the parent's current version, with a why naming the parent (an explicit
+  `--fix-version`, `--backlog`, `--proposed-version` or `--why` wins; HIMMEL-9002); a Bug that blocks open work goes
   into a version, then needs a requested INTAKE (HIMMEL-7152, HIMMEL-8170). Open tickets
   that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
   proposed version for each (dry run; `--commands` adds the lines for one rm-run).
