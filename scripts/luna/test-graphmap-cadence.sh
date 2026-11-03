@@ -1693,4 +1693,125 @@ if ! PATH="/usr/bin:/bin" command -v claude >/dev/null 2>&1; then
     assert_contains "rewrite keeps the publish runner's api-lane env" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$(cat "$RWDIR2/graphmap-publish-himmel.sh")"
 fi
 
+# Test C16: --luna-only disarms and re-arms the Luna rows alone, the himmel rows stay, and
+# doctor C24 stops expecting the Luna tasks while they are off. Stub scheduler + temp registry only.
+echo "TEST: cron --luna-only disarm/re-arm leaves the himmel rows and C24 follows the registry"
+LSTATE="$TMP_ROOT/cron-state-luna"; mkdir -p "$LSTATE"
+LCRON="$TMP_ROOT/crontab-fake-luna.sh"
+sed "s#^CSTATE=.*#CSTATE=\"$LSTATE\"#" "$FAKE_CRONTAB2" > "$LCRON"; chmod +x "$LCRON"
+LDIR="$TMP_ROOT/cron-runners-luna"
+LBIN="$TMP_ROOT/c24-bin"; mkdir -p "$LBIN"
+printf '#!/bin/sh\nexec "%s" "$@"\n' "$LCRON" > "$LBIN/crontab"; chmod +x "$LBIN/crontab"
+SAVED_OBS="$HIMMEL_OBSERVABILITY_CONFIG"
+export HIMMEL_OBSERVABILITY_CONFIG="$TMP_ROOT/observability-luna.json"
+run_luna() {
+    env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$LCRON" \
+        GRAPHMAP_BAT_DIR="$LDIR" PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:$CLAUDE_BIN_DIR_PATH:$PATH" \
+        "$REAL_BASH" "$SCRIPT" "$@"
+}
+run_c24() {
+    env PATH="$LBIN:$PATH" "$REAL_BASH" "$HIMMEL_ROOT_EXP/scripts/himmel-doctor.sh" --only C24 2>&1
+}
+# the six names, split by corpus
+LUNA_ROWS="HIMMEL-GraphMap-Luna HIMMEL-GraphMapAst-Luna HIMMEL-GraphSemantic-Luna"
+HIM_ROWS="HIMMEL-GraphMap-Himmel HIMMEL-GraphMapAst-Himmel HIMMEL-GraphPublish-Himmel"
+rows_present() { # <names...> -> 0 when every name has a crontab row
+    local n; for n in "$@"; do grep -qE "# $n\$" "$LSTATE/crontab" || return 1; done
+}
+rows_absent() { # <names...> -> 0 when no name has a crontab row
+    local n; for n in "$@"; do ! grep -qE "# $n\$" "$LSTATE/crontab" || return 1; done
+}
+printf '0 5 * * * /usr/bin/true # keep-me\n' > "$LSTATE/crontab"
+rc=0; out=$(run_luna arm --vault "$VAULT" --with-publish --with-luna-semantic 2>&1) || rc=$?
+assert_rc "luna-only fixture: full arm of all six rows" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_present $LUNA_ROWS $HIM_ROWS; then pass "all six rows armed before the Luna-only disarm"; else fail "fixture is missing rows" "$(cat "$LSTATE/crontab")"; fi
+
+rc=0; out=$(run_luna disarm --luna-only --dry-run 2>&1) || rc=$?
+assert_rc "disarm --luna-only --dry-run exits 0" 0 "$rc"
+assert_contains "dry-run names a Luna row it would remove" "HIMMEL-GraphMapAst-Luna" "$out"
+assert_not_contains "dry-run never names a himmel row" "Himmel" "$(grep 'would remove' <<<"$out")"
+# shellcheck disable=SC2086
+if rows_present $LUNA_ROWS $HIM_ROWS; then pass "disarm --luna-only --dry-run changes no row"; else fail "dry-run changed the crontab" "$(cat "$LSTATE/crontab")"; fi
+
+rc=0; out=$(run_luna disarm --luna-only 2>&1) || rc=$?
+assert_rc "disarm --luna-only exits 0" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_absent $LUNA_ROWS; then pass "Luna-only disarm removes every Luna row"; else fail "a Luna row survived" "$(cat "$LSTATE/crontab")"; fi
+# shellcheck disable=SC2086
+if rows_present $HIM_ROWS; then pass "Luna-only disarm leaves every himmel row in the crontab"; else fail "a himmel row was removed" "$(cat "$LSTATE/crontab")"; fi
+assert_contains "Luna-only disarm keeps unrelated lines" "keep-me" "$(cat "$LSTATE/crontab")"
+if [ ! -e "$LDIR/graphmap-luna.sh" ] && [ ! -e "$LDIR/graphmap-ast-luna.sh" ] && [ ! -e "$LDIR/graphmap-semantic-luna.sh" ]; then
+    pass "Luna-only disarm removes the Luna runners"
+else fail "a Luna runner is left"; fi
+if [ -e "$LDIR/graphmap-himmel.sh" ] && [ -e "$LDIR/graphmap-ast-himmel.sh" ] && [ -e "$LDIR/graphmap-publish-himmel.sh" ]; then
+    pass "Luna-only disarm keeps the himmel runners"
+else fail "a himmel runner was removed"; fi
+assert_registry "Luna-only disarm unregisters the Luna names" \
+    'all(.expected_tasks[]; . != "HIMMEL-GraphMap-Luna" and . != "HIMMEL-GraphMapAst-Luna" and . != "HIMMEL-GraphSemantic-Luna")'
+assert_registry "Luna-only disarm keeps the himmel names registered" \
+    '(.expected_tasks | index("HIMMEL-GraphMap-Himmel") != null) and (.expected_tasks | index("HIMMEL-GraphMapAst-Himmel") != null) and (.expected_tasks | index("HIMMEL-GraphPublish-Himmel") != null)'
+assert_registry "Luna-only disarm keeps the himmel flows" \
+    '[.flows[] | select(.name == "graphmap-himmel" or .name == "graphmap-ast-himmel")] | length == 2'
+assert_registry "Luna-only disarm drops the Luna flows" \
+    'all(.flows[]; .name != "graphmap-luna" and .name != "graphmap-ast-luna" and .name != "graphmap-semantic-luna")'
+
+out=$(run_c24)
+assert_contains "C24 reads OK with the Luna rows off" "OK   C24-cadence-registry" "$out"
+assert_not_contains "C24 does not warn about a Luna task while it is off" "Luna" "$out"
+
+rc=0; out=$(run_luna arm --luna-only --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "arm --luna-only brings the Luna rows back beside the armed himmel rows" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_present HIMMEL-GraphMap-Luna HIMMEL-GraphMapAst-Luna $HIM_ROWS; then pass "re-arm restores the two Luna rows and keeps the himmel rows"; else fail "re-arm left the crontab wrong" "$(cat "$LSTATE/crontab")"; fi
+if [ "$(grep -cE '# HIMMEL-GraphMap(Ast)?-Himmel$' "$LSTATE/crontab")" -eq 2 ]; then pass "re-arm does not duplicate a himmel row"; else fail "himmel rows duplicated" "$(cat "$LSTATE/crontab")"; fi
+assert_registry "re-arm registers the Luna names again" \
+    '(.expected_tasks | index("HIMMEL-GraphMap-Luna") != null) and (.expected_tasks | index("HIMMEL-GraphMapAst-Luna") != null)'
+rc=0; out=$(run_luna arm --luna-only --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "a second arm --luna-only dedup-blocks on the Luna rows" 3 "$rc"
+assert_not_contains "the dedup block names no himmel row" "Himmel" "$(grep '^    ' <<<"$out")"
+out=$(run_c24)
+assert_contains "C24 reads OK after the Luna re-arm" "OK   C24-cadence-registry" "$out"
+# the Luna row is expected again: delete its row by hand and C24 warns, naming it
+grep -vE '# HIMMEL-GraphMapAst-Luna$' "$LSTATE/crontab" > "$LSTATE/crontab.new" && mv "$LSTATE/crontab.new" "$LSTATE/crontab"
+out=$(run_c24)
+assert_contains "C24 warns naming the missing Luna task after re-arm then deletion" "WARN C24-cadence-registry" "$out"
+assert_contains "the C24 warning names HIMMEL-GraphMapAst-Luna" "HIMMEL-GraphMapAst-Luna" "$out"
+
+# the station's real state: every Luna row was removed by hand, the registry still expects them
+grep -vE '# HIMMEL-Graph(Map|MapAst|Semantic)-Luna$' "$LSTATE/crontab" > "$LSTATE/crontab.new" && mv "$LSTATE/crontab.new" "$LSTATE/crontab"
+# shellcheck disable=SC2086
+if rows_absent $LUNA_ROWS && rows_present $HIM_ROWS; then pass "fixture: no Luna row left, himmel rows armed"; else fail "fixture is not the rows-gone state" "$(cat "$LSTATE/crontab")"; fi
+assert_registry "fixture: the registry still expects the Luna names" '.expected_tasks | index("HIMMEL-GraphMap-Luna") != null'
+rc=0; out=$(run_luna disarm --luna-only --dry-run 2>&1) || rc=$?
+assert_rc "disarm --luna-only --dry-run with rows already gone exits 0" 0 "$rc"
+assert_contains "the rows-gone dry-run previews the registry cleanup" "would remove any Luna runners and unregister the Luna names" "$out"
+assert_not_contains "the rows-gone dry-run does not call itself a no-op" "no-op" "$out"
+assert_registry "the rows-gone dry-run leaves the Luna names registered" '.expected_tasks | index("HIMMEL-GraphMap-Luna") != null'
+rc=0; out=$(run_luna disarm --luna-only 2>&1) || rc=$?
+assert_contains "disarm --luna-only with no Luna row armed reports the cleanup it did" "unregistered the Luna names" "$out"
+assert_not_contains "the rows-gone disarm does not call itself a no-op" "no-op" "$out"
+assert_rc "disarm --luna-only with rows already gone exits 0" 0 "$rc"
+assert_registry "disarm --luna-only unregisters Luna names whose rows were already gone" \
+    'all(.expected_tasks[]; . != "HIMMEL-GraphMap-Luna" and . != "HIMMEL-GraphMapAst-Luna")'
+out=$(run_c24)
+assert_contains "C24 reads OK once the already-removed Luna names are unregistered" "OK   C24-cadence-registry" "$out"
+
+# --luna-only is a Luna-corpus switch: it contradicts the himmel-only publish worker and the runner rewrite
+rc=0; run_luna arm --luna-only --with-publish --vault "$VAULT" >/dev/null 2>&1 || rc=$?
+assert_rc "arm --luna-only with --with-publish is refused" 1 "$rc"
+rc=0; run_luna arm --luna-only --rewrite-armed --vault "$VAULT" >/dev/null 2>&1 || rc=$?
+assert_rc "arm --luna-only with --rewrite-armed is refused" 1 "$rc"
+
+# control: the bare disarm is unchanged and still removes every row, himmel included
+rc=0; run_luna arm --luna-only --force --vault "$VAULT" >/dev/null 2>&1 || rc=$?
+assert_rc "control setup: arm --luna-only --force succeeds" 0 "$rc"
+if rows_present HIMMEL-GraphMap-Luna HIMMEL-GraphMapAst-Luna; then pass "control setup: the Luna rows are armed before the bare disarm"; else fail "control setup left no Luna rows" "$(cat "$LSTATE/crontab")"; fi
+rc=0; out=$(run_luna disarm 2>&1) || rc=$?
+assert_rc "bare disarm exits 0" 0 "$rc"
+# shellcheck disable=SC2086
+if rows_absent $LUNA_ROWS $HIM_ROWS; then pass "bare disarm still removes every row, himmel included"; else fail "bare disarm left rows" "$(cat "$LSTATE/crontab")"; fi
+assert_registry "bare disarm still unregisters the himmel names" 'all(.expected_tasks[]; (. | test("Himmel")) | not)'
+export HIMMEL_OBSERVABILITY_CONFIG="$SAVED_OBS"
+
 summary

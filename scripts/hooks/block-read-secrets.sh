@@ -330,11 +330,59 @@ _rd_rest="${_rd_rest#*$'\001'}"
 _rd_gpath="${_rd_rest%%$'\001'*}"
 _rd_cmd="${_rd_rest#*$'\001'}"
 
+# _fp_plain_file TOKEN: succeeds ONLY when TOKEN is provably not a secret, so the
+# caller can skip the full classification; any doubt fails and the full path
+# runs unchanged. A glob over thousands of files hands the classifier one
+# absolute existing file per name, and the full path pays the 26-step ASCII
+# lower-casing three times per name (about 0.28 ms; 10,000 names are
+# several seconds on a slow runner). Proof, per name: an absolute token with no
+# quote, backslash or trailing slash, naming a regular non-symlink file, whose
+# basename holds none of the substrings any secret pattern needs (matched
+# case-insensitively, a superset of the ASCII fold the full path applies), under
+# a parent that holds none of the directory names the path patterns need and
+# whose canonical path holds no config-audit or .himmel part. The parent check
+# runs once per distinct parent per hook run (one canonicalisation fork).
+_fp_plain_file() {
+    local t="$1" b d nc=0 hit=0
+    case "$t" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+    case "$t" in
+        *[\'\"\\]*|*/) return 1 ;;
+    esac
+    [ -f "$t" ] && [ ! -L "$t" ] || return 1
+    b="${t##*/}"; d="${t%/*}"; [ -n "$d" ] || d=/
+    if [ "${_FP_DIR-}" != "$PWD|$d" ]; then
+        _FP_DIR="$PWD|$d"; _FP_OK=0
+        local c
+        c=$(guard_canon_path "$d") || return 1
+        if shopt -q nocasematch; then nc=1; fi
+        shopt -s nocasematch
+        case "$d" in *.ssh*|*config-audit*|*.himmel*) hit=1 ;; esac
+        [ "$nc" = 1 ] || shopt -u nocasematch
+        case "$c" in *config-audit*|*.himmel*) hit=1 ;; esac
+        [ "$hit" = 1 ] || _FP_OK=1
+        hit=0; nc=0
+    fi
+    [ "$_FP_OK" = 1 ] || return 1
+    if shopt -q nocasematch; then nc=1; fi
+    shopt -s nocasematch
+    case "$b" in
+        *.env*|*id_rsa*|*id_ed25519*|*credentials*|*secrets*|*.pem*|*.key*|*.p12*|*.pfx*) hit=1 ;;
+        *.netrc*|*_netrc*|*.npmrc*|*.pgpass*|*.pypirc*|*terraform.tfstate*) hit=1 ;;
+        *.ssh*|*.aws*|*.kube*|*.gnupg*|*config*|*hosts.yml*|*environ*) hit=1 ;;
+    esac
+    [ "$nc" = 1 ] || shopt -u nocasematch
+    [ "$hit" = 0 ]
+}
+
 # is_secret_path: this hook's name for the shared is_secret_basename predicate
 # (scripts/guardrails/lib.sh — pattern list + case-fold rationale
 # live there; also shared with block-edit-on-main.sh). Kept as a thin wrapper
 # so the many call sites below don't need to change name.
 is_secret_path() {
+    _fp_plain_file "$1" && return 1
     is_secret_basename "$@" && return 0
     g4_secret_path "$1"
 }
@@ -370,10 +418,29 @@ g4_secret_path() {
     # A config-audit backup holds a copy of the .env, so its tree is matched on the
     # canonical path too: a symlink to it, or through a linked directory, is the same file.
     # A link chain that does not resolve (a loop, or past the hop cap) is refused.
-    local raw="${1//[\'\"]/}" c
+    local raw="${1//[\'\"]/}" c d
     case "$raw" in \~/*) raw="$HOME/${raw#\~/}" ;; esac
     if [ -e "$raw" ] || [ -L "$raw" ]; then
-        c=$(guard_canon_path "$raw") || return 0
+        # A glob over thousands of files hands this one parent
+        # directory thousands of times, and each canonicalisation is a fork
+        # (1.4 ms, 14 s over 10,000 names). For a regular file that is not a
+        # symlink the canonical path is the parent's canonical path plus the
+        # basename, so the parent is canonicalised once and reused while the
+        # same parent string repeats. The same case patterns then run on the
+        # same string; a parent that cannot be canonicalised still denies.
+        # Every other shape (a symlink, a directory, a missing name) takes the
+        # full canonicalisation as before.
+        if [ -f "$raw" ] && [ ! -L "$raw" ]; then
+            case "$raw" in */*) d="${raw%/*}"; [ -n "$d" ] || d=/ ;; *) d=. ;; esac
+            if [ "${_G4_CANON_DIR-}" != "$PWD|$d" ] || [ -z "${_G4_CANON_REAL-}" ]; then
+                c=$(guard_canon_path "$d") || return 0
+                _G4_CANON_DIR="$PWD|$d"
+                _G4_CANON_REAL="$c"
+            fi
+            case "$_G4_CANON_REAL" in /) c="/${raw##*/}" ;; *) c="$_G4_CANON_REAL/${raw##*/}" ;; esac
+        else
+            c=$(guard_canon_path "$raw") || return 0
+        fi
         case "$c" in */config-audit|*/config-audit/backups|*/config-audit/backups/*|*/.himmel/secrets|*/.himmel/secrets/*) return 0 ;; esac
     fi
     return 1
