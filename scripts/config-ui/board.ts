@@ -82,9 +82,11 @@ export function burnDown(read: { now?: string; tickets?: Record<string, BurnTick
 
 // Tidy up's Refresh: status-drift.sh, the report-only check (it never writes Jira), and the saved file replaced through a temp file and a
 // rename, as focus-refresh.sh publishes it. A run that does not end on a clean sdrift line leaves the saved file alone and says why.
-// The check cuts itself off at its own 90 s budget; this limit catches only a hung child. It stays under the server's idle timeout.
-// ponytail: runs without the sweep's snapshot, so a station with many open tickets can hit the budget and read unknown, upgrade path = keep focus-refresh's snapshot for --snapshot.
-export const DRIFT_REFRESH_MS = 120_000;
+// The check's own 90 s default is too short here: a real run without a snapshot took 121 s on the station. It gets DRIFT_BUDGET_S instead;
+// the limit below catches only a hung child, and the server's idle guard covers it.
+// ponytail: runs without the sweep's snapshot, at about 4 s per key, so past about 50 open tickets it hits the budget and reads unknown, upgrade path = keep focus-refresh's snapshot for --snapshot.
+export const DRIFT_BUDGET_S = 200;
+export const DRIFT_REFRESH_MS = 220_000;
 export type DriftRefresh = { state: "ok"; sdrift: string } | { state: "failed"; reason: string };
 export const driftCheck = (env: Env) => env.CONFIG_UI_DRIFT_CHECK || join(KIT, "status-drift.sh");
 export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFRESH_MS): Promise<DriftRefresh> {
@@ -92,7 +94,7 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
   const file = driftFile(env);
   if (!file) return failed("nowhere to save the run: no saved drift file under the handover root, and HIMMEL_FOCUS_DRIFT is not set");
   let r;
-  try { r = await runChild(["bash", driftCheck(env)], { cwd, env, timeoutMs }); } catch (e) { return failed(`the check could not start: ${(e as Error).message}`); }
+  try { r = await runChild(["bash", driftCheck(env)], { cwd, env: { ...env, TICKET_STATUS_DRIFT_BUDGET: String(DRIFT_BUDGET_S) }, timeoutMs }); } catch (e) { return failed(`the check could not start: ${(e as Error).message}`); }
   if (r.timedOut) return failed(`the check ran past its ${Math.round(timeoutMs / 1000)} s limit`);
   if (r.rc !== 0) return failed(`the check failed with rc ${r.rc}: ${r.stderr.trim().split("\n").pop()?.slice(0, 200) ?? ""}`);
   const lines = r.stdout.split("\n").filter((l) => l.trim()), last = lines[lines.length - 1] ?? "";

@@ -212,8 +212,9 @@ Shift+Left and Shift+Right on a focused card move it among To do, In progress an
 The Tidy up tab reads the saved drift run and starts nothing on open. Its refresh button (`POST /api/board/drift-refresh`,
 token-gated) runs the report-only `status-drift.sh` and replaces `focus-drift.txt` through a temp file only when the run
 ends on a clean `sdrift=<n>:<sig>` line. Otherwise the saved file stays and the page says why; a second click joins the run.
-`GET /api/board` never runs it. It runs without the sweep's snapshot, so a station with many open tickets can hit the
-check's 90 s budget and keep the old file. The origin column reads each row's Jira history: `moved in Jira by <name>`, or
+`GET /api/board` never runs it. It runs without the sweep's snapshot, since the sweep writes and Refresh stays report-only.
+One timed run took 121 s on the station, so a click usually waits about 2 minutes; past about 50 open tickets a run can hit
+its 200 s budget and keep the old file. The origin column reads each row's Jira history: `moved in Jira by <name>`, or
 himmel's Jira account when the author's address equals `JIRA_EMAIL`. A person on that same login reads as himmel's account,
 which the page's wording says. A lane card with a known-checker-bug row carries the tag naming the checker ticket. The Team
 mode switch sits on Configure → Tracker (`tracker.teamMode`); Tidy up shows the mode read-only and links there.

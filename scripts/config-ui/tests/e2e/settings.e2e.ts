@@ -1,4 +1,6 @@
 // Journey J3: the Configure page (it replaced Settings and Setup) with its four group tiles, and the Board follows the tracker source.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness, type TrackerKind } from "./fixtures";
 
@@ -67,13 +69,20 @@ test("J3. the Tracker tile's Team mode switch shows off when unset, previews a d
   const shots = process.env.E2E_SHOTS;
   await on.click();
   const box = page.locator("#tile-tracker .dryrun");
-  await expect(box).toContainText("tracker.teamMode");
+  await expect(box).toContainText("HIMMEL_TRACKER_TEAM_MODE=on");
   if (shots) for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.screenshot({ path: `${shots}/configure-tracker-team-mode-${scheme}.png`, fullPage: true });
   }
   await box.locator('[data-act="run"]').click();
   await expect.poll(() => h.argv(), SETUP_WAIT).toContain("himmelctl config set tracker.teamMode on");
+  await expect.poll(() => readFileSync(join(h.home, ".himmel", "himmel.conf"), "utf8"), SETUP_WAIT).toContain("HIMMEL_TRACKER_TEAM_MODE=on\n");
+  // a full page load, as a new tab gets it: the token is kept in memory only, so a bare page.reload() answers 401
+  await page.goto("about:blank");
+  await page.goto(h.url);
+  await page.locator('button.tile[data-tile="tracker"]').click();
+  await expect(on).toHaveAttribute("aria-pressed", "true", SETUP_WAIT);
+  await expect(page.locator('button[data-action="config.tracker"][data-value="off"]')).toHaveAttribute("aria-pressed", "false");
 });
 
 test("J3. the Tracker tile points commit rules at ~/.himmel/himmel.conf, not the shell profile", async ({ page }) => {

@@ -7,7 +7,7 @@ import childProcess from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { readBoardExtras, refreshDrift, runReader, TIMEOUT_MS } from "../board";
+import { DRIFT_BUDGET_S, DRIFT_REFRESH_MS, readBoardExtras, refreshDrift, runReader, TIMEOUT_MS } from "../board";
 
 const TOKEN = "a".repeat(64);
 const cleanups: (() => void)[] = [];
@@ -104,6 +104,14 @@ test("POST drift-refresh: a run that does not end clean keeps the saved file byt
     expect(snapshot(s.d).filter((l) => l.includes("focus-drift"))).toEqual(before);
     expect(readdirSync(s.d).filter((f) => f.includes(".tmp"))).toEqual([]);
   }
+});
+
+test("refreshDrift: the check gets a budget that ends before the route's own limit", async () => {
+  const s = scratch();
+  const { check } = stubCheck(s, `echo "sdrift=0:$TICKET_STATUS_DRIFT_BUDGET"`);
+  const r = await refreshDrift({ PATH: process.env.PATH, HOME: s.home, HIMMEL_FOCUS_DRIFT: s.drift, CONFIG_UI_DRIFT_CHECK: check }, s.d);
+  expect(r).toEqual({ state: "ok", sdrift: `0:${DRIFT_BUDGET_S}` });
+  expect(DRIFT_BUDGET_S * 1000).toBeLessThan(DRIFT_REFRESH_MS);
 });
 
 test("refreshDrift: a run past its limit is killed, keeps the saved file and says so", async () => {

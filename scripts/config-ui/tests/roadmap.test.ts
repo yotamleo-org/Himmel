@@ -235,7 +235,7 @@ test("Tidy up: Refresh starts nothing on open, marks the kept rows while running
   expect(saved).toContain('data-act="drift-refresh"');
   expect(cellText(saved)).toContain("drift: saved run · written 03:08 · sdrift=3:abc");
   const running = tidy({ driftRun: { state: "running", started: "05:44:39" } });
-  expect(cellText(running)).toContain("re-running the check · started 05:44:39 · up to 90 s");
+  expect(cellText(running)).toContain("re-running the check · started 05:44:39 · usually about 2 min, at most 3 min 20 s");
   expect(cellText(running)).toContain("from 03:08");
   expect(running).toContain("HIMMEL-6691"); // the saved rows stay on screen
   expect(running).toMatch(/data-act="drift-refresh"[^>]*disabled/);

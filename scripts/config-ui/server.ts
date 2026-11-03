@@ -32,7 +32,7 @@ import { readReviewers } from "./reviewers";
 import { eligibleFromInventory, readToolInventory } from "./tool-inventory";
 import { findDoc, readBoard, readBoardFile, scrub, validName } from "./agui/board";
 import { readOrCreateToken } from "./token-file";
-import { driftCheck, driftFile, readBoardExtras, refreshDrift, type DriftRefresh } from "./board";
+import { DRIFT_REFRESH_MS, driftCheck, driftFile, readBoardExtras, refreshDrift, type DriftRefresh } from "./board";
 import { legSync, readRoadmap } from "./roadmap";
 import { ISSUE_LIMIT, jiraMirrorDir, mergedSettings, readGithubIssues, settingsEnv, trackerSetting, trackerSources } from "./tracker-sources";
 import { readVm, writeVm } from "./vm-config";
@@ -327,7 +327,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const publicRoot = join(import.meta.dir, "public");
   let actionWorst = 0;
   for (const [, spec] of table) actionWorst = Math.max(actionWorst, opts.actionTimeoutMs ?? spec.timeoutMs);
-  const worstRouteMs = 2 * reprobeMs + actionWorst;
+  const worstRouteMs = Math.max(2 * reprobeMs + actionWorst, DRIFT_REFRESH_MS);
   if (IDLE_TIMEOUT_S * 1000 < worstRouteMs + IDLE_MARGIN_S * 1000) {
     throw new Error(`config-ui: idleTimeout ${IDLE_TIMEOUT_S}s does not cover the worst route budget ${worstRouteMs}ms plus ${IDLE_MARGIN_S}s`);
   }
