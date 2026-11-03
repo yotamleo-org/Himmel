@@ -3914,9 +3914,13 @@ marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 `clear-cr-marker`, "CodeRabbit"). A single-family match never denies — that
 conjunction is the false-positive budget keeping bounded read-only research
 frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows while `.claude/agents/<id>.md` pins exactly
-`tools: Read, Grep, Glob, Bash`, the same structural read-only lane (HIMMEL-5180)
-— the ONLY carve-outs. `guard-implementor-dispatch.sh` exempts both ids the same
-way, on the same tools check.
+`tools: Read, Grep, Glob, Bash`, the same structural read-only lane (HIMMEL-5180).
+`brief-drafter` is a separate allowance for drafting worker briefs: it allows
+while `.claude/agents/brief-drafter.md` pins exactly `tools: Read, Write, Edit,
+Bash`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
+as `brief-drafter-dispatch` (HIMMEL-9028). These three subagent types are the
+ONLY carve-outs. `guard-implementor-dispatch.sh` exempts `Explore` and
+`judge-ro` the same way, on the same tools check.
 There is deliberately no prompt-text read-only declaration carve-out: three
 review rounds each added one and each leaked it a different way (a partial-scope
 aside, an output-shaped phrase, a mode declaration governing a subordinate
