@@ -29,8 +29,12 @@
 # `failed` key stops the run with no line removed. After the .env rewrite, when the
 # secrets stage was allowed, every file in ~/.himmel/env-backups and the .env copy
 # in each config-audit backup (manifest checksums kept true) loses the lines of
-# a manifest-secret key that .env or the keyring still holds; a line that is the
-# only copy of its key stays and is named; a blank NAME= line in .env is not a copy.
+# a manifest-secret key that .env or the keyring still holds. Coverage is by key
+# name, not by value: a blank NAME= line (also NAME="" and NAME='') in .env is no
+# copy, but any other .env text or keyring item counts, a placeholder included, and
+# a real value only in a backup is then dropped without a name. A line with no other
+# copy of its key stays and is named.
+# ponytail: coverage is by key name, a placeholder counts as a copy, a value compare against the other copy (HIMMEL-8951).
 # A run with nothing else to move, or with an emptied or missing .env, still
 # finishes an owed scrub. A legacy
 # ~/.config/secrets/himmel.env is imported and emptied of what it stored. The
@@ -296,17 +300,20 @@ lines_for() {  # <set of names> <file>: the names of the set the file has a line
         { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k) }
         k != "" && index(set, " " k " ") && !(k in seen) { seen[k] = 1; print k }' "$2"
 }
-# A secret line leaves a backup only while the .env or the keyring still holds that key: one
-# copy always survives. A backup line with no other copy stays, and its key is named.
+# A secret line leaves a backup while the .env or the keyring holds a non-blank item or line for that key.
+# Coverage is by key name, not by value: a placeholder in .env or the keyring counts as a copy, and a real
+# value only in a backup is then dropped unnamed. A backup line with no other copy stays, and its key is named.
+# ponytail: coverage is by key name, a placeholder counts as a copy, a value compare against the other copy (HIMMEL-8951).
 scrub_set_calc() {
     local kitems envn n v
     kitems=" $(bash "$hs" status 2>/dev/null | sed -n 's/^keyring item: //p' | tr '\n' ' ')"
     # .env counts as a copy only where the readers see a value: their comment stripping and trim decide, not this script.
+    # A reader value of exactly "" or '' is no copy on this route; a key import-env stored still counts through kitems.
     envn=" "
     for n in $(lines_for "$secret_names" "$envfile"); do
         v=$(_load_dotenv_extract "$envfile" "$n")
         v=$(_load_dotenv_trim "${v#*=}")
-        [ -z "$v" ] || envn="$envn$n "
+        case "$v" in ''|'""'|"''") ;; *) envn="$envn$n " ;; esac
     done
     scrub_set=" "
     for n in $secret_names; do

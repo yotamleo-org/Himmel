@@ -931,22 +931,43 @@ has "R20b the only real value stays in the backup" "JIRA_API_TOKEN=dummy-r20b" "
 has "R20b the report names JIRA_API_TOKEN as kept" "keeps a line for JIRA_API_TOKEN" "$out"
 lacks "R20b the report prints no value" "dummy-r20b" "$out"
 
-# R20k: KNOWN LIMIT, pinned, not a claim of safety. A line NAME="" (with or without a comment) is the two characters "" to the
-# readers, import-env stores them in the keyring, and that counts as a copy, so a real value in a backup is dropped.
-# The class fix is a value compare against the other copy, not a blank test.
+# R20e: a quoted-empty .env line for a key that was never imported (an env-keep key) is no copy, so the only real value in a backup stays and the key is named.
 r20n=0
-for r20line in 'JIRA_API_TOKEN=""' 'JIRA_API_TOKEN="" # note'; do
+for r20line in 'KEEP_ME=""' "KEEP_ME=''"; do
     r20n=$((r20n + 1))
     fixture_env
-    printf '# station .env\n%s\nHIMMEL_FLEET_CAP=7\n' "$r20line" > "$TMP/st/.env"
+    fxput "$TMP/st/.env" '# station .env\n%s\nHIMMEL_FLEET_CAP=7\n' "$r20line"
+    chmod 600 "$TMP/st/.env"
+    mkdir -p "$HOME/.himmel/env-backups"
+    r20f="$HOME/.himmel/env-backups/env.20260104T00001$r20n""Z.8"
+    fxput "$r20f" 'KEEP_ME=dummy-r20e\n'
+    chmod 600 "$r20f"
+    apply_tty y
+    if [ "$rc" = 0 ]; then pass "R20e case $r20n: the apply exits 0"; else fail "R20e case $r20n: the apply exited $rc: $out"; fi
+    if [ -f "$r20f" ]; then pass "R20e case $r20n: the backup still exists"; else fail "R20e case $r20n: the backup is gone"; fi
+    has "R20e case $r20n: the only real value of KEEP_ME stays in the backup" "KEEP_ME=dummy-r20e" "$(cat "$r20f")"
+    has "R20e case $r20n: the report names KEEP_ME as kept" "keeps a line for KEEP_ME" "$out"
+    lacks "R20e case $r20n: the report prints no value" "dummy-r20e" "$out"
+done
+
+# R20k: KNOWN LIMIT, pinned, not a claim of safety. A line NAME="" or NAME='' (with or without a comment) that import-env
+# stored is a keyring item, and coverage is by key name, so a real value only in a backup is dropped. The class fix is a
+# value compare against the other copy, not a blank test.
+r20n=0
+for r20line in 'JIRA_API_TOKEN=""' 'JIRA_API_TOKEN="" # note' "JIRA_API_TOKEN=''" "JIRA_API_TOKEN='' # note"; do
+    r20n=$((r20n + 1))
+    fixture_env
+    fxput "$TMP/st/.env" '# station .env\n%s\nHIMMEL_FLEET_CAP=7\n' "$r20line"
     chmod 600 "$TMP/st/.env"
     mkdir -p "$HOME/.himmel/env-backups"
     r20f="$HOME/.himmel/env-backups/env.20260104T00000$r20n""Z.8"
-    printf 'JIRA_API_TOKEN=dummy-r20k\n' > "$r20f"
+    fxput "$r20f" 'JIRA_API_TOKEN=dummy-r20k\n'
     chmod 600 "$r20f"
     apply_tty y
     if [ "$rc" = 0 ]; then pass "R20k case $r20n: the apply exits 0"; else fail "R20k case $r20n: the apply exited $rc: $out"; fi
-    lacks "R20k case $r20n: known limit: the backup line is dropped because a quoted-empty value counts as a copy" "JIRA_API_TOKEN" "$(cat "$r20f")"
+    if [ -f "$r20f" ]; then pass "R20k case $r20n: the backup file still exists"; else fail "R20k case $r20n: the backup file is gone"; fi
+    has "R20k case $r20n: the keyring holds an item for JIRA_API_TOKEN" "JIRA_API_TOKEN" "$(cut -f1 "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is this suite's own scratch keyring, attrs column only
+    lacks "R20k case $r20n: known limit: the backup line is dropped because the stored item counts as a copy" "JIRA_API_TOKEN" "$(cat "$r20f")"
     lacks "R20k case $r20n: the report prints no value" "dummy-r20k" "$out"
 done
 
