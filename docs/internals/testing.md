@@ -1,6 +1,7 @@
 # Testing — the non-guessable suite invocations
 
 <!-- HIMMEL-6575 gate proof, throwaway, do not merge -->
+<!-- HIMMEL-6575 gate proof head 2, throwaway, do not merge -->
 
 Load-on-need reference behind `docs/internals/claude-md-detail.md`. None
 of the invocations below are discoverable by guessing the "obvious" command —
