@@ -50,6 +50,8 @@ case "$budget" in ''|*[!0-9]*) die "--budget must be a number" ;; esac
 [ -z "$intent_file" ] || [ -r "$intent_file" ] || die "--intent-file '$intent_file' is not readable"
 [ -z "$pr_body" ] || [ -r "$pr_body" ] || die "--pr-body-file '$pr_body' is not readable"
 [ -z "$ticket" ] || [[ "$ticket" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]] || die "--ticket '$ticket' is not a ticket key"
+case "$intent_file" in ''|/*) ;; *) intent_file="$PWD/$intent_file" ;; esac
+case "$pr_body" in ''|/*) ;; *) pr_body="$PWD/$pr_body" ;; esac
 top="$(git rev-parse --show-toplevel)" || die "not inside a git repo"
 cd "$top" || die "cannot enter $top"
 bsha="$(git rev-parse --verify -q "$base^{commit}")" || die "bad revision: $base"

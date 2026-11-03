@@ -69,6 +69,13 @@ has "pack: the done-criteria text" "$out" "DONE-CRITERIA-MARKER-FILE"
 eq "pack: the changed file is a block of its own, not a caller" "$(printf '%s\n' "$out" | grep -c '^{"range": \["a.sh"')" "1"
 eq "pack: b.sh is cited as a caller" "$(printf '%s\n' "$out" | grep -c '^{"range": \["b.sh"')" "1"
 
+# a relative --intent-file / --pr-body-file is read from the caller's directory, not the repo root
+mkdir -p "$S/sub"; cp "$tmp/intent.md" "$S/sub/rel-intent.md"; printf '## Ticket coverage\n- REL-PR-BODY-MARKER: done\n' > "$S/sub/rel-body.md"
+out="$(cd "$S/sub" && bash "$PACK" "$SB" "$SH" --intent-file rel-intent.md 2>&1)"
+has "pack: a relative --intent-file read from a subdirectory" "$out" "DONE-CRITERIA-MARKER-FILE"
+out="$(cd "$S/sub" && PATH="$tmp/failbin:$PATH" bash "$PACK" "$SB" "$SH" --pr-body-file rel-body.md 2>&1)"
+has "pack: a relative --pr-body-file read from a subdirectory" "$out" "REL-PR-BODY-MARKER"
+
 # the pack is a context file the critic accepts
 pp="$(git -C "$S" diff "$SB" "$SH" | bash "$CFP" --model x/y --slug s --print-prompt --context-file <(cd "$S" && bash "$PACK" "$SB" "$SH" --intent-file "$tmp/intent.md") 2>&1)"
 has "critic: the pack lands in the prompt as context" "$pp" "<context>"
