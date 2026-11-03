@@ -7712,6 +7712,23 @@ c75_reset
 printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\n' > "$c75_t/env"
 out="$(C75_KEYRING=off c75_run)"
 if grepq "$out" -F 'INFO C75-keyring' && grepq "$out" -F 'INFO C75-secrets' && [ ! -s "$c75_t/log" ] && ! grepq "$out" -F 'planted'; then pass "C75 keyring off -> INFO rows, no secret-tool call"; else fail "C75 off -> $(printf '%s' "$out" | head -4)"; fi
+# The secret key set is the resolver's `names --class secret` (one owner), not a list derived here.
+# A copy of the doctor beside a logging wrapper over the real resolver shows what C75 asks it.
+echo "== C75: the secret key set comes from himmel-secrets names =="
+c75_x="$c75_t/scripts"
+mkdir -p "$c75_x/lib" "$c75_x/himmelctl/lib"
+cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c75_x/"
+cp -R "$REPO_ROOT/scripts/lib/." "$c75_x/lib/"
+cp "$REPO_ROOT/scripts/himmelctl/lib/secrets-manifest.json" "$c75_x/himmelctl/lib/"
+mv "$c75_x/lib/himmel-secrets" "$c75_x/lib/himmel-secrets.real"
+# shellcheck disable=SC2016 # the wrapper expands its own variables
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$C75_NAMES_LOG"\nexec bash "${BASH_SOURCE[0]}.real" "$@"\n' > "$c75_x/lib/himmel-secrets"
+chmod +x "$c75_x/lib/himmel-secrets"
+c75_reset
+printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\n' > "$c75_t/env"
+: > "$c75_t/names.log"
+out="$(C75_NAMES_LOG="$c75_t/names.log" C75_KEYRING=off env HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off C75_NAMES_LOG="$c75_t/names.log" bash "$c75_x/himmel-doctor.sh" --root "$REPO_ROOT" --no-color --only C75 2>&1)"
+if grepq "$out" -F 'INFO C75-secrets' && grepq "$out" -F 'TELEGRAM_BOT_TOKEN' && grep -qx 'names --class secret' "$c75_t/names.log"; then pass "C75 asks himmel-secrets names --class secret for its key set"; else fail "C75 names -> log '$(cat "$c75_t/names.log")', $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c75_t"
 
 # --- C76-duplicate-plugin-installs: one plugin installed more than 3 times ---

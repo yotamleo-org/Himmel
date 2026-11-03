@@ -3702,10 +3702,8 @@ check_c75_keyring() {
         emit WARN C75-keyring "$hs is missing or not executable" "restore it: git checkout -- scripts/lib/himmel-secrets"
         return 0
     fi
-    # shellcheck disable=SC2013 # a manifest name is one word
-    for key in $(sed -n 's/^ *"name": "\([A-Za-z_][A-Za-z0-9_]*\)".*/\1/p' "$SELF_DIR/himmelctl/lib/secrets-manifest.json"); do
-        [ "$(_himmel_key_class "$key")" = secret ] && names="$names $key"
-    done
+    # The secret key set has one owner: the resolver (manifest names in the secret class).
+    names=$("$hs" names --class secret 2>/dev/null | tr '\n' ' ')
     # shellcheck disable=SC2086 # one word per key name
     status_out="$("$hs" status --no-dotenv $names 2>/dev/null)"
     state="$(printf '%s\n' "$status_out" | sed -n 's/^keyring: //p')"
