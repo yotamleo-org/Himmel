@@ -1596,7 +1596,7 @@ _dyn_body() {
 # qmd_words decline and skips this reading entirely.
 dyn_check() {
     local LC_ALL=C t=$1 dp=$2 ar=${3:-0} n i=0 j c pd bq pp=1 w nx k s inner subs sp sa sb lastd tail nm r
-    local adang=' ' fdang=' ' vdyn=' ' wopt=0 wx=0 aln='' wo=0 al=0 vm=0 fn=0 bd
+    local adang=' ' fdang=' ' vdyn=' ' wopt=0 wx=0 aln='' wo=0 al=0 vm=0 fn=0 bd dk
     n=${#t}
     if [ "$dp" -gt 4 ]; then deny=1; return 0; fi
     while [ "$i" -lt "$n" ]; do
