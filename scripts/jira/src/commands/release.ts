@@ -9,7 +9,7 @@ import { authHeader, baseUrl, projectKey, request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { newestFixVersionEntry, type Getter } from '../release/version-writes.js';
-import { repairRun } from '../release/repair-run.js';
+import { repairRun, RequestRefused } from '../release/repair-run.js';
 import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
@@ -99,7 +99,7 @@ export function refuseRequest(ctx: Ctx, o: { verb: Verb; key: string; from_v: st
   const why = o.why.trim();
   const tail = why.slice(why.lastIndexOf(':') + 1).trim();
   if (why.length < 8 || tail.length < 3 || PLACEHOLDER.test(tail)) {
-    throw new Error(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
+    throw new RequestRefused(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
   }
   const { issues, sync } = readMirror(ctx.mirrorRoot);
   const snap = issues?.get(o.key);
@@ -108,10 +108,10 @@ export function refuseRequest(ctx: Ctx, o: { verb: Verb; key: string; from_v: st
   const held = snap.fixVersions.join(', ') || 'no version';
   const terminal = terminalOf(snap);
   if (o.verb === 'INTAKE' && terminal !== null && !isPr(o.evidence?.['pr']) && snap.fixVersions.every((v) => !versions.includes(v))) {
-    throw new Error(`release request: ${o.key} is closed (${terminal}) in ${held}, outside ${ctx.release} (${versions.join(', ')}); a closed ticket outside the release takes an INTAKE only as a Done-fold naming its merged PR (--evidence '{"pr":N}')`);
+    throw new RequestRefused(`release request: ${o.key} is closed (${terminal}) in ${held}, outside ${ctx.release} (${versions.join(', ')}); a closed ticket outside the release takes an INTAKE only as a Done-fold naming its merged PR (--evidence '{"pr":N}')`);
   }
   if (o.verb !== 'INTAKE' && o.from_v !== null && !snap.fixVersions.includes(o.from_v)) {
-    throw new Error(`release request: ${o.key} is in ${held}, not ${o.from_v} (mirror synced ${sync}); run \`jira mirror\` if the mirror is stale`);
+    throw new RequestRefused(`release request: ${o.key} is in ${held}, not ${o.from_v} (mirror synced ${sync}); run \`jira mirror\` if the mirror is stale`);
   }
 }
 

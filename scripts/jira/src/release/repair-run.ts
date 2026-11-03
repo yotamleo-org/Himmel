@@ -14,6 +14,9 @@ import { journalPath, newestFixVersionEntry, readVersionWrites, type Getter } fr
 // own status, cache, lock and marker files in the release directory. It never writes a Fix Version.
 
 export const CAP = 20;
+
+/** What the injected request check throws when it refuses a request; any other error from it is a failed read. */
+export class RequestRefused extends Error {}
 const PR_LIST_LIMIT = 50;
 const NO_PR_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -248,7 +251,8 @@ async function plan(ctx: Ctx, o: RepairRunOptions): Promise<{ done: RepairReport
       if (c.action.kind !== 'request') continue;
       try {
         o.refuse(ctx, { verb: c.action.verb, key: c.key, from_v: c.action.from, why: c.action.why, evidence: { rule: 'version-repair', entry: c.action.entry } });
-      } catch {
+      } catch (e) {
+        if (!(e instanceof RequestRefused)) throw e; // a read error is not a refusal: the run ends as an error
         refused.add(c.key);
       }
     }
@@ -348,7 +352,13 @@ const rm = (path: string): void => {
   } catch { /* already gone */ }
 };
 
-interface LiveIssue { fields?: { fixVersions?: Array<{ name?: unknown }>; status?: { statusCategory?: { key?: unknown } } } }
+interface LiveIssue {
+  fields?: {
+    fixVersions?: Array<{ name?: unknown }>;
+    status?: { name?: unknown; statusCategory?: { key?: unknown } };
+    resolution?: { name?: unknown } | null;
+  };
+}
 
 /** The live read just before an action: Jira still holds what the mirror says (and the same newest entry for a request). A failed read throws. */
 async function liveAgrees(o: RepairRunOptions, mirror: ReturnType<typeof readMirror>, key: string, entry: string | null): Promise<boolean> {
@@ -357,14 +367,21 @@ async function liveAgrees(o: RepairRunOptions, mirror: ReturnType<typeof readMir
   const notFound = (e: unknown): boolean => /^HTTP 404$/.test((e as Error).message);
   let issue: LiveIssue;
   try {
-    issue = await o.get<LiveIssue>(`/issue/${key}?fields=fixVersions,status`);
+    issue = await o.get<LiveIssue>(`/issue/${key}?fields=fixVersions,status,resolution`);
   } catch (e) {
     if (notFound(e)) return false;
     throw e;
   }
   const live = (issue.fields?.fixVersions ?? []).flatMap((v) => (typeof v.name === 'string' ? [v.name] : [])).sort();
   if (live.join('\n') !== [...snap.fixVersions].sort().join('\n')) return false;
-  if (entry === null) return issue.fields?.status?.statusCategory?.key === 'done';
+  const status = issue.fields?.status;
+  if (status?.name !== snap.status) return false;
+  if (entry === null) {
+    // Done-category also covers Won't Do and Duplicate: the fold needs the same terminal the classifier folded on.
+    const category = status?.statusCategory?.key === 'done' ? 'Done' : null;
+    const resolution = typeof issue.fields?.resolution?.name === 'string' ? issue.fields.resolution.name : null;
+    return terminalOf({ ...snap, statusCategory: category, resolution }) === 'Done';
+  }
   try {
     return (await newestFixVersionEntry(o.get, key)).id === entry;
   } catch (e) {

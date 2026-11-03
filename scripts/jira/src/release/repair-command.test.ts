@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { Command } from 'commander';
 import { declare, leaseAcquire, operatorDecision, request, rmRun, type Ctx, type Judge, type JiraPort } from './engine.js';
 import { appendChain, loadKey, readChain } from './ledger.js';
-import { passingPr, repairRun, type RepairReport, type RepairRunOptions } from './repair-run.js';
+import { passingPr, repairRun, RequestRefused, type RepairReport, type RepairRunOptions } from './repair-run.js';
 import { refuseRequest, registerRelease, repairGetter } from '../commands/release.js';
 import type { RequestRow, RulingRow } from './types.js';
 import type { Getter } from './version-writes.js';
@@ -422,7 +422,13 @@ function liveGetter(issues: Mi[], entries: Record<string, string>, log: string[]
     if (live) {
       const i = issues.find((x) => x.key === live[1]);
       if (!i) throw new Error('HTTP 404');
-      return { fields: { fixVersions: i.fixVersions.map((name) => ({ name })), status: { statusCategory: { key: i.category === 'Done' ? 'done' : 'new' } } } } as T;
+      return {
+        fields: {
+          fixVersions: i.fixVersions.map((name) => ({ name })),
+          status: { name: i.status ?? 'To Do', statusCategory: { key: i.category === 'Done' ? 'done' : 'new' } },
+          resolution: i.resolution ? { name: i.resolution } : null,
+        },
+      } as T;
     }
     throw new Error(`unexpected read ${path}`);
   };
@@ -740,6 +746,83 @@ describe('test-version-repair apply', () => {
     expect(readRows('requests.jsonl').map((x) => x.key)).toEqual(['K-30']);
   });
 
+  it('a fold is skipped when the mirror reads Done and live Jira reads Won\'t Do', async () => {
+    const issues = folding();
+    const r = await applyRun({ get: liveGetter([done('K-3', ['v1.1.3'], "Won't Do")], {}), gh: ghWith(GOOD_PR) });
+    expect(r.status).toBe('ok');
+    expect(readRows('events.jsonl')).toHaveLength(0);
+    // the same key folds when live Jira still reads Done
+    await applyRun({ get: liveGetter(issues, {}), gh: ghWith(GOOD_PR) });
+    expect(readRows('events.jsonl')).toHaveLength(1);
+  });
+
+  it('a request is skipped when live Jira reads another status than the mirror', async () => {
+    const issues = filing();
+    const r = await applyRun({ get: liveGetter([{ key: 'K-2', fixVersions: ['v1.1.4'], status: 'In Progress' }], { 'K-2': '200' }) });
+    expect(r.status).toBe('ok');
+    expect(readRows('requests.jsonl')).toHaveLength(0);
+    await applyRun({ get: liveGetter(issues, { 'K-2': '200' }) });
+    expect(readRows('requests.jsonl')).toHaveLength(1);
+  });
+
+  it('a held request whose entry moved is withdrawn, and the next run files a new one instead of reading it as asked', async () => {
+    setup();
+    const issues = [{ key: 'K-2', fixVersions: ['v1.1.4'] }];
+    mirror(issues);
+    writeJournal([
+      { key: 'K-2', mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: '200' },
+      { key: 'K-2', mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: '201' },
+    ]);
+    const filed = request(at('2026-11-02T10:00:00.000Z'), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1.1.4', why: 'create-residual put K-2 in v1.1.4', evidence: { rule: 'version-repair', entry: '200' }, from: 'repair' });
+    const key = loadKey(join(root, 'keys', 'R1.key'));
+    const { prev: _p, mac: _m, ...rest } = readChain<RequestRow>(join(releaseDir(), 'requests.jsonl'), key).verified[0]!;
+    appendChain<RequestRow>(join(releaseDir(), 'requests.jsonl'), key, { ...rest, ts: '2026-11-02T10:00:00.000Z', state: 'held', reason: 'no sector' });
+    const get = liveGetter(issues, { 'K-2': '201' });
+    await applyRun({ get }, at('2026-11-02T12:00:00.000Z'));
+    const mine = readRows('requests.jsonl').filter((q) => q.req === filed.req).at(-1)!;
+    expect(mine).toMatchObject({ state: 'withdrawn:repair', reason: 'held-entry-moved' });
+    await applyRun({ get }, at('2026-11-02T13:00:00.000Z'));
+    const latest = new Map(readRows('requests.jsonl').map((q) => [q.req, q]));
+    const open = [...latest.values()].filter((q) => q.state === 'open');
+    expect(open.map((q) => (q.evidence as { entry: string }).entry)).toEqual(['201']);
+    expect(heldJson().classes).toEqual([]);
+  });
+
+  it('files at most 20 requests in a run, the rest on the next', async () => {
+    setup();
+    const keys = Array.from({ length: 25 }, (_, i) => `K-${100 + i}`);
+    const issues = keys.map((k) => ({ key: k, fixVersions: ['v1.1.4'] }));
+    mirror(issues);
+    writeJournal(keys.map((k, i) => ({ key: k, mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: String(300 + i) })));
+    const get = liveGetter(issues, Object.fromEntries(keys.map((k, i) => [k, String(300 + i)])));
+    const first = await applyRun({ get });
+    expect(first.capped).toBe(true);
+    expect(readRows('requests.jsonl')).toHaveLength(20);
+    await applyRun({ get });
+    expect(readRows('requests.jsonl')).toHaveLength(25);
+  });
+
+  it('folds at most 20 keys in a run, the rest on the next', async () => {
+    setup();
+    const keys = Array.from({ length: 25 }, (_, i) => `K-${100 + i}`);
+    const issues = keys.map((k) => done(k, ['v1.1.3']));
+    mirror(issues);
+    writeFileSync(join(releaseDir(), 'repair-pr-cache.json'), JSON.stringify(Object.fromEntries(keys.map((k, i) => [k, { pr: 500 + i, at: '2026-11-02T09:00:00.000Z', repo: 'o/r' }]))));
+    const get = liveGetter(issues, {});
+    const first = await applyRun({ get });
+    expect(first.capped).toBe(true);
+    expect(readRows('events.jsonl')).toHaveLength(20);
+    await applyRun({ get });
+    expect(readRows('events.jsonl')).toHaveLength(25);
+  });
+
+  it('a read error inside the refuse check is an error, not a refusal', async () => {
+    const issues = filing();
+    const r = await applyRun({ get: liveGetter(issues, { 'K-2': '200' }), refuse: () => { throw new Error('mirror unreadable'); } });
+    expect(r.status).toBe('error');
+    expect(readRows('requests.jsonl')).toHaveLength(0);
+  });
+
   it('unbound edit appears in repair-held.json as unbound', async () => {
     setup();
     const issues = [{ key: 'K-1', fixVersions: ['v1.1.4'] }];
@@ -753,7 +836,7 @@ describe('test-version-repair apply', () => {
 
   it('refused filing falls through to held', async () => {
     const issues = filing();
-    const r = await applyRun({ get: liveGetter(issues, { 'K-2': '200' }), refuse: () => { throw new Error('refused'); } });
+    const r = await applyRun({ get: liveGetter(issues, { 'K-2': '200' }), refuse: () => { throw new RequestRefused('refused'); } });
     expect(r.status).toBe('ok');
     expect(readRows('requests.jsonl')).toHaveLength(0);
     expect(heldJson().classes).toMatchObject([{ class: 'unbound', keys: ['K-2'] }]);

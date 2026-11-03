@@ -61,6 +61,10 @@ const neverLanded = (r: RequestRow): boolean => isRepair(r) && r.state === 'with
 // dedupes nor counts as a newer request: the refile names the entry (S4 carry-forward).
 const entryLess = (r: RequestRow): boolean =>
   isRepair(r) && entryOf(r) === null && r.state === 'withdrawn:repair' && r.reason === 'entry-moved';
+// A repair request withdrawn because its entry moved asks nothing of the entry that replaced it: the key reclassifies. The same
+// reason on the entry Jira still holds is not a move, so it stays asked.
+const movedOn = (r: RequestRow, entryId: string | undefined): boolean =>
+  isRepair(r) && r.state === 'withdrawn:repair' && (r.reason === 'entry-moved' || r.reason === 'held-entry-moved') && entryOf(r) !== entryId;
 
 const keyOf = (line: string): { key: string; version: string } => {
   const at = line.lastIndexOf('@');
@@ -180,7 +184,7 @@ const askedLane: LaneFn = ({ ctx }) => {
   const entryId = ctx.entry?.id ?? ctx.row?.entry;
   const nlCount = entryId === undefined ? 0 : ctx.reqs.filter((r) => neverLanded(r) && entryOf(r) === entryId).length;
   const asked = ctx.reqs.some((r) => {
-    if (answered(ctx, r) || entryLess(r)) return false;
+    if (answered(ctx, r) || entryLess(r) || movedOn(r, entryId)) return false;
     if (entryId !== undefined && entryOf(r) === entryId) return !neverLanded(r) || nlCount > REFILE_CAP;
     return !neverLanded(r) && ctx.row !== undefined && newer(r.ts, ctx.row.ts);
   });
