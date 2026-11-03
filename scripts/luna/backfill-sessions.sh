@@ -712,14 +712,29 @@ _find_transcript() { # <session_id>
     return 1
 }
 
-# Can crystallize-note.sh launch?  It needs the API lane on (it refuses without it) and
-# a launcher: the test override or a `claude` binary.
+# Can crystallize-note.sh launch?  It follows the crystallizer's backend rule
+# (CRYSTALLIZE_BACKEND, default claude-cli): the subscription default needs a launcher
+# (the test override or a `claude` binary) and a passing bank preflight; an explicit
+# claude-api also needs the API lane on with an account, as crystallize-note.sh does.
 _claude_available() {
-    [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
-    case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) return 1 ;; esac
-    [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] && return 0
-    command -v claude >/dev/null 2>&1 && return 0
-    return 1
+    local backend pf
+    [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] || command -v claude >/dev/null 2>&1 || return 1
+    # shellcheck source=../lib/llm-backend.sh
+    . "$SCRIPT_DIR/../lib/llm-backend.sh" 2>/dev/null || return 1
+    backend="$(llm_backend_resolve "${CRYSTALLIZE_BACKEND:-claude-cli}")" || return 1
+    case "$backend" in
+        claude-api)
+            [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
+            case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) return 1 ;; esac
+            ;;
+        claude-cli)
+            if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then pf="$("$CRYSTALLIZE_PREFLIGHT_CMD" 2>/dev/null | tail -n 1)"
+            else pf="$(bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | tail -n 1)"; fi
+            case "$pf" in PROCEED*) ;; *) return 1 ;; esac
+            ;;
+        *) return 1 ;;
+    esac
+    return 0
 }
 
 # Mechanical re-render fallback (no claude): overwrite the husk note in place

@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# billed-exempt: API-lane launcher call; refuses unless HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT is A|B|auto, and the API-credit ledger meters it
+# billed-exempt: subscription claude -p behind a usage-preflight PROCEED with every API-key variable removed; the API lane is an explicit CRYSTALLIZE_BACKEND=claude-api opt-in that refuses unless HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT is A|B|auto, and the API-credit ledger meters it
 # crystallize-note.sh — upgrade a mechanical session note into an LLM synthesis.
 # Reads the session transcript + the just-written note and asks a
 # bounded `claude` run to rewrite the four body sections (Summary / Decisions /
 # Files Touched / Follow-ups), preserving frontmatter identity and setting
-# `crystallized: true`. Billed to the API, never the subscription: the one launch
-# path is scripts/api-lane/claude-api.sh (one print-mode call, tools limited to
-# Read,Edit, a per-call budget). It needs HIMMEL_API_LANE=on and
-# HIMMEL_API_ACCOUNT=A|B|auto in the launching shell and fails closed (exit 2)
-# without them: there is no claude-cli fallback.
+# `crystallized: true`.
+#
+# Backend: CRYSTALLIZE_BACKEND, default claude-cli (alias cli), resolved by
+# scripts/lib/llm-backend.sh; an unknown value, and ollama, fail closed (exit 2).
+#   claude-cli  the DEFAULT. One print-mode `claude -p` on the subscription, behind
+#               scripts/lib/usage-preflight.sh: anything but PROCEED is a quiet
+#               skip (exit 0, note untouched; the reheal sweep recovers it). Every
+#               API-key variable is removed from the run, so it can only bill the
+#               subscription. Tools Read,Edit only, --permission-mode acceptEdits.
+#   claude-api  explicit opt-in (CRYSTALLIZE_BACKEND=claude-api). The launch path is
+#               scripts/api-lane/claude-api.sh (one print-mode call, tools limited
+#               to Read,Edit, a per-call budget). It needs HIMMEL_API_LANE=on and
+#               HIMMEL_API_ACCOUNT=A|B|auto in the launching shell and fails closed
+#               (exit 2) without them: there is no claude-cli fallback.
 #
 # Usage: crystallize-note.sh <note_path> <transcript_path>
 #
@@ -16,14 +25,16 @@
 # else DEFAULT_MODEL below, which that config value must equal.
 # CRYSTALLIZE_MAX_BUDGET_USD bounds each call.
 #
-# Best-effort once launched: any unavailability after the lane gate (over the
-# concurrency cap, note not yet on disk, a lane refusal such as no credit) ->
-# exit 0, leaving the mechanical note (`crystallized: false`). The reheal sweep
-# (`backfill-sessions.sh --reheal`) recovers anything a backgrounded run missed.
+# Best-effort once launched: any unavailability after the backend gate (over the
+# concurrency cap, note not yet on disk, a failed preflight, no claude binary, a
+# lane refusal such as no credit) -> exit 0, leaving the mechanical note
+# (`crystallized: false`). The reheal sweep (`backfill-sessions.sh --reheal`)
+# recovers anything a backgrounded run missed.
 #
-# Test seam: CRYSTALLIZE_CLAUDE_BIN overrides the lane launcher with a stub so
-# the suite stays hermetic. CRYSTALLIZE_PID_DIR / CRYSTALLIZE_MAX_CONCURRENCY
-# tune the concurrency cap. bash 3.2-safe.
+# Test seams: CRYSTALLIZE_CLAUDE_BIN overrides the launcher (the claude binary, or
+# the API-lane launcher) with a stub and CRYSTALLIZE_PREFLIGHT_CMD overrides the
+# preflight, so the suite stays hermetic. CRYSTALLIZE_PID_DIR /
+# CRYSTALLIZE_MAX_CONCURRENCY tune the concurrency cap. bash 3.2-safe.
 set -uo pipefail
 
 NOTE_PATH="${1:-}"
@@ -47,13 +58,31 @@ HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 DEFAULT_MODEL="claude-opus-4-8"
 DEFAULT_BUDGET_USD="1.00"
 
-# API lane only: a refusal leaves the mechanical note untouched and never falls
-# back to the subscription. The test override replaces the launcher, not the gate.
-{ [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } \
-    || { echo "crystallize-note: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- note untouched, no claude-cli fallback" >&2; exit 2; }
-LAUNCHER="${CRYSTALLIZE_CLAUDE_BIN:-$HIMMEL_ROOT/scripts/api-lane/claude-api.sh}"
-[ -r "$LAUNCHER" ] \
-    || { echo "crystallize-note: refusing claude-api: $LAUNCHER is missing -- note untouched" >&2; exit 2; }
+# Backend gate. The one resolver (unknown value -> exit 2, nothing runs).
+# shellcheck source=../lib/llm-backend.sh
+{ [ -r "$HIMMEL_ROOT/scripts/lib/llm-backend.sh" ] && . "$HIMMEL_ROOT/scripts/lib/llm-backend.sh"; } 2>/dev/null \
+    || { echo "crystallize-note: refusing: scripts/lib/llm-backend.sh is missing -- note untouched" >&2; exit 2; }
+BACKEND="$(llm_backend_resolve "${CRYSTALLIZE_BACKEND:-claude-cli}")" \
+    || { echo "crystallize-note: refusing: CRYSTALLIZE_BACKEND='${CRYSTALLIZE_BACKEND:-}' is not accepted (claude-cli or claude-api) -- note untouched" >&2; exit 2; }
+case "$BACKEND" in
+    claude-api)
+        # Explicit opt-in. A refusal leaves the mechanical note untouched and never falls
+        # back to the subscription. The test override replaces the launcher, not the gate.
+        { [ "${HIMMEL_API_LANE:-}" = "on" ] && case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) true ;; *) false ;; esac; } \
+            || { echo "crystallize-note: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- note untouched, no claude-cli fallback" >&2; exit 2; }
+        LAUNCHER="${CRYSTALLIZE_CLAUDE_BIN:-$HIMMEL_ROOT/scripts/api-lane/claude-api.sh}"
+        [ -r "$LAUNCHER" ] \
+            || { echo "crystallize-note: refusing claude-api: $LAUNCHER is missing -- note untouched" >&2; exit 2; }
+        ;;
+    claude-cli)
+        # The preflight runs just before the launch (below), so a skipped note costs nothing.
+        LAUNCHER="${CRYSTALLIZE_CLAUDE_BIN:-$(command -v claude 2>/dev/null)}"
+        ;;
+    *)
+        echo "crystallize-note: refusing: backend '$BACKEND' is not supported here (claude-cli or claude-api) -- note untouched" >&2
+        exit 2
+        ;;
+esac
 
 # Concurrency cap — never pile up N full claude processes for N simultaneous
 # session-ends. Best-effort pidfile counting; stale entries are pruned.
@@ -231,7 +260,43 @@ launch_api_lane() {
         bash "$LAUNCHER" -p "$PROMPT" --model "$MODEL" \
         --permission-mode acceptEdits --max-budget-usd "$BUDGET_USD" </dev/null >/dev/null
 }
-( launch_api_lane ) || true
+# The subscription launch. Bank preflight first: anything but PROCEED is a quiet
+# skip, not a failure. The key variables are removed so `claude -p` cannot bill an
+# exported API key outside the API lane's accounting. Tools are Read,Edit only (no
+# Bash), the permission mode is explicit, stdout is the JSON result (the hash
+# comparison below decides the flag, never the exit code). Subshell function.
+launch_subscription() {
+    cd "$NOTE_DIR" 2>/dev/null || exit 0
+    local out
+    out="$(mktemp "${TMPDIR:-/tmp}/crystallize-cli.XXXXXX" 2>/dev/null)" || out=/dev/null
+    CRYSTALLIZE_NOTE="$NOTE_PATH" CRYSTALLIZE_TRANSCRIPT="$TRANSCRIPT_PATH" \
+        env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+        "$LAUNCHER" -p "$PROMPT" --model "$MODEL" --output-format json \
+        --permission-mode acceptEdits --tools Read,Edit --allowedTools Read,Edit \
+        --max-budget-usd "$BUDGET_USD" </dev/null >"$out" 2>/dev/null
+    if grep -q '"is_error":[[:space:]]*true' "$out" 2>/dev/null; then
+        echo "crystallize-note: claude reported an error result -- the note is left to the reheal sweep" >&2
+    fi
+    [ "$out" = /dev/null ] || rm -f "$out" 2>/dev/null || true
+}
+if [ "$BACKEND" = "claude-cli" ]; then
+    if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then
+        PREFLIGHT="$("$CRYSTALLIZE_PREFLIGHT_CMD" 2>/dev/null | tail -n 1)"
+    else
+        PREFLIGHT="$(bash "$HIMMEL_ROOT/scripts/lib/usage-preflight.sh" 2>/dev/null | tail -n 1)"
+    fi
+    case "$PREFLIGHT" in
+        PROCEED*) ;;
+        *) echo "crystallize-note: skipped, bank-preflight said: ${PREFLIGHT:-<nothing>} -- note untouched" >&2; exit 0 ;;
+    esac
+    if [ -z "$LAUNCHER" ] || { [ ! -x "$LAUNCHER" ] && ! command -v "$LAUNCHER" >/dev/null 2>&1; }; then
+        echo "crystallize-note: skipped, claude not found -- note untouched" >&2
+        exit 0
+    fi
+    ( launch_subscription ) || true
+else
+    ( launch_api_lane ) || true
+fi
 
 # Edit-confirmed flag-set (T1d): only stamp crystallized:true when the note body
 # actually changed. A failed/no-op run leaves the note byte-unchanged and the

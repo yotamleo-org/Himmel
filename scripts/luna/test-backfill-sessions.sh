@@ -77,6 +77,14 @@ assert_not_contains() {
 
 TMP_ROOT="$(mktemp -d)"
 
+# The crystallizer's default backend is the subscription, behind a bank preflight;
+# keep the suite hermetic with a PROCEED stub (case 12c swaps in a SKIP stub).
+PF_PROCEED="$TMP_ROOT/pf-proceed.sh"; PF_SKIP="$TMP_ROOT/pf-skip.sh"
+printf '#!/usr/bin/env bash\necho PROCEED\n' > "$PF_PROCEED"
+printf '#!/usr/bin/env bash\necho "SKIP: five_hour at 97"\n' > "$PF_SKIP"
+chmod +x "$PF_PROCEED" "$PF_SKIP"
+export CRYSTALLIZE_PREFLIGHT_CMD="$PF_PROCEED"
+
 # ---------------------------------------------------------------------------
 # Shared: build a fake projects dir with fixture transcripts.
 # We create a "normal-repo" project and a "disabled-repo" project.
@@ -923,8 +931,43 @@ reheal_lane_off() { # <label> <env-assignments...>
         fail "reheal($label): note was crystallized without a usable API lane"
     fi
 }
-reheal_lane_off "lane-off" -u HIMMEL_API_LANE
-reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid
+reheal_lane_off "lane-off" -u HIMMEL_API_LANE CRYSTALLIZE_BACKEND=claude-api
+reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid CRYSTALLIZE_BACKEND=claude-api
+
+# ============================================================================
+# Case 12c: the default backend is the subscription — a launcher and a passing
+#           preflight are enough (the API lane env is not needed); a preflight
+#           that is not PROCEED falls back to the mechanical re-render
+# ============================================================================
+echo ""
+echo "Case 12c: reheal on the subscription default (API lane off)"
+
+reheal_subscription() { # <label> <expect: crystallized|mechanical> <env-assignments...>
+    local label="$1" expect="$2"; shift 2
+    local sb="$TMP_ROOT/case12c-$label" vault proj note out
+    vault="$sb/vault"; proj="$sb/projects"
+    note="$vault/sessions/2026/06/2026-06-20-0000-testrepo.md"
+    mkdir -p "$vault" "$proj"
+    write_husk_note "$note" "reheal-sess-$label"
+    seed_named_transcript "$proj" "reheal-sess-$label" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+    out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND "$@" \
+        CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
+        CRYSTALLIZE_PID_DIR="$sb/pids" \
+        bash "$BACKFILL" --reheal \
+        --projects-dir "$proj" \
+        --luna-vault-path "$vault" \
+        --state-file "$sb/state.json" \
+        --vault-registry /dev/null \
+        2>&1)
+    assert_contains "reheal($label): healed count reported" "healed=1" "$out"
+    if [ "$expect" = "crystallized" ]; then
+        if grep -q '^crystallized: true$' "$note"; then pass "reheal($label): crystallized on the subscription default"; else fail "reheal($label): not crystallized (the API-lane gate still blocks the default)"; fi
+    else
+        if grep -q '^crystallized: false$' "$note"; then pass "reheal($label): mechanical render, stays crystallized: false"; else fail "reheal($label): crystallized without a passing preflight"; fi
+    fi
+}
+reheal_subscription "sub-default" crystallized
+reheal_subscription "sub-skip" mechanical CRYSTALLIZE_PREFLIGHT_CMD="$PF_SKIP"
 
 # ============================================================================
 # Case 13: reheal mechanical on a tool-only transcript (no prose turn) is a
