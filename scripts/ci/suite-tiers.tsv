@@ -940,6 +940,7 @@ scripts/lib/test-wire-himmel-repo.sh	pr	trust-path
 scripts/lib/test-wire-luna-vault.sh	pr	trust-path
 scripts/lib/test-wire-pretooluse-hooks.sh	pr	trust-path
 scripts/lib/test-wire-statusline.sh	pr	trust-path
+scripts/lib/test-worker-successor.sh	pr	trust-path
 scripts/lib/test-worktree-inuse.sh	pr	trust-path
 scripts/lint/test-check-history-comments.sh	pr	static-gate
 scripts/lint/test-check-mcp-sdk-v1.sh	pr	static-gate

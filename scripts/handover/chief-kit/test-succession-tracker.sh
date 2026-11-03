@@ -248,5 +248,46 @@ eq "with HIMMEL_LEGACY_NAMES=0 an old legs manifest cannot be cross-checked (rc 
 has "and says the manifest is unreadable" "$out" "unreadable"
 : "$before"
 
+# A replaced worker is not a silent inherited worker, even if its old row remains.
+QL="$HERE/../queue-lock.sh"
+export HANDOVER_DIR="$WORK/handover-root"; mkdir -p "$HANDOVER_DIR"
+OLD="$WORK/HIMMEL-9-N80-demo-2026-01-01.md"
+NEXT="$WORK/HIMMEL-9-N80b-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$NEXT" > "$OLD"
+printf '# successor\n\n## Results\n\n- 10:01 LIVE - working\n' > "$NEXT"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N1:Y-N1-aa:lockA:11` `N80:Y-N80-bb:lockB:12`\n' > "$CDOC"
+printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{"doc":"%s","label":"N80","lane":"claudex"}]}\n' "$WORK" "$OLD" > "$MAN"
+out="$(run)"; rc=$?
+eq "a replaced predecessor does not keep succession incomplete" "$rc" 0
+has "the tally counts only the active inherited worker" "$out" "COMPLETE 1/1"
+lacks "a replaced predecessor is never waiting on a quote-back" "$out" "N80 missing"
+
+# A hand-off bullet on a doc whose lock is still held is a live session, never a replaced one:
+# the tally must stay loud about it.
+acq_out="$(bash "$QL" acquire "$OLD" "tracker-test-holder" 2>&1)"
+# shellcheck disable=SC2016  # literal token delimiters
+token="$(printf '%s' "$acq_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
+eq "setup: the hand-off doc lock is acquired" "$([ -n "$token" ] && echo yes)" "yes"
+eq "setup: the hand-off doc lock is held" "$(bash "$QL" status "$OLD" >/dev/null 2>&1 && echo free || echo held)" "held"
+out="$(run)"; rc=$?
+eq "a hand-off doc with its lock held keeps succession incomplete" "$rc" 1
+has "and the held worker is reported as waiting, not replaced" "$out" "N80 missing"
+lacks "and it is never called replaced" "$out" "N80 replaced"
+[ -z "$token" ] || bash "$QL" release "$OLD" "$token" >/dev/null 2>&1
+
+# An equal-label resume doc names the same live session as its predecessor, so the predecessor is
+# not replaced even with its own lock free: the quote-back is still owed.
+EQD="$WORK/HIMMEL-9-N82-demo-2026-01-01.md"
+EQR="$WORK/HIMMEL-9-N82-demo-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results\n\n- 10:00 BLOCKED - context hand-off to %s\n' "$EQR" > "$EQD"
+printf '# successor\n\n## Results\n\n- 10:01 LIVE - working\n' > "$EQR"
+# shellcheck disable=SC2016
+printf '# chief\n\n## Live state\nworkers: `N1:Y-N1-aa:lockA:11` `N82:Y-N82-cc:lockC:13`\n' > "$CDOC"
+printf '{"schema":1,"workers":[{"doc":"%s/N1.md","label":"N1","lane":"native"},{"doc":"%s","label":"N82","lane":"claudex"}]}\n' "$WORK" "$EQD" > "$MAN"
+out="$(run)"; rc=$?
+eq "an equal-label resume keeps succession incomplete" "$rc" 1
+has "and the shared-name worker is reported as waiting" "$out" "N82 missing"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

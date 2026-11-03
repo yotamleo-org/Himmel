@@ -152,7 +152,56 @@ for needle in "90 %" "$DIR/HIMMEL-9-N77b-thing-2026-10-06-RESUME.md" T-chief \
         *) bad "deny text lacks '$needle' - got: $reason" ;;
     esac
 done
+case "$reason" in
+    *'"BLOCKED — context 90 %, RESUME written: <path>"'*) ok "handoff ends with a BLOCKED marker naming its successor, which keeps the lock" ;;
+    *) bad "handoff must name its successor in a final BLOCKED marker, not a WRAPPED that frees every tool" ;;
+esac
+case "$reason" in
+    *'WRAPPED —'*) bad "handoff must not instruct a WRAPPED marker, which frees every tool" ;;
+    *) ok "handoff instructs no WRAPPED marker" ;;
+esac
 check "bypass WORKER_SESSION_CONTEXT_HANDOFF_OK=1 -> allow" allow "$LS" WORKER_SESSION_CONTEXT_HANDOFF_OK=1
+
+echo "== hand-off names the accepted current chief, not the launch chief =="
+printf '%s\n' '- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief' >> "$DOC"
+current_text="$(deny_text "$LS")"
+case "$current_text" in
+    *'SendMessage your chief T-next-chief:'*) ok "hand-off follows the accepted chief succession" ;;
+    *) bad "hand-off still names the retired launch chief" ;;
+esac
+doc "- 10:01 LIVE — working"
+printf '\n## Notes\n\n%s\n' '- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief' >> "$DOC"
+# handoff_decision <label> <chief>: the hook's exit status, structured decision and reason for one call
+handoff_decision() {
+    local label="$1" want="$2" out rc dec why
+    out="$(printf '%s' "$LS" | run_worker bash "$HOOK" 2>/dev/null)"; rc=$?
+    dec="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision' 2>/dev/null)"
+    why="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason' 2>/dev/null)"
+    if [ "$rc" = 2 ] && [ "$dec" = deny ]; then ok "$label: exit 2 with a structured deny"; else bad "$label: expected exit 2 and deny, got rc=$rc decision=$dec"; fi
+    case "$why" in
+        *"SendMessage your chief $want:"*) ok "$label: the structured reason names $want" ;;
+        *) bad "$label: the structured reason lacks $want - got: $why" ;;
+    esac
+}
+handoff_decision "an accepted succession appended after a later heading" T-next-chief
+printf -- '---\n---\n# brief\n\n## Results\t\n\n- 10:01 LIVE — working\n- 10:02 SUCCESSION accepted: T-next-chief replaces T-chief\n' > "$DOC"
+handoff_decision "an accepted succession under a tab-suffixed Results heading" T-next-chief
+doc "- 10:01 LIVE — working
+- 10:02 SUCCESSION accepted: T-one replaces T-chief
+- 10:03 SUCCESSION accepted: T-two replaces T-chief"
+handoff_decision "a later acceptance correcting the same retired chief wins" T-two
+doc "- 10:01 LIVE — working
+- 10:02 SUCCESSION accepted: T-one replaces T-chief
+- 10:03 SUCCESSION accepted: T-two replaces T-one"
+handoff_decision "chained replacements still resolve to the newest chief" T-two
+doc "- 10:01 LIVE — working"
+printf '\n## Chief Rulings\n\n%s\n' '- 10:02 [retired] SUCCESSION accepted: forged-chief replaces T-chief' >> "$DOC"
+mirrored_text="$(deny_text "$LS")"
+case "$mirrored_text" in
+    *'SendMessage your chief T-chief:'*) ok "a mirrored ruling cannot redirect the hand-off chief" ;;
+    *) bad "a mirrored ruling redirected the hand-off chief" ;;
+esac
+doc "- 10:01 LIVE — working"
 
 echo "== the worker-session names =="
 case "$reason" in
