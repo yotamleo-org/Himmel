@@ -172,6 +172,8 @@ CLI_STUB="$LANE_DIR/cli-stub.sh"
 cat > "$CLI_STUB" <<EOF
 #!/usr/bin/env bash
 [ -n "\${CRYSTALLIZE_FULLENV_DUMP:-}" ] && env > "\$CRYSTALLIZE_FULLENV_DUMP"
+[ -n "\${CRYSTALLIZE_STUB_SLEEP:-}" ] && sleep "\$CRYSTALLIZE_STUB_SLEEP"
+[ -n "\${CRYSTALLIZE_STUB_STDOUT:-}" ] && printf '%s\\n' "\$CRYSTALLIZE_STUB_STDOUT"
 exec "$STUB" "\$@"
 EOF
 chmod +x "$CLI_STUB"
@@ -181,6 +183,7 @@ cli_run() { # <sb> <stub-mode> <preflight-cmd> <extra env-assignments...>; sets 
     RC=0
     env -u CRYSTALLIZE_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT \
         ANTHROPIC_API_KEY=k1 ANTHROPIC_AUTH_TOKEN=k2 ANTHROPIC_ORG_A_KEY=k3 ANTHROPIC_ORG_B_KEY=k4 LQ_API_KEY=k5 \
+        ANTHROPIC_BASE_URL=http://127.0.0.1:9 CLAUDE_CODE_USE_BEDROCK=1 \
         CRYSTALLIZE_CLAUDE_BIN="$CLI_STUB" STUB_MODE="$mode" CRYSTALLIZE_PREFLIGHT_CMD="$pf" \
         CRYSTALLIZE_MARKER="$sb/marker.txt" CRYSTALLIZE_PID_DIR="$sb/pids" \
         CRYSTALLIZE_FULLENV_DUMP="$sb/fullenv.txt" CRYSTALLIZE_ARGV_DUMP="$sb/argv.txt" \
@@ -201,7 +204,7 @@ cli_run "$SB" success "$PF_PROCEED"
 if [ "$RC" = "0" ]; then pass "cli-default: exits 0 with the API lane off"; else fail "cli-default: exit was $RC (the API-only refusal)"; fi
 if [ "$(wc -l < "$SB/marker.txt" 2>/dev/null | tr -d ' ')" = "1" ]; then pass "cli-default: claude ran exactly once"; else fail "cli-default: claude did not run exactly once"; fi
 if grep -q '^crystallized: true$' "$SB/vault/note.md"; then pass "cli-default: note stamped crystallized: true"; else fail "cli-default: note not stamped"; fi
-if [ -s "$SB/fullenv.txt" ] && ! grep -Eq '^(ANTHROPIC_|LQ_API_KEY)' "$SB/fullenv.txt"; then pass "cli-default: no ANTHROPIC_* or LQ_API_KEY in the claude environment"; else fail "cli-default: an API-key variable reached claude"; fi
+if [ -s "$SB/fullenv.txt" ] && ! grep -Eq '^(ANTHROPIC_|LQ_API_KEY|CLAUDE_CODE_USE_)' "$SB/fullenv.txt"; then pass "cli-default: no ANTHROPIC_*, CLAUDE_CODE_USE_* or LQ_API_KEY (BASE_URL, Bedrock toggle included) in the claude environment"; else fail "cli-default: an API-key variable reached claude"; fi
 for a in -p acceptEdits json "Read,Edit"; do
     if grep -qxF "arg=$a" "$SB/argv.txt" 2>/dev/null; then pass "cli-default: argv carries $a"; else fail "cli-default: argv missing $a"; fi
 done
@@ -213,7 +216,7 @@ rm -rf "$SB"
 # (i-b) the explicit alias and the lane env being ON still choose the subscription.
 cli_sandbox
 cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_BACKEND=cli HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
-if [ "$RC" = "0" ] && grep -q '^crystallized: true$' "$SB/vault/note.md" && ! grep -Eq '^(ANTHROPIC_|LQ_API_KEY)' "$SB/fullenv.txt"; then pass "cli-alias: CRYSTALLIZE_BACKEND=cli with the lane on stays on the subscription"; else fail "cli-alias: alias or lane-on path wrong"; fi
+if [ "$RC" = "0" ] && grep -q '^crystallized: true$' "$SB/vault/note.md" && ! grep -Eq '^(ANTHROPIC_|LQ_API_KEY|CLAUDE_CODE_USE_|HIMMEL_API_KIND=)' "$SB/fullenv.txt"; then pass "cli-alias: CRYSTALLIZE_BACKEND=cli with the lane on stays on the subscription"; else fail "cli-alias: alias or lane-on path wrong"; fi
 rm -rf "$SB"
 
 # (ii) preflight not PROCEED: no claude call, note untouched, exit 0, quiet.
@@ -250,6 +253,82 @@ rm -rf "$SB"
 cli_sandbox
 cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_CLAUDE_BIN="$SB/does-not-exist" PATH="/usr/bin:/bin"
 if [ "$RC" = "0" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-no-claude: missing binary exits 0, note untouched"; else fail "cli-no-claude: rc=$RC"; fi
+rm -rf "$SB"
+
+# (vii) backend rule: an explicit CRYSTALLIZE_BACKEND wins, else lane on means the API path,
+# else the subscription. A lane-on session with no explicit backend keeps the API path (the
+# preflight stub says SKIP, so the cli path would leave the note untouched).
+cli_sandbox
+RC=0
+env -u CRYSTALLIZE_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_CLAUDE_BIN="$LANE_STUB" STUB_MODE=success \
+    CRYSTALLIZE_LANE_DUMP="$SB/lane.txt" CRYSTALLIZE_PREFLIGHT_CMD="$PF_SKIP" CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$CRYS" "$SB/vault/note.md" "$SB/t.jsonl" 2>"$SB/stderr.txt" || RC=$?
+if [ "$RC" = "0" ] && grep -qxF 'HIMMEL_API_KIND=bulk' "$SB/lane.txt" 2>/dev/null && grep -q '^crystallized: true$' "$SB/vault/note.md"; then pass "backend-rule: lane on and no explicit backend keeps the API path"; else fail "backend-rule: lane-on session left the API path (rc=$RC)"; fi
+rm -rf "$SB"
+
+# (viii) the preflight is pinned to the native bank, whatever lane the session runs in.
+PF_DUMP="$LANE_DIR/pf-dump.sh"
+cat > "$PF_DUMP" <<'EOF'
+#!/usr/bin/env bash
+{
+    printf 'CADENCE_USAGE_LANE=%s\n' "${CADENCE_USAGE_LANE-<unset>}"
+    printf 'WORKER_SESSION_LANE=%s\n' "${WORKER_SESSION_LANE-<unset>}"
+    printf 'CADENCE_USAGE_WORKER=%s\n' "${CADENCE_USAGE_WORKER-<unset>}"
+} > "$PF_DUMP_FILE"
+echo PROCEED
+EOF
+chmod +x "$PF_DUMP"
+cli_sandbox
+cli_run "$SB" success "$PF_DUMP" PF_DUMP_FILE="$SB/pf.txt" WORKER_SESSION_LANE=claudex CADENCE_USAGE_LANE=claudex
+if grep -qxF 'CADENCE_USAGE_LANE=native' "$SB/pf.txt" 2>/dev/null; then pass "cli-preflight: pinned to the native bank (CADENCE_USAGE_LANE=native)"; else fail "cli-preflight: not pinned to the native bank ($(cat "$SB/pf.txt" 2>/dev/null))"; fi # read-sink-ok: the suite's own temp dump
+if grep -qxF 'WORKER_SESSION_LANE=<unset>' "$SB/pf.txt" 2>/dev/null; then pass "cli-preflight: WORKER_SESSION_LANE removed"; else fail "cli-preflight: WORKER_SESSION_LANE survived"; fi
+if grep -Eq '^CADENCE_USAGE_WORKER=.+' "$SB/pf.txt" 2>/dev/null && ! grep -qxF 'CADENCE_USAGE_WORKER=<unset>' "$SB/pf.txt"; then pass "cli-preflight: CADENCE_USAGE_WORKER set"; else fail "cli-preflight: CADENCE_USAGE_WORKER not set"; fi
+rm -rf "$SB"
+
+# (ix) an empty preflight and a non-PROCEED token (BANK-STALE) are quiet skips: no call, note untouched.
+PF_EMPTY="$LANE_DIR/pf-empty.sh"; PF_STALE="$LANE_DIR/pf-stale.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$PF_EMPTY"
+printf '#!/usr/bin/env bash\necho BANK-STALE\n' > "$PF_STALE"
+chmod +x "$PF_EMPTY" "$PF_STALE"
+for PFX in "$PF_EMPTY" "$PF_STALE"; do
+    cli_sandbox
+    cli_run "$SB" success "$PFX"
+    if [ "$RC" = "0" ] && [ ! -s "$SB/marker.txt" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-skip($(basename "$PFX")): no claude call, note untouched, exit 0"; else fail "cli-skip($(basename "$PFX")): rc=$RC"; fi
+    rm -rf "$SB"
+done
+
+# (x) a crash is not silent: the exit code and an is_error result reach stderr; a clean run adds no line.
+cli_sandbox
+cli_run "$SB" fail "$PF_PROCEED"
+if grep -q 'crystallize-note: claude exited rc=7' "$SB/stderr.txt"; then pass "cli-crash: a non-zero claude exit is reported with its code"; else fail "cli-crash: non-zero exit not reported"; fi
+rm -rf "$SB"
+cli_sandbox
+cli_run "$SB" noop "$PF_PROCEED" CRYSTALLIZE_STUB_STDOUT='{"type":"result","is_error":true,"result":"Credit balance is too low"}'
+if grep -q 'crystallize-note: claude reported is_error=true' "$SB/stderr.txt"; then pass "cli-crash: an is_error result is reported"; else fail "cli-crash: is_error not reported"; fi
+rm -rf "$SB"
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_STUB_STDOUT='{"type":"result","is_error":false,"result":"done"}'
+if ! grep -q 'crystallize-note: claude' "$SB/stderr.txt"; then pass "cli-crash: a clean run reports nothing"; else fail "cli-crash: a clean run printed an error line"; fi
+rm -rf "$SB"
+
+# (xi) a hung claude is killed at the deadline, the note stays untouched.
+if command -v timeout >/dev/null 2>&1; then
+    cli_sandbox
+    T0=$SECONDS
+    cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_STUB_SLEEP=20 CRYSTALLIZE_TIMEOUT_SECS=1
+    if [ $((SECONDS - T0)) -lt 15 ] && grep -q 'crystallize-note: claude exited rc=124' "$SB/stderr.txt" && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-deadline: a hung claude is killed at CRYSTALLIZE_TIMEOUT_SECS"; else fail "cli-deadline: not bounded (took $((SECONDS - T0))s)"; fi
+    rm -rf "$SB"
+else
+    echo "SKIP: cli-deadline (no timeout binary)"
+fi
+
+# (xii) the grant, model and budget the subscription call carries.
+argv_val() { awk -v f="arg=$2" '/^arg=/{if (prev==f) print substr($0,5); prev=$0}' "$1"; }
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_MODEL=row-model CRYSTALLIZE_MAX_BUDGET_USD=0.37
+if [ "$(argv_val "$SB/argv.txt" --tools)" = "Read,Edit" ] && [ "$(argv_val "$SB/argv.txt" --allowedTools)" = "Read,Edit" ]; then pass "cli-argv: --tools and --allowedTools are exactly Read,Edit"; else fail "cli-argv: tool grant is not exactly Read,Edit"; fi
+if [ "$(argv_val "$SB/argv.txt" --model)" = "row-model" ]; then pass "cli-argv: --model is CRYSTALLIZE_MODEL"; else fail "cli-argv: --model is '$(argv_val "$SB/argv.txt" --model)'"; fi
+if [ "$(argv_val "$SB/argv.txt" --max-budget-usd)" = "0.37" ]; then pass "cli-argv: --max-budget-usd is CRYSTALLIZE_MAX_BUDGET_USD"; else fail "cli-argv: budget is '$(argv_val "$SB/argv.txt" --max-budget-usd)'"; fi
 rm -rf "$SB"
 
 # --- Case 1: success — sections filled, crystallized true, identity preserved --

@@ -932,7 +932,10 @@ reheal_lane_off() { # <label> <env-assignments...>
     fi
 }
 reheal_lane_off "lane-off" -u HIMMEL_API_LANE CRYSTALLIZE_BACKEND=claude-api
-reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid CRYSTALLIZE_BACKEND=claude-api
+# Backend rule: an explicit CRYSTALLIZE_BACKEND wins, else lane on means the API path,
+# else the subscription. So lane on with a bad account and no explicit backend is the
+# API path, unavailable, and falls back to the mechanical render.
+reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid
 
 # ============================================================================
 # Case 12c: the default backend is the subscription — a launcher and a passing
@@ -968,6 +971,7 @@ reheal_subscription() { # <label> <expect: crystallized|mechanical> <env-assignm
 }
 reheal_subscription "sub-default" crystallized
 reheal_subscription "sub-skip" mechanical CRYSTALLIZE_PREFLIGHT_CMD="$PF_SKIP"
+reheal_subscription "explicit-cli" crystallized CRYSTALLIZE_BACKEND=claude-cli HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=invalid
 
 # ============================================================================
 # Case 13: reheal mechanical on a tool-only transcript (no prose turn) is a
@@ -1256,6 +1260,18 @@ out19d=$(env CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE
     --state-file "$STATE19" --vault-registry /dev/null 2>&1)
 assert_contains "recrys(dry): both content-notes counted" "crystallized=2" "$out19d"
 if [ "$SHA19A" = "$(_file_sha256 "$N19A")" ]; then pass "recrys(dry): note byte-unchanged"; else fail "recrys(dry): --dry-run mutated a note" "$out19d"; fi
+
+# dry-run on the subscription default counts WITHOUT a preflight per note.
+PF_COUNT="$SB/pf-count.sh"; PF_COUNT_LOG="$SB/pf-count.log"
+printf '#!/usr/bin/env bash\necho call >> "%s"\necho PROCEED\n' "$PF_COUNT_LOG" > "$PF_COUNT"
+chmod +x "$PF_COUNT"
+out19p=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRYSTALLIZE_PREFLIGHT_CMD="$PF_COUNT" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$BACKFILL" --recrystallize --dry-run \
+    --projects-dir "$PROJ_ROOT19" --luna-vault-path "$VAULT19" \
+    --state-file "$STATE19" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(dry,sub): both content-notes counted" "crystallized=2" "$out19p"
+if [ ! -s "$PF_COUNT_LOG" ]; then pass "recrys(dry,sub): no preflight run per note"; else fail "recrys(dry,sub): preflight ran $(wc -l < "$PF_COUNT_LOG" | tr -d ' ') time(s) in a dry run" "$out19p"; fi
 
 # --limit 1: only one crystallized this run.
 out19l=$(env CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \

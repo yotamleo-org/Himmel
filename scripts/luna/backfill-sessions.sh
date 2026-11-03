@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: no model call of its own; it sources the backend resolver to decide whether crystallize-note.sh can run, and that script makes the billed call
 # backfill-sessions.sh — Render old Claude transcripts into the luna vault.
 #
 # Usage: bash scripts/luna/backfill-sessions.sh [OPTIONS]
@@ -712,24 +713,39 @@ _find_transcript() { # <session_id>
     return 1
 }
 
-# Can crystallize-note.sh launch?  It follows the crystallizer's backend rule
-# (CRYSTALLIZE_BACKEND, default claude-cli): the subscription default needs a launcher
-# (the test override or a `claude` binary) and a passing bank preflight; an explicit
-# claude-api also needs the API lane on with an account, as crystallize-note.sh does.
-_claude_available() {
-    local backend pf
+# Can crystallize-note.sh launch?  It follows the crystallizer's backend rule: an
+# explicit CRYSTALLIZE_BACKEND wins, else HIMMEL_API_LANE=on means claude-api, else
+# claude-cli. A launcher (the test override or a `claude` binary) is needed either way.
+# The subscription path also needs a passing bank preflight, pinned to the native bank
+# as crystallize-note.sh pins it; `--no-preflight` (a dry run only counts) skips that
+# call, so a dry run never runs one per note. claude-api needs the lane on with an account.
+_claude_available() { # [--no-preflight]
+    local backend want pf
     [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] || command -v claude >/dev/null 2>&1 || return 1
     # shellcheck source=../lib/llm-backend.sh
     . "$SCRIPT_DIR/../lib/llm-backend.sh" 2>/dev/null || return 1
-    backend="$(llm_backend_resolve "${CRYSTALLIZE_BACKEND:-claude-cli}")" || return 1
+    if [ -n "${CRYSTALLIZE_BACKEND:-}" ]; then want="$CRYSTALLIZE_BACKEND"
+    elif [ "${HIMMEL_API_LANE:-}" = "on" ]; then want=claude-api
+    else want=claude-cli; fi
+    backend="$(llm_backend_resolve "$want")" || return 1
     case "$backend" in
         claude-api)
             [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
             case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) return 1 ;; esac
             ;;
         claude-cli)
-            if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then pf="$("$CRYSTALLIZE_PREFLIGHT_CMD" 2>/dev/null | tail -n 1)"
-            else pf="$(bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | tail -n 1)"; fi
+            [ "${1:-}" = "--no-preflight" ] && return 0
+            if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then
+                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+                    -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
+                    CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
+                    "$CRYSTALLIZE_PREFLIGHT_CMD" </dev/null 2>/dev/null | tail -n 1)"
+            else
+                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+                    -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
+                    CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
+                    bash "$SCRIPT_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n 1)"
+            fi
             case "$pf" in PROCEED*) ;; *) return 1 ;; esac
             ;;
         *) return 1 ;;
@@ -885,7 +901,9 @@ _recrystallize_one() { # <note>
         CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))   # no salvageable content to distil
         return 0
     fi
-    if ! _claude_available; then
+    local avail_arg=""
+    [ "$DRY_RUN" = "true" ] && avail_arg="--no-preflight"   # a dry run only counts: no preflight per note
+    if ! _claude_available $avail_arg; then
         CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))   # recrystallize is LLM-only
         return 0
     fi
