@@ -1271,6 +1271,7 @@ out19p=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRY
     --projects-dir "$PROJ_ROOT19" --luna-vault-path "$VAULT19" \
     --state-file "$STATE19" --vault-registry /dev/null 2>&1)
 assert_contains "recrys(dry,sub): both content-notes counted" "crystallized=2" "$out19p"
+# read-sink-ok: PF_COUNT_LOG is the sandbox log this suite's own stub preflight writes, never an argv or env input
 if [ ! -s "$PF_COUNT_LOG" ]; then pass "recrys(dry,sub): no preflight run per note"; else fail "recrys(dry,sub): preflight ran $(wc -l < "$PF_COUNT_LOG" | tr -d ' ') time(s) in a dry run" "$out19p"; fi
 
 # --limit 1: only one crystallized this run.
