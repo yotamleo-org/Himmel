@@ -289,21 +289,25 @@ drop_lines() {  # <set of names> <file>: the file without those keys' lines (`ex
         i && k != "" && index(set, " " k " ") { next }
         { print }' "$2" > "$work/scrub.new" && replace_file "$work/scrub.new" "$2"
 }
-lines_for() {  # <set of names> <file> [nonblank]: the names of the set the file has a line for (`export NAME=` too); nonblank skips an empty value
+lines_for() {  # <set of names> <file>: the names of the set the file has a line for (`export NAME=` too)
     [ -f "$2" ] || return 0
-    awk -v set="$1" -v nb="${3:-}" '{ l = $0; sub(/\r$/, "", l) }
+    awk -v set="$1" '{ l = $0; sub(/\r$/, "", l) }
         l ~ /^[[:space:]]*#/ { next }
-        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k)
-          v = substr(l, i + 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); q = sprintf("%c", 39)
-          if (nb != "" && (v == "" || v == "\"\"" || v == q q)) next }
+        { i = index(l, "="); if (!i) next; k = substr(l, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k) }
         k != "" && index(set, " " k " ") && !(k in seen) { seen[k] = 1; print k }' "$2"
 }
 # A secret line leaves a backup only while the .env or the keyring still holds that key: one
 # copy always survives. A backup line with no other copy stays, and its key is named.
 scrub_set_calc() {
-    local kitems envn n
+    local kitems envn n v
     kitems=" $(bash "$hs" status 2>/dev/null | sed -n 's/^keyring item: //p' | tr '\n' ' ')"
-    envn=" $(lines_for "$secret_names" "$envfile" nonblank | tr '\n' ' ')"
+    # .env counts as a copy only where the readers see a value: their comment stripping and trim decide, not this script.
+    envn=" "
+    for n in $(lines_for "$secret_names" "$envfile"); do
+        v=$(_load_dotenv_extract "$envfile" "$n")
+        v=$(_load_dotenv_trim "${v#*=}")
+        [ -z "$v" ] || envn="$envn$n "
+    done
     scrub_set=" "
     for n in $secret_names; do
         case "$kitems$envn" in *" $n "*) scrub_set="$scrub_set$n " ;; esac
