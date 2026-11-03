@@ -3110,6 +3110,22 @@ run "9020 control: a non-digit subscript assignment beside a quoted bare name ->
 # overwrite the byte-checked script the run then trusts (judge PP-j4658-1).
 run "9020 control: printf overwrites the bullet writer through \"\$F\", then runs it -> deny" 2 \
     "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
+# A reader (or any runner) beside the write can execute the file the write just
+# made, so a write is data only when every position is an echo/printf or a
+# standalone assignment (judge PP-j4658-2). Main refuses all of these.
+run "9020 control: a write, then an exported-path reader that runs the file -> deny" 2 \
+    "$(payload 'F=scripts/lib/qmd-bounded.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; CLAUDE_CODE_EXECPATH=$F; grep x y' "$OTHER")" "$HR"
+run "9020 control: a write, then a jq reader -> deny" 2 \
+    "$(payload 'F=scripts/lib/qmd-bounded.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; jq . y' "$OTHER")" "$HR"
+run "9020 control: a write, then a cat reader -> deny" 2 \
+    "$(payload 'F=scripts/lib/qmd-bounded.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; cat y' "$OTHER")" "$HR"
+run "9020 control: an upper-case HANDOVER literal write, then a cat reader -> deny" 2 \
+    "$(payload 'printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > scripts/HANDOVER/x.sh; cat y' "$OTHER")" "$HR"
+# gh --web / -w opens $BROWSER, which a standalone assignment can set to a command.
+run "9020 control: BROWSER set to a command, then gh pr view --web -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --web' "$OTHER")" "$HR"
+run "9020 control: BROWSER set to a command, then gh pr view -w -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 -w' "$OTHER")" "$HR"
 run "9020 control: the same overwrite with a write-verdicts payload -> deny" 2 \
     "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/cr && bash write-verdicts.sh\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
 run "9020 control: bash -c hiding a relative run -> deny" 2 \

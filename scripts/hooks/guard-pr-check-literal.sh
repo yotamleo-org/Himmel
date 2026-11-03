@@ -2739,10 +2739,11 @@ fi
 # digit subscript (R[1]=), gh pr|issue|run view|list|status|checks|diff with
 # literal words, and, when the text names no guarded path (mentions=0), a
 # write redirect from an echo/printf of literal words to a literal path or a
-# quoted "$NAME" that spells no cr/ or handover/ (any case). That write is never
-# allowed beside a bash/sh run, since it can overwrite the byte-checked script
-# the run then trusts. A cat, grep or other writer, a gh write, a non-digit
-# subscript and any path-ish mention keep the text scan.
+# quoted "$NAME" that spells no cr/ or handover/ (any case). A command with such
+# a write is data only when every position is an echo/printf or a standalone
+# assignment: any reader or runner beside it can execute the file just written.
+# A cat, grep or other writer, a gh write or --web, a non-digit subscript and
+# any path-ish mention keep the text scan.
 # shellcheck disable=SC2016 # a jq program, never expanded by bash
 AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
@@ -2761,7 +2762,7 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
              (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not)
                and ($a.v | test("%[^a-zA-Z%]*[hlLqjzt]*n") | not))
          elif .prog == "gh" then
-             (.argv | length) >= 3 and all(.argv[]; lit)
+             (.argv | length) >= 3 and all(.argv[]; lit and (.v | test("^(-[a-zA-Z]*w[a-zA-Z]*|--web(=.*)?)$") | not))
              and (.argv[1].v as $s | any("pr", "issue", "run"; . == $s))
              and (.argv[2].v as $s | any("view", "list", "status", "checks", "diff"; . == $s))
          elif .prog == "sort" then
@@ -2777,7 +2778,7 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
          end);
 def writes: any(.[]; any(.redirs[]; outw and ((.w != null and (.w | lit) and .w.v == "/dev/null") | not)));
 if all(.[]; ok) | not then "legacy"
-elif writes and any(.[]; .prog == "bash" or .prog == "sh") then "legacy"
+elif writes and (all(.[]; (.prog == "echo" or .prog == "printf") or (.prog == null and ((.assigns // []) | length) > 0)) | not) then "legacy"
 elif any(.[]; (.prog == "bash" or .prog == "sh") and .argv[1].v == $rel) then
     (if any(.[]; .prog == "cd") then "legacy" else "data-rel" end)
 else "data" end'
