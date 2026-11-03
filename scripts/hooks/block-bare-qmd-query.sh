@@ -1971,6 +1971,14 @@ def findact: "-exec", "-execdir", "-ok", "-okdir";
 def actionargv: . as $w
   | ([range(0; $w | length) | select($w[.].t == "lit" and ($w[.].v == ";" or ($w[.].v == "+" and . > 0 and $w[. - 1].t == "lit" and $w[. - 1].v == "{}")))] | first) as $e
   | if $e == null then $w else $w[:$e] end;
+# Each action's argv. An action's own words are its program's arguments, not another
+# action; the walk resumes early only past a word that may turn out to be the terminator.
+def actionargvs: . as $a
+  | ([range(0; $a | length) | select($a[.].t == "lit" and ($a[.].v | IN(findact)))] | first) as $s
+  | if $s == null then empty
+    else ($a[$s + 1:] | actionargv) as $v
+      | $v, ($a[($s + 2 + (([range(0; $v | length) | select($v[.].t != "lit" or $v[.].g)] | first) // ($v | length))):] | actionargvs)
+    end;
 # A runner's program is its first word past flags, a bare flag's value, numbers,
 # assignments and other wrappers, so `nice -n 5 find` runs find and `nice echo find` does not.
 def runnerfind: .argv as $a
@@ -1981,8 +1989,8 @@ def runnerfind: .argv as $a
 # find itself, or a runner whose program is find.
 def runsfind: ((.prog | b) == "find") or (((.opaque // "") | startswith("it runs its arguments")) and runnerfind);
 def findq: .argv as $a
-  | runsfind and ([range(0; $a | length) | select($a[.].t == "lit" and ($a[.].v | IN(findact)))
-      | {argv: ($a[. + 1:] | actionargv), prog: null}
+  | runsfind and ([$a | actionargvs
+      | {argv: ., prog: null}
       | runq as $q | $q != null and (qverdict($q) == "deny")] | any);
 def words: [.argv[] | wv] | join(" ") | ascii_downcase;
 def mention: ([.argv[] | wv] + [(.redirs // [])[] | ((.text // ""), (.w.raw // ""))]) | join(" ") | ascii_downcase | contains("qmd");

@@ -1305,6 +1305,9 @@ deny 'find /x -exec qmd --json query y \;'
 deny 'find /x -exec timeout 5 qmd query y \;'
 deny 'find /x -exec bun /o/src/cli/qmd.ts query y \;'
 deny 'find /x -exec grep -l a {} \; -exec qmd query y {} +'
+# An action's own words are that program's arguments: only printf runs here.
+allow 'find /x -exec printf -exec qmd query y \;'
+deny 'find /x -exec printf \; -exec qmd query y \;'
 deny 'nice find /x -exec qmd query y \;'
 deny 'env find /x -exec qmd query y \;'
 deny "bash -c 'find /x -exec qmd query y {} +'"
