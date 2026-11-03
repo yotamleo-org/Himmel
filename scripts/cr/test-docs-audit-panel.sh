@@ -49,7 +49,7 @@ set_policy() {
 root="$tmp/root"
 mkdir -p "$root/scripts/cr" "$root/scripts/lib" "$root/scripts/guardrails"
 cp "$SUT_SRC" "$root/scripts/cr/docs-audit-panel.sh"
-cp "$DIR/anchor-handoff.sh" "$root/scripts/cr/anchor-handoff.sh"
+cp "$DIR/anchor-handoff.sh" "$DIR/base-resolver.sh" "$root/scripts/cr/"
 cp "$DIR/../lib/load-dotenv.sh" "$DIR/../lib/chokepoint-seam-guard.sh" "$root/scripts/lib/"
 cp "$DIR/../guardrails/lib.sh" "$root/scripts/guardrails/lib.sh"
 SUT="$root/scripts/cr/docs-audit-panel.sh"
@@ -60,6 +60,7 @@ cat > "$STUB" <<'STUBEOF'
 #!/usr/bin/env bash
 cat >/dev/null   # swallow the piped diff, like the real panel does
 [ -n "${STUB_MARKER:-}" ] && : > "$STUB_MARKER"
+[ -n "${STUB_ARGS:-}" ] && printf '%s\n' "$*" > "$STUB_ARGS"
 [ -n "${STUB_OUT:-}" ] && printf '%s\n' "$STUB_OUT"
 [ -n "${STUB_ERR:-}" ] && printf '%s\n' "$STUB_ERR" >&2
 exit "${STUB_RC:-0}"
@@ -118,33 +119,102 @@ check "$rc" "2" "T2 rc"
 contains "$(cat "$stderr_file")" "docs-audit-panel: --branch is required" "T2 stderr"
 check "$(cat "$stdout_file")" "" "T2 stdout"
 
-# 3. CR_REQUIRE_CROSS_MODEL unset/falsy: the whole lane is disabled, the
-# panel is NEVER invoked, no output on either stream, exit 0.
+# 3. Policy unset, the critic still runs. ready-check item 4 and the
+# merge gate need a non-Claude row at the head whatever the policy says.
 unset CR_REQUIRE_CROSS_MODEL CR_PROFILE 2>/dev/null || true
 set_policy ""
-export STUB_OUT="SHOULD-NOT-APPEAR" STUB_ERR="panel-availability: fake ok" STUB_RC=0
+export STUB_OUT="[docsaudit-1] some finding" STUB_ERR="panel-availability: fake ok" STUB_RC=0
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T3 rc"
-check "$(cat "$stdout_file")" "" "T3 stdout"
-check "$(cat "$stderr_file")" "" "T3 stderr"
-[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3 stub was invoked with CR_REQUIRE_CROSS_MODEL unset"; fail=1; }
+check "$(cat "$stdout_file")" "[docsaudit-1] some finding" "T3 stdout carries the findings"
+check "$(cat "$stderr_file")" "panel-availability: fake ok" "T3 stderr carries the availability line"
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3 the critic must run with the policy unset"; fail=1; }
 
-# 3b. Policy unset in the file plus a truthy process-env value: the env is not
-# a policy source, so the lane stays disabled and the panel is never invoked.
-set_policy ""
-export CR_REQUIRE_CROSS_MODEL=1
+# 3b. A falsy policy value runs it too.
+set_policy 0
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T3b rc"
-[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3b stub was invoked by a process-env CR_REQUIRE_CROSS_MODEL"; fail=1; }
-unset CR_REQUIRE_CROSS_MODEL
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3b the critic must run with the policy falsy"; fail=1; }
 
-# 3c. An unreadable policy file fails closed: the lane runs, with a note.
+# 3c. An unreadable policy file changes nothing: the lane no longer reads it.
 printf 'not json' > "$HOME/.himmel/config.json"
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T3c rc"
-[ -e "$STUB_MARKER" ] || { echo "FAIL: T3c an unreadable policy file must run the cross-model lane"; fail=1; }
-contains "$(cat "$stderr_file")" "docs-audit-panel: could not read CR_REQUIRE_CROSS_MODEL" "T3c stderr note"
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3c the critic must run with an unreadable policy file"; fail=1; }
+not_contains "$(cat "$stderr_file")" "could not read CR_REQUIRE_CROSS_MODEL" "T3c no policy note"
 set_policy ""
+
+# 3d. Policy off, critic out of quota: the lane degrades at exit 0, drops the
+# findings, says the head is held, and writes no ok row of its own.
+ledger="$repo/.git/cr-critic-scores.jsonl"
+rm -f "$ledger"
+export STUB_RC=1 STUB_OUT="should-be-discarded" STUB_ERR="panel-availability: codex unavailable (quota)"
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "0" "T3d rc (degrade, not abort)"
+check "$(cat "$stdout_file")" "" "T3d stdout (findings discarded)"
+contains "$(cat "$stderr_file")" "panel-availability: codex unavailable (quota)" "T3d re-emits the availability line"
+contains "$(cat "$stderr_file")" "ready-check item 4 and the merge gate hold this head" "T3d names the hold"
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3d stub was never invoked"; fail=1; }
+[ ! -e "$ledger" ] || { echo "FAIL: T3d the lane wrote a ledger row of its own"; fail=1; }
+
+# 3e. No temp file: nothing is reviewed, so the panel never runs, and the lane
+# degrades at exit 0 naming the hold.
+rm -f "$STUB_MARKER"
+rc=0
+( cd "$repo" && TMPDIR="$tmp/no-such-dir" PATH="$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "0" "T3e rc"
+contains "$(cat "$stderr_file")" "mktemp failed - check free space in TMPDIR) - ready-check item 4" "T3e names the cause and the hold"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3e the panel ran without a temp file"; fail=1; }
+
+# 3f. No temp file on the rtk retry: the first run's availability rows still
+# reach stderr. A stub rtk on PATH removes the temp dir, so the retry's mktemp
+# fails. Only this row and 7d use it.
+mkdir -p "$tmp/rtk-stub" "$tmp/vanishing"
+RTK_MARKER="$tmp/rtk-called"
+cat > "$tmp/rtk-stub/rtk" <<'RTKEOF'
+#!/usr/bin/env bash
+: > "$RTK_MARKER"
+[ -z "${RTK_WIPE_TMPDIR:-}" ] || rm -rf "$TMPDIR"
+echo "diff --git a/f.txt b/f.txt"
+RTKEOF
+chmod +x "$tmp/rtk-stub/rtk"
+rc=0
+( cd "$repo" && RTK_MARKER="$RTK_MARKER" RTK_WIPE_TMPDIR=1 TMPDIR="$tmp/vanishing" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "0" "T3f rc"
+contains "$(cat "$stderr_file")" "panel-availability: codex unavailable (quota)" "T3f keeps the first run's availability row"
+contains "$(cat "$stderr_file")" "mktemp failed - check free space in TMPDIR) - ready-check item 4" "T3f names the cause and the hold"
+
+# 3g. origin/main ahead of local main, and the clone has not fetched it yet:
+# the pin is the fetched origin tip, the one critic-panel.sh verifies against.
+origin_bare="$tmp/origin.git"
+git clone -q --bare "$repo" "$origin_bare"
+git -C "$origin_bare" symbolic-ref HEAD refs/heads/main
+lagging="$tmp/lagging"
+git clone -q "$origin_bare" "$lagging"
+git -C "$lagging" checkout -q feat
+origin_new="$(git -C "$origin_bare" -c user.email=t@t -c user.name=t commit-tree "$head_main^{tree}" -p "$head_main" -m next)"
+git -C "$origin_bare" update-ref refs/heads/main "$origin_new"
+STUB_ARGS="$tmp/stub-args"
+rm -f "$STUB_MARKER" "$STUB_ARGS"
+rc=0
+( cd "$lagging" && STUB_RC=0 STUB_ARGS="$STUB_ARGS" PATH="$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "0" "T3g rc"
+contains "$(cat "$STUB_ARGS" 2>/dev/null)" "--base-sha $origin_new" "T3g pins the fetched origin tip"
+check "$(git -C "$lagging" rev-parse main)" "$head_main" "T3g local main stayed behind"
+
+# 3h. A repo with an origin that cannot be fetched aborts, as the full lane
+# does: the cached ref may be stale, so the pin cannot be trusted.
+git -C "$lagging" remote set-url origin "$tmp/no-such-origin.git"
+rm -f "$STUB_MARKER"
+rc=0
+( cd "$lagging" && STUB_RC=0 PATH="$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "7" "T3h rc"
+contains "$(cat "$stderr_file")" "docs-audit-panel ABORT - could not fetch origin/main" "T3h names the fetch"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3h the panel ran on an unfetched base"; fail=1; }
 
 # 4. CR_PROFILE=none wins even under CR_REQUIRE_CROSS_MODEL: prints the
 # claude-only note, panel never invoked, exit 0.
@@ -153,8 +223,14 @@ export CR_PROFILE=none
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T4 rc"
 check "$(cat "$stdout_file")" "" "T4 stdout"
-check "$(cat "$stderr_file")" "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset" "T4 stderr"
+check "$(cat "$stderr_file")" "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset; with the policy off the marker clears and the merge gate passes, but ready-check item 4 still fails with no non-Claude row at the head" "T4 stderr"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T4 stub was invoked under CR_PROFILE=none"; fail=1; }
+
+# 4b. CR_PROFILE=none is the opt-out with the policy off too.
+set_policy ""
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "0" "T4b rc"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T4b stub was invoked under CR_PROFILE=none with the policy off"; fail=1; }
 
 # 5. Empty diff (head == base) prints the skip note, panel never invoked.
 set_policy 1
@@ -162,7 +238,7 @@ unset CR_PROFILE 2>/dev/null || true
 rc=$(run_sut --head "$head_main" --branch main)
 check "$rc" "0" "T5 rc"
 check "$(cat "$stdout_file")" "" "T5 stdout"
-check "$(cat "$stderr_file")" "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists)" "T5 stderr"
+check "$(cat "$stderr_file")" "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists; ready-check item 4 fails this head on the same condition)" "T5 stderr"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T5 stub was invoked on an empty diff"; fail=1; }
 
 # 6. Stubbed panel exit 7 (input-pin mismatch): ABORT, exit 7, nothing on
@@ -203,6 +279,26 @@ check "$rc" "0" "T7b rc (degrade, not abort)"
 check "$(cat "$stdout_file")" "" "T7b stdout (findings discarded)"
 contains "$(cat "$stderr_file")" "docs-audit critic panel REFUSED to certify this run (exit 6" "T7b stderr names the refusal"
 case "$(cat "$stderr_file")" in *"all critics failed"*) echo "FAIL: T7b exit 6 must not read as all critics failed"; fail=1 ;; esac
+
+# 7d. Only rc=1 earns the rtk retry, which is a second paid call: rc 2, 5 and 6
+# are not the "no valid diff" failure it exists for. A control proves rc=1 does.
+for retry_rc in 2 5 6 1; do
+    rm -f "$RTK_MARKER"
+    ( cd "$repo" && RTK_MARKER="$RTK_MARKER" STUB_RC="$retry_rc" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+        >"$stdout_file" 2>"$stderr_file"
+    if [ "$retry_rc" -eq 1 ]; then
+        [ -e "$RTK_MARKER" ] || { echo "FAIL: T7d control: rc=1 must retry through rtk"; fail=1; }
+    else
+        [ ! -e "$RTK_MARKER" ] || { echo "FAIL: T7d rc=$retry_rc must not retry through rtk"; fail=1; }
+    fi
+done
+
+# 7e. A refusal the panel could not record holds nothing, so the lane aborts.
+export STUB_RC=6 STUB_OUT="should-be-discarded" STUB_ERR="critic-panel.sh: could not record certify-refused on the ledger"
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "7" "T7e rc"
+check "$(cat "$stdout_file")" "" "T7e stdout"
+contains "$(cat "$stderr_file")" "the refusal could not be recorded on the CR ledger" "T7e names the cause"
 
 # 7c. panel exit 2 from a mktemp failure names it, never "all critics
 # failed"; a usage-error exit 2 does not claim mktemp.
