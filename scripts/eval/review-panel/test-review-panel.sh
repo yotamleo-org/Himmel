@@ -642,10 +642,17 @@ has "gate: equal panels still keep a target-class win" "$out" "gate: keep"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:23,codex:24"; ggate
 has "gate: a critic absent on one side and nearly complete on the other is a mismatch" "$out" "panel mismatch"
 # a critic absent on both sides, or partial on both, is like-for-like
+nroster() { grep -c '"responded"' "$G/scripts/eval/review-panel/results.jsonl"; }
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:0,codex:24"; ggate
+eq "fixture: every row of the absent-on-both-sides pair carries a roster" "$(nroster)" "4"
 has "gate: a critic that answered nothing on both sides is no mismatch" "$out" "gate: no-loss"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:20,codex:24"; ggate
+eq "fixture: every row of the partial-on-both-sides pair carries a roster" "$(nroster)" "4"
 has "gate: a critic partial on both sides is no mismatch" "$out" "gate: no-loss"
+# a row the verdict does not count (an inconclusive sweep) does not make a roster mismatch either
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5 h3:0.5:0.1:0.5:inconclusive; groster b "24;claude:24,codex:24"; groster h1 "24;claude:24,codex:24"; groster h2 "24;claude:24,codex:24"; groster h3 "24;codex:24"; ggate
+eq "fixture: all five rows carry a roster" "$(nroster)" "5"
+has "gate: an uncounted inconclusive row with another roster is no mismatch" "$out" "gate: no-loss"
 # rows with no roster beside rows with one are not like-for-like: named, no verdict
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster h "24;claude:24,codex:24"; ggate
 has "gate: baseline rows with no roster against head rows with one are a mismatch" "$out" "panel mismatch"

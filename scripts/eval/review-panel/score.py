@@ -702,15 +702,25 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
     ponytail: when every counted row has no `responded` the normal verdict stands. That is the state of the
     HIMMEL-8430 rows today, so the unequal-panel false alarm on that pair stays until its rows are re-exported
     (export-row cannot backfill them), upgrade = re-export or backfill the baseline rows."""
-    sides = {}
-    for r in rows:
-        if r.get("confighash") != confighash or r.get("status") not in eval_feedback.GATE_STATUS \
-                or r.get("cbs_hash") not in (base_hash, head_hash):
-            continue
-        resp = r.get("responded")
-        has = isinstance(resp, dict) and isinstance(resp.get("critics"), dict)
-        sides.setdefault("baseline" if r["cbs_hash"] == base_hash else "head", {}).setdefault(
-            r.get("run_id"), resp if has else None)
+    def side(h, skip_ids=(), skip_bundles=()):
+        # the rows gate_verdict counts for hash h: same status and metric tests, first row of a run_id or bundle
+        out, ids, bundles = {}, set(skip_ids), set(skip_bundles)
+        for r in rows:
+            m = r.get("metrics")
+            if r.get("cbs_hash") != h or r.get("confighash") != confighash \
+                    or r.get("status") not in eval_feedback.GATE_STATUS or not isinstance(m, dict) \
+                    or not (eval_runs._num(m.get(eval_feedback.GATE_RECALL))
+                            and eval_runs._num(m.get(eval_feedback.GATE_FP))) \
+                    or r.get("run_id") in ids or r.get("outputs_sha256") in bundles:
+                continue
+            ids.add(r.get("run_id"))
+            bundles.add(r.get("outputs_sha256"))
+            resp = r.get("responded")
+            out[r.get("run_id")] = resp if isinstance(resp, dict) and isinstance(resp.get("critics"), dict) else None
+        return out, ids, bundles
+    base, base_ids, base_bundles = side(base_hash)
+    sides = {"baseline": base,
+             "head": (side(head_hash) if head_hash == base_hash else side(head_hash, base_ids, base_bundles))[0]}
 
     def state(resp, n):
         return "all" if n == resp.get("scored") else ("none" if not n else "some")
