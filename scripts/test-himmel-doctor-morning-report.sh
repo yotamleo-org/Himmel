@@ -60,4 +60,10 @@ touch "$WORK/runner/morning-report-cadence.sh"
 out="$(doctor)"
 has "armed just now, no report -> INFO" "$out" "INFO C86-morning-report"
 
+echo "== root, no report, cadence armed but the runner is missing -> WARN =="
+rm -f "$WORK/runner/morning-report-cadence.sh"
+out="$(doctor)"
+has "armed, runner missing -> WARN" "$out" "WARN C86-morning-report"
+has "names the missing runner" "$out" "runner is missing"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

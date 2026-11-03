@@ -162,11 +162,17 @@ cmd_disarm() {
     local dry=0
     [ "${1:-}" = "--dry-run" ] && dry=1
     cron_read || return 4
-    if [ -z "$(cron_entry)" ]; then echo "morning-report-cadence: nothing armed — disarm is a no-op"; return 0; fi
-    if [ "$dry" -eq 1 ]; then echo "DRY morning-report-cadence: would remove the $TASK_NAME crontab entry"; return 0; fi
+    if [ "$dry" -eq 1 ]; then echo "DRY morning-report-cadence: would remove the $TASK_NAME crontab entry and keep it off"; return 0; fi
     local guard_rc=0
     bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$CRONTAB_BIN" morning-report-cadence-disarm "$RUNNER_DIR" || guard_rc=$?
     [ "$guard_rc" -ne 77 ] || return 77
+    # A disarm before the first arm still counts: the marker stops the update step from arming it.
+    if [ -z "$(cron_entry)" ]; then
+        mkdir -p "$RUNNER_DIR" || return 4
+        : > "$RUNNER_DIR/.operator-disarmed"
+        echo "morning-report-cadence: nothing armed; it stays off until you run arm"
+        return 0
+    fi
     { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
     rm -f "$RUNNER_DIR/morning-report-cadence.sh"
     : > "$RUNNER_DIR/.operator-disarmed"

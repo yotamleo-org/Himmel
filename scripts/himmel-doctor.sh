@@ -5285,7 +5285,12 @@ check_c86_morning_report() {
     fi
     runner="${MORNINGREPORT_RUNNER_DIR:-$HOME/.claude/morning-report-cadence}/morning-report-cadence.sh"
     rm_="$(stat -c %Y "$runner" 2>/dev/null || stat -f %m "$runner" 2>/dev/null)" || rm_=""
-    case "$rm_" in ''|*[!0-9]*) rm_="$now" ;; esac
+    case "$rm_" in
+        ''|*[!0-9]*)
+            emit WARN C86-morning-report "the morning-report cadence is armed but its runner is missing or unreadable ($runner), so no report can be written" \
+                "bash scripts/handover/morning-report-cadence.sh arm --force"
+            return 0 ;;
+    esac
     if [ $(( (now - rm_) / 3600 )) -gt 36 ]; then
         emit WARN C86-morning-report "the morning-report cadence is armed but no report exists under $root" \
             "cat ~/.claude/morning-report-cadence/morning-report-cadence.log"

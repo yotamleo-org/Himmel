@@ -73,4 +73,9 @@ bash "$CAD" disarm >/dev/null; rm -f "$W/runner/.operator-disarmed"
 bash "$CAD" arm --auto >/dev/null; check "arm --auto arms a never-armed machine" 1 "$(n_entries)"
 bash "$CAD" arm --auto >/dev/null; check "second arm --auto adds no entry" 1 "$(n_entries)"
 
+bash "$CAD" disarm >/dev/null; rm -f "$W/runner/.operator-disarmed"
+bash "$CAD" disarm >/dev/null; st="$(bash "$CAD" arm --auto)"
+grep -q 'operator disarmed' <<< "$st" && pass "a disarm before any arm keeps arm --auto off" || fail "a disarm before any arm keeps arm --auto off"
+check "no entry after a disarm on a never-armed machine" 0 "$(n_entries)"
+
 [ "$FAILED" -eq 0 ] && echo "ALL PASS" || { echo "$FAILED FAILED"; exit 1; }
