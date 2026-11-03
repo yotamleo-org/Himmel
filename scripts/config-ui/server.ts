@@ -345,7 +345,10 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     if (now() - literalsAt < LITERALS_TTL_MS) return literalsMemo;
     let raw = "";
     try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-    for (const v of [...envValues(raw, parseDotEnv, envForLiterals()), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))]) seen.add(v);
+    for (const v of [...envValues(raw, parseDotEnv, envForLiterals()), ...envValues("", parseDotEnv, resolveSecrets(root, SECRET_NAMES, env))]) {
+      seen.add(v);
+      seen.add(JSON.stringify(v).slice(1, -1)); // the form it takes inside a JSON string or key: a quote, a backslash, a control character escaped
+    }
     literalsMemo = [...seen];
     literalsAt = now();
     return literalsMemo;
