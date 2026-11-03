@@ -21,7 +21,7 @@ import { shellLine } from "./public/render.js";
 import { acquireLock, runChild, type Lock } from "./lock";
 import { readBank, readLegs, readMode, readMonitoring, readToolHealth } from "./health-sources";
 import { readQuota } from "./quota-sources";
-import { loadFeed, readProjects, saveFeed, summarize } from "./projects";
+import { boardProjects, loadFeed, readProjects, saveFeed, summarize } from "./projects";
 import { appendAudit } from "./audit";
 import { busRootOf, journalStream, resolveJournal } from "./agui/sse";
 import { readFleet } from "./agui/fleet";
@@ -41,7 +41,7 @@ import { DAY as REPORT_DAY, listReports, readReport, soFar } from "./reports";
 import { readGate, writeGate } from "./review-gate";
 import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
-import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
+import { applyWrite, parseWrite, projectKeyOf, type WriteResult } from "./jira-write";
 import { applyLocalWrite, parseLocalWrite, readLocalItems } from "./local-tracker";
 import { accountCreate, secretWrite, setupState, verifyDoctor, type SecretResult } from "./setup";
 import { clearedCookie, createAuth, sessionCookie, writeLogin } from "./login";
@@ -207,7 +207,7 @@ type Env = Record<string, string | undefined>;
 // only; the CLI entry below never sets them.
 export type ServerOpts = {
   port?: number; token?: string; hostname?: string; env?: Env; onIdle?: () => void;
-  root?: string; projectRoot?: string; now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number; verifyTimeoutMs?: number;
+  root?: string; projectRoot?: string; projects?: string[]; /* the Board's Jira projects (--project KEY, repeatable); none = every mirrored project */ now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number; verifyTimeoutMs?: number;
   backgroundFeed?: boolean; feedRefreshMs?: number; noIdle?: boolean;
   legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; boardScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
 };
@@ -448,10 +448,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     // a Jira write needs a Jira project: a local or none project, or any other non-empty setting (a typo, TRACKER=Local, github
     // with gh logged out), never writes Jira, whatever mirror is lying around
     if (first === "local" || first === "none" || (setting !== "" && setting !== "jira")) return json({ error: "this project's tracker is not Jira" }, 403);
+    // the card's own project: its key must be one the Board enumerates, and the CLI runs as that project (never a default)
+    const onBoard = boardProjects(wenv, opts.projects);
+    const project = onBoard.find((p) => p.key === projectKeyOf(req.key, onBoard.map((x) => x.key)));
+    if (!project) return json({ error: "the key's project is not on the Board" }, 400);
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
-    const mirrorDir = jiraMirrorDir(wenv); // the mirror the cards read: a drop refreshes that one
-    const childEnv = { ...wenv, JIRA_PROJECT_KEY: wenv.JIRA_PROJECT_KEY || "HIMMEL" };
+    const mirrorDir = project.dir; // the mirror the cards read: a drop refreshes that one
+    const childEnv = { ...wenv, JIRA_PROJECT_KEY: project.key };
     let res: WriteResult | undefined;
     try {
       res = await applyWrite(req, { bin: jiraBin(env), mirrorDir,
@@ -722,7 +726,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         const workers = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs);
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
         const nv = new URL(req.url).searchParams.get("nv") === "1"; // the Board's No version tab: those tickets only, read when it opens
-        const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers, noVersion: nv });
+        const r = readRoadmap({ mirrorDir, projects: boardProjects(renv, opts.projects), planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers, noVersion: nv });
         return json(redactOut({ ...r, sync: nv ? [] : legSync(r.tickets) }));
       }
       // the Board page's two extra reads: the saved status-drift summary and the chain read. Read-only; each is absent, with the
@@ -917,7 +921,9 @@ if (import.meta.main) {
     }
   }
   // the operator lands on Fleet (another page); the config report loads meanwhile.
-  const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true, noIdle: service, token: fixed });
+  // --project KEY (repeatable, or --project=KEY): narrow the Board to these Jira projects; with none it covers every mirrored project.
+  const only = process.argv.flatMap((x, n, all) => (x === "--project" && all[n + 1] ? [all[n + 1]] : x.startsWith("--project=") ? [x.slice("--project=".length)] : []));
+  const { port, token } = startServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0, backgroundFeed: true, noIdle: service, token: fixed, ...(only.length ? { projects: only } : {}) });
   // himmelctl ui --agui [<run>]: the launcher has already resolved and validated the run id; with none, the
   // fleet landing.
   const run = a > 0 ? process.argv[a + 1] : undefined;

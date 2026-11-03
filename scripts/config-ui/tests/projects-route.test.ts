@@ -132,3 +132,24 @@ test("/api/projects masks a cached feed's detail and remedy with the keyring's s
   expect(text).toContain("lunabad");
   expect(text).not.toContain(kr);
 });
+
+// ---- the Board default is every project with a mirror, wherever config-ui is launched ----
+test("5494 launch place: from an adopter repo cwd naming its own JIRA_PROJECT_KEY, /api/roadmap still lists every mirrored project", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "board-launch-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const home = join(dir, "home"), adopter = join(dir, "adopter");
+  mkdirSync(home); mkdirSync(adopter);
+  writeFileSync(join(adopter, ".env"), "JIRA_PROJECT_KEY=ABC\n");
+  const root = join(home, ".himmel", "state", "jira-mirror");
+  for (const key of ["HIMMEL", "ABC"]) {
+    mkdirSync(join(root, key), { recursive: true });
+    writeFileSync(join(root, key, `${key}-1.md`), ["---", `key: "${key}-1"`, `status: "To Do"`, `statusCategory: "To Do"`, `labels: []`, `fixVersions: ["v1.1.2"]`, "---", "", `# ${key}-1: t`, ""].join("\n"));
+    writeFileSync(join(root, `${key}.versions.tsv`), "v1.1.2\tfalse\t\n");
+  }
+  const s = startServer({ port: 0, token: TOKEN, root: adopter, projectRoot: adopter, legsScript: join(dir, "none.sh"),
+    env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000" } });
+  cleanups.push(() => s.stop());
+  const r = await (await get(s.port, "/api/roadmap")).json();
+  expect(r.projects).toEqual(["ABC", "HIMMEL"]);
+  expect(r.tickets.map((t: { id: string }) => t.id)).toEqual(["ABC-1", "HIMMEL-1"]);
+});

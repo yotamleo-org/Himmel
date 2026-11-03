@@ -15,11 +15,12 @@ const TOKEN = "t".repeat(64);
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
-function boot(extra: Record<string, string> = {}, checkout?: string, project?: string) {
+function boot(extra: Record<string, string> = {}, checkout?: string, project?: string, mirrors: string[] = ["HIMMEL"]) {
   const dir = mkdtempSync(join(tmpdir(), "jira-write-"));
   const home = join(dir, "home"), root = join(dir, "root"), log = join(dir, "jira.log");
   const own = join(dir, "checkout"); // hermetic: no .env of the real checkout is read
   mkdirSync(home); mkdirSync(root); mkdirSync(own);
+  for (const k of mirrors) mkdirSync(join(home, ".himmel", "state", "jira-mirror", k), { recursive: true }); // a write is only for a project on the Board
   const s = startServer({
     port: 0, token: TOKEN, root: checkout ?? own, ...(project ? { projectRoot: project } : {}),
     env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_JIRA_CLI: JIRA, CONFIG_UI_IDLE_MS: "60000", HOME: home, HANDOVER_DIR: root,
@@ -168,15 +169,31 @@ test("a drop is refused when the project is a git worktree of the repo whose top
   expect(b.calls()).toEqual([]);
 });
 
-test("the Jira child gets the project key from the .env and no other .env value", async () => {
+test("the Jira child gets the card's own project key, not the .env's, and no other .env value", async () => {
   const log = join(mkdtempSync(join(tmpdir(), "jira-env-")), "env.log");
   cleanups.push(() => rmSync(join(log, ".."), { recursive: true, force: true }));
   const b = boot({ STUB_JIRA_ENV_LOG: log }, checkoutWith(["JIRA_PROJECT_KEY=ZED", "PLANTED_SECRET=hunter2-planted"])); // a planted fake, not a credential gitleaks:allow
   expect((await b.post({ key: "HIMMEL-7", status: "rev" })).status).toBe(200);
   const seen = readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
   expect(seen.length).toBeGreaterThan(0);
-  expect(seen.every((x) => x.key === "ZED")).toBe(true); // the child's project key is the .env's
+  expect(seen.every((x) => x.key === "HIMMEL")).toBe(true); // the child's project key is the card's, whatever the .env says
   expect(seen.every((x) => x.secret === null)).toBe(true); // a .env secret never reaches the child
+});
+
+// a write on a project B card runs the CLI with project B, never a default.
+test("5494 row 4: a drop on a SALUS card runs the CLI as SALUS, refreshes SALUS's mirror, and a key of an unmirrored project is refused", async () => {
+  const log = join(mkdtempSync(join(tmpdir(), "jira-env-")), "env.log");
+  cleanups.push(() => rmSync(join(log, ".."), { recursive: true, force: true }));
+  const b = boot({ STUB_JIRA_ENV_LOG: log }, undefined, undefined, ["HIMMEL", "SALUS"]);
+  const r = await b.post({ key: "SALUS-3", status: "prog" });
+  expect(r.status).toBe(200);
+  expect(b.calls().find((c) => c[0] === "transition")).toEqual(["transition", "SALUS-3", "In Progress"]);
+  expect(b.calls().find((c) => c[0] === "mirror")![2]).toMatch(/jira-mirror\/SALUS$/);
+  const seen = readFileSync(log, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  expect(seen.length).toBeGreaterThan(0);
+  expect(seen.every((x) => x.key === "SALUS")).toBe(true); // the leftover HIMMEL default would fail here
+  expect((await b.post({ key: "OTHER-1", status: "prog" })).status).toBe(400); // not an enumerated project
+  expect(b.calls().filter((c) => c[0] === "transition").length).toBe(1);
 });
 
 test("roadmap.ts falls back to the Jira theme label over the plan theme, and maps a matching slug to the plan's name", () => {

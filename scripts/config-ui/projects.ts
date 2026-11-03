@@ -4,7 +4,7 @@
 // Nothing here runs a doctor: a project nobody opened yet is "not checked", never guessed.
 // ponytail: another project's rows are only as fresh as its own last UI run, a cross-project probe is a later step.
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -39,6 +39,29 @@ export function readProjects(env: Env, currentPath: string): { current: string; 
   while (list.some((p) => p.name === name)) name += "x";
   list.unshift({ name, path: currentPath });
   return { current: name, list };
+}
+
+// ---- the Jira projects the Board covers ----
+// Enumeration source: the mirror root ~/.himmel/state/jira-mirror, one directory per project key (<KEY>/ holds <KEY>-<n>.md, <KEY>.versions.tsv
+// sits beside it). Every such directory is a project on the Board, wherever config-ui is launched. It is narrowed by `--project KEY`
+// (repeatable, the startServer `projects` option) or its env twin HIMMEL_BOARD_PROJECTS (comma separated). An explicit
+// HIMMEL_JIRA_MIRROR dir relocates one project's mirror (the project JIRA_PROJECT_KEY names, else HIMMEL); it does not hide the others.
+export type JiraProject = { key: string; dir: string };
+const PROJECT_KEY = /^[A-Z][A-Z0-9]*$/;
+export const mirrorRoot = (env: Env) => join(home(env), ".himmel", "state", "jira-mirror");
+
+export function boardProjects(env: Env, narrow?: string[]): JiraProject[] {
+  const want = (narrow ?? (env.HIMMEL_BOARD_PROJECTS ?? "").split(/[\s,]+/)).map((k) => k.trim().toUpperCase()).filter(Boolean);
+  let all: JiraProject[] = [];
+  try {
+    all = readdirSync(mirrorRoot(env), { withFileTypes: true }).filter((e) => e.isDirectory() && PROJECT_KEY.test(e.name)).map((e) => ({ key: e.name, dir: join(mirrorRoot(env), e.name) }));
+  } catch { /* no mirror root: only an explicit mirror, if any */ }
+  if (env.HIMMEL_JIRA_MIRROR) {
+    const key = env.JIRA_PROJECT_KEY || "HIMMEL";
+    all = [...all.filter((p) => p.key !== key), { key, dir: env.HIMMEL_JIRA_MIRROR }];
+  }
+  all.sort((a, b) => a.key.localeCompare(b.key));
+  return want.length ? all.filter((p) => want.includes(p.key)) : all;
 }
 
 const cacheFile = (env: Env, name: string) => join(feedsDir(env), `${name}.json`);

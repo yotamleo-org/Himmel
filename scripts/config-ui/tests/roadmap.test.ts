@@ -649,3 +649,67 @@ test("Board: the Project, Theme and Only filters narrow the lanes, and are on th
   expect(drifted).not.toContain("Resumed work");
   expect(board(r, { tab: "chains" }, ex)).not.toContain('data-rm-filter="only"');
 });
+
+// ---- the Board covers every project with a mirror under the mirror root; --project / HIMMEL_BOARD_PROJECTS narrow it ----
+const issueOf = (key: string, n: number, fv: string[], title: string) => issue(n, "To Do", "To Do", fv, title).replaceAll(`HIMMEL-${n}`, `${key}-${n}`);
+// a HOME with two mirrors (HIMMEL, SALUS) whose tickets share the number 1 and the version name v1.1.2
+function twoMirrors() {
+  const d = mkdtempSync(join(tmpdir(), "roadmap-multi-"));
+  cleanups.push(() => rmSync(d, { recursive: true, force: true }));
+  const root = join(d, "home", ".himmel", "state", "jira-mirror");
+  for (const [key, title] of [["HIMMEL", "himmel work"], ["SALUS", "salus work"]]) {
+    mkdirSync(join(root, key), { recursive: true });
+    writeFileSync(join(root, key, `${key}-1.md`), issueOf(key, 1, ["v1.1.2"], title));
+    writeFileSync(join(root, `${key}.versions.tsv`), "v1.1.2\tfalse\t\n");
+  }
+  return { d, home: join(d, "home"), root };
+}
+function serveBoard(home: string, extraEnv: Record<string, string> = {}, projects?: string[]) {
+  const srv = startServer({
+    port: 0, token: TOKEN, legsScript: join(home, "no-workers.sh"), ...(projects ? { projects } : {}),
+    env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000", ...extraEnv },
+  });
+  cleanups.push(() => srv.stop());
+  return async () => (await fetch(`http://127.0.0.1:${srv.port}/api/roadmap`, { headers: { "X-Himmel-Token": TOKEN } })).json();
+}
+
+test("5494 row 1: two mirror dirs give cards from both projects by default, each with its project key", async () => {
+  const m = twoMirrors();
+  const r = await serveBoard(m.home)();
+  expect(r.state).toBe("ok");
+  expect(r.projects).toEqual(["HIMMEL", "SALUS"]);
+  expect(r.tickets.map((t: { id: string; project: string }) => [t.id, t.project])).toEqual([["HIMMEL-1", "HIMMEL"], ["SALUS-1", "SALUS"]]);
+});
+
+test("5494 row 2: --project (the startServer option) and HIMMEL_BOARD_PROJECTS (its env twin) narrow the Board", async () => {
+  const m = twoMirrors();
+  const flag = await serveBoard(m.home, {}, ["SALUS"])();
+  expect(flag.projects).toEqual(["SALUS"]);
+  expect(flag.tickets.map((t: { id: string }) => t.id)).toEqual(["SALUS-1"]);
+  const env = await serveBoard(m.home, { HIMMEL_BOARD_PROJECTS: "HIMMEL" })();
+  expect(env.tickets.map((t: { id: string }) => t.id)).toEqual(["HIMMEL-1"]);
+});
+
+test("5494 row 3: a version name present in both projects stays two entries, each ticket in its own project's", async () => {
+  const m = twoMirrors();
+  const r = await serveBoard(m.home)();
+  expect(r.versions.length).toBe(2);
+  expect(r.versions.map((v: { project: string }) => v.project)).toEqual(["HIMMEL", "SALUS"]);
+  expect(new Set(r.versions.map((v: { n: string }) => v.n)).size).toBe(2); // the shown names differ, so the strip and the plan can tell them apart
+  const own = r.tickets.map((t: { id: string; v: number }) => [t.id, r.versions[t.v].project]);
+  expect(own).toEqual([["HIMMEL-1", "HIMMEL"], ["SALUS-1", "SALUS"]]);
+});
+
+test("5494: with one mirror the version names stay unqualified, as before", async () => {
+  const m = twoMirrors();
+  const r = await serveBoard(m.home, { HIMMEL_BOARD_PROJECTS: "HIMMEL" })();
+  expect(r.versions.map((v: { n: string }) => v.n)).toEqual(["v1.1.2"]);
+});
+
+test("5494: the page draws each card with its own project's key, and two same-number cards do not collide", async () => {
+  const m = twoMirrors();
+  const r = await serveBoard(m.home)();
+  const html = renderBoard(r, { v: "all" }, {});
+  expect(html).toContain("<b>HIMMEL-1</b>");
+  expect(html).toContain("<b>SALUS-1</b>");
+});

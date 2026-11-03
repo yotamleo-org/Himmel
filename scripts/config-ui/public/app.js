@@ -600,12 +600,13 @@ async function loadBoard() {
 // redrawn from the server's data either way: on a refusal nothing local changed, so the card is back where it was and the
 // reason is shown above the board.
 let rmWriting = false;
-const rmTicket = (k) => (roadmap && roadmap.state === "ok" ? roadmap.tickets.find((x) => x.k === k) : undefined)
-  || (roadmapUi.nv && roadmapUi.nv.state === "ok" ? roadmapUi.nv.tickets.find((x) => x.k === k) : undefined); // a card on the No version tab is in the second read
+// a card is named by its number and its project (two projects share numbers); a card with no project (GitHub, local) has none
+const rmTicket = (k, project) => (roadmap && roadmap.state === "ok" ? roadmap.tickets.find((x) => x.k === k && (x.project || "") === (project || "")) : undefined)
+  || (roadmapUi.nv && roadmapUi.nv.state === "ok" ? roadmapUi.nv.tickets.find((x) => x.k === k && (x.project || "") === (project || "")) : undefined); // a card on the No version tab is in the second read
 async function writeRoadmap(t, change) {
   if (rmWriting || !t) return;
   const local = t.backend === "local";
-  const body = { key: local ? t.id : "HIMMEL-" + t.k, ...(local ? { backend: "local" } : {}), ...change };
+  const body = { key: t.id || "HIMMEL-" + t.k, ...(local ? { backend: "local" } : {}), ...change }; // the card's own key: its project is never a default
   rmWriting = true; roadmapUi.writeError = null;
   const { ok, j } = await post("/api/roadmap/write", body);
   rmWriting = false;
@@ -625,16 +626,16 @@ let rmDrag = null;
 document.addEventListener("dragstart", (e) => {
   const c = e.target.closest && e.target.closest("[data-rm-card]");
   if (!c) return;
-  rmDrag = Number(c.dataset.rmCard);
-  try { e.dataTransfer.setData("text/plain", c.dataset.rmId || "HIMMEL-" + rmDrag); e.dataTransfer.effectAllowed = "move"; } catch (_) { /* no dataTransfer */ }
+  rmDrag = { k: Number(c.dataset.rmCard), project: c.dataset.rmProject || "" };
+  try { e.dataTransfer.setData("text/plain", c.dataset.rmId || (rmDrag.project || "HIMMEL") + "-" + rmDrag.k); e.dataTransfer.effectAllowed = "move"; } catch (_) { /* no dataTransfer */ }
 });
 document.addEventListener("dragover", (e) => { if (rmDrag !== null && e.target.closest && e.target.closest("[data-rm-drop]")) e.preventDefault(); });
 document.addEventListener("drop", (e) => {
   const col = e.target.closest && e.target.closest("[data-rm-drop]");
   if (rmDrag === null || !col) return;
   e.preventDefault();
-  const k = rmDrag; rmDrag = null;
-  const t = rmTicket(k);
+  const card = rmDrag; rmDrag = null;
+  const t = rmTicket(card.k, card.project);
   if (t && t.b !== col.dataset.rmDrop) writeRoadmap(t, { status: col.dataset.rmDrop });
 });
 document.addEventListener("dragend", () => { rmDrag = null; });
@@ -645,7 +646,7 @@ document.addEventListener("change", (e) => {
     return;
   }
   if (e.target.dataset.rmThemeKey) {
-    const t = rmTicket(Number(e.target.dataset.rmThemeKey)), opt = e.target.selectedOptions && e.target.selectedOptions[0];
+    const t = rmTicket(Number(e.target.dataset.rmThemeKey), e.target.dataset.rmProject), opt = e.target.selectedOptions && e.target.selectedOptions[0];
     // "new sector…" (a local card only): ask for the name; a cancel redraws the card as it was
     const sector = opt && opt.hasAttribute("data-rm-new") ? (prompt(`New Sector for ${t ? t.id : "this card"}`) || "").trim() : e.target.value;
     return void (sector ? writeRoadmap(t, { sector }) : paint());
