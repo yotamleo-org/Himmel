@@ -729,8 +729,12 @@ scripts/telegram/restart-bridge.sh	gnu-flag	1
 scripts/telegram/test-auto-action.sh	mktemp	1
 scripts/telegram/test-phi-egress-guard-parity.sh	mktemp	2
 scripts/test-adopt-features.sh	errexit	12
-scripts/test-adopt-features.sh	mktemp	1
+scripts/test-adopt-hooks-chain.sh	errexit	1	split from test-adopt-features.sh with its findings; the moved lines are unchanged
+scripts/test-adopt-hooks-gates.sh	errexit	1	split from test-adopt-features.sh with its findings; the moved lines are unchanged
+scripts/test-adopt-hooks-gates.sh	mktemp	1	split from test-adopt-features.sh with its findings; the moved lines are unchanged
 scripts/test-adopt-only-hooks.sh	errexit	1
+scripts/test-adopt-provenance.sh	errexit	1	split from test-adopt-features.sh with its findings; the moved lines are unchanged
+scripts/test-adopt-wizard.sh	errexit	2	split from test-adopt-features.sh with its findings; the moved lines are unchanged
 scripts/test-adopt.sh	errexit	4
 scripts/test-check-ci.sh	mktemp	1
 scripts/test-check-marketplace-source-hermetic.sh	errexit	1
