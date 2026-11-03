@@ -539,7 +539,7 @@ rget() { python3 -c 'import json,sys; v=json.loads(sys.argv[1])
 for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
 print(round(v,4) if isinstance(v,float) else v)' "$row" "$1"; }
 eq "export-row: writes every field" "$(python3 -c 'import json,sys; print(" ".join(sorted(json.loads(sys.argv[1]))))' "$row")" \
-  "cbs_hash class_recall confighash metrics outputs_sha256 run_id status tree"
+  "cbs_hash class_recall confighash metrics outputs_sha256 responded run_id status tree"
 eq "export-row: the run_id is the outputs dir" "$(rget run_id)" "out1"
 eq "export-row: cbs_hash is HEAD's" "$(rget cbs_hash)" "$(python3 "$SCORE" cbs-hash HEAD --repo "$G")"
 eq "round trip: the confighash gate computes equals the row's" "$(python3 "$SCORE" confighash HEAD --repo "$G")" "$(rget confighash)"
@@ -558,6 +558,10 @@ python3 "$SCORE" verify-row "$(doctor 'r["outputs_sha256"]="0"*64')" "$O" --repo
 eq "verify-row: a doctored outputs_sha256 exits 1" "$rc" "1"
 python3 "$SCORE" verify-row "$(doctor 'r["status"]="inconclusive"')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
 eq "verify-row: a doctored status exits 1" "$rc" "1"
+python3 "$SCORE" verify-row "$(doctor 'r["responded"]={"scored": 99, "critics": {"claude": 99}}')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: a doctored responded roster exits 1" "$rc" "1"
+python3 "$SCORE" verify-row "$(doctor 'del r["responded"]')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: a row exported before the roster field still matches" "$rc" "0"
 
 # gate over GB..HEAD of the gate repo; grows <rid:recall:fp:logic[:status]>... writes rows at B (b*) or H (h*).
 B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")
@@ -585,6 +589,37 @@ grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --targe
 eq "gate: a target class above the baseline max is keep" "$rc" "0"; has "gate: keep" "$out" "gate: keep"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.8 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic
 has "gate: a target class not above the baseline max is no-loss" "$out" "gate: no-loss"
+
+# Rows record the cases each critic answered; a verdict never reads across unequal panels.
+# groster <rid-prefix> <scored;critic:cases,...> - stamps `responded` on the rows whose run_id starts with the prefix.
+groster() { python3 -c 'import json,sys
+f, pre, spec = sys.argv[1:4]
+scored, crit = spec.split(";")
+rows = [json.loads(l) for l in open(f)]
+for r in rows:
+    if r["run_id"].startswith(pre):
+        r["responded"] = {"scored": int(scored), "critics": {c.split(":")[0]: int(c.split(":")[1]) for c in crit.split(",")}}
+open(f, "w").write("".join(json.dumps(r) + "\n" for r in rows))' "$G/scripts/eval/review-panel/results.jsonl" "$1" "$2"
+  gg add -A; gg commit -qm roster; }
+# base: the claude critic answered 12 of 24 cases (skipped, api lane off), head: both answered all; head worse on
+# fp_rate, which the old gate called a loss
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:24,codex:24"; ggate
+eq "gate: unequal panels exit 1" "$rc" "1"
+has "gate: unequal panels name the mismatch" "$out" "panel mismatch"
+has "gate: unequal panels name the critic that skipped cases" "$out" "claude 12/24"
+case "$out" in *"gate: loss"*) fail "gate: unequal panels give no loss";; *) pass "gate: unequal panels give no loss";; esac
+# a head that looks like a win across unequal panels is refused too
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.9 h2:0.5:0.1:0.9; groster b "24;codex:24"; groster h "24;claude:24,codex:24"; ggate --target-class logic
+has "gate: a win across unequal panels is a mismatch" "$out" "panel mismatch"
+case "$out" in *"gate: keep"*) fail "gate: unequal panels give no keep";; *) pass "gate: unequal panels give no keep";; esac
+# like-for-like keeps its normal verdicts
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster b "24;claude:24,codex:24"; groster h "24;claude:24,codex:24"; ggate
+has "gate: equal panels still lose beyond noise" "$out" "gate: loss"
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; groster b "24;codex:24"; groster h "24;codex:24"; ggate --target-class logic
+has "gate: equal panels still keep a target-class win" "$out" "gate: keep"
+# a critic missing from every row on both sides is still like-for-like
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:3,codex:24"; ggate
+has "gate: a critic that answered no whole sweep on either side is no mismatch" "$out" "gate: no-loss"
 
 # --- real cases: multi-file, context_seed, base, fix ---------------------------------------
 S="$TMP/src"; RL="$TMP/real"; RK="$TMP/real-key.json"
