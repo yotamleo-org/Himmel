@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { parseDotEnv } from "../himmelctl/lib/probes.js";
 import { readConfLayers } from "./conf-layers";
 import { readLocalItems } from "./local-tracker";
+import { boardProjects } from "./projects";
 // @ts-ignore -- plain ESM resolver shared with project-mode.sh, no type declarations
 import { projectModeTracker } from "../lib/project-mode.mjs";
 
@@ -75,8 +76,13 @@ export async function trackerSources(env: Env, root: string): Promise<TrackerSou
   }
   if (backend === "none") out.push("none");
   if (explicitLocal && !out.length) return out; // an explicit local project never falls back to a mirror's writable board
-  try { if (readdirSync(jiraMirrorDir(env)).some((f) => /^HIMMEL-\d+\.md$/.test(f))) out.push("jira"); } catch { /* no mirror */ }
+  if (boardProjects(env).some(holdsOwnTickets)) out.push("jira");
   return out;
+}
+
+// a project of the Board holds tickets when its mirror dir has a <KEY>-<n>.md of its own key (any project, not only HIMMEL)
+function holdsOwnTickets(p: { key: string; dir: string }): boolean {
+  try { return readdirSync(p.dir).some((f) => f.startsWith(`${p.key}-`) && /^\d+\.md$/.test(f.slice(p.key.length + 1))); } catch { return false; /* no mirror */ }
 }
 
 // the fields the mapping consumes, forced to their types so one malformed entry cannot break the whole board.

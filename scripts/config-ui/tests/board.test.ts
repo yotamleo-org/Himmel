@@ -212,10 +212,13 @@ test("GET /api/roadmap: a non-empty process env mirror beats the checkout's .env
 test("GET /api/board and /api/roadmap read the same Jira mirror when only himmel.conf sets the project key", async () => {
   const s = scratch();
   otherMirror(join(s.home, ".himmel", "state", "jira-mirror", "CONFKEY"), "from the conf project");
+  // the cards enumerate the mirror root by project: this project's own ticket carries its key (the chain read still reads the HIMMEL-keyed fixture above)
+  writeFileSync(join(s.home, ".himmel", "state", "jira-mirror", "CONFKEY", "CONFKEY-1.md"), mirrorIssue(1, "To Do", "To Do", [], "First card from the conf project").replaceAll("HIMMEL-1", "CONFKEY-1"));
   writeFileSync(join(s.home, ".himmel", "himmel.conf"), "JIRA_PROJECT_KEY=CONFKEY\n");
   const url = serve({ HIMMEL_JIRA_MIRROR: "", HIMMEL_CHAIN_REGISTRY: s.registry }, s);
   expect((await get(url)).chains.tickets["HIMMEL-1"].title).toBe("First card from the conf project");
   expect(JSON.stringify(await get(url.replace("/api/board", "/api/roadmap")))).toContain("First card from the conf project");
+  for (const n of [1, 2]) rmSync(join(s.home, ".himmel", "state", "jira-mirror", "CONFKEY", `HIMMEL-${n}.md`)); // leave only the project's own keyed ticket: the rail must not need a HIMMEL-keyed file
   expect((await get(url.replace("/api/board", "/api/sources"))).sources).toEqual(["jira"]); // the rail stays lit
 });
 
@@ -290,4 +293,23 @@ test("GET /api/board is read-only: nothing under the scratch tree changes", asyn
   await get(url);
   expect(snapshot(s.d)).toEqual(before);
   expect(readFileSync(s.drift, "utf8")).toContain("sdrift=1:abc");
+});
+
+// app.js names a card by its number AND project; two projects' same-number cards do not collide, and a drop posts the card's own key.
+test("5494: a drop on a SALUS card posts SALUS-1, not HIMMEL-1, though both cards are number 1", async () => {
+  const src = readFileSync(join(import.meta.dir, "../public/app.js"), "utf8");
+  const block = src.slice(src.indexOf("let rmWriting = false;"), src.indexOf('document.addEventListener("dragend"'));
+  expect(block).toContain("rmTicket");
+  const on: Record<string, (e: unknown) => void> = {};
+  const posted: { path: string; body: Record<string, unknown> }[] = [];
+  const roadmap = { state: "ok", themes: ["(no sector)"], tickets: [
+    { k: 1, project: "HIMMEL", id: "HIMMEL-1", b: "todo", s: "To Do", backend: "jira" }, { k: 1, project: "SALUS", id: "SALUS-1", b: "todo", s: "To Do", backend: "jira" }] };
+  const post = async (path: string, body: Record<string, unknown>) => { posted.push({ path, body }); return { ok: true, j: { ok: true, status: "prog", name: "In Progress", mirror: "stale" } }; };
+  new Function("roadmap", "roadmapUi", "post", "paint", "loadRoadmap", "document", block)(roadmap, {}, post, () => {}, () => {}, { addEventListener: (n: string, f: (e: unknown) => void) => { on[n] = f; } });
+  const target = (data: Record<string, string>) => ({ closest: () => ({ dataset: data }) });
+  on.dragstart({ target: target({ rmCard: "1", rmProject: "SALUS" }), dataTransfer: { setData() {} } });
+  on.drop({ target: target({ rmDrop: "prog" }), preventDefault() {} });
+  await new Promise((r) => setTimeout(r, 0));
+  expect(posted).toEqual([{ path: "/api/roadmap/write", body: { key: "SALUS-1", status: "prog" } }]);
+  expect(roadmap.tickets.map((t) => t.b)).toEqual(["todo", "prog"]); // only the SALUS card moved
 });
