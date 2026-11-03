@@ -54,8 +54,8 @@
 #            stderr and re-emitted here so step 4.5 can still record them).
 #
 # Exit codes:
-#   0 - lane completed (including the CR_PROFILE=none / empty-diff / disabled
-#       / fail-open-degrade cases - none of those are aborts).
+#   0 - lane completed (including the CR_PROFILE=none / empty-diff /
+#       fail-open-degrade cases - none of those are aborts).
 #   2 - usage error: --head or --branch missing.
 #   7 - ABORT, never a degrade. Two causes: the --head given
 #       here names no commit in this repo (checked before any git command
@@ -137,6 +137,7 @@ docs_audit_panel_avail_lines=""
 docs_audit_panel_findings=""
 # Fail-open degrade: no temp file means no panel run, so nothing was reviewed.
 no_panel_tmp() {
+    [ -z "$docs_audit_panel_avail_lines" ] || printf '%s\n' "$docs_audit_panel_avail_lines" >&2
     echo "docs-audit cross-model critic unavailable (mktemp failed - check free space in TMPDIR) - ready-check item 4 and the merge gate hold this head until a re-run records avail ok" >&2
     exit 0
 }

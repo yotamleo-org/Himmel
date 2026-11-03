@@ -166,6 +166,23 @@ check "$rc" "0" "T3e rc"
 contains "$(cat "$stderr_file")" "mktemp failed - check free space in TMPDIR) - ready-check item 4" "T3e names the cause and the hold"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3e the panel ran without a temp file"; fail=1; }
 
+# 3f. No temp file on the rtk retry: the first run's availability rows still
+# reach stderr. The one row here that puts a stub rtk on PATH; it removes the
+# temp dir, so the retry's mktemp fails.
+mkdir -p "$tmp/rtk-stub" "$tmp/vanishing"
+cat > "$tmp/rtk-stub/rtk" <<'RTKEOF'
+#!/usr/bin/env bash
+rm -rf "$TMPDIR"
+echo "diff --git a/f.txt b/f.txt"
+RTKEOF
+chmod +x "$tmp/rtk-stub/rtk"
+rc=0
+( cd "$repo" && TMPDIR="$tmp/vanishing" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "0" "T3f rc"
+contains "$(cat "$stderr_file")" "panel-availability: codex unavailable (quota)" "T3f keeps the first run's availability row"
+contains "$(cat "$stderr_file")" "mktemp failed - check free space in TMPDIR) - ready-check item 4" "T3f names the cause and the hold"
+
 # 4. CR_PROFILE=none wins even under CR_REQUIRE_CROSS_MODEL: prints the
 # claude-only note, panel never invoked, exit 0.
 set_policy 1
