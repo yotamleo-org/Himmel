@@ -277,6 +277,41 @@ RC7L=$(run_tree tree-old-id "$(payload console-judge-ro 'judge' "$SHIP_FLOW_PROM
 assert_rc "console-judge-ro (old id, even with a read-only agent file) gets no read-only carve-out" 2 "$RC7L"
 rm -f "$FT/.claude/agents/console-judge-ro.md"
 
+# brief-drafter is allowed by exact subagent type, only while its
+# agent file pins one tools: line, Read, Write, Edit, Bash. The prompt text
+# (it names a worktree and a PR) changes nothing either way.
+BD_LOG="$TMP/bd-dispatch.jsonl"
+RC9A=$(run_hook brief-drafter-repo "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$BD_LOG")
+assert_rc "chief + subagent_type brief-drafter (repo agent file) + ship-flow markers allowed" 0 "$RC9A"
+assert_contains "brief-drafter dispatch is logged with its subagent type" '"subagent_type":"brief-drafter"' "$(cat "$BD_LOG" 2>/dev/null || true)"
+assert_contains "brief-drafter dispatch log names the allowance" '"override":"brief-drafter-dispatch"' "$(cat "$BD_LOG" 2>/dev/null || true)"
+
+RC9B=$(run_hook brief-drafter-gp "$(payload general-purpose 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-gp.jsonl")
+assert_rc "general-purpose with the brief-drafter prompt still denied" 2 "$RC9B"
+RC9C=$(run_hook brief-drafter-fork "$(payload fork 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-fork.jsonl")
+assert_rc "fork with the brief-drafter prompt still denied" 2 "$RC9C"
+RC9D=$(run_hook brief-drafter-x "$(payload x-brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-x.jsonl")
+assert_rc "x-brief-drafter does not match the brief-drafter allowance" 2 "$RC9D"
+assert_empty "a denied dispatch writes no brief-drafter log" "$(cat "$TMP/bd-gp.jsonl" "$TMP/bd-fork.jsonl" "$TMP/bd-x.jsonl" 2>/dev/null || true)"
+
+agent_md brief-drafter 'Read, Write, Edit, Bash'
+RC9E=$(run_tree tree-bd-pinned "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-pinned.jsonl")
+assert_rc "brief-drafter whose agent file pins Read/Write/Edit/Bash allowed" 0 "$RC9E"
+
+agent_md brief-drafter 'Read, Write, Edit, Bash, WebFetch'
+RC9F=$(run_tree tree-bd-wide "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-wide.jsonl")
+assert_rc "brief-drafter whose agent file widens its tools loses the allowance" 2 "$RC9F"
+assert_empty "a brief-drafter without the allowance is not logged" "$(cat "$TMP/bd-wide.jsonl" 2>/dev/null || true)"
+
+rm -f "$FT/.claude/agents/brief-drafter.md"
+RC9G=$(run_tree tree-bd-missing "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-missing.jsonl")
+assert_rc "brief-drafter with no agent file gets no allowance" 2 "$RC9G"
+
+printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash\ntools: Read, Write, Edit, Bash, WebFetch\n---\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9H=$(run_tree tree-bd-two-tools "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-two.jsonl")
+assert_rc "brief-drafter whose frontmatter repeats tools: gets no allowance" 2 "$RC9H"
+rm -f "$FT/.claude/agents/brief-drafter.md"
+
 RC8C=$(run_hook env-chief-worktree-propen "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
 assert_rc "HIMMEL_SESSION_ROLE=chief + full ship-flow prompt refuses like console" 2 "$RC8C"
 
