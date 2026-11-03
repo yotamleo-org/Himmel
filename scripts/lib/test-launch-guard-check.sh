@@ -100,15 +100,23 @@ for c in git bash dirname; do ln -s "$(command -v "$c")" "$NOBIN/$c"; done
 run "$tmp/adopter" PATH="$NOBIN"; expect "node_absent" 1 "node not on PATH"
 
 # --- layer P -------------------------------------------------------------------
-mkhimmel "$tmp/himmel-partial" "$PARTIAL"
+mkhimmel "$tmp/himmel-partial" "$PARTIAL"; register "$tmp/himmel-partial"
 run "$tmp/himmel-partial"; expect "himmel_partial_chain_complete_user_layer" 1 "himmel hook chain incomplete"
 
 mkhimmel "$tmp/stubbed" "$PARTIAL"
 run "$tmp/stubbed"
-[ "$RC" = 1 ] && [ ! -e "$tmp/stubbed/.claude/settings.json.lock" ] && pass "candidate_checker_stubbed" \
-  || fail "candidate_checker_stubbed" "rc=$RC out=[$OUT] lock=$(ls "$tmp/stubbed/.claude" 2>&1)"
+[ "$RC" = 1 ] && [ "$OUT" = "himmel hook chain incomplete" ] && [ ! -e "$tmp/stubbed/.claude/settings.json.lock" ] \
+  && pass "candidate_checker_stubbed" \
+  ||fail "candidate_checker_stubbed" "rc=$RC out=[$OUT] lock=$(ls "$tmp/stubbed/.claude" 2>&1)"
 
 run "$W"; expect "himmel_checkout_passes" 0 "guarded: project $W"
+# default anchor (A20): HIMMEL_REPO absent, not merely empty
+OUT="$(/usr/bin/env -u HIMMEL_REPO HOME="$HOME" HANDOVER_REGISTRY="$REG" CLAUDE_CONFIG_DIR="$CFG" \
+  "$BASH_BIN" "$CHECK" "$W" 2>/dev/null)"; RC=$?
+expect "default_anchor_without_himmel_repo" 0 "guarded: project $W"
+mkdir -p "$tmp/emptyanchor"
+run "$tmp/adopter" HIMMEL_REPO="$tmp/emptyanchor"
+expect "anchor_lib_unreadable" 1 "anchor lib unreadable: $tmp/emptyanchor/scripts/guardrails/lib.sh"
 
 # primary partial (uncommitted edit), linked worktree complete (committed) -> worktree passes
 mkhimmel "$tmp/pmain" "$GOOD"

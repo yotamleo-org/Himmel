@@ -42,8 +42,9 @@ export HIMMEL_REPO="$anchor"
 command -v node >/dev/null 2>&1 || refuse "node not on PATH"
 
 lib="$anchor/scripts/guardrails/lib.sh"
+[ -r "$lib" ] || refuse "anchor lib unreadable: $lib"
 # shellcheck disable=SC1090
-[ -r "$lib" ] && . "$lib"
+. "$lib"
 
 top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || top=""
 
