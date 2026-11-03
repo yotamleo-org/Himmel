@@ -6533,11 +6533,15 @@ c84_doc "release: R1"
 out="$(C84_EMPTY=1 c84_run)"
 if grepq "$out" 'WARN C84-release-queue' && grepq "$out" -F 'UNREADABLE' && ! grepq "$out" -F 'was not read'; then pass "C84 probe printed nothing -> WARN UNREADABLE"; else fail "C84 empty probe -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C84-release-queue: control, jq missing (state cannot be judged) -> OK row with its note =="
-if [ -d "${NOJQ_BIN:-}" ] && ! PATH="$NOJQ_BIN" bash -c 'command -v jq >/dev/null 2>&1'; then
-    out="$(PATH="$NOJQ_BIN" c84_run)"
+c84_nojq="$c84_t/nojq-bin"; mkdir -p "$c84_nojq"
+for c84_f in /usr/bin/*; do
+    [ "${c84_f##*/}" = jq ] || { [ ! -x "$c84_f" ] || ln -s "$c84_f" "$c84_nojq/${c84_f##*/}" 2>/dev/null; }
+done
+if PATH="$c84_nojq" bash -c 'command -v bash >/dev/null 2>&1 && ! command -v jq >/dev/null 2>&1' 2>/dev/null; then
+    out="$(PATH="$c84_nojq" c84_run)"
     if grepq "$out" 'OK   C84-release-queue' && grepq "$out" -F 'was not read'; then pass "C84 jq missing -> OK with the not-read note"; else fail "C84 jq missing -> $(printf '%s' "$out" | head -4)"; fi
 else
-    fail "C84 jq missing: precondition -- no jq-free PATH from the C33 case"
+    echo "  SKIP: C84 no-jq — the curated shadow PATH cannot run bash without jq here, so the fixture cannot be built"
 fi
 echo "== C84-release-queue: the default handover root comes from --root, not the working directory =="
 c84_p="$c84_t/proj"; mkdir -p "$c84_p/handovers/u/himmel/release/R1" "$c84_t/elsewhere"
