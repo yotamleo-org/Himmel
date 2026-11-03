@@ -2749,7 +2749,7 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
   def safew: .w != null and (((.w | lit) and ((.w.v | test("cr/|handover/"; "i")) | not)) or (.w.t == "dyn" and (.w.raw | test("^\"\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?\"$"))));
   def emitter: (.prog == "echo" or .prog == "printf") and all(.argv[]; lit);
-  def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
+  def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|GH_.*|BROWSER|PAGER|MANPAGER|EDITOR|VISUAL|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
   def ok: .opaque == null and ((.via // []) | length) == 0
     and ((((.assigns // []) | length) == 0) or (.prog == null and all(.assigns[]; danger | not)))
     and (. as $c | all(.redirs[]; (outw | not) or (.w != null and (.w | lit) and .w.v == "/dev/null") or ($ment == 0 and safew and ($c | emitter))))
@@ -2762,7 +2762,7 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
              (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not)
                and ($a.v | test("%[^a-zA-Z%]*[hlLqjzt]*n") | not))
          elif .prog == "gh" then
-             (.argv | length) >= 3 and all(.argv[]; lit and (.v | test("^(-[a-zA-Z]*w[a-zA-Z]*|--web(=.*)?)$") | not))
+             (.argv | length) >= 3 and all(.argv[]; lit and (.v | test("^(-[a-zA-Z]*w|--web)") | not))
              and (.argv[1].v as $s | any("pr", "issue", "run"; . == $s))
              and (.argv[2].v as $s | any("view", "list", "status", "checks", "diff"; . == $s))
          elif .prog == "sort" then

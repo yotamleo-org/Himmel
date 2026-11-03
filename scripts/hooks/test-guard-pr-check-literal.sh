@@ -3126,6 +3126,12 @@ run "9020 control: BROWSER set to a command, then gh pr view --web -> deny" 2 \
     "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --web' "$OTHER")" "$HR"
 run "9020 control: BROWSER set to a command, then gh pr view -w -> deny" 2 \
     "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 -w' "$OTHER")" "$HR"
+run "9020 control: BROWSER set to a command, then gh pr view -w=true -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 -w=true' "$OTHER")" "$HR"
+run "9020 control: BROWSER set to a command, then gh pr view --web=true -> deny" 2 \
+    "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --web=true' "$OTHER")" "$HR"
+run "9020 control: GH_BROWSER set to a command beside any gh read -> deny" 2 \
+    "$(payload 'GH_BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --json state' "$OTHER")" "$HR"
 run "9020 control: the same overwrite with a write-verdicts payload -> deny" 2 \
     "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/cr && bash write-verdicts.sh\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
 run "9020 control: bash -c hiding a relative run -> deny" 2 \
