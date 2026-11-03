@@ -1467,7 +1467,7 @@ cmd_new() {
     # in the same position this contract has always used, so nothing is
     # silently swallowed.
     local lock_out release_token
-    if ! lock_out="$(HANDOVER_DIR="$root" bash "$repo/scripts/handover/queue-lock.sh" acquire "$doc")"; then
+    if ! lock_out="$(HANDOVER_DIR="$root" QUEUE_LOCK_ON_BEHALF=1 bash "$repo/scripts/handover/queue-lock.sh" acquire "$doc")"; then
         err "WARNING queue-lock acquire failed for $doc — refusing to launch without the lock (doc left in place)"
         exit 1
     fi
@@ -1504,7 +1504,8 @@ cmd_new() {
         BOARD_URL "none yet — render it locally at ACTION ZERO step 12" \
         TRACKER_URL "none" \
         CARRIED_LIVE_STATE "epics: none
-decisions: none" \
+decisions: none
+$(declared_release_line)" \
         CARRIED_DIRECTION "Chain order: none yet (first console of the chain). In work: nothing. Waits on the operator: nothing." \
         MODEL "$model" \
         PROJECT "$project_doc_value"
@@ -1712,6 +1713,43 @@ check_direction_real() {
     return 1
 }
 
+# Refuse a handover whose `workers:` Live-state line carries no worker span while
+# the outgoing fleet manifest holds a non-lockless worker that holds a queue lock:
+# seeding it would hand the successor `workers: none` and relay-batch.sh no entries.
+# Every such worker is named with the live-state.sh command that fills the line (the
+# nonces are the chief's: never read from a worker doc or the manifest). A `<...>`
+# placeholder, an absent `workers:` line, an absent, unreadable or empty manifest, and
+# rows without a held lock (status other than 11/12) pass.
+# Args: outgoing doc, outgoing Live state.
+check_workers_listed() {
+    local doc="$1" live="$2" key=workers value rows label ldoc rc named="" cmd="" NL=$'\n'
+    if ! printf '%s\n' "$live" | awk '/^workers:/ { f = 1 } END { exit !f }' && legacy_names_on; then key=legs; fi
+    printf '%s\n' "$live" | awk -v k="$key:" 'index($0, k) == 1 { f = 1 } END { exit !f }' || return 0
+    value="$(seeded_live_field "$live" "$key")"
+    case "$value" in "<"*) return 0 ;; esac
+    # shellcheck disable=SC2016  # the backticks in the span pattern are literal
+    printf '%s\n' "$value" | awk '/`[A-Za-z0-9_.-]+:[^` \t:]+:[^` \t:]+:[^` \t:]+`/ { f = 1 } END { exit f }' || return 0
+    [ -f "${doc%.md}.fleet.json" ] || return 0
+    rows="$(jq -r "$JQ_W"'W[] | select(.lockless != true) | [.label // "", .doc // ""] | @tsv' "${doc%.md}.fleet.json" 2>/dev/null)" || return 0  # swallow-ok: an unreadable manifest leaves the open set unknown, as open_legs_block does
+    while IFS=$'\t' read -r label ldoc; do
+        [ -n "$label" ] && [ -n "$ldoc" ] || continue
+        rc=0
+        HANDOVER_DIR="$root" bash "$repo/scripts/handover/queue-lock.sh" status "$ldoc" >/dev/null 2>&1 || rc=$?
+        case "$rc" in 11|12) ;; *) continue ;; esac
+        ldoc="${ldoc##*/}"
+        named="$named  $label ${ldoc%.md}$NL"
+        cmd="$cmd --nonce $label=<nonce>"
+    done <<EOF
+$rows
+EOF
+    [ -n "$named" ] || return 0
+    err "refusing to hand over: the $key: line in $doc lists no worker, but these open workers hold a queue lock:"
+    printf '%s' "$named" >&2
+    err "  fill the line from the fleet manifest with the nonce you hold for each, then retry:"
+    err "  bash $kit/live-state.sh $doc$cmd"
+    return 1
+}
+
 # Refuse a handover while an open PR maps to no live worker record and to no hold
 # on the outgoing `queue:` line (orphan-pr-check.sh); every orphan is named. An
 # unreadable PR list (exit 3) or failed check never refuses (fail-open, no deadlock): it is
@@ -1815,6 +1853,21 @@ spill_decisions() {
     fi
 }
 
+# Match the Jira CLI's declaration root, never the chief's arbitrary --bucket.
+# Ambiguous or invalid names stay unseeded; tick/doctor report the disabled wiring.
+declared_release_line() {
+    [ -z "$project_dir" ] || return 0
+    local release_root="${HIMMEL_RELEASE_STATE_DIR:-$root/$slug/${repo##*/}/release}" path name="" count=0
+    for path in "$release_root"/*/release.json; do
+        [ -f "$path" ] || continue
+        count=$((count + 1))
+        name="${path%/release.json}"; name="${name##*/}"
+    done
+    [ "$count" -eq 1 ] || return 0
+    case "$name" in ''|*[!A-Za-z0-9._-]*|[!A-Za-z0-9]*) return 0 ;; esac
+    printf 'release: %s\n' "$name"
+}
+
 # The shift-spanning Live-state lines `next` copies verbatim into the
 # successor doc; `epics:` and `decisions:` fall back to `none`, and an
 # oversize `decisions:` line is spilled (spill_decisions).
@@ -1823,7 +1876,10 @@ carried_live_state() {
     local live="$1" field line
     for field in epics decisions priority versions tracker-plan release rm focus-version focus-plan; do
         line="$(printf '%s\n' "$live" | grep -m 1 "^$field:")" || line=""
-        case "$field" in epics|decisions) [ -n "$line" ] || line="$field: none" ;; esac
+        case "$field" in
+            epics|decisions) [ -n "$line" ] || line="$field: none" ;;
+            release) [ -n "$line" ] || line="$(declared_release_line)" ;;
+        esac
         [ "$field" != decisions ] || line="$(spill_decisions "$line" "$2" "$3")"
         [ -z "$line" ] || printf '%s\n' "$line"
     done
@@ -1957,6 +2013,37 @@ $out
     mv "$doc.az" "$doc"
 }
 
+# The HANDOFF's "Start, plan and design in flight" section: one pointer line per
+# item, built from the listing alone, so no item is ever opened and the cost stays flat.
+# Nothing listed (or nothing readable) writes nothing, not even the heading.
+# ponytail: one source, recently changed *.md names directly in the specs/ design, plan and proposal directories; a chat-only grill, a subdirectory, an .html item or an item older than the window is invisible, and a finished item stays listed until it ages out. Upgrade path: a registry the Start and Plan steps write.
+inflight_rows() { # <directory holding specs/> <days>: mtime TAB path; always runs in a pipeline, so the cd stays local
+    cd "$1/specs" 2>/dev/null || return 0  # swallow-ok: an unreadable source lists nothing
+    # find exits 1 on an absent directory; whatever it did list still counts
+    find designs design plans plan proposals proposal -maxdepth 1 -type f -name '*.md' ! -name '*.md.*' -mtime "-$2" 2>/dev/null |  # gnu-ok: BSD find has -maxdepth too
+        while IFS= read -r path; do printf '%s\t%s\n' "$(date -r "$path" '+%Y-%m-%d %H:%M')" "$path"; done
+}
+inflight_section() { # <directory holding specs/>
+    local cap="${CHIEF_INFLIGHT_CAP:-10}" days="${CHIEF_INFLIGHT_DAYS:-2}" rows total stamp path kind key
+    rows="$(inflight_rows "$1" "$days" | sort -r)"
+    [ -n "$rows" ] || return 0
+    total="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
+    printf '## Start, plan and design in flight\n\n'
+    # shellcheck disable=SC2016  # the backticks are literal markdown code spans
+    printf 'Files under `specs/` beside this note, changed in the last %s days, newest first.\n\n' "$days"
+    printf '%s\n' "$rows" | sed -n "1,${cap}p" | while IFS="$(printf '\t')" read -r stamp path; do
+        case "$path" in
+            design*) kind=design ;;
+            plan*) kind=plan ;;
+            *) kind=start ;;
+        esac
+        key="no ticket key"
+        if [[ "${path##*/}" =~ [A-Z][A-Z0-9]+-[0-9]+ ]]; then key="${BASH_REMATCH[0]}"; fi
+        printf -- '- specs/%s — %s, %s, changed %s\n' "$path" "$kind" "$key" "$stamp"
+    done
+    [ "$total" -le "$cap" ] || printf '+%s more\n' "$((total - cap))"
+}
+
 cmd_next() {
     [ -f "$console_template" ] || { err "missing template $console_template"; exit 2; }
     [ -f "$handoff_template" ] || { err "missing template $handoff_template"; exit 2; }
@@ -1988,6 +2075,7 @@ cmd_next() {
     check_live_line_kept priority PRIORITY-DROP "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_rulings_recorded "$predecessor_doc" "$predecessor_live_state" || exit 6
     check_direction_real "$predecessor_doc" || exit 7
+    check_workers_listed "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_no_orphan_pr "$predecessor_doc" || exit 8
     # The outgoing direction rides into the successor doc and the HANDOFF; the
     # successor's block starts as the predecessor's (a stale one is not detected).
@@ -2184,7 +2272,7 @@ cmd_next() {
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
-        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_chain hf_direction hf_lastgo
+        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_inflight hf_inflight_bytes hf_chain hf_direction hf_lastgo
         hf_chain="$(chain_order_line "$predecessor_dir")"
         # The direction block is already carried into the successor doc; the HANDOFF points at it.
         hf_direction="${hf_chain:+$hf_chain
@@ -2193,6 +2281,9 @@ cmd_next() {
         hf_lastgo="$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")"
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c | tr -d ' ')"
+        hf_inflight="$(inflight_section "$predecessor_dir")" || hf_inflight=""  # swallow-ok: the listing fails open, it never stops a hand-over
+        hf_inflight_bytes=0
+        [ -z "$hf_inflight" ] || hf_inflight_bytes="$(printf '\n%s\n' "$hf_inflight" | wc -c | tr -d ' ')"
         while :; do
             render_template "$handoff_template" "$predecessor_handoff" \
                 CURRENT_DIRECTION "$hf_direction" \
@@ -2214,7 +2305,7 @@ cmd_next() {
                 LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`${LS_HISTORY_REF:+; the closed workers, prior GOs and shift notes left out of that seed are kept verbatim in \`$LS_HISTORY_REF\`}"
             # Over budget: the bulky fact sections (all re-derivable) become
             # pointers; the rulings stay inline.
-            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes )) -gt "$hf_budget" ] || break
+            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes + hf_inflight_bytes )) -gt "$hf_budget" ] || break
             hf_pass=2
             hf_legs="over the HANDOFF size budget — run: bash $facts workers $predecessor_doc --repo $repo"
             hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')" || hf_slug=""  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
@@ -2223,12 +2314,13 @@ cmd_next() {
             hf_lastgo="over the HANDOFF size budget — read \`last GO:\` in the Live state of \`$successor_doc_ref\`"
         done
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
+        [ -z "$hf_inflight" ] || printf '\n%s\n' "$hf_inflight" >> "$predecessor_handoff"
         [ -z "$orphan_gate_note" ] || printf '\n> %s\n' "$orphan_gate_note" >> "$predecessor_handoff"
-        # Still over budget after the pointer pass: the remainder is the rulings
-        # and the wrapped-PR list, which are never trimmed — say so loudly.
+        # Still over budget after the pointer pass: the remainder is the rulings,
+        # the wrapped-PR list and the capped pointers, never trimmed — say so loudly.
         hf_total="$(wc -c < "$predecessor_handoff" | tr -d ' ')"
         if [ "$hf_total" -gt "$hf_budget" ]; then
-            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); wrapped-PR list $hf_wrapped_bytes bytes"
+            hf_note="HANDOFF over budget: $hf_total bytes (limit $hf_budget); wrapped-PR list $hf_wrapped_bytes bytes${hf_inflight:+, in-flight pointers $hf_inflight_bytes bytes}"
             printf '\n> %s\n' "$hf_note" >> "$predecessor_handoff"
             err "warning: $hf_note"
         fi

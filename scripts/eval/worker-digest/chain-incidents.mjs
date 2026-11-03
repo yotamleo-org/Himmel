@@ -148,7 +148,7 @@ const blankMember = (member) => ({ member, denials: 0, skips: 0, by_reason: Obje
 // gap that splits its Refused count into: refusals with a chain deny row (by reason), refusals older than the first
 // run-log row ("recorded before reasons were logged") and the rest ("no reason row, cause not established"). A refusal is matched to
 // its chain row by exact call id, once. The three parts add up to the count of refusals.
-export function rollupChain(chain, { firstDay = null, lastDay = null, refused = null } = {}) {
+export function rollupChain(chain, { firstDay = null, lastDay = null, refused = null, eventCap = EVENT_CAP } = {}) {
   if (!isObject(chain)) return { state: 'not-read' };
   const sources = {};
   for (const name of ['skip', 'run']) {
@@ -262,9 +262,21 @@ export function rollupChain(chain, { firstDay = null, lastDay = null, refused = 
     by_reason: reasonView(byReason), by_action: ruleKnown ? byAction : { deny: null, skip: null },
     infra: unknown(infra, ruleKnown), denials: unknown(byAction.deny, ruleKnown),
     invocations: unknown(invocations, ruleKnown),
-    events: list.slice(0, EVENT_CAP), events_total: list.length,
+    events: list.slice(0, eventCap), events_total: list.length,
     members: Object.fromEntries([...members].map(([k, m]) => [k, { ...m, by_reason: reasonView(m.by_reason), runs: unknown(m.runs, ruleKnown), errors: unknown(m.errors, ruleKnown), run_ms: unknown(m.run_ms, ruleKnown), max_ms: unknown(m.max_ms, ruleKnown) }])),
   };
+}
+
+// The clipped deny line of each refused call, found by its exact call id and member: (callId, member) => line | null.
+// It reads the same audited events as rollupChain (production origin, a named call, no duplicates) without the page's
+// EVENT_CAP, so a call past the newest 300 still has its line. Deny events only; the first event of a call and member that has a line.
+export function denyLinesByCall(chain) {
+  const lines = new Map();
+  for (const ev of rollupChain(chain, { eventCap: Infinity }).events ?? []) {
+    const key = `${ev.call_id}\0${ev.member}`;
+    if (ev.outcome === 'deny' && ev.deny_line && !lines.has(key)) lines.set(key, ev.deny_line);
+  }
+  return (callId, member) => lines.get(`${callId}\0${member}`) ?? null;
 }
 
 export const memberOfGuardClass = (cls) => typeof cls === 'string' && cls.startsWith('denied/') ? `${cls.slice(7)}.sh` : null;

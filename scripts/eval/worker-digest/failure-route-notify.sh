@@ -24,6 +24,13 @@ LOG="${HOME:-}/.claude/failure-review-cadence/failure-review-cadence.log"
 
 alert() { bash "$ALERT" fail failure-review-route "$1" "$LOG" "$2" "$3" >/dev/null 2>&1 || true; }
 
+# refused_as_test <label>: a test on the station never reaches the live chief or queue.
+refused_as_test() {
+    local rc=0
+    bash "$HERE/../../lib/test-run-guard" check --real "$1" || rc=$?
+    [ "$rc" = 77 ]
+}
+
 # live_console: newest held *-chief / *-console queue lock's session name ("" if none).
 live_chief() {
     local line slug age st best="" best_age=-1
@@ -44,6 +51,7 @@ live_chief() {
 cmd_chief() {
     local text="${1:-}" chief
     [ -n "$text" ] || { echo "ERR failure-route-notify: chief needs a text" >&2; return 64; }
+    if [ -z "${FAILURE_ROUTE_INBOX_SEND:-}" ] && refused_as_test failure-route-notify-chief; then return 77; fi
     chief="$(live_chief)"
     if [ -z "$chief" ]; then
         alert "no chief is live to tell: $text" "no held *-chief or *-console queue lock" "read the digest and the router log"
@@ -58,6 +66,7 @@ cmd_chief() {
 cmd_intake() {
     local key="${1:-}" why="${2:-}" rel jira=() out
     [ -n "$key" ] && [ -n "$why" ] || { echo "ERR failure-route-notify: intake needs a key and a why" >&2; return 64; }
+    if [ -z "${FAILURE_ROUTE_JIRA:-}" ] && refused_as_test failure-route-notify-intake; then return 77; fi
     cd "$ROOT" 2>/dev/null || return 1
     # shellcheck disable=SC1091
     if . "$ROOT/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR USER_SLUG 2>/dev/null || true; fi

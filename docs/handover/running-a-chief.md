@@ -294,7 +294,10 @@ effort guidance, including the chief's own wake-up budget, is in
   <K,…> --spec <file> --verdict <file> --verdict <file> --decision <n>
   --verbatim-file <f>`. The two `--verdict` files are the last-round critic
   returns minerva saved beside the spec, `<spec>.critic-spec-r<n>.md` and
-  `<spec>.critic-plan-r<n>.md`. Editing the spec afterwards voids the
+  `<spec>.critic-plan-r<n>.md`. Pass the spec's plan as `--plan <file>` (in
+  `specs/designs/` or `specs/plans/`): the trace lint reads each invariant's
+  test from it, and the signed row records its path. A spec with I<n> invariant
+  lines is refused without `--plan` (or with the spec as the plan). Editing the spec afterwards voids the
   signature until you re-sign with `--supersedes O-<id>`.
 - **The two checks.** `jira release spec-check <KEY…>` prints `SPEC ok`,
   `SPEC-STALE` (the file changed since signing) or `NO-SPEC` per key. `jira

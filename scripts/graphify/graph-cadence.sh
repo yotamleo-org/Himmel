@@ -439,6 +439,12 @@ FLOW_NAME="${FLOW_NAME_OVERRIDE:-graph-publish-${CORPUS_SLUG}}"
 # OWN ledger.jsonl into.
 # shellcheck source=../lib/flow-run-ledger.sh
 # shellcheck disable=SC1091
+# A test on the station never refreshes, publishes or promotes into the real graph; only exit 77 refuses.
+# Before the first write, the flow-run start row.
+_door_rc=0
+bash "$REPO_ROOT/scripts/lib/test-run-guard" check graph-cadence "$WORKTREE_DIR" "$HIMMEL_ROOT/graphify-out" || _door_rc=$?
+[ "$_door_rc" -ne 77 ] || exit 77
+
 . "$REPO_ROOT/scripts/lib/flow-run-ledger.sh"
 START_TS=$(date -u +%s)
 RUN_ID=$(_fr_emit_append_start "$FLOW_NAME" "" "" "" "" "graph-cadence" "$LOG_FILE" "$$")
@@ -511,6 +517,12 @@ else
     printf '[%s] ERR graph-cadence: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_msg" >> "$LOG_FILE" 2>/dev/null || true
     _fr_emit_append_end "$FLOW_NAME" "$RUN_ID" "" 2 error "" "$_msg"
     exit 2
+fi
+_door_rc=0
+bash "$REPO_ROOT/scripts/lib/test-run-guard" check graph-cadence "$LEDGER_ROOT" || _door_rc=$?
+if [ "$_door_rc" -eq 77 ]; then
+    _fr_emit_append_end "$FLOW_NAME" "$RUN_ID" "" 77 error "" "refused: a test on the station would write the real ledger root"
+    exit 77
 fi
 LEDGER_DIR="$LEDGER_ROOT/.graph-cadence"
 if ! mkdir -p "$LEDGER_DIR"; then

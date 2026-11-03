@@ -1166,6 +1166,24 @@ echo "$out" | jq -e '.actual == "absent" and (.detail | contains("JIRA_PROJECT_K
   || fail "HIMMEL-7712: a himmel.conf holding only JIRA_EMAIL must still name JIRA_PROJECT_KEY as missing (got: $out)"
 echo "ok: HIMMEL-7712 jira-env-keys reads JIRA_EMAIL and JIRA_PROJECT_KEY from ~/.himmel/himmel.conf"
 
+# JIRA_BASE_URL is a CONFIG_KEYS member in client.ts too, so the URL held only
+# in himmel.conf is a working setup; the URL nowhere is still missing.
+sk3_url_repo="$work/sk3-url-repo"; mkdir -p "$sk3_url_repo"
+printf 'JIRA_API_TOKEN=tok123\n' > "$sk3_url_repo/.env"
+sk3_url_home="$work/sk3-url-home"; mkdir -p "$sk3_url_home/.himmel"
+cat > "$sk3_url_home/.himmel/himmel.conf" <<'CONF'
+JIRA_BASE_URL=https://example.atlassian.net
+JIRA_EMAIL=me@example.com
+JIRA_PROJECT_KEY=HIMMEL
+CONF
+out=$(sk3_conf_probe "$sk3_url_repo" "$sk3_url_home")
+echo "$out" | jq -e '.actual == "present"' >/dev/null \
+  || fail "HIMMEL-8690: JIRA_BASE_URL only in ~/.himmel/himmel.conf must satisfy jira-env-keys (got: $out)"
+out=$(sk3_conf_probe "$sk3_url_repo" "$sk3_conf_home")
+echo "$out" | jq -e '.actual == "absent" and (.detail | contains("JIRA_BASE_URL"))' >/dev/null \
+  || fail "HIMMEL-8690: JIRA_BASE_URL in neither .env nor himmel.conf must still read missing (got: $out)"
+echo "ok: HIMMEL-8690 jira-env-keys reads JIRA_BASE_URL from ~/.himmel/himmel.conf; absent everywhere stays missing"
+
 # `cleanAbsence` marks a jira-env-keys that was NEVER set up (no
 # .env at all, or an .env defining none of the four keys) so status-report can
 # read it as opt-in. A half-filled .env, a key defined but empty, and an .env
@@ -6815,6 +6833,35 @@ outCRg=$(run_cr graphmap)
 echo "$outCRg" | jq -e '.actual == "degraded" and (.detail | contains("HIMMEL-GraphPublish-Himmel")) and ((.detail | contains("HIMMEL-GraphMapAst-Himmel")) | not)' >/dev/null \
   || fail "cadence-runs-graphmap: the real rc=3 publish run must be named and the healthy tasks must not (got: $outCRg)"
 echo "ok: cadence-runs-graphmap — the real failing publish run is named alone"
+
+# A weekly refresh run that stopped at its chunk cap ([exit rc=4]) keeps its finished chunks and the next
+# run resumes, so on the two refresh tasks rc=4 reads clean; on the AST tasks (no chunk cap) the same line still fails.
+cr_gm_rc4() { # <task that ends in the odd rc> [rc, default 4] — all four map tasks armed with a fresh run, the rest ending rc=0
+  local _t _rc
+  printf 'graphmap-cadence status:\n'
+  for _t in HIMMEL-GraphMap-Luna HIMMEL-GraphMap-Himmel HIMMEL-GraphMapAst-Luna HIMMEL-GraphMapAst-Himmel; do
+    _rc=0; [ "$_t" = "$1" ] && _rc=${2:-4}
+    printf 'ARMED      %s (cron: 05 00 * * *) -> graphify update\n  run log    ~/.claude/graphmap-cadence/%s.log (last write: %s)\n             last line: [exit rc=%s]\n' "$_t" "$_t" "$cr_fresh" "$_rc"
+  done
+}
+for cr_t in HIMMEL-GraphMap-Luna HIMMEL-GraphMap-Himmel; do
+  cr_gm_rc4 "$cr_t" > "$cr_cur"
+  outCR4=$(run_cr graphmap)
+  echo "$outCR4" | jq -e '.actual == "present"' >/dev/null \
+    || fail "cadence-runs-graphmap: $cr_t ending [exit rc=4] (chunk cap, resumable) must read present (got: $outCR4)"
+  # the rc=4 row alone would still pass if the task were dropped from the manifest (the other tasks stay clean): rc=5 must fail AND name it
+  cr_gm_rc4 "$cr_t" 5 > "$cr_cur"
+  outCR4=$(run_cr graphmap)
+  echo "$outCR4" | jq -e --arg t "$cr_t" '.actual == "degraded" and (.detail | contains($t + " (last run: [exit rc=5])"))' >/dev/null \
+    || fail "cadence-runs-graphmap: $cr_t ending [exit rc=5] must read degraded and name the task, proving the task is judged (got: $outCR4)"
+done
+for cr_t in HIMMEL-GraphMapAst-Luna HIMMEL-GraphMapAst-Himmel; do
+  cr_gm_rc4 "$cr_t" > "$cr_cur"
+  outCR4=$(run_cr graphmap)
+  echo "$outCR4" | jq -e --arg t "$cr_t" '.actual == "degraded" and (.detail | contains($t + " (last run: [exit rc=4])"))' >/dev/null \
+    || fail "cadence-runs-graphmap: $cr_t ending [exit rc=4] must still read degraded and name the task (got: $outCR4)"
+done
+echo "ok: cadence-runs-graphmap — rc=4 is clean on the two refresh tasks, still failing on the AST tasks"
 
 # a status that cannot be read is degraded, never a quiet green.
 printf '#!/usr/bin/env bash\necho "crontab: denied" >&2\nexit 1\n' > "$cr_root/scripts/luna/qmd-cadence.sh"

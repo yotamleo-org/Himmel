@@ -196,17 +196,25 @@ repo authorization file. The durable fix is to never emit an unnecessary
 
 ---
 
-## Symptom: `merge-on-green.sh` exits 22 — "main-red gate: main's latest completed CI run … is failure"
+## Symptom: `merge-on-green.sh` exits 22 — "main-red gate: cannot read … CI runs" — or prints `MAIN-RED advisory:`
 
-`merge-on-green.sh` refuses while the newest **completed** run of the `CI`
-workflow on the default branch is red (cancelled and skipped runs are skipped;
-it falls back to the next older completed one), unless the PR is the declared
-fix. Eight merges once landed on an already-red main and turned 3 root breaks
-into 11 red-main merges. Main CI is a cron/dispatch sweep, so
-the run covers a **range**; the message names it (`<previous sweep head>..<red
-head>`). The PR's own green rollup is not the question here: main is.
+Since HIMMEL-8675 a **red** main no longer blocks a PR whose own checks passed:
+the newest **completed** run of the `CI` workflow on the default branch being red
+(cancelled and skipped runs are skipped; it falls back to the next older completed
+one) prints one `MAIN-RED advisory:` line, audits `main-red-advisory ... via=advisory
+run=<red run id>` with the class and failed suites, and the merge goes ahead, followed
+by one `ci.yml` re-check dispatch. A red **PR** is still refused (exit 14, the PR-green
+gate), and a red main is still the chief's first job: a green merge onto it means fix
+main first. Eight merges once landed on an already-red main and turned 3 root breaks
+into 11 red-main merges, which is why the audit line and the chief alert stay. Main CI
+is a cron/dispatch sweep, so the run covers a **range**; the line names it
+(`<previous sweep head>..<red head>`).
 
-**What to do:**
+Exit 22 now means main's state could not be established (the run list unreadable,
+or a window of 50 runs holding no completed one, or a run being re-run whose previous
+attempt cannot be read). Retry shortly; never edit the gate to skip it.
+
+**Declaring the fix is optional now** and only changes the audit label:
 
 1. **Read the named run** (`gh run view <id> --repo <owner>/<repo>` or
    `--log-failed`) and decide whether your PR is the fix or merely unrelated.
@@ -219,7 +227,7 @@ head>`). The PR's own green rollup is not the question here: main is.
    contains spaces cannot be declared by `suite=`: declare `run=<red run id>`
    instead**. It is
    verified against the run, never trusted: a wrong run id or an unrelated name
-   is refused with the same exit 22. Trailers belong in the FIRST commit; a
+   is audited as an advisory instead of `via=<declaration>`. Trailers belong in the FIRST commit; a
    late declaration costs a new commit, never `--amend`.
    **Or the chief writes a fix-GO**, when a commit line is not
    an option: `bash <anchor>/scripts/handover/chief-kit/go.sh --fix-main-red
@@ -229,15 +237,14 @@ head>`). The PR's own green rollup is not the question here: main is.
    main's latest completed red run: after another sweep goes red, or the PR
    head moves, write a new one. It replaces only this declaration; the
    ordinary GO file (merge approval) (and a trust-reviewed GO on a trust path) is still required.
-3. **Your PR is unrelated:** do not merge. Report `MAIN-RED <job> <case> caused-by: #<pr>`
+3. **Your PR is unrelated:** it merges on the chief's GO. Report `MAIN-RED <job> <case> caused-by: #<pr>`
    (`caused-by: unknown` when no PR in the range can be named) to the
-   chief (or confirm one is open), and merge after the fix lands. Main stays
-   "red" until the next cron sweep or a manual
-   `gh workflow run ci.yml --ref main` completes green; dispatching one is the
-   quickest way to clear the gate once the fix is on main.
-4. **Exit 22 with "unreadable":** `gh run list`, the PR's commits or the red
-   run's failed log could not be read (rate limit, outage). Unverified is
-   refused: retry shortly; never edit the gate to skip it.
+   chief (or confirm one is open). Main stays "red" until the next cron sweep or a manual
+   `gh workflow run ci.yml --ref main` completes green; the advisory merge queues one.
+4. **Exit 22 with "unreadable":** `gh run list` could not be read (rate limit,
+   outage). Unverified is refused: retry shortly; never edit the gate to skip it.
+   An unreadable commit list or failed log only leaves a declaration unverified,
+   so the merge goes ahead as an advisory.
 
 Decided case: when the window holds **no** completed non-cancelled run at all
 (new repo, or the workflow never ran on main), nothing red was observed and the

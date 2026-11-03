@@ -12,6 +12,8 @@
 #   tracker_transition <id> <status> [--allow-back]
 #   tracker_comment <id> <file>
 #   tracker_link <id> <url-or-path>
+#   tracker_sector <id> <name>                set the item's Sector (local only; jira and
+#                                             none answer 4: config-ui writes a Jira Sector itself)
 #   tracker_query [field=value ...]           status= | fix_version= | epic=, ANDed;
 #                                             prints "<id><TAB><status><TAB><title>"
 #
@@ -146,6 +148,16 @@ tracker_comment() {
 tracker_link() {
     [ "$#" -eq 2 ] || { echo "usage: tracker_link <id> <url-or-path>" >&2; return 2; }
     _tracker_dispatch link "$1" "$@"
+}
+
+# A Sector name is one printable line of at most 60 characters that does not start with "-" (config-ui's SECTOR_RE).
+tracker_sector() {
+    [ "$#" -eq 2 ] || { echo "usage: tracker_sector <id> <name>" >&2; return 2; }
+    case "$2" in
+        ''|-*|*[[:cntrl:]]*) echo "tracker: '$2' is not a Sector name (one printable line, not starting with -)" >&2; return 2 ;;
+    esac
+    [ "${#2}" -le 60 ] || { echo "tracker: a Sector name is at most 60 characters" >&2; return 2; }
+    _tracker_dispatch sector "$1" "$@"
 }
 
 tracker_query() {

@@ -57,6 +57,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/forge.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/forge.sh"
+# The status lib: status_event writes the merge row. Best-effort: without it no row is written.
+# shellcheck source=../lib/ticket-status.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/ticket-status.sh" 2>/dev/null || true
 # one operator DM when GitHub blocks the merge (deduped per repo/PR/
 # head). The fallback keeps the MERGE-BLOCKED stderr line if the lib is missing.
 # shellcheck source=../lib/merge-block-alert.sh
@@ -267,12 +271,34 @@ fi
 # of truth for "what status does a closed ticket move to" per project.
 jira_auto_transition_on_merge() {
     [ "$forge" = "github" ] || return 0
+    PM_TICKET="" PM_ROW_RESULT=skip PM_ROW_STAGE=""
+    _pm_jira_close "$@"
+    _pm_merge_row "$1"
+    return 0
+}
+
+# _pm_merge_row <pr> — the merge row merge-on-green.sh writes (event=merge, contract, pr, head), so a
+# PR merged here is never a merged PR with no row. One row, after the Jira step, with
+# the step's outcome in result/stage. Best-effort: no key or no status lib writes nothing, and a
+# write failure only warns (status_event), never changes the merge. (merge-fork-pr.sh is not touched.)
+_pm_merge_row() {
+    local contract=no
+    [ -n "$PM_TICKET" ] || return 0
+    declare -F status_event >/dev/null || return 0
+    [ "$JIRA_TRANSITION_OPT_IN" != "1" ] || contract=yes
+    status_event event=merge key="$PM_TICKET" pr="$1" head="$vetted_head" contract="$contract" \
+        result="$PM_ROW_RESULT" ${PM_ROW_STAGE:+stage="$PM_ROW_STAGE"} || true
+}
+
+# _pm_jira_close <pr> — the Jira step; sets PM_TICKET, PM_ROW_RESULT and PM_ROW_STAGE for the row.
+_pm_jira_close() {
     local pr="$1" title key project config_path target_status comment_tmp transition_out transition_rc=0
     local jira_common jira_repo_root issue_type_json issue_type comment_rc=0
 
     title=$("${GH_CMD:-gh}" pr view "$pr" --json title -q .title 2>/dev/null) || return 0
     key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]') || true
     [ -n "$key" ] || return 0
+    PM_TICKET=$key
 
     # Resolve the PRIMARY checkout, not this process's own (possibly-worktree)
     # toplevel: scripts/jira/dist/ is an untracked build artifact that only
@@ -282,6 +308,7 @@ jira_auto_transition_on_merge() {
 
     [ -f "$jira_repo_root/scripts/jira/dist/index.js" ] || {
         echo "pr-merge: PR #$pr merged but Jira CLI is not built — not auto-transitioning $key." >&2
+        PM_ROW_RESULT=miss PM_ROW_STAGE=cli
         return 0
     }
 
@@ -318,6 +345,7 @@ jira_auto_transition_on_merge() {
             ;;
         "")
             echo "pr-merge: PR #$pr merged but $key's issue type could not be verified — not auto-transitioning." >&2
+            PM_ROW_RESULT=miss PM_ROW_STAGE=get
             return 0
             ;;
     esac
@@ -326,6 +354,7 @@ jira_auto_transition_on_merge() {
     # Report what WOULD have happened and stop — no comment, no transition.
     if [ "$JIRA_TRANSITION_OPT_IN" != "1" ]; then
         echo "pr-merge: PR #$pr merged; skip=partial key=$key status-unchanged (pass --jira-transition to transition it — opt-in)." >&2
+        PM_ROW_RESULT=noop
         return 0
     fi
 
@@ -339,6 +368,7 @@ jira_auto_transition_on_merge() {
     # ticket — skip the transition rather than close it silently.
     if [ "$comment_rc" -ne 0 ]; then
         echo "pr-merge: PR #$pr merged but the Jira evidence comment on $key failed (rc=$comment_rc) — not auto-transitioning." >&2
+        PM_ROW_RESULT=miss PM_ROW_STAGE=comment
         return 0
     fi
 
@@ -346,6 +376,9 @@ jira_auto_transition_on_merge() {
         || transition_rc=$?
     if [ "$transition_rc" -ne 0 ]; then
         echo "pr-merge: PR #$pr merged but Jira transition of $key to '$target_status' failed (rc=$transition_rc): ${transition_out//$'\n'/ }" >&2
+        PM_ROW_RESULT=miss PM_ROW_STAGE=transition
+    else
+        PM_ROW_RESULT=moved
     fi
     return 0
 }

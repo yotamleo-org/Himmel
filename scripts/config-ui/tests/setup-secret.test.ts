@@ -20,7 +20,7 @@ function boot(extra: { noIdle?: boolean } = {}) {
   for (const d of [home, root, project]) mkdirSync(d);
   const s = startServer({
     port: 0, token: TOKEN, root, projectRoot: project, ...extra,
-    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home },
+    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, HIMMEL_SECRETS_KEYRING: "off" },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const auditFile = join(home, ".himmel", "state", "config-ui", "actions.jsonl");

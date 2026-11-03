@@ -75,6 +75,11 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
 printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
     "pr list")
+        case " $* " in *" merged "*)
+            [ -e "$FX/pr-merged.fail" ] && { echo "HTTP 502" >&2; exit 1; }
+            if [ -e "$FX/pr-merged.json" ]; then cat "$FX/pr-merged.json"; else echo '[]'; fi
+            exit 0 ;;
+        esac
         [ ! -e "$FX/pr-list.sleep" ] || sleep "$(cat "$FX/pr-list.sleep")"
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
         n=$(( $(cat "$FX/pr-list.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/pr-list.n"
@@ -365,6 +370,77 @@ fn "$K" --event wrapped --doc "$DOC"
 check "D6: WRAPPED, no PR and no merge row -> To Do" "$(moved)" "transition $K To Do"
 check "D6: rule" "$(row rule)" D6
 check "D6: direction" "$(row dir)" back
+# --- D5c: a merged PR with no merge row keeps a wrapped ticket In Progress ---
+merged() { printf '%s\n' "$1" > "$FX/pr-merged.json"; } # the merged-PR list the stub gh returns
+reset "In Review"; owned WRAPPED 0
+merged "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5c merged-no-row: a merged PR, no merge row, WRAPPED -> rule D5c, not D6" "$(row rule)" D5c
+check "D5c merged-no-row: the ticket moves to In Progress" "$(moved)" "transition $K In Progress"
+check "D5c merged-no-row: the row carries stage=merged-no-row" "$(row stage)" merged-no-row
+check "D5c merged-no-row: the row names the merged PR" "$(row merged_pr)" 77
+# The row the first run wrote (a real funnel launch, not a seeded fixture) answers every later derive:
+# the merged-PR list now fails, so a gh call would turn D5c into D6; none may be made.
+rm -f "$FX/pr-merged.json"; touch "$FX/pr-merged.fail"
+: > "$STUB_LOG"
+fn "$K" --event sweep
+check "D5c merged-no-row: a later derive answers D5c from the logged row" "$(row rule)/$(row result)" D5c/noop
+check "D5c merged-no-row: with no merged-PR gh call" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 0
+check "D5c merged-no-row: and no move" "$(ntrans)" 0
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+: > "$STUB_LOG"
+bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+check "D5c merged-no-row: the real sweep (open-PR snapshot) keeps the ticket In Progress" "$(ntrans)" 0
+check "D5c merged-no-row: and makes no merged-PR gh call" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 0
+rm -f "$FX/pr-merged.fail"
+# A first sweep over a ticket no funnel run has logged: its snapshot derive reads D6, which only
+# routes the key to the funnel; the funnel derives live and finds the merged PR, never To Do.
+reset "IN CI"; owned WRAPPED 0
+merged "[{\"number\":81,\"title\":\"fix: [$K] shipped by hand\"}]"
+printf '%s\n' "$K" > "$FX/list.key"
+printf '%s\n' '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' > "$FX/graphql-all.json"
+bash "$HERE/status-sweep.sh" --repo octo/repo > "$tmp/out" 2>&1
+check "D5c merged-no-row: a first sweep moves the ticket to In Progress, never To Do" "$(moved)" "transition $K In Progress"
+check "D5c merged-no-row: and logs the stage for the next derive" "$(row stage)/$(row merged_pr)" merged-no-row/81
+# The sweep's snapshot derive never reads the merged list: only the funnel's live derive does (one call).
+check "D5c merged-no-row: a snapshot derive makes no merged-PR gh call (the funnel makes the only one)" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 1
+# No other rule's row changes: a D5 noop row carries no stage or merged_pr.
+reset "In Progress"; owned LIVE 11 0
+fn "$K" --event live --doc "$DOC"
+check "D5c merged-no-row: a non-D5c noop row is unchanged" "$(tail -n 1 "$LOG" | jq -c 'del(.ts)')" "{\"event\":\"live\",\"key\":\"$K\",\"result\":\"noop\",\"rule\":\"D5\",\"from\":\"In Progress\"}"
+reset "In Progress"; owned WRAPPED 0
+printf '{"ts":"t","event":"merge","key":"%s","pr":"11","contract":"no","result":"noop"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5c merged-no-row: a partial-merge D5c noop row is unchanged (no stage, no merged_pr)" "$(tail -n 1 "$LOG" | jq -c 'del(.ts)')" "{\"event\":\"wrapped\",\"key\":\"$K\",\"result\":\"noop\",\"rule\":\"D5c\",\"from\":\"In Progress\"}"
+reset "In Progress"; owned WRAPPED 0
+merged "[{\"number\":77,\"title\":\"fix: [$K] shipped by hand\"}]"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5c merged-no-row: a ticket already In Progress is not moved" "$(ntrans)" 0
+check "D5c merged-no-row: and its noop row still carries the stage" "$(row stage)" merged-no-row
+reset "In Review"; owned WRAPPED 0
+merged "[{\"number\":78,\"title\":\"fix: [HIMMEL-90019] y follows [$K]\"}]"
+fn "$K" --event wrapped --doc "$DOC"
+check "D6 merged-no-row: a merged PR whose FIRST key is another ticket is not this ticket's" "$(row rule)" D6
+reset "In Review"; owned WRAPPED 0
+touch "$FX/pr-merged.fail"
+fn "$K" --event wrapped --doc "$DOC"
+check "merged-no-row: an unreadable merged-PR list is no-write + miss stage=gh, never a move to To Do" "$(row result)/$(row stage)" miss/gh
+check "merged-no-row: and no transition is made" "$(ntrans)" 0
+reset "In Review"; owned WRAPPED 0
+rm -f "$FX/pr-merged.fail"; merged 'not json'
+fn "$K" --event wrapped --doc "$DOC"
+check "merged-no-row: a merged-PR list that is not JSON is no-write + miss stage=gh too" "$(row result)/$(row stage)/$(ntrans)" miss/gh/0
+reset "In Review"; owned WRAPPED 0
+merged "[{\"number\":79,\"title\":\"fix: [$K] shipped\"}]"
+printf '{"ts":"t","event":"merge","key":"%s","pr":"79","contract":"yes","result":"moved"}\n' "$K" >> "$LOG"
+fn "$K" --event wrapped --doc "$DOC"
+check "D6 merged-no-row: a PR that HAS a merge row (completes=yes, then reopened) stays D6" "$(row rule)" D6
+reset "In Review"; owned LIVE 11 0
+merged "[{\"number\":80,\"title\":\"fix: [$K] shipped\"}]"
+fn "$K" --event live --doc "$DOC"
+check "D5 merged-no-row: no merged-PR read when the owner is not wrapped" "$(grep -c -- '--state merged' "$STUB_LOG" || true)" 0
+
 DOC2="$tmp/$K-N2-slug-2026-10-21.md"
 reset "In Progress"; owned LIVE 11 0
 fn "$K" --event live --doc "$DOC"

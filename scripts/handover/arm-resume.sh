@@ -247,6 +247,12 @@
 #      replay of a (handover, reset) pair whose arm already FIRED is NOT an
 #      error: it exits 0 without arming (the limit-resume key). A pair whose
 #      arm never fired (cancelled, reaped) re-arms.
+#   77 test-run refused — a test on the station tried to install a real crontab
+#      entry or at job, or (hard removal only) to remove a superseded one
+#      (scripts/lib/test-run-guard, exit 77); nothing was scheduled or removed.
+#      A soft removal, run after the new arm stands, refuses with a WARN and
+#      leaves the old entry in place instead of exiting. Run the suite on a
+#      test VM, or put a stub crontab/at on PATH. --dry-run is exempt.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
@@ -1069,6 +1075,34 @@ _arm_require_worker_autocompact_argv() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# _scheduler_door <tool>: a test on the station never installs a real crontab entry or at job.
+# Only exit 77 refuses; a missing or crashing guard lets the arm through. Called after the dry-run
+# return and before the first scheduler write.
+_scheduler_door() {
+    local rc=0 tool="$1"
+    shift
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$tool" "arm-resume-$tool" "$@" >&2 || rc=$?
+    if [ "$rc" -eq 77 ]; then
+        echo "ERR arm-resume: refused, nothing was scheduled" >&2
+        exit 77
+    fi
+}
+
+# _scheduler_remove_door <tool> <mode>: the same door for the superseded-arm removal (crontab rewrite, atrm).
+# A stub `at` lets the new arm through while the crontab or atrm that removes the old one is the real tool.
+# Soft mode runs after the new arm is registered, so a refusal is a WARN and a left-behind entry, not an exit.
+_scheduler_remove_door() {
+    local rc=0
+    bash "$SCRIPT_DIR/../lib/test-run-guard" check --tool "$1" "arm-resume-remove-$1" >&2 || rc=$?
+    [ "$rc" -eq 77 ] || return 0
+    if [ "$2" = soft ]; then
+        echo "WARN arm-resume: refused, the superseded entry was left in place (a test on the station cannot change the real scheduler)" >&2
+        return 1
+    fi
+    echo "ERR arm-resume: refused, nothing was removed" >&2
+    exit 77
+}
 
 # python3 hang armor: the Windows Store python3 stub can wedge
 # (ignores SIGTERM, orphan child holds the $() pipe). The auto-arm-on-cap
@@ -3082,6 +3116,7 @@ _crontab_delete() {
     # line (scoped delete so a --force on one handover can't wipe
     # sibling slots). Snapshot first so a mid-pipeline failure doesn't wipe.
     local snap
+    _scheduler_remove_door crontab "$mode" || return 1
     snap=$(mktemp -t crontab.snap.XXXXXX)
     if ! crontab -l > "$snap" 2>/dev/null; then
         rm -f "$snap"
@@ -3155,6 +3190,7 @@ delete_existing() {
         linux)
             if [[ "$marker" == at-job-* ]]; then
                 local job_id="${marker#at-job-}"
+                _scheduler_remove_door atrm "$mode" || return 1
                 if atrm "$job_id" 2>/dev/null; then
                     echo "arm-resume: removed at job: $job_id"
                 elif [ "$mode" = soft ]; then
@@ -4675,6 +4711,7 @@ $launch_body"
         return 0
     fi
 
+    _scheduler_door crontab "$runner_dir" "$log_dir"
     mkdir -p "$runner_dir" || {
         echo "ERR arm-resume: failed to create runner dir $runner_dir" >&2
         exit 4
@@ -5031,6 +5068,7 @@ exit \"\$_flow_rc\""
                     echo "    CMD"
                     return 0
                 fi
+                _scheduler_door at
                 local err_file
                 err_file=$(mktemp -t arm-resume.err.XXXXXX)
                 # at -t takes an exact [[CC]YY]MMDDhhmm datetime, so we pass the

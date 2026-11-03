@@ -263,6 +263,34 @@ def excerpt(text):
     return ""
 
 
+def refusal(text):
+    """The line that says why the CLI failed: the first stderr line that is not part of a title warning.
+
+    The CLI prints `jira: warning: ...` and its multi-line title template before it refuses, so the
+    first line is the warning, not the refusal (HIMMEL-8734)."""
+    skip = ("jira: warning:", "Ticket title", "  ", "Sectors:", "Leave out")
+    for line in (text or "").splitlines():
+        if line.strip() and not line.startswith(skip):
+            return line.strip()[:200]
+    return excerpt(text)
+
+
+TITLE_MAX = 90  # the CLI warns past this (scripts/jira/src/plain-block.ts)
+
+
+def fit_title(title, sector):
+    """A title the CLI's template check accepts: the Sector first, no internal name, at most TITLE_MAX characters.
+
+    {sub} carries a tool or hook name (error/Bash:usage:ready-check, suite/test-x.sh): its ':', '_' and
+    '.' would read as a second prefix, an internal name or a file path."""
+    t = re.sub(r"[:_.]+", " ", title)
+    t = re.sub(r"\s+", " ", t).strip()
+    t = (sector + ": " if sector else "") + t
+    if len(t) > TITLE_MAX:
+        t = t[:TITLE_MAX + 1].rsplit(" ", 1)[0].rstrip(" ,;-")
+    return t
+
+
 JIRA_ERR = ""
 
 
@@ -280,7 +308,7 @@ def jira(argv, args):
         JIRA_ERR = excerpt(str(e))
         return None
     if r.returncode != 0:
-        JIRA_ERR = excerpt(r.stderr) or excerpt(r.stdout) or "exit %d" % r.returncode
+        JIRA_ERR = refusal(r.stderr) or excerpt(r.stdout) or "exit %d" % r.returncode
         return None
     return r.stdout
 
@@ -417,9 +445,12 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
     if not intent("file"):
         return "skipped:log-error", None
     sector = ["--sector", table["sector"]] if table.get("sector") else []
-    out = with_file(body, lambda f: jira(jbin, ["create", "--type", "Task", "--title", title, "--desc-file", f,
+    # The CLI refuses an unplaced Task. The backlog is a placement that needs no version lookup; the
+    # release manager moves it with the INTAKE request the notifier files.
+    place = ["--backlog", "--proposed-version", "backlog", "--why", "filed by the daily failure review, awaiting triage"]
+    out = with_file(body, lambda f: jira(jbin, ["create", "--type", "Task", "--title", fit_title(title, table.get("sector")), "--desc-file", f,
                                                  "--labels", "failure-loop,fl-%s,standalone" % slug(cls)]
-                                         + sector + ["--project", project]))
+                                         + sector + place + ["--project", project]))
     m = re.search(r"^Created ([A-Z][A-Z0-9]+-\d+)$", out or "", re.M)
     if not m:
         if out is not None:
@@ -459,6 +490,7 @@ def route(a):
         for k in set(by) | set(state["classes"] if state_ok else ()):
             slugs.setdefault(slug(k), set()).add(k)
         decisions = 0
+        failed = False
         sent = []
         fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
         # The daily cap stops the walk, so the widest classes go first, not the alphabetical ones.
@@ -508,6 +540,8 @@ def route(a):
                 c["last_decision"], c["last_workers"] = dec, workers
                 save_state(a.state, state)
             decisions += 1
+            failed = failed or dec in ("skipped:search-error", "skipped:jira-error", "skipped:log-error",
+                                       "skipped:state-unreadable")
             print("failure-router: %s workers=%d %s%s" % (cls, n, dec, " " + ticket if ticket else ""))
             if dec in ("skipped:search-error", "skipped:jira-error") and JIRA_ERR:
                 print("failure-router: %s reason: %s" % (cls, JIRA_ERR))
@@ -520,6 +554,8 @@ def route(a):
             notify(a, "chief", "failure-router: " + ", ".join("%s %s (%s)" % (dec, ticket, cls) for dec, cls, ticket in sent))
         if not a.dry_run:
             print("failure-router: decisions=%d" % decisions)
+            if not failed:
+                print("failure-router: nothing here needs the operator")
         return 0
     finally:
         if lock:

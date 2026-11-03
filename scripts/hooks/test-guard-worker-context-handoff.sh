@@ -236,6 +236,14 @@ check "SendMessage -> allow" allow "$(tool_call SendMessage)"
 check "ListAgents -> allow" allow "$(tool_call ListAgents)"
 check "TaskStop -> allow" allow "$(tool_call TaskStop)"
 check "ToolSearch -> allow" allow "$(tool_call ToolSearch)"
+# The four mail-read tools pass at 90 %, by exact name, so a worker over the line can
+# read the mail the idle waker keeps asking it to read; every other tool stays denied.
+for mail_tool in mcp__himmel-bus__read mcp__plugin_himmel-bus_himmel-bus__read ReadNotifications FetchInboxMessage; do
+    check "$mail_tool (mail read) -> allow" allow "$(tool_call "$mail_tool")"
+done
+check "mcp__himmel-bus__send (not a read) -> block" block "$(tool_call mcp__himmel-bus__send)"
+check "a prefix-near name (mcp__himmel-bus__read_all) -> block" block "$(tool_call mcp__himmel-bus__read_all)"
+check "a Read of a file (not mail) -> block" block "$(tool_call Read)"
 check "append-results.sh -> allow" allow \
     "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")"
 check "absolute append-results.sh -> allow" allow \

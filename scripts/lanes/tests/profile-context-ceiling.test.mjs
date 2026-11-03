@@ -70,7 +70,8 @@ test('a standard profile may declare a Sonnet-only ceiling up to 450000 and a co
   assert.deepEqual(PP.contextForProfile(registry(), 'worker-impl'), { contextMode: 'standard', autocompact: 200000 });
 });
 for (const [field, value] of [['sonnetAutocompact', 450001], ['sonnetAutocompact', 199999], ['sonnetAutocompact', '450000'],
-  ['sonnetAutocompact', 300000.5], ['sonnetContextGuard', 'none'], ['sonnetContextGuard', 'bogus'], ['sonnetContextGuard', null]]) {
+  ['sonnetAutocompact', 300000.5], ['sonnetContextGuard', 'none'], ['sonnetContextGuard', 'bogus'], ['sonnetContextGuard', null],
+  ['sonnetContextShare', 0], ['sonnetContextShare', 101], ['sonnetContextShare', 73.5], ['sonnetContextShare', '73']]) {
   test(`validator refuses ${field}=${JSON.stringify(value)}`, () => {
     const r = registry(); r.profiles['worker-impl'][field] = value;
     assert.ok(PP.validateRegistry(r).some((e) => e.includes(field)), 'invalid Sonnet field was accepted');
@@ -80,8 +81,8 @@ test('the shipped registry sets 450k per profile: impl hands off, eval compacts,
   const real = PP.loadRegistry();
   assert.deepEqual(PP.validateRegistry(real), []);
   const ctx = (name) => PP.contextForProfile(real, name);
-  assert.deepEqual(ctx('worker-impl'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'handoff' });
-  assert.deepEqual(ctx('worker-eval'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'compact' });
+  assert.deepEqual(ctx('worker-impl'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'handoff', sonnetContextShare: 73 });
+  assert.deepEqual(ctx('worker-eval'), { contextMode: 'standard', autocompact: 200000, sonnetAutocompact: 450000, sonnetContextGuard: 'compact', sonnetContextShare: 73 });
   assert.deepEqual(ctx('worker-docs'), { contextMode: 'standard', autocompact: 200000 });
 });
 test('worker launcher reads standard ceiling from the profile', (t) => {

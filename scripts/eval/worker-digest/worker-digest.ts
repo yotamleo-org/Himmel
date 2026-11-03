@@ -19,6 +19,7 @@ import { createJournalMapper, MAPPER_SCHEMA, SUITE } from "../../config-ui/agui/
 import { mergeJournalFiles, sessionFiles } from "../../config-ui/agui/journal-merge.ts";
 import { resolveJournal } from "../../config-ui/agui/sse.ts";
 import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
+import { denyLinesByCall, memberOfGuardClass, readChainLogs } from "./chain-incidents.mjs";
 
 const { spawnSync } = Bun;
 const DIGEST_SCHEMA = 2;
@@ -31,14 +32,44 @@ const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_-]{1,160}$/.tes
 // Split keys: Skill:<plugin>:<skill> and Agent:<subagent_type>, each part through a bounded name check.
 const SPLIT_PART = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$/;
 const splitName = (v: unknown) => typeof v === "string" && /^[^:]+(:[^:]+)?$/.test(v) && v.split(":").every((p) => SPLIT_PART.test(p)) ? v : null;
-// The first command word past env assignments and an rtk wrapper, never more of the command.
+// The first command word past a leading `cd X &&`, `bash -c '...'`, env assignments and an rtk wrapper, never more
+// of the command. A graphify, qmd or rtk call keeps its own name behind those leading shapes, and the wrapper scripts
+// worker-graph.sh, leg-graph.sh and qmd-bounded.sh read as graphify or qmd whatever their verb (the qmd row holds
+// query, status, update, get and the rest; graph-use-report.sh splits them); any other word is read as before. ponytail: only the leading cd/bash -c/env/rtk shapes peel, a tool after a pipe or a later
+// `;` still reads as the first word; upgrade = lastStages-style splitting if the report undershoots.
 const HEAD = /^[a-z][a-z0-9_.+-]{0,40}$/;
+const COUNTED = new Set(["graphify", "qmd", "rtk"]);
+const GRAPH_WRAPPER = /(?:^|\/)scripts\/graphify\/(?:leg|worker)-graph\.sh$/;
+// The one qmd search route the bare-qmd hook allows; run by bash, sh or its own path, whatever its verb.
+const QMD_WRAPPER = /(?:^|\/)scripts\/lib\/qmd-bounded\.sh$/;
+// rtk's own commands; any other `rtk <word>` is a wrapper around <word>.
+const RTK_OWN = new Set(["gain", "proxy", "recall", "discover", "session", "cc-economics", "config", "init", "pipeline", "methods", "plugins", "tasks"]);
+const CD_PREFIX = /^cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
+const ENV_PREFIX = /^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+(?=(?:ba|z)?sh\s)/;
+const SHELL_C = /^(?:ba|z)?sh\s+-[a-z]*c\s+(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*$/;
 const commandHead = (cmd: string) => {
-  const w = cmd.trim().split(/\s+/);
+  let s = cmd.trim();
+  for (let n = 0; n < 4; n++) {
+    const next = s.replace(CD_PREFIX, "").replace(ENV_PREFIX, "");
+    const sh = SHELL_C.exec(next);
+    const inner = sh ? (sh[1] ?? sh[2]).trim() : next;
+    if (inner === s) break;
+    s = inner;
+  }
+  const w = s.split(/\s+/);
   let i = 0;
   while (i < w.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[i])) i++;
-  if (w[i] === "rtk") i++;
-  return HEAD.test(w[i] ?? "") ? w[i] : "other";
+  if (w[i] === "rtk") {
+    if (RTK_OWN.has(w[i + 1] ?? "") || i + 1 >= w.length) return "rtk";
+    i++;
+  }
+  const word = w[i] ?? "";
+  const base = word.slice(word.lastIndexOf("/") + 1);
+  const script = word === "bash" || word === "sh" ? (w[i + 1] ?? "") : word;
+  if (GRAPH_WRAPPER.test(script)) return "graphify";
+  if (QMD_WRAPPER.test(script)) return "qmd";
+  if (COUNTED.has(base)) return base;
+  return HEAD.test(word) ? word : "other";
 };
 // Who broke a failed Bash call, from its failure class.
 const bashCause = (cls: string) => cls.startsWith("error/") || cls.startsWith("suite/") ? "command"
@@ -152,7 +183,7 @@ type Agent = { id: string; role: string; kind: string | null; model: string | nu
 type Row = {
   session: string; agent: Agent; class: string; failure: string; count: number;
   identical_retry: number | null; recovered: boolean | null;
-  first_ts: number | null; last_ts: number | null; tool_call_ids: string[]; final_red?: boolean;
+  first_ts: number | null; last_ts: number | null; tool_call_ids: string[]; final_red?: boolean; refusal_line?: string | null;
 };
 const allIds = new WeakMap<Row, string[]>(); // every tool_call_id of a row, for the trajectory join; output keeps MAX_IDS
 type Denial = { tool_call_id: string; recovered: boolean; identical: number };
@@ -538,6 +569,17 @@ async function main() {
     if (ds.length === 0) continue;
     r.identical_retry = ds.reduce((n, d) => n + d.identical, 0);
     r.recovered = ds.every((d) => d.recovered);
+  }
+  // Every guard row carries the first line its refused calls have in the hook-chain log, else null. ponytail: the line is trusted
+  // as redacted and cut by the runner at write time (denyLine), upgrade path an exported denyLine re-run on read.
+  let refusalOf: (id: string, member: string) => string | null = () => null;
+  try { refusalOf = denyLinesByCall(readChainLogs(process.env, REPO)); } catch { /* an unreadable log leaves every line null */ }
+  for (const r of rows.values()) {
+    if (r.failure !== "denied") continue;
+    r.refusal_line = null;
+    const member = r.class === "denied/other" || r.class === "denied/permission-prompt" || r.class.startsWith("denied/classifier:") ? null : memberOfGuardClass(r.class);
+    if (!member) continue;
+    for (const id of allIds.get(r) ?? []) { const line = refusalOf(id, member); if (line) { r.refusal_line = line; break; } }
   }
   const main = agents.get("main") ?? seen(agentOf(undefined));
   const bool = (v: unknown) => (v === true ? 1 : v === false ? 0 : null);

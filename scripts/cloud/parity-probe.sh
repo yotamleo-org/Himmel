@@ -124,7 +124,7 @@ probe block-bare-qmd-query.sh "$(bash_in 'qmd '"query"' foo')" -u QMD_UNBOUNDED_
 probe block-edit-live-settings.sh "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"${HOME:-/root}/.claude/settings.json\",\"content\":\"{}\"}}"
 probe block-worker-askuserquestion.sh '{"tool_name":"AskUserQuestion","tool_input":{}}' HIMMEL_CONSOLE_LEG=1
 probe guard-worker-wakeup.sh '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":60}}' HIMMEL_CONSOLE_LEG=1
-probe redirect-webfetch-walled-hosts.sh '{"tool_name":"WebFetch","tool_input":{"url":"https://x.com/a/status/1"}}'
+probe redirect-webfetch-walled-hosts.sh '{"tool_name":"WebFetch","tool_input":{"url":"https://x.com/a/status/1"}}' WEBFETCH_WALLED_LOG=/dev/null
 
 # ----------------------------------------------- pre-commit + attestation gates
 section gates

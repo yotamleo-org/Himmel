@@ -860,6 +860,7 @@ scripts/handover/chief-kit/test-chief-wait.sh    # HIMMEL-3699: skipped off-Linu
 scripts/handover/chief-kit/test-chief-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
 scripts/handover/chief-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
 scripts/handover/chief-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
+scripts/handover/chief-kit/test-tick-fields.sh     # HIMMEL-8813: skipped off-Linux only — second half of test-tick.sh above (split at the fails= section so neither half nears the 600 s cap), same chief-kit Linux-only-by-design PLATFORM GUARD and the same tick.sh; both halves source tick-test-fixture.sh, a helper that is not a suite; precedent HIMMEL-3699
 scripts/handover/chief-kit/test-chief-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chief-wait-r0.sh:25) says \"Linux-only: chief-wait.sh\"; the kit PLATFORM GUARD is chief-wait.sh:208; precedent HIMMEL-3699
 scripts/handover/chief-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
 scripts/handover/chief-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: the chief kit is Linux-only\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
@@ -3567,6 +3568,19 @@ skipped_ran=0
 _log_has_skip_line() {
   awk '/^[ \t]*SKIP([ \t:\r]|$)/ && !/^[ \t]*SKIP:[ \t]*[0-9]+[ \t\r]*$/ { found = 1; exit } END { exit !found }' "$1" 2>/dev/null
 }
+# _log_has_new_skip_line <first-attempt log> <retry log> — succeeds when the
+# retry printed a SKIP line (same definition as above) more times than the
+# first attempt printed it verbatim. A SKIP both attempts print the same number
+# of times is a constant of the suite, not something the retry took to avoid
+# the assertions that failed.
+_log_has_new_skip_line() {
+  awk '
+    function is_skip(l) { return (l ~ /^[ \t]*SKIP([ \t:\r]|$)/ && l !~ /^[ \t]*SKIP:[ \t]*[0-9]+[ \t\r]*$/) }
+    FILENAME == ARGV[1] { if (is_skip($0)) seen[$0]++; next }
+    is_skip($0) && ++used[$0] > seen[$0] { found = 1; exit }
+    END { exit !found }
+  ' "$1" "$2" 2>/dev/null
+}
 # Counts run-eligible suites (post every skip filter) for the --shard split
 # below; advances for every one of them regardless of which shard claims it
 run_index=0
@@ -4589,8 +4603,9 @@ _suite_account() {
   dur=$(( suite_end - start ))
   # A retry that exits 0 through the suite's own SKIP path ran none of the
   # assertions that failed the first time, so it is no evidence of a flake: the
-  # suite stays FAIL with the first attempt's status.
-  if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ] && _log_has_skip_line "$log"; then
+  # suite stays FAIL with the first attempt's status. A SKIP the first attempt
+  # printed too is a constant of the suite and does not count against the retry.
+  if [ "$rc" -eq 0 ] && [ "$_attempt" -eq 2 ] && _log_has_new_skip_line "$first_log" "$log"; then
     printf '[RETRY-SKIP] %s retry exited 0 only through a SKIP line; keeping the first failure (rc=%s)\n' "$suite" "$first_rc"
     rc=$first_rc
     if [ "$first_capped" -eq 1 ]; then

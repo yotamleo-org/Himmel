@@ -1,15 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+// The judge's launcher call returns this envelope while it is set; every other child process runs for real.
+const judgeReply = vi.hoisted(() => ({ out: null as string | null }));
+vi.mock('node:child_process', async (orig) => {
+  const m = await orig<typeof import('node:child_process')>();
+  const execFileSync = ((...a: Parameters<typeof m.execFileSync>) =>
+    judgeReply.out !== null && String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('claude-api.sh') ? judgeReply.out : m.execFileSync(...a)) as typeof m.execFileSync;
+  return { ...m, execFileSync };
+});
 vi.mock('../client.js', () => ({ request: vi.fn(), projectKey: vi.fn(() => 'HIMMEL') }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
 
 import { projectKey, request } from '../client.js';
 import { admissionBudget } from '../release/leaks.js';
-import { apiLaneEnv, judgeEnv, judgePrompt, parseDecisions, registerRelease, renderState } from './release.js';
+import { apiLaneEnv, judgeEnv, judgePrompt, liveJira, parseDecisions, registerRelease, renderState } from './release.js';
 
 let out: string[];
 let root: string;
@@ -34,6 +43,22 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  judgeReply.out = null;
+});
+
+describe.skipIf(process.platform !== 'linux')('jira release from a test on the station', () => {
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
+    vi.stubEnv('HIMMEL_REAL_STATE_EXTRA_ROOTS', root);
+  });
+
+  it('refuses every write verb, reads still run', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', vf)).rejects.toThrow(/refused/);
+    await expect(run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'x')).rejects.toThrow(/refused/);
+    expect(existsSync(join(root, 'state', 'R1'))).toBe(false);
+    await run('state', 'R1', '--json', '--mirror-root', join(root, 'no-mirror'));
+  });
 });
 
 describe('jira release (HIMMEL-6796)', () => {
@@ -108,10 +133,29 @@ describe('jira release (HIMMEL-6796)', () => {
 });
 
 describe('jira release rm-run (HIMMEL-7201)', () => {
+  beforeEach(() => {
+    // rm-run posts to Jira; a loopback Jira is a stub, so the post door stays open.
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+  });
+
   it('prints nothing pending on an empty queue and makes no judge call', async () => {
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
     await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
     expect(out.at(-1)).toBe('RM-RUN R1: nothing pending');
+    expect(out.some((l) => /summary/.test(l))).toBe(false);
+  });
+
+  it('a run that refused a request ends with the refusal count (HIMMEL-8761)', async () => {
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
+    await run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'found work');
+    const other = { req: 'Q-R1-0099', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
+    judgeReply.out = JSON.stringify({ is_error: false, result: JSON.stringify([other]) });
+    out = [];
+    await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    expect(out.at(-2)).toMatch(/^REFUSED Q-R1-0001: /);
+    expect(out.at(-1)).toBe('RM-RUN R1 summary: 1 refused');
+    expect(process.exitCode).toBe(2);
+    process.exitCode = 0;
   });
 
   it('rm-run takes --ruling and --chief-override; the override needs a reason and the console marker, and the old --console-override is an unknown option (HIMMEL-6778)', async () => {
@@ -275,6 +319,8 @@ function jiraAnswers(versions: Array<{ name: string; description?: string }>, co
 describe('jira release leaks (HIMMEL-7153)', () => {
   beforeEach(() => {
     vi.mocked(request).mockReset();
+    // The mock never connects; a loopback Jira is how the post door tells a local stub from the real one.
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'ledger.jsonl'));
     writeFileSync(join(root, 'ledger.jsonl'), JSON.stringify({
       ts: '2026-10-23T00:00:00.000Z', version: 'v1', key: 'K-3', kind: 'override', actor: 'console',
@@ -438,5 +484,80 @@ describe('jira release under vitest (HIMMEL-7434)', () => {
   it('refuses a release state dir outside the temp dir', async () => {
     vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', '/srv/handovers/release');
     await expect(run('state', 'R1')).rejects.toThrow(/outside the temp dir/);
+  });
+});
+
+describe.skipIf(process.platform !== 'linux')('jira release posting verbs from a test on the station', () => {
+  const failure = async (...args: string[]): Promise<string> => {
+    try {
+      await run(...args);
+      return '';
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('HIMMEL_REAL_STATE_ASSUME_STATION', '1');
+  });
+
+  it('refuses apply and rm-run against a real Jira host before any post', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://jira.invalid');
+    expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release apply: refused, nothing was posted/);
+    expect(await failure('rm-run', 'R1')).toMatch(/release rm-run: refused, nothing was posted/);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('lets apply and rm-run past the door against a loopback Jira', async () => {
+    vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
+    expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release R1 is UNKNOWN/);
+    expect(await failure('rm-run', 'R1')).toMatch(/release R1 is UNKNOWN/);
+  });
+});
+
+describe('liveJira.newestFixVersionEntry', () => {
+  type Entry = { id: string; created: string; items: Array<{ field: string }> };
+  const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'release', 'fixtures', 'repair');
+  const real = (n: number): Entry[] => (JSON.parse(readFileSync(join(FIXTURES, `HIMMEL-${n}.json`), 'utf8')) as { changelog: Entry[] }).changelog;
+  const serve = (all: Entry[]) =>
+    vi.mocked(request).mockImplementation((async (_m: string, path: string) => {
+      const start = Number(/startAt=(\d+)/.exec(path)?.[1] ?? 0);
+      return { startAt: start, maxResults: 100, total: all.length, values: all.slice(start, start + 100) };
+    }) as never);
+
+  it('adapter picks the newest of several entries', async () => {
+    const all = real(3084);
+    serve(all);
+    const newest = all.find((e) => e.id === '57628') as Entry;
+    expect(await liveJira.newestFixVersionEntry('HIMMEL-3084')).toEqual({ id: '57628', ts: newest.created });
+  });
+
+  it('adapter returns create with no Fix Version entry', async () => {
+    serve([]);
+    expect(await liveJira.newestFixVersionEntry('HIMMEL-1')).toEqual({ id: 'create', ts: '' });
+  });
+
+  it('adapter returns create when only other fields changed', async () => {
+    serve(real(8706));
+    expect(await liveJira.newestFixVersionEntry('HIMMEL-8706')).toEqual({ id: 'create', ts: '' });
+  });
+
+  it('adapter reads the last page', async () => {
+    const filler: Entry[] = Array.from({ length: 100 }, (_, i) => ({ id: String(i + 1), created: 'c', items: [{ field: 'summary' }] }));
+    const all = [...filler, ...real(3084)];
+    expect(all.length).toBeGreaterThan(100);
+    serve(all);
+    expect((await liveJira.newestFixVersionEntry('HIMMEL-3084')).id).toBe('57628');
+    expect(vi.mocked(request).mock.calls.some((c) => String(c[1]).includes('startAt=100'))).toBe(true);
+  });
+});
+
+describe('RM apply names its writer (HIMMEL-8823 S3)', () => {
+  it('RM apply names rm-apply', async () => {
+    vi.mocked(request).mockImplementation((async (method: string) =>
+      method === 'GET' ? { fields: { fixVersions: [{ name: 'v1' }] } } : {}) as never);
+    await liveJira.setFixVersion('HIMMEL-1', 'add', 'v1');
+    const put = vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT');
+    expect(put?.[3]).toBe('rm-apply');
   });
 });

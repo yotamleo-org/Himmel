@@ -34,7 +34,7 @@
 #      LAUNCH_GUEST_ACCOUNT (cost ledger account label, never a token; default the VM name),
 #      LAUNCH_GUEST_COST_LEDGER (ledger path; default <handover root>/.ledger/vm-cost.jsonl),
 #      HIMMEL_GUEST_REPO (the himmel checkout on the guest, an absolute or ~/ guest path; default
-#        ~/Documents/github/himmel; a host shell expands a bare ~ in an assignment, so pass an absolute path),
+#        ~/himmel, where vmsdk clone and the ubuntu_new snapshot keep it; a host shell expands a bare ~ in an assignment, so pass an absolute path),
 #      LAUNCH_GUEST_WARN_PCT (guest account share of its limit, a number, default 80, from which a
 #        launch prints one WARN line; an account at 100 or more is refused),
 #      LAUNCH_GUEST_USAGE (guest usage command run as `<cmd> <vm> usage`; default scripts/lib/vmsdk.py).
@@ -47,13 +47,17 @@
 #   with the guest result's total_cost_usd, or a null usd when it cannot be read, and the model
 #   that cost the most plus the input, output and cache token counts (each null when absent);
 #   scripts/vm/vm-cost.sh sums the ledger per ticket and per account.
+# Quota stop: a guest result with is_error true whose text names a usage limit, quota, rate limit,
+#   "Not logged in", an expired OAuth session or /login is a stop, not a failure to retry: the row is
+#   still written, stderr names the account label with "quota, not retried", and the exit is the
+#   guest's (1 when the guest exited 0). The script makes one guest attempt per run, never a second.
 # Platform: POSIX bash 3.2+, node, ssh with key auth to the guest.
 # launch-profile-ok-file: the claude runs on the guest's own login and config, where no host profile applies
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VMS_JSON="${LAUNCH_GUEST_VMS_JSON:-$HERE/../lib/vms.json}"
 # shellcheck disable=SC2088  # the guest shell, not this one, expands the tilde
-GUEST_REPO="${HIMMEL_GUEST_REPO:-~/Documents/github/himmel}"
+GUEST_REPO="${HIMMEL_GUEST_REPO:-~/himmel}"
 # spliced into the guest shell, so an override is an absolute or ~/ guest path of a closed shape
 # shellcheck disable=SC2088  # a literal ~/ prefix of a guest path, not a host expansion
 case "$GUEST_REPO" in
@@ -235,5 +239,13 @@ if LEDGER="$(bash "$HERE/vm-cost.sh" --path 2>/dev/null)" && command -v jq >/dev
         || echo "launch-guest: could not write the cost ledger row" >&2
 else
     echo "launch-guest: cost ledger unavailable (no handover root or no jq) - no row written" >&2
+fi
+# operator ruling 10-30: a guest quota or login error ends the launch. The one attempt above is the
+# only one this script ever makes; this stop names the account, never re-runs the guest, and keeps the
+# guest's exit code when it was non-zero. Only an error result counts: a successful result that merely
+# mentions a quota does not.
+if command -v jq >/dev/null 2>&1 && jq -e 'type == "object" and .is_error == true and ((.result // "") | tostring | test("usage limit|quota|limit reached|rate limit|not logged in|oauth session expired|/login"; "i"))' "$OUT" >/dev/null 2>&1; then
+    echo "launch-guest: guest account '$ACCOUNT' hit a quota or login error (quota, not retried) - the operator re-logs in at the station" >&2
+    [ "$RC" -ne 0 ] || RC=1
 fi
 exit "$RC"

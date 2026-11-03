@@ -444,6 +444,12 @@ def cmd_merge(a):
     for item in new_nodes + new_edges + new_hyper:
         item["source_file"] = norm_src(item.get("source_file"), a.scratch)
         item["_origin"] = "semantic"
+    # The scratch copy holds files the plan's batch dropped (SEMANTIC_SKIP_DIRS, e.g. fixtures/): an item
+    # for one is never in `touched`, so it would enter unowned and re-append on every merge. Keep only
+    # items whose normalized source is in the batch.
+    new_nodes = [n for n in new_nodes if n.get("source_file") in batch]
+    new_edges = [e for e in new_edges if e.get("source_file") in batch]
+    new_hyper = [h for h in new_hyper if h.get("source_file") in batch]
     # A scratch path anywhere in what we are about to promote is a host-path
     # leak (same class refresh-graph-map.sh's promote scan refuses).
     if a.scratch in json.dumps(new_nodes + new_edges + new_hyper, ensure_ascii=False):

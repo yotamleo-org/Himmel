@@ -44,7 +44,6 @@ wait_free() { # wait_free <host>
   ko "port 4321 on $1 never freed"
 }
 
-# --- port claimed mid-build: non-zero exit, port named, no URL, preview never started
 mkdir "$tmp/bin"
 cat >"$tmp/bin/npm" <<'STUB'
 #!/usr/bin/env bash
@@ -95,7 +94,6 @@ rm -f "$tmp/racer.pid"
 wait_free ::1
 wait_free 127.0.0.1
 
-# --- lockfile change: serve.sh reinstalls only when package-lock.json differs from the install stamp
 fake="$tmp/fake"
 mkdir -p "$fake/scripts/docs-site" "$fake/site" "$tmp/lbin"
 cp "$repo/scripts/docs-site/serve.sh" "$fake/scripts/docs-site/serve.sh"
@@ -131,7 +129,6 @@ if [ ! -d "$repo/site/node_modules/astro" ]; then
   exit
 fi
 
-# --- port busy: non-zero exit, port named, no silent shift
 node -e "require('net').createServer().listen(4321,'127.0.0.1');setTimeout(()=>{},60000)" &
 blocker=$!
 for _ in 1 2 3 4 5 6 7 8 9 10; do (exec 3<>/dev/tcp/127.0.0.1/4321) 2>/dev/null && break; sleep 0.3; done
@@ -144,7 +141,6 @@ blocker=""
 
 wait_free 127.0.0.1
 
-# --- serve for real
 bash "$repo/scripts/docs-site/serve.sh" >"$tmp/out" 2>"$tmp/err" &
 srv=$!
 owned=1
@@ -171,7 +167,6 @@ if printf '%s' "$page" | grep -q 'href="https://github.com/yotamleo-org/Himmel/b
 code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4321/Himmel/pagefind/pagefind.js)
 if [ "$code" = 200 ]; then ok "search index (pagefind) is served"; else ko "search index is served (got $code)"; fi
 
-# --- pele draws every diagram block to an SVG, when a headless browser is present
 if command -v chromium >/dev/null 2>&1; then
   drawn_pages=0
   while IFS= read -r f; do
@@ -189,7 +184,6 @@ else
   echo "SKIP: no chromium; diagram render not checked in a browser"
 fi
 
-# --- stop our own server, then the stranger must still be listening
 stop_server
 if [ -n "$foreign" ]; then
   if listening ::1; then ok "cleanup leaves a foreign [::1]:4321 listener alive"; else ko "cleanup leaves a foreign [::1]:4321 listener alive"; fi

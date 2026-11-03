@@ -3220,6 +3220,198 @@ else
     fail "T95: idle self-heartbeat (rc=$rc out=$out rc2=$rc2 out2=$out2)"
 fi
 
+# T95a-d: a lock acquired ON BEHALF of another session (QUEUE_LOCK_ON_BEHALF=1)
+# is never kept live by the invoker's self-heartbeat, so the sweep still sees it
+# idle; the real owner binds it with `adopt`, after which the OWNER's hook keeps
+# it fresh and the invoker's still cannot.
+B_DOC="$A_HO/on-behalf.md"; : > "$B_DOC"; B_LK="$(a_lockdir on-behalf)"
+B_TR="$TMPDIR_ROOT/transcript-95a.jsonl"; : > "$B_TR"
+b_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$B_DOC" behalf95 2>/dev/null)"; b_rc=$?
+a_backdate "$B_LK" "$OLD_HB"
+printf '{"session_id":"scope-invoker","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$LIB" self-heartbeat >/dev/null 2>&1
+# shellcheck disable=SC2016  # the backticks are literal in the token line
+if [ "$b_rc" -eq 0 ] && grepq "$b_out" 'release-token: `behalf95`' \
+    && [ "$(a_hb "$B_LK")" = "$OLD_HB" ] && [ ! -f "$B_LK/liveness" ]; then
+    pass "T95a: an on-behalf lock is not refreshed by the invoker's self-heartbeat and carries no liveness marker"
+else
+    fail "T95a: invoker kept an on-behalf lock alive (rc=$b_rc hb=$(a_hb "$B_LK") liveness=$(cat "$B_LK/liveness" 2>/dev/null || echo none))"
+fi
+bash "$LIB" status "$B_DOC" >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 12 ]; then
+    pass "T95b: the on-behalf lock reads STALE (rc 12), so the sweep's idle detection still fires"
+else
+    fail "T95b: on-behalf lock status rc=$rc (want 12)"
+fi
+bad_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" wrong-token 2>&1)"; bad_rc=$?
+none_out="$(env -u QUEUE_LOCK_SESSION_SCOPE -u CLAUDE_CODE_SESSION_ID bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; none_rc=$?
+# the session's registration dir under the token dir: the scope digest is the
+# only thing the hook reads, so "registered nothing" means this dir is absent or empty.
+t95_digest() { if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | cut -d' ' -f1; else printf '%s' "$1" | shasum -a 256 | cut -d' ' -f1; fi; }
+t95_sdir() { printf '%s/xdg/himmel-queue-lock/scope.%s' "$TMPDIR_ROOT" "$(t95_digest "$1")"; }
+t95_count() { local n=0 f; for f in "$@"; do [ -f "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
+t95_registered() { [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
+printf '{"session_id":"scope-owner","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" self-heartbeat >/dev/null 2>&1
+if [ "$bad_rc" -eq 2 ] && [ "$none_rc" -eq 2 ] && [ "$(a_hb "$B_LK")" = "$OLD_HB" ] \
+    && ! t95_registered "$(t95_sdir scope-owner)" && [ ! -f "$B_LK/liveness" ] \
+    && [ "$(t95_count "$TMPDIR_ROOT/xdg/himmel-queue-lock/$(t95_digest "scope-owner|$B_DOC")".*)" = 0 ]; then
+    pass "T95c: adopt refuses a wrong token and a missing session scope (rc 2), registering nothing (no sidecar, no token file, no liveness marker, the owner's hook still cannot refresh)"
+else
+    fail "T95c: adopt refusals (wrong rc=$bad_rc out=$bad_out; no-scope rc=$none_rc out=$none_out; registered=$(ls -A "$(t95_sdir scope-owner)" 2>/dev/null))"
+fi
+
+# T95e: adopt must not report success when the registration could not be
+# written: here the token dir path is occupied by a regular file.
+T95E_XDG="$TMPDIR_ROOT/xdg-blocked-95e"; mkdir -p "$T95E_XDG"; chmod 700 "$T95E_XDG"; : > "$T95E_XDG/himmel-queue-lock"
+e_out="$(XDG_RUNTIME_DIR="$T95E_XDG" QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; e_rc=$?
+if [ "$e_rc" -eq 1 ] && ! grepq "$e_out" 'adopted' && grepq "$e_out" 'nothing registered'; then
+    pass "T95e: adopt exits 1 and prints no success line when the registration cannot be written"
+else
+    fail "T95e: adopt reported success without registering (rc=$e_rc out=$e_out)"
+fi
+
+# T95f: the 40b092df4 fix. adopt persists the token it VALIDATED, never a
+# second read of owner.json: frozen between the check and the write (the
+# _ql_test_pause seam), a takeover by another holder must leave NOTHING
+# registered for the adopter -- neither the old token nor the new holder's --
+# and the new holder's lock must carry no liveness marker from the adopter.
+F95_DOC="$A_HO/adopt-race.md"; : > "$F95_DOC"; F95_LK="$(a_lockdir adopt-race)"
+QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$F95_DOC" adoptA95 >/dev/null 2>&1
+F95_P="$TMPDIR_ROOT/pause-t95f"; : > "$F95_P"
+F95_CFG="$TMPDIR_ROOT/cfg-95f"; mkdir -p "$F95_CFG/projects/p"; : > "$F95_CFG/projects/p/racer95.jsonl"
+( CLAUDE_CONFIG_DIR="$F95_CFG" CLAUDE_CODE_SESSION_ID=racer95 QUEUE_LOCK_SESSION_SCOPE=scope-racer QUEUE_LOCK_TEST_PAUSE_AT=adopt-verified QUEUE_LOCK_TEST_PAUSE_FILE="$F95_P" \
+    bash "$LIB" adopt "$F95_DOC" adoptA95 > "$F95_P.out" 2>&1; echo $? > "$F95_P.rc" ) &
+f_wait_reached "$F95_P" || fail "T95f: adopt never reached the pause point"
+QUEUE_LOCK_TAKEOVER=1 CLAUDE_CODE_SESSION_ID="" bash "$LIB" acquire "$F95_DOC" adoptB95 >/dev/null 2>&1
+rm -f "$F95_P"; wait
+f_rc="$(cat "$F95_P.rc" 2>/dev/null)"
+if [ "$f_rc" = 2 ] && ! t95_registered "$(t95_sdir scope-racer)" \
+    && [ ! -f "$F95_LK/liveness" ] && grep -q '"session":"adoptB95"' "$F95_LK/owner.json" 2>/dev/null; then
+    pass "T95f: an adopt frozen across a takeover registers nothing for either holder and leaves the new holder's lock untouched"
+else
+    fail "T95f: adopt across takeover (rc=$f_rc out=$(cat "$F95_P.out" 2>/dev/null) registered=$(ls -A "$(t95_sdir scope-racer)" 2>/dev/null))"
+fi
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$F95_DOC" >/dev/null 2>&1
+ad_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" adopt "$B_DOC" behalf95 2>&1)"; ad_rc=$?
+printf '{"session_id":"scope-invoker","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$LIB" self-heartbeat >/dev/null 2>&1
+inv_hb="$(a_hb "$B_LK")"
+printf '{"session_id":"scope-owner","transcript_path":"%s"}' "$B_TR" \
+    | QUEUE_LOCK_SESSION_SCOPE=scope-owner bash "$LIB" self-heartbeat >/dev/null 2>&1
+if [ "$ad_rc" -eq 0 ] && [ "$inv_hb" = "$OLD_HB" ] && [ "$(a_hb "$B_LK")" != "$OLD_HB" ] \
+    && grep -qF "transcript=$B_TR" "$B_LK/liveness" 2>/dev/null; then
+    pass "T95d: after adopt the owner's self-heartbeat refreshes the lock and records its transcript; the invoker's still does not"
+else
+    fail "T95d: adopt binding (rc=$ad_rc out=$ad_out invoker-hb=$inv_hb owner-hb=$(a_hb "$B_LK"))"
+fi
+bash "$LIB" release "$B_DOC" behalf95 >/dev/null 2>&1
+
+# T95g: the hook's digest spawn count does not depend on how many OTHER
+# sessions' sidecars sit in the token dir (a flat layout hashed every foreign
+# sidecar on every tool call). A sha256sum
+# shim on PATH counts the digests; the same self-heartbeat runs with no foreign
+# sidecars and with thousands, flat and in other sessions' scope dirs.
+G_DOC="$A_HO/spawn-count.md"; : > "$G_DOC"
+QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" acquire "$G_DOC" spawn95 >/dev/null 2>&1
+G_SHIM="$TMPDIR_ROOT/shim-95g"; mkdir -p "$G_SHIM"; G_LOG="$TMPDIR_ROOT/shim-95g.log"
+G_SHA_NAME=sha256sum; command -v sha256sum >/dev/null 2>&1 || G_SHA_NAME=shasum
+G_REAL_SHA="$(command -v "$G_SHA_NAME" 2>/dev/null)"
+printf '#!/bin/sh\necho x >> "%s"\nexec "%s" "$@"\n' "$G_LOG" "${G_REAL_SHA:-/nonexistent}" > "$G_SHIM/$G_SHA_NAME"
+chmod +x "$G_SHIM/$G_SHA_NAME"
+g_count() {
+    : > "$G_LOG"
+    printf '{"session_id":"scope-spawn"}' \
+        | PATH="$G_SHIM:$PATH" QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" self-heartbeat >/dev/null 2>&1
+    # read-sink-ok: G_LOG is this test's own scratch log under TMPDIR_ROOT
+    wc -l < "$G_LOG" | tr -d ' '
+}
+G_TOK="$TMPDIR_ROOT/xdg/himmel-queue-lock"
+g_before="$(g_count)"
+g_i=0
+while [ "$g_i" -lt 2000 ]; do
+    printf 'x\ny\n' > "$G_TOK/foreign-flat-$g_i.doc"
+    g_i=$((g_i + 1))
+done
+g_d=0
+while [ "$g_d" -lt 20 ]; do
+    mkdir -p "$G_TOK/scope.foreign-$g_d"
+    g_i=0
+    while [ "$g_i" -lt 100 ]; do
+        printf 'x\ny\n' > "$G_TOK/scope.foreign-$g_d/f$g_i.doc"
+        g_i=$((g_i + 1))
+    done
+    g_d=$((g_d + 1))
+done
+g_after="$(g_count)"
+rm -rf "$G_TOK"/foreign-flat-*.doc "$G_TOK"/scope.foreign-*
+if [ -n "$G_REAL_SHA" ] && [ "$g_before" -ge 1 ] && [ "$g_before" = "$g_after" ]; then
+    pass "T95g: self-heartbeat runs $g_before digest(s) with 0 foreign sidecars and $g_after with 4000 (constant)"
+else
+    fail "T95g: digest spawns grew with foreign sidecars (before=$g_before after=$g_after real=$G_REAL_SHA)"
+fi
+QUEUE_LOCK_SESSION_SCOPE=scope-spawn bash "$LIB" release "$G_DOC" spawn95 >/dev/null 2>&1
+
+# T95h: the hook drops a registration whose lock dir is gone (token file and
+# sidecar), keeps one whose lock is still held, and never touches another
+# session's registrations.
+H_DOC1="$A_HO/prune-1.md"; : > "$H_DOC1"; H_LK1="$(a_lockdir prune-1)"
+H_DOC2="$A_HO/prune-2.md"; : > "$H_DOC2"; H_LK2="$(a_lockdir prune-2)"
+QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC1" prune95a >/dev/null 2>&1
+QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" acquire "$H_DOC2" prune95b >/dev/null 2>&1
+H_SD="$(t95_sdir scope-prune)"
+H_FSD="$(t95_sdir scope-foreign)"; H_FKEEP="$H_FSD/$(t95_digest "scope-foreign|$H_DOC2").foreign95.doc"
+mkdir -p "$H_FSD"; printf 'x\n%s\n' "$(dirname "$H_LK2")/foreign-gone.lock" > "$H_FKEEP"
+h_regs_before="$(t95_count "$H_SD"/*.doc)"
+h_toks_before="$(t95_count "$G_TOK/$(t95_digest "scope-prune|$H_DOC1")".*)"
+h_dead_before="$(t95_count "$H_SD/$(t95_digest "scope-prune|$H_DOC1")".*.doc)"
+rm -rf "$H_LK1"
+printf '{"session_id":"scope-prune"}' | QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" self-heartbeat >/dev/null 2>&1
+h_regs_after="$(t95_count "$H_SD"/*.doc)"
+h_dead_after="$(t95_count "$H_SD/$(t95_digest "scope-prune|$H_DOC1")".*.doc)"
+h_held_after="$(t95_count "$H_SD/$(t95_digest "scope-prune|$H_DOC2")".*.doc)"
+h_toks="$(t95_count "$G_TOK/$(t95_digest "scope-prune|$H_DOC1")".*)"
+if [ "$h_regs_before" = 2 ] && [ "$h_regs_after" = 1 ] && [ "$h_toks_before" = 1 ] && [ "$h_toks" = 0 ] \
+    && [ "$h_dead_before" = 1 ] && [ "$h_dead_after" = 0 ] && [ "$h_held_after" = 1 ] \
+    && [ -d "$H_LK2" ] && [ -f "$H_FKEEP" ]; then
+    pass "T95h: the hook prunes a registration whose lock dir is gone, keeps a held one, and leaves foreign sidecars alone"
+else
+    fail "T95h: prune (regs $h_regs_before -> $h_regs_after, token files for the dead lock before/after: $h_toks_before/$h_toks, dead sidecar before/after: $h_dead_before/$h_dead_after, held sidecar after: $h_held_after, held lock present: $([ -d "$H_LK2" ] && echo y || echo n), foreign sidecar kept: $([ -f "$H_FKEEP" ] && echo y || echo n))"
+fi
+rm -rf "$H_FSD"
+QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" release "$H_DOC2" prune95b >/dev/null 2>&1
+
+# T95i: a registration whose lock's PARENT dir is missing (an unmounted or
+# moved handover root) is not "the lock is gone": the hook keeps the sidecar
+# and the token file.
+I_SD="$(t95_sdir scope-prune)"; mkdir -p "$I_SD"
+I_TOK="$G_TOK/orphan-parent-95i"
+printf 'tok95i\n' > "$I_TOK"
+printf '/some/doc.md\n%s\n' "$TMPDIR_ROOT/no-such-root/.locks/queue/x.lock" > "$I_SD/orphan-parent-95i.doc"
+printf '{"session_id":"scope-prune"}' | QUEUE_LOCK_SESSION_SCOPE=scope-prune bash "$LIB" self-heartbeat >/dev/null 2>&1
+if [ -f "$I_SD/orphan-parent-95i.doc" ] && [ -f "$I_TOK" ]; then
+    pass "T95i: the hook keeps a registration whose lock's parent dir is missing (sidecar and token file)"
+else
+    fail "T95i: hook pruned a registration under a missing root (sidecar=$([ -f "$I_SD/orphan-parent-95i.doc" ] && echo kept || echo GONE) token=$([ -f "$I_TOK" ] && echo kept || echo GONE))"
+fi
+rm -f "$I_SD/orphan-parent-95i.doc" "$I_TOK"
+
+# T95j: adopt when the session's registration dir cannot be created (the
+# scope.<digest> path is occupied by a regular file): rc 1, no success line,
+# and the token file it wrote is taken back.
+J_DOC="$A_HO/occupied.md"; : > "$J_DOC"
+QUEUE_LOCK_SESSION_SCOPE=scope-invoker QUEUE_LOCK_ON_BEHALF=1 bash "$LIB" acquire "$J_DOC" occupied95 >/dev/null 2>&1; j_arc=$?
+: > "$(t95_sdir scope-occupied)"
+j_out="$(QUEUE_LOCK_SESSION_SCOPE=scope-occupied bash "$LIB" adopt "$J_DOC" occupied95 2>&1)"; j_rc=$?
+if [ "$j_arc" -eq 0 ] && [ "$j_rc" -eq 1 ] && ! grepq "$j_out" 'adopted' && grepq "$j_out" 'nothing registered' \
+    && [ "$(t95_count "$G_TOK/$(t95_digest "scope-occupied|$J_DOC")".*)" = 0 ]; then
+    pass "T95j: adopt exits 1, prints no success line and leaves no token file when the sidecar cannot be written"
+else
+    fail "T95j: adopt with an occupied registration dir (acquire rc=$j_arc adopt rc=$j_rc out=$j_out)"
+fi
+rm -f "$(t95_sdir scope-occupied)"
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$J_DOC" >/dev/null 2>&1
+
 # --- T96-T102: a lock past its TTL whose owner is PROVABLY dead
 # reads STALE-DEAD and `status --sweep --reap-dead` releases only such locks.
 # Provably dead = owner host is this host, the session token is <host>-pid<N>
@@ -3386,6 +3578,8 @@ h_hold() {
 }
 # h_tail <doc> -- the newest `- ` bullet.
 h_tail() { sed -n '/^- /p' "$1" | tail -n 1; }
+# h_wait_file <path> -- wait up to 10 s for a file to appear.
+h_wait_file() { local i=0; while [ ! -e "$1" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done; [ -e "$1" ]; }
 
 H_PID="$(h_dead_pid)"
 # a: --reap-dead sweep
@@ -3441,15 +3635,69 @@ fi
 if [ -n "$_TIMEOUT_BIN" ] && command -v flock >/dev/null 2>&1; then
     H_DOC_F="$(h_doc halted-locked 'LIVE — working')"
     H_LK_F="$(h_hold "$H_DOC_F" "$H_HOST-pid$H_PID" "$H_HOST")"
-    ( . "$SCRIPT_DIR/chief-kit/worker-doc-lock.sh"; doc_lock "$H_DOC_F" t8541 && exec sleep 60 ) &
-    H_HOLD_PID=$!
-    sleep 1
-    H_OUT_F="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=1 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 30 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_F=$?
+    # h_hold_doc <doc> <ready-file> [secs] -- a background holder of the doc's write lock for secs (default 60); the ready file appears only once it holds it.
+    h_hold_doc() {
+        rm -f "$2"
+        ( . "$SCRIPT_DIR/chief-kit/worker-doc-lock.sh"; doc_lock "$1" t8541 && { : > "$2"; exec sleep "${3:-60}"; } ) &
+        H_HOLD_PID=$!
+        local i=0
+        while [ ! -e "$2" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+        [ -e "$2" ]
+    }
+    H_READY_F="$TMPDIR_ROOT/t8541f-ready"
+    if h_hold_doc "$H_DOC_F" "$H_READY_F"; then
+        H_OUT_F="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=1 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 30 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_F=$?
+    else
+        H_OUT_F="the background holder never took the doc lock"; H_RC_F=-1
+    fi
     kill "$H_HOLD_PID" 2>/dev/null; wait "$H_HOLD_PID" 2>/dev/null
-    if [ "$H_RC_F" -ne 124 ] && [ -n "$H_LK_F" ] && [ ! -d "$H_LK_F" ] && grepq "$H_OUT_F" "could not append the HALTED bullet"; then
+    if [ "$H_RC_F" -eq 0 ] && [ -n "$H_LK_F" ] && [ ! -d "$H_LK_F" ] && grepq "$H_OUT_F" "could not append the HALTED bullet"; then
         pass "T8541f: a held doc lock times the HALTED append out with a WARN and the lock is still freed"
     else
         fail "T8541f: held doc lock (rc=$H_RC_F lock=$H_LK_F) out: $H_OUT_F"
+    fi
+    # i: a zero limit is treated as unset (default 10 s), so the append stays bounded and the lock is still freed
+    H_DOC_I="$(h_doc halted-locked-zero 'LIVE — working')"
+    H_LK_I="$(h_hold "$H_DOC_I" "$H_HOST-pid$H_PID" "$H_HOST")"
+    if h_hold_doc "$H_DOC_I" "$TMPDIR_ROOT/t8541i-ready"; then
+        H_OUT_I="$(QUEUE_LOCK_HALTED_TIMEOUT_SECS=0 HANDOVER_DIR="$H_ROOT" "$_TIMEOUT_BIN" -k 2 25 bash "$LIB" status --sweep --reap-dead 2>&1)"; H_RC_I=$?
+    else
+        H_OUT_I="the background holder never took the doc lock"; H_RC_I=-1
+    fi
+    kill "$H_HOLD_PID" 2>/dev/null; wait "$H_HOLD_PID" 2>/dev/null
+    if [ "$H_RC_I" -eq 0 ] && [ -n "$H_LK_I" ] && [ ! -d "$H_LK_I" ] && grepq "$H_OUT_I" "could not append the HALTED bullet.*timed out after 10s"; then
+        pass "T8541i: a zero HALTED timeout falls back to the default 10 s bound and the lock is still freed"
+    else
+        fail "T8541i: zero limit (rc=$H_RC_I lock=$H_LK_I) out: $H_OUT_I"
+    fi
+    # m: the claim stays held across the whole HALTED append. A stub timeout parks A inside the append (it writes a started file,
+    # then waits for a go file before running the real one); B is run meanwhile and must be refused; then exactly one HALTED
+    # is written and both the lock and the claim are gone
+    H_DOC_M="$(h_doc halted-concurrent 'LIVE — working')"
+    H_LK_M="$(h_hold "$H_DOC_M" "$H_HOST-pid$H_PID" "$H_HOST")"
+    H_STUB_M="$TMPDIR_ROOT/t8541m-stub"; mkdir -p "$H_STUB_M"
+    # shellcheck disable=SC2016
+    printf '%s\n' '#!/bin/sh' "case \"\$1\" in --version) exec $_TIMEOUT_BIN --version ;; esac" \
+        ': > "$T8541M_STARTED"' 'i=0; while [ ! -e "$T8541M_GO" ] && [ "$i" -lt 200 ]; do sleep 0.1; i=$((i + 1)); done' \
+        "exec $_TIMEOUT_BIN \"\$@\"" > "$H_STUB_M/timeout"
+    chmod +x "$H_STUB_M/timeout"
+    rm -f "$TMPDIR_ROOT/t8541m-started" "$TMPDIR_ROOT/t8541m-go"
+    H_RC_MA=-1; H_RC_MB=-1; H_OWN_M=""
+    PATH="$H_STUB_M:$PATH" T8541M_STARTED="$TMPDIR_ROOT/t8541m-started" T8541M_GO="$TMPDIR_ROOT/t8541m-go" \
+        QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_M" >/dev/null 2>&1 &
+    H_PID_MA=$!
+    if h_wait_file "$TMPDIR_ROOT/t8541m-started"; then
+        H_OWN_M="$(cat "$H_LK_M.claim/owner" 2>/dev/null)"
+        QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_M" >/dev/null 2>&1; H_RC_MB=$?
+    fi
+    : > "$TMPDIR_ROOT/t8541m-go"
+    wait "$H_PID_MA"; H_RC_MA=$?
+    H_N_M="$(grep -c ' HALTED ' "$H_DOC_M" 2>/dev/null)"
+    case "$H_OWN_M" in release-*) H_BRAND_M=yes ;; *) H_BRAND_M=no ;; esac
+    if [ "$H_RC_MA" -eq 0 ] && [ "$H_RC_MB" -eq 2 ] && [ "$H_BRAND_M" = yes ] && [ "$H_N_M" = 1 ] && [ ! -d "$H_LK_M" ] && [ ! -d "$H_LK_M.claim" ]; then
+        pass "T8541m: a second forced release is refused while the first holds the claim through the HALTED append, and exactly one HALTED is written"
+    else
+        fail "T8541m: concurrent forced releases (a=$H_RC_MA b=$H_RC_MB brand=$H_OWN_M halted=$H_N_M lock=$H_LK_M) tail: $(h_tail "$H_DOC_M")"
     fi
 else
     pass "T8541f: skipped, needs GNU timeout and flock"
@@ -3467,12 +3715,166 @@ else
 fi
 # h: a forced takeover (QUEUE_LOCK_TAKEOVER=1) over a LIVE holder is not a dead worker
 H_DOC_H="$(h_doc halted-takeover-live 'LIVE — working')"
-h_hold "$H_DOC_H" "$H_HOST-pid$$" "$H_HOST" >/dev/null
+H_LK_H="$(h_hold "$H_DOC_H" "$H_HOST-pid$$" "$H_HOST")"
+H_LIVE_SETUP_H=no; [ -n "$H_LK_H" ] && [ -f "$H_LK_H/owner.json" ] && H_LIVE_SETUP_H=yes
 QUEUE_LOCK_TAKEOVER=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" acquire "$H_DOC_H" taker-live-fixture >/dev/null 2>&1; H_RC_H=$?
-if [ "$H_RC_H" -eq 0 ] && [ "$(h_tail "$H_DOC_H")" = "- 10:00 LIVE — working" ]; then
+if [ "$H_LIVE_SETUP_H" = yes ] && [ "$H_RC_H" -eq 0 ] && grepq "$(cat "$H_LK_H/owner.json" 2>/dev/null)" '"session":"taker-live-fixture"' \
+    && [ "$(h_tail "$H_DOC_H")" = "- 10:00 LIVE — working" ]; then
     pass "T8541h: a forced takeover over a live holder writes no HALTED bullet"
 else
-    fail "T8541h: live takeover (rc=$H_RC_H) tail: $(h_tail "$H_DOC_H")"
+    fail "T8541h: live takeover (setup=$H_LIVE_SETUP_H lock=$H_LK_H rc=$H_RC_H) tail: $(h_tail "$H_DOC_H")"
+fi
+# j: a forced release takes the release claim before the proof, so a contender holding it stops the release before any HALTED is written
+H_DOC_J="$(h_doc halted-claimed 'LIVE — working')"
+H_LK_J="$(h_hold "$H_DOC_J" "$H_HOST-pid$H_PID" "$H_HOST")"
+mkdir "$H_LK_J.claim" && printf '%s' "release-pid1-r1" > "$H_LK_J.claim/owner"
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_J" >/dev/null 2>&1; H_RC_J=$?
+if [ "$H_RC_J" -eq 2 ] && [ -d "$H_LK_J" ] && [ "$(h_tail "$H_DOC_J")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541j: a forced release refused on a held release claim writes no HALTED bullet and frees nothing"
+else
+    fail "T8541j: claimed forced release (rc=$H_RC_J lock=$H_LK_J) tail: $(h_tail "$H_DOC_J")"
+fi
+rm -rf "$H_LK_J.claim"
+# k: a SIGTERM while a forced release holds its claim (frozen at the forced-proved seam) frees the claim, and a plain forced release then works
+H_DOC_K="$(h_doc halted-signal 'LIVE — working')"
+H_LK_K="$(h_hold "$H_DOC_K" "$H_HOST-pid$H_PID" "$H_HOST")"
+H_GATE_K="$TMPDIR_ROOT/t8541k-gate"; : > "$H_GATE_K"; rm -f "$H_GATE_K.reached"
+QUEUE_LOCK_TEST_PAUSE_AT=forced-proved QUEUE_LOCK_TEST_PAUSE_FILE="$H_GATE_K" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_K" >/dev/null 2>&1 &
+H_PID_K=$!
+H_RC_KA=-1; H_CLAIM_KA="unset"
+if h_wait_file "$H_GATE_K.reached"; then
+    H_CLAIM_KA="$([ -d "$H_LK_K.claim" ] && echo held || echo missing)"
+    kill -TERM "$H_PID_K" 2>/dev/null
+fi
+wait "$H_PID_K" 2>/dev/null; H_RC_KA=$?
+rm -f "$H_GATE_K"
+H_CLAIM_KB="$([ -d "$H_LK_K.claim" ] && echo leaked || echo gone)"
+QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_K" >/dev/null 2>&1; H_RC_KB=$?
+if [ "$H_CLAIM_KA" = held ] && [ "$H_RC_KA" -eq 143 ] && [ "$H_CLAIM_KB" = gone ] && [ "$H_RC_KB" -eq 0 ] && [ ! -d "$H_LK_K" ]; then
+    pass "T8541k: a SIGTERM during a forced release frees its claim and a plain forced release then succeeds"
+else
+    fail "T8541k: signalled forced release (claim-while-frozen=$H_CLAIM_KA rc=$H_RC_KA claim-after=$H_CLAIM_KB next-rc=$H_RC_KB lock=$H_LK_K)"
+fi
+# p: a caller that sourced the library and had its own EXIT trap still gets it run when a signal ends the forced release
+H_DOC_P="$(h_doc halted-caller-trap 'LIVE — working')"
+H_LK_P="$(h_hold "$H_DOC_P" "$H_HOST-pid$H_PID" "$H_HOST")"
+H_GATE_P="$TMPDIR_ROOT/t8541p-gate"; H_OUT_P="$TMPDIR_ROOT/t8541p-out"; : > "$H_GATE_P"; rm -f "$H_GATE_P.reached" "$H_OUT_P"
+(
+    # shellcheck source=queue-lock.sh
+    . "$LIB"
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-exit >> '$H_OUT_P'" EXIT
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-term >> '$H_OUT_P'; exit 7" TERM
+    QUEUE_LOCK_TEST_PAUSE_AT=forced-proved QUEUE_LOCK_TEST_PAUSE_FILE="$H_GATE_P" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" queue_lock_release "$H_DOC_P"
+) >/dev/null 2>&1 &
+H_PID_P=$!
+if h_wait_file "$H_GATE_P.reached"; then kill -TERM "$H_PID_P" 2>/dev/null; fi
+wait "$H_PID_P" 2>/dev/null; H_RC_P=$?
+rm -f "$H_GATE_P"
+H_CLAIM_P="$([ -d "$H_LK_P.claim" ] && echo leaked || echo gone)"
+# read-sink-ok: H_OUT_P is this test's own scratch file under TMPDIR_ROOT
+if [ "$H_RC_P" -eq 7 ] && [ "$H_CLAIM_P" = gone ] && [ "$(tr '\n' ' ' < "$H_OUT_P" 2>/dev/null)" = "caller-term caller-exit " ]; then
+    pass "T8541p: a signal during a forced release in a sourcing caller frees the claim and hands the signal to the caller's own TERM and EXIT traps"
+else
+    # read-sink-ok: H_OUT_P is this test's own scratch file under TMPDIR_ROOT
+    fail "T8541p: sourcing caller (rc=$H_RC_P claim=$H_CLAIM_P trap-out=$(tr '\n' ' ' < "$H_OUT_P" 2>/dev/null))"
+fi
+# r: a caller whose own TERM handler RETURNS instead of exiting: the release stops at its next checkpoint (rc 143), the lock is left alone and no HALTED is written
+H_DOC_R="$(h_doc halted-caller-returns 'LIVE — working')"
+H_LK_R="$(h_hold "$H_DOC_R" "$H_HOST-pid$H_PID" "$H_HOST")"
+H_GATE_R="$TMPDIR_ROOT/t8541r-gate"; H_RC_FILE_R="$TMPDIR_ROOT/t8541r-rc"; H_OUT_R="$TMPDIR_ROOT/t8541r-out"; : > "$H_GATE_R"; rm -f "$H_GATE_R.reached" "$H_RC_FILE_R" "$H_OUT_R"
+(
+    # shellcheck source=queue-lock.sh
+    . "$LIB"
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-term >> '$H_OUT_R'" TERM
+    QUEUE_LOCK_TEST_PAUSE_AT=forced-proved QUEUE_LOCK_TEST_PAUSE_FILE="$H_GATE_R" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" queue_lock_release "$H_DOC_R"
+    echo "$?" > "$H_RC_FILE_R"
+) >/dev/null 2>&1 &
+H_PID_R=$!
+if h_wait_file "$H_GATE_R.reached"; then kill -TERM "$H_PID_R" 2>/dev/null; fi
+sleep 0.5
+rm -f "$H_GATE_R"
+wait "$H_PID_R" 2>/dev/null
+# read-sink-ok: these are this test's own scratch files under TMPDIR_ROOT
+if [ "$(cat "$H_RC_FILE_R" 2>/dev/null)" = 143 ] && [ "$(cat "$H_OUT_R" 2>/dev/null)" = caller-term ] && [ -d "$H_LK_R" ] && [ ! -d "$H_LK_R.claim" ] \
+    && [ "$(h_tail "$H_DOC_R")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541r: a caller handler that returns after a signal stops the forced release with rc 143 and leaves the lock and the doc alone"
+else
+    # read-sink-ok: these are this test's own scratch files under TMPDIR_ROOT
+    fail "T8541r: returning caller handler (rc=$(cat "$H_RC_FILE_R" 2>/dev/null) out=$(cat "$H_OUT_R" 2>/dev/null) lock=$([ -d "$H_LK_R" ] && echo kept || echo gone) claim=$([ -d "$H_LK_R.claim" ] && echo leaked || echo gone)) tail: $(h_tail "$H_DOC_R")"
+fi
+# q: the forced release's EXIT handler frees its claim and then runs the EXIT action the caller had, with the exit status the caller would have seen (an exit inside the window, not a signal)
+H_OUT_Q="$TMPDIR_ROOT/t8541q-out"; H_CLAIM_Q="$TMPDIR_ROOT/t8541q.claim"; rm -f "$H_OUT_Q"; mkdir -p "$H_CLAIM_Q"; printf '%s' "release-pidq" > "$H_CLAIM_Q/owner"
+(
+    # shellcheck source=queue-lock.sh
+    . "$LIB"
+    # shellcheck disable=SC2064  # the path is meant to be expanded now
+    trap "echo caller-exit rc=\$? > '$H_OUT_Q'" EXIT
+    _QL_FORCE_PREV_EXIT=$(trap -p EXIT)
+    _QL_FORCE_CLAIM="$H_CLAIM_Q" _QL_FORCE_TOKEN="release-pidq"
+    trap '_ql_force_on_exit' EXIT
+    exit 5
+) >/dev/null 2>&1
+if [ ! -d "$H_CLAIM_Q" ] && [ "$(cat "$H_OUT_Q" 2>/dev/null)" = "caller-exit rc=5" ]; then
+    pass "T8541q: an exit inside a forced release frees its claim and runs the caller's own EXIT action with the original exit status"
+else
+    fail "T8541q: exit handler (claim-present=$([ -d "$H_CLAIM_Q" ] && echo yes || echo no) out=$(cat "$H_OUT_Q" 2>/dev/null))"
+fi
+# l: the claim exists when the dead-holder proof runs (the process census is the proof's last step)
+H_REAL_PS="$(command -v ps)"
+H_STUB_L="$TMPDIR_ROOT/t8541l-stub"; mkdir -p "$H_STUB_L"
+# shellcheck disable=SC2016
+printf '%s\n' '#!/bin/sh' \
+    'case "$*" in *-ww*) if [ -d "$T8541L_CLAIM" ]; then echo yes; else echo no; fi >> "$T8541L_LOG" ;; esac' \
+    "exec $H_REAL_PS \"\$@\"" > "$H_STUB_L/ps"
+chmod +x "$H_STUB_L/ps"
+H_DOC_L="$(h_doc halted-claim-at-proof 'LIVE — working')"
+H_LK_L="$(h_hold "$H_DOC_L" "$H_HOST-pid$H_PID" "$H_HOST")"
+rm -f "$TMPDIR_ROOT/t8541l-log"
+PATH="$H_STUB_L:$PATH" T8541L_CLAIM="$H_LK_L.claim" T8541L_LOG="$TMPDIR_ROOT/t8541l-log" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_L" >/dev/null 2>&1
+H_SEEN_L="$(sort -u "$TMPDIR_ROOT/t8541l-log" 2>/dev/null | tr '\n' ' ')"
+if [ "$H_SEEN_L" = "yes " ]; then
+    pass "T8541l: the forced release holds its claim when the dead-holder proof reads the process census"
+else
+    fail "T8541l: claim state at the census (want 'yes ', got '$H_SEEN_L')"
+fi
+# n: the owner.json re-read after the proof -- a lock that changes hands while the release is frozen gets no HALTED
+H_DOC_N="$(h_doc halted-reread 'LIVE — working')"
+H_LK_N="$(h_hold "$H_DOC_N" "$H_HOST-pid$H_PID" "$H_HOST")"
+H_GATE_N="$TMPDIR_ROOT/t8541n-gate"; : > "$H_GATE_N"; rm -f "$H_GATE_N.reached"
+QUEUE_LOCK_TEST_PAUSE_AT=forced-proved QUEUE_LOCK_TEST_PAUSE_FILE="$H_GATE_N" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_N" >/dev/null 2>&1 &
+H_PID_N=$!
+if h_wait_file "$H_GATE_N.reached"; then printf ' ' >> "$H_LK_N/owner.json"; fi
+rm -f "$H_GATE_N"
+wait "$H_PID_N"; H_RC_N=$?
+if [ "$H_RC_N" -eq 0 ] && [ ! -d "$H_LK_N" ] && [ "$(h_tail "$H_DOC_N")" = "- 10:00 LIVE — working" ]; then
+    pass "T8541n: a forced release whose lock changed after the proof writes no HALTED"
+else
+    fail "T8541n: changed owner.json (rc=$H_RC_N lock=$H_LK_N) tail: $(h_tail "$H_DOC_N")"
+fi
+# o: the limit handed to the append -- zero, 00 and non-numbers read as the 10 s default, 08 and 09 pass on as decimal, a plain 7 as 7 (a stub timeout records it)
+H_STUB_O="$TMPDIR_ROOT/t8541o-stub"; mkdir -p "$H_STUB_O"
+# shellcheck disable=SC2016
+printf '%s\n' '#!/bin/sh' 'case "$1" in --version) echo "timeout (GNU coreutils) 9.0"; exit 0 ;; esac' 'echo "$*" >> "$T8541O_LOG"' 'exit 0' > "$H_STUB_O/timeout"
+chmod +x "$H_STUB_O/timeout"
+H_BAD_O=""; H_N_O=0
+for H_PAIR_O in 0:10 00:10 08:08 09:09 7:7 x:10 -3:10; do
+    H_N_O=$((H_N_O + 1))
+    H_DOC_O="$(h_doc "halted-limit-$H_N_O" 'LIVE — working')"
+    h_hold "$H_DOC_O" "$H_HOST-pid$H_PID" "$H_HOST" >/dev/null
+    rm -f "$TMPDIR_ROOT/t8541o-log"
+    PATH="$H_STUB_O:$PATH" T8541O_LOG="$TMPDIR_ROOT/t8541o-log" QUEUE_LOCK_HALTED_TIMEOUT_SECS="${H_PAIR_O%%:*}" QUEUE_LOCK_FORCE_RELEASE=1 HANDOVER_DIR="$H_ROOT" bash "$LIB" release "$H_DOC_O" >/dev/null 2>&1
+    case "$(cat "$TMPDIR_ROOT/t8541o-log" 2>/dev/null)" in
+        "-k 2 ${H_PAIR_O#*:} bash "*) ;;
+        *) H_BAD_O="$H_BAD_O ${H_PAIR_O%%:*}=>$(head -n 1 "$TMPDIR_ROOT/t8541o-log" 2>/dev/null)" ;;
+    esac
+done
+if [ -z "$H_BAD_O" ]; then
+    pass "T8541o: the HALTED append limit reads 0, 00, x and -3 as 10 s and passes 08, 09 and 7 on unchanged (08 and 09 are decimal, not a bad octal)"
+else
+    fail "T8541o: wrong limit handed to the append:$H_BAD_O"
 fi
 
 # --- T104: preflight warns when a declared file overlaps another live session's edits

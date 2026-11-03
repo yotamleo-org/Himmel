@@ -109,20 +109,21 @@ const usable = (v) => typeof v === 'string' && v !== '' && !PLACEHOLDER.test(v);
 function keyringLib() {
   try { return require('../../lib/resolve-secrets.mjs'); } catch { return null; }
 }
-function resolveSecrets(root, names) {
+function resolveSecrets(root, names, env) {
   const lib = keyringLib();
-  return lib ? lib.resolveSecrets(root, names) : {};
+  return lib ? lib.resolveSecrets(root, names, env) : {};
 }
 // The secrets the keyring takes: tokens of the repo .env stores. Config values and the
 // Telegram bridge file (its own readers, named exception E1) stay where they are.
 const keyringStored = (e) => Boolean(e) && e.store === 'himmel-env' && e.validate === 'token-nonempty';
+// ctx.env, the caller's environment choice (a test's env map), reaches every keyring child below.
 // Store the value through `himmel-secrets put --stdin` when the keyring is unlocked; false = use .env.
 // An unlocked keyring that refuses the store is an error, not a fallback: the keyring wins over .env
 // on every read, so an older keyring value would silently shadow the value saved to .env.
 function putKeyring(name, value, ctx) {
   const lib = keyringLib();
-  if (!lib || !lib.keyringUnlocked(ctx.himmelRoot)) return false;
-  if (lib.putSecret(ctx.himmelRoot, name, value)) return true;
+  if (!lib || !lib.keyringUnlocked(ctx.himmelRoot, ctx.env)) return false;
+  if (lib.putSecret(ctx.himmelRoot, name, value, ctx.env)) return true;
   return refuse('the keyring is unlocked but refused the store; nothing was written');
 }
 
@@ -146,7 +147,7 @@ function fileDetect(name, ctx) {
     if (usable(v)) return { status: 'set', source: 'store' };
   }
   // The keyring (through the one resolver) holds a token the migration took out of .env.
-  if (keyringStored(e) && usable(resolveSecrets(ctx.himmelRoot, [name])[name])) return { status: 'set', source: 'keyring' };
+  if (keyringStored(e) && usable(resolveSecrets(ctx.himmelRoot, [name], ctx.env)[name])) return { status: 'set', source: 'keyring' };
   if (file && v !== '') return { status: 'placeholder', source: 'store' };
   if (mcpHas(name, ctx)) return { status: 'set', source: 'mcp-store' };
   return { status: 'not-set', source: null };
@@ -194,7 +195,7 @@ function fileWrite(name, value, ctx) {
   const file = e && storeFile(e.store, ctx);
   if (!file) refuse('secret has no writable file store (card entry)');
   // himmel-secrets has no delete verb: dropping only the .env line would report "removed" while the keyring still serves the token.
-  if (value === null && keyringStored(e) && usable(resolveSecrets(ctx.himmelRoot, [name])[name])) {
+  if (value === null && keyringStored(e) && usable(resolveSecrets(ctx.himmelRoot, [name], ctx.env)[name])) {
     refuse('the OS keyring still holds this token and himmel-secrets cannot delete it yet (HIMMEL-8473); remove the item from the keyring, then retry');
   }
   if (value !== null && keyringStored(e) && putKeyring(name, value, ctx)) return { ok: true, path: 'the OS keyring (himmel-secrets)', tightened: false };

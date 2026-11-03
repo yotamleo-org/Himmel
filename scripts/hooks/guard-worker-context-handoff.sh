@@ -57,7 +57,8 @@
 #   2. A hand-off call -> allow, always: Write/Edit/MultiEdit of a *-RESUME.md,
 #      SendMessage, ListAgents (the preface's name check before a send),
 #      ToolSearch (SendMessage is a deferred tool), TaskStop (the wrap reaps
-#      background tasks), and a bare `bash <...>/append-results.sh`,
+#      background tasks), the four mail reads (mcp__himmel-bus__read, its
+#      plugin-prefixed form, ReadNotifications, FetchInboxMessage; exact names), and a bare `bash <...>/append-results.sh`,
 #      `queue-lock.sh release`, `wrap-subtree-check.sh` or `context-fill.sh`,
 #      a bare `git [-C <dir>] add|commit|push|status|rev-parse`, and a bare
 #      `cd [<dir>]` (a worker whose cwd drifted is checked against the wrong HEAD).
@@ -269,6 +270,9 @@ fi
 # --- hand-off calls always pass -------------------------------------------
 case "$tool" in
     SendMessage|ListAgents|ToolSearch|TaskStop) exit 0 ;;
+    # The mail reads, by exact name and read-only. The idle waker keeps
+    # typing "read them now" while mail sits unread; a denied read let it do so for hours.
+    mcp__himmel-bus__read|mcp__plugin_himmel-bus_himmel-bus__read|ReadNotifications|FetchInboxMessage) exit 0 ;;
     Write|Edit|MultiEdit)
         path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
         case "$path" in *-RESUME.md) exit 0 ;; esac
@@ -428,7 +432,7 @@ current_chief=$(awk -v chief="$HIMMEL_CONSOLE_NAME" '
     END { print chief }
 ' "$doc") || current_chief="$HIMMEL_CONSOLE_NAME"
 
-allowed="SendMessage, ListAgents, ToolSearch, TaskStop, append-results.sh, queue-lock.sh release, wrap-subtree-check.sh, context-fill.sh, git add/commit/push/status/rev-parse, a bare cd"
+allowed="SendMessage, ListAgents, ToolSearch, TaskStop, the mail reads (mcp__himmel-bus__read, ReadNotifications, FetchInboxMessage), append-results.sh, queue-lock.sh release, wrap-subtree-check.sh, context-fill.sh, git add/commit/push/status/rev-parse, a bare cd"
 commit_form='A commit is one line (a newline in the command is denied): git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trailer "Security reviewed: <token> - <what>".'
 stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your chief ${current_chief} what blocks you, then bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
 mode_note="The mode is set at launch by the chief (HIMMEL_WORKER_SESSION_CONTEXT_MODE); it cannot be changed in-session."

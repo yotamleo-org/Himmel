@@ -481,3 +481,62 @@ test("redactShift: a doc-name shape that also carries a token shape, a prefix be
     for (const f of fields(redactShift(chiefView(bad), redactDeep))) expect(f).not.toContain("roadmap-chief");
   }
 });
+
+// ---- the populated page reads like mockup v3 ----
+const LONG_CHIEF = "HIMMEL-nextleg-2026-11-01AB-roadmap-chief";
+const busyView = () => pageView({
+  chiefs: [{ name: LONG_CHIEF, bucket: "himmel", span: { start: "2026-10-27T08:05+01:00", end: null, approx: false }, prs: [4507] }],
+  shipped: [{ number: 4507, title: "fix(ui): [HIMMEL-8606] fixture PR 7", mergedAt: "2026-10-27T09:00:00Z", chief: LONG_CHIEF }],
+});
+
+test("a shipped row is the ticket link and the plain title, with the PR and merge time under it and no chief name", () => {
+  const html = renderShift(busyView(), {});
+  const shipped = html.slice(html.indexOf('id="sh-shipped"'));
+  expect(shipped).toContain('<a href="#/roadmap">HIMMEL-8606</a>');
+  expect(shipped).toContain("<b>fixture PR 7</b>");
+  expect(shipped).not.toContain("fix(ui)");
+  expect(shipped).not.toContain("[HIMMEL-8606]");
+  expect(shipped).toContain("#4507");
+  expect(shipped).toContain("merged 09:00");
+  expect(shipped).not.toContain(LONG_CHIEF);
+});
+
+test("a shipped title with no commit prefix or key keeps its text and shows no key link", () => {
+  const html = renderShift(pageView({ shipped: [{ number: 9, title: "just words", mergedAt: "2026-10-27T09:00:00Z", chief: null }] }), {});
+  const from = html.indexOf('id="sh-shipped"');
+  const shipped = html.slice(from, html.indexOf("</section>", from));
+  expect(shipped).toContain("<b>just words</b>");
+  expect(shipped).not.toContain('<a href="#/roadmap">');
+});
+
+test("a shipped title whose prefix is not a commit type keeps the whole prefix", () => {
+  const html = renderShift(pageView({ shipped: [{ number: 9, title: "Authentication: reject expired tokens", mergedAt: "2026-10-27T09:00:00Z", chief: null }] }), {});
+  const from = html.indexOf('id="sh-shipped"');
+  expect(html.slice(from, html.indexOf("</section>", from))).toContain("<b>Authentication: reject expired tokens</b>");
+});
+
+test("the chief strip labels a segment with its doc's run letters, the full name stays in the hover", () => {
+  const html = renderShift(busyView(), {});
+  const chiefs = html.slice(html.indexOf('id="sh-chiefs"'), html.indexOf('id="sh-waiting"'));
+  expect(chiefs).toMatch(/<td class="cseg[^"]*"[^>]*>AB<small>1<\/small><\/td>/);
+  expect(chiefs).not.toMatch(/>[^<]*HIMMEL-nextleg[^<]*<small>/);
+  expect(chiefs).toContain(`title="${LONG_CHIEF}:`);
+});
+
+test("an open shift draws the shift-open pill, the updated line and the Not here footer, and Running and Shipped share a two-column row", () => {
+  const html = renderShift(busyView(), {});
+  expect(html).toContain("shift open");
+  expect(html).toContain("updated 12:00"); // opened 08:00+01:00 with 240 minutes in the pageView shift, in the shift's own zone
+  expect(html).toContain("Not here, on purpose:");
+  const cols = html.slice(html.indexOf('<div class="sh-cols">'));
+  expect(cols.indexOf('id="sh-running"')).toBeGreaterThan(-1);
+  expect(cols.indexOf('id="sh-shipped"')).toBeGreaterThan(cols.indexOf('id="sh-running"'));
+  expect(html.slice(0, html.indexOf('<div class="sh-cols">'))).not.toContain('id="sh-shipped"');
+});
+
+test("a closed shift has no shift-open pill and no updated line", () => {
+  const v = viewOf({ now: T("2026-10-29T00:00+01:00"), rows: [row("2026-10-27T08:00+01:00")], snap: snap(null), id: "2026-10-27T08:00+01:00", merged: [], boards: [] });
+  const html = renderShift(v, {});
+  expect(html).not.toContain("shift open");
+  expect(html).not.toContain("updated ");
+});

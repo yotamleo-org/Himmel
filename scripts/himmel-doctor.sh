@@ -496,7 +496,7 @@ check_c8() {
         fi
     done <<EOF
 pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/luna/pipeline-cadence.sh arm --force
-graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --force
+graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
 EOF
@@ -1440,7 +1440,85 @@ _c24_cron_has_task() {
     grep -qE "# ${task}\$" <<< "$cron"
 }
 
+# _c24_dead_cron_paths — for each uncommented crontab row tagged "# HIMMEL-<name>", print "<name>: <path>"
+# for every absolute path that does not exist: the row's command word, and every absolute script path
+# (.sh .py .mjs .cjs .js .ts) on the row or on a line of its runner when the command is a readable #! file.
+# Lines are read word by word with shell punctuation stripped, not parsed as shell, so a script is found after
+# a separator, inside $( ) or ( ), or behind an interpreter flag. A word that follows a --long option is
+# data, not a script; a word that whitespace splitting cut is skipped. A path that never reaches such a word
+# (inside ${X:-/p}, behind a variable, with a space) is not judged. Read-only.
+# ponytail: word split plus a script-extension filter, so a script with another extension is missed and a
+# generated data file with a script extension that does not exist yet would read as dead; upgrade path is
+# bash -n tokenising or shlex in python.
+# _c24_word_path <word> — sets _c24_p to the path a word names with quotes and backslashes removed; rc 1
+# when the word is one half of a quoted or escaped path that whitespace splitting cut.
+_c24_word_path() {
+    local w="$1" dq sq
+    _c24_p=""
+    case "$w" in *\\) return 1 ;; esac
+    dq="${w//[^\"]/}"; sq="${w//[^\']/}"
+    [ $((${#dq} % 2)) -eq 0 ] && [ $((${#sq} % 2)) -eq 0 ] || return 1
+    w="${w//\\/}"; w="${w//\"/}"; w="${w//\'/}"
+    _c24_p="$w"
+}
+# _c24_line_paths <words...> — prints each absolute script path a line of words names.
+_c24_line_paths() {
+    local w prev="" before
+    for w in "$@"; do
+        before="$prev"; prev="$w"
+        _c24_word_path "$w" || continue
+        while :; do
+            case "$_c24_p" in '$'*|'('*|'{'*|'<'*|'>'*|'&'*|'|'*|'!'*|'`'*) _c24_p="${_c24_p:1}" ;; *) break ;; esac
+        done
+        while :; do
+            case "$_c24_p" in *')'|*'}'|*';'|*'|'|*'&'|*'`') _c24_p="${_c24_p%?}" ;; *) break ;; esac
+        done
+        case "$before" in --*) continue ;; esac
+        case "$_c24_p" in /*.sh|/*.py|/*.mjs|/*.cjs|/*.js|/*.ts) printf '%s\n' "$_c24_p" ;; esac
+    done
+}
+_c24_dead_cron_paths() {
+    local cron line task cmd words w p runner rline rwords
+    cron="$(crontab -l 2>/dev/null)" || return 0
+    while IFS= read -r line; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in '#'*) continue ;; *'# HIMMEL-'*) ;; *) continue ;; esac
+        task="${line##*# }"
+        read -r _ _ _ _ _ cmd <<< "$line"
+        cmd="${cmd%% # HIMMEL-*}"
+        read -r -a words <<< "$cmd"
+        runner=""
+        for w in ${words[@]+"${words[@]}"}; do
+            _c24_word_path "$w" || break
+            case "$_c24_p" in *=*) continue ;; esac
+            case "$_c24_p" in /*) runner="$_c24_p"; [ -e "$runner" ] || printf '%s: %s\n' "$task" "$runner" ;; esac
+            break
+        done
+        while IFS= read -r p; do
+            [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+        done < <(_c24_line_paths ${words[@]+"${words[@]}"})
+        # The runner is a generated #! script that names the scripts it runs.
+        if [ -n "$runner" ] && [ -f "$runner" ] && [ -r "$runner" ]; then
+            IFS= read -r -n 2 rline < "$runner" || true
+            [ "$rline" = '#!' ] || continue
+            while IFS= read -r rline; do
+                rline="${rline#"${rline%%[![:space:]]*}"}"
+                case "$rline" in '#'*) continue ;; esac
+                read -r -a rwords <<< "$rline"
+                while IFS= read -r p; do
+                    [ -e "$p" ] || printf '%s: %s\n' "$task" "$p"
+                done < <(_c24_line_paths ${rwords[@]+"${rwords[@]}"})
+            done < "$runner"
+        fi
+    done <<< "$cron"
+}
+
 check_c24() {
+    local dead; dead="$(_c24_dead_cron_paths | sort -u)"
+    if [ -n "$dead" ]; then
+        emit FAIL C24-cadence-registry "an installed cron runner calls a path that does not exist: $(printf '%s' "$dead" | tr '\n' ';' | sed 's/;$//; s/;/; /g')" \
+            "re-arm that cadence with its script's 'arm --force' (failure review: bash scripts/eval/worker-digest/failure-review-cadence.sh arm --force --time <HH:MM> --vault <vault> [--live]); himmel-update re-arms a failure-review runner whose script moved in the rename"
+    fi
     local registry; registry="$(observability_registry_path)"
     if [ ! -f "$registry" ]; then
         emit OK C24-cadence-registry "no cadence observability registry yet (nothing expected)"
@@ -2647,6 +2725,17 @@ _c33_alert_delivery() {
     emit WARN C33-alert-delivery "a cadence failure alert could not be delivered to Telegram (last: $what) -- a failed worker may have gone unannounced" "check the Telegram sender (scripts/luna/vault-stall-alert.sh), then rm $mark"
 }
 
+# The default handover root is the git toplevel of the working directory (handover-path.sh), so a
+# doctor launched from elsewhere would judge another checkout; resolve it from the judged checkout.
+# An explicit HANDOVER_DIR is used as given. PURE, like handover_root.
+doctor_handover_root() {
+    if [ -n "${HANDOVER_DIR:-}" ]; then
+        handover_root 2>/dev/null
+    else
+        (cd "$REPO_ROOT" 2>/dev/null && handover_root 2>/dev/null)
+    fi
+}
+
 check_c33_graph_stale() {
     local root ledger
     _c33_alert_delivery
@@ -2654,7 +2743,7 @@ check_c33_graph_stale() {
     # read-only and must not create the handover dir as a side effect of a
     # diagnostic pass.
     load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
-    if ! root="$(handover_root 2>/dev/null)" || [ -z "$root" ]; then
+    if ! root="$(doctor_handover_root)" || [ -z "$root" ]; then
         emit WARN C33-graph-stale "graph-cadence: handover root is broken (HANDOVER_DIR unresolvable) — graph-cadence.sh refuses to run against it, so no ledger can be written and staleness cannot be determined (this is NOT the same as healthy, nor the same as not yet armed)" "fix HANDOVER_DIR (see /handover-setup), then: bash scripts/graphify/graph-cadence.sh"
         return
     fi
@@ -3311,6 +3400,105 @@ check_c83_qmd_embed_backlog() {
     esac
     emit WARN C83-qmd-embed-backlog "the last qmd reindex${ts:+ ($ts)} ended with its embed incomplete: $remaining; last provider error: ${err:-none}" \
         "bash scripts/luna/qmd-reindex.sh   # resumes the embed; the cause is in ~/.claude/qmd-cadence/qmd-reindex.log"
+}
+
+# --- C84-release-queue: a declared release the chief cannot wake the manager for ---
+# The tick wakes the release manager only from the newest chief doc's `release:` line, and
+# prints rm-queue=off when a release is declared but that line or the declaration is unusable.
+# WARN when a release is declared (<handover>/<slug>/himmel/release/<R>/release.json) and the
+# newest <slug>/himmel/*-chief.md has no `release:` line, names a release with no non-empty
+# declaration, or there is no chief doc at all; INFO when nothing is declared or the chief doc
+# says `release: none` (disabled on purpose); OK otherwise. The release.json is HMAC-signed, so
+# for the release the chief names the check also reads `jira release state <R> --json` (the same
+# read the tick makes) and WARNs unless its status is OK; it cannot judge that when the jira CLI,
+# JIRA_PROJECT_KEY or jq is missing, and says so on the OK row.
+# Test seams: HIMMEL_RELEASE_STATE_DIR (the release root; the chief docs sit beside it) and
+# HIMMEL_DOCTOR_RM_STATE_PROBE (a script standing in for `jira release state <R> --json`).
+# ponytail: the newest chief doc by mtime stands in for the live chief, upgrade by reading the
+# chief fleet registry.
+_c84_release_state() {
+    local rel="$1" cli json="" rc=0 pk node_bin
+    command -v jq >/dev/null 2>&1 || return 0  # prints nothing: the state cannot be judged here
+    if [ -n "${HIMMEL_DOCTOR_RM_STATE_PROBE:-}" ]; then
+        json="$(bash "$HIMMEL_DOCTOR_RM_STATE_PROBE" "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    else
+        load_dotenv --root "$REPO_ROOT" JIRA_PROJECT_KEY >/dev/null 2>&1 || true
+        pk="${JIRA_PROJECT_KEY:-}"
+        cli="$REPO_ROOT/scripts/jira/dist/index.js"
+        [ -f "$cli" ] || cli="$STATION_ROOT/scripts/jira/dist/index.js"
+        node_bin="$(resolve_node 2>/dev/null)" || return 0
+        { [ -n "$pk" ] && [ -f "$cli" ]; } || return 0
+        json="$(JIRA_PROJECT_KEY="$pk" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} "$node_bin" "$cli" release state "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    fi
+    # The read ran: any failure is a state the tick also reads as rm-queue=off, never a pass.
+    # Exit 3 is the CLI's not-OK status and still prints the state.
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+        printf 'UNREADABLE\tjira release state exited %s\n' "$rc"
+        return 0
+    fi
+    jq -r '"\(.status // "UNKNOWN")\t\((.integrity // [])[0] // "")"' <<< "$json" 2>/dev/null \
+        || printf 'UNREADABLE\tjira release state printed no readable JSON\n'
+}
+
+check_c84_release_queue() {
+    local roots="" root hroot f cdir doc rel declared bad="" any=0 none=0 sep="" st note unread=0
+    if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
+        roots="$HIMMEL_RELEASE_STATE_DIR"
+    else
+        load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
+        hroot="$(doctor_handover_root)" || hroot=""
+        [ -z "$hroot" ] || roots="$(ls -d "$hroot"/*/himmel/release 2>/dev/null)"  # swallow-ok: no release dir means no declaration to judge
+    fi
+    while IFS= read -r root; do
+        [ -n "$root" ] || continue
+        declared=""
+        for f in "$root"/*/release.json; do
+            [ -e "$f" ] || continue
+            f="${f%/release.json}"; declared="$declared${declared:+, }${f##*/}"
+            if [ ! -s "$f/release.json" ]; then
+                bad="$bad$sep${f##*/} has an empty release.json"; sep="; "
+            fi
+        done
+        [ -n "$declared" ] || continue
+        any=1
+        cdir="${root%/*}"
+        # shellcheck disable=SC2012  # chief doc names are plain; the newest by mtime is wanted
+        # no pipe into head: under pipefail its early exit SIGPIPEs ls and the lookup reads as empty
+        doc="$(ls -t "$cdir"/*-chief.md 2>/dev/null)" || doc=""
+        doc="${doc%%$'\n'*}"
+        if [ -z "$doc" ]; then
+            bad="$bad$sep""release $declared is declared but there is no chief doc beside $root"; sep="; "
+            continue
+        fi
+        rel="$(sed -n 's/^release:[[:space:]]*//p' "$doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads as no release: line
+        case "$rel" in
+            '') bad="$bad$sep${doc##*/} has no release: line for declared release $declared, so the tick shows rm-queue=off"; sep="; " ;;
+            none) none=1 ;;
+            *) if [ ! -s "$root/$rel/release.json" ]; then
+                   bad="$bad$sep${doc##*/} names release $rel but $root/$rel/release.json is missing (declared: $declared), so the tick shows rm-queue=off"; sep="; "
+               else
+                   st="$(_c84_release_state "$rel")"
+                   case "$st" in
+                       '') unread=1 ;;
+                       OK$'\t'*) ;;
+                       *) note="${st#*$'\t'}"
+                          bad="$bad${sep}release state for $rel reads ${st%%$'\t'*}${note:+ ($note)}, so the tick shows rm-queue=off"; sep="; " ;;
+                   esac
+               fi ;;
+        esac
+    done <<< "$roots"
+    if [ -n "$bad" ]; then
+        emit WARN C84-release-queue "the release manager cannot be woken: $bad" \
+            "add 'release: <R>' to the chief doc's ## Live state (chief.sh next seeds it from a single declaration), or 'release: none' to turn the queue off on purpose"
+    elif [ "$any" = 0 ]; then
+        emit INFO C84-release-queue "no release declared — the release manager queue is not in use"
+    elif [ "$none" = 1 ]; then
+        emit INFO C84-release-queue "the chief doc says release: none — the release manager is not woken on purpose"
+    elif [ "$unread" = 1 ]; then
+        emit OK C84-release-queue "the chief doc names a declared release (its signed state was not read: needs the jira CLI build, JIRA_PROJECT_KEY and jq)"
+    else
+        emit OK C84-release-queue "the chief doc names a declared release with a verified state, so the tick can wake the release manager"
+    fi
 }
 
 # --- C72-design-mcp-auth: design profile MCP logins ---
@@ -4893,7 +5081,7 @@ check_c80_status_drift() {
     node_bin="$(resolve_node 2>/dev/null)" || return 0
     if [ -z "$file" ]; then
         load_dotenv --root "$REPO_ROOT" HANDOVER_DIR >/dev/null 2>&1 || true
-        if root="$(handover_root 2>/dev/null)" && [ -n "$root" ]; then
+        if root="$(doctor_handover_root)" && [ -n "$root" ]; then
             # shellcheck disable=SC2012  # the paths are <slug>/himmel/focus-drift.txt under the handover root
             file="$(ls -t "$root"/*/himmel/focus-drift.txt 2>/dev/null | head -n 1)" || file=""
         fi
@@ -4967,6 +5155,45 @@ $(_c81_rows "plugin:$name" "$f")"
     fi
     emit WARN C81-hook-layers "hook script(s) wired from more than one layer, so they run twice per matching call: $dups -- accept guardrail-block-global (it goes quiet inside a himmel checkout)" \
         "keep one owner per hook (docs/setup/install.md#hook-owner): accept guardrail-block-global with 'himmelctl ensure' (answer yes), then drop the raw user entry with bash \"$REPO_ROOT/scripts/lib/unwire-pretooluse-hooks.sh\" \"$SETTINGS\"; for a plugin entry, disable the plugin"
+}
+
+# --- C85-self-heartbeat: the queue lock's PostToolUse self-heartbeat hook is wired ---
+# Without it a worker that holds its queue lock across a long run goes STALE after one TTL and
+# is takeable meanwhile. FAIL when no PostToolUse hook in the project settings, the project's
+# settings.local.json or the user settings runs scripts/handover/queue-lock.sh self-heartbeat from a
+# group that fires after every tool (no matcher, or "*"; a matcher such as "Agent" runs it only for
+# that tool); FAIL too when the effective disableAllHooks is true, which switches the hook off.
+# OK otherwise. The remedy is the sanctioned writer, which himmel-update.sh runs on every update.
+check_c85_self_heartbeat() {
+    command -v jq >/dev/null 2>&1 || { emit INFO C85-self-heartbeat "jq not on PATH -- self-heartbeat hook scan skipped"; return 0; }
+    local f layers="" found="" off="" v=""
+    # disableAllHooks takes the value of the highest-precedence layer that sets it
+    # (project local, then project, then user), so a user-level true that a higher layer sets to false is not off.
+    for f in "$REPO_ROOT/.claude/settings.local.json" "$REPO_ROOT/.claude/settings.json" "$SETTINGS"; do
+        [ -r "$f" ] || continue
+        v="$(jq -r 'if has("disableAllHooks") then (.disableAllHooks | tostring) else "unset" end' "$f" 2>/dev/null)" || continue
+        [ "$v" = unset ] && continue
+        [ "$v" = true ] && off="$f"
+        break
+    done
+    for f in "$REPO_ROOT/.claude/settings.json" "$REPO_ROOT/.claude/settings.local.json" "$SETTINGS"; do
+        [ -r "$f" ] || continue
+        layers="$layers $f"
+        if [ -z "$found" ] && jq -e '[(.hooks.PostToolUse // [])[]? | select(((.matcher // "") == "") or .matcher == "*") | (.hooks // [])[]? | (.command // "") | select(contains("queue-lock.sh") and contains("self-heartbeat"))] | length > 0' "$f" >/dev/null 2>&1; then
+            found="$f"
+        fi
+    done
+    if [ -n "$off" ]; then
+        emit FAIL C85-self-heartbeat "disableAllHooks is true in $off, so the queue lock self-heartbeat hook does not run and a long worker's lock goes stale after one TTL" \
+            "remove disableAllHooks from $off"
+        return 0
+    fi
+    if [ -n "$found" ]; then
+        emit OK C85-self-heartbeat "the queue lock self-heartbeat PostToolUse hook is wired for every tool ($found)"
+        return 0
+    fi
+    emit FAIL C85-self-heartbeat "no matcher-less PostToolUse hook runs queue-lock.sh self-heartbeat (looked in:${layers:- no readable settings file}), so a long worker's queue lock goes stale after one TTL" \
+        "run bash scripts/himmel-update.sh (it wires the entry), or node \"$REPO_ROOT/scripts/observability/wire-session-telemetry-hooks.mjs\" \"$REPO_ROOT/.claude/settings.json\" (restore a missing .claude/settings.json first with git checkout -- .claude/settings.json); on an operator station wire it VM-first"
 }
 
 # --- C82-mcp-sources: every MCP server with the layer it comes from ---
@@ -5182,6 +5409,8 @@ run_check C80 check_c80_status_drift
 run_check C81 check_c81_hook_layers
 run_check C82 check_c82_mcp_sources
 run_check C83 check_c83_qmd_embed_backlog
+run_check C84 check_c84_release_queue
+run_check C85 check_c85_self_heartbeat
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

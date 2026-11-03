@@ -77,6 +77,15 @@ unset ARMAUTOMERGE CR_MERGE_GATE_OK
 # between cases.
 export CHECK_CI_CACHE=0
 
+# check-ci reads through the second token, and gh-read.sh retries a refused
+# read on the main one, which would swallow the stub's one-shot rate limits and 404s. No
+# read token is visible here (an empty .env root, keyring off, ambient tokens unset), as
+# on CI; the 8644 case at the end brings its own.
+_NO_READ_TOKEN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/check-ci-noread.XXXXXX") || { echo "FATAL: mktemp -d failed"; exit 1; }
+: > "$_NO_READ_TOKEN_ROOT/.env"
+export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$SCRIPT_DIR/check-ci.sh"
 # shellcheck source=scripts/lib/timeout-bin.sh
@@ -86,6 +95,7 @@ PASS=0; FAIL=0; COUNT=0; STUBDIR=""
 
 # shellcheck disable=SC2329,SC2317
 cleanup() {
+    if [ -n "$_NO_READ_TOKEN_ROOT" ] && [ -d "$_NO_READ_TOKEN_ROOT" ]; then rm -rf "$_NO_READ_TOKEN_ROOT" 2>/dev/null || true; fi
     if [ -n "$STUBDIR" ] && [ -d "$STUBDIR" ]; then rm -rf "$STUBDIR" 2>/dev/null || true; fi
 }
 trap cleanup EXIT
@@ -112,6 +122,14 @@ cat > "$STUBDIR/gh" <<'EOF'
 # echoed in the script's parsed shape: "<count> <hasNextPage> <endCursor>".
 # Args are logged to GH_STUB_ARGS.
 echo "$*" >> "$GH_STUB_ARGS"
+# GH_STUB_TOKLOG records which token each call carried; GH_STUB_MAIN_SPENT=1
+# makes every call on any token but the fixture read token fail as a spent main token.
+if [ "${GH_TOKEN:-}" = ghp_CHECKCIREADTOKEN ]; then _tok=read; else _tok=main; fi
+[ -z "${GH_STUB_TOKLOG:-}" ] || printf '%s %s\n' "$_tok" "$*" >> "$GH_STUB_TOKLOG"
+if [ "${GH_STUB_MAIN_SPENT:-}" = 1 ] && [ "$_tok" = main ]; then
+    echo "gh: HTTP 403: API rate limit exceeded for user" >&2
+    exit 1
+fi
 # the value of the --jq flag among the args ("" if none).
 _jq_arg() { while [ $# -gt 0 ]; do if [ "$1" = "--jq" ]; then printf '%s' "${2:-}"; return; fi; shift; done; }
 cmd="${1:-}"
@@ -161,6 +179,10 @@ if [ "$cmd" = "api" ]; then
             esac
             exit 0 ;;
         repos/octo/demo/branches/main/protection/required_status_checks)
+            # GitHub answers this endpoint only for an admin token: the read-only token is refused.
+            if [ "${GH_STUB_CLASSIC_ADMIN_ONLY:-}" = 1 ] && [ "$_tok" = read ]; then
+                echo "gh: Must have admin rights to Repository. (HTTP 403)" >&2; exit 1
+            fi
             case "${GH_STUB_CLASSIC:-none}" in
                 none) echo "gh: Branch not protected (HTTP 404)" >&2; exit 1 ;;
                 fail) echo "gh: Must have admin rights to Repository. (HTTP 403)" >&2; exit 1 ;;
@@ -235,6 +257,9 @@ if [ "$cmd" = "api" ]; then
                 # printed "all checks green" + "verdict exit=0" on a head that
                 # had no review at all.
                 cr-ratelimited) echo '[{"context":"CodeRabbit","state":"success","description":"Review rate limited","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
+                # rate-limit wording on a state that is NOT success: only a skipped
+                # success is named rate-limited, a failure stays a failure.
+                cr-failure-ratelimited) echo '[{"context":"CodeRabbit","state":"failure","description":"Review rate limited","created_at":"2026-07-16T19:10:05Z","creator":{"id":136622811,"login":"coderabbitai[bot]","type":"Bot"}}]' ;;
                 # a wording NOBODY has enumerated, in either list.
                 # Under the old deny-list this passed as clean by default; under
                 # the allow-list it fails CLOSED. This is the structural point of
@@ -716,7 +741,7 @@ case "$GH_STUB_MODE" in
     watch-error)
         if [ "$is_watch" -eq 1 ]; then echo "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2; exit 1; fi
         exit 8 ;;
-    cr-absent|cr-pending|cr-failure|cr-spoofed|cr-query-error|cr-paged|cr-skipped|cr-desc-error|cr-completed|cr-nearmiss|cr-ratelimited|cr-unknownword|cr-substrmatch|cr-nodesc|cr-nulldesc|cr-emptydesc)
+    cr-absent|cr-pending|cr-failure|cr-spoofed|cr-query-error|cr-paged|cr-skipped|cr-desc-error|cr-completed|cr-nearmiss|cr-ratelimited|cr-failure-ratelimited|cr-unknownword|cr-substrmatch|cr-nodesc|cr-nulldesc|cr-emptydesc)
         # Checks are GREEN and threads are clean in every one of these — the
         # verdict must turn entirely on CodeRabbit's status.
         if [ "$is_watch" -eq 1 ]; then echo "All checks were successful"; exit 0; fi
@@ -1393,7 +1418,23 @@ git -C "$CR_YAML_UNARMED_REPO" -c user.email=t@t -c user.name=t commit --quiet -
 # mechanism needed evidence to certify. It is advisory on its own now.
 run_in_repo "$EMPTY_LEDGER_REPO" cr-ratelimited
 assert_rc 0 "34e rate-limited CodeRabbit status is advisory only, no panel evidence needed (HIMMEL-3360)"
-assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34e rate-limited (state=skipped) prints the advisory NOTE"
+assert_err_has "check-ci: NOTE — CodeRabbit rate-limited on head" "34e rate-limited status is named rate-limited (HIMMEL-8880)"
+assert_err_has "NO review at this head" "34e the rate-limited NOTE says no review was posted"
+# shellcheck disable=SC2016  # the backticks are literal text in the NOTE
+assert_err_has 'Re-request once when capacity returns: comment `@coderabbitai review`' "34e the rate-limited NOTE tells the user to re-request after capacity returns"
+assert_err_lacks "34e rate-limited is no longer printed as skipped" "skipped NOTE present" -F -- "CodeRabbit skipped on head"
+assert_err_lacks "34e rate-limited is never read as reviewed" "reviewed NOTE present" -F -- "CodeRabbit success"
+# 34e2 - the description read fails after the state read said skipped: no
+# description to name it rate-limited, so it stays skipped (never reviewed).
+run cr-desc-error
+assert_rc 0 "34e2 an unreadable description keeps the skipped reading and stays advisory"
+assert_err_has "check-ci: NOTE — CodeRabbit skipped on head" "34e2 unreadable description reads as skipped"
+assert_err_lacks "34e2 unreadable description is not named rate-limited" "rate-limited NOTE present" -F -- "CodeRabbit rate-limited on head"
+# 34e3 - rate-limit wording on a failure state is a failure, not rate-limited
+run cr-failure-ratelimited
+assert_rc 0 "34e3 a failure with rate-limit wording is advisory only"
+assert_err_has "check-ci: NOTE — CodeRabbit failure on head" "34e3 a failure state keeps its own name"
+assert_err_lacks "34e3 only a skipped success is named rate-limited" "rate-limited NOTE present" -F -- "CodeRabbit rate-limited on head"
 
 # 34f — the structural half: a wording NOBODY enumerated. Under the retired
 # allow-list this failed closed; an earlier change made the status advisory
@@ -2973,7 +3014,40 @@ run cr-completed --threads-only
 check_eq "6430-b --threads-only never calls the funnel" "0" "$(wc -c < "$STUBDIR/jira.log" | tr -d ' ')"
 unset TICKET_STATUS_FUNNEL STUBDIR_JIRA_LOG GH_STUB_TITLE WORKER_SESSION_JIRA_STATUS
 
+# 8644 — the main token's REST limit is spent (every call on it is HTTP 403). The rollup
+# probe, the --watch and the PR/thread reads of check-ci.sh and its cache lib ride the
+# second, read-only token. The classic branch-protection read is admin-only, so GitHub
+# refuses the read token and the router retries it on the main token, the one read that
+# still lands there; while the main token is spent that read is rate limited, and the
+# pre-watch required-check gate defers it to the post-settle gate, which stays fail-closed
+# (exit 5). The gate reads of the sourced libs (ci-green-gate, coderabbit-body-findings/-signal,
+# cr-first-release) still use the main token and are tracked in a follow-up ticket.
+mkdir -p "$STUBDIR/ghr-root"
+printf 'himmel_github_token_vm2=%s\n' ghp_CHECKCIREADTOKEN > "$STUBDIR/ghr-root/.env"
+: > "$STUBDIR/toklog"
+export GH_STUB_MAIN_SPENT=1 GH_STUB_CLASSIC_ADMIN_ONLY=1 GH_STUB_TOKLOG="$STUBDIR/toklog" GH_READ_ENV_ROOT="$STUBDIR/ghr-root"
+# a protected base (a classic rule that exists): the read token is refused (HTTP 403, as GitHub
+# does for a non-admin token), the router retries on the main token, and that is the spent one
+CLASSIC_OVERRIDE="ctx:unit-tests"
+run cr-completed --grace 30
+assert_rc 5 "8644 main token spent: the post-settle required-check gate stays fail-closed (exit 5, never green)"
+unset GH_STUB_MAIN_SPENT GH_STUB_CLASSIC_ADMIN_ONLY GH_STUB_TOKLOG
+check_eq "8644 main token spent: no check-ci read but the admin-only protection read ran on the main token" "" "$(grep '^main ' "$STUBDIR/toklog" | grep -v -e 'statuses?per_page=100' -e 'variable get CI_GO_GATE' -e '/reviews --paginate' -e 'protection/required_status_checks' | cut -c1-120 | head -5 | tr '\n' ';')"
+check_eq "8644 main token spent: the --watch ran on the read token" "yes" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
+# a read token is loaded and the protection read is refused on both tokens (not a rate limit):
+# the required set is unreadable, so the run ends at the pre-watch gate and is never green
+: > "$STUBDIR/toklog"
+export GH_STUB_TOKLOG="$STUBDIR/toklog"
+CLASSIC_OVERRIDE=fail
+run cr-completed --grace 30
+unset GH_STUB_TOKLOG
+export GH_READ_ENV_ROOT="$_NO_READ_TOKEN_ROOT"
+assert_rc 5 "8644 both tokens refused the protection read: exit 5, never green"
+assert_err_has "required-set unreadable" "8644 both tokens refused the protection read: names the unreadable required set"
+check_eq "8644 both tokens refused the protection read: a refusal that is not a rate limit never defers to the watch" "no" "$(if grep -q '^read pr checks .*--watch' "$STUBDIR/toklog"; then echo yes; else echo no; fi)"
+CLASSIC_OVERRIDE=none
+
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 211 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 211"; exit 1; fi
+if [ "$COUNT" -ne 215 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 215"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

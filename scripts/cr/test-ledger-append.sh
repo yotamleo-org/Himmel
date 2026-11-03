@@ -1751,6 +1751,23 @@ for bad in "--head abc123 --source judge:j1 --pr 3861" "--head 9D87A2790A6B7D121
 done
 check "dependabot-go: a refused row writes nothing" "$(test -s "$tmp/dg-bad.jsonl" && echo wrote || echo none)" "none"
 
+# ── a finding row with no head is refused, never written ──
+# A blank head made review-round.sh promote abort, and amend (which needs a
+# non-empty --head) could not reach the row to correct it.
+NHL="$tmp/nohead.jsonl"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>"$tmp/nohead.err"
+check "HIMMEL-8870: a finding with no --head exits 2" "$?" "2"
+check "HIMMEL-8870: a finding with no --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+check "HIMMEL-8870: the refusal names --head and says nothing was written" "$(grep -c -- '--head.*NOTHING was written' "$tmp/nohead.err")" "1"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "" --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
+check "HIMMEL-8870: a finding with an empty --head exits 2" "$?" "2"
+check "HIMMEL-8870: a finding with an empty --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --head "  " --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
+check "a finding with a whitespace-only --head exits 2" "$?" "2"
+check "a finding with a whitespace-only --head writes no row" "$(test -s "$NHL" && echo wrote || echo none)" "none"
+CR_LEDGER="$NHL" bash "$LA" finding --branch b --head H8870 --model m --id m-9 --severity sug --file f --line 1 --verdict agreed 2>/dev/null
+check "HIMMEL-8870: the same finding with a head still writes" "$(grep -c '"head":"H8870"' "$NHL")" "1"
+
 # ── the amend fu_class gate must not pipe $set_pairs into grep ──
 # Under `set -o pipefail`, `printf ... | grep -q` reports the producer's status when
 # grep exits early, so a present fu_class can read as absent and the amend is

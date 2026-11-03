@@ -107,6 +107,6 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   or it is refused. **Who decides:** a Critical always needs a judge verdict
   (`judge:<qid>`, a signed GO at the same head whose verdict carries the line
   `<fid>@<finding head> <disposition>`); an Important on a trust-path PR
-  needs one too; any other Important may take `console`.
+  needs one too; any other Important may take `chief`.
   A `WAKE ready … disposition=open:<n>` already ran that same check at the
   READY head (`ok` = it passes): open findings need their disposition before GO.

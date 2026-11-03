@@ -11,7 +11,7 @@ import { boot, type Harness } from "./fixtures";
 type RGB = [number, number, number];
 const TOKENS: RGB[] = [...readFileSync(join(__dirname, "../../public/tokens.css"), "utf8").matchAll(/#([0-9a-f]{6})\b/gi)]
   .map((m) => [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16)) as RGB);
-const PAGES = ["shift", "health", "toolhealth", "config", "roadmap", "kanban", "workflow"];
+const PAGES = ["shift", "health", "toolhealth", "config", "board", "workflow"]; // board replaced roadmap and kanban
 const HEAD = "#main h1, #h-configure"; // every page paints one of these once it has rendered
 // the page CSP refuses an injected <style>, so the planted colour goes in through the CSSOM, on <body>: a page
 // re-render replaces #main, never the body

@@ -37,12 +37,13 @@
 # before any call: it never switches itself to the claude-cli backend. Each
 # chunk call then follows the lane's own failure rule: a refusal or a failed
 # call alerts and re-runs the chunk once on the subscription, replaying its
-# stdin prompt, unless HIMMEL_API_FALLBACK=off (docs/internals/api-lane.md).
-# Spend is bounded by
+# stdin prompt, unless HIMMEL_API_FALLBACK=off (docs/internals/api-lane.md). When
+# the credit runs out mid-run the run therefore carries on chunk by chunk on the
+# subscription, gated only by the lane's per-call usage preflight; that cost is
+# never added to the API spend or reserve files (it is not API spend). Spend is bounded by
 # --max-files, a per-call lane budget (GRAPHIFY_API_CALL_BUDGET_USD, default
-# 1.00) and the batch is sized to the run cap; the lane's own credit answer is the
-# hard stop. The plan's estimate line prints before any call, and --dry-run stops
-# right after it.
+# 1.00) and the batch is sized to the run cap. The plan's estimate line prints
+# before any call, and --dry-run stops right after it.
 #
 # claude-api runs the extraction at GRAPHIFY_API_EFFORT (default high; low,
 # medium, high, xhigh or max, what `claude --effort` accepts). A/B 2026-10-16:
@@ -61,6 +62,12 @@
 # it, and a run planned inside it is never stopped by it. Spend past the cap is logged as a WARN and the calls
 # go on; only the API refusing for lack of credit stops a chunk, and the finished chunks still merge. The run
 # row carries the summed cost (`cost_usd`), the backend and the cap.
+#
+# GRAPHIFY_API_SYSTEM_PROMPT=1 (synchronous lane path only, default off) moves graphify's fixed instructions and
+# those requirements into one per-run --append-system-prompt-file, removed with the run's scratch dir, leaving the
+# "Now extract" line and the chunk on stdin, so the fixed text caches across chunks (docs/internals/prompt-cache.md).
+# Its extraction cache is kept apart too (cache/semantic-r1-system), so neither mode replays the other's answers.
+# ponytail: opt-in until the paid quality proof, upgrade path = flip the default once the proof passes
 #
 # claude-api goes through the Message Batches API at half price (GRAPHIFY_API_BATCH=0 keeps the synchronous lane
 # path). Nothing waits on a graph refresh, so a run is two-phase: graphify extract runs once with the record shim
@@ -88,8 +95,10 @@
 #
 # Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
 # 3 bank at/over threshold (nothing touched); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
-# files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection, which also stops
-# dispatching the remaining chunks (one rejection on a pinned account, two on auto routing). Do not rerun until fixed.
+# files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection that the
+# subscription fallback did not replay (fallback off, or its usage preflight skipped it), which also stops
+# dispatching the remaining chunks (one rejection on a pinned account, two on auto routing). A rejection the fallback
+# does replay is not exit 6: the chunk runs on the subscription and the run goes on. Do not rerun until fixed.
 # graph-cadence.sh --semantic treats 3 and 4 as benign skips (the next fire
 # retries, nothing was touched) and alerts on every other non-zero rc.
 set -euo pipefail
@@ -427,8 +436,11 @@ IFS=: read -ra parts <<< "$PATH"
 for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$d"; done
 export PATH="$newpath"
 cd "$here" || exit 2
-# The lane exits 6 when the provider rejects the account's credit or key. That account would answer every
-# remaining chunk the same way, so dispatch stops: one rejection on a pinned account, two on auto (one per account).
+# The lane exits 6 when the provider rejects the account's credit or key and the subscription fallback does not
+# replay the chunk (HIMMEL_API_FALLBACK=off, or the fallback's usage preflight skipped it). That account would answer
+# every remaining chunk the same way, so dispatch stops: one rejection on a pinned account, two on auto (one per
+# account). When the fallback does run, the lane exits with its own code, not 6, so this breaker never trips and the
+# remaining chunks go on on the subscription.
 limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit=2
 if [ "$(cat "$here/rejected" 2>/dev/null | wc -l)" -ge "$limit" ]; then
   echo "claude-api shim: the lane has rejected the account's credit or key $limit time(s) this run; not dispatching this chunk" >&2
@@ -450,20 +462,38 @@ cat > "$in" || { rm -f "$in"; echo "claude-api shim: could not capture the promp
 # The addendum is fixed text, so it goes ahead of the chunk, right after graphify's instructions, where every call
 # shares it; when graphify's "Now extract" line is not found it is appended at the end as before.
 mark="$(grep -n -m1 '^Now extract the knowledge graph from the following source file' "$in" | cut -d: -f1)"
-if [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
+# Opt-in: the fixed text becomes a system prompt, its own cached block. Calls run in parallel, so the first publishes
+# the run's one file atomically; a call whose fixed text differs stays inline, so the file never changes.
+system_args=()
+if [ "${GRAPHIFY_API_SYSTEM_PROMPT:-}" = 1 ] && [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
+  system="$here/lane-system.txt"
+  candidate="$here/lane-system.$$"
+  { head -n $((mark - 1)) "$in"; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; } > "$candidate" && { ln "$candidate" "$system" 2>/dev/null; cmp -s "$candidate" "$system"; } \
+    && system_args=(--append-system-prompt-file "$system")
+  rm -f "$candidate"
+fi
+if [ "${#system_args[@]}" -gt 0 ]; then
+  tail -n +"$mark" "$in"
+elif [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
   { head -n $((mark - 1)) "$in"; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; printf '\n\n---\n'; tail -n +"$mark" "$in"; }
 else
   { cat "$in"; printf '\n\n---\n'; cat "$GRAPHIFY_SEMANTIC_ADDENDUM"; }
 fi | HIMMEL_API_KIND=graphify "$GRAPHIFY_SEMANTIC_LANE_BIN" -p --model "${model:-sonnet}" --permission-mode default \
-  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" > "$out" 2> "$err"
+  --max-budget-usd "$GRAPHIFY_SEMANTIC_LANE_BUDGET" --effort "$GRAPHIFY_SEMANTIC_LANE_EFFORT" ${system_args[@]+"${system_args[@]}"} > "$out" 2> "$err"
 rc=${PIPESTATUS[1]}
 cat "$err" >&2
 # A call without a verified cost (a failure) may still have been billed: reserve its per-call budget against the
 # cap, but keep it out of the spend file so the run row reports only verified cost. A call the lane refused
 # before any API request (exit 2, nothing on stdout, its own refusal line) was never billed: it counts for nothing,
 # and neither does a credit or key rejection (exit 6), which is also what stops the next dispatch.
+# A call the lane replayed on the subscription (it says so on stderr) is not API spend: the replay's cost, and the
+# cost of a failed replay, go in neither file, so the run row's cost_usd stays what the API was charged. The API
+# attempt before the replay may still have been billed (a timeout, a budget stop), so its per-call budget is
+# reserved unless it was refused or rejected before any billable work.
 cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
-if [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
+if grep -q '^claude-api: fallback: running on the subscription' "$err"; then
+  grep -Eq '^claude-api: (refused: |account .* (credit exhausted|API key rejected))' "$err" || echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"
+elif [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
 elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
 elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
@@ -488,6 +518,8 @@ ADD
   # The claude-api prompt differs from graphify's own, whose cache stamp would not notice: keep its entries apart.
   CACHE_SUB="semantic"
   if [ "$BACKEND" = "claude-api" ]; then CACHE_SUB="semantic-r1"; fi
+  # The system-prompt opt-in changes the request but not graphify's key: its unproven answers stay apart as well.
+  if [ "$BACKEND" = "claude-api" ] && [ "$BATCH_MODE" -eq 0 ] && [ "${GRAPHIFY_API_SYSTEM_PROMPT:-}" = 1 ]; then CACHE_SUB="semantic-r1-system"; fi
   # A resumed batch extracts from the scratch frozen when it was submitted, so its chunk prompts hash identically.
   if [ "$RESUME" -eq 0 ]; then
     # No batch.json means nothing was submitted: whatever an interrupted run left here is garbage.

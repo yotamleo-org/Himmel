@@ -57,8 +57,9 @@ case "$args" in
     *"--json commits"*)
         printf '%s' "${STUB_COMMITS:-[]}" ;;
     *"--json body"*)
-        printf '%b' "${STUB_BODY:-}${STUB_RED:-}" ;;
+        [ -n "${STUB_BODY_NULL:-}" ] || printf '%b' "${STUB_BODY:-}${STUB_RED:-}" ;;
     *"--json title"*)
+        [ -z "${STUB_GH_TITLE_SLEEP:-}" ] || sleep 40
         printf '%s' "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" ;;
     *"--json headRefName"*)
         printf '%s' "${STUB_PR_BRANCH-feat/himmel-100-thing}" ;;
@@ -77,8 +78,8 @@ case "$args" in
         jq -n --arg h "$STUB_HEAD" --arg m "${STUB_MSS:-CLEAN}" \
             --argjson rollup "${STUB_ROLLUP:-[]}" --argjson commits "${STUB_COMMITS:-[]}" \
             --arg merges "${STUB_MERGE_OIDS:-}" --argjson u "${STUB_UNRESOLVED:-0}" \
-            --arg body "$(printf '%b' "${STUB_BODY:-}${STUB_RED:-}")" '
-            {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,mergeStateStatus:$m,reviewDecision:null,body:$body,
+            --arg body "$(printf '%b' "${STUB_BODY:-}${STUB_RED:-}")" --arg title "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" '
+            {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,title:$title,mergeStateStatus:$m,reviewDecision:null,body:(if (env.STUB_BODY_NULL // "") != "" then null else $body end),
                 commits:{nodes:[$commits[] | . as $commit | {commit:(. + {oid:(.oid // $h),parents:{totalCount:(if (($merges|split("\n")) | index($commit.oid // "")) != null then 2 else 1 end)}})}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[range($u)|{isResolved:false}],pageInfo:{hasNextPage:false,endCursor:null}},
                 statusCheckRollup:{contexts:{nodes:[$rollup[] | . + {__typename:(if has("conclusion") then "CheckRun" else "StatusContext" end)} | if has("workflowName") then . + {checkSuite:{workflowRun:{workflow:{name:.workflowName}}}} else . end],pageInfo:{hasNextPage:false,endCursor:null}}}
@@ -122,6 +123,10 @@ case "$args" in
         printf '%s\n' "${STUB_FILES:-README.md}"
         [ -z "${STUB_FILES_PARTIAL:-}" ] || exit 1  # a --paginate that died after its first page
         ;;
+    "api repos/${STUB_NWO:-acme/repo}/commits/${STUB_HEAD:-no-head}/statuses"*)
+        # check 15: the CodeRabbit commit status of THIS repo and head only; STUB_CR_DESC unset = unreadable
+        [ -n "${STUB_CR_DESC+x}" ] || exit 1
+        jq -n --arg d "$STUB_CR_DESC" --arg st "${STUB_CR_STATE:-success}" '[{context:"CodeRabbit",state:$st,description:$d,created_at:"2026-11-02T18:44:07Z",creator:{id:136622811,login:"coderabbitai[bot]",type:"Bot"}}]' ;;
     *)
         echo "gh-stub: unhandled args: $args" >&2
         exit 1 ;;
@@ -130,7 +135,7 @@ STUB
 chmod +x "$tmp/bin/gh"
 
 # ── jira stub (JIRA_CMD): `get KEY [--json]` reads STUB_JIRA_DB lines
-# "KEY<TAB>Status<TAB>Labels<TAB>Description"; an absent key is the real CLI's HTTP 404, STUB_JIRA_DOWN=1 is an outage ────
+# "KEY<TAB>Status<TAB>Labels<TAB>Description<TAB>Type"; an absent key is the real CLI's HTTP 404, STUB_JIRA_DOWN=1 is an outage ────
 cat > "$tmp/bin/jira-stub" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "links" ]; then
@@ -141,10 +146,12 @@ if [ "$1" = "links" ]; then
 fi
 [ "$1" = "get" ] || { echo "jira-stub: unhandled: $*" >&2; exit 1; }
 [ -n "${STUB_JIRA_DOWN:-}" ] && { echo "jira: get $2 failed: connect ECONNREFUSED" >&2; exit 1; }
+[ "$2" != "${STUB_JIRA_SLEEP_KEY:-}" ] || sleep 40
 kc=$(printf '%s' "$2" | sed -E 's/-0+([0-9])/-\1/')
 st=$(awk -F'\t' -v k="$kc" '$1 == k { print $2 }' "${STUB_JIRA_DB:-/dev/null}")
 lb=$(awk -F'\t' -v k="$kc" '$1 == k { print $3 }' "${STUB_JIRA_DB:-/dev/null}")
 desc=$(awk -F'\t' -v k="$kc" '$1 == k { print $4 }' "${STUB_JIRA_DB:-/dev/null}")
+ty=$(awk -F'\t' -v k="$kc" '$1 == k { print $5 }' "${STUB_JIRA_DB:-/dev/null}")
 if [ -z "$st" ]; then
     echo "jira: get $2 failed: HTTP 404: Issue does not exist or you do not have permission to see it." >&2
     exit 1
@@ -152,8 +159,8 @@ fi
 [ "$st" = "MALFORMED" ] && { printf 'garbage with no tabs\n'; exit 0; }
 [ "$st" = "BLANK" ] && st=""
 if [ "${3:-}" = "--json" ]; then
-    jq -n --arg k "$kc" --arg st "$st" --arg lb "$lb" --arg d "$desc" \
-        '{key:$k,fields:{status:{name:$st},labels:($lb | split(", ") | map(select(length > 0))),description:$d}}'
+    jq -n --arg k "$kc" --arg st "$st" --arg lb "$lb" --arg d "$desc" --arg ty "$ty" \
+        '{key:$k,fields:{status:{name:$st},issuetype:{name:$ty},labels:($lb | split(", ") | map(select(length > 0))),description:$d}}'
     exit 0
 fi
 printf '%s\tTask\t%s\tsummary\n' "$2" "$st"
@@ -161,6 +168,15 @@ printf '%s\tTask\t%s\tsummary\n' "$2" "$st"
 [ -z "$lb" ] || printf 'Labels: %s\n' "$lb"
 STUB
 chmod +x "$tmp/bin/jira-stub"
+# a `timeout` and `gtimeout` that refuse --version: scripts/lib/timeout-bin.sh then resolves none
+mkdir -p "$tmp/no-timeout"
+printf '#!/bin/sh\nexit 1\n' > "$tmp/no-timeout/timeout"
+cp "$tmp/no-timeout/timeout" "$tmp/no-timeout/gtimeout"
+chmod +x "$tmp/no-timeout/timeout" "$tmp/no-timeout/gtimeout"
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"
+# shellcheck disable=SC2153  # set by the lib sourced above
+BO_TIMEOUT_BIN="$_TIMEOUT_BIN"
 # ── trust-path fixtures: the REAL trust list, served as the default branch's; an
 # anchor repo (carrying the real go-gate.sh) whose origin is at the same commit,
 # so a trust-path hit passes trust_path_check's anchor-is-current test offline ──
@@ -3111,6 +3127,168 @@ contains "red-line: unreadable PR files fail row 13 closed" "$out" "[FAIL] 13."
 # --only 7 stays a coverage-only lint: row 13 is not part of it
 rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_RED="" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
 notcontains "red-line: --only 7 does not run row 13" "$out" "13."
+
+# --- 14. a Bug-ticket PR names its bug-origin line: warn only, never the verdict
+printf 'HIMMEL-900\tTo Do\t\t\tBug\nHIMMEL-901\tTo Do\t\t\tTask\nHIMMEL-902\tTo Do\t\tREADY-CHECK FAIL COVERAGE-LINT FAIL\tBug\n' >> "$JIRA_DB"
+BO_BUG='fix(x): [HIMMEL-900] thing'
+BO_TASK='fix(x): [HIMMEL-901] thing'
+BO_COV='## Ticket coverage\n- ask one: done\n\n'
+BO_GOOD="${BO_COV}bug-origin: #12 test-gap — two scripts each correct alone\n"
+BO_NONE="$BO_COV"
+BO_BAD="${BO_COV}bug-origin: #12 test-gap\n"
+BO_DUP="${BO_COV}bug-origin: #12 test-gap — x\nbug-origin: #13 design-gap — y\n"
+BO_PRESENT='[PASS] 14. bug-origin line present'
+BO_NOTBUG='[PASS] 14. bug-origin: not a Bug-ticket PR'
+BO_NOTCHECKED='[WARN] 14. bug-origin not checked'
+last_line() { printf '%s\n' "$1" | tail -n 1; }
+line14() { printf '%s\n' "$1" | grep -F '] 14. ' || true; }
+
+# The control: the same fixture with check 14 passing.
+reset_stubs
+BO_RC_run=0; BO_OUT_run="$(STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" run)" || BO_RC_run=$?
+BO_RC_run7=0; BO_OUT_run7="$(STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" run7)" || BO_RC_run7=$?
+contains "bug-origin control: full mode line" "$BO_OUT_run" "$BO_PRESENT"
+contains "bug-origin control: only 7 line" "$BO_OUT_run7" "$BO_PRESENT"
+BO_LAST_run="$(last_line "$BO_OUT_run")"
+BO_LAST_run7="$(last_line "$BO_OUT_run7")"
+check "bug-origin control: full mode is green" "$BO_LAST_run" "READY-CHECK PASS"
+check "bug-origin control: only 7 is green" "$BO_LAST_run7" "COVERAGE-LINT PASS"
+
+# bo_row <label> <run|run7> <want line>: the line prints, says no `fail`, and the
+# exit code and last line equal the control's (I1, I2).
+bo_row() {
+    local o r=0 want_rc want_last started
+    started=$SECONDS
+    o="$("$2")" || r=$?
+    contains "$1 ($2): line" "$o" "$3"
+    notcontains "$1 ($2): no such word in the line" "$(line14 "$o" | tr '[:upper:]' '[:lower:]')" "fail"
+    if [ "$2" = run ]; then want_rc=$BO_RC_run; want_last=$BO_LAST_run; else want_rc=$BO_RC_run7; want_last=$BO_LAST_run7; fi
+    check "$1 ($2): exit code unmoved" "$r" "$want_rc"
+    check "$1 ($2): last line unmoved" "$(last_line "$o")" "$want_last"
+    BO_ELAPSED=$((SECONDS - started))
+}
+
+# RED: the ticket's named proof, `--only 7` first.
+reset_stubs
+rc=0; out="$(STUB_BODY="$BO_NONE" STUB_PR_TITLE="$BO_BUG" run7)" || rc=$?
+contains "bug-origin no line warns" "$out" '[WARN] 14. bug-origin: none'
+contains "bug-origin no line warns: coverage still passes" "$out" 'COVERAGE-LINT PASS'
+check "bug-origin no line warns: exit 0" "$rc" "0"
+
+for bo_m in run run7; do
+    reset_stubs
+    STUB_BODY="$BO_NONE" STUB_PR_TITLE="$BO_BUG" bo_row "bug-origin missing" "$bo_m" '[WARN] 14. bug-origin: none'
+    STUB_BODY="$BO_BAD" STUB_PR_TITLE="$BO_BUG" bo_row "bug-origin malformed" "$bo_m" '[WARN] 14. bug-origin: malformed'
+    STUB_BODY="$BO_DUP" STUB_PR_TITLE="$BO_BUG" bo_row "bug-origin duplicate" "$bo_m" '[WARN] 14. bug-origin: duplicate'
+    STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" bo_row "bug-origin present" "$bo_m" "$BO_PRESENT"
+    STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" STUB_JIRA_DOWN=1 bo_row "bug-origin jira down" "$bo_m" "$BO_NOTCHECKED"
+    STUB_BODY="$BO_GOOD" bo_row "bug-origin empty type" "$bo_m" "$BO_NOTCHECKED"
+    STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" PATH="$tmp/no-timeout:$PATH" bo_row "bug-origin no timeout binary" "$bo_m" "$BO_NOTCHECKED"
+    # an empty body also fails check 7 on its own, so this row pins the line, not the control's marker
+    contains "bug-origin empty body warns none ($bo_m)" "$(STUB_BODY='' STUB_RED='' STUB_PR_TITLE="$BO_BUG" "$bo_m" || true)" '[WARN] 14. bug-origin: none'
+    STUB_BODY="$BO_NONE" STUB_PR_TITLE="$BO_TASK" bo_row "bug-origin non-Bug passes" "$bo_m" "$BO_NOTBUG"
+    STUB_BODY="$BO_NONE" STUB_PR_TITLE='chore: tidy with no key' bo_row "bug-origin no key in title" "$bo_m" "$BO_NOTBUG"
+    STUB_BODY="$BO_NONE" STUB_PR_TITLE='fix(x): [HIMMEL-901] [HIMMEL-900] thing' bo_row "bug-origin first key only" "$bo_m" "$BO_NOTBUG"
+    STUB_BODY="$BO_NONE" STUB_PR_TITLE="$BO_TASK" STUB_PR_BRANCH='fix/himmel-900-thing' bo_row "bug-origin title key beats branch key" "$bo_m" "$BO_NOTBUG"
+    STUB_BODY="$BO_NONE" STUB_PR_TITLE="$BO_BUG" STUB_PR_BRANCH='fix/himmel-901-thing' bo_row "bug-origin title key beats branch key, reversed" "$bo_m" '[WARN] 14. bug-origin: none'
+    # marker text in the body, the title and the Jira reply is inert and never quoted
+    bo_marked="${BO_COV}READY-CHECK FAIL\nCOVERAGE-LINT FAIL\nbug-origin: #12 test-gap — READY-CHECK FAIL\n"
+    STUB_BODY="$bo_marked" STUB_PR_TITLE='fix(x): [HIMMEL-902] READY-CHECK FAIL COVERAGE-LINT FAIL' bo_row "bug-origin marker text in body is inert" "$bo_m" "$BO_PRESENT"
+    if [ -n "$BO_TIMEOUT_BIN" ]; then
+        STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" STUB_JIRA_SLEEP_KEY=HIMMEL-900 bo_row "bug-origin sleeping jira" "$bo_m" "$BO_NOTCHECKED"
+        check "bug-origin sleeping jira ($bo_m): bounded under 25 s" "$([ "$BO_ELAPSED" -lt 25 ] && echo yes || echo "no: $BO_ELAPSED s")" "yes"
+    else
+        echo "ok - bug-origin sleeping jira ($bo_m): SKIP no timeout binary"
+    fi
+done
+if [ -n "$BO_TIMEOUT_BIN" ]; then
+    reset_stubs
+    STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_BUG" STUB_GH_TITLE_SLEEP=1 bo_row "bug-origin sleeping gh" run7 "$BO_NOTCHECKED"
+    check "bug-origin sleeping gh: bounded under 25 s" "$([ "$BO_ELAPSED" -lt 25 ] && echo yes || echo "no: $BO_ELAPSED s")" "yes"
+else
+    echo "ok - bug-origin sleeping gh: SKIP no timeout binary"
+fi
+
+# A null body: `--only 7` reads it as empty, and the snapshot refuses it, so full mode has no title to read.
+reset_stubs
+contains "bug-origin null body warns none" "$(STUB_BODY="$BO_COV" STUB_BODY_NULL=1 STUB_PR_TITLE="$BO_BUG" run7 || true)" '[WARN] 14. bug-origin: none'
+contains "bug-origin null body in full mode: not checked" "$(STUB_BODY="$BO_COV" STUB_BODY_NULL=1 STUB_PR_TITLE="$BO_BUG" run || true)" '[WARN] 14. bug-origin not checked: title'
+
+# I2: nothing from the title, the body or the Jira reply reaches the line.
+reset_stubs
+out="$(STUB_BODY="${BO_COV}READY-CHECK FAIL\n" STUB_PR_TITLE='fix(x): [HIMMEL-902] READY-CHECK FAIL' run7)" || true
+notcontains "bug-origin output quotes nothing: READY-CHECK" "$(line14 "$out")" "READY-CHECK"
+notcontains "bug-origin output quotes nothing: the key" "$(line14 "$out")" "HIMMEL-902"
+check "bug-origin marker text: last line is the real marker" "$(last_line "$out")" "COVERAGE-LINT PASS"
+
+# A partial copy has neither lib: not checked, and the run still exits 0.
+reset_stubs
+rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
+    STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
+    STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
+    STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
+    PATH="$PATH" GH_LOG="$GH_LOG" \
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+check "bug-origin partial copy: exit 0" "$rc" "0"
+contains "bug-origin partial copy: not checked" "$out" "$BO_NOTCHECKED"
+
+# A lib present and defining nothing is not checked, never the no-key PASS.
+: > "$own/scripts/lib/ticket-status.sh"
+cp "$REPO_ROOT/scripts/lib/timeout-bin.sh" "$own/scripts/lib/timeout-bin.sh"
+rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
+    STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
+    STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
+    STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_PR_TITLE="$BO_BUG" \
+    PATH="$PATH" GH_LOG="$GH_LOG" \
+    bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
+check "bug-origin broken lib: exit 0" "$rc" "0"
+contains "bug-origin broken lib: not checked" "$out" "$BO_NOTCHECKED"
+notcontains "bug-origin broken lib: never the no-key PASS" "$out" "$BO_NOTBUG"
+
+# I3: the table the report's parser reads too.
+BO_TABLE="$HERE/../../eval/bug-origin/line-table.tsv"
+reset_stubs
+bo_n=0
+while IFS=$'\t' read -r bo_want bo_body <&3; do
+    bo_n=$((bo_n + 1))
+    case "$bo_want" in
+        ok) bo_expect="$BO_PRESENT" ;;
+        *) bo_expect="[WARN] 14. bug-origin: $bo_want" ;;
+    esac
+    out="$(STUB_BODY="$bo_body" STUB_PR_TITLE="$BO_BUG" run7)" || true
+    contains "bug-origin line table row $bo_n ($bo_want)" "$out" "$bo_expect"
+done 3< "$BO_TABLE"
+check "bug-origin line table: has its rows" "$([ "$bo_n" -ge 50 ] && echo yes || echo "only $bo_n")" "yes"
+
+# --- 15. CodeRabbit rate-limited at the head: warn only, never the verdict
+reset_stubs
+CR_RC_ctl=0; CR_OUT_ctl="$(STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run)" || CR_RC_ctl=$?
+# the real status description from PR 4589 @ 69b7bd20
+CR_RC_rl=0; CR_OUT_rl="$(STUB_CR_DESC='Review rate limited' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run)" || CR_RC_rl=$?
+contains "cr rate-limited: names the state" "$CR_OUT_rl" '[WARN] 15. CodeRabbit rate-limited at head'
+contains "cr rate-limited: says no review" "$CR_OUT_rl" 'NO CodeRabbit review here'
+notcontains "cr rate-limited: no FAIL word on the line" "$(printf '%s\n' "$CR_OUT_rl" | grep -F '] 15. ' | tr '[:upper:]' '[:lower:]')" "fail"
+check "cr rate-limited: exit code unmoved" "$CR_RC_rl" "$CR_RC_ctl"
+check "cr rate-limited: last line unmoved" "$(last_line "$CR_OUT_rl")" "$(last_line "$CR_OUT_ctl")"
+# negative controls: a real review at the head, an unreadable status, no status
+CR_OUT_ok="$(STUB_CR_DESC='Review completed' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run || true)"
+notcontains "cr control: a completed review prints no row 15" "$CR_OUT_ok" '] 15. '
+CR_OUT_dis="$(STUB_CR_DESC='Review skipped: automatic reviews are disabled' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run || true)"
+notcontains "cr control: auto-reviews-disabled is not rate-limited" "$CR_OUT_dis" '] 15. '
+notcontains "cr control: an unreadable status prints no row 15" "$CR_OUT_ctl" '] 15. '
+CR_OUT_fail="$(STUB_CR_STATE=failure STUB_CR_DESC='Review rate limited' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run || true)"
+notcontains "cr control: rate-limit wording on a failure state prints no row 15" "$CR_OUT_fail" '] 15. '
+CR_OUT_rl7="$(STUB_CR_DESC='Review rate limited' STUB_BODY="$BO_GOOD" STUB_PR_TITLE="$BO_TASK" run7 || true)"
+notcontains "cr rate-limited: --only 7 does not run row 15" "$CR_OUT_rl7" '] 15. '
+# the stub answers only for the fixture repository and head, so a read of any other one cannot pass row 15
+cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited' GH_LOG="$GH_LOG" "$tmp/bin/gh" api "repos/$NWO/commits/${SHA%?}0/statuses?per_page=100" >/dev/null 2>&1 || cr_stub_rc=$?
+check "cr stub: a read of another head is refused" "$cr_stub_rc" "1"
+cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited' GH_LOG="$GH_LOG" "$tmp/bin/gh" api "repos/other/repo/commits/$SHA/statuses?per_page=100" >/dev/null 2>&1 || cr_stub_rc=$?
+check "cr stub: a read of another repository is refused" "$cr_stub_rc" "1"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

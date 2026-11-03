@@ -1,0 +1,3 @@
+{"type":"agent-name","agentName":"HIMMEL-8707-N1-demo","sessionId":"l0"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"l1","name":"Bash","input":{"command":"qmd query a"}},{"type":"tool_use","id":"l2","name":"Bash","input":{"command":"QMD_TIMEOUT_SECS=5 sh scripts/lib/qmd-bounded.sh search b"}},{"type":"tool_use","id":"l3","name":"Bash","input":{"command":"cat scripts/lib/qmd-bounded.sh"}},{"type":"tool_use","id":"l4","name":"Bash","input":{"command":"git log -- scripts/lib/qmd-bounded.sh"}},{"type":"tool_use","id":"l5","name":"Bash","input":{"command":"ls"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"l1","is_error":true,"content":"refused"}]}}

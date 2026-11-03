@@ -1,0 +1,1 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"j1","name":"Bash","input":{"command":"bash scripts/lib/qmd-bounded.sh query q"}}]}}

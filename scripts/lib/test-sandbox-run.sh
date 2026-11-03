@@ -5,7 +5,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RUNNER="$ROOT/scripts/lib/sandbox-run.sh"
 TMP="$(mktemp -d /tmp/sandbox-run-test.XXXXXX)" || exit 1
-trap 'rm -rf "$TMP"' EXIT
+trap '[ -z "${churn_pid:-}" ] || kill "$churn_pid" 2>/dev/null; [ -z "${listener_pid:-}" ] || kill "$listener_pid" 2>/dev/null; rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok() { pass=$((pass + 1)); printf 'PASS %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; }
@@ -250,6 +250,124 @@ if [[ "$OUT" == *'MASKED late-dir/sub/deep.sock'* ]] && [[ "$OUT" == *'MASKED la
     && [[ "$OUT" != *VISIBLE* ]] && [ "$(walks)" = 3 ]; then
     ok 'socket created after the cache was built is still masked via a full walk'
 else bad "late socket: rc=$RC walks=$(walks) $OUT"; fi
+
+# Another suite changing the checkout during a launch must not turn into a silent
+# rc 125. ROOT is bound whole, so a transient FIFO under it is masked
+# (as runtime special nodes are), never a refusal; a vanished entry is a race.
+# These rows stage a copy of the runner under their own TMP so the ROOT they plant
+# nodes in and churn is private, never the checkout other suites are using.
+STAGE="$TMP/stage"; mkdir -p "$STAGE/scripts/lib"
+cp "$RUNNER" "$STAGE/scripts/lib/sandbox-run.sh"
+SRUNNER="$STAGE/scripts/lib/sandbox-run.sh"
+RACE="$STAGE/race"; mkdir -p "$RACE"
+staged() { (cd "$STAGE" && "$@"); }
+# an absent path also reads as not-a-FIFO and fails to read, so the fixture must exist first.
+if ! mkfifo "$RACE/pipe" || [ ! -p "$RACE/pipe" ]; then bad 'FIFO fixture could not be created under the staged ROOT'; fi
+# shellcheck disable=SC2016  # the hook body's variables expand inside the sandbox
+OUT=$(staged bash "$SRUNNER" -- bash -c 'echo RAN; if test -p "$1"; then echo FIFO_VISIBLE; else echo FIFO_MASKED; fi; timeout 5 cat "$1" >/dev/null; echo "READ_RC=$?"' _ "$RACE/pipe" 2>&1); RC=$?
+rm -f "$RACE/pipe"
+read_rc=${OUT##*READ_RC=}; read_rc=${read_rc%%[!0-9]*}
+if [ "$RC" = 0 ] && [[ "$OUT" == *RAN* ]] && [[ "$OUT" == *FIFO_MASKED* ]] && [ -n "$read_rc" ] && [ "$read_rc" != 0 ] && [ "$read_rc" != 124 ]; then
+    ok 'FIFO planted under ROOT is masked, its read fails (no data, no hang) and the hook still runs'
+else bad "FIFO under ROOT: rc=$RC read_rc=$read_rc $OUT"; fi
+# a live listener under ROOT: no connection crosses the mask, and the listener never sees one.
+python3 -I -c '
+import os,socket,sys
+os.chdir(sys.argv[1])
+s=socket.socket(socket.AF_UNIX); s.bind("l.sock"); s.listen(5)
+open("ready","w").close()
+s.settimeout(30)
+n=0
+try:
+    while True:
+        c,_=s.accept(); n+=1; open("accepted","w").write(str(n)); c.close()
+except Exception:
+    pass
+' "$RACE" &
+listener_pid=$!
+for _ in $(seq 1 50); do [ -e "$RACE/ready" ] && break; sleep 0.1; done
+PROBE='import os,socket,sys
+s=socket.socket(socket.AF_UNIX)
+try:
+    s.connect(sys.argv[1]); print("CONNECTED")
+except Exception as e:
+    print("CONNECT_FAILED", type(e).__name__)'
+OUT=$(python3 -I -c "$PROBE" "$RACE/l.sock" 2>&1)
+sleep 0.3
+if [ -S "$RACE/l.sock" ] && [[ "$OUT" == CONNECTED ]] && [ "$(cat "$RACE/accepted" 2>/dev/null)" = 1 ]; then
+    ok 'live listener control: an unsandboxed connection is accepted'
+else bad "listener control: $OUT accepted=$(cat "$RACE/accepted" 2>/dev/null)"; fi
+OUT=$(staged bash "$SRUNNER" -- python3 -I -c "$PROBE" "$RACE/l.sock" 2>&1); RC=$?
+sleep 0.3
+if [ "$RC" = 0 ] && [[ "$OUT" == *CONNECT_FAILED* ]] && [ "$(cat "$RACE/accepted" 2>/dev/null)" = 1 ]; then
+    ok 'live socket under ROOT: connect refused inside the sandbox and the listener sees no connection'
+else bad "live socket under ROOT: rc=$RC $OUT accepted=$(cat "$RACE/accepted" 2>/dev/null)"; fi
+kill "$listener_pid" 2>/dev/null; wait "$listener_pid" 2>/dev/null
+rm -f "$RACE/l.sock" "$RACE/ready" "$RACE/accepted"
+# shellcheck disable=SC2016  # the stub's own variables expand when it runs
+printf '#!/bin/bash\n/usr/bin/find "$@"\nrc=$?\nif [ -n "${STUB_FIND_ERR:-}" ]; then printf "%%s\\n" "$STUB_FIND_ERR" >&2; exit "${STUB_FIND_RC:-1}"; fi\nexit $rc\n' > "$STUBBIN/find"
+OUT=$(staged env STUB_FIND_ERR="find: '$STAGE/gone': No such file or directory" PATH="$STUBBIN:$PATH" bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+if [ "$RC" = 0 ] && [[ "$OUT" == *RAN* ]]; then ok 'entry vanished mid-walk is tolerated, the hook still runs'
+else bad "vanished entry: rc=$RC $OUT"; fi
+OUT=$(staged env STUB_FIND_ERR="find: '$STAGE/locked': Permission denied" PATH="$STUBBIN:$PATH" bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+if [ "$RC" = 125 ] && [[ "$OUT" == *'Permission denied'* ]] && [[ "$OUT" != *RAN* ]]; then ok 'unreadable entry is still refused with the printed reason'
+else bad "unreadable entry: rc=$RC $OUT"; fi
+# a path that merely contains the vanished-entry words must not excuse an unreadable entry.
+OUT=$(staged env STUB_FIND_ERR="find: '$STAGE/x: No such file or directory/y': Permission denied" PATH="$STUBBIN:$PATH" bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+if [ "$RC" = 125 ] && [[ "$OUT" == *'Permission denied'* ]] && [[ "$OUT" != *RAN* ]]; then ok 'a path naming the vanished-entry words does not excuse an unreadable entry'
+else bad "path with the vanished-entry words: rc=$RC $OUT"; fi
+# only find's own exit 1 is a race: a find that exited another way (killed, failed) refuses even
+# when its stderr reads as a vanished entry, and so does a grep that itself failed.
+OUT=$(staged env STUB_FIND_RC=137 STUB_FIND_ERR="find: '$STAGE/gone': No such file or directory" PATH="$STUBBIN:$PATH" bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+if [ "$RC" = 125 ] && [[ "$OUT" == *'find exit 137'* ]] && [[ "$OUT" != *RAN* ]]; then ok 'a find that exited 137 refuses with its exit status'
+else bad "killed find: rc=$RC $OUT"; fi
+mkdir -p "$TMP/grepfail"
+printf '#!/bin/bash\nexit 2\n' > "$TMP/grepfail/grep"; chmod +x "$TMP/grepfail/grep"
+OUT=$(staged env STUB_FIND_ERR="find: '$STAGE/gone': No such file or directory" PATH="$TMP/grepfail:$STUBBIN:$PATH" bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+if [ "$RC" = 125 ] && [[ "$OUT" == *'find exit 1'* ]] && [[ "$OUT" != *RAN* ]]; then ok 'a grep that failed does not excuse a find diagnostic'
+else bad "failed grep: rc=$RC $OUT"; fi
+churn() { while [ ! -e "$RACE/stop" ]; do
+    mkdir -p "$RACE/d/e"; touch "$RACE/d/e/f" "$RACE/d/g"; mkfifo "$RACE/d/p" 2>/dev/null
+    rm -rf "$RACE/d"
+done; }
+churn & churn_pid=$!
+churn_bad=0; churn_reasoned=0
+for _ in $(seq 1 30); do
+    OUT=$(staged bash "$SRUNNER" -- bash -c 'echo RAN' 2>&1); RC=$?
+    # The hook runs, or bwrap says why it could not mount over a node that vanished
+    # after the scan (a few ms window): never a launch that ends without a reason.
+    if [ "$RC" = 0 ] && [[ "$OUT" == *RAN* ]]; then :
+    elif [ "$RC" = 1 ] && [[ "$OUT" == *"bwrap: Can't "*"Read-only file system"* || "$OUT" == *"bwrap: Can't "*"No such file"* ]]; then churn_reasoned=$((churn_reasoned + 1))
+    else churn_bad=$((churn_bad + 1)); churn_first=${churn_first:-"rc=$RC $OUT"}; fi
+done
+touch "$RACE/stop"; wait "$churn_pid" 2>/dev/null
+if [ "$churn_bad" = 0 ]; then ok "launches under a FIFO and directory churning in ROOT run the hook or say why (30 of 30, $churn_reasoned reasoned)"
+else bad "churn under ROOT: $churn_bad of 30 launches failed, first: ${churn_first:-}"; fi
+# containment control: a real FIFO in a bound input is still refused, with the reason.
+mkdir -p "$TMP/ro-fifo/sub"; mkfifo "$TMP/ro-fifo/sub/pipe"
+OUT=$(bash "$RUNNER" --read-only "$TMP/ro-fifo" -- bash -c 'echo RAN' 2>&1); RC=$?
+if [ "$RC" = 125 ] && [[ "$OUT" == *'refusing socket/device/FIFO input'* ]] && [[ "$OUT" == *"$TMP/ro-fifo/sub/pipe"* ]] && [[ "$OUT" != *RAN* ]]; then
+    ok 'FIFO inside a --read-only input is refused with the path'
+else bad "FIFO in bound input: rc=$RC $OUT"; fi
+# guard-corpus diff keeps the runner's reason on its ODD-RC row instead of discarding it.
+printf '#!/bin/bash\nexit 0\n' > "$TMP/stub-hook.sh"
+printf '%s\n' '{"tool_input":{"command":"ls"}}' > "$TMP/one-row.jsonl"
+mkdir -p "$TMP/findfail"   # diff passes only an allowlisted environment, so the stub must not need a variable
+printf '#!/bin/bash\nprintf "find: %%s\\n" "%s: Permission denied" >&2\nexit 1\n' "'$ROOT/locked'" > "$TMP/findfail/find"
+chmod +x "$TMP/findfail/find"
+OUT=$(HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl" PATH="$TMP/findfail:$PATH" \
+    python3 -I "$ROOT/scripts/eval/guard-corpus/diff" --base "$TMP/stub-hook.sh" --head "$TMP/stub-hook.sh" \
+    --corpus "$TMP/one-row.jsonl" --repo "$ROOT" --no-json 2>&1); RC=$?
+if [ "$RC" = 3 ] && [[ "$OUT" == *'ODD-RC idx=0'*'base-stderr='*'Permission denied'* ]]; then
+    ok "diff ODD-RC row shows the runner's stderr"
+else bad "diff ODD-RC stderr: rc=$RC $OUT"; fi
+# every exit-125 path says why (callers send stderr away, so a bare 125 reads as a hook verdict).
+for spec in '--canary' '--read-only' '--write-mask-list' '--read-only /nonexistent/himmel-8736'; do
+    # shellcheck disable=SC2086  # the spec is a fixed word list
+    OUT=$(bash "$RUNNER" $spec 2>&1); RC=$?
+    if [ "$RC" = 125 ] && [ -n "$OUT" ]; then ok "refusal of '$spec' prints a reason"
+    else bad "bare refusal of '$spec': rc=$RC out='$OUT'"; fi
+done
 fi
 printf '%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

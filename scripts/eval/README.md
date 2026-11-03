@@ -18,7 +18,8 @@ himmel's evals: each one measures one thing and writes its own output.
 | `weekly-rollup.py` | velocity, cost and health per ISO week and per stable version, with the change against the previous row; `review` prints the three version-review lines ([`docs/release/version-review.md`](../../docs/release/version-review.md)) | `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE`; ledger row `weekly-rollup`) |
 | `review-page.py` | the reviewers in plain words: how often the critics catch planted bugs and are right, how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
 | `deferred-outcome.py` | what became of each deferred CR-ledger finding: its follow-up ticket in the Jira mirror is done (fixed later), open, or closed Won't Do (disproved), overall and per critic | ledger row `deferred-outcome` |
-| `escapes.py` | bugs found after merge (a revert, a caused-by bug, a later fix naming the PR) per merged PR, then per critic that reviewed it and per judge that passed it; reads a `gh pr list` snapshot | ledger row `escapes` |
+| `escapes.py` | bugs found after merge (a revert, a caused-by bug, a later fix naming the PR) per merged PR, then per critic that reviewed it and per judge that passed it; reads a `gh pr list` snapshot; `--class C` counts only the signals whose fix has class C in the bug-origin ledger (an unknown class is refused; with no Jira mirror the ledger rows give the bugs; a filtered row is its own series) | ledger row `escapes` |
+| `bug-origin/bug-origin-report.py` | how each fixed bug got in: `ingest` writes one Luna ledger row per fix PR (`<HANDOVER_DIR>/<user>/<project bucket>/bug-origin/<pr>.md`, no Jira needed; rows land only when it runs); `report` counts ledger, PR-body and seed rows per class (test gap, design gap, review miss per layer, review-deferred, residual, trigger, commit, unknown), takes `--class C` (an unknown class is refused), prints `ledger: <n> rows from <dir>` or `ledger: none`, and names the reviews on record for each review miss; `sync` comments each row on the first `[KEY]` of its PR title when a Jira project key is found (env, `himmel.conf`, `.env`) and a Jira CLI exists, skips when no key is found, fails (exit 2) when a key is set and no CLI runs, and exits 1 when a comment fails; `trace` proposes introducing commits for a fixer; reads a `gh pr list` snapshot | `report` on stdout; ledger row `bug-origin` with `--record`; Luna ledger rows from `ingest` |
 | `steering-cull/` | each approved cut of the always-on steering text (repo and user `CLAUDE.md`): tokens and cost-eq saved per session, and whether a RED-first probe still passes on the cut text; a SHIP or KEEP verdict per row | `report` table on stdout; ledger row `steering-cull` |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
@@ -48,6 +49,7 @@ column are relative to `scripts/eval/` unless they start with `scripts/`.
 | false-alarm rate | `<critic>.fp_rate` | The share of clean test changes (no planted bug) on which the critic raised a critical or important finding. | Low: the critic does not hold clean work. | share, 0 to 1, with a Wilson interval | Few clean changes per run. | `review-panel/score.py` |
 | detection floor | none: printed on the `paired` line of `eval-compare` | The estimated smallest mean per-case change the shared cases detect (80 % power, 5 % significance); see [eval-compare](#eval-compare). | Read the paired verdict, not the floor: a sign-test REGRESSION below the floor still gates. More cases lower it. | the metric's own unit | A normal approximation; unestimated for a continuous score with no spread. | `eval-compare` |
 | escape rate | `escape_rate` (`escape_rate_plausible` counts the likely ones too) | The share of merged PRs that a revert or a caused-by bug points at. A later fix naming the PR is only a likely escape, so it counts in `escape_rate_plausible` alone. | Low: few bugs get past review and approval (you, or the chief's GO; a judge only on trust paths). | share, 0 to 1, with a Wilson interval | Lags: a recent PR has had less time to show a bug. Reads a `gh pr list` snapshot. | `escapes.py` |
+| bug-origin class count | `class.<class>` (`review_miss` is the review-miss subtotal; `credit.<layer>` counts review-miss rows with that layer on record) | The number of bug-fix rows per class of how the bug got in, plus how many review misses each review layer saw. | Read the mix: many of one class names the layer to improve. A high credit count means that layer keeps seeing bugs and letting them through. | count | The fixer's own reading, one row per fix; the 20 seed rows have no second reader. `credit` may sum above the row count, since a row seen by three layers counts in all three. | `bug-origin/bug-origin-report.py` |
 | proof-first share (self-reported) | `pdd.pct` (halves `ticket_first.pct` and `red_green.pct`; `.k` and `.n` beside each) | The share of merged PRs whose ticket has a DoD and a Proof and was created before the first commit, and whose body names RED then GREEN. | High: work is proven before it is built. | share, 0 to 1, with a Wilson interval | The ticket's created time stands in for when the sections were written (the mirror keeps no description history), so a section added later reads as early. Self-reported: RED and GREEN are words the author wrote, not a checked test run. The row is `partial` below `--min-n` readable PRs. | `worker-digest/pdd_share.py` |
 | Wilson interval | `ci` with `ci_method` `wilson` (`ci_level` 0.95) | A 95 % range for a share of k in n that stays between 0 and 1 and holds at small n. | Narrow: the share is well measured. Wide: too few cases to rank. | `lo` and `hi`, in the share's unit | Covers sampling noise only, not a biased sample. | `worker-digest/pdd_share.py`, `review-panel/score.py`, `escapes.py`, `judge-accuracy/` |
 | review precision | `precision_pct` in `docs/evals/evals-data.json` (no eval-runs row) | Of the real review findings the author ruled true or false, the share ruled true. | High: a finding is usually right. | percent, with a Wilson and a by-PR bootstrap interval | The author who rules is the one who fixes. Deferred and unruled findings are on neither side. | `scripts/cr/evals-page-gen.py` |
@@ -508,6 +510,31 @@ calls issued alone, with n, and it labels the figure "time to result (includes
 waiting and hooks)", never a run time. A call without a result shows a dash,
 never 0; a digest written before the times were kept leaves its calls unknown.
 
+Graph and qmd use: a Bash call's head is the tool behind any leading `cd X &&`, `bash -c`,
+env assignment or `rtk` wrapper, and `worker-graph.sh`, `leg-graph.sh` and `qmd-bounded.sh`
+(by bash, sh or their own path) read as `graphify` and `qmd`, so those rows count calls by
+tool, approximately (the `qmd` row holds every verb, not only searches; a quoted mention
+or a here-doc line that begins like a call also counts).
+`bash scripts/eval/worker-digest/graph-use-report.sh [--days N] [--until-epoch EPOCH] [--min-tools N] [--root PROJECTS_DIR]... [--handovers DIR]` is
+read-only: it scans the journals changed in the last N days (default 7) under every
+`~/.claude*/projects` (one lane each: claude, codex, ...), session journals and subagent
+journals apart, and prints per scope (all projects, himmel projects), lane, kind and role
+(console, leg, judge, sub, other, from the session name or the subagent type) two tables.
+The graph table has the journals, those with a graph call and those with an answered one
+(`with_graph_ok`, `graph_ok_pct`: a failed or refused call is a call but not an answer; a
+wrapper miss is an answer), the calls per form (`query`,
+`explain`, `path`, `mcp`), bare versus wrapper calls with their failures (a wrapper call that exits 3 or 4, no match or
+ambiguous, is a `wrapper_miss`, an honest no-answer, not a `wrapper_fail`), and `searched`
+(journals with a grep, rg, Grep or Glob mention, a count of mentions, not of use; `searched_no_graph`
+rests on answered graph calls). The qmd
+table has the journals with a qmd call, with a qmd search and with an answered one (`with_search_ok`,
+`search_ok_pct`, the decision numbers), and the calls split into search
+verbs (`query`, `search`, `vsearch`, `deep_search`) against every other verb, shell against mcp. A third
+table reads the `graph-qmd:` Results bullets of the handover docs under `--handovers` (default
+`$HANDOVER_DIR`) per role: used or cited, called only, none found, n/a shipping, and docs with
+no bullet as no data, not zero. `--until-epoch EPOCH` ends the N-day window at that instant (to re-run a past window); `--min-tools N` keeps journals that ran at least N tools. The
+`counted:`, `bullets:` and `not counted:` lines it prints say where it over- or undercounts.
+
 Why a guard refused: the page joins each counted refusal to its hook-chain row
 by call id. The reason rows count only refusals with such a row; the rest are
 "recorded before reasons were logged" (the refusal ended before the first
@@ -537,8 +564,10 @@ itself. A rate over several days sums the counts first: 1/10 and 9/30 are
 
 1. one `worker-failures` row per digest failures row
    (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
-   row carries closed-list categories only; unknown keys are refused, so no
-   journal text can ride in;
+   row carries closed-list categories, plus on a denied row one redacted
+   `refusal_line`, which is redacted for secrets only and can still echo
+   command or path text. It stays on this host: the failure router sends
+   only named fields and refuses any other body text;
 2. one eval-runs row, `eval: leg-trajectory`, `run_id` = the session uuid,
    `meta.observational: true`;
 3. the digest at `~/.himmel/state/leg-digest/<session>.json`, last, as the

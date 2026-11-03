@@ -14,4 +14,5 @@ _tracker_none_title() { return 4; }
 _tracker_none_transition() { return 0; }
 _tracker_none_comment() { return 0; }
 _tracker_none_link() { return 0; }
+_tracker_none_sector() { return 4; }
 _tracker_none_query() { return 0; }

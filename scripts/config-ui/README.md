@@ -170,13 +170,33 @@ validated, saved through `luna-config.js`): `report_day` (`local` or `utc`), `sh
 `20:00`) and `shift_min_run_h` (4). A new `report_day` applies from the next report on; past reports keep the window they
 were made with. A closed shift also stores its Waiting rows as they stood at a clock cut.
 
-## Roadmap page (`#/roadmap`)
+## Board page (`#/board`)
 
-The Roadmap page sits next to Fleet. `GET /api/roadmap` (token-gated, GET only) reads its sources live on every
-request: no static render, no republish. The page draws release panels, the drift counts and trend, the worker to Jira
-sync plan and the librarian's lists. Clicking a version opens `#/roadmap/<version>`, that version's kanban (filter by
-Sector); the left-rail Kanban page (`#/kanban`) shows one board across all versions with no version filter, Done
-hideable. Both read the same `/api/roadmap`; an absent mirror shows its reason instead of a board.
+The Board page (HIMMEL-8678) replaced the Roadmap and Kanban pages; the rail has the one Board entry, and the old
+routes land on it: `#/roadmap` is `#/board`, `#/roadmap/<version>` is `#/board?v=<version>`, `#/kanban` is
+`#/board?v=all`, and the AG-UI rail's `page=roadmap|kanban` landings open it. `GET /api/roadmap` (token-gated, GET only)
+reads its sources live on every request: no static render, no republish. The page draws a drift banner, a version strip
+(one tile per version: done, in flight and to do counts, what is still open on a released version), a "waits for you"
+link and a "shipped" link, and four tabs (`?tab=roadmap|nv|chains|tidy`). **Roadmap** is the status lanes for the running
+version (`?v=<version>` picks another, `?v=all` every version) with the Sector, Chain, Hide Done, Project, Theme and Only
+filters and a find-a-ticket box (title or id, on Enter); Done is a folded column, and each column says how many Jira has
+beside the cards drawn. Dragging a card and the Sector select write as before (see Writes). **No version** holds the
+tickets with no fixVersion, in the same columns with the same filters and find box; it is listed only while there is one,
+and those tickets are not in the default `GET /api/roadmap` read (which says only how many, `noVersionCount`): opening the
+tab asks `GET /api/roadmap?nv=1`. The Roadmap tab's find does not reach them. **Chains** lists each chain of the chain registry with its steps
+and each ticket's state. **Tidy up** carries the saved status-drift rows, then the Drift, Worker to Jira sync and
+Librarian sections unchanged. An absent mirror shows its reason instead of a board.
+
+`GET /api/board` (token-gated, GET only, read-only, `board.ts`) adds the two reads the Board needs beside `/api/roadmap`:
+the saved status-drift summary (`chief-kit/drift-summary.mjs` over `focus-drift.txt`, named by `HIMMEL_FOCUS_DRIFT` or
+`$TRACKER_HANDOVERS_DIR/focus-drift.txt`, else the newest `<handover root>/<slug>/himmel/focus-drift.txt`) and the chain
+read (`chief-kit/chain-state.mjs`, over the registry `HIMMEL_CHAIN_REGISTRY` names, else the newest
+`<handover root>/<slug>/himmel/chains.json`, a `himmel.chain-registry/1` file). The handover root and these names are read
+as `/api/health` reads its settings: the checkout's `.env`, `himmel.conf`, the non-empty process environment winning. Both
+reads are Jira-backed: with TRACKER set to none, local or GitHub they answer absent. A script is started only when its
+input is found; otherwise that part answers `{state: "absent", reason}` and the page says so in words (drift: not read, waits for you:
+not read, no Chains tab content): it never shows a made-up count. Not on the Board yet: the ticket drawer, hold writes,
+keyboard moves, the Chains map and Why panel, and the Refresh button for the drift run.
 
 The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
 `graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files
@@ -191,8 +211,8 @@ route, `#/workflow&w=<id>&s=<n>`.
 - **tracker.py** stays the CLI/offline renderer until the page reaches parity; the semantics here are a port of it.
 - **Sync plan.** `legSync` lists the Jira CLI commands that mirror each worker marker onto its ticket (flag and comment
   a stuck worker, clear the flag on resume, note READY/WRAPPED once). The chief kit is the one writer; workers never
-  write Jira and the sync plan never does; only the Kanban writes below change Jira from this page.
-- **Writes (HIMMEL-5491).** The Kanban boards are writable: dragging a card to another column transitions the ticket in
+  write Jira and the sync plan never does; only the lane writes below change Jira from this page.
+- **Writes (HIMMEL-5491).** The Board's lanes are writable: dragging a card to another column transitions the ticket in
   Jira, and the per-card Sector select sets its Sector with `jira edit <key> --sector` (the CLI checks the name against
   the live option list and has no way to clear one, so "no sector" is not offered as a write). Both go through
   `POST /api/roadmap/write` (token gate, same-origin and JSON checks, the machine write lock, one audit row per write),
@@ -200,6 +220,22 @@ route, `#/workflow&w=<id>&s=<n>`.
   Sector name before any child runs, shells to the Jira CLI (`CONFIG_UI_JIRA_CLI` overrides the CLI path, tests use a stub), then runs an
   incremental `jira mirror` so the board re-reads Jira; the reply says `mirror: refreshed|stale`. A refusal moves the
   card back and shows the reason above the board.
+- **Local tracker (HIMMEL-5495).** With `TRACKER=local` (or no `TRACKER` and no `JIRA_PROJECT_KEY`, as the resolver
+  `project-mode.mjs` decides), the Board reads the local tracker store through the tracker seam
+  (`local-tracker.ts` runs `scripts/lib/tracker.sh` as an argv child, never a shell string; the store is `TRACKER_STORE`,
+  else `<handover root>/<user>/<repo>/tracker`). Cards keep their generated `LOCAL-<n>` id, `fix_version` is the version
+  (`(no version)` for none) and the item's `sector:` line the Sector; there is no plan, drift or worker sync. A drop posts
+  `{key, backend: "local", status}` and runs `tracker_transition <id> <status> --allow-back`; a Sector select (or its
+  "new sector…" option) posts `{key, backend: "local", sector}` and runs `tracker_sector <id> <name>`. Same token gate,
+  write lock and audit row as a Jira write (`action: tracker-transition|tracker-sector`); no Jira CLI runs. The seam
+  refuses a status off its ladder (400, the reason in `output`), an absent item answers 404, and a move the seam will
+  not make (out of Done) answers 409. An empty store is not a source, so the rail hides the Board. The tracker is read
+  from the project the server was started in (its working directory), not the checkout the UI is served from. A Jira write
+  (`{key, status|sector}` without `backend: "local"`) answers 403 unless the project's tracker is Jira: a local or none
+  project, or any other non-empty `TRACKER` (a typo, `Local`, `github` with gh logged out), is refused whatever Jira
+  mirror is lying around.
+- **No tracker.** With `TRACKER=none`, `GET /api/sources` lists `none`: the rail keeps the Board and it says no tracker
+  is configured instead of drawing an empty board.
 - **Sector grouping (HIMMEL-8379).** A ticket groups under the mirror's `sector:` line; a retired `theme-<slug>` label is the
   fallback, then the plan overlay; a ticket with none is under "(no sector)". The wire keys (`themes`, `theme`, `unthemed`)
   keep their names, the page shows Sector.
@@ -258,15 +294,19 @@ pass the same redactor as the feed; the id fields are left intact, and so are
 would blank) and `failure` (one of four words).
 
 **Journal roots.** A session launched with its own `CLAUDE_CONFIG_DIR` opens
-in the run view once a live Fleet census poll has seen it; before that, and after a
-server restart, its run is `404`. A journal root is a Claude config directory
+in the run view from a direct link: a run that no root holds runs the live census
+once and retries, so no Fleet poll is needed first, also after a server restart.
+The census reads each session's launch environment from `/proc/<pid>/environ`, so
+where `/proc` has none (macOS) a custom-root run can still be `404`.
+A journal root is a Claude config directory
 whose `projects/` holds session journals. `resolveJournal` searches two
 built-in roots, `~/.claude` (native) and `~/.claude-codex` (claudex, the lane
 that runs Claude Code on Codex models), then every custom root registered so
 far.
 
 - **Where custom roots come from.** Only the live census: `readFleet`
-  (`agui/fleet.ts`, behind `GET /api/agui/fleet`) reads each live session's
+  (`agui/fleet.ts`, behind `GET /api/agui/fleet`, and run once more when
+  `GET /api/agui/<run>` misses before it answers `404`) reads each live session's
   launch environment from `/proc/<pid>/environ` and, when it carries
   `CLAUDE_CONFIG_DIR`, passes that directory to `registerConfigRoot`
   (`agui/sse.ts`). No request parameter names a root; `/api/agui/<run>` takes
@@ -278,9 +318,9 @@ far.
   searched.
 - **How long a root stays.** The registry lives in the server's memory, holds at
   most 32 roots and drops the oldest past that; registering a root again does
-  not refresh its place. A custom root is therefore searched only after a fleet
-  poll has seen a live session launched with it, until the server restarts or
-  the root is dropped.
+  not refresh its place. A custom root is therefore searched once a census run
+  (a fleet poll, or a run link that missed) has seen a live session launched
+  with it, until the server restarts or the root is dropped.
 - **Built-in versus custom.** `resolveJournal` re-checks a custom root on every
   lookup: its `projects/` must still resolve inside the config directory, or
   the root is skipped. The built-in roots skip that check, so a symlinked
@@ -495,13 +535,27 @@ imports, so its suite runs in CI without an install.
 - Visual tokens e2e (`visual-tokens.e2e.ts`, same opt-in suite): every computed
   colour on every config-ui page, light and dark, is a tokens.css value or a mix
   of two; `E2E_BREAK=colour` plants an off-token colour and the suite must fail.
+- Tool health tables e2e (`tool-health-tables.e2e.ts`, same opt-in suite): the Hook wiring, Tools,
+  guards, Station sources and Refused by tool tables, read at 1280 and 390 px over stubbed
+  `/api/tool-health` and `/api/tool-inventory` responses, never break a word inside a header or a
+  short value, and a table wider than its panel scrolls inside its own box.
+- Tool health shape e2e (`tool-health-shape.e2e.ts`, same opt-in suite): the overview cards, Station tiles and
+  source names, Tool map (grid on a desktop, one card per source on a phone) and guard This week cards,
+  read at 1280 and 390 px over the same stubbed responses, with a screenshot pair attached per view.
 - Tracker sources e2e (`tracker-sources.e2e.ts`, same opt-in suite): `boot()`
   takes a `tracker` option (`jira` seeds a one-ticket mirror and is the
   default, `github` a stub `gh` answering fake issues, `local` and `none` neither).
-  The rail lists Roadmap and Kanban only for `jira` and `github`; with `none` a
-  direct landing on Kanban shows the plain-words empty state, and with `github`
+  The rail lists the Board for `jira`, `github` and `none`, not for an
+  empty `local` store; with `none` a direct landing on the old Kanban route (it lands on the Board) says no tracker is
+  configured, and with `github`
   the cards are read-only. `GET /api/sources` (`tracker-sources.ts`) is the one
   predicate behind it.
+- Board page e2e (`board.e2e.ts`, same opt-in suite): `boot()` takes `board: true`, which seeds a three-version Jira
+  mirror, one chain registry and a saved drift run under the temp dir. The rail has one Board entry; `#/roadmap`,
+  `#/roadmap/<version>` and `#/kanban` land on `#/board`; the version strip, drift banner, chain badge, lanes and the
+  Chains and Tidy up tabs draw from the seeded sources; with no drift file and no registry the page says so and shows
+  no count. At 1280 and 390 px, light and dark, every tab draws with no console error and no sideways scroll;
+  `E2E_SHOTS=<dir>` saves the build-side screenshot of each frame to pair with the mockup.
 - Morning report e2e (`report.e2e.ts`, same opt-in suite): over a two-day fixture the
   Morning report page selects the newest day, switches to the earlier one and says so for a
   day with no report; the four Reports and shifts settings show their defaults on Configure,
@@ -512,8 +566,8 @@ imports, so its suite runs in CI without an install.
   in order, one open at a time, and the Check this install strip under them (hidden while a tile is open).
   Every Project scope row shows its command, when it takes effect and a Learn
   more link to the docs site, the Tracker tile points commit rules at
-  `~/.himmel/himmel.conf`, a switch previews its dry-run first, and Roadmap and
-  Kanban follow the tracker source. Triage and the inventory render on Health.
+  `~/.himmel/himmel.conf`, a switch previews its dry-run first, and the Board
+  follows the tracker source. Triage and the inventory render on Health.
 - Fleet cap and reviewer settings (`fleet-cap.ts`, `review-gate.ts`; `GET` and `POST
   /api/fleet-cap`, `/api/review-gate`): the cap goes to the station `.env`, a reviewer's
   model and effort to the `critics.local.json` overlay only. Tests:
@@ -539,6 +593,10 @@ imports, so its suite runs in CI without an install.
   inline style proves the detector fires). `/dev-graph/` serves only the
   `.json`/`.js`/`.css` files of `docs/guide/dev-graph/`: traversal, a path
   outside the directory, the directory itself and a POST are refused.
+- Fleet page e2e (`fleet-console.e2e.ts`, same opt-in suite, needs `agui-web/dist`): the fleet landing loads with no
+  console error and no `securitypolicyviolation` at 1280 and 390 px, light and dark, under the server's
+  `default-src 'self'`. `agui-web/src/zod-jitless.ts` is imported first so zod skips its `new Function` probe, which the
+  policy would otherwise report as a `script-src` eval violation.
 
 ## Manual pass (the same 7 items)
 

@@ -4,6 +4,7 @@ import {
   lintPlainBlockAdf,
   plainBlockVerdict,
   homeVerdict,
+  titleSector,
   titleVerdict,
   TITLE_TEMPLATE,
   PLAIN_BLOCK_TEMPLATE,
@@ -146,6 +147,30 @@ describe('plainBlockVerdict', () => {
     );
     expect(plainBlockVerdict('Task', found).message).toMatch(/missing "## Plan"; missing "## DoD"/);
     expect(plainBlockVerdict('Epic', found).action).toBe('warn');
+  });
+});
+
+describe('titleSector (HIMMEL-8659)', () => {
+  const live = ['Ship loop', 'Visibility', 'Cost & efficiency'];
+
+  it('takes the canonical Sector from a valid "<Sector>: " prefix, case-insensitively', () => {
+    expect(titleSector('Task', 'Visibility: show the board', live)).toEqual({ sector: 'Visibility' });
+    expect(titleSector('Bug', 'cost & efficiency: fewer calls', live)).toEqual({ sector: 'Cost & efficiency' });
+  });
+
+  it('refuses a Task, Story or Bug whose prefix names no live option, listing the valid ones', () => {
+    for (const t of ['Task', 'Story', 'Bug']) {
+      const r = titleSector(t, 'Billing: charge the card', live);
+      expect(r.sector).toBeUndefined();
+      expect(r.refuse).toMatch(/refused.*"Billing:".*not a Sector.*Ship loop, Visibility, Cost & efficiency/s);
+    }
+  });
+
+  it('derives nothing for a title with no prefix, a commit prefix, an Epic, or an unreadable option list', () => {
+    expect(titleSector('Task', 'See which tickets are system work', live)).toEqual({});
+    expect(titleSector('Task', 'feat(jira): add a thing', live)).toEqual({});
+    expect(titleSector('Epic', 'Billing: charge the card', live)).toEqual({});
+    expect(titleSector('Task', 'Visibility: x', [])).toEqual({});
   });
 });
 

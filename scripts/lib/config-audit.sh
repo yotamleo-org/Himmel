@@ -386,6 +386,14 @@ _ca_operator_chat() {
         if (!id) process.exit(1); process.stdout.write(id);' "$access" 2>/dev/null
 }
 
+# A test on the station never sends the operator a real Telegram message. Only exit 77 refuses:
+# a missing or crashing guard lets the send through.
+_ca_sender_door() {
+    local rc=0
+    bash "$_CA_DIR/test-run-guard" check --quiet --tool bun config-audit-alert >/dev/null 2>&1 || rc=$?
+    [ "$rc" -ne 77 ]
+}
+
 # Appends one line to every chief inbox that already exists (never creates one),
 # then queues the operator DM. 0 when at least one sink took it.
 _ca_alert() {
@@ -404,7 +412,7 @@ _ca_alert() {
             try { fs.appendFileSync(fd, process.env.CA_LINE + "\n"); } finally { fs.closeSync(fd); }' 2>/dev/null && ok=0
     done
     command -v timeout >/dev/null 2>&1 && tmo="timeout -k 5 30"
-    if chat="$(_ca_operator_chat)" && command -v bun >/dev/null 2>&1; then
+    if chat="$(_ca_operator_chat)" && command -v bun >/dev/null 2>&1 && _ca_sender_door; then
         # shellcheck disable=SC2086 # $tmo is "" or "timeout ..."
         $tmo bun "$_CA_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1 && ok=0
     fi

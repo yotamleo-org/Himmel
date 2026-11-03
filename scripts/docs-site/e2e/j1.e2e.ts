@@ -1,5 +1,3 @@
-// Journey J1: the built docs site, served by `astro preview`: the Starlight home, a deep link, the standalone
-// HTML pages byte-identical at their docs/ paths, and no broken internal link anywhere in the site.
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -9,7 +7,6 @@ const BASE = "/Himmel/";
 // the site ships no favicon yet; scripts/docs-site/test-site-build.sh skips it in its link sweep too.
 const NOT_SHIPPED = new Set([`${BASE}favicon.svg`]);
 
-// every standalone page under docs/ (.html at any depth), as a docs-relative path.
 function standalonePages(dir = DOCS, rel = ""): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? standalonePages(join(dir, e.name), `${rel}${e.name}/`) : e.name.endsWith(".html") ? [`${rel}${e.name}`] : [],

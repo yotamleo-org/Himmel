@@ -24,6 +24,8 @@ const KIND_LABEL = { builtin: "built-in", mcp: "MCP", res: "MCP resource", skill
 const KINDS = Object.keys(KIND_LABEL);
 const SRC_LABEL = { core: "core", himmel: "himmel plugin", third: "third-party plugin", project: "project", user: "user", pkg: "MCP config", station: "station", unknown: "source unknown", before: "before the split" };
 const SRCS = Object.keys(SRC_LABEL);
+// The Station sources table names each scan source as the mockup does; an id this page does not know prints as itself.
+const SOURCE_NAME = { "hooks-project": "Hooks · project", "hooks-user": "Hooks · user", plugins: "Plugins", "plugin-items": "Plugin items", "project-claude": "Project .claude/", "user-claude": "User ~/.claude/", "mcp-user": "MCP · user config", "mcp-profiles": "MCP · launch profiles", "mcp-project": "MCP · project", "mcp-plugins": "MCP · plugins", "mcp-runtime": "MCP · runtime", core: "Core tools", clis: "Station CLIs", "rtk-history": "rtk history" };
 const CORE_AGENTS = new Set(["general-purpose", "Explore", "Plan", "statusline-setup", "claude-code-guide", "claude"]);
 const COLLAPSED = { Skill: "skill", Agent: "agent", Task: "agent", mcp: "mcp" };
 const FILTERS = ["days", "team", "lane", "profile"];
@@ -159,13 +161,15 @@ function kpis(data) {
   const calls = data ? data.totalCalls : null, failed = sum("failures"), known = sum("known"), recovered = sum("recovered");
   const rate = bad.size ? null : ratio(failed, calls);
   const tile = (id, label, value, note) => `<div class="kpi" data-kpi="${id}"><span class="k">${esc(label)}</span><b class="kv">${esc(value)}</b><span class="ks">${esc(note)}</span></div>`;
+  // mockup v9: four cards. Denied rides the Failed note; Recovery is the note under the cards, so no fact leaves the page.
+  const worst = data && !bad.size ? tools.filter((t) => isNum(t.calls) && t.calls >= 10 && isNum(t.failures)).map((t) => ({ t, r: t.failures / t.calls })).sort((a, b) => b.r - a.r || b.t.failures - a.t.failures || (a.t.tool < b.t.tool ? -1 : 1))[0] : null;
+  const recovery = data ? `<p class="sub" data-note="recovery">Recovery ${pct(ratio(recovered, known))} (${recovered} of ${known} known · ${failed - known} unclassified)</p>` : "";
   return `<div class="kpis">${[
     tile("calls", "Calls", num(calls), data ? (isNum(calls) ? "tool call attempts" : "calls not recorded for every session") : "—"),
     tile("failed", "Failed", num(failed), data ? `${sum("errors")} errors · ${sum("denials")} denied` : "—"),
     tile("rate", "Failure rate", pct(rate), data ? (bad.size ? "Count check failed: rate hidden" : `${failed} of ${num(calls)} calls`) : "—"),
-    tile("denied", "Denied", num(sum("denials")), data ? "refused attempts; a refusal can be correct" : "—"),
-    tile("recovery", "Recovery", pct(ratio(recovered, known)), data ? `${recovered} of ${known} known · ${failed - known} unclassified` : "—"),
-  ].join("")}</div>`;
+    tile("highest", "Highest rate", worst ? pct(worst.r) : "—", data ? (worst ? `${worst.t.tool} · ${worst.t.failures} of ${worst.t.calls} calls` : "no tool with 10 or more calls") : "—"),
+  ].join("")}</div>${recovery}`;
 }
 function dailyRows(data) {
   const by = new Map();
@@ -184,19 +188,33 @@ function shiftDays(shift) {
   for (let t = Date.UTC(new Date(a).getUTCFullYear(), new Date(a).getUTCMonth(), new Date(a).getUTCDate()); t <= b; t += 86400000) out.add(new Date(t).toISOString().slice(0, 10));
   return out;
 }
+function chartTop(max, kind) {
+  if (kind === "bar") return max <= 4 ? 4 : Math.ceil(max / 10) * 10;
+  if (!(max > 0)) return 0.02;
+  const p = 10 ** Math.floor(Math.log10(max));
+  return [1, 2, 4, 5, 10].map((k) => k * p).find((t) => t >= max) || 10 * p;
+}
+// mockup v9 geometry: a fixed 480x180 plot, scaled uniformly so dots stay round
 function chart(rows, value, max, label, kind) {
-  const w = 24, h = 64, top = max > 0 ? max : 1;
-  const marks = rows.map((r, i) => {
-    const v = value(r), x = i * w + 4;
-    if (!isNum(v)) return `<text x="${x + 8}" y="${h - 2}" class="gap">·</text>`;
-    const y = h - 12 - (v / top) * (h - 20);
-    return kind === "bar" ? `<rect x="${x}" y="${y}" width="${w - 8}" height="${h - 12 - y}" class="fb"><title>${esc(r.day)}: ${esc(label(v))}</title></rect>` : `<circle cx="${x + 8}" cy="${y}" r="3" class="dot"><title>${esc(r.day)}: ${esc(label(v))}</title></circle>`;
-  }).join("");
-  let line = "", seg = [];
-  rows.forEach((r, i) => { const v = value(r); if (isNum(v)) seg.push(`${i * w + 12},${h - 12 - (v / top) * (h - 20)}`); else { if (seg.length > 1) line += `<polyline points="${seg.join(" ")}" class="line"/>`; seg = []; } });
-  if (kind !== "bar" && seg.length > 1) line += `<polyline points="${seg.join(" ")}" class="line"/>`;
-  const marker = rows.map((r, i) => (r.shift ? `<rect x="${i * w}" y="0" width="${w}" height="${h - 10}" class="shiftband"><title>AFK shift</title></rect>` : "")).join("");
-  return `<svg class="thchart" viewBox="0 0 ${rows.length * w} ${h}" preserveAspectRatio="none" role="img" aria-label="${esc(kind === "bar" ? "Failures per day; exact values in the table" : "Failure rate per day; gaps have no calls recorded")}">${marker}${marks}${line}</svg>`;
+  const W = 480, H = 180, left = 48, right = 470, base = 146, plot = 116, step = (right - left) / (rows.length || 1);
+  const top = chartTop(max, kind), bar = kind === "bar";
+  const X = (i) => left + (i + 0.5) * step, Y = (v) => base - (v / top) * plot;
+  // a rate tick keeps enough decimals that the three ticks stay distinct for a tiny top
+  const tick = (v) => (bar ? label(v) : `${(v * 100).toFixed(Math.max(1, Math.ceil(-Math.log10(top * 50))))}%`);
+  const grid = [0, 1, 2].map((i) => `<line x1="${left}" y1="${base - (plot * i) / 2}" x2="${right}" y2="${base - (plot * i) / 2}" class="grid"/><text class="ax" x="${left - 6}" y="${base - (plot * i) / 2 + 4}" text-anchor="end">${esc(tick((top * i) / 2))}</text>`).join("");
+  const band = rows.map((r, i) => (r.shift ? `<rect x="${left + i * step}" y="${base - plot}" width="${step}" height="${plot}" class="shiftband"><title>AFK shift</title></rect>` : "")).join("");
+  const dl = rows.map((r, i) => `<text class="dl" x="${X(i)}" y="168" text-anchor="middle"${rows.length > 14 ? " data-dense" : ""}>${esc(String(Number(r.day.slice(8, 10))))}</text>`).join("");
+  let marks = "", line = "", prev = null;
+  rows.forEach((r, i) => {
+    const v = value(r), x = X(i);
+    if (!isNum(v)) { prev = null; if (!bar) marks += `<text x="${x}" y="${base - 4}" class="gap" text-anchor="middle">·</text>`; return; }
+    const y = Y(v), tip = `<title>${esc(r.day)}: ${esc(label(v))}</title>`;
+    if (bar) { marks += `<rect x="${x - step * 0.3}" y="${y}" width="${step * 0.6}" height="${base - y}" class="fb">${tip}</rect>`; return; }
+    if (prev) line += `<line x1="${prev[0]}" y1="${prev[1]}" x2="${x}" y2="${y}" class="line"/>`;
+    marks += `<circle cx="${x}" cy="${y}" r="4" class="dot">${tip}</circle>`;
+    prev = [x, y];
+  });
+  return `<svg class="thchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(bar ? "Failures per day; exact values in the table" : "Failure rate per day; gaps have no calls recorded")}">${band}${grid}${line}${marks}${dl}</svg>`;
 }
 function dailyPanel(data, st) {
   const rows = dailyRows(data), today = new Date(st.loadedAt || Date.now()).toISOString().slice(0, 10), shift = shiftDays(st.shift);
@@ -253,13 +271,13 @@ function listRow(r, data, ui, bad, max) {
   const srcText = r.source && r.src !== "core" ? `${SRC_LABEL[r.src]} · ${r.source}` : SRC_LABEL[r.src];
   if (r.kind === "hook") {
     const link = r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "hooks" });
-    return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(link)}">${esc(r.hook.name)}</a> ${chip}${r.hook.runs_twice ? ' <span class="tag warn">×2 runs twice</span>' : ""}`)}${td(esc(srcText))}${td(`${num(r.runs)} <span class="dim">runs ${r.runsMeasured ? "measured" : "derived"}</span>`)}${td(num(r.refused))}${td("—")}${td(num(r.refused))}${td("—")}${td("")}</tr>`;
+    return `<tr data-tool-row="${esc(r.key)}">${tdWrap(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(link)}">${esc(r.hook.name)}</a> ${chip}${r.hook.runs_twice ? ' <span class="tag warn">×2 runs twice</span>' : ""}`)}${td(esc(srcText))}${td(`${num(r.runs)} <span class="dim">runs ${r.runsMeasured ? "measured" : "derived"}</span>`)}${td(num(r.refused))}${td("—")}${td(num(r.refused))}${td("—")}${td("")}</tr>`;
   }
-  if (r.kind === "cli") return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tab: "station" }))}">${esc(r.cli.name)}</a> ${chip}`)}${td(esc(srcText))}${td(`${num(r.calls)} <span class="dim">Bash calls</span>`)}${td("—")}${td("—")}${td("—")}${td("—")}${td("")}</tr>`;
+  if (r.kind === "cli") return `<tr data-tool-row="${esc(r.key)}">${tdWrap(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tab: "station" }))}">${esc(r.cli.name)}</a> ${chip}`)}${td(esc(srcText))}${td(`${num(r.calls)} <span class="dim">Bash calls</span>`)}${td("—")}${td("—")}${td("—")}${td("—")}${td("")}</tr>`;
   const c = toolCounts(r, data), flagged = bad.has(r.key);
   const bar = isNum(c.failures) && max > 0 ? `<span class="thbar" data-w="${((c.failures / max) * 100).toFixed(1)}"></span>` : "";
   const rateCell = flagged ? '<span class="tag fail">Count check failed</span>' : `<span class="${c.rate >= 0.1 ? "bad-t" : c.rate >= 0.05 ? "warn-t" : ""}">${pct(c.rate)}</span>${isNum(c.calls) && c.calls > 0 && c.calls < 10 ? ' <span class="tag">few calls</span>' : ""}`;
-  return `<tr data-tool-row="${esc(r.key)}">${td(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tool: r.key }))}">${esc(displayName(r))}</a> ${chip}`)}${td(esc(srcText))}${td(num(c.calls))}${td(num(c.failures))}${td(num(c.errors))}${td(num(c.denials))}${td(rateCell)}${td(bar)}</tr>`;
+  return `<tr data-tool-row="${esc(r.key)}">${tdWrap(`<a class="tl" data-tool="${esc(r.key)}" href="${esc(toolHealthHref(ui, { tool: r.key }))}">${esc(displayName(r))}</a> ${chip}`)}${td(esc(srcText))}${td(num(c.calls))}${td(num(c.failures))}${td(num(c.errors))}${td(num(c.denials))}${td(rateCell)}${td(bar)}</tr>`;
 }
 function beforeSplit(data) {
   const out = new Map();
@@ -300,13 +318,13 @@ function toolList(data, inv, ui, opts = {}) {
   const empty = q ? `No tool matches “${ui.q}”` : "No tools match these filters";
   const more = !ui.all && limited.length < sorted.length ? `<button class="btn" data-act="th-all">Show all (${sorted.length})</button>` : ui.all && sorted.length > 10 ? `<button class="btn quiet" data-act="th-all">Top 10 only</button>` : "";
   const shownLine = `<p class="sub">${limited.length} of ${sorted.length} shown${bad.size ? ' · <span class="tag fail">Count check failed</span> for ' + esc([...bad].join(", ")) : ""}. Errors include a red test suite. Rows marked “before the split” were written before skills, subagents and MCP servers got their own rows.${limited.some((r) => r.kind === "hook" && r.runsMeasured) ? ` ${esc(RUNS_SCOPE)}` : ""}</p>`;
-  return `${controls}${ui.before && data ? `<p class="sub">Before split: today's rows collapsed back to Skill, Agent and mcp, for comparison.</p>${beforeSplit(data)}` : `${shownLine}${table(["Tool", "Source", "Calls", "Failed", "Errors", "Denied", "Failure rate", ""], body, empty)}${more}`}`;
+  return `${controls}${ui.before && data ? `<p class="sub">Before split: today's rows collapsed back to Skill, Agent and mcp, for comparison.</p>${beforeSplit(data)}` : `${shownLine}${table(["Tool", "Source", "Calls", "Failed", "Errors", "Denied", "Failure rate", ""], body, empty, "thtab")}${more}`}`;
 }
 
 const isClassifier = (cls) => /^denied\/classifier(:|$)/.test(cls);
 function guardsPanel(data, ui) {
   const rows = (data.hooks || []).filter((h) => !isClassifier(h.class)).sort((a, b) => b.failures - a.failures || (a.class < b.class ? -1 : 1));
-  return table(["Guard", "Refused", "Rate", "Denominator", "Bash-only rate (legacy)", "Legacy denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${td(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct2(h.eligible_rate))}${td(eligibleWords(h))}${td(pct(h.rate))}${td(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window");
+  return table(["Guard", "Refused", "Rate", "Denominator", "Bash-only rate (legacy)", "Legacy denominator"], rows.map((h) => `<tr data-guard-row="${esc(h.class)}">${tdWrap(`<a data-guard="${esc(h.class)}" href="${esc(toolHealthHref(ui, { guard: h.class }))}">${esc(h.class.replace(/^denied\//, ""))}</a>`)}${td(num(h.failures))}${td(pct2(h.eligible_rate))}${tdWrap(eligibleWords(h))}${td(pct(h.rate))}${tdWrap(isNum(h.calls) ? `÷${h.calls} Bash calls (legacy)` : "÷ Bash calls not recorded (legacy)")}</tr>`), "No guard refused a call in this window", "thtab");
 }
 // Option B: refusals over the calls to the tools the guard is wired to check ("eligible call attempts", never "calls checked").
 const pct2 = (v) => (isNum(v) ? `${(v * 100).toFixed(2)}%` : "—");
@@ -496,13 +514,16 @@ function guardDrill(data, ui, token) {
   for (const d of data.daily_hooks || []) if (d.class === h.class) by.set(d.day, (by.get(d.day) || 0) + (isNum(d.failures) ? d.failures : 0));
   const days = windowDays(data).map((day) => ({ day, n: by.has(day) ? by.get(day) : cohort.has(day) ? 0 : null }));
   const max = Math.max(0, ...days.map((d) => d.n || 0));
-  const stats = `<dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
+  // The mockup's This week cards lead; the rest of the facts stay in the second list.
+  const peak = days.reduce((b, d) => (isNum(d.n) && d.n > 0 && (!b || d.n > b.n) ? d : b), null), counted = days.filter((d) => isNum(d.n));
+  const cards = `<h3>${data.selected && data.selected.days === 30 ? "This window (30 days)" : "This week"}</h3><dl class="stats">${stat("refused", "Refused", num(h.failures))}${stat("rate", "Rate ÷ eligible call attempts", pct2(h.eligible_rate))}${stat("busiest", "Busiest day", peak ? `${dayLabel(peak.day)} · ${peak.n}` : "—")}${stat("none", "Days with none", counted.length ? num(counted.filter((d) => d.n === 0).length) : "—")}</dl>`;
+  const stats = `${cards}<dl class="stats">${stat("eligible", "Eligible call attempts", num(h.eligible_calls))}${stat("legacy-rate", "Rate ÷ Bash calls (legacy)", pct(h.rate))}${stat("bash", "Bash calls", num(h.calls))}${stat("recovery", "Recovery", `${pct(h.recovery_rate)} (${num(h.recovered)} of ${num(h.known)} known)`)}</dl>`;
   const eligible = h.eligible_by_tool && typeof h.eligible_by_tool === "object" ? h.eligible_by_tool : null, byTool = h.by_tool && typeof h.by_tool === "object" ? h.by_tool : {};
   const wiredName = (tool) => (/^(?:Skill|Agent):/.test(tool) ? tool.slice(0, tool.indexOf(":")) : tool);
   const toolNote = (tool) => (tool === UNKNOWN_TOOL ? "tool not recorded (legacy)" : eligible ? (Object.hasOwn(eligible, wiredName(tool)) ? "a tool this guard is wired to check" : "not a tool this guard is wired to check") : "");
   const toolRows = [...new Set([...Object.keys(byTool), ...(eligible ? Object.keys(eligible) : [])])].sort((a, b) => (byTool[b] || 0) - (byTool[a] || 0) || (a < b ? -1 : 1))
-    .map((tool) => `<tr data-guard-tool="${esc(tool)}">${td(esc(tool))}${td(num(byTool[tool] || 0))}${td(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
-  const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
+    .map((tool) => `<tr data-guard-tool="${esc(tool)}">${tdWrap(esc(tool))}${td(num(byTool[tool] || 0))}${tdWrap(esc(toolNote(tool)))}${td(eligible && Object.hasOwn(eligible, tool) ? num(eligible[tool]) : "—")}</tr>`);
+  const split = box("guard-tools", "Refused by tool", "Which tool was refused? Calls are the eligible call attempts to that tool in the window; a refusal recorded before tools were named sits in the legacy bucket.", `${table(["Tool", "Refused", "Note", "Eligible call attempts"], toolRows, "No refusal recorded for this guard", "thtab")}${isNum(h.unattributed) && h.unattributed > 0 ? `<p class="sub">${h.unattributed} refusals name no tool row.</p>` : ""}`);
   return `<section class="box">${back(ui)}<h2>Guard drill-in: ${esc(h.class.replace(/^denied\//, ""))} <span class="tag">whole window</span></h2>${sub("On which days did this guard refuse calls, and which tool did it refuse, and why?")}${stats}</section>
 ${guardWhy(data, h, token)}
 ${split}
@@ -511,10 +532,10 @@ ${box("evidence", "Evidence", "Sessions where it refused, opened in AG-UI.", evi
 }
 
 // ---- station, map, hook wiring
-const sortable = (id, head, rows, ui) => {
+const sortable = (id, head, rows, ui, wrap = []) => {
   const s = (ui.sorts || {})[id];
   const sorted = isNum(s && s.col) ? [...rows].sort((a, b) => { const x = a[s.col][0], y = b[s.col][0]; const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y)); return s.desc ? -c : c; }) : rows;
-  return table(head.map((h, i) => `<button class="th-sort" data-act="th-sort" data-table="${id}" data-col="${i}" aria-label="Sort by ${esc(h)}">${esc(h)}${s && s.col === i ? (s.desc ? " ▾" : " ▴") : ""}</button>`), sorted.map((r) => `<tr>${r.map((c) => td(c[1])).join("")}</tr>`));
+  return table(head.map((h, i) => `<button class="th-sort" data-act="th-sort" data-table="${id}" data-col="${i}" aria-label="Sort by ${esc(h)}">${esc(h)}${s && s.col === i ? (s.desc ? " ▾" : " ▴") : ""}</button>`), sorted.map((r) => `<tr>${r.map((c, i) => (wrap.includes(i) ? tdWrap(c[1]) : td(c[1]))).join("")}</tr>`), "Nothing to show", "thtab");
 };
 const sv = (v) => [isNum(v) ? v : -1, num(v)];
 const st_ = (v) => [String(v ?? ""), esc(v ?? "—")];
@@ -527,7 +548,7 @@ function stationTab(data, inv, ui) {
   const wait = invState(inv);
   if (wait) return box("station", "Station inventory", "What this station has. AG-UI reads these files and commands, then fills the map.", wait, "First build");
   const found = (s) => (s.state === "ok" && s.found ? Object.entries(s.found).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ") : s.state);
-  const sources = (inv.sources || []).map((s) => [st_(s.id), st_(s.reads), [s.state, esc(found(s))], st_(s.reason || "")]);
+  const sources = (inv.sources || []).map((s) => [st_(SOURCE_NAME[s.id] || s.id), st_(s.reads), [s.state, esc(found(s))], st_(s.reason || "")]);
   const tools = data && data.tools || [];
   const servers = new Map((inv.tools || []).filter((t) => t.kind === "mcp").map((t) => [t.name, t]));
   for (const t of tools) if (/^mcp__/.test(t.tool)) { const s = t.tool.split("__")[1]; if (!servers.has(s)) servers.set(s, null); }
@@ -538,40 +559,74 @@ function stationTab(data, inv, ui) {
   const heads = new Map((data && data.bash && data.bash.commands || []).map((c) => [c.head, c.calls]));
   const clis = (inv.clis || []).map((c) => [st_(c.name), st_(c.path || "absent"), st_(c.version || "—"), sv(heads.has(c.name) ? heads.get(c.name) : data && data.bash && data.bash.recorded ? 0 : null)]);
   const count = (kind) => (inv.tools || []).filter((t) => t.kind === kind).length;
-  const tiles = `<div class="kpis">${[["Skills", count("skill")], ["Commands", count("cmd")], ["Subagents", count("agent")], ["Workflows", count("wf")], ["MCP servers", servers.size], ["Hooks", (inv.hooks || []).length], ["CLIs on PATH", (inv.clis || []).filter((c) => c.state === "ok").length]].map(([k, v]) => `<div class="kpi"><span class="k">${esc(k)}</span><b class="kv">${num(v)}</b></div>`).join("")}</div>`;
+  // mockup v9 tiles; a source that was not read shows — (a missing file is absent, never 0)
+  const srcNum = (id, k) => { const s = (inv.sources || []).find((x) => x.id === id); return s && s.state === "ok" && s.found && isNum(s.found[k]) ? s.found[k] : null; };
+  const hookSrc = (inv.sources || []).filter((s) => s.id.startsWith("hooks-") && s.state === "ok");
+  const wirings = hookSrc.length ? hookSrc.reduce((n, s) => n + (isNum(s.found && s.found.wirings) ? s.found.wirings : 0), 0) + (srcNum("plugin-items", "hook_wirings") || 0) : null;
+  const twice = hookSrc.length ? new Set((inv.hooks || []).filter((h) => h.runs_twice).map((h) => h.name)).size : null;
+  const on = srcNum("plugins", "on"), installed = srcNum("plugins", "installed"), cliList = inv.clis || [];
+  const tiles = `<div class="kpis">${[
+    ["plugins", "Plugins", on === null || installed === null ? "—" : `${on} / ${installed}`, "on / installed", ""],
+    ["skills", "Skills", num(count("skill")), "in the scan", ""],
+    ["mcp", "MCP servers", num(servers.size), "configured or called", ""],
+    ["wirings", "Hook wirings", num(wirings), wirings === null ? "not read" : `${new Set((inv.hooks || []).map((h) => h.name)).size} scripts`, ""],
+    ["twice", "Runs twice", num(twice), "wired in two places", twice > 0 ? " warn" : ""],
+    ["clis", "CLIs", `${cliList.filter((c) => c.state === "ok").length} / ${cliList.length}`, "on PATH", ""],
+  ].map(([id, k, v, s, w]) => `<div class="kpi${w}" data-tile="${id}"><span class="k">${esc(k)}</span><b class="kv">${esc(v)}</b><span class="ks">${esc(s)}</span></div>`).join("")}</div>`;
   const at = esc(inv.scanned_at ? stamp(Date.parse(inv.scanned_at)) : "—");
   const scan = `<div class="filters"><span>Scanned at ${at}</span>${inv.stale ? ` <span class="pill warn">Rescan failed (${esc(inv.stale)}); showing the scan from ${at}</span>` : ""}<button class="btn" data-act="th-rescan">Rescan</button></div>`;
   return `${box("station", "Station inventory", "What this station has. AG-UI reads these files and commands, then fills the map. A source it cannot find reads absent, never 0.", scan + tiles, "read-only scan")}
-${box("sources", "Where AG-UI reads each source", "Which file or command feeds each count? MCP servers are read as names only, never their arguments or environment.", sortable("sources", ["Source", "Reads at runtime", "Found", "Note"], sources, ui))}
-${box("mcp", "MCP servers", "Which servers exist, and which load in a chief session?", sortable("mcp", ["Server", "Configured in", "Loads in chief", "Tools", "Calls"], mcp, ui))}
-${box("clis", "Station CLIs", "Is every CLI the harness calls on PATH?", sortable("clis", ["CLI", "Path", "Version", "Bash calls"], clis, ui))}`;
+${box("sources", "Where AG-UI reads each source", "Which file or command feeds each count? MCP servers are read as names only, never their arguments or environment.", sortable("sources", ["Source", "Reads at runtime", "Found", "Note"], sources, ui, [1, 2, 3]))}
+${box("mcp", "MCP servers", "Which servers exist, and which load in a chief session?", sortable("mcp", ["Server", "Configured in", "Loads in chief", "Tools", "Calls"], mcp, ui, [1]))}
+${box("clis", "Station CLIs", "Is every CLI the harness calls on PATH?", sortable("clis", ["CLI", "Path", "Version", "Bash calls"], clis, ui, [1]))}`;
 }
+// The mockup's Tool map: every kind plus an All column, an All sources row, sortable headers, a loaded-never-used mark and one card per source on a phone.
+const outsideKind = (k) => k === "hook" || k === "cli";
 function mapTab(data, inv, ui) {
   const wait = invState(inv);
   const rows = [...catalogue(data, inv), ...hookRows(data, inv), ...cliRows(data, inv)];
-  const srcs = SRCS.filter((s) => rows.some((r) => r.src === s)), kinds = KINDS.filter((k) => rows.some((r) => r.kind === k));
-  const cell = (s, k) => {
-    const items = rows.filter((r) => r.src === s && r.kind === k);
+  const srcs = SRCS.filter((s) => rows.some((r) => r.src === s));
+  const itemsOf = (s, k) => rows.filter((r) => (!s || r.src === s) && (k ? r.kind === k : !outsideKind(r.kind)));
+  const sort = (ui.sorts || {}).map;
+  const sortKey = (s) => (!sort || !isNum(sort.col) || sort.col === 0 ? SRC_LABEL[s] : itemsOf(s, sort.col === KINDS.length + 1 ? "" : KINDS[sort.col - 1]).length);
+  const ordered = isNum(sort && sort.col) ? [...srcs].sort((a, b) => { const x = sortKey(a), y = sortKey(b); const c = typeof x === "number" && typeof y === "number" ? x - y || SRC_LABEL[a].localeCompare(SRC_LABEL[b]) : String(x).localeCompare(String(y)); return sort.desc ? -c : c; }) : srcs;
+  const heads = ["Source", ...KINDS.map((k) => KIND_LABEL[k]), "All"];
+  const head = heads.map((h, i) => `<span class="mh"><button class="th-sort" data-act="th-sort" data-table="map" data-col="${i}" aria-label="Sort sources by ${esc(h)}"${i === KINDS.indexOf("res") + 1 ? ` title="No scan source lists MCP resources, so this column stays empty."` : ""}>${esc(h)}${sort && sort.col === i ? (sort.desc ? " ▾" : " ▴") : ""}</button></span>`).join("");
+  const cell = (s, k, total) => {
+    const items = itemsOf(s, k);
     if (!items.length) return `<span class="mc none" aria-hidden="true"></span>`;
-    const outside = k === "hook" || k === "cli";
-    const calls = outside ? null : items.reduce((n, r) => (n === null || !isNum(toolCounts(r, data).calls) ? null : n + toolCounts(r, data).calls), 0);
-    const failed = outside ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : items.reduce((n, r) => n + (isNum(toolCounts(r, data).failures) ? toolCounts(r, data).failures : 0), 0);
+    const outside = outsideKind(k);
+    const counts = items.map((r) => toolCounts(r, data));
+    const calls = outside ? null : counts.reduce((n, c) => (n === null || !isNum(c.calls) ? null : n + c.calls), 0);
+    const failed = outside ? items.reduce((n, r) => n + (isNum(r.refused) ? r.refused : 0), 0) : counts.reduce((n, c) => n + (isNum(c.failures) ? c.failures : 0), 0);
     const rate = ratio(failed, calls);
     const tint = outside ? "" : !isNum(calls) || calls === 0 ? " zero" : failed === 0 ? " ok-t" : rate >= 0.1 ? " bad-t" : rate >= 0.05 ? " warn-t" : " ok-t";
     const runs = k === "hook" ? items.reduce((n, r) => (n === null || !isNum(r.runs) ? null : n + r.runs), 0) : null;
+    const unused = items.filter((r, i) => (r.kind === "hook" ? r.runs === 0 : !outsideKind(r.kind) && counts[i].calls === 0)).length;
     const line = k === "hook" ? `${num(runs)} runs ${items.every((r) => r.runsMeasured) ? "measured" : items.some((r) => r.runsMeasured) ? "measured and derived" : "derived"} · ${failed} refused` : k === "cli" ? "outside call total" : `${num(calls)} calls · ${failed} failed${isNum(calls) && calls > 0 && calls < 10 ? " · few calls" : ""}`;
-    return `<button class="mc${tint}${ui.src === s && ui.kind === k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${ui.src === s && ui.kind === k}"><b>${items.length} ${esc(KIND_LABEL[k])}</b><span>${esc(line)}</span></button>`;
+    const label = k ? `${items.length} ${KIND_LABEL[k]}` : `${items.length} ${items.length === 1 ? "tool" : "tools"}`;
+    const inner = `<b>${esc(label)}</b><span>${esc(line)}</span><span class="nu">${unused ? `○ ${unused}` : ""}</span>`;
+    if (total) return `<span class="mc total${tint}">${inner}</span>`;
+    const on = (ui.src || "") === s && (ui.kind || "") === k;
+    return `<button class="mc${tint}${on ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${k}" aria-pressed="${on}">${inner}</button>`;
   };
-  const grid = `<div class="thmap" data-cols="${kinds.length}"><span class="mh"></span>${kinds.map((k) => `<span class="mh">${esc(KIND_LABEL[k])}</span>`).join("")}${srcs.map((s) => `<span class="mr">${esc(SRC_LABEL[s])}</span>${kinds.map((k) => cell(s, k)).join("")}`).join("")}</div>`;
-  const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
+  const kindCols = [...KINDS, ""];
+  const body = ordered.map((s) => `<span class="mr"><button data-act="th-pick" data-src="${s}" data-kind="">${esc(SRC_LABEL[s])}</button></span>${kindCols.map((k) => cell(s, k)).join("")}`).join("");
+  const foot = `<span class="mr mall">All sources</span>${kindCols.map((k) => cell("", k, k === "")).join("")}`;
+  const grid = `<div class="thmap" data-cols="${kindCols.length}">${head}${body}${foot}</div>`;
+  const cards = `<div class="thcards">${ordered.map((s) => {
+    const all = rows.filter((r) => r.src === s).length;
+    return `<div class="thcard"><button class="mcard" data-act="th-pick" data-src="${s}" data-kind="">${esc(SRC_LABEL[s])}<span>${all} ${all === 1 ? "tool" : "tools"}</span></button><div class="mlgrid">${KINDS.map((k) => ({ k, n: rows.filter((r) => r.src === s && r.kind === k).length })).filter((x) => x.n).map((x) => `<button class="mln${(ui.src || "") === s && (ui.kind || "") === x.k ? " sel" : ""}" data-act="th-pick" data-src="${s}" data-kind="${x.k}" aria-pressed="${(ui.src || "") === s && (ui.kind || "") === x.k}"><b>${x.n}</b><span class="kl">${esc(KIND_LABEL[x.k])}</span></button>`).join("")}</div></div>`;
+  }).join("")}</div>`;
+  const legend = `<div class="legend"><span class="tag fail">≥10%</span><span class="tag warn">5–10%</span><span class="tag ok">under 5%</span><span class="tag">0 failed</span><span class="tag">few calls: under 10</span><span class="tag">○ loaded, never used</span><span class="tag">outside call total: hooks, CLIs</span></div>`;
   const picked = ui.src || ui.kind ? box("map-list", `Tools: ${[ui.src && SRC_LABEL[ui.src], ui.kind && KIND_LABEL[ui.kind]].filter(Boolean).join(" · ")}`, "The tiles you picked; each name opens its drill-in.", toolList(data, inv, ui, { withOutside: true })) : "";
-  return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are measured where the hook chain logged them; any other hook's runs are derived from matchers × matching calls.", `${wait}<p class="sub"><span class="tag">hook runs: measured or derived, as each tile says</span></p>${legend}${grid}`, "First build")}${picked}`;
+  return `${box("map", "Tool map", "Every kind and source at a glance; click a tile to filter the list below. Hook runs are measured where the hook chain logged them; any other hook's runs are derived from matchers × matching calls.", `${wait}<p class="sub"><span class="tag">hook runs: measured or derived, as each tile says</span></p>${legend}${grid}${cards}`, "First build")}${picked}`;
 }
 function hooksTab(data, inv, ui) {
   const wait = invState(inv);
   if (wait) return box("hooks", "Hook wiring", "Which hook is wired where, and which runs twice?", wait);
   const rows = hookRows(data, inv).map((r) => [[r.hook.name, `<a data-tool="${esc(r.key)}" href="${esc(r.guard ? toolHealthHref(ui, { guard: r.guard }) : toolHealthHref(ui, { tab: "map" }))}">${esc(r.hook.name)}</a>`], st_(r.source), [String(r.hook.wired.map((w) => w.join(":"))), esc((r.hook.wired || []).map(([e, m]) => `${e} · ${m}`).join(", ") || "—")], sv((r.hook.wired || []).length), [r.hook.runs_twice ? 1 : 0, r.hook.runs_twice ? '<span class="tag warn">×2 runs twice</span>' : "no"], [isNum(r.runs) ? r.runs : -1, `${num(r.runs)} <span class="dim">${r.runsMeasured ? "measured" : "derived"}</span>`], sv(r.refused)]);
-  return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui), "First build");
+  return box("hooks", "Hook wiring", `Which hook is wired where, and which runs twice? Runs are measured where the hook chain logged them, otherwise derived from matchers × matching calls.${hookRows(data, inv).some((r) => r.runsMeasured) ? ` ${RUNS_SCOPE}` : ""}`, sortable("hooks", ["Hook", "Source", "Wired on", "Wirings", "Runs twice", "Runs", "Refused"], rows, ui, [0, 2]), "First build");
 }
 
 // ---- reviewers (moved from Health): the weekly review page as written, never re-graded here.

@@ -702,6 +702,12 @@ if { [ "$GRAPHIFY_OUT_NAME" != "graphify-out" ] || [ "$OUT_OF_CORPUS" -eq 1 ]; }
 fi
 REPORT="$OUT_DIR/GRAPH_REPORT.md"
 
+# A test on the station never rewrites a real graph or publishes into a real maps dir; only exit 77 refuses.
+_door_rc=0
+# The guard's own tools (realpath, getent) are found even when a caller scrubbed PATH to hide python3 or graphify.
+PATH="$PATH:/usr/local/bin:/usr/bin:/bin" bash "$REPO_ROOT/scripts/lib/test-run-guard" check refresh-graph-map "$OUT_DIR" ${MAPS_DIR:+"$MAPS_DIR"} || _door_rc=$?
+[ "$_door_rc" -ne 77 ] || exit 77
+
 # Exclusive per-out-dir promote lock. Two overlapping refreshes
 # of the SAME out dir (a scheduler firing twice, an operator re-running
 # while a prior run is still in flight, ...) would otherwise have no
@@ -1118,6 +1124,7 @@ _scratch_cleanup() {
       echo "refresh-graph-map: WARN promote did not complete AND quarantining $SCRATCH/$GRAPHIFY_OUT_NAME to $qdir failed -- the extracted artifact may be lost on cleanup" >&2
     fi
   fi
+  [ -z "${_PRE_SCRATCH:-}" ] || rm -rf "$_PRE_SCRATCH" 2>/dev/null || true
   rm -rf "$SCRATCH" 2>/dev/null || true
 }
 
@@ -2328,6 +2335,14 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   _STOP_FILE="$SCRATCH/.graphify-extract-stop"
   _FAILED_FILE="$SCRATCH/.graphify-extract-failed"
   _CKPT_FILE="$SCRATCH/.graphify-extract-ckpt-failed"
+  # The chunk cap spans the recent-notes pre-pass and the full run.
+  # _CAP_LEFT is what the monitor enforces for the pass in flight; _PRE_DONE is
+  # what the pre-pass already spent; _DONE_FILE carries a pass's finished count.
+  _DONE_FILE="$SCRATCH/.graphify-extract-done"
+  _CAP_LEFT="$GRAPHIFY_MAX_CHUNKS_PER_RUN"
+  _PRE_DONE=0
+  _PRE_CKPT_FAILED=0
+  _PRE_SCRATCH=""
   # Seconds graphify gets to exit after the TERM that stops it at the cap or on
   # hollow retries before it is SIGKILLed (timeout -k does not cover a TERM we send).
   _STOP_KILL_GRACE="${GRAPHIFY_STOP_KILL_GRACE_SECONDS:-30}"
@@ -2359,8 +2374,9 @@ for p in sys.stdin.buffer.read().split(b"\0"):
           if [ "$pending_g" -gt 0 ]; then pending_g=$((pending_g - 1)); else giveup_n=0; fi
           k="${line#'[graphify extract] chunk '}"; n="${k#*/}"; k="${k%%/*}"; n="${n%% *}"
           case "$k$n" in ''|*[!0-9]*) continue ;; esac
-          if [ "$GRAPHIFY_MAX_CHUNKS_PER_RUN" -gt 0 ] && [ "$done_n" -ge "$GRAPHIFY_MAX_CHUNKS_PER_RUN" ] && [ "$done_n" -lt "$n" ]; then
-            printf 'cap %s\n' "$done_n" > "$_STOP_FILE"
+          printf '%s\n' "$done_n" > "$_DONE_FILE"
+          if [ "$_CAP_LEFT" -gt 0 ] && [ "$done_n" -ge "$_CAP_LEFT" ] && [ "$done_n" -lt "$n" ]; then
+            printf 'cap %s\n' "$((done_n + _PRE_DONE))" > "$_STOP_FILE"
             kill -TERM "$gpid" 2>/dev/null || true
           fi ;;
         '[graphify] chunk of '*' still hollow after '*' giving up on this chunk'*)
@@ -2384,7 +2400,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # the TERM); a leaked grandchild holding the pipe open cannot hang the run.
   _run_extract() {
     local rem fifo="$SCRATCH/.graphify-extract.fifo" gpid mpid rc=0 i stop_at="" killed=0
-    rm -f "$fifo" "$_STOP_FILE" "$_FAILED_FILE" "$_CKPT_FILE"
+    rm -f "$fifo" "$_STOP_FILE" "$_FAILED_FILE" "$_CKPT_FILE" "$_DONE_FILE"
     rem="$(_deadline_left)"
     if [ "$rem" != unbounded ] && [ "$rem" -eq 0 ]; then
       echo "refresh-graph-map: run deadline ${GRAPHIFY_RUN_DEADLINE_SECONDS}s exhausted before this stage" >&2
@@ -2453,8 +2469,71 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # what keeps the cadence's draw acceptable; operators who want zero bank draw
   # use an API backend instead. The real control for what those nested
   # calls can reach is the reroute-selector clearing above + the egress fence.
+  # Recent-notes pre-pass. graphify packs chunks in sorted
+  # directory order, so under a cap a note changed this week waits behind the
+  # whole unseeded backlog. Before the full run, extract a SECOND scratch corpus
+  # of just the notes modified in the last _RECENT_DAYS days (file mtime, never
+  # content), seeded with the same cache so a cached note is a hit and costs no
+  # chunk, then merge its cache into the main scratch. The cache key is the note
+  # body plus its corpus-relative path, so an entry made under one scratch root
+  # is a hit under the other (checked against graphify's file_hash on two roots)
+  # as long as the relative layout is kept, which the tar copy does. The pre-pass
+  # chunks are counted against the one cap: the full run gets what is left, and a
+  # stop (cap, hollow, deadline) in the pre-pass skips the full run and is
+  # reported by the handlers below exactly as a full-run stop.
+  # ponytail: mtime only, so a git corpus whose checkout reset every mtime has
+  # no recent subset and keeps the sorted order (the pre-pass is skipped when
+  # every note is recent); upgrade is `git log --since` for tracked corpora.
+  # Uncapped runs (cap 0) skip it. A pre-pass that spends the whole cap stops
+  # the run at exit 4 even when the full run had nothing left; the next run
+  # then completes it.
+  _RECENT_DAYS=7
+  _SKIP_MAIN=0
+  _prepass_recent() {
+    local pre="" n total
+    [ "$GRAPHIFY_MAX_CHUNKS_PER_RUN" -gt 0 ] || return 0
+    n="$( cd "$SCRATCH" && find . -type f -name '*.md' -mtime "-$_RECENT_DAYS" -not -path "./$GRAPHIFY_OUT_NAME/*" | wc -l )"
+    total="$( cd "$SCRATCH" && find . -type f -name '*.md' -not -path "./$GRAPHIFY_OUT_NAME/*" | wc -l )"
+    n="${n//[[:space:]]/}"; total="${total//[[:space:]]/}"
+    # No recent subset, or every note is recent: the pre-pass would only repeat the full run.
+    [ "$n" -gt 0 ] && [ "$n" -lt "$total" ] || return 0
+    # prim-ok: a sibling of the scratch, not named graphify-refresh-<name>-* so leftover scans and --promote-only never mistake it for a run workdir.
+    pre="$(mktemp -d "$SCRATCH_PARENT/graphify-recent-$NAME-XXXXXX")" || { echo "refresh-graph-map: WARN cannot create the recent-notes scratch -- skipping the pre-pass" >&2; return 0; }
+    _PRE_SCRATCH="$pre"
+    ( cd "$SCRATCH" && find . -type f -name '*.md' -mtime "-$_RECENT_DAYS" -not -path "./$GRAPHIFY_OUT_NAME/*" -print0 \
+        | tar --null -T - -cf - ) | ( cd "$pre" && tar -xf - ) \
+      || { echo "refresh-graph-map: WARN could not copy the recent notes -- skipping the pre-pass" >&2; return 0; }
+    if [ -d "$SCRATCH_OUT" ]; then
+      cp -R "$SCRATCH_OUT" "$pre/$GRAPHIFY_OUT_NAME" \
+        || { echo "refresh-graph-map: graphify cache seed failed" >&2; exit 1; }
+    fi
+    cp "$SCRATCH/.graphify-corpus" "$SCRATCH/.graphify-source-root" "$pre/" \
+      || { echo "refresh-graph-map: could not record the corpus markers in the recent-notes scratch" >&2; exit 1; }
+    echo "refresh-graph-map: pre-pass: ${n//[[:space:]]/} notes modified in the last $_RECENT_DAYS days, extracted first (uncached ones only) within the chunk cap ($pre)" >&2
+    _rc=0
+    _run_extract "$GRAPHIFY_MAP" "$pre" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+    [ ! -s "$_DONE_FILE" ] || _PRE_DONE="$(cat "$_DONE_FILE")"
+    # The full run deletes $_CKPT_FILE, so keep a pre-pass checkpoint failure.
+    [ ! -s "$_CKPT_FILE" ] || _PRE_CKPT_FAILED=1
+    if [ -d "$pre/$GRAPHIFY_OUT_NAME/cache" ]; then
+      { mkdir -p "$SCRATCH_OUT/cache" && cp -R "$pre/$GRAPHIFY_OUT_NAME/cache/." "$SCRATCH_OUT/cache/"; } \
+        || { echo "refresh-graph-map: could not merge the pre-pass cache" >&2; exit 2; }
+    fi
+    rm -rf "$pre"; _PRE_SCRATCH=""
+    # A stop or a deadline hit: the handlers below report it, no full run.
+    if [ -s "$_FAILED_FILE" ] || [ -s "$_STOP_FILE" ] || [ "$_rc" -eq 124 ] || [ "$_rc" -eq 137 ]; then _SKIP_MAIN=1; return 0; fi
+    [ "$_rc" -eq 0 ] || echo "refresh-graph-map: WARN the recent-notes pre-pass failed (rc $_rc) -- continuing with the full run" >&2
+    _CAP_LEFT=$((GRAPHIFY_MAX_CHUNKS_PER_RUN - _PRE_DONE))
+    if [ "$_CAP_LEFT" -le 0 ]; then
+      printf 'cap %s\n' "$_PRE_DONE" > "$_STOP_FILE"; _SKIP_MAIN=1
+    fi
+    _rc=0
+  }
   _rc=0
-  _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+  _prepass_recent
+  if [ "$_SKIP_MAIN" -eq 0 ]; then
+    _run_extract "$GRAPHIFY_MAP" "$SCRATCH" --update --backend "$BACKEND" --max-concurrency "$GRAPHIFY_MAX_CONCURRENCY" --api-timeout "$GRAPHIFY_API_TIMEOUT" || _rc=$?
+  fi
   if [ -s "$_FAILED_FILE" ]; then
     echo "refresh-graph-map: hollow chunks failed after bounded retries -- finished chunks cached, graphify-out left unpromoted (exit 5)" >&2
     _keep_finished_chunks "$(cat "$_FAILED_FILE")"
@@ -2466,7 +2545,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     cap*)
       echo "refresh-graph-map: chunk cap ${_stop#cap } reached -- graphify-out left unpromoted, resumable (exit 4)" >&2
       _keep_finished_chunks
-      if [ "$_KEEP_FAILED" -eq 1 ] || [ -s "$_CKPT_FILE" ]; then
+      if [ "$_KEEP_FAILED" -eq 1 ] || [ -s "$_CKPT_FILE" ] || [ "$_PRE_CKPT_FAILED" -eq 1 ]; then
         echo "refresh-graph-map: the chunk cap stop is NOT resumable (finished chunks were not all kept: cache copy or graphify checkpoint failed) -- failing (exit 2)" >&2
         exit 2
       fi

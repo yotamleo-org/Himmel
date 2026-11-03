@@ -58,7 +58,7 @@ export function registerTransition(program: Command): void {
           if (version && ruledOut) {
             unstamped = `${version} is frozen and the latest ledger row for ${key} is a ${latest?.kind}`;
           } else if (version) {
-            await setFixVersion(key, 'add', version);
+            await setFixVersion(key, 'add', version, 'transition-stamp');
             console.log(`${key} fixVersion +${version} (earliest unreleased; --no-version opts out)`);
           }
         }

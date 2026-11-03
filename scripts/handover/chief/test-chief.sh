@@ -43,6 +43,11 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/chief-test.XXXXXX")" || { echo "test-chief: mk
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
 
+# Root/slug fallback cases must not read the operator's config, and a worker's
+# launch repo must not contaminate the --arm fixture. Release discovery is fixture-only.
+export HIMMEL_CONFIG_DIR="$tmp/config" HIMMEL_RELEASE_STATE_DIR="$tmp/releases"
+unset HEADED_ARM_REPO
+
 # chief.sh records the launch context of the chief it prints a
 # launch line for, under ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs.
 # Pin that dir under $tmp for the WHOLE suite so no case can leave a fixture row
@@ -186,6 +191,35 @@ HANDOVER_DIR="$root" bash "$QL" release "$docA" "$token1" >/dev/null 2>&1
 rc_freed=0
 HANDOVER_DIR="$root" bash "$QL" status "$docA" >/dev/null 2>&1 || rc_freed=$?
 check "3 lock freed after release" "$rc_freed" "0"
+
+# --- 3b: `chief new` acquires FOR the chief it launches, from inside the
+# invoking session. That session's self-heartbeat must not keep the launched
+# chief's lock fresh (it would blind the sweep's idle detection), so the lock
+# stays STALE once its own heartbeat ages out. A worker's own acquire is
+# unchanged (test-queue-lock.sh T90).
+xdg3b="$tmp/xdg3b"; mkdir -p "$xdg3b"; chmod 700 "$xdg3b"
+docOB="$root/tester/onbehalf/DEMO-nextleg-${today}A-chief.md"
+outOB="$(XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker chief new --bucket onbehalf 2>/dev/null)"
+tokenOB="$(token_of "$outOB")"
+ownerOB="$(grep -l -F "$docOB" "$root"/.locks/queue/*/owner.json 2>/dev/null | head -1)"
+if [ -n "$ownerOB" ]; then
+    sed -i.bak 's/"heartbeat":"[^"]*"/"heartbeat":"2020-01-01T00:00:00Z"/' "$ownerOB" && rm -f "$ownerOB.bak"
+fi
+rc_hbOB=0
+printf '{"session_id":"scope-invoker"}' | XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" self-heartbeat >/dev/null 2>&1 || rc_hbOB=$?
+check "3b the invoker's self-heartbeat command itself succeeds" "$rc_hbOB" "0"
+check "3b the invoker's self-heartbeat leaves a chief-launched lock's heartbeat untouched" "$(grep -c '"heartbeat":"2020-01-01T00:00:00Z"' "$ownerOB" 2>/dev/null)" "1"
+rc_idle=0
+HANDOVER_DIR="$root" bash "$QL" status "$docOB" >/dev/null 2>&1 || rc_idle=$?
+check "3b a chief-launched lock goes STALE (rc 12), so the sweep shows it idle" "$rc_idle" "12"
+# control: once the invoker ADOPTS the lock, the same self-heartbeat DOES refresh
+# it, so the untouched result above is the missing registration, not a no-op hook.
+rc_adoptOB=0
+HANDOVER_DIR="$root" XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" adopt "$docOB" "$tokenOB" >/dev/null 2>&1 || rc_adoptOB=$?
+check "3b control: adopt registers the lock and exits 0" "$rc_adoptOB" "0"
+printf '{"session_id":"scope-invoker"}' | XDG_RUNTIME_DIR="$xdg3b" QUEUE_LOCK_SESSION_SCOPE=scope-invoker bash "$QL" self-heartbeat >/dev/null 2>&1
+check "3b control: an adopted chief-launched lock IS refreshed by the invoker's self-heartbeat" "$(grep -c '"heartbeat":"2020-01-01T00:00:00Z"' "$ownerOB" 2>/dev/null)" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$docOB" "$tokenOB" >/dev/null 2>&1
 
 sumA_before="$(cksum < "$docA")"
 t4_start=$SECONDS
@@ -469,7 +503,8 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc7A" "$token7a" >/dev/null 2>&1
 BANNED='overlord|yotamleo|luna|cachyos' # leak-pattern-allow
 leak_free() {
     local matches
-    matches="$(grep -niE "$BANNED" "$1" 2>/dev/null | grep -vc 'leak-pattern-allow')"
+    # the exact collection flag "-c luna" (after the line start or a space, before a space or the line end) is a search command, not a leak # leak-pattern-allow
+    matches="$(sed -E 's/(^| )-c luna( |$)/\1\2/g' "$1" 2>/dev/null | grep -niE "$BANNED" | grep -vc 'leak-pattern-allow')"
     [ "$matches" = "0" ] && echo yes || echo no
 }
 # The temp-root scan is narrowly exempted for the queue-lock RELEASE TOKEN
@@ -489,7 +524,7 @@ leak_free() {
 # every such line must carry a token this run actually saw `new` print — an
 # unrelated
 # leak, or a line that merely LOOKS token-shaped, still fails loudly.
-known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox")
+known_tokens=("$token1" "$token4" "$token6a" "$token6ba" "$token6da" "$token7a" "$tokenInbox" "$tokenOB")
 token_residual() {
     local token
     for token in "$@"; do
@@ -520,6 +555,21 @@ check "8 no leak in test-chief.sh" "$(leak_free "$HERE/test-chief.sh")" "yes"
 check "8 no leak in chief-template.md" "$(leak_free "$REPO_REAL/docs/handover/chief-template.md")" "yes"
 check "8 no leak in chief-handoff-template.md" "$(leak_free "$REPO_REAL/docs/handover/chief-handoff-template.md")" "yes"
 check "8 no leak in worker-brief-template.md" "$(leak_free "$REPO_REAL/docs/handover/worker-brief-template.md")" "yes"
+# The collection name in a search command (-c luna) is allowed; any other luna still trips the scan. # leak-pattern-allow
+leakf8="$(mktemp "${TMPDIR:-/tmp}/leakf8.XXXXXX")" || exit 1
+printf 'run qmd query -c luna "topic" now\n' > "$leakf8" # leak-pattern-allow
+check "8 control: the collection flag alone is not a leak" "$(leak_free "$leakf8")" "yes"
+printf 'run qmd query -c luna "topic" the luna vault\n' > "$leakf8" # leak-pattern-allow
+check "8 control: a bare luna on the same line as the flag still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'run qmd query station-c luna "topic"\n' > "$leakf8" # leak-pattern-allow
+check "8 control: a flag glued to a word before it still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'see /home/x/luna/handovers\n' > "$leakf8" # leak-pattern-allow
+check "8 control: a /luna/ path still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'run qmd query -c lunar "topic"\n' > "$leakf8" # leak-pattern-allow
+check "8 control: -c followed by a longer word starting luna still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+printf 'run qmd query -c luna/x "topic"\n' > "$leakf8" # leak-pattern-allow
+check "8 control: -c luna/x (a path) still fails" "$(leak_free "$leakf8")" "no" # leak-pattern-allow
+rm -f "$leakf8"
 check "8 no leak in running-a-chief.md" "$(leak_free "$REPO_REAL/docs/handover/running-a-chief.md")" "yes"
 check "8 no leak in .claude/commands/chief.md" "$(leak_free "$REPO_REAL/.claude/commands/chief.md")" "yes"
 
@@ -3326,5 +3376,164 @@ seed94 trim94e "$legs94" "$man94" 'EARLIER-HISTORY-94'
 hist94e="$root/tester/trim94edst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md"
 check "94e the earlier history survives next" "$(grep -c '^EARLIER-HISTORY-94$' "$hist94e" 2>/dev/null)" "1"
 check "94e next appends the trimmed Live state after it" "$(grep -cF 'C20:nonce-closed-20:lock-closed-20:20' "$hist94e" 2>/dev/null)" "1"
+
+# --- 94g: `next` refuses to seed `workers: none` while the fleet
+# manifest holds open workers with a held queue lock; it names each worker and the
+# live-state.sh command. Nothing is seeded and the predecessor doc is untouched.
+# Control rows: an empty or absent manifest, rows without a held lock, lockless
+# rows, a `<...>` placeholder and a line that already lists spans seed as before.
+# mk94g <bucket> <workers line> <none|empty|locked|unlocked|lockless>: a fresh chief doc
+# whose workers: line and fleet manifest are set, then `next` run; rc/stderr in rc94g/err94g.
+mk94g() {
+    local b="$1" workers="$2" kind="$3" tok A w1 w2 t1="" t2="" rows
+    tok="$(token_of "$(chief new --bucket "$b")")"
+    A="$root/tester/$b/DEMO-nextleg-${today}A-chief.md"
+    w1="$root/tester/$b/DEMO-g94-N1-worker.md"; w2="$root/tester/$b/DEMO-g94-N2-worker.md"
+    printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — fixture' | tee "$w1" > "$w2"
+    awk -v workers="$workers" '/^workers:/ { print workers; next } { print }' "$A" > "$A.new" && mv "$A.new" "$A"
+    rows="{\"label\":\"N1\",\"doc\":\"$w1\"},{\"label\":\"N2\",\"doc\":\"$w2\"}"
+    case "$kind" in
+        none) rm -f "${A%.md}.fleet.json" ;;
+        empty) printf '{"workers":[]}\n' > "${A%.md}.fleet.json" ;;
+        lockless) printf '{"workers":[{"label":"N1","doc":"%s","lockless":true},{"label":"N2","doc":"%s","lockless":true}]}\n' "$w1" "$w2" > "${A%.md}.fleet.json" ;;
+        *) printf '{"workers":[%s]}\n' "$rows" > "${A%.md}.fleet.json" ;;
+    esac
+    case "$kind" in locked|lockless)
+        t1="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$w1" 2>/dev/null)")"
+        t2="$(token_of "$(HANDOVER_DIR="$root" bash "$QL" acquire "$w2" 2>/dev/null)")" ;;
+    esac
+    sum94g="$(cksum < "$A")"
+    rc94g=0
+    err94g="$(chief next --bucket "${b}dst" --doc "$A" 2>&1 >/dev/null)" || rc94g=$?
+    sumafter94g="$(cksum < "$A")"
+    [ -z "$t1" ] || HANDOVER_DIR="$root" bash "$QL" release "$w1" "$t1" >/dev/null 2>&1
+    [ -z "$t2" ] || HANDOVER_DIR="$root" bash "$QL" release "$w2" "$t2" >/dev/null 2>&1
+    HANDOVER_DIR="$root" bash "$QL" release "$A" "$tok" >/dev/null 2>&1
+}
+# shellcheck disable=SC2016  # literal fixture text
+mk94g refuse94g 'workers: none' locked
+doc94gB="$root/tester/refuse94gdst/DEMO-nextleg-${today}B-chief.md"
+check "94g next refuses (non-zero) a workers: none line over two open locked workers" "$([ "$rc94g" -ne 0 ] && echo refused || echo "rc=$rc94g")" "refused"
+check "94g the refusal names worker N1 and its doc stem" "$(printf '%s\n' "$err94g" | grep -c 'N1.*DEMO-g94-N1-worker')" "1"
+check "94g the refusal names worker N2 and its doc stem" "$(printf '%s\n' "$err94g" | grep -c 'N2.*DEMO-g94-N2-worker')" "1"
+check "94g the refusal names the live-state.sh command with --nonce per worker" "$(printf '%s\n' "$err94g" | grep -cE 'live-state\.sh .*--nonce N1=<nonce> --nonce N2=<nonce>')" "1"
+check "94g no successor doc is seeded" "$([ -e "$doc94gB" ] && echo yes || echo no)" "no"
+check "94g no successor manifest is copied" "$([ -e "${doc94gB%.md}.fleet.json" ] && echo yes || echo no)" "no"
+check "94g the predecessor doc is untouched" "$sumafter94g" "$sum94g"
+check "94g no HANDOFF is written" "$([ -e "$root/tester/refuse94g/DEMO-nextleg-${today}A-chief-HANDOFF.md" ] && echo yes || echo no)" "no"
+
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gnone 'workers: none' none
+check "94g control: no manifest seeds as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gempty 'workers: none' empty
+check "94g control: an empty manifest seeds as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gunl 'workers: none' unlocked
+check "94g control: open rows holding no lock seed as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gll 'workers: none' lockless
+check "94g control: lockless rows seed as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gph 'workers: <none yet — filled by live-state.sh>' locked
+check "94g control: the <...> placeholder line seeds as today" "$rc94g" "0"
+# shellcheck disable=SC2016  # literal fixture text
+mk94g ctl94gpop 'workers: `N1:nonce-g1:lock-g1:11` `N2:nonce-g2:lock-g2:22`' locked
+check "94g control: a line that already lists spans seeds as today" "$rc94g" "0"
+# a partial entry (label only) is not a worker span: the open workers are still missing
+# shellcheck disable=SC2016  # literal fixture text
+mk94g refuse94gpart 'workers: `N1:`' locked
+check "94g next refuses a line whose only entry is a partial span" "$([ "$rc94g" -ne 0 ] && echo refused || echo "rc=$rc94g")" "refused"
+check "94g the partial-span refusal names worker N2" "$(printf '%s\n' "$err94g" | grep -c 'N2.*DEMO-g94-N2-worker')" "1"
+
+# --- 95: the HANDOFF's in-flight section: one pointer line per item from the
+# file names under specs/, capped, absent when empty, never a body, fail-open.
+hours_ago95() { date -d "$1 hours ago" '+%Y%m%d%H%M' 2>/dev/null || date -v-"$1"H '+%Y%m%d%H%M'; }  # gnu-ok: GNU date -d is paired with BSD date -v on this line
+item95() { # <bucket> <path under specs/> [hours old]
+    local f="$root/tester/$1/specs/$2"
+    mkdir -p "$(dirname "$f")"
+    printf '# MARKER95 heading\n\nMARKER95 body\n' > "$f"
+    [ -z "${3:-}" ] || touch -t "$(hours_ago95 "$3")" "$f"
+}
+next95() { chief next --bucket "${1}dst" --doc "$root/tester/$1/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1; }
+handoff95() { printf '%s' "$root/tester/$1/DEMO-nextleg-${today}A-chief-HANDOFF.md"; }
+heading95='^## Start, plan and design in flight$'
+stamp95='changed [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$'
+
+# 95a: two items give two pointer lines, each with its path and status, newest first.
+chief new --bucket inf95a >/dev/null
+item95 inf95a designs/DEMO-951-alpha-design.md 3
+item95 inf95a plan/2026-01-01-beta-plan.md
+next95 inf95a
+h95="$(handoff95 inf95a)"
+check "95a one section heading" "$(grep -c "$heading95" "$h95")" "1"
+check "95a two pointer lines" "$(grep -c '^- specs/' "$h95")" "2"
+check "95a a design line carries its path, kind and key" "$(grep -cE "^- specs/designs/DEMO-951-alpha-design\.md — design, DEMO-951, $stamp95" "$h95")" "1"
+check "95a a name with no key says so" "$(grep -cE "^- specs/plan/2026-01-01-beta-plan\.md — plan, no ticket key, $stamp95" "$h95")" "1"
+check "95a the newest item comes first" "$(grep -m 1 '^- specs/' "$h95" | grep -c 'beta-plan')" "1"
+check "95a no count line under the cap" "$(grep -c '^+[0-9]* more$' "$h95")" "0"
+check "95a the note tells the successor to open an item only when it acts" "$(grep -c 'open an item only when you act on it' "$h95")" "1"
+
+# 95b: an item past the cap is a count, not a line; the oldest is the one dropped.
+chief new --bucket inf95b >/dev/null
+item95 inf95b proposals/DEMO-952-oldest-grill.md 5
+item95 inf95b designs/DEMO-953-middle-design.md 3
+item95 inf95b plans/DEMO-954-newest-plan.md
+CHIEF_INFLIGHT_CAP=2 next95 inf95b
+h95="$(handoff95 inf95b)"
+check "95b two pointer lines at a cap of two" "$(grep -c '^- specs/' "$h95")" "2"
+check "95b the third item is one count line" "$(grep -c '^+1 more$' "$h95")" "1"
+check "95b the third item has no line of its own" "$(grep -c 'DEMO-952-oldest-grill' "$h95")" "0"
+
+# 95c: no items, no section: no specs at all, then only what is not an item.
+chief new --bucket inf95c >/dev/null
+next95 inf95c
+check "95c no specs directory writes no heading" "$(grep -c "$heading95" "$(handoff95 inf95c)")" "0"
+chief new --bucket inf95d >/dev/null
+item95 inf95d designs/DEMO-955-side.md.critic-plan-r1.md
+item95 inf95d designs/DEMO-955-side.estimate.json
+item95 inf95d plan/DEMO-956/nested.md
+item95 inf95d specs-other/DEMO-957-elsewhere.md
+item95 inf95d decisions/DEMO-958-ruling.md
+item95 inf95d designs/DEMO-959-stale.md
+touch -t 202001010000 "$root/tester/inf95d/specs/designs/DEMO-959-stale.md"
+next95 inf95d
+h95="$(handoff95 inf95d)"
+check "95c sidecars, nested files, other directories and stale items write no heading" "$(grep -c "$heading95" "$h95")" "0"
+check "95c and no pointer line" "$(grep -c '^- specs/' "$h95")" "0"
+check "95c and no count line" "$(grep -c '^+[0-9]* more$' "$h95")" "0"
+
+# 95d: an item's heading and body never reach the HANDOFF or the successor doc.
+h95="$(handoff95 inf95a)"
+check "95d the item is listed" "$(grep -c 'DEMO-951-alpha-design' "$h95")" "1"
+check "95d no item body or heading in the HANDOFF" "$(grep -c 'MARKER95' "$h95")" "0"
+check "95d no item body or heading in the successor doc" "$(grep -c 'MARKER95' "$root/tester/inf95adst/DEMO-nextleg-${today}B-chief.md")" "0"
+
+# 95e: an unreadable source writes nothing and never stops the hand-over.
+chief new --bucket inf95e >/dev/null
+printf 'not a directory\n' > "$root/tester/inf95e/specs"
+rc95=0; next95 inf95e || rc95=$?
+check "95e a source that cannot be read: next exits 0" "$rc95" "0"
+check "95e and writes no heading" "$(grep -c "$heading95" "$(handoff95 inf95e)")" "0"
+chief new --bucket inf95f >/dev/null
+item95 inf95f plans/DEMO-960-readable.md
+mkdir -p "$root/tester/inf95f/specs/designs"
+chmod 000 "$root/tester/inf95f/specs/designs"
+rc95=0; next95 inf95f || rc95=$?
+chmod 755 "$root/tester/inf95f/specs/designs"
+check "95e one unreadable directory: next exits 0" "$rc95" "0"
+check "95e and the readable directories are still listed" "$(grep -c 'DEMO-960-readable' "$(handoff95 inf95f)")" "1"
+
+# 95f: the pointer bytes count toward the budget. Same-length buckets; the budget is
+# the empty fixture's final size, so only the pointers tip the second one over.
+chief new --bucket inf95x >/dev/null
+chief new --bucket inf95y >/dev/null
+item95 inf95y designs/DEMO-961-budget.md
+next95 inf95x
+HANDOFF_BUDGET_BYTES="$(wc -c < "$(handoff95 inf95x)")" next95 inf95y
+h95="$(handoff95 inf95y)"
+check "95f the pointer bytes tip the note into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$h95")" "1"
+check "95f the pointer is still listed" "$(grep -c 'DEMO-961-budget' "$h95")" "1"
+check "95f the over-budget note names the pointer bytes" "$(grep -cE '^> HANDOFF over budget: .*in-flight pointers [0-9]+ bytes' "$h95")" "1"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

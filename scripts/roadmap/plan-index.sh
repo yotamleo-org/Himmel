@@ -61,6 +61,12 @@ fi
 qmd="${ROADMAP_QMD_BIN:-qmd}"
 command -v "$qmd" >/dev/null 2>&1 || { echo "plan-index: qmd not found ($qmd); not rebuilding" >&2; exit 1; }
 
+# A test on the station never rebuilds the real plan index, and a real out or qmd never takes a temp
+# plan, even from a detached launch that has lost its test ancestor.
+guard_rc=0
+bash "$HERE/../lib/test-run-guard" check --tool "$qmd" --temp-source "$plan" plan-index "$out" || guard_rc=$?
+[ "$guard_rc" != 77 ] || exit 77
+
 mkdir -p "$out"
 # one refresh at a time: generation, indexing and the key publish share docs.new and the qmd index
 # ponytail: a kill -9 leaves .lock behind (remove it by hand), a pid-aware stale-lock takeover when it bites

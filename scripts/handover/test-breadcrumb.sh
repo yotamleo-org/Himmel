@@ -275,6 +275,40 @@ else
     pass "no .tmp.* leftover after atomic write"
 fi
 
+# === a test never writes a real root =====================================
+# RREAL is a temp dir the guard is told to treat as the real handover root
+# (add-only seams), so a refused write lands nowhere real. The guard does not
+# run on Darwin.
+
+if [ "$(uname -s)" = Linux ]; then
+    echo "TEST 21: a test run is refused a write to a real root; a real session and a detached caller still write"
+    RREAL="$TMP_ROOT/real-root"; mkdir -p "$RREAL" "$TMP_ROOT/boundary"
+    STUB="$TMP_ROOT/boundary/claude"
+    printf '#!/bin/bash\n"$@"\n' > "$STUB"; chmod +x "$STUB"
+    GUARD_ENV=(HANDOVER_DIR="$RREAL" HIMMEL_REAL_STATE_EXTRA_ROOTS="$RREAL" HIMMEL_REAL_STATE_ASSUME_STATION=1)
+
+    rc=0; out=$(env "${GUARD_ENV[@]}" HIMMEL_TEST_FIXTURE=1 bash "$SCRIPT" write --ticket HIMMEL-8815 --cwd "$REPO" 2>&1) || rc=$?
+    case "$rc" in 77) pass "a test is refused the default real root (rc 77)";; *) fail "want rc=77, got $rc" "$out";; esac
+    assert_contains "refusal names the writer" "REFUSED breadcrumb" "$out"
+    if [ -e "$RREAL/breadcrumbs/HIMMEL-8815.json" ]; then fail "refused write still created the breadcrumb"; else pass "refused write created nothing"; fi
+
+    rc=0; out=$(env "${GUARD_ENV[@]}" HIMMEL_TEST_FIXTURE=1 bash "$SCRIPT" write --ticket HIMMEL-8815 --cwd "$REPO" --out "$RREAL/elsewhere/x.json" 2>&1) || rc=$?
+    case "$rc" in 77) pass "a test is refused --out under a real root (rc 77)";; *) fail "want rc=77, got $rc" "$out";; esac
+    if [ -e "$RREAL/elsewhere" ]; then fail "refused --out write created its directory"; else pass "refused --out write created nothing"; fi
+
+    rc=0; out=$(env -u HIMMEL_TEST_FIXTURE -u NODE_ENV "${GUARD_ENV[@]}" "$STUB" bash "$SCRIPT" write --ticket HIMMEL-8816 --cwd "$REPO" 2>&1) || rc=$?
+    case "$rc" in 0) pass "a real session (claude ancestor) still writes";; *) fail "want rc=0, got $rc" "$out";; esac
+    if [ -f "$RREAL/breadcrumbs/HIMMEL-8816.json" ]; then pass "the real session's breadcrumb exists"; else fail "the real session's breadcrumb is missing"; fi
+
+    if command -v setsid >/dev/null 2>&1; then
+        ( env -u HIMMEL_TEST_FIXTURE -u NODE_ENV "${GUARD_ENV[@]}" setsid bash "$SCRIPT" write --ticket HIMMEL-8817 --cwd "$REPO" >/dev/null 2>&1 & )
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -f "$RREAL/breadcrumbs/HIMMEL-8817.json" ] && break; sleep 0.2; done
+        if [ -f "$RREAL/breadcrumbs/HIMMEL-8817.json" ]; then pass "a detached caller (cron or tick shape, no test ancestor) still writes"; else fail "the detached caller's breadcrumb is missing"; fi
+    else
+        echo "  SKIP: setsid missing, detached-caller row not run"
+    fi
+fi
+
 # === usage ===============================================================
 
 echo "TEST 14: usage errors"

@@ -80,6 +80,40 @@ rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD wyoming/
 { [ "$rc" -eq 1 ] && grep -q 'UNWIRED wyoming/test-x.sh (suite)' <<<"$out"; } \
   && ok "W4 a workflow under .github/workflows/examples/ never runs" || no "W4 (rc=$rc): $out"
 
+echo "== R runner classification =="
+# shellcheck disable=SC2016 # literal runner source lines
+# mkrunnerrepo <dir> <header> — a runner whose case header is <header>, then a branch adding scripts/foo/test-y.sh
+mkrunnerrepo() {
+  local R="$1" hdr="$2"
+  mkdir -p "$R/scripts/testing" "$R/scripts/handover" "$R/scripts/ci"
+  cp "$CHECK" "$R/scripts/testing/check-added-unwired.sh"
+  cp "$HERE/../handover/suite-coverage.sh" "$R/scripts/handover/suite-coverage.sh"
+  {
+    echo 'SUITE_TIMEOUT=$(_suite_num SUITE_TIMEOUT "${SUITE_TIMEOUT:-600}" 600)'
+    echo '_suite_timeout_for() {'; echo '  case "${1#./}" in'
+    printf '%s\n' "$hdr"; echo "      printf '1' ;;"
+    echo '    *)'; echo "      printf '%s' \"\$SUITE_TIMEOUT\" ;;"; echo '  esac'; echo '}'
+    echo 'SKIP_LIST="'; echo 'scripts/zzz/test-z.sh  # x'; echo '"'
+    echo 'SUITE_TIER_DEFAULT="'; echo 'scripts/zzz/test-z.sh  extended  # x'; echo '"'
+  } > "$R/scripts/ci/run-shell-tests.sh"
+  git init -q -b main "$R" || exit 1
+  git -C "$R" config user.email t@t || exit 1
+  git -C "$R" config user.name t || exit 1
+  git -C "$R" add -A && git -C "$R" commit -q -m "chore: base" || exit 1
+  git -C "$R" checkout -q -b feat/x || exit 1
+  mkdir -p "$R/scripts/foo" && printf '#!/usr/bin/env bash\n' > "$R/scripts/foo/test-y.sh" || exit 1
+  git -C "$R" add -A && git -C "$R" commit -q -m "feat: add suite" || exit 1
+}
+R="$T/runner-ok"; mkrunnerrepo "$R" '    scripts/foo/test-y.sh)'
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/foo/test-y.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 0 ] && grep -qx 'ADDED-UNWIRED OK' <<<"$out"; } \
+  && ok "R1 a suite the runner classifies is wired" || no "R1 (rc=$rc): $out"
+
+R="$T/runner-bad"; mkrunnerrepo "$R" '    scripts/foo/test-y.sh)  # nightly only'
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/foo/test-y.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/foo/test-y.sh (suite)' <<<"$out" && grep -q 'rc=2: .*unrecognised line' <<<"$out"; } \
+  && ok "R2 a helper error that says 'nightly only' is not read as wired, and its line is shown" || no "R2 (rc=$rc): $out"
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
