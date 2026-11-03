@@ -11,6 +11,7 @@ DOC="$ROOT/scripts/himmel-doctor.sh"
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
+ago() { date -d "$1 days ago" +%Y%m%d%H%M 2>/dev/null || date -v-"$1"d +%Y%m%d%H%M; } # GNU, then BSD
 has() { case "$2" in *"$3"*) pass "$1" ;; *) fail "$1 (missing '$3' in: $2)" ;; esac; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/doctor-morning-report-test.XXXXXX")" || exit 1
@@ -29,7 +30,7 @@ doctor() { # [HANDOVER_DIR value]
 }
 
 echo "== newest report is 2026-10-14 (old mtime) -> WARN =="
-: > "$WORK/ho/morning-report-2026-10-14.md"; touch -d '2026-10-14 08:00' "$WORK/ho/morning-report-2026-10-14.md"
+: > "$WORK/ho/morning-report-2026-10-14.md"; touch -t 202610140800 "$WORK/ho/morning-report-2026-10-14.md"
 out="$(doctor)"
 has "stale report -> WARN row" "$out" "WARN C86-morning-report"
 has "names the newest report" "$out" "morning-report-2026-10-14.md"
@@ -51,7 +52,7 @@ has "never armed, no report -> INFO" "$out" "INFO C86-morning-report"
 
 echo "== root, no report, cadence armed long ago -> WARN =="
 printf '10 07 * * * /r # HIMMEL-MorningReport\n' > "$TAB"
-: > "$WORK/runner/morning-report-cadence.sh"; touch -d '3 days ago' "$WORK/runner/morning-report-cadence.sh"
+: > "$WORK/runner/morning-report-cadence.sh"; touch -t "$(ago 3)" "$WORK/runner/morning-report-cadence.sh"
 out="$(doctor)"
 has "armed 3 days ago, no report -> WARN" "$out" "WARN C86-morning-report"
 

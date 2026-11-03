@@ -45,8 +45,14 @@ task silently vanishes.
 | `upstream-watch` | `scripts/upstreams/upstream-watch-cadence.sh` | always | Daily scan of himmel's open upstream PRs and issues for a delta. No Claude session; Telegram-notified only when something changed |
 | `security-audit` | `scripts/security/security-audit-cadence.sh` | always | Weekly read-only diff of existing GitHub, Snyk, Arnica and CodeRabbit findings; optional sources skip. No new scan, paid call or LLM call. `arm --day 0-6 --time HH:MM` (default Monday 07:00). See [setup and sources](#weekly-security-findings-audit) |
 | `doctor` | `scripts/doctor-cadence.sh` | always | Daily `himmel-doctor` run from the primary checkout. A FAIL or a new WARN goes to Telegram and the statusline shows the counts. Report only, fixes nothing. Cron only (Linux, macOS) |
-| `morning-report` | `scripts/handover/morning-report-cadence.sh` | always | Daily at 07:10 local: writes `morning-report-<date>.md` into the handover root. No Claude session (0 tokens). The one cadence `himmel-update` arms itself, once (`arm --auto`); it never re-arms one you disarmed. `himmel-doctor` C86 warns when the newest report is over 36 h old |
 | `pull-cadence` | `scripts/luna-vitals/connectors/pull-cadence.sh` | `GOOGLE_HEALTH_REFRESH_TOKEN` is set | Daily Google Health connector pull to a review artifact. No Claude session. Setup: [luna/google-health-connector-setup.md](luna/google-health-connector-setup.md) |
+
+`morning-report` (`scripts/handover/morning-report-cadence.sh`) is not in the
+registry, so the install wizard does not offer it. It runs daily at 07:10 local
+and writes `morning-report-<date>.md` into the handover root, with no Claude
+session (0 tokens). `himmel-update` arms it once (`arm --auto`) and never
+re-arms one you disarmed. `himmel-doctor` C86 warns when the newest report is
+over 36 h old.
 
 ## Weekly security findings audit
 
