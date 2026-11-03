@@ -335,7 +335,7 @@ inline = os.path.join(tmp, "inline")
 os.makedirs(os.path.join(inline, "handovers"))
 subprocess.run(["git", "-C", inline, "init", "-q", "-b", "main"], check=True)
 top = os.path.realpath(inline)
-env = {"USER_SLUG": "zed", "HANDOVER_REGISTRY": os.path.join(tmp, "no-registry.json")}
+env = {"USER_SLUG": "zed", "HANDOVER_REGISTRY": os.path.join(tmp, "no-registry.json"), "HIMMEL_REPO": inline}
 eq("ledger dir: the inline handovers directory is the default root", j.ledger_dir(inline, env), os.path.join(top, "handovers", "zed", "inline", "bug-origin"))
 eq("ledger dir: a HANDOVER_DIR that is no directory beats the inline default", j.ledger_dir(inline, dict(env, HANDOVER_DIR=os.path.join(tmp, "nope"))), None)
 # the root as the shell tooling resolves it: env, then himmel.conf.local, himmel.conf, the primary checkout's .env, then inline
@@ -378,7 +378,22 @@ os.makedirs(os.path.join(stub, "deeper"))
 eq("ledger dir: a live HANDOVER_DIR inside the harness repo yields too", j.ledger_dir(inline, dict(senv, HANDOVER_DIR=os.path.join(stub, "deeper"))), want)
 eq("ledger dir: a live HANDOVER_DIR outside the harness repo is taken as is", j.ledger_dir(inline, dict(senv, HANDOVER_DIR=lroot)), os.path.join(lroot, "zed", "inline", "bug-origin"))
 eq("ledger dir: the stub with nothing configured is still the root", j.ledger_dir(inline, dict(env, HIMMEL_CONFIG_DIR=empty, HANDOVER_DIR=stub)), os.path.join(top, "handovers", "zed", "inline", "bug-origin"))
-eq("ledger dir: a scrubbed GIT_DIR does not decide whether the live root is in the harness", j.ledger_dir(inline, dict(senv, HANDOVER_DIR=stub, GIT_DIR=os.path.join(tmp, "elsewhere"))), want)
+# git_common_dir scrubs the process environment, so the caller's GIT_DIR is set there (not in the env dict ledger_dir is given)
+os.environ["GIT_DIR"] = os.path.join(tmp, "elsewhere")
+try:
+    got_gd = j.ledger_dir(inline, dict(senv, HANDOVER_DIR=stub))
+finally:
+    del os.environ["GIT_DIR"]
+eq("ledger dir: a scrubbed GIT_DIR does not decide whether the live root is in the harness", got_gd, want)
+# the live root is compared with the anchor (HIMMEL_REPO), not the repo the merge runs in: a merge from an adopted repo
+adopted = os.path.join(tmp, "adopted")
+os.makedirs(os.path.join(adopted, "handovers", "deeper"))
+subprocess.run(["git", "-C", adopted, "init", "-q", "-b", "main"], check=True)
+aenv = dict(senv, HIMMEL_REPO=inline)
+eq("ledger dir: from an adopted repo, a live root inside the anchor yields to the configured root", j.ledger_dir(adopted, dict(aenv, HANDOVER_DIR=stub)),
+   os.path.join(croot, "zed", "adopted", "bug-origin"))
+eq("ledger dir: from an adopted repo, a live root inside that repo but outside the anchor is taken as is", j.ledger_dir(adopted, dict(aenv, HANDOVER_DIR=os.path.join(adopted, "handovers"))),
+   os.path.join(adopted, "handovers", "zed", "adopted", "bug-origin"))
 # the station profile layer sits between himmel.conf.local and himmel.conf, as load-dotenv.sh orders it
 vault = os.path.join(tmp, "vault"); proot = os.path.join(tmp, "proot")
 os.makedirs(os.path.join(vault, "profiles")); os.makedirs(proot)

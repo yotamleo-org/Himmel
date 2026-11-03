@@ -239,17 +239,18 @@ def profile_conf(conf, env):
     return os.path.join(os.path.dirname(target), "profiles", name + ".conf")
 
 
-def handover_root(top, env):
-    """The handover root, as go_resolve_root finds it: the live HANDOVER_DIR unless it lies inside the harness repo (its
-    inline stub), else himmel.conf.local, the active station profile and himmel.conf in $HIMMEL_CONFIG_DIR (else ~/.himmel),
-    else the primary checkout's .env, else its own handovers/ directory."""
+def handover_root(top, env, anchor=None):
+    """The handover root, as go_resolve_root finds it: the live HANDOVER_DIR unless it lies inside the harness repo, the
+    anchor's (its inline stub), else himmel.conf.local, the active station profile and himmel.conf in $HIMMEL_CONFIG_DIR
+    (else ~/.himmel), else the anchor's .env, else `top`'s own handovers/ directory. `anchor` defaults to `top`."""
+    anchor = anchor or top
     live = env.get("HANDOVER_DIR")
     if live:
         common = git_common_dir(live)
-        if not common or common != git_common_dir(top):
+        if not common or common != git_common_dir(anchor):
             return live
     conf = env.get("HIMMEL_CONFIG_DIR") or os.path.join(env.get("HOME") or os.path.expanduser("~"), ".himmel")
-    files = [os.path.join(conf, "himmel.conf.local"), profile_conf(conf, env), os.path.join(conf, "himmel.conf"), os.path.join(top, ".env")]
+    files = [os.path.join(conf, "himmel.conf.local"), profile_conf(conf, env), os.path.join(conf, "himmel.conf"), os.path.join(anchor, ".env")]
     return next((v for v in (conf_value(f, "HANDOVER_DIR", unquote=False) for f in files if f) if v), os.path.join(top, "handovers"))
 
 
@@ -261,7 +262,9 @@ def ledger_dir(repo=".", env=None):
     (its user and bucket_name), else USER_SLUG and the checkout's own name, so no project name is hard-coded."""
     env = os.environ if env is None else env
     top = primary_checkout(repo)
-    root = handover_root(top, env)
+    # the anchor is the himmel checkout this script lives in (merge-on-green exports HIMMEL_REPO), which is not the repo
+    # the merge runs in when a project other than himmel is merged
+    root = handover_root(top, env, primary_checkout(env.get("HIMMEL_REPO") or os.path.dirname(os.path.abspath(__file__))))
     if not os.path.isdir(root):
         return None
     user = env.get("USER_SLUG") or env.get("USER") or "unknown"

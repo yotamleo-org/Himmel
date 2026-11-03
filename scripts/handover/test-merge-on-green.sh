@@ -263,7 +263,13 @@ mog_build_fixture() {
     cp "$SCRIPT_DIR/../lib/pr_remainder.py" "$tmp/scripts/lib/pr_remainder.py"
     # The bug-origin ingest runs from the anchor after a merge. The real tree is linked, not copied (it is large and
     # read-only here); the ledger root each row picks is its own temp HANDOVER_DIR.
-    ln -s "$SCRIPT_DIR/../eval" "$tmp/scripts/eval"
+    # MOG_BO_REPORT=none leaves no reporter at the anchor; MOG_BO_REPORT=hang plants one that never returns.
+    case "${MOG_BO_REPORT:-real}" in
+        none) ;;
+        hang) mkdir -p "$tmp/scripts/eval/bug-origin"
+              printf 'import time\ntime.sleep(40)\n' > "$tmp/scripts/eval/bug-origin/bug-origin-report.py" ;;
+        *) ln -s "$SCRIPT_DIR/../eval" "$tmp/scripts/eval" ;;
+    esac
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
@@ -498,6 +504,8 @@ case "$verb" in
                 # The bug-origin snapshot of the merged PR (one object, as `gh pr view` prints it): the body is the
                 # body STUB_PR_BODY serves, the merge time is fixed.
                 [ "${STUB_SNAPSHOT_FAIL:-0}" = "1" ] && { echo "gh: snapshot failed" >&2; exit 1; }
+                # A hung read: the process itself sleeps (exec), so the bound's kill ends it and no child holds the pipe.
+                [ "${STUB_SNAPSHOT_HANG:-0}" = "1" ] && exec sleep 40
                 jq -n --argjson n "${STUB_NUM:-77}" --arg t "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" \
                     --arg b "${STUB_PR_BODY-Remaining: the next slice}" --arg h "${STUB_SHA-abc123def456}" \
                     '{number: $n, title: $t, body: $b, mergedAt: "2026-11-03T09:00:00Z", headRefName: "feat/stub-head", headRefOid: $h, mergeCommit: {oid: $h}}' ;;
@@ -3026,6 +3034,44 @@ if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; th
         run_mog 0 "11z-h: a ledger root that is no directory never fails the merge"
     assert_audit_has "11z-h: audit records the refused ingest" "bug-origin=failed"
     rm -rf "$bo_bad"
+    # a hung snapshot read or a hung ingest is cut off at its bound: the merge exits 0, in time, and the audit says failed
+    mog_t0=$SECONDS
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=84 STUB_SNAPSHOT_HANG=1 MOG_BUG_ORIGIN_SECS=2 \
+        STUB_PR_BODY="$bo_line" run_mog 0 "11z-i: a hung snapshot read cannot hold the merge"
+    if [ $((SECONDS - mog_t0)) -lt 30 ]; then pass; else fail "11z-i: the merge waited $((SECONDS - mog_t0))s on a hung gh"; fi
+    assert_audit_has "11z-i: a timed-out snapshot reads as failed" "bug-origin=failed"
+    mog_t0=$SECONDS
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=85 MOG_BO_REPORT=hang MOG_BUG_ORIGIN_SECS=2 \
+        STUB_PR_BODY="$bo_line" run_mog 0 "11z-j: a hung ingest cannot hold the merge"
+    if [ $((SECONDS - mog_t0)) -lt 30 ]; then pass; else fail "11z-j: the merge waited $((SECONDS - mog_t0))s on a hung ingest"; fi
+    assert_audit_has "11z-j: a timed-out ingest reads as failed" "bug-origin=failed"
+    # no timeout binary: the ingest is not run (a symlink farm of the real PATH minus timeout and gtimeout)
+    mog_nt_farm=$(mktemp -d "${TMPDIR:-/tmp}/mog-nt.XXXXXX") || mog_nt_farm=""
+    if [ -z "$mog_nt_farm" ] || [ ! -d "$mog_nt_farm" ]; then
+        fail "11z-k: setup: no scratch dir for the no-timeout PATH"
+    else
+        IFS=: read -r -a mog_nt_path <<< "$PATH"
+        for mog_nt_d in "${mog_nt_path[@]}"; do
+            case "$mog_nt_d" in /*) [ -d "$mog_nt_d" ] && { ln -s "$mog_nt_d"/* "$mog_nt_farm"/ 2>/dev/null || true; } ;; esac
+        done
+        rm -f "$mog_nt_farm/timeout" "$mog_nt_farm/gtimeout"
+        HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" MOG_PATH_BASE="$mog_nt_farm" STUB_NUM=86 \
+            STUB_PR_BODY="$bo_line" run_mog 0 "11z-k: no timeout binary never fails the merge"
+        assert_audit_has "11z-k: audit records the missing timeout" "bug-origin=no-timeout"
+        if [ -z "$(bo_row 86)" ]; then pass; else fail "11z-k: a row was written with no timeout binary"; fi
+        rm -rf "$mog_nt_farm"
+    fi
+    # no reporter at the anchor: nothing runs
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" MOG_BO_REPORT=none STUB_NUM=87 STUB_PR_BODY="$bo_line" \
+        run_mog 0 "11z-l: a missing reporter never fails the merge"
+    assert_audit_has "11z-l: audit records the missing reporter" "bug-origin=no-report"
+    assert_gh_lacks "11z-l: no reporter, no snapshot" "mergedAt"
+    # a bug-origin line the reporter cannot read is no silent none: the audit says unparsed and a WARN names the PR
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=88 \
+        STUB_PR_BODY=$'bug-origin: #10 no-such-class \xe2\x80\x94 a reason\nRemaining: x' run_mog 0 "11z-m: a malformed bug-origin line never fails the merge"
+    assert_audit_has "11z-m: audit records the unparsed line" "bug-origin=unparsed"
+    case "$LAST_ERR" in *"WARN bug-origin"*"#88"*) pass ;; *) fail "11z-m: no WARN naming PR 88, got: $LAST_ERR" ;; esac
+    if [ -z "$(bo_row 88)" ]; then pass; else fail "11z-m: a malformed line got a row"; fi
 else
     echo "SKIP 11z: this host has neither timeout nor gtimeout, so the bounded ingest is not run"
 fi

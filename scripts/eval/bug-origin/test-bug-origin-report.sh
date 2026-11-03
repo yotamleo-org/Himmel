@@ -574,29 +574,30 @@ def eq(name, got, want):
 led = os.path.join(tmp, "led-wo")
 def ingest(tag):
     return r.cmd_ingest(argparse.Namespace(prs=os.path.join(tmp, "race-%s.json" % tag), seed=None, ledger_dir=led))
-ingest("a")
+eq("write-once: the first writer exits 0", ingest("a"), 0)
 first = open(os.path.join(led, "901.md"), "rb").read()
 os.path.exists = lambda p: False  # the second writer passed any look beforehand, as a racing one does
-ingest("b")
+eq("write-once: the racing writer exits 0", ingest("b"), 0)
 eq("write-once: a writer that passed the exists check leaves the first row byte for byte", open(os.path.join(led, "901.md"), "rb").read(), first)
 eq("write-once: the first row is the first writer's", b"first writer" in first, True)
 eq("write-once: no temp file is left behind", sorted(os.listdir(led)), ["901.md"])
-# a writer that died after linking its temp file leaves a second name for the row; a later process with the same pid must not
-# write through it
+# a writer that died after linking its temp file leaves a second name for the row; a later writer that draws the same temp
+# name must not write through it (the name is fixed here by a fixed random draw)
 led2 = os.path.join(tmp, "led-stale")
 os.makedirs(led2)
 led = led2
-ingest("a")
+eq("write-once: the first writer of the stale case exits 0", ingest("a"), 0)
 row2 = os.path.join(led2, "901.md")
 before = open(row2, "rb").read()
-os.link(row2, "%s.tmp-%d" % (row2, os.getpid()))
+r.os.urandom = lambda n: b"\x07" * n
+os.link(row2, "%s.tmp-%d-%s" % (row2, os.getpid(), "07" * 8))
 ingest("b")
-eq("write-once: a stale temp name of the same pid does not truncate the row", open(row2, "rb").read(), before)
+eq("write-once: a stale temp name of the same draw does not truncate the row", open(row2, "rb").read(), before)
 PY
 cat "$TMP/wo.out"
 PASS=$((PASS + $(grep -c '^PASS ' "$TMP/wo.out")))
 FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/wo.out")))
-eq "write-once: ran to its end" "$(grep -c '^PASS write-once' "$TMP/wo.out")" "4"
+eq "write-once: ran to its end" "$(grep -c '^PASS write-once' "$TMP/wo.out")" "7"
 LEDR="$TMP/led-race"; rm -rf "$LEDR"; mkdir -p "$LEDR"
 race_pids=()
 for i in 1 2 3 4 5 6; do
