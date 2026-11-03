@@ -733,6 +733,15 @@ lacks "R9 the legacy-file secret left .env" "UNREAD_SECRET=" "$(cat "$TMP/st/.en
 lacks "R9 nothing reached the keyring stub" "secret-tool store" "$(cat "$KSTUB_LOG")"
 has "R9 the backup is not scrubbed without a keyring" "READ_SECRET=CANARY-read-" "$(cat "$HOME"/.himmel/env-backups/env.* 2>/dev/null)"
 
+# R9b: no keyring and every secret has a reader: nothing moves, and the apply is still incomplete (exit 4).
+fixture_env
+grep -v -E '^(HANDOVER_DIR=|USER_SLUG=|CR_|HIMMEL_FLEET_CAP=|UNREAD_SECRET=|BITBUCKET_API_TOKEN=)' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
+cp "$TMP/st/.env" "$TMP/st.r9b"
+apply_tty y "HIMMEL_SECRETS_KEYRING=off "
+has "R9b nothing moves" "nothing to move" "$out"
+if [ "$rc" = 4 ]; then pass "R9b an apply that moves nothing with no backend exits 4"; else fail "R9b an apply that moves nothing with no backend exited $rc: $out"; fi
+if cmp -s "$TMP/st/.env" "$TMP/st.r9b"; then pass "R9b .env is untouched"; else fail "R9b .env changed"; fi
+
 # R10: a legacy secrets file is imported into the keyring and emptied of what it stored.
 fixture_env
 mkdir -p "$HOME/.config/secrets"

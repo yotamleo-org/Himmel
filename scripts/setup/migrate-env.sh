@@ -237,6 +237,7 @@ if [ "$incomplete" -eq 1 ]; then
 fi
 if [ "$moving" -eq 0 ]; then
     echo "nothing to move: every key stays in .env."
+    [ "$dry" -eq 1 ] || [ "$incomplete" -eq 0 ] || exit 4
     exit 0
 fi
 bdir="$confdir/env-backups"
