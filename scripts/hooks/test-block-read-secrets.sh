@@ -1523,6 +1523,56 @@ assert_rc "7956 nonreader input redirect still denies" 2 "$(run_case "$(j_bash '
 assert_rc "7956 nonreader then reader still denies" 2 "$(run_case "$(j_bash 'rtk proxy grep version *.md; cat .env')")"
 rm -rf "$mirror_dir"
 
+# A READER over a 10,000-name glob. Every match is an existing
+# file, and each one used to cost a path canonicalisation fork (about 1.4 ms),
+# so three mirror shapes ran past the 15 s member window. Synthetic names; the
+# queries are hook input, never executed. Each shape runs through the default
+# chain window and must finish with rc 0.
+m10k_dir=$(mktemp -d "${TMPDIR:-/tmp}/secrets-mirror10k.XXXXXX") || exit 1
+mkdir "$m10k_dir/HIMMEL" || exit 1
+m10k_i=0
+while [ "$m10k_i" -lt 10000 ]; do
+    : > "$m10k_dir/HIMMEL/HIMMEL-$m10k_i.md" || exit 1
+    m10k_i=$((m10k_i + 1))
+done
+m10k_run() { # $1 = command; prints the chain rc and elapsed ms
+    local in rc=0 s e
+    in=$(j_bash "$1")
+    s=$(now_ms)
+    (
+        unset RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS RUN_HOOK_CHAIN_BUDGET_MS \
+            RUN_HOOK_CHAIN_ENTRY_TIMEOUT_MS RUN_HOOK_CHAIN_ENTRY_SAFETY_MARGIN_MS
+        cd "$m10k_dir/HIMMEL" && printf '%s' "$in" | RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=15000 node "${HOOK%/*}/run-hook-with-bash.js" --chain "$HOOK"
+    ) >/dev/null 2>"$m10k_dir/chain.err" || rc=$?
+    e=$(now_ms)
+    echo "$rc $((e - s))"
+}
+m10k_cmds=(
+    "grep -lE '^fixVersions:.*\"v1\\.1\\.3\"' $m10k_dir/HIMMEL/HIMMEL-*.md | xargs grep -h sector"
+    "date; grep -lE '^fixVersions:.*\"v1\\.1\\.3\"' $m10k_dir/HIMMEL/HIMMEL-*.md | xargs grep -h status"
+    "grep -l version $m10k_dir/HIMMEL/*.md"
+)
+m10k_n=0
+for m10k_cmd in "${m10k_cmds[@]}"; do
+    m10k_n=$((m10k_n + 1))
+    read -r m10k_rc m10k_ms <<<"$(m10k_run "$m10k_cmd")"
+    echo "     8990 shape $m10k_n: rc=$m10k_rc elapsed=${m10k_ms}ms (member window 15000ms)"
+    assert_rc "8990 reader over a 10000-name mirror glob, shape $m10k_n, completes in the default chain window" 0 "$m10k_rc"
+done
+# Control: a secret name hidden among the 10,000 is still refused, by the
+# hook's own deny message (a timeout also exits 2, so the text is the proof).
+: > "$m10k_dir/HIMMEL/credentials.json" || exit 1
+for m10k_cmd in "cat $m10k_dir/HIMMEL/*" "grep -h sector $m10k_dir/HIMMEL/*"; do
+    m10k_err=$(printf '%s' "$(j_bash "$m10k_cmd")" | bash "$HOOK" 2>&1 >/dev/null)
+    m10k_rc=$?
+    assert_rc "8990 secret hidden in a 10000-name glob still denies ($m10k_cmd)" 2 "$m10k_rc"
+    case "$m10k_err" in
+        *"refusing Bash command that reads a secret file"*) echo "PASS 8990 deny names the secret read, not a timeout" ;;
+        *) echo "FAIL 8990 deny text missing: $m10k_err"; FAILED=$((FAILED + 1)) ;;
+    esac
+done
+rm -rf "$m10k_dir"
+
 # The configuration keys live in ~/.himmel/himmel.conf, which an agent may read; .env, which keeps the secrets, stays refused.
 assert_rc "3111 Read ~/.himmel/himmel.conf"      0 "$(run_case "$(j_read '/home/user/.himmel/himmel.conf')")"
 assert_rc "3111 Bash cat ~/.himmel/himmel.conf"  0 "$(run_case "$(j_bash 'cat ~/.himmel/himmel.conf')")"
