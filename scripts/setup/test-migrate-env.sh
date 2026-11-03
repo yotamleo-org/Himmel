@@ -850,6 +850,19 @@ has "R17 --help describes exit 4" "4 moved, but incomplete" "$out"
 has "R17 --help ends with the last header line" "96 a chokepoint seam differs" "$out"
 lacks "R17 --help stops before the code" "set -uo pipefail" "$out"
 
+# R18: a resolver whose `names` fails stops the run with nothing written; it is not an empty secret set.
+fixture_env
+cp -p "$TMP/st/.env" "$TMP/r18.env.orig"
+mv "$FX/scripts/lib/himmel-secrets" "$FX/scripts/lib/himmel-secrets.real"
+# shellcheck disable=SC2016 # the wrapper expands its own variables
+printf '#!/usr/bin/env bash\ncase "$1" in names) exit 1 ;; esac\nexec bash "${BASH_SOURCE[0]}.real" "$@"\n' > "$FX/scripts/lib/himmel-secrets"
+chmod +x "$FX/scripts/lib/himmel-secrets"
+apply_tty ""
+mv "$FX/scripts/lib/himmel-secrets.real" "$FX/scripts/lib/himmel-secrets"
+if [ "$rc" = 1 ]; then pass "R18 a failing names list stops the run (exit 1)"; else fail "R18 a failing names list exited $rc: $out"; fi
+has "R18 the run says it could not read the secret names" "cannot read the secret names" "$out"
+if cmp -s "$TMP/st/.env" "$TMP/r18.env.orig"; then pass "R18 .env is untouched"; else fail "R18 .env changed"; fi
+
 # Two migrations started together: one wins the import lock, nothing is stored twice, .env is whole.
 fixture_env
 grep -v -E '^(HANDOVER_DIR=|USER_SLUG=|CR_|HIMMEL_FLEET_CAP=)' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"

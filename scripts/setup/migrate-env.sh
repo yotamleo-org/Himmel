@@ -154,7 +154,11 @@ is_owned() {
 # The secret key set and the keyring state both come from the resolver, the one
 # owner of each (I4): no list of secrets lives here.
 hs="$ROOT/scripts/lib/himmel-secrets"
-secret_names=" $(bash "$hs" names --class secret 2>/dev/null | tr '\n' ' ')"
+if ! secret_names_out=$(bash "$hs" names --class secret 2>/dev/null); then
+    echo "migrate-env: cannot read the secret names from $hs; nothing migrated." >&2
+    exit 1
+fi
+secret_names=" $(printf '%s\n' "$secret_names_out" | tr '\n' ' ')"
 kstate=$(bash "$hs" status 2>/dev/null | sed -n 's/^keyring: //p')
 backend_ok=0
 [ "$kstate" != unlocked ] || backend_ok=1
