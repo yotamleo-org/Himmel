@@ -265,7 +265,7 @@ for key in $names; do
             elif case "$secret_names" in *" $key "*) false ;; *) true ;; esac; then
                 stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (not in the secrets manifest)"$'\n'
             elif blank_line "$key"; then
-                stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (blank in .env: nothing to move)"$'\n'
+                stay_secrets="$stay_secrets $key"; plan="$plan  $key  secret  stays (blank in .env: no value)"$'\n'
             elif [ "$backend_ok" -eq 1 ]; then
                 secret_keys[${#secret_keys[@]}]="$key"; plan="$plan  $key  secret  → keyring"$'\n'
             else
@@ -310,7 +310,7 @@ umask 077
 . "$ROOT/scripts/lib/prim.sh"
 work=$(tmpdir) || exit 1
 next="" names_owed=0
-trap '[ "$names_owed" -eq 0 ] || name_kept; rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"' EXIT
+trap 'rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"; [ "$names_owed" -eq 0 ] || name_kept' EXIT
 trap 'names_owed=0; exit 1' HUP INT TERM
 bdir="$confdir/env-backups"
 apply_cmd=$(printf 'bash %q --env %q -y' "$HERE/migrate-env.sh" "$envfile")

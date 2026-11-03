@@ -522,7 +522,7 @@ only a backup holds is safe either way: the scrub keeps that line and names the 
    `~/.himmel/config.json` `.policy`), `secret` (to the OS keyring), or
    `unrelated` (another tool's key: `stays (not himmel's, left in place)`). A
    secret named in `~/.himmel/env-keep.txt` reads `kept (env-keep)`, a blank
-   secret line reads `stays (blank in .env: nothing to move)`, and an `export
+   secret line reads `stays (blank in .env: no value)`, and an `export
    NAME=` line of a himmel key reads `stays (an export line: ...)`, because the
    readers do not read it. The set of secrets comes from
    `scripts/lib/himmel-secrets names --class secret`.
@@ -581,7 +581,9 @@ only a backup holds is safe either way: the scrub keeps that line and names the 
    These stay, on purpose. A commented-out secret and a fragment of a multi-line
    value stay in `.env` and the backups: neither has a key the readers read. An
    unquoted value with ` #` in it is cut there by the readers, at import too, so
-   quote it first. A kill between the two renames of a config-audit scrub leaves
+   quote it first. A backup line of that shape compares by the cut value:
+   `K=abc #def` with the item `abc` compares equal, and the line leaves the backup,
+   its tail too. A kill between the two renames of a config-audit scrub leaves
    that manifest's checksum stale until its next write. A kill of the whole run can
    leave its mode-700 temp directory behind; a killed run's `.env.migrate.<pid>`
    goes on the next apply.

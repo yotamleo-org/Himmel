@@ -842,6 +842,12 @@ has "R16 no keyring: the update step is incomplete, not up-to-date" "rc=0 status
 grep -v -E '^READ_SECRET=' "$FX/.env" > "$FX/.env.new" && mv "$FX/.env.new" "$FX/.env"
 out=$(bash "$TMP/update-step.sh" check 2>&1)
 has "R16 control: with a keyring a .env with nothing to move is up-to-date" "rc=0 status=up-to-date" "$out"
+fxput "$FX/.env" 'UNREAD_SECRET=\nBITBUCKET_API_TOKEN=%s\n' "$(canary token)"
+out=$(bash "$TMP/update-step.sh" check 2>&1)
+has "R16 a blank secret beside a movable one leaves the update pending" "rc=0 status=pending" "$out"
+fxput "$FX/.env" 'UNREAD_SECRET=\n'
+out=$(bash "$TMP/update-step.sh" check 2>&1)
+has "R16 control: a blank secret alone is up-to-date" "rc=0 status=up-to-date" "$out"
 
 # R17: --help prints the whole header, through the Exit block and its exit 4 line.
 help_rc=0
@@ -1109,6 +1115,20 @@ apply_tty y
 if [ "$rc" = 0 ]; then pass "N3 nothing to move exits 0"; else fail "N3 nothing to move exited $rc: $out"; fi
 has "N3 the run says nothing moves" "nothing to move: every key stays in .env" "$out"
 kept_named "N3" JIRA_API_TOKEN
+# N3b: a signal during the naming finds the temp dir gone, so the cleanup comes first. The stub signals the run on a read of the item once the plan's last line is out.
+fixture_env
+fxput "$TMP/st/.env" 'KEEP_ME=%s\n' "$(canary keep)"
+kitem JIRA_API_TOKEN "$(canary n3b)"
+only_bk
+mkdir -p "$TMP/sigbin" "$TMP/tmpd-n3b"
+# shellcheck disable=SC2016 # the stub expands these
+fxput "$TMP/sigbin/secret-tool" '#!/usr/bin/env bash\n[ "$1" != lookup ] || ! grep -q "nothing to move: every key" "%s" || kill -TERM "$(<"%s")"\nexec "%s" "$@"\n' "$TMP/n3b.out" "$TMP/sig.pid" "$(command -v secret-tool)"
+chmod +x "$TMP/sigbin/secret-tool"
+# shellcheck disable=SC2016 # the inner shell expands these
+PATH="$TMP/sigbin:$PATH" TMPDIR="$TMP/tmpd-n3b" bash -c 'echo $$ > "$1"; shift; exec bash "$@"' _ "$TMP/sig.pid" "$SCRIPT" --dry-run --env "$TMP/st/.env" > "$TMP/n3b.out" 2>&1
+rc=$?
+if [ "$rc" = 1 ]; then pass "N3b the signal reached the run during the naming"; else fail "N3b the run exited $rc, so no signal came during the naming"; fi
+if [ -z "$(ls -A "$TMP/tmpd-n3b")" ]; then pass "N3b a signal during the naming leaves no temp dir"; else fail "N3b a signal during the naming left: $(ls -A "$TMP/tmpd-n3b")"; fi
 # N4 to N6: the scrub-only path, as a dry run, refused without -y, and applied.
 n4v=$(canary n4)
 fixture_env
@@ -1276,9 +1296,9 @@ fixture_env
 fxput "$TMP/st/.env" 'UNREAD_SECRET=\nREAD_SECRET=   # note\nKEEP_ME=%s\n' "$(canary keep)"
 cp -p "$TMP/st/.env" "$TMP/st.orig"
 out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
-has "P3 the plan names a blank line" "  UNREAD_SECRET  secret  stays (blank in .env: nothing to move)" "$out"
-has "P3 the plan names a line the readers see as blank" "  READ_SECRET  secret  stays (blank in .env: nothing to move)" "$out"
-has "P3 nothing is pending" "nothing to move" "$out"
+has "P3 the plan names a blank line" "  UNREAD_SECRET  secret  stays (blank in .env: no value)" "$out"
+has "P3 the plan names a line the readers see as blank" "  READ_SECRET  secret  stays (blank in .env: no value)" "$out"
+has "P3 nothing is pending" "nothing to move: every key stays in .env." "$out"
 apply_tty y
 if [ "$rc" = 0 ] && cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "P3 the apply leaves the blank lines"; else fail "P3 exited $rc: $out"; fi
 # P4: an export line is a plan row: the readers do not read it, so it stays; a file of them is not an empty file.
