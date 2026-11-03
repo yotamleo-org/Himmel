@@ -137,6 +137,7 @@ for _s5b_item in '""' "''"; do
     printf 'FIRECRAWL_API_KEY=fake-real\n' >"$TMP/in-qe.env"
     out=$(cd "$REPO" && KBIN="$KBIN" PATH="$SVBIN:$PATH" "$HS" import-env "$TMP/in-qe.env" 2>&1)
     assert_eq "S5b a stored $_s5b_item item does not hold a real value" "1" "$(printf '%s' "$out" | grep -c '^stored FIRECRAWL_API_KEY$')"
+    # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
     assert_eq "S5b the real value replaced the $_s5b_item item" "1 1" "$(wc -l <"$KSTUB_STORE" | tr -d ' ') $(grep -cF 'fake-real' "$KSTUB_STORE")"
 done
 kreset
