@@ -88,6 +88,8 @@ EXCLUDE_GLOB=""
 REHEAL=false
 RECRYSTALLIZE=false
 RECRYS_LIMIT=0
+RECRYS_STOPPED=false   # a real recrystallize run found the crystallizer unavailable: later notes skip with no preflight
+BACKEND_WARNED=false   # the unknown-backend reason is printed once per run, not per note
 REFRESH=false
 RULES_FILE=""
 
@@ -727,7 +729,13 @@ _claude_available() { # [--no-preflight]
     if [ -n "${CRYSTALLIZE_BACKEND:-}" ]; then want="$CRYSTALLIZE_BACKEND"
     elif [ "${HIMMEL_API_LANE:-}" = "on" ]; then want=claude-api
     else want=claude-cli; fi
-    backend="$(llm_backend_resolve "$want")" || return 1
+    backend="$(llm_backend_resolve "$want")" || {
+        if [ "$BACKEND_WARNED" != "true" ]; then
+            BACKEND_WARNED=true
+            printf "backfill: CRYSTALLIZE_BACKEND='%s' is not accepted (claude-cli or claude-api); the crystallizer is skipped\n" "$want" >&2
+        fi
+        return 1
+    }
     case "$backend" in
         claude-api)
             [ "${HIMMEL_API_LANE:-}" = "on" ] || return 1
@@ -902,21 +910,29 @@ _recrystallize_one() { # <note>
         return 0
     fi
     local avail_arg=""
-    [ "$DRY_RUN" = "true" ] && avail_arg="--no-preflight"   # a dry run only counts: no preflight per note
+    if [ "$DRY_RUN" = "true" ]; then
+        avail_arg="--no-preflight"   # a dry run only counts: no preflight per note
+    else
+        # A real run tests --limit (the token-cost guard; remaining notes are recoverable
+        # on a later run) and a stopped run BEFORE the availability check, because each
+        # real preflight is a live usage fetch and a note past the limit must cost none.
+        if [ "$RECRYS_STOPPED" = "true" ] || { [ "$RECRYS_LIMIT" -gt 0 ] && [ "$CNT_RECRYS" -ge "$RECRYS_LIMIT" ]; }; then
+            CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))
+            return 0
+        fi
+    fi
     if ! _claude_available $avail_arg; then
         CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))   # recrystallize is LLM-only
+        if [ "$DRY_RUN" != "true" ]; then
+            RECRYS_STOPPED=true   # the bank or backend said no: do not ask again for every remaining note
+            printf 'recrystallize: stopped, the crystallizer is unavailable (bank preflight, backend or launcher); the remaining notes are left for a later run\n' >&2
+        fi
         return 0
     fi
     # Dry-run reports the FULL recoverable count (limit not applied) so the operator
     # can size --limit batches against the real token cost.
     if [ "$DRY_RUN" = "true" ]; then
         CNT_RECRYS=$((CNT_RECRYS + 1))
-        return 0
-    fi
-    # --limit caps real crystallizations (token-cost guard); remaining are skipped
-    # and recoverable on a later run (idempotent).
-    if [ "$RECRYS_LIMIT" -gt 0 ] && [ "$CNT_RECRYS" -ge "$RECRYS_LIMIT" ]; then
-        CNT_RECRYS_SKIP=$((CNT_RECRYS_SKIP + 1))
         return 0
     fi
     # Synchronous (not detached): batch op, one note at a time; crystallize-note.sh

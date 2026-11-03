@@ -219,6 +219,41 @@ cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_BACKEND=cli HIMMEL_API_LANE=on H
 if [ "$RC" = "0" ] && grep -q '^crystallized: true$' "$SB/vault/note.md" && ! grep -Eq '^(ANTHROPIC_|LQ_API_KEY|CLAUDE_CODE_USE_|HIMMEL_API_KIND=)' "$SB/fullenv.txt"; then pass "cli-alias: CRYSTALLIZE_BACKEND=cli with the lane on stays on the subscription"; else fail "cli-alias: alias or lane-on path wrong"; fi
 rm -rf "$SB"
 
+# (i-c) isolation: the session markers, the plugin/config toggles and the API-lane variables of the
+# calling session never reach the claude child (it reads untrusted transcripts and runs from inside
+# a session), the OAuth token does, and no MCP server is loaded.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CLAUDECODE=1 AI_AGENT=x CLAUDE_PID=4242 CLAUDE_EFFORT=high CLAUDE_JOB_DIR=/tmp/j \
+    CLAUDE_CODE_ENTRYPOINT=cli HIMMEL_API_KIND=bulk HIMMEL_API_TOOLS=Read CLAUDE_CODE_OAUTH_TOKEN=oauth-keep
+if [ "$RC" = "0" ] && [ -s "$SB/fullenv.txt" ] && ! grep -Eq '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|HIMMEL_API_[A-Z_]*)=' "$SB/fullenv.txt" && ! grep -Eq '^CLAUDE_CODE_(ENTRYPOINT|USE_)' "$SB/fullenv.txt"; then pass "cli-isolation: session markers, CLAUDE_CODE_* and HIMMEL_API_* never reach claude"; else fail "cli-isolation: a session variable reached claude (rc=$RC)"; fi
+if grep -qxF 'CLAUDE_CODE_OAUTH_TOKEN=oauth-keep' "$SB/fullenv.txt" 2>/dev/null; then pass "cli-isolation: CLAUDE_CODE_OAUTH_TOKEN is kept"; else fail "cli-isolation: the OAuth token was scrubbed"; fi
+if grep -qxF 'arg=--strict-mcp-config' "$SB/argv.txt" 2>/dev/null; then pass "cli-isolation: argv carries --strict-mcp-config"; else fail "cli-isolation: argv missing --strict-mcp-config"; fi
+rm -rf "$SB"
+
+# (i-c2) a non-default CLAUDE_CONFIG_DIR does not defer the subscription path: the run happens and
+# the variable passes through unchanged, so claude authenticates from that directory's login.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CLAUDE_CONFIG_DIR="$SB/other-config"
+if [ "$RC" = "0" ] && [ -s "$SB/marker.txt" ] && grep -qxF "CLAUDE_CONFIG_DIR=$SB/other-config" "$SB/fullenv.txt" 2>/dev/null; then pass "cli-config-dir: a non-default CLAUDE_CONFIG_DIR runs and reaches claude unchanged"; else fail "cli-config-dir: rc=$RC or the variable did not pass through"; fi
+rm -rf "$SB"
+
+# (i-d) the refusal branch: a pin that leaves an API-key variable behind refuses the launch, runs
+# claude never, leaves the note untouched, says why on stderr and leaks no scratch file. The pin
+# library is replaced by a no-op in a copied tree so the survival is real.
+cli_sandbox
+mkdir -p "$SB/tree/scripts/luna" "$SB/tree/scripts/lib" "$SB/tmp"
+cp "$CRYS" "$SB/tree/scripts/luna/crystallize-note.sh"
+cp "$SCRIPT_DIR/../lib/llm-backend.sh" "$SB/tree/scripts/lib/llm-backend.sh"
+printf 'native_auth_pin_env() { return 0; }\n' > "$SB/tree/scripts/lib/native-auth-pin.sh"
+RC=0
+env -u CRYSTALLIZE_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_API_KEY=k1 TMPDIR="$SB/tmp" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLI_STUB" STUB_MODE=success CRYSTALLIZE_PREFLIGHT_CMD="$PF_PROCEED" \
+    CRYSTALLIZE_MARKER="$SB/marker.txt" CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$SB/tree/scripts/luna/crystallize-note.sh" "$SB/vault/note.md" "$SB/t.jsonl" 2>"$SB/stderr.txt" || RC=$?
+if [ "$RC" = "0" ] && [ ! -s "$SB/marker.txt" ] && grep -q '^crystallized: false$' "$SB/vault/note.md" && grep -q 'survived the native-auth pin' "$SB/stderr.txt"; then pass "cli-pin-refusal: a surviving API-key variable refuses the launch, claude never runs, note untouched"; else fail "cli-pin-refusal: rc=$RC marker/note/stderr wrong"; fi
+if ! ls "$SB/tmp"/crystallize-cli.* >/dev/null 2>&1; then pass "cli-pin-refusal: no scratch file left behind"; else fail "cli-pin-refusal: a crystallize-cli scratch file leaked"; fi
+rm -rf "$SB"
+
 # (ii) preflight not PROCEED: no claude call, note untouched, exit 0, quiet.
 cli_sandbox
 SHA_BEFORE="$( { sha256sum "$SB/vault/note.md" 2>/dev/null || shasum -a 256 "$SB/vault/note.md"; } | awk '{print $1}')"

@@ -1284,6 +1284,63 @@ assert_contains "recrys(limit): --limit 1 crystallizes exactly one" "crystallize
 _cryst_count=$(grep -l '^crystallized: true$' "$N19A" "$N19B" 2>/dev/null | wc -l | tr -d ' ')
 if [ "$_cryst_count" = "1" ]; then pass "recrys(limit): exactly one note crystallized on disk"; else fail "recrys(limit): $_cryst_count crystallized (expected 1)" "$out19l"; fi
 
+# The limit is tested BEFORE the bank preflight on a real run: each real preflight is a live usage
+# fetch, so a note past --limit must cost none. Three content notes, --limit 1: the one crystallized
+# note costs two preflights (backfill's gate plus crystallize-note.sh's own); the other two cost none.
+echo ""
+echo "Case 19b: --limit before the preflight, a refusing bank stops the loop, a bad backend says why"
+SB="$TMP_ROOT/case19b"
+VAULT19B="$SB/vault"; PROJ_ROOT19B="$SB/projects"; STATE19B="$SB/state.json"
+mkdir -p "$VAULT19B" "$PROJ_ROOT19B"
+for _n in a b c; do
+    write_content_note "$VAULT19B/sessions/2026/06/2026-06-20-0000-$_n.md" "recrys19b-$_n"
+    seed_named_transcript "$PROJ_ROOT19B" "recrys19b-$_n" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+done
+PF_B="$SB/pf-b.sh"; PF_B_LOG="$SB/pf-b.log"
+printf '#!/usr/bin/env bash\necho call >> "%s"\necho PROCEED\n' "$PF_B_LOG" > "$PF_B"
+chmod +x "$PF_B"
+out19b=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRYSTALLIZE_PREFLIGHT_CMD="$PF_B" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_NOW="2026-06-29T00:00:00Z" \
+    bash "$BACKFILL" --recrystallize --limit 1 \
+    --projects-dir "$PROJ_ROOT19B" --luna-vault-path "$VAULT19B" \
+    --state-file "$STATE19B" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(limit-pf): --limit 1 crystallizes exactly one" "crystallized=1" "$out19b"
+# read-sink-ok: PF_B_LOG is the sandbox log this suite's own stub preflight writes, never an argv or env input
+_pf_b_calls="$(wc -l < "$PF_B_LOG" 2>/dev/null | tr -d ' ')"
+if [ "$_pf_b_calls" = "2" ]; then pass "recrys(limit-pf): notes past --limit run no preflight (2 calls for the one crystallized note)"; else fail "recrys(limit-pf): $_pf_b_calls preflight calls (expected 2)" "$out19b"; fi
+
+# A refusing bank stops the loop: one preflight, not one per remaining note, and a line says why.
+SB="$TMP_ROOT/case19c"
+VAULT19C="$SB/vault"; PROJ_ROOT19C="$SB/projects"; STATE19C="$SB/state.json"
+mkdir -p "$VAULT19C" "$PROJ_ROOT19C"
+for _n in a b c; do
+    write_content_note "$VAULT19C/sessions/2026/06/2026-06-20-0000-$_n.md" "recrys19c-$_n"
+    seed_named_transcript "$PROJ_ROOT19C" "recrys19c-$_n" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+done
+PF_C="$SB/pf-c.sh"; PF_C_LOG="$SB/pf-c.log"
+printf '#!/usr/bin/env bash\necho call >> "%s"\necho "SKIP: five_hour at 97"\n' "$PF_C_LOG" > "$PF_C"
+chmod +x "$PF_C"
+out19c=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT -u CRYSTALLIZE_BACKEND CRYSTALLIZE_PREFLIGHT_CMD="$PF_C" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$BACKFILL" --recrystallize \
+    --projects-dir "$PROJ_ROOT19C" --luna-vault-path "$VAULT19C" \
+    --state-file "$STATE19C" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(bank-refused): nothing crystallized" "crystallized=0" "$out19c"
+assert_contains "recrys(bank-refused): the stop is announced" "recrystallize: stopped" "$out19c"
+# read-sink-ok: PF_C_LOG is the sandbox log this suite's own stub preflight writes, never an argv or env input
+_pf_c_calls="$(wc -l < "$PF_C_LOG" 2>/dev/null | tr -d ' ')"
+if [ "$_pf_c_calls" = "1" ]; then pass "recrys(bank-refused): one preflight, then the loop stops"; else fail "recrys(bank-refused): $_pf_c_calls preflight calls (expected 1)" "$out19c"; fi
+
+# A typo'd CRYSTALLIZE_BACKEND says why nothing is crystallized, once.
+out19t=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT CRYSTALLIZE_BACKEND=bogus CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" \
+    STUB_MODE=success CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$BACKFILL" --recrystallize --dry-run \
+    --projects-dir "$PROJ_ROOT19C" --luna-vault-path "$VAULT19C" \
+    --state-file "$STATE19C" --vault-registry /dev/null 2>&1)
+assert_contains "recrys(bad-backend): the reason is printed" "CRYSTALLIZE_BACKEND='bogus' is not accepted" "$out19t"
+_bb_lines="$(printf '%s\n' "$out19t" | grep -c "CRYSTALLIZE_BACKEND='bogus' is not accepted")"
+if [ "$_bb_lines" = "1" ]; then pass "recrys(bad-backend): the reason is printed once, not per note"; else fail "recrys(bad-backend): reason printed $_bb_lines times" "$out19t"; fi
+
 # ============================================================================
 # Case 20: progress logging — periodic heartbeat + per-note lines
 #          appear on stderr for a multi-note recrystallize run; the stdout

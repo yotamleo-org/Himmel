@@ -13,7 +13,8 @@
 #   claude-cli  the default with the lane off. One print-mode `claude -p` on the
 #               subscription, behind scripts/lib/usage-preflight.sh pinned to the
 #               native bank: anything but PROCEED is a quiet skip (exit 0, note
-#               untouched; the reheal sweep recovers it). The run is pinned to native
+#               untouched; a later `backfill-sessions.sh --reheal` run recovers it
+#               once the bank allows, since the sweep asks the same bank). The run is pinned to native
 #               auth through scripts/lib/native-auth-pin.sh (every ANTHROPIC_* and
 #               CLAUDE_CODE_USE_* variable, and every LQ_API_* one, is removed, so a
 #               proxy base URL or a provider toggle cannot reroute it), under a
@@ -306,7 +307,11 @@ launch_subscription() {
         || { echo "crystallize-note: skipped, native auth could not be pinned -- note untouched" >&2; exit 0; }
     local v out rc=0 secs="${CRYSTALLIZE_TIMEOUT_SECS:-600}"
     for v in $(compgen -e); do
-        case "$v" in LQ_API_*) unset "$v" ;; esac
+        case "$v" in
+            CLAUDE_CODE_OAUTH_TOKEN) ;;
+            # the calling session's markers, plugin toggles and API-lane variables stay out of a child that reads untrusted transcripts
+            CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_*|HIMMEL_API_*|LQ_API_*) unset "$v" ;;
+        esac
     done
     case "$secs" in ''|*[!0-9]*|0) secs=600 ;; esac
     local -a deadline=()
@@ -316,11 +321,12 @@ launch_subscription() {
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" ]]; then
         CRYSTALLIZE_NOTE="$NOTE_PATH" CRYSTALLIZE_TRANSCRIPT="$TRANSCRIPT_PATH" \
             ${deadline[@]+"${deadline[@]}"} "$LAUNCHER" -p "$PROMPT" --model "$MODEL" --output-format json \
-            --permission-mode acceptEdits --tools Read,Edit --allowedTools Read,Edit \
+            --permission-mode acceptEdits --tools Read,Edit --allowedTools Read,Edit --strict-mcp-config \
             --max-budget-usd "$BUDGET_USD" </dev/null >"$out" 2>/dev/null
         rc=$?
     else
         echo "crystallize-note: skipped, an API-key variable survived the native-auth pin -- note untouched" >&2
+        [ "$out" = /dev/null ] || rm -f "$out" 2>/dev/null || true
         exit 0
     fi
     if [ "$rc" -ne 0 ]; then
