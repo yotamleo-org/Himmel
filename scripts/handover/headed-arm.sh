@@ -1583,8 +1583,17 @@ if [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] && [ "$ROLE" !
             echo "headed-arm: refusing to arm $NAME: its brief names a file another live worker holds:" >&2
             printf '%s\n' "$_holds_err" | grep '^holds: ' >&2
             _holds_path="$(printf '%s\n' "$_holds_err" | sed -n 's/^holds: \(.*\) is held by .*/\1/p' | head -n 1)"
-            echo "headed-arm: to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_primary/scripts/handover/chief-kit/holds.py grant --key $HIMMEL_HOLD_KEY --repo $REPO ${_holds_path:-PATH}" >&2
-            echo "$(date +%F_%T) REFUSED: $NAME's brief names a file held by another live worker - not launching" >> "$LOG"
+            _holds_line="$(printf '%s\n' "$_holds_err" | grep -m 1 '^holds: ' | tr -d '>')"
+            case "$_holds_path" in
+                /*) _holds_grant="no grant exists for a path outside the repo ($_holds_path): wait for the holder to wrap, or the operator launches with WRITE_HOLD_OK=1" ;;
+                *) _holds_grant="to let $HIMMEL_HOLD_KEY write it, the chief runs: python3 -I $_holds_primary/scripts/handover/chief-kit/holds.py grant --key $HIMMEL_HOLD_KEY --repo $REPO ${_holds_path:-PATH}" ;;
+            esac
+            echo "headed-arm: $_holds_grant" >&2
+            # the chief reads neither this stderr (a generated launcher keeps it in launch.out, a hand launch sends it to /dev/null) nor
+            # the exit code: the log and a BLOCKED bullet on the brief carry the holder and the grant line, and tick surfaces the bullet
+            echo "$(date +%F_%T) REFUSED: $NAME's brief names a file held by another live worker - not launching: $_holds_line; $_holds_grant" >> "$LOG"
+            bash "$(dirname "$0")/chief-kit/append-results.sh" "$HIMMEL_HOLD_DOC" "BLOCKED launch of $NAME refused, not armed: $_holds_line; $_holds_grant" >/dev/null 2>&1 \
+                || echo "$(date +%F_%T) WARN could not append the BLOCKED bullet to $HIMMEL_HOLD_DOC" >> "$LOG"
             rm -rf "$LOCK" 2>/dev/null
             exit 2
         fi

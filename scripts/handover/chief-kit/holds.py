@@ -323,18 +323,26 @@ class Judge:
     """Is a row's holder alive? By key: a doc of the key with a held lock, its PR open, the arm grace, or an
     unwrapped RESUME doc under 24 hours. Answers are cached per run: one queue-lock call per doc, one gh call per PR."""
 
-    def __init__(self, repo):
+    def __init__(self, repo, deadline=None):
         self.repo = repo
+        self.deadline = deadline  # epoch seconds: past it no call is spawned (answer fault), and each call is bounded by what is left
         self.ql_cache, self.pr_cache, self.scan_cache = {}, {}, {}
         self.scan_faulted = set()
         self.root = None
+
+    def left(self, timeout):
+        """The timeout for one call: its own, or what is left of the deadline; 0 once the deadline has passed."""
+        if self.deadline is None:
+            return timeout
+        return max(0, min(timeout, self.deadline - time.time()))
 
     def lock_state(self, doc):
         """'free' | 'alive' | 'fault' from the queue-lock.sh status table."""
         if doc in self.ql_cache:
             return self.ql_cache[doc]
         ql = os.environ.get('HOLDS_QUEUE_LOCK') or os.path.join(HERE, '..', 'queue-lock.sh')
-        res = run_bounded(['bash', ql, 'status', doc], QL_TIMEOUT) if os.path.isfile(ql) else None
+        t = self.left(QL_TIMEOUT)
+        res = run_bounded(['bash', ql, 'status', doc], t) if t > 0 and os.path.isfile(ql) else None
         if res is None:
             s = 'fault'
         elif res[0] == 0:
@@ -353,7 +361,8 @@ class Judge:
         if pr in self.pr_cache:
             return self.pr_cache[pr]
         gh = os.environ.get('HOLDS_GH') or 'gh'
-        res = run_bounded([gh, 'pr', 'view', pr, '--json', 'state', '-q', '.state'], GH_TIMEOUT, cwd=self.repo if os.path.isdir(self.repo) else None)
+        t = self.left(GH_TIMEOUT)
+        res = run_bounded([gh, 'pr', 'view', pr, '--json', 'state', '-q', '.state'], t, cwd=self.repo if os.path.isdir(self.repo) else None) if t > 0 else None
         if res is None or res[0] != 0:
             s = 'fault'
         else:
@@ -398,19 +407,30 @@ class Judge:
     def resume_alive(self, docs):
         """'alive' | 'none' | 'fault': an unwrapped RESUME doc of the key under 24 hours old."""
         res = 'none'
+        info = []  # (doc, mtime, last mark, the line of that mark)
         for d in docs:
-            if 'RESUME' not in os.path.basename(d):
-                continue
             try:
-                age = time.time() - os.path.getmtime(d)
-                marks = [m.group(1) for m in (MARKER_RE.match(l) for l in open(d, encoding='utf-8', errors='replace').read().splitlines()) if m]
+                mt = os.path.getmtime(d)
+                last = ('', '')
+                for l in open(d, encoding='utf-8', errors='replace').read().splitlines():
+                    m = MARKER_RE.match(l)
+                    if m:
+                        last = (m.group(1), l)
             except FileNotFoundError:
                 continue  # a doc that is gone holds nothing; its lock is still asked by row_state
             except OSError:
                 res = 'fault'
                 continue
-            if age < RESUME_AGE and not (marks and marks[-1] == 'WRAPPED'):
-                return 'alive'
+            info.append((d, mt, last[0], last[1]))
+        for d, mt, mark, _line in info:
+            if 'RESUME' not in os.path.basename(d) or time.time() - mt >= RESUME_AGE or mark == 'WRAPPED':
+                continue
+            # a worker that wraps writes WRAPPED into the doc it worked in, not the RESUME doc: that wrap consumes it,
+            # unless the wrap bullet hands off to this very doc
+            if any(m2 == 'WRAPPED' and mt2 > mt and os.path.basename(d) not in l2
+                   for d2, mt2, m2, l2 in info if d2 != d):
+                continue
+            return 'alive'
         return res
 
     def row_state(self, fields, mtime):
@@ -625,7 +645,8 @@ def op_seed(a):
     except OSError as e:
         sys.stderr.write('holds: cannot read %s: %s\n' % (a.doc, e.strerror or e))
         return 3
-    rc, msg = seed_rows(repo, Judge(repo), a.key, a.label, a.doc, text, seed_budget(a))
+    deadline = seed_budget(a)
+    rc, msg = seed_rows(repo, Judge(repo, deadline), a.key, a.label, a.doc, text, deadline)
     if msg:
         sys.stderr.write(msg + '\n')
     return rc

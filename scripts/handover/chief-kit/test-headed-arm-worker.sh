@@ -180,6 +180,9 @@ export XDG_RUNTIME_DIR="$tmp/pinned-xdg-runtime"
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 export HIMMEL_CONFIG_DIR="$tmp/pinned-himmel-config"
 # the single-writer register lives under $HOME/.himmel/state/holds; pinned, so no launch here can seed the real one.
+REAL_HOME="$HOME"
+real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }  # gnu-ok: Linux-only suite, fails closed where find has no -printf
+REAL_REGISTER_BEFORE="$(real_register)"
 export HOME="$tmp/pinned-home"
 mkdir -p "$HOME"
 # the re-dispatch refusal reads page/ack records from this dir;
@@ -5245,6 +5248,7 @@ out49j="$(HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/x/y.md HIMMEL_HOLD_LABEL=N99
 contains "49n a --judge launch carries no key (an inherited one is dropped)" "$out49j" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 out49r="$(HIMMEL_HOLD_KEY=HIMMEL-1 env -u IMPL_GUARD_OK -u INLINE_IMPL_OK -u HIMMEL_RM_EFFORT bash "$SCRIPT" --dry-run --profile release-manager --rm-release v1.1.3 HIMMEL-9605-N1-rm "$doc_tier_rm" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "49o a release-manager launch carries no key" "$out49r" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
+check "49p the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

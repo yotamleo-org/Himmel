@@ -165,6 +165,20 @@ put_row scripts/c07.sh HIMMEL-9117 alpha "$D07"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c07.sh
 same "I3 a wrapped worker with an unwrapped RESUME doc under 24 h keeps its rows" "$RC" 1
 
+# the real shape: the worker wrote WRAPPED into its own doc after the RESUME doc existed, and the RESUME doc has no marks
+D11R="$(mkdoc HIMMEL-9420-N1b-RESUME.md '# resume doc')"
+touch -d '1 hour ago' "$D11R"
+D11="$(mkdoc HIMMEL-9420-N1-case.md '- 10:00 WRAPPED — PR merged')"
+put_row scripts/c11.sh HIMMEL-9420 alpha "$D11"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c11.sh
+same "I3 a RESUME doc with no marks, consumed by a newer doc whose last mark is WRAPPED, holds nothing" "$RC" 0
+D12R="$(mkdoc HIMMEL-9421-N1b-RESUME.md '# resume doc')"
+touch -d '1 hour ago' "$D12R"
+D12="$(mkdoc HIMMEL-9421-N1-case.md '- 10:00 WRAPPED — resume doc HIMMEL-9421-N1b-RESUME.md')"
+put_row scripts/c12.sh HIMMEL-9421 alpha "$D12"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c12.sh
+same "I3 ... unless that WRAPPED bullet hands off to the RESUME doc (the successor lives)" "$RC" 1
+
 mkdoc HIMMEL-9118-N1-RESUME.md '# resume doc' > /dev/null
 touch -d '25 hours ago' "$HANDOVER_DIR/u/r/HIMMEL-9118-N1-RESUME.md"
 put_row scripts/c08.sh HIMMEL-9118 alpha "$(mkdoc HIMMEL-9118-case.md)"
@@ -674,12 +688,28 @@ same "T2 repoint: ... and the original row is still there" "$(cat "$rp4" 2>/dev/
 DT4="$(mkdoc HIMMEL-9406-case.md '> **Writes:** scripts/t2fr.sh scripts/t2h1.sh scripts/t2h2.sh')"
 put_row scripts/t2h1.sh HIMMEL-9407 holder1 "$(mkdoc HIMMEL-9407-case.md)"
 put_row scripts/t2h2.sh HIMMEL-9408 holder2 "$(mkdoc HIMMEL-9408-case.md)"
+printf '#!/usr/bin/env bash\necho call >> "%s/ql-hang-calls"\nexec sleep 30\n' "$W" > "$W/bin/ql-hang-count"; chmod 755 "$W/bin/ql-hang-count"
 t0="$(date +%s)"
-HOLDS_QUEUE_LOCK="$W/bin/gh-hang" run hp seed --key HIMMEL-9406 --label slow --doc "$DT4" --repo "$R" --deadline "$((t0 + 1))"
+HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key HIMMEL-9406 --label slow --doc "$DT4" --repo "$R" --deadline "$((t0 + 1))"
 t1="$(date +%s)"
 same "T2 seed: a hanging queue-lock stub passes the deadline, exit 3" "$RC" 3
-same "T2 seed: ... inside 120 s" "$([ "$((t1 - t0))" -lt 120 ] && echo yes || echo no)" yes
+same "T2 seed: ... inside 20 s (the deadline bounds the stub call)" "$([ "$((t1 - t0))" -lt 20 ] && echo yes || echo no)" yes
+contains "T2 seed: ... and it is the between-claims check that stopped it" "$ERR" "deadline passed before"
+same "T2 seed: ... after exactly one stub call" "$(wc -l < "$W/ql-hang-calls" | tr -d ' ')" 1
 same "T2 seed: ... the row made before the deadline is kept" "$(cut -f1 "$(rowf scripts/t2fr.sh)")" HIMMEL-9406
+
+# a holder with 10 docs and a hung lock script: the deadline is a ceiling for the whole row, not 15 s a doc
+for i in 1 2 3 4 5 6 7 8 9 10; do mkdoc "HIMMEL-9430-N$i-case.md" '# doc' > /dev/null; done
+touch -d '2 hours ago' "$HANDOVER_DIR"/u/r/HIMMEL-9430-N*-case.md
+put_row scripts/t2ten.sh HIMMEL-9430 ten "$HANDOVER_DIR/u/r/HIMMEL-9430-N1-case.md"
+touch -d '2 hours ago' "$(rowf scripts/t2ten.sh)"
+: > "$W/ql-hang-calls"
+DT10="$(mkdoc HIMMEL-9431-case.md '> **Writes:** scripts/t2ten.sh')"
+t0="$(date +%s)"
+HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key HIMMEL-9431 --label ten --doc "$DT10" --repo "$R" --deadline "$((t0 + 1))"
+t1="$(date +%s)"
+same "T2 seed: a holder with 10 docs and a hung lock script ends inside 20 s" "$([ "$((t1 - t0))" -lt 20 ] && echo yes || echo no)" yes
+same "T2 seed: ... with at most one stub call (past the deadline nothing is spawned)" "$([ "$(wc -l < "$W/ql-hang-calls" | tr -d ' ')" -le 1 ] && echo yes || echo no)" yes
 
 # a deadline that passes inside the LAST claim (or the last repointed row) is still a passed deadline: exit 3
 R2="$W/repo-last-row"; mkdir -p "$R2"; git -C "$R2" init -q -b main  # its own register: exactly one row, so only the check after the last row can fire
@@ -697,6 +727,22 @@ m.repoint_row = slow_rp
 print(m.op_repoint(argparse.Namespace(key='HIMMEL-9413', label='n', doc='d.md', repo='$R2', deadline=time.time() + 1)))
 "
 same "T2 seed and repoint: a deadline passed inside the last claim or row exits 3" "$OUT" "$(printf '3\n3')"
+
+# repoint on 3 rows with a deadline that passes inside the first: it stops between rows, the later rows keep their old label
+R3="$W/repo-three-rows"; mkdir -p "$R3"; git -C "$R3" init -q -b main
+mkdir -p "$(slugdir "$R3")"
+for f in a b c; do printf '%s\t%s\t%s\t%s\t%s\n' HIMMEL-9415 oldlab "$HANDOVER_DIR/u/r/HIMMEL-9415-old.md" brief '' > "$(rowf scripts/t2m$f.sh "$R3")"; done
+run python3 -I -c "
+import importlib.util, time, argparse
+s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+real_rp = m.repoint_row
+def slow_rp(*a, **k): time.sleep(1.2); return real_rp(*a, **k)
+m.repoint_row = slow_rp
+print(m.op_repoint(argparse.Namespace(key='HIMMEL-9415', label='newlab', doc='d.md', repo='$R3', deadline=time.time() + 1)))
+"
+same "T2 repoint: a deadline passed between rows exits 3" "$OUT" 3
+same "T2 repoint: ... by the between-rows check, not the one after the last row" "$ERR" "holds: the repoint deadline passed"
+same "T2 repoint: ... the first row is repointed, the later rows keep their label" "$(cut -f2 "$(rowf scripts/t2ma.sh "$R3")")|$(cut -f2 "$(rowf scripts/t2mb.sh "$R3")")|$(cut -f2 "$(rowf scripts/t2mc.sh "$R3")")" "newlab|oldlab|oldlab"
 
 BM="$W/fleet.json"
 BA="$(mkdoc HIMMEL-9410-N1-case.md '> **Writes:** scripts/t2ba.sh')"

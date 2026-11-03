@@ -61,6 +61,9 @@ trap 'rm -rf "$tmp"' EXIT
 # Cases 1e-1h still pass a per-case dir, which overrides this.
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
 # the single-writer register lives under $HOME/.himmel/state/holds: pinned, so no seed here can reach the real one
+REAL_HOME="$HOME"
+real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }  # gnu-ok: Linux-only suite, fails closed where find has no -printf
+REAL_REGISTER_BEFORE="$(real_register)"
 export HOME="$tmp/pinned-home"
 mkdir -p "$HOME"
 # Headed-arm.sh mkdirs its claim-lock root `-m 0700` and then
@@ -2671,6 +2674,15 @@ check "8725e the refused launch started no konsole" "$([ -e "$dh1/record" ] && e
 check "8725f the refused seed made no row on an earlier file" "$([ -e "$(hrow scripts/h0.sh)" ] && echo row || echo none)" "none"
 check "8725g the holder's row is byte-identical" "$(cat "$(hrow scripts/h1.sh)")" "$h1_before"
 check "8725h the name lock and the ticket lock are both gone" "$(compgen -G "$dh1/locks/*" | grep -c .)" "0"
+# the chief reads neither stderr nor the exit code (a generated launcher keeps stderr in launch.out, a hand launch discards it): the log and a BLOCKED bullet on the brief carry the refusal
+HB2="$(hdoc HIMMEL-9509-N1-b2.md '# b2' '> **Writes:** scripts/h1.sh')"
+dh1b="$tmp/h1b"; mk_stub "$dh1b" 1 alive "HIMMEL-9509-N1-b2"
+hlaunch "$dh1b" HIMMEL-9509-N1-b2 "$HB2" N1 >/dev/null 2>&1; h1brc=$?
+check "8725h2 a refused launch with both streams discarded exits 2" "$h1brc" "2"
+contains "8725h3 ... the log names the holder" "$(cat "$dh1b/log")" "holds: scripts/h1.sh is held by HIMMEL-9501"
+contains "8725h4 ... and carries the runnable grant line" "$(cat "$dh1b/log")" "holds.py grant --key HIMMEL-9509 --repo $REPO scripts/h1.sh"
+contains "8725h5 ... the brief gets a BLOCKED bullet naming the holder" "$(tail -n 1 "$HB2")" "BLOCKED launch of HIMMEL-9509-N1-b2 refused, not armed: holds: scripts/h1.sh is held by HIMMEL-9501"
+contains "8725h6 ... and the grant line" "$(tail -n 1 "$HB2")" "holds.py grant --key HIMMEL-9509 --repo $REPO scripts/h1.sh"
 
 # a grant, then the same launch passes
 hp grant --key HIMMEL-9502 --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
@@ -2693,8 +2705,11 @@ hlaunch "$dh4" HIMMEL-9504-N1-d "$HD" N1 >/dev/null 2>&1
 check "8725m an absolute bucket path is a row under _abs" "$(find "$HOME/.himmel/state/holds/_abs" -type f 2>/dev/null | grep -c .)" "1"
 HE="$(hdoc HIMMEL-9505-N1-e.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md")"
 dh5="$tmp/h5"; mk_stub "$dh5" 1 alive "HIMMEL-9505-N1-e"
-hlaunch "$dh5" HIMMEL-9505-N1-e "$HE" N1 >/dev/null 2>&1; h5rc=$?
+h5out="$(hlaunch "$dh5" HIMMEL-9505-N1-e "$HE" N1 2>&1)"; h5rc=$?
 check "8725n a second brief on that bucket file is refused (exit 2)" "$h5rc" "2"
+contains "8725n2 ... the refusal says no grant exists for a path outside the repo" "$h5out" "no grant exists for a path outside the repo"
+check "8725n3 ... and prints no grant line that holds.py would refuse" "$(printf '%s' "$h5out" | grep -c 'holds.py grant')" "0"
+contains "8725n4 ... the brief's BLOCKED bullet says the same" "$(tail -n 1 "$HE")" "no grant exists for a path outside the repo"
 
 # the two earlier refusals come first: a ticket rival (exit 16) and a live duplicate name seed nothing
 HF="$(hdoc HIMMEL-9506-N2-f.md '> **Writes:** scripts/h6.sh')"
@@ -2706,6 +2721,16 @@ HG="$(hdoc HIMMEL-9507-N1-g.md '> **Writes:** scripts/h7.sh')"
 dh7="$tmp/h7"; mk_stub "$dh7" 0 alive "HIMMEL-9507-N1-g"
 hlaunch "$dh7" HIMMEL-9507-N1-g "$HG" N1 >/dev/null 2>&1; h7rc=$?
 check "8725p a live duplicate name (exit 0, no launch) seeds nothing" "$h7rc|$([ -e "$(hrow scripts/h7.sh)" ] && echo row || echo none)" "0|none"
+
+# a doc naming two tickets: the first key holds, and its own RESUME doc is not its own rival
+HM="$(hdoc HIMMEL-9540-HIMMEL-9541-N1-multi.md '> **Writes:** scripts/h40.sh')"
+dhm1="$tmp/hm1"; mk_stub "$dhm1" 1 alive "HIMMEL-9540-HIMMEL-9541-N1-multi"
+hlaunch "$dhm1" HIMMEL-9540-HIMMEL-9541-N1-multi "$HM" N1 >/dev/null 2>&1; hm1rc=$?
+check "8725v2 a two-key doc launches and its row is keyed by the first key" "$hm1rc|$(cut -f1 "$(hrow scripts/h40.sh)")" "0|HIMMEL-9540"
+HMR="$(hdoc HIMMEL-9540-HIMMEL-9541-N1b-multi-RESUME.md '# resume, no Writes line')"
+dhm2="$tmp/hm2"; mk_stub "$dhm2" 1 alive "HIMMEL-9540-HIMMEL-9541-N1b-multi"
+hlaunch "$dhm2" HIMMEL-9540-HIMMEL-9541-N1b-multi "$HMR" N1b >/dev/null 2>&1; hm2rc=$?
+check "8725v3 ... its RESUME launch is not refused by its own row, which moves to the new doc" "$hm2rc|$(cut -f1,2 "$(hrow scripts/h40.sh)" | tr '\t' ' ')" "0|HIMMEL-9540 N1b"
 
 # no HIMMEL_HOLD_KEY: no seed
 HH2="$(hdoc HIMMEL-9508-N1-h.md '> **Writes:** scripts/h8.sh')"
@@ -2803,5 +2828,7 @@ HANDOVER_DIR="$HH" HIMMEL_HOLD_KEY=HIMMEL-9532 HIMMEL_HOLD_DOC="$HZ" HIMMEL_HOLD
   bash "$SCRIPT" --role chief "HIMMEL-9532-chief" "$HZ" "$dh20/signal-never" "$PAST" "$dh20/log" >/dev/null 2>&1; h20rc=$?
 wait_record "$dh20" || true
 check "8725ah a chief launch seeds nothing and the child carries no key" "$h20rc|$([ -e "$(hrow scripts/h32.sh)" ] && echo row || echo none)|$(cat "$dh20/holdenv" 2>/dev/null)" "0|none|unset"
+
+check "8725ai the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
