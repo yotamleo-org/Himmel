@@ -14,6 +14,7 @@ const shot = async (page: Page, name: string) => { const d = process.env.E2E_SHO
 const consoleErrors = (page: Page) => { const errs: string[] = []; page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); }); page.on("pageerror", (e) => errs.push(String(e))); return errs; };
 const go = async (page: Page, hash: string) => { await page.evaluate((x) => { location.hash = x; }, hash); await page.locator("#main h1").filter({ hasText: "Board" }).waitFor(); await page.waitForLoadState("networkidle"); };
 async function open(page: Page) {
+  process.env.CONFIG_UI_JIRA_CLI = join(__dirname, "..", "stub-jira.js"); // the drawer's stage history is read through the Jira CLI: the stub answers two status moves, never live Jira
   h = await boot({}, { tracker: "jira", board: true });
   await page.goto(h.url);
   await page.locator("nav.pages").waitFor();
@@ -90,6 +91,118 @@ test("dragging a card to another column sends its new status", async ({ page }) 
   await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]'));
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
+});
+
+// 8832: the ticket drawer (mockup v4 frame 3), a keyboard move, and a drop on a column its event moves
+// a click on the card's title text: the middle of a wide card can be its Sector select or chain link, which do their own work and do not open the drawer
+const openCard = (page: Page, title: string) => page.locator(".rm-card", { hasText: title }).getByText(title, { exact: true }).click();
+const noWrite = async (page: Page) => { // a write that goes out is recorded; none is answered by Jira
+  const sent: string[] = [];
+  await page.route("**/api/roadmap/write", async (route) => {
+    const body = route.request().postData() || "";
+    sent.push(body);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, status: JSON.parse(body).status }) }); // answers as the server does: the status the card is now in
+  });
+  return sent;
+};
+
+test("a click on a card opens the drawer with its CLI argv and its stage history, read through the Jira CLI when it opens", async ({ page }) => {
+  const errs = consoleErrors(page);
+  const reads: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("/api/roadmap/history")) reads.push(r.url()); });
+  await open(page);
+  await go(page, "#/board");
+  expect(reads).toEqual([]); // loading the Board reads no history
+  await openCard(page, "Second chain step");
+  const drawer = page.locator("aside.drawer");
+  await expect(drawer).toHaveAttribute("aria-label", "Ticket HIMMEL-2");
+  await expect(drawer).toContainText('jira transition HIMMEL-2 "In Progress"'); // the CLI call the move makes
+  await expect(drawer.locator(".rm-tl li").first()).toContainText("To Do → In Progress"); // the stub's first status move
+  await expect(drawer.locator(".rm-tl")).toContainText("In Progress → In Review");
+  await expect(drawer.locator(".rm-tl")).not.toContainText("v1.1.3"); // the Fix Version change is not a stage move
+  expect(reads).toHaveLength(1);
+  await expect(page.getByRole("button", { name: /^Close ticket/ })).toBeFocused(); // the history redraw did not drop keyboard focus out of the drawer
+  await expect(page.locator(".rm-under")).toHaveAttribute("inert", ""); // the board under it takes nothing
+  await shot(page, "board-drawer");
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeFocused();
+  expect(errs).toEqual([]);
+});
+
+test("a history that cannot be read says unavailable, never an empty history", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  await page.route("**/api/roadmap/history*", (route) => route.fulfill({ status: 502, contentType: "application/json", body: JSON.stringify({ error: "history unavailable" }) }));
+  await openCard(page, "Second chain step");
+  await expect(page.locator("aside.drawer")).toContainText("history unavailable");
+  await expect(page.locator("aside.drawer")).not.toContainText("No status moves");
+  await page.getByRole("button", { name: /^Close ticket/ }).click();
+  await expect(page.locator("aside.drawer")).toHaveCount(0);
+});
+
+test("Shift+Right on a focused card moves it to the next column its operator may write and posts the new status", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  const sent = await noWrite(page);
+  await page.locator(".rm-card", { hasText: "Second chain step" }).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => sent.length).toBe(1);
+  expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
+  await expect(page.locator('[data-rm-col="prog"] .rm-card', { hasText: "Second chain step" })).toBeVisible(); // the write has answered and the board is redrawn: one write at a time
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeFocused(); // and focus is back on the moved card
+  await page.locator(".rm-card", { hasText: "Second chain step" }).focus();
+  await page.keyboard.press("Shift+ArrowRight"); // from In progress the next writable column is Won't: In review, CI and Done are skipped
+  await expect.poll(() => sent.length).toBe(2);
+  expect(JSON.parse(sent[1])).toMatchObject({ key: "HIMMEL-2", status: "wont" });
+});
+
+test("a drop on a column its event moves (In review, CI, Done) writes nothing and says so", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  await page.locator("#rm-lanes details.rm-done summary").click();
+  const sent = await noWrite(page);
+  for (const [col, name] of [["rev", "In Review"], ["ci", "IN CI"], ["done", "Done"]]) {
+    await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator(`[data-rm-drop="${col}"]`));
+    await expect(page.locator("#main .alert", { hasText: `${name} is moved by its event` })).toBeVisible(); // the note names this drop's column, so the last drop's note cannot satisfy it
+  }
+  expect(sent).toEqual([]); // no POST to /api/roadmap/write went out
+  await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]')); // a column the operator owns still writes
+  await expect.poll(() => sent.length).toBe(1);
+});
+
+// The board under an open drawer is inert, so a person cannot reach it; this drives the events straight at the card, which is what the hold in
+// writeRoadmap guards against. Deleting the `|| roadmapUi.drawer` hold makes both attempts post (confirmed RED).
+test("with the drawer open a Shift+Arrow key and a drag write nothing", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  const sent = await noWrite(page);
+  await openCard(page, "Second chain step");
+  await expect(page.locator("aside.drawer")).toBeVisible();
+  await page.evaluate(() => {
+    const card = document.querySelector('.rm-card[data-rm-open="2"]') as HTMLElement;
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true }));
+    card.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    (document.querySelector('[data-rm-drop="wont"]') as HTMLElement).dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+  });
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300))); // a write that was not held would have gone out by now
+  expect(sent).toEqual([]);
+  await page.keyboard.press("Escape"); // closed, the same card writes again
+  await page.locator(".rm-card", { hasText: "Second chain step" }).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => sent.length).toBe(1);
+});
+
+test("a Done card's drawer closes back onto its card, inside the Done lane that was folded", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeHidden(); // Done is folded
+  await page.locator("#rm-lanes details.rm-done summary").click();
+  await openCard(page, "First chain step");
+  await expect(page.locator("aside.drawer")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("aside.drawer")).toHaveCount(0);
+  await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeFocused();
 });
 
 test("the Chain filter narrows the lanes to that chain's tickets", async ({ page }) => {
@@ -189,6 +302,25 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
   }
 }
 
+for (const [width, height] of [[1280, 900], [390, 844]]) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`the drawer at ${width} px, ${scheme}: it draws over the board, no console error, no sideways scroll`, async ({ page }) => {
+      const errs = consoleErrors(page);
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme: scheme });
+      await open(page);
+      await go(page, "#/board");
+      await openCard(page, "Second chain step");
+      await expect(page.locator("aside.drawer .rm-tl")).toContainText("To Do → In Progress");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      const box = await page.locator("aside.drawer").boundingBox();
+      expect(box && box.x >= 0 && box.x + box.width <= width + 1).toBe(true);
+      await shot(page, `board-${width}-${scheme}-drawer`);
+      expect(errs).toEqual([]);
+    });
+  }
+}
+
 test("with no drift file and no chain registry the Board says so in words and shows no count", async ({ page }) => {
   h = await boot({}, { tracker: "jira" });
   await page.goto(h.url);
@@ -227,5 +359,11 @@ test("two projects: both projects' cards show with their keys, the Project filte
   await page.locator(".rm-card", { hasText: "Salus intake form" }).dragTo(page.locator('[data-rm-drop="prog"]'));
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "SALUS-2", status: "prog" });
+  // a keyboard move posts the SALUS key too, not a HIMMEL default
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300))); // the first write's redraw lands first: a key during a write in flight is dropped
+  await page.locator(".rm-card", { hasText: "Salus intake form" }).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => sent.length).toBe(2);
+  expect(JSON.parse(sent[1])).toMatchObject({ key: "SALUS-2", status: "prog" });
   expect(errs).toEqual([]);
 });

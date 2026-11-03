@@ -12,3 +12,10 @@ else if (argv[0] === "get") {
   const labels = (process.env.STUB_JIRA_LABELS || "").split(",").map((l) => l.trim()).filter(Boolean);
   console.log(JSON.stringify({ key: argv[1], fields: { summary: "stub title", description: process.env.STUB_JIRA_DESC || null, labels } }));
 }
+// `history <KEY> --json`: the changelog, oldest first. $STUB_JIRA_HISTORY_RAW replaces the whole output. By default: two status moves around one Fix Version change.
+else if (argv[0] === "history") {
+  const at = (created, field, from, to) => ({ created, author: { displayName: "Bot" }, items: [{ field, fromString: from, toString: to }] });
+  if (process.env.STUB_JIRA_HISTORY_RAW !== undefined) console.log(process.env.STUB_JIRA_HISTORY_RAW);
+  else console.log(JSON.stringify([at("2026-10-27T09:00:00.000+0000", "status", "To Do", "In Progress"), at("2026-10-27T12:00:00.000+0000", "Fix Version", null, "v1.1.3"),
+    at("2026-10-28T08:00:00.000+0000", "status", "In Progress", "In Review")]));
+}

@@ -6,7 +6,8 @@ import { esc, pageHeader, pg } from "./render.js";
 
 const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], ["ci", "CI"], ["done", "Done"], ["wont", "Won't"]];
 const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
-const jira = (argv) => "jira " + argv.map((a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`)).join(" ");
+const shq = (a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`); // a word safe to paste: $, backtick, quote and backslash escaped
+const jira = (argv) => "jira " + argv.map(shq).join(" ");
 
 // A version's running state: with several projects each runs its own (the server marks it on the version); with one it is the page's cur and next.
 const runState = (d, v, i) => (d.projects && d.projects.length > 1 ? v.run || "" : i === d.cur ? "running" : i === d.next ? "next" : "");
@@ -68,7 +69,8 @@ function cardHtml(t, d, showVersion, w, ch, v) {
   const theme = w ? sectorPick(t, d) : esc(d.themes[t.theme]);
   const local = t.backend === "local";
   const attrs = w ? ` draggable="true" data-rm-card="${t.k}"${projAttr(t)}${local ? ` data-rm-id="${esc(t.id)}" data-rm-backend="local"` : ""}` : "";
-  return `<div class="rm-card"${attrs}><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>${chainBadge(t, ch, v)}
+  const open = ` data-rm-open="${t.k}"${w ? "" : projAttr(t)} tabindex="0"`; // a click, Enter or Space opens the drawer; the project attribute is shared with the drag one
+  return `<div class="rm-card"${attrs}${open}><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>${chainBadge(t, ch, v)}
     <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
 }
 
@@ -83,7 +85,8 @@ function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
     const jn = o.scope ? o.scope.filter((t) => t.b === b).length : null;
     const jira = jn === null ? "" : `<span class="ro rm-jira">${jn === n ? `Jira ${jn} matches` : `Jira ${jn} · ${n} shown`}</span>`;
     const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
-    if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
+    const drawerHere = o.drawer && cards.some((t) => t.k === o.drawer.k && (t.project || "") === (o.drawer.project || "")); // closing the drawer focuses its card: it must not sit in a closed <details>
+    if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find || drawerHere ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
     return `<div class="rm-col"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${esc(l)} <span class="ro rm-n">${n}</span></h4>${jira}${body}</div>`;
   }).join("")}</div>`;
 }
@@ -91,7 +94,8 @@ function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
 const themeSel = (d, ui) => `<label>Sector <select data-rm-filter="theme"><option value="">all</option>${d.themes.map((x, i) =>
   `<option value="${i}"${ui.theme === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
 // A refused or failed write: shown above the board, the card has already moved back (the board is redrawn from the server).
-const writeNote = (ui) => (ui.writeError ? `<div class="alert" role="alert"><span class="st pill fail">refused</span> ${esc(ui.writeError)}</div>` : "");
+const writeNote = (ui) => (ui.writeError ? `<div class="alert" role="alert"><span class="st pill fail">refused</span> ${esc(ui.writeError)}</div>` : "")
+  + (ui.held ? `<div class="alert" role="status"><span class="st pill warn">held</span> ${esc(ui.held)}</div>` : ""); // a drop on a column its event moves: nothing was written
 const byTheme = (d, ui) => d.tickets.filter((t) => ui.theme == null || t.theme === ui.theme);
 
 // #/roadmap/<version>, one version's board.
@@ -303,7 +307,7 @@ function lanesHtml(d, ui, sel, ch) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase() }) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
@@ -315,7 +319,7 @@ function nvTab(data, ui, ch) {
   const writeOn = !!ui.writes && nv.source !== "github";
   const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch, data));
   return section("rm-nv", "No version", `${shown.length} ticket${shown.length === 1 ? "" : "s"}. ${sub}${writeOn ? " Drag a card to another column to change its status." : ""}`,
-    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase() }) : `<div class="empty">No tickets match.</div>`);
+    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer }) : `<div class="empty">No tickets match.</div>`);
 }
 
 function chainsTab(ui, ch) {
@@ -363,7 +367,55 @@ function tidyTab(d, ui, sel, dr) {
   ].join("\n");
 }
 
-export const renderBoard = (data, ui, extras) => pg(boardPage(data, ui || {}, extras || {}));
+// ---- the ticket drawer (mockup v4 frame 3): opened from a card, it shows the card's facts, the CLI call each write makes, and its stage history.
+// ui.drawer = { k, project, history }: the card (number and project: two projects share numbers) and its status moves as the page fetched them
+// (null while loading, { events } when read, { error } when the read failed, so a failed read never looks like "no moves").
+const STATUS = { todo: "To Do", prog: "In Progress", rev: "In Review", ci: "IN CI", done: "Done", wont: "wont do" };
+const OPERATOR_OWNED = ["todo", "prog", "wont"]; // the columns a drop or a key may write; In review, CI and Done are moved by their event
+// The call a write makes. A local card runs the tracker seam's own verbs, as local-tracker.ts passes them (a move carries --allow-back).
+const moveLine = (t, status) => (t.backend === "local" ? ["tracker_transition", idOf(t), status, "--allow-back"].map(shq).join(" ") : jira(["transition", idOf(t), status]));
+const sectorLine = (t, sector) => (t.backend === "local" ? ["tracker_sector", idOf(t), sector].map(shq).join(" ") : jira(["edit", idOf(t), "--sector", sector]));
+const when = (at) => String(at).slice(0, 16).replace("T", " ");
+
+function historyHtml(t, h) {
+  if (t.backend !== "jira") return `<p class="ro">Stage history is read from Jira; this card's tracker keeps none.</p>`;
+  if (!h) return `<p class="ro">loading…</p>`;
+  if (h.error) return `<div class="nodata" role="alert">${esc(h.error)}</div>`;
+  if (!h.events.length) return `<p class="ro">No status moves recorded.</p>`;
+  return `<ul class="rm-tl">${h.events.map((e) => `<li class="done"><span class="when">${esc(when(e.at))}</span><b>${esc(e.from || "(none)")} → ${esc(e.to || "(none)")}</b> · ${esc(e.who)}</li>`).join("")}`
+    + `<li class="now"><span class="when">now</span>${esc(t.s)}</li></ul>`;
+}
+
+function actionsHtml(d, t) {
+  if (t.backend === "github") return `<p class="ro">GitHub issues are read-only here: change them on GitHub.</p>`;
+  const sector = d.themes[t.theme] && d.themes[t.theme] !== NO_SECTOR ? d.themes[t.theme] : "<Sector>";
+  const row = (what, line) => `<tr><td>${what}</td><td><code>${esc(line)}</code> <button class="btn" data-act="copy" data-cmd="${esc(line)}">copy</button></td></tr>`;
+  // the tracker seam refuses "wont do" (exit 2), so a local card is not offered it
+  const moves = OPERATOR_OWNED.filter((b) => b !== t.b && !(t.backend === "local" && b === "wont")).map((b) => row(`move to ${esc(STATUS[b])}`, moveLine(t, STATUS[b])));
+  return `<table class="data rm-acts"><thead><tr><th>action</th><th>runs</th></tr></thead><tbody>${moves.join("")}${row("Sector", sectorLine(t, sector))}`
+    + `<tr><td>In review, CI, Done</td><td>moved by their event (a PR opening, CI, the merge): a drop or a key there writes nothing</td></tr></tbody></table>`;
+}
+
+function drawerHtml(d, ui) {
+  const dr = ui.drawer;
+  if (!dr) return "";
+  const own = (x) => x.k === dr.k && (x.project || "") === (dr.project || "");
+  const t = d.tickets.find(own) || (ui.nv && ui.nv.state === "ok" ? ui.nv.tickets.find(own) : undefined);
+  if (!t) return "";
+  const id = idOf(t), v = t.v >= 0 && d.versions[t.v] ? d.versions[t.v].n : "none: no fixVersion, so it is on the No version tab";
+  const worker = t.worker ? `${t.worker.label} ${t.worker.marker}${t.worker.reason ? " · " + t.worker.reason : ""}` : "none live";
+  const plan = t.drift === 1 ? `drift: the plan puts it in ${t.pv}` : t.drift === 2 ? "unplanned" : "as planned";
+  return `<aside class="drawer" role="dialog" aria-label="Ticket ${esc(id)}">
+    <div class="rm-dh"><div><span class="rm-id">${esc(id)}</span> <span class="ro">· ${esc(t.backend || "jira")}${t.project ? " · " + esc(t.project) : ""}</span><h4>${esc(t.t)}</h4></div>
+      <button class="btn" data-act="rm-close" aria-label="Close ticket ${esc(id)}">close ✕</button></div>
+    <dl class="rm-facts"><dt>stage</dt><dd>${esc(t.s)}</dd><dt>worker</dt><dd>${esc(worker)}</dd><dt>version</dt><dd>${esc(v)}</dd><dt>Sector</dt><dd>${esc(d.themes[t.theme] || "")}</dd><dt>plan</dt><dd>${esc(plan)}</dd></dl>
+    <div class="rm-sec"><p class="rm-subh">Actions, and the CLI call each one makes</p>${actionsHtml(d, t)}</div>
+    <div class="rm-sec"><p class="rm-subh">Stage history</p>${historyHtml(t, dr.history)}</div>
+    <p class="ro">Keyboard: on a card, Enter opens this drawer, Shift+Left and Shift+Right move it between To do, In progress and Won't. Esc closes the drawer.</p>
+  </aside>`;
+}
+
+export const renderBoard =(data, ui, extras) => pg(boardPage(data, ui || {}, extras || {}));
 function boardPage(data, ui, extras) {
   const page = pageHeader("Board", "Every version, what each ticket is doing, and what is left");
   if (!data) return page + `<p class="sub" id="status">loading…</p>`;
@@ -376,5 +428,7 @@ function boardPage(data, ui, extras) {
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${esc(data.mirror.newest || "unknown")})`;
   const fresh = `<p class="ro rm-fresh">read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${esc(dr.file.writtenHm || "unknown")}` : ""}</p>`;
   const body = tab === "chains" ? chainsTab(ui, ch) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch) : lanesHtml(data, ui, sel, ch);
-  return [page, fresh, driftBanner(dr), stripHtml(data, sel, ch, tab), linksHtml(ch), tabsHtml(data, ui, tab, ch, dr), barHtml(data, ui, ch, tab, sel), body].join("\n");
+  const drawer = drawerHtml(data, ui);
+  // with a drawer open the board under it is inert: no drag, select, key or click reaches a card until the drawer closes
+  return [page, `<div class="rm-under"${drawer ? " inert" : ""}>`, fresh, driftBanner(dr), stripHtml(data, sel, ch, tab), linksHtml(ch), tabsHtml(data, ui, tab, ch, dr), barHtml(data, ui, ch, tab, sel), body, `</div>`, drawer].join("\n");
 }
