@@ -60,8 +60,8 @@ stronger prose. `docs/internals/context-architecture.md`.
   `docs/`; vault content stays in luna. [prose]
 
 ### Retrieval routing
-qmd finds content (scope with `-c <name>`; a miss is
-not proof of absence). graphify explains structure (`graphify query|explain|path`).
+qmd finds content: `bash scripts/lib/qmd-bounded.sh query -c <name> "<question>"` (a miss is not proof of absence; a bare qmd call is refused).
+graphify explains structure: `bash scripts/graphify/worker-graph.sh query|explain|path "<x>"` (the bare graphify form fails in a worktree; this line wins over the section below).
 Extraction runs on scratchpad copies, never live vaults. A live URL → `WebFetch`
 directly.
 

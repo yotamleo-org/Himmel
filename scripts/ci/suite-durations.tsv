@@ -150,6 +150,7 @@ scripts/ci/test-check-no-secrets.sh	0
 scripts/ci/test-check-removal-ratchets.sh	1
 scripts/ci/test-check-rename-diff.sh	1
 scripts/ci/test-check-run-timelines.sh	6
+scripts/ci/test-check-taught-search-forms.sh	1
 scripts/ci/test-check-vacuous-path-assert.sh	1
 scripts/ci/test-ci-container-jobs.sh	2
 scripts/ci/test-ci-gcp-routing.sh	0

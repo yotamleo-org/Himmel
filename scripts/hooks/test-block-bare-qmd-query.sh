@@ -1260,6 +1260,65 @@ deny "command env GIT_SSH_COMMAND='cd x; qmd query y' git fetch origin"
 allow 'git rebase -x "make test" HEAD~1'
 allow 'git log --grep="qmd query" --oneline'
 
+# --- three shapes that only MENTION qmd are no bare search. A quoted
+# `|` or `;` inside a filter's pattern or a script's text argument is data, not a
+# command boundary. The negative controls keep a real bare search refused.
+# (a) the sanctioned wrapper piped into plain filters, a pattern holding `|`
+allow "$BQ | grep -E 'HIMMEL-[0-9]+|^Title' | cut -c1-150 | head -8"
+allow "$BQ | grep -E 'a|b'"
+allow "$BQ 2>&1 | egrep 'x|y' | head -3"
+# the observed command: the filter's own pattern names qmd
+allow "$BQ | grep -E \"^qmd://|^Title\" | head -30"
+allow "$BQ | grep -E 'qmd://' | head -5"
+# (b) a pattern naming qmd inside grep run by find, the pattern holding `|`
+allow 'find /x -name "*.jsonl" -exec grep -c -E "qmd-bounded|qmd query|qmd search" {} +'
+allow "find /x -name '*.md' -execdir grep -l 'a|qmd search' {} \\;"
+# (c) quoted text handed to the results-bullet writer, holding `;` or `)`
+allow "bash /h/scripts/handover/chief-kit/append-results.sh /x.md 'Graph use: console 1 pct; qmd search: console 6 pct'"
+allow "bash /h/scripts/handover/chief-kit/append-results.sh /x.md 'Fix order: (1) brief, (2) qmd query inline in the fork'"
+allow '/h/scripts/handover/chief-kit/append-results.sh /x.md "double quoted; qmd search: x"'
+# negative controls: a real bare search is still refused in every neighbouring shape
+deny "qmd search -c luna \"x\" | grep -E 'a|b'"
+deny 'qmd search -c luna "x" 2>&1 | head -30'
+deny "bash /h/scripts/handover/chief-kit/append-results.sh /x.md 'note'; qmd query x"
+deny 'bash /h/scripts/handover/chief-kit/append-results.sh /x.md "$(qmd query x)"'
+deny "bash /h/scripts/handover/chief-kit/append-results.sh /x.md 'note' && qmd search x"
+deny "bash /h/scripts/other-script.sh /x.md 'a; qmd search b'"
+deny "$BQ | grep -E 'a|b' | sh"
+deny "$BQ | grep -E 'a|b' | xargs sh -c 'qmd query y'"
+deny "$BQ | grep --pre=sh x"
+deny "$BQ | grep -E \"^qmd://|^Title\" | sh"
+deny "qmd search -c luna x | grep -E \"^qmd://|^Title\" | head -30"
+deny "$BQ | grep -E 'qmd://' | xargs sh -c 'qmd query y'"
+deny "find /x -name '*.md' -exec sh -c 'qmd query y' {} +"
+deny "find /x -exec grep --pre=sh 'a|qmd query' {} +"
+deny "find /x -exec grep -l 'a|qmd search' {} \\; -exec sh -c 'qmd query y' \\;"
+
+# The deny text for a command that already names the wrapper says its shape was
+# unreadable, never that a bare qmd search was typed.
+msg=$(printf '%s' "$(j_bash "$BQ | sh")" | env -u QMD_UNBOUNDED_OK bash "$HOOK" 2>&1 >/dev/null)
+case "$msg" in
+    *"bare qmd query"*) echo "FAIL wrapper-shaped deny text claims a bare qmd search: $msg"; FAILED=$((FAILED + 1)) ;;
+    *qmd-bounded.sh*QMD_UNBOUNDED_OK*) echo "PASS wrapper-shaped deny text names the wrapper and the bypass, not a bare search" ;;
+    *) echo "FAIL wrapper-shaped deny text lacks the wrapper or the bypass: $msg"; FAILED=$((FAILED + 1)) ;;
+esac
+msg=$(printf '%s' "$(j_bash "$BQ | grep -E \"^qmd://|^Title\" | sh")" | env -u QMD_UNBOUNDED_OK bash "$HOOK" 2>&1 >/dev/null)
+case "$msg" in
+    *"bare qmd query"*) echo "FAIL a qmd:// filter beside the wrapper claims a bare qmd search: $msg"; FAILED=$((FAILED + 1)) ;;
+    *qmd-bounded.sh*QMD_UNBOUNDED_OK*) echo "PASS a qmd:// filter beside the wrapper keeps the wrapper-shaped deny text" ;;
+    *) echo "FAIL a qmd:// filter beside the wrapper lacks the wrapper or the bypass: $msg"; FAILED=$((FAILED + 1)) ;;
+esac
+msg=$(printf '%s' "$(j_bash "qmd query y; $BQ")" | env -u QMD_UNBOUNDED_OK bash "$HOOK" 2>&1 >/dev/null)
+case "$msg" in
+    *"bare qmd query/search/vsearch is refused"*) echo "PASS a bare search beside the wrapper keeps the bare-qmd deny text" ;;
+    *) echo "FAIL a bare search beside the wrapper lost the bare-qmd deny text: $msg"; FAILED=$((FAILED + 1)) ;;
+esac
+msg=$(printf '%s' "$(j_bash 'qmd search -c luna x')" | env -u QMD_UNBOUNDED_OK bash "$HOOK" 2>&1 >/dev/null)
+case "$msg" in
+    *"bare qmd query/search/vsearch is refused"*) echo "PASS a real bare search keeps the bare-qmd deny text" ;;
+    *) echo "FAIL a real bare search lost the bare-qmd deny text: $msg"; FAILED=$((FAILED + 1)) ;;
+esac
+
 # --- a missing shfmt denies a command that names qmd and a search verb, and the
 # message names shfmt; a command that names no qmd never pays for it.
 NOSH=$(mktemp -d "${TMPDIR:-/tmp}/block-bare-qmd-nosh.XXXXXX") || exit 1
