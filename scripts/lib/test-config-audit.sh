@@ -424,6 +424,7 @@ newest_id() { st check | awk -F'\t' '$1 == "BACKUP" { print $2 }'; }
 # (a) A, B, A: the newest backup is A's.
 new_station; put_station "$V1-A"; st watch 2>/dev/null
 id_a=$(newest_id)
+if [ -n "$id_a" ]; then pass "10j3 the first watch keeps a backup"; else fail "10j3 the first watch kept no backup"; fi
 put_station "$V1-B"; st watch 2>/dev/null
 put_station "$V1-A"; st watch 2>/dev/null
 eq "10j3 A, B, A: the newest backup is A's" "$id_a" "$(newest_id)"

@@ -54,7 +54,8 @@
 #                 key-losing file backs up nothing, so the last good copy stays.
 #                 Watcher and audited backups reuse and prune apart. A backup
 #                 that fails exits watch with 4 after the alerts are sent. A dir
-#                 with no manifest is removed after 10 minutes. A value change
+#                 with no manifest, or one that is not JSON, is removed
+#                 after 10 minutes. A value change
 #                 under the same key names reads healthy: the earlier value is
 #                 the previous backup. A deleted .env restores only from an
 #                 audited backup (or a migrate-env copy in ~/.himmel/env-backups,
