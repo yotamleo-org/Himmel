@@ -223,6 +223,10 @@ PINABORTRETRY
                     ;;
                 esac
                 echo "docs-audit critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum); the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2
+            elif [ "$panel_rc" -eq 5 ]; then
+                # exit 5: the panel could not record its findings on the CR
+                # ledger, so it wrote no ok row.
+                echo "docs-audit critic panel could not record its result on the CR ledger (exit 5: CR-ledger append failed); the panel left no ok row, so the CR marker stays held at this SHA until the ledger path is fixed and the panel is re-run" >&2
             elif [ "$panel_rc" -eq 2 ]; then
                 # exit 2 is a usage error or a mktemp failure, not a
                 # failed critic: name the cause the panel printed.

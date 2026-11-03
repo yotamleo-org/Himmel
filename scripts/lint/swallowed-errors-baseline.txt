@@ -37,7 +37,6 @@ scripts/cr/critic-panel.sh	default-zero	2
 scripts/cr/critic-panel.sh	true-after-read	12
 scripts/cr/doc-freshness-advisory.sh	cmdsub-devnull	2
 scripts/cr/doc-freshness-advisory.sh	true-after-read	3
-scripts/cr/docs-audit-panel.sh	cmdsub-devnull	2
 scripts/cr/docs-audit-panel.sh	true-after-read	1
 scripts/cr/failure-classify.sh	cmdsub-devnull	2
 scripts/cr/file-deferred-issues.sh	cmdsub-devnull	7
