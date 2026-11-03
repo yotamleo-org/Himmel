@@ -195,8 +195,20 @@ read (`chief-kit/chain-state.mjs`, over the registry `HIMMEL_CHAIN_REGISTRY` nam
 as `/api/health` reads its settings: the checkout's `.env`, `himmel.conf`, the non-empty process environment winning. Both
 reads are Jira-backed: with TRACKER set to none, local or GitHub they answer absent. A script is started only when its
 input is found; otherwise that part answers `{state: "absent", reason}` and the page says so in words (drift: not read, waits for you:
-not read, no Chains tab content): it never shows a made-up count. Not on the Board yet: the ticket drawer, hold writes,
-keyboard moves, the Chains map and Why panel, and the Refresh button for the drift run.
+not read, no Chains tab content): it never shows a made-up count.
+
+`GET /api/roadmap/history?key=<KEY>` (token-gated, GET only, read-only, HIMMEL-8832) feeds the ticket drawer's stage
+history. It runs the Jira CLI's `history <KEY> --json` as the key's own project (argv, no shell, no write lock) and answers
+`{key, events: [{at, who, from, to}]}`: the status moves only, oldest first. The key must be `<PROJECT>-<n>` for a project on
+the Board (400 otherwise); a tracker that is not Jira answers 403; a failed read, text that is not JSON or entries that are
+not changelog entries answer 502 `history unavailable`, which the drawer shows as unavailable, never as an empty history.
+The page asks only when a drawer opens, never per card and never on load.
+
+A card opens the ticket drawer on a click, Enter or Space: the card's facts, the CLI call each write makes (a local card
+shows its `tracker_*` call), and its stage history. While a drawer is open the board under it is inert and every write is
+held. A drop on In review, CI or Done writes nothing and the Board says so (those columns are moved by their event);
+Shift+Left and Shift+Right on a focused card move it among To do, In progress and Won't through the same write. Not on the
+Board yet: the Chains map and Why panel, and the Refresh button for the drift run.
 
 The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
 `graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files

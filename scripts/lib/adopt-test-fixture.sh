@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034 # the suites that source this read what it assigns
-# scripts/lib/adopt-test-fixture.sh — the fixture scripts/test-adopt.sh and
-# scripts/test-adopt-features.sh both source: helpers, the throwaway $work dir,
+# scripts/lib/adopt-test-fixture.sh — the fixture scripts/test-adopt.sh and the
+# scripts/test-adopt-{features,hooks-chain,hooks-gates,provenance,wizard}.sh suites
+# all source: helpers, the throwaway $work dir,
 # the stubbed claude, the jira dist/.env backup + restore trap, the hermetic PATH
 # and the state the adopt.sh scenarios share (base_home, pchome, the pre-commit
 # stub in pcbin, native_free_path). Sourced by a suite that has already run

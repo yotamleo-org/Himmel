@@ -757,3 +757,88 @@ test("5494: a card on the No version tab still offers the Sectors its project's 
   const html = renderBoard({ ...readRoadmap({ mirrorDir: "", projects, workers: { state: "absent" } as never }) }, { tab: "nv", v: "all", writes: true, nv }, {});
   expect(new RegExp('aria-label="Sector of SALUS-3">([\\s\\S]*?)</select>').exec(html)![1]).toContain("Intake"); // ... yet it can take its project's Sector
 });
+
+// ---- 8832: the ticket drawer (mockup v4 frame 3): the card's CLI argv, its stage history, and a board that holds still while it is open ----
+const EVENTS = [
+  { at: "2026-10-27T09:00:00.000+0000", who: "Bot", from: "To Do", to: "In Progress" },
+  { at: "2026-10-28T08:00:00.000+0000", who: "Bot", from: "In Progress", to: "In Review" },
+];
+const drawerOf = (html: string) => /<aside class="drawer"[\s\S]*?<\/aside>/.exec(html)?.[0] ?? "";
+
+test("8832 drawer: a card opens it, and it shows the card's CLI argv and its stage history", () => {
+  const r = read(station());
+  const closed = renderBoard(r, { version: null, theme: null, writes: true, v: "all" }, null);
+  expect(closed).toContain('data-rm-open="1"'); // every card carries the hook that opens it
+  expect(drawerOf(closed)).toBe("");
+  const html = renderBoard(r, { version: null, theme: null, writes: true, v: "all", drawer: { k: 1, project: "HIMMEL", history: { events: EVENTS } } }, null);
+  const d = drawerOf(html);
+  expect(d).toContain('aria-label="Ticket HIMMEL-1"');
+  expect(d).toContain("Roadmap in the ui");
+  expect(d).toContain("jira transition HIMMEL-1 &quot;To Do&quot;"); // the argv a move to To do runs
+  expect(d).not.toContain("transition HIMMEL-1 &quot;In Progress&quot;"); // the card is in progress already: no move there
+  expect(d).toContain('jira edit HIMMEL-1 --sector'); // and the Sector write
+  expect(d).toContain("To Do → In Progress");
+  expect(d).toContain("In Progress → In Review");
+  expect(d).toContain("2026-10-27");
+  expect(html).toMatch(/class="rm-under" inert/); // the board under the drawer takes no drag, select or key
+});
+
+test("8832 drawer: history that did not load says it is unavailable, never an empty history", () => {
+  const r = read(station());
+  const ui = (history: unknown) => renderBoard(r, { version: null, theme: null, writes: true, v: "all", drawer: { k: 1, project: "HIMMEL", history } }, null);
+  expect(drawerOf(ui({ error: "history unavailable" }))).toContain("history unavailable");
+  expect(drawerOf(ui({ error: "history unavailable" }))).not.toContain("No status moves");
+  expect(drawerOf(ui(null))).toContain("loading");
+  expect(drawerOf(ui({ events: [] }))).toContain("No status moves");
+});
+
+test("8832 drawer: a card of a second project shows that project's own key in the argv, and escapes ticket text", () => {
+  const m = twoMirrors();
+  const projects = [{ key: "HIMMEL", dir: join(m.root, "HIMMEL") }, { key: "SALUS", dir: join(m.root, "SALUS") }];
+  writeFileSync(join(m.root, "SALUS", "SALUS-1.md"), issueOf("SALUS", 1, ["v1.1.2"], "salus <b>work</b>"));
+  const r = readRoadmap({ mirrorDir: "", projects, workers: { state: "absent" } as never });
+  const html = renderBoard(r, { version: null, theme: null, v: "all", writes: true, drawer: { k: 1, project: "SALUS", history: { events: [] } } }, {});
+  const d = drawerOf(html);
+  expect(d).toContain('aria-label="Ticket SALUS-1"');
+  expect(d).toContain("jira transition SALUS-1");
+  expect(d).not.toContain("HIMMEL-1");
+  expect(d).toContain("salus &lt;b&gt;work&lt;/b&gt;");
+});
+
+// A local card: the drawer shows the seam's real argv (what applyLocalWrite runs), a Sector named with a command substitution
+// is quoted the way the jira() rows quote it, and "wont do" is not offered (tracker_transition exits 2 on it).
+const SECTOR = 'a$(id)"><x';
+const localDrawer = (history: unknown = null) => {
+  const r = read(station());
+  const themes = [...r.themes, SECTOR];
+  const tickets = r.tickets.map((t) => (t.k === 1 ? { ...t, backend: "local", id: "LOCAL-1", theme: themes.length - 1 } : t));
+  return drawerOf(renderBoard({ ...r, themes, tickets } as typeof r, { version: null, theme: null, writes: true, v: "all", drawer: { k: 1, project: "HIMMEL", history } }, null));
+};
+
+test("8832 drawer: a local card shows the tracker seam's real calls, quoted, and offers no wont do", () => {
+  const d = localDrawer();
+  expect(d).toContain("tracker_transition LOCAL-1 &quot;To Do&quot; --allow-back"); // the real write passes --allow-back
+  expect(d).not.toContain("tracker_edit"); // no such verb
+  expect(d).not.toContain("tracker_transition LOCAL-1 &quot;wont do&quot;"); // the seam exits 2 on it
+  expect(d).not.toContain("wont do");
+  expect(d).toContain("tracker_sector LOCAL-1 &quot;a\\$(id)\\&quot;&gt;&lt;x&quot;"); // $ and the quote are escaped, so a paste does not run the substitution
+  expect(d).not.toContain("tracker_sector LOCAL-1 &quot;a$(id)");
+});
+
+test("8832 drawer: the history fields and the copy command are escaped", () => {
+  const r = read(station());
+  const history = { events: [{ at: "2026-10-27T09:00:00.000+0000", who: "<i>Bot</i>", from: "<b>a</b>", to: "<u>b</u>" }] };
+  const d = drawerOf(renderBoard(r, { version: null, theme: null, writes: true, v: "all", drawer: { k: 1, project: "HIMMEL", history } }, null));
+  expect(d).toContain("&lt;i&gt;Bot&lt;/i&gt;");
+  expect(d).toContain("&lt;b&gt;a&lt;/b&gt; → &lt;u&gt;b&lt;/u&gt;");
+  expect(d).not.toMatch(/<(i|b|u)>(Bot|a|b)<\/\1>/);
+  expect(localDrawer()).toMatch(/data-cmd="tracker_sector LOCAL-1 &quot;a\\\$\(id\)\\&quot;&gt;&lt;x&quot;"/); // the attribute cannot be broken out of
+});
+
+test("8832 drawer: the Done lane stays open while a Done card's drawer is open, so closing it can focus the card", () => {
+  const r = read(station());
+  const html = (drawer: unknown) => renderBoard(r, { version: null, theme: null, writes: true, v: "all", drawer }, null);
+  expect(html(null)).toMatch(/<details class="rm-col rm-done"(?! open)/); // folded by default
+  expect(html({ k: 3, project: "HIMMEL", history: null })).toMatch(/<details class="rm-col rm-done" open/); // HIMMEL-3 is Done
+  expect(html({ k: 1, project: "HIMMEL", history: null })).toMatch(/<details class="rm-col rm-done"(?! open)/); // another card's drawer leaves it folded
+});

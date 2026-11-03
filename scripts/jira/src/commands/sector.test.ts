@@ -22,8 +22,15 @@ function fieldReply(path: string): unknown {
 describe('Sector field (HIMMEL-5710)', () => {
   let mockRequest: ReturnType<typeof vi.fn>;
   let logs: string[];
+  let realHome: string | undefined;
+  let tempHome: string;
 
   beforeEach(async () => {
+    // Own the HOME the config tests write under, so a runner that skips vitest.setup.ts
+    // (a repo-root run) can never reach the operator's ~/.himmel/config.json.
+    realHome = process.env.HOME;
+    tempHome = mkdtempSync(join(tmpdir(), 'sector-test-home-'));
+    process.env.HOME = tempHome;
     vi.clearAllMocks();
     logs = [];
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
@@ -39,6 +46,9 @@ describe('Sector field (HIMMEL-5710)', () => {
   afterEach(() => {
     delete process.env.JIRA_SECTOR_FIELD;
     vi.restoreAllMocks();
+    if (realHome === undefined) delete process.env.HOME;
+    else process.env.HOME = realHome;
+    rmSync(tempHome, { recursive: true, force: true });
   });
 
   function freshProgram(register: (p: Command) => void): Command {

@@ -5129,6 +5129,9 @@ case "$d" in
         echo "vec m=$m" >> "$C40_LOG"
         case "$mode" in
             hang) exit 28 ;;
+            # the fork's real answer to a vec-only search while the embedder is down or the breaker is open:
+            # no isError, "No results returned" text, structuredContent.embedSkipped true (test/mcp-embed-fallback.test.ts)
+            embedskip) pfx; printf '%s' '{"result":{"content":[{"type":"text","text":"No results returned for \"qmd doctor probe\". Note: the embedding service did not answer in time or is down; the meaning-based part of the search was skipped, so this is not a confirmed miss."}],"structuredContent":{"results":[],"embedSkipped":true}},"jsonrpc":"2.0","id":2}'; exit 0 ;;
             iserror) pfx; printf '%s' '{"result":{"content":[{"type":"text","text":"embedding model failed to load"}],"isError":true},"jsonrpc":"2.0","id":2}'; exit 0 ;;
             rpcerr) pfx; printf '%s' '{"error":{"code":-32603,"message":"vector store unavailable"},"jsonrpc":"2.0","id":2}'; exit 0 ;;
             garbage) pfx; printf '%s' 'not json at all'; exit 0 ;;
@@ -5271,6 +5274,9 @@ else
 fi
 rm -rf "$c40_t"
 
+# A pinned daemon answers a down embedder within its 15 s budget (the embedskip row below); this row
+# still proves the probe's own curl bound: a daemon that never answers at all (wedged server, or a
+# pre-breaker pin) gives curl rc 28 -> WARN, never OK.
 echo "== C40: vec query hangs (curl rc 28) -> WARN naming the timeout, not OK =="
 c40_setup
 if ! c40_precond hang; then fail "C40 hang: precondition — stub did not answer init"
@@ -5280,6 +5286,19 @@ else
         pass "C40 hung vec query -> WARN naming the timeout"
     else
         fail "C40 hung vec query -> $(printf '%s' "$out" | grep -A1 C40)"
+    fi
+fi
+rm -rf "$c40_t"
+
+echo "== C40: embed skipped (vec-only answer with structuredContent.embedSkipped) -> WARN, not OK =="
+c40_setup
+if ! c40_precond embedskip; then fail "C40 embedskip: precondition — stub did not answer init"
+else
+    out="$(c40_run embedskip)"
+    if grepq "$out" 'WARN C40-qmd-vec' && grepq "$out" -F 'embedder did not answer' && grepq "$out" -F 'vec search is not being served' && ! grepq "$out" 'OK   C40-qmd-vec'; then
+        pass "C40 embed skipped -> WARN naming the embedder, not OK"
+    else
+        fail "C40 embed skipped -> $(printf '%s' "$out" | grep -A1 C40)"
     fi
 fi
 rm -rf "$c40_t"

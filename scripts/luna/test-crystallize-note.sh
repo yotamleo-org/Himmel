@@ -21,10 +21,12 @@ fail() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 # a live lane worker; the dedicated lane-config case below sets the variable back.
 unset CLAUDE_CONFIG_DIR
 
-# The crystallizer fails closed without the API lane; the stub stands in for the
-# lane launcher, so every case below runs with the lane switched on (the refusal
-# cases unset it explicitly).
-export HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
+# The default backend is the subscription (claude-cli); the API lane is an explicit
+# opt-in that fails closed without the lane env. The older cases below exercise the
+# shared flow through the API path (the stub stands in for the lane launcher), so
+# they run with CRYSTALLIZE_BACKEND=claude-api and the lane switched on; the
+# subscription cases further down unset both explicitly.
+export HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_BACKEND=claude-api
 unset ANTHROPIC_API_KEY CRYSTALLIZE_MODEL
 
 # A launcher wrapper that records the lane env the crystallizer hands over, then
@@ -152,10 +154,218 @@ lane_refusal() { # <label> <env-assignments...>
     if [ "$before" = "$after" ] && grep -q '^crystallized: false$' "$note"; then pass "$label: mechanical note unchanged"; else fail "$label: note changed without the API lane"; fi
     rm -rf "$sb"
 }
-lane_refusal "lane-off" -u HIMMEL_API_LANE
-lane_refusal "lane-no-account" -u HIMMEL_API_ACCOUNT
-lane_refusal "lane-not-on" HIMMEL_API_LANE=off
-lane_refusal "lane-bad-account" HIMMEL_API_ACCOUNT=invalid
+lane_refusal "lane-off" -u HIMMEL_API_LANE CRYSTALLIZE_BACKEND=claude-api
+lane_refusal "lane-no-account" -u HIMMEL_API_ACCOUNT CRYSTALLIZE_BACKEND=claude-api
+lane_refusal "lane-not-on" CRYSTALLIZE_BACKEND=claude-api HIMMEL_API_LANE=off
+lane_refusal "lane-bad-account" CRYSTALLIZE_BACKEND=claude-api HIMMEL_API_ACCOUNT=invalid
+lane_refusal "api-alias" -u HIMMEL_API_LANE CRYSTALLIZE_BACKEND=api
+
+# --- Case S: the subscription lane is the default backend -----------------------
+# No backend set, lane off, every API-key variable exported: the crystallizer runs
+# ONE `claude -p` through the stub, behind a PROCEED preflight, with no API-key
+# variable in its environment, and stamps the note.
+PF_PROCEED="$LANE_DIR/pf-proceed.sh"; PF_SKIP="$LANE_DIR/pf-skip.sh"
+printf '#!/usr/bin/env bash\necho "bank-preflight: noise on stderr" >&2\necho PROCEED\n' > "$PF_PROCEED"
+printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown"\necho "SKIP: five_hour at 97"\n' > "$PF_SKIP"
+chmod +x "$PF_PROCEED" "$PF_SKIP"
+CLI_STUB="$LANE_DIR/cli-stub.sh"
+cat > "$CLI_STUB" <<EOF
+#!/usr/bin/env bash
+[ -n "\${CRYSTALLIZE_FULLENV_DUMP:-}" ] && env > "\$CRYSTALLIZE_FULLENV_DUMP"
+[ -n "\${CRYSTALLIZE_STUB_SLEEP:-}" ] && sleep "\$CRYSTALLIZE_STUB_SLEEP"
+[ -n "\${CRYSTALLIZE_STUB_STDOUT:-}" ] && printf '%s\\n' "\$CRYSTALLIZE_STUB_STDOUT"
+exec "$STUB" "\$@"
+EOF
+chmod +x "$CLI_STUB"
+
+cli_run() { # <sb> <stub-mode> <preflight-cmd> <extra env-assignments...>; sets RC
+    local sb="$1" mode="$2" pf="$3"; shift 3
+    RC=0
+    env -u CRYSTALLIZE_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT \
+        ANTHROPIC_API_KEY=k1 ANTHROPIC_AUTH_TOKEN=k2 ANTHROPIC_ORG_A_KEY=k3 ANTHROPIC_ORG_B_KEY=k4 LQ_API_KEY=k5 \
+        ANTHROPIC_BASE_URL=http://127.0.0.1:9 CLAUDE_CODE_USE_BEDROCK=1 \
+        CRYSTALLIZE_CLAUDE_BIN="$CLI_STUB" STUB_MODE="$mode" CRYSTALLIZE_PREFLIGHT_CMD="$pf" \
+        CRYSTALLIZE_MARKER="$sb/marker.txt" CRYSTALLIZE_PID_DIR="$sb/pids" \
+        CRYSTALLIZE_FULLENV_DUMP="$sb/fullenv.txt" CRYSTALLIZE_ARGV_DUMP="$sb/argv.txt" \
+        CRYSTALLIZE_NOW="2026-06-28T12:00:00Z" "$@" \
+        bash "$CRYS" "$sb/vault/note.md" "$sb/t.jsonl" 2>"$sb/stderr.txt" || RC=$?
+}
+cli_setup() { # <sb>
+    mkdir -p "$1/vault"; write_note "$1/vault/note.md"; printf '{}\n' > "$1/t.jsonl"
+}
+cli_sandbox() { # sets SB to a fresh sandbox holding vault/note.md and t.jsonl
+    SB="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-cli.XXXXXX")" || exit 1
+    cli_setup "$SB"
+}
+
+# (i) default backend, lane off: one claude call, no key variable, note stamped.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED"
+if [ "$RC" = "0" ]; then pass "cli-default: exits 0 with the API lane off"; else fail "cli-default: exit was $RC (the API-only refusal)"; fi
+if [ "$(wc -l < "$SB/marker.txt" 2>/dev/null | tr -d ' ')" = "1" ]; then pass "cli-default: claude ran exactly once"; else fail "cli-default: claude did not run exactly once"; fi
+if grep -q '^crystallized: true$' "$SB/vault/note.md"; then pass "cli-default: note stamped crystallized: true"; else fail "cli-default: note not stamped"; fi
+if [ -s "$SB/fullenv.txt" ] && ! grep -Eq '^(ANTHROPIC_|LQ_API_KEY|CLAUDE_CODE_USE_)' "$SB/fullenv.txt"; then pass "cli-default: no ANTHROPIC_*, CLAUDE_CODE_USE_* or LQ_API_KEY (BASE_URL, Bedrock toggle included) in the claude environment"; else fail "cli-default: an API-key variable reached claude"; fi
+for a in -p acceptEdits json "Read,Edit"; do
+    if grep -qxF "arg=$a" "$SB/argv.txt" 2>/dev/null; then pass "cli-default: argv carries $a"; else fail "cli-default: argv missing $a"; fi
+done
+if grep -qxF 'arg=--permission-mode' "$SB/argv.txt" && ! grep -qxF 'arg=bypassPermissions' "$SB/argv.txt" && ! grep -q '^arg=.*Bash' "$SB/argv.txt"; then pass "cli-default: explicit permission mode, no bypass, no Bash tool"; else fail "cli-default: permission mode or tool grant wrong"; fi
+if grep -qxF 'arg=--output-format' "$SB/argv.txt" && grep -qxF 'arg=--max-budget-usd' "$SB/argv.txt"; then pass "cli-default: --output-format and --max-budget-usd passed"; else fail "cli-default: --output-format or --max-budget-usd missing"; fi
+if grep -qF "cwd=$(cd "$SB/vault" && pwd)" "$SB/argv.txt" 2>/dev/null; then pass "cli-default: cwd is the note's directory"; else fail "cli-default: cwd is not the note's directory"; fi
+rm -rf "$SB"
+
+# (i-b) the explicit alias and the lane env being ON still choose the subscription.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_BACKEND=cli HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
+if [ "$RC" = "0" ] && grep -q '^crystallized: true$' "$SB/vault/note.md" && ! grep -Eq '^(ANTHROPIC_|LQ_API_KEY|CLAUDE_CODE_USE_|HIMMEL_API_KIND=)' "$SB/fullenv.txt"; then pass "cli-alias: CRYSTALLIZE_BACKEND=cli with the lane on stays on the subscription"; else fail "cli-alias: alias or lane-on path wrong"; fi
+rm -rf "$SB"
+
+# (i-c) isolation: the session markers, the plugin/config toggles and the API-lane variables of the
+# calling session never reach the claude child (it reads untrusted transcripts and runs from inside
+# a session), the OAuth token does, and no MCP server is loaded.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CLAUDECODE=1 AI_AGENT=x CLAUDE_PID=4242 CLAUDE_EFFORT=high CLAUDE_JOB_DIR=/tmp/j \
+    CLAUDE_CODE_ENTRYPOINT=cli HIMMEL_API_KIND=bulk HIMMEL_API_TOOLS=Read CLAUDE_CODE_OAUTH_TOKEN=oauth-keep
+if [ "$RC" = "0" ] && [ -s "$SB/fullenv.txt" ] && ! grep -Eq '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|HIMMEL_API_[A-Z_]*)=' "$SB/fullenv.txt" && ! grep -Eq '^CLAUDE_CODE_(ENTRYPOINT|USE_)' "$SB/fullenv.txt"; then pass "cli-isolation: session markers, CLAUDE_CODE_* and HIMMEL_API_* never reach claude"; else fail "cli-isolation: a session variable reached claude (rc=$RC)"; fi
+if grep -qxF 'CLAUDE_CODE_OAUTH_TOKEN=oauth-keep' "$SB/fullenv.txt" 2>/dev/null; then pass "cli-isolation: CLAUDE_CODE_OAUTH_TOKEN is kept"; else fail "cli-isolation: the OAuth token was scrubbed"; fi
+if grep -qxF 'arg=--strict-mcp-config' "$SB/argv.txt" 2>/dev/null; then pass "cli-isolation: argv carries --strict-mcp-config"; else fail "cli-isolation: argv missing --strict-mcp-config"; fi
+rm -rf "$SB"
+
+# (i-c2) a non-default CLAUDE_CONFIG_DIR does not defer the subscription path and does not reach
+# the child: the call must spend the same native bank the preflight just read, not another
+# directory's login.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CLAUDE_CONFIG_DIR="$SB/other-config"
+if [ "$RC" = "0" ] && [ -s "$SB/marker.txt" ] && [ -s "$SB/fullenv.txt" ] && ! grep -q '^CLAUDE_CONFIG_DIR=' "$SB/fullenv.txt"; then pass "cli-config-dir: a non-default CLAUDE_CONFIG_DIR runs but never reaches claude"; else fail "cli-config-dir: rc=$RC or the variable reached claude"; fi
+rm -rf "$SB"
+
+# (i-d) the refusal branch: a pin that leaves an API-key variable behind refuses the launch, runs
+# claude never, leaves the note untouched, says why on stderr and leaks no scratch file. The pin
+# library is replaced by a no-op in a copied tree so the survival is real.
+cli_sandbox
+mkdir -p "$SB/tree/scripts/luna" "$SB/tree/scripts/lib" "$SB/tmp"
+cp "$CRYS" "$SB/tree/scripts/luna/crystallize-note.sh"
+cp "$SCRIPT_DIR/../lib/llm-backend.sh" "$SB/tree/scripts/lib/llm-backend.sh"
+printf 'native_auth_pin_env() { return 0; }\n' > "$SB/tree/scripts/lib/native-auth-pin.sh"
+RC=0
+env -u CRYSTALLIZE_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_API_KEY=k1 TMPDIR="$SB/tmp" \
+    CRYSTALLIZE_CLAUDE_BIN="$CLI_STUB" STUB_MODE=success CRYSTALLIZE_PREFLIGHT_CMD="$PF_PROCEED" \
+    CRYSTALLIZE_MARKER="$SB/marker.txt" CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$SB/tree/scripts/luna/crystallize-note.sh" "$SB/vault/note.md" "$SB/t.jsonl" 2>"$SB/stderr.txt" || RC=$?
+if [ "$RC" = "0" ] && [ ! -s "$SB/marker.txt" ] && grep -q '^crystallized: false$' "$SB/vault/note.md" && grep -q 'survived the native-auth pin' "$SB/stderr.txt"; then pass "cli-pin-refusal: a surviving API-key variable refuses the launch, claude never runs, note untouched"; else fail "cli-pin-refusal: rc=$RC marker/note/stderr wrong"; fi
+if ! ls "$SB/tmp"/crystallize-cli.* >/dev/null 2>&1; then pass "cli-pin-refusal: no scratch file left behind"; else fail "cli-pin-refusal: a crystallize-cli scratch file leaked"; fi
+rm -rf "$SB"
+
+# (ii) preflight not PROCEED: no claude call, note untouched, exit 0, quiet.
+cli_sandbox
+SHA_BEFORE="$( { sha256sum "$SB/vault/note.md" 2>/dev/null || shasum -a 256 "$SB/vault/note.md"; } | awk '{print $1}')"
+cli_run "$SB" success "$PF_SKIP"
+SHA_AFTER="$( { sha256sum "$SB/vault/note.md" 2>/dev/null || shasum -a 256 "$SB/vault/note.md"; } | awk '{print $1}')"
+if [ "$RC" = "0" ]; then pass "cli-skip: preflight not PROCEED exits 0"; else fail "cli-skip: exit was $RC"; fi
+if [ ! -s "$SB/marker.txt" ]; then pass "cli-skip: claude never called"; else fail "cli-skip: claude called despite the preflight"; fi
+if [ "$SHA_BEFORE" = "$SHA_AFTER" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-skip: note untouched"; else fail "cli-skip: note changed"; fi
+rm -rf "$SB"
+
+# (iii) CRYSTALLIZE_BACKEND=claude-api with the lane off still refuses, exit 2, runs nothing.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_BACKEND=claude-api
+if [ "$RC" = "2" ] && [ ! -s "$SB/marker.txt" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-api-optin: claude-api with the lane off exits 2 and runs nothing"; else fail "cli-api-optin: rc=$RC marker/note wrong"; fi
+rm -rf "$SB"
+
+# (iv) an unknown backend value fails closed, exit 2, runs nothing (ollama is not a crystallizer backend).
+for BAD in bogus ollama; do
+    cli_sandbox
+    cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_BACKEND="$BAD"
+    if [ "$RC" = "2" ] && [ ! -s "$SB/marker.txt" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-bad-backend($BAD): exits 2, runs nothing"; else fail "cli-bad-backend($BAD): rc=$RC"; fi
+    rm -rf "$SB"
+done
+
+# (v) the stub exits non-zero leaving the note unchanged: the flag stays false.
+cli_sandbox
+cli_run "$SB" fail "$PF_PROCEED"
+if [ "$RC" = "0" ] && [ -s "$SB/marker.txt" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-fail: non-zero claude leaves crystallized: false, exit 0"; else fail "cli-fail: rc=$RC or flag wrong"; fi
+rm -rf "$SB"
+
+# (vi) no claude binary on the cli path: quiet exit 0, note untouched.
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_CLAUDE_BIN="$SB/does-not-exist" PATH="/usr/bin:/bin"
+if [ "$RC" = "0" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-no-claude: missing binary exits 0, note untouched"; else fail "cli-no-claude: rc=$RC"; fi
+rm -rf "$SB"
+
+# (vii) backend rule: an explicit CRYSTALLIZE_BACKEND wins, else lane on means the API path,
+# else the subscription. A lane-on session with no explicit backend keeps the API path (the
+# preflight stub says SKIP, so the cli path would leave the note untouched).
+cli_sandbox
+RC=0
+env -u CRYSTALLIZE_BACKEND HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A CRYSTALLIZE_CLAUDE_BIN="$LANE_STUB" STUB_MODE=success \
+    CRYSTALLIZE_LANE_DUMP="$SB/lane.txt" CRYSTALLIZE_PREFLIGHT_CMD="$PF_SKIP" CRYSTALLIZE_PID_DIR="$SB/pids" \
+    bash "$CRYS" "$SB/vault/note.md" "$SB/t.jsonl" 2>"$SB/stderr.txt" || RC=$?
+if [ "$RC" = "0" ] && grep -qxF 'HIMMEL_API_KIND=bulk' "$SB/lane.txt" 2>/dev/null && grep -q '^crystallized: true$' "$SB/vault/note.md"; then pass "backend-rule: lane on and no explicit backend keeps the API path"; else fail "backend-rule: lane-on session left the API path (rc=$RC)"; fi
+rm -rf "$SB"
+
+# (viii) the preflight is pinned to the native bank, whatever lane the session runs in.
+PF_DUMP="$LANE_DIR/pf-dump.sh"
+cat > "$PF_DUMP" <<'EOF'
+#!/usr/bin/env bash
+{
+    printf 'CADENCE_USAGE_LANE=%s\n' "${CADENCE_USAGE_LANE-<unset>}"
+    printf 'WORKER_SESSION_LANE=%s\n' "${WORKER_SESSION_LANE-<unset>}"
+    printf 'CADENCE_USAGE_WORKER=%s\n' "${CADENCE_USAGE_WORKER-<unset>}"
+} > "$PF_DUMP_FILE"
+echo PROCEED
+EOF
+chmod +x "$PF_DUMP"
+cli_sandbox
+cli_run "$SB" success "$PF_DUMP" PF_DUMP_FILE="$SB/pf.txt" WORKER_SESSION_LANE=claudex CADENCE_USAGE_LANE=claudex
+if grep -qxF 'CADENCE_USAGE_LANE=native' "$SB/pf.txt" 2>/dev/null; then pass "cli-preflight: pinned to the native bank (CADENCE_USAGE_LANE=native)"; else fail "cli-preflight: not pinned to the native bank ($(cat "$SB/pf.txt" 2>/dev/null))"; fi # read-sink-ok: the suite's own temp dump
+if grep -qxF 'WORKER_SESSION_LANE=<unset>' "$SB/pf.txt" 2>/dev/null; then pass "cli-preflight: WORKER_SESSION_LANE removed"; else fail "cli-preflight: WORKER_SESSION_LANE survived"; fi
+if grep -Eq '^CADENCE_USAGE_WORKER=.+' "$SB/pf.txt" 2>/dev/null && ! grep -qxF 'CADENCE_USAGE_WORKER=<unset>' "$SB/pf.txt"; then pass "cli-preflight: CADENCE_USAGE_WORKER set"; else fail "cli-preflight: CADENCE_USAGE_WORKER not set"; fi
+rm -rf "$SB"
+
+# (ix) an empty preflight and a non-PROCEED token (BANK-STALE) are quiet skips: no call, note untouched.
+PF_EMPTY="$LANE_DIR/pf-empty.sh"; PF_STALE="$LANE_DIR/pf-stale.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$PF_EMPTY"
+printf '#!/usr/bin/env bash\necho BANK-STALE\n' > "$PF_STALE"
+chmod +x "$PF_EMPTY" "$PF_STALE"
+for PFX in "$PF_EMPTY" "$PF_STALE"; do
+    cli_sandbox
+    cli_run "$SB" success "$PFX"
+    if [ "$RC" = "0" ] && [ ! -s "$SB/marker.txt" ] && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-skip($(basename "$PFX")): no claude call, note untouched, exit 0"; else fail "cli-skip($(basename "$PFX")): rc=$RC"; fi
+    rm -rf "$SB"
+done
+
+# (x) a crash is not silent: the exit code and an is_error result reach stderr; a clean run adds no line.
+cli_sandbox
+cli_run "$SB" fail "$PF_PROCEED"
+if grep -q 'crystallize-note: claude exited rc=7' "$SB/stderr.txt"; then pass "cli-crash: a non-zero claude exit is reported with its code"; else fail "cli-crash: non-zero exit not reported"; fi
+rm -rf "$SB"
+cli_sandbox
+cli_run "$SB" noop "$PF_PROCEED" CRYSTALLIZE_STUB_STDOUT='{"type":"result","is_error":true,"result":"Credit balance is too low"}'
+if grep -q 'crystallize-note: claude reported is_error=true' "$SB/stderr.txt"; then pass "cli-crash: an is_error result is reported"; else fail "cli-crash: is_error not reported"; fi
+rm -rf "$SB"
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_STUB_STDOUT='{"type":"result","is_error":false,"result":"done"}'
+if ! grep -q 'crystallize-note: claude' "$SB/stderr.txt"; then pass "cli-crash: a clean run reports nothing"; else fail "cli-crash: a clean run printed an error line"; fi
+rm -rf "$SB"
+
+# (xi) a hung claude is killed at the deadline, the note stays untouched.
+if command -v timeout >/dev/null 2>&1; then
+    cli_sandbox
+    T0=$SECONDS
+    cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_STUB_SLEEP=20 CRYSTALLIZE_TIMEOUT_SECS=1
+    if [ $((SECONDS - T0)) -lt 15 ] && grep -q 'crystallize-note: claude exited rc=124' "$SB/stderr.txt" && grep -q '^crystallized: false$' "$SB/vault/note.md"; then pass "cli-deadline: a hung claude is killed at CRYSTALLIZE_TIMEOUT_SECS"; else fail "cli-deadline: not bounded (took $((SECONDS - T0))s)"; fi
+    rm -rf "$SB"
+else
+    echo "SKIP: cli-deadline (no timeout binary)"
+fi
+
+# (xii) the grant, model and budget the subscription call carries.
+argv_val() { awk -v f="arg=$2" '/^arg=/{if (prev==f) print substr($0,5); prev=$0}' "$1"; }
+cli_sandbox
+cli_run "$SB" success "$PF_PROCEED" CRYSTALLIZE_MODEL=row-model CRYSTALLIZE_MAX_BUDGET_USD=0.37
+if [ "$(argv_val "$SB/argv.txt" --tools)" = "Read,Edit" ] && [ "$(argv_val "$SB/argv.txt" --allowedTools)" = "Read,Edit" ]; then pass "cli-argv: --tools and --allowedTools are exactly Read,Edit"; else fail "cli-argv: tool grant is not exactly Read,Edit"; fi
+if [ "$(argv_val "$SB/argv.txt" --model)" = "row-model" ]; then pass "cli-argv: --model is CRYSTALLIZE_MODEL"; else fail "cli-argv: --model is '$(argv_val "$SB/argv.txt" --model)'"; fi
+if [ "$(argv_val "$SB/argv.txt" --max-budget-usd)" = "0.37" ]; then pass "cli-argv: --max-budget-usd is CRYSTALLIZE_MAX_BUDGET_USD"; else fail "cli-argv: budget is '$(argv_val "$SB/argv.txt" --max-budget-usd)'"; fi
+rm -rf "$SB"
 
 # --- Case 1: success — sections filled, crystallized true, identity preserved --
 SB="$(mktemp -d)"
