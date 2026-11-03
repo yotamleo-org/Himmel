@@ -148,6 +148,8 @@ test("Shift+Right on a focused card moves it to the next column its operator may
   await page.keyboard.press("Shift+ArrowRight");
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-2", status: "prog" });
+  await expect(page.locator('[data-rm-col="prog"] .rm-card', { hasText: "Second chain step" })).toBeVisible(); // the write has answered and the board is redrawn: one write at a time
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeFocused(); // and focus is back on the moved card
   await page.locator(".rm-card", { hasText: "Second chain step" }).focus();
   await page.keyboard.press("Shift+ArrowRight"); // from In progress the next writable column is Won't: In review, CI and Done are skipped
   await expect.poll(() => sent.length).toBe(2);
