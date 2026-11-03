@@ -78,7 +78,7 @@ h2{font:600 var(--fs-md)/1.3 var(--font-ui);margin:0 0 var(--s1)}
   .row-head .st{grid-area:st}.row-head .id{grid-area:id}.row-head .slot{grid-area:slot}.row-head .kind{grid-area:kind}.row-head .det{grid-area:det}
   .body{padding-left:4px}
 }
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 /* The shared design layer: the approved mockups' page header, card, status pill, verdict strip and data
    table. Every page draws with these; colours come from tokens.css only (tests/design-layer.test.ts pins it). */
 .ph{margin:0 0 var(--s4)}
@@ -512,6 +512,32 @@ a.tl{color:var(--ink);font-family:var(--font-mono)}.dim{color:var(--dim)}
 .rm-chains{display:flex;flex-wrap:wrap;gap:var(--s1);margin:var(--s1) 0}
 .rm-chain{font:600 var(--fs-xs) var(--font-mono);border:1px solid var(--rule-strong);border-radius:6px;padding:0 var(--s2);color:var(--ink);text-decoration:none}
 .rm-at{outline:2px solid var(--accent);outline-offset:-2px}
+/* the Chains tab: the map, the links, the change log, the burn-down, the Why panel. Every animation here stops under the reduced-motion rule. */
+.rm-map{display:block;width:100%;height:auto;margin-bottom:var(--s3)}
+.rm-map-box{fill:var(--surface);stroke:var(--rule-strong)}
+.rm-map text{fill:var(--ink);font:600 13px var(--font-mono)}
+.rm-map text.rm-map-sub{fill:var(--muted);font-weight:400;font-size:11px}
+.rm-arrow{fill:var(--muted)}
+.rm-edge{stroke:var(--muted);stroke-width:2}
+.rm-edge.open{stroke:var(--accent);stroke-dasharray:6 4;animation:rm-dash 1s linear infinite}
+@keyframes rm-dash{to{stroke-dashoffset:-10}}
+.rm-ping{display:inline-block;animation:rm-ping 1.6s ease-in-out infinite}
+@keyframes rm-ping{50%{opacity:.35}}
+.rm-xlist{margin:var(--s1) 0 var(--s3);padding:0;list-style:none;display:grid;gap:var(--s1);overflow-wrap:anywhere}
+.rm-whylink{font-size:var(--fs-xs);color:var(--accent)}
+.rm-log{margin-top:var(--s2)}
+.rm-log summary{cursor:pointer;font:600 var(--fs-xs) var(--font-mono)}
+.rm-burn-svg{display:block;width:100%;height:auto}
+.rm-burn-open{fill:none;stroke:var(--accent);stroke-width:2}
+.rm-burn-dot{fill:var(--accent)}
+.rm-burn-bar{fill:var(--ship)}
+.rm-burn-pace{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:4 4}
+.drawer.rm-why{animation:rm-slidein .18s ease-out}
+@keyframes rm-slidein{from{transform:translateX(24px);opacity:0}}
+@keyframes rm-sheetin{from{transform:translateY(24px);opacity:0}}
+.rm-chainrows th,.rm-chainrows td:first-child{white-space:nowrap;overflow-wrap:normal}
+@media (max-width:640px){.rm-map,.rm-map-note{display:none}}
+@media (max-width:600px){.drawer.rm-why{top:auto;left:0;width:100%;max-height:72vh;border-left:0;border-top:1px solid var(--rule-strong);animation-name:rm-sheetin}}
 .data tr.grp td{font:600 var(--fs-xs) var(--font-mono);color:var(--muted);background:var(--bg)}
 @media (max-width:760px){.rm-vstrip,.rm-links{grid-template-columns:minmax(0,1fr)}}
 /* HIMMEL-8681 Tool health shape (mockup v9): the plain tab row, warn tiles, the Tool map All row/column and loaded-never-used mark, and one card per source on a phone */

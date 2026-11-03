@@ -10,7 +10,7 @@ import { boot, type Harness } from "./fixtures";
 let h: Harness;
 test.afterEach(async () => { await h?.stop(); });
 
-const shot = async (page: Page, name: string) => { const d = process.env.E2E_SHOTS; if (d) { mkdirSync(d, { recursive: true }); await page.screenshot({ path: join(d, `${name}.png`), fullPage: true }); } };
+const shot = async (page: Page, name: string) => { const d = process.env.E2E_SHOTS; if (d) { mkdirSync(d, { recursive: true }); await page.screenshot({ path: join(d, `${name}.png`), fullPage: true, animations: "disabled" }); } };
 const consoleErrors = (page: Page) => { const errs: string[] = []; page.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); }); page.on("pageerror", (e) => errs.push(String(e))); return errs; };
 const go = async (page: Page, hash: string) => { await page.evaluate((x) => { location.hash = x; }, hash); await page.locator("#main h1").filter({ hasText: "Board" }).waitFor(); await page.waitForLoadState("networkidle"); };
 async function open(page: Page) {
@@ -263,13 +263,13 @@ test("the find box narrows the lanes by title or id on Enter, the columns say ho
   await open(page);
   await go(page, "#/board");
   const todo = page.locator('#rm-lanes [data-rm-col="todo"]');
-  await expect(todo.locator(".rm-jira")).toHaveText("Jira 2 matches");
+  await expect(todo.locator(".rm-jira")).toHaveText("Jira 4 matches");
   await expect(page.locator("#rm-lanes details.rm-done")).not.toHaveAttribute("open", "");
   await page.locator("input[data-rm-find]").fill("second chain");
   await page.locator("input[data-rm-find]").press("Enter");
   await expect(page.locator("#rm-lanes .rm-card")).toHaveCount(1);
   await expect(todo.locator(".rm-n")).toHaveText("1");
-  await expect(todo.locator(".rm-jira")).toHaveText("Jira 2 · 1 shown");
+  await expect(todo.locator(".rm-jira")).toHaveText("Jira 4 · 1 shown");
   await expect(page.locator("input[data-rm-find]")).toHaveValue("second chain");
   await shot(page, "board-find");
 });
@@ -316,6 +316,87 @@ for (const [width, height] of [[1280, 900], [390, 844]]) {
       const box = await page.locator("aside.drawer").boundingBox();
       expect(box && box.x >= 0 && box.x + box.width <= width + 1).toBe(true);
       await shot(page, `board-${width}-${scheme}-drawer`);
+      expect(errs).toEqual([]);
+    });
+  }
+}
+
+test("the Chains tab draws the link across chains, the change log and the burn-down", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  const links = page.locator("#rm-xlinks");
+  await expect(links).toContainText("HIMMEL-6");
+  await expect(links).toContainText("HIMMEL-2");
+  await expect(links).toContainText("Ops cleanup chain");
+  await expect(page.locator(".rm-map .rm-edge.open")).toHaveCount(1);
+  const log = page.locator('.rm-log[data-log="ops"]');
+  await expect(log.locator("summary")).toContainText("Change log · 2");
+  await log.locator("summary").click();
+  await expect(log).toContainText("waiting on the freeze");
+  const burn = page.locator("#rm-burn");
+  await expect(burn.locator(".rm-burn-words")).toContainText("3 open of 4");
+  await expect(burn.locator(".rm-burn-words")).toContainText("1 merged since 2026-10-30");
+  expect(await burn.locator("circle").count()).toBeGreaterThan(1);
+  await expect(burn.locator(".rm-burn-pace")).toHaveCount(0); // the running version has no date
+});
+
+test("the Why panel names the blocker of a blocked ticket; Esc closes it, focus returns, and an open change log stays open", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=chains");
+  await page.locator('.rm-log[data-log="ops"] summary').click();
+  const opener = page.locator('tr#cn-HIMMEL-7 [data-why-open="HIMMEL-7.HIMMEL-21"]');
+  await opener.click();
+  const panel = page.locator("aside.rm-why");
+  await expect(panel).toContainText("Why HIMMEL-7 waits on HIMMEL-21");
+  await expect(panel).toContainText("blocked");
+  await expect(panel).toContainText("HIMMEL-21 completes");
+  await expect(page.locator(".rm-why-close")).toBeFocused();
+  await expect(page.locator(".rm-under")).toHaveAttribute("inert", "");
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(page.locator('[data-why-open="HIMMEL-7.HIMMEL-21"]').first()).toBeFocused();
+  expect(await page.locator('.rm-log[data-log="ops"]').evaluate((d) => (d as HTMLDetailsElement).open)).toBe(true);
+});
+
+test("the ticket drawer keeps its behaviour beside the Why panel: Esc closes it and focus returns to its card", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=chains&why=HIMMEL-7.HIMMEL-21");
+  await page.keyboard.press("Escape");
+  await go(page, "#/board");
+  await openCard(page, "Second chain step");
+  await expect(page.locator("aside.rm-why")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("aside.drawer")).toHaveCount(0);
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeFocused();
+});
+
+test("motion: an open link moves, and under reduced motion nothing on the tab animates, the Why panel included", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=chains&why=HIMMEL-7.HIMMEL-21");
+  expect(await page.locator(".rm-edge.open").evaluate((e) => getComputedStyle(e).animationName)).toBe("rm-dash");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(page.locator("aside.rm-why")).toHaveCount(1);
+  const moving = await page.evaluate(() => [...document.querySelectorAll("*")].filter((e) => getComputedStyle(e).animationName !== "none").map((e) => e.tagName + "." + e.getAttribute("class")));
+  expect(moving).toEqual([]);
+});
+
+for (const [width, height] of [[1280, 900], [390, 844]]) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`the Why panel at ${width} px, ${scheme}: it draws over the tab, no console error, no sideways scroll`, async ({ page }) => {
+      const errs = consoleErrors(page);
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme: scheme });
+      await open(page);
+      await go(page, "#/board?tab=chains&why=HIMMEL-7.HIMMEL-21");
+      await expect(page.locator("aside.rm-why")).toBeVisible();
+      await page.locator("aside.rm-why").evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished))); // the box below measures the settled panel, not its slide-in
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      const box = await page.locator("aside.rm-why").boundingBox();
+      expect(box && box.x >= 0 && box.x + box.width <= width + 1).toBe(true);
+      await expect(page.locator(".rm-map-note")).toBeVisible({ visible: width > 640 }); // the note speaks of the map: gone with it on a phone
+      const keyLines = await page.locator("#cn-HIMMEL-7 td").first().evaluate((e) => { const r = document.createRange(); r.selectNodeContents(e); return r.getClientRects().length; });
+      expect(keyLines).toBe(1); // a ticket key never breaks mid-word
+      await shot(page, `board-${width}-${scheme}-why`);
       expect(errs).toEqual([]);
     });
   }

@@ -2,7 +2,7 @@
 // render, no republish); the page draws the kanban by version and theme, the release panels and the drift trend, the
 // worker -> Jira sync plan the chief kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
@@ -841,4 +841,114 @@ test("8832 drawer: the Done lane stays open while a Done card's drawer is open, 
   expect(html(null)).toMatch(/<details class="rm-col rm-done"(?! open)/); // folded by default
   expect(html({ k: 3, project: "HIMMEL", history: null })).toMatch(/<details class="rm-col rm-done" open/); // HIMMEL-3 is Done
   expect(html({ k: 1, project: "HIMMEL", history: null })).toMatch(/<details class="rm-col rm-done"(?! open)/); // another card's drawer leaves it folded
+});
+
+// The Chains tab: two linked chains and one blocked ticket, as chain-state.mjs prints them with --version, plus the burn-down board.ts adds.
+const linkOf = (on: string, status = "open") => ({ on, kind: "jira-link", source: "jira", added: null, reason: null, owner: null, until: null, clears: `${on} completes`, status, at: null });
+const chainsLinked = () => ({ schema: "himmel.chains/1", now: "2026-11-03T08:00:00.000Z", version: "v1.1.3",
+  chains: [
+    { id: "memory", name: "Memory guard rework", total: 2, done: 1, steps: 2, next: { step: 2, keys: ["HIMMEL-2"] }, across: [{ dir: "holds-up", key: "HIMMEL-6", on: "HIMMEL-2", kind: "jira-link", status: "open", chains: ["ops"] }], log: [] },
+    { id: "ops", name: "Ops cleanup", total: 2, done: 0, steps: 1, next: null,
+      across: [{ dir: "waits-on", key: "HIMMEL-6", on: "HIMMEL-2", kind: "jira-link", status: "open", chains: ["memory"] }, { dir: "waits-on", key: "HIMMEL-7", on: "HIMMEL-21", kind: "jira-link", status: "open", chains: [] }],
+      log: [{ ts: "2026-11-01T09:00:00.000Z", change: "hold", key: "HIMMEL-6", kind: "operator", who: "chief", reason: "waiting on the freeze" }, { ts: "2026-11-02T09:00:00.000Z", change: "release", key: "HIMMEL-6", who: "chief" }] },
+  ],
+  tickets: {
+    "HIMMEL-1": { key: "HIMMEL-1", title: "First", state: "done", done: true, chains: [{ id: "memory", step: 1, steps: 2, state: "done" }], links: [] },
+    "HIMMEL-2": { key: "HIMMEL-2", title: "Second", state: "can launch", done: false, chains: [{ id: "memory", step: 2, steps: 2, state: "can launch" }], links: [linkOf("HIMMEL-1", "cleared")] },
+    "HIMMEL-6": { key: "HIMMEL-6", title: "Linked", state: "waits on HIMMEL-2", done: false, chains: [{ id: "ops", step: 1, steps: 1, state: "waits on HIMMEL-2" }], links: [linkOf("HIMMEL-2")] },
+    "HIMMEL-7": { key: "HIMMEL-7", title: "Stuck", state: "blocked", done: false, chains: [{ id: "ops", step: 1, steps: 1, state: "blocked" }], links: [linkOf("HIMMEL-21")] },
+  },
+  burn: { total: 4, undated: 1, points: [{ day: "2026-11-01", open: 3, merged: 1 }, { day: "2026-11-02", open: 3, merged: 0 }, { day: "2026-11-03", open: 3, merged: 0 }] } });
+const chainsHtml = (ui: object = {}, ch: object = chainsLinked(), r = read(station())) => renderBoard(r, { version: null, theme: null, tab: "chains", ...ui }, { drift: null, chains: ch });
+
+test("Chains tab, words: a chain with open tickets and no next step says none can launch, and one step is one step", () => {
+  const html = chainsHtml();
+  expect(html).toContain("0/2 done · 1 step · no step can launch yet");
+  expect(html).toContain("1/2 done · 2 steps · next: step 2 HIMMEL-2");
+  expect(html).not.toContain("no step left");
+  const finished = chainsLinked();
+  Object.assign(finished.chains[1], { done: 2 });
+  expect(chainsHtml({}, finished)).toContain("2/2 done · 1 step · no step left");
+});
+
+test("Chains tab, links: the map's note travels with the map, so a phone that hides the map hides the note too", () => {
+  const html = chainsHtml();
+  const note = html.indexOf('class="sub rm-map-note"'), map = html.indexOf('class="rm-map"');
+  expect(note).toBeGreaterThan(-1);
+  expect(note).toBeLessThan(map);
+  expect(readFileSync(new URL("../public/app.css", import.meta.url), "utf8")).toMatch(/@media \(max-width:640px\)\{\.rm-map,\.rm-map-note\{display:none\}\}/);
+});
+
+test("Chains tab, links: a map with an arrow between linked chains and a list naming both tickets and both chains", () => {
+  const html = chainsHtml();
+  expect(html).toContain(`<svg class="rm-map"`);
+  expect(html.match(/class="rm-edge open"/g)).toHaveLength(1); // ops to memory; the link to a ticket in no chain draws no arrow
+  const list = html.slice(html.indexOf(`id="rm-xlinks"`), html.indexOf(`id="rm-chain-memory"`));
+  expect(list).toContain("HIMMEL-6");
+  expect(list).toContain("HIMMEL-2");
+  expect(list).toContain("Ops cleanup");
+  expect(list).toContain("Memory guard rework");
+  expect(html).toContain("HIMMEL-21"); // the across list of its own chain still names the blocker in no chain
+});
+
+test("Chains tab, change log: a folded log per chain, counted, with each row's words; a chain with none says so", () => {
+  const html = chainsHtml();
+  expect(html).toMatch(/<details class="rm-log" data-log="ops"><summary>Change log · 2 · last [^<]*release<\/summary>/);
+  expect(html).toContain("waiting on the freeze");
+  expect(html).toContain("No changes logged.");
+  expect(chainsHtml({ logOpen: ["ops"] })).toContain(`<details class="rm-log" data-log="ops" open>`); // a repaint keeps it open
+});
+
+test("Chains tab, Why: an open link offers it, and the panel names the blocker with the link's fields", () => {
+  const closed = chainsHtml();
+  expect(closed).toContain(`data-why-open="HIMMEL-7.HIMMEL-21"`);
+  expect(closed).not.toContain(`data-why-open="HIMMEL-2.HIMMEL-1"`); // a cleared link holds nothing up
+  expect(closed).not.toContain("rm-why\"");
+  const html = chainsHtml({ why: "HIMMEL-7.HIMMEL-21" });
+  const panel = html.slice(html.indexOf(`<aside class="drawer rm-why"`));
+  expect(panel).toContain("Why HIMMEL-7 waits on HIMMEL-21");
+  for (const f of ["Kind", "jira-link", "Source", "Added", "Status", "open", "What clears it", "HIMMEL-21 completes"]) expect(panel).toContain(f);
+  expect(panel).toContain("blocked");
+  expect(html).toContain(`<div class="rm-under" inert>`);
+  expect(chainsHtml({ why: "HIMMEL-404.HIMMEL-1" })).toContain("not in this chain read"); // a stale link says so, never an empty panel
+});
+
+test("Chains tab, burn-down: one point per day, the words match the last point, undated tickets are named, and a pace needs a version date", () => {
+  const r = read(station());
+  const html = chainsHtml({}, chainsLinked(), r);
+  const burn = html.slice(html.indexOf(`id="rm-burn"`));
+  expect(burn.match(/<circle /g)).toHaveLength(3);
+  expect(burn).toContain("3 open of 4");
+  expect(burn).toContain("1 done ticket has no recorded date");
+  expect(burn).not.toContain("rm-burn-pace");
+  const dated = { ...r, versions: r.versions.map((v) => ({ ...v, date: v.date || "2026-11-20" })) };
+  expect(chainsHtml({}, { ...chainsLinked(), version: dated.versions[dated.cur].n }, dated)).toContain("rm-burn-pace");
+  const none = chainsHtml({}, { ...chainsLinked(), burn: { total: 2, undated: 0, points: [] } });
+  expect(none).toContain("No merge recorded yet");
+});
+
+test("Chains tab, motion: an open link and the panel move, and reduced motion stops every animation", () => {
+  expect(chainsHtml()).toContain(`class="rm-edge open"`);
+  const css = readFileSync(join(import.meta.dir, "../public/app.css"), "utf8");
+  expect(css).toMatch(/\.rm-edge\.open\{[^}]*animation:/);
+  expect(css).toMatch(/@media \(prefers-reduced-motion:reduce\)\{\*,\*::before,\*::after\{animation:none!important;transition:none!important\}\}/);
+});
+
+test("Chains tab: with no running version the tab says so and shows no blocked count; with no registry it is words and no count", () => {
+  const { version: _v, ...noVersion } = chainsLinked();
+  const html = chainsHtml({}, noVersion);
+  expect(html).toContain("no running version");
+  expect(html).not.toMatch(/\d blocked/);
+  expect(chainsHtml()).toContain("1 blocked");
+  const gone = chainsHtml({}, { state: "absent", reason: "no chain registry: none found" });
+  expect(gone).toContain("no chain registry");
+  for (const x of ["rm-map", "rm-burn", "rm-log", "rm-why", "Change log"]) expect(gone).not.toContain(x);
+});
+
+test("Chains tab: the ticket drawer is unchanged, and a Why panel never draws off the Chains tab", () => {
+  const r = read(station());
+  const k = r.tickets[0].k;
+  const html = renderBoard(r, { version: null, theme: null, drawer: { k, project: r.tickets[0].project || "", history: null }, why: "HIMMEL-7.HIMMEL-21" }, { drift: null, chains: chainsLinked() });
+  expect(html).toContain(`<aside class="drawer" role="dialog"`);
+  expect(html).not.toContain("rm-why\"");
 });

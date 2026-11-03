@@ -7,6 +7,7 @@
 import { execFile } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { readRoadmap } from "./roadmap";
 import { jiraMirrorDir } from "./tracker-sources";
 
 type Env = Record<string, string | undefined>;
@@ -51,6 +52,32 @@ export function driftFile(env: Env): string | undefined {
 }
 export const chainRegistry = (env: Env) => env.HIMMEL_CHAIN_REGISTRY || inHandoverRoot(env, "chains.json");
 
+// The version the cards call running. Without it the chain read covers every version, and a blocker outside the version cannot read as blocked.
+// ponytail: this reads the mirror a second time beside GET /api/roadmap, upgrade path: hand the page's own read to this one if it ever shows in the Board's load time.
+function runningVersion(mirror: string, env: Env): string | undefined {
+  try {
+    const r = readRoadmap({ mirrorDir: mirror, projects: [{ key: env.JIRA_PROJECT_KEY || "HIMMEL", dir: mirror }], workers: { state: "absent" } });
+    return r.versions[r.cur]?.n;
+  } catch { return undefined; }
+}
+
+type BurnTicket = { done?: boolean; check?: { merge?: { ts?: string } | null } | null };
+// One point per day from the first merge to today. A done ticket with no merge row has no date: it leaves the total and is counted as undated.
+export function burnDown(read: { now?: string; tickets?: Record<string, BurnTicket> }) {
+  const all = Object.values(read.tickets ?? {});
+  const dated = all.filter((t) => t.done && t.check?.merge?.ts).map((t) => t.check!.merge!.ts!.slice(0, 10)).sort();
+  const undated = all.filter((t) => t.done).length - dated.length, total = all.length - undated;
+  const points: { day: string; open: number; merged: number }[] = [];
+  const last = Date.parse(`${(read.now ?? new Date().toISOString()).slice(0, 10)}T00:00:00Z`);
+  let open = total;
+  for (let at = dated.length ? Date.parse(`${dated[0]}T00:00:00Z`) : Infinity; at <= last; at += 86_400_000) {
+    const day = new Date(at).toISOString().slice(0, 10), merged = dated.filter((d) => d === day).length;
+    open -= merged;
+    points.push({ day, open, merged });
+  }
+  return { total, undated, points };
+}
+
 export async function readBoardExtras(env: Env): Promise<BoardExtras> {
   const mirror = jiraMirrorDir(env);
   const file = driftFile(env);
@@ -58,7 +85,9 @@ export async function readBoardExtras(env: Env): Promise<BoardExtras> {
   const drift = file ? runReader(join(KIT, "drift-summary.mjs"), ["--json", "--drift", file, "--mirror-dir", mirror], env, "the drift summary")
     : Promise.resolve(absent("no saved drift run: none found under the handover root, and HIMMEL_FOCUS_DRIFT is not set"));
   // the chain read's state dir (hold and merge rows) is the script's own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state
-  const chains = registry ? runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror], env, "the chain read")
+  const version = registry ? runningVersion(mirror, env) : undefined;
+  const chains = registry ? runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...(version ? ["--version", version] : [])], env, "the chain read")
+      .then((r) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r))
     : Promise.resolve(absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set"));
   const [d, c] = await Promise.all([drift, chains]);
   return { drift: d, chains: c };

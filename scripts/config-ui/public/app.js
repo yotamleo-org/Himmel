@@ -58,7 +58,7 @@ let verify = null; // the Setup page's Verify step: null, { state: "running" } o
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains }, null until read
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
-const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, chain: null, nv: null };
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, why: null, logOpen: [], chain: null, nv: null };
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides the Board
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no board to show. The Board reads the local tracker store (TRACKER=local, once it holds an item), a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
@@ -123,6 +123,8 @@ function route() {
   if (old || id !== currentPage.id) history.replaceState(null, "", location.pathname + location.search + "#/" + currentPage.id + (state.tile ? "?tile=" + state.tile : ""));
   const bq = new URLSearchParams(currentPage.id === "board" ? m[3] || "" : "");
   roadmapUi.tab = bq.get("tab"); roadmapUi.v = bq.get("v"); roadmapUi.at = bq.get("at"); roadmapUi.drawer = null; // a new route closes the drawer
+  const wasWhy = roadmapUi.why;
+  roadmapUi.why = bq.get("why");
   shiftUi.id = null;
   shiftUi.all = new URLSearchParams(m[3] || "").get("all") === "1";
   const asked_day = new URLSearchParams(m[3] || "").get("day");
@@ -135,6 +137,7 @@ function route() {
   if (currentPage.onVisit) currentPage.onVisit();
   if (feed || currentPage.needsFeed === false) paint();
   else { $("#main").innerHTML = probeStatus(); $("#nav").innerHTML = ""; } // no stale page under this tab
+  whyFocus(wasWhy);
   // back on Configure (or another feed page), pick up a newer report the server loaded in the background.
   if (feed && (currentPage.needsFeed !== false || currentPage.refreshFeed)) refreshFeed();
 }
@@ -216,7 +219,7 @@ async function loadSources() {
     if (r.ok) sources = (await r.json()).sources;
   } catch (_) { /* unknown stays unknown: nothing is hidden */ }
   renderPages();
-  if (currentPage.id === "board") paint();
+  if (currentPage.id === "board") { paint(); whyFocus(null); }
 }
 
 async function loadFleet() {
@@ -647,6 +650,19 @@ document.addEventListener("drop", (e) => {
 const EVENT_OWNED = new Set(["rev", "ci", "done"]);
 const CARD_COLS = ["todo", "prog", "rev", "ci", "done", "wont"]; // the board's column order, left to right
 
+// The Why panel on the Chains tab is a route (why=<ticket>.<blocker>), so a link opens it and its close link shuts it. Apart from the drawer: focus goes
+// into the panel on opening and back to the link that opened it on closing; Esc follows the close link.
+function whyFocus(was) {
+  if (roadmapUi.why) document.querySelector(".rm-why-close")?.focus();
+  else if (was) document.querySelector(`[data-why-open="${CSS.escape(was)}"]`)?.focus();
+}
+// A repaint must not fold a change log the operator opened.
+document.addEventListener("toggle", (e) => {
+  const id = e.target.dataset && e.target.dataset.log;
+  if (!id) return;
+  roadmapUi.logOpen = roadmapUi.logOpen.filter((x) => x !== id).concat(e.target.open ? [id] : []);
+}, true);
+
 // The ticket drawer: a click, Enter or Space on a card opens it; its stage history is fetched then and only then (never per card, never on load).
 const cardSel = (k, project) => `[data-rm-open="${k}"]` + (project ? `[data-rm-project="${CSS.escape(project)}"]` : ":not([data-rm-project])");
 function openDrawer(c) {
@@ -690,6 +706,7 @@ async function moveByKey(c, dir) {
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && roadmapUi.drawer) return void closeDrawer();
+  if (e.key === "Escape" && roadmapUi.why) return void document.querySelector(".rm-why-close")?.click();
   const c = e.target.closest && e.target.closest("[data-rm-open]");
   if (!c || e.target !== c) return; // only the focused card itself, never a select or a link inside it
   if (e.key === "Enter" || e.key === " ") { e.preventDefault(); return void openDrawer(c); }

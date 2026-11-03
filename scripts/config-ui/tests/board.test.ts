@@ -63,6 +63,43 @@ test("GET /api/board: token-gated, GET-only; with no input named both reads are 
   expect(r.drift.counts).toBeUndefined(); // no count is invented
 });
 
+// A running version, two linked chains and a blocker outside the version: the read runs with --version and adds the burn-down from the merge rows.
+test("GET /api/board: the chain read runs on the running version, so a blocker outside it reads blocked, and carries one burn-down point per day", async () => {
+  const s = scratch();
+  const put = (n: number, status: string, cat: string, by: string[], title: string, fv = "v1.1.3") => writeFileSync(join(s.mirror, `HIMMEL-${n}.md`), mirrorIssue(n, status, cat, by, title).replace("v1.1.3", fv));
+  put(6, "To Do", "To Do", ["HIMMEL-2"], "Linked across chains");
+  put(7, "To Do", "To Do", ["HIMMEL-21"], "Blocked from outside");
+  put(8, "Done", "Done", [], "Done with no merge row");
+  put(21, "To Do", "To Do", [], "Next version work", "v1.1.4");
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
+  writeFileSync(s.registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2", "HIMMEL-8"] }, { id: "ops", goal: "Ops cleanup chain", members: ["HIMMEL-6", "HIMMEL-7"] }] }));
+  const st = join(s.d, "chain-state");
+  mkdirSync(st);
+  writeFileSync(join(st, "status-events.jsonl"), JSON.stringify({ ts: "2026-10-30T10:00:00Z", event: "merge", key: "HIMMEL-1", pr: "7", contract: "yes", result: "moved" }) + "\n");
+  writeFileSync(join(st, "chain-log.jsonl"), JSON.stringify({ ts: "2026-10-29T10:00:00Z", change: "hold", key: "HIMMEL-6", kind: "operator", who: "chief", reason: "freeze" }) + "\n" + JSON.stringify({ ts: "2026-10-29T11:00:00Z", change: "release", key: "HIMMEL-6", who: "chief" }) + "\n");
+  const r = (await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: st }, s))).chains;
+  expect(r.version).toBe("v1.1.3");
+  expect(r.tickets["HIMMEL-7"].state).toBe("blocked");
+  expect(r.tickets["HIMMEL-7"].links[0]).toMatchObject({ on: "HIMMEL-21", status: "open" });
+  // already passed through on base, pinned here because the page draws them
+  expect(r.chains.find((c: { id: string }) => c.id === "ops").across[0]).toMatchObject({ dir: "waits-on", key: "HIMMEL-6", on: "HIMMEL-2", chains: ["memory"] });
+  expect(r.chains.find((c: { id: string }) => c.id === "ops").log).toHaveLength(2);
+  const days = r.burn.points.map((p: { day: string }) => p.day);
+  expect(days[0]).toBe("2026-10-30");
+  expect(days.at(-1)).toBe(r.now.slice(0, 10));
+  expect(new Set(days).size).toBe(days.length);
+  expect(r.burn.points[0]).toEqual({ day: "2026-10-30", open: 3, merged: 1 }); // HIMMEL-2, 6, 7 are open; 8 is done and undated, so it leaves the total
+  expect(r.burn).toMatchObject({ total: 4, undated: 1 });
+});
+
+test("GET /api/board: with no running version the chain read runs on no version and there is no burn-down point", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-2.md"), mirrorIssue(2, "Done", "Done", [], "Second step"));
+  const r = (await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s))).chains;
+  expect(r.version).toBeNull();
+  expect(r.burn).toEqual({ total: 0, undated: 2, points: [] });
+});
+
 test("GET /api/board: the saved drift file and the chain registry named in the environment are read through the chief-kit scripts", async () => {
   const s = scratch();
   const r = await get(serve({ HIMMEL_FOCUS_DRIFT: s.drift, HIMMEL_CHAIN_REGISTRY: s.registry }, s));
