@@ -53,7 +53,7 @@
 // record's uuid. Agent output with no prompt before it opens an implicit run.
 //
 // API (consumed by the SSE endpoint and the AG-UI page):
-//   createJournalMapper({threadId?, lane?}) → JournalMapper, stateful and incremental:
+//   createJournalMapper({threadId?, lane?, redact?}) → JournalMapper, stateful and incremental:
 //     pushLine(line)    map one complete JSONL line
 //     pushChunk(text)   map raw appended bytes of a growing file; a partial
 //                       last line is held until its newline arrives
@@ -77,8 +77,8 @@ export type MapperStats = {
 };
 
 // `lane` stamps every RUN_STARTED with metadata { lane } (the journal's config dir says which lane wrote it).
-// `redact` masks a value the stream's id-field exemption would pass unmasked (the session's own agent name) or that
-// stringifying would escape (a tool call's input: a quote, a backslash or a newline no longer matches its literal).
+// `redact` masks what the stream's id-field exemption would pass unmasked (the main agent's prompt-derived name) and
+// a tool call's input as parsed values, since stringifying escapes a quote, a backslash or a newline.
 export type MapperOptions = { threadId?: string; lane?: string; redact?: (value: unknown) => unknown };
 
 export type JournalMapper = {
@@ -205,8 +205,7 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
   const clean = (a: AgentInfo & { prompt?: string }): AgentInfo =>
     Object.fromEntries(Object.entries(a).filter(([k, v]) => v !== undefined && k !== "prompt")) as AgentInfo;
 
-  // The agent a record belongs to, learning what the record says about it.
-  // Masks the parsed values, before JSON.stringify escapes them.
+  // Masks the parsed values, before JSON.stringify escapes them; non-strings pass unchanged.
   function maskValues(v: unknown): unknown {
     if (!opts.redact) return v;
     if (typeof v === "string") return String(opts.redact(v));
@@ -215,6 +214,7 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
     return v;
   }
 
+  // The agent a record belongs to, learning what the record says about it.
   function agentOf(rec: Rec): AgentInfo {
     const model = isObject(rec.message) ? str(rec.message.model) : undefined;
     const known = model && model !== "<synthetic>" ? model : undefined;
@@ -487,12 +487,13 @@ export function createJournalMapper(opts: MapperOptions = {}): JournalMapper {
       prompt = typeof c === "string" ? c : Array.isArray(c) && !c.some((b) => isObject(b) && b.type === "tool_result")
         ? c.filter(isObject).filter((b) => b.type === "text").map((b) => str(b.text) ?? "").join(" ") : undefined;
       if (prompt && INTERRUPT.test(prompt)) prompt = undefined;
+      if (prompt && opts.redact) prompt = String(opts.redact(prompt)); // before tidy: a literal holding a tab or straddling the cut still matches. Branch and cwd stay as they are: the stream keeps the main agent's name.
     }
     const tidy = (t: string | undefined, max = 80) => t?.replace(/[\u0000-\u001f\u007f-\u009f]+/g, (m) => (/\s/.test(m) ? " " : "")).replace(/\s+/g, " ").trim().slice(0, max);
     const name = [branch && !/^(main|master|HEAD)$/.test(branch) ? tidy(branch) : undefined, tidy(cwd), tidy(prompt, 40)].find(Boolean);
     if (!name) return;
     named = true;
-    main = { ...main, name: opts.redact ? String(opts.redact(name)) : name };
+    main = { ...main, name };
   }
 
   function mapRecord(rec: Rec, out: AguiEvent[]): void {

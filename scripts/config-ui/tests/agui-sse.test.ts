@@ -362,9 +362,8 @@ test("a value only the keyring holds is masked in the stream (HIMMEL-8565)", asy
   journal(h, "-proj", RUN, body);
   const { port } = boot(h, { env: { ...k.env, HIMMEL_SECRETS_KEYRING: "", JIRA_API_TOKEN: "" } });
   const text = await (await get(port, RUN)).text();
-  // the message text passes the server's redactor; the agent name the mapper derives from the prompt does not (it only shapes tokens)
   expect(text).toContain("List ‹redacted› files.");
-  // the whole response, the agent name included: the keyring value appears nowhere
+  // the whole response, the agent name the mapper derives from the prompt included: the keyring value appears nowhere
   expect(text).not.toContain(kr);
 });
 
@@ -404,6 +403,60 @@ test("the mapper masks a tool call's argument holding a quote, a backslash and a
   const args = mapJournal(line + "\n", { threadId: RUN, redact }).events.find((e) => e.type === "TOOL_CALL_ARGS") as any;
   expect(JSON.parse(args.delta)).toEqual({ command: "echo ‹redacted›", nested: ["‹redacted›"] });
   expect(args.delta).not.toContain("q7x2");
+});
+
+test("the mapper keeps the non-string arguments of a tool call as they are (HIMMEL-8907)", () => {
+  const line = JSON.stringify({ type: "assistant", uuid: "a-1", timestamp: "2026-10-06T10:00:00.000Z", sessionId: "s",
+    message: { id: "m1", role: "assistant", content: [{ type: "tool_use", id: "toolu_x", name: "Bash", input: { command: "echo kr", timeout: 5, flag: true, none: null } }] } });
+  const redact = (v: unknown) => (typeof v === "string" ? v.split("kr").join("‹redacted›") : v);
+  const args = mapJournal(line + "\n", { threadId: RUN, redact }).events.find((e) => e.type === "TOOL_CALL_ARGS") as any;
+  expect(JSON.parse(args.delta)).toEqual({ command: "echo ‹redacted›", timeout: 5, flag: true, none: null });
+});
+
+test("a long branch name with no slash keeps its name when the mapper masks the prompt (HIMMEL-8907)", () => {
+  const branch = "fixhimmel8907agentnamestreammaskedlongbranch";
+  const line = JSON.stringify({ type: "user", uuid: "u1", sessionId: "s", timestamp: "2026-10-06T10:00:00.000Z", gitBranch: branch, message: { role: "user", content: "hello" } });
+  const redact = (v: unknown) => (typeof v === "string" && /\w{32,}/.test(v) ? "‹redacted›" : v);
+  const ev = mapJournal(line + "\n", { threadId: RUN, redact }).events.find((e: any) => e.agent?.id === "main") as any;
+  expect(ev.agent.name).toBe(branch);
+});
+
+// the prompt is masked before it is cut to 40, and a literal's tab survives the whitespace squeeze
+test.each([
+  ["straddles column 40 of the prompt", "x".repeat(30) + " {kr} tail", "kr-only-q7x2q7x2"],
+  ["holds a tab", "see {kr} here", "kr-tab\tq7x2"],
+])("a keyring-style value that %s is masked in the agent name (HIMMEL-8907)", async (_n, tmpl, kr) => {
+  const h = home();
+  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace("List the files in the repo root.", tmpl.replace("{kr}", kr));
+  journal(h, "-proj", RUN, body);
+  const { port } = boot(h, { env: { HIMMEL_TEST_SECRET: kr } });
+  const text = await (await get(port, RUN)).text();
+  expect(text).not.toContain("q7x2");
+  expect(text).not.toContain("kr-o");
+  expect(text).not.toContain("kr-tab");
+});
+
+test("a server env secret holding a tab and a carriage return is masked in a tool call's arguments (HIMMEL-8907)", async () => {
+  const h = home();
+  const kr = "kr\tonly\rq7x2";
+  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace('"command":"ls"', `"command":${JSON.stringify("echo " + kr)}`);
+  journal(h, "-proj", RUN, body);
+  const { port } = boot(h, { env: { HIMMEL_TEST_SECRET: kr } });
+  const text = await (await get(port, RUN)).text();
+  const args = parse(text).find((e) => e.type === "TOOL_CALL_ARGS" && (e as any).toolCallId === "toolu_ls") as any;
+  expect(JSON.parse(args.delta).command).toBe("echo ‹redacted›");
+  expect(text).not.toContain("q7x2");
+});
+
+// a key holding a quote, a backslash or a newline is escaped in the JSON a tool call's input becomes
+test("a secret that is an object key of a tool call's input is masked (HIMMEL-8940)", async () => {
+  const h = home();
+  const kr = 'kr"key\\q7x2\nq7x2-tail';
+  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace('"command":"ls"', `${JSON.stringify(kr)}:1,"command":"ls"`);
+  journal(h, "-proj", RUN, body);
+  const { port } = boot(h, { env: { HIMMEL_TEST_SECRET: kr } });
+  const text = await (await get(port, RUN)).text();
+  expect(text).not.toContain("q7x2");
 });
 
 // a subagent writes its own transcript beside the journal; the stream follows it too.
