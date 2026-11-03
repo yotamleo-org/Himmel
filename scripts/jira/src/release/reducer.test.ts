@@ -316,4 +316,26 @@ describe('admission rows clear unauthorized (HIMMEL-8724 S1)', () => {
     expect(s.status).toBe('OK');
     expect(s.leaks.unauthorized).toEqual(['K-2@v1', 'K-3@v1', 'K-4@v1']);
   });
+
+  // A literal null line parses, then used to throw in reduce, outside the engine's try.
+  it('a literal null ledger row reads the admissions UNKNOWN and does not throw', () => {
+    const rows = [null, adm('K-2', 'v1', 'override')] as unknown as Admission[];
+    const s = reduce(input({ issueList: members, admissions: rows }));
+    expect(s.inputs.admissions).toBe('UNKNOWN');
+    expect(s.status).toBe('OK');
+    expect(s.leaks.unauthorized).toEqual(['K-2@v1', 'K-3@v1', 'K-4@v1']);
+  });
+
+  // An override after an operator's out ruling must not hide the leak line that ruling makes.
+  it('an override after an operator out ruling keeps the leak line', () => {
+    const out = (auth: RulingRow['authority']) => rule('R-1', 'K-2', 'remove', 'v1', null, { verb: 'REVERSION', outcome: 'REMOVE', authority: auth });
+    const decision: OperatorRow = { id: 'O-R1-0001', kind: 'decision', ts: TS, decision: 'd', keys: ['K-2'], op: 'remove', from_v: 'v1', to_v: null, verbatim: 'v' };
+    const operator = reduce(input({
+      issueList: members, rulingRows: [out({ kind: 'operator', ref: 'O-R1-0001' })], opRows: [decision], admissions: [adm('K-2', 'v1', 'override')],
+    }));
+    expect(operator.leaks.unauthorized).toContain('K-2@v1');
+    expect(recordOf(operator, 'K-2', 'v1')).toMatchObject({ placement: 'out', bookkeeping: null });
+    const rm = reduce(input({ issueList: members, rulingRows: [out({ kind: 'rm', ref: null })], admissions: [adm('K-2', 'v1', 'override')] }));
+    expect(rm.leaks.unauthorized).not.toContain('K-2@v1');
+  });
 });
