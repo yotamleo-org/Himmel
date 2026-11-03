@@ -552,6 +552,68 @@ out="$(ing "$LED" --seed "$FIX/seed.jsonl")"
 has "ingest: a second run writes nothing" "$out" "ingest: wrote 0"
 eq "ingest: a second run changes no file" "$(cat "$LED"/*.md | cksum)" "$sum1"
 has "ingest: a row carries the PR's merge time" "$row20" 'merged: "2026-10-20T12:00:00Z"'
+# Ingest runs from every merge, so a row is write-once by the file system (a link that fails when the row exists),
+# not by a look beforehand. Writers racing past that look must leave the first row byte for byte.
+python3 -I - "$TMP" <<'PY' || { echo "test-bug-origin-report: writing the race snapshots failed" >&2; exit 1; }
+import json, os, sys
+d = sys.argv[1]
+for tag, reason in (("a", "first writer"), ("b", "second writer")):
+    json.dump([{"number": 901, "title": "fix(a): [HIMMEL-901] x", "body": "bug-origin: #10 test-gap — %s" % reason,
+                "mergedAt": "2026-10-20T12:00:00Z", "headRefName": "b901", "headRefOid": "%040x" % 901,
+                "mergeCommit": {"oid": "%040x" % 1901}}], open(os.path.join(d, "race-%s.json" % tag), "w"))
+PY
+rm -f "$TMP/wo.out"
+python3 -I - "$REPORT" "$TMP" > "$TMP/wo.out" 2>&1 <<'PY'
+import argparse, importlib.util, os, sys
+path, tmp = sys.argv[1:3]
+spec = importlib.util.spec_from_file_location("bug_origin_report", path)
+r = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(r)
+def eq(name, got, want):
+    print(("PASS " + name) if got == want else "FAIL %s: expected %r, got %r" % (name, want, got))
+led = os.path.join(tmp, "led-wo")
+def ingest(tag):
+    return r.cmd_ingest(argparse.Namespace(prs=os.path.join(tmp, "race-%s.json" % tag), seed=None, ledger_dir=led))
+eq("write-once: the first writer exits 0", ingest("a"), 0)
+first = open(os.path.join(led, "901.md"), "rb").read()
+os.path.exists = lambda p: False  # the second writer passed any look beforehand, as a racing one does
+eq("write-once: the racing writer exits 0", ingest("b"), 0)
+eq("write-once: a writer that passed the exists check leaves the first row byte for byte", open(os.path.join(led, "901.md"), "rb").read(), first)
+eq("write-once: the first row is the first writer's", b"first writer" in first, True)
+eq("write-once: no temp file is left behind", sorted(os.listdir(led)), ["901.md"])
+# a writer that died after linking its temp file leaves a second name for the row; a later writer that draws the same temp
+# name must not write through it (the name is fixed here by a fixed random draw)
+led2 = os.path.join(tmp, "led-stale")
+os.makedirs(led2)
+led = led2
+eq("write-once: the first writer of the stale case exits 0", ingest("a"), 0)
+row2 = os.path.join(led2, "901.md")
+before = open(row2, "rb").read()
+r.os.urandom = lambda n: b"\x07" * n
+os.link(row2, "%s.tmp-%d-%s" % (row2, os.getpid(), "07" * 8))
+ingest("b")
+eq("write-once: a stale temp name of the same draw does not truncate the row", open(row2, "rb").read(), before)
+PY
+cat "$TMP/wo.out"
+PASS=$((PASS + $(grep -c '^PASS ' "$TMP/wo.out")))
+FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/wo.out")))
+eq "write-once: ran to its end" "$(grep -c '^PASS write-once' "$TMP/wo.out")" "7"
+LEDR="$TMP/led-race"; rm -rf "$LEDR"; mkdir -p "$LEDR"
+race_pids=()
+for i in 1 2 3 4 5 6; do
+    tag=a; [ $((i % 2)) -eq 0 ] && tag=b
+    ( python3 "$REPORT" ingest --prs "$TMP/race-$tag.json" --ledger-dir "$LEDR" > "$TMP/race-$i.out" 2>&1 ) &
+    race_pids+=($!)
+done
+race_failed=0
+for pid in "${race_pids[@]}"; do wait "$pid" || race_failed=$((race_failed + 1)); done
+eq "write-once: every racing ingest exits 0" "$race_failed" "0"
+wrote="$(cat "$TMP"/race-[1-6].out | grep -c '^ingest: wrote 1,')"
+kept="$(cat "$TMP"/race-[1-6].out | grep -c '^ingest: wrote 0, kept 1')"
+eq "write-once: six racing ingests write the row once" "$wrote" "1"
+eq "write-once: the other five keep it" "$kept" "5"
+eq "write-once: the racing ingests leave one row" "$(count_files "$LEDR"/*.md)" "1"
+eq "write-once: the racing ingests leave no temp file" "$(count_files "$LEDR"/*tmp* "$LEDR"/.*tmp*)" "0"
 # the Jira key is read where the Jira CLI reads it, in its order: the environment, himmel.conf.local, himmel.conf, the .env of the
 # git checkout this runs in, then the .env of its primary checkout. Temp repos, temp config dirs: no real file is read.
 rm -f "$TMP/jk.out"

@@ -335,7 +335,7 @@ inline = os.path.join(tmp, "inline")
 os.makedirs(os.path.join(inline, "handovers"))
 subprocess.run(["git", "-C", inline, "init", "-q", "-b", "main"], check=True)
 top = os.path.realpath(inline)
-env = {"USER_SLUG": "zed", "HANDOVER_REGISTRY": os.path.join(tmp, "no-registry.json")}
+env = {"USER_SLUG": "zed", "HANDOVER_REGISTRY": os.path.join(tmp, "no-registry.json"), "HIMMEL_REPO": inline}
 eq("ledger dir: the inline handovers directory is the default root", j.ledger_dir(inline, env), os.path.join(top, "handovers", "zed", "inline", "bug-origin"))
 eq("ledger dir: a HANDOVER_DIR that is no directory beats the inline default", j.ledger_dir(inline, dict(env, HANDOVER_DIR=os.path.join(tmp, "nope"))), None)
 # the root as the shell tooling resolves it: env, then himmel.conf.local, himmel.conf, the primary checkout's .env, then inline
@@ -349,8 +349,11 @@ with open(os.path.join(conf, "himmel.conf"), "w") as fh:
 eq("ledger dir: himmel.conf names the root, an inline handovers/ notwithstanding", j.ledger_dir(inline, cenv), os.path.join(croot, "zed", "inline", "bug-origin"))
 eq("ledger dir: the live environment beats himmel.conf", j.ledger_dir(inline, dict(cenv, HANDOVER_DIR=lroot)), os.path.join(lroot, "zed", "inline", "bug-origin"))
 with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
-    fh.write('HANDOVER_DIR="%s"\n' % lroot)
+    fh.write("HANDOVER_DIR=%s\n" % lroot)
 eq("ledger dir: himmel.conf.local beats himmel.conf", j.ledger_dir(inline, cenv), os.path.join(lroot, "zed", "inline", "bug-origin"))
+with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
+    fh.write('HANDOVER_DIR="%s"\n' % lroot)
+eq("ledger dir: a quoted root keeps its quotes, as the shell loader keeps them, so it is no directory", j.ledger_dir(inline, cenv), None)
 with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
     fh.write("HANDOVER_DIR=%s\n" % os.path.join(tmp, "nope"))
 eq("ledger dir: a root named in a config file that is no directory is no ledger", j.ledger_dir(inline, cenv), None)
@@ -363,6 +366,69 @@ home = os.path.join(tmp, "home2"); os.makedirs(os.path.join(home, ".himmel"))
 with open(os.path.join(home, ".himmel", "himmel.conf"), "w") as fh:
     fh.write("HANDOVER_DIR=%s\n" % croot)
 eq("ledger dir: no HIMMEL_CONFIG_DIR reads ~/.himmel/himmel.conf", j.ledger_dir(inline, dict(env, HOME=home)), os.path.join(croot, "zed", "inline", "bug-origin"))
+# go_resolve_root skips a live HANDOVER_DIR that lies inside the harness repo (its inline stub) and takes the configured root
+stub = os.path.join(inline, "handovers")
+sconf = os.path.join(tmp, "conf-stub"); os.makedirs(sconf)
+with open(os.path.join(sconf, "himmel.conf"), "w") as fh:
+    fh.write("HANDOVER_DIR=%s\n" % croot)
+senv = dict(env, HIMMEL_CONFIG_DIR=sconf)
+want = os.path.join(croot, "zed", "inline", "bug-origin")
+eq("ledger dir: a live HANDOVER_DIR naming the harness stub yields to the configured root", j.ledger_dir(inline, dict(senv, HANDOVER_DIR=stub)), want)
+os.makedirs(os.path.join(stub, "deeper"))
+eq("ledger dir: a live HANDOVER_DIR inside the harness repo yields too", j.ledger_dir(inline, dict(senv, HANDOVER_DIR=os.path.join(stub, "deeper"))), want)
+eq("ledger dir: a live HANDOVER_DIR outside the harness repo is taken as is", j.ledger_dir(inline, dict(senv, HANDOVER_DIR=lroot)), os.path.join(lroot, "zed", "inline", "bug-origin"))
+eq("ledger dir: the stub with nothing configured is still the root", j.ledger_dir(inline, dict(env, HIMMEL_CONFIG_DIR=empty, HANDOVER_DIR=stub)), os.path.join(top, "handovers", "zed", "inline", "bug-origin"))
+# git_common_dir scrubs the process environment, so the caller's GIT_DIR is set there (not in the env dict ledger_dir is given)
+os.environ["GIT_DIR"] = os.path.join(tmp, "elsewhere")
+try:
+    got_gd = j.ledger_dir(inline, dict(senv, HANDOVER_DIR=stub))
+finally:
+    del os.environ["GIT_DIR"]
+eq("ledger dir: a scrubbed GIT_DIR does not decide whether the live root is in the harness", got_gd, want)
+# the live root is compared with the anchor (HIMMEL_REPO), not the repo the merge runs in: a merge from an adopted repo
+adopted = os.path.join(tmp, "adopted")
+os.makedirs(os.path.join(adopted, "handovers", "deeper"))
+subprocess.run(["git", "-C", adopted, "init", "-q", "-b", "main"], check=True)
+aenv = dict(senv, HIMMEL_REPO=inline)
+eq("ledger dir: from an adopted repo, a live root inside the anchor yields to the configured root", j.ledger_dir(adopted, dict(aenv, HANDOVER_DIR=stub)),
+   os.path.join(croot, "zed", "adopted", "bug-origin"))
+eq("ledger dir: from an adopted repo, a live root inside that repo but outside the anchor is taken as is", j.ledger_dir(adopted, dict(aenv, HANDOVER_DIR=os.path.join(adopted, "handovers"))),
+   os.path.join(adopted, "handovers", "zed", "adopted", "bug-origin"))
+# the station profile layer sits between himmel.conf.local and himmel.conf, as load-dotenv.sh orders it
+vault = os.path.join(tmp, "vault"); proot = os.path.join(tmp, "proot")
+os.makedirs(os.path.join(vault, "profiles")); os.makedirs(proot)
+with open(os.path.join(vault, "himmel.conf"), "w") as fh:
+    fh.write("HANDOVER_DIR=%s\n" % croot)
+with open(os.path.join(vault, "profiles", "p.conf"), "w") as fh:
+    fh.write("HANDOVER_DIR=%s\n" % proot)
+pconf = os.path.join(tmp, "conf-prof"); os.makedirs(pconf)
+os.symlink(os.path.join("..", "vault", "himmel.conf"), os.path.join(pconf, "himmel.conf"))
+penv = dict(env, HIMMEL_CONFIG_DIR=pconf)
+pwant = os.path.join(proot, "zed", "inline", "bug-origin")
+eq("ledger dir: no profile named leaves himmel.conf", j.ledger_dir(inline, penv), want)
+eq("ledger dir: HIMMEL_PROFILE in the environment names the profile", j.ledger_dir(inline, dict(penv, HIMMEL_PROFILE="p")), pwant)
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write("HIMMEL_PROFILE=p\n")
+eq("ledger dir: HIMMEL_PROFILE in himmel.conf.local names the profile", j.ledger_dir(inline, penv), pwant)
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write("HIMMEL_PROFILE=p\nHANDOVER_DIR=%s\n" % lroot)
+eq("ledger dir: himmel.conf.local beats the profile", j.ledger_dir(inline, penv), os.path.join(lroot, "zed", "inline", "bug-origin"))
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write('HIMMEL_PROFILE="p"\n')
+eq("ledger dir: a quoted profile name is no profile, as the shell loader keeps the quotes", j.ledger_dir(inline, penv), want)
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write("HIMMEL_PROFILE=p  # this station\n")
+eq("ledger dir: a trailing comment is not part of the profile name", j.ledger_dir(inline, penv), pwant)
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write("HIMMEL_PROFILE=../vault/profiles/p\n")
+eq("ledger dir: a profile name that walks out of the profiles directory is no profile", j.ledger_dir(inline, penv), want)
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write("HIMMEL_PROFILE=nope\n")
+eq("ledger dir: a profile with no file leaves himmel.conf", j.ledger_dir(inline, penv), want)
+with open(os.path.join(vault, "profiles", "q.conf"), "w") as fh:
+    fh.write("OTHER=1\n")
+eq("ledger dir: a profile with no HANDOVER_DIR leaves himmel.conf", j.ledger_dir(inline, dict(penv, HIMMEL_PROFILE="q")), want)
+eq("ledger dir: a himmel.conf that is no link has no profiles directory", j.ledger_dir(inline, dict(senv, HIMMEL_PROFILE="p")), want)
 PY
 cat "$TMP/units.out"
 PASS=$((PASS + $(grep -c '^PASS ' "$TMP/units.out")))
