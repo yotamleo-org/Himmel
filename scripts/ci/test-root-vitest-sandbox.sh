@@ -30,6 +30,8 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/h8974.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export HOME="$tmp/home"
 mkdir -p "$HOME"
+# An inherited config or handover root would point a case at the station's own files.
+unset HIMMEL_CONFIG_DIR HANDOVER_DIR
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
@@ -126,7 +128,8 @@ seed
 (cd "$REPO_ROOT" && "$vitest" run --config "$tmp/nosetup.config.mjs" scripts/jira/src/commands/sector.test.ts >"$tmp/case4.log" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "sector.test.ts with no setup file: canary SURVIVED"; else fail "sector.test.ts with no setup file: rc=$rc canary $(canary) (log $tmp/case4.log)"; sed -n 1,30p "$tmp/case4.log"; fi
 
-# ---- case 5: importing client.ts with NO setup file reads nothing.
+# ---- case 5: importing client.ts and calling an accessor with NO setup file reads nothing. This is
+# also the any-directory row: the copy runs from a throwaway project dir with no config of its own.
 # A copy of the Jira sources lives in a throwaway project, so the .env lookup anchors there and
 # no real file is read; HOME holds a seeded himmel.conf with a marker value. The keyring is not
 # probed: scripts/lib/resolve-secrets.mjs already fails closed under NODE_ENV=test.
@@ -140,9 +143,11 @@ printf '{"type":"module"}\n' > "$proj/package.json"
 printf 'export default { test: { environment: "node" } };\n' > "$proj/nosetup.config.mjs"
 cat > "$proj/import.test.ts" <<'EOF'
 import { test, expect } from 'vitest';
-test('importing client.ts reads no himmel.conf', async () => {
+test('importing client.ts and using an accessor reads no himmel.conf', async () => {
   delete process.env.JIRA_BASE_URL;
-  await import('./scripts/jira/src/client.ts');
+  const client = await import('./scripts/jira/src/client.ts');
+  expect(process.env.JIRA_BASE_URL).toBeUndefined();
+  expect(() => client.baseUrl()).toThrow(/not set/);
   expect(process.env.JIRA_BASE_URL).toBeUndefined();
 });
 EOF
@@ -165,8 +170,8 @@ EOF
 (cd "$proj" && HIMMEL_CONFIG_DIR="$tmp/inh-conf" HANDOVER_DIR="$tmp/inh-hd" SEEDED_HD="$tmp/inh-hd" "$vitest" run inherit.test.ts >"$tmp/case6.log" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "inherited HIMMEL_CONFIG_DIR and HANDOVER_DIR are not seen by a test"; else fail "an inherited HIMMEL_CONFIG_DIR or HANDOVER_DIR reached a test (rc=$rc, log $tmp/case6.log)"; sed -n 1,30p "$tmp/case6.log"; fi
 
-# ---- case 7: a run from another directory (no config of its own) pointed at the Jira package
-# with --root loads that package's own config: the canary SURVIVES.
+# ---- case 7 (control, GREEN on base too, since sector.test.ts sandboxes its own HOME): a run from
+# another directory pointed at the Jira package with --root loads that package's own config.
 other="$tmp/elsewhere"; mkdir -p "$other"
 seed
 (cd "$other" && "$vitest" run --root "$REPO_ROOT/scripts/jira" src/commands/sector.test.ts >"$tmp/case7.log" 2>&1); rc=$?
