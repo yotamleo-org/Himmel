@@ -70,7 +70,7 @@ const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
-  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
+  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
@@ -219,7 +219,7 @@ async function loadSources() {
     if (r.ok) sources = (await r.json()).sources;
   } catch (_) { /* unknown stays unknown: nothing is hidden */ }
   renderPages();
-  if (currentPage.id === "board") { paint(); whyFocus(null); }
+  if (currentPage.id === "board") paint();
 }
 
 async function loadFleet() {

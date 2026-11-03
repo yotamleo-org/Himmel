@@ -1044,4 +1044,6 @@ test("Chains tab with several Board projects: a version name carrying its projec
   const html = chainsHtml({}, chainsLinked(), named);
   expect(html).toContain("rm-burn-pace");
   expect(selected(html)).toEqual(["v1.1.3 (HIMMEL)"]);
+  for (const v of ["v1.1.3", "v1.1.3 (HIMMEL)"]) expect(chainsHtml({ v }, chainsLinked(), named)).toContain("This tab covers the running version, v1.1.3.");
+  expect(chainsHtml({ v: "v1.1.2 (HIMMEL)" }, chainsLinked(), named)).toContain("v1.1.3, not v1.1.2 (HIMMEL).");
 });

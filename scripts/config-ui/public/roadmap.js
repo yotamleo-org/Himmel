@@ -420,7 +420,7 @@ function whyHtml(ui, ch) {
 function coversHtml(ui, ch, d) {
   if (!ch.version) return "";
   const at = (d.versions || [])[versionAt(d, ch.version)];
-  const other = ui.v === "all" ? "every version" : ui.v && !(at && at.n === ui.v) ? ui.v : "";
+  const other = ui.v === "all" ? "every version" : ui.v && ui.v !== ch.version && !(at && at.n === ui.v) ? ui.v : "";
   const missing = ui.at && !ch.tickets[ui.at] ? ` ${ui.at} is not in a chain of ${ch.version}.` : "";
   return `<p class="sub rm-covers">${esc(`This tab covers the running version, ${ch.version}${other ? `, not ${other}` : ""}.${missing}`)}</p>`;
 }

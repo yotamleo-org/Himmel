@@ -358,6 +358,13 @@ test("the Why panel names the blocker of a blocked ticket; Esc closes it, focus 
   expect(await page.locator('.rm-log[data-log="ops"]').evaluate((d) => (d as HTMLDetailsElement).open)).toBe(true);
 });
 
+test("a Why link as the first Board visit focuses the panel's close control once the reads arrive", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=chains&why=HIMMEL-7.HIMMEL-21");
+  await expect(page.locator("aside.rm-why")).toBeVisible();
+  await expect(page.locator(".rm-why-close")).toBeFocused();
+});
+
 test("the Chains tab names its version, and a tile for another version never highlights over those totals", async ({ page }) => {
   await open(page);
   await go(page, "#/board?tab=chains&v=v1.1.4");
