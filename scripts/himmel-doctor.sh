@@ -3278,6 +3278,7 @@ check_c40_qmd_vec() {
         elif (.error | type) == "object" then "rpcerr\t\(.error.message // "" | tostring | oneline)"
         elif (.result | type) == "object" and (.result.content | type) == "array" then
             if .result.isError == true then "toolerr\t\([.result.content[] | objects | .text? | strings] | first // "" | oneline)"
+            elif .result.structuredContent.embedSkipped == true then "embedskip"
             else "ok" end
         else "bad" end' 2>/dev/null)" || cls=bad
     kind="${cls%%$'\t'*}"
@@ -3285,6 +3286,10 @@ check_c40_qmd_vec() {
     case "$kind" in
     toolerr)
         emit WARN C40-qmd-vec "qmd vector query returned an error: ${reason:-unreadable tool error} -- vec search is not being served" "$remedy"
+        return
+        ;;
+    embedskip)
+        emit WARN C40-qmd-vec "qmd answered the vector probe without searching by meaning (embedSkipped): the embedder did not answer in time or is down -- vec search is not being served" "$remedy"
         return
         ;;
     rpcerr)

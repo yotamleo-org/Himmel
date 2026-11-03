@@ -60,6 +60,10 @@ class H(http.server.BaseHTTPRequestHandler):
             note = json.dumps({"jsonrpc": "2.0", "method": "notifications/message", "params": {"data": "working"}})
             res = json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "ok"}]}})
             return self.reply(200, ("event: message\ndata: " + note + "\n\nevent: message\ndata: " + res + "\n\n").encode(), 'text/event-stream')
+        if mode == 'embedskip':
+            # the fork's real vec-only answer while the embedder is down or the breaker is open (test/mcp-embed-fallback.test.ts)
+            res = json.dumps({"jsonrpc": "2.0", "id": 2, "result": {"content": [{"type": "text", "text": "No results returned for \"qmd key probe\". Note: the embedding service did not answer in time or is down; the meaning-based part of the search was skipped, so this is not a confirmed miss."}], "structuredContent": {"results": [], "embedSkipped": True}}})
+            return self.reply(200, ("event: message\ndata: " + res + "\n\n").encode(), 'text/event-stream')
         if mode == 'rpc401':
             return self.reply(200, ("data: " + json.dumps({"jsonrpc": "2.0", "id": 2, "error": {"code": -32000, "message": "401 Unauthorized"}}) + "\n\n").encode(), 'text/event-stream')
         if mode == 'text401':
@@ -135,6 +139,13 @@ start_stub hang
 run_probe "$URL" 2
 assert_eq "hang row: bounded exit 2" 2 "$RC"
 assert_lacks "hang row: does not blame the key" "QMD_OPENAI_API_KEY" "$OUT"
+
+# 4a: a vec-only answer flagged embedSkipped embedded nothing -> exit 2, never success.
+start_stub embedskip
+run_probe "$URL"
+assert_eq "embedSkipped row: exit 2, no embedding was done" 2 "$RC"
+assert_has "embedSkipped row: names the skipped embedder" "embedder did not answer" "$OUT"
+assert_lacks "embedSkipped row: does not blame the key" "QMD_OPENAI_API_KEY" "$OUT"
 
 # 4b: an empty 200 reply embedded nothing -> exit 2, never success.
 start_stub empty
