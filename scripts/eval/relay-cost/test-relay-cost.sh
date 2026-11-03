@@ -86,6 +86,8 @@ chmod +x "$CL"
 export RELAY_COST_CLAUDE="$CL" RELAY_COST_DIR="$HERE" STUB_LOG="$WORK/stub.log" STUB_ARGS="$WORK/stub.args"
 : >"$STUB_LOG"; : >"$STUB_ARGS"
 check "a model arm without HIMMEL_BILLED_OK exits 2 and calls nothing" "2 0" "$(bash "$RUN" --out "$WORK/o2" --fixtures "$FX" --arms haiku >/dev/null 2>&1; printf '%s ' "$?"; wc -l <"$STUB_LOG" | tr -d ' ')"
+check "a whitespace-separated --arms cannot skip the opt-in: exit 2, no call" "2 0" "$(bash "$RUN" --out "$WORK/o2w" --fixtures "$FX" --arms "sonnet haiku" >/dev/null 2>&1; printf '%s ' "$?"; wc -l <"$STUB_LOG" | tr -d ' ')"
+check "a comma-then-space --arms cannot skip the opt-in: exit 2, no call" "2 0" "$(bash "$RUN" --out "$WORK/o2c" --fixtures "$FX" --arms "sonnet, haiku" >/dev/null 2>&1; printf '%s ' "$?"; wc -l <"$STUB_LOG" | tr -d ' ')"
 
 # --- run.sh: the model arms against the stub claude
 export HIMMEL_BILLED_OK=1
@@ -93,9 +95,9 @@ bash "$RUN" --out "$WORK/o3" --fixtures "$FX" --arms sonnet,haiku >"$WORK/o3.log
 check "model arms exit 0" "0" "$?"
 check "sonnet arm: 9 calls on claude-sonnet-5-5, all pass" "9 9" "$(grep -c '^claude-sonnet-5-5$' "$STUB_LOG") $(grep -c '^sonnet PASS' "$WORK/o3.log")"
 check "haiku arm: 9 calls on claude-haiku-5-5, all pass" "9 9" "$(grep -c '^claude-haiku-5-5$' "$STUB_LOG") $(grep -c '^haiku PASS' "$WORK/o3.log")"
-check "every model call: no tools, dontAsk, low effort, the budget cap, no session kept, and the relay prompt as the system prompt" "True dontAsk 1 low True True" "$(python3 -I -c 'import json,sys
+check "every model call: no tools, dontAsk, low effort, the budget cap, no session kept, stream-json verbose output, user settings only, strict MCP, and the relay prompt as the system prompt" "True dontAsk 1 low True stream-json True user True True" "$(python3 -I -c 'import json,sys
 a = json.loads(open(sys.argv[1]).readline())
-print(a[a.index("--tools") + 1] == "", a[a.index("--permission-mode") + 1], a[a.index("--max-budget-usd") + 1], a[a.index("--effort") + 1], "--no-session-persistence" in a, a[a.index("--system-prompt") + 1].startswith("You are a message relay"))' "$STUB_ARGS")"
+print(a[a.index("--tools") + 1] == "", a[a.index("--permission-mode") + 1], a[a.index("--max-budget-usd") + 1], a[a.index("--effort") + 1], "--no-session-persistence" in a, a[a.index("--output-format") + 1], "--verbose" in a, a[a.index("--setting-sources") + 1], "--strict-mcp-config" in a,a[a.index("--system-prompt") + 1].startswith("You are a message relay"))' "$STUB_ARGS")"
 check "the result row carries the priced usage" "460.0" "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["cost_eq_cold"])' "$WORK/o3/sonnet/go-1.result.json")"
 : >"$STUB_LOG"
 bash "$RUN" --out "$WORK/o3" --fixtures "$FX" --arms sonnet,haiku >/dev/null 2>&1

@@ -37,6 +37,7 @@ done
 [ -n "$out" ] || die "--out <dir> is required"
 [ -f "$fixtures" ] || die "no fixtures file $fixtures"
 case "$max_calls" in ''|*[!0-9]*|0) die "--max-calls needs a positive integer" ;; esac
+case "$arms" in *[[:space:]]*) die "--arms is comma-separated" ;; esac
 for a in ${arms//,/ }; do case "$a" in sonnet|haiku|script|path) ;; *) die "unknown arm: $a" ;; esac; done
 case ",$arms," in *,sonnet,*|*,haiku,*)
     # billed-opt-in: HIMMEL_BILLED_OK
