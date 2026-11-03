@@ -33,11 +33,14 @@
 # name, not by value: a blank NAME= line in .env is no copy, and NAME="" or NAME=''
 # is no copy only for a key that does not move (env-keep). A key that moves is stored
 # as those two characters, and that keyring item counts as a copy. A .env line counts
-# when its first value as the loaders read it (a trailing # comment stripped, a later
-# duplicate line ignored) is not empty, and so does any keyring item, a placeholder
-# included; a real value only in a backup is then dropped without a name. A line with
-# no other copy of its key stays; it is named when a key moves or a scrub runs. A run
-# with nothing to move or scrub names no backup key, and such a value stays unreported.
+# when its first value as the loaders read it (a # starts a comment only after
+# whitespace, so NAME=#x, NAME=# x and NAME=""#x are values and count; a later
+# duplicate line is ignored) is not empty, and so does any user-scope keyring item, a
+# placeholder included; a real value only in a backup is then dropped without a name.
+# A backup line with no other copy of its key stays. Only a scrub names that key: a run
+# that does not scrub names no backup key, and a backup-only value stays there
+# unreported (nothing to move or scrub, a dry run, no unlocked keyring, or a consent run
+# without -y at a terminal, even when other keys move).
 # ponytail: coverage is by key name, a placeholder counts as a copy, a value compare against the other copy (HIMMEL-8951).
 # A run with nothing else to move, or with an emptied or missing .env, still
 # finishes an owed scrub. A legacy
@@ -306,7 +309,7 @@ lines_for() {  # <set of names> <file>: the names of the set the file has a line
 }
 # A secret line leaves a backup while the .env or the keyring holds a non-blank item or line for that key.
 # Coverage is by key name, not by value: a placeholder in .env or the keyring counts as a copy, and a real
-# value only in a backup is then dropped unnamed. A backup line with no other copy stays, and its key is named.
+# value only in a backup is then dropped unnamed. A backup line with no other copy stays, and its key is named by a scrub.
 # ponytail: coverage is by key name, a placeholder counts as a copy, a value compare against the other copy (HIMMEL-8951).
 scrub_set_calc() {
     local kitems envn n v

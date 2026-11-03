@@ -543,14 +543,16 @@ command you start yourself: `bash ~/himmel/scripts/setup/migrate-env.sh -y`.
    value: a blank `.env` line (`NAME=`) is not a copy, and `NAME=""` or
    `NAME=''` is not a copy only for a key that does not move (`env-keep`). A key
    that moves is stored as those two characters, and that keyring item is a copy.
-   A `.env` line counts when its first value, as the loaders read it (a trailing
-   `# comment` stripped, a later duplicate line ignored), is not empty, and so
-   does any keyring item, a placeholder included. A real value that exists only
-   in a backup is then dropped without a name (known gap, HIMMEL-8951). A backup
-   line with no other copy of its key stays; the report names that key when a
-   key moves or a scrub runs. A run that finds nothing to move or scrub
-   ("nothing to move", "nothing to migrate") names no backup key, and a
-   backup-only value stays there unreported (known gap, HIMMEL-8951). A run that moves nothing but
+   A `.env` line counts when its first value, as the loaders read it, is not
+   empty (a `#` starts a comment only after whitespace, so `NAME=#x`,
+   `NAME=# x` and `NAME=""#x` are values and count; a later duplicate line is
+   ignored), and so does any user-scope keyring item, a placeholder included. A
+   real value that exists only in a backup is then dropped without a name (known
+   gap, HIMMEL-8951). A backup line with no other copy of its key stays. Only a
+   scrub names that key: a run that does not scrub names no backup key, and a
+   backup-only value stays there unreported (known gap, HIMMEL-8951): nothing to
+   move or scrub, a dry run, no unlocked keyring, or a consent run without `-y`
+   at a terminal, even when other keys move. A run that moves nothing but
    finds an owed scrub (a run killed before it, say) finishes it when you rerun
    with `-y`; the dry run reports it as `scrub only`.
 
