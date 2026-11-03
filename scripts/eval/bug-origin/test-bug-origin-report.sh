@@ -587,13 +587,19 @@ PASS=$((PASS + $(grep -c '^PASS ' "$TMP/wo.out")))
 FAIL=$((FAIL + $(grep -c '^FAIL ' "$TMP/wo.out")))
 eq "write-once: ran to its end" "$(grep -c '^PASS write-once' "$TMP/wo.out")" "3"
 LEDR="$TMP/led-race"; rm -rf "$LEDR"; mkdir -p "$LEDR"
+race_pids=()
 for i in 1 2 3 4 5 6; do
     tag=a; [ $((i % 2)) -eq 0 ] && tag=b
     ( python3 "$REPORT" ingest --prs "$TMP/race-$tag.json" --ledger-dir "$LEDR" > "$TMP/race-$i.out" 2>&1 ) &
+    race_pids+=($!)
 done
-wait
+race_failed=0
+for pid in "${race_pids[@]}"; do wait "$pid" || race_failed=$((race_failed + 1)); done
+eq "write-once: every racing ingest exits 0" "$race_failed" "0"
 wrote="$(cat "$TMP"/race-[1-6].out | grep -c '^ingest: wrote 1,')"
+kept="$(cat "$TMP"/race-[1-6].out | grep -c '^ingest: wrote 0, kept 1')"
 eq "write-once: six racing ingests write the row once" "$wrote" "1"
+eq "write-once: the other five keep it" "$kept" "5"
 eq "write-once: the racing ingests leave one row" "$(count_files "$LEDR"/*.md)" "1"
 eq "write-once: the racing ingests leave no temp file" "$(count_files "$LEDR"/*tmp* "$LEDR"/.*tmp*)" "0"
 # the Jira key is read where the Jira CLI reads it, in its order: the environment, himmel.conf.local, himmel.conf, the .env of the
