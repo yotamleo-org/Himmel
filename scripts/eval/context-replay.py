@@ -16,7 +16,9 @@
 #   FLOOR + REBRIEF with HANDOVER_OUT of ceremony output.
 import argparse, glob, json, os, statistics, sys, time
 
-W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", "0.1"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from burn_weights import cache_read_weight
+
 W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", "1.25"))
 W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", "1"))
 W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", "5"))
@@ -26,8 +28,8 @@ HANDOVER_OUT = 15000  # ceremony output of a hand-off
 REBRIEF = 20000       # tokens a fresh session reads to resume
 
 
-def cost(inp, cr, cc, out):
-    return inp * W_IN + cr * W_CR + cc * W_CC + out * W_OUT
+def cost(inp, cr, cc, out, wcr):
+    return inp * W_IN + cr * wcr + cc * W_CC + out * W_OUT
 
 
 def load(path):
@@ -77,26 +79,26 @@ def unroll(calls):
     return out, med
 
 
-def replay(calls, window, mode, post, floor):
+def replay(calls, window, mode, post, floor, wcr):
     """Price the unrolled trajectory under a window. Returns (cost_eq, events)."""
     if not calls:
         return 0.0, 0
     gs, _ = unroll(calls)
     ctx = calls[0][0]
-    tot = cost(calls[0][2], calls[0][3], calls[0][4], calls[0][1])
+    tot = cost(calls[0][2], calls[0][3], calls[0][4], calls[0][1], wcr)
     ev = 0
     for i, g in enumerate(gs, start=1):
         out = calls[i][1]
         if window and ctx + g > window:
             ev += 1
             if mode == "handover":
-                tot += cost(0, ctx, 0, HANDOVER_OUT)
+                tot += cost(0, ctx, 0, HANDOVER_OUT, wcr)
                 ctx = floor + REBRIEF
             else:
-                tot += cost(0, ctx, 0, SUMMARY_OUT)
+                tot += cost(0, ctx, 0, SUMMARY_OUT, wcr)
                 ctx = post
-            tot += cost(0, 0, ctx, 0)
-        tot += cost(0, ctx, g, out)
+            tot += cost(0, 0, ctx, 0, wcr)
+        tot += cost(0, ctx, g, out, wcr)
         ctx += g
     return tot, ev
 
@@ -139,7 +141,7 @@ def main():
             continue
         floors = [s["calls"][0][0] for s in ss]
         floor = int(statistics.median(floors))
-        actual = sum(cost(c[2], c[3], c[4], c[1]) for s in ss for c in s["calls"])
+        actual = sum(cost(c[2], c[3], c[4], c[1], cache_read_weight(s["model"])) for s in ss for c in s["calls"])
         rec_comp = sum(len(s["compactions"]) for s in ss)
         k = {"sessions": len(ss), "calls": sum(len(s["calls"]) for s in ss),
              "actual_cost_eq": actual, "recorded_compactions": rec_comp,
@@ -149,11 +151,11 @@ def main():
             for mode in ("compact", "handover"):
                 t = ev = 0
                 for s in ss:
-                    c, e = replay(s["calls"], w, mode, post, floor)
+                    c, e = replay(s["calls"], w, mode, post, floor, cache_read_weight(s["model"]))
                     t += c
                     ev += e
                 k["windows"][f"{w}/{mode}"] = {"cost_eq": t, "events": ev}
-        inf = sum(replay(s["calls"], 0, "compact", post, floor)[0] for s in ss)
+        inf = sum(replay(s["calls"], 0, "compact", post, floor, cache_read_weight(s["model"]))[0] for s in ss)
         k["unbounded_cost_eq"] = inf
         res["kinds"][kind] = k
     if a.json:

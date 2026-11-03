@@ -365,9 +365,27 @@ for supplied_profile in worker-impl design,design-motion '' 'bad profile' 'bad/p
     esac
     profile_line=$(printf '%s\n' "$profile_argv" | grep '^worker-burn:')
     assert_eq "profile '$supplied_profile' is the final PR-body field" \
-        "worker-burn: calls=4 avg-ctx=963 first-turn=1.2k compactions=2 cost-eq=1.6k profile=$expected_profile" "$profile_line"
+        "worker-burn: calls=4 avg-ctx=963 first-turn=1.2k compactions=2 cost-eq=1.6k unknown-model-calls=4 profile=$expected_profile" "$profile_line"
 done
 not_contains "unavailable fallback remains profile-less" "$argv_k" "profile="
+
+# A KNOWN-model transcript: calls= must be the call count, not the unknown-model-calls= tail of the raw line.
+printf '%s\n' \
+    '{"type":"assistant","message":{"id":"k1","model":"claude-opus-5-5-20261001","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":1,"cache_read_input_tokens":1000,"cache_creation_input_tokens":0,"output_tokens":1}}}' \
+    '{"type":"assistant","message":{"id":"k2","model":"claude-opus-5-5-20261001","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":1,"cache_read_input_tokens":1000,"cache_creation_input_tokens":0,"output_tokens":1}}}' \
+    > "$FAKE_CLAUDE_HOME/projects/-fake-project/$FAKE_SID.jsonl"
+: > "$ARGV_LOG"
+(
+    cd "$REPO" || exit 99
+    unset CLAUDE_PID HIMMEL_WORKER_SESSION_PROFILE
+    CLAUDE_CODE_SESSION_ID="$FAKE_SID" CLAUDE_CONFIG_DIR="$FAKE_CLAUDE_HOME" \
+        FORGE=github CR_APP=0 GH_CMD="$GH_STUB" ARGV_LOG="$ARGV_LOG" \
+        HEAD_SHA_STUB="$HEAD_SHA" JIRA_PROJECT_KEY=HIMMEL \
+        bash "$SUT" "$TITLE_FILE" "$NO_BURN_BODY"
+) >/dev/null
+known_line=$(grep '^worker-burn:' "${ARGV_LOG}.body")
+contains "known-model transcript: calls= is the call count" "$known_line" "worker-burn: calls=2 "
+not_contains "known-model transcript: no unknown-model note" "$known_line" "unknown-model-calls="
 
 # ── the ticket in the title must match the branch (and the PR it edits)
 echo "TEST: refuses a title whose ticket is not in the branch name"

@@ -53,6 +53,9 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib"))
+from burn_weights import cache_read_weight, result_model  # noqa: E402
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 ARMS = ["none", "grep", "grep-rtk", "pathident", "graphify", "fused"]
@@ -104,9 +107,9 @@ def session_tokens(u):
                ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
 
 
-def weighted(u):
+def weighted(u, model=None):
     return (u.get("input_tokens", 0) + 1.25 * u.get("cache_creation_input_tokens", 0)
-            + 0.1 * u.get("cache_read_input_tokens", 0) + 5 * u.get("output_tokens", 0))
+            + cache_read_weight(model) * u.get("cache_read_input_tokens", 0) + 5 * u.get("output_tokens", 0))
 
 
 class Sweep:
@@ -149,7 +152,7 @@ class Sweep:
             if not isinstance(d, dict) or r.returncode != 0 or d.get("is_error"):
                 raise ValueError("claude rc=%s is_error=%s" % (r.returncode, isinstance(d, dict) and d.get("is_error")))
             u = d.get("usage") or {}
-            row.update(named=parse_answer(d.get("result")), tokens=session_tokens(u), weighted=weighted(u),
+            row.update(named=parse_answer(d.get("result")), tokens=session_tokens(u), weighted=weighted(u, result_model(d) or self.a.model),
                        cost_usd=float(d.get("total_cost_usd") or 0.0))
             row["correct"] = self.ev.is_hit(row["named"], q["gold"])
         except (ValueError, OSError, subprocess.TimeoutExpired, TypeError) as e:

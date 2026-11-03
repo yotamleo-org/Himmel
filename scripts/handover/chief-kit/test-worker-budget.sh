@@ -35,30 +35,30 @@ mk() { row m1 "$2" > "$1"; }
 run() { rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$1" bash "$SCRIPT" 2>"$tmp/err")" || rc=$?; err="$(cat "$tmp/err")"; }
 
 # --- 1. under the soft threshold -------------------------------------------------
-mk "$tmp/under.jsonl" 29000000
+mk "$tmp/under.jsonl" 19000000
 run "$tmp/under.jsonl"
 check    "1: under soft rc 0" "$rc" 0
-check    "1: one line, OK" "$out" "worker-budget calls=1 cost-eq=2900.0k soft=3000k hard=7000k verdict=OK"
+check    "1: one line, OK" "$out" "worker-budget calls=1 cost-eq=1900.0k soft=2000k hard=4700k verdict=OK"
 
 # --- 2. at the soft threshold ----------------------------------------------------
-mk "$tmp/soft.jsonl" 30000000
+mk "$tmp/soft.jsonl" 20000000
 run "$tmp/soft.jsonl"
 check    "2: soft rc 4" "$rc" 4
-contains "2: soft verdict" "$out" "cost-eq=3000.0k soft=3000k hard=7000k verdict=SOFT"
-mk "$tmp/soft2.jsonl" 69000000
+contains "2: soft verdict" "$out" "cost-eq=2000.0k soft=2000k hard=4700k verdict=SOFT"
+mk "$tmp/soft2.jsonl" 46000000
 run "$tmp/soft2.jsonl"
 check    "2: just under hard is still SOFT (rc 4)" "$rc" 4
 
 # --- 3. at the hard ceiling ------------------------------------------------------
-mk "$tmp/hard.jsonl" 70000000
+mk "$tmp/hard.jsonl" 47000000
 run "$tmp/hard.jsonl"
 check    "3: hard rc 3" "$rc" 3
-contains "3: hard verdict" "$out" "cost-eq=7000.0k soft=3000k hard=7000k verdict=HARD"
+contains "3: hard verdict" "$out" "cost-eq=4700.0k soft=2000k hard=4700k verdict=HARD"
 
 # --- 4. dedupe and weights -------------------------------------------------------
-{ row a 10000000; row a 10000000; row b 10000000; row b 10000000; row a 10000000; } > "$tmp/dup.jsonl"
+{ row a 9000000; row a 9000000; row b 9000000; row b 9000000; row a 9000000; } > "$tmp/dup.jsonl"
 run "$tmp/dup.jsonl"
-check    "4: duplicate ids counted once" "$out" "worker-budget calls=2 cost-eq=2000.0k soft=3000k hard=7000k verdict=OK"
+check    "4: duplicate ids counted once" "$out" "worker-budget calls=2 cost-eq=1800.0k soft=2000k hard=4700k verdict=OK"
 row c 0 2400000 0 > "$tmp/cc.jsonl"
 run "$tmp/cc.jsonl"
 contains "4: cache-create weighs 1.25 (2.4M -> 3000k)" "$out" "cost-eq=3000.0k"
@@ -71,20 +71,26 @@ check    "4: a sub-1000 cost-eq parses (rc 0)" "$rc" 0
 contains "4: sub-1000 cost-eq printed in k" "$out" "cost-eq=0.5k"
 
 # --- 5. env overrides ------------------------------------------------------------
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=2000 bash "$SCRIPT" 2>&1)" || rc=$?
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=1500 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: WORKER_COST_SOFT_K overrides (rc 4)" "$rc" 4
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=1000 WORKER_COST_HARD_K=2500 bash "$SCRIPT" 2>&1)" || rc=$?
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=1000 WORKER_COST_HARD_K=1800 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: WORKER_COST_HARD_K overrides (rc 3)" "$rc" 3
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=abc bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: a bad soft value falls back to the default (rc 0)" "$rc" 0
 contains "5: the bad value is named on stderr" "$out" "ignoring WORKER_COST_SOFT_K=abc"
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/soft.jsonl" WORKER_COST_SOFT_K=08 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "5: leading-zero 08 is decimal (rc 4 at 3000k)" "$rc" 4
+check    "5: leading-zero 08 is decimal (rc 4 at 2000k)" "$rc" 4
+contains "5: leading-zero 08 is used, not the default" "$out" "soft=8k"
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: zero falls back to the default, not disabled (rc 0)" "$rc" 0
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=5000 WORKER_COST_HARD_K=4000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "5: hard below soft is refused, defaults used (rc 0)" "$rc" 0
 contains "5: hard below soft says so" "$out" "hard"
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/under.jsonl" WORKER_COST_SOFT_K=5000 bash "$SCRIPT" 2>&1)" || rc=$?
+check    "5: soft above the default hard, hard unset: both fall back (rc 0)" "$rc" 0
+contains "5: that warning names the soft value in conflict" "$out" "soft=5000k and hard=4700k conflict"
+contains "5: that warning says both fell back" "$out" "both fell back"
+contains "5: the defaults are used" "$out" "soft=2000k hard=4700k"
 
 # --- 6. unreadable ---------------------------------------------------------------
 run "$tmp/nope.jsonl"
@@ -108,7 +114,7 @@ check    "6: unknown argument rc 2" "$rc" 2
 cfg="$tmp/cfg"; mkdir -p "$cfg/projects/-slug"
 mk "$cfg/projects/-slug/sid-1.jsonl" 10000000
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_SESSION_ID=sid-1 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "7: CLAUDE_CODE_SESSION_ID resolves" "$out" "worker-budget calls=1 cost-eq=1000.0k soft=3000k hard=7000k verdict=OK"
+check    "7: CLAUDE_CODE_SESSION_ID resolves" "$out" "worker-budget calls=1 cost-eq=1000.0k soft=2000k hard=4700k verdict=OK"
 { printf '{"type":"custom-title","customTitle":"HIMMEL-1-N1-some-worker-2026-10-25"}\n'; row t1 40000000; } > "$cfg/projects/-slug/sid-2.jsonl"
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title HIMMEL-1-N1-some-worker-2026-10-25 2>&1)" || rc=$?
 check    "7: --title resolves by customTitle (rc 4)" "$rc" 4
@@ -122,7 +128,7 @@ check    "7: unresolvable session id rc 2" "$rc" 2
 # --- 8. --from-line judges a worker-burn line with no transcript --------------------
 rc=0; out="$(bash "$SCRIPT" --from-line 'worker-burn x.jsonl: calls=40 avg-ctx=90.0k first-turn=32.3k out=5 compactions=1 text-only=0 cost-eq=3100.5k floor-share=9%' 2>&1)" || rc=$?
 check    "8: a soft line, rc 4" "$rc" 4
-contains "8: soft line verdict" "$out" "worker-budget calls=40 cost-eq=3100.5k soft=3000k hard=7000k verdict=SOFT"
+contains "8: soft line verdict" "$out" "worker-budget calls=40 cost-eq=3100.5k soft=2000k hard=4700k verdict=SOFT"
 rc=0; out="$(bash "$SCRIPT" --from-line 'worker-burn: calls=400 avg-ctx=106.9k first-turn=32.3k compactions=7 cost-eq=7689.4k profile=worker-impl' 2>&1)" || rc=$?
 check    "8: a PR-body hard line, rc 3" "$rc" 3
 rc=0; out="$(bash "$SCRIPT" --from-line 'worker-burn: calls=16 avg-ctx=44.0k first-turn=32.9k compactions=0 cost-eq=154.4k profile=worker-impl' 2>&1)" || rc=$?

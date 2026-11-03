@@ -156,8 +156,9 @@ compute_worker_burn_line() {
         return 0
     fi
 
-    local calls avg_ctx first_turn compactions cost_eq
-    calls=$(printf '%s\n' "$raw" | sed -n 's/.*calls=\([^ ]*\).*/\1/p')
+    local calls avg_ctx first_turn compactions cost_eq unknown_calls unknown_note=""
+    calls=$(printf '%s\n' "$raw" | sed -n 's/.* calls=\([^ ]*\).*/\1/p')
+    unknown_calls=$(printf '%s\n' "$raw" | sed -n 's/.* unknown-model-calls=\([^ ]*\).*/\1/p')
     avg_ctx=$(printf '%s\n' "$raw" | sed -n 's/.*avg-ctx=\([^ ]*\).*/\1/p')
     first_turn=$(printf '%s\n' "$raw" | sed -n 's/.*first-turn=\([^ ]*\).*/\1/p')
     compactions=$(printf '%s\n' "$raw" | sed -n 's/.*compactions=\([^ ]*\).*/\1/p')
@@ -168,7 +169,9 @@ compute_worker_burn_line() {
         return 0
     fi
 
-    echo "worker-burn: calls=$calls avg-ctx=$avg_ctx first-turn=$first_turn compactions=$compactions cost-eq=$cost_eq profile=$profile"
+    # Calls priced at the 0.1 default because their model is not in the weight table; shown only when there are some.
+    case "$unknown_calls" in ''|*[!0-9]*|0) ;; *) unknown_note=" unknown-model-calls=$unknown_calls" ;; esac
+    echo "worker-burn: calls=$calls avg-ctx=$avg_ctx first-turn=$first_turn compactions=$compactions cost-eq=$cost_eq${unknown_note} profile=$profile"
 }
 
 burn_line=$(compute_worker_burn_line)
