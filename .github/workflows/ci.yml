@@ -1455,7 +1455,7 @@ jobs:
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
       # HIMMEL-8974: the root vitest.config.ts and sector.test.ts keep a vitest run from the
       # repo root off the real HOME. The guard needs the scripts/jira install above, which
-      # the shell-unit shards lack (run-shell-tests.sh SKIP_LISTs it), so it runs here with
+      # the shell-unit shards lack (there its runtime cases SKIP), so it runs here with
       # the require flag: a missing install is a FAIL, never a vacuous SKIP.
       - if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash scripts/ci/test-root-vitest-sandbox.sh

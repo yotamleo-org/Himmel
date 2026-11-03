@@ -8,8 +8,8 @@
 # The runtime cases need scripts/jira/node_modules/.bin/vitest (npm ci in scripts/jira). They
 # never use npx (that would fetch from the network). Without it they print SKIP and exit 0,
 # unless HIMMEL_REQUIRE_JIRA_VITEST=1, which turns that SKIP into a FAIL. The node-suites (jira)
-# job in ci.yml sets it; the shell-unit shards have no jira install, so run-shell-tests.sh
-# SKIP_LISTs this suite and that job is where it runs.
+# job in ci.yml sets it. The shell-unit shards have no jira install, so there only the static
+# cases run: the node-suites (jira) job is where the runtime cases are enforced.
 #
 # Cases:
 #   1 static: the root config names the sandbox file, which sets all four overrides, and does
