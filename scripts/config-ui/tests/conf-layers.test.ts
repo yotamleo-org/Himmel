@@ -69,9 +69,16 @@ test("the Setup page's commit rules come from himmel.conf.local over himmel.conf
   const s = scratch();
   writeFileSync(s.conf, "TRACKER=jira\nTICKET_ID_REQUIRED=1\n");
   const port = boot(s);
-  expect((await getJson(port, "/api/setup")).commit).toEqual({ tracker: "jira", ticketIdRequired: true });
+  expect((await getJson(port, "/api/setup")).commit).toEqual({ tracker: "jira", ticketIdRequired: true, teamMode: "off" });
   writeFileSync(`${s.conf}.local`, "TRACKER=github\nTICKET_ID_REQUIRED=0\n");
-  expect((await getJson(port, "/api/setup")).commit).toEqual({ tracker: "github", ticketIdRequired: false });
+  expect((await getJson(port, "/api/setup")).commit).toEqual({ tracker: "github", ticketIdRequired: false, teamMode: "off" });
   writeFileSync(`${s.conf}.local`, "TRACKER=\nTICKET_ID_REQUIRED=\n");
-  expect((await getJson(port, "/api/setup")).commit).toEqual({ tracker: "jira", ticketIdRequired: true });
+  expect((await getJson(port, "/api/setup")).commit).toEqual({ tracker: "jira", ticketIdRequired: true, teamMode: "off" });
+});
+
+test("the Setup page's Team mode reads the line himmelctl writes to himmel.conf", async () => {
+  const s = scratch();
+  writeFileSync(s.conf, "TRACKER=jira\nHIMMEL_TRACKER_TEAM_MODE=on\n");
+  const port = boot(s);
+  expect((await getJson(port, "/api/setup")).commit).toEqual({ tracker: "jira", ticketIdRequired: null, teamMode: "on" });
 });

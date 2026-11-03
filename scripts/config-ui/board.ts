@@ -1,12 +1,13 @@
-// The Board page's two reads beside GET /api/roadmap: the saved status-drift summary (drift-summary.mjs) and the
-// chain read (chain-state.mjs). READ ONLY: each is a chief-kit script that prints JSON and writes nothing, run with an explicit
+// The Board page's two reads beside GET /api/roadmap, and the one run that replaces the saved drift file (refreshDrift, below): the saved status-drift summary (drift-summary.mjs) and the
+// chain read (chain-state.mjs). The reads are READ ONLY: each is a chief-kit script that prints JSON and writes nothing, run with an explicit
 // argument list and a small environment, and never started unless its input is found: named in the environment
 // (HIMMEL_FOCUS_DRIFT, TRACKER_HANDOVERS_DIR, HIMMEL_CHAIN_REGISTRY) or, on a real launch, the newest file of that name under
 // <HANDOVER_DIR>/<slug>/himmel/. A test therefore reaches only the paths it sets: with none of these nothing is spawned and
 // the page shows both as absent, with the reason, never as a count.
 import { execFile } from "node:child_process";
-import { readdirSync, statSync } from "node:fs";
+import { readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
 import { jiraMirrorDir } from "./tracker-sources";
 
@@ -77,6 +78,40 @@ export function burnDown(read: { now?: string; tickets?: Record<string, BurnTick
     points.push({ day, open, merged });
   }
   return { total, undated, points };
+}
+
+// Tidy up's Refresh: status-drift.sh, the report-only check (it never writes Jira), and the saved file replaced through a temp file and a
+// rename, as focus-refresh.sh publishes it. A run that does not end on a clean sdrift line leaves the saved file alone and says why.
+// The check's own 90 s default is too short here: a real run without a snapshot took 121 s on the station. It gets DRIFT_BUDGET_S instead;
+// the limit below catches only a hung child, and the server's idle guard covers it.
+// ponytail: runs without the sweep's snapshot, at about 4 s per key, so past about 50 open tickets it hits the budget and reads unknown, upgrade path = keep focus-refresh's snapshot for --snapshot.
+export const DRIFT_BUDGET_S = 200;
+export const DRIFT_REFRESH_MS = 220_000;
+export type DriftRefresh = { state: "ok"; sdrift: string } | { state: "failed"; reason: string };
+export const driftCheck = (env: Env) => env.CONFIG_UI_DRIFT_CHECK || join(KIT, "status-drift.sh");
+export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFRESH_MS): Promise<DriftRefresh> {
+  const failed = (reason: string): DriftRefresh => ({ state: "failed", reason });
+  const file = driftFile(env);
+  if (!file) return failed("nowhere to save the run: no saved drift file under the handover root, and HIMMEL_FOCUS_DRIFT is not set");
+  let r;
+  try { r = await runChild(["bash", driftCheck(env)], { cwd, env: { ...env, TICKET_STATUS_DRIFT_BUDGET: String(DRIFT_BUDGET_S) }, timeoutMs }); } catch (e) { return failed(`the check could not start: ${(e as Error).message}`); }
+  if (r.timedOut) return failed(`the check ran past its ${Math.round(timeoutMs / 1000)} s limit`);
+  if (r.rc !== 0) return failed(`the check failed with rc ${r.rc}: ${r.stderr.trim().split("\n").pop()?.slice(0, 200) ?? ""}`);
+  const lines = r.stdout.split("\n").filter((l) => l.trim()), last = lines[lines.length - 1] ?? "";
+  if (last === "sdrift=unknown") {
+    const health = lines.filter((l) => l.startsWith("HEALTH ")).pop()?.split(" | ")[0];
+    return failed(`the check could not read the open PRs or the Jira search in full${health ? ` (${health.slice(0, 200)})` : ""}`);
+  }
+  if (!/^sdrift=\d+:\S+$/.test(last)) return failed("the check printed no sdrift line");
+  const stage = `${file}.${process.pid}.tmp`; // beside the target: a rename stays on one filesystem
+  try {
+    writeFileSync(stage, r.stdout);
+    renameSync(stage, file);
+  } catch (e) {
+    rmSync(stage, { force: true });
+    return failed(`the run could not be saved: ${(e as Error).message}`);
+  }
+  return { state: "ok", sdrift: last.slice("sdrift=".length) };
 }
 
 export async function readBoardExtras(env: Env, read: typeof readRoadmap = readRoadmap): Promise<BoardExtras> {

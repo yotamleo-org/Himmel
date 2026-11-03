@@ -47,7 +47,8 @@ function choice(label, action, target, value, current, k, disabled) {
   return `<button class="btn${on ? " primary" : ""}" data-act="plan" data-action="${action}" data-target="${target}" data-value="${value}" data-k="${k}" aria-pressed="${on}"${disabled ? " disabled" : ""}>${esc(label)}</button>`;
 }
 
-const TK = "setup|tracker", RK = "setup|ticket-id-required";
+const TK = "setup|tracker", RK = "setup|ticket-id-required", MK = "setup|team-mode";
+const ON_OFF = [["on", "On"], ["off", "Off"]];
 
 const trackerRow = (c) => `<div class="srow"><span class="id">Tracker</span><span class="det">${c.tracker ? "" : "not set yet · "}takes effect on your next commit</span>
       <span>${TRACKERS.map(([v, l]) => choice(l, "config.commitRules", "tracker", v, c.tracker, TK)).join(" ")}</span></div>`;
@@ -217,15 +218,18 @@ function trackerPanel({ setup, state, msgs }) {
   const c = setup.commit, plans = state.plans || {};
   const connected = c.tracker !== "local" && c.tracker !== "none";
   const connection = setup.secrets.filter(isJira).filter((s) => connected || s.status === "set").sort((a, b) => JIRA_ORDER.indexOf(a.name) - JIRA_ORDER.indexOf(b.name)).map((s) => secretRow(s, msgs[s.name], true)).join("");
-  const open = [TK, RK].filter((k) => plans[k]);
+  const open = [TK, RK, MK].filter((k) => plans[k]);
   return `<p class="sub">Where your tickets live, and what every commit must carry. Each change shows a dry run before it writes.</p>
     <div class="cols">
     <div class="col"><h3>Connection · where tickets live</h3>${trackerRow(c)}${connection}
       <p class="sub">Hidden when the tracker is Local or None, because those need no connection; a value already saved stays listed so you can remove it. A save here uses the same writer as Secrets.</p></div>
     <div class="col"><h3>Commit rules · what a commit carries</h3>${ticketRow(c, true)}
-      <div class="srow"><span class="id">Ticket pattern <span class="tag">read-only</span></span><span class="det">From <code>JIRA_PROJECT_KEY</code>; your own <code>TICKET_ID_PATTERN</code> in <code>~/.himmel/himmel.conf</code> wins. Typed in the terminal.</span></div></div></div>
+      <div class="srow"><span class="id">Ticket pattern <span class="tag">read-only</span></span><span class="det">From <code>JIRA_PROJECT_KEY</code>; your own <code>TICKET_ID_PATTERN</code> in <code>~/.himmel/himmel.conf</code> wins. Typed in the terminal.</span></div>
+      <h3>Board · who edits this Jira project</h3>
+      <div class="srow"><span class="id">Team mode</span><span class="det">Off: only you and himmel edit this project, so a real drift on the Board is a himmel bug and the doctor WARNs. On: several people edit Jira, so a drift is ordinary tidy-up and the doctor only reports it.</span>
+        <span>${ON_OFF.map(([v, l]) => choice(l, "config.tracker", "team-mode", v, c.teamMode, MK)).join(" ")}</span></div></div></div>
     ${open.length ? `<div class="dryrun">${open.map((k) => planHtml(k, plans[k])).join("")}</div>` : ""}
-    <p class="foot"><b>Saved to</b> <code>~/.himmel/himmel.conf</code> (tracker, rule) and the himmel <code>.env</code> (the four Jira values) after a dry run you confirm · takes effect on your next commit</p>`;
+    <p class="foot"><b>Saved to</b> <code>~/.himmel/himmel.conf</code> (tracker, rule, Team mode) and the himmel <code>.env</code> (the four Jira values) after a dry run you confirm · takes effect on your next commit; Team mode on the next Board read and doctor run</p>`;
 }
 
 function scopePanel({ setup, feed, state }) {

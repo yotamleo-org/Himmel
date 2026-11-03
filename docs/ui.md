@@ -98,6 +98,7 @@ This is the full set, each mapped to the code that handles it:
 | Save or remove a file-stored secret | `/api/setup/secret` | `secretWrite` in `scripts/config-ui/setup.ts` |
 | Create the UI login once (Account step) | `/api/setup/account` | `accountCreate` in `scripts/config-ui/setup.ts` |
 | Run the doctor's read-only checks (Verify step) | `/api/setup/verify` | `verifyDoctor` in `scripts/config-ui/setup.ts` |
+| Re-run the status drift check (Board, Tidy up) | `/api/board/drift-refresh` | `refreshDrift` in `scripts/config-ui/board.ts` |
 | Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |

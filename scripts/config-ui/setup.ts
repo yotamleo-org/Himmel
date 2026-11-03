@@ -42,7 +42,9 @@ const ctxOf = (o: SetupOpts) => ({ home: o.home, himmelRoot: o.himmelRoot, proje
 // ~/.himmel/himmel.conf (himmel.conf.local over it), where the wizard writes the commit rules; null for a key it does not carry.
 function commitRules(home: string) {
   const kv = readConfLayers({ HOME: home });
-  return { tracker: kv.TRACKER ?? null, ticketIdRequired: kv.TICKET_ID_REQUIRED === "1" ? true : kv.TICKET_ID_REQUIRED === "0" ? false : null };
+  // Team mode: on, 1 or true is on, as drift-summary.mjs reads it; unset and anything else read off.
+  const teamMode = ["on", "1", "true"].includes((kv.HIMMEL_TRACKER_TEAM_MODE ?? "").trim().toLowerCase()) ? "on" : "off";
+  return { tracker: kv.TRACKER ?? null, ticketIdRequired: kv.TICKET_ID_REQUIRED === "1" ? true : kv.TICKET_ID_REQUIRED === "0" ? false : null, teamMode };
 }
 
 // The setup choices the page can write: each path's current value from himmel.conf (null when unset, with the default

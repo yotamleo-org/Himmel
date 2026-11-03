@@ -62,7 +62,8 @@ function chainBadge(t, ch, v) {
   return `<div class="rm-chains">${parts.join("")}${ct.more ? ` <span class="ro">+${esc(String(ct.more))}</span>` : ""}</div>`;
 }
 
-function cardHtml(t, d, showVersion, w, ch, v) {
+function cardHtml(t, d, showVersion, w, ch, v, known) {
+  const kb = known && known.get(idOf(t)) ? `<span class="rm-kb" title="The drift row on this ticket is the checker's fault: listed, not counted."><span aria-hidden="true">≠</span> checker bug ${esc(known.get(idOf(t)))}</span>` : "";
   const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
   const ver = showVersion && t.v >= 0 ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
@@ -70,7 +71,7 @@ function cardHtml(t, d, showVersion, w, ch, v) {
   const local = t.backend === "local";
   const attrs = w ? ` draggable="true" data-rm-card="${t.k}"${projAttr(t)}${local ? ` data-rm-id="${esc(t.id)}" data-rm-backend="local"` : ""}` : "";
   const open = ` data-rm-open="${t.k}"${w ? "" : projAttr(t)} tabindex="0"`; // a click, Enter or Space opens the drawer; the project attribute is shared with the drag one
-  return `<div class="rm-card"${attrs}${open}><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>${chainBadge(t, ch, v)}
+  return `<div class="rm-card"${attrs}${open}><b>${esc(idOf(t))}</b>${local ? ` <span class="ro pill">local</span>` : ""} <span class="ro pill${t.b === "done" ? " ok" : t.b === "prog" || t.b === "rev" || t.b === "ci" ? " warn" : ""}">${esc(t.s)}</span><div>${esc(t.t)}</div>${chainBadge(t, ch, v)}${kb}
     <div class="ro">${ver}${theme} ${dr}</div>${lg}</div>`;
 }
 
@@ -84,7 +85,7 @@ function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
     const cards = tickets.filter((t) => t.b === b), n = cards.length;
     const jn = o.scope ? o.scope.filter((t) => t.b === b).length : null;
     const jira = jn === null ? "" : `<span class="ro rm-jira">${jn === n ? `Jira ${jn} matches` : `Jira ${jn} · ${n} shown`}</span>`;
-    const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
+    const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v, o.known)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
     const drawerHere = o.drawer && cards.some((t) => t.k === o.drawer.k && (t.project || "") === (o.drawer.project || "")); // closing the drawer focuses its card: it must not sit in a closed <details>
     if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find || drawerHere ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
     return `<div class="rm-col"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${esc(l)} <span class="ro rm-n">${n}</span></h4>${jira}${body}</div>`;
@@ -299,7 +300,10 @@ const passOf = (d, ui, ch, from = d) => {
     && (!q || idOf(t).toLowerCase().includes(q) || t.t.toLowerCase().includes(q));
 };
 
-function lanesHtml(d, ui, sel, ch) {
+// ticket key to the checker ticket that explains its drift row, for the tag on a lane card
+const knownByKey = (dr) => new Map((dr && dr.known ? dr.known : []).map((r) => [r.key, r.checker]));
+
+function lanesHtml(d, ui, sel, ch, dr) {
   const gh = d.source === "github";
   const writeOn = !!ui.writes && !gh;
   if (sel === -2) return section("rm-lanes", "Roadmap", "", `<div class="empty">${esc(ui.v)}: no such version in the mirror.</div>`);
@@ -307,19 +311,19 @@ function lanesHtml(d, ui, sel, ch) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer }) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr) }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
 // asked for when this tab opens (null until it arrives).
-function nvTab(data, ui, ch) {
+function nvTab(data, ui, ch, dr) {
   const nv = ui.nv, sub = "Tickets with no fixVersion. Give one a fixVersion in Jira to put it on a version's board.";
   if (!nv) return section("rm-nv", "No version", sub, `<p class="sub" id="status">loading…</p>`);
   if (nv.state !== "ok") return section("rm-nv", "No version", sub, `<div class="nodata">${esc(nv.reason || "the tickets with no version could not be read")}</div>`);
   const writeOn = !!ui.writes && nv.source !== "github";
   const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch, data));
   return section("rm-nv", "No version", `${shown.length} ticket${shown.length === 1 ? "" : "s"}. ${sub}${writeOn ? " Drag a card to another column to change its status." : ""}`,
-    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer }) : `<div class="empty">No tickets match.</div>`);
+    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer, known: knownByKey(dr) }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The Chains tab, from the v4 mockup's frames 4 and 4b: how chains link, what each one logged, why a ticket waits, and the burn-down. Reads only.
@@ -442,20 +446,56 @@ function chainsTab(ui, ch, d) {
 }
 
 // One row of status-drift.sh: `CLASS KEY says | writer=… | fix=…`. The fix is shown with a copy button; the Board never runs it.
-function driftRow(r) {
+// The origin column: the newest status move on the ticket, from its Jira history. himmel's account can also be a person on the same login, so it never reads as "himmel did it".
+function originText(h) {
+  if (!h) return "reading…";
+  if (h.error) return "origin not read";
+  const e = h.events[h.events.length - 1];
+  if (!e) return "no status move in Jira";
+  return e.himmel ? "himmel's Jira account: a script, or a hand move if the login is shared" : `moved in Jira by ${e.who}`;
+}
+function driftRow(r, origins) {
   const parts = String(r.line || "").split(" | "), prefix = `${r.class} ${r.key} `;
   const says = parts[0].startsWith(prefix) ? parts[0].slice(prefix.length) : parts[0];
   const get = (k) => (parts.find((p) => p.startsWith(k + "=")) || "").slice(k.length + 1);
   const fix = get("fix");
-  return `<tr><td><code>${esc(r.class)}</code></td><td>${esc(r.key)}</td><td>${esc(says)}</td><td>${esc(get("writer"))}</td><td>${fix ? `<code>${esc(fix)}</code> <button class="btn" data-act="copy" data-cmd="${esc(fix)}">copy</button>` : ""}</td></tr>`;
+  return `<tr><td><code>${esc(r.class)}</code></td><td class="rm-key">${esc(r.key)}</td><td>${esc(says)}</td><td>${esc(originText(origins && origins[r.key]))}</td><td>${esc(get("writer"))}</td><td>${fix ? `<code>${esc(fix)}</code> <button class="btn" data-act="copy" data-cmd="${esc(fix)}">copy</button>` : ""}</td></tr>`;
 }
-function statusDriftHtml(dr) {
+function statusDriftHtml(dr, origins) {
   if (!driftOk(dr)) return `<div class="nodata">${dr && dr.file && !dr.file.exists ? "no saved drift run yet" : dr && dr.counts && dr.unknown ? "the saved drift run's result is unknown" : "status drift not read" + (dr && dr.reason ? ` (${esc(dr.reason)})` : "")}</div>`;
-  const grp = (title, rows) => rows && rows.length ? `<tr class="grp"><td colspan="5">${esc(title)} · ${rows.length}</td></tr>${rows.map(driftRow).join("")}` : "";
+  const grp = (title, rows) => rows && rows.length ? `<tr class="grp"><td colspan="6">${esc(title)} · ${rows.length}</td></tr>${rows.map((r) => driftRow(r, origins)).join("")}` : "";
   const body = grp("Real drift · counted", dr.real) + grp("Known checker bug · listed, not counted", dr.known) + grp("Transient · listed, not counted", dr.transient);
   return `<div class="kv">real ${dr.counts.real} · known checker bug ${dr.counts.known} · transient ${dr.counts.transient} · ${esc(dr.mode)} mode · saved run ${esc(dr.file.writtenHm || "unknown")}</div>`
-    + (body ? `<div class="scroll"><table class="data"><thead><tr><th>class</th><th>ticket</th><th>says</th><th>writer</th><th>fix</th></tr></thead><tbody>${body}</tbody></table></div>`
+    + (body ? `<div class="scroll"><table class="data"><thead><tr><th>class</th><th>ticket</th><th>says</th><th>origin</th><th>writer</th><th>fix</th></tr></thead><tbody>${body}</tbody></table></div>`
       : `<div class="empty">No drift rows.</div>`);
+}
+
+// What a re-run changed, row by row, from the rows on screen before it (mockup v4 frame 6).
+const driftLines = (dr) => (dr && dr.real ? [...dr.real, ...dr.known, ...dr.transient].map((r) => r.line.split(" | ")[0]) : []);
+export function driftSince(before, after) {
+  const was = driftLines(before), now = driftLines(after), added = now.filter((l) => !was.includes(l));
+  const real = driftLines({ real: (after && after.real) || [], known: [], transient: [] });
+  return { from: before && before.file ? before.file.writtenHm : null, added, counted: added.filter((l) => real.includes(l)), healed: was.filter((l) => !now.includes(l)), same: now.filter((l) => was.includes(l)).length };
+}
+function sinceHtml(s) {
+  const row = (tag, text) => `<tr><td>${tag}</td><td>${esc(text)}</td></tr>`;
+  return `<div class="scroll"><table class="data"><thead><tr><th>since ${esc(s.from || "the last run")}</th><th>row</th></tr></thead><tbody>${s.added.map((l) => row((s.counted || []).includes(l) ? "new · counted" : "new", l)).join("")}${s.healed.map((l) => row("healed", l)).join("")}${row("same", `${s.same} row${s.same === 1 ? "" : "s"}`)}</tbody></table></div>`;
+}
+// The Refresh control (mockup v4 frame 6). Opening the tab reads the saved file and starts nothing; a run keeps the saved rows on screen until it ends.
+function driftBar(dr, run) {
+  const hm = dr && dr.file && dr.file.exists ? dr.file.writtenHm || "unknown" : null, running = run && run.state === "running";
+  const facts = hm ? ` · written <b>${esc(hm)}</b>${dr.sdrift ? ` · <code>sdrift=${esc(dr.sdrift)}</code>` : ""}${dr.stale ? " · older than 3 h" : ""}` : "";
+  const text = running ? `<span class="rm-spin" aria-hidden="true"></span> re-running the check · started <b>${esc(run.started)}</b> · usually about 2 min, at most 3 min 20 s${hm ? ` · the rows below are from ${esc(hm)}` : ""}`
+    : hm ? `drift: <b>${run && run.state === "done" ? "re-run" : "saved run"}</b>${facts}` : `drift: no saved run to show`;
+  const bar = `<div class="rm-driftbar" role="status"><span>${text}</span><button class="btn" data-act="drift-refresh" aria-label="refresh: re-run the drift check"${running ? " disabled" : ""}>refresh</button></div>`;
+  if (run && run.state === "failed") return `${bar}<div class="alert" role="alert"><span class="st pill fail">not re-run</span> ${esc(run.reason)} · ${hm ? `the saved run from ${esc(hm)} is kept` : "there is no saved run to keep"}</div>`;
+  return run && run.state === "done" ? bar + sinceHtml(run.since) : bar;
+}
+// The mode is read-only here: its one switch is on Configure (mockup v4 frame 5b).
+function modeHtml(dr) {
+  if (!dr || !dr.mode) return "";
+  const team = dr.mode === "team";
+  return `<div class="kv rm-mode">team mode is <b>${team ? "on" : "off"}</b> · <a href="#/config?tile=tracker">change in Configure → Tracker ▸</a> · ${team ? "team: a drift is ordinary tidy-up · the doctor only reports it" : "single-user: a real drift = a himmel bug · the doctor WARNs"}</div>`;
 }
 
 function tidyTab(d, ui, sel, dr) {
@@ -465,7 +505,7 @@ function tidyTab(d, ui, sel, dr) {
   const lib = section("rm-librarian", "Librarian", "Ready-to-approve cleanups.", librarianHtml(d, u));
   if (d.source === "local") return lib; // the local store has no Jira status, no plan and no worker sync
   return [
-    section("rm-status-drift", "Status drift", "Jira against the events, from the saved drift run.", statusDriftHtml(dr)),
+    section("rm-status-drift", "Status drift", "Jira against the events, from the saved drift run.", driftBar(dr, ui.driftRun) + modeHtml(dr) + statusDriftHtml(dr, ui.driftOrigins)),
     section("rm-drift", "Drift", "Jira's fixVersion against the plan's placement.", driftHtml(d)),
     section("rm-sync", "Worker to Jira sync", "What the workers say that Jira does not yet.", syncHtml(d, u)),
     lib,
@@ -534,7 +574,7 @@ function boardPage(data, ui, extras) {
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${esc(data.mirror.newest || "unknown")})`;
   const fresh = `<p class="ro rm-fresh">read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${esc(dr.file.writtenHm || "unknown")}` : ""}</p>`;
-  const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch) : lanesHtml(data, ui, sel, ch);
+  const body = tab === "chains" ? chainsTab(ui, tabCh, data) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch, dr) : lanesHtml(data, ui, sel, ch, dr);
   const drawer = drawerHtml(data, ui), why = tab === "chains" ? whyHtml(ui, tabCh) : "";
   // with a drawer or the Why panel open the board under it is inert: no drag, select, key or click reaches a card until it closes
   return [page, `<div class="rm-under"${drawer || why ? " inert" : ""}>`, fresh, driftBanner(dr), stripHtml(data, tileSel, ch, tab), linksHtml(ch), tabsHtml(data, ui, tab, tabCh, dr), barHtml(data, ui, ch, tab, sel), body, `</div>`, drawer, why].join("\n");

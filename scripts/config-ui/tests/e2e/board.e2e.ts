@@ -83,6 +83,47 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   expect(errs).toEqual([]);
 });
 
+// 8837: Tidy up's refresh in its three states, the origin column and the checker-bug tag (mockup v4 frames 1, 5, 6)
+test("Tidy up: refresh re-runs the check and the next read shows it; a failed run keeps the saved rows and says why", async ({ page }) => {
+  const errs = consoleErrors(page);
+  await open(page);
+  await page.route("**/api/roadmap/history*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ key: "HIMMEL-12", events: route.request().url().includes("HIMMEL-12")
+    ? [{ at: "2026-10-30T10:00:00", who: "Ana Reyes", from: "To Do", to: "Done" }] : [{ at: "2026-10-30T10:00:00", who: "Himmel Bot", from: "To Do", to: "In Progress", himmel: true }] }) }));
+  await go(page, "#/board?tab=tidy");
+  const drift = page.locator("#rm-status-drift");
+  await expect(drift).toContainText("drift: saved run");
+  await expect(drift).toContainText("moved in Jira by Ana Reyes");
+  await expect(drift).toContainText("himmel's Jira account");
+  await expect(drift.locator('a[href="#/config?tile=tracker"]')).toBeVisible();
+  await expect(drift).toContainText("team mode is off");
+  await shot(page, "tidy-saved");
+  // the failed state, answered by the page's route: the saved rows stay
+  await page.route("**/api/board/drift-refresh", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state: "failed", reason: "the check could not read the open PRs or the Jira search in full" }) }));
+  await drift.locator('[data-act="drift-refresh"]').click();
+  await expect(drift.locator('[role="alert"]')).toContainText("could not read the open PRs");
+  await expect(drift).toContainText("VERSION-DRIFT");
+  await shot(page, "tidy-refresh-failed");
+  await page.unroute("**/api/board/drift-refresh");
+  // the real route, over the fixture's stub: running, then the new run
+  await drift.locator('[data-act="drift-refresh"]').click();
+  await expect(drift).toContainText("re-running the check");
+  await expect(drift.locator('[data-act="drift-refresh"]')).toBeDisabled();
+  await expect(drift).toContainText("WORKER-COMMENT"); // the saved rows stay until the run ends
+  await shot(page, "tidy-refresh-running");
+  await expect(drift).toContainText("drift: re-run");
+  await expect(drift).toContainText("sdrift=2:newrun");
+  await expect(drift.locator("table").first()).toContainText("healed");
+  await shot(page, "tidy-refresh-done");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await shot(page, "tidy-refresh-done-dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  // the new run's known row tags its card on the lanes, naming the checker
+  await go(page, "#/board");
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-kb")).toContainText("checker bug HIMMEL-31");
+  await shot(page, "lanes-checker-bug");
+  expect(errs).toEqual([]);
+});
+
 test("dragging a card to another column sends its new status", async ({ page }) => {
   await open(page);
   await go(page, "#/board");
@@ -426,6 +467,10 @@ test("with no drift file and no chain registry the Board says so in words and sh
   await page.locator("nav.pages").waitFor();
   await go(page, "#/board");
   await expect(page.locator("#main")).toContainText("drift: not read");
+  await page.getByRole("tab", { name: /^Tidy up/ }).click();
+  await page.locator('#rm-status-drift [data-act="drift-refresh"]').click(); // nowhere to save the run: refused in words, no count
+  await expect(page.locator('#rm-status-drift [role="alert"]')).toContainText("HIMMEL_FOCUS_DRIFT");
+  await page.getByRole("tab", { name: /^Roadmap/ }).click();
   await expect(page.locator(".rm-link").first()).toContainText("waits for you: not read");
   await expect(page.locator(".rm-chain")).toHaveCount(0);
   await page.getByRole("tab", { name: /^Chains/ }).click();
