@@ -399,16 +399,6 @@
       "offboard": "advise"
     },
     {
-      "id": "morning-report-cadence",
-      "kind": "scheduler",
-      "scopes": ["user"],
-      "profiles": ["core", "all"],
-      "deps": [],
-      "probe": { "type": "cmd:cadence_armed", "resolver": "scripts/lib/cadence-format.sh", "envVar": "MORNINGREPORT_RUNNER_DIR", "defaultSubdir": ".claude/morning-report-cadence" },
-      "removable": "full-offboard-only",
-      "offboard": "advise"
-    },
-    {
       "id": "graphmap-cadence",
       "kind": "scheduler",
       "scopes": ["user"],
