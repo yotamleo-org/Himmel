@@ -1738,7 +1738,7 @@ report_qmd_daemon_restart() {
     # also runs as a per-session STDIO MCP server that the looser pattern
     # matches just as well, and stopping those kills other sessions' servers.
     echo "      # 1. LOOK — confirm these are the daemon, and only the daemon:"
-    echo "      pgrep -af 'qmd.*mcp.*--http'"
+    echo "      ps -axww -o pid=,command= | grep '[q]md.*mcp.*--http'"
     echo "      # 2. STOP — same filter, once the list above looks right:"
     echo "      pkill -f 'qmd.*mcp.*--http'"
     echo "      # 3. RESTART:"
