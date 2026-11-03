@@ -35,7 +35,6 @@ KEY_RE = re.compile(r'^[A-Za-z][A-Za-z0-9]*-\d+$')
 GRANT_RE = re.compile(r'\.grant\.[A-Za-z][A-Za-z0-9]*-\d+$')
 TMP_PREFIX = '%00'       # escaping only ever makes %25 and %2F, so a name starting %00 is never a row
 MAX_NAME = 255
-LOCK_NAME = TMP_PREFIX + 'lock'  # one per slug directory; every reader skips TMP_PREFIX
 LOCK_WAIT = 5.0          # seconds a row write waits for the directory lock before it faults
 LEG_RE = re.compile(r'-(N\d+)[a-z]*-')  # the leg number in a handover doc's name
 
@@ -472,9 +471,10 @@ class Judge:
 
 
 def dir_lock(d):
-    """The directory's row-write lock as an fd, or None after LOCK_WAIT: the caller faults, it never hangs."""
+    """The directory's row-write lock as an fd, or None after LOCK_WAIT: the caller faults, it never hangs.
+    The flock is on the directory itself, so the lock adds no file among the rows."""
     try:
-        fd = os.open(os.path.join(d, LOCK_NAME), os.O_RDWR | os.O_CREAT, 0o644)
+        fd = os.open(d, os.O_RDONLY)
     except OSError:
         return None
     deadline = time.monotonic() + LOCK_WAIT

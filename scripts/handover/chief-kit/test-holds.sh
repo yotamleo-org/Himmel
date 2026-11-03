@@ -273,7 +273,7 @@ p2=$!
 wait "$p1"; r1=$?
 wait "$p2"; r2=$?
 same "I11 2 takers of one dead row: one winner" "$(printf '%s%s' "$(( r1 < r2 ? r1 : r2 ))" "$(( r1 > r2 ? r1 : r2 ))")" 01
-same "I11 2 takers leave one row, no leftover temp or moved file" "$(find "$(slugdir)" \( -name "*c21.sh*" -o -name '%00*' \) ! -name '%00lock' | wc -l | tr -d ' ')" 1
+same "I11 2 takers leave one row, no leftover temp or moved file" "$(find "$(slugdir)" \( -name "*c21.sh*" -o -name '%00*' \) | wc -l | tr -d ' ')" 1
 
 D22="$(mkdoc HIMMEL-9136-case.md)"
 lock_hold "$D22"
@@ -726,7 +726,7 @@ print(m.repoint_row(os.path.dirname('$rp5'), os.path.basename('$rp5'), 'HIMMEL-9
 "
 same "T2 repoint: a contender during the rename gets a fault, not the row" "$OUT" "repointed fault"
 same "T2 repoint: ... and the key keeps its hold, repointed" "$(cut -f1,2 "$rp5" | tr '\t' ' ')" "HIMMEL-9410 newlabel"
-same "T2 repoint: the lock file is no row" "$(cut -f1 "$(dirname "$rp5")/%00lock" 2>/dev/null | wc -l | tr -d ' ')" 0
+same "T2 repoint: the lock leaves no file in the directory" "$(find "$(dirname "$rp5")" -name '%00*' | wc -l | tr -d ' ')" 0
 
 DT4="$(mkdoc HIMMEL-9406-case.md '> **Writes:** scripts/t2fr.sh scripts/t2h1.sh scripts/t2h2.sh')"
 put_row scripts/t2h1.sh HIMMEL-9407 holder1 "$(mkdoc HIMMEL-9407-case.md)"
