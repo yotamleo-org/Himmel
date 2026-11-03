@@ -104,12 +104,15 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 # The pin was c2d26d55, the squash merge of fork PR #47 into fork main (a
 # remote embed logs the OpenRouter provider that served it and the HTTP status of
 # each failed attempt; the provider pin keeps allow_fallbacks false).
-# The pin is now 17008861, the squash merge of fork PR #49 into fork main (the
+# The pin was 17008861, the squash merge of fork PR #49 into fork main (the
 # MCP `query` tool answers typed searches inline and reranks by default; only
 # the plain query becomes a task; a failing rerank falls back to RRF).
+# The pin is now 3aef32b5, the squash merge of fork PR #50 into fork main (a
+# query embed that hangs or fails is skipped for a while: the search answers
+# with its keyword part and a note, `qmd vsearch` exits non-zero).
 # ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo/qmd.git}"; }
-_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-17008861a798561b2635f5c82138e8523cb9f7e2}"; }
+_qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-3aef32b548488b68c78ea815dc8e8fef09e80b98}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
 # An owned clone's origin may be either known qmd remote -- upstream tobi/qmd
 # or the himmel fork yotamleo/qmd -- in the forms seen in the wild (with or

@@ -6,7 +6,9 @@
 #   exit 0  the daemon embedded a probe query (key present)
 #   exit 1  the provider answered 401 (daemon launched without QMD_OPENAI_API_KEY)
 #   exit 2  anything else: nothing listening, deadline, bearer-token refusal,
-#           unreadable reply, no curl/jq, a bearer token but a non-loopback URL
+#           unreadable reply, an answer flagged embedSkipped (the embedder did
+#           not answer, so nothing was embedded), no curl/jq, a bearer token but
+#           a non-loopback URL
 # A bank-preflight style caller runs `bash scripts/lib/qmd-key-probe.sh` and
 # treats a non-zero rc as "retrieval is down"; stderr carries the one-line reason.
 #
@@ -128,10 +130,12 @@ err="$(printf '%s\n' "$body" | jq -rs '[.[] | select(type == "object" and (has("
   elif (.error | type) == "object" then (.error.message // "" | tostring)
   elif (.result.content | type) != "array" then "bad"
   elif .result.isError == true then ([.result.content[]? | .text? | strings] | first // "unreadable")
+  elif .result.structuredContent.embedSkipped == true then "embedskipped"
   else "ok" end' 2>/dev/null)" || err="bad"
 [ "$code" = 200 ] || err="bad"
 case "$err" in
   ok) exit 0 ;;
+  embedskipped) fail 2 "the qmd server's embedder did not answer in time or is down; the vec query was skipped, so no embedding was done on $url" ;;
   '') fail 2 "empty reply from $url (HTTP $code)" ;;
   *401* | *[Uu]nauthorized*) fail 1 "$key_msg" ;;
   bad) fail 2 "unreadable reply from $url (HTTP $code)" ;;
