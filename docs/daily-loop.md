@@ -299,7 +299,7 @@ is advisory at push time and becomes a hard block at PR creation time.
 > correctness, internal consistency; not prose nitpicks; `CLAUDE.md` →
 > `/claude-md-audit`) inline in your session, with no reviewer agent unless
 > `CR_CLAUDE_AGENTS=1` (then ONE `pr-review-toolkit:code-reviewer`). A
-> cross-model critic also runs when `CR_REQUIRE_CROSS_MODEL` is set. It does
+> cross-model critic also runs unless `CR_PROFILE=none`. It does
 > not run the full lane's critic panel.
 > **Handover state stays exempt:** `handovers/` diffs (and handover/* state
 > commits) get NO marker: they are personal auto-committed state, not

@@ -36,13 +36,12 @@
 #   --head <sha>      the SHA step 1 of /pr-check captured.
 #   --branch <name>   the branch name step 1 captured.
 #
-# Env (same as the fence):
-#   CR_REQUIRE_CROSS_MODEL - truthy (1/true/on/yes) required to run this lane
-#                            at all; loaded from .env if not already live.
-#   CR_PROFILE              - "none" disables the panel even when
-#                              CR_REQUIRE_CROSS_MODEL is set (same precedence
-#                              as step 3.0 - an explicit claude-only opt-out
-#                              wins).
+# Env:
+#   CR_PROFILE - "none" disables the panel (same precedence as step 3.0 - an
+#                explicit claude-only opt-out wins). Otherwise the critic runs
+#                whatever CR_REQUIRE_CROSS_MODEL says: ready-check
+#                item 4 and the merge gate's hard reviewer need its row at the
+#                head, and the inline audit's `avail claude` row cannot be it.
 #
 # stdout/stderr contract (do not merge these streams):
 #   stdout - ONLY the panel's findings text (docs_audit_panel_findings in the
@@ -90,10 +89,9 @@ usage() {
     cat <<'EOF'
 Usage: docs-audit-panel.sh --head <sha> --branch <name>
 
-Runs the /pr-check docs-audit lane's cross-model critic path
-(CR_REQUIRE_CROSS_MODEL) over the given head SHA and branch name. --head and
---branch are the values step 1 of /pr-check captured; this script never
-re-derives them.
+Runs the /pr-check docs-audit lane's cross-model critic path over the given
+head SHA and branch name, unless CR_PROFILE=none. --head and --branch are the
+values step 1 of /pr-check captured; this script never re-derives them.
 EOF
 }
 
@@ -112,28 +110,13 @@ done
 head="$HEAD_ARG"
 branch="$BRANCH_ARG"
 
-# Same truthiness as clear-review-marker.sh gate 3b. CR_REQUIRE_CROSS_MODEL is
-# gate policy: load_policy reads it from ~/.himmel/config.json .policy (then the
-# legacy .env) and ignores the process env. CR_PROFILE is behaviour config, so
-# load_dotenv keeps it, process env first, same as the full lane's CR_PROFILE
-# bridge. The lane can only tighten the gate, so a lib without load_policy or an
-# unreadable policy file turns it ON.
+# CR_PROFILE is behaviour config, so load_dotenv keeps it, process env first,
+# same as the full lane's CR_PROFILE bridge.
 # shellcheck source=../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$HIMMEL_ROOT/scripts/lib/load-dotenv.sh"
 load_dotenv --root "$(_load_dotenv_primary_for "$HIMMEL_ROOT")" CR_PROFILE || true
-if declare -F load_policy >/dev/null 2>&1 \
-    && load_policy --root "$(_load_dotenv_primary_for "$HIMMEL_ROOT")" CR_REQUIRE_CROSS_MODEL; then
-    docs_audit_policy_read=1
-else
-    docs_audit_policy_read=0
-    echo "docs-audit-panel: could not read CR_REQUIRE_CROSS_MODEL from ~/.himmel/config.json or .env - running the cross-model lane (fail closed)" >&2
-fi
-export CR_REQUIRE_CROSS_MODEL CR_PROFILE
-case "$(printf '%s' "${CR_REQUIRE_CROSS_MODEL:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" in
-    1|true|on|yes) docs_audit_require_cross_model=1 ;;
-    *) docs_audit_require_cross_model="$((1 - docs_audit_policy_read))" ;;
-esac
+export CR_PROFILE
 
 # $head and $branch are the values STEP 1 captured - this fence runs
 # independently (see step 3.0's identical note): substitute those literals
@@ -152,88 +135,92 @@ fi
 docs_audit_head=$(git rev-parse "$head")
 docs_audit_panel_avail_lines=""
 docs_audit_panel_findings=""
-if [ "$docs_audit_require_cross_model" = "1" ]; then
-    if [ "${CR_PROFILE:-}" = "none" ]; then
-        # Same precedence as step 3.0: an explicit claude-only opt-out wins
-        # even under CR_REQUIRE_CROSS_MODEL. The marker stays closed under
-        # the cross-model floor until CR_PROFILE is unset (the two settings
-        # are genuinely contradictory; we do not spend the paid critic to
-        # satisfy one at the expense of the other).
-        echo "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset" >&2
+# Fail-open degrade: no temp file means no panel run, so nothing was reviewed.
+no_panel_tmp() {
+    echo "docs-audit cross-model critic unavailable (mktemp failed - check free space in TMPDIR) - ready-check item 4 and the merge gate hold this head until a re-run records avail ok" >&2
+    exit 0
+}
+if [ "${CR_PROFILE:-}" = "none" ]; then
+    # Same precedence as step 3.0: an explicit claude-only opt-out wins
+    # even under CR_REQUIRE_CROSS_MODEL. The marker stays closed under
+    # the cross-model floor until CR_PROFILE is unset (the two settings
+    # are genuinely contradictory; we do not spend the paid critic to
+    # satisfy one at the expense of the other).
+    echo "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset" >&2
+else
+    # shellcheck disable=SC1091
+    db=$(. "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null && default_branch || echo main)
+    db_sha=$(git rev-parse "$db")
+    diff_rc=0
+    diff_out=$(git diff "$db_sha...$docs_audit_head") || diff_rc=$?
+    if [ "$diff_rc" -ne 0 ]; then
+        echo "docs-audit cross-model critic unavailable - git diff failed rc=$diff_rc: $diff_out" >&2
+    elif [ -z "$diff_out" ]; then
+        echo "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists)" >&2
     else
-        # shellcheck disable=SC1091
-        db=$(. "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null && default_branch || echo main)
-        db_sha=$(git rev-parse "$db")
-        diff_rc=0
-        diff_out=$(git diff "$db_sha...$docs_audit_head") || diff_rc=$?
-        if [ "$diff_rc" -ne 0 ]; then
-            echo "docs-audit cross-model critic unavailable - git diff failed rc=$diff_rc: $diff_out" >&2
-        elif [ -z "$diff_out" ]; then
-            echo "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists)" >&2
-        else
-            panel_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX)
-            docs_audit_panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$panel_tmp")
-            panel_rc=$?
-            docs_audit_panel_avail_lines=$(cat "$panel_tmp"); rm -f "$panel_tmp"
-            if [ "$panel_rc" -eq 7 ]; then
-                cat >&2 <<'PINABORT'
+        panel_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX) || no_panel_tmp
+        docs_audit_panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$panel_tmp")
+        panel_rc=$?
+        docs_audit_panel_avail_lines=$(cat "$panel_tmp"); rm -f "$panel_tmp"
+        if [ "$panel_rc" -eq 7 ]; then
+            cat >&2 <<'PINABORT'
 /pr-check ABORT - docs-audit critic-panel.sh exit 7: the checkout or the diff
 base moved since step 1, so the review inputs no longer match the branch/SHA/base
 the ledger would stamp. Nothing was reviewed and
 nothing was recorded. Re-run /pr-check from step 1.
 PINABORT
-                exit 7
-            fi
-            if [ "$panel_rc" -ne 0 ] && command -v rtk >/dev/null 2>&1; then
-                retry_diff=$(rtk proxy git diff "$db_sha...$docs_audit_head" 2>/dev/null) || retry_diff=""
-                if [ -n "$retry_diff" ]; then
-                    retry_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX)
-                    docs_audit_panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$retry_tmp")
-                    panel_rc=$?
-                    docs_audit_panel_avail_lines=$(cat "$retry_tmp"); rm -f "$retry_tmp"
-                    if [ "$panel_rc" -eq 7 ]; then
-                        cat >&2 <<'PINABORTRETRY'
+            exit 7
+        fi
+        if [ "$panel_rc" -ne 0 ] && command -v rtk >/dev/null 2>&1; then
+            retry_diff=$(rtk proxy git diff "$db_sha...$docs_audit_head" 2>/dev/null) || retry_diff=""
+            if [ -n "$retry_diff" ]; then
+                retry_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX) || no_panel_tmp
+                docs_audit_panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$retry_tmp")
+                panel_rc=$?
+                docs_audit_panel_avail_lines=$(cat "$retry_tmp"); rm -f "$retry_tmp"
+                if [ "$panel_rc" -eq 7 ]; then
+                    cat >&2 <<'PINABORTRETRY'
 /pr-check ABORT - docs-audit critic-panel.sh exit 7 on the rtk retry: the
 checkout or diff base moved mid-run, so the review inputs no longer match the
 branch/SHA/base the ledger would stamp. Nothing was reviewed. Re-run /pr-check
 from step 1.
 PINABORTRETRY
-                        exit 7
-                    fi
+                    exit 7
                 fi
-            fi
-            if [ "$panel_rc" -ne 0 ]; then
-                if [ "$panel_rc" -eq 6 ]; then
-                    # exit 6 is the panel's deliberate certify
-                    # refusal, recorded on the ledger; not a
-                    # failed panel.
-                    echo "docs-audit critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum); the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2
-                elif [ "$panel_rc" -eq 2 ]; then
-                    # exit 2 is a usage error or a mktemp failure, not a
-                    # failed critic: name the cause the panel printed.
-                    case "$docs_audit_panel_avail_lines" in
-                    *"mktemp failed"*)
-                        echo "docs-audit cross-model critic unavailable (exit 2: critic-panel: mktemp failed - check free space in TMPDIR) - record any panel-availability unavailable rows; under CR_REQUIRE_CROSS_MODEL the marker will stay closed until a non-Claude critic records avail ok" >&2
-                        ;;
-                    *)
-                        echo "docs-audit cross-model critic unavailable (exit 2: usage error: ${docs_audit_panel_avail_lines%%$'\n'*}) - record any panel-availability unavailable rows; under CR_REQUIRE_CROSS_MODEL the marker will stay closed until a non-Claude critic records avail ok" >&2
-                        ;;
-                    esac
-                else
-                    echo "docs-audit cross-model critic unavailable (all critics failed) - record any panel-availability unavailable rows; under CR_REQUIRE_CROSS_MODEL the marker will stay closed until a non-Claude critic records avail ok" >&2
-                fi
-                docs_audit_panel_findings=""
             fi
         fi
-        # critic-panel.sh's own "panel-availability: ..." lines were captured
-        # off its stderr above (docs_audit_panel_avail_lines); re-emit them to
-        # OUR stderr now so a caller capturing this script's stderr (step 4.5
-        # in the old fence, a test fixture here) still sees them - the fence
-        # left them in a variable for the same session to read later; a
-        # script has no variable to leave them in, so stderr is the channel.
-        [ -n "$docs_audit_panel_avail_lines" ] && printf '%s\n' "$docs_audit_panel_avail_lines" >&2
-        [ -n "$docs_audit_panel_findings" ] && printf '%s\n' "$docs_audit_panel_findings"
+        if [ "$panel_rc" -ne 0 ]; then
+            if [ "$panel_rc" -eq 6 ]; then
+                # exit 6 is the panel's deliberate certify
+                # refusal, recorded on the ledger; not a
+                # failed panel.
+                echo "docs-audit critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum); the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2
+            elif [ "$panel_rc" -eq 2 ]; then
+                # exit 2 is a usage error or a mktemp failure, not a
+                # failed critic: name the cause the panel printed.
+                case "$docs_audit_panel_avail_lines" in
+                *"mktemp failed"*)
+                    echo "docs-audit cross-model critic unavailable (exit 2: critic-panel: mktemp failed - check free space in TMPDIR) - record any panel-availability unavailable rows; under CR_REQUIRE_CROSS_MODEL the marker will stay closed until a non-Claude critic records avail ok" >&2
+                    ;;
+                *)
+                    echo "docs-audit cross-model critic unavailable (exit 2: usage error: ${docs_audit_panel_avail_lines%%$'\n'*}) - record any panel-availability unavailable rows; under CR_REQUIRE_CROSS_MODEL the marker will stay closed until a non-Claude critic records avail ok" >&2
+                    ;;
+                esac
+            else
+                echo "docs-audit cross-model critic unavailable (all critics failed) - record any panel-availability unavailable rows; under CR_REQUIRE_CROSS_MODEL the marker will stay closed until a non-Claude critic records avail ok" >&2
+            fi
+            echo "docs-audit: no critic ok row from this run - ready-check item 4 and the merge gate hold this head until a re-run records avail ok" >&2
+            docs_audit_panel_findings=""
+        fi
     fi
+    # critic-panel.sh's own "panel-availability: ..." lines were captured
+    # off its stderr above (docs_audit_panel_avail_lines); re-emit them to
+    # OUR stderr now so a caller capturing this script's stderr (step 4.5
+    # in the old fence, a test fixture here) still sees them - the fence
+    # left them in a variable for the same session to read later; a
+    # script has no variable to leave them in, so stderr is the channel.
+    [ -n "$docs_audit_panel_avail_lines" ] && printf '%s\n' "$docs_audit_panel_avail_lines" >&2
+    [ -n "$docs_audit_panel_findings" ] && printf '%s\n' "$docs_audit_panel_findings"
 fi
 
 # The fence above ends with `[ -n "$docs_audit_panel_findings" ] && printf ...`,

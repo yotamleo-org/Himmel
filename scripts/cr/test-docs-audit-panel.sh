@@ -118,33 +118,53 @@ check "$rc" "2" "T2 rc"
 contains "$(cat "$stderr_file")" "docs-audit-panel: --branch is required" "T2 stderr"
 check "$(cat "$stdout_file")" "" "T2 stdout"
 
-# 3. CR_REQUIRE_CROSS_MODEL unset/falsy: the whole lane is disabled, the
-# panel is NEVER invoked, no output on either stream, exit 0.
+# 3. Policy unset, the critic still runs. ready-check item 4 and the
+# merge gate need a non-Claude row at the head whatever the policy says.
 unset CR_REQUIRE_CROSS_MODEL CR_PROFILE 2>/dev/null || true
 set_policy ""
-export STUB_OUT="SHOULD-NOT-APPEAR" STUB_ERR="panel-availability: fake ok" STUB_RC=0
+export STUB_OUT="[docsaudit-1] some finding" STUB_ERR="panel-availability: fake ok" STUB_RC=0
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T3 rc"
-check "$(cat "$stdout_file")" "" "T3 stdout"
-check "$(cat "$stderr_file")" "" "T3 stderr"
-[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3 stub was invoked with CR_REQUIRE_CROSS_MODEL unset"; fail=1; }
+check "$(cat "$stdout_file")" "[docsaudit-1] some finding" "T3 stdout carries the findings"
+check "$(cat "$stderr_file")" "panel-availability: fake ok" "T3 stderr carries the availability line"
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3 the critic must run with the policy unset"; fail=1; }
 
-# 3b. Policy unset in the file plus a truthy process-env value: the env is not
-# a policy source, so the lane stays disabled and the panel is never invoked.
-set_policy ""
-export CR_REQUIRE_CROSS_MODEL=1
+# 3b. A falsy policy value runs it too.
+set_policy 0
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T3b rc"
-[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3b stub was invoked by a process-env CR_REQUIRE_CROSS_MODEL"; fail=1; }
-unset CR_REQUIRE_CROSS_MODEL
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3b the critic must run with the policy falsy"; fail=1; }
 
-# 3c. An unreadable policy file fails closed: the lane runs, with a note.
+# 3c. An unreadable policy file changes nothing: the lane no longer reads it.
 printf 'not json' > "$HOME/.himmel/config.json"
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T3c rc"
-[ -e "$STUB_MARKER" ] || { echo "FAIL: T3c an unreadable policy file must run the cross-model lane"; fail=1; }
-contains "$(cat "$stderr_file")" "docs-audit-panel: could not read CR_REQUIRE_CROSS_MODEL" "T3c stderr note"
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3c the critic must run with an unreadable policy file"; fail=1; }
+not_contains "$(cat "$stderr_file")" "could not read CR_REQUIRE_CROSS_MODEL" "T3c no policy note"
 set_policy ""
+
+# 3d. Policy off, critic out of quota: the lane degrades at exit 0, drops the
+# findings, says the head is held, and writes no ok row of its own.
+ledger="$repo/.git/cr-critic-scores.jsonl"
+rm -f "$ledger"
+export STUB_RC=1 STUB_OUT="should-be-discarded" STUB_ERR="panel-availability: codex unavailable (quota)"
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "0" "T3d rc (degrade, not abort)"
+check "$(cat "$stdout_file")" "" "T3d stdout (findings discarded)"
+contains "$(cat "$stderr_file")" "panel-availability: codex unavailable (quota)" "T3d re-emits the availability line"
+contains "$(cat "$stderr_file")" "ready-check item 4 and the merge gate hold this head" "T3d names the hold"
+[ -e "$STUB_MARKER" ] || { echo "FAIL: T3d stub was never invoked"; fail=1; }
+[ ! -e "$ledger" ] || { echo "FAIL: T3d the lane wrote a ledger row of its own"; fail=1; }
+
+# 3e. No temp file: nothing is reviewed, so the panel never runs, and the lane
+# degrades at exit 0 naming the hold.
+rm -f "$STUB_MARKER"
+rc=0
+( cd "$repo" && TMPDIR="$tmp/no-such-dir" PATH="$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "0" "T3e rc"
+contains "$(cat "$stderr_file")" "mktemp failed - check free space in TMPDIR) - ready-check item 4" "T3e names the cause and the hold"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3e the panel ran without a temp file"; fail=1; }
 
 # 4. CR_PROFILE=none wins even under CR_REQUIRE_CROSS_MODEL: prints the
 # claude-only note, panel never invoked, exit 0.
@@ -155,6 +175,12 @@ check "$rc" "0" "T4 rc"
 check "$(cat "$stdout_file")" "" "T4 stdout"
 check "$(cat "$stderr_file")" "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset" "T4 stderr"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T4 stub was invoked under CR_PROFILE=none"; fail=1; }
+
+# 4b. CR_PROFILE=none is the opt-out with the policy off too.
+set_policy ""
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "0" "T4b rc"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T4b stub was invoked under CR_PROFILE=none with the policy off"; fail=1; }
 
 # 5. Empty diff (head == base) prints the skip note, panel never invoked.
 set_policy 1

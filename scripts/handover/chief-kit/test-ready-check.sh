@@ -650,6 +650,33 @@ check "judge-go-other-head: exit 1" "$rc" "1"
 contains "judge-go-other-head: check 4 fails" "$out" "[FAIL] 4."
 seed_ledger_ok
 
+# --- 4d. Guards for the rows the docs-audit lane leaves: its critic's row passes,
+# no record or an unavailable critic fails.
+reset_stubs
+: > "$LEDGER"
+(cd "$REPO" && CR_LEDGER="$LEDGER" bash "$HERE/../../cr/ledger-append.sh" avail \
+    --branch feat/himmel-100-thing --head "$SHA" --model claude --status ok) || exit 1
+(cd "$REPO" && CR_LEDGER="$LEDGER" bash "$HERE/../../cr/ledger-append.sh" avail \
+    --branch feat/himmel-100-thing --head "$SHA" --model codex --status ok) || exit 1
+rc=0; out="$(run)" || rc=$?
+check "docs-audit critic-row: exit 0" "$rc" "0"
+contains "docs-audit critic-row: check 4 passes" "$out" "[PASS] 4."
+
+: > "$LEDGER"
+rc=0; out="$(run)" || rc=$?
+check "no-review-record: exit 1" "$rc" "1"
+contains "no-review-record: check 4 fails" "$out" "[FAIL] 4."
+
+# The critic out of quota leaves only the inline audit and an unavailable row.
+(cd "$REPO" && CR_LEDGER="$LEDGER" bash "$HERE/../../cr/ledger-append.sh" avail \
+    --branch feat/himmel-100-thing --head "$SHA" --model claude --status ok) || exit 1
+(cd "$REPO" && CR_LEDGER="$LEDGER" bash "$HERE/../../cr/ledger-append.sh" avail \
+    --branch feat/himmel-100-thing --head "$SHA" --model codex --status unavailable --reason rate-limit) || exit 1
+rc=0; out="$(run)" || rc=$?
+check "docs-audit critic-unavailable: exit 1" "$rc" "1"
+contains "docs-audit critic-unavailable: check 4 fails" "$out" "[FAIL] 4."
+seed_ledger_ok
+
 # --- 5a. check 5 fails: sensitive files, no Platforms tested trailer ----
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Security reviewed: manual"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":""}]'
