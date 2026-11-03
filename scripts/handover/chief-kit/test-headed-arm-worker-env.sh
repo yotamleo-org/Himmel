@@ -30,7 +30,8 @@ unset HIMMEL_CONSOLE_DOC CADENCE_USAGE_LANE WORKER_SESSION_LANE WORKER_SESSION_C
     WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_CLAUDE_BIN \
     HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_REPO WORKER_SESSION_AUTOCOMPACT_AB \
     HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_WORKER_SYSTEMD_RUN \
-    HEADED_ARM_WORKER_TARGET HEADED_ARM_WORKER_PROFILES HEADED_ARM_WORKER_SHIM 2>/dev/null || true
+    HEADED_ARM_WORKER_TARGET HEADED_ARM_WORKER_PROFILES HEADED_ARM_WORKER_SHIM \
+    HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC HIMMEL_HOLD_LABEL WRITE_HOLD_OK 2>/dev/null || true
 
 FAILED=0
 check() {
@@ -76,6 +77,9 @@ check "W6 HIMMEL_WORKER=1 changes nothing in the launch report" "$marked" "$base
 
 T="$(mktemp -d "${TMPDIR:-/tmp}/hal-worker-env.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$T"' EXIT
+# the single-writer register lives under HOME: pinned, so nothing here can reach the real one
+export HOME="$T/home"
+mkdir -p "$HOME"
 printf '# HIMMEL-9999 brief with no test VM named\n' >"$T/doc.md"
 for p in worker-vm leg-vm; do
     rc=0; out="$(bash "$SCRIPT" --dry-run --profile "$p" HIMMEL-9999-worker "$T/doc.md" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
@@ -151,6 +155,28 @@ for bad10 in 0 101 73.5 '"73"'; do
     check "W10 sonnetContextShare $bad10 refuses the launch (exit 2)" "$rc" "2"
     contains "W10 the refusal names sonnetContextShare" "$out" "sonnetContextShare"
 done
+
+# W11. a worker launch carries its holder key, its launch doc and its label; a role that
+# implements nothing carries none, and a key inherited from the worker that armed it is dropped.
+fx10 >"$T/HIMMEL-9377-N5-case-2026-11-02.md"
+fx10 >"$T/HIMMEL-9378-plain-notes.md"
+out="$(cd "$T" && bash "$SCRIPT" --dry-run --no-profile HIMMEL-9377-N5-case HIMMEL-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+contains "W11 HIMMEL_HOLD_KEY is the first ticket key of the doc's basename" "$out" "HIMMEL_HOLD_KEY=HIMMEL-9377"
+contains "W11 HIMMEL_HOLD_DOC is absolute when the doc is given relative" "$out" "HIMMEL_HOLD_DOC=$T/HIMMEL-9377-N5-case-2026-11-02.md"
+contains "W11 HIMMEL_HOLD_LABEL is the worker label" "$out" "HIMMEL_HOLD_LABEL=N5 "
+out="$(cd "$T" && bash "$SCRIPT" --dry-run --no-profile HIMMEL-9378-plain HIMMEL-9378-plain-notes.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+rc11=$?
+check "W11 a non-template doc launches (exit 0), no unset-function error" "$rc11" "0"
+contains "W11 a non-template doc's label is its whole stem" "$out" "HIMMEL_HOLD_LABEL=HIMMEL-9378-plain-notes "
+out="$(cd "$T" && WRITE_HOLD_OK=1 HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_LABEL=N99 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9377-N5-case HIMMEL-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+contains "W11 WRITE_HOLD_OK=1 set in the launching shell reaches the worker past the scrub" "$out" "WRITE_HOLD_OK=1"
+contains "W11 a key inherited from another worker is replaced by this doc's" "$out" "HIMMEL_HOLD_KEY=HIMMEL-9377"
+not_contains "W11 ... and so is its label" "$out" "HIMMEL_HOLD_LABEL=N99"
+out="$(cd "$T" && HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/x/y.md HIMMEL_HOLD_LABEL=N99 bash "$SCRIPT" --dry-run --relay HIMMEL-9377-N5-relay HIMMEL-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
+contains "W11 a --relay launch carries no key (an inherited one is dropped)" "$out" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
+mkdir -p "$T/repo11"
+out="$(cd "$T" && HIMMEL_HOLD_KEY=HIMMEL-1 WORKER_SESSION_REPO="$T/repo11" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-9377-N5-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
+contains "W11 a --consult launch carries no key" "$out" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
