@@ -257,6 +257,33 @@ run_update_qmd drift
 grep -q 'converged qmd-index' <<< "$OUT" && assert_pass "stale lock: qmd-index converged" || assert_fail "stale lock blocked convergence: $OUT"
 reset_fix
 
+echo "morning-report cadence (HIMMEL-7977): armed once, never twice, never over an operator disarm"
+mkdir -p "$CLONE/scripts/handover" "$TMP/mr-ho" "$TMP/mr-runner" || exit 1
+cp "$src_scripts/handover/morning-report-cadence.sh" "$CLONE/scripts/handover/morning-report-cadence.sh"
+cp "$src_scripts/lib/test-run-guard" "$src_scripts/lib/git-clean.sh" "$CLONE/scripts/lib/"
+MRTAB="$TMP/mr-tab"; : > "$MRTAB"
+# shellcheck disable=SC2016  # the stub's own ${1:-} stays literal
+printf '#!/usr/bin/env bash\nif [ "${1:-}" = "-l" ]; then cat "%s"; else cat > "%s"; fi\n' "$MRTAB" "$MRTAB" > "$TMP/mr-crontab"
+chmod +x "$TMP/mr-crontab"
+mr_update() { # mr_update <only-item>
+    reset_fix; : > "$FIX/hooks/pre-commit"; : > "$FIX/no-cred"
+    RC=0; OUT="$(cd "$CLONE" && HIMMEL_DRIFT_CTL="$CTL" PATH="/usr/bin:/bin:$PATH" HANDOVER_DIR="$TMP/mr-ho" \
+        MORNINGREPORT_CRONTAB="$TMP/mr-crontab" MORNINGREPORT_RUNNER_DIR="$TMP/mr-runner" \
+        bash scripts/himmel-update.sh --only "$1" 2>&1)" || RC=$?
+}
+mr_rows() { grep -c '# HIMMEL-MorningReport' "$MRTAB"; }
+mr_update drift-check
+[ "$(mr_rows)" -eq 0 ] && assert_pass "check: no cron row written" || assert_fail "check wrote a cron row"
+grep -q 'would run: bash scripts/handover/morning-report-cadence.sh arm --auto' <<< "$OUT" && assert_pass "check: says it would arm" || assert_fail "check: no would-arm line: $OUT"
+mr_update drift
+[ "$(mr_rows)" -eq 1 ] && assert_pass "apply on a never-armed machine arms one row" || assert_fail "apply left $(mr_rows) rows: $OUT"
+mr_update drift
+[ "$(mr_rows)" -eq 1 ] && assert_pass "second apply adds no second row" || assert_fail "second apply left $(mr_rows) rows: $OUT"
+HANDOVER_DIR="$TMP/mr-ho" MORNINGREPORT_CRONTAB="$TMP/mr-crontab" MORNINGREPORT_RUNNER_DIR="$TMP/mr-runner" \
+    bash "$CLONE/scripts/handover/morning-report-cadence.sh" disarm >/dev/null 2>&1 || true
+mr_update drift
+[ "$(mr_rows)" -eq 0 ] && assert_pass "apply after an operator disarm does not re-arm" || assert_fail "apply re-armed over a disarm: $OUT"
+
 echo ""
 echo "Results: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
