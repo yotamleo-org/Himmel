@@ -14,8 +14,9 @@
 #   5. invalid --profile / --scope exit 2.
 #
 # The native git-gate placement scenarios, the provenance ledger and the wizard
-# suites live in scripts/test-adopt-features.sh (split off for the per-suite
-# time cap); both source scripts/lib/adopt-test-fixture.sh.
+# suites live in scripts/test-adopt-features.sh, test-adopt-hooks-chain.sh,
+# test-adopt-hooks-gates.sh, test-adopt-provenance.sh and test-adopt-wizard.sh
+# (split off for the per-suite time cap); all source scripts/lib/adopt-test-fixture.sh.
 
 # shellcheck disable=SC2154,SC2034 # the fixture, sourced below, assigns and reads the shared state
 set -euo pipefail
