@@ -478,18 +478,16 @@ def dir_lock(d):
     except OSError:
         return None
     deadline = time.monotonic() + LOCK_WAIT
-    while True:
+    while time.monotonic() < deadline:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return fd
         except BlockingIOError:
-            if time.monotonic() >= deadline:
-                os.close(fd)
-                return None
             time.sleep(0.02)
         except OSError:
-            os.close(fd)
-            return None
+            break
+    os.close(fd)
+    return None
 
 
 def dir_unlock(fd):
