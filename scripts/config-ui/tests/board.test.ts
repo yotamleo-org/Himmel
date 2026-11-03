@@ -7,7 +7,7 @@ import childProcess from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server";
-import { runReader, TIMEOUT_MS } from "../board";
+import { readBoardExtras, runReader, TIMEOUT_MS } from "../board";
 
 const TOKEN = "a".repeat(64);
 const cleanups: (() => void)[] = [];
@@ -77,7 +77,7 @@ test("GET /api/board: the chain read runs on the running version, so a blocker o
   mkdirSync(st);
   writeFileSync(join(st, "status-events.jsonl"), JSON.stringify({ ts: "2026-10-30T10:00:00Z", event: "merge", key: "HIMMEL-1", pr: "7", contract: "yes", result: "moved" }) + "\n");
   writeFileSync(join(st, "chain-log.jsonl"), JSON.stringify({ ts: "2026-10-29T10:00:00Z", change: "hold", key: "HIMMEL-6", kind: "operator", who: "chief", reason: "freeze" }) + "\n" + JSON.stringify({ ts: "2026-10-29T11:00:00Z", change: "release", key: "HIMMEL-6", who: "chief" }) + "\n");
-  const r = (await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: st }, s))).chains;
+  const r = (await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: st }, s))).versionChains;
   expect(r.version).toBe("v1.1.3");
   expect(r.tickets["HIMMEL-7"].state).toBe("blocked");
   expect(r.tickets["HIMMEL-7"].links[0]).toMatchObject({ on: "HIMMEL-21", status: "open" });
@@ -95,7 +95,7 @@ test("GET /api/board: the chain read runs on the running version, so a blocker o
 test("GET /api/board: with no running version the chain read runs on no version and there is no burn-down point", async () => {
   const s = scratch();
   writeFileSync(join(s.mirror, "HIMMEL-2.md"), mirrorIssue(2, "Done", "Done", [], "Second step"));
-  const r = (await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s))).chains;
+  const r = (await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s))).versionChains;
   expect(r.version).toBeNull();
   expect(r.burn).toEqual({ total: 0, undated: 2, points: [] });
 });
@@ -349,4 +349,28 @@ test("5494: a drop on a SALUS card posts SALUS-1, not HIMMEL-1, though both card
   await new Promise((r) => setTimeout(r, 0));
   expect(posted).toEqual([{ path: "/api/roadmap/write", body: { key: "SALUS-1", status: "prog" } }]);
   expect(roadmap.tickets.map((t) => t.b)).toEqual(["todo", "prog"]); // only the SALUS card moved
+});
+
+// The whole Board reads every version; the Chains tab alone reads the running one, and only that read carries the burn-down.
+test("GET /api/board: a member of another version stays in the whole-Board read and leaves the tab's read", async () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-21.md"), mirrorIssue(21, "To Do", "To Do", [], "Next version work").replace("v1.1.3", "v1.1.4"));
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\t\nv1.1.4\tfalse\t\n");
+  writeFileSync(s.registry, JSON.stringify({ schema: "himmel.chain-registry/1", chains: [{ id: "memory", goal: "Memory guard rework chain", members: ["HIMMEL-1", "HIMMEL-2"] }, { id: "later", goal: "Later version work chain", members: ["HIMMEL-21"] }] }));
+  const r = await get(serve({ HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") }, s));
+  expect(r.chains).toMatchObject({ version: null });
+  expect(Object.keys(r.chains.tickets).sort()).toEqual(["HIMMEL-1", "HIMMEL-2", "HIMMEL-21"]);
+  expect(r.chains.chains.map((c: { id: string }) => c.id)).toContain("later");
+  expect(r.chains.burn).toBeUndefined();
+  expect(r.versionChains.version).toBe("v1.1.3");
+  expect(Object.keys(r.versionChains.tickets).sort()).toEqual(["HIMMEL-1", "HIMMEL-2"]);
+  expect(r.versionChains.burn.total).toBe(1);
+});
+
+test("GET /api/board: a failed roadmap read is that failure on the tab, never no running version, and the whole-Board read still arrives", async () => {
+  const s = scratch();
+  const env = { PATH: process.env.PATH, HOME: s.home, HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_CHAIN_REGISTRY: s.registry, TICKET_STATUS_STATE_DIR: join(s.d, "no-state") };
+  const r = await readBoardExtras(env, () => { throw new Error("mirror went away"); });
+  expect(r.versionChains).toEqual({ state: "absent", reason: "the running version could not be read: mirror went away" });
+  expect((r.chains as { schema: string }).schema).toBe("himmel.chains/1");
 });

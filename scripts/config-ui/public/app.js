@@ -56,7 +56,7 @@ let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commi
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
-let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains }, null until read
+let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains, versionChains }, null until read
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, held: null, drawer: null, tab: null, v: null, at: null, why: null, logOpen: [], chain: null, nv: null };
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides the Board

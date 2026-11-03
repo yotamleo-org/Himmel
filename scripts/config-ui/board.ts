@@ -12,7 +12,8 @@ import { jiraMirrorDir } from "./tracker-sources";
 
 type Env = Record<string, string | undefined>;
 export type Absent = { state: "absent"; reason: string };
-export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent };
+// chains: every version, for the whole Board. versionChains: the running version, for the Chains tab alone, with its burn-down.
+export type BoardExtras = { drift: Record<string, unknown> | Absent; chains: Record<string, unknown> | Absent; versionChains: Record<string, unknown> | Absent };
 
 const KIT = resolve(import.meta.dir, "../handover/chief-kit");
 export const TIMEOUT_MS = 10_000;
@@ -54,11 +55,11 @@ export const chainRegistry = (env: Env) => env.HIMMEL_CHAIN_REGISTRY || inHandov
 
 // The version the cards call running. Without it the chain read covers every version, and a blocker outside the version cannot read as blocked.
 // ponytail: this reads the mirror a second time beside GET /api/roadmap, upgrade path: hand the page's own read to this one if it ever shows in the Board's load time.
-function runningVersion(mirror: string, env: Env): string | undefined {
+function runningVersion(mirror: string, env: Env, read: typeof readRoadmap): string | undefined | Absent {
   try {
-    const r = readRoadmap({ mirrorDir: mirror, projects: [{ key: env.JIRA_PROJECT_KEY || "HIMMEL", dir: mirror }], workers: { state: "absent" } });
+    const r = read({ mirrorDir: mirror, projects: [{ key: env.JIRA_PROJECT_KEY || "HIMMEL", dir: mirror }], workers: { state: "absent" } });
     return r.versions[r.cur]?.n;
-  } catch { return undefined; }
+  } catch (e) { return absent(`the running version could not be read: ${(e as Error).message}`); } // a failed read, never "no running version"
 }
 
 type BurnTicket = { done?: boolean; check?: { merge?: { ts?: string } | null } | null };
@@ -78,17 +79,22 @@ export function burnDown(read: { now?: string; tickets?: Record<string, BurnTick
   return { total, undated, points };
 }
 
-export async function readBoardExtras(env: Env): Promise<BoardExtras> {
+export async function readBoardExtras(env: Env, read: typeof readRoadmap = readRoadmap): Promise<BoardExtras> {
   const mirror = jiraMirrorDir(env);
   const file = driftFile(env);
   const registry = chainRegistry(env);
   const drift = file ? runReader(join(KIT, "drift-summary.mjs"), ["--json", "--drift", file, "--mirror-dir", mirror], env, "the drift summary")
     : Promise.resolve(absent("no saved drift run: none found under the handover root, and HIMMEL_FOCUS_DRIFT is not set"));
   // the chain read's state dir (hold and merge rows) is the script's own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state
-  const version = registry ? runningVersion(mirror, env) : undefined;
-  const chains = registry ? runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...(version ? ["--version", version] : [])], env, "the chain read")
-      .then((r) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r))
-    : Promise.resolve(absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set"));
-  const [d, c] = await Promise.all([drift, chains]);
-  return { drift: d, chains: c };
+  if (!registry) {
+    const none = absent("no chain registry: none found under the handover root, and HIMMEL_CHAIN_REGISTRY is not set");
+    return { drift: await drift, chains: none, versionChains: none };
+  }
+  const chainRead = (extra: string[]) => runReader(join(KIT, "chain-state.mjs"), ["--json", "--registry", registry, "--mirror", mirror, ...extra], env, "the chain read");
+  const withBurn = (r: Record<string, unknown> | Absent) => ("tickets" in r ? { ...r, burn: burnDown(r as Parameters<typeof burnDown>[0]) } : r);
+  const whole = chainRead([]);
+  const version = runningVersion(mirror, env, read);
+  const forTab = typeof version === "object" ? Promise.resolve(version) : (version ? chainRead(["--version", version]) : whole).then(withBurn);
+  const [d, chains, versionChains] = await Promise.all([drift, whole, forTab]);
+  return { drift: d, chains, versionChains };
 }

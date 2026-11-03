@@ -358,7 +358,18 @@ test("the Why panel names the blocker of a blocked ticket; Esc closes it, focus 
   expect(await page.locator('.rm-log[data-log="ops"]').evaluate((d) => (d as HTMLDetailsElement).open)).toBe(true);
 });
 
-test("the ticket drawer keeps its behaviour beside the Why panel: Esc closes it and focus returns to its card", async ({ page }) => {
+test("the Chains tab names its version, and a tile for another version never highlights over those totals", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=chains&v=v1.1.4");
+  await expect(page.locator(".rm-covers")).toContainText("This tab covers the running version, v1.1.3, not v1.1.4.");
+  await expect(page.locator(".rm-vt.sel")).toHaveCount(1);
+  await expect(page.locator(".rm-vt.sel")).toContainText("v1.1.3");
+  await expect(page.locator("#rm-burn .rm-burn-words")).toContainText("in v1.1.3");
+  await expect(page.locator(".rm-vt", { hasText: "v1.1.4" })).toContainText("0 in chains");
+  await shot(page, "board-1280-light-chains-other-version");
+});
+
+test("after the Why panel closes, the ticket drawer keeps its behaviour on the Board: Esc closes it and focus returns to its card", async ({ page }) => {
   await open(page);
   await go(page, "#/board?tab=chains&why=HIMMEL-7.HIMMEL-21");
   await page.keyboard.press("Escape");

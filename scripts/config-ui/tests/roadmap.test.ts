@@ -952,3 +952,96 @@ test("Chains tab: the ticket drawer is unchanged, and a Why panel never draws of
   expect(html).toContain(`<aside class="drawer" role="dialog"`);
   expect(html).not.toContain("rm-why\"");
 });
+
+const tile = (html: string, name: string) => html.split(`<a class="rm-vt`).find((x) => x.includes(`<b>${name}</b>`)) ?? "";
+const selected = (html: string) => html.split(`<a class="rm-vt`).filter((x) => x.startsWith(` sel"`)).map((x) => /<b>([^<]*)<\/b>/.exec(x)?.[1]);
+
+test("Chains tab, a version with no chains: it names the version and never says the registry is empty", () => {
+  const empty = { ...chainsLinked(), chains: [], tickets: {}, burn: { total: 0, undated: 0, points: [] } };
+  const html = chainsHtml({}, empty);
+  expect(html).toContain("No chain has a ticket in v1.1.3.");
+  expect(html).not.toContain("No chains in the registry");
+  const { version: _v, ...noVersion } = empty;
+  expect(chainsHtml({}, noVersion)).toContain("No chains in the registry.");
+});
+
+// The whole-Board consumers read every version; only the Chains tab reads the running one.
+const twoReads = () => {
+  const c = chainsLinked();
+  const narrowed = { ...c, chains: [c.chains[1]], tickets: { "HIMMEL-6": c.tickets["HIMMEL-6"], "HIMMEL-7": c.tickets["HIMMEL-7"] } };
+  return { drift: null, chains: { ...chainsOk(), version: null }, versionChains: narrowed };
+};
+
+test("Two chain reads: tiles, badges, lane filters, the Chain select and waits-for-you read every version, also for a version other than the running one", () => {
+  const r = read(station());
+  const html = renderBoard(r, { version: null, theme: null, v: "v1.1.2" }, twoReads());
+  expect(tile(html, "v1.1.2")).toContain("2 in chains"); // the narrowed read holds neither ticket
+  expect(html).toContain("1 waits for you");
+  expect(html).toContain('href="#/board?tab=chains&amp;v=v1.1.2&amp;at=HIMMEL-1"');
+  expect(html).toContain(`<option value="memory"`);
+  expect(html).toContain("waits on you 1</option>");
+});
+
+test("Two chain reads: the Chains tab's members, totals, blocked count and Why panel read the running version only", () => {
+  const r = read(station());
+  const html = renderBoard(r, { version: null, theme: null, tab: "chains" }, twoReads());
+  expect(html).toContain(`id="rm-chain-ops"`);
+  expect(html).not.toContain(`id="rm-chain-memory"`);
+  expect(html).toContain("1 in v1.1.3 · 1 blocked");
+  expect(tile(html, "v1.1.2")).toContain("2 in chains");
+  const why = renderBoard(r, { version: null, theme: null, tab: "chains", why: "HIMMEL-7.HIMMEL-21" }, twoReads());
+  expect(why).toContain("Why HIMMEL-7 waits on HIMMEL-21");
+  expect(renderBoard(r, { version: null, theme: null, tab: "chains", why: "HIMMEL-1.HIMMEL-9" }, twoReads())).toContain("not in this chain read");
+});
+
+test("Chains tab, its version: printed on the tab and in the burn-down, and a tile never highlights another version over those totals", () => {
+  const html = chainsHtml({ v: "v1.1.2" });
+  expect(selected(html)).toEqual(["v1.1.3"]);
+  expect(html).toContain("This tab covers the running version, v1.1.3, not v1.1.2.");
+  expect(chainsHtml()).toContain("This tab covers the running version, v1.1.3.");
+  expect(chainsHtml({ v: "all" })).toContain("v1.1.3, not every version.");
+  const burn = html.slice(html.indexOf(`id="rm-burn"`));
+  expect(burn).toContain("3 open of 4 in v1.1.3");
+  expect(chainsHtml({}, { ...chainsLinked(), burn: { total: 2, undated: 0, points: [] } })).toContain("No merge recorded yet in v1.1.3: 2 open.");
+  expect(chainsHtml({ v: "nope<" })).not.toContain("nope<");
+  const { version: _v, ...noVersion } = chainsLinked();
+  expect(selected(chainsHtml({ v: "v1.1.2" }, noVersion))).toEqual([]); // that read covers every version, so no one tile is its version
+  expect(chainsHtml({}, noVersion)).toContain("No running version, so there is no pace line.");
+  expect(selected(renderBoard(read(station()), { version: null, theme: null, v: "v1.1.2" }, { drift: null, chains: chainsLinked() }))).toEqual(["v1.1.2"]); // off the tab a tile follows the ask
+});
+
+test("Chains tab, across wording: a blocker outside the version is in no chain of that version, and a tab with no link between its chains says which version", () => {
+  const html = chainsHtml();
+  expect(html).toContain("in no chain of v1.1.3");
+  expect(html).not.toMatch(/in no chain ·/);
+  const { version: _v, ...noVersion } = chainsLinked();
+  expect(chainsHtml({}, noVersion)).toMatch(/in no chain ·/);
+  expect(chainsHtml({ why: "HIMMEL-7.HIMMEL-21" }, noVersion)).toContain("HIMMEL-21 (in no chain)");
+  expect(chainsHtml({ why: "HIMMEL-7.HIMMEL-21" })).toContain("HIMMEL-21 (in no chain of v1.1.3)");
+  const c = chainsLinked();
+  const unlinked = { ...c, chains: c.chains.map((x) => ({ ...x, across: x.across.filter((a) => !a.chains.length) })) };
+  const words = chainsHtml({}, unlinked);
+  expect(words).toContain("No links between the chains of v1.1.3; a link to work outside it shows under its chain.");
+  expect(chainsHtml({}, { ...noVersion, chains: unlinked.chains })).toContain("No links across chains.");
+});
+
+test("Chains tab, a card's link to a ticket outside the version: the tab says so instead of highlighting nothing", () => {
+  expect(chainsHtml({ at: "HIMMEL-99" })).toContain("HIMMEL-99 is not in a chain of v1.1.3.");
+  expect(chainsHtml({ at: "HIMMEL-7" })).not.toContain("is not in a chain of");
+});
+
+test("Why panel: a live link wins over an earlier released one with the same blocker, and a released one still opens when nothing else matches", () => {
+  const c = chainsLinked();
+  c.tickets["HIMMEL-6"].links = [linkOf("HIMMEL-2", "released"), linkOf("HIMMEL-2", "open")];
+  expect(chainsHtml({ why: "HIMMEL-6.HIMMEL-2" }, c)).toContain("<dt>Status</dt><dd>open</dd>");
+  c.tickets["HIMMEL-6"].links = [linkOf("HIMMEL-2", "released")];
+  expect(chainsHtml({ why: "HIMMEL-6.HIMMEL-2" }, c)).toContain("<dt>Status</dt><dd>released</dd>");
+});
+
+test("Chains tab with several Board projects: a version name carrying its project suffix still finds its date and its tile", () => {
+  const r = read(station());
+  const named = { ...r, versions: r.versions.map((v) => ({ ...v, n: `${v.n} (HIMMEL)`, date: "2026-11-20" })) };
+  const html = chainsHtml({}, chainsLinked(), named);
+  expect(html).toContain("rm-burn-pace");
+  expect(selected(html)).toEqual(["v1.1.3 (HIMMEL)"]);
+});
