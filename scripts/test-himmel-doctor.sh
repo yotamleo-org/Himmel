@@ -720,6 +720,73 @@ out="$(DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME=
 if grepq "$out" 'WARN C27-guard-signals' && grepq "$out" 'not a readable regular file'; then pass "C27 -> WARN (phi-roots is a directory)"; else fail "C27 unreadable -> $(printf '%s' "$out" | grep C27)"; fi
 rm -rf "$t"
 
+# No guard reads the neutral dir yet. Each row runs the doctor
+# against a fixture HOME; c27_row prints the C27 line.
+c27_row() { # <home parent>
+    # HIMMEL_DOCTOR_ROOT: without it a worktree run sources the primary checkout's lib.
+    HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$1/none/*.mcp.json" CLAUDE_DIR="$1/claude" HOME="$1/home" bash "$DOC" --no-color 2>&1 | grep -A1 'C27-guard-signals'
+}
+c27_fixture() {
+    local d
+    d="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c27.XXXXXX")" || exit 1
+    mkdir -p "$d/claude" "$d/home/.config/claude-glm" "$d/home/.config/himmel/phi"
+    write_settings "$d/claude" "$WRAPPER"
+    printf '%s' "$d"
+}
+
+echo "== C27: a root only under the old path -> WARN that forbids removing it =="
+t="$(c27_fixture)" || exit 1; rmdir "$t/home/.config/himmel/phi"; printf '/synthetic/phi\n' > "$t/home/.config/claude-glm/phi-roots"
+out="$(c27_row "$t")"
+if grepq "$out" 'WARN C27-guard-signals' && grepq "$out" 'stays authoritative' && grepq "$out" 'Do NOT move or remove' && grepq "$out" 'no action is needed' && ! grepq "$out" -i 'copy'; then pass "C27 -> WARN (old only, keep it, no copy advice)"; else fail "C27 old-only -> $out"; fi
+rm -rf "$t"
+
+echo "== C27: a root only under the neutral dir -> FAIL, not enforced =="
+t="$(c27_fixture)" || exit 1; printf '/synthetic/phi\n' > "$t/home/.config/himmel/phi/phi-roots"
+out="$(c27_row "$t")"
+if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'NOT enforced' && grepq "$out" '1 PHI root'; then pass "C27 -> FAIL (neutral only)"; else fail "C27 neutral-only -> $out"; fi
+rm -rf "$t"
+
+echo "== C27: both dirs but the neutral list has an extra root -> FAIL counts it =="
+t="$(c27_fixture)" || exit 1; printf '/synthetic/phi\n/synthetic/extra\n' > "$t/home/.config/himmel/phi/phi-roots"; printf '/synthetic/phi\n' > "$t/home/.config/claude-glm/phi-roots"
+out="$(c27_row "$t")"
+if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" '1 PHI root'; then pass "C27 -> FAIL (extra neutral root)"; else fail "C27 extra-root -> $out"; fi
+rm -rf "$t"
+
+echo "== C27: no list entry appears anywhere in the doctor's output (--file-issue can post it) =="
+t="$(c27_fixture)" || exit 1; printf '/synthetic/phi\n/synthetic/extra\n' > "$t/home/.config/himmel/phi/phi-roots"; printf '/synthetic/phi\n' > "$t/home/.config/claude-glm/phi-roots"
+out="$(HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
+if grepq "$out" 'FAIL C27-guard-signals' && ! grepq "$out" '/synthetic/'; then pass "C27 -> no list entry in the output"; else fail "C27 entry-leak -> $(printf '%s' "$out" | grep -A1 C27)"; fi
+rm -rf "$t"
+
+echo "== C27: both dirs hold the same roots -> OK =="
+t="$(c27_fixture)" || exit 1; printf '/synthetic/phi\n' > "$t/home/.config/himmel/phi/phi-roots"; printf '/synthetic/phi\n' > "$t/home/.config/claude-glm/phi-roots"
+out="$(c27_row "$t")"
+if grepq "$out" 'OK   C27-guard-signals' && grepq "$out" 'readable regular files'; then pass "C27 -> OK (mirrored)"; else fail "C27 mirrored -> $out"; fi
+rm -rf "$t"
+
+echo "== C27: an unreadable neutral list -> FAIL =="
+t="$(c27_fixture)" || exit 1; mkdir -p "$t/home/.config/himmel/phi/phi-roots"
+out="$(c27_row "$t")"
+if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'cannot be read'; then pass "C27 -> FAIL (unreadable neutral list)"; else fail "C27 unreadable-neutral -> $out"; fi
+rm -rf "$t"
+
+echo "== C27: a plain file where the neutral dir belongs -> FAIL, never skipped =="
+t="$(c27_fixture)" || exit 1; rm -rf "$t/home/.config/claude-glm"; rmdir "$t/home/.config/himmel/phi"; : > "$t/home/.config/himmel/phi"
+out="$(c27_row "$t")"
+if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'cannot be read'; then pass "C27 -> FAIL (neutral dir is a file)"; else fail "C27 neutral-file -> $out"; fi
+rm -rf "$t"
+
+echo "== C27: a locked parent of the neutral dir and no old dir -> FAIL, never skipped =="
+t="$(c27_fixture)" || exit 1; rm -rf "$t/home/.config/claude-glm"; rmdir "$t/home/.config/himmel/phi"
+if chmod 000 "$t/home/.config/himmel" 2>/dev/null && [ ! -x "$t/home/.config/himmel" ]; then
+    out="$(c27_row "$t")"
+    if grepq "$out" 'FAIL C27-guard-signals' && grepq "$out" 'cannot be read'; then pass "C27 -> FAIL (locked parent of the neutral dir)"; else fail "C27 locked-parent -> $out"; fi
+else
+    echo "  SKIP  C27 locked-parent case (chmod 000 did not deny access on this fs/user)"
+fi
+chmod 755 "$t/home/.config/himmel" 2>/dev/null
+rm -rf "$t"
+
 echo "== C6: bare-interpreter MCP server -> WARN =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"
 cat > "$t/claude/settings.json" <<'EOF'
