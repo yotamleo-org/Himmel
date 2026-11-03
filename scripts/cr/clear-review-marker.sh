@@ -238,6 +238,55 @@ audit() {
     return 0
 }
 
+# Tell the operator ONCE that a head cleared on the Claude-only floor
+# (decision 483: fall back to Claude "and alert"). Fail-open by
+# construction: it runs in a subshell, always returns 0, and only ever adds to
+# the verdict, so it can never change this gate's exit code or what it clears.
+# It reuses the merge-block-alert sender (the bridge reply path, 30 s bound,
+# MERGE_BLOCK_ALERT_CMD test seam, test-run-guard) with its own sentinel
+# directory, one file per (repo, branch, head), created atomically BEFORE the
+# send and removed again if the send fails, so a retry may alert and the
+# operator still hears at most once. A failure is written to the clear log.
+# The sender seam is deliberately NOT a registered chokepoint seam: it can
+# suppress or redirect the alert, never the verdict.
+floor_clear_alert() (
+    _fca_lib="$SCRIPT_DIR/../lib/merge-block-alert.sh"
+    # shellcheck source=scripts/lib/merge-block-alert.sh
+    # shellcheck disable=SC1091
+    if ! { [ -r "$_fca_lib" ] && . "$_fca_lib"; } 2>/dev/null; then
+        audit "FLOOR-ALERT-FAILED branch=$branch sha=$tip reason=alert-lib-missing"
+        return 0
+    fi
+    # swallow-ok: the repo name only labels the alert; it is never a verdict input
+    _fca_url=$(git remote get-url origin 2>/dev/null || true)
+    _fca_repo=$(printf '%s' "${_fca_url%.git}" | sed 's#.*[:/]\([^/:]*/[^/:]*\)$#\1#')
+    [ -n "$_fca_repo" ] || _fca_repo="unknown-repo"
+    _fca_dir="$git_dir/himmel-floor-clear-alert"
+    _fca_key=$(printf '%s__%s__%s' "$_fca_repo" "$branch" "$tip" | tr -c 'A-Za-z0-9._-' '_')
+    mkdir -p "$_fca_dir" 2>/dev/null || { audit "FLOOR-ALERT-FAILED branch=$branch sha=$tip reason=sentinel-dir"; return 0; }
+    # Atomic create: the loser of a race, or a repeat at this head, stays silent.
+    ( set -o noclobber; : > "$_fca_dir/$_fca_key" ) 2>/dev/null || return 0
+    _fca_chat=$(_mba_operator_chat) || _fca_chat=""
+    if [ -z "$_fca_chat" ]; then
+        rm -f "$_fca_dir/$_fca_key" 2>/dev/null
+        audit "FLOOR-ALERT-FAILED branch=$branch sha=$tip reason=no-operator-chat"
+        return 0
+    fi
+    _fca_msg="CLAUDE-ONLY-CLEAR ${_fca_repo} ${pr_num:+PR #$pr_num }branch ${branch} @${tip:0:12}: the review marker cleared on the same-model Claude floor, NOT cross-model review. Exhausted reviewers: ${exhausted_lanes:-none}"
+    _fca_rc=0
+    _mba_send "$_fca_chat" "$_fca_msg" || _fca_rc=$?
+    if [ "$_fca_rc" != 0 ]; then
+        rm -f "$_fca_dir/$_fca_key" 2>/dev/null
+        audit "FLOOR-ALERT-FAILED branch=$branch sha=$tip reason=send-rc-$_fca_rc"
+    elif [ "${_MBA_REFUSED:-0}" = 1 ]; then
+        rm -f "$_fca_dir/$_fca_key" 2>/dev/null
+        audit "FLOOR-ALERT-SKIPPED branch=$branch sha=$tip reason=test-guard"
+    else
+        audit "FLOOR-ALERT sent branch=$branch sha=$tip"
+    fi
+    return 0
+)
+
 git_dir=$(git rev-parse --git-common-dir 2>/dev/null || true)
 if [ -z "$git_dir" ]; then
     echo "clear-cr-marker: not a git repository (cannot resolve --git-common-dir) — refusing." >&2
@@ -2049,6 +2098,7 @@ else
     audit "CLEARED branch=$branch sha=$tip responders=$responders${pr_num:+ pr=#$pr_num}${carry_audit:-}${clear_basis:-}"
 fi
 if [ "${cleared_via_floor:-0}" = "1" ]; then
+    floor_clear_alert || true
     # Same prefix as the ordinary line (pr-check.md step 5 reports it verbatim),
     # then the part that differs: what actually certified this head.
     echo "clear-cr-marker: CR clean — marker cleared for $branch (${tip:0:8}) ON THE SAME-MODEL FLOOR: a context-free Claude floor review cleared it, NOT a cross-model critic (unlocked by ${exhausted_lanes:-none}). The shared-model blind spot is uncovered at this SHA — say so wherever this PR's review coverage is reported. Safe to gh pr create."

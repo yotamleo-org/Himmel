@@ -128,6 +128,9 @@ build_repo_template() {
     # timeout wrapper the fix depends on.
     cp "$TIMEOUT_BIN_LIB" "$REPO_TEMPLATE/scripts/lib/timeout-bin.sh" \
         || { echo "FAIL: cp timeout-bin.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    # The Claude-only-clear operator alert sends through this lib.
+    cp "$(dirname "$CLEAR")/../lib/merge-block-alert.sh" "$REPO_TEMPLATE/scripts/lib/merge-block-alert.sh" \
+        || { echo "FAIL: cp merge-block-alert.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     # The floor provenance check verifies the artifact's stamp here.
     cp "$FLOOR_MJS" "$REPO_TEMPLATE/scripts/cr/claude-floor.mjs" \
         || { echo "FAIL: cp claude-floor.mjs into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
@@ -146,6 +149,20 @@ FLOOR_KEYS=$(fixture_mktemp_dir) || { echo "FAIL: mktemp for the floor key dir f
 export CR_FLOOR_KEY_DIR="$FLOOR_KEYS/keys"
 trap '[ -n "$REPO_TEMPLATE" ] && rm -rf "$REPO_TEMPLATE"; rm -rf "$FLOOR_KEYS"' EXIT
 node "$FLOOR_MJS" init-key >/dev/null || { echo "FAIL: floor key init failed" >&2; exit 1; }
+# The Claude-only-clear operator alert must never reach a real
+# Telegram bridge from this suite: every case defaults to a no-op sender and a
+# fixture operator id; the 5p-alert cases swap in a logging sink per repo.
+printf '{"allowFrom":["12345"]}\n' > "$FLOOR_KEYS/access.json"
+export TELEGRAM_ACCESS_PATH="$FLOOR_KEYS/access.json"
+export MERGE_BLOCK_ALERT_CMD=true
+# stub_alert_sink <tmp> <rc> — a sender that appends "chat|text" to <tmp>/alert.log and exits <rc>.
+stub_alert_sink() {
+    # shellcheck disable=SC2016  # the sink script's $1/$2 expand when it runs, not here
+    printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> %q\nexit %s\n' "$1/alert.log" "$2" > "$1/bin/alert-sink"
+    chmod +x "$1/bin/alert-sink"
+    export MERGE_BLOCK_ALERT_CMD="$1/bin/alert-sink"
+}
+alert_count() { if [ -f "$1/alert.log" ]; then wc -l < "$1/alert.log" | tr -d ' '; else echo 0; fi; }
 build_repo_template || { echo "FAIL: could not build repo template fixture" >&2; exit 1; }
 
 # make_repo — a temp git repo with one commit on branch `feat/x`, copied from
@@ -3578,6 +3595,61 @@ if grepq "$LAST_CLEAR_OUT" 'NOT cross-model'; then pass; else
     fail "5p operator message must say the floor is not cross-model coverage: $LAST_CLEAR_OUT"
 fi
 rm -rf "$tmp"
+
+# 5p-alert. A clear through the Claude floor tells the operator
+# once per (repo, branch-or-PR, head); a cross-model clear says nothing; a failed
+# send never changes the verdict.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_floor_artifact "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok_floor "$sha")" \
+    "$(avail_reason "$sha" coderabbit unavailable rate-limit)" \
+    "$(avail_reason "$sha" codex unavailable quota-5h)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+stub_alert_sink "$tmp" 0
+run_clear "$tmp" 0 "5p-alert floor clear -> exit 0"
+if [ "$(alert_count "$tmp")" = 1 ]; then pass; else fail "5p-alert floor clear must send exactly one alert (got $(alert_count "$tmp"))"; fi
+alert_line=$(cat "$tmp/alert.log" 2>/dev/null || true)
+if grepq "$alert_line" -F '12345|' && grepq "$alert_line" -F 'feat/x' && grepq "$alert_line" -F "${sha:0:12}" \
+        && grepq "$alert_line" -F 'coderabbit(reason=rate-limit)' && grepq "$alert_line" -F 'codex(reason=quota-5h)'; then pass; else
+    fail "5p-alert alert must go to the operator and name branch, head and exhausted lanes: $alert_line"
+fi
+# A second clear at the same head sends no second alert.
+write_marker "$tmp" "$sha"
+run_clear "$tmp" 0 "5p-alert second floor clear at the same head -> exit 0"
+if [ "$(alert_count "$tmp")" = 1 ]; then pass; else fail "5p-alert second clear at the same head must not re-alert (got $(alert_count "$tmp"))"; fi
+rm -rf "$tmp"
+
+# 5p-alert-cross. A cross-model clear (codex reviewed) sends no alert.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok_claude "${sha:0:8}")" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+stub_alert_sink "$tmp" 0
+run_clear "$tmp" 0 "5p-alert-cross cross-model clear -> exit 0"
+if [ "$(alert_count "$tmp")" = 0 ]; then pass; else fail "5p-alert-cross a cross-model clear must send no alert (got $(alert_count "$tmp"))"; fi
+rm -rf "$tmp"
+
+# 5p-alert-fail. A failed send leaves the exit code and the clear unchanged,
+# is logged, and leaves no sentinel, so a later clear at the head may still alert.
+make_repo || exit 1
+write_marker "$tmp" "$sha"
+write_floor_artifact "$tmp" "$sha"
+write_ledger "$tmp" "$(avail_ok_floor "$sha")" \
+    "$(avail_reason "$sha" coderabbit unavailable rate-limit)" \
+    "$(avail_reason "$sha" codex unavailable quota-5h)"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+stub_alert_sink "$tmp" 1
+run_clear "$tmp" 0 "5p-alert-fail failed send -> exit 0 unchanged"
+if marker_exists "$tmp"; then fail "5p-alert-fail the clear must still happen"; else pass; fi
+if grepq "$LAST_CLEAR_OUT" -F 'FLOOR-ALERT-FAILED'; then pass; else fail "5p-alert-fail the failure must be logged: $LAST_CLEAR_OUT"; fi
+if grepq "$(cat "$tmp/.git/clear-cr-marker.log")" -F 'FLOOR-ALERT-FAILED'; then pass; else fail "5p-alert-fail the failure must reach the clear log"; fi
+write_marker "$tmp" "$sha"
+stub_alert_sink "$tmp" 0
+run_clear "$tmp" 0 "5p-alert-fail retry with a working sender -> exit 0"
+if [ "$(alert_count "$tmp")" = 2 ]; then pass; else fail "5p-alert-fail a failed send must not consume the once-per-head slot (got $(alert_count "$tmp") lines)"; fi
+rm -rf "$tmp"
+export MERGE_BLOCK_ALERT_CMD=true
 
 # 5q. A VACUOUS CodeRabbit pass (a success status with no review behind it)
 # qualifies as exhausted — for model coderabbit only.
