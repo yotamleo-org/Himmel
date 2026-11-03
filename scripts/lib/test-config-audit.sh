@@ -282,8 +282,8 @@ S10="$TMP/s10"
 S10_STATE="$S10/.himmel/state/config-audit"
 st() { HIMMEL_CONFIG_DIR="$S10/.himmel" HIMMEL_CONFIG_AUDIT_ENV_FILE="$S10/clone/.env" bash "$CA" "$@"; }
 new_station() { rm -rf "$S10"; mkdir -p "$S10/.himmel" "$S10/clone"; : > "$ALERTS"; }
-nbk() { find "$S10_STATE/backups" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' '; }
-mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+nbk() { local d n=0; for d in "$S10_STATE"/backups/*/; do [ -d "$d" ] && n=$((n + 1)); done; echo "$n"; }
+mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; } # gnu-ok: the BSD form follows on the same line
 holds() { grep -q -- "$2" "$1" 2>/dev/null; }
 V1="$CANARY-v1"; V2="$CANARY-v2"
 put_station() {
