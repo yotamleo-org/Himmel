@@ -4,14 +4,16 @@
 #
 # Usage: bash scripts/ci/test-root-vitest-sandbox.sh
 #
-# Safe if the sandbox ever breaks: HOME is pointed at a fresh mktemp dir before any vitest
-# call, and the suite refuses to run when HOME still equals the account's real home.
-# The runtime cases need a vitest binary (scripts/jira/node_modules/.bin/vitest or one on
-# PATH). They never use npx (that would fetch from the network); without one they print SKIP
-# and only the static case runs.
+# Safe if the sandbox ever breaks: HOME is pointed at a fresh mktemp dir before any vitest call.
+# The runtime cases need scripts/jira/node_modules/.bin/vitest (npm ci in scripts/jira). They
+# never use npx (that would fetch from the network). Without it they print SKIP and exit 0,
+# unless HIMMEL_REQUIRE_JIRA_VITEST=1, which turns that SKIP into a FAIL. The node-suites (jira)
+# job in ci.yml sets it; the shell-unit shards have no jira install, so run-shell-tests.sh
+# SKIP_LISTs this suite and that job is where it runs.
 #
 # Cases:
-#   1 static: the root config names the sandbox file, which sets all four overrides
+#   1 static: the root config names the sandbox file, which sets all four overrides, and does
+#     not import 'vitest/config' (the root has no node_modules; see vitest.config.ts)
 #   2 RED control: a project with NO config, a probe that removes $HOME/.himmel/config.json
 #     -> the canary is DELETED (the failure the root config exists to stop)
 #   3 the repo's real root config (copied with the real setup file) -> the canary SURVIVES
@@ -19,22 +21,15 @@
 #   4 scripts/jira/src/commands/sector.test.ts run from the repo root with a config that has
 #     NO setup file -> the canary SURVIVES (the test sandboxes its own HOME)
 #
-# Exit codes: 0 — all cases passed; 1 — at least one failed; 2 — refused (HOME is the real home)
+# Exit codes: 0 — all cases passed (or the runtime cases SKIPped); 1 — at least one failed
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-
-real_home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"
-[ -n "$real_home" ] || real_home="${HOME:-}"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/h8974.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
 export HOME="$tmp/home"
 mkdir -p "$HOME"
-if [ -z "$real_home" ] || [ "$HOME" = "$real_home" ]; then
-  echo "test-root-vitest-sandbox: refusing to run, HOME is the real home ($real_home)" >&2
-  exit 2
-fi
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
@@ -55,14 +50,22 @@ fi
 for v in HOME HIMMEL_RELEASE_STATE_DIR HIMMEL_ADMISSIONS_LEDGER HIMMEL_SECRETS_KEYRING; do
   if grep -q "process.env.$v = " "$setup"; then pass "sandbox file sets $v"; else fail "sandbox file does not set $v"; fi
 done
+if grep -Eq "^[[:space:]]*(import|const|let|var)[^/]*(from[[:space:]]*|require\()['\"]vitest/config['\"]" "$root_cfg"; then
+  fail "root vitest.config.ts imports 'vitest/config' (unresolvable from the root: a plain-object config is required)"
+else
+  pass "root vitest.config.ts is a plain object (no 'vitest/config' import)"
+fi
 
-# ---- runtime cases need a vitest binary
-vitest=""
-if [ -x "$REPO_ROOT/scripts/jira/node_modules/.bin/vitest" ]; then vitest="$REPO_ROOT/scripts/jira/node_modules/.bin/vitest"
-elif command -v vitest >/dev/null 2>&1; then vitest="$(command -v vitest)"; fi
-if [ -z "$vitest" ] || [ ! -d "$REPO_ROOT/scripts/jira/node_modules" ]; then
-  echo "  SKIP  runtime cases 2-4: no installed vitest (scripts/jira/node_modules not installed)"
-  [ "$failures" -eq 0 ] && exit 0 || exit 1
+# ---- runtime cases need the jira vitest install
+vitest="$REPO_ROOT/scripts/jira/node_modules/.bin/vitest"
+if [ ! -x "$vitest" ]; then
+  if [ "${HIMMEL_REQUIRE_JIRA_VITEST:-}" = 1 ]; then
+    fail "runtime cases 2-4 cannot run: $vitest is missing and HIMMEL_REQUIRE_JIRA_VITEST=1"
+  else
+    echo "  SKIP  runtime cases 2-4: scripts/jira/node_modules is not installed"
+  fi
+  [ "$failures" -eq 0 ]
+  exit
 fi
 
 proj="$tmp/proj"
