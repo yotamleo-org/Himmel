@@ -55,10 +55,10 @@ let thQuery = null, thReturn = null; // thReturn: the tool whose drill-in was ju
 let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
 let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
-let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
+let roadmap = null, roadmapGen = 0, nvGen = 0; // declared before route() runs, as healthGen is: a reload at #/board?tab=nv calls loadNoVersion() from it
 let boardExtras = null, boardGen = 0; // GET /api/board: { drift, chains }, null until read
 // writes = cards drag and take a theme // tab, v, at = the Board route (#/board?tab=&v=&at=); chain = the Chain filter
-const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, tab: null, v: null, at: null, chain: null };
+const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null, tab: null, v: null, at: null, chain: null, nv: null };
 let sources; // GET /api/sources: the trackers the UI can read; undefined until read, [] hides the Board
 const noTracker = () => `<div class="nodata">No tracker the UI can read is configured, so there is no board to show. The Board reads the local tracker store (TRACKER=local, once it holds an item), a Jira mirror, or GitHub issues when TRACKER=github and gh is signed in.</div>`;
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
@@ -70,7 +70,7 @@ const PAGES = [
   { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify }), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
-  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); } } },
+  { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
   { id: "workflow", label: "Workflow", needsFeed: false, render: () => renderWorkflow(wfModel, wfUi, wfStats), onVisit: () => { if (!wfModel || wfModel.error || !wfStats || wfStats.error || Date.now() - wfAt > 60_000) loadWorkflow(); }, afterPaint: () => wfScroll() },
   { id: "shift", label: "Shift", needsFeed: false, render: () => renderShift(shift, { ...shiftUi, fleet: (navLinks({ here: "console", token, current: "shift", sources }).find((l) => l.id === "fleet") || {}).href }), onVisit: () => loadShift() },
   { id: "report", label: "Morning report", needsFeed: false, render: () => renderReport(reportList, reportView, { ...reportUi, shiftHref: "#/shift" }), onVisit: () => loadReport() },
@@ -572,6 +572,18 @@ async function loadRoadmap() {
   roadmapUi.writes = data.source !== "github"; // GitHub cards are read-only
   if (currentPage.id === "board") paint();
 }
+// the Board's No version tab: those tickets are not in the default read, so they are fetched when the tab opens (and again on refresh).
+async function loadNoVersion() {
+  const gen = ++nvGen;
+  let data;
+  try {
+    const r = await fetch("/api/roadmap?nv=1", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    data = r.ok ? await r.json() : { state: "error", reason: `roadmap failed (${r.status})` };
+  } catch (_) { data = { state: "error", reason: "server unreachable" }; }
+  if (gen !== nvGen) return;
+  roadmapUi.nv = data;
+  if (currentPage.id === "board") paint();
+}
 // the Board's drift summary and chain read: each part absent on its own, so a missing registry never hides the lanes.
 async function loadBoard() {
   const gen = ++boardGen;
@@ -588,7 +600,8 @@ async function loadBoard() {
 // redrawn from the server's data either way: on a refusal nothing local changed, so the card is back where it was and the
 // reason is shown above the board.
 let rmWriting = false;
-const rmTicket = (k) => roadmap && roadmap.state === "ok" ? roadmap.tickets.find((x) => x.k === k) : undefined;
+const rmTicket = (k) => (roadmap && roadmap.state === "ok" ? roadmap.tickets.find((x) => x.k === k) : undefined)
+  || (roadmapUi.nv && roadmapUi.nv.state === "ok" ? roadmapUi.nv.tickets.find((x) => x.k === k) : undefined); // a card on the No version tab is in the second read
 async function writeRoadmap(t, change) {
   if (rmWriting || !t) return;
   const local = t.backend === "local";
@@ -599,8 +612,9 @@ async function writeRoadmap(t, change) {
   if (!ok) { roadmapUi.writeError = `${body.key}: ${j.error || "write failed"}${j.output ? " (" + String(j.output).trim().slice(0, 200) + ")" : ""}`; return paint(); }
   if ("status" in j) { const c = COLS_BY_ID[j.status]; t.b = j.status; t.s = j.name || c || t.s; }
   else {
-    let i = roadmap.themes.indexOf(j.sector);
-    if (i < 0) { roadmap.themes.push(j.sector); i = roadmap.themes.length - 1; }
+    const src = roadmapUi.nv && roadmapUi.nv.tickets && roadmapUi.nv.tickets.includes(t) ? roadmapUi.nv : roadmap; // the read this card came from
+    let i = src.themes.indexOf(j.sector);
+    if (i < 0) { src.themes.push(j.sector); i = src.themes.length - 1; }
     t.theme = i;
   }
   paint();
@@ -650,6 +664,7 @@ document.addEventListener("change", (e) => {
   if (e.target.dataset.rs === "report_day" && state.reports && state.reports.draft) { state.reports.draft.report_day = e.target.value; state.reports.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   if (e.target.dataset.rmChain !== undefined) { roadmapUi.chain = e.target.value || null; return paint(); }
+  if (e.target.dataset.rmFind !== undefined) { roadmapUi.find = e.target.value.trim() || null; return paint(); } // a text box commits on Enter or blur, so typing is never repainted under the cursor
   const f = e.target.dataset.rmFilter;
   if (f) { roadmapUi[f] = e.target.value === "" ? null : Number(e.target.value); return paint(); }
   const th = e.target.dataset.th;
@@ -722,7 +737,7 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   if (b.dataset.act === "refresh-toolhealth") return void loadToolHealth(true);
   if (b.dataset.act && b.dataset.act.startsWith("th-")) return void toolHealthClick(b);
-  if (b.dataset.act === "refresh-roadmap") return void (loadRoadmap(), loadBoard());
+  if (b.dataset.act === "refresh-roadmap") { roadmapUi.nv = null; if (roadmapUi.tab === "nv") loadNoVersion(); return void (loadRoadmap(), loadBoard()); }
   if (b.dataset.act === "refresh-shift") return void loadShift();
   if (b.dataset.act === "vm-save") return void saveVm();
   if (b.dataset.act === "reports-save") return void saveReportSettings();

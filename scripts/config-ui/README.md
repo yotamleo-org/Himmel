@@ -177,9 +177,13 @@ routes land on it: `#/roadmap` is `#/board`, `#/roadmap/<version>` is `#/board?v
 `#/board?v=all`, and the AG-UI rail's `page=roadmap|kanban` landings open it. `GET /api/roadmap` (token-gated, GET only)
 reads its sources live on every request: no static render, no republish. The page draws a drift banner, a version strip
 (one tile per version: done, in flight and to do counts, what is still open on a released version), a "waits for you"
-link and a "shipped" link, and three tabs (`?tab=roadmap|chains|tidy`). **Roadmap** is the status lanes for the running
-version (`?v=<version>` picks another, `?v=all` every version) with the Sector, Chain and Hide Done filters; dragging a
-card and the Sector select write as before (see Writes). **Chains** lists each chain of the chain registry with its steps
+link and a "shipped" link, and four tabs (`?tab=roadmap|nv|chains|tidy`). **Roadmap** is the status lanes for the running
+version (`?v=<version>` picks another, `?v=all` every version) with the Sector, Chain, Hide Done, Project, Theme and Only
+filters and a find-a-ticket box (title or id, on Enter); Done is a folded column, and each column says how many Jira has
+beside the cards drawn. Dragging a card and the Sector select write as before (see Writes). **No version** holds the
+tickets with no fixVersion, in the same columns with the same filters and find box; it is listed only while there is one,
+and those tickets are not in the default `GET /api/roadmap` read (which says only how many, `noVersionCount`): opening the
+tab asks `GET /api/roadmap?nv=1`. The Roadmap tab's find does not reach them. **Chains** lists each chain of the chain registry with its steps
 and each ticket's state. **Tidy up** carries the saved status-drift rows, then the Drift, Worker to Jira sync and
 Librarian sections unchanged. An absent mirror shows its reason instead of a board.
 
@@ -192,7 +196,7 @@ as `/api/health` reads its settings: the checkout's `.env`, `himmel.conf`, the n
 reads are Jira-backed: with TRACKER set to none, local or GitHub they answer absent. A script is started only when its
 input is found; otherwise that part answers `{state: "absent", reason}` and the page says so in words (drift: not read, waits for you:
 not read, no Chains tab content): it never shows a made-up count. Not on the Board yet: the ticket drawer, hold writes,
-keyboard moves, the No-version lane, the Chains map and Why panel, and the Refresh button for the drift run.
+keyboard moves, the Chains map and Why panel, and the Refresh button for the drift run.
 
 The Workflow page (`#/workflow`) draws the development graph: it mounts the docs page's own `dev-graph.js` on its
 `graph.json`, which the server hands out read-only under `/dev-graph/` (not token-gated, like `/agui/`; the files

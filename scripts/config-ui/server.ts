@@ -718,8 +718,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         }
         const workers = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs);
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
-        const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers });
-        return json(redactOut({ ...r, sync: legSync(r.tickets) }));
+        const nv = new URL(req.url).searchParams.get("nv") === "1"; // the Board's No version tab: those tickets only, read when it opens
+        const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers, noVersion: nv });
+        return json(redactOut({ ...r, sync: nv ? [] : legSync(r.tickets) }));
       }
       // the Board page's two extra reads: the saved status-drift summary and the chain read. Read-only; each is absent, with the
       // reason, unless its input is found: named in the settings (the checkout's .env, himmel.conf, the non-empty process env

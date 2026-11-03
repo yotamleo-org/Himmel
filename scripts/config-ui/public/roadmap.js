@@ -53,7 +53,7 @@ function chainBadge(t, ch, v) {
 function cardHtml(t, d, showVersion, w, ch, v) {
   const lg = t.worker ? `<div class="rm-worker"><b>${esc(t.worker.label)} ${esc(t.worker.marker)}</b>${t.worker.reason ? " " + esc(t.worker.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st pill warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st pill warn">unplanned</span>` : "";
-  const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
+  const ver = showVersion && t.v >= 0 ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   const theme = w ? sectorPick(t, d) : esc(d.themes[t.theme]);
   const local = t.backend === "local";
   const attrs = w ? ` draggable="true" data-rm-card="${t.k}"${local ? ` data-rm-id="${esc(t.id)}" data-rm-backend="local"` : ""}` : "";
@@ -63,10 +63,17 @@ function cardHtml(t, d, showVersion, w, ch, v) {
 
 // One board: a column per status over the given tickets. Won't and CI stay hidden while empty so a quiet board stays short.
 // With w every column is a drop target, Won't included: a writable board must be able to receive it.
-function boardHtml(d, tickets, showVersion, w, ch, v) {
-  return `<div class="rm-board">${COLS.filter(([b]) => w || b !== "wont" || tickets.some((t) => t.b === b)).map(([b, l]) => {
-    const cards = tickets.filter((t) => t.b === b);
-    return `<div class="rm-col"${w ? ` data-rm-drop="${b}"` : ""}><h4>${esc(l)} <span class="ro">${cards.length}</span></h4>${cards.map((t) => cardHtml(t, d, showVersion, w, ch, v)).join("")}</div>`;
+// o (the Board's lanes only): scope = every ticket Jira has for these columns before the filters, so each column says "Jira N matches"
+// or "Jira N · M shown"; foldDone = Done is a closed <details> (open while o.find is set, so a find never hides its match).
+function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
+  const cols = COLS.filter(([b]) => w || b !== "wont" || tickets.some((t) => t.b === b));
+  return `<div class="rm-board">${cols.map(([b, l]) => {
+    const cards = tickets.filter((t) => t.b === b), n = cards.length;
+    const jn = o.scope ? o.scope.filter((t) => t.b === b).length : null;
+    const jira = jn === null ? "" : `<span class="ro rm-jira">${jn === n ? `Jira ${jn} matches` : `Jira ${jn} · ${n} shown`}</span>`;
+    const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
+    if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
+    return `<div class="rm-col"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${esc(l)} <span class="ro rm-n">${n}</span></h4>${jira}${body}</div>`;
   }).join("")}</div>`;
 }
 
@@ -172,10 +179,11 @@ function roadmapHtml(data, ui) {
 
 // ---- the Board page: the one per-version page that replaced the Roadmap and Kanban pages --------------------------------
 // renderBoard(data, ui, extras) → HTML. data = GET /api/roadmap; extras = { drift, chains } from GET /api/board (null until read).
-// ui: { tab: roadmap|chains|tidy, v: a version name | "all" | null (the running version), theme, chain, hideDone, writes, writeError, at }.
+// ui: { tab: roadmap|nv|chains|tidy, v: a version name | "all" | null (the running version), theme, chain, hideDone, writes, writeError, at,
+// project, planTheme, only, find (the lane filters), nv (GET /api/roadmap?nv=1, null until the No version tab has read it) }.
 // A field whose source is not there is shown as absent in words, never as a number: no drift file, no chain registry.
 // renderRoadmap and renderKanban above stay exported: the design-layer and tracker tests pin their markup.
-const TABS = [["roadmap", "Roadmap"], ["chains", "Chains"], ["tidy", "Tidy up"]];
+const TABS = [["roadmap", "Roadmap"], ["chains", "Chains"], ["tidy", "Tidy up"], ["nv", "No version"]];
 const query = (o) => { const p = new URLSearchParams(); for (const [k, v] of Object.entries(o)) if (v) p.set(k, v); const s = p.toString(); return s ? "?" + s : ""; };
 const boardHref = (o) => esc("#/board" + query(o));
 const driftOk = (dr) => !!(dr && dr.counts && dr.file && dr.file.exists && !dr.unknown);
@@ -223,36 +231,77 @@ function linksHtml(ch) {
     + `<div class="rm-link"><span><b>Shipped since yesterday</b>: the count is not read here</span><a href="#/report">Morning report →</a></div></div>`;
 }
 
-function tabsHtml(ui, tab, ch, dr) {
+function tabsHtml(d, ui, tab, ch, dr) {
   const blocked = chainOk(ch) ? Object.values(ch.tickets).filter((x) => x.state === "blocked").length : 0;
-  const em = { chains: chainOk(ch) ? `${ch.chains.length} · ${blocked} blocked` : "", tidy: driftOk(dr) ? `${dr.counts.real} drift` : "" };
-  return `<nav class="tabs" role="tablist" aria-label="Board">${TABS.map(([id, label]) =>
+  const em = { chains: chainOk(ch) ? `${ch.chains.length} · ${blocked} blocked` : "", tidy: driftOk(dr) ? `${dr.counts.real} drift` : "", nv: d.noVersionCount ? String(d.noVersionCount) : "" };
+  // the No version tab is there while some ticket has no fixVersion (the count is the default read's; the tickets are read when it opens)
+  return `<nav class="tabs" role="tablist" aria-label="Board">${TABS.filter(([id]) => id !== "nv" || d.noVersionCount || tab === "nv").map(([id, label]) =>
     `<a class="tab" role="tab" aria-selected="${tab === id}" href="${boardHref({ tab: id, v: ui.v })}">${esc(label)}${em[id] ? ` <span class="ro">${esc(em[id])}</span>` : ""}</a>`).join("")}</nav>`;
 }
 
+// The Roadmap tab's lane filters. Project is the ticket id's prefix; Theme is the plan's theme (the Sector has its own filter); Only is one
+// state of the chain read, or the plan drift. The chain states are listed but disabled while no chain read is there.
+const projectOf = (t) => (/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(idOf(t)) ? idOf(t).slice(0, idOf(t).indexOf("-")) : "GitHub");
+const projectsOf = (d) => [...new Set(d.tickets.map(projectOf))].sort();
+const chainState = (t, ch) => (chainOk(ch) ? ch.tickets[idOf(t)] : null);
+const ONLY = [["blocked", (t, ct) => !!ct && ct.state === "blocked", true], ["waits on step", (t, ct) => !!ct && /^waits on step/.test(ct.state), true],
+  ["waits on you", (t, ct) => !!ct && ct.state === "waits on you", true], ["date-gated", (t, ct) => !!ct && ct.state === "date-gated", true],
+  ["drift", (t) => t.drift === 1, false], ["in a chain", (t, ct) => !!ct, true]];
+const fsel = (name, label, items, cur) => `<label>${label} <select data-rm-filter="${name}"><option value="">all</option>${items.map((x, i) =>
+  `<option value="${i}"${cur === i ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
+function laneFilters(d, ui, ch, sel) {
+  const scope = d.tickets.filter((t) => sel < 0 || t.v === sel);
+  const only = ONLY.map(([l, f, needs]) => needs && !chainOk(ch) ? `${l} (not read)` : `${l} ${scope.filter((t) => f(t, chainState(t, ch))).length}`);
+  const onlySel = `<label>Only <select data-rm-filter="only"><option value="">all</option>${ONLY.map(([, , needs], i) =>
+    `<option value="${i}"${needs && !chainOk(ch) ? " disabled" : ui.only === i ? " selected" : ""}>${esc(only[i])}</option>`).join("")}</select></label>`;
+  return fsel("project", "Project", projectsOf(d), ui.project) + fsel("planTheme", "Theme", d.planThemes, ui.planTheme) + onlySel
+    + `<label>Find <input type="search" data-rm-find value="${esc(ui.find || "")}" placeholder="find a ticket or title" aria-label="Find a ticket or title"></label>`;
+}
+
 // The one filter bar and refresh, drawn above every tab: the version links keep the tab, the Sector, Chain and Hide Done filters narrow what the tab lists.
-function barHtml(d, ui, ch, tab) {
+function barHtml(d, ui, ch, tab, sel) {
   const here = d.versions[d.cur] ? d.versions[d.cur].n : d.versions[d.next] ? d.versions[d.next].n : "all";
   const keep = tab === "roadmap" ? "" : tab;
   const lanes = `<a href="${boardHref({ tab: keep, v: here })}">this version</a> · <a href="${boardHref({ tab: keep, v: "all" })}">all versions</a>`;
   const chainSel = chainOk(ch) ? `<label>Chain <select data-rm-chain><option value="">all</option>${ch.chains.map((c) =>
     `<option value="${esc(c.id)}"${ui.chain === c.id ? " selected" : ""}>${esc(c.id)}</option>`).join("")}</select></label>` : "";
-  return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${chainSel}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
+  return `<div class="rm-bar fields"><span>Lanes: ${lanes}</span>${themeSel(d, ui)}${chainSel}${tab === "roadmap" ? laneFilters(d, ui, ch, sel) : tab === "nv" && ui.nv && ui.nv.state === "ok" ? laneFilters(ui.nv, ui, ch, -1) : ""}<label><input type="checkbox" data-rm-hide-done${ui.hideDone ? " checked" : ""}> Hide Done</label>`
     + `<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
 }
+
+// What a ticket must pass to be drawn: the Sector, Hide Done, Chain, Project, Theme, Only and the find box. d is the payload the tickets and the
+// Project and Theme indexes come from; the Sector select is drawn from `from` (the default read), so it is compared by name, not by index.
+const passOf = (d, ui, ch, from = d) => {
+  const q = (ui.find || "").trim().toLowerCase(), only = ONLY[ui.only];
+  const sector = ui.theme == null ? null : from.themes[ui.theme], project = ui.project == null ? null : projectsOf(d)[ui.project];
+  return (t) => (ui.theme == null || (sector != null && d.themes[t.theme] === sector)) && !(ui.hideDone && t.b === "done")
+    && (!ui.chain || !chainOk(ch) || (ch.tickets[idOf(t)] && ch.tickets[idOf(t)].chains.some((c) => c.id === ui.chain)))
+    && (ui.project == null || projectOf(t) === project) && (ui.planTheme == null || t.pt === ui.planTheme)
+    && (!only || (only[2] && !chainOk(ch)) || only[1](t, chainState(t, ch)))
+    && (!q || idOf(t).toLowerCase().includes(q) || t.t.toLowerCase().includes(q));
+};
 
 function lanesHtml(d, ui, sel, ch) {
   const gh = d.source === "github";
   const writeOn = !!ui.writes && !gh;
   if (sel === -2) return section("rm-lanes", "Roadmap", "", `<div class="empty">${esc(ui.v)}: no such version in the mirror.</div>`);
-  const shown = byTheme(d, ui)
-    .filter((t) => sel < 0 || t.v === sel)
-    .filter((t) => !(ui.hideDone && t.b === "done"))
-    .filter((t) => !ui.chain || !chainOk(ch) || (ch.tickets[idOf(t)] && ch.tickets[idOf(t)].chains.some((c) => c.id === ui.chain)));
+  const scope = d.tickets.filter((t) => sel < 0 || t.v === sel), shown = scope.filter(passOf(d, ui, ch));
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase() }) : `<div class="empty">No tickets match.</div>`);
+}
+
+// The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
+// asked for when this tab opens (null until it arrives).
+function nvTab(data, ui, ch) {
+  const nv = ui.nv, sub = "Tickets with no fixVersion. Give one a fixVersion in Jira to put it on a version's board.";
+  if (!nv) return section("rm-nv", "No version", sub, `<p class="sub" id="status">loading…</p>`);
+  if (nv.state !== "ok") return section("rm-nv", "No version", sub, `<div class="nodata">${esc(nv.reason || "the tickets with no version could not be read")}</div>`);
+  const writeOn = !!ui.writes && nv.source !== "github";
+  const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch, data));
+  return section("rm-nv", "No version", `${shown.length} ticket${shown.length === 1 ? "" : "s"}. ${sub}${writeOn ? " Drag a card to another column to change its status." : ""}`,
+    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase() }) : `<div class="empty">No tickets match.</div>`);
 }
 
 function chainsTab(ui, ch) {
@@ -312,6 +361,6 @@ function boardPage(data, ui, extras) {
   const src = data.source === "github" ? `GitHub issues (${data.mirror.count})` : data.source === "local" ? `the local tracker store (${data.mirror.count} items)`
     : `the Jira mirror (${data.mirror.count} tickets, newest update ${esc(data.mirror.newest || "unknown")})`;
   const fresh = `<p class="ro rm-fresh">read live from ${src}${driftOk(dr) && dr.file.exists ? ` · drift: saved run ${esc(dr.file.writtenHm || "unknown")}` : ""}</p>`;
-  const body = tab === "chains" ? chainsTab(ui, ch) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : lanesHtml(data, ui, sel, ch);
-  return [page, fresh, driftBanner(dr), stripHtml(data, sel, ch, tab), linksHtml(ch), tabsHtml(ui, tab, ch, dr), barHtml(data, ui, ch, tab), body].join("\n");
+  const body = tab === "chains" ? chainsTab(ui, ch) : tab === "tidy" ? tidyTab(data, ui, sel, dr) : tab === "nv" ? nvTab(data, ui, ch) : lanesHtml(data, ui, sel, ch);
+  return [page, fresh, driftBanner(dr), stripHtml(data, sel, ch, tab), linksHtml(ch), tabsHtml(data, ui, tab, ch, dr), barHtml(data, ui, ch, tab, sel), body].join("\n");
 }

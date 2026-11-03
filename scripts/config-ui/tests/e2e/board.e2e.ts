@@ -56,6 +56,8 @@ test("the Board draws the seeded mirror: strip, drift banner, chain badge, lanes
   await expect(page.locator("#main .alert").first()).toContainText("1 drift row");
   await expect(page.locator("#main .alert").first()).toContainText("1 transient");
   // the lanes of the running version, with the chain badge on a chain ticket and none on the others
+  await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeHidden(); // a Done ticket: the Done column is folded
+  await page.locator("#rm-lanes details.rm-done summary").click();
   await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeVisible();
   await expect(page.locator(".rm-card", { hasText: "Old shipped work" })).toHaveCount(0);
   await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator(".rm-chain")).toContainText("memory 2/2 · can launch");
@@ -97,6 +99,66 @@ test("the Chain filter narrows the lanes to that chain's tickets", async ({ page
   await page.locator("select[data-rm-chain]").selectOption("memory");
   await expect(page.locator(".rm-card", { hasText: "Not in any chain" })).toHaveCount(0);
   await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toBeVisible();
+});
+
+test("a ticket with no fixVersion is on its own No version tab, fetched only when the tab opens; no version board has it", async ({ page }) => {
+  const errs = consoleErrors(page);
+  const reads: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("/api/roadmap")) reads.push(r.url()); });
+  await open(page);
+  await go(page, "#/board");
+  await expect(page.locator(".rm-card", { hasText: "Work in flight" })).toBeVisible();
+  await expect(page.locator(".rm-card", { hasText: "Standing ticket with no version" })).toHaveCount(0);
+  await expect(page.locator("#rm-nv")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^No version/ })).toContainText("1");
+  expect(reads.every((u) => !u.includes("nv=1"))).toBe(true); // the default read did not ask for them
+  await page.getByRole("tab", { name: /^No version/ }).click();
+  await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
+  await expect(page.locator("#rm-nv .rm-card", { hasText: "Work in flight" })).toHaveCount(0);
+  expect(reads.filter((u) => u.includes("nv=1"))).toHaveLength(1);
+  await shot(page, "board-nv-tab");
+  await go(page, "#/board");
+  await expect(page.locator(".rm-card", { hasText: "Standing ticket with no version" })).toHaveCount(0);
+  expect(errs).toEqual([]);
+});
+
+test("reloading on the No version tab starts its read without a page error", async ({ page }) => {
+  const errs: string[] = [];
+  page.on("pageerror", (e) => errs.push(e.message));
+  await open(page);
+  await go(page, "#/board?tab=nv");
+  await expect(page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" })).toBeVisible();
+  // the token lives in memory only, so the reloaded page is refused (401) and draws no card; the proof is that route() reaches loadNoVersion() at load without a ReferenceError
+  const asked = page.waitForRequest((r) => r.url().includes("/api/roadmap?nv=1"));
+  await page.reload();
+  await asked;
+  await expect(page.locator("#main")).toContainText("roadmap failed (401)");
+  expect(errs).toEqual([]);
+});
+
+test("dragging a card on the No version tab sends its new status", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board?tab=nv");
+  const sent: string[] = [];
+  await page.route("**/api/roadmap/write", async (route) => { sent.push(route.request().postData() || ""); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }); });
+  await page.locator("#rm-nv .rm-card", { hasText: "Standing ticket with no version" }).dragTo(page.locator('[data-rm-drop="todo"]'));
+  await expect.poll(() => sent.length).toBe(1);
+  expect(JSON.parse(sent[0])).toMatchObject({ key: "HIMMEL-31", status: "todo" });
+});
+
+test("the find box narrows the lanes by title or id on Enter, the columns say how many Jira has, and Done is folded", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  const todo = page.locator('#rm-lanes [data-rm-col="todo"]');
+  await expect(todo.locator(".rm-jira")).toHaveText("Jira 2 matches");
+  await expect(page.locator("#rm-lanes details.rm-done")).not.toHaveAttribute("open", "");
+  await page.locator("input[data-rm-find]").fill("second chain");
+  await page.locator("input[data-rm-find]").press("Enter");
+  await expect(page.locator("#rm-lanes .rm-card")).toHaveCount(1);
+  await expect(todo.locator(".rm-n")).toHaveText("1");
+  await expect(todo.locator(".rm-jira")).toHaveText("Jira 2 · 1 shown");
+  await expect(page.locator("input[data-rm-find]")).toHaveValue("second chain");
+  await shot(page, "board-find");
 });
 
 test("every tab carries the one filter bar and refresh, and Tidy up lists every version by default", async ({ page }) => {
