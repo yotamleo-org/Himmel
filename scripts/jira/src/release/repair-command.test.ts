@@ -190,6 +190,15 @@ describe('test-version-repair dry run', () => {
     expect(r.classes!.find((c) => c.class === 'done-no-pr')!.keys).toEqual(['K-1']);
   });
 
+  it('a full page of PRs proves nothing and leaves the key unresolved', async () => {
+    setup();
+    mirror([done('K-1', ['v1.1.3'])]);
+    const page = Array.from({ length: 50 }, (_, i) => pr(100 + i, `[K-9] other ${i}`, '2026-10-20T10:00:00Z'));
+    const r = await run({ gh: ghWith({ 'K-1': page }) });
+    expect(r.classes!.find((c) => c.class === 'done-no-pr')).toBeUndefined();
+    expect(r.capped).toBe(true);
+  });
+
   it('of two passing PRs the newest folds', () => {
     const listing = [pr(11, '[K-1] first', '2026-10-20T10:00:00Z'), pr(12, '[K-1] second', '2026-10-25T10:00:00Z'), pr(13, '[K-9] other', '2026-10-30T10:00:00Z')];
     expect(passingPr(listing, 'K-1', Date.parse('2026-10-11'))).toBe(12);

@@ -16,6 +16,7 @@ export interface RepairInput {
   records: KeyRecord[]; // the reducer's output, unchanged; stale = actual_member === 'unknown'
   leaks: ReleaseState['leaks']; // the reducer's verdict, never re-derived here
   current: string;
+  versions?: string[]; // the release's declared versions; when given, a displacement from any other version is not this release's
   operator: OperatorRow[];
   rulings: RulingRow[];
   admissions: Admission[];
@@ -104,19 +105,21 @@ const isBound = (ctx: KeyCtx): boolean => ctx.row !== undefined && ctx.entry?.id
 export function mismatchKeys(input: RepairInput): { leak: Set<string>; displaced: Set<string> } {
   const leak = new Set([...input.leaks.unauthorized, ...input.leaks.ruled_in_non_member].map((l) => keyOf(l).key));
   const displaced = new Set<string>();
-  for (const [key, row] of displacementRows(input.journal)) if (input.newestEntry.get(key)?.id === row.entry) displaced.add(key);
+  for (const [key, row] of displacementRows(input.journal, input.versions)) if (input.newestEntry.get(key)?.id === row.entry) displaced.add(key);
   return { leak, displaced };
 }
 
 // The keys whose newest journal row is a machine displacement to none: candidates until Jira confirms the row is still the newest entry.
-function displacementRows(journal: VersionWriteRow[]): Map<string, VersionWriteRow> {
+function displacementRows(journal: VersionWriteRow[], versions?: string[]): Map<string, VersionWriteRow> {
   const newest = new Map<string, VersionWriteRow>();
   for (const j of journal) newest.set(j.key, j);
-  for (const [key, row] of newest) if (!DISPLACEMENT.has(row.mechanism) || row.to.length > 0) newest.delete(key);
+  for (const [key, row] of newest) {
+    if (!DISPLACEMENT.has(row.mechanism) || row.to.length > 0 || (versions && !versions.includes(row.from[0] ?? ''))) newest.delete(key);
+  }
   return newest;
 }
 
-export const displacementCandidates = (journal: VersionWriteRow[]): Set<string> => new Set(displacementRows(journal).keys());
+export const displacementCandidates = (journal: VersionWriteRow[], versions?: string[]): Set<string> => new Set(displacementRows(journal, versions).keys());
 
 export function classify(input: RepairInput): Classification[] {
   const declared = new Set(input.records.map((r) => `${r.key}@${r.version}`));

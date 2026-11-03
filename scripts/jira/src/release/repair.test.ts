@@ -80,7 +80,7 @@ function build(w: World) {
     issues: new Map((w.issues ?? []).map((i) => [i.key, i])), mirrorSync: SYNC, admissions: w.admissions ?? [],
   });
   const input: RepairInput = {
-    records: state.records, leaks: state.leaks, current: decl.current, operator: operator.verified, rulings: rulings.verified,
+    records: state.records, leaks: state.leaks, current: decl.current, versions, operator: operator.verified, rulings: rulings.verified,
     admissions: w.admissions ?? [], requests: w.requests ?? [], journal: w.journal ?? [],
     newestEntry: new Map(Object.entries(w.entries ?? {})), mergedPr: new Map(Object.entries(w.prs ?? {})),
     missingKeys: new Set(w.missing ?? []),
@@ -153,6 +153,11 @@ describe('test-version-repair', () => {
     expect(one(w.out, 'K-2')).toMatchObject({ lane: 'bound', action: { kind: 'request', verb: 'INTAKE', from: null, to: 'v1.1.4', entry: '300' } });
     const unbound = build({ issues: [issue('K-2', [])], journal: [jr('K-2', 'displace-residual', ['v1.1.4'], [], '300')], entries: { 'K-2': { id: '301', ts: at(8) } } });
     expect(unbound.out).toEqual([]);
+  });
+
+  it('a displacement from a version outside the release is not its mismatch', () => {
+    const w = build({ issues: [issue('K-2', [])], journal: [jr('K-2', 'displace-residual', ['v0.0.1'], [], '300')], entries: { 'K-2': { id: '300', ts: at(5) } } });
+    expect(w.out).toEqual([]);
   });
 
   it('no duplicate for a (key, entry) in any request state', () => {

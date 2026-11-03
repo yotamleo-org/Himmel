@@ -9,6 +9,7 @@ import { journalPath, newestFixVersionEntry, readVersionWrites, type Getter } fr
 // writes nothing: no ledger row, no request, no Fix Version, no file.
 
 export const CAP = 20;
+const PR_LIST_LIMIT = 50;
 
 export interface RepairRunOptions {
   repo: string | null;
@@ -122,7 +123,7 @@ export async function repairRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairRe
   const leakKeys = new Set([...s.leaks.unauthorized, ...s.leaks.ruled_in_non_member].map((l) => l.slice(0, l.lastIndexOf('@'))));
   const rowKeys = new Set(journal.map((j) => j.key));
   const named = new Set(ri.operator.filter((r) => r.kind === 'decision').flatMap((r) => r.keys ?? []));
-  const readKeys = [...new Set([...leakKeys, ...displacementCandidates(journal)])].filter((k) => rowKeys.has(k) || named.has(k)).sort();
+  const readKeys = [...new Set([...leakKeys, ...displacementCandidates(journal, s.versions)])].filter((k) => rowKeys.has(k) || named.has(k)).sort();
   const newestEntry = new Map<string, { id: string; ts: string }>();
   const notFound = new Set<string>();
   for (const key of readKeys) {
@@ -136,7 +137,7 @@ export async function repairRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairRe
   }
 
   const base: Omit<RepairInput, 'mergedPr'> = {
-    records: s.records, leaks: s.leaks, current, operator: ri.operator, rulings: ri.rulings, admissions: ri.admissions,
+    records: s.records, leaks: s.leaks, current, versions: s.versions, operator: ri.operator, rulings: ri.rulings, admissions: ri.admissions,
     requests: ri.requests, journal, newestEntry, missingKeys: new Set([...missingKeys, ...notFound]),
   };
 
@@ -155,7 +156,9 @@ export async function repairRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairRe
     if (lookups >= CAP || ghError !== null) break;
     lookups++;
     try {
-      const listing: unknown = JSON.parse(o.gh(['pr', 'list', '--repo', repo, '--state', 'merged', '--search', `${key} in:title`, '--json', 'number,title,mergedAt', '--limit', '50']));
+      const listing: unknown = JSON.parse(o.gh(['pr', 'list', '--repo', repo, '--state', 'merged', '--search', `${key} in:title`, '--json', 'number,title,mergedAt', '--limit', String(PR_LIST_LIMIT)]));
+      // A full page may have cut off the qualifying PR, so it proves nothing: the key stays unresolved.
+      if (Array.isArray(listing) && listing.length >= PR_LIST_LIMIT) continue;
       mergedPr.set(key, passingPr(listing, key, since));
       resolved++;
     } catch (e) {
