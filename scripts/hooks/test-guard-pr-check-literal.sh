@@ -3104,8 +3104,14 @@ run "9020 control: gh api beside a quoted bare name -> deny" 2 \
     "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh api repos/x/y; printf "%s\n" done' "$OTHER")" "$HR"
 run "9020 control: gh with an expanded argument beside a quoted bare name -> deny" 2 \
     "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr view $N; printf "%s\n" done' "$OTHER")" "$HR"
-run "9020 control: a non-digit subscript assignment beside a bare name -> deny" 2 \
-    "$(payload 'a[$(bash chief-wait.sh)]=1; echo "go.sh, no command?"' "$OTHER")" "$HR"
+run "9020 control: a non-digit subscript assignment beside a quoted bare name -> deny" 2 \
+    "$(payload 'a[b]=1; printf "%s\n" "chief-wait.sh pool, no command"' "$OTHER")" "$HR"
+# An echo/printf write is never allowed beside a bash/sh run: the write can
+# overwrite the byte-checked script the run then trusts (judge PP-j4658-1).
+run "9020 control: printf overwrites the bullet writer through \"\$F\", then runs it -> deny" 2 \
+    "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
+run "9020 control: the same overwrite with a write-verdicts payload -> deny" 2 \
+    "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/cr && bash write-verdicts.sh\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
 run "9020 control: bash -c hiding a relative run -> deny" 2 \
     "$(payload 'bash -c "bash scripts/cr/write-verdicts.sh"' "$OTHER")" "$HR"
 }

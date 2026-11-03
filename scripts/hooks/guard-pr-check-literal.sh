@@ -2739,12 +2739,14 @@ fi
 # digit subscript (R[1]=), gh pr|issue|run view|list|status|checks|diff with
 # literal words, and, when the text names no guarded path (mentions=0), a
 # write redirect from an echo/printf of literal words to a literal path or a
-# quoted "$NAME" that spells no cr/ or handover/. A cat, grep or other writer,
-# a gh write, a non-digit subscript and any path-ish mention keep the text scan.
+# quoted "$NAME" that spells no cr/ or handover/ (any case). That write is never
+# allowed beside a bash/sh run, since it can overwrite the byte-checked script
+# the run then trusts. A cat, grep or other writer, a gh write, a non-digit
+# subscript and any path-ish mention keep the text scan.
 # shellcheck disable=SC2016 # a jq program, never expanded by bash
 AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
-  def safew: .w != null and (((.w | lit) and ((.w.v | test("[cC][rR]/|[hH]andover/")) | not)) or (.w.t == "dyn" and (.w.raw | test("^\"\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?\"$"))));
+  def safew: .w != null and (((.w | lit) and ((.w.v | test("cr/|handover/"; "i")) | not)) or (.w.t == "dyn" and (.w.raw | test("^\"\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?\"$"))));
   def emitter: (.prog == "echo" or .prog == "printf") and all(.argv[]; lit);
   def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
   def ok: .opaque == null and ((.via // []) | length) == 0
@@ -2773,7 +2775,9 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
              and all(.argv[3:][]; lit and (.v | startswith("-") | not))
          else .prog as $p | any("grep", "egrep", "fgrep", "cat", "head", "tail", "wc", "ls", "cut", "tr", "nl", "jq", "echo", "cd", "mkdir", "true", ":"; . == $p)
          end);
+def writes: any(.[]; any(.redirs[]; outw and ((.w != null and (.w | lit) and .w.v == "/dev/null") | not)));
 if all(.[]; ok) | not then "legacy"
+elif writes and any(.[]; .prog == "bash" or .prog == "sh") then "legacy"
 elif any(.[]; (.prog == "bash" or .prog == "sh") and .argv[1].v == $rel) then
     (if any(.[]; .prog == "cd") then "legacy" else "data-rel" end)
 else "data" end'
