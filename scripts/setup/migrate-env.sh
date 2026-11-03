@@ -482,11 +482,11 @@ run_import() {  # <file> <var for the stored names>: sets imp_out; returns 1 whe
     printf '%s\n' "$imp_out" | grep -E '^(stored|held|failed|skipped) [A-Za-z_]' | sed 's/^/  /'
     st=$(printf '%s\n' "$imp_out" | sed -n 's/^stored \([A-Za-z_][A-Za-z0-9_]*\)$/\1/p' | tr '\n' ' ')
     printf -v "$2" ' %s' "$st"
-    if [ "$rc" -ne 0 ] || printf '%s\n' "$imp_out" | grep -q '^failed '; then
+    if [ "$rc" -ne 0 ] || grep -q '^failed ' <<<"$imp_out"; then
         printf '%s\n' "$imp_out" | grep -v -E '^(stored|held|failed|skipped|imported) ' | sed 's/^/  /'
         return 1
     fi
-    if printf '%s\n' "$imp_out" | grep -q '^held '; then
+    if grep -q '^held ' <<<"$imp_out"; then
         echo "held keys keep their .env line: the keyring already holds another value for them (settle it with himmel-secrets)."
     fi
     return 0

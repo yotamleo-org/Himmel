@@ -750,7 +750,7 @@ fixture_env
 grep -v -E '^(HANDOVER_DIR=|USER_SLUG=|CR_|HIMMEL_FLEET_CAP=)' "$TMP/st/.env" > "$TMP/st/.env.new" && mv "$TMP/st/.env.new" "$TMP/st/.env"
 kreset
 race() {  # <n>: one apply at a terminal, a slow keyring
-    printf '\n' | SHELL=$(command -v bash) KSTUB_STORE_SLEEP=1 timeout 120 script -qec "bash $(printf '%q --env %q -y' "$SCRIPT" "$TMP/st/.env")" /dev/null > "$TMP/race.$1" 2>&1
+    printf '\n' | SHELL=$(command -v bash) KSTUB_STORE_SLEEP=1 timeout 120 script -qec "bash $(printf '%q --env %q -y' "$SCRIPT" "$TMP/st/.env")" /dev/null > "$TMP/race.$1" 2>&1  # gnu-ok: the suite skips when timeout is absent
     echo "$?" > "$TMP/race.$1.rc"
 }
 race 1 &
