@@ -30,10 +30,11 @@
 # secrets stage was allowed, every file in ~/.himmel/env-backups and the .env copy
 # in each config-audit backup (manifest checksums kept true) loses the lines of
 # a manifest-secret key that .env or the keyring still holds. Coverage is by key
-# name, not by value: a blank NAME= line (also NAME="" and NAME='') in .env is no
-# copy, but any other .env text or keyring item counts, a placeholder included, and
-# a real value only in a backup is then dropped without a name. A line with no other
-# copy of its key stays and is named.
+# name, not by value: a blank NAME= line in .env is no copy, and NAME="" or NAME=''
+# is no copy only for a key that does not move (env-keep). A key that moves is stored
+# as those two characters, and that keyring item counts as a copy. Any other .env text
+# or keyring item counts too, a placeholder included, and a real value only in a backup
+# is then dropped without a name. A line with no other copy of its key stays and is named.
 # ponytail: coverage is by key name, a placeholder counts as a copy, a value compare against the other copy (HIMMEL-8951).
 # A run with nothing else to move, or with an emptied or missing .env, still
 # finishes an owed scrub. A legacy

@@ -540,11 +540,13 @@ command you start yourself: `bash ~/himmel/scripts/setup/migrate-env.sh -y`.
    (`~/.himmel/state/config-audit/backups`, manifest checksums kept true) loses
    the lines of a key that `.env` or the keyring still holds, and a legacy
    secrets file loses the lines it stored. Coverage is by key name, not by
-   value: a blank `.env` line (`NAME=`, `NAME=""`, `NAME=''`) is not a copy, but
-   any other `.env` text or keyring item is, a placeholder included, and a real
-   value that exists only in a backup is then dropped without a name (known gap,
-   HIMMEL-8951). A backup line with no other copy of its key stays, and the
-   report names the key. A run that moves nothing but
+   value: a blank `.env` line (`NAME=`) is not a copy, and `NAME=""` or
+   `NAME=''` is not a copy only for a key that does not move (`env-keep`). A key
+   that moves is stored as those two characters, and that keyring item is a copy.
+   Any other `.env` text or keyring item is a copy too, a placeholder included,
+   and a real value that exists only in a backup is then dropped without a name
+   (known gap, HIMMEL-8951). A backup line with no other copy of its key stays,
+   and the report names the key. A run that moves nothing but
    finds an owed scrub (a run killed before it, say) finishes it when you rerun
    with `-y`; the dry run reports it as `scrub only`.
 
