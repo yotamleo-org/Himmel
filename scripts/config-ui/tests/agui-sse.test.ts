@@ -427,10 +427,11 @@ test.each([
   ["holds a tab", "see {kr} here", "kr-tab\tq7x2"],
 ])("a keyring-style value that %s is masked in the agent name (HIMMEL-8907)", async (_n, tmpl, kr) => {
   const h = home();
-  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace("List the files in the repo root.", tmpl.replace("{kr}", kr));
+  const body = readFileSync(join(FIX, "happy-path.jsonl"), "utf8").replace("List the files in the repo root.", JSON.stringify(tmpl.replace("{kr}", kr)).slice(1, -1));
   journal(h, "-proj", RUN, body);
   const { port } = boot(h, { env: { HIMMEL_TEST_SECRET: kr } });
   const text = await (await get(port, RUN)).text();
+  expect(parse(text).some((e: any) => e.agent?.id === "main" && String(e.agent.name).includes("‹redacted"))).toBe(true); // the cut to 40 may drop the closing mark
   expect(text).not.toContain("q7x2");
   expect(text).not.toContain("kr-o");
   expect(text).not.toContain("kr-tab");
