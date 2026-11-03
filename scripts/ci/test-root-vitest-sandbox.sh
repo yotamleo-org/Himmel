@@ -53,7 +53,9 @@ done
 # The quoted specifier on any non-comment line: catches a multiline import, a bare or dynamic
 # import, require() and `export ... from`, which a one-line import regex misses.
 names_vitest_config() {
-  sed -E 's://.*$::; /^[[:space:]]*(\/\*|\*)/d' "$1" | grep -Eq "['\"]vitest/config['\"]"
+  local hit
+  hit="$(sed -E 's://.*$::; /^[[:space:]]*(\/\*|\*)/d' "$1" | grep -E "['\"]vitest/config['\"]")"
+  [ -n "$hit" ]
 }
 if names_vitest_config "$root_cfg"; then
   fail "root vitest.config.ts names 'vitest/config' (unresolvable from the root: a plain-object config is required)"
