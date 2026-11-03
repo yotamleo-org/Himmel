@@ -51,7 +51,7 @@
 #                    (excluding output) were served from cache vs. paid fresh.
 #                    Distinct from floor-share, which measures how much of
 #                    cache-read is the fixed per-call floor re-warming.
-#   cost-eq          input*W_INPUT + cache-read*W_CACHE_READ +
+#   cost-eq          input*W_INPUT + cache-read*W_CACHE_READ (per model) +
 #                    cache-create*W_CACHE_CREATE + out*W_OUTPUT - the
 #                    price-weighted token-equivalent total.
 #   floor-share      first-turn * calls / cache-read * 100 - the fraction of
@@ -151,7 +151,7 @@ SUMMARY=$(jq -nr '
   def num(x): (x // 0);
   reduce inputs as $r (
     {calls: 0, ctx: 0, first: 0, out: 0, comp: 0, seen: {}, tooled: {},
-     cr: 0, cc: 0, inp: 0, rewarmSum: 0, rewarmN: 0, afterComp: false};
+     cr: 0, cc: 0, inp: 0, rewarmSum: 0, rewarmN: 0, afterComp: false, pm: {}};
     if ($r.type == "system" and $r.subtype == "compact_boundary") then
       .comp += 1 | .afterComp = true
     elif ($r.type == "assistant" and (($r.message.id // "") != "")) then
@@ -165,6 +165,8 @@ SUMMARY=$(jq -nr '
           | (num($r.message.usage.cache_read_input_tokens)) as $crv
           | (num($r.message.usage.cache_creation_input_tokens)) as $ccv
           | ($i + $crv + $ccv) as $c
+          | ($r.message.model // "") as $m
+          | .pm[$m] = [((.pm[$m][0] // 0) + $crv), ((.pm[$m][1] // 0) + 1)]
           | .calls += 1
           | .ctx += $c
           | .inp += $i
@@ -176,7 +178,8 @@ SUMMARY=$(jq -nr '
         end
     else . end
   )
-  | [.calls, .ctx, .first, .out, .comp, (.tooled | length), .cr, .cc, .inp, .rewarmSum, .rewarmN] | @tsv
+  | [.calls, .ctx, .first, .out, .comp, (.tooled | length), .cr, .cc, .inp, .rewarmSum, .rewarmN,
+     ([.pm | to_entries[] | "\(.key):\(.value[0]):\(.value[1])"] | join(","))] | @tsv
 ' "$TRANSCRIPT") || { echo "worker-burn: cannot parse transcript: $TRANSCRIPT" >&2; exit 2; }
 
 CALLS=$(printf '%s' "$SUMMARY" | cut -f1)
@@ -190,6 +193,7 @@ CC=$(printf '%s' "$SUMMARY" | cut -f8)
 INP=$(printf '%s' "$SUMMARY" | cut -f9)
 REWARM_SUM=$(printf '%s' "$SUMMARY" | cut -f10)
 REWARM_N=$(printf '%s' "$SUMMARY" | cut -f11)
+PER_MODEL=$(printf '%s' "$SUMMARY" | cut -f12)
 
 if [ "${CALLS:-0}" -eq 0 ]; then
     echo "worker-burn: no assistant calls in $TRANSCRIPT (the arm never ran)" >&2
@@ -206,9 +210,24 @@ kf() { awk -v n="$1" 'BEGIN { printf (n >= 1000 ? "%.1fk" : "%.0f"), (n >= 1000 
 # default path (RAW=0) delegates to the same formatter as before.
 kr() { if [ "$RAW" -eq 1 ]; then awk -v n="$1" 'BEGIN { printf "%.0f", n }'; else "$2" "$1"; fi; }
 
-COST_EQ=$(awk -v i="$INP" -v cr="$CR" -v cc="$CC" -v o="$OUT" \
-    -v wi="$WORKER_SESSION_BURN_W_INPUT" -v wcr="$WORKER_SESSION_BURN_W_CACHE_READ" -v wcc="$WORKER_SESSION_BURN_W_CACHE_CREATE" -v wo="$WORKER_SESSION_BURN_W_OUTPUT" \
-    'BEGIN { printf "%.10g", i*wi + cr*wcr + cc*wcc + o*wo }')
+# Cache reads are priced per model (cache-read-weights.tsv): CR_PRICED is the weighted read total,
+# PRICE_MODEL the model with the most reads, UNKNOWN_CALLS the calls whose model has no table row
+# (priced at the 0.1 default).
+CR_PRICED=0; UNKNOWN_CALLS=0; PRICE_MODEL=unknown; TOP_CR=-1
+OLD_IFS="$IFS"; IFS=,
+for ent in $PER_MODEL; do
+    IFS="$OLD_IFS"
+    m=${ent%%:*}; rest=${ent#*:}; mcr=${rest%%:*}; mcalls=${rest#*:}
+    mw=$(burn_cache_read_weight "$m") || UNKNOWN_CALLS=$((UNKNOWN_CALLS + mcalls))
+    CR_PRICED=$(awk -v a="$CR_PRICED" -v n="$mcr" -v w="$mw" 'BEGIN { printf "%.10g", a + n*w }')
+    if [ "$mcr" -gt "$TOP_CR" ]; then TOP_CR="$mcr"; PRICE_MODEL="${m:-unknown}"; fi
+    IFS=,
+done
+IFS="$OLD_IFS"
+CR_WEIGHT=$(awk -v p="$CR_PRICED" -v cr="$CR" -v d="$WORKER_SESSION_BURN_W_CACHE_READ" 'BEGIN { printf "%.4g", (cr > 0 ? p / cr : d) }')
+COST_EQ=$(awk -v i="$INP" -v crp="$CR_PRICED" -v cc="$CC" -v o="$OUT" \
+    -v wi="$WORKER_SESSION_BURN_W_INPUT" -v wcc="$WORKER_SESSION_BURN_W_CACHE_CREATE" -v wo="$WORKER_SESSION_BURN_W_OUTPUT" \
+    'BEGIN { printf "%.10g", i*wi + crp + cc*wcc + o*wo }')
 FLOOR_SHARE=$(awk -v first="$FIRST" -v calls="$CALLS" -v cr="$CR" \
     'BEGIN { printf "%.1f", (cr > 0 ? first * calls / cr * 100 : 0) }')
 CACHE_HEALTH=$(awk -v cr="$CR" -v inp="$INP" \
@@ -216,6 +235,7 @@ CACHE_HEALTH=$(awk -v cr="$CR" -v inp="$INP" \
 COMPACTION_REWARM=$(awk -v n="$REWARM_N" -v s="$REWARM_SUM" -v comp="$COMP" \
     'BEGIN { printf "%.10g", (n > 0 ? comp * (s / n) : 0) }')
 
-printf 'worker-burn %s: calls=%s avg-ctx=%s first-turn=%s out=%s compactions=%s text-only=%s cache-read=%s cache-create=%s input=%s cache-health=%s%% cost-eq=%s floor-share=%s%% compaction-rewarm=%s%s\n' \
+printf 'worker-burn %s: calls=%s avg-ctx=%s first-turn=%s out=%s compactions=%s text-only=%s cache-read=%s cache-create=%s input=%s cache-health=%s%% cost-eq=%s floor-share=%s%% compaction-rewarm=%s price-model=%s cr-weight=%s unknown-model-calls=%s%s\n' \
     "$(basename "$TRANSCRIPT")" "$CALLS" "$(k "$AVG")" "$(k "$FIRST")" "$(kr "$OUT" k)" "$COMP" "$TEXT_ONLY" \
-    "$(kr "$CR" kf)" "$(kr "$CC" kf)" "$(kr "$INP" kf)" "$CACHE_HEALTH" "$(kf "$COST_EQ")" "$FLOOR_SHARE" "$(kf "$COMPACTION_REWARM")" "$PROFILE_FIELD"
+    "$(kr "$CR" kf)" "$(kr "$CC" kf)" "$(kr "$INP" kf)" "$CACHE_HEALTH" "$(if [ "$RAW" -eq 1 ]; then printf '%s' "$COST_EQ"; else kf "$COST_EQ"; fi)" "$FLOOR_SHARE" "$(kf "$COMPACTION_REWARM")" \
+    "$PRICE_MODEL" "$CR_WEIGHT" "$UNKNOWN_CALLS" "$PROFILE_FIELD"

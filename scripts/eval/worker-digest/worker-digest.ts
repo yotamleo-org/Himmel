@@ -20,6 +20,7 @@ import { mergeJournalFiles, sessionFiles } from "../../config-ui/agui/journal-me
 import { resolveJournal } from "../../config-ui/agui/sse.ts";
 import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
 import { denyLinesByCall, memberOfGuardClass, readChainLogs } from "./chain-incidents.mjs";
+import { cacheReadWeight } from "../../lib/burn-weights.mjs";
 
 const { spawnSync } = Bun;
 const DIGEST_SCHEMA = 2;
@@ -263,7 +264,7 @@ const agentOf = (a: AgentInfo | undefined): Agent => ({
 });
 
 // What the session spent before its first edit. Usage rows are weighted input + cache_creation + output
-// at 1 and cache_read at 0.1 (the cost-reduction method), one row per message id (a streamed message repeats its
+// at 1 and cache_read at its per-model weight (cache-read-weights.tsv), one row per message id (a streamed message repeats its
 // usage on every content-block line, the last one wins). The window ends at the main agent's first Edit, Write,
 // NotebookEdit or `git commit` tool call and includes the message that issued it. Subagent turns before the cut are
 // summed apart (sub_tokens), never into tokens. A compacted session is read whole: sessionFiles merges every segment
@@ -276,9 +277,9 @@ const isSearch = (n: string) => n === "Grep" || n === "Glob" || n === "WebSearch
 const BASH_READ = /^(?:cat|head|tail|sed|less|bat)\b/;
 const BASH_SEARCH = /^(?:grep|egrep|rg|ugrep|find|ls|tree)\b|^git\s+(?:grep|ls-files)\b|^bash\s+scripts\/graphify\/(?:leg|worker)-graph\.sh\b/;
 function exploration(lines: string[]) {
-  const w = (u: Record<string, unknown>) => ["input_tokens", "cache_creation_input_tokens", "output_tokens"]
+  const w = (u: Record<string, unknown>, model: unknown) => ["input_tokens", "cache_creation_input_tokens", "output_tokens"]
     .reduce((s, k) => s + (typeof u[k] === "number" ? u[k] as number : 0), 0)
-    + 0.1 * (typeof u.cache_read_input_tokens === "number" ? u.cache_read_input_tokens : 0);
+    + cacheReadWeight(model) * (typeof u.cache_read_input_tokens === "number" ? u.cache_read_input_tokens : 0);
   const main = new Map<string, number>(), sub = new Map<string, number>(), calls = new Set<string>();
   let cut: string | null = null, cutId = "", reads = 0, searches = 0;
   for (const l of lines) {
@@ -288,7 +289,7 @@ function exploration(lines: string[]) {
     const side = r.isSidechain === true, id = String(r.message.id ?? r.uuid ?? "");
     if (cut !== null && (side || id !== cutId)) continue;
     const u = r.message.usage;
-    if (u && typeof u === "object") (side ? sub : main).set(id, w(u));
+    if (u && typeof u === "object") (side ? sub : main).set(id, w(u, r.message.model));
     if (side || cut !== null || !Array.isArray(r.message.content)) continue;
     for (const c of r.message.content) {
       if (c?.type !== "tool_use" || typeof c.name !== "string") continue;

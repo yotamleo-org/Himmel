@@ -10,8 +10,8 @@ and an action class (what its tool calls did), then costs it.
                             [--match REGEX] [--last N] [--json]
 
 Cost per API request (deduped by message id; assistant entries are split per
-content block with the same usage) = input + cache_creation + 0.1 * cache_read
-tokens ("input-token equivalent"). Raw cache_read is printed beside it. A
+content block with the same usage) = input + cache_creation + W_model * cache_read
+tokens ("input-token equivalent", cache_read priced per model, scripts/lanes/lib/cache-read-weights.tsv). Raw cache_read is printed beside it. A
 request with no tool call is think-only.
 
 Sessions are the transcripts whose custom-title ends in --suffix. --match
@@ -30,6 +30,9 @@ import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from burn_weights import cache_read_weight
 
 SCRIPTS = [
     "wrap-merged.sh", "verdict-go.sh", "relay-batch.sh", "succession-tracker.sh",
@@ -141,7 +144,7 @@ def parse(path):
                 u = m.get("usage", {})
                 r = reqs[mid] = {
                     "trigger": trig, "cmds": [],
-                    "eq": u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0) + 0.1 * u.get("cache_read_input_tokens", 0),
+                    "eq": u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0) + cache_read_weight(m.get("model")) * u.get("cache_read_input_tokens", 0),
                     "read": u.get("cache_read_input_tokens", 0),
                 }
                 order.append(mid)

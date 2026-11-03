@@ -385,7 +385,7 @@ sed 's#"sessionId"#"cwd": "'"$SR"'/w", "sessionId"#; s#8575c1a5-0000-4000-8000-0
 mklayout() {
   mkdir -p "$1/scripts/eval/worker-digest" "$1/.claude/logs" || return 1
   cp "$HERE/worker-digest.ts" "$HERE/chain-incidents.mjs" "$1/scripts/eval/worker-digest/" || return 1
-  ln -s "$HERE/../../config-ui" "$1/scripts/config-ui" && ln -s "$HERE/../../hooks" "$1/scripts/hooks" && ln -s "$HERE/../../observability" "$1/scripts/observability" && ln -s "$HERE/../lane-quality" "$1/scripts/eval/lane-quality"
+  ln -s "$HERE/../../config-ui" "$1/scripts/config-ui" && ln -s "$HERE/../../hooks" "$1/scripts/hooks" && ln -s "$HERE/../../observability" "$1/scripts/observability" && ln -s "$HERE/../lane-quality" "$1/scripts/eval/lane-quality" && ln -s "$HERE/../../lib" "$1/scripts/lib" && ln -s "$HERE/../../lanes" "$1/scripts/lanes"
 }
 # chainrow <call id> <member> <deny line>: one production hook-runs row.
 chainrow() { jq -cn --arg c "$1" --arg m "$2" --arg l "$3" '{ts:"2026-11-02T12:00:09.000Z",v:1,origin:"production",event:"PreToolUse",session:"sess-8575",callId:$c,tool:"Bash",invocation:"000000000c01",exit:2,elapsed:20,members:[{member:$m,occurrence:1,outcome:"deny",reason:"RULE",elapsed:11,denyLine:$l}]}'; }

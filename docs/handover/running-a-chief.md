@@ -828,6 +828,8 @@ tick reads `nonces=UNCONFIRMED:<worker>` until each worker's own `SUCCESSION
 accepted` bullet names the successor (`RELAYED:<worker>`, a relay that kept the
 worker's token, is valid) or the worker has rotated.
 
+Relay cost eval (`scripts/eval/relay-cost/README.md`, a partial proof on synthetic fixtures): a scripted delivery (`relay-batch.sh` for a succession relay, your own verbatim send for a GO or ruling) was no worse than a one-shot Sonnet call at delivering the text and needs no relay model call; it is not shown cheaper end to end, and the real bus send is not yet exercised. A file path costs the receiver an extra Read turn (about 16,700 cost-eq), so it is not the cheaper handoff.
+
 **Release your lock only after the successor reports `LIVE`.** It sends that
 once your `RELAYED` line arrives (naming the workers you could not relay, and
 why: ACTION ZERO step 9), and it is the only evidence the arm actually fired

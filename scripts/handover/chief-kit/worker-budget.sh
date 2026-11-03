@@ -4,9 +4,13 @@
 # cost-eq is the worker-burn.sh figure (the line worker-pr-open.sh puts in the PR body),
 # read from the worker's own transcript while it runs. SOFT: send the chief a
 # FINDING quoting the line. HARD: WRAP with a resume brief. The defaults are the
-# p80 and about the p92 of the cost-eq of the last 50 merged worker PRs
-# (p50 1485k, p80 2990k, p95 7545k); WORKER_COST_SOFT_K / WORKER_COST_HARD_K override
-# them, in thousands of cost-eq.
+# soft 2000k and hard 4700k (operator decision 470, "new price, 2000/4700"): the earlier
+# flat-price 3000k / 7000k scaled by the 0.678 per-model to flat price ratio of the whole
+# worker ledger. That ratio is an aggregate approximation: one worker's model mix can still
+# cross a limit it did not before (60M Haiku cache reads cost 6000k at both prices). On that
+# ledger (n=3294, 2026-11-03) today's rows hit 926 soft and 114 hard; these limits hit 957 and
+# 118. They are not percentiles of the new prices. WORKER_COST_SOFT_K / WORKER_COST_HARD_K override them,
+# in thousands of cost-eq.
 #
 # usage: worker-budget.sh [--title <worker name> | --from-line "<worker-burn.sh output>"]
 # --from-line judges a worker-burn line the caller already has (tick.sh --burn), with no transcript scan.
@@ -21,8 +25,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SOFT_DEFAULT=3000
-HARD_DEFAULT=7000
+SOFT_DEFAULT=2000
+HARD_DEFAULT=4700
 
 num_env() { # <name> <default> - a bad value warns and falls back, never disables the budget
   local v="${!1:-$2}"
@@ -38,7 +42,7 @@ num_env() { # <name> <default> - a bad value warns and falls back, never disable
 SOFT="$(num_env WORKER_COST_SOFT_K "$SOFT_DEFAULT")"
 HARD="$(num_env WORKER_COST_HARD_K "$HARD_DEFAULT")"
 if [ "$HARD" -le "$SOFT" ]; then  # a hard ceiling at or under the soft one would skip the FINDING step
-  printf 'worker-budget: ignoring WORKER_COST_HARD_K=%s - hard must exceed soft=%s; using the defaults %s/%s\n' "$HARD" "$SOFT" "$SOFT_DEFAULT" "$HARD_DEFAULT" >&2
+  printf 'worker-budget: soft=%sk and hard=%sk conflict (hard must exceed soft; check WORKER_COST_SOFT_K and WORKER_COST_HARD_K) - both fell back to the defaults %s/%s\n' "$SOFT" "$HARD" "$SOFT_DEFAULT" "$HARD_DEFAULT" >&2
   SOFT="$SOFT_DEFAULT"; HARD="$HARD_DEFAULT"
 fi
 

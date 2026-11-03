@@ -11,7 +11,7 @@ first chief began). Only token counts and tool names are read.
 Chiefs are the sessions whose `agent-name` matches --name-re (default -roadmap-(console|chief)$),
 ordered by first record; each consecutive pair is one handover P -> S. A turn is a de-duplicated
 assistant message id. Price table (input-equivalent tokens, mirrors scripts/lanes/lib/burn-weights.sh,
-same WORKER_SESSION_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, output 5.
+same WORKER_SESSION_BURN_W_* overrides): input 1, cache_read per model (cache-read-weights.tsv), cache_creation 1.25, output 5.
 
 Pieces per handover (turns/cost):
   prep   P's turns from its last `chief.sh next` call up to S's first turn
@@ -49,8 +49,10 @@ import re
 import sys
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from burn_weights import cache_read_weight
+
 W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", "1"))
-W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", "0.1"))
 W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", "1.25"))
 W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", "5"))
 DEFAULT_DIR = "~/.claude/projects/-home-overlord-Documents-github-himmel"
@@ -132,7 +134,7 @@ def load(path):
             if not u or not msg.get("id"):
                 continue
             text = turn_text(msg)
-            cost = (u.get("input_tokens", 0) * W_IN + u.get("cache_read_input_tokens", 0) * W_CR
+            cost = (u.get("input_tokens", 0) * W_IN + u.get("cache_read_input_tokens", 0) * cache_read_weight(msg.get("model"))
                     + u.get("cache_creation_input_tokens", 0) * W_CC + u.get("output_tokens", 0) * W_OUT)
             # one message id spans several records (one per content block): keep the first ts, the
             # last usage, and every flag any block raised

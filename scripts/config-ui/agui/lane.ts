@@ -6,6 +6,7 @@
 // NO-GO rate, red-before-green, LIVE→READY, denials). Read-only: nothing here writes.
 import type { View } from "../agui-web/src/reducer.ts";
 import { readCodexBankCache } from "../../lanes/bank-status-core.mjs";
+import { cacheReadWeight, DEFAULT_CACHE_READ } from "../../lib/burn-weights.mjs";
 import { SUITE } from "./journal-mapper.ts";
 
 export type Lane = "native" | "claudex" | "openrouter" | "cloud";
@@ -54,7 +55,8 @@ export function codexStartOf(launch: Record<string, string>): { pct: number; at:
 }
 
 // scripts/lanes/lib/burn-weights.sh's defaults: the price-weighted token-equivalent worker-burn.sh reports.
-export const W = { input: 1, cacheRead: 0.1, cacheCreate: 1.25, output: 5 };
+// cacheRead is the unknown-model default; costRowOf prices a known model from cache-read-weights.tsv.
+export const W = { input: 1, cacheRead: DEFAULT_CACHE_READ, cacheCreate: 1.25, output: 5 };
 type Ids = { session: string; worker: string; ticket: string | null; model: string | null };
 export type Tally = { calls: number; input: number; output: number; cacheRead: number; cacheCreate: number };
 export type CostRow = Ids & {
@@ -70,7 +72,7 @@ export function costRowOf(a: Ids & { lane: Lane; tally: Tally; codexStart: { pct
   const counts = { calls: t.calls, input: t.input, output: t.output, cache_read: t.cacheRead, cache_create: t.cacheCreate };
   const none = { codex_used_pct_start: null, codex_used_pct_end: null, codex_used_pct_delta: null };
   if (lane === "native" || lane === "cloud") {
-    const cost_eq = Math.round(t.input * W.input + t.cacheRead * W.cacheRead + t.cacheCreate * W.cacheCreate + t.output * W.output);
+    const cost_eq = Math.round(t.input * W.input + t.cacheRead * cacheReadWeight(model) + t.cacheCreate * W.cacheCreate + t.output * W.output);
     return { ...base, priced_by: "claude-weights", ...counts, cost_eq, ...none };
   }
   if (lane === "openrouter") return { ...base, priced_by: "unpriced", ...counts, cost_eq: null, ...none };

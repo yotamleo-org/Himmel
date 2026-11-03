@@ -811,6 +811,7 @@ scripts/lanes/test-worker-cost-report.sh	local	behaviour suite, 0 catches in the
 scripts/lanes/test-worker-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-profile-settings.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/test-plugin-profiles-automode.sh	pr	guard
+scripts/lanes/tests/test-cache-read-weights.sh	local	behaviour suite, new (HIMMEL-7126)
 scripts/lanes/tests/test-worker-burn.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lanes/tests/test-stop-worker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/lib/test-api-credit-state.sh	pr	trust-path
@@ -1224,3 +1225,4 @@ scripts/handover/chief-kit/test-series-next.sh	local	behaviour suite, new for HI
 scripts/handover/chief-kit/test-holds.sh	pr	trust-path
 scripts/handover/chief-kit/test-series-publish.sh	local	behaviour suite, new for HIMMEL-8603 (series-publish.sh, slice S2c)
 scripts/jira/test-empty-sector-check.sh	local	behaviour suite, new for HIMMEL-8659 (empty-sector-check.sh)
+scripts/eval/relay-cost/test-relay-cost.sh	local	behaviour suite, new for HIMMEL-6992 (relay-cost eval checker, pricing, runner)

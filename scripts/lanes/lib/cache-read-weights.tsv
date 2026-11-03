@@ -1,0 +1,9 @@
+# cache-read-weights.tsv - cache-read price per model, in input-token equivalents.
+# model-id prefix<TAB>weight; first match wins. A model with no row reads at the default
+# (WORKER_SESSION_BURN_W_CACHE_READ in lib/burn-weights.sh, 0.1) and is counted as unknown.
+# Readers: lib/burn-weights.sh, scripts/lib/burn_weights.py, scripts/lib/burn-weights.mjs.
+# Price source: docs/internals/prompt-cache.md (API pricing page).
+claude-opus-5-5	0.05
+claude-sonnet-5-5	0.05
+claude-fable-5-1	0.025
+claude-haiku-5-5	0.1
