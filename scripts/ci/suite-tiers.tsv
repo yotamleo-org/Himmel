@@ -222,6 +222,7 @@ scripts/cr/test-cr-round-metrics.sh	local	behaviour suite, 0 catches in the 400-
 scripts/cr/test-cr-scores.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-cr-thread-recorder.sh	pr	trust-path
 scripts/cr/test-cr-tune.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/cr/test-critic-context-pack.sh	pr	trust-path
 scripts/cr/test-critic-first-pass-claude.sh	pr	trust-path
 scripts/cr/test-critic-first-pass.sh	pr	trust-path
 scripts/cr/test-critic-panel-fallback.sh	pr	trust-path

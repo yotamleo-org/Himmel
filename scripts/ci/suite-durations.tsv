@@ -1193,6 +1193,7 @@ scripts/ci/test-suite-tiers.sh	13
 scripts/ci/test-tier-replay.sh	169
 scripts/claudex/test-probe-chunk.sh	3
 scripts/cr/test-class-recurrence.sh	3
+scripts/cr/test-critic-context-pack.sh	2
 scripts/cr/test-critic-first-pass-claude.sh	46
 scripts/cr/test-escape-classes.sh	0
 scripts/cr/test-mark-deferred-escape.sh	0
