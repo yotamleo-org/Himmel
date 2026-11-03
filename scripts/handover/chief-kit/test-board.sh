@@ -698,6 +698,38 @@ contains 'a failing release state call still renders the board (rc 0)' "rc=$rc" 
 contains 'a failing release state call reads unavailable' "$(cat "$W/r-fail.html")" 'data-rm-release="R1" data-unavailable="1"'
 lacks 'no release: line renders no release manager panel' "$(cat "$W/nov-board.html")" 'data-rm-release'
 
+# --- the version repair's held classes: release/<R>/repair-held.json beside the chief doc's bucket,
+# one row per class, no panel at zero classes, an answered class gone once the file is rewritten.
+mkdir -p "$B/release/R1"
+cat > "$B/release/R1/repair-held.json" <<'EOF'
+{"release":"R1","held":3,"unfiled":0,"held_signature":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+ "classes":[{"class":"hand","question":"Who owns these hand edits?","keys":["HIMMEL-9301","HIMMEL-9302"],"commands":[]},
+            {"class":"unbound","question":"Keep, add or move?","keys":["HIMMEL-9303"],"commands":[]}]}
+EOF
+RM_STATE="$W/rm-state.json" runr --out "$W/rp-board.html" >/dev/null; rc=$?
+rphtml="$(cat "$W/rp-board.html" 2>/dev/null)"
+contains 'one row per class (rc 0)' "rc=$rc" 'rc=0'
+contains 'one row per class: hand with its two keys' "$rphtml" 'data-repair-class="hand" data-keys="2"'
+contains 'one row per class: unbound with its one key' "$rphtml" 'data-repair-class="unbound" data-keys="1"'
+contains 'one row per class: the question is shown' "$rphtml" 'Who owns these hand edits?'
+same 'one row per class: exactly two rows' "$(printf '%s' "$rphtml" | grep -o 'data-repair-class=' | wc -l | tr -d ' ')" 2
+RM_STATE="$W/rm-state.json" runr --out "$W/rp-chg.html" --changed >/dev/null
+printf '%s\n' '{"release":"R1","held":2,"unfiled":0,"held_signature":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","classes":[{"class":"unbound","question":"Keep, add or move?","keys":["HIMMEL-9303"],"commands":[]},{"class":"hand","question":"Who owns these hand edits?","keys":["HIMMEL-9399"],"commands":[]}]}' > "$B/release/R1/repair-held.json"
+same 'the panel is display only: a held-file change leaves --changed UNCHANGED' "$(RM_STATE="$W/rm-state.json" runr --out "$W/rp-chg.html" --changed)" "UNCHANGED $W/rp-chg.html"
+printf '%s\n' '{"release":"R1","held":1,"unfiled":0,"held_signature":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","classes":[{"class":"unbound","question":"Keep, add or move?","keys":["HIMMEL-9303"],"commands":[]}]}' > "$B/release/R1/repair-held.json"
+RM_STATE="$W/rm-state.json" runr --out "$W/rp-answered.html" >/dev/null
+lacks 'answered class disappears' "$(cat "$W/rp-answered.html")" 'data-repair-class="hand"'
+contains 'answered class disappears (the unanswered one stays)' "$(cat "$W/rp-answered.html")" 'data-repair-class="unbound"'
+printf '%s\n' '{"release":"R1","held":0,"unfiled":0,"held_signature":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","classes":[]}' > "$B/release/R1/repair-held.json"
+RM_STATE="$W/rm-state.json" runr --out "$W/rp-zero.html" >/dev/null; rc=$?
+lacks 'zero classes hide the panel' "$(cat "$W/rp-zero.html")" 'data-repair-release'
+contains 'zero classes hide the panel (the board still renders, rc 0)' "rc=$rc" 'rc=0'
+printf 'not json\n' > "$B/release/R1/repair-held.json"
+RM_STATE="$W/rm-state.json" runr --out "$W/rp-bad.html" >/dev/null; rc=$?
+contains 'an unreadable held file is never fatal (rc 0)' "rc=$rc" 'rc=0'
+lacks 'an unreadable held file renders no repair panel' "$(cat "$W/rp-bad.html")" 'data-repair-release'
+rm -rf "$B/release"
+
 # --- with no --workers, the worker set is the chief's fleet manifest
 # (<chief doc stem>.fleet.json, read through fleet-manifest.sh list -- the same
 # validation tick --workers-from uses); no manifest keeps the RESUME-doc scan; an
