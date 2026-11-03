@@ -329,11 +329,16 @@ done <<<"$keys"
 # PR number with the merge rows of the log, which are read once; a row that carries no PR number
 # covers every PR of its key. A slice that reaches MNR_LIMIT is one HEALTH row: its older merges are
 # not checked. One row per open ticket (not Done, not an Epic), naming its newest PR with no merge row.
-# Cost per run: two gh lists (about 4 s per 700 PRs), one pass over the log, and one Jira get per
-# distinct key with an unrecorded PR, newest first, until the read budget is spent: MNR_BUDGET seconds
-# (default 40) or the time left in the pass less 25 s for the classes after this one, whichever is
-# less. A Done ticket costs a read, so once the budget is spent open tickets may be among the PRs left
-# unread; they are one HEALTH row naming the first keys. A cut-off pass loses every row.
+# Cost per run: two gh lists (about 5 s per 700 PRs), one pass over the log, and for each distinct key
+# with an unrecorded PR its status and type from the local Jira mirror (a file read, outside the budget).
+# A measured station run spent the whole 40 s budget on 108 live `jira get` reads at 0.34 s
+# each (node start), leaving 85 PRs unread however often it ran. Only a key the mirror lacks is read live,
+# newest first, until the read budget is spent: MNR_BUDGET seconds (default 40) or the time left in the
+# pass less 25 s for the classes after this one, whichever is less. A Done ticket costs a live read, so
+# once the budget is spent open tickets may be among the PRs left unread; they are one HEALTH row naming
+# the first keys. A cut-off pass loses every row.
+# ponytail: the mirror is as fresh as the last focus refresh, which mirrors just before this pass; upgrade
+# path = compare the file's updated field with the PR's merge time before trusting a Done or open status.
 MNR_LIMIT="${TICKET_STATUS_DRIFT_MNR_LIMIT:-1000}"
 case "$MNR_LIMIT" in ''|*[!0-9]*) MNR_LIMIT=1000 ;; esac
 mday() { date -u -d "$1 days ago" +%Y-%m-%d 2>/dev/null || date -u -v-"$1"d +%Y-%m-%d 2>/dev/null; } # swallow-ok: no date is the unreadable case the merged list check turns into a HEALTH row
@@ -359,6 +364,19 @@ elif [ -r "$LOG" ]; then
 fi
 MNR_BUDGET="${TICKET_STATUS_DRIFT_MNR_BUDGET:-40}"
 case "$MNR_BUDGET" in ''|*[!0-9]*) MNR_BUDGET=40 ;; esac
+MIRROR_DIR="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}}"
+# mirror_read <KEY> - TS_J_STATUS and TS_J_TYPE from the key's file in the local Jira mirror (the frontmatter only);
+# rc 1 = no file, or either field missing, so the caller reads the ticket live.
+mirror_read() {
+    local row
+    TS_J_STATUS="" TS_J_TYPE=""
+    [ -r "$MIRROR_DIR/$1.md" ] || return 1
+    # swallow-ok: an unreadable or unparsable file is rc 1 below and the caller reads the ticket live
+    row=$(awk -F'"' '/^---$/ { if (++n == 2) exit; next } n == 1 && /^type: "/ { t = $2 } n == 1 && /^status: "/ { s = $2 } END { if (s != "" && t != "") print t "\t" s }' "$MIRROR_DIR/$1.md" 2>/dev/null)
+    [ -n "$row" ] || return 1
+    TS_J_TYPE=${row%%$'\t'*}
+    TS_J_STATUS=${row#*$'\t'}
+}
 case "$nmp" in
     ''|*[!0-9]*) add HEALTH - "gh: the merged-PR list is unreadable" gh "gh auth status; then rerun this check" ;;
     *)
@@ -379,13 +397,15 @@ case "$nmp" in
             k=$(ticket_key_from_title "$title") || continue
             case " $mseen " in *" $k "*) continue ;; esac
             case $'\n'"$mrows"$'\n' in *$'\n'"$k"$'\t'"$n"$'\n'*|*$'\n'"$k"$'\t\n'*) continue ;; esac
-            if [ $((SECONDS - mstart)) -ge "$mlimit" ]; then
+            mfile=0
+            mirror_read "$k" && mfile=1
+            if [ "$mfile" = 0 ] && [ $((SECONDS - mstart)) -ge "$mlimit" ]; then
                 mskipped=$((mskipped + 1))
                 case " $mskeys " in *" $k "*) ;; *) if [ "$mnskeys" -lt 10 ]; then mskeys="$mskeys $k"; mnskeys=$((mnskeys + 1)); fi ;; esac
                 continue
             fi
             mseen="$mseen $k"
-            if ts_read_jira "$k"; then
+            if [ "$mfile" = 1 ] || ts_read_jira "$k"; then
                 [ "$TS_J_TYPE" != Epic ] && [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || continue
                 add MERGED-NO-ROW "$k" "PR #$n merged with no merge row and the ticket is $TS_J_STATUS: close the ticket or record the remainder" "merge-on-green.sh" "jira transition $k Done (work finished), or record the remainder as a partial"
             else

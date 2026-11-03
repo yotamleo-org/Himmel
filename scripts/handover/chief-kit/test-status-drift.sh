@@ -34,6 +34,8 @@ contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lac
 export FX="$tmp/fx" STUB_LOG="$tmp/log"
 export TICKET_STATUS_STATE_DIR="$tmp/state"
 export JIRA_PROJECT_KEY=HIMMEL
+# the merged-PR check reads ticket status from this mirror before it spends a live read: keep it off the real one
+export TICK_TRACKER_MIRROR_DIR="$tmp/mirror"
 mkdir -p "$tmp/bin"
 
 cat >"$tmp/jira-stub.sh" <<'EOS'
@@ -723,6 +725,45 @@ check "3b (HIMMEL-8834): the default read budget covers three 1-second reads" "$
 reset "To Do"; mergedpr "$three"; printf '1\n' > "$FX/get.sleep"
 TICKET_STATUS_DRIFT_MNR_BUDGET=abc drift
 check "3b (HIMMEL-8834): an invalid read budget falls back to the default" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 3/0
+
+# A live read costs ~0.34 s of node start each, so one run's budget left PRs unread however often it ran.
+# The status and type of a merged PR's ticket come from the local Jira mirror first (a file read, no budget); only a
+# ticket the mirror lacks is read live, inside the budget, and a PR left unread stays one HEALTH row.
+mirrorrow() { # <KEY> <status> [type] - one mirror file, frontmatter only
+    mkdir -p "$TICK_TRACKER_MIRROR_DIR"
+    printf -- '---\nkey: "%s"\ntype: "%s"\nstatus: "%s"\n---\n\n# %s: x\n' "$1" "${3:-Task}" "$2" "$1" > "$TICK_TRACKER_MIRROR_DIR/$1.md"
+}
+mirrorall() { # <status> [type] - a mirror file for each key of $manypr
+    local i=0
+    while [ "$i" -lt 42 ]; do mirrorrow "HIMMEL-$((9100 + i))" "$1" "${2:-Task}"; i=$((i + 1)); done
+}
+mgets() { grep -c '^get HIMMEL-91' "$STUB_LOG" || true; }
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"; mirrorall "To Do"
+TICKET_STATUS_DRIFT_MNR_BUDGET=0 drift
+check "3b (HIMMEL-9003): with a mirror, a spent read budget still checks all 42 PRs and reports none" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 42/0
+check "3b (HIMMEL-9003): and no merged key is read live" "$(mgets)" 0
+TICKET_STATUS_DRIFT_MNR_BUDGET=0 drift
+check "3b (HIMMEL-9003): a repeated run gives the same 42 rows and no HEALTH row" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 42/0
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"; mirrorall "Done"
+TICKET_STATUS_DRIFT_MNR_BUDGET=0 drift
+check "3b (HIMMEL-9003): the mirror's status wins: Done in the mirror is no row, whatever a live read says" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 0/0
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"; mirrorall "To Do" Epic
+TICKET_STATUS_DRIFT_MNR_BUDGET=0 drift
+check "3b (HIMMEL-9003): an Epic in the mirror is no row" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 0/0
+# control: a ticket the mirror lacks is read live inside the budget, and past it the PR stays in the HEALTH row
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"; mirrorall "To Do"; rm -f "$TICK_TRACKER_MIRROR_DIR/HIMMEL-9100.md" "$TICK_TRACKER_MIRROR_DIR/HIMMEL-9101.md"
+drift
+check "3b (HIMMEL-9003): a ticket missing from the mirror is read live within the budget" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)/$(mgets)" 42/0/2
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"; mirrorall "To Do"; rm -f "$TICK_TRACKER_MIRROR_DIR/HIMMEL-9100.md" "$TICK_TRACKER_MIRROR_DIR/HIMMEL-9101.md"
+TICKET_STATUS_DRIFT_MNR_BUDGET=0 drift
+check "3b (HIMMEL-9003): and past the budget it is still one HEALTH row while PRs remain unchecked" "$(dcount MERGED-NO-ROW)/$(dcount HEALTH)" 40/1
+contains "3b (HIMMEL-9003): that row counts the two unread PRs and names their keys" "$(drows HEALTH)" "merged-no-row: 2 merged PRs not checked"
+contains "3b (HIMMEL-9003): and the keys" "$(drows HEALTH)" "first keys: HIMMEL-9101 HIMMEL-9100"
+# a mirror file that cannot be parsed falls back to the live read
+reset "To Do"; mergedpr "$(jq -nc "$manypr")"; mirrorall "To Do"; printf 'garbage\n' > "$TICK_TRACKER_MIRROR_DIR/HIMMEL-9100.md"
+drift
+check "3b (HIMMEL-9003): a mirror file without status or type is read live" "$(dcount MERGED-NO-ROW)/$(mgets)" 42/1
+rm -rf "$TICK_TRACKER_MIRROR_DIR"
 
 reset "Done"; i=0; while [ "$i" -lt 21 ]; do logrow merge "HIMMEL-$((7000 + i))" moved 7 yes; i=$((i + 1)); done
 drift
