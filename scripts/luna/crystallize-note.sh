@@ -269,6 +269,7 @@ launch_subscription() {
     cd "$NOTE_DIR" 2>/dev/null || exit 0
     local out
     out="$(mktemp "${TMPDIR:-/tmp}/crystallize-cli.XXXXXX" 2>/dev/null)" || out=/dev/null
+    # launch-profile-ok: a throwaway one-shot note edit, tools Read,Edit only, no plugin session needed
     CRYSTALLIZE_NOTE="$NOTE_PATH" CRYSTALLIZE_TRANSCRIPT="$TRANSCRIPT_PATH" \
         env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
         "$LAUNCHER" -p "$PROMPT" --model "$MODEL" --output-format json \
