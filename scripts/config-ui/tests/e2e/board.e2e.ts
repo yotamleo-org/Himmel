@@ -162,13 +162,47 @@ test("a drop on a column its event moves (In review, CI, Done) writes nothing an
   await go(page, "#/board");
   await page.locator("#rm-lanes details.rm-done summary").click();
   const sent = await noWrite(page);
-  for (const col of ["rev", "ci", "done"]) {
+  for (const [col, name] of [["rev", "In Review"], ["ci", "IN CI"], ["done", "Done"]]) {
     await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator(`[data-rm-drop="${col}"]`));
-    await expect(page.locator("#main .alert", { hasText: "Nothing was written" })).toBeVisible();
+    await expect(page.locator("#main .alert", { hasText: `${name} is moved by its event` })).toBeVisible(); // the note names this drop's column, so the last drop's note cannot satisfy it
   }
   expect(sent).toEqual([]); // no POST to /api/roadmap/write went out
   await page.locator(".rm-card", { hasText: "Second chain step" }).dragTo(page.locator('[data-rm-drop="prog"]')); // a column the operator owns still writes
   await expect.poll(() => sent.length).toBe(1);
+});
+
+// The board under an open drawer is inert, so a person cannot reach it; this drives the events straight at the card, which is what the hold in
+// writeRoadmap guards against. Deleting the `|| roadmapUi.drawer` hold makes both attempts post (confirmed RED).
+test("with the drawer open a Shift+Arrow key and a drag write nothing", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  const sent = await noWrite(page);
+  await openCard(page, "Second chain step");
+  await expect(page.locator("aside.drawer")).toBeVisible();
+  await page.evaluate(() => {
+    const card = document.querySelector('.rm-card[data-rm-open="2"]') as HTMLElement;
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true, bubbles: true }));
+    card.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    (document.querySelector('[data-rm-drop="wont"]') as HTMLElement).dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+  });
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300))); // a write that was not held would have gone out by now
+  expect(sent).toEqual([]);
+  await page.keyboard.press("Escape"); // closed, the same card writes again
+  await page.locator(".rm-card", { hasText: "Second chain step" }).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => sent.length).toBe(1);
+});
+
+test("a Done card's drawer closes back onto its card, inside the Done lane that was folded", async ({ page }) => {
+  await open(page);
+  await go(page, "#/board");
+  await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeHidden(); // Done is folded
+  await page.locator("#rm-lanes details.rm-done summary").click();
+  await openCard(page, "First chain step");
+  await expect(page.locator("aside.drawer")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("aside.drawer")).toHaveCount(0);
+  await expect(page.locator(".rm-card", { hasText: "First chain step" })).toBeFocused();
 });
 
 test("the Chain filter narrows the lanes to that chain's tickets", async ({ page }) => {
@@ -325,5 +359,11 @@ test("two projects: both projects' cards show with their keys, the Project filte
   await page.locator(".rm-card", { hasText: "Salus intake form" }).dragTo(page.locator('[data-rm-drop="prog"]'));
   await expect.poll(() => sent.length).toBe(1);
   expect(JSON.parse(sent[0])).toMatchObject({ key: "SALUS-2", status: "prog" });
+  // a keyboard move posts the SALUS key too, not a HIMMEL default
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 300))); // the first write's redraw lands first: a key during a write in flight is dropped
+  await page.locator(".rm-card", { hasText: "Salus intake form" }).focus();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(() => sent.length).toBe(2);
+  expect(JSON.parse(sent[1])).toMatchObject({ key: "SALUS-2", status: "prog" });
   expect(errs).toEqual([]);
 });

@@ -6,7 +6,8 @@ import { esc, pageHeader, pg } from "./render.js";
 
 const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], ["ci", "CI"], ["done", "Done"], ["wont", "Won't"]];
 const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
-const jira = (argv) => "jira " + argv.map((a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`)).join(" ");
+const shq = (a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`); // a word safe to paste: $, backtick, quote and backslash escaped
+const jira = (argv) => "jira " + argv.map(shq).join(" ");
 
 // A version's running state: with several projects each runs its own (the server marks it on the version); with one it is the page's cur and next.
 const runState = (d, v, i) => (d.projects && d.projects.length > 1 ? v.run || "" : i === d.cur ? "running" : i === d.next ? "next" : "");
@@ -84,7 +85,8 @@ function boardHtml(d, tickets, showVersion, w, ch, v, o = {}) {
     const jn = o.scope ? o.scope.filter((t) => t.b === b).length : null;
     const jira = jn === null ? "" : `<span class="ro rm-jira">${jn === n ? `Jira ${jn} matches` : `Jira ${jn} · ${n} shown`}</span>`;
     const body = cards.map((t) => cardHtml(t, d, showVersion, w, ch, v)).join(""), drop = w ? ` data-rm-drop="${b}"` : "";
-    if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
+    const drawerHere = o.drawer && cards.some((t) => t.k === o.drawer.k && (t.project || "") === (o.drawer.project || "")); // closing the drawer focuses its card: it must not sit in a closed <details>
+    if (o.foldDone && b === "done") return `<details class="rm-col rm-done"${o.find || drawerHere ? " open" : ""}${drop} data-rm-col="done"><summary><b>${esc(l)}</b> <span class="ro rm-n">${n}</span> ${jira}</summary>${body}</details>`;
     return `<div class="rm-col"${drop}${o.scope ? ` data-rm-col="${b}"` : ""}><h4>${esc(l)} <span class="ro rm-n">${n}</span></h4>${jira}${body}</div>`;
   }).join("")}</div>`;
 }
@@ -305,7 +307,7 @@ function lanesHtml(d, ui, sel, ch) {
   const what = sel >= 0 ? `${d.versions[sel].n}: ${shown.length} tickets` : `every version: ${shown.length} tickets`;
   const sub = gh ? `${what}. GitHub issues are read-only here: change them on GitHub.${d.truncated ? " Only the newest 1000 issues are read, so older ones are missing." : ""}`
     : `${what}.${writeOn ? " Drag a card to another column to change its status." : ""}`;
-  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase() }) : `<div class="empty">No tickets match.</div>`);
+  return section("rm-lanes", "Roadmap", sub, shown.length ? boardHtml(d, shown, sel < 0, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer }) : `<div class="empty">No tickets match.</div>`);
 }
 
 // The No version tab: the tickets with no fixVersion, in the same columns. They are not in the default read; ui.nv is GET /api/roadmap?nv=1,
@@ -317,7 +319,7 @@ function nvTab(data, ui, ch) {
   const writeOn = !!ui.writes && nv.source !== "github";
   const scope = nv.tickets.filter((t) => t.noVersion), shown = scope.filter(passOf(nv, ui, ch, data));
   return section("rm-nv", "No version", `${shown.length} ticket${shown.length === 1 ? "" : "s"}. ${sub}${writeOn ? " Drag a card to another column to change its status." : ""}`,
-    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase() }) : `<div class="empty">No tickets match.</div>`);
+    shown.length ? boardHtml(nv, shown, false, writeOn, ch, ui.v, { scope, foldDone: true, find: (ui.find || "").trim().toLowerCase(), drawer: ui.drawer }) : `<div class="empty">No tickets match.</div>`);
 }
 
 function chainsTab(ui, ch) {
@@ -370,7 +372,9 @@ function tidyTab(d, ui, sel, dr) {
 // (null while loading, { events } when read, { error } when the read failed, so a failed read never looks like "no moves").
 const STATUS = { todo: "To Do", prog: "In Progress", rev: "In Review", ci: "IN CI", done: "Done", wont: "wont do" };
 const OPERATOR_OWNED = ["todo", "prog", "wont"]; // the columns a drop or a key may write; In review, CI and Done are moved by their event
-const cliLine = (t, verb, ...a) => (t.backend === "local" ? `tracker_${verb} ${[idOf(t), ...a].map((x) => (/^[\w.,:@/=-]+$/.test(x) ? x : `"${x}"`)).join(" ")}` : jira([verb, idOf(t), ...a]));
+// The call a write makes. A local card runs the tracker seam's own verbs, as local-tracker.ts passes them (a move carries --allow-back).
+const moveLine = (t, status) => (t.backend === "local" ? ["tracker_transition", idOf(t), status, "--allow-back"].map(shq).join(" ") : jira(["transition", idOf(t), status]));
+const sectorLine = (t, sector) => (t.backend === "local" ? ["tracker_sector", idOf(t), sector].map(shq).join(" ") : jira(["edit", idOf(t), "--sector", sector]));
 const when = (at) => String(at).slice(0, 16).replace("T", " ");
 
 function historyHtml(t, h) {
@@ -386,8 +390,9 @@ function actionsHtml(d, t) {
   if (t.backend === "github") return `<p class="ro">GitHub issues are read-only here: change them on GitHub.</p>`;
   const sector = d.themes[t.theme] && d.themes[t.theme] !== NO_SECTOR ? d.themes[t.theme] : "<Sector>";
   const row = (what, line) => `<tr><td>${what}</td><td><code>${esc(line)}</code> <button class="btn" data-act="copy" data-cmd="${esc(line)}">copy</button></td></tr>`;
-  const moves = OPERATOR_OWNED.filter((b) => b !== t.b).map((b) => row(`move to ${esc(STATUS[b])}`, cliLine(t, "transition", STATUS[b])));
-  return `<table class="data rm-acts"><thead><tr><th>action</th><th>runs</th></tr></thead><tbody>${moves.join("")}${row("Sector", cliLine(t, "edit", "--sector", sector))}`
+  // the tracker seam refuses "wont do" (exit 2), so a local card is not offered it
+  const moves = OPERATOR_OWNED.filter((b) => b !== t.b && !(t.backend === "local" && b === "wont")).map((b) => row(`move to ${esc(STATUS[b])}`, moveLine(t, STATUS[b])));
+  return `<table class="data rm-acts"><thead><tr><th>action</th><th>runs</th></tr></thead><tbody>${moves.join("")}${row("Sector", sectorLine(t, sector))}`
     + `<tr><td>In review, CI, Done</td><td>moved by their event (a PR opening, CI, the merge): a drop or a key there writes nothing</td></tr></tbody></table>`;
 }
 

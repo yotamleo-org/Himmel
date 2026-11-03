@@ -674,6 +674,8 @@ function closeDrawer() {
   roadmapUi.drawer = null;
   paint();
   const c = document.querySelector(cardSel(dr.k, dr.project));
+  const lane = c && c.closest("details"); // a Done card lives in the folded Done lane, which the repaint just folded again: a card in a closed <details> cannot take focus
+  if (lane) lane.open = true;
   if (c) c.focus();
 }
 // Shift+Left / Shift+Right on a focused card moves it to the next column its operator may write (To do, In progress, Won't), through the same write as a drop.
