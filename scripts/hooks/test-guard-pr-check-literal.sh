@@ -3054,6 +3054,62 @@ run "6548 command env NAME='x; literal' prog from a wrong root -> deny" 2 \
 run "6548 env NAME=1 then the literal from a wrong root -> deny" 2 \
     "$(payload "env NAME=1 bash scripts/cr/pr-check-context.sh" "$OTHER")" "$HR"
 
+# ---- 9020: a kit script name that sits in quoted data is not a run ----------
+# A bare kit script name (no scripts/ path) inside a quoted string, an assignment
+# value or an echo/printf operand is text: nothing on the line runs it. The
+# prose below carries "command" and "time" (words the presence scan reads as
+# wrappers) and glob characters, which kept the line in the text scan, where the
+# bare name read as an unresolvable run. Synthetic fixtures, every cwd.
+# shellcheck disable=SC2016 # literal command payloads, never expanded
+{
+for cw in "$WT" "$OTHER"; do
+    run "9020 scalar quoted name, printf reads it -> allow" 0 \
+        "$(payload 'X="Poll chief-wait.sh each time, pool[1]=3"; printf '"'%s'"' "$X"' "$cw")" "$HR"
+    run "9020 array element quoted name, then gh and printf -> allow" 0 \
+        "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr view 12 --json state; printf "%s\n" done' "$cw")" "$HR"
+    run "9020 echo string naming go.sh appended to a file -> allow" 0 \
+        "$(payload 'F=/tmp/d9020.md; echo "- 21:00 go.sh --trust-reviewed written, no command ran?" >> "$F"' "$cw")" "$HR"
+done
+# Controls: all refused on main and after. Only a non-himmel cwd refuses a
+# well-formed relative run (a himmel worktree root is the lane that may run it).
+run "9020 control: bash on a relative cr script from a non-himmel cwd -> deny" 2 \
+    "$(payload 'bash scripts/cr/write-verdicts.sh --branch x' "$OTHER")" "$HR"
+run "9020 control: a relative kit script as argv[0] from a non-himmel cwd -> deny" 2 \
+    "$(payload 'scripts/handover/chief-kit/go.sh --trust-reviewed' "$OTHER")" "$HR"
+run "9020 control: bash on a relative kit script operand -> deny" 2 \
+    "$(payload 'bash scripts/handover/chief-kit/chief-wait.sh pool' "$OTHER")" "$HR"
+run "9020 control: a relative kit run inside \$(...) -> deny" 2 \
+    "$(payload 'echo $(bash scripts/cr/write-verdicts.sh)' "$OTHER")" "$HR"
+run "9020 control: an unterminated quote stays refused -> deny" 2 \
+    "$(payload 'echo "unterminated chief-wait.sh [x] time' "$OTHER")" "$HR"
+run "9020 control: an unterminated quote hiding a relative run -> deny" 2 \
+    "$(payload 'echo "unterminated chief-wait.sh ; bash scripts/cr/write-verdicts.sh' "$OTHER")" "$HR"
+run "9020 control: bare kit name executed by bash -> deny" 2 \
+    "$(payload 'bash chief-wait.sh pool [x] time' "$OTHER")" "$HR"
+run "9020 control: bare kit name as argv[0] -> deny" 2 \
+    "$(payload './go.sh --x [x] time' "$OTHER")" "$HR"
+run "9020 control: written text naming a relative cr path -> deny" 2 \
+    "$(payload 'echo "bash scripts/cr/write-verdicts.sh" >> "$F"' "$OTHER")" "$HR"
+run "9020 control: a glob write target into scripts/cr -> deny" 2 \
+    "$(payload 'echo x > scripts/cr/*.sh' "$OTHER")" "$HR"
+run "9020 control: a glob-spelled write target into scripts/cr -> deny" 2 \
+    "$(payload 'echo x > scripts/c?/write-verdicts.sh' "$OTHER")" "$HR"
+run "9020 control: a variable write target naming a gate -> deny" 2 \
+    "$(payload 'F=scripts/cr/write-verdicts.sh; echo x >> "$F"' "$OTHER")" "$HR"
+run "9020 control: an echo with an expanded operand written to a file, bare name in the text -> deny" 2 \
+    "$(payload 'F=/tmp/d9020.md; echo "go.sh $D, each time [x]" >> "$F"' "$OTHER")" "$HR"
+run "9020 control: gh pr checkout beside a quoted bare name -> deny" 2 \
+    "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr checkout 12; printf "%s\n" done' "$OTHER")" "$HR"
+run "9020 control: gh api beside a quoted bare name -> deny" 2 \
+    "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh api repos/x/y; printf "%s\n" done' "$OTHER")" "$HR"
+run "9020 control: gh with an expanded argument beside a quoted bare name -> deny" 2 \
+    "$(payload 'R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr view $N; printf "%s\n" done' "$OTHER")" "$HR"
+run "9020 control: a non-digit subscript assignment beside a bare name -> deny" 2 \
+    "$(payload 'a[$(bash chief-wait.sh)]=1; echo "go.sh, no command?"' "$OTHER")" "$HR"
+run "9020 control: bash -c hiding a relative run -> deny" 2 \
+    "$(payload 'bash -c "bash scripts/cr/write-verdicts.sh"' "$OTHER")" "$HR"
+}
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "all guard-pr-check-literal cases passed"

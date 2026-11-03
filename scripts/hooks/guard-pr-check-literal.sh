@@ -2734,13 +2734,22 @@ fi
 # a plain word. Each keeps the text scan. The bullet writer is trusted only by the anchor's path, or
 # by the cwd-relative path with no cd and the cwd's copy byte-equal to the
 # anchor's: any other copy may run its arguments.
+# A bare kit script name in a quoted value, an echo/printf operand or a
+# read-only gh argument is data, not a run. So the model also accepts a plain
+# digit subscript (R[1]=), gh pr|issue|run view|list|status|checks|diff with
+# literal words, and, when the text names no guarded path (mentions=0), a
+# write redirect from an echo/printf of literal words to a literal path or a
+# quoted "$NAME" that spells no cr/ or handover/. A cat, grep or other writer,
+# a gh write, a non-digit subscript and any path-ish mention keep the text scan.
 # shellcheck disable=SC2016 # a jq program, never expanded by bash
 AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
+  def safew: .w != null and (((.w | lit) and ((.w.v | test("[cC][rR]/|[hH]andover/")) | not)) or (.w.t == "dyn" and (.w.raw | test("^\"\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?\"$"))));
+  def emitter: (.prog == "echo" or .prog == "printf") and all(.argv[]; lit);
   def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
   def ok: .opaque == null and ((.via // []) | length) == 0
     and ((((.assigns // []) | length) == 0) or (.prog == null and all(.assigns[]; danger | not)))
-    and all(.redirs[]; (outw | not) or (.w != null and (.w | lit) and .w.v == "/dev/null"))
+    and (. as $c | all(.redirs[]; (outw | not) or (.w != null and (.w | lit) and .w.v == "/dev/null") or ($ment == 0 and safew and ($c | emitter))))
     and (if .prog == null then true
          elif ((.argv[0] // {t: "dyn"}) | lit and (.v | contains("/") | not)) | not then false
          elif .prog == "bash" or .prog == "sh" then
@@ -2749,6 +2758,10 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
          elif .prog == "printf" then
              (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not)
                and ($a.v | test("%[^a-zA-Z%]*[hlLqjzt]*n") | not))
+         elif .prog == "gh" then
+             (.argv | length) >= 3 and all(.argv[]; lit)
+             and (.argv[1].v as $s | any("pr", "issue", "run"; . == $s))
+             and (.argv[2].v as $s | any("view", "list", "status", "checks", "diff"; . == $s))
          elif .prog == "sort" then
              all(.argv[1:][]; lit and ((.v | test("^-([bdfgiMnrRsuVz]+|k[0-9.,a-zA-Z]+|t.)$")) or (.v | startswith("-") | not)))
          elif .prog == "uniq" then
@@ -2765,7 +2778,7 @@ elif any(.[]; (.prog == "bash" or .prog == "sh") and .argv[1].v == $rel) then
     (if any(.[]; .prog == "cd") then "legacy" else "data-rel" end)
 else "data" end'
 ast_data_only() {
-    local lib pos verdict here j
+    local lib pos verdict here j jj
     local rel=scripts/handover/chief-kit/append-results.sh anchor=${HIMMEL_REPO:-}
     anchor=${anchor%/}
     [ -n "$anchor" ] || return 1
@@ -2782,13 +2795,17 @@ ast_data_only() {
     # shellcheck disable=SC2016 # literal pattern, never expanded
     case "$j" in *'${!'*) return 1 ;; esac
     [[ "$j" =~ \$\{[^}:]+:[^-=+?] ]] && return 1
-    [[ "$j" =~ [[:alnum:]_]\[.*\]\+?= ]] && return 1
+    # A NAME[sub]= subscript is arithmetic bash evaluates; only a plain digit
+    # subscript (R[1]=, pool[1]=3 - also inside a quoted value) is known inert.
+    jj=$j
+    while [[ "$jj" =~ [[:alnum:]_]\[[0-9]+\]\+?= ]]; do jj=${jj/"${BASH_REMATCH[0]}"/}; done
+    [[ "$jj" =~ [[:alnum:]_]\[.*\]\+?= ]] && return 1
     [[ "$j" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+([[:alnum:]_]*[[:upper:]]|(path|cdpath|fpath|manpath|module_path)([^[:alnum:]_]|$)) ]] && return 1
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
     # shellcheck source=../lib/bash-ast.sh
     { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || return 1
     pos=$(bash_ast_positions "$cmd" 2>/dev/null) || return 1 # swallow-ok: any failure keeps the text scan
-    verdict=$(printf '%s' "$pos" | jq -r --arg ar "$anchor/$rel" --arg rel "$rel" "$AST_JQ" 2>/dev/null) || return 1 # swallow-ok: a jq failure keeps the text scan
+    verdict=$(printf '%s' "$pos" | jq -r --arg ar "$anchor/$rel" --arg rel "$rel" --argjson ment "$mentions" "$AST_JQ" 2>/dev/null) || return 1 # swallow-ok: a jq failure keeps the text scan
     case "$verdict" in
     data) return 0 ;;
     data-rel)
