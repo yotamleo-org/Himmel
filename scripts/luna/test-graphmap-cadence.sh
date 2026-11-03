@@ -1778,8 +1778,13 @@ out=$(run_c24)
 assert_contains "C24 warns naming the missing Luna task after re-arm then deletion" "WARN C24-cadence-registry" "$out"
 assert_contains "the C24 warning names HIMMEL-GraphMapAst-Luna" "HIMMEL-GraphMapAst-Luna" "$out"
 
-# the station's real state: the Luna rows were removed by hand, the registry still expects them
+# the station's real state: every Luna row was removed by hand, the registry still expects them
+grep -vE '# HIMMEL-Graph(Map|MapAst|Semantic)-Luna$' "$LSTATE/crontab" > "$LSTATE/crontab.new" && mv "$LSTATE/crontab.new" "$LSTATE/crontab"
+# shellcheck disable=SC2086
+if rows_absent $LUNA_ROWS && rows_present $HIM_ROWS; then pass "fixture: no Luna row left, himmel rows armed"; else fail "fixture is not the rows-gone state" "$(cat "$LSTATE/crontab")"; fi
+assert_registry "fixture: the registry still expects the Luna names" '.expected_tasks | index("HIMMEL-GraphMap-Luna") != null'
 rc=0; out=$(run_luna disarm --luna-only 2>&1) || rc=$?
+assert_contains "disarm --luna-only with no Luna row armed is the no-op path" "no-op" "$out"
 assert_rc "disarm --luna-only with rows already gone exits 0" 0 "$rc"
 assert_registry "disarm --luna-only unregisters Luna names whose rows were already gone" \
     'all(.expected_tasks[]; . != "HIMMEL-GraphMap-Luna" and . != "HIMMEL-GraphMapAst-Luna")'
