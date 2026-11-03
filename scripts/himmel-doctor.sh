@@ -3750,7 +3750,11 @@ check_c75_keyring() {
     names=$("$hs" names --class secret 2>/dev/null) || names_failed=1
     names=$(printf '%s\n' "$names" | tr '\n' ' ')
     # shellcheck disable=SC2086 # one word per key name
-    status_out="$("$hs" status --no-dotenv $names 2>/dev/null)"
+    if ! status_out="$("$hs" status --no-dotenv $names 2>/dev/null)"; then
+        emit WARN C75-keyring "himmel-secrets status failed, so the keyring state and the layer serving each secret are unknown" \
+            "run: bash $hs status --no-dotenv"
+        return 0
+    fi
     state="$(printf '%s\n' "$status_out" | sed -n 's/^keyring: //p')"
     case "$state" in
         unlocked) emit OK C75-keyring "the OS keyring is unlocked and serves himmel secrets" ;;
@@ -3781,11 +3785,11 @@ check_c75_keyring() {
         esac
     done
     if [ "$names_failed" -eq 1 ]; then
-        emit INFO C75-secrets "the secret key list could not be read from himmel-secrets names; secrets not checked" \
+        emit INFO C75-secrets "the secret key list could not be read from himmel-secrets names (its manifest is missing or damaged, or the resolver failed); secrets not checked" \
             "run: bash $hs names --class secret"
     elif [ -n "$dot" ] && [ "$state" = unlocked ]; then
         emit WARN C75-secrets "secrets still served from .env: $dot ($kr from the keyring, $other from the environment, $unset_n unset)" \
-            "the operator moves them at their own prompt: bash $hs import-env $envfile, then bash $hs status"
+            "the operator moves them at their own prompt: bash $SELF_DIR/setup/migrate-env.sh --env $envfile -y, then bash $hs status"
     elif [ -n "$dot" ]; then
         emit INFO C75-secrets "secrets served from .env: $dot ($unset_n unset); no unlocked keyring to move them to"
     else

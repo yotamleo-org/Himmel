@@ -7773,7 +7773,7 @@ c75_reset
 printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
 printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\nJIRA_EMAIL=planted@example.com\n' > "$c75_t/env"
 out="$(c75_run)"
-if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'WARN C75-secrets' && grepq "$out" -F 'TELEGRAM_BOT_TOKEN' && grepq "$out" -F 'import-env' \
+if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'WARN C75-secrets' && grepq "$out" -F 'TELEGRAM_BOT_TOKEN' && grepq "$out" -F 'migrate-env.sh --env' && ! grepq "$out" -F 'import-env' \
     && ! grepq "$out" -F 'JIRA_EMAIL' && ! grepq "$out" -F 'planted'; then pass "C75 secret in .env with an unlocked keyring -> WARN naming TELEGRAM_BOT_TOKEN only, no values"; else fail "C75 dotenv secret -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C75-keyring: every secret from the keyring, no .env -> OK =="
 c75_reset
@@ -7851,6 +7851,13 @@ c75_reset
 out="$(env PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off bash "$c75_x/himmel-doctor.sh" --root "$REPO_ROOT" --no-color --only C75 2>&1)"
 if grepq "$out" -F 'INFO C75-secrets' && grepq "$out" -F 'could not be read' && ! grepq "$out" -F 'OK   C75-secrets'; then pass "C75 names failure -> INFO, not OK C75-secrets"; else fail "C75 names failure -> $(printf '%s' "$out" | head -4)"; fi
 if grepq "$out" -F 'INFO C75-config-keys' && ! grepq "$out" -F 'OK   C75-config-keys'; then pass "C75 names failure -> the paired-setting check reports it did not run"; else fail "C75 names failure, config keys -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'its manifest is missing or damaged'; then pass "C75 names failure -> the INFO says a damaged manifest is one cause"; else fail "C75 names failure, wording -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75: a failing himmel-secrets status is not read as no keyring and no secret =="
+# shellcheck disable=SC2016 # the wrapper expands its own variables
+printf '#!/usr/bin/env bash\ncase "$1" in status) exit 1 ;; esac\nexec bash "${BASH_SOURCE[0]}.real" "$@"\n' > "$c75_x/lib/himmel-secrets"
+c75_reset
+out="$(env PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off bash "$c75_x/himmel-doctor.sh" --root "$REPO_ROOT" --no-color --only C75 2>&1)"
+if grepq "$out" -F 'WARN C75-keyring' && grepq "$out" -F 'himmel-secrets status failed' && ! grepq "$out" -F 'OK   C75-secrets' && ! grepq "$out" -F 'OK   C75-config-keys'; then pass "C75 status failure -> WARN, and no OK row built on it"; else fail "C75 status failure -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c75_t"
 
 # --- C76-duplicate-plugin-installs: one plugin installed more than 3 times ---

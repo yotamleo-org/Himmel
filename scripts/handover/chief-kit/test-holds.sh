@@ -178,6 +178,31 @@ D12="$(mkdoc HIMMEL-9421-N1-case.md '- 10:00 WRAPPED — resume doc HIMMEL-9421-
 put_row scripts/c12.sh HIMMEL-9421 alpha "$D12"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c12.sh
 same "I3 ... unless that WRAPPED bullet hands off to the RESUME doc (the successor lives)" "$RC" 1
+# a newer WRAPPED doc proves nothing about a RESUME doc it has no link to (the 24 h residual the chief accepted)
+D13R="$(mkdoc HIMMEL-9422-N1b-RESUME.md '# resume doc')"
+touch -d '1 hour ago' "$D13R"
+D13="$(mkdoc HIMMEL-9422-N2-case.md '- 10:00 WRAPPED — PR merged')"
+put_row scripts/c13.sh HIMMEL-9422 alpha "$D13"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c13.sh
+same "I3 a different-leg newer WRAPPED doc with no mention of the RESUME doc holds" "$RC" 1
+D14R="$(mkdoc HIMMEL-9423-N1b-RESUME.md '# resume doc')"
+touch -d '1 hour ago' "$D14R"
+D14="$(mkdoc HIMMEL-9423-N2-case.md $'> **Prior art:** HIMMEL-9423-N1b-RESUME.md\n- 10:00 WRAPPED — PR merged')"
+put_row scripts/c14.sh HIMMEL-9423 alpha "$D14"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c14.sh
+same "I3 a different-leg WRAPPED doc naming the RESUME doc outside its last WRAPPED bullet consumes it" "$RC" 0
+D15R="$(mkdoc HIMMEL-9424-case-RESUME.md '# resume doc')"
+touch -d '1 hour ago' "$D15R"
+D15="$(mkdoc HIMMEL-9424-case.md '- 10:00 WRAPPED — PR merged')"
+put_row scripts/c15.sh HIMMEL-9424 alpha "$D15"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c15.sh
+same "I3 a WRAPPED doc named as the RESUME doc minus -RESUME consumes it" "$RC" 0
+D16R="$(mkdoc HIMMEL-9425-N7f-RESUME.md '# resume doc')"
+touch -d '1 hour ago' "$D16R"
+D16="$(mkdoc HIMMEL-9425-N7c-case.md $'- 09:00 LIVE — HIMMEL-9425-N7f-RESUME.md\n- 10:00 WRAPPED — handed to HIMMEL-9425-N7f-RESUME.md')"
+put_row scripts/c16.sh HIMMEL-9425 alpha "$D16"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c16.sh
+same "I3 a same-leg WRAPPED doc whose last bullet names the RESUME doc still holds, a mention elsewhere too" "$RC" 1
 
 mkdoc HIMMEL-9118-N1-RESUME.md '# resume doc' > /dev/null
 touch -d '25 hours ago' "$HANDOVER_DIR/u/r/HIMMEL-9118-N1-RESUME.md"
@@ -248,7 +273,7 @@ p2=$!
 wait "$p1"; r1=$?
 wait "$p2"; r2=$?
 same "I11 2 takers of one dead row: one winner" "$(printf '%s%s' "$(( r1 < r2 ? r1 : r2 ))" "$(( r1 > r2 ? r1 : r2 ))")" 01
-same "I11 2 takers leave one row, no leftover temp or moved file" "$(find "$(slugdir)" -name "*c21.sh*" -o -name '%00*' | wc -l | tr -d ' ')" 1
+same "I11 2 takers leave one row, no leftover temp or moved file" "$(find "$(slugdir)" \( -name "*c21.sh*" -o -name '%00*' \) | wc -l | tr -d ' ')" 1
 
 D22="$(mkdoc HIMMEL-9136-case.md)"
 lock_hold "$D22"
@@ -684,6 +709,24 @@ print(m.repoint_row(os.path.dirname('$rp4'), os.path.basename('$rp4'), 'HIMMEL-9
 "
 same "T2 repoint: a failed write reports a fault" "$OUT" fault
 same "T2 repoint: ... and the original row is still there" "$(cat "$rp4" 2>/dev/null)" "$rp4_before"
+
+# the race: a contender claims while repoint has the row renamed aside. It must not take the absent path.
+put_row scripts/t2rp5.sh HIMMEL-9410 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9410-old.md"
+rp5="$(rowf scripts/t2rp5.sh)"
+run python3 -I -c "
+import importlib.util, os
+s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
+m.LOCK_WAIT = 0.2
+real, seen = os.rename, []
+def racing(a, b):
+    real(a, b)
+    seen.append(m.claim_one('$R', None, 'scripts/t2rp5.sh', '$K2', 'beta', 'b.md', 'manual', ''))
+os.rename = racing
+print(m.repoint_row(os.path.dirname('$rp5'), os.path.basename('$rp5'), 'HIMMEL-9410', 'newlabel', 'new.md'), seen[0])
+"
+same "T2 repoint: a contender during the rename gets a fault, not the row" "$OUT" "repointed fault"
+same "T2 repoint: ... and the key keeps its hold, repointed" "$(cut -f1,2 "$rp5" | tr '\t' ' ')" "HIMMEL-9410 newlabel"
+same "T2 repoint: the lock leaves no file in the directory" "$(find "$(dirname "$rp5")" -name '%00*' | wc -l | tr -d ' ')" 0
 
 DT4="$(mkdoc HIMMEL-9406-case.md '> **Writes:** scripts/t2fr.sh scripts/t2h1.sh scripts/t2h2.sh')"
 put_row scripts/t2h1.sh HIMMEL-9407 holder1 "$(mkdoc HIMMEL-9407-case.md)"
