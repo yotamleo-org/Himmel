@@ -169,13 +169,13 @@ cmd_disarm() {
     # A disarm before the first arm still counts: the marker stops the update step from arming it.
     if [ -z "$(cron_entry)" ]; then
         mkdir -p "$RUNNER_DIR" || return 4
-        : > "$RUNNER_DIR/.operator-disarmed"
+        : > "$RUNNER_DIR/.operator-disarmed" || { echo "ERR morning-report-cadence: cannot write the disarm marker in $RUNNER_DIR" >&2; return 4; }
         echo "morning-report-cadence: nothing armed; it stays off until you run arm"
         return 0
     fi
     { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
     rm -f "$RUNNER_DIR/morning-report-cadence.sh"
-    : > "$RUNNER_DIR/.operator-disarmed"
+    : > "$RUNNER_DIR/.operator-disarmed" || { echo "ERR morning-report-cadence: disarmed, but cannot write the marker in $RUNNER_DIR; an update may re-arm it" >&2; return 4; }
     echo "morning-report-cadence: disarmed"
 }
 

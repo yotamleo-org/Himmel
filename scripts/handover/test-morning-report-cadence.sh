@@ -78,4 +78,9 @@ bash "$CAD" disarm >/dev/null; st="$(bash "$CAD" arm --auto)"
 grep -q 'operator disarmed' <<< "$st" && pass "a disarm before any arm keeps arm --auto off" || fail "a disarm before any arm keeps arm --auto off"
 check "no entry after a disarm on a never-armed machine" 0 "$(n_entries)"
 
+rm -f "$W/runner/.operator-disarmed"; chmod 500 "$W/runner"
+bash "$CAD" disarm >/dev/null 2>&1; rc=$?
+chmod 700 "$W/runner"
+if [ "$(id -u)" -eq 0 ]; then pass "unwritable marker dir (skipped as root)"; else check "disarm fails loud (rc 4) when the marker cannot be written" 4 "$rc"; fi
+
 [ "$FAILED" -eq 0 ] && echo "ALL PASS" || { echo "$FAILED FAILED"; exit 1; }
