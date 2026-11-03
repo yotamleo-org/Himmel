@@ -875,12 +875,14 @@ has "R19 the dry run on an emptied .env reports a scrub is owed" "scrub only: 1 
 apply_tty y
 if [ "$rc" = 0 ]; then pass "R19 the retry on an emptied .env exits 0"; else fail "R19 the retry on an emptied .env exited $rc: $out"; fi
 lacks "R19 the retry on an emptied .env scrubbed the backup" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.5")"
+has "R19 the scrub kept the config line of that backup" "HIMMEL_FLEET_CAP=3" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.5")"
 printf 'export BITBUCKET_API_TOKEN=dummy-r19b\n' > "$HOME/.himmel/env-backups/env.20260103T000000Z.6"
 chmod 600 "$HOME/.himmel/env-backups/env.20260103T000000Z.6"
 rm -f "$TMP/st/.env"
 apply_tty y
 if [ "$rc" = 0 ]; then pass "R19 the retry with no .env exits 0"; else fail "R19 the retry with no .env exited $rc: $out"; fi
 lacks "R19 the retry with no .env scrubbed the backup" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.6")"
+if [ -f "$HOME/.himmel/env-backups/env.20260103T000000Z.6" ]; then pass "R19 the scrubbed backup still exists"; else fail "R19 the scrub deleted the backup"; fi
 apply_tty y
 has "R19 a clean station with no .env still says there is nothing to migrate" "nothing to migrate" "$out"
 
@@ -900,6 +902,7 @@ else
     apply_tty y
     if [ "$rc" = 0 ]; then pass "R19c the retry exits 0"; else fail "R19c the retry exited $rc: $out"; fi
     lacks "R19c the retry scrubbed the backup the first run could not" "BITBUCKET_API_TOKEN" "$(cat "$HOME/.himmel/env-backups/env.20260103T000000Z.7")"
+    if [ -f "$HOME/.himmel/env-backups/env.20260103T000000Z.7" ]; then pass "R19c the scrubbed backup still exists"; else fail "R19c the scrub deleted the backup"; fi
 fi
 
 # R20: a blank NAME= line in .env is not a copy of the key, so the only real value in a backup stays.
