@@ -69,12 +69,21 @@ _guard_endpoint_host() {
 # _guard_phi_dir_provable <dir> -> rc 0 iff the presence of a file in <dir> can
 # be proven either way. [ -e ] is also false on EACCES, so a locked dir or a
 # locked parent would otherwise read as "no list here". The nearest existing
-# ancestor must be a directory this process can traverse.
+# ancestor must be a directory this process can traverse. A relative path that
+# runs out of parents ends at the working directory (tested with [ -x . ], since
+# [ -e . ] is itself false when the working directory cannot be searched), and a
+# path whose parent is the root ends at /; a dangling symlink counts as
+# existing, so it stops the walk and then fails the directory test.
 _guard_phi_dir_provable() {
     local d="$1" up
     while [ ! -e "$d" ] && [ ! -L "$d" ]; do
-        up="${d%/*}"
-        { [ -n "$up" ] && [ "$up" != "$d" ]; } || return 0
+        case "$d" in
+            /) return 0 ;;
+            .) [ -x . ]; return ;;
+            */*) up="${d%/*}"; [ -n "$up" ] || up=/ ;;
+            *) up=. ;;
+        esac
+        [ "$up" != "$d" ] || return 0
         d="$up"
     done
     [ -d "$d" ] && [ -x "$d" ]
