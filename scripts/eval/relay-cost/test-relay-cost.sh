@@ -79,6 +79,8 @@ else:
 if os.environ.get("STUB_MODE") == "paraphrase":
     d["message"] = d["message"].replace("the", "a", 1)
 open(os.environ["STUB_LOG"], "a").write(sys.argv[sys.argv.index("--model") + 1] + "\n")
+if os.environ.get("STUB_MODE") == "noresult":
+    print(json.dumps({"type": "system"})); sys.exit(0)
 print(json.dumps({"type": "result", "is_error": False, "total_cost_usd": 0.001, "result": "```json\n" + json.dumps(d) + "\n```",
                   "usage": {"input_tokens": 10, "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 200, "output_tokens": 20}}))
 EOF
@@ -111,6 +113,33 @@ printf '#!/usr/bin/env bash\necho BANK-STALE\n' >"$RELAY_COST_PREFLIGHT"
 : >"$STUB_LOG"
 bash "$RUN" --out "$WORK/o6" --fixtures "$FX" --arms sonnet >/dev/null 2>&1; rc6=$?
 check "a preflight that does not print PROCEED stops before any call (exit 3)" "3 0" "$rc6 $(wc -l <"$STUB_LOG" | tr -d ' ')"
+printf '#!/usr/bin/env bash\necho PROCEED\n' >"$RELAY_COST_PREFLIGHT"
+
+# --- --max-calls spans a resumed output directory, and an attempt that left no result still counts
+bash "$RUN" --out "$WORK/o7" --fixtures "$FX" --arms sonnet --max-calls 4 >/dev/null 2>&1
+: >"$STUB_LOG"
+bash "$RUN" --out "$WORK/o7" --fixtures "$FX" --arms sonnet --max-calls 4 >/dev/null 2>&1; rc7=$?
+check "a resumed run counts the calls already made: cap 4 reached, exit 3, no new call" "3 0" "$rc7 $(wc -l <"$STUB_LOG" | tr -d ' ')"
+mkdir -p "$WORK/o8/sonnet"; printf 'x\nx\nx\nx\n' >"$WORK/o8/calls.log"
+: >"$STUB_LOG"
+bash "$RUN" --out "$WORK/o8" --fixtures "$FX" --arms sonnet --max-calls 4 >/dev/null 2>&1; rc8=$?
+check "four logged attempts with no result row still use the cap: exit 3, no call" "3 0" "$rc8 $(wc -l <"$STUB_LOG" | tr -d ' ')"
+mkdir -p "$WORK/o9/sonnet"; for n in 1 2 3 4; do : >"$WORK/o9/sonnet/f$n.stream.jsonl"; done
+: >"$STUB_LOG"
+bash "$RUN" --out "$WORK/o9" --fixtures "$FX" --arms sonnet --max-calls 4 >/dev/null 2>&1; rc9=$?
+check "four stream files from an earlier run (no log) use the cap: exit 3, no call" "3 0" "$rc9 $(wc -l <"$STUB_LOG" | tr -d ' ')"
+
+# --- an unbilled arm that cannot write its results fails the run
+mkdir -p "$WORK/o10" "$WORK/o11"; : >"$WORK/o10/script"; : >"$WORK/o11/path"
+bash "$RUN" --out "$WORK/o10" --fixtures "$FX" --arms script >/dev/null 2>&1
+check "script arm: an arm directory that is a regular file exits 2" "2" "$?"
+bash "$RUN" --out "$WORK/o11" --fixtures "$FX" --arms path >/dev/null 2>&1
+check "path arm: an arm directory that is a regular file exits 2" "2" "$?"
+
+# --- a stream with no result event: the cost is unknown, not zero
+STUB_MODE=noresult bash "$RUN" --out "$WORK/o12" --fixtures "$FX" --arms sonnet >/dev/null 2>&1
+check "a no-result stream writes null costs into the row" "None None" "$(python3 -I -c 'import json,sys; r = json.load(open(sys.argv[1])); print(r["cost_eq_cold"], r["cost_usd"])' "$WORK/o12/sonnet/go-1.result.json")"
+check "report: an arm with no priced row reads n/a, not 0" "1" "$(python3 -I "$PY" report --runs "$WORK/o12" --fixtures "$FX" | grep -cF '| sonnet | 9 | 0% | n/a | n/a | n/a | n/a | n/a |')"
 
 # --- the path-file branches of the checker
 pto="$(fget go-1 to)"; pexp="$(fget go-1 expected)"
@@ -134,6 +163,12 @@ mkrow "$WORK/rep2/script/go-1.result.json" go-1 1 0 0 0
 rep="$(python3 -I "$PY" report --runs "$WORK/rep" --fixtures "$FX")"
 check "report: the Sonnet row is its own 100%" "1" "$(printf '%s\n' "$rep" | grep -cF '| sonnet | 2 | 100% | 400 | 200 | 0.02000 | 100% | 100% |')"
 check "report: Haiku shows its half pass rate, its costs and 50% warm, 10% USD of Sonnet" "1" "$(printf '%s\n' "$rep" | grep -cF '| haiku | 2 | 50% | 300 | 100 | 0.00200 | 50% | 10% |')"
+mkdir -p "$WORK/rep3/sonnet"
+mkrow "$WORK/rep3/sonnet/go-1.result.json" go-1 1 400 200 0.02
+python3 -I -c 'import json,sys; json.dump({"id": "go-2", "pass": False, "cost_eq_cold": None, "cost_eq_warm": None, "cost_usd": None}, open(sys.argv[1], "w"))' "$WORK/rep3/sonnet/go-2.result.json"
+rep3="$(python3 -I "$PY" report --runs "$WORK/rep3" --fixtures "$FX")"
+check "report: a mixed arm averages the priced rows and marks the figures" "1" "$(printf '%s\n' "$rep3" | grep -cF '| sonnet | 2 | 50% | 400* | 200* | 0.02000* | 100% | 100% |')"
+check "report: the footnote names how many rows had no cost" "1" "$(printf '%s\n' "$rep3" | grep -cF '1 of 2 sonnet rows had no cost')"
 check "report: with no Sonnet arm the percentages read n/a" "1" "$(python3 -I "$PY" report --runs "$WORK/rep2" --fixtures "$FX" | grep -cF '| script | 1 | 100% | 0 | 0 | 0.00000 | n/a | n/a |')"
 
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

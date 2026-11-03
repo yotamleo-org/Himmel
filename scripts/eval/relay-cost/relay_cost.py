@@ -175,7 +175,7 @@ def cmd_price(a):
 
 
 def pct(x, base):
-    return "n/a" if not base else "%d%%" % round(100.0 * x / base)
+    return "n/a" if not base or x is None else "%d%%" % round(100.0 * x / base)
 
 
 def cmd_report(a):
@@ -197,18 +197,31 @@ def cmd_report(a):
         rows = arms[arm]
         n = len(rows)
         passed = sum(1 for r in rows if r["pass"])
-        stat[arm] = {"n": n, "pass": 100.0 * passed / n,
-                     "cold": sum(r.get("cost_eq_cold") or 0 for r in rows) / n,
-                     "warm": sum(r.get("cost_eq_warm") or 0 for r in rows) / n,
-                     "usd": sum(r.get("cost_usd") or 0 for r in rows) / n}
+        # a row with no cost (a stream without a result event) is unknown, not free: average the priced rows only
+        priced = [r for r in rows if r.get("cost_eq_cold") is not None and r.get("cost_eq_warm") is not None and r.get("cost_usd") is not None]
+        k = len(priced)
+        stat[arm] = {"n": n, "pass": 100.0 * passed / n, "unpriced": n - k,
+                     "cold": sum(r["cost_eq_cold"] for r in priced) / k if k else None,
+                     "warm": sum(r["cost_eq_warm"] for r in priced) / k if k else None,
+                     "usd": sum(r["cost_usd"] for r in priced) / k if k else None}
     base = stat.get("sonnet", {})
     print("| option | messages | pass rate | cost-eq cold/msg | cost-eq warm/msg | USD/msg | warm vs sonnet | USD vs sonnet |")
     print("|---|---|---|---|---|---|---|---|")
     for arm in order:
         s = stat[arm]
-        print("| %s | %d | %d%% | %.0f | %.0f | %.5f | %s | %s |" % (
-            arm, s["n"], round(s["pass"]), s["cold"], s["warm"], s["usd"],
+        mark = "*" if s["unpriced"] and s["cold"] is not None else ""
+        cold, warm, usd = (("%.0f" % s["cold"] + mark, "%.0f" % s["warm"] + mark, "%.5f" % s["usd"] + mark)
+                           if s["cold"] is not None else ("n/a", "n/a", "n/a"))
+        print("| %s | %d | %d%% | %s | %s | %s | %s | %s |" % (
+            arm, s["n"], round(s["pass"]), cold, warm, usd,
             pct(s["warm"], base.get("warm")), pct(s["usd"], base.get("usd"))))
+    for arm in order:
+        s = stat[arm]
+        if s["unpriced"]:
+            print()
+            print("* %d of %d %s rows had no cost (no result event); %s" % (
+                s["unpriced"], s["n"], arm,
+                "the figures average the %d priced rows." % (s["n"] - s["unpriced"]) if s["cold"] is not None else "no figure."))
     print()
     print("| kind | " + " | ".join("%s pass" % x for x in order) + " |")
     print("|---|" + "---|" * len(order))

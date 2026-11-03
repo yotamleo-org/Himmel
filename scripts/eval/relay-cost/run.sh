@@ -11,9 +11,9 @@
 # Each (arm, fixture) writes <out>/<arm>/<id>.result.json {id, pass, reason, cost_eq_cold, cost_eq_warm, cost_usd, ...};
 # one whose file exists is skipped, so a stopped run resumes. relay_cost.py report reads them.
 # Model arms make real, billed calls: HIMMEL_BILLED_OK=1 and bank-preflight PROCEED before each call; --max-calls
-# caps the model calls of the whole run (default 20, the ticket's cap).
+# caps the model calls of the whole output directory, resumed runs included (default 20, the ticket's cap).
 # Env: RELAY_COST_CLAUDE (default claude) and RELAY_COST_PREFLIGHT (default scripts/lib/usage-preflight.sh) are the test seams.
-# Exit: 0 done; 2 usage; 3 stopped (bank refusal or call cap).
+# Exit: 0 done; 2 usage or a result that could not be written; 3 stopped (bank refusal or call cap).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -61,15 +61,21 @@ SYSTEM='You are a message relay. You receive one command and deliver it by reply
 - A command "SUCCESSION-RELAY sender=S successor=C worker=W nonce=T": "to" is W and "message" is this text with S, C and T filled in, on one line:
 SUCCESSION relay from S: your chief is now C. Your current token `T`. This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: C replaces S'
 
+# The cap counts attempts in the whole output directory, so a resumed run cannot spend it again. An attempt that
+# left no result row was still billed: it is in calls.log, and a run from before that log counts its stream files.
 calls=0
+[ -f "$out/calls.log" ] && calls="$(wc -l <"$out/calls.log" | tr -d ' ')"
+streams="$(find "$out" -name '*.stream.jsonl' 2>/dev/null | wc -l | tr -d ' ')"
+[ "$streams" -le "$calls" ] || calls="$streams"
 model_arm() { # $1 arm, $2 model id
     local arm="$1" model="$2" id d="$out/$1"
-    mkdir -p "$d"
+    mkdir -p "$d" || return 2
     for id in $ids; do
         [ -f "$d/$id.result.json" ] && continue
         [ "$calls" -lt "$max_calls" ] || { echo "run.sh: call cap $max_calls reached" >&2; return 3; }
         [ "$(bash "$PREFLIGHT" 2>/dev/null | tail -n 1)" = PROCEED ] || { echo "run.sh: bank-preflight did not print PROCEED" >&2; return 3; }
         calls=$((calls + 1))
+        echo "$arm $id" >>"$out/calls.log" || return 2
         local to input prompt
         to="$(fget "$id" to)"; input="$(fget "$id" input)"
         case "$input" in SUCCESSION-RELAY*) prompt="$input" ;; *) prompt="DELIVER $to"$'\n'"$input" ;; esac
@@ -84,8 +90,8 @@ p = json.load(open(sys.argv[1])); reply = p.get("reply", "")
 a, b = reply.find("{"), reply.rfind("}")
 try: delivery = json.loads(reply[a:b + 1])
 except ValueError: delivery = None
-json.dump(delivery, open(sys.argv[2], "w"))' "$scratch/price.json" "$d/$id.delivery.json"
-        finish "$arm" "$id" "$d/$id.delivery.json" ""
+json.dump(delivery, open(sys.argv[2], "w"))' "$scratch/price.json" "$d/$id.delivery.json" || return 2
+        finish "$arm" "$id" "$d/$id.delivery.json" "" || return 2
     done
 }
 
@@ -104,14 +110,15 @@ if os.path.exists(pj):
     p = json.load(open(pj)); row.update({k: p.get(k) for k in ("input", "cache_read", "cache_creation", "output", "cost_eq_cold", "cost_eq_warm", "cost_usd", "error")})
 else:
     row.update({"cost_eq_cold": 0, "cost_eq_warm": 0, "cost_usd": 0})
-json.dump(row, open(out, "w"), indent=1)' "$arm" "$id" "$rc" "$msg" "$out/$arm/$id.result.json" "$scratch/price.json"
+json.dump(row, open(out, "w"), indent=1)' "$arm" "$id" "$rc" "$msg" "$out/$arm/$id.result.json" "$scratch/price.json" || {
+        echo "run.sh: could not write $out/$arm/$id.result.json" >&2; return 2; }
     echo "$arm $msg"
     rm -f "$scratch/price.json"
 }
 
 script_arm() {
     local d="$out/script" id kind to input
-    mkdir -p "$d"
+    mkdir -p "$d" || return 2
     local bus="$scratch/bus.sh" log="$scratch/bus.log"
     # shellcheck disable=SC2016  # $2 and $3 expand in the stub, not here
     # read-sink-ok: the stub only reads the body file this runner wrote under its own scratch dir
@@ -140,29 +147,29 @@ for line in open(sys.argv[1]):
         head, _, text = line.rstrip("\n").partition(" :: ")
         json.dump({"to": head[len("SENDMESSAGE to="):], "message": text}, open(sys.argv[2], "w")); break
 else:
-    json.dump(None, open(sys.argv[2], "w"))' "$w/out.txt" "$d/$id.delivery.json"
+    json.dump(None, open(sys.argv[2], "w"))' "$w/out.txt" "$d/$id.delivery.json" || return 2
         else
             # the chief hands the text over as a file; the script sends it as it is
             printf '%s' "$input" >"$scratch/$id.body"
             bash "$bus" send "$to" "$scratch/$id.body"
             python3 -I -c 'import json,sys
 lines = open(sys.argv[1]).read().split("\n", 1)
-json.dump({"to": lines[0], "message": lines[1].rstrip("\n")}, open(sys.argv[2], "w"))' "$log" "$d/$id.delivery.json"
+json.dump({"to": lines[0], "message": lines[1].rstrip("\n")}, open(sys.argv[2], "w"))' "$log" "$d/$id.delivery.json" || return 2
         fi
-        finish script "$id" "$d/$id.delivery.json" ""
+        finish script "$id" "$d/$id.delivery.json" "" || return 2
     done
 }
 
 path_arm() {
     local d="$out/path" id to
-    mkdir -p "$d"
+    mkdir -p "$d" || return 2
     for id in $ids; do
         [ -f "$d/$id.result.json" ] && continue
         to="$(fget "$id" to)"
-        fget "$id" expected >"$d/$id.msg"
+        fget "$id" expected >"$d/$id.msg" || return 2
         python3 -I -c 'import json,sys
-json.dump({"to": sys.argv[1], "message": "Read " + sys.argv[2] + ": that file is your message."}, open(sys.argv[3], "w"))' "$to" "$d/$id.msg" "$d/$id.delivery.json"
-        finish path "$id" "$d/$id.delivery.json" "$d/$id.msg"
+json.dump({"to": sys.argv[1], "message": "Read " + sys.argv[2] + ": that file is your message."}, open(sys.argv[3], "w"))' "$to" "$d/$id.msg" "$d/$id.delivery.json" || return 2
+        finish path "$id" "$d/$id.delivery.json" "$d/$id.msg" || return 2
     done
 }
 
@@ -171,8 +178,8 @@ for a in ${arms//,/ }; do
     case "$a" in
         sonnet) model_arm sonnet claude-sonnet-5-5 || rcode=$? ;;
         haiku) model_arm haiku claude-haiku-5-5 || rcode=$? ;;
-        script) script_arm ;;
-        path) path_arm ;;
+        script) script_arm || rcode=$? ;;
+        path) path_arm || rcode=$? ;;
     esac
     [ "$rcode" -eq 0 ] || exit "$rcode"
 done
