@@ -3,8 +3,23 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { envFilePath, jiraFetch } from '../lib/jira-fetch.mjs';
+
+// The shared stub keyring (secret-tool + busctl first on PATH): no row here reaches a real keyring.
+const KEYRING_STUB = fileURLToPath(new URL('../../../scripts/lib/fixtures/keyring-stub.sh', import.meta.url));
+function stubKeyring(dir, items = {}) {
+  expect(spawnSync('bash', ['-c', 'TMP="$1"; . "$2"', '_', dir, KEYRING_STUB], { encoding: 'utf8' }).status).toBe(0);
+  const store = join(dir, 'keyring.tsv');
+  writeFileSync(store, Object.entries(items).map(([k, v]) => `service=himmel key=${k} scope=user\t${v}\n`).join(''));
+  return {
+    store,
+    env: {
+      PATH: `${join(dir, 'kbin')}:${process.env.PATH}`, KSTUB_STORE: store, KSTUB_LOG: join(dir, 'keyring.log'),
+      KSTUB_LOCKED: 'false', DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(dir, 'stub-bus')}`,
+    },
+  };
+}
 
 describe('envFilePath', () => {
   let root;
@@ -177,5 +192,58 @@ describe('jiraFetch error path', () => {
     });
     await jiraFetch('POST', '/issue', { fields: { summary: 'hi' } });
     expect(capturedBody).toBe(JSON.stringify({ fields: { summary: 'hi' } }));
+  });
+});
+
+describe('credentials held only in the keyring (HIMMEL-8471)', () => {
+  let origFetch;
+  let tmp;
+
+  beforeEach(() => {
+    origFetch = globalThis.fetch;
+    tmp = mkdtempSync(join(tmpdir(), 'himmel-jira-keyring-'));
+    const kr = stubKeyring(tmp, { JIRA_EMAIL: 'kr@example.invalid', JIRA_API_TOKEN: 'keyring-fixture-token' });
+    for (const [k, v] of Object.entries(kr.env)) vi.stubEnv(k, v);
+    for (const k of ['JIRA_EMAIL', 'JIRA_API_TOKEN', 'CREDENTIALS_DIRECTORY', 'HIMMEL_SECRETS_KEYRING']) vi.stubEnv(k, undefined);
+    vi.stubEnv('JIRA_BASE_URL', 'https://example.atlassian.net');
+    vi.stubEnv('HIMMEL_CONFIG_DIR', join(tmp, 'conf'));
+  });
+
+  afterEach(() => {
+    globalThis.fetch = origFetch;
+    vi.unstubAllEnvs();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('jiraFetch on a migrated station: the email from himmel.conf, the token from the keyring', async () => {
+    mkdirSync(join(tmp, 'conf'));
+    writeFileSync(join(tmp, 'conf', 'himmel.conf'), 'JIRA_EMAIL=conf@example.invalid\n');
+    writeFileSync(process.env.KSTUB_STORE, 'service=himmel key=JIRA_API_TOKEN scope=user\tkeyring-fixture-token\n');
+    let headers;
+    globalThis.fetch = vi.fn(async (url, init) => { headers = init.headers; return { ok: true, text: async () => '{}' }; });
+    await jiraFetch('GET', '/myself');
+    expect(headers.Authorization).toBe('Basic ' + Buffer.from('conf@example.invalid:keyring-fixture-token').toString('base64'));
+  });
+
+  it('jiraFetch serves a token and email that only the keyring holds', async () => {
+    let headers;
+    globalThis.fetch = vi.fn(async (url, init) => { headers = init.headers; return { ok: true, text: async () => '{}' }; });
+    await jiraFetch('GET', '/myself');
+    expect(headers.Authorization).toBe('Basic ' + Buffer.from('kr@example.invalid:keyring-fixture-token').toString('base64'));
+  });
+
+  it('a plugin installed alone, without scripts/lib, serves nothing from the keyring and does not crash', () => {
+    const root = mkdtempSync(join(tmpdir(), 'himmel-jira-alone-'));
+    try {
+      const lib = join(root, 'plugins', 'himmel-jira', 'lib');
+      mkdirSync(lib, { recursive: true });
+      copyFileSync(new URL('../lib/jira-fetch.mjs', import.meta.url), join(lib, 'jira-fetch.mjs'));
+      const run = spawnSync(process.execPath, ['--input-type=module', '-e',
+        `import { resolveFromKeyring, storeInKeyring } from ${JSON.stringify(pathToFileURL(join(lib, 'jira-fetch.mjs')).href)};
+         process.stdout.write(JSON.stringify([resolveFromKeyring(['JIRA_API_TOKEN']), storeInKeyring({ JIRA_API_TOKEN: 'x' })]));`,
+      ], { cwd: root, env: { PATH: process.env.PATH, HOME: root, NODE_ENV: 'test' }, encoding: 'utf8', timeout: 30000 });
+      expect(run.status, run.stderr).toBe(0);
+      expect(run.stdout).toBe('[{},[]]');
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

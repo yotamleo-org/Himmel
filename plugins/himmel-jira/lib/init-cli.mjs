@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { ensureEnvKeys, appendEnvKeys, runInit, loadEnvIntoProcess, resolveProjects } from './init-flow.mjs';
+import { ensureEnvKeys, writeCredentials, runInit, loadEnvIntoProcess, resolveProjects } from './init-flow.mjs';
 import { envFilePath } from './jira-fetch.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a, i, arr) => {
@@ -31,8 +31,9 @@ if (args['write-env']) {
     console.error('--write-env requires at least --email, --token, or --base-url');
     process.exit(2);
   }
-  appendEnvKeys(envFile, kvs);
-  console.log('env-written');
+  const res = writeCredentials(envFile, kvs);
+  if (res.keyring.length) console.log(`keyring-written: ${res.keyring.join(' ')}`);
+  if (res.env.length) console.log('env-written');
   process.exit(0);
 }
 
@@ -46,7 +47,7 @@ if (args.discover) {
   // configured → fail loud, never silently default to HIMMEL.
   const projects = resolveProjects({ rawArg: args.projects, env: process.env });
   if (!projects.length) {
-    console.error('no project configured: set JIRA_PROJECT_KEY (or JIRA_PROJECTS=A,B for several) in your .env, then re-run');
+    console.error('no project configured: set JIRA_PROJECT_KEY (or JIRA_PROJECTS=A,B for several) in ~/.himmel/himmel.conf or your .env, then re-run');
     process.exit(2);
   }
   try {

@@ -12,11 +12,13 @@ The plugin lives in this repo. Add via:
 
 ## Auth file location
 
-`/jira-init` writes `JIRA_EMAIL`, `JIRA_API_TOKEN`, and `JIRA_BASE_URL` to (all three are required):
+`/jira-init` needs `JIRA_EMAIL`, `JIRA_API_TOKEN`, and `JIRA_BASE_URL` (all three are required). The plugin reads each from the first of these that holds it: the environment, `~/.himmel/himmel.conf` (`JIRA_EMAIL` and `JIRA_BASE_URL`), the credentials directory, the OS keyring, and last the `.env` file.
+
+When the OS keyring is unlocked and `scripts/lib` is next to the plugin (a himmel checkout), `/jira-init` stores the token in the keyring and writes no token line. Otherwise (locked keyring, or the plugin installed alone) it writes all three to:
 
 - `<repo-root>/.env` if that `.env` file already exists at the repo root; otherwise `~/.config/himmel-cli/jira.env`.
 
-The file is `chmod 600`.
+The email and base URL are written there either way. The file is `chmod 600`. A token held in the keyring wins over a token in `.env`; replace it with `himmel-secrets put --stdin JIRA_API_TOKEN`, not by editing `.env`.
 
 ## Commands
 
