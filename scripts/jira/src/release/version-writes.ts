@@ -211,8 +211,8 @@ export async function recordVersionWrite(request: WriteRequest, response: unknow
   const added: string[] = [];
   const removed: string[] = [];
   for (const item of fresh.flatMap((e) => e.items)) {
-    if (item.toString) added.push(item.toString);
-    if (item.fromString) removed.push(item.fromString);
+    if (typeof item.toString === 'string' && item.toString) added.push(item.toString);
+    if (typeof item.fromString === 'string' && item.fromString) removed.push(item.fromString);
   }
   const wantAdded = asked.filter((x) => !pre.set.includes(x));
   const wantRemoved = pre.set.filter((x) => !asked.includes(x));
