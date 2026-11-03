@@ -1140,11 +1140,21 @@ cmd_disarm() {
     [ "$LUNA_ONLY" -eq 0 ] || scope_re="$TASK_LUNA_MATCH_RE"
     existing=$(printf '%s\n' "$CRON_TAB" | grep -E "# ${scope_re}\$" || true)
     if [ -z "$existing" ]; then
+        if [ "$LUNA_ONLY" -eq 1 ]; then
+            # A Luna-only disarm still cleans up: the Luna rows may already be gone (removed by hand) while
+            # the registry still expects them, which is exactly what C24 warns about.
+            if [ "$DRY_RUN" -eq 1 ]; then
+                echo "DRY graphmap-cadence: no Luna crontab entry armed; would remove any Luna runners and unregister the Luna names from the registry"
+                echo "DRY graphmap-cadence: no changes made"
+            else
+                disarm_remove_runners
+                disarm_unregister
+                echo "graphmap-cadence: no Luna crontab entry armed; removed any Luna runners and unregistered the Luna names (himmel rows untouched)"
+            fi
+            return 0
+        fi
         if [ "$DRY_RUN" -eq 0 ]; then
             disarm_remove_runners
-            # A Luna-only disarm also clears the registry: the Luna rows may already be gone (removed by
-            # hand) while the registry still expects them, which is exactly what C24 warns about.
-            [ "$LUNA_ONLY" -eq 0 ] || disarm_unregister
         fi
         echo "graphmap-cadence: nothing armed — disarm is a no-op"
         return 0

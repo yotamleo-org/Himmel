@@ -1783,8 +1783,14 @@ grep -vE '# HIMMEL-Graph(Map|MapAst|Semantic)-Luna$' "$LSTATE/crontab" > "$LSTAT
 # shellcheck disable=SC2086
 if rows_absent $LUNA_ROWS && rows_present $HIM_ROWS; then pass "fixture: no Luna row left, himmel rows armed"; else fail "fixture is not the rows-gone state" "$(cat "$LSTATE/crontab")"; fi
 assert_registry "fixture: the registry still expects the Luna names" '.expected_tasks | index("HIMMEL-GraphMap-Luna") != null'
+rc=0; out=$(run_luna disarm --luna-only --dry-run 2>&1) || rc=$?
+assert_rc "disarm --luna-only --dry-run with rows already gone exits 0" 0 "$rc"
+assert_contains "the rows-gone dry-run previews the registry cleanup" "would remove any Luna runners and unregister the Luna names" "$out"
+assert_not_contains "the rows-gone dry-run does not call itself a no-op" "no-op" "$out"
+assert_registry "the rows-gone dry-run leaves the Luna names registered" '.expected_tasks | index("HIMMEL-GraphMap-Luna") != null'
 rc=0; out=$(run_luna disarm --luna-only 2>&1) || rc=$?
-assert_contains "disarm --luna-only with no Luna row armed is the no-op path" "no-op" "$out"
+assert_contains "disarm --luna-only with no Luna row armed reports the cleanup it did" "unregistered the Luna names" "$out"
+assert_not_contains "the rows-gone disarm does not call itself a no-op" "no-op" "$out"
 assert_rc "disarm --luna-only with rows already gone exits 0" 0 "$rc"
 assert_registry "disarm --luna-only unregisters Luna names whose rows were already gone" \
     'all(.expected_tasks[]; . != "HIMMEL-GraphMap-Luna" and . != "HIMMEL-GraphMapAst-Luna")'
@@ -1798,7 +1804,9 @@ rc=0; run_luna arm --luna-only --rewrite-armed --vault "$VAULT" >/dev/null 2>&1 
 assert_rc "arm --luna-only with --rewrite-armed is refused" 1 "$rc"
 
 # control: the bare disarm is unchanged and still removes every row, himmel included
-run_luna arm --luna-only --force --vault "$VAULT" >/dev/null 2>&1 || true
+rc=0; run_luna arm --luna-only --force --vault "$VAULT" >/dev/null 2>&1 || rc=$?
+assert_rc "control setup: arm --luna-only --force succeeds" 0 "$rc"
+if rows_present HIMMEL-GraphMap-Luna HIMMEL-GraphMapAst-Luna; then pass "control setup: the Luna rows are armed before the bare disarm"; else fail "control setup left no Luna rows" "$(cat "$LSTATE/crontab")"; fi
 rc=0; out=$(run_luna disarm 2>&1) || rc=$?
 assert_rc "bare disarm exits 0" 0 "$rc"
 # shellcheck disable=SC2086
