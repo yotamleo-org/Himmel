@@ -249,6 +249,27 @@ eq "multi: codex found quoting only" "$(metric "$TMP/s3.json" codex.recall)" "0.
 eq "multi: glm's unavailable case leaves its denominator" "$(metric "$TMP/s3.json" glm.recall)" "1.0"
 eq "multi: glm scored on 1 seeded case" "$(metric "$TMP/s3.json" glm.seeded_scored)" "1"
 eq "multi: the panel union found both" "$(metric "$TMP/s3.json" panel.recall)" "1.0"
+# A real skipped case: header 1/2 and no unavailable bullet (the panel drops it on most skips); only stderr names the critic.
+O3B="$TMP/out3b"; mkdir -p "$O3B"
+cp "$O3/$LA.md" "$O3B/$LA.md"
+cat > "$O3B/$QA.md" <<EOF
+# Critic Panel Review (1/2 critics responded)
+
+## Note: 1 of 2 critics did not respond (review proceeds on the rest)
+
+
+## Critical Issues (1 found)
+- [codex-1]: unquoted \$cache_dir is word-split; a space in the workspace path deletes the wrong tree [$qa_file:$qa_line]
+
+## Important Issues (0 found)
+
+## Suggestions (0 found)
+EOF
+printf 'panel-availability: codex ok responding-model(gpt-6.1-sol)\npanel-availability: glm unavailable (rc=5) reason=critic-skipped: api lane is OFF\n' > "$O3B/$QA.err"
+python3 "$SCORE" score --outputs "$O3B" --fixtures "$FIX" --key "$KEY" --critics codex,glm --only "$LA,$QA" --no-ledger --json "$TMP/s3b.json" >/dev/null 2>&1
+eq "responded: a critic named unavailable only on stderr did not answer that case" "$(jget "$TMP/s3b.json" responded/critics/glm)" "1"
+eq "responded: the critic that answered both cases is counted on both" "$(jget "$TMP/s3b.json" responded/critics/codex)" "2"
+eq "responded: scored counts the cases scored" "$(jget "$TMP/s3b.json" responded/scored)" "2"
 # The roster is required: a responding critic with zero findings stays in the
 # metrics only because the roster names it.
 python3 "$SCORE" score --outputs "$O3" --fixtures "$FIX" --key "$KEY" --only "$LA,$QA" --no-ledger >/dev/null 2>&1; rc=$?
@@ -561,7 +582,7 @@ eq "verify-row: a doctored status exits 1" "$rc" "1"
 python3 "$SCORE" verify-row "$(doctor 'r["responded"]={"scored": 99, "critics": {"claude": 99}}')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
 eq "verify-row: a doctored responded roster exits 1" "$rc" "1"
 python3 "$SCORE" verify-row "$(doctor 'del r["responded"]')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
-eq "verify-row: a row exported before the roster field still matches" "$rc" "0"
+eq "verify-row: a row without a responded key is not held to one" "$rc" "0"
 
 # gate over GB..HEAD of the gate repo; grows <rid:recall:fp:logic[:status]>... writes rows at B (b*) or H (h*).
 B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")
@@ -625,6 +646,16 @@ grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24
 has "gate: a critic that answered nothing on both sides is no mismatch" "$out" "gate: no-loss"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:20,codex:24"; ggate
 has "gate: a critic partial on both sides is no mismatch" "$out" "gate: no-loss"
+# rows with no roster beside rows with one are not like-for-like: named, no verdict
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster h "24;claude:24,codex:24"; ggate
+has "gate: baseline rows with no roster against head rows with one are a mismatch" "$out" "panel mismatch"
+has "gate: the rows with no roster are named" "$out" "without a roster: baseline b1; b2"
+case "$out" in *"gate: loss"*) fail "gate: rows with no roster give no loss";; *) pass "gate: rows with no roster give no loss";; esac
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b1 "24;codex:24"; groster b2 "24;codex:24"; groster h1 "24;codex:24"; ggate
+has "gate: one counted row with no roster beside rows with one is a mismatch" "$out" "without a roster: baseline none | head h2"
+# every counted row without a roster keeps the normal verdict
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; ggate
+has "gate: no roster on any counted row keeps the normal verdict" "$out" "gate: loss"
 
 # --- real cases: multi-file, context_seed, base, fix ---------------------------------------
 S="$TMP/src"; RL="$TMP/real"; RK="$TMP/real-key.json"

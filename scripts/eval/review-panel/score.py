@@ -16,7 +16,7 @@ row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
   score.py export-row <outputs-dir> [--repo R] [--results FILE]   append one gate row (HEAD's hashes; refuses
                                            outputs whose swept.json is unclean or names other hashes)
   score.py verify-row <row-json> <outputs-dir> [--tree REV] [--repo R]   exit 1 unless the row re-scores so
-  score.py gate <base> <head> [--target-class C]... [--repo R]   keep | no-loss | loss | unmeasured
+  score.py gate <base> <head> [--target-class C]... [--repo R]   keep | no-loss | loss | unmeasured | mismatch
 
 Inputs. fixtures/case-NN.patch are the frozen synthetic diffs the panel reviews,
 fixtures/real-*.patch real escapes (a multi-file diff with a `base` sha, the
@@ -29,7 +29,7 @@ case, <outputs>/<id>.err its stderr (optional).
 Merge gate (HIMMEL-8426). A <rev> is a git tree-ish of --repo (default this
 checkout); files are read from the tree, never the work tree. results.jsonl
 holds one row per sweep; gate reads the head tree's rows and prints
-eval_feedback.gate_verdict: exit 0 keep / no-loss, 1 loss / unmeasured, 2 error.
+eval_feedback.gate_verdict: exit 0 keep / no-loss, 1 loss / unmeasured / mismatch, 2 error.
 
 Split (README "Open and sealed seeds"). Every metric is also reported per half
 as open.<metric> and sealed.<metric>, each with its own interval. Tuning
@@ -133,6 +133,7 @@ CITATION_GUARD = re.compile(r"^- \[" + GUARD + r"-[0-9a-f]{16}\]: \S")
 GUARD_SHAPED = re.compile(r"^- \[" + GUARD + r"-")
 FINDING_SHAPED = re.compile(r"^- \[[A-Za-z0-9._-]+-\d+\]")
 UNAVAILABLE = re.compile(r"^- ([A-Za-z0-9._-]+): unavailable\b")
+AVAIL_UNAVAILABLE = re.compile(r"^panel-availability: ([A-Za-z0-9._-]+) unavailable\b", re.M)
 
 
 def norm_path(p):
@@ -410,7 +411,7 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
         raise ValueError("--only names cases the key lacks: %s" % sorted(set(only) - set(cases)))
     leak_markers = (key["canary"],) + KEY_MARKERS
 
-    per_case, leaks, unscored = {}, [], []
+    per_case, leaks, unscored, skipped = {}, [], [], {}
     for cid in ids:
         md = os.path.join(outputs, cid + ".md")
         err = os.path.join(outputs, cid + ".err")
@@ -426,6 +427,8 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
             unscored.append(cid)
             continue
         per_case[cid] = (findings, unavailable)
+        # The panel prints an unavailable bullet on only some skipped cases; its stderr names the critic on all.
+        skipped[cid] = set(unavailable) | set(AVAIL_UNAVAILABLE.findall(etext))
 
     seen = set(critics)
     for findings, unavailable in per_case.values():
@@ -442,10 +445,9 @@ def score(outputs, fixtures, key_path, critics, only=None, window=DEFAULT_WINDOW
     metrics.update({"defects": n_defects, "cases": len(ids), "unscored": len(unscored),
                     "leaked": len(leaks)})
     status = "inconclusive" if (leaks or len(unscored) == len(ids)) else ("partial" if unscored else "ok")
-    # The cases each critic answered: a critic the panel listed unavailable in a case did not respond to it.
+    # The cases each critic answered: one the panel named unavailable, by bullet or on stderr, did not respond to it.
     responded = {"scored": len(per_case),
-                 "critics": {who: sum(1 for _, unavailable in per_case.values() if who not in unavailable)
-                             for who in members[:-1]}}
+                 "critics": {who: sum(1 for cid in per_case if who not in skipped[cid]) for who in members[:-1]}}
     return {"status": status, "metrics": metrics, "ci": ci, "cases": case_rows, "responded": responded,
             "leaks": leaks, "unscored": unscored, "critics": members[:-1], "window": window}
 
@@ -689,40 +691,50 @@ def gate_row(repo, rev, outputs):
 
 
 def panel_mismatch(rows, base_hash, head_hash, confighash):
-    """A reason string when the counted rows ran different critics, else "" (HIMMEL-8979). A row's `responded`
-    is {scored: cases scored, critics: {critic: cases it answered}}; its roster gives each critic one of three
-    states: answered every scored case, answered some, answered none. Rows at either hash with more than one
-    roster make a win-or-loss comparison unequal (the panel drops an unavailable critic per case), so they get
-    no verdict and the difference is named.
+    """A reason string when the counted rows did not run the same critics, else "" (HIMMEL-8979). A row's
+    `responded` is {scored: cases scored, critics: {critic: cases it answered}}; its roster gives each critic one
+    of three states: answered every scored case, answered some, answered none. Counted rows at either hash with
+    more than one roster make a win-or-loss comparison unequal (the panel drops an unavailable critic per case),
+    and so do rows that record a roster beside rows that do not: no verdict, and the rows are named. Like
+    gate_verdict it keeps the first row of a run_id.
     ponytail: two partial critics count as alike whatever their case counts, upgrade = compare per-case
     participation once a row records which cases each critic answered.
-    ponytail: a row exported before HIMMEL-8979 has no `responded` and is not compared, upgrade = re-sweep
-    the baseline so every counted row records its roster."""
+    ponytail: when every counted row has no `responded` the normal verdict stands. That is the state of the
+    HIMMEL-8430 rows today, so the unequal-panel false alarm on that pair stays until its rows are re-exported
+    (export-row cannot backfill them), upgrade = re-export or backfill the baseline rows."""
     sides = {}
     for r in rows:
-        resp = r.get("responded")
         if r.get("confighash") != confighash or r.get("status") not in eval_feedback.GATE_STATUS \
-                or r.get("cbs_hash") not in (base_hash, head_hash) \
-                or not isinstance(resp, dict) or not isinstance(resp.get("critics"), dict):
+                or r.get("cbs_hash") not in (base_hash, head_hash):
             continue
-        side = "baseline" if r["cbs_hash"] == base_hash else "head"
-        sides.setdefault(side, {})[r.get("run_id")] = resp
+        resp = r.get("responded")
+        has = isinstance(resp, dict) and isinstance(resp.get("critics"), dict)
+        sides.setdefault("baseline" if r["cbs_hash"] == base_hash else "head", {}).setdefault(
+            r.get("run_id"), resp if has else None)
+
     def state(resp, n):
         return "all" if n == resp.get("scored") else ("none" if not n else "some")
 
     def roster(resp):
         return tuple(sorted((c, state(resp, n)) for c, n in resp["critics"].items()))
-    if len({roster(resp) for runs in sides.values() for resp in runs.values()}) < 2:
-        return ""
 
-    def say(side):
+    def say(side, keep):
         out = []
         for rid, resp in sorted(sides.get(side, {}).items()):
-            out.append("%s [%s]" % (rid, ", ".join("%s %s/%s" % (c, n, resp.get("scored"))
-                                                   for c, n in sorted(resp["critics"].items()))))
-        return "; ".join(out) or "no rosters recorded"
-    return "panel mismatch: the rows ran different critics, no win or loss read: baseline %s | head %s" \
-           % (say("baseline"), say("head"))
+            if keep(resp):
+                out.append(rid if resp is None else "%s [%s]" % (rid, ", ".join(
+                    "%s %s/%s" % (c, n, resp.get("scored")) for c, n in sorted(resp["critics"].items()))))
+        return "; ".join(out) or "none"
+    counted = [resp for runs in sides.values() for resp in runs.values()]
+    if any(resp is None for resp in counted) and any(resp is not None for resp in counted):
+        return ("panel mismatch: some counted rows record which critics answered and others do not, no win or "
+                "loss read. without a roster: baseline %s | head %s. with a roster: baseline %s | head %s"
+                % (say("baseline", lambda r: r is None), say("head", lambda r: r is None),
+                   say("baseline", lambda r: r is not None), say("head", lambda r: r is not None)))
+    if len({roster(resp) for resp in counted if resp is not None}) < 2:
+        return ""
+    return ("panel mismatch: the rows ran different critics, no win or loss read: baseline %s | head %s"
+            % (say("baseline", lambda r: True), say("head", lambda r: True)))
 
 
 def gate(repo, base, head, target_classes=()):
@@ -890,7 +902,8 @@ def tree_main(a):
     elif a.cmd == "verify-row":
         claimed = json.loads(a.row)
         got = gate_row(repo, a.tree, a.outputs)
-        # A row exported before rosters were recorded has no `responded`; only a row that claims one is held to it.
+        # A row without a `responded` key is not held to one: verify-row cannot tell a row exported before rosters
+        # were recorded from one that dropped the key, and CI never runs verify-row. The gate names such rows.
         bad = [f for f in ROW_FIELDS if claimed.get(f) != got[f] and (f != "responded" or f in claimed)]
         for f in bad:
             print("verify-row: %s differs: row %s, re-scored %s" % (f, json.dumps(claimed.get(f), sort_keys=True),
