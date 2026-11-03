@@ -131,7 +131,7 @@ export async function repairRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairRe
       newestEntry.set(key, await newestFixVersionEntry(o.get, key));
     } catch (e) {
       const msg = (e as Error).message;
-      if (!/\b404\b/.test(msg)) return { status: 'error', error: `Jira read of ${key} failed: ${msg}` };
+      if (!/^HTTP 404$/.test(msg)) return { status: 'error', error: `Jira read of ${key} failed: ${msg}` };
       notFound.add(key);
     }
   }

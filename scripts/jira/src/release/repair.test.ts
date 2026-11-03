@@ -228,6 +228,11 @@ describe('test-version-repair', () => {
     expect(one(w.out, 'K-1').lane).not.toBe('nothing');
   });
 
+  it('a key the mirror lacks goes in flight even when its ruling is clean', () => {
+    const w = build({ issues: [issue('K-1', ['v1.1.3'])], rulings: [ruling('R-1', 'K-1', 'add', null, 'v1.1.3', 'rm')], missing: ['K-1'] });
+    expect(one(w.out, 'K-1')).toMatchObject({ lane: 'in-flight', action: { kind: 'none' } });
+  });
+
   it('missing mirror key goes in flight', () => {
     const w = build({ issues: [], rulings: [ruling('R-1', 'K-9', 'add', null, 'v1.1.3', 'rm')], missing: ['K-9'] });
     expect(one(w.out, 'K-9')).toMatchObject({ lane: 'in-flight', action: { kind: 'none' } });
@@ -530,6 +535,43 @@ describe('test-version-repair', () => {
     const c = one(w.out, 'K-1');
     expect(c).toMatchObject({ lane: 'gate-row', action: { kind: 'held', cls: 'gate-row' } });
     expect(offerFor(c, w.input)).toEqual({ op: 'keep', from: 'v1.1.4', to: null });
+  });
+
+  it.each([
+    ['a counted override row', { ts: at(1), version: 'v1.1.4', key: 'K-1', kind: 'override', actor: 'a' } as Admission],
+    ['a plain gate row', { ts: at(1), version: 'v1.1.4', key: 'K-1', gate: 'critical', actor: 'a' } as Admission],
+  ])('an operator out ruling with %s lands in lane 12 with no op', (_name, row) => {
+    const w = build({
+      issues: [issue('K-1', ['v1.1.4'])], admissions: [row],
+      operator: [decision('O-R1-0001', ['K-1'], 'remove', 'v1.1.4', null, at(0))],
+      rulings: [ruling('R-1', 'K-1', 'remove', 'v1.1.4', null, 'O-R1-0001', at(0))],
+    });
+    const c = one(w.out, 'K-1');
+    expect(c.lane).not.toBe('gate-row');
+    expect(c.action.kind).toBe('held');
+    expect(offerFor(c, w.input)).toEqual({ op: null, from: null, to: null });
+  });
+
+  it('a counted row under no out ruling is not a gate row', () => {
+    const w = build({ issues: [issue('K-1', ['v1.1.4'])], admissions: [{ ts: at(1), version: 'v1.1.4', key: 'K-1', kind: 'override', actor: 'a' } as Admission] });
+    expect(w.out.filter((c) => c.key === 'K-1' && c.lane === 'gate-row')).toEqual([]);
+  });
+
+  it('a ruled key that Jira agrees with, still in the loop as a displaced key, goes to nothing', () => {
+    const w = build({
+      issues: [issue('K-2', [])], journal: [jr('K-2', 'displace-residual', ['v1.1.4'], [], '300')], entries: { 'K-2': { id: '300', ts: at(5) } },
+      rulings: [ruling('R-1', 'K-2', 'remove', 'v1.1.4', null, 'rm')],
+    });
+    expect(one(w.out, 'K-2')).toMatchObject({ lane: 'nothing', action: { kind: 'none' } });
+  });
+
+  it('an operator out ruling older than the bound machine row files no INTAKE', () => {
+    const w = build(machineWrite({
+      operator: [decision('O-R1-0001', ['K-1'], 'remove', 'v1.1.4', null, at(0))],
+      rulings: [ruling('R-1', 'K-1', 'remove', 'v1.1.4', null, 'O-R1-0001', at(0))],
+    }));
+    expect(requests(w.out)).toEqual([]);
+    expect(one(w.out, 'K-1').lane).toBe('held');
   });
 
   it('held request stays rm-hold until its entry moves', () => {

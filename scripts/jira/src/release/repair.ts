@@ -208,10 +208,16 @@ const foldLane: LaneFn = ({ input, ctx }) => {
   return { lane: 'fold', action: { kind: 'fold', pr }, version: current };
 };
 
-// Lane 8: open, only a gate row. A counted row (override, rm-admit) would have cleared the leak already.
+// Lane 8: open, only a gate row (a row with no kind). A counted row (override, rm-admit) clears a leak, except under an
+// operator out ruling, which the reducer keeps: such a key, and any key whose unauthorized version carries a ruling, goes on to lane 12.
 const gateLane: LaneFn = ({ input, ctx }) => {
   if (ctx.terminal !== null || ctx.unauth.length === 0 || ctx.ruledIn.length > 0) return undefined;
-  const gated = ctx.unauth.every((v) => admits(input.admissions.filter((a) => a !== null && typeof a === 'object' && a.version === v && a.key === ctx.key).pop()));
+  if (ctx.recs.some((r) => ctx.unauth.includes(r.version) && r.ruling !== null)) return undefined;
+  const newestRow = (v: string): Admission | undefined => input.admissions.filter((a) => a !== null && typeof a === 'object' && a.version === v && a.key === ctx.key).pop();
+  const gated = ctx.unauth.every((v) => {
+    const row = newestRow(v);
+    return row !== undefined && row.kind === undefined && admits(row);
+  });
   return gated ? held('gate-row', 'gate-row') : undefined;
 };
 

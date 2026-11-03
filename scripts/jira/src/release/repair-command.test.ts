@@ -169,7 +169,7 @@ describe('test-version-repair dry run', () => {
   it('previous release with no date gives done-no-pr', async () => {
     setup();
     mirror([done('K-1', ['v1.1.3'])]);
-    writeFileSync(versionsPath(), 'v1.1.2\ttrue\t\tfalse\nv1.1.3\tfalse\t\tfalse\n');
+    writeFileSync(versionsPath(), 'v1.1.1\ttrue\t2026-09-01\tfalse\nv1.1.2\ttrue\t\tfalse\nv1.1.3\tfalse\t\tfalse\n');
     const calls: string[][] = [];
     const r = await run({ gh: ghWith({ 'K-1': [pr(11, '[K-1] fix', '2026-10-20T10:00:00Z')] }, calls) });
     expect(r.classes!.find((c) => c.class === 'done-no-pr')!.keys).toEqual(['K-1']);
@@ -285,7 +285,18 @@ describe('test-version-repair dry run', () => {
     const r = await run({ get: jiraGetter({ 'K-2': '200' }) });
     expect(r.status).toBe('ok');
     expect(r.stale).toEqual(['K-1']);
+    expect(r.lanes!['in-flight']).toEqual(['K-1']);
     expect(r.lanes!.bound).toEqual(['K-2']);
+  });
+
+  it('a read that times out on a key numbered 404 stops the run', async () => {
+    setup();
+    mirror([{ key: 'K-404', fixVersions: ['v1.1.4'] }]);
+    writeJournal([{ key: 'K-404', mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: '100' }]);
+    const get = (async () => { throw new Error('read of /issue/K-404/changelog timed out'); }) as unknown as Getter;
+    const r = await run({ get });
+    expect(r.status).toBe('error');
+    expect(r.stale).toBeUndefined();
   });
 
   it.each([401, 429, 503])('%i stops the run as error', async (status) => {
