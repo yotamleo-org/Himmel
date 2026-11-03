@@ -20,6 +20,8 @@ import type {
 
 export interface JiraPort {
   fixVersions(key: string): Promise<string[]>;
+  // The key's newest Fix Version changelog entry; id `create` when it has none.
+  newestFixVersionEntry(key: string): Promise<{ id: string; ts: string }>;
   setFixVersion(key: string, op: 'add' | 'remove', version: string): Promise<void>;
   findComment(key: string, marker: string): Promise<string | null>;
   addComment(key: string, markdown: string): Promise<string>;
@@ -294,7 +296,7 @@ export function operatorDecision(ctx: Ctx, o: { decision: string; keys: string[]
     const named = [o.from_v, o.to_v].filter((v) => v !== null);
     for (const r of latest.values()) {
       const overlaps = [r.from_v, r.to_v].some((v) => v !== null && named.includes(v));
-      if (pending(r) && o.keys.includes(r.key) && overlaps && (r.verb === 'DISCHARGE' ? r.from_v : r.to_v) !== placement) {
+      if (retirable(r) && o.keys.includes(r.key) && overlaps && (r.verb === 'DISCHARGE' ? r.from_v : r.to_v) !== placement) {
         appendWithdrawal(ctx, l.k, r, row.id, `contradicts operator decision ${o.decision} (${row.id})`);
       }
     }
@@ -311,13 +313,16 @@ export function placementOf(o: { op?: string; from_v?: string | null; to_v?: str
 }
 
 const pending = (r: RequestRow) => r.state === 'open' || r.state.startsWith('claimed:');
+// A held version-repair request is not pending (request() dedupe and state() rely on that), but a chief act can still retire it.
+const retirable = (r: RequestRow) => pending(r) || r.state === 'held';
+const isRepair = (r: RequestRow | undefined): boolean => (r?.evidence as { rule?: unknown } | null)?.rule === 'version-repair';
 
 function appendWithdrawal(ctx: Ctx, k: Buffer, r: RequestRow, by: string, reason: string): RequestRow {
   const { prev: _p, mac: _m, ...rest } = r;
   return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, ts: ts(ctx), state: `withdrawn:${by}`, reason });
 }
 
-// The chief retires an open or claimed request with a reason; --by cites the
+// The chief retires an open, claimed or held request with a reason; --by cites the
 // operator decision that settles it, which must cover the request's key.
 export function withdraw(ctx: Ctx, o: { req: string; reason: string; by?: string }): RequestRow {
   operatorFence(ctx);
@@ -325,7 +330,7 @@ export function withdraw(ctx: Ctx, o: { req: string; reason: string; by?: string
   return locked(ctx, (l) => {
     const r = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(o.req);
     if (!r) throw new Error(`release withdraw: no request ${o.req}`);
-    if (!pending(r)) throw new Error(`release withdraw: ${o.req} is ${r.state.startsWith('ruled:') ? 'ruled' : r.state}; only an open or claimed request is withdrawn`);
+    if (!retirable(r)) throw new Error(`release withdraw: ${o.req} is ${r.state.startsWith('ruled:') ? 'ruled' : r.state}; only an open, claimed or held request is withdrawn`);
     if (o.by !== undefined) {
       const d = l.operator.verified.find((x) => x.id === o.by && x.kind === 'decision');
       if (!d) throw new Error(`release withdraw: ${o.by} is no verified decision row of ${ctx.release}`);
@@ -953,6 +958,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         }
         const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
         appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch: lease.epoch }));
+        if (req && isRepair(req)) {
+          appendWithdrawal(ctx, l.k, req, 'repair', 'never-landed');
+          return { phase: 'void', line: `VOID ${id} (epoch ${last.epoch} intent never reached Jira; ${last.req} withdrawn)` };
+        }
         if (req) {
           const { prev: _p, mac: _m, ...rest } = req;
           appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'open' });
@@ -965,6 +974,20 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || (last.verb === 'REVERSION' && op.kind === 'add')
         || ((op.kind === 'remove' || op.kind === 'move') && op.from_v)) assertAdmissionsWritable();
       const cur = await ctx.jira.fixVersions(k);
+      const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
+      if (req && isRepair(req)) {
+        if (typeof ctx.jira.newestFixVersionEntry !== 'function') throw new Error(`release apply: the Jira port has no newestFixVersionEntry; ${last.req} is a version-repair request`);
+        const newest = await ctx.jira.newestFixVersionEntry(k);
+        if (newest.id !== (req.evidence as { entry?: unknown }).entry && !landed(op, cur)) {
+          if (!untouched(op, cur)) {
+            event('mismatch');
+            throw new Error(`release apply: ${id} is partly applied in Jira; ${k} needs a hand fix before it is re-ruled`);
+          }
+          appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', {}));
+          appendWithdrawal(ctx, l.k, req, 'repair', 'entry-moved');
+          return { phase: 'void', line: `VOID ${id} (${k} Fix Version entry moved since ${last.req} was filed; ${last.req} withdrawn)` };
+        }
+      }
       if ((op.kind === 'remove' || op.kind === 'move') && op.from_v && cur.includes(op.from_v)) await ctx.jira.setFixVersion(k, 'remove', op.from_v);
       if ((op.kind === 'add' || op.kind === 'move') && op.to_v && !cur.includes(op.to_v)) await ctx.jira.setFixVersion(k, 'add', op.to_v);
       if (!landed(op, await ctx.jira.fixVersions(k))) {
@@ -1069,7 +1092,7 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
 
 // --- rm-run: the release manager as one on-demand batch -------------------------------
 
-// The judge cannot rule the request: only req and reason count, nothing is ruled and the request stays claimed.
+// The judge cannot rule the request: only req and reason count, nothing is ruled and the request stays claimed (a version-repair request becomes held).
 export interface HoldDecision {
   req: string;
   outcome: 'HOLD';
@@ -1173,6 +1196,17 @@ function unclaim(ctx: Ctx, req: string): void {
     if (!r || r.state !== `claimed:${lease.epoch}`) return;
     const { prev: _p, mac: _m, ...rest } = r;
     appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'open' });
+  });
+}
+
+// A version-repair request the judge held leaves the queue until a repair run withdraws it; claim() skips `held`.
+function hold(ctx: Ctx, req: string, reason: string): void {
+  locked(ctx, (l) => {
+    const lease = rmFence(ctx, l);
+    const r = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(req);
+    if (!r || r.state !== `claimed:${lease.epoch}`) return;
+    const { prev: _p, mac: _m, ...rest } = r;
+    appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'held', reason });
   });
 }
 
@@ -1286,6 +1320,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           if (!d) throw new Error('the judge returned no decision');
           if (isHold(d)) {
             lines.push(`HELD ${q.req}: ${d.reason}`);
+            if (isRepair(q)) hold(rctx, q.req, d.reason);
             continue;
           }
           if (bulkHeld(q.key, { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, d.authority === 'operator' && !!d.ref)) {

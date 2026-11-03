@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // The judge's launcher call returns this envelope while it is set; every other child process runs for real.
 const judgeReply = vi.hoisted(() => ({ out: null as string | null }));
@@ -511,6 +512,43 @@ describe.skipIf(process.platform !== 'linux')('jira release posting verbs from a
     vi.stubEnv('JIRA_BASE_URL', 'http://127.0.0.1:9');
     expect(await failure('apply', 'R1', 'RU-1')).toMatch(/release R1 is UNKNOWN/);
     expect(await failure('rm-run', 'R1')).toMatch(/release R1 is UNKNOWN/);
+  });
+});
+
+describe('liveJira.newestFixVersionEntry', () => {
+  type Entry = { id: string; created: string; items: Array<{ field: string }> };
+  const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'release', 'fixtures', 'repair');
+  const real = (n: number): Entry[] => (JSON.parse(readFileSync(join(FIXTURES, `HIMMEL-${n}.json`), 'utf8')) as { changelog: Entry[] }).changelog;
+  const serve = (all: Entry[]) =>
+    vi.mocked(request).mockImplementation((async (_m: string, path: string) => {
+      const start = Number(/startAt=(\d+)/.exec(path)?.[1] ?? 0);
+      return { startAt: start, maxResults: 100, total: all.length, values: all.slice(start, start + 100) };
+    }) as never);
+
+  it('adapter picks the newest of several entries', async () => {
+    const all = real(3084);
+    serve(all);
+    const newest = all.find((e) => e.id === '57628') as Entry;
+    expect(await liveJira.newestFixVersionEntry('HIMMEL-3084')).toEqual({ id: '57628', ts: newest.created });
+  });
+
+  it('adapter returns create with no Fix Version entry', async () => {
+    serve([]);
+    expect(await liveJira.newestFixVersionEntry('HIMMEL-1')).toEqual({ id: 'create', ts: '' });
+  });
+
+  it('adapter returns create when only other fields changed', async () => {
+    serve(real(8706));
+    expect(await liveJira.newestFixVersionEntry('HIMMEL-8706')).toEqual({ id: 'create', ts: '' });
+  });
+
+  it('adapter reads the last page', async () => {
+    const filler: Entry[] = Array.from({ length: 100 }, (_, i) => ({ id: String(i + 1), created: 'c', items: [{ field: 'summary' }] }));
+    const all = [...filler, ...real(3084)];
+    expect(all.length).toBeGreaterThan(100);
+    serve(all);
+    expect((await liveJira.newestFixVersionEntry('HIMMEL-3084')).id).toBe('57628');
+    expect(vi.mocked(request).mock.calls.some((c) => String(c[1]).includes('startAt=100'))).toBe(true);
   });
 });
 
