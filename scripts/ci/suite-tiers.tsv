@@ -1058,12 +1058,16 @@ scripts/telegram/test-dispatch-lane.sh	local	behaviour suite, 0 catches in the 4
 scripts/telegram/test-phi-egress-guard-parity.sh	pr	static-gate
 scripts/telegram/test-restart-bridge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/trust/test-trust-status-no-exec.sh	pr	guard
-scripts/test-adopt-features.sh	local	behaviour suite, the second half of test-adopt.sh split for the per-suite time cap (HIMMEL-7300)
+scripts/test-adopt-features.sh	local	behaviour suite, the second half of test-adopt.sh split for the per-suite time cap (HIMMEL-7300), then split again so no shard is bounded by it (HIMMEL-8548)
+scripts/test-adopt-hooks-chain.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
+scripts/test-adopt-hooks-gates.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
 scripts/test-adopt-merge-gate.sh	pr	guard
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-adopt-provenance.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
 scripts/test-adopt-sequences.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-user-claude-md.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-adopt-wizard.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
 scripts/test-adopt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-check-ci-cache.sh	pr	trust-path
 scripts/test-check-ci-rest.sh	pr	trust-path

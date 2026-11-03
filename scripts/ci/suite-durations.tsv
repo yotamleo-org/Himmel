@@ -1049,12 +1049,16 @@ scripts/telegram/test-phi-egress-guard-parity.sh	0
 scripts/telegram/test-restart-bridge.sh	67
 scripts/trust/test-trust-status-no-exec.sh	2
 # Merge-gate estimate: focused install row measured 41s; hook behavior pending VM timing.
-scripts/test-adopt-features.sh	606
+scripts/test-adopt-features.sh	170
+scripts/test-adopt-hooks-chain.sh	117
+scripts/test-adopt-hooks-gates.sh	53
 scripts/test-adopt-merge-gate.sh	112
 scripts/test-adopt-only-hooks.sh	2
 scripts/test-adopt-portable-libs.sh	0
+scripts/test-adopt-provenance.sh	129
 scripts/test-adopt-sequences.sh	433
 scripts/test-adopt-user-claude-md.sh	1
+scripts/test-adopt-wizard.sh	129
 scripts/test-adopt.sh	512
 scripts/test-check-ci-cache.sh	23
 scripts/test-check-ci-rest.sh	4

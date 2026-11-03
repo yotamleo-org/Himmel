@@ -2725,9 +2725,13 @@ scripts/setup/test-migrate-env.sh	24
 scripts/statusline/test-hud-composer-parity.sh	10
 scripts/telegram/test-dispatch-lane.sh	38
 scripts/telegram/test-restart-bridge.sh	67
-scripts/test-adopt-features.sh	606
+scripts/test-adopt-features.sh	170
+scripts/test-adopt-hooks-chain.sh	117
+scripts/test-adopt-hooks-gates.sh	53
 scripts/test-adopt-merge-gate.sh	112
+scripts/test-adopt-provenance.sh	129
 scripts/test-adopt-sequences.sh	433
+scripts/test-adopt-wizard.sh	129
 scripts/test-check-ci-cache.sh	23
 scripts/test-check-ci-run.sh	12
 scripts/test-check-ci.sh	127
