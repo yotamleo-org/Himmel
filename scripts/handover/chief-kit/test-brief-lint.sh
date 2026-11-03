@@ -358,6 +358,26 @@ mk dn_docs '# HIMMEL-9415 — core by label, a docs-only leg' "$PA" '> **Contrac
 expect_rc "8n1 no Writes line on a core-labelled ticket naming only docs/x.md is not a design leg" 3 "$tmp/dn_ticket.md"
 expect_rc "8n2 'docs/a.md setup.py' on a core-labelled ticket is not a design leg" 3 "$tmp/dn_unknown.md"
 expect_rc "8n3 a docs-only Writes line on a core-labelled ticket is a design leg (control)" 0 "$tmp/dn_docs.md"
+# a minerva design leg: the `> **Design leg:** minerva` line plus Writes confined to state-repo specs/ files launches on a
+# core NO-SPEC key; the fixture ticket is core both by its label and by the core path its own body names
+printf -- '---\nkey: "HIMMEL-9419"\nstatus: "To Do"\ntype: "Task"\npriority: "Medium"\nlabels: ["core"]\n---\n# HIMMEL-9419: t\n\nEdit scripts/handover/chief-kit/go.sh to add a guard.\n' > "$tmp/cg-mirror/HIMMEL-9419.md"
+DL='> **Design leg:** minerva'
+mk dl_specs '# HIMMEL-9419 — minerva spec + plan' "$PA" '> **Contract:** y' "$DL" '> **Writes:** specs/design/HIMMEL-9419-x.md specs/plans/HIMMEL-9419-x.md' '## Results (newest at the bottom)'
+mk dl_build '# HIMMEL-9419 — the build' "$PA" '> **Contract:** y' '> **Writes:** scripts/handover/chief-kit/go.sh' '## Results (newest at the bottom)'
+mk dl_core '# HIMMEL-9419 — marker on a core build' "$PA" '> **Contract:** y' "$DL" '> **Writes:** specs/design/HIMMEL-9419-x.md scripts/handover/chief-kit/go.sh' '## Results (newest at the bottom)'
+mk dl_code '# HIMMEL-9419 — marker on a code write' "$PA" '> **Contract:** y' "$DL" '> **Writes:** specs/design/HIMMEL-9419-x.md setup.py' '## Results (newest at the bottom)'
+mk dl_nomark '# HIMMEL-9419 — specs Writes, no marker' "$PA" '> **Contract:** y' '> **Writes:** specs/design/HIMMEL-9419-x.md specs/plans/HIMMEL-9419-x.md' '## Results (newest at the bottom)'
+mk dl_abs '# HIMMEL-9419 — absolute bucket specs' "$PA" '> **Contract:** y' "$DL" "> **Writes:** $tmp/state/u/r/specs/design/HIMMEL-9419-x.md" '## Results (newest at the bottom)'
+expect_rc "8q1 a minerva design leg writing only state-repo specs/ files launches on a core NO-SPEC key" 0 "$tmp/dl_specs.md"
+err="$(bash "$LINT" "$tmp/dl_specs.md" 2>&1 >/dev/null)"
+grep -Fq 'HIMMEL-9419 bypass=design' <<< "$err" && ok "8q1b the design leg is shown and logged as bypass=design" || bad "8q1b design-leg bypass line: $err"
+expect_rc "8q2 a build brief on the same key is still refused NO-SPEC (control)" 3 "$tmp/dl_build.md"
+expect_rc "8q3 the marker on a brief that also writes a core repo path is refused" 3 "$tmp/dl_core.md"
+err="$(bash "$LINT" "$tmp/dl_code.md" 2>&1 >/dev/null)"; rc=$?
+{ [ "$rc" -eq 3 ] && grep -Fq 'design leg' <<< "$err" && grep -Fq 'setup.py' <<< "$err"; } \
+    && ok "8q4 the marker on a brief that writes any repo file is refused, naming the file" || bad "8q4 marker plus repo code (rc=$rc): $err"
+expect_rc "8q5 specs/ Writes without the marker are no design leg: the ticket's own paths decide (core)" 3 "$tmp/dl_nomark.md"
+HANDOVER_DIR="$tmp/state" expect_rc "8q6 the marker with an absolute specs/ path under the handover root launches" 0 "$tmp/dl_abs.md"
 # a relative token is a path only when it reads as a repo file: n/a and and/or name nothing
 mk na '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** n/a' '## Results (newest at the bottom)'
 mk andor '# HIMMEL-9416 — core by its own body' "$PA" '> **Contract:** y' '> **Writes:** and/or' '## Results (newest at the bottom)'
