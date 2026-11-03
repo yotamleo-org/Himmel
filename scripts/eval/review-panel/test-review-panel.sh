@@ -249,6 +249,28 @@ eq "multi: codex found quoting only" "$(metric "$TMP/s3.json" codex.recall)" "0.
 eq "multi: glm's unavailable case leaves its denominator" "$(metric "$TMP/s3.json" glm.recall)" "1.0"
 eq "multi: glm scored on 1 seeded case" "$(metric "$TMP/s3.json" glm.seeded_scored)" "1"
 eq "multi: the panel union found both" "$(metric "$TMP/s3.json" panel.recall)" "1.0"
+eq "responded: a critic named unavailable by the stdout bullet only did not answer that case" "$(jget "$TMP/s3.json" responded/critics/glm)" "1"
+# A real skipped case: header 1/2 and no unavailable bullet (the panel drops it on most skips); only stderr names the critic.
+O3B="$TMP/out3b"; mkdir -p "$O3B"
+cp "$O3/$LA.md" "$O3B/$LA.md"
+cat > "$O3B/$QA.md" <<EOF
+# Critic Panel Review (1/2 critics responded)
+
+## Note: 1 of 2 critics did not respond (review proceeds on the rest)
+
+
+## Critical Issues (1 found)
+- [codex-1]: unquoted \$cache_dir is word-split; a space in the workspace path deletes the wrong tree [$qa_file:$qa_line]
+
+## Important Issues (0 found)
+
+## Suggestions (0 found)
+EOF
+printf 'panel-availability: codex ok responding-model(gpt-6.1-sol)\npanel-availability: glm unavailable (rc=5) reason=critic-skipped: api lane is OFF\n' > "$O3B/$QA.err"
+python3 "$SCORE" score --outputs "$O3B" --fixtures "$FIX" --key "$KEY" --critics codex,glm --only "$LA,$QA" --no-ledger --json "$TMP/s3b.json" >/dev/null 2>&1
+eq "responded: a critic named unavailable only on stderr did not answer that case" "$(jget "$TMP/s3b.json" responded/critics/glm)" "1"
+eq "responded: the critic that answered both cases is counted on both" "$(jget "$TMP/s3b.json" responded/critics/codex)" "2"
+eq "responded: scored counts the cases scored" "$(jget "$TMP/s3b.json" responded/scored)" "2"
 # The roster is required: a responding critic with zero findings stays in the
 # metrics only because the roster names it.
 python3 "$SCORE" score --outputs "$O3" --fixtures "$FIX" --key "$KEY" --only "$LA,$QA" --no-ledger >/dev/null 2>&1; rc=$?
@@ -539,7 +561,7 @@ rget() { python3 -c 'import json,sys; v=json.loads(sys.argv[1])
 for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
 print(round(v,4) if isinstance(v,float) else v)' "$row" "$1"; }
 eq "export-row: writes every field" "$(python3 -c 'import json,sys; print(" ".join(sorted(json.loads(sys.argv[1]))))' "$row")" \
-  "cbs_hash class_recall confighash metrics outputs_sha256 run_id status tree"
+  "cbs_hash class_recall confighash metrics outputs_sha256 responded run_id status tree"
 eq "export-row: the run_id is the outputs dir" "$(rget run_id)" "out1"
 eq "export-row: cbs_hash is HEAD's" "$(rget cbs_hash)" "$(python3 "$SCORE" cbs-hash HEAD --repo "$G")"
 eq "round trip: the confighash gate computes equals the row's" "$(python3 "$SCORE" confighash HEAD --repo "$G")" "$(rget confighash)"
@@ -558,6 +580,10 @@ python3 "$SCORE" verify-row "$(doctor 'r["outputs_sha256"]="0"*64')" "$O" --repo
 eq "verify-row: a doctored outputs_sha256 exits 1" "$rc" "1"
 python3 "$SCORE" verify-row "$(doctor 'r["status"]="inconclusive"')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
 eq "verify-row: a doctored status exits 1" "$rc" "1"
+python3 "$SCORE" verify-row "$(doctor 'r["responded"]={"scored": 99, "critics": {"claude": 99}}')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: a doctored responded roster exits 1" "$rc" "1"
+python3 "$SCORE" verify-row "$(doctor 'del r["responded"]')" "$O" --repo "$G" >/dev/null 2>&1; rc=$?
+eq "verify-row: a row without a responded key is not held to one" "$rc" "0"
 
 # gate over GB..HEAD of the gate repo; grows <rid:recall:fp:logic[:status]>... writes rows at B (b*) or H (h*).
 B=$(python3 "$SCORE" cbs-hash "$GB" --repo "$G"); H=$(python3 "$SCORE" cbs-hash HEAD --repo "$G"); C=$(python3 "$SCORE" confighash HEAD --repo "$G")
@@ -585,6 +611,85 @@ grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --targe
 eq "gate: a target class above the baseline max is keep" "$rc" "0"; has "gate: keep" "$out" "gate: keep"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.8 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; ggate --target-class logic
 has "gate: a target class not above the baseline max is no-loss" "$out" "gate: no-loss"
+
+# Rows record the cases each critic answered; a verdict never reads across unequal panels.
+# groster <rid-prefix> <scored;critic:cases,...> - stamps `responded` on the rows whose run_id starts with the prefix.
+groster() { python3 -c 'import json,sys
+f, pre, spec = sys.argv[1:4]
+scored, crit = spec.split(";")
+rows = [json.loads(l) for l in open(f)]
+for r in rows:
+    if r["run_id"].startswith(pre):
+        r["responded"] = {"scored": int(scored), "critics": {c.split(":")[0]: int(c.split(":")[1]) for c in crit.split(",")}}
+open(f, "w").write("".join(json.dumps(r) + "\n" for r in rows))' "$G/scripts/eval/review-panel/results.jsonl" "$1" "$2"
+  gg add -A; gg commit -qm roster; }
+# base: the claude critic answered 12 of 24 cases (skipped, api lane off), head: both answered all; head worse on
+# fp_rate, which the old gate called a loss
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:24,codex:24"; ggate
+eq "gate: unequal panels exit 1" "$rc" "1"
+has "gate: unequal panels name the mismatch" "$out" "panel mismatch"
+has "gate: unequal panels name the critic that skipped cases" "$out" "claude 12/24"
+case "$out" in *"gate: loss"*) fail "gate: unequal panels give no loss";; *) pass "gate: unequal panels give no loss";; esac
+# a head that looks like a win across unequal panels is refused too
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.9 h2:0.5:0.1:0.9; groster b "24;codex:24"; groster h "24;claude:24,codex:24"; ggate --target-class logic
+has "gate: a win across unequal panels is a mismatch" "$out" "panel mismatch"
+case "$out" in *"gate: keep"*) fail "gate: unequal panels give no keep";; *) pass "gate: unequal panels give no keep";; esac
+# like-for-like keeps its normal verdicts
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster b "24;claude:24,codex:24"; groster h "24;claude:24,codex:24"; ggate
+has "gate: equal panels still lose beyond noise" "$out" "gate: loss"
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; groster b "24;codex:24"; groster h "24;codex:24"; ggate --target-class logic
+has "gate: equal panels still keep a target-class win" "$out" "gate: keep"
+# a critic that answered none of a side's cases against one that answered some is a different panel
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:23,codex:24"; ggate
+has "gate: a critic absent on one side and nearly complete on the other is a mismatch" "$out" "panel mismatch"
+# a critic absent on both sides, or partial on both, is like-for-like
+nroster() { grep -c '"responded"' "$G/scripts/eval/review-panel/results.jsonl"; }
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:0,codex:24"; ggate
+eq "fixture: every row of the absent-on-both-sides pair carries a roster" "$(nroster)" "4"
+has "gate: a critic that answered nothing on both sides is no mismatch" "$out" "gate: no-loss"
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:20,codex:24"; ggate
+eq "fixture: every row of the partial-on-both-sides pair carries a roster" "$(nroster)" "4"
+has "gate: a critic partial on both sides is no mismatch" "$out" "gate: no-loss"
+# a row the verdict does not count (an inconclusive sweep) does not make a roster mismatch either
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5 h3:0.5:0.1:0.5:inconclusive; groster b "24;claude:24,codex:24"; groster h1 "24;claude:24,codex:24"; groster h2 "24;claude:24,codex:24"; groster h3 "24;codex:24"; ggate
+eq "fixture: all five rows carry a roster" "$(nroster)" "5"
+has "gate: an uncounted inconclusive row with another roster is no mismatch" "$out" "gate: no-loss"
+# rows with no roster beside rows with one are not like-for-like: named, no verdict
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster h "24;claude:24,codex:24"; ggate
+has "gate: baseline rows with no roster against head rows with one are a mismatch" "$out" "panel mismatch"
+has "gate: the rows with no roster are named" "$out" "without a roster: baseline b1; b2"
+case "$out" in *"gate: loss"*) fail "gate: rows with no roster give no loss";; *) pass "gate: rows with no roster give no loss";; esac
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b1 "24;codex:24"; groster b2 "24;codex:24"; groster h1 "24;codex:24"; ggate
+has "gate: one counted row with no roster beside rows with one is a mismatch" "$out" "without a roster: baseline none | head h2"
+# every counted row without a roster keeps the normal verdict
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; ggate
+has "gate: no roster on any counted row keeps the normal verdict" "$out" "gate: loss"
+# The roster check counts the rows the verdict counts: a row the verdict drops carries another roster (codex alone,
+# against the claude+codex pair below) and must not make a mismatch. Each row is dropped by one clause only, with its
+# own run_id and bundle, so deleting that clause alone turns its row into a mismatch.
+# gextra <run_id> <b|h|x|c> <bundle> <fp_rate|null> - appends one codex-only row: at the base hash (b), the head hash
+# (h), another cbs_hash (x) or another confighash (c).
+gextra() { python3 -c 'import json,sys
+f, b, h, c, rid, side, bundle, fp = sys.argv[1:9]
+row = {"run_id": rid, "cbs_hash": b if side == "b" else ("0" * 64 if side == "x" else h),
+       "confighash": "other" if side == "c" else c, "outputs_sha256": bundle, "status": "ok",
+       "metrics": {"panel.recall_gating": 0.5, "panel.fp_rate": None if fp == "null" else float(fp)},
+       "class_recall": {"logic": 0.5}, "responded": {"scored": 24, "critics": {"codex": 24}}}
+open(f, "a").write(json.dumps(row) + "\n")' "$G/scripts/eval/review-panel/results.jsonl" "$B" "$H" "$C" "$@"
+  gg add -A; gg commit -qm extra; }
+# gdrop <label> <run_id> <side> <bundle> <fp_rate|null> - the extra row must leave the verdict a no-loss
+gdrop() {
+  grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:24,codex:24"; groster h "24;claude:24,codex:24"
+  gextra "$2" "$3" "$4" "$5"; ggate
+  has "gate: $1 is not counted by the roster check" "$out" "gate: no-loss"
+}
+gdrop "a repeated run_id" h1 h dup-of-h1-id 0.1
+gdrop "a repeated outputs bundle" h3 h h1 0.1
+gdrop "a head row repeating a baseline run_id" b1 h dup-of-b1-id 0.1
+gdrop "a head row repeating a baseline outputs bundle" h4 h b1 0.1
+gdrop "a counted-status row with a null gate metric" h5 h null-metric null
+gdrop "a row at another cbs_hash" h6 x other-hash 0.1
+gdrop "a row at another confighash" h7 c other-config 0.1
 
 # --- real cases: multi-file, context_seed, base, fix ---------------------------------------
 S="$TMP/src"; RL="$TMP/real"; RK="$TMP/real-key.json"
