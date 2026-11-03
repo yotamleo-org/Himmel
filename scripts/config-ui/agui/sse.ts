@@ -88,7 +88,7 @@ export type StreamOpts = {
 // `failure` (an enum) identifies too. `agent` / `subagent` (who acted) are identifiers except a subagent's
 // name, model and kind, which come from the Agent call's free-form input and so pass the redactor; the
 // session's own agent (id "main": its agent-name record, its API model) is kept, since a worker's name is often
-// 32+ chars and would be blanked.
+// 32+ chars and would be blanked; the mapper masks the part of that name taken from the prompt (it gets `redact`).
 const ID_FIELDS = new Set(["type", "threadId", "runId", "messageId", "toolCallId", "parentMessageId", "toolCallName", "role", "timestamp", "failure"]);
 const AGENT_FIELDS = new Set(["agent", "subagent"]);
 const FREE_AGENT_FIELDS = ["name", "model", "kind"];
@@ -121,7 +121,7 @@ async function openVerified(path: string): Promise<FileHandle> {
 }
 
 export function journalStream(path: string, o: StreamOpts): ReadableStream<Uint8Array> {
-  const mapper = createJournalMapper({ threadId: o.threadId, lane: laneOfJournal(path) === "native" ? undefined : laneOfJournal(path) }); // a non-native stream carries its lane (native is the unmarked default)
+  const mapper = createJournalMapper({ threadId: o.threadId, redact: o.redact, lane: laneOfJournal(path) === "native" ? undefined : laneOfJournal(path) }); // a non-native stream carries its lane (native is the unmarked default)
   const enc = new TextEncoder();
   const started = Date.now();
   const src = (p: string): Source => ({ path: p, offset: 0, size: 0, tail: "", utf8: new TextDecoder(), last: { ts: -Infinity } });

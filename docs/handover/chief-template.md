@@ -145,12 +145,13 @@ bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
 ## Dispatching a worker
 
 1. Write the brief from `{{REPO}}/docs/handover/worker-brief-template.md` into
-   `{{STATE_DIR}}`; a child inherits **nothing**, so brief it fully.
+   `{{STATE_DIR}}`; a child inherits **nothing**. Search the topic (not salus):
+   `bash {{REPO}}/scripts/lib/qmd-bounded.sh query -c luna "prior art"`.
 2. **Collision check:** queued workers' files must be disjoint (**single-writer**).
 3. **Name an explicit model**; raise *effort* before tier.
 4. Launch: `setsid nohup bash "{{KIT}}/headed-arm-worker.sh" --profile worker-impl
    <session-name> "<brief>" <signal-file> <deadline-epoch> <log> <model>
-   >/dev/null 2>&1 &` — headed (no TTY exits at the first idle message);
+   >/dev/null 2>&1 &` — headed;
    `--profile` is required (else exit 2; `--no-profile` when the brief
    pastes the preface). The launcher exports
    `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) to route alerts here.
@@ -169,7 +170,7 @@ rule; batch rulings per decision point.
 
 ## Merges — READY → GO → merge
 
-A worker reports `READY <pr> <head> GREEN`. Verify independently with
+A worker reports `READY <pr> <head> GREEN`. Verify with
 `chief-kit/ready-check.sh <pr> <full-40-hex-head-sha>` (`timeout 90 bash`; all check-runs success
 at that head, zero unresolved threads, trailers in the first commit; the diff stays
 your judgement), then `chief-kit/go.sh <pr> <head>`: that write IS the GO

@@ -54,6 +54,11 @@ NOW=2026-10-07T12:00:00Z
 DAY=2026-10-07
 
 STUB="$TMP/stub"; mkdir -p "$STUB"
+# A cadence run digests sessions first; no case reads the real ~/.claude/projects or writes the real state dir.
+printf '#!/usr/bin/env bash\nexit 0\n' >"$STUB/backfill-noop"; chmod +x "$STUB/backfill-noop"
+export FAILURE_REVIEW_BACKFILL="$STUB/backfill-noop"
+# worker_ledger.py reads this first, so even a case that unsets the seam never writes the real state dir.
+export WORKER_SESSION_DIGEST_STATE_DIR="$TMP/never-digest-state"
 cat >"$STUB/jira" <<'EOF'
 #!/usr/bin/env bash
 d="$(dirname "$0")"
@@ -300,6 +305,47 @@ FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8/out" H
   HIMMEL_FAILURE_ROUTES_STATE="$C8/state.json" timeout "$BOUND" bash "$CAD" run >"$C8/run2.out" 2>&1; rc=$?
 hung "$rc" "cadence run (proceed)"
 check "a PROCEED preflight runs the review dry-run" '[ "$rc" = 0 ] && ls "$C8/out"/failure-review-*.md >/dev/null 2>&1 && [ ! -e "$C8/state.json" ]'
+# the daily pass first digests the last week's undigested sessions; a failing digest never stops the review.
+BFLOG="$TMP/bf.log"; printf '#!/usr/bin/env bash\necho "$*" >>%q\n' "$BFLOG" >"$STUB/backfill"; chmod +x "$STUB/backfill"
+C8d="$TMP/c8d"; mkdir -p "$C8d"
+FAILURE_REVIEW_BACKFILL="$STUB/backfill" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8d/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8d/state.json" timeout "$BOUND" bash "$CAD" run >"$C8d/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (session digest)"
+SINCE="$(date -u -d '7 days ago' +%F 2>/dev/null || date -u -v-7d +%F)"
+check "a run digests the last seven days of sessions before the review, past a resumed session's idle window" '[ "$rc" = 0 ] && grep -qxF "backfill --since $SINCE --live-minutes 360" "$BFLOG" && ls "$C8d/out"/failure-review-*.md >/dev/null 2>&1'
+check "the ledger's default state dir is WORKER_SESSION_DIGEST_STATE_DIR when set" '[ "$(WORKER_SESSION_DIGEST_STATE_DIR="$TMP/envstate" python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import worker_ledger as w; print(w.default_state_dir())" "$HERE")" = "$TMP/envstate" ]'
+printf '#!/usr/bin/env bash\nexit 5\n' >"$STUB/backfill-fail"; chmod +x "$STUB/backfill-fail"
+C8e="$TMP/c8e"; mkdir -p "$C8e"
+FAILURE_REVIEW_BACKFILL="$STUB/backfill-fail" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8e/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8e/state.json" timeout "$BOUND" bash "$CAD" run >"$C8e/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (session digest fails)"
+check "a failed session digest is logged and the review still runs" '[ "$rc" = 0 ] && grep -q "session digest failed (exit 5)" "$C8e/run.out" && ls "$C8e/out"/failure-review-*.md >/dev/null 2>&1'
+check "a failed session digest is its own cadence alert" 'grep -q "failure-review-digest the daily session digest failed (exit 5)" "$CADENCE_ALERT_FILE"'
+# a hung digest is cut at the total bound (1 s here, 1800 s in production): rc 124 logged, alerted, the review still runs.
+printf '#!/usr/bin/env bash\nexec sleep 30\n' >"$STUB/backfill-hung"; chmod +x "$STUB/backfill-hung"
+C8h="$TMP/c8h"; mkdir -p "$C8h"
+FAILURE_REVIEW_DIGEST_BOUND=1 FAILURE_REVIEW_BACKFILL="$STUB/backfill-hung" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8h/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8h/state.json" timeout "$BOUND" bash "$CAD" run >"$C8h/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (session digest hangs)"
+check "a hung session digest is cut at the bound, logged as rc 124, alerted, and the review still runs" '[ "$rc" = 0 ] && grep -q "session digest failed (exit 124)" "$C8h/run.out" && grep -q "failure-review-digest the daily session digest failed (exit 124)" "$CADENCE_ALERT_FILE" && ls "$C8h/out"/failure-review-*.md >/dev/null 2>&1'
+# the seam unset: the real worker_ledger.py runs against a scratch HOME and state dir (no journals there), before the review.
+C8s="$TMP/c8s"; mkdir -p "$C8s/home"
+env -u FAILURE_REVIEW_BACKFILL HOME="$C8s/home" WORKER_SESSION_DIGEST_STATE_DIR="$C8s/state" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8s/out" \
+  HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" HIMMEL_FAILURE_ROUTES_STATE="$C8s/state.json" timeout "$BOUND" bash "$CAD" run >"$C8s/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (real digest, scratch HOME)"
+check "with the seam unset the real digest runs on a scratch HOME before the review, and writes nothing outside it" '[ "$rc" = 0 ] && grep -q "^backfill: journals=0 " "$C8s/run.out" && ls "$C8s/out"/failure-review-*.md >/dev/null 2>&1 && [ ! -e "$C8s/home/.himmel/state/leg-digest" ]'
+# a host whose date cannot take the window: the digest is skipped with a message and the review still runs.
+mkdir -p "$STUB/nodate"; REALDATE="$(command -v date)"
+printf '#!/usr/bin/env bash\ncase "$*" in *"7 days ago"*|*-v-7d*) exit 1;; esac\nexec %q "$@"\n' "$REALDATE" >"$STUB/nodate/date"; chmod +x "$STUB/nodate/date"
+: >"$BFLOG"; C8x="$TMP/c8x"; mkdir -p "$C8x"
+PATH="$STUB/nodate:$PATH" FAILURE_REVIEW_BACKFILL="$STUB/backfill" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" HIMMEL_FAILURE_REVIEW_DIR="$C8x/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C2/ledger.jsonl" \
+  HIMMEL_FAILURE_ROUTES_STATE="$C8x/state.json" timeout "$BOUND" bash "$CAD" run >"$C8x/run.out" 2>&1; rc=$?
+hung "$rc" "cadence run (no date for the window)"
+check "a host with no date for the window skips the digest, says so, and the review still runs" '[ "$rc" = 0 ] && grep -q "session digest skipped, no date for the window" "$C8x/run.out" && [ ! -s "$BFLOG" ] && ls "$C8x/out"/failure-review-*.md >/dev/null 2>&1'
+printf '#!/usr/bin/env bash\necho SKIPPED-BANK\n' >"$STUB/preflight-skip"; chmod +x "$STUB/preflight-skip"
+: >"$BFLOG"
+FAILURE_REVIEW_BACKFILL="$STUB/backfill" FAILURE_REVIEW_PREFLIGHT="$STUB/preflight-skip" timeout "$BOUND" bash "$CAD" run >/dev/null 2>&1
+check "a SKIPPED-BANK night digests nothing either" '[ ! -s "$BFLOG" ]'
 # a failed Telegram send (rc 3) leaves the digest written: the alert says only the send failed.
 C8n="$TMP/c8n"; mkdir -p "$C8n"; row "$C8n/ledger.jsonl" N900 error/Notify 0 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" FAILURE_REVIEW_NOTIFY_CMD="$STUB/notify-fail" HIMMEL_FAILURE_REVIEW_DIR="$C8n/out" HIMMEL_WORKER_SESSION_FAILURES_LEDGER="$C8n/ledger.jsonl" \

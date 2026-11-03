@@ -12,7 +12,7 @@ type State = "ok" | "absent" | "error";
 type Read = { state: State; v?: any };
 export type Source = { id: string; reads: string; state: State; reason?: string; found: Record<string, number> | null };
 export type InvTool = { kind: string; source: string; name: string; configured_in?: string[]; loads_in_chief?: boolean; off_here?: boolean };
-export type InvHook = { kind: "hook"; source: string; name: string; wired: [string, string][]; runs_twice: boolean };
+export type InvHook = { kind: "hook"; source: string; name: string; wired: [string, string][]; runs_twice: boolean; declared_dual?: true };
 export type Cli = { name: string; path: string | null; version: string | null; state: State };
 export type Inventory = { state: State; scanned_at: string; sources: Source[]; tools: InvTool[]; hooks: InvHook[]; clis: Cli[] };
 
@@ -20,6 +20,12 @@ export const CLIS = ["rtk", "qmd", "graphify", "gh", "bun", "node", "codex", "sk
 const RUNNERS = new Set(["run-hook-with-bash.js", "run-node.sh"]);
 const SCRIPT = /^[\w.-]+\.(?:sh|bash|js|mjs|cjs|py|ts)$/;
 const NAME = /^[\w.:-]{1,120}$/;
+// A wiring that skips itself when the project layer covers the script (the user-level guardrail-skip-in-himmel.js wrapper,
+// or a plugin entry that greps the project's .claude/settings.json) never runs twice; same rule as doctor C81.
+const SKIPS = /guardrail-skip-in-himmel|grep -qs [^;]*CLAUDE_PROJECT_DIR\/\.claude\/settings\.json"?; then exit 0/;
+// Wired in the project AND the himmel-ops plugin on purpose: a deny still fires and logs with the plugin
+// disabled or cached older, and the tool_use_id claim writes one row. A declared dual, not a double.
+const DECLARED_DUALS = new Set(["redirect-webfetch-walled-hosts.sh"]);
 
 function readJson(file: string): Read {
   let text: string;
@@ -37,14 +43,14 @@ const mcpKeys = (v: unknown) => isObj(v) && isObj(v.mcpServers) ? Object.keys(v.
 
 // The hook scripts of one settings "hooks" object: basenames only, the chain runners left out.
 function wirings(hooks: unknown) {
-  const out: { event: string; matcher: string; scripts: string[] }[] = [];
+  const out: { event: string; matcher: string; scripts: string[]; skips: boolean }[] = [];
   if (!isObj(hooks)) return out;
   for (const [event, groups] of Object.entries(hooks)) {
     if (!Array.isArray(groups)) continue;
     for (const g of groups) for (const h of isObj(g) && Array.isArray(g.hooks) ? g.hooks : []) {
       if (!isObj(h) || typeof h.command !== "string") continue;
       const scripts = [...new Set(h.command.split(/[\s"'`;|&()]+/).map((t: string) => basename(t)).filter((b: string) => SCRIPT.test(b) && !RUNNERS.has(b)))] as string[];
-      out.push({ event, matcher: typeof g.matcher === "string" && g.matcher ? g.matcher : "*", scripts });
+      out.push({ event, matcher: typeof g.matcher === "string" && g.matcher ? g.matcher : "*", scripts, skips: SKIPS.test(h.command) });
     }
   }
   return out;
@@ -64,7 +70,7 @@ function cliRow(name: string, env: Env, home: string): Cli {
 
 export function scanToolInventory(env: Env, now: number): Inventory {
   const home = env.HOME || homedir(), repo = env.HIMMEL_REPO || process.cwd(), claude = join(home, ".claude");
-  const sources: Source[] = [], tools: InvTool[] = [], hookRows = new Map<string, InvHook>();
+  const sources: Source[] = [], tools: InvTool[] = [], hookRows = new Map<string, InvHook>(), skipping = new Map<string, boolean>();
   const source = (id: string, reads: string, state: State, found: Record<string, number> | null, reason?: string) =>
     sources.push({ id, reads, state, ...(reason ? { reason } : {}), found: state === "ok" ? found : null });
   const addHooks = (src: string, list: ReturnType<typeof wirings>) => {
@@ -72,6 +78,7 @@ export function scanToolInventory(env: Env, now: number): Inventory {
       const key = `${src}\0${name}`, row = hookRows.get(key) || { kind: "hook" as const, source: src, name, wired: [], runs_twice: false };
       if (!row.wired.some(([e, m]) => e === w.event && m === w.matcher)) row.wired.push([w.event, w.matcher]);
       hookRows.set(key, row);
+      skipping.set(key, (skipping.get(key) ?? true) && w.skips);
     }
   };
 
@@ -175,8 +182,14 @@ export function scanToolInventory(env: Env, now: number): Inventory {
   source("rtk-history", "~/.local/share/rtk/history.db, opened read-only", dbState, { bytes });
 
   // A hook script wired in more than one place runs twice on the same call.
-  const hooks = [...hookRows.values()];
-  for (const h of hooks) h.runs_twice = hooks.some((x) => x.name === h.name && x.source !== h.source);
+  // A row whose every wiring skips itself under the project layer counts toward no double; a declared dual is named, not doubled.
+  const hooks = [...hookRows.values()], counts = (h: InvHook) => !skipping.get(`${h.source}\0${h.name}`);
+  for (const h of hooks) {
+    const peer = hooks.some((x) => x.name === h.name && x.source !== h.source && counts(x));
+    const pair = hooks.filter((x) => x.name === h.name && counts(x)).every((x) => x.source === "project" || x.source.startsWith("himmel-ops@"));
+    if (DECLARED_DUALS.has(h.name) && peer && pair) h.declared_dual = true;
+    else h.runs_twice = counts(h) && peer;
+  }
   const state: State = sources.some((s) => s.state === "ok") ? "ok" : sources.some((s) => s.state === "error") ? "error" : "absent";
   return { state, scanned_at: new Date(now).toISOString(), sources, tools, hooks: hooks.sort((a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name)), clis };
 }

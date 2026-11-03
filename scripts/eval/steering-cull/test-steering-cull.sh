@@ -36,7 +36,11 @@ kept_missing() { python3 -c 'import json,sys
 rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
 t=open(sys.argv[2]).read()
 print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] not in t) or "none")' "$HERE/rows.json" "$1" \
-    r4-billing r5-invariants l65-specs-location l71-qmd-graphify 2>&1; }
+    r4-billing r5-invariants l65-specs-location 2>&1; }
+# l71-qmd-graphify is not listed: that live line was rewritten on purpose (it taught bare forms the hooks refuse);
+# rows.json still holds its old span, checked against the frozen baseline above. What pins the live routing line now:
+# scripts/ci/test-check-taught-search-forms.sh asserts CLAUDE.md names both wrapper commands, and
+# scripts/ci/check-taught-search-forms.sh fails if a bare form returns to it.
 eq "live cull: the kept rows' spans are byte-present in CLAUDE.md" "$(kept_missing "$LIVE")" "none"
 python3 -c 'import json,sys
 r=[x for x in json.load(open(sys.argv[1]))["rows"] if x["id"]=="r4-billing"][0]

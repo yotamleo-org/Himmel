@@ -88,6 +88,16 @@ mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
 run query q >/dev/null; rc=$?
 if [ "$rc" = 2 ] && grep -q 'no graph' "$T/err"; then pass "T5 missing graph is loud"
 else fail "T5 rc=$rc err=$(cat "$T/err")"; fi
+# T5b: the message says the graph covers code and points a notes search at qmd, not at a vault graph.
+if grep -q 'covers code repos' "$T/err" && grep -q 'qmd-bounded.sh query' "$T/err"; then pass "T5b missing-graph message points notes at qmd"
+else fail "T5b err=$(cat "$T/err")"; fi
+# T5c: the qmd wrapper path in that message exists from a cwd outside the repo (a reader standing in a vault).
+qpath="$(grep -o 'bash [^ ]*qmd-bounded.sh' "$T/err" | head -1 | sed 's/^bash //')"
+if [ -n "$qpath" ] && [[ $qpath == /* ]] && (cd / && [ -f "$qpath" ]); then pass "T5c the printed qmd path exists from outside the repo"
+else fail "T5c qpath='$qpath'"; fi
+gpath="$(grep -o 'bash [^ ]*worker-graph.sh' "$T/err" | head -1 | sed 's/^bash //')"
+if [ -n "$gpath" ] && [[ $gpath == /* ]] && (cd / && [ -f "$gpath" ]); then pass "T5d the printed graph path exists from outside the repo"
+else fail "T5d gpath='$gpath'"; fi
 
 # T6: a larger default --budget is passed; an explicit --budget wins.
 mv "$P/graphify-out/graph.json.x" "$P/graphify-out/graph.json"

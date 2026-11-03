@@ -537,7 +537,7 @@ token_residual() {
 token_rc=0
 token_residual "${known_tokens[@]}" </dev/null || token_rc=$?
 check "8 every known release token was actually captured" "$token_rc" "0"
-leak_lines="$(grep -rhEi "$BANNED" "$root" 2>/dev/null)"
+leak_lines="$(grep -rhEi "$BANNED" "$root" 2>/dev/null | sed -E 's/(^| )-c luna( |$)/\1\2/g' | grep -Ei "$BANNED")" # the collection flag is a search command, as in leak_free # leak-pattern-allow
 leak_residual="$(printf '%s\n' "$leak_lines" | token_residual "${known_tokens[@]}")"
 check "8 no leak under the temp handover root (excluding exact release-token lines)" \
     "$(printf '%s\n' "$leak_residual" | grep -c .)" "0"

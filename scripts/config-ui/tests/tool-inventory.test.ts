@@ -159,3 +159,62 @@ test("a malformed plugin MCP or hooks file reads error with no count, never a sc
   const src = Object.fromEntries(scanToolInventory(env, 0).sources.map((s: any) => [s.id, s]));
   for (const id of ["mcp-plugins", "plugin-items"]) expect(src[id]).toMatchObject({ state: "error", found: null });
 });
+
+// A hook that skips itself is not a double, a declared dual is not a false one, a real duplicate still is.
+function layered() {
+  const dir = mkdtempSync(join(tmpdir(), "tool-inventory-layers-")); dirs.push(dir);
+  const home = join(dir, "home"), repo = join(dir, "repo"), guard = join(dir, "guard"), ops = join(dir, "ops");
+  const skip = (name: string) => ({ matcher: "Bash", hooks: [{ type: "command", command: `GUARDRAIL_BASH=/bin/bash node "$HOME/h/scripts/hooks/guardrail-skip-in-himmel.js" "$HOME/h/scripts/hooks/${name}"` }] });
+  const plain = (name: string, matcher = "Bash") => ({ matcher, hooks: [{ type: "command", command: `bash "$CLAUDE_PROJECT_DIR/scripts/hooks/${name}"` }] });
+  json(join(home, ".claude", "settings.json"), {
+    enabledPlugins: { "himmel-guard@himmel": true, "himmel-ops@himmel": true },
+    hooks: { PreToolUse: [skip("auto-approve-safe-bash.sh"), skip("block-read-secrets.sh"), plain("real-twin.sh")] },
+  });
+  json(join(repo, ".claude", "settings.json"), { hooks: { PreToolUse: [plain("auto-approve-safe-bash.sh"), plain("block-read-secrets.sh"), plain("block-destructive-commands.sh"), plain("real-twin.sh"), plain("redirect-webfetch-walled-hosts.sh", "WebFetch")] } });
+  json(join(home, ".claude", "plugins", "installed_plugins.json"), { version: 2, plugins: {
+    "himmel-guard@himmel": [{ scope: "user", installPath: guard, version: "1" }],
+    "himmel-ops@himmel": [{ scope: "user", installPath: ops, version: "1" }],
+  } });
+  json(join(guard, "hooks", "hooks.json"), { hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command",
+    command: "if grep -qs 'block-destructive-commands.sh' \"$CLAUDE_PROJECT_DIR/.claude/settings.json\"; then exit 0; fi; bash \"${CLAUDE_PLUGIN_ROOT}/hooks/block-destructive-commands.sh\"" }] }] } });
+  json(join(ops, "hooks", "hooks.json"), { hooks: { PreToolUse: [{ matcher: "WebFetch", hooks: [{ type: "command", command: "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh\"" }] }] } });
+  return { HOME: home, HIMMEL_REPO: repo, PATH: "/nonexistent" };
+}
+
+test("a hook that skips itself under the project layer reads single, a declared dual is named, a real duplicate reads double", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const inv = scanToolInventory(layered(), 0);
+  const rows = (name: string) => inv.hooks.filter((h: any) => h.name === name);
+  for (const name of ["auto-approve-safe-bash.sh", "block-read-secrets.sh", "block-destructive-commands.sh"]) {
+    expect(rows(name).length).toBe(2);
+    expect(rows(name).map((h: any) => h.runs_twice)).toEqual([false, false]);
+  }
+  expect(rows("redirect-webfetch-walled-hosts.sh").map((h: any) => [h.source, h.runs_twice, h.declared_dual])).toEqual([["himmel-ops@himmel", false, true], ["project", false, true]]);
+  expect(rows("real-twin.sh").map((h: any) => h.runs_twice)).toEqual([true, true]);
+});
+
+test("only the declared dual is named: another hook wired in the project and the plugin reads double, a declared dual wired once reads single", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const env = layered(), ops = join(dirname(env.HOME), "ops");
+  const hook = (event: string, matcher: string, command: string) => ({ [event]: [{ matcher, hooks: [{ type: "command", command }] }] });
+  const rows = (name: string) => scanToolInventory(env, 0).hooks.filter((h: any) => h.name === name);
+  json(join(env.HIMMEL_REPO, ".claude", "settings.json"), { hooks: hook("PreToolUse", "WebFetch", 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/ops-twin.sh"') });
+  json(join(ops, "hooks", "hooks.json"), { hooks: hook("PreToolUse", "WebFetch", 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/ops-twin.sh"') });
+  expect(rows("ops-twin.sh").map((h: any) => [h.source, h.runs_twice, h.declared_dual])).toEqual([["himmel-ops@himmel", true, undefined], ["project", true, undefined]]);
+  json(join(env.HIMMEL_REPO, ".claude", "settings.json"), { hooks: hook("PreToolUse", "WebFetch", 'bash "$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh"') });
+  json(join(ops, "hooks", "hooks.json"), { hooks: {} });
+  expect(rows("redirect-webfetch-walled-hosts.sh").map((h: any) => [h.source, h.runs_twice, h.declared_dual])).toEqual([["project", false, undefined]]);
+});
+
+test("a third wiring of the declared dual, or a command that only names the project settings, still reads double", async () => {
+  const { scanToolInventory } = await import("../tool-inventory");
+  const env = layered();
+  const cmd = (c: string, matcher = "Bash") => ({ matcher, hooks: [{ type: "command", command: c }] });
+  json(join(env.HOME, ".claude", "settings.json"), { enabledPlugins: { "himmel-ops@himmel": true }, hooks: { PreToolUse: [
+    cmd('bash "$HOME/h/scripts/hooks/redirect-webfetch-walled-hosts.sh"', "WebFetch"),
+    cmd('echo "$CLAUDE_PROJECT_DIR/.claude/settings.json" >/dev/null; bash "$HOME/h/scripts/hooks/real-twin.sh"'),
+  ] } });
+  const rows = (name: string) => scanToolInventory(env, 0).hooks.filter((h: any) => h.name === name);
+  expect(rows("redirect-webfetch-walled-hosts.sh").map((h: any) => [h.runs_twice, h.declared_dual])).toEqual([[true, undefined], [true, undefined], [true, undefined]]);
+  expect(rows("real-twin.sh").map((h: any) => h.runs_twice)).toEqual([true, true]);
+});
