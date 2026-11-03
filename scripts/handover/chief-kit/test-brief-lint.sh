@@ -293,6 +293,16 @@ expect_rc "8b a core brief whose key spec-check answers SPEC ok passes" 0 "$tmp/
 expect_rc "8c a self-written Core gate: bypass= line passes nothing" 3 "$tmp/core_self_gate.md"
 expect_rc "8d a self-written Spec: line passes nothing when spec-check says NO-SPEC" 3 "$tmp/core_self_spec.md"
 expect_rc "8e a non-core brief (docs-only Writes) passes" 0 "$tmp/core_docs.md"
+# the path list is holds.py's parser (a parenthetical is not a write there); the shape lint stays raw, so the prose is still refused
+mk core_paren '# HIMMEL-9411 — a core fix' "$PA" '> **Contract:** y' '> **Writes:** scripts/handover/chief-kit/next-dispatchable.sh (see the ticket)' '## Results (newest at the bottom)'
+expect_rc "8e2 a prose token on a Writes line is still refused, whatever path list holds.py reads" 1 "$tmp/core_paren.md"
+# a broken holds.py must not fail the core check: the path list falls back to the raw split of the Writes text
+KIT8="$tmp/kit8/scripts/handover"; mkdir -p "$KIT8"; cp -r "$HERE" "$KIT8/chief-kit"; ln -s "$HERE/../../lib" "$tmp/kit8/scripts/lib"
+printf 'raise RuntimeError("broken")\n' > "$KIT8/chief-kit/holds.py"
+rc=0; bash "$KIT8/chief-kit/brief-lint.sh" "$tmp/core_docs.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "8e3 a broken holds.py: a docs-only brief still passes the core check" || bad "8e3 broken holds.py docs brief rc=$rc want 0"
+rc=0; bash "$KIT8/chief-kit/brief-lint.sh" "$tmp/core_none.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 3 ] && ok "8e4 a broken holds.py: a core brief with no spec is still refused as core (exit 3)" || bad "8e4 broken holds.py core brief rc=$rc want 3"
 expect_rc "8f a Results bullet does not exempt a core key" 3 "$tmp/core_ran.md"
 expect_rc "8f2 a doc that has run passes when core-check answers BYPASS for its key" 0 "$tmp/bug_ran.md"
 expect_rc "8g a judge brief naming a core key is gated too" 3 "$tmp/core_judge.md"

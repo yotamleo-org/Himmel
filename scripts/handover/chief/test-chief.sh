@@ -2037,6 +2037,10 @@ cat > "$tmp/stub-arm-66.sh" <<STUB
     printf 'WORKER_SESSION_LANE=%s\n' "\${WORKER_SESSION_LANE+set}"
     printf 'OPENROUTER_MODEL=%s\n' "\${OPENROUTER_MODEL+set}"
     printf 'HEADED_ARM_REQUIRED_AUTOCOMPACT=%s\n' "\${HEADED_ARM_REQUIRED_AUTOCOMPACT+set}"
+    printf 'HIMMEL_HOLD_KEY=%s\n' "\${HIMMEL_HOLD_KEY+set}"
+    printf 'HIMMEL_HOLD_DOC=%s\n' "\${HIMMEL_HOLD_DOC+set}"
+    printf 'HIMMEL_HOLD_LABEL=%s\n' "\${HIMMEL_HOLD_LABEL+set}"
+    printf 'WRITE_HOLD_OK=%s\n' "\${WRITE_HOLD_OK+set}"
 } > "$tmp/child-env-66.txt"
 exec "$REPO_REAL/scripts/handover/headed-arm.sh" --dry-run "\$@"
 STUB
@@ -2062,7 +2066,7 @@ out66b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL=high CLAUDEX_LANE_OK=1 \
     WORKER_SESSION_LANE=openrouter OPENROUTER_MODEL=anthropic/claude-sonnet-5.5 \
     CR_TRIGGER_SUPPRESS=1 IMPL_GUARD_OK=1 INLINE_IMPL_OK=1 HIMMEL_READ_CLAMP_LINES=4000 \
-    HIMMEL_CONSOLE_RELAY=1 \
+    HIMMEL_CONSOLE_RELAY=1 HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/leaked-66/doc.md HIMMEL_HOLD_LABEL=N1 WRITE_HOLD_OK=1 \
     HEADED_ARM_LAUNCHER=/leaked-66/worker-claude-launcher.sh HEADED_ARM_RECORDER=1 \
     HEADED_ARM_REQUIRED_AUTOCOMPACT=200000 \
     HEADED_ARM_LAUNCHER_ENV="CLAUDEX_LANE_OK=1 WORKER_SESSION_PROFILE_SETTINGS=/leaked-66/settings.json " \
@@ -2099,6 +2103,11 @@ missing67="$(comm -23 <(printf '%s\n' "$propagated67") <(printf '%s\n' "$strip_l
 check "67 every worker_propagate_env name in headed-arm-worker.sh is in the strip list" "$missing67" ""
 seam67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; chief_context_launch_seam_env_names ) | sort -u)"
 check "67 every launch-seam name is in the strip list" "$(comm -23 <(printf '%s\n' "$seam67") <(printf '%s\n' "$strip_list67"))" ""
+for hold67 in HIMMEL_HOLD_KEY HIMMEL_HOLD_DOC HIMMEL_HOLD_LABEL WRITE_HOLD_OK; do
+    check "67 the strip list names $hold67" "$(printf '%s\n' "$strip_list67" | grep -c "^$hold67\$")" "1"
+    check "67 armed child's own environment strips $hold67 (an arm from inside a worker carries none)" \
+        "$(grep -c "^$hold67=set\$" "$tmp/child-env-66.txt")" "0"
+done
 check "67 armed child's own environment strips WORKER_SESSION_LANE" \
     "$(grep -c '^WORKER_SESSION_LANE=set$' "$tmp/child-env-66.txt")" "0"
 check "67 armed child's own environment strips OPENROUTER_MODEL" \

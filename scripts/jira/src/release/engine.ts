@@ -8,7 +8,7 @@ import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
 import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
-import { appendAdmission, assertAdmissionsWritable, readAdmissions, type Admission } from '../commands/admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissionsTolerant, type Admission } from '../commands/admissions-ledger.js';
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
@@ -53,7 +53,7 @@ const seq = (prefix: string, ids: Iterable<string>) => {
   return `${prefix}-${String(n + 1).padStart(4, '0')}`;
 };
 
-function operatorFence(ctx: Ctx): void {
+export function operatorFence(ctx: Ctx): void {
   if (ctx.env.HIMMEL_CONSOLE_LEG === '1' || ctx.env.HIMMEL_RELEASE_MANAGER === '1') {
     throw new Error('release operator: a chief act on an operator decision; refused inside a chief-spawned worker');
   }
@@ -337,6 +337,16 @@ export function withdraw(ctx: Ctx, o: { req: string; reason: string; by?: string
       if (!d.keys?.includes(r.key)) throw new Error(`release withdraw: ${o.by} does not cover ${r.key}`);
     }
     return appendWithdrawal(ctx, l.k, r, o.by ?? 'console', o.reason.trim());
+  });
+}
+
+// The version repair retires a held repair request its classifier found answered or out of date: `withdrawn:repair`, with the reason.
+export function withdrawHeldRepair(ctx: Ctx, o: { req: string; reason: string }): RequestRow | null {
+  operatorFence(ctx);
+  return locked(ctx, (l) => {
+    const r = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(o.req);
+    if (!r || r.state !== 'held' || !isRepair(r)) return null;
+    return appendWithdrawal(ctx, l.k, r, 'repair', o.reason);
   });
 }
 
@@ -1009,7 +1019,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       if (!superseded && admitted && last.op.to_v) {
         const version = last.op.to_v;
         const key = last.key;
-        if (!readAdmissions(version).some((r) => r.kind === 'rm-admit' && r.key === key && r.ruling === id)) {
+        if (!readAdmissionsTolerant(version).some((r) => r.kind === 'rm-admit' && r.key === key && r.ruling === id)) {
           appendAdmission({ version, key, kind: 'rm-admit', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm', ruling: id });
         }
       }
@@ -1017,7 +1027,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       if (!superseded && (last.op.kind === 'remove' || last.op.kind === 'move') && last.op.from_v) {
         const version = last.op.from_v;
         const key = last.key;
-        if (!readAdmissions(version).some((r) => r.kind === 'rm-remove' && r.key === key && r.ruling === id)) {
+        if (!readAdmissionsTolerant(version).some((r) => r.kind === 'rm-remove' && r.key === key && r.ruling === id)) {
           appendAdmission({ version, key, kind: 'rm-remove', reason: `${last.ground}: ${last.reason}`, by: lease.owner_session ?? 'rm', ruling: id });
         }
       }
@@ -1088,6 +1098,21 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
   const m = new Map<string, RequestRow>();
   for (const r of requests.verified) m.set(r.req, r);
   return m;
+}
+
+// The rows the version repair reads that StateOut does not carry. A bad requests line is reported, never thrown, so the
+// repair can stop on it; a bad admissions line reads as no rows here, and state().inputs.admissions already says UNKNOWN.
+export function repairInputs(ctx: Ctx): {
+  operator: OperatorRow[]; rulings: RulingRow[]; requests: RequestRow[]; admissions: Admission[]; requestsBad: boolean;
+} {
+  const l = loadOrThrow(ctx);
+  return {
+    operator: l.operator.verified,
+    rulings: l.rulings.verified,
+    requests: [...latestOrEmpty(l.requests).values()],
+    admissions: (admissionsOrNull() ?? []).filter((a) => typeof a === 'object' && a !== null),
+    requestsBad: l.requests.bad.length > 0,
+  };
 }
 
 // --- rm-run: the release manager as one on-demand batch -------------------------------

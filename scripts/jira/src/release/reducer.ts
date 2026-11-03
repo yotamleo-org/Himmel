@@ -225,6 +225,7 @@ function recordFor(c: VersionCtx, key: string): { rec: KeyRecord; isIn: boolean;
   const known = placement !== 'unknown';
   const isIn = placement === 'in' || (placement === 'pending' && settled?.effect === 'in');
   const terminal = terminalOf(issue);
+  const operatorOut = settled?.effect === 'out' && settled.r?.authority.kind === 'operator';
   const rec: KeyRecord = {
     key, version: v,
     obligation: isIn ? (c.baseKeys.has(key) && !everOut ? 'baseline' : 'admitted') : 'none',
@@ -233,7 +234,8 @@ function recordFor(c: VersionCtx, key: string): { rec: KeyRecord; isIn: boolean;
     op: known ? settled?.r?.op ?? null : null,
     expected_member: placement === 'in' ? true : placement === 'out' ? false : null,
     actual_member: !issue || c.staleKeys.has(key) ? 'unknown' : issue.fixVersions.includes(v),
-    bookkeeping: bookkeepingOf(inp.events.verified, key, v, terminal) ?? admissionOf(inp.admissions ?? [], key, v),
+    // An override or rm-admit row never answers the operator's own out ruling: it would hide the leak line that ruling makes.
+    bookkeeping: bookkeepingOf(inp.events.verified, key, v, terminal) ?? (operatorOut ? null : admissionOf(inp.admissions ?? [], key, v)),
     emergency: settled?.r?.authority.ref === `O-${inp.decl.release}-emergency`,
     discharged: settled?.r?.op.kind === 'discharge',
     terminal,
@@ -269,7 +271,9 @@ function trendOf(decl: Declaration, events: EventRow[]): ReleaseState['trend'] {
   return trend;
 }
 
-export function reduce(inp: ReduceInput): ReleaseState {
+export function reduce(raw: ReduceInput): ReleaseState {
+  // A ledger line that is not an object (a literal `null` parses) makes the whole admissions input UNKNOWN, as a bad line does.
+  const inp: ReduceInput = raw.admissions?.some((a) => typeof a !== 'object' || a === null) ? { ...raw, admissions: null } : raw;
   const { decl } = inp;
   if (inp.rulings.unparseable || inp.operator.unparseable || inp.events.unparseable) {
     return unknownState(decl.release, 'a ledger file has an unparseable line');

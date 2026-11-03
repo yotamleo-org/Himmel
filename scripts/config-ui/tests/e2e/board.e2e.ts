@@ -3,7 +3,7 @@
 // the three tabs and the lanes draw from the seeded sources; no console error at 1280 and 390 px, light and dark.
 // E2E_SHOTS=<dir> saves the build-side screenshot of each frame, named board-<width>-<scheme>-<tab>.png, to pair with the mockup.
 import { test, expect, type Page } from "@playwright/test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { boot, type Harness } from "./fixtures";
 
@@ -199,4 +199,33 @@ test("with no drift file and no chain registry the Board says so in words and sh
   await expect(page.locator(".rm-chain")).toHaveCount(0);
   await page.getByRole("tab", { name: /^Chains/ }).click();
   await expect(page.locator("#rm-chains .nodata")).toContainText("no chain registry");
+});
+
+// a second mirror under the mirror root (SALUS) joins the seeded HIMMEL one; its card shares a number with a seeded HIMMEL card.
+test("two projects: both projects' cards show with their keys, the Project filter narrows, a SALUS card posts SALUS's own key", async ({ page }) => {
+  const errs = consoleErrors(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await open(page);
+  const root = join(h.home, ".himmel", "state", "jira-mirror");
+  mkdirSync(join(root, "SALUS"), { recursive: true });
+  writeFileSync(join(root, "SALUS", "SALUS-2.md"), '---\nkey: "SALUS-2"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: []\nfixVersions: ["v1.1.3"]\nupdated: "2026-10-02T00:00:00.000+0000"\nresolution: null\n---\n\n# SALUS-2: Salus intake form\n');
+  writeFileSync(join(root, "SALUS.versions.tsv"), "v1.1.3\tfalse\t\n"); // the same version name as HIMMEL's: two entries, not one
+  await go(page, "#/board");
+  // both projects' cards, each with its own key; the same number does not merge them
+  await expect(page.locator(".rm-card", { hasText: "Salus intake form" }).locator("b")).toHaveText("SALUS-2");
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" }).locator("b")).toHaveText("HIMMEL-2");
+  await expect(page.locator(".rm-vstrip .rm-vt", { hasText: "v1.1.3 (SALUS)" })).toHaveCount(1);
+  await expect(page.locator(".rm-vstrip .rm-vt", { hasText: "v1.1.3 (HIMMEL)" })).toHaveCount(1);
+  await shot(page, "board-1280-two-projects");
+  // the Project filter narrows to one
+  await page.locator('select[data-rm-filter="project"]').selectOption({ label: "SALUS" });
+  await expect(page.locator(".rm-card", { hasText: "Salus intake form" })).toBeVisible();
+  await expect(page.locator(".rm-card", { hasText: "Second chain step" })).toHaveCount(0);
+  // a drag of the SALUS card posts a body naming project SALUS
+  const sent: string[] = [];
+  await page.route("**/api/roadmap/write", async (route) => { sent.push(route.request().postData() || ""); await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) }); });
+  await page.locator(".rm-card", { hasText: "Salus intake form" }).dragTo(page.locator('[data-rm-drop="prog"]'));
+  await expect.poll(() => sent.length).toBe(1);
+  expect(JSON.parse(sent[0])).toMatchObject({ key: "SALUS-2", status: "prog" });
+  expect(errs).toEqual([]);
 });

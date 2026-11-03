@@ -6,7 +6,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ChildResult } from "./lock";
 
-export const KEY_RE = /^HIMMEL-\d+$/;
+// A ticket key of any project: <PROJECT>-<n>. Whether the project is on the Board is checked against the enumerated set (projectKeyOf).
+export const KEY_RE = /^[A-Z][A-Z0-9]*-\d+$/;
+// The key's project, only when it is one of the enumerated project keys; null for a key of any other project.
+export const projectKeyOf = (key: string, projects: string[]): string | null => {
+  const p = key.slice(0, key.lastIndexOf("-"));
+  return KEY_RE.test(key) && projects.includes(p) ? p : null;
+};
 // a Sector option name: printable, and no leading "-" so the CLI never reads it as an option
 export const SECTOR_RE = /^[^\s\-\x00-\x1f\x7f][^\x00-\x1f\x7f]*$/;
 const MAX_SECTOR = 60;
@@ -20,7 +26,7 @@ export type WriteReq =
 
 export function parseWrite(b: Record<string, unknown>): WriteReq | { error: string } {
   const key = b.key;
-  if (typeof key !== "string" || !KEY_RE.test(key)) return { error: "key must match HIMMEL-<n>" };
+  if (typeof key !== "string" || !KEY_RE.test(key)) return { error: "key must match <PROJECT>-<n>" };
   const hasStatus = "status" in b, hasSector = "sector" in b;
   if (hasStatus === hasSector) return { error: "send exactly one of status or sector" };
   if (hasStatus) {

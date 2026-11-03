@@ -80,6 +80,12 @@ CADENCE_SCRIPT="${GRAPH_REFRESH_CADENCE_SCRIPT:-$HIMMEL_ROOT/scripts/luna/graphm
 # shellcheck source=./graph-out-root.sh
 # shellcheck disable=SC1091
 . "$HIMMEL_ROOT/scripts/graphify/graph-out-root.sh"
+# The PHI list predicates (readable file, provable dir) are the fence's own,
+# sourced rather than copied. A missing or broken lib refuses: no list can be read.
+PHI_EGRESS_LIB="$HIMMEL_ROOT/scripts/guardrails/phi-egress-lib.sh"
+# shellcheck source=../guardrails/phi-egress-lib.sh
+# shellcheck disable=SC1091
+. "$PHI_EGRESS_LIB" || { echo "graph-refresh: cannot load $PHI_EGRESS_LIB (fail-closed)" >&2; exit 2; }
 # PHI/denylist config dir (mirrors graphify-fence.sh): the vault preflight below
 # reads phi-roots / egress-denylist list files under here. CLAUDE_GLM_CONFIG_DIR
 # is the test seam (point it at a temp tree); default matches the fence.
@@ -228,12 +234,19 @@ _salus_marked() {
 }
 
 # _under_any_list <abs-path> <listfile> -> echoes hit | miss | unreadable.
-# Mirrors graphify-fence.sh: a missing list file is a miss; an UNREADABLE one is
-# "unreadable" so the caller can fail CLOSED (like the fence).
+# Mirrors graphify-fence.sh: a list file that is truly absent is a miss; an
+# UNREADABLE or UNREACHABLE one is "unreadable" so the caller can fail CLOSED
+# (like the fence).
 _under_any_list() {
     local p="$1" listfile="$2" root
-    [ -e "$listfile" ] || { echo miss; return; }
-    { [ -f "$listfile" ] && [ -r "$listfile" ]; } || { echo unreadable; return; }
+    # [ -e ] is also false on EACCES (a locked dir or parent), so a miss is only
+    # confirmed when the dir holding the list can be proven; a dangling symlink
+    # counts as present.
+    if [ ! -e "$listfile" ] && [ ! -L "$listfile" ]; then
+        if _guard_phi_dir_provable "${listfile%/*}"; then echo miss; else echo unreadable; fi
+        return
+    fi
+    _guard_file_readable "$listfile" || { echo unreadable; return; }
     while IFS= read -r root || [ -n "$root" ]; do
         # kept in lockstep with graphify-fence.sh (trim + skip
         # whole-line `#` comments; an entry that trims to "" is skipped).
@@ -419,7 +432,7 @@ preflight_vault() {
     for name in phi-roots egress-denylist; do
         rc="$(_under_any_list "$ap" "$PHI_CONFIG_DIR/$name")"
         if [ "$rc" = unreadable ]; then
-            preflight_refuse "$PHI_CONFIG_DIR/$name exists but is unreadable (fail-closed)"
+            preflight_refuse "$PHI_CONFIG_DIR/$name is unreadable or unreachable (fail-closed)"
         fi
         if [ "$rc" = hit ]; then
             preflight_refuse "vault ($VAULT -> $class_path) is under a $name entry (PHI/denylisted)"

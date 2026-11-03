@@ -122,10 +122,15 @@ if [ -n "$entries" ] && [ -f "$manifest" ]; then
     done
 fi
 
-# state of one worker doc: prints own, quoted-back or missing
+# shellcheck source=../../lib/worker-successor.sh
+. "$HERE/../../lib/worker-successor.sh"
+
+# state of one worker doc: prints replaced, own, quoted-back or missing
 worker_state() {
     local ldoc="$1" line inc brief
     [ -f "$ldoc" ] || { echo missing; return; }
+    # replaced needs the doc's queue lock free: a held lock is a live session, never a replaced one
+    if [ -n "$(worker_named_successor "$ldoc")" ] && bash "$HERE/../queue-lock.sh" status "$ldoc" >/dev/null 2>&1; then echo replaced; return; fi
     brief="$(awk '/^## Results/ { exit } { print }' "$ldoc")"
     # shellcheck disable=SC2016
     if grep -Fq -- "your chief is **\`$successor\`**" <<< "$brief"; then
@@ -151,6 +156,10 @@ while IFS= read -r label; do
         ldoc="$(jq -r --arg l "$label" "$JQ_W"'[W[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"
     fi
     state="$(worker_state "$ldoc")"
+    if [ "$state" = replaced ]; then
+        echo "$label replaced (named successor, not inherited)"
+        continue
+    fi
     if [ "$state" = own ]; then
         echo "$label own (dispatched by $successor, not inherited)"
         continue

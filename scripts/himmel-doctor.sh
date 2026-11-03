@@ -3447,16 +3447,18 @@ check_c83_qmd_embed_backlog() {
 # WARN when a release is declared (<handover>/<slug>/himmel/release/<R>/release.json) and the
 # newest <slug>/himmel/*-chief.md has no `release:` line, names a release with no non-empty
 # declaration, or there is no chief doc at all; INFO when nothing is declared or the chief doc
-# says `release: none` (disabled on purpose); OK otherwise. The release.json is HMAC-signed, so
-# for the release the chief names the check also reads `jira release state <R> --json` (the same
-# read the tick makes) and WARNs unless its status is OK; it cannot judge that when the jira CLI,
-# JIRA_PROJECT_KEY or jq is missing, and says so on the OK row.
+# says `release: none` (disabled on purpose); OK otherwise. Only the declaration of the release
+# the chief doc names is validated: another release's empty release.json is unused and does not
+# warn. The release.json is HMAC-signed, so for the release the chief names the check also reads
+# `jira release state <R> --json` (the same read the tick makes) and WARNs unless its status is OK,
+# including a read that ran (exit 0 or 3) and printed nothing, which reads UNREADABLE; it cannot
+# judge that when the jira CLI, JIRA_PROJECT_KEY or jq is missing, and says so on the OK row.
 # Test seams: HIMMEL_RELEASE_STATE_DIR (the release root; the chief docs sit beside it) and
 # HIMMEL_DOCTOR_RM_STATE_PROBE (a script standing in for `jira release state <R> --json`).
 # ponytail: the newest chief doc by mtime stands in for the live chief, upgrade by reading the
 # chief fleet registry.
 _c84_release_state() {
-    local rel="$1" cli json="" rc=0 pk node_bin
+    local rel="$1" cli json="" rc=0 pk node_bin out
     command -v jq >/dev/null 2>&1 || return 0  # prints nothing: the state cannot be judged here
     if [ -n "${HIMMEL_DOCTOR_RM_STATE_PROBE:-}" ]; then
         json="$(bash "$HIMMEL_DOCTOR_RM_STATE_PROBE" "$rel" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
@@ -3475,8 +3477,9 @@ _c84_release_state() {
         printf 'UNREADABLE\tjira release state exited %s\n' "$rc"
         return 0
     fi
-    jq -r '"\(.status // "UNKNOWN")\t\((.integrity // [])[0] // "")"' <<< "$json" 2>/dev/null \
-        || printf 'UNREADABLE\tjira release state printed no readable JSON\n'
+    # jq over empty input exits 0 and prints nothing: a probe that ran and said nothing is unreadable.
+    out="$(jq -r '"\(.status // "UNKNOWN")\t\((.integrity // [])[0] // "")"' <<< "$json" 2>/dev/null)" || out=""  # swallow-ok: an empty result reads as UNREADABLE below
+    if [ -n "$out" ]; then printf '%s\n' "$out"; else printf 'UNREADABLE\tjira release state printed no readable JSON\n'; fi
 }
 
 check_c84_release_queue() {
@@ -3494,9 +3497,6 @@ check_c84_release_queue() {
         for f in "$root"/*/release.json; do
             [ -e "$f" ] || continue
             f="${f%/release.json}"; declared="$declared${declared:+, }${f##*/}"
-            if [ ! -s "$f/release.json" ]; then
-                bad="$bad$sep${f##*/} has an empty release.json"; sep="; "
-            fi
         done
         [ -n "$declared" ] || continue
         any=1
@@ -3514,7 +3514,7 @@ check_c84_release_queue() {
             '') bad="$bad$sep${doc##*/} has no release: line for declared release $declared, so the tick shows rm-queue=off"; sep="; " ;;
             none) none=1 ;;
             *) if [ ! -s "$root/$rel/release.json" ]; then
-                   bad="$bad$sep${doc##*/} names release $rel but $root/$rel/release.json is missing (declared: $declared), so the tick shows rm-queue=off"; sep="; "
+                   bad="$bad$sep${doc##*/} names release $rel but $root/$rel/release.json is missing or empty (declared: $declared), so the tick shows rm-queue=off"; sep="; "
                else
                    st="$(_c84_release_state "$rel")"
                    case "$st" in

@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Command } from 'commander';
-import { projectKey, request } from '../client.js';
+import { authHeader, baseUrl, projectKey, request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
-import { newestFixVersionEntry } from '../release/version-writes.js';
+import { newestFixVersionEntry, type Getter } from '../release/version-writes.js';
+import { repairRun, RequestRefused } from '../release/repair-run.js';
 import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
@@ -98,7 +99,7 @@ export function refuseRequest(ctx: Ctx, o: { verb: Verb; key: string; from_v: st
   const why = o.why.trim();
   const tail = why.slice(why.lastIndexOf(':') + 1).trim();
   if (why.length < 8 || tail.length < 3 || PLACEHOLDER.test(tail)) {
-    throw new Error(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
+    throw new RequestRefused(`release request: "${o.why}" is a placeholder why; say in one line why ${o.key} needs the release manager`);
   }
   const { issues, sync } = readMirror(ctx.mirrorRoot);
   const snap = issues?.get(o.key);
@@ -107,10 +108,10 @@ export function refuseRequest(ctx: Ctx, o: { verb: Verb; key: string; from_v: st
   const held = snap.fixVersions.join(', ') || 'no version';
   const terminal = terminalOf(snap);
   if (o.verb === 'INTAKE' && terminal !== null && !isPr(o.evidence?.['pr']) && snap.fixVersions.every((v) => !versions.includes(v))) {
-    throw new Error(`release request: ${o.key} is closed (${terminal}) in ${held}, outside ${ctx.release} (${versions.join(', ')}); a closed ticket outside the release takes an INTAKE only as a Done-fold naming its merged PR (--evidence '{"pr":N}')`);
+    throw new RequestRefused(`release request: ${o.key} is closed (${terminal}) in ${held}, outside ${ctx.release} (${versions.join(', ')}); a closed ticket outside the release takes an INTAKE only as a Done-fold naming its merged PR (--evidence '{"pr":N}')`);
   }
   if (o.verb !== 'INTAKE' && o.from_v !== null && !snap.fixVersions.includes(o.from_v)) {
-    throw new Error(`release request: ${o.key} is in ${held}, not ${o.from_v} (mirror synced ${sync}); run \`jira mirror\` if the mirror is stale`);
+    throw new RequestRefused(`release request: ${o.key} is in ${held}, not ${o.from_v} (mirror synced ${sync}); run \`jira mirror\` if the mirror is stale`);
   }
 }
 
@@ -335,6 +336,31 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
 
 const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check']);
 
+/** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
+export const REPAIR_READ_DEADLINE_MS = 5000;
+
+export function repairGetter(deadlineMs: number = REPAIR_READ_DEADLINE_MS): Getter {
+  return async <T>(path: string): Promise<T> => {
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => { abort.abort(); reject(new Error(`read of ${path} timed out`)); }, deadlineMs);
+    });
+    try {
+      const res = await Promise.race([
+        fetch(`${baseUrl()}/rest/api/3${path}`, { method: 'GET', headers: { Authorization: authHeader(), Accept: 'application/json' }, signal: abort.signal }),
+        deadline,
+      ]);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return JSON.parse(await Promise.race([res.text(), deadline])) as T;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+const runGh = (args: string[]): string => execFileSync('gh', args, { encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
+
 const TEST_RUN_GUARD = join(dirname(fileURLToPath(import.meta.url)), '../../../lib/test-run-guard');
 
 /** A test on the station never writes the live release queue. Only exit 77 refuses. */
@@ -380,7 +406,8 @@ export function registerRelease(program: Command): void {
     const postsToJira = action.parent === rel
       && ((verb === 'leaks' && Boolean(action.opts().comment)) || JIRA_POSTING_VERBS.has(verb));
     if (postsToJira) refuseTestJiraPost(`release ${verb}`);
-    const readOnly = action.parent === rel && READ_ONLY_VERBS.has(verb) && !postsToJira;
+    // repair reads unless --apply is set: that files requests and writes ledger rows, so it is read-only by option, not by verb.
+    const readOnly = action.parent === rel && (READ_ONLY_VERBS.has(verb) || (verb === 'repair' && !action.opts().apply)) && !postsToJira;
     if (!readOnly) refuseTestWrite(verb);
   });
 
@@ -447,6 +474,18 @@ export function registerRelease(program: Command): void {
         .sort((a, b) => a.ts.localeCompare(b.ts));
       const issues = mirror ? readMirror(mirror).issues : null;
       for (const l of coreMatch(paths, o.key, { patterns, changeClass: o.changeClass, docsOnly: !!o.docsOnly, issues, records })) console.log(l);
+    });
+
+  rel.command('repair <release>')
+    .description('Classify every Fix Version mismatch into one lane and print the plan as JSON; a dry run writes nothing, --apply files, folds and writes the held file (the chief)')
+    .option('--apply', 'File requests, fold finished keys and write repair-held.json (never a Fix Version)')
+    .option('--repo <owner/name>', 'The GitHub repo every gh lookup names (required)')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action(async (release: string, o: { apply?: boolean; repo?: string; mirrorRoot?: string }) => {
+      const report = await repairRun(ctxFor(release, o.mirrorRoot), { repo: o.repo ?? null, apply: o.apply, get: repairGetter(), gh: runGh, refuse: refuseRequest });
+      console.log(JSON.stringify(report, null, 2));
+      if (report.status === 'stopped') process.exitCode = 3;
+      else if (report.status === 'error') process.exitCode = 2;
     });
 
   rel.command('request <release>')
