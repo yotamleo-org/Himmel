@@ -330,11 +330,59 @@ _rd_rest="${_rd_rest#*$'\001'}"
 _rd_gpath="${_rd_rest%%$'\001'*}"
 _rd_cmd="${_rd_rest#*$'\001'}"
 
+# _fp_plain_file TOKEN: succeeds ONLY when TOKEN is provably not a secret, so the
+# caller can skip the full classification; any doubt fails and the full path
+# runs unchanged. A glob over thousands of files hands the classifier one
+# absolute existing file per name, and the full path pays the 26-step ASCII
+# lower-casing three times per name (about 0.28 ms; 10,000 names are
+# several seconds on a slow runner). Proof, per name: an absolute token with no
+# quote, backslash or trailing slash, naming a regular non-symlink file, whose
+# basename holds none of the substrings any secret pattern needs (matched
+# case-insensitively, a superset of the ASCII fold the full path applies), under
+# a parent that holds none of the directory names the path patterns need and
+# whose canonical path holds no config-audit or .himmel part. The parent check
+# runs once per distinct parent per hook run (one canonicalisation fork).
+_fp_plain_file() {
+    local t="$1" b d nc=0 hit=0
+    case "$t" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+    case "$t" in
+        *[\'\"\\]*|*/) return 1 ;;
+    esac
+    [ -f "$t" ] && [ ! -L "$t" ] || return 1
+    b="${t##*/}"; d="${t%/*}"; [ -n "$d" ] || d=/
+    if [ "${_FP_DIR-}" != "$PWD|$d" ]; then
+        _FP_DIR="$PWD|$d"; _FP_OK=0
+        local c
+        c=$(guard_canon_path "$d") || return 1
+        if shopt -q nocasematch; then nc=1; fi
+        shopt -s nocasematch
+        case "$d" in *.ssh*|*config-audit*|*.himmel*) hit=1 ;; esac
+        [ "$nc" = 1 ] || shopt -u nocasematch
+        case "$c" in *config-audit*|*.himmel*) hit=1 ;; esac
+        [ "$hit" = 1 ] || _FP_OK=1
+        hit=0; nc=0
+    fi
+    [ "$_FP_OK" = 1 ] || return 1
+    if shopt -q nocasematch; then nc=1; fi
+    shopt -s nocasematch
+    case "$b" in
+        *.env*|*id_rsa*|*id_ed25519*|*credentials*|*secrets*|*.pem*|*.key*|*.p12*|*.pfx*) hit=1 ;;
+        *.netrc*|*_netrc*|*.npmrc*|*.pgpass*|*.pypirc*|*terraform.tfstate*) hit=1 ;;
+        *.ssh*|*.aws*|*.kube*|*.gnupg*|*config*|*hosts.yml*|*environ*) hit=1 ;;
+    esac
+    [ "$nc" = 1 ] || shopt -u nocasematch
+    [ "$hit" = 0 ]
+}
+
 # is_secret_path: this hook's name for the shared is_secret_basename predicate
 # (scripts/guardrails/lib.sh — pattern list + case-fold rationale
 # live there; also shared with block-edit-on-main.sh). Kept as a thin wrapper
 # so the many call sites below don't need to change name.
 is_secret_path() {
+    _fp_plain_file "$1" && return 1
     is_secret_basename "$@" && return 0
     g4_secret_path "$1"
 }
