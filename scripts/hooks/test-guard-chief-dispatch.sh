@@ -311,6 +311,32 @@ assert_rc "brief-drafter with no agent file gets no allowance" 2 "$RC9G"
 printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash\ntools: Read, Write, Edit, Bash, WebFetch\n---\n' > "$FT/.claude/agents/brief-drafter.md"
 RC9H=$(run_tree tree-bd-two-tools "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-two.jsonl")
 assert_rc "brief-drafter whose frontmatter repeats tools: gets no allowance" 2 "$RC9H"
+
+# The widened line comes FIRST and the pinned line SECOND: only counting the
+# tools: lines refuses it (a last-line-wins read would allow).
+printf -- '---\nname: brief-drafter\ntools: Read, Write, Edit, Bash, WebFetch\ntools: Read, Write, Edit, Bash\n---\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9I=$(run_tree tree-bd-wide-first "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-wide-first.jsonl")
+assert_rc "brief-drafter with a widened tools: line before the pinned one gets no allowance" 2 "$RC9I"
+
+# The pinned line sits in the BODY, after the frontmatter closes.
+printf -- '---\nname: brief-drafter\n---\n\ntools: Read, Write, Edit, Bash\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9J=$(run_tree tree-bd-body-tools "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-body.jsonl")
+assert_rc "brief-drafter with the tools: line only in the body gets no allowance" 2 "$RC9J"
+
+# No frontmatter at all.
+printf -- 'tools: Read, Write, Edit, Bash\n\nbody\n' > "$FT/.claude/agents/brief-drafter.md"
+RC9K=$(run_tree tree-bd-no-frontmatter "$(payload brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-nofm.jsonl")
+assert_rc "brief-drafter whose agent file has no frontmatter gets no allowance" 2 "$RC9K"
+assert_empty "the refused agent-file shapes write no brief-drafter log" "$(cat "$TMP/bd-wide-first.jsonl" "$TMP/bd-body.jsonl" "$TMP/bd-nofm.jsonl" 2>/dev/null || true)"
+
+# A subagent_type with a trailing newline is not the exact type: $(...) used to
+# strip it and match. Pinned file in place, so only the newline separates the rows.
+agent_md brief-drafter 'Read, Write, Edit, Bash'
+RC9L=$(run_tree tree-bd-newline "$(jq -nc --arg p "$SHIP_FLOW_PROMPT" '{tool_name:"Agent",session_id:"sess-test",tool_input:{subagent_type:"brief-drafter\n\n",description:"d",prompt:$p}}')" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-nl.jsonl")
+assert_rc "brief-drafter with a trailing newline in its type is not the exact type" 2 "$RC9L"
+assert_empty "a trailing-newline brief-drafter dispatch is not logged" "$(cat "$TMP/bd-nl.jsonl" 2>/dev/null || true)"
+RC9M=$(run_hook explore-newline "$(jq -nc --arg p "$SHIP_FLOW_PROMPT" '{tool_name:"Agent",session_id:"sess-test",tool_input:{subagent_type:"Explore\n",description:"d",prompt:$p}}')" HIMMEL_SESSION_ROLE=chief)
+assert_rc "Explore with a trailing newline in its type is not the exact type" 2 "$RC9M"
 rm -f "$FT/.claude/agents/brief-drafter.md"
 
 RC8C=$(run_hook env-chief-worktree-propen "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)

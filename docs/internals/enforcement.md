@@ -3918,7 +3918,8 @@ frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows whil
 `brief-drafter` is a separate allowance for drafting worker briefs: it allows
 while `.claude/agents/brief-drafter.md` pins exactly `tools: Read, Write, Edit,
 Bash`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
-as `brief-drafter-dispatch` (HIMMEL-9028). These three subagent types are the
+as `brief-drafter-dispatch`, best-effort: a failed write never blocks the
+dispatch (HIMMEL-9028). These three subagent types are the
 ONLY carve-outs. `guard-implementor-dispatch.sh` exempts `Explore` and
 `judge-ro` the same way, on the same tools check.
 There is deliberately no prompt-text read-only declaration carve-out: three

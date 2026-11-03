@@ -48,8 +48,9 @@
 #     checked at dispatch — the same structural read-only lane), or
 #     brief-drafter (a repo agent whose frontmatter pins tools
 #     Read, Write, Edit, Bash; its job is writing brief files for the chief,
-#     and its prompt forbids launch, commit, push and PR. Every such dispatch
-#     is appended to the CHIEF_DISPATCH_LOG audit log)
+#     and its prompt forbids launch, commit, push and PR. Each such dispatch
+#     is appended to the CHIEF_DISPATCH_LOG audit log best-effort: a failed
+#     write never blocks the dispatch)
 #   * CHIEF_DISPATCH_OK=1 (see "Escape hatches" below)
 # A genuinely read-only dispatch uses one of those two; the deny message
 # names both.
@@ -150,7 +151,11 @@ if ! tool=$(printf '%s' "$input" | jq -r '.tool_name | select(type == "string") 
 fi
 [ "$tool" = "Agent" ] || exit 0
 
-subagent_type=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type | select(type == "string") // empty' 2>/dev/null || true)
+# Read the raw value: $(...) strips trailing newlines, so a type of
+# "brief-drafter\n" would compare equal. The sentinel keeps them; jq adds one.
+subagent_type=$({ printf '%s' "$input" | jq -r '.tool_input.subagent_type | select(type == "string") // empty' 2>/dev/null || true; printf x; })
+subagent_type="${subagent_type%x}"
+subagent_type="${subagent_type%$'\n'}"
 # judge-ro and brief-drafter are matched exactly and keep their lane only
 # while the project agent file has one tools: line, exactly the expected one
 # (judge-ro: Read, Grep, Glob, Bash; brief-drafter: Read, Write, Edit, Bash).
@@ -299,7 +304,7 @@ prompt-text read-only claim is NOT a carve-out here — three CR rounds proved i
     (audited; a per-call prefix does not reach this hook).
 
 Drafting worker briefs is a separate allowance: dispatch with subagent_type: brief-drafter
-(its agent file must pin tools Read, Write, Edit, Bash; each dispatch is logged)."
+(its agent file must pin tools Read, Write, Edit, Bash; each dispatch is logged best-effort)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"guard-chief-dispatch: chief session denied a ship-flow-shaped Agent dispatch"'
