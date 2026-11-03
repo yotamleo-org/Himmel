@@ -8,6 +8,13 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.103] — 2026-11-03
+
+### Changed
+- `scripts/vault-autosync.sh` reads exit 77 from the stall alert sink as a send
+  refused from a test: it logs that nothing was sent, leaves the stall episode
+  un-alerted and retries on the next run.
+
 ## [0.4.102] — 2026-11-01
 
 ### Changed

@@ -22,7 +22,8 @@
 # episode starts at the first refused run and ends at the next commit or clean
 # tree. Delivery is pluggable: LUNA_VAULT_ALERT_CMD names an executable that is
 # called with one argument, the message. Unset → the stall is only logged. A
-# sink that exits non-zero leaves the episode un-alerted, so the next run retries.
+# sink that exits non-zero leaves the episode un-alerted, so the next run retries;
+# exit 77 means the sink refused to send from a test, and is logged as that.
 #
 # Stall reason + tool-state self-heal: every refused run records
 # `<hook id>:<first file>` in <git-dir>/vault-autosync-reason (cleared with the
@@ -121,10 +122,14 @@ _stall_note() {
   log "$msg" >&2
   if [ -z "${LUNA_VAULT_ALERT_CMD:-}" ]; then
     log "LUNA_VAULT_ALERT_CMD is not set - no operator alert sent." >&2
-  elif "$LUNA_VAULT_ALERT_CMD" "$msg"; then
-    printf '%s\nalerted\n' "$first" >"$_stall_file"
   else
-    log "alert sink failed - will retry next run." >&2
+    local sink_rc=0
+    "$LUNA_VAULT_ALERT_CMD" "$msg" || sink_rc=$?
+    case "$sink_rc" in
+      0) printf '%s\nalerted\n' "$first" >"$_stall_file" ;;
+      77) log "alert sink refused - nothing sent, will retry next run." >&2 ;;
+      *) log "alert sink failed - will retry next run." >&2 ;;
+    esac
   fi
   return 0
 }

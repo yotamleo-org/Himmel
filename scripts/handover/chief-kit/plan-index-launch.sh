@@ -10,6 +10,8 @@ trap 'rmdir "$o/.launch"' EXIT
 if "$@" >"$o/.run.log" 2>&1; then
     rc=0; rm -f "$o/.last-fail"
 else
-    rc=$?; tail -n 1 "$o/.run.log" >"$o/.last-fail"
+    rc=$?
+    # 77 = the test guard refused the run: nothing failed, so tick must not read FAIL.
+    [ "$rc" = 77 ] || tail -n 1 "$o/.run.log" >"$o/.last-fail"
 fi
 echo "$rc" >"$o/.last-run"

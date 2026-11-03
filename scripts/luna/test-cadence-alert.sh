@@ -67,5 +67,25 @@ assert_has "A8 a sender that writes the message then fails is reported as a fail
 msg=$(STATE_FILE=absent alert qmd-reindex rc-5 /tmp/q.log)
 assert_has "A5 no state file keeps the default cause" "Cause: unknown, see log" "$msg"
 
+# A sender exiting 77 was refused by the test guard: neither delivered nor failed.
+printf '#!/usr/bin/env bash\nexit 77\n' >"$TMP/refused-sender.sh"
+chmod +x "$TMP/refused-sender.sh"
+sent_files() { find "$TMP/sent" -type f 2>/dev/null | wc -l | tr -d ' '; }
+rm -f "$TMP/send-failed"
+msg=$(SENDER="$TMP/refused-sender.sh" alert worker-a rc-1 /tmp/q.log)
+assert_has "A9 a refused send still reads as not delivered to a caller that must retry" "ALERT-EXIT-1" "$msg"
+assert_has "A9b a refused send leaves no dedupe sentinel" "sentinels=0" "sentinels=$(sent_files)"
+assert_has "A9c a refused send writes no send-failed marker" "mark=no" "mark=$([ -e "$TMP/send-failed" ] && echo yes || echo no)"
+SENDER="$TMP/bad-sender.sh" alert worker-a rc-1 /tmp/q.log >/dev/null
+SENDER="$TMP/refused-sender.sh" alert worker-a rc-1 /tmp/q.log >/dev/null
+assert_has "A9d a refused send does not clear a real failure's marker" "mark=yes" "mark=$([ -e "$TMP/send-failed" ] && echo yes || echo no)"
+refused_err=$(CADENCE_ALERT_FILE="$TMP/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/sent-err" CADENCE_ALERT_SEND_CMD="$TMP/refused-sender.sh" \
+    CADENCE_ALERT_SEND_FAILED_MARK="$TMP/send-failed" bash "$SINK" fail worker-a rc-1 /tmp/q.log 2>&1)
+assert_has "A9e it says refused" "refused by the test guard" "$refused_err"
+assert_lacks "A9f it does not say the send failed" "send failed" "$refused_err"
+alert worker-a rc-1 /tmp/q.log >/dev/null
+assert_has "A9g control: a delivered send writes the sentinel" "sentinels=1" "sentinels=$(sent_files)"
+assert_has "A9h control: a delivered send clears the marker" "mark=no" "mark=$([ -e "$TMP/send-failed" ] && echo yes || echo no)"
+
 [ "$FAILED" -eq 0 ] || { echo "$FAILED FAILURE(S)"; exit 1; }
 echo "all passed"

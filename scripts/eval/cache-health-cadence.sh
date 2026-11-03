@@ -63,11 +63,16 @@ live_chief() {
 
 # cmd_notify <message>: Telegram + chief inbox; 0 when either delivered.
 cmd_notify() {
-    local msg="${1:-}" repo chief root inbox ok=1 tg
+    local msg="${1:-}" repo chief root inbox ok=1 tg tg_rc=0
     [ -n "$msg" ] || { echo "ERR cache-health: notify needs a message" >&2; return 64; }
     repo="${CACHE_HEALTH_REPO:-$(resolve_primary)}" || repo=""
     tg="${CACHE_HEALTH_TELEGRAM_CMD:-$SCRIPT_DIR/../luna/vault-stall-alert.sh}"
-    if "$tg" "$msg"; then ok=0; else echo "cache-health: Telegram send failed" >&2; fi
+    "$tg" "$msg" || tg_rc=$?
+    case "$tg_rc" in
+        0) ok=0 ;;
+        77) echo "cache-health: Telegram refused by the test guard, nothing sent" >&2 ;;
+        *) echo "cache-health: Telegram send failed" >&2 ;;
+    esac
     chief="${CACHE_HEALTH_CHIEF:-}"
     [ -n "$chief" ] || { [ -z "$repo" ] || chief="$(live_chief "$repo")"; }
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"

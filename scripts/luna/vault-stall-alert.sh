@@ -12,8 +12,9 @@
 #
 #   vault-stall-alert.sh <message...>
 #
-# Exit 0 = delivered; non-zero = not delivered (autosync then retries next run
-# instead of marking the stall episode alerted). Seams are merge-block-alert.sh's
+# Exit 0 = delivered; 77 = refused by the test guard, nothing sent, neither
+# delivered nor failed; any other non-zero = not delivered (autosync then retries
+# next run instead of marking the stall episode alerted). Seams are merge-block-alert.sh's
 # own: MERGE_BLOCK_ALERT_CMD (replaces the sender, `$CMD <chat_id> <text>`) and
 # TELEGRAM_ACCESS_PATH (access.json holding the operator id).
 set -uo pipefail
@@ -36,4 +37,8 @@ fi
 _mba_send "$chat" "$msg" || {
     echo "vault-stall-alert: delivery failed" >&2
     exit 1
+}
+[ "${_MBA_REFUSED:-0}" != 1 ] || {
+    echo "vault-stall-alert: refused by the test guard, nothing sent" >&2
+    exit 77
 }

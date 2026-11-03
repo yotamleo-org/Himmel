@@ -169,6 +169,24 @@ if [ "$(jq -r '.hookSpecificOutput.hookEventName' "$TMP/out" 2>/dev/null)" = Pos
     pass "unknown event name falls back to PostToolUse"
 else fail "bogus event name: $(head -c 200 "$TMP/out")"; fi
 
+# 11d. A send the test guard refused records nothing, so a real run still pages.
+# The guard runs only on Linux.
+if [ "$(uname -s)" = Linux ]; then
+    mkdir -p "$TMP/stub-bin"
+    printf '#!/usr/bin/env bash\necho "$*" >>"%s"\n' "$TMP/bun.log" >"$TMP/stub-bin/bun"
+    chmod +x "$TMP/stub-bin/bun"
+    j_post Bash s-refused "T=$TOK_GHP" | env -u MERGE_BLOCK_ALERT_CMD -u HIMMEL_TEST_FIXTURE PATH="$TMP/stub-bin:$PATH" \
+        HIMMEL_REAL_STATE_ASSUME_STATION=1 HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$TMP/stub-bin" TOKEN_ALERT_DIR="$TMP/refused-alerts" \
+        TELEGRAM_ACCESS_PATH="$TMP/access.json" bash "$HOOK" >"$TMP/out" 2>"$TMP/err"
+    if [ -z "$(ls -A "$TMP/refused-alerts" 2>/dev/null)" ] && [ ! -e "$TMP/bun.log" ]; then
+        pass "a refused send leaves no sentinel and never runs bun"
+    else fail "refused send recorded: $(grep -rlc sent "$TMP/refused-alerts" 2>/dev/null) bun=$([ -e "$TMP/bun.log" ] && echo ran)"; fi
+    before=$(sent_count)
+    j_post Bash s-refused "T=$TOK_GHP" | env HIMMEL_TEST_FIXTURE=1 TOKEN_ALERT_DIR="$TMP/refused-alerts" MERGE_BLOCK_ALERT_CMD="$TMP/send.sh" \
+        TELEGRAM_ACCESS_PATH="$TMP/access.json" SENT_LOG="$TMP/sent.log" bash "$HOOK" >"$TMP/out" 2>"$TMP/err"
+    if [ "$(sent_count)" = "$((before + 1))" ]; then pass "control: the next run with a working sender pages"; else fail "next run did not page (count=$(sent_count), before=$before)"; fi
+fi
+
 # 12. The sentinel never holds the token.
 # grep exits 1 only on a clean "no match"; an error (2, a missing dir) fails.
 grep -rqF -e "$TOK_GHO" -e "$TOK_PAT" -e "$TOK_GHP" "$TMP/alerts"

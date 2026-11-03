@@ -395,6 +395,17 @@ export function refuseTestJiraPost(what: string): void {
   if (r.status === 77) throw new Error(`${what}: refused, nothing was posted`);
 }
 
+/**
+ * A test on the station never mints a release key. The default path is asked about as real
+ * (`--real`): homedir() follows a fixture HOME, so that path alone can look temp. A named key dir
+ * is judged by its path, so a test may mint under a temp one. Only exit 77 refuses.
+ */
+export function refuseTestKeyMint(release: string): void {
+  const real = process.env.HIMMEL_RELEASE_KEY_DIR === undefined ? ['--real'] : [];
+  const r = spawnSync('bash', [TEST_RUN_GUARD, 'check', ...real, 'jira-release-key-mint', releaseKeyPath(release)], { stdio: ['ignore', 'inherit', 'inherit'] });
+  if (r.status === 77) throw new Error('release operator declare: refused, nothing was written');
+}
+
 /** The release verbs that write to Jira: apply sets fix versions and posts the receipt; rm-run applies. */
 const JIRA_POSTING_VERBS = new Set(['apply', 'rm-run']);
 
@@ -640,6 +651,7 @@ export function registerRelease(program: Command): void {
     .option('--mode <mode>', 'observe | live', 'observe')
     .action((release: string, o: { versions: string; decision: string; verbatimFile: string; mode: string }) => {
       if (o.mode !== 'observe' && o.mode !== 'live') throw new Error('release operator declare: --mode is observe or live');
+      refuseTestKeyMint(release);
       const d = declare(ctxFor(release), {
         project: projectKey(), versions: list(o.versions), decision: o.decision,
         verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim(), mode: o.mode,

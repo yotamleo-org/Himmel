@@ -45,5 +45,22 @@ TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/sender.sh" \
     bash "$SINK" 2>/dev/null
 assert_eq "V4 empty message: rejected (2)" "2" "$?"
 
+# The fixture refusal runs everywhere; the guard's own refusal needs Linux, where the guard runs.
+rc=0
+env -u MERGE_BLOCK_ALERT_CMD HIMMEL_TEST_FIXTURE=1 BRIDGE_ROOT='' TELEGRAM_ACCESS_PATH="$TMP/access.json" \
+    bash "$SINK" "from a test" 2>/dev/null || rc=$?
+assert_eq "V5 a fixture's refused send exits 77, not delivered" "77" "$rc"
+if [ "$(uname -s)" = Linux ]; then
+    mkdir -p "$TMP/stub-bin"
+    printf '#!/usr/bin/env bash\necho "$*" >>"%s"\n' "$TMP/bun.log" >"$TMP/stub-bin/bun"
+    chmod +x "$TMP/stub-bin/bun"
+    rc=0
+    env -u MERGE_BLOCK_ALERT_CMD -u HIMMEL_TEST_FIXTURE PATH="$TMP/stub-bin:$PATH" HIMMEL_REAL_STATE_ASSUME_STATION=1 \
+        HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$TMP/stub-bin" TELEGRAM_ACCESS_PATH="$TMP/access.json" \
+        bash "$SINK" "from a test" 2>/dev/null || rc=$?
+    assert_eq "V6 the guard's refused send exits 77" "77" "$rc"
+    assert_eq "V6b and bun never ran" "no" "$([ -e "$TMP/bun.log" ] && echo yes || echo no)"
+fi
+
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-alert ($0)"; else echo "FAIL: vault-stall-alert — $FAILED failed ($0)" >&2; exit 1; fi

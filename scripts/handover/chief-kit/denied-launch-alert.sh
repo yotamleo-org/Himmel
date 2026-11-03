@@ -84,7 +84,7 @@ reclaim_claim() { # <claim path>
             rm -f "$dir/$key" 2>/dev/null
             continue
         fi
-        if _mba_send "$chat" "DENIED-LAUNCH $worker - $tool launch denied by the classifier. Details stay on the station: $log" </dev/null; then
+        if _mba_send "$chat" "DENIED-LAUNCH $worker - $tool launch denied by the classifier. Details stay on the station: $log" </dev/null && [ "${_MBA_REFUSED:-0}" != 1 ]; then
             printf 'sent\n' > "$dir/$key" 2>/dev/null
         else
             rm -f "$dir/$key" 2>/dev/null

@@ -2238,6 +2238,20 @@ STUB
     [ "$(cat "$p4051_out/.last-run" 2>/dev/null)" = 5 ] && [ ! -d "$p4051_out/.launch" ] && pass 'the wrapper records rc and releases .launch (HIMMEL-4059)' || fail 'wrapper did not record rc / release .launch (HIMMEL-4059)'
     rm -f "$p4051_out/.last-run" "$p4051_out/.last-fail"
 
+    # a run the test guard refused (exit 77) is not a failed refresh; any other non-zero is
+    echo refused >> "$p4051_mir/HIMMEL-111.md"
+    # shellcheck disable=SC2016  # $1 expands in the child bash
+    bash "$wrap4059" "$p4051_out" bash -c 'echo "$1"; exit 1' _ 'a real failure line'
+    [ "$(cat "$p4051_out/.last-fail" 2>/dev/null)" = 'a real failure line' ] && pass 'exit 1 still writes .last-fail (HIMMEL-8820)' || fail 'exit 1 wrote no .last-fail (HIMMEL-8820)'
+    contains 'exit 1 still reads plan-index=FAIL: (HIMMEL-8820)' "$(t4051)" ' plan-index=FAIL:'
+    rm -f "$p4051_out/.last-run" "$p4051_out/.last-fail"
+    # shellcheck disable=SC2016  # $1 expands in the child bash
+    bash "$wrap4059" "$p4051_out" bash -c 'echo "$1"; exit 77' _ 'plan-index: refused by the test guard'
+    [ ! -e "$p4051_out/.last-fail" ] && [ "$(cat "$p4051_out/.last-run" 2>/dev/null)" = 77 ] && pass 'exit 77 records rc and writes no .last-fail (HIMMEL-8820)' || fail 'exit 77 wrote .last-fail or lost rc (HIMMEL-8820)'
+    not_contains 'exit 77 never reads plan-index=FAIL: (HIMMEL-8820)' "$(t4051)" ' plan-index=FAIL:'
+    wait4051
+    rm -f "$p4051_out/.last-run" "$p4051_out/.last-fail"
+
     # an --out path with a quote and a command substitution must neither run
     # text nor leave .launch behind (the old double-quoted trap re-parsed $o when it fired)
     p4051_out_save="$p4051_out"

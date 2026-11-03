@@ -11,7 +11,44 @@ vi.mock('node:child_process', async (orig) => {
   return { ...m, spawnSync };
 });
 
-import { refuseTestJiraPost } from './release.js';
+import { refuseTestJiraPost, refuseTestKeyMint } from './release.js';
+
+describe('refuseTestKeyMint reads only exit 77 from the guard', () => {
+  beforeEach(() => {
+    guard.calls.length = 0;
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('asks about the default key as real: homedir() follows a fixture HOME', () => {
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', undefined as unknown as string);
+    guard.status = 0;
+    refuseTestKeyMint('R1');
+    const args = guard.calls[0] as string[];
+    expect(args).toContain('--real');
+    expect(args[args.length - 1]).toMatch(/\.config\/himmel\/release\/R1\.key$/);
+  });
+
+  it('lets the path decide when a key dir is named', () => {
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', '/tmp/named-keys');
+    guard.status = 0;
+    refuseTestKeyMint('R1');
+    const args = guard.calls[0] as string[];
+    expect(args).not.toContain('--real');
+    expect(args[args.length - 1]).toBe('/tmp/named-keys/R1.key');
+  });
+
+  it.each([0, 1, 127, null])('lets a guard that exits %s through (a guard fault never stops a real mint)', (status) => {
+    guard.status = status;
+    expect(() => refuseTestKeyMint('R1')).not.toThrow();
+  });
+
+  it('refuses on exit 77', () => {
+    guard.status = 77;
+    expect(() => refuseTestKeyMint('R1')).toThrow(/release operator declare: refused, nothing was written/);
+  });
+});
 
 describe('refuseTestJiraPost reads only exit 77 from the guard', () => {
   beforeEach(() => {

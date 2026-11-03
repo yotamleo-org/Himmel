@@ -134,6 +134,17 @@ new_case c7
     merge_block_alert octo/demo 42 aaaaaaaaaaaa "rule" 2>>"$CASE/err"
 )
 eq "7: HIMMEL_TEST_FIXTURE=1 without BRIDGE_ROOT never runs bun" 0 "$(count "$CASE/bun.log")"
+eq "7: that refusal leaves no dedupe sentinel" 0 "$(find "$CASE/sentinels" -type f 2>/dev/null | wc -l | tr -d ' ')"
+_mba_refused_after() ( # <fixture 0|1>: the flag after a send refused by the fixture, then one through the seam
+    # shellcheck disable=SC1090
+    . "$LIB"
+    unset MERGE_BLOCK_ALERT_CMD
+    HIMMEL_TEST_FIXTURE=1 BRIDGE_ROOT='' _mba_send 555 "refused"
+    [ "$1" = 1 ] || { ALERT_LOG="$CASE/alerts.log" MERGE_BLOCK_ALERT_CMD="$TMP/bin/sender" _mba_send 555 "delivered"; }
+    printf '%s' "${_MBA_REFUSED:-unset}"
+)
+eq "7: a fixture refusal sets the documented flag" 1 "$(_mba_refused_after 1)"
+eq "7: the next send resets the flag" 0 "$(_mba_refused_after 0)"
 new_case c7b
 (
     unset MERGE_BLOCK_ALERT_CMD
