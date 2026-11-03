@@ -45,8 +45,10 @@ IDEMPOTENCE (spec 5.3), all under a per-session flock at <state-dir>/<session>.l
                        [--failures-ledger P] [--eval-ledger P] [--state-dir D]
   worker_ledger.py validate <worker-failures ledger>
 
-backfill digests every worker-titled main journal under --projects whose first
-timestamp is on or after --since, through `bun worker-digest.ts`. It reads the
+backfill digests every main journal under --projects (default ~/.claude/projects only; a lane
+config dir such as ~/.claude-codex/projects is not scanned) whose first timestamp is on or after
+--since, worker-titled or not, through `bun worker-digest.ts`. The state dir defaults to
+$WORKER_SESSION_DIGEST_STATE_DIR, else ~/.himmel/state/leg-digest. It reads the
 journals only, and refuses one whose cwd sits under a salus root (spec 6.1).
 It skips a journal whose last timestamp is under --live-minutes (default 30) old:
 an ok digest of a still-live session would write the final marker and freeze the
@@ -98,7 +100,7 @@ def ledger_path(path=None):
 
 
 def default_state_dir():
-    return os.path.expanduser("~/.himmel/state/leg-digest")
+    return os.environ.get("WORKER_SESSION_DIGEST_STATE_DIR") or os.path.expanduser("~/.himmel/state/leg-digest")
 
 
 def _int(x, lo):

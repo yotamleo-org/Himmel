@@ -44,13 +44,27 @@ resolve_primary() {
 
 # Digest the last week's sessions that no worker close digested (chiefs, judges, interactive) before the review reads the
 # ledgers. A session already digested is skipped, so a daily pass only does the new ones; a failure here never stops the review.
+#
+# The whole pass is bounded (FAILURE_REVIEW_DIGEST_BOUND, default 1800 s; rc 124 when cut). A session idle under six hours is left for
+# the next night (--live-minutes 360), because an ok digest of a resumed session would freeze it before its later failures land.
+# A failed or cut digest is logged and goes through cadence-alert as its own worker, apart from the review's.
 digest_sessions() {
-    local since bf=(python3 "$SCRIPT_DIR/worker_ledger.py")
+    local since rc=0 bf=(python3 "$SCRIPT_DIR/worker_ledger.py")
     [ -z "${FAILURE_REVIEW_BACKFILL:-}" ] || bf=("$FAILURE_REVIEW_BACKFILL")
     since="$(date -u -d '7 days ago' +%F 2>/dev/null || date -u -v-7d +%F 2>/dev/null)"
     [ -n "$since" ] || { echo "failure-review-cadence: session digest skipped, no date for the window"; return 0; }
-    "${bf[@]}" backfill --since "$since" || echo "failure-review-cadence: session digest failed (exit $?), the review goes on"
-    return 0
+    # shellcheck source=../../lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$ROOT/scripts/lib/timeout-bin.sh" 2>/dev/null
+    # ponytail: no timeout binary means no bound (a stock macOS host), upgrade path: a bash watchdog.
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 10 "${FAILURE_REVIEW_DIGEST_BOUND:-1800}"} "${bf[@]}" backfill --since "$since" --live-minutes 360 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "failure-review-cadence: session digest failed (exit $rc), the review goes on"
+        bash "$ROOT/scripts/luna/cadence-alert.sh" fail failure-review-digest "the daily session digest failed (exit $rc)" "$RUNNER_DIR/failure-review-cadence.log" \
+            "the digest of the last week's sessions stopped, so some sessions are missing from the ledgers" "read the log for the error, then run worker_ledger.py backfill by hand"
+    else
+        bash "$ROOT/scripts/luna/cadence-alert.sh" clear failure-review-digest
+    fi
 }
 
 # cmd_run takes failure_review.py's own flags (the runner passes --vault and, when armed so, --live).
