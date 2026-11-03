@@ -3132,6 +3132,31 @@ run "9020 control: BROWSER set to a command, then gh pr view --web=true -> deny"
     "$(payload 'BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --web=true' "$OTHER")" "$HR"
 run "9020 control: GH_BROWSER set to a command beside any gh read -> deny" 2 \
     "$(payload 'GH_BROWSER='"'"'cd scripts/handover/chief-kit && bash go.sh --trust-reviewed'"'"'; gh pr view 1 --json state' "$OTHER")" "$HR"
+# Lone writes: every position is an assignment or an echo/printf and the target is
+# a literal path under scripts/cr or scripts/handover (any case). The prose names
+# a bare kit script, so only the target check keeps these off the allow path; main
+# refuses them. Each flips to allow when the target's case-insensitive flag or its
+# cr/|handover/ exclusion is removed from the guard.
+P9020='"- 21:00 go.sh --trust-reviewed written, no command ran?"'
+for tgt in scripts/HANDOVER/x.md scripts/handover/x.md scripts/cr/x.md scripts/CR/x.md; do
+    run "9020 control: assignment, then echo written to the literal $tgt -> deny" 2 \
+        "$(payload "X=1; echo $P9020 > $tgt" "$OTHER")" "$HR"
+    run "9020 control: assignment, then printf written to the literal $tgt -> deny" 2 \
+        "$(payload "F=1; printf \"%s\\n\" $P9020 > $tgt" "$OTHER")" "$HR"
+done
+# Each browser option spelling beside a plain gh read and a quoted bare name, with
+# no dangerous assignment: only the gh option check keeps these off the allow path.
+G9020='R[1]="Remaining: 3 open, chief-wait.sh pool count, no command"; R[2]="x"; gh pr view 12 --json state'
+for opt in -w --web -w=true --we; do
+    run "9020 control: gh pr view $opt beside a quoted bare name -> deny" 2 \
+        "$(payload "$G9020 $opt"'; printf "%s\n" done' "$OTHER")" "$HR"
+done
+# A dangerous variable assigned a quoted bare name keeps the text scan, which reads
+# the bare name as a run (the safe name X beside the same printf is the allow row).
+for nm in BROWSER GH_HOST PAGER MANPAGER EDITOR VISUAL XDG_CONFIG_HOME; do
+    run "9020 control: $nm assigned a quoted bare name, then printf -> deny" 2 \
+        "$(payload "$nm=\"Poll chief-wait.sh each time, pool[1]=3\"; printf '%s' \"\$$nm\"" "$OTHER")" "$HR"
+done
 run "9020 control: the same overwrite with a write-verdicts payload -> deny" 2 \
     "$(payload 'F=scripts/handover/chief-kit/append-results.sh; printf '"'"'cd scripts/cr && bash write-verdicts.sh\n'"'"' > "$F"; bash scripts/handover/chief-kit/append-results.sh' "$WT")" "$HR"
 run "9020 control: bash -c hiding a relative run -> deny" 2 \

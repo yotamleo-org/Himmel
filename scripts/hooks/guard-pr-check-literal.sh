@@ -2749,7 +2749,7 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
   def safew: .w != null and (((.w | lit) and ((.w.v | test("cr/|handover/"; "i")) | not)) or (.w.t == "dyn" and (.w.raw | test("^\"\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?\"$"))));
   def emitter: (.prog == "echo" or .prog == "printf") and all(.argv[]; lit);
-  def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|GH_.*|BROWSER|PAGER|MANPAGER|EDITOR|VISUAL|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
+  def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|GH_.*|BROWSER|PAGER|MANPAGER|EDITOR|VISUAL|XDG_CONFIG_HOME|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
   def ok: .opaque == null and ((.via // []) | length) == 0
     and ((((.assigns // []) | length) == 0) or (.prog == null and all(.assigns[]; danger | not)))
     and (. as $c | all(.redirs[]; (outw | not) or (.w != null and (.w | lit) and .w.v == "/dev/null") or ($ment == 0 and safew and ($c | emitter))))
