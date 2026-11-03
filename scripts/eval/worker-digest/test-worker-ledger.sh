@@ -116,6 +116,10 @@ title() { printf '{"type":"custom-title","customTitle":"%s","sessionId":"%s"}\n'
 B5=4670b000-0000-4000-8000-000000000005
 { title HIMMEL-5-N6-nocwd "$B5"; cat "$FX/classes.jsonl"; } >"$P/-home-x-himmel/$B5.jsonl"
 cat "$FX/classes.jsonl" >"$P/-home-x-himmel/$B2.jsonl"
+B6=4670b000-0000-4000-8000-000000000006
+{ title chief-roadmap "$B6"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$P/-home-x-himmel/$B6.jsonl"
+B7=4670b000-0000-4000-8000-000000000007
+sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl" >"$P/-home-x-himmel/$B7.jsonl"
 { title HIMMEL-1-N9-old "$B3"; sed 's/2026-10-06T/2026-09-01T/g' "$FX/classes.jsonl"; } >"$P/-home-x-himmel/$B3.jsonl"
 mkdir -p "$TMP/salus-root" && : >"$TMP/salus-root/.salus"
 { title HIMMEL-2-N8-phi "$B4"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/salus-root/w\", \"sessionId\"#" "$FX/classes.jsonl"; } >"$P/-home-x-other/$B4.jsonl"
@@ -124,14 +128,16 @@ mkdir -p "$P/-home-x-himmel/$B1/subagents"
 BF="$TMP/bf-fail.jsonl"; BE="$TMP/bf-eval.jsonl"; BS="$TMP/bf-state"
 bf() { python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$BF" --eval-ledger "$BE" --state-dir "$BS"; }
 bf >"$TMP/bf1.out" 2>&1 || bad "backfill exits 0: $(head -c 300 "$TMP/bf1.out")"
-check "backfill digests only the worker-titled main journal from the window" '[ "$(jq -r .run_id "$BE" | tr "\n" " ")" = "$B1 " ]'
-check "the worker and ticket come from the title, marked backfill" 'jq -e ".meta.leg == \"N1365\" and .meta.ticket == \"HIMMEL-4670\" and .meta.backfill == true and .meta.observational == true" "$BE" >/dev/null'
-check "the salus-rooted and the cwd-less journals are refused and counted" 'grep -q "salus=2" "$TMP/bf1.out" && absent "$B4" "$BF" "$BE" && absent "$B5" "$BF" "$BE"'
-check "backfill reports its row counts" 'grep -qE "^backfill: .*workers=1 .*failures\+=[1-9][0-9]* eval\+=1" "$TMP/bf1.out"'
+check "backfill digests the worker-titled, the titled non-worker and the titleless main journal from the window, not the old one" '[ "$(jq -r .run_id "$BE" | sort | tr "\n" " ")" = "$B1 $B6 $B7 " ]'
+check "a titleless session with a cwd is digested with no launch name, and does not stop the run" 'jq -e "select(.run_id == \"$B7\") | .meta.leg == null and .meta.backfill == true" "$BE" >/dev/null'
+check "a non-worker session is digested with no worker or ticket, marked backfill" 'jq -e "select(.run_id == \"$B6\") | .meta.leg == null and .meta.ticket == null and .meta.backfill == true" "$BE" >/dev/null'
+check "the worker and ticket come from the title, marked backfill" 'jq -e "select(.run_id == \"$B1\") | .meta.leg == \"N1365\" and .meta.ticket == \"HIMMEL-4670\" and .meta.backfill == true and .meta.observational == true" "$BE" >/dev/null'
+check "the salus-rooted and the cwd-less journals are refused and counted" 'grep -q "salus=3" "$TMP/bf1.out" && absent "$B4" "$BF" "$BE" && absent "$B5" "$BF" "$BE" && absent "$B2" "$BF" "$BE"'
+check "backfill reports its row counts" 'grep -qE "^backfill: .*workers=1 others=2 .*failures\+=[1-9][0-9]* eval\+=3" "$TMP/bf1.out"'
 check "both backfill ledgers validate" 'python3 "$LL" validate "$BF" >/dev/null && python3 "$EVR" validate "$BE" >/dev/null'
 n1="$(lines "$BF")"
 bf >"$TMP/bf2.out" 2>&1
-check "a second backfill appends 0 rows" '[ "$(lines "$BE")" = 1 ] && [ "$(lines "$BF")" = "$n1" ] && grep -qE "failures\+=0 eval\+=0" "$TMP/bf2.out"'
+check "a second backfill appends 0 rows" '[ "$(lines "$BE")" = 3 ] && [ "$(lines "$BF")" = "$n1" ] && grep -qE "failures\+=0 eval\+=0" "$TMP/bf2.out"'
 mkdir -p "$TMP/h/.config/claude-glm/phi-roots"
 HOME="$TMP/h" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bf3-f.jsonl" --eval-ledger "$TMP/bf3-e.jsonl" --state-dir "$TMP/bf3-s" >"$TMP/bf3.out" 2>&1; rc3=$?
 check "an unreadable PHI-roots file fails closed: nonzero, nothing written" '[ "$rc3" != 0 ] && [ ! -s "$TMP/bf3-e.jsonl" ]'
@@ -216,6 +222,18 @@ check "a launch with no profile (profile=none) reads unknown, never the literal 
 check "the saved digest marker carries the stamped profile too" 'jq -e "all(.tool_health[]; .profile == \"worker-impl\")" "$LS/$LP.json" >/dev/null'
 lrec --digest "$TMP/lp-$LP.json" --launch-name ../../etc/passwd >/dev/null 2>&1; rcp=$?
 check "a launch name with a path separator is refused" '[ "$rcp" != 0 ]'
+# A -RESUME doc's session is filed without the suffix, a chief's launch line carries a role, a native launch carries its lane
+LC=4670c1a5-0000-4000-8000-0000000000f5; LZ=4670c1a5-0000-4000-8000-0000000000f6; LX=4670c1a5-0000-4000-8000-0000000000f7
+printf 'headed-arm: role=chief session=lp-chief context=1m source=default autocompact=auto launched=2026-10-23T00:00:00Z\n' >"$TMP/cache/launch-logs/lp-chief.log"
+printf 'headed-arm-worker: profile=worker-impl lane=claudex model=m role=worker session=lp-lane launched=2026-10-23T00:00:00Z\n' >"$TMP/cache/launch-logs/lp-lane.log"
+for s in "$LC" "$LZ" "$LX"; do jq -c --arg s "$s" '.session = $s | del(.lane)' "$TMP/digest.json" >"$TMP/lp-$s.json"; done
+lrec --digest "$TMP/lp-$LC.json" --launch-name lp-chief >/dev/null 2>&1
+lrec --digest "$TMP/lp-$LZ.json" --launch-name lp-worker-RESUME >/dev/null 2>&1
+lrec --digest "$TMP/lp-$LX.json" --launch-name lp-lane >/dev/null 2>&1
+check "a chief launch line gives its role as the profile" 'jq -e "select(.run_id == \"$LC\") | .meta.profile == \"chief\" and all(.meta.tool_health[]; .profile == \"chief\")" "$LE" >/dev/null'
+check "a -RESUME launch name finds the launch record filed without the suffix" 'jq -e "select(.run_id == \"$LZ\") | .meta.profile == \"worker-impl\"" "$LE" >/dev/null'
+check "a native launch gets its lane from the launch record" 'jq -e "select(.run_id == \"$LP\") | .lane == \"native\" and all(.meta.tool_health[]; .lane == \"native\")" "$LE" >/dev/null'
+check "a claudex launch record gives claudex" 'jq -e "select(.run_id == \"$LX\") | .lane == \"claudex\"" "$LE" >/dev/null'
 
 echo "12. the daily tool-health record: validated row, one per day, and the eval feedback step"
 THR="$HERE/tool_health_record.py"; FB="$HERE/../lib/eval_feedback.py"; RULES="$HERE/../feedback-rules.json"

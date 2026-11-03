@@ -365,7 +365,7 @@ async function main() {
   const callDay = new Map<string, string | null>();
   // Time to result per call (RESULT time minus START time) and the API message each call came from, to tell a call run alone from a batch.
   const callStart = new Map<string, number>(), callEnd = new Map<string, number>(), callApi = new Map<string, string>();
-  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number>; bash_calls?: [string, string, string | null][]; timing?: { single: number[]; batched: number[]; missing: number; capped?: true } }>();
+  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number>; bash_calls?: ([string, string, string | null] | [string, string, string | null, number])[]; timing?: { single: number[]; batched: number[]; missing: number; capped?: true } }>();
   const toolRow = (agent: Agent, tool: string, day: string | null) => {
     const key = `${agent.id}\0${day}\0${tool}`;
     let r = health.get(key);
@@ -422,6 +422,12 @@ async function main() {
     return toolKey(name);
   };
   const callCause = new Map<string, string>();
+  // The exit code a failed Bash command reported ("Exit code N" opens its result), kept per call; no output text.
+  const callExit = new Map<string, number>();
+  const keepExit = (id: string, text: string) => {
+    const rc = /^Exit code (\d{1,3})\b/.exec(text);
+    if (rc) callExit.set(id, Number(rc[1]));
+  };
   const suiteSub = (cmd: string): string => {
     for (const hit of cmd.matchAll(TEST_NAME)) if (tests.has(basename(hit[1]))) return basename(hit[1]);
     return "other";
@@ -522,6 +528,7 @@ async function main() {
           add(a, `denied/${deniedSub(e.content, e.timestamp, callName.get(e.toolCallId) ?? "")}`, "denied", e.toolCallId, e.timestamp);
         } else if (e.failure === "suite") {
           m.fail_suite++;
+          keepExit(e.toolCallId, e.content);
           const sub = suiteSub(cmd);
           suiteLast.set(suiteKey(a, cmd), { row: add(a, `suite/${sub}`, "suite", e.toolCallId, e.timestamp), red: true });
         } else if (e.failure === "blocked") {
@@ -532,6 +539,7 @@ async function main() {
           const sub = tool === "Bash" ? bashErrorSub(cmd, e.content) : "";
           if (sub === null) { m.ok_no_match++; break; }
           m.fail_error++;
+          if (tool === "Bash") keepExit(e.toolCallId, e.content);
           add(a, `error/${tool.startsWith("mcp__") ? "mcp" : TOOLS.has(tool) ? tool : "other"}${sub}`, "error", e.toolCallId, e.timestamp);
         }
         break;
@@ -556,7 +564,8 @@ async function main() {
     }
     if (tool !== "Bash") continue;
     const bc = (h.bash_calls ??= []);
-    if (bc.length < MAX_BASH_CALLS) bc.push([id, commandHead(command(id)), callCause.get(id) ?? null]);
+    const rc = callExit.get(id);
+    if (bc.length < MAX_BASH_CALLS) bc.push(rc === undefined ? [id, commandHead(command(id)), callCause.get(id) ?? null] : [id, commandHead(command(id)), callCause.get(id) ?? null, rc]);
   }
   m.subagents = [...agents.keys()].filter((id) => id !== "main").length;
   for (const { row } of suiteLast.values()) row.final_red = false;
