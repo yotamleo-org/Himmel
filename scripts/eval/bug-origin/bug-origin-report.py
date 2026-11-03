@@ -22,7 +22,9 @@ then the seed, and prints `ledger: <n> rows from <dir>` (or `ledger: none (set H
 project key where the Jira CLI finds one (JIRA_PROJECT_KEY in the environment, else himmel.conf.local and himmel.conf in
 $HIMMEL_CONFIG_DIR or ~/.himmel, else the .env of the checkout it runs in): no key is `jira sync skipped: not
 configured`, exit 0; a key and no Jira CLI to run (--jira-cmd not executable, or no scripts/jira/dist/index.js) is
-refused, exit 2; a Jira error warns, leaves the row for the next run and exits 1. Rows land only when `ingest` runs.
+refused, exit 2; a Jira error warns, leaves the row for the next run and exits 1. Rows land only when `ingest` runs: by hand, and
+after each merge from scripts/handover/merge-on-green.sh, which ingests the merged PR alone. A row is created with a
+link that fails if the file exists, so ingests racing for one PR leave the first row as it was.
 `report --class C` keeps the rows of class C (or a family: review-miss matches review-miss:cr; review-miss:multi a
 row with two or more layers; review-miss:cr a row whose layers hold cr, so it also matches review-miss:cr,judge); a
 class with no rows reports none, and a class that is none of the report's classes is refused, exit 2. A ledger row
@@ -399,6 +401,22 @@ def write_file(path, text):
     os.replace(tmp, path)
 
 
+def write_once(path, text):
+    """Create the row if no file is there and say whether this call did. The temp file is linked into place, so the row appears
+    whole or not at all and a link onto an existing row fails: two ingests racing for one PR leave the first row byte for byte."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = "%s.tmp-%d" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    try:
+        os.link(tmp, path)
+        return True
+    except FileExistsError:
+        return False
+    finally:
+        os.unlink(tmp)
+
+
 def cmd_ingest(a):
     """Write one ledger row per merged PR whose body (else the seed) carries a bug-origin line; a PR with a row is kept as it is.
 
@@ -425,12 +443,12 @@ def cmd_ingest(a):
                     unparsed.append(n)
                 continue
             got, source = seed[n], "seed"
-        row = os.path.join(path, "%d.md" % n)
-        if os.path.exists(row):
-            kept += 1
-            continue
-        write_file(row, row_text(n, title_key(p.get("title")), got, source, p["mergedAt"]))
-        wrote += 1
+        try:
+            made = write_once(os.path.join(path, "%d.md" % n), row_text(n, title_key(p.get("title")), got, source, p["mergedAt"]))
+        except OSError as e:
+            print("bug-origin-report: cannot write the row of #%d under %s: %s" % (n, path, e), file=sys.stderr)
+            return 2
+        wrote, kept = wrote + made, kept + (not made)
     print("ingest: wrote %d, kept %d" % (wrote, kept))
     for n in unparsed:
         print("unparsed: #%d" % n)

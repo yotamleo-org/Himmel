@@ -2494,6 +2494,45 @@ record_cr_threads() {
     return 0
 }
 
+# BUG-ORIGIN LEDGER ROW — after a CONFIRMED merge the merged PR is ingested into the bug-origin ledger, so the
+# row of a fix PR carrying a `bug-origin:` line lands without anyone running ingest. The snapshot is one `gh pr view` of this
+# PR (no Jira call); the ledger root is whatever bug-origin-report.py resolves as the shell tooling does (judge_accuracy.ledger_dir),
+# never HANDOVER_DIR read here. The reporter runs from the anchor, never the branch's copy. Best-effort — the exit code never
+# depends on it — and recorded on the MERGED audit line as `bug-origin=<result>`: wrote | kept (a row already existed) | none
+# (no line to write) | failed (with a WARN) | no-report | no-python | no-timeout. Bounded (30 s for gh, 60 s for the ingest);
+# with no timeout binary it is not run. A missed row is re-run by hand: bug-origin-report.py ingest --prs <gh pr list json>.
+BUG_ORIGIN_RESULT="not-attempted"
+record_bug_origin() {
+    local pr="$1" report="$himmel_repo/scripts/eval/bug-origin/bug-origin-report.py" bo_to_gh="" bo_to_ing="" snap="" view="" out="" rc=0
+    BUG_ORIGIN_RESULT="not-attempted"
+    [ -f "$report" ] || { BUG_ORIGIN_RESULT="no-report"; return 0; }
+    command -v python3 >/dev/null 2>&1 || { BUG_ORIGIN_RESULT="no-python"; return 0; }
+    if command -v timeout >/dev/null 2>&1; then bo_to_gh="timeout -k 5 30"; bo_to_ing="timeout -k 10 60"
+    elif command -v gtimeout >/dev/null 2>&1; then bo_to_gh="gtimeout -k 5 30"; bo_to_ing="gtimeout -k 10 60"
+    else BUG_ORIGIN_RESULT="no-timeout"; return 0; fi
+    BUG_ORIGIN_RESULT="failed"
+    snap=$(mktemp "${TMPDIR:-/tmp}/mog-bug-origin.XXXXXX") || {
+        echo "merge-on-green: WARN bug-origin ingest of PR #$pr skipped: no scratch file; the row is not written" >&2; return 0; }
+    if view=$($bo_to_gh "$GH" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit); then
+        printf '[%s]\n' "$view" > "$snap"
+        out=$($bo_to_ing python3 -I "$report" ingest --prs "$snap" 2>&1) || rc=$?
+    else
+        rc=$?; out="gh pr view could not read the merged PR"
+    fi
+    rm -f "$snap"
+    if [ "$rc" -ne 0 ]; then
+        echo "merge-on-green: WARN bug-origin ingest of PR #$pr failed (rc=$rc); the row is not written, run bug-origin-report.py ingest by hand: ${out//$'\n'/ }" >&2
+        return 0
+    fi
+    case "$out" in
+        *"ingest: wrote 0, kept 0"*) BUG_ORIGIN_RESULT="none" ;;
+        *"ingest: wrote 0,"*) BUG_ORIGIN_RESULT="kept" ;;
+        *"ingest: wrote "*) BUG_ORIGIN_RESULT="wrote" ;;
+        *) echo "merge-on-green: WARN bug-origin ingest of PR #$pr printed no result: ${out//$'\n'/ }" >&2 ;;
+    esac
+    return 0
+}
+
 # Best-effort Jira auto-transition on merge — structural fix for
 # backlog drift (a ticket left open after its work landed), rather than
 # relying on the periodic reconciler to catch it later. Never fails the
@@ -2919,7 +2958,8 @@ if [ "$merge_rc" -ne 0 ]; then
         record_after_report_pending_marker "$head_branch" "$pr_num" "$sha"
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         record_cr_threads "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
+        record_bug_origin "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2
@@ -2997,7 +3037,8 @@ if [ "$merge_rc" -eq 0 ]; then
         record_after_report_pending_marker "$head_branch" "$pr_num" "$sha"
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         record_cr_threads "$pr_num"
-        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT$SOLO_TAG"
+        record_bug_origin "$pr_num"
+        audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT cr-threads=$CR_THREADS_RESULT bug-origin=$BUG_ORIGIN_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
         [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         [ -z "$PRUNE_KEEP_HINT" ] || echo "$PRUNE_KEEP_HINT" >&2

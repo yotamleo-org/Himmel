@@ -261,6 +261,9 @@ mog_build_fixture() {
     cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
     # The partial-merge remainder reader, read from the anchor's scripts/lib.
     cp "$SCRIPT_DIR/../lib/pr_remainder.py" "$tmp/scripts/lib/pr_remainder.py"
+    # The bug-origin ingest runs from the anchor after a merge. The real tree is linked, not copied (it is large and
+    # read-only here); the ledger root each row picks is its own temp HANDOVER_DIR.
+    ln -s "$SCRIPT_DIR/../eval" "$tmp/scripts/eval"
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
@@ -491,6 +494,13 @@ case "$verb" in
                 else
                     printf '{"comments":[]}'
                 fi ;;
+            number,title,body,mergedAt,headRefName,headRefOid,mergeCommit)
+                # The bug-origin snapshot of the merged PR (one object, as `gh pr view` prints it): the body is the
+                # body STUB_PR_BODY serves, the merge time is fixed.
+                [ "${STUB_SNAPSHOT_FAIL:-0}" = "1" ] && { echo "gh: snapshot failed" >&2; exit 1; }
+                jq -n --argjson n "${STUB_NUM:-77}" --arg t "${STUB_PR_TITLE-fix(x): HIMMEL-1 stub title}" \
+                    --arg b "${STUB_PR_BODY-Remaining: the next slice}" --arg h "${STUB_SHA-abc123def456}" \
+                    '{number: $n, title: $t, body: $b, mergedAt: "2026-11-03T09:00:00Z", headRefName: "feat/stub-head", headRefOid: $h, mergeCommit: {oid: $h}}' ;;
             *) echo "gh stub: unhandled 'pr view' query: --json '$json'" >&2; exit 90 ;;
         esac
         ;;
@@ -2968,6 +2978,58 @@ assert_recorder_not_called "11w: no ledger, no recorder call"
 # No merge, no recorder.
 run_mog 0 "11x: a dry run records no threads" -- --dry-run
 assert_recorder_not_called "11x: dry-run never calls the recorder"
+
+# --- 11z. the bug-origin ledger row, written when a fix PR merges -----------------------
+# After a confirmed merge the anchor's bug-origin-report.py ingests the merged PR (one snapshot, no Jira call) into the
+# ledger root the shell tooling resolves. A failed write warns and never fails the merge. Every row runs on its own
+# temp HANDOVER_DIR; the real ledger is never named. The bucket is the cwd's name, so a pair of runs that must meet share MOG_CWD.
+bo_root=$(mktemp -d "${TMPDIR:-/tmp}/mog-bo.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+bo_row() { local f; for f in "$bo_root"/zed/*/bug-origin/"$1".md; do [ -f "$f" ] && { printf '%s' "$f"; return 0; }; done; return 0; }
+bo_line=$'bug-origin: #10 test-gap \xe2\x80\x94 the first reason\nRemaining: the next slice'
+if command -v timeout >/dev/null 2>&1 || command -v gtimeout >/dev/null 2>&1; then
+    mkdir -p "$bo_root/cwd"
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" MOG_CWD="$bo_root/cwd" STUB_NUM=77 STUB_PR_BODY="$bo_line" \
+        run_mog 0 "11z-a: a merged PR with a bug-origin line merges"
+    bo_file=$(bo_row 77)
+    if [ -n "$bo_file" ] && grep -qF 'PR #77 bug-origin: #10 test-gap' "$bo_file" 2>/dev/null; then pass; else fail "11z-a: no ledger row for PR 77 under $bo_root"; fi
+    assert_audit_has "11z-a: audit records the written row" "bug-origin=wrote"
+    assert_gh_has "11z-a: the snapshot is one pinned pr view of the merged PR" "pr view 77 --repo owner/repo --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit"
+    bo_sum=$(cksum < "$bo_file")
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" MOG_CWD="$bo_root/cwd" STUB_NUM=77 \
+        STUB_PR_BODY=$'bug-origin: #11 design-gap \xe2\x80\x94 a later reason\nRemaining: x' run_mog 0 "11z-b: a second merge run of the same PR"
+    if [ "$(cksum < "$bo_file")" = "$bo_sum" ]; then pass; else fail "11z-b: the first row changed"; fi
+    assert_audit_has "11z-b: audit records the kept row" "bug-origin=kept"
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=78 run_mog 0 "11z-c: a merged PR without the line merges"
+    if [ -z "$(bo_row 78)" ]; then pass; else fail "11z-c: a PR with no bug-origin line got a row"; fi
+    assert_audit_has "11z-c: audit records that there was nothing to write" "bug-origin=none"
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=79 STUB_MERGE_FAIL=1 STUB_PR_BODY="$bo_line" \
+        run_mog 0 "11z-d: a merge gh reported as failed but found MERGED"
+    if [ -n "$(bo_row 79)" ]; then pass; else fail "11z-d: the recovery path wrote no row"; fi
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=80 STUB_PR_BODY="$bo_line" \
+        run_mog 0 "11z-e: a dry run writes no row" -- --dry-run
+    if [ -z "$(bo_row 80)" ]; then pass; else fail "11z-e: a dry run wrote a row"; fi
+    assert_gh_lacks "11z-e: a dry run takes no snapshot" "mergedAt"
+    # a write that fails warns and leaves the merge alone
+    bo_bad=$(mktemp -d "${TMPDIR:-/tmp}/mog-bo-bad.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+    : > "$bo_bad/zed"
+    HANDOVER_DIR="$bo_bad" USER_SLUG=zed HANDOVER_REGISTRY="$bo_bad/none.json" STUB_NUM=81 STUB_PR_BODY="$bo_line" \
+        run_mog 0 "11z-f: a ledger that cannot be written never fails the merge"
+    assert_audit_has "11z-f: audit records the failed write" "bug-origin=failed"
+    assert_audit_has "11z-f: the merge is still recorded as MERGED" "MERGED repo="
+    case "$LAST_ERR" in *"WARN bug-origin"*) pass ;; *) fail "11z-f: no WARN naming the failed write, got: $LAST_ERR" ;; esac
+    HANDOVER_DIR="$bo_root" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=82 STUB_SNAPSHOT_FAIL=1 STUB_PR_BODY="$bo_line" \
+        run_mog 0 "11z-g: a snapshot gh cannot read never fails the merge"
+    assert_audit_has "11z-g: audit records the failed snapshot" "bug-origin=failed"
+    if [ -z "$(bo_row 82)" ]; then pass; else fail "11z-g: a row appeared without a snapshot"; fi
+    # no ledger root anywhere: warn, never fail
+    HANDOVER_DIR="$bo_root/not-a-dir" USER_SLUG=zed HANDOVER_REGISTRY="$bo_root/none.json" STUB_NUM=83 STUB_PR_BODY="$bo_line" \
+        run_mog 0 "11z-h: a ledger root that is no directory never fails the merge"
+    assert_audit_has "11z-h: audit records the refused ingest" "bug-origin=failed"
+    rm -rf "$bo_bad"
+else
+    echo "SKIP 11z: this host has neither timeout nor gtimeout, so the bounded ingest is not run"
+fi
+rm -rf "$bo_root"
 
 # 12. A truthy-but-not-1 opt-in also enables (yes/on/true).
 ARMAUTOMERGE=yes run_mog 0 "ARMAUTOMERGE=yes also enables"

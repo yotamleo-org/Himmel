@@ -210,15 +210,43 @@ def conf_value(path, name):
     return ""
 
 
+def git_common_dir(path):
+    """The git common dir of `path`, with the caller's GIT_* variables scrubbed (they would pick the repo, not `path`), or ''."""
+    scrub = {k: v for k, v in os.environ.items() if k not in
+             ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_CEILING_DIRECTORIES")}
+    r = subprocess.run(["git", "-C", path, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       capture_output=True, text=True, env=scrub)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def profile_conf(conf, env):
+    """The active station profile file, as load-dotenv.sh finds it, or None. The name is HIMMEL_PROFILE in the environment, else
+    in himmel.conf.local (never the tracked file); it must be a plain file stem. The profiles directory sits beside the file
+    himmel.conf links to, so a himmel.conf that is no link has none."""
+    name = env.get("HIMMEL_PROFILE") or conf_value(os.path.join(conf, "himmel.conf.local"), "HIMMEL_PROFILE")
+    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]*", name or ""):
+        return None
+    link = os.path.join(conf, "himmel.conf")
+    if not os.path.islink(link):
+        return None
+    target = os.readlink(link)
+    if not os.path.isabs(target):
+        target = os.path.join(conf, target)
+    return os.path.join(os.path.dirname(target), "profiles", name + ".conf")
+
+
 def handover_root(top, env):
-    """The handover root, as go_resolve_root finds it: the live HANDOVER_DIR, else himmel.conf.local and himmel.conf in
-    $HIMMEL_CONFIG_DIR (else ~/.himmel), else the primary checkout's .env, else its own handovers/ directory."""
+    """The handover root, as go_resolve_root finds it: the live HANDOVER_DIR unless it lies inside the harness repo (its
+    inline stub), else himmel.conf.local, the active station profile and himmel.conf in $HIMMEL_CONFIG_DIR (else ~/.himmel),
+    else the primary checkout's .env, else its own handovers/ directory."""
     live = env.get("HANDOVER_DIR")
     if live:
-        return live
+        common = git_common_dir(live)
+        if not common or common != git_common_dir(top):
+            return live
     conf = env.get("HIMMEL_CONFIG_DIR") or os.path.join(env.get("HOME") or os.path.expanduser("~"), ".himmel")
-    files = [os.path.join(conf, "himmel.conf.local"), os.path.join(conf, "himmel.conf"), os.path.join(top, ".env")]
-    return next((v for v in (conf_value(f, "HANDOVER_DIR") for f in files) if v), os.path.join(top, "handovers"))
+    files = [os.path.join(conf, "himmel.conf.local"), profile_conf(conf, env), os.path.join(conf, "himmel.conf"), os.path.join(top, ".env")]
+    return next((v for v in (conf_value(f, "HANDOVER_DIR") for f in files if f) if v), os.path.join(top, "handovers"))
 
 
 def ledger_dir(repo=".", env=None):
