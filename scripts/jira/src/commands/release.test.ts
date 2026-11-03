@@ -102,6 +102,15 @@ describe('jira release (HIMMEL-6796)', () => {
     expect(s.burndown.v1.baseline).toBe(2);
   });
 
+  it('state prints unknown when the mirror is UNKNOWN', async () => {
+    const vf = join(root, 'verbatim.txt');
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);
+    out.length = 0;
+    await run('state', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    // The mirror input reads UNKNOWN on the inputs line; the headline stays OK (only an unreadable ledger makes it UNKNOWN).
+    expect(out.join('\n')).toMatch(/^inputs: .*\bmirror=UNKNOWN\b/m);
+  });
+
   it('refuses request evidence that is not a JSON object', async () => {
     const vf = join(root, 'verbatim.txt');
     await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', vf);

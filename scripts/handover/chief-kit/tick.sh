@@ -155,6 +155,15 @@ rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
+held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
+the version repair's held key count and the first 8 hex of its held signature (repair-held.json in the
+release dir), unfiled= the signed records no request carries yet, each elided at zero; repair=off:<why> shows
+while the repair cannot run (the first line of repair-status, `unreviewed` with no repair-reviewed marker,
+`bad-input` with no origin slug). With the marker, an OK state, no HIMMEL_CONSOLE_LEG / HIMMEL_RELEASE_MANAGER=1
+and no live repair.lock owner, a changed run signature (repair-signature) launches one detached `jira release
+repair <R> --apply --repo <slug>`, no sooner than TICK_RMRUN_MIN_SECS after repair-run.log was last written.
+Seam: TICK_REPAIR_PROBE. Never in chief-wait's action key; no alert, no wake.
+
 cap=<version>:<n>[,<version>:<n>] (HIMMEL-6762) follows vmismatch= and is ABSENT unless an unreleased version
 holds more than 15 open residual tickets (labelled residual, not Done or Closed, by fixVersion; the count board.mjs
 shows against its soft cap), read from the Jira mirror. In chief-wait's action key whole: a version crossing the
@@ -2278,6 +2287,92 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     esac
 fi
 
+# held=<n>:<sig8> unfiled=<n> repair=off:<why>: the version repair's state, read from the
+# release dir of the chief doc's `release:` release. held= and unfiled= come from repair-held.json (the held key
+# count with the first 8 hex of its held_signature; the signed records no request carries yet), each elided at
+# zero. repair=off:<why> shows while the repair cannot run: the first line of repair-status (mirror-unknown,
+# bad-input, error), else `unreviewed` with no repair-reviewed marker, else bad-input with no origin slug.
+# With the marker present, the OK state read above, no fence variable and no live repair.lock owner, the tick
+# launches ONE detached `jira release repair <R> --apply --repo <slug>` (output to repair-run.log) when the run
+# signature (sha256 of the sorted leak set and the operator, requests, journal and mirror heads) differs from
+# repair-signature, and no sooner than TICK_RMRUN_MIN_SECS after the log was last written. The tick writes the
+# signature on launch; repair-run.ts clears it after an error or a capped run with progress. The lock is read,
+# never taken. The repair writes no Fix Version and raises no alert. None of the three is in chief-wait's key.
+# Seams: TICK_REPAIR_PROBE (a script run in place of the CLI), TICK_RMRUN_LAUNCHER.
+held_summary="" unfiled_summary="" repair_summary=""
+if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [ -n "${rm_root:-}" ] && [ -d "$rm_root/$rm_rel" ]; then
+    rp_dir="$rm_root/$rm_rel"
+    # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+    read -r rp_held rp_sig8 rp_unf < <(python3 -I -c '
+import json, re, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    h, u, s = d["held"], d["unfiled"], d["held_signature"]
+    assert type(h) is int and type(u) is int and h >= 0 and u >= 0 and re.fullmatch(r"[0-9a-f]{64}", s)
+    print(h, s[:8], u)
+except Exception:
+    pass
+' "$rp_dir/repair-held.json" 2>/dev/null) || true  # swallow-ok: an unreadable held file shows no held= or unfiled=
+    case "${rp_held:-}" in '' | *[!0-9]* | 0) ;; *) held_summary="$rp_held:$rp_sig8" ;; esac
+    case "${rp_unf:-}" in '' | *[!0-9]* | 0) ;; *) unfiled_summary="$rp_unf" ;; esac
+    rp_marker=0 rp_why=""
+    [ ! -f "$rp_dir/repair-reviewed" ] || rp_marker=1
+    if [ -s "$rp_dir/repair-status" ]; then
+        rp_why="$(head -n 1 "$rp_dir/repair-status" 2>/dev/null | tr -cd 'a-z-')"  # swallow-ok: an unreadable status line reads as error below
+        [ -n "$rp_why" ] || rp_why=error
+    elif [ "$rp_marker" = 0 ]; then
+        rp_why=unreviewed
+    fi
+    if [ "$rp_marker" = 1 ] && [ "${rm_status:-}" = OK ]; then
+        rp_url="$( . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git -C "$REPO" remote get-url origin 2>/dev/null)" || rp_url=""  # swallow-ok: no origin reads as bad-input below
+        rp_slug="$(printf '%s' "$rp_url" | sed -E 's#(\.git)?/?$##; s#^.*[:/]([^:/]+/[^:/]+)$#\1#')"
+        [[ "$rp_slug" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || rp_slug=""
+        if [ -z "$rp_slug" ]; then
+            [ -n "$rp_why" ] || rp_why='bad-input'
+        elif [ "${HIMMEL_CONSOLE_LEG:-}" != 1 ] && [ "${HIMMEL_RELEASE_MANAGER:-}" != 1 ]; then
+            rp_pid="$(head -n 1 "$rp_dir/repair.lock" 2>/dev/null)" || rp_pid=""  # swallow-ok: no lock file means no owner
+            rp_busy=0
+            case "$rp_pid" in '' | *[!0-9]*) ;; *) ! kill -0 "$rp_pid" 2>/dev/null || rp_busy=1 ;; esac
+            rp_gap="${TICK_RMRUN_MIN_SECS:-600}"
+            case "$rp_gap" in '' | *[!0-9]*) rp_gap=600 ;; esac
+            rp_log_age=999999999
+            if [ -e "$rp_dir/repair-run.log" ]; then
+                rp_log_m="$(stat -c %Y "$rp_dir/repair-run.log" 2>/dev/null)" || rp_log_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable log reads old
+                case "$rp_log_m" in '' | *[!0-9]*) ;; *) rp_log_age=$(( $(date +%s) - rp_log_m )) ;; esac
+            fi
+            # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+            rp_sig="$(printf '%s' "$rm_json" | python3 -I -c '
+import hashlib, json, sys
+d = json.load(sys.stdin)
+l, h = d["leaks"], d["heads"]
+leaks = sorted(set(l.get("unauthorized", []) + l.get("ruled_in_non_member", [])))
+try:
+    j = hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest()
+except OSError:
+    j = ""
+rows = ["leak=" + k for k in leaks] + ["operator=" + str(h["operator"]), "requests=" + str(h["requests"]), "journal=" + j, "mirror=" + str(h["mirror"])]
+print(hashlib.sha256("\n".join(rows).encode()).hexdigest())
+' "${HIMMEL_VERSION_WRITES:-$rm_root/version-writes.jsonl}" 2>/dev/null)" || rp_sig=""  # swallow-ok: an unreadable state computes no signature, so nothing launches
+            rp_old="$(head -n 1 "$rp_dir/repair-signature" 2>/dev/null)" || rp_old=""  # swallow-ok: no signature file is the launch trigger
+            if [ "$rp_busy" = 0 ] && [ -n "$rp_sig" ] && [ "$rp_sig" != "$rp_old" ] && [ "$rp_log_age" -ge "$rp_gap" ]; then
+                read -r -a rp_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
+                rp_have=1; [ "${#rp_launcher[@]}" -gt 0 ] || rp_have=0
+                for rp_w in "${rp_launcher[@]}"; do command -v "$rp_w" >/dev/null 2>&1 || rp_have=0; done  # command -v with several operands passes if ANY exists
+                rp_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
+                if [ "$rp_have" = 1 ] && { [ -n "${TICK_REPAIR_PROBE:-}" ] || { [ -n "$rm_anchor" ] && [ -f "$rp_cli" ]; }; } \
+                    && printf '%s\n' "$rp_sig" > "$rp_dir/repair-signature.tick-$$" && mv -f "$rp_dir/repair-signature.tick-$$" "$rp_dir/repair-signature"; then
+                    if [ -n "${TICK_REPAIR_PROBE:-}" ]; then
+                        ( JIRA_PROJECT_KEY="$rm_pk" "${rp_launcher[@]}" bash "$TICK_REPAIR_PROBE" release repair "$rm_rel" --apply --repo "$rp_slug" </dev/null >>"$rp_dir/repair-run.log" 2>&1 & )
+                    else
+                        ( JIRA_PROJECT_KEY="$rm_pk" "${rp_launcher[@]}" node "$rp_cli" release repair "$rm_rel" --apply --repo "$rp_slug" </dev/null >>"$rp_dir/repair-run.log" 2>&1 & )
+                    fi
+                fi
+            fi
+        fi
+    fi
+    [ -z "$rp_why" ] || repair_summary="off:$rp_why"
+fi
+
 # dbot=<merged>/<skipped>[,err][,run]: with DEPENDABOT_AUTOLAND=on (default off) the
 # tick launches ONE detached `dependabot-go.sh --sweep` per TICK_DBOT_MIN_SECS (default 900),
 # under flock so sweeps never overlap; the sweep judges each green dependency-only Dependabot
@@ -3423,6 +3518,9 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$cap_summary" ] || printf 'cap: %s\n' "$cap_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
+    [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
+    [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
+    [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
     [ -z "$dbot_summary" ] || printf 'dependabot autoland: %s\n' "$dbot_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
@@ -3527,6 +3625,9 @@ else
     compact_field cap "$cap_summary"
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
+    compact_field held "$held_summary"
+    compact_field unfiled "$unfiled_summary"
+    compact_field repair "$repair_summary"
     compact_field dbot "$dbot_summary"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"

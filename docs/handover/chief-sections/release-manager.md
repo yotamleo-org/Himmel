@@ -63,6 +63,22 @@ release is declared (`jira release state <R>` prints a status other than
   requests remain. Claimed-only work never launches an RM: inspect the held ruling
   instead of re-billing it. An empty open-and-claimed queue, no declaration,
   explicit `release: none`, or an unreadable doc shows no field.
+- **Version drift is repaired by the tick, not alerted.** Three fields follow
+  `rm-queue=`, each elided when empty, none in the wake key, none a message.
+  `held=<n>:<sig8>` is the count of keys the repair cannot place on its own and
+  the first 8 hex of the held signature, which moves only when the held set moves.
+  `unfiled=<n>` counts signed operator records no request carries yet. Both read
+  `release/<R>/repair-held.json`. `repair=off:<why>` shows while the repair cannot
+  run: `mirror-unknown` or `bad-input` (a stop), `error` (a crashed run, retried
+  on the `TICK_RMRUN_MIN_SECS` gap), or `unreviewed` (no `repair-reviewed` marker,
+  so the first `jira release repair <R> --apply --repo <owner/name>` is yours, after
+  a dry run). With the marker the tick launches the apply itself, detached, only when
+  the run signature (leak set plus the operator, requests, journal and mirror
+  heads) changed; it never writes a Fix Version. What you do: put the held batch
+  in one line of the milestone report's "Blocked on you" list (the path, the
+  default per class, the paste-ready commands from `repair-held.json`), and repeat
+  that line only when the `<sig8>` changes. The board's repair panel lists the
+  same classes, one row each.
 - **A worked ticket folds into the current version on its own.** A merge
   (`merge-on-green.sh`, any path that does not stamp the ticket) and a worker's LIVE
   bullet (`worker-jira-status.sh`) file one INTAKE request to the current

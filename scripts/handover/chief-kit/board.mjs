@@ -624,6 +624,19 @@ const rmPanel = (s) => {
     const trend = Object.keys(s.trend).sort().slice(-7).map((day) => `<li data-trend="${esc(day)}">${safe(day)}: ${Object.keys(s.trend[day]).sort().map((k) => `${safe(k)} ${n(s.trend[day][k])}`).join(' · ')}</li>`);
     return `<section data-rm-release="${esc(s.release)}" data-status="${esc(s.status)}"><h2>Release manager ${safe(s.release)} · ${safe(s.status)}</h2><ul>${[...bd, ...leaks, ...trend].join('\n')}</ul></section>`;
 };
+// The version repair's held classes: one row per class of release/<R>/repair-held.json, ten at most;
+// no file, an unreadable one or zero classes render nothing, and an answered class is gone when the repair rewrites
+// the file. Display only: not in the fingerprint, never fatal, no alert.
+const repairPanel = (() => {
+    if (!releaseDeclared) return '';
+    try {
+        const f = join(process.env.HIMMEL_RELEASE_STATE_DIR || join(bucket, 'release'), releaseDeclared, 'repair-held.json');
+        const classes = (JSON.parse(readFileSync(f, 'utf8')).classes || []).filter((c) => c && typeof c.class === 'string' && Array.isArray(c.keys)).slice(0, 10);
+        if (!classes.length) return '';
+        const rows = classes.map((c) => `<li data-repair-class="${esc(c.class)}" data-keys="${c.keys.length}"><b>${safe(c.class)}</b> ${c.keys.length} ${c.keys.length === 1 ? 'key' : 'keys'}: ${c.keys.slice(0, 5).map((k) => safe(k)).join(', ')}${c.keys.length > 5 ? ` +${c.keys.length - 5}` : ''}${typeof c.question === 'string' ? ` — ${safe(c.question, 160)}` : ''}</li>`).join('\n');
+        return `<section data-repair-release="${esc(releaseDeclared)}"><h2>Version repair — held</h2><ul>${rows}</ul></section>`;
+    } catch { return ''; }
+})();
 const prRows = (openPrs || []).map((p) => `<li data-ci="${ciOf(p)}"><b>#${p.number}</b> ${safe(p.title, 90)} <span class="pr">${ciOf(p)}${p.isDraft ? ' · draft' : ''}</span></li>`).join('\n');
 // Done work never reaches the published page: a WRAPPED or MERGED worker and the merged PRs
 // go to a local archive file beside it (written below), one self-contained line each.
@@ -1137,7 +1150,7 @@ ${iceFollowupsSection}
 ${overdueClassesSection}
 ${panel('Needs the supervisor session', [needRows, orphanRows].filter(Boolean).join('\n'),'nothing waiting on the supervisor session')}
 ${panel('Open operator decisions', decisions.map((d) => `<li>${safe(d)}</li>`).join('\n'), 'none recorded (Live state decisions:)')}
-${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}${rmState ? `\n${rmPanel(rmState)}` : ''}
+${epics.length ? panel('Epics — merged / total', epicRows, '') : ''}${releases.map((r) => `\n${releasePanel(r)}`).join('')}${rmState ? `\n${rmPanel(rmState)}` : ''}${repairPanel ? `\n${repairPanel}` : ''}
 <section class="wide">
 <h2>Worker sessions</h2>
 ${liveLegs.length ? `<ul>${liveLegs.map(legCard).join('\n')}</ul>` : `<p class="none">${labelFailure ? 'worker-session labels unavailable' : 'no live worker sessions'}</p>`}
