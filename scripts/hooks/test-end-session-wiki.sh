@@ -30,6 +30,11 @@ export HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
 export STUB_MODE="noop"
 CRYSTALLIZE_PID_DIR="$(mktemp -d)"
 export CRYSTALLIZE_PID_DIR
+# The crystallizer's default backend is the subscription, behind a bank preflight
+# that cannot pass under these sandboxed HOMEs; a PROCEED stub keeps the suite hermetic.
+printf '#!/usr/bin/env bash\necho PROCEED\n' > "$CRYSTALLIZE_PID_DIR/preflight-proceed.sh"
+chmod +x "$CRYSTALLIZE_PID_DIR/preflight-proceed.sh"
+export CRYSTALLIZE_PREFLIGHT_CMD="$CRYSTALLIZE_PID_DIR/preflight-proceed.sh"
 
 # Stock macOS has no setsid(1); the signal/timeout cases below launch the hook
 # under it. Where it is absent, put a stand-in first on PATH that
