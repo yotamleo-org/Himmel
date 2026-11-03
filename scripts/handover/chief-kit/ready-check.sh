@@ -525,7 +525,7 @@ else
         ext_ok=0
         # gh reports a GitHub App author as "app/<name>" (e.g. app/dependabot): a bot is never a contributor.
         if [ -n "$ext_login" ] && [ -n "$ext_title" ] && [[ "$ext_login" != app/* && "$ext_login" != *"[bot]" ]] \
-            && printf '%s' "$ext_title" | grep -qE "$TICKET_PATTERN" \
+            && grep -qE "$TICKET_PATTERN" <<< "$ext_title" \
             && . "$RC_SCRIPT_DIR/../../lib/ticket-id-internal.sh" 2>/dev/null \
             && ticket_id_author_is_external "$ext_login" 2>/dev/null; then
             ext_ok=1
