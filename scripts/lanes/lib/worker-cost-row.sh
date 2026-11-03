@@ -74,13 +74,14 @@ _lcr_front() {
 }
 
 worker_cost_row() {
-    local transcript="$1" ref="$2" stem raw calls comp out cr cc inp cost model
+    local transcript="$1" ref="$2" stem raw calls comp out cr cc inp cost model unk
     local label ticket pr="" class="" profile="" burn
     burn="${WORKER_SESSION_BURN_BIN:-$_LCR_HERE/../worker-burn.sh}"
     raw=$(bash "$burn" --raw "$transcript") || { echo "worker-burn failed on $transcript" >&2; return 1; }
     _lcr_field() { printf '%s' "$raw" | sed -nE "s/.* $1=([0-9]+).*/\\1/p"; }
     calls=$(_lcr_field calls); comp=$(_lcr_field compactions); out=$(_lcr_field out)
     cr=$(_lcr_field cache-read); cc=$(_lcr_field cache-create); inp=$(_lcr_field input)
+    unk=$(_lcr_field unknown-model-calls); [ -n "$unk" ] || unk=0 # a worker-burn without the counter priced nothing as unknown
     local v
     for v in "$calls" "$comp" "$out" "$cr" "$cc" "$inp"; do
         case "$v" in ''|*[!0-9]*) echo "worker-burn output unparseable: $raw" >&2; return 1 ;; esac
@@ -104,8 +105,8 @@ worker_cost_row() {
         --arg model "${model:-unknown}" --arg profile "$profile" --arg class "$class" \
         --arg session "$(basename "$transcript" .jsonl)" \
         --argjson calls "$calls" --argjson out "$out" --argjson cr "$cr" --argjson cc "$cc" \
-        --argjson inp "$inp" --argjson cost "$cost" --argjson comp "$comp" \
+        --argjson inp "$inp" --argjson cost "$cost" --argjson comp "$comp" --argjson unk "$unk" \
         '{date:$date, leg:$worker, ticket:$ticket, pr:(if $pr == "" then null else ($pr|tonumber) end),
           model:$model, profile:$profile, class:$class, calls:$calls, out:$out, cache_read:$cr,
-          cache_create:$cc, input:$inp, cost_eq:$cost, compactions:$comp, session:$session}'
+          cache_create:$cc, input:$inp, cost_eq:$cost, compactions:$comp, unknown_calls:$unk, session:$session}'
 }

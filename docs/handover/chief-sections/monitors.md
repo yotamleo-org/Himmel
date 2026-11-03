@@ -117,8 +117,11 @@ transcript the waiter says so once on stderr. Run it by hand in an ordinary Bash
 `worker-budget calls=<n> cost-eq=<k>k soft=<k>k hard=<k>k verdict=OK|SOFT|HARD` from the
 worker's own transcript, with the `cost-eq` of the PR body's `worker-burn:` line (exit 0 OK,
 4 SOFT, 3 HARD, 2 unmeasurable, which never prints `verdict=OK`). The defaults are
-`WORKER_COST_SOFT_K=3000` (p80) and `WORKER_COST_HARD_K=7000` (about p92) of the cost-eq
-of the last 50 merged worker PRs (p50 1485k, p95 7545k). A worker at `SOFT` sends the
+`WORKER_COST_SOFT_K=2000` and `WORKER_COST_HARD_K=4700` (operator decision 470, "new
+price, 2000/4700"): the earlier flat-price 3000 and 7000 scaled by the 0.678 per-model to
+flat price ratio of the whole worker ledger, so a price change does not change who is
+stopped. On that ledger (n=3294, 2026-11-03) today's rows hit 926 soft and 114 hard; these
+limits hit 957 and 118. They are not percentiles of the new prices. A worker at `SOFT` sends the
 chief a `FINDING` quoting the line; at `HARD` it `WRAP`s with a resume brief. On the chief
 side, `tick.sh --burn` suffixes a worker's `burn=` token with `!SOFT` or `!HARD`
 (`burn=N77:32.3k/100.0k!SOFT`); a plain tick is unchanged. Treat `!HARD` like any wrap
