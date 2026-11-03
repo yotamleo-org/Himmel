@@ -28,7 +28,9 @@ eq()   { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2', got '$3')
 command -v node >/dev/null 2>&1 || { echo "SKIP: node not installed"; exit 0; }
 
 REAL_STATE="${HOME:-/nonexistent}/.himmel/state/config-audit"
-real_before=$(ls -la "$REAL_STATE" "$REAL_STATE/backups" 2>&1; cat "$REAL_STATE/audit.jsonl" 2>/dev/null | wc -l)
+# Only the backup id list and the audit row count: a live bridge rewrites watch.json, so mtimes would flake.
+real_marks() { ls "$REAL_STATE/backups" 2>&1; wc -l < "$REAL_STATE/audit.jsonl" 2>/dev/null; }
+real_before=$(real_marks)
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-config-audit.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
@@ -104,7 +106,7 @@ bash "$CA" watch 2>/dev/null
 has "3 a lost himmel.conf key alerts" "lost keys: HIMMEL_INITIATIVE" "$(tail -n 1 "$ALERTS")"
 
 # --- 4. list and restore ---
-good=$(bash "$CA" check | awk -F'\t' '$2 == "config.json" { print $5 }')
+good=$(bash "$CA" check | awk -F'\t' '$1 == "LOSS" && $2 == "config.json" { print $5 }')
 lst=$(bash "$CA" list)
 has "4 list names the good backup" "$good" "$lst"
 has "4 list says config.json comes back" "config.json back" "$lst"
@@ -158,7 +160,7 @@ eq "4 an unchanged empty .env is healthy" 0 "$rc"
 # A deleted empty file has no lost key: its row prints - so a tab read keeps the fields.
 rm -f "$TMP/clone/.env"
 out=$(bash "$CA" check)
-eq "4 an empty lost-key list prints -" "-" "$(printf '%s\n' "$out" | awk -F'\t' '$2 == ".env" { print $4 }')"
+eq "4 an empty lost-key list prints -" "-" "$(printf '%s\n' "$out" | awk -F'\t' '$1 == "LOSS" && $2 == ".env" { print $4 }')"
 printf '%s\n' "$saved_env" > "$TMP/clone/.env"
 bash "$CA" accept >/dev/null
 # A restored legacy .env key that the live himmel.conf also sets is named as a conflict.
@@ -275,7 +277,273 @@ has "9 a scrubbed backup still restores" "result=restored id=$sid" "$out"
 out=$(bash "$CA" scrub " JIRA_API_TOKEN OTHER_TOKEN " " JIRA_API_TOKEN OTHER_TOKEN ONLY_COPY ")
 lacks "9 a second scrub changes nothing" "scrubbed $sid" "$out"
 
-real_after=$(ls -la "$REAL_STATE" "$REAL_STATE/backups" 2>&1; cat "$REAL_STATE/audit.jsonl" 2>/dev/null | wc -l)
+# --- 10. a healthy watch keeps a value backup, so an unaudited delete restores ---
+# Each row builds its own temp station (S10) through the seams; nothing here
+# reaches the real home. Values are fixture canaries, compared and never printed.
+S10="$TMP/s10"
+S10_STATE="$S10/.himmel/state/config-audit"
+st() { HIMMEL_CONFIG_DIR="$S10/.himmel" HIMMEL_CONFIG_AUDIT_ENV_FILE="$S10/clone/.env" bash "$CA" "$@"; }
+new_station() { rm -rf "$S10"; mkdir -p "$S10/.himmel" "$S10/clone"; : > "$ALERTS"; }
+nbk() { local d n=0; for d in "$S10_STATE"/backups/*/; do [ -d "$d" ] && n=$((n + 1)); done; echo "$n"; }
+mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; } # gnu-ok: the BSD form follows on the same line
+holds() { grep -q -- "$2" "$1" 2>/dev/null; }
+V1="$CANARY-v1"; V2="$CANARY-v2"
+put_station() {
+    printf '{"version":1,"policy":{"HIMMEL_FLEET_CAP":"%s"}}\n' "$1" > "$S10/.himmel/config.json"
+    printf 'HANDOVER_DIR=%s\nHIMMEL_INITIATIVE=execute\n' "$1" > "$S10/.himmel/himmel.conf"
+    printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$S10/clone/.env"
+}
+
+# 10a. config.json deleted with no audited write: the backup holds the values, mode 600.
+new_station; put_station "$V1"
+eq "10a control: no watch snapshot yet" absent "$([ -f "$S10_STATE/watch.json" ] && echo present || echo absent)"
+st watch 2>/dev/null
+n_before=$(nbk)
+rm -f "$S10/.himmel/config.json"
+st watch 2>/dev/null
+bid=$(st check | awk -F'\t' '$1 == "LOSS" && $2 == "config.json" { print $5 }')
+case "$bid" in [0-9]*T[0-9]*Z-*) pass "10a the alert path names a backup id" ;; *) fail "10a no backup id named (got '$bid')" ;; esac
+if holds "$S10_STATE/backups/$bid/config.json" "$V1"; then pass "10a the named backup holds the config.json value"; else fail "10a the named backup lacks the config.json value"; fi
+eq "10a the backup config.json is mode 600" 600 "$(mode_of "$S10_STATE/backups/$bid/config.json")"
+has "10a the alert names the backup" "newest good backup $bid" "$(cat "$ALERTS")"
+lacks "10a alerts.jsonl does not say backup null" '"backup":null' "$(cat "$S10_STATE/alerts.jsonl" 2>/dev/null)"
+has "10a alerts.jsonl carries the backup id" "\"backup\":\"$bid\"" "$(cat "$S10_STATE/alerts.jsonl" 2>/dev/null)"
+st watch 2>/dev/null; st watch 2>/dev/null
+eq "10a a watch over a deleted file writes no backup" "$n_before" "$(nbk)"
+lacks "10a no value reaches the alert" "$V1" "$(cat "$ALERTS")"
+
+# 10f. restore of that backup brings the values back.
+out=$(st restore "$bid" --script test-restore)
+has "10f restore reports the id" "result=restored id=$bid" "$out"
+if holds "$S10/.himmel/config.json" "$V1"; then pass "10f the restored config.json holds the value"; else fail "10f the restored config.json lacks the value"; fi
+
+# 10b. the same with himmel.conf.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+rm -f "$S10/.himmel/himmel.conf"
+st watch 2>/dev/null
+bid=$(st check | awk -F'\t' '$1 == "LOSS" && $2 == "himmel.conf" { print $5 }')
+case "$bid" in [0-9]*T[0-9]*Z-*) pass "10b the alert path names a backup id" ;; *) fail "10b no backup id named (got '$bid')" ;; esac
+if holds "$S10_STATE/backups/$bid/himmel.conf" "$V1"; then pass "10b the named backup holds the himmel.conf value"; else fail "10b the named backup lacks the himmel.conf value"; fi
+eq "10b the backup himmel.conf is mode 600" 600 "$(mode_of "$S10_STATE/backups/$bid/himmel.conf")"
+has "10b the alert names the backup" "newest good backup $bid" "$(cat "$ALERTS")"
+
+# 10c. a changed value, then a deletion: both generations stay.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+put_station "$V2"
+st watch 2>/dev/null
+rm -f "$S10/.himmel/config.json"
+st watch 2>/dev/null
+g1=0; g2=0
+for d in "$S10_STATE"/backups/*/; do
+    holds "$d/config.json" "$V1" && g1=$((g1 + 1))
+    holds "$d/config.json" "$V2" && g2=$((g2 + 1))
+done
+eq "10c the first value's backup is still there" 1 "$g1"
+eq "10c the changed value has its own backup" 1 "$g2"
+
+# 10d. an unchanged set writes one backup, however often watch runs; a change writes a second.
+new_station; put_station "$V1"
+st watch 2>/dev/null; st watch 2>/dev/null; st watch 2>/dev/null
+eq "10d three healthy watches of an unchanged set write one backup" 1 "$(nbk)"
+put_station "$V2"
+st watch 2>/dev/null
+eq "10d a changed value writes a second backup" 2 "$(nbk)"
+
+# 10e. the first watch, with no snapshot yet, backs up (a fresh station stays covered).
+new_station; put_station "$V1"
+st watch 2>/dev/null
+eq "10e the first watch backs the set up" 1 "$(nbk)"
+
+# 10g. check names the newest backup and its age, and warns on a present file with none.
+new_station; put_station "$V1"
+out=$(st check); rc=$?
+has "10g a present file with no backup is named" "NOBACKUP	config.json" "$out"
+eq "10g a missing backup is not a loss" 0 "$rc"
+st watch 2>/dev/null
+out=$(st check); rc=$?
+lacks "10g no warning once every file has a backup" "NOBACKUP" "$out"
+has "10g check names the newest backup" "BACKUP	$(ls "$S10_STATE/backups")	" "$out"
+case "$(printf '%s\n' "$out" | awk -F'\t' '$1 == "BACKUP" { print $3 }')" in [0-9]*[smhd]) pass "10g check prints the age" ;; *) fail "10g check prints no age" ;; esac
+eq "10g a healthy set still exits 0" 0 "$rc"
+
+# 10h. watch backups and audited backups prune apart: watch churn never evicts an audited one.
+new_station; put_station "$V1"
+aid=$(st pre "$S10/.himmel/config.json" --script test)
+for i in 1 2 3 4; do
+    put_station "$V1-$i"
+    HIMMEL_CONFIG_BACKUPS_KEEP=2 st watch 2>/dev/null
+done
+if [ -d "$S10_STATE/backups/$aid" ]; then pass "10h watch churn leaves the audited backup"; else fail "10h watch churn evicted the audited backup"; fi
+eq "10h watch backups are kept to KEEP" 3 "$(nbk)"
+
+# 10i. the watcher leaves .env out, so a scrubbed secret is not copied back within a pass.
+new_station; put_station "$V1"
+printf 'JIRA_API_TOKEN=%s\nKEEP_A=1\n' "$V1" > "$S10/clone/.env"
+sid=$(st pre "$S10/.himmel/config.json" --script test)
+if holds "$S10_STATE/backups/$sid/.env" "$V1"; then pass "10i control: the audited backup holds the secret line"; else fail "10i control: the audited backup lacks the secret line"; fi
+st scrub " JIRA_API_TOKEN " " JIRA_API_TOKEN " >/dev/null
+st watch 2>/dev/null; st watch 2>/dev/null
+leaks=0; envs=0
+for d in "$S10_STATE"/backups/*/; do
+    holds "$d/.env" "$V1" && leaks=$((leaks + 1))
+    case "$d" in *"/$sid/") ;; *) [ -f "$d/.env" ] && envs=$((envs + 1)) ;; esac
+done
+eq "10i the scrubbed secret is in no backup after two watch passes" 0 "$leaks"
+eq "10i a watch pass copies no .env" 0 "$envs"
+eq "10i the watch pass still backed the config files up" 2 "$(nbk)"
+
+# 10j. an audited pre after a watch pass writes its own backup, and watch churn never evicts it.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+wid=$(ls "$S10_STATE/backups")
+aid=$(st pre "$S10/.himmel/config.json" --script test)
+if [ -n "$aid" ] && [ "$aid" != "$wid" ]; then pass "10j an audited pre after a watch writes its own backup"; else fail "10j the audited pre returned the watcher backup (aid '$aid', wid '$wid')"; fi
+for i in 1 2 3 4; do
+    put_station "$V1-$i"
+    HIMMEL_CONFIG_BACKUPS_KEEP=2 st watch 2>/dev/null
+done
+if [ -d "$S10_STATE/backups/$aid" ]; then pass "10j the audited backup survives watch churn"; else fail "10j watch churn evicted the audited backup"; fi
+
+# 10j2. a value that flips back reuses its earlier backup: a flapping value writes nothing.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+put_station "$V2"
+st watch 2>/dev/null
+put_station "$V1"
+st watch 2>/dev/null
+put_station "$V2"
+st watch 2>/dev/null
+eq "10j a flapping value writes two backups, not four" 2 "$(nbk)"
+newest=$(st check | awk -F'\t' '$1 == "BACKUP" { print $2 }')
+if holds "$S10_STATE/backups/$newest/config.json" "$V2"; then pass "10j the newest backup is the current value's"; else fail "10j the newest backup is not the current value's"; fi
+
+# 10j3. move to front. Each row fails with the move deleted: the reused backup stays where it was.
+newest_id() { st check | awk -F'\t' '$1 == "BACKUP" { print $2 }'; }
+# (a) A, B, A: the newest backup is A's.
+new_station; put_station "$V1-A"; st watch 2>/dev/null
+id_a=$(newest_id)
+if [ -n "$id_a" ]; then pass "10j3 the first watch keeps a backup"; else fail "10j3 the first watch kept no backup"; fi
+put_station "$V1-B"; st watch 2>/dev/null
+put_station "$V1-A"; st watch 2>/dev/null
+eq "10j3 A, B, A: the newest backup is A's" "$id_a" "$(newest_id)"
+# (b) A, B, C, A, D at KEEP=3 keeps A and evicts B.
+new_station; put_station "$V1-A"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+id_a=$(newest_id)
+put_station "$V1-B"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+id_b=$(newest_id)
+put_station "$V1-C"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+put_station "$V1-A"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+put_station "$V1-D"; HIMMEL_CONFIG_BACKUPS_KEEP=3 st watch 2>/dev/null
+if [ -d "$S10_STATE/backups/$id_a" ]; then pass "10j3 A, B, C, A, D at KEEP=3: A's backup is kept"; else fail "10j3 A, B, C, A, D at KEEP=3: A's backup was evicted"; fi
+if [ ! -d "$S10_STATE/backups/$id_b" ]; then pass "10j3 A, B, C, A, D at KEEP=3: B's backup is evicted"; else fail "10j3 A, B, C, A, D at KEEP=3: B's backup stayed"; fi
+# (c) A, B, A, then a delete: the alert names A's backup.
+new_station; put_station "$V1-A"; st watch 2>/dev/null
+id_a=$(newest_id)
+put_station "$V1-B"; st watch 2>/dev/null
+put_station "$V1-A"; st watch 2>/dev/null
+rm -f "$S10/.himmel/config.json"
+st watch 2>/dev/null
+has "10j3 A, B, A, delete: the alert names A's backup" "newest good backup $id_a" "$(cat "$ALERTS")"
+
+# 10k. a dir whose manifest is missing or not JSON (a killed or failed write) is removed after the grace
+# period, not before; a manifest that cannot be read for another reason says nothing, so that dir stays.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+mkdir -p "$S10_STATE/backups/20200101T000000Z-aaaa" "$S10_STATE/backups/20200101T000000Z-bbbb" "$S10_STATE/backups/20200101T000000Z-cccc"
+printf 'partial\n' > "$S10_STATE/backups/20200101T000000Z-aaaa/.env"
+printf 'not json\n' > "$S10_STATE/backups/20200101T000000Z-cccc/manifest.json"
+touch -t 202001010000 "$S10_STATE/backups/20200101T000000Z-aaaa" "$S10_STATE/backups/20200101T000000Z-cccc"
+if [ "$(id -u)" != 0 ]; then
+    mkdir -p "$S10_STATE/backups/20200101T000000Z-dddd"
+    printf '{"ts":"2020-01-01T00:00:00Z","files":{}}\n' > "$S10_STATE/backups/20200101T000000Z-dddd/manifest.json"
+    chmod 000 "$S10_STATE/backups/20200101T000000Z-dddd/manifest.json"
+    touch -t 202001010000 "$S10_STATE/backups/20200101T000000Z-dddd"
+fi
+put_station "$V2"
+st watch 2>/dev/null
+if [ ! -d "$S10_STATE/backups/20200101T000000Z-aaaa" ]; then pass "10k an old dir with no manifest is removed"; else fail "10k an old dir with no manifest stayed"; fi
+if [ ! -d "$S10_STATE/backups/20200101T000000Z-cccc" ]; then pass "10k an old dir with a manifest that is not JSON is removed"; else fail "10k an old dir with a manifest that is not JSON stayed"; fi
+if [ -d "$S10_STATE/backups/20200101T000000Z-bbbb" ]; then pass "10k a fresh dir with no manifest stays (it may be mid-write)"; else fail "10k a fresh dir with no manifest was removed"; fi
+if [ "$(id -u)" != 0 ]; then
+    if [ -d "$S10_STATE/backups/20200101T000000Z-dddd" ]; then pass "10k an old dir whose manifest cannot be read stays"; else fail "10k an old dir whose manifest cannot be read was removed"; fi
+fi
+
+# 10l. a backup that cannot be written is reported, not silent.
+if [ "$(id -u)" != 0 ]; then
+    new_station; put_station "$V1"
+    st watch 2>/dev/null
+    put_station "$V2"
+    chmod 555 "$S10_STATE/backups"
+    err=$(st watch 2>&1 >/dev/null); rc=$?
+    chmod 755 "$S10_STATE/backups"
+    eq "10l a failed backup exits 4" 4 "$rc"
+    has "10l a failed backup says so on stderr" "WARN: no healthy backup was kept" "$err"
+    eq "10l a failed backup leaves no orphan dir" 1 "$(nbk)"
+    st watch 2>/dev/null; rc=$?
+    eq "10l control: the next pass, with the dir writable, exits 0" 0 "$rc"
+    eq "10l control: and keeps the backup" 2 "$(nbk)"
+fi
+
+# 10l2. the id dir is made and the copy then fails (a file-size limit, EFBIG): exit 4, a WARN, no dir left.
+# The limit also cuts the first write short, so a copy is never kept truncated: that is the short-write loop.
+if [ "$(id -u)" != 0 ] && ( ulimit -f 4 ) 2>/dev/null; then
+    new_station; put_station "$V1"
+    st watch 2>/dev/null
+    big=$(head -c 20000 /dev/zero | tr '\0' x)
+    printf '{"version":1,"policy":{"HIMMEL_FLEET_CAP":"%s"}}\n' "$big" > "$S10/.himmel/config.json"
+    err=$( ( trap '' XFSZ; ulimit -f 4; st watch ) 2>&1 >/dev/null ); rc=$?
+    eq "10l2 a copy that fails after the dir is made exits 4" 4 "$rc"
+    has "10l2 and says so on stderr" "WARN: no healthy backup was kept" "$err"
+    eq "10l2 and leaves no dir behind" 1 "$(nbk)"
+    st watch 2>/dev/null; rc=$?
+    eq "10l2 control: without the limit the next pass exits 0" 0 "$rc"
+    newest=$(newest_id)
+    if cmp -s "$S10/.himmel/config.json" "$S10_STATE/backups/$newest/config.json"; then pass "10l2 control: and the kept copy is whole"; else fail "10l2 control: the kept copy differs from the file"; fi
+fi
+
+# 10m. no set member present: no backup, and check names none.
+new_station
+printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$S10/clone/.env"
+st watch 2>/dev/null
+eq "10m a set with only .env present writes no backup" 0 "$(nbk)"
+lacks "10m check prints no BACKUP row for an empty store" "BACKUP	" "$(st check)"
+new_station; put_station "$V1"
+st watch 2>/dev/null
+real_id=$(ls "$S10_STATE/backups")
+mkdir -p "$S10_STATE/backups/20991231T000000Z-0000"
+printf '{"ts":"2099-12-31T00:00:00Z","script":"x","ms":4102444800000,"target":"%s","files":{}}\n' "$TMP/order" > "$S10_STATE/backups/20991231T000000Z-0000/manifest.json"
+eq "10m BACKUP names a backup that holds a file, not an empty manifest" "$real_id" "$(st check | awk -F'\t' '$1 == "BACKUP" { print $2 }')"
+
+# 10n. accept takes a backup; a truncated, partial or key-losing file takes none.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+put_station "$V2"
+st accept >/dev/null
+eq "10n accept backs the accepted set up" 2 "$(nbk)"
+# One station per case, each starting from one healthy backup: a case that took a backup reads 2.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+printf '{"version":1}\n' > "$S10/.himmel/config.json"
+st watch 2>/dev/null
+eq "10n a key-losing config.json takes no backup" 1 "$(nbk)"
+has "10n and alerts" "lost keys" "$(cat "$ALERTS")"
+new_station; put_station "$V1"
+st watch 2>/dev/null
+printf '{"policy":' > "$S10/.himmel/config.json"
+st watch 2>/dev/null
+eq "10n a partial config.json takes no backup" 1 "$(nbk)"
+has "10n and alerts" "config.json truncated" "$(cat "$ALERTS")"
+new_station; put_station "$V1"
+st watch 2>/dev/null
+: > "$S10/.himmel/himmel.conf"
+st watch 2>/dev/null
+eq "10n a truncated himmel.conf takes no backup" 1 "$(nbk)"
+has "10n and alerts" "himmel.conf truncated" "$(cat "$ALERTS")"
+rm -rf "$S10"
+
+real_after=$(real_marks)
 eq "8 a fixture-HOME run never touches the real backups" "$real_before" "$real_after"
 
 echo "config-audit: $PASS passed, $FAIL failed"

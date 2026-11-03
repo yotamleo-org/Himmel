@@ -10,19 +10,24 @@
 #   config-audit.sh pre <file> [--script NAME]       back up the full set; prints the backup id
 #   config-audit.sh post <id> <file> <action> [--script NAME] [--pid N]
 #                                                    append the audit row; keep N backups
-#   config-audit.sh list                             backups, newest first, with a key-name diff
+#   config-audit.sh list                             the newest 10 backups of both groups, newest first,
+#                                                    with a key-name diff (restore by id reaches older ones)
 #   config-audit.sh scrub [--dry-run] "<names>" "<secret names>"
 #                                                    drop those names' lines from every backup's .env
 #                                                    copy, keeping the manifest sha256 and digest true;
 #                                                    names only (migrate-env.sh, after a keyring move)
 #   config-audit.sh restore <id> [--script NAME]     put a backup's set back (audited, backed up)
-#   config-audit.sh watch                            alert on a deleted, truncated or key-losing file
-#   config-audit.sh check                            the same comparison, read-only (the doctor)
+#   config-audit.sh watch                            alert on a deleted, truncated or key-losing file;
+#                                                    on a healthy read keep a value backup of the config files
+#   config-audit.sh check                            the same comparison, read-only (the doctor): LOSS rows
+#                                                    (exit 3), then BACKUP <id> <age> and NOBACKUP <file>
+#                                                    <path> for a present file no backup holds (exit 0)
 #   config-audit.sh accept                           take the live set as healthy (a deliberate hand edit)
 #   config-audit.sh denied <file> <action> [--script NAME] [--pid N]
 #                                                    log a refused write (block-himmel-config-writes.sh)
 #
-# THE SET: every backup holds the whole station config together: the .env
+# THE SET: every audited backup holds the whole station config together (a
+# watcher backup holds the config files only, never .env; see STATE): the .env
 # load_dotenv reads, ~/.himmel/himmel.conf, himmel.conf.local and config.json
 # (plus the written file when it is none of these, e.g. a settings.json). So a
 # restore brings back every key, including keys that lived in .env before the
@@ -41,6 +46,21 @@
 #   backups/<id>/ the set as it was before a write; HIMMEL_CONFIG_BACKUPS_KEEP
 #                 (default 10) newest are kept per written file. An unchanged
 #                 set reuses the newest backup instead of copying it again.
+#                 watch and accept also back the config files up (config.json,
+#                 himmel.conf, himmel.conf.local; never .env) whenever they read
+#                 healthy (script "watch"), the first run included: a changed
+#                 value is a new backup and never replaces the last one, a value
+#                 that flips back reuses its earlier backup, and a deleted or
+#                 key-losing file backs up nothing, so the last good copy stays.
+#                 Watcher and audited backups reuse and prune apart. A backup
+#                 that fails exits watch with 4 after the alerts are sent. A dir
+#                 with no manifest, or one that is not JSON, is removed
+#                 after 10 minutes. A value change
+#                 under the same key names reads healthy: the earlier value is
+#                 the previous backup. A deleted .env restores only from an
+#                 audited backup (or a migrate-env copy in ~/.himmel/env-backups,
+#                 by hand); newer watcher backups push the audited ones off
+#                 list, but restore by id still reaches them.
 #   watch.json    the last healthy key snapshot of the set; an audited write
 #                 moves it, so only an unaudited loss alerts
 #   alerts.jsonl  every alert the watcher raised; alerted = the last one sent
@@ -54,7 +74,8 @@
 # by name. Backups hold values (they are copies), so they are mode 600.
 #
 # Exit: 0 ok; 1 a step failed (a writer warns and carries on: an audit fault
-# never fails a config write); 2 usage; check exits 3 when it finds a loss.
+# never fails a config write); 2 usage; check exits 3 when it finds a loss; watch
+# exits 4 when a healthy backup could not be kept (after its alerts went out).
 #
 # ponytail: the backups and this script are as writable as the files they
 # guard (same uid), so a session can plant a backup. The operator's TOTP code
@@ -94,6 +115,7 @@ const STATE = E.CA_STATE, BACK = path.join(STATE, "backups");
 const KEEP = Math.max(1, parseInt(E.HIMMEL_CONFIG_BACKUPS_KEEP || "10", 10) || 10);
 const SET = { ".env": E.CA_ENV, "himmel.conf": E.CA_CONF, "himmel.conf.local": E.CA_LOCAL, "config.json": E.CA_JSON };
 const ID = /^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$/;
+const ORPHAN_GRACE_MS = 600000;
 const sha = (b) => b === null ? null : crypto.createHash("sha256").update(b).digest("hex");
 const read = (p) => { try { return fs.readFileSync(p); } catch { return null; } };
 const opt = (name, dflt) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : dflt; };
@@ -177,9 +199,10 @@ function manifests() {
   // their random suffix.
   return out.sort((x, y) => ((y.ms || 0) - (x.ms || 0)) || (x.id < y.id ? 1 : -1));
 }
-function writeFile600(p, buf) {
+function writeFile600(p, data) {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
   const fd = fs.openSync(p, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
-  try { fs.writeSync(fd, buf); } finally { fs.closeSync(fd); }
+  try { for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off); } finally { fs.closeSync(fd); }
 }
 function appendRow(file, row) {
   mkdir(STATE);
@@ -190,34 +213,92 @@ function appendRow(file, row) {
 function pre(target, script) {
   if (!inScope(target)) return "";
   mkdir(BACK);
-  const m = members(target);
+  const watcher = script === "watch";
+  // The watcher leaves .env out: it holds secrets, changes often, and a scrubbed
+  // secret would be copied back within a minute. Only an audited write copies it.
+  const m = members(target).filter(([n]) => !(watcher && n === ".env"));
   const files = {};
   for (const [n, p] of m) { const b = read(p); files[n] = { path: p, sha256: sha(b) }; }
   const digest = sha(Buffer.from(JSON.stringify(m.map(([n]) => [n, files[n].sha256]))));
-  const newest = manifests().find((x) => x.target === real(target));
-  if (newest && newest.digest === digest) return newest.id;
+  // Reuse is per group: a watcher pass never stands in for an audited pre-image.
+  const group = manifests().filter((x) => x.target === real(target) && (x.script === "watch") === watcher);
+  if (watcher) {
+    // A value that flips back to an earlier state reuses that backup and moves it
+    // to the front, so a flapping value writes nothing.
+    const same = group.find((x) => x.digest === digest);
+    if (same) { if (same !== group[0]) bump(same, group[0]); return same.id; }
+  } else if (group[0] && group[0].digest === digest) return group[0].id;
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
   const id = stamp + "-" + crypto.randomBytes(2).toString("hex");
   const dir = path.join(BACK, id);
   fs.mkdirSync(dir, { mode: 0o700 });
-  for (const [n, p] of m) {
-    const b = read(p);
-    if (b === null) continue;
-    if (n.startsWith("extra/")) mkdir(path.join(dir, "extra"));
-    writeFile600(path.join(dir, n), b);
+  try {
+    for (const [n, p] of m) {
+      const b = read(p);
+      if (b === null) continue;
+      if (n.startsWith("extra/")) mkdir(path.join(dir, "extra"));
+      writeFile600(path.join(dir, n), b);
+    }
+    writeFile600(path.join(dir, "manifest.json"), JSON.stringify({ ts: now(), ms: Date.now(), script, target: real(target), digest, files }, null, 1) + "\n");
+  } catch (e) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw e;
   }
-  writeFile600(path.join(dir, "manifest.json"), JSON.stringify({ ts: now(), ms: Date.now(), script, target: real(target), digest, files }, null, 1) + "\n");
   return id;
+}
+// Moves a backup to the front of its group: a new write time in its manifest.
+function bump(x, front) {
+  const { id, dir, ...man } = x;
+  man.ms = Math.max(Date.now(), (front.ms || 0) + 1);
+  man.ts = now();
+  const tmp = path.join(dir, "manifest.json.bump-" + process.pid);
+  fs.rmSync(tmp, { force: true });
+  writeFile600(tmp, JSON.stringify(man, null, 1) + "\n");
+  fs.renameSync(tmp, path.join(dir, "manifest.json"));
 }
 
 function prune() {
   const byTarget = new Map();
+  // Watcher backups are their own group, so watch churn never evicts the audited
+  // history of the same file, nor the reverse.
   for (const x of manifests()) {
-    const l = byTarget.get(x.target) || [];
+    const key = x.target + (x.script === "watch" ? "|watch" : "");
+    const l = byTarget.get(key) || [];
     l.push(x);
-    byTarget.set(x.target, l);
+    byTarget.set(key, l);
   }
   for (const l of byTarget.values()) for (const x of l.slice(KEEP)) fs.rmSync(x.dir, { recursive: true, force: true });
+  // A killed or failed write can leave a backup dir whose manifest is missing or
+  // not JSON, which manifests() skips and nothing else removes; it goes after a
+  // grace period. Any other read error (a permission fault, an I/O error) says
+  // nothing about the backup, so that dir stays.
+  let ids = [];
+  try { ids = fs.readdirSync(BACK).filter((d) => ID.test(d)); } catch { return; }
+  for (const id of ids) {
+    const dir = path.join(BACK, id);
+    try {
+      const st = fs.lstatSync(dir);
+      if (!st.isDirectory() || Date.now() - st.mtimeMs <= ORPHAN_GRACE_MS) continue;
+      try { JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")); continue; } catch (e) {
+        if (!(e instanceof SyntaxError || (e && e.code === "ENOENT"))) continue;
+      }
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch { /* gone already */ }
+  }
+}
+
+// A healthy read is a restore point. The watcher backs up the config files
+// through pre() (not .env), so a deletion of any cause leaves a copy of the last
+// healthy values; an unchanged digest writes nothing. It runs only on the healthy
+// path, so a deleted or key-losing file never replaces a good copy, and it skips
+// a set with no member present. A failure prints a WARN row; _ca_watch turns it
+// into stderr text and a non-zero exit after the alerts are sent.
+function keepHealthy() {
+  try {
+    if (!Object.entries(SET).some(([n, p]) => p && n !== ".env" && read(p) !== null)) return;
+    pre(SET["config.json"], "watch");
+    prune();
+  } catch (e) { console.log("WARN\tno healthy backup was kept: " + (e && e.code ? e.code : "error")); }
 }
 
 function snapshot() {
@@ -305,6 +386,23 @@ function list() {
   console.log(rows.length ? rows.join("\n") : "no config backups");
 }
 
+// What check adds to the loss rows: BACKUP <id> <age> for the newest backup that holds a file, and
+// NOBACKUP <file> <path> for each present set file that no backup holds.
+function backupRows() {
+  const ms = manifests(), live = snapshot(), rows = [];
+  const holds = (x, n) => x.files && x.files[n] && x.files[n].sha256;
+  const newest = ms.find((x) => Object.keys(x.files || {}).some((n) => holds(x, n)));
+  if (newest) {
+    const s = Math.max(0, Math.round((Date.now() - (newest.ms || 0)) / 1000));
+    rows.push(`BACKUP\t${newest.id}\t` + (s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d"));
+  }
+  // .env is covered only by audited backups (the watcher leaves it out), so it is not warned on.
+  for (const [n, L] of Object.entries(live)) {
+    if (n !== ".env" && L.present && !ms.some((x) => holds(x, n))) rows.push(`NOBACKUP\t${n}\t${L.path}`);
+  }
+  return rows;
+}
+
 function restore(id) {
   const x = manifests().find((m) => m.id === id);
   if (!ID.test(id) || !x) { console.log(`result=no-backup id=${id}`); process.exit(1); }
@@ -380,10 +478,10 @@ function scrub(dry, drop, secrets) {
 function watch(readOnly) {
   const live = snapshot();
   const snap = loadWatch();
-  if (!snap) { if (!readOnly) saveWatch(live); return []; }
+  if (!snap) { if (!readOnly) { saveWatch(live); keepHealthy(); } return []; }
   const ps = problems(snap, live);
   if (readOnly) return ps;
-  if (!ps.length) { saveWatch(live); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} return []; }
+  if (!ps.length) { saveWatch(live); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} return []; }
   for (const p of ps) p.backup = goodBackup(p);
   const text = "⚠️ himmel station config: " + ps.map((p) => describe(p) + (p.backup ? ` (newest good backup ${p.backup})` : " (no backup holds them)")).join("; ")
     + ". List: /config backups. Restore: /config restore <id> <code>";
@@ -406,8 +504,8 @@ try {
   else if (verb === "denied") appendRow(path.join(STATE, "audit.jsonl"), {
     ts: now(), pid: Number(opt("--pid", "")) || null, session: E.CLAUDE_SESSION_ID || E.CLAUDE_CODE_SESSION_ID || "",
     script: opt("--script", ""), file: real(argv[0]), action: argv[1], denied: true });
-  else if (verb === "accept") { saveWatch(snapshot()); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
-  else if (verb === "check") { for (const p of watch(true)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",") || "-"}\t${p.backup || "-"}\t${p.path}`); } }
+  else if (verb === "accept") { saveWatch(snapshot()); keepHealthy(); try { fs.unlinkSync(path.join(STATE, "alerted")); } catch {} console.log("result=accepted"); }
+  else if (verb === "check") { for (const p of watch(true)) { p.backup = goodBackup(p); console.log(`LOSS\t${p.file}\t${p.kind}\t${p.lost.join(",") || "-"}\t${p.backup || "-"}\t${p.path}`); } for (const r of backupRows()) console.log(r); }
   else process.exit(2);
 } catch (e) {
   console.error(`config-audit: ${verb} failed: ${e && e.code ? e.code : "error"} ${e && e.message ? e.message.replace(/\n.*/s, "") : ""}`);
@@ -466,11 +564,15 @@ _ca_alert() {
 }
 
 _ca_watch() {
-    local out line fp text state
+    local out line fp text state rc=0
     out="$(_ca_node watch)" || return 1
     state="${HIMMEL_CONFIG_AUDIT_DIR:-$(_himmel_config_dir)/state/config-audit}"
     while IFS= read -r line; do
-        case "$line" in ALERT*) ;; *) continue ;; esac
+        case "$line" in
+            ALERT*) ;;
+            WARN*) echo "config-audit: WARN: $(printf '%s' "$line" | cut -f2-)" >&2; rc=4; continue ;;
+            *) continue ;;
+        esac
         fp="$(printf '%s' "$line" | cut -f2)"
         text="$(printf '%s' "$line" | cut -f3-)"
         echo "config-audit: $text" >&2
@@ -482,7 +584,7 @@ _ca_watch() {
     done <<EOF
 $out
 EOF
-    return 0
+    return "$rc"
 }
 
 # A restored .env that still holds behaviour or gate keys came from before the
@@ -563,7 +665,10 @@ config_audit_main() {
         watch) _ca_watch ;;
         accept) _ca_node accept ;;
         denied) [ "$#" -eq 2 ] || _ca_usage; _ca_node denied "$1" "$2" --script "$script" --pid "$pid" ;;
-        check) local out; out="$(_ca_node check)" || return 1; [ -z "$out" ] && return 0; printf '%s\n' "$out"; return 3 ;;
+        check) local out; out="$(_ca_node check)" || return 1; [ -z "$out" ] && return 0; printf '%s\n' "$out"
+            case "$out" in LOSS*|*"
+LOSS"*) return 3 ;; esac
+            return 0 ;;
         *) _ca_usage ;;
     esac
 }
