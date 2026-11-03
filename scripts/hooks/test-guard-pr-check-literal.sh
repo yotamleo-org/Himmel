@@ -542,7 +542,7 @@ need_in_err "remedy offers the anchor's own path as the fallback" "bash $PRIMARY
 # if a rule its settings hold matches that line. A quoted path matches none (the
 # rule text carries no quote), so each printed `bash ...` line is expanded and
 # matched against the rules plugin-profiles.mjs generates for worker-impl,
-# anchored at the fixture primary - what a leg actually holds.
+# anchored at the fixture primary - what a worker actually holds.
 PCLI="$(cd "$(dirname "$0")/../lanes" && pwd)/plugin-profiles.mjs"
 mkdir -p "$TMP/rules-home"
 GEN_RULES="$(cd "$WT" && env HIMMEL_REPO="$WT" HOME="$TMP/rules-home" USERPROFILE="$TMP/rules-home" node "$PCLI" worker-impl 2>/dev/null | jq -r '.permissions.allow[]' 2>/dev/null)"

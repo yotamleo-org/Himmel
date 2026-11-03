@@ -519,7 +519,7 @@ def sim_rollup(per):
     for p in per:
         for g in ("all", "profile:" + p["profile"]):
             r = out.setdefault(g, {"workers": 0, "actual": 0, "b": 0, "c": 0, "b_events": 0, "c_events": 0,
-                                   "a_compactions": 0, "legs_with_hop_b": 0})
+                                   "a_compactions": 0, "workers_with_hop_b": 0})
             r["workers"] += 1
             r["actual"] += p["actual"]
             r["b"] += p["b"]["cost_eq"]
@@ -527,7 +527,7 @@ def sim_rollup(per):
             r["b_events"] += p["b"]["events"]
             r["c_events"] += p["c"]["events"]
             r["a_compactions"] += p["actual_compactions"]
-            r["legs_with_hop_b"] += 1 if p["b"]["events"] else 0
+            r["workers_with_hop_b"] += 1 if p["b"]["events"] else 0
     return out
 
 

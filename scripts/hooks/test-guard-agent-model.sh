@@ -232,13 +232,13 @@ else
 fi
 rm -f "$TC/unlisted.md" || tc_setup_fail "remove unlisted agent"
 # shellcheck disable=SC2016 # the backticks are literal markdown, not expansions
-sed 's/^| Worker-brief or `legs.json` drafting, wave prep | `brief-drafter` |/| Worker-brief or `legs.json` drafting, wave prep | `general-purpose` |/' "$CHIEF_DOC" > "$TC.chief-gp.md" || tc_setup_fail "write general-purpose row doc"
+sed 's/^| Worker-brief or `workers.json` drafting, wave prep | `brief-drafter` |/| Worker-brief or `workers.json` drafting, wave prep | `general-purpose` |/' "$CHIEF_DOC" > "$TC.chief-gp.md" || tc_setup_fail "write general-purpose row doc"
 # shellcheck disable=SC2016 # the backticks are literal markdown, not expansions
-grep -q '^| Worker-brief or `legs.json` drafting, wave prep | `general-purpose` | `sonnet` |' "$TC.chief-gp.md" || tc_setup_fail "general-purpose sonnet row not written"
+grep -q '^| Worker-brief or `workers.json` drafting, wave prep | `general-purpose` | `sonnet` |' "$TC.chief-gp.md" || tc_setup_fail "general-purpose sonnet row not written"
 rm -f "$TC/brief-drafter.md" || tc_setup_fail "remove brief-drafter agent"
 if gp_out="$(table_check "$TC.chief-gp.md" "$TC")"; then
     bad "fixture with a non-fable general-purpose row passes table_check"
-elif [ "$gp_out" = "row names general-purpose, not an agent definition: | Worker-brief or \`legs.json\` drafting, wave prep | \`general-purpose\` | \`sonnet\` | \`medium\` |" ]; then
+elif [ "$gp_out" = "row names general-purpose, not an agent definition: | Worker-brief or \`workers.json\` drafting, wave prep | \`general-purpose\` | \`sonnet\` | \`medium\` |" ]; then
     ok "fixture with a non-fable general-purpose row fails table_check"
 else
     bad "non-fable general-purpose row fixture failed for another reason: $gp_out"

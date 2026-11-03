@@ -90,7 +90,7 @@ eq "trigger= recorded from stdin" "$(field "$SNAP1" trigger)" "auto"
 if grep -q '`' "$SNAP1"; then bad "snap contains a backtick"; else ok "snap contains no backtick"; fi
 if [ -x "$CHECKER" ] || [ -f "$CHECKER" ]; then
     # shellcheck disable=SC2016  # backtick spans are literal fixture text
-    printf '%s\n' '- COMPACTED 12:00 — legs: `N1:nA:lA:111`, `N2:nB:lB:222`, queue: 12,13, last GO: `13:2222222`, acked: none' > "$TMP/bullet.md"
+    printf '%s\n' '- COMPACTED 12:00 — workers: `N1:nA:lA:111`, `N2:nB:lB:222`, queue: 12,13, last GO: `13:2222222`, acked: none' > "$TMP/bullet.md"
     bash "$CHECKER" "$TMP/bullet.md" "$WORK" >/dev/null 2>&1; crc=$?
     eq "the checker accepts the hook's snap against the matching bullet" "$crc" 0
 else
