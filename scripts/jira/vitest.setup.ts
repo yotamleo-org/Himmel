@@ -12,5 +12,10 @@ delete process.env.JIRA_SECTOR_FIELD;
 process.env.HIMMEL_RELEASE_STATE_DIR = mkdtempSync(join(tmpdir(), 'jira-test-release-'));
 process.env.HIMMEL_ADMISSIONS_LEDGER = join(mkdtempSync(join(tmpdir(), 'jira-test-admissions-')), 'admissions-ledger.jsonl');
 
+// An inherited config or handover root would point a test at the station's own files:
+// replace both with empty temp dirs.
+process.env.HIMMEL_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'jira-test-conf-'));
+process.env.HANDOVER_DIR = mkdtempSync(join(tmpdir(), 'jira-test-handover-'));
+
 // Keep every test off the real keyring; the resolver test turns it back on with a stub.
 process.env.HIMMEL_SECRETS_KEYRING = "off";

@@ -1747,11 +1747,14 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 echo "$outHDp" | jq -e '.actual == "present"' >/dev/null || fail "handover-dir present (HANDOVER_DIR set via ctx.env): (got: $outHDp)"
 
 hd_absent_cwd="$work/hd-absent-not-a-repo"; mkdir -p "$hd_absent_cwd"
+# load_dotenv reads himmel.conf from HIMMEL_CONFIG_DIR or $HOME/.himmel, which can serve the
+# station's own HANDOVER_DIR into a case that means "unset": point it at an empty throwaway dir.
+hd_conf_empty="$work/hd-conf-empty"; mkdir -p "$hd_conf_empty"
 outHDa=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'handover-wiring');
-const env = Object.assign({}, process.env, { HIMMELCTL_PROBE_TIMEOUT_SECS: '180' });
+const env = Object.assign({}, process.env, { HIMMELCTL_PROBE_TIMEOUT_SECS: '180', HIMMEL_CONFIG_DIR: '$(winpath "$hd_conf_empty")' });
 delete env.HANDOVER_DIR;
 const ctx = { repoRoot: '$(winpath "$hd_absent_cwd")', targetPath: '$(winpath "$hd_absent_cwd")', scope: 'project', env };
 console.log(JSON.stringify(runProbe(item, ctx)));
@@ -1772,7 +1775,7 @@ hd_probe() {  # hd_probe <cwd> [HANDOVER_DIR value; omit to leave it unset]
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'handover-wiring');
-const env = Object.assign({}, process.env, { HIMMELCTL_PROBE_TIMEOUT_SECS: '180' });
+const env = Object.assign({}, process.env, { HIMMELCTL_PROBE_TIMEOUT_SECS: '180', HIMMEL_CONFIG_DIR: '$(winpath "$hd_conf_empty")' });
 delete env.HANDOVER_DIR;
 if (process.env.HD_SET !== '__unset__') env.HANDOVER_DIR = process.env.HD_SET;
 const ctx = { repoRoot: '$repo_root_w', targetPath: '$(winpath "$1")', scope: 'project', env };

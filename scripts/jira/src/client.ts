@@ -148,10 +148,21 @@ export function normalizeEnv(): void {
   }
 }
 
-loadEnvFile(envFilePath());
-normalizeEnv();
+// A test never loads the station's himmel.conf, project .env or keyring on its own: under vitest or
+// bun (NODE_ENV=test) the automatic load is skipped, whatever the cwd or config, and a test that
+// wants a file calls loadEnvFile(path) itself. A real CLI or MCP run still loads at import.
+const underTest = (): boolean => !!process.env.VITEST || process.env.NODE_ENV === 'test';
+let envLoaded = false;
+function ensureEnvLoaded(): void {
+  if (envLoaded) return;
+  envLoaded = true;
+  if (!underTest()) loadEnvFile(envFilePath());
+  normalizeEnv();
+}
+if (!underTest()) ensureEnvLoaded();
 
 export const baseUrl = (): string => {
+  ensureEnvLoaded();
   // No hardcoded default. A stranger who sets a token but
   // not the base URL must fail loud here — never silently send requests
   // to the author's instance.
@@ -166,6 +177,7 @@ export const baseUrl = (): string => {
 };
 
 export const projectKey = (): string => {
+  ensureEnvLoaded();
   // No hardcoded default. Operators must set
   // JIRA_PROJECT_KEY explicitly so this plugin is portable across
   // repos/projects without code edits.
@@ -179,13 +191,18 @@ export const projectKey = (): string => {
   return key;
 };
 
-export const severityField = (): string | undefined =>
-  process.env.JIRA_SEVERITY_FIELD || undefined;
+export const severityField = (): string | undefined => {
+  ensureEnvLoaded();
+  return process.env.JIRA_SEVERITY_FIELD || undefined;
+};
 
-export const boardId = (): string | undefined =>
-  process.env.JIRA_BOARD_ID || undefined;
+export const boardId = (): string | undefined => {
+  ensureEnvLoaded();
+  return process.env.JIRA_BOARD_ID || undefined;
+};
 
 export function authHeader(): string {
+  ensureEnvLoaded();
   const email = process.env.JIRA_EMAIL ?? '';
   const token = process.env.JIRA_API_TOKEN ?? '';
   return `Basic ${Buffer.from(`${email}:${token}`).toString('base64')}`;
@@ -197,6 +214,7 @@ export function authHeader(): string {
 // otherwise fall back to the Jira creds (works when JIRA_API_TOKEN is a
 // scopeless/full-account token covering both products).
 export function confluenceAuthHeader(): string {
+  ensureEnvLoaded();
   const email = process.env.CONFLUENCE_EMAIL;
   const token = process.env.CONFLUENCE_API_TOKEN;
   if (email && token) {
