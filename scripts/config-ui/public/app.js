@@ -664,7 +664,11 @@ async function loadHistory(t, dr) {
     const j = r.ok ? await r.json().catch(() => null) : null;
     if (j && Array.isArray(j.events)) h = { events: j.events };
   } catch (_) { /* unavailable */ }
-  if (roadmapUi.drawer === dr) { dr.history = h; paint(); }
+  if (roadmapUi.drawer !== dr) return;
+  const inside = document.activeElement && document.activeElement.closest && document.activeElement.closest(".drawer"); // a redraw replaces the focused control: keep keyboard focus in the drawer
+  dr.history = h; paint();
+  const close = inside && document.querySelector(".drawer [data-act=rm-close]");
+  if (close) close.focus();
 }
 function closeDrawer() {
   const dr = roadmapUi.drawer;

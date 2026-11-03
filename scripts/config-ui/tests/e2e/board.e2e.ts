@@ -121,6 +121,7 @@ test("a click on a card opens the drawer with its CLI argv and its stage history
   await expect(drawer.locator(".rm-tl")).toContainText("In Progress → In Review");
   await expect(drawer.locator(".rm-tl")).not.toContainText("v1.1.3"); // the Fix Version change is not a stage move
   expect(reads).toHaveLength(1);
+  await expect(page.getByRole("button", { name: /^Close ticket/ })).toBeFocused(); // the history redraw did not drop keyboard focus out of the drawer
   await expect(page.locator(".rm-under")).toHaveAttribute("inert", ""); // the board under it takes nothing
   await shot(page, "board-drawer");
   await page.keyboard.press("Escape");

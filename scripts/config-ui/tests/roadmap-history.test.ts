@@ -72,6 +72,10 @@ test("a failed read answers 502 with an error and no events, never an empty list
   const garbled = await boot({ STUB_JIRA_HISTORY_RAW: "not json" }).get("?key=HIMMEL-2"); // an answer that is not the changelog is also a failed read
   expect(garbled.status).toBe(502);
   expect(await garbled.json()).toMatchObject({ error: "history unavailable" });
+  for (const raw of ["[{}]", '[{"created":"2026-10-27T09:00:00.000+0000"}]', '[{"created":"t","items":[null]}]', "[1]"]) { // an entry that is not a changelog entry is no more a read that worked than text is
+    const r = await boot({ STUB_JIRA_HISTORY_RAW: raw }).get("?key=HIMMEL-2");
+    expect([raw, r.status]).toEqual([raw, 502]);
+  }
 });
 
 test("a ticket with no status move answers an empty list: that is a read that worked", async () => {

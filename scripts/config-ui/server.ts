@@ -489,7 +489,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     if (r.rc !== 0) return unavailable();
     let entries: unknown;
     try { entries = JSON.parse(r.stdout); } catch { return unavailable(); }
-    if (!Array.isArray(entries)) return unavailable();
+    const isEntry = (e: unknown) => !!e && typeof e === "object" && typeof (e as { created?: unknown }).created === "string" && Array.isArray((e as { items?: unknown }).items)
+      && (e as { items: unknown[] }).items.every((i) => !!i && typeof i === "object"); // a changelog entry: when and what changed; anything else is not the read it claims to be
+    if (!Array.isArray(entries) || !entries.every(isEntry)) return unavailable();
     const events = entries.flatMap((e: { created?: unknown; author?: { displayName?: unknown }; items?: unknown }) => (Array.isArray(e?.items) ? e.items : [])
       .filter((i: { field?: unknown }) => typeof i?.field === "string" && i.field.toLowerCase() === "status")
       .map((i: { fromString?: unknown; toString?: unknown }) => ({ at: String(e.created ?? ""), who: String(e.author?.displayName ?? "?"), from: i.fromString == null ? "" : String(i.fromString), to: i.toString == null ? "" : String(i.toString) })));
