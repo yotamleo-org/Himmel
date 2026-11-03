@@ -288,6 +288,7 @@ assert_contains "brief-drafter dispatch log names the allowance" '"override":"br
 
 RC9B=$(run_hook brief-drafter-gp "$(payload general-purpose 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-gp.jsonl")
 assert_rc "general-purpose with the brief-drafter prompt still denied" 2 "$RC9B"
+assert_contains "the deny message names brief-drafter as its own allowance" 'Drafting worker briefs is a separate allowance: dispatch with subagent_type: brief-drafter' "$(combined_output brief-drafter-gp)"
 RC9C=$(run_hook brief-drafter-fork "$(payload fork 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-fork.jsonl")
 assert_rc "fork with the brief-drafter prompt still denied" 2 "$RC9C"
 RC9D=$(run_hook brief-drafter-x "$(payload x-brief-drafter 'draft briefs' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief CHIEF_DISPATCH_LOG="$TMP/bd-x.jsonl")

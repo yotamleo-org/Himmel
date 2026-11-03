@@ -294,10 +294,12 @@ Do this instead:
 
 Genuinely read-only work has two structural options, neither spoofable by prompt text (a
 prompt-text read-only claim is NOT a carve-out here — three CR rounds proved it leaks):
-  * dispatch with subagent_type: Explore (or judge-ro for a judge call, or brief-drafter
-    for drafting briefs), or
+  * dispatch with subagent_type: Explore (or judge-ro for a judge call), or
   * relaunch with CHIEF_DISPATCH_OK=1 in the launching shell
-    (audited; a per-call prefix does not reach this hook)."
+    (audited; a per-call prefix does not reach this hook).
+
+Drafting worker briefs is a separate allowance: dispatch with subagent_type: brief-drafter
+(its agent file must pin tools Read, Write, Edit, Bash; each dispatch is logged)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"guard-chief-dispatch: chief session denied a ship-flow-shaped Agent dispatch"'
