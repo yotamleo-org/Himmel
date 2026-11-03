@@ -10,6 +10,8 @@
 #   KSTUB_LOOKUP_RC=<n>     every lookup exits <n> (124 = timed out)
 #   KSTUB_SEARCH_FAIL=1     every search fails
 #   KSTUB_DROP_STORE=1      a store succeeds and keeps nothing
+#   KSTUB_STORE_SLEEP=<s>   a store takes <s> seconds (two imports can overlap)
+# Sourcing clears every knob a parent shell exported.
 # Files: $KSTUB_STORE holds one `attrs<TAB>value` line per item; $KSTUB_LOG holds
 # one line per stub call (argv only, so it never holds a stored value).
 
@@ -17,6 +19,7 @@
 # attribute, as libsecret does.
 KBIN="$TMP/kbin"
 mkdir -p "$KBIN"
+unset KSTUB_LOCKED KSTUB_LOOKUP_FAIL KSTUB_LOOKUP_RC KSTUB_SEARCH_FAIL KSTUB_DROP_STORE KSTUB_STORE_SLEEP
 export KSTUB_STORE="$TMP/keyring.tsv" KSTUB_LOG="$TMP/keyring.log" KSTUB_LOCKED=false
 cat >"$KBIN/secret-tool" <<'STUB'
 #!/usr/bin/env bash
@@ -29,6 +32,7 @@ while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
 case "$verb" in
     store)
         IFS= read -r val || true
+        [ -z "${KSTUB_STORE_SLEEP:-}" ] || sleep "$KSTUB_STORE_SLEEP"
         [ -n "${KSTUB_DROP_STORE:-}" ] && exit 0
         printf '%s\t%s\n' "${q# }" "$val" >>"$KSTUB_STORE"; exit 0 ;;
     lookup)

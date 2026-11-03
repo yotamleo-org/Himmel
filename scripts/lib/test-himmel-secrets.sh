@@ -25,6 +25,8 @@ trap 'rm -rf "$TMP"' EXIT
 # migrate-env and S0 suites.
 # shellcheck source=fixtures/keyring-stub.sh
 . "$(dirname "$0")/fixtures/keyring-stub.sh"
+# The import lock lives under the config dir; keep it inside this suite's temp dir.
+export HIMMEL_CONFIG_DIR="$TMP/conf"
 
 # R0: no row below may reach a real keyring.
 # shellcheck disable=SC2153 # KBIN is set by the sourced fixture
@@ -335,6 +337,45 @@ assert_eq "R14b a copy of the owner that classes JIRA_API_TOKEN as config drops 
 assert_eq "R14b the copy still lists the other secrets" "1" "$(printf '%s' "$got" | grep -c '^TELEGRAM_BOT_TOKEN$')"
 got=$(cd "$REPO" && env -u CLAUDECODE "$HS" names 2>/dev/null; echo "rc=$?")
 assert_eq "R14b names without --class secret is a usage error" "rc=2" "$got"
+
+# R15: a keep file whose name starts with a dash is read as a file, never as a sed option.
+kreset
+mkdir -p "$TMP/r15"
+printf 'JIRA_API_TOKEN\n' >"$TMP/r15/-n"
+got=$(cd "$TMP/r15" && env -u CLAUDECODE "$HS" import-env --keep-file -n "$TMP/r12.env" 2>&1 </dev/null; echo "rc=$?")
+assert_eq "R15 a dash-named keep file still protects its key" "skipped JIRA_API_TOKEN (env-keep)|imported 0 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|')"
+
+# R16: the usage and unknown-verb lines name every verb, names included.
+got=$(cd "$REPO" && "$HS" 2>&1; "$HS" frob 2>&1)
+assert_eq "R16 the usage and unknown-verb lines name names" "2" "$(printf '%s\n' "$got" | grep -c 'import-env|export-env|names')"
+
+# R17: two imports into one keyring scope never overlap. The lock is per scope, not per checkout.
+printf 'JIRA_API_TOKEN=dummy-r17\n' >"$TMP/r17.env"
+REPO2="$TMP/repo2"
+mkdir -p "$REPO2"
+git -C "$REPO2" init --quiet
+kreset
+(cd "$REPO" && env -u CLAUDECODE KSTUB_STORE_SLEEP=2 "$HS" import-env "$TMP/r17.env" >"$TMP/r17.a" 2>&1; echo "rc=$?" >>"$TMP/r17.a") &
+r17_pid=$!
+sleep 1
+got=$(cd "$REPO2" && env -u CLAUDECODE "$HS" import-env "$TMP/r17.env" 2>&1; echo "rc=$?")
+wait "$r17_pid"
+assert_eq "R17 a second import into the same scope from another checkout is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "R17 the first import finishes whole" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(tr '\n' '|' <"$TMP/r17.a" | sed 's/|$//')"
+assert_eq "R17 only one store reached the keyring" "1" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+got=$(cd "$REPO2" && env -u CLAUDECODE "$HS" import-env "$TMP/r17.env" 2>&1; echo "rc=$?")
+assert_eq "R17 the lock is gone once the first import ends" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
+kreset
+(cd "$REPO" && env -u CLAUDECODE KSTUB_STORE_SLEEP=2 "$HS" import-env "$TMP/r17.env" >"$TMP/r17.b" 2>&1) &
+r17_pid=$!
+sleep 1
+got=$(cd "$REPO2" && env -u CLAUDECODE "$HS" import-env --project "$TMP/r17.env" 2>&1; echo "rc=$?")
+wait "$r17_pid"
+assert_eq "R17 a project-scope import is not held up by a user-scope one" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
+
+# R18: sourcing the stub drops a knob the parent shell exported.
+got=$( (export KSTUB_DROP_STORE=1 KSTUB_LOCKED=true; TMP="$TMP/stubchk"; mkdir -p "$TMP"; . "$(dirname "$HS")/fixtures/keyring-stub.sh"; printf '[%s|%s]' "${KSTUB_DROP_STORE:-}" "$KSTUB_LOCKED") )
+assert_eq "R18 the stub clears inherited knobs on source" "[|false]" "$got"
 fi
 
 echo

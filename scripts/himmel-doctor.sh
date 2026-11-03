@@ -3740,16 +3740,15 @@ EOF
 # only. No value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (shared with C74).
 check_c75_keyring() {
     local hs="$SELF_DIR/lib/himmel-secrets" envfile state names="" key layer
-    local envnames="" dot="" kr=0 other=0 unset_n=0 status_out
+    local envnames="" dot="" kr=0 other=0 unset_n=0 status_out names_failed=0
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
     if [ ! -x "$hs" ]; then
         emit WARN C75-keyring "$hs is missing or not executable" "restore it: git checkout -- scripts/lib/himmel-secrets"
         return 0
     fi
-    # shellcheck disable=SC2013 # a manifest name is one word
-    for key in $(sed -n 's/^ *"name": "\([A-Za-z_][A-Za-z0-9_]*\)".*/\1/p' "$SELF_DIR/himmelctl/lib/secrets-manifest.json"); do
-        [ "$(_himmel_key_class "$key")" = secret ] && names="$names $key"
-    done
+    # The secret key set has one owner: the resolver (manifest names in the secret class).
+    names=$("$hs" names --class secret 2>/dev/null) || names_failed=1
+    names=$(printf '%s\n' "$names" | tr '\n' ' ')
     # shellcheck disable=SC2086 # one word per key name
     status_out="$("$hs" status --no-dotenv $names 2>/dev/null)"
     state="$(printf '%s\n' "$status_out" | sed -n 's/^keyring: //p')"
@@ -3781,7 +3780,10 @@ check_c75_keyring() {
                esac ;;
         esac
     done
-    if [ -n "$dot" ] && [ "$state" = unlocked ]; then
+    if [ "$names_failed" -eq 1 ]; then
+        emit INFO C75-secrets "the secret key list could not be read from himmel-secrets names; secrets not checked" \
+            "run: bash $hs names --class secret"
+    elif [ -n "$dot" ] && [ "$state" = unlocked ]; then
         emit WARN C75-secrets "secrets still served from .env: $dot ($kr from the keyring, $other from the environment, $unset_n unset)" \
             "the operator moves them at their own prompt: bash $hs import-env $envfile, then bash $hs status"
     elif [ -n "$dot" ]; then
@@ -3810,7 +3812,10 @@ check_c75_keyring() {
         fi
         miss="${miss:+$miss, }$setting"
     done
-    if [ -n "$miss" ]; then
+    if [ "$names_failed" -eq 1 ]; then
+        emit INFO C75-config-keys "the paired settings were not checked: the secret key list could not be read" \
+            "run: bash $hs names --class secret"
+    elif [ -n "$miss" ]; then
         emit WARN C75-config-keys "a credential is served but its setting resolves nowhere: $miss" \
             "add each to ~/.himmel/himmel.conf (or .local / the active station profile); the checkout .env remains a legacy fallback"
     else

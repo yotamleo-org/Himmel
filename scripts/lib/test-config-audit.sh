@@ -227,7 +227,8 @@ FX="$TMP/fx"
 mkdir -p "$FX/scripts/setup" "$FX/scripts/lib" "$FX/scripts/himmelctl/lib" "$FX/docs/setup"
 cp "$REPO/scripts/setup/migrate-env.sh" "$REPO/scripts/setup/migrate-env-config.sh" "$FX/scripts/setup/"
 cp "$HERE/load-dotenv.sh" "$HERE/prim.sh" "$HERE/chokepoint-seam-guard.sh" "$CA" "$FX/scripts/lib/"
-cp "$REPO/scripts/himmelctl/lib/config-keys.json" "$FX/scripts/himmelctl/lib/"
+cp "$HERE/himmel-secrets" "$FX/scripts/lib/"
+cp "$REPO/scripts/himmelctl/lib/config-keys.json" "$REPO/scripts/himmelctl/lib/secrets-manifest.json" "$FX/scripts/himmelctl/lib/"
 cp "$REPO/docs/setup/himmel-config.example.json" "$FX/docs/setup/"
 printf 'JIRA_PROJECT_KEY=\n' > "$FX/.env.example"
 printf '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}\n' > "$HIMMEL_CONFIG_DIR/config.json"
@@ -248,6 +249,32 @@ eq "8 an out-of-scope pre takes no backup" "$nb" "$(find "$STATE/backups" -minde
 printf '{}\n' > "$HOME/.claude/settings.json"
 out=$(bash "$CA" pre "$HOME/.claude/settings.json" --script test)
 has "8 a ~/.claude settings file is in scope" "$STATE/backups/$out/extra/settings.json" "$(ls "$STATE/backups/$out/extra/settings.json" 2>&1)"
+# --- 9. scrub: secret lines leave every backup's .env, and the manifest stays true ---
+printf 'JIRA_API_TOKEN=%s\nexport OTHER_TOKEN=%s\nKEEP_A=1\nONLY_COPY=%s\n' "$CANARY-j" "$CANARY-o" "$CANARY-c" > "$TMP/clone/.env"
+sid=$(bash "$CA" pre "$HIMMEL_CONFIG_DIR/config.json" --script test)
+out=$(bash "$CA" scrub --dry-run " JIRA_API_TOKEN OTHER_TOKEN " " JIRA_API_TOKEN OTHER_TOKEN ONLY_COPY ")
+has "9 a dry run names the backup it would scrub" "would-scrub $sid" "$out"
+has "9 a dry run changes nothing" "JIRA_API_TOKEN=" "$(cat "$STATE/backups/$sid/.env")"
+out=$(bash "$CA" scrub " JIRA_API_TOKEN OTHER_TOKEN " " JIRA_API_TOKEN OTHER_TOKEN ONLY_COPY ")
+has "9 the scrub names the backup it changed" "scrubbed $sid" "$out"
+has "9 the scrub names a line with no other copy" "kept $sid ONLY_COPY" "$out"
+lacks "9 the scrub prints no value" "$CANARY" "$out"
+bk=$(cat "$STATE/backups/$sid/.env")
+lacks "9 the plain secret line left the backup" "JIRA_API_TOKEN" "$bk"
+lacks "9 the exported secret line left the backup" "OTHER_TOKEN" "$bk"
+has "9 a line outside the set stays" "KEEP_A=1" "$bk"
+has "9 a line with no other copy stays" "ONLY_COPY=" "$bk"
+eq "9 the scrubbed backup is mode 600" 600 "$(stat -c %a "$STATE/backups/$sid/.env" 2>/dev/null || stat -f %Lp "$STATE/backups/$sid/.env")"
+mfok=$(node -e 'const fs=require("fs"),c=require("crypto"),d=process.argv[1];
+    const m=JSON.parse(fs.readFileSync(d+"/manifest.json","utf8")), h=(b)=>c.createHash("sha256").update(b).digest("hex");
+    const ok=m.files[".env"].sha256===h(fs.readFileSync(d+"/.env")) && m.digest===h(Buffer.from(JSON.stringify(Object.keys(m.files).map((n)=>[n,m.files[n].sha256]))));
+    process.stdout.write(ok?"true":"false")' "$STATE/backups/$sid")
+eq "9 the manifest sha256 and digest match the scrubbed file" true "$mfok"
+out=$(bash "$CA" restore "$sid" --script test-restore)
+has "9 a scrubbed backup still restores" "result=restored id=$sid" "$out"
+out=$(bash "$CA" scrub " JIRA_API_TOKEN OTHER_TOKEN " " JIRA_API_TOKEN OTHER_TOKEN ONLY_COPY ")
+lacks "9 a second scrub changes nothing" "scrubbed $sid" "$out"
+
 real_after=$(ls -la "$REAL_STATE" "$REAL_STATE/backups" 2>&1; cat "$REAL_STATE/audit.jsonl" 2>/dev/null | wc -l)
 eq "8 a fixture-HOME run never touches the real backups" "$real_before" "$real_after"
 

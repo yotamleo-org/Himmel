@@ -114,8 +114,9 @@ bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run   # prin
    `skipped`, `failed` or `not-attempted`, and a **DRIFT** block names anything
    the installer could not converge, each with a remedy line.
 3. Read the `.env migration` block: it shows where each `.env` key would go
-   and asks `Move these keys now (backup first)? [y/N]`; after a move it names
-   the backup path and the restore command ([detail](#the-env-migration)).
+   and, without `-y`, refuses and prints the command to rerun with `-y`; after a
+   move it names the backup path, and the restore command unless a backup scrub
+   ran (a scrubbed backup is not a safe copy back; [detail](#the-env-migration)).
 4. If the graphify pin sync skipped because a Claude session was live, run
    `bash ~/himmel/scripts/himmel-update.sh --graphify-only` once none is.
 5. **Project scope only:** from the project root, re-run the install without
@@ -165,8 +166,11 @@ release yet reads `n/a` and does not change the exit code. Then:
   first, or with no answer, make them agree, then run
   `bash ~/himmel/scripts/himmel-update.sh --only env_migration`. Do not empty
   `.env` to get past it.
-- **You want the old `.env` back.** Run the `restore:` command the migration
-  printed (`cp <backup> <your .env>`). After a move that passed its check,
+- **You want the old `.env` back.** After a failed run, run the `restore:`
+  command the migration printed (`cp <backup> <your .env>`). After a run that
+  scrubbed its backups there is no such command: copy back only the lines you
+  want from the backup (a plain `cp` would drop the secrets that stayed in
+  `.env`). After a move that passed its check,
   the copies in `~/.himmel` can stay: they hold the same values. After a
   `MISMATCH` on a value `~/.himmel` already held, restoring `.env` does not
   change that value: make the two agree yourself.
@@ -495,24 +499,35 @@ The step is `scripts/setup/migrate-env.sh`;
 `bash ~/himmel/scripts/setup/migrate-env.sh --dry-run` prints the plan
 without the rest of the update. It prints key names only, never values.
 
-An apply, from the update or run by hand, always prints the plan and the
-backup path first, then asks `Move these keys now (backup first)? [y/N]`.
-Only `y` moves anything; any other answer, Enter included, skips the step and
-prints the command to run later. With no terminal to answer at (piped input,
-a cron job, a hook) it moves nothing, prints that command and exits 3.
+An apply, from the update or run by hand, prints the plan and the backup path
+first. It moves secrets only with `-y`: the script reads no typed answer, so
+without `-y` (and without `ENV_MIGRATION_CONSENT`, which covers the behaviour
+keys alone) it moves nothing, prints the command to rerun with `-y` and exits
+3. With no terminal at all (piped input, a cron job, a hook) it also moves
+nothing and exits 3. With the consent but without `-y` or a terminal, the
+behaviour keys move and the secrets stay in `.env`. The update never passes
+`-y`, so a secrets move is always a command you start yourself:
+`bash ~/himmel/scripts/setup/migrate-env.sh -y`.
 
-1. **Plan.** One line per `.env` key: a behaviour key goes to
-   `~/.himmel/himmel.conf`, a gate-policy key to `~/.himmel/config.json`
-   `.policy`, a himmel secret nothing in himmel reads to
-   `~/.config/secrets/himmel.env` (mode 600). A himmel secret a himmel file
-   still reads `stays (read by <file>)`; if the readers cannot be searched,
-   every himmel secret stays. Any other key reads
-   `stays (not himmel's, left in place)`.
+1. **Plan.** One `name  class  destination` line per `.env` key, never a value.
+   The class is `config` (to `~/.himmel/himmel.conf`), `config (policy)` (to
+   `~/.himmel/config.json` `.policy`), `secret` (to the OS keyring), or
+   `unrelated` (another tool's key: `stays (not himmel's, left in place)`). A
+   secret named in `~/.himmel/env-keep.txt` reads `kept (env-keep)`. The set of
+   secrets comes from `scripts/lib/himmel-secrets names --class secret`.
 2. **Backup.** `.env` is copied to `~/.himmel/env-backups/env.<UTC time>.<pid>`,
    mode 600, before anything else is written; the path is printed.
-3. **Copy.** Each key is copied to its new place. A key already set there is
-   left alone; if its value differs, the check asks which one to keep
-   ([mismatch](#the-env-split-what-moves-what-stays-and-a-mismatch)).
+3. **Copy.** Each behaviour and policy key is copied to its new place. A key
+   already set there is left alone; if its value differs, the check asks which
+   one to keep ([mismatch](#the-env-split-what-moves-what-stays-and-a-mismatch)).
+   Secrets go to the keyring through `himmel-secrets import-env`, which prints
+   `stored`, `held` or `failed` per key after reading the value back from the
+   keyring alone. One import runs at a time per keyring scope; a second
+   migration started together with the first stops with
+   `another import-env ... is running` and removes nothing. A `failed` key stops
+   the run with no line removed. A legacy `~/.config/secrets/himmel.env` is
+   imported the same way, but only when a `.env` exists: with no `.env` the run
+   stops at "no .env found; nothing to migrate" and leaves the legacy file alone.
 4. **Check.** The real readers run twice, once with the keys only in `.env`
    and once with them only in their new place: the shell `load_dotenv` and
    `load_policy`, the Jira CLI's config, handover-root and release-state
@@ -521,10 +536,40 @@ a cron job, a hook) it moves nothing, prints that command and exits 3.
    `MISMATCH <key> (<reader>)` (or a `verify:` line) and no line is removed
    from `.env`.
 5. **Remove.** Only after the check passes are the moved lines removed from
-   `.env`. Comments and the keys that stay are kept, and so is the file's mode.
+   `.env`, and only a secret that came back `stored`. Comments and the keys
+   that stay (`held`, `env-keep`, another tool's) are kept byte for byte, and so
+   is the file's mode. Then the backups are scrubbed (the secrets stage ran, so
+   `-y` at a terminal outside an agent session): every file in
+   `~/.himmel/env-backups/` and the `.env` copy in each config-audit backup
+   (`~/.himmel/state/config-audit/backups`, manifest checksums kept true) loses
+   the lines of a key that `.env` or the keyring still holds, and a legacy
+   secrets file loses the lines it stored. Coverage is by key name, not by
+   value: a blank `.env` line (`NAME=`) is not a copy, and `NAME=""` or
+   `NAME=''` is not a copy only for a key that does not move (`env-keep`). A key
+   that moves is stored as those two characters, and that keyring item is a copy.
+   A `.env` line counts when its first value, as the loaders read it, is not
+   empty (a `#` starts a comment only after whitespace, so `NAME=#x`,
+   `NAME=# x` and `NAME=""#x` are values and count; a later duplicate line is
+   ignored), and so does any user-scope keyring item, a placeholder included. A
+   real value that exists only in a backup is then dropped without a name (known
+   gap, HIMMEL-8951). A backup line with no other copy of its key stays. Only a
+   scrub names that key: a run that does not scrub names no backup key, and a
+   backup-only value stays there unreported (known gap, HIMMEL-8951): nothing to
+   move or scrub, a dry run, no unlocked keyring, or a consent run without `-y`
+   at a terminal, even when other keys move. A run that moves nothing but
+   finds an owed scrub (a run killed before it, say) finishes it when you rerun
+   with `-y`; the dry run reports it as `scrub only`.
 
-The report ends with the restore command (`cp <backup> <your .env>`) and an
-`rm` for the backup: remove it once you are happy, since it holds your secrets.
+On a failed run the report ends with the restore command (`cp <backup> <your
+.env>`) and an `rm` for the backup. After a scrub the report prints no `cp`: a
+scrubbed backup no longer holds the secrets that stay in `.env` (`held`,
+`env-keep`), so copying it over `.env` would drop them. To undo a config move,
+copy back only the lines you want, then `rm` the backup once you are happy.
+
+With no unlocked keyring the apply is **incomplete**: a secret nothing reads goes
+to `~/.config/secrets/himmel.env` as before, the others stay in `.env`, a `WARN`
+names the situation, and it exits 4. The update shows that as `incomplete`, not
+`failed`.
 
 - **Keep-list.** To keep a himmel secret in `.env` for a reader outside this checkout
   (a station script, another tool), put its name in `~/.himmel/env-keep.txt`,
@@ -533,8 +578,10 @@ The report ends with the restore command (`cp <backup> <your .env>`) and an
 - **Inside Claude Code** (`/himmel-update`), an agent may not write
   `~/.himmel/config.json`, so the step prints the plan and the command to run
   at your own prompt, writes nothing, and its status row reads `pending`.
-- The secrets store is one mode-600 file for now; a keyring store replaces it
-  once that ships.
+- **Secrets and the consent.** `ENV_MIGRATION_CONSENT` covers the behaviour keys
+  only. The secrets stage needs `-y`, a terminal and no agent session on every
+  path; with the consent but without them, the behaviour keys move and the
+  secrets stay in `.env` with a line saying why.
 
 #### The .env split: what moves, what stays, and a mismatch
 
@@ -545,13 +592,13 @@ The report ends with the restore command (`cp <backup> <your .env>`) and an
   [list](../internals/config-layers.md#the-env-split-what-moves-what-stays-and-a-mismatch))
   go to `~/.himmel/himmel.conf`. Gate policy (`CR_REQUIRE_CROSS_MODEL`,
   `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`) goes to `~/.himmel/config.json`
-  `.policy`. A himmel secret that nothing in himmel reads goes to
-  `~/.config/secrets/himmel.env`.
-- **Stays.** Every secret something reads (API tokens,
-  Telegram keys), every name in `~/.himmel/env-keep.txt` and every other
-  tool's key stay in `.env` until the keyring work (HIMMEL-7147, HIMMEL-7576)
-  is complete. The report lists them on a `secrets stay in .env:` line. Never
-  empty `.env`: Jira, Telegram and the lanes still read it.
+  `.policy`. Every himmel secret (API tokens, Telegram keys) goes to the OS
+  keyring. The resolver reads a value from the process environment and the
+  credentials directory first, then the keyring, then the legacy `.env`, so an
+  exported value is not overridden by a keyring item.
+- **Stays.** Every name in `~/.himmel/env-keep.txt`, a secret whose keyring item
+  holds another value (`held`), and every other tool's key stay in `.env`. The
+  report lists the kept secrets on a `secrets stay in .env:` line.
 - **Jira URL.** `JIRA_BASE_URL` now resolves from non-empty process env, station
   `.local`, the selected profile, then `himmel.conf`; `.env` is a one-release
   fallback. Station config is a trusted credential destination, guarded against

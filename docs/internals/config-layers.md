@@ -380,17 +380,21 @@ gate when set, so they are candidates for the policy list. They stay
 behaviour config until the commit-message hook reads them through
 `load_policy`.
 
-**What stays in `.env`.** Secrets that something reads stay in `.env` until
-the keyring work (HIMMEL-7147, HIMMEL-7576) is complete.
-`scripts/setup/migrate-env.sh` leaves in `.env` every secret a tracked himmel
-file other than docs still reads, every secret
-named in `~/.himmel/env-keep.txt` and every key `.env.example` and the registry
-do not name (another tool's key). Only a himmel secret that nothing in this
-checkout reads moves, to `~/.config/secrets/himmel.env` (mode 600). The migration
-report lists the secrets that stay. It removes only the moved lines, so a
-`.env` that held nothing else ends up with no keys, and
-`himmel-secrets import-env` copies secrets into the keyring without removing
-them from `.env`.
+**What stays in `.env`.** Every consumer reads a secret through the resolver
+(`scripts/lib/himmel-secrets`: environment, credentials directory, keyring, then
+`.env`), so `scripts/setup/migrate-env.sh` moves every himmel secret the
+resolver's `names --class secret` lists into the OS keyring (the set and the
+keyring state come from the resolver, not a list in the script). It leaves in
+`.env` every secret named in `~/.himmel/env-keep.txt`, every secret whose
+keyring item already holds another value (`held`), and every key `.env.example`
+and the registry do not name (another tool's key). A key leaves `.env` only when
+`import-env` printed `stored` for it, which needs the value read back from the
+keyring alone. The migration report lists the secrets that stay. It removes only
+the moved lines, so a `.env` that held nothing else ends up with no keys. Every
+file in `~/.himmel/env-backups/` then loses its manifest-secret lines, and a
+legacy `~/.config/secrets/himmel.env` is imported and emptied of what it stored.
+With no unlocked keyring the run is incomplete (exit 4): a secret nothing reads
+goes to the legacy file, the others stay in `.env`.
 
 **On a mismatch.** When a key's `~/.himmel` side (`himmel.conf`, or
 `config.json` `.policy` for a gate-policy key) already holds a different value
@@ -401,8 +405,8 @@ asks `[e/h]`: `e` writes the `.env` value to `~/.himmel`, `h` keeps the
 `.env` line in place. If any failure is of another kind (a reader that
 disagrees on a key `~/.himmel` did not hold, or a `verify:` line), there is no
 prompt and nothing is removed: fix the reader or make the two files agree,
-then run the migration again. Never empty `.env` by hand to settle one; to go back, run the
-`restore:` command it printed
+then run the migration again. Never empty `.env` by hand to settle one; to go back after a
+failed run, run the `restore:` command it printed (a run that scrubbed its backups prints none)
 ([updating.md](../setup/updating.md#the-env-split-what-moves-what-stays-and-a-mismatch)).
 
 ## Example files
@@ -513,18 +517,21 @@ with the real readers, and only then the removal of the moved lines from
 `bash scripts/setup/migrate-env.sh --dry-run`. The steps below are the manual
 route for behaviour and policy keys.
 
-The confirmation needs a terminal, so an update run by an agent stops at
-`env_migration pending`. To let it finish unattended, set
-`"ENV_MIGRATION_CONSENT": "1"` under `"policy"` in `~/.himmel/config.json`
+The confirmation is the `-y` flag at a terminal (the script reads no typed
+answer), and the update never passes it, so an update run by an agent stops at
+`env_migration pending`. To let the update finish the behaviour keys unattended,
+set `"ENV_MIGRATION_CONSENT": "1"` under `"policy"` in `~/.himmel/config.json`
 yourself. The key is read only from that file: the process env and `.env`
-cannot grant it. With it set, the migration skips the prompt but keeps the
-backup and the check. A mismatch still stops before anything is removed, and
+cannot grant it. With it set, the migration skips `-y` for those keys but keeps
+the backup and the check. A mismatch still stops before anything is removed, and
 names the key and both readers, never the values; only you, at a terminal,
 choose which side wins.
 
-The consent covers less than a typed `y`, so an agent cannot use it to change
-gate policy or move your files elsewhere:
+The consent covers less than `-y`, so an agent cannot use it to change
+gate policy, move your credentials or move your files elsewhere:
 
+- Secrets stay in `.env` under the consent alone. The secrets stage needs `-y`,
+  a terminal and no agent session; its refusal line names which is missing.
 - Gate-policy keys stay in `.env`. Run the move at your own prompt to move them.
 - It applies only to the checkout's own `.env`, never a `--env` file somewhere else.
 - It writes only into your account's own `~/.himmel`. With `HOME` or
