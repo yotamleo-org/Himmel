@@ -410,8 +410,10 @@ async function applyRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairReport> {
   }
 
   // Folds, one live read each. A failed read stops all further filing in this run.
-  for (const c of p.out.filter((x) => x.action.kind === 'fold').slice(0, CAP)) {
-    if (liveError !== null) break;
+  // The cap counts actions that passed the live read, so stale-mirror keys cannot starve later ones.
+  let folds = 0;
+  for (const c of p.out.filter((x) => x.action.kind === 'fold')) {
+    if (liveError !== null || folds >= CAP) break;
     try {
       if (!(await liveAgrees(o, p.mirror, c.key, null))) continue;
     } catch (e) {
@@ -420,10 +422,12 @@ async function applyRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairReport> {
     }
     const res = fold(ctx, { to: p.current, items: [{ key: c.key, pr: (c.action as { pr: number }).pr }] });
     progress += res.folded.length;
+    folds++;
   }
 
-  for (const c of p.out.filter((x) => x.action.kind === 'request').slice(0, CAP)) {
-    if (liveError !== null) break;
+  let requests = 0;
+  for (const c of p.out.filter((x) => x.action.kind === 'request')) {
+    if (liveError !== null || requests >= CAP) break;
     const a = c.action as Extract<Classification['action'], { kind: 'request' }>;
     try {
       if (!(await liveAgrees(o, p.mirror, c.key, a.entry))) continue;
@@ -433,6 +437,7 @@ async function applyRun(ctx: Ctx, o: RepairRunOptions): Promise<RepairReport> {
     }
     request(ctx, { verb: a.verb, key: c.key, from_v: a.from, to_v: a.to, why: a.why, evidence: { rule: 'version-repair', entry: a.entry }, from: 'repair' });
     progress++;
+    requests++;
   }
 
   writeAtomic(join(ctx.dir, 'repair-held.json'), heldFile(ctx, p).json);

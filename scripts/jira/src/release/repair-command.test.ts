@@ -727,6 +727,19 @@ describe('test-version-repair apply', () => {
     expect(readRows('requests.jsonl')).toHaveLength(0);
   });
 
+  it('keys whose live read disagrees do not use up the cap, so a later key is still filed', async () => {
+    setup();
+    const keys = [...Array.from({ length: 20 }, (_, i) => `K-${10 + i}`), 'K-30'];
+    const issues = keys.map((key) => ({ key, fixVersions: ['v1.1.4'] }));
+    mirror(issues);
+    writeJournal(keys.map((key, i) => ({ key, mechanism: 'create-residual', from: [], to: ['v1.1.4'], entry: String(100 + i) })));
+    const entries = Object.fromEntries(keys.map((key, i) => [key, String(100 + i)]));
+    const live = issues.map((i) => (i.key === 'K-30' ? i : { ...i, fixVersions: ['v1.1.3'] })); // the first 20 moved since the mirror
+    const r = await applyRun({ get: liveGetter(live, entries) });
+    expect(r.status).toBe('ok');
+    expect(readRows('requests.jsonl').map((x) => x.key)).toEqual(['K-30']);
+  });
+
   it('unbound edit appears in repair-held.json as unbound', async () => {
     setup();
     const issues = [{ key: 'K-1', fixVersions: ['v1.1.4'] }];
