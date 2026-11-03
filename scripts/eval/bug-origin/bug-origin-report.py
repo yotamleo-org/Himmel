@@ -405,10 +405,13 @@ def write_once(path, text):
     """Create the row if no file is there and say whether this call did. The temp file is linked into place, so the row appears
     whole or not at all and a link onto an existing row fails: two ingests racing for one PR leave the first row byte for byte."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = "%s.tmp-%d" % (path, os.getpid())
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=os.path.basename(path) + ".tmp-")
     try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(tmp, 0o666 & ~umask)
         os.link(tmp, path)
         return True
     except FileExistsError:

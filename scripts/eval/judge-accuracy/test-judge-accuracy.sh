@@ -349,8 +349,11 @@ with open(os.path.join(conf, "himmel.conf"), "w") as fh:
 eq("ledger dir: himmel.conf names the root, an inline handovers/ notwithstanding", j.ledger_dir(inline, cenv), os.path.join(croot, "zed", "inline", "bug-origin"))
 eq("ledger dir: the live environment beats himmel.conf", j.ledger_dir(inline, dict(cenv, HANDOVER_DIR=lroot)), os.path.join(lroot, "zed", "inline", "bug-origin"))
 with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
-    fh.write('HANDOVER_DIR="%s"\n' % lroot)
+    fh.write("HANDOVER_DIR=%s\n" % lroot)
 eq("ledger dir: himmel.conf.local beats himmel.conf", j.ledger_dir(inline, cenv), os.path.join(lroot, "zed", "inline", "bug-origin"))
+with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
+    fh.write('HANDOVER_DIR="%s"\n' % lroot)
+eq("ledger dir: a quoted root keeps its quotes, as the shell loader keeps them, so it is no directory", j.ledger_dir(inline, cenv), None)
 with open(os.path.join(conf, "himmel.conf.local"), "w") as fh:
     fh.write("HANDOVER_DIR=%s\n" % os.path.join(tmp, "nope"))
 eq("ledger dir: a root named in a config file that is no directory is no ledger", j.ledger_dir(inline, cenv), None)
@@ -395,6 +398,12 @@ eq("ledger dir: HIMMEL_PROFILE in himmel.conf.local names the profile", j.ledger
 with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
     fh.write("HIMMEL_PROFILE=p\nHANDOVER_DIR=%s\n" % lroot)
 eq("ledger dir: himmel.conf.local beats the profile", j.ledger_dir(inline, penv), os.path.join(lroot, "zed", "inline", "bug-origin"))
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write('HIMMEL_PROFILE="p"\n')
+eq("ledger dir: a quoted profile name is no profile, as the shell loader keeps the quotes", j.ledger_dir(inline, penv), want)
+with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
+    fh.write("HIMMEL_PROFILE=p  # this station\n")
+eq("ledger dir: a trailing comment is not part of the profile name", j.ledger_dir(inline, penv), pwant)
 with open(os.path.join(pconf, "himmel.conf.local"), "w") as fh:
     fh.write("HIMMEL_PROFILE=../vault/profiles/p\n")
 eq("ledger dir: a profile name that walks out of the profiles directory is no profile", j.ledger_dir(inline, penv), want)

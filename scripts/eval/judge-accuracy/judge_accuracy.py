@@ -191,8 +191,9 @@ def primary_checkout(repo="."):
     return os.path.dirname(common) if os.path.basename(common) == ".git" else os.path.abspath(repo)
 
 
-def conf_value(path, name):
-    """The first non-empty value of `name` in a KEY=value file, as the Jira CLI reads one (an inline ` #` comment and quotes dropped), else ''."""
+def conf_value(path, name, unquote=True):
+    """The first non-empty value of `name` in a KEY=value file, as the Jira CLI reads one (an inline ` #` comment and quotes dropped), else ''.
+    With unquote=False a quoted value keeps its quotes, as the shell loader keeps them."""
     try:
         with open(path, encoding="utf-8") as fh:
             lines = fh.read().split("\n")
@@ -204,7 +205,10 @@ def conf_value(path, name):
         if line.startswith("#") or not sep or key.strip() != name:
             continue
         val = val.strip()
-        val = val[1:].partition(val[0])[0] if val[:1] in ('"', "'") else re.split(r"[ \t]#", val, maxsplit=1)[0]
+        if val[:1] not in ('"', "'"):
+            val = re.split(r"[ \t]#", val, maxsplit=1)[0]
+        elif unquote:
+            val = val[1:].partition(val[0])[0]
         if val.strip():
             return val.strip()
     return ""
@@ -223,7 +227,7 @@ def profile_conf(conf, env):
     """The active station profile file, as load-dotenv.sh finds it, or None. The name is HIMMEL_PROFILE in the environment, else
     in himmel.conf.local (never the tracked file); it must be a plain file stem. The profiles directory sits beside the file
     himmel.conf links to, so a himmel.conf that is no link has none."""
-    name = env.get("HIMMEL_PROFILE") or conf_value(os.path.join(conf, "himmel.conf.local"), "HIMMEL_PROFILE")
+    name = env.get("HIMMEL_PROFILE") or conf_value(os.path.join(conf, "himmel.conf.local"), "HIMMEL_PROFILE", unquote=False)
     if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]*", name or ""):
         return None
     link = os.path.join(conf, "himmel.conf")
@@ -246,7 +250,7 @@ def handover_root(top, env):
             return live
     conf = env.get("HIMMEL_CONFIG_DIR") or os.path.join(env.get("HOME") or os.path.expanduser("~"), ".himmel")
     files = [os.path.join(conf, "himmel.conf.local"), profile_conf(conf, env), os.path.join(conf, "himmel.conf"), os.path.join(top, ".env")]
-    return next((v for v in (conf_value(f, "HANDOVER_DIR") for f in files if f) if v), os.path.join(top, "handovers"))
+    return next((v for v in (conf_value(f, "HANDOVER_DIR", unquote=False) for f in files if f) if v), os.path.join(top, "handovers"))
 
 
 def ledger_dir(repo=".", env=None):
