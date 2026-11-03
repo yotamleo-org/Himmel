@@ -967,7 +967,7 @@ bk_line() {  # <stem> <line>...: one mode-600 file in env-backups; sets bf and k
 }
 kept_named() {  # <label> <key>: backup bf is byte-identical, the report names the key for it, no value printed
     if cmp -s "$bf" "$TMP/bf.orig"; then pass "$1: the backup line stays"; else fail "$1: the backup line changed or is gone"; fi
-    if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -qw "$2"; then pass "$1: the report names $2"; else fail "$1: the report does not name $2"; fi
+    if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -w "$2" > /dev/null; then pass "$1: the report names $2"; else fail "$1: the report does not name $2"; fi
     no_canary "$1: no value printed" "$out"
 }
 env_only() {  # <line>: a fresh fixture whose .env holds that line and one config key
@@ -1031,7 +1031,7 @@ apply_tty y
 bf=$(fresh_backup)
 if [ -n "$bf" ] && grep -q '^JIRA_API_TOKEN=CANARY-' "$bf"; then pass "R32 this run's backup keeps the dead real line"; else fail "R32 the dead real line is gone from this run's backup"; fi
 lacks "R32 the move deleted both lines from .env" "JIRA_API_TOKEN" "$(cat "$TMP/st/.env")"
-if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -qw JIRA_API_TOKEN; then pass "R32 the report names the key"; else fail "R32 the report does not name the key"; fi
+if printf '%s\n' "$out" | grep -F "$bf keeps a line for" | grep -w JIRA_API_TOKEN > /dev/null; then pass "R32 the report names the key"; else fail "R32 the report does not name the key"; fi
 
 # R33: an env-keep key leaves no backup, even when its keyring item holds the same value: a restore would lose its only .env line.
 r33v=$(canary r33)
@@ -1054,7 +1054,7 @@ r34c=$(find "$HOME/.himmel/state/config-audit/backups" -name .env -type f | head
 r34k=$(sed 's/=.*//' "$r34c")
 has "R34 the config copy keeps the held key" "UNREAD_SECRET" "$r34k"
 has "R34 the config copy keeps the env-keep key" "KEEP_ME" "$r34k"
-if printf '%s\n' "$out" | grep 'config backup .* keeps a line for' | grep -qw UNREAD_SECRET; then pass "R34 the report names the config copy's kept key"; else fail "R34 the report does not name the config copy's kept key"; fi
+if printf '%s\n' "$out" | grep 'config backup .* keeps a line for' | grep -w UNREAD_SECRET > /dev/null; then pass "R34 the report names the config copy's kept key"; else fail "R34 the report does not name the config copy's kept key"; fi
 no_canary "R34 no value printed" "$out"
 
 # R35: one set covers all config copies: a differing value in one keeps the key in every copy, and each copy names it.
@@ -1139,7 +1139,7 @@ only_bk
 apply_tty y "HIMMEL_SECRETS_KEYRING=off "
 if [ "$rc" = 4 ]; then pass "N8 no keyring exits 4"; else fail "N8 no keyring exited $rc: $out"; fi
 has "N8 the report says why it cannot compare" "keyring: off, so the backups cannot be compared with it" "$out"
-if printf '%s\n' "$out" | grep -F 'cannot be compared with it' | grep -qw JIRA_API_TOKEN; then pass "N8 the report names the key"; else fail "N8 the report does not name the key"; fi
+if printf '%s\n' "$out" | grep -F 'cannot be compared with it' | grep -w JIRA_API_TOKEN > /dev/null; then pass "N8 the report names the key"; else fail "N8 the report does not name the key"; fi
 if cmp -s "$bf" "$TMP/bf.orig"; then pass "N8 the backup line stays"; else fail "N8 the backup changed"; fi
 no_canary "N8 no value printed" "$out"
 # N9: a locked keyring says it is locked, on a no-op exit too, with no backup line to name.
@@ -1150,7 +1150,7 @@ has "N9 a locked keyring says so when nothing moves" "keyring: locked" "$out"
 lacks "N9 a locked keyring is not called uncovered" "keeps a line for" "$out"
 only_bk
 apply_tty y "KSTUB_LOCKED=true "
-if printf '%s\n' "$out" | grep -F 'keyring: locked' | grep -qw JIRA_API_TOKEN; then pass "N9 a locked keyring names what the backups hold"; else fail "N9 a locked keyring does not name the key"; fi
+if printf '%s\n' "$out" | grep -F 'keyring: locked' | grep -w JIRA_API_TOKEN > /dev/null; then pass "N9 a locked keyring names what the backups hold"; else fail "N9 a locked keyring does not name the key"; fi
 # N10: a consent run in an agent session, and with no terminal, while keys move.
 consent_fixture '{"version":1,"policy":{"ENV_MIGRATION_CONSENT":"1"}}'
 only_bk
