@@ -1207,7 +1207,7 @@ deny 'ls; {qmd,query}'
 deny '{qmd,x} {query,y} foo'
 deny 'env {qmd,x} query foo'
 # a brace word that only names qmd, in a command with no search verb, is a
-# mention: a trailing `/` leaves it no basename, which is no program
+# mention: a `-cadence/` left after the brace split names no listed function
 allow 'ls ~/.claude/{pipeline,qmd}-cadence/'
 allow "grep -rl 'x' ~/.claude/{a,qmd}-c/"
 allow 'ls {qmd,x}-{a,b}/'
