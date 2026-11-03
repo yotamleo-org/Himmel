@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendAdmission, assertAdmissionsWritable, readAdmissions } from './admissions-ledger.js';
+import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissionsTolerant } from './admissions-ledger.js';
 
 describe('admissions ledger (HIMMEL-6776)', () => {
   let dir: string;
@@ -59,6 +59,24 @@ describe('admissions ledger (HIMMEL-6776)', () => {
     expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n')).toHaveLength(2);
     expect(readAdmissions().map((r) => r.key)).toEqual(['HIMMEL-1', 'HIMMEL-2']);
     expect(readAdmissions()[0]).toMatchObject({ gate: 'critical', version: 'v1.1.3' });
+  });
+
+  it('a row that is not an admission stops the strict read, and the tolerant read skips it with any unparsable line (HIMMEL-8823)', () => {
+    process.env['HANDOVER_DIR'] = dir;
+    appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' });
+    appendFileSync(join(dir, 'admissions-ledger.jsonl'), 'not json\nnull\n[1]\n{"version":3}\n');
+    appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-2', gate: 'critical' });
+    expect(() => readAdmissions()).toThrow();
+    expect(readAdmissionsTolerant().map((r) => r.key)).toEqual(['HIMMEL-1', 'HIMMEL-2']);
+    expect(readAdmissionsTolerant('v1.1.4')).toEqual([]);
+  });
+
+  it('a JSON null or array row stops the strict read (HIMMEL-8823)', () => {
+    process.env['HANDOVER_DIR'] = dir;
+    for (const bad of ['null', '[1]', '"x"', '{"version":"v1.1.3"}']) {
+      writeFileSync(join(dir, 'admissions-ledger.jsonl'), `${bad}\n`);
+      expect(() => readAdmissions(), bad).toThrow(/not an admission/);
+    }
   });
 
   it('filters the read by version', () => {

@@ -67,6 +67,29 @@ export function readAdmissions(version?: string): Admission[] {
   const rows = readFileSync(path, 'utf8')
     .split('\n')
     .filter((l) => l.trim())
-    .map((l) => JSON.parse(l) as Admission);
+    .map((l) => {
+      const row: unknown = JSON.parse(l);
+      if (row === null || typeof row !== 'object' || Array.isArray(row) || typeof (row as Admission).version !== 'string' || typeof (row as Admission).key !== 'string') {
+        throw new Error(`admissions ledger: a row is not an admission: ${l.slice(0, 80)}`);
+      }
+      return row as Admission;
+    });
+  return version === undefined ? rows : rows.filter((r) => r.version === version);
+}
+
+/** Like readAdmissions, but a line that does not parse or is not an admission is skipped: a caller that only looks for its own row must not stop on someone else's bad line. */
+export function readAdmissionsTolerant(version?: string): Admission[] {
+  const path = admissionsLedgerPath();
+  if (!existsSync(path)) return [];
+  const rows: Admission[] = [];
+  for (const l of readFileSync(path, 'utf8').split('\n')) {
+    if (!l.trim()) continue;
+    try {
+      const row: unknown = JSON.parse(l);
+      if (row !== null && typeof row === 'object' && !Array.isArray(row) && typeof (row as Admission).version === 'string' && typeof (row as Admission).key === 'string') rows.push(row as Admission);
+    } catch {
+      // a bad line is not our row
+    }
+  }
   return version === undefined ? rows : rows.filter((r) => r.version === version);
 }

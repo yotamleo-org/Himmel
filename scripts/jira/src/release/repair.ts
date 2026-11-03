@@ -25,6 +25,10 @@ export interface RepairInput {
   newestEntry: Map<string, { id: string; ts: string }>; // `create` is the id of a key with no Fix Version entry
   mergedPr: Map<string, number | null>; // null = none passes; absent = not looked up yet
   missingKeys: Set<string>;
+  /** The mirror's terminal state of a key no declared record carries (a displaced key): dry run and apply read it the same way. */
+  terminals?: Map<string, KeyRecord['terminal']>;
+  /** Keys whose request the entry check refused: they skip the request lanes and fall to lane 12. */
+  refused?: Set<string>;
 }
 
 export type Action = { kind: 'none' } | { kind: 'held'; cls: HeldClass } | { kind: 'unfiled' }
@@ -137,7 +141,7 @@ export function classify(input: RepairInput): Classification[] {
     const { unauth, ruledIn } = leakVersions(input.leaks, key);
     const rows = rowsOf.get(key) ?? [];
     const ctx: KeyCtx = {
-      key, recs, unauth, ruledIn, terminal: recs[0]?.terminal ?? null, rows, row: last(rows), entry: input.newestEntry.get(key),
+      key, recs, unauth, ruledIn, terminal: recs[0]?.terminal ?? input.terminals?.get(key) ?? null, rows, row: last(rows), entry: input.newestEntry.get(key),
       reqs: input.requests.filter((r) => r.key === key),
       decisions: input.operator.filter((o) => o.kind === 'decision' && o.keys?.includes(key)).sort(byTs),
       stale: stale.has(key), displaced: displaced.has(key),
@@ -227,9 +231,9 @@ const splitLane: LaneFn = ({ ctx }) =>
 
 // Lanes 10 and 11 need the newest change bound to a machine row nobody has answered since. Two mismatches that disagree
 // (two unauthorized lines, or two ruled-in lines) skip them and land in lane 12.
-function boundRun(ctx: KeyCtx): { row: VersionWriteRow; earliest: VersionWriteRow } | undefined {
+function boundRun({ input, ctx }: Env): { row: VersionWriteRow; earliest: VersionWriteRow } | undefined {
   const { row } = ctx;
-  if (row === undefined || !isBound(ctx) || !MACHINE.has(row.mechanism)) return undefined;
+  if (row === undefined || !isBound(ctx) || !MACHINE.has(row.mechanism) || input.refused?.has(ctx.key)) return undefined;
   if (ctx.decisions.some((d) => newer(d.ts, row.ts)) || ctx.unauth.length >= 2 || ctx.ruledIn.length >= 2) return undefined;
   // The run of consecutive machine rows ending at the newest: merge-on-green replaces the set, then adds a released version back.
   let start = ctx.rows.length - 1;
@@ -238,8 +242,9 @@ function boundRun(ctx: KeyCtx): { row: VersionWriteRow; earliest: VersionWriteRo
 }
 
 // Lane 10: a machine write stripped a ruled version from an open key. The RM's ruling is reverted by a REVERSION; the operator's by one record.
-const boundRuledLane: LaneFn = ({ input, ctx, declared }) => {
-  const run = boundRun(ctx);
+const boundRuledLane: LaneFn = (env) => {
+  const { input, ctx, declared } = env;
+  const run = boundRun(env);
   if (!run || ctx.terminal !== null || ctx.ruledIn.length !== 1) return undefined;
   const vr = ctx.ruledIn[0]!;
   const declaredTo = run.row.to.filter((v) => declared.has(`${ctx.key}@${v}`));
@@ -253,8 +258,9 @@ const boundRuledLane: LaneFn = ({ input, ctx, declared }) => {
 };
 
 // Lane 11: a machine write put the key on a version no ruling places it on.
-const boundLane: LaneFn = ({ input, ctx }) => {
-  const run = boundRun(ctx);
+const boundLane: LaneFn = (env) => {
+  const { input, ctx } = env;
+  const run = boundRun(env);
   if (!run) return undefined;
   const { row } = run;
   if (ctx.ruledIn.length === 0 && ctx.unauth.length === 1 && authorityOf(input, ctx.recs.find((r) => r.version === ctx.unauth[0])) !== 'operator') {
@@ -302,7 +308,7 @@ export function offerFor(c: Classification, input: RepairInput): Offer {
       return { op: 'add', from: null, to: c.version };
     case 'unbound':
     case 'hand': {
-      const terminal = recs[0]?.terminal ?? null;
+      const terminal = recs[0]?.terminal ?? input.terminals?.get(c.key) ?? null;
       const order = orderOf(input);
       if (ruledIn.length === 0 && unauth.length === 1 && recs.find((r) => r.version === unauth[0])?.ruling === null) {
         return { op: 'keep', from: unauth[0]!, to: null };

@@ -171,6 +171,18 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(rows).toMatchObject([{ version: 'v1', key: 'K-2', kind: 'rm-admit', reason: 'regression: breaks the console', by: 'rm-1' }]);
   });
 
+  it('apply goes on past a bad line in the admissions ledger and still receipts (HIMMEL-8823)', async () => {
+    await setup();
+    writeFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'not json\n');
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+    expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+    const rows = readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean);
+    expect(rows.filter((l) => l.includes('"rm-admit"'))).toHaveLength(1);
+  });
+
   it('a re-admission after a removal appends a second rm-admit row, and its replay adds no third (HIMMEL-6796)', async () => {
     await setup();
     const rows = () => readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));

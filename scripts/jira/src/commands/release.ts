@@ -334,7 +334,7 @@ async function admissionBudgets(versions: string[]): Promise<Record<string, numb
   return out;
 }
 
-const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check', 'repair']);
+const READ_ONLY_VERBS = new Set(['state', 'leaks', 'spec-check', 'core-check']);
 
 /** Each repair read carries its own deadline: the fetch has none, so a hung read must end the run, not hang it. */
 export const REPAIR_READ_DEADLINE_MS = 5000;
@@ -406,7 +406,8 @@ export function registerRelease(program: Command): void {
     const postsToJira = action.parent === rel
       && ((verb === 'leaks' && Boolean(action.opts().comment)) || JIRA_POSTING_VERBS.has(verb));
     if (postsToJira) refuseTestJiraPost(`release ${verb}`);
-    const readOnly = action.parent === rel && READ_ONLY_VERBS.has(verb) && !postsToJira;
+    // repair reads unless --apply is set: that files requests and writes ledger rows, so it is read-only by option, not by verb.
+    const readOnly = action.parent === rel && (READ_ONLY_VERBS.has(verb) || (verb === 'repair' && !action.opts().apply)) && !postsToJira;
     if (!readOnly) refuseTestWrite(verb);
   });
 
@@ -476,15 +477,15 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('repair <release>')
-    .description('Classify every Fix Version mismatch into one lane and print the plan as JSON (a dry run: writes nothing)')
-    .option('--apply', 'Not built yet: refused')
+    .description('Classify every Fix Version mismatch into one lane and print the plan as JSON; a dry run writes nothing, --apply files, folds and writes the held file (the chief)')
+    .option('--apply', 'File requests, fold finished keys and write repair-held.json (never a Fix Version)')
     .option('--repo <owner/name>', 'The GitHub repo every gh lookup names (required)')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
     .action(async (release: string, o: { apply?: boolean; repo?: string; mirrorRoot?: string }) => {
-      if (o.apply) throw new Error('release repair: --apply is not built yet; this build prints the dry run only');
-      const report = await repairRun(ctxFor(release, o.mirrorRoot), { repo: o.repo ?? null, get: repairGetter(), gh: runGh });
+      const report = await repairRun(ctxFor(release, o.mirrorRoot), { repo: o.repo ?? null, apply: o.apply, get: repairGetter(), gh: runGh, refuse: refuseRequest });
       console.log(JSON.stringify(report, null, 2));
-      if (report.status !== 'ok') process.exitCode = report.status === 'stopped' ? 3 : 2;
+      if (report.status === 'stopped') process.exitCode = 3;
+      else if (report.status === 'error') process.exitCode = 2;
     });
 
   rel.command('request <release>')
