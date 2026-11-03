@@ -57,8 +57,9 @@
 #                 with no manifest is removed after 10 minutes. A value change
 #                 under the same key names reads healthy: the earlier value is
 #                 the previous backup. A deleted .env restores only from an
-#                 audited backup; newer watcher backups push those off list, but
-#                 restore by id still reaches them.
+#                 audited backup (or a migrate-env copy in ~/.himmel/env-backups,
+#                 by hand); newer watcher backups push the audited ones off
+#                 list, but restore by id still reaches them.
 #   watch.json    the last healthy key snapshot of the set; an audited write
 #                 moves it, so only an unaudited loss alerts
 #   alerts.jsonl  every alert the watcher raised; alerted = the last one sent
