@@ -26,7 +26,7 @@
 # 5 arm: no handover root from the shell or the primary .env; 77 test-run guard refusal.
 #
 # Seams (tests): MORNINGREPORT_CRONTAB, MORNINGREPORT_RUNNER_DIR, MORNINGREPORT_GENERATOR.
-# Platform: cron (Linux/macOS). Windows development is parked.
+# Platform: cron (Linux, macOS).
 set -uo pipefail
 
 TASK_NAME="HIMMEL-MorningReport"
@@ -91,7 +91,6 @@ cmd_arm() {
         esac
     done
     [[ "$time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "ERR morning-report-cadence: --time must be HH:MM, got: $time" >&2; return 1; }
-    case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) echo "ERR morning-report-cadence: cron only; Windows is parked" >&2; return 2 ;; esac # swallow-ok: unknown OS falls through to cron
     command -v "$CRONTAB_BIN" >/dev/null 2>&1 || { echo "ERR morning-report-cadence: '$CRONTAB_BIN' not on PATH" >&2; return 2; }
     root="$(resolve_primary)" || { echo "ERR morning-report-cadence: cannot resolve the primary checkout" >&2; return 2; }
     ho="$(resolve_root "$root")" || { echo "ERR morning-report-cadence: no handover root (HANDOVER_DIR) from the shell or the primary .env; not armed" >&2; return 5; }
