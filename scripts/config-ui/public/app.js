@@ -238,6 +238,7 @@ function paint() {
   const focusB = document.activeElement && document.activeElement.matches && document.activeElement.matches(".bhead") ? document.activeElement.dataset.b : null;
   const focusRg = document.activeElement && document.activeElement.matches && document.activeElement.matches("[data-rg]") ? { rg: document.activeElement.dataset.rg, slug: document.activeElement.dataset.slug } : null;
   const focusT = document.activeElement && document.activeElement.matches && document.activeElement.matches("button.tile") ? document.activeElement.dataset.tile : null;
+  const focusD = document.activeElement && document.activeElement.closest && document.activeElement.closest(".drawer") ? { act: document.activeElement.dataset.act, cmd: document.activeElement.dataset.cmd } : null; // any repaint (the history landing, a refresh) keeps keyboard focus on the same drawer control
   // A secret or path being typed lives only in its field: a repaint (a report landing, a read finishing) must not wipe it.
   // It is held in this one synchronous call and put straight back; it is never kept in page state.
   const typing = [...document.querySelectorAll("input[data-secret],input[data-path],input[data-account]")].map((i) => ({ sel: ["secret", "path", "account"].map((a) => (i.dataset[a] !== undefined ? `input[data-${a}="${i.dataset[a]}"]` : "")).find(Boolean), value: i.value, edited: i.value !== i.defaultValue, had: i === document.activeElement, from: i.selectionStart, to: i.selectionEnd }));
@@ -257,6 +258,7 @@ function paint() {
   if (focusB !== null) { for (const h of document.querySelectorAll(".bhead")) if (h.dataset.b === focusB) { h.focus(); break; } }
   if (focusRg !== null) { for (const c of document.querySelectorAll("[data-rg]")) if (c.dataset.rg === focusRg.rg && c.dataset.slug === focusRg.slug) { c.focus(); break; } }
   if (focusT !== null) { for (const t of document.querySelectorAll("button.tile")) if (t.dataset.tile === focusT) { t.focus(); break; } }
+  if (focusD) { const c = [...document.querySelectorAll(".drawer [data-act]")].find((x) => x.dataset.act === focusD.act && x.dataset.cmd === focusD.cmd); if (c) c.focus(); }
   if (keep !== null) { const q = $("#q"); q.focus(); q.setSelectionRange(keep, keep); }
 }
 
@@ -664,11 +666,7 @@ async function loadHistory(t, dr) {
     const j = r.ok ? await r.json().catch(() => null) : null;
     if (j && Array.isArray(j.events)) h = { events: j.events };
   } catch (_) { /* unavailable */ }
-  if (roadmapUi.drawer !== dr) return;
-  const inside = document.activeElement && document.activeElement.closest && document.activeElement.closest(".drawer"); // a redraw replaces the focused control: keep keyboard focus in the drawer
-  dr.history = h; paint();
-  const close = inside && document.querySelector(".drawer [data-act=rm-close]");
-  if (close) close.focus();
+  if (roadmapUi.drawer === dr) { dr.history = h; paint(); }
 }
 function closeDrawer() {
   const dr = roadmapUi.drawer;
