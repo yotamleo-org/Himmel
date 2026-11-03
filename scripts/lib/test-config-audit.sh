@@ -28,7 +28,9 @@ eq()   { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2', got '$3')
 command -v node >/dev/null 2>&1 || { echo "SKIP: node not installed"; exit 0; }
 
 REAL_STATE="${HOME:-/nonexistent}/.himmel/state/config-audit"
-real_before=$(ls -la "$REAL_STATE" "$REAL_STATE/backups" 2>&1; cat "$REAL_STATE/audit.jsonl" 2>/dev/null | wc -l)
+# Only the backup id list and the audit row count: a live bridge rewrites watch.json, so mtimes would flake.
+real_marks() { ls "$REAL_STATE/backups" 2>&1; wc -l < "$REAL_STATE/audit.jsonl" 2>/dev/null; }
+real_before=$(real_marks)
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-config-audit.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
@@ -375,9 +377,109 @@ for i in 1 2 3 4; do
 done
 if [ -d "$S10_STATE/backups/$aid" ]; then pass "10h watch churn leaves the audited backup"; else fail "10h watch churn evicted the audited backup"; fi
 eq "10h watch backups are kept to KEEP" 3 "$(nbk)"
+
+# 10i. the watcher leaves .env out, so a scrubbed secret is not copied back within a pass.
+new_station; put_station "$V1"
+printf 'JIRA_API_TOKEN=%s\nKEEP_A=1\n' "$V1" > "$S10/clone/.env"
+sid=$(st pre "$S10/.himmel/config.json" --script test)
+if holds "$S10_STATE/backups/$sid/.env" "$V1"; then pass "10i control: the audited backup holds the secret line"; else fail "10i control: the audited backup lacks the secret line"; fi
+st scrub " JIRA_API_TOKEN " " JIRA_API_TOKEN " >/dev/null
+st watch 2>/dev/null; st watch 2>/dev/null
+leaks=0; envs=0
+for d in "$S10_STATE"/backups/*/; do
+    holds "$d/.env" "$V1" && leaks=$((leaks + 1))
+    case "$d" in *"/$sid/") ;; *) [ -f "$d/.env" ] && envs=$((envs + 1)) ;; esac
+done
+eq "10i the scrubbed secret is in no backup after two watch passes" 0 "$leaks"
+eq "10i a watch pass copies no .env" 0 "$envs"
+eq "10i the watch pass still backed the config files up" 2 "$(nbk)"
+
+# 10j. an audited pre after a watch pass writes its own backup, and watch churn never evicts it.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+wid=$(ls "$S10_STATE/backups")
+aid=$(st pre "$S10/.himmel/config.json" --script test)
+if [ -n "$aid" ] && [ "$aid" != "$wid" ]; then pass "10j an audited pre after a watch writes its own backup"; else fail "10j the audited pre returned the watcher backup (aid '$aid', wid '$wid')"; fi
+for i in 1 2 3 4; do
+    put_station "$V1-$i"
+    HIMMEL_CONFIG_BACKUPS_KEEP=2 st watch 2>/dev/null
+done
+if [ -d "$S10_STATE/backups/$aid" ]; then pass "10j the audited backup survives watch churn"; else fail "10j watch churn evicted the audited backup"; fi
+
+# 10j2. a value that flips back reuses its earlier backup: a flapping value writes nothing.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+put_station "$V2"
+st watch 2>/dev/null
+put_station "$V1"
+st watch 2>/dev/null
+put_station "$V2"
+st watch 2>/dev/null
+eq "10j a flapping value writes two backups, not four" 2 "$(nbk)"
+newest=$(st check | awk -F'\t' '$1 == "BACKUP" { print $2 }')
+if holds "$S10_STATE/backups/$newest/config.json" "$V2"; then pass "10j the newest backup is the current value's"; else fail "10j the newest backup is not the current value's"; fi
+
+# 10k. a dir with no manifest (a killed or failed write) is removed after the grace period, not before.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+mkdir -p "$S10_STATE/backups/20200101T000000Z-aaaa" "$S10_STATE/backups/20200101T000000Z-bbbb"
+printf 'partial\n' > "$S10_STATE/backups/20200101T000000Z-aaaa/.env"
+touch -t 202001010000 "$S10_STATE/backups/20200101T000000Z-aaaa"
+put_station "$V2"
+st watch 2>/dev/null
+if [ ! -d "$S10_STATE/backups/20200101T000000Z-aaaa" ]; then pass "10k an old dir with no manifest is removed"; else fail "10k an old dir with no manifest stayed"; fi
+if [ -d "$S10_STATE/backups/20200101T000000Z-bbbb" ]; then pass "10k a fresh dir with no manifest stays (it may be mid-write)"; else fail "10k a fresh dir with no manifest was removed"; fi
+
+# 10l. a backup that cannot be written is reported, not silent, and does not drop the alert path.
+if [ "$(id -u)" != 0 ]; then
+    new_station; put_station "$V1"
+    st watch 2>/dev/null
+    put_station "$V2"
+    chmod 555 "$S10_STATE/backups"
+    err=$(st watch 2>&1 >/dev/null); rc=$?
+    chmod 755 "$S10_STATE/backups"
+    eq "10l a failed backup exits 4" 4 "$rc"
+    has "10l a failed backup says so on stderr" "WARN: no healthy backup was kept" "$err"
+    eq "10l a failed backup leaves no orphan dir" 1 "$(nbk)"
+    st watch 2>/dev/null; rc=$?
+    eq "10l control: the next pass, with the dir writable, exits 0" 0 "$rc"
+    eq "10l control: and keeps the backup" 2 "$(nbk)"
+fi
+
+# 10m. no set member present: no backup, and check names none.
+new_station
+printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$S10/clone/.env"
+st watch 2>/dev/null
+eq "10m a set with only .env present writes no backup" 0 "$(nbk)"
+lacks "10m check prints no BACKUP row for an empty store" "BACKUP	" "$(st check)"
+new_station; put_station "$V1"
+st watch 2>/dev/null
+real_id=$(ls "$S10_STATE/backups")
+mkdir -p "$S10_STATE/backups/20991231T000000Z-0000"
+printf '{"ts":"2099-12-31T00:00:00Z","script":"x","ms":4102444800000,"target":"%s","files":{}}\n' "$TMP/order" > "$S10_STATE/backups/20991231T000000Z-0000/manifest.json"
+eq "10m BACKUP names a backup that holds a file, not an empty manifest" "$real_id" "$(st check | awk -F'\t' '$1 == "BACKUP" { print $2 }')"
+
+# 10n. accept takes a backup; a truncated, partial or key-losing file takes none.
+new_station; put_station "$V1"
+st watch 2>/dev/null
+put_station "$V2"
+st accept >/dev/null
+eq "10n accept backs the accepted set up" 2 "$(nbk)"
+new_station; put_station "$V1"
+st watch 2>/dev/null
+printf '{"version":1}\n' > "$S10/.himmel/config.json"
+st watch 2>/dev/null
+eq "10n a key-losing config.json takes no backup" 1 "$(nbk)"
+has "10n and alerts" "lost keys" "$(cat "$ALERTS")"
+printf '{"policy":' > "$S10/.himmel/config.json"
+st watch 2>/dev/null
+eq "10n a partial config.json takes no backup" 1 "$(nbk)"
+: > "$S10/.himmel/himmel.conf"
+st watch 2>/dev/null
+eq "10n a truncated himmel.conf takes no backup" 1 "$(nbk)"
 rm -rf "$S10"
 
-real_after=$(ls -la "$REAL_STATE" "$REAL_STATE/backups" 2>&1; cat "$REAL_STATE/audit.jsonl" 2>/dev/null | wc -l)
+real_after=$(real_marks)
 eq "8 a fixture-HOME run never touches the real backups" "$real_before" "$real_after"
 
 echo "config-audit: $PASS passed, $FAIL failed"
