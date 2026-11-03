@@ -1090,6 +1090,21 @@ function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {
   return m;
 }
 
+// The rows the version repair reads that StateOut does not carry. A bad requests line is reported, never thrown, so the
+// repair can stop on it; a bad admissions line reads as no rows here, and state().inputs.admissions already says UNKNOWN.
+export function repairInputs(ctx: Ctx): {
+  operator: OperatorRow[]; rulings: RulingRow[]; requests: RequestRow[]; admissions: Admission[]; requestsBad: boolean;
+} {
+  const l = loadOrThrow(ctx);
+  return {
+    operator: l.operator.verified,
+    rulings: l.rulings.verified,
+    requests: [...latestOrEmpty(l.requests).values()],
+    admissions: (admissionsOrNull() ?? []).filter((a) => typeof a === 'object' && a !== null),
+    requestsBad: l.requests.bad.length > 0,
+  };
+}
+
 // --- rm-run: the release manager as one on-demand batch -------------------------------
 
 // The judge cannot rule the request: only req and reason count, nothing is ruled and the request stays claimed (a version-repair request becomes held).

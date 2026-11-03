@@ -99,6 +99,25 @@ const answered = (ctx: KeyCtx, r: RequestRow): boolean => ctx.decisions.some((d)
 const byTs = (a: { ts: string }, b: { ts: string }): number => Date.parse(a.ts) - Date.parse(b.ts);
 const isBound = (ctx: KeyCtx): boolean => ctx.row !== undefined && ctx.entry?.id === ctx.row.entry;
 
+// The mismatch set: the keys of the reducer's leak lines, plus the one input that is not a reducer verdict, a key whose
+// newest journal row is a machine displacement to none that is still the newest Fix Version entry in Jira.
+export function mismatchKeys(input: RepairInput): { leak: Set<string>; displaced: Set<string> } {
+  const leak = new Set([...input.leaks.unauthorized, ...input.leaks.ruled_in_non_member].map((l) => keyOf(l).key));
+  const displaced = new Set<string>();
+  for (const [key, row] of displacementRows(input.journal)) if (input.newestEntry.get(key)?.id === row.entry) displaced.add(key);
+  return { leak, displaced };
+}
+
+// The keys whose newest journal row is a machine displacement to none: candidates until Jira confirms the row is still the newest entry.
+function displacementRows(journal: VersionWriteRow[]): Map<string, VersionWriteRow> {
+  const newest = new Map<string, VersionWriteRow>();
+  for (const j of journal) newest.set(j.key, j);
+  for (const [key, row] of newest) if (!DISPLACEMENT.has(row.mechanism) || row.to.length > 0) newest.delete(key);
+  return newest;
+}
+
+export const displacementCandidates = (journal: VersionWriteRow[]): Set<string> => new Set(displacementRows(journal).keys());
+
 export function classify(input: RepairInput): Classification[] {
   const declared = new Set(input.records.map((r) => `${r.key}@${r.version}`));
   const rowsOf = new Map<string, VersionWriteRow[]>();
@@ -107,13 +126,7 @@ export function classify(input: RepairInput): Classification[] {
   const stale = new Set<string>(input.missingKeys);
   for (const r of input.records) if (r.placement === 'pending' || r.placement === 'unknown' || r.actual_member === 'unknown') stale.add(r.key);
 
-  // The mismatch set: leak keys, plus the one input that is not a reducer verdict, a bound machine displacement to none.
-  const leakKeys = new Set([...input.leaks.unauthorized, ...input.leaks.ruled_in_non_member].map((l) => keyOf(l).key));
-  const displaced = new Set<string>();
-  for (const [key, rows] of rowsOf) {
-    const newest = last(rows)!;
-    if (DISPLACEMENT.has(newest.mechanism) && newest.to.length === 0 && input.newestEntry.get(key)?.id === newest.entry) displaced.add(key);
-  }
+  const { leak: leakKeys, displaced } = mismatchKeys(input);
 
   const out: Classification[] = [];
   for (const key of new Set([...leakKeys, ...displaced, ...stale])) {
