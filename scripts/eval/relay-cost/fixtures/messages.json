@@ -1,0 +1,77 @@
+{
+ "synthetic": true,
+ "fixtures": [
+  {
+   "id": "succession-1",
+   "kind": "succession",
+   "to": "DEMO-1101-N9001-short-slug",
+   "input": "SUCCESSION-RELAY sender=DEMO-nextleg-2026-01-01A-chief successor=DEMO-nextleg-2026-01-01B-chief worker=DEMO-1101-N9001-short-slug nonce=AA-N9001-0a1b2c3d",
+   "expected": "SUCCESSION relay from DEMO-nextleg-2026-01-01A-chief: your chief is now DEMO-nextleg-2026-01-01B-chief. Your current token `AA-N9001-0a1b2c3d`. This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: DEMO-nextleg-2026-01-01B-chief replaces DEMO-nextleg-2026-01-01A-chief",
+   "chars": 519
+  },
+  {
+   "id": "succession-2",
+   "kind": "succession",
+   "to": "DEMO-2203-N9002-a-longer-worker-doc-stem-2026-02-03",
+   "input": "SUCCESSION-RELAY sender=DEMO-nextleg-2026-02-03C-chief successor=DEMO-nextleg-2026-02-03D-chief worker=DEMO-2203-N9002-a-longer-worker-doc-stem-2026-02-03 nonce=BB-N9002-1b2c3d4e",
+   "expected": "SUCCESSION relay from DEMO-nextleg-2026-02-03C-chief: your chief is now DEMO-nextleg-2026-02-03D-chief. Your current token `BB-N9002-1b2c3d4e`. This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: DEMO-nextleg-2026-02-03D-chief replaces DEMO-nextleg-2026-02-03C-chief",
+   "chars": 519
+  },
+  {
+   "id": "succession-3",
+   "kind": "succession",
+   "to": "DEMO-3305-N9003-legN2b-a-resume-doc-with-a-very-long-stem-RESUME",
+   "input": "SUCCESSION-RELAY sender=DEMO-nextleg-2026-03-05E-chief successor=DEMO-nextleg-2026-03-05F-chief worker=DEMO-3305-N9003-legN2b-a-resume-doc-with-a-very-long-stem-RESUME nonce=CC-N9003-2c3d4e5f",
+   "expected": "SUCCESSION relay from DEMO-nextleg-2026-03-05E-chief: your chief is now DEMO-nextleg-2026-03-05F-chief. Your current token `CC-N9003-2c3d4e5f`. This is an S1 relay: accept it and keep working your sealed scope. Write your quote-back in your very next tool batch, with no ListAgents, also while wrapping. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: DEMO-nextleg-2026-03-05F-chief replaces DEMO-nextleg-2026-03-05E-chief",
+   "chars": 519
+  },
+  {
+   "id": "go-1",
+   "kind": "go",
+   "to": "DEMO-4001-N9011-small-fix",
+   "input": "GO 5001 00000000000000000000004d5e6f78091a2b3c48 (DD-N9011-3d4e5f60), from chief DEMO-A. GO file: /home/USER/handovers/.locks/go/5001.00000000000000000000004d5e6f78091a2b3c48. Merge bare: bash scripts/handover/merge-on-green.sh --go <that file>, then send MERGED #5001 to <sha>, WRAPPED.",
+   "expected": "GO 5001 00000000000000000000004d5e6f78091a2b3c48 (DD-N9011-3d4e5f60), from chief DEMO-A. GO file: /home/USER/handovers/.locks/go/5001.00000000000000000000004d5e6f78091a2b3c48. Merge bare: bash scripts/handover/merge-on-green.sh --go <that file>, then send MERGED #5001 to <sha>, WRAPPED.",
+   "chars": 287
+  },
+  {
+   "id": "go-2",
+   "kind": "go",
+   "to": "DEMO-4002-N9012-median-fix",
+   "input": "GO 5002 0000000000000000000000570a3d670a3d70a3d1 (DD-N9012-3d4e5f60), from chief DEMO-A. GO file: /home/USER/handovers/.locks/go/5002.0000000000000000000000570a3d670a3d70a3d1. Merge bare: bash scripts/handover/merge-on-green.sh --go <that file>, then send MERGED #5002 to <sha>, WRAPPED. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results.",
+   "expected": "GO 5002 0000000000000000000000570a3d670a3d70a3d1 (DD-N9012-3d4e5f60), from chief DEMO-A. GO file: /home/USER/handovers/.locks/go/5002.0000000000000000000000570a3d670a3d70a3d1. Merge bare: bash scripts/handover/merge-on-green.sh --go <that file>, then send MERGED #5002 to <sha>, WRAPPED. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results.",
+   "chars": 430
+  },
+  {
+   "id": "go-3",
+   "kind": "go",
+   "to": "DEMO-4003-N9013-large-fix",
+   "input": "GO 5003 000000000000000000000060b60b560b60b60b5a (DD-N9013-3d4e5f60), from chief DEMO-A. GO file: /home/USER/handovers/.locks/go/5003.000000000000000000000060b60b560b60b60b5a. Merge bare: bash scripts/handover/merge-on-green.sh --go <that file>, then send MERGED #5003 to <sha>, WRAPPED. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried. The earlier head had a failing shard, so a new head needs a fresh delta check. Do not touch the settings files; ask first if the ticket seems to need them. Record the decision on the ticket as a plain fact, with the commit sha.",
+   "expected": "GO 5003 000000000000000000000060b60b560b60b60b5a (DD-N9013-3d4e5f60), from chief DEMO-A. GO file: /home/USER/handovers/.locks/go/5003.000000000000000000000060b60b560b60b60b5a. Merge bare: bash scripts/handover/merge-on-green.sh --go <that file>, then send MERGED #5003 to <sha>, WRAPPED. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried. The earlier head had a failing shard, so a new head needs a fresh delta check. Do not touch the settings files; ask first if the ticket seems to need them. Record the decision on the ticket as a plain fact, with the commit sha.",
+   "chars": 833
+  },
+  {
+   "id": "ruling-1",
+   "kind": "ruling",
+   "to": "DEMO-4101-N9021-small-ruling",
+   "input": "RULING N9021 (EE-N9021-4e5f6071): option C, then A. Scope grant: scripts/demo/demo-4101-n9021-small-ruling.sh only. Why: the contract says a no-op is never a judged head.\nAdd a row for the refusal. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results.",
+   "expected": "RULING N9021 (EE-N9021-4e5f6071): option C, then A. Scope grant: scripts/demo/demo-4101-n9021-small-ruling.sh only. Why: the contract says a no-op is never a judged head.\nAdd a row for the refusal. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results.",
+   "chars": 340
+  },
+  {
+   "id": "ruling-2",
+   "kind": "ruling",
+   "to": "DEMO-4102-N9022-median-ruling",
+   "input": "RULING N9022 (EE-N9022-4e5f6071): option C, then A. Scope grant: scripts/demo/demo-4102-n9022-median-ruling.sh only. Why: the contract says a no-op is never a judged head.\nAdd a row for the refusal. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried. The earlier head had a failing shard, so a new head needs a fresh delta check.",
+   "expected": "RULING N9022 (EE-N9022-4e5f6071): option C, then A. Scope grant: scripts/demo/demo-4102-n9022-median-ruling.sh only. Why: the contract says a no-op is never a judged head.\nAdd a row for the refusal. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried. The earlier head had a failing shard, so a new head needs a fresh delta check.",
+   "chars": 595
+  },
+  {
+   "id": "ruling-3",
+   "kind": "ruling",
+   "to": "DEMO-4103-N9023-large-ruling",
+   "input": "RULING N9023 (EE-N9023-4e5f6071): option C, then A. Scope grant: scripts/demo/demo-4103-n9023-large-ruling.sh only. Why: the contract says a no-op is never a judged head.\nAdd a row for the refusal. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried. The earlier head had a failing shard, so a new head needs a fresh delta check. Do not touch the settings files; ask first if the ticket seems to need them. Record the decision on the ticket as a plain fact, with the commit sha. Option B is not granted, and the cap stays where it is. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried.",
+   "expected": "RULING N9023 (EE-N9023-4e5f6071): option C, then A. Scope grant: scripts/demo/demo-4103-n9023-large-ruling.sh only. Why: the contract says a no-op is never a judged head.\nAdd a row for the refusal. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried. The earlier head had a failing shard, so a new head needs a fresh delta check. Do not touch the settings files; ask first if the ticket seems to need them. Record the decision on the ticket as a plain fact, with the commit sha. Option B is not granted, and the cap stays where it is. Start on the first item now and do not wait for the second. Keep the change inside your Writes line and name any file you add in your Results. Show the suite RED before the fix and GREEN after it, with the counts in the PR body. If the merge refuses for a stale base, send me the exact refusal and the head you tried.",
+   "chars": 1117
+  }
+ ]
+}
