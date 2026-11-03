@@ -27,7 +27,7 @@ def cache_read_weight(model):
 
 
 def result_model(result):
-    """The model a `claude -p --output-format json` result ran on: the first modelUsage key, else None."""
+    """The model a print-mode JSON result ran on: the first modelUsage key, else None."""
     usage = result.get("modelUsage") if isinstance(result, dict) else None
     return next(iter(usage), None) if isinstance(usage, dict) and usage else None
 
