@@ -115,8 +115,8 @@ bash ~/himmel/scripts/adopt.sh --profile core --scope project --dry-run   # prin
    the installer could not converge, each with a remedy line.
 3. Read the `.env migration` block: it shows where each `.env` key would go
    and, without `-y`, refuses and prints the command to rerun with `-y`; after a
-   move it names the backup path and the restore command
-   ([detail](#the-env-migration)).
+   move it names the backup path, and the restore command unless a backup scrub
+   ran (a scrubbed backup is not a safe copy back; [detail](#the-env-migration)).
 4. If the graphify pin sync skipped because a Claude session was live, run
    `bash ~/himmel/scripts/himmel-update.sh --graphify-only` once none is.
 5. **Project scope only:** from the project root, re-run the install without
@@ -500,11 +500,14 @@ The step is `scripts/setup/migrate-env.sh`;
 without the rest of the update. It prints key names only, never values.
 
 An apply, from the update or run by hand, prints the plan and the backup path
-first. It moves keys only with `-y`: the script reads no typed answer, so
-without `-y` it moves nothing, prints the command to rerun with `-y` and exits
+first. It moves secrets only with `-y`: the script reads no typed answer, so
+without `-y` (and without `ENV_MIGRATION_CONSENT`, which covers the behaviour
+keys alone) it moves nothing, prints the command to rerun with `-y` and exits
 3. With no terminal at all (piped input, a cron job, a hook) it also moves
-nothing and exits 3. The update never passes `-y`, so a secrets move is always a
-command you start yourself: `bash ~/himmel/scripts/setup/migrate-env.sh -y`.
+nothing and exits 3. With the consent but without `-y` or a terminal, the
+behaviour keys move and the secrets stay in `.env`. The update never passes
+`-y`, so a secrets move is always a command you start yourself:
+`bash ~/himmel/scripts/setup/migrate-env.sh -y`.
 
 1. **Plan.** One `name  class  destination` line per `.env` key, never a value.
    The class is `config` (to `~/.himmel/himmel.conf`), `config (policy)` (to
@@ -523,7 +526,8 @@ command you start yourself: `bash ~/himmel/scripts/setup/migrate-env.sh -y`.
    migration started together with the first stops with
    `another import-env ... is running` and removes nothing. A `failed` key stops
    the run with no line removed. A legacy `~/.config/secrets/himmel.env` is
-   imported the same way.
+   imported the same way, but only when a `.env` exists: with no `.env` the run
+   stops at "no .env found; nothing to migrate" and leaves the legacy file alone.
 4. **Check.** The real readers run twice, once with the keys only in `.env`
    and once with them only in their new place: the shell `load_dotenv` and
    `load_policy`, the Jira CLI's config, handover-root and release-state
@@ -589,7 +593,9 @@ names the situation, and it exits 4. The update shows that as `incomplete`, not
   go to `~/.himmel/himmel.conf`. Gate policy (`CR_REQUIRE_CROSS_MODEL`,
   `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`) goes to `~/.himmel/config.json`
   `.policy`. Every himmel secret (API tokens, Telegram keys) goes to the OS
-  keyring, and every consumer reads it from there first.
+  keyring. The resolver reads a value from the process environment and the
+  credentials directory first, then the keyring, then the legacy `.env`, so an
+  exported value is not overridden by a keyring item.
 - **Stays.** Every name in `~/.himmel/env-keep.txt`, a secret whose keyring item
   holds another value (`held`), and every other tool's key stay in `.env`. The
   report lists the kept secrets on a `secrets stay in .env:` line.
