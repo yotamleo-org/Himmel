@@ -713,3 +713,21 @@ test("5494: the page draws each card with its own project's key, and two same-nu
   expect(html).toContain("<b>HIMMEL-1</b>");
   expect(html).toContain("<b>SALUS-1</b>");
 });
+
+test("5494: each project runs its own version, and a Sector select offers only its own project's Sectors", async () => {
+  const m = twoMirrors();
+  // SALUS's version is released with a ticket still open; HIMMEL's is running
+  writeFileSync(join(m.root, "SALUS.versions.tsv"), "v1.1.1\ttrue\t2026-10-01\nv1.1.2\tfalse\t\n");
+  writeFileSync(join(m.root, "SALUS", "SALUS-2.md"), issueOf("SALUS", 2, ["v1.1.1"], "left behind"));
+  writeFileSync(join(m.root, "HIMMEL", "HIMMEL-1.md"), issueOf("HIMMEL", 1, ["v1.1.2"], "himmel work").replace("labels:", 'sector: "Visibility"\nlabels:'));
+  writeFileSync(join(m.root, "SALUS", "SALUS-1.md"), issueOf("SALUS", 1, ["v1.1.2"], "salus work").replace("labels:", 'sector: "Intake"\nlabels:'));
+  const r = await serveBoard(m.home)();
+  expect(r.versions.map((v: { n: string; run?: string }) => [v.n, v.run ?? null])).toEqual([["v1.1.2 (HIMMEL)", "running"], ["v1.1.1 (SALUS)", null], ["v1.1.2 (SALUS)", "running"]]);
+  expect(r.librarian.releasedOpen[0].proposal).toContain("move to v1.1.2 (SALUS)"); // never HIMMEL's running version
+  const html = renderBoard(r, { v: "all", writes: true }, {});
+  const select = (id: string) => new RegExp(`aria-label="Sector of ${id}">([\\s\\S]*?)</select>`).exec(html)![1];
+  expect(select("SALUS-1")).toContain("Intake");
+  expect(select("SALUS-1")).not.toContain("Visibility");
+  expect(select("HIMMEL-1")).toContain("Visibility");
+  expect(select("HIMMEL-1")).not.toContain("Intake");
+});

@@ -8,14 +8,18 @@ const COLS = [["todo", "To do"], ["prog", "In progress"], ["rev", "In review"], 
 const section = (id, title, sub, body) => `<section id="${id}" class="box" aria-labelledby="h-${id}"><h2 id="h-${id}">${esc(title)}</h2><p class="sub">${esc(sub)}</p>${body}</section>`;
 const jira = (argv) => "jira " + argv.map((a) => (/^[\w.,:@/=-]+$/.test(a) ? a : `"${a.replace(/(["\\$`])/g, "\\$1")}"`)).join(" ");
 
+// A version's running state: with several projects each runs its own (the server marks it on the version); with one it is the page's cur and next.
+const runState = (d, v, i) => (d.projects && d.projects.length > 1 ? v.run || "" : i === d.cur ? "running" : i === d.next ? "next" : "");
+
 function releasesHtml(d) {
   if (!d.versions.length) return `<div class="empty">No train versions.</div>`;
   const note = d.releaseUnknown ? `<div class="nodata">release state unknown: no versions snapshot, so no version is shown as released</div>` : "";
   return note + d.versions.map((v, i) => {
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0);
-    const tag = v.rel ? `released${v.date ? " " + v.date : ""}` : i === d.cur ? "running" : i === d.next ? "next" : "planned";
-    const alert = v.open.length ? `<div class="alert"><span class="st pill fail">open</span> ${v.open.length} still open on a released version: ${v.open.map((k) => `${v.project || "HIMMEL"}-${k}`).map(esc).join(", ")}</div>` : "";
-    return `<div class="card rm-rel${i === d.cur ? " cur" : ""}"><h3><a href="#/roadmap/${encodeURIComponent(v.n)}">${esc(v.n)}</a> <span class="ro pill${v.rel ? " ok" : i === d.cur ? " warn" : ""}">${esc(tag)}</span></h3>
+    const run = runState(d, v, i);
+    const tag = v.rel ? `released${v.date ? " " + v.date : ""}` : run || "planned";
+    const alert =v.open.length ? `<div class="alert"><span class="st pill fail">open</span> ${v.open.length} still open on a released version: ${v.open.map((k) => `${v.project || "HIMMEL"}-${k}`).map(esc).join(", ")}</div>` : "";
+    return `<div class="card rm-rel${run === "running" ? " cur" : ""}"><h3><a href="#/roadmap/${encodeURIComponent(v.n)}">${esc(v.n)}</a> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span></h3>
       <div class="kv">${COLS.map(([b, l]) => `${esc(l)} ${c[b]}`).join(" · ")} · ${total} total</div>${alert}</div>`;
   }).join("");
 }
@@ -31,8 +35,15 @@ function filters(d, ui) {
 // it is the card's group. A local card may also name a new Sector: app.js asks for it when "new sector…" is picked.
 const NO_SECTOR = "(no sector)";
 const idOf = (t) => t.id || "HIMMEL-" + t.k;
-const projAttr = (t) => (t.project ? ` data-rm-project="${esc(t.project)}"` : ""); // with the number it names a card: two projects share numbers
-const sectorPick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}"${projAttr(t)} aria-label="Sector of ${esc(idOf(t))}">${d.themes.map((x, i) =>
+// The Sector options a card offers. Each Jira project has its own option list, so with several projects a card offers only the
+// Sectors its own project's tickets use (and the no-sector placeholder), never another project's; with one project, every Sector.
+const sectorsOf = (d, t) => {
+  if (!d.projects || d.projects.length < 2 || !t.project) return { has: () => true };
+  const own = new Set(d.tickets.filter((x) => x.project === t.project).map((x) => x.theme));
+  return { has: (i) => own.has(i) || d.themes[i] === NO_SECTOR };
+};
+const projAttr =(t) => (t.project ? ` data-rm-project="${esc(t.project)}"` : ""); // with the number it names a card: two projects share numbers
+const sectorPick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}"${projAttr(t)} aria-label="Sector of ${esc(idOf(t))}">${d.themes.map((x, i) => [x, i]).filter(([, i]) => sectorsOf(d, t).has(i)).map(([x, i]) =>
   `<option value="${x === NO_SECTOR ? "" : esc(x)}"${t.theme === i ? " selected" : x === NO_SECTOR ? " disabled" : ""}>${esc(x)}</option>`).join("")}${
   t.backend === "local" ? `<option value="" data-rm-new>new sector…</option>` : ""}</select>`;
 
@@ -213,10 +224,10 @@ function stripHtml(d, sel, ch, tab) {
   const note = d.releaseUnknown ? `<div class="nodata">release state unknown: no versions snapshot, so no version is shown as released</div>` : "";
   const tiles = d.versions.map((v, i) => {
     const c = v.counts, total = Object.values(c).reduce((a, b) => a + b, 0), flight = c.prog + c.rev + c.ci;
-    const tag = v.rel ? `released${v.date ? " " + v.date : ""}` : i === d.cur ? "running" : i === d.next ? "next" : "planned";
+    const run = runState(d, v, i), tag = v.rel ? `released${v.date ? " " + v.date : ""}` : run || "planned";
     const inChains = chainOk(ch) ? d.tickets.filter((t) => t.v === i && ch.tickets[idOf(t)]).length : null;
     const open = v.open.length ? `<span class="ro pill fail">${v.open.length} still open: ${v.open.map((k) => `${v.project || "HIMMEL"}-${k}`).map(esc).join(", ")}</span>` : "";
-    return `<a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}><span><b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : i === d.cur ? " warn" : ""}">${esc(tag)}</span></span>`
+    return `<a class="rm-vt${i === sel ? " sel" : ""}" href="${boardHref({ tab: tab === "roadmap" ? "" : tab, v: v.n })}"${i === sel ? ` aria-current="true"` : ""}><span><b>${esc(v.n)}</b> <span class="ro pill${v.rel ? " ok" : run === "running" ? " warn" : ""}">${esc(tag)}</span></span>`
       + `<progress value="${c.done}" max="${total || 1}" aria-label="${esc(v.n)}: ${c.done} of ${total} done"></progress>`
       + `<span class="ro">${c.done} done · ${flight} in flight · ${c.todo} to do${c.wont ? ` · ${c.wont} won't` : ""}${inChains !== null ? ` · ${inChains} in chains` : ""}</span>${open}</a>`;
   }).join("");

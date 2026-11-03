@@ -38,7 +38,7 @@ export type Ticket = {
 };
 type Source = "jira" | "github" | "local";
 // project: the Jira project the version belongs to; with several projects on the Board n is `<name> (<PROJECT>)`, so a same-named version of two projects is two entries.
-export type Version = { n: string; project?: string; rel: boolean; date: string; counts: Record<Bucket, number>; open: number[] };
+export type Version = { n: string; project?: string; run?: "running" | "next"; rel: boolean; date: string; counts: Record<Bucket, number>; open: number[] };
 export type Proposal = { k: number; id?: string; title: string; proposal: string; needsApproval: true };
 export type DupProposal = { keys: number[]; ids?: string[]; title: string; proposal: string; needsApproval: true };
 export type SyncOp = { k: number; id?: string; marker: string; argv: string[]; why: string };
@@ -289,13 +289,22 @@ export function readRoadmap(o: Opts): Roadmap {
   });
   const cur = versions.findIndex((v, i) => !v.rel && tickets.some((t) => t.v === i && isOpen(t.b)));
   const next = versions.findIndex((v, i) => i > cur && !v.rel && tickets.some((t) => t.v === i));
+  // Each project runs its own version: the running and the next one are found among that project's versions alone. With several
+  // projects the version carries it (run), and the librarian points a released-but-open ticket at its own project's running version.
+  const own = new Map<string, { cur: number; next: number }>();
+  for (const p of new Set(list.map((v) => v.p))) {
+    const at = versions.map((_, i) => i).filter((i) => list[i].p === p);
+    const c = at.find((i) => !versions[i].rel && tickets.some((t) => t.v === i && isOpen(t.b))) ?? -1;
+    own.set(p, { cur: c, next: at.find((i) => i > c && !versions[i].rel && tickets.some((t) => t.v === i)) ?? -1 });
+  }
+  if (multi) versions.forEach((v, i) => { const r = own.get(list[i].p); if (r?.cur === i) v.run = "running"; else if (r?.next === i) v.run = "next"; });
 
   const open = tickets.filter((t) => isOpen(t.b));
   const unthemed = open.filter((t) => themes[t.theme] === NO_SECTOR);
   const now = { drift: tickets.filter((t) => t.drift === 1).length, unplanned: open.filter((t) => t.drift === 2).length, unthemed: unthemed.length };
 
   const prop = (t: Ticket, proposal: string): Proposal => ({ k: t.k, ...(t.id ? { id: t.id } : {}), title: t.t, proposal, needsApproval: true });
-  const run = versions[cur]?.n;
+  const runOf = (t: Ticket) => versions[own.get(t.project ?? "")?.cur ?? -1]?.n;
   // ponytail: duplicates are an exact match on the normalized title only (within one project), upgrade path: token-similarity when the librarian lane runs.
   const byTitle = new Map<string, Ticket[]>();
   for (const t of open) { const n = normTitle(t.t); if (n) byTitle.set(`${t.project ?? ""}\u0000${n}`, [...(byTitle.get(`${t.project ?? ""}\u0000${n}`) ?? []), t]); }
@@ -307,7 +316,7 @@ export function readRoadmap(o: Opts): Roadmap {
       ? "assign a theme in the plan (stage1 overlay)"
       : source === "local" ? "assign a Sector with the card's Sector select on the Board"
         : `assign a Sector: jira edit ${t.id ?? `HIMMEL-${t.k}`} --sector "<sector>"`)),
-    releasedOpen: open.filter((t) => t.v >= 0 && versions[t.v].rel).map((t) => prop(t, `${versions[t.v].n} is released but this is still open: move to ${run ?? "the running version"}`)),
+    releasedOpen: open.filter((t) => t.v >= 0 && versions[t.v].rel).map((t) => prop(t, `${versions[t.v].n} is released but this is still open: move to ${runOf(t) ?? "the running version"}`)),
     duplicates: [...byTitle.values()].filter((g) => g.length > 1).map((g) => ({ keys: g.map((t) => t.k).sort((a, b) => a - b), ...(g[0].id ? { ids: g.slice().sort((a, b) => a.k - b.k).map((t) => t.id!) } : {}), title: g[0].t,
       proposal: "same title: close all but one, linking the rest to it", needsApproval: true as const })).sort((a, b) => a.keys[0] - b.keys[0]),
   };
