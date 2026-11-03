@@ -7823,7 +7823,7 @@ chmod +x "$c75_x/lib/himmel-secrets"
 c75_reset
 printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\n' > "$c75_t/env"
 : > "$c75_t/names.log"
-out="$(C75_NAMES_LOG="$c75_t/names.log" C75_KEYRING=off env HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off C75_NAMES_LOG="$c75_t/names.log" bash "$c75_x/himmel-doctor.sh" --root "$REPO_ROOT" --no-color --only C75 2>&1)"
+out="$(C75_NAMES_LOG="$c75_t/names.log" C75_KEYRING=off env -u TELEGRAM_BOT_TOKEN HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" HIMMEL_CONFIG_DIR="" HIMMEL_SECRETS_KEYRING=off C75_NAMES_LOG="$c75_t/names.log" bash "$c75_x/himmel-doctor.sh" --root "$REPO_ROOT" --no-color --only C75 2>&1)"
 if grepq "$out" -F 'INFO C75-secrets' && grepq "$out" -F 'TELEGRAM_BOT_TOKEN' && grep -qx 'names --class secret' "$c75_t/names.log"; then pass "C75 asks himmel-secrets names --class secret for its key set"; else fail "C75 names -> log '$(cat "$c75_t/names.log")', $(printf '%s' "$out" | head -4)"; fi
 echo "== C75: a failing himmel-secrets names is not reported as OK =="
 # shellcheck disable=SC2016 # the wrapper expands its own variables
