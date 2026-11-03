@@ -49,7 +49,7 @@ set_policy() {
 root="$tmp/root"
 mkdir -p "$root/scripts/cr" "$root/scripts/lib" "$root/scripts/guardrails"
 cp "$SUT_SRC" "$root/scripts/cr/docs-audit-panel.sh"
-cp "$DIR/anchor-handoff.sh" "$root/scripts/cr/anchor-handoff.sh"
+cp "$DIR/anchor-handoff.sh" "$DIR/base-resolver.sh" "$root/scripts/cr/"
 cp "$DIR/../lib/load-dotenv.sh" "$DIR/../lib/chokepoint-seam-guard.sh" "$root/scripts/lib/"
 cp "$DIR/../guardrails/lib.sh" "$root/scripts/guardrails/lib.sh"
 SUT="$root/scripts/cr/docs-audit-panel.sh"
@@ -60,6 +60,7 @@ cat > "$STUB" <<'STUBEOF'
 #!/usr/bin/env bash
 cat >/dev/null   # swallow the piped diff, like the real panel does
 [ -n "${STUB_MARKER:-}" ] && : > "$STUB_MARKER"
+[ -n "${STUB_ARGS:-}" ] && printf '%s\n' "$*" > "$STUB_ARGS"
 [ -n "${STUB_OUT:-}" ] && printf '%s\n' "$STUB_OUT"
 [ -n "${STUB_ERR:-}" ] && printf '%s\n' "$STUB_ERR" >&2
 exit "${STUB_RC:-0}"
@@ -167,21 +168,53 @@ contains "$(cat "$stderr_file")" "mktemp failed - check free space in TMPDIR) - 
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3e the panel ran without a temp file"; fail=1; }
 
 # 3f. No temp file on the rtk retry: the first run's availability rows still
-# reach stderr. The one row here that puts a stub rtk on PATH; it removes the
-# temp dir, so the retry's mktemp fails.
+# reach stderr. A stub rtk on PATH removes the temp dir, so the retry's mktemp
+# fails. Only this row and 7d use it.
 mkdir -p "$tmp/rtk-stub" "$tmp/vanishing"
+RTK_MARKER="$tmp/rtk-called"
 cat > "$tmp/rtk-stub/rtk" <<'RTKEOF'
 #!/usr/bin/env bash
-rm -rf "$TMPDIR"
+: > "$RTK_MARKER"
+[ -z "${RTK_WIPE_TMPDIR:-}" ] || rm -rf "$TMPDIR"
 echo "diff --git a/f.txt b/f.txt"
 RTKEOF
 chmod +x "$tmp/rtk-stub/rtk"
 rc=0
-( cd "$repo" && TMPDIR="$tmp/vanishing" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+( cd "$repo" && RTK_MARKER="$RTK_MARKER" RTK_WIPE_TMPDIR=1 TMPDIR="$tmp/vanishing" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
     >"$stdout_file" 2>"$stderr_file" || rc=$?
 check "$rc" "0" "T3f rc"
 contains "$(cat "$stderr_file")" "panel-availability: codex unavailable (quota)" "T3f keeps the first run's availability row"
 contains "$(cat "$stderr_file")" "mktemp failed - check free space in TMPDIR) - ready-check item 4" "T3f names the cause and the hold"
+
+# 3g. origin/main ahead of local main, and the clone has not fetched it yet:
+# the pin is the fetched origin tip, the one critic-panel.sh verifies against.
+origin_bare="$tmp/origin.git"
+git clone -q --bare "$repo" "$origin_bare"
+git -C "$origin_bare" symbolic-ref HEAD refs/heads/main
+lagging="$tmp/lagging"
+git clone -q "$origin_bare" "$lagging"
+git -C "$lagging" checkout -q feat
+origin_new="$(git -C "$origin_bare" -c user.email=t@t -c user.name=t commit-tree "$head_main^{tree}" -p "$head_main" -m next)"
+git -C "$origin_bare" update-ref refs/heads/main "$origin_new"
+STUB_ARGS="$tmp/stub-args"
+rm -f "$STUB_MARKER" "$STUB_ARGS"
+rc=0
+( cd "$lagging" && STUB_RC=0 STUB_ARGS="$STUB_ARGS" PATH="$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "0" "T3g rc"
+contains "$(cat "$STUB_ARGS" 2>/dev/null)" "--base-sha $origin_new" "T3g pins the fetched origin tip"
+check "$(git -C "$lagging" rev-parse main)" "$head_main" "T3g local main stayed behind"
+
+# 3h. A repo with an origin that cannot be fetched aborts, as the full lane
+# does: the cached ref may be stale, so the pin cannot be trusted.
+git -C "$lagging" remote set-url origin "$tmp/no-such-origin.git"
+rm -f "$STUB_MARKER"
+rc=0
+( cd "$lagging" && STUB_RC=0 PATH="$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "7" "T3h rc"
+contains "$(cat "$stderr_file")" "docs-audit-panel ABORT - could not fetch origin/main" "T3h names the fetch"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3h the panel ran on an unfetched base"; fail=1; }
 
 # 4. CR_PROFILE=none wins even under CR_REQUIRE_CROSS_MODEL: prints the
 # claude-only note, panel never invoked, exit 0.
@@ -190,7 +223,7 @@ export CR_PROFILE=none
 rc=$(run_sut --head "$head_feat" --branch feat)
 check "$rc" "0" "T4 rc"
 check "$(cat "$stdout_file")" "" "T4 stdout"
-check "$(cat "$stderr_file")" "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset" "T4 stderr"
+check "$(cat "$stderr_file")" "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset; with the policy off the marker clears and the merge gate passes, but ready-check item 4 still fails with no non-Claude row at the head" "T4 stderr"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T4 stub was invoked under CR_PROFILE=none"; fail=1; }
 
 # 4b. CR_PROFILE=none is the opt-out with the policy off too.
@@ -205,7 +238,7 @@ unset CR_PROFILE 2>/dev/null || true
 rc=$(run_sut --head "$head_main" --branch main)
 check "$rc" "0" "T5 rc"
 check "$(cat "$stdout_file")" "" "T5 stdout"
-check "$(cat "$stderr_file")" "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists)" "T5 stderr"
+check "$(cat "$stderr_file")" "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists; ready-check item 4 fails this head on the same condition)" "T5 stderr"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T5 stub was invoked on an empty diff"; fail=1; }
 
 # 6. Stubbed panel exit 7 (input-pin mismatch): ABORT, exit 7, nothing on
@@ -246,6 +279,26 @@ check "$rc" "0" "T7b rc (degrade, not abort)"
 check "$(cat "$stdout_file")" "" "T7b stdout (findings discarded)"
 contains "$(cat "$stderr_file")" "docs-audit critic panel REFUSED to certify this run (exit 6" "T7b stderr names the refusal"
 case "$(cat "$stderr_file")" in *"all critics failed"*) echo "FAIL: T7b exit 6 must not read as all critics failed"; fail=1 ;; esac
+
+# 7d. Only rc=1 earns the rtk retry, which is a second paid call: rc 2, 5 and 6
+# are not the "no valid diff" failure it exists for. A control proves rc=1 does.
+for retry_rc in 2 5 6 1; do
+    rm -f "$RTK_MARKER"
+    ( cd "$repo" && RTK_MARKER="$RTK_MARKER" STUB_RC="$retry_rc" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+        >"$stdout_file" 2>"$stderr_file"
+    if [ "$retry_rc" -eq 1 ]; then
+        [ -e "$RTK_MARKER" ] || { echo "FAIL: T7d control: rc=1 must retry through rtk"; fail=1; }
+    else
+        [ ! -e "$RTK_MARKER" ] || { echo "FAIL: T7d rc=$retry_rc must not retry through rtk"; fail=1; }
+    fi
+done
+
+# 7e. A refusal the panel could not record holds nothing, so the lane aborts.
+export STUB_RC=6 STUB_OUT="should-be-discarded" STUB_ERR="critic-panel.sh: could not record certify-refused on the ledger"
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "7" "T7e rc"
+check "$(cat "$stdout_file")" "" "T7e stdout"
+contains "$(cat "$stderr_file")" "the refusal could not be recorded on the CR ledger" "T7e names the cause"
 
 # 7c. panel exit 2 from a mktemp failure names it, never "all critics
 # failed"; a usage-error exit 2 does not claim mktemp.

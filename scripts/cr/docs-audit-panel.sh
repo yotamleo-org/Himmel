@@ -42,6 +42,8 @@
 #                whatever CR_REQUIRE_CROSS_MODEL says: ready-check
 #                item 4 and the merge gate's hard reviewer need its row at the
 #                head, and the inline audit's `avail claude` row cannot be it.
+#                With CR_PROFILE=none and the policy off, the marker clears and
+#                the merge gate passes, but item 4 still fails that head.
 #
 # stdout/stderr contract (do not merge these streams):
 #   stdout - ONLY the panel's findings text (docs_audit_panel_findings in the
@@ -57,11 +59,11 @@
 #   0 - lane completed (including the CR_PROFILE=none / empty-diff /
 #       fail-open-degrade cases - none of those are aborts).
 #   2 - usage error: --head or --branch missing.
-#   7 - ABORT, never a degrade. Two causes: the --head given
-#       here names no commit in this repo (checked before any git command
-#       consumes it); or critic-panel.sh's --head/--branch/--base-sha pin
-#       mismatch, on the first attempt OR the rtk
-#       retry.
+#   7 - ABORT, never a degrade. The --head given here names no commit in this
+#       repo (checked before any git command consumes it); origin/<base> could
+#       not be fetched, or the base names no commit; critic-panel.sh's
+#       --head/--branch/--base-sha pin mismatch, on the first attempt OR the
+#       rtk retry; or a panel exit 6 whose refusal could not be recorded.
 #   96 - a chokepoint seam differs from the session's launch env.
 #
 # bash 3.2-safe (Git Bash on Windows and Linux).
@@ -146,18 +148,36 @@ if [ "${CR_PROFILE:-}" = "none" ]; then
     # even under CR_REQUIRE_CROSS_MODEL. The marker stays closed under
     # the cross-model floor until CR_PROFILE is unset (the two settings
     # are genuinely contradictory; we do not spend the paid critic to
-    # satisfy one at the expense of the other).
-    echo "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset" >&2
+    # satisfy one at the expense of the other). With the policy off the marker
+    # clears, yet item 4 still wants a non-Claude row, so say both.
+    echo "docs-audit: claude-only (CR_PROFILE=none) - cross-model critic not launched; marker stays closed under CR_REQUIRE_CROSS_MODEL until a non-Claude responder exists or CR_PROFILE is unset; with the policy off the marker clears and the merge gate passes, but ready-check item 4 still fails with no non-Claude row at the head" >&2
 else
+    # shellcheck source=scripts/cr/base-resolver.sh
     # shellcheck disable=SC1091
-    db=$(. "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null && default_branch || echo main)
-    db_sha=$(git rev-parse "$db")
+    . "$HIMMEL_ROOT/scripts/cr/base-resolver.sh"
+    # shellcheck disable=SC1091
+    db=$(. "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null && default_branch || echo main) # swallow-ok: main is the documented default
+    # Fetch once, then pin through the origin-first resolver critic-panel.sh
+    # verifies with. A repo with an origin must not certify a stale cached ref
+    # when the refresh failed; one with no origin falls back to its local branch.
+    review_root=$(git rev-parse --show-toplevel 2>/dev/null) || review_root="" # swallow-ok: the empty value aborts just below
+    if [ -z "$review_root" ] || ! cr_fetch_base "$review_root" "$db"; then
+        echo "docs-audit-panel ABORT - could not fetch origin/$db, so the current diff base cannot be pinned safely. Nothing was reviewed and nothing was recorded. Re-run /pr-check from step 1." >&2
+        exit 7
+    fi
+    base_ref=$(cr_resolve_base_ref "$review_root" "$db")
+    db_sha=$(git -C "$review_root" rev-parse --verify --quiet "$base_ref^{commit}" 2>/dev/null) || db_sha="" # swallow-ok: the empty value aborts just below
+    if [ -z "$db_sha" ]; then
+        echo "docs-audit-panel ABORT - diff base $base_ref does not resolve to a commit. Nothing was reviewed and nothing was recorded. Re-run /pr-check from step 1." >&2
+        exit 7
+    fi
     diff_rc=0
     diff_out=$(git diff "$db_sha...$docs_audit_head") || diff_rc=$?
     if [ "$diff_rc" -ne 0 ]; then
         echo "docs-audit cross-model critic unavailable - git diff failed rc=$diff_rc: $diff_out" >&2
+        echo "docs-audit: no critic ok row from this run - ready-check item 4 and the merge gate hold this head until a re-run records avail ok" >&2
     elif [ -z "$diff_out" ]; then
-        echo "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists)" >&2
+        echo "docs-audit cross-model critic skipped: empty diff (marker will stay closed under CR_REQUIRE_CROSS_MODEL unless another non-Claude avail-ok row exists; ready-check item 4 fails this head on the same condition)" >&2
     else
         panel_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX) || no_panel_tmp
         docs_audit_panel_findings=$(printf '%s' "$diff_out" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$panel_tmp")
@@ -172,8 +192,8 @@ nothing was recorded. Re-run /pr-check from step 1.
 PINABORT
             exit 7
         fi
-        if [ "$panel_rc" -ne 0 ] && command -v rtk >/dev/null 2>&1; then
-            retry_diff=$(rtk proxy git diff "$db_sha...$docs_audit_head" 2>/dev/null) || retry_diff=""
+        if [ "$panel_rc" -eq 1 ] && command -v rtk >/dev/null 2>&1; then
+            retry_diff=$(rtk proxy git diff "$db_sha...$docs_audit_head" 2>/dev/null) || retry_diff="" # swallow-ok: an empty retry diff skips the retry
             if [ -n "$retry_diff" ]; then
                 retry_tmp=$(mktemp -t cr-docs-audit-panel-avail.XXXXXX) || no_panel_tmp
                 docs_audit_panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$docs_audit_head" --branch "$branch" --base "$db" --base-sha "$db_sha" 2>"$retry_tmp")
@@ -194,7 +214,14 @@ PINABORTRETRY
             if [ "$panel_rc" -eq 6 ]; then
                 # exit 6 is the panel's deliberate certify
                 # refusal, recorded on the ledger; not a
-                # failed panel.
+                # failed panel. If that write failed there is nothing to
+                # hold the marker, so abort instead.
+                case "$docs_audit_panel_avail_lines" in
+                *"could not record certify-refused"*)
+                    echo "/pr-check ABORT - docs-audit critic-panel.sh exit 6 and the refusal could not be recorded on the CR ledger, so nothing would hold the CR marker closed. Fix the ledger path and re-run /pr-check from step 1." >&2
+                    exit 7
+                    ;;
+                esac
                 echo "docs-audit critic panel REFUSED to certify this run (exit 6: the citation-guard digest could not be computed - fix sha256sum/shasum); the CR marker stays held at this SHA until the panel is re-run on a new HEAD" >&2
             elif [ "$panel_rc" -eq 2 ]; then
                 # exit 2 is a usage error or a mktemp failure, not a
