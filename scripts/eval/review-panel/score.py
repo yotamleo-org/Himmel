@@ -690,9 +690,12 @@ def gate_row(repo, rev, outputs):
 
 def panel_mismatch(rows, base_hash, head_hash, confighash):
     """A reason string when the counted rows ran different critics, else "" (HIMMEL-8979). A row's `responded`
-    is {scored: cases scored, critics: {critic: cases it answered}}; its roster is the critics that answered
-    every scored case. Rows at either hash with more than one roster make a win-or-loss comparison unequal
-    (the panel drops an unavailable critic per case), so they get no verdict and the difference is named.
+    is {scored: cases scored, critics: {critic: cases it answered}}; its roster gives each critic one of three
+    states: answered every scored case, answered some, answered none. Rows at either hash with more than one
+    roster make a win-or-loss comparison unequal (the panel drops an unavailable critic per case), so they get
+    no verdict and the difference is named.
+    ponytail: two partial critics count as alike whatever their case counts, upgrade = compare per-case
+    participation once a row records which cases each critic answered.
     ponytail: a row exported before HIMMEL-8979 has no `responded` and is not compared, upgrade = re-sweep
     the baseline so every counted row records its roster."""
     sides = {}
@@ -704,16 +707,19 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
             continue
         side = "baseline" if r["cbs_hash"] == base_hash else "head"
         sides.setdefault(side, {})[r.get("run_id")] = resp
-    full = lambda resp: tuple(sorted(c for c, n in resp["critics"].items() if n == resp.get("scored")))  # noqa: E731
-    if len({full(resp) for runs in sides.values() for resp in runs.values()}) < 2:
+    def state(resp, n):
+        return "all" if n == resp.get("scored") else ("none" if not n else "some")
+
+    def roster(resp):
+        return tuple(sorted((c, state(resp, n)) for c, n in resp["critics"].items()))
+    if len({roster(resp) for runs in sides.values() for resp in runs.values()}) < 2:
         return ""
 
     def say(side):
         out = []
         for rid, resp in sorted(sides.get(side, {}).items()):
-            part = ["%s %s/%s" % (c, n, resp.get("scored")) for c, n in sorted(resp["critics"].items())
-                    if n != resp.get("scored")]
-            out.append("%s [%s]%s" % (rid, ", ".join(full(resp)) or "none", " partial: " + ", ".join(part) if part else ""))
+            out.append("%s [%s]" % (rid, ", ".join("%s %s/%s" % (c, n, resp.get("scored"))
+                                                   for c, n in sorted(resp["critics"].items()))))
         return "; ".join(out) or "no rosters recorded"
     return "panel mismatch: the rows ran different critics, no win or loss read: baseline %s | head %s" \
            % (say("baseline"), say("head"))

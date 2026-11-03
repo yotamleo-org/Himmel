@@ -617,9 +617,14 @@ grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.6:0.5 h2:0.5:0.6:0.5; groster b "24
 has "gate: equal panels still lose beyond noise" "$out" "gate: loss"
 grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.6 h1:0.5:0.1:0.8 h2:0.5:0.1:0.7; groster b "24;codex:24"; groster h "24;codex:24"; ggate --target-class logic
 has "gate: equal panels still keep a target-class win" "$out" "gate: keep"
-# a critic missing from every row on both sides is still like-for-like
-grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:3,codex:24"; ggate
-has "gate: a critic that answered no whole sweep on either side is no mismatch" "$out" "gate: no-loss"
+# a critic that answered none of a side's cases against one that answered some is a different panel
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:23,codex:24"; ggate
+has "gate: a critic absent on one side and nearly complete on the other is a mismatch" "$out" "panel mismatch"
+# a critic absent on both sides, or partial on both, is like-for-like
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:0,codex:24"; groster h "24;claude:0,codex:24"; ggate
+has "gate: a critic that answered nothing on both sides is no mismatch" "$out" "gate: no-loss"
+grows b1:0.5:0.1:0.5 b2:0.5:0.1:0.5 h1:0.5:0.1:0.5 h2:0.5:0.1:0.5; groster b "24;claude:12,codex:24"; groster h "24;claude:20,codex:24"; ggate
+has "gate: a critic partial on both sides is no mismatch" "$out" "gate: no-loss"
 
 # --- real cases: multi-file, context_seed, base, fix ---------------------------------------
 S="$TMP/src"; RL="$TMP/real"; RK="$TMP/real-key.json"
