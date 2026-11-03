@@ -54,7 +54,8 @@
 # (and eventually past) the first 60 lines of the file, the window
 # scripts/parity/test-ws5-invariants.sh's T15 check scans for one.
 #
-# Exit codes: 2 usage / bad argument, or a launch refused because its Writes paths overlap a live hold; 3 no konsole on PATH; 13 could not
+# Exit codes: 18 the session folder does not load the himmel guard hooks (UNGUARDED_LAUNCH_OK=1 in the
+# launching shell launches it anyway with a WARN); 2 usage / bad argument, or a launch refused because its Writes paths overlap a live hold; 3 no konsole on PATH; 13 could not
 # resolve this script's own directory to locate the
 # macOS konsole shim, a distinct failure from 3 above; 16 another live worker
 # session already holds the same ticket, or another lineage's arm for that
@@ -757,6 +758,26 @@ fi
 if ! command -v "$PGREP" >/dev/null 2>&1; then
     echo "headed-arm: no '$PGREP' on PATH - dedup needs pgrep (procps) to tell whether a session named $NAME is already running; refusing rather than risk launching a duplicate" >&2
     exit 4
+fi
+
+# A session folder that would not load the himmel guard hooks is refused before the dry-run
+# report, any lock, terminal or headless child. UNGUARDED_LAUNCH_OK=1 (launching shell) launches anyway
+# with one WARN; HIMMEL_LAUNCH_GUARD_WARNED=<this folder> only silences that WARN, never the check.
+_lg_reason="$(bash "$(dirname "$0")/../lib/launch-guard-check.sh" "$REPO")"; _lg_rc=$?
+if [ "$_lg_rc" -ne 0 ]; then
+    [ "$_lg_rc" -eq 1 ] || _lg_reason="folder cannot be resolved"
+    if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+        _lg_phys="$(cd -P -- "$REPO" 2>/dev/null && pwd -P)" || _lg_phys="$REPO"  # swallow-ok: an unresolvable folder falls back to the raw path for the marker comparison
+        if [ "${HIMMEL_LAUNCH_GUARD_WARNED:-}" != "$_lg_phys" ]; then
+            _lg_warn="WARN unguarded launch of $NAME in $REPO ($_lg_reason; UNGUARDED_LAUNCH_OK=1)"
+            echo "$_lg_warn" >&2
+            # $LOG is not absolutized yet; if its directory does not exist this early, stderr alone carries the WARN.
+            [ -d "$(dirname "$LOG")" ] && echo "$_lg_warn" >> "$LOG" 2>/dev/null
+        fi
+    else
+        echo "headed-arm: refusing to launch $NAME: $REPO does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+        exit 18
+    fi
 fi
 
 # Everything above this point is pure argument resolution and

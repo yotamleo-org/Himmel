@@ -37,6 +37,9 @@ unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/nul
 # The ticket-duplicate rows (8436*) assert a refusal; HEADED_ARM_ALLOW_TICKET_DUP=1 exported in the
 # operator's launching shell would silently turn them into launches. Rows that want it set it per call.
 unset HEADED_ARM_ALLOW_TICKET_DUP
+# Scratch fixtures are not guarded folders, so the suite opts in; the guard rows drop it per call.
+export UNGUARDED_LAUNCH_OK=1
+unset HIMMEL_LAUNCH_GUARD_WARNED
 # A real macOS host reads uname=Darwin, which picks the macOS shim
 # and its ~7 minute session-visibility budget; every case that launches but
 # never confirms (44c+) then outruns the CI timeout. Pin the platform so the
@@ -2833,5 +2836,58 @@ wait_record "$dh20" || true
 check "8725ah a chief launch seeds nothing and the child carries no key" "$h20rc|$([ -e "$(hrow scripts/h32.sh)" ] && echo row || echo none)|$(cat "$dh20/holdenv" 2>/dev/null)" "0|none|unset"
 
 check "8725ai the real ~/.himmel/state/holds is unchanged by this suite" "$(real_register)" "$REAL_REGISTER_BEFORE"
+
+# --- a folder that does not load the guard hooks is refused (rc 18) before any lock, terminal or child
+GSCR="$tmp/guard-scratch"; mkdir -p "$GSCR"
+glaunch() { # <stubdir> <name> [VAR=val ...]: scratch folder, the suite opt-out and warn marker dropped
+  local d="$1" n="$2"; shift 2
+  ( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; env "$@" KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_REPO="$GSCR" \
+      HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" bash "$SCRIPT" "$n" doc.md "$d/signal-never" "$PAST" "$d/log" ) 2>&1
+}
+dg1="$tmp/g1"; mk_stub "$dg1" 1 alive "HIMMEL-9026-g1"
+gout1="$(glaunch "$dg1" HIMMEL-9026-g1 X=1)"; grc1=$?
+settle
+check "guard_refuses_scratch: rc 18" "$grc1" "18"
+contains "guard_refuses_scratch: names the folder" "$gout1" "$GSCR does not load the himmel guard hooks (not a git work tree)"
+contains "guard_refuses_scratch: names the opt-out" "$gout1" "UNGUARDED_LAUNCH_OK=1"
+check "guard_refuses_scratch: konsole never called, no lock dir" "$([ -e "$dg1/record" ] && echo called || echo none)|$([ -e "$dg1/locks" ] && echo lock || echo none)" "none|none"
+
+dg2="$tmp/g2"; mk_stub "$dg2" 1 alive
+printf '#!/usr/bin/env bash\necho "$*" >> "%s/cli-record"\n' "$dg2" > "$dg2/claudecli"; chmod 755 "$dg2/claudecli"
+gout2="$(glaunch "$dg2" HIMMEL-9026-g2 HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI="$dg2/claudecli")"; grc2=$?
+contains "guard_refuses_headless: refusal text" "$gout2" "does not load the himmel guard hooks"
+check "guard_refuses_headless: rc 18, no --bg call" "$grc2|$(grep -c -e "--bg" "$dg2/cli-record" 2>/dev/null || true)" "18|0"
+
+dg3="$tmp/g3"; mk_stub "$dg3" 1 alive
+gout3="$( unset UNGUARDED_LAUNCH_OK; KONSOLE_CMD="$dg3/konsole" PGREP_CMD="$dg3/pgrep" HEADED_ARM_REPO="$GSCR" HEADED_ARM_LOCK_DIR="$dg3/locks" HEADED_ARM_PROC="$dg3/proc" \
+  bash "$SCRIPT" --dry-run HIMMEL-9026-g3 doc.md "$dg3/signal-never" "$PAST" "$dg3/log" 2>&1)"; grc3=$?
+check "guard_refuses_dry_run: rc 18" "$grc3" "18"
+not_contains "guard_refuses_dry_run: no would-exec report" "$gout3" "would exec"
+
+GLUNA="$tmp/guard-luna"; mkdir -p "$GLUNA"; git -C "$GLUNA" init -q -b main; : > "$GLUNA/.single-writer"
+dg4="$tmp/g4"; mk_stub "$dg4" 1 alive
+gout4="$( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; HANDOVER_DIR='' KONSOLE_CMD="$dg4/konsole" PGREP_CMD="$dg4/pgrep" HEADED_ARM_REPO="$GLUNA" HEADED_ARM_LOCK_DIR="$dg4/locks" HEADED_ARM_PROC="$dg4/proc" \
+  bash "$SCRIPT" HIMMEL-9026-g4 doc.md "$dg4/signal-never" "$PAST" "$dg4/log" 2>&1)"; grc4=$?
+check "guard_luna_no_handover_dir: rc 18" "$grc4" "18"
+contains "guard_luna_no_handover_dir: refusal text" "$gout4" "does not load the himmel guard hooks"
+
+dg5="$tmp/g5"; mk_stub "$dg5" 1 alive "HIMMEL-9026-g5"
+gout5="$(glaunch "$dg5" HIMMEL-9026-g5 UNGUARDED_LAUNCH_OK=1)"; grc5=$?
+wait_record "$dg5" || true
+gwarn5="WARN unguarded launch of HIMMEL-9026-g5 in $GSCR (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
+check "guard_optout_warns_once: rc 0, konsole called" "$grc5|$([ -s "$dg5/record" ] && echo called || echo none)" "0|called"
+check "guard_optout_warns_once: one WARN on stderr" "$(grep -cF -e "$gwarn5" <<< "$gout5")" "1"
+check "guard_optout_warns_once: one WARN in the log" "$(grep -cF -e "$gwarn5" "$dg5/log" 2>/dev/null)" "1"
+
+dg6="$tmp/g6"; mk_stub "$dg6" 1 alive "HIMMEL-9026-g6"
+gout6="$(glaunch "$dg6" HIMMEL-9026-g6 UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc6=$?
+wait_record "$dg6" || true
+not_contains "guard_optout_marker_silences: no WARN" "$gout6" "WARN unguarded launch"
+check "guard_optout_marker_silences: launch proceeds" "$grc6|$([ -s "$dg6/record" ] && echo called || echo none)" "0|called"
+
+dg7="$tmp/g7"; mk_stub "$dg7" 1 alive
+gout7="$(glaunch "$dg7" HIMMEL-9026-g7 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc7=$?
+contains "guard_marker_without_optout_still_refuses: refusal text" "$gout7" "does not load the himmel guard hooks"
+check "guard_marker_without_optout_still_refuses: rc 18" "$grc7" "18"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }
