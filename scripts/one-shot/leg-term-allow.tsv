@@ -109,3 +109,5 @@
 ^scripts/handover/chief-kit/test-succession-tracker\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format doc and manifest section pins the read and the refusal; leaves with HIMMEL-6647
 ^scripts/handover/chief-kit/test-tracker\.sh$	pre-rename|old .?legs|"legs":|has\("legs"\)|legs array|legs:|stale legs|legs-key|twin legs|twin workers legs	K5 old-format manifest section pins the read and the refusal; leaves with HIMMEL-6647
 ^scripts/eval/chief-wake-classes\.py$	\(\?:leg\|worker\)|-\(\?:leg	K5 legacy script and path names read from older transcripts; leaves with HIMMEL-6647
+^scripts/hooks/chief-precompact-snapshot\.sh$	live_field legs	K5 reads the pre-rename Live state line while legacy names are on; leaves with HIMMEL-6647
+^scripts/handover/chief-kit/denied-launch-alert\.sh$	headed-arm\(-leg\|-worker\)\?	K5 legacy launcher-name read in the denied-launch log filter; leaves with HIMMEL-6647

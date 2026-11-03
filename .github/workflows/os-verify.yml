@@ -4,7 +4,7 @@ name: os-verify
 # shell suites on ONE chosen OS. It replaces ci.yml's `force_all_os` dispatch,
 # which ran the whole corpus on ubuntu + windows + macOS (42 jobs) and took
 # 55 % of every runner-minute measured on 2026-09-29 while its windows/macOS
-# legs were advisory and mostly red. GitHub Free caps the account at 20
+# jobs were advisory and mostly red. GitHub Free caps the account at 20
 # concurrent jobs, 5 of them macOS, so the default here is one OS, two shards.
 # Windows is dropped (HIMMEL-5729): macOS is the only choice.
 #
@@ -14,7 +14,7 @@ name: os-verify
 # so a suite joins the list only with a green macOS log line (ratchet: HIMMEL-3183).
 #
 # DISPATCH ONLY, by design: a pull_request/push/schedule trigger would put the
-# paid macOS legs back on every PR. Nothing here is a required check.
+# paid macOS jobs back on every PR. Nothing here is a required check.
 # Every job name is prefixed `os-verify / ` so a dispatch on a PR head can never
 # post a check-run that satisfies, or shadows, one of the required contexts by
 # name (HIMMEL-3788 did the same for ci.yml's `shell-unit`).

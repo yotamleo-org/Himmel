@@ -1,10 +1,10 @@
 name: "CI (os:macos cadence)"
 
 # HIMMEL-3902: macOS shell-unit lives HERE, not in ci.yml. Operator ruling
-# 2026-09-30: fleet velocity beats macOS coverage breadth. While macOS legs sat
+# 2026-09-30: fleet velocity beats macOS coverage breadth. While macOS jobs sat
 # in the nightly `CI` run, a macOS-only red turned that run -- and so main --
 # red (the shell-unit aggregator's health step, HIMMEL-3699), and the red-main
-# policy then pulled legs into macOS triage. Now a macOS red is a red of THIS
+# policy then pulled workers into macOS triage. Now a macOS red is a red of THIS
 # workflow (`os:macos`), never of `CI`, and each run records which suites
 # newly broke since the previous one (scripts/ci/macos-breakage.sh) so the
 # trade-off is measurable: docs/internals/testing.md.
@@ -13,7 +13,7 @@ name: "CI (os:macos cadence)"
 # seen within ~3-4 days instead of the next morning, at ~2/7ths of the nightly's
 # 10x-billed macOS runner cost (and off the nightly's 07:17 slot).
 #
-# The macOS legs run never on an unlabelled PR and never on push: that would put
+# The macOS jobs run never on an unlabelled PR and never on push: that would put
 # them back on every PR (HIMMEL-3853). A PR opts in with the `ci:macos` label
 # (HIMMEL-7276): the run starts when the label is added and on each later push,
 # and both jobs are skipped for any PR without it. A PR run never records
@@ -138,7 +138,7 @@ jobs:
           /usr/local/bin/shfmt --version
           echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
       # SUITE_TIER_MODE=all: the whole corpus, extended tier included -- the
-      # coverage the nightly's macOS legs had.
+      # coverage the nightly's macOS jobs had.
       # A `suites` dispatch: the input reaches the shell through SUITES (never
       # interpolated into the script), each word is checked to be a plain
       # repo-relative path, and --only-list runs just those suites.
