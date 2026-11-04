@@ -283,15 +283,17 @@ INV7_APPEND='appendFileSync|>>[[:space:]]*"?\$\{?(CR_LEDGER|PANEL_LEDGER|LEDGER|
 inv7_exempt() {
     case "$1" in
         scripts/cr/test-*.sh|scripts/handover/test-*.sh|scripts/handover/chief-kit/test-*.sh|*.test.mjs) return 0 ;;
+        # One exact lib suite: it writes fixture security-audit rows, malformed ones included.
+        scripts/lib/test-outside-contributors.sh) return 0 ;;
     esac
     return 1
 }
 case_inv7x() {
     local rel bad=0
-    for rel in scripts/handover/chief-kit/test-ready-check.sh scripts/handover/test-x.sh scripts/cr/test-x.sh scripts/x/y.test.mjs; do
+    for rel in scripts/handover/chief-kit/test-ready-check.sh scripts/handover/test-x.sh scripts/cr/test-x.sh scripts/x/y.test.mjs scripts/lib/test-outside-contributors.sh; do
         inv7_exempt "$rel" || { echo "FAIL: invariant7x -- $rel is a test suite and must stay exempt" >&2; bad=1; }
     done
-    for rel in scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/lib/test-x.sh scripts/handover/chief-kit/x-test.sh scripts/handover/chief-kit/test-x.mjs scripts/hooks/test-x.sh scripts/handover/ready-check.sh; do
+    for rel in scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/lib/test-x.sh scripts/handover/chief-kit/x-test.sh scripts/handover/chief-kit/test-x.mjs scripts/hooks/test-x.sh scripts/handover/ready-check.sh scripts/lib/test-x.sh; do
         inv7_exempt "$rel" && { echo "FAIL: invariant7x -- $rel is not a test suite and must still be scanned" >&2; bad=1; }
     done
     [ "$bad" -eq 0 ] || return 1
