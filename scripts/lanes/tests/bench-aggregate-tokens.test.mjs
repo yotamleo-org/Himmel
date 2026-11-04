@@ -15,8 +15,12 @@ import {
 } from '../bench/aggregate-tokens.mjs';
 import { buildRunRecord, writeRunManifest } from '../bench/run-manifest.mjs';
 
+// The aggregate-tokens CLI never looks for transcripts under the operator's real home or config roots.
+const SANDBOX_HOME = makeTmpDir('bench-aggregate-home-');
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: join(SANDBOX_HOME, '.claude') });
+
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
-const CLI = join(TEST_DIR, '..', 'bench', 'aggregate-tokens.mjs');
+const CLI =join(TEST_DIR, '..', 'bench', 'aggregate-tokens.mjs');
 const HAIKU_SAMPLE = join(TEST_DIR, 'fixtures', 'bench-transcripts', 'haiku-sample.jsonl');
 const LUNA_SAMPLE = join(TEST_DIR, 'fixtures', 'bench-transcripts', 'luna-sample.jsonl');
 

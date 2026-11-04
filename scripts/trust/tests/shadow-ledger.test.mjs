@@ -23,6 +23,10 @@ import {
   EXPECTED_HOOKS, EXPECTED_VERBS, RECORDED_TOOLS,
 } from '../shadow-ledger.mjs';
 
+// The ledger subprocesses never read the operator's real home or config roots.
+const SANDBOX_HOME = makeTmpDir('shadow-ledger-home-');
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: path.join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: path.join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: path.join(SANDBOX_HOME, '.claude') });
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(HERE, '..', 'shadow-ledger.mjs');
 

@@ -8,6 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { assertDenyAskUnchanged, assertStrictNarrowing, tempPathFor, writeSettingsAtomic } from './narrow-allow.mjs';
 import { makeTmpDir } from '../lib/test-tmpdir.mjs';
 
+// The narrower subprocesses never read the operator's real home or config roots.
+const SANDBOX_HOME = makeTmpDir('narrow-allow-home-');
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: join(SANDBOX_HOME, '.claude') });
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const NARROWER = join(HERE, 'narrow-allow.mjs');
 

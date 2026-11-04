@@ -1,4 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// env.ts (imported through ../client.js) shells out to git, which reads the global config under HOME
+// and XDG_CONFIG_HOME. vi.hoisted runs before the static imports below, so point both at an empty temp dir first.
+await vi.hoisted(async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const home = mkdtempSync(join(tmpdir(), 'bitbucket-exit-codes-home-'));
+  Object.assign(process.env, { HOME: home, XDG_CONFIG_HOME: join(home, '.config'), HIMMEL_CONFIG_DIR: join(home, '.himmel') });
+});
 import { exitFor } from './exit-codes.js';
 import { BitbucketHttpError } from '../client.js';
 

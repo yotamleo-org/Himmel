@@ -7,6 +7,10 @@ import { makeTmpDir } from './test-tmpdir.mjs';
 
 import { frontmatterDescription, regenerateCatalog, loadGeneratedStaged } from './gen-commands-catalog.mjs';
 
+// The temp-repo git calls never read the operator's real home or config roots.
+const SANDBOX_HOME = makeTmpDir('gen-catalog-home-');
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: join(SANDBOX_HOME, '.claude') });
+
 test('frontmatterDescription reads the description: scalar', () => {
   const md = '---\nname: foo\ndescription: Does the thing.\n---\nbody\n';
   assert.equal(frontmatterDescription(md), 'Does the thing.');
