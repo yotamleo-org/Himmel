@@ -249,5 +249,12 @@ redH1=$(echo "$outH1" | jq -c '[.items[] | select(.severity=="red") | .id]')
 [ "$redH1" = "[]" ] || fail "case h1: legacy project record on himmel's own checkout + user-scope wiring present must not read red (red: $redH1; got: $outH1)"
 grepq "$(cat "$cacheH/install-profile.json")" -F '"scope":"project"' || fail "case h1: the recorded profile file must be left untouched"
 echo "ok: case h1 — legacy project record on himmel's own checkout reads as user scope"
+# h3: the project-scope items (here the two scopes:["project"] dist builds) are
+# still judged against the checkout under the legacy record — green, not n/a.
+outH3=$(cd "$fixtureRepo" && HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheH")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheH")-luna-config.json" HOME="$homeH" USERPROFILE="$(winpath "$homeH")" \
+  "$node_bin" "$wizard" status --json --items jira-cli-dist-build,bitbucket-cli-build)
+greenH3=$(echo "$outH3" | jq -c '[.items[] | select(.severity=="green") | .id] | sort')
+[ "$greenH3" = '["bitbucket-cli-build","jira-cli-dist-build"]' ] || fail "case h3: project-scope items must stay green under a legacy project record on himmel's own checkout (got: $outH3)"
+echo "ok: case h3 — project-scope items stay checked against the checkout (green, not n/a)"
 
 echo "PASS"

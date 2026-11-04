@@ -2817,9 +2817,17 @@ function projectTargetIsHimmelCheckout() {
 // with himmel's OWN checkout as target. cmdInstall now refuses that state, but
 // the old record lingers and status/ensure would probe himmel's tracked
 // .claude/settings.json (never carries enabledPlugins/statusLine) -> false red.
-// Read-time only: resolve it as user scope in memory; the file is untouched.
-function resolveLegacyProjectScope(answers) {
-  if (answers.scope === 'project' && projectTargetIsHimmelCheckout()) answers.scope = 'user';
+// Read-time only; the profile file is untouched.
+// status (read-only): scope stays project so the project-scope items are still
+// checked against the checkout; only the three settings-key items are read from
+// user scope (probes.setLegacyUserSettings).
+// ensure (writes, readOnly=false): resolved wholly as user scope in memory —
+// project scope would let it install into himmel's tracked settings file.
+function resolveLegacyProjectScope(answers, readOnly) {
+  if (answers.scope === 'project' && projectTargetIsHimmelCheckout()) {
+    if (readOnly) probesLib.setLegacyUserSettings(true);
+    else answers.scope = 'user';
+  }
 }
 
 function displayCommand(cmd) {
@@ -5684,7 +5692,7 @@ async function cmdStatus(args) {
     return 2;
   }
   const cachedAnswers = loadProfile(profilePath);
-  resolveLegacyProjectScope(cachedAnswers);
+  resolveLegacyProjectScope(cachedAnswers, true);
 
   if (args.items) {
     const known = new Set(manifest.items.map((i) => i.id));

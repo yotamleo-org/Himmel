@@ -4108,11 +4108,26 @@ const PROBES = {
   'observability-grafana': (item, ctx) => require('./probes-observability.js').probeObservabilityGrafana(item, ctx, { scopeConfigPathToCtx, spawnBashProbe, probeTimeoutSecs }),
 };
 
+// A legacy `scope: project` record whose target is himmel's OWN checkout
+// (cmdInstall refuses to create one now). The project-scope
+// items stay checked against the checkout, but these three read a settings
+// file himmel's tracked .claude/settings.json can never carry
+// (enabledPlugins / statusLine), so they are read from user scope instead.
+// Set per-process by cmdStatus (read-only); status-report.js builds the ctx and
+// is not touched. ponytail: module flag, upgrade path is a ctx field set in
+// ctxForItem once that file is free of other open work.
+const LEGACY_USER_SETTINGS_IDS = new Set(['claude-plugins-pluginSet', 'himmel-ops-plugin', 'wiring-statusline']);
+let legacyUserSettings = false;
+function setLegacyUserSettings(on) { legacyUserSettings = Boolean(on); }
+
 // Run the probe for one manifest item. ctx = { repoRoot, targetPath, scope,
 // env }. An unrecognized probe.type (should never happen — manifest-lint.mjs
 // gates the manifest itself) reads absent rather than throwing, so a single
 // bad item can't abort a whole probe sweep.
 function runProbe(item, ctx) {
+  if (legacyUserSettings && ctx && ctx.scope === 'project' && LEGACY_USER_SETTINGS_IDS.has(item.id)) {
+    ctx = Object.assign({}, ctx, { scope: 'user' });
+  }
   const type = item.probe && item.probe.type;
   const fn = PROBES[type];
   if (!fn) return { actual: 'absent', detail: `unknown probe type '${type}'` };
@@ -4134,4 +4149,4 @@ function runProbe(item, ctx) {
 // parseDotEnv is also exported for reuse: install-engine.js's
 // HIMMELCTL_SUDO_PASSWORD resolution reads the primary checkout's .env with
 // this SAME minimal parser rather than writing a second one.
-module.exports = { runProbe, parseDotEnv, scopeConfigPathToCtx, statusDeadline };
+module.exports = { runProbe, parseDotEnv, scopeConfigPathToCtx, statusDeadline, setLegacyUserSettings };
