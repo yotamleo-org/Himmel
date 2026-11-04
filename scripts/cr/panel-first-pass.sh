@@ -55,6 +55,9 @@
 #       it ran first has open hits: no round was started. Close the hits and
 #       record the pass (the message names both commands), then re-run.
 #   9 - that preflight could not be run or recorded: no round was started.
+#   8 - review-round.sh refused another round: the three-round cap, or,
+#       with --full, an outside PR past its three full rounds (the
+#       maintainer-takeover line). Nothing was reviewed.
 #   7 - input-pin failure. Two causes, both ABORT: (a) the
 #       --head this script was given names no commit in this repo, detected
 #       here before any git command consumes it; (b)

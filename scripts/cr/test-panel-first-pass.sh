@@ -1053,7 +1053,8 @@ rs7_h1="$(git -C "$rs7" rev-parse HEAD)"
 out="$( (cd "$rs7" && CR_PROFILE=none bash "$SCRIPT" --head "$rs7_h1" --branch feature --full) 2>/dev/null )"
 if [ "$(rs_count "$rs7")" = 0 ]; then ok "T1.38 CR_PROFILE=none writes no row"; else bad "T1.38 CR_PROFILE=none wrote a row"; fi
 out="$( (cd "$tmp/wt-empty" && bash "$SCRIPT" --head "$empty_sha" --branch feature-empty --full) 2>/dev/null )"
-if rs_rows "$repo" | grep -qF '"branch":"feature-empty"'; then bad "T1.38 an empty diff wrote a row"; else ok "T1.38 an empty diff writes no row"; fi
+rs_empty="$(rs_rows "$repo" | grep -F '"branch":"feature-empty"')"
+if [ -n "$rs_empty" ]; then bad "T1.38 an empty diff wrote a row"; else ok "T1.38 an empty diff writes no row"; fi
 out="$( (cd "$rs7" && bash "$SCRIPT" --head 0000000000000000000000000000000000000000 --branch feature --full) 2>/dev/null )"
 if [ "$(rs_count "$rs7")" = 0 ]; then ok "T1.38 an early refusal writes no row"; else bad "T1.38 an early refusal wrote a row"; fi
 
