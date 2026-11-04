@@ -3534,6 +3534,8 @@ out="$(TICKET_ID_INTERNAL_AUTHORS_FILE="$tmp/nobody.txt" RUN_MODE=outside run)";
 out="$(STUB_AUTHOR=app/github-actions RUN_MODE=outside run)"; check "T1.13 --outside: a same-repo Bot (github-actions) is not outside" "$out" "outside-pr: no"
 out="$(STUB_AUTHOR=app/github-actions STUB_FORK=true RUN_MODE=outside run)"; check "T1.13 --outside: a fork Bot is outside" "$out" "outside-pr: yes"
 out="$(STUB_AUTHOR=github-actions RUN_MODE=outside run)"; check "T1.13 --outside: a User named like a bot is judged by type, not login" "$out" "outside-pr: yes"
+out="$(STUB_AUTHOR=dependabot RUN_MODE=outside run)"; check "T1.13 --outside: a User named dependabot is outside" "$out" "outside-pr: yes"
+out="$(STUB_AUTHOR=app/dependabot RUN_MODE=outside run)"; check "T1.13 --outside: the dependabot Bot is not outside" "$out" "outside-pr: no"
 rc=0; out="$(STUB_SNAPSHOT_FAIL=1 RUN_MODE=outside run 2>&1)" || rc=$?
 check "T1.5 --outside: an unreadable snapshot exits 2" "$rc" "2"
 notcontains "T1.5 --outside: an unreadable snapshot prints no verdict" "$out" "outside-pr:"

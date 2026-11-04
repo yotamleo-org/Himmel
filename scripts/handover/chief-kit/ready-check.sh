@@ -295,6 +295,7 @@ outside_pr_of() {
     read -r fork bot login <<< "$f"
     if [ "$fork" = true ] || [ -z "$login" ]; then echo yes
     elif [ "$bot" = true ]; then echo no
+    elif printf '%s' "$login" | grep -qixE 'dependabot(\[bot\])?'; then echo yes
     elif [ "$(author_class "$login")" = 1 ]; then echo no
     else echo yes
     fi

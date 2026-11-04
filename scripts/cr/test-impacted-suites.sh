@@ -184,6 +184,7 @@ if [ "$rc" -eq 1 ]; then pass "a verdict for a suite that is not impacted does n
 # --- T1.41. --check --record appends one impacted row; without it nothing changes.
 REC_LEDGER="$(git -C "$FX" rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
 rec_head="${range##*..}"
+git -C "$FX" update-ref refs/remotes/origin/main "${range%%..*}"
 rm -rf "$REC_LEDGER"
 plain_out="$( cd "$FX" && printf '%s\n%s\n' "$V1" "$V2" | bash "$IS" --check "$range" 2>&1 )"; plain_rc=$?
 rec_out="$( cd "$FX" && printf '%s\n%s\n' "$V1" "$V2" | bash "$IS" --check "$range" --record --branch feat/x --head "$rec_head" 2>&1 )"; rec_rc=$?
@@ -210,6 +211,13 @@ if [ "$rc" -eq 4 ]; then pass "T1.41 a failed append exits 4"; else fail "T1.41 
 if [ "$rc" -eq 2 ]; then pass "T1.41 --record without --check refuses (rc2)"; else fail "T1.41 --record without --check rc=$rc"; fi
 ( cd "$FX" && printf '' | bash "$IS" --check "$range" --record --branch feat/x >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ]; then pass "T1.41 --record without --head refuses (rc2)"; else fail "T1.41 --record without --head rc=$rc"; fi
+rm -rf "$REC_LEDGER"
+other_head="${range%%..*}"
+( cd "$FX" && printf '%s\n%s\n' "$V1" "$V2" | bash "$IS" --check "$range" --record --branch feat/x --head "$other_head" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ] && [ ! -e "$REC_LEDGER" ]; then pass "T1.41 --record refuses a --head the range does not end at (rc2, no row)"; else fail "T1.41 head mismatch: rc=$rc"; fi
+( cd "$FX" && printf '' | bash "$IS" --check "$rec_head..$rec_head" --record --branch feat/x --head "$rec_head" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ] && [ ! -e "$REC_LEDGER" ]; then pass "T1.41 --record refuses a range not from the default branch's merge-base (rc2, no row)"; else fail "T1.41 partial range: rc=$rc"; fi
+git -C "$FX" update-ref -d refs/remotes/origin/main
 
 # --- 9. --check with nothing impacted is clean, and says so -----------------
 change docs/foo/other.md

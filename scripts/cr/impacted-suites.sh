@@ -58,6 +58,8 @@
 #       With --record --branch <b> --head <40-hex>, it first appends one
 #       `impacted` row (counts, SKIP count, that exit code) to the git-common
 #       CR ledger; the exit code is unchanged, and a failed append exits 4.
+#       The range must end at --head and start from its merge-base with the
+#       remote default branch, else exit 2 and no row.
 #   impacted-suites.sh --runner <path>
 #       Print the ONE command CI uses to run a JS/TS suite path,
 #       e.g. `node --test scripts/hooks/foo.test.mjs` or
@@ -537,6 +539,20 @@ fi
 # and exited 0. -z output is raw; tr turns it into the one-per-line lists the
 # loops below read. ponytail: a name holding a newline still splits in two (a
 # bogus path, never a missed one); upgrade path is NUL-reading loops if one ever appears.
+# --record certifies the whole PR at --head: the range must end at that head
+# and start from its merge-base with the remote default branch.
+if [ "$record" -eq 1 ]; then
+    if [ "$head_sha" != "$rec_head" ]; then
+        echo "impacted-suites.sh: --record --head ${rec_head} is not the range's head (${head_sha})" >&2; exit 2
+    fi
+    case "${BASH_SOURCE[0]}" in */*) _is_d="${BASH_SOURCE[0]%/*}" ;; *) _is_d=. ;; esac
+    # shellcheck source=scripts/lib/review-default-base.sh
+    # shellcheck disable=SC1091
+    . "$_is_d/../lib/review-default-base.sh" || exit 2
+    if ! rec_ref=$(cr_default_base_ref) || ! rec_mb=$(git merge-base "$rec_ref" "$head_sha") || [ "$rec_mb" != "$mb" ]; then
+        echo "impacted-suites.sh: --record needs a range from the merge-base of the remote default branch and ${head_sha}" >&2; exit 2
+    fi
+fi
 if ! changed=$(git diff -z --name-only --no-renames "$mb" "$head_sha" | tr '\0' '\n'); then
     echo "impacted-suites.sh: git diff ${mb}..${head_sha} failed" >&2; exit 2
 fi
