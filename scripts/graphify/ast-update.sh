@@ -396,15 +396,16 @@ if [ -f "$_pre_ast" ]; then
     rm -f "$_pre_ast"
   fi
 fi
-# This does NOT run harden-graph.py. `graphify update --force`
-# rewrites this OUT_DIR in place with no scratch/promote staging (unlike
-# refresh-graph-map.sh), so nothing here guarantees graph.json exists or is
-# well-formed on every hourly tick (confirmed by this script's own hermetic
-# stub, which never produces one) -- wiring a hard-failing harden step to an
-# in-place AST-only write would need touching every existing test double to
-# grow a real fixture graph for a bulk-mechanical harden, for a benefit
-# (surviving the hourly AST refresh) already delivered by the weekly
-# refresh-graph-map.sh cadence re-applying the harden on its own schedule.
+# The rebuild rewrites graph.json in place, which drops the harden's shell
+# sources/calls edges, so re-apply the harden while the promote
+# lock is still held. Fail-soft like semantic-update.sh: harden-graph.py writes
+# graph.json atomically, so a failure leaves the rebuilt graph standing and the
+# tick still succeeds; the next refresh re-hardens it. A graphify that left no
+# graph.json (this suite's older stubs) has nothing to harden.
+if [ "$_graphify_rc" -eq 0 ] && [ -f "$OUT_DIR/graph.json" ]; then
+  python3 "$(dirname "${BASH_SOURCE[0]}")/harden-graph.py" --out "$OUT_DIR" --root "$CORPUS_ROOT" >&2 \
+    || echo "ast-update: WARN harden-graph.py failed; the rebuilt graph stands, the next refresh re-hardens it" >&2
+fi
 if [ "$_graphify_rc" -eq 0 ]; then
   exit 0
 fi
