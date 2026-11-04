@@ -482,11 +482,11 @@ class Judge:
         for d, mt, mark, _line, _rest in info:
             if 'RESUME' not in os.path.basename(d) or time.time() - mt >= RESUME_AGE or mark == 'WRAPPED':
                 continue
-            # a WRAPPED doc that links to the RESUME doc (names it off its last bullet, or is its stem) consumes it, unless
-            # the wrap bullet hands off to this very doc. The file mtime and the leg number are no link.
-            # ponytail: a successor that never names the doc holds for up to RESUME_AGE; a recorded parent link is the upgrade path.
+            # a WRAPPED doc that names the RESUME doc outside its last bullet consumes it; a last bullet that names it hands
+            # off to it. The file mtime, the leg number and the stem are no link: a RESUME doc made after its stem doc wrapped is live work.
+            # ponytail: a successor that never names the doc holds for up to RESUME_AGE, a stem-named wrapped doc included; a recorded parent link is the upgrade path.
             b = os.path.basename(d)
-            if any(m2 == 'WRAPPED' and b not in l2 and successor_of(b, d2, r2)
+            if any(m2 == 'WRAPPED' and b not in l2 and successor_of(b, r2)
                    for d2, _mt2, m2, l2, r2 in info if d2 != d):
                 continue
             return 'alive'
@@ -550,11 +550,10 @@ def dir_unlock(fd):
     os.close(fd)  # closing the only descriptor releases the flock
 
 
-def successor_of(resume, other, rest):
-    """A WRAPPED doc consumes a RESUME doc only through an explicit link: it names the doc off its last bullet, or is
-    the doc's stem. Neither a file mtime nor a shared leg number is a link: a stale hold costs a 24 h wait, a wrong
-    release a double launch."""
-    return any(resume in l for l in rest) or os.path.basename(other) == resume.replace('-RESUME', '')
+def successor_of(resume, rest):
+    """A WRAPPED doc consumes a RESUME doc only through an explicit mention of it off its last bullet. A file mtime, a
+    shared leg number and a shared stem are no link: a stale hold costs a 24 h wait, a wrong release a double launch."""
+    return any(resume in l for l in rest)
 
 
 def refusal(path, fields, key):

@@ -163,8 +163,8 @@ put_row scripts/c07.sh HIMMEL-9117 alpha "$D07"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c07.sh
 same "I3 a wrapped worker with an unwrapped RESUME doc under 24 h keeps its rows" "$RC" 1
 
-# a RESUME doc is consumed only by an explicit link (a WRAPPED doc names it off its
-# last bullet, or is its stem), never by a file mtime or a shared leg number: a stale hold costs a 24 h wait, a wrong release a double launch.
+# a RESUME doc is consumed only by an explicit mention (a WRAPPED doc names it outside its last bullet), never by a file mtime,
+# a shared leg number or a shared stem: a stale hold costs a 24 h wait, a wrong release a double launch.
 # The old real shape (the worker wrapped its own doc, same leg, no mention) used to release the rows; it now holds.
 D11R="$(mkdoc HIMMEL-9420-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D11R"
@@ -196,7 +196,14 @@ touch -d '1 hour ago' "$D15R"
 D15="$(mkdoc HIMMEL-9424-case.md '- 10:00 WRAPPED — PR merged')"
 put_row scripts/c15.sh HIMMEL-9424 alpha "$D15"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c15.sh
-same "I3 a WRAPPED doc named as the RESUME doc minus -RESUME consumes it" "$RC" 0
+same "I3 a WRAPPED doc named as the RESUME doc minus -RESUME, with no mention of it, holds (changed: a shared stem is no link)" "$RC" 1
+# a RESUME doc made AFTER its stem doc wrapped is new live work: the stem doc's WRAPPED bullet cannot have released it
+D18="$(mkdoc HIMMEL-9427-case.md '- 10:00 WRAPPED — PR merged')"
+touch -d '3 hours ago' "$D18"
+mkdoc HIMMEL-9427-case-RESUME.md '# resume doc, made after the stem doc wrapped' > /dev/null
+put_row scripts/c18.sh HIMMEL-9427 alpha "$D18"
+run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c18.sh
+same "I3 a RESUME doc created after its stem doc wrapped, the last WRAPPED bullet not naming it, holds" "$RC" 1
 D16R="$(mkdoc HIMMEL-9425-N7f-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D16R"
 D16="$(mkdoc HIMMEL-9425-N7c-case.md $'- 09:00 LIVE — HIMMEL-9425-N7f-RESUME.md\n- 10:00 WRAPPED — handed to HIMMEL-9425-N7f-RESUME.md')"
