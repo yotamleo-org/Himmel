@@ -1204,5 +1204,17 @@ case "$rc:$(grep '^graphify extract' "$WS/calls.log")" in
   *) fail "T85 (rc=$rc) '$(grep '^graphify extract' "$WS/calls.log")': $out" ;;
 esac
 
+echo "T86: templates, testdata, evals, -fixtures and VENDORED.md dirs are never planned or stamped; a content file beside them still is (HIMMEL-9140)"
+C86="$WS/c86"; new_corpus "$C86"
+mkdir -p "$C86/plugins/p/templates" "$C86/.github/ISSUE_TEMPLATE" "$C86/_Templates" "$C86/scripts/testdata" "$C86/plugins/p/evals/case" "$C86/scripts/ci/x-fixtures" "$C86/vend/skills/s" "$C86/docs"
+for f in plugins/p/templates/t.md .github/ISSUE_TEMPLATE/bug.md _Templates/n.md scripts/testdata/d.md plugins/p/evals/case/g.md scripts/ci/x-fixtures/f.md vend/skills/s/SKILL.md vend/VENDORED.md; do printf 'x\n' > "$C86/$f"; done
+printf 'real\n' > "$C86/docs/real.md"
+out=$(run --name t86 --corpus-root "$C86" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C86/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "a.md b.md docs/real.md sub/c.md" ] && pass "T86 only the content files are stamped" || fail "T86 (rc=$rc) '$n': $out"
+printf 'real2\n' > "$C86/docs/real.md"; printf 'y\n' > "$C86/plugins/p/templates/t.md"
+out=$(python3 "$HERE/semantic-merge.py" status --root "$C86" --out "$C86/graphify-out" 2>&1)
+[ "$out" = "backed_off=0 unstamped=1 oldest_unstamped=0d" ] && pass "T86 an edited template is not unstamped, an edited content file is" || fail "T86 status: $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

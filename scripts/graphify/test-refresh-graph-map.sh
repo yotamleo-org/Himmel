@@ -1618,6 +1618,24 @@ out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify" PATH="$HXBIN:$PATH" \
   && pass "T22e a handovers line in .graphify-corpus-ignore keeps handovers/ out of the scratch copy" \
   || fail "T22e scratch copy should hold notes/n.md and no handovers/ file: $(cat "$HXLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
 
+# --- T22f: templates, testdata, evals, -fixtures and VENDORED.md
+# dirs stay out of the scratch copy with no ignore file at all, while a content
+# note beside them is copied. Scratch fixture only. ---
+NCCORPUS="$WS/nccorpus"; NCMAPS="$WS/ncmaps"; NCLOG="$WS/nc.log"
+mkdir -p "$NCCORPUS/notes" "$NCCORPUS/plugins/p/templates" "$NCCORPUS/scripts/testdata" "$NCCORPUS/plugins/p/evals" "$NCCORPUS/ci/x-fixtures" "$NCCORPUS/vend/skills" "$NCMAPS"
+printf '# n\n' > "$NCCORPUS/notes/n.md"
+for f in plugins/p/templates/t.md scripts/testdata/d.md plugins/p/evals/g.md ci/x-fixtures/f.md vend/skills/s.md vend/VENDORED.md; do printf '# x\n' > "$NCCORPUS/$f"; done
+sed "s#$HXLOG#$NCLOG#g" "$HXBIN/graphify" > "$HXBIN/graphify-nc"; chmod +x "$HXBIN/graphify-nc"
+: > "$NCLOG"
+out=$( GRAPHIFY_MAP_BIN="$HXBIN/graphify-nc" PATH="$HXBIN:$PATH" \
+  bash "$SCRIPT" --name nctest --corpus-root "$NCCORPUS" --backend claude-cli \
+  --maps-dir "$NCMAPS" --title "Nc Map" --slug nc-map --corpus-tag nc 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T22f exit 0 (got $rc): $out"
+nc_seen="$(cat "$NCLOG")" # read-sink-ok: fixture log the stub wrote under the suite's own $WS
+[ "$nc_seen" = "./notes/n.md" ] \
+  && pass "T22f only the content note reaches the scratch copy; templates, testdata, evals, -fixtures and VENDORED dirs do not" \
+  || fail "T22f scratch copy should hold only notes/n.md: $nc_seen"
+
 # --- T23: the sideline `mv "$OUT_DIR/cache"
 # "$CACHE_BACKUP"` that makes room for the staged cache was unguarded (no
 # `if !`, no error message, no controlled exit). This script runs under
