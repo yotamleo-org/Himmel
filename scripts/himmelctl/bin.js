@@ -2813,6 +2813,23 @@ function projectTargetIsHimmelCheckout() {
   return Boolean(targetGit) && Boolean(cloneGit) && targetGit === cloneGit;
 }
 
+// An install recorded before the own-checkout refusal may carry scope=project
+// with himmel's OWN checkout as target. cmdInstall now refuses that state, but
+// the old record lingers and status/ensure would probe himmel's tracked
+// .claude/settings.json (never carries enabledPlugins/statusLine) -> false red.
+// Read-time only; the profile file is untouched.
+// status (read-only): scope stays project so the project-scope items are still
+// checked against the checkout; only the three settings-key items are read from
+// user scope (probes.setLegacyUserSettings).
+// ensure (writes, readOnly=false): resolved wholly as user scope in memory —
+// project scope would let it install into himmel's tracked settings file.
+function resolveLegacyProjectScope(answers, readOnly) {
+  if (answers.scope === 'project' && projectTargetIsHimmelCheckout()) {
+    if (readOnly) probesLib.setLegacyUserSettings(true);
+    else answers.scope = 'user';
+  }
+}
+
 function displayCommand(cmd) {
   return cmd.argv.map(shellQuote).join(' ');
 }
@@ -5675,6 +5692,7 @@ async function cmdStatus(args) {
     return 2;
   }
   const cachedAnswers = loadProfile(profilePath);
+  resolveLegacyProjectScope(cachedAnswers, true);
 
   if (args.items) {
     const known = new Set(manifest.items.map((i) => i.id));
@@ -6148,6 +6166,7 @@ async function cmdEnsure(args) {
     return 2;
   }
   const cachedAnswers = loadProfile(profilePath, !args.dryRun);
+  resolveLegacyProjectScope(cachedAnswers);
   // install-profile.json carries no "recorded at" field of its
   // own (writeCache() just serializes the answers) — the file's own mtime is
   // the best available "when" for the per-item disable-evidence lines below.
