@@ -1267,6 +1267,8 @@ printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none fo
 # former) from the session; HEADED_ARM_LAUNCHER/_UNAME/WORKER_SESSION_ID it resets or
 # defaults itself, HIMMEL_INITIATIVE it never reads - those need no scrub.
 mkdir -p "$SUITE_HOME/.himmel/eval/worker-wt"
+# The fixture launcher runs from a temp dir with no guard hooks; the launch guard would refuse it (exit 18).
+export UNGUARDED_LAUNCH_OK=1
 export HEADED_ARM_REPO="$SUITE_HOME/.himmel/eval/worker-wt"
 # Control: the same launch WITHOUT the scrub does pre-trust. Without it, the
 # missing-file check below would also pass when the launcher never reached the
@@ -1282,6 +1284,7 @@ HIMMEL_FLEET_SLOTS="$LLD/slots" HEADED_ARM_WORKER_TARGET="$LLD/target.sh" HEADED
     HIMMELCTL_CACHE_DIR="$CACHE" env -u HEADED_ARM_REPO -u WORKER_SESSION_REPO \
     bash "$WORKER_SESSION_SH" --no-profile HIMMEL-3270-u1 "$LLD/doc.md" "$LLD/sig" 99999999999 "$LLD/log" claude-sonnet-5 >/dev/null 2>&1 || true
 unset HEADED_ARM_REPO
+unset UNGUARDED_LAUNCH_OK
 if [ -e "$SUITE_HOME/.claude.json" ]; then echo "FAIL the launcher pre-trusted into the suite HOME ($SUITE_HOME/.claude.json) - HEADED_ARM_REPO leaked in from the session"; FAILED=$((FAILED + 1))
 else echo "PASS a worker-session HEADED_ARM_REPO did not reach the launcher (no suitehome/.claude.json)"; fi
 rm -rf "$SUITE_HOME/.himmel"

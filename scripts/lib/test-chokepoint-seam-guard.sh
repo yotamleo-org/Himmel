@@ -71,6 +71,7 @@ assert_eq "V10 every mismatch named" "1|CSGT_A,CSGT_B" "$(CSGT_B=1 v "$E" "$A" "
 : > "$TMP/empty-env"
 assert_eq "V11 empty launch environ -> rc 2" "2|" "$(CSGT_A=1 v "$TMP/empty-env" "$A" "$A" "CSGT_A")"
 assert_eq "V12 unreadable launch environ -> rc 2" "2|" "$(CSGT_A=1 v "$TMP/no-such-env" "$A" "$A" "CSGT_A")"
+assert_eq "V13 opt-out absent at launch, set in the call -> DENY" "1|UNGUARDED_LAUNCH_OK" "$(UNGUARDED_LAUNCH_OK=1 v "$E" "$A" "$A" "UNGUARDED_LAUNCH_OK")"
 
 # --- Anchor scope ----------------------------------------------------------
 assert_eq "A1 non-anchor copy with a mismatch -> ALLOW" "0|" "$(CSGT_B=1 v "$E" "$A" "$TMP/other" "CSGT_B")"
@@ -129,6 +130,10 @@ assert_eq "R3 merge-on-green enforces its full list" \
 assert_eq "R3b claude-headless enforces its mock seam and the four dispatch seams (HIMMEL-5138)" \
     "NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK HIMMEL_DISPATCH_MAX_CONCURRENT HIMMEL_DISPATCH_ROW_TTL_SECS HIMMEL_HEADLESS_SEAM_DIR HIMMEL_HEADLESS_NO_FLOCK HIMMEL_LEGACY_NAMES" \
     "$(_csg_registry_seams "$REGISTRY" scripts/lib/claude-headless.sh)"
+assert_eq "R_unguarded_worker headed-arm-worker.sh enforces the opt-out seam" "yes" \
+    "$(case " $(_csg_registry_seams "$REGISTRY" scripts/handover/chief-kit/headed-arm-worker.sh) " in *" UNGUARDED_LAUNCH_OK "*) echo yes ;; *) echo no ;; esac)"
+assert_eq "R_unguarded_arm arm-resume.sh enforces the opt-out seam" "yes" \
+    "$(case " $(_csg_registry_seams "$REGISTRY" scripts/handover/arm-resume.sh) " in *" UNGUARDED_LAUNCH_OK "*) echo yes ;; *) echo no ;; esac)"
 _csg_registry_seams "$REGISTRY" scripts/not-a-chokepoint.sh >/dev/null; rc=$?
 assert_eq "R4 an unregistered key fails (the gate then refuses)" "fail" "$([ "$rc" -ne 0 ] && echo fail || echo ok)"
 _csg_registry_seams "$TMP/no-registry.json" scripts/quiet-run.sh >/dev/null; rc=$?

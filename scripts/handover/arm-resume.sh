@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# launch-guard-ok-file: folder checked by launch-guard-check.sh in arm-resume.sh
 # arm-resume.sh — actually create the scheduled relaunch + dedupe.
 #
 # Unlike scripts/handover/schedule-resume.sh (which prints the
@@ -193,6 +194,11 @@
 #      only catches the SAME handover armed twice; this catches two handovers
 #      naming the same ticket. Pass --force or set ARM_TICKET_DUP_OK=1 for a
 #      deliberate parallel worker on the same ticket.
+#   18 unguarded-folder refused — the resume folder (for --worktree, the checkout
+#      the worktree is cut from) would not load the himmel guard hooks (checked by
+#      scripts/lib/launch-guard-check.sh at arm time, before any worktree, at job or
+#      state write). Set UNGUARDED_LAUNCH_OK=1 in the launching shell to arm it
+#      with one WARN. --dry-run reports the refusal and exits 0.
 #   14 vault-cwd refused — no --cwd/--worktree/resume_cwd: named a work repo,
 #      so the auto-detected cwd (the handover's own git toplevel) would be
 #      used, and that directory is a SINGLE-WRITER repo — e.g. a
@@ -2561,6 +2567,32 @@ if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_chief" -eq 0 ]; then
     unset _iso_fm _iso_mode _iso_cwd _iso_tkt _iso_root _iso_primary
 fi
 
+# A resume folder that would not load the himmel guard hooks is refused at arm time (exit 18), before
+# any worktree is created, the at job is written or state is touched. Under --dry-run the refusal is only
+# reported. UNGUARDED_LAUNCH_OK=1 (launching shell) arms it anyway with one WARN. ARM_VAULT_CWD_OK keeps its
+# own meaning: an auto-detected single-writer cwd needs both variables.
+_arm_launch_guard() {
+    local _lg_dir="$1" _lg_reason _lg_rc _lg_name
+    _lg_rc=0; _lg_reason="$(bash "$SCRIPT_DIR/../lib/launch-guard-check.sh" "$_lg_dir")" || _lg_rc=$?
+    [ "$_lg_rc" -ne 0 ] || return 0
+    case "$_lg_rc" in
+        1) ;;
+        2) _lg_reason="folder cannot be resolved" ;;
+        *) _lg_reason="launch-guard-check failed (rc $_lg_rc)" ;;
+    esac
+    _lg_dir="$(cd -P -- "$_lg_dir" 2>/dev/null && pwd -P)" || _lg_dir="$1"  # swallow-ok: an unresolvable folder is named raw in the message
+    _lg_name="$(_compose_arm_name "$(_infer_ticket "$HANDOVER_PATH")" "$HANDOVER_PATH" title)"
+    if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+        echo "WARN unguarded launch of $_lg_name in $_lg_dir ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
+    elif [ "$DRY_RUN" -eq 1 ]; then
+        echo "DRY arm-resume: would REFUSE to arm -- $_lg_dir does not load the himmel guard hooks ($_lg_reason); a real arm exits 18 unless UNGUARDED_LAUNCH_OK=1 is set." >&2
+    else
+        echo "arm-resume: refusing to launch $_lg_name: $_lg_dir does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+        exit 18
+    fi
+    return 0
+}
+
 if [ -n "$WORKTREE_BRANCH" ]; then
     if [ -n "$RESUME_CWD_OVERRIDE" ]; then
         echo "ERR arm-resume: --cwd and --worktree are mutually exclusive (the worktree IS the cwd)" >&2
@@ -2577,6 +2609,10 @@ if [ -n "$WORKTREE_BRANCH" ]; then
     # primary checkout per the operator rule).
     _wt_root=$(cd "$SCRIPT_DIR/../.." && pwd)
     _wt_path="$_wt_root/.claude/worktrees/${WORKTREE_BRANCH/\//+}"
+    # A worktree that does not exist yet is cut from this checkout: check the parent, before creating it.
+    # One that already exists is reused as it is: check that folder, before anything is written.
+    _arm_launch_guard "$_wt_root"
+    [ ! -d "$_wt_path" ] || _arm_launch_guard "$_wt_path"
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "DRY arm-resume: would create worktree '$WORKTREE_BRANCH' at '$_wt_path' and resume there"
         RESUME_CWD="$_wt_path"
@@ -2720,6 +2756,8 @@ else
     fi
     unset _fm_cwd _fm_cwd_found
 fi
+# Every non-worktree path (--worktree was checked above: its parent checkout, and the folder itself when reused).
+[ -n "$WORKTREE_BRANCH" ] || _arm_launch_guard "$RESUME_CWD"
 
 # ---------------------------------------------------------------------------
 # arm a worker on a
@@ -4565,13 +4603,14 @@ fi"
     # SIGTERM once its work is done and a successor (if any) is armed -- see
     # docs/handover/afk-mode.md's Launch preamble.
     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
-    local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
+    # ponytail: the folder is checked at arm time only; a folder that loses its guard wiring before the at job fires launches unguarded; upgrade path: the runner calls launch-guard-check.sh before exec
+    local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
     if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
         local q_hb q_log q_curl
         q_hb=$(printf '%q' "$HEADROOM_BIN")
         q_log=$(printf '%q' "$HOME/.headroom-proxy.log")
         q_curl=$(printf '%q' "$HEADROOM_CURL")
-        tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
+        tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
     fi
     _arm_require_worker_autocompact_argv "$tail"
     local q_flow_lib q_task q_note
@@ -4979,7 +5018,7 @@ schedule_arm() {
                 # the resumed session self-exit with SIGTERM once a
                 # successor is armed (see afk-mode.md).
                 # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
-                local launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
+                local launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1
 ${q_automerge}claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
                 if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
@@ -4988,7 +5027,7 @@ ${q_automerge}claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
                     q_log=$(printf '%q' "$HOME/.headroom-proxy.log")
                     q_curl=$(printf '%q' "$HEADROOM_CURL")
                     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
-                    launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
+                    launch_lines="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
 export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1
 $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }
 if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then

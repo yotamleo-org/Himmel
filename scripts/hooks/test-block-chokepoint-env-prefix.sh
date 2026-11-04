@@ -128,6 +128,7 @@ assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-worker.sh" "$(j "HEADED_
 assert_deny "HEADED_ARM_ALLOW_TICKET_DUP= on headed-arm-worker.sh" "$(j "HEADED_ARM_ALLOW_TICKET_DUP=1 bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 assert_deny "HIMMEL_FLEET_CAP= on headed-arm-worker.sh"            "$(j "HIMMEL_FLEET_CAP=99 bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 assert_deny "HIMMEL_POLICY_FOLLOWS_HOME= on headed-arm-worker.sh"  "$(j "HIMMEL_POLICY_FOLLOWS_HOME=1 HOME=/tmp/h bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
+assert_deny "UNGUARDED_LAUNCH_OK= on headed-arm-worker.sh by absolute path" "$(j "UNGUARDED_LAUNCH_OK=1 bash $REPO_ROOT/scripts/handover/chief-kit/headed-arm-worker.sh x")"
 
 # --- DENIED: the named ticket shapes + wrapper/compound variants ---
 assert_deny "env wrapper on $MERGE_ON_GREEN"            "$(j "env ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
