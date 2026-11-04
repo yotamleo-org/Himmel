@@ -36,6 +36,7 @@ GRANT_RE = re.compile(r'\.grant\.[A-Za-z][A-Za-z0-9]*-\d+$')
 TMP_PREFIX = '%00'       # escaping only ever makes %25 and %2F, so a name starting %00 is never a row
 MAX_NAME = 255
 LOCK_WAIT = 5.0          # seconds a row write waits for the directory lock before it faults
+SIDECARS = ('.worker-preface.md', '.worker-contract.md')  # a launch's sidecars carry the doc's name; they are not a doc of the key
 LEG_RE = re.compile(r'-(N\d+)[a-z]*-')  # the leg number in a handover doc's name
 
 # ---- copied from next-dispatchable.sh (inline python): Task 3 removes the originals ------------------------
@@ -314,6 +315,18 @@ def run_bounded(cmd, timeout, cwd=None):
         return None
 
 
+def ql_slug(path, root):
+    """queue-lock.sh _ql_slug_for_root: the path relative to the root, .md dropped, / as __, every other byte but [A-Za-z0-9_-] a -."""
+    p = path.replace('\\', '/')
+    if p.endswith('.md'):
+        p = p[:-3]
+    root = root.replace('\\', '/').rstrip('/')
+    if root and p.startswith(root + '/'):
+        p = p[len(root) + 1:]
+    p = p.replace('/', '__')
+    return ''.join(c if re.fullmatch(r'[A-Za-z0-9_-]', c) else '-' * len(c.encode('utf-8')) for c in p)
+
+
 def handover_root():
     r = os.environ.get('HANDOVER_DIR')
     if r:
@@ -329,7 +342,8 @@ class Judge:
     def __init__(self, repo, deadline=None):
         self.repo = repo
         self.deadline = deadline  # epoch seconds: past it no call is spawned (answer fault), and each call is bounded by what is left
-        self.ql_cache, self.pr_cache, self.scan_cache = {}, {}, {}
+        self.ql_cache, self.pr_cache, self.scan_cache, self.resume_cache = {}, {}, {}, {}
+        self.sweep_rows = None  # the one queue-lock status --sweep of this run: a list of (slug, status), or 'fault'
         self.scan_faulted = set()
         self.root = None
 
@@ -339,25 +353,59 @@ class Judge:
             return timeout
         return max(0, min(timeout, self.deadline - time.time()))
 
+    def ql_path(self):
+        return os.environ.get('HOLDS_QUEUE_LOCK') or os.path.join(HERE, '..', 'queue-lock.sh')
+
+    def sweep(self):
+        """The held locks as [(slug, status)], or 'fault': ONE queue-lock.sh status --sweep serves every doc of the run."""
+        if self.sweep_rows is None:
+            ql = self.ql_path()
+            t = self.left(QL_TIMEOUT)
+            res = run_bounded(['bash', ql, 'status', '--sweep'], t) if t > 0 and os.path.isfile(ql) else None
+            if res is None or res[0] not in (0, 20):
+                self.sweep_rows = 'fault'
+            else:
+                self.sweep_rows = []
+                for l in res[1].splitlines():
+                    m = re.match(r'slug=(\S+)\s.*?\bstatus=(\S+)', l)
+                    if m:
+                        self.sweep_rows.append((m.group(1), m.group(2)))
+        return self.sweep_rows
+
     def lock_state(self, doc):
-        """'free' | 'alive' | 'fault' from the queue-lock.sh status table."""
+        """'free' | 'alive' | 'fault'. A sweep line names the doc when its slug is the doc's slug under the handover root, or
+        ends __<the doc's basename slug>: no such line is free, STALE-DEAD is free, any other status (IDLE-HELD?, CORRUPT,
+        UNKNOWN, INDETERMINATE too) is alive. A slug the sweep's 200-char cap could cut is put to one `status <doc>`."""
         if doc in self.ql_cache:
             return self.ql_cache[doc]
-        ql = os.environ.get('HOLDS_QUEUE_LOCK') or os.path.join(HERE, '..', 'queue-lock.sh')
+        if self.root is None:
+            self.root = handover_root().rstrip('/')
+        full, base = ql_slug(doc, self.root), ql_slug(os.path.basename(doc), '')
+        if len(full) >= 200 or len(base) >= 200:
+            st = self.lock_state_single(doc)
+        else:
+            rows = self.sweep()
+            if rows == 'fault':
+                st = 'fault'
+            else:
+                hits = [x for slug, x in rows if slug == full or slug == base or slug.endswith('__' + base)]
+                st = 'alive' if any(x != 'STALE-DEAD' for x in hits) else 'free'
+        self.ql_cache[doc] = st
+        return st
+
+    def lock_state_single(self, doc):
+        ql = self.ql_path()
         t = self.left(QL_TIMEOUT)
         res = run_bounded(['bash', ql, 'status', doc], t) if t > 0 and os.path.isfile(ql) else None
         if res is None:
-            s = 'fault'
-        elif res[0] == 0:
-            s = 'free'
-        elif res[0] == 11:
-            s = 'alive'
-        elif res[0] == 12:
-            s = 'free' if 'STALE-DEAD' in res[1] else 'alive'  # plain STALE: death not proven, kept
-        else:
-            s = 'fault'
-        self.ql_cache[doc] = s
-        return s
+            return 'fault'
+        if res[0] == 0:
+            return 'free'
+        if res[0] == 11:
+            return 'alive'
+        if res[0] == 12:
+            return 'free' if 'STALE-DEAD' in res[1] else 'alive'  # plain STALE: death not proven, kept
+        return 'fault'
 
     def pr_state(self, pr):
         """'open' | 'done' | 'fault' from one gh pr view, 5 s."""
@@ -402,7 +450,7 @@ class Judge:
             else:
                 dirs[:] = [d for d in dirs if not d.startswith('.') and d != 'specs']
             for n in files:
-                if n.endswith('.md') and rx.search(n):
+                if n.endswith('.md') and not n.endswith(SIDECARS) and rx.search(n):
                     found.append(os.path.join(dirpath, n))
         self.scan_cache[ck] = sorted(found)
         return self.scan_cache[ck]
@@ -453,15 +501,19 @@ class Judge:
             faulted = (bucket, key) in self.scan_faulted or not self.root  # no handover root: the bucket is a guess
             if doc not in docs:
                 docs.append(doc)  # a doc that is gone still has a lock to ask
-        r = self.resume_alive(docs)
+        p = self.pr_state(pr) if pr else None
+        if p == 'done':
+            return 'dead'  # the row's own PR merged or closed: its work is over, whatever RESUME doc of the key is fresh
+        ck = tuple(docs)
+        if ck not in self.resume_cache:
+            self.resume_cache[ck] = self.resume_alive(docs)  # once per doc set in a read, not once per row
+        r = self.resume_cache[ck]
         if r == 'alive':
             return 'alive'
         faulted = faulted or r == 'fault'
-        if pr:
-            p = self.pr_state(pr)
-            if p == 'open':
-                return 'alive'
-            faulted = faulted or p == 'fault'
+        if p == 'open':
+            return 'alive'
+        faulted = faulted or p == 'fault'
         for d in docs:
             s = self.lock_state(d)
             if s == 'alive':
@@ -966,26 +1018,24 @@ def row_key(path):
 
 def op_read(a):
     """TSV path key label source pr state. state is alive, dead, unknown or unparseable; only dead reads as free.
-    --keys prints key state rows per holder instead, whatever --paths-from says; a row it cannot read counts
-    its key (? when the key is unreadable too) as unknown and is named on stderr, never dropped and never free (exit 0).
-    Exit 3 when the register directory or the --paths-from file cannot be read."""
+    --keys prints key state rows per holder instead, whatever --paths-from says, and walks the bucket-file rows (_abs) too;
+    a row it cannot read counts its key (? when the key is unreadable too) as unknown and is named on stderr, never
+    dropped and never free (exit 0). A --paths-from line ending in / selects every row under that directory.
+    Exit 3 when a register directory or the --paths-from file cannot be read; a missing directory is no rows."""
     repo = primary_of(a.repo)
-    d = slug_dir(repo)
-    try:
-        names = sorted(os.listdir(d))
-    except FileNotFoundError:
-        return 0  # no directory is an empty register
-    except OSError as e:
-        sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
-        return 3
-    want = None
+    dirs = [slug_dir(repo)] + ([slug_dir(repo, '_abs')] if a.keys else [])
+    want, trees = None, []
     if a.paths_from and not a.keys:
         try:
             want = set()
             for l in open(a.paths_from, encoding='utf-8'):
                 l = l.strip()
-                n = normalize(repo, l) if l else None
-                if n:
+                if not l:
+                    continue
+                n = normalize(repo, l.rstrip('/')) if l.endswith('/') else normalize(repo, l)
+                if n and l.endswith('/'):
+                    trees.append(n[1] + '/')
+                elif n:
                     want.add(n[1])
         except OSError as e:
             sys.stderr.write('holds: cannot read %s: %s\n' % (a.paths_from, e.strerror or e))
@@ -993,41 +1043,174 @@ def op_read(a):
     judge = Judge(repo)
     keys = {}
     unreadable = []
-    for n in names:
-        if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
-            continue
-        path = unescape(n)
-        if want is not None and path not in want:
-            continue
-        full = os.path.join(d, n)
-        st, f = read_row(full)
-        if st == 'gone':
-            continue
-        if st != 'ok':
-            if not a.keys:
-                print('\t'.join([path, '?', '?', '?', '', 'unparseable']))
-            else:
-                unreadable.append(path)  # never dropped and never free: its key (or ?) reads unknown
-                cur = keys.setdefault(row_key(full), ['unknown', 0])
-                cur[1] += 1
-                cur[0] = 'unknown' if cur[0] == 'dead' else cur[0]
-            continue
+    for d in dirs:
         try:
-            state = judge.row_state(f, os.path.getmtime(full))
-        except OSError:
-            continue
-        if a.keys:
-            cur = keys.setdefault(f[0], ['dead', 0])
-            cur[1] += 1
-            rank = {'alive': 0, 'unknown': 1, 'dead': 2}
-            if rank[state] < rank[cur[0]]:
-                cur[0] = state
-        else:
-            print('\t'.join([path, f[0], f[1], f[3], f[4], state]))
+            names = sorted(os.listdir(d))
+        except FileNotFoundError:
+            continue  # no directory is no rows
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
+            return 3
+        for n in names:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            path = unescape(n)
+            if want is not None and path not in want and not any(path.startswith(t) for t in trees):
+                continue
+            full = os.path.join(d, n)
+            st, f = read_row(full)
+            if st == 'gone':
+                continue
+            if st != 'ok':
+                if not a.keys:
+                    print('\t'.join([path, '?', '?', '?', '', 'unparseable']))
+                else:
+                    unreadable.append(path)  # never dropped and never free: its key (or ?) reads unknown
+                    cur = keys.setdefault(row_key(full), ['unknown', 0])
+                    cur[1] += 1
+                    cur[0] = 'unknown' if cur[0] == 'dead' else cur[0]
+                continue
+            try:
+                state = judge.row_state(f, os.path.getmtime(full))
+            except OSError:
+                continue
+            if a.keys:
+                cur = keys.setdefault(f[0], ['dead', 0])
+                cur[1] += 1
+                rank = {'alive': 0, 'unknown': 1, 'dead': 2}
+                if rank[state] < rank[cur[0]]:
+                    cur[0] = state
+            else:
+                print('\t'.join([path, f[0], f[1], f[3], f[4], state]))
     for k in sorted(keys):
         print('\t'.join([k, keys[k][0], str(keys[k][1])]))
     if unreadable:
         sys.stderr.write('holds: %d row(s) cannot be read, counted unknown: %s\n' % (len(unreadable), ', '.join(unreadable)))
+    return 0
+
+
+BOX = 10  # seconds a sync-prs or gc run may take; past it the run stops with exit 0, the rest waits for the next wake
+
+
+def op_sync_prs(a):
+    """Rows for the files of open PRs. --files-from is TSV pr head title-key path. A file with no live row gets a pr row
+    (key = the title's key, else PR-<n>; label branch:<head>); a live row is left alone; every listed PR's rows are freshened."""
+    repo = primary_of(a.repo)
+    try:
+        lines = open(a.files_from, encoding='utf-8').read().splitlines()
+    except OSError as e:
+        sys.stderr.write('holds: cannot read %s: %s\n' % (a.files_from, e.strerror or e))
+        return 3
+    deadline = time.time() + BOX
+    judge = Judge(repo, deadline)
+    prs = set()
+    for l in lines:
+        f = (l.split('\t') + ['', '', '', ''])[:4]
+        pr, head, tkey, path = [x.strip() for x in f]
+        if not pr or not path:
+            continue
+        prs.add(pr)
+        if time.time() >= deadline:
+            break
+        m = re.search(r'[A-Za-z][A-Za-z0-9]*-\d+', tkey)  # the field is the title or its key: the first ticket key in it
+        key = m.group(0) if m else 'PR-%s' % pr
+        claim_one(repo, judge, path, key, 'branch:%s' % head, '', 'pr', pr)
+    for d in (slug_dir(repo), slug_dir(repo, '_abs')):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            st, f = read_row(os.path.join(d, n))
+            if st == 'ok' and f[3] == 'pr' and f[4] in prs:
+                try:
+                    os.utime(os.path.join(d, n))
+                except OSError:
+                    pass  # swallow-ok: the row went away; the next wake reads what is there
+    return 0
+
+
+def remove_dead(d, n, fields):
+    """Take a row judged dead out under the directory lock: rename aside, compare, unlink; put it back when it changed. -> bool removed."""
+    lock = dir_lock(d)
+    if lock is None:
+        return False
+    target = os.path.join(d, n)
+    try:
+        _tmp_n[0] += 1
+        moved = os.path.join(d, '%sgc.%d.%d' % (TMP_PREFIX, os.getpid(), _tmp_n[0]))
+        try:
+            os.rename(target, moved)
+        except OSError:
+            return False
+        st, f2 = read_row(moved)
+        if st == 'ok' and f2 == fields:
+            try:
+                os.unlink(moved)
+            except OSError:
+                pass  # swallow-ok: a leftover %00gc file is skipped by every reader
+            return True
+        try:
+            os.link(moved, target)
+        except OSError:
+            pass  # swallow-ok: the next wake reads what is there
+        try:
+            os.unlink(moved)
+        except OSError:
+            pass  # swallow-ok: as above
+        return False
+    finally:
+        dir_unlock(lock)
+
+
+def op_gc(a):
+    """Remove the rows whose holder is dead, with their grant siblings; a dead key's grants go too. Rows inside the arm grace
+    are not judged. A fault or a row it cannot read keeps the row. Stops at the BOX with exit 0."""
+    repo = primary_of(a.repo)
+    deadline = time.time() + BOX
+    judge = Judge(repo, deadline)
+    key_state = {}
+    removed = 0
+    for d in (slug_dir(repo), slug_dir(repo, '_abs')):
+        try:
+            names = sorted(os.listdir(d))
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
+            return 3
+        for n in names:
+            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
+                continue
+            if time.time() >= deadline:
+                return 0
+            full = os.path.join(d, n)
+            st, f = read_row(full)
+            if st != 'ok':
+                continue
+            try:
+                mt = os.path.getmtime(full)
+            except OSError:
+                continue
+            state = judge.row_state(f, mt)
+            rank = {'alive': 0, 'unknown': 1, 'dead': 2}
+            if f[0] not in key_state or rank[state] < rank[key_state[f[0]]]:
+                key_state[f[0]] = state
+            if state == 'dead' and remove_dead(d, n, f):
+                removed += 1
+                log_event('gc', unescape(n), f[0], '')
+        for n in names:
+            m = GRANT_RE.search(n)
+            if not m or time.time() >= deadline:
+                continue
+            gkey = m.group(0).rsplit('.', 1)[1]
+            if not os.path.exists(os.path.join(d, n[:m.start()])) or key_state.get(gkey) == 'dead':
+                try:
+                    os.unlink(os.path.join(d, n))
+                except OSError:
+                    pass  # swallow-ok: already removed
     return 0
 
 
@@ -1093,6 +1276,11 @@ def build_parser():
     sp.add_argument('--repo', required=True)
     sp.add_argument('--paths-from', metavar='FILE')
     sp.add_argument('--keys', action='store_true')
+    sp = add('sync-prs', op_sync_prs, help='pr rows for the files of open PRs (TSV pr head title-key path)')
+    sp.add_argument('--repo', required=True)
+    sp.add_argument('--files-from', required=True, metavar='TSV')
+    sp = add('gc', op_gc, help='remove dead rows and their grants')
+    sp.add_argument('--repo', required=True)
     return ap
 
 

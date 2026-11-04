@@ -186,7 +186,7 @@ stacked=0
 if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag stacked_series 2>/dev/null; then stacked=1; fi  # swallow-ok: an unreadable registry or bad value reads as off, which is today's output
 export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="$HERE/holds.py"
 exec python3 -I - <<'PY'
 import datetime, json, os, re, subprocess, sys, tempfile, time
 
@@ -222,74 +222,12 @@ def files_in(text):
     return out
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
-SCOPE_END_RE = re.compile(r'completes-ticket:|Other live workers|Touch nothing|READ ONLY|READ-ONLY|Stay off')
-
-# read-only text an older scope line carries. Stripping fails open (a dropped path is a write nobody holds), so each
-# pattern removes only what is unmistakably read-only: a backticked command, a command with a flag, an impacted-suites
-# list, a trust-path note, a single-writer note that names ANOTHER holder
-SENT = r'(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)'
-Q = r'''(?:'[^']*'|"[^"]*")'''
-ARG = r'''[^\s`;,)'"]*[/.\d_-][^\s`;,)'"]*(?<![.])'''
-CMD_SPAN_RE = re.compile(r'`(?:git grep|grep|rg|find|sed -n|cat)\b[^`]*`')
-CMD_BARE_RE = re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+(?:%s|(?!-)%s))*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+(?!(?:in|to|from|for|the|a|an|and|or|of|on|at|with|by)\b)\w+(?![\w./-]))?|%s|%s))+' % (Q, ARG, Q, ARG))  # a command word with a flag, never a name inside a path
-CMD_PAREN_RE = re.compile(r'\((?:git grep|grep|rg|find|cat)\b(?:(?!\b(?:fix|edit|update|change|write|add|patch|replace|rename)\b)[^)])*\)')  # "(find what x uses)": a read aside, unless it says to change something
-WRITING_RE = re.compile(r'\s-(?:delete|exec|execdir|ok)\b')  # a find that deletes or runs a command is not a read
-IMPACTED_RE = re.compile(r'Impacted suites' + SENT)
-SINGLE_WRITER_RE = re.compile(r'SINGLE-WRITER' + SENT)
-OTHER_HOLDER_RE = re.compile(r'#\d+|\bN\d{3,}\b')
-OWN_WRITER_RE = re.compile(r'\bthis worker\b|\b(?:the )?(?:one|sole|only) writer\b', re.I)
-TRUST_RE = re.compile(r'Trust path\s*\([^)]*\)')
 WRITES_LEAD = '> **Writes:**'
 SERIES_LEAD = '> **Series:**'
 SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')  # "1. HIMMEL-9 branch=..." one item of a series worker's block
 SERIES_ID_RE = re.compile(r'(?!\d+\.\s)(\S+)\s+(\S+)')  # "<sid> <ledger path> - read ...": what follows the lead on the Series line S2a writes
 SERIES_CAP = 4
 stacked = os.environ.get('ND_STACKED') == '1'  # the stacked_series flag, read by the shell wrapper
-
-def clean_scope(rest):
-    m = SCOPE_END_RE.search(rest)
-    rest = rest[:m.start()] if m else rest
-    rest = re.sub(r'(?i:(?:Do not|Never) (?:touch|edit|change))\b' + SENT, ' ', rest)  # a fence, not a write scope
-    rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
-    rest = IMPACTED_RE.sub(' ', rest)
-    rest = TRUST_RE.sub(' ', rest)
-    rest = SINGLE_WRITER_RE.sub(lambda g: ' ' if OTHER_HOLDER_RE.search(g.group(0)) and not OWN_WRITER_RE.search(g.group(0)) else g.group(0), rest)  # "SINGLE-WRITER: PR #n owns x" is another holder's; "this worker is the one writer of y" is ours, even when it also names a PR
-    for rx in (CMD_SPAN_RE, CMD_PAREN_RE, CMD_BARE_RE):  # a path a quoted read-only command searches is not written
-        rest = rx.sub(lambda g: g.group(0) if WRITING_RE.search(g.group(0)) else ' ', rest)
-    # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
-    def expand(g):
-        parts = [p.strip() for p in g.group(2).split(',')]
-        if all(re.fullmatch(r'[\w.+@/-]+\.\w+', p) for p in parts):
-            return ' '.join(g.group(1) + p for p in parts)
-        return g.group(1)
-    return re.sub(r'((?:[\w.+@-]+/)+)\s*\(([^)]*)\)', expand, rest)
-
-SENT_BREAK_RE = re.compile(r'(?<!\d)(?<!e\.g)(?<!i\.e)\.(?=\s|$)')  # the end of a sentence, not a list number or a dot inside a path
-
-def write_scope(line):
-    # the worker's own write scope: its "> **Writes:**" line, else (older briefs) after "writes confined to" / "Scope / do not:", up to the boilerplate that follows
-    if line.startswith('> **Writes note:**'):
-        return ''
-    if line.startswith(WRITES_LEAD):
-        text = line[len(WRITES_LEAD):]
-        while re.search(r'\([^()]*\)', text):
-            text = re.sub(r'\([^()]*\)', ' ', text)
-        return text
-    for lead in ('writes confined to', 'Scope / do not:'):
-        if lead in line:
-            return clean_scope(line.split(lead, 1)[1])
-    return ''
-
-def scope_paths(line):
-    # the paths a worker holds. The "writes confined to" list (up to its first sentence break) holds whatever it names, a
-    # directory included; a path named later on the line holds only when it is a concrete file, since a directory a
-    # brief mentions there ("grep scripts/ci", "N3185 is the single writer in scripts/config-ui/") is context
-    text = write_scope(line)
-    # ponytail: the list ends at its first sentence break, so a path after a mid-list "." reads as later prose and holds only when concrete, upgrade path: end the list at the next heading
-    m = SENT_BREAK_RE.search(text) if not line.startswith(WRITES_LEAD) and 'writes confined to' in line else None
-    inside, outside = (text[:m.start()], text[m.end():]) if m else (text, '')
-    later = [s for s in SENT_BREAK_RE.split(outside)]
-    return files_in(inside) + [f for s in later for f in files_in(s) if concrete(f) or WRITING_RE.search(s)]  # a later sentence that deletes or runs a command writes its directory too
 
 renames = []
 try:
@@ -332,14 +270,15 @@ def held_hit(i):
     # the first (file, holder) of held that holds one of the ticket's files, else None
     for f in i['files']:
         for h, who, tree in held:
-            if blocks(f, h, tree):
+            if held_key.get((h, who)) != i['key'] and blocks(f, h, tree):  # a row of the issue's own key is the issue itself
                 return f, who
     return None
 
 def held_hits(i):
     # every (file, holder) of held that holds one of the ticket's files
-    return [(f, who) for f in i['files'] for h, who, tree in held if blocks(f, h, tree)]
+    return [(f, who) for f in i['files'] for h, who, tree in held if held_key.get((h, who)) != i['key'] and blocks(f, h, tree)]
 
+held_key = {}  # (path, holder) -> the register key of a row that joined held, so an issue skips its own rows
 soft_rows = {}  # key -> the `# SOFT` text of a listed ticket whose file overlap is soft
 trust_res = []
 for tf in ('scripts/ci/ci-trust-paths.txt', 'scripts/ci/ci-trust-paths-core.txt'):
@@ -889,6 +828,7 @@ series_workers = {}  # label -> {'doc', 'sid', 'ledger', 'count'} for a live wor
 manifest_docs = set()  # the resolved path of every worker doc the manifest lists (the orphan check asks whether a ledger's writer is among them)
 workers_from = os.environ.get('ND_WORKERS_FROM', '')
 workers_unknown = False
+live_workers = []  # (label, doc, lines, keys) of every manifest worker not WRAPPED: the register, else holds.py parse, says what it writes
 worker_keys = set(os.environ.get('ND_OWNERS', '').split())
 owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
@@ -919,23 +859,13 @@ if workers_from and os.path.isfile(workers_from):
                         break
                     text += ' ' + nxt[2:]
                 return text
-            starts = [i for i, l in enumerate(lines) if l.startswith(WRITES_LEAD)]  # the one source; older briefs only have the scope line
-            starts = starts or [i for i, l in enumerate(lines) if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]  # not the front-matter description, which quotes the phrase
-            mine = [f for i in starts for f in scope_paths(block(i))]
-            held += [(f, 'live worker %s' % worker.get('label', '?'), True) for f in mine]
+            live_workers.append((worker.get('label', '?'), doc, lines, re.findall(r'[A-Z]+-\d+', os.path.basename(doc))))
             sl = [i for i, l in enumerate(lines) if l.startswith(SERIES_LEAD)] if stacked else []
             items = set(SERIES_ITEM_RE.findall(block(sl[0]))) if sl else set()
             sid_m = SERIES_ID_RE.match(lines[sl[0]][len(SERIES_LEAD):].strip()) if sl else None
             if items or sid_m:  # a series worker: its Series line names the sid and ledger (S2a), or its block has one numbered line per item. The count is the ledger's when it is read below; a block that names neither has an unknown count, so it offers no room
                 series_workers[worker.get('label', '?')] = {'doc': doc, 'sid': sid_m.group(1) if sid_m else None,
                                                             'ledger': os.path.realpath(sid_m.group(2)) if sid_m else None, 'count': len(items) or None}
-            if os.environ.get('ND_WHY') == '1':
-                for f in dict.fromkeys(mine):
-                    if not concrete(f):
-                        print('# warn: %s holds directory %s' % (worker.get('label', '?'), f))
-            if not mine and not any(lines[i][len(WRITES_LEAD):].strip() == 'none named' for i in starts if lines[i].startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a worker that writes nothing
-                workers_unknown = True  # a scope that yields no paths could be hiding the worker's files
-                print('next-dispatchable: live worker %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (worker.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
     except (OSError, ValueError):
         workers_unknown = True
 # `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
@@ -1000,6 +930,8 @@ if hf and os.path.isfile(hf):
 pr_unknown = False
 pr_files_unknown = []
 pr_keys = set()
+pr_file_map = {}  # PR number -> its files
+pr_meta = {}  # PR number -> (title, head branch)
 gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
@@ -1022,13 +954,114 @@ try:
                     pr_files_unknown.append(num)
                     continue
                 held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
+                pr_file_map[num] = [f for f in d if f]
     # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
     for line in subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'title,headRefName', '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                                capture_output=True, text=True, timeout=60, check=True).stdout.splitlines():
+        cols = line.split('\t')
+        if len(cols) >= 3:
+            pr_meta[cols[0]] = (cols[1], cols[2])
         for k in re.findall(r'[A-Za-z]+-\d+', line):
             pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % line.split('\t')[0])
 except (OSError, subprocess.SubprocessError):
     pr_unknown = True
+
+# The holds register (scripts/handover/chief-kit/holds.py): the one record of who holds which file. Rows of open PRs are
+# synced in, dead rows swept, then the rows of the candidates' files are read. A worker whose key holds a live (or unproven)
+# row has its files in the register; a worker without one falls back to its doc's Writes line through holds.py parse.
+# A register that cannot be read hides holders, so it drops rows like an unread PR list does. OFF folds the barrier: no
+# register verb runs and every worker is read from its doc.
+register_unknown = False
+holds_py = os.environ['ND_HOLDS']
+holds_off = os.path.exists(os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.himmel', 'state', 'holds', 'OFF'))
+reg_deadline = time.time() + (30 if resume_only else 60)
+
+def reg(args, fatal=True):
+    # one holds.py verb inside the read deadline: its stdout, or None. A read that fails or runs out of time marks the register unknown.
+    global register_unknown
+    left = reg_deadline - time.time()
+    r = None
+    if left > 0:
+        try:
+            r = subprocess.run([sys.executable, '-I', holds_py] + args, capture_output=True, text=True, timeout=left)
+        except (OSError, subprocess.SubprocessError):
+            r = None
+    if r is None or r.returncode != 0:
+        if fatal:
+            register_unknown = True
+            print('next-dispatchable: holds register %s failed%s: its holders are unknown' % (args[0], (': ' + r.stderr.strip().splitlines()[-1]) if r is not None and r.stderr.strip() else ''), file=sys.stderr)
+        return None
+    return r.stdout
+
+def register_rows(out):
+    # the rows of a plain read that still hold: (path, holder, key); only a dead row is free
+    rows = []
+    for l in (out or '').splitlines():
+        c = l.split('\t')
+        if len(c) == 6 and c[5] != 'dead':
+            rows.append((c[0], 'open PR %s' % c[4] if c[3] == 'pr' and c[4] else 'live worker %s' % c[2], c[1]))
+    return rows
+
+def write_tmp(text):
+    t = tempfile.NamedTemporaryFile('w', suffix='.holds', delete=False, encoding='utf-8')
+    t.write(text); t.close()
+    return t.name
+
+key_state = {}
+if not holds_off:
+    if not resume_only and not pr_unknown and pr_file_map:
+        tsv = write_tmp(''.join('%s\t%s\t%s\t%s\n' % (n, pr_meta.get(n, ('', ''))[1], re.sub(r'\s+', ' ', pr_meta.get(n, ('', ''))[0]), f)
+                                for n, fs in pr_file_map.items() for f in fs if '\t' not in f and '\n' not in f))
+        reg(['sync-prs', '--repo', repo, '--files-from', tsv], fatal=False)
+        os.unlink(tsv)
+    if not resume_only and not pr_unknown:
+        reg(['gc', '--repo', repo], fatal=False)
+    if workers_from:
+        for l in (reg(['read', '--repo', repo, '--keys']) or '').splitlines():
+            c = l.split('\t')
+            if len(c) == 3:
+                key_state[c[0]] = c[1]
+    want = []
+    for i in issues.values():
+        for f in i['files']:
+            want += [f, canon(f)]
+    pf = write_tmp('\n'.join(dict.fromkeys(want)) + '\n')
+    have = {(h, who) for h, who, _ in held}
+    for path, who, key in register_rows(reg(['read', '--repo', repo, '--paths-from', pf])):
+        held_key[(path, who)] = key
+        if (path, who) not in have:  # an open PR's diff already held its files: one hold per (file, holder), or a soft overlap counts twice
+            held.append((path, who, False))  # a row is one file, compared exactly
+            have.add((path, who))
+    os.unlink(pf)
+
+held_all_rows = None  # every live row of the register, read once, for the classifier's --held file
+
+def register_all():
+    global held_all_rows
+    if held_all_rows is None:
+        held_all_rows = [] if holds_off or register_unknown else [r[0] for r in register_rows(reg(['read', '--repo', repo], fatal=False))]
+    return held_all_rows
+
+for label, doc, lines, wkeys in live_workers:
+    if any(key_state.get(k) in ('alive', 'unknown') for k in wkeys) and not holds_off:
+        continue  # its files are in the register
+    try:
+        r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
+        if r.returncode != 0:
+            raise subprocess.SubprocessError(r.stderr.strip())
+    except (OSError, subprocess.SubprocessError) as e:
+        workers_unknown = True
+        print('next-dispatchable: live worker %s: holds.py parse of %s failed (%s): its files are unknown' % (label, os.path.basename(doc), e), file=sys.stderr)
+        continue
+    mine = [l.split('\t', 1)[1] for l in r.stdout.splitlines() if '\t' in l]
+    held += [(f, 'live worker %s' % label, True) for f in mine]
+    if os.environ.get('ND_WHY') == '1':
+        for f in dict.fromkeys(mine):
+            if not concrete(f):
+                print('# warn: %s holds directory %s' % (label, f))
+    if not mine and not any(l[len(WRITES_LEAD):].strip() == 'none named' for l in lines if l.startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a worker that writes nothing
+        workers_unknown = True  # a scope that yields no paths could be hiding the worker's files
+        print('next-dispatchable: live worker %s yields no held paths (no Writes line in %s and no register row): its files are unknown' % (label, os.path.basename(doc)), file=sys.stderr)
 
 # stacked_series: every ledger under <bucket>/series/ (the bucket is the --workers-from manifest's directory), read through
 # series-ledger.py, is a holder. An item holds its writes as `series <sid>` until it is abandoned or gh reports every PR of its
@@ -1111,7 +1144,7 @@ merged_unknown = False
 merged_keys = set()
 inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Sub-task')
              and i['key'] not in worker_keys and i['key'] not in pr_keys]
-if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
+if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown or register_unknown):
     def merged_cites(key):
         out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
                              capture_output=True, text=True, timeout=60, check=True).stdout
@@ -1171,7 +1204,7 @@ for i in issues.values():
         continue
     if i['key'] in worker_keys or i['key'] in pr_keys:
         continue
-    if pr_unknown or pr_files_unknown or workers_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner
+    if pr_unknown or pr_files_unknown or workers_unknown or register_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner
         continue
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)
@@ -1197,7 +1230,7 @@ def stackable_on(i):
     # (worker label, items, writer doc) when every file the ticket collides on is held by ONE live series worker with room; else None.
     # A series worker's own ledger is that same worker, not a second holder. A holder that is an open PR, the --held list or a
     # second worker, or an unread PR / worker set, keeps the drop.
-    if pr_unknown or pr_files_unknown or workers_unknown:
+    if pr_unknown or pr_files_unknown or workers_unknown or register_unknown:
         return None
     holders = {('live worker ' + series_label_of[who[len('series '):]]) if who.startswith('series ') and who[len('series '):] in series_label_of else who
                for _, who in held_hits(i)}
@@ -1215,7 +1248,9 @@ for i in cands:
         drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
         continue
     if i['key'] in design:  # a design leg writes only its spec in the state repo: it holds no files against the rest of the list
-        if pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
+        if register_unknown:  # an unread register could hide the holder of the design's own files
+            drop(i, 'holds register unknown: collisions cannot be checked')
+        elif pr_unknown:  # an unread PR list could hide an open PR that owns the ticket
             drop(i, 'open PRs unknown (gh failed): ownership cannot be checked')
         else:
             free.append(i)
@@ -1231,6 +1266,9 @@ for i in cands:
             drop(i, 'collision %s held by %s' % hit)
             continue
         soft_rows[i['key']] = soft
+    if register_unknown:  # an unread register could hold the ticket's files
+        drop(i, 'holds register unknown: collisions cannot be checked')
+        continue
     if pr_unknown or pr_files_unknown:  # an unread PR list or PR file set could hold the ticket's files
         drop(i, 'open PRs unknown (gh failed): collisions cannot be checked' if pr_unknown else 'open PR files unknown (PR %s): its collisions cannot be checked' % ' '.join(pr_files_unknown))
         continue
@@ -1243,10 +1281,11 @@ def classify(batch):
     cmd = os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD')
     argv = [cmd] if cmd else ['node', os.path.join(repo, 'scripts/lanes/cloud-route.mjs'), '--classify-only']
     hfile = None
-    if held:
+    paths = [h for h, _, _ in held] + register_all()
+    if paths:
         import tempfile
         t = tempfile.NamedTemporaryFile('w', suffix='.held', delete=False)
-        t.write('\n'.join(h for h, _, _ in held) + '\n'); t.close(); hfile = t.name
+        t.write('\n'.join(paths) + '\n'); t.close(); hfile = t.name
         if not cmd:
             argv += ['--held', hfile]
     try:
@@ -1262,7 +1301,7 @@ def classify(batch):
         os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', holds register unknown (unreadable or too slow)' if register_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 for k, who in resume_held:
     print('RESUME-HELD %s by %s' % (k, who))
 for k, prs in needs_note:
@@ -1281,7 +1320,7 @@ def family_of(f):
     p = canon(f).strip('/').split('/') + (['*'] if f.endswith('/') else [])  # a directory is cut as a file inside it
     return '/'.join(p[:2]) if len(p) >= 3 else (p[0] if len(p) == 2 else '.')
 
-if stacked and first_ver and not (pr_unknown or pr_files_unknown or workers_unknown):
+if stacked and first_ver and not (pr_unknown or pr_files_unknown or workers_unknown or register_unknown):
     # SERIES FAMILY: To Do sub-tasks of one parent whose files all sit in one directory family, free of every holder. Sub-tasks
     # are never dispatch rows; the chief composes the series from this row (`series: [...]` in workers.json)
     families = {}

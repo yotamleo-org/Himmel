@@ -21,8 +21,24 @@ lacks() { # <name> <haystack> <needle>
     case "$2" in *"$3"*) fail "$1 (found '$3' in: $2)" ;; *) pass "$1" ;; esac
 }
 
+REAL_HOME="$HOME"
+real_register() { find "$REAL_HOME/.himmel/state/holds" -printf '%P %s %T@\n' 2>/dev/null | sort | cksum; }
+REAL_BEFORE="$(real_register)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/next-dispatch-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
+# the holds register lives under HOME: pin it (and the handover root holds.py judges liveness in) to the fixture, so
+# no row of the real register is read or written; the last row asserts the real one is unchanged
+export HOME="$WORK/home" HANDOVER_DIR="$WORK/h"
+mkdir -p "$HOME" "$HANDOVER_DIR"
+HOLDS_PY="$HERE/holds.py"
+SUT_REPO="$(cd "$HERE/../../.." && pwd)"
+SEEDED=0
+seed() { # <key> <label> <doc> <path>...: one fresh register row per path (a fresh row is inside the arm grace, so alive), the shape holds.py claim writes at a launch
+    local k="$1" l="$2" d="$3"; shift 3
+    python3 -I "$HOLDS_PY" claim --key "$k" --label "$l" --doc "$d" --repo "$SUT_REPO" --source brief "$@" > /dev/null 2>&1 || fail "seed $k: holds.py claim failed"
+    SEEDED=$((SEEDED + $#))
+}
+fresh_register() { rm -rf "$HOME/.himmel/state/holds"; SEEDED=0; }  # seeds persist across sections in the one fixture HOME: a section that needs a clean slate starts here
 # the default worker records live under the status state dir: keep it in the fixture
 export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 # and the admissions ledger: the real one must never admit a fixture key
@@ -97,6 +113,7 @@ WORKER="$WORK/HIMMEL-99-N1-live.md"
 # shellcheck disable=SC2016  # the backticks are literal doc text, not a command substitution
 printf '# live\n> **Scope / do not:** writes confined to `scripts/handover/chief-kit/live-file.sh` and its test.\n' > "$WORKER"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}]}\n' "$WORKER" > "$WORK/fleet.json"
+seed HIMMEL-99 N1 "$WORKER" scripts/handover/chief-kit/live-file.sh  # the register, not the doc's scope line, says what N1 writes
 
 run() { NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" "$@" 2>/dev/null; }
 
@@ -615,14 +632,17 @@ LEGP="$WORK/HIMMEL-96-N7-prose.md"
 printf '# prose\n> **Scope / do not:** writes confined to `scripts/lib/prose-dir/ (the new command + tests)`.\n\n## Results\n- 10:00 LIVE - go\n' > "$LEGP"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N8"},{"doc":"%s","label":"N9"},{"doc":"%s","label":"N7"}]}\n' "$LEGW" "$LEGB" "$LEGP" > "$WORK/fleet20.json"
 run20() { NEXT_DISPATCH_MIRROR="$M20" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --no-classify --workers-from "$WORK/fleet20.json" 2>/dev/null; }
+seed HIMMEL-97 N9 "$LEGB" scripts/lib/own-scope.sh
 f1="$(run20)"
 has "fix1: a ticket on a WRAPPED worker's file is listed" "$f1" "HIMMEL-701	"
 has "fix1: a ticket on a file named only in READ ONLY prose is listed" "$f1" "HIMMEL-702	"
 lacks "fix1: a ticket on a live worker's write scope is held" "$f1" "HIMMEL-703	"
 has "fix1: a ticket on a file after Other live workers is listed" "$f1" "HIMMEL-704	"
-lacks "fix1: a directory scope with prose in parentheses still holds the directory" "$f1" "HIMMEL-705	"
+# the register holds files, not trees, so a directory a worker only describes holds nothing (assertion flipped from lacks)
+has "fix1: a directory a worker describes in prose is a note, not a held file" "$f1" "HIMMEL-705	"
 # shellcheck disable=SC2016
 printf '# parked\n> **Scope / do not:** writes confined to `scripts/lib/wrapped-held.sh`.\n\n## Results\n- 10:00 LIVE - go\n- 12:00 WRAPPED - merged\n- 13:00 PARKED-USAGE - relaunched, waiting for RESUME\n' > "$LEGW"
+seed HIMMEL-98 N8 "$LEGW" scripts/lib/wrapped-held.sh  # the parked worker's launch row; the wrapped step above held nothing
 lacks "a PARKED-USAGE tail after an old WRAPPED still holds the worker's files" "$(run20)" "HIMMEL-701	"
 
 # --- fix 2: a ticket a live worker or an open PR already owns is not offered ---
@@ -781,7 +801,8 @@ cp -r "$RP/mirror" "$WORK/replay-mirror"
 for f in "$WORK"/replay-mirror/HIMMEL/*.md; do printf '\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' >> "$f"; done
 rp="$(NEXT_DISPATCH_MIRROR="$WORK/replay-mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/replay-gh" bash "$SUT" --no-classify --top 80 --doc "$RP/chief.md" --workers-from "$WORK/replay-fleet.json" 2>/dev/null)"
 has "replay: a ticket the 'Do not touch' fence of a live worker hid is offered (HIMMEL-6034)" "$rp" "HIMMEL-6034	"
-lacks "replay: a directory-wide scope described in parentheses still holds its directory (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
+# a directory scope is a note, not a register row (assertion flipped from lacks)
+has "replay: a directory-wide scope described in parentheses is a note, not a held file (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
 lacks "replay: a ticket whose key is a live worker's is not offered (HIMMEL-4999)" "$rp" "HIMMEL-4999	"
 lacks "replay: a ticket really held by a live worker stays held (HIMMEL-6484)" "$rp" "HIMMEL-6484	"
 n113="$(printf '%s\n' "$rp" | grep -c "	v1.1.3	")"
@@ -819,6 +840,9 @@ printf '# touches\n> **Scope / do not:** writes confined to Writes confined to s
 LEGU="$WORK/HIMMEL-93-N3-touches-real.md"
 printf '# touches-real\n> **Scope / do not:** writes confined to scripts/handover/nd-own.sh. Touches scripts/ci/nd-touch-d.sh to update a ci-trust-paths pattern. completes-ticket: no.\n\n## Results\n- 10:00 LIVE - go\n' > "$LEGU"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N5"},{"doc":"%s","label":"N4"},{"doc":"%s","label":"N3"}]}\n' "$LEGN" "$LEGT" "$LEGU" > "$WORK/fleet25.json"
+seed HIMMEL-95 N5 "$LEGN" scripts/handover/nd-own.sh
+seed HIMMEL-94 N4 "$LEGT" scripts/ci/suite-tiers.tsv scripts/ci/suite-durations.tsv
+seed HIMMEL-93 N3 "$LEGU" scripts/ci/nd-touch-d.sh
 f25="$(NEXT_DISPATCH_MIRROR="$M25" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --workers-from "$WORK/fleet25.json" 2>/dev/null)"
 has "never-edit: a ticket inside a 'Never edit' tree is offered (HIMMEL-7358)" "$f25" "HIMMEL-750	"
 has "never-edit: a ticket inside a 'Do NOT TOUCH' tree (verb in capitals too) is offered" "$f25" "HIMMEL-751	"
@@ -861,16 +885,27 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3
     "$FX/HIMMEL-7377-N3558-adoption-trail-narrow-panel.md" "$FX/HIMMEL-3111-N3543-config-secrets-journey.md" "$FX/HIMMEL-7131-N3557-himmel-report-command.md" \
     "$FX/HIMMEL-7469-N3578-neg-control.md" "$FX/HIMMEL-7469-N3579-writes-line.md" "$FX/HIMMEL-7469-N3580-frontmatter-description.md" "$FX/HIMMEL-7469-N3581-command-word-in-path.md" \
     "$FX/HIMMEL-7469-N3582-prose-before-path.md" "$FX/HIMMEL-7469-N3583-writes-line-prose.md" "$FX/HIMMEL-7469-N3584-writes-wrapped.md" "$FX/HIMMEL-7469-N3585-no-scope.md" "$FX/HIMMEL-7469-N3586-command-segment.md" > "$WORK/fleet26.json"
+# the register, not each doc's scope prose, says what a worker writes: one launch row per file the old reader held (trees are noted, not held)
+fresh_register
+seed HIMMEL-7377 N3558 "$FX/HIMMEL-7377-N3558-adoption-trail-narrow-panel.md" docs/adoption-trail.html
+seed HIMMEL-7469 N3579 "$FX/HIMMEL-7469-N3579-writes-line.md" docs/nd-writes-line.html scripts/handover/nd-writes-line.sh
+seed HIMMEL-7469 N3580 "$FX/HIMMEL-7469-N3580-frontmatter-description.md" docs/nd-frontmatter.html
+seed HIMMEL-7469 N3581 "$FX/HIMMEL-7469-N3581-command-word-in-path.md" scripts/handover/nd-find-tool.sh docs/nd-find.html
+seed HIMMEL-7469 N3582 "$FX/HIMMEL-7469-N3582-prose-before-path.md" scripts/nd-a.sh scripts/nd-b.sh scripts/nd-p.sh scripts/nd-d.sh
+seed HIMMEL-7469 N3583 "$FX/HIMMEL-7469-N3583-writes-line-prose.md" scripts/nd-c.sh scripts/nd-e.sh
+seed HIMMEL-7469 N3584 "$FX/HIMMEL-7469-N3584-writes-wrapped.md" scripts/nd-h.sh scripts/nd-i.sh
+seed HIMMEL-7469 N3586 "$FX/HIMMEL-7469-N3586-command-segment.md" scripts/nd-y.sh
 f26="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet26.json" 2>"$WORK/f26.err")"
 lacks "held-paths: N3558 still holds its one real file docs/adoption-trail.html" "$f26" "HIMMEL-860	"
 has "held-paths: N3558's quoted 'grep -rl adoption-trail scripts/' does not hold scripts/check-ci.sh" "$f26" "HIMMEL-861	"
 has "held-paths: N3543's 'Trust path (scripts/lib/)' note does not hold scripts/lib/" "$f26" "HIMMEL-862	"
 has "held-paths: N3543's SINGLE-WRITER note holds nothing (the open PR holds that file)" "$f26" "HIMMEL-863	"
-lacks "held-paths: N3557 still holds its command dir" "$f26" "HIMMEL-864	"
-lacks "held-paths: N3557 still holds its script dir" "$f26" "HIMMEL-865	"
+# a directory a worker writes in is a note, not a register row (assertion flipped from lacks, here and for 868 and 884)
+has "held-paths: N3557's command dir is a note, not a held file" "$f26" "HIMMEL-864	"
+has "held-paths: N3557's script dir is a note, not a held file" "$f26" "HIMMEL-865	"
 has "held-paths: N3557's 'Impacted suites:' file is run, not written" "$f26" "HIMMEL-866	"
 has "held-paths: N3557's 'find what the gitleaks gate or scripts/lib uses' read does not hold scripts/lib/" "$f26" "HIMMEL-867	"
-lacks "held-paths: negative control: a worker whose write list names scripts/ci/ still holds scripts/ci/" "$f26" "HIMMEL-868	"
+has "held-paths: negative control: scripts/ci/ on a write list is a note, not a held file" "$f26" "HIMMEL-868	"
 has "held-paths: negative control: the path that worker only greps is free" "$f26" "HIMMEL-869	"
 lacks "held-paths: a worker with a Writes line holds the files on it" "$f26" "HIMMEL-870	"
 has "held-paths: a worker with a Writes line holds nothing the scope line prose names" "$f26" "HIMMEL-871	"
@@ -885,9 +920,13 @@ has "held-paths: a bare 'grep -rl needle scripts/nd-read/' read holds nothing" "
 lacks "held-paths: a path on the continuation line of a wrapped Writes block is held" "$f26" "HIMMEL-881	"
 lacks "held-paths: a path after a path segment named find is held" "$f26" "HIMMEL-882	"
 has "held-paths: a path the front-matter description names (no command word before it) holds nothing" "$f26" "HIMMEL-883	"
-lacks "held-paths: a find -delete is a write, not a read: its dir is held" "$f26" "HIMMEL-884	"
+has "held-paths: a find -delete dir is a note, not a held file" "$f26" "HIMMEL-884	"
+# N3585 names no scope and has no row: its own run on a clean register (a key that has a row is read from the register, and the others above share one)
+fresh_register
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N3585"}]}\n' "$FX/HIMMEL-7469-N3585-no-scope.md" > "$WORK/fleet26b.json"
+f26b="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet26b.json" 2>"$WORK/f26.err")"
 has "held-paths: a live worker that yields no held paths is named on stderr" "$(cat "$WORK/f26.err")" "live worker N3585 yields no held paths"
-has "held-paths: a live worker that yields no held paths makes the live workers unknown on the stdout header" "$f26" "live workers unknown"
+has "held-paths: a live worker that yields no held paths makes the live workers unknown on the stdout header" "$f26b" "live workers unknown"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N3587"}]}\n' "$FX/HIMMEL-7469-N3587-none-named.md" > "$WORK/fleet27.json"
 f27="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --workers-from "$WORK/fleet27.json" 2>/dev/null)"
 lacks "held-paths: an explicit 'Writes: none named' worker is a real empty scope, not unknown" "$f27" "live workers unknown"
@@ -968,6 +1007,7 @@ printf 'scripts/lib/dd-huge.sh\n' > "$DD_DIR/files-5002"
 printf 'scripts/lib/dd-pr3.sh\nscripts/lib/dd-new-name.sh\nscripts/lib/dd-old-name.sh\n' > "$DD_DIR/files-5003"
 sed "s#@@FIXTURE@@#$DD#" "$DD/fleet.json" > "$WORK/dd-fleet.json"
 printf 'scripts/handover/chief-kit/dd-old.sh\nscripts/handover/chief-kit/dd-newn.sh\n' > "$WORK/dd-held.txt"
+seed HIMMEL-7044 N3901 "$DD/HIMMEL-7044-N3901-mentions.md" scripts/dd-own.sh  # its list also names scripts/dd-in/: a tree, noted and not held
 rundd() { NEXT_DISPATCH_MIRROR="$MD" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-dd" NEXT_DISPATCH_JIRA_CMD="$WORK/jira-dd" bash "$SUT" --top 50 --held "$WORK/dd-held.txt" --workers-from "$WORK/dd-fleet.json" "$@" 2>"$WORK/dd.err"; }
 dd_out="$(rundd --dispositions)"
 # (c) the rename registry
@@ -986,7 +1026,8 @@ has "scope: a directory a live brief mentions outside its list holds nothing (.g
 has "scope: a mentioned scripts/ci holds nothing" "$dd_out" "LOCAL	HIMMEL-921"
 has "scope: a mentioned vendored plugin dir holds nothing" "$dd_out" "LOCAL	HIMMEL-922"
 has "scope: a mentioned single-writer dir holds nothing" "$dd_out" "LOCAL	HIMMEL-923"
-has "scope: a directory inside the list still holds its files" "$dd_out" "# disposition HIMMEL-924 collision "
+# a directory on the list is a note, not a register row (assertion flipped from has collision)
+lacks "scope: a directory on the list is a note, not a held file" "$dd_out" "# disposition HIMMEL-924 collision "
 has "scope: a file on the list still holds" "$dd_out" "# disposition HIMMEL-925 collision "
 # (e) one unreadable PR marks only itself unknown
 has "prs: the PRs are read through the paginated files API" "$(cat "$DD_DIR/gh.args")" "api --paginate repos/yotamleo-org/Himmel/pulls/5001/files"
@@ -1081,6 +1122,7 @@ mk HIMMEL-3107 "To Do" Medium '[]' '["v1.0.1"]' '[]' "overlaps nothing" "Edit sc
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m31/HIMMEL.versions.tsv"
 run31() { NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh31" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" NEXT_DISPATCH_GIT_DIR="$G" NEXT_DISPATCH_MAIN_REF="${SOFT_MAIN_REF:-main}" bash "$SUT" --top 20 --workers-from "$WORK/fleet.json" "$@" 2>/dev/null; }
+seed HIMMEL-99 N1 "$WORKER" scripts/handover/chief-kit/live-file.sh  # the register was reset above: N1's launch row again
 soft_on="$(run31)"
 soft_why="$(run31 --why)"
 
@@ -1154,6 +1196,7 @@ note_empty="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: an explicit empty Writes ignores note paths" "$note_empty" "LOCAL?	HIMMEL-9202"
 lacks "Writes note: an explicit empty Writes is not unknown" "$note_empty" "live workers unknown"
 printf '%s\n' '> **Scope / do not:** writes confined to docs/nd-note-own.md.' '> **Writes note:** writes confined to scripts/lib/.' > "$NOTE_WORKER"
+seed HIMMEL-9299 N920 "$NOTE_WORKER" docs/nd-note-own.md  # the scope-line shape is not parsed any more: the register carries what the older brief named
 note_legacy="$(run --no-classify --workers-from "$WORK/fleet-note.json" --why)"
 has "Writes note: a note is ignored in the older-brief fallback too" "$note_legacy" "LOCAL?	HIMMEL-9202"
 has "Writes note: the older-brief fallback still holds its own file" "$note_legacy" "# drop HIMMEL-9201 collision docs/nd-note-own.md held by live worker N920"
@@ -2148,6 +2191,28 @@ cgold="$(HIMMEL_FLAG_CORE_GATE=0 runcg "$CGM")"
 has "(8592) no flag set: a core ticket with no signed spec is a DESIGN row" "$cgnoflag" "DESIGN${TAB}HIMMEL-901${TAB}NO-SPEC${TAB}"
 [ "$cgnoflag" = "$cgold" ] && pass "(8592) the old flag variable set to 0 changes nothing (the gate is permanent)" || fail "(8592) HIMMEL_FLAG_CORE_GATE=0 changed the output"
 [ -s "$CG/calls.log" ] && pass "(8592) the CLI is asked with no flag set" || fail "(8592) the CLI was never asked with no flag set"
+
+# --- the register, not the worker doc, is the held-files source (I13) ---
+# a live worker whose doc names no Writes (a RESUME doc) and whose register rows sit on files no candidate names is neither
+# "its files are unknown" nor a reason to withhold a RESUME row or an IN CI row
+RG_DOC="$WORK/HIMMEL-9500-N9500-resume-RESUME.md"
+printf '# resume doc\n\n## Results\n- 10:00 LIVE - go\n' > "$RG_DOC"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N9500"}]}\n' "$RG_DOC" > "$WORK/fleet-rg.json"
+seed HIMMEL-9500 N9500 "$RG_DOC" scripts/rg/unrelated-a.sh scripts/rg/unrelated-b.sh
+printf '4300\tfix(x): [HIMMEL-70] merged\tfix/himmel-70-m\n' > "$MERGED_TSV"
+printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n' > "$PRS_TSV"
+rg_out="$(NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" bash "$SUT" --no-classify --workers-from "$WORK/fleet-rg.json" 2>"$WORK/rg.err")"
+lacks "I13 a live worker whose rows sit on files no candidate names yields no 'its files are unknown' line" "$(cat "$WORK/rg.err")" "its files are unknown"
+lacks "I13 ... and the header does not say the live workers are unknown" "$rg_out" "live workers unknown"
+has "I13 ... a RESUME row is not withheld" "$rg_out" "RESUME	HIMMEL-50"
+has "I13 ... a To Do row is listed" "$rg_out" "HIMMEL-56	"
+rg6="$(NEXT_DISPATCH_MIRROR="$WORK/m6/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --workers-from "$WORK/fleet-rg.json" 2>/dev/null)"
+has "I13 ... an IN CI row (a merged PR, no worker) is not withheld" "$rg6" "MERGED-NOT-CLOSED	HIMMEL-70"
+: > "$MERGED_TSV"
+printf '4243\tfix(x): [HIMMEL-7] already started\tfix/himmel-7-started\n4244\tfix(x): [HIMMEL-52] in review\tfix/himmel-52-y\n' > "$PRS_TSV"
+
+same_reg="$(HOME="$REAL_HOME" real_register)"
+[ "$REAL_BEFORE" = "$same_reg" ] && pass "the real ~/.himmel/state/holds is unchanged" || fail "the real ~/.himmel/state/holds changed during the run"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
