@@ -21,6 +21,11 @@
 # runs failure_review.py from the PRIMARY checkout (the runner bakes that path) and, on a router
 # failure, alerts through scripts/luna/cadence-alert.sh; a clean run clears that alert.
 #
+# `arm` and `disarm` touch only the one exact tagged, uncommented crontab row; every other line (a
+# commented row, a lookalike tag, blank lines) stays byte-for-byte. `arm` exits 0 ok, 1 or 2 usage or
+# environment, 3 already armed (no --force), 4 crontab or runner write failed, 5 more than one live
+# tagged row (refused, crontab untouched), 77 test-run guard refusal.
+#
 # Seams (tests): FAILREV_CRONTAB, FAILREV_RUNNER_DIR, FAILURE_REVIEW_PREFLIGHT, plus
 # failure_review.py's own (HIMMEL_FAILURE_REVIEW_DIR, FAILURE_REVIEW_NOTIFY_CMD) and the router's.
 # Platform: cron (Linux/macOS). Windows development is parked.
