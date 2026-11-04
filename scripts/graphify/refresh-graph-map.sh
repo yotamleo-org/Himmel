@@ -2116,6 +2116,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
     if p and p[2:] in t:
         out.write(p + b"\0")' "$TRACKED_LIST"
         else cat; fi \
+      | python3 "$HERE/semantic-merge.py" noncontent-filter --root "$CORPUS_ROOT" \
       | tar --null -T - -cf - ) | ( cd "$SCRATCH" && tar -xf - ) \
     || { echo "refresh-graph-map: corpus scan/copy failed or refused (see output above)" >&2; exit 1; }
   if [ -n "$TRACKED_LIST" ]; then rm -f "$TRACKED_LIST"; fi

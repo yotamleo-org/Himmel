@@ -219,9 +219,11 @@ fi
 # daily semantic cadence, 24h, plus 24h grace for one missed fire), has no ts, or
 # carries more than SEM_MAX_FAILED content failures, SEM_MAX_REFUSED refusals,
 # SEM_MAX_UNSTAMPED unstamped content files, or a content file unstamped for more
-# than SEM_MAX_OLDEST_D days. A failed or unstamped path is non-content, and
+# than SEM_MAX_OLDEST_D days. A failed or refused path is non-content, and
 # counted apart, when a directory above it holds VENDORED.md or one of its
-# directories is a template or fixture directory (see noncontent() below).
+# directories is a template or fixture directory: semantic-merge.py's
+# noncontent(), which also keeps such files out of the corpus, so a new one is
+# never unstamped and only older run rows still name them.
 SEM_MAX_AGE_H=48 SEM_MAX_FAILED=10 SEM_MAX_REFUSED=10 SEM_MAX_UNSTAMPED=50 SEM_MAX_OLDEST_D=7
 STUCK_MSG="" SEM_STALE_MSG=""
 SEMANTIC_RUNS="$OUT/semantic-runs.jsonl"
@@ -232,14 +234,13 @@ import calendar, importlib.util, json, os, sys, time
 
 root, out = sys.argv[2], sys.argv[3]
 max_age_h, max_failed, max_refused, max_unstamped, max_oldest_d = (int(v) for v in sys.argv[5:10])
-NON_CONTENT_DIRS = {"templates", "_Templates", "ISSUE_TEMPLATE", "fixtures", "testdata", "evals"}
+spec = importlib.util.spec_from_file_location("semantic_merge", sys.argv[4])
+sm = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(sm)
 
 
-def noncontent(rel):
-    parts = rel.split("/")[:-1]
-    if any(d in NON_CONTENT_DIRS or d.endswith("-fixtures") for d in parts):
-        return True
-    return any(os.path.isfile(os.path.join(root, *parts[:i], "VENDORED.md")) for i in range(1, len(parts) + 1))
+def noncontent(rel):  # the one rule the semantic corpus walk uses, so the two never drift
+    return sm.noncontent(root, rel)
 
 
 rows = []
@@ -271,9 +272,6 @@ changed, unstamped_err = None, ""
 if os.path.isfile(os.path.join(out, "semantic-manifest.json")):
     # the same counts `semantic-merge.py status` prints, plus the content-only ones the bounds judge
     try:
-        spec = importlib.util.spec_from_file_location("semantic_merge", sys.argv[4])
-        sm = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(sm)
         _, changed, skipped = sm.unstamped(type("A", (), {"root": root, "out": out}))
     except Exception as exc:  # unreadable manifest or corpus: the unstamped bounds cannot be judged, so never OK
         changed = skipped = None

@@ -1,0 +1,1 @@
+{"ts":"2026-11-04T12:00:06.500Z","v":1,"origin":"production","event":"PreToolUse","session":"sess-9072","callId":"toolu_a1","tool":"Agent","invocation":"000000009072","exit":2,"elapsed":20,"members":[{"member":"guard-agent-model.sh","occurrence":1,"outcome":"deny","reason":"RULE","elapsed":11,"denyLine":"agent-model-deny: a judge model override off its tier"}]}

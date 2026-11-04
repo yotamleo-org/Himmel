@@ -138,6 +138,15 @@ check "both backfill ledgers validate" 'python3 "$LL" validate "$BF" >/dev/null 
 n1="$(lines "$BF")"
 bf >"$TMP/bf2.out" 2>&1
 check "a second backfill appends 0 rows" '[ "$(lines "$BE")" = 3 ] && [ "$(lines "$BF")" = "$n1" ] && grep -qE "failures\+=0 eval\+=0" "$TMP/bf2.out"'
+# A session recorded with its lane known but no profile is asked again once its launch record names a profile.
+mkdir -p "$TMP/bfp-cache/launch-logs"
+printf 'headed-arm-worker: profile=none lane=native model=m role=worker session=HIMMEL-4670-N1365-agui-spec launched=2026-10-23T00:00:00Z\n' >"$TMP/bfp-cache/launch-logs/HIMMEL-4670-N1365-agui-spec.log"
+bfp() { HIMMELCTL_CACHE_DIR="$TMP/bfp-cache" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bfp-f.jsonl" --eval-ledger "$TMP/bfp-e.jsonl" --state-dir "$TMP/bfp-s"; }
+bfp >"$TMP/bfp1.out" 2>&1
+check "backfill: a launch with a lane and no profile records the lane and no profile" 'jq -e "select(.run_id == \"$B1\") | .lane == \"native\" and .meta.profile == null" "$TMP/bfp-e.jsonl" >/dev/null'
+printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=HIMMEL-4670-N1365-agui-spec launched=2026-10-23T00:00:00Z\n' >"$TMP/bfp-cache/launch-logs/HIMMEL-4670-N1365-agui-spec.log"
+bfp >"$TMP/bfp2.out" 2>&1
+check "backfill asks a lane-known, profile-unknown session again, and the profile is stamped" 'jq -s "[.[] | select(.run_id == \"$B1\")] | length == 2 and (.[-1].meta.profile == \"worker-impl\")" "$TMP/bfp-e.jsonl" | grep -q true && jq -e "all(.tool_health[]; .profile == \"worker-impl\")" "$TMP/bfp-s/$B1.json" >/dev/null'
 mkdir -p "$TMP/h/.config/claude-glm/phi-roots"
 HOME="$TMP/h" python3 "$LL" backfill --since 2026-10-01 --projects "$P" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/bf3-f.jsonl" --eval-ledger "$TMP/bf3-e.jsonl" --state-dir "$TMP/bf3-s" >"$TMP/bf3.out" 2>&1; rc3=$?
 check "an unreadable PHI-roots file fails closed: nonzero, nothing written" '[ "$rc3" != 0 ] && [ ! -s "$TMP/bf3-e.jsonl" ]'
@@ -234,6 +243,27 @@ check "a chief launch line gives its role as the profile" 'jq -e "select(.run_id
 check "a -RESUME launch name finds the launch record filed without the suffix" 'jq -e "select(.run_id == \"$LZ\") | .meta.profile == \"worker-impl\"" "$LE" >/dev/null'
 check "a native launch gets its lane from the launch record" 'jq -e "select(.run_id == \"$LP\") | .lane == \"native\" and all(.meta.tool_health[]; .lane == \"native\")" "$LE" >/dev/null'
 check "a claudex launch record gives claudex" 'jq -e "select(.run_id == \"$LX\") | .lane == \"claudex\"" "$LE" >/dev/null'
+
+# A session with no launch name still finds its launch record by the session id the launcher writes, then by its doc's stem;
+# a session found by neither names the kind of session it was; a later record fills an unknown lane once the launch record exists.
+S1=4670c1a5-0000-4000-8000-0000000000f8; S2=4670c1a5-0000-4000-8000-0000000000f9; S3=4670c1a5-0000-4000-8000-0000000000fa; S4=4670c1a5-0000-4000-8000-0000000000fb
+printf 'headed-arm-worker: profile=worker-impl lane=native model=m role=worker session=lp-by-sid session_id=%s launched=2026-10-23T00:00:00Z\n' "$S1" >"$TMP/cache/launch-logs/lp-by-sid.log"
+printf 'headed-arm-worker: profile=worker-e2e lane=claudex model=m role=worker session=lp-by-doc launched=2026-10-23T00:00:00Z\n' >"$TMP/cache/launch-logs/lp-by-doc.log"
+for s in "$S1" "$S2" "$S3" "$S4"; do jq -c --arg s "$s" '.session = $s | del(.lane)' "$TMP/digest.json" >"$TMP/lp-$s.json"; done
+lrec --digest "$TMP/lp-$S1.json" >/dev/null 2>&1
+lrec --digest "$TMP/lp-$S2.json" --doc "$TMP/handovers/lp-by-doc.md" >/dev/null 2>&1
+lrec --digest "$TMP/lp-$S3.json" --kind release-manager >/dev/null 2>&1
+check "no launch name: the launch record is found by the session id" 'jq -e "select(.run_id == \"$S1\") | .lane == \"native\" and .meta.profile == \"worker-impl\" and all(.meta.tool_health[]; .lane == \"native\" and .profile == \"worker-impl\")" "$LE" >/dev/null'
+check "no launch name: the launch record is found by the doc stem" 'jq -e "select(.run_id == \"$S2\") | .lane == \"claudex\" and .meta.profile == \"worker-e2e\"" "$LE" >/dev/null'
+check "a session with no launch record stays unknown and names its kind" 'jq -e "select(.run_id == \"$S3\") | .lane == \"unknown\" and .meta.launch_gap == \"release-manager\"" "$LE" >/dev/null'
+check "a session with a launch record carries no launch_gap" 'jq -e "select(.run_id == \"$S1\") | (.meta | has(\"launch_gap\") | not)" "$LE" >/dev/null'
+lrec --digest "$TMP/lp-$S4.json" >/dev/null 2>&1
+printf 'headed-arm-worker: profile=worker-impl lane=claudex model=m role=worker session=lp-late session_id=%s launched=2026-10-23T00:00:00Z\n' "$S4" >"$TMP/cache/launch-logs/lp-late.log"
+lrec --digest "$TMP/lp-$S4.json" >/dev/null 2>&1
+check "a session recorded unknown is recorded again once its launch record exists" '[ "$(jq -s "[.[] | select(.run_id == \"$S4\")] | map(.lane) | join(\",\")" -r "$LE")" = "unknown,claudex" ]'
+check "a session recorded again does not repeat its failure rows" '[ "$(jq -s "[.[] | select(.session == \"$S4\")] | length" "$LF")" = "$(jq -s "[.[] | select(.session == \"$LP\")] | length" "$LF")" ]'
+lrec --digest "$TMP/lp-$S4.json" >/dev/null 2>&1
+check "and a third record of it changes nothing" '[ "$(jq -s "[.[] | select(.run_id == \"$S4\")] | length" "$LE")" = 2 ]'
 
 echo "12. the daily tool-health record: validated row, one per day, and the eval feedback step"
 THR="$HERE/tool_health_record.py"; FB="$HERE/../lib/eval_feedback.py"; RULES="$HERE/../feedback-rules.json"

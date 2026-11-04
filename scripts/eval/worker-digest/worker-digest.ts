@@ -19,7 +19,7 @@ import { createJournalMapper, MAPPER_SCHEMA, SUITE } from "../../config-ui/agui/
 import { mergeJournalFiles, sessionFiles } from "../../config-ui/agui/journal-merge.ts";
 import { resolveJournal } from "../../config-ui/agui/sse.ts";
 import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
-import { denyLinesByCall, memberOfGuardClass, readChainLogs } from "./chain-incidents.mjs";
+import { denyLinesByCall, memberOfGuardClass, readChainLogs, rollupChain } from "./chain-incidents.mjs";
 import { cacheReadWeight } from "../../lib/burn-weights.mjs";
 
 const { spawnSync } = Bun;
@@ -100,7 +100,9 @@ const CLASSIFIER_CATEGORIES = new Set(["Out-of-Place Publication", "Merge Withou
   "Session Transcript Tampering", "Security Weaken"].map(slug));
 const MODEL = /^(claude|gpt|gemini|glm|codex|o\d)[a-z0-9.\-[\]]{0,60}$/i;
 
-const HOOK_PREFIX = /^(?:PreToolUse|PermissionRequest):\w+ hook error: /;
+// The tool name between the colon and "hook error" can carry a hyphen (mcp__himmel-bus__read), which \w does not match.
+const HOOK_PREFIX = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error: /;
+const HOOK_ANY = /^(?:PreToolUse|PermissionRequest):[\w.-]+ hook error/;
 const CLASSIFIER = /denied by the Claude Code auto mode classifier/;
 const BRACKET = /Reason: \[([^\]\n]{1,80})\]/;
 const TEST_NAME = /[\w./-]*?((?:test-[\w.-]+\.sh)|(?:[\w.-]+\.test\.ts))\b/g;
@@ -178,7 +180,7 @@ const byDesign = (reg: Registry, cmd: string, text: string): { script: string; r
 };
 // guard-worker-context-handoff words its refusal "worker context checkpoint|hand-off (mode ...)" or "refusing
 // auto-compaction", never "<hook>:", so the hook-name lookup in deniedSub cannot find it.
-const CONTEXT_GUARD = /\bleg context (?:checkpoint|hand-off) \(mode |\brefusing auto-compaction: no CHECKPOINT/;
+const CONTEXT_GUARD = /\b(?:leg|worker) context (?:checkpoint|hand-off) \(mode |\brefusing auto-compaction: no CHECKPOINT/;
 
 type Agent = { id: string; role: string; kind: string | null; model: string | null };
 type Row = {
@@ -343,6 +345,14 @@ async function main() {
   const names = trackedNames();
   const lookupsFailed = [...(hookList ? [] : ["hooks"]), ...(names ? [] : ["tracked-tests"])];
   const hooks = hookList ?? new Set<string>();
+  // The hook-chain log names each refused call by id: a call it shows a guard denying is a denial whatever its result text says.
+  // ponytail: an unreadable log leaves the text rule alone (no chain-named denials), upgrade path a lookups_failed entry.
+  let chain: ReturnType<typeof readChainLogs> | null = null;
+  const chainDeny = new Map<string, string>();
+  try {
+    chain = readChainLogs(process.env, REPO);
+    for (const ev of rollupChain(chain, { eventCap: Infinity }).events ?? []) if (ev.outcome === "deny" && !chainDeny.has(ev.call_id)) chainDeny.set(ev.call_id, ev.member);
+  } catch { /* leave chainDeny as far as it got */ }
   const tests = names?.tests ?? new Set<string>();
   const scripts = names?.scripts ?? new Set<string>();
   const agentNames = names?.agents ?? new Set<string>();
@@ -456,7 +466,7 @@ async function main() {
     }
     return "";
   };
-  const deniedSub = (text: string, ts: number | undefined, tool: string): string => {
+  const deniedSub = (text: string, ts: number | undefined, tool: string, member?: string): string => {
     if (CLASSIFIER.test(text)) {
       let cat: string | undefined;
       if (ts !== undefined) {
@@ -471,6 +481,8 @@ async function main() {
     }
     if (CONTEXT_GUARD.test(text.slice(0, 2000))) return "guard-leg-context-handoff";
     const pre = HOOK_PREFIX.exec(text);
+    // A refusal with no hook prefix (an Agent guard words its own message) is still a guard's when the chain log names it.
+    if (!pre && member) { const name = member.replace(/\.sh$/, ""); return hooks.has(name) ? name : "other"; }
     if (!pre) return "permission-prompt";
     let rest = text.slice(pre[0].length);
     if (rest.startsWith("[")) { const i = rest.indexOf("]: "); rest = i >= 0 ? rest.slice(i + 3) : ""; }
@@ -510,11 +522,15 @@ async function main() {
         if (e.subagent) seen(agentOf(e.subagent));
         const a = callAgent.get(e.toolCallId) ?? seen(agentOf(undefined));
         const cmd = command(e.toolCallId);
-        if (!e.failure) {
+        // The mapper reads a hook deny from the result text; a hyphenated mcp tool name or a guard's own wording slips past it as
+        // an error. A hook refusal on any tool is a denial: the text says so, or the chain log names the call.
+        const member = chainDeny.get(e.toolCallId);
+        const failure = e.failure === "error" && (member || HOOK_ANY.test(e.content.slice(0, 2000))) ? "denied" : e.failure;
+        if (!failure) {
           if (SUITE.test(cmd)) { const s = suiteLast.get(suiteKey(a, cmd)); if (s) s.red = false; }
           break;
         }
-        const by = (e.failure === "suite" || e.failure === "error") && callName.get(e.toolCallId) === "Bash" && registry
+        const by = (failure === "suite" || failure === "error") && callName.get(e.toolCallId) === "Bash" && registry
           ? byDesign(registry, cmd, e.content) : null;
         if (by) {
           if (by.cls === "result") m.ok_result++; else m.ok_retry++;
@@ -523,16 +539,16 @@ async function main() {
           designed.set(`${by.script}\0${by.rc}`, d);
           break;
         }
-        if (e.failure === "denied") {
+        if (failure === "denied") {
           m.fail_denied++;
           if (a.id === "main") mapperDenied.add(e.toolCallId);
-          add(a, `denied/${deniedSub(e.content, e.timestamp, callName.get(e.toolCallId) ?? "")}`, "denied", e.toolCallId, e.timestamp);
-        } else if (e.failure === "suite") {
+          add(a, `denied/${deniedSub(e.content, e.timestamp, callName.get(e.toolCallId) ?? "", member)}`, "denied", e.toolCallId, e.timestamp);
+        } else if (failure === "suite") {
           m.fail_suite++;
           keepExit(e.toolCallId, e.content);
           const sub = suiteSub(cmd);
           suiteLast.set(suiteKey(a, cmd), { row: add(a, `suite/${sub}`, "suite", e.toolCallId, e.timestamp), red: true });
-        } else if (e.failure === "blocked") {
+        } else if (failure === "blocked") {
           m.fail_blocked++;
           add(a, "blocked/-", "blocked", e.toolCallId, e.timestamp);
         } else {
@@ -583,7 +599,7 @@ async function main() {
   // Every guard row carries the first line its refused calls have in the hook-chain log, else null. ponytail: the line is trusted
   // as redacted and cut by the runner at write time (denyLine), upgrade path an exported denyLine re-run on read.
   let refusalOf: (id: string, member: string) => string | null = () => null;
-  try { refusalOf = denyLinesByCall(readChainLogs(process.env, REPO)); } catch { /* an unreadable log leaves every line null */ }
+  try { if (chain) refusalOf = denyLinesByCall(chain); } catch { /* an unreadable log leaves every line null */ }
   for (const r of rows.values()) {
     if (r.failure !== "denied") continue;
     r.refusal_line = null;
