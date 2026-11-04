@@ -45,6 +45,7 @@ export FLEET_PS_CMD="$FLEET_PS_STUB"
 # caller's refusal message names it), so this test suite qualifies exactly
 # like a real operator override, not a new escape hatch.
 export FLEET_CAP_OK=1
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 
 # Hermetic: fresh handover root, no real scheduler, no real telemetry/trust
 # writes (same shields test-arm-resume.sh / test-arm-resume-queue-lock.sh use).

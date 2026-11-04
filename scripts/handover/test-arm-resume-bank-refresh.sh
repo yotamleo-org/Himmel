@@ -38,6 +38,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 export FLEET_CAP_OK=1
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 HANDOVER_DIR="$TMP/statedocs/handovers"
 mkdir -p "$HANDOVER_DIR"
 export HANDOVER_DIR

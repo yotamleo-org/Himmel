@@ -193,6 +193,11 @@
 #      only catches the SAME handover armed twice; this catches two handovers
 #      naming the same ticket. Pass --force or set ARM_TICKET_DUP_OK=1 for a
 #      deliberate parallel worker on the same ticket.
+#   18 unguarded-folder refused — the resume folder (for --worktree, the checkout
+#      the worktree is cut from) would not load the himmel guard hooks (checked by
+#      scripts/lib/launch-guard-check.sh at arm time, before any worktree, at job or
+#      state write). Set UNGUARDED_LAUNCH_OK=1 in the launching shell to arm it
+#      with one WARN. --dry-run reports the refusal and exits 0.
 #   14 vault-cwd refused — no --cwd/--worktree/resume_cwd: named a work repo,
 #      so the auto-detected cwd (the handover's own git toplevel) would be
 #      used, and that directory is a SINGLE-WRITER repo — e.g. a
@@ -2561,6 +2566,27 @@ if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_chief" -eq 0 ]; then
     unset _iso_fm _iso_mode _iso_cwd _iso_tkt _iso_root _iso_primary
 fi
 
+# A resume folder that would not load the himmel guard hooks is refused at arm time (exit 18), before
+# any worktree is created, the at job is written or state is touched. Under --dry-run the refusal is only
+# reported. UNGUARDED_LAUNCH_OK=1 (launching shell) arms it anyway with one WARN. ARM_VAULT_CWD_OK keeps its
+# own meaning: an auto-detected single-writer cwd needs both variables.
+_arm_launch_guard() {
+    local _lg_dir="$1" _lg_reason _lg_rc _lg_name
+    _lg_rc=0; _lg_reason="$(bash "$SCRIPT_DIR/../lib/launch-guard-check.sh" "$_lg_dir")" || _lg_rc=$?
+    [ "$_lg_rc" -ne 0 ] || return 0
+    [ "$_lg_rc" -eq 1 ] || _lg_reason="folder cannot be resolved"
+    _lg_name="$(_compose_arm_name "$(_infer_ticket "$HANDOVER_PATH")" "$HANDOVER_PATH" title)"
+    if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
+        echo "WARN unguarded launch of $_lg_name in $_lg_dir ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
+    elif [ "$DRY_RUN" -eq 1 ]; then
+        echo "DRY arm-resume: would REFUSE to arm -- $_lg_dir does not load the himmel guard hooks ($_lg_reason); a real arm exits 18 unless UNGUARDED_LAUNCH_OK=1 is set." >&2
+    else
+        echo "arm-resume: refusing to launch $_lg_name: $_lg_dir does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+        exit 18
+    fi
+    return 0
+}
+
 if [ -n "$WORKTREE_BRANCH" ]; then
     if [ -n "$RESUME_CWD_OVERRIDE" ]; then
         echo "ERR arm-resume: --cwd and --worktree are mutually exclusive (the worktree IS the cwd)" >&2
@@ -2577,6 +2603,8 @@ if [ -n "$WORKTREE_BRANCH" ]; then
     # primary checkout per the operator rule).
     _wt_root=$(cd "$SCRIPT_DIR/../.." && pwd)
     _wt_path="$_wt_root/.claude/worktrees/${WORKTREE_BRANCH/\//+}"
+    # The worktree is cut from this checkout and does not exist yet: check the parent, before creating it.
+    _arm_launch_guard "$_wt_root"
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "DRY arm-resume: would create worktree '$WORKTREE_BRANCH' at '$_wt_path' and resume there"
         RESUME_CWD="$_wt_path"
@@ -2720,6 +2748,8 @@ else
     fi
     unset _fm_cwd _fm_cwd_found
 fi
+# Every non-worktree path (--worktree was checked on its parent checkout above).
+[ -n "$WORKTREE_BRANCH" ] || _arm_launch_guard "$RESUME_CWD"
 
 # ---------------------------------------------------------------------------
 # arm a worker on a
@@ -4565,6 +4595,7 @@ fi"
     # SIGTERM once its work is done and a successor (if any) is armed -- see
     # docs/handover/afk-mode.md's Launch preamble.
     # launch-profile-ok: q_autocompact above carries --settings (_arm_profile_settings_flag)
+    # ponytail: the folder is checked at arm time only; a folder that loses its guard wiring before the at job fires launches unguarded; upgrade path: the runner calls launch-guard-check.sh before exec
     local tail="unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1 && ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact"
     if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
         local q_hb q_log q_curl

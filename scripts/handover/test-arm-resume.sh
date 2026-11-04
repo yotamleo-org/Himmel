@@ -116,6 +116,7 @@ T-awkfail|T-awkfail
 1331b|1331b
 1329|1329 HIMMEL-1329
 1330|1330 HIMMEL-1330
+9026|9026 HIMMEL-9026
 1603|1603 HIMMEL-1603
 1640|1640 HIMMEL-1640
 1719|1719 HIMMEL-1719
@@ -349,6 +350,9 @@ export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 # intent explicit rather than letting a heuristic silently exempt us. The
 # refusal itself is exercised below with the variable unset.
 export ARM_TEMP_CWD_OK=1
+# Scratch-folder shield: the fixtures live under $TMP, which does not load the himmel guard hooks,
+# so arming them is refused (rc 18). The guard rows drop this opt-in from their own environment.
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 
 # Dotenv-read shield. arm-resume load_dotenv's ARMAUTOMERGE /
 # CR_REQUIRE_CROSS_MODEL / CR_FLOOR_FALLBACK out of a `.env` FILE, falling back
@@ -5014,6 +5018,96 @@ if [ -z "$ONLY_FILTERS" ]; then
         FAILED=$((FAILED + 1))
     fi
 fi
+# ---------------------------------------------------------------------------
+# A resume folder that does not load the himmel guard hooks is
+# refused at arm time (rc 18), before any worktree, at job or state write.
+# The suite-wide UNGUARDED_LAUNCH_OK=1 opt-in is dropped for these rows.
+# ---------------------------------------------------------------------------
+if _sec_selected "9026" "HIMMEL-9026"; then
+G9026="$TMP/g9026"
+mkdir -p "$G9026/scratch" "$G9026/vault/handovers" "$G9026/fakeco/scripts/handover"
+git init -q "$G9026/scratch" >/dev/null 2>&1
+git init -q "$G9026/vault" >/dev/null 2>&1
+touch "$G9026/vault/.single-writer"
+HO_9026="$G9026/vault/handovers/guard-row.md"
+printf -- '---\nsession_kind: test\n---\n\n# guard row handover\n' > "$HO_9026"
+HO_9026_SUM="$(cksum < "$HO_9026")"
+
+_g9026_state() {
+    # everything an arm that got past the check would have left behind
+    find "$TMP/armed-stub.atdir" "$ARM_RUNNER_DIR" -type f 2>/dev/null | sort
+    cat "$TMP/armed-stub.tasks" 2>/dev/null
+}
+: > "$TMP/armed-stub.tasks"
+rm -f "$TMP/armed-stub.atdir"/job-*
+_g_before="$(_g9026_state)"
+
+out=$(env -u UNGUARDED_LAUNCH_OK GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --cwd "$G9026/scratch" 2>&1)
+rc=$?
+assert_rc "guard_arm_refuses_cwd real arm refuses an unguarded --cwd (rc=18)" 18 "$rc"
+assert_contains "guard_arm_refuses_cwd ERR names the refusal" "does not load the himmel guard hooks" "$out"
+assert_contains "guard_arm_refuses_cwd ERR names the opt-out" "UNGUARDED_LAUNCH_OK=1" "$out"
+assert_not_contains "guard_arm_refuses_cwd did not arm" "RESUME ARMED" "$out"
+if [ "$(_g9026_state)" = "$_g_before" ]; then echo "PASS guard_arm_refuses_cwd no at job, runner or task state written"
+else echo "FAIL guard_arm_refuses_cwd state was written"; FAILED=$((FAILED + 1)); fi
+if [ "$(cksum < "$HO_9026")" = "$HO_9026_SUM" ]; then echo "PASS guard_arm_refuses_cwd handover doc bytes unchanged"
+else echo "FAIL guard_arm_refuses_cwd handover doc changed"; FAILED=$((FAILED + 1)); fi
+
+out=$(env -u UNGUARDED_LAUNCH_OK GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --cwd "$G9026/scratch" --dry-run 2>&1)
+rc=$?
+assert_rc "guard_arm_dry_run_reports rc stays 0" 0 "$rc"
+assert_contains "guard_arm_dry_run_reports DRY REFUSE line" "DRY arm-resume: would REFUSE to arm -- $G9026/scratch does not load the himmel guard hooks" "$out"
+assert_contains "guard_arm_dry_run_reports names the opt-out" "a real arm exits 18 unless UNGUARDED_LAUNCH_OK=1 is set." "$out"
+
+# --worktree: the PARENT checkout is checked, before the worktree is created. A copy of
+# this checkout's scripts/ (symlink) inside a scratch repo makes the scratch repo the parent.
+rm -rf "$G9026/fakeco/scripts"
+ln -s "$(cd "$(dirname "$ARM")/../.." && pwd)/scripts" "$G9026/fakeco/scripts"
+git init -q "$G9026/fakeco" >/dev/null 2>&1
+rm -f "$G9026/wt-created"
+out=$(env -u UNGUARDED_LAUNCH_OK ARM_WORKTREE_CMD="touch $G9026/wt-created" GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$G9026/fakeco/scripts/handover/arm-resume.sh" --time "$(future_time)" --handover "$HO_9026" --worktree fix/himmel-9026-guard 2>&1)
+rc=$?
+assert_rc "guard_arm_worktree_refused_no_create refuses on the parent checkout (rc=18)" 18 "$rc"
+if [ ! -e "$G9026/wt-created" ] && [ ! -d "$G9026/fakeco/.claude/worktrees/fix+himmel-9026-guard" ]; then
+    echo "PASS guard_arm_worktree_refused_no_create no worktree created"
+else echo "FAIL guard_arm_worktree_refused_no_create a worktree was created"; FAILED=$((FAILED + 1)); fi
+
+out=$(env -u UNGUARDED_LAUNCH_OK GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --worktree fix/himmel-9026-guard --dry-run 2>&1)
+rc=$?
+assert_rc "guard_arm_worktree_dry_run_himmel control rc 0" 0 "$rc"
+assert_not_contains "guard_arm_worktree_dry_run_himmel control: a guarded himmel checkout is not refused" "would REFUSE" "$out"
+
+# Auto-detected single-writer cwd: ARM_VAULT_CWD_OK alone is not enough, both variables arm.
+out=$(env -u UNGUARDED_LAUNCH_OK ARM_VAULT_CWD_OK=1 GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" 2>&1)
+rc=$?
+assert_rc "guard_arm_vault_both_gates ARM_VAULT_CWD_OK alone is refused (rc=18)" 18 "$rc"
+out=$(UNGUARDED_LAUNCH_OK=1 ARM_VAULT_CWD_OK=1 GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" 2>&1)
+rc=$?
+assert_rc "guard_arm_vault_both_gates both variables arm" 0 "$rc"
+: > "$TMP/armed-stub.tasks"
+rm -f "$TMP/armed-stub.atdir"/job-*
+
+# Opt-out: armed once, exactly one WARN.
+out=$(UNGUARDED_LAUNCH_OK=1 GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --cwd "$G9026/scratch" 2>&1)
+rc=$?
+assert_rc "guard_arm_optout_warns_once arms" 0 "$rc"
+_g_jobs=$(find "$TMP/armed-stub.atdir" -name 'job-*' -type f 2>/dev/null | wc -l | tr -d ' ')
+_g_warns=$(printf '%s\n' "$out" | grep -c '^WARN unguarded launch of ')
+if [ "$_g_jobs" = "1" ]; then echo "PASS guard_arm_optout_warns_once one at job written"
+else echo "FAIL guard_arm_optout_warns_once at jobs=$_g_jobs"; FAILED=$((FAILED + 1)); fi
+if [ "$_g_warns" = "1" ]; then echo "PASS guard_arm_optout_warns_once exactly one WARN line"
+else echo "FAIL guard_arm_optout_warns_once WARN lines=$_g_warns"; FAILED=$((FAILED + 1)); fi
+: > "$TMP/armed-stub.tasks"
+rm -f "$TMP/armed-stub.atdir"/job-*
+fi
+
 CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)
 if [ "$CRONTAB_SNAPSHOT_AFTER" != "$CRONTAB_SNAPSHOT_BEFORE" ]; then
     echo "FAIL the real crontab changed during this run -- a case leaked into the operator's live crontab:"

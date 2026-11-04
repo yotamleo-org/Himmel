@@ -35,6 +35,7 @@ assert_file_contains() {
 
 TMP="$(mktemp -d -t worker-lifecycle.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
+export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 
 # arm-resume.sh now calls scripts/lib/usage-preflight.sh's
 # fleet-size cap before every real (non-dry-run) arm. Without this, every
