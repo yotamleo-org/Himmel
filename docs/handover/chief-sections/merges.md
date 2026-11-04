@@ -54,7 +54,8 @@ a bare GO run, give the worker the path it printed as its `--go` argument. A chi
 `merge-on-green.sh` exits 17 without `--go`, or with the file of another PR or
 head, and prints the verified GO evidence, so the merge command shows the
 review it relies on (HIMMEL-7165: a merge with no visible review was denied as
-Merge Without Review, intermittently). If the classifier still denies a
+Merge Without Review, intermittently). A `--go` merge that resolves no open PR
+merged nothing and exits 27, never a silent 0 (HIMMEL-8918). If the classifier still denies a
 reviewed merge, the worker sends `BLOCKED`; do not run the denied merge for it
 (that launders the denial) and do not loosen any rule. The fallback is the
 claudex path above, tracked as a follow-up.
