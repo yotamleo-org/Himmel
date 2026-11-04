@@ -14,9 +14,9 @@
 #   a. one row per manifest item, per doctor line, per registry flag, per
 #      secrets-manifest entry, per cadence (4, each once), per optional
 #      plugin, per lane, per initiative worker; every spec §4 field present
-#   c. fires: doctor cadence = yes (last.tsv mtime); pipeline on linux =
-#      unverified even though its stubbed status says ARMED; nothing but
-#      component run evidence ever yields yes
+#   c. fires: doctor cadence = yes (last.tsv mtime); pipeline and qmd = yes from
+#      their own run logs (fired time + exit code); graphmap with an empty or
+#      absent log = no-run; nothing but component run evidence ever yields yes
 #   d. redact(): a canary .env value planted in a stub probe detail is absent
 #      from the output (and the RED control, redaction off, leaks it)
 #   e. --items: a cadence-only call never invokes the stub doctor
@@ -59,6 +59,14 @@ printf 'HIMMEL_INITIATIVE=execute,pr\nJIRA_API_TOKEN=%s\n' "$CANARY" > "$fixture
 homeDir="$work/home"
 mkdir -p "$homeDir/.claude" "$homeDir/.himmel/state/doctor-cadence"
 printf 'FAIL C44-skill-index\n' > "$homeDir/.himmel/state/doctor-cadence/last.tsv"
+# run logs the cadence runners write: pipeline has two task logs (the newer one wins) and a
+# rotated .log.prev that must be ignored; qmd's run has no exit line yet; graphmap's log is empty.
+mkdir -p "$homeDir/.claude/pipeline-cadence" "$homeDir/.claude/qmd-cadence" "$homeDir/.claude/graphmap-cadence"
+printf '[fired 2026-11-03 04:10:00]\nPIPELINE-WORKER-DONE\n[exit rc=0]\n' > "$homeDir/.claude/pipeline-cadence/pipeline-harvest.log"
+printf '[fired 2026-11-04 04:00:00]\nboom\n[exit rc=1]\n' > "$homeDir/.claude/pipeline-cadence/pipeline-health.log"
+printf '[fired 2026-11-05 09:00:00]\n[exit rc=0]\n' > "$homeDir/.claude/pipeline-cadence/pipeline-health.log.prev"
+printf '[fired 2026-11-04 05:00:00]\nqmd-reindex: start\n' > "$homeDir/.claude/qmd-cadence/qmd-reindex.log"
+: > "$homeDir/.claude/graphmap-cadence/graphmap-himmel.log"
 cacheDir="$work/cache"; mkdir -p "$cacheDir"
 cat > "$cacheDir/install-profile.json" <<'JSON'
 {"role":"adopter","tier":"standard","scope":"user","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}
@@ -136,7 +144,7 @@ for _bin in secret-tool busctl; do
 done
 
 run_report() {
-  ( cd "$target" && HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" \
+  ( cd "$target" && TZ=UTC HOME="$homeDir" USERPROFILE="$(winpath "$homeDir")" \
       HIMMELCTL_CACHE_DIR="$(winpath "$cacheDir")" HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepo")" \
       HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheDir")-luna-config.json" \
       HIMMEL_REPORT_DOCTOR="$(winpath "${DOCTOR_STUB:-$stubDoctor}")" HIMMEL_REPORT_CADENCE_ROOT="$(winpath "$scriptRoot")" \
@@ -195,11 +203,19 @@ pass "a4 every row carries scope, fix.by and (for configure) fix.tile"
 
 # ── c. fires honesty ────────────────────────────────────────────────────────
 jq -e '.rows[]|select(.id=="doctor-cadence")|.fires.state=="yes" and (.fires.at|type)=="string"' "$out" >/dev/null || fail "doctor cadence fires != yes with a timestamp"
-if [ "$(uname -s)" != MINGW64_NT ] && [ "$(uname -s)" != MSYS_NT ]; then
-  jq -e '.rows[]|select(.id=="pipeline-cadence")|.fires.state=="unverified"' "$out" >/dev/null || fail "pipeline cadence fires != unverified on non-Windows"
-fi
-[ "$(jq '[.rows[]|select(.fires.state=="yes")]|map(.id)|sort|join(",")' "$out")" = '"doctor-cadence"' ] || fail "fires=yes on a row other than doctor-cadence"
-pass "c fires: doctor yes, pipeline unverified, nothing else yes"
+fires_of() { jq -c ".rows[]|select(.id==\"$1\")|.fires" "${2:-$out}"; }
+# the newest task log wins, its time and exit code are read, and the rotated .log.prev is ignored
+[ "$(fires_of pipeline-cadence)" = '{"state":"yes","evidence":"pipeline-health.log run log, exit rc=1","at":"2026-11-04T04:00:00.000Z"}' ] || fail "c pipeline fires: $(fires_of pipeline-cadence)"
+# a run with no exit line yet says so rather than inventing an outcome
+[ "$(fires_of qmd-cadence)" = '{"state":"yes","evidence":"qmd-reindex.log run log, no exit line (still running, or died)","at":"2026-11-04T05:00:00.000Z"}' ] || fail "c qmd fires: $(fires_of qmd-cadence)"
+# an empty log is not a run: a named no-run state, never unverified
+jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run" and .fires.at==null and (.fires.evidence|contains("graphmap-cadence"))' "$out" >/dev/null || fail "c graphmap (empty log) fires: $(fires_of graphmap-cadence)"
+[ "$(jq '[.rows[]|select(.fires.state=="yes")]|map(.id)|sort|join(",")' "$out")" = '"doctor-cadence,pipeline-cadence,qmd-cadence"' ] || fail "fires=yes on a row other than doctor and the logged cadences"
+# no log directory at all: the same named state
+rm -rf "$homeDir/.claude/graphmap-cadence"
+run_report --items graphmap-cadence > "$work/nolog.json" 2> "$work/nolog.err" || { cat "$work/nolog.err" >&2; fail "report --items graphmap-cadence exited non-zero"; }
+jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run"' "$work/nolog.json" >/dev/null || fail "c graphmap (no log dir) fires: $(fires_of graphmap-cadence "$work/nolog.json")"
+pass "c fires: doctor yes from last.tsv, pipeline and qmd yes from their run logs, graphmap no-run"
 
 # ── d. redaction ────────────────────────────────────────────────────────────
 if grep -q "$CANARY" "$out"; then fail "canary leaked into report output"; fi
