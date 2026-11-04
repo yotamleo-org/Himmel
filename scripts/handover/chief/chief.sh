@@ -325,6 +325,46 @@ bus_warn() {
     printf '%s WARN: %s\n' "$(date +%F_%T)" "$(printf '%s' "$2" | tr '\n' ' ')" >> "$1"
 }
 
+# bus_bounded <cli> <args...> -- run the bus CLI, output into bus_out, bounded by
+# BUS_EXEC_SECS (default 15) as chief-bus-exec.sh is: the bus takes its chain
+# lock with no wait limit, and a stuck lock must never hold the launch. Past the
+# limit: TERM, a second's grace, KILL, and 124.
+bus_bounded() {
+    local cli="$1" secs="${BUS_EXEC_SECS:-15}" tmp pid ticks=0 rc=0
+    shift
+    case "$secs" in ''|*[!0-9]*) secs=15 ;; esac
+    secs=$((10#$secs))
+    # bus_captured=0: the output was lost, so it cannot show a name is free.
+    bus_captured=1
+    tmp="$(mktemp "${TMPDIR:-/tmp}/chief-bus.XXXXXX")" || { tmp=/dev/null; bus_captured=0; }  # swallow-ok: the output only feeds the refusal text
+    "$cli" "$@" >"$tmp" 2>&1 &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$ticks" -ge $((secs * 10)) ]; then
+            kill "$pid" 2>/dev/null || true
+            ticks=0
+            while kill -0 "$pid" 2>/dev/null && [ "$ticks" -lt 10 ]; do
+                sleep 0.1
+                ticks=$((ticks + 1))
+            done
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+            rc=124
+            break
+        fi
+        sleep 0.1
+        ticks=$((ticks + 1))
+    done
+    if [ "$rc" -eq 124 ]; then
+        wait "$pid" 2>/dev/null || true
+        bus_out="timed out after ${secs}s: $(cat "$tmp" 2>/dev/null || true)"  # swallow-ok: refusal detail only
+    else
+        wait "$pid" 2>/dev/null || rc=$?
+        bus_out="$(cat "$tmp" 2>/dev/null || true)"  # swallow-ok: refusal detail only
+    fi
+    [ "$tmp" = /dev/null ] || rm -f "$tmp"
+    return "$rc"
+}
+
 # bus_note <log> <text> -- a bus-chain step that worked, in the launch log.
 bus_note() {
     printf '%s bus: %s\n' "$(date +%F_%T)" "$2" >> "$1"
@@ -364,7 +404,9 @@ do_arm() {
     # pid. Whatever HIMMEL_BUS_* this process carries (a predecessor chief's
     # own HIMMEL_BUS_NAME is live in its shell) never reaches the successor, and
     # the chief profile's opt-in decides whether anything is registered.
-    # Fail-open: a failed register warns and the chief launches unbound.
+    # A failed register refuses the launch, unless the bus is broken and the
+    # launching shell set HIMMEL_LAUNCH_UNBOUND_OK=1 (never inherited by the
+    # chief); a failed profile probe warns and the chief launches unbound.
     local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HIMMEL_CHIEF_PREDECESSOR
@@ -379,7 +421,7 @@ do_arm() {
     elif [ "$bus_opt" -eq 0 ]; then
         bus_args=(register "$session" --role console)
         [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
-        if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
+        if bus_bounded "$bus_cli" "${bus_args[@]}"; then
             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
             # Still the outgoing chief here (identity is process ancestry):
             # stamp the successor so each worker's adopt passes while this one is live.
@@ -391,10 +433,24 @@ do_arm() {
                 fi
             fi
             bus_note "$log" "registered $session as chief$bus_stamp"
+        elif [ "${HIMMEL_LAUNCH_UNBOUND_OK:-}" = 1 ] && [ "$bus_captured" = 1 ] && [[ "$bus_out" != *"name already registered"* ]]; then
+            # Operator override for a broken bus, set in the launching shell.
+            # A held name is never overridden, nor is output that was lost.
+            bus_warn "$log" "bus register failed for $session - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $bus_out"
         else
-            bus_warn "$log" "bus register failed for $session - launching unbound: $bus_out"
+            # An unbound chief can neither hear nor reach its
+            # workers, so a failed register (a held name, whose error names the
+            # cause and the way out, or a broken bus) refuses the launch.
+            if [ "$bus_captured" != 1 ]; then
+                bus_out="output lost (mktemp failed) - fix the temp dir and relaunch"
+            elif [[ "$bus_out" != *"name already registered"* ]]; then
+                bus_out="${bus_out:-no output} - the bus is broken: fix it, or set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound"
+            fi
+            bus_warn "$log" "bus register failed for $session - refusing to launch: $bus_out"
+            return 2
         fi
     fi
+    unset HIMMEL_LAUNCH_UNBOUND_OK
     # plugin /chief from any repo: a
     # foreign --project selects the bucket/prefix and is recorded in the
     # doc as data (see project_doc_value below) -- the chief session

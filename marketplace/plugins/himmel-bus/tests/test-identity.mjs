@@ -62,7 +62,7 @@ test('T1.3 second bind and re-register are refused', async t => {
   const proc = await fakeProc(t, chain);
   await bound(root, proc);
   await assert.rejects(identity.bind(root, 'worker', 100, { proc }), /already bound/);
-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con' }), /already registered/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con', proc }), /already registered: worker \(live holder pid 200\) - wait for pid 200 to exit, or launch under a new name/);
   assert.deepEqual(await identity.resolveIdentity(root, { proc, pid: 300 }), { name: 'worker' });
 });
 
@@ -76,7 +76,40 @@ test('T1.3b re-arm of a registered-but-unbound name is adopted, a changed or bou
   await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'other' }), /already registered/);
   await assert.rejects(identity.register(root, 'worker', { role: 'judge', chief: 'con' }), /already registered/);
   await identity.bind(root, 'worker', 200, { proc });
-  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con' }), /already registered/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con', proc }), /already registered/);
+});
+
+test('re-arm of a bound name whose holder is gone takes it back unbound; a live, changed or chief one is refused (HIMMEL-9071)', async t => {
+  const { root } = await fixture(t);
+  const proc = await fakeProc(t, chain);
+  await bound(root, proc);
+  const after = await fakeProc(t, [P(1, 0, 'init', 1), P(201, 1, 'claude', 2500)]);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'other', proc: after }), /already registered: worker \(held as worker under chief con, dead holder pid 200; this launch asks for worker under chief other, which does not succeed it\) - relaunch from/);
+  await assert.rejects(identity.register(root, 'con', { role: 'chief', proc: after }), /already registered: con \(a chief name, dead holder pid 100\) - a chief name is single-use/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'judge', chief: 'con', proc: after }), /already registered: worker \(held with role worker, dead holder pid 200; this launch asks for role judge\) - relaunch with the held role, or launch under a new name/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con', pair: 'other', proc: after }), /\(held with pair none, dead holder pid 200; this launch asks for pair other\) - relaunch with the held pair/);
+  const again = await identity.register(root, 'worker', { role: 'worker', chief: 'con', proc: after });
+  assert.equal(again.pid, undefined);
+  assert.equal(await identity.status(root, 'worker', { proc: after }), 'unbound');
+  await identity.bind(root, 'worker', 201, { proc: after });
+  assert.equal(await identity.status(root, 'worker', { proc: after }), 'live');
+});
+
+test('a successor chief re-arming a dead worker its predecessor registered takes the name back; an unrelated chief or a live holder is refused', async t => {
+  const { root } = await fixture(t);
+  const proc = await fakeProc(t, chain);
+  await bound(root, proc);
+  await identity.register(root, 'con2', { role: 'chief', predecessor: 'con' });
+  await identity.register(root, 'con3', { role: 'chief', predecessor: 'con2' });
+  await identity.register(root, 'stray', { role: 'chief' });
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con2', proc }), /live holder pid 200/);
+  const after = await fakeProc(t, [P(1, 0, 'init', 1), P(201, 1, 'claude', 2500)]);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'stray', proc: after }), /which does not succeed it/);
+  const again = await identity.register(root, 'worker', { role: 'worker', chief: 'con3', proc: after });
+  assert.equal(again.console, 'con3');
+  assert.equal(await identity.status(root, 'worker', { proc: after }), 'unbound');
+  await identity.bind(root, 'worker', 201, { proc: after });
+  assert.equal(await identity.status(root, 'worker', { proc: after }), 'live');
 });
 
 test('T1.4 pid reuse (same pid, different start time) is unbound', async t => {
