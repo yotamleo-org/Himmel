@@ -26,6 +26,9 @@
 #      (toolUseResult.taskId) started has a terminal <task-notification>
 #      (one carrying a <status>) or a TaskStop result (toolUseResult.task_id).
 #   5. HIMMEL_RELEASE_MANAGER is not 1: a release manager's STANDBY is exempt.
+#   6. None of the last 4 tool calls reported READY, FINDING or BLOCKED to the
+#      chief (an append-results.sh bullet or a SendMessage opening with the
+#      marker): that worker waits on the chief's reply by design.
 #
 # The keepalive bound is HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS (launch
 # env, default 3000 = 50 min, 60-3300 accepted, anything else = the default);
@@ -120,6 +123,26 @@ running="$(jq -R -r '
 ')" || exit 0
 case "$running" in ''|*[!0-9]*) exit 0 ;; esac
 [ "$running" -eq 0 ] || exit 0
+
+# A READY, FINDING or BLOCKED report within the last 4 tool calls means the
+# worker is waiting on the chief's reply, not idle: about half of all firings
+# followed one. A marker is an append-results.sh bullet or a SendMessage that
+# OPENS with it; a plain-text mention or another marker (LIVE, JUDGE-REQUEST)
+# does not count. Count 0 falls through to the refusal.
+reported="$(jq -R -r '
+    fromjson? // empty
+    | select(.type == "assistant")
+    | .message.content? | arrays | .[]
+    | select(.type == "tool_use")
+    | if .name == "Bash" then
+          (.input.command // "" | strings
+           | if test("append-results\\.sh\\s+\\S+\\s+[\"\\x27]?\\s*(READY|FINDING|BLOCKED)\\b") then "M" else "T" end)
+      elif .name == "SendMessage" then
+          (.input.message // "" | strings
+           | if test("^\\s*(READY|FINDING|BLOCKED)\\b") then "M" else "T" end)
+      else "T" end
+' "$transcript" 2>/dev/null | tail -n 4 | grep -c '^M$')" || true  # swallow-ok: no marker counts 0 and falls through to the refusal
+[ "${reported:-0}" = "0" ] || exit 0
 
 bound="${HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS:-3000}"
 case "$bound" in ''|*[!0-9]*) bound=3000 ;; esac
