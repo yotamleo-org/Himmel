@@ -10,7 +10,7 @@ W=$(mktemp -d "${TMPDIR:-/tmp}/outside-contributors-test.XXXXXX") || exit 1
 trap 'rm -rf "$W"' EXIT
 fails=0
 check() { if [ "$2" = "$3" ]; then printf 'ok - %s\n' "$1"; else printf 'FAIL - %s: [%s] != [%s]\n' "$1" "$2" "$3"; fails=$((fails+1)); fi; }
-sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1"; else shasum -a 256 < "$1"; fi | cut -d' ' -f1; }
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1"; else shasum -a 256 < "$1"; fi | cut -d' ' -f1; } # read-sink-ok: hashes only the suite's own fixture files under $W
 
 ANCHOR="$W/anchor"; mkdir -p "$ANCHOR/scripts/lib" "$ANCHOR/scripts/cr/perspectives" "$W/home/.himmel"
 cp "$HERE/outside-contributors.sh" "$ANCHOR/scripts/lib/" 2>/dev/null
