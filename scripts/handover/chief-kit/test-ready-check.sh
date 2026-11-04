@@ -78,11 +78,21 @@ case "$args" in
         jq -n --arg h "$STUB_HEAD" --arg m "${STUB_MSS:-CLEAN}" \
             --argjson rollup "${STUB_ROLLUP:-[]}" --argjson commits "${STUB_COMMITS:-[]}" \
             --arg merges "${STUB_MERGE_OIDS:-}" --argjson u "${STUB_UNRESOLVED:-0}" \
-            --arg body "$(printf '%b' "${STUB_BODY:-}${STUB_RED:-}")" --arg title "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" '
-            {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,title:$title,mergeStateStatus:$m,reviewDecision:null,body:(if (env.STUB_BODY_NULL // "") != "" then null else $body end),
+            --arg body "$(printf '%b' "${STUB_BODY:-}${STUB_RED:-}")" --arg title "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" \
+            --argjson fork "${STUB_FORK_JSON:-false}" --arg resolved "${STUB_RESOLVED_BY:-}" '
+            # author: STUB_AUTHOR (default yotamleo; app/<x> is a Bot), STUB_AUTHOR_TYPE, STUB_AUTHOR_ID; STUB_AUTHOR_EMPTY = a deleted account
+            ((env.STUB_AUTHOR // "") | if . == "" then "yotamleo" else . end) as $a
+            | (if (env.STUB_AUTHOR_EMPTY // "") != "" then null
+               elif ($a | startswith("app/")) then {__typename:"Bot",login:($a | ltrimstr("app/")),id:"BOT_kgDOstub"}
+               else {__typename:((env.STUB_AUTHOR_TYPE // "") | if . == "" then "User" else . end),login:$a}
+                    + (if (env.STUB_AUTHOR_ID // "") != "" then {id:env.STUB_AUTHOR_ID} else {} end) end) as $author
+            # STUB_RESOLVED_BY: comma list, one resolved thread per entry, `null` = no resolver
+            | ($resolved | split(",") | map(select(length > 0)) | map({isResolved:true,resolvedBy:(if . == "null" then null else {login:.} end)})) as $res
+            | {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,title:$title,mergeStateStatus:$m,reviewDecision:null,body:(if (env.STUB_BODY_NULL // "") != "" then null else $body end),
+                author:$author,isCrossRepository:$fork,
                 commits:{nodes:[$commits[] | . as $commit | {commit:(. + {oid:(.oid // $h),parents:{totalCount:(if (($merges|split("\n")) | index($commit.oid // "")) != null then 2 else 1 end)}})}],pageInfo:{hasNextPage:false,endCursor:null}},
-                reviewThreads:{nodes:[range($u)|{isResolved:false}],pageInfo:{hasNextPage:false,endCursor:null}},
-                statusCheckRollup:{contexts:{nodes:[$rollup[] | . + {__typename:(if has("conclusion") then "CheckRun" else "StatusContext" end)} | if has("workflowName") then . + {checkSuite:{workflowRun:{workflow:{name:.workflowName}}}} else . end],pageInfo:{hasNextPage:false,endCursor:null}}}
+                reviewThreads:{nodes:([range($u)|{isResolved:false,resolvedBy:null}] + $res),pageInfo:{hasNextPage:false,endCursor:null}},
+                statusCheckRollup:(if (env.STUB_ROLLUP_NULL // "") != "" then null else {contexts:{nodes:[$rollup[] | . + {__typename:(if has("conclusion") then "CheckRun" else "StatusContext" end)} | if has("workflowName") then . + {checkSuite:{workflowRun:{workflow:{name:.workflowName}}}} else . end],pageInfo:{hasNextPage:false,endCursor:null}}} end)
             }}}}' ;;
     *"commits(first:100)"*)
         printf '%s\n' "${STUB_MERGE_OIDS:-}" ;;
@@ -109,6 +119,11 @@ case "$args" in
             if [ -f "${STUB_RUNS_DIR:-/nonexistent}/log-$id.txt" ]; then cat "$STUB_RUNS_DIR/log-$id.txt"; exit 0; else exit 1; fi ;;
         esac
         if [ -f "${STUB_RUNS_DIR:-/nonexistent}/jobs-$id.json" ]; then cat "$STUB_RUNS_DIR/jobs-$id.json"; else exit 1; fi ;;
+    *"api --paginate"*"/files"*'.filename, (.previous_filename'*)
+        # item 16: every new path, then the old path of each STUB_RENAMES "new old" line
+        [ -z "${STUB_FILES16_FAIL:-}" ] || exit 1
+        [ -n "${STUB_FILES16_EMPTY:-}" ] || printf '%s\n' "${STUB_FILES:-README.md}"
+        printf '%s\n' "${STUB_RENAMES:-}" | awk 'NF == 2 { print $2 }' ;;
     *"api --paginate"*"/files"*"previous_filename"*)
         [ -z "${STUB_RENAMES_FAIL:-}" ] || exit 1
         # STUB_RENAMES lines "new old": run the script's own --jq filter over a files array
@@ -125,6 +140,8 @@ case "$args" in
         ;;
     "api repos/${STUB_NWO:-acme/repo}/commits/${STUB_HEAD:-no-head}/statuses"*)
         # check 15: the CodeRabbit commit status of THIS repo and head only; STUB_CR_DESC unset = unreadable
+        [ -z "${STUB_CR_SLEEP:-}" ] || sleep 40
+        [ -z "${STUB_CR_STATUSES:-}" ] || { printf '%s\n' "$STUB_CR_STATUSES"; exit 0; }
         [ -n "${STUB_CR_DESC+x}" ] || exit 1
         jq -n --arg d "$STUB_CR_DESC" --arg st "${STUB_CR_STATE:-success}" '[{context:"CodeRabbit",state:$st,description:$d,created_at:"2026-11-02T18:44:07Z",creator:{id:136622811,login:"coderabbitai[bot]",type:"Bot"}}]' ;;
     *)
@@ -240,12 +257,16 @@ run() {
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
         READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR:-$TP_ANCHOR}" \
-        bash "$SCRIPT" "$PR" "$SHA")
+        STUB_FORK_JSON="${STUB_FORK_JSON:-${STUB_FORK:-false}}" STUB_AUTHOR_ID="${STUB_AUTHOR_ID:-}" STUB_AUTHOR_TYPE="${STUB_AUTHOR_TYPE:-}" \
+        STUB_RESOLVED_BY="${STUB_RESOLVED_BY:-}" STUB_ROLLUP_NULL="${STUB_ROLLUP_NULL:-}" \
+        STUB_FILES16_FAIL="${STUB_FILES16_FAIL:-}" STUB_FILES16_EMPTY="${STUB_FILES16_EMPTY:-}" \
+        bash "${RUN_SCRIPT:-$SCRIPT}" "$PR" "$SHA")
 }
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
     unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_RED STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_WF_PATCH_FILE STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH STUB_AUTHOR
+    unset STUB_FORK STUB_FORK_JSON STUB_AUTHOR_ID STUB_AUTHOR_TYPE STUB_RESOLVED_BY STUB_ROLLUP_NULL STUB_FILES16_FAIL STUB_FILES16_EMPTY
     seed_ledger_ok
 }
 
@@ -3366,6 +3387,65 @@ cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited
 check "cr stub: a read of another head is refused" "$cr_stub_rc" "1"
 cr_stub_rc=0; STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_CR_DESC='Review rate limited' GH_LOG="$GH_LOG" "$tmp/bin/gh" api "repos/other/repo/commits/$SHA/statuses?per_page=100" >/dev/null 2>&1 || cr_stub_rc=$?
 check "cr stub: a read of another repository is refused" "$cr_stub_rc" "1"
+
+# ── 16. outside-PR full review ─────────────────────────────
+# The rows run a copy of ready-check in a temp anchor tree: the real lib/,
+# ci/, testing/ and cr/blast-scope.cjs, plus a stub scripts/check-ci.sh, and
+# a temp HOME whose allowlist lists Goomal (login and id) unless a row says
+# otherwise. No PR code runs: every input is a synthetic fixture.
+OUT_ANCHOR="$tmp/out-anchor"
+OUT_SCRIPT="$OUT_ANCHOR/scripts/handover/chief-kit/ready-check.sh"
+OUT_HOME="$tmp/out-home"
+OUT_CHECKCI_LOG="$tmp/checkci.log"
+export OUT_CHECKCI_LOG
+GOOMAL_ID=U_kgDOBieNbw
+mkdir -p "$OUT_ANCHOR/scripts/handover/chief-kit" "$OUT_ANCHOR/scripts/cr/perspectives" "$OUT_HOME/.himmel"
+cp "$SCRIPT" "$OUT_SCRIPT"
+cp -R "$HERE/../../lib" "$HERE/../../ci" "$HERE/../../testing" "$OUT_ANCHOR/scripts/"
+[ ! -f "$HERE/../../cr/blast-scope.cjs" ] || cp "$HERE/../../cr/blast-scope.cjs" "$OUT_ANCHOR/scripts/cr/blast-scope.cjs"
+# a fixture perspective: B3 has not written the real one
+printf 'fixture outside-security perspective\n' > "$OUT_ANCHOR/scripts/cr/perspectives/outside-security.md"
+cat > "$OUT_ANCHOR/scripts/check-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+# stub check-ci: logs the CodeRabbit env it saw; CR_APP=0 / CR_PROFILE=none skip the findings read, as the real one does
+printf 'args=%s CR_APP=%s CR_PROFILE=%s CR_BOT_USER_ID=%s\n' "$*" "${CR_APP-unset}" "${CR_PROFILE-unset}" "${CR_BOT_USER_ID-unset}" >> "$OUT_CHECKCI_LOG"
+[ -z "${STUB_CHECKCI_SLEEP:-}" ] || sleep 60
+[ "${CR_APP:-}" != 0 ] && [ "${CR_PROFILE:-}" != none ] || exit 0
+exit "${STUB_CHECKCI_RC:-0}"
+STUB
+chmod +x "$OUT_ANCHOR/scripts/check-ci.sh"
+out_list_goomal() { printf '[{"login":"Goomal","id":"%s"}]\n' "$GOOMAL_ID" > "$OUT_HOME/.himmel/outside-contributors.json"; }
+OUT_ROLLUP='[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"},{"name":"lint","workflowName":"CI","status":"COMPLETED","conclusion":"SUCCESS","startedAt":"2026-11-04T00:00:00Z"},{"context":"legacy-ci","state":"SUCCESS"}]'
+OUT_BRANCH=feat/himmel-100-thing
+BASE40=2222222222222222222222222222222222222222
+row_scope() {  # row_scope <scope> [head] [branch] [from] [pr] [round]
+    local from_json=null pr_json=null src=panel-first-pass
+    [ -z "${4:-}" ] || from_json="\"$4\""
+    [ -z "${5:-}" ] || { pr_json="$5"; src="pr-diff"; }
+    printf '{"kind":"round-scope","ts":"2026-11-04T00:00:01Z","branch":"%s","head":"%s","scope":"%s","base_sha":"%s","from":%s,"round":%s,"source":"%s","pr":%s,"status":"ok"}\n' \
+        "${3:-$OUT_BRANCH}" "${2:-$SHA}" "$1" "$BASE40" "$from_json" "${6:-1}" "$src" "$pr_json" >> "$LEDGER"
+}
+row_impacted() {  # row_impacted [rc] [skip_n] [head] [branch]
+    printf '{"kind":"impacted","ts":"2026-11-04T00:00:02Z","branch":"%s","head":"%s","impacted_n":3,"unverdicted_n":0,"skip_n":%s,"rc":%s,"status":"ok"}\n' \
+        "${4:-$OUT_BRANCH}" "${3:-$SHA}" "${2:-0}" "${1:-0}" >> "$LEDGER"
+}
+# out_reset: an outside PR (a fork, by the listed Goomal) with every 16b-16g record at $SHA
+out_reset() {
+    reset_stubs
+    out_list_goomal
+    : > "$OUT_CHECKCI_LOG"
+    STUB_FORK=true STUB_AUTHOR=Goomal STUB_AUTHOR_ID="$GOOMAL_ID" STUB_ROLLUP="$OUT_ROLLUP"
+    row_scope full
+    row_impacted
+}
+run_out() { RUN_SCRIPT="$OUT_SCRIPT" RUN_HOME="$OUT_HOME" run; }
+
+# T1.1: an outside PR whose only round-scope row at the head is a delta row is refused
+out_reset
+seed_ledger_ok; row_scope delta "$SHA" "$OUT_BRANCH" "$BASE40" "" 2; row_impacted
+rc=0; out="$(run_out)" || rc=$?
+check "T1.1 outside PR with only a delta round at the head: exit 1" "$rc" "1"
+contains "T1.1 outside PR with only a delta round at the head: 16b fails" "$out" "[FAIL] 16b."
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

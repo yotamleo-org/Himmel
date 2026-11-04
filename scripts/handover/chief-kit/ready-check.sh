@@ -520,7 +520,7 @@ else
         # lands the PR TITLE as main's subject. Exempt only when the PR author
         # is external per the allowlist AND the title is keyed. Every unreadable
         # input keeps the FAIL; the allowlist is read, never written.
-        ext_login=$("$GH" pr view "$PR" --repo "$nwo" --json author --jq '.author.login' 2>/dev/null | tr -d '[:space:]') || ext_login=""  # swallow-ok: an unreadable author never takes the exemption
+        ext_login=$(printf '%s' "$snapshot" | jq -r '.[0].author // empty' 2>/dev/null | tr -d '[:space:]') || ext_login=""  # swallow-ok: an unreadable author never takes the exemption
         ext_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || ext_title=""  # swallow-ok: an unreadable title never takes the exemption
         ext_ok=0
         # gh reports a GitHub App author as "app/<name>" (e.g. app/dependabot): a bot is never a contributor.
