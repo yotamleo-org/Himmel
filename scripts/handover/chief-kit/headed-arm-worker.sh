@@ -2794,8 +2794,11 @@ case "${MCP_NAMES_JSON:-}" in
                 # bullet: the tick tail ignores it, a grep for bus=FAIL finds it).
                 # WRAPPED is stripped: worker_tail_status reads a final unmarked
                 # bullet containing it as a wrap.
-                [[ "$BUS_OUT" == *"name already registered"* ]] \
-                    || BUS_OUT="${BUS_OUT:-no output} - the bus is broken: fix it, or set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound"
+                if [ "$BUS_TMP" = /dev/null ]; then
+                    BUS_OUT="output lost (mktemp failed) - fix the temp dir and relaunch"
+                elif [[ "$BUS_OUT" != *"name already registered"* ]]; then
+                    BUS_OUT="${BUS_OUT:-no output} - the bus is broken: fix it, or set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound"
+                fi
                 echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >> "$LOG"
                 BUS_REASON="$(printf '%s' "$BUS_OUT" | tr '\n>' ' -' | sed 's/WRAPPED//g' | cut -c1-160)"
                 echo "headed-arm-worker: refusing to launch $NAME - bus register failed (bus=FAIL:$BUS_REASON)"

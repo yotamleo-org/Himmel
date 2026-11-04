@@ -441,8 +441,11 @@ do_arm() {
             # An unbound chief can neither hear nor reach its
             # workers, so a failed register (a held name, whose error names the
             # cause and the way out, or a broken bus) refuses the launch.
-            [[ "$bus_out" == *"name already registered"* ]] \
-                || bus_out="${bus_out:-no output} - the bus is broken: fix it, or set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound"
+            if [ "$bus_captured" != 1 ]; then
+                bus_out="output lost (mktemp failed) - fix the temp dir and relaunch"
+            elif [[ "$bus_out" != *"name already registered"* ]]; then
+                bus_out="${bus_out:-no output} - the bus is broken: fix it, or set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound"
+            fi
             bus_warn "$log" "bus register failed for $session - refusing to launch: $bus_out"
             return 2
         fi

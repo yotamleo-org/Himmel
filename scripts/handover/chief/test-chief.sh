@@ -2489,11 +2489,16 @@ cat > "$bus79/arm.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = --role ] && shift 2
 printf 'bus_name=%s extra=%s bind=%s\n' "${HIMMEL_BUS_NAME:-<unset>}" "${HIMMEL_BUS_EXTRA:-<unset>}" "${HEADED_ARM_BUS:-<unset>}" >> "$5"
+printf 'override=%s\n' "${HIMMEL_LAUNCH_UNBOUND_OK:-<unset>}" >> "$5"
 STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
 [ -n "${BUS79_HANG:-}" ] && exec sleep 20
+if [ -n "${BUS79_HELD:-}" ]; then
+  echo "name already registered: $2 (live holder pid 4242)" >&2
+  exit 1
+fi
 if [ -n "${BUS79_FAIL:-}" ] && { [ -z "${BUS79_FAIL_VERB:-}" ] || [ "$1" = "$BUS79_FAIL_VERB" ]; }; then
   echo "stub bus: $1 refused" >&2
   exit 1
@@ -2555,7 +2560,21 @@ check "79 override: the chief arms" "$(printf '%s\n' "$out79o" | grep -c '^armed
 check "79 override: armed unbound, with no bind flag" "$(( $(unbound79) - before79o ))" "1"
 check "79 override: the launch log says it launched unbound" \
     "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)')" "1"
+check "79 override: the armed chief does not inherit the override" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c '^override=1$')" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79override/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79o")" >/dev/null 2>&1
+out79held="$(run79 in new bus79held BUS79_HELD=1 HIMMEL_LAUNCH_UNBOUND_OK=1)"
+check "79 override: a held name is never overridden, nothing armed" "$(printf '%s\n' "$out79held" | grep -c '^armed: ')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79held/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79held")" >/dev/null 2>&1
+mkdir -p "$bus79/nomktemp"
+# shellcheck disable=SC2016  # deliberately unexpanded: written literally, evaluated when the stub runs.
+printf '#!/usr/bin/env bash\ncase "$*" in *chief-bus*) exit 1 ;; esac\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$bus79/nomktemp/mktemp"
+chmod +x "$bus79/nomktemp/mktemp"
+out79lost="$(run79 in new bus79lost BUS79_FAIL=1 HIMMEL_LAUNCH_UNBOUND_OK=1 PATH="$bus79/nomktemp:$PATH")"
+check "79 override: lost bus output is never overridden, nothing armed" "$(printf '%s\n' "$out79lost" | grep -c '^armed: ')" "0"
+check "79 lost bus output: the refusal says so" "$(printf '%s\n' "$out79lost" | grep -c 'output lost (mktemp failed)')" "1"
+check "79 lost bus output: the refusal does not advise the override" "$(printf '%s\n' "$out79lost" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1')" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79lost/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79lost")" >/dev/null 2>&1
 t79=$SECONDS
 out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=08)"
 check "79 hung bus: refused within the bound" \

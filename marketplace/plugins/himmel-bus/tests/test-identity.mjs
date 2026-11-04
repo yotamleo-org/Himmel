@@ -86,6 +86,8 @@ test('re-arm of a bound name whose holder is gone takes it back unbound; a live,
   const after = await fakeProc(t, [P(1, 0, 'init', 1), P(201, 1, 'claude', 2500)]);
   await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'other', proc: after }), /already registered: worker \(held as worker under chief con, dead holder pid 200; this launch asks for worker under chief other, which does not succeed it\) - relaunch from/);
   await assert.rejects(identity.register(root, 'con', { role: 'chief', proc: after }), /already registered: con \(a chief name, dead holder pid 100\) - a chief name is single-use/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'judge', chief: 'con', proc: after }), /already registered: worker \(held with role worker, dead holder pid 200; this launch asks for role judge\) - relaunch with the held role, or launch under a new name/);
+  await assert.rejects(identity.register(root, 'worker', { role: 'worker', chief: 'con', pair: 'other', proc: after }), /\(held with pair none, dead holder pid 200; this launch asks for pair other\) - relaunch with the held pair/);
   const again = await identity.register(root, 'worker', { role: 'worker', chief: 'con', proc: after });
   assert.equal(again.pid, undefined);
   assert.equal(await identity.status(root, 'worker', { proc: after }), 'unbound');

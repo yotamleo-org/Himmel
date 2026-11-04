@@ -149,6 +149,10 @@ async function reclaim(root, name, peer, proc) {
   });
 }
 
+// ponytail: trusts the self-declared predecessor chain without adopt's hop
+// checks. Ceiling: no more than an unauthenticated `register --chief` grants
+// already, and the holder must be gone, re-checked under the lock in reclaim.
+// Upgrade path: require each hop to be stamped (`succeed`) as adopt does.
 async function succeeds(root, next, old) {
   if (!next || !old) return false;
   try { await chainTo(root, next, old); return true; } catch { return false; }
@@ -162,8 +166,13 @@ async function refusal(root, name, held, peer, proc) {
     return `${head} (live holder pid ${held.pid}) - wait for pid ${held.pid} to exit, or launch under a new name`;
   }
   const dead = held.pid === undefined ? '' : `, dead holder pid ${held.pid}`;
-  if (held.role === peer.role && held.pair === peer.pair && held.predecessor === peer.predecessor
-      && held.console === peer.console) {
+  const differs = ['role', 'pair', 'predecessor'].filter(key => held[key] !== peer[key]);
+  if (differs.length) {
+    const show = p => differs.map(key => `${key} ${p[key] ?? 'none'}`).join(', ');
+    return `${head} (held with ${show(held)}${dead}; this launch asks for ${show(peer)}) `
+      + `- relaunch with the held ${differs.join(' and ')}, or launch under a new name`;
+  }
+  if (peer.role === 'chief') {
     return `${head} (a chief name${dead}) - a chief name is single-use: launch the chief under a new name`;
   }
   const as = p => `${p.role}${p.console ? ` under chief ${p.console}` : ''}`;

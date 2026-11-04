@@ -4947,11 +4947,13 @@ mkdir -p "$bus45/nomktemp"
 printf '#!/usr/bin/env bash\ncase "$*" in *headed-arm-bus*) exit 1 ;; esac\nPATH="${PATH#*:}" exec mktemp "$@"\n' > "$bus45/nomktemp/mktemp"
 chmod +x "$bus45/nomktemp/mktemp"
 rm -f "$bus45/seen"; rc=0
-HIMMEL_LAUNCH_UNBOUND_OK=1 PATH="$bus45/nomktemp:$PATH" HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+bus9071_out="$(HIMMEL_LAUNCH_UNBOUND_OK=1 PATH="$bus45/nomktemp:$PATH" HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
   HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
   HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
-    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
 check "9071h the override never launches when the bus output was lost" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
+contains "9071h the refusal says the output was lost" "$bus9071_out" "output lost (mktemp failed)"
+check "9071h the refusal does not advise the override" "$(printf '%s\n' "$bus9071_out" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1')" "0"
 rc=0; HIMMEL_LAUNCH_UNBOUND_OK=1 run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
 check "9071f the override never launches over a held name" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
 bus45_hung="$bus45/bus-hung-stub"
