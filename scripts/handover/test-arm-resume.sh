@@ -5088,29 +5088,35 @@ _g_reuse="$_g_wt_root/.claude/worktrees/fix+$_g_slug"
 # A unique fixture folder: never touch one this run did not create.
 if [ -e "$_g_reuse" ]; then echo "FAIL guard_reused_worktree_refused fixture path already exists: $_g_reuse"; FAILED=$((FAILED + 1)); _g_reuse=""; fi
 if [ -n "$_g_reuse" ]; then
-    mkdir "$_g_reuse"
-    mkdir "$_g_reuse/.claude"
-    node -e '
-    const fs=require("fs");const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
-    s.hooks.PreToolUse.shift();fs.writeFileSync(process.argv[2],JSON.stringify(s,null,2)+"\n");' \
-        "$_g_wt_root/.claude/settings.json" "$_g_reuse/.claude/settings.json"
-    : > "$TMP/armed-stub.tasks"
-    rm -f "$TMP/armed-stub.atdir"/job-*
-    _g_before="$(_g9026_state)"
-    out=$(env -u UNGUARDED_LAUNCH_OK GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
-        bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --worktree "fix/$_g_slug" 2>&1)
-    rc=$?
-    assert_rc "guard_reused_worktree_refused real arm refuses a reused folder with a partial hook chain (rc=18)" 18 "$rc"
-    assert_contains "guard_reused_worktree_refused ERR names the reused folder" "$_g_reuse does not load the himmel guard hooks" "$out"
-    assert_not_contains "guard_reused_worktree_refused did not arm" "RESUME ARMED" "$out"
-    if [ "$(_g9026_state)" = "$_g_before" ] && [ -z "$(find "$TMP/armed-stub.atdir" -name 'job-*' -type f 2>/dev/null)" ]; then
-        echo "PASS guard_reused_worktree_refused no at job, runner or task state written"
-    else echo "FAIL guard_reused_worktree_refused state was written"; FAILED=$((FAILED + 1)); fi
-    out=$(env -u UNGUARDED_LAUNCH_OK GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
-        bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --worktree "fix/$_g_slug" --dry-run 2>&1)
-    rc=$?
-    assert_rc "guard_reused_worktree_refused dry-run stays rc 0" 0 "$rc"
-    assert_contains "guard_reused_worktree_refused dry-run reports the reused folder" "DRY arm-resume: would REFUSE to arm -- $_g_reuse does not load the himmel guard hooks" "$out"
+    mkdir -p "$_g_wt_root/.claude/worktrees"
+    if ! mkdir "$_g_reuse" || ! mkdir "$_g_reuse/.claude"; then
+        echo "FAIL guard_reused_worktree_refused could not create the fixture folder: $_g_reuse"; FAILED=$((FAILED + 1))
+        [ ! -d "$_g_reuse" ] || rm -rf "$_g_reuse"
+        _g_reuse=""
+    fi
+    if [ -n "$_g_reuse" ]; then
+        node -e '
+        const fs=require("fs");const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+        s.hooks.PreToolUse.shift();fs.writeFileSync(process.argv[2],JSON.stringify(s,null,2)+"\n");' \
+            "$_g_wt_root/.claude/settings.json" "$_g_reuse/.claude/settings.json"
+        : > "$TMP/armed-stub.tasks"
+        rm -f "$TMP/armed-stub.atdir"/job-*
+        _g_before="$(_g9026_state)"
+        out=$(env -u UNGUARDED_LAUNCH_OK ARM_WORKTREE_CMD=false GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+            bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --worktree "fix/$_g_slug" 2>&1)
+        rc=$?
+        assert_rc "guard_reused_worktree_refused real arm refuses a reused folder with a partial hook chain (rc=18)" 18 "$rc"
+        assert_contains "guard_reused_worktree_refused ERR names the reused folder" "$_g_reuse does not load the himmel guard hooks" "$out"
+        assert_not_contains "guard_reused_worktree_refused did not arm" "RESUME ARMED" "$out"
+        if [ "$(_g9026_state)" = "$_g_before" ] && [ -z "$(find "$TMP/armed-stub.atdir" -name 'job-*' -type f 2>/dev/null)" ]; then
+            echo "PASS guard_reused_worktree_refused no at job, runner or task state written"
+        else echo "FAIL guard_reused_worktree_refused state was written"; FAILED=$((FAILED + 1)); fi
+        out=$(env -u UNGUARDED_LAUNCH_OK ARM_WORKTREE_CMD=false GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+            bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --worktree "fix/$_g_slug" --dry-run 2>&1)
+        rc=$?
+        assert_rc "guard_reused_worktree_refused dry-run stays rc 0" 0 "$rc"
+        assert_contains "guard_reused_worktree_refused dry-run reports the reused folder" "DRY arm-resume: would REFUSE to arm -- $_g_reuse does not load the himmel guard hooks" "$out"
+    fi
     [ -z "$_g_reuse" ] || rm -rf "$_g_reuse"
 fi
 
