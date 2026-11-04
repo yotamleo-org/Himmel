@@ -2493,6 +2493,7 @@ STUB
 cat > "$bus79/bus" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/calls"
+[ -n "${BUS79_HANG:-}" ] && exec sleep 20
 if [ -n "${BUS79_FAIL:-}" ] && { [ -z "${BUS79_FAIL_VERB:-}" ] || [ "$1" = "$BUS79_FAIL_VERB" ]; }; then
   echo "stub bus: $1 refused" >&2
   exit 1
@@ -2542,7 +2543,25 @@ check "79 failed register: the chief is not armed" "$(printf '%s\n' "$out79d" | 
 check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
 check "79 failed register: the refusal lands in the launch log" \
     "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* refusing to launch')" "1"
+check "79 failed register: the refusal names the broken-bus override" \
+    "$(printf '%s\n' "$out79d" | grep -c 'set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79d")" >/dev/null 2>&1
+# the operator override for a broken bus arms the chief unbound; a hung bus
+# is bounded and refused.
+unbound79() { cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c '^bus_name=<unset> extra=<unset> bind=<unset>$'; }
+before79o="$(unbound79)"
+out79o="$(run79 in new bus79override BUS79_FAIL=1 HIMMEL_LAUNCH_UNBOUND_OK=1)"
+check "79 override: the chief arms" "$(printf '%s\n' "$out79o" | grep -c '^armed: ')" "1"
+check "79 override: armed unbound, with no bind flag" "$(( $(unbound79) - before79o ))" "1"
+check "79 override: the launch log says it launched unbound" \
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79override/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79o")" >/dev/null 2>&1
+t79=$SECONDS
+out79h="$(run79 in new bus79hang BUS79_HANG=1 BUS_EXEC_SECS=1)"
+check "79 hung bus: refused within the bound" \
+    "$(printf '%s\n' "$out79h" | grep -c '^armed: '):$([ $((SECONDS - t79)) -lt 15 ] && echo bounded || echo slow)" "0:bounded"
+check "79 hung bus: the refusal says it timed out" "$(printf '%s\n' "$out79h" | grep -c 'timed out after 1s')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79hang/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79h")" >/dev/null 2>&1
 # Chief-path twin, on the REAL bus CLI: a chief name already bound
 # refuses the launch whether its holder is dead (a chief name is never re-bound)
 # or live, exits non-zero, launches nothing and names the holder pid.

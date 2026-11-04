@@ -4908,7 +4908,49 @@ if [ -r /proc/self/stat ]; then
   check "9071b live holder relaunch: the holder stays bound and live" \
     "$(XDG_STATE_HOME="$bus45/state" "$bus9071_cli" status HIMMEL-9071-live 2>&1)" "live"
   kill "$bus9071_live" 2>/dev/null; wait "$bus9071_live" 2>/dev/null || true
+  # A successor chief re-arming a dead worker its predecessor registered: the
+  # dead worker never adopted the successor, and the name still comes back.
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" register HIMMEL-chief-9071a --role chief >/dev/null 2>&1
+  rc=0; run45 in HIMMEL-9071-succ HIMMEL-chief-9071a || rc=$?
+  sleep 30 & bus9071_succ=$!
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" bind HIMMEL-9071-succ "$bus9071_succ" >/dev/null 2>&1
+  kill "$bus9071_succ" 2>/dev/null; wait "$bus9071_succ" 2>/dev/null || true
+  XDG_STATE_HOME="$bus45/state" "$bus9071_cli" register HIMMEL-chief-9071b --role chief --predecessor HIMMEL-chief-9071a >/dev/null 2>&1
+  rc=0; run45 in HIMMEL-9071-succ HIMMEL-chief-9071b || rc=$?
+  check "9071c successor chief re-arms a dead worker: launch exits 0" "$rc" "0"
+  check "9071c successor chief re-arms a dead worker: headed-arm.sh is told to bind" "$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen" 2>/dev/null)" "1"
+  check "9071c successor chief re-arms a dead worker: the name now belongs to the successor" \
+    "$(jq -r '.console' "$bus45/state/himmel/bus/peers/HIMMEL-9071-succ.json" 2>/dev/null)" "HIMMEL-chief-9071b"
 fi
+# A broken bus: the refusal names the override, which launches unbound when set
+# in the launching shell; a held name is never overridden; a hung bus is bounded.
+bus45_broken="$bus45/bus-broken-stub"
+printf '#!/usr/bin/env bash\necho "bus store unreadable"\nexit 1\n' > "$bus45_broken"; chmod +x "$bus45_broken"
+rm -f "$bus45/seen"; rc=0
+bus9071_out="$(HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+check "9071d broken bus: launch exits 2" "$rc" "2"
+contains "9071d broken bus: the refusal names the override" "$bus9071_out" "set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell"
+rm -f "$bus45/seen"; rc=0
+HIMMEL_LAUNCH_UNBOUND_OK=1 HEADED_ARM_BUS_CLI="$bus45_broken" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-broken "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
+check "9071e broken bus with the override: launch exits 0, unbound" "$rc:$(sed -n 's/^BUS_FLAG=//p' "$bus45/seen" 2>/dev/null)" "0:<unset>"
+check "9071e broken bus with the override: the log says it launched unbound" "$(grep -c 'launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1)' "$bus45/log")" "1"
+rc=0; HIMMEL_LAUNCH_UNBOUND_OK=1 run45 in HIMMEL-45-in HIMMEL-chief-45-other || rc=$?
+check "9071f the override never launches over a held name" "$rc:$([ -e "$bus45/seen" ] && echo launched || echo none)" "2:none"
+bus45_hung="$bus45/bus-hung-stub"
+printf '#!/usr/bin/env bash\nexec sleep 20\n' > "$bus45_hung"; chmod +x "$bus45_hung"
+rm -f "$bus45/seen"; rc=0; bus9071_t0=$SECONDS
+bus9071_out="$(BUS_EXEC_SECS=1 HEADED_ARM_BUS_CLI="$bus45_hung" XDG_STATE_HOME="$bus45/state" \
+  HEADED_ARM_WORKER_TARGET="$bus45/headed" HEADED_ARM_WORKER_PROFILES="$bus45/profiles-in.mjs" \
+  HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    bash "$SCRIPT" --profile worker-impl --chief HIMMEL-chief-45 HIMMEL-9071-hung "$some_doc" "$bus45/signal" "$PAST" "$bus45/log" claude-sonnet-5-5 2>&1)" || rc=$?
+check "9071g hung bus: refused within the bound" "$rc:$([ $((SECONDS - bus9071_t0)) -lt 15 ] && echo bounded || echo slow)" "2:bounded"
+contains "9071g hung bus: the refusal says it timed out" "$bus9071_out" "timed out after 1s"
 # an opted-out profile launched from a shell that carries a live
 # bind flag and an extra HIMMEL_BUS_* leaks neither to the launched env.
 rm -f "$bus45/seen"

@@ -2724,7 +2724,8 @@ fi
 # HIMMEL_BUS_NAME and nothing else, and tells headed-arm.sh to bind the claude
 # pid it resolves. No secret exists: identity is (name, pid, start time).
 # A register failure refuses the launch: an unbound worker is deaf
-# and mute to its chief. A headless worker
+# and mute to its chief. For a broken bus (never a held name) the operator
+# may set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound. A headless worker
 # never binds (spec 8.5), so it is not registered either; nor is a worker whose doc
 # names no chief, which has nobody to register with.
 # A profile with no mcpServers field (null) loads every user MCP server,
@@ -2741,20 +2742,58 @@ case "${MCP_NAMES_JSON:-}" in
             BUS_ARGS=(register "$NAME" --role "$BUS_ROLE" --chief "$BUS_CHIEF")
             # WORKER_SESSION_BUS_PAIR: the worker a judge or consult was launched for (spec 3c).
             [ "$BUS_ROLE" != worker ] && [ -n "${WORKER_SESSION_BUS_PAIR:-}" ] && BUS_ARGS+=(--pair "$WORKER_SESSION_BUS_PAIR")
-            if BUS_OUT="$("$BUS_CLI" "${BUS_ARGS[@]}" 2>&1)"; then
+            # Bounded by BUS_EXEC_SECS (default 15) as chief-bus-exec.sh is: the
+            # bus takes its chain lock with no wait limit, and a stuck lock must
+            # never hold the launch. Past the limit: TERM, a second's grace, KILL.
+            BUS_SECS="${BUS_EXEC_SECS:-15}"
+            case "$BUS_SECS" in ''|*[!0-9]*) BUS_SECS=15 ;; esac
+            BUS_TMP="$(mktemp "${TMPDIR:-/tmp}/headed-arm-bus.XXXXXX")" || BUS_TMP=/dev/null  # swallow-ok: the output only feeds the refusal text
+            "$BUS_CLI" "${BUS_ARGS[@]}" >"$BUS_TMP" 2>&1 &
+            BUS_PID=$! BUS_TICKS=0 BUS_RC=0
+            while kill -0 "$BUS_PID" 2>/dev/null; do
+                if [ "$BUS_TICKS" -ge $((BUS_SECS * 10)) ]; then
+                    kill "$BUS_PID" 2>/dev/null
+                    BUS_TICKS=0
+                    while kill -0 "$BUS_PID" 2>/dev/null && [ "$BUS_TICKS" -lt 10 ]; do
+                        sleep 0.1
+                        BUS_TICKS=$((BUS_TICKS + 1))
+                    done
+                    kill -0 "$BUS_PID" 2>/dev/null && kill -9 "$BUS_PID" 2>/dev/null
+                    BUS_RC=124
+                    break
+                fi
+                sleep 0.1
+                BUS_TICKS=$((BUS_TICKS + 1))
+            done
+            if [ "$BUS_RC" -eq 124 ]; then
+                wait "$BUS_PID" 2>/dev/null
+                BUS_OUT="timed out after ${BUS_SECS}s: $(cat "$BUS_TMP" 2>/dev/null)"  # swallow-ok: refusal detail only
+            else
+                wait "$BUS_PID" 2>/dev/null || BUS_RC=$?
+                BUS_OUT="$(cat "$BUS_TMP" 2>/dev/null)"  # swallow-ok: refusal detail only
+            fi
+            [ "$BUS_TMP" = /dev/null ] || rm -f "$BUS_TMP"
+            if [ "$BUS_RC" -eq 0 ]; then
                 worker_propagate_env HIMMEL_BUS_NAME "$NAME"
                 # The CLI that registered is the CLI that binds.
                 export HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$BUS_CLI"
+            elif [ "${HIMMEL_LAUNCH_UNBOUND_OK:-}" = 1 ] && [[ "$BUS_OUT" != *"name already registered"* ]]; then
+                # Operator override for a broken bus, set in the launching shell:
+                # the worker launches unbound. A held name is never overridden.
+                echo "$(date +%F_%T) headed-arm-worker: WARN bus register failed for $NAME - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $BUS_OUT" >> "$LOG"
+                echo "headed-arm-worker: WARN bus register failed for $NAME - launching unbound (HIMMEL_LAUNCH_UNBOUND_OK=1): $BUS_OUT" >&2
             else
                 # An unbound worker can neither hear nor reach its
                 # chief, so a failed register refuses the launch. A relaunch whose
                 # previous holder is gone re-registers (identity.mjs register), so
-                # what fails here is a live holder (the error names its pid) or a
-                # broken bus. Said in the log, on stdout and stderr, and as a bus=FAIL:
+                # what fails here is a held name (the error names the cause and
+                # the way out) or a broken bus. Said in the log, on stdout and stderr, and as a bus=FAIL:
                 # bullet in the worker doc (a lowercase lead is a non-status
                 # bullet: the tick tail ignores it, a grep for bus=FAIL finds it).
                 # WRAPPED is stripped: worker_tail_status reads a final unmarked
                 # bullet containing it as a wrap.
+                [[ "$BUS_OUT" == *"name already registered"* ]] \
+                    || BUS_OUT="${BUS_OUT:-no output} - the bus is broken: fix it, or set HIMMEL_LAUNCH_UNBOUND_OK=1 in the launching shell to launch unbound"
                 echo "$(date +%F_%T) headed-arm-worker: refusing to launch $NAME - bus register failed: $BUS_OUT" >> "$LOG"
                 BUS_REASON="$(printf '%s' "$BUS_OUT" | tr '\n>' ' -' | sed 's/WRAPPED//g' | cut -c1-160)"
                 echo "headed-arm-worker: refusing to launch $NAME - bus register failed (bus=FAIL:$BUS_REASON)"
@@ -2765,7 +2804,7 @@ case "${MCP_NAMES_JSON:-}" in
         fi
         ;;
 esac
-unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR
+unset -v BUS_CLI BUS_ROLE BUS_ARGS BUS_OUT BUS_REASON BUS_CHIEF WORKER_SESSION_BUS_PAIR BUS_SECS BUS_TMP BUS_PID BUS_TICKS BUS_RC
 
 # Every headed worker gets one bus-idle-waker, started by headed-arm.sh once the
 # konsole pid exists (only it knows the pid). A headless worker has no konsole and

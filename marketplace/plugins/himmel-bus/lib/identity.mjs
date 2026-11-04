@@ -124,12 +124,16 @@ export async function register(root, name, { role: given, chief, console: old, p
   catch (error) {
     if (error.code !== 'EEXIST') throw error;
     const held = await readPeer(root, name);
-    const same = ['role', 'console', 'pair', 'predecessor'].every(key => held?.[key] === peer[key]);
-    if (held && held.pid === undefined && same) return held;
+    const kept = held && ['role', 'pair', 'predecessor'].every(key => held[key] === peer[key]);
+    const sameChief = held?.console === peer.console;
+    if (kept && sameChief && held.pid === undefined) return held;
     // A relaunch of a non-chief name whose holder is gone takes the name back
-    // unbound, as `rebind` would let any new pid take it.
-    if (held && same && role !== 'chief') return reclaim(root, name, peer, proc);
-    throw new Error(`name already registered: ${name}${held?.pid === undefined ? '' : ` (holder pid ${held.pid})`}`);
+    // unbound, as `rebind` would let any new pid take it. The relaunching chief
+    // may be the stored one or one that succeeds it: a dead worker never adopts.
+    if (kept && role !== 'chief' && (sameChief || await succeeds(root, peer.console, held.console))) {
+      return reclaim(root, name, peer, proc);
+    }
+    throw new Error(await refusal(root, name, held, peer, proc));
   }
   finally { await unlink(path).catch(() => {}); }
   return peer;
@@ -139,10 +143,32 @@ export async function register(root, name, { role: given, chief, console: old, p
 async function reclaim(root, name, peer, proc) {
   return update(root, name, async held => {
     if (held.pid !== undefined && await status(root, name, { proc }) === 'live') {
-      throw new Error(`name already registered: ${name} (holder pid ${held.pid})`);
+      throw new Error(await refusal(root, name, held, peer, proc));
     }
     return peer;
   });
+}
+
+async function succeeds(root, next, old) {
+  if (!next || !old) return false;
+  try { await chainTo(root, next, old); return true; } catch { return false; }
+}
+
+// Why a held name is refused, and the way out.
+async function refusal(root, name, held, peer, proc) {
+  const head = `name already registered: ${name}`;
+  if (!held) return head;
+  if (held.pid !== undefined && await status(root, name, { proc }).catch(() => 'gone') === 'live') {
+    return `${head} (live holder pid ${held.pid}) - wait for pid ${held.pid} to exit, or launch under a new name`;
+  }
+  const dead = held.pid === undefined ? '' : `, dead holder pid ${held.pid}`;
+  if (held.role === peer.role && held.pair === peer.pair && held.predecessor === peer.predecessor
+      && held.console === peer.console) {
+    return `${head} (a chief name${dead}) - a chief name is single-use: launch the chief under a new name`;
+  }
+  const as = p => `${p.role}${p.console ? ` under chief ${p.console}` : ''}`;
+  return `${head} (held as ${as(held)}${dead}; this launch asks for ${as(peer)}, which does not succeed it) `
+    + '- relaunch from the holding chief or a chief that succeeds it, or launch under a new name';
 }
 
 async function start(proc, pid) {
@@ -189,6 +215,23 @@ export async function rebind(root, name, pid, { proc = '/proc' } = {}) {
 
 const MAX_HOPS = 64;
 
+// The chief chain from `next` back to `old` through predecessor records, oldest hop first.
+async function chainTo(root, next, old) {
+  const target = await readPeer(root, next);
+  if (!target) throw new Error(`unknown session: ${next}`);
+  if (target.role !== 'chief') throw new Error(`${next} is not a chief`);
+  const hops = [];
+  for (let to = next, at = target; ; ) {
+    const from = at.predecessor;
+    if (!from || from === next || hops.length >= MAX_HOPS) throw new Error(`${next} does not succeed ${old}`);
+    hops.unshift({ from, to });
+    if (from === old) return hops;
+    at = await readPeer(root, from);
+    if (at?.role !== 'chief') throw new Error(`${next} does not succeed ${old}`);
+    to = from;
+  }
+}
+
 // Console X stamps its successor: `next` must be a registered
 // console whose predecessor is X. Stamped once; the same stamp again is a no-op.
 // The caller's identity (X) is proven by the CLI's process ancestry, not here.
@@ -218,19 +261,7 @@ export async function adopt(root, name, next, { proc = '/proc' } = {}) {
     const old = peer.console;
     if (!old) throw new Error(`${name} has no console to replace`);
     if (old === next) return peer;
-    const target = await readPeer(root, next);
-    if (!target) throw new Error(`unknown session: ${next}`);
-    if (target.role !== 'chief') throw new Error(`${next} is not a chief`);
-    const hops = [];
-    for (let to = next, at = target; ; ) {
-      const from = at.predecessor;
-      if (!from || from === next || hops.length >= MAX_HOPS) throw new Error(`${next} does not succeed ${old}`);
-      hops.unshift({ from, to });
-      if (from === old) break;
-      at = await readPeer(root, from);
-      if (at?.role !== 'chief') throw new Error(`${next} does not succeed ${old}`);
-      to = from;
-    }
+    const hops = await chainTo(root, next, old);
     const records = await store.scan(root, name);
     const relayed = (from, to) => {
       const names = new RegExp(`(^|[^A-Za-z0-9._-])${to.replace(/[.]/g, '\\.')}($|[^A-Za-z0-9._-])`);
