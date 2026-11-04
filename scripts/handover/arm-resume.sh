@@ -2609,8 +2609,10 @@ if [ -n "$WORKTREE_BRANCH" ]; then
     # primary checkout per the operator rule).
     _wt_root=$(cd "$SCRIPT_DIR/../.." && pwd)
     _wt_path="$_wt_root/.claude/worktrees/${WORKTREE_BRANCH/\//+}"
-    # The worktree is cut from this checkout and does not exist yet: check the parent, before creating it.
+    # A worktree that does not exist yet is cut from this checkout: check the parent, before creating it.
+    # One that already exists is reused as it is: check that folder, before anything is written.
     _arm_launch_guard "$_wt_root"
+    [ ! -d "$_wt_path" ] || _arm_launch_guard "$_wt_path"
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "DRY arm-resume: would create worktree '$WORKTREE_BRANCH' at '$_wt_path' and resume there"
         RESUME_CWD="$_wt_path"
@@ -2754,7 +2756,7 @@ else
     fi
     unset _fm_cwd _fm_cwd_found
 fi
-# Every non-worktree path (--worktree was checked on its parent checkout above).
+# Every non-worktree path (--worktree was checked above: its parent checkout, and the folder itself when reused).
 [ -n "$WORKTREE_BRANCH" ] || _arm_launch_guard "$RESUME_CWD"
 
 # ---------------------------------------------------------------------------
