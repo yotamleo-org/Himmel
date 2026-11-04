@@ -814,12 +814,17 @@ fi
 if [ -n "$project_dir" ]; then
     _lg_rc=0; _lg_reason="$(bash "$HERE/../../lib/launch-guard-check.sh" "$project_dir")" || _lg_rc=$?
     if [ "$_lg_rc" -ne 0 ]; then
-        [ "$_lg_rc" -eq 1 ] || _lg_reason="folder cannot be resolved"
+        case "$_lg_rc" in
+            1) ;;
+            2) _lg_reason="folder cannot be resolved" ;;
+            *) _lg_reason="launch-guard-check failed (rc $_lg_rc)" ;;
+        esac
         _lg_name="$(basename "$project_dir")"
+        _lg_phys="$(cd -P -- "$project_dir" 2>/dev/null && pwd -P)" || _lg_phys="$project_dir"  # swallow-ok: an unresolvable folder is named raw in the message
         if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
-            echo "WARN unguarded launch of $_lg_name in $project_dir ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
+            echo "WARN unguarded launch of $_lg_name in $_lg_phys ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
         else
-            echo "chief: refusing to launch $_lg_name: $project_dir does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+            echo "chief: refusing to launch $_lg_name: $_lg_phys does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
             exit 18
         fi
     fi

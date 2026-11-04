@@ -2904,4 +2904,44 @@ check "guard_unresolvable_folder_optout: exactly one WARN naming the reason" "$(
 check "guard_unresolvable_folder_optout: passes the guard, then the launch's own cd into REPO fails (rc 1), no konsole call" "$grc9|$([ -e "$dg9/record" ] && echo called || echo none)" "1|none"
 check "guard_marker_without_optout_still_refuses: rc 18" "$grc7" "18"
 
+# --- controls: a GUARDED folder launches with the opt-out dropped and no WARN (the suite-level opt-out
+# would otherwise turn a false refusal into a WARN plus a launch)
+GWT="$(cd "$HERE/../.." && pwd -P)"   # the worktree under test: fully wired
+dgc1="$tmp/gc1"; mk_stub "$dgc1" 1 alive "HIMMEL-9026-gc1"
+goutc1="$(GREPO="$GWT" glaunch "$dgc1" HIMMEL-9026-gc1 X=1)"; grcc1=$?
+wait_record "$dgc1" || true
+check "guard_control_worktree_passes: rc 0, konsole called" "$grcc1|$([ -s "$dgc1/record" ] && echo called || echo none)" "0|called"
+not_contains "guard_control_worktree_passes: no WARN" "$goutc1" "WARN unguarded launch"
+not_contains "guard_control_worktree_passes: no refusal" "$goutc1" "refusing to launch"
+
+# a linked worktree of this repo cut at an OLDER commit that changed the settings file: its file is a
+# blob main carried, so it still launches (main's hook list has moved on since it was cut)
+GSTALE="$tmp/guard-stale-wt"
+GOLDER="$(git -C "$GWT" log -2 --format=%H -- .claude/settings.json | sed -n 2p)"
+if [ -n "$GOLDER" ] && git -C "$GWT" worktree add -q --detach "$GSTALE" "$GOLDER" >/dev/null 2>&1; then
+  trap 'git -C "$GWT" worktree remove --force "$GSTALE" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
+  dgc2="$tmp/gc2"; mk_stub "$dgc2" 1 alive "HIMMEL-9026-gc2"
+  goutc2="$(GREPO="$GSTALE" glaunch "$dgc2" HIMMEL-9026-gc2 X=1)"; grcc2=$?
+  wait_record "$dgc2" || true
+  check "guard_control_stale_worktree_passes: rc 0, konsole called" "$grcc2|$([ -s "$dgc2/record" ] && echo called || echo none)" "0|called"
+  not_contains "guard_control_stale_worktree_passes: no WARN" "$goutc2" "WARN unguarded launch"
+else
+  check "guard_control_stale_worktree_passes: fixture worktree created" "no" "yes"
+fi
+
+# the opt-out and the WARN marker reach the check only: the session this launches must not inherit them
+dgo="$tmp/go"; mk_stub "$dgo" 1 alive "HIMMEL-9026-go"
+cat > "$dgo/konsole" <<KONSOLE_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$dgo/record"
+printf '%s|%s\n' "\${UNGUARDED_LAUNCH_OK-absent}" "\${HIMMEL_LAUNCH_GUARD_WARNED-absent}" > "$dgo/childenv"
+: > "$dgo/confirmable"
+sleep 5
+KONSOLE_EOF
+chmod 755 "$dgo/konsole"
+glaunch "$dgo" HIMMEL-9026-go UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED=/elsewhere >/dev/null; grcgo=$?
+wait_record "$dgo" || true
+n=0; while [ ! -s "$dgo/childenv" ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
+check "guard_optout_not_inherited: launch proceeds, child env carries neither name" "$grcgo|$(cat "$dgo/childenv" 2>/dev/null)" "0|absent|absent"
+
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

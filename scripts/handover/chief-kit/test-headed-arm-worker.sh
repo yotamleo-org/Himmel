@@ -5287,8 +5287,9 @@ reg50="$tmp/reg50.json"; printf '{"repos":{"adopter50":{"path":"%s"}}}\n' "$adop
 fdoc50="$tmp/c50-fold-doc.md"
 printf -- '---\nresume_cwd: %s\ndescription: x\ntemplate_version: 1\n---\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' "$wt50" > "$fdoc50"
 rc=0; out50f="$(env -u UNGUARDED_LAUNCH_OK HANDOVER_REGISTRY="$reg50" bash "$SCRIPT" --dry-run --no-profile HIMMEL-9026-N3-fold "$fdoc50" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
-check "guard_worker_folded_unregistered: exit 18" "$rc" "18"
-contains "guard_worker_folded_unregistered: the folded worktree is the folder judged" "$out50f" "$wt50 does not load the himmel guard hooks"
+check "guard_worker_folded_worktree_checked: exit 18" "$rc" "18"
+contains "guard_worker_folded_worktree_checked: the folded worktree is the folder judged" "$out50f" "$wt50 does not load the himmel guard hooks"
+contains "guard_worker_folded_worktree_checked: the refusal reason is the check's" "$out50f" "does not load the himmel guard hooks (user guard layer incomplete (run himmelctl ensure))."
 
 # opt-out through the real headed-arm.sh: exactly one WARN across stderr
 d50o="$tmp/c50o"; mk_launch_stubs "$d50o" "HIMMEL-9026-N3-optout"
@@ -5297,6 +5298,14 @@ wait_record "$d50o" || true
 check "optout_chain_single_warn: opted-out launch exits 0" "$rc" "0"
 check "optout_chain_single_warn: exactly one WARN reaches stderr" "$(printf '%s\n' "$out50o" | grep -c '^WARN unguarded launch of HIMMEL-9026-N3-optout')" "1"
 contains "optout_chain_single_warn: the WARN names the reason" "$out50o" "WARN unguarded launch of HIMMEL-9026-N3-optout in $scratch50 (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
+
+# control: the real, fully wired worktree under test launches with the opt-out dropped, and no WARN
+gwt50="$(cd "$HERE/../../.." && pwd -P)"
+d50g="$tmp/c50g"; mk_launch_stubs "$d50g" "HIMMEL-9026-N3-ctl"
+rc=0; out50g="$(RUN_WORKER_WRAP="env -u UNGUARDED_LAUNCH_OK" some_doc="$doc50" RUN_WORKER_ARGS=--no-profile run_worker "$d50g" "$gwt50" "HIMMEL-9026-N3-ctl" "claude-sonnet-5" 2>&1 >/dev/null)" || rc=$?
+wait_record "$d50g" || true
+check "guard_control_worker_passes: guarded folder, opt-out dropped: exit 0, launcher reached" "$rc|$([ -s "$d50g/record" ] && echo konsole || echo none)" "0|konsole"
+not_contains "guard_control_worker_passes: no WARN" "$out50g" "WARN unguarded launch"
 
 # --consult is not exempt in code: a consult on an unguarded folder is refused like any launch (its usual
 # folder, the chief checkout, passes; a test cannot stand in the checkout, since --consult refuses a worktree cwd)

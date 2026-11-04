@@ -766,20 +766,26 @@ fi
 # with one WARN; HIMMEL_LAUNCH_GUARD_WARNED=<this folder> only silences that WARN, never the check.
 _lg_reason="$(bash "$(dirname "$0")/../lib/launch-guard-check.sh" "$REPO")"; _lg_rc=$?
 if [ "$_lg_rc" -ne 0 ]; then
-    [ "$_lg_rc" -eq 1 ] || _lg_reason="folder cannot be resolved"
+    case "$_lg_rc" in
+        1) ;;
+        2) _lg_reason="folder cannot be resolved" ;;
+        *) _lg_reason="launch-guard-check failed (rc $_lg_rc)" ;;
+    esac
+    _lg_phys="$(cd -P -- "$REPO" 2>/dev/null && pwd -P)" || _lg_phys="$REPO"  # swallow-ok: an unresolvable folder falls back to the raw path for the message and marker comparison
     if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
-        _lg_phys="$(cd -P -- "$REPO" 2>/dev/null && pwd -P)" || _lg_phys="$REPO"  # swallow-ok: an unresolvable folder falls back to the raw path for the marker comparison
         if [ "${HIMMEL_LAUNCH_GUARD_WARNED:-}" != "$_lg_phys" ]; then
-            _lg_warn="WARN unguarded launch of $NAME in $REPO ($_lg_reason; UNGUARDED_LAUNCH_OK=1)"
+            _lg_warn="WARN unguarded launch of $NAME in $_lg_phys ($_lg_reason; UNGUARDED_LAUNCH_OK=1)"
             echo "$_lg_warn" >&2
-            # $LOG is not absolutized yet; if its directory does not exist this early, stderr alone carries the WARN.
+            # $LOG was absolutized above; if its directory does not exist this early, stderr alone carries the WARN.
             [ -d "$(dirname "$LOG")" ] && echo "$_lg_warn" >> "$LOG" 2>/dev/null
         fi
     else
-        echo "headed-arm: refusing to launch $NAME: $REPO does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
+        echo "headed-arm: refusing to launch $NAME: $_lg_phys does not load the himmel guard hooks ($_lg_reason). Launch from a himmel checkout or worktree, register the repo and wire the user guard layer (himmelctl ensure), or set UNGUARDED_LAUNCH_OK=1 in the launching shell to launch it unguarded." >&2
         exit 18
     fi
 fi
+# The check has used both names; the session this launches must not inherit the opt-out or the WARN marker.
+unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED
 
 # Everything above this point is pure argument resolution and
 # validation (usage-arity, --role, context, the placeholder-name refusal,

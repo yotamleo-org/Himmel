@@ -5106,6 +5106,27 @@ if [ "$_g_warns" = "1" ]; then echo "PASS guard_arm_optout_warns_once exactly on
 else echo "FAIL guard_arm_optout_warns_once WARN lines=$_g_warns"; FAILED=$((FAILED + 1)); fi
 : > "$TMP/armed-stub.tasks"
 rm -f "$TMP/armed-stub.atdir"/job-*
+
+# Control: a guarded folder (this worktree) arms with the opt-out dropped, and says no WARN.
+_g_wt="$(cd "$(dirname "$ARM")/../.." && pwd -P)"
+out=$(env -u UNGUARDED_LAUNCH_OK GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --cwd "$_g_wt" 2>&1)
+rc=$?
+assert_rc "guard_arm_guarded_no_warn arms a guarded folder with the opt-out dropped" 0 "$rc"
+_g_jobs=$(find "$TMP/armed-stub.atdir" -name 'job-*' -type f 2>/dev/null | wc -l | tr -d ' ')
+_g_warns=$(printf '%s\n' "$out" | grep -c 'WARN unguarded launch')
+if [ "$_g_jobs" = "1" ]; then echo "PASS guard_arm_guarded_no_warn one at job written"
+else echo "FAIL guard_arm_guarded_no_warn at jobs=$_g_jobs"; FAILED=$((FAILED + 1)); fi
+if [ "$_g_warns" = "0" ]; then echo "PASS guard_arm_guarded_no_warn no WARN line"
+else echo "FAIL guard_arm_guarded_no_warn WARN lines=$_g_warns"; FAILED=$((FAILED + 1)); fi
+assert_not_contains "guard_arm_guarded_no_warn no refusal" "refusing to launch" "$out"
+: > "$TMP/armed-stub.tasks"
+rm -f "$TMP/armed-stub.atdir"/job-*
+
+# The generated runner clears the opt-out and the WARN marker, so the resumed session never inherits them.
+out=$(UNGUARDED_LAUNCH_OK=1 GH_CMD=/nonexistent/gh TMPDIR="$TMP" PATH="$ARMED_STUB:$PATH" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_9026" --cwd "$G9026/scratch" --dry-run 2>&1)
+assert_contains "guard_optout_not_in_runner runner unsets both names" "CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED" "$out"
 fi
 
 CRONTAB_SNAPSHOT_AFTER=$(PATH="$SCHED_REAL_PATH" crontab -l 2>/dev/null || true)

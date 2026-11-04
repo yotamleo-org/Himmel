@@ -2239,7 +2239,7 @@ gp_rc=0
 gp_out="$( env -u UNGUARDED_LAUNCH_OK HOME="$tmp/gp-home" HIMMEL_REPO="$REPO_REAL" CLAUDE_CONFIG_DIR="$gp_cfg" HANDOVER_REGISTRY="$gp_reg" \
     bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO bash "$3" new --project "$4" --dry-run' _ "$fixture_repo" "$root" "$C" "$gp_adopter" 2>&1 )" || gp_rc=$?
 check "chief_project_registered_adopter proceeds (rc 0)" "$gp_rc" "0"
-check "chief_project_registered_adopter has no refusal or WARN" \
+check "guard_chief_project_guarded_no_warn: registered adopter, opt-out dropped, no refusal and 0 WARN" \
     "$(printf '%s\n' "$gp_out" | grep -c "refusing to launch\|^WARN unguarded")" "0"
 
 # --- 68g (change 7): a SYMLINK to the himmel checkout given as --project is

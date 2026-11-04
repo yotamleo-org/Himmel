@@ -1098,7 +1098,11 @@ _lg_dir="${WORKER_SESSION_REPO:-${HEADED_ARM_REPO:-$HERE/../../..}}"
 _lg_phys="$(cd -P -- "$_lg_dir" 2>/dev/null && pwd -P)" || _lg_phys=""  # swallow-ok: an unresolvable folder is passed raw, the check then exits 2 and refuses
 _lg_reason="$(bash "$HERE/../../lib/launch-guard-check.sh" "${_lg_phys:-$_lg_dir}")"; _lg_rc=$?
 if [ "$_lg_rc" -ne 0 ]; then
-    [ "$_lg_rc" -eq 1 ] || _lg_reason="folder cannot be resolved"
+    case "$_lg_rc" in
+        1) ;;
+        2) _lg_reason="folder cannot be resolved" ;;
+        *) _lg_reason="launch-guard-check failed (rc $_lg_rc)" ;;
+    esac
     if [ "${UNGUARDED_LAUNCH_OK:-}" = "1" ]; then
         echo "WARN unguarded launch of $NAME in ${_lg_phys:-$_lg_dir} ($_lg_reason; UNGUARDED_LAUNCH_OK=1)" >&2
         [ -z "$_lg_phys" ] || export HIMMEL_LAUNCH_GUARD_WARNED="$_lg_phys"
