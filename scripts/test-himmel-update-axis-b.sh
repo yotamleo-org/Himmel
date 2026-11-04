@@ -315,8 +315,10 @@ assert_contains "profile vault: upgraded and source named" 'luna_template  *up-t
 printf '{"vault":{"mode":"none","path":"%s"}}\n' "$LUNA_VAULT" > "$FH9/.claude/himmel/install-profile.json"
 OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; RC=$?
 assert_contains "RED control: profile vault.mode none stays skipped" 'luna_template  *skipped  *LUNA_VAULT_PATH not set' "$OUT"
-rm -f "$FH9/.claude/himmel/install-profile.json"
 printf '{"env":{"LUNA_VAULT_PATH":"%s"}}\n' "$LUNA_VAULT" > "$FH9/.claude/settings.json"
+OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; RC=$?
+assert_contains "profile vault.mode none beats a stale settings env vault" 'luna_template  *skipped  *LUNA_VAULT_PATH not set' "$OUT"
+rm -f "$FH9/.claude/himmel/install-profile.json"
 OUT="$(run_update_novault "$LUNA_CLONE" "$FH9" "$STUB1" --only luna_template)"; RC=$?
 assert_contains "settings env vault: upgraded and source named" 'luna_template  *up-to-date .*vault from Claude settings' "$OUT"
 

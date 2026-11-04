@@ -1874,15 +1874,17 @@ update_luna_template() {
     # The installer wires the vault into the install profile and the
     # Claude settings env block, not the checkout dotenv. Fall back to those so an
     # update run from a plain terminal/cron still finds it. Profile vault.mode
-    # "none" means no vault.
+    # "none" means no vault, and also stops the settings fallback: the installer
+    # never clears the settings env when a profile switches to no vault.
     if [ -z "$vault" ] && command -v jq >/dev/null 2>&1; then
-        local prof sett
+        local prof sett optout=""
         prof=$(_channel_profile_path)
         if [ -f "$prof" ]; then
             vault=$(jq -r 'if (.vault.mode // "none") != "none" then (.vault.path // "") else "" end' "$prof" 2>/dev/null) || vault=""
             [ -n "$vault" ] && vsrc="install profile"
+            [ "$(jq -r '.vault.mode // ""' "$prof" 2>/dev/null)" = "none" ] && optout=1
         fi
-        if [ -z "$vault" ]; then
+        if [ -z "$vault" ] && [ -z "$optout" ]; then
             sett="${CLAUDE_USER_SETTINGS:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json}"
             if [ -f "$sett" ]; then
                 vault=$(jq -r '.env.LUNA_VAULT_PATH // ""' "$sett" 2>/dev/null) || vault=""
