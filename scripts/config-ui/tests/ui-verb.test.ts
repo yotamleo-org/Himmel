@@ -79,6 +79,6 @@ test("himmelctl ui --allow-agent-session starts under a Claude session env", asy
 test("--help aligns the gaps description with the other verbs", async () => {
   const p = Bun.spawn(["node", BIN, "--help"], { stdout: "pipe", stderr: "ignore" });
   const lines = (await new Response(p.stdout).text()).split("\n");
-  const col = (re: RegExp) => lines.find((l) => re.test(l))!.search(/read-only/);
+  const col = (re: RegExp) => /^ {2}\S+(?: \S+)* {2,}/.exec(lines.find((l) => re.test(l))!)![0].length; // where the description starts
   expect(col(/^  gaps /)).toBe(col(/^  ui \[/));
 });

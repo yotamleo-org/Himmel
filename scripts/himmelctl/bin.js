@@ -261,8 +261,7 @@ commands:
                           Secrets show presence, never values. --deep adds the
                           wiring layers: pre-commit ids, Claude hooks, git
                           hooks and CI workflows (fires reads unverified).
-  ui [--port N] [--read-only]
-                          config UI on 127.0.0.1 (needs bun): serves the
+  ui [--port N]           config UI on 127.0.0.1 (needs bun): serves the
                           report feed as one page and prints a URL carrying a
                           per-launch token. By default the page CAN WRITE your
                           config (login, setup, review gate, report settings,
