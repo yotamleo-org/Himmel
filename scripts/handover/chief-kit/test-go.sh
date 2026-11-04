@@ -415,6 +415,9 @@ mkdir -p "$ROOT15/$VSCOPE/verdicts/J8"
 t15 "an empty verdict dir" J8
 verdict "$ROOT15" "judge:J9" "**GO** for head \`$SHA\`."
 t15 "an id that is not a qid path segment" "judge:J9"
+# any judge's NO-GO for this PR at the head vetoes every trust GO
+# (section 29), so the NO-GO records of J2 and J6 leave before the GO rows below.
+rm -f "$ROOT15/$VSCOPE/verdicts/J2/HIMMEL-1-judge-J2.md" "$ROOT15/$VSCOPE/verdicts/J6/second.md"
 verdict "$ROOT15" J10 "**GO** for head \`$SHA\`."
 rc=0; out="$(HANDOVER_DIR="$ROOT15" bash "$SCRIPT" --trust-reviewed J10 83 "$SHA" 2>/dev/null)" || rc=$?
 check    "3832: GO verdict for this head -> exit 0" "$rc" "0"
@@ -422,10 +425,18 @@ contains "3832: trust id signed in" "$(cat "$ROOT15/.locks/go/83.$SHA" 2>/dev/nu
 verdict "$ROOT15" J11 "**GO** for head \`$SHA\`"
 rc=0; HANDOVER_DIR="$ROOT15" bash "$SCRIPT" --trust-reviewed J11 83 "$SHA" >/dev/null 2>&1 || rc=$?
 check    "3832: no trailing full stop -> exit 0" "$rc" "0"
-verdict "$ROOT15" J12 "**NO-GO** for head \`$SHA14\`." round1
-verdict "$ROOT15" J12 "**GO** for head \`$SHA\`." round2
-rc=0; HANDOVER_DIR="$ROOT15" bash "$SCRIPT" --trust-reviewed J12 83 "$SHA" >/dev/null 2>&1 || rc=$?
+# the earlier round's head is a real commit the head descends from: a NO-GO at a
+# commit go.sh cannot place in the caller's checkout refuses
+git -C "$READY_REPO" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m round1
+R1_15=$(git -C "$READY_REPO" rev-parse HEAD)
+git -C "$READY_REPO" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m round2
+R2_15=$(git -C "$READY_REPO" rev-parse HEAD)
+ready_pass_ledger "$READY_REPO" "$R2_15"
+verdict "$ROOT15" J12 "**NO-GO** for head \`$R1_15\`." round1
+verdict "$ROOT15" J12 "**GO** for head \`$R2_15\`." round2
+rc=0; READY_STUB_HEAD="$R2_15" HANDOVER_DIR="$ROOT15" bash "$SCRIPT" --trust-reviewed J12 83 "$R2_15" >/dev/null 2>&1 || rc=$?
 check    "3832: an earlier round's NO-GO on another head is ignored -> exit 0" "$rc" "0"
+rm -f "$ROOT15/$VSCOPE/verdicts/J12/round1.md"  # a NO-GO at R1 cannot be placed against the fake $SHA below
 mkdir -p "$ROOT15/$VSCOPE/verdicts/J13"
 # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
 printf '# VERDICT J13 - judge\r\n\r\n## Verdict\r\n\r\n**GO** for head `%s`.\r\n\r\npr: 83\r\n\r\nreason\r\n' "$SHA" \
@@ -456,6 +467,7 @@ t16 "a GO under another user" K2
 other_verdict "u/not-this-repo" K3
 verdict "$ROOT16" K3 "**NO-GO** for head \`$SHA\`."
 t16 "own-bucket NO-GO beats another bucket's GO" K3
+rm -f "$ROOT16/$VSCOPE/verdicts/K3/HIMMEL-1-judge-K3.md"  # its NO-GO would veto K4's GO (section 29)
 verdict "$ROOT16" K4 "**GO** for head \`$SHA\`."
 other_verdict "u/not-this-repo" K4
 rc=0; HANDOVER_DIR="$ROOT16" bash "$SCRIPT" --trust-reviewed K4 84 "$SHA" >/dev/null 2>&1 || rc=$?
@@ -814,23 +826,23 @@ VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT27" q27 "**GO** for head \`$J27
 go27() {  # <head> - go.sh --trust-reviewed q27 for PR 91 from the fixture repo
   ( cd "$fx27" && READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT27" bash "$SCRIPT" --trust-reviewed q27 91 "$1" >/dev/null 2>&1 )
 }
-VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
+VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." "delta-noop-$N27t"
 rc=0; go27 "$N27t" || rc=$?
 check "7637: a no-op verdict for a trust-path delta is refused (exit 10)" "$rc" "10"
 check "7637: ...and no GO file is written" "$([ -e "$ROOT27/.locks/go/91.$N27t" ] && echo yes || echo no)" "no"
-VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27d\`." delta-noop-docs
+VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27d\`." "delta-noop-$N27d"
 rc=0; go27 "$N27d" || rc=$?
 check "7637: a no-op verdict for a none delta is accepted" "$rc" "0"
 verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." HIMMEL-1-judge-q27-trust
 rc=0; go27 "$N27t" || rc=$?
 check "7637: a real judge GO beside the no-op carries the trust delta" "$rc" "0"
 rm -f "$ROOT27/.locks/go/91.$N27t" "$ROOT27/$VSCOPE/verdicts/q27/HIMMEL-1-judge-q27-trust.md"
-VEXTRA=$'delta: no-op\ndelta-judged: nothex\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
+VEXTRA=$'delta: no-op\ndelta-judged: nothex\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." "delta-noop-$N27t"
 rc=0; go27 "$N27t" || rc=$?
 check "7637: a no-op naming no judged head is refused" "$rc" "10"
 # shellcheck disable=SC2016  # the backticks are literal verdict-line text
 printf '# VERDICT q27 - forged\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 91\n' "$N27t" > "$ROOT27/$VSCOPE/verdicts/q27/forged-unsigned.md"
-VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
+VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." "delta-noop-$N27t"
 rc=0; go27 "$N27t" || rc=$?
 check "7637: an unsigned GO sibling beside a no-op over a trust delta is refused (exit 5)" "$rc" "5"
 VPR=
@@ -849,10 +861,66 @@ a28rec() {  # <name> <head> <extra header lines> - a signed acme/widget GO recor
   printf 'mac: %s\n' "$vmac" >> "$vf"
 }
 a28rec judge "$J27" ""
-a28rec delta-noop-docs "$N27d" $'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n'
+a28rec "delta-noop-$N27d" "$N27d" $'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n'
 rc=0; (cd "$fx27" && A23_HEAD="$N27d" PATH="$A23_BIN:$PATH" HANDOVER_DIR="$ROOT23" bash "$SCRIPT" --repo acme/widget --trust-reviewed W6 88 "$N27d" >/dev/null 2>&1) || rc=$?
 check "adopter delta no-op over a none delta is accepted (exit 0)" "$rc" "0"
 check "...and its GO file is written" "$([ -e "$ROOT23/.locks/go/88.$N27d" ] && echo yes || echo no)" "yes"
+
+# --- 29. a judge's NO-GO vetoes a trust GO, from any qid -----------
+# P - A - B on one branch, S a sibling of A off P. Judge J ruled GO at A (a
+# finding on src/a.txt:3-4); B only touches docs, so delta-class.sh says none.
+ROOT29="$tmp/root29"; mkdir -p "$ROOT29"
+fx29="$tmp/fx29"
+git init -q "$fx29"
+fx29_git() { git -C "$fx29" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+mkdir -p "$fx29/scripts/ci" "$fx29/src" "$fx29/docs"
+printf '^scripts/ci/\n' > "$fx29/scripts/ci/ci-trust-paths.txt"
+seq 1 10 > "$fx29/src/a.txt"
+printf 'c\n' > "$fx29/docs/c.md"
+fx29_git add -A && fx29_git commit -qm base
+P29=$(fx29_git rev-parse HEAD)
+fx29_git update-ref refs/remotes/origin/main "$P29"
+fx29_git checkout -q -b a29 "$P29"
+printf 'a\n' >> "$fx29/docs/c.md"; fx29_git add -A && fx29_git commit -qm a
+A29=$(fx29_git rev-parse HEAD)
+printf 'b\n' >> "$fx29/docs/c.md"; fx29_git add -A && fx29_git commit -qm b
+B29=$(fx29_git rev-parse HEAD)
+fx29_git checkout -q -b s29 "$P29"
+printf 's\n' >> "$fx29/docs/c.md"; fx29_git add -A && fx29_git commit -qm s
+S29=$(fx29_git rev-parse HEAD)
+C29=0123456789abcdef0123456789abcdef0123cccc
+ready_pass_ledger "$fx29" "$A29" "$B29"
+VPR=93
+go29() {  # <head> - go.sh --trust-reviewed J for PR 93 from the fixture repo; rc and whether a GO file stands
+  local r=0
+  ( cd "$fx29" && READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT29" bash "$SCRIPT" --trust-reviewed J 93 "$1" >/dev/null 2>&1 ) || r=$?
+  printf '%s:%s' "$r" "$([ -e "$ROOT29/.locks/go/93.$1" ] && echo go || echo none)"
+  rm -f "$ROOT29/.locks/go/93.$1"
+}
+V29="$ROOT29/$VSCOPE/verdicts"
+VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" J "**GO** for head \`$A29\`." HIMMEL-1-judge-J
+VEXTRA=$'delta: no-op\ndelta-judged: '"$A29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$B29\`." "delta-noop-$B29"
+check "8732-b0: the no-op GO at B with no NO-GO anywhere is written" "$(go29 "$B29")" "0:go"
+VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$A29\`." HIMMEL-1-judge-K
+check "8732-a: a no-op GO at B after K's NO-GO at A is refused (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+chmod 000 "$V29/K/HIMMEL-1-judge-K.md"
+check "8732-c: an unreadable NO-GO record refuses the no-op GO (exit 10)" "$(go29 "$B29")" "10:none"
+chmod 600 "$V29/K/HIMMEL-1-judge-K.md"
+rm -f "$V29/K/HIMMEL-1-judge-K.md"
+VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT29" K "**NO-GO** for head \`$S29\`." HIMMEL-1-judge-K
+check "8732-b: a NO-GO at a sibling of A does not veto the no-op GO" "$(go29 "$B29")" "0:go"
+VEXTRA=$'reason quotes **NO-GO** for head `'"$A29"$'`\n' verdict "$ROOT29" K "**GO** for head \`$S29\`." HIMMEL-1-judge-K
+check "8732-g: a NO-GO quoted in a GO record's evidence does not veto" "$(go29 "$B29")" "0:go"
+rm -f "$V29/K/HIMMEL-1-judge-K.md"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$C29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$B29\`." "delta-noop-$B29"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$B29"$'\ndelta-class: none\n' verdict "$ROOT29" J "**GO** for head \`$C29\`." "delta-noop-$C29"
+check "8732-d: a no-op chain cycle (B on C, C on B) is refused (exit 10)" "$(go29 "$B29")" "10:none"
+rm -f "$V29/J/delta-noop-$B29.md" "$V29/J/delta-noop-$C29.md"
+verdict "$ROOT29" J "**GO** for head \`$B29\`." HIMMEL-1-judge-J-b
+check "8732-e0: a real GO of J at B is written" "$(go29 "$B29")" "0:go"
+verdict "$ROOT29" K "**NO-GO** for head \`$B29\`." HIMMEL-1-judge-K
+check "8732-e: a real GO of J at B with K's NO-GO at B is refused (exit 10, no GO)" "$(go29 "$B29")" "10:none"
+VPR=
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
