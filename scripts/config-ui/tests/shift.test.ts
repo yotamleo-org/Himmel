@@ -1,6 +1,6 @@
 // shift.ts — the shift helper: the cut rule, shifts.jsonl under one writer, the span-and-attribution function.
 import { test, expect, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULTS, appendShift, attribute, chiefSpans, iso, liveBoards, liveChiefs, mergedIn, nameOf, readLocks, readMerged, readShifts, redactShift, rowsOf, step, tick, viewOf, type Lock, type Row, type Span, type State, type View } from "../shift";
@@ -70,6 +70,16 @@ for (const id of ["a", "b", "c", "d"]) await appendShift(${JSON.stringify(f)}, {
   for (const p of procs) expect(await p.exited).toBe(0);
   const ids = readFileSync(f, "utf8").trim().split("\n").map((l) => JSON.parse(l).id).sort();
   expect(ids).toEqual(["a", "b", "c", "d"]);
+});
+
+test("tick with readOnly returns the recorded state and writes no state file or shift row; without it the same poll writes the state file", async () => {
+  const d = tmp(), f = join(d, "shifts.jsonl"), now = T("2026-10-27T12:00+01:00");
+  const snap = await tick({ root: d, file: f, now, readOnly: true, merged: async () => { throw new Error("a read-only poll reads no PR list"); } });
+  expect(snap.state).toEqual({ open: null, closedAt: null });
+  expect(snap.closed).toEqual([]);
+  expect(readdirSync(d)).toEqual([]);
+  await tick({ root: d, file: f, now, merged: async () => [] });
+  expect(existsSync(`${f}.state.json`)).toBe(true);
 });
 
 test("a shift that closes after midnight is returned once, with ISO times that carry an offset", async () => {
