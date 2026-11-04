@@ -340,7 +340,13 @@ if [ "$TRUST_SET" -eq 1 ]; then
         fi
         # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
         case "$RL" in '**GO** for head `'"$SHA"'`'|'**GO** for head `'"$SHA"'`.') ;; *) continue ;; esac
-        if grep -qxE "delta: no-op"$'\r'"?" "$vf"; then NOOP=1; else REAL=1; fi
+        DRC=0; grep -qxE "delta: no-op"$'\r'"?" "$vf" 2>/dev/null || DRC=$?
+        case "$DRC" in
+            0) NOOP=1 ;;
+            1) REAL=1 ;;
+            *) echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - cannot read the verdict $vf (grep exit $DRC), so whether it is a delta no-op cannot be checked. No GO written." >&2
+               exit 10 ;;
+        esac
     done
     if [ "$REAL" -eq 1 ]; then
         if ! WHY=$(go_nogo_after "$NVD" "$PR" "$PWD" "$SHA"); then
@@ -349,7 +355,7 @@ if [ "$TRUST_SET" -eq 1 ]; then
         fi
     elif [ "$NOOP" -eq 1 ]; then
         if ! WHY=$(go_noop_carry "$NVD" "$TRUST" "$PR" "$PWD" "$SHA" "$ROOT" "$ANCHOR" "$VREPO"); then
-            echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op that may not carry (a judge's NO-GO at or after ${SHA:0:8} vetoes this no-op GO): $WHY. No GO written." >&2
+            echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op that may not carry: $WHY. No GO written." >&2
             exit 10
         fi
         if ! CHAIN=$(go_noop_chain "$NVD" "$TRUST" "$SHA"); then
