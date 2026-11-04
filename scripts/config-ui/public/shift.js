@@ -112,9 +112,16 @@ function waitingHtml(v, ui) {
   return `<ul class="sh-list">${v.waiting.map((w) => `<li><span class="pill ${w.kind === "GO" ? "ok" : "warn"}">${esc(w.kind)}</span> ${ticketLink(w.ticket)} ${esc(w.detail || w.title)} ${prRef(w.pr, ui)}${w.chief ? ` <span class="ro">${esc(w.chief)}</span>` : ""}${w.since ? ` <span class="ro">since ${esc(clock(w.since))}</span>` : ""}</li>`).join("")}</ul><p class="sub">Answer these where they live: <a href="${fleetOf(ui)}">Fleet</a>.</p>`;
 }
 
+// A live chief whose board is absent or failed to build is said so: its legs are unknown, never an empty fleet.
+const boardNotes = (v) => [
+  ...(v.boardMissing || []).map((c) => none(`No board for ${c} yet: it has not rendered one.`)),
+  ...(v.boardError || []).map((e) => none(`Board for ${e.chief} failed to build: ${e.error}`)),
+].join("");
+
 function runningHtml(v, ui) {
-  if (!v.running.length) return none("Nothing is running.");
-  return `<ul class="sh-list">${v.running.map((r) => `<li><span class="pill">${esc(r.stage)}</span> ${ticketLink(r.ticket)} ${esc(r.title)} ${prRef(r.pr, ui)}</li>`).join("")}</ul>`;
+  const notes = boardNotes(v);
+  if (!v.running.length) return notes || none("Nothing is running.");
+  return `${notes}<ul class="sh-list">${v.running.map((r) => `<li><span class="pill">${esc(r.stage)}</span> ${ticketLink(r.ticket)} ${esc(r.title)} ${prRef(r.pr, ui)}</li>`).join("")}</ul>`;
 }
 
 const SHOWN = 20; // the longest list shows its newest rows; "show all" opens the rest

@@ -6,6 +6,7 @@
 // whenever its mtime moves, so a change reaches the next poll with no rebuild.
 // ponytail: with no such file the board is built by running board.mjs, cached BOARD_TTL_MS and shared by every poller
 // (it reads gh, Jira and transcripts: seconds); retire this fallback once every chief has written the file.
+// ponytail: the board.mjs fallback now serves Shift as well as Fleet, in the server process only; ceiling = one cold build per chief per 30 s in the UI server, upgrade path = the chief's waiter renders the board each tick (one owner writes the file), then both routes drop the fallback.
 import { execFile } from "node:child_process";
 import { mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
