@@ -8,7 +8,7 @@ const sandboxHome = await vi.hoisted(async () => {
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const home = mkdtempSync(join(tmpdir(), 'bitbucket-exit-codes-home-'));
-  Object.assign(process.env, { HOME: home, XDG_CONFIG_HOME: join(home, '.config'), HIMMEL_CONFIG_DIR: join(home, '.himmel') });
+  Object.assign(process.env, { HOME: home, XDG_CONFIG_HOME: join(home, '.config'), HIMMEL_CONFIG_DIR: join(home, '.himmel'), GIT_CONFIG_GLOBAL: join(home, '.gitconfig') });
   return home;
 });
 afterAll(() => rmSync(sandboxHome, { recursive: true, force: true }));

@@ -9,7 +9,7 @@ import { frontmatterDescription, regenerateCatalog, loadGeneratedStaged } from '
 
 // The temp-repo git calls never read the operator's real home or config roots.
 const SANDBOX_HOME = makeTmpDir('gen-catalog-home-');
-Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: join(SANDBOX_HOME, '.claude') });
+Object.assign(process.env, { HOME: SANDBOX_HOME, XDG_CONFIG_HOME: join(SANDBOX_HOME, '.config'), HIMMEL_CONFIG_DIR: join(SANDBOX_HOME, '.himmel'), CLAUDE_CONFIG_DIR: join(SANDBOX_HOME, '.claude'), CLAUDE_USER_SETTINGS: join(SANDBOX_HOME, '.claude', 'settings.json'), GIT_CONFIG_GLOBAL: join(SANDBOX_HOME, '.gitconfig') });
 
 test('frontmatterDescription reads the description: scalar', () => {
   const md = '---\nname: foo\ndescription: Does the thing.\n---\nbody\n';
