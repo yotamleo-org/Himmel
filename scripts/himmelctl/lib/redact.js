@@ -38,7 +38,9 @@ const LONG_RUN = /(?<![A-Za-z0-9/_.-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9/_.-])/g;
 // Token shapes, NAME=value and .env literals run before LONG_RUN and are unaffected.
 const WORD_SEGMENT = /^(?:[A-Za-z][a-z]*|[A-Z]+|[0-9]+)$/;
 const SHORT_ID = /^[A-Za-z0-9]{1,5}$/;
+const UUID_SHAPE = /^[A-Za-z0-9]{8}(?:-[A-Za-z0-9]{4}){3}-[A-Za-z0-9]{12}$/;
 function isSessionName(run) {
+  if (UUID_SHAPE.test(run)) return false;
   const segs = run.split('-');
   if (segs.length < 3 || segs.some((s) => s === '' || !/^[A-Za-z0-9]+$/.test(s))) return false;
   let ids = 0;
