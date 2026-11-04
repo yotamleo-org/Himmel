@@ -1655,6 +1655,11 @@ jobs:
         if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
+      # The root bunfig.toml preload keeps every bun test below off the real HOME; this guard
+      # proves it, and with the require flag a missing bun is a FAIL, never a vacuous SKIP.
+      - run: bash scripts/ci/test-root-vitest-sandbox.sh
+        env:
+          HIMMEL_REQUIRE_BUN_TEST: "1"
       - run: cd scripts/luna-vitals && bun install --frozen-lockfile --ignore-scripts && bash ../ci/run-bun-tests.sh scripts/luna-vitals
       # Must run from the repo root, not scripts/telegram/ — these suites pin
       # their fixtures repo-root-relative, so running them from their own

@@ -56,7 +56,16 @@ done
 # import, require() and `export ... from`, which a one-line import regex misses.
 names_vitest_config() {
   local hit
-  hit="$(sed -E 's://.*$::; /^[[:space:]]*(\/\*|\*)/d' "$1" | grep -E "['\"]vitest/config['\"]")"
+  # A small scanner over the whole file: it keeps string literals (so a glob such as '**/*.ts' opens
+  # no comment) and drops /* ... */ blocks across lines and // line comments; a stray star line goes last.
+  hit="$(awk 'BEGIN{RS="\001"} {s=$0;n=length(s);o="";q="";i=1
+    while(i<=n){c=substr(s,i,1);d=substr(s,i,2)
+      if(q!=""){o=o c;if(c=="\\"){o=o substr(s,i+1,1);i+=2;continue};if(c==q)q="";i++;continue}
+      if(d=="//"){while(i<=n&&substr(s,i,1)!="\n")i++;continue}
+      if(d=="/*"){j=index(substr(s,i+2),"*/");if(!j){break};i+=j+3;o=o " ";continue}
+      if(c=="\""||c=="\047"||c=="`")q=c
+      o=o c;i++}
+    printf "%s",o}' "$1" | sed -E '/^[[:space:]]*\*/d' | grep -E "['\"]vitest/config['\"]")"
   [ -n "$hit" ]
 }
 if names_vitest_config "$root_cfg"; then
@@ -71,10 +80,82 @@ printf "import 'vitest/config';\nexport default {};\n" > "$sfx/bare.ts"
 printf "const m = await import(\"vitest/config\");\nexport default {};\n" > "$sfx/dynamic.ts"
 printf "export {\n  defineConfig,\n} from 'vitest/config';\n" > "$sfx/reexport.ts"
 printf "// import { defineConfig } from 'vitest/config'\n/* 'vitest/config' */\n * 'vitest/config'\nexport default {};\n" > "$sfx/commented.ts"
-for f in multiline bare dynamic reexport; do
+# Interior line of a multiline block comment, no leading asterisk.
+printf "/*\n  import { defineConfig } from 'vitest/config'\n  more prose\n*/\nexport default {};\n" > "$sfx/blockcomment.ts"
+# Comment marks inside string literals (a glob) must not open a comment that swallows the import.
+printf "const include = ['**/*.test.ts'];\nimport { defineConfig } from 'vitest/config';\nconst skip = ['**/node_modules/**'];\nexport default defineConfig({});\n" > "$sfx/globs.ts"
+for f in multiline bare dynamic reexport globs; do
   if names_vitest_config "$sfx/$f.ts"; then pass "static check refuses a $f vitest/config import"; else fail "static check misses a $f vitest/config import"; fi
 done
 if names_vitest_config "$sfx/commented.ts"; then fail "static check refuses a commented-out vitest/config mention"; else pass "static check ignores a commented-out vitest/config mention"; fi
+if names_vitest_config "$sfx/blockcomment.ts"; then fail "static check refuses a vitest/config mention inside a multiline block comment"; else pass "static check ignores a vitest/config mention inside a multiline block comment"; fi
+
+# ---- bun test: bun ignores vitest.config.ts; the root bunfig.toml preload sandboxes it.
+# The guard must not rest on NODE_ENV (bun sets it to test only when unset), so one row exports
+# NODE_ENV=production. SKIP when bun is absent unless HIMMEL_REQUIRE_BUN_TEST=1.
+if command -v bun >/dev/null 2>&1; then
+  bproj="$tmp/bunproj"; mkdir -p "$bproj/scripts/jira"
+  cat > "$bproj/delete.test.ts" <<'EOF'
+import { test } from 'bun:test';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+test('removes the config under HOME', () => {
+  rmSync(join(process.env.HOME!, '.himmel', 'config.json'), { force: true });
+});
+EOF
+  # Other ways a bun test reaches the home: os.homedir(), os.userInfo().homedir (named, namespace
+  # and default imports), and a Bun.spawn / Bun.spawnSync child with no explicit env. Each probe
+  # deletes the canary through that route; the canary is the only file the probes can reach.
+  cat > "$bproj/homedir.test.ts" <<'EOF'
+import { test } from 'bun:test';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import * as osNs from 'os';
+import osDefault from 'node:os';
+test('removes the config under os.homedir()', () => {
+  for (const h of [homedir(), osNs.homedir(), osDefault.homedir(), require('node:os').homedir()]) rmSync(join(h, '.himmel', 'config.json'), { force: true });
+});
+EOF
+  cat > "$bproj/userinfo.test.ts" <<'EOF'
+import { test } from 'bun:test';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { userInfo } from 'node:os';
+test('removes the config under os.userInfo().homedir', () => {
+  rmSync(join(userInfo().homedir, '.himmel', 'config.json'), { force: true });
+});
+EOF
+  cat > "$bproj/spawn.test.ts" <<'EOF'
+import { test } from 'bun:test';
+test('a default-env Bun.spawnSync and Bun.spawn child remove the config under their HOME', async () => {
+  Bun.spawnSync(['sh', '-c', 'rm -f "$HOME/.himmel/config.json"']);
+  await Bun.spawn(['sh', '-c', 'rm -f "$HOME/.himmel/config.json"']).exited;
+});
+EOF
+  rm -f "$bproj/bunfig.toml"
+  seed
+  (cd "$bproj" && bun test >"$tmp/bun-red.log" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(canary)" = DELETED ]; then pass "RED control: bun test with no bunfig.toml DELETES the canary"; else fail "RED control: bun rc=$rc canary $(canary) (log $tmp/bun-red.log)"; fi
+  if [ -f "$REPO_ROOT/bunfig.toml" ]; then cp "$REPO_ROOT/bunfig.toml" "$bproj/bunfig.toml"; fi
+  cp "$setup" "$bproj/scripts/jira/vitest.setup.ts"
+  if [ -f "$REPO_ROOT/scripts/jira/bun-test-preload.ts" ]; then cp "$REPO_ROOT/scripts/jira/bun-test-preload.ts" "$bproj/scripts/jira/bun-test-preload.ts"; fi
+  for probe in homedir userinfo spawn; do
+    seed
+    (cd "$bproj" && bun test "$probe.test.ts" >"$tmp/bun-$probe.log" 2>&1); rc=$?
+    if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "bun test $probe probe: canary SURVIVED"; else fail "bun test $probe probe: rc=$rc canary $(canary) (log $tmp/bun-$probe.log)"; fi
+  done
+  seed
+  (cd "$bproj" && bun test >"$tmp/bun-a.log" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "bun test with the root bunfig.toml: canary SURVIVED"; else fail "bun test with the root bunfig.toml: rc=$rc canary $(canary) (log $tmp/bun-a.log)"; fi
+  seed
+  (cd "$bproj" && NODE_ENV=production bun test >"$tmp/bun-b.log" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(canary)" = SURVIVED ]; then pass "bun test with NODE_ENV=production: canary SURVIVED"; else fail "bun test with NODE_ENV=production: rc=$rc canary $(canary) (log $tmp/bun-b.log)"; fi
+elif [ "${HIMMEL_REQUIRE_BUN_TEST:-}" = 1 ]; then
+  fail "bun test cases cannot run: bun is missing and HIMMEL_REQUIRE_BUN_TEST=1"
+else
+  echo "  SKIP  bun test cases: bun is not installed"
+fi
 
 # ---- runtime cases need the jira vitest install
 vitest="$REPO_ROOT/scripts/jira/node_modules/.bin/vitest"
