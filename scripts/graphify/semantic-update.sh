@@ -177,6 +177,15 @@ if [ "$BACKEND" = "claude-api" ]; then
     exit 1
   fi
 fi
+# claude-cli chunk cap, same knob and default as refresh-graph-map.sh: a 60000-token chunk at one
+# call per directory returned a few facts per doc. An explicitly-empty value passes no --token-budget.
+CLI_CHUNK_TOKENS=""
+if [ "$BACKEND" = "claude-cli" ]; then
+  CLI_CHUNK_TOKENS="${GRAPHIFY_TOKEN_BUDGET-8000}"
+  case "$CLI_CHUNK_TOKENS" in
+    *[!0-9]*|0*) echo "semantic-update: GRAPHIFY_TOKEN_BUDGET must be a positive integer (got '$CLI_CHUNK_TOKENS')" >&2; exit 1 ;;
+  esac
+fi
 MERGE=(python3 "$HERE/semantic-merge.py")
 
 # --backend ollama: local model, zero egress, no bank draw. This
@@ -403,10 +412,10 @@ if [ "$N_BATCH" -gt 0 ]; then
       fi ;;
   esac
   if [ "$BACKEND" = "claude-cli" ] || [ "$BACKEND" = "claude-api" ]; then
-    # Same pins as refresh-graph-map.sh: sonnet, low effort,
+    # Same pins as refresh-graph-map.sh: sonnet, high effort,
     # raised timeout, and a hook-free config dir.
     export GRAPHIFY_CLAUDE_CLI_MODEL="${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}"
-    export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-low}"
+    export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL-high}"
     export GRAPHIFY_API_TIMEOUT="${GRAPHIFY_API_TIMEOUT-900}"
     export GRAPHIFY_CLAUDE_CONFIG_DIR="${GRAPHIFY_CLAUDE_CONFIG_DIR:-$HOME/.claude-graphify}"
     bash "$HERE/seed-claude-config.sh" \
@@ -555,6 +564,7 @@ PY
   # One request at a time: the local model holds the whole GPU.
   if [ "$BACKEND" = "ollama" ]; then EXTRA=(--max-concurrency 1); fi
   if [ "$BACKEND" = "claude-api" ]; then EXTRA=(--token-budget "$CHUNK_TOKENS"); fi
+  if [ -n "$CLI_CHUNK_TOKENS" ]; then EXTRA=(--token-budget "$CLI_CHUNK_TOKENS"); fi
   # GRAPHIFY_NO_AUTO_REFRESH=1: no skill-dir rewrite from a cadence run.
   export GRAPHIFY_NO_AUTO_REFRESH=1
   set +e

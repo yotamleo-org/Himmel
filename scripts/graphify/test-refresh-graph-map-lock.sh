@@ -241,6 +241,44 @@ grep -q '"gen":"E"' "$OUT3/graph.json" 2>/dev/null && pass "T3 the refresh compl
 [ -d "$OUT3/.promote.lock" ] && fail "T3 lock dir left behind after takeover run (takeover -> acquire -> release did not compose)" \
   || pass "T3 lock dir gone after the takeover run (takeover -> acquire -> eager release composed)"
 
+# --- T3b: a stale-aged promote lock whose owner token names a
+# LIVE pid (an ast-update still running) is never taken over: refresh waits,
+# proceeds once the holder releases, and gives up rc 2 at the live-wait
+# ceiling. A dead pid is taken over as before. ---
+echo "T3b: a stale-aged lock with a live holder is waited on, never taken over"
+t3b_case() { # <name> <owner-token>; leaves a stale-aged promote lock in a fresh corpus
+  T3B_CORPUS="$WS/$1"; mkdir -p "$T3B_CORPUS/notes" "$WS/$1-maps"
+  printf '# f\ncontent f\n' > "$T3B_CORPUS/notes/f.md"
+  mkdir -p "$T3B_CORPUS/graphify-out/.promote.lock"
+  printf '%s\n' "$(( $(date -u +%s) - 100 ))" > "$T3B_CORPUS/graphify-out/.promote.lock/acquired"
+  printf '%s\n' "$2" > "$T3B_CORPUS/graphify-out/.promote.lock/owner"
+}
+t3b_run() { # <name> <live-wait>
+  GRAPHIFY_MAP_BIN="$EBIN/graphify" PATH="$EBIN:$PATH" GRAPHIFY_PROMOTE_LOCK_STALE_SECONDS=10 \
+    GRAPHIFY_PROMOTE_LOCK_TIMEOUT_SECONDS=1 GRAPHIFY_PROMOTE_LOCK_LIVE_WAIT_SECONDS="$2" \
+    bash "$SCRIPT" --name "$1" --corpus-root "$T3B_CORPUS" --backend claude \
+    --maps-dir "$WS/$1-maps" --title "Lock $1" --slug "$1-map" --corpus-tag "$1" 2>&1
+}
+sleep 600 & HOLDER_PID=$!
+t3b_case t3b-live "$HOLDER_PID-123"
+out_l=$(t3b_run t3b-live 3); rc_l=$?
+{ [ "$rc_l" -eq 2 ] && [ "$(cat "$T3B_CORPUS/graphify-out/.promote.lock/owner" 2>/dev/null)" = "$HOLDER_PID-123" ] \
+  && ! grep -qi "taking over" <<<"$out_l" && grep -q "alive" <<<"$out_l"; } \
+  && pass "T3b live holder: no takeover, rc 2 at the live-wait ceiling, its lock intact" \
+  || fail "T3b live holder should be waited on then rc 2 (got $rc_l, owner=$(cat "$T3B_CORPUS/graphify-out/.promote.lock/owner" 2>/dev/null)): $out_l"
+t3b_case t3b-release "$HOLDER_PID-456"
+( sleep 3; rm -rf "$T3B_CORPUS/graphify-out/.promote.lock" ) &
+out_r=$(t3b_run t3b-release 60); rc_r=$?
+{ [ "$rc_r" -eq 0 ] && ! grep -qi "taking over" <<<"$out_r" && grep -q '"gen":"E"' "$T3B_CORPUS/graphify-out/graph.json" 2>/dev/null; } \
+  && pass "T3b live holder releases: refresh proceeds after the wait, no takeover" \
+  || fail "T3b refresh should proceed after the live holder releases (got $rc_r): $out_r"
+kill "$HOLDER_PID" 2>/dev/null; wait "$HOLDER_PID" 2>/dev/null
+t3b_case t3b-dead "$HOLDER_PID-789"
+out_x=$(t3b_run t3b-dead 60); rc_x=$?
+{ [ "$rc_x" -eq 0 ] && grep -qi "taking over" <<<"$out_x"; } \
+  && pass "T3b dead holder: the stale lock is taken over as before" \
+  || fail "T3b dead holder should be taken over (got $rc_x): $out_x"
+
 # --- T4: two SIMULTANEOUS
 # contenders against one stale lock -- the takeover must be single-winner.
 # A naive rm-then-continue takeover would let both contenders judge the same

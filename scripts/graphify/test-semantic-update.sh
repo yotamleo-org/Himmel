@@ -84,6 +84,7 @@ echo "OLLAMA_NUM_CTX=\${GRAPHIFY_OLLAMA_NUM_CTX-unset}" >> "$WS/env.log"
 echo "API_TIMEOUT=\${GRAPHIFY_API_TIMEOUT-unset}" >> "$WS/env.log"
 echo "CLAUDE_BIN=\$(command -v claude || echo none)" >> "$WS/env.log"
 echo "CLAUDE_CONFIG_DIR=\${CLAUDE_CONFIG_DIR-unset}" >> "$WS/env.log"
+echo "EFFORT=\${CLAUDE_CODE_EFFORT_LEVEL-unset}" >> "$WS/env.log"
 # GRAPHIFY_STUB_CACHE_HIT: a seeded entry answers the extract with no call, as graphify's cache does; graphify's
 # real key is content plus its own prompt, so it cannot see which mode wrote the entry, and neither does this one.
 if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\${GRAPHIFY_STUB_CACHE_HIT:-}" ] || [ ! -e "\$2/graphify-out/cache/semantic/new.json" ]; }; then
@@ -598,11 +599,16 @@ case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 30000"*) 
 C40B="$WS/c40b"; new_corpus "$C40B"; : > "$WS/calls.log"
 out=$(GRAPHIFY_API_CALL_BUDGET_USD=3.00 run_api --name t40b --corpus-root "$C40B" --corpus-class himmel-code --backend claude-api); rc=$?
 case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 60000"*) pass "T40 3.00 -> capped at 60000" ;; *) fail "T40 capped: $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
-C40C="$WS/c40c"; new_corpus "$C40C"; : > "$WS/calls.log"
-out=$(run --name t40c --corpus-root "$C40C" --corpus-class himmel-code --backend claude-cli); rc=$?
+C40C="$WS/c40c"; new_corpus "$C40C"; : > "$WS/calls.log"; : > "$WS/env.log"
+out=$(unset GRAPHIFY_TOKEN_BUDGET CLAUDE_CODE_EFFORT_LEVEL; run --name t40c --corpus-root "$C40C" --corpus-class himmel-code --backend claude-cli); rc=$?
 ext40c="$(grep '^graphify extract' "$WS/calls.log")"
 if [ "$rc" -ne 0 ] || [ -z "$ext40c" ]; then fail "T40 claude-cli control did not reach graphify extract (rc=$rc): $out"
-else case "$ext40c" in *"--token-budget"*) fail "T40 claude-cli got a token budget" ;; *) pass "T40 claude-cli path unchanged" ;; esac; fi
+else case "$ext40c" in *"--token-budget 8000"*) pass "T40 claude-cli caps the chunk at 8000" ;; *) fail "T40 claude-cli expected --token-budget 8000: $ext40c" ;; esac; fi
+[ "$(grep '^EFFORT=' "$WS/env.log" | sort -u)" = "EFFORT=high" ] && pass "T40 claude-cli extract runs at effort high by default" || fail "T40 effort: $(grep '^EFFORT=' "$WS/env.log")"
+C40D="$WS/c40d"; new_corpus "$C40D"; : > "$WS/calls.log"; : > "$WS/env.log"
+out=$(GRAPHIFY_TOKEN_BUDGET=4000 CLAUDE_CODE_EFFORT_LEVEL=medium run --name t40d --corpus-root "$C40D" --corpus-class himmel-code --backend claude-cli); rc=$?
+case "$(grep '^graphify extract' "$WS/calls.log")" in *"--token-budget 4000"*) pass "T40 GRAPHIFY_TOKEN_BUDGET wins on claude-cli" ;; *) fail "T40 claude-cli override (rc=$rc): $(grep '^graphify extract' "$WS/calls.log") $out" ;; esac
+[ "$(grep '^EFFORT=' "$WS/env.log" | sort -u)" = "EFFORT=medium" ] && pass "T40 an operator CLAUDE_CODE_EFFORT_LEVEL wins" || fail "T40 effort override: $(grep '^EFFORT=' "$WS/env.log")"
 
 echo "T41: a failed lane call shows its result and exit code on the shim's stderr (what graphify prints in the chunk-failed line)"
 C41="$WS/c41"; new_corpus "$C41"; : > "$WS/calls.log"; : > "$WS/claude.out"
