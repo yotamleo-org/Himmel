@@ -683,8 +683,8 @@ for (const [name, extra, pattern] of [
 test('lane is OFF without the opt-in and invalid accounts refuse', () => {
   const f = fixture();
   assert.match(f.run(f.good, { HIMMEL_API_LANE: '' }).stderr, /api lane is OFF/);
-  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: 'C' }).stderr, /must be A or B/);
-  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: '' }).stderr, /must be A or B/);
+  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: 'D' }).stderr, /must be A, B or C/);
+  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: '' }).stderr, /must be A, B or C/);
   assert.equal(f.called(), false);
 });
 
@@ -1340,4 +1340,69 @@ test('HIMMEL-7111: a call that outruns the call timeout is stopped, even one ign
       assert.equal(alive(child), false, 'a subprocess of the call outlived the call timeout');
     } finally { if (alive(child)) process.kill(child, 'SIGKILL'); }
   } finally { rmSync(hold, { force: true }); }
+});
+
+// account C is explicit-only (never auto), billed to its own 200.00 cap, and refused for review kinds
+const KEY_C = 'sk-ant-dummy-account-c-key-CCCC';
+function withC(f, mode = 0o600) {
+  f.config.accounts.C = { organization_id: 'org-c', cycle_id: 'cycle-c', cap_usd: '200.00', key_id: 'key-c', reset_at: '2099-01-01T00:00:00Z' };
+  f.snapshot.accounts.C = { ...f.snapshot.accounts.A, organization_id: 'org-c', cycle_id: 'cycle-c', grant_usd: '200.00', remaining_usd: '200.00' };
+  f.save();
+  const env = keyFiles(f, mode);
+  writeFileSync(join(f.dir, 'key-C.env'), `ANTHROPIC_API_KEY=${KEY_C}\n`, { mode });
+  chmodSync(join(f.dir, 'key-C.env'), mode);
+  return env;
+}
+
+test('HIMMEL-9052: HIMMEL_API_ACCOUNT=C with a graphify kind runs one stubbed call and bills the ledger row to C', () => {
+  const f = fixture();
+  const r = launch(withC(f), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: 'graphify' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=CCCC$/m);
+  const row = JSON.parse(f.record().trim());
+  assert.equal(row.account, 'C');
+  assert.equal(row.key_id, 'key-c');
+  for (const text of [r.stdout, r.stderr, f.record()]) assert.ok(!text.includes(KEY_C));
+});
+
+test('HIMMEL-9052: account C refuses every kind but graphify and smoke, review kinds included, before any spawn', () => {
+  for (const kind of ['judge', 'critic', 'bulk', 'cull', 'other']) {
+    const f = fixture();
+    const r = launch(withC(f), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: kind });
+    assert.equal(r.status, 2, `${kind}: ${r.stderr}`);
+    assert.match(r.stderr, /account C is for graphify and smoke only/);
+    assert.equal(f.called(), false);
+  }
+  const f = fixture();
+  assert.equal(launch(withC(f), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: 'smoke' }).status, 0);
+});
+
+test('HIMMEL-9052: auto never picks C, even with A and B out of room', () => {
+  const f = fixture();
+  const env = withC(f);
+  const ok = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-c-auto-1' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.notEqual(JSON.parse(f.record().trim()).account, 'C');
+  for (const a of ['A', 'B']) {
+    f.snapshot.accounts[a].remaining_usd = '0.05';
+    f.snapshot.accounts[a].reconciled_spent_usd = '0.012345';
+  }
+  f.save();
+  // with A and B over their estimate auto still serves one of them (the API's credit answer decides); never C
+  launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_JOB_ID: 'job-c-auto-2' });
+  for (const line of f.record().trim().split('\n')) assert.notEqual(JSON.parse(line).account, 'C');
+  assert.ok(!JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts?.C);
+});
+
+test('HIMMEL-9052: account C refuses a wrong key id and a key file that is not mode 600', () => {
+  const f = fixture();
+  const env = withC(f);
+  const wrong = launch(env, { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: 'graphify', HIMMEL_API_KEY_ID: 'key-a' });
+  assert.equal(wrong.status, 2);
+  assert.match(wrong.stderr, /key id does not match account C/);
+  const g = fixture();
+  const loose = launch(withC(g, 0o644), { HIMMEL_API_ACCOUNT: 'C', HIMMEL_API_KIND: 'graphify' });
+  assert.equal(loose.status, 2);
+  assert.match(loose.stderr, /key file for account C must be mode 600/);
+  assert.equal(g.called(), false);
 });

@@ -8,7 +8,7 @@
 # Usage: claude-api.sh -p [prompt] --model M --permission-mode default|plan|acceptEdits|dontAsk|auto \
 #                      --max-budget-usd N [--output-format json] [--effort E]
 #                      [--append-system-prompt-file F]  (no other flags)
-# Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|auto  [HIMMEL_API_KEY_ID=<roster id>]
+# Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|C|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
@@ -72,7 +72,7 @@ trap 'rm -f "$OUT" "$FB_OUT" "$PROMPT_FILE" ${OUT:+"$OUT.timeout"}; release_slot
 redact() {
   local s="$1" v
   [ -z "$KEY" ] || s="${s//"$KEY"/[key]}"
-  for v in ANTHROPIC_API_KEY ANTHROPIC_ORG_A_KEY ANTHROPIC_ORG_B_KEY LQ_API_KEY; do
+  for v in ANTHROPIC_API_KEY ANTHROPIC_ORG_A_KEY ANTHROPIC_ORG_B_KEY ANTHROPIC_ORG_C_KEY LQ_API_KEY; do
     [ -z "${!v:-}" ] || s="${s//"${!v}"/[key]}"
   done
   s="$(printf '%s' "$s" | sed -E 's/sk-ant-[A-Za-z0-9_-]+/[key]/g' | tr '\000-\037' ' ')"
@@ -89,7 +89,7 @@ send_alert() {
     echo "claude-api: alert: one already sent for $KIND_SAFE $class within the hour" >&2
     return 0
   fi
-  case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) account="$HIMMEL_API_ACCOUNT" ;; *) account="?" ;; esac
+  case "${HIMMEL_API_ACCOUNT:-}" in A|B|C|auto) account="$HIMMEL_API_ACCOUNT" ;; *) account="?" ;; esac
   msg="kind $KIND_SAFE, account $account, $class (exit $rc): $(redact "$reason"); fallback: $(redact "$decision")"
   # the caller's repo names the message, so a salus caller gets the sender's content-free line
   repo_name="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")"
@@ -116,7 +116,7 @@ send_alert() {
 
 # the native bank decides the fallback: the subscription usage preflight, never the API gate
 sub_preflight() {
-  env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+  env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
     -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
     CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="sub-fallback:$KIND_SAFE:${JOB_SAFE:-$$}" \
     bash "$REPO/scripts/lib/usage-preflight.sh" </dev/null | tail -n 1
@@ -136,7 +136,7 @@ record_fallback() {
   [ "$rc" -eq 0 ] || outcome=sub-fallback-failed
   sub_cost="$(node "$REPO/scripts/api-lane/outcome.mjs" "$FB_OUT" 2>/dev/null)"
   [[ "$BUDGET" =~ ^[0-9]+(\.[0-9]+)?$ ]] && budget="$BUDGET"
-  case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) account="$HIMMEL_API_ACCOUNT" ;; esac
+  case "${HIMMEL_API_ACCOUNT:-}" in A|B|C|auto) account="$HIMMEL_API_ACCOUNT" ;; esac
   dir="$(launch_dir)"
   mkdir -p "$dir" 2>/dev/null
   printf '{"ts":"%s","job_id":"%s","account":"%s","lane":"sub-fallback","model":"%s","budget_usd":"%s","outcome":"%s","cost_usd":"","sub_cost_usd":"%s","rc":%s,"api_rc":%s,"api_class":"%s","kind":"%s","input_tokens":null,"cache_creation_tokens":null,"cache_read_tokens":null,"branch":"%s","head":"%s","pr":%s}\n' \
@@ -311,7 +311,7 @@ case "${HIMMEL_API_JOB_ID:-x}" in *[!A-Za-z0-9._:-]*) BAD_REQ=1 ;; esac
 
 # --- lane opt-in and credentials (presence checks only) ---
 [ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
-case "${HIMMEL_API_ACCOUNT:-}" in A|B|auto) ;; *) refuse "HIMMEL_API_ACCOUNT must be A or B (or auto)" ;; esac
+case "${HIMMEL_API_ACCOUNT:-}" in A|B|C|auto) ;; *) refuse "HIMMEL_API_ACCOUNT must be A, B or C (or auto)" ;; esac
 [ "$HIMMEL_API_ACCOUNT" != auto ] || [ -z "${ANTHROPIC_API_KEY:-}" ] ||
   refuse "auto routing reads the per-account key files; a caller ANTHROPIC_API_KEY cannot follow the pick"
 
@@ -328,6 +328,11 @@ case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMM
 # cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
+# account C (graph only, never code review) serves only these kinds; every other kind,
+# every review kind included (judge, critic, bulk, cull ...), is refused, and never re-run on the subscription
+if [ "$HIMMEL_API_ACCOUNT" = C ]; then
+  case "$KIND" in graphify|smoke) ;; *) NO_FB="the request itself was refused"; refuse "account C is for graphify and smoke only (kind $KIND)" ;; esac
+fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
 
@@ -386,7 +391,7 @@ WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_W
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
 # The slot is released at exit by the EXIT trap above, and before a fallback runs.
-BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY \
+BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY \
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
   CADENCE_USAGE_WORKER="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
@@ -496,7 +501,7 @@ trap on_signal TERM INT HUP
 # one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
-  -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
+  -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
   -u HIMMEL_API_BRANCH -u HIMMEL_API_HEAD -u HIMMEL_API_PR \
   -u HIMMEL_API_FALLBACK -u HIMMEL_API_ALERT_CMD -u HIMMEL_API_ALERT_DIR \

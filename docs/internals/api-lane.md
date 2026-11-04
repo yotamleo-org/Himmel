@@ -108,6 +108,42 @@ The fallback appends one row to the same `launches.jsonl` as the API call:
 
 The API call's own row and its reservation are settled as before.
 
+## Account C: the himmel graph only (HIMMEL-9052)
+
+Account C is a third API org with a 200.00 USD cap. It differs from A and B in three ways:
+
+- **Explicit only.** `HIMMEL_API_ACCOUNT=C` names it; `auto` never ranks it, even when A and B are empty.
+  An `auto` run with no funded A or B refuses as before.
+- **Graph and smoke kinds only.** `claude-api.sh` refuses account C for any `HIMMEL_API_KIND` other than
+  `graphify` and `smoke` (exit 2, before any spawn, no subscription fallback). That covers `judge`, `critic`,
+  `bulk`, `cull` and every code-review caller, so review can never spend C.
+- **Same refusals as A and B:** key from `ANTHROPIC_ORG_C_KEY` or a mode-600 `key-C.env`, `HIMMEL_API_KEY_ID` equal
+  to the roster `key_id`, lane on, ledger spend estimate under the 200.00 cap.
+
+Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. `ANTHROPIC_ORG_ID_C` is also
+accepted by the loader. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
+`ANTHROPIC_ORG_C_KEY`. The key is stored by the operator (keyring or `key-C.env`), never by a script.
+
+### Caching recommendation for the graph pass
+
+Measured from `launches.jsonl` (no new spend): across 470 untyped, 244 judge, 93 critic and 67 bulk launches the
+lane writes 20.8M, 7.7M, 2.5M and 1.5M cache-creation tokens against 0.7M, 2.0M, 2.8M and 4.4M cache-read tokens.
+Call kinds that do not reuse their prefix pay the cache write (1.25 x input at 5 minutes, 2 x at 1 hour) and
+read little; the kinds that share a long prefix (bulk, eval) read three to ten times what they write.
+
+The graph pass is the second kind: every chunk prompt opens with graphify's fixed extraction instructions.
+Recommended, cheapest first:
+
+1. Keep the Message Batches API (half price) with the shared prefix as one cached system block at the 1-hour tier,
+   as `semantic-batch.mjs` already does. Batch and prompt caching combine: the batch discount applies to the cache
+   write and read rates alike, and a batch runs longer than 5 minutes, so the 1-hour tier is the one that survives it.
+2. Rely on graphify's on-disk extraction cache so only changed files are re-extracted; that cuts the chunk count,
+   which is the largest lever.
+3. Use synchronous calls (`GRAPHIFY_API_BATCH=0`) only for a small changed set; there the 5-minute tier is enough
+   and the write premium is smaller, but the full price is twice the batch price.
+
+The measured per-run cost and cache read/write split for C is posted on HIMMEL-9052 after the one bounded run.
+
 ## Test seams
 
 - `HIMMEL_API_ALERT_CMD=<path>` replaces the Telegram sender. Every test that

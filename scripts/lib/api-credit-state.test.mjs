@@ -780,3 +780,29 @@ test('HIMMEL-7111: the bank line shows the snapshot age and flags one past 24 h'
   assert.match(r.stderr, /age=9000\d .*stale-snapshot/);
   assert.equal(r.stdout.trim(), 'PROCEED');
 });
+
+function withC(f) {
+  f.config.accounts.C = { organization_id: 'org-c', cycle_id: 'cycle-c', cap_usd: '200.00', reset_at: FAR_RESET };
+  f.snapshot.accounts.C = { ...f.snapshot.accounts.A, organization_id: 'org-c', cycle_id: 'cycle-c', grant_usd: '200.00', remaining_usd: '200.00', expires_at: f.now + 60 };
+  f.save();
+}
+
+test('HIMMEL-9052: account C reports its own 200.00 cap by the explicit name', () => {
+  const f = fixture();
+  withC(f);
+  const r = spawnSync(process.execPath, [SUT, 'status', '--usd', '1'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'C' }, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).verdict, 'PROCEED');
+});
+
+test('HIMMEL-9052: auto never picks C, the earliest-expiring and only funded account included', () => {
+  const f = fixture();
+  withC(f);
+  const pick = (budget) => spawnSync(process.execPath, [SUT, 'pick', '--usd', budget], { env: f.env, encoding: 'utf8' });
+  assert.notEqual(JSON.parse(pick('0.01').stdout).account, 'C');
+  for (const a of ['A', 'B']) { f.snapshot.accounts[a].remaining_usd = '0'; f.snapshot.accounts[a].expires_at = f.now + 3600; }
+  f.save();
+  const r = pick('0.01');
+  const out = r.stdout.trim() ? JSON.parse(r.stdout) : {};
+  assert.notEqual(out.account, 'C', `${r.stdout}${r.stderr}`);
+});

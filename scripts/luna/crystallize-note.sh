@@ -280,12 +280,12 @@ launch_api_lane() {
 # whatever lane the session runs in, as scripts/api-lane/claude-api.sh pins its own.
 crystallize_preflight() {
     if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then
-        env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+        env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
             -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
             CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="crystallize:$$" \
             "$CRYSTALLIZE_PREFLIGHT_CMD" </dev/null 2>/dev/null | tail -n 1
     else
-        env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u LQ_API_KEY \
+        env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
             -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
             CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="crystallize:$$" \
             bash "$HIMMEL_ROOT/scripts/lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n 1
