@@ -260,7 +260,7 @@ reset_fix
 echo "morning-report cadence (HIMMEL-7977): armed once, never twice, never over an operator disarm"
 mkdir -p "$CLONE/scripts/handover" "$TMP/mr-ho" "$TMP/mr-runner" || exit 1
 cp "$src_scripts/handover/morning-report-cadence.sh" "$CLONE/scripts/handover/morning-report-cadence.sh"
-cp "$src_scripts/lib/test-run-guard" "$src_scripts/lib/git-clean.sh" "$CLONE/scripts/lib/"
+cp "$src_scripts/lib/test-run-guard" "$src_scripts/lib/git-clean.sh" "$src_scripts/lib/crontab-locked-rmw.sh" "$src_scripts/lib/prim.sh" "$src_scripts/lib/canon-path.sh" "$CLONE/scripts/lib/"
 MRTAB="$TMP/mr-tab"; : > "$MRTAB"
 # shellcheck disable=SC2016  # the stub's own ${1:-} stays literal
 printf '#!/usr/bin/env bash\nif [ "${1:-}" = "-l" ]; then cat "%s"; else cat > "%s"; fi\n' "$MRTAB" "$MRTAB" > "$TMP/mr-crontab"
