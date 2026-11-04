@@ -214,6 +214,12 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   };
 }
 
+// A live chief's group-header counts: its own sessions, unfiltered; go is the sessions waiting for the chief's GO.
+export function chiefCounts(rows: Row[], chief: string, procs: ProcessOrphan[] = []): { running: number; go: number; attention: number; orphaned: number } {
+  const c = fleetSections(rows, chief, NO_FILTERS, procs).counts;
+  return { running: c.running, go: c.waiting, attention: c.attention, orphaned: c.orphaned };
+}
+
 // A filter chip's badge: how many live sessions (and, for "orphaned", wrappers) that filter alone shows, by the same
 // predicate. Finished sessions fold under Finished, not the live list, so they are not in the badge.
 export function filterCount(rows: Row[], f: Filters, procs: ProcessOrphan[] = []): number {
