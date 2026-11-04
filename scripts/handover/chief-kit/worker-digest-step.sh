@@ -91,6 +91,12 @@ skip() {
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh" 2>/dev/null || true
+# shellcheck source=scripts/lib/load-dotenv.sh
+# shellcheck disable=SC1091
+if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then
+    # A shell without HANDOVER_DIR would file the doc against the stub folder; read the configured root from the primary checkout's .env.
+    load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, as before
+fi
 # shellcheck source=scripts/handover/chief-kit/worker-transcripts.sh
 # shellcheck disable=SC1091
 . "$HERE/worker-transcripts.sh" || skip no-lib

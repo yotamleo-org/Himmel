@@ -18,7 +18,8 @@ contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lac
 lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: [$2] has [$3]"; fails=$((fails + 1)) ;; *) echo "ok - $1" ;; esac; }
 if ! command -v node >/dev/null 2>&1; then echo "SKIP - test-focus-refresh-chains.sh (node not installed)"; exit 0; fi
 
-unset GH_REPO HIMMEL_CONSOLE_DOC HANDOVER_DIR
+unset GH_REPO HIMMEL_CONSOLE_DOC HANDOVER_DIR HIMMEL_CONFIG_DIR
+export HOME="$tmp/home"; mkdir -p "$HOME"   # no row reads the operator's own config
 export FX="$tmp/fx" TICKET_STATUS_STATE_DIR="$tmp/state" JIRA_PROJECT_KEY=HIMMEL USER_SLUG=fxuser
 export HANDOVER_DIR="$tmp/handover"
 export FOCUS_REFRESH_BUDGET=60

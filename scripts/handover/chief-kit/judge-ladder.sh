@@ -31,7 +31,7 @@ state_file() {
   # A shell without HANDOVER_DIR would write the ladder under the stub folder; read the configured root first.
   # shellcheck source=/dev/null
   . "$(cd "$(dirname "$0")/../../lib" && pwd)/load-dotenv.sh" || return 2
-  load_dotenv --root "$(_load_dotenv_primary_for "$(cd "$(dirname "$0")/../../.." && pwd)")" HANDOVER_DIR 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, as before
+  load_dotenv --root "$(_load_dotenv_primary_for "$(cd "$(dirname "$0")/../../.." && pwd)" 2>/dev/null)" HANDOVER_DIR 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, as before
   local root
   root="$(handover_root)" || return 2
   printf '%s/.judge-ladder\n' "$root"

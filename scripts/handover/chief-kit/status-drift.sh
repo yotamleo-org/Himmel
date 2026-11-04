@@ -71,6 +71,11 @@ export LC_ALL=C
 # shellcheck source=../../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh"
+# shellcheck source=../../lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/load-dotenv.sh"
+# A shell without HANDOVER_DIR would scan the stub folder; read the configured root from the primary checkout's .env.
+load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, as before
 
 usage() { echo "usage: status-drift.sh [--repo <owner/repo>] [--docs-dir <dir>] [--snapshot <dir>]" >&2; exit 2; }
 REPO="" DOCS="" SNAP=""

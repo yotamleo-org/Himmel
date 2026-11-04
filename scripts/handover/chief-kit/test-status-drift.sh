@@ -818,6 +818,17 @@ check "3b: a wrapped second doc is not an owner" "$(dcount TWO-OWNERS)" 0
 wipe_docs; mkdoc "$tmp/docs/HIMMEL-90019-N2-other-2026-10-21.md" LIVE
 drift
 check "3b: another key's doc is not an owner (exact key, not a prefix)" "$(dcount TWO-OWNERS)" 0
+# a shell with no HANDOVER_DIR and no --docs-dir scans the root the repo's .env configures, not the stub folder
+FXR="$tmp/fxrepo"; CFG="$tmp/cfgroot"
+rm -rf "$FXR" "$CFG"
+mkdir -p "$FXR/scripts/handover" "$FXR/handovers" "$CFG"
+git -C "$FXR" init -q -b main
+cp -R "$HERE/../../lib" "$FXR/scripts/lib"; cp -R "$HERE" "$FXR/scripts/handover/chief-kit"
+printf 'HANDOVER_DIR=%s\n' "$CFG" > "$FXR/.env"
+reset "In Progress"; wipe_docs; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
+mkdoc "$CFG/$K-N2-other-2026-10-21.md" LIVE
+(cd "$FXR" && env -u HANDOVER_DIR bash "$FXR/scripts/handover/chief-kit/status-drift.sh" --repo acme/fork >"$tmp/dout" 2>&1)
+contains "3b: no HANDOVER_DIR: a second live doc under the configured root is TWO-OWNERS" "$(drows TWO-OWNERS)" "TWO-OWNERS $K"
 wipe_docs
 
 reset "In Progress"; jl "$K" "In Progress"

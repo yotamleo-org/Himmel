@@ -112,7 +112,8 @@ drift_lines() {
 cmd_status() {
     local k st wip cut pb ahead pr rows n state oid root short prevst="" gos=""
     echo "SERIES $(top sid) writer=$(top writer)"
-    root="$(. "$HERE/../../lib/handover-path.sh" 2>/dev/null && handover_root 2>/dev/null)" || root=""   # swallow-ok: no handover root means no GO-FILE rows, never a wrong path
+    # a shell without HANDOVER_DIR reads the configured root from the primary checkout's .env, never the stub folder
+    root="$(. "$HERE/../../lib/handover-path.sh" 2>/dev/null && . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null && { load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR 2>/dev/null || true; } && handover_root 2>/dev/null)" || root=""   # swallow-ok: no handover root means no GO-FILE rows, never a wrong path
     while IFS= read -r k; do
         st="$(field "$k" state)"; wip="$(field "$k" wip)"; cut="$(field "$k" cut_from)"; pb="$(field "$k" publish_branch)"
         ahead="-"
