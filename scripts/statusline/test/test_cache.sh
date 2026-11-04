@@ -766,11 +766,8 @@ kn_sess=$(printf "%b" "$cache_lines" | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^ses
 echo "$kn_sess" | grep -qE 'net [+-]\$[0-9.]+[?]' \
     && { echo "FAIL: recognised model net should NOT carry ? marker: $kn_sess"; FAIL=$(( FAIL + 1 )); } \
     || { echo "PASS: recognised model net has no ? marker: $kn_sess"; PASS=$(( PASS + 1 )); }
-# NOTE: the COMPOSER's renderer (format_econ_line in hud-custom-lines.sh) is a
-# SEPARATE code path from build_cache_lines' net_q above, and it is deliberately
-# NOT covered here — this suite sources only bin/statusline.sh, which does not
-# define format_econ_line at all. Its coverage lives in
-# test-hud-composer-parity.sh, which executes the composer end-to-end (glm-2).
+# NOTE: the HUD composer (hud-custom-lines.sh) prints no economics rows at all;
+# only the legacy bar's build_cache_lines above renders them.
 # Restore whatever was at the pinned window path (see the codex-1 note above) —
 # via the guarded cleanup, which disarms itself so the EXIT-trap call no-ops.
 uk_restore_win

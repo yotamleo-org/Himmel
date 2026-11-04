@@ -513,25 +513,19 @@ mkdir -p "$hud28"
 [ "$(jq -r .statusLine.type "$s28")" = "command" ] || fail "28: the statusLine was not wired under failglob"
 echo "ok 28 the purge survives a caller's failglob on an otherwise-empty hud dir"
 
-# 29. An operator-set HIMMEL_STATUSLINE_ECON=<val> prefix on the
-# previous hud config's .display.customLineCommand must be carried forward
-# across a rewire — dropping it lets the suppressed HUD economics rows come
-# back on every run (the operator's own report).
+# 29. An older install's NAME=<val> env prefix on the previous hud config's
+# .display.customLineCommand (the retired economics-rows knob) is NOT carried
+# across a rewire: the HUD is the same on every machine, so the rewired command
+# is the bare template command again.
 cfg29="$TMP/cfg29"; hud29="$cfg29/plugins/claude-hud"
 proj29="$TMP/proj29"; mkdir -p "$proj29/.claude" "$hud29"
 s29="$proj29/.claude/settings.json"
-printf '{"display":{"customLineCommand":"HIMMEL_STATUSLINE_ECON=off bash \\"/old/himmel/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$cfg29/claude-hud.json"
+printf '{"display":{"customLineCommand":"HIMMEL_RETIRED_KNOB=off bash \\"/old/himmel/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$cfg29/claude-hud.json"
 CLAUDE_CONFIG_DIR="$cfg29" bash "$HELPER" "$s29" "$REPO_ROOT" >/dev/null
-newcmd29="$(jq -r .display.customLineCommand "$cfg29/claude-hud.json")"
-case "$newcmd29" in
-  "HIMMEL_STATUSLINE_ECON=off "*) : ;;
-  *) fail "29: HIMMEL_STATUSLINE_ECON=off prefix was not carried forward" ;;
-esac
-case "$newcmd29" in
-  *"$REPO_ROOT/scripts/statusline/hud-custom-lines.sh"*) : ;;
-  *) fail "29: carried prefix did not still point at the new himmel path" ;;
-esac
-echo "ok 29 HIMMEL_STATUSLINE_ECON prefix carried forward across a rewire"
+expected29="bash \"$REPO_ROOT/scripts/statusline/hud-custom-lines.sh\""
+[ "$(jq -r .display.customLineCommand "$cfg29/claude-hud.json")" = "$expected29" ] \
+  || fail "29: an older install's env prefix was carried forward across a rewire"
+echo "ok 29 an older env prefix is dropped across a rewire"
 
 # 30. ...and with no prefix on the previous config, the rewire yields the bare
 # template command unchanged (no prefix invented out of nowhere).
@@ -545,8 +539,7 @@ expected30="bash \"$REPO_ROOT/scripts/statusline/hud-custom-lines.sh\""
   || fail "30: no-prefix rewire should yield the bare template command"
 echo "ok 30 no prefix on the previous config leaves the bare template command"
 
-# 31. ...and a foreign or malformed prefix is never carried — only the exact
-# HIMMEL_STATUSLINE_ECON=<alnum> shape is recognized.
+# 31. ...and a foreign or malformed prefix is never carried either.
 cfg31="$TMP/cfg31"; hud31="$cfg31/plugins/claude-hud"
 proj31="$TMP/proj31"; mkdir -p "$proj31/.claude" "$hud31"
 s31="$proj31/.claude/settings.json"
@@ -561,11 +554,11 @@ cfg31b="$TMP/cfg31b"; hud31b="$cfg31b/plugins/claude-hud"
 proj31b="$TMP/proj31b"; mkdir -p "$proj31b/.claude" "$hud31b"
 s31b="$proj31b/.claude/settings.json"
 # shellcheck disable=SC2016  # literal $(x) fixture text, not meant to expand
-printf '{"display":{"customLineCommand":"HIMMEL_STATUSLINE_ECON=$(x) bash \\"/old/himmel/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$cfg31b/claude-hud.json"
+printf '{"display":{"customLineCommand":"HIMMEL_RETIRED_KNOB=$(x) bash \\"/old/himmel/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$cfg31b/claude-hud.json"
 CLAUDE_CONFIG_DIR="$cfg31b" bash "$HELPER" "$s31b" "$REPO_ROOT" >/dev/null
 [ "$(jq -r .display.customLineCommand "$cfg31b/claude-hud.json")" = "$expected31" ] \
-  || fail "31b: a malformed HIMMEL_STATUSLINE_ECON=\$(x) prefix must not be carried"
-echo "ok 31b a malformed HIMMEL_STATUSLINE_ECON value is not carried"
+  || fail "31b: a malformed NAME=\$(x) prefix must not be carried"
+echo "ok 31b a malformed prefix value is not carried"
 
 # 32. A hud dir that is writable but NOT enumerable (mode 300) globs
 # to zero entries, so the sweep used to see "nothing to drop" and report success
@@ -737,22 +730,45 @@ echo "ok 39 unwire removes the bare and guarded forms, keeps a user statusLine"
 
 # 40. Starting from ONLY a legacy-path hud
 # config (no new-path file at all — the pre-migration state), a rewire must
-# publish the new-path config carrying the previous config's
-# HIMMEL_STATUSLINE_ECON prefix forward, and remove the legacy file since its
+# publish the new-path config with the bare template command (an older env
+# prefix is not carried), and remove the legacy file since its
 # customLineCommand matches himmel's own shape.
 cfg40="$TMP/cfg40"; hud40="$cfg40/plugins/claude-hud"
 proj40="$TMP/proj40"; mkdir -p "$proj40/.claude" "$hud40"
 s40="$proj40/.claude/settings.json"
-printf '{"display":{"customLineCommand":"HIMMEL_STATUSLINE_ECON=off bash \\"/old/himmel/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$hud40/config.json"
+printf '{"display":{"customLineCommand":"HIMMEL_RETIRED_KNOB=off bash \\"/old/himmel/scripts/statusline/hud-custom-lines.sh\\""}}\n' > "$hud40/config.json"
 [ ! -f "$cfg40/claude-hud.json" ] || fail "40 precondition: new-path config must not pre-exist"
 CLAUDE_CONFIG_DIR="$cfg40" bash "$HELPER" "$s40" "$REPO_ROOT" >/dev/null
 [ -f "$cfg40/claude-hud.json" ] || fail "40: migration did not publish the new-path config"
 newcmd40="$(jq -r .display.customLineCommand "$cfg40/claude-hud.json")"
-case "$newcmd40" in
-  "HIMMEL_STATUSLINE_ECON=off "*) : ;;
-  *) fail "40: HIMMEL_STATUSLINE_ECON=off prefix was not carried forward from the legacy-only config" ;;
-esac
+[ "$newcmd40" = "bash \"$REPO_ROOT/scripts/statusline/hud-custom-lines.sh\"" ] \
+  || fail "40: the legacy-only config's env prefix was carried forward (got: $newcmd40)"
 [ ! -f "$hud40/config.json" ] || fail "40: himmel-owned legacy config was not removed after migration"
-echo "ok 40 a legacy-only starting config migrates to the new path with its ECON prefix and the legacy file is removed"
+echo "ok 40 a legacy-only starting config migrates to the new path without its env prefix and the legacy file is removed"
+
+# 41. The shape check behind unwire (and the legacy-config migration) accepts the
+# bare himmel command and ONE NAME=alnum prefix in front of it, and nothing
+# else: a different script, a lowercase or substituting prefix, two prefixes
+# and a chained command are all still not himmel's.
+(
+  # shellcheck source=unwire-hud-config.sh
+  . "$HERE/unwire-hud-config.sh"
+  match41() { jq -n --arg c "$1" '{display:{customLineCommand:$c}}' | jq -e --arg re "$_UNWIRE_HUD_PAT" '.display.customLineCommand | test($re)' >/dev/null 2>&1; }
+  hud41='/x/scripts/statusline/hud-custom-lines.sh'
+  for ok in "bash \"$hud41\"" "HIMMEL_RETIRED_KNOB=off bash \"$hud41\"" "A1_B=x bash \"$hud41\""; do
+    match41 "$ok" || fail "41: himmel's own command was not matched: $ok"
+  done
+  # shellcheck disable=SC2016  # literal $(x) fixture text, not meant to expand
+  for no in 'bash "/x/scripts/other.sh"' 'FOO=1 bash "/x/scripts/other.sh"' "echo bash \"$hud41\"" \
+            "FOO=\$(x) bash \"$hud41\"" "foo=1 bash \"$hud41\"" "FOO=1 BAR=2 bash \"$hud41\"" \
+            "bash \"$hud41\" && rm -rf /x" "FOO=1 sh \"$hud41\""; do
+    if match41 "$no"; then fail "41: a non-himmel command was matched: $no"; fi
+  done
+) || exit 1
+cfg41="$TMP/cfg41.json"
+printf '{"display":{"customLineCommand":"FOO=1 bash \\"/x/scripts/other.sh\\""}}\n' > "$cfg41"
+( . "$HERE/unwire-hud-config.sh"; unwire_hud_config "$cfg41" >/dev/null ) || fail "41: unwire errored on a non-himmel config"
+[ -f "$cfg41" ] || fail "41: unwire removed a non-himmel hud config"
+echo "ok 41 the shape check matches only himmel's hud command (bare or one NAME=alnum prefix)"
 
 echo "ALL PASS"

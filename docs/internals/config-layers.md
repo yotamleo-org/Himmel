@@ -338,11 +338,8 @@ number); a legacy `.env` line still applies, with the `DEPRECATED` notice, until
 means 4. The project file cannot set it (it has no strict side). The config UI
 shows the cap read-only and names the file to edit; no tool writes it.
 
-Three keys an operator may have in `.env` are never read from it:
+Two keys an operator may have in `.env` are never read from it:
 
-- `HIMMEL_STATUSLINE_ECON` is read from the process environment only, by
-  `scripts/statusline/hud-custom-lines.sh`; `scripts/lib/wire-statusline.sh` sets it as a prefix on the
-  status line's `customLineCommand` in the settings.
 - `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is Claude Code's own variable; the lane
   launchers export their own value, and the worker context guard reads the
   process environment.
